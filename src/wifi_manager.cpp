@@ -1,17 +1,27 @@
 #include "wifi_manager.h"
 #include "project_config.h"
 #include <esp_wifi.h>
+#include <mutex>
 
 WiFiManager* WiFiManager::instance = nullptr;
 WiFiManager* wifiManager = nullptr;
+static std::mutex instanceMutex;
 
 WiFiManager::WiFiManager() 
     : apMode(false), connected(false), lastReconnectAttempt(0), reconnectCount(0) {
     dnsServer = new DNSServer();
     prefs = new Preferences();
+    
+    // Initialize mutex for thread safety
+    stateMutex = xSemaphoreCreateMutex();
+    if (stateMutex == NULL) {
+        ESP_LOGE("WiFiManager", "Failed to create mutex");
+    }
 }
 
 WiFiManager* WiFiManager::getInstance() {
+    // Thread-safe singleton implementation
+    std::lock_guard<std::mutex> lock(instanceMutex);
     if (instance == nullptr) {
         instance = new WiFiManager();
     }
@@ -38,38 +48,55 @@ bool WiFiManager::init() {
 }
 
 bool WiFiManager::connect(const char* ssid, const char* password) {
+    // Use fixed buffers instead of String
+    static char ssidBuffer[33];
+    static char passBuffer[65];
+    
     if (ssid == nullptr) {
-        if (this->ssid.length() == 0) {
+        // Use stored credentials
+        xSemaphoreTake(stateMutex, portMAX_DELAY);
+        strncpy(ssidBuffer, this->ssidFixed, sizeof(ssidBuffer));
+        strncpy(passBuffer, this->passwordFixed, sizeof(passBuffer));
+        xSemaphoreGive(stateMutex);
+        
+        if (strlen(ssidBuffer) == 0) {
             return false;
         }
-        ssid = this->ssid.c_str();
-        password = this->password.c_str();
+        ssid = ssidBuffer;
+        password = passBuffer;
     }
     
-    Serial.printf("Connecting to WiFi: %s\n", ssid);
+    ESP_LOGI("WiFiManager", "Connecting to WiFi: %s", ssid);
     
     WiFi.begin(ssid, password);
     
+    // Non-blocking connection with timeout
     unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startTime < WIFI_CONNECT_TIMEOUT) {
-        delay(500);
-        Serial.print(".");
+    while (WiFi.status() != WL_CONNECTED && 
+           millis() - startTime < WIFI_CONNECT_TIMEOUT) {
+        vTaskDelay(pdMS_TO_TICKS(100)); // Use FreeRTOS delay
+        if ((millis() - startTime) % 1000 == 0) {
+            ESP_LOGI("WiFiManager", "Connecting...");
+        }
     }
     
     if (WiFi.status() == WL_CONNECTED) {
+        xSemaphoreTake(stateMutex, portMAX_DELAY);
         connected = true;
-        Serial.printf("\nWiFi connected! IP: %s, RSSI: %d dBm\n", 
-                     WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        xSemaphoreGive(stateMutex);
+        
+        ESP_LOGI("WiFiManager", "WiFi connected! IP: %s, RSSI: %d dBm", 
+                WiFi.localIP().toString().c_str(), WiFi.RSSI());
         
         // Save credentials if new
-        if (strcmp(ssid, this->ssid.c_str()) != 0) {
+        if (strcmp(ssid, ssidFixed) != 0) {
             saveCredentials(ssid, password);
         }
         
         return true;
     }
     
-    Serial.println("\nWiFi connection failed!");
+    ESP_LOGE("WiFiManager", "WiFi connection failed!");
     return false;
 }
 
@@ -138,17 +165,37 @@ void WiFiManager::handleClient() {
 }
 
 void WiFiManager::saveCredentials(const char* ssid, const char* password) {
-    prefs->putString("ssid", ssid);
-    prefs->putString("password", password);
-    this->ssid = ssid;
-    this->password = password;
-    Serial.println("WiFi credentials saved to NVS");
+    xSemaphoreTake(stateMutex, portMAX_DELAY);
+    
+    // Use fixed buffers
+    strncpy(ssidFixed, ssid, sizeof(ssidFixed) - 1);
+    ssidFixed[sizeof(ssidFixed) - 1] = '\0';
+    strncpy(passwordFixed, password, sizeof(passwordFixed) - 1);
+    passwordFixed[sizeof(passwordFixed) - 1] = '\0';
+    
+    // Save to NVS [[memory:5580064]]
+    prefs->putBytes("ssid", ssidFixed, strlen(ssidFixed) + 1);
+    prefs->putBytes("password", passwordFixed, strlen(passwordFixed) + 1);
+    
+    xSemaphoreGive(stateMutex);
+    
+    ESP_LOGI("WiFiManager", "WiFi credentials saved to NVS");
 }
 
 bool WiFiManager::loadCredentials() {
-    ssid = prefs->getString("ssid", "");
-    password = prefs->getString("password", "");
-    return ssid.length() > 0;
+    xSemaphoreTake(stateMutex, portMAX_DELAY);
+    
+    size_t ssidLen = sizeof(ssidFixed);
+    size_t passLen = sizeof(passwordFixed);
+    
+    prefs->getBytes("ssid", ssidFixed, ssidLen);
+    prefs->getBytes("password", passwordFixed, passLen);
+    
+    bool hasCredentials = strlen(ssidFixed) > 0;
+    
+    xSemaphoreGive(stateMutex);
+    
+    return hasCredentials;
 }
 
 void WiFiManager::clearCredentials() {

@@ -17,9 +17,10 @@ void Sensor::calibrate(float offset, float scale) {
     this->scale = scale;
 }
 
-// DHT Sensor implementation
+// DHT Sensor implementation - Non-blocking
 DHTSensor::DHTSensor(const String& name, int pin, uint8_t type) 
-    : Sensor(name, SENSOR_TEMPERATURE, pin), dhtType(type) {
+    : Sensor(name, SENSOR_TEMPERATURE, pin), dhtType(type), 
+      initState(INIT_NOT_STARTED), initStartTime(0) {
     dht = new DHT(pin, type);
 }
 
@@ -29,22 +30,52 @@ DHTSensor::~DHTSensor() {
 
 bool DHTSensor::init() {
     dht->begin();
-    delay(2000); // DHT sensor needs time to stabilize
     
-    // Test read
-    float t = dht->readTemperature();
-    float h = dht->readHumidity();
+    // Start non-blocking initialization
+    initStartTime = millis();
+    initState = INIT_WAITING;
     
-    if (isnan(t) || isnan(h)) {
-        Serial.printf("DHT sensor init failed on pin %d\n", pin);
-        return false;
+    ESP_LOGI("DHT", "DHT sensor initialization started (non-blocking)");
+    return true; // Return immediately
+}
+
+bool DHTSensor::isReady() {
+    if (initState == INIT_READY) {
+        return true;
     }
     
-    Serial.printf("DHT sensor initialized: T=%.1f°C, H=%.1f%%\n", t, h);
-    return true;
+    if (initState == INIT_WAITING) {
+        // Check if enough time has passed
+        if (millis() - initStartTime > 2000) {
+            // Test read
+            float t = dht->readTemperature();
+            float h = dht->readHumidity();
+            
+            if (isnan(t) || isnan(h)) {
+                initState = INIT_FAILED;
+                ESP_LOGE("DHT", "DHT sensor init failed on pin %d", pin);
+                return false;
+            }
+            
+            initState = INIT_READY;
+            ESP_LOGI("DHT", "DHT sensor ready: T=%.1f°C, H=%.1f%%", t, h);
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 SensorReading DHTSensor::read() {
+    // Check if sensor is ready
+    if (!isReady()) {
+        SensorReading invalid;
+        invalid.valid = false;
+        invalid.error = "Sensor not ready";
+        invalid.timestamp = millis();
+        return invalid;
+    }
+    
     return readTemperature(); // Default to temperature
 }
 
@@ -52,6 +83,21 @@ SensorReading DHTSensor::readTemperature() {
     SensorReading reading;
     reading.type = SENSOR_TEMPERATURE;
     reading.timestamp = millis();
+    
+    // Check if ready first
+    if (!isReady()) {
+        reading.valid = false;
+        reading.error = "Sensor not ready";
+        return reading;
+    }
+    
+    // Implement read rate limiting (DHT22 max 0.5Hz)
+    static unsigned long lastReadTime = 0;
+    if (millis() - lastReadTime < 2000) {
+        // Return cached value
+        return lastReading;
+    }
+    lastReadTime = millis();
     
     float t = dht->readTemperature();
     
@@ -74,6 +120,23 @@ SensorReading DHTSensor::readHumidity() {
     reading.type = SENSOR_HUMIDITY;
     reading.timestamp = millis();
     
+    // Check if ready first
+    if (!isReady()) {
+        reading.valid = false;
+        reading.error = "Sensor not ready";
+        return reading;
+    }
+    
+    // Implement read rate limiting
+    static unsigned long lastReadTime = 0;
+    static SensorReading cachedReading;
+    
+    if (millis() - lastReadTime < 2000) {
+        // Return cached value
+        return cachedReading;
+    }
+    lastReadTime = millis();
+    
     float h = dht->readHumidity();
     
     if (isnan(h)) {
@@ -86,6 +149,7 @@ SensorReading DHTSensor::readHumidity() {
         reading.unit = "%";
     }
     
+    cachedReading = reading;
     return reading;
 }
 

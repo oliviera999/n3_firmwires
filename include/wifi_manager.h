@@ -8,15 +8,17 @@
 
 class WiFiManager {
 private:
-    String ssid;
-    String password;
-    String hostname;
+    // Fixed buffers instead of String to avoid fragmentation
+    char ssidFixed[33];      // Max SSID length + null
+    char passwordFixed[65];  // Max password length + null
+    char hostname[64];
     bool apMode;
     bool connected;
     unsigned long lastReconnectAttempt;
     int reconnectCount;
     DNSServer* dnsServer;
     Preferences* prefs;
+    SemaphoreHandle_t stateMutex;  // Protect shared state
     
     static WiFiManager* instance;
     WiFiManager();

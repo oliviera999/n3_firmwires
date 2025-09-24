@@ -62,16 +62,27 @@ public:
     SensorReading getLastReading() const { return lastReading; }
 };
 
-// DHT sensor implementation
+// DHT sensor implementation - Non-blocking
 class DHTSensor : public Sensor {
 private:
     DHT* dht;
     uint8_t dhtType;
     
+    // Non-blocking initialization
+    enum InitState {
+        INIT_NOT_STARTED,
+        INIT_WAITING,
+        INIT_READY,
+        INIT_FAILED
+    };
+    InitState initState;
+    unsigned long initStartTime;
+    
 public:
     DHTSensor(const String& name, int pin, uint8_t type);
     ~DHTSensor();
     bool init() override;
+    bool isReady();
     SensorReading read() override;
     SensorReading readTemperature();
     SensorReading readHumidity();
