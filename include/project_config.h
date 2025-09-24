@@ -3,7 +3,7 @@
 
 // System Configuration
 #define DEVICE_NAME "ESP32_FFP3CS4"
-#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_VERSION "10.20"
 #define DEBUG_LEVEL 2
 
 // WiFi Configuration
