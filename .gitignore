@@ -38,3 +38,4 @@ test_results/
 
 # Fichiers de configuration locale
 platformio_override.ini
+ffp3distant/ffp3datas/
