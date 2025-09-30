@@ -1,0 +1,40 @@
+# Fichiers de configuration locale
+include/secrets.h
+
+# Dossiers de build PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Fichiers de cache et temporaires
+*.tmp
+*.temp
+*.bak
+*.orig
+*.log
+
+# Fichiers IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Fichiers de test
+test_results/
+*.gcov
+*.gcda
+*.gcno
+
+# Binaires
+*.bin
+*.elf
+*.hex
+
+# Fichiers de configuration locale
+platformio_override.ini

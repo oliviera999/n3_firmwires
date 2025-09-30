@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFP3 - Dashboard Optimisé</title>
+    
+    <!-- Bundles optimisés -->
+    <link rel="stylesheet" href="/bundle.css">
+    <script src="/alpine.min.js" defer></script>
+    <script src="/bundle.js" defer></script>
+    
+    <style>
+        /* Styles inline critiques pour le chargement rapide */
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            margin: 0; 
+            padding: 16px; 
+            background: #f8f9fa;
+        }
+        .loading { 
+            text-align: center; 
+            padding: 50px; 
+            color: #6c757d; 
+        }
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .connecting { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="connection-status connecting" id="connectionStatus">
+        Connexion en cours...
+    </div>
+
+    <div x-data="dashboardApp()" x-init="init()">
+        <!-- Header -->
+        <div class="container-fluid">
+            <h1 class="text-center mb-4">
+                <i class="fas fa-tint"></i> FFP3 Dashboard Optimisé
+                <small class="text-muted">v10.11</small>
+            </h1>
+        </div>
+
+        <!-- Contenu principal -->
+        <div class="container-fluid" id="mainContent" style="display: none;">
+            <!-- Métriques en temps réel -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Température Eau</h5>
+                            <h3 class="text-primary" x-text="sensorData.tempWater + '°C'">--</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Température Air</h5>
+                            <h3 class="text-info" x-text="sensorData.tempAir + '°C'">--</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Humidité</h5>
+                            <h3 class="text-success" x-text="sensorData.humidity + '%'">--</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Luminosité</h5>
+                            <h3 class="text-warning" x-text="sensorData.luminosite + ' lux'">--</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Niveaux d'eau -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Niveau Aquarium</h5>
+                            <h3 class="text-primary" x-text="sensorData.wlAqua + ' cm'">--</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Niveau Réservoir</h5>
+                            <h3 class="text-info" x-text="sensorData.wlTank + ' cm'">--</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Niveau Potager</h5>
+                            <h3 class="text-success" x-text="sensorData.wlPota + ' cm'">--</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contrôles -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Actionneurs</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <button class="btn btn-primary w-100" 
+                                            @click="toggleRelay('light')"
+                                            :class="sensorData.light ? 'btn-success' : 'btn-outline-primary'">
+                                        <i class="fas fa-lightbulb"></i> Éclairage
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-info w-100" 
+                                            @click="toggleRelay('heater')"
+                                            :class="sensorData.heater ? 'btn-warning' : 'btn-outline-info'">
+                                        <i class="fas fa-thermometer-half"></i> Chauffage
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-secondary w-100" 
+                                            @click="toggleRelay('pumpAqua')"
+                                            :class="sensorData.pumpAqua ? 'btn-success' : 'btn-outline-secondary'">
+                                        <i class="fas fa-water"></i> Pompe Aqua
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-dark w-100" 
+                                            @click="toggleRelay('pumpTank')"
+                                            :class="sensorData.pumpTank ? 'btn-success' : 'btn-outline-dark'">
+                                        <i class="fas fa-tint"></i> Pompe Tank
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Nourrissage</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <button class="btn btn-success w-100" @click="feedSmall()">
+                                        <i class="fas fa-fish"></i> Petits Poissons
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-success w-100" @click="feedBig()">
+                                        <i class="fas fa-fish"></i> Gros Poissons
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistiques -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Statistiques Pompe</h5>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>État:</strong> <span x-text="pumpStats.isRunning ? 'En marche' : 'Arrêtée'">--</span></p>
+                            <p><strong>Temps de fonctionnement actuel:</strong> <span x-text="pumpStats.currentRuntimeSec + 's'">--</span></p>
+                            <p><strong>Temps total:</strong> <span x-text="pumpStats.totalRuntimeSec + 's'">--</span></p>
+                            <p><strong>Nombre d'arrêts:</strong> <span x-text="pumpStats.totalStops">--</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Performance</h5>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Dernière mise à jour:</strong> <span x-text="lastUpdate">--</span></p>
+                            <p><strong>Mode de connexion:</strong> <span x-text="connectionMode">--</span></p>
+                            <p><strong>Latence:</strong> <span x-text="latency + 'ms'">--</span></p>
+                            <p><strong>Uptime:</strong> <span x-text="uptime">--</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chargement -->
+        <div class="loading" id="loadingIndicator">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+            <p class="mt-2">Chargement du dashboard optimisé...</p>
+        </div>
+    </div>
+
+    <script>
+        function dashboardApp() {
+            return {
+                sensorData: {
+                    tempWater: '--',
+                    tempAir: '--',
+                    humidity: '--',
+                    wlAqua: '--',
+                    wlTank: '--',
+                    wlPota: '--',
+                    luminosite: '--',
+                    pumpAqua: false,
+                    pumpTank: false,
+                    heater: false,
+                    light: false,
+                    voltage: '--'
+                },
+                pumpStats: {
+                    isRunning: false,
+                    currentRuntimeSec: 0,
+                    totalRuntimeSec: 0,
+                    totalStops: 0
+                },
+                connectionMode: 'HTTP Polling',
+                lastUpdate: '--',
+                latency: 0,
+                uptime: '--',
+                ws: null,
+                reconnectAttempts: 0,
+                maxReconnectAttempts: 5,
+                reconnectDelay: 1000,
+
+                init() {
+                    this.initializeWebSocket();
+                    this.startPolling();
+                    this.updateConnectionStatus('connecting');
+                    
+                    // Masquer le loading après 2 secondes
+                    setTimeout(() => {
+                        document.getElementById('loadingIndicator').style.display = 'none';
+                        document.getElementById('mainContent').style.display = 'block';
+                    }, 2000);
+                },
+
+                initializeWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.hostname}:81/ws`;
+                    
+                    try {
+                        this.ws = new WebSocket(wsUrl);
+                        
+                        this.ws.onopen = () => {
+                            console.log('WebSocket connecté');
+                            this.connectionMode = 'WebSocket Temps Réel';
+                            this.updateConnectionStatus('connected');
+                            this.reconnectAttempts = 0;
+                            
+                            // S'abonner aux mises à jour
+                            this.ws.send(JSON.stringify({type: 'subscribe'}));
+                        };
+                        
+                        this.ws.onmessage = (event) => {
+                            const startTime = performance.now();
+                            const data = JSON.parse(event.data);
+                            
+                            if (data.type === 'sensor_data' || data.type === 'sensor_update') {
+                                this.updateSensorData(data);
+                                this.latency = Math.round(performance.now() - startTime);
+                            }
+                        };
+                        
+                        this.ws.onclose = () => {
+                            console.log('WebSocket fermé');
+                            this.updateConnectionStatus('disconnected');
+                            this.connectionMode = 'HTTP Polling';
+                            this.attemptReconnect();
+                        };
+                        
+                        this.ws.onerror = (error) => {
+                            console.error('Erreur WebSocket:', error);
+                            this.updateConnectionStatus('disconnected');
+                        };
+                        
+                    } catch (error) {
+                        console.error('Impossible de créer WebSocket:', error);
+                        this.connectionMode = 'HTTP Polling';
+                    }
+                },
+
+                attemptReconnect() {
+                    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                        this.reconnectAttempts++;
+                        console.log(`Tentative de reconnexion ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+                        
+                        setTimeout(() => {
+                            this.initializeWebSocket();
+                        }, this.reconnectDelay * this.reconnectAttempts);
+                    } else {
+                        console.log('Abandon de la reconnexion WebSocket');
+                    }
+                },
+
+                startPolling() {
+                    // Polling de fallback si WebSocket indisponible
+                    setInterval(() => {
+                        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                            this.fetchSensorData();
+                            this.fetchPumpStats();
+                        }
+                    }, 5000); // 5 secondes
+                },
+
+                async fetchSensorData() {
+                    try {
+                        const startTime = performance.now();
+                        const response = await fetch('/json');
+                        const data = await response.json();
+                        this.updateSensorData(data);
+                        this.latency = Math.round(performance.now() - startTime);
+                    } catch (error) {
+                        console.error('Erreur fetch données capteurs:', error);
+                    }
+                },
+
+                async fetchPumpStats() {
+                    try {
+                        const response = await fetch('/pumpstats');
+                        const data = await response.json();
+                        this.pumpStats = {
+                            isRunning: data.isRunning,
+                            currentRuntimeSec: data.currentRuntimeSec,
+                            totalRuntimeSec: data.totalRuntimeSec,
+                            totalStops: data.totalStops
+                        };
+                    } catch (error) {
+                        console.error('Erreur fetch stats pompe:', error);
+                    }
+                },
+
+                updateSensorData(data) {
+                    this.sensorData.tempWater = data.tempWater || '--';
+                    this.sensorData.tempAir = data.tempAir || '--';
+                    this.sensorData.humidity = data.humidity || '--';
+                    this.sensorData.wlAqua = data.wlAqua || '--';
+                    this.sensorData.wlTank = data.wlTank || '--';
+                    this.sensorData.wlPota = data.wlPota || '--';
+                    this.sensorData.luminosite = data.luminosite || '--';
+                    this.sensorData.pumpAqua = data.pumpAqua || false;
+                    this.sensorData.pumpTank = data.pumpTank || false;
+                    this.sensorData.heater = data.heater || false;
+                    this.sensorData.light = data.light || false;
+                    this.sensorData.voltage = data.voltage || '--';
+                    
+                    this.lastUpdate = new Date().toLocaleTimeString();
+                },
+
+                async toggleRelay(relay) {
+                    try {
+                        const response = await fetch(`/action?relay=${relay}`);
+                        const result = await response.text();
+                        console.log(`Relay ${relay}: ${result}`);
+                        
+                        // Mettre à jour l'état local immédiatement
+                        if (relay === 'light') this.sensorData.light = !this.sensorData.light;
+                        else if (relay === 'heater') this.sensorData.heater = !this.sensorData.heater;
+                        else if (relay === 'pumpAqua') this.sensorData.pumpAqua = !this.sensorData.pumpAqua;
+                        else if (relay === 'pumpTank') this.sensorData.pumpTank = !this.sensorData.pumpTank;
+                        
+                    } catch (error) {
+                        console.error(`Erreur toggle relay ${relay}:`, error);
+                    }
+                },
+
+                async feedSmall() {
+                    try {
+                        const response = await fetch('/action?cmd=feedSmall');
+                        const result = await response.text();
+                        console.log('Nourrissage petits:', result);
+                    } catch (error) {
+                        console.error('Erreur nourrissage petits:', error);
+                    }
+                },
+
+                async feedBig() {
+                    try {
+                        const response = await fetch('/action?cmd=feedBig');
+                        const result = await response.text();
+                        console.log('Nourrissage gros:', result);
+                    } catch (error) {
+                        console.error('Erreur nourrissage gros:', error);
+                    }
+                },
+
+                updateConnectionStatus(status) {
+                    const statusEl = document.getElementById('connectionStatus');
+                    statusEl.className = `connection-status ${status}`;
+                    
+                    switch (status) {
+                        case 'connected':
+                            statusEl.textContent = 'Connecté (WebSocket)';
+                            break;
+                        case 'connecting':
+                            statusEl.textContent = 'Connexion en cours...';
+                            break;
+                        case 'disconnected':
+                            statusEl.textContent = 'Déconnecté (HTTP)';
+                            break;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

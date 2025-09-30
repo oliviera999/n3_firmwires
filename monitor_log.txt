@@ -1,0 +1,323 @@
+
+Please build project in debug configuration to get more details about an exception.
+See https://docs.platformio.org/page/projectconf/build_configurations.html
+
+
+--- Terminal on COM6 | 115200 8-N-1
+--- Available filters and text transformations: colorize, debug, default, direct, esp32_exception_decoder, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+18:32:01.603 > ets Jul 29 2019 12:21:46
+18:32:01.603 > 
+18:32:01.603 > rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+18:32:01.603 > configsip: 0, SPIWP:0xee
+18:32:01.603 > clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+18:32:01.603 > mode:DIO, clock div:2
+18:32:01.603 > load:0x3fff0030,len:4744
+18:32:01.603 > load:0x40078000,len:15712
+18:32:01.603 > load:0x40080400,len:3152
+18:32:01.603 >   #0  0x40080400 in _invalid_pc_placeholder at /home/runner/work/esp32-arduino-lib-builder/esp32-arduino-lib-builder/esp-idf/components/xtensa/xtensa_vectors.S:2235
+18:32:01.603 > 
+18:32:01.603 > entry 0x4008059c
+18:32:01.603 > E (646) esp_core_dump_flash: No co�fx dump partition found!
+18:32:01.603 > E (647) esp_core_dump_flash: No core dump partition found!
+18:32:01.603 > [FS] Mounting LittleFS...
+18:32:01.603 > [FS] LittleFS ok: 8192/65536 bytes
+18:32:01.603 > [App] Démarrage FFP3CS v10.11
+18:32:01.603 > 
+18:32:01.603 > === VALIDATION OTA AU DÉMARRAGE ===
+18:32:01.603 > [OTA] Partition en cours: app0 (0x00010000)
+18:32:01.603 > [OTA] Partition de boot: app0 (0x00010000)
+18:32:01.603 > [OTA] État: IMAGE NON DÉFINIE
+18:32:01.603 > ==================================
+18:32:01.603 > 
+18:32:01.603 > [Power] Initialisation de la gestion du temps
+18:32:01.603 > [Power] Epoch sauvegardé valide: 1735689604
+18:32:01.603 > [Power] Heure actuelle: 01:00:04 01/01/2025 (epoch: 256)
+18:32:01.603 > [Power] Configuration NTP: GMT+1, DST+0, serveur: pool.ntp.org
+18:32:01.603 > [TimeDrift] Initialisation du moniteur de dérive temporelle
+18:32:01.603 > [   273][E][Preferences.cpp:526] getBytesLength(): nvs_get_blob len fail: driftThresholdPPM NOT_FOUND
+18:32:01.603 > [TimeDrift] Données chargées depuis NVS
+18:32:01.603 > [TimeDrift] Intervalle de sync: 3600000 ms (1.0 heures)
+18:32:01.603 > [TimeDrift] Seuil d'alerte: 100.0 PPM
+18:32:01.603 > [TimeDrift] Dérive précédente: 0.00 PPM (0.00 secondes)
+18:32:01.603 > [   305][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+18:32:01.603 > [DEBUG] Avant oled.begin()
+18:32:01.603 > [OLED] Début initialisation - FEATURE_OLED=1
+18:32:01.603 > [OLED] FEATURE_OLED=0 - OLED DÉSACTIVÉ (macro de compilation)
+18:32:01.603 > [DEBUG] oled.begin() retourné: false
+18:32:01.603 > [DEBUG] oled.isPresent(): false
+18:32:01.603 > [DEBUG] OLED non présent - pas d'affichage
+18:32:01.603 > [   416][E][STA.cpp:530] disconnect(): STA not started! You must call begin first.
+18:32:01.603 > [WiFi] Balayage des réseaux...
+18:32:01.603 > [WiFi] 3 réseaux trouvés:
+18:32:01.603 >   - AndroidAP (-44dBm)
+18:32:01.603 >   - inwi Home 4G 8306D9 (-58dBm)
+18:32:01.603 >   - HUAWEI-C34a (-75dBm)
+18:32:01.603 > [WiFi] Réseau AndroidAP accepté (RSSI: -44 dBm)
+18:32:01.603 > [WiFi] Tentative (vu) AndroidAP (RSSI -44 dBm, ch 1)...
+18:32:01.604 > [WiFi] Connecté à AndroidAP (10.17.134.28, RSSI -44 dBm)
+18:32:01.604 > [Power] Synchronisation NTP en cours...
+18:32:01.604 > [Power] Première sauvegarde d'heure
+18:32:01.604 > [Power] Heure sauvegardée: 01:00:09 01/01/2025 (epoch: 0)
+18:32:01.604 > [Power] Heure synchronisée NTP: 01:00:09 01/01/2025 (epoch: 1073422632)
+18:32:01.604 > [Mail] Désactivé (FEATURE_MAIL=0)
+18:32:01.604 > [HTTP] → GET remote state
+18:32:01.604 > [Web] GET remote state -> HTTP 200
+18:32:01.604 > [HTTP] ← 243 bytes
+18:32:01.604 > [Web] remote JSON ok
+18:32:01.604 > [Config] Variables distantes inchangées - pas de sauvegarde NVS
+18:32:01.604 > [AirSensor] Historique réinitialisé
+18:32:01.682 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:01.685 > [AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation
+18:32:01.745 > [WaterTemp] Historique réinitialisé
+18:32:01.748 > [WaterTemp] Dernière température valide chargée depuis NVS: 34.2°C
+18:32:01.992 > [WaterTemp] Capteur connecté et fonctionnel (test: 34.2°C)
+18:32:01.998 > [WaterTemp] Capteur détecté et initialisé (résolution: 10 bits, conversion: 200 ms)
+18:32:02.004 > [Sensors] Initialisation terminée
+18:32:02.006 > [  6811][E][esp32-hal-ledc.c:206] ledcAttachChannel(): Pin 12 is already attached to LEDC (channel 0, resolution 10)
+18:32:02.018 > [  6823][E][ESP32PWM.cpp:319] attachPin(): [ESP32PWM] ERROR PWM channel failed to configure on pin 12!
+18:32:02.026 > [INFO] Servo GPIO12 attaché (500-2500μs)
+18:32:02.032 > [  6832][E][esp32-hal-ledc.c:206] ledcAttachChannel(): Pin 13 is already attached to LEDC (channel 1, resolution 10)
+18:32:02.040 > [  6846][E][ESP32PWM.cpp:319] attachPin(): [ESP32PWM] ERROR PWM channel failed to configure on pin 13!
+18:32:02.051 > [INFO] Servo GPIO13 attaché (500-2500μs)
+18:32:02.054 > [INFO] Pump GPIO16 ON
+18:32:02.057 > [Web] AsyncWebServer démarré sur le port 80
+18:32:02.059 > [Diagnostics] Initialisé - reboot #2, minHeap: 4294967295
+18:32:02.065 > [Power] Watchdog prêt (géré par TWDT natif)
+18:32:02.068 > [App] Envoi du mail de test au démarrage...
+18:32:02.075 > [App] Échec de l'envoi du mail de test ✗
+18:32:02.078 > [Config] Flags de bouffe chargés depuis la flash
+18:32:02.083 > [Config] Matin: KO, Midi: KO, Soir: KO, Jour: -1, Pompe lock: NON, ForceWakeUp: NON
+18:32:02.089 > [Config] Flag OTA update: true
+18:32:02.092 > [Auto] forceWakeUp restauré depuis config: false
+18:32:02.098 > [Auto] Automatismes initialisés
+18:32:02.100 > [Auto] Initialisation marée: _lastDiffMaree=-1
+18:32:02.103 > [Auto] Dernier jour de bouffe: -1
+18:32:02.106 > [Auto] lastFloodEmailEpoch restauré: 0
+18:32:02.111 > [  6911][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+18:32:02.118 > [Config] Variables distantes chargées depuis la flash
+18:32:02.121 > [Auto] Variables distantes restaurées depuis NVS
+18:32:02.126 > [Auto] forceWakeUp restauré: false
+18:32:06.640 > [WaterTemp] Seuil adaptatif: accepte 3 lectures (minimum: 2)
+18:32:06.643 > [WaterTemp] Température lissée: 34.2°C -> 34.2°C
+18:32:06.649 > [WaterTemp] Dernière température valide sauvegardée en NVS: 34.2°C
+18:32:06.654 > [WaterTemp] Température filtrée: 34.2°C (médiane: 34.2°C, lissée: 34.2°C, 3 lectures, résolution: 10 bits)
+18:32:06.745 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:06.845 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:06.848 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:06.854 > [AirSensor] Reset matériel du capteur...
+18:32:07.856 > [AirSensor] Historique réinitialisé
+18:32:07.859 > [AirSensor] Reset matériel terminé
+18:32:07.862 > [AirSensor] Tentative de récupération 1/3...
+18:32:08.538 > [AirSensor] Tentative de récupération 2/3...
+18:32:09.138 > [AirSensor] Tentative de récupération 3/3...
+18:32:09.738 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:09.743 > [SystemSensors] Température air invalide finale: nan°C, force NaN
+18:32:09.749 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:09.849 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:09.852 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:09.858 > [AirSensor] Reset matériel du capteur...
+18:32:10.860 > [AirSensor] Historique réinitialisé
+18:32:10.863 > [AirSensor] Reset matériel terminé
+18:32:10.866 > [AirSensor] Tentative de récupération 1/3...
+18:32:11.541 > [AirSensor] Tentative de récupération 2/3...
+18:32:12.141 > [AirSensor] Tentative de récupération 3/3...
+18:32:12.741 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:12.744 > [SystemSensors] Humidité invalide finale: nan%, force NaN
+18:32:12.773 > [Ultrasonic] Lecture 1 timeout
+18:32:12.904 > [Ultrasonic] Lecture 2 timeout
+18:32:13.035 > [Ultrasonic] Lecture 3 timeout
+18:32:13.134 > [Ultrasonic] Pas assez de lectures valides (0/1), retourne 0
+18:32:13.137 > [SystemSensors] Niveau potager invalide: 0 cm, force 0
+18:32:13.144 > [Ultrasonic] Lecture 1: 171 cm
+18:32:13.257 > [Ultrasonic] Lecture 2: 171 cm
+18:32:13.368 > [Ultrasonic] Lecture 3: 171 cm
+18:32:13.467 > [Ultrasonic] Distance médiane: 171 cm (3 lectures valides)
+18:32:13.482 > [Ultrasonic] Lecture 1: 209 cm
+18:32:13.594 > [Ultrasonic] Lecture 2: 209 cm
+18:32:13.707 > [Ultrasonic] Lecture 3: 209 cm
+18:32:13.806 > [Ultrasonic] Distance médiane: 209 cm (3 lectures valides)
+18:32:13.819 > [Maree] Nouveau max: 171 cm (précédent: 0 cm)
+18:32:13.822 > [Automatism] Température air invalide avant envoi: nan°C, force NaN
+18:32:13.828 > [Automatism] Humidité invalide avant envoi: nan%, force NaN
+18:32:13.833 > [Maree] Calcul10s: actuel=171, diff10s=0 cm
+18:32:13.836 > [HTTP] → http://iot.olution.info/ffp3/ffp3datas/post-ffp3-data2.php (499 bytes)
+18:32:13.845 > [HTTP] payload: api_key=fdGTMoptd5CD2ert3&sensor=esp32-wroom&version=10.11&TempAir=nan&Humidite=nan&TempEau=34.2&EauPotager=0&EauAquarium=171&EauReserve=209&diffMaree=0&Luminosite=1064&etatPompeAqua=1&etatPompeTank=0&etatHeat=0&etatUV=0&voltage=233&bouffeMatin=1&bouffeMidi=4&bouffeSoir=8&tempsGros=10&tempsPetits=10 ... (truncated)
+18:32:14.373 > [HTTP] ← code 200, 31 bytes
+18:32:14.378 > [HTTP] response: New record created successfully
+18:32:14.379 > [Auto] Synchronisation initiale de forceWakeUp envoyée au serveur (après délai)
+18:32:14.388 > [HTTP] → GET remote state
+18:32:14.592 > [Web] GET remote state -> HTTP 200
+18:32:14.595 > [HTTP] ← 243 bytes
+18:32:14.595 > [Web] remote JSON ok
+18:32:14.598 > [Config] Variables distantes inchangées - pas de sauvegarde NVS
+18:32:14.603 > [App] Vérification des flags OTA...
+18:32:14.606 > [App] g_otaJustUpdated: false
+18:32:14.609 > [App] config.getOtaUpdateFlag(): true
+18:32:14.612 > [App] autoCtrl.isEmailEnabled(): true
+18:32:16.129 > [WaterTemp] Seuil adaptatif: accepte 3 lectures (minimum: 2)
+18:32:16.135 > [WaterTemp] Température lissée: 34.2°C -> 34.2°C
+18:32:16.138 > [WaterTemp] Dernière température valide sauvegardée en NVS: 34.2°C
+18:32:16.143 > [WaterTemp] Température filtrée: 34.2°C (médiane: 34.2°C, lissée: 34.2°C, 3 lectures, résolution: 10 bits)
+18:32:16.234 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:16.334 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:16.337 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:16.343 > [AirSensor] Reset matériel du capteur...
+18:32:17.345 > [AirSensor] Historique réinitialisé
+18:32:17.348 > [AirSensor] Reset matériel terminé
+18:32:17.351 > [AirSensor] Tentative de récupération 1/3...
+18:32:18.027 > [AirSensor] Tentative de récupération 2/3...
+18:32:18.627 > [AirSensor] Tentative de récupération 3/3...
+18:32:19.227 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:19.233 > [SystemSensors] Température air invalide finale: nan°C, force NaN
+18:32:19.239 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:19.338 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:19.341 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:19.347 > [AirSensor] Reset matériel du capteur...
+18:32:20.349 > [AirSensor] Historique réinitialisé
+18:32:20.354 > [AirSensor] Reset matériel terminé
+18:32:20.355 > [AirSensor] Tentative de récupération 1/3...
+18:32:21.030 > [AirSensor] Tentative de récupération 2/3...
+18:32:21.630 > [AirSensor] Tentative de récupération 3/3...
+18:32:22.230 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:22.235 > [SystemSensors] Humidité invalide finale: nan%, force NaN
+18:32:22.262 > [Ultrasonic] Lecture 1 timeout
+18:32:22.393 > [Ultrasonic] Lecture 2 timeout
+18:32:22.524 > [Ultrasonic] Lecture 3 timeout
+18:32:22.624 > [Ultrasonic] Pas assez de lectures valides (0/1), retourne 0
+18:32:22.627 > [SystemSensors] Niveau potager invalide: 0 cm, force 0
+18:32:22.633 > [Ultrasonic] Lecture 1: 171 cm
+18:32:22.746 > [Ultrasonic] Lecture 2: 171 cm
+18:32:22.857 > [Ultrasonic] Lecture 3: 171 cm
+18:32:22.957 > [Ultrasonic] Distance médiane: 171 cm (3 lectures valides)
+18:32:22.971 > [Ultrasonic] Lecture 1: 209 cm
+18:32:23.084 > [Ultrasonic] Lecture 2: 209 cm
+18:32:23.197 > [Ultrasonic] Lecture 3: 209 cm
+18:32:23.295 > [Ultrasonic] Distance médiane: 209 cm (3 lectures valides)
+18:32:23.309 > [Maree] Calcul10s: actuel=171, diff10s=0 cm
+18:32:23.312 > [Automatism] Température air invalide avant envoi: nan°C, force NaN
+18:32:23.317 > [Automatism] Humidité invalide avant envoi: nan%, force NaN
+18:32:23.323 > [Maree] Calcul10s: actuel=171, diff10s=0 cm
+18:32:23.325 > [HTTP] → http://iot.olution.info/ffp3/ffp3datas/post-ffp3-data2.php (497 bytes)
+18:32:23.334 > [HTTP] payload: api_key=fdGTMoptd5CD2ert3&sensor=esp32-wroom&version=10.11&TempAir=nan&Humidite=nan&TempEau=34.2&EauPotager=0&EauAquarium=171&EauReserve=209&diffMaree=0&Luminosite=1287&etatPompeAqua=1&etatPompeTank=0&etatHeat=0&etatUV=0&voltage=0&bouffeMatin=1&bouffeMidi=4&bouffeSoir=8&tempsGros=10&tempsPetits=10&a ... (truncated)
+18:32:23.819 > [HTTP] ← code 200, 31 bytes
+18:32:23.824 > [HTTP] response: New record created successfully
+18:32:23.825 > [Sensor] Tâche sensorTask démarrée - fréquence 2000ms pour stabilité
+18:32:23.830 > E (28623) task_wdt: esp_task_wdt_reset(707): task not found
+18:32:23.836 > [Display] Tâche displayTask démarrée - cadence dynamique
+18:32:23.880 > [Stacks] HWM at boot - sensor:7268 auto:11688 display:7380 loop:3996 bytes
+18:32:23.886 > [App] Initialisation terminée
+18:32:25.347 > [WaterTemp] Seuil adaptatif: accepte 3 lectures (minimum: 2)
+18:32:25.352 > [WaterTemp] Température lissée: 34.2°C -> 34.2°C
+18:32:25.355 > [WaterTemp] Dernière température valide sauvegardée en NVS: 34.2°C
+18:32:25.361 > [WaterTemp] Température filtrée: 34.2°C (médiane: 34.2°C, lissée: 34.2°C, 3 lectures, résolution: 10 bits)
+18:32:25.451 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:25.552 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:25.555 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:25.560 > [AirSensor] Reset matériel du capteur...
+18:32:26.563 > [AirSensor] Historique réinitialisé
+18:32:26.567 > [AirSensor] Reset matériel terminé
+18:32:26.568 > [AirSensor] Tentative de récupération 1/3...
+18:32:27.245 > [AirSensor] Tentative de récupération 2/3...
+18:32:27.845 > [AirSensor] Tentative de récupération 3/3...
+18:32:28.445 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:28.450 > [SystemSensors] Température air invalide finale: nan°C, force NaN
+18:32:28.456 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:28.556 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:28.559 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:28.564 > [AirSensor] Reset matériel du capteur...
+18:32:29.567 > [AirSensor] Historique réinitialisé
+18:32:29.570 > [AirSensor] Reset matériel terminé
+18:32:29.572 > [AirSensor] Tentative de récupération 1/3...
+18:32:30.249 > [AirSensor] Tentative de récupération 2/3...
+18:32:30.849 > [AirSensor] Tentative de récupération 3/3...
+18:32:31.449 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:31.452 > [SystemSensors] Humidité invalide finale: nan%, force NaN
+18:32:31.481 > [Ultrasonic] Lecture 1 timeout
+18:32:31.611 > [Ultrasonic] Lecture 2 timeout
+18:32:31.742 > [Ultrasonic] Lecture 3 timeout
+18:32:31.842 > [Ultrasonic] Pas assez de lectures valides (0/1), retourne 0
+18:32:31.845 > [SystemSensors] Niveau potager invalide: 0 cm, force 0
+18:32:31.856 > [Ultrasonic] Lecture 1: 208 cm
+18:32:31.957 > [Ultrasonic] Lecture 2: 10 cm
+18:32:32.059 > [Ultrasonic] Lecture 3: 10 cm
+18:32:32.159 > [Ultrasonic] Saut détecté: 171 cm -> 10 cm (écart: 161 cm)
+18:32:32.162 > [Ultrasonic] Saut vers le bas accepté (niveau qui baisse)
+18:32:32.167 > [Ultrasonic] Écart important avec l'historique: 10 cm (moyenne: 171 cm), utilise ancienne valeur
+18:32:32.176 > [Ultrasonic] Lecture 1: 7 cm
+18:32:32.273 > [Ultrasonic] Lecture 2: 7 cm
+18:32:32.375 > [Ultrasonic] Lecture 3: 8 cm
+18:32:32.475 > [Ultrasonic] Saut détecté: 209 cm -> 7 cm (écart: 202 cm)
+18:32:32.478 > [Ultrasonic] Saut vers le bas accepté (niveau qui baisse)
+18:32:32.483 > [Ultrasonic] Écart important avec l'historique: 7 cm (moyenne: 209 cm), utilise ancienne valeur
+18:32:32.500 > [Auto] Nouveau jour détecté: 0 (précédent: -1)
+18:32:32.503 > [Config] Flags de bouffe réinitialisés
+18:32:32.506 > [Config] Jour bouffe changé: 0
+18:32:32.509 > [Config] Flags de bouffe sauvegardés dans la flash (changements détectés)
+18:32:32.517 > [Auto] Flags de bouffe réinitialisés pour le nouveau jour
+18:32:32.522 > [CRITIQUE] === DÉBUT NOURRISSAGE MATIN ===
+18:32:32.525 > [CRITIQUE] Heure actuelle: 01:00, Heure configurée: 01:00
+18:32:32.531 > [CRITIQUE] Durées configurées - Gros: 10 s, Petits: 10 s
+18:32:32.536 > [INFO] === NOURRISSAGE SÉQUENTIEL ===
+18:32:32.539 > [INFO] Gros poissons: 10 s, Petits poissons: 10 s, Délai: 2 s
+18:32:32.545 > [INFO] Phase 1: Nourrissage gros poissons
+18:32:32.547 > [INFO] Attente: 17000 ms (cycle: 15000 ms + délai: 2000 ms)
+18:32:34.018 > [WaterTemp] Seuil adaptatif: accepte 3 lectures (minimum: 2)
+18:32:34.023 > [WaterTemp] Température lissée: 34.2°C -> 34.2°C
+18:32:34.026 > [WaterTemp] Dernière température valide sauvegardée en NVS: 34.2°C
+18:32:34.032 > [WaterTemp] Température filtrée: 34.2°C (médiane: 34.2°C, lissée: 34.2°C, 3 lectures, résolution: 10 bits)
+18:32:34.121 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:34.222 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:34.225 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:34.230 > [AirSensor] Reset matériel du capteur...
+18:32:35.233 > [AirSensor] Historique réinitialisé
+18:32:35.238 > [AirSensor] Reset matériel terminé
+18:32:35.238 > [AirSensor] Tentative de récupération 1/3...
+18:32:35.915 > [AirSensor] Tentative de récupération 2/3...
+18:32:36.515 > [AirSensor] Tentative de récupération 3/3...
+18:32:37.115 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:37.120 > [SystemSensors] Température air invalide finale: nan°C, force NaN
+18:32:37.126 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:37.226 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:37.229 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:37.234 > [AirSensor] Reset matériel du capteur...
+18:32:38.237 > [AirSensor] Historique réinitialisé
+18:32:38.242 > [AirSensor] Reset matériel terminé
+18:32:38.242 > [AirSensor] Tentative de récupération 1/3...
+18:32:38.919 > [AirSensor] Tentative de récupération 2/3...
+18:32:39.519 > [AirSensor] Tentative de récupération 3/3...
+18:32:40.119 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:40.124 > [SystemSensors] Humidité invalide finale: nan%, force NaN
+18:32:40.151 > [Ultrasonic] Lecture 1 timeout
+18:32:40.281 > [Ultrasonic] Lecture 2 timeout
+18:32:40.412 > [Ultrasonic] Lecture 3 timeout
+18:32:40.512 > [Ultrasonic] Pas assez de lectures valides (0/1), retourne 0
+18:32:40.515 > [SystemSensors] Niveau potager invalide: 0 cm, force 0
+18:32:40.521 > [Ultrasonic] Lecture 1: 171 cm
+18:32:40.635 > [Ultrasonic] Lecture 2: 171 cm
+18:32:40.746 > [Ultrasonic] Lecture 3: 171 cm
+18:32:40.845 > [Ultrasonic] Distance médiane: 171 cm (3 lectures valides)
+18:32:40.859 > [Ultrasonic] Lecture 1: 209 cm
+18:32:40.972 > [Ultrasonic] Lecture 2: 209 cm
+18:32:41.083 > [Ultrasonic] Lecture 3: 169 cm
+18:32:41.182 > [Ultrasonic] Distance médiane: 209 cm (3 lectures valides)
+18:32:42.715 > [WaterTemp] Seuil adaptatif: accepte 3 lectures (minimum: 2)
+18:32:42.720 > [WaterTemp] Température lissée: 34.2°C -> 34.2°C
+18:32:42.724 > [WaterTemp] Dernière température valide sauvegardée en NVS: 34.2°C
+18:32:42.729 > [WaterTemp] Température filtrée: 34.2°C (médiane: 34.2°C, lissée: 34.2°C, 3 lectures, résolution: 10 bits)
+18:32:42.818 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:42.919 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:42.922 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:42.927 > [AirSensor] Reset matériel du capteur...
+18:32:43.930 > [AirSensor] Historique réinitialisé
+18:32:43.933 > [AirSensor] Reset matériel terminé
+18:32:43.936 > [AirSensor] Tentative de récupération 1/3...
+18:32:44.612 > [AirSensor] Tentative de récupération 2/3...
+18:32:45.212 > [AirSensor] Tentative de récupération 3/3...
+18:32:45.812 > [AirSensor] Échec de toutes les tentatives de récupération
+18:32:45.818 > [SystemSensors] Température air invalide finale: nan°C, force NaN
+18:32:45.823 > [AirSensor] Filtrage avancé échoué, tentative de récupération...
+18:32:45.923 > [AirSensor] Capteur DHT non détecté ou déconnecté
+18:32:45.926 > [AirSensor] Capteur non connecté, reset matériel...
+18:32:45.932 > [AirSensor] Reset matériel du capteur...

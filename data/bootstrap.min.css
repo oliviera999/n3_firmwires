@@ -1,0 +1,16 @@
+/* Minimal placeholder Bootstrap subset for LittleFS serving. Replace with full minified file if desired. */
+:root{--primary:#0d6efd;--success:#198754;--warning:#ffc107;--danger:#dc3545;--info:#0dcaf0}
+body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
+.container{width:100%;max-width:1140px;margin:0 auto;padding:0 1rem}
+.py-4{padding-top:1.5rem;padding-bottom:1.5rem}
+.row{display:flex;flex-wrap:wrap;margin:-.5rem}
+.col-12{flex:0 0 auto;width:100%;padding:.5rem}
+.btn{display:inline-block;padding:.5rem 1rem;border-radius:.25rem;border:1px solid transparent;cursor:pointer}
+.btn-primary{background:#0d6efd;color:#fff}
+.badge{display:inline-block;padding:.35em .65em;border-radius:.25rem}
+.bg-success{background:var(--success)!important;color:#fff}
+.bg-danger{background:var(--danger)!important;color:#fff}
+.bg-secondary{background:#6c757d!important;color:#fff}
+canvas{max-width:100%}
+
+

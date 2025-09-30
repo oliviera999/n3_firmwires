@@ -1,0 +1,51 @@
+{
+  "version": "10.12",
+  "bin_url": "https://server.com/ota/esp32-s3/firmware.bin",
+  "size": 1678528,
+  "md5": "a1b2c3d4e5f6789012345678901234567",
+  "filesystem_url": "https://server.com/ota/esp32-s3/filesystem.bin",
+  "filesystem_size": 524288,
+  "filesystem_md5": "f6e5d4c3b2a1908765432109876543210",
+  "channels": {
+    "prod": {
+      "esp32-s3": {
+        "bin_url": "https://server.com/ota/esp32-s3/firmware.bin",
+        "version": "10.12",
+        "size": 1678528,
+        "md5": "a1b2c3d4e5f6789012345678901234567",
+        "filesystem_url": "https://server.com/ota/esp32-s3/filesystem.bin",
+        "filesystem_size": 524288,
+        "filesystem_md5": "f6e5d4c3b2a1908765432109876543210"
+      },
+      "esp32-wroom": {
+        "bin_url": "https://server.com/ota/esp32-wroom/firmware.bin",
+        "version": "10.12",
+        "size": 1456896,
+        "md5": "b2c3d4e5f6a1789012345678901234567",
+        "filesystem_url": "https://server.com/ota/esp32-wroom/filesystem.bin",
+        "filesystem_size": 524288,
+        "filesystem_md5": "e6f5d4c3b2a1908765432109876543210"
+      },
+      "default": {
+        "bin_url": "https://server.com/ota/default/firmware.bin",
+        "version": "10.12",
+        "size": 1500000,
+        "md5": "c3d4e5f6a1b2789012345678901234567",
+        "filesystem_url": "https://server.com/ota/default/filesystem.bin",
+        "filesystem_size": 524288,
+        "filesystem_md5": "d6e5f4c3b2a1908765432109876543210"
+      }
+    },
+    "test": {
+      "esp32-s3": {
+        "bin_url": "https://server.com/ota/test/esp32-s3/firmware.bin",
+        "version": "10.12-test",
+        "size": 1678528,
+        "md5": "d4e5f6a1b2c3789012345678901234567",
+        "filesystem_url": "https://server.com/ota/test/esp32-s3/filesystem.bin",
+        "filesystem_size": 524288,
+        "filesystem_md5": "c6d5e4f3b2a1908765432109876543210"
+      }
+    }
+  }
+}
