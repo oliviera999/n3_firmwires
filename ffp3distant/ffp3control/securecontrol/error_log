@@ -1,0 +1,102 @@
+[19-Jan-2025 22:17:38 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:17:42 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:17:52 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:18:03 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:18:08 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:18:08 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:18:08 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:18:09 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:19:47 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:19:49 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:30:17 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:40:41 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:47:08 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:49:35 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 22:51:18 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'oliviera_iot.Boards' doesn't exist in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs2.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 23:18:33 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'board' in 'SELECT' in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201
+[19-Jan-2025 23:18:36 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'board' in 'SELECT' in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php:201
+Stack trace:
+#0 /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php(201): mysqli->query()
+#1 /home4/oliviera/iot.olution.info/ffp3/ffp3control/securecontrol/ffp3-outputs.php(22): getAllBoards()
+#2 {main}
+  thrown in /home4/oliviera/iot.olution.info/ffp3/ffp3control/ffp3-database.php on line 201

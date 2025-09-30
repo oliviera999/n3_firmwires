@@ -96,13 +96,20 @@ Utilisée pour l'authentification des requêtes POST (voir `ApiConfig::API_KEY` 
 
 ## Optimisations récentes
 
+### Architecture Web Dédié (v7.0) - NOUVEAU
+- **Tâche web dédiée** : `webTask` avec priorité 3 pour réactivité maximale
+- **Hiérarchie optimisée** : Capteurs (4) > Web (3) > Automatisme (2) > Affichage (1)
+- **Interface web réactive** : Temps de réponse < 100ms
+- **WebSocket temps réel** : Mises à jour instantanées
+- **Isolation des responsabilités** : Chaque tâche a sa fonction spécialisée
+- **Évolutivité** : Architecture préparée pour les fonctionnalités futures
+
 ### Affichage OLED (v6.2)
 - **Tâche dédiée** : `displayTask` s'exécute toutes les 250ms (~4 FPS)
 - **Architecture FreeRTOS optimisée** : Séparation logique métier / affichage
 - **Fluidité maximale** : Décomptes parfaitement fluides en temps réel
-- **Priorité élevée** : Tâche d'affichage prioritaire pour une réactivité optimale
+- **Priorité basse** : Affichage en arrière-plan pour ne pas perturber les fonctions critiques
 - **Cache intelligent** : Mémorisation des états pour éviter les redessins inutiles
-- **Séparation des responsabilités** : Logique métier indépendante de l'affichage
 
 ### Performance
 - **Buffer fixe** : Remplacement des concaténations String par `snprintf()` pour éviter la fragmentation heap

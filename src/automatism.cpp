@@ -11,6 +11,33 @@
 #include <algorithm>
 #include "esp_task_wdt.h"
 #include <Preferences.h>
+#include "realtime_websocket.h"
+
+// Déclarations externes
+extern Automatism autoCtrl;
+extern RealtimeWebSocket realtimeWebSocket;
+
+namespace {
+inline bool hasExpired(uint32_t targetMs, uint32_t nowMs) {
+  return targetMs != 0 && static_cast<int32_t>(nowMs - targetMs) >= 0;
+}
+
+inline bool hasExpired(uint32_t targetMs) {
+  return hasExpired(targetMs, millis());
+}
+
+inline bool isStillPending(uint32_t targetMs, uint32_t nowMs) {
+  return targetMs != 0 && static_cast<int32_t>(targetMs - nowMs) > 0;
+}
+
+inline uint32_t remainingMs(uint32_t targetMs, uint32_t nowMs) {
+  if (targetMs == 0) {
+    return 0;
+  }
+  int32_t diff = static_cast<int32_t>(targetMs - nowMs);
+  return diff > 0 ? static_cast<uint32_t>(diff) : 0U;
+}
+}
 
 // ------------------------------------------------------------
 // NVS helpers: snapshot des actionneurs autour du sleep
@@ -49,14 +76,144 @@ void Automatism::clearActuatorSnapshotInNVS() {
 }
 
 void Automatism::startAquaPumpManualLocal() {
+  // 1. ACTIVATION IMMÉDIATE
   _acts.startAquaPump();
   _lastAquaManualOrigin = ManualOrigin::LOCAL_SERVER;
+  
+  // 2. WebSocket immédiat (feedback utilisateur instantané)
+  realtimeWebSocket.broadcastNow();
+  
+  // 3. Synchronisation serveur en arrière-plan (non bloquant)
+  if (WiFi.status() == WL_CONNECTED) {
+    xTaskCreate([](void* param) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      SensorReadings freshReadings = autoCtrl._sensors.read();
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatPompeAqua=1");
+      if (success) {
+        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - pompe aqua activée manuellement (local)"));
+      } else {
+        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - pompe aqua activée localement"));
+      }
+      vTaskDelete(NULL);
+    }, "sync_aqua_pump", 4096, NULL, 1, NULL);
+  }
 }
 
 void Automatism::stopAquaPumpManualLocal() {
+  // 1. ARRÊT IMMÉDIAT
   _acts.stopAquaPump();
   _lastAquaStopReason = AquaPumpStopReason::MANUAL;
   _lastAquaManualOrigin = ManualOrigin::LOCAL_SERVER;
+  
+  // 2. WebSocket immédiat (feedback utilisateur instantané)
+  realtimeWebSocket.broadcastNow();
+  
+  // 3. Synchronisation serveur en arrière-plan (non bloquant)
+  if (WiFi.status() == WL_CONNECTED) {
+    xTaskCreate([](void* param) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      SensorReadings freshReadings = autoCtrl._sensors.read();
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatPompeAqua=0");
+      if (success) {
+        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - pompe aqua arrêtée manuellement (local)"));
+      } else {
+        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - pompe aqua arrêtée localement"));
+      }
+      vTaskDelete(NULL);
+    }, "sync_aqua_stop", 4096, NULL, 1, NULL);
+  }
+}
+
+void Automatism::startHeaterManualLocal() {
+  // 1. ACTIVATION IMMÉDIATE
+  _acts.startHeater();
+  
+  // 2. WebSocket immédiat (feedback utilisateur instantané)
+  realtimeWebSocket.broadcastNow();
+  
+  // 3. Synchronisation serveur en arrière-plan (non bloquant)
+  if (WiFi.status() == WL_CONNECTED) {
+    xTaskCreate([](void* param) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      SensorReadings freshReadings = autoCtrl._sensors.read();
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatHeat=1");
+      if (success) {
+        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - chauffage activé manuellement (local)"));
+      } else {
+        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - chauffage activé localement"));
+      }
+      vTaskDelete(NULL);
+    }, "sync_heater_start", 4096, NULL, 1, NULL);
+  }
+}
+
+void Automatism::stopHeaterManualLocal() {
+  // 1. ARRÊT IMMÉDIAT
+  _acts.stopHeater();
+  
+  // 2. WebSocket immédiat (feedback utilisateur instantané)
+  realtimeWebSocket.broadcastNow();
+  
+  // 3. Synchronisation serveur en arrière-plan (non bloquant)
+  if (WiFi.status() == WL_CONNECTED) {
+    xTaskCreate([](void* param) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      SensorReadings freshReadings = autoCtrl._sensors.read();
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatHeat=0");
+      if (success) {
+        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - chauffage arrêté manuellement (local)"));
+      } else {
+        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - chauffage arrêté localement"));
+      }
+      vTaskDelete(NULL);
+    }, "sync_heater_stop", 4096, NULL, 1, NULL);
+  }
+}
+
+void Automatism::startLightManualLocal() {
+  // 1. ACTIVATION IMMÉDIATE
+  _acts.light.on();
+  
+  // 2. WebSocket immédiat (feedback utilisateur instantané)
+  realtimeWebSocket.broadcastNow();
+  
+  // 3. Synchronisation serveur en arrière-plan (non bloquant)
+  if (WiFi.status() == WL_CONNECTED) {
+    xTaskCreate([](void* param) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      SensorReadings freshReadings = autoCtrl._sensors.read();
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=1");
+      if (success) {
+        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - lumière activée manuellement (local)"));
+      } else {
+        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - lumière activée localement"));
+      }
+      vTaskDelete(NULL);
+    }, "sync_light_start", 4096, NULL, 1, NULL);
+  }
+}
+
+void Automatism::stopLightManualLocal() {
+  // 1. ARRÊT IMMÉDIAT
+  _acts.light.off();
+  
+  // 2. WebSocket immédiat (feedback utilisateur instantané)
+  realtimeWebSocket.broadcastNow();
+  
+  // 3. Synchronisation serveur en arrière-plan (non bloquant)
+  if (WiFi.status() == WL_CONNECTED) {
+    xTaskCreate([](void* param) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      SensorReadings freshReadings = autoCtrl._sensors.read();
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=0");
+      if (success) {
+        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - lumière arrêtée manuellement (local)"));
+      } else {
+        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - lumière arrêtée localement"));
+      }
+      vTaskDelete(NULL);
+    }, "sync_light_stop", 4096, NULL, 1, NULL);
+  }
 }
 
 Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient& web, DisplayView& disp, PowerManager& power, Mailer& mail, ConfigManager& config)
@@ -80,7 +237,7 @@ void Automatism::begin() {
   // Chargement des flags de bouffe depuis la configuration persistante
   lastFeedDay = _config.getLastJourBouf();
   
-  Serial.printf("[Auto] Dernier jour de bouffe: %d\n", lastFeedDay);
+  LOG_TIME(LOG_INFO, "[Auto] Dernier jour de bouffe: %d", lastFeedDay);
 
   // Point de départ pour le chronomètre de sommeil automatique
   _lastWakeMs = millis();
@@ -307,7 +464,7 @@ void Automatism::updateDisplay() {
     }
     
     // Déterminer si on est en mode décompte (nécessite une mise à jour fluide)
-    bool isCountdownMode = (_countdownEnd != 0 && (int32_t)(_countdownEnd - currentMillis) > 0);
+    bool isCountdownMode = isStillPending(_countdownEnd, currentMillis);
     
     // Protection contre les conflits d'affichage : si on est en mode nourrissage, on force le mode décompte
     if (_currentFeedingPhase != FeedingPhase::NONE) {
@@ -328,7 +485,7 @@ void Automatism::updateDisplay() {
       // Affichage d'un compte à rebours lors des phases nourrissage / remplissage
       if (_currentFeedingPhase != FeedingPhase::NONE) {
         // Gestion des phases de nourrissage
-        if (currentMillis >= _feedingPhaseEnd && _currentFeedingPhase == FeedingPhase::FEEDING_FORWARD) {
+        if (hasExpired(_feedingPhaseEnd, currentMillis) && _currentFeedingPhase == FeedingPhase::FEEDING_FORWARD) {
           // Transition vers la phase arrière
           _currentFeedingPhase = FeedingPhase::FEEDING_BACKWARD;
           _feedingPhaseEnd = _feedingTotalEnd; // La phase arrière dure jusqu'à la fin totale
@@ -336,28 +493,22 @@ void Automatism::updateDisplay() {
         
         // Affichage selon la phase
         if (_currentFeedingPhase == FeedingPhase::FEEDING_FORWARD) {
-          uint32_t secLeft32 = (currentMillis < _feedingPhaseEnd)
-                                 ? (uint32_t)((_feedingPhaseEnd - currentMillis) / 1000UL)
-                                 : 0u;
+        uint32_t secLeft32 = remainingMs(_feedingPhaseEnd, currentMillis) / 1000UL;
           uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
           _disp.showFeedingCountdown("Nourrissage", "avant", secLeft);
         } else if (_currentFeedingPhase == FeedingPhase::FEEDING_BACKWARD) {
-          uint32_t secLeft32 = (currentMillis < _feedingTotalEnd)
-                                 ? (uint32_t)((_feedingTotalEnd - currentMillis) / 1000UL)
-                                 : 0u;
+        uint32_t secLeft32 = remainingMs(_feedingTotalEnd, currentMillis) / 1000UL;
           uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
           _disp.showFeedingCountdown("Nourrissage", "arriere", secLeft);
         }
         
         // Réinitialisation quand le cycle est terminé
-        if (currentMillis >= _feedingTotalEnd) {
+        if (hasExpired(_feedingTotalEnd, currentMillis)) {
           _currentFeedingPhase = FeedingPhase::NONE;
         }
       } else {
         // Affichage standard pour les autres types de décompte (remplissage, etc.)
-        uint32_t secLeft32 = (_countdownEnd != 0 && (int32_t)(_countdownEnd - currentMillis) > 0)
-                               ? (uint32_t)((_countdownEnd - currentMillis) / 1000UL)
-                               : 0u;
+        uint32_t secLeft32 = remainingMs(_countdownEnd, currentMillis) / 1000UL;
         uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
         _disp.showCountdown(_countdownLabel.c_str(), secLeft);
       }
@@ -386,7 +537,7 @@ void Automatism::updateDisplay() {
       else if (diffNow < -tideTriggerCm) tideDir = -1; // descendante si - < -seuil
       _lastDiffMaree = diffNow;
 
-      bool blinkNow = (mailBlinkUntil && currentMillis < mailBlinkUntil && ((currentMillis / 200) % 2));
+      bool blinkNow = (mailBlinkUntil && isStillPending(mailBlinkUntil, currentMillis) && ((currentMillis / 200) % 2));
       _disp.drawStatus(sendState, recvState, WiFi.isConnected() ? WiFi.RSSI() : -127,
                        blinkNow, tideDir, diffNow);
       
@@ -397,13 +548,13 @@ void Automatism::updateDisplay() {
     // Reset watchdog after display operations
     esp_task_wdt_reset();
     
-    if (mailBlinkUntil && currentMillis >= mailBlinkUntil) mailBlinkUntil = 0;
+    if (hasExpired(mailBlinkUntil, currentMillis)) mailBlinkUntil = 0;
   }
 }
 
 uint32_t Automatism::getRecommendedDisplayIntervalMs() {
   uint32_t now = millis();
-  bool isCountdownMode = ((_countdownEnd != 0 && (int32_t)(_countdownEnd - now) > 0)
+  bool isCountdownMode = (isStillPending(_countdownEnd, now)
                           || (_currentFeedingPhase != FeedingPhase::NONE));
   return isCountdownMode ? 250u : 1000u;
 }
@@ -427,20 +578,16 @@ void Automatism::update(const SensorReadings& readings) {
   handleMaree(readings);
   handleAlerts(readings);
 
-  // 4. Récupération de l'état distant (avec protection contre les appels trop précoces)
-  // Évite les conflits de timing avec la synchronisation initiale
+  // 4. Récupération de l'état distant - SUPPRESSION DU DÉLAI INITIAL
+  // Chargement immédiat pour une réactivité maximale
   static bool firstUpdateDone = false;
   if (!firstUpdateDone) {
-    // Attendre au moins 3 secondes après le démarrage avant la première récupération
-    if (millis() > 3000) {
-      firstUpdateDone = true;
-      Serial.println(F("[Auto] Première récupération d'état distant activée"));
-    }
+    // Chargement immédiat sans délai d'attente
+    firstUpdateDone = true;
+    Serial.println(F("[Auto] Première récupération d'état distant activée immédiatement"));
   }
   
-  if (firstUpdateDone) {
-    handleRemoteState();
-  }
+  handleRemoteState();
 
   // 5. Mise en veille automatique après 5 min d'activité (DERNIÈRE PRIORITÉ)
   // Ne doit pas interférer avec les fonctions critiques
@@ -481,7 +628,7 @@ void Automatism::update(const SensorReadings& readings) {
       
       // Mise à jour optimisée de l'état d'envoi avec clignotement plus rapide
       _disp.beginUpdate();
-      bool blinkNow2 = (mailBlinkUntil && currentMillis < mailBlinkUntil && ((currentMillis/200)%2));
+      bool blinkNow2 = (mailBlinkUntil && isStillPending(mailBlinkUntil, currentMillis) && ((currentMillis/200)%2));
       _disp.drawStatus(sendState, recvState, WiFi.isConnected()?WiFi.RSSI():-127,
                        blinkNow2, tideDir, diffNow); // Clignotement plus rapide (200ms)
       _disp.endUpdate();
@@ -509,7 +656,7 @@ void Automatism::checkNewDay() {
       // Persistance immédiate pour éviter perte en cas de reboot ou sleep
       saveFeedingState();
       
-      Serial.println(F("[Auto] Flags de bouffe réinitialisés pour le nouveau jour"));
+      LOG_TIME(LOG_INFO, "[Auto] Flags de bouffe réinitialisés pour le nouveau jour");
     }
   }
 }
@@ -862,7 +1009,7 @@ void Automatism::handleFeeding() {
         
         // Marquage comme effectué - CRITIQUE
         _config.setBouffeMatinOk(true);
-        Serial.println(F("[CRITIQUE] Bouffe matin MARQUÉE COMME EFFECTUÉE"));
+        LOG_TIME(LOG_INFO, "[CRITIQUE] Bouffe matin MARQUÉE COMME EFFECTUÉE");
         
         // Notification email si activée
         if (emailEnabled) {
@@ -872,9 +1019,9 @@ void Automatism::handleFeeding() {
           Serial.println(F("[CRITIQUE] Email de notification envoyé"));
         }
         
-        Serial.println(F("[CRITIQUE] === FIN NOURRISSAGE MATIN ==="));
+        LOG_TIME(LOG_INFO, "[CRITIQUE] === FIN NOURRISSAGE MATIN ===");
       } else {
-        Serial.printf("[Auto] Bouffe matin déjà effectuée (heure: %02d:%02d)\n", currentHour, currentMinute);
+        LOG_TIME(LOG_INFO, "[Auto] Bouffe matin déjà effectuée (heure: %02d:%02d)", currentHour, currentMinute);
       }
     }
     
@@ -1117,7 +1264,7 @@ void Automatism::handleRemoteState() {
     }
     
     {
-      bool blinkNow3 = (mailBlinkUntil && currentMillis < mailBlinkUntil && ((currentMillis/300)%2));
+      bool blinkNow3 = (mailBlinkUntil && isStillPending(mailBlinkUntil, currentMillis) && ((currentMillis/300)%2));
       _disp.drawStatus(sendState, recvState, WiFi.isConnected()?WiFi.RSSI():-127,
                        blinkNow3, tideDir, diffNow);
     }
@@ -1270,7 +1417,7 @@ void Automatism::handleRemoteState() {
     // Met à jour forceWakeUp si la valeur est explicitement définie
     // ET si la protection de démarrage est expirée
     // CORRECTION: Gestion complète activation ET désactivation
-    if (millis() > _wakeupProtectionEnd) {
+    if (hasExpired(_wakeupProtectionEnd)) {
       bool newValue = false;
       bool valueExplicitlySet = false;
       
@@ -1315,7 +1462,7 @@ void Automatism::handleRemoteState() {
   if (doc.containsKey("115")) {
     auto v = doc["115"];
     // CORRECTION: Gestion complète activation ET désactivation pour la clé 115
-    if (millis() > _wakeupProtectionEnd) {
+    if (hasExpired(_wakeupProtectionEnd)) {
       bool newValue = false;
       bool valueExplicitlySet = false;
       
@@ -1386,24 +1533,25 @@ void Automatism::handleRemoteState() {
       sendFullUpdate(_sensors.read());
     }
   }
-  // Commande dédiée: lightCmd (OFF uniquement si clé explicite)
+  // Commande dédiée: lightCmd (priorité absolue)
   if (doc.containsKey("lightCmd")) {
     auto v = doc["lightCmd"];
     if (isTrue(v)) {
       _acts.light.on();
-      Serial.println(F("[Auto] Lumière ON (commande explicite)"));
+      Serial.println(F("[Auto] Lumière ON (commande explicite lightCmd)"));
     } else if (isFalse(v)) {
       _acts.light.off();
-      Serial.println(F("[Auto] Lumière OFF (commande explicite)"));
+      Serial.println(F("[Auto] Lumière OFF (commande explicite lightCmd)"));
     }
   } else if (doc.containsKey("light")) {
-    // État distant: n'applique PAS OFF par défaut; uniquement ON
+    // État distant: applique ON et OFF selon la valeur reçue
     auto v = doc["light"];
     if (isTrue(v)) {
       _acts.light.on();
       Serial.println(F("[Auto] Lumière ON (état distant)"));
-    } else {
-      Serial.println(F("[Auto] Lumière OFF ignorée (pas de commande explicite)"));
+    } else if (isFalse(v)) {
+      _acts.light.off();
+      Serial.println(F("[Auto] Lumière OFF (état distant)"));
     }
   }
   // Parcours de toutes les paires pour gérer les GPIO numériques dynamiques
@@ -1496,14 +1644,10 @@ void Automatism::handleRemoteState() {
       } else if (id == Pins::LUMIERE) {
         if (valBool) {
           _acts.light.on();
+          Serial.println(F("[Auto] Lumière ON (GPIO numérique)"));
         } else {
-          // OFF seulement si commande explicite lightCmd est fournie à false
-          if (doc.containsKey("lightCmd") && isFalse(doc["lightCmd"])) {
-            _acts.light.off();
-            Serial.println(F("[Auto] Lumière OFF (commande explicite via lightCmd)"));
-          } else {
-            Serial.println(F("[Auto] Lumière OFF ignorée (pas de commande explicite)"));
-          }
+          _acts.light.off();
+          Serial.println(F("[Auto] Lumière OFF (GPIO numérique)"));
         }
       } else {
         // GPIO générique : simple sortie numérique
@@ -1581,7 +1725,7 @@ void Automatism::handleRemoteState() {
         case 115: {
           auto v = kv.value();
           // CORRECTION: Gestion complète activation ET désactivation pour GPIO 115
-          if (millis() > _wakeupProtectionEnd) {
+          if (hasExpired(_wakeupProtectionEnd)) {
             bool newValue = false;
             bool valueExplicitlySet = false;
             
@@ -1820,13 +1964,13 @@ void Automatism::checkCriticalChanges() {
         _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
       } else if (_lastPumpManual) {
         _lastTankStopReason = TankPumpStopReason::MANUAL;
-      } else if (_countdownEnd != 0 && millis() >= _countdownEnd) {
+      } else if (hasExpired(_countdownEnd)) {
         _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
       } else if (_lastTankStopReason == TankPumpStopReason::UNKNOWN) {
         // AMÉLIORATION : Déterminer la raison d'arrêt si pas encore définie
         if (_manualTankOverride) {
           _lastTankStopReason = TankPumpStopReason::MANUAL;
-        } else if (_countdownEnd != 0 && millis() >= _countdownEnd) {
+        } else if (hasExpired(_countdownEnd)) {
           _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
         } else {
           // fallback pour sleep ou autres arrêts
@@ -2097,12 +2241,7 @@ void Automatism::startTankPumpManual() {
   if (!_acts.isTankPumpRunning()) {
     Serial.println(F("[CRITIQUE] === DÉBUT REMPLISSAGE MANUEL ==="));
     
-    // En mode manuel, l'utilisateur a le contrôle total
-    SensorReadings cur = _sensors.read();
-    Serial.printf("[CRITIQUE] Niveau aquarium: %d cm, Niveau réservoir: %d cm\n", cur.wlAqua, cur.wlTank);
-    Serial.printf("[CRITIQUE] Durée configurée: %lu s\n", refillDurationMs / 1000);
-    
-    // DÉMARRAGE IMMÉDIAT - PRIORITÉ ABSOLUE
+    // 1. ACTIVATION IMMÉDIATE - PRIORITÉ ABSOLUE
     unsigned long startTime = millis();
     
     _acts.startTankPump();
@@ -2112,18 +2251,38 @@ void Automatism::startTankPumpManual() {
     _countdownEnd   = millis() + refillDurationMs;
     _pumpStartMs    = millis();
     
-    // Envoi immédiat des données vers le serveur distant pour enregistrer l'activation manuelle de la pompe
-    if (WiFi.status() == WL_CONNECTED) {
-      sendFullUpdate(cur, "etatPompeTank=1");
-      Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir activée manuellement (local)"));
-    }
-    // Sauvegarde du niveau actuel de l'aquarium pour le diagnostic
+    // 2. Lecture capteurs immédiate (non bloquante)
+    SensorReadings cur = _sensors.read();
     _levelAtPumpStart = cur.wlAqua;
+    
+    // 3. WebSocket immédiat (feedback utilisateur instantané)
+    realtimeWebSocket.broadcastNow();
+    
+    // 4. Synchronisation serveur en arrière-plan (non bloquant)
+    if (WiFi.status() == WL_CONNECTED) {
+      // Créer une tâche asynchrone pour l'envoi HTTP
+      xTaskCreate([](void* param) {
+        // Petit délai pour laisser l'activation se stabiliser
+        vTaskDelay(pdMS_TO_TICKS(50));
+        
+        // Lire les capteurs à nouveau pour des données fraîches
+        SensorReadings freshReadings = autoCtrl._sensors.read();
+        bool success = autoCtrl.sendFullUpdate(freshReadings, "etatPompeTank=1");
+        
+        if (success) {
+          Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - pompe réservoir activée manuellement (local)"));
+        } else {
+          Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - pompe activée localement"));
+        }
+        
+        vTaskDelete(NULL);
+      }, "sync_tank_pump", 4096, NULL, 1, NULL);
+    }
     
     unsigned long executionTime = millis() - startTime;
     Serial.printf("[CRITIQUE] Pompe démarrée en %lu ms\n", executionTime);
-    Serial.printf("[CRITIQUE] Démarrage pompe réservoir (niveau aquarium: %d cm, réservoir: %d cm)\n", 
-                 cur.wlAqua, cur.wlTank);
+    Serial.printf("[CRITIQUE] Niveau aquarium: %d cm, Niveau réservoir: %d cm\n", cur.wlAqua, cur.wlTank);
+    Serial.printf("[CRITIQUE] Durée configurée: %lu s\n", refillDurationMs / 1000);
     Serial.println(F("[CRITIQUE] === REMPLISSAGE MANUEL EN COURS ==="));
   } else {
     Serial.println(F("[Auto] Pompe réservoir déjà en cours d'exécution"));
@@ -2287,7 +2446,7 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   }
   
   // Ne pas dormir si un décompte est en cours (remplissage ou nourrissage)
-  if (_countdownEnd != 0 && (int32_t)(millis() - _countdownEnd) < 0) {
+  if (isStillPending(_countdownEnd, millis())) {
     // Réinitialise le chrono pour patienter 10 min après la fin du décompte
     _lastWakeMs = millis();
     Serial.println(F("[Auto] Auto-sleep différé - décompte en cours"));
@@ -2319,7 +2478,7 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // Informations détaillées sur le passage en veille
   bool pumpReservoirOn = _acts.isTankPumpRunning();
   bool feedingActive = (_currentFeedingPhase != FeedingPhase::NONE);
-  bool countdownActive = (_countdownEnd != 0 && (int32_t)(millis() - _countdownEnd) < 0);
+  bool countdownActive = isStillPending(_countdownEnd, millis());
   Serial.printf("[Auto] Délai écoulé: éveillé=%lu s, cible=%u s. Veille prévue=%u s\n", 
                 awakeSec, adaptiveDelay, (uint32_t)freqWakeSec);
   Serial.printf("[Auto] Raison du passage: aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)\n",
@@ -2362,10 +2521,10 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
     unsigned long nowMs = millis();
     bool pumpReservoirOn = _acts.isTankPumpRunning();
     bool feedingActive = (_currentFeedingPhase != FeedingPhase::NONE);
-    bool countdownActive = (_countdownEnd != 0 && (int32_t)(nowMs - _countdownEnd) < 0);
+    bool countdownActive = isStillPending(_countdownEnd, nowMs);
     bool hadCountdown = (_countdownEnd != 0);
-    long secToCountdown = hadCountdown ? (long)((int64_t)_countdownEnd - (int64_t)nowMs) / 1000L : 0;
-    bool justAfterCountdown = hadCountdown && !countdownActive && (nowMs - _countdownEnd <= 60000UL);
+    long secToCountdown = hadCountdown ? static_cast<long>(remainingMs(_countdownEnd, nowMs) / 1000UL) : 0;
+    bool justAfterCountdown = hadCountdown && !countdownActive && (static_cast<uint32_t>(nowMs - _countdownEnd) <= 60000UL);
 
     // Marée actuelle (diff) — ici sans dernier readings, utiliser capteur direct
     int diffNow = _sensors.diffMaree(_lastReadings.wlAqua);
@@ -2399,21 +2558,21 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
         snprintf(d1, sizeof(d1), "+%d en ~10s", delta);
         char d2[48];
         snprintf(d2, sizeof(d2), "Maree diff10s:%d", diffNow);
-        bool blink = (mailBlinkUntil && nowMs < mailBlinkUntil);
+      bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
         _disp.showSleepReason("Cause: maree montante", d1, d2, 2500, blink);
       } else if (justAfterCountdown) {
         char d1[48];
         snprintf(d1, sizeof(d1), "Fin decompte: %s", _countdownLabel.c_str());
         char d2[48];
         snprintf(d2, sizeof(d2), "Il y a %lds - diff10s:%d", -(secToCountdown), diffNow);
-        bool blink = (mailBlinkUntil && nowMs < mailBlinkUntil);
+      bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
         _disp.showSleepReason("Cause: decompte termine", d1, d2, 2500, blink);
       } else {
         char d1[48];
         snprintf(d1, sizeof(d1), "Inactivite depuis %lus", awakeSecLocal);
         char d2[48];
         snprintf(d2, sizeof(d2), "Maree diff10s:%d", diffNow);
-        bool blink = (mailBlinkUntil && nowMs < mailBlinkUntil);
+      bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
         _disp.showSleepReason("Cause: inactivite", d1, d2, 2500, blink);
       }
     }
@@ -2707,3 +2866,4 @@ bool Automatism::validateSystemStateBeforeSleep() {
   Serial.println(F("[Auto] ✅ État système validé pour sleep"));
   return true;
 }
+

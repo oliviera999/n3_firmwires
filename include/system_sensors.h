@@ -20,8 +20,6 @@ class SystemSensors {
   SensorReadings read();
   // Calcul de la différence de marée à partir de la dernière mesure fournie
   int diffMaree(uint16_t currentAqua);
-  // Ancienne signature (dépréciée) – garde pour rétro-compatibilité
-  [[deprecated("Utiliser diffMaree(uint16_t)")]] int diffMaree();
   
   // Configuration fenêtre d'analyse marée (~10s par défaut)
   void setTideWindowMs(uint32_t ms) { _tideWindowMs = ms; }

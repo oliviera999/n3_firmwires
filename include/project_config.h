@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "10.20";
+    constexpr const char* VERSION = "10.23";
     
     // Identification matérielle
     #if defined(BOARD_S3)
@@ -82,9 +82,9 @@ namespace ServerConfig {
     constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/ffp3datas/heartbeat.php";
     constexpr const char* OTA_BASE_PATH = "/ffp3/ota/";
     
-    // Timeouts
-    constexpr uint32_t CONNECTION_TIMEOUT_MS = 10000;
-    constexpr uint32_t REQUEST_TIMEOUT_MS = 30000;
+    // Timeouts optimisés pour réactivité
+    constexpr uint32_t CONNECTION_TIMEOUT_MS = 5000;      // Réduit de 10s à 5s
+    constexpr uint32_t REQUEST_TIMEOUT_MS = 15000;        // Réduit de 30s à 15s
 
     inline String getHeartbeatUrl() { return String(BASE_URL) + HEARTBEAT_ENDPOINT; }
     inline String getSecondaryHeartbeatUrl() {
@@ -206,10 +206,10 @@ namespace SensorConfig {
 // CONFIGURATION TEMPORELLE
 // =============================================================================
 namespace TimingConfig {
-    // Intervalles de base
-    constexpr uint32_t SENSOR_READ_INTERVAL_MS = 2000;  // 2 secondes
-    constexpr uint32_t DISPLAY_UPDATE_INTERVAL_MS = 250; // 4 FPS
-    constexpr uint32_t HEARTBEAT_INTERVAL_MS = 30000;   // 30 secondes
+    // Intervalles de base optimisés
+    constexpr uint32_t SENSOR_READ_INTERVAL_MS = 1500;  // Réduit de 2s à 1.5s
+    constexpr uint32_t DISPLAY_UPDATE_INTERVAL_MS = 200; // Augmenté à 5 FPS
+    constexpr uint32_t HEARTBEAT_INTERVAL_MS = 30000;   // 30 secondes (inchangé)
     
     // WiFi et réseau
     constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 12000; // 12 secondes
@@ -347,7 +347,10 @@ namespace SleepConfig {
     // Valeur négative pour compenser la dérive positive naturelle de l'ESP32
     // Ajuster selon les observations : -25 PPM = correction de 25 PPM vers l'arrière
     constexpr float DEFAULT_DRIFT_CORRECTION_PPM = -25.0f;  // Correction par défaut (-25 PPM)
-    constexpr bool ENABLE_DEFAULT_DRIFT_CORRECTION = true;   // Activer la correction par défaut
+    constexpr bool ENABLE_DEFAULT_DRIFT_CORRECTION = false;  // Désactivé pour observation
+
+    // Interrupteur global pour désactiver toute correction de dérive
+    constexpr bool ENABLE_DRIFT_CORRECTION = false;          // OFF: pas de correction appliquée
     
     // Paramètres de sauvegarde intelligente
     constexpr time_t MIN_TIME_DIFF_FOR_SAVE_SEC = 60;       // Différence minimum pour sauvegarde (1 minute)
@@ -456,22 +459,29 @@ namespace SystemConfig {
 }
 
 // =============================================================================
-// CONFIGURATION TÂCHES FREERTOS
+// CONFIGURATION TÂCHES FREERTOS - STRATÉGIE WEB DÉDIÉ
 // =============================================================================
 namespace TaskConfig {
     // Tailles de stack
     constexpr uint32_t SENSOR_TASK_STACK_SIZE = 8192;
+    constexpr uint32_t WEB_TASK_STACK_SIZE = 8192;           // Nouvelle tâche web dédiée
     constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 12288;
     constexpr uint32_t DISPLAY_TASK_STACK_SIZE = 8192;
     constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;
     
-    // Priorités des tâches
-    constexpr uint8_t SENSOR_TASK_PRIORITY = 3;
-    constexpr uint8_t AUTOMATION_TASK_PRIORITY = 2;
-    constexpr uint8_t DISPLAY_TASK_PRIORITY = 1;
+    // Priorités des tâches - Stratégie Web Dédié Optimisée
+    constexpr uint8_t SENSOR_TASK_PRIORITY = 5;             // CRITIQUE - Capteurs prioritaires absolus
+    constexpr uint8_t WEB_TASK_PRIORITY = 4;                 // TRÈS HAUTE - Interface web ultra-réactive
+    constexpr uint8_t AUTOMATION_TASK_PRIORITY = 2;          // MOYENNE - Logique métier pure
+    constexpr uint8_t DISPLAY_TASK_PRIORITY = 1;             // BASSE - Affichage en arrière-plan
     
     // Core d'exécution
     constexpr uint8_t TASK_CORE_ID = 1;
+    
+    // Configuration Web Server optimisée
+    constexpr uint8_t WEB_SERVER_CORE_ID = 0;              // Serveur web sur Core 0 (CPU principal)
+    constexpr uint8_t WEB_SERVER_PRIORITY = 4;             // Priorité élevée pour le serveur web
+    constexpr uint32_t WEB_SERVER_STACK_SIZE = 12288;      // Stack plus important pour le serveur web
 }
 
 // =============================================================================
@@ -630,8 +640,12 @@ namespace Utils {
 #else
     #define FEATURE_OLED 1
     #define FEATURE_OTA 1
-    #define FEATURE_MAIL 1
-    #define FEATURE_ARDUINO_OTA 1
+    #ifndef FEATURE_MAIL
+        #define FEATURE_MAIL 1
+    #endif
+    #ifndef FEATURE_ARDUINO_OTA
+        #define FEATURE_ARDUINO_OTA 1
+    #endif
     #define FEATURE_HTTP_OTA 1
     #define FEATURE_WIFI_APSTA 1
 #endif

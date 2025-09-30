@@ -73,7 +73,10 @@ static String buildSystemInfoFooter() {
     footer += "- AP IP: "; footer += WiFi.softAPIP().toString(); footer += "\n";
   }
 
-  // Horodatage (epoch si pas de NTP)
+  // ======================
+  // INFORMATIONS TEMPORELLES DÉTAILLÉES
+  // ======================
+  footer += "\n-- Informations temporelles --\n";
   time_t now = time(nullptr);
   footer += "- Epoch: "; footer += String((unsigned long)now); footer += "\n";
   if (now > 100000) {
@@ -82,6 +85,45 @@ static String buildSystemInfoFooter() {
     char tbuf[32];
     strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
     footer += "- Local time: "; footer += tbuf; footer += "\n";
+    footer += "- Jour de la semaine: "; footer += String(tmInfo.tm_wday); footer += " (0=dimanche)\n";
+    footer += "- Jour de l'année: "; footer += String(tmInfo.tm_yday); footer += "\n";
+    footer += "- DST actif: "; footer += (tmInfo.tm_isdst ? "OUI" : "NON"); footer += "\n";
+    footer += "- Timezone: CET-1CEST,M3.5.0,M10.5.0/3\n";
+  }
+  
+  // Informations NTP
+  footer += "- NTP Server: "; footer += SystemConfig::NTP_SERVER; footer += "\n";
+  footer += "- GMT Offset: +"; footer += String(SystemConfig::NTP_GMT_OFFSET_SEC/3600); footer += "h\n";
+  footer += "- DST Offset: +"; footer += String(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600); footer += "h\n";
+  
+  // Informations de dérive temporelle si disponibles
+  // extern TimeDriftMonitor timeDriftMonitor;
+  // if (timeDriftMonitor.isDriftCalculated()) {
+  //   footer += "- Dérive PPM: "; footer += String(timeDriftMonitor.getDriftPPM(), 2); footer += "\n";
+  //   footer += "- Dérive secondes: "; footer += String(timeDriftMonitor.getDriftSeconds(), 2); footer += "\n";
+  //   time_t lastSync = timeDriftMonitor.getLastSyncTime();
+  //   if (lastSync > 0) {
+  //     struct tm syncInfo;
+  //     localtime_r(&lastSync, &syncInfo);
+  //     char syncBuf[32];
+  //     strftime(syncBuf, sizeof(syncBuf), "%Y-%m-%d %H:%M:%S", &syncInfo);
+  //     footer += "- Dernière sync NTP: "; footer += syncBuf; footer += "\n";
+  //   }
+  // } else {
+  //   footer += "- Dérive: Non calculée\n";
+  // }
+  
+  // Informations RTC/Flash
+  Preferences prefs;
+  prefs.begin("rtc", true);
+  unsigned long savedEpoch = prefs.getULong("epoch", 0);
+  prefs.end();
+  if (savedEpoch > 0) {
+    footer += "- RTC Flash epoch: "; footer += String(savedEpoch); footer += "\n";
+    if (savedEpoch != (unsigned long)now) {
+      long diff = (long)now - (long)savedEpoch;
+      footer += "- Diff RTC vs actuel: "; footer += String(diff); footer += " secondes\n";
+    }
   }
 
   // Mémoire
@@ -95,7 +137,6 @@ static String buildSystemInfoFooter() {
   }
 
   // Diagnostics persistés si disponibles
-  Preferences prefs;
   prefs.begin("diagnostics", true);
   unsigned int rebootCnt = prefs.getUInt("rebootCnt", 0);
   unsigned int minHeap   = prefs.getUInt("minHeap", 0);
@@ -210,6 +251,90 @@ static String buildSystemInfoFooter() {
   return footer;
 }
 
+// Fonction pour générer un rapport temporel détaillé
+static String buildDetailedTimeReport() {
+  String report;
+  report.reserve(1024);
+  report += "\n\n-- RAPPORT TEMPOREL DÉTAILLÉ --\n";
+  
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  if (localtime_r(&now, &timeinfo)) {
+    char timeBuf[64];
+    strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    report += "Heure actuelle: "; report += timeBuf; report += "\n";
+    report += "Epoch: "; report += String((unsigned long)now); report += "\n";
+    report += "Jour de la semaine: "; report += String(timeinfo.tm_wday); report += " (0=dimanche)\n";
+    report += "Jour de l'année: "; report += String(timeinfo.tm_yday); report += "\n";
+    report += "DST actif: "; report += (timeinfo.tm_isdst ? "OUI" : "NON"); report += "\n";
+    
+    // Informations sur le temps de fonctionnement
+    unsigned long uptimeMs = millis();
+    unsigned long uptimeSec = uptimeMs / 1000;
+    unsigned long uptimeMin = uptimeSec / 60;
+    unsigned long uptimeHour = uptimeMin / 60;
+    unsigned long uptimeDay = uptimeHour / 24;
+    
+    report += "Uptime: ";
+    if (uptimeDay > 0) report += String(uptimeDay) + "j ";
+    if (uptimeHour % 24 > 0) report += String(uptimeHour % 24) + "h ";
+    if (uptimeMin % 60 > 0) report += String(uptimeMin % 60) + "m ";
+    report += String(uptimeSec % 60) + "s\n";
+    
+    // Informations NTP
+    report += "Serveur NTP: "; report += SystemConfig::NTP_SERVER; report += "\n";
+    report += "GMT Offset: +"; report += String(SystemConfig::NTP_GMT_OFFSET_SEC/3600); report += "h\n";
+    report += "DST Offset: +"; report += String(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600); report += "h\n";
+    
+    // Informations de dérive si disponibles
+    // extern TimeDriftMonitor timeDriftMonitor;
+    // if (timeDriftMonitor.isDriftCalculated()) {
+    //   report += "Dérive PPM: "; report += String(timeDriftMonitor.getDriftPPM(), 3); report += "\n";
+    //   report += "Dérive secondes: "; report += String(timeDriftMonitor.getDriftSeconds(), 3); report += "\n";
+    //   time_t lastSync = timeDriftMonitor.getLastSyncTime();
+    //   if (lastSync > 0) {
+    //     struct tm syncInfo;
+    //     localtime_r(&lastSync, &syncInfo);
+    //     char syncBuf[32];
+    //     strftime(syncBuf, sizeof(syncBuf), "%Y-%m-%d %H:%M:%S", &syncInfo);
+    //     report += "Dernière sync NTP: "; report += syncBuf; report += "\n";
+    //     
+    //     // Calcul du temps écoulé depuis la dernière sync
+    //     time_t timeSinceSync = now - lastSync;
+    //     if (timeSinceSync < 3600) {
+    //       report += "Temps depuis sync: "; report += String(timeSinceSync/60); report += " minutes\n";
+    //     } else if (timeSinceSync < 86400) {
+    //       report += "Temps depuis sync: "; report += String(timeSinceSync/3600); report += " heures\n";
+    //     } else {
+    //       report += "Temps depuis sync: "; report += String(timeSinceSync/86400); report += " jours\n";
+    //     }
+    //   }
+    // } else {
+    //   report += "Dérive: Non calculée\n";
+    // }
+    
+    // Informations RTC/Flash
+    Preferences prefs;
+    prefs.begin("rtc", true);
+    unsigned long savedEpoch = prefs.getULong("epoch", 0);
+    prefs.end();
+    if (savedEpoch > 0) {
+      report += "RTC Flash epoch: "; report += String(savedEpoch); report += "\n";
+      if (savedEpoch != (unsigned long)now) {
+        long diff = (long)now - (long)savedEpoch;
+        report += "Diff RTC vs actuel: "; report += String(diff); report += " secondes\n";
+        if (abs(diff) > 60) {
+          report += "⚠️ Écart important entre RTC et temps actuel!\n";
+        }
+      }
+    }
+  } else {
+    report += "Erreur: Impossible de récupérer l'heure locale\n";
+  }
+  
+  return report;
+}
+
 bool Mailer::begin() {
   // Prépare uniquement la configuration SMTP.
   // La connexion TLS/SMTP sera établie à la première utilisation dans send().
@@ -258,8 +383,15 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   finalMessage += buildSystemInfoFooter();
   msg.text.content = finalMessage;
   
-  // Affichage des détails du mail avant envoi
+  // Affichage des détails du mail avant envoi avec informations temporelles
+  time_t mailTime = time(nullptr);
+  struct tm mailTimeInfo;
+  localtime_r(&mailTime, &mailTimeInfo);
+  char mailTimeBuf[32];
+  strftime(mailTimeBuf, sizeof(mailTimeBuf), "%Y-%m-%d %H:%M:%S", &mailTimeInfo);
+  
   Serial.println(F("[Mail] ===== DÉTAILS DU MAIL ====="));
+  Serial.printf("[Mail] Heure d'envoi: %s (epoch: %lu)\n", mailTimeBuf, mailTime);
   Serial.printf("[Mail] De: %s <%s>\n", msg.sender.name, msg.sender.email);
   Serial.printf("[Mail] À: %s <%s>\n", toName, toEmail);
   Serial.printf("[Mail] Objet: %s\n", subjectWithEnv.c_str());
@@ -286,12 +418,17 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
   String alertSubject = String("FFP3 - ") + subject;
+  
+  // Ajouter le rapport temporel détaillé au message d'alerte
+  String enhancedMessage = message;
+  enhancedMessage += buildDetailedTimeReport();
+  
   Serial.println(F("[Mail] ===== ENVOI D'ALERTE ====="));
   Serial.printf("[Mail] Type: Alerte système\n");
   Serial.printf("[Mail] Destinataire: %s\n", toEmail);
   Serial.printf("[Mail] Objet original: %s\n", subject);
   Serial.printf("[Mail] Objet final: %s\n", alertSubject.c_str());
   Serial.println(F("[Mail] ==========================="));
-  return send(alertSubject.c_str(), message.c_str(), "User", toEmail);
+  return send(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
 } 
 #endif

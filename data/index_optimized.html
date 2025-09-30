@@ -1,437 +1,694 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FFP3 - Dashboard Optimisé</title>
-    
-    <!-- Bundles optimisés -->
-    <link rel="stylesheet" href="/bundle.css">
-    <script src="/alpine.min.js" defer></script>
-    <script src="/bundle.js" defer></script>
-    
-    <style>
-        /* Styles inline critiques pour le chargement rapide */
-        body { 
-            font-family: system-ui, -apple-system, sans-serif; 
-            margin: 0; 
-            padding: 16px; 
-            background: #f8f9fa;
-        }
-        .loading { 
-            text-align: center; 
-            padding: 50px; 
-            color: #6c757d; 
-        }
-        .connection-status {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 5px 10px;
-            border-radius: 3px;
-            font-size: 12px;
-            z-index: 1000;
-        }
-        .connected { background: #d4edda; color: #155724; }
-        .disconnected { background: #f8d7da; color: #721c24; }
-        .connecting { background: #fff3cd; color: #856404; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FFP3 Dashboard v<span id="fwVersion">--</span></title>
+  <script src="/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg-2: #111827;
+      --panel: #0b1220;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --primary: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --info: #06b6d4;
+      --card: #0b1220;
+      --border: #1f2937;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; overflow-x: hidden; }
+    a { color: var(--info); text-decoration: none; }
+    .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 16px; }
+    .header {
+      position: sticky; top: 0; z-index: 50; backdrop-filter: saturate(180%) blur(10px);
+      background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid var(--border);
+    }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; flex-wrap: wrap; gap: 8px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; min-width: 0; }
+    .status-dot { width: 10px; height: 10px; border-radius: 9999px; display: inline-block; }
+    .status-online { background: var(--primary); }
+    .status-offline { background: var(--danger); }
+    .links { display: flex; gap: 12px; align-items: center; font-size: 14px; color: var(--muted); flex-wrap: wrap; min-width: 0; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; overflow: hidden; }
+    .card-title { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .kpi-value { font-size: 28px; font-weight: 700; }
+    .grid { display: grid; gap: 12px; }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-4 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 100%; border: 1px solid var(--border); background: #0c1424; color: var(--text);
+      border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer; transition: filter .2s ease;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn.primary { background: #183a28; border-color: #1f6f46; }
+    .btn.warning { background: #3b2a10; border-color: #8b5d17; }
+    .btn.info { background: #0b2d36; border-color: #116474; }
+    .btn.danger { background: #3b1010; border-color: #7a2323; }
+    .btn.success { background: #12321e; border-color: #1f6f46; }
+    .section-title { font-size: 16px; font-weight: 700; margin-top: 12px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge { background: #0c1424; border: 1px solid var(--border); color: var(--muted); padding: 6px 10px; border-radius: 9999px; font-size: 12px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-top: 16px; }
+    .tab { padding: 8px 12px; cursor: pointer; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0; color: var(--muted); }
+    .tab.active { color: var(--text); background: var(--panel); }
+    .tabpanels { border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; padding: 12px; background: var(--panel); overflow-x: auto; max-width: 100%; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    label { font-size: 13px; color: var(--muted); }
+    input[type="number"], input[type="email"], input[type="text"] {
+      background: #0c1424; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px; width: 100%; min-width: 0;
+    }
+    .form-actions { display: flex; gap: 10px; margin-top: 10px; }
+    .toast { position: fixed; right: 16px; bottom: 16px; background: #0c1424; border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; opacity: 0; transform: translateY(10px); transition: all .25s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .muted { color: var(--muted); }
+    @media (max-width: 900px) {
+      .kpis { grid-template-columns: repeat(2, 1fr); }
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .form-grid { grid-template-columns: 1fr; }
+      /* Graphiques en colonne sur mobile */
+      .chart-container { grid-template-columns: 1fr !important; }
+    }
+    @media (max-width: 520px) {
+      .kpis { grid-template-columns: 1fr; }
+      .grid-4 { grid-template-columns: 1fr; }
+    }
+    img, canvas, svg, video { max-width: 100%; height: auto; display: block; }
+    .container, .card, .links, .brand { word-break: break-word; overflow-wrap: anywhere; }
+  </style>
 </head>
 <body>
-    <div class="connection-status connecting" id="connectionStatus">
-        Connexion en cours...
+  <header class="header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span>🐠</span>
+        <span>FFP3 Dashboard</span>
+        <span class="muted" style="font-size: 12px;">v<span id="fwVersion">--</span></span>
+      </div>
+      <div class="links">
+        <span id="statusDot" class="status-dot status-offline" aria-label="Statut"></span>
+        <span id="lastUpdate" class="muted">Hors ligne</span>
+        <a href="/diag" target="_blank" rel="noreferrer">Diag</a>
+        <a href="/update" target="_blank" rel="noreferrer">OTA</a>
+        <a href="/json" target="_blank" rel="noreferrer">JSON</a>
+        <a href="/nvs" target="_blank" rel="noreferrer">NVS</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Navigation Tabs -->
+    <div class="tabs" role="tablist">
+      <div id="tabDashboard" class="tab active" role="tab" aria-controls="panelDashboard" tabindex="0" onclick="selectTab('Dashboard')">📊 Dashboard</div>
+      <div id="tabDbVars" class="tab" role="tab" aria-controls="panelDbVars" tabindex="0" onclick="selectTab('DbVars')">📋 Variables BDD</div>
+      <div class="tab" role="tab" onclick="window.open('/diag', '_blank')">🔍 Diagnostic</div>
+      <div class="tab" role="tab" onclick="window.open('/update', '_blank')">🔄 OTA</div>
+      <div class="tab" role="tab" onclick="window.open('/json', '_blank')">📄 JSON</div>
+      <div class="tab" role="tab" onclick="window.open('/nvs', '_blank')">💾 NVS</div>
     </div>
 
-    <div x-data="dashboardApp()" x-init="init()">
-        <!-- Header -->
-        <div class="container-fluid">
-            <h1 class="text-center mb-4">
-                <i class="fas fa-tint"></i> FFP3 Dashboard Optimisé
-                <small class="text-muted">v10.11</small>
-            </h1>
-        </div>
+    <div class="tabpanels">
+      <div id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard">
+        <!-- KPIs -->
+        <section class="kpis" aria-label="Indicateurs">
+          <div class="card" aria-live="polite">
+            <div class="card-title">Température eau</div>
+            <div id="kpiWaterTemp" class="kpi-value">--</div>
+          </div>
+          <div class="card" aria-live="polite">
+            <div class="card-title">Température air</div>
+            <div id="kpiAirTemp" class="kpi-value">--</div>
+          </div>
+          <div class="card" aria-live="polite">
+            <div class="card-title">Humidité</div>
+            <div id="kpiHumidity" class="kpi-value">--</div>
+          </div>
+          <div class="card" aria-live="polite">
+            <div class="card-title">Tension</div>
+            <div id="kpiVoltage" class="kpi-value">--</div>
+          </div>
+        </section>
 
-        <!-- Contenu principal -->
-        <div class="container-fluid" id="mainContent" style="display: none;">
-            <!-- Métriques en temps réel -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Température Eau</h5>
-                            <h3 class="text-primary" x-text="sensorData.tempWater + '°C'">--</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Température Air</h5>
-                            <h3 class="text-info" x-text="sensorData.tempAir + '°C'">--</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Humidité</h5>
-                            <h3 class="text-success" x-text="sensorData.humidity + '%'">--</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Luminosité</h5>
-                            <h3 class="text-warning" x-text="sensorData.luminosite + ' lux'">--</h3>
-                        </div>
-                    </div>
-                </div>
+        <!-- Mesures détaillées -->
+        <section class="grid grid-1">
+          <div class="card">
+            <div class="card-title">🌡️ Mesures en Temps Réel</div>
+            <div class="badges">
+              <span class="badge">💧 Température eau: <strong id="tWater">--</strong></span>
+              <span class="badge">🌡️ Température air: <strong id="tAir">--</strong></span>
+              <span class="badge">💨 Humidité: <strong id="humid">--</strong></span>
+              <span class="badge">🐠 Aquarium: <strong id="wlAqua">--</strong></span>
+              <span class="badge">📦 Réserve: <strong id="wlTank">--</strong></span>
+              <span class="badge">🌱 Potager: <strong id="wlPota">--</strong></span>
+              <span class="badge">☀️ Luminosité: <strong id="lumi">--</strong></span>
+              <span class="badge">⚡ Tension: <strong id="vin">--</strong></span>
             </div>
+          </div>
+        </section>
 
-            <!-- Niveaux d'eau -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Niveau Aquarium</h5>
-                            <h3 class="text-primary" x-text="sensorData.wlAqua + ' cm'">--</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Niveau Réservoir</h5>
-                            <h3 class="text-info" x-text="sensorData.wlTank + ' cm'">--</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Niveau Potager</h5>
-                            <h3 class="text-success" x-text="sensorData.wlPota + ' cm'">--</h3>
-                        </div>
-                    </div>
-                </div>
+        <!-- Graphiques en temps réel -->
+        <section class="grid grid-1">
+          <div class="card">
+            <div class="card-title">📈 Graphiques Temps Réel</div>
+            <div class="chart-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+              <div>
+                <h6 style="margin-bottom: 8px; color: var(--muted);">🌡️ Températures</h6>
+                <canvas id="chartTemp" width="400" height="200" style="background: var(--bg-2); border-radius: 8px; border: 1px solid var(--border);"></canvas>
+              </div>
+              <div>
+                <h6 style="margin-bottom: 8px; color: var(--muted);">💧 Niveaux d'eau</h6>
+                <canvas id="chartWater" width="400" height="200" style="background: var(--bg-2); border-radius: 8px; border: 1px solid var(--border);"></canvas>
+              </div>
             </div>
+          </div>
+        </section>
 
-            <!-- Contrôles -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Actionneurs</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <button class="btn btn-primary w-100" 
-                                            @click="toggleRelay('light')"
-                                            :class="sensorData.light ? 'btn-success' : 'btn-outline-primary'">
-                                        <i class="fas fa-lightbulb"></i> Éclairage
-                                    </button>
-                                </div>
-                                <div class="col-6">
-                                    <button class="btn btn-info w-100" 
-                                            @click="toggleRelay('heater')"
-                                            :class="sensorData.heater ? 'btn-warning' : 'btn-outline-info'">
-                                        <i class="fas fa-thermometer-half"></i> Chauffage
-                                    </button>
-                                </div>
-                                <div class="col-6">
-                                    <button class="btn btn-secondary w-100" 
-                                            @click="toggleRelay('pumpAqua')"
-                                            :class="sensorData.pumpAqua ? 'btn-success' : 'btn-outline-secondary'">
-                                        <i class="fas fa-water"></i> Pompe Aqua
-                                    </button>
-                                </div>
-                                <div class="col-6">
-                                    <button class="btn btn-dark w-100" 
-                                            @click="toggleRelay('pumpTank')"
-                                            :class="sensorData.pumpTank ? 'btn-success' : 'btn-outline-dark'">
-                                        <i class="fas fa-tint"></i> Pompe Tank
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Nourrissage</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <button class="btn btn-success w-100" @click="feedSmall()">
-                                        <i class="fas fa-fish"></i> Petits Poissons
-                                    </button>
-                                </div>
-                                <div class="col-6">
-                                    <button class="btn btn-success w-100" @click="feedBig()">
-                                        <i class="fas fa-fish"></i> Gros Poissons
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- Contrôles + Statuts -->
+        <section class="grid grid-1">
+          <h2 class="section-title">Contrôles manuels</h2>
+          <div class="grid grid-4">
+            <button id="btnFeedSmall" class="btn primary" onclick="actionCmd('feedSmall')">🐟 Petits</button>
+            <button id="btnFeedBig" class="btn primary" onclick="actionCmd('feedBig')">🐠 Gros</button>
+            <button id="btnLight" class="btn warning" onclick="toggleRelay('light')">💡 Lumière</button>
+            <button id="btnPumpTank" class="btn info" onclick="toggleRelay('pumpTank')">📦 Pompe Réserve</button>
+            <button id="btnPumpAqua" class="btn info" onclick="toggleRelay('pumpAqua')">🐠 Pompe Aqua</button>
+            <button id="btnHeater" class="btn danger" onclick="toggleRelay('heater')">🔥 Chauffage</button>
+            <button id="btnMailTest" class="btn success" onclick="mailTest()">📧 Test Mail</button>
+            <button id="btnRefresh" class="btn" onclick="refreshOnce()">🔄 Actualiser</button>
+          </div>
+          <div class="card">
+            <div class="card-title">État des équipements</div>
+            <div class="badges">
+              <span class="badge">Pompe Réserve: <strong id="statusPump">--</strong></span>
+              <span class="badge">Pompe Aqua: <strong id="statusPumpAqua">--</strong></span>
+              <span class="badge">Chauffage: <strong id="statusHeater">--</strong></span>
+              <span class="badge">Lumière: <strong id="statusLight">--</strong></span>
             </div>
+          </div>
+        </section>
+      </div>
 
-            <!-- Statistiques -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Statistiques Pompe</h5>
-                        </div>
-                        <div class="card-body">
-                            <p><strong>État:</strong> <span x-text="pumpStats.isRunning ? 'En marche' : 'Arrêtée'">--</span></p>
-                            <p><strong>Temps de fonctionnement actuel:</strong> <span x-text="pumpStats.currentRuntimeSec + 's'">--</span></p>
-                            <p><strong>Temps total:</strong> <span x-text="pumpStats.totalRuntimeSec + 's'">--</span></p>
-                            <p><strong>Nombre d'arrêts:</strong> <span x-text="pumpStats.totalStops">--</span></p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Performance</h5>
-                        </div>
-                        <div class="card-body">
-                            <p><strong>Dernière mise à jour:</strong> <span x-text="lastUpdate">--</span></p>
-                            <p><strong>Mode de connexion:</strong> <span x-text="connectionMode">--</span></p>
-                            <p><strong>Latence:</strong> <span x-text="latency + 'ms'">--</span></p>
-                            <p><strong>Uptime:</strong> <span x-text="uptime">--</span></p>
-                        </div>
-                    </div>
-                </div>
+      <!-- Variables BDD Tab -->
+      <div id="panelDbVars" role="tabpanel" aria-labelledby="tabDbVars" hidden>
+        <!-- Affichage des valeurs actuelles -->
+        <section class="grid grid-1">
+          <div class="card">
+            <div class="card-title">📋 Variables BDD Actuelles</div>
+            <div class="badges">
+              <span class="badge">🌅 Matin: <strong id="dbFeedMorning">--</strong>h</span>
+              <span class="badge">☀️ Midi: <strong id="dbFeedNoon">--</strong>h</span>
+              <span class="badge">🌙 Soir: <strong id="dbFeedEvening">--</strong>h</span>
+              <span class="badge">🐠 Durée gros: <strong id="dbFeedBigDur">--</strong>s</span>
+              <span class="badge">🐟 Durée petits: <strong id="dbFeedSmallDur">--</strong>s</span>
+              <span class="badge">🐠 Seuil Aquarium: <strong id="dbAqThreshold">--</strong>cm</span>
+              <span class="badge">📦 Seuil Réservoir: <strong id="dbTankThreshold">--</strong>cm</span>
+              <span class="badge">🔥 Seuil Chauffage: <strong id="dbHeaterThreshold">--</strong>°C</span>
+              <span class="badge">⏱️ Durée Remplissage: <strong id="dbRefillDuration">--</strong>s</span>
+              <span class="badge">⚠️ Limite Inondation: <strong id="dbLimFlood">--</strong>cm</span>
+              <span class="badge">📧 Email: <strong id="dbEmailAddress">--</strong></span>
+              <span class="badge">✉️ Notifications: <strong id="dbEmailEnabled">--</strong></span>
             </div>
-        </div>
+          </div>
+        </section>
 
-        <!-- Chargement -->
-        <div class="loading" id="loadingIndicator">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Chargement...</span>
+        <!-- Statuts de nourrissage -->
+        <section class="grid grid-1">
+          <div class="card">
+            <div class="card-title">🏷️ État Nourrissage</div>
+            <div class="badges">
+              <span class="badge">🌅 Matin: <strong id="dbBouffeMatin">--</strong></span>
+              <span class="badge">☀️ Midi: <strong id="dbBouffeMidi">--</strong></span>
+              <span class="badge">🌙 Soir: <strong id="dbBouffeSoir">--</strong></span>
+              <span class="badge">🐟 Petits: <strong id="dbBouffePetits">--</strong></span>
+              <span class="badge">🐠 Gros: <strong id="dbBouffeGros">--</strong></span>
             </div>
-            <p class="mt-2">Chargement du dashboard optimisé...</p>
-        </div>
+          </div>
+        </section>
+
+        <!-- Formulaire de modification -->
+        <section class="grid grid-1">
+          <div class="card">
+            <div class="card-title">📝 Modifier Variables</div>
+            <form id="dbvarsForm" onsubmit="return submitDbVars(event)">
+            <div class="section-title">Nourrissage</div>
+            <div class="form-grid">
+              <div class="field"><label for="feedMorning">Heure matin (0-23)</label><input id="feedMorning" name="feedMorning" type="number" min="0" max="23" required></div>
+              <div class="field"><label for="feedNoon">Heure midi (0-23)</label><input id="feedNoon" name="feedNoon" type="number" min="0" max="23" required></div>
+              <div class="field"><label for="feedEvening">Heure soir (0-23)</label><input id="feedEvening" name="feedEvening" type="number" min="0" max="23" required></div>
+              <div class="field"><label for="feedBigDur">Durée gros (s)</label><input id="feedBigDur" name="feedBigDur" type="number" min="0" max="600" required></div>
+              <div class="field"><label for="feedSmallDur">Durée petits (s)</label><input id="feedSmallDur" name="feedSmallDur" type="number" min="0" max="600" required></div>
+            </div>
+            <div class="section-title">Seuils</div>
+            <div class="form-grid">
+              <div class="field"><label for="aqThreshold">Seuil Aquarium (cm)</label><input id="aqThreshold" name="aqThreshold" type="number" min="0" max="1000" required></div>
+              <div class="field"><label for="tankThreshold">Seuil Réserve (cm)</label><input id="tankThreshold" name="tankThreshold" type="number" min="0" max="1000" required></div>
+              <div class="field"><label for="heaterThreshold">Seuil Chauffage (°C)</label><input id="heaterThreshold" name="heaterThreshold" type="number" step="0.1" required></div>
+              <div class="field"><label for="refillDuration">Durée Remplissage (s)</label><input id="refillDuration" name="refillDuration" type="number" min="0" max="3600" required></div>
+              <div class="field"><label for="limFlood">Limite Inondation (cm)</label><input id="limFlood" name="limFlood" type="number" min="0" max="1000" required></div>
+            </div>
+            <div class="section-title">Email</div>
+            <div class="form-grid">
+              <div class="field"><label for="emailAddress">Adresse email</label><input id="emailAddress" name="emailAddress" type="email" required></div>
+              <div class="field"><label><input id="emailEnabled" name="emailEnabled" type="checkbox" value="checked"> Notifications activées</label></div>
+            </div>
+            <div class="form-actions">
+              <button class="btn success" type="submit">Enregistrer</button>
+              <button class="btn" type="button" onclick="loadDbVars()">Recharger</button>
+            </div>
+            </form>
+          </div>
+        </section>
+      </div>
     </div>
+  </main>
 
-    <script>
-        function dashboardApp() {
-            return {
-                sensorData: {
-                    tempWater: '--',
-                    tempAir: '--',
-                    humidity: '--',
-                    wlAqua: '--',
-                    wlTank: '--',
-                    wlPota: '--',
-                    luminosite: '--',
-                    pumpAqua: false,
-                    pumpTank: false,
-                    heater: false,
-                    light: false,
-                    voltage: '--'
-                },
-                pumpStats: {
-                    isRunning: false,
-                    currentRuntimeSec: 0,
-                    totalRuntimeSec: 0,
-                    totalStops: 0
-                },
-                connectionMode: 'HTTP Polling',
-                lastUpdate: '--',
-                latency: 0,
-                uptime: '--',
-                ws: null,
-                reconnectAttempts: 0,
-                maxReconnectAttempts: 5,
-                reconnectDelay: 1000,
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-                init() {
-                    this.initializeWebSocket();
-                    this.startPolling();
-                    this.updateConnectionStatus('connecting');
-                    
-                    // Masquer le loading après 2 secondes
-                    setTimeout(() => {
-                        document.getElementById('loadingIndicator').style.display = 'none';
-                        document.getElementById('mainContent').style.display = 'block';
-                    }, 2000);
-                },
+  <script>
+    let ws = null;
+    let wsUrl = null;
+    let wsConnected = false;
+    let pollInterval = null;
+    
+    // Graphiques
+    let tempChart = null;
+    let waterChart = null;
+    const maxDataPoints = 20; // Nombre de points à afficher
 
-                initializeWebSocket() {
-                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    const wsUrl = `${protocol}//${window.location.hostname}:81/ws`;
-                    
-                    try {
-                        this.ws = new WebSocket(wsUrl);
-                        
-                        this.ws.onopen = () => {
-                            console.log('WebSocket connecté');
-                            this.connectionMode = 'WebSocket Temps Réel';
-                            this.updateConnectionStatus('connected');
-                            this.reconnectAttempts = 0;
-                            
-                            // S'abonner aux mises à jour
-                            this.ws.send(JSON.stringify({type: 'subscribe'}));
-                        };
-                        
-                        this.ws.onmessage = (event) => {
-                            const startTime = performance.now();
-                            const data = JSON.parse(event.data);
-                            
-                            if (data.type === 'sensor_data' || data.type === 'sensor_update') {
-                                this.updateSensorData(data);
-                                this.latency = Math.round(performance.now() - startTime);
-                            }
-                        };
-                        
-                        this.ws.onclose = () => {
-                            console.log('WebSocket fermé');
-                            this.updateConnectionStatus('disconnected');
-                            this.connectionMode = 'HTTP Polling';
-                            this.attemptReconnect();
-                        };
-                        
-                        this.ws.onerror = (error) => {
-                            console.error('Erreur WebSocket:', error);
-                            this.updateConnectionStatus('disconnected');
-                        };
-                        
-                    } catch (error) {
-                        console.error('Impossible de créer WebSocket:', error);
-                        this.connectionMode = 'HTTP Polling';
-                    }
-                },
+    function $(id){ return document.getElementById(id); }
+    function fmt(v, d=1){ if(v===undefined||v===null||isNaN(v)) return '--'; return Number(v).toFixed(d); }
+    function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2000); }
+    function setOnline(on){ wsConnected = on; $('statusDot').className = 'status-dot ' + (on? 'status-online':'status-offline'); $('lastUpdate').textContent = on? ('MAJ: '+ new Date().toLocaleTimeString()) : 'Hors ligne'; }
 
-                attemptReconnect() {
-                    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                        this.reconnectAttempts++;
-                        console.log(`Tentative de reconnexion ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-                        
-                        setTimeout(() => {
-                            this.initializeWebSocket();
-                        }, this.reconnectDelay * this.reconnectAttempts);
-                    } else {
-                        console.log('Abandon de la reconnexion WebSocket');
-                    }
-                },
-
-                startPolling() {
-                    // Polling de fallback si WebSocket indisponible
-                    setInterval(() => {
-                        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                            this.fetchSensorData();
-                            this.fetchPumpStats();
-                        }
-                    }, 5000); // 5 secondes
-                },
-
-                async fetchSensorData() {
-                    try {
-                        const startTime = performance.now();
-                        const response = await fetch('/json');
-                        const data = await response.json();
-                        this.updateSensorData(data);
-                        this.latency = Math.round(performance.now() - startTime);
-                    } catch (error) {
-                        console.error('Erreur fetch données capteurs:', error);
-                    }
-                },
-
-                async fetchPumpStats() {
-                    try {
-                        const response = await fetch('/pumpstats');
-                        const data = await response.json();
-                        this.pumpStats = {
-                            isRunning: data.isRunning,
-                            currentRuntimeSec: data.currentRuntimeSec,
-                            totalRuntimeSec: data.totalRuntimeSec,
-                            totalStops: data.totalStops
-                        };
-                    } catch (error) {
-                        console.error('Erreur fetch stats pompe:', error);
-                    }
-                },
-
-                updateSensorData(data) {
-                    this.sensorData.tempWater = data.tempWater || '--';
-                    this.sensorData.tempAir = data.tempAir || '--';
-                    this.sensorData.humidity = data.humidity || '--';
-                    this.sensorData.wlAqua = data.wlAqua || '--';
-                    this.sensorData.wlTank = data.wlTank || '--';
-                    this.sensorData.wlPota = data.wlPota || '--';
-                    this.sensorData.luminosite = data.luminosite || '--';
-                    this.sensorData.pumpAqua = data.pumpAqua || false;
-                    this.sensorData.pumpTank = data.pumpTank || false;
-                    this.sensorData.heater = data.heater || false;
-                    this.sensorData.light = data.light || false;
-                    this.sensorData.voltage = data.voltage || '--';
-                    
-                    this.lastUpdate = new Date().toLocaleTimeString();
-                },
-
-                async toggleRelay(relay) {
-                    try {
-                        const response = await fetch(`/action?relay=${relay}`);
-                        const result = await response.text();
-                        console.log(`Relay ${relay}: ${result}`);
-                        
-                        // Mettre à jour l'état local immédiatement
-                        if (relay === 'light') this.sensorData.light = !this.sensorData.light;
-                        else if (relay === 'heater') this.sensorData.heater = !this.sensorData.heater;
-                        else if (relay === 'pumpAqua') this.sensorData.pumpAqua = !this.sensorData.pumpAqua;
-                        else if (relay === 'pumpTank') this.sensorData.pumpTank = !this.sensorData.pumpTank;
-                        
-                    } catch (error) {
-                        console.error(`Erreur toggle relay ${relay}:`, error);
-                    }
-                },
-
-                async feedSmall() {
-                    try {
-                        const response = await fetch('/action?cmd=feedSmall');
-                        const result = await response.text();
-                        console.log('Nourrissage petits:', result);
-                    } catch (error) {
-                        console.error('Erreur nourrissage petits:', error);
-                    }
-                },
-
-                async feedBig() {
-                    try {
-                        const response = await fetch('/action?cmd=feedBig');
-                        const result = await response.text();
-                        console.log('Nourrissage gros:', result);
-                    } catch (error) {
-                        console.error('Erreur nourrissage gros:', error);
-                    }
-                },
-
-                updateConnectionStatus(status) {
-                    const statusEl = document.getElementById('connectionStatus');
-                    statusEl.className = `connection-status ${status}`;
-                    
-                    switch (status) {
-                        case 'connected':
-                            statusEl.textContent = 'Connecté (WebSocket)';
-                            break;
-                        case 'connecting':
-                            statusEl.textContent = 'Connexion en cours...';
-                            break;
-                        case 'disconnected':
-                            statusEl.textContent = 'Déconnecté (HTTP)';
-                            break;
-                    }
-                }
+    // Initialisation des graphiques
+    function initCharts() {
+      const ctxTemp = $('chartTemp').getContext('2d');
+      const ctxWater = $('chartWater').getContext('2d');
+      
+      // Données pour les graphiques
+      const tempData = { labels: [], air: [], water: [] };
+      const waterData = { labels: [], aqua: [], tank: [], pota: [] };
+      
+      // Graphique des températures
+      tempChart = new Chart(ctxTemp, {
+        type: 'line',
+        data: {
+          labels: tempData.labels,
+          datasets: [{
+            label: 'Air °C',
+            data: tempData.air,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            fill: true,
+            tension: 0.4
+          }, {
+            label: 'Eau °C',
+            data: tempData.water,
+            borderColor: '#06b6d4',
+            backgroundColor: 'rgba(6, 182, 212, 0.1)',
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { 
+              position: 'top',
+              labels: { color: '#e5e7eb' }
             }
+          },
+          scales: {
+            y: {
+              beginAtZero: false,
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: '#e5e7eb' }
+            },
+            x: {
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: '#e5e7eb' }
+            }
+          }
         }
-    </script>
+      });
+      
+      // Graphique des niveaux d'eau
+      waterChart = new Chart(ctxWater, {
+        type: 'line',
+        data: {
+          labels: waterData.labels,
+          datasets: [{
+            label: 'Aquarium cm',
+            data: waterData.aqua,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.4
+          }, {
+            label: 'Réservoir cm',
+            data: waterData.tank,
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            fill: true,
+            tension: 0.4
+          }, {
+            label: 'Potager cm',
+            data: waterData.pota,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { 
+              position: 'top',
+              labels: { color: '#e5e7eb' }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: '#e5e7eb' }
+            },
+            x: {
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: '#e5e7eb' }
+            }
+          }
+        }
+      });
+    }
+
+    // Mise à jour des graphiques
+    function updateCharts(data) {
+      if (!tempChart || !waterChart) return;
+      
+      const now = new Date().toLocaleTimeString();
+      
+      // Ajouter les nouvelles données
+      tempChart.data.labels.push(now);
+      tempChart.data.datasets[0].data.push(data.tempAir || 0);
+      tempChart.data.datasets[1].data.push(data.tempWater || 0);
+      
+      waterChart.data.labels.push(now);
+      waterChart.data.datasets[0].data.push(data.wlAqua || 0);
+      waterChart.data.datasets[1].data.push(data.wlTank || 0);
+      waterChart.data.datasets[2].data.push(data.wlPota || 0);
+      
+      // Limiter le nombre de points affichés
+      if (tempChart.data.labels.length > maxDataPoints) {
+        tempChart.data.labels.shift();
+        tempChart.data.datasets[0].data.shift();
+        tempChart.data.datasets[1].data.shift();
+      }
+      
+      if (waterChart.data.labels.length > maxDataPoints) {
+        waterChart.data.labels.shift();
+        waterChart.data.datasets[0].data.shift();
+        waterChart.data.datasets[1].data.shift();
+        waterChart.data.datasets[2].data.shift();
+      }
+      
+      // Mettre à jour les graphiques
+      tempChart.update('none');
+      waterChart.update('none');
+    }
+
+    function updateFromData(d){
+      // KPIs principaux
+      $('kpiWaterTemp').textContent = fmt(d.tempWater);
+      $('kpiAirTemp').textContent = fmt(d.tempAir);
+      $('kpiHumidity').textContent = fmt(d.humidity);
+      const v = (d.voltageV!==undefined)? d.voltageV : (d.voltage!==undefined? (Number(d.voltage)/1000.0) : undefined);
+      $('kpiVoltage').textContent = fmt(v, 2);
+      
+      // Mesures détaillées
+      $('tWater').textContent = fmt(d.tempWater);
+      $('tAir').textContent = fmt(d.tempAir);
+      $('humid').textContent = fmt(d.humidity);
+      $('wlAqua').textContent = fmt(d.wlAqua, 0);
+      $('wlTank').textContent = fmt(d.wlTank, 0);
+      $('wlPota').textContent = fmt(d.wlPota, 0);
+      $('lumi').textContent = fmt(d.luminosite, 0);
+      $('vin').textContent = fmt(v, 2);
+      
+      // États des actionneurs
+      if(d.pumpTank!==undefined) $('statusPump').textContent = d.pumpTank?'ON':'OFF';
+      if(d.pumpAqua!==undefined) $('statusPumpAqua').textContent = d.pumpAqua?'ON':'OFF';
+      if(d.heater!==undefined) $('statusHeater').textContent = d.heater?'ON':'OFF';
+      if(d.light!==undefined) $('statusLight').textContent = d.light?'ON':'OFF';
+      $('lastUpdate').textContent = 'MAJ: ' + new Date().toLocaleTimeString();
+      
+      // Mettre à jour les graphiques
+      updateCharts(d);
+    }
+
+    // Fonctions d'affichage des variables BDD
+    function updateDatabaseDisplay(db) {
+      updateElement('dbFeedMorning', db.feedMorning);
+      updateElement('dbFeedNoon', db.feedNoon);
+      updateElement('dbFeedEvening', db.feedEvening);
+      updateElement('dbFeedBigDur', db.feedBigDur);
+      updateElement('dbFeedSmallDur', db.feedSmallDur);
+      updateElement('dbAqThreshold', db.aqThreshold);
+      updateElement('dbTankThreshold', db.tankThreshold);
+      updateElement('dbHeaterThreshold', fmt(db.heaterThreshold));
+      updateElement('dbRefillDuration', db.refillDuration);
+      updateElement('dbLimFlood', db.limFlood);
+      updateElement('dbEmailAddress', db.emailAddress);
+      updateEmailStatus('dbEmailEnabled', db.emailEnabled);
+      
+      // Statuts de nourrissage
+      updateFeedingFlag('dbBouffeMatin', db.bouffeMatin);
+      updateFeedingFlag('dbBouffeMidi', db.bouffeMidi);
+      updateFeedingFlag('dbBouffeSoir', db.bouffeSoir);
+      updateCommandFlag('dbBouffePetits', db.bouffePetits);
+      updateCommandFlag('dbBouffeGros', db.bouffeGros);
+    }
+
+    function updateElement(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = (value !== null && value !== undefined) ? value : '--';
+    }
+
+    function updateFeedingFlag(id, value) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = value ? 'OK' : 'En attente';
+      el.style.color = value ? 'var(--primary)' : 'var(--muted)';
+    }
+
+    function updateCommandFlag(id, value) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = value || '--';
+      el.style.color = value === '1' ? 'var(--primary)' : 'var(--muted)';
+    }
+
+    function updateEmailStatus(id, value) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = value ? 'Activé' : 'Désactivé';
+      el.style.color = value ? 'var(--primary)' : 'var(--muted)';
+    }
+
+    // Fonctions d'indicateurs de chargement
+    function showLoadingIndicator() {
+      const statusEl = document.getElementById('lastUpdate');
+      if (statusEl) {
+        statusEl.textContent = 'Chargement...';
+        statusEl.style.color = 'var(--warning)';
+      }
+    }
+
+    function hideLoadingIndicator() {
+      const statusEl = document.getElementById('lastUpdate');
+      if (statusEl) {
+        statusEl.textContent = 'MAJ: ' + new Date().toLocaleTimeString();
+        statusEl.style.color = 'var(--muted)';
+      }
+    }
+
+    // Fonction pour afficher les erreurs
+    function showError(message) {
+      console.error('Dashboard Error:', message);
+      toast('Erreur: ' + message);
+    }
+
+    function startPolling(){ if(pollInterval) return; pollInterval = setInterval(refreshOnce, 2000); }
+    function stopPolling(){ if(pollInterval){ clearInterval(pollInterval); pollInterval=null; } }
+
+    async function refreshOnce(){
+      try {
+        const r = await fetch('/json', {cache:'no-store'});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const j = await r.json();
+        updateFromData(j);
+        setOnline(true);
+      } catch(e){ setOnline(false); }
+    }
+
+    function connectWS(){
+      try {
+        const proto = (location.protocol === 'https:')? 'wss':'ws';
+        wsUrl = proto + '://' + location.hostname + ':81/ws';
+        ws = new WebSocket(wsUrl);
+        ws.onopen = ()=>{ setOnline(true); stopPolling(); };
+        ws.onclose = ()=>{ setOnline(false); startPolling(); setTimeout(connectWS, 1500); };
+        ws.onerror = ()=>{ setOnline(false); };
+        ws.onmessage = (ev)=>{
+          try{
+            const msg = JSON.parse(ev.data);
+            if(msg && (msg.type==='sensor_update' || msg.type==='sensor_data')){
+              updateFromData(msg);
+            }
+          }catch(_){/* ignore */}
+        };
+      } catch(_) { startPolling(); }
+    }
+
+    async function actionCmd(cmd){
+      const btn = $('btn'+cmd.charAt(0).toUpperCase()+cmd.slice(1));
+      if(btn){ btn.disabled=true; btn.textContent='⏳'; }
+      try{
+        const r = await fetch('/action?cmd='+encodeURIComponent(cmd), {cache:'no-store'});
+        const t = await r.text();
+        toast('Action '+cmd+': '+t);
+      }catch(e){ toast('Erreur action '+cmd); }
+      finally{ if(btn){ btn.disabled=false; if(cmd==='feedSmall') btn.textContent='🐟 Petits'; else if(cmd==='feedBig') btn.textContent='🐠 Gros'; } }
+    }
+
+    async function toggleRelay(name){
+      const map={light:'💡 Lumière',pumpTank:'📦 Pompe Réserve',pumpAqua:'🐠 Pompe Aqua',heater:'🔥 Chauffage'};
+      const btn = $('btn'+name.charAt(0).toUpperCase()+name.slice(1));
+      if(btn){ btn.disabled=true; btn.textContent='⏳'; }
+      try{
+        const r = await fetch('/action?relay='+encodeURIComponent(name), {cache:'no-store'});
+        const t = await r.text();
+        toast((map[name]||name)+': '+t);
+        setTimeout(refreshOnce, 400);
+      }catch(e){ toast('Erreur '+(map[name]||name)); }
+      finally{ if(btn){ btn.disabled=false; btn.textContent=(map[name]||name); } }
+    }
+
+    async function mailTest(){
+      const btn=$('btnMailTest'); if(btn){ btn.disabled=true; btn.textContent='⏳'; }
+      try{ const r=await fetch('/mailtest',{cache:'no-store'}); const t=await r.text(); toast('Mail: '+t);}catch(_){ toast('Erreur mail'); }
+      finally{ if(btn){ btn.disabled=false; btn.textContent='📧 Test Mail'; } }
+    }
+
+    function selectTab(name){
+      const isDb = name==='DbVars';
+      $('tabDashboard').classList.toggle('active', !isDb);
+      $('tabDbVars').classList.toggle('active', isDb);
+      $('panelDashboard').hidden = isDb;
+      $('panelDbVars').hidden = !isDb;
+      if(isDb) loadDbVars();
+    }
+
+    async function loadDbVars(){
+      try{
+        showLoadingIndicator();
+        const r = await fetch('/dbvars', {cache:'no-store'});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const j = await r.json();
+        
+        // Afficher les valeurs actuelles
+        updateDatabaseDisplay(j);
+        
+        // Préremplir tous les champs du formulaire
+        $('feedMorning').value = j.feedMorning ?? 0;
+        $('feedNoon').value = j.feedNoon ?? 0;
+        $('feedEvening').value = j.feedEvening ?? 0;
+        $('feedBigDur').value = j.feedBigDur ?? 0;
+        $('feedSmallDur').value = j.feedSmallDur ?? 0;
+        $('aqThreshold').value = j.aqThreshold ?? 0;
+        $('tankThreshold').value = j.tankThreshold ?? 0;
+        $('heaterThreshold').value = j.heaterThreshold ?? 0;
+        $('refillDuration').value = j.refillDuration ?? 0;
+        $('limFlood').value = j.limFlood ?? 0;
+        $('emailAddress').value = j.emailAddress ?? '';
+        $('emailEnabled').checked = !!j.emailEnabled;
+        
+        hideLoadingIndicator();
+        toast('Variables BDD chargées');
+      }catch(e){ 
+        hideLoadingIndicator();
+        showError('Erreur chargement BDD: ' + e.message); 
+      }
+    }
+
+    async function submitDbVars(ev){
+      ev.preventDefault();
+      try{
+        showLoadingIndicator();
+        // Poster toutes les clés dans l'ordre attendu côté distant [[memory:5580054]]
+        const p = new URLSearchParams();
+        p.append('feedMorning', String($('feedMorning').value||0));
+        p.append('feedNoon', String($('feedNoon').value||0));
+        p.append('feedEvening', String($('feedEvening').value||0));
+        p.append('feedBigDur', String($('feedBigDur').value||0));
+        p.append('feedSmallDur', String($('feedSmallDur').value||0));
+        p.append('aqThreshold', String($('aqThreshold').value||0));
+        p.append('tankThreshold', String($('tankThreshold').value||0));
+        p.append('heaterThreshold', String($('heaterThreshold').value||0));
+        p.append('refillDuration', String($('refillDuration').value||0));
+        p.append('limFlood', String($('limFlood').value||0));
+        p.append('emailAddress', String($('emailAddress').value||''));
+        p.append('emailEnabled', $('emailEnabled').checked ? 'checked' : '');
+        
+        const r = await fetch('/dbvars/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: p.toString()
+        });
+        if(!r.ok){ throw new Error('HTTP '+r.status); }
+        
+        // Recharger les variables après enregistrement
+        await loadDbVars();
+        toast('Variables BDD enregistrées');
+      }catch(e){ 
+        hideLoadingIndicator();
+        showError('Erreur enregistrement BDD: ' + e.message); 
+      }
+      return false;
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      // Charger la version du firmware
+      fetch('/version', {cache:'no-store'})
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+        .then(j => {
+          const v = j && j.version ? String(j.version) : '--';
+          const el = document.getElementById('fwVersion');
+          if (el) el.textContent = v;
+          try { document.title = `FFP3 Dashboard v${v}`; } catch(e){}
+        })
+        .catch(e => console.warn('Version fetch failed:', e.message));
+      
+      // Initialiser les graphiques
+      initCharts();
+      
+      connectWS();
+      // Fallback
+      setTimeout(()=>{ if(!wsConnected) startPolling(); }, 1000);
+      // Charge initiale si besoin
+      refreshOnce();
+    });
+  </script>
 </body>
 </html>
+
+

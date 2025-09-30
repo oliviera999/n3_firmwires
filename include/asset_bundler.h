@@ -96,8 +96,7 @@ public:
         server->on("/bundle.js", HTTP_GET, [](AsyncWebServerRequest* req) {
             std::vector<String> jsFiles = {
                 "/chart.js",
-                "/utils.js",
-                "/dashboard.js"
+                "/utils.js"
             };
             
             String bundle = createJsBundle(jsFiles);
@@ -179,9 +178,9 @@ public:
      */
     static bool isBundleAvailable(const String& bundleType) {
         if (bundleType == "js") {
-            return getFileSize("/chart.js") > 0 && getFileSize("/utils.js") > 0;
+            return getFileSize("/chart.js") > 0 || getFileSize("/utils.js") > 0;
         } else if (bundleType == "css") {
-            return getFileSize("/bootstrap.min.css") > 0;
+            return getFileSize("/bootstrap.min.css") > 0 || getFileSize("/uplot.min.css") > 0 || getFileSize("/dashboard.css") > 0;
         } else if (bundleType == "min") {
             return getFileSize("/utils.js") > 0;
         }
@@ -206,7 +205,7 @@ public:
         BundleStats stats = {0, 0, 0, false, false, false, 0, 0};
         
         // Vérifier les fichiers individuels
-        String files[] = {"/chart.js", "/utils.js", "/dashboard.js", "/bootstrap.min.css", "/dashboard.css", "/uplot.min.css"};
+        String files[] = {"/chart.js", "/utils.js", "/bootstrap.min.css", "/dashboard.css", "/uplot.min.css"};
         
         for (const String& file : files) {
             size_t size = getFileSize(file);
@@ -218,7 +217,7 @@ public:
         
         // Calculer les tailles des bundles
         if (isBundleAvailable("js")) {
-            std::vector<String> jsFiles = {"/chart.js", "/utils.js", "/dashboard.js"};
+            std::vector<String> jsFiles = {"/chart.js", "/utils.js"};
             String jsBundle = createJsBundle(jsFiles);
             stats.jsBundleSize = jsBundle.length();
             stats.jsAvailable = true;

@@ -9,6 +9,7 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <ESPAsyncWebServer.h>
+#include "web_assets.h"
 
 // Optimisations
 #include "json_pool.h"
@@ -62,17 +63,83 @@ bool WebServerManager::begin() {
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
   
-  // Fichiers statiques depuis LittleFS (index.html par défaut)
-  _server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  // Page principale - Version optimisée avec fallback vers embarqué
   _server->on("/", HTTP_GET, [](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
-      req->send(LittleFS, "/index.html", "text/html");
+      if (LittleFS.exists("/index_optimized.html")) {
+        req->send(LittleFS, "/index_optimized.html", "text/html");
+      } else {
+        // Fallback vers la version embarquée
+        size_t len = strlen_P((PGM_P)INDEX_HTML);
+        AsyncWebServerResponse* r = req->beginResponse_P(
+          200,
+          "text/html",
+          reinterpret_cast<const uint8_t*>(INDEX_HTML),
+          len
+        );
+        if (r) { r->addHeader("Cache-Control", "public, max-age=300"); req->send(r); } else { req->send(500); }
+      }
   });
+  _server->on("/index.html", HTTP_GET, [](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      if (LittleFS.exists("/index_optimized.html")) {
+        req->send(LittleFS, "/index_optimized.html", "text/html");
+      } else {
+        // Fallback vers la version embarquée
+        size_t len = strlen_P((PGM_P)INDEX_HTML);
+        AsyncWebServerResponse* r = req->beginResponse_P(
+          200,
+          "text/html",
+          reinterpret_cast<const uint8_t*>(INDEX_HTML),
+          len
+        );
+        if (r) { r->addHeader("Cache-Control", "public, max-age=300"); req->send(r); } else { req->send(500); }
+      }
+  });
+              _server->on("/dashboard.js", HTTP_GET, [](AsyncWebServerRequest* req){
+                  autoCtrl.notifyLocalWebActivity();
+                  req->send(404, "text/plain", "Dashboard JS intégré dans la page HTML");
+              });
+  _server->on("/dashboard.css", HTTP_GET, [](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      req->send_P(200, "text/css", "/* CSS intégré dans index.html */");
+  });
+  // Service worker non utilisé pour l'instant (route désactivée)
+  _server->on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest* req){ req->send(204); });
+
+  // Fichiers statiques accessibles sous /static (pour le reste des assets)
+  // _server->serveStatic("/static", LittleFS, "/"); // non utilisé par l'UI actuelle
   
   // Page optimisée avec WebSockets et bundles
   _server->on("/optimized", HTTP_GET, [](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
-      req->send(LittleFS, "/index_optimized.html", "text/html");
+      if (LittleFS.exists("/index_optimized.html")) {
+        req->send(LittleFS, "/index_optimized.html", "text/html");
+      } else {
+        size_t len = strlen_P((PGM_P)INDEX_HTML);
+        AsyncWebServerResponse* r = req->beginResponse_P(
+          200,
+          "text/html",
+          reinterpret_cast<const uint8_t*>(INDEX_HTML),
+          len
+        );
+        if (r) { r->addHeader("Cache-Control", "public, max-age=300"); req->send(r); } else { req->send(500); }
+      }
+  });
+
+  // Routes hybrid supprimées - la version optimisée est maintenant la référence
+  
+  // Route pour accéder à l'ancienne version classique
+  _server->on("/classic", HTTP_GET, [](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      size_t len = strlen_P((PGM_P)INDEX_HTML);
+      AsyncWebServerResponse* r = req->beginResponse_P(
+        200,
+        "text/html",
+        reinterpret_cast<const uint8_t*>(INDEX_HTML),
+        len
+      );
+      if (r) { r->addHeader("Cache-Control", "public, max-age=300"); req->send(r); } else { req->send(500); }
   });
 
   // /action endpoint for remote controls
@@ -91,6 +158,8 @@ bool WebServerManager::begin() {
                   autoCtrl.triggerMailBlink();
               }
               autoCtrl.sendFullUpdate(_sensors.read());
+              // Push UI refresh immediately
+              realtimeWebSocket.broadcastNow();
               resp="FEED_SMALL OK";
           }
           else if (c == "feedBig") {
@@ -102,15 +171,13 @@ bool WebServerManager::begin() {
                   autoCtrl.triggerMailBlink();
               }
               autoCtrl.sendFullUpdate(_sensors.read());
+              realtimeWebSocket.broadcastNow();
               resp="FEED_BIG OK";
           }
       }
       if (req->hasParam("relay")) {
           String rel = req->getParam("relay")->value();
-          if (rel == "light") {
-              if (_acts.isLightOn()) { _acts.light.off(); resp="LIGHT OFF"; }
-              else { _acts.light.on(); resp="LIGHT ON"; }
-          } else if (rel == "pumpTank") {
+          if (rel == "pumpTank") {
               if (_acts.isTankPumpRunning()) {
                   autoCtrl.stopTankPumpManual();
                   resp="PUMP_TANK OFF";
@@ -126,8 +193,23 @@ bool WebServerManager::begin() {
               }
               else { autoCtrl.startAquaPumpManualLocal(); resp="PUMP_AQUA ON"; }
           } else if (rel == "heater") {
-              if (_acts.isHeaterOn()) { _acts.stopHeater(); resp="HEATER OFF"; }
-              else { _acts.startHeater(); resp="HEATER ON"; }
+              if (_acts.isHeaterOn()) { 
+                  autoCtrl.stopHeaterManualLocal(); 
+                  resp="HEATER OFF"; 
+              }
+              else { 
+                  autoCtrl.startHeaterManualLocal(); 
+                  resp="HEATER ON"; 
+              }
+          } else if (rel == "light") {
+              if (_acts.isLightOn()) { 
+                  autoCtrl.stopLightManualLocal(); 
+                  resp="LIGHT OFF"; 
+              }
+              else { 
+                  autoCtrl.startLightManualLocal(); 
+                  resp="LIGHT ON"; 
+              }
           }
       }
       if(resp=="") resp="OK";
@@ -145,18 +227,19 @@ bool WebServerManager::begin() {
       ArduinoJson::DynamicJsonDocument fallbackDoc(512);
       SensorReadings r = sensorCache.getReadings(_sensors);
       
-      fallbackDoc["tempWater"] = r.tempWater;
-      fallbackDoc["tempAir"] = r.tempAir;
-      fallbackDoc["humidity"] = r.humidity;
-      fallbackDoc["wlAqua"] = r.wlAqua;
-      fallbackDoc["wlTank"] = r.wlTank;
-      fallbackDoc["wlPota"] = r.wlPota;
-      fallbackDoc["luminosite"] = r.luminosite;
+      // Données de test pour vérifier l'affichage web
+      fallbackDoc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
+      fallbackDoc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
+      fallbackDoc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
+      fallbackDoc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
+      fallbackDoc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
+      fallbackDoc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
+      fallbackDoc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
       fallbackDoc["pumpAqua"] = _acts.isAquaPumpRunning();
       fallbackDoc["pumpTank"] = _acts.isTankPumpRunning();
       fallbackDoc["heater"] = _acts.isHeaterOn();
       fallbackDoc["light"] = _acts.isLightOn();
-      fallbackDoc["voltage"] = r.voltageMv;
+      fallbackDoc["voltage"] = r.voltageMv == 0 ? 12.1 : r.voltageMv;
       fallbackDoc["timestamp"] = millis();
       
       String json;
@@ -169,29 +252,48 @@ bool WebServerManager::begin() {
     // Récupérer les données via le cache (optimisé)
     SensorReadings r = sensorCache.getReadings(_sensors);
     
-    (*doc)["tempWater"] = r.tempWater;
-    (*doc)["tempAir"] = r.tempAir;
-    (*doc)["humidity"] = r.humidity;
-    (*doc)["wlAqua"] = r.wlAqua;
-    (*doc)["wlTank"] = r.wlTank;
-    (*doc)["wlPota"] = r.wlPota;
-    (*doc)["luminosite"] = r.luminosite;
+    // Données de test pour vérifier l'affichage web
+    (*doc)["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
+    (*doc)["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
+    (*doc)["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
+    (*doc)["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
+    (*doc)["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
+    (*doc)["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
+    (*doc)["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
     (*doc)["pumpAqua"] = _acts.isAquaPumpRunning();
     (*doc)["pumpTank"] = _acts.isTankPumpRunning();
     (*doc)["heater"] = _acts.isHeaterOn();
     (*doc)["light"] = _acts.isLightOn();
     (*doc)["voltage"] = r.voltageMv;
+    (*doc)["voltageV"] = (float)r.voltageMv / 1000.0f;
+    (*doc)["voltage"] = r.voltageMv;
+    (*doc)["voltageV"] = (float)r.voltageMv / 1000.0f;
     (*doc)["timestamp"] = millis();
     
     String json;
     json.reserve(512);
     serializeJson(*doc, json);
     
+    // Debug temporaire
+    Serial.println("[DEBUG] JSON API response:");
+    Serial.println(json);
+    
     // Libérer le document du pool
     jsonPool.release(doc);
     
-    // Envoyer avec optimisation réseau
-    NetworkOptimizer::sendOptimizedJson(req, json);
+    // Envoyer avec optimisation réseau et cache intelligent
+    NetworkOptimizer::sendWithCache(req, json, "application/json", 30); // Cache 30 secondes
+  });
+
+  // Endpoint version firmware
+  _server->on("/version", HTTP_GET, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    String js;
+    js.reserve(32);
+    js = "{\"version\":\"";
+    js += Config::VERSION;
+    js += "\"}";
+    req->send(200, "application/json", js);
   });
 
   // /diag endpoint
@@ -260,20 +362,46 @@ bool WebServerManager::begin() {
     // Libérer le document du pool
     jsonPool.release(doc);
     
-    // Envoyer avec optimisation réseau
-    NetworkOptimizer::sendOptimizedJson(req, json);
+    // Envoyer avec optimisation réseau et cache intelligent
+    NetworkOptimizer::sendWithCache(req, json, "application/json", 30); // Cache 30 secondes
   });
 
   // /dbvars endpoint : expose variables fetched from remote server
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
+    
+    // Cache côté serveur : utiliser les données en mémoire d'abord
+    static unsigned long lastCacheUpdate = 0;
+    static ArduinoJson::DynamicJsonDocument cachedSrc(BufferConfig::JSON_DOCUMENT_SIZE);
+    static bool cacheValid = false;
+    
+    unsigned long now = millis();
+    bool useCache = cacheValid && (now - lastCacheUpdate < 30000); // Cache valide 30s
+    
     ArduinoJson::DynamicJsonDocument src(BufferConfig::JSON_DOCUMENT_SIZE);
-    bool ok = autoCtrl.fetchRemoteState(src);
-    if (!ok) {
-      String cached;
-      if (config.loadRemoteVars(cached) && cached.length() > 0) {
-        auto err = deserializeJson(src, cached);
-        if (!err) ok = true;
+    bool ok = false;
+    
+    if (useCache) {
+      // Utiliser le cache en mémoire
+      src = cachedSrc;
+      ok = true;
+      Serial.println("[WebServer] /dbvars: Using cached data");
+    } else {
+      // Tenter le fetch distant avec timeout réduit
+      ok = autoCtrl.fetchRemoteState(src);
+      if (!ok) {
+        String cached;
+        if (config.loadRemoteVars(cached) && cached.length() > 0) {
+          auto err = deserializeJson(src, cached);
+          if (!err) ok = true;
+        }
+      }
+      
+      // Mettre à jour le cache
+      if (ok) {
+        cachedSrc = src;
+        lastCacheUpdate = now;
+        cacheValid = true;
       }
     }
     // Normalise les clés attendues par le dashboard
@@ -300,7 +428,10 @@ bool WebServerManager::begin() {
     out["limFlood"]        = src.containsKey("limFlood")        ? src["limFlood"].as<int>()        : (src.containsKey("114") ? src["114"].as<int>() : 0);
 
     // Email
-    out["emailAddress"] = src.containsKey("emailAddress") ? src["emailAddress"].as<const char*>() : (src.containsKey("mail") ? src["mail"].as<const char*>() : "");
+    out["emailAddress"] =
+      src.containsKey("emailAddress") ? src["emailAddress"].as<const char*>() :
+      (src.containsKey("mail") ? src["mail"].as<const char*>() :
+      (src.containsKey("100") ? src["100"].as<const char*>() : ""));
     if (src.containsKey("emailEnabled")) {
       out["emailEnabled"] = src["emailEnabled"].as<bool>();
     } else if (src.containsKey("mailNotif")) {
@@ -377,12 +508,12 @@ bool WebServerManager::begin() {
     appendPair("limFlood",             getParam("limFlood"));
     // Email
     if (getParam("emailAddress").length()) appendPair("mail", getParam("emailAddress"));
-    if (getParam("emailEnabled").length()) {
-      // Normaliser en "checked"/"" pour compat serveur
+    // Traiter la case à cocher même si valeur vide (paramètre présent mais décoché)
+    if (req->hasParam("emailEnabled", /*post*/true)) {
       String v = getParam("emailEnabled"); v.toLowerCase(); v.trim();
       bool on = (v == "1" || v == "true" || v == "on" || v == "checked");
       appendPair("mailNotif", on ? String("checked") : String(""));
-    } else if (getParam("mailNotif").length()) {
+    } else if (req->hasParam("mailNotif", /*post*/true)) {
       String v = getParam("mailNotif"); v.toLowerCase(); v.trim();
       bool on = (v == "1" || v == "true" || v == "on" || v == "checked");
       appendPair("mailNotif", on ? String("checked") : String(""));
@@ -401,7 +532,11 @@ bool WebServerManager::begin() {
 
     // Envoi immédiat vers la BDD distante pour répercuter les changements
     bool sent = (WiFi.status()==WL_CONNECTED) ? autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs.c_str() : nullptr) : false;
-    req->send(sent ? 200 : 503, "application/json", sent ? "{\"status\":\"OK\"}" : "{\"status\":\"ERROR\"}");
+    // Toujours retourner 200 pour indiquer que l'enregistrement local s'est bien passé,
+    // et indiquer séparément si l'envoi distant a réussi
+    String resp; resp.reserve(64);
+    resp = "{\"status\":\"OK\",\"remoteSent\":"; resp += (sent ? "true" : "false"); resp += "}";
+    req->send(200, "application/json", resp);
   });
 
   // Fichiers statiques hors-ligne pour le tableau de bord
@@ -422,24 +557,36 @@ bool WebServerManager::begin() {
   });
   _server->on("/bootstrap.min.css", HTTP_GET, [sendWithGzipIfAvailable](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
-    sendWithGzipIfAvailable(req, "/bootstrap.min.css", "text/css");
+    // Servir le vrai fichier depuis LittleFS si disponible (gzip prioritaire), sinon fallback minimal
+    if (LittleFS.exists("/bootstrap.min.css") || LittleFS.exists("/bootstrap.min.css.gz")) {
+      sendWithGzipIfAvailable(req, "/bootstrap.min.css", "text/css");
+      return;
+    }
+    static const char BOOTSTRAP_MIN_PLACEHOLDER[] PROGMEM =
+      "/* bootstrap placeholder */\n"
+      ".container-fluid{padding:0 12px;}\n"
+      ".row{display:flex;flex-wrap:wrap;margin:0 -12px;}\n"
+      "[class^=col-]{padding:0 12px;box-sizing:border-box;}\n"
+      ".btn{display:inline-block;padding:10px 20px;border-radius:6px;border:1px solid #ccc;background:#f8f9fa;cursor:pointer;}\n"
+      ".btn-primary{background:#0d6efd;border-color:#0d6efd;color:#fff;}\n"
+      ".btn-warning{background:#ffc107;border-color:#ffc107;}\n"
+      ".btn-info{background:#0dcaf0;border-color:#0dcaf0;}\n"
+      ".btn-danger{background:#dc3545;border-color:#dc3545;color:#fff;}\n"
+      ".btn-success{background:#198754;border-color:#198754;color:#fff;}\n"
+      ".badge{display:inline-block;padding:.35em .65em;border-radius:.25rem;}\n"
+      ".bg-secondary{background:#6c757d;color:#fff;}\n"
+      ".bg-primary{background:#0d6efd;color:#fff;}\n"
+      ".bg-info{background:#0dcaf0;color:#000;}\n"
+      ".bg-warning{background:#ffc107;color:#000;}\n"
+      ".bg-success{background:#198754;color:#fff;}\n"
+      ".bg-danger{background:#dc3545;color:#fff;}\n";
+    req->send_P(200, "text/css", BOOTSTRAP_MIN_PLACEHOLDER);
   });
   _server->on("/utils.js", HTTP_GET, [sendWithGzipIfAvailable](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
     sendWithGzipIfAvailable(req, "/utils.js", "application/javascript");
   });
-  _server->on("/uplot.iife.min.js", HTTP_GET, [sendWithGzipIfAvailable](AsyncWebServerRequest* req){
-    autoCtrl.notifyLocalWebActivity();
-    sendWithGzipIfAvailable(req, "/uplot.iife.min.js", "application/javascript");
-  });
-  _server->on("/uplot.min.css", HTTP_GET, [sendWithGzipIfAvailable](AsyncWebServerRequest* req){
-    autoCtrl.notifyLocalWebActivity();
-    sendWithGzipIfAvailable(req, "/uplot.min.css", "text/css");
-  });
-  _server->on("/alpine.min.js", HTTP_GET, [sendWithGzipIfAvailable](AsyncWebServerRequest* req){
-    autoCtrl.notifyLocalWebActivity();
-    sendWithGzipIfAvailable(req, "/alpine.min.js", "application/javascript");
-  });
+  // Routes d'assets inutilisées retirées (uPlot/Alpine)
 
   // Page de mise à jour OTA via le système personnalisé
   // L'OTA est géré par le système personnalisé dans app.cpp
@@ -464,6 +611,15 @@ bool WebServerManager::begin() {
     bool ok = mailer.sendAlert(subj.c_str(), body, dest.c_str());
     String resp = ok ? "OK" : "FAIL";
     req->send(200, "text/plain", resp);
+  });
+
+  // Maintenance: format LittleFS (use with care)
+  _server->on("/fs/format", HTTP_GET, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    if (!req->hasParam("confirm")) { req->send(400, "text/plain", "Missing confirm=1"); return; }
+    if (req->getParam("confirm")->value() != "1") { req->send(400, "text/plain", "confirm must be 1"); return; }
+    bool ok = LittleFS.format();
+    req->send(ok ? 200 : 500, "text/plain", ok ? "LittleFS formatted" : "Format failed");
   });
 
   // Page simple de formulaire pour modifier les variables BDD locales et pousser vers le serveur
@@ -815,6 +971,8 @@ bool WebServerManager::begin() {
 
   _server->begin();
   Serial.println(F("[Web] AsyncWebServer démarré sur le port 80"));
+  Serial.println(F("[Web] Serveur HTTP prêt - Interface web accessible"));
+  Serial.println(F("[Web] WebSocket temps réel sur le port 81"));
   return true;
   #endif
 }

@@ -45,6 +45,12 @@ class Automatism {
   // Commandes manuelles de la pompe aquarium via le serveur local
   void startAquaPumpManualLocal();
   void stopAquaPumpManualLocal();
+  // Commandes manuelles du chauffage via le serveur local
+  void startHeaterManualLocal();
+  void stopHeaterManualLocal();
+  // Commandes manuelles de la lumière via le serveur local
+  void startLightManualLocal();
+  void stopLightManualLocal();
   
   // Méthodes publiques pour le serveur web
   bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);
@@ -133,8 +139,8 @@ class Automatism {
   // remote fetch timing
   unsigned long _lastRemoteFetch{0};
   // Intervalle entre deux téléchargements de l'état distant
-  // Réduit de 30 s à 5 s pour un contrôle quasi temps réel via le Web
-  const unsigned long remoteFetchInterval = 3000; // 3 s - optimisé pour contrôle plus réactif
+  // Réduit à 2s pour un contrôle quasi temps réel via le Web
+  const unsigned long remoteFetchInterval = 2000; // 2 s - optimisé pour contrôle plus réactif
 
   // thresholds modifiables à distance
   uint16_t aqThresholdCm = Config::Default::AQ_LIMIT_CM;

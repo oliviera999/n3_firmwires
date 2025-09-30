@@ -53,6 +53,7 @@ TimeDriftMonitor timeDriftMonitor;
 QueueHandle_t sensorQueue;
 // Handles des tâches pour mesurer la marge de stack (HWM)
 static TaskHandle_t g_sensorTaskHandle = nullptr;
+static TaskHandle_t g_webTaskHandle = nullptr;              // Nouvelle tâche web dédiée
 static TaskHandle_t g_autoTaskHandle = nullptr;
 static TaskHandle_t g_displayTaskHandle = nullptr;
 
@@ -323,6 +324,35 @@ void displayTask(void* pv) {
   }
 }
 
+// Tâche dédiée au serveur web - Stratégie Web Dédié
+void webTask(void* pv) {
+  static bool wdtReg = false;
+  if (!wdtReg) { esp_task_wdt_add(NULL); wdtReg = true; }
+  
+  Serial.println(F("[Web] Tâche webTask démarrée - interface web dédiée"));
+  
+  TickType_t lastWake = xTaskGetTickCount();
+  const TickType_t period = pdMS_TO_TICKS(100); // 100ms pour réactivité web maximale
+  
+  for (;;) {
+    // Suspendre le traitement web pendant l'OTA pour libérer le réseau
+    if (otaManager.isUpdating()) {
+      esp_task_wdt_reset();
+      vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(500)); // Cadence réduite pendant OTA
+      continue;
+    }
+    
+    // Reset watchdog avant traitement web
+    esp_task_wdt_reset();
+    
+    // Traitement des requêtes web et WebSocket
+    webSrv.loop();
+    
+    // Délai pour éviter la surcharge CPU
+    vTaskDelayUntil(&lastWake, period);
+  }
+}
+
 void automationTask(void* pv) {
   SensorReadings r;
   unsigned long lastHb=0;
@@ -401,8 +431,20 @@ void automationTask(void* pv) {
       
       // Affichage périodique des informations de dérive temporelle
       if (now - lastDriftDisplay > DRIFT_DISPLAY_INTERVAL) {
-        Serial.println(F("=== INFORMATIONS DE DÉRIVE TEMPORELLE ==="));
+        LOG_TIME(LOG_INFO, "=== INFORMATIONS DE DÉRIVE TEMPORELLE ===");
         timeDriftMonitor.printDriftInfo();
+        
+        // Informations temporelles supplémentaires
+        time_t currentEpoch = time(nullptr);
+        struct tm timeinfo;
+        if (localtime_r(&currentEpoch, &timeinfo)) {
+          LOG_TIME(LOG_INFO, "État temporel - Heure: %02d:%02d:%02d, Date: %02d/%02d/%04d", 
+                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+          LOG_TIME(LOG_INFO, "Jour semaine: %d, Jour année: %d, DST: %s", 
+                   timeinfo.tm_wday, timeinfo.tm_yday, timeinfo.tm_isdst ? "OUI" : "NON");
+        }
+        
         lastDriftDisplay = now;
       }
     }
@@ -439,6 +481,18 @@ void setup() {
   }
   
   Serial.printf("[App] Démarrage FFP3CS v%s\n", Config::VERSION);
+  
+  // Log des informations temporelles au démarrage
+  time_t bootTime = time(nullptr);
+  struct tm bootTimeInfo;
+  if (localtime_r(&bootTime, &bootTimeInfo)) {
+    LOG_TIME(LOG_INFO, "Démarrage système - Heure: %02d:%02d:%02d, Date: %02d/%02d/%04d", 
+             bootTimeInfo.tm_hour, bootTimeInfo.tm_min, bootTimeInfo.tm_sec,
+             bootTimeInfo.tm_mday, bootTimeInfo.tm_mon + 1, bootTimeInfo.tm_year + 1900);
+    LOG_TIME(LOG_INFO, "Epoch au démarrage: %lu", bootTime);
+  } else {
+    LOG_TIME(LOG_WARN, "Impossible de récupérer l'heure au démarrage");
+  }
   EventLog::addf("App start v%s", Config::VERSION);
   
   // Valide la nouvelle image si on vient juste d'être mis à jour
@@ -451,7 +505,8 @@ void setup() {
   
   // Configuration NTP
   power.setNTPConfig(SystemConfig::NTP_GMT_OFFSET_SEC, SystemConfig::NTP_DAYLIGHT_OFFSET_SEC, SystemConfig::NTP_SERVER);
-  
+
+  timeDriftMonitor.attachPowerManager(&power);
   // Initialisation du moniteur de dérive temporelle
   timeDriftMonitor.begin();
   EventLog::add("Time drift monitor init");
@@ -677,11 +732,17 @@ void setup() {
   config.loadBouffeFlags();
   autoCtrl.begin();
 
-  // --- Première synchronisation distante -----------------------------
+  // --- Première synchronisation distante IMMÉDIATE -----------------------------
   if (WiFi.status() == WL_CONNECTED) {
-    // 1) Récupération des variables distantes AVANT la vérification OTA
+    // 1) Récupération IMMÉDIATE des variables distantes pour un chargement web rapide
+    Serial.println("[App] Chargement immédiat des variables distantes...");
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;  // taille confortable
-    autoCtrl.fetchRemoteState(tmp);
+    bool remoteOk = autoCtrl.fetchRemoteState(tmp);
+    if (remoteOk) {
+      Serial.println("[App] Variables distantes chargées avec succès");
+    } else {
+      Serial.println("[App] Échec chargement variables distantes - utilisation du cache");
+    }
 
     // 2) Vérification des mises à jour OTA et envoi d'emails de notification
     // (maintenant que les variables distantes sont à jour)
@@ -774,23 +835,25 @@ void setup() {
     delay(SystemConfig::FINAL_INIT_DELAY_MS); // 1 seconde propre pour lire le message final
   }
   
-  // Création queue & tasks FreeRTOS
+  // Création queue & tasks FreeRTOS - Stratégie Web Dédié
   sensorQueue = xQueueCreate(5, sizeof(SensorReadings));
   if (sensorQueue) {
-    xTaskCreatePinnedToCore(sensorTask, "sensorTask", TaskConfig::SENSOR_TASK_STACK_SIZE, nullptr, TaskConfig::SENSOR_TASK_PRIORITY, &g_sensorTaskHandle, TaskConfig::TASK_CORE_ID); // core 1 - priorité haute pour l'acquisition
-    xTaskCreatePinnedToCore(automationTask, "autoTask", TaskConfig::AUTOMATION_TASK_STACK_SIZE, nullptr, TaskConfig::AUTOMATION_TASK_PRIORITY, &g_autoTaskHandle, TaskConfig::TASK_CORE_ID); // priorité intermédiaire pour la logique
+    xTaskCreatePinnedToCore(sensorTask, "sensorTask", TaskConfig::SENSOR_TASK_STACK_SIZE, nullptr, TaskConfig::SENSOR_TASK_PRIORITY, &g_sensorTaskHandle, TaskConfig::TASK_CORE_ID); // core 1 - priorité CRITIQUE pour l'acquisition
+    xTaskCreatePinnedToCore(webTask, "webTask", TaskConfig::WEB_TASK_STACK_SIZE, nullptr, TaskConfig::WEB_TASK_PRIORITY, &g_webTaskHandle, TaskConfig::TASK_CORE_ID); // priorité HAUTE pour l'interface web
+    xTaskCreatePinnedToCore(automationTask, "autoTask", TaskConfig::AUTOMATION_TASK_STACK_SIZE, nullptr, TaskConfig::AUTOMATION_TASK_PRIORITY, &g_autoTaskHandle, TaskConfig::TASK_CORE_ID); // priorité MOYENNE pour la logique pure
     // Tâche d'affichage OLED avec stack augmenté et fréquence réduite
-    xTaskCreatePinnedToCore(displayTask, "displayTask", TaskConfig::DISPLAY_TASK_STACK_SIZE, nullptr, TaskConfig::DISPLAY_TASK_PRIORITY, &g_displayTaskHandle, TaskConfig::TASK_CORE_ID); // priorité basse pour l'affichage
+    xTaskCreatePinnedToCore(displayTask, "displayTask", TaskConfig::DISPLAY_TASK_STACK_SIZE, nullptr, TaskConfig::DISPLAY_TASK_PRIORITY, &g_displayTaskHandle, TaskConfig::TASK_CORE_ID); // priorité BASSE pour l'affichage
     // Log unique des marges de stack au boot
     vTaskDelay(pdMS_TO_TICKS(50)); // petite latence pour laisser démarrer
     UBaseType_t hwmSensor  = g_sensorTaskHandle  ? uxTaskGetStackHighWaterMark(g_sensorTaskHandle)  : 0;
+    UBaseType_t hwmWeb     = g_webTaskHandle     ? uxTaskGetStackHighWaterMark(g_webTaskHandle)     : 0;
     UBaseType_t hwmAuto    = g_autoTaskHandle    ? uxTaskGetStackHighWaterMark(g_autoTaskHandle)    : 0;
     UBaseType_t hwmDisplay = g_displayTaskHandle ? uxTaskGetStackHighWaterMark(g_displayTaskHandle) : 0;
     UBaseType_t hwmLoop    = uxTaskGetStackHighWaterMark(NULL);
-    Serial.printf("[Stacks] HWM at boot - sensor:%u auto:%u display:%u loop:%u bytes\n",
-                  (unsigned)hwmSensor, (unsigned)hwmAuto, (unsigned)hwmDisplay, (unsigned)hwmLoop);
-    EventLog::addf("Stacks HWM boot sensor=%u auto=%u display=%u loop=%u",
-                   (unsigned)hwmSensor, (unsigned)hwmAuto, (unsigned)hwmDisplay, (unsigned)hwmLoop);
+    Serial.printf("[Stacks] HWM at boot - sensor:%u web:%u auto:%u display:%u loop:%u bytes\n",
+                  (unsigned)hwmSensor, (unsigned)hwmWeb, (unsigned)hwmAuto, (unsigned)hwmDisplay, (unsigned)hwmLoop);
+    EventLog::addf("Stacks HWM boot sensor=%u web=%u auto=%u display=%u loop=%u",
+                   (unsigned)hwmSensor, (unsigned)hwmWeb, (unsigned)hwmAuto, (unsigned)hwmDisplay, (unsigned)hwmLoop);
   }
   
   Serial.println(F("[App] Initialisation terminée"));
@@ -831,6 +894,7 @@ void loop() {
       // Ajouter marges de stack des tâches si disponibles
       body += "[Stacks] Marges (bytes):\n";
       if (g_sensorTaskHandle) { body += "- sensorTask: "; body += String(uxTaskGetStackHighWaterMark(g_sensorTaskHandle)); body += "\n"; }
+      if (g_webTaskHandle)    { body += "- webTask: ";    body += String(uxTaskGetStackHighWaterMark(g_webTaskHandle));    body += "\n"; }
       if (g_autoTaskHandle)   { body += "- autoTask: ";   body += String(uxTaskGetStackHighWaterMark(g_autoTaskHandle));   body += "\n"; }
       if (g_displayTaskHandle){ body += "- displayTask: ";body += String(uxTaskGetStackHighWaterMark(g_displayTaskHandle));body += "\n"; }
       // Marge de la loop() actuelle

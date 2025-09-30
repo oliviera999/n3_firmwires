@@ -17,14 +17,14 @@ SensorReadings SystemSensors::read() {
   SensorReadings r{};
 
   // Reset watchdog at the start of sensor reading
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset(); // Commenté pour compatibilité
 
   // --- Mesures sécurisées avec validation ---
   const uint8_t MAX_RETRIES = 3;
 
   // Température eau avec récupération ultra-robuste (0 – 60 °C attendue)
   {
-    esp_task_wdt_reset(); // Reset watchdog before water temperature reading
+    // esp_task_wdt_reset(); // Reset watchdog before water temperature reading
     
     // Utilise d'abord la méthode robuste standard
     float val = _water.robustTemperatureC();
@@ -62,7 +62,7 @@ SensorReadings SystemSensors::read() {
 
   // Température air avec récupération robuste (+5 – 60 °C attendue)
   {
-    esp_task_wdt_reset(); // Reset watchdog before air temperature reading
+    // esp_task_wdt_reset(); // Reset watchdog before air temperature reading
     float val = _air.robustTemperatureC(); // Utilise la méthode robuste avec récupération
     
     // Validation finale pour s'assurer qu'aucune valeur négative n'est transmise
@@ -76,7 +76,7 @@ SensorReadings SystemSensors::read() {
 
   // Humidité avec récupération robuste (5 – 100 %)
   {
-    esp_task_wdt_reset(); // Reset watchdog before humidity reading
+    // esp_task_wdt_reset(); // Reset watchdog before humidity reading
     float val = _air.robustHumidity(); // Utilise la méthode robuste avec récupération
     
     // Validation finale pour s'assurer qu'aucune valeur invalide n'est transmise
@@ -90,7 +90,7 @@ SensorReadings SystemSensors::read() {
 
   // Niveaux d'eau avec validation
   {
-    esp_task_wdt_reset(); // Reset watchdog before potager level reading
+    // esp_task_wdt_reset(); // Reset watchdog before potager level reading
     uint16_t val = _usPota.readAdvancedFiltered();
     if (val == 0 || val > 500) { // 0 = invalide, >500cm = aberrant
       Serial.printf("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
@@ -101,7 +101,7 @@ SensorReadings SystemSensors::read() {
   }
   
   {
-    esp_task_wdt_reset(); // Reset watchdog before aquarium level reading
+    // esp_task_wdt_reset(); // Reset watchdog before aquarium level reading
     uint16_t val = _usAqua.readAdvancedFiltered();
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
@@ -134,7 +134,7 @@ SensorReadings SystemSensors::read() {
   }
   
   {
-    esp_task_wdt_reset(); // Reset watchdog before tank level reading
+    // esp_task_wdt_reset(); // Reset watchdog before tank level reading
     uint16_t val = _usTank.readAdvancedFiltered();
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
@@ -161,7 +161,7 @@ SensorReadings SystemSensors::read() {
   
   // Luminosité avec validation
   {
-    esp_task_wdt_reset(); // Reset watchdog before luminosity reading
+    // esp_task_wdt_reset(); // Reset watchdog before luminosity reading
     uint32_t lumiSum = 0;
     const uint8_t NB_LUMI_SAMPLES = 12; // 12 échantillons pour réduire le bruit
     for (uint8_t i = 0; i < NB_LUMI_SAMPLES; ++i) {
@@ -205,16 +205,11 @@ SensorReadings SystemSensors::read() {
   }
 
   // Reset watchdog at the end of sensor reading
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();
   
   LOG(LOG_DEBUG, "Sensors TWater=%.1fC TAir=%.1fC Hum=%.1f%% wlA=%u wlT=%u wlP=%u Lux=%u V=%u mV", r.tempWater, r.tempAir, r.humidity, r.wlAqua, r.wlTank, r.wlPota, r.luminosite, r.voltageMv);
 
   return r;
-}
-
-int SystemSensors::diffMaree() {
-  uint16_t current = _usAqua.readAdvancedFiltered();
-  return diffMaree(current);
 }
 
 int SystemSensors::diffMaree(uint16_t currentAqua) {
@@ -243,7 +238,8 @@ int SystemSensors::diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const {
   for (uint8_t i = 0; i < _aquaHistCount; ++i) {
     uint8_t idx = (uint8_t)((_aquaHistHead + AQUA_HIST_SIZE - 1 - i) % AQUA_HIST_SIZE);
     uint32_t t = _aquaHistTime[idx];
-    uint32_t dt = (t > target) ? (t - target) : (target - t);
+    int32_t diff = static_cast<int32_t>(t - target);
+    uint32_t dt = diff >= 0 ? static_cast<uint32_t>(diff) : static_cast<uint32_t>(-diff);
     if (dt < bestDt) { bestDt = dt; bestIdx = idx; }
     // petit early break si on est déjà très proche (<1s)
     if (bestDt < 1000UL) break;

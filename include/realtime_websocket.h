@@ -28,9 +28,9 @@ private:
     
     static constexpr unsigned long BROADCAST_INTERVAL_MS = 
         #ifdef BOARD_S3
-        500;  // ESP32-S3 : mises à jour plus fréquentes
+        250;  // ESP32-S3 : mises à jour très fréquentes
         #else
-        1000; // ESP32-WROOM : mises à jour standard
+        500; // ESP32-WROOM : mises à jour optimisées
         #endif
     
     unsigned long lastBroadcast = 0;
@@ -67,7 +67,8 @@ public:
         });
         
         isActive = true;
-        Serial.printf("[WebSocket] Serveur démarré sur le port %d\n", WS_PORT);
+        Serial.printf("[WebSocket] Serveur WebSocket démarré sur le port %d\n", WS_PORT);
+        Serial.println("[WebSocket] Temps réel activé - Connexions WebSocket acceptées");
     }
     
     /**
@@ -257,6 +258,43 @@ public:
             lastBroadcast = now;
         }
         
+        if (mutex) {
+            xSemaphoreGive(mutex);
+        }
+    }
+
+    /**
+     * Diffuse immédiatement un état courant, sans attendre l'intervalle
+     */
+    void broadcastNow() {
+        if (!isActive || !sensors || !actuators) return;
+        if (mutex) {
+            xSemaphoreTake(mutex, portMAX_DELAY);
+        }
+        // Utiliser le pool JSON
+        ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
+        if (doc) {
+            SensorReadings readings = sensorCache.getReadings(*sensors);
+            (*doc)["type"] = "sensor_update";
+            (*doc)["tempWater"] = readings.tempWater;
+            (*doc)["tempAir"] = readings.tempAir;
+            (*doc)["humidity"] = readings.humidity;
+            (*doc)["wlAqua"] = readings.wlAqua;
+            (*doc)["wlTank"] = readings.wlTank;
+            (*doc)["wlPota"] = readings.wlPota;
+            (*doc)["luminosite"] = readings.luminosite;
+            (*doc)["pumpAqua"] = actuators->isAquaPumpRunning();
+            (*doc)["pumpTank"] = actuators->isTankPumpRunning();
+            (*doc)["heater"] = actuators->isHeaterOn();
+            (*doc)["light"] = actuators->isLightOn();
+            (*doc)["voltage"] = readings.voltageMv;
+            (*doc)["voltageV"] = (float)readings.voltageMv / 1000.0f;
+            (*doc)["timestamp"] = millis();
+            String json; serializeJson(*doc, json);
+            webSocket.broadcastTXT(json);
+            jsonPool.release(doc);
+        }
+        lastBroadcast = millis();
         if (mutex) {
             xSemaphoreGive(mutex);
         }
