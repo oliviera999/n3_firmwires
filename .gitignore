@@ -23,7 +23,7 @@ include/secrets.h
 # Fichiers système
 .DS_Store
 Thumbs.db
-desktop.ini
+**/desktop.ini
 
 # Fichiers de test
 test_results/
