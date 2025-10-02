@@ -20,9 +20,10 @@ include/secrets.h
 *.swo
 *~
 
-# Fichiers système
+# Fichiers système Windows
 .DS_Store
 Thumbs.db
+desktop.ini
 **/desktop.ini
 
 # Fichiers de test
@@ -38,4 +39,7 @@ test_results/
 
 # Fichiers de configuration locale
 platformio_override.ini
-ffp3distant/ffp3datas/
+
+# Sous-module ffp3distant - gestion via Git submodule
+# Le dossier ffp3distant sera géré comme un sous-module
+# Seuls les fichiers .gitmodules et les références de commit seront suivis
