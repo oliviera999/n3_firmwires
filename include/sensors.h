@@ -30,9 +30,9 @@ class UltrasonicManager {
   static const uint16_t MAX_DISTANCE_DELTA = 30; // Augmenté de 20 à 30 cm
   static const uint8_t MIN_VALID_READINGS = 1; // Réduit de 2 à 1
   static const uint8_t READINGS_COUNT = 3; // 3 lectures suffisent avec délais allongés
-  static const uint16_t MIN_DISTANCE = 0; // Réduit de 1 à 0 cm
-  static const uint16_t MAX_DISTANCE = 500; // Inchangé
-  static const uint16_t SETTLE_TIME_US = 200; // temps de stabilisation avant écoute
+  static const uint16_t MIN_DISTANCE = 2; // Minimum selon datasheet HC-SR04
+  static const uint16_t MAX_DISTANCE = 400; // Maximum selon datasheet HC-SR04 (4m)
+  static const uint32_t MIN_DELAY_BETWEEN_MEASUREMENTS_MS = 60; // Délai minimum recommandé entre mesures
 };
 
 class AirSensor {
@@ -111,7 +111,7 @@ class WaterTempSensor {
   // Configuration du filtrage
   static constexpr float MAX_TEMP_DELTA = SensorConfig::WaterTemp::MAX_DELTA;
   static constexpr uint8_t MIN_VALID_READINGS = SensorConfig::WaterTemp::MIN_READINGS;
-  static constexpr uint8_t READINGS_COUNT = 3; // local override for filtered loop
+  static constexpr uint8_t READINGS_COUNT = 2; // Optimisé : 2 lectures suffisent avec médiane
   
   // Configuration de récupération
   static constexpr uint8_t MAX_RECOVERY_ATTEMPTS = SensorConfig::WaterTemp::MAX_RETRIES; // réutilise comme nombre de tentatives
@@ -119,10 +119,12 @@ class WaterTempSensor {
   static constexpr uint16_t SENSOR_RESET_DELAY_MS = 1000;
   
   // CONSTANTES OPTIMISÉES POUR ROBUSTESSE DS18B20
+  // Résolution 10-bit = 0.25°C, conversion = 187.5ms selon datasheet
+  // Délai de 220ms = 187.5ms + 17% de marge (recommandation officielle: +10-20%)
   static constexpr uint8_t DS18B20_RESOLUTION = 10;
-  static constexpr uint16_t CONVERSION_DELAY_MS = 200;
+  static constexpr uint16_t CONVERSION_DELAY_MS = 220;  // Augmenté de 200ms à 220ms pour conformité datasheet
   static constexpr uint16_t READING_INTERVAL_MS = 300;
-  static constexpr uint8_t STABILIZATION_READINGS = 1;
+  static constexpr uint8_t STABILIZATION_READINGS = 0; // Optimisé : pas de phase de stabilisation (pipeline suffit)
   static constexpr uint8_t MAX_READING_RETRIES = SensorConfig::WaterTemp::MAX_RETRIES;
   static constexpr uint16_t ONEWIRE_RESET_DELAY_MS = 100;
   

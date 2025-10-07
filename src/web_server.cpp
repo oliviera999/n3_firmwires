@@ -18,17 +18,23 @@
 #include "network_optimizer.h"
 #include "realtime_websocket.h"
 #include "asset_bundler.h"
+#include "event_log.h"
 #include "psram_optimizer.h"
  
 extern Automatism autoCtrl;
 extern Mailer mailer;
 extern ConfigManager config;
 extern PowerManager power;
+extern WifiManager wifi;
 
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts)
     : _sensors(sensors), _acts(acts), _diag(nullptr) {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
+  // OPTIMISATION: Configuration serveur pour meilleure réactivité
+  _server = new AsyncWebServer(80);
+  // OPTIMISATION: Configuration serveur pour meilleure réactivité
+  // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
   #endif
 }
 
@@ -36,6 +42,10 @@ WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts
     : _sensors(sensors), _acts(acts), _diag(&diag) {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
+  // OPTIMISATION: Configuration serveur pour meilleure réactivité
+  _server = new AsyncWebServer(80);
+  // OPTIMISATION: Configuration serveur pour meilleure réactivité
+  // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
   #endif
 }
 
@@ -54,8 +64,10 @@ bool WebServerManager::begin() {
   Serial.println("[WebServer] Mode minimal - serveur web désactivé");
   return true;
   #else
-  // Initialiser l'optimiseur PSRAM
+  // Initialiser l'optimiseur PSRAM (seulement pour ESP32-S3)
+  #ifdef BOARD_S3
   PSRAMOptimizer::init();
+  #endif
   
   // Initialiser le serveur WebSocket temps réel
   realtimeWebSocket.begin(_sensors, _acts);
@@ -63,22 +75,85 @@ bool WebServerManager::begin() {
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
   
-  // Page principale - Version consolidée avec thème sombre
-  _server->on("/", HTTP_GET, [](AsyncWebServerRequest* req){
-      autoCtrl.notifyLocalWebActivity();
-      if (LittleFS.exists("/index.html")) {
+  // Alternative robuste pour servir index.html sans Content-Length mismatch
+  auto serveIndexRobust = [](AsyncWebServerRequest* req) {
+    // Vérification de mémoire avant traitement
+    uint32_t freeHeap = ESP.getFreeHeap();
+    Serial.printf("[Web] 📊 Heap libre avant traitement: %u bytes\n", freeHeap);
+    
+    if (freeHeap < 50000) { // Moins de 50KB libre
+      Serial.println("[Web] ⚠️ Mémoire insuffisante pour servir index.html");
+      return false;
+    }
+    
+    if (LittleFS.exists("/index.html")) {
+      Serial.println("[Web] 📁 Serving index.html with streaming method");
+      
+      File file = LittleFS.open("/index.html", "r");
+      if (file) {
+        size_t fileSize = file.size();
+        Serial.printf("[Web] 📏 File size: %u bytes\n", fileSize);
+        
+        // Utiliser le streaming pour éviter les problèmes de mémoire
+        file.close();
         AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/index.html", "text/html");
         if (r) {
           r->addHeader("Cache-Control", "public, max-age=300");
           r->addHeader("X-Content-Type-Options", "nosniff");
           r->addHeader("X-Frame-Options", "DENY");
           req->send(r);
+          Serial.println("[Web] ✅ index.html sent successfully (streaming method)");
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Page principale - Version consolidée avec thème sombre
+  _server->on("/", HTTP_GET, [serveIndexRobust](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      
+      Serial.printf("[Web] 🌐 Requête / depuis %s\n", req->client()->remoteIP().toString().c_str());
+      
+      // Essayer d'abord la méthode robuste
+      if (serveIndexRobust(req)) {
+        Serial.printf("[Web] 📊 Heap libre après traitement: %u bytes\n", ESP.getFreeHeap());
+        return;
+      }
+      
+      // Fallback vers la méthode originale si la robuste échoue
+      if (LittleFS.exists("/index.html")) {
+        Serial.println("[Web] 📁 Serving index.html from LittleFS (fallback)");
+        
+        // CORRECTION: Ouvrir le fichier pour calculer la taille exacte et éviter Content-Length mismatch
+        File file = LittleFS.open("/index.html", "r");
+        if (file) {
+          size_t fileSize = file.size();
+          Serial.printf("[Web] 📏 File size: %u bytes\n", fileSize);
+          file.close();
+          
+          AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/index.html", "text/html");
+          if (r) {
+            r->addHeader("Cache-Control", "public, max-age=300");
+            r->addHeader("X-Content-Type-Options", "nosniff");
+            r->addHeader("X-Frame-Options", "DENY");
+            req->send(r);
+            Serial.println("[Web] ✅ index.html sent successfully from LittleFS");
+          } else {
+            Serial.println("[Web] ❌ ERROR: beginResponse LittleFS failed");
+            req->send(500, "text/plain", "LittleFS response failed");
+          }
         } else {
-          req->send(500);
+          Serial.println("[Web] ❌ ERROR: Cannot open index.html file");
+          req->send(500, "text/plain", "Cannot open index.html");
         }
       } else {
+        Serial.println("[Web] ⚠️ index.html not found in LittleFS, using embedded fallback");
         // Fallback vers la version embarquée
         size_t len = strlen_P((PGM_P)INDEX_HTML);
+        Serial.printf("[Web] 📦 Fallback size: %u bytes\n", len);
+        
         AsyncWebServerResponse* r = req->beginResponse_P(
           200,
           "text/html",
@@ -90,22 +165,37 @@ bool WebServerManager::begin() {
           r->addHeader("X-Content-Type-Options", "nosniff");
           r->addHeader("X-Frame-Options", "DENY");
           req->send(r);
+          Serial.println("[Web] ✅ Fallback sent successfully");
         } else {
-          req->send(500);
+          Serial.println("[Web] ❌ ERROR: beginResponse_P failed");
+          req->send(500, "text/plain", "Fallback response failed");
         }
       }
+      
+      // Diagnostic de mémoire après traitement
+      Serial.printf("[Web] 📊 Heap libre après traitement: %u bytes\n", ESP.getFreeHeap());
   });
   _server->on("/index.html", HTTP_GET, [](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
       if (LittleFS.exists("/index.html")) {
-        AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/index.html", "text/html");
-        if (r) {
-          r->addHeader("Cache-Control", "public, max-age=300");
-          r->addHeader("X-Content-Type-Options", "nosniff");
-          r->addHeader("X-Frame-Options", "DENY");
-          req->send(r);
+        // CORRECTION: Ouvrir le fichier pour calculer la taille exacte
+        File file = LittleFS.open("/index.html", "r");
+        if (file) {
+          size_t fileSize = file.size();
+          Serial.printf("[Web] 📏 /index.html size: %u bytes\n", fileSize);
+          file.close();
+          
+          AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/index.html", "text/html");
+          if (r) {
+            r->addHeader("Cache-Control", "public, max-age=300");
+            r->addHeader("X-Content-Type-Options", "nosniff");
+            r->addHeader("X-Frame-Options", "DENY");
+            req->send(r);
+          } else {
+            req->send(500, "text/plain", "Failed to open index.html");
+          }
         } else {
-          req->send(500);
+          req->send(500, "text/plain", "Cannot open index.html file");
         }
       } else {
         // Fallback vers la version embarquée
@@ -122,7 +212,7 @@ bool WebServerManager::begin() {
           r->addHeader("X-Frame-Options", "DENY");
           req->send(r);
         } else {
-          req->send(500);
+          req->send(500, "text/plain", "Failed to send fallback");
         }
       }
   });
@@ -140,6 +230,118 @@ bool WebServerManager::begin() {
   // Fichiers statiques accessibles sous /static (pour le reste des assets)
   // _server->serveStatic("/static", LittleFS, "/"); // non utilisé par l'UI actuelle
   
+  // Routes pour la nouvelle structure modulaire
+  _server->serveStatic("/shared/", LittleFS, "/shared/").setCacheControl("max-age=86400");
+  _server->serveStatic("/pages/", LittleFS, "/pages/").setCacheControl("max-age=3600");
+  _server->serveStatic("/assets/", LittleFS, "/assets/").setCacheControl("max-age=604800");
+  
+  // ========================================
+  // ENDPOINTS DE RÉVEIL POUR MODEM SLEEP
+  // ========================================
+  
+  // Endpoint ping simple pour réveil minimal
+  _server->on("/ping", HTTP_GET, [](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      Serial.println("[Web] 🏓 Ping reçu - Réveil système");
+      EventLog::add("Réveil par ping");
+      
+      StaticJsonDocument<128> doc;
+      doc["status"] = "awake";
+      doc["timestamp"] = power.getCurrentTimeString();
+      doc["uptime_ms"] = millis();
+      
+      String response;
+      serializeJson(doc, response);
+      req->send(200, "application/json", response);
+  });
+  
+  // Endpoint wakeup avec action spécifique
+  _server->on("/wakeup", HTTP_GET, [](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      Serial.println("[Web] 🔔 Réveil explicite demandé");
+      EventLog::add("Réveil par requête HTTP /wakeup");
+      
+      StaticJsonDocument<256> doc;
+      doc["status"] = "awake";
+      doc["timestamp"] = power.getCurrentTimeString();
+      doc["wakeup_source"] = "http_request";
+      doc["uptime_ms"] = millis();
+      
+      String response;
+      serializeJson(doc, response);
+      req->send(200, "application/json", response);
+      
+      // Mettre à jour les données temps réel
+      realtimeWebSocket.broadcastNow();
+  });
+  
+  // Endpoint API de réveil avec paramètres
+  _server->on("/api/wakeup", HTTP_POST, [](AsyncWebServerRequest* req){
+      autoCtrl.notifyLocalWebActivity();
+      Serial.println("[Web] 🔔 Réveil par API POST");
+      
+      // Parser le JSON de la requête
+      StaticJsonDocument<512> doc;
+      String body = req->_tempObject ? String((char*)req->_tempObject) : "";
+      DeserializationError error = deserializeJson(doc, body);
+      
+      if (error) {
+          req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+      }
+      
+      String action = doc["action"] | "unknown";
+      String source = doc["source"] | "api";
+      
+      Serial.printf("[Web] Action de réveil: %s depuis %s\n", action.c_str(), source.c_str());
+      EventLog::addf("Réveil API: %s depuis %s", action.c_str(), source.c_str());
+      
+      // Traitement selon l'action
+      if (action == "status") {
+          // Retourner le statut système
+          StaticJsonDocument<1024> statusDoc;
+          statusDoc["status"] = "awake";
+          statusDoc["timestamp"] = power.getCurrentTimeString();
+          statusDoc["uptime_ms"] = millis();
+          statusDoc["wifi_connected"] = (WiFi.status() == WL_CONNECTED);
+          if (WiFi.status() == WL_CONNECTED) {
+              statusDoc["wifi_ip"] = WiFi.localIP().toString();
+              statusDoc["wifi_rssi"] = WiFi.RSSI();
+          }
+          
+          String response;
+          serializeJson(statusDoc, response);
+          req->send(200, "application/json", response);
+          
+      } else if (action == "feed") {
+          // Déclencher un nourrissage à distance
+          Serial.println("[Web] 🍽️ Déclenchement nourrissage à distance");
+          autoCtrl.manualFeedSmall();
+          
+          StaticJsonDocument<128> feedDoc;
+          feedDoc["status"] = "feeding_triggered";
+          feedDoc["timestamp"] = power.getCurrentTimeString();
+          
+          String response;
+          serializeJson(feedDoc, response);
+          req->send(200, "application/json", response);
+          
+      } else {
+          // Action générale
+          StaticJsonDocument<128> doc;
+          doc["status"] = "awake";
+          doc["action"] = action;
+          doc["timestamp"] = power.getCurrentTimeString();
+          
+          String response;
+          serializeJson(doc, response);
+          req->send(200, "application/json", response);
+      }
+      
+      // Mettre à jour les données temps réel
+      realtimeWebSocket.broadcastNow();
+  });
+
   // Route pour accéder à la version consolidée (redirection vers /)
   _server->on("/optimized", HTTP_GET, [](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
@@ -173,12 +375,20 @@ bool WebServerManager::begin() {
       autoCtrl.notifyLocalWebActivity();
       String resp="";
       
+      Serial.printf("[Web] 🎮 Action request from %s\n", req->client()->remoteIP().toString().c_str());
+      
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
           String c = req->getParam("cmd")->value();
+          Serial.printf("[Web] 🎯 Command: %s\n", c.c_str());
+          
           if (c == "feedSmall") {
+              Serial.println("[Web] 🐟 Starting manual feed small...");
               // EXÉCUTION IMMÉDIATE - Pas de délai
               autoCtrl.manualFeedSmall();
+              
+              // Push UI refresh IMMÉDIAT (avant tout le reste)
+              realtimeWebSocket.broadcastNow();
               
               // Notification & synchro en arrière-plan (non bloquant)
               if (autoCtrl.isEmailEnabled()) {
@@ -186,86 +396,152 @@ bool WebServerManager::begin() {
                                                                autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
                   mailer.sendAlert("Bouffe manuelle", message, autoCtrl.getEmailAddress().c_str());
                   autoCtrl.triggerMailBlink();
+                  Serial.println("[Web] 📧 Email notification sent for small feed");
               }
               
-              // Synchronisation serveur immédiate (optimisée)
+              // Synchronisation serveur en arrière-plan (non bloquant)
               autoCtrl.sendFullUpdate(_sensors.read());
               
-              // Push UI refresh immédiat
-              realtimeWebSocket.broadcastNow();
               resp="FEED_SMALL OK";
+              Serial.println("[Web] ✅ Small feed completed successfully");
           }
           else if (c == "feedBig") {
+              Serial.println("[Web] 🐠 Starting manual feed big...");
               // EXÉCUTION IMMÉDIATE - Pas de délai
               autoCtrl.manualFeedBig();
+              
+              // Push UI refresh IMMÉDIAT (avant tout le reste)
+              realtimeWebSocket.broadcastNow();
               
               if (autoCtrl.isEmailEnabled()) {
                   String message = autoCtrl.createFeedingMessage("Bouffe manuelle - Gros poissons", 
                                                                autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
                   mailer.sendAlert("Bouffe manuelle", message, autoCtrl.getEmailAddress().c_str());
                   autoCtrl.triggerMailBlink();
+                  Serial.println("[Web] 📧 Email notification sent for big feed");
               }
               
-              // Synchronisation serveur immédiate (optimisée)
+              // Synchronisation serveur en arrière-plan (non bloquant)
               autoCtrl.sendFullUpdate(_sensors.read());
               
-              realtimeWebSocket.broadcastNow();
               resp="FEED_BIG OK";
+              Serial.println("[Web] ✅ Big feed completed successfully");
+          }
+          else if (c == "forceWakeup") {
+              Serial.println("[Web] 🔄 Toggling Force Wakeup...");
+              // Toggle Force Wakeup
+              autoCtrl.toggleForceWakeup();
+              // Push UI refresh IMMÉDIAT
+              realtimeWebSocket.broadcastNow();
+              resp="FORCE_WAKEUP TOGGLE OK";
+              Serial.printf("[Web] ✅ Force Wakeup toggled: %s\n", autoCtrl.getForceWakeUp() ? "ON" : "OFF");
+          }
+          else if (c == "resetMode") {
+              Serial.println("[Web] 🔄 Triggering Reset Mode...");
+              // Trigger Reset Mode
+              autoCtrl.triggerResetMode();
+              // Push UI refresh IMMÉDIAT
+              realtimeWebSocket.broadcastNow();
+              resp="RESET_MODE TRIGGERED OK";
+              Serial.println("[Web] ✅ Reset Mode triggered");
+          }
+          else if (c == "wifiToggle") {
+              Serial.println("[Web] 📶 WiFi toggle requested...");
+              // Toggle WiFi connection/disconnection
+              if (wifi.isConnected()) {
+                  Serial.println("[Web] 📶 Disconnecting WiFi...");
+                  // Déconnexion
+                  wifi.disconnect();
+                  resp="WIFI_DISCONNECTED OK";
+                  Serial.println("[Web] ✅ WiFi disconnected");
+              } else {
+                  Serial.println("[Web] 📶 Reconnecting WiFi...");
+                  // Reconnexion
+                  bool success = wifi.reconnect();
+                  if (success) {
+                      resp="WIFI_RECONNECTED OK";
+                      Serial.println("[Web] ✅ WiFi reconnected successfully");
+                  } else {
+                      resp="WIFI_RECONNECT_FAILED";
+                      Serial.println("[Web] ❌ WiFi reconnection failed");
+                  }
+              }
+              // Push UI refresh IMMÉDIAT
+              realtimeWebSocket.broadcastNow();
           }
       }
       
       // Traitement des relais avec feedback immédiat
       if (req->hasParam("relay")) {
           String rel = req->getParam("relay")->value();
+          Serial.printf("[Web] 🔌 Relay control: %s\n", rel.c_str());
+          
           if (rel == "pumpTank") {
               if (_acts.isTankPumpRunning()) {
+                  Serial.println("[Web] 💧 Stopping tank pump...");
                   autoCtrl.stopTankPumpManual();
                   resp="PUMP_TANK OFF";
+                  Serial.println("[Web] ✅ Tank pump stopped");
               }
               else {
+                  Serial.println("[Web] 💧 Starting tank pump...");
                   autoCtrl.startTankPumpManual();
                   resp="PUMP_TANK ON";
+                  Serial.println("[Web] ✅ Tank pump started");
               }
               // Feedback immédiat
               realtimeWebSocket.broadcastNow();
           } else if (rel == "pumpAqua") {
               if (_acts.isAquaPumpRunning()) {
-                  Serial.println(F("[Web] Aqua OFF (toggle local)"));
+                  Serial.println("[Web] 🐠 Stopping aqua pump...");
                   autoCtrl.stopAquaPumpManualLocal(); 
                   resp="PUMP_AQUA OFF";
+                  Serial.println("[Web] ✅ Aqua pump stopped");
               }
               else { 
+                  Serial.println("[Web] 🐠 Starting aqua pump...");
                   autoCtrl.startAquaPumpManualLocal(); 
                   resp="PUMP_AQUA ON"; 
+                  Serial.println("[Web] ✅ Aqua pump started");
               }
               // Feedback immédiat
               realtimeWebSocket.broadcastNow();
           } else if (rel == "heater") {
               if (_acts.isHeaterOn()) { 
+                  Serial.println("[Web] 🔥 Stopping heater...");
                   autoCtrl.stopHeaterManualLocal(); 
                   resp="HEATER OFF"; 
+                  Serial.println("[Web] ✅ Heater stopped");
               }
               else { 
+                  Serial.println("[Web] 🔥 Starting heater...");
                   autoCtrl.startHeaterManualLocal(); 
                   resp="HEATER ON"; 
+                  Serial.println("[Web] ✅ Heater started");
               }
-              // Feedback immédiat
-              realtimeWebSocket.broadcastNow();
+              // CORRECTION : Confirmation immédiate spécifique pour éviter les timeouts
+              realtimeWebSocket.sendActionConfirm("heater", resp);
           } else if (rel == "light") {
               if (_acts.isLightOn()) { 
+                  Serial.println("[Web] 💡 Stopping light...");
                   autoCtrl.stopLightManualLocal(); 
                   resp="LIGHT OFF"; 
+                  Serial.println("[Web] ✅ Light stopped");
               }
               else { 
+                  Serial.println("[Web] 💡 Starting light...");
                   autoCtrl.startLightManualLocal(); 
                   resp="LIGHT ON"; 
+                  Serial.println("[Web] ✅ Light started");
               }
-              // Feedback immédiat
-              realtimeWebSocket.broadcastNow();
+              // CORRECTION : Confirmation immédiate spécifique pour éviter les timeouts
+              realtimeWebSocket.sendActionConfirm("light", resp);
           }
       }
       
       if(resp=="") resp="OK";
+      
+      Serial.printf("[Web] 📤 Sending response: %s\n", resp.c_str());
       
       // Réponse immédiate avec headers optimisés
       AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", resp);
@@ -273,15 +549,32 @@ bool WebServerManager::begin() {
       response->addHeader("Pragma", "no-cache");
       response->addHeader("Expires", "0");
       req->send(response);
+      
+      Serial.printf("[Web] ✅ Action completed - Response sent to %s\n", req->client()->remoteIP().toString().c_str());
+  });
+
+  // Gestion des requêtes CORS preflight pour /json
+  _server->on("/json", HTTP_OPTIONS, [](AsyncWebServerRequest* req){
+    AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    response->addHeader("Access-Control-Max-Age", "86400");
+    req->send(response);
   });
 
   // Point de terminaison JSON optimisé - RÉACTIVITÉ MAXIMALE
   _server->on("/json", HTTP_GET, [this](AsyncWebServerRequest* req) {
     autoCtrl.notifyLocalWebActivity();
     
+    // OPTIMISATION: Priorité haute pour les requêtes critiques
+    Serial.printf("[Web] 📊 /json request from %s - Heap: %u bytes\n", 
+                  req->client()->remoteIP().toString().c_str(), ESP.getFreeHeap());
+    
     // Utiliser le pool JSON pour optimiser la mémoire
     ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
     if (!doc) {
+      Serial.println("[Web] ⚠️ JSON pool exhausted, using fallback allocation");
       // Fallback vers allocation directe si pool indisponible
       ArduinoJson::DynamicJsonDocument fallbackDoc(512);
       SensorReadings r = sensorCache.getReadings(_sensors);
@@ -298,13 +591,43 @@ bool WebServerManager::begin() {
       fallbackDoc["pumpTank"] = _acts.isTankPumpRunning();
       fallbackDoc["heater"] = _acts.isHeaterOn();
       fallbackDoc["light"] = _acts.isLightOn();
-      fallbackDoc["voltage"] = r.voltageMv == 0 ? 12.1 : r.voltageMv;
-      fallbackDoc["voltageV"] = (float)(r.voltageMv == 0 ? 12.1 : r.voltageMv) / 1000.0f;
+      fallbackDoc["forceWakeup"] = autoCtrl.getForceWakeUp();
+      
+      // Informations WiFi STA
+      bool staConnected = WiFi.status() == WL_CONNECTED;
+      fallbackDoc["wifiStaConnected"] = staConnected;
+      if (staConnected) {
+        fallbackDoc["wifiStaSSID"] = WiFi.SSID();
+        fallbackDoc["wifiStaIP"] = WiFi.localIP().toString();
+        fallbackDoc["wifiStaRSSI"] = WiFi.RSSI();
+      } else {
+        fallbackDoc["wifiStaSSID"] = "";
+        fallbackDoc["wifiStaIP"] = "";
+        fallbackDoc["wifiStaRSSI"] = 0;
+      }
+      
+      // Informations WiFi AP
+      wifi_mode_t mode = WiFi.getMode();
+      bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
+      fallbackDoc["wifiApActive"] = apActive;
+      if (apActive) {
+        fallbackDoc["wifiApSSID"] = WiFi.softAPSSID();
+        fallbackDoc["wifiApIP"] = WiFi.softAPIP().toString();
+        fallbackDoc["wifiApClients"] = WiFi.softAPgetStationNum();
+      } else {
+        fallbackDoc["wifiApSSID"] = "";
+        fallbackDoc["wifiApIP"] = "";
+        fallbackDoc["wifiApClients"] = 0;
+      }
+      
       fallbackDoc["timestamp"] = millis();
       
       String json;
       json.reserve(512);
       serializeJson(fallbackDoc, json);
+      
+      Serial.printf("[Web] 📤 Sending fallback JSON (%u bytes) to %s\n", 
+                    json.length(), req->client()->remoteIP().toString().c_str());
       
       // Réponse optimisée avec headers de cache intelligents
       AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
@@ -312,6 +635,9 @@ bool WebServerManager::begin() {
       response->addHeader("Pragma", "no-cache");
       response->addHeader("Expires", "0");
       response->addHeader("X-Content-Type-Options", "nosniff");
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
       req->send(response);
       return;
     }
@@ -331,8 +657,35 @@ bool WebServerManager::begin() {
     (*doc)["pumpTank"] = _acts.isTankPumpRunning();
     (*doc)["heater"] = _acts.isHeaterOn();
     (*doc)["light"] = _acts.isLightOn();
-    (*doc)["voltage"] = r.voltageMv;
-    (*doc)["voltageV"] = (float)r.voltageMv / 1000.0f;
+    (*doc)["forceWakeup"] = autoCtrl.getForceWakeUp();
+    
+    // Informations WiFi STA
+    bool staConnected = WiFi.status() == WL_CONNECTED;
+    (*doc)["wifiStaConnected"] = staConnected;
+    if (staConnected) {
+      (*doc)["wifiStaSSID"] = WiFi.SSID();
+      (*doc)["wifiStaIP"] = WiFi.localIP().toString();
+      (*doc)["wifiStaRSSI"] = WiFi.RSSI();
+    } else {
+      (*doc)["wifiStaSSID"] = "";
+      (*doc)["wifiStaIP"] = "";
+      (*doc)["wifiStaRSSI"] = 0;
+    }
+    
+    // Informations WiFi AP
+    wifi_mode_t mode = WiFi.getMode();
+    bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
+    (*doc)["wifiApActive"] = apActive;
+    if (apActive) {
+      (*doc)["wifiApSSID"] = WiFi.softAPSSID();
+      (*doc)["wifiApIP"] = WiFi.softAPIP().toString();
+      (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
+    } else {
+      (*doc)["wifiApSSID"] = "";
+      (*doc)["wifiApIP"] = "";
+      (*doc)["wifiApClients"] = 0;
+    }
+    
     (*doc)["timestamp"] = millis();
     
     String json;
@@ -348,6 +701,9 @@ bool WebServerManager::begin() {
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
     response->addHeader("X-Content-Type-Options", "nosniff");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
     req->send(response);
   });
 
@@ -432,14 +788,28 @@ bool WebServerManager::begin() {
     NetworkOptimizer::sendWithCache(req, json, "application/json", 30); // Cache 30 secondes
   });
 
+  // Gestion des requêtes CORS preflight pour /dbvars
+  _server->on("/dbvars", HTTP_OPTIONS, [](AsyncWebServerRequest* req){
+    AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    response->addHeader("Access-Control-Max-Age", "86400");
+    req->send(response);
+  });
+
   // /dbvars endpoint : expose variables fetched from remote server - OPTIMISÉ
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
+    
+    // OPTIMISATION: Priorité haute pour les requêtes critiques
+    Serial.printf("[Web] /dbvars request - Heap: %u bytes\n", ESP.getFreeHeap());
     
     // Cache côté serveur : utiliser les données en mémoire d'abord
     static unsigned long lastCacheUpdate = 0;
     static ArduinoJson::DynamicJsonDocument cachedSrc(BufferConfig::JSON_DOCUMENT_SIZE);
     static bool cacheValid = false;
+    static bool remoteFetchInProgress = false;
     
     unsigned long now = millis();
     bool useCache = cacheValid && (now - lastCacheUpdate < 30000); // Cache valide 30s
@@ -453,14 +823,26 @@ bool WebServerManager::begin() {
       ok = true;
       Serial.println("[WebServer] /dbvars: Using cached data");
     } else {
-      // Tenter le fetch distant avec timeout réduit
-      ok = autoCtrl.fetchRemoteState(src);
-      if (!ok) {
-        String cached;
-        if (config.loadRemoteVars(cached) && cached.length() > 0) {
-          auto err = deserializeJson(src, cached);
-          if (!err) ok = true;
+      // OPTIMISATION: Utiliser d'abord le cache flash pour éviter les appels distants bloquants
+      String cached;
+      if (config.loadRemoteVars(cached) && cached.length() > 0) {
+        auto err = deserializeJson(src, cached);
+        if (!err) {
+          ok = true;
+          Serial.println("[WebServer] /dbvars: Using flash cache (avoiding remote call)");
         }
+      }
+      
+      // Si pas de cache valide, tenter le fetch distant avec timeout réduit
+      if (!ok && !remoteFetchInProgress) {
+        remoteFetchInProgress = true;
+        ok = autoCtrl.fetchRemoteState(src);
+        remoteFetchInProgress = false;
+        if (!ok) {
+          Serial.println("[WebServer] /dbvars: Remote fetch failed, using empty data");
+        }
+      } else if (remoteFetchInProgress) {
+        Serial.println("[WebServer] /dbvars: Remote fetch already in progress, using empty data");
       }
       
       // Mettre à jour le cache
@@ -518,7 +900,13 @@ bool WebServerManager::begin() {
     out["ok"] = ok;
     String js;
     serializeJson(out, js);
-    req->send(200, "application/json", js);
+    
+    // Envoyer avec en-têtes CORS
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", js);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(response);
   });
 
   // Mise à jour des variables distantes locales et envoi vers la BDD distante
@@ -605,7 +993,7 @@ bool WebServerManager::begin() {
     req->send(200, "application/json", resp);
   });
 
-  // Fichiers statiques avec compression optimisée
+  // Fichiers statiques avec compression optimisée et gestion Content-Length
   auto sendWithCompression = [](AsyncWebServerRequest* req, const char* path, const char* contentType){
     // Vérifier si le client accepte la compression
     bool acceptsGzip = req->hasHeader("Accept-Encoding") && 
@@ -615,9 +1003,35 @@ bool WebServerManager::begin() {
       // Essayer d'abord la version gzip
       String gz = String(path) + ".gz";
       if (LittleFS.exists(gz)) {
-        AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
+        // CORRECTION: Vérifier la taille du fichier gzip
+        File file = LittleFS.open(gz, "r");
+        if (file) {
+          size_t fileSize = file.size();
+          file.close();
+          Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz.c_str(), fileSize);
+          
+          AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
+          if (r) {
+            r->addHeader("Content-Encoding", "gzip");
+            r->addHeader("Cache-Control", "public, max-age=604800");
+            r->addHeader("X-Content-Type-Options", "nosniff");
+            req->send(r);
+            return;
+          }
+        }
+      }
+    }
+    
+    // Fallback vers le fichier normal avec vérification de taille
+    if (LittleFS.exists(path)) {
+      File file = LittleFS.open(path, "r");
+      if (file) {
+        size_t fileSize = file.size();
+        file.close();
+        Serial.printf("[Web] 📏 File %s size: %u bytes\n", path, fileSize);
+        
+        AsyncWebServerResponse* r = req->beginResponse(LittleFS, path, contentType);
         if (r) {
-          r->addHeader("Content-Encoding", "gzip");
           r->addHeader("Cache-Control", "public, max-age=604800");
           r->addHeader("X-Content-Type-Options", "nosniff");
           req->send(r);
@@ -626,15 +1040,7 @@ bool WebServerManager::begin() {
       }
     }
     
-    // Fallback vers le fichier normal
-    AsyncWebServerResponse* r = req->beginResponse(LittleFS, path, contentType);
-    if (r) {
-      r->addHeader("Cache-Control", "public, max-age=604800");
-      r->addHeader("X-Content-Type-Options", "nosniff");
-      req->send(r);
-    } else {
-      req->send(404);
-    }
+    req->send(404);
   };
 
   _server->on("/chart.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req){
@@ -1041,13 +1447,24 @@ bool WebServerManager::begin() {
       (*doc)["webSocket"]["lastBroadcast"] = wsStats.lastBroadcast;
       (*doc)["webSocket"]["broadcastInterval"] = wsStats.broadcastInterval;
       
-      // Statistiques PSRAM
+      // Statistiques PSRAM (seulement pour ESP32-S3)
+      #ifdef BOARD_S3
       auto psramStats = PSRAMOptimizer::getStats();
       (*doc)["psram"]["available"] = psramStats.available;
       (*doc)["psram"]["total"] = psramStats.total;
+      #else
+      (*doc)["psram"]["available"] = false;
+      (*doc)["psram"]["total"] = 0;
+      #endif
+      #ifdef BOARD_S3
       (*doc)["psram"]["free"] = psramStats.free;
       (*doc)["psram"]["used"] = psramStats.used;
       (*doc)["psram"]["usagePercent"] = psramStats.usagePercent;
+      #else
+      (*doc)["psram"]["free"] = 0;
+      (*doc)["psram"]["used"] = 0;
+      (*doc)["psram"]["usagePercent"] = 0;
+      #endif
       
       // Statistiques bundles
       auto bundleStats = AssetBundler::getBundleStats();
@@ -1073,8 +1490,614 @@ bool WebServerManager::begin() {
       NetworkOptimizer::sendOptimizedJson(req, json);
   });
 
+  // ========================================
+  // GESTIONNAIRE WIFI - ENDPOINTS BACKEND
+  // ========================================
+  
+  // Scanner les réseaux WiFi disponibles
+  _server->on("/wifi/scan", HTTP_GET, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(1024);
+    if (!doc) {
+      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
+      return;
+    }
+    
+    // Scanner les réseaux WiFi
+    int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+    
+    (*doc)["success"] = (n >= 0);
+    (*doc)["count"] = n;
+    
+    if (n > 0) {
+      ArduinoJson::JsonArray networks = (*doc).createNestedArray("networks");
+      
+      for (int i = 0; i < n; i++) {
+        ArduinoJson::JsonObject network = networks.createNestedObject();
+        network["ssid"] = WiFi.SSID(i);
+        network["rssi"] = WiFi.RSSI(i);
+        network["encryption"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "secured";
+        network["channel"] = WiFi.channel(i);
+        
+        // Masquer les réseaux cachés (SSID vide)
+        if (WiFi.SSID(i).length() == 0) {
+          network["ssid"] = "<Hidden Network>";
+          network["hidden"] = true;
+        } else {
+          network["hidden"] = false;
+        }
+      }
+    } else {
+      (*doc)["error"] = "No networks found or scan failed";
+    }
+    
+    String json;
+    json.reserve(1024);
+    serializeJson(*doc, json);
+    
+    jsonPool.release(doc);
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(response);
+  });
+  
+  // Lister les réseaux WiFi sauvegardés
+  _server->on("/wifi/saved", HTTP_GET, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(1024);
+    if (!doc) {
+      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
+      return;
+    }
+    
+    ArduinoJson::JsonArray networks = (*doc).createNestedArray("networks");
+    size_t totalCount = 0;
+    
+    // 1. Ajouter les réseaux statiques de secrets.h
+    for (size_t i = 0; i < Secrets::WIFI_COUNT; i++) {
+      ArduinoJson::JsonObject network = networks.createNestedObject();
+      network["ssid"] = Secrets::WIFI_LIST[i].ssid;
+      network["password"] = Secrets::WIFI_LIST[i].password;
+      network["index"] = totalCount;
+      network["source"] = "static"; // Marquer comme réseau statique
+      totalCount++;
+    }
+    
+    // 2. Ajouter les réseaux sauvegardés en NVS
+    nvs_handle_t nvsHandle;
+    esp_err_t err = nvs_open("wifi_saved", NVS_READONLY, &nvsHandle);
+    
+    if (err == ESP_OK) {
+      // Lire le nombre de réseaux sauvegardés
+      size_t networkCount = 0;
+      size_t required_size = sizeof(networkCount);
+      nvs_get_blob(nvsHandle, "count", &networkCount, &required_size);
+      
+      if (networkCount > 0) {
+        // Lire chaque réseau sauvegardé
+        for (size_t i = 0; i < networkCount; i++) {
+          char key[16];
+          snprintf(key, sizeof(key), "net_%zu", i);
+          
+          size_t required_size = 0;
+          err = nvs_get_blob(nvsHandle, key, nullptr, &required_size);
+          
+          if (err == ESP_OK && required_size > 0) {
+            char* buffer = (char*)malloc(required_size);
+            if (buffer) {
+              err = nvs_get_blob(nvsHandle, key, buffer, &required_size);
+              if (err == ESP_OK) {
+                ArduinoJson::JsonObject network = networks.createNestedObject();
+                
+                // Parser le format: "ssid|password"
+                String data = String(buffer);
+                int separator = data.indexOf('|');
+                if (separator > 0) {
+                  String ssid = data.substring(0, separator);
+                  String password = data.substring(separator + 1);
+                  
+                  // Vérifier si ce réseau n'existe pas déjà dans les réseaux statiques
+                  bool existsInStatic = false;
+                  for (size_t j = 0; j < Secrets::WIFI_COUNT; j++) {
+                    if (strcmp(ssid.c_str(), Secrets::WIFI_LIST[j].ssid) == 0) {
+                      existsInStatic = true;
+                      break;
+                    }
+                  }
+                  
+                  // Ajouter seulement s'il n'existe pas déjà
+                  if (!existsInStatic) {
+                    network["ssid"] = ssid;
+                    network["password"] = password;
+                    network["index"] = totalCount;
+                    network["source"] = "saved"; // Marquer comme réseau sauvegardé
+                    totalCount++;
+                  }
+                }
+              }
+              free(buffer);
+            }
+          }
+        }
+      }
+      
+      nvs_close(nvsHandle);
+    }
+    
+    (*doc)["success"] = true;
+    (*doc)["count"] = totalCount;
+    
+    String json;
+    json.reserve(1024);
+    serializeJson(*doc, json);
+    
+    jsonPool.release(doc);
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(response);
+  });
+  
+  // Connecter à un réseau WiFi
+  _server->on("/wifi/connect", HTTP_POST, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    auto getParam = [req](const char* name)->String{
+      if (req->hasParam(name, true)) return req->getParam(name, true)->value();
+      return String();
+    };
+    
+    String ssid = getParam("ssid");
+    String password = getParam("password");
+    String save = getParam("save"); // "true" pour sauvegarder
+    
+    Serial.printf("[WiFi] Demande de connexion à '%s'\n", ssid.c_str());
+    
+    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
+    if (!doc) {
+      Serial.println("[WiFi] Erreur: JSON pool épuisé");
+      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
+      return;
+    }
+    
+    if (ssid.length() == 0) {
+      (*doc)["success"] = false;
+      (*doc)["error"] = "SSID required";
+      Serial.println("[WiFi] Erreur: SSID vide");
+    } else {
+      // Sauvegarder le réseau AVANT de se déconnecter pour éviter les pertes de connexion
+      if (save == "true" && password.length() > 0) {
+        Serial.println("[WiFi] Sauvegarde du réseau en NVS");
+        nvs_handle_t nvsHandle;
+        esp_err_t err = nvs_open("wifi_saved", NVS_READWRITE, &nvsHandle);
+        
+        if (err == ESP_OK) {
+          // Lire le nombre actuel de réseaux
+          size_t networkCount = 0;
+          size_t required_size = sizeof(networkCount);
+          nvs_get_blob(nvsHandle, "count", &networkCount, &required_size);
+          
+          // Vérifier si le réseau existe déjà
+          bool exists = false;
+          for (size_t i = 0; i < networkCount; i++) {
+            char key[16];
+            snprintf(key, sizeof(key), "net_%zu", i);
+            
+            size_t data_size = 0;
+            err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
+            if (err == ESP_OK && data_size > 0) {
+              char* buffer = (char*)malloc(data_size);
+              if (buffer) {
+                err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
+                if (err == ESP_OK) {
+                  String data = String(buffer);
+                  int separator = data.indexOf('|');
+                  if (separator > 0 && data.substring(0, separator) == ssid) {
+                    exists = true;
+                    // Mettre à jour le mot de passe
+                    String newData = ssid + "|" + password;
+                    nvs_set_blob(nvsHandle, key, newData.c_str(), newData.length() + 1);
+                    nvs_commit(nvsHandle);
+                    Serial.printf("[WiFi] Réseau '%s' mis à jour dans NVS\n", ssid.c_str());
+                  }
+                }
+                free(buffer);
+              }
+            }
+          }
+          
+          // Ajouter le nouveau réseau s'il n'existe pas
+          if (!exists) {
+            char key[16];
+            snprintf(key, sizeof(key), "net_%zu", networkCount);
+            String data = ssid + "|" + password;
+            
+            err = nvs_set_blob(nvsHandle, key, data.c_str(), data.length() + 1);
+            if (err == ESP_OK) {
+              networkCount++;
+              nvs_set_blob(nvsHandle, "count", &networkCount, sizeof(networkCount));
+              nvs_commit(nvsHandle);
+              Serial.printf("[WiFi] Réseau '%s' ajouté dans NVS (total: %zu)\n", ssid.c_str(), networkCount);
+            }
+          }
+          
+          nvs_close(nvsHandle);
+        }
+      }
+      
+      // Envoyer une réponse immédiate AVANT de déconnecter
+      // Cela permet au client de recevoir la réponse avant la perte de connexion
+      (*doc)["success"] = true;
+      (*doc)["message"] = "Connection attempt started";
+      (*doc)["ssid"] = ssid;
+      (*doc)["note"] = "Connection may take up to 15 seconds. WebSocket will reconnect automatically.";
+      
+      String json;
+      json.reserve(512);
+      serializeJson(*doc, json);
+      
+      jsonPool.release(doc);
+      
+      AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      req->send(response);
+      
+      // Attendre que la réponse HTTP soit complètement envoyée
+      Serial.println("[WiFi] Attente envoi réponse HTTP...");
+      vTaskDelay(pdMS_TO_TICKS(300));
+      
+      // Notifier les clients WebSocket du changement imminent
+      Serial.println("[WiFi] Notification des clients WebSocket...");
+      realtimeWebSocket.notifyWifiChange(ssid);
+      vTaskDelay(pdMS_TO_TICKS(200));
+      
+      // Fermer proprement toutes les connexions WebSocket
+      Serial.println("[WiFi] Fermeture des connexions WebSocket...");
+      realtimeWebSocket.closeAllConnections();
+      
+      // Attendre que toutes les connexions soient bien fermées
+      vTaskDelay(pdMS_TO_TICKS(500));
+      
+      // MAINTENANT déconnecter et reconnecter le WiFi
+      Serial.printf("[WiFi] Déconnexion du réseau actuel\n");
+      WiFi.disconnect(false, true);
+      vTaskDelay(pdMS_TO_TICKS(200));
+      
+      // Tenter la connexion
+      Serial.printf("[WiFi] Tentative de connexion à '%s'\n", ssid.c_str());
+      if (password.length() > 0) {
+        WiFi.begin(ssid.c_str(), password.c_str());
+      } else {
+        WiFi.begin(ssid.c_str());
+      }
+      
+      // Attendre la connexion avec timeout dans une tâche séparée
+      // pour ne pas bloquer le serveur web
+      static String targetSSID;
+      targetSSID = ssid;
+      
+      xTaskCreate([](void* param) {
+        uint32_t start = millis();
+        bool connected = false;
+        
+        while (millis() - start < 15000) { // 15 secondes timeout
+          if (WiFi.status() == WL_CONNECTED) {
+            connected = true;
+            break;
+          }
+          vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        
+        if (connected) {
+          Serial.printf("[WiFi] Connecté avec succès à '%s' (IP: %s, RSSI: %d dBm)\n", 
+            targetSSID.c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+          WiFi.setSleep(false); // Désactiver le modem sleep
+          
+          // Notifier le changement via WebSocket (si encore connecté)
+          realtimeWebSocket.broadcastNow();
+        } else {
+          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", targetSSID.c_str());
+          // Retourner en mode AP si la connexion échoue
+          // Le WifiManager s'en chargera automatiquement
+        }
+        
+        vTaskDelete(NULL); // Supprimer cette tâche
+      }, "wifi_connect_task", 4096, nullptr, 1, nullptr);
+      
+      return; // Retourner immédiatement, la connexion se fait en arrière-plan
+    }
+    
+    // Si on arrive ici, c'est qu'il y a eu une erreur
+    String json;
+    json.reserve(512);
+    serializeJson(*doc, json);
+    
+    jsonPool.release(doc);
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(response);
+  });
+  
+  // Supprimer un réseau WiFi sauvegardé
+  _server->on("/wifi/remove", HTTP_POST, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    auto getParam = [req](const char* name)->String{
+      if (req->hasParam(name, true)) return req->getParam(name, true)->value();
+      return String();
+    };
+    
+    String ssid = getParam("ssid");
+    
+    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(256);
+    if (!doc) {
+      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
+      return;
+    }
+    
+    if (ssid.length() == 0) {
+      (*doc)["success"] = false;
+      (*doc)["error"] = "SSID required";
+    } else {
+      nvs_handle_t nvsHandle;
+      esp_err_t err = nvs_open("wifi_saved", NVS_READWRITE, &nvsHandle);
+      
+      if (err == ESP_OK) {
+        // Lire le nombre actuel de réseaux
+        size_t networkCount = 0;
+        size_t required_size = sizeof(networkCount);
+        nvs_get_blob(nvsHandle, "count", &networkCount, &required_size);
+        
+        bool found = false;
+        size_t foundIndex = 0;
+        
+        // Trouver l'index du réseau à supprimer
+        for (size_t i = 0; i < networkCount; i++) {
+          char key[16];
+          snprintf(key, sizeof(key), "net_%zu", i);
+          
+          size_t data_size = 0;
+          err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
+          if (err == ESP_OK && data_size > 0) {
+            char* buffer = (char*)malloc(data_size);
+            if (buffer) {
+              err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
+              if (err == ESP_OK) {
+                String data = String(buffer);
+                int separator = data.indexOf('|');
+                if (separator > 0 && data.substring(0, separator) == ssid) {
+                  found = true;
+                  foundIndex = i;
+                  break;
+                }
+              }
+              free(buffer);
+            }
+          }
+        }
+        
+        if (found) {
+          // Supprimer le réseau trouvé
+          char key[16];
+          snprintf(key, sizeof(key), "net_%zu", foundIndex);
+          nvs_erase_key(nvsHandle, key);
+          
+          // Décaler les réseaux suivants
+          for (size_t i = foundIndex + 1; i < networkCount; i++) {
+            char oldKey[16], newKey[16];
+            snprintf(oldKey, sizeof(oldKey), "net_%zu", i);
+            snprintf(newKey, sizeof(newKey), "net_%zu", i - 1);
+            
+            size_t data_size = 0;
+            err = nvs_get_blob(nvsHandle, oldKey, nullptr, &data_size);
+            if (err == ESP_OK && data_size > 0) {
+              char* buffer = (char*)malloc(data_size);
+              if (buffer) {
+                err = nvs_get_blob(nvsHandle, oldKey, buffer, &data_size);
+                if (err == ESP_OK) {
+                  nvs_set_blob(nvsHandle, newKey, buffer, data_size);
+                  nvs_erase_key(nvsHandle, oldKey);
+                }
+                free(buffer);
+              }
+            }
+          }
+          
+          // Mettre à jour le compteur
+          networkCount--;
+          nvs_set_blob(nvsHandle, "count", &networkCount, sizeof(networkCount));
+          nvs_commit(nvsHandle);
+          
+          (*doc)["success"] = true;
+          (*doc)["message"] = "Network removed successfully";
+        } else {
+          (*doc)["success"] = false;
+          (*doc)["error"] = "Network not found";
+        }
+        
+        nvs_close(nvsHandle);
+      } else {
+        (*doc)["success"] = false;
+        (*doc)["error"] = "Failed to open NVS";
+      }
+    }
+    
+    String json;
+    json.reserve(256);
+    serializeJson(*doc, json);
+    
+    jsonPool.release(doc);
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(response);
+  });
+  
+  // Obtenir le statut WiFi actuel
+  _server->on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
+    if (!doc) {
+      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
+      return;
+    }
+    
+    // Statut de connexion STA
+    bool staConnected = WiFi.status() == WL_CONNECTED;
+    (*doc)["staConnected"] = staConnected;
+    
+    if (staConnected) {
+      (*doc)["staSSID"] = WiFi.SSID();
+      (*doc)["staIP"] = WiFi.localIP().toString();
+      (*doc)["staRSSI"] = WiFi.RSSI();
+      (*doc)["staMac"] = WiFi.macAddress();
+    } else {
+      (*doc)["staSSID"] = "";
+      (*doc)["staIP"] = "";
+      (*doc)["staRSSI"] = 0;
+      (*doc)["staMac"] = WiFi.macAddress();
+    }
+    
+    // Statut AP
+    wifi_mode_t mode = WiFi.getMode();
+    bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
+    (*doc)["apActive"] = apActive;
+    
+    if (apActive) {
+      (*doc)["apSSID"] = WiFi.softAPSSID();
+      (*doc)["apIP"] = WiFi.softAPIP().toString();
+      (*doc)["apClients"] = WiFi.softAPgetStationNum();
+    } else {
+      (*doc)["apSSID"] = "";
+      (*doc)["apIP"] = "";
+      (*doc)["apClients"] = 0;
+    }
+    
+    (*doc)["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+    
+    String json;
+    json.reserve(512);
+    serializeJson(*doc, json);
+    
+    jsonPool.release(doc);
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(response);
+  });
+
+  // Endpoint de diagnostic pour les performances
+  _server->on("/server-status", HTTP_GET, [](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    Serial.printf("[Web] 📊 Server status request from %s\n", req->client()->remoteIP().toString().c_str());
+    
+    ArduinoJson::DynamicJsonDocument doc(512);
+    doc["heapFree"] = ESP.getFreeHeap();
+    doc["heapTotal"] = ESP.getHeapSize();
+    doc["psramFree"] = ESP.getFreePsram();
+    doc["psramTotal"] = ESP.getPsramSize();
+    doc["uptime"] = millis();
+    doc["webServerTimeout"] = NetworkConfig::WEB_SERVER_TIMEOUT_MS;
+    doc["maxConnections"] = NetworkConfig::WEB_SERVER_MAX_CONNECTIONS;
+    
+    // Ajouter des informations de debug supplémentaires
+    doc["wifiStatus"] = WiFi.status();
+    doc["wifiSSID"] = WiFi.SSID();
+    doc["wifiIP"] = WiFi.localIP().toString();
+    doc["wifiRSSI"] = WiFi.RSSI();
+    doc["webSocketClients"] = realtimeWebSocket.getConnectedClients();
+    doc["forceWakeup"] = autoCtrl.getForceWakeUp();
+    
+    String json;
+    serializeJson(doc, json);
+    
+    Serial.printf("[Web] 📤 Server status sent (%u bytes)\n", json.length());
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Cache-Control", "no-cache");
+    req->send(response);
+  });
+
+  // Endpoint de debug pour les logs en temps réel
+    _server->on("/debug-logs", HTTP_GET, [this](AsyncWebServerRequest* req){
+    autoCtrl.notifyLocalWebActivity();
+    
+    Serial.printf("[Web] 🔍 Debug logs request from %s\n", req->client()->remoteIP().toString().c_str());
+    
+    ArduinoJson::DynamicJsonDocument doc(1024);
+    
+    // Informations système
+    doc["system"]["uptime"] = millis();
+    doc["system"]["freeHeap"] = ESP.getFreeHeap();
+    doc["system"]["heapSize"] = ESP.getHeapSize();
+    doc["system"]["freePsram"] = ESP.getFreePsram();
+    doc["system"]["psramSize"] = ESP.getPsramSize();
+    
+    // Informations WiFi
+    doc["wifi"]["status"] = WiFi.status();
+    doc["wifi"]["ssid"] = WiFi.SSID();
+    doc["wifi"]["ip"] = WiFi.localIP().toString();
+    doc["wifi"]["rssi"] = WiFi.RSSI();
+    doc["wifi"]["mac"] = WiFi.macAddress();
+    
+    // Informations WebSocket
+    doc["websocket"]["connectedClients"] = realtimeWebSocket.getConnectedClients();
+    doc["websocket"]["isActive"] = realtimeWebSocket.isRunning();
+    
+    // Informations automatisme
+    doc["automatism"]["forceWakeup"] = autoCtrl.getForceWakeUp();
+    doc["automatism"]["emailEnabled"] = autoCtrl.isEmailEnabled();
+    doc["automatism"]["emailAddress"] = autoCtrl.getEmailAddress();
+    
+    // Informations capteurs (via cache)
+    SensorReadings readings = sensorCache.getReadings(_sensors);
+    doc["sensors"]["tempWater"] = readings.tempWater;
+    doc["sensors"]["tempAir"] = readings.tempAir;
+    doc["sensors"]["humidity"] = readings.humidity;
+    doc["sensors"]["wlAqua"] = readings.wlAqua;
+    doc["sensors"]["wlTank"] = readings.wlTank;
+    doc["sensors"]["wlPota"] = readings.wlPota;
+    doc["sensors"]["luminosite"] = readings.luminosite;
+    
+    // Informations actionneurs
+    doc["actuators"]["pumpAqua"] = _acts.isAquaPumpRunning();
+    doc["actuators"]["pumpTank"] = _acts.isTankPumpRunning();
+    doc["actuators"]["heater"] = _acts.isHeaterOn();
+    doc["actuators"]["light"] = _acts.isLightOn();
+    
+    String json;
+    serializeJson(doc, json);
+    
+    Serial.printf("[Web] 📤 Debug logs sent (%u bytes)\n", json.length());
+    
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Cache-Control", "no-cache");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    req->send(response);
+  });
+
   _server->begin();
   Serial.println(F("[Web] AsyncWebServer démarré sur le port 80"));
+  Serial.printf("[Web] Timeout serveur: %u ms\n", NetworkConfig::WEB_SERVER_TIMEOUT_MS);
+  Serial.printf("[Web] Connexions max: %u\n", NetworkConfig::WEB_SERVER_MAX_CONNECTIONS);
   Serial.println(F("[Web] Serveur HTTP prêt - Interface web accessible"));
   Serial.println(F("[Web] WebSocket temps réel sur le port 81"));
   return true;

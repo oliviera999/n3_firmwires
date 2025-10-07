@@ -26,7 +26,7 @@ Système de contrôle automatisé pour aquarium/aquaponie basé sur ESP32-S3 ave
 - **Détection de marée** : Mise en veille intelligente lors des changements d'eau
 
 ### 📊 Monitoring
-- **Capteurs intégrés** : Température air/eau, humidité, niveaux ultrasoniques, luminosité, tension
+- **Capteurs intégrés** : Température air/eau, humidité, niveaux ultrasoniques, luminosité
 - **Interface web** : Dashboard temps réel avec contrôle à distance
 - **Alertes email** : Notifications automatiques pour niveaux critiques et changements d'état des pompes (avec raison et origine)
 - **Affichage OLED** : Informations locales avec basculement automatique

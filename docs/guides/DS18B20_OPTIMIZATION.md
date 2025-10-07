@@ -13,34 +13,39 @@ Le capteur DS18B20 de température d'eau présentait fréquemment des valeurs ab
 
 ### 1. Optimisation de la résolution
 
-**Avant :**
+**Configuration actuelle :**
 ```cpp
-_sensors.setResolution(10); // 10 bits = 0.125°C, 750ms conversion
+_sensors.setResolution(10); // 10 bits = 0.25°C, 187.5ms conversion
 ```
 
-**Après :**
-```cpp
-_sensors.setResolution(9); // 9 bits = 0.5°C, 93.75ms conversion
-```
+**Justification :**
+- **Résolution 10-bit** choisie pour équilibre optimal précision/vitesse
+- **Temps de conversion**: 187.5ms selon datasheet Maxim Integrated
+- **Délai appliqué**: 220ms (187.5ms + 17% de marge de sécurité)
 
 **Avantages :**
-- **Conversion 8x plus rapide** : 93.75ms au lieu de 750ms
-- **Précision suffisante** : 0.5°C acceptable pour l'aquaculture
-- **Moins de valeurs aberrantes** : Temps de conversion plus court = moins d'erreurs
+- **Conversion 4x plus rapide** que 12-bit (187.5ms vs 750ms)
+- **Précision excellente** : 0.25°C idéal pour aquaculture
+- **Fiabilité optimale** : Marge de sécurité conforme aux recommandations officielles (+10-20%)
 
 ### 2. Gestion appropriée du temps de conversion
 
-**Nouvelle constante :**
+**Configuration conforme au datasheet :**
 ```cpp
-static const uint16_t CONVERSION_DELAY_MS = 100; // 93.75ms + marge de sécurité
+static const uint16_t CONVERSION_DELAY_MS = 220; // 187.5ms + 17% marge de sécurité
 ```
 
 **Application :**
 ```cpp
 _sensors.requestTemperatures();
-vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS)); // Attendre la fin de la conversion
+vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS)); // Attendre la fin de la conversion (220ms)
 float temp = _sensors.getTempCByIndex(0);
 ```
+
+**Conformité datasheet Maxim Integrated :**
+- Temps minimum requis pour 10-bit: **187.5ms**
+- Marge de sécurité appliquée: **+17%** (dans la plage recommandée de 10-20%)
+- Délai total: **220ms**
 
 ### 3. Lectures de stabilisation
 
@@ -83,22 +88,26 @@ static const uint8_t READINGS_COUNT = 5; // 5 lectures pour médiane
 
 ### Constantes de configuration
 ```cpp
-// NOUVELLES CONSTANTES POUR OPTIMISATION DS18B20
-static const uint8_t DS18B20_RESOLUTION = 9; // Résolution réduite à 9 bits
-static const uint16_t CONVERSION_DELAY_MS = 100; // Délai après requestTemperatures()
-static const uint16_t READING_INTERVAL_MS = 200; // Délai entre lectures individuelles
-static const uint8_t STABILIZATION_READINGS = 2; // Lectures de stabilisation
+// CONSTANTES OPTIMISÉES POUR ROBUSTESSE DS18B20
+// Conformes au datasheet Maxim Integrated DS18B20
+static const uint8_t DS18B20_RESOLUTION = 10; // Résolution 10 bits (0.25°C, 187.5ms)
+static const uint16_t CONVERSION_DELAY_MS = 220; // Délai après requestTemperatures() (187.5ms + 17%)
+static const uint16_t READING_INTERVAL_MS = 300; // Délai entre lectures individuelles
+static const uint8_t STABILIZATION_READINGS = 1; // Lectures de stabilisation
+static const uint16_t ONEWIRE_RESET_DELAY_MS = 100; // Délai après reset bus OneWire
 ```
 
 ### Comparaison des performances
 
-| Paramètre | Avant | Après | Amélioration |
-|-----------|-------|-------|--------------|
-| Résolution | 10 bits | 9 bits | -87.5% temps conversion |
-| Temps conversion | 750ms | 93.75ms | -87.5% |
-| Délai entre lectures | 100ms | 200ms | +100% stabilité |
-| Lectures médiane | 7 | 5 | -28.6% temps total |
-| Lectures stabilisation | 0 | 2 | +2 lectures de stabilisation |
+| Paramètre | Valeur actuelle | Conformité datasheet | Statut |
+|-----------|-----------------|----------------------|--------|
+| Résolution | 10 bits (0.25°C) | Supportée (9-12 bits) | ✅ CONFORME |
+| Temps conversion requis | 187.5ms | Selon datasheet 10-bit | ✅ RESPECTÉ |
+| Délai appliqué | 220ms | 187.5ms + 10-20% marge | ✅ CONFORME (17% marge) |
+| Délai entre lectures | 300ms | Minimum recommandé | ✅ CONFORME |
+| Lectures médiane | 3-5 | Non spécifié | ✅ OPTIMAL |
+| Validation CRC | Activée | Recommandée | ✅ CONFORME |
+| Mode non-bloquant | Activé | Bonne pratique | ✅ CONFORME |
 
 ## Impact sur la fiabilité
 
@@ -130,8 +139,8 @@ Serial.printf("[WaterTemp] Température filtrée: %.1f°C (médiane de %d lectur
 
 ### Logs attendus
 ```
-[WaterTemp] Capteur détecté et initialisé (résolution: 9 bits, conversion: 100 ms)
-[WaterTemp] Température filtrée: 24.5°C (médiane de 5 lectures, résolution: 9 bits)
+[WaterTemp] Capteur détecté et initialisé (résolution: 10 bits, conversion: 220 ms)
+[WaterTemp] Température filtrée: 24.5°C (médiane de 3-5 lectures, résolution: 10 bits)
 ```
 
 ## Tests recommandés

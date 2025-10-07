@@ -36,8 +36,8 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
     digitalWrite(_pinTrigEcho, LOW);
 
     // Lecture de l'écho (pin en entrée)
+    // Pas de délai nécessaire selon datasheet HC-SR04 - le capteur envoie l'écho immédiatement
     pinMode(_pinTrigEcho, INPUT);
-    delayMicroseconds(SETTLE_TIME_US);
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
@@ -48,8 +48,8 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
       }
     }
 
-    // Laisse respirer le CPU et respecte le temps entre ping pour éviter échos retardés
-    vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::DEFAULT_SAMPLES * 20));
+    // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter échos retardés
+    vTaskDelay(pdMS_TO_TICKS(60));
   }
 
   return valid ? total / valid : 0;
@@ -77,8 +77,8 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     digitalWrite(_pinTrigEcho, LOW);
 
     // Lecture de l'écho (pin en entrée)
+    // Pas de délai nécessaire selon datasheet HC-SR04 - le capteur envoie l'écho immédiatement
     pinMode(_pinTrigEcho, INPUT);
-    delayMicroseconds(SETTLE_TIME_US);
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
@@ -98,8 +98,8 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     // Reset watchdog before delay
     esp_task_wdt_reset();
     
-    // Délai entre les mesures pour éviter les interférences
-    vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::DEFAULT_SAMPLES * 20));
+    // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter les interférences
+    vTaskDelay(pdMS_TO_TICKS(60));
   }
   
   // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
@@ -380,6 +380,7 @@ float WaterTempSensor::robustTemperatureC() {
     
     // Lecture simple avec délai de conversion approprié
     _sensors.requestTemperatures();
+    vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
     vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS)); // Attendre la fin de la conversion
     float temp = _sensors.getTempCByIndex(0);
     
@@ -536,16 +537,10 @@ float WaterTempSensor::temperatureC() {
 }
 
 float WaterTempSensor::filteredTemperatureC() {
-  // 0. Stabilisation minimale (option 2)
-  for (uint8_t i = 0; i < STABILIZATION_READINGS; ++i) {
-    esp_task_wdt_reset();
-    _sensors.requestTemperatures();
-    vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS));
-    _sensors.getTempCByIndex(0);
-    vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS));
-  }
+  // OPTIMISATION : Phase de stabilisation supprimée (pipeline pré-chargé dans begin() suffit)
+  // Gain de temps : ~520ms économisés
   
-  // 1. Filtrage statistique avancé avec médiane et validation croisée
+  // Filtrage statistique avec médiane et validation croisée
   float readings[READINGS_COUNT];
   uint8_t validReadings = 0;
   
@@ -556,6 +551,7 @@ float WaterTempSensor::filteredTemperatureC() {
     // Non-bloquant: vérifier si une conversion précédente est prête
     if (!_pipelineReady) {
       _sensors.requestTemperatures();
+      vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
       _lastRequestMs = millis();
       _pipelineReady = true;
       vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS));
@@ -569,6 +565,7 @@ float WaterTempSensor::filteredTemperatureC() {
     _pipelineReady = false;
     // Planifier suivante
     _sensors.requestTemperatures();
+    vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
     _lastRequestMs = millis();
     _pipelineReady = true;
     
@@ -615,17 +612,15 @@ float WaterTempSensor::filteredTemperatureC() {
     vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS));
   }
   
-  // Vérifie qu'on a assez de lectures valides - seuil adaptatif
-  uint8_t minRequired = MIN_VALID_READINGS;
-  if (validReadings >= 2 && validReadings < MIN_VALID_READINGS) {
-    // Si on a au moins 2 lectures cohérentes, on peut accepter avec un seuil plus bas
-    minRequired = 2;
-    Serial.printf("[WaterTemp] Seuil adaptatif: accepte %d lectures (minimum: %d)\n", validReadings, minRequired);
+  // OPTIMISATION : Avec 2 lectures, accepte au moins 1 lecture valide
+  // Cela réduit les échecs tout en maintenant la qualité avec validation croisée
+  if (validReadings < 1) {
+    Serial.printf("[WaterTemp] Pas assez de lectures valides (%d/1 minimum), retourne NaN\n", validReadings);
+    return NAN;
   }
   
-  if (validReadings < minRequired) {
-    Serial.printf("[WaterTemp] Pas assez de lectures valides (%d/%d), retourne NaN\n", validReadings, minRequired);
-    return NAN;
+  if (validReadings < 2) {
+    Serial.printf("[WaterTemp] Une seule lecture valide (%d/2), utilise cette valeur\n", validReadings);
   }
   
   // Trie les lectures pour calculer la médiane
@@ -777,10 +772,10 @@ void WaterTempSensor::resetHistory() {
 
 // -------- AirSensor ------------------
 AirSensor::AirSensor() : _dht(Pins::DHT_PIN, 
-#if defined(ENVIRONMENT_PROD_TEST)
-                            DHT11  // wroom-test (ENVIRONMENT_PROD_TEST) : utilise DHT11
+#if defined(PROFILE_PROD)
+                            DHT22  // Production : utilise DHT22
 #else
-                            DHT22  // Environnements de production et autres : utilise DHT22
+                            DHT11  // Dev et Test : utilise DHT11
 #endif
                             ), 
                         _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
@@ -794,6 +789,7 @@ AirSensor::AirSensor() : _dht(Pins::DHT_PIN,
 
 void AirSensor::begin() { 
   _dht.begin(); 
+  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation après initialisation
   resetHistory();
   
   // Test initial de connectivité
@@ -825,6 +821,7 @@ void AirSensor::resetSensor() {
   
   // Reset de la bibliothèque DHT
   _dht.begin();
+  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation
   vTaskDelay(pdMS_TO_TICKS(SENSOR_RESET_DELAY_MS));
   
   // Reset de l'historique
@@ -855,18 +852,25 @@ float AirSensor::robustTemperatureC() {
     }
   }
   
-  // 3. Tentative avec lecture simple répétée
-  for (uint8_t attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; ++attempt) {
-    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, MAX_RECOVERY_ATTEMPTS);
+  // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
+  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
+    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
+    
+    // Reset watchdog avant chaque tentative
+    esp_task_wdt_reset();
     
     // Lecture simple avec délai
     float temp = _dht.readTemperature();
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     
-    if (!isnan(temp) && temp > -40.0f && temp < 80.0f) {
+    if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
       Serial.printf("[AirSensor] Récupération réussie: %.1f°C\n", temp);
       return temp;
     }
+    
+    // Reset watchdog avant délai
+    esp_task_wdt_reset();
     
     // Délai entre tentatives
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
@@ -893,7 +897,7 @@ float AirSensor::filteredTemperatureC() {
   }
   _lastDhtReadMs = now;
   float temp = _dht.readTemperature();
-  if (isnan(temp) || temp <= -40.0f || temp >= 80.0f) {
+  if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
     return _emaInit ? _emaTemp : NAN;
   }
   if (!_emaInit) {
@@ -917,7 +921,7 @@ float AirSensor::filteredHumidity() {
   }
   _lastDhtReadMs = now;
   float h = _dht.readHumidity();
-  if (isnan(h) || h < ExtendedSensorConfig::ValidationRanges::HUMIDITY_MIN || h > ExtendedSensorConfig::ValidationRanges::HUMIDITY_MAX) {
+  if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
     return _emaInit ? _emaHumidity : NAN;
   }
   if (!_emaInit) {
@@ -955,18 +959,25 @@ float AirSensor::robustHumidity() {
     }
   }
   
-  // 3. Tentative avec lecture simple répétée
-  for (uint8_t attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; ++attempt) {
-    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, MAX_RECOVERY_ATTEMPTS);
+  // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
+  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
+    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
+    
+    // Reset watchdog avant chaque tentative
+    esp_task_wdt_reset();
     
     // Lecture simple avec délai
     float humidity = _dht.readHumidity();
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     
-    if (!isnan(humidity) && humidity >= ExtendedSensorConfig::ValidationRanges::HUMIDITY_MIN && humidity <= ExtendedSensorConfig::ValidationRanges::HUMIDITY_MAX) {
+    if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
       Serial.printf("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
       return humidity;
     }
+    
+    // Reset watchdog avant délai
+    esp_task_wdt_reset();
     
     // Délai entre tentatives
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));

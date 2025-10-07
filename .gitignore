@@ -1,45 +1,51 @@
-# Fichiers de configuration locale
-include/secrets.h
-
-# Dossiers de build PlatformIO
+# PlatformIO
 .pio/
-.pioenvs/
-.piolibdeps/
+.vscode/
+.clang_complete
+.gcc-flags.json
+.ccls
+compile_commands.json
+.cache/
 
-# Fichiers de cache et temporaires
-*.tmp
-*.temp
-*.bak
-*.orig
-*.log
+# Build artifacts
+build/
+*.o
+*.elf
+*.bin
+*.map
 
-# Fichiers IDE
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Fichiers système Windows
+# OS
 .DS_Store
 Thumbs.db
 desktop.ini
-**/desktop.ini
 
-# Fichiers de test
-test_results/
-*.gcov
-*.gcda
-*.gcno
+# Logs
+*.log
+monitor_*.log
 
-# Binaires
-*.bin
-*.elf
-*.hex
+# Temporary files
+*.tmp
+*.bak
+*.old
 
-# Fichiers de configuration locale
-platformio_override.ini
+# Credentials (if any)
+secrets.h
+credentials.h
 
-# Sous-module ffp3distant - gestion via Git submodule
-# Le dossier ffp3distant sera géré comme un sous-module
-# Seuls les fichiers .gitmodules et les références de commit seront suivis
+# Test files (optional - comment out if you want to keep them)
+# test_*.html
+# test_*.ps1
+# test_*.sh

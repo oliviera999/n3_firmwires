@@ -21,14 +21,15 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
-#include <vector>
-#include <algorithm>
 #include "ota_config.h"
 #include "ota_manager.h"
 #include <LittleFS.h>
 #include <Preferences.h>
 #include "event_log.h"
 #include "time_drift_monitor.h"
+#include "email_buffer_pool.h"
+#include "timer_manager.h"
+#include "optimized_logger.h"
 // Pour mesurer les marges de stack FreeRTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -74,43 +75,24 @@ static const unsigned long DIGEST_INTERVAL_MS = TimingConfig::DIGEST_INTERVAL_MS
 static Preferences g_prefsDigest;
 
 /**************  OTA helpers  ****************/
-// Fonction de comparaison de versions sémantiques
+// Fonction de comparaison de versions sémantiques optimisée (sans allocations dynamiques)
 static int compareVersions(const String& version1, const String& version2) {
-  // Divise les versions en composants (ex: "5.1.0" -> [5, 1, 0])
-  std::vector<int> v1_parts, v2_parts;
+  // Parse les versions directement avec sscanf (plus efficace)
+  int v1_parts[4] = {0, 0, 0, 0};
+  int v2_parts[4] = {0, 0, 0, 0};
   
-  // Parse version1
-  String v1 = version1;
-  while (v1.length() > 0) {
-    int dotPos = v1.indexOf('.');
-    if (dotPos == -1) {
-      v1_parts.push_back(v1.toInt());
-      break;
-    }
-    v1_parts.push_back(v1.substring(0, dotPos).toInt());
-    v1 = v1.substring(dotPos + 1);
-  }
+  // Parse version1 (max 4 composants)
+  const char* v1_str = version1.c_str();
+  sscanf(v1_str, "%d.%d.%d.%d", &v1_parts[0], &v1_parts[1], &v1_parts[2], &v1_parts[3]);
   
-  // Parse version2
-  String v2 = version2;
-  while (v2.length() > 0) {
-    int dotPos = v2.indexOf('.');
-    if (dotPos == -1) {
-      v2_parts.push_back(v2.toInt());
-      break;
-    }
-    v2_parts.push_back(v2.substring(0, dotPos).toInt());
-    v2 = v2.substring(dotPos + 1);
-  }
+  // Parse version2 (max 4 composants)
+  const char* v2_str = version2.c_str();
+  sscanf(v2_str, "%d.%d.%d.%d", &v2_parts[0], &v2_parts[1], &v2_parts[2], &v2_parts[3]);
   
   // Compare les composants
-  int maxParts = max(v1_parts.size(), v2_parts.size());
-  for (int i = 0; i < maxParts; i++) {
-    int v1_part = (i < v1_parts.size()) ? v1_parts[i] : 0;
-    int v2_part = (i < v2_parts.size()) ? v2_parts[i] : 0;
-    
-    if (v1_part < v2_part) return -1;  // version1 < version2
-    if (v1_part > v2_part) return 1;   // version1 > version2
+  for (int i = 0; i < 4; i++) {
+    if (v1_parts[i] < v2_parts[i]) return -1;  // version1 < version2
+    if (v1_parts[i] > v2_parts[i]) return 1;   // version1 > version2
   }
   
   return 0; // versions égales
@@ -222,9 +204,10 @@ static void checkForOtaUpdate() {
     Serial.printf("[OTA] 📋 URL firmware: %s\n", otaManager.getFirmwareUrl().c_str());
     Serial.printf("[OTA] 📋 Taille: %s\n", OTAManager::formatBytes(otaManager.getFirmwareSize()).c_str());
     
-    // Affichage sur l'OLED
-    String otaMessage = "OTA dispo: " + otaManager.getRemoteVersion();
-    oled.showDiagnostic(otaMessage.c_str());
+    // Affichage sur l'OLED (optimisé - évite concaténation String)
+    char otaMessage[32];
+    snprintf(otaMessage, sizeof(otaMessage), "OTA dispo: %s", otaManager.getRemoteVersion().c_str());
+    oled.showDiagnostic(otaMessage);
     
     // Déclenchement automatique de la mise à jour
     Serial.println("[OTA] 🚀 Déclenchement automatique de la mise à jour...");
@@ -239,7 +222,7 @@ static void checkForOtaUpdate() {
     Serial.printf("[OTA] 📋 Version distante: %s\n", otaManager.getRemoteVersion().c_str());
   }
   
-  // Log des informations système pour diagnostic
+  // Log des informations système pour diagnostic (optimisé - évite les String temporaires)
   Serial.printf("[OTA] 📊 Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());
   Serial.printf("[OTA] 📊 Heap libre: %d bytes\n", ESP.getFreeHeap());
   Serial.printf("[OTA] 📊 Version courante: %s\n", Config::VERSION);
@@ -257,15 +240,13 @@ void sensorTask(void* pv) {
   static bool wdtReg=false;
   if(!wdtReg){ esp_task_wdt_add(NULL); wdtReg=true; }
   
-  Serial.println(F("[Sensor] Tâche sensorTask démarrée - fréquence 2000ms pour stabilité"));
+  Serial.println(F("[Sensor] Tâche sensorTask démarrée - exécution à rythme naturel avec repos de 500ms"));
   
-  TickType_t lastWake = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(2000);
   for (;;) {
     // Suspendre la lecture des capteurs pendant l'OTA pour prioriser le réseau
     if (otaManager.isUpdating()) {
       esp_task_wdt_reset();
-      vTaskDelayUntil(&lastWake, period);
+      vTaskDelay(pdMS_TO_TICKS(4000)); // Attente simple pendant l'OTA
       continue;
     }
     // Reset watchdog before starting sensor reading
@@ -275,9 +256,9 @@ void sensorTask(void* pv) {
     r = sensors.read();
     
     // Vérification des valeurs pour détecter les erreurs
-    if (r.tempWater < ExtendedSensorConfig::ValidationRanges::TEMP_MIN || r.tempWater > ExtendedSensorConfig::ValidationRanges::TEMP_MAX ||
-        r.tempAir < ExtendedSensorConfig::ValidationRanges::TEMP_MIN || r.tempAir > ExtendedSensorConfig::ValidationRanges::TEMP_MAX ||
-        r.humidity < ExtendedSensorConfig::ValidationRanges::HUMIDITY_MIN || r.humidity > ExtendedSensorConfig::ValidationRanges::HUMIDITY_MAX) {
+    if (r.tempWater < SensorConfig::WaterTemp::MIN_VALID || r.tempWater > SensorConfig::WaterTemp::MAX_VALID ||
+        r.tempAir < SensorConfig::AirSensor::TEMP_MIN || r.tempAir > SensorConfig::AirSensor::TEMP_MAX ||
+        r.humidity < SensorConfig::AirSensor::HUMIDITY_MIN || r.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
       Serial.println(F("[Sensor] Erreur lors de la lecture des capteurs"));
       // Utiliser des valeurs par défaut en cas d'erreur
       r.tempAir = ExtendedSensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
@@ -287,17 +268,23 @@ void sensorTask(void* pv) {
       r.wlAqua = 0;
       r.wlTank = 0;
       r.luminosite = 0;
-      r.voltageMv = 0;
     }
     
     // Reset watchdog after sensor reading
     esp_task_wdt_reset();
     
-    if (sensorQueue) xQueueSendToBack(sensorQueue, &r, pdMS_TO_TICKS(20));
+    if (sensorQueue) {
+      BaseType_t result = xQueueSendToBack(sensorQueue, &r, pdMS_TO_TICKS(20));
+      if (result != pdTRUE) {
+        Serial.println(F("[Sensor] ⚠️ Queue pleine - donnée de capteur perdue!"));
+      }
+    } else {
+      Serial.println(F("[Sensor] ❌ Queue non disponible - donnée ignorée"));
+    }
     
-    // Reset watchdog before delay
+    // Repos pour permettre au système de gérer les autres tâches (WiFi, WebSocket, etc.)
     esp_task_wdt_reset();
-    vTaskDelayUntil(&lastWake, period); // période stable 2 s
+    vTaskDelay(pdMS_TO_TICKS(500)); // 500ms de repos optimal pour l'ESP32
   }
 }
 
@@ -590,8 +577,8 @@ void setup() {
                       "Détails:\n" +
                       "- Méthode: Interface web ArduinoOTA\n" +
                       "- Version courante: " + String(Config::VERSION) + "\n" +
-                      "- Hostname: " + String(g_hostname) + "\n" +
-                      "- Hôte: " + String(g_hostname) + ":" + String(SystemConfig::ARDUINO_OTA_PORT);
+                      "- Hostname: " + String(g_hostname) + "\n";
+                      body += "- Hôte: "; body += g_hostname; body += ":"; body += String(SystemConfig::ARDUINO_OTA_PORT);
         mailer.sendAlert("OTA début - Interface web", body, to.c_str());
       })
       .onProgress([](unsigned int progress, unsigned int total) {
@@ -640,10 +627,20 @@ void setup() {
   oled.showDiagnostic("Systems");
   power.initWatchdog();
   
-  // Envoi d'un mail de test au démarrage (borné et conditionné par variables distantes)
+  // Initialisation du système Modem Sleep + Light Sleep
+  power.initModemSleep();
+  
+  // Initialiser le Timer Manager centralisé
+  TimerManager::init();
+  
+  // Initialiser le logger optimisé (niveau INFO par défaut)
+  OptimizedLogger::init(OptimizedLogger::LOG_INFO);
+  
+    // Envoi d'un mail de test au démarrage (optimisé avec buffer pooling)
   #if FEATURE_MAIL
   if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
-    Serial.println("[App] Envoi du mail de test au démarrage...");
+    OPT_LOG_INFO("Envoi du mail de test au démarrage...");
+    
     String testMessage;
     testMessage.reserve(1024);
     testMessage += "Test de démarrage FFP3CS v"; testMessage += String(Config::VERSION); testMessage += "\n";
@@ -654,6 +651,14 @@ void setup() {
     testMessage += "SSID: "; testMessage += WiFi.SSID(); testMessage += "\n";
     testMessage += "Uptime: "; testMessage += String(millis() / 1000); testMessage += "s\n";
     testMessage += "Timestamp: "; testMessage += power.getCurrentTimeString(); testMessage += "\n";
+
+    // Ajouter les informations détaillées de redémarrage
+    testMessage += "\n[RESTART INFO] Informations de redémarrage:\n";
+    testMessage += diag.generateRestartReport();
+    
+    // Informations supplémentaires sur le sketch et la mémoire
+    testMessage += "- Taille du sketch: "; testMessage += String(ESP.getSketchSize()); testMessage += " bytes\n";
+    testMessage += "- Espace libre sketch: "; testMessage += String(ESP.getFreeSketchSpace()); testMessage += " bytes\n";
 
     // Ajouter les informations de dérive temporelle
     testMessage += "\n[TIME DRIFT] Informations de dérive:\n";
@@ -702,9 +707,17 @@ void setup() {
       prefs.begin("diagnostics", true);
       unsigned int rebootCnt = prefs.getUInt("rebootCnt", 0);
       unsigned int minHeap = prefs.getUInt("minHeap", 0);
+      unsigned int httpOk = prefs.getUInt("httpOk", 0);
+      unsigned int httpKo = prefs.getUInt("httpKo", 0);
+      unsigned int otaOk = prefs.getUInt("otaOk", 0);
+      unsigned int otaKo = prefs.getUInt("otaKo", 0);
       prefs.end();
       testMessage += "- diagnostics.rebootCnt: "; testMessage += String(rebootCnt); testMessage += "\n";
-      testMessage += "- diagnostics.minHeap: "; testMessage += String(minHeap); testMessage += "\n";
+      testMessage += "- diagnostics.minHeap: "; testMessage += String(minHeap); testMessage += " bytes\n";
+      testMessage += "- diagnostics.httpOk: "; testMessage += String(httpOk); testMessage += "\n";
+      testMessage += "- diagnostics.httpKo: "; testMessage += String(httpKo); testMessage += "\n";
+      testMessage += "- diagnostics.otaOk: "; testMessage += String(otaOk); testMessage += "\n";
+      testMessage += "- diagnostics.otaKo: "; testMessage += String(otaKo); testMessage += "\n";
     }
     
     // Borne de sécurité: 6000 bytes
@@ -712,17 +725,17 @@ void setup() {
       testMessage = testMessage.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3);
       testMessage += "...";
     }
-    String subjBoot = String("FFP3CS - Test de démarrage [") + g_hostname + "]";
+    String subjBoot = "FFP3CS - Test de démarrage ["; subjBoot += g_hostname; subjBoot += "]";
     bool mailSent = mailer.send(subjBoot.c_str(), testMessage.c_str(), "Test User", autoCtrl.getEmailAddress().c_str());
     if (mailSent) { EventLog::add("Boot test email sent"); }
     
     if (mailSent) {
-      Serial.println("[App] Mail de test envoyé avec succès ✔");
+      OPT_LOG_INFO("Mail de test envoyé avec succès ✔");
     } else {
-      Serial.println("[App] Échec de l'envoi du mail de test ✗");
+      OPT_LOG_ERROR("Échec de l'envoi du mail de test ✗");
     }
   } else {
-    Serial.println("[App] WiFi non connecté - mail de test ignoré");
+    OPT_LOG_INFO("WiFi non connecté - mail de test ignoré");
   }
   #else
   Serial.println("[App] Mail désactivé (FEATURE_MAIL=0) - mail de test ignoré");
@@ -762,11 +775,11 @@ void setup() {
       body += "- Ancienne version: " + g_previousVersion + "\n";
       body += "- Nouvelle version: " + String(Config::VERSION) + "\n";
       body += "- Hostname: "; body += g_hostname; body += "\n";
-      body += "- Compilé le: " + String(__DATE__) + " " + String(__TIME__) + "\n";
+      body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
       body += "- Redémarrage automatique effectué";
       // Borne de sécurité: 6 KB max
       if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-      String subjOtaSrv = String("OTA mise à jour - Serveur distant [") + g_hostname + "]";
+      String subjOtaSrv = "OTA mise à jour - Serveur distant ["; subjOtaSrv += g_hostname; subjOtaSrv += "]";
       bool emailSent = mailer.sendAlert(subjOtaSrv.c_str(), body, autoCtrl.getEmailAddress().c_str());
       Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
       g_otaJustUpdated = false; // notification envoyée
@@ -798,11 +811,11 @@ void setup() {
       body += "- Méthode: Interface web ElegantOTA\n";
       body += "- Nouvelle version: " + String(Config::VERSION) + "\n";
       body += "- Hostname: "; body += g_hostname; body += "\n";
-      body += "- Compilé le: " + String(__DATE__) + " " + String(__TIME__) + "\n";
+      body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
       body += "- Redémarrage automatique effectué";
       // Borne de sécurité: 6 KB max
       if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-      String subjOtaWeb = String("OTA mise à jour - Interface web [") + g_hostname + "]";
+      String subjOtaWeb = "OTA mise à jour - Interface web ["; subjOtaWeb += g_hostname; subjOtaWeb += "]";
       bool emailSent = mailer.sendAlert(subjOtaWeb.c_str(), body, emailAddress.c_str());
       Serial.printf("[App] Email interface web %s\n", emailSent ? "envoyé" : "échoué");
       config.setOtaUpdateFlag(false); // reset du flag
@@ -820,7 +833,6 @@ void setup() {
     ms.wlTank    = rs.wlTank;
     ms.diffMaree = sensors.diffMaree(rs.wlAqua);
     ms.luminosite = rs.luminosite;
-    ms.voltage   = rs.voltageMv;
     ms.pumpAqua  = acts.isAquaPumpRunning();
     ms.pumpTank  = acts.isTankPumpRunning();
     ms.heater    = acts.isHeaterOn();
@@ -830,14 +842,17 @@ void setup() {
 
   // Affichage final propre - effacer l'écran et afficher juste "Init ok"
   if (oled.isPresent()) {
+    // Forcer la fin du splash screen avant l'affichage final
+    oled.forceEndSplash();
     oled.clear();
     oled.showDiagnostic("Init ok");
     delay(SystemConfig::FINAL_INIT_DELAY_MS); // 1 seconde propre pour lire le message final
   }
   
   // Création queue & tasks FreeRTOS - Stratégie Web Dédié
-  sensorQueue = xQueueCreate(5, sizeof(SensorReadings));
+  sensorQueue = xQueueCreate(10, sizeof(SensorReadings)); // Augmenté de 5 à 10 slots
   if (sensorQueue) {
+    Serial.printf("[App] ✅ Queue capteurs créée avec succès (10 slots)\n");
     xTaskCreatePinnedToCore(sensorTask, "sensorTask", TaskConfig::SENSOR_TASK_STACK_SIZE, nullptr, TaskConfig::SENSOR_TASK_PRIORITY, &g_sensorTaskHandle, TaskConfig::TASK_CORE_ID); // core 1 - priorité CRITIQUE pour l'acquisition
     xTaskCreatePinnedToCore(webTask, "webTask", TaskConfig::WEB_TASK_STACK_SIZE, nullptr, TaskConfig::WEB_TASK_PRIORITY, &g_webTaskHandle, TaskConfig::TASK_CORE_ID); // priorité HAUTE pour l'interface web
     xTaskCreatePinnedToCore(automationTask, "autoTask", TaskConfig::AUTOMATION_TASK_STACK_SIZE, nullptr, TaskConfig::AUTOMATION_TASK_PRIORITY, &g_autoTaskHandle, TaskConfig::TASK_CORE_ID); // priorité MOYENNE pour la logique pure
@@ -854,6 +869,11 @@ void setup() {
                   (unsigned)hwmSensor, (unsigned)hwmWeb, (unsigned)hwmAuto, (unsigned)hwmDisplay, (unsigned)hwmLoop);
     EventLog::addf("Stacks HWM boot sensor=%u web=%u auto=%u display=%u loop=%u",
                    (unsigned)hwmSensor, (unsigned)hwmWeb, (unsigned)hwmAuto, (unsigned)hwmDisplay, (unsigned)hwmLoop);
+  } else {
+    Serial.println(F("[App] ❌ CRITIQUE: Échec création queue capteurs - arrêt système"));
+    EventLog::add("CRITICAL: Failed to create sensor queue");
+    // En cas d'échec, continuer sans tâches mais avec un warning
+    Serial.println(F("[App] ⚠️ Système dégradé: pas de tâches FreeRTOS"));
   }
   
   Serial.println(F("[App] Initialisation terminée"));
@@ -863,6 +883,9 @@ void setup() {
 void loop() {
   power.updateTime();
   
+  // Traitement des timers centralisés (priorité haute)
+  TimerManager::process();
+  
   // Mise à jour du moniteur de dérive temporelle
   timeDriftMonitor.update();
   
@@ -871,61 +894,79 @@ void loop() {
   #endif
   wifi.loop(&oled);
   
-  // Vérification périodique des mises à jour OTA (toutes les heures)
-  unsigned long currentTime = millis();
+  // Vérification périodique des mises à jour OTA (gérée par Timer Manager)
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-  if (currentTime - g_lastOtaCheck >= OTA_CHECK_INTERVAL) {
-    Serial.println("[OTA] Vérification périodique des mises à jour...");
-    checkForOtaUpdate();
-    g_lastOtaCheck = currentTime;
+  static bool otaTimerAdded = false;
+  if (!otaTimerAdded) {
+    TimerManager::addTimer("OTA_CHECK", OTA_CHECK_INTERVAL, []() {
+      Serial.println("[OTA] Vérification périodique des mises à jour...");
+      checkForOtaUpdate();
+    });
+    otaTimerAdded = true;
   }
   #endif
   
   power.resetWatchdog();
 
-  // Periodic log digest by email (lightweight, bounded)
-  if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
-    if (currentTime - g_lastDigestMs >= DIGEST_INTERVAL_MS) {
-      String body;
-      body.reserve(BufferConfig::JSON_DOCUMENT_SIZE);
-      body += "Résumé des événements récents (";
-      body += Utils::getSystemInfo();
-      body += ")\n\n";
-      // Ajouter marges de stack des tâches si disponibles
-      body += "[Stacks] Marges (bytes):\n";
-      if (g_sensorTaskHandle) { body += "- sensorTask: "; body += String(uxTaskGetStackHighWaterMark(g_sensorTaskHandle)); body += "\n"; }
-      if (g_webTaskHandle)    { body += "- webTask: ";    body += String(uxTaskGetStackHighWaterMark(g_webTaskHandle));    body += "\n"; }
-      if (g_autoTaskHandle)   { body += "- autoTask: ";   body += String(uxTaskGetStackHighWaterMark(g_autoTaskHandle));   body += "\n"; }
-      if (g_displayTaskHandle){ body += "- displayTask: ";body += String(uxTaskGetStackHighWaterMark(g_displayTaskHandle));body += "\n"; }
-      // Marge de la loop() actuelle
-      body += "- loop(): "; body += String(uxTaskGetStackHighWaterMark(NULL)); body += "\n\n";
-      
-      // Ajouter informations de dérive temporelle
-      body += "[TIME DRIFT] Dérive temporelle:\n";
-      body += timeDriftMonitor.generateDriftReport();
-      body += "\n";
-      uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq, body, BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES);
-      if (newSeq != g_lastDigestSeq) {
-        String subjDigest = String("FFP3CS - Digest événements [") + g_hostname + "]";
-        // Borne de sécurité: 5 KB max
-        if (body.length() > BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES) {
-          body = body.substring(0, BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - 3);
-          body += "...";
+  // Periodic log digest by email (géré par Timer Manager)
+  static bool digestTimerAdded = false;
+  if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled() && !digestTimerAdded) {
+    TimerManager::addTimer("EMAIL_DIGEST", DIGEST_INTERVAL_MS, []() {
+      if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
+        unsigned long currentTime = millis();
+        String body;
+        body.reserve(BufferConfig::JSON_DOCUMENT_SIZE);
+        body += "Résumé des événements récents ("; 
+        body += Utils::getSystemInfo(); 
+        body += ")\n\n";
+        // Ajouter marges de stack des tâches si disponibles
+        body += "[Stacks] Marges (bytes):\n";
+        if (g_sensorTaskHandle) { body += "- sensorTask: "; body += uxTaskGetStackHighWaterMark(g_sensorTaskHandle); body += "\n"; }
+        if (g_webTaskHandle)    { body += "- webTask: ";    body += uxTaskGetStackHighWaterMark(g_webTaskHandle);    body += "\n"; }
+        if (g_autoTaskHandle)   { body += "- autoTask: ";   body += uxTaskGetStackHighWaterMark(g_autoTaskHandle);   body += "\n"; }
+        if (g_displayTaskHandle){ body += "- displayTask: ";body += uxTaskGetStackHighWaterMark(g_displayTaskHandle);body += "\n"; }
+        // Marge de la loop() actuelle
+        body += "- loop(): "; body += uxTaskGetStackHighWaterMark(NULL); body += "\n\n";
+        
+        // Ajouter informations de dérive temporelle
+        body += "[TIME DRIFT] Dérive temporelle:\n";
+        body += timeDriftMonitor.generateDriftReport();
+        body += "\n";
+        uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq, body, BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES);
+        if (newSeq != g_lastDigestSeq) {
+          String subjDigest = "FFP3CS - Digest événements ["; subjDigest += g_hostname; subjDigest += "]";
+          // Borne de sécurité: 5 KB max
+          if (body.length() > BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES) {
+            body = body.substring(0, BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - 3);
+            body += "...";
+          }
+          bool ok = mailer.send(subjDigest.c_str(), body.c_str(), "User", autoCtrl.getEmailAddress().c_str());
+          EventLog::add(ok ? "Digest email sent" : "Digest email failed");
+          g_lastDigestSeq = newSeq;
+        } else {
+          // Pas de nouveaux événements, espace les envois
+          EventLog::add("Digest: no new events");
         }
-        bool ok = mailer.send(subjDigest.c_str(), body.c_str(), "User", autoCtrl.getEmailAddress().c_str());
-        EventLog::add(ok ? "Digest email sent" : "Digest email failed");
-        g_lastDigestSeq = newSeq;
-      } else {
-        // Pas de nouveaux événements, espace les envois
-        EventLog::add("Digest: no new events");
+        g_lastDigestMs = currentTime;
+        // Persister dans NVS
+        g_prefsDigest.begin("digest", false);
+        g_prefsDigest.putUInt("lastSeq", g_lastDigestSeq);
+        g_prefsDigest.putULong("lastMs", g_lastDigestMs);
+        g_prefsDigest.end();
       }
-      g_lastDigestMs = currentTime;
-      // Persister dans NVS
-      g_prefsDigest.begin("digest", false);
-      g_prefsDigest.putUInt("lastSeq", g_lastDigestSeq);
-      g_prefsDigest.putULong("lastMs", g_lastDigestMs);
-      g_prefsDigest.end();
-    }
+    });
+    digestTimerAdded = true;
   }
+  
+  // Timer pour les statistiques du Timer Manager et Logger (toutes les 5 minutes)
+  static bool statsTimerAdded = false;
+  if (!statsTimerAdded) {
+    TimerManager::addTimer("STATS_REPORT", 300000, []() { // 5 minutes
+      TimerManager::logStats();
+      OptimizedLogger::logStats();
+    });
+    statsTimerAdded = true;
+  }
+  
   vTaskDelay(pdMS_TO_TICKS(500)); // Délai augmenté pour réduire la charge CPU
 } 

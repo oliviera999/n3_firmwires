@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "10.23";
+    constexpr const char* VERSION = "10.80";
     
     // Identification matérielle
     #if defined(BOARD_S3)
@@ -171,34 +171,26 @@ namespace SensorConfig {
     
     // Validation température/humidité air (DHT)
     namespace AirSensor {
-        #if defined(ENVIRONMENT_PROD_TEST) || (defined(BOARD_WROOM) && !defined(DHT22_SENSOR))
-            // ESP32-WROOM test (ENVIRONMENT_PROD_TEST) ou WROOM par défaut utilise DHT11 (plages limitées)
-            constexpr float TEMP_MIN = 5.0f;
-            constexpr float TEMP_MAX = 50.0f;
-            constexpr float HUMIDITY_MIN = 20.0f;
-            constexpr float HUMIDITY_MAX = 95.0f;
-        #else
-            // ESP32-S3 ou DHT22 explicite (plages étendues)
-            constexpr float TEMP_MIN = -40.0f;
-            constexpr float TEMP_MAX = 80.0f;
-            constexpr float HUMIDITY_MIN = 0.0f;
-            constexpr float HUMIDITY_MAX = 100.0f;
-        #endif
+        // Plages unifiées pour DHT11 et DHT22 selon spécifications projet
+        constexpr float TEMP_MIN = 3.0f;      // +3°C minimum
+        constexpr float TEMP_MAX = 50.0f;     // +50°C maximum
+        constexpr float HUMIDITY_MIN = 10.0f; // 10% minimum
+        constexpr float HUMIDITY_MAX = 100.0f; // 100% maximum
     }
     
-    // Validation capteurs ultrasoniques
+    // Validation capteurs ultrasoniques (conformément à la datasheet HC-SR04)
     namespace Ultrasonic {
-        constexpr uint16_t MIN_DISTANCE_CM = 2;
-        constexpr uint16_t MAX_DISTANCE_CM = 400;
-        constexpr uint16_t MAX_DELTA_CM = 30;
-        constexpr uint32_t TIMEOUT_US = 30000; // 30ms
-        constexpr uint8_t DEFAULT_SAMPLES = 5;
+        constexpr uint16_t MIN_DISTANCE_CM = 2;       // Minimum spécifié par datasheet HC-SR04
+        constexpr uint16_t MAX_DISTANCE_CM = 400;     // Maximum spécifié par datasheet HC-SR04 (4m)
+        constexpr uint16_t MAX_DELTA_CM = 30;         // Tolérance de variation entre lectures
+        constexpr uint32_t TIMEOUT_US = 30000;        // 30ms - suffisant pour 400cm (23.5ms théorique)
+        constexpr uint8_t DEFAULT_SAMPLES = 5;        // Nombre d'échantillons pour moyenne
+        constexpr uint32_t MIN_DELAY_MS = 60;         // Délai minimum recommandé entre mesures (datasheet)
     }
     
     // Validation autres capteurs
     namespace Analog {
         constexpr uint16_t ADC_MAX_VALUE = 4095; // 12-bit ADC
-        constexpr uint16_t VOLTAGE_MAX_MV = 3300;
     }
 }
 
@@ -207,7 +199,7 @@ namespace SensorConfig {
 // =============================================================================
 namespace TimingConfig {
     // Intervalles de base optimisés
-    constexpr uint32_t SENSOR_READ_INTERVAL_MS = 1500;  // Réduit de 2s à 1.5s
+    constexpr uint32_t SENSOR_READ_INTERVAL_MS = 4000;  // Optimisé pour stabilité et économie d'énergie
     constexpr uint32_t DISPLAY_UPDATE_INTERVAL_MS = 200; // Augmenté à 5 FPS
     constexpr uint32_t HEARTBEAT_INTERVAL_MS = 30000;   // 30 secondes (inchangé)
     
@@ -246,13 +238,11 @@ namespace SleepConfig {
     // DÉLAIS D'INACTIVITÉ AVANT SOMMEIL
     // ========================================
     
-    // Délai d'inactivité général avant autorisation de sommeil
-    // Le système doit être inactif pendant ce temps avant de pouvoir passer en light sleep
-    constexpr uint32_t INACTIVITY_DELAY_MS = 300000;         // 5 minutes d'inactivité générale
+    // SUPPRIMÉ: INACTIVITY_DELAY_MS obsolète - remplacé par le système adaptatif
     
     // Délai minimum absolu depuis le dernier réveil
     // Protection : le système reste éveillé au moins ce temps après chaque réveil
-    constexpr uint32_t MIN_AWAKE_TIME_MS = 60000;           // 60 secondes minimum éveillé
+    constexpr uint32_t MIN_AWAKE_TIME_MS = 150000;          // 2.5 minutes minimum éveillé (augmenté de 1 à 2.5 min)
     
     // Délai d'inactivité web avant autorisation de sommeil
     // Si activité web récente, attendre ce délai avant de permettre le sommeil
@@ -266,24 +256,24 @@ namespace SleepConfig {
     
     // Délai d'inactivité minimum (en secondes)
     // Utilisé quand des erreurs récentes sont détectées (surveillance accrue)
-    constexpr uint32_t MIN_INACTIVITY_DELAY_SEC = 300;             // 5 minutes minimum d'inactivité
+    constexpr uint32_t MIN_INACTIVITY_DELAY_SEC = 300;             // 5 minutes minimum d'inactivité (augmenté de 3 à 5 min)
     
     // Délai d'inactivité maximum (en secondes)
     // Limite supérieure pour éviter des délais trop longs avant sommeil
     constexpr uint32_t MAX_INACTIVITY_DELAY_SEC = 3600;            // 1 heure maximum d'inactivité
     
     // Délai d'inactivité normal (en secondes)
-    // Utilisé en fonctionnement standard
-    constexpr uint32_t NORMAL_INACTIVITY_DELAY_SEC = 600;          // 10 minutes normal d'inactivité
+    // Utilisé en fonctionnement standard - augmenté à 8 min pour permettre plus de temps aux marées
+    constexpr uint32_t NORMAL_INACTIVITY_DELAY_SEC = 480;          // 8 minutes normal d'inactivité (augmenté de 5 à 8 min)
     
     // Délai d'inactivité en cas d'erreurs (en secondes)
     // Réduit pour surveillance accrue quand des problèmes sont détectés
-    constexpr uint32_t ERROR_INACTIVITY_DELAY_SEC = 300;            // 5 minutes si erreurs
+    constexpr uint32_t ERROR_INACTIVITY_DELAY_SEC = 180;            // 3 minutes si erreurs
     
     // Délai d'inactivité nocturne (en secondes)
     // Réduit la nuit pour dormir plus rapidement (22h-6h)
-    // Calcul: NORMAL_INACTIVITY_DELAY_SEC ÷ 2 = 600 ÷ 2 = 300s (5 min)
-    constexpr uint32_t NIGHT_INACTIVITY_DELAY_SEC = 300;          // 5 minutes la nuit
+    // Calcul: NORMAL_INACTIVITY_DELAY_SEC ÷ 2 = 480 ÷ 2 = 240s (4 min)
+    constexpr uint32_t NIGHT_INACTIVITY_DELAY_SEC = 240;          // 4 minutes la nuit (augmenté de 2.5 à 4 min)
     
     // ========================================
     // CONTRÔLE MULTIPLICATIF DU SOMMEIL
@@ -441,9 +431,9 @@ namespace SystemConfig {
     // Communication série
     constexpr uint32_t SERIAL_BAUD_RATE = 115200;
     
-    // Configuration NTP
-    constexpr int32_t NTP_GMT_OFFSET_SEC = 3600;  // 1 heure
-    constexpr int32_t NTP_DAYLIGHT_OFFSET_SEC = 0;
+    // Configuration NTP - Maroc (UTC+1 fixe, pas de changement d'heure)
+    constexpr int32_t NTP_GMT_OFFSET_SEC = 3600;  // 1 heure (UTC+1)
+    constexpr int32_t NTP_DAYLIGHT_OFFSET_SEC = 0;  // Pas de changement d'heure au Maroc
     constexpr const char* NTP_SERVER = "pool.ntp.org";
     
     // Configuration OTA
@@ -462,12 +452,12 @@ namespace SystemConfig {
 // CONFIGURATION TÂCHES FREERTOS - STRATÉGIE WEB DÉDIÉ
 // =============================================================================
 namespace TaskConfig {
-    // Tailles de stack
-    constexpr uint32_t SENSOR_TASK_STACK_SIZE = 8192;
-    constexpr uint32_t WEB_TASK_STACK_SIZE = 8192;           // Nouvelle tâche web dédiée
-    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 12288;
-    constexpr uint32_t DISPLAY_TASK_STACK_SIZE = 8192;
-    constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;
+    // Tailles de stack (optimisées - réduites de 25% avec marge de sécurité)
+    constexpr uint32_t SENSOR_TASK_STACK_SIZE = 6144;        // Réduit de 8192 à 6144 (économie: 2KB)
+    constexpr uint32_t WEB_TASK_STACK_SIZE = 6144;           // Réduit de 8192 à 6144 (économie: 2KB)
+    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 9216;    // Réduit de 12288 à 9216 (économie: 3KB)
+    constexpr uint32_t DISPLAY_TASK_STACK_SIZE = 6144;       // Réduit de 8192 à 6144 (économie: 2KB)
+    constexpr uint32_t OTA_TASK_STACK_SIZE = 9216;           // Réduit de 12288 à 9216 (économie: 3KB)
     
     // Priorités des tâches - Stratégie Web Dédié Optimisée
     constexpr uint8_t SENSOR_TASK_PRIORITY = 5;             // CRITIQUE - Capteurs prioritaires absolus
@@ -481,7 +471,7 @@ namespace TaskConfig {
     // Configuration Web Server optimisée
     constexpr uint8_t WEB_SERVER_CORE_ID = 0;              // Serveur web sur Core 0 (CPU principal)
     constexpr uint8_t WEB_SERVER_PRIORITY = 4;             // Priorité élevée pour le serveur web
-    constexpr uint32_t WEB_SERVER_STACK_SIZE = 12288;      // Stack plus important pour le serveur web
+    constexpr uint32_t WEB_SERVER_STACK_SIZE = 9216;       // Stack réduit pour le serveur web (économie: 3KB)
 }
 
 // =============================================================================
@@ -524,6 +514,11 @@ namespace NetworkConfig {
     
     // User-Agent HTTP
     constexpr const char* HTTP_USER_AGENT = "ESP32-OTA-Client/1.0";
+    
+    // Configuration serveur web optimisée
+    constexpr uint32_t WEB_SERVER_MAX_CONNECTIONS = 12; // Connexions simultanées max (augmenté)
+    constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 8000;    // Timeout serveur web 8s (augmenté)
+    constexpr uint32_t WEB_SERVER_KEEPALIVE_MS = 30000; // Keep-alive 30s
 }
 
 // =============================================================================
@@ -534,7 +529,8 @@ namespace ExtendedSensorConfig {
     constexpr uint16_t ULTRASONIC_US_TO_CM_FACTOR = 58;  // µs vers cm
     
     // Délais entre lectures
-    constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 2000;
+    constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 2500;       // Augmenté de 2000ms à 2500ms pour plus de stabilité
+    constexpr uint32_t DHT_INIT_STABILIZATION_DELAY_MS = 2000; // Délai stabilisation après begin() pour DHT - Conforme aux datasheets (1-2s recommandés)
     constexpr uint32_t SENSOR_READ_DELAY_MS = 100;
     constexpr uint32_t I2C_STABILIZATION_DELAY_MS = 100;
     
@@ -633,7 +629,9 @@ namespace Utils {
 #if defined(PROFILE_PROD)
     #define FEATURE_OLED 1
     #define FEATURE_OTA 1
-    #define FEATURE_MAIL 1
+    #ifndef FEATURE_MAIL
+        #define FEATURE_MAIL 1
+    #endif
     #define FEATURE_ARDUINO_OTA 0  // Désactivé en prod pour sécurité
     #define FEATURE_HTTP_OTA 1
     #define FEATURE_WIFI_APSTA 1
@@ -948,9 +946,10 @@ namespace SensorSpecificConfig {
     
     // Paramètres DS18B20
     constexpr uint8_t DS18B20_RESOLUTION_BITS = 10;          // Résolution DS18B20 (10 bits)
-    constexpr uint16_t DS18B20_CONVERSION_DELAY_MS = 200;     // Délai conversion température DS18B20
-    constexpr uint16_t DS18B20_READING_INTERVAL_MS = 300;    // Intervalle lectures DS18B20
+    constexpr uint16_t DS18B20_CONVERSION_DELAY_MS = 250;     // Délai conversion température DS18B20 (augmenté de 200ms à 250ms pour marge de sécurité)
+    constexpr uint16_t DS18B20_READING_INTERVAL_MS = 400;    // Intervalle lectures DS18B20 (augmenté de 300ms à 400ms pour stabilité)
     constexpr uint8_t DS18B20_STABILIZATION_READINGS = 1;    // Lectures stabilisation DS18B20
+    constexpr uint16_t DS18B20_STABILIZATION_DELAY_MS = 50;  // Délai stabilisation après requestTemperatures() (50ms)
     constexpr uint16_t ONEWIRE_RESET_DELAY_MS = 100;         // Délai reset bus OneWire
     
     // ========================================
@@ -1026,4 +1025,27 @@ namespace NetworkConfigExtended {
     
     // Timeouts HTTP spécifiques
     constexpr uint32_t OTA_HTTP_TIMEOUT_MS = 30000;          // Timeout HTTP pour OTA (30 secondes)
+}
+
+// =============================================================================
+// CONFIGURATION MODEM SLEEP + LIGHT SLEEP
+// =============================================================================
+namespace ModemSleepConfig {
+    // Activation du modem sleep avec light sleep automatique
+    constexpr bool ENABLE_MODEM_SLEEP = true;              // Activer le modem sleep
+    
+    // Test automatique de compatibilité DTIM
+    constexpr bool AUTO_TEST_DTIM = true;                  // Test automatique DTIM
+    
+    // Intervalle de test DTIM (en millisecondes)
+    constexpr unsigned long DTIM_TEST_INTERVAL_MS = 300000; // 5 minutes
+    
+    // Configuration DTIM optimale
+    constexpr int DTIM_POWER_SAVE_MODE = 1; // WIFI_PS_MIN_MODEM equivalent
+    
+    // Logs détaillés pour debug
+    constexpr bool ENABLE_DETAILED_LOGS = true;            // Logs détaillés
+    
+    // Fallback automatique vers light sleep classique si modem sleep échoue
+    constexpr bool ENABLE_AUTO_FALLBACK = true;            // Fallback automatique
 }

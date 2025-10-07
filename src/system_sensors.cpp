@@ -15,19 +15,26 @@ void SystemSensors::begin() {
 
 SensorReadings SystemSensors::read() {
   SensorReadings r{};
+  
+  // Timeout global pour éviter les blocages (5 minutes max)
+  const uint32_t GLOBAL_TIMEOUT_MS = 300000;
+  uint32_t startTime = millis();
+  uint32_t phaseStart;
 
   // Reset watchdog at the start of sensor reading
-  // esp_task_wdt_reset(); // Commenté pour compatibilité
+  esp_task_wdt_reset(); // Réactivé pour éviter les timeouts
 
   // --- Mesures sécurisées avec validation ---
   const uint8_t MAX_RETRIES = 3;
 
   // Température eau avec récupération ultra-robuste (0 – 60 °C attendue)
   {
-    // esp_task_wdt_reset(); // Reset watchdog before water temperature reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before water temperature reading
     
     // Utilise d'abord la méthode robuste standard
     float val = _water.robustTemperatureC();
+    Serial.printf("[SystemSensors] ⏱️ Température eau: %u ms\n", millis() - phaseStart);
     
     // Si échec, utilise la méthode ultra-robuste
     if (isnan(val)) {
@@ -62,8 +69,10 @@ SensorReadings SystemSensors::read() {
 
   // Température air avec récupération robuste (+5 – 60 °C attendue)
   {
-    // esp_task_wdt_reset(); // Reset watchdog before air temperature reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before air temperature reading
     float val = _air.robustTemperatureC(); // Utilise la méthode robuste avec récupération
+    Serial.printf("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
     
     // Validation finale pour s'assurer qu'aucune valeur négative n'est transmise
     if (isnan(val) || val <= SensorConfig::AirSensor::TEMP_MIN || val >= SensorConfig::AirSensor::TEMP_MAX) {
@@ -76,8 +85,10 @@ SensorReadings SystemSensors::read() {
 
   // Humidité avec récupération robuste (5 – 100 %)
   {
-    // esp_task_wdt_reset(); // Reset watchdog before humidity reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before humidity reading
     float val = _air.robustHumidity(); // Utilise la méthode robuste avec récupération
+    Serial.printf("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
     
     // Validation finale pour s'assurer qu'aucune valeur invalide n'est transmise
     if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
@@ -90,8 +101,10 @@ SensorReadings SystemSensors::read() {
 
   // Niveaux d'eau avec validation
   {
-    // esp_task_wdt_reset(); // Reset watchdog before potager level reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before potager level reading
     uint16_t val = _usPota.readAdvancedFiltered();
+    Serial.printf("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
     if (val == 0 || val > 500) { // 0 = invalide, >500cm = aberrant
       Serial.printf("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
       r.wlPota = 0;
@@ -101,8 +114,10 @@ SensorReadings SystemSensors::read() {
   }
   
   {
-    // esp_task_wdt_reset(); // Reset watchdog before aquarium level reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before aquarium level reading
     uint16_t val = _usAqua.readAdvancedFiltered();
+    Serial.printf("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
       Serial.printf("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
@@ -127,15 +142,17 @@ SensorReadings SystemSensors::read() {
     }
   }
   
-  // Met à jour l'historique wlAqua pour calcul ~10s
+  // Met à jour l'historique wlAqua pour calcul ~15s
   {
     uint32_t nowMs = millis();
     pushAquaHist(r.wlAqua, nowMs);
   }
   
   {
-    // esp_task_wdt_reset(); // Reset watchdog before tank level reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before tank level reading
     uint16_t val = _usTank.readAdvancedFiltered();
+    Serial.printf("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
       Serial.printf("[SystemSensors] Niveau réservoir invalide: %u cm\n", val);
@@ -161,7 +178,8 @@ SensorReadings SystemSensors::read() {
   
   // Luminosité avec validation
   {
-    // esp_task_wdt_reset(); // Reset watchdog before luminosity reading
+    phaseStart = millis();
+    esp_task_wdt_reset(); // Reset watchdog before luminosity reading
     uint32_t lumiSum = 0;
     const uint8_t NB_LUMI_SAMPLES = 12; // 12 échantillons pour réduire le bruit
     for (uint8_t i = 0; i < NB_LUMI_SAMPLES; ++i) {
@@ -169,6 +187,7 @@ SensorReadings SystemSensors::read() {
       vTaskDelay(pdMS_TO_TICKS(1)); // 1 ms entre échantillons
     }
     uint16_t val = static_cast<uint16_t>(lumiSum / NB_LUMI_SAMPLES);
+    Serial.printf("[SystemSensors] ⏱️ Luminosité: %u ms\n", millis() - phaseStart);
     
     // Validation de la luminosité (0-4095 pour ESP32 ADC 12-bit)
     if (val > 4095) {
@@ -179,23 +198,6 @@ SensorReadings SystemSensors::read() {
     }
   }
   
-  // Tension avec validation
-  #ifdef PIN_VOLTAGE_VALID
-  {
-    int raw = analogRead(Pins::VIN_MONITOR);
-    uint16_t val = (raw * 3300UL) / 4095;
-    
-    // Validation de la tension (0-3300mV attendu)
-    if (raw < 0 || raw > 4095 || val > 3300) {
-      Serial.printf("[SystemSensors] Tension invalide: raw=%d, val=%u mV, force 0\n", raw, val);
-      r.voltageMv = 0;
-    } else {
-      r.voltageMv = val;
-    }
-  }
-  #else
-  r.voltageMv = 0;
-  #endif
 
   // marée diff
   uint16_t oldAquaMax = _aquaMax;
@@ -204,21 +206,29 @@ SensorReadings SystemSensors::read() {
     Serial.printf("[Maree] Nouveau max: %u cm (précédent: %u cm)\n", _aquaMax, oldAquaMax);
   }
 
+  // Vérification du timeout global et affichage du temps d'exécution
+  uint32_t elapsed = millis() - startTime;
+  if (elapsed > GLOBAL_TIMEOUT_MS) {
+    Serial.printf("[SystemSensors] ⚠️ TIMEOUT GLOBAL: Lecture capteurs a pris %u ms (limite: %u ms)\n", elapsed, GLOBAL_TIMEOUT_MS);
+  } else {
+    Serial.printf("[SystemSensors] ✓ Lecture capteurs terminée en %u ms\n", elapsed);
+  }
+
   // Reset watchdog at the end of sensor reading
-  // esp_task_wdt_reset();
+  esp_task_wdt_reset();
   
-  LOG(LOG_DEBUG, "Sensors TWater=%.1fC TAir=%.1fC Hum=%.1f%% wlA=%u wlT=%u wlP=%u Lux=%u V=%u mV", r.tempWater, r.tempAir, r.humidity, r.wlAqua, r.wlTank, r.wlPota, r.luminosite, r.voltageMv);
+  LOG(LOG_DEBUG, "Sensors TWater=%.1fC TAir=%.1fC Hum=%.1f%% wlA=%u wlT=%u wlP=%u Lux=%u", r.tempWater, r.tempAir, r.humidity, r.wlAqua, r.wlTank, r.wlPota, r.luminosite);
 
   return r;
 }
 
 int SystemSensors::diffMaree(uint16_t currentAqua) {
-  // Nouveau calcul: différence par rapport à la valeur ~10s avant
+  // Nouveau calcul: différence par rapport à la valeur ~15s avant
   uint32_t nowMs = millis();
   int diff10s = diffMaree10s(currentAqua, nowMs);
   
-  // Log détaillé du calcul de marée (10s)
-  Serial.printf("[Maree] Calcul10s: actuel=%u, diff10s=%d cm\n", currentAqua, diff10s);
+  // Log détaillé du calcul de marée (15s)
+  Serial.printf("[Maree] Calcul15s: actuel=%u, diff15s=%d cm\n", currentAqua, diff10s);
   return diff10s;
 } 
 
@@ -231,7 +241,7 @@ void SystemSensors::pushAquaHist(uint16_t value, uint32_t nowMs) {
 
 int SystemSensors::diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const {
   if (_aquaHistCount == 0) return 0;
-  // Cherche l'échantillon le plus proche de now-10s
+  // Cherche l'échantillon le plus proche de now-15s
   const uint32_t target = nowMs - _tideWindowMs;
   int bestIdx = -1;
   uint32_t bestDt = 0xFFFFFFFFUL;
@@ -247,6 +257,6 @@ int SystemSensors::diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const {
   if (bestIdx < 0) return 0;
   int past = (int)_aquaHist[bestIdx];
   int cur  = (int)currentAqua;
-  // diffMaree = (valeur ~10s avant) - (valeur actuelle)
+  // diffMaree = (valeur ~15s avant) - (valeur actuelle)
   return past - cur;
 }
