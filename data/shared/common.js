@@ -830,33 +830,48 @@ window.initCharts = function initCharts() {
     height: 200,
     cursor: { drag: { x: false, y: false } },
     legend: { show: true },
-    scales: { x: { time: false } },
+    scales: { 
+      x: { 
+        time: false // Désactiver le mode temporel automatique pour gérer nous-mêmes le formatage
+      } 
+    },
     axes: [
-      { stroke: '#94a3b8', grid: { stroke: 'rgba(255,255,255,0.1)', width: 1 }, ticks: { stroke: 'rgba(255,255,255,0.1)', width: 1 } },
+      { 
+        stroke: '#94a3b8', 
+        grid: { stroke: 'rgba(255,255,255,0.1)', width: 1 }, 
+        ticks: { stroke: 'rgba(255,255,255,0.1)', width: 1 },
+        values: (u, vals, space) => vals.map(v => {
+          const d = new Date(v);
+          const h = String(d.getHours()).padStart(2, '0');
+          const m = String(d.getMinutes()).padStart(2, '0');
+          const s = String(d.getSeconds()).padStart(2, '0');
+          return `${h}:${m}:${s}`;
+        })
+      },
       { stroke: '#94a3b8', grid: { stroke: 'rgba(255,255,255,0.1)', width: 1 }, ticks: { stroke: 'rgba(255,255,255,0.1)', width: 1 } }
     ]
   };
   
   // Graphique des températures
-  tempChart = new uPlot({
-    ...commonOpts,
+  const tempOpts = Object.assign({}, commonOpts, {
     series: [
       {},
       { label: 'Air °C', stroke: '#f59e0b', width: 2, fill: 'rgba(245, 158, 11, 0.1)' },
       { label: 'Eau °C', stroke: '#06b6d4', width: 2, fill: 'rgba(6, 182, 212, 0.1)' }
     ]
-  }, [[], [], []], tempEl);
+  });
+  tempChart = new uPlot(tempOpts, [[], [], []], tempEl);
   
   // Graphique des niveaux d'eau
-  waterChart = new uPlot({
-    ...commonOpts,
+  const waterOpts = Object.assign({}, commonOpts, {
     series: [
       {},
       { label: 'Aquarium cm', stroke: '#10b981', width: 2, fill: 'rgba(16, 185, 129, 0.1)' },
       { label: 'Réservoir cm', stroke: '#8b5cf6', width: 2, fill: 'rgba(139, 92, 246, 0.1)' },
       { label: 'Potager cm', stroke: '#f59e0b', width: 2, fill: 'rgba(245, 158, 11, 0.1)' }
     ]
-  }, [[], [], [], []], waterEl);
+  });
+  waterChart = new uPlot(waterOpts, [[], [], [], []], waterEl);
   
   console.log('[Charts] uPlot initialisé avec succès');
 }
@@ -881,7 +896,7 @@ window.updateCharts = function updateCharts(data) {
     return;
   }
   
-  const now = Date.now();
+  const now = Date.now(); // Timestamp en millisecondes pour notre formateur personnalisé
   const maxDataPoints = 20;
   
   try {
@@ -957,10 +972,6 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     updateElement('wlTank', data.wlTank, 0);
     updateElement('wlPota', data.wlPota, 0);
     updateElement('lumi', data.luminosite, 0);
-    // Voltage (si disponible dans le backend)
-    if (data.voltage !== undefined) {
-      updateElement('vin', data.voltage, 2);
-    }
     
     // États des actionneurs avec vérifications
     if(data.pumpTank !== undefined) {

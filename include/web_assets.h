@@ -107,13 +107,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     </div>
                     <span class="badge bg-warning text-dark" id="lumi">--</span>
                   </div>
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                      <div class="d-flex align-items-center">
-                    <span class="me-2">⚡</span>
-                    <span>Tension</span>
-                      </div>
-                  <span class="badge bg-success" id="vin">--</span>
-        </div>
       </div>
     </div>
   </div>
