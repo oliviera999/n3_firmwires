@@ -24,7 +24,18 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "10.80";
+    constexpr const char* VERSION = "10.91";
+    
+    // Type d'environnement (dev, test, prod)
+    #if defined(PROFILE_DEV)
+        constexpr const char* PROFILE_TYPE = "dev";
+    #elif defined(PROFILE_TEST)
+        constexpr const char* PROFILE_TYPE = "test";
+    #elif defined(PROFILE_PROD)
+        constexpr const char* PROFILE_TYPE = "prod";
+    #else
+        constexpr const char* PROFILE_TYPE = "unknown";
+    #endif
     
     // Identification matérielle
     #if defined(BOARD_S3)
@@ -48,12 +59,12 @@ namespace ServerConfig {
     // Endpoints selon le profil
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         // Environnement de test (endpoints avec "2")
-        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/post-ffp3-data2.php";
-        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3control/ffp3-outputs-action2.php?action=outputs_state&board=1";
+        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/public/post-data-test";
+        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3datas/public/api/outputs/states/1";
     #else
         // Production (endpoints sans "2")
-        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/post-ffp3-data.php";
-        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3control/ffp3-outputs-action.php?action=outputs_state&board=1";
+        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/public/post-data";
+        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3datas/public/api/outputs-test/states/1";
     #endif
     
     // URLs complètes

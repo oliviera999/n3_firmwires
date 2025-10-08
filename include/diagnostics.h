@@ -5,6 +5,18 @@
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <ArduinoJson.h>
+#include <rom/rtc.h>
+
+// Structure pour stocker les informations détaillées de panic
+struct PanicInfo {
+  bool hasPanicInfo;
+  String exceptionCause;      // Cause de l'exception
+  uint32_t exceptionAddress;  // Adresse où s'est produit le panic
+  uint32_t excvaddr;          // Adresse virtuelle de l'exception (pour les fautes mémoire)
+  String taskName;            // Nom de la tâche qui a paniqué
+  int core;                   // Core CPU qui a paniqué
+  String additionalInfo;      // Informations additionnelles
+};
 
 struct DiagnosticStats {
   unsigned long uptimeSec;
@@ -24,6 +36,8 @@ struct DiagnosticStats {
   uint32_t otaSuccessCount;
   uint32_t otaFailCount;
   String lastOtaError;
+  // Informations de panic
+  PanicInfo panicInfo;
 };
 
 class Diagnostics {
@@ -55,4 +69,8 @@ class Diagnostics {
   static const uint32_t MIN_HEAP_DIFF_FOR_SAVE = 1024; // 1KB de différence minimum pour sauvegarder
   
   String getRebootReason() const;
+  void capturePanicInfo();
+  void savePanicInfo();
+  void loadPanicInfo();
+  void clearPanicInfo();
 }; 

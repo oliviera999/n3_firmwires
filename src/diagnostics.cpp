@@ -1,5 +1,8 @@
 #include "diagnostics.h"
 #include <ArduinoJson.h>
+#include <esp_core_dump.h>
+#include <soc/rtc_cntl_reg.h>
+#include <rom/rtc.h>
 
 Diagnostics::Diagnostics() 
     : _lastUpdate(0), _lastHeapSave(0), _lastSavedMinHeap(UINT32_MAX) {
@@ -18,9 +21,14 @@ Diagnostics::Diagnostics()
   _stats.otaSuccessCount = 0;
   _stats.otaFailCount = 0;
   _stats.lastOtaError = "";
+  _stats.panicInfo.hasPanicInfo = false;
 }
 
 void Diagnostics::begin() {
+  // Capturer les informations de panic AVANT toute autre opération
+  // (car elles peuvent être perdues après certaines opérations)
+  capturePanicInfo();
+  
   // Charger les valeurs précédentes
   _prefs.begin("diagnostics", false);
   _stats.rebootCount = _prefs.getUInt("rebootCnt", 0) + 1;
@@ -38,8 +46,21 @@ void Diagnostics::begin() {
 
   _stats.lastRebootReason = getRebootReason();
   
-  Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes\n", 
+  // Charger les informations de panic sauvegardées du dernier boot
+  loadPanicInfo();
+  
+  // Si c'était un panic, sauvegarder les nouvelles infos
+  if (esp_reset_reason() == ESP_RST_PANIC) {
+    savePanicInfo();
+  }
+  
+  Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 
                 _stats.rebootCount, _stats.minFreeHeap);
+  if (_stats.panicInfo.hasPanicInfo) {
+    Serial.printf(" [PANIC: %s]\n", _stats.panicInfo.exceptionCause.c_str());
+  } else {
+    Serial.println();
+  }
 }
 
 String Diagnostics::getRebootReason() const {
@@ -199,7 +220,7 @@ void Diagnostics::recordOtaResult(bool success, const char* errorMsg) {
 
 String Diagnostics::generateRestartReport() const {
   String report;
-  report.reserve(1024);
+  report.reserve(2048); // Augmenté pour inclure les infos de panic
   
   // Raison du redémarrage actuel
   esp_reset_reason_t resetReason = esp_reset_reason();
@@ -238,6 +259,26 @@ String Diagnostics::generateRestartReport() const {
   }
   report += "\n";
   
+  // Informations détaillées de PANIC si disponibles
+  if (_stats.panicInfo.hasPanicInfo) {
+    report += "\n⚠️ DÉTAILS DU PANIC (Guru Meditation) ⚠️\n";
+    report += "Exception: "; report += _stats.panicInfo.exceptionCause; report += "\n";
+    report += "Adresse PC: 0x"; report += String(_stats.panicInfo.exceptionAddress, HEX); report += "\n";
+    if (_stats.panicInfo.excvaddr != 0) {
+      report += "Adresse mémoire fautive: 0x"; report += String(_stats.panicInfo.excvaddr, HEX); report += "\n";
+    }
+    if (_stats.panicInfo.taskName.length() > 0) {
+      report += "Tâche: "; report += _stats.panicInfo.taskName; report += "\n";
+    }
+    if (_stats.panicInfo.core >= 0) {
+      report += "CPU Core: "; report += String(_stats.panicInfo.core); report += "\n";
+    }
+    if (_stats.panicInfo.additionalInfo.length() > 0) {
+      report += "Info supplémentaire: "; report += _stats.panicInfo.additionalInfo; report += "\n";
+    }
+    report += "\n";
+  }
+  
   // Informations sur le redémarrage
   report += "Compteur de redémarrages: "; report += String(_stats.rebootCount); report += "\n";
   report += "Dernière raison sauvegardée: "; report += _stats.lastRebootReason; report += "\n";
@@ -263,4 +304,135 @@ String Diagnostics::generateRestartReport() const {
   }
   
   return report;
+}
+
+// Capturer les informations de panic depuis la mémoire RTC
+void Diagnostics::capturePanicInfo() {
+  _stats.panicInfo.hasPanicInfo = false;
+  
+  // Vérifier si le dernier reset était un panic
+  if (esp_reset_reason() != ESP_RST_PANIC && 
+      esp_reset_reason() != ESP_RST_INT_WDT && 
+      esp_reset_reason() != ESP_RST_TASK_WDT) {
+    return;
+  }
+  
+  // Obtenir la raison RTC plus détaillée
+  RESET_REASON rtcReason = rtc_get_reset_reason(0);
+  
+  _stats.panicInfo.hasPanicInfo = true;
+  _stats.panicInfo.exceptionAddress = 0;
+  _stats.panicInfo.excvaddr = 0;
+  _stats.panicInfo.core = 0;
+  _stats.panicInfo.taskName = "";
+  _stats.panicInfo.additionalInfo = "";
+  
+  // Décoder la raison RTC en détails
+  // Note: On utilise seulement les constantes disponibles dans toutes les versions du SDK
+  switch (rtcReason) {
+    case RTCWDT_RTC_RESET:
+      _stats.panicInfo.exceptionCause = "RTC Watchdog Reset";
+      break;
+    case TGWDT_CPU_RESET:
+      _stats.panicInfo.exceptionCause = "Timer Group Watchdog (CPU)";
+      break;
+    case TG0WDT_SYS_RESET:
+      _stats.panicInfo.exceptionCause = "Timer Group 0 Watchdog (System)";
+      break;
+    case TG1WDT_SYS_RESET:
+      _stats.panicInfo.exceptionCause = "Timer Group 1 Watchdog (System)";
+      break;
+    case SW_CPU_RESET:
+      _stats.panicInfo.exceptionCause = "Software CPU Reset";
+      break;
+    case RTCWDT_CPU_RESET:
+      _stats.panicInfo.exceptionCause = "RTC Watchdog CPU Reset";
+      break;
+    case INTRUSION_RESET:
+      _stats.panicInfo.exceptionCause = "Intrusion Test Reset";
+      break;
+    case DEEPSLEEP_RESET:
+      _stats.panicInfo.exceptionCause = "Deep Sleep Reset";
+      break;
+    case SDIO_RESET:
+      _stats.panicInfo.exceptionCause = "SDIO Reset";
+      break;
+    case POWERON_RESET:
+      _stats.panicInfo.exceptionCause = "Power-On Reset";
+      break;
+    case SW_RESET:
+      _stats.panicInfo.exceptionCause = "Software Reset";
+      break;
+    default:
+      // Pour les codes inconnus, on affiche le code numérique
+      _stats.panicInfo.exceptionCause = "Unknown Exception";
+      _stats.panicInfo.additionalInfo += " (Reset code: " + String((int)rtcReason) + ")";
+      break;
+  }
+  
+  // Vérifier les deux cores
+  RESET_REASON rtcReason1 = rtc_get_reset_reason(1);
+  if (rtcReason1 != rtcReason && rtcReason1 != NO_MEAN) {
+    _stats.panicInfo.additionalInfo += "Core 1 reason differs: " + String((int)rtcReason1);
+  }
+  
+  // Les informations plus détaillées comme PC, excvaddr ne sont disponibles
+  // que via le coredump qui nécessite une configuration spéciale.
+  // On les laisse pour l'instant, mais on peut les ajouter si le coredump est activé.
+  
+  Serial.printf("[Diagnostics] 🔍 Panic capturé: %s (Core %d)\n", 
+                _stats.panicInfo.exceptionCause.c_str(), _stats.panicInfo.core);
+}
+
+// Sauvegarder les informations de panic dans NVS
+void Diagnostics::savePanicInfo() {
+  if (!_stats.panicInfo.hasPanicInfo) return;
+  
+  _prefs.begin("diagnostics", false);
+  _prefs.putBool("hasPanic", true);
+  _prefs.putString("panicCause", _stats.panicInfo.exceptionCause);
+  _prefs.putUInt("panicAddr", _stats.panicInfo.exceptionAddress);
+  _prefs.putUInt("panicExcv", _stats.panicInfo.excvaddr);
+  _prefs.putString("panicTask", _stats.panicInfo.taskName);
+  _prefs.putInt("panicCore", _stats.panicInfo.core);
+  _prefs.putString("panicInfo", _stats.panicInfo.additionalInfo);
+  _prefs.end();
+  
+  Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
+}
+
+// Charger les informations de panic depuis NVS
+void Diagnostics::loadPanicInfo() {
+  _prefs.begin("diagnostics", true); // read-only
+  _stats.panicInfo.hasPanicInfo = _prefs.getBool("hasPanic", false);
+  
+  if (_stats.panicInfo.hasPanicInfo) {
+    _stats.panicInfo.exceptionCause = _prefs.getString("panicCause", "Unknown");
+    _stats.panicInfo.exceptionAddress = _prefs.getUInt("panicAddr", 0);
+    _stats.panicInfo.excvaddr = _prefs.getUInt("panicExcv", 0);
+    _stats.panicInfo.taskName = _prefs.getString("panicTask", "");
+    _stats.panicInfo.core = _prefs.getInt("panicCore", -1);
+    _stats.panicInfo.additionalInfo = _prefs.getString("panicInfo", "");
+    
+    Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
+  }
+  _prefs.end();
+  
+  // Nettoyer les infos après lecture pour le prochain boot
+  if (_stats.panicInfo.hasPanicInfo) {
+    clearPanicInfo();
+  }
+}
+
+// Nettoyer les informations de panic dans NVS
+void Diagnostics::clearPanicInfo() {
+  _prefs.begin("diagnostics", false);
+  _prefs.remove("hasPanic");
+  _prefs.remove("panicCause");
+  _prefs.remove("panicAddr");
+  _prefs.remove("panicExcv");
+  _prefs.remove("panicTask");
+  _prefs.remove("panicCore");
+  _prefs.remove("panicInfo");
+  _prefs.end();
 }
