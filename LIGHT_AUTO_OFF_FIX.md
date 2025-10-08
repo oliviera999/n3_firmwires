@@ -124,3 +124,4 @@ Si la lumière s'éteint toujours après cette modification, vérifier côté se
 
 **Note:** Cette modification fait suite au fix mémoire PANIC qui a été un succès total (heap minimum passé de 15 500 bytes à 62 212 bytes, aucun PANIC depuis le déploiement).
 
+
