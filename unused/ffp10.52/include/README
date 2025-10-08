@@ -1,0 +1,38 @@
+# Dossier `include/` – API interne du firmware
+
+Ce répertoire regroupe **tous les en-têtes publics** (interfaces) du firmware FarmFlow Proto 3.  
+Chaque fichier possède son pendant dans `src/` qui contient l’implémentation.
+
+| Fichier | Rôle principal |
+|---------|----------------|
+| `pins.h` | Cartographie GPIO pour les profils **ESP32** vs **ESP32-S3** (sélection via `build_flags`). |
+| `constants.h` | Version firmware, URL backend, clés API, seuils par défaut. |
+| `secrets.h` | Identifiants Wi-Fi et SMTP **privés** – **exclu du dépôt**. |
+| `wifi_manager.h` | Gestion multi-SSID avec timeout.
+| `sensors.h` | Drivers de bas niveau :
+  * `WaterTempSensor` (OneWire + DallasTemperature)
+  * `AirSensor` (DHT22 via Adafruit Unified Sensor)
+  * `UltrasonicManager` (HC-SR04 / Grove Ranger)
+| `system_sensors.h` | Agrégateur de capteurs, renvoie un `SensorReadings` struct. |
+| `actuators.h` | Abstractions « pompe / chauffage / lumière / servo » avec inversion de logique.
+| `system_actuators.h` | Regroupe tous les actionneurs physiques et expose des méthodes utilitaires. |
+| `display_view.h` | Affichage OLED SSD1306 (Adafruit GFX) : tableaux de bord, diagnostics, compte-à-rebours. |
+| `power.h` | RTC logiciel (ESP32Time), NTP, veille, watchdog. |
+| `web_client.h` | POST/GET HTTP (API REST distante) + sérialisation JSON.
+| `web_server.h` | Serveur HTTP asynchrone (AsyncWebServer) pour l’UI embarquée + endpoints JSON. |
+| `mailer.h` | Envoi SMTP via Gmail (ESP Mail Client). |
+| `config.h` | Persistance dans NVS (Preferences) : flags nourrissage, seuils, etc. |
+| `diagnostics.h` | Infos VIN, RSSI, cause reset, watchdog, brownout… |
+| `automatism.h` | **Cœur métier** : gestion nourrissage, pompage, chauffage, alertes, veille. |
+| `local_assets.h` / `web_assets.h` | Page Web, CSS, JS et icônes compressés en tableaux C (`PROGMEM`). |
+
+---
+
+## Ajouter un nouveau module
+1. Créez `include/mon_module.h` avec les prototypes publics.  
+2. Créez `src/mon_module.cpp` pour l’implémentation.  
+3. Ajoutez le header dans les fichiers consommateurs **et** dans la table ci-dessus.
+
+---
+
+> Astuce : tous les headers utilisent `#pragma once` et évitent les noms globaux grâce à des **namespaces** ou des classes.

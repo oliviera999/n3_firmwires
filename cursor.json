@@ -1,0 +1,7 @@
+{
+  "agents": [
+    {
+      "path": ".cursor/cursor-agent.d.ts"
+    }
+  ]
+}

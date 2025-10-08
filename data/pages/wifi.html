@@ -1,0 +1,186 @@
+<!-- Gestion WiFi -->
+<div class="row g-4">
+  <!-- Statut WiFi Station (Client) -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">📡 Statut WiFi Client</h5>
+      </div>
+      <div class="card-body">
+        <div class="list-group list-group-flush">
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>État</span>
+            <span class="badge" id="wifiStaStatus">--</span>
+          </div>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>SSID</span>
+            <span class="badge bg-primary" id="wifiStaSSID">--</span>
+          </div>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Adresse IP</span>
+            <span class="badge bg-info" id="wifiStaIP">--</span>
+          </div>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Signal (RSSI)</span>
+            <span class="badge bg-warning text-dark" id="wifiStaRSSI">--</span>
+          </div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-outline-primary w-100" onclick="refreshWifiStatus()">
+            🔄 Actualiser
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Statut WiFi AP (Point d'accès) -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">📶 Point d'Accès WiFi</h5>
+      </div>
+      <div class="card-body">
+        <div class="list-group list-group-flush">
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>État</span>
+            <span class="badge" id="wifiApStatus">--</span>
+          </div>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>SSID</span>
+            <span class="badge bg-primary" id="wifiApSSID">--</span>
+          </div>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Adresse IP</span>
+            <span class="badge bg-info" id="wifiApIP">--</span>
+          </div>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Clients</span>
+            <span class="badge bg-success" id="wifiApClients">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Réseaux Sauvegardés -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">💾 Réseaux Sauvegardés</h5>
+      </div>
+      <div class="card-body">
+        <div id="savedNetworksList" class="list-group list-group-flush">
+          <div class="text-center text-muted">Chargement...</div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-outline-primary w-100" onclick="loadSavedNetworks()">
+            🔄 Actualiser
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scanner Réseaux -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">🔍 Scanner Réseaux</h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <button class="btn btn-primary w-100" onclick="scanWifiNetworks()">
+            📡 Scanner
+          </button>
+        </div>
+        <div id="availableNetworksList" class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+          <div class="text-center text-muted">Cliquez sur Scanner pour voir les réseaux disponibles</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connexion Manuelle -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">🔌 Connexion Manuelle</h5>
+      </div>
+      <div class="card-body">
+        <form id="wifiConnectForm" onsubmit="connectToWifi(event)">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">SSID</label>
+              <input type="text" class="form-control" id="wifiSSID" placeholder="Nom du réseau" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Mot de passe</label>
+              <input type="password" class="form-control" id="wifiPassword" placeholder="Mot de passe">
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="wifiSave" checked>
+                <label class="form-check-label" for="wifiSave">
+                  Sauvegarder ce réseau
+                </label>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                  🔌 Connecter
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="clearWifiForm()">
+                  🗑️ Effacer
+                </button>
+              </div>
+            </div>
+            <div class="col-12">
+              <div id="wifiConnectStatus"></div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Logs WiFi -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">🔍 Logs de Debug</h5>
+        <div>
+          <button onclick="toggleLogs()" class="btn btn-sm btn-info">Toggle Logs</button>
+          <button onclick="clearLogs()" class="btn btn-sm btn-warning">Clear</button>
+          <select id="logLevelSelect" onchange="changeLogLevel()" class="form-select form-select-sm d-inline-block w-auto ms-2">
+            <option value="0">ERROR</option>
+            <option value="1">WARN</option>
+            <option value="2" selected>INFO</option>
+            <option value="3">DEBUG</option>
+            <option value="4">TRACE</option>
+          </select>
+          <button onclick="exportLogs()" class="btn btn-sm btn-outline-secondary ms-2">Export</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="logPanel" style="display: none;">
+          <div id="logContent" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; background: var(--bg-2); padding: 10px; border-radius: 8px;">
+            <!-- Logs affichés ici -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Charger le statut WiFi et les réseaux sauvegardés au chargement de la page
+if (typeof refreshWifiStatus === 'function') {
+  refreshWifiStatus();
+}
+if (typeof loadSavedNetworks === 'function') {
+  loadSavedNetworks();
+}
+</script>
+

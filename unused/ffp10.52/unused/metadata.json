@@ -1,0 +1,38 @@
+{
+  "version": "9.9",
+  "bin_url": "https://votre-serveur.com/ota/firmware_s3_prod_v9.9.bin",
+  "size": 1887984,
+  "md5": "7f69f64befc12f06e2d987537e8b7414",
+  "channels": {
+    "prod": {
+      "esp32-s3": {
+        "version": "9.9",
+        "bin_url": "https://votre-serveur.com/ota/firmware_s3_prod_v9.9.bin",
+        "size": 1887984,
+        "md5": "7f69f64befc12f06e2d987537e8b7414"
+      },
+      "default": {
+        "version": "9.9",
+        "bin_url": "https://votre-serveur.com/ota/firmware_s3_prod_v9.9.bin",
+        "size": 1887984,
+        "md5": "7f69f64befc12f06e2d987537e8b7414"
+      }
+    },
+    "test": {
+      "esp32-s3": {
+        "version": "9.9",
+        "bin_url": "https://votre-serveur.com/ota/firmware_s3_prod_v9.9.bin",
+        "size": 1887984,
+        "md5": "7f69f64befc12f06e2d987537e8b7414"
+      },
+      "default": {
+        "version": "9.9",
+        "bin_url": "https://votre-serveur.com/ota/firmware_s3_prod_v9.9.bin",
+        "size": 1887984,
+        "md5": "7f69f64befc12f06e2d987537e8b7414"
+      }
+    }
+  },
+  "changelog": "Fix OTA: Correction du basculement entre partitions app0/app1 lors des mises à jour successives",
+  "date": "2025-09-12"
+}

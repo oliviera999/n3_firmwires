@@ -1,440 +1,1033 @@
 #include "sensors.h"
+#include <math.h> // Pour fabs()
+#include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
+#include <Preferences.h> // Pour la persistance NVS
 #include "project_config.h"
-#include <algorithm>
 
-SensorManager* SensorManager::instance = nullptr;
-
-// Base Sensor implementation
-Sensor::Sensor(const String& name, SensorType type, int pin) 
-    : name(name), type(type), pin(pin), enabled(true), offset(0), scale(1.0), 
-      lastReadTime(0), readInterval(SENSOR_READ_INTERVAL) {
-    lastReading.type = type;
-    lastReading.valid = false;
+// -------- UltrasonicManager ---------
+UltrasonicManager::UltrasonicManager(int pinTrigEcho) : _pinTrigEcho(pinTrigEcho),
+                                                       _historyIndex(0), _historyCount(0), _lastValidDistance(0) {
+  // Initialise l'historique avec des valeurs 0
+  for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+    _history[i] = 0;
+  }
 }
 
-void Sensor::calibrate(float offset, float scale) {
-    this->offset = offset;
-    this->scale = scale;
-}
+uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
+  // Mesure manuelle pour limiter le temps passé avec les interruptions désactivées.
+  // On envoie un pulse de 10 µs puis on attend l'écho avec un timeout réduit à 25 ms
+  // afin de ne jamais bloquer les interruptions assez longtemps pour déclencher
+  // l'interrupt watchdog.
 
-// DHT Sensor implementation - Non-blocking
-DHTSensor::DHTSensor(const String& name, int pin, uint8_t type) 
-    : Sensor(name, SENSOR_TEMPERATURE, pin), dhtType(type), 
-      initState(INIT_NOT_STARTED), initStartTime(0) {
-    dht = new DHT(pin, type);
-}
+  const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
+  uint32_t total = 0;
+  uint8_t valid = 0;
 
-DHTSensor::~DHTSensor() {
-    delete dht;
-}
-
-bool DHTSensor::init() {
-    dht->begin();
+  for (uint8_t i = 0; i < samples; ++i) {
+    // Reset watchdog before each measurement
+    esp_task_wdt_reset();
     
-    // Start non-blocking initialization
-    initStartTime = millis();
-    initState = INIT_WAITING;
-    
-    ESP_LOGI("DHT", "DHT sensor initialization started (non-blocking)");
-    return true; // Return immediately
+    // Déclenchement
+    pinMode(_pinTrigEcho, OUTPUT);
+    digitalWrite(_pinTrigEcho, LOW);
+    delayMicroseconds(2);
+    digitalWrite(_pinTrigEcho, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(_pinTrigEcho, LOW);
+
+    // Lecture de l'écho (pin en entrée)
+    // Pas de délai nécessaire selon datasheet HC-SR04 - le capteur envoie l'écho immédiatement
+    pinMode(_pinTrigEcho, INPUT);
+    unsigned long duration = readEchoPulseUs(TIMEOUT_US);
+
+    if (duration > 0) {
+      uint16_t cm = duration / ExtendedSensorConfig::ULTRASONIC_US_TO_CM_FACTOR; // Conversion µs -> cm (vitesse du son ~340 m/s)
+      if (cm > MIN_DISTANCE && cm < MAX_DISTANCE) {
+        total += cm;
+        ++valid;
+      }
+    }
+
+    // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter échos retardés
+    vTaskDelay(pdMS_TO_TICKS(60));
+  }
+
+  return valid ? total / valid : 0;
 }
 
-bool DHTSensor::isReady() {
-    if (initState == INIT_READY) {
+uint16_t UltrasonicManager::readAdvancedFiltered() {
+  // 1. Filtrage statistique avancé avec médiane
+  uint16_t readings[READINGS_COUNT];
+  uint8_t validReadings = 0;
+  
+  // CORRECTION : Timeout augmenté pour la production
+  const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US; // 30ms par config
+  
+  // Effectue plusieurs lectures avec délai
+  for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
+    // Reset watchdog before each measurement
+    esp_task_wdt_reset();
+    
+    // Déclenchement
+    pinMode(_pinTrigEcho, OUTPUT);
+    digitalWrite(_pinTrigEcho, LOW);
+    delayMicroseconds(2);
+    digitalWrite(_pinTrigEcho, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(_pinTrigEcho, LOW);
+
+    // Lecture de l'écho (pin en entrée)
+    // Pas de délai nécessaire selon datasheet HC-SR04 - le capteur envoie l'écho immédiatement
+    pinMode(_pinTrigEcho, INPUT);
+    unsigned long duration = readEchoPulseUs(TIMEOUT_US);
+
+    if (duration > 0) {
+      uint16_t cm = duration / 58; // Conversion µs -> cm (vitesse du son ~340 m/s)
+      
+      // CORRECTION : Plage de validation assouplie pour l'aquarium
+      if (cm >= MIN_DISTANCE && cm < MAX_DISTANCE) { // >= au lieu de >
+        readings[validReadings++] = cm;
+        Serial.printf("[Ultrasonic] Lecture %d: %u cm\n", i+1, cm);
+      } else {
+        Serial.printf("[Ultrasonic] Lecture %d rejetée: %u cm (hors plage %u-%u)\n", i+1, cm, MIN_DISTANCE, MAX_DISTANCE-1);
+      }
+    } else {
+      Serial.printf("[Ultrasonic] Lecture %d timeout\n", i+1);
+    }
+    
+    // Reset watchdog before delay
+    esp_task_wdt_reset();
+    
+    // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter les interférences
+    vTaskDelay(pdMS_TO_TICKS(60));
+  }
+  
+  // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
+  if (validReadings < 1) { // Réduit de MIN_VALID_READINGS (2) à 1
+    Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/1), retourne 0\n", validReadings);
+    return 0;
+  }
+  
+  // Trie les lectures pour calculer la médiane
+  for (uint8_t i = 0; i < validReadings - 1; ++i) {
+    for (uint8_t j = i + 1; j < validReadings; ++j) {
+      if (readings[i] > readings[j]) {
+        uint16_t temp = readings[i];
+        readings[i] = readings[j];
+        readings[j] = temp;
+      }
+    }
+  }
+  
+  // Calcule la médiane
+  uint16_t medianDistance = readings[validReadings / 2];
+  
+  // CORRECTION : Détection de sauts brutaux assouplie
+  if (_lastValidDistance > 0 && abs((int)medianDistance - (int)_lastValidDistance) > MAX_DISTANCE_DELTA) {
+    // CORRECTION : Au lieu de retourner l'ancienne valeur, on accepte le changement si cohérent
+    Serial.printf("[Ultrasonic] Saut détecté: %u cm -> %u cm (écart: %d cm)\n", 
+                  _lastValidDistance, medianDistance, abs((int)medianDistance - (int)_lastValidDistance));
+    
+    // Si c'est un saut vers une valeur plus basse (niveau qui baisse), on l'accepte
+    if (medianDistance < _lastValidDistance) {
+      Serial.printf("[Ultrasonic] Saut vers le bas accepté (niveau qui baisse)\n");
+    } else {
+      // Si c'est un saut vers le haut, on vérifie la cohérence
+      Serial.printf("[Ultrasonic] Saut vers le haut, utilise ancienne valeur par sécurité\n");
+      return _lastValidDistance;
+    }
+  }
+  
+  // Historique glissant pour détection d'aberrations
+  if (_historyCount >= 2) {
+    uint32_t avgHistory = 0;
+    uint8_t validHistory = 0;
+    
+    for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+      if (_history[i] > 0) {
+        avgHistory += _history[i];
+        validHistory++;
+      }
+    }
+    
+    if (validHistory > 0) {
+      avgHistory /= validHistory;
+      int deviation = abs((int)medianDistance - (int)avgHistory);
+      
+      // CORRECTION : Tolérance augmentée pour les variations de niveau d'eau
+      if (deviation > MAX_DISTANCE_DELTA * 3) { // Augmenté de *2 à *3
+        Serial.printf("[Ultrasonic] Écart important avec l'historique: %u cm (moyenne: %lu cm), utilise ancienne valeur\n", 
+                      medianDistance, avgHistory);
+        return _lastValidDistance;
+      }
+    }
+  }
+  
+  // Met à jour l'historique
+  _history[_historyIndex] = medianDistance;
+  _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
+  if (_historyCount < HISTORY_SIZE) _historyCount++;
+  
+  // Met à jour la dernière valeur valide
+  _lastValidDistance = medianDistance;
+  
+  Serial.printf("[Ultrasonic] Distance médiane: %u cm (%d lectures valides)\n", 
+                medianDistance, validReadings);
+  return medianDistance;
+}
+
+uint16_t UltrasonicManager::readRobustFiltered() {
+  // 1) Lecture A
+  uint16_t a = readAdvancedFiltered();
+  if (a == 0) {
+    // Fallback lecture simple
+    a = readFiltered(3);
+  }
+  if (a == 0) {
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+  }
+  
+  // 2) Confirmation temporelle: lecture B courte pour confirmer un saut important
+  vTaskDelay(pdMS_TO_TICKS(50));
+  uint16_t b = readFiltered(3);
+  if (b == 0) b = a; // si lecture courte échoue, ne bloque pas
+  
+  // 3) Si écart > MAX_DISTANCE_DELTA*2, exiger confirmation (proche de A)
+  int delta = abs((int)a - (int)b);
+  if (_lastValidDistance > 0 && abs((int)a - (int)_lastValidDistance) > (int)MAX_DISTANCE_DELTA*2) {
+    if (delta > (int)MAX_DISTANCE_DELTA) {
+      // Rejette saut non confirmé, conserve dernière valeur
+      return _lastValidDistance;
+    }
+  }
+  
+  // 4) Mise à jour dernière valeur valide
+  _lastValidDistance = a;
+  return a;
+}
+
+void UltrasonicManager::resetHistory() {
+  _historyIndex = 0;
+  _historyCount = 0;
+  _lastValidDistance = 0;
+  for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+    _history[i] = 0;
+  }
+  Serial.println("[Ultrasonic] Historique réinitialisé");
+}
+
+// --- Implémentation utilitaire: lecture d'impulsion via RMT si dispo ---
+uint32_t UltrasonicManager::readEchoPulseUs(uint32_t timeoutUs) {
+#if CONFIG_IDF_TARGET_ESP32S3
+  // Implémentation non-bloquante simple: échantillonnage actif avec timeout
+  // Mesure la largeur d'impulsion HIGH en microsecondes sans bloquer trop longtemps
+  unsigned long start = micros();
+  unsigned long deadline = start + timeoutUs;
+
+  // Attendre front montant
+  while (digitalRead(_pinTrigEcho) == LOW) {
+    if ((long)(micros() - deadline) >= 0) return 0;
+    // petite pause pour laisser le CPU respirer
+    delayMicroseconds(2);
+  }
+
+  // Mesurer la durée HIGH
+  unsigned long highStart = micros();
+  while (digitalRead(_pinTrigEcho) == HIGH) {
+    if ((long)(micros() - deadline) >= 0) return 0;
+    delayMicroseconds(2);
+  }
+  unsigned long highEnd = micros();
+  if (highEnd < highStart) return 0;
+  return (uint32_t)(highEnd - highStart);
+#else
+  return pulseIn(_pinTrigEcho, HIGH, timeoutUs);
+#endif
+}
+
+// -------- WaterTempSensor ------------
+WaterTempSensor::WaterTempSensor() : _historyIndex(0), _historyCount(0), _lastValidTemp(NAN) {
+  // Initialise l'historique avec des valeurs NaN
+  for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+    _history[i] = NAN;
+  }
+}
+
+void WaterTempSensor::begin() {
+  _sensors.begin();
+  _sensors.setResolution(DS18B20_RESOLUTION); // 10 bits (option 2)
+  _sensors.setWaitForConversion(false); // conversions non-bloquantes
+  resetHistory();
+  
+  // Chargement de la dernière température valide depuis NVS
+  _lastValidTemp = loadLastValidTempFromNVS();
+  
+  // Test initial de connectivité
+  if (!isSensorConnected()) {
+    Serial.println("[WaterTemp] ATTENTION: Capteur non détecté lors de l'initialisation");
+  } else {
+    Serial.printf("[WaterTemp] Capteur détecté et initialisé (résolution: %d bits, conversion: %d ms)\n", 
+                  DS18B20_RESOLUTION, CONVERSION_DELAY_MS);
+  }
+
+  // Pré-charge pipeline de conversion
+  _sensors.requestTemperatures();
+  _lastRequestMs = millis();
+  _pipelineReady = true;
+}
+
+bool WaterTempSensor::isSensorConnected() {
+  // Reset du bus OneWire pour un test propre
+  _oneWire.reset();
+  vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
+  
+  // Vérifie la présence du capteur sur le bus OneWire
+  uint8_t addr[8];
+  _oneWire.reset_search();
+  
+  // Tentative de recherche avec retry
+  for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+    if (_oneWire.search(addr)) {
+      // Vérifie que c'est bien un DS18B20
+      if (_oneWire.crc8(addr, 7) != addr[7]) {
+        Serial.println("[WaterTemp] CRC invalide - capteur corrompu");
+        continue; // Retry
+      }
+      
+      // Vérifie le type de capteur (DS18B20 = 0x28)
+      if (addr[0] != 0x28) {
+        Serial.printf("[WaterTemp] Type de capteur invalide: 0x%02X (attendu: 0x28)\n", addr[0]);
+        continue; // Retry
+      }
+      
+      // Test de lecture rapide pour vérifier la fonctionnalité
+      _sensors.requestTemperatures();
+      vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::SENSOR_READ_DELAY_MS)); // Délai court pour test
+      float testTemp = _sensors.getTempCByIndex(0);
+      
+      if (!isnan(testTemp)) {
+        Serial.printf("[WaterTemp] Capteur connecté et fonctionnel (test: %.1f°C)\n", testTemp);
         return true;
+      } else {
+        Serial.println("[WaterTemp] Capteur détecté mais lecture échouée");
+        continue; // Retry
+      }
     }
     
-    if (initState == INIT_WAITING) {
-        // Check if enough time has passed
-        if (millis() - initStartTime > 2000) {
-            // Test read
-            float t = dht->readTemperature();
-            float h = dht->readHumidity();
-            
-            if (isnan(t) || isnan(h)) {
-                initState = INIT_FAILED;
-                ESP_LOGE("DHT", "DHT sensor init failed on pin %d", pin);
-                return false;
-            }
-            
-            initState = INIT_READY;
-            ESP_LOGI("DHT", "DHT sensor ready: T=%.1f°C, H=%.1f%%", t, h);
-            return true;
-        }
+    // Délai avant retry
+    if (attempt < 2) {
+      vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::SENSOR_READ_DELAY_MS));
     }
-    
-    return false;
+  }
+  
+  Serial.println("[WaterTemp] Aucun capteur fonctionnel trouvé sur le bus OneWire");
+  return false;
 }
 
-SensorReading DHTSensor::read() {
-    // Check if sensor is ready
-    if (!isReady()) {
-        SensorReading invalid;
-        invalid.valid = false;
-        invalid.error = "Sensor not ready";
-        invalid.timestamp = millis();
-        return invalid;
-    }
-    
-    return readTemperature(); // Default to temperature
+void WaterTempSensor::resetSensor() {
+  Serial.println("[WaterTemp] Reset matériel du capteur...");
+  
+  // Reset du bus OneWire
+  _oneWire.reset();
+  vTaskDelay(pdMS_TO_TICKS(SENSOR_RESET_DELAY_MS));
+  
+  // Réinitialisation de la bibliothèque DallasTemperature
+  _sensors.begin();
+  _sensors.setResolution(DS18B20_RESOLUTION); // Utilise la résolution optimisée
+  
+  // Reset de l'historique
+  resetHistory();
+  
+  Serial.printf("[WaterTemp] Reset matériel terminé (résolution: %d bits)\n", DS18B20_RESOLUTION);
 }
 
-SensorReading DHTSensor::readTemperature() {
-    SensorReading reading;
-    reading.type = SENSOR_TEMPERATURE;
-    reading.timestamp = millis();
-    
-    // Check if ready first
-    if (!isReady()) {
-        reading.valid = false;
-        reading.error = "Sensor not ready";
-        return reading;
-    }
-    
-    // Implement read rate limiting (DHT22 max 0.5Hz)
-    static unsigned long lastReadTime = 0;
-    if (millis() - lastReadTime < 2000) {
-        // Return cached value
-        return lastReading;
-    }
-    lastReadTime = millis();
-    
-    float t = dht->readTemperature();
-    
-    if (isnan(t)) {
-        reading.valid = false;
-        reading.error = "Failed to read temperature";
-    } else {
-        reading.rawValue = t;
-        reading.value = (t + offset) * scale;
-        reading.valid = true;
-        reading.unit = "°C";
-    }
-    
-    lastReading = reading;
-    return reading;
-}
-
-SensorReading DHTSensor::readHumidity() {
-    SensorReading reading;
-    reading.type = SENSOR_HUMIDITY;
-    reading.timestamp = millis();
-    
-    // Check if ready first
-    if (!isReady()) {
-        reading.valid = false;
-        reading.error = "Sensor not ready";
-        return reading;
-    }
-    
-    // Implement read rate limiting
-    static unsigned long lastReadTime = 0;
-    static SensorReading cachedReading;
-    
-    if (millis() - lastReadTime < 2000) {
-        // Return cached value
-        return cachedReading;
-    }
-    lastReadTime = millis();
-    
-    float h = dht->readHumidity();
-    
-    if (isnan(h)) {
-        reading.valid = false;
-        reading.error = "Failed to read humidity";
-    } else {
-        reading.rawValue = h;
-        reading.value = (h + offset) * scale;
-        reading.valid = true;
-        reading.unit = "%";
-    }
-    
-    cachedReading = reading;
-    return reading;
-}
-
-// DS18B20 Sensor implementation
-DS18B20Sensor::DS18B20Sensor(const String& name, int pin) 
-    : Sensor(name, SENSOR_TEMPERATURE, pin) {
-    oneWire = new OneWire(pin);
-    sensors = new DallasTemperature(oneWire);
-}
-
-DS18B20Sensor::~DS18B20Sensor() {
-    delete sensors;
-    delete oneWire;
-}
-
-bool DS18B20Sensor::init() {
-    sensors->begin();
-    
-    if (sensors->getDeviceCount() == 0) {
-        Serial.printf("No DS18B20 found on pin %d\n", pin);
-        return false;
-    }
-    
-    if (!sensors->getAddress(deviceAddress, 0)) {
-        Serial.println("Unable to find address for DS18B20");
-        return false;
-    }
-    
-    sensors->setResolution(deviceAddress, 12); // 12-bit resolution
-    
-    // Test read
-    sensors->requestTemperatures();
-    float t = sensors->getTempC(deviceAddress);
-    
-    if (t == DEVICE_DISCONNECTED_C) {
-        Serial.println("DS18B20 read error");
-        return false;
-    }
-    
-    Serial.printf("DS18B20 initialized: T=%.2f°C\n", t);
-    return true;
-}
-
-SensorReading DS18B20Sensor::read() {
-    SensorReading reading;
-    reading.type = SENSOR_TEMPERATURE;
-    reading.timestamp = millis();
-    
-    sensors->requestTemperatures();
-    float t = sensors->getTempC(deviceAddress);
-    
-    if (t == DEVICE_DISCONNECTED_C) {
-        reading.valid = false;
-        reading.error = "Sensor disconnected";
-    } else {
-        reading.rawValue = t;
-        reading.value = (t + offset) * scale;
-        reading.valid = true;
-        reading.unit = "°C";
-    }
-    
-    lastReading = reading;
-    return reading;
-}
-
-// Analog Sensor implementation
-AnalogSensor::AnalogSensor(const String& name, SensorType type, int pin)
-    : Sensor(name, type, pin), minValue(0), maxValue(4095), 
-      minOutput(0), maxOutput(100), numSamples(10) {
-}
-
-bool AnalogSensor::init() {
-    pinMode(pin, INPUT);
-    
-    // Test read
-    int value = analogRead(pin);
-    Serial.printf("Analog sensor on pin %d initialized: raw=%d\n", pin, value);
-    
-    return true;
-}
-
-SensorReading AnalogSensor::read() {
-    SensorReading reading;
-    reading.type = type;
-    reading.timestamp = millis();
-    
-    // Average multiple samples for stability
-    long sum = 0;
-    for (int i = 0; i < numSamples; i++) {
-        sum += analogRead(pin);
-        delay(10);
-    }
-    int avgValue = sum / numSamples;
-    
-    // Map to output range
-    float mappedValue = map(avgValue, minValue, maxValue, minOutput * 100, maxOutput * 100) / 100.0;
-    
-    reading.rawValue = avgValue;
-    reading.value = (mappedValue + offset) * scale;
-    reading.valid = true;
-    
-    // Set unit based on sensor type
-    switch (type) {
-        case SENSOR_SOIL_MOISTURE:
-            reading.unit = "%";
-            break;
-        case SENSOR_LIGHT:
-            reading.unit = "lux";
-            break;
-        case SENSOR_WATER_LEVEL:
-            reading.unit = "%";
-            break;
-        default:
-            reading.unit = "";
-    }
-    
-    lastReading = reading;
-    return reading;
-}
-
-void AnalogSensor::setRange(int min, int max, float minOut, float maxOut) {
-    minValue = min;
-    maxValue = max;
-    minOutput = minOut;
-    maxOutput = maxOut;
-}
-
-void AnalogSensor::setSampling(int samples) {
-    numSamples = samples;
-}
-
-// Sensor Manager implementation
-SensorManager::SensorManager() 
-    : historySize(SENSOR_CACHE_SIZE), autoRead(false), 
-      autoReadInterval(5000), lastAutoRead(0) {
-}
-
-SensorManager* SensorManager::getInstance() {
-    if (instance == nullptr) {
-        instance = new SensorManager();
-    }
-    return instance;
-}
-
-SensorManager::~SensorManager() {
-    for (auto sensor : sensors) {
-        delete sensor;
-    }
-    sensors.clear();
-}
-
-void SensorManager::addSensor(Sensor* sensor) {
-    sensors.push_back(sensor);
-}
-
-void SensorManager::removeSensor(const String& name) {
-    sensors.erase(
-        std::remove_if(sensors.begin(), sensors.end(),
-            [&name](Sensor* s) { 
-                if (s->getName() == name) {
-                    delete s;
-                    return true;
-                }
-                return false;
-            }),
-        sensors.end()
-    );
-}
-
-Sensor* SensorManager::getSensor(const String& name) {
-    for (auto sensor : sensors) {
-        if (sensor->getName() == name) {
-            return sensor;
-        }
-    }
-    return nullptr;
-}
-
-std::vector<Sensor*> SensorManager::getSensorsByType(SensorType type) {
-    std::vector<Sensor*> result;
-    for (auto sensor : sensors) {
-        if (sensor->getType() == type) {
-            result.push_back(sensor);
-        }
-    }
+float WaterTempSensor::robustTemperatureC() {
+  // 1. Tentative avec filtrage avancé
+  float result = filteredTemperatureC();
+  if (!isnan(result)) {
     return result;
+  }
+  
+  Serial.println("[WaterTemp] Filtrage avancé échoué, tentative de récupération...");
+  
+  // 2. Vérification de la connectivité
+  if (!isSensorConnected()) {
+    Serial.println("[WaterTemp] Capteur non connecté, reset matériel...");
+    resetSensor();
+    
+    // Nouvelle tentative après reset
+    result = filteredTemperatureC();
+    if (!isnan(result)) {
+      Serial.println("[WaterTemp] Récupération réussie après reset matériel");
+      return result;
+    }
+  }
+  
+  // 3. Tentative avec lecture simple répétée et reset matériel
+  for (uint8_t attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; ++attempt) {
+    Serial.printf("[WaterTemp] Tentative de récupération %d/%d...\n", attempt + 1, MAX_RECOVERY_ATTEMPTS);
+    
+    // Reset watchdog before recovery attempt
+    esp_task_wdt_reset();
+    
+    // Reset matériel du bus OneWire avant chaque tentative
+    _oneWire.reset();
+    vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
+    
+    // Réinitialisation de la bibliothèque DallasTemperature
+    _sensors.begin();
+    _sensors.setResolution(DS18B20_RESOLUTION);
+    
+    // Lecture simple avec délai de conversion approprié
+    _sensors.requestTemperatures();
+    vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+    vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS)); // Attendre la fin de la conversion
+    float temp = _sensors.getTempCByIndex(0);
+    
+    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+      Serial.printf("[WaterTemp] Récupération réussie: %.1f°C\n", temp);
+      return temp;
+    }
+    
+    // Reset watchdog before delay
+    esp_task_wdt_reset();
+    
+    // Délai progressif entre tentatives (backoff)
+    uint16_t delay = RECOVERY_DELAY_MS * (attempt + 1);
+    vTaskDelay(pdMS_TO_TICKS(delay));
+  }
+  
+  // 4. Utilisation de la dernière valeur valide si disponible
+  if (!isnan(_lastValidTemp)) {
+    Serial.printf("[WaterTemp] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
+    return _lastValidTemp;
+  }
+  
+  Serial.println("[WaterTemp] Échec de toutes les tentatives de récupération");
+  return NAN;
 }
 
-bool SensorManager::initAll() {
-    bool allSuccess = true;
-    for (auto sensor : sensors) {
-        if (!sensor->init()) {
-            Serial.printf("Failed to init sensor: %s\n", sensor->getName().c_str());
-            allSuccess = false;
+float WaterTempSensor::ultraRobustTemperatureC() {
+  Serial.println("[WaterTemp] Démarrage lecture ultra-robuste...");
+  
+  // 1. Vérification de connectivité renforcée
+  if (!isSensorConnected()) {
+    Serial.println("[WaterTemp] Capteur non connecté, tentative de récupération...");
+    resetSensor();
+    
+    // Nouvelle vérification après reset
+    if (!isSensorConnected()) {
+      Serial.println("[WaterTemp] Capteur toujours non connecté après reset");
+      return NAN;
+    }
+  }
+  
+  // 2. Lecture avec validation croisée (3 séries de lectures)
+  float seriesResults[3];
+  uint8_t validSeries = 0;
+  
+  for (uint8_t series = 0; series < 3; ++series) {
+    Serial.printf("[WaterTemp] Série de lecture %d/3...\n", series + 1);
+    
+    // Reset du bus avant chaque série
+    _oneWire.reset();
+    vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
+    
+    // Lecture avec filtrage
+    float result = filteredTemperatureC();
+    
+    if (!isnan(result)) {
+      seriesResults[validSeries++] = result;
+      Serial.printf("[WaterTemp] Série %d réussie: %.1f°C\n", series + 1, result);
+    } else {
+      Serial.printf("[WaterTemp] Série %d échouée\n", series + 1);
+    }
+    
+    // Délai entre séries
+    if (series < 2) {
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+  }
+  
+  // 3. Validation croisée des résultats
+  if (validSeries == 0) {
+    Serial.println("[WaterTemp] Toutes les séries ont échoué");
+    return NAN;
+  }
+  
+  if (validSeries == 1) {
+    Serial.printf("[WaterTemp] Une seule série réussie: %.1f°C\n", seriesResults[0]);
+    return seriesResults[0];
+  }
+  
+  // Calcul de la cohérence entre les séries
+  float minTemp = seriesResults[0];
+  float maxTemp = seriesResults[0];
+  float sumTemp = seriesResults[0];
+  
+  for (uint8_t i = 1; i < validSeries; ++i) {
+    if (seriesResults[i] < minTemp) minTemp = seriesResults[i];
+    if (seriesResults[i] > maxTemp) maxTemp = seriesResults[i];
+    sumTemp += seriesResults[i];
+  }
+  
+  float avgTemp = sumTemp / validSeries;
+  float spread = maxTemp - minTemp;
+  
+  Serial.printf("[WaterTemp] Validation croisée: %.1f°C (écart: %.1f°C, %d séries)\n", 
+                avgTemp, spread, validSeries);
+  
+  // Accepte si l'écart est raisonnable (moins de 1°C) et dans la plage d'eau
+  if (spread <= 1.0f && avgTemp >= SensorConfig::WaterTemp::MIN_VALID && avgTemp <= SensorConfig::WaterTemp::MAX_VALID) {
+    Serial.printf("[WaterTemp] Lecture ultra-robuste réussie: %.1f°C\n", avgTemp);
+    return avgTemp;
+  } else {
+    Serial.printf("[WaterTemp] Écart trop important entre séries (%.1f°C) ou hors plage, utilise médiane\n", spread);
+    // Retourne la médiane des valeurs valides
+    float medianTemp;
+    if (validSeries == 2) {
+      medianTemp = (seriesResults[0] + seriesResults[1]) / 2.0f;
+    } else {
+      // Tri pour trouver la médiane
+      for (uint8_t i = 0; i < validSeries - 1; ++i) {
+        for (uint8_t j = i + 1; j < validSeries; ++j) {
+          if (seriesResults[i] > seriesResults[j]) {
+            float temp = seriesResults[i];
+            seriesResults[i] = seriesResults[j];
+            seriesResults[j] = temp;
+          }
         }
+      }
+      medianTemp = seriesResults[validSeries / 2];
     }
-    return allSuccess;
+    
+    // Validation finale de la médiane
+    if (medianTemp >= SensorConfig::WaterTemp::MIN_VALID && medianTemp <= SensorConfig::WaterTemp::MAX_VALID) {
+      return medianTemp;
+    } else {
+      Serial.printf("[WaterTemp] Médiane hors plage d'eau: %.1f°C, retourne NaN\n", medianTemp);
+      return NAN;
+    }
+  }
 }
 
-void SensorManager::readAll() {
-    for (auto sensor : sensors) {
-        if (sensor->isEnabled()) {
-            SensorReading reading = sensor->read();
-            if (reading.valid) {
-                addToHistory(reading);
-            }
+float WaterTempSensor::temperatureC() {
+  // Non-bloquant: si pipeline prêt et délai écoulé, lire
+  esp_task_wdt_reset();
+  unsigned long now = millis();
+  if (_pipelineReady && (now - _lastRequestMs) >= CONVERSION_DELAY_MS) {
+    float temp = _sensors.getTempCByIndex(0);
+    _pipelineReady = false; // consomme la conversion
+    // Re-planifie immédiatement la prochaine conversion
+    _sensors.requestTemperatures();
+    _lastRequestMs = now;
+    _pipelineReady = true;
+    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+      return temp;
+    }
+    return NAN;
+  }
+  // Si pas prêt, lancer si nécessaire et signaler indisponible
+  if (!_pipelineReady) {
+    _sensors.requestTemperatures();
+    _lastRequestMs = now;
+    _pipelineReady = true;
+  }
+  return NAN;
+}
+
+float WaterTempSensor::filteredTemperatureC() {
+  // OPTIMISATION : Phase de stabilisation supprimée (pipeline pré-chargé dans begin() suffit)
+  // Gain de temps : ~520ms économisés
+  
+  // Filtrage statistique avec médiane et validation croisée
+  float readings[READINGS_COUNT];
+  uint8_t validReadings = 0;
+  
+  // Effectue plusieurs lectures avec validation croisée
+  for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
+    esp_task_wdt_reset(); // Reset watchdog before each reading
+    
+    // Non-bloquant: vérifier si une conversion précédente est prête
+    if (!_pipelineReady) {
+      _sensors.requestTemperatures();
+      vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+      _lastRequestMs = millis();
+      _pipelineReady = true;
+      vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS));
+    }
+    // Attendre si nécessaire
+    unsigned long now = millis();
+    if ((now - _lastRequestMs) < CONVERSION_DELAY_MS) {
+      vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS - (now - _lastRequestMs)));
+    }
+    float temp = _sensors.getTempCByIndex(0);
+    _pipelineReady = false;
+    // Planifier suivante
+    _sensors.requestTemperatures();
+    vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+    _lastRequestMs = millis();
+    _pipelineReady = true;
+    
+    // Validation renforcée avec vérification de cohérence et plage d'eau
+    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+      // Vérification de cohérence avec les lectures précédentes
+      bool isCoherent = true;
+      if (validReadings > 0) {
+        float avg = 0.0f;
+        for (uint8_t j = 0; j < validReadings; ++j) {
+          avg += readings[j];
         }
+        avg /= validReadings;
+        
+        // Rejette si l'écart est trop important (plus de 3°C au lieu de 5°C)
+        if (fabs(temp - avg) > 3.0f) {
+          Serial.printf("[WaterTemp] Lecture incohérente rejetée: %.1f°C (moyenne: %.1f°C)\n", temp, avg);
+          isCoherent = false;
+        }
+      }
+      
+      // Validation temporelle : vérifier la cohérence avec la dernière valeur valide
+      if (isCoherent && !isnan(_lastValidTemp)) {
+        float timeDelta = fabs(temp - _lastValidTemp);
+        if (timeDelta > 2.0f) { // Rejette si changement > 2°C par rapport à la dernière valeur
+          Serial.printf("[WaterTemp] Changement temporel trop important rejeté: %.1f°C -> %.1f°C (écart: %.1f°C)\n", 
+                       _lastValidTemp, temp, timeDelta);
+          isCoherent = false;
+        }
+      }
+      
+      if (isCoherent) {
+        readings[validReadings++] = temp;
+      }
+    } else {
+      bool inRange = (temp >= SensorConfig::WaterTemp::MIN_VALID) && (temp <= SensorConfig::WaterTemp::MAX_VALID);
+      Serial.printf("[WaterTemp] Lecture invalide rejetée: %.1f°C (NaN=%d, inRange=%d)\n", temp, isnan(temp), inRange);
     }
-}
+    
+    // Reset watchdog before delay
+    esp_task_wdt_reset();
+    
+    // Délai entre les mesures
+    vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS));
+  }
+  
+  // OPTIMISATION : Avec 2 lectures, accepte au moins 1 lecture valide
+  // Cela réduit les échecs tout en maintenant la qualité avec validation croisée
+  if (validReadings < 1) {
+    Serial.printf("[WaterTemp] Pas assez de lectures valides (%d/1 minimum), retourne NaN\n", validReadings);
+    return NAN;
+  }
+  
+  if (validReadings < 2) {
+    Serial.printf("[WaterTemp] Une seule lecture valide (%d/2), utilise cette valeur\n", validReadings);
+  }
+  
+  // Trie les lectures pour calculer la médiane
+  for (uint8_t i = 0; i < validReadings - 1; ++i) {
+    for (uint8_t j = i + 1; j < validReadings; ++j) {
+      if (readings[i] > readings[j]) {
+        float temp = readings[i];
+        readings[i] = readings[j];
+        readings[j] = temp;
+      }
+    }
+  }
+  
+  // Calcule la médiane
+  float medianTemp = readings[validReadings / 2];
+  
+  // VALIDATION FINALE RENFORCÉE - S'assure qu'aucune valeur aberrante ne passe
+  if (isnan(medianTemp) || medianTemp < SensorConfig::WaterTemp::MIN_VALID || medianTemp > SensorConfig::WaterTemp::MAX_VALID) {
+    Serial.printf("[WaterTemp] Médiane invalide rejetée: %.1f°C (hors plage %.1f-%.1f°C), utilise ancienne valeur\n", 
+                  medianTemp, SensorConfig::WaterTemp::MIN_VALID, SensorConfig::WaterTemp::MAX_VALID);
+    return _lastValidTemp;
+  }
+  
+  // Filtrage par moyenne mobile pour lisser les variations
+  float smoothedTemp = medianTemp;
+  if (!isnan(_lastValidTemp)) {
+    // Coefficient de lissage : 0.7 pour la nouvelle valeur, 0.3 pour l'ancienne
+    smoothedTemp = 0.7f * medianTemp + 0.3f * _lastValidTemp;
+    
+    // Vérifier que le lissage n'a pas créé de valeur aberrante
+    if (fabs(smoothedTemp - _lastValidTemp) > 1.5f) {
+      Serial.printf("[WaterTemp] Lissage rejeté (écart trop important: %.1f°C), utilise médiane brute\n", 
+                   fabs(smoothedTemp - _lastValidTemp));
+      smoothedTemp = medianTemp;
+    } else {
+      Serial.printf("[WaterTemp] Température lissée: %.1f°C -> %.1f°C\n", medianTemp, smoothedTemp);
+    }
+  }
+  
+  // 2. Détection de sauts brutaux avec confirmation temporelle (inspiré ultrason)
+  if (!isnan(_lastValidTemp) && fabs(smoothedTemp - _lastValidTemp) > MAX_TEMP_DELTA) {
+    float jumpDelta = fabs(smoothedTemp - _lastValidTemp);
+    Serial.printf("[WaterTemp] Saut détecté: %.1f°C -> %.1f°C (écart: %.1f°C), confirmation en cours...\n",
+                  _lastValidTemp, smoothedTemp, jumpDelta);
 
-SensorReading SensorManager::readSensor(const String& name) {
-    Sensor* sensor = getSensor(name);
-    if (sensor && sensor->isEnabled()) {
-        return sensor->read();
+    // Petite pause avant confirmation pour éviter lecture transitoire
+    vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS * 2));
+
+    // Nouveau lot de lectures pour confirmer la tendance
+    float confirmReadings[READINGS_COUNT];
+    uint8_t confirmValid = 0;
+    for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
+      esp_task_wdt_reset();
+      _oneWire.reset();
+      vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
+      _sensors.requestTemperatures();
+      vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS));
+      float t2 = _sensors.getTempCByIndex(0);
+      if (!isnan(t2) && t2 >= SensorConfig::WaterTemp::MIN_VALID && t2 <= SensorConfig::WaterTemp::MAX_VALID) {
+        confirmReadings[confirmValid++] = t2;
+      } else {
+        Serial.printf("[WaterTemp] Confirmation: lecture rejetée: %.1f°C\n", t2);
+      }
+      esp_task_wdt_reset();
+      vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS));
+    }
+
+    if (confirmValid < MIN_VALID_READINGS) {
+      Serial.printf("[WaterTemp] Confirmation échouée (%d/%d valides), utilise dernière valeur\n",
+                    confirmValid, MIN_VALID_READINGS);
+      return _lastValidTemp;
+    }
+
+    // Trie pour médiane de confirmation
+    for (uint8_t i = 0; i < confirmValid - 1; ++i) {
+      for (uint8_t j = i + 1; j < confirmValid; ++j) {
+        if (confirmReadings[i] > confirmReadings[j]) {
+          float tmp = confirmReadings[i];
+          confirmReadings[i] = confirmReadings[j];
+          confirmReadings[j] = tmp;
+        }
+      }
+    }
+    float medianConfirm = confirmReadings[confirmValid / 2];
+    float deltaConfirm = fabs(medianConfirm - medianTemp);
+
+    // Si les deux médianes sont proches, accepte le saut (moyenne pour lisser)
+    if (deltaConfirm <= 1.0f) {
+      Serial.printf("[WaterTemp] Saut confirmé (médiane2=%.1f°C, Δ=%.1f°C)\n", medianConfirm, deltaConfirm);
+      smoothedTemp = (smoothedTemp + medianConfirm) / 2.0f;
+    } else {
+      Serial.printf("[WaterTemp] Confirmation non cohérente (médiane2=%.1f°C, Δ=%.1f°C), conserve ancienne valeur\n",
+                    medianConfirm, deltaConfirm);
+      return _lastValidTemp;
+    }
+  }
+  
+  // 5. Historique glissant pour détection d'aberrations
+  // Vérifie la cohérence avec l'historique
+  if (_historyCount >= 2) {
+    float avgHistory = 0.0f;
+    uint8_t validHistory = 0;
+    
+    for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+      if (!isnan(_history[i]) && _history[i] > 0.0f) {
+        avgHistory += _history[i];
+        validHistory++;
+      }
     }
     
-    SensorReading invalid;
-    invalid.valid = false;
-    invalid.error = "Sensor not found or disabled";
-    return invalid;
-}
-
-void SensorManager::addToHistory(const SensorReading& reading) {
-    if (history[reading.type].size() >= historySize) {
-        history[reading.type].erase(history[reading.type].begin());
+    if (validHistory > 0) {
+      avgHistory /= validHistory;
+      float deviation = fabs(smoothedTemp - avgHistory);
+      
+      // Si l'écart avec la moyenne historique est trop important, suspect
+      if (deviation > MAX_TEMP_DELTA * 2) {
+        Serial.printf("[WaterTemp] Écart important avec l'historique: %.1f°C (moyenne: %.1f°C), utilise ancienne valeur\n", 
+                      smoothedTemp, avgHistory);
+        return _lastValidTemp;
+      }
     }
-    history[reading.type].push_back(reading);
+  }
+  
+  // Met à jour l'historique avec la température lissée
+  _history[_historyIndex] = smoothedTemp;
+  _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
+  if (_historyCount < HISTORY_SIZE) _historyCount++;
+  
+  // Met à jour la dernière valeur valide avec la température lissée
+  _lastValidTemp = smoothedTemp;
+  
+  // Sauvegarde en NVS pour persistance après redémarrage
+  saveLastValidTempToNVS(smoothedTemp);
+  
+  Serial.printf("[WaterTemp] Température filtrée: %.1f°C (médiane: %.1f°C, lissée: %.1f°C, %d lectures, résolution: %d bits)\n", 
+                smoothedTemp, medianTemp, smoothedTemp, validReadings, DS18B20_RESOLUTION);
+  return smoothedTemp;
 }
 
-// Global sensor manager instance
-SensorManager* sensorManager = nullptr;
-
-// Global helper functions
-void initSensors() {
-    sensorManager = SensorManager::getInstance();
-    
-    // Create and add sensors based on configuration
-    DHTSensor* dht = new DHTSensor("DHT22", DHT_PIN, DHT_TYPE);
-    sensorManager->addSensor(dht);
-    
-    DS18B20Sensor* ds18b20 = new DS18B20Sensor("DS18B20", DS18B20_PIN);
-    sensorManager->addSensor(ds18b20);
-    
-    AnalogSensor* soilMoisture = new AnalogSensor("SoilMoisture", SENSOR_SOIL_MOISTURE, SOIL_MOISTURE_PIN);
-    soilMoisture->setRange(0, 4095, 0, 100);
-    sensorManager->addSensor(soilMoisture);
-    
-    AnalogSensor* lightSensor = new AnalogSensor("Light", SENSOR_LIGHT, LIGHT_SENSOR_PIN);
-    lightSensor->setRange(0, 4095, 0, 10000);
-    sensorManager->addSensor(lightSensor);
-    
-    AnalogSensor* waterLevel = new AnalogSensor("WaterLevel", SENSOR_WATER_LEVEL, WATER_LEVEL_PIN);
-    waterLevel->setRange(0, 4095, 0, 100);
-    sensorManager->addSensor(waterLevel);
-    
-    // Initialize all sensors
-    sensorManager->initAll();
-    
-    // Enable auto-read
-    sensorManager->enableAutoRead(true, SENSOR_READ_INTERVAL);
+void WaterTempSensor::resetHistory() {
+  _historyIndex = 0;
+  _historyCount = 0;
+  _lastValidTemp = NAN;
+  for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+    _history[i] = NAN;
+  }
+  Serial.println("[WaterTemp] Historique réinitialisé");
 }
 
-void readSensors() {
-    if (sensorManager) {
-        sensorManager->readAll();
+// -------- AirSensor ------------------
+AirSensor::AirSensor() : _dht(Pins::DHT_PIN, 
+#if defined(PROFILE_PROD)
+                            DHT22  // Production : utilise DHT22
+#else
+                            DHT11  // Dev et Test : utilise DHT11
+#endif
+                            ), 
+                        _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
+                        _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN) {
+  // Initialise l'historique avec des valeurs NaN
+  for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+    _tempHistory[i] = NAN;
+    _humidityHistory[i] = NAN;
+  }
+}
+
+void AirSensor::begin() { 
+  _dht.begin(); 
+  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation après initialisation
+  resetHistory();
+  
+  // Test initial de connectivité
+  if (!isSensorConnected()) {
+    Serial.println("[AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation");
+  } else {
+    Serial.println("[AirSensor] Capteur détecté et initialisé");
+  }
+}
+
+bool AirSensor::isSensorConnected() {
+  // Test de lecture pour vérifier la connectivité du DHT
+  float temp = _dht.readTemperature();
+  // Respecter la fenêtre minimale avant une 2e lecture
+  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::SENSOR_READ_DELAY_MS));
+  float humidity = _dht.readHumidity();
+  
+  // Vérifie si les lectures sont valides
+  if (isnan(temp) && isnan(humidity)) {
+    Serial.println("[AirSensor] Capteur DHT non détecté ou déconnecté");
+    return false;
+  }
+  
+  return true;
+}
+
+void AirSensor::resetSensor() {
+  Serial.println("[AirSensor] Reset matériel du capteur...");
+  
+  // Reset de la bibliothèque DHT
+  _dht.begin();
+  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+  vTaskDelay(pdMS_TO_TICKS(SENSOR_RESET_DELAY_MS));
+  
+  // Reset de l'historique
+  resetHistory();
+  
+  Serial.println("[AirSensor] Reset matériel terminé");
+}
+
+float AirSensor::robustTemperatureC() {
+  // 1. Tentative avec filtrage avancé
+  float result = filteredTemperatureC();
+  if (!isnan(result)) {
+    return result;
+  }
+  
+  Serial.println("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
+  
+  // 2. Vérification de la connectivité
+  if (!isSensorConnected()) {
+    Serial.println("[AirSensor] Capteur non connecté, reset matériel...");
+    resetSensor();
+    
+    // Nouvelle tentative après reset
+    result = filteredTemperatureC();
+    if (!isnan(result)) {
+      Serial.println("[AirSensor] Récupération réussie après reset matériel");
+      return result;
     }
+  }
+  
+  // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
+  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
+    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
+    
+    // Reset watchdog avant chaque tentative
+    esp_task_wdt_reset();
+    
+    // Lecture simple avec délai
+    float temp = _dht.readTemperature();
+    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    
+    if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
+      Serial.printf("[AirSensor] Récupération réussie: %.1f°C\n", temp);
+      return temp;
+    }
+    
+    // Reset watchdog avant délai
+    esp_task_wdt_reset();
+    
+    // Délai entre tentatives
+    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+  }
+  
+  // 4. Utilisation de la dernière valeur valide si disponible
+  if (!isnan(_lastValidTemp)) {
+    Serial.printf("[AirSensor] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
+    return _lastValidTemp;
+  }
+  
+  Serial.println("[AirSensor] Échec de toutes les tentatives de récupération");
+  return NAN;
 }
 
-float getCurrentTemperature() {
-    if (!sensorManager) return 0;
-    
-    auto temps = sensorManager->getSensorsByType(SENSOR_TEMPERATURE);
-    if (temps.empty()) return 0;
-    
-    SensorReading reading = temps[0]->getLastReading();
-    return reading.valid ? reading.value : 0;
+float AirSensor::temperatureC() { return _dht.readTemperature(); }
+float AirSensor::humidity() { return _dht.readHumidity(); }
+
+float AirSensor::filteredTemperatureC() {
+  // Throttle: une seule lecture toutes les 2s, lissage EMA
+  unsigned long now = millis();
+  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS) {
+    return _emaInit ? _emaTemp : NAN;
+  }
+  _lastDhtReadMs = now;
+  float temp = _dht.readTemperature();
+  if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
+    return _emaInit ? _emaTemp : NAN;
+  }
+  if (!_emaInit) {
+    _emaTemp = temp;
+    _emaInit = true;
+  } else {
+    _emaTemp = 0.3f * temp + (1.0f - 0.3f) * _emaTemp;
+  }
+  _lastValidTemp = _emaTemp;
+  // Historique pour détection d'aberrations (optionnel, conservé)
+  _tempHistory[_tempHistoryIndex] = _emaTemp;
+  _tempHistoryIndex = (_tempHistoryIndex + 1) % HISTORY_SIZE;
+  if (_tempHistoryCount < HISTORY_SIZE) _tempHistoryCount++;
+  return _emaTemp;
 }
 
-float getCurrentHumidity() {
-    if (!sensorManager) return 0;
-    
-    Sensor* dht = sensorManager->getSensor("DHT22");
-    if (!dht) return 0;
-    
-    DHTSensor* dhtSensor = static_cast<DHTSensor*>(dht);
-    SensorReading reading = dhtSensor->readHumidity();
-    return reading.valid ? reading.value : 0;
+float AirSensor::filteredHumidity() {
+  unsigned long now = millis();
+  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS) {
+    return _emaInit ? _emaHumidity : NAN;
+  }
+  _lastDhtReadMs = now;
+  float h = _dht.readHumidity();
+  if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
+    return _emaInit ? _emaHumidity : NAN;
+  }
+  if (!_emaInit) {
+    _emaHumidity = h;
+    _emaInit = true;
+  } else {
+    _emaHumidity = 0.3f * h + (1.0f - 0.3f) * _emaHumidity;
+  }
+  _lastValidHumidity = _emaHumidity;
+  _humidityHistory[_humidityHistoryIndex] = _emaHumidity;
+  _humidityHistoryIndex = (_humidityHistoryIndex + 1) % HISTORY_SIZE;
+  if (_humidityHistoryCount < HISTORY_SIZE) _humidityHistoryCount++;
+  return _emaHumidity;
 }
+
+float AirSensor::robustHumidity() {
+  // 1. Tentative avec filtrage avancé
+  float result = filteredHumidity();
+  if (!isnan(result)) {
+    return result;
+  }
+  
+  Serial.println("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
+  
+  // 2. Vérification de la connectivité
+  if (!isSensorConnected()) {
+    Serial.println("[AirSensor] Capteur non connecté, reset matériel...");
+    resetSensor();
+    
+    // Nouvelle tentative après reset
+    result = filteredHumidity();
+    if (!isnan(result)) {
+      Serial.println("[AirSensor] Récupération réussie après reset matériel");
+      return result;
+    }
+  }
+  
+  // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
+  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
+    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
+    
+    // Reset watchdog avant chaque tentative
+    esp_task_wdt_reset();
+    
+    // Lecture simple avec délai
+    float humidity = _dht.readHumidity();
+    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    
+    if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
+      Serial.printf("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
+      return humidity;
+    }
+    
+    // Reset watchdog avant délai
+    esp_task_wdt_reset();
+    
+    // Délai entre tentatives
+    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+  }
+  
+  // 4. Utilisation de la dernière valeur valide si disponible
+  if (!isnan(_lastValidHumidity)) {
+    Serial.printf("[AirSensor] Utilisation de la dernière valeur valide: %.1f%%\n", _lastValidHumidity);
+    return _lastValidHumidity;
+  }
+  
+  Serial.println("[AirSensor] Échec de toutes les tentatives de récupération");
+  return NAN;
+}
+
+void AirSensor::resetHistory() {
+  _tempHistoryIndex = 0;
+  _tempHistoryCount = 0;
+  _lastValidTemp = NAN;
+  _humidityHistoryIndex = 0;
+  _humidityHistoryCount = 0;
+  _lastValidHumidity = NAN;
+  
+  for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
+    _tempHistory[i] = NAN;
+    _humidityHistory[i] = NAN;
+  }
+  Serial.println("[AirSensor] Historique réinitialisé");
+}
+
+// -------- Méthodes NVS pour WaterTempSensor --------
+void WaterTempSensor::saveLastValidTempToNVS(float temp) {
+  Preferences prefs;
+  prefs.begin("waterTemp", false);
+  prefs.putFloat("lastValid", temp);
+  prefs.end();
+  Serial.printf("[WaterTemp] Dernière température valide sauvegardée en NVS: %.1f°C\n", temp);
+}
+
+float WaterTempSensor::loadLastValidTempFromNVS() {
+  Preferences prefs;
+  prefs.begin("waterTemp", true);
+  float temp = prefs.getFloat("lastValid", NAN);
+  prefs.end();
+  
+  if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+    Serial.printf("[WaterTemp] Dernière température valide chargée depuis NVS: %.1f°C\n", temp);
+    return temp;
+  } else {
+    Serial.println("[WaterTemp] Aucune température valide trouvée en NVS");
+    return NAN;
+  }
+} 

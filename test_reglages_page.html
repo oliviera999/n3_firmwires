@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de Chargement - Page Réglages</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .section {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test de Chargement - Page Réglages FFP3</h1>
+    
+    <div class="card">
+        <h2>Instructions</h2>
+        <p>Ce script va tester le chargement de la page <code>reglages.html</code> depuis votre ESP32.</p>
+        <p><strong>Important:</strong> Entrez l'adresse IP de votre ESP32 ci-dessous.</p>
+        <input type="text" id="esp32IP" placeholder="Ex: 192.168.1.100" style="padding: 8px; width: 200px;">
+        <button onclick="runTests()">🚀 Lancer les Tests</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        async function runTests() {
+            const resultsDiv = document.getElementById('results');
+            const esp32IP = document.getElementById('esp32IP').value.trim();
+            
+            if (!esp32IP) {
+                alert('Veuillez entrer l\'adresse IP de votre ESP32');
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="card"><div class="info">Tests en cours...</div></div>';
+            
+            let html = '';
+            
+            // Test 1: Vérifier la connectivité de base
+            html += '<div class="card section">';
+            html += '<h2>Test 1: Connectivité ESP32</h2>';
+            try {
+                const response = await fetch(`http://${esp32IP}/json`, { 
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    html += '<div class="status success">✅ ESP32 accessible sur http://' + esp32IP + '</div>';
+                    html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    html += '<div class="status error">❌ Erreur HTTP: ' + response.status + '</div>';
+                }
+            } catch (error) {
+                html += '<div class="status error">❌ Impossible de se connecter à l\'ESP32: ' + error.message + '</div>';
+                html += '<div class="info">Vérifiez que:<br>1. L\'adresse IP est correcte<br>2. Vous êtes sur le même réseau<br>3. L\'ESP32 est allumé</div>';
+            }
+            html += '</div>';
+            
+            // Test 2: Vérifier le chargement de la page reglages
+            html += '<div class="card section">';
+            html += '<h2>Test 2: Chargement de /pages/reglages.html</h2>';
+            try {
+                const response = await fetch(`http://${esp32IP}/pages/reglages.html`, { 
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    const text = await response.text();
+                    html += '<div class="status success">✅ Fichier reglages.html chargé avec succès</div>';
+                    html += '<div class="info">Taille du fichier: ' + text.length + ' octets</div>';
+                    
+                    // Vérifier la présence des champs email
+                    const hasEmailSection = text.includes('📧 Notifications Email');
+                    const hasEmailInput = text.includes('id="formEmailAddress"');
+                    const hasEmailCheckbox = text.includes('id="formEmailEnabled"');
+                    
+                    html += '<div class="section">';
+                    html += '<h3>Vérification des champs:</h3>';
+                    html += '<div class="status ' + (hasEmailSection ? 'success' : 'error') + '">';
+                    html += (hasEmailSection ? '✅' : '❌') + ' Section "📧 Notifications Email"</div>';
+                    html += '<div class="status ' + (hasEmailInput ? 'success' : 'error') + '">';
+                    html += (hasEmailInput ? '✅' : '❌') + ' Champ "Adresse Email" (formEmailAddress)</div>';
+                    html += '<div class="status ' + (hasEmailCheckbox ? 'success' : 'error') + '">';
+                    html += (hasEmailCheckbox ? '✅' : '❌') + ' Case à cocher "Activer notifications" (formEmailEnabled)</div>';
+                    html += '</div>';
+                    
+                    // Afficher les sections pertinentes
+                    const emailSectionMatch = text.match(/<div class="col-12">\s*<h6[^>]*>📧 Notifications Email<\/h6>[\s\S]*?<\/div>\s*<\/div>/);
+                    if (emailSectionMatch) {
+                        html += '<h3>Contenu de la section Email:</h3>';
+                        html += '<pre>' + escapeHtml(emailSectionMatch[0]) + '</pre>';
+                    }
+                    
+                    // Afficher le contenu complet du fichier pour debug
+                    html += '<details><summary>Voir le contenu complet du fichier HTML</summary>';
+                    html += '<pre>' + escapeHtml(text) + '</pre>';
+                    html += '</details>';
+                    
+                } else {
+                    html += '<div class="status error">❌ Erreur HTTP: ' + response.status + '</div>';
+                    html += '<div class="info">Le fichier reglages.html n\'a pas pu être chargé. Vérifiez que le système de fichiers a bien été uploadé.</div>';
+                }
+            } catch (error) {
+                html += '<div class="status error">❌ Erreur de chargement: ' + error.message + '</div>';
+            }
+            html += '</div>';
+            
+            // Test 3: Vérifier l'endpoint /dbvars
+            html += '<div class="card section">';
+            html += '<h2>Test 3: Endpoint /dbvars</h2>';
+            try {
+                const response = await fetch(`http://${esp32IP}/dbvars`, { 
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    html += '<div class="status success">✅ Endpoint /dbvars accessible</div>';
+                    html += '<div class="info">Contient les données email: ' + 
+                        (data.emailAddress || data.mail ? 'Oui' : 'Non') + '</div>';
+                    html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    html += '<div class="status error">❌ Erreur HTTP: ' + response.status + '</div>';
+                }
+            } catch (error) {
+                html += '<div class="status error">❌ Erreur de chargement: ' + error.message + '</div>';
+            }
+            html += '</div>';
+            
+            // Test 4: Simuler le loadPage
+            html += '<div class="card section">';
+            html += '<h2>Test 4: Simulation de loadPage()</h2>';
+            html += '<div class="info">Cette section simule le chargement de la page comme le fait l\'application web.</div>';
+            html += '<button onclick="simulateLoadPage(\'' + esp32IP + '\')">Charger dans une iframe</button>';
+            html += '<div id="iframeContainer" style="margin-top: 10px;"></div>';
+            html += '</div>';
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        function simulateLoadPage(ip) {
+            const container = document.getElementById('iframeContainer');
+            container.innerHTML = `
+                <h3>Prévisualisation de la page:</h3>
+                <iframe src="http://${ip}/pages/reglages.html" 
+                    style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 4px;">
+                </iframe>
+            `;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
+

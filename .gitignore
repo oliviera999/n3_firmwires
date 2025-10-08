@@ -1,0 +1,51 @@
+# PlatformIO
+.pio/
+.vscode/
+.clang_complete
+.gcc-flags.json
+.ccls
+compile_commands.json
+.cache/
+
+# Build artifacts
+build/
+*.o
+*.elf
+*.bin
+*.map
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+monitor_*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+
+# Credentials (if any)
+secrets.h
+credentials.h
+
+# Test files (optional - comment out if you want to keep them)
+# test_*.html
+# test_*.ps1
+# test_*.sh
