@@ -175,9 +175,12 @@
 </div>
 
 <script>
-// Charger le statut WiFi au chargement de la page
+// Charger le statut WiFi et les réseaux sauvegardés au chargement de la page
 if (typeof refreshWifiStatus === 'function') {
   refreshWifiStatus();
+}
+if (typeof loadSavedNetworks === 'function') {
+  loadSavedNetworks();
 }
 </script>
 

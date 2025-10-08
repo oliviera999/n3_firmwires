@@ -675,7 +675,7 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   _disp.setTextSize(1);
   {
     char buf[32];
-    snprintf(buf, sizeof(buf), "FFP3 v%s", Config::VERSION);
+    snprintf(buf, sizeof(buf), "FFP3 v%s %s", Config::VERSION, Config::PROFILE_TYPE);
     printClipped(0, 0, String(buf), 1);
   }
   if (WiFi.status() == WL_CONNECTED) {

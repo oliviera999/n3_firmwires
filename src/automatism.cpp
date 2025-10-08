@@ -265,7 +265,8 @@ void Automatism::startLightManualLocal() {
       TaskHandle_t* taskHandle = (TaskHandle_t*)param;
       vTaskDelay(pdMS_TO_TICKS(50));
       SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=1");
+      // CORRECTION: Envoyer à la fois etatUV ET GPIO 15 pour synchronisation complète
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=1&15=1");
       if (success) {
         Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - lumière activée manuellement (local)"));
       } else {
@@ -303,7 +304,8 @@ void Automatism::stopLightManualLocal() {
       TaskHandle_t* taskHandle = (TaskHandle_t*)param;
       vTaskDelay(pdMS_TO_TICKS(50));
       SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=0");
+      // CORRECTION: Envoyer à la fois etatUV ET GPIO 15 pour synchronisation complète
+      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=0&15=0");
       if (success) {
         Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - lumière arrêtée manuellement (local)"));
       } else {
@@ -2875,11 +2877,27 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   }
   
   // 1) Envoi d'une dernière série de mesures à la BDD distante
-  //    (uniquement si la connexion Wi-Fi est active)
+  //    (uniquement si la connexion Wi-Fi est active ET mémoire suffisante)
+  // OPTIMISATION: Skip sendFullUpdate si heap critique pour éviter PANIC
+  uint32_t heapBeforeSend = ESP.getFreeHeap();
+  const uint32_t MIN_HEAP_FOR_SEND = 50000; // 50KB minimum pour sendFullUpdate
+  
   if (WiFi.status() == WL_CONNECTED) {
-    sendFullUpdate(r, "resetMode=0");
-    // Petit délai pour laisser la requête HTTP se terminer proprement
-    vTaskDelay(pdMS_TO_TICKS(150));
+    if (heapBeforeSend >= MIN_HEAP_FOR_SEND) {
+      Serial.printf("[Auto] 📤 Envoi mise à jour avant sleep (heap: %u bytes)\n", heapBeforeSend);
+      sendFullUpdate(r, "resetMode=0");
+      // Petit délai pour laisser la requête HTTP se terminer proprement
+      vTaskDelay(pdMS_TO_TICKS(150));
+      
+      // Log mémoire après envoi
+      uint32_t heapAfterSend = ESP.getFreeHeap();
+      Serial.printf("[Auto] 📊 Heap après envoi: %u bytes (delta: %d bytes)\n", 
+                    heapAfterSend, (int)(heapAfterSend - heapBeforeSend));
+    } else {
+      Serial.printf("[Auto] ⚠️ Skip sendFullUpdate avant sleep: heap insuffisant (%u < %u bytes)\n",
+                    heapBeforeSend, MIN_HEAP_FOR_SEND);
+      Serial.println(F("[Auto] ⚠️ Données seront synchronisées au prochain réveil"));
+    }
   }
 
   // 2) Sauvegarde des flags/états critiques dans la NVS (en plus de l'heure gérée par Power)
@@ -2995,32 +3013,60 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // Journalise la durée de veille prévue avant d'entrer en light-sleep
   Serial.printf("[Auto] Entrée en light-sleep pour ~%u s\n", actualSleepDuration);
   
-  // Envoi du mail de mise en veille
+  // Envoi du mail de mise en veille (si mémoire suffisante)
   #if FEATURE_MAIL
+  uint32_t heapBeforeMail = ESP.getFreeHeap();
+  const uint32_t MIN_HEAP_FOR_MAIL = 45000; // 45KB minimum pour envoi email
+  
   if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
-    String sleepReason;
-    sleepReason.reserve(256);
-    sleepReason += "Délai écoulé (éveillé "; sleepReason += String(awakeSec); sleepReason += "s, cible "; sleepReason += String(adaptiveDelay); sleepReason += "s)";
-    if (tideAscendingTrigger) {
-      sleepReason += " + marée montante (+"; sleepReason += String(diff10s); sleepReason += "cm)";
-    }
-    sleepReason += " - aucune activité bloquante (pompeReserv=";
-    sleepReason += pumpReservoirOn ? "ON" : "OFF";
-    sleepReason += ", nourrissage=";
-    sleepReason += feedingActive ? "OUI" : "NON";
-    sleepReason += ", decompte=";
-    sleepReason += countdownActive ? "OUI" : "NON";
-    sleepReason += ")";
-    
-    Serial.println("[Auto] Envoi du mail de mise en veille...");
-    bool mailSent = _mailer.sendSleepMail(sleepReason.c_str(), actualSleepDuration);
-    if (mailSent) {
-      Serial.println("[Auto] Mail de mise en veille envoyé avec succès ✔");
+    if (heapBeforeMail >= MIN_HEAP_FOR_MAIL) {
+      String sleepReason;
+      sleepReason.reserve(256);
+      sleepReason += "Délai écoulé (éveillé "; sleepReason += String(awakeSec); sleepReason += "s, cible "; sleepReason += String(adaptiveDelay); sleepReason += "s)";
+      if (tideAscendingTrigger) {
+        sleepReason += " + marée montante (+"; sleepReason += String(diff10s); sleepReason += "cm)";
+      }
+      sleepReason += " - aucune activité bloquante (pompeReserv=";
+      sleepReason += pumpReservoirOn ? "ON" : "OFF";
+      sleepReason += ", nourrissage=";
+      sleepReason += feedingActive ? "OUI" : "NON";
+      sleepReason += ", decompte=";
+      sleepReason += countdownActive ? "OUI" : "NON";
+      sleepReason += ")";
+      
+      Serial.printf("[Auto] 📧 Envoi du mail de mise en veille (heap: %u bytes)...\n", heapBeforeMail);
+      bool mailSent = _mailer.sendSleepMail(sleepReason.c_str(), actualSleepDuration);
+      if (mailSent) {
+        Serial.println("[Auto] Mail de mise en veille envoyé avec succès ✔");
+      } else {
+        Serial.println("[Auto] Échec de l'envoi du mail de mise en veille ✗");
+      }
     } else {
-      Serial.println("[Auto] Échec de l'envoi du mail de mise en veille ✗");
+      Serial.printf("[Auto] ⚠️ Skip mail de mise en veille: heap insuffisant (%u < %u bytes)\n",
+                    heapBeforeMail, MIN_HEAP_FOR_MAIL);
     }
   }
   #endif
+  
+  // ========================================
+  // NETTOYAGE MÉMOIRE AVANT SLEEP
+  // ========================================
+  Serial.println(F("[Auto] 🧹 Nettoyage mémoire avant sleep..."));
+  uint32_t heapBeforeCleanup = ESP.getFreeHeap();
+  
+  // Force garbage collection et libération mémoire
+  yield();
+  vTaskDelay(pdMS_TO_TICKS(100)); // Délai pour permettre le nettoyage
+  
+  uint32_t heapAfterCleanup = ESP.getFreeHeap();
+  Serial.printf("[Auto] 📊 Heap avant sleep: %u bytes (nettoyé: %d bytes)\n", 
+                heapAfterCleanup, (int)(heapAfterCleanup - heapBeforeCleanup));
+  
+  // Vérification finale de sécurité
+  if (heapAfterCleanup < 30000) {
+    Serial.printf("[Auto] ⚠️ ATTENTION: Heap critique avant sleep (%u bytes) - risque de PANIC\n", 
+                  heapAfterCleanup);
+  }
   
   uint32_t actualSleepSeconds = _power.goToLightSleep(actualSleepDuration);
 
@@ -3028,17 +3074,39 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // AU RÉVEIL
   // ========================================
   
-  // Envoi du mail de réveil
+  // DIAGNOSTIC MÉMOIRE AU RÉVEIL
+  uint32_t heapAfterWake = ESP.getFreeHeap();
+  uint32_t minHeapEver = ESP.getMinFreeHeap();
+  Serial.printf("[Auto] 📊 Réveil - Heap actuel: %u bytes, minimum historique: %u bytes\n", 
+                heapAfterWake, minHeapEver);
+  
+  // Alerte si mémoire critique
+  if (heapAfterWake < 30000) {
+    Serial.printf("[Auto] 🚨 ALERTE: Heap critique au réveil (%u bytes)\n", heapAfterWake);
+  }
+  if (minHeapEver < 20000) {
+    Serial.printf("[Auto] 🚨 ALERTE: Heap minimum historique critique (%u bytes) - risque de PANIC\n", minHeapEver);
+  }
+  
+  // Envoi du mail de réveil (si mémoire suffisante)
   #if FEATURE_MAIL
+  uint32_t heapBeforeWakeMail = ESP.getFreeHeap();
+  const uint32_t MIN_HEAP_FOR_WAKE_MAIL = 45000; // 45KB minimum
+  
   if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
-    String wakeReason = "Réveil automatique par timer";
-    
-    Serial.println("[Auto] Envoi du mail de réveil...");
-    bool mailSent = _mailer.sendWakeMail(wakeReason.c_str(), actualSleepSeconds);
-    if (mailSent) {
-      Serial.println("[Auto] Mail de réveil envoyé avec succès ✔");
+    if (heapBeforeWakeMail >= MIN_HEAP_FOR_WAKE_MAIL) {
+      String wakeReason = "Réveil automatique par timer";
+      
+      Serial.printf("[Auto] 📧 Envoi du mail de réveil (heap: %u bytes)...\n", heapBeforeWakeMail);
+      bool mailSent = _mailer.sendWakeMail(wakeReason.c_str(), actualSleepSeconds);
+      if (mailSent) {
+        Serial.println("[Auto] Mail de réveil envoyé avec succès ✔");
+      } else {
+        Serial.println("[Auto] Échec de l'envoi du mail de réveil ✗");
+      }
     } else {
-      Serial.println("[Auto] Échec de l'envoi du mail de réveil ✗");
+      Serial.printf("[Auto] ⚠️ Skip mail de réveil: heap insuffisant (%u < %u bytes)\n",
+                    heapBeforeWakeMail, MIN_HEAP_FOR_WAKE_MAIL);
     }
   }
   #endif
@@ -3291,6 +3359,43 @@ bool Automatism::validateSystemStateBeforeSleep() {
   if (_acts.isTankPumpRunning()) {
     Serial.println(F("[Auto] ⚠️ Sleep annulé: pompe réservoir active"));
     return false;
+  }
+  
+  // CRITIQUE: Vérifier la mémoire disponible avant sleep
+  // Un heap trop bas peut causer un PANIC pendant ou après le sleep
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t minFreeHeap = ESP.getMinFreeHeap();
+  
+  Serial.printf("[Auto] 📊 Heap libre: %u bytes (minimum historique: %u bytes)\n", 
+                freeHeap, minFreeHeap);
+  
+  // Seuil de sécurité: minimum 40KB de heap libre pour entrer en sleep
+  // En dessous de ce seuil, risque de PANIC critique
+  const uint32_t MIN_HEAP_FOR_SLEEP = 40000;
+  
+  if (freeHeap < MIN_HEAP_FOR_SLEEP) {
+    Serial.printf("[Auto] ⚠️ Sleep annulé: heap insuffisant (%u < %u bytes)\n", 
+                  freeHeap, MIN_HEAP_FOR_SLEEP);
+    Serial.println(F("[Auto] ⚠️ RISQUE DE PANIC - Mémoire critique détectée"));
+    
+    // Tentative de libération de mémoire d'urgence
+    Serial.println(F("[Auto] 🧹 Tentative de nettoyage mémoire d'urgence..."));
+    
+    // Force un garbage collection si possible
+    yield();
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    // Vérifier à nouveau
+    uint32_t freeHeapAfter = ESP.getFreeHeap();
+    Serial.printf("[Auto] 📊 Heap après nettoyage: %u bytes (gain: %d bytes)\n", 
+                  freeHeapAfter, (int)(freeHeapAfter - freeHeap));
+    
+    if (freeHeapAfter < MIN_HEAP_FOR_SLEEP) {
+      Serial.println(F("[Auto] ⚠️ Mémoire toujours insuffisante - Sleep annulé"));
+      return false;
+    } else {
+      Serial.println(F("[Auto] ✅ Mémoire récupérée - Sleep autorisé"));
+    }
   }
   
   Serial.println(F("[Auto] ✅ État système validé pour sleep"));

@@ -73,6 +73,16 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
     Serial.println(F("[Power] WiFi déconnecté avant sommeil"));
   }
   
+  // DIAGNOSTIC FINAL: Log mémoire juste avant sleep
+  uint32_t finalHeap = ESP.getFreeHeap();
+  uint32_t minHeap = ESP.getMinFreeHeap();
+  Serial.printf("[Power] 📊 Mémoire avant sleep: %u bytes (min historique: %u bytes)\n", 
+                finalHeap, minHeap);
+  
+  if (finalHeap < 30000) {
+    Serial.printf("[Power] 🚨 ATTENTION CRITIQUE: Heap très bas (%u bytes) avant sleep\n", finalHeap);
+  }
+  
   // Mise en veille
   esp_light_sleep_start();
   
