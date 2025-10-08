@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "10.92";
+    constexpr const char* VERSION = "10.93";
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -59,12 +59,12 @@ namespace ServerConfig {
     // Endpoints selon le profil
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         // Environnement de test (endpoints avec "2")
-        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/public/post-data-test";
-        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3datas/public/api/outputs-test/states/1";
+        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/post-data-test";
+        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3datas/api/outputs-test/states/1";
     #else
         // Production (endpoints sans "2")
-        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/public/post-data";
-        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3datas/public/api/outputs/states/1";
+        constexpr const char* POST_DATA_ENDPOINT = "/ffp3/ffp3datas/post-data";
+        constexpr const char* OUTPUT_ENDPOINT = "/ffp3/ffp3datas/api/outputs/states/1";
     #endif
     
     // URLs complètes
