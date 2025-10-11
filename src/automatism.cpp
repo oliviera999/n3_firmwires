@@ -2863,47 +2863,8 @@ bool Automatism::hasRecentErrors() {
 }
 
 bool Automatism::verifySystemStateAfterWakeup() {
-  Serial.println(F("[Auto] Vérification de l'état système après réveil"));
-  
-  bool allOk = true;
-  
-  // Vérifier que les capteurs répondent
-  SensorReadings readings = _sensors.read();
-  if (isnan(readings.tempWater) || isnan(readings.tempAir) || isnan(readings.humidity)) {
-    Serial.println(F("[Auto] ⚠️ Erreur: capteurs non responsifs après réveil"));
-    allOk = false;
-    _hasRecentErrors = true;
-  } else {
-    Serial.println(F("[Auto] ✅ Capteurs OK après réveil"));
-  }
-  
-  // Vérifier la connexion WiFi
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("[Auto] ⚠️ Erreur: WiFi perdu après réveil"));
-    allOk = false;
-    _hasRecentErrors = true;
-  } else {
-    Serial.println(F("[Auto] ✅ WiFi OK après réveil"));
-  }
-  
-  // Vérifier les niveaux d'eau
-  if (readings.wlAqua < 5 || readings.wlAqua > 25) {
-    Serial.printf("[Auto] ⚠️ Attention: niveau aquarium anormal: %u cm\n", readings.wlAqua);
-  }
-  
-  if (readings.wlTank > 30) {
-    Serial.printf("[Auto] ⚠️ Attention: niveau réservoir bas: %u cm\n", readings.wlTank);
-  }
-  
-  // Si tout va bien, réinitialiser les flags d'erreur
-  if (allOk) {
-    _hasRecentErrors = false;
-    _consecutiveWakeupFailures = 0;
-  } else {
-    _consecutiveWakeupFailures++;
-  }
-  
-  return allOk;
+  // Délégation au module Sleep
+  return _sleep.verifySystemStateAfterWakeup();
 }
 
 void Automatism::detectSleepAnomalies() {
