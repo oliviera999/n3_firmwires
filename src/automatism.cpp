@@ -614,37 +614,17 @@ void Automatism::update(const SensorReadings& readings) {
 }
 
 void Automatism::checkNewDay() {
-  time_t currentTime = _power.getCurrentEpoch();
-  struct tm* timeinfo = localtime(&currentTime);
-  
-  if (timeinfo != nullptr) {
-    int currentDay = timeinfo->tm_yday; // Jour de l'année (0-365)
-    
-    if (currentDay != lastFeedDay) {
-      Serial.printf("[Auto] Nouveau jour détecté: %d (précédent: %d)\n", currentDay, lastFeedDay);
-      
-      // Reset des flags de bouffe pour le nouveau jour
-      _config.resetBouffeFlags();
-      lastFeedDay = currentDay;
-      // Persistance immédiate pour éviter perte en cas de reboot ou sleep
-      saveFeedingState();
-      
-      LOG_TIME(LOG_INFO, "[Auto] Flags de bouffe réinitialisés pour le nouveau jour");
-    }
-  }
+  // Délégation au module Feeding
+  _feeding.checkNewDay();
 }
 
 
 
 void Automatism::saveFeedingState() {
-  // Sauvegarde du jour de bouffe actuel
-  _config.setLastJourBouf(lastFeedDay);
-  
-  // Sauvegarde de forceWakeUp
+  // Sauvegarde forceWakeUp (reste dans Automatism)
   _config.setForceWakeUp(forceWakeUp);
-  
-  // Sauvegarde de tous les flags
-  _config.saveBouffeFlags();
+  // Délégation au module Feeding pour le reste
+  _feeding.saveFeedingState();
 }
 
 void Automatism::handleRefill(const SensorReadings& r) {
@@ -2884,16 +2864,13 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
  *  Helper pour créer le message de nourrissage avec temps effectif
  * ------------------------------------------------------------------*/
 String Automatism::createFeedingMessage(const char* type, uint16_t bigDur, uint16_t smallDur) {
-  String message = String(type) + " - Distribution effectuée\n\n";
-  message += "Temps de nourrissage effectif:\n";
-  message += "- Gros poissons: " + String(bigDur) + " secondes\n";
-  message += "- Petits poissons: " + String(smallDur) + " secondes\n";
-  message += "- Durée totale: " + String(std::max(bigDur, smallDur) + std::max(bigDur, smallDur)/2) + " secondes\n\n";
+  // Délégation au module Feeding + ajout info système
+  String message = _feeding.createMessage(type);
   
   // Ajouter les informations de niveau d'eau et variation de marée
   SensorReadings readings = _sensors.read();
   int diffMaree = _sensors.diffMaree(readings.wlAqua);
-  message += "État de l'eau:\n";
+  message += "\nÉtat de l'eau:\n";
   message += "- Aquarium: " + String(readings.wlAqua) + " cm\n";
   message += "- Réserve: " + String(readings.wlTank) + " cm\n";
   message += "- Variation marée: " + String(diffMaree) + " cm\n";
