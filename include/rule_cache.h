@@ -176,7 +176,7 @@ private:
     SemaphoreHandle_t mutex;
     
 public:
-    RuleEvaluationCache(size_t maxSize = 50) : cache(maxSize, 500) { // 500ms TTL for rules
+    RuleEvaluationCache(size_t maxSize = 50) : cache(maxSize, 3000) { // 3000ms TTL for rules (optimisé pour SENSOR_READ_INTERVAL_MS = 4000ms)
         mutex = xSemaphoreCreateMutex();
     }
     

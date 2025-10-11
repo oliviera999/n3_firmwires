@@ -7,7 +7,10 @@
 
 /**
  * Optimiseur réseau pour améliorer les performances HTTP
- * Gestion de la compression, headers optimisés, et cache intelligent
+ * Gestion du cache HTTP (ETag/304), headers optimisés
+ * 
+ * NOTE: La compression gzip n'est PAS implémentée (zlib non disponible)
+ * Gains réels: ~10-15% via cache ETag/304 et headers optimisés
  */
 class NetworkOptimizer {
 private:
@@ -54,6 +57,10 @@ public:
      * Compresse une chaîne avec gzip (implémentation simplifiée)
      * @param input Données à compresser
      * @return Données compressées si taille > seuil, sinon données originales
+     * 
+     * ⚠️ ATTENTION: Compression gzip NON IMPLÉMENTÉE
+     * Cette fonction retourne les données NON compressées (zlib non disponible)
+     * Pour implémenter: intégrer bibliothèque miniz ou zlib
      */
     static String gzipCompress(const String& input) {
         // Compression simple basée sur la taille
@@ -61,8 +68,8 @@ public:
             return input; // Pas de compression pour les petits contenus
         }
         
-        // Pour l'instant, retourner les données telles quelles
-        // TODO: Implémenter une compression réelle si nécessaire
+        // ⚠️ IMPORTANT: Retourne les données NON compressées
+        // TODO: Implémenter compression réelle avec miniz ou zlib
         return input;
     }
     

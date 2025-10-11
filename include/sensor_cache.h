@@ -16,11 +16,12 @@ private:
     SemaphoreHandle_t mutex;
     
     // Durée de cache configurable selon le type de board
+    // Optimisé pour SENSOR_READ_INTERVAL_MS (4000ms) - cache valide pendant 25% du cycle
     static constexpr unsigned long CACHE_DURATION_MS = 
         #ifdef BOARD_S3
-        250;  // ESP32-S3 : cache optimisé (250ms)
+        1000;  // ESP32-S3 : cache optimisé (1000ms)
         #else
-        250; // ESP32-WROOM : cache optimisé (250ms)
+        1000; // ESP32-WROOM : cache optimisé (1000ms)
         #endif
     
     // Seuil de mémoire pour activer le cache agressif
