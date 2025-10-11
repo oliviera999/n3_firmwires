@@ -909,14 +909,27 @@ void Automatism::handleMaree(const SensorReadings& r) {
 }
 
 void Automatism::handleFeeding() {
-  // ========================================
-  // FONCTION CRITIQUE : NOURRISSAGE AUTOMATIQUE
-  // PRIORITÉ ABSOLUE - TEMPS D'ACTIVATION CRITIQUES
-  // ========================================
+  // Délégation complète au module Feeding avec callbacks
+  time_t currentTime = _power.getCurrentEpoch();
+  struct tm* timeinfo = localtime(&currentTime);
   
-  // (La mise à jour des indicateurs doit se faire APRÈS la tentative éventuelle de distribution
-  //  afin de ne pas marquer la tâche comme déjà effectuée avant qu'elle n'ait lieu.)
-  
+  if (timeinfo != nullptr) {
+    int currentHour = timeinfo->tm_hour;
+    int currentMinute = timeinfo->tm_min;
+    
+    // Callback pour feedback OLED (utilisé dans module Feeding)
+    auto mailBlinkCallback = [this]() { armMailBlink(); };
+    
+    // Délégation au module Feeding
+    _feeding.handleSchedule(currentHour, currentMinute, emailAddress, emailEnabled, mailBlinkCallback);
+    
+    // Note: Le module gère lui-même les phases servo (_currentPhase, etc.)
+    // et appelle les servos, emails, traçage, etc.
+  }
+}
+
+// ANCIEN CODE handleFeeding() COMMENTÉ TEMPORAIREMENT POUR RÉFÉRENCE
+/*void Automatism::handleFeeding_OLD() {
   time_t currentTime = _power.getCurrentEpoch();
   struct tm* timeinfo = localtime(&currentTime);
   
@@ -927,6 +940,22 @@ void Automatism::handleFeeding() {
     // ========================================
     // BOUFFE DU MATIN - PRIORITÉ ABSOLUE
     // ========================================
+    // [ANCIEN CODE SUPPRIMÉ - Délégué au module Feeding]
+    // Les 3 blocs matin/midi/soir (~170 lignes) sont maintenant gérés par
+    // le module AutomatismFeeding via handleSchedule()
+  }
+}
+
+/*
+// ANCIEN CODE handleFeeding() CONSERVÉ POUR RÉFÉRENCE (à supprimer plus tard)
+// Ce code (lignes 940-1100, ~160 lignes) a été déplacé dans automatism_feeding.cpp
+// Le module gère maintenant:
+// - Vérification horaires matin/midi/soir
+// - Exécution servos (feedSequential)
+// - Traçage événements
+// - Gestion phases (pour OLED)
+// - Notifications email
+// - Mise à jour flags (BouffeMatinOk, etc.)
     if (currentHour == feedMorning) {
       if (!_config.getBouffeMatinOk()) {
         Serial.println(F("[CRITIQUE] === DÉBUT NOURRISSAGE MATIN ==="));
@@ -1087,6 +1116,7 @@ void Automatism::handleFeeding() {
     }
   }
 }
+*/
 
 void Automatism::handleAlerts(const SensorReadings& r) {
   // --- Gestion alertes niveau aquarium ---
@@ -1741,91 +1771,43 @@ void Automatism::handleRemoteState() {
 } 
 
 void Automatism::manualFeedSmall(){
-  // ========================================
-  // FONCTION CRITIQUE : NOURRISSAGE MANUEL PETITS POISSONS
-  // PRIORITÉ ABSOLUE - EXÉCUTION IMMÉDIATE
-  // ========================================
+  // Délégation au module Feeding avec callback countdown OLED
+  auto countdownCallback = [this](const char* label, unsigned long endTime) {
+    _countdownLabel = label;
+    _countdownEnd = endTime;
+  };
   
-  Serial.println(F("[CRITIQUE] === DÉBUT NOURRISSAGE MANUEL PETITS ==="));
-  Serial.printf("[CRITIQUE] Durées configurées - Gros: %u s, Petits: %u s\n", feedBigDur, feedSmallDur);
+  _feeding.feedSmallManual(countdownCallback);
   
-  // EXÉCUTION CIBLÉE - PRIORITÉ ABSOLUE (uniquement servo "petits")
-  unsigned long startTime = millis();
-  _acts.feedSmallFish(feedSmallDur);
-  
-  unsigned long executionTime = millis() - startTime;
-  Serial.printf("[CRITIQUE] Temps d'exécution total: %lu ms\n", executionTime);
-  
-  // Traçage de l'événement (sélectif: uniquement bouffePetits)
-  // CORRECTION: Ne pas tracer si le nourrissage vient déjà d'une commande locale
-  // pour éviter la double exécution via le serveur distant
+  // Traçage (si pas récent)
   static unsigned long lastManualFeedSmallMs = 0;
   unsigned long now = millis();
-  bool isRecentLocalCommand = (now - lastManualFeedSmallMs) < 2000; // 2 secondes de protection
+  bool isRecentLocalCommand = (now - lastManualFeedSmallMs) < 2000;
   
   if (!isRecentLocalCommand) {
     traceFeedingEventSelective(true, false);
-  } else {
-    Serial.println(F("[CRITIQUE] Traçage évité - nourrissage récent depuis commande locale"));
   }
-  
   lastManualFeedSmallMs = now;
-  
-  // Initialisation des phases de nourrissage avec protection
-  _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-  uint16_t dur = feedSmallDur;
-  _feedingPhaseEnd = millis() + static_cast<unsigned long>(dur) * 1000UL;
-  _feedingTotalEnd = millis() + static_cast<unsigned long>(dur + dur/2) * 1000UL;
-  
-  // Pour compatibilité avec l'ancien système d'affichage
-  _countdownLabel = "Feed Petits";
-  _countdownEnd = _feedingTotalEnd;
-  
-  Serial.println(F("[CRITIQUE] === FIN NOURRISSAGE MANUEL PETITS ==="));
 }
 
 void Automatism::manualFeedBig(){
-  // ========================================
-  // FONCTION CRITIQUE : NOURRISSAGE MANUEL GROS POISSONS
-  // PRIORITÉ ABSOLUE - EXÉCUTION SÉQUENTIELLE
-  // ========================================
+  // Délégation au module Feeding avec callback countdown OLED
+  auto countdownCallback = [this](const char* label, unsigned long endTime) {
+    _countdownLabel = label;
+    _countdownEnd = endTime;
+  };
   
-  Serial.println(F("[CRITIQUE] === DÉBUT NOURRISSAGE MANUEL GROS ==="));
-  Serial.printf("[CRITIQUE] Durées configurées - Gros: %u s, Petits: %u s\n", feedBigDur, feedSmallDur);
+  _feeding.feedBigManual(countdownCallback);
   
-  // EXÉCUTION CIBLÉE - PRIORITÉ ABSOLUE (uniquement servo "gros")
-  unsigned long startTime = millis();
-  _acts.feedBigFish(feedBigDur);
-  
-  unsigned long executionTime = millis() - startTime;
-  Serial.printf("[CRITIQUE] Temps d'exécution total: %lu ms\n", executionTime);
-  
-  // Traçage de l'événement (sélectif: uniquement bouffeGros)
-  // CORRECTION: Ne pas tracer si le nourrissage vient déjà d'une commande locale
-  // pour éviter la double exécution via le serveur distant
+  // Traçage (si pas récent)
   static unsigned long lastManualFeedBigMs = 0;
   unsigned long now = millis();
-  bool isRecentLocalCommand = (now - lastManualFeedBigMs) < 2000; // 2 secondes de protection
+  bool isRecentLocalCommand = (now - lastManualFeedBigMs) < 2000;
   
   if (!isRecentLocalCommand) {
     traceFeedingEventSelective(false, true);
-  } else {
-    Serial.println(F("[CRITIQUE] Traçage évité - nourrissage récent depuis commande locale"));
   }
-  
   lastManualFeedBigMs = now;
-  
-  // Initialisation des phases de nourrissage avec protection
-  _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-  uint16_t dur = feedBigDur;
-  _feedingPhaseEnd = millis() + static_cast<unsigned long>(dur) * 1000UL;
-  _feedingTotalEnd = millis() + static_cast<unsigned long>(dur + dur/2) * 1000UL;
-  
-  // Pour compatibilité avec l'ancien système d'affichage
-  _countdownLabel = "Feed Gros";
-  _countdownEnd = _feedingTotalEnd;
-  
-  Serial.println(F("[CRITIQUE] === FIN NOURRISSAGE MANUEL GROS ==="));
 }
 
 bool Automatism::fetchRemoteState(ArduinoJson::JsonDocument& doc){
