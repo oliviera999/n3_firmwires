@@ -29,6 +29,7 @@ class Automatism {
 
   // --- Accesseurs exposés pour le serveur Web local ---
   bool isEmailEnabled() const { return emailEnabled; }
+  void toggleEmailNotifications();
   const String& getEmailAddress() const { return emailAddress; }
   uint16_t getFeedBigDur() const { return feedBigDur; }
   uint16_t getFeedSmallDur() const { return feedSmallDur; }
@@ -64,6 +65,9 @@ class Automatism {
   String createFeedingMessage(const char* type, uint16_t bigDur, uint16_t smallDur);
   // Applique des variables de configuration depuis un document JSON local (NVS)
   void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
+  
+  // Accessor pour modules (permet l'accès contrôlé à _sensors)
+  SensorReadings readSensors() const { return _sensors.read(); }
   
  private:
   SystemSensors& _sensors;

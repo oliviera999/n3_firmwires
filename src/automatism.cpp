@@ -1,6 +1,7 @@
 // Place all includes before method definitions to ensure symbols are visible
 #include "automatism.h"
 #include "automatism/automatism_persistence.h"
+#include "automatism/automatism_actuators.h"
 #include <Arduino.h>
 #include <cstring>
 #include <string>
@@ -61,266 +62,50 @@ void Automatism::clearActuatorSnapshotInNVS() {
 }
 
 void Automatism::startAquaPumpManualLocal() {
-  Serial.println(F("[Auto] 🐠 Démarrage manuel pompe aquarium (local)..."));
-  
-  // 1. ACTIVATION IMMÉDIATE
-  _acts.startAquaPump();
   _lastAquaManualOrigin = ManualOrigin::LOCAL_SERVER;
-  
-  Serial.printf("[Auto] ✅ Pompe aquarium démarrée - Heap: %u bytes\n", ESP.getFreeHeap());
-  
-  // 2. WebSocket immédiat (feedback utilisateur instantané)
-  realtimeWebSocket.broadcastNow();
-  
-  // 3. Synchronisation serveur en arrière-plan (non bloquant)
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(F("[Auto] 🌐 Synchronisation serveur en arrière-plan..."));
-    static TaskHandle_t syncAquaTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncAquaTaskHandle != nullptr && eTaskGetState(syncAquaTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync aqua déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatPompeAqua=1");
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - pompe aqua activée manuellement (local)"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - pompe aqua activée localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_aqua_pump", 4096, &syncAquaTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync aqua"));
-      syncAquaTaskHandle = nullptr;
-    }
-  } else {
-    Serial.println(F("[Auto] ⚠️ Pas de WiFi - pompe aqua activée localement uniquement"));
-  }
+  // Délégation au module Actuators (implémentation factorisée)
+  AutomatismActuators actuators(_acts, _config);
+  actuators.startAquaPumpManual();
 }
 
 void Automatism::stopAquaPumpManualLocal() {
-  Serial.println(F("[Auto] 🛑 Arrêt manuel pompe aquarium (local)..."));
-  
-  // 1. ARRÊT IMMÉDIAT
-  _acts.stopAquaPump();
   _lastAquaStopReason = AquaPumpStopReason::MANUAL;
   _lastAquaManualOrigin = ManualOrigin::LOCAL_SERVER;
-  
-  Serial.printf("[Auto] ✅ Pompe aquarium arrêtée - Heap: %u bytes\n", ESP.getFreeHeap());
-  
-  // 2. WebSocket immédiat (feedback utilisateur instantané)
-  realtimeWebSocket.broadcastNow();
-  
-  // 3. Synchronisation serveur en arrière-plan (non bloquant)
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(F("[Auto] 🌐 Synchronisation serveur en arrière-plan..."));
-    static TaskHandle_t syncAquaStopTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncAquaStopTaskHandle != nullptr && eTaskGetState(syncAquaStopTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync aqua stop déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatPompeAqua=0");
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - pompe aqua arrêtée manuellement (local)"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - pompe aqua arrêtée localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_aqua_stop", 4096, &syncAquaStopTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync aqua stop"));
-      syncAquaStopTaskHandle = nullptr;
-    }
-  } else {
-    Serial.println(F("[Auto] ⚠️ Pas de WiFi - pompe aqua arrêtée localement uniquement"));
-  }
+  // Délégation au module Actuators
+  AutomatismActuators actuators(_acts, _config);
+  actuators.stopAquaPumpManual();
 }
 
 void Automatism::startHeaterManualLocal() {
-  // 1. ACTIVATION IMMÉDIATE
-  _acts.startHeater();
-  
-  // 2. WebSocket immédiat (feedback utilisateur instantané)
-  realtimeWebSocket.broadcastNow();
-  
-  // 3. Synchronisation serveur en arrière-plan (non bloquant)
-  if (WiFi.status() == WL_CONNECTED) {
-    static TaskHandle_t syncHeaterStartTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncHeaterStartTaskHandle != nullptr && eTaskGetState(syncHeaterStartTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync heater start déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatHeat=1");
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - chauffage activé manuellement (local)"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - chauffage activé localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_heater_start", 4096, &syncHeaterStartTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync heater start"));
-      syncHeaterStartTaskHandle = nullptr;
-    }
-  }
+  // Délégation au module Actuators
+  AutomatismActuators actuators(_acts, _config);
+  actuators.startHeaterManual();
 }
 
 void Automatism::stopHeaterManualLocal() {
-  // 1. ARRÊT IMMÉDIAT
-  _acts.stopHeater();
-  
-  // 2. WebSocket immédiat (feedback utilisateur instantané)
-  realtimeWebSocket.broadcastNow();
-  
-  // 3. Synchronisation serveur en arrière-plan (non bloquant)
-  if (WiFi.status() == WL_CONNECTED) {
-    static TaskHandle_t syncHeaterStopTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncHeaterStopTaskHandle != nullptr && eTaskGetState(syncHeaterStopTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync heater stop déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatHeat=0");
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - chauffage arrêté manuellement (local)"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - chauffage arrêté localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_heater_stop", 4096, &syncHeaterStopTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync heater stop"));
-      syncHeaterStopTaskHandle = nullptr;
-    }
-  }
+  // Délégation au module Actuators
+  AutomatismActuators actuators(_acts, _config);
+  actuators.stopHeaterManual();
 }
 
 void Automatism::startLightManualLocal() {
-  // 1. ACTIVATION IMMÉDIATE
-  _acts.startLight();
-  
-  // 2. WebSocket immédiat (feedback utilisateur instantané)
-  realtimeWebSocket.broadcastNow();
-  
-  // 3. Synchronisation serveur en arrière-plan (non bloquant)
-  if (WiFi.status() == WL_CONNECTED) {
-    static TaskHandle_t syncLightStartTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncLightStartTaskHandle != nullptr && eTaskGetState(syncLightStartTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync light start déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      // CORRECTION: Envoyer à la fois etatUV ET GPIO 15 pour synchronisation complète
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=1&15=1");
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - lumière activée manuellement (local)"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - lumière activée localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_light_start", 4096, &syncLightStartTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync light start"));
-      syncLightStartTaskHandle = nullptr;
-    }
-  }
+  // Délégation au module Actuators
+  AutomatismActuators actuators(_acts, _config);
+  actuators.startLightManual();
 }
 
 void Automatism::stopLightManualLocal() {
-  // 1. ARRÊT IMMÉDIAT
-  _acts.stopLight();
-  
-  // 2. WebSocket immédiat (feedback utilisateur instantané)
-  realtimeWebSocket.broadcastNow();
-  
-  // 3. Synchronisation serveur en arrière-plan (non bloquant)
-  if (WiFi.status() == WL_CONNECTED) {
-    static TaskHandle_t syncLightStopTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncLightStopTaskHandle != nullptr && eTaskGetState(syncLightStopTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync light stop déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      // CORRECTION: Envoyer à la fois etatUV ET GPIO 15 pour synchronisation complète
-      bool success = autoCtrl.sendFullUpdate(freshReadings, "etatUV=0&15=0");
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - lumière arrêtée manuellement (local)"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - lumière arrêtée localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_light_stop", 4096, &syncLightStopTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync light stop"));
-      syncLightStopTaskHandle = nullptr;
-    }
-  }
+  // Délégation au module Actuators
+  AutomatismActuators actuators(_acts, _config);
+  actuators.stopLightManual();
 }
 
 void Automatism::toggleEmailNotifications() {
-  // Toggle Email Notifications
+  // Toggle local de emailEnabled
   emailEnabled = !emailEnabled;
-  
-  // Log du changement
-  Serial.printf("[Auto] Email Notifications toggled: %s\n", emailEnabled ? "ON" : "OFF");
-  
-  // WebSocket immédiat pour feedback utilisateur
-  realtimeWebSocket.broadcastNow();
-  
-  // Synchronisation serveur en arrière-plan
-  if (WiFi.status() == WL_CONNECTED) {
-    sendFullUpdate(_sensors.read());
-  }
+  // Délégation au module Actuators pour sync
+  AutomatismActuators actuators(_acts, _config);
+  actuators.toggleEmailNotifications();
 }
 
 void Automatism::toggleForceWakeup() {

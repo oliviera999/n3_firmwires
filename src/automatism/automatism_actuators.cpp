@@ -1,4 +1,5 @@
 #include "automatism_actuators.h"
+#include "automatism.h"  // Pour accéder à autoCtrl complet (sendFullUpdate, _sensors)
 #include "realtime_websocket.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
@@ -55,7 +56,7 @@ void AutomatismActuators::syncActuatorStateAsync(
         vTaskDelay(pdMS_TO_TICKS(50));
         
         extern Automatism autoCtrl;
-        SensorReadings freshReadings = autoCtrl._sensors.read();
+        SensorReadings freshReadings = autoCtrl.readSensors();
         bool success = autoCtrl.sendFullUpdate(freshReadings, p->extraParams);
         
         if (success) {
