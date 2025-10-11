@@ -7,13 +7,7 @@
 #include "project_config.h"
 #include "log.h"
 
-// Simple exécution immédiate – si l'assert LWIP réapparaît, il faudra activer
-// LWIP_TCPIP_CORE_LOCKING dans le menuconfig et remplacer cette implémentation
-// par un appel tcpip_api_call, mais pour l'instant on garde quelque chose qui
-// compile partout.
-static inline void tcpip_safe_call(std::function<void()> fn) {
-  fn();
-}
+// Fonction tcpip_safe_call supprimée - appels directs utilisés à la place
 
 PowerManager::PowerManager()
     : _gmtOffsetSec(SystemConfig::NTP_GMT_OFFSET_SEC), _daylightOffsetSec(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC), _ntpServer(SystemConfig::NTP_SERVER),
@@ -69,7 +63,7 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   
   // Déconnexion WiFi avant le sommeil (si configuré)
   if (SleepConfig::DISCONNECT_WIFI_BEFORE_SLEEP) {
-    tcpip_safe_call([](){ WiFi.disconnect(); });
+    WiFi.disconnect();
     Serial.println(F("[Power] WiFi déconnecté avant sommeil"));
   }
   
@@ -131,11 +125,13 @@ void PowerManager::initTime() {
   time_t loadedEpoch = loadTimeWithFallback();
   
   // Configuration de la timezone pour le Maroc (UTC+1 fixe)
-  setenv("TZ", "CET-1", 1);  // Central European Time (UTC+1) sans changement d'heure
-  tzset();
+  // Utilisation directe des offsets GMT en secondes (plus simple et fiable)
+  configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
   
   LOG_TIME(LogConfig::LOG_INFO, "Heure actuelle: %s (epoch: %lu)", 
            getCurrentTimeString().c_str(), loadedEpoch);
+  LOG_TIME(LogConfig::LOG_INFO, "Timezone configurée: GMT+%d heures (offset: %d secondes)", 
+           _gmtOffsetSec/3600, _gmtOffsetSec);
   
   // Informations détaillées sur l'état temporel
   time_t currentEpoch = time(nullptr);
@@ -165,8 +161,8 @@ void PowerManager::syncTimeFromNTP() {
   time_t localBeforeEpoch = time(nullptr);
   unsigned long localBeforeMillis = millis();
   
-  // Configuration NTP: offsets gérés via TZ
-  configTime(0, 0, _ntpServer);
+  // Configuration NTP avec offset GMT en secondes (utilise les variables membres)
+  configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
   
   // Attente de la synchronisation avec timeout
   struct tm timeinfo;

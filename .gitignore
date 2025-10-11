@@ -34,7 +34,10 @@ desktop.ini
 
 # Logs
 *.log
+*.log.err
 monitor_*.log
+monitor_*.log.err
+monitor_analysis_*.log
 
 # Temporary files
 *.tmp

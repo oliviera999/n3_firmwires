@@ -31,9 +31,6 @@ WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts
     : _sensors(sensors), _acts(acts), _diag(nullptr) {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
-  // OPTIMISATION: Configuration serveur pour meilleure réactivité
-  _server = new AsyncWebServer(80);
-  // OPTIMISATION: Configuration serveur pour meilleure réactivité
   // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
   #endif
 }
@@ -42,9 +39,6 @@ WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts
     : _sensors(sensors), _acts(acts), _diag(&diag) {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
-  // OPTIMISATION: Configuration serveur pour meilleure réactivité
-  _server = new AsyncWebServer(80);
-  // OPTIMISATION: Configuration serveur pour meilleure réactivité
   // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
   #endif
 }
@@ -426,6 +420,15 @@ bool WebServerManager::begin() {
               
               resp="FEED_BIG OK";
               Serial.println("[Web] ✅ Big feed completed successfully");
+          }
+          else if (c == "toggleEmail") {
+              Serial.println("[Web] 📧 Toggling Email Notifications...");
+              // Toggle Email Notifications
+              autoCtrl.toggleEmailNotifications();
+              // Push UI refresh IMMÉDIAT
+              realtimeWebSocket.broadcastNow();
+              resp = autoCtrl.isEmailEnabled() ? "EMAIL_NOTIF_ACTIVÉ" : "EMAIL_NOTIF_DÉSACTIVÉ";
+              Serial.printf("[Web] ✅ Email Notifications toggled: %s\n", autoCtrl.isEmailEnabled() ? "ON" : "OFF");
           }
           else if (c == "forceWakeup") {
               Serial.println("[Web] 🔄 Toggling Force Wakeup...");
