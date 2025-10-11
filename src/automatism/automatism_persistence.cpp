@@ -49,3 +49,4 @@ void AutomatismPersistence::clearActuatorSnapshot() {
   Serial.println("[Persistence] Snapshot actionneurs effacé");
 }
 
+
