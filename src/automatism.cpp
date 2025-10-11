@@ -4,6 +4,7 @@
 #include "automatism/automatism_actuators.h"
 #include "automatism/automatism_feeding.h"
 #include "automatism/automatism_network.h"
+#include "automatism/automatism_sleep.h"
 #include <Arduino.h>
 #include <cstring>
 #include <string>
@@ -167,6 +168,7 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _config(config)
     , _feeding(acts, config, mail, power)  // Module Feeding
     , _network(web, config)                // Module Network
+    , _sleep(power, config)                // Module Sleep
 {
 }
 
@@ -899,15 +901,8 @@ void Automatism::handleRefill(const SensorReadings& r) {
 }
 
 void Automatism::handleMaree(const SensorReadings& r) {
-  // Nouvelle logique: pas de sleep ici. Le sleep anticipé est géré dans handleAutoSleep()
-  // uniquement en cas de marée montante (~10s) avec diff > 1 cm.
-  if (_acts.isTankPumpRunning()) {
-    Serial.printf("[Auto] Pompe réservoir active - marée ignorée\n");
-    return;
-  }
-  int diff10s = _sensors.diffMaree(r.wlAqua);
-  int8_t dir = (diff10s > 1) ? 1 : (diff10s < -1 ? -1 : 0);
-  Serial.printf("[Auto] Marée (10s): wlAqua=%u cm, diff10s=%d cm, dir=%d\n", r.wlAqua, diff10s, (int)dir);
+  // Délégation au module Sleep
+  _sleep.handleMaree(r);
 }
 
 void Automatism::handleFeeding() {
@@ -2838,87 +2833,33 @@ String Automatism::createFeedingMessage(const char* type, uint16_t bigDur, uint1
  * ------------------------------------------------------------------*/
 
 bool Automatism::hasSignificantActivity() {
-  // Désactivé: on ne retarde plus le sleep sur l'activité capteurs/web
-  // ni sur les autres actionneurs (pompe aqua, chauffage, lumière).
-  // Les cas autorisés à repousser le sleep sont gérés explicitement dans
-  // handleAutoSleep():
-  // - Pompe de réservoir active
-  // - Nourrissage en cours (_currentFeedingPhase)
-  // - Décompte actif (_countdownEnd)
-  return false;
+  return _sleep.hasSignificantActivity();
 }
 
 void Automatism::updateActivityTimestamp() {
-  unsigned long currentMillis = millis();
-  _lastActivityMs = currentMillis;
-  _lastWakeMs = currentMillis; // Reset du chronomètre de sleep
+  _sleep.updateActivityTimestamp();
 }
 
 void Automatism::logActivity(const char* activity) {
-  Serial.printf("[Auto] Activité détectée: %s\n", activity);
-  updateActivityTimestamp();
+  _sleep.logActivity(activity);
 }
 
 void Automatism::notifyLocalWebActivity() {
-  _lastWebActivityMs = millis();
-  // Active le maintient d'éveil par le web et force l'éveil si nécessaire
-  _forceWakeFromWeb = true;
-  if (!forceWakeUp) {
-    forceWakeUp = true;
-    Serial.println(F("[Auto] forceWakeUp activé par activité web locale"));
-    _config.setForceWakeUp(forceWakeUp);
-    _config.saveBouffeFlags();
-  }
+  _sleep.notifyLocalWebActivity();
+  // Synchroniser la variable locale forceWakeUp
+  forceWakeUp = _sleep.getForceWakeUp();
 }
 
 uint32_t Automatism::calculateAdaptiveSleepDelay() {
-  if (!_sleepConfig.adaptiveSleep) {
-    return _sleepConfig.normalSleepTime;
-  }
-  
-  // Délai de base selon les conditions
-  uint32_t baseDelay = _sleepConfig.normalSleepTime;
-  
-  // Réduire le délai si erreurs récentes
-  if (hasRecentErrors()) {
-    baseDelay = _sleepConfig.errorSleepTime;
-    Serial.println(F("[Auto] Sleep adaptatif: délai réduit (erreurs récentes)"));
-  }
-  
-  // NOUVELLE LOGIQUE NOCTURNE: Réduire le délai la nuit pour économie d'énergie
-  if (isNightTime()) {
-    baseDelay = _sleepConfig.nightSleepTime;
-    Serial.println(F("[Auto] Sleep adaptatif: délai réduit (nuit - économie d'énergie)"));
-  }
-  
-  // Ajuster selon les échecs de réveil consécutifs
-  if (_consecutiveWakeupFailures > 0) {
-    baseDelay = std::min(baseDelay * ::SleepConfig::WAKEUP_FAILURE_DELAY_MULTIPLIER, _sleepConfig.maxSleepTime);
-    Serial.printf("[Auto] Sleep adaptatif: délai ajusté (échecs: %d)\n", _consecutiveWakeupFailures);
-  }
-  
-  // Limiter aux bornes min/max
-  baseDelay = std::max(baseDelay, _sleepConfig.minSleepTime);
-  baseDelay = std::min(baseDelay, _sleepConfig.maxSleepTime);
-  
-  return baseDelay;
+  return _sleep.calculateAdaptiveSleepDelay();
 }
 
 bool Automatism::isNightTime() {
-  time_t currentTime = _power.getCurrentEpoch();
-  struct tm* timeinfo = localtime(&currentTime);
-  
-  if (timeinfo != nullptr) {
-    int hour = timeinfo->tm_hour;
-    // Considérer la nuit selon la configuration
-    return (hour >= ::SleepConfig::NIGHT_START_HOUR || hour < ::SleepConfig::NIGHT_END_HOUR);
-  }
-  
-  return false;
+  return _sleep.isNightTime();
 }
 
 bool Automatism::hasRecentErrors() {
-  return _hasRecentErrors;
+  return _sleep.hasRecentErrors();
 }
 
 bool Automatism::verifySystemStateAfterWakeup() {
