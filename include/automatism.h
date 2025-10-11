@@ -7,6 +7,7 @@
 #include "mailer.h"
 #include "project_config.h"
 #include "config_manager.h"
+#include "automatism/automatism_feeding.h"
 #include <ArduinoJson.h>
 
 class Automatism {
@@ -77,6 +78,9 @@ class Automatism {
   PowerManager& _power;
   Mailer& _mailer;
   ConfigManager& _config;
+  
+  // === MODULES (Composition) ===
+  AutomatismFeeding _feeding;
 
   // state flags
   bool tankPumpLocked = false;

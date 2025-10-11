@@ -2,6 +2,7 @@
 #include "automatism.h"
 #include "automatism/automatism_persistence.h"
 #include "automatism/automatism_actuators.h"
+#include "automatism/automatism_feeding.h"
 #include <Arduino.h>
 #include <cstring>
 #include <string>
@@ -156,7 +157,15 @@ void Automatism::triggerResetMode() {
 }
 
 Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient& web, DisplayView& disp, PowerManager& power, Mailer& mail, ConfigManager& config)
-    : _sensors(sensors), _acts(acts), _web(web), _disp(disp), _power(power), _mailer(mail), _config(config) {
+    : _sensors(sensors)
+    , _acts(acts)
+    , _web(web)
+    , _disp(disp)
+    , _power(power)
+    , _mailer(mail)
+    , _config(config)
+    , _feeding(acts, config, mail, power)  // Module Feeding
+{
 }
 
 void Automatism::begin() {
