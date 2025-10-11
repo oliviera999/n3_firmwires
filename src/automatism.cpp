@@ -1,5 +1,6 @@
 // Place all includes before method definitions to ensure symbols are visible
 #include "automatism.h"
+#include "automatism/automatism_persistence.h"
 #include <Arduino.h>
 #include <cstring>
 #include <string>
@@ -45,34 +46,18 @@ inline uint32_t remainingMs(uint32_t targetMs, uint32_t nowMs) {
 // Keys: pending (bool), aqua (bool), heater (bool), light (bool)
 // ------------------------------------------------------------
 void Automatism::saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn) {
-  Preferences prefs;
-  prefs.begin("actSnap", false);
-  prefs.putBool("pending", true);
-  prefs.putBool("aqua", pumpAquaWasOn);
-  prefs.putBool("heater", heaterWasOn);
-  prefs.putBool("light", lightWasOn);
-  prefs.end();
-  Serial.printf("[Auto] Snapshot actionneurs NVS: aqua=%s heater=%s light=%s\n",
-                pumpAquaWasOn?"ON":"OFF", heaterWasOn?"ON":"OFF", lightWasOn?"ON":"OFF");
+  // Délégation au module Persistence
+  AutomatismPersistence::saveActuatorSnapshot(pumpAquaWasOn, heaterWasOn, lightWasOn);
 }
 
 bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn) {
-  Preferences prefs;
-  prefs.begin("actSnap", true);
-  bool pending = prefs.getBool("pending", false);
-  if (!pending) { prefs.end(); return false; }
-  pumpAquaWasOn = prefs.getBool("aqua", false);
-  heaterWasOn   = prefs.getBool("heater", false);
-  lightWasOn    = prefs.getBool("light", false);
-  prefs.end();
-  return true;
+  // Délégation au module Persistence
+  return AutomatismPersistence::loadActuatorSnapshot(pumpAquaWasOn, heaterWasOn, lightWasOn);
 }
 
 void Automatism::clearActuatorSnapshotInNVS() {
-  Preferences prefs;
-  prefs.begin("actSnap", false);
-  prefs.putBool("pending", false);
-  prefs.end();
+  // Délégation au module Persistence
+  AutomatismPersistence::clearActuatorSnapshot();
 }
 
 void Automatism::startAquaPumpManualLocal() {
@@ -319,6 +304,22 @@ void Automatism::stopLightManualLocal() {
       Serial.println(F("[Auto] ❌ Échec création tâche sync light stop"));
       syncLightStopTaskHandle = nullptr;
     }
+  }
+}
+
+void Automatism::toggleEmailNotifications() {
+  // Toggle Email Notifications
+  emailEnabled = !emailEnabled;
+  
+  // Log du changement
+  Serial.printf("[Auto] Email Notifications toggled: %s\n", emailEnabled ? "ON" : "OFF");
+  
+  // WebSocket immédiat pour feedback utilisateur
+  realtimeWebSocket.broadcastNow();
+  
+  // Synchronisation serveur en arrière-plan
+  if (WiFi.status() == WL_CONNECTED) {
+    sendFullUpdate(_sensors.read());
   }
 }
 
