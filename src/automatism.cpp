@@ -2304,52 +2304,22 @@ void Automatism::stopTankPumpManual() {
  *  Trace nourrissage : envoie bouffePetits/bouffeGros à 1 puis 0
  * ------------------------------------------------------------------*/
 void Automatism::traceFeedingEvent(){
-  // Première trame : indicateurs à 1
-  {
+  // Délégation au module Feeding avec callback sendFullUpdate
+  auto sendCallback = [this](const char* params) {
     SensorReadings cur = _sensors.read();
-    sendFullUpdate(cur, "bouffePetits=1&bouffeGros=1");
-  }
-  // Petit délai pour éviter que les deux trames soient fusionnées côté serveur
-  vTaskDelay(pdMS_TO_TICKS(50));
-  // Seconde trame : retour à 0
-  {
-    SensorReadings cur = _sensors.read();
-    sendFullUpdate(cur, "bouffePetits=0&bouffeGros=0");
-  }
+    sendFullUpdate(cur, params);
+  };
+  _feeding.traceFeedingEvent(sendCallback);
 }
 
 // Variante sélective: permet d'indiquer séparément petits/gros
 void Automatism::traceFeedingEventSelective(bool feedSmall, bool feedBig){
-  // Première trame: mettre à 1 seulement les flags concernés
-  {
+  // Délégation au module Feeding avec callback sendFullUpdate
+  auto sendCallback = [this](const char* params) {
     SensorReadings cur = _sensors.read();
-    String pairs;
-    if (feedSmall) {
-      if (pairs.length()) pairs += "&";
-      pairs += "bouffePetits=1";
-    }
-    if (feedBig) {
-      if (pairs.length()) pairs += "&";
-      pairs += "bouffeGros=1";
-    }
-    if (pairs.length() == 0) return; // rien à tracer
-    sendFullUpdate(cur, pairs.c_str());
-  }
-  vTaskDelay(pdMS_TO_TICKS(50));
-  // Seconde trame: repasser à 0 uniquement ce qui a été mis à 1
-  {
-    SensorReadings cur = _sensors.read();
-    String pairs;
-    if (feedSmall) {
-      if (pairs.length()) pairs += "&";
-      pairs += "bouffePetits=0";
-    }
-    if (feedBig) {
-      if (pairs.length()) pairs += "&";
-      pairs += "bouffeGros=0";
-    }
-    sendFullUpdate(cur, pairs.c_str());
-  }
+    sendFullUpdate(cur, params);
+  };
+  _feeding.traceFeedingEventSelective(feedSmall, feedBig, sendCallback);
 }
 
 /* ------------------------------------------------------------------
