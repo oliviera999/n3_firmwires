@@ -109,50 +109,12 @@ void Automatism::toggleEmailNotifications() {
 }
 
 void Automatism::toggleForceWakeup() {
-  // Toggle Force Wakeup
+  // Toggle local + mise à jour WebSocket state
   forceWakeUp = !forceWakeUp;
-  
-  // Sauvegarde immédiate dans la configuration persistante
-  _config.setForceWakeUp(forceWakeUp);
-  
-  // Mise à jour de l'état WebSocket
   realtimeWebSocket.updateForceWakeUpState(forceWakeUp);
-  
-  // Log du changement
-  Serial.printf("[Auto] Force Wakeup toggled: %s\n", forceWakeUp ? "ON" : "OFF");
-  
-  // WebSocket immédiat pour feedback utilisateur
-  realtimeWebSocket.broadcastNow();
-  
-  // Synchronisation serveur en arrière-plan
-  if (WiFi.status() == WL_CONNECTED) {
-    static TaskHandle_t syncForceWakeupTaskHandle = nullptr;
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (syncForceWakeupTaskHandle != nullptr && eTaskGetState(syncForceWakeupTaskHandle) != eDeleted) {
-      Serial.println(F("[Auto] ⚠️ Tâche de sync force wakeup déjà en cours - skip"));
-      return;
-    }
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-      TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-      vTaskDelay(pdMS_TO_TICKS(50));
-      SensorReadings freshReadings = autoCtrl._sensors.read();
-      bool success = autoCtrl.sendFullUpdate(freshReadings);
-      if (success) {
-        Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - Force Wakeup toggled"));
-      } else {
-        Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - Force Wakeup toggled localement"));
-      }
-      *taskHandle = nullptr; // Reset handle avant suppression
-      vTaskDelete(NULL);
-    }, "sync_forcewakeup", 4096, &syncForceWakeupTaskHandle, 1, NULL);
-    
-    if (result != pdPASS) {
-      Serial.println(F("[Auto] ❌ Échec création tâche sync force wakeup"));
-      syncForceWakeupTaskHandle = nullptr;
-    }
-  }
+  // Délégation au module Actuators pour save + sync
+  AutomatismActuators actuators(_acts, _config);
+  actuators.toggleForceWakeup();
 }
 
 void Automatism::triggerResetMode() {
@@ -564,17 +526,6 @@ void Automatism::update(const SensorReadings& readings) {
   handleFeeding();        // PRIORITÉ 1 : Nourrissage automatique (temps critiques)
   handleRefill(readings); // PRIORITÉ 2 : Remplissage automatique (temps critiques)
   
-  // ========================================
-  // PRIORITÉ HAUTE : ENTRÉE EN LIGHTSLEEP
-  // ========================================
-  // Vérification précoce pour l'entrée en sleep - PRIORITÉ HAUTE
-  // Ne pas interférer avec nourrissage/remplissage mais prioritaire sur le reste
-  if (shouldEnterSleepEarly(readings)) {
-    // Entrée en sleep immédiate si les conditions sont remplies
-    handleAutoSleep(readings);
-    return; // Sortie immédiate après sleep
-  }
-  
   // 3. Gestion des automatismes secondaires
   handleMaree(readings);
   handleAlerts(readings);
@@ -590,25 +541,9 @@ void Automatism::update(const SensorReadings& readings) {
   
   handleRemoteState();
 
-  // 5. Vérification finale pour l'entrée en sleep (fallback)
-  // Appelé seulement si shouldEnterSleepEarly() n'a pas déjà déclenché le sleep
-  handleAutoSleep(readings);
-
-  // 6. Vérifie et remonte immédiatement les changements critiques
-  checkCriticalChanges();
-  
-  // 7. Mise à jour des timestamps d'activité
-  // updateActivityTimestamp(); // Supprimé: appelé seulement au boot et à la sortie de veille
-  
-  // 8. Sauvegarde périodique de l'état
-  static unsigned long lastSave = 0;
+  // 5. Envoi périodique des mesures distantes (PRIORITÉ HAUTE - AVANT SLEEP)
+  // Déplacé avant le check de sleep pour garantir l'envoi toutes les 2 minutes
   unsigned long currentMillis = millis();
-  if (currentMillis - lastSave > 60000) {
-    lastSave = currentMillis;
-    saveFeedingState();
-  }
-
-  // 9. Envoi périodique des mesures distantes (DERNIÈRE PRIORITÉ)
   if (currentMillis - lastSend > sendInterval) {
     sendState = 0; // transfert en cours : flèche vide
     // Envoi complet des mesures + variables (resetMode=0 pour acquittement permanent)
@@ -638,6 +573,34 @@ void Automatism::update(const SensorReadings& readings) {
     sendState = okSend ? 1 : -1;
     serverOk = okSend;
     lastSend = currentMillis;
+  }
+
+  // ========================================
+  // PRIORITÉ HAUTE : ENTRÉE EN LIGHTSLEEP
+  // ========================================
+  // Vérification précoce pour l'entrée en sleep - APRÈS envoi POST
+  // Ne pas interférer avec nourrissage/remplissage mais prioritaire sur le reste
+  if (shouldEnterSleepEarly(readings)) {
+    // Entrée en sleep immédiate si les conditions sont remplies
+    handleAutoSleep(readings);
+    return; // Sortie immédiate après sleep
+  }
+
+  // 6. Vérification finale pour l'entrée en sleep (fallback)
+  // Appelé seulement si shouldEnterSleepEarly() n'a pas déjà déclenché le sleep
+  handleAutoSleep(readings);
+
+  // 7. Vérifie et remonte immédiatement les changements critiques
+  checkCriticalChanges();
+  
+  // 8. Mise à jour des timestamps d'activité
+  // updateActivityTimestamp(); // Supprimé: appelé seulement au boot et à la sortie de veille
+  
+  // 9. Sauvegarde périodique de l'état
+  static unsigned long lastSave = 0;
+  if (currentMillis - lastSave > 60000) {
+    lastSave = currentMillis;
+    saveFeedingState();
   }
 }
 
@@ -2290,71 +2253,26 @@ bool Automatism::sendFullUpdate(const SensorReadings& readings, const char* extr
  * ------------------------------------------------------------------*/
 
 void Automatism::startTankPumpManual() {
-  // ========================================
   // FONCTION CRITIQUE : DÉMARRAGE MANUEL POMPE REMPLISSAGE
-  // PRIORITÉ ABSOLUE - EXÉCUTION IMMÉDIATE
-  // ========================================
-  
   if (!_acts.isTankPumpRunning()) {
     Serial.println(F("[CRITIQUE] === DÉBUT REMPLISSAGE MANUEL ==="));
     
-    // 1. ACTIVATION IMMÉDIATE - PRIORITÉ ABSOLUE
-    unsigned long startTime = millis();
-    
-    _acts.startTankPump();
+    // Tracking local
     _manualTankOverride = true;
     _lastTankManualOrigin = ManualOrigin::LOCAL_SERVER;
     _countdownLabel = "Refill";
-    _countdownEnd   = millis() + refillDurationMs;
-    _pumpStartMs    = millis();
+    _countdownEnd = millis() + refillDurationMs;
+    _pumpStartMs = millis();
     
-    // 2. Lecture capteurs immédiate (non bloquante)
     SensorReadings cur = _sensors.read();
     _levelAtPumpStart = cur.wlAqua;
     
-    // 3. WebSocket immédiat (feedback utilisateur instantané)
-    realtimeWebSocket.broadcastNow();
-    
-    // 4. Synchronisation serveur en arrière-plan (non bloquant)
-    if (WiFi.status() == WL_CONNECTED) {
-      // Créer une tâche asynchrone pour l'envoi HTTP
-      static TaskHandle_t syncTankPumpTaskHandle = nullptr;
-      
-      // Vérifier si une tâche de sync est déjà en cours
-      if (syncTankPumpTaskHandle != nullptr && eTaskGetState(syncTankPumpTaskHandle) != eDeleted) {
-        Serial.println(F("[Auto] ⚠️ Tâche de sync tank pump déjà en cours - skip"));
-        return;
-      }
-      
-      BaseType_t result = xTaskCreate([](void* param) {
-        TaskHandle_t* taskHandle = (TaskHandle_t*)param;
-        // Petit délai pour laisser l'activation se stabiliser
-        vTaskDelay(pdMS_TO_TICKS(50));
-        
-        // Lire les capteurs à nouveau pour des données fraîches
-        SensorReadings freshReadings = autoCtrl._sensors.read();
-        bool success = autoCtrl.sendFullUpdate(freshReadings, "etatPompeTank=1");
-        
-        if (success) {
-          Serial.println(F("[Auto] ✅ Synchronisation serveur réussie - pompe réservoir activée manuellement (local)"));
-        } else {
-          Serial.println(F("[Auto] ⚠️ Échec synchronisation serveur - pompe activée localement"));
-        }
-        
-        *taskHandle = nullptr; // Reset handle avant suppression
-        vTaskDelete(NULL);
-      }, "sync_tank_pump", 4096, &syncTankPumpTaskHandle, 1, NULL);
-      
-      if (result != pdPASS) {
-        Serial.println(F("[Auto] ❌ Échec création tâche sync tank pump"));
-        syncTankPumpTaskHandle = nullptr;
-      }
-    }
-    
-    unsigned long executionTime = millis() - startTime;
-    Serial.printf("[CRITIQUE] Pompe démarrée en %lu ms\n", executionTime);
     Serial.printf("[CRITIQUE] Niveau aquarium: %d cm, Niveau réservoir: %d cm\n", cur.wlAqua, cur.wlTank);
-    Serial.printf("[CRITIQUE] Durée configurée: %lu s\n", refillDurationMs / 1000);
+    
+    // Délégation au module Actuators (démarrage + sync)
+    AutomatismActuators actuators(_acts, _config);
+    actuators.startTankPumpManual();
+    
     Serial.println(F("[CRITIQUE] === REMPLISSAGE MANUEL EN COURS ==="));
   } else {
     Serial.println(F("[Auto] Pompe réservoir déjà en cours d'exécution"));
@@ -2362,40 +2280,31 @@ void Automatism::startTankPumpManual() {
 }
 
 void Automatism::stopTankPumpManual() {
-  // ========================================
   // FONCTION CRITIQUE : ARRÊT MANUEL POMPE REMPLISSAGE
-  // PRIORITÉ ABSOLUE - EXÉCUTION IMMÉDIATE
-  // ========================================
-  
   if (_acts.isTankPumpRunning()) {
     Serial.println(F("[CRITIQUE] === ARRÊT MANUEL REMPLISSAGE ==="));
     
-    // ARRÊT IMMÉDIAT - PRIORITÉ ABSOLUE
-    unsigned long stopTime = millis();
-    
-    // IMPORTANT: Mémoriser que c'était un arrêt manuel AVANT d'arrêter la pompe
-    // pour que checkCriticalChanges() puisse détecter le mode manuel
+    // Tracking local (avant arrêt pour checkCriticalChanges)
     _lastPumpManual = _manualTankOverride;
-    
-    _acts.stopTankPump(_pumpStartMs);
-    _pumpStartMs = 0; // reset cycle start
     _lastTankStopReason = TankPumpStopReason::MANUAL;
     _lastTankManualOrigin = ManualOrigin::LOCAL_SERVER;
     _manualTankOverride = false;
-    _countdownEnd = 0; // efface le décompte si arrêt manuel
+    _countdownEnd = 0;
     
-    // Délai de sécurité pour éviter les conflits de timing
-    vTaskDelay(pdMS_TO_TICKS(100));
+    uint32_t pumpStart = _pumpStartMs;
+    _pumpStartMs = 0;
     
-    {
-      uint32_t stopExec = (uint32_t)(millis() - stopTime);
-      Serial.printf("[CRITIQUE] Arrêt effectué en %u ms\n", (unsigned)stopExec);
-    }
-    
-    // Log de l'arrêt manuel avec diagnostic
+    // Diagnostic niveau
     SensorReadings cur = _sensors.read();
     int levelImprovement = _levelAtPumpStart - cur.wlAqua;
-    Serial.printf("[CRITIQUE] Arrêt pompe réservoir (amélioration niveau: %d cm)\n", levelImprovement);
+    Serial.printf("[CRITIQUE] Amélioration niveau: %d cm\n", levelImprovement);
+    
+    // Délégation au module Actuators (arrêt + sync)
+    _acts.stopTankPump(pumpStart);
+    AutomatismActuators actuators(_acts, _config);
+    actuators.stopTankPumpManual();
+    
+    vTaskDelay(pdMS_TO_TICKS(100)); // Délai sécurité
     Serial.println(F("[CRITIQUE] === REMPLISSAGE MANUEL TERMINÉ ==="));
   } else {
     Serial.println(F("[Auto] Pompe réservoir déjà arrêtée"));
