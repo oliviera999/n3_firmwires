@@ -8,6 +8,7 @@
 #include "project_config.h"
 #include "config_manager.h"
 #include "automatism/automatism_feeding.h"
+#include "automatism/automatism_network.h"
 #include <ArduinoJson.h>
 
 class Automatism {
@@ -81,6 +82,7 @@ class Automatism {
   
   // === MODULES (Composition) ===
   AutomatismFeeding _feeding;
+  AutomatismNetwork _network;
 
   // state flags
   bool tankPumpLocked = false;

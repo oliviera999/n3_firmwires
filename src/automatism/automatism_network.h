@@ -1,0 +1,145 @@
+#pragma once
+
+#include <Arduino.h>
+#include "web_client.h"
+#include "config_manager.h"
+#include "system_sensors.h"
+#include "system_actuators.h"
+#include <ArduinoJson.h>
+
+/**
+ * Module Network pour Automatism
+ * 
+ * Responsabilité: Communication avec serveur distant
+ * - Récupération état serveur (fetchRemoteState)
+ * - Envoi mises à jour (sendFullUpdate)
+ * - Application configuration serveur (applyConfigFromJson)
+ * - Gestion état distant (handleRemoteState) 
+ * - Détection changements critiques (checkCriticalChanges)
+ */
+class AutomatismNetwork {
+public:
+    /**
+     * Constructeur
+     * @param web Référence WebClient
+     * @param cfg Référence ConfigManager
+     */
+    AutomatismNetwork(WebClient& web, ConfigManager& cfg);
+    
+    // === COMMUNICATION SERVEUR ===
+    
+    /**
+     * Récupère l'état depuis le serveur distant
+     * @param doc Document JSON à remplir
+     * @return true si succès
+     */
+    bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
+    
+    /**
+     * Envoie une mise à jour complète au serveur
+     * @param readings Lectures capteurs
+     * @param extraPairs Paramètres supplémentaires (optionnel)
+     * @return true si succès
+     */
+    bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);
+    
+    /**
+     * Applique la configuration depuis un document JSON
+     * @param doc Document JSON de configuration
+     */
+    void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
+    
+    /**
+     * Gère l'état distant (polling serveur)
+     * Méthode complexe (~545 lignes à diviser)
+     * @param sensors Référence SystemSensors pour lectures
+     * @param actuators Référence SystemActuators pour actions
+     */
+    void handleRemoteState(SystemSensors& sensors, SystemActuators& actuators);
+    
+    /**
+     * Détecte les changements critiques depuis le serveur
+     * Méthode complexe (~285 lignes)
+     * @param readings Lectures capteurs actuelles
+     */
+    void checkCriticalChanges(const SensorReadings& readings);
+    
+    // === CONFIGURATION ===
+    
+    /**
+     * Définit l'adresse email
+     */
+    void setEmailAddress(const String& address) { _emailAddress = address; }
+    
+    /**
+     * Active/désactive les emails
+     */
+    void setEmailEnabled(bool enabled) { _emailEnabled = enabled; }
+    
+    /**
+     * Définit la fréquence de réveil (secondes)
+     */
+    void setFreqWakeSec(uint16_t freq) { _freqWakeSec = freq; }
+    
+    // === GETTERS ===
+    
+    const String& getEmailAddress() const { return _emailAddress; }
+    bool isEmailEnabled() const { return _emailEnabled; }
+    uint16_t getFreqWakeSec() const { return _freqWakeSec; }
+    uint16_t getLimFlood() const { return _limFlood; }
+    uint16_t getAqThresholdCm() const { return _aqThresholdCm; }
+    uint16_t getTankThresholdCm() const { return _tankThresholdCm; }
+    float getHeaterThresholdC() const { return _heaterThresholdC; }
+    
+    /**
+     * Vérifie si le serveur est OK
+     */
+    bool isServerOk() const { return _serverOk; }
+    
+    /**
+     * États d'envoi/réception
+     * -1: erreur, 0: en cours/idle, 1: OK
+     */
+    int8_t getSendState() const { return _sendState; }
+    int8_t getRecvState() const { return _recvState; }
+    
+private:
+    WebClient& _web;
+    ConfigManager& _config;
+    
+    // Configuration serveur
+    String _emailAddress;
+    bool _emailEnabled;
+    uint16_t _freqWakeSec;
+    
+    // Seuils
+    uint16_t _limFlood;
+    uint16_t _aqThresholdCm;
+    uint16_t _tankThresholdCm;
+    float _heaterThresholdC;
+    
+    // Timing
+    unsigned long _lastSend;
+    unsigned long _lastRemoteFetch;
+    static constexpr unsigned long SEND_INTERVAL_MS = 120000;        // 2 minutes
+    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 4000;  // 4 secondes
+    
+    // État
+    bool _serverOk;
+    int8_t _sendState;  // -1 erreur, 0 en cours/idle, 1 OK
+    int8_t _recvState;  // idem
+    
+    // État précédent pour détection changements (checkCriticalChanges)
+    bool _prevPumpTank;
+    bool _prevPumpAqua;
+    bool _prevBouffeMatin;
+    bool _prevBouffeMidi;
+    bool _prevBouffeSoir;
+    
+    // Helpers privés (pour diviser handleRemoteState et checkCriticalChanges)
+    void parseRemoteConfig(const ArduinoJson::JsonDocument& doc);
+    void applyRemoteActuators(const ArduinoJson::JsonDocument& doc, SystemActuators& actuators);
+    void handleRemoteCommands(const ArduinoJson::JsonDocument& doc);
+    bool shouldPollRemote() const;
+};
+

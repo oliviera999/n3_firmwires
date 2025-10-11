@@ -3,6 +3,7 @@
 #include "automatism/automatism_persistence.h"
 #include "automatism/automatism_actuators.h"
 #include "automatism/automatism_feeding.h"
+#include "automatism/automatism_network.h"
 #include <Arduino.h>
 #include <cstring>
 #include <string>
@@ -165,6 +166,7 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _mailer(mail)
     , _config(config)
     , _feeding(acts, config, mail, power)  // Module Feeding
+    , _network(web, config)                // Module Network
 {
 }
 
