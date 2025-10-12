@@ -1,5 +1,6 @@
 #include "automatism_network.h"
 #include "project_config.h"
+#include "esp_task_wdt.h"
 #include <WiFi.h>
 
 // ============================================================================
@@ -85,13 +86,99 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
 // quand on aura refactorisé les variables membres
 // ============================================================================
 
-bool AutomatismNetwork::sendFullUpdate(const SensorReadings& readings, const char* extraPairs) {
-    // TODO: Cette méthode nécessite accès à trop de variables d'Automatism
-    // Pour l'instant, elle reste implémentée dans automatism.cpp
-    // Sera migrée dans Phase 2.7 (après refactoring variables)
+bool AutomatismNetwork::sendFullUpdate(
+    const SensorReadings& readings,
+    SystemActuators& acts,
+    int diffMaree,
+    uint8_t feedMorning, uint8_t feedNoon, uint8_t feedEvening,
+    uint16_t feedBigDur, uint16_t feedSmallDur,
+    const String& bouffePetits, const String& bouffeGros,
+    bool forceWakeUp, uint16_t freqWakeSec,
+    uint32_t refillDurationSec,
+    const char* extraPairs
+) {
+    // Reset watchdog au début
+    esp_task_wdt_reset();
     
-    Serial.println(F("[Network] sendFullUpdate() - Implémentation temporaire"));
-    return false;  // Placeholder
+    // VALIDATION MESURES
+    float tempWater = readings.tempWater;
+    float tempAir = readings.tempAir;
+    float humidity = readings.humidity;
+    
+    // Validation températures
+    if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
+        Serial.printf("[Network] Temp eau invalide: %.1f°C, force NaN\n", tempWater);
+        tempWater = NAN;
+    }
+    
+    if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN || 
+        tempAir >= SensorConfig::AirSensor::TEMP_MAX) {
+        Serial.printf("[Network] Temp air invalide: %.1f°C, force NaN\n", tempAir);
+        tempAir = NAN;
+    }
+    
+    // Validation humidité
+    if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN || 
+        humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
+        Serial.printf("[Network] Humidité invalide: %.1f%%, force NaN\n", humidity);
+        humidity = NAN;
+    }
+    
+    // Vérification mémoire
+    size_t freeHeap = ESP.getFreeHeap();
+    if (freeHeap < BufferConfig::LOW_MEMORY_THRESHOLD_BYTES) {
+        Serial.printf("[Network] Mémoire faible (%u bytes), report envoi\n", freeHeap);
+        return false;
+    }
+    
+    // Construction payload
+    char data[1024];
+    snprintf(data, sizeof(data),
+        "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&"
+        "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
+        "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&"
+        "bouffeMatin=%u&bouffeMidi=%u&bouffeSoir=%u&tempsGros=%u&tempsPetits=%u&"
+        "aqThreshold=%u&tankThreshold=%u&chauffageThreshold=%.1f&"
+        "tempsRemplissageSec=%u&limFlood=%u&WakeUp=%d&FreqWakeUp=%u&"
+        "bouffePetits=%s&bouffeGros=%s&mail=%s&mailNotif=%s",
+        Config::API_KEY, Config::SENSOR, Config::VERSION,
+        tempAir, humidity, tempWater,
+        readings.wlPota, readings.wlAqua, readings.wlTank, diffMaree, readings.luminosite,
+        acts.isAquaPumpRunning(), acts.isTankPumpRunning(), acts.isHeaterOn(), acts.isLightOn(),
+        feedMorning, feedNoon, feedEvening, feedBigDur, feedSmallDur,
+        _aqThresholdCm, _tankThresholdCm, _heaterThresholdC,
+        refillDurationSec, _limFlood,
+        forceWakeUp ? 1 : 0, freqWakeSec,
+        bouffePetits.c_str(), bouffeGros.c_str(),
+        _emailAddress.c_str(), _emailEnabled ? "checked" : "");
+    
+    esp_task_wdt_reset();
+    
+    String payload = String(data);
+    if (extraPairs && extraPairs[0] != '\0') {
+        payload += "&";
+        payload += extraPairs;
+    }
+    
+    // Ajout resetMode=0 si absent
+    if (payload.indexOf("resetMode=") == -1) {
+        payload += "&resetMode=0";
+    }
+    
+    esp_task_wdt_reset();
+    
+    bool success = _web.postRaw(payload, false);
+    
+    if (success) {
+        _sendState = 1;  // OK
+        Serial.println(F("[Network] sendFullUpdate SUCCESS"));
+    } else {
+        _sendState = -1;  // Erreur
+        Serial.println(F("[Network] sendFullUpdate FAILED"));
+    }
+    
+    _lastSend = millis();
+    return success;
 }
 
 // ============================================================================

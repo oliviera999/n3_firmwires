@@ -38,10 +38,32 @@ public:
     /**
      * Envoie une mise à jour complète au serveur
      * @param readings Lectures capteurs
-     * @param extraPairs Paramètres supplémentaires (optionnel)
+     * @param acts Actionneurs (états)
+     * @param diffMaree Différence marée
+     * @param feedMorning Heure bouffe matin
+     * @param feedNoon Heure bouffe midi  
+     * @param feedEvening Heure bouffe soir
+     * @param feedBigDur Durée gros poissons
+     * @param feedSmallDur Durée petits poissons
+     * @param bouffePetits Flag petits
+     * @param bouffeGros Flag gros
+     * @param forceWakeUp Flag wake
+     * @param freqWakeSec Fréquence wake
+     * @param refillDurationSec Durée refill
+     * @param extraPairs Paramètres supplémentaires
      * @return true si succès
      */
-    bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);
+    bool sendFullUpdate(
+        const SensorReadings& readings,
+        SystemActuators& acts,
+        int diffMaree,
+        uint8_t feedMorning, uint8_t feedNoon, uint8_t feedEvening,
+        uint16_t feedBigDur, uint16_t feedSmallDur,
+        const String& bouffePetits, const String& bouffeGros,
+        bool forceWakeUp, uint16_t freqWakeSec,
+        uint32_t refillDurationSec,
+        const char* extraPairs = nullptr
+    );
     
     /**
      * Applique la configuration depuis un document JSON

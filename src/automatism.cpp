@@ -2143,77 +2143,18 @@ void Automatism::checkCriticalChanges() {
  *  Construction et envoi d'une trame COMPLETE (mesures + variables)
  * ------------------------------------------------------------------*/
 bool Automatism::sendFullUpdate(const SensorReadings& readings, const char* extraPairs) {
-  // Reset watchdog au début de l'opération critique
-  esp_task_wdt_reset();
-  
-  // VALIDATION COMPLÈTE DES MESURES AVANT ENVOI
-  float tempWater = readings.tempWater;
-  float tempAir = readings.tempAir;
-  float humidity = readings.humidity;
-  
-  // Validation des températures
-  if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
-    Serial.printf("[Automatism] Température eau invalide avant envoi: %.1f°C, force NaN\n", tempWater);
-    tempWater = NAN;
-  }
-  
-  if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN || tempAir >= SensorConfig::AirSensor::TEMP_MAX) {
-    Serial.printf("[Automatism] Température air invalide avant envoi: %.1f°C, force NaN\n", tempAir);
-    tempAir = NAN;
-  }
-  
-  // Validation de l'humidité
-  if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN || humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
-    Serial.printf("[Automatism] Humidité invalide avant envoi: %.1f%%, force NaN\n", humidity);
-    humidity = NAN;
-  }
-  
-  // Vérification de la mémoire disponible avant allocation
-  size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < BufferConfig::LOW_MEMORY_THRESHOLD_BYTES) {
-    Serial.printf("[Automatism] Mémoire faible (%u bytes), report envoi\n", freeHeap);
-    return false;
-  }
-  
-  // Buffer généreux pour contenir tous les champs (≈ 1 ko)
-  char data[1024];
-
-  snprintf(data, sizeof(data),
-    "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&" \
-    "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&" \
-    "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&" \
-    "bouffeMatin=%u&bouffeMidi=%u&bouffeSoir=%u&tempsGros=%u&tempsPetits=%u&" \
-    "aqThreshold=%u&tankThreshold=%u&chauffageThreshold=%.1f&" \
-    "tempsRemplissageSec=%u&limFlood=%u&WakeUp=%d&FreqWakeUp=%u&" \
-    "bouffePetits=%s&bouffeGros=%s&mail=%s&mailNotif=%s",
-    Config::API_KEY, Config::SENSOR, Config::VERSION,
-    tempAir, humidity, tempWater,
-    readings.wlPota, readings.wlAqua, readings.wlTank, _sensors.diffMaree(readings.wlAqua), readings.luminosite,
-    _acts.isAquaPumpRunning(), _acts.isTankPumpRunning(), _acts.isHeaterOn(), _acts.isLightOn(),
-    feedMorning, feedNoon, feedEvening, feedBigDur, feedSmallDur,
-    aqThresholdCm, tankThresholdCm, heaterThresholdC,
-    refillDurationMs/1000, limFlood,
-    forceWakeUp ? 1 : 0, freqWakeSec,
-    bouffePetits.c_str(), bouffeGros.c_str(),
-    emailAddress.c_str(), emailEnabled ? "checked" : "");
-
-  // Reset watchdog avant construction de la payload
-  esp_task_wdt_reset();
-  
-  String payload = String(data);
-  if (extraPairs && extraPairs[0] != '\0') {
-    payload += "&";
-    payload += extraPairs;
-  }
-  // Ajout systématique du champ resetMode=0 pour que le serveur reçoive toujours la clé
-  if (payload.indexOf("resetMode=") == -1) {
-    payload += "&resetMode=0";
-  }
-
-  // Reset watchdog avant envoi HTTP
-  esp_task_wdt_reset();
-  
-  return _web.postRaw(payload, false);
+  // Délégation au module Network avec toutes les variables nécessaires
+  return _network.sendFullUpdate(
+    readings,
+    _acts,
+    _sensors.diffMaree(readings.wlAqua),
+    feedMorning, feedNoon, feedEvening,
+    feedBigDur, feedSmallDur,
+    bouffePetits, bouffeGros,
+    forceWakeUp, freqWakeSec,
+    refillDurationMs / 1000,
+    extraPairs
+  );
 } 
 
 /* ------------------------------------------------------------------
