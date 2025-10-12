@@ -52,3 +52,7 @@ credentials.h
 # test_*.html
 # test_*.ps1
 # test_*.sh
+
+# Nested submodules in unused directories
+unused/**/ffp3datas/
+unused/**/ffp3distant/
