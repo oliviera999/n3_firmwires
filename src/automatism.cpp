@@ -2287,7 +2287,7 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
       sleepReason += ")";
       
       Serial.printf("[Auto] 📧 Envoi du mail de mise en veille (heap: %u bytes)...\n", heapBeforeMail);
-      bool mailSent = _mailer.sendSleepMail(sleepReason.c_str(), actualSleepDuration);
+      bool mailSent = _mailer.sendSleepMail(sleepReason.c_str(), actualSleepDuration, _lastReadings);
       if (mailSent) {
         Serial.println("[Auto] Mail de mise en veille envoyé avec succès ✔");
       } else {
@@ -2350,7 +2350,7 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
       String wakeReason = "Réveil automatique par timer";
       
       Serial.printf("[Auto] 📧 Envoi du mail de réveil (heap: %u bytes)...\n", heapBeforeWakeMail);
-      bool mailSent = _mailer.sendWakeMail(wakeReason.c_str(), actualSleepSeconds);
+      bool mailSent = _mailer.sendWakeMail(wakeReason.c_str(), actualSleepSeconds, _lastReadings);
       if (mailSent) {
         Serial.println("[Auto] Mail de réveil envoyé avec succès ✔");
       } else {

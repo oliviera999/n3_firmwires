@@ -430,11 +430,11 @@ bool Mailer::send(const char*, const char*, const char*, const char*) { return f
 bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
   (void)subject; (void)message; (void)toEmail; return false;
 }
-bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds) {
-  (void)reason; (void)sleepDurationSeconds; return false;
+bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
+  (void)reason; (void)sleepDurationSeconds; (void)readings; return false;
 }
-bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds) {
-  (void)reason; (void)actualSleepSeconds; return false;
+bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
+  (void)reason; (void)actualSleepSeconds; (void)readings; return false;
 }
 #endif
 
@@ -458,7 +458,7 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   return send(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
 }
 
-bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds) {
+bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
   String sleepSubject = String("FFP3 - Mise en veille");
   
   String sleepMessage;
@@ -482,14 +482,13 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds) {
   sleepMessage += "\n";
   
   // Ajouter les informations système détaillées
+  // UTILISE LES DERNIÈRES LECTURES (passées en paramètre) au lieu de relire les capteurs
   sleepMessage += "\n-- ÉTAT SYSTÈME AVANT VEILLE --\n";
-  extern SystemSensors sensors;
   extern SystemActuators acts;
-  SensorReadings rs = sensors.read();
-  sleepMessage += "- Temp eau: "; sleepMessage += String(rs.tempWater, 1); sleepMessage += " °C\n";
-  sleepMessage += "- Temp air: "; sleepMessage += String(rs.tempAir, 1); sleepMessage += " °C\n";
-  sleepMessage += "- Aqua lvl: "; sleepMessage += String(rs.wlAqua); sleepMessage += " cm\n";
-  sleepMessage += "- Réserve lvl: "; sleepMessage += String(rs.wlTank); sleepMessage += " cm\n";
+  sleepMessage += "- Temp eau: "; sleepMessage += String(readings.tempWater, 1); sleepMessage += " °C\n";
+  sleepMessage += "- Temp air: "; sleepMessage += String(readings.tempAir, 1); sleepMessage += " °C\n";
+  sleepMessage += "- Aqua lvl: "; sleepMessage += String(readings.wlAqua); sleepMessage += " cm\n";
+  sleepMessage += "- Réserve lvl: "; sleepMessage += String(readings.wlTank); sleepMessage += " cm\n";
   sleepMessage += "- Pompe aquarium: "; sleepMessage += (acts.isAquaPumpRunning() ? "ON" : "OFF"); sleepMessage += "\n";
   sleepMessage += "- Pompe réservoir: "; sleepMessage += (acts.isTankPumpRunning() ? "ON" : "OFF"); sleepMessage += "\n";
   sleepMessage += "- Chauffage: "; sleepMessage += (acts.isHeaterOn() ? "ON" : "OFF"); sleepMessage += "\n";
@@ -503,12 +502,13 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds) {
   Serial.println(F("[Mail] ===== ENVOI MAIL VEILLE ====="));
   Serial.printf("[Mail] Raison: %s\n", reason);
   Serial.printf("[Mail] Durée: %u s\n", sleepDurationSeconds);
+  Serial.println(F("[Mail] ⚡ Utilisation des dernières lectures (pas de nouvelle lecture capteurs)"));
   Serial.println(F("[Mail] =============================="));
   
   return send(sleepSubject.c_str(), sleepMessage.c_str(), "User", Config::DEFAULT_MAIL_TO);
 }
 
-bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds) {
+bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
   String wakeSubject = String("FFP3 - Réveil du système");
   
   String wakeMessage;
@@ -532,14 +532,13 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds) {
   wakeMessage += "\n";
   
   // Ajouter les informations système détaillées
+  // UTILISE LES DERNIÈRES LECTURES (passées en paramètre) au lieu de relire les capteurs
   wakeMessage += "\n-- ÉTAT SYSTÈME AU RÉVEIL --\n";
-  extern SystemSensors sensors;
   extern SystemActuators acts;
-  SensorReadings rs = sensors.read();
-  wakeMessage += "- Temp eau: "; wakeMessage += String(rs.tempWater, 1); wakeMessage += " °C\n";
-  wakeMessage += "- Temp air: "; wakeMessage += String(rs.tempAir, 1); wakeMessage += " °C\n";
-  wakeMessage += "- Aqua lvl: "; wakeMessage += String(rs.wlAqua); wakeMessage += " cm\n";
-  wakeMessage += "- Réserve lvl: "; wakeMessage += String(rs.wlTank); wakeMessage += " cm\n";
+  wakeMessage += "- Temp eau: "; wakeMessage += String(readings.tempWater, 1); wakeMessage += " °C\n";
+  wakeMessage += "- Temp air: "; wakeMessage += String(readings.tempAir, 1); wakeMessage += " °C\n";
+  wakeMessage += "- Aqua lvl: "; wakeMessage += String(readings.wlAqua); wakeMessage += " cm\n";
+  wakeMessage += "- Réserve lvl: "; wakeMessage += String(readings.wlTank); wakeMessage += " cm\n";
   wakeMessage += "- Pompe aquarium: "; wakeMessage += (acts.isAquaPumpRunning() ? "ON" : "OFF"); wakeMessage += "\n";
   wakeMessage += "- Pompe réservoir: "; wakeMessage += (acts.isTankPumpRunning() ? "ON" : "OFF"); wakeMessage += "\n";
   wakeMessage += "- Chauffage: "; wakeMessage += (acts.isHeaterOn() ? "ON" : "OFF"); wakeMessage += "\n";
