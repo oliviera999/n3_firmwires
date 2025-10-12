@@ -311,9 +311,10 @@ void Diagnostics::capturePanicInfo() {
   _stats.panicInfo.hasPanicInfo = false;
   
   // Vérifier si le dernier reset était un panic
-  if (esp_reset_reason() != ESP_RST_PANIC && 
-      esp_reset_reason() != ESP_RST_INT_WDT && 
-      esp_reset_reason() != ESP_RST_TASK_WDT) {
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  if (resetReason != ESP_RST_PANIC && 
+      resetReason != ESP_RST_INT_WDT && 
+      resetReason != ESP_RST_TASK_WDT) {
     return;
   }
   
@@ -370,18 +371,39 @@ void Diagnostics::capturePanicInfo() {
       break;
   }
   
-  // Vérifier les deux cores
+  // Vérifier les deux cores pour identifier lequel a paniqué
   RESET_REASON rtcReason1 = rtc_get_reset_reason(1);
   if (rtcReason1 != rtcReason && rtcReason1 != NO_MEAN) {
+    _stats.panicInfo.core = 1;
+    if (_stats.panicInfo.additionalInfo.length() > 0) {
+      _stats.panicInfo.additionalInfo += "; ";
+    }
     _stats.panicInfo.additionalInfo += "Core 1 reason differs: " + String((int)rtcReason1);
   }
   
-  // Les informations plus détaillées comme PC, excvaddr ne sont disponibles
-  // que via le coredump qui nécessite une configuration spéciale.
-  // On les laisse pour l'instant, mais on peut les ajouter si le coredump est activé.
+  // Ajouter le code ESP reset reason pour plus de détails
+  if (_stats.panicInfo.additionalInfo.length() > 0) {
+    _stats.panicInfo.additionalInfo += "; ";
+  }
+  _stats.panicInfo.additionalInfo += "ESP reset reason: " + String((int)resetReason);
+  _stats.panicInfo.additionalInfo += ", RTC reason: " + String((int)rtcReason);
+  
+  // Note: Les détails supplémentaires (PC, registres, stack trace) nécessitent :
+  // 1. Activation du Core Dump dans menuconfig
+  // 2. Partition dédiée pour stocker le coredump
+  // 3. Analyse post-mortem avec esp-coredump.py
+  // 
+  // Pour activer, ajouter dans platformio.ini:
+  //   board_build.partitions = partitions_with_coredump.csv
+  //   build_flags = -DCONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH=1
+  //
+  // Pour l'instant, on capture ce qui est disponible via RTC memory
   
   Serial.printf("[Diagnostics] 🔍 Panic capturé: %s (Core %d)\n", 
-                _stats.panicInfo.exceptionCause.c_str(), _stats.panicInfo.core);
+                _stats.panicInfo.exceptionCause.c_str(), 
+                _stats.panicInfo.core);
+  Serial.printf("[Diagnostics] ℹ️ Pour plus de détails, consulter les logs série complets\n");
+  Serial.printf("[Diagnostics] ℹ️ ou activer le Core Dump pour analyse post-mortem\n");
 }
 
 // Sauvegarder les informations de panic dans NVS

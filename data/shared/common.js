@@ -723,6 +723,49 @@ window.mailTest = async function mailTest() {
   }
 }
 
+window.toggleEmailNotifications = async function toggleEmailNotifications() {
+  const btn = $('btnEmailNotif');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> En cours...';
+  }
+  
+  addToHistory('Toggle Email Notifications', 'loading');
+  
+  try {
+    const response = await fetch('/action?cmd=toggleEmail', { cache: 'no-store' });
+    const result = await response.text();
+    
+    addToHistory('Toggle Email Notifications', 'success', result);
+    toast(`Notifications Email: ${result}`, 'success');
+    
+    // Mettre à jour l'apparence du bouton selon l'état
+    if (btn) {
+      btn.disabled = false;
+      if (result.toLowerCase().includes('activé') || result.toLowerCase().includes('on')) {
+        btn.className = 'btn btn-success w-100';
+        btn.innerHTML = '🔔 Notifications ON';
+      } else {
+        btn.className = 'btn btn-outline-success w-100';
+        btn.innerHTML = '🔔 Notifications OFF';
+      }
+    }
+    
+    // Rafraîchir les données pour mettre à jour l'affichage
+    if (typeof loadDbVars === 'function') {
+      loadDbVars();
+    }
+  } catch (error) {
+    console.error('Erreur toggle email:', error);
+    addToHistory('Toggle Email Notifications', 'error', error.message);
+    toast('Erreur lors du changement de statut des notifications', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔔 Notifications Email';
+    }
+  }
+};
+
 window.toggleForceWakeup = async function toggleForceWakeup() {
   const btn = $('btnForceWakeup');
   if (btn) {

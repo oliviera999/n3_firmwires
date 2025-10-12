@@ -41,8 +41,8 @@ void TimeDriftMonitor::begin() {
   // (l'effacement était seulement pour les tests)
   loadFromNVS();
 
-  // Configuration NTP: offsets gérés via TZ; ici on ne passe que le serveur
-  configTime(0, 0, SystemConfig::NTP_SERVER);
+  // Configuration NTP avec offset GMT en secondes (7200s = 2h)
+  configTime(SystemConfig::NTP_GMT_OFFSET_SEC, SystemConfig::NTP_DAYLIGHT_OFFSET_SEC, SystemConfig::NTP_SERVER);
 
   // Configuration de production : sync toutes les heures
   LOG_DRIFT(LogConfig::LOG_INFO, "Intervalle de sync: %lu ms (%.1f heures)", 
@@ -157,9 +157,8 @@ void TimeDriftMonitor::syncWithNTP() {
 
 bool TimeDriftMonitor::performNTPSync() {
 
-  // Configuration NTP: offsets gérés via TZ; ici on ne passe que le serveur
-
-  configTime(0, 0, SystemConfig::NTP_SERVER);
+  // Configuration NTP avec offset GMT en secondes (7200s = 2h)
+  configTime(SystemConfig::NTP_GMT_OFFSET_SEC, SystemConfig::NTP_DAYLIGHT_OFFSET_SEC, SystemConfig::NTP_SERVER);
 
   // Attendre la synchronisation
 

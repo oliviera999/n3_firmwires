@@ -295,3 +295,4 @@ R: `docs/README.md` (point d'entrée)
 
 **Commencer par**: `SYNTHESE_FINALE.md` ou `RESUME_EXECUTIF_ANALYSE.md`
 
+

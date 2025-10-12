@@ -1,0 +1,306 @@
+# Règles de développement - Projet ESP32 Aquaponie controller (FFP5CS)
+
+## 👨‍💻 Niveau d'expertise requis
+**Tu dois te considérer comme :**
+- ⚡ **Expert en développement ESP32** - Maîtrise approfondie de l'ESP32, quel que soit le langage utilisé (C++, Arduino, ESP-IDF, MicroPython)
+- 🔌 **Expert en électronique** - Spécialiste des projets DIY (Do It Yourself), circuits, capteurs, actionneurs
+- 🛠️ **Ingénieur systèmes embarqués** - Connaissance des contraintes hardware, optimisation mémoire, gestion d'énergie
+- 🌐 **Développeur full-stack IoT** - Architecture web, WebSocket, APIs REST, interfaces utilisateur
+
+## 🎯 Contexte du projet
+- **Hardware**: ESP32-WROOM-32 (4MB Flash, PSRAM limité)
+- **Framework**: PlatformIO avec Arduino Framework
+- **Type**: Système de gestion et de nourrissage automatique avec interface web
+- **Architecture**: Serveur web ESP32 + interface SPA (Single Page Application)
+
+## 📋 Priorités absolues
+
+### 1. Gestion de la mémoire (CRITIQUE)
+- **TOUJOURS** vérifier l'utilisation mémoire avant/après modifications
+- Utiliser `heap_caps_get_free_size(MALLOC_CAP_8BIT)` pour monitorer
+- Éviter les allocations dynamiques dans les boucles
+- Privilégier les buffers statiques avec tailles définies
+- Attention aux String Arduino (fragmentation) → préférer char[] et strncpy
+- Libérer explicitement toute mémoire allouée (free, delete)
+- PSRAM disponible mais limité, ne pas en abuser
+
+### 2. Watchdog et stabilité
+- **JAMAIS** bloquer le thread principal > 3 secondes
+- Appeler `esp_task_wdt_reset()` dans les boucles longues
+- Utiliser `vTaskDelay()` au lieu de `delay()` dans les tâches
+- Timeout WiFi: max 15 secondes avec reset watchdog
+- Les opérations réseau doivent avoir des timeouts courts
+
+### 3. Gestion du WebSocket
+- Le WebSocket peut se déconnecter sans préavis
+- Toujours vérifier `ws.count()` avant envoi
+- Implémenter la reconnexion automatique côté client
+- Buffer de messages: limité à 1024 bytes par défaut
+- Envoyer des pings réguliers pour maintenir la connexion
+- Éviter d'envoyer trop de données trop vite (rate limiting)
+
+### 4. Mode veille (Sleep)
+- Light Sleep activé pour économie d'énergie
+- **ATTENTION**: variables volatiles et RTC_DATA_ATTR uniquement pour deep sleep
+- Vérifier que tous les périphériques supportent le light sleep
+- Modem sleep WiFi activé par défaut (WIFI_PS_MIN_MODEM)
+- Ne pas accéder aux périphériques I2C/SPI pendant le sleep
+
+## 🏗️ Architecture du code
+
+### Structure des fichiers
+```
+src/
+├── main.cpp              # Point d'entrée, setup/loop
+├── config.cpp/h          # Configuration système
+├── wifi_manager.cpp/h    # Gestion WiFi et reconnexion
+├── web_server.cpp/h      # Serveur HTTP et WebSocket
+├── web_client.cpp/h      # Serveur client web (SPA)
+├── sensors.cpp/h         # Gestion capteurs (DHT, DS18B20)
+├── actuators.cpp/h       # Relais, servo, LED
+├── automatism.cpp/h      # Logique de nourrissage
+├── watchdog_manager.cpp/h # Gestion watchdog et sleep
+└── ota_manager.cpp/h     # Mise à jour OTA
+
+data/                     # Système de fichiers (SPIFFS/LittleFS)
+└── www/                  # Interface web (HTML/CSS/JS)
+```
+
+### Patterns à suivre
+1. **Singleton**: Managers principaux (WiFi, Web, Sensors)
+2. **Callbacks**: Pour événements WebSocket et capteurs
+3. **State Machine**: Pour gestion modes (Auto/Manuel/Config)
+4. **RAII**: Destructeurs pour libération ressources
+
+## 💻 Conventions de code
+
+### Nommage
+- Classes: `PascalCase` (ex: `WiFiManager`)
+- Fonctions: `camelCase` (ex: `connectToWiFi`)
+- Variables globales: `g_prefixCamelCase` (ex: `g_webServer`)
+- Constantes: `UPPER_SNAKE_CASE` (ex: `MAX_RETRY_COUNT`)
+- Macros: `UPPER_SNAKE_CASE` avec préfixe (ex: `FFP_DEBUG_ENABLED`)
+
+### Format
+- Indentation: 2 espaces (pas de tabs)
+- Accolades: style K&R (ouverture sur même ligne)
+- Lignes: max 100 caractères
+- Commentaires: `//` pour inline, `/* */` pour blocs
+
+### Logging
+```cpp
+#ifdef DEBUG_MODE
+  Serial.printf("[Module] Message avec %d paramètres\n", value);
+#endif
+```
+
+## 🔧 Capteurs et périphériques
+
+### DHT22 (Température/Humidité)
+- Pin: GPIO défini dans config.h
+- Délai minimum entre lectures: 2000ms
+- Vérifier `isnan()` sur les valeurs retournées
+- Timeout lecture: 5 secondes max
+
+### DS18B20 (Température eau)
+- OneWire sur GPIO défini
+- Résolution: 12 bits (750ms par lecture)
+- Adresses multiples possibles (scanner au démarrage)
+- Vérifier CRC des données
+
+### HC-SR04 (Niveaux d'eau - Aquarium, Potager, Réserve)
+- Trigger/Echo sur GPIO dédiés
+- Timeout: 30ms maximum
+- Filtrage: moyenne sur 3-5 mesures
+- Distance min: 2cm, max: 400cm
+
+**Principe de fonctionnement:**
+Le système de mesure du niveau de l'eau de l'aquarium, du potager, et de la réserve est basé sur les capteurs à ultrasons. Ils sont placés au-dessus de l'eau et renvoient la distance entre eux et la surface de l'eau. 
+
+**Logique inverse importante:**
+- ⬆️ **Valeur élevée** = niveau d'eau **faible** (capteur loin de l'eau)
+- ⬇️ **Valeur faible** = niveau d'eau **important** (capteur proche de l'eau)
+
+**Applications critiques:**
+1. **Détection des marées** (déclenchement de la mise en veille):
+   - Quand l'aquarium se remplit → marée monte → valeurs diminuent → mise en veille
+2. **Gestion automatique du remplissage**:
+   - Si niveau aquarium trop faible → déclenchement remplissage depuis réserve
+3. **Monitoring multi-zones**: Aquarium, potager, réserve (voir code pour détails)
+
+### OLED (Affichage)
+- I2C: SDA/SCL
+- Initialisation avec timeout
+- Buffer partagé: attention à la mémoire
+- Rafraîchissement: max 10Hz
+
+## 🌐 Interface Web
+
+### Endpoints principaux
+- `GET /` → SPA principale
+- `GET /api/status` → État système (JSON)
+- `POST /api/feed` → Nourrissage manuel
+- `POST /api/config` → Modification configuration
+- `GET /ws` → WebSocket pour temps réel
+
+### Sécurité
+- CORS activé pour développement local
+- Validation des paramètres d'entrée (min/max)
+- Rate limiting sur actions critiques
+- Authentification basique pour configuration
+
+### Performance
+- Assets compressés (gzip) dans SPIFFS
+- Cache-Control headers appropriés
+- Minimiser taille JSON (pas de pretty print)
+- Chunked transfer pour gros fichiers
+
+## 🐛 Debugging
+
+### Outils disponibles
+- Serial Monitor (115200 baud)
+- WebSocket debug messages
+- LED status integré
+- OLED pour feedback visuel
+- Fichier de logs (voir `pythonserial/esp32_logs.txt`)
+
+### Procédure de monitoring post-déploiement
+1. **OBLIGATOIRE**: Lancer un monitoring de **90 secondes** après chaque mise à jour
+2. Capturer les logs série complets pendant cette période
+3. Analyser les logs en priorisant :
+   - 🔴 **Priorité 1**: Guru Meditation, Panic, Brownout, Core dump
+   - 🟡 **Priorité 2**: Warnings watchdog, timeouts WiFi/WebSocket
+   - 🟢 **Priorité 3**: Utilisation mémoire (heap/stack)
+   - ⚪ **Secondaire**: Valeurs des capteurs (sauf indication contraire)
+4. Identifier et documenter tous les points d'attention
+5. Si erreurs critiques détectées → corriger avant de continuer
+
+### Patterns d'erreurs connues
+- **Guru Meditation**: Stack overflow, null pointer, division par zéro
+- **Brownout**: Alimentation insuffisante (vérifier 5V)
+- **Panic**: Watchdog timeout, assert failed
+- **Core dump**: Accès mémoire invalide
+
+### Actions de diagnostic
+1. Vérifier mémoire disponible
+2. Vérifier connexion WiFi
+3. Vérifier état watchdog
+4. Lire les derniers logs série
+5. Tester endpoints un par un
+
+## 📦 Dépendances et versions
+
+### Bibliothèques principales
+- ESPAsyncWebServer (version stable)
+- DHT sensor library
+- OneWire + DallasTemperature
+- Adafruit SSD1306 (OLED)
+- ArduinoJson (v6.x)
+- ESP32Servo
+
+### Configuration PlatformIO
+- Board: esp32dev (ESP32-WROOM-32)
+- Framework: arduino
+- Upload speed: 921600
+- Monitor speed: 115200
+- Partition: custom OTA (voir partitions_*.csv)
+
+### 🔢 Gestion des versions du projet
+- **OBLIGATOIRE**: Incrémenter la version à chaque modification du code
+- Format de version: `MAJOR.MINOR` (ex: 10.93, 10.94, etc.)
+- Localisation: variable `VERSION` dans `src/config.h` ou `src/main.cpp`
+- Incrémentation:
+  - **MINOR** (+0.01): Corrections de bugs, optimisations mineures, ajustements
+  - **MAJOR** (+1.00): Nouvelles fonctionnalités majeures, refactoring important
+- La version doit être affichée au démarrage dans les logs série
+- La version doit être accessible via l'interface web (`/api/status`)
+- Documenter chaque changement de version dans `VERSION.md` ou en commentaire git
+- **IMPORTANT**: Ne jamais déployer sans avoir incrémenté la version
+
+## ⚠️ Pièges à éviter
+
+### Erreurs fréquentes
+1. ❌ **Oublier d'incrémenter la version avant de déployer**
+2. ❌ **Déployer sans faire le monitoring de 90 secondes et l'analyse du log**
+3. ❌ Oublier de vérifier si WebSocket est connecté avant envoi
+4. ❌ Bloquer dans `loop()` avec `delay()` long
+5. ❌ Ne pas libérer la mémoire des objets AsyncWebServerRequest
+6. ❌ Accéder aux capteurs pendant le sleep
+7. ❌ Modifier les variables partagées sans mutex
+8. ❌ Utiliser String au lieu de char[] pour les buffers
+9. ❌ Oublier le timeout sur les opérations réseau
+10. ❌ Ne pas reset le watchdog dans les boucles
+
+### Bonnes pratiques
+1. ✅ **Incrémenter la version après chaque modification** (OBLIGATOIRE)
+2. ✅ **Faire un monitoring de 90s + analyse du log après chaque déploiement** (OBLIGATOIRE)
+3. ✅ Toujours vérifier les retours de fonctions (nullptr, -1, false)
+4. ✅ Utiliser des timeouts sur toutes les opérations bloquantes
+5. ✅ Logger les états critiques pour debugging
+6. ✅ Tester sur hardware réel (pas seulement simulation)
+7. ✅ Documenter les changements de version dans VERSION.md
+8. ✅ Faire des commits atomiques avec numéro de version
+9. ✅ Tester la reconnexion WiFi et WebSocket après chaque update
+
+## 📝 Workflow de développement
+
+### Avant de coder
+1. Lire la documentation existante (*.md)
+2. Vérifier l'état actuel dans git status
+3. Identifier les fichiers à modifier
+4. Estimer l'impact mémoire
+
+### Pendant le développement
+1. Coder avec gestion d'erreurs
+2. Ajouter des logs de debug
+3. Tester au fur et à mesure
+4. Monitorer la mémoire
+
+### Après modifications
+1. **Incrémenter la version** dans config.h/main.cpp (+0.01 ou +1.00)
+2. Compiler et vérifier les warnings
+3. Tester sur ESP32 réel
+4. **OBLIGATOIRE: Monitoring de 90 secondes** après déploiement
+5. **Analyser le log** pour identifier les points d'attention (erreurs, warnings, panics)
+   - Focus sur : stabilité système, watchdog, mémoire, WiFi/WebSocket
+   - Analyse des capteurs **SECONDAIRE** (sauf indication contraire)
+6. Vérifier mémoire (heap/stack) dans les logs
+7. Tester reconnexion WiFi/WebSocket
+8. Documenter les changements dans VERSION.md ou fichier .md approprié
+9. Commit avec message descriptif incluant la version (ex: "v10.94: Fix WebSocket timeout")
+
+## 🎓 Ressources
+
+### Documentation
+- Voir les fichiers `*_FIX.md` pour l'historique des corrections
+- `GUIDE_*.md` pour les guides spécifiques
+- `RAPPORT_*.md` pour les analyses détaillées
+- `TEST_*.md` pour les procédures de test
+
+### Scripts utiles
+- `test_*.ps1` → Scripts de test PowerShell
+- `diagnose_*.ps1` → Scripts de diagnostic
+- `sync_*.ps1` → Synchronisation avec serveurs distants
+
+## 🚀 Objectifs du projet
+
+### Fonctionnalités principales
+- Nourrissage automatique programmable
+- Monitoring température/humidité en temps réel
+- Contrôle niveau de d'eau de l'aquarium, de la réserve, et du potager (ultrason)
+- Interface web responsive
+- Mode veille pour économie d'énergie
+- Mise à jour OTA (firmware + filesystem)
+- Logs et historique
+
+### Contraintes techniques
+- Uptime: 24/7
+- Latence WebSocket: < 100ms
+- Autonomie: optimisée via sleep
+- Mémoire: < 80% utilisation
+- WiFi: reconnexion automatique
+- Stabilité: pas de crash/reboot
+
+---
+
+**Note**: Ces règles évoluent avec le projet. Toujours vérifier la documentation la plus récente dans les fichiers .md avant de faire des modifications importantes.

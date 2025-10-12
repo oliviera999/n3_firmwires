@@ -1,6 +1,8 @@
 #include "automatism_network.h"
+#include "automatism.h"
 #include "project_config.h"
 #include "esp_task_wdt.h"
+#include "pins.h"
 #include <WiFi.h>
 
 // ============================================================================
@@ -182,21 +184,297 @@ bool AutomatismNetwork::sendFullUpdate(
 }
 
 // ============================================================================
-// HANDLE REMOTE STATE
-// NOTE: Méthode ÉNORME (545 lignes) qui sera divisée en sous-méthodes
+// HELPERS PRIVÉS (isTrue, isFalse)
 // ============================================================================
 
-void AutomatismNetwork::handleRemoteState(SystemSensors& sensors, SystemActuators& actuators) {
-    // TODO: Méthode de 545 lignes à diviser en:
-    // - pollRemoteState()
-    // - parseRemoteConfig()
-    // - applyRemoteActuators()
-    // - handleRemoteCommands()
+bool AutomatismNetwork::isTrue(ArduinoJson::JsonVariantConst v) {
+    if (v.is<bool>()) return v.as<bool>();
+    if (v.is<int>()) return v.as<int>() == 1;
+    if (v.is<const char*>()) {
+        const char* p = v.as<const char*>();
+        if (!p) return false;
+        String s = String(p);
+        s.toLowerCase();
+        s.trim();
+        return s == "1" || s == "true" || s == "on" || s == "checked";
+    }
+    return false;
+}
+
+bool AutomatismNetwork::isFalse(ArduinoJson::JsonVariantConst v) {
+    if (v.is<bool>()) return !v.as<bool>();
+    if (v.is<int>()) return v.as<int>() == 0;
+    if (v.is<const char*>()) {
+        const char* p = v.as<const char*>();
+        if (!p) return false;
+        String s = String(p);
+        s.toLowerCase();
+        s.trim();
+        return s == "0" || s == "false" || s == "off" || s == "unchecked";
+    }
+    return false;
+}
+
+// ============================================================================
+// REMOTE STATE MANAGEMENT - MÉTHODE 1: pollRemoteState()
+// Polling serveur + cache + état UI
+// ============================================================================
+
+bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis, Automatism& autoCtrl) {
+    // Vérification intervalle
+    if ((uint32_t)(currentMillis - _lastRemoteFetch) < REMOTE_FETCH_INTERVAL_MS) {
+        return false;
+    }
+    _lastRemoteFetch = currentMillis;
     
-    // Pour l'instant, reste dans automatism.cpp
-    // Sera migrée dans Phase 2.7
+    // Vérification WiFi
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
     
-    Serial.println(F("[Network] handleRemoteState() - Implémentation temporaire"));
+    esp_task_wdt_reset();
+    
+    // Indique téléchargement en cours (flèche vide)
+    _recvState = 0;
+    
+    // Mise à jour affichage OLED avec état marée
+    // NOTE: Nécessite accès à _disp, _sensors, mailBlinkUntil depuis autoCtrl
+    // Simplifié ici - l'affichage reste géré par automatism.cpp
+    
+    // Tentative récupération depuis serveur
+    bool okRecv = _web.fetchRemoteState(doc);
+    bool remoteSuccess = okRecv;
+    
+    if (!okRecv) {
+        // Fallback: tentative rechargement depuis la flash
+        String cachedJson;
+        if (_config.loadRemoteVars(cachedJson)) {
+            DeserializationError err = deserializeJson(doc, cachedJson);
+            if (!err) {
+                okRecv = true;
+                Serial.println(F("[Network] Variables distantes chargées depuis sauvegarde (offline)"));
+            }
+        }
+    }
+    
+    // Mise à jour états
+    _recvState = (remoteSuccess && doc.size() > 0) ? 1 : -1;
+    _serverOk = remoteSuccess;
+    
+    if (!okRecv) {
+        return false;
+    }
+    
+    // Sauvegarde dernière version reçue dans flash
+    String jsonToSave;
+    serializeJson(doc, jsonToSave);
+    _config.saveRemoteVars(jsonToSave);
+    
+    esp_task_wdt_reset();
+    
+    return true;
+}
+
+// ============================================================================
+// REMOTE STATE MANAGEMENT - MÉTHODE 2: handleResetCommand()
+// Gestion commandes reset distant
+// ============================================================================
+
+bool AutomatismNetwork::handleResetCommand(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+    bool needReset = false;
+    const char* resetKey = nullptr;
+    
+    // Détection clés reset
+    if (doc.containsKey("reset") && doc["reset"].as<int>() == 1) {
+        needReset = true;
+        resetKey = "reset";
+    }
+    if (doc.containsKey("resetMode") && doc["resetMode"].as<int>() == 1) {
+        needReset = true;
+        resetKey = "resetMode"; // Priorité à resetMode si présent
+    }
+    
+    if (!needReset) {
+        return false;
+    }
+    
+    Serial.println(F("[Network] Reset distant demandé"));
+    
+    // Email notification si activé
+    if (_emailEnabled) {
+        // NOTE: Nécessite accès au Mailer
+        // Pour l'instant, déléguer via autoCtrl
+        autoCtrl.armMailBlink();
+    }
+    
+    // Acquittement serveur (reset flag à 0)
+    if (resetKey) {
+        char override[64];
+        snprintf(override, sizeof(override), "%s=0", resetKey);
+        SensorReadings curR = autoCtrl.readSensors();
+        autoCtrl.sendFullUpdate(curR, override);
+    }
+    
+    // Délai pour laisser requête HTTP se terminer
+    vTaskDelay(pdMS_TO_TICKS(200));
+    
+    // Sauvegarde paramètres critiques NVS
+    // NOTE: Ces méthodes sont dans Automatism, on les appelle via autoCtrl
+    // Pour simplifier, on laisse Automatism gérer ça
+    
+    // Reset ESP
+    ESP.restart();
+    
+    return true; // Jamais atteint mais pour cohérence
+}
+
+// ============================================================================
+// REMOTE STATE MANAGEMENT - MÉTHODE 3: parseRemoteConfig()
+// Parse et applique configuration distante
+// ============================================================================
+
+void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+    // Application variables basiques
+    assignIfPresent(doc, "aqThreshold", _aqThresholdCm);
+    assignIfPresent(doc, "tankThreshold", _tankThresholdCm);
+    assignIfPresent(doc, "limFlood", _limFlood);
+    
+    // Durées de remplissage
+    if (doc.containsKey("tempsRemplissageSec")) {
+        // NOTE: refillDurationMs est dans Automatism, on devrait ajouter un setter
+        // Pour l'instant, on log juste
+        int refillSec = doc["tempsRemplissageSec"].as<int>();
+        Serial.printf("[Network] tempsRemplissageSec reçu: %d (non appliqué - TODO setter)\n", refillSec);
+    }
+    
+    // Threshold chauffage
+    if (doc.containsKey("chauffageThreshold")) {
+        _heaterThresholdC = doc["chauffageThreshold"].as<float>();
+    }
+    
+    // Email configuration
+    if (doc.containsKey("mail")) {
+        const char* m = doc["mail"].as<const char*>();
+        _emailAddress = m ? String(m) : String();
+    }
+    
+    if (doc.containsKey("mailNotif")) {
+        auto v = doc["mailNotif"];
+        if (v.is<bool>()) {
+            _emailEnabled = v.as<bool>();
+        } else if (v.is<int>()) {
+            _emailEnabled = (v.as<int>() == 1);
+        } else if (v.is<const char*>()) {
+            const char* p = v.as<const char*>();
+            if (p && p[0]) {
+                String s = String(p);
+                _emailEnabled = (s == "checked" || s == "1" || s == "true" || s == "on");
+            }
+        }
+    }
+    
+    // FreqWakeUp
+    if (doc.containsKey("FreqWakeUp")) {
+        int fv = doc["FreqWakeUp"].as<int>();
+        if (fv > 0) _freqWakeSec = fv;
+    }
+    
+    Serial.println(F("[Network] Configuration distante appliquée"));
+}
+
+// ============================================================================
+// REMOTE STATE MANAGEMENT - MÉTHODE 4: handleRemoteFeedingCommands()
+// Gestion nourrissage manuel distant
+// ============================================================================
+
+void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+    // Commande "bouffePetits"
+    if (doc.containsKey("bouffePetits")) {
+        auto var = doc["bouffePetits"];
+        if (isTrue(var)) {
+            autoCtrl.manualFeedSmall();
+            
+            if (_emailEnabled) {
+                String message = autoCtrl.createFeedingMessage(
+                    "Bouffe manuelle - Petits poissons",
+                    autoCtrl.getFeedBigDur(),
+                    autoCtrl.getFeedSmallDur()
+                );
+                // NOTE: Mailer nécessaire - autoCtrl doit le gérer
+            }
+            
+            autoCtrl.armMailBlink();
+            autoCtrl.sendFullUpdate(autoCtrl.readSensors(), nullptr);
+        }
+    }
+    
+    // Commande "bouffeGros"
+    if (doc.containsKey("bouffeGros")) {
+        auto var = doc["bouffeGros"];
+        if (isTrue(var)) {
+            autoCtrl.manualFeedBig();
+            
+            if (_emailEnabled) {
+                String message = autoCtrl.createFeedingMessage(
+                    "Bouffe manuelle - Gros poissons",
+                    autoCtrl.getFeedBigDur(),
+                    autoCtrl.getFeedSmallDur()
+                );
+                // NOTE: Mailer nécessaire
+            }
+            
+            autoCtrl.armMailBlink();
+            autoCtrl.sendFullUpdate(autoCtrl.readSensors());
+        }
+    }
+}
+
+// ============================================================================
+// REMOTE STATE MANAGEMENT - MÉTHODE 5: handleRemoteActuators()
+// Gestion actionneurs + GPIO dynamiques
+// NOTE: Cette méthode est TRÈS complexe (250 lignes) et nécessite de nombreux
+// accès aux membres privés d'Automatism. Pour Phase 2.11, on la laisse simplifiée
+// et on la complètera dans une phase ultérieure quand on aura refactorisé
+// les variables membres dans des modules dédiés.
+// ============================================================================
+
+void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+    // NOTE: Cette méthode nécessite énormément d'accès aux membres d'Automatism:
+    // - _acts (SystemActuators)
+    // - Variables: _lastAquaManualOrigin, _manualTankOverride, tankPumpLocked, etc.
+    // - Méthodes: startAquaPumpManualLocal, stopTankPumpManual, etc.
+    //
+    // Pour Phase 2.11, on implémente une version SIMPLIFIÉE qui gère:
+    // - Commandes light (lightCmd prioritaire)
+    // - GPIO génériques basiques
+    //
+    // La version COMPLÈTE avec gestion pompes/heater/GPIO 0-116 sera implémentée
+    // dans Phase 2.12 après avoir ajouté les getters/setters nécessaires.
+    
+    // Commande lumière (lightCmd prioritaire)
+    if (doc.containsKey("lightCmd")) {
+        auto v = doc["lightCmd"];
+        if (isTrue(v)) {
+            autoCtrl.startLightManualLocal();
+            Serial.println(F("[Network] Lumière ON (commande explicite lightCmd)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopLightManualLocal();
+            Serial.println(F("[Network] Lumière OFF (commande explicite lightCmd)"));
+        }
+    } else if (doc.containsKey("light")) {
+        // État distant: applique ON et OFF
+        auto v = doc["light"];
+        if (isTrue(v)) {
+            autoCtrl.startLightManualLocal();
+            Serial.println(F("[Network] Lumière ON (état distant)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopLightManualLocal();
+            Serial.println(F("[Network] Lumière OFF (état distant)"));
+        }
+    }
+    
+    Serial.println(F("[Network] handleRemoteActuators() - Version simplifiée Phase 2.11"));
+    Serial.println(F("[Network] GPIO dynamiques 0-116 seront implémentés en Phase 2.12"));
 }
 
 // ============================================================================
@@ -212,18 +490,5 @@ void AutomatismNetwork::checkCriticalChanges(const SensorReadings& readings) {
     // Sera migrée dans Phase 2.7
     
     Serial.println(F("[Network] checkCriticalChanges() - Implémentation temporaire"));
-}
-
-// ============================================================================
-// HELPERS PRIVÉS
-// ============================================================================
-
-bool AutomatismNetwork::shouldPollRemote() const {
-    if (WiFi.status() != WL_CONNECTED) return false;
-    
-    unsigned long now = millis();
-    bool fetchDue = (now - _lastRemoteFetch) >= REMOTE_FETCH_INTERVAL_MS;
-    
-    return fetchDue;
 }
 

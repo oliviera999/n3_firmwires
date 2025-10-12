@@ -536,9 +536,10 @@ void setup() {
     wifi.startFallbackAP();
     EventLog::add("WiFi connect failed; fallback AP started");
   } else {
-    // Synchronisation NTP si WiFi disponible
+    // Synchronisation NTP FORCÉE au démarrage pour garantir l'heure correcte
     oled.showDiagnostic("NTP sync");
     power.syncTimeFromNTP();
+    Serial.printf("[Time] Heure après sync NTP: %s\n", power.getCurrentTimeString().c_str());
 
     // Prépare le système de mail avant toute action OTA
     #if FEATURE_MAIL

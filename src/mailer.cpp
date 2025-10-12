@@ -89,7 +89,7 @@ static String buildSystemInfoFooter() {
     footer += "- Jour de la semaine: "; footer += String(tmInfo.tm_wday); footer += " (0=dimanche)\n";
     footer += "- Jour de l'année: "; footer += String(tmInfo.tm_yday); footer += "\n";
     footer += "- DST actif: "; footer += (tmInfo.tm_isdst ? "OUI" : "NON"); footer += "\n";
-    footer += "- Timezone: CET-1 (Maroc UTC+1)\n";
+    footer += "- Timezone: Maroc UTC+1\n";
   }
   
   // Informations NTP
@@ -372,27 +372,33 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
       return false;
     }
   }
+  
+  // FIX: Utiliser des buffers statiques pour éviter les dangling pointers
+  // La bibliothèque ESP Mail Client peut utiliser les pointeurs de manière asynchrone
+  static char fromNameBuf[64];
+  static char subjectBuf[128];
+  static String finalMessageStatic;  // String statique pour persistance
+  
   // Construire l'objet avec l'environnement de manière explicite
   const char* envName = CompatibilityUtils::getEnvironmentName();
-  String subjectWithEnv;
-  subjectWithEnv.reserve((envName ? strlen(envName) : 0) + (subject ? strlen(subject) : 0) + 4);
-  subjectWithEnv += "[";
-  subjectWithEnv += (envName ? envName : "");
-  subjectWithEnv += "] ";
-  subjectWithEnv += (subject ? subject : "");
+  
+  // Construction du nom d'expéditeur dans un buffer statique
+  snprintf(fromNameBuf, sizeof(fromNameBuf), "FFP3 [%s]", envName ? envName : "");
+  
+  // Construction du sujet dans un buffer statique
+  snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
+  
+  // Construction du message final (String statique pour persistance)
+  finalMessageStatic = message ? message : "";
+  finalMessageStatic += buildSystemInfoFooter();
+  
+  // Configuration du message SMTP
   SMTP_Message msg;
-  String fromName;
-  fromName.reserve((envName ? strlen(envName) : 0) + 8);
-  fromName += "FFP3 [";
-  fromName += (envName ? envName : "");
-  fromName += "]";
-  msg.sender.name  = fromName.c_str();
+  msg.sender.name  = fromNameBuf;
   msg.sender.email = Secrets::AUTHOR_EMAIL;
-  msg.subject      = subjectWithEnv.c_str();
+  msg.subject      = subjectBuf;
   msg.addRecipient(toName, toEmail);
-  String finalMessage = String(message);
-  finalMessage += buildSystemInfoFooter();
-  msg.text.content = finalMessage;
+  msg.text.content = finalMessageStatic.c_str();
   
   // Affichage des détails du mail avant envoi avec informations temporelles
   time_t mailTime = time(nullptr);
@@ -405,9 +411,9 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   Serial.printf("[Mail] Heure d'envoi: %s (epoch: %lu)\n", mailTimeBuf, mailTime);
   Serial.printf("[Mail] De: %s <%s>\n", msg.sender.name, msg.sender.email);
   Serial.printf("[Mail] À: %s <%s>\n", toName, toEmail);
-  Serial.printf("[Mail] Objet: %s\n", subjectWithEnv.c_str());
+  Serial.printf("[Mail] Objet: %s\n", msg.subject);
   Serial.println(F("[Mail] Contenu:"));
-  Serial.println(finalMessage);
+  Serial.println(finalMessageStatic);
   Serial.println(F("[Mail] ==========================="));
   
   bool ok = MailClient.sendMail(&_smtp, &msg);

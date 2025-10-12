@@ -405,10 +405,22 @@ function displayDbVars(db) {
     
     // Mise à jour du statut email
     const emailEnabledEl = $('dbEmailEnabled');
+    const emailEnabled = dataOk ? db.emailEnabled : defaultValues.emailEnabled;
     if (emailEnabledEl) {
-      const emailEnabled = dataOk ? db.emailEnabled : defaultValues.emailEnabled;
       emailEnabledEl.textContent = emailEnabled ? 'Activées' : 'Désactivées';
       emailEnabledEl.className = `badge ${emailEnabled ? 'bg-success' : 'bg-secondary'}`;
+    }
+    
+    // Mise à jour du bouton de notifications dans la page contrôles
+    const btnEmailNotif = $('btnEmailNotif');
+    if (btnEmailNotif) {
+      if (emailEnabled) {
+        btnEmailNotif.className = 'btn btn-success w-100';
+        btnEmailNotif.innerHTML = '🔔 Notifications ON';
+      } else {
+        btnEmailNotif.className = 'btn btn-outline-success w-100';
+        btnEmailNotif.innerHTML = '🔔 Notifications OFF';
+      }
     }
     
     // Remplir automatiquement le formulaire avec les vraies valeurs
@@ -433,10 +445,11 @@ function displayDbVars(db) {
     }
     
     // Case à cocher email - utiliser la vraie valeur
-    const emailCheckbox = $('formEmailEnabled');
-    if (emailCheckbox) {
-      emailCheckbox.checked = dataOk && db.emailEnabled !== undefined ? !!db.emailEnabled : defaultValues.emailEnabled;
-    }
+    // L'activation email est maintenant gérée via le bouton dans controles.html
+    // const emailCheckbox = $('formEmailEnabled');
+    // if (emailCheckbox) {
+    //   emailCheckbox.checked = dataOk && db.emailEnabled !== undefined ? !!db.emailEnabled : defaultValues.emailEnabled;
+    // }
     
     // Mettre à jour l'indicateur de statut
   const statusBadge = $('dbvarsStatusBadge');
@@ -563,6 +576,18 @@ window.loadDbVars = async function loadDbVars() {
       emailEnabledEl.className = `badge ${defaultValues.emailEnabled ? 'bg-success' : 'bg-secondary'}`;
     }
     
+    // Mise à jour du bouton de notifications dans la page contrôles
+    const btnEmailNotif = $('btnEmailNotif');
+    if (btnEmailNotif) {
+      if (defaultValues.emailEnabled) {
+        btnEmailNotif.className = 'btn btn-success w-100';
+        btnEmailNotif.innerHTML = '🔔 Notifications ON';
+      } else {
+        btnEmailNotif.className = 'btn btn-outline-success w-100';
+        btnEmailNotif.innerHTML = '🔔 Notifications OFF';
+      }
+    }
+    
     // Remplir le formulaire avec les valeurs par défaut en cas d'erreur
     const fields = {
       'formFeedMorning': defaultValues.feedMorning,
@@ -585,10 +610,11 @@ window.loadDbVars = async function loadDbVars() {
     }
     
     // Case à cocher email avec valeur par défaut
-    const emailCheckbox = $('formEmailEnabled');
-    if (emailCheckbox) {
-      emailCheckbox.checked = defaultValues.emailEnabled;
-    }
+    // L'activation email est maintenant gérée via le bouton dans controles.html
+    // const emailCheckbox = $('formEmailEnabled');
+    // if (emailCheckbox) {
+    //   emailCheckbox.checked = defaultValues.emailEnabled;
+    // }
     
     toast('Valeurs par défaut appliquées', 'warning');
     
@@ -633,10 +659,11 @@ window.fillFormFromDb = async function fillFormFromDb() {
     }
     
     // Case à cocher email
-    const emailCheckbox = $('formEmailEnabled');
-    if (emailCheckbox) {
-      emailCheckbox.checked = !!db.emailEnabled;
-    }
+    // L'activation email est maintenant gérée via le bouton dans controles.html
+    // const emailCheckbox = $('formEmailEnabled');
+    // if (emailCheckbox) {
+    //   emailCheckbox.checked = !!db.emailEnabled;
+    // }
     
     toast('Formulaire rempli avec les valeurs actuelles', 'success');
   } catch (error) {
@@ -669,9 +696,6 @@ window.submitDbVars = async function submitDbVars(ev) {
     
     const email = $('formEmailAddress');
     if (email && email.value) params.append('mail', email.value);
-    
-    const chk = $('formEmailEnabled');
-    if (chk) params.append('mailNotif', chk.checked ? 'checked' : '');
     
     // Envoyer les données
     const resp = await fetch('/dbvars/update', { 

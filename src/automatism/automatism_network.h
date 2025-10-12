@@ -71,13 +71,45 @@ public:
      */
     void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
     
+    // === REMOTE STATE MANAGEMENT (divisé en sous-méthodes) ===
+    
     /**
-     * Gère l'état distant (polling serveur)
-     * Méthode complexe (~545 lignes à diviser)
-     * @param sensors Référence SystemSensors pour lectures
-     * @param actuators Référence SystemActuators pour actions
+     * Polling serveur distant + cache + UI
+     * @param doc Document JSON à remplir
+     * @param currentMillis Temps actuel (millis)
+     * @param autoCtrl Référence vers Automatism pour accès état
+     * @return true si données reçues, false sinon
      */
-    void handleRemoteState(SystemSensors& sensors, SystemActuators& actuators);
+    bool pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis, class Automatism& autoCtrl);
+    
+    /**
+     * Gère les commandes reset distantes
+     * @param doc Document JSON reçu
+     * @param autoCtrl Référence vers Automatism
+     * @return true si reset exécuté (ESP va redémarrer)
+     */
+    bool handleResetCommand(const ArduinoJson::JsonDocument& doc, class Automatism& autoCtrl);
+    
+    /**
+     * Parse et applique la configuration distante
+     * @param doc Document JSON reçu
+     * @param autoCtrl Référence vers Automatism
+     */
+    void parseRemoteConfig(const ArduinoJson::JsonDocument& doc, class Automatism& autoCtrl);
+    
+    /**
+     * Gère les commandes de nourrissage manuel distant
+     * @param doc Document JSON reçu
+     * @param autoCtrl Référence vers Automatism
+     */
+    void handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, class Automatism& autoCtrl);
+    
+    /**
+     * Gère les actionneurs et GPIO dynamiques distants
+     * @param doc Document JSON reçu
+     * @param autoCtrl Référence vers Automatism
+     */
+    void handleRemoteActuators(const ArduinoJson::JsonDocument& doc, class Automatism& autoCtrl);
     
     /**
      * Détecte les changements critiques depuis le serveur
@@ -158,10 +190,34 @@ private:
     bool _prevBouffeMidi;
     bool _prevBouffeSoir;
     
-    // Helpers privés (pour diviser handleRemoteState et checkCriticalChanges)
-    void parseRemoteConfig(const ArduinoJson::JsonDocument& doc);
-    void applyRemoteActuators(const ArduinoJson::JsonDocument& doc, SystemActuators& actuators);
-    void handleRemoteCommands(const ArduinoJson::JsonDocument& doc);
-    bool shouldPollRemote() const;
+    // === HELPERS PRIVÉS ===
+    
+    /**
+     * Helper: Évalue si une valeur JSON est "truthy"
+     * Accepte: bool true, int 1, string "1"/"true"/"on"/"checked"
+     */
+    static bool isTrue(ArduinoJson::JsonVariantConst v);
+    
+    /**
+     * Helper: Évalue si une valeur JSON est "falsey"
+     * Accepte: bool false, int 0, string "0"/"false"/"off"/"unchecked"
+     */
+    static bool isFalse(ArduinoJson::JsonVariantConst v);
+    
+    /**
+     * Helper: Assigne une variable si la clé est présente dans le JSON
+     * @param doc Document JSON
+     * @param key Clé à rechercher
+     * @param var Variable à assigner (référence)
+     */
+    template<typename T>
+    static void assignIfPresent(const ArduinoJson::JsonDocument& doc, const char* key, T& var) {
+        if (!doc.containsKey(key)) return;
+        T v = doc[key].as<T>();
+        if constexpr (std::is_arithmetic_v<T>) {
+            if (v == 0) return; // Ignorer zéros (non définis)
+        }
+        var = v;
+    }
 };
 

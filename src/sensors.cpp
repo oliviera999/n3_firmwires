@@ -803,8 +803,9 @@ void AirSensor::begin() {
 bool AirSensor::isSensorConnected() {
   // Test de lecture pour vérifier la connectivité du DHT
   float temp = _dht.readTemperature();
-  // Respecter la fenêtre minimale avant une 2e lecture
-  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::SENSOR_READ_DELAY_MS));
+  // FIX: Délai minimum DHT augmenté à 2.5 secondes pour stabilité
+  // Le DHT11/DHT22 nécessite au moins 2 secondes entre lectures selon datasheet
+  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS));
   float humidity = _dht.readHumidity();
   
   // Vérifie si les lectures sont valides

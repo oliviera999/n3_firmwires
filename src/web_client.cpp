@@ -201,17 +201,27 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     _http.end();
     return false;
   }
-  size_t size = _http.getSize();
-  Serial.printf("[HTTP] ← %u bytes\n", (unsigned)size);
-  WiFiClient* stream = _http.getStreamPtr();
-  DeserializationError err = deserializeJson(doc, *stream);
+  
+  // Utiliser getString() qui gère automatiquement Transfer-Encoding: chunked
+  String payload = _http.getString();
   _http.end();
-  if (err) {
-    Serial.printf("[Web] JSON parse error: %s\n", err.c_str());
+  
+  if (payload.length() == 0) {
+    Serial.println("[Web] Empty response from server");
     return false;
   }
-  Serial.println("[Web] remote JSON ok");
-  return !err;
+  
+  Serial.printf("[HTTP] ← received %u bytes\n", payload.length());
+  
+  // Parser le JSON depuis le String
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) {
+    Serial.printf("[Web] JSON parse error: %s\n", err.c_str());
+    Serial.printf("[Web] Payload preview (first 100 chars): %.100s\n", payload.c_str());
+    return false;
+  }
+  Serial.println("[Web] ✓ Remote JSON parsed successfully");
+  return true;
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {

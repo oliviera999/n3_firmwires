@@ -320,3 +320,4 @@ pio run -e wroom-test
 
 Le projet est maintenant **bien documenté**, **partiellement refactorisé**, et sur la bonne voie vers **8.0/10**.
 
+

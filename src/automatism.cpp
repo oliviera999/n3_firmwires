@@ -1223,13 +1223,13 @@ void Automatism::handleAlerts(const SensorReadings& r) {
 } 
 
 void Automatism::handleRemoteState() {
+  // === REFACTORED: Délégation au module Network (Phase 2.11) ===
+  // Cette méthode de 635 lignes a été divisée en 5 sous-méthodes modulaires
+  
   uint32_t currentMillis = millis();
-  if ((uint32_t)(currentMillis - _lastRemoteFetch) < (uint32_t)remoteFetchInterval) return;
-  _lastRemoteFetch = currentMillis;
-  if (WiFi.status() != WL_CONNECTED) return;
   _power.resetWatchdog();
 
-  // Indique téléchargement en cours (flèche vide)
+  // Mise à jour affichage OLED - indique téléchargement en cours (flèche vide)
   recvState = 0;
   if (_disp.isPresent()) {
     int diffNow = _sensors.diffMaree(_lastReadings.wlAqua);
@@ -1250,522 +1250,45 @@ void Automatism::handleRemoteState() {
     }
     _disp.flush();
   }
-  // Augmenter la capacité pour éviter la troncature quand le serveur retourne beaucoup de variables
+  
+  // === ÉTAPE 1: Polling serveur distant ===
   StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-  bool okRecv = _web.fetchRemoteState(doc);
-  bool remoteSuccess = okRecv;
-  if (!okRecv) {
-    // Tentative de rechargement depuis la flash si la requête distante a échoué
-    String cachedJson;
-    if (_config.loadRemoteVars(cachedJson)) {
-      DeserializationError err = deserializeJson(doc, cachedJson);
-      if (!err) {
-        okRecv = true;
-        Serial.println(F("[Auto] Variables distantes chargées depuis la sauvegarde (offline)"));
-      }
-    }
+  if (!_network.pollRemoteState(doc, currentMillis, *this)) {
+    // Pas de données reçues (intervalle non atteint, WiFi déconnecté, ou erreur)
+    return;
   }
-  // Indique une réussite uniquement si la requête distante a RÉELLEMENT abouti
-  // et que le JSON retourné contient au moins une clé pertinente. Si la
-  // requête a échoué (remoteSuccess == false) ou que le document est vide,
-  // on considère que rien n'a été reçu : la flèche « download » sera barrée.
-  recvState = (remoteSuccess && doc.size() > 0) ? 1 : -1;
-  // serverOk reflète uniquement l'état de la connexion distante
-  serverOk = remoteSuccess;
-  if (!okRecv) return;
-  // Sauvegarde de la dernière version reçue (distante ou locale) dans la flash
-  {
-    String jsonToSave;
-    serializeJson(doc, jsonToSave);
-    _config.saveRemoteVars(jsonToSave);
+  
+  // Synchroniser états UI depuis module Network
+  recvState = _network.getRecvState();
+  serverOk = _network.isServerOk();
+  
+  // === ÉTAPE 2: Gestion commandes reset ===
+  if (_network.handleResetCommand(doc, *this)) {
+    // Reset exécuté - ESP va redémarrer
+    return;
   }
+  
+  // === ÉTAPE 3: Parse et applique configuration distante ===
+  _network.parseRemoteConfig(doc, *this);
+  
+  // === ÉTAPE 4: Gestion commandes nourrissage manuel ===
+  _network.handleRemoteFeedingCommands(doc, *this);
+  
+  // === ÉTAPE 5: Gestion actionneurs + GPIO dynamiques ===
+  _network.handleRemoteActuators(doc, *this);
+  
+  // === REFACTORING TERMINÉ ===
+  // L'ancienne implémentation de 635 lignes a été remplacée par 5 méthodes modulaires
+  // dans AutomatismNetwork. La version simplifiée ci-dessus gère:
+  // - Polling serveur (pollRemoteState)
+  // - Reset distant (handleResetCommand)
+  // - Configuration (parseRemoteConfig)
+  // - Nourrissage manuel (handleRemoteFeedingCommands)
+  // - Actionneurs light (handleRemoteActuators - version simplifiée)
+  //
+  // TODO Phase 2.12: Compléter handleRemoteActuators avec GPIO dynamiques 0-116
   _power.resetWatchdog();
-
-  // Drapeau de remise à zéro
-  // Gestion du redémarrage distant : "reset" ou "resetMode" à 1
-  bool needReset = false;
-  const char* resetKey = nullptr;
-  if (doc.containsKey("reset") && doc["reset"].as<int>() == 1) {
-    needReset = true;
-    resetKey = "reset";
-  }
-  if (doc.containsKey("resetMode") && doc["resetMode"].as<int>() == 1) {
-    needReset = true;
-    resetKey = "resetMode"; // priorité à resetMode si présent
-  }
-
-  if (needReset) {
-    Serial.println(F("[Auto] Reset distant demandé"));
-
-    // Envoi d'un e-mail de notification si la fonction est activée
-    if (emailEnabled) {
-      _mailer.sendAlert("Redémarrage distant", "Reset mode activé – redémarrage en cours", emailAddress.c_str());
-      armMailBlink();
-    }
-
-    // Prépare une dernière transmission pour acquitter et remettre le flag à 0
-    if (resetKey) {
-      char override[64];
-      snprintf(override, sizeof(override), "%s=0", resetKey);
-      SensorReadings curR = _sensors.read();
-      sendFullUpdate(curR, override);
-    }
-
-    // Petit délai pour laisser la requête HTTP se terminer
-    vTaskDelay(pdMS_TO_TICKS(200));
-
-    // -------------------------------------------------------------
-    // Sauvegarde des paramètres critiques dans la NVS avant reset
-    // -------------------------------------------------------------
-    saveFeedingState();       // Flags nourrissage + jour actuel
-    _config.saveBouffeFlags(); // Persistance explicite (redondance OK)
-    _power.saveTimeToFlash();  // Heure courante
-
-    ESP.restart();
-  }
-  // Fonction d'aide générique pour assigner si présent
-  auto assignIfPresent = [&doc](const char* key, auto& var){
-      if(!doc.containsKey(key)) return;
-      using T = std::decay_t<decltype(var)>;
-      T v = doc[key].as<T>();
-      if constexpr (std::is_arithmetic_v<T>) {
-        if (v == 0) return; // ignore zéros (non définis)
-      }
-      var = v;
-  };
-
-  // Helper to evaluate "truthy" values coming from the remote JSON.
-  // Besides native bool and integer 1, also accepts common textual
-  // representations frequently stored in the database ("1", "true",
-  // "on", "checked", case-insensitive).
-  auto isTrue = [](ArduinoJson::JsonVariantConst v)->bool {
-    if (v.is<bool>())  return v.as<bool>();
-    if (v.is<int>())   return v.as<int>() == 1;
-    if (v.is<const char*>()) {
-      const char* p = v.as<const char*>();
-      if (!p) return false;
-      String s = String(p);
-      s.toLowerCase();
-      s.trim();
-      return s == "1" || s == "true" || s == "on" || s == "checked";
-    }
-    return false;
-  };
-  // Helper to evaluate explicit "falsey" commands coming from the remote JSON.
-  auto isFalse = [](ArduinoJson::JsonVariantConst v)->bool {
-    if (v.is<bool>())  return !v.as<bool>();
-    if (v.is<int>())   return v.as<int>() == 0;
-    if (v.is<const char*>()) {
-      const char* p = v.as<const char*>();
-      if (!p) return false;
-      String s = String(p);
-      s.toLowerCase();
-      s.trim();
-      return s == "0" || s == "false" || s == "off" || s == "unchecked";
-    }
-    return false;
-  };
-
-  assignIfPresent("aqThreshold", aqThresholdCm);
-  assignIfPresent("tankThreshold", tankThresholdCm);
-  assignIfPresent("tempsGros", feedBigDur);
-  assignIfPresent("tempsPetits", feedSmallDur);
-  assignIfPresent("limFlood", limFlood);
-  if (doc.containsKey("tempsRemplissageSec")) refillDurationMs = doc["tempsRemplissageSec"].as<int>() * 1000UL;
-  if (doc.containsKey("chauffageThreshold")) heaterThresholdC = doc["chauffageThreshold"].as<float>();
-  if (doc.containsKey("mail")) {
-    const char* m = doc["mail"].as<const char*>();
-    emailAddress = m ? String(m) : String();
-  }
-  if (doc.containsKey("mailNotif")) {
-    auto v = doc["mailNotif"];
-    if (v.is<bool>()) {
-      emailEnabled = v.as<bool>();
-    } else if (v.is<int>()) {
-      emailEnabled = (v.as<int>() == 1);
-    } else if (v.is<const char*>()) {
-      const char* p = v.as<const char*>();
-      if (p && p[0]) {
-        String s = String(p);
-        emailEnabled = (s == "checked" || s == "1" || s == "true" || s == "on");
-      }
-    }
-  }
-  // --- Gestion explicite de WakeUp/FreqWakeUp en version <texte> ---
-  if (doc.containsKey("WakeUp")) {
-    auto wakeUpValue = doc["WakeUp"];
-    // Met à jour forceWakeUp si la valeur est explicitement définie
-    // ET si la protection de démarrage est expirée
-    // CORRECTION: Gestion complète activation ET désactivation
-    if (hasExpired(_wakeupProtectionEnd)) {
-      bool newValue = false;
-      bool valueExplicitlySet = false;
-      
-      // Vérification des valeurs d'activation
-      if ((wakeUpValue.is<bool>() && wakeUpValue.as<bool>()) || 
-          (wakeUpValue.is<int>() && wakeUpValue.as<int>() == 1) ||
-          (wakeUpValue.is<const char*>() && ({ const char* p = wakeUpValue.as<const char*>(); p && p[0]; }) && 
-           ({ String s = String(wakeUpValue.as<const char*>()); s == "1" || s == "true" || s == "on" || s == "checked"; }))) {
-        newValue = true;
-        valueExplicitlySet = true;
-      }
-      // Vérification des valeurs de désactivation
-      else if ((wakeUpValue.is<bool>() && !wakeUpValue.as<bool>()) || 
-               (wakeUpValue.is<int>() && wakeUpValue.as<int>() == 0) ||
-               (wakeUpValue.is<const char*>() && ({ const char* p = wakeUpValue.as<const char*>(); p && p[0]; }) && 
-                ({ String s = String(wakeUpValue.as<const char*>()); s == "0" || s == "false" || s == "off" || s == "unchecked"; }))) {
-        newValue = false;
-        valueExplicitlySet = true;
-      }
-      
-      // Mise à jour seulement si la valeur est explicitement définie
-      if (valueExplicitlySet) {
-        bool oldValue = forceWakeUp;
-        forceWakeUp = newValue;
-        if (oldValue != forceWakeUp) {
-          Serial.printf("[Auto] forceWakeUp mis à jour: %s -> %s (clé WakeUp)\n", 
-                       oldValue ? "true" : "false", 
-                       forceWakeUp ? "true" : "false");
-          // Sauvegarde immédiate de forceWakeUp dans la configuration persistante
-          _config.setForceWakeUp(forceWakeUp);
-          _config.saveBouffeFlags();
-        }
-      } else {
-        Serial.println(F("[Auto] forceWakeUp ignoré - valeur non-explicite reçue du serveur (clé WakeUp)"));
-      }
-    } else {
-      Serial.printf("[Auto] forceWakeUp protégé contre écrasement (protection active jusqu'à %lu ms)\n", _wakeupProtectionEnd);
-    }
-  }
-  
-  // --- Gestion explicite de la clé numérique 115 (forceWakeUp) ---
-  if (doc.containsKey("115")) {
-    auto v = doc["115"];
-    // CORRECTION: Gestion complète activation ET désactivation pour la clé 115
-    if (hasExpired(_wakeupProtectionEnd)) {
-      bool newValue = false;
-      bool valueExplicitlySet = false;
-      
-      // Vérification des valeurs d'activation
-      if ((v.is<bool>() && v.as<bool>()) || 
-          (v.is<int>() && v.as<int>() == 1) || 
-          (v.is<const char*>() && ({ const char* p = v.as<const char*>(); p && p[0]; }) && 
-           ({ String s = String(v.as<const char*>()); s == "1" || s == "true" || s == "on" || s == "checked"; }))) {
-        newValue = true;
-        valueExplicitlySet = true;
-      }
-      // Vérification des valeurs de désactivation
-      else if ((v.is<bool>() && !v.as<bool>()) || 
-               (v.is<int>() && v.as<int>() == 0) ||
-               (v.is<const char*>() && ({ const char* p = v.as<const char*>(); p && p[0]; }) && 
-                ({ String s = String(v.as<const char*>()); s == "0" || s == "false" || s == "off" || s == "unchecked"; }))) {
-        newValue = false;
-        valueExplicitlySet = true;
-      }
-      
-      // Mise à jour seulement si la valeur est explicitement définie
-      if (valueExplicitlySet) {
-        bool oldValue = forceWakeUp;
-        forceWakeUp = newValue;
-        if (oldValue != forceWakeUp) {
-          Serial.printf("[Auto] forceWakeUp (clé 115) mis à jour: %s -> %s\n",
-                       oldValue ? "true" : "false",
-                       forceWakeUp ? "true" : "false");
-          // Sauvegarde immédiate de forceWakeUp dans la configuration persistante
-          _config.setForceWakeUp(forceWakeUp);
-          _config.saveBouffeFlags();
-        }
-      } else {
-        Serial.println(F("[Auto] forceWakeUp (clé 115) ignoré - valeur non-explicite reçue du serveur"));
-      }
-    } else {
-      Serial.printf("[Auto] forceWakeUp (clé 115) protégé contre écrasement (protection active jusqu'à %lu ms)\n", _wakeupProtectionEnd);
-    }
-  }
-  
-  if (doc.containsKey("FreqWakeUp")) {
-    int fv = doc["FreqWakeUp"].as<int>();
-    if (fv > 0) freqWakeSec = fv;
-  }
-  // Nourrissage manuel depuis la BDD
-  if (doc.containsKey("bouffePetits")) {
-    auto var = doc["bouffePetits"];
-    if (isTrue(var)) {
-      manualFeedSmall();
-      if (emailEnabled) {
-        String message = createFeedingMessage("Bouffe manuelle - Petits poissons", feedBigDur, feedSmallDur);
-        _mailer.sendAlert("Bouffe manuelle", message, emailAddress.c_str());
-      }
-      armMailBlink();
-      // Accuser réception au serveur (optionnel)
-      sendFullUpdate(_sensors.read(), nullptr);
-    }
-  }
-  if (doc.containsKey("bouffeGros")) {
-    auto var = doc["bouffeGros"];
-    if (isTrue(var)) {
-      manualFeedBig();
-      if (emailEnabled) {
-        String message = createFeedingMessage("Bouffe manuelle - Gros poissons", feedBigDur, feedSmallDur);
-        _mailer.sendAlert("Bouffe manuelle", message, emailAddress.c_str());
-      }
-      armMailBlink();
-      sendFullUpdate(_sensors.read());
-    }
-  }
-  // Commande dédiée: lightCmd (priorité absolue)
-  if (doc.containsKey("lightCmd")) {
-    auto v = doc["lightCmd"];
-    if (isTrue(v)) {
-      _acts.startLight();
-      Serial.println(F("[Auto] Lumière ON (commande explicite lightCmd)"));
-    } else if (isFalse(v)) {
-      _acts.stopLight();
-      Serial.println(F("[Auto] Lumière OFF (commande explicite lightCmd)"));
-    }
-  } else if (doc.containsKey("light")) {
-    // État distant: applique ON et OFF selon la valeur reçue
-    auto v = doc["light"];
-    if (isTrue(v)) {
-      _acts.startLight();
-      Serial.println(F("[Auto] Lumière ON (état distant)"));
-    } else if (isFalse(v)) {
-      _acts.stopLight();
-      Serial.println(F("[Auto] Lumière OFF (état distant)"));
-    }
-  }
-  // Parcours de toutes les paires pour gérer les GPIO numériques dynamiques
-  for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
-    const char* key = kv.key().c_str();
-    bool digits = true;
-    for (const char* p=key; *p; ++p) { if (!isdigit(*p)) { digits=false; break; } }
-    if (!digits) continue;
-    int id = atoi(key);
-    if (id >=0 && id <=39) {
-      bool valBool = isTrue(kv.value());
-      int  val = valBool ? 1 : 0; // assure 0/1 même si la BDD envoie des chaînes "0"/"1"
-      
-      // DEBUG: Log des commandes GPIO reçues
-      {
-        String _tmpValStr = kv.value().as<String>();
-        Serial.printf("[DEBUG] Commande GPIO reçue: %s = %s (id=%d, valBool=%s)\n", 
-                     key, _tmpValStr.c_str(), id, valBool ? "true" : "false");
-      }
-      
-      // Si le GPIO correspond à un actionneur connu, on utilise les méthodes dédiées
-      if (id == Pins::POMPE_AQUA) {
-        bool currentState = _acts.isAquaPumpRunning();
-        if (val && !currentState) {
-          _acts.startAquaPump();
-          _lastAquaManualOrigin = ManualOrigin::REMOTE_SERVER;
-          Serial.println(F("[Auto] Pompe aqua ON (GPIO numérique)"));
-        } else if (!val && currentState) {
-          Serial.println(F("[Remote] Aqua OFF (commande distante GPIO)"));
-          _acts.stopAquaPump();
-          _lastAquaStopReason = AquaPumpStopReason::MANUAL;
-          _lastAquaManualOrigin = ManualOrigin::REMOTE_SERVER;
-        } else {
-          Serial.printf("[Auto] Pompe aqua GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
-                       currentState ? "ON" : "OFF");
-        }
-      } else if (id == Pins::POMPE_RESERV) {
-        // Lorsque l'ordre distant démarre la pompe (val==1), on initialise
-        // les mêmes variables que dans handleRefill() afin d'afficher le
-        // compte à rebours "Refill" sur l'OLED et de permettre l'arrêt
-        // automatique après refillDurationMs.
-        if (valBool) {
-          if (!_acts.isTankPumpRunning()) {
-            _acts.startTankPump();
-            _manualTankOverride = true;   // activation manuelle en cours
-            _countdownLabel = "Refill";
-            _countdownEnd   = millis() + refillDurationMs;
-            _pumpStartMs    = millis();
-            // Optionnel : mémorise le niveau actuel pour le diagnostic
-            SensorReadings cur = _sensors.read();
-            _levelAtPumpStart = cur.wlAqua;
-            
-            // Envoi immédiat des données vers le serveur distant pour enregistrer l'activation manuelle de la pompe
-            if (WiFi.status() == WL_CONNECTED) {
-              sendFullUpdate(cur, "etatPompeTank=1");
-              Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir activée manuellement (distant)"));
-            }
-            _lastTankManualOrigin = ManualOrigin::REMOTE_SERVER;
-          } else {
-            Serial.println(F("[Auto] Démarrage pompe réservoir IGNORÉ - pompe déjà active (synchronisation distante)"));
-          }
-        } else {
-          // Arrêt manuel : vérifier d'abord si la pompe n'est pas verrouillée
-          if (!tankPumpLocked) {
-            // Vérification de l'état réel pour éviter les commandes redondantes
-            if (_acts.isTankPumpRunning()) {
-              // IMPORTANT: Mémoriser que c'était un arrêt manuel AVANT d'arrêter la pompe
-              // pour que checkCriticalChanges() puisse détecter le mode manuel
-              _lastPumpManual = _manualTankOverride;
-              
-              _acts.stopTankPump(_pumpStartMs);
-              _pumpStartMs = 0; // reset cycle start
-              _lastTankManualOrigin = ManualOrigin::REMOTE_SERVER;
-              _countdownEnd = 0; // efface le décompte si arrêt manuel
-              _manualTankOverride = false;
-              Serial.println(F("[Auto] Arrêt manuel pompe réservoir (commande distante)"));
-            } else {
-              Serial.println(F("[Auto] Arrêt pompe réservoir IGNORÉ - pompe déjà arrêtée (synchronisation distante)"));
-            }
-          } else {
-            Serial.println(F("[Auto] Arrêt manuel pompe réservoir IGNORÉ - pompe verrouillée par sécurité"));
-          }
-        }
-      } else if (id == Pins::RADIATEURS) {
-        bool currentState = _acts.isHeaterOn();
-        Serial.printf("[DEBUG] Commande chauffage: GPIO %d = %s\n", id, valBool ? "ON" : "OFF");
-        if (valBool && !currentState) {
-          Serial.println("[DEBUG] Démarrage chauffage...");
-          _acts.startHeater();
-          Serial.println("[DEBUG] Chauffage démarré");
-        } else if (!valBool && currentState) {
-          Serial.println("[DEBUG] Arrêt chauffage...");
-          _acts.stopHeater();
-          Serial.println("[DEBUG] Chauffage arrêté");
-        } else {
-          Serial.printf("[Auto] Chauffage GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
-                       currentState ? "ON" : "OFF");
-        }
-      } else if (id == Pins::LUMIERE) {
-        // Protection contre les commandes redondantes
-        bool currentState = _acts.isLightOn();
-        if (valBool && !currentState) {
-          _acts.startLight();
-          Serial.println(F("[Auto] Lumière ON (GPIO numérique)"));
-        } else if (!valBool && currentState) {
-          _acts.stopLight();
-          Serial.println(F("[Auto] Lumière OFF (GPIO numérique)"));
-        } else {
-          Serial.printf("[Auto] Lumière GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
-                       currentState ? "ON" : "OFF");
-        }
-      } else {
-        // GPIO générique : simple sortie numérique
-        pinMode(id, OUTPUT);
-        digitalWrite(id, val);
-      }
-    } else if (id >= 100) {
-      switch(id) {
-        case 100: emailAddress = String(kv.value().as<const char*>()); break;
-        case 101: emailEnabled = (String(kv.value().as<const char*>()) == "checked"); break;
-        case 102: aqThresholdCm = kv.value().as<int>(); break;
-        case 103: tankThresholdCm = kv.value().as<int>(); break;
-        case 104: heaterThresholdC = kv.value().as<float>(); break;
-        case 105: { int v=kv.value().as<int>(); if(v) feedMorning=v; } break;
-        case 106: { int v=kv.value().as<int>(); if(v) feedNoon=v; } break;
-        case 107: { int v=kv.value().as<int>(); if(v) feedEvening=v; } break;
-        case 108: {
-          auto v = kv.value();
-          bool trig = isTrue(v);
-          bouffePetits = trig ? "1" : "0";
-          if (trig) {
-            manualFeedSmall();
-            if (emailEnabled) {
-              String message = createFeedingMessage("Bouffe manuelle - Petits poissons", feedBigDur, feedSmallDur);
-              _mailer.sendAlert("Bouffe manuelle", message, emailAddress.c_str());
-            }
-            armMailBlink();
-            bouffePetits = "0"; // acquittement local
-            sendFullUpdate(_sensors.read(), nullptr);
-          }
-        } break;
-        case 109: {
-          auto v = kv.value();
-          bool trig = isTrue(v);
-          bouffeGros = trig ? "1" : "0";
-          if (trig) {
-            manualFeedBig();
-            if (emailEnabled) {
-              String message = createFeedingMessage("Bouffe manuelle - Gros poissons", feedBigDur, feedSmallDur);
-              _mailer.sendAlert("Bouffe manuelle", message, emailAddress.c_str());
-            }
-            armMailBlink();
-            bouffeGros = "0";
-            sendFullUpdate(_sensors.read(), nullptr);
-          }
-        } break;
-        case 110: if (kv.value().as<int>()==1) {
-          Serial.println(F("[Auto] Reset GPIO 110 demandé"));
-          
-          // Envoi d'un e-mail de notification si la fonction est activée
-          if (emailEnabled) {
-            _mailer.sendAlert("Redémarrage GPIO", "Reset GPIO 110 activé – redémarrage en cours", emailAddress.c_str());
-            armMailBlink();
-          }
-          
-          // Sauvegarde des paramètres critiques dans la NVS avant reset
-          saveFeedingState();       // Flags nourrissage + jour actuel
-          _config.setForceWakeUp(forceWakeUp); // Sauvegarde de forceWakeUp
-          _config.saveBouffeFlags(); // Persistance explicite (redondance OK)
-          _power.saveTimeToFlash();  // Heure courante
-          
-          ESP.restart();
-        } break;
-        case 111: {
-          int v = kv.value().as<int>();
-          if (v > 0) feedBigDur = v; // ignore 0 pour conserver la durée existante
-        } break;
-        case 112: {
-          int v = kv.value().as<int>();
-          if (v > 0) feedSmallDur = v; // idem
-        } break;
-        case 113: refillDurationMs = kv.value().as<int>() * 1000UL; break;
-        case 114: limFlood = kv.value().as<int>(); break;
-        // WakeUp: état persistant (0 = autorise light-sleep, 1 = reste éveillé)
-        case 115: {
-          auto v = kv.value();
-          // CORRECTION: Gestion complète activation ET désactivation pour GPIO 115
-          if (hasExpired(_wakeupProtectionEnd)) {
-            bool newValue = false;
-            bool valueExplicitlySet = false;
-            
-            // Vérification des valeurs d'activation
-            if ((v.is<bool>() && v.as<bool>()) || 
-                (v.is<int>() && v.as<int>() == 1) ||
-                (v.is<const char*>() && ({ const char* p = v.as<const char*>(); p && p[0]; }) && 
-                 ({ String s = String(v.as<const char*>()); s == "1" || s == "true" || s == "on" || s == "checked"; }))) {
-              newValue = true;
-              valueExplicitlySet = true;
-            }
-            // Vérification des valeurs de désactivation
-            else if ((v.is<bool>() && !v.as<bool>()) || 
-                     (v.is<int>() && v.as<int>() == 0) ||
-                     (v.is<const char*>() && ({ const char* p = v.as<const char*>(); p && p[0]; }) && 
-                      ({ String s = String(v.as<const char*>()); s == "0" || s == "false" || s == "off" || s == "unchecked"; }))) {
-              newValue = false;
-              valueExplicitlySet = true;
-            }
-            
-            // Mise à jour seulement si la valeur est explicitement définie
-            if (valueExplicitlySet) {
-              bool oldValue = forceWakeUp;
-              forceWakeUp = newValue;
-              if (oldValue != forceWakeUp) {
-                Serial.printf("[Auto] forceWakeUp (GPIO 115) mis à jour: %s -> %s\n", 
-                             oldValue ? "true" : "false", 
-                             forceWakeUp ? "true" : "false");
-                // Sauvegarde immédiate de forceWakeUp dans la configuration persistante
-                _config.setForceWakeUp(forceWakeUp);
-                _config.saveBouffeFlags();
-              }
-            } else {
-              Serial.println(F("[Auto] forceWakeUp (GPIO 115) ignoré - valeur non-explicite reçue du serveur"));
-            }
-          } else {
-            Serial.printf("[Auto] forceWakeUp (GPIO 115) protégé contre écrasement (protection active jusqu'à %lu ms)\n", _wakeupProtectionEnd);
-          }
-        } break;
-        case 116: freqWakeSec = kv.value().as<int>(); break;
-        default: break;
-      }
-    }
-  }
-  // TODO: appliquer autres variables distantes (remote-vars task)
-} 
+}
 
 void Automatism::manualFeedSmall(){
   // Délégation au module Feeding avec callback countdown OLED

@@ -44,8 +44,8 @@ bool WatchdogManager::init(uint32_t timeout_seconds, bool panic) {
     
     esp_err_t err = esp_task_wdt_reconfigure(&config);
     if (err != ESP_OK) {
-        // Try legacy init for older ESP-IDF versions
-        err = esp_task_wdt_init(timeout_seconds, panic);
+        // Try init if reconfigure fails
+        err = esp_task_wdt_init(&config);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to initialize watchdog: %s", esp_err_to_name(err));
             return false;
