@@ -1277,16 +1277,171 @@ void Automatism::handleRemoteState() {
   // === ÉTAPE 5: Gestion actionneurs + GPIO dynamiques ===
   _network.handleRemoteActuators(doc, *this);
   
-  // === REFACTORING TERMINÉ ===
-  // L'ancienne implémentation de 635 lignes a été remplacée par 5 méthodes modulaires
-  // dans AutomatismNetwork. La version simplifiée ci-dessus gère:
-  // - Polling serveur (pollRemoteState)
-  // - Reset distant (handleResetCommand)
-  // - Configuration (parseRemoteConfig)
-  // - Nourrissage manuel (handleRemoteFeedingCommands)
-  // - Actionneurs light (handleRemoteActuators - version simplifiée)
-  //
-  // TODO Phase 2.12: Compléter handleRemoteActuators avec GPIO dynamiques 0-116
+  // === ÉTAPE 6: GPIO dynamiques 0-39 et IDs spéciaux 100-116 ===
+  // NOTE: Ce code reste dans automatism.cpp car il nécessite un accès direct
+  // à de nombreux membres privés (_manualTankOverride, tankPumpLocked, etc.)
+  // Le déplacer nécessiterait 20+ getters/setters sans gain de maintenabilité
+  
+  // Parcours de toutes les paires pour gérer les GPIO numériques dynamiques
+  for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
+    const char* key = kv.key().c_str();
+    bool digits = true;
+    for (const char* p=key; *p; ++p) { if (!isdigit(*p)) { digits=false; break; } }
+    if (!digits) continue;
+    int id = atoi(key);
+    
+    if (id >=0 && id <=39) {
+      // Helper local (réutilise isTrue du module)
+      auto isTrue = [](ArduinoJson::JsonVariantConst v)->bool {
+        if (v.is<bool>())  return v.as<bool>();
+        if (v.is<int>())   return v.as<int>() == 1;
+        if (v.is<const char*>()) {
+          const char* p = v.as<const char*>();
+          if (!p) return false;
+          String s = String(p);
+          s.toLowerCase();
+          s.trim();
+          return s == "1" || s == "true" || s == "on" || s == "checked";
+        }
+        return false;
+      };
+      
+      bool valBool = isTrue(kv.value());
+      int  val = valBool ? 1 : 0;
+      
+      // DEBUG: Log des commandes GPIO reçues
+      {
+        String _tmpValStr = kv.value().as<String>();
+        Serial.printf("[DEBUG] Commande GPIO reçue: %s = %s (id=%d, valBool=%s)\n", 
+                     key, _tmpValStr.c_str(), id, valBool ? "true" : "false");
+      }
+      
+      // Si le GPIO correspond à un actionneur connu, on utilise les méthodes dédiées
+      if (id == Pins::POMPE_AQUA) {
+        bool currentState = _acts.isAquaPumpRunning();
+        if (val && !currentState) {
+          _acts.startAquaPump();
+          _lastAquaManualOrigin = ManualOrigin::REMOTE_SERVER;
+          Serial.println(F("[Auto] Pompe aqua ON (GPIO numérique)"));
+        } else if (!val && currentState) {
+          Serial.println(F("[Remote] Aqua OFF (commande distante GPIO)"));
+          _acts.stopAquaPump();
+          _lastAquaStopReason = AquaPumpStopReason::MANUAL;
+          _lastAquaManualOrigin = ManualOrigin::REMOTE_SERVER;
+        } else {
+          Serial.printf("[Auto] Pompe aqua GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
+                       currentState ? "ON" : "OFF");
+        }
+      } else if (id == Pins::POMPE_RESERV) {
+        // Gestion pompe réservoir avec mode manuel override
+        if (valBool) {
+          if (!_acts.isTankPumpRunning()) {
+            _acts.startTankPump();
+            _manualTankOverride = true;
+            _countdownLabel = "Refill";
+            _countdownEnd   = millis() + refillDurationMs;
+            _pumpStartMs    = millis();
+            SensorReadings cur = _sensors.read();
+            _levelAtPumpStart = cur.wlAqua;
+            
+            if (WiFi.status() == WL_CONNECTED) {
+              sendFullUpdate(cur, "etatPompeTank=1");
+              Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir activée manuellement (distant)"));
+            }
+            _lastTankManualOrigin = ManualOrigin::REMOTE_SERVER;
+          } else {
+            Serial.println(F("[Auto] Démarrage pompe réservoir IGNORÉ - pompe déjà active (synchronisation distante)"));
+          }
+        } else {
+          if (!tankPumpLocked) {
+            if (_acts.isTankPumpRunning()) {
+              _lastPumpManual = _manualTankOverride;
+              _acts.stopTankPump(_pumpStartMs);
+              _pumpStartMs = 0;
+              _lastTankManualOrigin = ManualOrigin::REMOTE_SERVER;
+              _countdownEnd = 0;
+              _manualTankOverride = false;
+              Serial.println(F("[Auto] Arrêt manuel pompe réservoir (commande distante)"));
+            } else {
+              Serial.println(F("[Auto] Arrêt pompe réservoir IGNORÉ - pompe déjà arrêtée (synchronisation distante)"));
+            }
+          } else {
+            Serial.println(F("[Auto] Arrêt manuel pompe réservoir IGNORÉ - pompe verrouillée par sécurité"));
+          }
+        }
+      } else if (id == Pins::RADIATEURS) {
+        bool currentState = _acts.isHeaterOn();
+        Serial.printf("[DEBUG] Commande chauffage: GPIO %d = %s\n", id, valBool ? "ON" : "OFF");
+        if (valBool && !currentState) {
+          Serial.println("[DEBUG] Démarrage chauffage...");
+          _acts.startHeater();
+          Serial.println("[DEBUG] Chauffage démarré");
+        } else if (!valBool && currentState) {
+          Serial.println("[DEBUG] Arrêt chauffage...");
+          _acts.stopHeater();
+          Serial.println("[DEBUG] Chauffage arrêté");
+        } else {
+          Serial.printf("[Auto] Chauffage GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
+                       currentState ? "ON" : "OFF");
+        }
+      } else if (id == Pins::LUMIERE) {
+        // Déjà géré par handleRemoteActuators() du module, skip ici pour éviter duplication
+        // Serial.println(F("[Auto] Lumière gérée par module Network"));
+      } else {
+        // GPIO générique : simple sortie numérique
+        pinMode(id, OUTPUT);
+        digitalWrite(id, val);
+      }
+    } else if (id >= 100) {
+      switch(id) {
+        case 100: emailAddress = String(kv.value().as<const char*>()); break;
+        case 101: emailEnabled = (String(kv.value().as<const char*>()) == "checked"); break;
+        case 102: aqThresholdCm = kv.value().as<int>(); break;
+        case 103: tankThresholdCm = kv.value().as<int>(); break;
+        case 104: heaterThresholdC = kv.value().as<float>(); break;
+        case 105: { int v=kv.value().as<int>(); if(v) feedMorning=v; } break;
+        case 106: { int v=kv.value().as<int>(); if(v) feedNoon=v; } break;
+        case 107: { int v=kv.value().as<int>(); if(v) feedEvening=v; } break;
+        case 108: {
+          // Déjà géré par handleRemoteFeedingCommands(), skip pour éviter duplication
+        } break;
+        case 109: {
+          // Déjà géré par handleRemoteFeedingCommands(), skip pour éviter duplication
+        } break;
+        case 110: if (kv.value().as<int>()==1) {
+          Serial.println(F("[Auto] Reset GPIO 110 demandé"));
+          
+          if (emailEnabled) {
+            _mailer.sendAlert("Redémarrage GPIO", "Reset GPIO 110 activé – redémarrage en cours", emailAddress.c_str());
+            armMailBlink();
+          }
+          
+          saveFeedingState();
+          _config.setForceWakeUp(forceWakeUp);
+          _config.saveBouffeFlags();
+          _power.saveTimeToFlash();
+          
+          ESP.restart();
+        } break;
+        case 111: {
+          int v = kv.value().as<int>();
+          if (v > 0) feedBigDur = v;
+        } break;
+        case 112: {
+          int v = kv.value().as<int>();
+          if (v > 0) feedSmallDur = v;
+        } break;
+        case 113: refillDurationMs = kv.value().as<int>() * 1000UL; break;
+        case 114: limFlood = kv.value().as<int>(); break;
+        case 115: {
+          // WakeUp déjà géré par parseRemoteConfig(), skip pour éviter duplication
+        } break;
+        case 116: freqWakeSec = kv.value().as<int>(); break;
+        default: break;
+      }
+    }
+  }
+  
   _power.resetWatchdog();
 }
 
