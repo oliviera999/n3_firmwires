@@ -105,6 +105,13 @@ public:
     uint16_t getBigDuration() const { return _feedBigDur; }
     uint16_t getSmallDuration() const { return _feedSmallDur; }
     
+    /**
+     * Obtient les horaires configurés
+     */
+    uint8_t getMorningHour() const { return _feedMorning; }
+    uint8_t getNoonHour() const { return _feedNoon; }
+    uint8_t getEveningHour() const { return _feedEvening; }
+    
     // === ÉTAT ===
     
     /**

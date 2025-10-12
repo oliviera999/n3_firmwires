@@ -34,8 +34,8 @@ class Automatism {
   bool isEmailEnabled() const { return emailEnabled; }
   void toggleEmailNotifications();
   const String& getEmailAddress() const { return emailAddress; }
-  uint16_t getFeedBigDur() const { return feedBigDur; }
-  uint16_t getFeedSmallDur() const { return feedSmallDur; }
+  uint16_t getFeedBigDur() const { return _feeding.getBigDuration(); }
+  uint16_t getFeedSmallDur() const { return _feeding.getSmallDuration(); }
 
   // Déclenche le clignotement de l'icône "courrier" sur l'OLED
   void triggerMailBlink() { armMailBlink(); }
