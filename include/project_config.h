@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.06";
+    constexpr const char* VERSION = "11.23";
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -93,9 +93,9 @@ namespace ServerConfig {
     constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/ffp3datas/heartbeat.php";
     constexpr const char* OTA_BASE_PATH = "/ffp3/ota/";
     
-    // Timeouts optimisés pour réactivité
-    constexpr uint32_t CONNECTION_TIMEOUT_MS = 5000;      // Réduit de 10s à 5s
-    constexpr uint32_t REQUEST_TIMEOUT_MS = 15000;        // Réduit de 30s à 15s
+    // Timeouts optimisés pour fiabilité (augmentés v11.09 pour diagnostic HTTP)
+    constexpr uint32_t CONNECTION_TIMEOUT_MS = 10000;     // 10s (augmenté de 5s pour stabilité)
+    constexpr uint32_t REQUEST_TIMEOUT_MS = 30000;        // 30s (augmenté de 15s pour fiabilité)
 
     inline String getHeartbeatUrl() { return String(BASE_URL) + HEARTBEAT_ENDPOINT; }
     inline String getSecondaryHeartbeatUrl() {
@@ -540,7 +540,7 @@ namespace ExtendedSensorConfig {
     constexpr uint16_t ULTRASONIC_US_TO_CM_FACTOR = 58;  // µs vers cm
     
     // Délais entre lectures
-    constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 2500;       // Augmenté de 2000ms à 2500ms pour plus de stabilité
+    constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 3000;       // Augmenté de 2500ms à 3000ms pour fiabilité DHT22 (v11.09)
     constexpr uint32_t DHT_INIT_STABILIZATION_DELAY_MS = 2000; // Délai stabilisation après begin() pour DHT - Conforme aux datasheets (1-2s recommandés)
     constexpr uint32_t SENSOR_READ_DELAY_MS = 100;
     constexpr uint32_t I2C_STABILIZATION_DELAY_MS = 100;
