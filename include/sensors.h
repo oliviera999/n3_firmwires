@@ -12,6 +12,7 @@ class UltrasonicManager {
   uint16_t readFiltered(uint8_t samples = 5);
   uint16_t readAdvancedFiltered(); // Nouvelle méthode avec filtrage avancé
   uint16_t readRobustFiltered(); // Lecture robuste avec fallback
+  uint16_t readReactiveFiltered(); // Lecture réactive avec lissage minimal
   void resetHistory(); // Reset l'historique en cas de problème
  private:
   // Lecture manuelle par impulsion (pulseIn) – pas de dépendance lib requise
@@ -30,6 +31,7 @@ class UltrasonicManager {
   static const uint16_t MAX_DISTANCE_DELTA = 30; // Augmenté de 20 à 30 cm
   static const uint8_t MIN_VALID_READINGS = 1; // Réduit de 2 à 1
   static const uint8_t READINGS_COUNT = 3; // 3 lectures suffisent avec délais allongés
+  static const uint8_t REACTIVE_READINGS_COUNT = 3; // 3 lectures pour mode réactif
   static const uint16_t MIN_DISTANCE = 2; // Minimum selon datasheet HC-SR04
   static const uint16_t MAX_DISTANCE = 400; // Maximum selon datasheet HC-SR04 (4m)
   static const uint32_t MIN_DELAY_BETWEEN_MEASUREMENTS_MS = 60; // Délai minimum recommandé entre mesures

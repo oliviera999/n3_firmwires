@@ -1,5 +1,6 @@
 #include "automatism_network.h"
 #include "automatism.h"
+#include "automatism_persistence.h"
 #include "project_config.h"
 #include "esp_task_wdt.h"
 #include "pins.h"
@@ -13,6 +14,7 @@
 AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
     : _web(web)
     , _config(cfg)
+    , _dataQueue(50)  // v11.31: Max 50 entrées en queue
     , _emailAddress("")
     , _emailEnabled(false)
     , _freqWakeSec(600)  // 10 min par défaut
@@ -31,7 +33,108 @@ AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
     , _prevBouffeMidi(false)
     , _prevBouffeSoir(false)
 {
-    Serial.println(F("[Network] Module initialisé"));
+    Serial.println(F("[Network] Module initialisé (constructeur)"));
+    
+    // NOTE (v11.32): DataQueue::begin() NE PEUT PAS être appelé ici
+    // car LittleFS n'est pas encore monté (constructeur global)
+    // L'initialisation sera faite dans begin() après LittleFS.begin()
+}
+
+bool AutomatismNetwork::begin() {
+    // Initialiser la queue de données (après montage LittleFS)
+    if (_dataQueue.begin()) {
+        Serial.printf("[Network] ✓ DataQueue initialisée (%u entrées en attente)\n", _dataQueue.size());
+        return true;
+    } else {
+        Serial.println(F("[Network] ⚠️ Échec initialisation DataQueue"));
+        return false;
+    }
+}
+
+// ============================================================================
+// NORMALISATION JSON - v11.40
+// Convertit les clés du serveur distant vers le format de l'interface web
+// ============================================================================
+
+void AutomatismNetwork::normalizeServerKeys(
+    const ArduinoJson::JsonDocument& src, 
+    ArduinoJson::JsonDocument& dst
+) {
+    // Copier toutes les clés existantes
+    dst.set(src);
+    
+    // === NORMALISATION DES CLÉS ===
+    // Format serveur distant → Format interface web
+    
+    // Email
+    if (src.containsKey("mail") && !src.containsKey("emailAddress")) {
+        dst["emailAddress"] = src["mail"].as<const char*>();
+        dst.remove("mail");
+    }
+    if (src.containsKey("mailNotif") && !src.containsKey("emailEnabled")) {
+        String val = src["mailNotif"].as<const char*>();
+        val.toLowerCase();
+        val.trim();
+        dst["emailEnabled"] = (val == "checked" || val == "1" || val == "true" || val == "on");
+        dst.remove("mailNotif");
+    }
+    
+    // Durées nourrissage
+    if (src.containsKey("tempsGros") && !src.containsKey("feedBigDur")) {
+        dst["feedBigDur"] = src["tempsGros"].as<int>();
+        dst.remove("tempsGros");
+    }
+    if (src.containsKey("tempsPetits") && !src.containsKey("feedSmallDur")) {
+        dst["feedSmallDur"] = src["tempsPetits"].as<int>();
+        dst.remove("tempsPetits");
+    }
+    
+    // Durée remplissage
+    if (src.containsKey("tempsRemplissageSec") && !src.containsKey("refillDuration")) {
+        dst["refillDuration"] = src["tempsRemplissageSec"].as<int>();
+        dst.remove("tempsRemplissageSec");
+    }
+    
+    // Seuil chauffage
+    if (src.containsKey("chauffageThreshold") && !src.containsKey("heaterThreshold")) {
+        dst["heaterThreshold"] = src["chauffageThreshold"].as<float>();
+        dst.remove("chauffageThreshold");
+    }
+    
+    // Seuils eau (garder noms actuels)
+    if (src.containsKey("102") && !src.containsKey("aqThreshold")) {
+        dst["aqThreshold"] = src["102"].as<int>();
+    }
+    if (src.containsKey("103") && !src.containsKey("tankThreshold")) {
+        dst["tankThreshold"] = src["103"].as<int>();
+    }
+    
+    // Heures nourrissage (compatibilité numéros)
+    if (src.containsKey("105") && !src.containsKey("feedMorning")) {
+        dst["feedMorning"] = src["105"].as<int>();
+    }
+    if (src.containsKey("106") && !src.containsKey("feedNoon")) {
+        dst["feedNoon"] = src["106"].as<int>();
+    }
+    if (src.containsKey("107") && !src.containsKey("feedEvening")) {
+        dst["feedEvening"] = src["107"].as<int>();
+    }
+    
+    // Durées nourrissage (compatibilité numéros)
+    if (src.containsKey("111") && !src.containsKey("feedBigDur")) {
+        dst["feedBigDur"] = src["111"].as<int>();
+    }
+    if (src.containsKey("112") && !src.containsKey("feedSmallDur")) {
+        dst["feedSmallDur"] = src["112"].as<int>();
+    }
+    if (src.containsKey("113") && !src.containsKey("refillDuration")) {
+        dst["refillDuration"] = src["113"].as<int>();
+    }
+    if (src.containsKey("114") && !src.containsKey("limFlood")) {
+        dst["limFlood"] = src["114"].as<int>();
+    }
+    
+    Serial.println(F("[Network] Clés JSON normalisées (serveur → interface)"));
 }
 
 // ============================================================================
@@ -41,12 +144,16 @@ AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
 bool AutomatismNetwork::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     bool ok = _web.fetchRemoteState(doc);
     if (ok && doc.size() > 0) {
+        // NORMALISATION v11.40: Convertir clés serveur distant vers format interface
+        ArduinoJson::DynamicJsonDocument normalizedDoc(BufferConfig::JSON_DOCUMENT_SIZE);
+        normalizeServerKeys(doc, normalizedDoc);
+        
         String jsonStr;
-        serializeJson(doc, jsonStr);
+        serializeJson(normalizedDoc, jsonStr);
         _config.saveRemoteVars(jsonStr);
         _serverOk = true;
         _recvState = 1;  // OK
-        Serial.println(F("[Network] État distant récupéré avec succès"));
+        Serial.println(F("[Network] État distant récupéré avec succès (normalisé)"));
     } else {
         _serverOk = false;
         _recvState = -1;  // Erreur
@@ -99,9 +206,6 @@ bool AutomatismNetwork::sendFullUpdate(
     uint32_t refillDurationSec,
     const char* extraPairs
 ) {
-    // Reset watchdog au début
-    esp_task_wdt_reset();
-    
     // VALIDATION MESURES
     float tempWater = readings.tempWater;
     float tempAir = readings.tempAir;
@@ -154,8 +258,6 @@ bool AutomatismNetwork::sendFullUpdate(
         bouffePetits.c_str(), bouffeGros.c_str(),
         _emailAddress.c_str(), _emailEnabled ? "checked" : "");
     
-    esp_task_wdt_reset();
-    
     String payload = String(data);
     if (extraPairs && extraPairs[0] != '\0') {
         payload += "&";
@@ -167,16 +269,30 @@ bool AutomatismNetwork::sendFullUpdate(
         payload += "&resetMode=0";
     }
     
-    esp_task_wdt_reset();
-    
     bool success = _web.postRaw(payload, false);
     
     if (success) {
         _sendState = 1;  // OK
         Serial.println(F("[Network] sendFullUpdate SUCCESS"));
+        
+        // v11.31: Rejouer la queue si des données en attente
+        if (_dataQueue.size() > 0) {
+            Serial.printf("[Network] Replaying queued data (%u pending)...\n", _dataQueue.size());
+            uint16_t replayed = replayQueuedData();
+            if (replayed > 0) {
+                Serial.printf("[Network] ✓ Replayed %u queued payloads\n", replayed);
+            }
+        }
     } else {
         _sendState = -1;  // Erreur
         Serial.println(F("[Network] sendFullUpdate FAILED"));
+        
+        // v11.31: Enregistrer dans la queue pour rejeu ultérieur
+        if (_dataQueue.push(payload)) {
+            Serial.printf("[Network] ✓ Payload queued for later (%u pending)\n", _dataQueue.size());
+        } else {
+            Serial.println(F("[Network] ✗ Failed to queue payload"));
+        }
     }
     
     _lastSend = millis();
@@ -232,8 +348,6 @@ bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t
         return false;
     }
     
-    esp_task_wdt_reset();
-    
     // Indique téléchargement en cours (flèche vide)
     _recvState = 0;
     
@@ -244,6 +358,21 @@ bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t
     // Tentative récupération depuis serveur
     bool okRecv = _web.fetchRemoteState(doc);
     bool remoteSuccess = okRecv;
+    
+    // === LOGS DÉTAILLÉS v11.07 - DIAGNOSTIC JSON ===
+    if (okRecv && doc.size() > 0) {
+        Serial.println(F("[Network] === JSON REÇU DU SERVEUR ==="));
+        String jsonDebug;
+        serializeJsonPretty(doc, jsonDebug);
+        // Afficher premiers 1000 caractères pour éviter overflow
+        Serial.println(jsonDebug.substring(0, min((int)jsonDebug.length(), 1000)));
+        if (jsonDebug.length() > 1000) {
+            Serial.printf("[Network] ... (tronqué, %u bytes restants)\n", jsonDebug.length() - 1000);
+        }
+        Serial.println(F("[Network] === FIN JSON ==="));
+    } else if (!okRecv) {
+        Serial.println(F("[Network] ⚠️ Échec fetchRemoteState() - aucune donnée reçue"));
+    }
     
     if (!okRecv) {
         // Fallback: tentative rechargement depuis la flash
@@ -265,12 +394,13 @@ bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t
         return false;
     }
     
-    // Sauvegarde dernière version reçue dans flash
-    String jsonToSave;
-    serializeJson(doc, jsonToSave);
-    _config.saveRemoteVars(jsonToSave);
+    // Sauvegarde dernière version reçue dans flash (normalisée v11.40)
+    ArduinoJson::DynamicJsonDocument normalizedDoc(BufferConfig::JSON_DOCUMENT_SIZE);
+    normalizeServerKeys(doc, normalizedDoc);
     
-    esp_task_wdt_reset();
+    String jsonToSave;
+    serializeJson(normalizedDoc, jsonToSave);
+    _config.saveRemoteVars(jsonToSave);
     
     return true;
 }
@@ -392,7 +522,14 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
     if (doc.containsKey("bouffePetits")) {
         auto var = doc["bouffePetits"];
         if (isTrue(var)) {
+            Serial.println(F("[Network] 🐟 Commande nourrissage PETITS reçue du serveur distant"));
+            
+            // Exécution de la commande
             autoCtrl.manualFeedSmall();
+            
+            // v11.31: ACK immédiat + log
+            sendCommandAck("bouffePetits", "executed");
+            logRemoteCommandExecution("fd_small", true);
             
             if (_emailEnabled) {
                 String message = autoCtrl.createFeedingMessage(
@@ -404,7 +541,7 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
             }
             
             autoCtrl.armMailBlink();
-            autoCtrl.sendFullUpdate(autoCtrl.readSensors(), nullptr);
+            autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0");  // Reset flag
         }
     }
     
@@ -412,7 +549,14 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
     if (doc.containsKey("bouffeGros")) {
         auto var = doc["bouffeGros"];
         if (isTrue(var)) {
+            Serial.println(F("[Network] 🐟 Commande nourrissage GROS reçue du serveur distant"));
+            
+            // Exécution de la commande
             autoCtrl.manualFeedBig();
+            
+            // v11.31: ACK immédiat + log
+            sendCommandAck("bouffeGros", "executed");
+            logRemoteCommandExecution("fd_large", true);
             
             if (_emailEnabled) {
                 String message = autoCtrl.createFeedingMessage(
@@ -424,7 +568,7 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
             }
             
             autoCtrl.armMailBlink();
-            autoCtrl.sendFullUpdate(autoCtrl.readSensors());
+            autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0");  // Reset flag
         }
     }
 }
@@ -439,19 +583,51 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
 // ============================================================================
 
 void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
-    // NOTE: Cette méthode nécessite énormément d'accès aux membres d'Automatism:
-    // - _acts (SystemActuators)
-    // - Variables: _lastAquaManualOrigin, _manualTankOverride, tankPumpLocked, etc.
-    // - Méthodes: startAquaPumpManualLocal, stopTankPumpManual, etc.
-    //
-    // Pour Phase 2.11, on implémente une version SIMPLIFIÉE qui gère:
-    // - Commandes light (lightCmd prioritaire)
-    // - GPIO génériques basiques
-    //
-    // La version COMPLÈTE avec gestion pompes/heater/GPIO 0-116 sera implémentée
-    // dans Phase 2.12 après avoir ajouté les getters/setters nécessaires.
+    // NOTE: Cette méthode gère les actionneurs par NOM (light, heat, pump_aqua, etc.)
+    // Le code dans automatism.cpp gère les GPIO par NUMÉRO (fallback rétrocompatibilité)
+    // Cela permet de supporter les deux formats: noms ET numéros
     
-    // Commande lumière (lightCmd prioritaire)
+    // ========================================
+    // PRIORITÉ LOCALE (v11.38): Bloquer serveur distant pendant 5s après action locale
+    // FIX v11.38: Bloquer AUSSI si action récente (même si sync réussie)
+    // ========================================
+    const uint32_t LOCAL_PRIORITY_TIMEOUT_MS = 5000; // 5 secondes de priorité locale
+    
+    // PRIORITÉ 1: Bloquer si action locale récente (MÊME si sync déjà réussie)
+    // Cela évite que le serveur distant n'écrase l'état pendant la fenêtre de 5 secondes
+    if (AutomatismPersistence::hasRecentLocalAction(LOCAL_PRIORITY_TIMEOUT_MS)) {
+        uint32_t lastLocal = AutomatismPersistence::getLastLocalActionTime();
+        uint32_t elapsed = millis() - lastLocal;
+        Serial.printf("[Network] ⚠️ PRIORITÉ LOCALE ACTIVE - Commandes distantes bloquées (%lu ms écoulées)\n", elapsed);
+        return; // Ignorer TOUTES les commandes distantes
+    }
+    
+    // PRIORITÉ 2: Bloquer si sync en attente (backup si sync lente)
+    if (AutomatismPersistence::hasPendingSync()) {
+        uint32_t pendingCount = AutomatismPersistence::getPendingSyncCount();
+        uint32_t lastPending = AutomatismPersistence::getLastPendingSyncTime();
+        uint32_t elapsed = millis() - lastPending;
+        Serial.printf("[Network] ⏳ PRIORITÉ LOCALE - Sync en attente (%u items, %lu ms écoulées)\n", 
+                      pendingCount, elapsed);
+        return; // Ignorer les commandes distantes tant que sync pending
+    }
+    
+    // === LOGS DÉTAILLÉS POUR DIAGNOSTIC ===
+    Serial.println(F("[Network] === ACTIONNEURS REÇUS DU SERVEUR ==="));
+    for (auto kv : doc.as<ArduinoJson::JsonObjectConst>()) {
+        const char* key = kv.key().c_str();
+        // N'afficher que les clés d'actionneurs connues
+        if (strcmp(key, "light") == 0 || strcmp(key, "lightCmd") == 0 ||
+            strcmp(key, "heat") == 0 || strcmp(key, "heatCmd") == 0 ||
+            strcmp(key, "pump_aqua") == 0 || strcmp(key, "pump_tank") == 0) {
+            Serial.printf("[Network] Clé '%s' = %s\n", key, kv.value().as<String>().c_str());
+        }
+    }
+    Serial.println(F("[Network] === FIN ACTIONNEURS ==="));
+    
+    // ========================================
+    // LUMIÈRE (lightCmd prioritaire sur light)
+    // ========================================
     if (doc.containsKey("lightCmd")) {
         auto v = doc["lightCmd"];
         if (isTrue(v)) {
@@ -462,7 +638,6 @@ void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& d
             Serial.println(F("[Network] Lumière OFF (commande explicite lightCmd)"));
         }
     } else if (doc.containsKey("light")) {
-        // État distant: applique ON et OFF
         auto v = doc["light"];
         if (isTrue(v)) {
             autoCtrl.startLightManualLocal();
@@ -473,8 +648,84 @@ void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& d
         }
     }
     
-    Serial.println(F("[Network] handleRemoteActuators() - Version simplifiée Phase 2.11"));
-    Serial.println(F("[Network] GPIO dynamiques 0-116 seront implémentés en Phase 2.12"));
+    // ========================================
+    // CHAUFFAGE (heatCmd prioritaire sur heat)
+    // ========================================
+    if (doc.containsKey("heatCmd")) {
+        auto v = doc["heatCmd"];
+        if (isTrue(v)) {
+            autoCtrl.startHeaterManualLocal();
+            Serial.println(F("[Network] Chauffage ON (commande explicite heatCmd)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopHeaterManualLocal();
+            Serial.println(F("[Network] Chauffage OFF (commande explicite heatCmd)"));
+        }
+    } else if (doc.containsKey("heat")) {
+        auto v = doc["heat"];
+        if (isTrue(v)) {
+            autoCtrl.startHeaterManualLocal();
+            Serial.println(F("[Network] Chauffage ON (état distant)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopHeaterManualLocal();
+            Serial.println(F("[Network] Chauffage OFF (état distant)"));
+        }
+    }
+    
+    // ========================================
+    // POMPE AQUARIUM (pump_aquaCmd prioritaire sur pump_aqua)
+    // ========================================
+    if (doc.containsKey("pump_aquaCmd")) {
+        auto v = doc["pump_aquaCmd"];
+        if (isTrue(v)) {
+            autoCtrl.startAquaPumpManualLocal();
+            Serial.println(F("[Network] Pompe aquarium ON (commande explicite pump_aquaCmd)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopAquaPumpManualLocal();
+            Serial.println(F("[Network] Pompe aquarium OFF (commande explicite pump_aquaCmd)"));
+        }
+    } else if (doc.containsKey("pump_aqua")) {
+        auto v = doc["pump_aqua"];
+        if (isTrue(v)) {
+            autoCtrl.startAquaPumpManualLocal();
+            Serial.println(F("[Network] Pompe aquarium ON (état distant)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopAquaPumpManualLocal();
+            Serial.println(F("[Network] Pompe aquarium OFF (état distant)"));
+        }
+    }
+    
+    // ========================================
+    // POMPE RÉSERVOIR (pump_tankCmd prioritaire sur pump_tank) - v11.31: ACK + logs
+    // ========================================
+    if (doc.containsKey("pump_tankCmd")) {
+        auto v = doc["pump_tankCmd"];
+        if (isTrue(v)) {
+            Serial.println(F("[Network] 💧 Commande pompe TANK ON reçue du serveur distant"));
+            autoCtrl.startTankPumpManual();
+            sendCommandAck("pump_tank", "on");
+            logRemoteCommandExecution("ptank_on", true);
+        } else if (isFalse(v)) {
+            Serial.println(F("[Network] 💧 Commande pompe TANK OFF reçue du serveur distant"));
+            autoCtrl.stopTankPumpManual();
+            sendCommandAck("pump_tank", "off");
+            logRemoteCommandExecution("ptank_off", true);
+        }
+    } else if (doc.containsKey("pump_tank")) {
+        auto v = doc["pump_tank"];
+        if (isTrue(v)) {
+            autoCtrl.startTankPumpManual();
+            sendCommandAck("pump_tank", "on");
+            logRemoteCommandExecution("ptank_on", true);
+            Serial.println(F("[Network] Pompe réservoir ON (état distant)"));
+        } else if (isFalse(v)) {
+            autoCtrl.stopTankPumpManual();
+            sendCommandAck("pump_tank", "off");
+            logRemoteCommandExecution("ptank_off", true);
+            Serial.println(F("[Network] Pompe réservoir OFF (état distant)"));
+        }
+    }
+    
+    Serial.println(F("[Network] handleRemoteActuators() - v11.07 COMPLET (light, heat, pumps)"));
 }
 
 // ============================================================================
@@ -490,5 +741,92 @@ void AutomatismNetwork::checkCriticalChanges(const SensorReadings& readings) {
     // Sera migrée dans Phase 2.7
     
     Serial.println(F("[Network] checkCriticalChanges() - Implémentation temporaire"));
+}
+
+// ============================================================================
+// PERSISTANCE ET ACK - v11.31
+// ============================================================================
+
+uint16_t AutomatismNetwork::replayQueuedData() {
+    uint16_t sent = 0;
+    const uint16_t MAX_REPLAYS_PER_CYCLE = 5;  // Limiter pour ne pas bloquer
+    
+    while (_dataQueue.size() > 0 && sent < MAX_REPLAYS_PER_CYCLE) {
+        // Lire sans supprimer
+        String payload = _dataQueue.peek();
+        if (payload.length() == 0) {
+            Serial.println(F("[Network] ⚠️ Empty payload in queue, skipping"));
+            _dataQueue.pop();
+            continue;
+        }
+        
+        // Tentative envoi
+        Serial.printf("[Network] Replaying queued payload (%u bytes)...\n", payload.length());
+        if (_web.postRaw(payload, false)) {
+            // Succès : supprimer de la queue
+            _dataQueue.pop();
+            sent++;
+            Serial.printf("[Network] ✓ Replayed payload %u/%u\n", sent, MAX_REPLAYS_PER_CYCLE);
+            
+            // Note: Watchdog géré par la tâche appelante (automationTask)
+            // Ne pas appeler esp_task_wdt_reset() ici (erreur "task not found")
+        } else {
+            // Échec : arrêter pour ne pas vider la batterie
+            Serial.println(F("[Network] ✗ Replay failed, stopping"));
+            break;
+        }
+    }
+    
+    if (sent > 0) {
+        Serial.printf("[Network] Replay summary: %u sent, %u remaining\n", sent, _dataQueue.size());
+    }
+    
+    return sent;
+}
+
+bool AutomatismNetwork::sendCommandAck(const char* command, const char* status) {
+    // Payload minimal pour ACK
+    char ackPayload[256];
+    snprintf(ackPayload, sizeof(ackPayload),
+             "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
+             Config::API_KEY, Config::SENSOR, command, status, millis());
+    
+    // Envoi non-bloquant vers endpoint principal
+    // NOTE: Le serveur peut ignorer les champs ack_* si endpoint non prévu
+    // C'est acceptable car l'envoi périodique contient l'état complet
+    String response;
+    bool ok = _web.postRaw(String(ackPayload), false);
+    
+    if (ok) {
+        Serial.printf("[Network] ✓ ACK sent: %s=%s\n", command, status);
+    } else {
+        Serial.printf("[Network] ✗ ACK failed: %s=%s (non-bloquant)\n", command, status);
+    }
+    
+    return ok;
+}
+
+void AutomatismNetwork::logRemoteCommandExecution(const char* command, bool success) {
+    Preferences prefs;
+    prefs.begin("cmdLog", false);
+    
+    // Compteurs globaux
+    uint32_t totalCmds = prefs.getUInt("total", 0) + 1;
+    uint32_t successCmds = prefs.getUInt("success", 0) + (success ? 1 : 0);
+    
+    prefs.putUInt("total", totalCmds);
+    prefs.putUInt("success", successCmds);
+    
+    // Compteurs par commande (limité à 10 commandes max pour économiser NVS)
+    String key = String("cmd_") + command;
+    uint32_t cmdTotal = prefs.getUInt(key.c_str(), 0) + 1;
+    prefs.putUInt(key.c_str(), cmdTotal);
+    
+    prefs.end();
+    
+    // Log avec statistiques
+    float successRate = (totalCmds > 0) ? ((float)successCmds / totalCmds * 100.0f) : 0.0f;
+    Serial.printf("[Network] Command '%s': %s (Global: %.1f%% success, Total: %lu, This cmd: %lu times)\n", 
+                  command, success ? "✓ OK" : "✗ FAILED", successRate, totalCmds, cmdTotal);
 }
 

@@ -68,12 +68,10 @@ void AutomatismSleep::notifyLocalWebActivity() {
     _lastWebActivityMs = millis();
     _forceWakeFromWeb = true;
     
-    if (!_forceWakeUp) {
-        _forceWakeUp = true;
-        Serial.println(F("[Sleep] forceWakeUp activé par activité web locale"));
-        _config.setForceWakeUp(_forceWakeUp);
-        _config.saveBouffeFlags();
-    }
+    // NOTE: On n'active PLUS forceWakeUp automatiquement
+    // On empêche juste le sleep temporairement pendant la consultation
+    // forceWakeUp (GPIO 115) doit être contrôlé explicitement par l'utilisateur
+    Serial.println(F("[Sleep] Activité web détectée - sleep bloqué temporairement (10 min)"));
 }
 
 // ============================================================================

@@ -42,6 +42,14 @@ public:
     void forceSaveBouffeFlags();
     void resetBouffeFlags();
     
+    /**
+     * Charge TOUTES les variables de configuration depuis NVS au démarrage
+     * Charge: email, seuils, durées, flags, etc.
+     * Utilise valeurs par défaut si NVS vide (comportement 1b)
+     * @return true si config chargée depuis NVS, false si valeurs par défaut utilisées
+     */
+    bool loadConfigFromNVS();
+    
     // Méthodes pour les variables distantes
     void saveRemoteVars(const String& json);
     bool loadRemoteVars(String& json);

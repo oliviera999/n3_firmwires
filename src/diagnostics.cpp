@@ -334,18 +334,22 @@ void Diagnostics::capturePanicInfo() {
     case RTCWDT_RTC_RESET:
       _stats.panicInfo.exceptionCause = "RTC Watchdog Reset";
       break;
+#ifdef TGWDT_CPU_RESET
     case TGWDT_CPU_RESET:
       _stats.panicInfo.exceptionCause = "Timer Group Watchdog (CPU)";
       break;
+#endif
     case TG0WDT_SYS_RESET:
       _stats.panicInfo.exceptionCause = "Timer Group 0 Watchdog (System)";
       break;
     case TG1WDT_SYS_RESET:
       _stats.panicInfo.exceptionCause = "Timer Group 1 Watchdog (System)";
       break;
+#ifdef SW_CPU_RESET
     case SW_CPU_RESET:
       _stats.panicInfo.exceptionCause = "Software CPU Reset";
       break;
+#endif
     case RTCWDT_CPU_RESET:
       _stats.panicInfo.exceptionCause = "RTC Watchdog CPU Reset";
       break;
@@ -355,15 +359,19 @@ void Diagnostics::capturePanicInfo() {
     case DEEPSLEEP_RESET:
       _stats.panicInfo.exceptionCause = "Deep Sleep Reset";
       break;
+#ifdef SDIO_RESET
     case SDIO_RESET:
       _stats.panicInfo.exceptionCause = "SDIO Reset";
       break;
+#endif
     case POWERON_RESET:
       _stats.panicInfo.exceptionCause = "Power-On Reset";
       break;
+#ifdef SW_RESET
     case SW_RESET:
       _stats.panicInfo.exceptionCause = "Software Reset";
       break;
+#endif
     default:
       // Pour les codes inconnus, on affiche le code numérique
       _stats.panicInfo.exceptionCause = "Unknown Exception";

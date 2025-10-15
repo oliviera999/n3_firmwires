@@ -13,6 +13,25 @@
 - **Type**: Système de gestion et de nourrissage automatique avec interface web
 - **Architecture**: Serveur web ESP32 + interface SPA (Single Page Application)
 
+## 📁 Organisation du dépôt
+
+### Structure du projet
+Ce projet est composé de deux parties principales :
+1. **Code embarqué ESP32** : Situé à la racine du dépôt (dossiers `src/`, `include/`, `data/`)
+2. **Serveur distant** : Situé dans le sous-module Git `ffp3/`
+
+### Sous-module GitHub - Serveur distant
+- **IMPORTANT** : Tous les fichiers du serveur distant (backend PHP/MySQL) sont dans le **sous-module GitHub** situé dans le dossier `ffp3/`
+- Ce sous-module est un dépôt Git indépendant
+- Ne **JAMAIS** modifier directement les fichiers dans `ffp3/` sans comprendre la gestion des sous-modules Git
+- Pour mettre à jour le sous-module : `git submodule update --remote ffp3`
+- Le serveur distant reçoit et stocke les données envoyées par l'ESP32 via HTTP POST
+
+### Synchronisation
+- Scripts de synchronisation disponibles : `sync_*.ps1`
+- Le serveur distant gère la base de données MySQL pour l'historique des données
+- L'ESP32 envoie périodiquement les données des capteurs au serveur via l'endpoint configuré
+
 ## 📋 Priorités absolues
 
 ### 1. Gestion de la mémoire (CRITIQUE)

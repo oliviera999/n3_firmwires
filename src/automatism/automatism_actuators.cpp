@@ -1,5 +1,6 @@
 #include "automatism_actuators.h"
 #include "automatism.h"  // Pour accéder à autoCtrl complet (sendFullUpdate, _sensors)
+#include "automatism_persistence.h"
 #include "realtime_websocket.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
@@ -87,12 +88,15 @@ void AutomatismActuators::startAquaPumpManual() {
     // 1. ACTIVATION IMMÉDIATE
     _acts.startAquaPump();
     
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("aqua", true);
+    
     Serial.printf("[Actuators] ✅ Pompe aquarium démarrée - Heap: %u bytes\n", ESP.getFreeHeap());
     
-    // 2. WebSocket immédiat (feedback utilisateur instantané)
+    // 3. WebSocket immédiat (feedback utilisateur instantané)
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur en arrière-plan
+    // 4. Synchronisation serveur en arrière-plan
     syncActuatorStateAsync("sync_aqua_start", "etatPompeAqua=1", 
                           _syncAquaStartHandle, "pompe aqua activée");
 }
@@ -103,12 +107,15 @@ void AutomatismActuators::stopAquaPumpManual() {
     // 1. ARRÊT IMMÉDIAT
     _acts.stopAquaPump();
     
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("aqua", false);
+    
     Serial.printf("[Actuators] ✅ Pompe aquarium arrêtée - Heap: %u bytes\n", ESP.getFreeHeap());
     
-    // 2. WebSocket immédiat
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
+    // 4. Synchronisation serveur
     syncActuatorStateAsync("sync_aqua_stop", "etatPompeAqua=0",
                           _syncAquaStopHandle, "pompe aqua arrêtée");
 }
@@ -120,15 +127,21 @@ void AutomatismActuators::stopAquaPumpManual() {
 void AutomatismActuators::startTankPumpManual() {
     Serial.println(F("[Actuators] 🚰 Démarrage manuel pompe réserve (local)..."));
     
+    // Note: Watchdog géré par tâche appelante
+    // Ne pas appeler esp_task_wdt_reset() ici (erreur "task not found")
+    
     // 1. ACTIVATION IMMÉDIATE
     _acts.startTankPump();
     
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("tank", true);
+    
     Serial.printf("[Actuators] ✅ Pompe réserve démarrée - Heap: %u bytes\n", ESP.getFreeHeap());
     
-    // 2. WebSocket immédiat
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
+    // 4. Synchronisation serveur
     syncActuatorStateAsync("sync_tank_start", "etatPompeReserve=1",
                           _syncTankStartHandle, "pompe réserve activée");
 }
@@ -139,12 +152,15 @@ void AutomatismActuators::stopTankPumpManual() {
     // 1. ARRÊT IMMÉDIAT
     _acts.stopTankPump();
     
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("tank", false);
+    
     Serial.printf("[Actuators] ✅ Pompe réserve arrêtée - Heap: %u bytes\n", ESP.getFreeHeap());
     
-    // 2. WebSocket immédiat
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
+    // 4. Synchronisation serveur
     syncActuatorStateAsync("sync_tank_stop", "etatPompeReserve=0",
                           _syncTankStopHandle, "pompe réserve arrêtée");
 }
@@ -159,10 +175,13 @@ void AutomatismActuators::startHeaterManual() {
     // 1. ACTIVATION IMMÉDIATE
     _acts.startHeater();
     
-    // 2. WebSocket immédiat
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("heater", true);
+    
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
+    // 4. Synchronisation serveur
     syncActuatorStateAsync("sync_heater_start", "etatHeat=1",
                           _syncHeaterStartHandle, "chauffage activé");
 }
@@ -173,10 +192,13 @@ void AutomatismActuators::stopHeaterManual() {
     // 1. ARRÊT IMMÉDIAT
     _acts.stopHeater();
     
-    // 2. WebSocket immédiat
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("heater", false);
+    
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
+    // 4. Synchronisation serveur
     syncActuatorStateAsync("sync_heater_stop", "etatHeat=0",
                           _syncHeaterStopHandle, "chauffage arrêté");
 }
@@ -191,11 +213,14 @@ void AutomatismActuators::startLightManual() {
     // 1. ACTIVATION IMMÉDIATE
     _acts.startLight();
     
-    // 2. WebSocket immédiat
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("light", true);
+    
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
-    syncActuatorStateAsync("sync_light_start", "etatLumiere=1",
+    // 4. Synchronisation serveur
+    syncActuatorStateAsync("sync_light_start", "etatUV=1",
                           _syncLightStartHandle, "lumière activée");
 }
 
@@ -205,11 +230,14 @@ void AutomatismActuators::stopLightManual() {
     // 1. ARRÊT IMMÉDIAT
     _acts.stopLight();
     
-    // 2. WebSocket immédiat
+    // 2. SAUVEGARDE NVS IMMÉDIATE (PRIORITÉ LOCALE)
+    AutomatismPersistence::saveCurrentActuatorState("light", false);
+    
+    // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 3. Synchronisation serveur
-    syncActuatorStateAsync("sync_light_stop", "etatLumiere=0",
+    // 4. Synchronisation serveur
+    syncActuatorStateAsync("sync_light_stop", "etatUV=0",
                           _syncLightStopHandle, "lumière arrêtée");
 }
 

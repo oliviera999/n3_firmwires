@@ -240,9 +240,24 @@ function connectWS() {
               attemptReconnection();
             }, 15000);
           } else if (msg && msg.type === 'server_closing') {
-            // Serveur en cours de reconfiguration
-            console.log('⚠️ Serveur en cours de reconfiguration');
+            // Serveur en cours de reconfiguration ou entrée en veille
+            console.log('⚠️ Serveur fermé:', msg.message || 'Reconfiguration');
+            
+            // Afficher un message à l'utilisateur
+            if (msg.message && msg.message.includes('sleep')) {
+              toast('💤 Système en veille - Reconnexion automatique au réveil', 'info');
+            } else {
+              toast('⚠️ Serveur en reconfiguration - Reconnexion automatique', 'info');
+            }
+            
             window.wifiChangePending = true;
+            
+            // Reconnexion automatique après un délai plus long pour le sleep
+            setTimeout(() => {
+              console.log('🔄 Tentative de reconnexion après fermeture serveur...');
+              window.wifiChangePending = false;
+              connectWS();
+            }, msg.message && msg.message.includes('sleep') ? 30000 : 10000); // 30s pour sleep, 10s pour reconfig
           }
         } catch (e) {
           console.error('Erreur parsing message WebSocket:', e);
@@ -401,6 +416,7 @@ function displayDbVars(db) {
     updateDbElement('dbAqThreshold', dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold);
     updateDbElement('dbHeaterThreshold', dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? db.heaterThreshold.toFixed(1) : defaultValues.heaterThreshold.toFixed(1));
+    updateDbElement('dbRefillDuration', dataOk && db.refillDuration !== undefined && db.refillDuration !== null ? db.refillDuration : 120);
     updateDbElement('dbEmailAddress', dataOk && db.emailAddress !== undefined && db.emailAddress !== null ? db.emailAddress : defaultValues.emailAddress);
     
     // Mise à jour du statut email
@@ -433,7 +449,7 @@ function displayDbVars(db) {
       'formAqThreshold': dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold,
       'formTankThreshold': dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold,
       'formHeaterThreshold': dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? db.heaterThreshold : defaultValues.heaterThreshold,
-    'formRefillDuration': dataOk && db.refillDuration !== undefined ? db.refillDuration : 120,
+      'formRefillDuration': dataOk && db.refillDuration !== undefined && db.refillDuration !== null ? db.refillDuration : 120,
       'formEmailAddress': dataOk && db.emailAddress ? db.emailAddress : ''
     };
     
@@ -567,6 +583,7 @@ window.loadDbVars = async function loadDbVars() {
     updateDbElement('dbAqThreshold', defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', defaultValues.tankThreshold);
     updateDbElement('dbHeaterThreshold', defaultValues.heaterThreshold.toFixed(1));
+    updateDbElement('dbRefillDuration', 120);
     updateDbElement('dbEmailAddress', defaultValues.emailAddress);
     
     // Mise à jour du statut email
@@ -730,11 +747,17 @@ window.submitDbVars = async function submitDbVars(ev) {
   }
 }
 
-// Initialisation optimisée
-document.addEventListener('DOMContentLoaded', function() {
-  if (isInitialized) return;
-  isInitialized = true;
+// FIX v11.31: Fonction d'initialisation exportée pour contrôle du timing
+// Appelée explicitement après chargement des scripts (évite race condition DOMContentLoaded)
+window.initializeDashboard = function initializeDashboard() {
+  // Vérifier que pas déjà initialisé
+  if (window.isInitialized) {
+    console.log('[INIT] Dashboard déjà initialisé, skip');
+    return;
+  }
+  window.isInitialized = true;
   
+  console.log('[INIT] 🚀 Initialisation dashboard...');
   logInfo('Dashboard consolidé initialisé', null, 'INIT');
   
   // Charger la version du firmware en parallèle
@@ -800,11 +823,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const [sensorData, dbVars] = await Promise.allSettled([
               fetch('/json', { 
                 cache: 'no-store',
-                signal: AbortSignal.timeout(6000) // 6s max (augmenté)
+                signal: AbortSignal.timeout(3000) // 3s max - optimisé après fix latence
               }).then(r => r.json()),
               fetch('/dbvars', { 
                 cache: 'no-store',
-                signal: AbortSignal.timeout(6000) // 6s max (augmenté)
+                signal: AbortSignal.timeout(3000) // 3s max - optimisé après fix latence
               }).then(r => r.json())
             ]);
             
@@ -865,7 +888,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const start = performance.now();
       const response = await fetch('/server-status', { 
         cache: 'no-store',
-        signal: AbortSignal.timeout(6000)
+        signal: AbortSignal.timeout(3000) // 3s max - optimisé après fix latence
       });
       const end = performance.now();
       
@@ -1005,7 +1028,9 @@ document.addEventListener('DOMContentLoaded', function() {
       document.head.appendChild(link);
     });
   }
-});
+  
+  console.log('[INIT] ✅ Initialisation dashboard terminée');
+};
 
 // ========================================
 // GESTIONNAIRE WIFI - FONCTIONS JAVASCRIPT

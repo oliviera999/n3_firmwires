@@ -485,11 +485,24 @@ public:
     void notifyWifiChange(const String& newSSID) {
         if (!isActive) return;
         
-        String message = "{\"type\":\"wifi_change\",\"ssid\":\"" + newSSID + "\",\"message\":\"Changement de réseau WiFi en cours...\"}";
+        // Déterminer le type de message selon le contenu
+        String msgType = "wifi_change";
+        String message = "";
+        
+        if (newSSID.indexOf("sleep") >= 0) {
+            // Message de sleep
+            msgType = "server_closing";
+            message = "{\"type\":\"server_closing\",\"message\":\"" + newSSID + "\"}";
+        } else {
+            // Message de changement WiFi normal
+            message = "{\"type\":\"wifi_change\",\"ssid\":\"" + newSSID + "\",\"message\":\"Changement de réseau WiFi en cours...\"}";
+        }
+        
         webSocket.broadcastTXT(message);
+        Serial.printf("[WebSocket] 📤 Notification envoyée aux clients: %s\n", msgType.c_str());
         
         // Donner le temps au message d'être envoyé
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(150));
     }
     
     /**

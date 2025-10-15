@@ -34,5 +34,6 @@ class WebClient {
   String _apiKey;
   WiFiClientSecure _client;
   HTTPClient _http;
+  unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
   bool httpRequest(const String& url, const String& payload, String& response);
 }; 

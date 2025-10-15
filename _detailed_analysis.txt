@@ -1,0 +1,40 @@
+
+  monitor_15min_2025-10-13_11-26-56.log:126:11:27:09.787 > [Config] Variables distantes inchang├®es - pas de sauvegarde NVS
+  monitor_15min_2025-10-13_11-26-56.log:127:11:27:09.787 > [AirSensor] Historique r├®initialis├®
+  monitor_15min_2025-10-13_11-26-56.log:128:11:27:09.788 > [AirSensor] Capteur d├®tect├® et initialis├®
+  monitor_15min_2025-10-13_11-26-56.log:129:11:27:09.788 > [WaterTemp] Historique r├®initialis├®
+  monitor_15min_2025-10-13_11-26-56.log:130:11:27:09.788 > [WaterTemp] Derni├¿re temp├®rature valide charg├®e depuis NVS: 29.0┬░C
+> monitor_15min_2025-10-13_11-26-56.log:131:11:27:09.788 > E (12201) task_wdt: esp_task_wdt_reset(707): task not found
+
+
+monitor_15min_2025-10-13_11-26-56.log:61:11:27:09.787 > [   489][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+monitor_15min_2025-10-13_11-26-56.log:141:11:27:10.088 > [ 11685][E][ESP32PWM.cpp:319] attachPin(): [ESP32PWM] ERROR PWM channel failed to configure on pin 12!
+monitor_15min_2025-10-13_11-26-56.log:148:11:27:10.147 > [ 11744][E][ESP32PWM.cpp:319] attachPin(): [ESP32PWM] ERROR PWM channel failed to configure on pin 13!
+monitor_15min_2025-10-13_11-26-56.log:355:11:27:19.960 > [ 21547][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+monitor_15min_2025-10-13_11-26-56.log:391:11:27:28.202 > [HTTP] ÔåÉ code 500, 104 bytes
+monitor_15min_2025-10-13_11-26-56.log:398:11:27:28.711 > [HTTP] ÔåÉ code 500, 104 bytes
+monitor_15min_2025-10-13_11-26-56.log:405:11:27:29.831 > [HTTP] ÔåÉ code 500, 104 bytes
+monitor_15min_2025-10-13_11-26-56.log:410:11:27:31.644 > [Network] sendFullUpdate FAILED
+monitor_15min_2025-10-13_11-26-56.log:650:11:27:44.612 > [HTTP] ÔåÉ code 500, 104 bytes
+monitor_15min_2025-10-13_11-26-56.log:657:11:27:45.139 > [HTTP] ÔåÉ code 500, 104 bytes
+monitor_15min_2025-10-13_11-26-56.log:664:11:27:46.578 > [HTTP] ÔåÉ code 500, 104 bytes
+monitor_15min_2025-10-13_11-26-56.log:669:11:27:48.393 > [Network] sendFullUpdate FAILED
+monitor_15min_2025-10-13_11-26-56.log:1003:11:28:05.469 > [HTTP] ÔåÉ code 500, 104 bytes
+
+
+monitor_15min_2025-10-13_11-26-56.log:118:11:27:09.787 > [OTA] ­ƒôè Heap libre: 175056 bytes
+monitor_15min_2025-10-13_11-26-56.log:160:11:27:10.257 > [Diagnostics] ­ƒÜÇ Initialis├® - reboot #3, minHeap: 4294967295 bytes
+monitor_15min_2025-10-13_11-26-56.log:219:11:27:17.553 > Heap libre au d├®marrage: 137008 bytes
+monitor_15min_2025-10-13_11-26-56.log:220:11:27:17.555 > Heap libre minimum historique: 4294967295 bytes
+monitor_15min_2025-10-13_11-26-56.log:256:11:27:17.654 > - diagnostics.minHeap: 0 bytes
+monitor_15min_2025-10-13_11-26-56.log:294:11:27:17.724 > - Heap free: 124228 bytes
+monitor_15min_2025-10-13_11-26-56.log:295:11:27:17.726 > - Heap min free: 114900 bytes
+monitor_15min_2025-10-13_11-26-56.log:296:11:27:17.729 > - Heap max alloc: 90100 bytes
+monitor_15min_2025-10-13_11-26-56.log:424:11:27:31.886 > [Diagnostics] ­ƒÜÇ Initialis├® - reboot #4, minHeap: 4294967295 bytes
+monitor_15min_2025-10-13_11-26-56.log:440:11:27:36.337 > [Web] ­ƒôè /json request from 192.168.0.158 - Heap: 117820 bytes
+monitor_15min_2025-10-13_11-26-56.log:501:11:27:38.170 > Heap libre au d├®marrage: 129856 bytes
+monitor_15min_2025-10-13_11-26-56.log:502:11:27:38.173 > Heap libre minimum historique: 4294967295 bytes
+monitor_15min_2025-10-13_11-26-56.log:545:11:27:38.258 > - Heap free: 120572 bytes
+monitor_15min_2025-10-13_11-26-56.log:546:11:27:38.261 > - Heap min free: 98628 bytes
+monitor_15min_2025-10-13_11-26-56.log:547:11:27:38.261 > - Heap max alloc: 86004 bytes
+

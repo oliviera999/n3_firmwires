@@ -375,16 +375,16 @@ void TimeDriftMonitor::saveToNVS() {
 
   // Configuration
   _preferences.putULong("syncInterval", _syncInterval);
-  _preferences.putFloat("driftThresholdPPM", _driftThresholdPPM);
+  _preferences.putFloat("driftThrPPM", _driftThresholdPPM);  // v11.10: raccourci (18→12 car)
   _preferences.putULong("lastSyncTime", static_cast<unsigned long>(_lastSyncTime));
 
   // Variables de suivi temporel (nécessaires pour la persistance)
   _preferences.putULong("lastNtpEpoch", static_cast<unsigned long>(_lastNtpEpoch));
   _preferences.putULong("lastLocalEpoch", static_cast<unsigned long>(_lastLocalEpoch));
 
-  // Variables de référence précédente
-  _preferences.putULong("previousNtpEpoch", static_cast<unsigned long>(_previousNtpEpoch));
-  _preferences.putULong("previousLocalEpoch", static_cast<unsigned long>(_previousLocalEpoch));
+  // Variables de référence précédente (v11.10: clés raccourcies pour NVS)
+  _preferences.putULong("prevNtpEpoch", static_cast<unsigned long>(_previousNtpEpoch));    // 17→13 car
+  _preferences.putULong("prevLocalEpo", static_cast<unsigned long>(_previousLocalEpoch));  // 19→12 car
 
   _preferences.end();
 
@@ -401,16 +401,16 @@ void TimeDriftMonitor::loadFromNVS() {
 
   // Configuration
   _syncInterval = _preferences.getULong("syncInterval", DEFAULT_SYNC_INTERVAL);
-  _driftThresholdPPM = _preferences.getFloat("driftThresholdPPM", DEFAULT_DRIFT_THRESHOLD_PPM);
+  _driftThresholdPPM = _preferences.getFloat("driftThrPPM", DEFAULT_DRIFT_THRESHOLD_PPM);  // v11.10: raccourci
   unsigned long storedSyncTime = _preferences.getULong("lastSyncTime", 0);
 
   // Variables de suivi temporel
   _lastNtpEpoch = static_cast<time_t>(_preferences.getULong("lastNtpEpoch", 0));
   _lastLocalEpoch = static_cast<time_t>(_preferences.getULong("lastLocalEpoch", 0));
 
-  // Variables de référence précédente
-  _previousNtpEpoch = static_cast<time_t>(_preferences.getULong("previousNtpEpoch", 0));
-  _previousLocalEpoch = static_cast<time_t>(_preferences.getULong("previousLocalEpoch", 0));
+  // Variables de référence précédente (v11.10: clés raccourcies pour NVS)
+  _previousNtpEpoch = static_cast<time_t>(_preferences.getULong("prevNtpEpoch", 0));
+  _previousLocalEpoch = static_cast<time_t>(_preferences.getULong("prevLocalEpo", 0));
 
   _preferences.end();
 
@@ -421,13 +421,17 @@ void TimeDriftMonitor::loadFromNVS() {
   _previousNtpMillis = 0;
   _previousLocalMillis = 0;
 
-  // Nettoyage one-shot des anciennes clés NVS liées à millis()
+  // Nettoyage one-shot des anciennes clés NVS (millis() + clés trop longues v11.10)
   _preferences.begin(NVS_NAMESPACE, false);
   _preferences.remove("lastSyncMillis");
   _preferences.remove("lastNtpMillis");
   _preferences.remove("lastLocalMillis");
   _preferences.remove("previousNtpMillis");
   _preferences.remove("previousLocalMillis");
+  // v11.10: Supprimer anciennes clés trop longues
+  _preferences.remove("driftThresholdPPM");
+  _preferences.remove("previousNtpEpoch");
+  _preferences.remove("previousLocalEpoch");
   _preferences.end();
 
   if (storedSyncTime >= SleepConfig::EPOCH_MIN_VALID && storedSyncTime <= SleepConfig::EPOCH_MAX_VALID) {

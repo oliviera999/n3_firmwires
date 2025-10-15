@@ -24,9 +24,6 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
   uint8_t valid = 0;
 
   for (uint8_t i = 0; i < samples; ++i) {
-    // Reset watchdog before each measurement
-    esp_task_wdt_reset();
-    
     // Déclenchement
     pinMode(_pinTrigEcho, OUTPUT);
     digitalWrite(_pinTrigEcho, LOW);
@@ -65,9 +62,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   
   // Effectue plusieurs lectures avec délai
   for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
-    // Reset watchdog before each measurement
-    esp_task_wdt_reset();
-    
     // Déclenchement
     pinMode(_pinTrigEcho, OUTPUT);
     digitalWrite(_pinTrigEcho, LOW);
@@ -95,9 +89,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       Serial.printf("[Ultrasonic] Lecture %d timeout\n", i+1);
     }
     
-    // Reset watchdog before delay
-    esp_task_wdt_reset();
-    
     // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter les interférences
     vTaskDelay(pdMS_TO_TICKS(60));
   }
@@ -122,43 +113,64 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   // Calcule la médiane
   uint16_t medianDistance = readings[validReadings / 2];
   
-  // CORRECTION : Détection de sauts brutaux assouplie
-  if (_lastValidDistance > 0 && abs((int)medianDistance - (int)_lastValidDistance) > MAX_DISTANCE_DELTA) {
-    // CORRECTION : Au lieu de retourner l'ancienne valeur, on accepte le changement si cohérent
-    Serial.printf("[Ultrasonic] Saut détecté: %u cm -> %u cm (écart: %d cm)\n", 
-                  _lastValidDistance, medianDistance, abs((int)medianDistance - (int)_lastValidDistance));
-    
-    // Si c'est un saut vers une valeur plus basse (niveau qui baisse), on l'accepte
-    if (medianDistance < _lastValidDistance) {
-      Serial.printf("[Ultrasonic] Saut vers le bas accepté (niveau qui baisse)\n");
-    } else {
-      // Si c'est un saut vers le haut, on vérifie la cohérence
-      Serial.printf("[Ultrasonic] Saut vers le haut, utilise ancienne valeur par sécurité\n");
-      return _lastValidDistance;
-    }
-  }
-  
-  // Historique glissant pour détection d'aberrations
-  if (_historyCount >= 2) {
-    uint32_t avgHistory = 0;
-    uint8_t validHistory = 0;
-    
+  // v11.35: NOUVELLE LOGIQUE - Médiane glissante avec consensus pour éviter valeurs figées
+  // Calcul de la médiane de l'historique (valeur de référence robuste)
+  uint16_t historyMedian = 0;
+  if (_historyCount >= 3) {
+    // Copie l'historique pour calcul médiane sans modifier l'original
+    uint16_t histTemp[HISTORY_SIZE];
+    uint8_t validCount = 0;
     for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
       if (_history[i] > 0) {
-        avgHistory += _history[i];
-        validHistory++;
+        histTemp[validCount++] = _history[i];
       }
     }
     
-    if (validHistory > 0) {
-      avgHistory /= validHistory;
-      int deviation = abs((int)medianDistance - (int)avgHistory);
+    // Tri pour médiane
+    if (validCount > 0) {
+      for (uint8_t i = 0; i < validCount - 1; ++i) {
+        for (uint8_t j = i + 1; j < validCount; ++j) {
+          if (histTemp[i] > histTemp[j]) {
+            uint16_t temp = histTemp[i];
+            histTemp[i] = histTemp[j];
+            histTemp[j] = temp;
+          }
+        }
+      }
+      historyMedian = histTemp[validCount / 2];
+    }
+  }
+  
+  // Utiliser médiane historique si disponible, sinon dernière valeur
+  uint16_t referenceValue = (historyMedian > 0) ? historyMedian : _lastValidDistance;
+  
+  // Détection de saut par rapport à la référence robuste
+  if (referenceValue > 0 && abs((int)medianDistance - (int)referenceValue) > MAX_DISTANCE_DELTA) {
+    Serial.printf("[Ultrasonic] Saut détecté: %u cm -> %u cm (écart: %d cm, ref: médiane historique)\n", 
+                  referenceValue, medianDistance, abs((int)medianDistance - (int)referenceValue));
+    
+    // v11.35: Si saut vers le bas, accepter (niveau qui baisse)
+    if (medianDistance < referenceValue) {
+      Serial.printf("[Ultrasonic] Saut vers le bas accepté (niveau qui baisse)\n");
+    } 
+    // v11.35: Si saut vers le haut, vérifier CONSENSUS sur 3 dernières lectures
+    else {
+      // Compter combien de lectures récentes concordent avec la nouvelle valeur
+      uint8_t consensusCount = 0;
+      for (uint8_t i = 0; i < HISTORY_SIZE && i < 3; ++i) {
+        uint8_t idx = (_historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
+        if (_history[idx] > 0 && abs((int)_history[idx] - (int)medianDistance) <= MAX_DISTANCE_DELTA / 2) {
+          consensusCount++;
+        }
+      }
       
-      // CORRECTION : Tolérance augmentée pour les variations de niveau d'eau
-      if (deviation > MAX_DISTANCE_DELTA * 3) { // Augmenté de *2 à *3
-        Serial.printf("[Ultrasonic] Écart important avec l'historique: %u cm (moyenne: %lu cm), utilise ancienne valeur\n", 
-                      medianDistance, avgHistory);
-        return _lastValidDistance;
+      // Si consensus de 2+ lectures récentes, accepter la nouvelle valeur (reset référence)
+      if (consensusCount >= 2) {
+        Serial.printf("[Ultrasonic] Consensus détecté (%d/3 lectures), accepte nouvelle référence\n", consensusCount);
+      } else {
+        // Sinon, utilise la médiane historique par sécurité
+        Serial.printf("[Ultrasonic] Pas de consensus (%d/3), utilise médiane historique par sécurité\n", consensusCount);
+        return referenceValue;
       }
     }
   }
@@ -174,6 +186,82 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   Serial.printf("[Ultrasonic] Distance médiane: %u cm (%d lectures valides)\n", 
                 medianDistance, validReadings);
   return medianDistance;
+}
+
+uint16_t UltrasonicManager::readReactiveFiltered() {
+  // v11.41: Mode réactif - lissage minimal pour détecter rapidement les changements de niveau
+  // Réduit le lissage excessif des capteurs ultrasoniques tout en gardant la fiabilité
+  // Configuration: 3 lectures avec délai de 60ms entre chaque lecture
+  uint16_t readings[REACTIVE_READINGS_COUNT];
+  uint8_t validReadings = 0;
+  
+  const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
+  
+  // Effectue 3 lectures avec délai standard de 60ms
+  for (uint8_t i = 0; i < REACTIVE_READINGS_COUNT; ++i) {
+    // Déclenchement
+    pinMode(_pinTrigEcho, OUTPUT);
+    digitalWrite(_pinTrigEcho, LOW);
+    delayMicroseconds(2);
+    digitalWrite(_pinTrigEcho, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(_pinTrigEcho, LOW);
+
+    // Lecture de l'écho
+    pinMode(_pinTrigEcho, INPUT);
+    unsigned long duration = readEchoPulseUs(TIMEOUT_US);
+
+    if (duration > 0) {
+      uint16_t cm = duration / 58; // Conversion µs -> cm
+      
+      if (cm >= MIN_DISTANCE && cm < MAX_DISTANCE) {
+        readings[validReadings++] = cm;
+        Serial.printf("[Ultrasonic] Lecture réactive %d: %u cm\n", i+1, cm);
+      } else {
+        Serial.printf("[Ultrasonic] Lecture réactive %d rejetée: %u cm (hors plage)\n", i+1, cm);
+      }
+    } else {
+      Serial.printf("[Ultrasonic] Lecture réactive %d timeout\n", i+1);
+    }
+    
+    // Délai standard de 60ms entre lectures
+    if (i < REACTIVE_READINGS_COUNT - 1) {
+      vTaskDelay(pdMS_TO_TICKS(60));
+    }
+  }
+  
+  if (validReadings < 1) {
+    Serial.printf("[Ultrasonic] Pas assez de lectures réactives valides (%d/1), retourne 0\n", validReadings);
+    return 0;
+  }
+  
+  // Calcul simple : moyenne des lectures valides (pas de médiane pour plus de réactivité)
+  uint32_t total = 0;
+  for (uint8_t i = 0; i < validReadings; ++i) {
+    total += readings[i];
+  }
+  uint16_t avgDistance = total / validReadings;
+  
+  // Validation minimale : seulement vérifier les valeurs aberrantes extrêmes
+  if (_lastValidDistance > 0) {
+    int delta = abs((int)avgDistance - (int)_lastValidDistance);
+    // Seuil plus permissif pour les sauts importants (50cm au lieu de 30cm)
+    if (delta > 50) {
+      Serial.printf("[Ultrasonic] Saut important détecté: %u -> %u cm (Δ=%d), accepte pour réactivité\n", 
+                   _lastValidDistance, avgDistance, delta);
+    }
+  }
+  
+  // Mise à jour de l'historique avec la nouvelle valeur
+  _history[_historyIndex] = avgDistance;
+  _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
+  if (_historyCount < HISTORY_SIZE) _historyCount++;
+  
+  // Mise à jour dernière valeur valide
+  _lastValidDistance = avgDistance;
+  
+  Serial.printf("[Ultrasonic] Mode réactif: %u cm (moyenne de %d lectures sur 3)\n", avgDistance, validReadings);
+  return avgDistance;
 }
 
 uint16_t UltrasonicManager::readRobustFiltered() {
@@ -367,9 +455,6 @@ float WaterTempSensor::robustTemperatureC() {
   for (uint8_t attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; ++attempt) {
     Serial.printf("[WaterTemp] Tentative de récupération %d/%d...\n", attempt + 1, MAX_RECOVERY_ATTEMPTS);
     
-    // Reset watchdog before recovery attempt
-    esp_task_wdt_reset();
-    
     // Reset matériel du bus OneWire avant chaque tentative
     _oneWire.reset();
     vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
@@ -388,9 +473,6 @@ float WaterTempSensor::robustTemperatureC() {
       Serial.printf("[WaterTemp] Récupération réussie: %.1f°C\n", temp);
       return temp;
     }
-    
-    // Reset watchdog before delay
-    esp_task_wdt_reset();
     
     // Délai progressif entre tentatives (backoff)
     uint16_t delay = RECOVERY_DELAY_MS * (attempt + 1);
@@ -513,7 +595,6 @@ float WaterTempSensor::ultraRobustTemperatureC() {
 
 float WaterTempSensor::temperatureC() {
   // Non-bloquant: si pipeline prêt et délai écoulé, lire
-  esp_task_wdt_reset();
   unsigned long now = millis();
   if (_pipelineReady && (now - _lastRequestMs) >= CONVERSION_DELAY_MS) {
     float temp = _sensors.getTempCByIndex(0);
@@ -546,8 +627,6 @@ float WaterTempSensor::filteredTemperatureC() {
   
   // Effectue plusieurs lectures avec validation croisée
   for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
-    esp_task_wdt_reset(); // Reset watchdog before each reading
-    
     // Non-bloquant: vérifier si une conversion précédente est prête
     if (!_pipelineReady) {
       _sensors.requestTemperatures();
@@ -604,9 +683,6 @@ float WaterTempSensor::filteredTemperatureC() {
       bool inRange = (temp >= SensorConfig::WaterTemp::MIN_VALID) && (temp <= SensorConfig::WaterTemp::MAX_VALID);
       Serial.printf("[WaterTemp] Lecture invalide rejetée: %.1f°C (NaN=%d, inRange=%d)\n", temp, isnan(temp), inRange);
     }
-    
-    // Reset watchdog before delay
-    esp_task_wdt_reset();
     
     // Délai entre les mesures
     vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS));
@@ -673,7 +749,6 @@ float WaterTempSensor::filteredTemperatureC() {
     float confirmReadings[READINGS_COUNT];
     uint8_t confirmValid = 0;
     for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
-      esp_task_wdt_reset();
       _oneWire.reset();
       vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
       _sensors.requestTemperatures();
@@ -684,7 +759,6 @@ float WaterTempSensor::filteredTemperatureC() {
       } else {
         Serial.printf("[WaterTemp] Confirmation: lecture rejetée: %.1f°C\n", t2);
       }
-      esp_task_wdt_reset();
       vTaskDelay(pdMS_TO_TICKS(READING_INTERVAL_MS));
     }
 
@@ -802,10 +876,22 @@ void AirSensor::begin() {
 
 bool AirSensor::isSensorConnected() {
   // Test de lecture pour vérifier la connectivité du DHT
+  // IMPORTANT: Reset watchdog AVANT lecture DHT pour éviter crash
+  // Vérifier que la tâche est enregistrée au watchdog avant reset
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  
   float temp = _dht.readTemperature();
   // FIX: Délai minimum DHT augmenté à 2.5 secondes pour stabilité
   // Le DHT11/DHT22 nécessite au moins 2 secondes entre lectures selon datasheet
   vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS));
+  
+  // Reset watchdog avant deuxième lecture
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  
   float humidity = _dht.readHumidity();
   
   // Vérifie si les lectures sont valides
@@ -858,8 +944,10 @@ float AirSensor::robustTemperatureC() {
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
     Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
-    // Reset watchdog avant chaque tentative
-    esp_task_wdt_reset();
+    // IMPORTANT: Reset watchdog avant chaque tentative
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     
     // Lecture simple avec délai
     float temp = _dht.readTemperature();
@@ -869,9 +957,6 @@ float AirSensor::robustTemperatureC() {
       Serial.printf("[AirSensor] Récupération réussie: %.1f°C\n", temp);
       return temp;
     }
-    
-    // Reset watchdog avant délai
-    esp_task_wdt_reset();
     
     // Délai entre tentatives
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
@@ -897,6 +982,12 @@ float AirSensor::filteredTemperatureC() {
     return _emaInit ? _emaTemp : NAN;
   }
   _lastDhtReadMs = now;
+  
+  // IMPORTANT: Reset watchdog avant lecture DHT pour éviter crash
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  
   float temp = _dht.readTemperature();
   if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
     return _emaInit ? _emaTemp : NAN;
@@ -921,6 +1012,12 @@ float AirSensor::filteredHumidity() {
     return _emaInit ? _emaHumidity : NAN;
   }
   _lastDhtReadMs = now;
+  
+  // IMPORTANT: Reset watchdog avant lecture DHT pour éviter crash
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  
   float h = _dht.readHumidity();
   if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
     return _emaInit ? _emaHumidity : NAN;
@@ -965,8 +1062,10 @@ float AirSensor::robustHumidity() {
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
     Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
-    // Reset watchdog avant chaque tentative
-    esp_task_wdt_reset();
+    // IMPORTANT: Reset watchdog avant chaque tentative
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     
     // Lecture simple avec délai
     float humidity = _dht.readHumidity();
@@ -976,9 +1075,6 @@ float AirSensor::robustHumidity() {
       Serial.printf("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
       return humidity;
     }
-    
-    // Reset watchdog avant délai
-    esp_task_wdt_reset();
     
     // Délai entre tentatives
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));

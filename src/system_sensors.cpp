@@ -21,16 +21,15 @@ SensorReadings SystemSensors::read() {
   uint32_t startTime = millis();
   uint32_t phaseStart;
 
-  // Reset watchdog at the start of sensor reading
-  esp_task_wdt_reset(); // Réactivé pour éviter les timeouts
-
   // --- Mesures sécurisées avec validation ---
   const uint8_t MAX_RETRIES = 3;
 
   // Température eau avec récupération ultra-robuste (0 – 60 °C attendue)
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before water temperature reading
+    
+    // CRITIQUE : Lecture DS18B20 peut prendre 780ms+ au démarrage
+    // Reset watchdog au milieu de la lecture pour éviter timeout
     
     // Utilise d'abord la méthode robuste standard
     float val = _water.robustTemperatureC();
@@ -70,7 +69,6 @@ SensorReadings SystemSensors::read() {
   // Température air avec récupération robuste (+5 – 60 °C attendue)
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before air temperature reading
     float val = _air.robustTemperatureC(); // Utilise la méthode robuste avec récupération
     Serial.printf("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
     
@@ -86,7 +84,6 @@ SensorReadings SystemSensors::read() {
   // Humidité avec récupération robuste (5 – 100 %)
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before humidity reading
     float val = _air.robustHumidity(); // Utilise la méthode robuste avec récupération
     Serial.printf("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
     
@@ -99,11 +96,10 @@ SensorReadings SystemSensors::read() {
     }
   }
 
-  // Niveaux d'eau avec validation
+  // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before potager level reading
-    uint16_t val = _usPota.readAdvancedFiltered();
+    uint16_t val = _usPota.readReactiveFiltered();
     Serial.printf("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
     if (val == 0 || val > 500) { // 0 = invalide, >500cm = aberrant
       Serial.printf("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
@@ -115,8 +111,7 @@ SensorReadings SystemSensors::read() {
   
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before aquarium level reading
-    uint16_t val = _usAqua.readAdvancedFiltered();
+    uint16_t val = _usAqua.readReactiveFiltered();
     Serial.printf("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
@@ -150,7 +145,6 @@ SensorReadings SystemSensors::read() {
   
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before tank level reading
     uint16_t val = _usTank.readAdvancedFiltered();
     Serial.printf("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= 500);
@@ -179,7 +173,6 @@ SensorReadings SystemSensors::read() {
   // Luminosité avec validation
   {
     phaseStart = millis();
-    esp_task_wdt_reset(); // Reset watchdog before luminosity reading
     uint32_t lumiSum = 0;
     const uint8_t NB_LUMI_SAMPLES = 12; // 12 échantillons pour réduire le bruit
     for (uint8_t i = 0; i < NB_LUMI_SAMPLES; ++i) {
@@ -214,9 +207,6 @@ SensorReadings SystemSensors::read() {
     Serial.printf("[SystemSensors] ✓ Lecture capteurs terminée en %u ms\n", elapsed);
   }
 
-  // Reset watchdog at the end of sensor reading
-  esp_task_wdt_reset();
-  
   LOG(LOG_DEBUG, "Sensors TWater=%.1fC TAir=%.1fC Hum=%.1f%% wlA=%u wlT=%u wlP=%u Lux=%u", r.tempWater, r.tempAir, r.humidity, r.wlAqua, r.wlTank, r.wlPota, r.luminosite);
 
   return r;

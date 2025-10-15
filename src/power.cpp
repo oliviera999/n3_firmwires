@@ -6,6 +6,7 @@
 #include <functional>
 #include "project_config.h"
 #include "log.h"
+#include "realtime_websocket.h"
 
 // Fonction tcpip_safe_call supprimée - appels directs utilisés à la place
 
@@ -63,6 +64,26 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   
   // Déconnexion WiFi avant le sommeil (si configuré)
   if (SleepConfig::DISCONNECT_WIFI_BEFORE_SLEEP) {
+    // AMÉLIORATION: Fermer proprement le WebSocket avant de déconnecter le WiFi
+    // pour éviter les erreurs 1006 (connexion fermée sans Close frame)
+    uint8_t wsClients = realtimeWebSocket.getConnectedClients();
+    
+    if (wsClients > 0) {
+      Serial.printf("[Power] 🔌 Fermeture propre de %u connexion(s) WebSocket avant sleep...\n", wsClients);
+      
+      // Notifier les clients que le serveur entre en veille avec message explicite
+      // Le client recevra un message "server_closing" qui bloquera temporairement les reconnexions
+      realtimeWebSocket.notifyWifiChange("System entering light sleep mode");
+      
+      // Fermer toutes les connexions proprement avec Close frame
+      realtimeWebSocket.closeAllConnections();
+      
+      // Délai critique pour assurer l'envoi des Close frames avant déconnexion WiFi
+      // Réduit le risque de code 1006 (fermeture anormale)
+      vTaskDelay(pdMS_TO_TICKS(350));
+    }
+    
+    // Déconnecter le WiFi
     WiFi.disconnect();
     Serial.println(F("[Power] WiFi déconnecté avant sommeil"));
   }
@@ -536,17 +557,24 @@ uint32_t PowerManager::goToModemSleepWithLightSleep(uint32_t sleepTimeSeconds) {
   // IMPORTANT : NE PAS déconnecter le WiFi
   // Le WiFi reste connecté en modem sleep automatique
   
-  // Configuration du réveil par timer (fallback)
+  // CRITIQUE : Attendre que toutes les opérations réseau soient terminées
+  // avant d'entrer en sleep pour éviter les conflits LWIP/TCPIP
+  vTaskDelay(pdMS_TO_TICKS(100));  // 100ms pour terminer les opérations en cours
+  
+  // Configuration du réveil par timer
   esp_sleep_enable_timer_wakeup(sleepTimeSeconds * 1000000ULL);
   
-  // Configuration du réveil WiFi (NOUVEAU)
-  esp_sleep_enable_wifi_wakeup();
-  _wifiWakeupEnabled = true;
+  // NOTE : Le réveil WiFi fonctionne AUTOMATIQUEMENT avec le modem sleep
+  // PAS BESOIN d'appeler esp_sleep_enable_wifi_wakeup() qui n'est pas disponible partout
+  // Le modem WiFi reste actif en light sleep et peut réveiller l'ESP32
   
-  // Configuration optimale des domaines de puissance pour modem sleep
-  configurePowerDomainsForModemSleep();
+  // Configuration SIMPLIFIÉE des domaines de puissance pour light sleep avec WiFi
+  // On ne touche PAS aux power domains - le modem sleep gère tout automatiquement
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);   // RTC ON pour timer wakeup
   
-  Serial.println("[Power] WiFi maintenu connecté - Réveil réseau activé");
+  _wifiWakeupEnabled = true;  // Indicateur que WiFi peut réveiller
+  
+  Serial.println("[Power] WiFi maintenu connecté - Réveil réseau automatique via modem sleep");
   Serial.printf("[Power] IP: %s, RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
   
   // Light sleep avec WiFi en modem sleep automatique
@@ -660,15 +688,18 @@ void PowerManager::setSleepMode(bool useModemSleep) {
 }
 
 void PowerManager::configurePowerDomainsForModemSleep() {
-  // Configuration optimale des domaines de puissance pour modem sleep
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);   // RTC périphériques ON
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);  // RTC mémoire lente ON
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);  // RTC mémoire rapide ON
-  esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_OFF);         // Crystal OFF (économie)
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_CPU, ESP_PD_OPTION_OFF);          // CPU OFF - non disponible
-  esp_sleep_pd_config(ESP_PD_DOMAIN_VDDSDIO, ESP_PD_OPTION_OFF);      // SDIO OFF
+  // DÉSACTIVÉ : Configuration trop agressive causant des conflits
+  // Le modem sleep + light sleep fonctionne AUTOMATIQUEMENT sans configuration manuelle
+  // des power domains. L'ESP-IDF gère cela de manière optimale.
   
-  Serial.println("[Power] Domaines de puissance configurés pour modem sleep");
+  // ANCIENNE CONFIG (causait des crashes) :
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_OFF);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_VDDSDIO, ESP_PD_OPTION_OFF);
+  
+  Serial.println("[Power] Power domains: utilisation configuration automatique ESP-IDF");
 }
 
 void PowerManager::logWakeupCause(esp_sleep_wakeup_cause_t cause) {

@@ -274,7 +274,7 @@ void sensorTask(void* pv) {
     esp_task_wdt_reset();
     
     if (sensorQueue) {
-      BaseType_t result = xQueueSendToBack(sensorQueue, &r, pdMS_TO_TICKS(20));
+      BaseType_t result = xQueueSendToBack(sensorQueue, &r, pdMS_TO_TICKS(200)); // v11.34: Augmenté 20ms → 200ms
       if (result != pdTRUE) {
         Serial.println(F("[Sensor] ⚠️ Queue pleine - donnée de capteur perdue!"));
       }
@@ -355,13 +355,15 @@ void automationTask(void* pv) {
   unsigned long lastDriftDisplay = 0;
   const unsigned long DRIFT_DISPLAY_INTERVAL = TimingConfig::DRIFT_DISPLAY_INTERVAL_MS; // 30 minutes
   
+  // Enregistrement dans le watchdog AU DÉBUT de la tâche
+  static bool wdtReg=false;
+  if(!wdtReg){ esp_task_wdt_add(NULL); wdtReg=true; }
+  
   for (;;) {
     // Reset watchdog au début de chaque itération
     esp_task_wdt_reset();
     
     if (xQueueReceive(sensorQueue, &r, portMAX_DELAY) == pdTRUE) {
-      static bool wdtReg=false;
-      if(!wdtReg){ esp_task_wdt_add(NULL); wdtReg=true; }
       
       // Reset watchdog avant les opérations critiques
       esp_task_wdt_reset();
@@ -742,8 +744,15 @@ void setup() {
   Serial.println("[App] Mail désactivé (FEATURE_MAIL=0) - mail de test ignoré");
   #endif
   
-  // Chargement des flags de bouffe AVANT l'initialisation des automatismes
-  config.loadBouffeFlags();
+  // ========================================
+  // CHARGEMENT COMPLET CONFIGURATION NVS (v11.32)
+  // ========================================
+  // Charge TOUTES les variables depuis NVS au démarrage
+  // Inclut: flags bouffe, email, seuils, durées, etc.
+  // Fallback valeurs par défaut si NVS vide
+  Serial.println(F("\n[App] Chargement configuration complète depuis NVS..."));
+  config.loadConfigFromNVS();
+  
   autoCtrl.begin();
 
   // --- Première synchronisation distante IMMÉDIATE -----------------------------
@@ -851,9 +860,9 @@ void setup() {
   }
   
   // Création queue & tasks FreeRTOS - Stratégie Web Dédié
-  sensorQueue = xQueueCreate(10, sizeof(SensorReadings)); // Augmenté de 5 à 10 slots
+  sensorQueue = xQueueCreate(30, sizeof(SensorReadings)); // Augmenté de 10 à 30 slots (v11.34)
   if (sensorQueue) {
-    Serial.printf("[App] ✅ Queue capteurs créée avec succès (10 slots)\n");
+    Serial.printf("[App] ✅ Queue capteurs créée avec succès (30 slots)\n");
     xTaskCreatePinnedToCore(sensorTask, "sensorTask", TaskConfig::SENSOR_TASK_STACK_SIZE, nullptr, TaskConfig::SENSOR_TASK_PRIORITY, &g_sensorTaskHandle, TaskConfig::TASK_CORE_ID); // core 1 - priorité CRITIQUE pour l'acquisition
     xTaskCreatePinnedToCore(webTask, "webTask", TaskConfig::WEB_TASK_STACK_SIZE, nullptr, TaskConfig::WEB_TASK_PRIORITY, &g_webTaskHandle, TaskConfig::TASK_CORE_ID); // priorité HAUTE pour l'interface web
     xTaskCreatePinnedToCore(automationTask, "autoTask", TaskConfig::AUTOMATION_TASK_STACK_SIZE, nullptr, TaskConfig::AUTOMATION_TASK_PRIORITY, &g_autoTaskHandle, TaskConfig::TASK_CORE_ID); // priorité MOYENNE pour la logique pure

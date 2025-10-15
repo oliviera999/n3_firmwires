@@ -5,7 +5,9 @@
 #include "config_manager.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
+#include "data_queue.h"
 #include <ArduinoJson.h>
+#include <Preferences.h>
 
 /**
  * Module Network pour Automatism
@@ -25,6 +27,13 @@ public:
      * @param cfg Référence ConfigManager
      */
     AutomatismNetwork(WebClient& web, ConfigManager& cfg);
+    
+    /**
+     * Initialisation du module (après montage LittleFS)
+     * DOIT être appelé dans setup() après LittleFS.begin()
+     * @return true si succès, false sinon
+     */
+    bool begin();
     
     // === COMMUNICATION SERVEUR ===
     
@@ -118,6 +127,30 @@ public:
      */
     void checkCriticalChanges(const SensorReadings& readings);
     
+    // === PERSISTANCE ET ACK (v11.31) ===
+    
+    /**
+     * Rejoue les données en attente depuis la queue
+     * Appel automatique après envoi réussi
+     * @return Nombre de payloads rejoués
+     */
+    uint16_t replayQueuedData();
+    
+    /**
+     * Envoie un ACK immédiat au serveur pour une commande exécutée
+     * @param command Nom de la commande ("bouffePetits", "pump_tank", etc.)
+     * @param status État de la commande ("executed", "on", "off", etc.)
+     * @return true si ACK envoyé avec succès
+     */
+    bool sendCommandAck(const char* command, const char* status);
+    
+    /**
+     * Log une exécution de commande distante avec statistiques
+     * @param command Nom de la commande
+     * @param success true si succès
+     */
+    void logRemoteCommandExecution(const char* command, bool success);
+    
     // === CONFIGURATION ===
     
     /**
@@ -160,6 +193,7 @@ public:
 private:
     WebClient& _web;
     ConfigManager& _config;
+    DataQueue _dataQueue;  // v11.31: File d'attente persistante
     
     // Configuration serveur
     String _emailAddress;
@@ -191,6 +225,17 @@ private:
     bool _prevBouffeSoir;
     
     // === HELPERS PRIVÉS ===
+    
+    /**
+     * Normalise les clés JSON du serveur distant vers format interface
+     * v11.40: Garantit cohérence entre serveur distant et interface web
+     * @param src Document source (format serveur)
+     * @param dst Document destination (format interface normalisé)
+     */
+    static void normalizeServerKeys(
+        const ArduinoJson::JsonDocument& src,
+        ArduinoJson::JsonDocument& dst
+    );
     
     /**
      * Helper: Évalue si une valeur JSON est "truthy"

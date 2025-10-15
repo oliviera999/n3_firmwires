@@ -133,12 +133,18 @@ void AutomatismFeeding::feedSmallManual(std::function<void(const char*, unsigned
     Serial.printf("[CRITIQUE] Durées configurées - Gros: %u s, Petits: %u s\n", 
                  _feedBigDur, _feedSmallDur);
     
+    // v11.31: Reset watchdog avant opération longue
+    esp_task_wdt_reset();
+    
     // EXÉCUTION CIBLÉE - PRIORITÉ ABSOLUE (uniquement servo "petits")
     unsigned long startTime = millis();
     _acts.feedSmallFish(_feedSmallDur);
     
     unsigned long executionTime = millis() - startTime;
     Serial.printf("[CRITIQUE] Temps d'exécution total: %lu ms\n", executionTime);
+    
+    // v11.31: Reset watchdog après opération longue
+    esp_task_wdt_reset();
     
     // Protection double exécution
     unsigned long now = millis();
@@ -160,6 +166,9 @@ void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned l
     Serial.printf("[CRITIQUE] Durées configurées - Gros: %u s, Petits: %u s\n",
                  _feedBigDur, _feedSmallDur);
     
+    // v11.31: Reset watchdog avant opération longue
+    esp_task_wdt_reset();
+    
     // EXÉCUTION SÉQUENTIELLE - PRIORITÉ ABSOLUE (gros puis petits)
     unsigned long startTime = millis();
     
@@ -171,6 +180,9 @@ void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned l
     
     unsigned long executionTime = millis() - startTime;
     Serial.printf("[CRITIQUE] Temps d'exécution total: %lu ms\n", executionTime);
+    
+    // v11.31: Reset watchdog après opération longue
+    esp_task_wdt_reset();
     
     // Protection double exécution
     unsigned long now = millis();

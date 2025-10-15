@@ -173,6 +173,15 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
 }
 
 void Automatism::begin() {
+  // ========================================
+  // INITIALISATION MODULE NETWORK (v11.32)
+  // ========================================
+  // CRITIQUE: Doit être fait après LittleFS.begin() pour DataQueue
+  Serial.println(F("[Auto] Initialisation module Network..."));
+  if (!_network.begin()) {
+    Serial.println(F("[Auto] ⚠️ Échec initialisation Network (DataQueue)"));
+  }
+  
   // Restauration de forceWakeUp depuis la configuration persistante
   forceWakeUp = _config.getForceWakeUp();
   Serial.printf("[Auto] forceWakeUp restauré depuis config: %s\n", forceWakeUp ? "true" : "false");
@@ -267,6 +276,10 @@ void Automatism::begin() {
         assignIfPresent("feedMorning", feedMorning);
         assignIfPresent("feedNoon",    feedNoon);
         assignIfPresent("feedEvening", feedEvening);
+        
+        // v11.41: Durées nourrissage (format normalisé)
+        assignIfPresent("feedBigDur", feedBigDur);
+        assignIfPresent("feedSmallDur", feedSmallDur);
 
         // Parcours des clés numériques (>=100) pour restaurer les variables de configuration
         for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
@@ -335,6 +348,12 @@ void Automatism::begin() {
           int fv = doc["FreqWakeUp"].as<int>();
           if (fv > 0) freqWakeSec = fv;
         }
+        
+        // v11.40: Propager les durées et horaires de nourrissage au module Feeding
+        _feeding.setDurations(feedBigDur, feedSmallDur);
+        _feeding.setSchedule(feedMorning, feedNoon, feedEvening);
+        Serial.printf("[Auto] Config Feeding: Durées %us/%us, Horaires %uh/%uh/%uh\n",
+                     feedBigDur, feedSmallDur, feedMorning, feedNoon, feedEvening);
 
         Serial.println(F("[Auto] Variables distantes restaurées depuis NVS"));
         Serial.printf("[Auto] forceWakeUp restauré: %s\n", forceWakeUp ? "true" : "false");
@@ -377,9 +396,6 @@ void Automatism::updateDisplay() {
     splashStartTime = 0; // Reset pour éviter les appels répétés
   }
   
-  // Reset watchdog at the start of display update
-  esp_task_wdt_reset();
-  
   const uint32_t currentMillis = millis();
   
   // Gestion du changement d'écran toutes les 4 secondes (optimisé pour dynamisme)
@@ -398,9 +414,6 @@ void Automatism::updateDisplay() {
   const uint32_t displayInterval = getRecommendedDisplayIntervalMs();
   if (currentMillis - _lastOled >= displayInterval) {
     _lastOled = currentMillis;
-    
-    // Reset watchdog before display operations
-    esp_task_wdt_reset();
     
     // Log de debug pour diagnostiquer (réduit à toutes les 10 secondes)
     static unsigned long lastDebugLog = 0;
@@ -442,9 +455,6 @@ void Automatism::updateDisplay() {
                              (currentMillis % 1000 < 250); // Mode immédiat 25% du temps
     
     _disp.setUpdateMode(forceImmediateMode);
-    
-    // Reset watchdog before display operations
-    esp_task_wdt_reset();
     
     if (isCountdownMode) {
       // Affichage d'un compte à rebours lors des phases nourrissage / remplissage
@@ -509,9 +519,6 @@ void Automatism::updateDisplay() {
       // Fin de la mise à jour d'affichage (flush automatique)
       _disp.endUpdate();
     }
-    
-    // Reset watchdog after display operations
-    esp_task_wdt_reset();
     
     if (hasExpired(mailBlinkUntil, currentMillis)) mailBlinkUntil = 0;
   }
@@ -1282,6 +1289,30 @@ void Automatism::handleRemoteState() {
   // à de nombreux membres privés (_manualTankOverride, tankPumpLocked, etc.)
   // Le déplacer nécessiterait 20+ getters/setters sans gain de maintenabilité
   
+  // ========================================
+  // PRIORITÉ LOCALE (v11.33): Bloquer GPIO par numéro si sync en attente
+  // FIX: Les commandes par numéro (ex: "2":"0") contournaient la protection
+  // ========================================
+  const uint32_t LOCAL_PRIORITY_TIMEOUT_MS = 5000; // 5 secondes de priorité locale
+  
+  // Bloquer si sync en attente (priorité jusqu'à sync OK)
+  if (AutomatismPersistence::hasPendingSync()) {
+    uint32_t pendingCount = AutomatismPersistence::getPendingSyncCount();
+    uint32_t lastPending = AutomatismPersistence::getLastPendingSyncTime();
+    uint32_t elapsed = millis() - lastPending;
+    Serial.printf("[GPIO] ⏳ PRIORITÉ LOCALE - GPIO par numéro bloqués (sync en attente: %u items, %lu ms)\n", 
+                  pendingCount, elapsed);
+    return; // Ignorer TOUTES les commandes GPIO distantes
+  }
+  
+  // Bloquer si action locale récente (sécurité supplémentaire)
+  if (AutomatismPersistence::hasRecentLocalAction(LOCAL_PRIORITY_TIMEOUT_MS)) {
+    uint32_t lastLocal = AutomatismPersistence::getLastLocalActionTime();
+    uint32_t elapsed = millis() - lastLocal;
+    Serial.printf("[GPIO] ⚠️ PRIORITÉ LOCALE ACTIVE - GPIO par numéro bloqués (%lu ms écoulées)\n", elapsed);
+    return; // Ignorer les commandes distantes
+  }
+  
   // Parcours de toutes les paires pour gérer les GPIO numériques dynamiques
   for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
     const char* key = kv.key().c_str();
@@ -1322,12 +1353,27 @@ void Automatism::handleRemoteState() {
         if (val && !currentState) {
           _acts.startAquaPump();
           _lastAquaManualOrigin = ManualOrigin::REMOTE_SERVER;
+          
+          // FIX v11.09: Notification serveur du démarrage
+          if (WiFi.status() == WL_CONNECTED) {
+            SensorReadings cur = _sensors.read();
+            sendFullUpdate(cur, "etatPompeAqua=1");
+            Serial.println(F("[Auto] Données envoyées au serveur - pompe aqua activée manuellement (distant)"));
+          }
+          
           Serial.println(F("[Auto] Pompe aqua ON (GPIO numérique)"));
         } else if (!val && currentState) {
           Serial.println(F("[Remote] Aqua OFF (commande distante GPIO)"));
           _acts.stopAquaPump();
           _lastAquaStopReason = AquaPumpStopReason::MANUAL;
           _lastAquaManualOrigin = ManualOrigin::REMOTE_SERVER;
+          
+          // FIX v11.09: Notification serveur de l'arrêt
+          if (WiFi.status() == WL_CONNECTED) {
+            SensorReadings cur = _sensors.read();
+            sendFullUpdate(cur, "etatPompeAqua=0");
+            Serial.println(F("[Auto] Données envoyées au serveur - pompe aqua arrêtée manuellement (distant)"));
+          }
         } else {
           Serial.printf("[Auto] Pompe aqua GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
                        currentState ? "ON" : "OFF");
@@ -1361,6 +1407,14 @@ void Automatism::handleRemoteState() {
               _lastTankManualOrigin = ManualOrigin::REMOTE_SERVER;
               _countdownEnd = 0;
               _manualTankOverride = false;
+              
+              // FIX v11.09: Notification serveur de l'arrêt
+              if (WiFi.status() == WL_CONNECTED) {
+                SensorReadings cur = _sensors.read();
+                sendFullUpdate(cur, "etatPompeTank=0");
+                Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir arrêtée manuellement (distant)"));
+              }
+              
               Serial.println(F("[Auto] Arrêt manuel pompe réservoir (commande distante)"));
             } else {
               Serial.println(F("[Auto] Arrêt pompe réservoir IGNORÉ - pompe déjà arrêtée (synchronisation distante)"));
@@ -1375,18 +1429,59 @@ void Automatism::handleRemoteState() {
         if (valBool && !currentState) {
           Serial.println("[DEBUG] Démarrage chauffage...");
           _acts.startHeater();
+          
+          // FIX v11.09: Notification serveur du démarrage
+          if (WiFi.status() == WL_CONNECTED) {
+            SensorReadings cur = _sensors.read();
+            sendFullUpdate(cur, "etatHeat=1");
+            Serial.println(F("[Auto] Données envoyées au serveur - chauffage activé manuellement (distant)"));
+          }
+          
           Serial.println("[DEBUG] Chauffage démarré");
         } else if (!valBool && currentState) {
           Serial.println("[DEBUG] Arrêt chauffage...");
           _acts.stopHeater();
+          
+          // FIX v11.09: Notification serveur de l'arrêt
+          if (WiFi.status() == WL_CONNECTED) {
+            SensorReadings cur = _sensors.read();
+            sendFullUpdate(cur, "etatHeat=0");
+            Serial.println(F("[Auto] Données envoyées au serveur - chauffage arrêté manuellement (distant)"));
+          }
+          
           Serial.println("[DEBUG] Chauffage arrêté");
         } else {
           Serial.printf("[Auto] Chauffage GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
                        currentState ? "ON" : "OFF");
         }
       } else if (id == Pins::LUMIERE) {
-        // Déjà géré par handleRemoteActuators() du module, skip ici pour éviter duplication
-        // Serial.println(F("[Auto] Lumière gérée par module Network"));
+        bool currentState = _acts.isLightOn();
+        if (valBool && !currentState) {
+          _acts.startLight();
+          
+          // FIX v11.09: Notification serveur du démarrage
+          if (WiFi.status() == WL_CONNECTED) {
+            SensorReadings cur = _sensors.read();
+            sendFullUpdate(cur, "etatLight=1");
+            Serial.println(F("[Auto] Données envoyées au serveur - lumière activée manuellement (distant)"));
+          }
+          
+          Serial.println("[Auto] Lumière ON (commande distante GPIO 15)");
+        } else if (!valBool && currentState) {
+          _acts.stopLight();
+          
+          // FIX v11.09: Notification serveur de l'arrêt
+          if (WiFi.status() == WL_CONNECTED) {
+            SensorReadings cur = _sensors.read();
+            sendFullUpdate(cur, "etatLight=0");
+            Serial.println(F("[Auto] Données envoyées au serveur - lumière arrêtée manuellement (distant)"));
+          }
+          
+          Serial.println("[Auto] Lumière OFF (commande distante GPIO 15)");
+        } else {
+          Serial.printf("[Auto] Lumière GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
+                       currentState ? "ON" : "OFF");
+        }
       } else {
         // GPIO générique : simple sortie numérique
         pinMode(id, OUTPUT);
@@ -1533,17 +1628,19 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
   // Email
   if (doc.containsKey("emailAddress")) emailAddress = doc["emailAddress"].as<const char*>();
   if (doc.containsKey("emailEnabled")) emailEnabled = doc["emailEnabled"].as<bool>();
+  
+  // v11.41: Propager immédiatement au module Feeding
+  _feeding.setDurations(feedBigDur, feedSmallDur);
+  _feeding.setSchedule(feedMorning, feedNoon, feedEvening);
+  Serial.printf("[Auto] Config Feeding appliquée - Durées: %us/%us, Horaires: %uh/%uh/%uh\n",
+               feedBigDur, feedSmallDur, feedMorning, feedNoon, feedEvening);
 }
 
 void Automatism::checkCriticalChanges() {
-  // Reset watchdog au début de la fonction critique
-  esp_task_wdt_reset();
-  
   // Envoie désormais la trame complète sans paire supplémentaire :
   // la clé (etatPompeAqua / etatPompeTank) est déjà dans la partie
   // principale de la trame, ce qui évite toute duplication.
   auto sendChange = [this](const char* /*key*/, int /*value*/){
-    esp_task_wdt_reset(); // Reset watchdog avant opération critique
     SensorReadings cur = _sensors.read();
     sendFullUpdate(cur, nullptr);
   };
@@ -1933,6 +2030,11 @@ bool Automatism::shouldEnterSleepEarly(const SensorReadings& r) {
   if (forceWakeUp) {
     return false;
   }
+  
+  // Ne pas dormir si l'interface web locale est active (activité récente)
+  if (_forceWakeFromWeb) {
+    return false;
+  }
 
   // Ne pas dormir si la pompe de remplissage fonctionne (CRITIQUE)
   if (_acts.isTankPumpRunning()) {
@@ -1993,36 +2095,53 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // NE DOIT PAS INTERFÉRER AVEC LES FONCTIONS CRITIQUES
   // ========================================
   
-  // Sommeil forcé désactivé ?
-  if (forceWakeUp) {
-    // Si le wake est maintenu par activité web, vérifier le timeout
-    if (_forceWakeFromWeb) {
-      unsigned long now = millis();
-      if (_lastWebActivityMs > 0 && (now - _lastWebActivityMs > TimingConfig::WEB_ACTIVITY_TIMEOUT_MS)) {
-        _forceWakeFromWeb = false;
-        bool old = forceWakeUp;
-        forceWakeUp = false; // libère le wake forcé après inactivité web
-        if (old != forceWakeUp) {
-          Serial.println(F("[Auto] forceWakeUp libéré après inactivité web"));
-          _config.setForceWakeUp(forceWakeUp);
-          _config.saveBouffeFlags();
-        }
-      } else {
-        // Encore de l'activité récente -> rester éveillé
-        static unsigned long lastWakeUpLog = 0;
-        unsigned long currentMillis = millis();
-        if (currentMillis - lastWakeUpLog > 30000) {
-          lastWakeUpLog = currentMillis;
-          Serial.println(F("[Auto] Auto-sleep désactivé (activité web récente)"));
-        }
-        return;
-      }
+  // ========================================
+  // 1. VÉRIFICATION CLIENTS WEBSOCKET (v11.41 - PRIORITÉ ABSOLUE)
+  // Bloquer sleep tant que des clients sont connectés à l'interface web
+  // ========================================
+  uint8_t wsClients = realtimeWebSocket.getConnectedClients();
+  if (wsClients > 0) {
+    static unsigned long lastWsLog = 0;
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastWsLog > 30000) {
+      lastWsLog = currentMillis;
+      Serial.printf("[Auto] Auto-sleep bloqué (%u clients WebSocket connectés)\n", wsClients);
     }
+    return;
+  }
+  
+  // ========================================
+  // 2. VÉRIFICATION ACTIVITÉ WEB TEMPORAIRE (FALLBACK)
+  // Empêche le sleep pendant consultation interface web, sans modifier GPIO 115
+  // ========================================
+  if (_forceWakeFromWeb) {
+    unsigned long now = millis();
+    if (_lastWebActivityMs > 0 && (now - _lastWebActivityMs > TimingConfig::WEB_ACTIVITY_TIMEOUT_MS)) {
+      // Timeout atteint -> libérer le blocage temporaire
+      _forceWakeFromWeb = false;
+      Serial.println(F("[Auto] Activité web expirée - sleep autorisé à nouveau"));
+    } else {
+      // Activité web récente -> empêcher sleep temporairement
+      static unsigned long lastWebLog = 0;
+      unsigned long currentMillis = millis();
+      if (currentMillis - lastWebLog > 30000) {
+        lastWebLog = currentMillis;
+        Serial.println(F("[Auto] Auto-sleep bloqué temporairement (activité web récente)"));
+      }
+      return;
+    }
+  }
+  
+  // ========================================
+  // 3. VÉRIFICATION FORCEWAKEUP PERSISTANT (GPIO 115)
+  // Contrôlé UNIQUEMENT par l'utilisateur via toggle ou serveur distant
+  // ========================================
+  if (forceWakeUp) {
     static unsigned long lastWakeUpLog = 0;
     unsigned long currentMillis = millis();
     if (currentMillis - lastWakeUpLog > 30000) { // Log toutes les 30 secondes
       lastWakeUpLog = currentMillis;
-      Serial.println(F("[Auto] Auto-sleep désactivé (forceWakeUp = true)"));
+      Serial.println(F("[Auto] Auto-sleep désactivé (forceWakeUp GPIO 115 = true)"));
     }
     return;
   }

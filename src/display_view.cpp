@@ -1,6 +1,7 @@
 #include "display_view.h"
 #include "project_config.h"
 #include "pins.h"
+#include "oled_logo.h"
 #include <WiFi.h>
 #include <algorithm>
 #include <string.h>
@@ -554,7 +555,11 @@ bool DisplayView::begin() {
       _disp.cp437(true);
 #endif
 
-      // --- Nouveau splash centré sur trois lignes ---
+      // --- SPLASH SCREEN UNIFIÉ (3 secondes, non bloquant) ---
+      Serial.println("[OLED] Affichage du splash screen...");
+      _disp.clearDisplay();
+      
+      // Fonction helper pour centrer le texte
       auto centerPrint = [&](const char* txt, uint8_t size, uint8_t y) {
         _disp.setTextSize(size);
         int16_t x = (_disp.width() - (strlen(txt) * 6 * size)) / 2;
@@ -563,18 +568,29 @@ bool DisplayView::begin() {
         _disp.println(txt);
       };
 
-      centerPrint("FFP3 Init", 2, 0);     // ligne 1
-      centerPrint("farmflow", 2, 20);     // ligne 2
-      centerPrint("n3 project", 2, 40);   // ligne 3
-
-      // Ajout de la version du firmware en bas de l'écran
-      char vbuf[24];
+      // Ligne 1 : "Projet farmflow FFP3" (taille 1, centré)
+      centerPrint("Projet farmflow FFP3", 1, 0);
+      
+      // Ligne 2 : Version du firmware (taille 1, centré)
+      char vbuf[16];
       snprintf(vbuf, sizeof(vbuf), "v%s", Config::VERSION);
-      centerPrint(vbuf, 1, 56);
+      centerPrint(vbuf, 1, 10);
+      
+      // Logo N3 45x45 centré en dessous (à partir de y=18)
+      int16_t logo_x = (_disp.width() - LOGO_WIDTH) / 2;   // (128-45)/2 = 41
+      int16_t logo_y = 18;  // Juste en dessous du texte
+      
+      // Dessiner un rectangle blanc comme fond pour le logo
+      _disp.fillRect(logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
+      
+      // Puis dessiner le logo en noir par-dessus (pour inverser les couleurs)
+      _disp.drawBitmap(logo_x, logo_y, epd_bitmap_logo_n3_site, LOGO_WIDTH, LOGO_HEIGHT, BLACK);
+      
+      _disp.display();
 
-      // Le splash doit rester visible au moins 2 secondes
-      _splashUntil = millis() + DisplayConfig::SPLASH_DURATION_MS;
-      Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: %u ms)\n", _splashUntil, DisplayConfig::SPLASH_DURATION_MS);
+      // Le splash reste visible 3 secondes (non bloquant)
+      _splashUntil = millis() + 3000;
+      Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: 3000 ms)\n", _splashUntil);
 
       _diagLine = 0; // reset diagnostic line counter at each begin
       resetStatusCache(); // Réinitialise le cache des états

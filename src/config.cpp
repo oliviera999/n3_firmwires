@@ -1,5 +1,6 @@
 #include "project_config.h"
 #include "config_manager.h"
+#include <ArduinoJson.h>
 
 ConfigManager::ConfigManager() 
     : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false), 
@@ -207,4 +208,122 @@ void ConfigManager::updateCache() {
   _cachedPompeAquaLocked = _pompeAquaLocked;
   _cachedForceWakeUp = _forceWakeUp;
   _cachedOtaUpdateFlag = _otaUpdateFlag;
+}
+
+bool ConfigManager::loadConfigFromNVS() {
+  Serial.println(F("========================================"));
+  Serial.println(F("[Config] 📥 Chargement COMPLET depuis NVS"));
+  Serial.println(F("========================================"));
+  
+  // 1. Charger les flags de bouffe (déjà implémenté)
+  loadBouffeFlags();
+  
+  // 2. Charger les variables distantes depuis remoteVars
+  String cachedJson;
+  bool hasRemoteVars = loadRemoteVars(cachedJson);
+  
+  if (!hasRemoteVars || cachedJson.length() == 0) {
+    Serial.println(F("[Config] ⚠️ Aucune config en NVS - Valeurs par défaut utilisées"));
+    Serial.println(F("[Config] 📋 Config par défaut:"));
+    Serial.println(F("[Config]   - Email: (non défini)"));
+    Serial.println(F("[Config]   - Email notifications: désactivées"));
+    Serial.println(F("[Config]   - Seuil aquarium: valeur code"));
+    Serial.println(F("[Config]   - Seuil réservoir: valeur code"));
+    Serial.println(F("[Config]   - Seuil chauffage: valeur code"));
+    Serial.println(F("========================================"));
+    return false; // Valeurs par défaut utilisées
+  }
+  
+  // 3. Parser le JSON et extraire les variables
+  Serial.println(F("[Config] 📄 Config trouvée en NVS, parsing..."));
+  
+  // Note: Le JSON sera appliqué par AutomatismNetwork::applyConfigFromJson()
+  // On se contente de logger ce qu'on a trouvé
+  
+  Serial.printf("[Config] 📦 JSON NVS: %u bytes\n", cachedJson.length());
+  
+  // Parser pour logging (ne pas appliquer ici, c'est fait dans AutomatismNetwork)
+  ArduinoJson::DynamicJsonDocument doc(1024);
+  auto err = deserializeJson(doc, cachedJson);
+  
+  if (!err) {
+    Serial.println(F("[Config] ✅ JSON valide, contenu:"));
+    
+    // Logger les principales variables trouvées
+    if (doc.containsKey("emailAddress") || doc.containsKey("mail")) {
+      const char* email = doc.containsKey("emailAddress") ? 
+                          doc["emailAddress"].as<const char*>() : 
+                          doc["mail"].as<const char*>();
+      Serial.printf("[Config]   - Email: %s\n", email ? email : "(vide)");
+    }
+    
+    if (doc.containsKey("emailEnabled") || doc.containsKey("mailNotif")) {
+      Serial.printf("[Config]   - Email notifications: %s\n",
+                    doc.containsKey("emailEnabled") ? 
+                    (doc["emailEnabled"].as<bool>() ? "activées" : "désactivées") :
+                    (String(doc["mailNotif"].as<const char*>()) == "checked" ? "activées" : "désactivées"));
+    }
+    
+    if (doc.containsKey("feedMorning") || doc.containsKey("105")) {
+      int val = doc.containsKey("feedMorning") ? doc["feedMorning"].as<int>() : doc["105"].as<int>();
+      Serial.printf("[Config]   - Heure matin: %dh\n", val);
+    }
+    
+    if (doc.containsKey("feedNoon") || doc.containsKey("106")) {
+      int val = doc.containsKey("feedNoon") ? doc["feedNoon"].as<int>() : doc["106"].as<int>();
+      Serial.printf("[Config]   - Heure midi: %dh\n", val);
+    }
+    
+    if (doc.containsKey("feedEvening") || doc.containsKey("107")) {
+      int val = doc.containsKey("feedEvening") ? doc["feedEvening"].as<int>() : doc["107"].as<int>();
+      Serial.printf("[Config]   - Heure soir: %dh\n", val);
+    }
+    
+    if (doc.containsKey("feedBigDur") || doc.containsKey("tempsGros") || doc.containsKey("111")) {
+      int val = doc.containsKey("feedBigDur") ? doc["feedBigDur"].as<int>() : 
+                (doc.containsKey("tempsGros") ? doc["tempsGros"].as<int>() : doc["111"].as<int>());
+      Serial.printf("[Config]   - Durée gros: %ds\n", val);
+    }
+    
+    if (doc.containsKey("feedSmallDur") || doc.containsKey("tempsPetits") || doc.containsKey("112")) {
+      int val = doc.containsKey("feedSmallDur") ? doc["feedSmallDur"].as<int>() : 
+                (doc.containsKey("tempsPetits") ? doc["tempsPetits"].as<int>() : doc["112"].as<int>());
+      Serial.printf("[Config]   - Durée petits: %ds\n", val);
+    }
+    
+    if (doc.containsKey("aqThreshold") || doc.containsKey("102")) {
+      int val = doc.containsKey("aqThreshold") ? doc["aqThreshold"].as<int>() : doc["102"].as<int>();
+      Serial.printf("[Config]   - Seuil aquarium: %d cm\n", val);
+    }
+    
+    if (doc.containsKey("tankThreshold") || doc.containsKey("103")) {
+      int val = doc.containsKey("tankThreshold") ? doc["tankThreshold"].as<int>() : doc["103"].as<int>();
+      Serial.printf("[Config]   - Seuil réservoir: %d cm\n", val);
+    }
+    
+    if (doc.containsKey("heaterThreshold") || doc.containsKey("chauffageThreshold") || doc.containsKey("104")) {
+      float val = doc.containsKey("heaterThreshold") ? doc["heaterThreshold"].as<float>() : 
+                  (doc.containsKey("chauffageThreshold") ? doc["chauffageThreshold"].as<float>() : doc["104"].as<float>());
+      Serial.printf("[Config]   - Seuil chauffage: %.1f°C\n", val);
+    }
+    
+    if (doc.containsKey("refillDuration") || doc.containsKey("tempsRemplissageSec") || doc.containsKey("113")) {
+      int val = doc.containsKey("refillDuration") ? doc["refillDuration"].as<int>() : 
+                (doc.containsKey("tempsRemplissageSec") ? doc["tempsRemplissageSec"].as<int>() : doc["113"].as<int>());
+      Serial.printf("[Config]   - Durée remplissage: %ds\n", val);
+    }
+    
+    if (doc.containsKey("limFlood") || doc.containsKey("114")) {
+      int val = doc.containsKey("limFlood") ? doc["limFlood"].as<int>() : doc["114"].as<int>();
+      Serial.printf("[Config]   - Limite inondation: %d cm\n", val);
+    }
+    
+    Serial.println(F("[Config] ✅ Configuration chargée avec succès depuis NVS"));
+  } else {
+    Serial.printf("[Config] ⚠️ Erreur parsing JSON: %s\n", err.c_str());
+    Serial.println(F("[Config] Valeurs par défaut seront utilisées"));
+  }
+  
+  Serial.println(F("========================================"));
+  return true; // Config chargée depuis NVS
 } 
