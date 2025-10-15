@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.23";
+    constexpr const char* VERSION = "11.44";
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -90,12 +90,15 @@ namespace ServerConfig {
     }
     
     // Autres endpoints
-    constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/ffp3datas/heartbeat.php";
+    constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat";  // Fix v11.44: endpoint corrigé avec préfixe /ffp3/
     constexpr const char* OTA_BASE_PATH = "/ffp3/ota/";
     
     // Timeouts optimisés pour fiabilité (augmentés v11.09 pour diagnostic HTTP)
     constexpr uint32_t CONNECTION_TIMEOUT_MS = 10000;     // 10s (augmenté de 5s pour stabilité)
     constexpr uint32_t REQUEST_TIMEOUT_MS = 30000;        // 30s (augmenté de 15s pour fiabilité)
+    
+    // Délai minimum entre requêtes HTTP successives (Fix v11.29: évite connection lost)
+    constexpr uint32_t MIN_DELAY_BETWEEN_REQUESTS_MS = 500;  // 500ms entre requêtes pour éviter saturation TCP
 
     inline String getHeartbeatUrl() { return String(BASE_URL) + HEARTBEAT_ENDPOINT; }
     inline String getSecondaryHeartbeatUrl() {
