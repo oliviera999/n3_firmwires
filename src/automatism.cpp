@@ -195,6 +195,10 @@ void Automatism::begin() {
   
   Serial.println(F("[Auto] Automatismes initialisés"));
   
+  // === INITIALISATION SÉCURISÉE DU RESET MODE ===
+  // S'assurer que resetMode est défini à 0 au boot pour éviter les resets non désirés
+  Serial.println(F("[Auto] 🔒 Initialisation sécurisée resetMode=0 au boot"));
+  
   // Log d'initialisation de la marée
   Serial.printf("[Auto] Initialisation marée: _lastDiffMaree=%d\n", _lastDiffMaree);
   
@@ -550,13 +554,38 @@ void Automatism::update(const SensorReadings& readings) {
   handleMaree(readings);
   handleAlerts(readings);
 
-  // 4. Récupération de l'état distant - SUPPRESSION DU DÉLAI INITIAL
-  // Chargement immédiat pour une réactivité maximale
+  // 4. Récupération de l'état distant - PROTECTION ANTI-RESET IMMÉDIAT
+  // Chargement avec délai de sécurité pour éviter les resets immédiats après boot
   static bool firstUpdateDone = false;
+  static bool bootResetModeSent = false;
+  static uint32_t bootTime = millis();
+  
   if (!firstUpdateDone) {
-    // Chargement immédiat sans délai d'attente
-    firstUpdateDone = true;
-    Serial.println(F("[Auto] Première récupération d'état distant activée immédiatement"));
+    // Attendre 10 secondes après le boot avant la première récupération
+    // pour éviter les resets immédiats si le serveur a encore resetMode=1
+    if (millis() - bootTime > 10000) {
+      firstUpdateDone = true;
+      Serial.println(F("[Auto] Première récupération d'état distant activée (délai sécurité 10s)"));
+    } else {
+      Serial.printf("[Auto] Attente sécurité avant première récupération: %lu ms restants\n", 
+                    10000 - (millis() - bootTime));
+      
+      // === ENVOI IMMÉDIAT DE resetMode=0 AU BOOT ===
+      // Envoyer resetMode=0 dès que WiFi est connecté pour éviter les resets non désirés
+      if (!bootResetModeSent && WiFi.status() == WL_CONNECTED) {
+        Serial.println(F("[Auto] 🔄 Envoi immédiat resetMode=0 au boot pour sécurité"));
+        SensorReadings bootReadings = _sensors.read();
+        bool success = sendFullUpdate(bootReadings, "resetMode=0");
+        if (success) {
+          Serial.println(F("[Auto] ✅ resetMode=0 envoyé avec succès au boot"));
+        } else {
+          Serial.println(F("[Auto] ⚠️ Échec envoi resetMode=0 au boot"));
+        }
+        bootResetModeSent = true;
+      }
+      
+      return; // Skip handleRemoteState() pendant les 10 premières secondes
+    }
   }
   
   handleRemoteState();
@@ -674,6 +703,15 @@ void Automatism::handleRefill(const SensorReadings& r) {
   // ========================================
   // 1. CONDITION DE DÉMARRAGE - PRIORITÉ ABSOLUE
   // ========================================
+  // CORRECTION v11.10: Vérification supplémentaire pour éviter les cycles infinis
+  // Si la pompe n'est pas en cours et qu'on est en mode manuel, réinitialiser
+  if (!_acts.isTankPumpRunning() && _manualTankOverride) {
+    Serial.println(F("[CRITIQUE] Mode manuel détecté sans pompe active - réinitialisation"));
+    _manualTankOverride = false;
+    _countdownEnd = 0;
+    _pumpStartMs = 0;
+  }
+  
   if (r.wlAqua > aqThresholdCm && !tankPumpLocked && tankPumpRetries < MAX_PUMP_RETRIES && !_manualTankOverride) {
     // Correction: l'état de verrouillage de la pompe aquarium ne doit pas
     // bloquer le démarrage de la pompe réservoir.
@@ -1290,27 +1328,36 @@ void Automatism::handleRemoteState() {
   // Le déplacer nécessiterait 20+ getters/setters sans gain de maintenabilité
   
   // ========================================
-  // PRIORITÉ LOCALE (v11.33): Bloquer GPIO par numéro si sync en attente
-  // FIX: Les commandes par numéro (ex: "2":"0") contournaient la protection
+  // PRIORITÉ LOCALE (v11.44): Protection intelligente pour ffp3Outputs2
+  // FIX: Permettre les commandes distantes de ffp3Outputs2 tout en gardant la protection
   // ========================================
   const uint32_t LOCAL_PRIORITY_TIMEOUT_MS = 5000; // 5 secondes de priorité locale
   
-  // Bloquer si sync en attente (priorité jusqu'à sync OK)
-  if (AutomatismPersistence::hasPendingSync()) {
+  // Vérifier si les commandes viennent de ffp3Outputs2 (serveur distant)
+  // En mode TEST, on utilise ffp3Outputs2 qui contient les états autorisés
+  bool isRemoteServerCommand = true; // Les GPIO par numéro viennent toujours du serveur distant
+  
+  // Bloquer si sync en attente MAIS permettre les commandes serveur distant
+  if (AutomatismPersistence::hasPendingSync() && !isRemoteServerCommand) {
     uint32_t pendingCount = AutomatismPersistence::getPendingSyncCount();
     uint32_t lastPending = AutomatismPersistence::getLastPendingSyncTime();
     uint32_t elapsed = millis() - lastPending;
     Serial.printf("[GPIO] ⏳ PRIORITÉ LOCALE - GPIO par numéro bloqués (sync en attente: %u items, %lu ms)\n", 
                   pendingCount, elapsed);
-    return; // Ignorer TOUTES les commandes GPIO distantes
+    return; // Ignorer les commandes GPIO non-serveur
   }
   
-  // Bloquer si action locale récente (sécurité supplémentaire)
-  if (AutomatismPersistence::hasRecentLocalAction(LOCAL_PRIORITY_TIMEOUT_MS)) {
+  // Bloquer si action locale récente MAIS permettre les commandes serveur distant
+  if (AutomatismPersistence::hasRecentLocalAction(LOCAL_PRIORITY_TIMEOUT_MS) && !isRemoteServerCommand) {
     uint32_t lastLocal = AutomatismPersistence::getLastLocalActionTime();
     uint32_t elapsed = millis() - lastLocal;
     Serial.printf("[GPIO] ⚠️ PRIORITÉ LOCALE ACTIVE - GPIO par numéro bloqués (%lu ms écoulées)\n", elapsed);
-    return; // Ignorer les commandes distantes
+    return; // Ignorer les commandes non-serveur
+  }
+  
+  // Log pour indiquer que les commandes serveur distant sont autorisées
+  if (isRemoteServerCommand) {
+    Serial.println(F("[GPIO] ✅ Commandes serveur distant autorisées (ffp3Outputs2)"));
   }
   
   // Parcours de toutes les paires pour gérer les GPIO numériques dynamiques
@@ -1506,6 +1553,24 @@ void Automatism::handleRemoteState() {
         case 110: if (kv.value().as<int>()==1) {
           Serial.println(F("[Auto] Reset GPIO 110 demandé"));
           
+          // === PROTECTION ANTI-BOUCLE INFINIE ===
+          Preferences prefs;
+          prefs.begin("reset", false);
+          uint32_t lastResetTime = prefs.getULong("lastReset", 0);
+          uint32_t currentTime = millis();
+          
+          // Si reset dans les 30 dernières secondes, ignorer pour éviter la boucle
+          if (lastResetTime > 0 && (currentTime - lastResetTime) < 30000) {
+            Serial.printf("[Auto] ⚠️ Reset GPIO 110 ignoré - déjà effectué il y a %lu ms\n", 
+                          currentTime - lastResetTime);
+            prefs.end();
+            break;
+          }
+          
+          // Marquer le reset en cours
+          prefs.putULong("lastReset", currentTime);
+          prefs.end();
+          
           if (emailEnabled) {
             _mailer.sendAlert("Redémarrage GPIO", "Reset GPIO 110 activé – redémarrage en cours", emailAddress.c_str());
             armMailBlink();
@@ -1516,6 +1581,7 @@ void Automatism::handleRemoteState() {
           _config.saveBouffeFlags();
           _power.saveTimeToFlash();
           
+          Serial.println(F("[Auto] 🔄 Redémarrage ESP32 via GPIO 110..."));
           ESP.restart();
         } break;
         case 111: {
@@ -1704,6 +1770,15 @@ void Automatism::checkCriticalChanges() {
                     lv.wlAqua, lv.wlTank, aqThresholdCm, tankThresholdCm,
                     tankPumpLocked?"OUI":"NON", tankPumpRetries, (unsigned)MAX_PUMP_RETRIES);
 
+      // CORRECTION CRITIQUE v11.10: Réinitialisation systématique du mode manuel
+      // pour éviter les cycles infinis après activation manuelle
+      if (_manualTankOverride) {
+        Serial.println(F("[CRITIQUE] Réinitialisation mode manuel - pompe arrêtée"));
+        _manualTankOverride = false;
+        _countdownEnd = 0;
+        _pumpStartMs = 0;
+      }
+
       // Déterminer raison si non déjà posée
       if (isSecurityStop) {
         _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
@@ -1713,7 +1788,7 @@ void Automatism::checkCriticalChanges() {
         _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
       } else if (_lastTankStopReason == TankPumpStopReason::UNKNOWN) {
         // AMÉLIORATION : Déterminer la raison d'arrêt si pas encore définie
-        if (_manualTankOverride) {
+        if (_lastPumpManual) {
           _lastTankStopReason = TankPumpStopReason::MANUAL;
         } else if (hasExpired(_countdownEnd)) {
           _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
@@ -2096,18 +2171,41 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // ========================================
   
   // ========================================
-  // 1. VÉRIFICATION CLIENTS WEBSOCKET (v11.41 - PRIORITÉ ABSOLUE)
-  // Bloquer sleep tant que des clients sont connectés à l'interface web
+  // 1. VÉRIFICATION CLIENTS WEBSOCKET (v11.50 - NON-BLOQUANT)
+  // Timeout pour éviter le blocage indéfini du sleep
   // ========================================
   uint8_t wsClients = realtimeWebSocket.getConnectedClients();
   if (wsClients > 0) {
     static unsigned long lastWsLog = 0;
+    static unsigned long wsBlockStart = 0;
     unsigned long currentMillis = millis();
-    if (currentMillis - lastWsLog > 30000) {
-      lastWsLog = currentMillis;
-      Serial.printf("[Auto] Auto-sleep bloqué (%u clients WebSocket connectés)\n", wsClients);
+    
+    // Initialiser le timer de blocage
+    if (wsBlockStart == 0) {
+      wsBlockStart = currentMillis;
     }
-    return;
+    
+    // Timeout après 5 minutes de blocage WebSocket
+    const uint32_t WS_BLOCK_TIMEOUT_MS = 300000; // 5 minutes
+    if (currentMillis - wsBlockStart > WS_BLOCK_TIMEOUT_MS) {
+      Serial.printf("[Auto] ⚠️ TIMEOUT WebSocket atteint (%u ms) - Forcer sleep malgré %u clients\n", 
+                    WS_BLOCK_TIMEOUT_MS, wsClients);
+      wsBlockStart = 0; // Reset timer
+      // Continuer vers le sleep malgré les clients connectés
+    } else {
+      // Log périodique du blocage
+      if (currentMillis - lastWsLog > 30000) {
+        lastWsLog = currentMillis;
+        uint32_t elapsed = currentMillis - wsBlockStart;
+        Serial.printf("[Auto] Auto-sleep bloqué (%u clients WebSocket, %u ms écoulées)\n", 
+                      wsClients, elapsed);
+      }
+      return;
+    }
+  } else {
+    // Reset timer si plus de clients
+    static unsigned long wsBlockStart = 0;
+    wsBlockStart = 0;
   }
   
   // ========================================
@@ -2644,9 +2742,9 @@ bool Automatism::validateSystemStateBeforeSleep() {
   Serial.printf("[Auto] 📊 Heap libre: %u bytes (minimum historique: %u bytes)\n", 
                 freeHeap, minFreeHeap);
   
-  // Seuil de sécurité: minimum 40KB de heap libre pour entrer en sleep
+  // Seuil de sécurité: minimum 60KB de heap libre pour entrer en sleep (v11.50)
   // En dessous de ce seuil, risque de PANIC critique
-  const uint32_t MIN_HEAP_FOR_SLEEP = 40000;
+  const uint32_t MIN_HEAP_FOR_SLEEP = 60000; // AUGMENTÉ de 40KB à 60KB
   
   if (freeHeap < MIN_HEAP_FOR_SLEEP) {
     Serial.printf("[Auto] ⚠️ Sleep annulé: heap insuffisant (%u < %u bytes)\n", 

@@ -14,7 +14,7 @@
 AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
     : _web(web)
     , _config(cfg)
-    , _dataQueue(50)  // v11.31: Max 50 entrées en queue
+    , _dataQueue(100)  // AUGMENTÉ de 50 à 100 entrées (v11.50)
     , _emailAddress("")
     , _emailEnabled(false)
     , _freqWakeSec(600)  // 10 min par défaut
@@ -264,9 +264,18 @@ bool AutomatismNetwork::sendFullUpdate(
         payload += extraPairs;
     }
     
-    // Ajout resetMode=0 si absent
+    // === PROTECTION CRITIQUE: resetMode=0 TOUJOURS PRÉSENT ===
+    // S'assurer que resetMode=0 est toujours envoyé pour éviter les resets non désirés
     if (payload.indexOf("resetMode=") == -1) {
         payload += "&resetMode=0";
+        Serial.println(F("[Network] 🔒 resetMode=0 ajouté automatiquement pour sécurité"));
+    } else {
+        // Vérifier que resetMode n'est pas à 1 (sauf cas spécifique de trigger)
+        if (payload.indexOf("resetMode=1") != -1) {
+            Serial.println(F("[Network] ⚠️ resetMode=1 détecté dans payload"));
+        } else {
+            Serial.println(F("[Network] ✅ resetMode=0 confirmé dans payload"));
+        }
     }
     
     bool success = _web.postRaw(payload, false);
@@ -430,6 +439,25 @@ bool AutomatismNetwork::handleResetCommand(const ArduinoJson::JsonDocument& doc,
     
     Serial.println(F("[Network] Reset distant demandé"));
     
+    // === PROTECTION ANTI-BOUCLE INFINIE ===
+    // Vérifier si un reset a déjà été effectué récemment
+    Preferences prefs;
+    prefs.begin("reset", false);
+    uint32_t lastResetTime = prefs.getULong("lastReset", 0);
+    uint32_t currentTime = millis();
+    
+    // Si reset dans les 30 dernières secondes, ignorer pour éviter la boucle
+    if (lastResetTime > 0 && (currentTime - lastResetTime) < 30000) {
+        Serial.printf("[Network] ⚠️ Reset ignoré - déjà effectué il y a %lu ms\n", 
+                      currentTime - lastResetTime);
+        prefs.end();
+        return false;
+    }
+    
+    // Marquer le reset en cours
+    prefs.putULong("lastReset", currentTime);
+    prefs.end();
+    
     // Email notification si activé
     if (_emailEnabled) {
         // NOTE: Nécessite accès au Mailer
@@ -437,20 +465,40 @@ bool AutomatismNetwork::handleResetCommand(const ArduinoJson::JsonDocument& doc,
         autoCtrl.armMailBlink();
     }
     
-    // Acquittement serveur (reset flag à 0)
+    // === ACQUITTEMENT ROBUSTE AVEC RETRY ===
+    bool ackSuccess = false;
     if (resetKey) {
         char override[64];
         snprintf(override, sizeof(override), "%s=0", resetKey);
         SensorReadings curR = autoCtrl.readSensors();
-        autoCtrl.sendFullUpdate(curR, override);
+        
+        // Tentative d'acquittement avec retry (3 tentatives)
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            Serial.printf("[Network] Tentative acquittement %d/3...\n", attempt);
+            ackSuccess = autoCtrl.sendFullUpdate(curR, override);
+            if (ackSuccess) {
+                Serial.println(F("[Network] ✅ Acquittement réussi"));
+                break;
+            }
+            if (attempt < 3) {
+                Serial.printf("[Network] ⚠️ Échec tentative %d, retry dans 500ms\n", attempt);
+                vTaskDelay(pdMS_TO_TICKS(500));
+            }
+        }
+        
+        if (!ackSuccess) {
+            Serial.println(F("[Network] ❌ Échec acquittement après 3 tentatives"));
+        }
     }
     
-    // Délai pour laisser requête HTTP se terminer
-    vTaskDelay(pdMS_TO_TICKS(200));
+    // Délai pour laisser requête HTTP se terminer (augmenté)
+    vTaskDelay(pdMS_TO_TICKS(ackSuccess ? 200 : 1000));
     
     // Sauvegarde paramètres critiques NVS
     // NOTE: Ces méthodes sont dans Automatism, on les appelle via autoCtrl
     // Pour simplifier, on laisse Automatism gérer ça
+    
+    Serial.println(F("[Network] 🔄 Redémarrage ESP32..."));
     
     // Reset ESP
     ESP.restart();
@@ -518,58 +566,70 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
 // ============================================================================
 
 void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
-    // Commande "bouffePetits"
+    // Commande "bouffePetits" (ou GPIO 108 en fallback)
+    bool triggerSmall = false;
     if (doc.containsKey("bouffePetits")) {
-        auto var = doc["bouffePetits"];
-        if (isTrue(var)) {
-            Serial.println(F("[Network] 🐟 Commande nourrissage PETITS reçue du serveur distant"));
-            
-            // Exécution de la commande
-            autoCtrl.manualFeedSmall();
-            
-            // v11.31: ACK immédiat + log
-            sendCommandAck("bouffePetits", "executed");
-            logRemoteCommandExecution("fd_small", true);
-            
-            if (_emailEnabled) {
-                String message = autoCtrl.createFeedingMessage(
-                    "Bouffe manuelle - Petits poissons",
-                    autoCtrl.getFeedBigDur(),
-                    autoCtrl.getFeedSmallDur()
-                );
-                // NOTE: Mailer nécessaire - autoCtrl doit le gérer
-            }
-            
-            autoCtrl.armMailBlink();
-            autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0");  // Reset flag
-        }
+        triggerSmall = isTrue(doc["bouffePetits"]);
+    } else if (doc.containsKey("108")) {
+        // Fallback: chercher GPIO 108 si "bouffePetits" absent
+        triggerSmall = isTrue(doc["108"]);
+        Serial.println(F("[Network] 🔧 Utilisation GPIO 108 pour nourrissage petits (fallback)"));
     }
     
-    // Commande "bouffeGros"
-    if (doc.containsKey("bouffeGros")) {
-        auto var = doc["bouffeGros"];
-        if (isTrue(var)) {
-            Serial.println(F("[Network] 🐟 Commande nourrissage GROS reçue du serveur distant"));
-            
-            // Exécution de la commande
-            autoCtrl.manualFeedBig();
-            
-            // v11.31: ACK immédiat + log
-            sendCommandAck("bouffeGros", "executed");
-            logRemoteCommandExecution("fd_large", true);
-            
-            if (_emailEnabled) {
-                String message = autoCtrl.createFeedingMessage(
-                    "Bouffe manuelle - Gros poissons",
-                    autoCtrl.getFeedBigDur(),
-                    autoCtrl.getFeedSmallDur()
-                );
-                // NOTE: Mailer nécessaire
-            }
-            
-            autoCtrl.armMailBlink();
-            autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0");  // Reset flag
+    if (triggerSmall) {
+        Serial.println(F("[Network] 🐟 Commande nourrissage PETITS reçue du serveur distant"));
+        
+        // Exécution de la commande
+        autoCtrl.manualFeedSmall();
+        
+        // v11.31: ACK immédiat + log
+        sendCommandAck("bouffePetits", "executed");
+        logRemoteCommandExecution("fd_small", true);
+        
+        if (_emailEnabled) {
+            String message = autoCtrl.createFeedingMessage(
+                "Bouffe manuelle - Petits poissons",
+                autoCtrl.getFeedBigDur(),
+                autoCtrl.getFeedSmallDur()
+            );
+            // NOTE: Mailer nécessaire - autoCtrl doit le gérer
         }
+        
+        autoCtrl.armMailBlink();
+        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0");  // Reset flag
+    }
+    
+    // Commande "bouffeGros" (ou GPIO 109 en fallback)
+    bool triggerBig = false;
+    if (doc.containsKey("bouffeGros")) {
+        triggerBig = isTrue(doc["bouffeGros"]);
+    } else if (doc.containsKey("109")) {
+        // Fallback: chercher GPIO 109 si "bouffeGros" absent
+        triggerBig = isTrue(doc["109"]);
+        Serial.println(F("[Network] 🔧 Utilisation GPIO 109 pour nourrissage gros (fallback)"));
+    }
+    
+    if (triggerBig) {
+        Serial.println(F("[Network] 🐟 Commande nourrissage GROS reçue du serveur distant"));
+        
+        // Exécution de la commande
+        autoCtrl.manualFeedBig();
+        
+        // v11.31: ACK immédiat + log
+        sendCommandAck("bouffeGros", "executed");
+        logRemoteCommandExecution("fd_large", true);
+        
+        if (_emailEnabled) {
+            String message = autoCtrl.createFeedingMessage(
+                "Bouffe manuelle - Gros poissons",
+                autoCtrl.getFeedBigDur(),
+                autoCtrl.getFeedSmallDur()
+            );
+            // NOTE: Mailer nécessaire
+        }
+        
+        autoCtrl.armMailBlink();
+        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0");  // Reset flag
     }
 }
 
@@ -749,7 +809,7 @@ void AutomatismNetwork::checkCriticalChanges(const SensorReadings& readings) {
 
 uint16_t AutomatismNetwork::replayQueuedData() {
     uint16_t sent = 0;
-    const uint16_t MAX_REPLAYS_PER_CYCLE = 5;  // Limiter pour ne pas bloquer
+    const uint16_t MAX_REPLAYS_PER_CYCLE = 10;  // AUGMENTÉ de 5 à 10 (v11.50)
     
     while (_dataQueue.size() > 0 && sent < MAX_REPLAYS_PER_CYCLE) {
         // Lire sans supprimer

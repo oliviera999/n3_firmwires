@@ -90,8 +90,9 @@ class WaterTempSensor {
   void begin();
   float temperatureC();
   float filteredTemperatureC(); // Nouvelle méthode avec filtrage avancé
-  float robustTemperatureC(); // Nouvelle méthode avec récupération robuste
-  float ultraRobustTemperatureC(); // Méthode ultra-robuste avec validation croisée
+  float robustTemperatureC(); // Nouvelle méthode avec récupération robuste (DÉPRÉCIÉE)
+  float ultraRobustTemperatureC(); // Méthode ultra-robuste avec validation croisée (DÉPRÉCIÉE)
+  float getTemperatureWithFallback(); // NOUVELLE MÉTHODE NON-BLOQUANTE (v11.50)
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorConnected(); // Vérifie la connectivité du capteur
   void resetSensor(); // Reset matériel du capteur

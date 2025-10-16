@@ -479,7 +479,7 @@ bool hasRecentLocalAction(uint32_t timeoutMs = 5000);
 5. `include/project_config.h` (version 11.29 → 11.30)
 
 ### Documentation
-- `FIX_PRIORITE_LOCALE_v11.30.md` : Documentation complète
+- `VERSION.md` : Documentation v11.32
 
 ---
 
@@ -723,9 +723,9 @@ E (XXXXX) task_wdt: esp_task_wdt_reset(707): task not found
 6. ✅ Communication serveur OK (HTTP 200)
 
 ### Fichiers de Référence
-- `WATCHDOG_FIX_COMPLETE_v11.20.md` - Rapport détaillé
-- `monitor_15min_2025-10-13_11-26-56_analysis.md` - Analyse v11.18
-- `monitor_v11.20_final_validation_2025-10-13_12-06-04.log` - Logs validation
+- `VERSION.md` - Rapport détaillé
+- Historique Git - Analyse v11.18
+- Logs validation disponibles dans Git
 
 ---
 
@@ -1473,8 +1473,8 @@ constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 3000;  // 3s (était 2.5s)
 4. Valider ou itérer vers v11.10
 
 ### Documentation
-- 📄 Plan: `LISEZ_MOI_V11.08.md` (sections P1-P2)
-- 📊 Monitoring précédent: `RESUME_MONITORING_V11.08.md`
+- 📄 Plan: `VERSION.md` (sections P1-P2)
+- 📊 Monitoring précédent: Historique Git
 
 ---
 
@@ -1528,9 +1528,9 @@ constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 3000;  // 3s (était 2.5s)
 - 💾 Heap min historique: 57 KB ⚠️
 
 ### Documentation
-- 📄 Rapport complet: `RAPPORT_MONITORING_V11.08_2025-10-12.md`
-- 📋 Résumé exécutif: `RESUME_MONITORING_V11.08.md`
-- 📊 Log brut: `monitor_wroom-test_v11.08_2025-10-12_21-30-25.log`
+- 📄 Rapport complet: Historique Git
+- 📋 Résumé exécutif: Historique Git
+- 📊 Log brut: Disponible dans Git
 
 ### Recommandations
 1. **P1 (Critique)**: Résoudre échecs HTTP serveur distant

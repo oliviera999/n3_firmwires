@@ -1,0 +1,136 @@
+{
+    "folders": [
+        {
+            "name": "ESP32 Aquaponie Controller",
+            "path": "."
+        }
+    ],
+    "settings": {
+        // Configuration spécifique au workspace ESP32
+        "files.associations": {
+            "*.h": "c",
+            "*.cpp": "cpp",
+            "*.ino": "cpp",
+            "*.embeddedhtml": "html"
+        },
+        
+        // Configuration PlatformIO
+        "platformio-ide.useBuiltinPIOCore": true,
+        "platformio-ide.autoRebuildAutocompleteIndex": true,
+        "platformio-ide.autoRebuildAutocompleteProject": true,
+        
+        // Configuration C++
+        "C_Cpp.intelliSenseEngine": "default",
+        "C_Cpp.errorSquiggles": "enabled",
+        "C_Cpp.autocomplete": "default",
+        "C_Cpp.suggestSnippets": true,
+        "C_Cpp.enhancedColorization": "enabled",
+        
+        // Configuration éditeur pour ESP32
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.rulers": [100],
+        "editor.wordWrap": "wordWrapColumn",
+        "editor.wordWrapColumn": 100,
+        
+        // Exclusions de fichiers
+        "files.exclude": {
+            "**/.pio": true,
+            "**/build": true,
+            "**/__pycache__": true,
+            "**/node_modules": true
+        },
+        
+        "search.exclude": {
+            "**/.pio": true,
+            "**/build": true,
+            "**/__pycache__": true,
+            "**/node_modules": true
+        },
+        
+        // Configuration terminal
+        "terminal.integrated.defaultProfile.windows": "PowerShell",
+        "terminal.integrated.cwd": "${workspaceFolder}",
+        
+        // Configuration debugging ESP32
+        "debug.console.fontSize": 12,
+        "debug.console.lineHeight": 18,
+        
+        // Configuration monitoring série
+        "serial-monitor.baudRate": 115200,
+        "serial-monitor.lineEnding": "CRLF"
+    },
+    "extensions": {
+        "recommendations": [
+            "platformio.platformio-ide",
+            "ms-vscode.cpptools",
+            "ms-vscode.cmake-tools",
+            "ms-vscode.makefile-tools"
+        ],
+        "unwantedRecommendations": [
+            "ms-vscode.cpptools-extension-pack"
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "PlatformIO: Build",
+                "type": "shell",
+                "command": "pio",
+                "args": ["run"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "PlatformIO: Upload",
+                "type": "shell",
+                "command": "pio",
+                "args": ["run", "--target", "upload"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "PlatformIO: Monitor",
+                "type": "shell",
+                "command": "pio",
+                "args": ["device", "monitor"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "ESP32: Clean Build",
+                "type": "shell",
+                "command": "pio",
+                "args": ["run", "--target", "clean"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            }
+        ]
+    }
+}

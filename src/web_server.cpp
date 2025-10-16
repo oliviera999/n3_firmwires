@@ -92,12 +92,19 @@ bool WebServerManager::begin() {
   // CORRECTION: Servir index.html en chargeant en mémoire pour Content-Length exact
   // Évite ERR_CONTENT_LENGTH_MISMATCH au premier chargement
   auto serveIndexRobust = [](AsyncWebServerRequest* req) -> bool {
+    // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
+    const uint32_t FILE_TIMEOUT_MS = GlobalTimeouts::FILE_MAX_MS;
+    uint32_t startTime = millis();
+    
     // Vérification de mémoire avant traitement (index.html ~10KB + buffer)
     uint32_t freeHeap = ESP.getFreeHeap();
     Serial.printf("[Web] 📊 Heap libre avant index.html: %u bytes\n", freeHeap);
     
-    if (freeHeap < 40000) { // Moins de 40KB libre (10KB fichier + 30KB marge)
-      Serial.println("[Web] ⚠️ Mémoire insuffisante pour servir index.html");
+    // NOUVEAU SEUIL DE SÉCURITÉ (v11.50)
+    const uint32_t MIN_HEAP_FOR_FILES = 60000; // Augmenté à 60KB pour sécurité
+    if (freeHeap < MIN_HEAP_FOR_FILES) {
+      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour servir index.html (%u < %u bytes)\n", 
+                    freeHeap, MIN_HEAP_FOR_FILES);
       return false;
     }
     
@@ -115,14 +122,34 @@ bool WebServerManager::begin() {
     size_t fileSize = file.size();
     Serial.printf("[Web] 📏 index.html size: %u bytes\n", fileSize);
     
-    // Charger le fichier entier en mémoire pour garantir Content-Length exact
+    // NOUVELLE MÉTHODE NON-BLOQUANTE (v11.50)
+    // Lecture par chunks pour éviter la fragmentation mémoire
+    const size_t CHUNK_SIZE = 1024;  // 1KB par chunk
     String content;
-    content.reserve(fileSize + 100); // Réserver un peu plus pour éviter les réallocations
+    content.reserve(fileSize + 100);
     
-    while (file.available()) {
-      content += (char)file.read();
+    uint8_t buffer[CHUNK_SIZE];
+    while (file.available() && (millis() - startTime) < FILE_TIMEOUT_MS) {
+      size_t bytesRead = file.read(buffer, min(CHUNK_SIZE, (size_t)file.available()));
+      content += String((char*)buffer, bytesRead);
+      
+      // Reset watchdog pendant lecture
+      esp_task_wdt_reset();
+      
+      // Vérification mémoire pendant lecture
+      if (ESP.getFreeHeap() < 30000) {
+        Serial.println("[Web] ⚠️ Mémoire critique pendant lecture fichier");
+        file.close();
+        return false;
+      }
     }
     file.close();
+    
+    // Vérification timeout
+    if ((millis() - startTime) >= FILE_TIMEOUT_MS) {
+      Serial.printf("[Web] ⚠️ TIMEOUT FICHIER ATTEINT: %u ms (limite: %u ms)\n", millis() - startTime, FILE_TIMEOUT_MS);
+      return false;
+    }
     
     if (content.length() != fileSize) {
       Serial.printf("[Web] ⚠️ Taille lue (%u) != taille fichier (%u)\n", content.length(), fileSize);
@@ -346,7 +373,7 @@ bool WebServerManager::begin() {
   });
   
   // Endpoint API de réveil avec paramètres
-  _server->on("/api/wakeup", HTTP_POST, [](AsyncWebServerRequest* req){
+  _server->on("/api/wakeup", HTTP_POST, [this](AsyncWebServerRequest* req){
       // v11.40: Pas de notifyLocalWebActivity() - endpoint API spécialisé
       Serial.println("[Web] 🔔 Réveil par API POST");
       
@@ -387,6 +414,10 @@ bool WebServerManager::begin() {
           // Déclencher un nourrissage à distance
           Serial.println("[Web] 🍽️ Déclenchement nourrissage à distance");
           autoCtrl.manualFeedSmall();
+          
+          // Reset flag pour éviter boucle infinie
+          SensorReadings readings = _sensors.read();
+          autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
           
           StaticJsonDocument<128> feedDoc;
           feedDoc["status"] = "feeding_triggered";
@@ -463,28 +494,42 @@ bool WebServerManager::begin() {
               // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_SMALL OK";
               
-              // 4. Email + Sync en tâche asynchrone (v11.40: Non-bloquant)
+              // 4. Email + Sync en tâche asynchrone (v11.50: Limité)
               // Note: Capture this pour accès à _sensors
               auto* sensorsPtr = &_sensors;
-              xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100)); // Petit délai pour garantir que la réponse HTTP part
-                  
-                  if (autoCtrl.isEmailEnabled()) {
-                      String message = autoCtrl.createFeedingMessage("Bouffe manuelle - Petits poissons", 
-                                                                   autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-                      mailer.sendAlert("Bouffe manuelle", message, autoCtrl.getEmailAddress().c_str());
-                      autoCtrl.triggerMailBlink();
-                      Serial.println("[Web] 📧 Email notification sent (async)");
-                  }
-                  
-                  // Synchronisation serveur
-                  SensorReadings readings = sensors->read();
-                  autoCtrl.sendFullUpdate(readings);
-                  Serial.println("[Web] 📤 Server sync completed (async)");
-                  
-                  vTaskDelete(NULL);
-              }, "feed_sync", 4096, sensorsPtr, 1, nullptr);
+              
+              // Vérifier le nombre de tâches actives avant création
+              static uint8_t asyncTaskCount = 0;
+              const uint8_t MAX_ASYNC_TASKS = 3; // Limite stricte
+              
+              if (asyncTaskCount < MAX_ASYNC_TASKS) {
+                asyncTaskCount++;
+                xTaskCreate([](void* param) {
+                    SystemSensors* sensors = (SystemSensors*)param;
+                    vTaskDelay(pdMS_TO_TICKS(100)); // Petit délai pour garantir que la réponse HTTP part
+                    
+                    if (autoCtrl.isEmailEnabled()) {
+                        String message = autoCtrl.createFeedingMessage("Bouffe manuelle - Petits poissons", 
+                                                                     autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
+                        mailer.sendAlert("Bouffe manuelle", message, autoCtrl.getEmailAddress().c_str());
+                        autoCtrl.triggerMailBlink();
+                        Serial.println("[Web] 📧 Email notification sent (async)");
+                    }
+                    
+                    // Synchronisation serveur avec reset flag
+                    SensorReadings readings = sensors->read();
+                    autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
+                    Serial.println("[Web] 📤 Server sync completed (async)");
+                    
+                    // Décrémenter le compteur avant suppression
+                    static uint8_t asyncTaskCount = 0;
+                    if (asyncTaskCount > 0) asyncTaskCount--;
+                    
+                    vTaskDelete(NULL);
+                }, "feed_sync", 4096, sensorsPtr, 1, nullptr);
+              } else {
+                Serial.println("[Web] ⚠️ Limite de tâches async atteinte - sync différée");
+              }
               
               Serial.println("[Web] ✅ Small feed completed, sync in background");
           }
@@ -514,9 +559,9 @@ bool WebServerManager::begin() {
                       Serial.println("[Web] 📧 Email notification sent (async)");
                   }
                   
-                  // Synchronisation serveur
+                  // Synchronisation serveur avec reset flag
                   SensorReadings readings = sensors->read();
-                  autoCtrl.sendFullUpdate(readings);
+                  autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
                   Serial.println("[Web] 📤 Server sync completed (async)");
                   
                   vTaskDelete(NULL);
@@ -791,9 +836,14 @@ bool WebServerManager::begin() {
   _server->on("/json", HTTP_GET, [this](AsyncWebServerRequest* req) {
     autoCtrl.notifyLocalWebActivity();
     
-    // OPTIMISATION: Priorité haute pour les requêtes critiques
-    Serial.printf("[Web] 📊 /json request from %s - Heap: %u bytes\n", 
-                  req->client()->remoteIP().toString().c_str(), ESP.getFreeHeap());
+    // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
+    const uint32_t MIN_HEAP_FOR_JSON = 50000; // 50KB minimum pour JSON
+    if (ESP.getFreeHeap() < MIN_HEAP_FOR_JSON) {
+      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /json (%u < %u bytes)\n", 
+                    ESP.getFreeHeap(), MIN_HEAP_FOR_JSON);
+      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
+      return;
+    }
     
     // Utiliser le pool JSON pour optimiser la mémoire
     ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
@@ -1036,8 +1086,14 @@ bool WebServerManager::begin() {
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
     
-    // OPTIMISATION: Priorité haute pour les requêtes critiques
-    Serial.printf("[Web] /dbvars request - Heap: %u bytes\n", ESP.getFreeHeap());
+    // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
+    const uint32_t MIN_HEAP_FOR_DBVARS = 40000; // 40KB minimum pour dbvars
+    if (ESP.getFreeHeap() < MIN_HEAP_FOR_DBVARS) {
+      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /dbvars (%u < %u bytes)\n", 
+                    ESP.getFreeHeap(), MIN_HEAP_FOR_DBVARS);
+      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
+      return;
+    }
     
     // Cache côté serveur : utiliser les données en mémoire d'abord
     static unsigned long lastCacheUpdate = 0;
@@ -2049,12 +2105,22 @@ bool WebServerManager::begin() {
         uint32_t start = millis();
         bool connected = false;
         
-        while (millis() - start < 15000) { // 15 secondes timeout
+        // NOUVEAU TIMEOUT RÉDUIT (v11.50)
+        while (millis() - start < 10000) { // RÉDUIT de 15s à 10s
           if (WiFi.status() == WL_CONNECTED) {
             connected = true;
             break;
           }
+          
+          // Reset watchdog pendant attente WiFi
+          esp_task_wdt_reset();
           vTaskDelay(pdMS_TO_TICKS(100));
+          
+          // Vérification mémoire pendant attente
+          if (ESP.getFreeHeap() < 20000) {
+            Serial.println("[WiFi] ⚠️ Mémoire critique pendant connexion");
+            break;
+          }
         }
         
         if (connected) {

@@ -16,63 +16,39 @@ void SystemSensors::begin() {
 SensorReadings SystemSensors::read() {
   SensorReadings r{};
   
-  // Timeout global pour éviter les blocages (5 minutes max)
-  const uint32_t GLOBAL_TIMEOUT_MS = 300000;
+  // NOUVELLE VERSION NON-BLOQUANTE (v11.50)
+  // Timeout global strict pour éviter tout blocage système
+  const uint32_t GLOBAL_TIMEOUT_MS = GlobalTimeouts::GLOBAL_MAX_MS;
   uint32_t startTime = millis();
   uint32_t phaseStart;
 
-  // --- Mesures sécurisées avec validation ---
-  const uint8_t MAX_RETRIES = 3;
-
-  // Température eau avec récupération ultra-robuste (0 – 60 °C attendue)
+  // --- Mesures sécurisées avec timeout strict ---
+  
+  // Température eau avec méthode non-bloquante
   {
     phaseStart = millis();
     
-    // CRITIQUE : Lecture DS18B20 peut prendre 780ms+ au démarrage
-    // Reset watchdog au milieu de la lecture pour éviter timeout
-    
-    // Utilise d'abord la méthode robuste standard
-    float val = _water.robustTemperatureC();
+    // NOUVELLE MÉTHODE NON-BLOQUANTE
+    float val = _water.getTemperatureWithFallback();
     Serial.printf("[SystemSensors] ⏱️ Température eau: %u ms\n", millis() - phaseStart);
     
-    // Si échec, utilise la méthode ultra-robuste
-    if (isnan(val)) {
-      Serial.println("[SystemSensors] Méthode robuste échouée, tentative ultra-robuste...");
-      val = _water.ultraRobustTemperatureC();
-    }
-    
-    // Validation finale renforcée pour s'assurer qu'aucune valeur aberrante n'est transmise
+    // Validation finale renforcée
     if (isnan(val) || val < SensorConfig::WaterTemp::MIN_VALID || val > SensorConfig::WaterTemp::MAX_VALID) {
       Serial.printf("[SystemSensors] Température eau invalide finale: %.1f°C (plage: %.1f-%.1f°C), force NaN\n", 
                    val, SensorConfig::WaterTemp::MIN_VALID, SensorConfig::WaterTemp::MAX_VALID);
       r.tempWater = NAN;
     } else {
-      // Validation supplémentaire : vérifier la cohérence avec la dernière valeur valide
-      static float lastValidWaterTemp = NAN;
-      if (!isnan(lastValidWaterTemp)) {
-        float delta = fabs(val - lastValidWaterTemp);
-        if (delta > 5.0f) { // Rejette si changement > 5°C entre lectures
-          Serial.printf("[SystemSensors] Changement trop important détecté: %.1f°C -> %.1f°C (écart: %.1f°C), force NaN\n", 
-                       lastValidWaterTemp, val, delta);
-          r.tempWater = NAN;
-        } else {
-          r.tempWater = val;
-          lastValidWaterTemp = val;
-        }
-      } else {
-        r.tempWater = val;
-        lastValidWaterTemp = val;
-      }
+      r.tempWater = val;
     }
   }
 
-  // Température air avec récupération robuste (+5 – 60 °C attendue)
+  // Température air avec méthode non-bloquante
   {
     phaseStart = millis();
-    float val = _air.robustTemperatureC(); // Utilise la méthode robuste avec récupération
+    float val = _air.robustTemperatureC(); // Garde la méthode robuste pour DHT22
     Serial.printf("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
     
-    // Validation finale pour s'assurer qu'aucune valeur négative n'est transmise
+    // Validation finale
     if (isnan(val) || val <= SensorConfig::AirSensor::TEMP_MIN || val >= SensorConfig::AirSensor::TEMP_MAX) {
       Serial.printf("[SystemSensors] Température air invalide finale: %.1f°C, force NaN\n", val);
       r.tempAir = NAN;
@@ -81,13 +57,13 @@ SensorReadings SystemSensors::read() {
     }
   }
 
-  // Humidité avec récupération robuste (5 – 100 %)
+  // Humidité avec méthode non-bloquante
   {
     phaseStart = millis();
-    float val = _air.robustHumidity(); // Utilise la méthode robuste avec récupération
+    float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT22
     Serial.printf("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
     
-    // Validation finale pour s'assurer qu'aucune valeur invalide n'est transmise
+    // Validation finale
     if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
       Serial.printf("[SystemSensors] Humidité invalide finale: %.1f%%, force NaN\n", val);
       r.humidity = NAN;

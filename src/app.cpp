@@ -252,8 +252,22 @@ void sensorTask(void* pv) {
     // Reset watchdog before starting sensor reading
     esp_task_wdt_reset();
     
+    // NOUVELLE PROTECTION CONTRE LES LECTURES LONGUES (v11.50)
+    uint32_t sensorStartTime = millis();
+    const uint32_t MAX_SENSOR_TIME_MS = 30000; // 30s max pour lecture capteurs
+    
     // Lecture des capteurs avec gestion d'erreur sans exceptions
     r = sensors.read();
+    
+    // Vérification du temps de lecture
+    uint32_t sensorDuration = millis() - sensorStartTime;
+    if (sensorDuration > MAX_SENSOR_TIME_MS) {
+      Serial.printf("[Sensor] ⚠️ LECTURE CAPTEURS TROP LENTE: %u ms (limite: %u ms)\n", 
+                    sensorDuration, MAX_SENSOR_TIME_MS);
+    }
+    
+    // Reset watchdog pendant la lecture
+    esp_task_wdt_reset();
     
     // Vérification des valeurs pour détecter les erreurs
     if (r.tempWater < SensorConfig::WaterTemp::MIN_VALID || r.tempWater > SensorConfig::WaterTemp::MAX_VALID ||
@@ -363,7 +377,8 @@ void automationTask(void* pv) {
     // Reset watchdog au début de chaque itération
     esp_task_wdt_reset();
     
-    if (xQueueReceive(sensorQueue, &r, portMAX_DELAY) == pdTRUE) {
+    // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
+    if (xQueueReceive(sensorQueue, &r, pdMS_TO_TICKS(1000)) == pdTRUE) {
       
       // Reset watchdog avant les opérations critiques
       esp_task_wdt_reset();
@@ -436,15 +451,22 @@ void automationTask(void* pv) {
         
         lastDriftDisplay = now;
       }
+      
+      // Reset watchdog après traitement
+      esp_task_wdt_reset();
+    } else {
+      // Timeout atteint - pas de données disponibles
+      // Continuer le cycle pour éviter le blocage
+      Serial.println(F("[Auto] Timeout queue capteurs - cycle continu"));
     }
   }
 }
 
 void setup() {
-  // Configure the native TWDT to 300 s before anything lengthy
+  // Configure the native TWDT to 60s pour détecter les blocages plus rapidement
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};
-  cfg.timeout_ms = TimingConfig::WATCHDOG_TIMEOUT_MS; // Increased to 300s (5 minutes) for stability
+  cfg.timeout_ms = 60000; // RÉDUIT de 300s à 60s (v11.50)
   cfg.idle_core_mask = (1 << 0) | (1 << 1);
   cfg.trigger_panic = true;
   esp_task_wdt_init(&cfg);
@@ -459,14 +481,39 @@ void setup() {
   EventLog::begin();
   EventLog::add("Boot start");
   
-  // Monter LittleFS globalement (format si nécessaire)
+  // Monter LittleFS globalement avec vérification robuste (v11.50)
   Serial.println("[FS] Mounting LittleFS...");
+  uint32_t fsStartTime = millis();
+  const uint32_t FS_TIMEOUT_MS = 10000; // 10s timeout pour montage
+  
   if (!LittleFS.begin(true)) {
-    Serial.println("[FS] LittleFS mount failed");
+    Serial.println("[FS] ❌ LittleFS mount failed - tentative de format");
+    // Tentative de format et remontage
+    if (LittleFS.format()) {
+      Serial.println("[FS] ✅ Format réussi, tentative de remontage");
+      if (LittleFS.begin(false)) {
+        Serial.println("[FS] ✅ Remontage après format réussi");
+      } else {
+        Serial.println("[FS] ❌ CRITIQUE: Impossible de monter LittleFS même après format");
+        // Continuer sans LittleFS mais avec avertissement
+      }
+    } else {
+      Serial.println("[FS] ❌ CRITIQUE: Format LittleFS échoué");
+    }
   } else {
+    uint32_t fsDuration = millis() - fsStartTime;
     size_t total = LittleFS.totalBytes();
     size_t used  = LittleFS.usedBytes();
-    Serial.printf("[FS] LittleFS ok: %u/%u bytes\n", (unsigned)used, (unsigned)total);
+    Serial.printf("[FS] ✅ LittleFS ok: %u/%u bytes (montage: %u ms)\n", 
+                  (unsigned)used, (unsigned)total, fsDuration);
+    
+    // Vérification de l'intégrité des fichiers critiques
+    if (!LittleFS.exists("/index.html")) {
+      Serial.println("[FS] ⚠️ Fichier index.html manquant");
+    }
+    if (!LittleFS.exists("/shared/common.js")) {
+      Serial.println("[FS] ⚠️ Fichier common.js manquant");
+    }
   }
   
   Serial.printf("[App] Démarrage FFP3CS v%s\n", Config::VERSION);
@@ -860,9 +907,9 @@ void setup() {
   }
   
   // Création queue & tasks FreeRTOS - Stratégie Web Dédié
-  sensorQueue = xQueueCreate(30, sizeof(SensorReadings)); // Augmenté de 10 à 30 slots (v11.34)
+  sensorQueue = xQueueCreate(100, sizeof(SensorReadings)); // AUGMENTÉ de 30 à 100 slots (v11.50)
   if (sensorQueue) {
-    Serial.printf("[App] ✅ Queue capteurs créée avec succès (30 slots)\n");
+    Serial.printf("[App] ✅ Queue capteurs créée avec succès (100 slots)\n");
     xTaskCreatePinnedToCore(sensorTask, "sensorTask", TaskConfig::SENSOR_TASK_STACK_SIZE, nullptr, TaskConfig::SENSOR_TASK_PRIORITY, &g_sensorTaskHandle, TaskConfig::TASK_CORE_ID); // core 1 - priorité CRITIQUE pour l'acquisition
     xTaskCreatePinnedToCore(webTask, "webTask", TaskConfig::WEB_TASK_STACK_SIZE, nullptr, TaskConfig::WEB_TASK_PRIORITY, &g_webTaskHandle, TaskConfig::TASK_CORE_ID); // priorité HAUTE pour l'interface web
     xTaskCreatePinnedToCore(automationTask, "autoTask", TaskConfig::AUTOMATION_TASK_STACK_SIZE, nullptr, TaskConfig::AUTOMATION_TASK_PRIORITY, &g_autoTaskHandle, TaskConfig::TASK_CORE_ID); // priorité MOYENNE pour la logique pure

@@ -11,7 +11,7 @@ Ce projet pilote capteurs et actionneurs (aquarium, potager, etc.) avec un ESP32
 - Emails: sujets et corps enrichis avec hostname, taille bornée.
 - Automatismes: sécurité aquarium trop plein + clarifications « réserve trop basse ».
 
-Détails: voir `docs/fixes/WATCHDOG_STABILITY_V9_98.md`.
+Détails: voir `VERSION.md` pour l'historique complet des versions.
 
 ## Description
 Système de contrôle automatisé pour aquarium/aquaponie basé sur ESP32-S3 avec monitoring web, alertes email et gestion intelligente des paramètres.
@@ -128,7 +128,7 @@ Utilisée pour l'authentification des requêtes POST (voir `ApiConfig::API_KEY` 
 
 ## Documentation des alertes email
 
-Voir `docs/guides/ALERTES_EMAIL_POMPES.md` pour les sujets, le contenu détaillé, les raisons d'arrêt et l'origine des commandes manuelles (serveur distant ou local).
+Voir `VERSION.md` pour les détails sur les alertes email et les notifications automatiques.
 
 ## Nouveautés et changements (2025-09)
 

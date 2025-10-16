@@ -22,22 +22,26 @@ WebClient::WebClient(const char* apiKey) : _apiKey(apiKey) {
   _client.setInsecure();               // accepte tous certificats (à affiner)
   _client.setHandshakeTimeout(12000);  // + de temps pour TLS
   // Désactivation du keep-alive : certaines déconnexions moitié-fermées
-  // généraient un blocage interne du client HTTP, empêchant l’appel
+  // généraient un blocage interne du client HTTP, empêchant l'appel
   // suivant de se terminer et donc le rafraîchissement du watchdog.
   _http.setReuse(false);
-  // Réduit le temps maximum d’attente global (connect + transfert)
-  _http.setTimeout(ServerConfig::REQUEST_TIMEOUT_MS); // centralisé dans project_config.h
+  // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
+  _http.setTimeout(GlobalTimeouts::HTTP_MAX_MS); // Timeout strict pour éviter blocage
 }
 
 bool WebClient::httpRequest(const String& url, const String& payload, String& response) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
+  // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
+  const uint32_t GLOBAL_TIMEOUT_MS = GlobalTimeouts::HTTP_MAX_MS;
+  uint32_t requestStartMs = millis();
+  
   // === LOGS DÉTAILLÉS DE DEBUGGING v11.32 ===
-  unsigned long requestStartMs = millis();
   Serial.println(F("=== DÉBUT REQUÊTE HTTP ==="));
   Serial.printf("[HTTP] Timestamp: %lu ms\n", requestStartMs);
   Serial.printf("[HTTP] URL: %s\n", url.c_str());
   Serial.printf("[HTTP] Payload size: %u bytes\n", payload.length());
+  Serial.printf("[HTTP] Timeout global: %u ms\n", GLOBAL_TIMEOUT_MS);
   
   // Logs détaillés du payload (toujours affiché pour debugging)
   Serial.println(F("[HTTP] === PAYLOAD COMPLET ==="));
@@ -102,6 +106,14 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
     Serial.printf("[HTTP] Headers set, timeout: %u ms\n", ServerConfig::REQUEST_TIMEOUT_MS);
+    
+    // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
+    uint32_t elapsedMs = millis() - requestStartMs;
+    if (elapsedMs >= GLOBAL_TIMEOUT_MS) {
+      Serial.printf("[HTTP] ⚠️ TIMEOUT GLOBAL ATTEINT: %u ms (limite: %u ms)\n", elapsedMs, GLOBAL_TIMEOUT_MS);
+      _http.end();
+      return false;
+    }
     
     // Log avant envoi POST
     Serial.printf("[HTTP] Sending POST at %lu ms...\n", attemptStartMs);

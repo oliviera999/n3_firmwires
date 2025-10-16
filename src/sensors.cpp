@@ -429,64 +429,51 @@ void WaterTempSensor::resetSensor() {
   Serial.printf("[WaterTemp] Reset matériel terminé (résolution: %d bits)\n", DS18B20_RESOLUTION);
 }
 
-float WaterTempSensor::robustTemperatureC() {
-  // 1. Tentative avec filtrage avancé
-  float result = filteredTemperatureC();
-  if (!isnan(result)) {
-    return result;
-  }
+float WaterTempSensor::getTemperatureWithFallback() {
+  // NOUVELLE MÉTHODE NON-BLOQUANTE (v11.50)
+  // Timeout strict pour éviter tout blocage système
   
-  Serial.println("[WaterTemp] Filtrage avancé échoué, tentative de récupération...");
+  uint32_t startTime = millis();
+  const uint32_t timeoutMs = GlobalTimeouts::DS18B20_MAX_MS;
   
-  // 2. Vérification de la connectivité
-  if (!isSensorConnected()) {
-    Serial.println("[WaterTemp] Capteur non connecté, reset matériel...");
-    resetSensor();
-    
-    // Nouvelle tentative après reset
-    result = filteredTemperatureC();
-    if (!isnan(result)) {
-      Serial.println("[WaterTemp] Récupération réussie après reset matériel");
-      return result;
-    }
-  }
-  
-  // 3. Tentative avec lecture simple répétée et reset matériel
-  for (uint8_t attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; ++attempt) {
-    Serial.printf("[WaterTemp] Tentative de récupération %d/%d...\n", attempt + 1, MAX_RECOVERY_ATTEMPTS);
-    
-    // Reset matériel du bus OneWire avant chaque tentative
-    _oneWire.reset();
-    vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
-    
-    // Réinitialisation de la bibliothèque DallasTemperature
-    _sensors.begin();
-    _sensors.setResolution(DS18B20_RESOLUTION);
-    
-    // Lecture simple avec délai de conversion approprié
-    _sensors.requestTemperatures();
-    vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
-    vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS)); // Attendre la fin de la conversion
+  // 1. Tentative rapide avec lecture simple
+  if (_pipelineReady && (millis() - _lastRequestMs) >= CONVERSION_DELAY_MS) {
     float temp = _sensors.getTempCByIndex(0);
+    _pipelineReady = false;
+    
+    // Re-planifier immédiatement
+    _sensors.requestTemperatures();
+    _lastRequestMs = millis();
+    _pipelineReady = true;
     
     if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
-      Serial.printf("[WaterTemp] Récupération réussie: %.1f°C\n", temp);
+      _lastValidTemp = temp;
+      saveLastValidTempToNVS(temp);
       return temp;
     }
-    
-    // Délai progressif entre tentatives (backoff)
-    uint16_t delay = RECOVERY_DELAY_MS * (attempt + 1);
-    vTaskDelay(pdMS_TO_TICKS(delay));
   }
   
-  // 4. Utilisation de la dernière valeur valide si disponible
+  // 2. Si pas prêt, lancer et retourner NaN immédiatement
+  if (!_pipelineReady) {
+    _sensors.requestTemperatures();
+    _lastRequestMs = millis();
+    _pipelineReady = true;
+  }
+  
+  // 3. Fallback immédiat - utiliser dernière valeur valide ou valeur par défaut
   if (!isnan(_lastValidTemp)) {
-    Serial.printf("[WaterTemp] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
+    Serial.printf("[WaterTemp] Capteur défaillant, utilise dernière valeur valide: %.1f°C\n", _lastValidTemp);
     return _lastValidTemp;
   }
   
-  Serial.println("[WaterTemp] Échec de toutes les tentatives de récupération");
-  return NAN;
+  Serial.printf("[WaterTemp] Capteur défaillant, utilise valeur par défaut: %.1f°C\n", DefaultValues::WATER_TEMP);
+  return DefaultValues::WATER_TEMP;
+}
+
+float WaterTempSensor::robustTemperatureC() {
+  // MÉTHODE DÉPRÉCIÉE - Utiliser getTemperatureWithFallback() à la place
+  Serial.println("[WaterTemp] ⚠️ robustTemperatureC() dépréciée - utilise getTemperatureWithFallback()");
+  return getTemperatureWithFallback();
 }
 
 float WaterTempSensor::ultraRobustTemperatureC() {

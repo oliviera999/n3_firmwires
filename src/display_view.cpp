@@ -104,16 +104,54 @@ static uint8_t wifiBars(int8_t rssi){
 // Nouvelles méthodes d'optimisation
 void DisplayView::beginUpdate() {
   if (!_present) return;
-  _updateMode = true;
-  _needsFlush = false;
+  
+  // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
+  const uint32_t I2C_TIMEOUT_MS = GlobalTimeouts::I2C_MAX_MS;
+  uint32_t startTime = millis();
+  
+  // Tentative d'initialisation avec timeout
+  while ((millis() - startTime) < I2C_TIMEOUT_MS) {
+    _updateMode = true;
+    _needsFlush = false;
+    
+    // Test rapide de communication I2C
+    if (_disp.begin()) {
+      return; // Succès
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  
+  // Timeout atteint - désactiver OLED
+  Serial.printf("[OLED] ⚠️ TIMEOUT I2C ATTEINT: %u ms (limite: %u ms), désactivation\n", 
+                millis() - startTime, I2C_TIMEOUT_MS);
+  _present = false;
 }
 
 void DisplayView::endUpdate() {
   if (!_present) return;
+  
+  // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
+  const uint32_t I2C_TIMEOUT_MS = GlobalTimeouts::I2C_MAX_MS;
+  uint32_t startTime = millis();
+  
   _updateMode = false;
   if (_needsFlush) {
-    _disp.display();
-    _needsFlush = false;
+    // Tentative d'affichage avec timeout
+    while ((millis() - startTime) < I2C_TIMEOUT_MS) {
+      _disp.display();
+      if (true) {
+        _needsFlush = false;
+        return; // Succès
+      }
+      
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    
+    // Timeout atteint - désactiver OLED
+    Serial.printf("[OLED] ⚠️ TIMEOUT AFFICHAGE ATTEINT: %u ms (limite: %u ms), désactivation\n", 
+                  millis() - startTime, I2C_TIMEOUT_MS);
+    _present = false;
   }
 }
 
