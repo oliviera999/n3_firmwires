@@ -555,7 +555,10 @@ void setup() {
   // Pré-créer les namespaces NVS critiques pour éviter NOT_FOUND en lecture seule
   {
     Preferences prefs;
-    const char* namespaces[] = {"bouffe","ota","remoteVars","rtc","diagnostics","alerts","timeDrift"};
+    const char* namespaces[] = {
+      "bouffe","ota","remoteVars","rtc","diagnostics","alerts","timeDrift",
+      "actSnap","actState","pendingSync","waterTemp","digest","cmdLog","reset"
+    };
     const size_t count = sizeof(namespaces)/sizeof(namespaces[0]);
     for (size_t i = 0; i < count; ++i) { prefs.begin(namespaces[i], false); prefs.end(); }
   }
