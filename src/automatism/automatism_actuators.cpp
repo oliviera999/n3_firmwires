@@ -19,63 +19,21 @@ AutomatismActuators::AutomatismActuators(SystemActuators& acts, ConfigManager& c
 }
 
 // ============================================================================
-// HELPER: Synchronisation Asynchrone (Factorisation)
-// Pattern répété 8x dans automatism.cpp original
+// SYSTÈME DE SYNCHRONISATION SERVEUR DIFFÉRÉE
+// Remplacé les tâches FreeRTOS par un marqueur simple
 // ============================================================================
 
-void AutomatismActuators::syncActuatorStateAsync(
-    const char* taskName,
-    const char* extraParams,
-    TaskHandle_t& taskHandle,
-    const char* actionDesc
-) {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.printf("[Actuators] ⚠️ Pas de WiFi - %s localement uniquement\n", actionDesc);
-        return;
-    }
-    
-    Serial.println(F("[Actuators] 🌐 Synchronisation serveur en arrière-plan..."));
-    
-    // Vérifier si une tâche de sync est déjà en cours
-    if (taskHandle != nullptr && eTaskGetState(taskHandle) != eDeleted) {
-        Serial.printf("[Actuators] ⚠️ Tâche %s déjà en cours - skip\n", taskName);
-        return;
-    }
-    
-    // Paramètres pour la tâche
-    struct SyncParams {
-        const char* extraParams;
-        const char* actionDesc;
-        TaskHandle_t* handle;
-    };
-    
-    SyncParams* params = new SyncParams{extraParams, actionDesc, &taskHandle};
-    
-    BaseType_t result = xTaskCreate([](void* param) {
-        SyncParams* p = (SyncParams*)param;
-        
-        vTaskDelay(pdMS_TO_TICKS(50));
-        
-        extern Automatism autoCtrl;
-        SensorReadings freshReadings = autoCtrl.readSensors();
-        bool success = autoCtrl.sendFullUpdate(freshReadings, p->extraParams);
-        
-        if (success) {
-            Serial.printf("[Actuators] ✅ Sync serveur OK - %s\n", p->actionDesc);
-        } else {
-            Serial.printf("[Actuators] ⚠️ Sync serveur échec - %s\n", p->actionDesc);
-        }
-        
-        *(p->handle) = nullptr;  // Reset handle avant suppression
-        delete p;
-        vTaskDelete(NULL);
-    }, taskName, 4096, params, 1, &taskHandle);
-    
-    if (result != pdPASS) {
-        Serial.printf("[Actuators] ❌ Échec création tâche %s\n", taskName);
-        delete params;
-        taskHandle = nullptr;
-    }
+void AutomatismActuators::markForSync(const char* payload) {
+    _needsServerSync = true;
+    _pendingSyncPayload = payload;
+    Serial.printf("[Actuators] 📌 Sync serveur marquée: %s\n", payload);
+}
+
+String AutomatismActuators::consumePendingSyncPayload() {
+    String payload = _pendingSyncPayload;
+    _needsServerSync = false;
+    _pendingSyncPayload = "";
+    return payload;
 }
 
 // ============================================================================
@@ -96,9 +54,8 @@ void AutomatismActuators::startAquaPumpManual() {
     // 3. WebSocket immédiat (feedback utilisateur instantané)
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur en arrière-plan
-    syncActuatorStateAsync("sync_aqua_start", "etatPompeAqua=1", 
-                          _syncAquaStartHandle, "pompe aqua activée");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatPompeAqua=1");
 }
 
 void AutomatismActuators::stopAquaPumpManual() {
@@ -115,9 +72,8 @@ void AutomatismActuators::stopAquaPumpManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_aqua_stop", "etatPompeAqua=0",
-                          _syncAquaStopHandle, "pompe aqua arrêtée");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatPompeAqua=0");
 }
 
 // ============================================================================
@@ -141,9 +97,8 @@ void AutomatismActuators::startTankPumpManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_tank_start", "etatPompeReserve=1",
-                          _syncTankStartHandle, "pompe réserve activée");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatPompeReserve=1");
 }
 
 void AutomatismActuators::stopTankPumpManual() {
@@ -160,9 +115,8 @@ void AutomatismActuators::stopTankPumpManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_tank_stop", "etatPompeReserve=0",
-                          _syncTankStopHandle, "pompe réserve arrêtée");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatPompeReserve=0");
 }
 
 // ============================================================================
@@ -181,9 +135,8 @@ void AutomatismActuators::startHeaterManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_heater_start", "etatHeat=1",
-                          _syncHeaterStartHandle, "chauffage activé");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatHeat=1");
 }
 
 void AutomatismActuators::stopHeaterManual() {
@@ -198,9 +151,8 @@ void AutomatismActuators::stopHeaterManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_heater_stop", "etatHeat=0",
-                          _syncHeaterStopHandle, "chauffage arrêté");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatHeat=0");
 }
 
 // ============================================================================
@@ -219,9 +171,8 @@ void AutomatismActuators::startLightManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_light_start", "etatUV=1",
-                          _syncLightStartHandle, "lumière activée");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatUV=1");
 }
 
 void AutomatismActuators::stopLightManual() {
@@ -236,9 +187,8 @@ void AutomatismActuators::stopLightManual() {
     // 3. WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // 4. Synchronisation serveur
-    syncActuatorStateAsync("sync_light_stop", "etatUV=0",
-                          _syncLightStopHandle, "lumière arrêtée");
+    // 4. Marquer pour synchronisation serveur au prochain cycle
+    markForSync("etatUV=0");
 }
 
 // ============================================================================
@@ -261,11 +211,9 @@ void AutomatismActuators::toggleEmailNotifications() {
     // WebSocket immédiat pour feedback
     realtimeWebSocket.broadcastNow();
     
-    // Synchronisation serveur
-    const char* params = newState ? "emailEnabled=1" : "emailEnabled=0";
-    TaskHandle_t tempHandle = nullptr;
-    syncActuatorStateAsync("sync_email_toggle", params, tempHandle, 
-                          newState ? "emails activés" : "emails désactivés");
+    // Marquer pour synchronisation serveur au prochain cycle
+    const char* payload = newState ? "emailEnabled=1" : "emailEnabled=0";
+    markForSync(payload);
 }
 
 void AutomatismActuators::toggleForceWakeup() {
@@ -283,10 +231,8 @@ void AutomatismActuators::toggleForceWakeup() {
     // WebSocket immédiat
     realtimeWebSocket.broadcastNow();
     
-    // Synchronisation serveur
-    const char* params = newState ? "forceWakeUp=1" : "forceWakeUp=0";
-    TaskHandle_t tempHandle = nullptr;
-    syncActuatorStateAsync("sync_forcewake_toggle", params, tempHandle,
-                          newState ? "force wakeup ON" : "force wakeup OFF");
+    // Marquer pour synchronisation serveur au prochain cycle
+    const char* payload = newState ? "forceWakeUp=1" : "forceWakeUp=0";
+    markForSync(payload);
 }
 

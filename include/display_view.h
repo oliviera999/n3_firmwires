@@ -66,8 +66,8 @@ class DisplayView {
   // Variante avec forçage pour dessiner la barre d'état même en mode verrouillé
   void drawStatusEx(int8_t sendState, int8_t recvState, int8_t rssi, bool mailBlink,
                     int8_t tideDir = 0, int diffValue = 0, bool force = false);
-  void showCountdown(const char* label, uint16_t secLeft);
-  void showFeedingCountdown(const char* fishType, const char* phase, uint16_t secLeft);
+  void showCountdown(const char* label, uint16_t secLeft, bool isManual = false);
+  void showFeedingCountdown(const char* fishType, const char* phase, uint16_t secLeft, bool isManual = false);
   void showServerVars(bool pumpAqua,bool pumpTank,bool heater,bool light,
                       uint8_t hMat,uint8_t hMid,uint8_t hSoir,
                       uint16_t tPetits,uint16_t tGros,

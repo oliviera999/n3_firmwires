@@ -474,11 +474,11 @@ void Automatism::updateDisplay() {
         if (_currentFeedingPhase == FeedingPhase::FEEDING_FORWARD) {
         uint32_t secLeft32 = remainingMs(_feedingPhaseEnd, currentMillis) / 1000UL;
           uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
-          _disp.showFeedingCountdown("Nourrissage", "avant", secLeft);
+          _disp.showFeedingCountdown("Nourrissage", "avant", secLeft, isFeedingInManualMode());
         } else if (_currentFeedingPhase == FeedingPhase::FEEDING_BACKWARD) {
         uint32_t secLeft32 = remainingMs(_feedingTotalEnd, currentMillis) / 1000UL;
           uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
-          _disp.showFeedingCountdown("Nourrissage", "arriere", secLeft);
+          _disp.showFeedingCountdown("Nourrissage", "arriere", secLeft, isFeedingInManualMode());
         }
         
         // Réinitialisation quand le cycle est terminé
@@ -489,7 +489,7 @@ void Automatism::updateDisplay() {
         // Affichage standard pour les autres types de décompte (remplissage, etc.)
         uint32_t secLeft32 = remainingMs(_countdownEnd, currentMillis) / 1000UL;
         uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
-        _disp.showCountdown(_countdownLabel.c_str(), secLeft);
+        _disp.showCountdown(_countdownLabel.c_str(), secLeft, isRefillingInManualMode());
       }
     } else {
       // Mode optimisé pour les affichages normaux
@@ -590,7 +590,21 @@ void Automatism::update(const SensorReadings& readings) {
   
   handleRemoteState();
 
-  // 5. Envoi périodique des mesures distantes (PRIORITÉ HAUTE - AVANT SLEEP)
+  // 5. Synchronisation serveur différée (actions manuelles locales)
+  AutomatismActuators actuators(_acts, _config);
+  if (actuators.needsSync() && WiFi.status() == WL_CONNECTED) {
+    String payload = actuators.consumePendingSyncPayload();
+    bool sent = sendFullUpdate(readings, payload.c_str());
+    if (sent) {
+      Serial.println("[Auto] ✅ Sync serveur réussie (action manuelle locale)");
+    } else {
+      Serial.println("[Auto] ⚠️ Sync serveur échec - sera retentée au prochain cycle");
+      // Note: Si échec, le marqueur est déjà consommé, mais sendFullUpdate
+      // utilise la DataQueue pour retry automatique
+    }
+  }
+
+  // 6. Envoi périodique des mesures distantes (PRIORITÉ HAUTE - AVANT SLEEP)
   // Déplacé avant le check de sleep pour garantir l'envoi toutes les 2 minutes
   unsigned long currentMillis = millis();
   if (currentMillis - lastSend > sendInterval) {
@@ -815,7 +829,7 @@ void Automatism::handleRefill(const SensorReadings& r) {
         _tankPumpLockReason = TankPumpLockReason::INEFFICIENT;
         Serial.println(F("[CRITIQUE] Pompe réservoir BLOQUÉE – plus d'essais"));
         // Notification instantanée vers serveur / email éventuel
-        sendFullUpdate(r, "etatPompeTank=0");
+        sendFullUpdate(r, "etatPompeTank=0&pump_tankCmd=0&pump_tank=0");
         if (emailEnabled && !emailTankSent) {
           String msg = "La pompe de réserve a été BLOQUÉE (inefficacité)\n";
           msg += "- Tentatives consécutives: "; msg += String(tankPumpRetries); msg += "/"; msg += String((unsigned)MAX_PUMP_RETRIES); msg += "\n";
@@ -1438,7 +1452,7 @@ void Automatism::handleRemoteState() {
             _levelAtPumpStart = cur.wlAqua;
             
             if (WiFi.status() == WL_CONNECTED) {
-              sendFullUpdate(cur, "etatPompeTank=1");
+              sendFullUpdate(cur, "etatPompeTank=1&pump_tankCmd=0&pump_tank=0");
               Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir activée manuellement (distant)"));
             }
             _lastTankManualOrigin = ManualOrigin::REMOTE_SERVER;
@@ -1458,7 +1472,7 @@ void Automatism::handleRemoteState() {
               // FIX v11.09: Notification serveur de l'arrêt
               if (WiFi.status() == WL_CONNECTED) {
                 SensorReadings cur = _sensors.read();
-                sendFullUpdate(cur, "etatPompeTank=0");
+                sendFullUpdate(cur, "etatPompeTank=0&pump_tankCmd=0&pump_tank=0");
                 Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir arrêtée manuellement (distant)"));
               }
               
@@ -2773,5 +2787,22 @@ bool Automatism::validateSystemStateBeforeSleep() {
   
   Serial.println(F("[Auto] ✅ État système validé pour sleep"));
   return true;
+}
+
+// v11.59: Indicateurs de mode pour OLED (A=Automatique, M=Manuel)
+bool Automatism::isFeedingInManualMode() const {
+  // Le nourrissage est en mode manuel si :
+  // 1. Une phase de nourrissage est en cours (déclenchée manuellement)
+  // 2. Les dernières commandes de nourrissage étaient manuelles
+  return (_currentFeedingPhase != FeedingPhase::NONE) || 
+         (_lastAquaManualOrigin != ManualOrigin::NONE);
+}
+
+bool Automatism::isRefillingInManualMode() const {
+  // Le remplissage est en mode manuel si :
+  // 1. La pompe réservoir est en cours d'exécution en mode manuel
+  // 2. La dernière commande de pompe réservoir était manuelle
+  return _manualTankOverride || 
+         (_lastTankManualOrigin != ManualOrigin::NONE);
 }
 

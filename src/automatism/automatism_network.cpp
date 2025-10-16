@@ -596,7 +596,7 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
         }
         
         autoCtrl.armMailBlink();
-        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0");  // Reset flag
+        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0&108=0");  // Reset flag + fallback GPIO
     }
     
     // Commande "bouffeGros" (ou GPIO 109 en fallback)
@@ -629,7 +629,7 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
         }
         
         autoCtrl.armMailBlink();
-        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0");  // Reset flag
+        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0&109=0");  // Reset flag + fallback GPIO
     }
 }
 
@@ -764,11 +764,21 @@ void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& d
             autoCtrl.startTankPumpManual();
             sendCommandAck("pump_tank", "on");
             logRemoteCommandExecution("ptank_on", true);
+            
+            // v11.59: Reset GPIO virtuals to prevent infinite loops
+            SensorReadings readings = autoCtrl.readSensors();
+            autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
+            Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
         } else if (isFalse(v)) {
             Serial.println(F("[Network] 💧 Commande pompe TANK OFF reçue du serveur distant"));
             autoCtrl.stopTankPumpManual();
             sendCommandAck("pump_tank", "off");
             logRemoteCommandExecution("ptank_off", true);
+            
+            // v11.59: Reset GPIO virtuals to prevent infinite loops
+            SensorReadings readings = autoCtrl.readSensors();
+            autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
+            Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
         }
     } else if (doc.containsKey("pump_tank")) {
         auto v = doc["pump_tank"];
@@ -777,11 +787,21 @@ void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& d
             sendCommandAck("pump_tank", "on");
             logRemoteCommandExecution("ptank_on", true);
             Serial.println(F("[Network] Pompe réservoir ON (état distant)"));
+            
+            // v11.59: Reset GPIO virtuals to prevent infinite loops
+            SensorReadings readings = autoCtrl.readSensors();
+            autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
+            Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
         } else if (isFalse(v)) {
             autoCtrl.stopTankPumpManual();
             sendCommandAck("pump_tank", "off");
             logRemoteCommandExecution("ptank_off", true);
             Serial.println(F("[Network] Pompe réservoir OFF (état distant)"));
+            
+            // v11.59: Reset GPIO virtuals to prevent infinite loops
+            SensorReadings readings = autoCtrl.readSensors();
+            autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
+            Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
         }
     }
     

@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.51";
+    constexpr const char* VERSION = "11.63";
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)

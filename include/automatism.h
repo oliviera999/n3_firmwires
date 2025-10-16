@@ -72,6 +72,10 @@ class Automatism {
   // Accessor pour modules (permet l'accès contrôlé à _sensors)
   SensorReadings readSensors() const { return _sensors.read(); }
   
+  // v11.59: Indicateurs de mode pour OLED (A=Automatique, M=Manuel)
+  bool isFeedingInManualMode() const;
+  bool isRefillingInManualMode() const;
+  
  private:
   SystemSensors& _sensors;
   SystemActuators& _acts;

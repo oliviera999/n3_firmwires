@@ -89,22 +89,18 @@ bool WebServerManager::begin() {
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
   
-  // CORRECTION: Servir index.html en chargeant en mémoire pour Content-Length exact
-  // Évite ERR_CONTENT_LENGTH_MISMATCH au premier chargement
-  auto serveIndexRobust = [](AsyncWebServerRequest* req) -> bool {
-    // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
-    const uint32_t FILE_TIMEOUT_MS = GlobalTimeouts::FILE_MAX_MS;
-    uint32_t startTime = millis();
-    
+  // OPTIMISATION v11.58: Streaming sans accumulation mémoire
+  // Évite la fragmentation causée par l'accumulation de 10KB en String
+  auto serveIndexStreaming = [](AsyncWebServerRequest* req) -> bool {
     // Vérification de mémoire avant traitement (index.html ~10KB + buffer)
-    uint32_t freeHeap = ESP.getFreeHeap();
-    Serial.printf("[Web] 📊 Heap libre avant index.html: %u bytes\n", freeHeap);
+    uint32_t freeHeapBefore = ESP.getFreeHeap();
+    Serial.printf("[Web] 📊 Heap libre avant index.html streaming: %u bytes\n", freeHeapBefore);
     
-    // NOUVEAU SEUIL DE SÉCURITÉ (v11.50)
-    const uint32_t MIN_HEAP_FOR_FILES = 60000; // Augmenté à 60KB pour sécurité
-    if (freeHeap < MIN_HEAP_FOR_FILES) {
+    // NOUVEAU SEUIL DE SÉCURITÉ AUGMENTÉ (v11.58)
+    const uint32_t MIN_HEAP_FOR_FILES = 80000; // Augmenté à 80KB pour sécurité
+    if (freeHeapBefore < MIN_HEAP_FOR_FILES) {
       Serial.printf("[Web] ⚠️ Mémoire insuffisante pour servir index.html (%u < %u bytes)\n", 
-                    freeHeap, MIN_HEAP_FOR_FILES);
+                    freeHeapBefore, MIN_HEAP_FOR_FILES);
       return false;
     }
     
@@ -120,51 +116,51 @@ bool WebServerManager::begin() {
     }
     
     size_t fileSize = file.size();
-    Serial.printf("[Web] 📏 index.html size: %u bytes\n", fileSize);
+    Serial.printf("[Web] 📏 index.html size: %u bytes (streaming)\n", fileSize);
     
-    // NOUVELLE MÉTHODE NON-BLOQUANTE (v11.50)
-    // Lecture par chunks pour éviter la fragmentation mémoire
-    const size_t CHUNK_SIZE = 1024;  // 1KB par chunk
-    String content;
-    content.reserve(fileSize + 100);
-    
-    uint8_t buffer[CHUNK_SIZE];
-    while (file.available() && (millis() - startTime) < FILE_TIMEOUT_MS) {
-      size_t bytesRead = file.read(buffer, min(CHUNK_SIZE, (size_t)file.available()));
-      content += String((char*)buffer, bytesRead);
-      
-      // Reset watchdog pendant lecture
+    // STREAMING: Envoi direct par chunks sans accumulation en mémoire
+    AsyncWebServerResponse* response = req->beginChunkedResponse("text/html", [file](uint8_t *buffer, size_t maxLen, size_t index) mutable -> size_t {
+      // Reset watchdog pendant streaming
       esp_task_wdt_reset();
       
-      // Vérification mémoire pendant lecture
-      if (ESP.getFreeHeap() < 30000) {
-        Serial.println("[Web] ⚠️ Mémoire critique pendant lecture fichier");
+      // Vérification mémoire pendant streaming
+      if (ESP.getFreeHeap() < 50000) {
+        Serial.println("[Web] ⚠️ Mémoire critique pendant streaming");
         file.close();
-        return false;
+        return 0; // Arrêt du streaming
       }
-    }
-    file.close();
-    
-    // Vérification timeout
-    if ((millis() - startTime) >= FILE_TIMEOUT_MS) {
-      Serial.printf("[Web] ⚠️ TIMEOUT FICHIER ATTEINT: %u ms (limite: %u ms)\n", millis() - startTime, FILE_TIMEOUT_MS);
-      return false;
-    }
-    
-    if (content.length() != fileSize) {
-      Serial.printf("[Web] ⚠️ Taille lue (%u) != taille fichier (%u)\n", content.length(), fileSize);
-    }
-    
-    // Envoyer avec Content-Length exact
-    AsyncWebServerResponse* r = req->beginResponse(200, "text/html", content);
-    if (r) {
-      r->addHeader("Cache-Control", "public, max-age=300");
-      r->addHeader("X-Content-Type-Options", "nosniff");
-      r->addHeader("X-Frame-Options", "DENY");
-      req->send(r);
       
-      Serial.printf("[Web] ✅ index.html envoyé (%u bytes, heap libre: %u bytes)\n", 
-                    content.length(), ESP.getFreeHeap());
+      if (!file.available()) {
+        file.close();
+        return 0; // Fin de fichier
+      }
+      
+      // Lire chunk suivant
+      size_t bytesRead = file.read(buffer, maxLen);
+      return bytesRead;
+    });
+    
+    if (response) {
+      response->addHeader("Cache-Control", "public, max-age=300");
+      response->addHeader("X-Content-Type-Options", "nosniff");
+      response->addHeader("X-Frame-Options", "DENY");
+      req->send(response);
+      
+      uint32_t freeHeapAfter = ESP.getFreeHeap();
+      Serial.printf("[Web] ✅ index.html streaming démarré (%u bytes, heap: %u→%u bytes)\n", 
+                    fileSize, freeHeapBefore, freeHeapAfter);
+      
+      // MONITORING v11.58: Statistiques de fragmentation
+      static uint32_t streamingRequests = 0;
+      static uint32_t totalMemorySaved = 0;
+      streamingRequests++;
+      totalMemorySaved += fileSize; // Estimation de la mémoire économisée
+      
+      if (streamingRequests % 10 == 0) { // Log tous les 10 requests
+        Serial.printf("[Web] 📊 Streaming stats: %u requests, ~%u KB économisés\n", 
+                      streamingRequests, totalMemorySaved / 1024);
+      }
+      
       return true;
     }
     
@@ -173,13 +169,13 @@ bool WebServerManager::begin() {
   };
 
   // Page principale - Version consolidée avec thème sombre
-  _server->on("/", HTTP_GET, [serveIndexRobust](AsyncWebServerRequest* req){
+  _server->on("/", HTTP_GET, [serveIndexStreaming](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
       
       Serial.printf("[Web] 🌐 Requête / depuis %s\n", req->client()->remoteIP().toString().c_str());
       
-      // Méthode robuste avec chargement en mémoire (garantit Content-Length exact)
-      if (serveIndexRobust(req)) {
+      // Méthode streaming optimisée (v11.58) - évite fragmentation mémoire
+      if (serveIndexStreaming(req)) {
         return; // Succès
       }
       
@@ -205,12 +201,12 @@ bool WebServerManager::begin() {
         req->send(500, "text/plain", "Erreur interne serveur");
       }
   });
-  _server->on("/index.html", HTTP_GET, [serveIndexRobust](AsyncWebServerRequest* req){
+  _server->on("/index.html", HTTP_GET, [serveIndexStreaming](AsyncWebServerRequest* req){
       // v11.40: Pas de notifyLocalWebActivity() - géré par WebSocket
       Serial.println("[Web] 📁 Requête explicite /index.html");
       
-      // Utiliser la même méthode robuste que pour /
-      if (serveIndexRobust(req)) {
+      // Utiliser la même méthode streaming que pour /
+      if (serveIndexStreaming(req)) {
         return;
       }
       
@@ -1086,8 +1082,8 @@ bool WebServerManager::begin() {
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
     
-    // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
-    const uint32_t MIN_HEAP_FOR_DBVARS = 40000; // 40KB minimum pour dbvars
+    // NOUVELLE VÉRIFICATION MÉMOIRE AUGMENTÉE (v11.58)
+    const uint32_t MIN_HEAP_FOR_DBVARS = 55000; // 55KB minimum pour dbvars (augmenté de 37%)
     if (ESP.getFreeHeap() < MIN_HEAP_FOR_DBVARS) {
       Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /dbvars (%u < %u bytes)\n", 
                     ESP.getFreeHeap(), MIN_HEAP_FOR_DBVARS);

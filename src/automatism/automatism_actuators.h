@@ -3,8 +3,6 @@
 #include <Arduino.h>
 #include "system_actuators.h"
 #include "config_manager.h"
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
 /**
  * Module Actuators pour Automatism
@@ -43,35 +41,23 @@ public:
     void toggleEmailNotifications();
     void toggleForceWakeup();
     
+    // === SYNCHRONISATION SERVEUR ===
+    // Marquer pour synchronisation serveur au prochain cycle
+    void markForSync(const char* payload);
+    
+    // Vérifier si sync nécessaire
+    bool needsSync() const { return _needsServerSync; }
+    
+    // Récupérer et consommer le payload de sync
+    String consumePendingSyncPayload();
+    
 private:
     SystemActuators& _acts;
     ConfigManager& _config;
     
-    // Task handles pour synchronisation async
-    TaskHandle_t _syncAquaStartHandle = nullptr;
-    TaskHandle_t _syncAquaStopHandle = nullptr;
-    TaskHandle_t _syncTankStartHandle = nullptr;
-    TaskHandle_t _syncTankStopHandle = nullptr;
-    TaskHandle_t _syncHeaterStartHandle = nullptr;
-    TaskHandle_t _syncHeaterStopHandle = nullptr;
-    TaskHandle_t _syncLightStartHandle = nullptr;
-    TaskHandle_t _syncLightStopHandle = nullptr;
-    
-    /**
-     * Helper pour synchronisation asynchrone avec serveur distant
-     * Factorisation du code dupliqué 8x
-     * 
-     * @param taskName Nom de la tâche FreeRTOS
-     * @param extraParams Paramètres pour sendFullUpdate() (ex: "etatPompeAqua=1")
-     * @param taskHandle Référence au handle de tâche
-     * @param actionDesc Description de l'action (pour logs)
-     */
-    void syncActuatorStateAsync(
-        const char* taskName,
-        const char* extraParams,
-        TaskHandle_t& taskHandle,
-        const char* actionDesc
-    );
+    // Système de synchronisation serveur différée
+    bool _needsServerSync = false;
+    String _pendingSyncPayload = "";
 };
 
 

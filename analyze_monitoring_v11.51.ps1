@@ -172,3 +172,4 @@ Write-Host "  - Connexions WebSocket: $WebSocketConnections"
 
 Write-Host "`n=== FIN DE L'ANALYSE ===" -ForegroundColor Green
 Write-Host "Analyse terminée le $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+

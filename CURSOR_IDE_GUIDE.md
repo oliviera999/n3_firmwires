@@ -224,3 +224,4 @@ Cette configuration vous offre :
 ---
 
 **Note** : Cette configuration est spécifiquement optimisée pour le projet ESP32 Aquaponie Controller (FFP5CS). Adaptez les paramètres selon vos besoins spécifiques.
+

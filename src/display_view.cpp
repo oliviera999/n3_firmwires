@@ -63,6 +63,10 @@ static String utf8ToCp437(const char* input) {
 // Texte protégé contre le dépassement horizontal (police 6x8 px par taille 1)
 void DisplayView::printClipped(int16_t x, int16_t y, const String& text, uint8_t size) {
   if (!_present) return;
+  
+  // CORRECTION v11.57: Suppression des vérifications I2C répétées
+  // Les vérifications I2C sont faites uniquement lors de l'initialisation
+  // pour éviter le spam d'erreurs lors des mises à jour fréquentes
   // Largeur max pixels
   const int16_t maxWidth = _disp.width();
   // Largeur d'un caractère: 6 px en taille 1 (5 + 1 espace)
@@ -105,53 +109,21 @@ static uint8_t wifiBars(int8_t rssi){
 void DisplayView::beginUpdate() {
   if (!_present) return;
   
-  // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
-  const uint32_t I2C_TIMEOUT_MS = GlobalTimeouts::I2C_MAX_MS;
-  uint32_t startTime = millis();
-  
-  // Tentative d'initialisation avec timeout
-  while ((millis() - startTime) < I2C_TIMEOUT_MS) {
-    _updateMode = true;
-    _needsFlush = false;
-    
-    // Test rapide de communication I2C
-    if (_disp.begin()) {
-      return; // Succès
-    }
-    
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-  
-  // Timeout atteint - désactiver OLED
-  Serial.printf("[OLED] ⚠️ TIMEOUT I2C ATTEINT: %u ms (limite: %u ms), désactivation\n", 
-                millis() - startTime, I2C_TIMEOUT_MS);
-  _present = false;
+  // CORRECTION v11.58: Suppression des appels répétés à _disp.begin()
+  // beginUpdate() active simplement le mode mise à jour, pas de communication I2C
+  _updateMode = true;
+  _needsFlush = false;
 }
 
 void DisplayView::endUpdate() {
   if (!_present) return;
   
-  // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
-  const uint32_t I2C_TIMEOUT_MS = GlobalTimeouts::I2C_MAX_MS;
-  uint32_t startTime = millis();
-  
+  // CORRECTION v11.58: Simplification de la logique de flush
+  // Pas de boucle timeout, juste un flush simple si nécessaire
   _updateMode = false;
   if (_needsFlush) {
-    // Tentative d'affichage avec timeout
-    while ((millis() - startTime) < I2C_TIMEOUT_MS) {
-      _disp.display();
-      if (true) {
-        _needsFlush = false;
-        return; // Succès
-      }
-      
-      vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    
-    // Timeout atteint - désactiver OLED
-    Serial.printf("[OLED] ⚠️ TIMEOUT AFFICHAGE ATTEINT: %u ms (limite: %u ms), désactivation\n", 
-                  millis() - startTime, I2C_TIMEOUT_MS);
-    _present = false;
+    _disp.display();
+    _needsFlush = false;
   }
 }
 
@@ -205,6 +177,10 @@ void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bo
                              int8_t tideDir, int diffValue) {
   if (!_present) return;
   if (isLocked()) return;
+
+  // CORRECTION v11.57: Suppression des vérifications I2C répétées
+  // Les vérifications I2C sont faites uniquement lors de l'initialisation
+  // pour éviter le spam d'erreurs lors des mises à jour fréquentes
 
   // Vérification si les valeurs ont changé (optimisation)
   bool needsUpdate = (sendState != _lastSendState || recvState != _lastRecvState || 
@@ -442,7 +418,7 @@ void DisplayView::drawStatusEx(int8_t sendState, int8_t recvState, int8_t rssi, 
   if (_updateMode) _needsFlush = true;
 }
 
-void DisplayView::showCountdown(const char* label, uint16_t secLeft){
+void DisplayView::showCountdown(const char* label, uint16_t secLeft, bool isManual){
   if(!_present || splashActive() || _isDisplaying || isLocked()) return;
   
   _isDisplaying = true;
@@ -470,6 +446,14 @@ void DisplayView::showCountdown(const char* label, uint16_t secLeft){
     _disp.printf("%u", secLeft);
   }
   
+  // v11.60: Indicateur A/M en haut à droite pendant le décompte
+  _disp.setTextSize(1);
+  if (isManual) {
+    _disp.drawChar(110, 0, 'M', WHITE, BLACK, 1); // Manuel
+  } else {
+    _disp.drawChar(110, 0, 'A', WHITE, BLACK, 1); // Automatique
+  }
+  
   // Force le flush immédiat pour les décomptes (toujours fluide)
   _disp.display();
   _needsFlush = false;
@@ -480,7 +464,7 @@ void DisplayView::showCountdown(const char* label, uint16_t secLeft){
   _isDisplaying = false;
 }
 
-void DisplayView::showFeedingCountdown(const char* fishType, const char* phase, uint16_t secLeft){
+void DisplayView::showFeedingCountdown(const char* fishType, const char* phase, uint16_t secLeft, bool isManual){
   if(!_present || splashActive() || _isDisplaying || isLocked()) return;
   
   _isDisplaying = true;
@@ -509,6 +493,14 @@ void DisplayView::showFeedingCountdown(const char* fishType, const char* phase, 
     _disp.print("Terminé");
   } else {
     _disp.printf("%u", secLeft);
+  }
+  
+  // v11.60: Indicateur A/M en haut à droite pendant le décompte de nourrissage
+  _disp.setTextSize(1);
+  if (isManual) {
+    _disp.drawChar(110, 0, 'M', WHITE, BLACK, 1); // Manuel
+  } else {
+    _disp.drawChar(110, 0, 'A', WHITE, BLACK, 1); // Automatique
   }
   
   // Force le flush immédiat pour les décomptes de nourrissage (toujours fluide)
@@ -548,104 +540,98 @@ bool DisplayView::begin() {
   Serial.printf("Adresse OLED: 0x%02X\n", Pins::OLED_ADDR);
 #endif
 
-  // Initialiser I2C avec les pins définis
-  Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
-  delay(ExtendedSensorConfig::I2C_STABILIZATION_DELAY_MS); // Attendre la stabilisation I2C
+  // CORRECTION v11.55: Gestion robuste I2C avec détection silencieuse
+  static bool i2cInitialized = false;
   
+  if (!i2cInitialized) {
+    // Initialiser I2C avec les pins définis
+    Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
+    delay(ExtendedSensorConfig::I2C_STABILIZATION_DELAY_MS); // Attendre la stabilisation I2C
+    i2cInitialized = true;
+    
 #ifdef OLED_DIAGNOSTIC
-  Serial.println("I2C initialisé, test de détection...");
+    Serial.println("I2C initialisé, test de détection...");
 #endif
+  } else {
+#ifdef OLED_DIAGNOSTIC
+    Serial.println("I2C déjà initialisé, test de détection...");
+#endif
+  }
   
-  // Détection automatique de l'OLED
+  // CORRECTION v11.57: Détection robuste avec gestion d'erreur améliorée
   Wire.beginTransmission(Pins::OLED_ADDR);
   byte error = Wire.endTransmission();
   
-#ifdef OLED_DIAGNOSTIC
-  Serial.printf("Test adresse 0x%02X - Code d'erreur: %d\n", Pins::OLED_ADDR, error);
-  switch(error) {
-    case 0: Serial.println("  → Succès: Périphérique détecté"); break;
-    case 1: Serial.println("  → Erreur 1: Buffer trop petit"); break;
-    case 2: Serial.println("  → Erreur 2: NACK sur adresse (connexion SDA/SCL)"); break;
-    case 3: Serial.println("  → Erreur 3: NACK sur données"); break;
-    case 4: Serial.println("  → Erreur 4: Autre erreur"); break;
-    case 5: Serial.println("  → Erreur 5: Timeout"); break;
-    default: Serial.printf("  → Erreur inconnue: %d\n", error);
+  // Si erreur I2C, désactiver immédiatement pour éviter le spam
+  if (error != 0) {
+    Serial.printf("[OLED] Non détectée sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X) - Erreur: %d\n", 
+                  Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR, error);
+    Serial.println("[OLED] Mode dégradé activé (pas d'affichage)");
+    _present = false;
+    return false;
   }
   
-  // Test avec adresse alternative
-  Serial.println("Test avec adresse alternative 0x3D...");
-  Wire.beginTransmission(0x3D);
-  byte errorAlt = Wire.endTransmission();
-  Serial.printf("Test adresse 0x3D - Code d'erreur: %d\n", errorAlt);
-  if (errorAlt == 0) {
-    Serial.println("  → OLED détectée sur adresse 0x3D !");
-  }
-#endif
-  
-  if (error == 0) {
-    // OLED détectée, essayer de l'initialiser
-    if (_disp.begin(SSD1306_SWITCHCAPVCC, Pins::OLED_ADDR)) {
-      _present = true;
-      _disp.clearDisplay();
-      _disp.setTextColor(WHITE);
+  // OLED détectée, essayer de l'initialiser
+  if (_disp.begin(SSD1306_SWITCHCAPVCC, Pins::OLED_ADDR)) {
+    _present = true;
+    
+    // CORRECTION v11.57: Suppression du test de stabilité répété
+    // Le test initial suffit, pas besoin de retester après chaque init
+    _disp.clearDisplay();
+    _disp.setTextColor(WHITE);
 #if FEATURE_OLED
-      // Active le mapping CP437 pour permettre l'affichage des accents (é, è, ç, ...)
-      _disp.cp437(true);
+    // Active le mapping CP437 pour permettre l'affichage des accents (é, è, ç, ...)
+    _disp.cp437(true);
 #endif
 
-      // --- SPLASH SCREEN UNIFIÉ (3 secondes, non bloquant) ---
-      Serial.println("[OLED] Affichage du splash screen...");
-      _disp.clearDisplay();
-      
-      // Fonction helper pour centrer le texte
-      auto centerPrint = [&](const char* txt, uint8_t size, uint8_t y) {
-        _disp.setTextSize(size);
-        int16_t x = (_disp.width() - (strlen(txt) * 6 * size)) / 2;
-        if (x < 0) x = 0;           // sécurité si texte trop long
-        _disp.setCursor(x, y);
-        _disp.println(txt);
-      };
+    // --- SPLASH SCREEN UNIFIÉ (3 secondes, non bloquant) ---
+    Serial.println("[OLED] Affichage du splash screen...");
+    _disp.clearDisplay();
+    
+    // Fonction helper pour centrer le texte
+    auto centerPrint = [&](const char* txt, uint8_t size, uint8_t y) {
+      _disp.setTextSize(size);
+      int16_t x = (_disp.width() - (strlen(txt) * 6 * size)) / 2;
+      if (x < 0) x = 0;           // sécurité si texte trop long
+      _disp.setCursor(x, y);
+      _disp.println(txt);
+    };
 
-      // Ligne 1 : "Projet farmflow FFP3" (taille 1, centré)
-      centerPrint("Projet farmflow FFP3", 1, 0);
-      
-      // Ligne 2 : Version du firmware (taille 1, centré)
-      char vbuf[16];
-      snprintf(vbuf, sizeof(vbuf), "v%s", Config::VERSION);
-      centerPrint(vbuf, 1, 10);
-      
-      // Logo N3 45x45 centré en dessous (à partir de y=18)
-      int16_t logo_x = (_disp.width() - LOGO_WIDTH) / 2;   // (128-45)/2 = 41
-      int16_t logo_y = 18;  // Juste en dessous du texte
-      
-      // Dessiner un rectangle blanc comme fond pour le logo
-      _disp.fillRect(logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
-      
-      // Puis dessiner le logo en noir par-dessus (pour inverser les couleurs)
-      _disp.drawBitmap(logo_x, logo_y, epd_bitmap_logo_n3_site, LOGO_WIDTH, LOGO_HEIGHT, BLACK);
-      
-      _disp.display();
+    // Ligne 1 : "Projet farmflow FFP3" (taille 1, centré)
+    centerPrint("Projet farmflow FFP3", 1, 0);
+    
+    // Ligne 2 : Version du firmware (taille 1, centré)
+    char vbuf[16];
+    snprintf(vbuf, sizeof(vbuf), "v%s", Config::VERSION);
+    centerPrint(vbuf, 1, 10);
+    
+    // Logo N3 45x45 centré en dessous (à partir de y=18)
+    int16_t logo_x = (_disp.width() - LOGO_WIDTH) / 2;   // (128-45)/2 = 41
+    int16_t logo_y = 18;  // Juste en dessous du texte
+    
+    // Dessiner un rectangle blanc comme fond pour le logo
+    _disp.fillRect(logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
+    
+    // Puis dessiner le logo en noir par-dessus (pour inverser les couleurs)
+    _disp.drawBitmap(logo_x, logo_y, epd_bitmap_logo_n3_site, LOGO_WIDTH, LOGO_HEIGHT, BLACK);
+    
+    _disp.display();
 
-      // Le splash reste visible 3 secondes (non bloquant)
-      _splashUntil = millis() + 3000;
-      Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: 3000 ms)\n", _splashUntil);
+    // Le splash reste visible 3 secondes (non bloquant)
+    _splashUntil = millis() + 3000;
+    Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: 3000 ms)\n", _splashUntil);
 
-      _diagLine = 0; // reset diagnostic line counter at each begin
-      resetStatusCache(); // Réinitialise le cache des états
-      resetMainCache(); // Réinitialise le cache de l'affichage principal
-      flush();
-      
-      Serial.printf("[OLED] Initialisée avec succès sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n", 
-                   Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
-    } else {
-      _present = false;
-      Serial.printf("[OLED] Échec de l'initialisation sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n", 
-                   Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
-    }
+    _diagLine = 0; // reset diagnostic line counter at each begin
+    resetStatusCache(); // Réinitialise le cache des états
+    resetMainCache(); // Réinitialise le cache de l'affichage principal
+    flush();
+    
+    Serial.printf("[OLED] Initialisée avec succès sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n", 
+                 Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
   } else {
     _present = false;
-    Serial.printf("[OLED] Non détectée sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X) - Erreur: %d\n", 
-                 Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR, error);
+    Serial.printf("[OLED] Échec de l'initialisation sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n", 
+                 Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
   }
   
   return _present;
