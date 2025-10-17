@@ -216,7 +216,7 @@ private:
     unsigned long _lastSend;
     unsigned long _lastRemoteFetch;
     static constexpr unsigned long SEND_INTERVAL_MS = 120000;        // 2 minutes
-    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 4000;  // 4 secondes
+    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 15000; // 15 secondes (v11.70: optimisé pour économie batterie)
     
     // État
     bool _serverOk;

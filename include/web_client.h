@@ -27,7 +27,6 @@ class WebClient {
   bool sendMeasurements(const Measurements& m, bool includeReset=false);
   bool sendHeartbeat(const class Diagnostics& diag);
   bool postRaw(const String& payload);
-  bool postRaw(const String& payload, bool includeSkeleton);
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
  private:

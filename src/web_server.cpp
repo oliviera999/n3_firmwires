@@ -1207,9 +1207,9 @@ bool WebServerManager::begin() {
       return String();
     };
 
-    // Clés acceptées (schéma serveur)
+    // v11.70: Clés acceptées standardisées (schéma serveur)
     const char* KEYS[] = {
-      "feedMorning","feedNoon","feedEvening",
+      "105","106","107",  // GPIO numériques pour heures nourrissage
       "tempsGros","tempsPetits",
       "aqThreshold","tankThreshold","chauffageThreshold",
       "tempsRemplissageSec","limFlood",
@@ -1235,32 +1235,23 @@ bool WebServerManager::begin() {
       nvsDoc[key] = value;
     };
 
-    // Lire et normaliser les paramètres
-    // Heures de nourrissage
-    appendPair("feedMorning", getParam("feedMorning"));
-    appendPair("feedNoon",    getParam("feedNoon"));
-    appendPair("feedEvening", getParam("feedEvening"));
-    // Durées nourrissage (serveur attend tempsGros/tempsPetits)
-    appendPair("tempsGros",   getParam("feedBigDur").length()? getParam("feedBigDur") : getParam("tempsGros"));
-    appendPair("tempsPetits", getParam("feedSmallDur").length()? getParam("feedSmallDur") : getParam("tempsPetits"));
+    // v11.70: Lecture directe des paramètres - clés standardisées
+    // Heures de nourrissage (GPIO numériques)
+    appendPair("105", getParam("feedMorning"));  // bouffeMatin
+    appendPair("106", getParam("feedNoon"));     // bouffeMidi  
+    appendPair("107", getParam("feedEvening"));  // bouffeSoir
+    // Durées nourrissage
+    appendPair("tempsGros", getParam("tempsGros"));
+    appendPair("tempsPetits", getParam("tempsPetits"));
     // Seuils/paramètres
-    appendPair("aqThreshold",          getParam("aqThreshold"));
-    appendPair("tankThreshold",        getParam("tankThreshold"));
-    appendPair("chauffageThreshold",   getParam("heaterThreshold").length()? getParam("heaterThreshold") : getParam("chauffageThreshold"));
-    appendPair("tempsRemplissageSec",  getParam("refillDuration").length()? getParam("refillDuration") : getParam("tempsRemplissageSec"));
-    appendPair("limFlood",             getParam("limFlood"));
+    appendPair("aqThreshold", getParam("aqThreshold"));
+    appendPair("tankThreshold", getParam("tankThreshold"));
+    appendPair("chauffageThreshold", getParam("chauffageThreshold"));
+    appendPair("tempsRemplissageSec", getParam("tempsRemplissageSec"));
+    appendPair("limFlood", getParam("limFlood"));
     // Email
-    if (getParam("emailAddress").length()) appendPair("mail", getParam("emailAddress"));
-    // Traiter la case à cocher même si valeur vide (paramètre présent mais décoché)
-    if (req->hasParam("emailEnabled", /*post*/true)) {
-      String v = getParam("emailEnabled"); v.toLowerCase(); v.trim();
-      bool on = (v == "1" || v == "true" || v == "on" || v == "checked");
-      appendPair("mailNotif", on ? String("checked") : String(""));
-    } else if (req->hasParam("mailNotif", /*post*/true)) {
-      String v = getParam("mailNotif"); v.toLowerCase(); v.trim();
-      bool on = (v == "1" || v == "true" || v == "on" || v == "checked");
-      appendPair("mailNotif", on ? String("checked") : String(""));
-    }
+    appendPair("mail", getParam("mail"));
+    appendPair("mailNotif", getParam("mailNotif"));
 
     // Sauvegarde immédiate en NVS du JSON fusionné
     {

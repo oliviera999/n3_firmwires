@@ -355,7 +355,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 
   Serial.println(F("[SM] Construction du payload..."));
   
-  // Ordre exact aligné sur la liste utilisée côté serveur (voir makeSkeleton)
+  // Ordre exact aligné sur la liste utilisée côté serveur
   appendKV("version", String(Config::VERSION));
   appendKV("TempAir", fmtFloat(tempAir));
   appendKV("Humidite", fmtFloat(humidity));
@@ -399,8 +399,8 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 
   LOG(LOG_DEBUG, "POST %s", payload.c_str());
   
-  // Envoi sans squelette: l'ordre exact est déjà respecté
-  bool success = postRaw(payload, false);
+  // Envoi direct: l'ordre exact est déjà respecté
+  bool success = postRaw(payload);
   
   unsigned long smDurationMs = millis() - smStartMs;
   Serial.printf("[SM] === FIN SENDMEASUREMENTS ===\n");
@@ -558,40 +558,14 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   return success;
 }
 
-// Nouveau helper : ajoute un squelette de champs vides afin que chaque POST reste complet
-// Génère dynamiquement un squelette (champs vides) en excluant ceux déjà présents dans le payload
-static String makeSkeleton(const String& payload) {
-  static const char* FIELDS[] = {
-    "version","TempAir","Humidite","TempEau",
-    "EauPotager","EauAquarium","EauReserve","diffMaree","Luminosite",
-    "etatPompeAqua","etatPompeTank","etatHeat","etatUV",
-    "bouffeMatin","bouffeMidi","bouffeSoir","bouffePetits","bouffeGros",
-    "tempsGros","tempsPetits",
-    "aqThreshold","tankThreshold","chauffageThreshold",
-    "mail","mailNotif","resetMode","tempsRemplissageSec","limFlood","WakeUp","FreqWakeUp"
-  };
-  const size_t COUNT = sizeof(FIELDS) / sizeof(FIELDS[0]);
+// v11.70: makeSkeleton() supprimé - jamais utilisé (includeSkeleton toujours false)
 
-  String stub;
-  for (size_t i = 0; i < COUNT; ++i) {
-    const char* key = FIELDS[i];
-    // Ajoute uniquement la clé si elle n'existe pas déjà dans le payload fourni
-    if (payload.indexOf(String(key) + "=") == -1) {
-      stub += "&";
-      stub += key;
-      stub += "=";
-    }
-  }
-  return stub;
-}
-
-bool WebClient::postRaw(const String& payload, bool includeSkeleton){
-  // === LOGS DÉTAILLÉS POSTRAW v11.32 ===
+bool WebClient::postRaw(const String& payload){
+  // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
   unsigned long prStartMs = millis();
   Serial.println(F("=== DÉBUT POSTRAW ==="));
   Serial.printf("[PR] Timestamp: %lu ms\n", prStartMs);
   Serial.printf("[PR] Payload input: %u bytes\n", payload.length());
-  Serial.printf("[PR] Include skeleton: %s\n", includeSkeleton ? "OUI" : "NON");
   
   String full = payload;
 
@@ -600,13 +574,8 @@ bool WebClient::postRaw(const String& payload, bool includeSkeleton){
   Serial.printf("[PR] Has API key: %s\n", hasApi ? "OUI" : "NON");
   
   if (!hasApi) {
-    if (includeSkeleton) {
-      String skeleton = makeSkeleton(payload);
-      Serial.printf("[PR] Skeleton generated: %u bytes\n", skeleton.length());
-      full = String("api_key=") + _apiKey + "&sensor=" + Config::SENSOR + skeleton;
-    } else {
-      full = String("api_key=") + _apiKey + "&sensor=" + Config::SENSOR;
-    }
+    // v11.70: Simplification - pas de skeleton, construction directe
+    full = String("api_key=") + _apiKey + "&sensor=" + Config::SENSOR;
     if (payload.length()) {
       full += "&";
       full += payload;

@@ -51,91 +51,8 @@ bool AutomatismNetwork::begin() {
     }
 }
 
-// ============================================================================
-// NORMALISATION JSON - v11.40
-// Convertit les clés du serveur distant vers le format de l'interface web
-// ============================================================================
-
-void AutomatismNetwork::normalizeServerKeys(
-    const ArduinoJson::JsonDocument& src, 
-    ArduinoJson::JsonDocument& dst
-) {
-    // Copier toutes les clés existantes
-    dst.set(src);
-    
-    // === NORMALISATION DES CLÉS ===
-    // Format serveur distant → Format interface web
-    
-    // Email
-    if (src.containsKey("mail") && !src.containsKey("emailAddress")) {
-        dst["emailAddress"] = src["mail"].as<const char*>();
-        dst.remove("mail");
-    }
-    if (src.containsKey("mailNotif") && !src.containsKey("emailEnabled")) {
-        String val = src["mailNotif"].as<const char*>();
-        val.toLowerCase();
-        val.trim();
-        dst["emailEnabled"] = (val == "checked" || val == "1" || val == "true" || val == "on");
-        dst.remove("mailNotif");
-    }
-    
-    // Durées nourrissage
-    if (src.containsKey("tempsGros") && !src.containsKey("feedBigDur")) {
-        dst["feedBigDur"] = src["tempsGros"].as<int>();
-        dst.remove("tempsGros");
-    }
-    if (src.containsKey("tempsPetits") && !src.containsKey("feedSmallDur")) {
-        dst["feedSmallDur"] = src["tempsPetits"].as<int>();
-        dst.remove("tempsPetits");
-    }
-    
-    // Durée remplissage
-    if (src.containsKey("tempsRemplissageSec") && !src.containsKey("refillDuration")) {
-        dst["refillDuration"] = src["tempsRemplissageSec"].as<int>();
-        dst.remove("tempsRemplissageSec");
-    }
-    
-    // Seuil chauffage
-    if (src.containsKey("chauffageThreshold") && !src.containsKey("heaterThreshold")) {
-        dst["heaterThreshold"] = src["chauffageThreshold"].as<float>();
-        dst.remove("chauffageThreshold");
-    }
-    
-    // Seuils eau (garder noms actuels)
-    if (src.containsKey("102") && !src.containsKey("aqThreshold")) {
-        dst["aqThreshold"] = src["102"].as<int>();
-    }
-    if (src.containsKey("103") && !src.containsKey("tankThreshold")) {
-        dst["tankThreshold"] = src["103"].as<int>();
-    }
-    
-    // Heures nourrissage (compatibilité numéros)
-    if (src.containsKey("105") && !src.containsKey("feedMorning")) {
-        dst["feedMorning"] = src["105"].as<int>();
-    }
-    if (src.containsKey("106") && !src.containsKey("feedNoon")) {
-        dst["feedNoon"] = src["106"].as<int>();
-    }
-    if (src.containsKey("107") && !src.containsKey("feedEvening")) {
-        dst["feedEvening"] = src["107"].as<int>();
-    }
-    
-    // Durées nourrissage (compatibilité numéros)
-    if (src.containsKey("111") && !src.containsKey("feedBigDur")) {
-        dst["feedBigDur"] = src["111"].as<int>();
-    }
-    if (src.containsKey("112") && !src.containsKey("feedSmallDur")) {
-        dst["feedSmallDur"] = src["112"].as<int>();
-    }
-    if (src.containsKey("113") && !src.containsKey("refillDuration")) {
-        dst["refillDuration"] = src["113"].as<int>();
-    }
-    if (src.containsKey("114") && !src.containsKey("limFlood")) {
-        dst["limFlood"] = src["114"].as<int>();
-    }
-    
-    Serial.println(F("[Network] Clés JSON normalisées (serveur → interface)"));
-}
+// v11.70: normalizeServerKeys() supprimé - standardisation des clés JSON
+// Le serveur et l'ESP32 utilisent maintenant les mêmes noms de clés
 
 // ============================================================================
 // COMMUNICATION SERVEUR - Méthodes Simples
@@ -144,16 +61,13 @@ void AutomatismNetwork::normalizeServerKeys(
 bool AutomatismNetwork::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     bool ok = _web.fetchRemoteState(doc);
     if (ok && doc.size() > 0) {
-        // NORMALISATION v11.40: Convertir clés serveur distant vers format interface
-        ArduinoJson::DynamicJsonDocument normalizedDoc(BufferConfig::JSON_DOCUMENT_SIZE);
-        normalizeServerKeys(doc, normalizedDoc);
-        
+        // v11.70: Pas de normalisation - clés déjà standardisées
         String jsonStr;
-        serializeJson(normalizedDoc, jsonStr);
+        serializeJson(doc, jsonStr);
         _config.saveRemoteVars(jsonStr);
         _serverOk = true;
         _recvState = 1;  // OK
-        Serial.println(F("[Network] État distant récupéré avec succès (normalisé)"));
+        Serial.println(F("[Network] État distant récupéré avec succès (clés standardisées)"));
     } else {
         _serverOk = false;
         _recvState = -1;  // Erreur
@@ -237,9 +151,9 @@ bool AutomatismNetwork::sendFullUpdate(
         return false;
     }
     
-    // Construction payload
-    char payload[1024];
-    snprintf(payload, sizeof(payload),
+    // v11.70: Construction payload optimisée avec buffer statique pour éviter fragmentation mémoire
+    char payloadBuffer[1024]; // Buffer unique pour tout le payload
+    int len = snprintf(payloadBuffer, sizeof(payloadBuffer),
         "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&"
         "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
         "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&"
@@ -258,10 +172,11 @@ bool AutomatismNetwork::sendFullUpdate(
         bouffePetits.c_str(), bouffeGros.c_str(),
         _emailAddress.c_str(), _emailEnabled ? "checked" : "");
     
-    // Utilisation d'un buffer statique pour éviter la fragmentation mémoire
-    char payloadBuffer[512];
-    strncpy(payloadBuffer, payload, sizeof(payloadBuffer) - 1);
-    payloadBuffer[sizeof(payloadBuffer) - 1] = '\0';
+    // Vérification de dépassement de buffer
+    if (len >= sizeof(payloadBuffer)) {
+        Serial.printf("[Network] ⚠️ Payload tronqué (limite: %u bytes)\n", sizeof(payloadBuffer) - 1);
+        payloadBuffer[sizeof(payloadBuffer) - 1] = '\0';
+    }
     
     if (extraPairs && extraPairs[0] != '\0') {
         strncat(payloadBuffer, "&", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
@@ -282,29 +197,35 @@ bool AutomatismNetwork::sendFullUpdate(
         }
     }
     
-    bool success = _web.postRaw(payloadBuffer, false);
+    bool success = _web.postRaw(payloadBuffer);
     
     if (success) {
         _sendState = 1;  // OK
         Serial.println(F("[Network] sendFullUpdate SUCCESS"));
         
-        // v11.69: REJEU DE QUEUE DÉSACTIVÉ pour garantir la stabilité
-        // Les données en queue sont ignorées pour éviter les problèmes mémoire
+        // v11.70: REJEU DE QUEUE LIMITÉ pour équilibrer stabilité et fonctionnalité
+        // Replay maximum 5 entrées pour éviter l'épuisement mémoire
         if (_dataQueue.size() > 0) {
-            Serial.printf("[Network] ⚠️ %u données en queue ignorées (rejeu désactivé pour stabilité)\n", _dataQueue.size());
-            // Vider la queue pour libérer la mémoire
-            while (_dataQueue.size() > 0) {
-                _dataQueue.pop();
+            uint16_t replayed = replayQueuedData();
+            if (replayed > 0) {
+                Serial.printf("[Network] ✓ %u données rejouées avec succès\n", replayed);
+            } else {
+                Serial.println(F("[Network] ⚠️ Échec rejeu queue - données conservées"));
             }
-            Serial.println(F("[Network] ✓ Queue vidée pour libérer la mémoire"));
         }
     } else {
         _sendState = -1;  // Erreur
         Serial.println(F("[Network] sendFullUpdate FAILED"));
         
-        // v11.69: QUEUE DÉSACTIVÉE pour garantir la stabilité du système
-        // Les données sont perdues en cas de déconnexion, mais le système reste stable
-        Serial.println(F("[Network] ⚠️ Donnée perdue (queue désactivée pour stabilité)"));
+        // v11.70: QUEUE ACTIVÉE avec limite pour équilibrer stabilité et fonctionnalité
+        // Ajouter à la queue seulement si elle n'est pas pleine (limite mémoire)
+        if (_dataQueue.size() < 20) { // Limite à 20 entrées max
+            // Utilisation directe du buffer char[] pour éviter conversion String
+            _dataQueue.push(String(payloadBuffer));
+            Serial.printf("[Network] 📥 Donnée ajoutée à la queue (%u entrées)\n", _dataQueue.size());
+        } else {
+            Serial.println(F("[Network] ⚠️ Queue pleine - donnée perdue (limite mémoire)"));
+        }
     }
     
     _lastSend = millis();
@@ -406,12 +327,9 @@ bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t
         return false;
     }
     
-    // Sauvegarde dernière version reçue dans flash (normalisée v11.40)
-    ArduinoJson::DynamicJsonDocument normalizedDoc(BufferConfig::JSON_DOCUMENT_SIZE);
-    normalizeServerKeys(doc, normalizedDoc);
-    
+    // v11.70: Sauvegarde directe - clés déjà standardisées
     String jsonToSave;
-    serializeJson(normalizedDoc, jsonToSave);
+    serializeJson(doc, jsonToSave);
     _config.saveRemoteVars(jsonToSave);
     
     return true;
@@ -468,34 +386,51 @@ bool AutomatismNetwork::handleResetCommand(const ArduinoJson::JsonDocument& doc,
         autoCtrl.armMailBlink();
     }
     
-    // === ACQUITTEMENT ROBUSTE AVEC RETRY ===
+    // === ACQUITTEMENT ROBUSTE AVEC RETRY ET CONFIRMATION ===
     bool ackSuccess = false;
     if (resetKey) {
         char override[64];
         snprintf(override, sizeof(override), "%s=0", resetKey);
         SensorReadings curR = autoCtrl.readSensors();
         
-        // Tentative d'acquittement avec retry (3 tentatives)
-        for (int attempt = 1; attempt <= 3; attempt++) {
-            Serial.printf("[Network] Tentative acquittement %d/3...\n", attempt);
+        // Tentative d'acquittement avec retry (5 tentatives pour plus de robustesse)
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            Serial.printf("[Network] Tentative acquittement %d/5...\n", attempt);
             ackSuccess = autoCtrl.sendFullUpdate(curR, override);
             if (ackSuccess) {
                 Serial.println(F("[Network] ✅ Acquittement réussi"));
+                
+                // v11.70: Attendre confirmation serveur avant restart
+                Serial.println(F("[Network] ⏳ Attente confirmation serveur (5 secondes)..."));
+                vTaskDelay(pdMS_TO_TICKS(5000));
+                
+                // Vérifier si resetMode est toujours à 1 côté serveur (boucle infinie)
+                ArduinoJson::DynamicJsonDocument confirmDoc(BufferConfig::JSON_DOCUMENT_SIZE);
+                bool confirmOk = _web.fetchRemoteState(confirmDoc);
+                if (confirmOk && confirmDoc.containsKey("110")) {
+                    int resetValue = confirmDoc["110"].as<int>();
+                    if (resetValue == 1) {
+                        Serial.println(F("[Network] ⚠️ ResetMode toujours à 1 côté serveur - risque boucle infinie"));
+                        Serial.println(F("[Network] 🔄 Redémarrage forcé malgré le risque"));
+                    } else {
+                        Serial.println(F("[Network] ✅ Confirmation: resetMode=0 reçu côté serveur"));
+                    }
+                } else {
+                    Serial.println(F("[Network] ⚠️ Impossible de confirmer reset côté serveur - redémarrage forcé"));
+                }
                 break;
             }
-            if (attempt < 3) {
-                Serial.printf("[Network] ⚠️ Échec tentative %d, retry dans 500ms\n", attempt);
-                vTaskDelay(pdMS_TO_TICKS(500));
+            if (attempt < 5) {
+                Serial.printf("[Network] ⚠️ Échec tentative %d, retry dans 1s\n", attempt);
+                vTaskDelay(pdMS_TO_TICKS(1000));
             }
         }
         
         if (!ackSuccess) {
-            Serial.println(F("[Network] ❌ Échec acquittement après 3 tentatives"));
+            Serial.println(F("[Network] ❌ Échec acquittement après 5 tentatives"));
+            Serial.println(F("[Network] ⚠️ Redémarrage sans confirmation (risque de boucle infinie)"));
         }
     }
-    
-    // Délai pour laisser requête HTTP se terminer (augmenté)
-    vTaskDelay(pdMS_TO_TICKS(ackSuccess ? 200 : 1000));
     
     // Sauvegarde paramètres critiques NVS
     // NOTE: Ces méthodes sont dans Automatism, on les appelle via autoCtrl
@@ -850,7 +785,7 @@ void AutomatismNetwork::checkCriticalChanges(const SensorReadings& readings) {
 
 uint16_t AutomatismNetwork::replayQueuedData() {
     uint16_t sent = 0;
-    const uint16_t MAX_REPLAYS_PER_CYCLE = 10;  // AUGMENTÉ de 5 à 10 (v11.50)
+    const uint16_t MAX_REPLAYS_PER_CYCLE = 5;  // v11.70: LIMITÉ à 5 pour stabilité
     
     while (_dataQueue.size() > 0 && sent < MAX_REPLAYS_PER_CYCLE) {
         // Lire sans supprimer
@@ -863,7 +798,7 @@ uint16_t AutomatismNetwork::replayQueuedData() {
         
         // Tentative envoi
         Serial.printf("[Network] Replaying queued payload (%u bytes)...\n", payload.length());
-        if (_web.postRaw(payload, false)) {
+        if (_web.postRaw(payload)) {
             // Succès : supprimer de la queue
             _dataQueue.pop();
             sent++;
@@ -896,7 +831,7 @@ bool AutomatismNetwork::sendCommandAck(const char* command, const char* status) 
     // NOTE: Le serveur peut ignorer les champs ack_* si endpoint non prévu
     // C'est acceptable car l'envoi périodique contient l'état complet
     String response;
-    bool ok = _web.postRaw(String(ackPayload), false);
+    bool ok = _web.postRaw(String(ackPayload));
     
     if (ok) {
         Serial.printf("[Network] ✓ ACK sent: %s=%s\n", command, status);
