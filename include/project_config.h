@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.68"; // Fix: NVS namespaces initialization complete
+    constexpr const char* VERSION = "11.68"; // GPIO Parsing Unifié - Système Simplifié
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
