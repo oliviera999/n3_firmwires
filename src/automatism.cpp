@@ -591,16 +591,18 @@ void Automatism::update(const SensorReadings& readings) {
       Serial.printf("[Auto] Attente sécurité avant première récupération: %lu ms restants\n", 
                     10000 - (millis() - bootTime));
       
-      // === ENVOI IMMÉDIAT DE resetMode=0 AU BOOT ===
-      // Envoyer resetMode=0 dès que WiFi est connecté pour éviter les resets non désirés
+      // === ENVOI IMMÉDIAT DES DONNÉES LOCALES AU BOOT ===
+      // v11.69: Envoyer d'abord les données locales, puis récupérer les données distantes
       if (!bootResetModeSent && WiFi.status() == WL_CONNECTED) {
-        Serial.println(F("[Auto] 🔄 Envoi immédiat resetMode=0 au boot pour sécurité"));
+        Serial.println(F("[Auto] 🔄 Envoi immédiat des données locales au boot"));
         SensorReadings bootReadings = _sensors.read();
         bool success = sendFullUpdate(bootReadings, "resetMode=0");
         if (success) {
-          Serial.println(F("[Auto] ✅ resetMode=0 envoyé avec succès au boot"));
+          Serial.println(F("[Auto] ✅ Données locales envoyées avec succès au boot"));
+          // Attendre confirmation avant de récupérer les données distantes
+          vTaskDelay(pdMS_TO_TICKS(1000)); // 1 seconde de délai
         } else {
-          Serial.println(F("[Auto] ⚠️ Échec envoi resetMode=0 au boot"));
+          Serial.println(F("[Auto] ⚠️ Échec envoi données locales au boot"));
         }
         bootResetModeSent = true;
       }
@@ -609,7 +611,14 @@ void Automatism::update(const SensorReadings& readings) {
     }
   }
   
-  handleRemoteState();
+  // v11.69: Récupération distante seulement après confirmation d'envoi local
+  // Vérifier que la dernière communication avec le serveur a réussi
+  if (_network.getLastSendState() == 1) { // 1 = SUCCESS
+    Serial.println(F("[Auto] ✅ Communication serveur OK - récupération distante autorisée"));
+    handleRemoteState();
+  } else {
+    Serial.println(F("[Auto] ⚠️ Communication serveur échouée - skip récupération distante"));
+  }
 
   // 5. Synchronisation serveur différée (actions manuelles locales)
   AutomatismActuators actuators(_acts, _config);

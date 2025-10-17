@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.69"; // Correction commandes distantes - Suppression inversion serveur
+    constexpr const char* VERSION = "11.69"; // Désactivation queue pour stabilité - Ordre récupération modifié
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)

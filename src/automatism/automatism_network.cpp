@@ -288,13 +288,15 @@ bool AutomatismNetwork::sendFullUpdate(
         _sendState = 1;  // OK
         Serial.println(F("[Network] sendFullUpdate SUCCESS"));
         
-        // v11.31: Rejouer la queue si des données en attente
+        // v11.69: REJEU DE QUEUE DÉSACTIVÉ pour garantir la stabilité
+        // Les données en queue sont ignorées pour éviter les problèmes mémoire
         if (_dataQueue.size() > 0) {
-            Serial.printf("[Network] Replaying queued data (%u pending)...\n", _dataQueue.size());
-            uint16_t replayed = replayQueuedData();
-            if (replayed > 0) {
-                Serial.printf("[Network] ✓ Replayed %u queued payloads\n", replayed);
+            Serial.printf("[Network] ⚠️ %u données en queue ignorées (rejeu désactivé pour stabilité)\n", _dataQueue.size());
+            // Vider la queue pour libérer la mémoire
+            while (_dataQueue.size() > 0) {
+                _dataQueue.pop();
             }
+            Serial.println(F("[Network] ✓ Queue vidée pour libérer la mémoire"));
         }
     } else {
         _sendState = -1;  // Erreur

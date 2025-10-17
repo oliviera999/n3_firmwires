@@ -190,6 +190,12 @@ public:
     int8_t getSendState() const { return _sendState; }
     int8_t getRecvState() const { return _recvState; }
     
+    /**
+     * v11.69: Alias pour getSendState() pour plus de clarté
+     * @return État de la dernière communication avec le serveur
+     */
+    int8_t getLastSendState() const { return _sendState; }
+    
 private:
     WebClient& _web;
     ConfigManager& _config;
