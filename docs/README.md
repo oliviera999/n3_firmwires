@@ -1,323 +1,141 @@
-# Documentation ESP32 FFP5CS v11.03
+# 📚 Documentation FFP5CS ESP32 Aquaponie Controller
 
-## 📖 Navigation Rapide
+## 🎯 Vue d'ensemble
 
-### Pour Commencer
-- **Getting Started** - Installation et premier démarrage du système
-- **Architecture Overview** - Vue d'ensemble technique du projet
-- **Configuration Guide** - Paramétrage et personnalisation
-
-### 🏗️ Architecture Technique
-
-#### Systèmes Principaux
-- **FreeRTOS Tasks** - 4 tâches principales (sensor, web, automation, display)
-  - Priorités et distribution sur 2 cores
-  - Stack sizing et watchdog management
-  
-- **Memory Management** - Stratégie mémoire
-  - Pools (email, JSON)
-  - Caches (sensors, rules, pump stats)
-  - PSRAM utilization (ESP32-S3)
-
-- **Network Stack** - Communication réseau
-  - WiFi multi-SSID avec reconnexion automatique
-  - WebSocket temps réel + fallback polling
-  - OTA updates (firmware + filesystem)
-  - Serveur distant sync
-
-- **Sensor System** - Acquisition données
-  - DHT22 (température/humidité air)
-  - DS18B20 (température eau)
-  - HC-SR04 (niveaux d'eau: aquarium, potager, réserve)
-  - Validation multi-niveaux et filtrage médiane
-
-### 🛠️ Guides Pratiques
-
-#### Configuration
-- **WiFi Setup** - Configuration multi-réseaux dans `secrets.h`
-- **Email Notifications** - SMTP Gmail, digest périodique
-- **Sleep Management** - Light sleep adaptatif, modem sleep
-- **Sensor Calibration** - Calibration capteurs ultrasoniques
-
-#### Développement
-- **Build Environments** - 10 configurations (wroom/s3, prod/test/dev)
-- **Flash & Upload** - Procédures PlatformIO
-- **Monitoring 90s** - Procédure post-déploiement obligatoire
-- **OTA Updates** - Mise à jour sans câble
-
-#### Troubleshooting
-- **Common Issues** - Problèmes fréquents et solutions
-- **Log Analysis** - Interpréter les logs série
-- **Crash Debugging** - Guru Meditation, panic, watchdog timeout
-- **Network Issues** - WiFi reconnection, WebSocket timeout
-
-### 🔧 Référence API
-
-#### Endpoints HTTP
-```
-GET  /                  - Interface web principale (SPA)
-GET  /api/status        - État système complet (JSON)
-GET  /api/sensors       - Lecture capteurs
-GET  /api/actuators     - État actionneurs
-POST /api/feed          - Nourrissage manuel
-POST /api/config        - Modification configuration
-GET  /api/metrics       - Métriques performance
-```
-
-#### WebSocket Protocol
-```javascript
-// Connection
-ws://[IP]:81/ws  ou  ws://[IP]:80/ws
-
-// Messages
-{type: 'subscribe'}        // S'abonner aux mises à jour
-{type: 'sensors', data: {}} // Update capteurs
-{type: 'actuators', data: {}} // Update actionneurs
-```
-
-#### Composants Principaux
-- **Automatism** - Logique métier (3400+ lignes, candidat refactoring)
-- **SystemSensors** - Orchestration capteurs
-- **SystemActuators** - Contrôle pompes, relais, servo
-- **PowerManager** - Sleep, watchdog, NTP
-- **WebServerManager** - Serveur HTTP/WebSocket
-
-### 📊 Diagnostics & Monitoring
-
-#### Métriques Disponibles
-- **Heap Memory** - Free heap, min heap, fragmentation
-- **Task Stats** - Stack HWM par tâche FreeRTOS
-- **Network** - RSSI WiFi, reconnections, requests OK/KO
-- **Sensors** - Reads total, failed, cache hits/misses
-- **Performance** - CPU usage, loop time, latency
-
-#### Scripts de Monitoring
-```powershell
-# Monitoring 90 secondes (obligatoire après déploiement)
-./tools/monitoring/monitor_wroom_test.ps1
-
-# Diagnostic complet
-./tools/monitoring/diagnose_wroom_test.ps1
-
-# Analyse logs
-./tools/monitoring/analyze_logs.ps1
-```
-
-### 📝 Historique & Changelog
-
-#### Versions Récentes
-- **v11.03** (2025-10-10) - Déplacement bouton email notifications
-- **v11.02** (2025-10-10) - Correction finale timezone UTC+1
-- **v11.01** (2025-10-10) - Simplification timezone avec configTime()
-- **v11.00** (2025-10-10) - Fix absolu fuseau horaire (double sécurité)
-- **v10.99** (2025-10-10) - Correction time_drift_monitor timezone
-- **v10.95-98** (2025-10-10) - Série de fixes timezone OLED
-
-Voir [VERSION.md](../VERSION.md) pour l'historique complet depuis v10.20.
-
-#### Migrations
-- **v10.20 → v11.x** - Phase 2/3 optimisations (caches, pools, PSRAM)
-- **Config Migration** - project_config.h centralisé (1063 lignes)
-
-### 📚 Documentation Détaillée
-
-#### Guides Existants (Racine & docs/)
-Le projet contient 80+ fichiers de documentation. Les principaux :
-
-**Fixes & Corrections**:
-- `*_FIX.md` - Corrections de bugs spécifiques
-- `WIFI_RECONNECTION_FIX_V*.md` - Évolutions reconnexion WiFi
-- `PANIC_*.md` - Résolution crashes et guru meditation
-
-**Guides Techniques**:
-- `*_GUIDE.md` - Guides d'utilisation et configuration
-- `SLEEP_*.md` - Configuration et optimisation sommeil
-- `OTA_*.md` - Mises à jour OTA (6 fichiers différents)
-
-**Rapports d'Analyse**:
-- `RAPPORT_*.md` - Rapports techniques détaillés
-- `ANALYSE_*.md` - Analyses de conformité et performance
-- `TEST_*.md` - Procédures et résultats de tests
-
-**Note**: Une consolidation de la documentation est prévue (voir ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md).
-
-### 🔍 Structure du Projet
-
-```
-ffp5cs/
-├── src/              # Sources C++ (29 fichiers)
-│   ├── app.cpp                  # Point d'entrée, setup/loop
-│   ├── automatism.cpp           # Logique métier (3400+ lignes)
-│   ├── sensors.cpp              # Capteurs de base
-│   ├── system_sensors.cpp       # Orchestration capteurs
-│   ├── actuators.cpp            # Actionneurs
-│   ├── system_actuators.cpp     # Orchestration actionneurs
-│   ├── power.cpp                # Sleep, watchdog, NTP
-│   ├── wifi_manager.cpp         # Gestion WiFi
-│   ├── web_server.cpp           # Serveur HTTP/WebSocket
-│   ├── web_client.cpp           # Client HTTP (serveur distant)
-│   ├── mailer.cpp               # Envoi emails
-│   ├── ota_manager.cpp          # Mises à jour OTA
-│   └── ...                      # 17 autres fichiers
-│
-├── include/          # Headers (35 fichiers)
-│   ├── project_config.h         # Configuration centralisée (1063 lignes)
-│   ├── pins.h                   # Pinout ESP32-WROOM/S3
-│   ├── secrets.h                # Credentials (non versionné)
-│   └── ...
-│
-├── data/             # Interface web (LittleFS)
-│   ├── index.html               # SPA principale
-│   ├── pages/
-│   │   ├── controles.html       # Contrôle manuel
-│   │   ├── reglages.html        # Configuration
-│   │   └── wifi.html            # Config WiFi
-│   ├── shared/
-│   │   ├── common.js            # Fonctions communes
-│   │   ├── websocket.js         # Gestion WebSocket
-│   │   └── common.css           # Styles
-│   └── assets/                  # Bibliothèques (uPlot)
-│
-├── tools/            # Scripts utilitaires
-│   ├── testing/      # Scripts de test PowerShell
-│   ├── monitoring/   # Scripts diagnostic et monitoring
-│   └── deployment/   # Scripts de déploiement
-│
-├── docs/             # Documentation (vous êtes ici)
-│   ├── README.md                # Ce fichier
-│   ├── guides/                  # Guides pratiques
-│   ├── architecture/            # Documentation technique
-│   ├── api/                     # Référence API
-│   └── archive/                 # Docs obsolètes
-│
-├── unused/           # Code temporaire/expérimental
-│   ├── automatism_optimized.cpp # Version optimisée (non utilisée)
-│   ├── psram_usage_example.cpp  # Exemple PSRAM
-│   └── ffp10.52/                # Archive version 10.52 complète
-│
-├── platformio.ini    # Configuration PlatformIO (10 environnements)
-├── VERSION.md        # Changelog détaillé v10.20 → v11.03
-└── README.md         # README principal du projet
-```
-
-### 🚀 Quick Start
-
-#### Prérequis
-- PlatformIO Core ou PlatformIO IDE (VS Code)
-- ESP32-WROOM-32 (4MB Flash) ou ESP32-S3 (8MB Flash)
-- Python 3.x (pour scripts de build)
-- Câble USB pour flash initial
-
-#### Installation Rapide
-
-```bash
-# 1. Cloner le projet
-git clone <repo-url>
-cd ffp5cs
-
-# 2. Configurer credentials
-cp include/secrets.h.example include/secrets.h
-# Éditer secrets.h : WiFi SSID/passwords, email credentials
-
-# 3. Choisir environnement et compiler
-pio run -e wroom-test    # ESP32-WROOM mode test
-# pio run -e s3-test     # ESP32-S3 mode test
-# pio run -e wroom-prod  # ESP32-WROOM production
-
-# 4. Uploader firmware + filesystem
-pio run -e wroom-test -t upload
-pio run -e wroom-test -t uploadfs
-
-# 5. Monitor série (115200 baud)
-pio device monitor
-
-# 6. OBLIGATOIRE: Monitoring 90 secondes post-déploiement
-# (voir procédure dans .cursorrules)
-```
-
-#### Premier Test
-
-1. **Vérifier logs série** - Rechercher "WiFi connected", IP affichée
-2. **Accéder interface web** - http://[IP-ESP32]
-3. **Tester WebSocket** - Les valeurs doivent se mettre à jour en temps réel
-4. **Test nourrissage** - Bouton "Nourrir" dans page Contrôles
-5. **Vérifier OLED** - Écran doit afficher valeurs capteurs
-
-### 🐛 Issues Connues
-
-#### Problèmes en Cours
-- **automatism.cpp trop large** (3421 lignes) - Refactoring prévu
-- **Documentation fragmentée** (80+ .md) - Consolidation en cours
-- **Timezone fixes multiples** (9 versions v10.95-11.03) - Stabilisé en v11.03
-
-#### Limitations Actuelles
-- **PSRAM** - Optimizer quasi-vide, gains non mesurés
-- **Stack reduction** - 25% réduit sans benchmark (risque overflow)
-- **Optimizations** - Caches sans métriques (prétention -70% non validée)
-
-Voir [ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md](../ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md) pour analyse détaillée.
-
-### 📞 Support & Contribution
-
-#### Obtenir de l'Aide
-- **Issues GitHub** - Reporter bugs et demandes features
-- **Documentation** - Consulter guides et troubleshooting
-- **Logs Série** - Toujours fournir logs complets (monitoring 90s)
-
-#### Contribuer
-1. Fork le projet
-2. Créer une branche feature (`git checkout -b feature/ma-feature`)
-3. **Incrémenter version** dans `project_config.h` (OBLIGATOIRE)
-4. Commit avec message descriptif incluant version
-5. **Monitoring 90s** après test (OBLIGATOIRE)
-6. Push et créer Pull Request
-
-#### Règles de Développement
-Voir [.cursorrules](../.cursorrules) pour :
-- Conventions de code (K&R, 2 espaces, 100 chars/ligne)
-- Gestion mémoire (éviter String, préférer char[])
-- Watchdog management (reset réguliers)
-- Procédure monitoring post-déploiement
-
-### 📈 Roadmap
-
-#### Court Terme (v11.x)
-- [ ] Refactoring automatism.cpp en modules (3-5 jours)
-- [ ] Consolidation documentation (2-3 jours)
-- [ ] Benchmark optimisations (valider -70%, -60%)
-- [ ] Simplification project_config.h (1063 → 500 lignes)
-
-#### Moyen Terme (v12.x)
-- [ ] Métriques performance continues (/api/metrics)
-- [ ] Tests automatisés (monitoring 90s scriptés)
-- [ ] NVS encryption (sécurité credentials)
-- [ ] Dashboard monitoring web
-
-#### Long Terme
-- [ ] CI/CD pipeline
-- [ ] Multi-board support (ESP32-C3, ESP32-C6)
-- [ ] LoRa/LoRaWAN integration
-- [ ] Mobile app (Flutter/React Native)
-
-Voir [ACTION_PLAN_IMMEDIAT.md](../ACTION_PLAN_IMMEDIAT.md) pour détails.
+**Projet**: Système de contrôle automatisé pour aquaponie avec ESP32  
+**Version actuelle**: v11.59  
+**État**: Production stable avec optimisations continues
 
 ---
 
-## 📄 Documents Importants
+## 📁 Structure organisée
 
-- **[VERSION.md](../VERSION.md)** - Changelog complet v10.20 → v11.03
-- **[README.md](../README.md)** - README principal du projet
-- **[.cursorrules](../.cursorrules)** - Règles de développement (IMPORTANT)
-- **[ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md](../ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md)** - Analyse technique détaillée (1000+ lignes)
-- **[RESUME_EXECUTIF_ANALYSE.md](../RESUME_EXECUTIF_ANALYSE.md)** - Résumé analyse (note 6.5/10)
-- **[ACTION_PLAN_IMMEDIAT.md](../ACTION_PLAN_IMMEDIAT.md)** - Plan d'action 8 phases
+### 🚀 [Guides](guides/) - 27 documents
+**Démarrage et utilisation quotidienne**
+
+#### ⚡ Démarrage rapide
+- **[START_HERE.md](guides/START_HERE.md)** - Point d'entrée principal
+- **[DEMARRAGE_RAPIDE.md](guides/DEMARRAGE_RAPIDE.md)** - Configuration initiale
+- **[LISEZ_MOI_DABORD.md](guides/LISEZ_MOI_DABORD.md)** - Instructions essentielles
+
+#### 🔧 Configuration et maintenance
+- **[UPLOAD_INSTRUCTIONS.md](guides/UPLOAD_INSTRUCTIONS.md)** - Flash et OTA
+- **[GESTIONNAIRE_WIFI_GUIDE.md](guides/GESTIONNAIRE_WIFI_GUIDE.md)** - WiFi et reconnexion
+- **[OTA_DIRECT_UPDATE_GUIDE.md](guides/OTA_DIRECT_UPDATE_GUIDE.md)** - Mises à jour
+- **[SURVEILLANCE_MEMOIRE_GUIDE.md](guides/SURVEILLANCE_MEMOIRE_GUIDE.md)** - Monitoring système
+
+#### 💻 Développement
+- **[CURSOR_IDE_GUIDE.md](guides/CURSOR_IDE_GUIDE.md)** - Configuration IDE
+- **[MIGRATION_GUIDE.md](guides/MIGRATION_GUIDE.md)** - Migration de versions
 
 ---
 
-**Dernière mise à jour**: 2025-10-10  
-**Version système**: 11.03  
-**Mainteneur**: Équipe FFP5CS
+### 📊 [Rapports](reports/) - 38 documents
+**Analyses, monitoring et évaluations**
 
-**Note**: Cette documentation est un point de départ. Consulter les fichiers .md spécifiques pour détails techniques approfondis.
+#### 🔍 Analyses techniques
+- **[ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md](reports/ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md)** - Audit complet
+- **[AUDIT_GLOBAL_PROJET_ESP32.md](reports/AUDIT_GLOBAL_PROJET_ESP32.md)** - Évaluation architecture
+- **[PHASE_2_REFACTORING_PLAN.md](reports/PHASE_2_REFACTORING_PLAN.md)** - Plan de refactoring
 
+#### 📈 Monitoring et performance
+- **[RAPPORT_MONITORING_v11.51.md](reports/RAPPORT_MONITORING_v11.51.md)** - Dernier rapport de monitoring
+- **[ANALYSE_MONITORING_v11.54.md](reports/ANALYSE_MONITORING_v11.54.md)** - Analyse de stabilité
+- **[RESUME_MONITORING_v11.54.md](reports/RESUME_MONITORING_v11.54.md)** - Résumé monitoring
 
+---
+
+### 🔧 [Technique](technical/) - 31 documents
+**Corrections, optimisations et diagnostics**
+
+#### 🐛 Corrections de bugs
+- **[CORRECTIONS_NON_BLOQUANTES_V11.50.md](technical/CORRECTIONS_NON_BLOQUANTES_V11.50.md)** - Corrections récentes
+- **[SOLUTION_GLOBALE_NON_BLOQUANTE.md](technical/SOLUTION_GLOBALE_NON_BLOQUANTE.md)** - Solutions système
+- **[NOURRISSAGE_MANUEL_DOUBLE_EXECUTION_FIX.md](technical/NOURRISSAGE_MANUEL_DOUBLE_EXECUTION_FIX.md)** - Fix nourrissage
+
+#### ⚡ Optimisations
+- **[OPTIMISATIONS_MEMOIRE_OPTIONNELLES.md](technical/OPTIMISATIONS_MEMOIRE_OPTIONNELLES.md)** - Optimisations mémoire
+- **[DHT_STABILIZATION_FIX.md](technical/DHT_STABILIZATION_FIX.md)** - Stabilisation capteurs
+
+---
+
+### 📚 [Archives](archives/) - 40 documents
+**Documents terminés et références historiques**
+
+#### 🏁 Phases terminées
+- **[PHASE_2_COMPLETE.md](archives/PHASE_2_COMPLETE.md)** - Phase 2 terminée
+- **[MISSION_FINALE_ACCOMPLIE.md](archives/MISSION_FINALE_ACCOMPLIE.md)** - Mission accomplie
+- **[SYNTHESE_FINALE.md](archives/SYNTHESE_FINALE.md)** - Synthèse finale
+
+---
+
+## 🚀 Navigation rapide par besoin
+
+### 👨‍💻 **Développeur qui débute**
+1. [START_HERE.md](guides/START_HERE.md)
+2. [DEMARRAGE_RAPIDE.md](guides/DEMARRAGE_RAPIDE.md)
+3. [CURSOR_IDE_GUIDE.md](guides/CURSOR_IDE_GUIDE.md)
+
+### 🔧 **Maintenance système**
+1. [SURVEILLANCE_MEMOIRE_GUIDE.md](guides/SURVEILLANCE_MEMOIRE_GUIDE.md)
+2. [UPLOAD_INSTRUCTIONS.md](guides/UPLOAD_INSTRUCTIONS.md)
+3. [GESTIONNAIRE_WIFI_GUIDE.md](guides/GESTIONNAIRE_WIFI_GUIDE.md)
+
+### 🐛 **Résolution de problèmes**
+1. [CORRECTIONS_NON_BLOQUANTES_V11.50.md](technical/CORRECTIONS_NON_BLOQUANTES_V11.50.md)
+2. [SOLUTION_GLOBALE_NON_BLOQUANTE.md](technical/SOLUTION_GLOBALE_NON_BLOQUANTE.md)
+3. [RAPPORT_MONITORING_v11.51.md](reports/RAPPORT_MONITORING_v11.51.md)
+
+### 📊 **Analyse et monitoring**
+1. [ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md](reports/ANALYSE_EXHAUSTIVE_PROJET_ESP32_FFP5CS.md)
+2. [AUDIT_GLOBAL_PROJET_ESP32.md](reports/AUDIT_GLOBAL_PROJET_ESP32.md)
+3. [RAPPORT_MONITORING_v11.51.md](reports/RAPPORT_MONITORING_v11.51.md)
+
+---
+
+## 📋 Statistiques de l'organisation
+
+| Catégorie | Nombre | Description |
+|-----------|--------|-------------|
+| **Guides** | 27 | Démarrage, configuration, utilisation |
+| **Rapports** | 38 | Analyses, monitoring, évaluations |
+| **Technique** | 31 | Corrections, optimisations, diagnostics |
+| **Archives** | 40 | Documents terminés, références historiques |
+| **Total** | **136** | Documents organisés |
+
+---
+
+## 🔄 Maintenance de la documentation
+
+### Organisation automatique
+Cette structure a été créée par `organize_docs.ps1` v11.59.
+
+### Ajout de nouveaux documents
+1. Placez le nouveau fichier .md à la racine du projet
+2. Relancez `.\organize_docs.ps1` pour réorganiser
+3. Le script classera automatiquement selon les patterns
+
+### Patterns de classification
+- **Guides**: `*GUIDE*`, `*DEMARRAGE*`, `*START_HERE*`
+- **Rapports**: `*RAPPORT*`, `*ANALYSE*`, `*MONITORING*`, `*RESUME*`
+- **Technique**: `*FIX*`, `*CORRECTION*`, `*SOLUTION*`, `*OPTIMISATION*`
+- **Archives**: `*COMPLET*`, `*FINAL*`, `*TERMINE*`, `*CLOTURE*`
+
+---
+
+## 🎯 Prochaines étapes
+
+### Phase 1 - Simplification (En cours)
+- ✅ Consolidation `platformio.ini` (7 → 4 environnements)
+- ✅ Organisation documentation (136 fichiers structurés)
+- 🔄 Simplification capteurs (watchdog + robustesse)
+- 🔄 Suppression optimisations non mesurées
+
+### Phase 2 - Refactoring (Planifiée)
+- 📋 Finalisation refactoring `automatism.cpp`
+- 📋 Simplification `project_config.h`
+- 📋 Tests et validation
+
+---
+
+*Organisé le 2025-10-16 21:48 - Version 11.59*

@@ -158,6 +158,11 @@ void AutomatismFeeding::feedSmallManual(std::function<void(const char*, unsigned
     // Mise à jour countdown OLED
     countdownCallback("Feed Petits", _totalEnd);
     
+    // v11.66: Callback de completion pour reset serveur
+    if (_completionCallback) {
+        _completionCallback("bouffePetits");
+    }
+    
     Serial.println(F("[CRITIQUE] === FIN NOURRISSAGE MANUEL PETITS ==="));
 }
 
@@ -197,6 +202,11 @@ void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned l
     // Mise à jour countdown OLED
     countdownCallback("Feed Gros", _totalEnd);
     
+    // v11.66: Callback de completion pour reset serveur
+    if (_completionCallback) {
+        _completionCallback("bouffeGros");
+    }
+    
     Serial.println(F("[CRITIQUE] === FIN NOURRISSAGE MANUEL GROS ==="));
 }
 
@@ -217,6 +227,11 @@ void AutomatismFeeding::setDurations(uint16_t bigDur, uint16_t smallDur) {
     _feedSmallDur = smallDur;
     Serial.printf("[Feeding] Durées configurées - Gros: %us, Petits: %us\n",
                  bigDur, smallDur);
+}
+
+void AutomatismFeeding::setCompletionCallback(std::function<void(const char*)> callback) {
+    _completionCallback = callback;
+    Serial.println(F("[Feeding] Callback de completion configuré"));
 }
 
 AutomatismFeeding::Status AutomatismFeeding::getStatus() const {

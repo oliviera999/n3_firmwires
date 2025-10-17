@@ -28,6 +28,7 @@ class Automatism {
   time_t getCurrentTime() { return _power.getCurrentEpoch(); }
   String getCurrentTimeString() { return _power.getCurrentTimeString(); }
   uint32_t getPumpStartTime() const { return _pumpStartMs; }  // Pour SystemActuators
+  bool isTankPumpRunning() const { return _pumpStartMs > 0; }
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
   // --- Accesseurs exposés pour le serveur Web local ---

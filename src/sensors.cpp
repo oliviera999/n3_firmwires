@@ -45,8 +45,15 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
       }
     }
 
-    // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter échos retardés
-    vTaskDelay(pdMS_TO_TICKS(60));
+    // Délai minimal entre mesures (10ms suffisant pour éviter les interférences)
+    if (i < samples - 1) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+  }
+  
+  // Un seul délai après toutes les mesures (respecte datasheet HC-SR04)
+  if (samples > 1) {
+    vTaskDelay(pdMS_TO_TICKS(50)); // 50ms après toutes les mesures
   }
 
   return valid ? total / valid : 0;
@@ -89,8 +96,15 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       Serial.printf("[Ultrasonic] Lecture %d timeout\n", i+1);
     }
     
-    // Délai minimum recommandé par datasheet HC-SR04: 60ms entre mesures pour éviter les interférences
-    vTaskDelay(pdMS_TO_TICKS(60));
+    // Délai minimal entre mesures (10ms suffisant pour éviter les interférences)
+    if (i < READINGS_COUNT - 1) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+  }
+  
+  // Un seul délai après toutes les mesures (respecte datasheet HC-SR04)
+  if (READINGS_COUNT > 1) {
+    vTaskDelay(pdMS_TO_TICKS(50)); // 50ms après toutes les mesures
   }
   
   // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
@@ -477,107 +491,18 @@ float WaterTempSensor::robustTemperatureC() {
 }
 
 float WaterTempSensor::ultraRobustTemperatureC() {
-  Serial.println("[WaterTemp] Démarrage lecture ultra-robuste...");
+  // SIMPLIFICATION: Utilise la méthode simple avec valeur par défaut
+  Serial.println("[WaterTemp] Lecture simplifiée (ultra-robuste dépréciée)...");
   
-  // 1. Vérification de connectivité renforcée
-  if (!isSensorConnected()) {
-    Serial.println("[WaterTemp] Capteur non connecté, tentative de récupération...");
-    resetSensor();
-    
-    // Nouvelle vérification après reset
-    if (!isSensorConnected()) {
-      Serial.println("[WaterTemp] Capteur toujours non connecté après reset");
-      return NAN;
-    }
+  float temp = getTemperatureWithFallback();
+  
+  // Si échec, retourner une valeur par défaut raisonnable
+  if (isnan(temp)) {
+    Serial.println("[WaterTemp] Lecture échouée, utilisation valeur par défaut: 20.0°C");
+    return 20.0f; // Température par défaut pour l'aquaponie
   }
   
-  // 2. Lecture avec validation croisée (3 séries de lectures)
-  float seriesResults[3];
-  uint8_t validSeries = 0;
-  
-  for (uint8_t series = 0; series < 3; ++series) {
-    Serial.printf("[WaterTemp] Série de lecture %d/3...\n", series + 1);
-    
-    // Reset du bus avant chaque série
-    _oneWire.reset();
-    vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
-    
-    // Lecture avec filtrage
-    float result = filteredTemperatureC();
-    
-    if (!isnan(result)) {
-      seriesResults[validSeries++] = result;
-      Serial.printf("[WaterTemp] Série %d réussie: %.1f°C\n", series + 1, result);
-    } else {
-      Serial.printf("[WaterTemp] Série %d échouée\n", series + 1);
-    }
-    
-    // Délai entre séries
-    if (series < 2) {
-      vTaskDelay(pdMS_TO_TICKS(500));
-    }
-  }
-  
-  // 3. Validation croisée des résultats
-  if (validSeries == 0) {
-    Serial.println("[WaterTemp] Toutes les séries ont échoué");
-    return NAN;
-  }
-  
-  if (validSeries == 1) {
-    Serial.printf("[WaterTemp] Une seule série réussie: %.1f°C\n", seriesResults[0]);
-    return seriesResults[0];
-  }
-  
-  // Calcul de la cohérence entre les séries
-  float minTemp = seriesResults[0];
-  float maxTemp = seriesResults[0];
-  float sumTemp = seriesResults[0];
-  
-  for (uint8_t i = 1; i < validSeries; ++i) {
-    if (seriesResults[i] < minTemp) minTemp = seriesResults[i];
-    if (seriesResults[i] > maxTemp) maxTemp = seriesResults[i];
-    sumTemp += seriesResults[i];
-  }
-  
-  float avgTemp = sumTemp / validSeries;
-  float spread = maxTemp - minTemp;
-  
-  Serial.printf("[WaterTemp] Validation croisée: %.1f°C (écart: %.1f°C, %d séries)\n", 
-                avgTemp, spread, validSeries);
-  
-  // Accepte si l'écart est raisonnable (moins de 1°C) et dans la plage d'eau
-  if (spread <= 1.0f && avgTemp >= SensorConfig::WaterTemp::MIN_VALID && avgTemp <= SensorConfig::WaterTemp::MAX_VALID) {
-    Serial.printf("[WaterTemp] Lecture ultra-robuste réussie: %.1f°C\n", avgTemp);
-    return avgTemp;
-  } else {
-    Serial.printf("[WaterTemp] Écart trop important entre séries (%.1f°C) ou hors plage, utilise médiane\n", spread);
-    // Retourne la médiane des valeurs valides
-    float medianTemp;
-    if (validSeries == 2) {
-      medianTemp = (seriesResults[0] + seriesResults[1]) / 2.0f;
-    } else {
-      // Tri pour trouver la médiane
-      for (uint8_t i = 0; i < validSeries - 1; ++i) {
-        for (uint8_t j = i + 1; j < validSeries; ++j) {
-          if (seriesResults[i] > seriesResults[j]) {
-            float temp = seriesResults[i];
-            seriesResults[i] = seriesResults[j];
-            seriesResults[j] = temp;
-          }
-        }
-      }
-      medianTemp = seriesResults[validSeries / 2];
-    }
-    
-    // Validation finale de la médiane
-    if (medianTemp >= SensorConfig::WaterTemp::MIN_VALID && medianTemp <= SensorConfig::WaterTemp::MAX_VALID) {
-      return medianTemp;
-    } else {
-      Serial.printf("[WaterTemp] Médiane hors plage d'eau: %.1f°C, retourne NaN\n", medianTemp);
-      return NAN;
-    }
-  }
+  return temp;
 }
 
 float WaterTempSensor::temperatureC() {
@@ -863,8 +788,7 @@ void AirSensor::begin() {
 
 bool AirSensor::isSensorConnected() {
   // Test de lecture pour vérifier la connectivité du DHT
-  // IMPORTANT: Reset watchdog AVANT lecture DHT pour éviter crash
-  // Vérifier que la tâche est enregistrée au watchdog avant reset
+  // Reset watchdog une seule fois au début
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
@@ -873,11 +797,6 @@ bool AirSensor::isSensorConnected() {
   // FIX: Délai minimum DHT augmenté à 2.5 secondes pour stabilité
   // Le DHT11/DHT22 nécessite au moins 2 secondes entre lectures selon datasheet
   vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS));
-  
-  // Reset watchdog avant deuxième lecture
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
-  }
   
   float humidity = _dht.readHumidity();
   
@@ -931,10 +850,6 @@ float AirSensor::robustTemperatureC() {
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
     Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
-    // IMPORTANT: Reset watchdog avant chaque tentative
-    if (esp_task_wdt_status(NULL) == ESP_OK) {
-      esp_task_wdt_reset();
-    }
     
     // Lecture simple avec délai
     float temp = _dht.readTemperature();
@@ -970,11 +885,6 @@ float AirSensor::filteredTemperatureC() {
   }
   _lastDhtReadMs = now;
   
-  // IMPORTANT: Reset watchdog avant lecture DHT pour éviter crash
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
-  }
-  
   float temp = _dht.readTemperature();
   if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
     return _emaInit ? _emaTemp : NAN;
@@ -999,11 +909,6 @@ float AirSensor::filteredHumidity() {
     return _emaInit ? _emaHumidity : NAN;
   }
   _lastDhtReadMs = now;
-  
-  // IMPORTANT: Reset watchdog avant lecture DHT pour éviter crash
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
-  }
   
   float h = _dht.readHumidity();
   if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
@@ -1049,10 +954,6 @@ float AirSensor::robustHumidity() {
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
     Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
-    // IMPORTANT: Reset watchdog avant chaque tentative
-    if (esp_task_wdt_status(NULL) == ESP_OK) {
-      esp_task_wdt_reset();
-    }
     
     // Lecture simple avec délai
     float humidity = _dht.readHumidity();

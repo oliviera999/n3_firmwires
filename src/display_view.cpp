@@ -253,7 +253,7 @@ void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bo
     // Redessiner l'overlay OTA pour qu'il ne soit pas effacé par la barre de statut
     char percentStr[12];
     snprintf(percentStr, sizeof(percentStr), "OTA: %u%%", _lastOtaPercent);
-    printClipped(100, 0, String(percentStr), 1);
+    printClipped(100, 0, percentStr, 1);
   }
 
   // 1) Flèche upload (envoi)
@@ -310,7 +310,7 @@ void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bo
     _disp.fillRect(rx, ry, 20, 8, BLACK);
     char rbuf[8];
     snprintf(rbuf, sizeof(rbuf), "%d", (int)rssi);
-    printClipped(rx, ry, String(rbuf), 1);
+    printClipped(rx, ry, rbuf, 1);
   }
   
   // Marquer qu'un flush est nécessaire
@@ -353,7 +353,7 @@ void DisplayView::drawStatusEx(int8_t sendState, int8_t recvState, int8_t rssi, 
     // Redessiner l'overlay OTA pour qu'il ne soit pas effacé par la barre de statut
     char percentStr[12];
     snprintf(percentStr, sizeof(percentStr), "OTA: %u%%", _lastOtaPercent);
-    printClipped(100, 0, String(percentStr), 1);
+    printClipped(100, 0, percentStr, 1);
   }
 
   // 1) Upload arrow
@@ -412,7 +412,7 @@ void DisplayView::drawStatusEx(int8_t sendState, int8_t recvState, int8_t rssi, 
     _disp.fillRect(rx, ry, 20, 8, BLACK);
     char rbuf[8];
     snprintf(rbuf, sizeof(rbuf), "%d", (int)rssi);
-    printClipped(rx, ry, String(rbuf), 1);
+    printClipped(rx, ry, rbuf, 1);
   }
 
   if (_updateMode) _needsFlush = true;
@@ -481,7 +481,7 @@ void DisplayView::showFeedingCountdown(const char* fishType, const char* phase, 
   _immediateMode = true;
   
   // Affichage avec gestion cohérente des tailles de texte
-  printClipped(0, 0, String("Nourriture"), 1);
+  printClipped(0, 0, "Nourriture", 1);
   
   printClipped(0, 10, String(fishType), 2);
   
@@ -602,7 +602,7 @@ bool DisplayView::begin() {
     
     // Ligne 2 : Version du firmware (taille 1, centré)
     char vbuf[16];
-    snprintf(vbuf, sizeof(vbuf), "v%s", Config::VERSION);
+    snprintf(vbuf, sizeof(vbuf), "v%s", ProjectConfig::VERSION);
     centerPrint(vbuf, 1, 10);
     
     // Logo N3 45x45 centré en dessous (à partir de y=18)
@@ -715,8 +715,8 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   _disp.setTextSize(1);
   {
     char buf[32];
-    snprintf(buf, sizeof(buf), "FFP3 v%s %s", Config::VERSION, Config::PROFILE_TYPE);
-    printClipped(0, 0, String(buf), 1);
+    snprintf(buf, sizeof(buf), "FFP3 v%s %s", ProjectConfig::VERSION, ProjectConfig::PROFILE_TYPE);
+    printClipped(0, 0, buf, 1);
   }
   if (WiFi.status() == WL_CONNECTED) {
     printClipped(0, 8, WiFi.SSID(), 1);
@@ -728,7 +728,7 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   {
     char buf[32];
     snprintf(buf, sizeof(buf), "Te:%.1f Ta:%.1f", tempEau, tempAir);
-    printClipped(0, 24, String(buf), 1);
+    printClipped(0, 24, buf, 1);
   }
   {
     char buf[32];
@@ -741,12 +741,12 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
     if (potaLvl == 0) strncpy(ptBuf, "--", sizeof(ptBuf)); else snprintf(ptBuf, sizeof(ptBuf), "%u", potaLvl);
     aqBuf[sizeof(aqBuf)-1] = '\0'; tkBuf[sizeof(tkBuf)-1] = '\0'; ptBuf[sizeof(ptBuf)-1] = '\0';
     snprintf(buf, sizeof(buf), "Aq:%s Tk:%s Pt:%s", aqBuf, tkBuf, ptBuf);
-    printClipped(0, 32, String(buf), 1);
+    printClipped(0, 32, buf, 1);
   }
   {
     char buf[32];
     snprintf(buf, sizeof(buf), "H:%.1f%%  L:%u", humidite, lumi);
-    printClipped(0, 40, String(buf), 1);
+    printClipped(0, 40, buf, 1);
   }
   // Protéger l'affichage de l'heure contre le dépassement horizontal
   printClipped(0, 48, timeStr, 1);
@@ -784,16 +784,16 @@ void DisplayView::showVariables(bool pumpAqua, bool pumpTank, bool heater, bool 
   if (!_present || splashActive() || isLocked()) return;
   clear();
   _disp.setTextSize(1);
-  printClipped(0, 0, String("Relais:"), 1);
+  printClipped(0, 0, "Relais:", 1);
   {
     char buf[32];
     snprintf(buf, sizeof(buf), "Paq:%d Pta:%d", pumpAqua, pumpTank);
-    printClipped(0, 8, String(buf), 1);
+    printClipped(0, 8, buf, 1);
   }
   {
     char buf[32];
     snprintf(buf, sizeof(buf), "Heat:%d Light:%d", heater, light);
-    printClipped(0, 16, String(buf), 1);
+    printClipped(0, 16, buf, 1);
   }
   if (!_updateMode) flush();
   else _needsFlush = true;
@@ -846,21 +846,21 @@ void DisplayView::showServerVars(bool pumpAqua,bool pumpTank,bool heater,bool li
   if(!_present || isLocked()) return;
   clear();
   _disp.setTextSize(1);
-  printClipped(0, 0, String("Vars:"), 1);
+  printClipped(0, 0, "Vars:", 1);
   {
     char buf[64];
     snprintf(buf,sizeof(buf),"Paq:%d Pta:%d R:%d L:%d",pumpAqua,pumpTank,heater,light);
-    printClipped(0, 8, String(buf), 1);
+    printClipped(0, 8, buf, 1);
     snprintf(buf,sizeof(buf),"Feed h:%u %u %u",hMat,hMid,hSoir);
-    printClipped(0, 16, String(buf), 1);
+    printClipped(0, 16, buf, 1);
     snprintf(buf,sizeof(buf),"Tps P:%u G:%u",tPetits,tGros);
-    printClipped(0, 24, String(buf), 1);
+    printClipped(0, 24, buf, 1);
     snprintf(buf,sizeof(buf),"Lim Aq:%u Ta:%u",thAq,thTank);
-    printClipped(0, 32, String(buf), 1);
+    printClipped(0, 32, buf, 1);
     snprintf(buf,sizeof(buf),"Ch:%.1f R:%u F:%u",thHeat,tRemp,limFlood);
-    printClipped(0, 40, String(buf), 1);
+    printClipped(0, 40, buf, 1);
     snprintf(buf,sizeof(buf),"W:%d Fq:%us",wakeUp?1:0,freqWake);
-    printClipped(0, 48, String(buf), 1);
+    printClipped(0, 48, buf, 1);
   }
   if (!_updateMode) flush();
   else _needsFlush = true;
@@ -974,7 +974,7 @@ void DisplayView::showSleepReason(const char* cause, const char* detailLine1, co
   resetStatusCache();
   bool oldImmediateMode = _immediateMode;
   _immediateMode = true;
-  printClipped(0, 0, String("Light-sleep"), 1);
+  printClipped(0, 0, "Light-sleep", 1);
   if (cause && *cause) printClipped(0, 10, utf8ToCp437(cause), 1);
   if (detailLine1 && *detailLine1) printClipped(0, 20, utf8ToCp437(detailLine1), 1);
   if (detailLine2 && *detailLine2) printClipped(0, 30, utf8ToCp437(detailLine2), 1);
@@ -999,7 +999,7 @@ void DisplayView::showSleepInfo(const char* reason, const char* detail1, const c
   _immediateMode = true;
 
   // Titre
-  printClipped(0, 0, String("Light-sleep"), 1);
+  printClipped(0, 0, "Light-sleep", 1);
   // Raison explicite
   if (reason && *reason) {
     printClipped(0, 10, String("Raison: ") + utf8ToCp437(reason), 1);
@@ -1042,7 +1042,7 @@ void DisplayView::showOtaProgressOverlay(uint8_t percent) {
   // Afficher le pourcentage OTA
   char percentStr[12];
   snprintf(percentStr, sizeof(percentStr), "OTA: %u%%", percent);
-  printClipped(x, y, String(percentStr), 1);
+  printClipped(x, y, percentStr, 1);
   
   // Flush immédiat pour l'overlay
   _disp.display();

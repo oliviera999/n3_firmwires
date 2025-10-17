@@ -31,6 +31,16 @@ inline bool hasExpired(uint32_t targetMs) {
   return hasExpired(targetMs, millis());
 }
 
+// Fonctions utilitaires pour éviter la fragmentation mémoire avec String
+// Utilise des buffers statiques pour éviter les allocations dynamiques
+inline void formatDistanceAlert(char* buffer, size_t bufferSize, const char* prefix, float distance, const char* suffix, float threshold) {
+  snprintf(buffer, bufferSize, "%s%.1f cm (%s%.1f)", prefix, distance, suffix, threshold);
+}
+
+inline void formatTemperatureAlert(char* buffer, size_t bufferSize, const char* prefix, float temp) {
+  snprintf(buffer, bufferSize, "%s%.1f°C", prefix, temp);
+}
+
 inline bool isStillPending(uint32_t targetMs, uint32_t nowMs) {
   return targetMs != 0 && static_cast<int32_t>(targetMs - nowMs) > 0;
 }
@@ -188,6 +198,20 @@ void Automatism::begin() {
   
   // Initialisation de l'état WebSocket
   realtimeWebSocket.updateForceWakeUpState(forceWakeUp);
+  
+  // v11.66: Configuration callback fin de nourrissage pour reset serveur
+  _feeding.setCompletionCallback([this](const char* feedingType) {
+    SensorReadings cur = _sensors.read();
+    String resetParams = String(feedingType) + "=0";
+    // Ajouter GPIO fallback si nécessaire
+    if (strcmp(feedingType, "bouffePetits") == 0) {
+      resetParams += "&108=0";
+    } else if (strcmp(feedingType, "bouffeGros") == 0) {
+      resetParams += "&109=0";
+    }
+    sendFullUpdate(cur, resetParams.c_str());
+    Serial.printf("[Auto] Fin nourrissage notifiée au serveur - %s=0\n", feedingType);
+  });
   
   // Protection temporaire contre l'écrasement par le serveur distant
   // pendant les premières secondes après le démarrage
@@ -783,6 +807,31 @@ void Automatism::handleRefill(const SensorReadings& r) {
   }
 
   // ========================================
+  // 1.5. FIN CYCLE MANUEL : Auto-stop + notification serveur (v11.66)
+  // ========================================
+  if (_manualTankOverride && _acts.isTankPumpRunning()) {
+    if (_countdownEnd > 0 && millis() >= _countdownEnd) {
+      Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE MANUEL (timeout) ==="));
+      
+      // Arrêt physique
+      _acts.stopTankPump(_pumpStartMs);
+      _lastTankStopReason = TankPumpStopReason::MANUAL;
+      
+      // Reset flags
+      _manualTankOverride = false;
+      _countdownEnd = 0;
+      _pumpStartMs = 0;
+      
+      // Notification serveur : pump_tank=0 pour reset état distant
+      if (WiFi.status() == WL_CONNECTED) {
+        SensorReadings cur = _sensors.read();
+        sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+        Serial.println(F("[Auto] Fin cycle notifiée au serveur - pump_tank=0"));
+      }
+    }
+  }
+
+  // ========================================
   // 2. ARRÊT FORCÉ APRÈS DURÉE MAX - SÉCURITÉ CRITIQUE
   // ========================================
   if (_acts.isTankPumpRunning()) {
@@ -1184,8 +1233,9 @@ void Automatism::handleAlerts(const SensorReadings& r) {
 
   // 1) Aquarium trop BAS (distance > seuil)
   if (r.wlAqua > aqThresholdCm && !lowAquaSent && emailEnabled) {
-    String msg = "Distance: " + String(r.wlAqua) + " cm (> " + String(aqThresholdCm) + ")";
-    _mailer.sendAlert("Alerte - Niveau aquarium BAS", msg, emailAddress.c_str());
+    char msgBuffer[128];
+    formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlAqua, " cm (> ", aqThresholdCm);
+    _mailer.sendAlert("Alerte - Niveau aquarium BAS", msgBuffer, emailAddress.c_str());
     lowAquaSent = true;
     armMailBlink();
   }
@@ -1206,11 +1256,12 @@ void Automatism::handleAlerts(const SensorReadings& r) {
         bool debounceOk = elapsedUnder >= (floodDebounceMin * 60UL);
         bool cooldownOk = (lastFloodEmailEpoch == 0) || ((nowEpoch - lastFloodEmailEpoch) >= (floodCooldownMin * 60UL));
         if (debounceOk && cooldownOk) {
-          String msg = "Distance: " + String(r.wlAqua) + " cm (< " + String(limFlood) + ")";
+          char msgBuffer[128];
+          formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlAqua, " cm (< ", limFlood);
           if (tankPumpLocked || _config.getPompeAquaLocked()) {
-            msg += " / Pompe verrouillée";
+            strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
           }
-          bool sent = _mailer.sendAlert("Alerte - Aquarium TROP PLEIN", msg, emailAddress.c_str());
+          bool sent = _mailer.sendAlert("Alerte - Aquarium TROP PLEIN", msgBuffer, emailAddress.c_str());
           if (sent) {
             inFlood = true;
             highAquaSent = true; // conserve l'ancien flag pour compat
@@ -1247,16 +1298,18 @@ void Automatism::handleAlerts(const SensorReadings& r) {
 
   // 1) Réserve trop basse (distance > threshold)
   if (r.wlTank > tankThresholdCm && !lowTankSent && emailEnabled) {
-    String msg = "Distance: " + String(r.wlTank) + " cm (> " + String(tankThresholdCm) + ")";
-    _mailer.sendAlert("Alerte - Réserve BASSE", msg, emailAddress.c_str());
+    char msgBuffer[128];
+    formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlTank, " cm (> ", tankThresholdCm);
+    _mailer.sendAlert("Alerte - Réserve BASSE", msgBuffer, emailAddress.c_str());
     lowTankSent = true;
     armMailBlink();
   }
 
   // 2) Réserve de nouveau OK (distance < threshold - hysteresis)
   else if (lowTankSent && r.wlTank <= tankThresholdCm - 5 && emailEnabled) {
-    String msg = "Distance: " + String(r.wlTank) + " cm (<= " + String(tankThresholdCm - 5) + ")";
-    _mailer.sendAlert("Info - Réserve OK", msg, emailAddress.c_str());
+    char msgBuffer[128];
+    formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlTank, " cm (<= ", tankThresholdCm - 5);
+    _mailer.sendAlert("Info - Réserve OK", msgBuffer, emailAddress.c_str());
     lowTankSent = false;
     armMailBlink();
   }
@@ -1266,16 +1319,18 @@ void Automatism::handleAlerts(const SensorReadings& r) {
     _acts.startHeater();
     heaterPrevState = true;
     if (emailEnabled) {
-      String msg = "Temp eau: " + String(r.tempWater,1);
-      _mailer.sendAlert("Chauffage ON", msg, emailAddress.c_str());
+      char msgBuffer[64];
+      formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", r.tempWater);
+      _mailer.sendAlert("Chauffage ON", msgBuffer, emailAddress.c_str());
       armMailBlink();
     }
   } else if (r.tempWater > heaterThresholdC + 2 && heaterPrevState) {
     _acts.stopHeater();
     heaterPrevState = false;
     if (emailEnabled) {
-      String msg = "Temp eau: " + String(r.tempWater,1);
-      _mailer.sendAlert("Chauffage OFF", msg, emailAddress.c_str());
+      char msgBuffer[64];
+      formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", r.tempWater);
+      _mailer.sendAlert("Chauffage OFF", msgBuffer, emailAddress.c_str());
       armMailBlink();
     }
   }
@@ -1409,7 +1464,11 @@ void Automatism::handleRemoteState() {
       }
       
       // Si le GPIO correspond à un actionneur connu, on utilise les méthodes dédiées
+      // v11.66: GPIO POMPE_AQUA et POMPE_RESERV désactivés - gérés par handleRemoteActuators()
       if (id == Pins::POMPE_AQUA) {
+        Serial.printf("[GPIO] ⚠️ Commande GPIO %d (POMPE_AQUA) IGNORÉE - gérée par handleRemoteActuators()\n", id);
+        // Code commenté pour éviter doublon avec handleRemoteActuators()
+        /*
         bool currentState = _acts.isAquaPumpRunning();
         if (val && !currentState) {
           _acts.startAquaPump();
@@ -1439,7 +1498,11 @@ void Automatism::handleRemoteState() {
           Serial.printf("[Auto] Pompe aqua GPIO commande IGNORÉE - état déjà %s (commande redondante)\n", 
                        currentState ? "ON" : "OFF");
         }
+        */
       } else if (id == Pins::POMPE_RESERV) {
+        Serial.printf("[GPIO] ⚠️ Commande GPIO %d (POMPE_RESERV) IGNORÉE - gérée par handleRemoteActuators()\n", id);
+        // Code commenté pour éviter doublon avec handleRemoteActuators()
+        /*
         // Gestion pompe réservoir avec mode manuel override
         if (valBool) {
           if (!_acts.isTankPumpRunning()) {
@@ -1484,6 +1547,7 @@ void Automatism::handleRemoteState() {
             Serial.println(F("[Auto] Arrêt manuel pompe réservoir IGNORÉ - pompe verrouillée par sécurité"));
           }
         }
+        */
       } else if (id == Pins::RADIATEURS) {
         bool currentState = _acts.isHeaterOn();
         Serial.printf("[DEBUG] Commande chauffage: GPIO %d = %s\n", id, valBool ? "ON" : "OFF");

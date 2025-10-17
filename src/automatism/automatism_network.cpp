@@ -238,8 +238,8 @@ bool AutomatismNetwork::sendFullUpdate(
     }
     
     // Construction payload
-    char data[1024];
-    snprintf(data, sizeof(data),
+    char payload[1024];
+    snprintf(payload, sizeof(payload),
         "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&"
         "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
         "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&"
@@ -258,27 +258,31 @@ bool AutomatismNetwork::sendFullUpdate(
         bouffePetits.c_str(), bouffeGros.c_str(),
         _emailAddress.c_str(), _emailEnabled ? "checked" : "");
     
-    String payload = String(data);
+    // Utilisation d'un buffer statique pour éviter la fragmentation mémoire
+    char payloadBuffer[512];
+    strncpy(payloadBuffer, payload, sizeof(payloadBuffer) - 1);
+    payloadBuffer[sizeof(payloadBuffer) - 1] = '\0';
+    
     if (extraPairs && extraPairs[0] != '\0') {
-        payload += "&";
-        payload += extraPairs;
+        strncat(payloadBuffer, "&", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+        strncat(payloadBuffer, extraPairs, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
     }
     
     // === PROTECTION CRITIQUE: resetMode=0 TOUJOURS PRÉSENT ===
     // S'assurer que resetMode=0 est toujours envoyé pour éviter les resets non désirés
-    if (payload.indexOf("resetMode=") == -1) {
-        payload += "&resetMode=0";
+    if (strstr(payloadBuffer, "resetMode=") == nullptr) {
+        strncat(payloadBuffer, "&resetMode=0", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
         Serial.println(F("[Network] 🔒 resetMode=0 ajouté automatiquement pour sécurité"));
     } else {
         // Vérifier que resetMode n'est pas à 1 (sauf cas spécifique de trigger)
-        if (payload.indexOf("resetMode=1") != -1) {
+        if (strstr(payloadBuffer, "resetMode=1") != nullptr) {
             Serial.println(F("[Network] ⚠️ resetMode=1 détecté dans payload"));
         } else {
             Serial.println(F("[Network] ✅ resetMode=0 confirmé dans payload"));
         }
     }
     
-    bool success = _web.postRaw(payload, false);
+    bool success = _web.postRaw(payloadBuffer, false);
     
     if (success) {
         _sendState = 1;  // OK
@@ -596,7 +600,8 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
         }
         
         autoCtrl.armMailBlink();
-        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0&108=0");  // Reset flag + fallback GPIO
+        // v11.66: Reset géré par callback de completion dans automatism_feeding.cpp
+        // autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffePetits=0&108=0");  // SUPPRIMÉ
     }
     
     // Commande "bouffeGros" (ou GPIO 109 en fallback)
@@ -629,7 +634,8 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
         }
         
         autoCtrl.armMailBlink();
-        autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0&109=0");  // Reset flag + fallback GPIO
+        // v11.66: Reset géré par callback de completion dans automatism_feeding.cpp
+        // autoCtrl.sendFullUpdate(autoCtrl.readSensors(), "bouffeGros=0&109=0");  // SUPPRIMÉ
     }
 }
 
@@ -783,25 +789,35 @@ void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& d
     } else if (doc.containsKey("pump_tank")) {
         auto v = doc["pump_tank"];
         if (isTrue(v)) {
-            autoCtrl.startTankPumpManual();
-            sendCommandAck("pump_tank", "on");
-            logRemoteCommandExecution("ptank_on", true);
-            Serial.println(F("[Network] Pompe réservoir ON (état distant)"));
-            
-            // v11.59: Reset GPIO virtuals to prevent infinite loops
-            SensorReadings readings = autoCtrl.readSensors();
-            autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
-            Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
+            // Protection: Ne redémarrer QUE si pompe arrêtée
+            if (!autoCtrl.isTankPumpRunning()) {
+                autoCtrl.startTankPumpManual();
+                sendCommandAck("pump_tank", "on");
+                logRemoteCommandExecution("ptank_on", true);
+                Serial.println(F("[Network] Pompe réservoir démarrée (commande distante)"));
+                
+                // v11.66: Reset GPIO virtuals to prevent infinite loops
+                SensorReadings readings = autoCtrl.readSensors();
+                autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
+                Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
+            } else {
+                Serial.println(F("[Network] ⚠️ Commande pump_tank=1 IGNORÉE - cycle déjà en cours"));
+            }
         } else if (isFalse(v)) {
-            autoCtrl.stopTankPumpManual();
-            sendCommandAck("pump_tank", "off");
-            logRemoteCommandExecution("ptank_off", true);
-            Serial.println(F("[Network] Pompe réservoir OFF (état distant)"));
-            
-            // v11.59: Reset GPIO virtuals to prevent infinite loops
-            SensorReadings readings = autoCtrl.readSensors();
-            autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
-            Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
+            // Arrêt seulement si effectivement en cours
+            if (autoCtrl.isTankPumpRunning()) {
+                autoCtrl.stopTankPumpManual();
+                sendCommandAck("pump_tank", "off");
+                logRemoteCommandExecution("ptank_off", true);
+                Serial.println(F("[Network] Pompe réservoir arrêtée (commande distante)"));
+                
+                // v11.66: Reset GPIO virtuals to prevent infinite loops
+                SensorReadings readings = autoCtrl.readSensors();
+                autoCtrl.sendFullUpdate(readings, "pump_tankCmd=0&pump_tank=0");
+                Serial.println(F("[Network] GPIO virtuals reset: pump_tankCmd=0&pump_tank=0"));
+            } else {
+                Serial.println(F("[Network] ⚠️ Commande pump_tank=0 IGNORÉE - pompe déjà arrêtée"));
+            }
         }
     }
     

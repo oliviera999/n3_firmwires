@@ -240,3 +240,4 @@ if ($hasCriticalErrors) {
 }
 
 Write-Host "`n=== FIN DU MONITORING ===" -ForegroundColor Cyan
+

@@ -63,6 +63,12 @@ public:
      */
     void feedBigManual(std::function<void(const char*, unsigned long)> countdownCallback);
     
+    /**
+     * Définit le callback appelé à la fin du nourrissage pour reset serveur
+     * @param callback Fonction appelée avec le type de nourrissage terminé
+     */
+    void setCompletionCallback(std::function<void(const char*)> callback);
+    
     // === TRAÇAGE ET MESSAGES ===
     
     /**
@@ -174,6 +180,9 @@ private:
     // Protection double exécution
     unsigned long _lastManualFeedSmallMs;
     unsigned long _lastManualFeedBigMs;
+    
+    // Callback fin de nourrissage pour reset serveur
+    std::function<void(const char*)> _completionCallback;
     
     // Helpers privés
     void performFeedingCycle(bool isLarge, const String& emailAddress, 
