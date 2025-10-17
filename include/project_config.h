@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.68"; // GPIO Parsing Unifié - Système Simplifié
+    constexpr const char* VERSION = "11.69"; // Correction commandes distantes - Suppression inversion serveur
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)

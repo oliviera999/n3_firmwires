@@ -822,8 +822,14 @@ void Automatism::handleRefill(const SensorReadings& r) {
       // Notification serveur : pump_tank=0 pour reset état distant
       if (WiFi.status() == WL_CONNECTED) {
         SensorReadings cur = _sensors.read();
-        sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-        Serial.println(F("[Auto] Fin cycle notifiée au serveur - pump_tank=0"));
+        bool success = sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+        if (success) {
+          Serial.println(F("[Auto] ✅ Fin cycle notifiée au serveur - pump_tank=0"));
+        } else {
+          Serial.println(F("[Auto] ⚠️ Échec notification fin cycle au serveur - sera retentée"));
+        }
+      } else {
+        Serial.println(F("[Auto] ⚠️ WiFi déconnecté - notification fin cycle reportée"));
       }
     }
   }
@@ -860,6 +866,17 @@ void Automatism::handleRefill(const SensorReadings& r) {
       _pumpStartMs = 0; // reset cycle start
       _countdownEnd = 0;
       _manualTankOverride = false; // fin de la phase manuelle forcée
+      
+      // Notification serveur : pump_tank=0 pour reset état distant (arrêt forcé)
+      if (WiFi.status() == WL_CONNECTED) {
+        SensorReadings cur = _sensors.read();
+        bool success = sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+        if (success) {
+          Serial.println(F("[Auto] ✅ Fin cycle forcé notifiée au serveur - pump_tank=0"));
+        } else {
+          Serial.println(F("[Auto] ⚠️ Échec notification fin cycle forcé au serveur"));
+        }
+      }
 
     // Évalue l'efficacité : le niveau doit avoir augmenté d'au moins 1 cm depuis le début
     int levelImprovement = _levelAtPumpStart - r.wlAqua;

@@ -300,12 +300,9 @@ bool AutomatismNetwork::sendFullUpdate(
         _sendState = -1;  // Erreur
         Serial.println(F("[Network] sendFullUpdate FAILED"));
         
-        // v11.31: Enregistrer dans la queue pour rejeu ultérieur
-        if (_dataQueue.push(payload)) {
-            Serial.printf("[Network] ✓ Payload queued for later (%u pending)\n", _dataQueue.size());
-        } else {
-            Serial.println(F("[Network] ✗ Failed to queue payload"));
-        }
+        // v11.69: QUEUE DÉSACTIVÉE pour garantir la stabilité du système
+        // Les données sont perdues en cas de déconnexion, mais le système reste stable
+        Serial.println(F("[Network] ⚠️ Donnée perdue (queue désactivée pour stabilité)"));
     }
     
     _lastSend = millis();
@@ -649,6 +646,12 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
 // ============================================================================
 
 void AutomatismNetwork::handleRemoteActuators(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+    // v11.69: DÉSACTIVÉ - Utilisation exclusive de GPIOParser pour éviter conflits
+    // Cette méthode créait une double gestion des commandes et bloquait les commandes distantes
+    // pendant 5 secondes après toute action locale, empêchant le contrôle à distance.
+    Serial.println(F("[Network] handleRemoteActuators DÉSACTIVÉ (v11.69) - GPIOParser utilisé"));
+    return; // Désactivation complète
+    
     // NOTE: Cette méthode gère les actionneurs par NOM (light, heat, pump_aqua, etc.)
     // Le code dans automatism.cpp gère les GPIO par NUMÉRO (fallback rétrocompatibilité)
     // Cela permet de supporter les deux formats: noms ET numéros
