@@ -10,7 +10,7 @@ SystemSensors::SystemSensors() {}
 void SystemSensors::begin() {
   _air.begin();
   _water.begin();
-  Serial.println(F("[Sensors] Initialisation terminée"));
+  SENSOR_LOG_PRINTLN(F("[Sensors] Initialisation terminée"));
 }
 
 SensorReadings SystemSensors::read() {
@@ -30,11 +30,11 @@ SensorReadings SystemSensors::read() {
     
     // NOUVELLE MÉTHODE NON-BLOQUANTE
     float val = _water.getTemperatureWithFallback();
-    Serial.printf("[SystemSensors] ⏱️ Température eau: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température eau: %u ms\n", millis() - phaseStart);
     
     // Validation finale renforcée
     if (isnan(val) || val < SensorConfig::WaterTemp::MIN_VALID || val > SensorConfig::WaterTemp::MAX_VALID) {
-      Serial.printf("[SystemSensors] Température eau invalide finale: %.1f°C (plage: %.1f-%.1f°C), force NaN\n", 
+      SENSOR_LOG_PRINTF("[SystemSensors] Température eau invalide finale: %.1f°C (plage: %.1f-%.1f°C), force NaN\n", 
                    val, SensorConfig::WaterTemp::MIN_VALID, SensorConfig::WaterTemp::MAX_VALID);
       r.tempWater = NAN;
     } else {
@@ -46,11 +46,11 @@ SensorReadings SystemSensors::read() {
   {
     phaseStart = millis();
     float val = _air.robustTemperatureC(); // Garde la méthode robuste pour DHT22
-    Serial.printf("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
     
     // Validation finale
     if (isnan(val) || val <= SensorConfig::AirSensor::TEMP_MIN || val >= SensorConfig::AirSensor::TEMP_MAX) {
-      Serial.printf("[SystemSensors] Température air invalide finale: %.1f°C, force NaN\n", val);
+      SENSOR_LOG_PRINTF("[SystemSensors] Température air invalide finale: %.1f°C, force NaN\n", val);
       r.tempAir = NAN;
     } else {
       r.tempAir = val;
@@ -61,11 +61,11 @@ SensorReadings SystemSensors::read() {
   {
     phaseStart = millis();
     float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT22
-    Serial.printf("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
     
     // Validation finale
     if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
-      Serial.printf("[SystemSensors] Humidité invalide finale: %.1f%%, force NaN\n", val);
+      SENSOR_LOG_PRINTF("[SystemSensors] Humidité invalide finale: %.1f%%, force NaN\n", val);
       r.humidity = NAN;
     } else {
       r.humidity = val;
@@ -76,9 +76,9 @@ SensorReadings SystemSensors::read() {
   {
     phaseStart = millis();
     uint16_t val = _usPota.readReactiveFiltered();
-    Serial.printf("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
     if (val == 0 || val > 500) { // 0 = invalide, >500cm = aberrant
-      Serial.printf("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
+      SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
       r.wlPota = 0;
     } else {
       r.wlPota = val;
@@ -88,22 +88,22 @@ SensorReadings SystemSensors::read() {
   {
     phaseStart = millis();
     uint16_t val = _usAqua.readReactiveFiltered();
-    Serial.printf("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
-      Serial.printf("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
+      SENSOR_LOG_PRINTF("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
       // Tentative de récupération avec méthode simple
       val = _usAqua.readFiltered(3);
       valid = (val > 0 && val <= 500);
       if (valid) {
-        Serial.printf("[SystemSensors] Récupération réussie: %u cm\n", val);
+        SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u cm\n", val);
         r.wlAqua = val;
         _lastValidWlAqua = val;
       } else if (_lastValidWlAqua > 0) {
-        Serial.printf("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u cm\n", _lastValidWlAqua);
+        SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u cm\n", _lastValidWlAqua);
         r.wlAqua = _lastValidWlAqua;
       } else {
-        Serial.printf("[SystemSensors] Récupération échouée, aucune valeur valide connue – utilise 0\n");
+        SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – utilise 0\n");
         r.wlAqua = 0;
       }
     } else {
@@ -122,22 +122,22 @@ SensorReadings SystemSensors::read() {
   {
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
-    Serial.printf("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= 500);
     if (!valid) {
-      Serial.printf("[SystemSensors] Niveau réservoir invalide: %u cm\n", val);
+      SENSOR_LOG_PRINTF("[SystemSensors] Niveau réservoir invalide: %u cm\n", val);
       // Essai de récupération simple
       val = _usTank.readFiltered(3);
       valid = (val > 0 && val <= 500);
       if (valid) {
-        Serial.printf("[SystemSensors] Récupération réservoir réussie: %u cm\n", val);
+        SENSOR_LOG_PRINTF("[SystemSensors] Récupération réservoir réussie: %u cm\n", val);
         r.wlTank = val;
         _lastValidWlTank = val;
       } else if (_lastValidWlTank > 0) {
-        Serial.printf("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u cm\n", _lastValidWlTank);
+        SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u cm\n", _lastValidWlTank);
         r.wlTank = _lastValidWlTank;
       } else {
-        Serial.printf("[SystemSensors] Récupération échouée, aucune valeur valide connue – réservoir=0\n");
+        SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – réservoir=0\n");
         r.wlTank = 0;
       }
     } else {
@@ -156,11 +156,11 @@ SensorReadings SystemSensors::read() {
       vTaskDelay(pdMS_TO_TICKS(1)); // 1 ms entre échantillons
     }
     uint16_t val = static_cast<uint16_t>(lumiSum / NB_LUMI_SAMPLES);
-    Serial.printf("[SystemSensors] ⏱️ Luminosité: %u ms\n", millis() - phaseStart);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Luminosité: %u ms\n", millis() - phaseStart);
     
     // Validation de la luminosité (0-4095 pour ESP32 ADC 12-bit)
     if (val > 4095) {
-      Serial.printf("[SystemSensors] Luminosité invalide: %u, force 0\n", val);
+      SENSOR_LOG_PRINTF("[SystemSensors] Luminosité invalide: %u, force 0\n", val);
       r.luminosite = 0;
     } else {
       r.luminosite = val;
@@ -172,15 +172,15 @@ SensorReadings SystemSensors::read() {
   uint16_t oldAquaMax = _aquaMax;
   if (r.wlAqua > _aquaMax) {
     _aquaMax = r.wlAqua;
-    Serial.printf("[Maree] Nouveau max: %u cm (précédent: %u cm)\n", _aquaMax, oldAquaMax);
+    SENSOR_LOG_PRINTF("[Maree] Nouveau max: %u cm (précédent: %u cm)\n", _aquaMax, oldAquaMax);
   }
 
   // Vérification du timeout global et affichage du temps d'exécution
   uint32_t elapsed = millis() - startTime;
   if (elapsed > GLOBAL_TIMEOUT_MS) {
-    Serial.printf("[SystemSensors] ⚠️ TIMEOUT GLOBAL: Lecture capteurs a pris %u ms (limite: %u ms)\n", elapsed, GLOBAL_TIMEOUT_MS);
+    SENSOR_LOG_PRINTF("[SystemSensors] ⚠️ TIMEOUT GLOBAL: Lecture capteurs a pris %u ms (limite: %u ms)\n", elapsed, GLOBAL_TIMEOUT_MS);
   } else {
-    Serial.printf("[SystemSensors] ✓ Lecture capteurs terminée en %u ms\n", elapsed);
+    SENSOR_LOG_PRINTF("[SystemSensors] ✓ Lecture capteurs terminée en %u ms\n", elapsed);
   }
 
   LOG(LOG_DEBUG, "Sensors TWater=%.1fC TAir=%.1fC Hum=%.1f%% wlA=%u wlT=%u wlP=%u Lux=%u", r.tempWater, r.tempAir, r.humidity, r.wlAqua, r.wlTank, r.wlPota, r.luminosite);
@@ -194,7 +194,7 @@ int SystemSensors::diffMaree(uint16_t currentAqua) {
   int diff10s = diffMaree10s(currentAqua, nowMs);
   
   // Log détaillé du calcul de marée (15s)
-  Serial.printf("[Maree] Calcul15s: actuel=%u, diff15s=%d cm\n", currentAqua, diff10s);
+  SENSOR_LOG_PRINTF("[Maree] Calcul15s: actuel=%u, diff15s=%d cm\n", currentAqua, diff10s);
   return diff10s;
 } 
 

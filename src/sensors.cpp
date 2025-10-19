@@ -780,9 +780,9 @@ void AirSensor::begin() {
   
   // Test initial de connectivité
   if (!isSensorConnected()) {
-    Serial.println("[AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation");
+    SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation");
   } else {
-    Serial.println("[AirSensor] Capteur détecté et initialisé");
+    SENSOR_LOG_PRINTLN("[AirSensor] Capteur détecté et initialisé");
   }
 }
 
@@ -802,7 +802,7 @@ bool AirSensor::isSensorConnected() {
   
   // Vérifie si les lectures sont valides
   if (isnan(temp) && isnan(humidity)) {
-    Serial.println("[AirSensor] Capteur DHT non détecté ou déconnecté");
+    SENSOR_LOG_PRINTLN("[AirSensor] Capteur DHT non détecté ou déconnecté");
     return false;
   }
   
@@ -810,7 +810,7 @@ bool AirSensor::isSensorConnected() {
 }
 
 void AirSensor::resetSensor() {
-  Serial.println("[AirSensor] Reset matériel du capteur...");
+  SENSOR_LOG_PRINTLN("[AirSensor] Reset matériel du capteur...");
   
   // Reset de la bibliothèque DHT
   _dht.begin();
@@ -820,7 +820,7 @@ void AirSensor::resetSensor() {
   // Reset de l'historique
   resetHistory();
   
-  Serial.println("[AirSensor] Reset matériel terminé");
+  SENSOR_LOG_PRINTLN("[AirSensor] Reset matériel terminé");
 }
 
 float AirSensor::robustTemperatureC() {
@@ -830,17 +830,17 @@ float AirSensor::robustTemperatureC() {
     return result;
   }
   
-  Serial.println("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
+  SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
   // 2. Vérification de la connectivité
   if (!isSensorConnected()) {
-    Serial.println("[AirSensor] Capteur non connecté, reset matériel...");
+    SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
     resetSensor();
     
     // Nouvelle tentative après reset
     result = filteredTemperatureC();
     if (!isnan(result)) {
-      Serial.println("[AirSensor] Récupération réussie après reset matériel");
+      SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
       return result;
     }
   }
@@ -848,7 +848,7 @@ float AirSensor::robustTemperatureC() {
   // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
   const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
-    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
+    SENSOR_LOG_PRINTF("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
     
     // Lecture simple avec délai
@@ -856,7 +856,7 @@ float AirSensor::robustTemperatureC() {
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     
     if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
-      Serial.printf("[AirSensor] Récupération réussie: %.1f°C\n", temp);
+      SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f°C\n", temp);
       return temp;
     }
     
@@ -866,11 +866,11 @@ float AirSensor::robustTemperatureC() {
   
   // 4. Utilisation de la dernière valeur valide si disponible
   if (!isnan(_lastValidTemp)) {
-    Serial.printf("[AirSensor] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
+    SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
     return _lastValidTemp;
   }
   
-  Serial.println("[AirSensor] Échec de toutes les tentatives de récupération");
+  SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
   return NAN;
 }
 
@@ -934,17 +934,17 @@ float AirSensor::robustHumidity() {
     return result;
   }
   
-  Serial.println("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
+  SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
   // 2. Vérification de la connectivité
   if (!isSensorConnected()) {
-    Serial.println("[AirSensor] Capteur non connecté, reset matériel...");
+    SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
     resetSensor();
     
     // Nouvelle tentative après reset
     result = filteredHumidity();
     if (!isnan(result)) {
-      Serial.println("[AirSensor] Récupération réussie après reset matériel");
+      SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
       return result;
     }
   }
@@ -952,7 +952,7 @@ float AirSensor::robustHumidity() {
   // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
   const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
-    Serial.printf("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
+    SENSOR_LOG_PRINTF("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
     
     // Lecture simple avec délai
@@ -960,7 +960,7 @@ float AirSensor::robustHumidity() {
     vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     
     if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
-      Serial.printf("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
+      SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
       return humidity;
     }
     
@@ -970,11 +970,11 @@ float AirSensor::robustHumidity() {
   
   // 4. Utilisation de la dernière valeur valide si disponible
   if (!isnan(_lastValidHumidity)) {
-    Serial.printf("[AirSensor] Utilisation de la dernière valeur valide: %.1f%%\n", _lastValidHumidity);
+    SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f%%\n", _lastValidHumidity);
     return _lastValidHumidity;
   }
   
-  Serial.println("[AirSensor] Échec de toutes les tentatives de récupération");
+  SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
   return NAN;
 }
 
@@ -990,7 +990,7 @@ void AirSensor::resetHistory() {
     _tempHistory[i] = NAN;
     _humidityHistory[i] = NAN;
   }
-  Serial.println("[AirSensor] Historique réinitialisé");
+  SENSOR_LOG_PRINTLN("[AirSensor] Historique réinitialisé");
 }
 
 // -------- Méthodes NVS pour WaterTempSensor --------

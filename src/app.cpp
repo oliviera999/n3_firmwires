@@ -30,6 +30,7 @@
 #include "email_buffer_pool.h"
 #include "timer_manager.h"
 #include "optimized_logger.h"
+#include "gpio_parser.h"
 // Pour mesurer les marges de stack FreeRTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -240,7 +241,7 @@ void sensorTask(void* pv) {
   static bool wdtReg=false;
   if(!wdtReg){ esp_task_wdt_add(NULL); wdtReg=true; }
   
-  Serial.println(F("[Sensor] Tâche sensorTask démarrée - exécution à rythme naturel avec repos de 500ms"));
+  SENSOR_LOG_PRINTLN(F("[Sensor] Tâche sensorTask démarrée - exécution à rythme naturel avec repos de 500ms"));
   
   for (;;) {
     // Suspendre la lecture des capteurs pendant l'OTA pour prioriser le réseau
@@ -262,7 +263,7 @@ void sensorTask(void* pv) {
     // Vérification du temps de lecture
     uint32_t sensorDuration = millis() - sensorStartTime;
     if (sensorDuration > MAX_SENSOR_TIME_MS) {
-      Serial.printf("[Sensor] ⚠️ LECTURE CAPTEURS TROP LENTE: %u ms (limite: %u ms)\n", 
+      SENSOR_LOG_PRINTF("[Sensor] ⚠️ LECTURE CAPTEURS TROP LENTE: %u ms (limite: %u ms)\n", 
                     sensorDuration, MAX_SENSOR_TIME_MS);
     }
     
@@ -273,7 +274,7 @@ void sensorTask(void* pv) {
     if (r.tempWater < SensorConfig::WaterTemp::MIN_VALID || r.tempWater > SensorConfig::WaterTemp::MAX_VALID ||
         r.tempAir < SensorConfig::AirSensor::TEMP_MIN || r.tempAir > SensorConfig::AirSensor::TEMP_MAX ||
         r.humidity < SensorConfig::AirSensor::HUMIDITY_MIN || r.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
-      Serial.println(F("[Sensor] Erreur lors de la lecture des capteurs"));
+      SENSOR_LOG_PRINTLN(F("[Sensor] Erreur lors de la lecture des capteurs"));
       // Utiliser des valeurs par défaut en cas d'erreur
       r.tempAir = ExtendedSensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
       r.humidity = ExtendedSensorConfig::DefaultValues::HUMIDITY_DEFAULT;
@@ -290,10 +291,10 @@ void sensorTask(void* pv) {
     if (sensorQueue) {
       BaseType_t result = xQueueSendToBack(sensorQueue, &r, pdMS_TO_TICKS(200)); // v11.34: Augmenté 20ms → 200ms
       if (result != pdTRUE) {
-        Serial.println(F("[Sensor] ⚠️ Queue pleine - donnée de capteur perdue!"));
+        SENSOR_LOG_PRINTLN(F("[Sensor] ⚠️ Queue pleine - donnée de capteur perdue!"));
       }
     } else {
-      Serial.println(F("[Sensor] ❌ Queue non disponible - donnée ignorée"));
+      SENSOR_LOG_PRINTLN(F("[Sensor] ❌ Queue non disponible - donnée ignorée"));
     }
     
     // Repos pour permettre au système de gérer les autres tâches (WiFi, WebSocket, etc.)
@@ -456,8 +457,21 @@ void automationTask(void* pv) {
       esp_task_wdt_reset();
     } else {
       // Timeout atteint - pas de données disponibles
-      // Continuer le cycle pour éviter le blocage
       Serial.println(F("[Auto] Timeout queue capteurs - cycle continu"));
+      // v11.74: Poll distant même sans nouvelles mesures capteurs pour ne pas bloquer les commandes
+      if (WiFi.status() == WL_CONNECTED) {
+        esp_task_wdt_reset();
+        Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
+        // Appeler la façade publique qui déclenche la récupération distante
+        // via le pipeline existant
+        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmpDoc;
+        bool ok = autoCtrl.fetchRemoteState(tmpDoc);
+        Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n", ok?"OK":"KO", (unsigned)tmpDoc.size());
+        if (ok) {
+          Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
+          GPIOParser::parseAndApply(tmpDoc, autoCtrl);
+        }
+      }
     }
   }
 }
@@ -471,7 +485,20 @@ void setup() {
   cfg.trigger_panic = true;
   esp_task_wdt_init(&cfg);
   delay(SystemConfig::INITIAL_DELAY_MS);
-  Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
+  
+  // Initialisation conditionnelle du moniteur série basée sur le flag SERIAL_MONITOR_ENABLED
+  // Ce flag peut être contrôlé via ENABLE_SERIAL_MONITOR dans platformio.ini
+  // Voir la documentation dans project_config.h pour plus de détails
+  if (LogConfig::SERIAL_MONITOR_ENABLED) {
+    Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
+    Serial.println("[INIT] Moniteur série activé");
+  } else {
+    Serial.end(); // S'assurer que Serial est désactivé si le flag est à false
+    // Note: Sur certains systèmes, Serial.begin() pourrait être appelé automatiquement,
+    // mais on peut le désactiver explicitement avec Serial.end()
+    // Les appels Serial.print dans le code seront également désactivés via les macros définies
+  }
+  
   // Définit un hostname unique et cohérent pour DHCP/DNS (ffp3-XXXX)
   {
     uint64_t chipId = ESP.getEfuseMac();
