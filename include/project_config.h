@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.77"; // v11.77: Ajout flag ENABLE_SENSOR_LOGS pour désactiver les messages de capteurs dans le moniteur série
+    constexpr const char* VERSION = "11.78"; // v11.78: Fix GPIO virtuels - application immédiate des changements depuis serveur distant
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)

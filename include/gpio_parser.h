@@ -17,10 +17,14 @@ public:
     
 private:
     // Applique un GPIO selon son type
-    static void applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl);
+    static void applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl, 
+                         JsonDocument& configDoc, bool& hasVirtualConfig);
     
     // Sauvegarde dans NVS
     static void saveToNVS(const GPIOMapping& mapping, JsonVariantConst value);
+    
+    // Mapper GPIO vers clés de configuration
+    static String mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value);
     
     // Helpers conversion
     static bool parseBool(JsonVariantConst v);

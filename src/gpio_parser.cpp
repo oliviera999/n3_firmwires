@@ -4,6 +4,12 @@
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
+  // Diagnostics additionnels v11.74
+  size_t presentKeys = 0;
+    
+    // v11.77: Collecter les GPIO virtuels pour application immédiate
+    StaticJsonDocument<512> configDoc;
+    bool hasVirtualConfig = false;
     
     // Parcourir tous les GPIO définis dans le mapping
     for (size_t i = 0; i < GPIOMap::MAPPING_COUNT; i++) {
@@ -14,21 +20,31 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         if (!doc.containsKey(key.c_str())) {
             continue; // Ce GPIO n'est pas dans la réponse du serveur
         }
+    presentKeys++;
         
         JsonVariantConst value = doc[key.c_str()];
-        Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
+    Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
+    Serial.printf("[GPIO] key=%s raw=%s\n", key.c_str(), value.as<String>().c_str());
         
         // Appliquer selon type
-        applyGPIO(mapping.gpio, value, autoCtrl);
+        applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
         
         // Sauvegarder NVS
         saveToNVS(mapping, value);
     }
     
-    Serial.println(F("[GPIOParser] === FIN PARSING ==="));
+    // v11.77: Appliquer immédiatement les configurations virtuelles
+    if (hasVirtualConfig) {
+        Serial.println(F("[GPIOParser] 🔧 Application immédiate des GPIO virtuels"));
+        autoCtrl.applyConfigFromJson(configDoc);
+    }
+    
+  Serial.printf("[GPIOParser] Présents: %u / %u\n", (unsigned)presentKeys, (unsigned)GPIOMap::MAPPING_COUNT);
+  Serial.println(F("[GPIOParser] === FIN PARSING ==="));
 }
 
-void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl) {
+void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl, 
+                           JsonDocument& configDoc, bool& hasVirtualConfig) {
     // Actionneurs physiques
     if (gpio == GPIOMap::PUMP_AQUA.gpio) {
         bool state = parseBool(value);
@@ -74,7 +90,58 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
     // Configuration - appliquée via setters Automatism
     else {
         Serial.printf("Config GPIO %d = %s\n", gpio, value.as<String>().c_str());
-        // Les configurations sont directement sauvées en NVS et appliquées au prochain démarrage
+        
+        // v11.77: Appliquer immédiatement les configurations virtuelles
+        const GPIOMapping* mapping = GPIOMap::findByGPIO(gpio);
+        if (mapping && (mapping->type == GPIOType::CONFIG_INT || 
+                        mapping->type == GPIOType::CONFIG_FLOAT || 
+                        mapping->type == GPIOType::CONFIG_STRING || 
+                        mapping->type == GPIOType::CONFIG_BOOL)) {
+            
+            // Mapper GPIO vers clés attendues par applyConfigFromJson
+            String configKey = mapGPIOToConfigKey(gpio, value);
+            if (configKey.length() > 0) {
+                configDoc[configKey.c_str()] = value;
+                hasVirtualConfig = true;
+                Serial.printf("[GPIOParser] GPIO virtuel %d -> %s = %s\n", gpio, configKey.c_str(), value.as<String>().c_str());
+            }
+        }
+    }
+}
+
+String GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value) {
+    // Mapper les GPIO virtuels vers les clés attendues par applyConfigFromJson
+    switch (gpio) {
+        case 100: // EMAIL_ADDR
+            return String("emailAddress");
+        case 101: // EMAIL_EN  
+            return String("emailEnabled");
+        case 102: // AQ_THRESHOLD
+            return String("aqThreshold");
+        case 103: // TANK_THRESHOLD
+            return String("tankThreshold");
+        case 104: // HEAT_THRESHOLD
+            return String("heaterThreshold");
+        case 105: // FEED_MORNING
+            return String("feedMorning");
+        case 106: // FEED_NOON
+            return String("feedNoon");
+        case 107: // FEED_EVENING
+            return String("feedEvening");
+        case 111: // FEED_BIG_DUR
+            return String("feedBigDur");
+        case 112: // FEED_SMALL_DUR
+            return String("feedSmallDur");
+        case 113: // REFILL_DUR
+            return String("refillDuration");
+        case 114: // LIM_FLOOD
+            return String("limFlood");
+        case 115: // WAKEUP
+            return String("forceWakeUp");
+        case 116: // FREQ_WAKEUP
+            return String("FreqWakeUp");
+        default:
+            return String();
     }
 }
 
