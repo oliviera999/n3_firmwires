@@ -13,11 +13,11 @@ AutomatismFeeding::AutomatismFeeding(SystemActuators& acts, ConfigManager& cfg,
     , _config(cfg)
     , _mailer(mail)
     , _power(power)
-    , _feedMorning(8)
-    , _feedNoon(12)
-    , _feedEvening(19)
-    , _feedBigDur(ActuatorConfig::Default::FEED_BIG_DURATION_SEC)
-    , _feedSmallDur(ActuatorConfig::Default::FEED_SMALL_DURATION_SEC)
+    , _bouffeMatin(8)
+    , _bouffeMidi(12)
+    , _bouffeSoir(19)
+    , _tempsGros(ActuatorConfig::Default::FEED_BIG_DURATION_SEC)
+    , _tempsPetits(ActuatorConfig::Default::FEED_SMALL_DURATION_SEC)
     , _lastFeedDay(-1)
     , _currentPhase(Phase::NONE)
     , _phaseEnd(0)
@@ -74,8 +74,8 @@ void AutomatismFeeding::saveFeedingState() {
 String AutomatismFeeding::createMessage(const char* type) {
     String message = String(type) + " - Distribution effectuée\n\n";
     message += "Temps de nourrissage effectif:\n";
-    message += "- Gros poissons: " + String(_feedBigDur) + " secondes\n";
-    message += "- Petits poissons: " + String(_feedSmallDur) + " secondes\n";
+    message += "- Gros poissons: " + String(_tempsGros) + " secondes\n";
+    message += "- Petits poissons: " + String(_tempsPetits) + " secondes\n";
     return message;
 }
 
@@ -132,14 +132,14 @@ void AutomatismFeeding::traceFeedingEventSelective(bool feedSmall, bool feedBig,
 void AutomatismFeeding::feedSmallManual(std::function<void(const char*, unsigned long)> countdownCallback) {
     Serial.println(F("[CRITIQUE] === DÉBUT NOURRISSAGE MANUEL PETITS ==="));
     Serial.printf("[CRITIQUE] Durées configurées - Gros: %u s, Petits: %u s\n", 
-                 _feedBigDur, _feedSmallDur);
+                 _tempsGros, _tempsPetits);
     
     // v11.31: Reset watchdog avant opération longue
     esp_task_wdt_reset();
     
     // EXÉCUTION CIBLÉE - PRIORITÉ ABSOLUE (uniquement servo "petits")
     unsigned long startTime = millis();
-    _acts.feedSmallFish(_feedSmallDur);
+    _acts.feedSmallFish(_tempsPetits);
     
     unsigned long executionTime = millis() - startTime;
     Serial.printf("[CRITIQUE] Temps d'exécution total: %lu ms\n", executionTime);
@@ -153,8 +153,8 @@ void AutomatismFeeding::feedSmallManual(std::function<void(const char*, unsigned
     
     // Initialisation des phases de nourrissage
     _currentPhase = Phase::FEEDING_FORWARD;
-    _phaseEnd = millis() + static_cast<unsigned long>(_feedSmallDur) * 1000UL;
-    _totalEnd = millis() + static_cast<unsigned long>(_feedSmallDur + _feedSmallDur/2) * 1000UL;
+    _phaseEnd = millis() + static_cast<unsigned long>(_tempsPetits) * 1000UL;
+    _totalEnd = millis() + static_cast<unsigned long>(_tempsPetits + _tempsPetits/2) * 1000UL;
     
     // Mise à jour countdown OLED
     countdownCallback("Feed Petits", _totalEnd);
@@ -170,7 +170,7 @@ void AutomatismFeeding::feedSmallManual(std::function<void(const char*, unsigned
 void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned long)> countdownCallback) {
     Serial.println(F("[CRITIQUE] === DÉBUT NOURRISSAGE MANUEL GROS ==="));
     Serial.printf("[CRITIQUE] Durées configurées - Gros: %u s, Petits: %u s\n",
-                 _feedBigDur, _feedSmallDur);
+                 _tempsGros, _tempsPetits);
     
     // v11.31: Reset watchdog avant opération longue
     esp_task_wdt_reset();
@@ -179,7 +179,7 @@ void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned l
     unsigned long startTime = millis();
     
     // Nourrissage UNIQUEMENT des gros poissons
-    _acts.feedBigFish(_feedBigDur);
+    _acts.feedBigFish(_tempsGros);
     
     unsigned long executionTime = millis() - startTime;
     Serial.printf("[CRITIQUE] Temps d'exécution total: %lu ms\n", executionTime);
@@ -193,8 +193,8 @@ void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned l
     
     // Initialisation des phases de nourrissage (uniquement gros poissons)
     _currentPhase = Phase::FEEDING_FORWARD;
-    _phaseEnd = millis() + static_cast<unsigned long>(_feedBigDur) * 1000UL;
-    _totalEnd = millis() + static_cast<unsigned long>(_feedBigDur + _feedBigDur/2) * 1000UL;
+    _phaseEnd = millis() + static_cast<unsigned long>(_tempsGros) * 1000UL;
+    _totalEnd = millis() + static_cast<unsigned long>(_tempsGros + _tempsGros/2) * 1000UL;
     
     // Mise à jour countdown OLED
     countdownCallback("Feed Gros", _totalEnd);
@@ -212,16 +212,16 @@ void AutomatismFeeding::feedBigManual(std::function<void(const char*, unsigned l
 // ============================================================================
 
 void AutomatismFeeding::setSchedule(uint8_t morning, uint8_t noon, uint8_t evening) {
-    _feedMorning = morning;
-    _feedNoon = noon;
-    _feedEvening = evening;
+    _bouffeMatin = morning;
+    _bouffeMidi = noon;
+    _bouffeSoir = evening;
     Serial.printf("[Feeding] Horaires configurés - Matin: %uh, Midi: %uh, Soir: %uh\n",
                  morning, noon, evening);
 }
 
 void AutomatismFeeding::setDurations(uint16_t bigDur, uint16_t smallDur) {
-    _feedBigDur = bigDur;
-    _feedSmallDur = smallDur;
+    _tempsGros = bigDur;
+    _tempsPetits = smallDur;
     Serial.printf("[Feeding] Durées configurées - Gros: %us, Petits: %us\n",
                  bigDur, smallDur);
 }
@@ -244,8 +244,8 @@ AutomatismFeeding::Status AutomatismFeeding::getStatus() const {
 // NOURRISSAGE AUTOMATIQUE (handleSchedule)
 // ============================================================================
 
-void AutomatismFeeding::handleSchedule(int hour, int minute, const String& emailAddress,
-                                      bool emailEnabled, std::function<void()> mailBlinkCallback) {
+void AutomatismFeeding::handleSchedule(int hour, int minute, const String& mail,
+                                      bool mailNotif, std::function<void()> mailBlinkCallback) {
     // Vérifier changement de jour
     checkNewDay();
     
@@ -255,10 +255,10 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& email
     bool bouffeSoir = _config.getBouffeSoirOk();
     
     // === BOUFFE MATIN ===
-    if (hour == _feedMorning && minute == 0 && !bouffeMatin) {
+    if (hour == _bouffeMatin && minute == 0 && !bouffeMatin) {
         Serial.println(F("[Feeding] === DÉCLENCHEMENT BOUFFE MATIN ==="));
         
-        performFeedingCycle(true, emailAddress, emailEnabled, mailBlinkCallback);
+        performFeedingCycle(true, mail, mailNotif, mailBlinkCallback);
         
         // Marquer comme effectué
         _config.setBouffeMatinOk(true);
@@ -268,10 +268,10 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& email
     }
     
     // === BOUFFE MIDI ===
-    if (hour == _feedNoon && minute == 0 && !bouffeMidi) {
+    if (hour == _bouffeMidi && minute == 0 && !bouffeMidi) {
         Serial.println(F("[Feeding] === DÉCLENCHEMENT BOUFFE MIDI ==="));
         
-        performFeedingCycle(true, emailAddress, emailEnabled, mailBlinkCallback);
+        performFeedingCycle(true, mail, mailNotif, mailBlinkCallback);
         
         // Marquer comme effectué
         _config.setBouffeMidiOk(true);
@@ -281,24 +281,24 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& email
     }
     
     // === BOUFFE SOIR ===
-    if (hour == _feedEvening && minute == 0 && !bouffeSoir) {
+    if (hour == _bouffeSoir && minute == 0 && !bouffeSoir) {
         Serial.println(F("[Feeding] === DÉCLENCHEMENT BOUFFE SOIR ==="));
         
         // Soir = seulement petits poissons
         Serial.println(F("[Feeding] Nourrissage soir (petits uniquement)"));
-        _acts.feedSmallFish(_feedSmallDur);
+        _acts.feedSmallFish(_tempsPetits);
         
         // Notification email si activée
         Serial.println(F("[Feeding] === DIAGNOSTIC EMAIL SOIR ==="));
-        Serial.printf("[Feeding] emailEnabled: %s\n", emailEnabled ? "TRUE" : "FALSE");
-        Serial.printf("[Feeding] emailAddress: '%s'\n", emailAddress.c_str());
-        Serial.printf("[Feeding] emailAddress length: %d\n", emailAddress.length());
+        Serial.printf("[Feeding] mailNotif: %s\n", mailNotif ? "TRUE" : "FALSE");
+        Serial.printf("[Feeding] mail: '%s'\n", mail.c_str());
+        Serial.printf("[Feeding] mail length: %d\n", mail.length());
         
-        if (emailEnabled) {
+        if (mailNotif) {
             Serial.println(F("[Feeding] ✅ Email activé - tentative d'envoi"));
             String message = createMessage("Bouffe soir");
             Serial.printf("[Feeding] Message créé: %d chars\n", message.length());
-            bool emailSent = _mailer.sendAlert("Bouffe soir", message, emailAddress.c_str());
+            bool emailSent = _mailer.sendAlert("Bouffe soir", message, mail.c_str());
             Serial.printf("[Feeding] Résultat envoi email: %s\n", emailSent ? "SUCCESS" : "FAILED");
             if (emailSent) {
                 mailBlinkCallback();
@@ -317,8 +317,8 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& email
         
         // Phases pour OLED
         _currentPhase = Phase::FEEDING_FORWARD;
-        _phaseEnd = millis() + static_cast<unsigned long>(_feedSmallDur) * 1000UL;
-        _totalEnd = millis() + static_cast<unsigned long>(_feedSmallDur + _feedSmallDur/2) * 1000UL;
+        _phaseEnd = millis() + static_cast<unsigned long>(_tempsPetits) * 1000UL;
+        _totalEnd = millis() + static_cast<unsigned long>(_tempsPetits + _tempsPetits/2) * 1000UL;
         
         Serial.println(F("[Feeding] === BOUFFE SOIR TERMINÉE ==="));
     }
@@ -328,44 +328,44 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& email
 // HELPER PRIVÉ
 // ============================================================================
 
-void AutomatismFeeding::performFeedingCycle(bool isLarge, const String& emailAddress,
-                                           bool emailEnabled, std::function<void()> mailBlinkCallback) {
+void AutomatismFeeding::performFeedingCycle(bool isLarge, const String& mail,
+                                           bool mailNotif, std::function<void()> mailBlinkCallback) {
     if (isLarge) {
         // Gros + petits
         Serial.println(F("[Feeding] Nourrissage complet (gros + petits)"));
-        _acts.feedBigFish(_feedBigDur);
-        _acts.feedSmallFish(_feedSmallDur);
+        _acts.feedBigFish(_tempsGros);
+        _acts.feedSmallFish(_tempsPetits);
         
         // Phases pour OLED
-        uint16_t totalDur = _feedBigDur + _feedSmallDur;
+        uint16_t totalDur = _tempsGros + _tempsPetits;
         _currentPhase = Phase::FEEDING_FORWARD;
         _phaseEnd = millis() + static_cast<unsigned long>(totalDur) * 1000UL;
         _totalEnd = millis() + static_cast<unsigned long>(totalDur + totalDur/2) * 1000UL;
     } else {
         // Seulement petits
         Serial.println(F("[Feeding] Nourrissage petits uniquement"));
-        _acts.feedSmallFish(_feedSmallDur);
+        _acts.feedSmallFish(_tempsPetits);
         
         // Phases pour OLED
         _currentPhase = Phase::FEEDING_FORWARD;
-        _phaseEnd = millis() + static_cast<unsigned long>(_feedSmallDur) * 1000UL;
-        _totalEnd = millis() + static_cast<unsigned long>(_feedSmallDur + _feedSmallDur/2) * 1000UL;
+        _phaseEnd = millis() + static_cast<unsigned long>(_tempsPetits) * 1000UL;
+        _totalEnd = millis() + static_cast<unsigned long>(_tempsPetits + _tempsPetits/2) * 1000UL;
     }
     
     // Notification email si activée
     Serial.println(F("[Feeding] === DIAGNOSTIC EMAIL CYCLE ==="));
-    Serial.printf("[Feeding] emailEnabled: %s\n", emailEnabled ? "TRUE" : "FALSE");
-    Serial.printf("[Feeding] emailAddress: '%s'\n", emailAddress.c_str());
-    Serial.printf("[Feeding] emailAddress length: %d\n", emailAddress.length());
+    Serial.printf("[Feeding] mailNotif: %s\n", mailNotif ? "TRUE" : "FALSE");
+    Serial.printf("[Feeding] mail: '%s'\n", mail.c_str());
+    Serial.printf("[Feeding] mail length: %d\n", mail.length());
     Serial.printf("[Feeding] isLarge: %s\n", isLarge ? "TRUE" : "FALSE");
     
-    if (emailEnabled) {
+    if (mailNotif) {
         Serial.println(F("[Feeding] ✅ Email activé - tentative d'envoi"));
         const char* type = isLarge ? "Bouffe complète" : "Bouffe petits";
         String message = createMessage(type);
         Serial.printf("[Feeding] Type: %s\n", type);
         Serial.printf("[Feeding] Message créé: %d chars\n", message.length());
-        bool emailSent = _mailer.sendAlert(type, message, emailAddress.c_str());
+        bool emailSent = _mailer.sendAlert(type, message, mail.c_str());
         Serial.printf("[Feeding] Résultat envoi email: %s\n", emailSent ? "SUCCESS" : "FAILED");
         if (emailSent) {
             mailBlinkCallback();

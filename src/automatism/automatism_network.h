@@ -49,11 +49,11 @@ public:
      * @param readings Lectures capteurs
      * @param acts Actionneurs (états)
      * @param diffMaree Différence marée
-     * @param feedMorning Heure bouffe matin
-     * @param feedNoon Heure bouffe midi  
-     * @param feedEvening Heure bouffe soir
-     * @param feedBigDur Durée gros poissons
-     * @param feedSmallDur Durée petits poissons
+     * @param bouffeMatin Heure bouffe matin
+     * @param bouffeMidi Heure bouffe midi
+     * @param bouffeSoir Heure bouffe soir
+     * @param tempsGros Durée gros poissons
+     * @param tempsPetits Durée petits poissons
      * @param bouffePetits Flag petits
      * @param bouffeGros Flag gros
      * @param forceWakeUp Flag wake
@@ -66,8 +66,8 @@ public:
         const SensorReadings& readings,
         SystemActuators& acts,
         int diffMaree,
-        uint8_t feedMorning, uint8_t feedNoon, uint8_t feedEvening,
-        uint16_t feedBigDur, uint16_t feedSmallDur,
+        uint8_t bouffeMatin, uint8_t bouffeMidi, uint8_t bouffeSoir,
+        uint16_t tempsGros, uint16_t tempsPetits,
         const String& bouffePetits, const String& bouffeGros,
         bool forceWakeUp, uint16_t freqWakeSec,
         uint32_t refillDurationSec,

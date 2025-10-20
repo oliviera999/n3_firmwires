@@ -2,7 +2,7 @@
 #define CONFIG_MANAGER_H
 
 #include <Arduino.h>
-#include <Preferences.h>
+#include "nvs_manager.h"
 
 class ConfigManager {
 private:
@@ -31,8 +31,8 @@ private:
     bool _cachedRemoteSendEnabled;
     bool _cachedRemoteRecvEnabled;
     
-    // Instance Preferences
-    Preferences _preferences;
+    // Utilisation du gestionnaire NVS centralisé
+    // NVSManager g_nvsManager; // Instance globale
     
     // Méthodes privées
     bool hasChanges() const;

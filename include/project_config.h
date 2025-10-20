@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.88"; // v11.88: Fix persistance états GPIO chauffage/lumière après redémarrage
+        constexpr const char* VERSION = "11.82"; // v11.82: Optimisations NVS Phase 3 - Rotation automatique des logs et nettoyage
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -96,26 +96,34 @@ namespace ServerConfig {
         constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs/state";
     #endif
     
-    // URLs complètes
-    inline String getPostDataUrl() {
-        return String(BASE_URL) + POST_DATA_ENDPOINT;
+    // URLs complètes - Utilisation de buffers statiques pour éviter la fragmentation mémoire
+    inline void getPostDataUrl(char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "%s%s", BASE_URL, POST_DATA_ENDPOINT);
     }
     
-    inline String getOutputUrl() {
-        return String(BASE_URL) + OUTPUT_ENDPOINT;
+    inline void getOutputUrl(char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "%s%s", BASE_URL, OUTPUT_ENDPOINT);
     }
 
     // URLs complètes (serveur secondaire) si configuré
-    inline String getSecondaryPostDataUrl() {
+    inline bool getSecondaryPostDataUrl(char* buffer, size_t bufferSize) {
         const char* b = SECONDARY_BASE_URL;
-        if (b && b[0]) return String(b) + POST_DATA_ENDPOINT;
-        return String();
+        if (b && b[0]) {
+            snprintf(buffer, bufferSize, "%s%s", b, POST_DATA_ENDPOINT);
+            return true;
+        }
+        buffer[0] = '\0';
+        return false;
     }
     
-    inline String getSecondaryOutputUrl() {
+    inline bool getSecondaryOutputUrl(char* buffer, size_t bufferSize) {
         const char* b = SECONDARY_BASE_URL;
-        if (b && b[0]) return String(b) + OUTPUT_ENDPOINT;
-        return String();
+        if (b && b[0]) {
+            snprintf(buffer, bufferSize, "%s%s", b, OUTPUT_ENDPOINT);
+            return true;
+        }
+        buffer[0] = '\0';
+        return false;
     }
     
     // Autres endpoints
@@ -129,19 +137,26 @@ namespace ServerConfig {
     // Délai minimum entre requêtes HTTP successives (Fix v11.29: évite connection lost)
     constexpr uint32_t MIN_DELAY_BETWEEN_REQUESTS_MS = 500;  // 500ms entre requêtes pour éviter saturation TCP
 
-    inline String getHeartbeatUrl() { return String(BASE_URL) + HEARTBEAT_ENDPOINT; }
-    inline String getSecondaryHeartbeatUrl() {
+    inline void getHeartbeatUrl(char* buffer, size_t bufferSize) { 
+        snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT); 
+    }
+    inline bool getSecondaryHeartbeatUrl(char* buffer, size_t bufferSize) {
         const char* b = SECONDARY_BASE_URL;
-        if (b && b[0]) return String(b) + HEARTBEAT_ENDPOINT;
-        return String();
+        if (b && b[0]) {
+            snprintf(buffer, bufferSize, "%s%s", b, HEARTBEAT_ENDPOINT);
+            return true;
+        }
+        buffer[0] = '\0';
+        return false;
     }
     
-    inline String getServerUrl() {
-        return BASE_URL;
+    inline void getServerUrl(char* buffer, size_t bufferSize) {
+        strncpy(buffer, BASE_URL, bufferSize - 1);
+        buffer[bufferSize - 1] = '\0';
     }
     
-    inline String getWebSocketEndpoint() {
-        return String(BASE_URL) + "/ws";
+    inline void getWebSocketEndpoint(char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "%s/ws", BASE_URL);
     }
 }
 
@@ -716,15 +731,9 @@ namespace Utils {
     }
     
     // Obtenir une description complète du système
-    inline String getSystemInfo() {
-        String info = "FFP3CS4 v";
-        info += ProjectConfig::VERSION;
-        info += " [";
-        info += ProjectConfig::BOARD_TYPE;
-        info += "/";
-        info += getProfileName();
-        info += "]";
-        return info;
+    inline void getSystemInfo(char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "FFP3CS4 v%s [%s/%s]", 
+                 ProjectConfig::VERSION, ProjectConfig::BOARD_TYPE, getProfileName());
     }
 }
 

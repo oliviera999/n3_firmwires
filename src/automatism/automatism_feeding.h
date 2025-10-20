@@ -32,12 +32,12 @@ public:
      * Gère le nourrissage automatique selon l'heure
      * @param hour Heure actuelle
      * @param minute Minute actuelle
-     * @param emailAddress Adresse email pour notifications
-     * @param emailEnabled Email activé ou non
+     * @param mail Adresse email pour notifications
+     * @param mailNotif Email activé ou non
      * @param mailBlinkCallback Callback pour clignotement icône mail OLED
      */
-    void handleSchedule(int hour, int minute, const String& emailAddress, 
-                       bool emailEnabled, std::function<void()> mailBlinkCallback);
+    void handleSchedule(int hour, int minute, const String& mail, 
+                       bool mailNotif, std::function<void()> mailBlinkCallback);
     
     /**
      * Vérifie et gère le changement de jour (reset flags)
@@ -108,15 +108,15 @@ public:
     /**
      * Obtient les durées configurées
      */
-    uint16_t getBigDuration() const { return _feedBigDur; }
-    uint16_t getSmallDuration() const { return _feedSmallDur; }
+    uint16_t getBigDuration() const { return _tempsGros; }
+    uint16_t getSmallDuration() const { return _tempsPetits; }
     
     /**
      * Obtient les horaires configurés
      */
-    uint8_t getMorningHour() const { return _feedMorning; }
-    uint8_t getNoonHour() const { return _feedNoon; }
-    uint8_t getEveningHour() const { return _feedEvening; }
+    uint8_t getMorningHour() const { return _bouffeMatin; }
+    uint8_t getNoonHour() const { return _bouffeMidi; }
+    uint8_t getEveningHour() const { return _bouffeSoir; }
     
     // === ÉTAT ===
     
@@ -161,13 +161,13 @@ private:
     PowerManager& _power;
     
     // Configuration horaires
-    uint8_t _feedMorning;
-    uint8_t _feedNoon;
-    uint8_t _feedEvening;
+    uint8_t _bouffeMatin;
+    uint8_t _bouffeMidi;
+    uint8_t _bouffeSoir;
     
     // Configuration durées
-    uint16_t _feedBigDur;
-    uint16_t _feedSmallDur;
+    uint16_t _tempsGros;
+    uint16_t _tempsPetits;
     
     // État persistant
     int _lastFeedDay;
@@ -185,8 +185,8 @@ private:
     std::function<void(const char*)> _completionCallback;
     
     // Helpers privés
-    void performFeedingCycle(bool isLarge, const String& emailAddress, 
-                            bool emailEnabled, std::function<void()> mailBlinkCallback);
+    void performFeedingCycle(bool isLarge, const String& mail, 
+                            bool mailNotif, std::function<void()> mailBlinkCallback);
     bool shouldFeedNow(int hour, int minute) const;
 };
 

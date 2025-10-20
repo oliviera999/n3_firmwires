@@ -91,22 +91,10 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
     };
     
     // Application de la configuration
-    assignIfPresent("emailAddress", _emailAddress);
-    // Accepter emailEnabled (bool/int/string) et mailNotif (compat server)
-    if (doc.containsKey("emailEnabled")) {
-        auto v = doc["emailEnabled"];
-        if (v.is<bool>()) _emailEnabled = v.as<bool>();
-        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
-        else if (v.is<const char*>()) {
-            const char* p = v.as<const char*>();
-            if (p && p[0]) {
-                String s = String(p); s.toLowerCase(); s.trim();
-                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
-            }
-        }
-    }
-    if (doc.containsKey("emailNotif")) {
-        auto v = doc["emailNotif"];
+    assignIfPresent("mail", _emailAddress);
+    // Accepter mailNotif (compat server)
+    if (doc.containsKey("mailNotif")) {
+        auto v = doc["mailNotif"];
         if (v.is<bool>()) _emailEnabled = v.as<bool>();
         else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
         else if (v.is<const char*>()) {
@@ -137,8 +125,8 @@ bool AutomatismNetwork::sendFullUpdate(
     const SensorReadings& readings,
     SystemActuators& acts,
     int diffMaree,
-    uint8_t feedMorning, uint8_t feedNoon, uint8_t feedEvening,
-    uint16_t feedBigDur, uint16_t feedSmallDur,
+    uint8_t bouffeMatin, uint8_t bouffeMidi, uint8_t bouffeSoir,
+    uint16_t tempsGros, uint16_t tempsPetits,
     const String& bouffePetits, const String& bouffeGros,
     bool forceWakeUp, uint16_t freqWakeSec,
     uint32_t refillDurationSec,
@@ -189,7 +177,7 @@ bool AutomatismNetwork::sendFullUpdate(
         tempAir, humidity, tempWater,
         readings.wlPota, readings.wlAqua, readings.wlTank, diffMaree, readings.luminosite,
         acts.isAquaPumpRunning(), acts.isTankPumpRunning(), acts.isHeaterOn(), acts.isLightOn(),
-        feedMorning, feedNoon, feedEvening, feedBigDur, feedSmallDur,
+        bouffeMatin, bouffeMidi, bouffeSoir, tempsGros, tempsPetits,
         _aqThresholdCm, _tankThresholdCm, _heaterThresholdC,
         refillDurationSec, _limFlood,
         forceWakeUp ? 1 : 0, freqWakeSec,
@@ -529,18 +517,6 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
         _emailAddress = m ? String(m) : String();
     }
     
-    if (doc.containsKey("emailEnabled")) {
-        auto v = doc["emailEnabled"];
-        if (v.is<bool>()) _emailEnabled = v.as<bool>();
-        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
-        else if (v.is<const char*>()) {
-            const char* p = v.as<const char*>();
-            if (p && p[0]) {
-                String s = String(p); s.toLowerCase(); s.trim();
-                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
-            }
-        }
-    }
     if (doc.containsKey("mailNotif")) {
         auto v = doc["mailNotif"];
         if (v.is<bool>()) _emailEnabled = v.as<bool>();

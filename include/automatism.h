@@ -32,9 +32,9 @@ class Automatism {
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
   // --- Accesseurs exposés pour le serveur Web local ---
-  bool isEmailEnabled() const { return emailEnabled; }
+  bool isEmailEnabled() const { return mailNotif; }
   void toggleEmailNotifications();
-  const String& getEmailAddress() const { return emailAddress; }
+  const String& getEmailAddress() const { return mail; }
   uint16_t getFeedBigDur() const { return _feeding.getBigDuration(); }
   uint16_t getFeedSmallDur() const { return _feeding.getSmallDuration(); }
 
@@ -147,9 +147,9 @@ class Automatism {
   } _sleepConfig;
 
   // feeding
-  uint8_t feedMorning = 8;
-  uint8_t feedNoon    = 12;
-  uint8_t feedEvening = 19;
+  uint8_t bouffeMatin = 8;
+  uint8_t bouffeMidi  = 12;
+  uint8_t bouffeSoir  = 19;
   String bouffePetits{"0"};
   String bouffeGros{"0"};
   int  lastFeedDay = -1;
@@ -171,8 +171,8 @@ class Automatism {
   float heaterThresholdC  = Config::Default::HEATER_THRESHOLD;
 
   // durées nourrissage (s) - synchronisées avec BDD distante par défaut
-  uint16_t feedBigDur = ActuatorConfig::Default::FEED_BIG_DURATION_SEC;
-  uint16_t feedSmallDur = ActuatorConfig::Default::FEED_SMALL_DURATION_SEC;
+  uint16_t tempsGros = ActuatorConfig::Default::FEED_BIG_DURATION_SEC;
+  uint16_t tempsPetits = ActuatorConfig::Default::FEED_SMALL_DURATION_SEC;
 
   // suivi marée pour affichage
   int _lastDiffMaree{-1};
@@ -191,8 +191,8 @@ class Automatism {
   unsigned long _feedingTotalEnd = 0;  // Fin totale du cycle de nourrissage
 
   // email config
-  String emailAddress = Config::DEFAULT_MAIL_TO;
-  bool   emailEnabled = true;
+  String mail = Config::DEFAULT_MAIL_TO;
+  bool   mailNotif = true;
 
   // Anti-spam e-mail inondation (trop plein)
   bool     inFlood{false};                 // état courant « en trop plein »

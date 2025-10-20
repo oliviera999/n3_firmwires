@@ -427,8 +427,9 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
   Serial.printf("[GET] Timestamp: %lu ms\n", getStartMs);
   
   // Utiliser l'URL complète depuis la configuration serveur
-  String url = ServerConfig::getOutputUrl();
-  Serial.printf("[GET] URL: %s\n", url.c_str());
+  char url[256];
+  ServerConfig::getOutputUrl(url, sizeof(url));
+  Serial.printf("[GET] URL: %s\n", url);
   
   // État réseau détaillé
   Serial.printf("[GET] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
@@ -438,7 +439,7 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
   Serial.printf("[GET] Free heap: %u bytes\n", ESP.getFreeHeap());
   
   // Sélectionne le bon type de client selon le schéma
-  bool secure = url.startsWith("https://");
+  bool secure = strncmp(url, "https://", 8) == 0;
   WiFiClient plain; // client non-TLS local
   
   if (secure) { 
@@ -559,7 +560,9 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   Serial.printf("[HB] WiFi status: %d, RSSI: %d\n", WiFi.status(), WiFi.RSSI());
   
   String resp;
-  bool success = httpRequest(ServerConfig::getHeartbeatUrl(), pay2, resp);
+  char heartbeatUrl[256];
+  ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
+  bool success = httpRequest(heartbeatUrl, pay2, resp);
   
   unsigned long hbDurationMs = millis() - hbStartMs;
   Serial.printf("[HB] === FIN HEARTBEAT ===\n");
@@ -608,14 +611,16 @@ bool WebClient::postRaw(const String& payload){
 
   String respPrimary;
   Serial.println(F("[PR] Sending to primary server..."));
-  bool okPrimary = httpRequest(ServerConfig::getPostDataUrl(), full, respPrimary);
+  char postDataUrl[256];
+  ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
+  bool okPrimary = httpRequest(postDataUrl, full, respPrimary);
   Serial.printf("[PR] Primary server result: %s\n", okPrimary ? "SUCCESS" : "FAILED");
   
   // Tentative d'envoi vers le serveur secondaire si configuré
-  String secondary = ServerConfig::getSecondaryPostDataUrl();
+  char secondary[256];
   bool okSecondary = false; // considéré faux si non configuré
-  if (secondary.length() > 0) {
-    Serial.printf("[PR] Secondary server configured: %s\n", secondary.c_str());
+  if (ServerConfig::getSecondaryPostDataUrl(secondary, sizeof(secondary))) {
+    Serial.printf("[PR] Secondary server configured: %s\n", secondary);
     String respSecondary;
     Serial.println(F("[PR] Sending to secondary server..."));
     okSecondary = httpRequest(secondary, full, respSecondary);

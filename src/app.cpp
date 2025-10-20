@@ -12,6 +12,7 @@
 #include "automatism.h"
 #include "web_client.h"
 #include "web_server.h"
+#include "nvs_manager.h"
 #include <ArduinoJson.h>
 #if FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
 #include <ArduinoOTA.h>
@@ -579,21 +580,27 @@ void setup() {
     oled.hideOtaProgressOverlay();
   }
 
-  // Pré-créer les namespaces NVS critiques pour éviter NOT_FOUND en lecture seule
-  {
-    Preferences prefs;
-    const char* namespaces[] = {
-      "bouffe","ota","remoteVars","rtc","diagnostics","alerts","timeDrift",
-      "actSnap","actState","pendingSync","waterTemp","digest","cmdLog","reset"
-    };
-    const size_t count = sizeof(namespaces)/sizeof(namespaces[0]);
-    for (size_t i = 0; i < count; ++i) { prefs.begin(namespaces[i], false); prefs.end(); }
+  // v11.80: Initialisation du gestionnaire NVS centralisé
+  Serial.println(F("[App] 🚀 Initialisation du gestionnaire NVS centralisé"));
+  if (!g_nvsManager.begin()) {
+    Serial.println(F("[App] ❌ Erreur initialisation NVS Manager"));
+    return;
   }
-  // Charger état digest depuis NVS
-  g_prefsDigest.begin("digest", true);
-  g_lastDigestSeq = g_prefsDigest.getUInt("lastSeq", 0);
-  g_lastDigestMs  = g_prefsDigest.getULong("lastMs", 0);
-  g_prefsDigest.end();
+  
+  // Phase 2: Configuration du flush différé
+  g_nvsManager.enableDeferredFlush(true);
+  g_nvsManager.setFlushInterval(3000); // 3 secondes pour tests
+  
+  // Phase 3: Configuration du nettoyage périodique
+  g_nvsManager.schedulePeriodicCleanup();
+  
+  // Migration depuis l'ancien système si nécessaire
+  g_nvsManager.migrateFromOldSystem();
+  
+  // v11.80: Charger état digest depuis NVS centralisé
+  Serial.println(F("[App] 📥 Chargement état digest depuis NVS centralisé"));
+  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS, "digest_last_seq", g_lastDigestSeq, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS, "digest_last_ms", g_lastDigestMs, 0);
   
   // Init OLED early
   Serial.println("[DEBUG] Avant oled.begin()");
@@ -651,8 +658,8 @@ void setup() {
           oled.showOtaProgressOverlay(0);
         }
         // Envoi d'un mail de début OTA via l'interface web
-        bool emailEnabled = autoCtrl.isEmailEnabled();
-        String to = emailEnabled ? autoCtrl.getEmailAddress() : String(Config::DEFAULT_MAIL_TO);
+        bool mailNotif = autoCtrl.isEmailEnabled();
+        String to = mailNotif ? autoCtrl.getEmailAddress() : String(Config::DEFAULT_MAIL_TO);
         String body = String("Début de mise à jour OTA (Interface web ArduinoOTA)\n\n") +
                       "Détails:\n" +
                       "- Méthode: Interface web ArduinoOTA\n" +
@@ -891,10 +898,10 @@ void setup() {
     #if FEATURE_OTA && FEATURE_OTA != 0
     if (config.getOtaUpdateFlag()) {
       // Vérifier si l'email est activé, sinon utiliser l'adresse par défaut
-      bool emailEnabled = autoCtrl.isEmailEnabled();
-      String emailAddress = emailEnabled ? autoCtrl.getEmailAddress() : String(Config::DEFAULT_MAIL_TO);
+      bool mailNotif = autoCtrl.isEmailEnabled();
+      String mail = mailNotif ? autoCtrl.getEmailAddress() : String(Config::DEFAULT_MAIL_TO);
       
-      if (emailEnabled) {
+      if (mailNotif) {
         Serial.println("[App] Envoi email pour mise à jour OTA interface web...");
       } else {
         Serial.println("[App] Email non activé dans les variables distantes, utilisation de l'adresse par défaut...");
@@ -912,7 +919,7 @@ void setup() {
       // Borne de sécurité: 6 KB max
       if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
       String subjOtaWeb = "OTA mise à jour - Interface web ["; subjOtaWeb += safeHost; subjOtaWeb += "]";
-      bool emailSent = mailer.sendAlert(subjOtaWeb.c_str(), body, emailAddress.c_str());
+      bool emailSent = mailer.sendAlert(subjOtaWeb.c_str(), body, mail.c_str());
       Serial.printf("[App] Email interface web %s\n", emailSent ? "envoyé" : "échoué");
       config.setOtaUpdateFlag(false); // reset du flag
     }
@@ -1012,8 +1019,10 @@ void loop() {
         unsigned long currentTime = millis();
         String body;
         body.reserve(BufferConfig::JSON_DOCUMENT_SIZE);
-        body += "Résumé des événements récents ("; 
-        body += Utils::getSystemInfo(); 
+        body += "Résumé des événements récents (";
+        char systemInfo[128];
+        Utils::getSystemInfo(systemInfo, sizeof(systemInfo));
+        body += systemInfo;
         body += ")\n\n";
         // Ajouter marges de stack des tâches si disponibles
         body += "[Stacks] Marges (bytes):\n";
@@ -1062,6 +1071,25 @@ void loop() {
       OptimizedLogger::logStats();
     });
     statsTimerAdded = true;
+  }
+  
+  // Phase 2: Vérification périodique du flush différé NVS
+  static unsigned long lastNvsCheck = 0;
+  unsigned long currentTime = millis();
+  if (currentTime - lastNvsCheck >= 1000) { // Vérifier toutes les secondes
+    g_nvsManager.checkDeferredFlush();
+    lastNvsCheck = currentTime;
+  }
+  
+  // Phase 3: Nettoyage périodique automatique NVS
+  static bool cleanupScheduled = false;
+  if (!cleanupScheduled && g_nvsManager.shouldPerformCleanup()) {
+    Serial.println(F("[App] 🧹 Démarrage nettoyage périodique NVS"));
+    g_nvsManager.rotateLogs(NVS_NAMESPACES::LOGS, 50);
+    g_nvsManager.cleanupOldData(NVS_NAMESPACES::STATE, 604800000UL); // 7 jours
+    g_nvsManager.schedulePeriodicCleanup();
+    cleanupScheduled = true;
+    Serial.println(F("[App] ✅ Nettoyage périodique NVS terminé"));
   }
   
   vTaskDelay(pdMS_TO_TICKS(500)); // Délai augmenté pour réduire la charge CPU

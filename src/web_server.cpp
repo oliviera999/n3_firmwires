@@ -1218,13 +1218,13 @@ bool WebServerManager::begin() {
     // Les fallbacks vers anciens formats (tempsGros, mail, etc.) sont gardés pour compatibilité
     
     // Heures nourrissage (valeurs par défaut: 8h, 12h, 19h)
-    out["feedMorning"] = getWithDefault("feedMorning", 8);
-    out["feedNoon"]    = getWithDefault("feedNoon", 12);
-    out["feedEvening"] = getWithDefault("feedEvening", 19);
+    out["bouffeMatin"] = getWithDefault("bouffeMatin", 8);
+    out["bouffeMidi"]  = getWithDefault("bouffeMidi", 12);
+    out["bouffeSoir"]  = getWithDefault("bouffeSoir", 19);
 
     // Durées nourrissage (valeurs par défaut synchronisées avec BDD distante)
-    out["feedBigDur"]   = getWithDefault("feedBigDur", ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
-    out["feedSmallDur"] = getWithDefault("feedSmallDur", ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
+    out["tempsGros"]   = getWithDefault("tempsGros", ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
+    out["tempsPetits"] = getWithDefault("tempsPetits", ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
 
     // Seuils (valeurs par défaut raisonnables)
     out["aqThreshold"]     = getWithDefault("aqThreshold", 18);
@@ -1234,14 +1234,14 @@ bool WebServerManager::begin() {
     out["limFlood"]        = getWithDefault("limFlood", 5);
 
     // Email (v11.40: Gestion améliorée avec message si non configuré)
-    const char* emailAddr = getStringWithDefault("emailAddress", "Non configuré");
-    out["emailAddress"] = emailAddr;
+    const char* emailAddr = getStringWithDefault("mail", "Non configuré");
+    out["mail"] = emailAddr;
     
     // Email enabled (valeur par défaut: false)
-    if (src.containsKey("emailEnabled")) {
-      out["emailEnabled"] = src["emailEnabled"].as<bool>();
+    if (src.containsKey("mailNotif")) {
+      out["mailNotif"] = src["mailNotif"].as<const char*>();
     } else {
-      out["emailEnabled"] = false;
+      out["mailNotif"] = "";
     }
 
     // Flags/commandes
@@ -1302,9 +1302,9 @@ bool WebServerManager::begin() {
 
     // v11.70: Lecture directe des paramètres - clés standardisées
     // Heures de nourrissage (GPIO numériques)
-    appendPair("105", getParam("feedMorning"));  // bouffeMatin
-    appendPair("106", getParam("feedNoon"));     // bouffeMidi  
-    appendPair("107", getParam("feedEvening"));  // bouffeSoir
+    appendPair("105", getParam("bouffeMatin"));  // bouffeMatin
+    appendPair("106", getParam("bouffeMidi"));   // bouffeMidi
+    appendPair("107", getParam("bouffeSoir"));   // bouffeSoir
     // Durées nourrissage
     appendPair("tempsGros", getParam("tempsGros"));
     appendPair("tempsPetits", getParam("tempsPetits"));
@@ -1504,11 +1504,11 @@ bool WebServerManager::begin() {
       "<h2>Modifier les variables BDD</h2>"
       "<form method='POST' action='/dbvars/update'>"
       "<fieldset><legend>Nourrissage</legend>"
-      "Heure matin: <input type='number' name='feedMorning' min='0' max='23'><br>"
-      "Heure midi: <input type='number' name='feedNoon' min='0' max='23'><br>"
-      "Heure soir: <input type='number' name='feedEvening' min='0' max='23'><br>"
-      "Durée gros (s): <input type='number' name='feedBigDur' min='0' max='120'><br>"
-      "Durée petits (s): <input type='number' name='feedSmallDur' min='0' max='120'><br>"
+      "Heure matin: <input type='number' name='bouffeMatin' min='0' max='23'><br>"
+      "Heure midi: <input type='number' name='bouffeMidi' min='0' max='23'><br>"
+      "Heure soir: <input type='number' name='bouffeSoir' min='0' max='23'><br>"
+      "Durée gros (s): <input type='number' name='tempsGros' min='0' max='120'><br>"
+      "Durée petits (s): <input type='number' name='tempsPetits' min='0' max='120'><br>"
       "</fieldset>"
       "<fieldset><legend>Seuils</legend>"
       "Seuil Aquarium (cm): <input type='number' name='aqThreshold' min='0' max='1000'><br>"
@@ -1518,8 +1518,8 @@ bool WebServerManager::begin() {
       "Limite Inondation (cm): <input type='number' name='limFlood' min='0' max='1000'><br>"
       "</fieldset>"
       "<fieldset><legend>Email</legend>"
-      "Adresse: <input type='email' name='emailAddress'><br>"
-      "Notifications: <input type='checkbox' name='emailEnabled' value='checked'> activées<br>"
+      "Adresse: <input type='email' name='mail'><br>"
+      "Notifications: <input type='checkbox' name='mailNotif' value='checked'> activées<br>"
       "</fieldset>"
       "<button type='submit'>Enregistrer</button>"
       "<a href='/'><button type='button'>Retour Dashboard</button></a>"
@@ -2472,8 +2472,8 @@ bool WebServerManager::begin() {
     
     // Informations automatisme
     doc["automatism"]["forceWakeup"] = autoCtrl.getForceWakeUp();
-    doc["automatism"]["emailEnabled"] = autoCtrl.isEmailEnabled();
-    doc["automatism"]["emailAddress"] = autoCtrl.getEmailAddress();
+    doc["automatism"]["mailNotif"] = autoCtrl.isEmailEnabled();
+    doc["automatism"]["mail"] = autoCtrl.getEmailAddress();
     
     // Informations capteurs (via cache)
     SensorReadings readings = sensorCache.getReadings(_sensors);

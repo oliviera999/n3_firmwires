@@ -13,25 +13,25 @@ ConfigManager::ConfigManager()
 }
 
 void ConfigManager::loadBouffeFlags() {
-  _preferences.begin("bouffe", true);
-  _bouffeMatinOk = _preferences.getBool("bouffeMatinOk", false);
-  _bouffeMidiOk = _preferences.getBool("bouffeMidiOk", false);
-  _bouffeSoirOk = _preferences.getBool("bouffeSoirOk", false);
-  _lastJourBouf = _preferences.getInt("lastJourBouf", -1);
-  _pompeAquaLocked = _preferences.getBool("pompeAquaLocked", false);
-  _forceWakeUp = _preferences.getBool("forceWakeUp", false);
-  _preferences.end();
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  Serial.println(F("[Config] 📥 Chargement flags depuis NVS centralisé"));
   
-  // Chargement du flag OTA depuis la flash
-  _preferences.begin("ota", true);
-  _otaUpdateFlag = _preferences.getBool("updateFlag", true); // Valeur par défaut true
-  _preferences.end();
+  // Chargement des flags de bouffe depuis le namespace CONFIG
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", _bouffeMatinOk, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", _bouffeMidiOk, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk, false);
+  g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf, -1);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_pompe_lock", _pompeAquaLocked, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_force_wakeup", _forceWakeUp, false);
+  
+  // Chargement du flag OTA depuis le namespace SYSTEM
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", _otaUpdateFlag, true);
   
   // Initialisation du cache après chargement
   updateCache();
   _flagsChanged = false;
   
-  Serial.println(F("[Config] Flags de bouffe chargés depuis la flash"));
+  Serial.println(F("[Config] ✅ Flags de bouffe chargés depuis NVS centralisé"));
   Serial.printf("[Config] Matin: %s, Midi: %s, Soir: %s, Jour: %d, Pompe lock: %s, ForceWakeUp: %s\n",
                 _bouffeMatinOk ? "OK" : "KO", 
                 _bouffeMidiOk ? "OK" : "KO", 
@@ -43,14 +43,17 @@ void ConfigManager::loadBouffeFlags() {
 }
 
 void ConfigManager::loadNetworkFlags() {
-  // Namespace dédié aux flags réseau
-  _preferences.begin("net", true);
-  _remoteSendEnabled = _preferences.getBool("sendEnabled", true);
-  _remoteRecvEnabled = _preferences.getBool("recvEnabled", true);
-  _preferences.end();
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  Serial.println(F("[Config] 📥 Chargement flags réseau depuis NVS centralisé"));
+  
+  // Chargement des flags réseau depuis le namespace SYSTEM
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_send_enabled", _remoteSendEnabled, true);
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_recv_enabled", _remoteRecvEnabled, true);
+  
   _cachedRemoteSendEnabled = _remoteSendEnabled;
   _cachedRemoteRecvEnabled = _remoteRecvEnabled;
-  Serial.printf("[Config] Net flags - send:%s recv:%s\n",
+  
+  Serial.printf("[Config] ✅ Net flags - send:%s recv:%s\n",
                 _remoteSendEnabled?"ON":"OFF",
                 _remoteRecvEnabled?"ON":"OFF");
 }
@@ -62,36 +65,40 @@ void ConfigManager::saveBouffeFlags() {
     return;
   }
   
-  _preferences.begin("bouffe", false);
-  _preferences.putBool("bouffeMatinOk", _bouffeMatinOk);
-  _preferences.putBool("bouffeMidiOk", _bouffeMidiOk);
-  _preferences.putBool("bouffeSoirOk", _bouffeSoirOk);
-  _preferences.putInt("lastJourBouf", _lastJourBouf);
-  _preferences.putBool("pompeAquaLocked", _pompeAquaLocked);
-  _preferences.putBool("forceWakeUp", _forceWakeUp);
-  _preferences.end();
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  Serial.println(F("[Config] 💾 Sauvegarde flags vers NVS centralisé"));
+  
+  // Sauvegarde des flags de bouffe dans le namespace CONFIG
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", _bouffeMatinOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", _bouffeMidiOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk);
+  g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_pompe_lock", _pompeAquaLocked);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_force_wakeup", _forceWakeUp);
   
   // Mise à jour du cache après sauvegarde
   updateCache();
   _flagsChanged = false;
   
-  Serial.println(F("[Config] Flags de bouffe sauvegardés dans la flash (changements détectés)"));
+  Serial.println(F("[Config] ✅ Flags de bouffe sauvegardés dans NVS centralisé"));
 }
 
 void ConfigManager::forceSaveBouffeFlags() {
-  _preferences.begin("bouffe", false);
-  _preferences.putBool("bouffeMatinOk", _bouffeMatinOk);
-  _preferences.putBool("bouffeMidiOk", _bouffeMidiOk);
-  _preferences.putBool("bouffeSoirOk", _bouffeSoirOk);
-  _preferences.putInt("lastJourBouf", _lastJourBouf);
-  _preferences.putBool("pompeAquaLocked", _pompeAquaLocked);
-  _preferences.putBool("forceWakeUp", _forceWakeUp);
-  _preferences.end();
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  Serial.println(F("[Config] 💾 Sauvegarde forcée flags vers NVS centralisé"));
+  
+  // Sauvegarde forcée des flags de bouffe dans le namespace CONFIG
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", _bouffeMatinOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", _bouffeMidiOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk);
+  g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_pompe_lock", _pompeAquaLocked);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_force_wakeup", _forceWakeUp);
   
   updateCache();
   _flagsChanged = false;
   
-  Serial.println(F("[Config] Flags de bouffe sauvegardés de force dans la flash"));
+  Serial.println(F("[Config] ✅ Flags de bouffe sauvegardés de force dans NVS centralisé"));
 }
 
 void ConfigManager::resetBouffeFlags() {
@@ -108,31 +115,35 @@ void ConfigManager::resetBouffeFlags() {
 } 
 
 void ConfigManager::saveRemoteVars(const String& json) {
+  // v11.80: Utilisation du gestionnaire NVS centralisé avec compression JSON
+  Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé (compressé)"));
+  
   // Vérifier si le JSON a changé avant de sauvegarder
   String cachedJson;
-  _preferences.begin("remoteVars", true);
-  cachedJson = _preferences.getString("json", "");
-  _preferences.end();
+  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, "");
   
   if (cachedJson == json) {
     Serial.println(F("[Config] Variables distantes inchangées - pas de sauvegarde NVS"));
     return;
   }
   
-  _preferences.begin("remoteVars", false);
-  _preferences.putString("json", json);
-  _preferences.end();
-  Serial.println(F("[Config] Variables distantes sauvegardées dans la flash (changements détectés)"));
+  // Sauvegarde compressée dans le namespace CONFIG
+  g_nvsManager.saveJsonCompressed(NVS_NAMESPACES::CONFIG, "remote_json", json);
+  Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé (compressé)"));
 }
 
 bool ConfigManager::loadRemoteVars(String& json) {
-  _preferences.begin("remoteVars", true);
-  json = _preferences.getString("json", "");
-  _preferences.end();
+  // v11.80: Utilisation du gestionnaire NVS centralisé avec décompression JSON
+  Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé (décompressé)"));
+  
+  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", json, "");
+  
   if (json.length() > 0) {
-    Serial.println(F("[Config] Variables distantes chargées depuis la flash"));
+    Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé (décompressé)"));
     return true;
   }
+  
+  Serial.println(F("[Config] ⚠️ Aucune variable distante trouvée"));
   return false;
 }
 
@@ -143,12 +154,12 @@ void ConfigManager::setOtaUpdateFlag(bool value) {
   }
   
   _otaUpdateFlag = value;
-  _preferences.begin("ota", false);
-  _preferences.putBool("updateFlag", value);
-  _preferences.end();
+  
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", value);
   _cachedOtaUpdateFlag = value;
   
-  Serial.printf("[Config] Flag OTA update mis à jour: %s\n", value ? "true" : "false");
+  Serial.printf("[Config] ✅ Flag OTA update mis à jour: %s\n", value ? "true" : "false");
 }
 
 bool ConfigManager::getOtaUpdateFlag() const {
@@ -159,21 +170,21 @@ bool ConfigManager::getOtaUpdateFlag() const {
 void ConfigManager::setRemoteSendEnabled(bool value){
   if (_remoteSendEnabled == value) return;
   _remoteSendEnabled = value;
-  _preferences.begin("net", false);
-  _preferences.putBool("sendEnabled", value);
-  _preferences.end();
+  
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "net_send_enabled", value);
   _cachedRemoteSendEnabled = value;
-  Serial.printf("[Config] Net sendEnabled=%s\n", value?"true":"false");
+  Serial.printf("[Config] ✅ Net sendEnabled=%s\n", value?"true":"false");
 }
 
 void ConfigManager::setRemoteRecvEnabled(bool value){
   if (_remoteRecvEnabled == value) return;
   _remoteRecvEnabled = value;
-  _preferences.begin("net", false);
-  _preferences.putBool("recvEnabled", value);
-  _preferences.end();
+  
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "net_recv_enabled", value);
   _cachedRemoteRecvEnabled = value;
-  Serial.printf("[Config] Net recvEnabled=%s\n", value?"true":"false");
+  Serial.printf("[Config] ✅ Net recvEnabled=%s\n", value?"true":"false");
 }
 
 // Setters optimisés avec détection de changements
@@ -290,44 +301,38 @@ bool ConfigManager::loadConfigFromNVS() {
     Serial.println(F("[Config] ✅ JSON valide, contenu:"));
     
     // Logger les principales variables trouvées
-    if (doc.containsKey("emailAddress") || doc.containsKey("mail")) {
-      const char* email = doc.containsKey("emailAddress") ? 
-                          doc["emailAddress"].as<const char*>() : 
-                          doc["mail"].as<const char*>();
+    if (doc.containsKey("mail")) {
+      const char* email = doc["mail"].as<const char*>();
       Serial.printf("[Config]   - Email: %s\n", email ? email : "(vide)");
     }
     
-    if (doc.containsKey("emailEnabled") || doc.containsKey("mailNotif")) {
+    if (doc.containsKey("mailNotif")) {
       Serial.printf("[Config]   - Email notifications: %s\n",
-                    doc.containsKey("emailEnabled") ? 
-                    (doc["emailEnabled"].as<bool>() ? "activées" : "désactivées") :
-                    (String(doc["mailNotif"].as<const char*>()) == "checked" ? "activées" : "désactivées"));
+                    String(doc["mailNotif"].as<const char*>()) == "checked" ? "activées" : "désactivées");
     }
     
-    if (doc.containsKey("feedMorning") || doc.containsKey("105")) {
-      int val = doc.containsKey("feedMorning") ? doc["feedMorning"].as<int>() : doc["105"].as<int>();
+    if (doc.containsKey("bouffeMatin") || doc.containsKey("105")) {
+      int val = doc.containsKey("bouffeMatin") ? doc["bouffeMatin"].as<int>() : doc["105"].as<int>();
       Serial.printf("[Config]   - Heure matin: %dh\n", val);
     }
     
-    if (doc.containsKey("feedNoon") || doc.containsKey("106")) {
-      int val = doc.containsKey("feedNoon") ? doc["feedNoon"].as<int>() : doc["106"].as<int>();
+    if (doc.containsKey("bouffeMidi") || doc.containsKey("106")) {
+      int val = doc.containsKey("bouffeMidi") ? doc["bouffeMidi"].as<int>() : doc["106"].as<int>();
       Serial.printf("[Config]   - Heure midi: %dh\n", val);
     }
     
-    if (doc.containsKey("feedEvening") || doc.containsKey("107")) {
-      int val = doc.containsKey("feedEvening") ? doc["feedEvening"].as<int>() : doc["107"].as<int>();
+    if (doc.containsKey("bouffeSoir") || doc.containsKey("107")) {
+      int val = doc.containsKey("bouffeSoir") ? doc["bouffeSoir"].as<int>() : doc["107"].as<int>();
       Serial.printf("[Config]   - Heure soir: %dh\n", val);
     }
     
-    if (doc.containsKey("feedBigDur") || doc.containsKey("tempsGros") || doc.containsKey("111")) {
-      int val = doc.containsKey("feedBigDur") ? doc["feedBigDur"].as<int>() : 
-                (doc.containsKey("tempsGros") ? doc["tempsGros"].as<int>() : doc["111"].as<int>());
+    if (doc.containsKey("tempsGros") || doc.containsKey("111")) {
+      int val = doc.containsKey("tempsGros") ? doc["tempsGros"].as<int>() : doc["111"].as<int>();
       Serial.printf("[Config]   - Durée gros: %ds\n", val);
     }
     
-    if (doc.containsKey("feedSmallDur") || doc.containsKey("tempsPetits") || doc.containsKey("112")) {
-      int val = doc.containsKey("feedSmallDur") ? doc["feedSmallDur"].as<int>() : 
-                (doc.containsKey("tempsPetits") ? doc["tempsPetits"].as<int>() : doc["112"].as<int>());
+    if (doc.containsKey("tempsPetits") || doc.containsKey("112")) {
+      int val = doc.containsKey("tempsPetits") ? doc["tempsPetits"].as<int>() : doc["112"].as<int>();
       Serial.printf("[Config]   - Durée petits: %ds\n", val);
     }
     

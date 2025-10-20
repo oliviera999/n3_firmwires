@@ -173,9 +173,9 @@ String GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value) {
     // Mapper les GPIO virtuels vers les clés attendues par applyConfigFromJson
     switch (gpio) {
         case 100: // EMAIL_ADDR
-            return String("emailAddress");
+            return String("mail");
         case 101: // EMAIL_EN  
-            return String("emailEnabled");
+            return String("mailNotif");
         case 102: // AQ_THRESHOLD
             return String("aqThreshold");
         case 103: // TANK_THRESHOLD
@@ -183,15 +183,15 @@ String GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value) {
         case 104: // HEAT_THRESHOLD
             return String("chauffageThreshold");
         case 105: // FEED_MORNING
-            return String("feedMorning");
+            return String("bouffeMatin");
         case 106: // FEED_NOON
-            return String("feedNoon");
+            return String("bouffeMidi");
         case 107: // FEED_EVENING
-            return String("feedEvening");
+            return String("bouffeSoir");
         case 111: // FEED_BIG_DUR
-            return String("feedBigDur");
+            return String("tempsGros");
         case 112: // FEED_SMALL_DUR
-            return String("feedSmallDur");
+            return String("tempsPetits");
         case 113: // REFILL_DUR
             return String("refillDuration");
         case 114: // LIM_FLOOD

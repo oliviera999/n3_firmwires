@@ -212,7 +212,7 @@ void AutomatismActuators::toggleEmailNotifications() {
     realtimeWebSocket.broadcastNow();
     
     // Marquer pour synchronisation serveur au prochain cycle
-    const char* payload = newState ? "emailEnabled=1" : "emailEnabled=0";
+    const char* payload = newState ? "mailNotif=1" : "mailNotif=0";
     markForSync(payload);
 }
 
