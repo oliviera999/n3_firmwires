@@ -1,4 +1,5 @@
 #include "web_client.h"
+#include "config_manager.h"
 #include "diagnostics.h"
 #include "log.h"
 #include "project_config.h"
@@ -7,6 +8,7 @@
 #include <esp_task_wdt.h>
 
 // Simple CRC32 (polynôme 0xEDB88320) pour l'intégrité des payloads
+extern ConfigManager config;
 static uint32_t crc32(const char* data){
   uint32_t crc = 0xFFFFFFFF;
   while (*data) {
@@ -413,6 +415,10 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 }
 
 bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
+  if (!config.isRemoteRecvEnabled()) {
+    Serial.println(F("[GET] ⛔ Réception distante désactivée (config)"));
+    return false;
+  }
   if (WiFi.status() != WL_CONNECTED) return false;
   
   // === LOGS DÉTAILLÉS GET v11.32 ===
@@ -428,6 +434,7 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
   Serial.printf("[GET] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
   Serial.printf("[GET] RSSI: %d dBm\n", WiFi.RSSI());
   Serial.printf("[GET] IP: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("[GET] Heap before GET: %u bytes\n", ESP.getFreeHeap());
   Serial.printf("[GET] Free heap: %u bytes\n", ESP.getFreeHeap());
   
   // Sélectionne le bon type de client selon le schéma
@@ -446,6 +453,7 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
   int code = _http.GET();
   unsigned long getDurationMs = millis() - getStartMs;
   Serial.printf("[GET] GET completed in %lu ms, HTTP code: %d\n", getDurationMs, code);
+  Serial.printf("[GET] Heap after GET: %u bytes\n", ESP.getFreeHeap());
   
   if (code <= 0) {
     Serial.printf("[GET] ❌ ERROR %d: %s\n", code, _http.errorToString(code).c_str());
@@ -461,6 +469,7 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
   _http.end();
   
   Serial.printf("[GET] Response received in %lu ms, size: %u bytes\n", responseDurationMs, payload.length());
+  Serial.printf("[GET] Heap after readString: %u bytes\n", ESP.getFreeHeap());
   
   if (payload.length() == 0) {
     Serial.println(F("[GET] ⚠️ Empty response from server"));
@@ -518,6 +527,10 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {
+  if (!config.isRemoteSendEnabled()) {
+    Serial.println(F("[HB] ⛔ Envoi heartbeat désactivé (config)"));
+    return false;
+  }
   // === LOGS DÉTAILLÉS HEARTBEAT v11.32 ===
   unsigned long hbStartMs = millis();
   Serial.println(F("=== DÉBUT HEARTBEAT ==="));
@@ -561,6 +574,10 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
 // v11.70: makeSkeleton() supprimé - jamais utilisé (includeSkeleton toujours false)
 
 bool WebClient::postRaw(const String& payload){
+  if (!config.isRemoteSendEnabled()) {
+    Serial.println(F("[PR] ⛔ Envoi distant désactivé (config) - SKIP"));
+    return false;
+  }
   // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
   unsigned long prStartMs = millis();
   Serial.println(F("=== DÉBUT POSTRAW ==="));
@@ -625,7 +642,4 @@ bool WebClient::postRaw(const String& payload){
   return finalSuccess;
 }
 
-// Surcharge par compatibilité : comportement historique (avec squelette)
-bool WebClient::postRaw(const String& payload){
-  return postRaw(payload, true);
-} 
+// Fonction supprimée - redéfinition causait erreur de compilation 

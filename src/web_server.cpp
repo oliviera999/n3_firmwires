@@ -47,16 +47,83 @@ static void safeSendJson(AsyncWebServerRequest* req, const String& json, bool en
   }
 }
 
+// ============================================================================
+// HELPER FUNCTIONS - Envoi d'emails robuste (v11.81)
+// ============================================================================
+
+/**
+ * Fonction helper robuste pour envoyer des emails lors d'actions manuelles
+ * Améliore la fiabilité en gérant les cas d'échec et évitant la duplication
+ */
+static bool sendManualActionEmail(const char* action, const char* subject, const char* emailType) {
+  Serial.printf("[Web] 📧 === ENVOI EMAIL %s ===\n", emailType);
+  
+  // Vérifications préalables robustes
+  if (!autoCtrl.isEmailEnabled()) {
+    Serial.println("[Web] 📧 ⚠️ Email désactivé - pas d'envoi");
+    return false;
+  }
+  
+  String emailAddr = autoCtrl.getEmailAddress();
+  if (emailAddr.length() == 0 || emailAddr == "Non configuré") {
+    Serial.printf("[Web] 📧 ❌ Adresse email invalide: '%s' - pas d'envoi\n", emailAddr.c_str());
+    return false;
+  }
+  
+  // Vérification mémoire avant envoi
+  uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t MIN_HEAP_FOR_EMAIL = 50000; // 50KB minimum
+  if (freeHeap < MIN_HEAP_FOR_EMAIL) {
+    Serial.printf("[Web] 📧 ❌ Heap insuffisant pour email (%u < %u bytes) - pas d'envoi\n", 
+                  freeHeap, MIN_HEAP_FOR_EMAIL);
+    return false;
+  }
+  
+  // Création du message
+  String message = autoCtrl.createFeedingMessage(action, 
+                                                autoCtrl.getFeedBigDur(), 
+                                                autoCtrl.getFeedSmallDur());
+  
+  Serial.printf("[Web] 📧 Configuration: enabled=%s, addr='%s', msgLen=%d\n", 
+                autoCtrl.isEmailEnabled() ? "TRUE" : "FALSE", 
+                emailAddr.c_str(), 
+                message.length());
+  
+  // Tentative d'envoi avec retry simplifié
+  int maxRetries = 2;
+  for (int attempt = 1; attempt <= maxRetries; attempt++) {
+    Serial.printf("[Web] 📧 Tentative d'envoi %d/%d...\n", attempt, maxRetries);
+    
+    bool emailSent = mailer.sendAlert(subject, message, emailAddr.c_str());
+    
+    if (emailSent) {
+      Serial.printf("[Web] 📧 ✅ Email %s envoyé avec succès (tentative %d)\n", emailType, attempt);
+      autoCtrl.triggerMailBlink();
+      return true;
+    } else {
+      Serial.printf("[Web] 📧 ❌ Échec tentative %d/%d pour %s\n", attempt, maxRetries, emailType);
+      if (attempt < maxRetries) {
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre 1s avant retry
+      }
+    }
+  }
+  
+  Serial.printf("[Web] 📧 ❌ Échec définitif après %d tentatives pour %s\n", maxRetries, emailType);
+  return false;
+}
+
+
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts)
     : _sensors(sensors), _acts(acts), _diag(nullptr) {
-  #ifndef DISABLE_ASYNC_WEBSERVER
-  _server = new AsyncWebServer(80);
-  // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
-  #endif
+  initializeServer();
 }
 
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts, Diagnostics& diag)
     : _sensors(sensors), _acts(acts), _diag(&diag) {
+  initializeServer();
+}
+
+void WebServerManager::initializeServer() {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
   // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
@@ -490,41 +557,33 @@ bool WebServerManager::begin() {
               // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_SMALL OK";
               
-              // 4. Email + Sync en tâche asynchrone (v11.50: Limité)
-              // Note: Capture this pour accès à _sensors
+              // 4. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
               auto* sensorsPtr = &_sensors;
-              
-              // Vérifier le nombre de tâches actives avant création
               static uint8_t asyncTaskCount = 0;
-              const uint8_t MAX_ASYNC_TASKS = 3; // Limite stricte
+              const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
               if (asyncTaskCount < MAX_ASYNC_TASKS) {
                 asyncTaskCount++;
                 xTaskCreate([](void* param) {
-                    SystemSensors* sensors = (SystemSensors*)param;
-                    vTaskDelay(pdMS_TO_TICKS(100)); // Petit délai pour garantir que la réponse HTTP part
-                    
-                    if (autoCtrl.isEmailEnabled()) {
-                        String message = autoCtrl.createFeedingMessage("Bouffe manuelle - Petits poissons", 
-                                                                     autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-                        mailer.sendAlert("Bouffe manuelle", message, autoCtrl.getEmailAddress().c_str());
-                        autoCtrl.triggerMailBlink();
-                        Serial.println("[Web] 📧 Email notification sent (async)");
-                    }
-                    
-                    // Synchronisation serveur avec reset flag
-                    SensorReadings readings = sensors->read();
-                    autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
-                    Serial.println("[Web] 📤 Server sync completed (async)");
-                    
-                    // Décrémenter le compteur avant suppression
-                    static uint8_t asyncTaskCount = 0;
-                    if (asyncTaskCount > 0) asyncTaskCount--;
-                    
-                    vTaskDelete(NULL);
-                }, "feed_sync", 4096, sensorsPtr, 1, nullptr);
+                  SystemSensors* sensors = (SystemSensors*)param;
+                  vTaskDelay(pdMS_TO_TICKS(100));
+                  
+                  // Utilisation de notre helper robuste d'envoi email
+                  bool emailSent = sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+                  
+                  // Synchronisation serveur avec reset flag
+                  SensorReadings readings = sensors->read();
+                  bool syncSuccess = autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
+                  Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
+                  
+                  vTaskDelete(NULL);
+                }, "feed_small_sync", 4096, sensorsPtr, 1, nullptr);
               } else {
-                Serial.println("[Web] ⚠️ Limite de tâches async atteinte - sync différée");
+                Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
+                // Fallback: tentative d'envoi email immédiat si mémoire suffisante
+                if (ESP.getFreeHeap() > 60000) {
+                  sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
+                }
               }
               
               Serial.println("[Web] ✅ Small feed completed, sync in background");
@@ -540,28 +599,34 @@ bool WebServerManager::begin() {
               // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_BIG OK";
               
-              // 4. Email + Sync en tâche asynchrone (v11.40: Non-bloquant)
-              // Note: Capture this pour accès à _sensors
+              // 4. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
               auto* sensorsPtr = &_sensors;
-              xTaskCreate([](void* param) {
+              static uint8_t asyncTaskCount = 0;
+              const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
+              
+              if (asyncTaskCount < MAX_ASYNC_TASKS) {
+                asyncTaskCount++;
+                xTaskCreate([](void* param) {
                   SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100)); // Petit délai pour garantir que la réponse HTTP part
+                  vTaskDelay(pdMS_TO_TICKS(100));
                   
-                  if (autoCtrl.isEmailEnabled()) {
-                      String message = autoCtrl.createFeedingMessage("Bouffe manuelle - Gros poissons", 
-                                                                   autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-                      mailer.sendAlert("Bouffe manuelle", message, autoCtrl.getEmailAddress().c_str());
-                      autoCtrl.triggerMailBlink();
-                      Serial.println("[Web] 📧 Email notification sent (async)");
-                  }
+                  // Utilisation de notre helper robuste d'envoi email
+                  bool emailSent = sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
                   
                   // Synchronisation serveur avec reset flag
                   SensorReadings readings = sensors->read();
-                  autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
-                  Serial.println("[Web] 📤 Server sync completed (async)");
+                  bool syncSuccess = autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
+                  Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
                   vTaskDelete(NULL);
-              }, "feed_sync", 4096, sensorsPtr, 1, nullptr);
+                }, "feed_big_sync", 4096, sensorsPtr, 1, nullptr);
+              } else {
+                Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
+                // Fallback: tentative d'envoi email immédiat si mémoire suffisante
+                if (ESP.getFreeHeap() > 60000) {
+                  sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
+                }
+              }
               
               Serial.println("[Web] ✅ Big feed completed, sync in background");
           }
@@ -1157,9 +1222,9 @@ bool WebServerManager::begin() {
     out["feedNoon"]    = getWithDefault("feedNoon", 12);
     out["feedEvening"] = getWithDefault("feedEvening", 19);
 
-    // Durées nourrissage (valeurs par défaut: 10s chacune)
-    out["feedBigDur"]   = getWithDefault("feedBigDur", 10);
-    out["feedSmallDur"] = getWithDefault("feedSmallDur", 10);
+    // Durées nourrissage (valeurs par défaut synchronisées avec BDD distante)
+    out["feedBigDur"]   = getWithDefault("feedBigDur", ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
+    out["feedSmallDur"] = getWithDefault("feedSmallDur", ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
 
     // Seuils (valeurs par défaut raisonnables)
     out["aqThreshold"]     = getWithDefault("aqThreshold", 18);
@@ -2347,6 +2412,35 @@ bool WebServerManager::begin() {
     
     AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
     response->addHeader("Cache-Control", "no-cache");
+    req->send(response);
+  });
+
+  // === API: Remote flags control (send/recv) ===
+  _server->on("/api/remote-flags", HTTP_GET, [](AsyncWebServerRequest* req){
+    ArduinoJson::DynamicJsonDocument doc(256);
+    doc["sendEnabled"] = config.isRemoteSendEnabled();
+    doc["recvEnabled"] = config.isRemoteRecvEnabled();
+    String json; serializeJson(doc, json);
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    req->send(response);
+  });
+
+  _server->on("/api/remote-flags", HTTP_POST, [](AsyncWebServerRequest* req){
+    bool changed = false;
+    if (req->hasParam("send", true)) {
+      String v = req->getParam("send", true)->value(); v.toLowerCase(); v.trim();
+      bool enable = (v == "1" || v == "true" || v == "on");
+      config.setRemoteSendEnabled(enable); changed = true;
+    }
+    if (req->hasParam("recv", true)) {
+      String v = req->getParam("recv", true)->value(); v.toLowerCase(); v.trim();
+      bool enable = (v == "1" || v == "true" || v == "on");
+      config.setRemoteRecvEnabled(enable); changed = true;
+    }
+    String json = String("{\"ok\":true,\"changed\":") + (changed?"true":"false") + "}";
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
     req->send(response);
   });
 

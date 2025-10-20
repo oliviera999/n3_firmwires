@@ -25,4 +25,5 @@ class WebServerManager {
   #ifndef DISABLE_ASYNC_WEBSERVER
   AsyncWebServer* _server;
   #endif
+  void initializeServer(); // Méthode privée pour éviter la duplication
 }; 

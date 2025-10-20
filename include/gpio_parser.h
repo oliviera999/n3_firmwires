@@ -15,6 +15,9 @@ public:
     // Parse JSON du serveur distant et applique les changements
     static void parseAndApply(const JsonDocument& doc, Automatism& autoCtrl);
     
+    // Charge les états GPIO actionneurs depuis NVS au démarrage
+    static void loadGPIOStatesFromNVS(Automatism& autoCtrl);
+    
 private:
     // Applique un GPIO selon son type
     static void applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl, 

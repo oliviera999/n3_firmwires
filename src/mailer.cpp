@@ -347,6 +347,8 @@ static String buildDetailedTimeReport(const Diagnostics& diagnostics) {
 }
 
 bool Mailer::begin() {
+  Serial.println(F("[Mail] ===== INITIALISATION MAILER ====="));
+  
   // Prépare uniquement la configuration SMTP.
   // La connexion TLS/SMTP sera établie à la première utilisation dans send().
 
@@ -356,21 +358,53 @@ bool Mailer::begin() {
   _cfg.login.email      = Secrets::AUTHOR_EMAIL;
   _cfg.login.password   = Secrets::AUTHOR_PASSWORD;
 
+  // Diagnostic de la configuration
+  Serial.printf("[Mail] SMTP_HOST: '%s'\n", Config::SMTP_HOST);
+  Serial.printf("[Mail] SMTP_PORT: %d\n", Config::SMTP_PORT_SSL);
+  Serial.printf("[Mail] AUTHOR_EMAIL: '%s'\n", Secrets::AUTHOR_EMAIL);
+  Serial.printf("[Mail] AUTHOR_PASSWORD length: %d\n", strlen(Secrets::AUTHOR_PASSWORD));
+  
+  // Vérifications de configuration
+  if (!Config::SMTP_HOST || strlen(Config::SMTP_HOST) == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: SMTP_HOST non configuré"));
+    return false;
+  }
+  if (!Secrets::AUTHOR_EMAIL || strlen(Secrets::AUTHOR_EMAIL) == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: AUTHOR_EMAIL non configuré"));
+    return false;
+  }
+  if (!Secrets::AUTHOR_PASSWORD || strlen(Secrets::AUTHOR_PASSWORD) == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: AUTHOR_PASSWORD non configuré"));
+    return false;
+  }
+  
   // Pas de connexion ici pour éviter le blocage au démarrage
   _ready = false;
-  Serial.println("[Mail] SMTP prêt (connexion différée)");
+  Serial.println(F("[Mail] ✅ Configuration SMTP prête (connexion différée)"));
+  Serial.println(F("[Mail] ===== FIN INITIALISATION MAILER ====="));
   return true;
 }
 
 bool Mailer::send(const char* subject, const char* message, const char* toName, const char* toEmail) {
+  Serial.println(F("[Mail] ===== DIAGNOSTIC SEND ====="));
+  Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
+  Serial.printf("[Mail] _smtp.connected(): %s\n", _smtp.connected() ? "TRUE" : "FALSE");
+  
   if (!_ready || !_smtp.connected()) {
+    Serial.println(F("[Mail] ⚠️ Connexion SMTP requise"));
     // tentative de reconnexion
     _smtp.closeSession();
+    Serial.println(F("[Mail] Tentative de connexion SMTP..."));
     _ready = _smtp.connect(&_cfg);
     if(!_ready){
-      Serial.println(F("[Mail] Reconnexion SMTP échouée"));
+      Serial.printf("[Mail] ❌ Reconnexion SMTP échouée - code: %d\n", _smtp.statusCode());
+      Serial.printf("[Mail] ❌ Erreur: %s\n", _smtp.errorReason().c_str());
       return false;
+    } else {
+      Serial.println(F("[Mail] ✅ Connexion SMTP réussie"));
     }
+  } else {
+    Serial.println(F("[Mail] ✅ Connexion SMTP déjà active"));
   }
   
   // FIX: Utiliser des buffers statiques pour éviter les dangling pointers
@@ -440,14 +474,38 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
+  Serial.println(F("[Mail] ===== DIAGNOSTIC SENDALERT ====="));
+  Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
+  Serial.printf("[Mail] subject: '%s'\n", subject ? subject : "NULL");
+  Serial.printf("[Mail] message length: %d\n", message.length());
+  Serial.printf("[Mail] toEmail: '%s'\n", toEmail ? toEmail : "NULL");
+  
+  // Vérifications préalables
+  if (!subject) {
+    Serial.println(F("[Mail] ❌ ERREUR: subject est NULL"));
+    return false;
+  }
+  if (!toEmail) {
+    Serial.println(F("[Mail] ❌ ERREUR: toEmail est NULL"));
+    return false;
+  }
+  if (message.length() == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: message vide"));
+    return false;
+  }
+  
   String alertSubject = String("FFP3 - ") + subject;
+  Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject.c_str());
   
   // Ajouter le rapport temporel détaillé au message d'alerte
   String enhancedMessage = message;
+  Serial.printf("[Mail] enhancedMessage initial: %d chars\n", enhancedMessage.length());
+  
   // Créer une instance temporaire de Diagnostics pour accéder aux informations de redémarrage
   Diagnostics tempDiag;
   tempDiag.begin(); // Initialise avec les données NVS
   enhancedMessage += buildDetailedTimeReport(tempDiag);
+  Serial.printf("[Mail] enhancedMessage final: %d chars\n", enhancedMessage.length());
   
   Serial.println(F("[Mail] ===== ENVOI D'ALERTE ====="));
   Serial.printf("[Mail] Type: Alerte système\n");
@@ -455,7 +513,10 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   Serial.printf("[Mail] Objet original: %s\n", subject);
   Serial.printf("[Mail] Objet final: %s\n", alertSubject.c_str());
   Serial.println(F("[Mail] ==========================="));
-  return send(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
+  
+  bool result = send(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
+  Serial.printf("[Mail] ===== RÉSULTAT SENDALERT: %s =====\n", result ? "SUCCESS" : "FAILED");
+  return result;
 }
 
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {

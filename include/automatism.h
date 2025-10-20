@@ -153,6 +153,8 @@ class Automatism {
   String bouffePetits{"0"};
   String bouffeGros{"0"};
   int  lastFeedDay = -1;
+  // Indique si le cycle de nourrissage en cours a été déclenché manuellement
+  bool _manualFeedingActive{false};
 
   unsigned long lastSend{0};
   const unsigned long sendInterval = 120000;
@@ -168,9 +170,9 @@ class Automatism {
   uint16_t tankThresholdCm = Config::Default::TANK_LIMIT_CM;
   float heaterThresholdC  = Config::Default::HEATER_THRESHOLD;
 
-  // durées nourrissage (s)
-  uint16_t feedBigDur = 10;
-  uint16_t feedSmallDur = 10;
+  // durées nourrissage (s) - synchronisées avec BDD distante par défaut
+  uint16_t feedBigDur = ActuatorConfig::Default::FEED_BIG_DURATION_SEC;
+  uint16_t feedSmallDur = ActuatorConfig::Default::FEED_SMALL_DURATION_SEC;
 
   // suivi marée pour affichage
   int _lastDiffMaree{-1};

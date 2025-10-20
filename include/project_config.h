@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.78"; // v11.78: Fix GPIO virtuels - application immédiate des changements depuis serveur distant
+    constexpr const char* VERSION = "11.88"; // v11.88: Fix persistance états GPIO chauffage/lumière après redémarrage
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -520,6 +520,10 @@ namespace ActuatorConfig {
         constexpr int AQUA_LEVEL_CM = 18;
         constexpr int TANK_LEVEL_CM = 80;
         constexpr float HEATER_THRESHOLD_C = 18.0f;
+        
+        // Durées de nourrissage par défaut (synchronisées avec BDD distante)
+        constexpr uint16_t FEED_BIG_DURATION_SEC = 3;      // Correspond à GPIO 111 (Temps Gros)
+        constexpr uint16_t FEED_SMALL_DURATION_SEC = 2;    // Correspond à GPIO 112 (Temps Petits)
     }
     
     // Servo

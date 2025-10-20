@@ -92,7 +92,31 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
     
     // Application de la configuration
     assignIfPresent("emailAddress", _emailAddress);
-    assignIfPresent("emailNotif", _emailEnabled);
+    // Accepter emailEnabled (bool/int/string) et mailNotif (compat server)
+    if (doc.containsKey("emailEnabled")) {
+        auto v = doc["emailEnabled"];
+        if (v.is<bool>()) _emailEnabled = v.as<bool>();
+        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
+        else if (v.is<const char*>()) {
+            const char* p = v.as<const char*>();
+            if (p && p[0]) {
+                String s = String(p); s.toLowerCase(); s.trim();
+                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
+            }
+        }
+    }
+    if (doc.containsKey("emailNotif")) {
+        auto v = doc["emailNotif"];
+        if (v.is<bool>()) _emailEnabled = v.as<bool>();
+        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
+        else if (v.is<const char*>()) {
+            const char* p = v.as<const char*>();
+            if (p && p[0]) {
+                String s = String(p); s.toLowerCase(); s.trim();
+                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
+            }
+        }
+    }
     assignIfPresent("FreqWakeUp", _freqWakeSec);
     assignIfPresent("limFlood", _limFlood);
     assignIfPresent("aqThreshold", _aqThresholdCm);
@@ -198,6 +222,10 @@ bool AutomatismNetwork::sendFullUpdate(
     }
     
     bool success = _web.postRaw(payloadBuffer);
+    if (!_config.isRemoteSendEnabled()) {
+        Serial.println(F("[Network] ⛔ Envoi distant désactivé (config) - SKIP"));
+        return false;
+    }
     
     if (success) {
         _sendState = 1;  // OK
@@ -270,6 +298,11 @@ bool AutomatismNetwork::isFalse(ArduinoJson::JsonVariantConst v) {
 // ============================================================================
 
 bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis, Automatism& autoCtrl) {
+    // Flag de réception distante
+    if (!_config.isRemoteRecvEnabled()) {
+        Serial.println(F("[Network] ⛔ Réception distante désactivée (config)"));
+        return false;
+    }
     // Vérification intervalle
     if ((uint32_t)(currentMillis - _lastRemoteFetch) < REMOTE_FETCH_INTERVAL_MS) {
         return false;
@@ -291,6 +324,17 @@ bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t
     // Tentative récupération depuis serveur
     bool okRecv = _web.fetchRemoteState(doc);
     bool remoteSuccess = okRecv;
+    
+    // v11.72: Fallback - aplatir éventuel wrapper { "outputs": { ... } }
+    if (okRecv && doc.containsKey("outputs") && doc["outputs"].is<JsonObject>()) {
+        Serial.println(F("[Network] Wrapper 'outputs' détecté - aplatissement"));
+        ArduinoJson::DynamicJsonDocument tmp(BufferConfig::JSON_DOCUMENT_SIZE);
+        tmp.set(doc["outputs"].as<ArduinoJson::JsonObjectConst>());
+        doc.clear();
+        for (auto kv : tmp.as<ArduinoJson::JsonObjectConst>()) {
+            doc[kv.key().c_str()] = kv.value();
+        }
+    }
     
     // === LOGS DÉTAILLÉS v11.07 - DIAGNOSTIC JSON ===
     if (okRecv && doc.size() > 0) {
@@ -327,10 +371,17 @@ bool AutomatismNetwork::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t
         return false;
     }
     
-    // v11.70: Sauvegarde directe - clés déjà standardisées
+    // v11.74: Sauvegarde + diagnostics clés critiques
     String jsonToSave;
     serializeJson(doc, jsonToSave);
     _config.saveRemoteVars(jsonToSave);
+    // Diagnostics: clés critiques présentes ?
+    const char* crit[] = {"16","18","2","15","108","109","110","115"};
+    for (size_t i=0;i<sizeof(crit)/sizeof(crit[0]);++i){
+        const char* k = crit[i];
+        bool has = doc.containsKey(k);
+        Serial.printf("[Network] Key %s: %s\n", k, has?"OK":"MISSING");
+    }
     
     return true;
 }
@@ -465,7 +516,11 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
     
     // Threshold chauffage
     if (doc.containsKey("chauffageThreshold")) {
-        _heaterThresholdC = doc["chauffageThreshold"].as<float>();
+        float newThreshold = doc["chauffageThreshold"].as<float>();
+        if (newThreshold > 0.0f) { // Protection contre valeurs invalides
+            _heaterThresholdC = newThreshold;
+            Serial.printf("[Network] 🔥 Seuil chauffage mis à jour dans Network: %.1f°C\n", _heaterThresholdC);
+        }
     }
     
     // Email configuration
@@ -474,17 +529,27 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
         _emailAddress = m ? String(m) : String();
     }
     
-    if (doc.containsKey("mailNotif")) {
-        auto v = doc["mailNotif"];
-        if (v.is<bool>()) {
-            _emailEnabled = v.as<bool>();
-        } else if (v.is<int>()) {
-            _emailEnabled = (v.as<int>() == 1);
-        } else if (v.is<const char*>()) {
+    if (doc.containsKey("emailEnabled")) {
+        auto v = doc["emailEnabled"];
+        if (v.is<bool>()) _emailEnabled = v.as<bool>();
+        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
+        else if (v.is<const char*>()) {
             const char* p = v.as<const char*>();
             if (p && p[0]) {
-                String s = String(p);
-                _emailEnabled = (s == "checked" || s == "1" || s == "true" || s == "on");
+                String s = String(p); s.toLowerCase(); s.trim();
+                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
+            }
+        }
+    }
+    if (doc.containsKey("mailNotif")) {
+        auto v = doc["mailNotif"];
+        if (v.is<bool>()) _emailEnabled = v.as<bool>();
+        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
+        else if (v.is<const char*>()) {
+            const char* p = v.as<const char*>();
+            if (p && p[0]) {
+                String s = String(p); s.toLowerCase(); s.trim();
+                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
             }
         }
     }

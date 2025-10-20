@@ -14,6 +14,9 @@ private:
     bool _pompeAquaLocked;
     bool _forceWakeUp;
     bool _otaUpdateFlag;
+    // Flags réseau
+    bool _remoteSendEnabled;   // Envoi vers serveur distant autorisé
+    bool _remoteRecvEnabled;   // Réception/polling depuis serveur autorisé
     
     // Cache pour optimiser les écritures NVS
     bool _cachedBouffeMatinOk;
@@ -24,6 +27,9 @@ private:
     bool _cachedForceWakeUp;
     bool _cachedOtaUpdateFlag;
     bool _flagsChanged;
+    // Cache réseau (non lié à _flagsChanged)
+    bool _cachedRemoteSendEnabled;
+    bool _cachedRemoteRecvEnabled;
     
     // Instance Preferences
     Preferences _preferences;
@@ -41,6 +47,8 @@ public:
     void saveBouffeFlags();
     void forceSaveBouffeFlags();
     void resetBouffeFlags();
+    // Réseau
+    void loadNetworkFlags();
     
     /**
      * Charge TOUTES les variables de configuration depuis NVS au démarrage
@@ -57,6 +65,12 @@ public:
     // Méthodes pour le flag OTA
     void setOtaUpdateFlag(bool value);
     bool getOtaUpdateFlag() const;
+    
+    // Flags réseau
+    void setRemoteSendEnabled(bool value);
+    void setRemoteRecvEnabled(bool value);
+    bool isRemoteSendEnabled() const { return _remoteSendEnabled; }
+    bool isRemoteRecvEnabled() const { return _remoteRecvEnabled; }
     
     // Setters optimisés
     void setBouffeMatinOk(bool value);

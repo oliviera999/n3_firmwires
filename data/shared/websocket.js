@@ -275,7 +275,7 @@ function connectWS() {
 
 function startPolling() {
   if (pollInterval) return;
-  pollInterval = setInterval(refresh, 2000);
+  pollInterval = setInterval(refresh, 3000);
 }
 
 function stopPolling() {
@@ -929,7 +929,7 @@ window.initializeDashboard = function initializeDashboard() {
   // OPTIMISATION: Démarrer le polling avec un intervalle plus long
   // Le WebSocket prend le relais pour les mises à jour temps réel
   if (!pollInterval) {
-    pollInterval = setInterval(refresh, 10000); // 10 secondes au lieu de 5 pour réduire la charge
+    pollInterval = setInterval(refresh, 3000); // 3 secondes pour meilleure réactivité en fallback
   }
   
   // Test de connectivité WebSocket avant le fallback

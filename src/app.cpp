@@ -716,7 +716,21 @@ void setup() {
   // Initialiser le logger optimisé (niveau INFO par défaut)
   OptimizedLogger::init(OptimizedLogger::LOG_INFO);
   
-    // Envoi d'un mail de test au démarrage (optimisé avec buffer pooling)
+  // ========================================
+  // CHARGEMENT COMPLET CONFIGURATION NVS (v11.32)
+  // ========================================
+  // Charge TOUTES les variables depuis NVS au démarrage
+  // Inclut: flags bouffe, email, seuils, durées, etc.
+  // Fallback valeurs par défaut si NVS vide
+  Serial.println(F("\n[App] Chargement configuration complète depuis NVS..."));
+  config.loadConfigFromNVS();
+  
+  autoCtrl.begin();
+
+  // ========================================
+  // ENVOI EMAIL DE DÉMARRAGE (après config NVS chargée)
+  // ========================================
+  // Envoi d'un mail de test au démarrage (après chargement configuration)
   #if FEATURE_MAIL
   if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
     OPT_LOG_INFO("Envoi du mail de test au démarrage...");
@@ -815,22 +829,15 @@ void setup() {
       OPT_LOG_ERROR("Échec de l'envoi du mail de test ✗");
     }
   } else {
-    OPT_LOG_INFO("WiFi non connecté - mail de test ignoré");
+    if (WiFi.status() != WL_CONNECTED) {
+      OPT_LOG_INFO("WiFi non connecté - mail de démarrage ignoré");
+    } else {
+      OPT_LOG_INFO("Email désactivé - mail de démarrage ignoré");
+    }
   }
   #else
   Serial.println("[App] Mail désactivé (FEATURE_MAIL=0) - mail de test ignoré");
   #endif
-  
-  // ========================================
-  // CHARGEMENT COMPLET CONFIGURATION NVS (v11.32)
-  // ========================================
-  // Charge TOUTES les variables depuis NVS au démarrage
-  // Inclut: flags bouffe, email, seuils, durées, etc.
-  // Fallback valeurs par défaut si NVS vide
-  Serial.println(F("\n[App] Chargement configuration complète depuis NVS..."));
-  config.loadConfigFromNVS();
-  
-  autoCtrl.begin();
 
   // --- Première synchronisation distante IMMÉDIATE -----------------------------
   if (WiFi.status() == WL_CONNECTED) {
@@ -897,12 +904,14 @@ void setup() {
       body += "Détails de la mise à jour:\n";
       body += "- Méthode: Interface web ElegantOTA\n";
       body += "- Nouvelle version: " + String(Config::VERSION) + "\n";
-      body += "- Hostname: "; body += g_hostname; body += "\n";
+      // Protection: g_hostname peut être null si le WiFi n'a pas encore initialisé le hostname
+      const char* safeHost = (g_hostname && g_hostname[0] != '\0') ? g_hostname : "(unknown)";
+      body += "- Hostname: "; body += safeHost; body += "\n";
       body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
       body += "- Redémarrage automatique effectué";
       // Borne de sécurité: 6 KB max
       if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-      String subjOtaWeb = "OTA mise à jour - Interface web ["; subjOtaWeb += g_hostname; subjOtaWeb += "]";
+      String subjOtaWeb = "OTA mise à jour - Interface web ["; subjOtaWeb += safeHost; subjOtaWeb += "]";
       bool emailSent = mailer.sendAlert(subjOtaWeb.c_str(), body, emailAddress.c_str());
       Serial.printf("[App] Email interface web %s\n", emailSent ? "envoyé" : "échoué");
       config.setOtaUpdateFlag(false); // reset du flag

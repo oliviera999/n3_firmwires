@@ -5,9 +5,11 @@
 ConfigManager::ConfigManager() 
     : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false), 
       _lastJourBouf(-1), _pompeAquaLocked(false), _forceWakeUp(false), _otaUpdateFlag(true),
+      _remoteSendEnabled(true), _remoteRecvEnabled(true),
       _cachedBouffeMatinOk(false), _cachedBouffeMidiOk(false), _cachedBouffeSoirOk(false),
       _cachedLastJourBouf(-1), _cachedPompeAquaLocked(false), _cachedForceWakeUp(false),
-      _cachedOtaUpdateFlag(true), _flagsChanged(false) {
+      _cachedOtaUpdateFlag(true), _flagsChanged(false),
+      _cachedRemoteSendEnabled(true), _cachedRemoteRecvEnabled(true) {
 }
 
 void ConfigManager::loadBouffeFlags() {
@@ -38,6 +40,19 @@ void ConfigManager::loadBouffeFlags() {
                 _pompeAquaLocked ? "OUI" : "NON",
                 _forceWakeUp ? "OUI" : "NON");
   Serial.printf("[Config] Flag OTA update: %s\n", _otaUpdateFlag ? "true" : "false");
+}
+
+void ConfigManager::loadNetworkFlags() {
+  // Namespace dédié aux flags réseau
+  _preferences.begin("net", true);
+  _remoteSendEnabled = _preferences.getBool("sendEnabled", true);
+  _remoteRecvEnabled = _preferences.getBool("recvEnabled", true);
+  _preferences.end();
+  _cachedRemoteSendEnabled = _remoteSendEnabled;
+  _cachedRemoteRecvEnabled = _remoteRecvEnabled;
+  Serial.printf("[Config] Net flags - send:%s recv:%s\n",
+                _remoteSendEnabled?"ON":"OFF",
+                _remoteRecvEnabled?"ON":"OFF");
 }
 
 void ConfigManager::saveBouffeFlags() {
@@ -140,6 +155,27 @@ bool ConfigManager::getOtaUpdateFlag() const {
   return _otaUpdateFlag;
 }
 
+// Flags réseau (persistants immédiatement)
+void ConfigManager::setRemoteSendEnabled(bool value){
+  if (_remoteSendEnabled == value) return;
+  _remoteSendEnabled = value;
+  _preferences.begin("net", false);
+  _preferences.putBool("sendEnabled", value);
+  _preferences.end();
+  _cachedRemoteSendEnabled = value;
+  Serial.printf("[Config] Net sendEnabled=%s\n", value?"true":"false");
+}
+
+void ConfigManager::setRemoteRecvEnabled(bool value){
+  if (_remoteRecvEnabled == value) return;
+  _remoteRecvEnabled = value;
+  _preferences.begin("net", false);
+  _preferences.putBool("recvEnabled", value);
+  _preferences.end();
+  _cachedRemoteRecvEnabled = value;
+  Serial.printf("[Config] Net recvEnabled=%s\n", value?"true":"false");
+}
+
 // Setters optimisés avec détection de changements
 void ConfigManager::setBouffeMatinOk(bool value) {
   if (_bouffeMatinOk != value) {
@@ -208,6 +244,8 @@ void ConfigManager::updateCache() {
   _cachedPompeAquaLocked = _pompeAquaLocked;
   _cachedForceWakeUp = _forceWakeUp;
   _cachedOtaUpdateFlag = _otaUpdateFlag;
+  _cachedRemoteSendEnabled = _remoteSendEnabled;
+  _cachedRemoteRecvEnabled = _remoteRecvEnabled;
 }
 
 bool ConfigManager::loadConfigFromNVS() {
@@ -217,6 +255,8 @@ bool ConfigManager::loadConfigFromNVS() {
   
   // 1. Charger les flags de bouffe (déjà implémenté)
   loadBouffeFlags();
+  // 1b. Charger les flags réseau (send/recv)
+  loadNetworkFlags();
   
   // 2. Charger les variables distantes depuis remoteVars
   String cachedJson;
