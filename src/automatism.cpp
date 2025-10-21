@@ -2195,68 +2195,19 @@ void Automatism::traceFeedingEventSelective(bool feedSmall, bool feedBig){
  *  Vérifie uniquement les conditions critiques (nourrissage/remplissage)
  * ------------------------------------------------------------------*/
 bool Automatism::shouldEnterSleepEarly(const SensorReadings& r) {
-  // ========================================
-  // VÉRIFICATIONS CRITIQUES SEULEMENT
-  // ========================================
-  
-  // Sommeil forcé désactivé ? (condition absolue)
-  if (forceWakeUp) {
-    return false;
-  }
-  
-  // Ne pas dormir si l'interface web locale est active (activité récente)
-  if (_forceWakeFromWeb) {
-    return false;
-  }
-
-  // Ne pas dormir si la pompe de remplissage fonctionne (CRITIQUE)
-  if (_acts.isTankPumpRunning()) {
-    return false;
-  }
-  
-  // Ne pas dormir si un nourrissage est en cours (CRITIQUE)
-  if (_currentFeedingPhase != FeedingPhase::NONE) {
-    return false;
-  }
-  
-  // Ne pas dormir si un décompte long est en cours (remplissage - CRITIQUE)
-  if (isStillPending(_countdownEnd, millis())) {
-    uint32_t remainingCountdownMs = remainingMs(_countdownEnd, millis());
-    uint32_t remainingCountdownSec = remainingCountdownMs / 1000UL;
-    
-    // Seuls les décomptes longs (remplissage) bloquent le sleep précoce
-    if (remainingCountdownSec > 300) { // Plus de 5 minutes = décompte long
-      return false;
-    }
-    // Les décomptes courts (post-nourrissage) n'empêchent pas le sleep précoce
-  }
-
-  // ========================================
-  // VÉRIFICATION DU DÉLAI MINIMAL
-  // ========================================
-  
-  // Calcul du délai adaptatif
-  uint32_t adaptiveDelay = calculateAdaptiveSleepDelay();
-  
-  // Vérification du délai minimal écoulé
-  unsigned long currentMillis = millis();
-  unsigned long awakeSec = (currentMillis - _lastWakeMs) / 1000UL;
-  
-  // Nouveau déclenchement anticipé: marée montante sur ~fenêtre (diff > tideTriggerCm)
+  bool feedingInProgress = (_currentFeedingPhase != FeedingPhase::NONE);
+  bool tankPumpRunning = _acts.isTankPumpRunning();
   int diff10s = _sensors.diffMaree(_lastReadings.wlAqua);
-  bool tideAscendingTrigger = (diff10s > tideTriggerCm);
-  
-  // Sleep précoce si délai atteint OU marée montante détectée
-  if (tideAscendingTrigger || (currentMillis - _lastWakeMs >= (adaptiveDelay * 1000))) {
-    if (tideAscendingTrigger) {
-      Serial.printf("[Auto] Sleep précoce déclenché: marée montante (~10s, +%d cm)\n", diff10s);
-    } else {
-      Serial.printf("[Auto] Sleep précoce déclenché: délai atteint (%lu s)\n", awakeSec);
-    }
-    return true;
-  }
-  
-  return false;
+  return _sleep.shouldEnterSleepEarly(r,
+                                      forceWakeUp,
+                                      _forceWakeFromWeb,
+                                      _lastWebActivityMs,
+                                      feedingInProgress,
+                                      tankPumpRunning,
+                                      _countdownEnd,
+                                      _lastWakeMs,
+                                      diff10s,
+                                      tideTriggerCm);
 }
 
 /* ------------------------------------------------------------------
@@ -2272,38 +2223,16 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // 1. VÉRIFICATION CLIENTS WEBSOCKET (v11.50 - NON-BLOQUANT)
   // Timeout pour éviter le blocage indéfini du sleep
   // ========================================
-  uint8_t wsClients = 0; // WebSocket removed for v11.68
-  if (wsClients > 0) {
-    static unsigned long lastWsLog = 0;
-    static unsigned long wsBlockStart = 0;
-    unsigned long currentMillis = millis();
-    
-    // Initialiser le timer de blocage
-    if (wsBlockStart == 0) {
-      wsBlockStart = currentMillis;
-    }
-    
-    // Timeout après 5 minutes de blocage WebSocket
-    const uint32_t WS_BLOCK_TIMEOUT_MS = 300000; // 5 minutes
-    if (currentMillis - wsBlockStart > WS_BLOCK_TIMEOUT_MS) {
-      Serial.printf("[Auto] ⚠️ TIMEOUT WebSocket atteint (%u ms) - Forcer sleep malgré %u clients\n", 
-                    WS_BLOCK_TIMEOUT_MS, wsClients);
-      wsBlockStart = 0; // Reset timer
-      // Continuer vers le sleep malgré les clients connectés
-    } else {
-      // Log périodique du blocage
-      if (currentMillis - lastWsLog > 30000) {
-        lastWsLog = currentMillis;
-        uint32_t elapsed = currentMillis - wsBlockStart;
-        Serial.printf("[Auto] Auto-sleep bloqué (%u clients WebSocket, %u ms écoulées)\n", 
-                      wsClients, elapsed);
-      }
-      return;
-    }
-  } else {
-    // Reset timer si plus de clients
-    static unsigned long wsBlockStart = 0;
-    wsBlockStart = 0;
+  if (!_sleep.handleBlockingConditions(_acts,
+                                       forceWakeUp,
+                                       _forceWakeFromWeb,
+                                       _lastWebActivityMs,
+                                       _countdownEnd,
+                                       _lastWakeMs,
+                                       (_currentFeedingPhase != FeedingPhase::NONE),
+                                       _acts.isTankPumpRunning(),
+                                       0)) {
+    return;
   }
   
   // ========================================
@@ -2408,29 +2337,37 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   }
 
   // Calcul du délai adaptatif
-  uint32_t adaptiveDelay = calculateAdaptiveSleepDelay();
-  
-  // Pas encore atteint le délai adaptatif ?
-  unsigned long currentMillis = millis();
-  unsigned long awakeSec = (currentMillis - _lastWakeMs) / 1000UL;
-  // Nouveau déclenchement anticipé: marée montante sur ~fenêtre (diff > tideTriggerCm)
-  int diff10s = _sensors.diffMaree(_lastReadings.wlAqua); // déjà calculé sur ~fenêtre
-  bool tideAscendingTrigger = (diff10s > tideTriggerCm);
-  if (!tideAscendingTrigger && (currentMillis - _lastWakeMs < (adaptiveDelay * 1000))) return;
-  if (tideAscendingTrigger) {
-    Serial.printf("[Auto] Sleep anticipé: marée montante (~10s, +%d cm)\n", diff10s);
+  const unsigned long currentMillis = millis();
+  const int diff10s = _sensors.diffMaree(_lastReadings.wlAqua);
+  AutomatismSleep::AutoSleepContext sleepCtx{};
+  sleepCtx.forceWakeUp = forceWakeUp;
+  sleepCtx.forceWakeFromWeb = &_forceWakeFromWeb;
+  sleepCtx.lastWebActivityMs = &_lastWebActivityMs;
+  sleepCtx.feedingInProgress = (_currentFeedingPhase != FeedingPhase::NONE);
+  sleepCtx.tankPumpRunning = _acts.isTankPumpRunning();
+  sleepCtx.countdownEnd = _countdownEnd;
+  sleepCtx.lastWakeMs = &_lastWakeMs;
+  sleepCtx.diff10s = diff10s;
+  sleepCtx.tideTriggerCm = tideTriggerCm;
+  sleepCtx.currentMillis = currentMillis;
+
+  AutomatismSleep::AutoSleepDecision sleepDecision{};
+  if (!_sleep.evaluateAutoSleep(sleepCtx, sleepDecision)) {
+    return;
   }
 
   // Informations détaillées sur le passage en veille
   bool pumpReservoirOn = _acts.isTankPumpRunning();
   bool feedingActive = (_currentFeedingPhase != FeedingPhase::NONE);
   bool countdownActive = isStillPending(_countdownEnd, millis());
-  Serial.printf("[Auto] Délai écoulé: éveillé=%lu s, cible=%u s. Veille prévue=%u s\n", 
-                awakeSec, adaptiveDelay, (uint32_t)freqWakeSec);
-  Serial.printf("[Auto] Raison du passage: aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)\n",
-                pumpReservoirOn ? "ON" : "OFF",
-                feedingActive ? "OUI" : "NON",
-                countdownActive ? "OUI" : "NON");
+  _sleep.logSleepDecision(pumpReservoirOn,
+                          feedingActive,
+                          countdownActive,
+                          sleepDecision.tideAscending,
+                          sleepDecision.diff10s,
+                          sleepDecision.awakeSec,
+                          sleepDecision.adaptiveDelaySec,
+                          static_cast<uint16_t>(freqWakeSec));
 
   // ========================================
   // PRÉPARATION AVANT MISE EN VEILLE LÉGÈRE
@@ -2520,21 +2457,21 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
         snprintf(d1, sizeof(d1), "+%d en ~10s", delta);
         char d2[48];
         snprintf(d2, sizeof(d2), "Maree diff10s:%d", diffNow);
-      bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
+        bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
         _disp.showSleepReason("Cause: maree montante", d1, d2, 2500, blink);
       } else if (justAfterCountdown) {
         char d1[48];
         snprintf(d1, sizeof(d1), "Fin decompte: %s", _countdownLabel.c_str());
         char d2[48];
         snprintf(d2, sizeof(d2), "Il y a %lds - diff10s:%d", -(secToCountdown), diffNow);
-      bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
+        bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
         _disp.showSleepReason("Cause: decompte termine", d1, d2, 2500, blink);
       } else {
         char d1[48];
         snprintf(d1, sizeof(d1), "Inactivite depuis %lus", awakeSecLocal);
         char d2[48];
         snprintf(d2, sizeof(d2), "Maree diff10s:%d", diffNow);
-      bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
+        bool blink = (mailBlinkUntil && isStillPending(mailBlinkUntil, nowMs));
         _disp.showSleepReason("Cause: inactivite", d1, d2, 2500, blink);
       }
     }
@@ -2588,15 +2525,15 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
     if (heapBeforeMail >= MIN_HEAP_FOR_MAIL) {
       char sleepReason[512];
-      if (tideAscendingTrigger) {
+      if (sleepDecision.tideAscending) {
         snprintf(sleepReason, sizeof(sleepReason), 
           "Délai écoulé (éveillé %ds, cible %ds) + marée montante (+%dcm) - aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)",
-          awakeSec, adaptiveDelay, diff10s, 
+          static_cast<int>(sleepDecision.awakeSec), sleepDecision.adaptiveDelaySec, sleepDecision.diff10s, 
           pumpReservoirOn ? "ON" : "OFF", feedingActive ? "OUI" : "NON", countdownActive ? "OUI" : "NON");
       } else {
         snprintf(sleepReason, sizeof(sleepReason), 
           "Délai écoulé (éveillé %ds, cible %ds) - aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)",
-          awakeSec, adaptiveDelay, 
+          static_cast<int>(sleepDecision.awakeSec), sleepDecision.adaptiveDelaySec, 
           pumpReservoirOn ? "ON" : "OFF", feedingActive ? "OUI" : "NON", countdownActive ? "OUI" : "NON");
       }
       

@@ -18,6 +18,26 @@
  */
 class AutomatismSleep {
 public:
+    struct AutoSleepContext {
+        bool forceWakeUp;
+        bool* forceWakeFromWeb;
+        unsigned long* lastWebActivityMs;
+        bool feedingInProgress;
+        bool tankPumpRunning;
+        uint32_t countdownEnd;
+        unsigned long* lastWakeMs;
+        int diff10s;
+        int16_t tideTriggerCm;
+        uint32_t currentMillis;
+    };
+
+    struct AutoSleepDecision {
+        bool tideAscending;
+        uint32_t adaptiveDelaySec;
+        unsigned long awakeSec;
+        int diff10s;
+    };
+
     /**
      * Constructeur
      * @param power Référence PowerManager
@@ -40,7 +60,36 @@ public:
      * @param r Lectures capteurs
      * @return true si conditions remplies
      */
-    bool shouldEnterSleepEarly(const SensorReadings& r);
+    bool shouldEnterSleepEarly(const SensorReadings& r,
+                               bool forceWakeUp,
+                               bool forceWakeFromWeb,
+                               unsigned long lastWebActivityMs,
+                               bool feedingInProgress,
+                               bool tankPumpRunning,
+                               uint32_t countdownEnd,
+                               unsigned long lastWakeMs,
+                               int diffMaree10s,
+                               int16_t tideTriggerCm);
+
+    bool handleBlockingConditions(SystemActuators& acts,
+                                  bool& forceWakeUp,
+                                  bool& forceWakeFromWeb,
+                                  unsigned long& lastWebActivityMs,
+                                  uint32_t countdownEnd,
+                                  unsigned long& lastWakeMs,
+                                  bool feedingInProgress,
+                                  bool tankPumpRunning,
+                                  uint8_t wsClients);
+
+    bool evaluateAutoSleep(const AutoSleepContext& ctx, AutoSleepDecision& outDecision);
+    void logSleepDecision(bool pumpReservoirOn,
+                          bool feedingActive,
+                          bool countdownActive,
+                          bool tideAscending,
+                          int diff10s,
+                          unsigned long awakeSec,
+                          uint32_t adaptiveDelaySec,
+                          uint16_t nextWakeSec);
     
     /**
      * Gère la détection de marées (trigger sleep)
@@ -139,6 +188,13 @@ private:
         uint32_t nightSleepTime;
         bool adaptiveSleep;
     } _sleepConfig;
+    
+    unsigned long _wsBlockStartMs;
+    unsigned long _lastWsLogMs;
+    unsigned long _lastWebLogMs;
+    unsigned long _lastForceWakeLogMs;
+    unsigned long _lastActivityLogMs;
+    unsigned long _lastWebSocketCheckMs;
     
     // Helpers privés (pour diviser handleAutoSleep)
     bool shouldSleep();
