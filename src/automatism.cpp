@@ -5,6 +5,7 @@
 #include "automatism/automatism_feeding.h"
 #include "automatism/automatism_network.h"
 #include "automatism/automatism_sleep.h"
+#include "automatism/automatism_utils.h"
 #include <Arduino.h>
 #include <cstring>
 #include <string>
@@ -22,70 +23,12 @@
 extern Automatism autoCtrl;
 
 namespace {
-inline bool hasExpired(uint32_t targetMs, uint32_t nowMs) {
-  return targetMs != 0 && static_cast<int32_t>(nowMs - targetMs) >= 0;
-}
-
-inline bool hasExpired(uint32_t targetMs) {
-  return hasExpired(targetMs, millis());
-}
-
-// Fonctions utilitaires pour éviter la fragmentation mémoire avec String
-// Utilise des buffers statiques pour éviter les allocations dynamiques
-inline void formatDistanceAlert(char* buffer, size_t bufferSize, const char* prefix, float distance, const char* suffix, float threshold) {
-  snprintf(buffer, bufferSize, "%s%.1f cm (%s%.1f)", prefix, distance, suffix, threshold);
-}
-
-inline void formatTemperatureAlert(char* buffer, size_t bufferSize, const char* prefix, float temp) {
-  snprintf(buffer, bufferSize, "%s%.1f°C", prefix, temp);
-}
-
-inline bool isStillPending(uint32_t targetMs, uint32_t nowMs) {
-  return targetMs != 0 && static_cast<int32_t>(targetMs - nowMs) > 0;
-}
-
-inline uint32_t remainingMs(uint32_t targetMs, uint32_t nowMs) {
-  if (targetMs == 0) {
-    return 0;
-  }
-  int32_t diff = static_cast<int32_t>(targetMs - nowMs);
-  return diff > 0 ? static_cast<uint32_t>(diff) : 0U;
-}
-
-// Parse a JSON variant as a boolean in a robust way (accepts true/false, 1/0, and strings
-// like "checked", "1", "true", "on", "yes").
-static bool parseTruthy(ArduinoJson::JsonVariantConst v) {
-  if (v.is<bool>()) return v.as<bool>();
-  if (v.is<int>()) return v.as<int>() == 1;
-  if (v.is<const char*>()) {
-    const char* p = v.as<const char*>();
-    if (!p) return false;
-    char buffer[32];
-    strncpy(buffer, p, sizeof(buffer) - 1);
-    buffer[sizeof(buffer) - 1] = '\0';
-    
-    // Convertir en minuscules et supprimer les espaces
-    for (char* c = buffer; *c; c++) {
-      if (*c >= 'A' && *c <= 'Z') *c += 32; // toLowerCase
-    }
-    
-    // Trim leading spaces
-    char* start = buffer;
-    while (*start == ' ' || *start == '\t') start++;
-    
-    // Trim trailing spaces
-    char* end = start + strlen(start) - 1;
-    while (end > start && (*end == ' ' || *end == '\t')) {
-      *end = '\0';
-      end--;
-    }
-    
-    return strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || 
-           strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 || 
-           strcmp(start, "yes") == 0;
-  }
-  return false;
-}
+using AutomatismUtils::formatDistanceAlert;
+using AutomatismUtils::formatTemperatureAlert;
+using AutomatismUtils::hasExpired;
+using AutomatismUtils::isStillPending;
+using AutomatismUtils::parseTruthy;
+using AutomatismUtils::remainingMs;
 }
 
 // ------------------------------------------------------------
