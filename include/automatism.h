@@ -10,6 +10,7 @@
 #include "automatism/automatism_feeding.h"
 #include "automatism/automatism_network.h"
 #include "automatism/automatism_sleep.h"
+#include "automatism/automatism_refill.h"
 #include <ArduinoJson.h>
 
 class Automatism {

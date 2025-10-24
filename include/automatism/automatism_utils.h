@@ -26,6 +26,13 @@ inline uint32_t remainingMs(uint32_t targetMs, uint32_t nowMs) {
   return diff > 0 ? static_cast<uint32_t>(diff) : 0U;
 }
 
+template <typename F>
+void safeInvoke(F&& fn) {
+  if (fn) {
+    fn();
+  }
+}
+
 inline void formatDistanceAlert(char* buffer, size_t bufferSize, const char* prefix, float distance, const char* suffix, float threshold) {
   snprintf(buffer, bufferSize, "%s%.1f cm (%s%.1f)", prefix, distance, suffix, threshold);
 }

@@ -5,6 +5,7 @@
 #include "automatism/automatism_feeding.h"
 #include "automatism/automatism_network.h"
 #include "automatism/automatism_sleep.h"
+#include "automatism/automatism_refill.h"
 #include "automatism/automatism_utils.h"
 #include <Arduino.h>
 #include <cstring>
@@ -144,6 +145,10 @@ void Automatism::triggerResetMode() {
   }
 }
 
+namespace {
+AutomatismRefillController::RuntimeState makeRefillRuntimeState(Automatism& autoCtrl);
+}
+
 Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient& web, DisplayView& disp, PowerManager& power, Mailer& mailer, ConfigManager& config)
     : _sensors(sensors)
     , _acts(acts)
@@ -153,8 +158,15 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _mailer(mailer)
     , _config(config)
     , _feeding(acts, config, mailer, power)  // Module Feeding
-    , _network(web, config)                // Module Network
-    , _sleep(power, config)                // Module Sleep
+    , _network(web, config)                  // Module Network
+    , _sleep(power, config)                  // Module Sleep
+    , _refillState{}
+    , _refillController(acts,
+                        config,
+                        mailer,
+                        sensors,
+                        _refillState,
+                        AutomatismRefillController::SharedUiState{_countdownLabel, _countdownEnd})
 {
   // Initialisation des valeurs par défaut
   mailNotif = false;  // Par défaut, emails désactivés
@@ -166,6 +178,29 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
   Serial.printf("[Auto] mail par défaut: '%s'\n", mail.c_str());
   Serial.printf("[Auto] DEFAULT_MAIL_TO: '%s'\n", Config::DEFAULT_MAIL_TO);
   Serial.println(F("[Auto] ======================================"));
+}
+
+namespace {
+AutomatismRefillController::RuntimeState makeRefillRuntimeState(Automatism& autoCtrl) {
+  AutomatismRefillController::RuntimeState state{};
+  state.tankPumpLocked = autoCtrl.tankPumpLocked;
+  state.tankPumpRetries = autoCtrl.tankPumpRetries;
+  state.manualOverride = autoCtrl._manualTankOverride;
+  state.lastPumpManual = autoCtrl._lastPumpManual;
+  state.lockReason = static_cast<AutomatismRefillController::LockReason>(autoCtrl._tankPumpLockReason);
+  state.pumpStartMs = autoCtrl._pumpStartMs;
+  state.levelAtPumpStart = autoCtrl._levelAtPumpStart;
+  state.countdownEnd = autoCtrl._countdownEnd;
+  state.emailTankSent = autoCtrl.emailTankSent;
+  state.emailTankStartSent = autoCtrl.emailTankStartSent;
+  state.emailTankStopSent = autoCtrl.emailTankStopSent;
+  state.heaterPrevState = autoCtrl.heaterPrevState;
+  state.inFlood = autoCtrl.inFlood;
+  state.lastFloodEmailEpoch = autoCtrl.lastFloodEmailEpoch;
+  state.floodEnterSinceEpoch = autoCtrl.floodEnterSinceEpoch;
+  state.aboveResetSinceEpoch = autoCtrl.aboveResetSinceEpoch;
+  return state;
+}
 }
 
 void Automatism::begin() {

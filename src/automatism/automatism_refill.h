@@ -8,6 +8,13 @@
 
 class AutomatismRefillController {
  public:
+  struct Dependencies {
+    SystemActuators& acts;
+    ConfigManager& config;
+    Mailer& mailer;
+    SystemSensors& sensors;
+  };
+
   enum class LockReason {
     NONE,
     INEFFICIENT,
@@ -57,6 +64,10 @@ class AutomatismRefillController {
                              SystemSensors& sensors,
                              RuntimeState& runtime,
                              SharedUiState ui);
+
+  explicit AutomatismRefillController(const Dependencies& deps,
+                                      RuntimeState& runtime,
+                                      SharedUiState ui);
 
   void configure(const Config& cfg);
   void tick(const SensorReadings& readings, const String& mail, bool mailNotif);
