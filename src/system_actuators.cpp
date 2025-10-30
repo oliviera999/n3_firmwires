@@ -1,5 +1,33 @@
 #include "system_actuators.h"
 #include "event_log.h"
+#include "timer_manager.h"
+
+namespace {
+int g_smallFeedTimerId = -1;
+SystemActuators* g_smallFeedInstance = nullptr;
+uint16_t g_smallFeedDurationSec = 0;
+
+void smallFeedTimerCallback() {
+  if (!g_smallFeedInstance) {
+    if (g_smallFeedTimerId >= 0) {
+      TimerManager::enableTimer(g_smallFeedTimerId, false);
+    }
+    return;
+  }
+
+  g_smallFeedInstance->feedSmallFish(g_smallFeedDurationSec);
+
+  if (g_smallFeedTimerId >= 0) {
+    TimerManager::enableTimer(g_smallFeedTimerId, false);
+    if (auto* timer = TimerManager::getTimerStats(g_smallFeedTimerId)) {
+      timer->lastRun = millis();
+    }
+  }
+
+  g_smallFeedInstance = nullptr;
+  g_smallFeedDurationSec = 0;
+}
+}  // namespace
 
 void SystemActuators::begin() {
   feederBig.begin();
@@ -73,27 +101,42 @@ void SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDura
   LOG(LOG_INFO, "=== NOURRISSAGE SÉQUENTIEL ===");
   LOG(LOG_INFO, "Gros poissons: %u s, Petits poissons: %u s, Délai: %u s", bigDurationSec, smallDurationSec, delayBetweenSec);
   EventLog::addf("Sequential feed: big=%u s, small=%u s, delay=%u s", bigDurationSec, smallDurationSec, delayBetweenSec);
-  
-  // 1. Nourrissage des gros poissons d'abord
+
   LOG(LOG_INFO, "Phase 1: Nourrissage gros poissons");
   EventLog::add("Feed phase 1: big fish");
   feederBig.dispenseWithIntermediate(140, 45, bigDurationSec);
-  
-  // 2. Attendre la fin du cycle + délai de sécurité
-  unsigned long totalBigTime = (bigDurationSec + bigDurationSec/2) * 1000UL; // Temps total du cycle
-  unsigned long delayMs = delayBetweenSec * 1000UL;
-  unsigned long totalWait = totalBigTime + delayMs;
-  
-  LOG(LOG_INFO, "Attente: %lu ms (cycle: %lu ms + délai: %lu ms)", totalWait, totalBigTime, delayMs);
-  delay(totalWait);
-  
-  // 3. Nourrissage des petits poissons
-  LOG(LOG_INFO, "Phase 2: Nourrissage petits poissons");
-  EventLog::add("Feed phase 2: small fish");
-  feederSmall.dispenseWithIntermediate(140, 45, smallDurationSec);
-  
-  LOG(LOG_INFO, "=== FIN NOURRISSAGE SÉQUENTIEL ===");
-  EventLog::add("Sequential feed done");
+
+  const uint32_t totalBigTimeMs = static_cast<uint32_t>(bigDurationSec + (bigDurationSec / 2U)) * 1000UL;
+  const uint32_t delayMs = static_cast<uint32_t>(delayBetweenSec) * 1000UL;
+  const uint32_t scheduleMs = totalBigTimeMs + delayMs;
+
+  LOG(LOG_INFO, "Planification phase 2 dans %lu ms (cycle: %lu ms + délai: %lu ms)", scheduleMs, totalBigTimeMs, delayMs);
+  EventLog::addf("Feed phase 2 scheduled in %lu ms", scheduleMs);
+
+  TimerManager::init();
+  g_smallFeedInstance = this;
+  g_smallFeedDurationSec = smallDurationSec;
+
+  if (g_smallFeedTimerId < 0) {
+    g_smallFeedTimerId = TimerManager::addTimer("SEQ_FEED_SMALL", scheduleMs, smallFeedTimerCallback);
+    if (g_smallFeedTimerId < 0) {
+      LOG(LOG_ERROR, "Impossible de planifier le nourrissage des petits poissons (timer saturé)");
+      EventLog::add("Feed phase 2 scheduling failed");
+      g_smallFeedInstance = nullptr;
+      g_smallFeedDurationSec = 0;
+      return;
+    }
+  } else {
+    TimerManager::updateInterval(g_smallFeedTimerId, scheduleMs);
+    TimerManager::enableTimer(g_smallFeedTimerId, true);
+  }
+
+  if (auto* timer = TimerManager::getTimerStats(g_smallFeedTimerId)) {
+    timer->lastRun = millis();
+  }
+
+  LOG(LOG_INFO, "=== FIN PLANIFICATION NOURRISSAGE SÉQUENTIEL ===");
+  EventLog::add("Sequential feed scheduled");
 }
 
 // Getters pour l'état

@@ -1,6 +1,8 @@
 #include "project_config.h"
 #include "config_manager.h"
 #include <ArduinoJson.h>
+#include <cstring>
+#include <cctype>
 
 ConfigManager::ConfigManager() 
     : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false), 
@@ -307,8 +309,24 @@ bool ConfigManager::loadConfigFromNVS() {
     }
     
     if (doc.containsKey("mailNotif")) {
-      Serial.printf("[Config]   - Email notifications: %s\n",
-                    String(doc["mailNotif"].as<const char*>()) == "checked" ? "activées" : "désactivées");
+      const char* notifStr = doc["mailNotif"].as<const char*>();
+      bool enabled = false;
+      if (notifStr) {
+        char buf[16];
+        size_t len = strnlen(notifStr, sizeof(buf) - 1);
+        memcpy(buf, notifStr, len);
+        buf[len] = '\0';
+        char* start = buf;
+        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+        char* end = start + strlen(start);
+        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+        *end = '\0';
+        for (char* c = start; *c; ++c) {
+          *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
+        }
+        enabled = (strcmp(start, "checked") == 0 || strcmp(start, "1") == 0 || strcmp(start, "true") == 0);
+      }
+      Serial.printf("[Config]   - Email notifications: %s\n", enabled ? "activées" : "désactivées");
     }
     
     if (doc.containsKey("bouffeMatin") || doc.containsKey("105")) {

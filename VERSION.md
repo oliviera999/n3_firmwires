@@ -1,5 +1,158 @@
 # VERSION.md - GPIO Parsing Unifié v11.68
 
+## Version 11.92 - Automatism Boot Split
+
+**Date**: 2025-10-29  
+**Type**: Refactoring automatismes / stabilisation démarrage
+
+### ✨ Points clés
+- `Automatism::begin()` est désormais orchestrée par des helpers privés (`initializeNetworkModule`, `restoreActuatorState`, etc.) pour clarifier les responsabilités et faciliter les futures extractions de services.
+- `restoreRemoteConfigFromCache()` retourne un booléen : en cas de données invalides (clé `WakeUp` sans valeur), la synchronisation initiale forceWakeUp est court-circuitée pour reproduire l'ancien comportement de sortie anticipée.
+- Ajout des dépendances explicites (`automatism.h`, `config_manager.h`, `power.h`) dans `web_routes_status.cpp` afin de fiabiliser les builds complets.
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.92`
+- Fichiers modifiés : `include/automatism.h`, `src/automatism.cpp`, `src/web_routes_status.cpp`, `include/project_config.h`
+
+## Version 11.91 - WebServer Context Helpers
+
+**Date**: 2025-10-29  
+**Type**: Refactoring serveur web (phase 2 - groundwork)
+
+### ✨ Points clés
+- Introduction de `WebServerContext` pour centraliser les dépendances (Automatism, Mailer, WiFi, capteurs/actionneurs) et les seuils mémoire (`streamMinHeapBytes`, `jsonMinHeapBytes`, `emailMinHeapBytes`).
+- Migration des helpers `safeSendJson` et `sendManualActionEmail` vers `WebServerContext` (`ctx.sendJson`, `ctx.sendManualActionEmail`).
+- Remplacement progressif des envois JSON (`req->send(...)`) dans `web_server.cpp` par `ctx.sendJson` et usage de `ctx.ensureHeap()`.
+- Gestion d'un pointeur global `g_webServerContext` pour les tâches FreeRTOS asynchrones (`/action`) afin d'éviter l'accès direct aux singletons.
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.91`
+- Nouveaux fichiers : `include/web_server_context.h`, `src/web_server_context.cpp`
+- Fichiers modifiés : `src/web_server.cpp`, `include/web_server.h`
+
+## Version 11.90 - Display Renderers & Session RAII
+
+**Date**: 2025-10-29  
+**Type**: Refactoring structure affichage
+
+### ✨ Points clés
+- Ajout des modules `MainScreenRenderer`, `CountdownRenderer`, `InfoScreenRenderer` pour isoler le dessin des écrans principaux/secondaires.
+- Introduction de `DisplayCache` et `StatusBarRenderer` pour encadrer le cache UI et la barre de statut.
+- Nouveau mécanisme RAII `DisplaySession` pour gérer modes immédiats, verrouillage et `_isDisplaying` en toute sécurité.
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.90`
+- Nouveaux fichiers : `include/display_cache.h`, `include/status_bar_renderer.h`, `include/display_renderers.h`, `src/status_bar_renderer.cpp`, `src/display_renderers.cpp`
+- Fichiers modifiés : `src/display_view.cpp`, `include/display_view.h`, `src/display_text_utils.cpp`
+
+## Version 11.89 - Display Text Helpers
+
+**Date**: 2025-10-29  
+**Type**: Préparation refactor / hygiène affichage
+
+### ✨ Points clés
+- Extraction des helpers de conversion UTF-8 → CP437 et clipping texte dans `DisplayTextUtils`
+- Réutilisation dans `DisplayView::printClipped` et dans les écrans OTA/sleep pour unifier la logique
+- Base préparatoire avant découpage du module d’affichage (moins de code statique dans `display_view.cpp`)
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.89`
+- Nouveaux fichiers : `include/display_text_utils.h`, `src/display_text_utils.cpp`
+- Fichiers modifiés : `src/display_view.cpp`
+
+## Version 11.88 - Feeding Email Buffers
+
+**Date**: 2025-10-29  
+**Type**: Optimisation mémoire / hygiène heap
+
+### ✨ Points clés
+- `AutomatismFeeding` et `Automatism` construisent désormais les emails de nourrissage dans des buffers `char[]` fixes
+- `web_server` et `AutomatismNetwork` réutilisent ces helpers pour éviter les concaténations `String` dans les tâches FreeRTOS
+- Logs additionnels sur la taille des messages pour le diagnostic mémoire lors des envois
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.88`
+- Fichiers modifiés : `include/automatism.h`, `src/automatism.cpp`, `src/automatism/automatism_feeding.{h,cpp}`,
+  `src/web_server.cpp`, `src/automatism/automatism_network.cpp`
+
+## Version 11.87 - Static Timer Pool
+
+**Date**: 2025-10-29  
+**Type**: Optimisation runtime / mémoire
+
+### ✨ Points clés
+- `TimerManager` migre vers un pool statique de `TimerCallback` C sans `std::function`
+- Suppression des allocations dynamiques dans la boucle temps réel pour éviter la fragmentation
+- Conservation des métriques (temps d'exécution, compteurs) et des logs de debugging
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.87`
+- Fichiers modifiés : `include/timer_manager.h`, `src/timer_manager.cpp`
+
+## Version 11.86 - Modular Bootstrap Refactor
+
+**Date**: 2025-10-29  
+**Type**: Refactoring maintenabilité & découplage
+
+### ✨ Points clés
+- Extraction d'`app.cpp` en sous-modules `bootstrap_*` et `app_tasks` dédiés
+- `AppContext` partagé pour orchestrer l'initialisation depuis `setup()`
+- Tâches FreeRTOS et `TaskMonitor` externalisés, instrumentation inchangée
+- Préparation à des tests unitaires ciblés sur l'initialisation
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.86`
+- Nouveaux fichiers : `include/app_context.h`, `include/app_tasks.h`,
+  `include/bootstrap_{network,services,storage}.h`, `src/app_tasks.cpp`,
+  `src/bootstrap_{network,services,storage}.cpp`, `src/task_monitor.cpp`
+- `src/app.cpp` simplifié à une séquence d'orchestration modulaire
+
+## Version 11.85 - Dual-Core Task Affinity Split
+
+**Date**: 2025-10-29  
+**Type**: Stabilité temps réel & watchdog
+
+### ✨ Points clés
+- Répartition explicite des tâches FreeRTOS sur les deux cœurs (capteurs/automatisme → core 1, web/OLED → core 0)
+- Vérification d'échec `xTaskCreatePinnedToCore` avec log critique en cas d'anomalie au boot
+- Suppression du flag `CONFIG_FREERTOS_UNICORE` pour l'environnement `wroom-test`
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.85`
+- Fichiers modifiés : `platformio.ini`, `include/project_config.h`, `src/app.cpp`
+
+## Version 11.84 - Sleep Telemetry & Bounded Email Buffers
+
+**Date**: 2025-10-29  
+**Type**: Stabilité runtime & hygiène mémoire
+
+### ✨ Points clés
+- Instrumentation complète du cycle light-sleep : snapshots `TaskMonitor`, logs `logSleepTransitionStart/End`, wakeup cause, surveillance HWM
+- OTA (serveur + ArduinoOTA) enrichis avec métriques tâches et événements `EventLog`
+- Emails stockés en buffers fixes (`Automatism`, `AutomatismNetwork`, `AutomatismFeeding`, helpers web) → suppression des `String` dynamiques en parsing config
+- `applyConfigFromJson`, `parseRemoteConfig`, `parseTruthy` réécrits en C-style (trim lowercase, `strnlen`) pour réduire la fragmentation
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.84`
+- Nouveaux utilitaires : `include/task_monitor.h`, instrumentation dans `src/app.cpp`
+- Refactor email : `Automatism`, `AutomatismNetwork`, `AutomatismFeeding`, `web_server`
+
+## Version 11.83 - Network Instrumentation & Controller Split
+
+**Date**: 2025-10-29  
+**Type**: Amélioration de stabilité & tooling CI
+
+### ✨ Points clés
+- Instrumentation `sendFullUpdate` : backoff exponentiel, métriques heap/latence, garde payload 960B
+- Suivi DataQueue : logs heap poussés/poppés, watermark high-water, purge oldest automatique
+- Refactor `Automatism` : contrôleurs Refill/Alert/Display dédiés avec `AutomatismRuntimeContext`
+- Scripts CI (`scripts/run_ci_checks.ps1`, `scripts/verify_version.ps1`) + schéma JSON documenté
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.83`
+- Documentation : `docs/technical/API_JSON_CONTRACT.md`
+- Nouveaux fichiers : scripts CI, contrôleurs dans `src/automatism/`
+
 ## Version 11.68 - GPIO Parsing Unifié - Système Simplifié
 
 **Date**: 2025-01-16  
@@ -83,62 +236,4 @@ Remplacer le système complexe de parsing GPIO par une architecture simple et ro
 ### 🧪 Tests et Validation
 
 #### Tests Automatisés
-- `test_gpio_sync.py` - Test complet du système
-- Vérification format serveur (GPIO numérique uniquement)
-- Test POST partiel et synchronisation bidirectionnelle
-- Validation mapping GPIO connu
-
-#### Monitoring Obligatoire
-- `monitor_90s_v11.68.ps1` - Monitoring spécialisé v11.68
-- Analyse logs : GPIO, NVS, Parsing, Erreurs
-- Focus sur stabilité système
-
-### 📚 Documentation
-
-#### Nouvelle Documentation
-- `docs/technical/GPIO_ARCHITECTURE.md` - Architecture complète
-- Table de mapping détaillée
-- Flux de données et exemples
-- Guide de migration
-
-### ⚠️ Points d'Attention
-
-#### Migration
-- **Interface web**: Aucun impact (lit BDD directement)
-- **Serveur**: Format simplifié mais compatible
-- **ESP32**: Parsing unifié remplace 6 étapes
-
-#### Monitoring Post-Déploiement
-- **OBLIGATOIRE**: Monitoring 90 secondes après déploiement
-- **Focus**: Stabilité système, GPIO, NVS, Parsing
-- **Analyse**: Erreurs critiques, warnings, performance
-
-### 🔄 Prochaines Étapes
-
-#### Phase 2 (Optionnelle)
-- Intégration GPIONotifier dans tous les actionneurs
-- Tests unitaires GPIO parser et notifier
-- Optimisations performance supplémentaires
-
-#### Phase 3 (Future)
-- Extension mapping pour nouveaux GPIO
-- Interface de configuration dynamique
-- Monitoring avancé des performances
-
-### 📝 Notes de Développement
-
-#### Architecture
-Le nouveau système repose sur 3 piliers :
-1. **Mapping centralisé** - Source unique de vérité
-2. **Parsing unifié** - Logique simplifiée
-3. **Notifications instantanées** - Synchronisation bidirectionnelle
-
-#### Compatibilité
-- **Rétrocompatible** avec interface web existante
-- **Migration transparente** pour l'utilisateur final
-- **Performance améliorée** sans impact fonctionnel
-
----
-
-**Version précédente**: v11.67  
-**Prochaine version**: v11.69 (corrections mineures si nécessaire)
+- `test_gpio_sync.py`

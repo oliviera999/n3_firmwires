@@ -10,7 +10,12 @@
 #include "automatism/automatism_feeding.h"
 #include "automatism/automatism_network.h"
 #include "automatism/automatism_sleep.h"
-#include "automatism/automatism_refill.h"
+#include "automatism/automatism_state.h"
+#include "automatism/automatism_refill_controller.h"
+#include "automatism/automatism_alert_controller.h"
+#include "automatism/automatism_display_controller.h"
+#include "task_monitor.h"
+#include <esp_sleep.h>
 #include <ArduinoJson.h>
 
 class Automatism {
@@ -35,7 +40,7 @@ class Automatism {
   // --- Accesseurs exposés pour le serveur Web local ---
   bool isEmailEnabled() const { return mailNotif; }
   void toggleEmailNotifications();
-  const String& getEmailAddress() const { return mail; }
+  const char* getEmailAddress() const { return _emailAddress; }
   uint16_t getFeedBigDur() const { return _feeding.getBigDuration(); }
   uint16_t getFeedSmallDur() const { return _feeding.getSmallDuration(); }
 
@@ -67,7 +72,11 @@ class Automatism {
   bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);
   void manualFeedSmall();
   void manualFeedBig();
-  String createFeedingMessage(const char* type, uint16_t bigDur, uint16_t smallDur);
+  size_t createFeedingMessage(char* buffer,
+                              size_t bufferSize,
+                              const char* type,
+                              uint16_t bigDur,
+                              uint16_t smallDur);
   // Applique des variables de configuration depuis un document JSON local (NVS)
   void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
   
@@ -79,6 +88,18 @@ class Automatism {
   bool isRefillingInManualMode() const;
   
  private:
+  friend class AutomatismRefillController;
+  friend class AutomatismAlertController;
+  friend class AutomatismDisplayController;
+
+  void initializeNetworkModule();
+  void attachFeedingCallbacks();
+  void restorePersistentForceWakeup();
+  void initializeRuntimeState();
+  void restoreActuatorState();
+  bool restoreRemoteConfigFromCache();
+  void syncForceWakeupWithServer();
+
   SystemSensors& _sensors;
   SystemActuators& _acts;
   WebClient& _web;
@@ -91,6 +112,9 @@ class Automatism {
   AutomatismFeeding _feeding;
   AutomatismNetwork _network;
   AutomatismSleep _sleep;
+  AutomatismRefillController _refillController;
+  AutomatismAlertController _alertController;
+  AutomatismDisplayController _displayController;
 
   // state flags
   bool tankPumpLocked = false;
@@ -192,7 +216,7 @@ class Automatism {
   unsigned long _feedingTotalEnd = 0;  // Fin totale du cycle de nourrissage
 
   // email config
-  String mail = Config::DEFAULT_MAIL_TO;
+  char _emailAddress[EmailConfig::MAX_EMAIL_LENGTH];
   bool   mailNotif = true;
 
   // Anti-spam e-mail inondation (trop plein)
@@ -290,8 +314,29 @@ class Automatism {
   void detectSleepAnomalies();
   bool validateSystemStateBeforeSleep();
 
+  void logSleepTransitionStart(const char* reason,
+                               uint32_t scheduledSeconds,
+                               unsigned long awakeSec,
+                               bool tideAscending,
+                               int diff10s,
+                               uint32_t heapAfterCleanup,
+                               const TaskMonitor::Snapshot& tasksBefore);
+
+  void logSleepTransitionEnd(uint32_t scheduledSeconds,
+                             uint32_t actualSeconds,
+                             esp_sleep_wakeup_cause_t wakeCause,
+                             const TaskMonitor::Snapshot& tasksBefore,
+                             const TaskMonitor::Snapshot& tasksAfter);
+
+  void handleRefillInternal(const AutomatismRuntimeContext& ctx);
+  void handleAlertsInternal(const AutomatismRuntimeContext& ctx);
+  void updateDisplayInternal(const AutomatismRuntimeContext& ctx);
+  uint32_t getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) const;
+
   // Persistance NVS: snapshot des actionneurs autour du sleep
   void saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn);
   bool loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn);
   void clearActuatorSnapshotInNVS();
+
+  void storeEmailAddress(const char* address);
 }; 

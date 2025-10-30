@@ -1,53 +1,62 @@
 #include "timer_manager.h"
 
 // Définition des variables statiques
-std::vector<TimerManager::Timer> TimerManager::timers;
+TimerManager::Timer TimerManager::timers[TimerManager::MAX_TIMERS];
+size_t TimerManager::timerCount = 0;
 uint32_t TimerManager::lastCheck = 0;
 bool TimerManager::initialized = false;
 
 void TimerManager::init() {
     if (initialized) return;
     
-    timers.clear();
-    timers.reserve(10); // Réserver de l'espace pour 10 timers
+    for (size_t i = 0; i < MAX_TIMERS; i++) {
+        timers[i] = Timer();
+    }
+    timerCount = 0;
     lastCheck = millis();
     initialized = true;
     
     Serial.println("[TimerManager] ✅ Initialisé");
 }
 
-int TimerManager::addTimer(const char* name, uint32_t interval, std::function<void()> callback) {
+int TimerManager::addTimer(const char* name, uint32_t interval, TimerCallback callback) {
     if (!initialized) {
         Serial.println("[TimerManager] ❌ Non initialisé - utilisez init() d'abord");
         return -1;
     }
     
     // Vérifier si le nom existe déjà
-    for (size_t i = 0; i < timers.size(); i++) {
-        if (strcmp(timers[i].name, name) == 0) {
+    for (size_t i = 0; i < timerCount; i++) {
+        if (timers[i].inUse && strcmp(timers[i].name, name) == 0) {
             Serial.printf("[TimerManager] ⚠️ Timer '%s' existe déjà\n", name);
             return i;
         }
     }
     
+    if (timerCount >= MAX_TIMERS) {
+        Serial.printf("[TimerManager] ❌ Capacité max atteinte (%zu)\n", MAX_TIMERS);
+        return -1;
+    }
+
     // Ajouter le nouveau timer
-    timers.emplace_back(name, interval, callback);
-    int id = timers.size() - 1;
+    timers[timerCount].configure(name, interval, callback);
+    int id = timerCount;
+    timerCount++;
     
     Serial.printf("[TimerManager] ✅ Timer '%s' ajouté (ID: %d, interval: %lu ms)\n", name, id, interval);
     return id;
 }
 
 void TimerManager::process() {
-    if (!initialized || timers.empty()) return;
+    if (!initialized || timerCount == 0) return;
     
     uint32_t now = millis();
     
     // Traiter tous les timers
-    for (size_t i = 0; i < timers.size(); i++) {
+    for (size_t i = 0; i < timerCount; i++) {
         Timer& timer = timers[i];
         
-        if (!timer.enabled) continue;
+        if (!timer.inUse || !timer.enabled || timer.callback == nullptr) continue;
         
         // Vérifier si le timer doit s'exécuter
         if (now - timer.lastRun >= timer.interval) {
@@ -72,18 +81,23 @@ void TimerManager::process() {
 }
 
 void TimerManager::enableTimer(int timerId, bool enable) {
-    if (timerId < 0 || timerId >= (int)timers.size()) {
+    if (timerId < 0 || timerId >= (int)timerCount) {
         Serial.printf("[TimerManager] ❌ ID timer invalide: %d\n", timerId);
         return;
     }
     
+    if (!timers[timerId].inUse) {
+        Serial.printf("[TimerManager] ❌ Timer ID %d non initialisé\n", timerId);
+        return;
+    }
+
     timers[timerId].enabled = enable;
     Serial.printf("[TimerManager] Timer ID %d %s\n", timerId, enable ? "activé" : "désactivé");
 }
 
 void TimerManager::enableTimer(const char* name, bool enable) {
-    for (size_t i = 0; i < timers.size(); i++) {
-        if (strcmp(timers[i].name, name) == 0) {
+    for (size_t i = 0; i < timerCount; i++) {
+        if (timers[i].inUse && strcmp(timers[i].name, name) == 0) {
             timers[i].enabled = enable;
             Serial.printf("[TimerManager] Timer '%s' %s\n", name, enable ? "activé" : "désactivé");
             return;
@@ -94,21 +108,30 @@ void TimerManager::enableTimer(const char* name, bool enable) {
 }
 
 void TimerManager::updateInterval(int timerId, uint32_t newInterval) {
-    if (timerId < 0 || timerId >= (int)timers.size()) {
+    if (timerId < 0 || timerId >= (int)timerCount) {
         Serial.printf("[TimerManager] ❌ ID timer invalide: %d\n", timerId);
         return;
     }
     
+    if (!timers[timerId].inUse) {
+        Serial.printf("[TimerManager] ❌ Timer ID %d non initialisé\n", timerId);
+        return;
+    }
+
     uint32_t oldInterval = timers[timerId].interval;
     timers[timerId].interval = newInterval;
     Serial.printf("[TimerManager] Timer ID %d: intervalle %lu → %lu ms\n", timerId, oldInterval, newInterval);
 }
 
 TimerManager::Timer* TimerManager::getTimerStats(int timerId) {
-    if (timerId < 0 || timerId >= (int)timers.size()) {
+    if (timerId < 0 || timerId >= (int)timerCount) {
         return nullptr;
     }
     
+    if (!timers[timerId].inUse) {
+        return nullptr;
+    }
+
     return &timers[timerId];
 }
 
@@ -119,11 +142,14 @@ void TimerManager::logStats() {
     }
     
     Serial.println("\n=== STATISTIQUES TIMER MANAGER ===");
-    Serial.printf("Timers actifs: %zu/%zu\n", getActiveTimerCount(), timers.size());
+    Serial.printf("Timers actifs: %zu/%zu\n", getActiveTimerCount(), timerCount);
     Serial.printf("Temps total d'exécution: %lu μs\n", getTotalExecutionTime());
     
-    for (size_t i = 0; i < timers.size(); i++) {
+    for (size_t i = 0; i < timerCount; i++) {
         const Timer& timer = timers[i];
+        if (!timer.inUse) {
+            continue;
+        }
         uint32_t avgTime = timer.callCount > 0 ? timer.totalTime / timer.callCount : 0;
         
         Serial.printf("[%zu] %s: %s, %lu ms, %lu appels, %lu μs moy\n",
@@ -135,8 +161,9 @@ void TimerManager::logStats() {
 
 void TimerManager::suspendAll() {
     int count = 0;
-    for (auto& timer : timers) {
-        if (timer.enabled) {
+    for (size_t i = 0; i < timerCount; i++) {
+        Timer& timer = timers[i];
+        if (timer.inUse && timer.enabled) {
             timer.enabled = false;
             count++;
         }
@@ -146,8 +173,9 @@ void TimerManager::suspendAll() {
 
 void TimerManager::resumeAll() {
     int count = 0;
-    for (auto& timer : timers) {
-        if (!timer.enabled) {
+    for (size_t i = 0; i < timerCount; i++) {
+        Timer& timer = timers[i];
+        if (timer.inUse && !timer.enabled) {
             timer.enabled = true;
             count++;
         }
@@ -157,16 +185,20 @@ void TimerManager::resumeAll() {
 
 size_t TimerManager::getActiveTimerCount() {
     size_t count = 0;
-    for (const auto& timer : timers) {
-        if (timer.enabled) count++;
+    for (size_t i = 0; i < timerCount; i++) {
+        const Timer& timer = timers[i];
+        if (timer.inUse && timer.enabled) count++;
     }
     return count;
 }
 
 uint32_t TimerManager::getTotalExecutionTime() {
     uint32_t total = 0;
-    for (const auto& timer : timers) {
-        total += timer.totalTime;
+    for (size_t i = 0; i < timerCount; i++) {
+        const Timer& timer = timers[i];
+        if (timer.inUse) {
+            total += timer.totalTime;
+        }
     }
     return total;
 }

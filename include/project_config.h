@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-        constexpr const char* VERSION = "11.82"; // v11.82: Optimisations NVS Phase 3 - Rotation automatique des logs et nettoyage
+  constexpr const char* VERSION = "11.94"; // v11.92: Automatism begin refactor & remote cache guards
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -176,6 +176,7 @@ namespace EmailConfig {
     // Note: SENDER_EMAIL et SENDER_PASSWORD sont définis dans secrets.h
     // Ils sont accessibles via constants.h qui fait le lien
     constexpr const char* DEFAULT_RECIPIENT = "oliv.arn.lau@gmail.com";
+    constexpr size_t MAX_EMAIL_LENGTH = 96;
 }
 
 // =============================================================================
@@ -271,6 +272,23 @@ namespace LogConfig {
     #define SENSOR_LOG_PRINTLN(x) do { if (LogConfig::SENSOR_LOGS_ENABLED) Serial.println(x); } while(0)
     #define SENSOR_LOG_PRINTF(fmt, ...) do { if (LogConfig::SENSOR_LOGS_ENABLED) Serial.printf(fmt, ##__VA_ARGS__); } while(0)
 }
+
+// Désactivation complète de Serial en production quand le moniteur est off
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 0)) || (!defined(ENABLE_SERIAL_MONITOR) && defined(PROFILE_PROD))
+namespace LogConfig {
+    struct NullSerialType {
+        template<typename... Args>
+        inline size_t printf(const char*, Args...) const { return 0U; }
+        inline size_t println() const { return 0U; }
+        template<typename T>
+        inline size_t println(const T&) const { return 0U; }
+        template<typename T>
+        inline size_t print(const T&) const { return 0U; }
+    };
+    static const NullSerialType NullSerial{};
+}
+#define Serial LogConfig::NullSerial
+#endif
 
 // =============================================================================
 // CONFIGURATION CAPTEURS ET VALIDATION
@@ -586,10 +604,13 @@ namespace TaskConfig {
     constexpr uint8_t WEB_TASK_PRIORITY = 4;                 // TRÈS HAUTE - Interface web ultra-réactive
     constexpr uint8_t AUTOMATION_TASK_PRIORITY = 2;          // MOYENNE - Logique métier pure
     constexpr uint8_t DISPLAY_TASK_PRIORITY = 1;             // BASSE - Affichage en arrière-plan
-    
+
     // Core d'exécution
-    constexpr uint8_t TASK_CORE_ID = 1;
-    
+    constexpr uint8_t SENSOR_TASK_CORE_ID = 1;               // Acquisition capteurs sur core 1 (loop Arduino)
+    constexpr uint8_t AUTOMATION_TASK_CORE_ID = 1;           // Logique métier alignée avec capteurs
+    constexpr uint8_t WEB_TASK_CORE_ID = 0;                  // Serveur web/WebSocket sur core 0 (stack WiFi)
+    constexpr uint8_t DISPLAY_TASK_CORE_ID = 0;              // Affichage OLED sur core 0
+
     // Configuration Web Server optimisée
     constexpr uint8_t WEB_SERVER_CORE_ID = 0;              // Serveur web sur Core 0 (CPU principal)
     constexpr uint8_t WEB_SERVER_PRIORITY = 4;             // Priorité élevée pour le serveur web

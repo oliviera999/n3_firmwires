@@ -901,11 +901,13 @@ NVSError NVSManager::migrateFromOldSystem() {
             case NVS_TYPE_BLOB:
                 res = nvs_get_blob(handle, key, nullptr, &length);
                 break;
+#ifdef NVS_TYPE_DOUBLE
             case NVS_TYPE_DOUBLE: {
                 double tmp;
                 res = nvs_get_double(handle, key, &tmp);
                 break;
             }
+#endif
             default:
                 res = nvs_get_blob(handle, key, nullptr, &length);
                 break;
@@ -1050,6 +1052,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                     }
                     break;
                 }
+#ifdef NVS_TYPE_DOUBLE
                 case NVS_TYPE_DOUBLE: {
                     double value = 0.0;
                     readErr = nvs_get_double(oldHandle, info.key, &value);
@@ -1058,6 +1061,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                     }
                     break;
                 }
+#endif
                 default:
                     Serial.printf("[NVS] ⚠️ Type non pris en charge pour %s/%s (type=%d)\n",
                                   rule.oldNamespace, info.key, static_cast<int>(info.type));
@@ -1084,9 +1088,9 @@ NVSError NVSManager::migrateFromOldSystem() {
         if (ruleMigrated) {
             esp_err_t commitErr = nvs_commit(newHandle);
             if (commitErr != ESP_OK) {
-                Serial.printf("[NVS] ⚠️ Commit échoué pour %s (err=%d)\n", rule.newNamespace, commitErr);
+                Serial.printf("[NVS] ⚠️ Commit echoue pour %s (err=%d)\n", rule.newNamespace, commitErr);
             } else {
-                Serial.printf("[NVS] ✅ Données migrées de %s vers %s\n",
+                Serial.printf("[NVS] ✅ Donnees migrees de %s vers %s\n",
                               rule.oldNamespace, rule.newNamespace);
             }
         }
@@ -1095,9 +1099,7 @@ NVSError NVSManager::migrateFromOldSystem() {
         nvs_close(oldHandle);
     }
 
-    // Enregistrer le flag de migration pour éviter les répétitions
     if (systemHandle == 0 && systemOpenErr != ESP_OK) {
-        // Retenter une ouverture pour poser le flag si nécessaire
         if (nvs_open(NVS_NAMESPACES::SYSTEM, NVS_READWRITE, &systemHandle) != ESP_OK) {
             Serial.println(F("[NVS] ⚠️ Impossible d'enregistrer le flag de migration"));
         }
@@ -1110,63 +1112,54 @@ NVSError NVSManager::migrateFromOldSystem() {
     }
 
     if (!migratedSomething) {
-        Serial.println(F("[NVS] ℹ️ Aucun ancien namespace détecté ou données déjà migrées"));
+        Serial.println(F("[NVS] ℹ️ Aucun ancien namespace detecte ou donnees deja migrees"));
     } else {
-        Serial.println(F("[NVS] ✅ Migration des anciens namespaces terminée"));
+        Serial.println(F("[NVS] ✅ Migration des anciens namespaces terminee"));
     }
 
     return NVSError::SUCCESS;
 }
 
-// Phase 2: Compression JSON
+// Phase 2: JSON compression helpers
 NVSError NVSManager::saveJsonCompressed(const char* ns, const char* key, const String& json) {
-    Serial.printf("[NVS] 🗜️ Compression JSON pour %s::%s\n", ns, key);
-    
-    // Compresser le JSON
+    Serial.printf("[NVS] Compressing JSON for %s::%s\n", ns, key);
+
     String compressed = compressJson(json);
-    
-    // Sauvegarder la version compressée
     NVSError result = saveString(ns, key, compressed);
-    
+
     if (result == NVSError::SUCCESS) {
-        float compressionRatio = (float)compressed.length() / json.length() * 100.0f;
-        Serial.printf("[NVS] ✅ JSON compressé: %zu → %zu bytes (%.1f%%)\n", 
-                      json.length(), compressed.length(), compressionRatio);
+        float ratio = json.length() == 0 ? 0.0f : (static_cast<float>(compressed.length()) / json.length()) * 100.0f;
+        Serial.printf("[NVS] JSON compressed: %zu -> %zu bytes (%.1f%%)\n",
+                      json.length(), compressed.length(), ratio);
     }
-    
+
     return result;
 }
 
 NVSError NVSManager::loadJsonDecompressed(const char* ns, const char* key, String& json, const String& defaultValue) {
-    Serial.printf("[NVS] 📦 Décompression JSON pour %s::%s\n", ns, key);
-    
-    // Charger la version compressée
+    Serial.printf("[NVS] Decompressing JSON for %s::%s\n", ns, key);
+
     String compressed;
     NVSError result = loadString(ns, key, compressed, defaultValue);
-    
+
     if (result == NVSError::SUCCESS && compressed.length() > 0) {
-        // Décompresser le JSON
         json = decompressJson(compressed);
-        Serial.printf("[NVS] ✅ JSON décompressé: %zu → %zu bytes\n", 
+        Serial.printf("[NVS] JSON decompressed: %zu -> %zu bytes\n",
                       compressed.length(), json.length());
     } else {
         json = defaultValue;
     }
-    
+
     return result;
 }
 
 String NVSManager::compressJson(const String& json) {
-    // Compression simple basée sur la suppression des espaces et caractères redondants
     String compressed = json;
-    
-    // Supprimer les espaces superflus
     compressed.replace(" ", "");
     compressed.replace("\n", "");
     compressed.replace("\r", "");
     compressed.replace("\t", "");
-    
-    // Raccourcir les clés JSON communes
+
     compressed.replace("\"mail\":", "\"m\":");
     compressed.replace("\"mailNotif\":", "\"mn\":");
     compressed.replace("\"bouffeMatin\":", "\"bm\":");
@@ -1177,15 +1170,12 @@ String NVSManager::compressJson(const String& json) {
     compressed.replace("\"enabled\":", "\"en\":");
     compressed.replace("\"temperature\":", "\"temp\":");
     compressed.replace("\"humidity\":", "\"hum\":");
-    
+
     return compressed;
 }
 
 String NVSManager::decompressJson(const String& compressed) {
-    // Décompression simple basée sur la restauration des clés JSON
     String json = compressed;
-    
-    // Restaurer les clés JSON communes
     json.replace("\"m\":", "\"mail\":");
     json.replace("\"mn\":", "\"mailNotif\":");
     json.replace("\"bm\":", "\"bouffeMatin\":");
@@ -1196,23 +1186,20 @@ String NVSManager::decompressJson(const String& compressed) {
     json.replace("\"en\":", "\"enabled\":");
     json.replace("\"temp\":", "\"temperature\":");
     json.replace("\"hum\":", "\"humidity\":");
-    
     return json;
 }
 
-// Phase 2: Cache unifié avec flush différé
 void NVSManager::enableDeferredFlush(bool enable) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
-        Serial.println(F("[NVS] ❌ Mutex enableDeferredFlush"));
+        Serial.println(F("[NVS] ⚠️ Mutex enableDeferredFlush"));
         return;
     }
 
     _deferredFlushEnabled = enable;
-    Serial.printf("[NVS] 🔄 Flush différé %s\n", enable ? "activé" : "désactivé");
-    
+    Serial.printf("[NVS] Deferred flush %s\n", enable ? "enabled" : "disabled");
+
     if (!enable) {
-        // Flush immédiat si désactivé
         forceFlush();
     }
 }
@@ -1220,30 +1207,29 @@ void NVSManager::enableDeferredFlush(bool enable) {
 void NVSManager::setFlushInterval(unsigned long intervalMs) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
-        Serial.println(F("[NVS] ❌ Mutex setFlushInterval"));
+        Serial.println(F("[NVS] ⚠️ Mutex setFlushInterval"));
         return;
     }
 
     _flushIntervalMs = intervalMs;
-    Serial.printf("[NVS] ⏱️ Intervalle flush: %lu ms\n", intervalMs);
+    Serial.printf("[NVS] Flush interval set to %lu ms\n", intervalMs);
 }
 
 void NVSManager::forceFlush() {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
-        Serial.println(F("[NVS] ❌ Mutex forceFlush"));
+        Serial.println(F("[NVS] ⚠️ Mutex forceFlush"));
         return;
     }
 
-    Serial.println(F("[NVS] 🔄 Flush forcé"));
-    
-    // Flush toutes les clés sales
+    Serial.println(F("[NVS] Forcing flush"));
+
     for (const String& dirtyKey : _dirtyKeys) {
-        size_t separatorPos = dirtyKey.indexOf("::");
-        if (separatorPos != -1) {
-            String ns = dirtyKey.substring(0, separatorPos);
-            String key = dirtyKey.substring(separatorPos + 2);
-            
+        size_t sep = dirtyKey.indexOf("::");
+        if (sep != -1) {
+            String ns = dirtyKey.substring(0, sep);
+            String key = dirtyKey.substring(sep + 2);
+
             if (_cache.find(ns) != _cache.end()) {
                 for (auto& entry : _cache[ns]) {
                     if (entry.key == key && entry.dirty) {
@@ -1255,79 +1241,59 @@ void NVSManager::forceFlush() {
             }
         }
     }
-    
+
     _dirtyKeys.clear();
     _lastFlushTime = millis();
-    
-    Serial.println(F("[NVS] ✅ Flush forcé terminé"));
+    Serial.println(F("[NVS] Flush complete"));
 }
 
-// Phase 3: Rotation automatique des logs
 NVSError NVSManager::rotateLogs(const char* ns, size_t maxEntries) {
-    Serial.printf("[NVS] 🔄 Rotation des logs dans namespace %s (max: %zu)\n", ns, maxEntries);
-    
-    // Pour l'instant, implémentation simplifiée
-    // Dans une version complète, on pourrait analyser les clés avec timestamp
-    // et supprimer les plus anciennes
-    
-    NVSError error = openNamespace(ns, false);
-    if (error != NVSError::SUCCESS) {
-        return error;
+    Serial.printf("[NVS] Rotating logs for namespace %s (max %zu)\n", ns, maxEntries);
+
+    NVSError err = openNamespace(ns, false);
+    if (err != NVSError::SUCCESS) {
+        return err;
     }
-    
-    // Nettoyage basique des clés de logs obsolètes
-    const char* logKeys[] = {
-        "diag_old", "alert_old", "cmd_old", "log_old"
-    };
-    
+
+    const char* logKeys[] = {"diag_old", "alert_old", "cmd_old", "log_old"};
     for (const char* key : logKeys) {
         if (_preferences.isKey(key)) {
             _preferences.remove(key);
-            Serial.printf("[NVS] 🗑️ Clé de log supprimée: %s::%s\n", ns, key);
+            Serial.printf("[NVS] Log key removed: %s::%s\n", ns, key);
         }
     }
-    
+
     closeNamespace();
-    Serial.printf("[NVS] ✅ Rotation terminée pour namespace %s\n", ns);
+    Serial.printf("[NVS] Log rotation complete for %s\n", ns);
     return NVSError::SUCCESS;
 }
 
-// Phase 3: Nettoyage des données anciennes
 NVSError NVSManager::cleanupOldData(const char* ns, unsigned long maxAgeMs) {
-    Serial.printf("[NVS] 🧹 Nettoyage données anciennes dans %s (age max: %lu ms)\n", ns, maxAgeMs);
-    
-    NVSError error = openNamespace(ns, false);
-    if (error != NVSError::SUCCESS) {
-        return error;
+    Serial.printf("[NVS] Cleaning old data in %s (max age %lu ms)\n", ns, maxAgeMs);
+
+    NVSError err = openNamespace(ns, false);
+    if (err != NVSError::SUCCESS) {
+        return err;
     }
-    
-    unsigned long currentTime = millis();
-    int cleanedCount = 0;
-    
-    // Clés connues à nettoyer périodiquement
-    const char* cleanupKeys[] = {
-        "temp_old", "drift_old", "sync_old", "state_old"
-    };
-    
+
+    int cleaned = 0;
+    const char* cleanupKeys[] = {"temp_old", "drift_old", "sync_old", "state_old"};
     for (const char* key : cleanupKeys) {
         if (_preferences.isKey(key)) {
-            // Pour l'instant, suppression simple
-            // Dans une version complète, on vérifierait le timestamp
             _preferences.remove(key);
-            cleanedCount++;
-            Serial.printf("[NVS] 🗑️ Données anciennes supprimées: %s::%s\n", ns, key);
+            cleaned++;
+            Serial.printf("[NVS] Removed stale data: %s::%s\n", ns, key);
         }
     }
-    
+
     closeNamespace();
-    Serial.printf("[NVS] ✅ Nettoyage terminé: %d clés supprimées dans %s\n", cleanedCount, ns);
+    Serial.printf("[NVS] Cleanup complete: %d keys removed in %s\n", cleaned, ns);
     return NVSError::SUCCESS;
 }
 
-// Phase 3: Nettoyage des clés obsolètes
 NVSError NVSManager::cleanupObsoleteKeys() {
-    Serial.println(F("[NVS] 🧹 Nettoyage des clés obsolètes"));
-    
+    Serial.println(F("[NVS] Cleaning obsolete keys"));
+
     const char* nss[] = {
         NVS_NAMESPACES::SYSTEM,
         NVS_NAMESPACES::CONFIG,
@@ -1336,32 +1302,30 @@ NVSError NVSManager::cleanupObsoleteKeys() {
         NVS_NAMESPACES::LOGS,
         NVS_NAMESPACES::SENSORS
     };
-    
-    int totalCleaned = 0;
-    
+
+    int total = 0;
+
     for (const char* ns : nss) {
-        NVSError error = openNamespace(ns, false);
-        if (error != NVSError::SUCCESS) {
+        NVSError err = openNamespace(ns, false);
+        if (err != NVSError::SUCCESS) {
             continue;
         }
-        
+        // Placeholder: no specific obsolete keys defined yet
         closeNamespace();
     }
-    
-    Serial.printf("[NVS] ✅ Nettoyage obsolète terminé: %d clés supprimées\n", totalCleaned);
+
+    Serial.printf("[NVS] Obsolete cleanup complete: %d keys removed\n", total);
     return NVSError::SUCCESS;
 }
 
-// Phase 3: Programmation du nettoyage périodique
 void NVSManager::schedulePeriodicCleanup() {
     _lastCleanupTime = millis();
-    Serial.println(F("[NVS] ⏰ Nettoyage périodique programmé"));
+    Serial.println(F("[NVS] Periodic cleanup scheduled"));
 }
 
-// Phase 3: Vérification si nettoyage nécessaire
 bool NVSManager::shouldPerformCleanup() {
-    unsigned long currentTime = millis();
-    return (currentTime - _lastCleanupTime) >= _cleanupIntervalMs;
+    unsigned long now = millis();
+    return (now - _lastCleanupTime) >= _cleanupIntervalMs;
 }
 
 bool NVSManager::isDeferredFlushEnabled() const {
@@ -1387,30 +1351,28 @@ void NVSManager::checkDeferredFlush() {
 void NVSManager::addDirtyKey(const String& ns, const char* key) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
-        Serial.println(F("[NVS] ❌ Mutex addDirtyKey"));
+        Serial.println(F("[NVS] ⚠️ Mutex addDirtyKey"));
         return;
     }
 
     String dirtyKey = ns + "::" + String(key);
-    
     for (const String& existing : _dirtyKeys) {
         if (existing == dirtyKey) {
             return;
         }
     }
-    
+
     _dirtyKeys.push_back(dirtyKey);
 }
 
 void NVSManager::removeDirtyKey(const String& ns, const char* key) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
-        Serial.println(F("[NVS] ❌ Mutex removeDirtyKey"));
+        Serial.println(F("[NVS] ⚠️ Mutex removeDirtyKey"));
         return;
     }
 
     String dirtyKey = ns + "::" + String(key);
-    
     for (auto it = _dirtyKeys.begin(); it != _dirtyKeys.end(); ++it) {
         if (*it == dirtyKey) {
             _dirtyKeys.erase(it);

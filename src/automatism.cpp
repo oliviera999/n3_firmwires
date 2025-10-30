@@ -5,7 +5,7 @@
 #include "automatism/automatism_feeding.h"
 #include "automatism/automatism_network.h"
 #include "automatism/automatism_sleep.h"
-#include "automatism/automatism_refill.h"
+#include "automatism/automatism_state.h"
 #include "automatism/automatism_utils.h"
 #include <Arduino.h>
 #include <cstring>
@@ -18,19 +18,58 @@
 #include <algorithm>
 #include "esp_task_wdt.h"
 #include <Preferences.h>
+#include "event_log.h"
 #include "gpio_parser.h"
 
 // Déclarations externes
 extern Automatism autoCtrl;
 
+using namespace AutomatismUtils;
+
 namespace {
-using AutomatismUtils::formatDistanceAlert;
-using AutomatismUtils::formatTemperatureAlert;
-using AutomatismUtils::hasExpired;
-using AutomatismUtils::isStillPending;
-using AutomatismUtils::parseTruthy;
-using AutomatismUtils::remainingMs;
+constexpr size_t FEED_MESSAGE_BUFFER_SIZE = 256;
+
+const char* wakeupCauseToString(esp_sleep_wakeup_cause_t cause) {
+  switch (cause) {
+    case ESP_SLEEP_WAKEUP_TIMER:       return "timer";
+    case ESP_SLEEP_WAKEUP_EXT0:        return "ext0";
+    case ESP_SLEEP_WAKEUP_EXT1:        return "ext1";
+    case ESP_SLEEP_WAKEUP_TOUCHPAD:    return "touch";
+    case ESP_SLEEP_WAKEUP_ULP:         return "ulp";
+    case ESP_SLEEP_WAKEUP_ALL:         return "all";
+#ifdef ESP_SLEEP_WAKEUP_GPIO
+    case ESP_SLEEP_WAKEUP_GPIO:        return "gpio";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_UART
+    case ESP_SLEEP_WAKEUP_UART:        return "uart";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_BT
+    case ESP_SLEEP_WAKEUP_BT:          return "bt";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_COCPU
+    case ESP_SLEEP_WAKEUP_COCPU:       return "cocpu";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG
+    case ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG: return "cocpu_trap";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_WIFI
+    case ESP_SLEEP_WAKEUP_WIFI:        return "wifi";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_COCPU_INTR
+    case ESP_SLEEP_WAKEUP_COCPU_INTR:  return "cocpu_intr";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_GPIO_SD
+    case ESP_SLEEP_WAKEUP_GPIO_SD:     return "gpio_sd";
+#endif
+#ifdef ESP_SLEEP_WAKEUP_USB
+    case ESP_SLEEP_WAKEUP_USB:         return "usb";
+#endif
+    default:                           break;
+  }
+  return "unknown";
 }
+
+}  // namespace
 
 // ------------------------------------------------------------
 // NVS helpers: snapshot des actionneurs autour du sleep
@@ -50,6 +89,87 @@ bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWa
 void Automatism::clearActuatorSnapshotInNVS() {
   // Délégation au module Persistence
   AutomatismPersistence::clearActuatorSnapshot();
+}
+
+void Automatism::logSleepTransitionStart(const char* reason,
+                                         uint32_t scheduledSeconds,
+                                         unsigned long awakeSec,
+                                         bool tideAscending,
+                                         int diff10s,
+                                         uint32_t heapAfterCleanup,
+                                         const TaskMonitor::Snapshot& tasksBefore) {
+  TaskMonitor::logSnapshot(tasksBefore, "sleep-pre");
+  bool anomalies = TaskMonitor::detectAnomalies(tasksBefore, "sleep-pre");
+  const char* tideStr = tideAscending ? "yes" : "no";
+  const char* anomalyStr = anomalies ? "yes" : "no";
+
+  Serial.printf("[Auto] Sleep start -> reason=\"%s\" target=%us awake=%lus tide=%s diff10=%d heap=%u anomalies=%s\n",
+                reason,
+                scheduledSeconds,
+                awakeSec,
+                tideStr,
+                diff10s,
+                heapAfterCleanup,
+                anomalyStr);
+
+  EventLog::addf("Sleep start target=%us awake=%lu tide=%s diff10=%d heap=%u anomalies=%s | %s",
+                 scheduledSeconds,
+                 awakeSec,
+                 tideStr,
+                 diff10s,
+                 heapAfterCleanup,
+                 anomalyStr,
+                 reason);
+}
+
+void Automatism::logSleepTransitionEnd(uint32_t scheduledSeconds,
+                                       uint32_t actualSeconds,
+                                       esp_sleep_wakeup_cause_t wakeCause,
+                                       const TaskMonitor::Snapshot& tasksBefore,
+                                       const TaskMonitor::Snapshot& tasksAfter) {
+  TaskMonitor::logSnapshot(tasksAfter, "sleep-post");
+  TaskMonitor::logDiff(tasksBefore, tasksAfter, "sleep");
+  bool anomalies = TaskMonitor::detectAnomalies(tasksAfter, "sleep-post");
+
+  int32_t delta = static_cast<int32_t>(actualSeconds) - static_cast<int32_t>(scheduledSeconds);
+  const char* causeStr = wakeupCauseToString(wakeCause);
+  const char* anomalyStr = anomalies ? "yes" : "no";
+
+  Serial.printf("[Auto] Sleep resume <- cause=%s actual=%us delta=%ld anomalies=%s\n",
+                causeStr,
+                actualSeconds,
+                static_cast<long>(delta),
+                anomalyStr);
+
+  EventLog::addf("Sleep resume cause=%s actual=%us delta=%ld anomalies=%s",
+                 causeStr,
+                 actualSeconds,
+                 static_cast<long>(delta),
+                 anomalyStr);
+}
+
+void Automatism::storeEmailAddress(const char* address) {
+  if (!address) {
+    _emailAddress[0] = '\0';
+    return;
+  }
+
+  // Trim leading spaces
+  while (*address == ' ' || *address == '\t' || *address == '\r' || *address == '\n') {
+    ++address;
+  }
+
+  size_t len = strnlen(address, EmailConfig::MAX_EMAIL_LENGTH - 1);
+  const char* end = address + len;
+
+  // Trim trailing spaces
+  while (end > address && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n')) {
+    --end;
+    --len;
+  }
+
+  memcpy(_emailAddress, address, len);
+  _emailAddress[len] = '\0';
 }
 
 void Automatism::startAquaPumpManualLocal() {
@@ -158,6 +278,7 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _mailer(mailer)
     , _config(config)
     , _feeding(acts, config, mailer, power)  // Module Feeding
+<<<<<<< HEAD
     , _network(web, config)                  // Module Network
     , _sleep(power, config)                  // Module Sleep
     , _refillState{}
@@ -167,15 +288,22 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
                         sensors,
                         _refillState,
                         AutomatismRefillController::SharedUiState{_countdownLabel, _countdownEnd})
+=======
+    , _network(web, config)                // Module Network
+    , _sleep(power, config)                // Module Sleep
+    , _refillController(*this)
+    , _alertController(*this)
+    , _displayController(*this)
+>>>>>>> e1d6cf7 (v11.94: push current changes)
 {
   // Initialisation des valeurs par défaut
   mailNotif = false;  // Par défaut, emails désactivés
-  mail = Config::DEFAULT_MAIL_TO;
+  storeEmailAddress(Config::DEFAULT_MAIL_TO);
   
   // Diagnostic initial email
   Serial.println(F("[Auto] ===== DIAGNOSTIC EMAIL INITIAL ====="));
   Serial.printf("[Auto] mailNotif par défaut: %s\n", mailNotif ? "TRUE" : "FALSE");
-  Serial.printf("[Auto] mail par défaut: '%s'\n", mail.c_str());
+  Serial.printf("[Auto] mail par défaut: '%s'\n", _emailAddress);
   Serial.printf("[Auto] DEFAULT_MAIL_TO: '%s'\n", Config::DEFAULT_MAIL_TO);
   Serial.println(F("[Auto] ======================================"));
 }
@@ -204,27 +332,29 @@ AutomatismRefillController::RuntimeState makeRefillRuntimeState(Automatism& auto
 }
 
 void Automatism::begin() {
-  // ========================================
-  // INITIALISATION MODULE NETWORK (v11.32)
-  // ========================================
-  // CRITIQUE: Doit être fait après LittleFS.begin() pour DataQueue
+  initializeNetworkModule();
+  attachFeedingCallbacks();
+  restorePersistentForceWakeup();
+  initializeRuntimeState();
+  restoreActuatorState();
+  if (!restoreRemoteConfigFromCache()) {
+    return;
+  }
+  syncForceWakeupWithServer();
+}
+
+void Automatism::initializeNetworkModule() {
   Serial.println(F("[Auto] Initialisation module Network..."));
   if (!_network.begin()) {
     Serial.println(F("[Auto] ⚠️ Échec initialisation Network (DataQueue)"));
   }
-  
-  // Restauration de forceWakeUp depuis la configuration persistante
-  forceWakeUp = _config.getForceWakeUp();
-  Serial.printf("[Auto] forceWakeUp restauré depuis config: %s\n", forceWakeUp ? "true" : "false");
-  
-  // WebSocket state removed for v11.68
-  
-  // v11.66: Configuration callback fin de nourrissage pour reset serveur
+}
+
+void Automatism::attachFeedingCallbacks() {
   _feeding.setCompletionCallback([this](const char* feedingType) {
     SensorReadings cur = _sensors.read();
     char resetParams[64];
     snprintf(resetParams, sizeof(resetParams), "%s=0", feedingType);
-    // Ajouter GPIO fallback si nécessaire
     if (strcmp(feedingType, "bouffePetits") == 0) {
       strncat(resetParams, "&108=0", sizeof(resetParams) - strlen(resetParams) - 1);
     } else if (strcmp(feedingType, "bouffeGros") == 0) {
@@ -232,32 +362,27 @@ void Automatism::begin() {
     }
     sendFullUpdate(cur, resetParams);
     Serial.printf("[Auto] Fin nourrissage notifiée au serveur - %s=0\n", feedingType);
-    // Fin de cycle: réinitialiser le mode MANUEL pour l'affichage
     _manualFeedingActive = false;
   });
-  
-  // Protection temporaire contre l'écrasement par le serveur distant
-  // pendant les premières secondes après le démarrage
-  _wakeupProtectionEnd = millis() + TimingConfig::WAKEUP_PROTECTION_DURATION_MS; // 5 secondes de protection (optimisé)
-  
+}
+
+void Automatism::restorePersistentForceWakeup() {
+  forceWakeUp = _config.getForceWakeUp();
+  Serial.printf("[Auto] forceWakeUp restauré depuis config: %s\n", forceWakeUp ? "true" : "false");
+}
+
+void Automatism::initializeRuntimeState() {
+  _wakeupProtectionEnd = millis() + TimingConfig::WAKEUP_PROTECTION_DURATION_MS;
+
   Serial.println(F("[Auto] Automatismes initialisés"));
-  
-  // === INITIALISATION SÉCURISÉE DU RESET MODE ===
-  // S'assurer que resetMode est défini à 0 au boot pour éviter les resets non désirés
   Serial.println(F("[Auto] 🔒 Initialisation sécurisée resetMode=0 au boot"));
-  
-  // Log d'initialisation de la marée
   Serial.printf("[Auto] Initialisation marée: _lastDiffMaree=%d\n", _lastDiffMaree);
-  
-  // Chargement des flags de bouffe depuis la configuration persistante
+
   lastFeedDay = _config.getLastJourBouf();
-  
   LOG_TIME(LOG_INFO, "[Auto] Dernier jour de bouffe: %d", lastFeedDay);
 
-  // Point de départ pour le chronomètre de sommeil automatique
   _lastWakeMs = millis();
 
-  // Charger anti-spam flood depuis NVS
   {
     Preferences prefs;
     prefs.begin("alerts", true);
@@ -266,229 +391,283 @@ void Automatism::begin() {
     Serial.printf("[Auto] lastFloodEmailEpoch restauré: %lu\n", (unsigned long)lastFloodEmailEpoch);
   }
 
-  // Initialisation des timestamps d'activité au boot
   updateActivityTimestamp();
   _lastWebActivityMs = 0;
   _forceWakeFromWeb = false;
 
-  // Initialisation des états précédents pour le suivi des changements
   _prevPumpTankState = _acts.isTankPumpRunning();
   _prevPumpAquaState = _acts.isAquaPumpRunning();
-  _prevBouffeMatin   = _config.getBouffeMatinOk();
-  _prevBouffeMidi    = _config.getBouffeMidiOk();
-  _prevBouffeSoir    = _config.getBouffeSoirOk();
+  _prevBouffeMatin = _config.getBouffeMatinOk();
+  _prevBouffeMidi = _config.getBouffeMidiOk();
+  _prevBouffeSoir = _config.getBouffeSoirOk();
+}
 
-  // Restauration éventuelle d'un snapshot d'actionneurs en attente (après reboot)
+void Automatism::restoreActuatorState() {
   bool snapshotRestored = false;
   {
-    bool snapAqua=false, snapHeater=false, snapLight=false;
+    bool snapAqua = false;
+    bool snapHeater = false;
+    bool snapLight = false;
     if (loadActuatorSnapshotFromNVS(snapAqua, snapHeater, snapLight)) {
       Serial.printf("[Auto] Snapshot actionneurs détecté au boot: aqua=%s heater=%s light=%s\n",
-                    snapAqua?"ON":"OFF", snapHeater?"ON":"OFF", snapLight?"ON":"OFF");
-      // Restauration sécurisée: la pompe réservoir reste OFF par design
-      if (snapAqua)   _acts.startAquaPump();
-      if (snapHeater) _acts.startHeater();
-      if (snapLight)  _acts.startLight();
+                    snapAqua ? "ON" : "OFF",
+                    snapHeater ? "ON" : "OFF",
+                    snapLight ? "ON" : "OFF");
+      if (snapAqua) {
+        _acts.startAquaPump();
+      }
+      if (snapHeater) {
+        _acts.startHeater();
+      }
+      if (snapLight) {
+        _acts.startLight();
+      }
       _prevPumpAquaState = snapAqua;
-      // Nettoyage du snapshot une fois restauré
       clearActuatorSnapshotInNVS();
       snapshotRestored = true;
       Serial.println(F("[Auto] Snapshot actionneurs restauré et nettoyé"));
     }
   }
 
-  // Chargement des états GPIO actionneurs depuis NVS (chauffage, lumière)
-  // Seulement si aucun snapshot n'a été restauré (pour éviter les conflits)
   if (!snapshotRestored) {
-    // Aucun snapshot trouvé, charger les états persistants depuis NVS
     GPIOParser::loadGPIOStatesFromNVS(*this);
   } else {
     Serial.println(F("[Auto] Snapshot détecté, états GPIO persistants ignorés"));
   }
+}
 
-  // ------------------ Chargement variables distantes depuis NVS ------------------
-  // Restauration des variables distantes depuis la flash (si disponible)
-  {
-    String cachedJson;
-    if (_config.loadRemoteVars(cachedJson) && cachedJson.length()>0) {
-      StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-      DeserializationError err = deserializeJson(doc, cachedJson);
-      if (!err) {
-        // Helper pour assigner si présent (copié de handleRemoteState)
-        auto assignIfPresent = [&doc](const char* key, auto& var){
-          if(!doc.containsKey(key)) return;
-          using T = std::decay_t<decltype(var)>;
-          T v = doc[key].as<T>();
-          if constexpr (std::is_arithmetic_v<T>) {
-            if (v == 0) return; // ignore 0 = non défini
-          }
-          var = v;
-        };
-        assignIfPresent("aqThreshold",      aqThresholdCm);
-        assignIfPresent("tankThreshold",    tankThresholdCm);
-        assignIfPresent("tempsGros", tempsGros);
-        assignIfPresent("tempsPetits", tempsPetits);
-        assignIfPresent("limFlood",  limFlood);
-        if (doc.containsKey("tempsRemplissageSec")) refillDurationMs = doc["tempsRemplissageSec"].as<int>()*1000UL;
-        if (doc.containsKey("chauffageThreshold")) {
-          float newThreshold = doc["chauffageThreshold"].as<float>();
-          if (newThreshold > 0.0f) { // Protection contre valeurs invalides
-            heaterThresholdC = newThreshold;
-            Serial.printf("[Auto] 🔥 Seuil chauffage restauré depuis NVS: %.1f°C\n", heaterThresholdC);
-          }
-        }
-        if (doc.containsKey("mail")) mail      = doc["mail"].as<const char*>();
-        if (doc.containsKey("mailNotif")) {
-          mailNotif = parseTruthy(doc["mailNotif"]);
-          Serial.printf("[Auto] 📧 mailNotif chargé: '%s' -> mailNotif=%s\n", 
-                       doc["mailNotif"].as<const char*>(), mailNotif ? "TRUE" : "FALSE");
-        }
+bool Automatism::restoreRemoteConfigFromCache() {
+  String cachedJson;
+  if (!_config.loadRemoteVars(cachedJson) || cachedJson.length() == 0) {
+    return true;
+  }
 
-        // Nouvelles variables à restaurer
-        assignIfPresent("bouffeMatin", bouffeMatin);
-        assignIfPresent("bouffeMidi",  bouffeMidi);
-        assignIfPresent("bouffeSoir",  bouffeSoir);
-        
-        // v11.41: Durées nourrissage (format normalisé)
-        assignIfPresent("tempsGros", tempsGros);
-        assignIfPresent("tempsPetits", tempsPetits);
+  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+  DeserializationError err = deserializeJson(doc, cachedJson);
+  if (err) {
+    return true;
+  }
 
-        // Parcours des clés numériques (>=100) pour restaurer les variables de configuration
-        for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
-          const char* k = kv.key().c_str();
-          bool allDigits = true;
-          for (const char* p = k; *p; ++p) { if (!isdigit(*p)) { allDigits = false; break; } }
-          if (!allDigits) continue;
-          int id = atoi(k);
-          if (id >= 100) {
-            switch(id){
-              case 100: mail = String(kv.value().as<const char*>()); break;
-              case 101: mailNotif = parseTruthy(kv.value()); break;
-              case 102: aqThresholdCm = kv.value().as<int>(); break;
-              case 103: tankThresholdCm = kv.value().as<int>(); break;
-              case 104: {
-                float newThreshold = kv.value().as<float>();
-                if (newThreshold > 0.0f) { // Protection contre valeurs invalides
-                  heaterThresholdC = newThreshold;
-                  Serial.printf("[Auto] 🔥 Seuil chauffage restauré (GPIO 104): %.1f°C\n", heaterThresholdC);
-                }
-              } break;
-              case 105: { int v = kv.value().as<int>(); if (v) bouffeMatin = v; } break;
-              case 106: { int v = kv.value().as<int>(); if (v) bouffeMidi = v; } break;
-              case 107: { int v = kv.value().as<int>(); if (v) bouffeSoir = v; } break;
-              case 111: {
-                int v = kv.value().as<int>();
-                if (v > 0) tempsGros = v; // ignore 0 pour conserver la durée existante
-              } break;
-              case 112: {
-                int v = kv.value().as<int>();
-                if (v > 0) tempsPetits = v; // idem
-              } break;
-              case 113: refillDurationMs = kv.value().as<int>() * 1000UL; break;
-              case 114: limFlood = kv.value().as<int>(); break;
-              case 115: {
-                // CRITIQUE: On n'accepte que les valeurs explicitement "true" pour éviter l'écrasement
-                auto v = kv.value();
-                if (v.is<bool>() && v.as<bool>())      forceWakeUp = true;
-                else if (v.is<int>() && v.as<int>() == 1)  forceWakeUp = true;
-                else if (v.is<const char*>()) {
-                  const char* p = v.as<const char*>();
-                  if (!p) continue;
-                  char buffer[32];
-                  strncpy(buffer, p, sizeof(buffer) - 1);
-                  buffer[sizeof(buffer) - 1] = '\0';
-                  
-                  // Convertir en minuscules et supprimer les espaces
-                  for (char* c = buffer; *c; c++) {
-                    if (*c >= 'A' && *c <= 'Z') *c += 32; // toLowerCase
-                  }
-                  
-                  // Trim leading spaces
-                  char* start = buffer;
-                  while (*start == ' ' || *start == '\t') start++;
-                  
-                  // Trim trailing spaces
-                  char* end = start + strlen(start) - 1;
-                  while (end > start && (*end == ' ' || *end == '\t')) {
-                    *end = '\0';
-                    end--;
-                  }
-                  forceWakeUp = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || 
-                                strcmp(start, "on") == 0 || strcmp(start, "checked") == 0);
-                }
-                // Sauvegarde immédiate pour persistance
-                _config.setForceWakeUp(forceWakeUp);
-              } break;
-              case 116: freqWakeSec = kv.value().as<int>(); break;
-              default: break;
-            }
-          }
-        }
+  auto assignIfPresent = [&doc](const char* key, auto& var) {
+    if (!doc.containsKey(key)) return;
+    using T = std::decay_t<decltype(var)>;
+    T v = doc[key].as<T>();
+    if constexpr (std::is_arithmetic_v<T>) {
+      if (v == 0) return;
+    }
+    var = v;
+  };
 
-        // Supporte également les clés textuelles "WakeUp" et "FreqWakeUp" pour
-        // garantir la persistance de l'état de veille forcée même après un reboot.
-        if (doc.containsKey("WakeUp")) {
-          auto v = doc["WakeUp"];
-          // CRITIQUE: On n'accepte que les valeurs explicitement "true" pour éviter l'écrasement
-          if (v.is<bool>() && v.as<bool>())      forceWakeUp = true;
-          else if (v.is<int>() && v.as<int>() == 1)  forceWakeUp = true;
-          else if (v.is<const char*>()) {
-            const char* p = v.as<const char*>();
-            if (!p) return;
-            char buffer[32];
-            strncpy(buffer, p, sizeof(buffer) - 1);
-            buffer[sizeof(buffer) - 1] = '\0';
-            
-            // Convertir en minuscules et supprimer les espaces
-            for (char* c = buffer; *c; c++) {
-              if (*c >= 'A' && *c <= 'Z') *c += 32; // toLowerCase
-            }
-            
-            // Trim leading spaces
-            char* start = buffer;
-            while (*start == ' ' || *start == '\t') start++;
-            
-            // Trim trailing spaces
-            char* end = start + strlen(start) - 1;
-            while (end > start && (*end == ' ' || *end == '\t')) {
-              *end = '\0';
-              end--;
-            }
-            forceWakeUp = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || 
-                          strcmp(start, "on") == 0 || strcmp(start, "checked") == 0);
-          }
-          // Sauvegarde immédiate pour persistance
-          _config.setForceWakeUp(forceWakeUp);
-        }
-        if (doc.containsKey("FreqWakeUp")) {
-          int fv = doc["FreqWakeUp"].as<int>();
-          if (fv > 0) freqWakeSec = fv;
-        }
-        
-        // v11.40: Propager les durées et horaires de nourrissage au module Feeding
-        _feeding.setDurations(tempsGros, tempsPetits);
-        _feeding.setSchedule(bouffeMatin, bouffeMidi, bouffeSoir);
-        Serial.printf("[Auto] Config Feeding: Durées %us/%us, Horaires %uh/%uh/%uh\n",
-                     tempsGros, tempsPetits, bouffeMatin, bouffeMidi, bouffeSoir);
+  assignIfPresent("aqThreshold", aqThresholdCm);
+  assignIfPresent("tankThreshold", tankThresholdCm);
+  assignIfPresent("tempsGros", tempsGros);
+  assignIfPresent("tempsPetits", tempsPetits);
+  assignIfPresent("limFlood", limFlood);
 
-        Serial.println(F("[Auto] Variables distantes restaurées depuis NVS"));
-        Serial.printf("[Auto] forceWakeUp restauré: %s\n", forceWakeUp ? "true" : "false");
-      }
+  if (doc.containsKey("tempsRemplissageSec")) {
+    refillDurationMs = doc["tempsRemplissageSec"].as<int>() * 1000UL;
+  }
+
+  if (doc.containsKey("chauffageThreshold")) {
+    float newThreshold = doc["chauffageThreshold"].as<float>();
+    if (newThreshold > 0.0f) {
+      heaterThresholdC = newThreshold;
+      Serial.printf("[Auto] 🔥 Seuil chauffage restauré depuis NVS: %.1f°C\n", heaterThresholdC);
     }
   }
-  
-  // Synchronisation initiale de forceWakeUp avec le serveur distant
-  // pour s'assurer que la valeur restaurée depuis la NVS est bien reflétée côté serveur
-  // ATTENTION: Cette synchronisation est différée pour éviter les conflits de timing
-  // avec les premières requêtes du serveur distant
-  if (WiFi.status() == WL_CONNECTED) {
-    // Délai pour laisser le temps au serveur de traiter les changements
-    vTaskDelay(pdMS_TO_TICKS(3000)); // Augmenté à 3 secondes pour plus de sécurité
-    
-    SensorReadings initialReadings = _sensors.read();
-    sendFullUpdate(initialReadings, nullptr); // Envoie forceWakeUp via le champ WakeUp
-    Serial.println(F("[Auto] Synchronisation initiale de forceWakeUp envoyée au serveur (après délai)"));
+
+  if (doc.containsKey("mail")) {
+    const char* emailPtr = doc["mail"].as<const char*>();
+    if (emailPtr && emailPtr[0]) {
+      storeEmailAddress(emailPtr);
+    }
   }
+
+  if (doc.containsKey("mailNotif")) {
+    mailNotif = parseTruthy(doc["mailNotif"]);
+    Serial.printf("[Auto] 📧 mailNotif chargé: '%s' -> mailNotif=%s\n",
+                 doc["mailNotif"].as<const char*>(),
+                 mailNotif ? "TRUE" : "FALSE");
+  }
+
+  assignIfPresent("bouffeMatin", bouffeMatin);
+  assignIfPresent("bouffeMidi", bouffeMidi);
+  assignIfPresent("bouffeSoir", bouffeSoir);
+
+  assignIfPresent("tempsGros", tempsGros);
+  assignIfPresent("tempsPetits", tempsPetits);
+
+  for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
+    const char* k = kv.key().c_str();
+    bool allDigits = true;
+    for (const char* p = k; *p; ++p) {
+      if (!isdigit(*p)) {
+        allDigits = false;
+        break;
+      }
+    }
+    if (!allDigits) {
+      continue;
+    }
+    int id = atoi(k);
+    if (id < 100) {
+      continue;
+    }
+    switch (id) {
+      case 100: {
+        const char* emailPtr = kv.value().as<const char*>();
+        if (emailPtr && emailPtr[0]) {
+          storeEmailAddress(emailPtr);
+        }
+        break;
+      }
+      case 101:
+        mailNotif = parseTruthy(kv.value());
+        break;
+      case 102:
+        aqThresholdCm = kv.value().as<int>();
+        break;
+      case 103:
+        tankThresholdCm = kv.value().as<int>();
+        break;
+      case 104: {
+        float newThreshold = kv.value().as<float>();
+        if (newThreshold > 0.0f) {
+          heaterThresholdC = newThreshold;
+          Serial.printf("[Auto] 🔥 Seuil chauffage restauré (GPIO 104): %.1f°C\n", heaterThresholdC);
+        }
+        break;
+      }
+      case 105: {
+        int v = kv.value().as<int>();
+        if (v) bouffeMatin = v;
+        break;
+      }
+      case 106: {
+        int v = kv.value().as<int>();
+        if (v) bouffeMidi = v;
+        break;
+      }
+      case 107: {
+        int v = kv.value().as<int>();
+        if (v) bouffeSoir = v;
+        break;
+      }
+      case 111: {
+        int v = kv.value().as<int>();
+        if (v > 0) tempsGros = v;
+        break;
+      }
+      case 112: {
+        int v = kv.value().as<int>();
+        if (v > 0) tempsPetits = v;
+        break;
+      }
+      case 113:
+        refillDurationMs = kv.value().as<int>() * 1000UL;
+        break;
+      case 114:
+        limFlood = kv.value().as<int>();
+        break;
+      case 115: {
+        auto v = kv.value();
+        if (v.is<bool>() && v.as<bool>()) {
+          forceWakeUp = true;
+        } else if (v.is<int>() && v.as<int>() == 1) {
+          forceWakeUp = true;
+        } else if (v.is<const char*>()) {
+          const char* p = v.as<const char*>();
+          if (!p) {
+            continue;
+          }
+          char buffer[32];
+          strncpy(buffer, p, sizeof(buffer) - 1);
+          buffer[sizeof(buffer) - 1] = '\0';
+          for (char* c = buffer; *c; ++c) {
+            if (*c >= 'A' && *c <= 'Z') {
+              *c += 32;
+            }
+          }
+          char* start = buffer;
+          while (*start == ' ' || *start == '\t') start++;
+          char* end = start + strlen(start) - 1;
+          while (end > start && (*end == ' ' || *end == '\t')) {
+            *end = '\0';
+            end--;
+          }
+          forceWakeUp = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+                         strcmp(start, "on") == 0 || strcmp(start, "checked") == 0);
+        }
+        _config.setForceWakeUp(forceWakeUp);
+        break;
+      }
+      case 116:
+        freqWakeSec = kv.value().as<int>();
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (doc.containsKey("WakeUp")) {
+    auto v = doc["WakeUp"];
+    if (v.is<bool>() && v.as<bool>()) {
+      forceWakeUp = true;
+    } else if (v.is<int>() && v.as<int>() == 1) {
+      forceWakeUp = true;
+    } else if (v.is<const char*>()) {
+      const char* p = v.as<const char*>();
+      if (!p) {
+        return false;
+      }
+      char buffer[32];
+      strncpy(buffer, p, sizeof(buffer) - 1);
+      buffer[sizeof(buffer) - 1] = '\0';
+      for (char* c = buffer; *c; ++c) {
+        if (*c >= 'A' && *c <= 'Z') {
+          *c += 32;
+        }
+      }
+      char* start = buffer;
+      while (*start == ' ' || *start == '\t') start++;
+      char* end = start + strlen(start) - 1;
+      while (end > start && (*end == ' ' || *end == '\t')) {
+        *end = '\0';
+        end--;
+      }
+      forceWakeUp = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+                     strcmp(start, "on") == 0 || strcmp(start, "checked") == 0);
+    }
+    _config.setForceWakeUp(forceWakeUp);
+  }
+
+  if (doc.containsKey("FreqWakeUp")) {
+    int fv = doc["FreqWakeUp"].as<int>();
+    if (fv > 0) {
+      freqWakeSec = fv;
+    }
+  }
+
+  _feeding.setDurations(tempsGros, tempsPetits);
+  _feeding.setSchedule(bouffeMatin, bouffeMidi, bouffeSoir);
+  Serial.printf("[Auto] Config Feeding: Durées %us/%us, Horaires %uh/%uh/%uh\n",
+               tempsGros, tempsPetits, bouffeMatin, bouffeMidi, bouffeSoir);
+
+  Serial.println(F("[Auto] Variables distantes restaurées depuis NVS"));
+  Serial.printf("[Auto] forceWakeUp restauré: %s\n", forceWakeUp ? "true" : "false");
+  return true;
+}
+
+void Automatism::syncForceWakeupWithServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(3000));
+
+  SensorReadings initialReadings = _sensors.read();
+  sendFullUpdate(initialReadings, nullptr);
+  Serial.println(F("[Auto] Synchronisation initiale de forceWakeUp envoyée au serveur (après délai)"));
 }
 
 void Automatism::update() {
@@ -497,162 +676,12 @@ void Automatism::update() {
 }
 
 void Automatism::updateDisplay() {
-  // Mise à jour de l'affichage OLED uniquement (appelée par la tâche dédiée)
-  if (!_disp.isPresent()) return;
-  // Si des messages diagnostics sont affichés, on ne dessine pas le fond pour éviter toute superposition
-  if (_disp.isLocked()) return;
-  
-  // Mécanisme de sécurité : forcer la fin du splash après 5 secondes maximum
-  static unsigned long splashStartTime = 0;
-  if (splashStartTime == 0) {
-    splashStartTime = millis();
-  } else if (millis() - splashStartTime > 5000) {
-    // Si le splash dure plus de 5 secondes, le forcer à se terminer
-    _disp.forceEndSplash();
-    splashStartTime = 0; // Reset pour éviter les appels répétés
-  }
-  
-  const uint32_t currentMillis = millis();
-  
-  // Gestion du changement d'écran toutes les 4 secondes (optimisé pour dynamisme)
-  if (_lastScreenSwitch == 0) {
-    // Initialisation du chronomètre au tout premier affichage
-    _lastScreenSwitch = currentMillis;
-  } else if (currentMillis - _lastScreenSwitch >= screenSwitchInterval) {
-    _oledToggle = !_oledToggle;           // Bascule d'écran
-    _lastScreenSwitch += screenSwitchInterval; // décale pour le prochain switch
-    // Force un rafraîchissement immédiat lors du changement d'écran
-    _disp.resetMainCache();
-    _disp.resetStatusCache();
-  }
-  
-  // Affichage avec cadence dynamique (250ms en décompte, 1000ms sinon)
-  const uint32_t displayInterval = getRecommendedDisplayIntervalMs();
-  if (currentMillis - _lastOled >= displayInterval) {
-    _lastOled = currentMillis;
-    
-    // Log de debug pour diagnostiquer (réduit à toutes les 10 secondes)
-    static unsigned long lastDebugLog = 0;
-    if (currentMillis - lastDebugLog >= 10000) { // Log toutes les 10 secondes
-      Serial.printf("[Display] updateDisplay appelée - OLED présent: %s\n", _disp.isPresent() ? "OUI" : "NON");
-      lastDebugLog = currentMillis;
-    }
-    
-    // Utilise les dernières mesures fournies par sensorTask pour éviter
-    // les lectures capteurs répétées à chaque frame d'affichage
-    SensorReadings readings = _lastReadings;
-    
-    // Vérification des valeurs pour détecter les erreurs
-    if (readings.tempWater < -50 || readings.tempWater > 100 ||
-        readings.tempAir < -50 || readings.tempAir > 100 ||
-        readings.humidity < 0 || readings.humidity > 100) {
-      Serial.println(F("[Display] Erreur lecture capteurs, utilisation valeurs par défaut"));
-      // Valeurs par défaut en cas d'erreur (NaN pour les températures car 0°C est impossible)
-      readings.tempWater = NAN;
-      readings.tempAir = NAN;
-      readings.humidity = NAN;
-      readings.wlAqua = 0;
-      readings.wlTank = 0;
-      readings.wlPota = 0;
-      readings.luminosite = 0;
-    }
-    
-    // Déterminer si on est en mode décompte (nécessite une mise à jour fluide)
-    bool isCountdownMode = isStillPending(_countdownEnd, currentMillis);
-    
-    // Protection contre les conflits d'affichage : si on est en mode nourrissage, on force le mode décompte
-    if (_currentFeedingPhase != FeedingPhase::NONE) {
-      isCountdownMode = true;
-    }
-    
-    // Mode immédiat réduit à 25% du temps au lieu de 50%
-    bool forceImmediateMode = isCountdownMode || 
-                             (_currentFeedingPhase != FeedingPhase::NONE) ||
-                             (currentMillis % 1000 < 250); // Mode immédiat 25% du temps
-    
-    _disp.setUpdateMode(forceImmediateMode);
-    
-    if (isCountdownMode) {
-      // Affichage d'un compte à rebours lors des phases nourrissage / remplissage
-      if (_currentFeedingPhase != FeedingPhase::NONE) {
-        // Gestion des phases de nourrissage
-        if (hasExpired(_feedingPhaseEnd, currentMillis) && _currentFeedingPhase == FeedingPhase::FEEDING_FORWARD) {
-          // Transition vers la phase arrière
-          _currentFeedingPhase = FeedingPhase::FEEDING_BACKWARD;
-          _feedingPhaseEnd = _feedingTotalEnd; // La phase arrière dure jusqu'à la fin totale
-        }
-        
-        // Affichage selon la phase
-        if (_currentFeedingPhase == FeedingPhase::FEEDING_FORWARD) {
-        uint32_t secLeft32 = remainingMs(_feedingPhaseEnd, currentMillis) / 1000UL;
-          uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
-          _disp.showFeedingCountdown("Nourrissage", "avant", secLeft, (_manualFeedingActive || isFeedingInManualMode()));
-        } else if (_currentFeedingPhase == FeedingPhase::FEEDING_BACKWARD) {
-        uint32_t secLeft32 = remainingMs(_feedingTotalEnd, currentMillis) / 1000UL;
-          uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
-          _disp.showFeedingCountdown("Nourrissage", "arriere", secLeft, (_manualFeedingActive || isFeedingInManualMode()));
-        }
-        
-        // Réinitialisation quand le cycle est terminé
-        if (hasExpired(_feedingTotalEnd, currentMillis)) {
-          _currentFeedingPhase = FeedingPhase::NONE;
-          _manualFeedingActive = false; // s'assurer de sortir du mode manuel
-          // Notifier immédiatement le serveur distant que les flags nourrissage reviennent à 0
-          if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-            // Envoi sélectif: on remet les deux à 0 pour éviter tout état bloqué
-            SensorReadings cur = _sensors.read();
-            sendFullUpdate(cur, "bouffePetits=0&bouffeGros=0&108=0&109=0");
-            Serial.println(F("[Auto] ✅ Fin nourrissage notifiée au serveur - bouffePetits=0, bouffeGros=0"));
-          }
-        }
-      } else {
-        // Affichage standard pour les autres types de décompte (remplissage, etc.)
-        uint32_t secLeft32 = remainingMs(_countdownEnd, currentMillis) / 1000UL;
-        uint16_t secLeft = (secLeft32 > 65535u) ? 65535u : (uint16_t)secLeft32;
-        _disp.showCountdown(_countdownLabel.c_str(), secLeft, isRefillingInManualMode());
-      }
-    } else {
-      // Mode optimisé pour les affichages normaux
-      _disp.beginUpdate();
-      
-      if (_oledToggle) {
-        // Affichage principal (avec heure + secondes)
-        _disp.showMain(readings.tempWater, readings.tempAir, readings.humidity, readings.wlAqua,
-                       readings.wlTank, readings.wlPota, readings.luminosite, _power.getCurrentTimeString());
-      } else {
-        // Affichage des variables serveur / configuration distante
-        _disp.showServerVars(_acts.isAquaPumpRunning(), _acts.isTankPumpRunning(), _acts.isHeaterOn(), _acts.isLightOn(),
-                             bouffeMatin, bouffeMidi, bouffeSoir,
-                             tempsPetits, tempsGros,
-                             aqThresholdCm, tankThresholdCm, heaterThresholdC,
-                             refillDurationMs / 1000, limFlood,
-                             forceWakeUp, static_cast<uint16_t>(freqWakeSec));
-      }
-
-      // Barre d'état en bas de l'écran (icônes réseau, flèches transfert…)
-      int diffNow = _sensors.diffMaree(readings.wlAqua);
-      int8_t tideDir = 0;
-      if (diffNow > tideTriggerCm) tideDir = 1;       // montante si + > seuil
-      else if (diffNow < -tideTriggerCm) tideDir = -1; // descendante si - < -seuil
-      _lastDiffMaree = diffNow;
-
-      bool blinkNow = (mailBlinkUntil && isStillPending(mailBlinkUntil, currentMillis) && ((currentMillis / 200) % 2));
-      _disp.drawStatus(sendState, recvState, WiFi.isConnected() ? WiFi.RSSI() : -127,
-                       blinkNow, tideDir, diffNow);
-      
-      // Fin de la mise à jour d'affichage (flush automatique)
-      _disp.endUpdate();
-    }
-    
-    if (hasExpired(mailBlinkUntil, currentMillis)) mailBlinkUntil = 0;
-  }
+  AutomatismRuntimeContext ctx{*this, _lastReadings, millis()};
+  _displayController.updateDisplay(ctx);
 }
 
 uint32_t Automatism::getRecommendedDisplayIntervalMs() {
-  uint32_t now = millis();
-  bool isCountdownMode = (isStillPending(_countdownEnd, now)
-                          || (_currentFeedingPhase != FeedingPhase::NONE));
-  return isCountdownMode ? 250u : 1000u;
+  return _displayController.getRecommendedDisplayIntervalMs(millis());
 }
 
 void Automatism::update(const SensorReadings& readings) {
@@ -811,339 +840,8 @@ void Automatism::saveFeedingState() {
 }
 
 void Automatism::handleRefill(const SensorReadings& r) {
-  // ========================================
-  // FONCTION CRITIQUE : REMPLISSAGE AUTOMATIQUE
-  // PRIORITÉ ABSOLUE - TEMPS D'ACTIVATION CRITIQUES
-  // ========================================
-  
-  unsigned long currentMillis = millis();
-  
-  // ========================================
-  // 0. SÉCURITÉ AQUARIUM TROP PLEIN
-  // Empêche le remplissage si l'aquarium est déjà trop plein (distance < limFlood)
-  // ========================================
-  if (r.wlAqua < limFlood) {
-    if (!tankPumpLocked || _tankPumpLockReason != TankPumpLockReason::AQUARIUM_OVERFILL) {
-      tankPumpLocked = true;
-      _tankPumpLockReason = TankPumpLockReason::AQUARIUM_OVERFILL;
-      if (_acts.isTankPumpRunning()) {
-        _acts.stopTankPump(_pumpStartMs);
-        _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY; // réutilisé pour motif sécurité
-        _countdownEnd = 0;
-        // Notifier immédiatement le serveur de l'arrêt
-        if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-          SensorReadings cur = _sensors.read();
-          sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-          Serial.println(F("[Auto] ✅ Arrêt sécurité notifié au serveur - pump_tank=0"));
-        }
-      }
-      Serial.println(F("[CRITIQUE] Sécurité: aquarium trop plein – pompe réservoir verrouillée"));
-    }
-  } else {
-    // Déverrouillage automatique si l'aquarium n'est plus en état de trop-plein
-    if (tankPumpLocked && _tankPumpLockReason == TankPumpLockReason::AQUARIUM_OVERFILL && !inFlood) {
-      tankPumpLocked = false;
-      _tankPumpLockReason = TankPumpLockReason::NONE;
-      emailTankSent = false;
-      Serial.println(F("[Auto] Pompe réservoir déverrouillée (aquarium OK)"));
-    }
-  }
-  
-  // ========================================
-  // 1. CONDITION DE DÉMARRAGE - PRIORITÉ ABSOLUE
-  // ========================================
-  // CORRECTION v11.10: Vérification supplémentaire pour éviter les cycles infinis
-  // Si la pompe n'est pas en cours et qu'on est en mode manuel, réinitialiser
-  if (!_acts.isTankPumpRunning() && _manualTankOverride) {
-    Serial.println(F("[CRITIQUE] Mode manuel détecté sans pompe active - réinitialisation"));
-    _manualTankOverride = false;
-    _countdownEnd = 0;
-    _pumpStartMs = 0;
-  }
-  
-  if (r.wlAqua > aqThresholdCm && !tankPumpLocked && tankPumpRetries < MAX_PUMP_RETRIES && !_manualTankOverride) {
-    // Correction: l'état de verrouillage de la pompe aquarium ne doit pas
-    // bloquer le démarrage de la pompe réservoir.
-    if (!_acts.isTankPumpRunning()) {
-      // Sécurité pré-démarrage: ne pas démarrer si la réserve est trop basse
-      if (r.wlTank > tankThresholdCm) {
-        Serial.printf("[CRITIQUE] Démarrage bloqué: réserve trop basse (distance=%u cm > seuil=%u cm)\n", r.wlTank, tankThresholdCm);
-        // Verrouille immédiatement pour éviter des tentatives répétées inutiles
-        tankPumpLocked = true;
-        _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
-        _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
-        _countdownEnd = 0;
-        if (mailNotif && !emailTankSent) {
-          char msg[512];
-          snprintf(msg, sizeof(msg), 
-            "Démarrage REMPLISSAGE bloqué (réserve trop basse)\n"
-            "- Réserve (distance): %d cm (seuil: %d cm)\n"
-            "- Aqua: %d cm (seuil: %d cm)\n"
-            "Déblocage: lorsque la distance réservoir < %d cm (confirmée).",
-            r.wlTank, tankThresholdCm, r.wlAqua, aqThresholdCm, (int)tankThresholdCm - 5);
-          _mailer.sendAlert("Pompe réservoir BLOQUÉE (réserve basse)", msg, mail.c_str());
-          emailTankSent = true;
-        }
-        return; // ne pas démarrer
-      }
-      Serial.println(F("[CRITIQUE] === DÉBUT REMPLISSAGE AUTOMATIQUE ==="));
-      Serial.printf("[CRITIQUE] Niveau aquarium: %d cm, Seuil: %d cm\n", r.wlAqua, aqThresholdCm);
-      Serial.printf("[CRITIQUE] Durée configurée: %lu s\n", refillDurationMs / 1000);
-      
-      // DÉMARRAGE IMMÉDIAT - PRIORITÉ ABSOLUE
-      uint32_t startTime = millis();
-      
-      _acts.startTankPump();
-      _countdownLabel = "Refill";
-      _countdownEnd = millis() + refillDurationMs;
-      _pumpStartMs = millis(); // wrap-safe start time in ms
-      _levelAtPumpStart = r.wlAqua;
-      logActivity("Démarrage pompe réservoir automatique");
-      
-      // Envoi immédiat des données vers le serveur distant pour enregistrer l'activation de la pompe
-  if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-        SensorReadings currentReadings = _sensors.read();
-        sendFullUpdate(currentReadings, "etatPompeTank=1");
-        Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir activée"));
-      }
-      
-      // Notification e-mail au démarrage AUTO de la pompe réservoir
-      // CORRECTION : Mail dupliqué supprimé - le mail sera envoyé par checkCriticalChanges()
-      // pour éviter les doublons avec le système générique de détection des changements
-      // Le mail contiendra les mêmes informations via le système unifié
-      
-      uint32_t executionTime = (uint32_t)(millis() - startTime);
-      Serial.printf("[CRITIQUE] Pompe démarrée en %u ms\n", (unsigned)executionTime);
-      Serial.printf("[CRITIQUE] Démarrage pompe réservoir (niveau: %d cm, seuil: %d cm, durée: %lu s)\n", 
-                   r.wlAqua, aqThresholdCm, refillDurationMs / 1000);
-      Serial.println(F("[CRITIQUE] === REMPLISSAGE EN COURS ==="));
-    }
-  }
-
-  // ========================================
-  // 1.5. FIN CYCLE MANUEL : Auto-stop + notification serveur (v11.66)
-  // ========================================
-  if (_manualTankOverride && _acts.isTankPumpRunning()) {
-    if (_countdownEnd > 0 && millis() >= _countdownEnd) {
-      Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE MANUEL (timeout) ==="));
-      
-      // Arrêt physique
-      _acts.stopTankPump(_pumpStartMs);
-      _lastTankStopReason = TankPumpStopReason::MANUAL;
-      
-      // Reset flags
-      _manualTankOverride = false;
-      _countdownEnd = 0;
-      _pumpStartMs = 0;
-      
-      // Notification serveur : pump_tank=0 pour reset état distant
-      if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-        SensorReadings cur = _sensors.read();
-        bool success = sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-        if (success) {
-          Serial.println(F("[Auto] ✅ Fin cycle notifiée au serveur - pump_tank=0"));
-        } else {
-          Serial.println(F("[Auto] ⚠️ Échec notification fin cycle au serveur - sera retentée"));
-        }
-      } else {
-        Serial.println(F("[Auto] ⚠️ WiFi déconnecté - notification fin cycle reportée"));
-      }
-    }
-  }
-
-  // ========================================
-  // 2. ARRÊT FORCÉ APRÈS DURÉE MAX - SÉCURITÉ CRITIQUE
-  // ========================================
-  if (_acts.isTankPumpRunning()) {
-    const uint32_t nowMs = millis();
-    const uint32_t elapsedMs = (uint32_t)(nowMs - _pumpStartMs); // wrap-safe
-    const uint32_t maxMs = refillDurationMs;
-    // Guard against absurd elapsed (e.g., uninitialized start or unit mismatch)
-    if ((elapsedMs / 1000U) > 3000000U) {
-      Serial.printf("[CRITIQUE] Anomaly: elapsed=%u ms (>3e6 s). Resetting pumpStartMs to now. nowMs=%u, startMs(old)=%u, maxMs=%u\n",
-                    (unsigned)elapsedMs, (unsigned)nowMs, (unsigned)_pumpStartMs, (unsigned)maxMs);
-      _pumpStartMs = nowMs;
-    }
-    if (elapsedMs >= maxMs) {
-      Serial.printf("[CRITIQUE] Timing stop diag: nowMs=%u, startMs=%u, elapsedMs=%u, maxMs=%u\n",
-                    (unsigned)nowMs, (unsigned)_pumpStartMs, (unsigned)elapsedMs, (unsigned)maxMs);
-      Serial.println(F("[CRITIQUE] === ARRÊT FORCÉ REMPLISSAGE ==="));
-      Serial.printf("[CRITIQUE] Durée écoulée: %u s, Durée max: %u s\n", (unsigned)(elapsedMs/1000U), (unsigned)(maxMs/1000U));
-    Serial.println(F("[CRITIQUE] === ARRÊT FORCÉ REMPLISSAGE ==="));
-    Serial.printf("[CRITIQUE] Durée écoulée: %lu s, Durée max: %lu s\n", 
-                 (currentMillis - _pumpStartMs) / 1000, refillDurationMs / 1000);
-    
-    // ARRÊT IMMÉDIAT - SÉCURITÉ CRITIQUE
-      const uint32_t stopStartMs = millis();
-
-    // Raison: durée maximale atteinte
-    _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
-
-      _acts.stopTankPump(_pumpStartMs);
-      _pumpStartMs = 0; // reset cycle start
-      _countdownEnd = 0;
-      _manualTankOverride = false; // fin de la phase manuelle forcée
-      
-      // Notification serveur : pump_tank=0 pour reset état distant (arrêt forcé)
-      if (WiFi.status() == WL_CONNECTED) {
-        SensorReadings cur = _sensors.read();
-        bool success = sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-        if (success) {
-          Serial.println(F("[Auto] ✅ Fin cycle forcé notifiée au serveur - pump_tank=0"));
-        } else {
-          Serial.println(F("[Auto] ⚠️ Échec notification fin cycle forcé au serveur"));
-        }
-      }
-
-    // Évalue l'efficacité : le niveau doit avoir augmenté d'au moins 1 cm depuis le début
-    int levelImprovement = _levelAtPumpStart - r.wlAqua;
-    Serial.printf("[CRITIQUE] Amélioration du niveau: %d cm\n", levelImprovement);
-    
-    if (levelImprovement < 1) {
-      // Aucun progrès significatif : augmentation du compteur de tentatives
-      ++tankPumpRetries;
-      Serial.printf("[CRITIQUE] Pompe inefficace (%u/%u) – niveau %d cm (début: %d cm, amélioration: %d cm)\n", 
-                   tankPumpRetries, MAX_PUMP_RETRIES, r.wlAqua, _levelAtPumpStart, levelImprovement);
-      if (tankPumpRetries >= MAX_PUMP_RETRIES) {
-        tankPumpLocked = true; // On abandonne jusqu'au prochain redémarrage manuel
-        _tankPumpLockReason = TankPumpLockReason::INEFFICIENT;
-        Serial.println(F("[CRITIQUE] Pompe réservoir BLOQUÉE – plus d'essais"));
-        // Notification instantanée vers serveur / email éventuel
-        sendFullUpdate(r, "etatPompeTank=0&pump_tankCmd=0&pump_tank=0");
-        if (mailNotif && !emailTankSent) {
-          char msg[1024];
-          snprintf(msg, sizeof(msg), 
-            "La pompe de réserve a été BLOQUÉE (inefficacité)\n"
-            "- Tentatives consécutives: %d/%d\n"
-            "- Amélioration mesurée: %.1f cm (min attendu: 1 cm)\n"
-            "- Aqua: %d cm, Réserve: %d cm\n"
-            "- Seuils: aqThreshold=%d, tankThreshold=%d cm\n"
-            "\nCe qui permettra le déblocage:\n"
-            "- Déblocage automatique: après ~30 s, si le niveau de réserve < %d cm\n"
-            "- Ou action manuelle: amorcer la pompe, vérifier tuyaux/filtres/prises d'air, s'assurer que la réserve est suffisante, puis relancer un cycle.\n",
-            tankPumpRetries, (unsigned)MAX_PUMP_RETRIES, levelImprovement, r.wlAqua, r.wlTank, 
-            aqThresholdCm, tankThresholdCm, (int)tankThresholdCm - 10);
-          _mailer.sendAlert("Pompe réservoir bloquée", msg, mail.c_str());
-          emailTankSent = true;
-          Serial.println(F("[CRITIQUE] Email d'alerte envoyé"));
-        }
-      }
-    } else {
-      // Succès : le niveau a augmenté → on réinitialise le compteur
-      tankPumpRetries = 0;
-      Serial.printf("[CRITIQUE] Remplissage réussi: niveau amélioré de %d cm\n", levelImprovement);
-    }
-    
-      const uint32_t stopExecMs = (uint32_t)(millis() - stopStartMs);
-      Serial.printf("[CRITIQUE] Arrêt effectué en %u ms\n", (unsigned)stopExecMs);
-      Serial.println(F("[CRITIQUE] Arrêt pompe réservoir (durée écoulée)"));
-      Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE ==="));
-    }
-  }
-
-  // ========================================
-  // 3. ARRÊT ANTICIPÉ DÉSACTIVÉ - GARANTIE DE CYCLE COMPLET
-  // ========================================
-  // COMPORTEMENT ATTENDU: Une fois la pompe démarrée (auto ou manuel), 
-  // elle doit terminer son cycle complet (refillDurationMs) même si le niveau 
-  // d'eau repasse au-dessus de la limite de remplissage.
-  // 
-  // RAISON: Éviter les cycles courts qui peuvent causer des problèmes de stabilité
-  // et garantir un remplissage efficace même si le niveau fluctue.
-  // 
-  // NOTE: En mode manuel, la pompe doit terminer son cycle complet
-  // NOTE: En mode auto, la pompe doit aussi terminer son cycle complet une fois démarrée
-  // L'arrêt anticipé n'est plus autorisé pour garantir la stabilité du cycle
-  if (false && !_manualTankOverride && _acts.isTankPumpRunning() && r.wlAqua <= aqThresholdCm) {
-    // Cette condition est désactivée pour garantir que la pompe termine toujours son cycle complet
-    Serial.println(F("[CRITIQUE] === ARRÊT ANTICIPÉ REMPLISSAGE AUTO ==="));
-    Serial.printf("[CRITIQUE] Niveau atteint: %d cm, Seuil: %d cm\n", r.wlAqua, aqThresholdCm);
-    
-    // ARRÊT IMMÉDIAT - OPTIMISATION (mode auto uniquement)
-    uint32_t stopTime = millis();
-    
-    _acts.stopTankPump(_pumpStartMs);
-    _countdownEnd = 0;
-    _manualTankOverride = false;
-    tankPumpRetries = 0; // remise à zéro – succès
-    
-    uint32_t stopExecutionTime = (uint32_t)(millis() - stopTime);
-    Serial.printf("[CRITIQUE] Arrêt anticipé effectué en %u ms\n", (unsigned)stopExecutionTime);
-    Serial.println(F("[CRITIQUE] === REMPLISSAGE AUTO TERMINÉ AVEC SUCCÈS ==="));
-  }
-
-  // ========================================
-  // 4. SÉCURITÉ DE DÉBORDEMENT RÉSERVOIR - PROTECTION CRITIQUE
-  // ========================================
-  if (!_manualTankOverride) {
-    // Hystérésis renforcée: nécessite 2 confirmations consécutives au-dessus du seuil pour lock,
-    // et 3 confirmations consécutives en dessous (avec marge -5 cm) pour unlock.
-    static uint8_t aboveCount = 0;
-    static uint8_t belowCount = 0;
-    if (r.wlTank > tankThresholdCm) {
-      aboveCount = min<uint8_t>(aboveCount + 1, 3);
-      belowCount = 0;
-      if (!tankPumpLocked && aboveCount >= 2) {
-        Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
-        Serial.printf("[CRITIQUE] Niveau réservoir (distance): %d cm, Seuil: %d cm\n", r.wlTank, tankThresholdCm);
-        tankPumpLocked = true;
-        _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
-        _acts.stopTankPump(_pumpStartMs);
-        _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
-        _countdownEnd = 0;
-        Serial.println(F("[CRITIQUE] Sécurité: pompe réservoir verrouillée (réserve trop basse confirmée)"));
-        Serial.println(F("[CRITIQUE] === PROTECTION ACTIVÉE ==="));
-        if (mailNotif && !emailTankSent) {
-          char msg[512];
-          snprintf(msg, sizeof(msg), 
-            "La pompe de réserve a été VERROUILLÉE (réserve trop basse)\n"
-            "- Réserve (distance): %d cm (seuil: %d cm)\n"
-            "- Aqua: %d cm\n"
-            "\nDéblocage automatique: lorsque la distance réservoir < %d cm avec 3 confirmations consécutives.\n"
-            "Conseil: remplissez la réserve (éviter marche à sec), puis relancez.",
-            r.wlTank, tankThresholdCm, r.wlAqua, (int)tankThresholdCm - 5);
-          _mailer.sendAlert("Pompe réservoir verrouillée (réserve trop basse)", msg, mail.c_str());
-          emailTankSent = true;
-        }
-      }
-    } else if (r.wlTank < tankThresholdCm - 5) {
-      belowCount = min<uint8_t>(belowCount + 1, 3);
-      aboveCount = 0;
-      if (tankPumpLocked && belowCount >= 3) {
-        tankPumpLocked = false;
-        _tankPumpLockReason = TankPumpLockReason::NONE;
-        emailTankSent = false; // autoriser un prochain mail si re-verrouillage
-        Serial.printf("[Auto] Pompe réservoir déverrouillée (réserve OK, distance: %d cm, confirmations)\n", r.wlTank);
-      }
-    } else {
-      // Zone d'hystérésis: stabilise les compteurs
-      aboveCount = min<uint8_t>(aboveCount, 2);
-      belowCount = min<uint8_t>(belowCount, 2);
-    }
-  }
-  
-  // ========================================
-  // 5. RÉCUPÉRATION AUTOMATIQUE APRÈS BLOCAGE
-  // ========================================
-  static unsigned long lastRecoveryAttempt = 0;
-  if (tankPumpLocked && tankPumpRetries >= MAX_PUMP_RETRIES) {
-    unsigned long currentMillis = millis();
-    // Attendre 30 secondes avant de tenter une récupération
-    if (currentMillis - lastRecoveryAttempt > 30 * 1000UL) {
-      if (r.wlTank < tankThresholdCm - 10) { // Réservoir suffisamment plein
-        Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTOMATIQUE ==="));
-        Serial.printf("[CRITIQUE] Niveau réservoir: %d cm, Seuil: %d cm\n", r.wlTank, tankThresholdCm);
-        
-        tankPumpLocked = false;
-        tankPumpRetries = 0;
-        emailTankSent = false; // Permettre une nouvelle notification
-        _tankPumpLockReason = TankPumpLockReason::NONE;
-        lastRecoveryAttempt = currentMillis;
-        Serial.println(F("[CRITIQUE] Récupération automatique: pompe réservoir débloquée"));
-        Serial.println(F("[CRITIQUE] === RÉCUPÉRATION EFFECTUÉE ==="));
-      }
-    }
-  }
+  AutomatismRuntimeContext ctx{*this, r, millis()};
+  _refillController.process(ctx);
 }
 
 void Automatism::handleMaree(const SensorReadings& r) {
@@ -1165,17 +863,17 @@ void Automatism::handleFeeding() {
     
     // Diagnostic email avant délégation
     Serial.printf("[Auto] 📧 DIAGNOSTIC AVANT FEEDING - mailNotif: %s, mail: '%s'\n", 
-                 mailNotif ? "TRUE" : "FALSE", mail.c_str());
+                 mailNotif ? "TRUE" : "FALSE", _emailAddress);
     
     // Délégation au module Feeding
-    _feeding.handleSchedule(currentHour, currentMinute, mail, mailNotif, mailBlinkCallback);
+    _feeding.handleSchedule(currentHour, currentMinute, _emailAddress, mailNotif, mailBlinkCallback);
     
     // Note: Le module gère lui-même les phases servo (_currentPhase, etc.)
     // et appelle les servos, emails, traçage, etc.
   }
 }
 
-// ANCIEN CODE handleFeeding() COMMENTÉ TEMPORAIREMENT POUR RÉFÉRENCE
+// ANCIEN CODE handleFeeding() COMMENTÉ TEMPORAIREMENT POUR RÉFÉRENCE POUR RÉFÉRENCE
 /*void Automatism::handleFeeding_OLD() {
   time_t currentTime = _power.getCurrentEpoch();
   struct tm* timeinfo = localtime(&currentTime);
@@ -1244,8 +942,16 @@ void Automatism::handleFeeding() {
         
         // Notification email si activée
         if (mailNotif) {
-          String message = createFeedingMessage("Bouffe matin", tempsGros, tempsPetits);
-          _mailer.sendAlert("Bouffe matin", message, mail.c_str());
+          char messageBuffer[FEED_MESSAGE_BUFFER_SIZE];
+          size_t messageLen = createFeedingMessage(messageBuffer,
+                                                   sizeof(messageBuffer),
+                                                   "Bouffe matin",
+                                                   tempsGros,
+                                                   tempsPetits);
+          Serial.printf("[CRITIQUE] Message email bouffe matin: %u chars\n",
+                        static_cast<unsigned>(messageLen));
+          String messageStr(messageBuffer);
+          _mailer.sendAlert("Bouffe matin", messageStr, _emailAddress);
           armMailBlink();
           Serial.println(F("[CRITIQUE] Email de notification envoyé"));
         }
@@ -1300,8 +1006,16 @@ void Automatism::handleFeeding() {
         
         // Notification email si activée
         if (mailNotif) {
-          String message = createFeedingMessage("Bouffe midi", tempsGros, tempsPetits);
-          _mailer.sendAlert("Bouffe midi", message, mail.c_str());
+          char messageBuffer[FEED_MESSAGE_BUFFER_SIZE];
+          size_t messageLen = createFeedingMessage(messageBuffer,
+                                                   sizeof(messageBuffer),
+                                                   "Bouffe midi",
+                                                   tempsGros,
+                                                   tempsPetits);
+          Serial.printf("[CRITIQUE] Message email bouffe midi: %u chars\n",
+                        static_cast<unsigned>(messageLen));
+          String messageStr(messageBuffer);
+          _mailer.sendAlert("Bouffe midi", messageStr, _emailAddress);
           armMailBlink();
           Serial.println(F("[CRITIQUE] Email de notification envoyé"));
         }
@@ -1356,8 +1070,16 @@ void Automatism::handleFeeding() {
         
         // Notification email si activée
         if (mailNotif) {
-          String message = createFeedingMessage("Bouffe soir", tempsGros, tempsPetits);
-          _mailer.sendAlert("Bouffe soir", message, mail.c_str());
+          char messageBuffer[FEED_MESSAGE_BUFFER_SIZE];
+          size_t messageLen = createFeedingMessage(messageBuffer,
+                                                   sizeof(messageBuffer),
+                                                   "Bouffe soir",
+                                                   tempsGros,
+                                                   tempsPetits);
+          Serial.printf("[CRITIQUE] Message email bouffe soir: %u chars\n",
+                        static_cast<unsigned>(messageLen));
+          String messageStr(messageBuffer);
+          _mailer.sendAlert("Bouffe soir", messageStr, _emailAddress);
           armMailBlink();
           Serial.println(F("[CRITIQUE] Email de notification envoyé"));
         }
@@ -1372,116 +1094,8 @@ void Automatism::handleFeeding() {
 */
 
 void Automatism::handleAlerts(const SensorReadings& r) {
-  // --- Gestion alertes niveau aquarium ---
-  // Plus la distance est grande, plus le niveau est BAS (manque d'eau)
-  // Inversement, une petite distance signifie que l'aquarium est TROP PLEIN (risque de débordement)
-
-  static bool lowAquaSent  = false; // alerte "trop bas"
-  static bool highAquaSent = false; // alerte "trop plein"
-
-  // 1) Aquarium trop BAS (distance > seuil)
-  if (r.wlAqua > aqThresholdCm && !lowAquaSent && mailNotif) {
-    char msgBuffer[128];
-    formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlAqua, " cm (> ", aqThresholdCm);
-    _mailer.sendAlert("Alerte - Niveau aquarium BAS", msgBuffer, mail.c_str());
-    lowAquaSent = true;
-    armMailBlink();
-  }
-  // Reset après retour sous le seuil avec hystérésis (-5 cm)
-  if (r.wlAqua <= aqThresholdCm - 5) lowAquaSent = false;
-
-  // 2) Aquarium trop PLEIN (distance < limFlood) - anti-spam avec debounce, hystérésis et cooldown persistant
-  {
-    time_t nowEpoch = _power.getCurrentEpoch();
-    // Debounce entrée en trop-plein
-    if (r.wlAqua < limFlood) {
-      if (floodEnterSinceEpoch == 0) floodEnterSinceEpoch = nowEpoch;
-      // sortir de la phase de reset stable
-      aboveResetSinceEpoch = 0;
-      // Si pas encore enFlood et email activé, vérifier debounce et cooldown
-      if (!inFlood && mailNotif) {
-        uint32_t elapsedUnder = (nowEpoch >= floodEnterSinceEpoch) ? (nowEpoch - floodEnterSinceEpoch) : 0;
-        bool debounceOk = elapsedUnder >= (floodDebounceMin * 60UL);
-        bool cooldownOk = (lastFloodEmailEpoch == 0) || ((nowEpoch - lastFloodEmailEpoch) >= (floodCooldownMin * 60UL));
-        if (debounceOk && cooldownOk) {
-          char msgBuffer[128];
-          formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlAqua, " cm (< ", limFlood);
-          if (tankPumpLocked || _config.getPompeAquaLocked()) {
-            strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
-          }
-          bool sent = _mailer.sendAlert("Alerte - Aquarium TROP PLEIN", msgBuffer, mail.c_str());
-          if (sent) {
-            inFlood = true;
-            highAquaSent = true; // conserve l'ancien flag pour compat
-            armMailBlink();
-            lastFloodEmailEpoch = nowEpoch;
-            // Persister immédiatement pour survivre aux reboots
-            Preferences prefs; prefs.begin("alerts", false); prefs.putULong("floodLast", lastFloodEmailEpoch); prefs.end();
-            Serial.println(F("[Auto] Email TROP PLEIN envoyé (anti-spam actif)"));
-          } else {
-            Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
-          }
-        }
-      }
-    } else {
-      // Pas sous limFlood → reset du chrono d'entrée
-      floodEnterSinceEpoch = 0;
-      // Gestion de la sortie avec hystérésis et stabilité temporelle
-      if (r.wlAqua >= limFlood + floodHystCm) {
-        if (aboveResetSinceEpoch == 0) aboveResetSinceEpoch = nowEpoch;
-        uint32_t elapsedAbove = (nowEpoch >= aboveResetSinceEpoch) ? (nowEpoch - aboveResetSinceEpoch) : 0;
-        if (elapsedAbove >= (floodResetStableMin * 60UL)) {
-          inFlood = false;
-          highAquaSent = false;
-        }
-      } else {
-        // Dans la zone d'hystérésis, maintenir l'état mais réinitialiser le timer de stabilité
-        aboveResetSinceEpoch = 0;
-      }
-    }
-  }
-
-  // --- Niveau réserve ---
-  static bool lowTankSent = false;     // flag "réserve trop vide" déjà notifié
-
-  // 1) Réserve trop basse (distance > threshold)
-  if (r.wlTank > tankThresholdCm && !lowTankSent && mailNotif) {
-    char msgBuffer[128];
-    formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlTank, " cm (> ", tankThresholdCm);
-    _mailer.sendAlert("Alerte - Réserve BASSE", msgBuffer, mail.c_str());
-    lowTankSent = true;
-    armMailBlink();
-  }
-
-  // 2) Réserve de nouveau OK (distance < threshold - hysteresis)
-  else if (lowTankSent && r.wlTank <= tankThresholdCm - 5 && mailNotif) {
-    char msgBuffer[128];
-    formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", r.wlTank, " cm (<= ", tankThresholdCm - 5);
-    _mailer.sendAlert("Info - Réserve OK", msgBuffer, mail.c_str());
-    lowTankSent = false;
-    armMailBlink();
-  }
-
-  // Chauffage ON/OFF
-  if (r.tempWater < heaterThresholdC && !heaterPrevState) {
-    _acts.startHeater();
-    heaterPrevState = true;
-    if (mailNotif) {
-      char msgBuffer[64];
-      formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", r.tempWater);
-      _mailer.sendAlert("Chauffage ON", msgBuffer, mail.c_str());
-      armMailBlink();
-    }
-  } else if (r.tempWater > heaterThresholdC + 2 && heaterPrevState) {
-    _acts.stopHeater();
-    heaterPrevState = false;
-    if (mailNotif) {
-      char msgBuffer[64];
-      formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", r.tempWater);
-      _mailer.sendAlert("Chauffage OFF", msgBuffer, mail.c_str());
-      armMailBlink();
-    }
-  }
+  AutomatismRuntimeContext ctx{*this, r, millis()};
+  _alertController.process(ctx);
 } 
 
 void Automatism::handleRemoteState() {
@@ -1646,8 +1260,10 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
     // v11.78: Sécurisation de la copie mail pour éviter les pointeurs invalides
     const char* emailPtr = doc["mail"].as<const char*>();
     if (emailPtr != nullptr) {
-      mail = String(emailPtr);
-      Serial.printf("[Auto] 📧 mail chargé: '%s'\n", mail.c_str());
+      if (emailPtr && emailPtr[0]) {
+        storeEmailAddress(emailPtr);
+      }
+      Serial.printf("[Auto] 📧 mail chargé: '%s'\n", _emailAddress);
     } else {
       Serial.println("[Auto] ⚠️ mail null, ignoré");
     }
@@ -1656,8 +1272,10 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
   if (!doc.containsKey("mail") && doc.containsKey("mail")) {
     const char* emailPtr = doc["mail"].as<const char*>();
     if (emailPtr != nullptr) {
-      mail = String(emailPtr);
-      Serial.printf("[Auto] 📧 mail chargé (alias): '%s'\n", mail.c_str());
+      if (emailPtr && emailPtr[0]) {
+        storeEmailAddress(emailPtr);
+      }
+      Serial.printf("[Auto] 📧 mail chargé (alias): '%s'\n", _emailAddress);
     }
   }
   if (doc.containsKey("mailNotif")) {
@@ -1988,7 +1606,7 @@ void Automatism::checkCriticalChanges() {
         _lastPumpManual = false;
       }
 
-        _mailer.sendAlert(subj, body, mail.c_str());
+        _mailer.sendAlert(subj, body, _emailAddress);
         armMailBlink();
       }
     }
@@ -2044,7 +1662,7 @@ void Automatism::checkCriticalChanges() {
             origin : "",
           readings.wlAqua, readings.wlTank, aqThresholdCm, tankThresholdCm);
       }
-      _mailer.sendAlert(subjA, bodyA, mail.c_str());
+      _mailer.sendAlert(subjA, bodyA, _emailAddress);
       armMailBlink();
       if (!curPumpAqua) _lastAquaStopReason = AquaPumpStopReason::UNKNOWN; // reset après notification
     }
@@ -2495,6 +2113,28 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   // Journalise la durée de veille prévue avant d'entrer en light-sleep
   Serial.printf("[Auto] Entrée en light-sleep pour ~%u s\n", actualSleepDuration);
   
+  char sleepReason[512];
+  if (sleepDecision.tideAscending) {
+    snprintf(sleepReason,
+             sizeof(sleepReason),
+             "Delai ecoule (eveille %ds, cible %ds) + maree montante (+%dcm) - aucune activite bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)",
+             static_cast<int>(sleepDecision.awakeSec),
+             sleepDecision.adaptiveDelaySec,
+             sleepDecision.diff10s,
+             pumpReservoirOn ? "ON" : "OFF",
+             feedingActive ? "OUI" : "NON",
+             countdownActive ? "OUI" : "NON");
+  } else {
+    snprintf(sleepReason,
+             sizeof(sleepReason),
+             "Delai ecoule (eveille %ds, cible %ds) - aucune activite bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)",
+             static_cast<int>(sleepDecision.awakeSec),
+             sleepDecision.adaptiveDelaySec,
+             pumpReservoirOn ? "ON" : "OFF",
+             feedingActive ? "OUI" : "NON",
+             countdownActive ? "OUI" : "NON");
+  }
+  
   // Envoi du mail de mise en veille (si mémoire suffisante)
   #if FEATURE_MAIL
   uint32_t heapBeforeMail = ESP.getFreeHeap();
@@ -2502,19 +2142,6 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
   
   if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
     if (heapBeforeMail >= MIN_HEAP_FOR_MAIL) {
-      char sleepReason[512];
-      if (sleepDecision.tideAscending) {
-        snprintf(sleepReason, sizeof(sleepReason), 
-          "Délai écoulé (éveillé %ds, cible %ds) + marée montante (+%dcm) - aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)",
-          static_cast<int>(sleepDecision.awakeSec), sleepDecision.adaptiveDelaySec, sleepDecision.diff10s, 
-          pumpReservoirOn ? "ON" : "OFF", feedingActive ? "OUI" : "NON", countdownActive ? "OUI" : "NON");
-      } else {
-        snprintf(sleepReason, sizeof(sleepReason), 
-          "Délai écoulé (éveillé %ds, cible %ds) - aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)",
-          static_cast<int>(sleepDecision.awakeSec), sleepDecision.adaptiveDelaySec, 
-          pumpReservoirOn ? "ON" : "OFF", feedingActive ? "OUI" : "NON", countdownActive ? "OUI" : "NON");
-      }
-      
       Serial.printf("[Auto] 📧 Envoi du mail de mise en veille (heap: %u bytes)...\n", heapBeforeMail);
       bool mailSent = _mailer.sendSleepMail(sleepReason, actualSleepDuration, _lastReadings);
       if (mailSent) {
@@ -2549,7 +2176,24 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
                   heapAfterCleanup);
   }
   
+  TaskMonitor::Snapshot preSleepTasks = TaskMonitor::collectSnapshot();
+  logSleepTransitionStart(sleepReason,
+                          actualSleepDuration,
+                          sleepDecision.awakeSec,
+                          sleepDecision.tideAscending,
+                          sleepDecision.diff10s,
+                          heapAfterCleanup,
+                          preSleepTasks);
+  
   uint32_t actualSleepSeconds = _power.goToLightSleep(actualSleepDuration);
+
+  TaskMonitor::Snapshot postSleepTasks = TaskMonitor::collectSnapshot();
+  esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+  logSleepTransitionEnd(actualSleepDuration,
+                        actualSleepSeconds,
+                        wakeCause,
+                        preSleepTasks,
+                        postSleepTasks);
 
   // ========================================
   // AU RÉVEIL
@@ -2660,24 +2304,54 @@ void Automatism::handleAutoSleep(const SensorReadings& r) {
 /* ------------------------------------------------------------------
  *  Helper pour créer le message de nourrissage avec temps effectif
  * ------------------------------------------------------------------*/
-String Automatism::createFeedingMessage(const char* type, uint16_t bigDur, uint16_t smallDur) {
-  // Délégation au module Feeding + ajout info système
-  String baseMessage = _feeding.createMessage(type);
-  
-  // Ajouter les informations de niveau d'eau et variation de marée
+size_t Automatism::createFeedingMessage(char* buffer,
+                                        size_t bufferSize,
+                                        const char* type,
+                                        uint16_t bigDur,
+                                        uint16_t smallDur) {
+  if (!buffer || bufferSize == 0) {
+    return 0;
+  }
+
+  buffer[0] = '\0';
+
+  size_t written = _feeding.createMessage(buffer, bufferSize, type);
+  if (written >= bufferSize - 1) {
+    return bufferSize - 1;
+  }
+
+  (void)bigDur;
+  (void)smallDur;
+
   SensorReadings readings = _sensors.read();
   int diffMaree = _sensors.diffMaree(readings.wlAqua);
-  
-  char waterInfo[256];
-  snprintf(waterInfo, sizeof(waterInfo), 
-    "\nÉtat de l'eau:\n"
-    "- Aquarium: %d cm\n"
-    "- Réserve: %d cm\n"
-    "- Variation marée: %d cm\n"
-    "- Délai d'activité: %d s",
-    readings.wlAqua, readings.wlTank, diffMaree, calculateAdaptiveSleepDelay());
-  
-  return baseMessage + waterInfo;
+
+  size_t remaining = bufferSize - written;
+  if (remaining == 0) {
+    return written;
+  }
+
+  int appended = snprintf(buffer + written,
+                          remaining,
+                          "\nÉtat de l'eau:\n"
+                          "- Aquarium: %d cm\n"
+                          "- Réserve: %d cm\n"
+                          "- Variation marée: %d cm\n"
+                          "- Délai d'activité: %d s",
+                          readings.wlAqua,
+                          readings.wlTank,
+                          diffMaree,
+                          calculateAdaptiveSleepDelay());
+
+  if (appended < 0) {
+    return written;
+  }
+
+  if (static_cast<size_t>(appended) >= remaining) {
+    return bufferSize - 1;
+  }
+
+  return written + static_cast<size_t>(appended);
 }
 
 /* ------------------------------------------------------------------

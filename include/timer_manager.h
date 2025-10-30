@@ -1,7 +1,5 @@
 #pragma once
 #include <Arduino.h>
-#include <functional>
-#include <vector>
 
 /**
  * Timer Manager centralisé pour optimiser les tâches périodiques
@@ -9,22 +7,40 @@
  */
 class TimerManager {
 public:
+    typedef void (*TimerCallback)();
+
+    static constexpr size_t MAX_TIMERS = 10;
+
     // Structure pour un timer
     struct Timer {
         const char* name;
         uint32_t interval;
         uint32_t lastRun;
-        std::function<void()> callback;
+        TimerCallback callback;
         bool enabled;
         uint32_t callCount;
         uint32_t totalTime;
+        bool inUse;
         
-        Timer(const char* n, uint32_t i, std::function<void()> cb) 
-            : name(n), interval(i), lastRun(0), callback(cb), enabled(true), callCount(0), totalTime(0) {}
+        Timer()
+            : name(nullptr), interval(0), lastRun(0), callback(nullptr), enabled(false),
+              callCount(0), totalTime(0), inUse(false) {}
+
+        void configure(const char* n, uint32_t i, TimerCallback cb) {
+            name = n;
+            interval = i;
+            lastRun = 0;
+            callback = cb;
+            enabled = true;
+            callCount = 0;
+            totalTime = 0;
+            inUse = true;
+        }
     };
 
 private:
-    static std::vector<Timer> timers;
+    static Timer timers[MAX_TIMERS];
+    static size_t timerCount;
     static uint32_t lastCheck;
     static bool initialized;
     
@@ -41,7 +57,7 @@ public:
      * @param callback Fonction à exécuter
      * @return ID du timer ou -1 si échec
      */
-    static int addTimer(const char* name, uint32_t interval, std::function<void()> callback);
+    static int addTimer(const char* name, uint32_t interval, TimerCallback callback);
     
     /**
      * Traite tous les timers (à appeler dans loop())

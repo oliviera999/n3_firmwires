@@ -6,10 +6,11 @@
 #include "project_config.h"
 #include "diagnostics.h"
 
-// Forward declaration pour éviter les problèmes d'includes
+// Forward declarations pour éviter les problèmes d'includes
 #ifndef DISABLE_ASYNC_WEBSERVER
 class AsyncWebServer;
 #endif
+struct WebServerContext;
 
 class WebServerManager {
  public:
@@ -25,5 +26,6 @@ class WebServerManager {
   #ifndef DISABLE_ASYNC_WEBSERVER
   AsyncWebServer* _server;
   #endif
+  WebServerContext* _ctx;
   void initializeServer(); // Méthode privée pour éviter la duplication
 }; 

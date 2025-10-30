@@ -6,6 +6,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+class NVSLockGuard;
+
 /**
  * Gestionnaire NVS Centralisé - Phase 1 Optimisation
  * 
@@ -84,6 +86,7 @@ struct NVSUsageStats {
 
 class NVSManager {
 private:
+    friend class NVSLockGuard;
     Preferences _preferences;
     SemaphoreHandle_t _mutex;
     std::map<String, std::vector<NVSCacheEntry>> _cache;
@@ -111,6 +114,7 @@ private:
     // Phase 2: Méthodes privées pour flush différé
     void addDirtyKey(const String& ns, const char* key);
     void removeDirtyKey(const String& ns, const char* key);
+    bool shouldFlush() const;
     bool lock(TickType_t timeout = portMAX_DELAY);
     void unlock();
     

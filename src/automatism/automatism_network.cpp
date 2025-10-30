@@ -1,10 +1,17 @@
-#include "automatism_network.h"
+#include "automatism/automatism_network.h"
 #include "automatism.h"
 #include "automatism_persistence.h"
 #include "project_config.h"
 #include "esp_task_wdt.h"
+#include "esp_heap_caps.h"
 #include "pins.h"
 #include <WiFi.h>
+#include <cstring>
+#include <cctype>
+
+namespace {
+constexpr size_t FEED_MESSAGE_BUFFER_SIZE = 256;
+}
 
 // ============================================================================
 // Module: AutomatismNetwork
@@ -14,8 +21,7 @@
 AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
     : _web(web)
     , _config(cfg)
-    , _dataQueue(100)  // AUGMENTÉ de 50 à 100 entrées (v11.50)
-    , _emailAddress("")
+    , _dataQueue(QUEUE_MAX_ENTRIES)
     , _emailEnabled(false)
     , _freqWakeSec(600)  // 10 min par défaut
     , _limFlood(5)
@@ -33,11 +39,33 @@ AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
     , _prevBouffeMidi(false)
     , _prevBouffeSoir(false)
 {
+    _emailAddress[0] = '\0';
     Serial.println(F("[Network] Module initialisé (constructeur)"));
     
     // NOTE (v11.32): DataQueue::begin() NE PEUT PAS être appelé ici
     // car LittleFS n'est pas encore monté (constructeur global)
     // L'initialisation sera faite dans begin() après LittleFS.begin()
+}
+
+void AutomatismNetwork::setEmailAddress(const char* address) {
+    if (!address) {
+        _emailAddress[0] = '\0';
+        return;
+    }
+
+    while (*address && isspace(static_cast<unsigned char>(*address))) {
+        ++address;
+    }
+
+    size_t len = strnlen(address, EmailConfig::MAX_EMAIL_LENGTH - 1);
+    const char* end = address + len;
+    while (end > address && isspace(static_cast<unsigned char>(end[-1]))) {
+        --end;
+        --len;
+    }
+
+    memcpy(_emailAddress, address, len);
+    _emailAddress[len] = '\0';
 }
 
 bool AutomatismNetwork::begin() {
@@ -91,7 +119,10 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
     };
     
     // Application de la configuration
-    assignIfPresent("mail", _emailAddress);
+    if (doc.containsKey("mail")) {
+        const char* emailPtr = doc["mail"].as<const char*>();
+        setEmailAddress(emailPtr);
+    }
     // Accepter mailNotif (compat server)
     if (doc.containsKey("mailNotif")) {
         auto v = doc["mailNotif"];
@@ -99,9 +130,23 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
         else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
         else if (v.is<const char*>()) {
             const char* p = v.as<const char*>();
-            if (p && p[0]) {
-                String s = String(p); s.toLowerCase(); s.trim();
-                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
+            if (p) {
+                char buffer[16];
+                size_t len = strnlen(p, sizeof(buffer) - 1);
+                memcpy(buffer, p, len);
+                buffer[len] = '\0';
+                // Trim spaces
+                char* start = buffer;
+                while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+                char* end = start + strlen(start);
+                while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+                *end = '\0';
+                for (char* c = start; *c; ++c) {
+                    *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
+                }
+                _emailEnabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+                                 strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
+                                 strcmp(start, "yes") == 0);
             }
         }
     }
@@ -132,39 +177,47 @@ bool AutomatismNetwork::sendFullUpdate(
     uint32_t refillDurationSec,
     const char* extraPairs
 ) {
-    // VALIDATION MESURES
+    uint32_t attemptStartMs = millis();
+    if (!canAttemptSend(attemptStartMs)) {
+        uint32_t elapsed = attemptStartMs - _lastSendAttemptMs;
+        uint32_t waitRemaining = (_currentBackoffMs > elapsed) ? (_currentBackoffMs - elapsed) : 0;
+        if (waitRemaining > 0 && (attemptStartMs - _lastBackoffLogMs) > 3000) {
+            _lastBackoffLogMs = attemptStartMs;
+            Serial.printf("[Network] ⏳ Backoff actif (%u ms restants, failures=%u)\n", waitRemaining, _consecutiveSendFailures);
+        }
+        return false;
+    }
+    _lastSendAttemptMs = attemptStartMs;
+
     float tempWater = readings.tempWater;
     float tempAir = readings.tempAir;
     float humidity = readings.humidity;
-    
-    // Validation températures
+
     if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
         Serial.printf("[Network] Temp eau invalide: %.1f°C, force NaN\n", tempWater);
         tempWater = NAN;
     }
-    
-    if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN || 
+
+    if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN ||
         tempAir >= SensorConfig::AirSensor::TEMP_MAX) {
         Serial.printf("[Network] Temp air invalide: %.1f°C, force NaN\n", tempAir);
         tempAir = NAN;
     }
-    
-    // Validation humidité
-    if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN || 
+
+    if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN ||
         humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
         Serial.printf("[Network] Humidité invalide: %.1f%%, force NaN\n", humidity);
         humidity = NAN;
     }
-    
-    // Vérification mémoire
-    size_t freeHeap = ESP.getFreeHeap();
-    if (freeHeap < BufferConfig::LOW_MEMORY_THRESHOLD_BYTES) {
-        Serial.printf("[Network] Mémoire faible (%u bytes), report envoi\n", freeHeap);
+
+    uint32_t heapBefore = ESP.getFreeHeap();
+    if (heapBefore < BufferConfig::LOW_MEMORY_THRESHOLD_BYTES) {
+        Serial.printf("[Network] Mémoire faible (%u bytes), report envoi\n", heapBefore);
+        registerSendResult(false, 0, 0, heapBefore, heapBefore);
         return false;
     }
-    
-    // v11.70: Construction payload optimisée avec buffer statique pour éviter fragmentation mémoire
-    char payloadBuffer[1024]; // Buffer unique pour tout le payload
+
+    char payloadBuffer[1024];
     int len = snprintf(payloadBuffer, sizeof(payloadBuffer),
         "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&"
         "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
@@ -182,45 +235,67 @@ bool AutomatismNetwork::sendFullUpdate(
         refillDurationSec, _limFlood,
         forceWakeUp ? 1 : 0, freqWakeSec,
         bouffePetits.c_str(), bouffeGros.c_str(),
-        _emailAddress.c_str(), _emailEnabled ? "checked" : "");
-    
-    // Vérification de dépassement de buffer
-    if (len >= sizeof(payloadBuffer)) {
+        _emailAddress, _emailEnabled ? "checked" : "");
+
+    if (len < 0) {
+        Serial.println(F("[Network] ❌ Échec formatage payload"));
+        registerSendResult(false, 0, 0, heapBefore, heapBefore);
+        return false;
+    }
+
+    if (len >= static_cast<int>(sizeof(payloadBuffer))) {
         Serial.printf("[Network] ⚠️ Payload tronqué (limite: %u bytes)\n", sizeof(payloadBuffer) - 1);
         payloadBuffer[sizeof(payloadBuffer) - 1] = '\0';
     }
-    
+
     if (extraPairs && extraPairs[0] != '\0') {
         strncat(payloadBuffer, "&", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
         strncat(payloadBuffer, extraPairs, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
     }
-    
-    // === PROTECTION CRITIQUE: resetMode=0 TOUJOURS PRÉSENT ===
-    // S'assurer que resetMode=0 est toujours envoyé pour éviter les resets non désirés
+
     if (strstr(payloadBuffer, "resetMode=") == nullptr) {
         strncat(payloadBuffer, "&resetMode=0", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
         Serial.println(F("[Network] 🔒 resetMode=0 ajouté automatiquement pour sécurité"));
+    } else if (strstr(payloadBuffer, "resetMode=1") != nullptr) {
+        Serial.println(F("[Network] ⚠️ resetMode=1 détecté dans payload"));
     } else {
-        // Vérifier que resetMode n'est pas à 1 (sauf cas spécifique de trigger)
-        if (strstr(payloadBuffer, "resetMode=1") != nullptr) {
-            Serial.println(F("[Network] ⚠️ resetMode=1 détecté dans payload"));
-        } else {
-            Serial.println(F("[Network] ✅ resetMode=0 confirmé dans payload"));
-        }
+        Serial.println(F("[Network] ✅ resetMode=0 confirmé dans payload"));
     }
-    
-    bool success = _web.postRaw(payloadBuffer);
-    if (!_config.isRemoteSendEnabled()) {
-        Serial.println(F("[Network] ⛔ Envoi distant désactivé (config) - SKIP"));
+
+    size_t payloadBytes = strlen(payloadBuffer);
+    if (payloadBytes > MAX_PAYLOAD_BYTES) {
+        Serial.printf("[Network] ❌ Payload trop volumineux (%u > %u)\n", static_cast<unsigned>(payloadBytes), static_cast<unsigned>(MAX_PAYLOAD_BYTES));
+        registerSendResult(false, payloadBytes, 0, heapBefore, heapBefore);
+        if (_dataQueue.size() >= QUEUE_MAX_ENTRIES) {
+            _dataQueue.pop();
+            logQueueState("drop-oldest", _dataQueue.size());
+        }
+        if (_dataQueue.push(String(payloadBuffer))) {
+            if (_dataQueue.size() > _queueHighWaterMark) {
+                _queueHighWaterMark = _dataQueue.size();
+            }
+            logQueueState("oversize-enqueued", _dataQueue.size());
+        }
         return false;
     }
-    
+
+    if (!_config.isRemoteSendEnabled()) {
+        Serial.println(F("[Network] ⛔ Envoi distant désactivé (config) - SKIP"));
+        registerSendResult(false, payloadBytes, 0, heapBefore, heapBefore);
+        return false;
+    }
+
+    esp_task_wdt_reset();
+    uint32_t sendStart = millis();
+    bool success = _web.postRaw(payloadBuffer);
+    uint32_t durationMs = millis() - sendStart;
+    uint32_t heapAfter = ESP.getFreeHeap();
+
+    registerSendResult(success, payloadBytes, durationMs, heapBefore, heapAfter);
+
     if (success) {
-        _sendState = 1;  // OK
+        _sendState = 1;
         Serial.println(F("[Network] sendFullUpdate SUCCESS"));
-        
-        // v11.70: REJEU DE QUEUE LIMITÉ pour équilibrer stabilité et fonctionnalité
-        // Replay maximum 5 entrées pour éviter l'épuisement mémoire
         if (_dataQueue.size() > 0) {
             uint16_t replayed = replayQueuedData();
             if (replayed > 0) {
@@ -230,22 +305,83 @@ bool AutomatismNetwork::sendFullUpdate(
             }
         }
     } else {
-        _sendState = -1;  // Erreur
+        _sendState = -1;
         Serial.println(F("[Network] sendFullUpdate FAILED"));
-        
-        // v11.70: QUEUE ACTIVÉE avec limite pour équilibrer stabilité et fonctionnalité
-        // Ajouter à la queue seulement si elle n'est pas pleine (limite mémoire)
-        if (_dataQueue.size() < 20) { // Limite à 20 entrées max
-            // Utilisation directe du buffer char[] pour éviter conversion String
-            _dataQueue.push(String(payloadBuffer));
-            Serial.printf("[Network] 📥 Donnée ajoutée à la queue (%u entrées)\n", _dataQueue.size());
+        uint16_t queueSize = _dataQueue.size();
+        if (queueSize >= QUEUE_MAX_ENTRIES) {
+            _dataQueue.pop();
+            queueSize = _dataQueue.size();
+            logQueueState("drop-oldest", queueSize);
+        }
+        if (_dataQueue.push(String(payloadBuffer))) {
+            queueSize = _dataQueue.size();
+            if (queueSize > _queueHighWaterMark) {
+                _queueHighWaterMark = queueSize;
+            }
+            if (queueSize >= QUEUE_HIGH_WATER) {
+                logQueueState("high-water", queueSize);
+            } else {
+                Serial.printf("[Network] 📥 Donnée ajoutée à la queue (%u entrées)\n", queueSize);
+            }
         } else {
-            Serial.println(F("[Network] ⚠️ Queue pleine - donnée perdue (limite mémoire)"));
+            Serial.println(F("[Network] ⚠️ Queue pleine - donnée perdue (LittleFS)"));
         }
     }
-    
+
     _lastSend = millis();
     return success;
+}
+
+bool AutomatismNetwork::canAttemptSend(uint32_t nowMs) const {
+    if (_consecutiveSendFailures == 0 || _currentBackoffMs == 0) {
+        return true;
+    }
+    uint32_t elapsed = static_cast<uint32_t>(nowMs - _lastSendAttemptMs);
+    return elapsed >= _currentBackoffMs;
+}
+
+void AutomatismNetwork::registerSendResult(bool success, size_t payloadBytes, uint32_t durationMs, uint32_t heapBefore, uint32_t heapAfter) {
+    _totalSendAttempts++;
+    _totalSendDurationMs += durationMs;
+    _lastSendDurationMs = durationMs;
+    _lastHeapBeforeSend = heapBefore;
+    _lastHeapAfterSend = heapAfter;
+    if (payloadBytes > _maxPayloadBytesSeen) {
+        _maxPayloadBytesSeen = payloadBytes;
+    }
+
+    int32_t heapDelta = static_cast<int32_t>(heapAfter) - static_cast<int32_t>(heapBefore);
+
+    if (success) {
+        _totalSendSuccesses++;
+        _totalPayloadBytesSent += payloadBytes;
+        _consecutiveSendFailures = 0;
+        _currentBackoffMs = 0;
+        _lastBackoffLogMs = 0;
+        if (durationMs > 500 || payloadBytes > (MAX_PAYLOAD_BYTES - 32)) {
+            Serial.printf("[Network] ✅ Telemetry: payload=%uB dur=%ums heapΔ=%d queue=%u\n",
+                          static_cast<unsigned>(payloadBytes), static_cast<unsigned>(durationMs),
+                          heapDelta, _dataQueue.size());
+        }
+    } else {
+        _totalSendFailures++;
+        if (_consecutiveSendFailures < 32) {
+            _consecutiveSendFailures++;
+        }
+        uint32_t backoff = BASE_BACKOFF_MS << (_consecutiveSendFailures > 0 ? (_consecutiveSendFailures - 1) : 0);
+        if (backoff > MAX_BACKOFF_MS) {
+            backoff = MAX_BACKOFF_MS;
+        }
+        _currentBackoffMs = backoff;
+        Serial.printf("[Network] ❌ Telemetry: payload=%uB dur=%ums heapΔ=%d failures=%u backoff=%ums\n",
+                      static_cast<unsigned>(payloadBytes), static_cast<unsigned>(durationMs),
+                      heapDelta, _consecutiveSendFailures, _currentBackoffMs);
+    }
+}
+
+void AutomatismNetwork::logQueueState(const char* reason, uint16_t size) const {
+    Serial.printf("[Network] Queue %s (%u entrées, pic=%u, backoff=%ums)\n",
+                  reason, size, _queueHighWaterMark, _currentBackoffMs);
 }
 
 // ============================================================================
@@ -258,10 +394,20 @@ bool AutomatismNetwork::isTrue(ArduinoJson::JsonVariantConst v) {
     if (v.is<const char*>()) {
         const char* p = v.as<const char*>();
         if (!p) return false;
-        String s = String(p);
-        s.toLowerCase();
-        s.trim();
-        return s == "1" || s == "true" || s == "on" || s == "checked";
+        char buffer[16];
+        size_t len = strnlen(p, sizeof(buffer) - 1);
+        memcpy(buffer, p, len);
+        buffer[len] = '\0';
+        char* start = buffer;
+        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+        char* end = start + strlen(start);
+        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+        *end = '\0';
+        for (char* c = start; *c; ++c) {
+            *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
+        }
+        return strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+               strcmp(start, "on") == 0 || strcmp(start, "checked") == 0;
     }
     return false;
 }
@@ -272,10 +418,20 @@ bool AutomatismNetwork::isFalse(ArduinoJson::JsonVariantConst v) {
     if (v.is<const char*>()) {
         const char* p = v.as<const char*>();
         if (!p) return false;
-        String s = String(p);
-        s.toLowerCase();
-        s.trim();
-        return s == "0" || s == "false" || s == "off" || s == "unchecked";
+        char buffer[16];
+        size_t len = strnlen(p, sizeof(buffer) - 1);
+        memcpy(buffer, p, len);
+        buffer[len] = '\0';
+        char* start = buffer;
+        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+        char* end = start + strlen(start);
+        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+        *end = '\0';
+        for (char* c = start; *c; ++c) {
+            *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
+        }
+        return strcmp(start, "0") == 0 || strcmp(start, "false") == 0 ||
+               strcmp(start, "off") == 0 || strcmp(start, "unchecked") == 0;
     }
     return false;
 }
@@ -514,7 +670,7 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
     // Email configuration
     if (doc.containsKey("mail")) {
         const char* m = doc["mail"].as<const char*>();
-        _emailAddress = m ? String(m) : String();
+        setEmailAddress(m);
     }
     
     if (doc.containsKey("mailNotif")) {
@@ -523,9 +679,22 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
         else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
         else if (v.is<const char*>()) {
             const char* p = v.as<const char*>();
-            if (p && p[0]) {
-                String s = String(p); s.toLowerCase(); s.trim();
-                _emailEnabled = (s == "1" || s == "true" || s == "on" || s == "checked" || s == "yes");
+            if (p) {
+                char buffer[16];
+                size_t len = strnlen(p, sizeof(buffer) - 1);
+                memcpy(buffer, p, len);
+                buffer[len] = '\0';
+                char* start = buffer;
+                while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+                char* end = start + strlen(start);
+                while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+                *end = '\0';
+                for (char* c = start; *c; ++c) {
+                    *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
+                }
+                _emailEnabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+                                 strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
+                                 strcmp(start, "yes") == 0);
             }
         }
     }
@@ -566,11 +735,15 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
         logRemoteCommandExecution("fd_small", true);
         
         if (_emailEnabled) {
-            String message = autoCtrl.createFeedingMessage(
+            char messageBuffer[FEED_MESSAGE_BUFFER_SIZE];
+            size_t msgLen = autoCtrl.createFeedingMessage(
+                messageBuffer,
+                sizeof(messageBuffer),
                 "Bouffe manuelle - Petits poissons",
                 autoCtrl.getFeedBigDur(),
                 autoCtrl.getFeedSmallDur()
             );
+            (void)msgLen;
             // NOTE: Mailer nécessaire - autoCtrl doit le gérer
         }
         
@@ -600,11 +773,15 @@ void AutomatismNetwork::handleRemoteFeedingCommands(const ArduinoJson::JsonDocum
         logRemoteCommandExecution("fd_large", true);
         
         if (_emailEnabled) {
-            String message = autoCtrl.createFeedingMessage(
+            char messageBuffer[FEED_MESSAGE_BUFFER_SIZE];
+            size_t msgLen = autoCtrl.createFeedingMessage(
+                messageBuffer,
+                sizeof(messageBuffer),
                 "Bouffe manuelle - Gros poissons",
                 autoCtrl.getFeedBigDur(),
                 autoCtrl.getFeedSmallDur()
             );
+            (void)msgLen;
             // NOTE: Mailer nécessaire
         }
         

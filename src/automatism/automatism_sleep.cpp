@@ -1,5 +1,6 @@
 #include "automatism_sleep.h"
 #include "project_config.h"
+#include "task_monitor.h"
 #include <ctime>
 
 // ============================================================================
@@ -350,9 +351,11 @@ void AutomatismSleep::logSleepDecision(bool pumpReservoirOn,
 // ============================================================================
 
 bool AutomatismSleep::verifySystemStateAfterWakeup() {
-    // TODO: Implémenter vérifications complètes
-    Serial.println(F("[Sleep] Vérification système après réveil"));
-    return true;  // Placeholder
+    Serial.println(F("[Sleep] Verification systeme apres reveil"));
+    TaskMonitor::Snapshot snapshot = TaskMonitor::collectSnapshot();
+    TaskMonitor::logSnapshot(snapshot, "sleep-verify");
+    bool anomalies = TaskMonitor::detectAnomalies(snapshot, "sleep-verify");
+    return !anomalies;
 }
 
 void AutomatismSleep::detectSleepAnomalies() {

@@ -1,6 +1,13 @@
 #pragma once
+
 #include <Arduino.h>
 #include "project_config.h"
+#include "display_cache.h"
+
+class StatusBarRenderer;
+class MainScreenRenderer;
+class CountdownRenderer;
+class InfoScreenRenderer;
 #if FEATURE_OLED
 #include <Adafruit_SSD1306.h>
 #include <Wire.h>
@@ -47,6 +54,10 @@ static TwoWire Wire;
 #endif
 
 class DisplayView {
+  friend class StatusBarRenderer;
+  friend class MainScreenRenderer;
+  friend class CountdownRenderer;
+  friend class InfoScreenRenderer;
  public:
   explicit DisplayView(uint8_t addr = 0x3C, uint8_t w = 128, uint8_t h = 64);
   bool begin();
@@ -113,6 +124,18 @@ class DisplayView {
   void forceEndSplash();                // Force la fin du splash screen immédiatement
 
  private:
+  class DisplaySession {
+   public:
+    DisplaySession(DisplayView& view, bool immediateMode, uint32_t lockMs = 0, bool setDisplaying = false);
+    ~DisplaySession();
+
+   private:
+    DisplayView& _view;
+    bool _prevImmediate;
+    bool _setDisplaying;
+    bool _prevDisplaying{false};
+  };
+
   // Impression protégée contre le dépassement horizontal (ajoute "..." si besoin)
   void printClipped(int16_t x, int16_t y, const String& text, uint8_t size);
   bool _present{false};
@@ -131,23 +154,7 @@ class DisplayView {
   bool _locked{false};
   unsigned long _lockUntil{0};
 
-  // Etats mémorisés pour éviter les redessins inutiles (barre de statut)
-  int8_t _lastSendState{-2};
-  int8_t _lastRecvState{-2};
-  int8_t _lastRssi{-128};
-  bool   _lastMailBlink{false};
-  int8_t _lastTideDir{0};
-  int    _lastDiffValue{0};
-
-  // Etats mémorisés pour l'écran principal
-  float     _lastTempEau{-999};
-  float     _lastTempAir{-999};
-  float     _lastHumidite{-999};
-  uint16_t  _lastAquaLvl{999};
-  uint16_t  _lastTankLvl{999};
-  uint16_t  _lastPotaLvl{999};
-  uint16_t  _lastLumi{999};
-  String    _lastTimeStr{};
+  DisplayCache _cache;
 
   // Etat de l'overlay OTA
   bool      _otaOverlayActive{false};

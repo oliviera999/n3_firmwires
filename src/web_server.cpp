@@ -8,8 +8,11 @@
 #include "power.h"
 #include <nvs.h>
 #include <nvs_flash.h>
+#include <cstring>
 #include <ESPAsyncWebServer.h>
-#include "web_assets.h"
+#include "web_routes_status.h"
+#include "web_routes_ui.h"
+#include "web_server_context.h"
 
 // Optimisations
 #include "json_pool.h"
@@ -28,98 +31,15 @@ extern ConfigManager config;
 extern PowerManager power;
 extern WifiManager wifi;
 
-// ============================================================================
-// HELPER FUNCTIONS - Sécurité contre crash mémoire (v11.39)
-// ============================================================================
-
-// Envoi sécurisé de réponse JSON avec vérification null
-static void safeSendJson(AsyncWebServerRequest* req, const String& json, bool enableCors = true) {
-  AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
-  if (response) {
-    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    if (enableCors) {
-      response->addHeader("Access-Control-Allow-Origin", "*");
-    }
-    req->send(response);
-  } else {
-    Serial.println("[Web] ❌ Échec création réponse JSON (mémoire insuffisante)");
-    req->send(500, "text/plain", "Memory error");
-  }
-}
-
-// ============================================================================
-// HELPER FUNCTIONS - Envoi d'emails robuste (v11.81)
-// ============================================================================
-
-/**
- * Fonction helper robuste pour envoyer des emails lors d'actions manuelles
- * Améliore la fiabilité en gérant les cas d'échec et évitant la duplication
- */
-static bool sendManualActionEmail(const char* action, const char* subject, const char* emailType) {
-  Serial.printf("[Web] 📧 === ENVOI EMAIL %s ===\n", emailType);
-  
-  // Vérifications préalables robustes
-  if (!autoCtrl.isEmailEnabled()) {
-    Serial.println("[Web] 📧 ⚠️ Email désactivé - pas d'envoi");
-    return false;
-  }
-  
-  String emailAddr = autoCtrl.getEmailAddress();
-  if (emailAddr.length() == 0 || emailAddr == "Non configuré") {
-    Serial.printf("[Web] 📧 ❌ Adresse email invalide: '%s' - pas d'envoi\n", emailAddr.c_str());
-    return false;
-  }
-  
-  // Vérification mémoire avant envoi
-  uint32_t freeHeap = ESP.getFreeHeap();
-  const uint32_t MIN_HEAP_FOR_EMAIL = 50000; // 50KB minimum
-  if (freeHeap < MIN_HEAP_FOR_EMAIL) {
-    Serial.printf("[Web] 📧 ❌ Heap insuffisant pour email (%u < %u bytes) - pas d'envoi\n", 
-                  freeHeap, MIN_HEAP_FOR_EMAIL);
-    return false;
-  }
-  
-  // Création du message
-  String message = autoCtrl.createFeedingMessage(action, 
-                                                autoCtrl.getFeedBigDur(), 
-                                                autoCtrl.getFeedSmallDur());
-  
-  Serial.printf("[Web] 📧 Configuration: enabled=%s, addr='%s', msgLen=%d\n", 
-                autoCtrl.isEmailEnabled() ? "TRUE" : "FALSE", 
-                emailAddr.c_str(), 
-                message.length());
-  
-  // Tentative d'envoi avec retry simplifié
-  int maxRetries = 2;
-  for (int attempt = 1; attempt <= maxRetries; attempt++) {
-    Serial.printf("[Web] 📧 Tentative d'envoi %d/%d...\n", attempt, maxRetries);
-    
-    bool emailSent = mailer.sendAlert(subject, message, emailAddr.c_str());
-    
-    if (emailSent) {
-      Serial.printf("[Web] 📧 ✅ Email %s envoyé avec succès (tentative %d)\n", emailType, attempt);
-      autoCtrl.triggerMailBlink();
-      return true;
-    } else {
-      Serial.printf("[Web] 📧 ❌ Échec tentative %d/%d pour %s\n", attempt, maxRetries, emailType);
-      if (attempt < maxRetries) {
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre 1s avant retry
-      }
-    }
-  }
-  
-  Serial.printf("[Web] 📧 ❌ Échec définitif après %d tentatives pour %s\n", maxRetries, emailType);
-  return false;
-}
-
+static WebServerContext* g_webServerContext = nullptr;
 
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts)
-    : _sensors(sensors), _acts(acts), _diag(nullptr) {
+    : _sensors(sensors), _acts(acts), _diag(nullptr), _ctx(nullptr) {
   initializeServer();
 }
 
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts, Diagnostics& diag)
-    : _sensors(sensors), _acts(acts), _diag(&diag) {
+    : _sensors(sensors), _acts(acts), _diag(&diag), _ctx(nullptr) {
   initializeServer();
 }
 
@@ -137,6 +57,11 @@ WebServerManager::~WebServerManager() {
     _server = nullptr;
   }
   #endif
+  if (_ctx) {
+    delete _ctx;
+    _ctx = nullptr;
+  }
+  g_webServerContext = nullptr;
 }
 
 bool WebServerManager::begin() {
@@ -155,387 +80,26 @@ bool WebServerManager::begin() {
   
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
-  
-  // OPTIMISATION v11.58: Streaming sans accumulation mémoire
-  // Évite la fragmentation causée par l'accumulation de 10KB en String
-  auto serveIndexStreaming = [](AsyncWebServerRequest* req) -> bool {
-    // Vérification de mémoire avant traitement (index.html ~10KB + buffer)
-    uint32_t freeHeapBefore = ESP.getFreeHeap();
-    Serial.printf("[Web] 📊 Heap libre avant index.html streaming: %u bytes\n", freeHeapBefore);
-    
-    // NOUVEAU SEUIL DE SÉCURITÉ AUGMENTÉ (v11.58)
-    const uint32_t MIN_HEAP_FOR_FILES = 80000; // Augmenté à 80KB pour sécurité
-    if (freeHeapBefore < MIN_HEAP_FOR_FILES) {
-      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour servir index.html (%u < %u bytes)\n", 
-                    freeHeapBefore, MIN_HEAP_FOR_FILES);
-      return false;
-    }
-    
-    if (!LittleFS.exists("/index.html")) {
-      Serial.println("[Web] ⚠️ index.html non trouvé dans LittleFS");
-      return false;
-    }
-    
-    File file = LittleFS.open("/index.html", "r");
-    if (!file) {
-      Serial.println("[Web] ❌ Impossible d'ouvrir index.html");
-      return false;
-    }
-    
-    size_t fileSize = file.size();
-    Serial.printf("[Web] 📏 index.html size: %u bytes (streaming)\n", fileSize);
-    
-    // STREAMING: Envoi direct par chunks sans accumulation en mémoire
-    AsyncWebServerResponse* response = req->beginChunkedResponse("text/html", [file](uint8_t *buffer, size_t maxLen, size_t index) mutable -> size_t {
-      // Reset watchdog pendant streaming
-      esp_task_wdt_reset();
-      
-      // Vérification mémoire pendant streaming
-      if (ESP.getFreeHeap() < 50000) {
-        Serial.println("[Web] ⚠️ Mémoire critique pendant streaming");
-        file.close();
-        return 0; // Arrêt du streaming
-      }
-      
-      if (!file.available()) {
-        file.close();
-        return 0; // Fin de fichier
-      }
-      
-      // Lire chunk suivant
-      size_t bytesRead = file.read(buffer, maxLen);
-      return bytesRead;
-    });
-    
-    if (response) {
-      response->addHeader("Cache-Control", "public, max-age=300");
-      response->addHeader("X-Content-Type-Options", "nosniff");
-      response->addHeader("X-Frame-Options", "DENY");
-      req->send(response);
-      
-      uint32_t freeHeapAfter = ESP.getFreeHeap();
-      Serial.printf("[Web] ✅ index.html streaming démarré (%u bytes, heap: %u→%u bytes)\n", 
-                    fileSize, freeHeapBefore, freeHeapAfter);
-      
-      // MONITORING v11.58: Statistiques de fragmentation
-      static uint32_t streamingRequests = 0;
-      static uint32_t totalMemorySaved = 0;
-      streamingRequests++;
-      totalMemorySaved += fileSize; // Estimation de la mémoire économisée
-      
-      if (streamingRequests % 10 == 0) { // Log tous les 10 requests
-        Serial.printf("[Web] 📊 Streaming stats: %u requests, ~%u KB économisés\n", 
-                      streamingRequests, totalMemorySaved / 1024);
-      }
-      
-      return true;
-    }
-    
-    Serial.println("[Web] ❌ Échec beginResponse pour index.html");
-    return false;
-  };
 
-  // Page principale - Version consolidée avec thème sombre
-  _server->on("/", HTTP_GET, [serveIndexStreaming](AsyncWebServerRequest* req){
-      autoCtrl.notifyLocalWebActivity();
-      
-      Serial.printf("[Web] 🌐 Requête / depuis %s\n", req->client()->remoteIP().toString().c_str());
-      
-      // Méthode streaming optimisée (v11.58) - évite fragmentation mémoire
-      if (serveIndexStreaming(req)) {
-        return; // Succès
-      }
-      
-      // Fallback ultime : version embarquée si LittleFS échoue
-      Serial.println("[Web] ⚠️ Fallback vers version embarquée");
-      size_t len = strlen_P((PGM_P)INDEX_HTML);
-      Serial.printf("[Web] 📦 Fallback size: %u bytes\n", len);
-      
-      AsyncWebServerResponse* r = req->beginResponse_P(
-        200,
-        "text/html",
-        reinterpret_cast<const uint8_t*>(INDEX_HTML),
-        len
-      );
-      if (r) {
-        r->addHeader("Cache-Control", "public, max-age=300");
-        r->addHeader("X-Content-Type-Options", "nosniff");
-        r->addHeader("X-Frame-Options", "DENY");
-        req->send(r);
-        Serial.println("[Web] ✅ Fallback envoyé");
-      } else {
-        Serial.println("[Web] ❌ ERREUR CRITIQUE: Impossible d'envoyer fallback");
-        req->send(500, "text/plain", "Erreur interne serveur");
-      }
-  });
-  _server->on("/index.html", HTTP_GET, [serveIndexStreaming](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - géré par WebSocket
-      Serial.println("[Web] 📁 Requête explicite /index.html");
-      
-      // Utiliser la même méthode streaming que pour /
-      if (serveIndexStreaming(req)) {
-        return;
-      }
-      
-      // Fallback embarqué
-      Serial.println("[Web] ⚠️ Fallback vers version embarquée");
-      size_t len = strlen_P((PGM_P)INDEX_HTML);
-      AsyncWebServerResponse* r = req->beginResponse_P(
-        200,
-        "text/html",
-        reinterpret_cast<const uint8_t*>(INDEX_HTML),
-        len
-      );
-      if (r) {
-        r->addHeader("Cache-Control", "public, max-age=300");
-        r->addHeader("X-Content-Type-Options", "nosniff");
-        r->addHeader("X-Frame-Options", "DENY");
-        req->send(r);
-      } else {
-        req->send(500, "text/plain", "Erreur interne serveur");
-      }
-  });
-              _server->on("/dashboard.js", HTTP_GET, [](AsyncWebServerRequest* req){
-                  // v11.40: Pas de notifyLocalWebActivity() - fichier statique
-                  req->send(404, "text/plain", "Dashboard JS intégré dans la page HTML");
-              });
-  _server->on("/dashboard.css", HTTP_GET, [](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - fichier statique
-      req->send_P(200, "text/css", "/* CSS intégré dans index.html */");
-  });
-  // Service worker non utilisé pour l'instant (route désactivée)
-  _server->on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest* req){ req->send(204); });
-
-  // Fichiers statiques accessibles sous /static (pour le reste des assets)
-  // _server->serveStatic("/static", LittleFS, "/"); // non utilisé par l'UI actuelle
+  if (_ctx) {
+    delete _ctx;
+  }
+  _ctx = new WebServerContext(autoCtrl,
+                              mailer,
+                              config,
+                              power,
+                              wifi,
+                              _sensors,
+                              _acts,
+                              realtimeWebSocket);
+  g_webServerContext = _ctx;
+  WebServerContext& ctx = *_ctx;
   
-  // CORRECTION: Route dédiée pour common.js (fichier volumineux ~40KB)
-  // Utilise streaming robuste pour éviter ERR_CONNECTION_RESET
-  _server->on("/shared/common.js", HTTP_GET, [](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - fichier statique
-    
-    uint32_t freeHeap = ESP.getFreeHeap();
-    Serial.printf("[Web] 📊 Heap libre avant common.js: %u bytes\n", freeHeap);
-    
-    if (freeHeap < 30000) { // Moins de 30KB libre
-      Serial.println("[Web] ⚠️ Mémoire insuffisante pour servir common.js");
-      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
-      return;
-    }
-    
-    if (LittleFS.exists("/shared/common.js")) {
-      File file = LittleFS.open("/shared/common.js", "r");
-      if (file) {
-        size_t fileSize = file.size();
-        Serial.printf("[Web] 📏 common.js size: %u bytes\n", fileSize);
-        file.close();
-        
-        AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/shared/common.js", "application/javascript");
-        if (r) {
-          r->addHeader("Cache-Control", "public, max-age=86400");
-          r->addHeader("X-Content-Type-Options", "nosniff");
-          req->send(r);
-          Serial.printf("[Web] ✅ common.js envoyé (heap libre: %u bytes)\n", ESP.getFreeHeap());
-        } else {
-          Serial.println("[Web] ❌ Échec beginResponse pour common.js");
-          req->send(500, "text/plain", "Erreur interne");
-        }
-      } else {
-        Serial.println("[Web] ❌ Impossible d'ouvrir common.js");
-        req->send(500, "text/plain", "Impossible d'ouvrir le fichier");
-      }
-    } else {
-      Serial.println("[Web] ❌ common.js introuvable");
-      req->send(404, "text/plain", "Fichier non trouvé");
-    }
-  });
-  
-  // CORRECTION: Route dédiée pour websocket.js (fichier volumineux ~54KB)
-  _server->on("/shared/websocket.js", HTTP_GET, [](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - fichier statique
-    
-    uint32_t freeHeap = ESP.getFreeHeap();
-    Serial.printf("[Web] 📊 Heap libre avant websocket.js: %u bytes\n", freeHeap);
-    
-    if (freeHeap < 30000) {
-      Serial.println("[Web] ⚠️ Mémoire insuffisante pour servir websocket.js");
-      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
-      return;
-    }
-    
-    if (LittleFS.exists("/shared/websocket.js")) {
-      File file = LittleFS.open("/shared/websocket.js", "r");
-      if (file) {
-        size_t fileSize = file.size();
-        Serial.printf("[Web] 📏 websocket.js size: %u bytes\n", fileSize);
-        file.close();
-        
-        AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/shared/websocket.js", "application/javascript");
-        if (r) {
-          r->addHeader("Cache-Control", "public, max-age=86400");
-          r->addHeader("X-Content-Type-Options", "nosniff");
-          req->send(r);
-          Serial.printf("[Web] ✅ websocket.js envoyé (heap libre: %u bytes)\n", ESP.getFreeHeap());
-        } else {
-          Serial.println("[Web] ❌ Échec beginResponse pour websocket.js");
-          req->send(500, "text/plain", "Erreur interne");
-        }
-      } else {
-        Serial.println("[Web] ❌ Impossible d'ouvrir websocket.js");
-        req->send(500, "text/plain", "Impossible d'ouvrir le fichier");
-      }
-    } else {
-      Serial.println("[Web] ❌ websocket.js introuvable");
-      req->send(404, "text/plain", "Fichier non trouvé");
-    }
-  });
-  
-  // Routes pour la nouvelle structure modulaire
-  _server->serveStatic("/shared/", LittleFS, "/shared/").setCacheControl("max-age=86400");
-  _server->serveStatic("/pages/", LittleFS, "/pages/").setCacheControl("max-age=3600");
-  _server->serveStatic("/assets/", LittleFS, "/assets/").setCacheControl("max-age=604800");
-  
-  // ========================================
-  // ENDPOINTS DE RÉVEIL POUR MODEM SLEEP
-  // ========================================
-  
-  // Endpoint ping simple pour réveil minimal
-  _server->on("/ping", HTTP_GET, [](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - ping léger
-      Serial.println("[Web] 🏓 Ping reçu - Réveil système");
-      EventLog::add("Réveil par ping");
-      
-      StaticJsonDocument<128> doc;
-      doc["status"] = "awake";
-      doc["timestamp"] = power.getCurrentTimeString();
-      doc["uptime_ms"] = millis();
-      
-      String response;
-      serializeJson(doc, response);
-      req->send(200, "application/json", response);
-  });
-  
-  // Endpoint wakeup avec action spécifique
-  _server->on("/wakeup", HTTP_GET, [](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - wakeup spécifique
-      Serial.println("[Web] 🔔 Réveil explicite demandé");
-      EventLog::add("Réveil par requête HTTP /wakeup");
-      
-      StaticJsonDocument<256> doc;
-      doc["status"] = "awake";
-      doc["timestamp"] = power.getCurrentTimeString();
-      doc["wakeup_source"] = "http_request";
-      doc["uptime_ms"] = millis();
-      
-      String response;
-      serializeJson(doc, response);
-      req->send(200, "application/json", response);
-      
-      // Mettre à jour les données temps réel
-      realtimeWebSocket.broadcastNow();
-  });
-  
-  // Endpoint API de réveil avec paramètres
-  _server->on("/api/wakeup", HTTP_POST, [this](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - endpoint API spécialisé
-      Serial.println("[Web] 🔔 Réveil par API POST");
-      
-      // Parser le JSON de la requête
-      StaticJsonDocument<512> doc;
-      String body = req->_tempObject ? String((char*)req->_tempObject) : "";
-      DeserializationError error = deserializeJson(doc, body);
-      
-      if (error) {
-          req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-          return;
-      }
-      
-      String action = doc["action"] | "unknown";
-      String source = doc["source"] | "api";
-      
-      Serial.printf("[Web] Action de réveil: %s depuis %s\n", action.c_str(), source.c_str());
-      EventLog::addf("Réveil API: %s depuis %s", action.c_str(), source.c_str());
-      
-      // Traitement selon l'action
-      if (action == "status") {
-          // Retourner le statut système
-          StaticJsonDocument<1024> statusDoc;
-          statusDoc["status"] = "awake";
-          statusDoc["timestamp"] = power.getCurrentTimeString();
-          statusDoc["uptime_ms"] = millis();
-          statusDoc["wifi_connected"] = (WiFi.status() == WL_CONNECTED);
-          if (WiFi.status() == WL_CONNECTED) {
-              statusDoc["wifi_ip"] = WiFi.localIP().toString();
-              statusDoc["wifi_rssi"] = WiFi.RSSI();
-          }
-          
-          String response;
-          serializeJson(statusDoc, response);
-          req->send(200, "application/json", response);
-          
-      } else if (action == "feed") {
-          // Déclencher un nourrissage à distance
-          Serial.println("[Web] 🍽️ Déclenchement nourrissage à distance");
-          autoCtrl.manualFeedSmall();
-          
-          // Reset flag pour éviter boucle infinie
-          SensorReadings readings = _sensors.read();
-          autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
-          
-          StaticJsonDocument<128> feedDoc;
-          feedDoc["status"] = "feeding_triggered";
-          feedDoc["timestamp"] = power.getCurrentTimeString();
-          
-          String response;
-          serializeJson(feedDoc, response);
-          req->send(200, "application/json", response);
-          
-      } else {
-          // Action générale
-          StaticJsonDocument<128> doc;
-          doc["status"] = "awake";
-          doc["action"] = action;
-          doc["timestamp"] = power.getCurrentTimeString();
-          
-          String response;
-          serializeJson(doc, response);
-          req->send(200, "application/json", response);
-      }
-      
-      // Mettre à jour les données temps réel
-      realtimeWebSocket.broadcastNow();
-  });
-
-  // Route pour accéder à la version consolidée (redirection vers /)
-  _server->on("/optimized", HTTP_GET, [](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - simple redirection
-      req->redirect("/");
-  });
-
-  // Routes supprimées - la version consolidée est maintenant la référence
-  
-  // Route pour accéder à l'ancienne version classique (fallback)
-  _server->on("/classic", HTTP_GET, [](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - fallback
-      size_t len = strlen_P((PGM_P)INDEX_HTML);
-      AsyncWebServerResponse* r = req->beginResponse_P(
-        200,
-        "text/html",
-        reinterpret_cast<const uint8_t*>(INDEX_HTML),
-        len
-      );
-      if (r) {
-        r->addHeader("Cache-Control", "public, max-age=300");
-        r->addHeader("X-Content-Type-Options", "nosniff");
-        r->addHeader("X-Frame-Options", "DENY");
-        req->send(r);
-      } else {
-        req->send(500);
-      }
-  });
+  WebRoutes::registerUiRoutes(*_server, ctx);
+  WebRoutes::registerStatusRoutes(*_server, ctx);
 
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
-  _server->on("/action", HTTP_GET, [this](AsyncWebServerRequest* req){
+  _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
       String resp="";
       
@@ -569,7 +133,9 @@ bool WebServerManager::begin() {
                   vTaskDelay(pdMS_TO_TICKS(100));
                   
                   // Utilisation de notre helper robuste d'envoi email
-                  bool emailSent = sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+                  if (g_webServerContext) {
+                    g_webServerContext->sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+                  }
                   
                   // Synchronisation serveur avec reset flag
                   SensorReadings readings = sensors->read();
@@ -581,8 +147,8 @@ bool WebServerManager::begin() {
               } else {
                 Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                if (ESP.getFreeHeap() > 60000) {
-                  sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
+                if (g_webServerContext && ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
+                  g_webServerContext->sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
                 }
               }
               
@@ -611,7 +177,9 @@ bool WebServerManager::begin() {
                   vTaskDelay(pdMS_TO_TICKS(100));
                   
                   // Utilisation de notre helper robuste d'envoi email
-                  bool emailSent = sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
+                  if (g_webServerContext) {
+                    g_webServerContext->sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
+                  }
                   
                   // Synchronisation serveur avec reset flag
                   SensorReadings readings = sensors->read();
@@ -623,8 +191,8 @@ bool WebServerManager::begin() {
               } else {
                 Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                if (ESP.getFreeHeap() > 60000) {
-                  sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
+                if (g_webServerContext && ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
+                  g_webServerContext->sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
                 }
               }
               
@@ -894,15 +462,11 @@ bool WebServerManager::begin() {
   });
 
   // Point de terminaison JSON optimisé - RÉACTIVITÉ MAXIMALE
-  _server->on("/json", HTTP_GET, [this](AsyncWebServerRequest* req) {
+  _server->on("/json", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
     autoCtrl.notifyLocalWebActivity();
     
     // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
-    const uint32_t MIN_HEAP_FOR_JSON = 50000; // 50KB minimum pour JSON
-    if (ESP.getFreeHeap() < MIN_HEAP_FOR_JSON) {
-      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /json (%u < %u bytes)\n", 
-                    ESP.getFreeHeap(), MIN_HEAP_FOR_JSON);
-      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
+    if (!ctx.ensureHeap(req, ctx.jsonMinHeapBytes, F("/json"))) {
       return;
     }
     
@@ -1053,18 +617,8 @@ bool WebServerManager::begin() {
   });
 
   // Endpoint version firmware
-  _server->on("/version", HTTP_GET, [](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - endpoint informatif
-    String js;
-    js.reserve(32);
-    js = "{\"version\":\"";
-    js += Config::VERSION;
-    js += "\"}";
-    req->send(200, "application/json", js);
-  });
-
   // /diag endpoint
-  _server->on("/diag", HTTP_GET, [this](AsyncWebServerRequest* req) {
+  _server->on("/diag", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
     // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
     ArduinoJson::DynamicJsonDocument doc(256);
     if (_diag) {
@@ -1073,66 +627,15 @@ bool WebServerManager::begin() {
       _diag->toJson(big);
       String js;
       serializeJson(big, js);
-      req->send(200, "application/json", js);
+      ctx.sendJson(req, js);
       return;
     }
     String js;
     serializeJson(doc, js);
-    req->send(200, "application/json", js);
+    ctx.sendJson(req, js);
   });
 
   // /pumpstats endpoint optimisé : statistiques de la pompe de réserve
-  _server->on("/pumpstats", HTTP_GET, [this](AsyncWebServerRequest* req) {
-    // v11.40: Pas de notifyLocalWebActivity() - endpoint stats
-    
-    // Utiliser le cache des statistiques de pompe
-    auto stats = pumpStatsCache.getStats(_acts);
-    
-    // Utiliser le pool JSON
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
-    if (!doc) {
-      // Fallback vers allocation directe
-      ArduinoJson::DynamicJsonDocument fallbackDoc(512);
-      fallbackDoc["isRunning"] = stats.isRunning;
-      fallbackDoc["currentRuntime"] = stats.currentRuntime;
-      fallbackDoc["currentRuntimeSec"] = stats.currentRuntimeSec;
-      fallbackDoc["totalRuntime"] = stats.totalRuntime;
-      fallbackDoc["totalRuntimeSec"] = stats.totalRuntimeSec;
-      fallbackDoc["totalStops"] = stats.totalStops;
-      fallbackDoc["lastStopTime"] = stats.lastStopTime;
-      fallbackDoc["timeSinceLastStop"] = stats.timeSinceLastStop;
-      fallbackDoc["timeSinceLastStopSec"] = stats.timeSinceLastStopSec;
-      fallbackDoc["timestamp"] = millis();
-      
-      String json;
-      json.reserve(512);
-      serializeJson(fallbackDoc, json);
-      NetworkOptimizer::sendOptimizedJson(req, json);
-      return;
-    }
-    
-    (*doc)["isRunning"] = stats.isRunning;
-    (*doc)["currentRuntime"] = stats.currentRuntime;
-    (*doc)["currentRuntimeSec"] = stats.currentRuntimeSec;
-    (*doc)["totalRuntime"] = stats.totalRuntime;
-    (*doc)["totalRuntimeSec"] = stats.totalRuntimeSec;
-    (*doc)["totalStops"] = stats.totalStops;
-    (*doc)["lastStopTime"] = stats.lastStopTime;
-    (*doc)["timeSinceLastStop"] = stats.timeSinceLastStop;
-    (*doc)["timeSinceLastStopSec"] = stats.timeSinceLastStopSec;
-    (*doc)["timestamp"] = millis();
-    
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
-    
-    // Libérer le document du pool
-    jsonPool.release(doc);
-    
-    // Envoyer avec optimisation réseau et cache intelligent
-    NetworkOptimizer::sendWithCache(req, json, "application/json", 30); // Cache 30 secondes
-  });
-
   // Gestion des requêtes CORS preflight pour /dbvars
   _server->on("/dbvars", HTTP_OPTIONS, [](AsyncWebServerRequest* req){
     AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
@@ -1264,7 +767,7 @@ bool WebServerManager::begin() {
   });
 
   // Mise à jour des variables distantes locales et envoi vers la BDD distante
-  _server->on("/dbvars/update", HTTP_POST, [this](AsyncWebServerRequest* req){
+  _server->on("/dbvars/update", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req){
     autoCtrl.notifyLocalWebActivity();
     // Récupère les paramètres envoyés en x-www-form-urlencoded
     auto getParam = [req](const char* name)->String{
@@ -1349,7 +852,7 @@ bool WebServerManager::begin() {
     // et indiquer séparément si l'envoi distant a réussi
     String resp; resp.reserve(64);
     resp = "{\"status\":\"OK\",\"remoteSent\":"; resp += (sent ? "true" : "false"); resp += "}";
-    req->send(200, "application/json", resp);
+    ctx.sendJson(req, resp);
   });
 
   // Fichiers statiques avec compression optimisée et gestion Content-Length
@@ -1696,7 +1199,7 @@ bool WebServerManager::begin() {
     req->send(200, "text/html", html);
   });
 
-  _server->on("/nvs/set", HTTP_POST, [](AsyncWebServerRequest* req){
+  _server->on("/nvs/set", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     autoCtrl.notifyLocalWebActivity();
     auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
@@ -1749,10 +1252,10 @@ bool WebServerManager::begin() {
       }
     }
 
-    req->send(200, "application/json", "{\"status\":\"OK\"}");
+    ctx.sendJson(req, String("{\"status\":\"OK\"}"));
   });
 
-  _server->on("/nvs/erase", HTTP_POST, [](AsyncWebServerRequest* req){
+  _server->on("/nvs/erase", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     autoCtrl.notifyLocalWebActivity();
     auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
@@ -1763,10 +1266,10 @@ bool WebServerManager::begin() {
     err = nvs_erase_key(h, key.c_str()); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase failed"); return; }
-    req->send(200, "application/json", "{\"status\":\"OK\"}");
+    ctx.sendJson(req, String("{\"status\":\"OK\"}"));
   });
 
-  _server->on("/nvs/erase_ns", HTTP_POST, [](AsyncWebServerRequest* req){
+  _server->on("/nvs/erase_ns", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     autoCtrl.notifyLocalWebActivity();
     auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
@@ -1777,83 +1280,7 @@ bool WebServerManager::begin() {
     err = nvs_erase_all(h); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase namespace failed"); return; }
-    req->send(200, "application/json", "{\"status\":\"OK\"}");
-  });
-
-  // Endpoint pour les statistiques d'optimisation
-  _server->on("/optimization-stats", HTTP_GET, [](AsyncWebServerRequest* req){
-      // v11.40: Pas de notifyLocalWebActivity() - endpoint stats
-      
-      ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(1024);
-      if (!doc) {
-          req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-          return;
-      }
-      
-      // Statistiques du pool JSON
-      auto jsonPoolStats = jsonPool.getStats();
-      (*doc)["jsonPool"]["totalDocuments"] = jsonPoolStats.totalDocuments;
-      (*doc)["jsonPool"]["usedDocuments"] = jsonPoolStats.usedDocuments;
-      (*doc)["jsonPool"]["availableDocuments"] = jsonPoolStats.availableDocuments;
-      (*doc)["jsonPool"]["totalCapacity"] = jsonPoolStats.totalCapacity;
-      (*doc)["jsonPool"]["usedCapacity"] = jsonPoolStats.usedCapacity;
-      
-      // Statistiques du cache de capteurs
-      auto sensorCacheStats = sensorCache.getStats();
-      (*doc)["sensorCache"]["lastUpdate"] = sensorCacheStats.lastUpdate;
-      (*doc)["sensorCache"]["cacheAge"] = sensorCacheStats.cacheAge;
-      (*doc)["sensorCache"]["cacheDuration"] = sensorCacheStats.cacheDuration;
-      (*doc)["sensorCache"]["isValid"] = sensorCacheStats.isValid;
-      (*doc)["sensorCache"]["freeHeap"] = sensorCacheStats.freeHeap;
-      
-      // Statistiques WebSocket
-      auto wsStats = realtimeWebSocket.getStats();
-      (*doc)["webSocket"]["connectedClients"] = wsStats.connectedClients;
-      (*doc)["webSocket"]["isActive"] = wsStats.isActive;
-      (*doc)["webSocket"]["lastBroadcast"] = wsStats.lastBroadcast;
-      (*doc)["webSocket"]["broadcastInterval"] = wsStats.broadcastInterval;
-      
-      // Statistiques PSRAM (seulement pour ESP32-S3)
-      #ifdef BOARD_S3
-      auto psramStats = PSRAMOptimizer::getStats();
-      (*doc)["psram"]["available"] = psramStats.available;
-      (*doc)["psram"]["total"] = psramStats.total;
-      #else
-      (*doc)["psram"]["available"] = false;
-      (*doc)["psram"]["total"] = 0;
-      #endif
-      #ifdef BOARD_S3
-      (*doc)["psram"]["free"] = psramStats.free;
-      (*doc)["psram"]["used"] = psramStats.used;
-      (*doc)["psram"]["usagePercent"] = psramStats.usagePercent;
-      #else
-      (*doc)["psram"]["free"] = 0;
-      (*doc)["psram"]["used"] = 0;
-      (*doc)["psram"]["usagePercent"] = 0;
-      #endif
-      
-      // Statistiques bundles
-      auto bundleStats = AssetBundler::getBundleStats();
-      (*doc)["bundles"]["jsBundleSize"] = bundleStats.jsBundleSize;
-      (*doc)["bundles"]["cssBundleSize"] = bundleStats.cssBundleSize;
-      (*doc)["bundles"]["minBundleSize"] = bundleStats.minBundleSize;
-      (*doc)["bundles"]["jsAvailable"] = bundleStats.jsAvailable;
-      (*doc)["bundles"]["cssAvailable"] = bundleStats.cssAvailable;
-      (*doc)["bundles"]["minAvailable"] = bundleStats.minAvailable;
-      (*doc)["bundles"]["totalFiles"] = bundleStats.totalFiles;
-      (*doc)["bundles"]["totalSize"] = bundleStats.totalSize;
-      
-      // Mémoire système
-      (*doc)["system"]["freeHeap"] = ESP.getFreeHeap();
-      (*doc)["system"]["totalHeap"] = ESP.getHeapSize();
-      (*doc)["system"]["uptime"] = millis();
-      
-      String json;
-      json.reserve(1024);
-      serializeJson(*doc, json);
-      
-      jsonPool.release(doc);
-      NetworkOptimizer::sendOptimizedJson(req, json);
+    ctx.sendJson(req, String("{\"status\":\"OK\"}"));
   });
 
   // ========================================

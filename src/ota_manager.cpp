@@ -17,6 +17,7 @@
 #include "automatism.h"
 #include "event_log.h"
 #include "diagnostics.h"
+#include "task_monitor.h"
 
 OTAManager::OTAManager() 
     : m_isUpdating(false)
@@ -760,6 +761,10 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
 void OTAManager::updateTask(void* parameter) {
     OTAManager* ota = static_cast<OTAManager*>(parameter);
     ota->log("🚀 Démarrage de la tâche OTA ULTRA-RÉVOLUTIONNAIRE...");
+
+    TaskMonitor::Snapshot baselineSnapshot = TaskMonitor::collectSnapshot();
+    TaskMonitor::logSnapshot(baselineSnapshot, "ota-task-start");
+    TaskMonitor::detectAnomalies(baselineSnapshot, "ota-task-start");
     
     // Diagnostic des partitions AVANT la mise à jour
     const esp_partition_t* running = esp_ota_get_running_partition();
@@ -781,7 +786,7 @@ void OTAManager::updateTask(void* parameter) {
     extern Mailer mailer;
     extern Automatism autoCtrl;
     bool emailEnabled = autoCtrl.isEmailEnabled();
-    String to = emailEnabled ? autoCtrl.getEmailAddress() : String(Config::DEFAULT_MAIL_TO);
+    const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : Config::DEFAULT_MAIL_TO;
     String part = running ? String(running->label) : String("(inconnue)");
     String md5 = ota->getFirmwareMD5();
     String body = String("Début de mise à jour OTA (Serveur distant)\n\n") +
@@ -798,7 +803,7 @@ void OTAManager::updateTask(void* parameter) {
                   "- MD5 filesystem: " + (ota->getFilesystemMD5().length() ? ota->getFilesystemMD5() : String("-")) + "\n" +
                   "- Partition courante: " + part;
     if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-    mailer.sendAlert("OTA début - Serveur distant", body, to.c_str());
+    mailer.sendAlert("OTA début - Serveur distant", body, toEmail);
     
     // Ajouter cette tâche au TWDT et conserver le watchdog ACTIF pendant l'OTA
     esp_task_wdt_add(NULL);
@@ -893,7 +898,7 @@ void OTAManager::updateTask(void* parameter) {
             extern Mailer mailer;
             extern Automatism autoCtrl;
             bool emailEnabled = autoCtrl.isEmailEnabled();
-            String to = emailEnabled ? autoCtrl.getEmailAddress() : String(Config::DEFAULT_MAIL_TO);
+            const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : Config::DEFAULT_MAIL_TO;
             const esp_partition_t* prev_running = esp_ota_get_running_partition();
             String fromPart = prev_running ? String(prev_running->label) + " (0x" + String(prev_running->address, HEX) + ")" : String("(inconnue)");
             String bootPart = new_boot ? String(new_boot->label) + " (0x" + String(new_boot->address, HEX) + ")" : String("(inconnue)");
@@ -915,7 +920,7 @@ void OTAManager::updateTask(void* parameter) {
                           "- Partition de boot (après MAJ): " + bootPart + "\n" +
                           "- Prochaine partition OTA: " + nextPart + "\n";
             if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-            mailer.sendAlert("OTA fin - Serveur distant", body, to.c_str());
+            mailer.sendAlert("OTA fin - Serveur distant", body, toEmail);
         }
         
         // Nettoyer le flag inProgress avant reboot
@@ -925,6 +930,14 @@ void OTAManager::updateTask(void* parameter) {
             prefs.putBool("inProgress", false);
             prefs.end();
         }
+        TaskMonitor::Snapshot successSnapshot = TaskMonitor::collectSnapshot();
+        TaskMonitor::logSnapshot(successSnapshot, "ota-task-success");
+        TaskMonitor::logDiff(baselineSnapshot, successSnapshot, "ota-task");
+        TaskMonitor::detectAnomalies(successSnapshot, "ota-task-success");
+        EventLog::addf("OTA success %s -> %s",
+                       ota->getCurrentVersion().c_str(),
+                       ota->getRemoteVersion().c_str());
+
         ota->log("🔄 Redémarrage dans 3 secondes...");
         delay(3000);
         ESP.restart();
@@ -933,6 +946,13 @@ void OTAManager::updateTask(void* parameter) {
         diag.recordOtaResult(false, "download/update failed");
         ota->log("❌ Échec de la mise à jour ULTRA-RÉVOLUTIONNAIRE");
         ota->m_isUpdating = false;
+        TaskMonitor::Snapshot failureSnapshot = TaskMonitor::collectSnapshot();
+        TaskMonitor::logSnapshot(failureSnapshot, "ota-task-failure");
+        TaskMonitor::logDiff(baselineSnapshot, failureSnapshot, "ota-task");
+        TaskMonitor::detectAnomalies(failureSnapshot, "ota-task-failure");
+        EventLog::addf("OTA failure %s -> %s",
+                       ota->getCurrentVersion().c_str(),
+                       ota->getRemoteVersion().c_str());
         
         // Masquer l'overlay OTA en cas d'échec
         extern DisplayView oled;
@@ -1455,6 +1475,14 @@ bool OTAManager::performUpdate() {
         return false;
     }
     
+  TaskMonitor::Snapshot prepareSnapshot = TaskMonitor::collectSnapshot();
+  TaskMonitor::logSnapshot(prepareSnapshot, "ota-perform");
+  TaskMonitor::detectAnomalies(prepareSnapshot, "ota-perform");
+  EventLog::addf("OTA perform start remote=%s url=%s size=%d",
+                 m_remoteVersion.c_str(),
+                 m_firmwareUrl.c_str(),
+                 m_firmwareSize);
+
     m_isUpdating = true;
     
     // Créer une tâche dédiée pour l'OTA

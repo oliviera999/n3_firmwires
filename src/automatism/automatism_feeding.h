@@ -36,7 +36,7 @@ public:
      * @param mailNotif Email activé ou non
      * @param mailBlinkCallback Callback pour clignotement icône mail OLED
      */
-    void handleSchedule(int hour, int minute, const String& mail, 
+    void handleSchedule(int hour, int minute, const char* emailAddr, 
                        bool mailNotif, std::function<void()> mailBlinkCallback);
     
     /**
@@ -87,11 +87,13 @@ public:
                                     std::function<void(const char*)> sendUpdateCallback);
     
     /**
-     * Crée un message de nourrissage formaté
-     * @param type Type de nourrissage (ex: "Bouffe matin")
-     * @return Message formaté avec détails
+     * Construit un message de nourrissage formaté dans un buffer fixe
+     * @param buffer      Buffer de sortie (doit être non nul)
+     * @param bufferSize  Taille du buffer de sortie
+     * @param type        Type de nourrissage (ex: "Bouffe matin")
+     * @return Nombre de caractères écrits (hors terminator nul)
      */
-    String createMessage(const char* type);
+    size_t createMessage(char* buffer, size_t bufferSize, const char* type) const;
     
     // === CONFIGURATION ===
     
@@ -185,8 +187,8 @@ private:
     std::function<void(const char*)> _completionCallback;
     
     // Helpers privés
-    void performFeedingCycle(bool isLarge, const String& mail, 
-                            bool mailNotif, std::function<void()> mailBlinkCallback);
+    void performFeedingCycle(bool isLarge, const char* emailAddr,
+                             bool mailNotif, std::function<void()> mailBlinkCallback);
     bool shouldFeedNow(int hour, int minute) const;
 };
 

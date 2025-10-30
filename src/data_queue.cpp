@@ -56,6 +56,7 @@ bool DataQueue::push(const String& payload) {
         rotateIfNeeded();
     }
     
+    uint32_t heapBefore = ESP.getFreeHeap();
     // Ouvrir fichier en append
     File file = LittleFS.open(QUEUE_FILE, FILE_APPEND);
     if (!file) {
@@ -70,11 +71,19 @@ bool DataQueue::push(const String& payload) {
     _currentSize++;
     Serial.printf("[DataQueue] ✓ Payload enregistré (%u bytes, total: %u entrées)\n", 
                   payload.length(), _currentSize);
+
+    uint32_t heapAfter = ESP.getFreeHeap();
+    int32_t heapDelta = static_cast<int32_t>(heapAfter) - static_cast<int32_t>(heapBefore);
+    if (heapDelta != 0) {
+        Serial.printf("[DataQueue] 📊 Heap delta push: %d bytes (avant=%u, après=%u)\n",
+                      heapDelta, heapBefore, heapAfter);
+    }
     
     return true;
 }
 
 String DataQueue::pop() {
+    uint32_t heapBefore = ESP.getFreeHeap();
     String first = peek();
     if (first.length() == 0) {
         return first;
@@ -114,6 +123,13 @@ String DataQueue::pop() {
     
     _currentSize--;
     Serial.printf("[DataQueue] ✓ Payload supprimé (restant: %u)\n", _currentSize);
+
+    uint32_t heapAfter = ESP.getFreeHeap();
+    int32_t heapDelta = static_cast<int32_t>(heapAfter) - static_cast<int32_t>(heapBefore);
+    if (heapDelta != 0) {
+        Serial.printf("[DataQueue] 📉 Heap delta pop: %d bytes (avant=%u, après=%u)\n",
+                      heapDelta, heapBefore, heapAfter);
+    }
     
     return first;
 }

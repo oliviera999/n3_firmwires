@@ -1,6 +1,12 @@
 #include "automatism_feeding.h"
 #include "project_config.h"
 #include <ctime>
+#include <cstring>
+#include <cstdio>
+
+namespace {
+constexpr size_t FEED_MESSAGE_BUFFER_SIZE = 256;
+}
 
 // ============================================================================
 // Module: AutomatismFeeding
@@ -71,12 +77,34 @@ void AutomatismFeeding::saveFeedingState() {
 // MESSAGES ET TRAÇAGE
 // ============================================================================
 
-String AutomatismFeeding::createMessage(const char* type) {
-    String message = String(type) + " - Distribution effectuée\n\n";
-    message += "Temps de nourrissage effectif:\n";
-    message += "- Gros poissons: " + String(_tempsGros) + " secondes\n";
-    message += "- Petits poissons: " + String(_tempsPetits) + " secondes\n";
-    return message;
+size_t AutomatismFeeding::createMessage(char* buffer, size_t bufferSize, const char* type) const {
+    if (!buffer || bufferSize == 0) {
+        return 0;
+    }
+
+    buffer[0] = '\0';
+    const char* safeType = (type && type[0] != '\0') ? type : "Nourrissage";
+    int written = snprintf(buffer,
+                           bufferSize,
+                           "%s - Distribution effectuée\n\n"
+                           "Temps de nourrissage effectif:\n"
+                           "- Gros poissons: %u secondes\n"
+                           "- Petits poissons: %u secondes\n",
+                           safeType,
+                           static_cast<unsigned>(_tempsGros),
+                           static_cast<unsigned>(_tempsPetits));
+
+    if (written < 0) {
+        buffer[0] = '\0';
+        return 0;
+    }
+
+    if (static_cast<size_t>(written) >= bufferSize) {
+        buffer[bufferSize - 1] = '\0';
+        return bufferSize - 1;
+    }
+
+    return static_cast<size_t>(written);
 }
 
 void AutomatismFeeding::traceFeedingEvent(std::function<void(const char*)> sendUpdateCallback) {
@@ -92,36 +120,34 @@ void AutomatismFeeding::traceFeedingEvent(std::function<void(const char*)> sendU
 
 void AutomatismFeeding::traceFeedingEventSelective(bool feedSmall, bool feedBig,
                                                    std::function<void(const char*)> sendUpdateCallback) {
-    // Construction paramètres première trame (indicateurs à 1)
-    String params1 = "";
+    const char* paramsOn = nullptr;
     if (feedSmall && feedBig) {
-        params1 = "bouffePetits=1&bouffeGros=1";
+        paramsOn = "bouffePetits=1&bouffeGros=1";
     } else if (feedSmall) {
-        params1 = "bouffePetits=1";
+        paramsOn = "bouffePetits=1";
     } else if (feedBig) {
-        params1 = "bouffeGros=1";
+        paramsOn = "bouffeGros=1";
     }
-    
-    if (params1.length() > 0) {
-        sendUpdateCallback(params1.c_str());
+
+    if (paramsOn != nullptr) {
+        sendUpdateCallback(paramsOn);
         delay(500);
-        
-        // Construction paramètres seconde trame (indicateurs à 0)
-        String params2 = "";
+
+        const char* paramsOff = nullptr;
         if (feedSmall && feedBig) {
-            params2 = "bouffePetits=0&bouffeGros=0";
+            paramsOff = "bouffePetits=0&bouffeGros=0";
         } else if (feedSmall) {
-            params2 = "bouffePetits=0";
+            paramsOff = "bouffePetits=0";
         } else if (feedBig) {
-            params2 = "bouffeGros=0";
+            paramsOff = "bouffeGros=0";
         }
-        
-        if (params2.length() > 0) {
-            sendUpdateCallback(params2.c_str());
+
+        if (paramsOff != nullptr) {
+            sendUpdateCallback(paramsOff);
         }
-        
+
         Serial.printf("[Feeding] Événement tracé sélectif - Petits: %s, Gros: %s\n",
-                     feedSmall ? "OUI" : "NON", feedBig ? "OUI" : "NON");
+                      feedSmall ? "OUI" : "NON", feedBig ? "OUI" : "NON");
     }
 }
 
@@ -244,7 +270,7 @@ AutomatismFeeding::Status AutomatismFeeding::getStatus() const {
 // NOURRISSAGE AUTOMATIQUE (handleSchedule)
 // ============================================================================
 
-void AutomatismFeeding::handleSchedule(int hour, int minute, const String& mail,
+void AutomatismFeeding::handleSchedule(int hour, int minute, const char* emailAddr,
                                       bool mailNotif, std::function<void()> mailBlinkCallback) {
     // Vérifier changement de jour
     checkNewDay();
@@ -258,7 +284,7 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& mail,
     if (hour == _bouffeMatin && minute == 0 && !bouffeMatin) {
         Serial.println(F("[Feeding] === DÉCLENCHEMENT BOUFFE MATIN ==="));
         
-        performFeedingCycle(true, mail, mailNotif, mailBlinkCallback);
+        performFeedingCycle(true, emailAddr, mailNotif, mailBlinkCallback);
         
         // Marquer comme effectué
         _config.setBouffeMatinOk(true);
@@ -271,7 +297,7 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& mail,
     if (hour == _bouffeMidi && minute == 0 && !bouffeMidi) {
         Serial.println(F("[Feeding] === DÉCLENCHEMENT BOUFFE MIDI ==="));
         
-        performFeedingCycle(true, mail, mailNotif, mailBlinkCallback);
+        performFeedingCycle(true, emailAddr, mailNotif, mailBlinkCallback);
         
         // Marquer comme effectué
         _config.setBouffeMidiOk(true);
@@ -291,14 +317,18 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& mail,
         // Notification email si activée
         Serial.println(F("[Feeding] === DIAGNOSTIC EMAIL SOIR ==="));
         Serial.printf("[Feeding] mailNotif: %s\n", mailNotif ? "TRUE" : "FALSE");
-        Serial.printf("[Feeding] mail: '%s'\n", mail.c_str());
-        Serial.printf("[Feeding] mail length: %d\n", mail.length());
+        const char* safeAddr = emailAddr ? emailAddr : "";
+        size_t addrLen = emailAddr ? strnlen(emailAddr, EmailConfig::MAX_EMAIL_LENGTH - 1) : 0;
+        Serial.printf("[Feeding] mail: '%s'\n", safeAddr);
+        Serial.printf("[Feeding] mail length: %u\n", static_cast<unsigned>(addrLen));
         
         if (mailNotif) {
             Serial.println(F("[Feeding] ✅ Email activé - tentative d'envoi"));
-            String message = createMessage("Bouffe soir");
-            Serial.printf("[Feeding] Message créé: %d chars\n", message.length());
-            bool emailSent = _mailer.sendAlert("Bouffe soir", message, mail.c_str());
+            char message[FEED_MESSAGE_BUFFER_SIZE];
+            size_t msgLen = createMessage(message, sizeof(message), "Bouffe soir");
+            Serial.printf("[Feeding] Message créé: %u chars\n", static_cast<unsigned>(msgLen));
+            String messageStr(message);
+            bool emailSent = _mailer.sendAlert("Bouffe soir", messageStr, safeAddr);
             Serial.printf("[Feeding] Résultat envoi email: %s\n", emailSent ? "SUCCESS" : "FAILED");
             if (emailSent) {
                 mailBlinkCallback();
@@ -328,7 +358,7 @@ void AutomatismFeeding::handleSchedule(int hour, int minute, const String& mail,
 // HELPER PRIVÉ
 // ============================================================================
 
-void AutomatismFeeding::performFeedingCycle(bool isLarge, const String& mail,
+void AutomatismFeeding::performFeedingCycle(bool isLarge, const char* emailAddr,
                                            bool mailNotif, std::function<void()> mailBlinkCallback) {
     if (isLarge) {
         // Gros + petits
@@ -355,17 +385,21 @@ void AutomatismFeeding::performFeedingCycle(bool isLarge, const String& mail,
     // Notification email si activée
     Serial.println(F("[Feeding] === DIAGNOSTIC EMAIL CYCLE ==="));
     Serial.printf("[Feeding] mailNotif: %s\n", mailNotif ? "TRUE" : "FALSE");
-    Serial.printf("[Feeding] mail: '%s'\n", mail.c_str());
-    Serial.printf("[Feeding] mail length: %d\n", mail.length());
+    const char* safeAddr = emailAddr ? emailAddr : "";
+    size_t addrLen = emailAddr ? strnlen(emailAddr, EmailConfig::MAX_EMAIL_LENGTH - 1) : 0;
+    Serial.printf("[Feeding] mail: '%s'\n", safeAddr);
+    Serial.printf("[Feeding] mail length: %u\n", static_cast<unsigned>(addrLen));
     Serial.printf("[Feeding] isLarge: %s\n", isLarge ? "TRUE" : "FALSE");
     
     if (mailNotif) {
         Serial.println(F("[Feeding] ✅ Email activé - tentative d'envoi"));
         const char* type = isLarge ? "Bouffe complète" : "Bouffe petits";
-        String message = createMessage(type);
+        char message[FEED_MESSAGE_BUFFER_SIZE];
+        size_t msgLen = createMessage(message, sizeof(message), type);
         Serial.printf("[Feeding] Type: %s\n", type);
-        Serial.printf("[Feeding] Message créé: %d chars\n", message.length());
-        bool emailSent = _mailer.sendAlert(type, message, mail.c_str());
+        Serial.printf("[Feeding] Message créé: %u chars\n", static_cast<unsigned>(msgLen));
+        String messageStr(message);
+        bool emailSent = _mailer.sendAlert(type, messageStr, safeAddr);
         Serial.printf("[Feeding] Résultat envoi email: %s\n", emailSent ? "SUCCESS" : "FAILED");
         if (emailSent) {
             mailBlinkCallback();

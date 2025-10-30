@@ -37,49 +37,47 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
   // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
   const uint32_t GLOBAL_TIMEOUT_MS = GlobalTimeouts::HTTP_MAX_MS;
   uint32_t requestStartMs = millis();
-  
-  // === LOGS DÉTAILLÉS DE DEBUGGING v11.32 ===
-  Serial.println(F("=== DÉBUT REQUÊTE HTTP ==="));
-  Serial.printf("[HTTP] Timestamp: %lu ms\n", requestStartMs);
-  Serial.printf("[HTTP] URL: %s\n", url.c_str());
-  Serial.printf("[HTTP] Payload size: %u bytes\n", payload.length());
-  Serial.printf("[HTTP] Timeout global: %u ms\n", GLOBAL_TIMEOUT_MS);
-  
-  // Logs détaillés du payload (toujours affiché pour debugging)
-  Serial.println(F("[HTTP] === PAYLOAD COMPLET ==="));
-  if (payload.length() <= 500) {
-    Serial.printf("[HTTP] %s\n", payload.c_str());
-  } else {
-    Serial.printf("[HTTP] %s ... (truncated)\n", payload.substring(0,500).c_str());
-    Serial.printf("[HTTP] ... (%u bytes restants)\n", payload.length() - 500);
+  const bool debugLogging = (LOG_LEVEL >= LOG_DEBUG) && LogConfig::SERIAL_ENABLED;
+  const bool verboseLogging = (LOG_LEVEL >= LOG_VERBOSE) && LogConfig::SERIAL_ENABLED;
+
+  if (debugLogging) {
+    LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes, timeout=%u ms)",
+        url.c_str(), payload.length(), GLOBAL_TIMEOUT_MS);
+    LOG(LOG_DEBUG, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm",
+        WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
+    LOG(LOG_DEBUG, "[HTTP] IP=%s gateway=%s dns=%s",
+        WiFi.localIP().toString().c_str(),
+        WiFi.gatewayIP().toString().c_str(),
+        WiFi.dnsIP().toString().c_str());
+    LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes (min=%u)", ESP.getFreeHeap(), ESP.getMinFreeHeap());
+
+    if (verboseLogging && payload.length() > 0) {
+      const size_t previewLen = payload.length() > 200 ? 200 : payload.length();
+      LOG(LOG_VERBOSE, "[HTTP] Payload (%u/%u): %s%s",
+          previewLen,
+          payload.length(),
+          payload.substring(0, previewLen).c_str(),
+          payload.length() > previewLen ? " ..." : "");
+    }
   }
-  Serial.println(F("[HTTP] === FIN PAYLOAD ==="));
-  
-  // État réseau détaillé
-  Serial.printf("[HTTP] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
-  Serial.printf("[HTTP] RSSI: %d dBm\n", WiFi.RSSI());
-  Serial.printf("[HTTP] IP: %s\n", WiFi.localIP().toString().c_str());
-  Serial.printf("[HTTP] Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-  Serial.printf("[HTTP] DNS: %s\n", WiFi.dnsIP().toString().c_str());
-  
-  // Mémoire disponible
-  size_t freeHeap = ESP.getFreeHeap();
-  size_t minFreeHeap = ESP.getMinFreeHeap();
-  Serial.printf("[HTTP] Free heap: %u bytes (min: %u)\n", freeHeap, minFreeHeap);
   
   // Fix v11.29: Délai minimum entre requêtes HTTP pour éviter saturation TCP
   if (_lastRequestMs > 0) {
     unsigned long timeSinceLastRequest = millis() - _lastRequestMs;
     if (timeSinceLastRequest < ServerConfig::MIN_DELAY_BETWEEN_REQUESTS_MS) {
       uint32_t delayNeeded = ServerConfig::MIN_DELAY_BETWEEN_REQUESTS_MS - timeSinceLastRequest;
-      Serial.printf("[HTTP] ⏱️ Délai inter-requêtes: %u ms\n", delayNeeded);
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Délai inter-requêtes %u ms", delayNeeded);
+      }
       vTaskDelay(pdMS_TO_TICKS(delayNeeded));
     }
   }
   
   // Désactiver le modem sleep juste avant un transfert pour fiabilité
   WiFi.setSleep(false);
-  Serial.println(F("[HTTP] Modem sleep disabled for transfer"));
+  if (debugLogging) {
+    LOG(LOG_DEBUG, "[HTTP] Modem sleep désactivé pendant le transfert");
+  }
 
   // Choix du client selon le schéma (HTTP = non-TLS / HTTPS = TLS)
   bool secure = url.startsWith("https://");
@@ -91,131 +89,115 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
   int code = -1;
   response = "";
   
-  Serial.printf("[HTTP] Starting retry loop (max %d attempts)\n", maxAttempts);
+  if (debugLogging) {
+    LOG(LOG_DEBUG, "[HTTP] Boucle de retry max=%d", maxAttempts);
+  }
   
   while (attempt < maxAttempts) {
     unsigned long attemptStartMs = millis();
-    Serial.printf("[HTTP] === TENTATIVE %d/%d ===\n", attempt+1, maxAttempts);
+    if (debugLogging) {
+      LOG(LOG_DEBUG, "[HTTP] Tentative %d/%d", attempt + 1, maxAttempts);
+    }
     
     // Ré-initialise la requête
     if (secure) {
       _http.begin(_client, url);
-      Serial.printf("[HTTP] 🔒 Using HTTPS client (attempt %d/%d)\n", attempt+1, maxAttempts);
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Client HTTPS utilisé");
+      }
     } else {
       _http.begin(plain, url);
-      Serial.printf("[HTTP] 🌐 Using HTTP client (attempt %d/%d)\n", attempt+1, maxAttempts);
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Client HTTP simple utilisé");
+      }
     }
     
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    Serial.printf("[HTTP] Headers set, timeout: %u ms\n", ServerConfig::REQUEST_TIMEOUT_MS);
+    if (debugLogging) {
+      LOG(LOG_DEBUG, "[HTTP] Headers positionnés, timeout requête=%u", ServerConfig::REQUEST_TIMEOUT_MS);
+    }
     
     // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
     uint32_t elapsedMs = millis() - requestStartMs;
     if (elapsedMs >= GLOBAL_TIMEOUT_MS) {
-      Serial.printf("[HTTP] ⚠️ TIMEOUT GLOBAL ATTEINT: %u ms (limite: %u ms)\n", elapsedMs, GLOBAL_TIMEOUT_MS);
+      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, GLOBAL_TIMEOUT_MS);
       _http.end();
       return false;
     }
     
     // Log avant envoi POST
-    Serial.printf("[HTTP] Sending POST at %lu ms...\n", attemptStartMs);
+    if (debugLogging) {
+      LOG(LOG_DEBUG, "[HTTP] POST en cours (elapsed=%lu ms)", attemptStartMs - requestStartMs);
+    }
     code = _http.POST(payload);
     unsigned long postDurationMs = millis() - attemptStartMs;
-    Serial.printf("[HTTP] POST completed in %lu ms\n", postDurationMs);
+    if (debugLogging) {
+      LOG(LOG_DEBUG, "[HTTP] POST terminé en %lu ms", postDurationMs);
+    }
     if (code > 0) {
       unsigned long responseStartMs = millis();
       response = _http.getString();
       unsigned long responseDurationMs = millis() - responseStartMs;
       
-      // === LOGS DÉTAILLÉS v11.32 - DIAGNOSTIC COMPLET ===
-      Serial.printf("[HTTP] ← HTTP %d, %u bytes (received in %lu ms)\n", code, response.length(), responseDurationMs);
-      
-      // Headers détaillés
-      String contentType = _http.header("Content-Type");
-      String server = _http.header("Server");
-      String connection = _http.header("Connection");
-      String contentLength = _http.header("Content-Length");
-      String transferEncoding = _http.header("Transfer-Encoding");
-      
-      Serial.printf("[HTTP] Content-Type: %s\n", contentType.c_str());
-      Serial.printf("[HTTP] Server: %s\n", server.c_str());
-      Serial.printf("[HTTP] Connection: %s\n", connection.c_str());
-      Serial.printf("[HTTP] Content-Length: %s\n", contentLength.c_str());
-      Serial.printf("[HTTP] Transfer-Encoding: %s\n", transferEncoding.c_str());
-      
-      // Analyse détaillée de la réponse
-      if (response.length() > 0) {
-        Serial.println(F("[HTTP] === RÉPONSE COMPLÈTE ==="));
-        if (response.length() <= 800) {
-          Serial.printf("[HTTP] %s\n", response.c_str());
-        } else {
-          Serial.printf("[HTTP] %s ... (truncated)\n", response.substring(0,800).c_str());
-          Serial.printf("[HTTP] ... (%u bytes restants)\n", response.length() - 800);
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Réponse reçue code=%d bytes=%u en %lu ms", code, response.length(), responseDurationMs);
+      }
+
+      if (verboseLogging) {
+        LOG(LOG_VERBOSE, "[HTTP] Content-Type=%s", _http.header("Content-Type").c_str());
+        LOG(LOG_VERBOSE, "[HTTP] Server=%s", _http.header("Server").c_str());
+        LOG(LOG_VERBOSE, "[HTTP] Connection=%s", _http.header("Connection").c_str());
+        LOG(LOG_VERBOSE, "[HTTP] Content-Length=%s", _http.header("Content-Length").c_str());
+        LOG(LOG_VERBOSE, "[HTTP] Transfer-Encoding=%s", _http.header("Transfer-Encoding").c_str());
+
+        if (response.length() > 0) {
+          const size_t previewLen = response.length() > 200 ? 200 : response.length();
+          LOG(LOG_VERBOSE, "[HTTP] Response (%u/%u): %s%s",
+              previewLen,
+              response.length(),
+              response.substring(0, previewLen).c_str(),
+              response.length() > previewLen ? " ..." : "");
         }
-        Serial.println(F("[HTTP] === FIN RÉPONSE ==="));
-        
-        // Analyse du type de contenu
-        if (response.startsWith("<") || response.indexOf("<!DOCTYPE") >= 0 || response.indexOf("<html") >= 0) {
-          Serial.println(F("[HTTP] ⚠️ ALERTE: Réponse HTML détectée au lieu de JSON/texte !"));
-        } else if (response.startsWith("{") || response.startsWith("[")) {
-          Serial.println(F("[HTTP] ✓ Réponse JSON détectée"));
-        } else if (response.indexOf("success") >= 0 || response.indexOf("ok") >= 0) {
-          Serial.println(F("[HTTP] ✓ Réponse texte positive détectée"));
-        } else if (response.indexOf("error") >= 0 || response.indexOf("fail") >= 0) {
-          Serial.println(F("[HTTP] ⚠️ Réponse texte d'erreur détectée"));
-        }
-        
-        // Analyse des codes de statut
-        if (code >= 200 && code < 300) {
-          Serial.printf("[HTTP] ✓ Succès (2xx): %d\n", code);
-        } else if (code >= 300 && code < 400) {
-          Serial.printf("[HTTP] ⚠️ Redirection (3xx): %d\n", code);
-        } else if (code >= 400 && code < 500) {
-          Serial.printf("[HTTP] ❌ Erreur client (4xx): %d\n", code);
-        } else if (code >= 500) {
-          Serial.printf("[HTTP] ❌ Erreur serveur (5xx): %d\n", code);
-        }
-      } else {
-        Serial.println(F("[HTTP] ⚠️ Réponse vide reçue"));
+      }
+
+      if (response.length() == 0) {
+        LOG(LOG_WARN, "[HTTP] Réponse vide reçue (code=%d)", code);
+      } else if (code >= 400) {
+        LOG(LOG_WARN, "[HTTP] Réponse erreur %d", code);
       }
     } else {
-      // === LOGS D'ERREUR DÉTAILLÉS v11.32 ===
       unsigned long errorTimeMs = millis();
-      Serial.printf("[HTTP] ❌ ERROR %d (attempt %d/%d) at %lu ms\n", code, attempt+1, maxAttempts, errorTimeMs);
-      Serial.printf("[HTTP] Error detail: %s\n", _http.errorToString(code).c_str());
-      Serial.printf("[HTTP] URL: %s\n", url.c_str());
-      
-      // État réseau au moment de l'erreur
-      Serial.printf("[HTTP] WiFi status: %d (%s)\n", WiFi.status(), WiFi.isConnected() ? "CONNECTED" : "DISCONNECTED");
-      Serial.printf("[HTTP] RSSI: %d dBm\n", WiFi.RSSI());
-      Serial.printf("[HTTP] IP: %s\n", WiFi.localIP().toString().c_str());
-      
-      // Mémoire au moment de l'erreur
-      size_t freeHeapError = ESP.getFreeHeap();
-      Serial.printf("[HTTP] Free heap at error: %u bytes\n", freeHeapError);
-      
-      // Analyse des erreurs courantes
+      LOG(LOG_WARN, "[HTTP] Erreur %d (tentative %d/%d, %lu ms) : %s",
+          code,
+          attempt + 1,
+          maxAttempts,
+          errorTimeMs - requestStartMs,
+          _http.errorToString(code).c_str());
+      LOG(LOG_WARN, "[HTTP] URL=%s", url.c_str());
+      LOG(LOG_WARN, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm", WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
+      LOG(LOG_WARN, "[HTTP] Heap libre=%u", ESP.getFreeHeap());
+
       if (code == HTTPC_ERROR_CONNECTION_REFUSED) {
-        Serial.println(F("[HTTP] 🔍 DIAGNOSTIC: Connection refused - serveur indisponible"));
+        LOG(LOG_WARN, "[HTTP] Diagnostic: connection refused");
       } else if (code == HTTPC_ERROR_CONNECTION_LOST) {
-        Serial.println(F("[HTTP] 🔍 DIAGNOSTIC: Connection lost - problème réseau"));
+        LOG(LOG_WARN, "[HTTP] Diagnostic: connection lost");
       } else if (code == HTTPC_ERROR_NO_STREAM) {
-        Serial.println(F("[HTTP] 🔍 DIAGNOSTIC: No stream - problème de flux"));
+        LOG(LOG_WARN, "[HTTP] Diagnostic: no stream");
       } else if (code == HTTPC_ERROR_NO_HTTP_SERVER) {
-        Serial.println(F("[HTTP] 🔍 DIAGNOSTIC: No HTTP server - serveur non HTTP"));
+        LOG(LOG_WARN, "[HTTP] Diagnostic: no HTTP server");
       } else if (code == HTTPC_ERROR_TOO_LESS_RAM) {
-        Serial.println(F("[HTTP] 🔍 DIAGNOSTIC: Too less RAM - mémoire insuffisante"));
+        LOG(LOG_WARN, "[HTTP] Diagnostic: insufficient RAM");
       } else if (code == HTTPC_ERROR_READ_TIMEOUT) {
-        Serial.println(F("[HTTP] 🔍 DIAGNOSTIC: Read timeout - délai de lecture dépassé"));
-      } else {
-        Serial.printf("[HTTP] 🔍 DIAGNOSTIC: Erreur inconnue %d\n", code);
+        LOG(LOG_WARN, "[HTTP] Diagnostic: read timeout");
       }
     }
     _http.end();
     
     // === STATISTIQUES DE LA TENTATIVE ===
     unsigned long attemptDurationMs = millis() - attemptStartMs;
-    Serial.printf("[HTTP] Tentative %d/%d terminée en %lu ms\n", attempt+1, maxAttempts, attemptDurationMs);
+    if (debugLogging) {
+      LOG(LOG_DEBUG, "[HTTP] Tentative %d/%d terminée en %lu ms", attempt + 1, maxAttempts, attemptDurationMs);
+    }
     
     // Record into diagnostics if available
     extern Diagnostics diag;
@@ -227,19 +209,21 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
 
     // Succès 2xx-3xx : sortir immédiatement
     if (code >= 200 && code < 400) {
-      Serial.printf("[HTTP] ✓ Succès détecté (HTTP %d), arrêt des tentatives\n", code);
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Succès %d, arrêt des tentatives", code);
+      }
       break;
     }
     
     // Erreur client 4xx : pas de retry (v11.31)
     if (code >= 400 && code < 500) {
-      Serial.printf("[HTTP] ✗ Erreur client (4xx: %d), pas de retry\n", code);
+      LOG(LOG_WARN, "[HTTP] Erreur client %d, arrêt des retry", code);
       break;
     }
     
     // Court-circuit si plus de WiFi
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println(F("[HTTP] ✗ WiFi déconnecté, arrêt des tentatives"));
+      LOG(LOG_WARN, "[HTTP] WiFi déconnecté, arrêt des tentatives");
       break;
     }
     
@@ -249,17 +233,18 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     // Backoff exponentiel si retry possible (v11.31 amélioré)
     if (attempt < maxAttempts) {
       int backoff = NetworkConfig::BACKOFF_BASE_MS * attempt * attempt;
-      Serial.printf("[HTTP] ⚠️ Retry %d/%d dans %d ms...\n", attempt+1, maxAttempts, backoff);
-      
-      // Log de l'état avant attente
-      Serial.printf("[HTTP] État avant retry: WiFi=%d, RSSI=%d, Heap=%u\n", 
-                   WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Retry %d/%d dans %d ms", attempt + 1, maxAttempts, backoff);
+        LOG(LOG_DEBUG, "[HTTP] Avant retry: WiFi=%d RSSI=%d Heap=%u",
+            WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
+      }
       
       vTaskDelay(pdMS_TO_TICKS(backoff));
       
-      // Log de l'état après attente
-      Serial.printf("[HTTP] État après retry: WiFi=%d, RSSI=%d, Heap=%u\n", 
-                   WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
+      if (debugLogging) {
+        LOG(LOG_DEBUG, "[HTTP] Après retry: WiFi=%d RSSI=%d Heap=%u",
+            WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
+      }
       
       // Note: Watchdog géré par tâche appelante - vTaskDelay() yield le CPU
       // Ne pas appeler esp_task_wdt_reset() ici (erreur "task not found")
@@ -268,14 +253,16 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
 
   // === RÉSUMÉ FINAL DE LA REQUÊTE ===
   unsigned long totalDurationMs = millis() - requestStartMs;
-  Serial.printf("[HTTP] === FIN REQUÊTE HTTP ===\n");
-  Serial.printf("[HTTP] Durée totale: %lu ms\n", totalDurationMs);
-  Serial.printf("[HTTP] Tentatives: %d/%d\n", attempt+1, maxAttempts);
-  Serial.printf("[HTTP] Code final: %d\n", code);
-  Serial.printf("[HTTP] Succès: %s\n", (code >= 200 && code < 400) ? "OUI" : "NON");
-  Serial.printf("[HTTP] Taille réponse: %u bytes\n", response.length());
-  Serial.printf("[HTTP] Mémoire finale: %u bytes\n", ESP.getFreeHeap());
-  Serial.println(F("==============================="));
+  if (debugLogging || code >= 400) {
+    LOG(LOG_INFO, "[HTTP] Fin requête: durée=%lu ms, tentatives=%d/%d, code=%d, succès=%s, réponse=%u bytes, heap=%u",
+        totalDurationMs,
+        attempt + 1,
+        maxAttempts,
+        code,
+        (code >= 200 && code < 400) ? "oui" : "non",
+        response.length(),
+        ESP.getFreeHeap());
+  }
   
   // Fix v11.29: Sauvegarder timestamp pour délai inter-requêtes
   _lastRequestMs = millis();

@@ -1,0 +1,6 @@
+- [x] Split `Automatism` responsibilities into refill/alert/display controllers with shared state struct
+- [x] Add retry backoff, telemetry counters, and watchdog yields inside `AutomatismNetwork` pathways
+- [x] Instrument heap usage around SPIFFS queue and JSON operations to detect fragmentation
+- [ ] Log sleep/OTA entry-exit transitions and validate task resume logic
+- [ ] Eliminate `String` allocations in config parsing/sync using bounded buffers
+- [x] Automate build/test/log monitoring and enforce version bump + static analysis
