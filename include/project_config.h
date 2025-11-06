@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-  constexpr const char* VERSION = "11.94"; // v11.92: Automatism begin refactor & remote cache guards
+  constexpr const char* VERSION = "11.97"; // v11.97: Fix conversion types GPIO virtuels (seuils aquarium/réservoir et autres CONFIG_INT/FLOAT)
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -78,7 +78,7 @@ namespace DefaultValues {
 // CONFIGURATION SERVEUR
 // =============================================================================
 namespace ServerConfig {
-    constexpr const char* BASE_URL = "http://iot.olution.info";
+    constexpr const char* BASE_URL = "https://iot.olution.info";
     // Option: serveur secondaire (auto-hébergé/local). Laisser vide pour désactiver.
     // Exemple: "http://192.168.1.50" ou "http://nas.local:8080"
     #ifndef SECONDARY_BASE_URL
@@ -87,11 +87,11 @@ namespace ServerConfig {
     
     // Endpoints selon le profil
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-        // Environnement de test (endpoints avec "-test")
+        // Environnement de test: legacy POST route (DB write path)
         constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-test";
         constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-test/state";
     #else
-        // Production (endpoints standards)
+        // Production: legacy POST route (DB write path)
         constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data";
         constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs/state";
     #endif
@@ -127,7 +127,11 @@ namespace ServerConfig {
     }
     
     // Autres endpoints
-    constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat";  // Fix v11.44: endpoint corrigé avec préfixe /ffp3/
+    #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-test";  // Slim controller (TEST)
+    #else
+    constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat";      // Slim controller (PROD)
+    #endif
     constexpr const char* OTA_BASE_PATH = "/ffp3/ota/";
     
     // Timeouts optimisés pour fiabilité (augmentés v11.09 pour diagnostic HTTP)

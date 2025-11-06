@@ -132,33 +132,62 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                     // Copie sécurisée en évitant les pointeurs temporaires
                     String keyStr = configKey; // Copie pour éviter les problèmes de pointeur
                     
-                    // v11.79: Gestion sécurisée selon le type (sans try-catch ESP32)
+                    // v11.80: Conversion selon le type attendu du GPIO (pas le type reçu)
+                    // Cela permet de gérer les cas où le serveur envoie des strings au lieu de nombres
                     bool assignmentOk = false;
                     
-                    if (value.is<const char*>()) {
-                        const char* valPtr = value.as<const char*>();
-                        if (valPtr != nullptr && strlen(valPtr) < 100) { // Limite de taille
-                            configDoc[keyStr] = String(valPtr);
-                            assignmentOk = true;
+                    // Convertir selon le type attendu du GPIO, pas le type reçu
+                    if (mapping->type == GPIOType::CONFIG_INT) {
+                        // Pour CONFIG_INT, toujours convertir en int (même si reçu comme string)
+                        int intVal = parseInt(value);
+                        configDoc[keyStr] = intVal;
+                        assignmentOk = true;
+                        Serial.printf("[GPIOParser] GPIO %d (INT) -> %s = %d (converti depuis %s)\n", 
+                                     gpio, keyStr.c_str(), intVal, value.as<String>().c_str());
+                    }
+                    else if (mapping->type == GPIOType::CONFIG_FLOAT) {
+                        // Pour CONFIG_FLOAT, toujours convertir en float (même si reçu comme string)
+                        float floatVal = parseFloat(value);
+                        configDoc[keyStr] = floatVal;
+                        assignmentOk = true;
+                        Serial.printf("[GPIOParser] GPIO %d (FLOAT) -> %s = %.2f (converti depuis %s)\n", 
+                                     gpio, keyStr.c_str(), floatVal, value.as<String>().c_str());
+                    }
+                    else if (mapping->type == GPIOType::CONFIG_BOOL) {
+                        // Pour CONFIG_BOOL, utiliser parseBool qui gère les strings
+                        bool boolVal = parseBool(value);
+                        configDoc[keyStr] = boolVal;
+                        assignmentOk = true;
+                        Serial.printf("[GPIOParser] GPIO %d (BOOL) -> %s = %s (converti depuis %s)\n", 
+                                     gpio, keyStr.c_str(), boolVal ? "true" : "false", value.as<String>().c_str());
+                    }
+                    else if (mapping->type == GPIOType::CONFIG_STRING) {
+                        // Pour CONFIG_STRING, vérifier que c'est bien une string valide
+                        if (value.is<const char*>()) {
+                            const char* valPtr = value.as<const char*>();
+                            if (valPtr != nullptr && strlen(valPtr) < 100) { // Limite de taille
+                                configDoc[keyStr] = String(valPtr);
+                                assignmentOk = true;
+                                Serial.printf("[GPIOParser] GPIO %d (STRING) -> %s = '%s'\n", 
+                                             gpio, keyStr.c_str(), valPtr);
+                            } else {
+                                Serial.printf("[GPIOParser] ⚠️ String invalide GPIO %d, ignoré\n", gpio);
+                            }
                         } else {
-                            Serial.printf("[GPIOParser] ⚠️ String invalide GPIO %d, ignoré\n", gpio);
+                            // Si ce n'est pas une string, convertir en string
+                            configDoc[keyStr] = value.as<String>();
+                            assignmentOk = true;
+                            Serial.printf("[GPIOParser] GPIO %d (STRING) -> %s = '%s' (converti)\n", 
+                                         gpio, keyStr.c_str(), value.as<String>().c_str());
                         }
-                    } else if (value.is<int>()) {
-                        configDoc[keyStr] = value.as<int>();
-                        assignmentOk = true;
-                    } else if (value.is<float>()) {
-                        configDoc[keyStr] = value.as<float>();
-                        assignmentOk = true;
-                    } else if (value.is<bool>()) {
-                        configDoc[keyStr] = value.as<bool>();
-                        assignmentOk = true;
-                    } else {
-                        Serial.printf("[GPIOParser] ⚠️ Type non géré GPIO %d, ignoré\n", gpio);
+                    }
+                    else {
+                        Serial.printf("[GPIOParser] ⚠️ Type GPIO non géré: %d pour GPIO %d\n", 
+                                     (int)mapping->type, gpio);
                     }
                     
                     if (assignmentOk) {
                         hasVirtualConfig = true;
-                        Serial.printf("[GPIOParser] GPIO virtuel %d -> %s = %s\n", gpio, keyStr.c_str(), value.as<String>().c_str());
                     }
                 } else {
                     Serial.printf("[GPIOParser] ⚠️ Document JSON plein (size:%u, mem:%u), GPIO virtuel %d ignoré\n", 
