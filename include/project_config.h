@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-  constexpr const char* VERSION = "11.99"; // v11.99: Augmentation MIN_AWAKE_TIME_MS de 2.5 min à 8 min
+  constexpr const char* VERSION = "11.100"; // v11.100: Correction persistance variables config (temp min, niveaux)
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)

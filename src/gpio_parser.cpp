@@ -33,6 +33,46 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         saveToNVS(mapping, value);
     }
     
+    // v11.98: Traiter aussi les clés textuelles (compatibilité avec /dbvars/update et autres sources)
+    // Mapping des clés textuelles vers les clés de configuration
+    const char* textKeys[] = {
+        "aqThreshold", "tankThreshold", "chauffageThreshold", 
+        "limFlood", "tempsRemplissageSec", "refillDuration",
+        "tempsGros", "tempsPetits",
+        "bouffeMatin", "bouffeMidi", "bouffeSoir",
+        "mail", "mailNotif", "FreqWakeUp", "WakeUp", "forceWakeUp"
+    };
+    
+    for (size_t i = 0; i < sizeof(textKeys) / sizeof(textKeys[0]); i++) {
+        const char* textKey = textKeys[i];
+        if (doc.containsKey(textKey)) {
+            // Vérifier que cette clé n'a pas déjà été traitée comme GPIO numérique
+            bool alreadyProcessed = false;
+            for (size_t j = 0; j < GPIOMap::MAPPING_COUNT; j++) {
+                const GPIOMapping& mapping = GPIOMap::ALL_MAPPINGS[j];
+                String gpioKey = String(mapping.gpio);
+                if (doc.containsKey(gpioKey.c_str())) {
+                    // Vérifier si ce GPIO correspond à cette clé textuelle
+                    String mappedKey = mapGPIOToConfigKey(mapping.gpio, doc[gpioKey.c_str()]);
+                    if (mappedKey == textKey) {
+                        alreadyProcessed = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!alreadyProcessed) {
+                // Ajouter à configDoc pour application
+                JsonVariantConst value = doc[textKey];
+                if (configDoc.size() < 15 && configDoc.memoryUsage() < 900) {
+                    configDoc[textKey] = value;
+                    hasVirtualConfig = true;
+                    Serial.printf("[GPIOParser] Clé textuelle '%s' ajoutée au document de config\n", textKey);
+                }
+            }
+        }
+    }
+    
     // v11.78: Appliquer immédiatement les configurations virtuelles avec protection
     if (hasVirtualConfig) {
         Serial.println(F("[GPIOParser] 🔧 Application immédiate des GPIO virtuels"));

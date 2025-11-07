@@ -1,5 +1,25 @@
 # VERSION.md - GPIO Parsing Unifié v11.68
 
+## Version 11.100 - Correction persistance variables config
+
+**Date**: 2025-01-16  
+**Type**: Correction bug critique (persistance configuration)
+
+### ✨ Points clés
+- Correction du filtrage des valeurs à 0 dans `AutomatismNetwork::applyConfigFromJson()` : les valeurs à 0 ne sont plus ignorées, seules les valeurs négatives sont rejetées
+- Parsing amélioré qui gère correctement les strings (comme `"0"` ou `"18"`) en plus des nombres
+- Ajout du traitement des clés textuelles dans `GPIOParser::parseAndApply()` pour compatibilité avec `/dbvars/update` et autres sources
+- Sauvegarde NVS automatique après application des configurations dans `Automatism::applyConfigFromJson()` pour garantir la persistance
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.100`
+- Fichiers modifiés : `src/automatism/automatism_network.cpp`, `src/gpio_parser.cpp`, `src/automatism.cpp`, `include/project_config.h`
+
+### 🐛 Problèmes corrigés
+- Variables modifiées à distance (température min, aquarium bas, réserve basse, temps de remplissage, limite débordement) retournaient à leurs valeurs initiales après quelques minutes
+- Les valeurs à 0 étaient ignorées, empêchant certaines configurations légitimes
+- Les clés textuelles n'étaient pas traitées si elles arrivaient directement (sans passer par GPIO numériques)
+
 ## Version 11.92 - Automatism Boot Split
 
 **Date**: 2025-10-29  

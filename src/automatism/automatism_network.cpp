@@ -106,14 +106,38 @@ bool AutomatismNetwork::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 }
 
 void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
-    // Lambda helper pour assignation conditionnelle
+    // Lambda helper pour assignation conditionnelle avec parsing amélioré
     auto assignIfPresent = [&doc](const char* key, auto& var) {
         if (!doc.containsKey(key)) return;
         using T = std::decay_t<decltype(var)>;
-        T v = doc[key].as<T>();
-        if constexpr (std::is_arithmetic_v<T>) {
-            // Ignorer 0 pour éviter d'écraser par défaut
-            if (v == 0) return;
+        
+        // Parsing amélioré qui gère les strings (comme dans Automatism::applyConfigFromJson)
+        T v;
+        if constexpr (std::is_integral_v<T>) {
+            if (doc[key].is<int>()) {
+                v = static_cast<T>(doc[key].as<int>());
+            } else if (doc[key].is<const char*>()) {
+                v = static_cast<T>(atoi(doc[key].as<const char*>()));
+            } else {
+                v = doc[key].as<T>();
+            }
+            // Pour les variables de configuration, accepter 0 et valeurs positives
+            // Ne pas ignorer 0 car certaines valeurs légitimes peuvent être 0
+            if (v < 0) return; // Rejeter uniquement les valeurs négatives
+        } else if constexpr (std::is_floating_point_v<T>) {
+            if (doc[key].is<float>()) {
+                v = static_cast<T>(doc[key].as<float>());
+            } else if (doc[key].is<int>()) {
+                v = static_cast<T>(doc[key].as<int>());
+            } else if (doc[key].is<const char*>()) {
+                v = static_cast<T>(atof(doc[key].as<const char*>()));
+            } else {
+                v = doc[key].as<T>();
+            }
+            // Pour les floats, rejeter uniquement les valeurs négatives ou NaN
+            if (v < 0.0f || isnan(v)) return;
+        } else {
+            v = doc[key].as<T>();
         }
         var = v;
     };

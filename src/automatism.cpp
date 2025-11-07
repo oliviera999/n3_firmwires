@@ -265,9 +265,7 @@ void Automatism::triggerResetMode() {
   }
 }
 
-namespace {
-AutomatismRefillController::RuntimeState makeRefillRuntimeState(Automatism& autoCtrl);
-}
+// (v11.95) Legacy refill runtime helpers removed; new controllers manage state internally
 
 Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient& web, DisplayView& disp, PowerManager& power, Mailer& mailer, ConfigManager& config)
     : _sensors(sensors)
@@ -278,23 +276,11 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _mailer(mailer)
     , _config(config)
     , _feeding(acts, config, mailer, power)  // Module Feeding
-<<<<<<< HEAD
-    , _network(web, config)                  // Module Network
-    , _sleep(power, config)                  // Module Sleep
-    , _refillState{}
-    , _refillController(acts,
-                        config,
-                        mailer,
-                        sensors,
-                        _refillState,
-                        AutomatismRefillController::SharedUiState{_countdownLabel, _countdownEnd})
-=======
     , _network(web, config)                // Module Network
     , _sleep(power, config)                // Module Sleep
     , _refillController(*this)
     , _alertController(*this)
     , _displayController(*this)
->>>>>>> e1d6cf7 (v11.94: push current changes)
 {
   // Initialisation des valeurs par défaut
   mailNotif = false;  // Par défaut, emails désactivés
@@ -308,28 +294,7 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
   Serial.println(F("[Auto] ======================================"));
 }
 
-namespace {
-AutomatismRefillController::RuntimeState makeRefillRuntimeState(Automatism& autoCtrl) {
-  AutomatismRefillController::RuntimeState state{};
-  state.tankPumpLocked = autoCtrl.tankPumpLocked;
-  state.tankPumpRetries = autoCtrl.tankPumpRetries;
-  state.manualOverride = autoCtrl._manualTankOverride;
-  state.lastPumpManual = autoCtrl._lastPumpManual;
-  state.lockReason = static_cast<AutomatismRefillController::LockReason>(autoCtrl._tankPumpLockReason);
-  state.pumpStartMs = autoCtrl._pumpStartMs;
-  state.levelAtPumpStart = autoCtrl._levelAtPumpStart;
-  state.countdownEnd = autoCtrl._countdownEnd;
-  state.emailTankSent = autoCtrl.emailTankSent;
-  state.emailTankStartSent = autoCtrl.emailTankStartSent;
-  state.emailTankStopSent = autoCtrl.emailTankStopSent;
-  state.heaterPrevState = autoCtrl.heaterPrevState;
-  state.inFlood = autoCtrl.inFlood;
-  state.lastFloodEmailEpoch = autoCtrl.lastFloodEmailEpoch;
-  state.floodEnterSinceEpoch = autoCtrl.floodEnterSinceEpoch;
-  state.aboveResetSinceEpoch = autoCtrl.aboveResetSinceEpoch;
-  return state;
-}
-}
+// (v11.95) Legacy makeRefillRuntimeState removed
 
 void Automatism::begin() {
   initializeNetworkModule();
@@ -448,28 +413,56 @@ bool Automatism::restoreRemoteConfigFromCache() {
     return true;
   }
 
-  auto assignIfPresent = [&doc](const char* key, auto& var) {
-    if (!doc.containsKey(key)) return;
-    using T = std::decay_t<decltype(var)>;
-    T v = doc[key].as<T>();
-    if constexpr (std::is_arithmetic_v<T>) {
-      if (v == 0) return;
-    }
-    var = v;
+  // v11.97: Helpers de parsing qui gèrent les strings (comme gpio_parser)
+  auto parseIntValue = [](ArduinoJson::JsonVariantConst v) -> int {
+    if (v.is<int>()) return v.as<int>();
+    if (v.is<const char*>()) return atoi(v.as<const char*>());
+    return 0;
+  };
+  
+  auto parseFloatValue = [](ArduinoJson::JsonVariantConst v) -> float {
+    if (v.is<float>()) return v.as<float>();
+    if (v.is<int>()) return static_cast<float>(v.as<int>());
+    if (v.is<const char*>()) return atof(v.as<const char*>());
+    return 0.0f;
   };
 
-  assignIfPresent("aqThreshold", aqThresholdCm);
-  assignIfPresent("tankThreshold", tankThresholdCm);
-  assignIfPresent("tempsGros", tempsGros);
-  assignIfPresent("tempsPetits", tempsPetits);
-  assignIfPresent("limFlood", limFlood);
+  // v11.97: Parsing amélioré qui gère les strings
+  if (doc.containsKey("aqThreshold")) {
+    int val = parseIntValue(doc["aqThreshold"]);
+    if (val > 0) {  // Accepter uniquement valeurs positives
+      aqThresholdCm = val;
+      Serial.printf("[Auto] 📊 Seuil aquarium restauré depuis NVS: %d cm\n", aqThresholdCm);
+    }
+  }
+  if (doc.containsKey("tankThreshold")) {
+    int val = parseIntValue(doc["tankThreshold"]);
+    if (val > 0) {  // Accepter uniquement valeurs positives
+      tankThresholdCm = val;
+      Serial.printf("[Auto] 📊 Seuil réservoir restauré depuis NVS: %d cm\n", tankThresholdCm);
+    }
+  }
+
+  if (doc.containsKey("tempsGros")) {
+    int val = parseIntValue(doc["tempsGros"]);
+    if (val >= 0) tempsGros = val;  // Accepter 0 et valeurs positives
+  }
+  if (doc.containsKey("tempsPetits")) {
+    int val = parseIntValue(doc["tempsPetits"]);
+    if (val >= 0) tempsPetits = val;  // Accepter 0 et valeurs positives
+  }
+  if (doc.containsKey("limFlood")) {
+    int val = parseIntValue(doc["limFlood"]);
+    if (val > 0) limFlood = val;  // Accepter uniquement valeurs positives
+  }
 
   if (doc.containsKey("tempsRemplissageSec")) {
-    refillDurationMs = doc["tempsRemplissageSec"].as<int>() * 1000UL;
+    int val = parseIntValue(doc["tempsRemplissageSec"]);
+    if (val > 0) refillDurationMs = val * 1000UL;
   }
 
   if (doc.containsKey("chauffageThreshold")) {
-    float newThreshold = doc["chauffageThreshold"].as<float>();
+    float newThreshold = parseFloatValue(doc["chauffageThreshold"]);
     if (newThreshold > 0.0f) {
       heaterThresholdC = newThreshold;
       Serial.printf("[Auto] 🔥 Seuil chauffage restauré depuis NVS: %.1f°C\n", heaterThresholdC);
@@ -490,13 +483,23 @@ bool Automatism::restoreRemoteConfigFromCache() {
                  mailNotif ? "TRUE" : "FALSE");
   }
 
-  assignIfPresent("bouffeMatin", bouffeMatin);
-  assignIfPresent("bouffeMidi", bouffeMidi);
-  assignIfPresent("bouffeSoir", bouffeSoir);
+  // v11.97: Parsing amélioré pour heures nourrissage (clés textuelles)
+  // Note: Ces valeurs seront surchargées par la boucle des clés numériques si présentes
+  if (doc.containsKey("bouffeMatin")) {
+    int v = parseIntValue(doc["bouffeMatin"]);
+    if (v > 0) bouffeMatin = v;
+  }
+  if (doc.containsKey("bouffeMidi")) {
+    int v = parseIntValue(doc["bouffeMidi"]);
+    if (v > 0) bouffeMidi = v;
+  }
+  if (doc.containsKey("bouffeSoir")) {
+    int v = parseIntValue(doc["bouffeSoir"]);
+    if (v > 0) bouffeSoir = v;
+  }
 
-  assignIfPresent("tempsGros", tempsGros);
-  assignIfPresent("tempsPetits", tempsPetits);
-
+  // v11.97: Boucle pour parser les clés numériques (GPIO 100-116)
+  // Cette boucle surcharge les valeurs précédentes si les clés numériques sont présentes
   for (auto kv : doc.as<ArduinoJson::JsonObject>()) {
     const char* k = kv.key().c_str();
     bool allDigits = true;
@@ -524,14 +527,31 @@ bool Automatism::restoreRemoteConfigFromCache() {
       case 101:
         mailNotif = parseTruthy(kv.value());
         break;
-      case 102:
-        aqThresholdCm = kv.value().as<int>();
+      case 102: {
+        // v11.97: Parser qui gère les strings
+        int val = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                  (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (val > 0) {
+          aqThresholdCm = val;
+          Serial.printf("[Auto] 📊 Seuil aquarium restauré (GPIO 102): %d cm\n", aqThresholdCm);
+        }
         break;
-      case 103:
-        tankThresholdCm = kv.value().as<int>();
+      }
+      case 103: {
+        // v11.97: Parser qui gère les strings
+        int val = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                  (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (val > 0) {
+          tankThresholdCm = val;
+          Serial.printf("[Auto] 📊 Seuil réservoir restauré (GPIO 103): %d cm\n", tankThresholdCm);
+        }
         break;
+      }
       case 104: {
-        float newThreshold = kv.value().as<float>();
+        // v11.97: Parser qui gère les strings
+        float newThreshold = (kv.value().is<float>()) ? kv.value().as<float>() :
+                             (kv.value().is<int>()) ? static_cast<float>(kv.value().as<int>()) :
+                             (kv.value().is<const char*>()) ? atof(kv.value().as<const char*>()) : 0.0f;
         if (newThreshold > 0.0f) {
           heaterThresholdC = newThreshold;
           Serial.printf("[Auto] 🔥 Seuil chauffage restauré (GPIO 104): %.1f°C\n", heaterThresholdC);
@@ -539,36 +559,47 @@ bool Automatism::restoreRemoteConfigFromCache() {
         break;
       }
       case 105: {
-        int v = kv.value().as<int>();
-        if (v) bouffeMatin = v;
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (v > 0) bouffeMatin = v;
         break;
       }
       case 106: {
-        int v = kv.value().as<int>();
-        if (v) bouffeMidi = v;
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (v > 0) bouffeMidi = v;
         break;
       }
       case 107: {
-        int v = kv.value().as<int>();
-        if (v) bouffeSoir = v;
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (v > 0) bouffeSoir = v;
         break;
       }
       case 111: {
-        int v = kv.value().as<int>();
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
         if (v > 0) tempsGros = v;
         break;
       }
       case 112: {
-        int v = kv.value().as<int>();
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
         if (v > 0) tempsPetits = v;
         break;
       }
-      case 113:
-        refillDurationMs = kv.value().as<int>() * 1000UL;
+      case 113: {
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (v > 0) refillDurationMs = v * 1000UL;
         break;
-      case 114:
-        limFlood = kv.value().as<int>();
+      }
+      case 114: {
+        int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
+                (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
+        if (v > 0) limFlood = v;
         break;
+      }
       case 115: {
         auto v = kv.value();
         if (v.is<bool>() && v.as<bool>()) {
@@ -1198,35 +1229,63 @@ bool Automatism::fetchRemoteState(ArduinoJson::JsonDocument& doc){
 } 
 
 void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
-  auto assignIfPresent = [&doc](const char* key, auto& var){
-    if(!doc.containsKey(key)) return;
-    using T = std::decay_t<decltype(var)>;
-    T v = doc[key].as<T>();
-    if constexpr (std::is_arithmetic_v<T>) {
-      // ignore 0 pour éviter d'écraser par défaut
-      if (v == 0) return;
-    }
-    var = v;
+  // v11.97: Helpers de parsing qui gèrent les strings (comme gpio_parser)
+  auto parseIntValue = [](ArduinoJson::JsonVariantConst v) -> int {
+    if (v.is<int>()) return v.as<int>();
+    if (v.is<const char*>()) return atoi(v.as<const char*>());
+    return 0;
   };
-  // Heures nourrissage
-  assignIfPresent("bouffeMatin", bouffeMatin);
-  assignIfPresent("bouffeMidi",    bouffeMidi);
-  assignIfPresent("bouffeSoir", bouffeSoir);
+  
+  auto parseFloatValue = [](ArduinoJson::JsonVariantConst v) -> float {
+    if (v.is<float>()) return v.as<float>();
+    if (v.is<int>()) return static_cast<float>(v.as<int>());
+    if (v.is<const char*>()) return atof(v.as<const char*>());
+    return 0.0f;
+  };
+
+  // Heures nourrissage - accepter valeurs > 0
+  if (doc.containsKey("bouffeMatin")) {
+    int v = parseIntValue(doc["bouffeMatin"]);
+    if (v > 0) bouffeMatin = v;
+  }
+  if (doc.containsKey("bouffeMidi")) {
+    int v = parseIntValue(doc["bouffeMidi"]);
+    if (v > 0) bouffeMidi = v;
+  }
+  if (doc.containsKey("bouffeSoir")) {
+    int v = parseIntValue(doc["bouffeSoir"]);
+    if (v > 0) bouffeSoir = v;
+  }
+  
   // Durées - accepter toutes les valeurs >= 0 depuis la BDD distante
   if (doc.containsKey("tempsGros")) { 
-    int v = doc["tempsGros"].as<int>(); 
+    int v = parseIntValue(doc["tempsGros"]); 
     if (v >= 0) tempsGros = v;  // Accepter 0 et valeurs positives
   }
   if (doc.containsKey("tempsPetits")) { 
-    int v = doc["tempsPetits"].as<int>(); 
+    int v = parseIntValue(doc["tempsPetits"]); 
     if (v >= 0) tempsPetits = v;  // Accepter 0 et valeurs positives
   }
-  // Seuils
-  assignIfPresent("aqThreshold", aqThresholdCm);
-  assignIfPresent("tankThreshold", tankThresholdCm);
+  
+  // v11.97: Seuils - parsing amélioré qui gère les strings
+  if (doc.containsKey("aqThreshold")) {
+    int val = parseIntValue(doc["aqThreshold"]);
+    if (val > 0) {  // Accepter uniquement valeurs positives
+      aqThresholdCm = val;
+      Serial.printf("[Auto] 📊 Seuil aquarium mis à jour: %d cm\n", aqThresholdCm);
+    }
+  }
+  if (doc.containsKey("tankThreshold")) {
+    int val = parseIntValue(doc["tankThreshold"]);
+    if (val > 0) {  // Accepter uniquement valeurs positives
+      tankThresholdCm = val;
+      Serial.printf("[Auto] 📊 Seuil réservoir mis à jour: %d cm\n", tankThresholdCm);
+    }
+  }
+  
   // Seuil chauffage - gestion avec logging pour diagnostic
   if (doc.containsKey("heaterThreshold")) {
-    float newThreshold = doc["heaterThreshold"].as<float>();
+    float newThreshold = parseFloatValue(doc["heaterThreshold"]);
     if (newThreshold > 0.0f) { // Protection contre valeurs invalides
       heaterThresholdC = newThreshold;
       Serial.printf("[Auto] 🔥 Seuil chauffage mis à jour: %.1f°C\n", heaterThresholdC);
@@ -1234,19 +1293,30 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
   }
   // Alias serveur (compat): chauffageThreshold
   if (doc.containsKey("chauffageThreshold")) {
-    float newThreshold = doc["chauffageThreshold"].as<float>();
+    float newThreshold = parseFloatValue(doc["chauffageThreshold"]);
     if (newThreshold > 0.0f) { // Protection contre valeurs invalides
       heaterThresholdC = newThreshold;
       Serial.printf("[Auto] 🔥 Seuil chauffage mis à jour (alias): %.1f°C\n", heaterThresholdC);
     }
   }
-  if (doc.containsKey("refillDuration")) refillDurationMs = (uint32_t)doc["refillDuration"].as<int>() * 1000UL;
+  
+  if (doc.containsKey("refillDuration")) {
+    int v = parseIntValue(doc["refillDuration"]);
+    if (v > 0) refillDurationMs = v * 1000UL;
+  }
   // Alias serveur (compat): tempsRemplissageSec
-  if (doc.containsKey("tempsRemplissageSec")) refillDurationMs = (uint32_t)doc["tempsRemplissageSec"].as<int>() * 1000UL;
-  assignIfPresent("limFlood", limFlood);
+  if (doc.containsKey("tempsRemplissageSec")) {
+    int v = parseIntValue(doc["tempsRemplissageSec"]);
+    if (v > 0) refillDurationMs = v * 1000UL;
+  }
+  if (doc.containsKey("limFlood")) {
+    int val = parseIntValue(doc["limFlood"]);
+    if (val > 0) limFlood = val;  // Accepter uniquement valeurs positives
+  }
+  
   // Marée montante (réglages)
   if (doc.containsKey("tideTrigger")) {
-    int v = doc["tideTrigger"].as<int>();
+    int v = parseIntValue(doc["tideTrigger"]);
     if (v > 0) tideTriggerCm = (int16_t)v;
   }
   if (doc.containsKey("tideWindowMs")) {
@@ -1318,6 +1388,44 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
   _feeding.setSchedule(bouffeMatin, bouffeMidi, bouffeSoir);
   Serial.printf("[Auto] Config Feeding appliquée - Durées: %us/%us, Horaires: %uh/%uh/%uh\n",
                tempsGros, tempsPetits, bouffeMatin, bouffeMidi, bouffeSoir);
+  
+  // v11.98: Sauvegarder les valeurs appliquées dans NVS pour persistance
+  // Reconstruire un JSON avec les valeurs réellement appliquées et fusionner avec l'existant
+  String existingJson;
+  ArduinoJson::DynamicJsonDocument mergedDoc(BufferConfig::JSON_DOCUMENT_SIZE);
+  
+  // Charger le JSON existant depuis NVS
+  if (_config.loadRemoteVars(existingJson) && existingJson.length() > 0) {
+    DeserializationError err = deserializeJson(mergedDoc, existingJson);
+    if (err) {
+      Serial.printf("[Auto] ⚠️ Erreur parsing JSON existant: %s\n", err.c_str());
+      mergedDoc.clear();
+    }
+  }
+  
+  // Fusionner avec les valeurs du document d'entrée (qui contient les nouvelles valeurs)
+  // Cela garantit que les valeurs appliquées sont bien sauvegardées
+  for (auto kv : doc.as<ArduinoJson::JsonObjectConst>()) {
+    const char* key = kv.key().c_str();
+    // Ne fusionner que les clés de configuration (pas les GPIO numériques qui sont déjà gérés par GPIOParser)
+    if (strcmp(key, "aqThreshold") == 0 || strcmp(key, "tankThreshold") == 0 ||
+        strcmp(key, "chauffageThreshold") == 0 || strcmp(key, "heaterThreshold") == 0 ||
+        strcmp(key, "limFlood") == 0 || strcmp(key, "tempsRemplissageSec") == 0 ||
+        strcmp(key, "refillDuration") == 0 || strcmp(key, "tempsGros") == 0 ||
+        strcmp(key, "tempsPetits") == 0 || strcmp(key, "bouffeMatin") == 0 ||
+        strcmp(key, "bouffeMidi") == 0 || strcmp(key, "bouffeSoir") == 0 ||
+        strcmp(key, "mail") == 0 || strcmp(key, "mailNotif") == 0 ||
+        strcmp(key, "FreqWakeUp") == 0 || strcmp(key, "WakeUp") == 0 ||
+        strcmp(key, "forceWakeUp") == 0) {
+      mergedDoc[key] = kv.value();
+    }
+  }
+  
+  // Sauvegarder le JSON fusionné
+  String mergedJson;
+  serializeJson(mergedDoc, mergedJson);
+  _config.saveRemoteVars(mergedJson);
+  Serial.printf("[Auto] 💾 Configuration sauvegardée dans NVS (%u bytes)\n", mergedJson.length());
 }
 
 void Automatism::checkCriticalChanges() {
