@@ -1,5 +1,7 @@
 #include "web_routes_ui.h"
 
+#ifndef DISABLE_ASYNC_WEBSERVER
+
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <esp_task_wdt.h>
@@ -350,5 +352,12 @@ void registerUiRoutes(AsyncWebServer& server, WebServerContext& ctx) {
 }
 
 }  // namespace WebRoutes
+
+#else
+// Stub si DISABLE_ASYNC_WEBSERVER est défini
+namespace WebRoutes {
+void registerUIRoutes(void* server, void* ctx) {}
+}  // namespace WebRoutes
+#endif
 
 

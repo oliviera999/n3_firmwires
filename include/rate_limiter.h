@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 #include <map>
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
+#endif
 
 /**
  * Rate Limiter pour endpoints critiques

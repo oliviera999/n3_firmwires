@@ -221,11 +221,11 @@ bool DisplayView::begin() {
 #endif
 
   // Vérification supplémentaire pour cohérence runtime/compile-time
-  if (!Features::OLED_ENABLED) {
-    Serial.println("[OLED] OLED_ENABLED=false - OLED DÉSACTIVÉ (configuration runtime)");
-    _present = false;
-    return false;
-  }
+  #if FEATURE_OLED == 0
+  Serial.println("[OLED] FEATURE_OLED=0 - OLED DÉSACTIVÉ (configuration compile-time)");
+  _present = false;
+  return false;
+  #endif
 
 #ifdef OLED_DIAGNOSTIC
   Serial.println("=== DIAGNOSTIC OLED DÉTAILLÉ ===");

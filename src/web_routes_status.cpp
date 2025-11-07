@@ -1,5 +1,7 @@
 #include "web_routes_status.h"
 
+#ifndef DISABLE_ASYNC_WEBSERVER
+
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
@@ -564,5 +566,12 @@ void registerStatusRoutes(AsyncWebServer& server, WebServerContext& ctx) {
 }
 
 }  // namespace WebRoutes
+
+#else
+// Stub si DISABLE_ASYNC_WEBSERVER est défini
+namespace WebRoutes {
+void registerStatusRoutes(void* server, void* ctx) {}
+}  // namespace WebRoutes
+#endif
 
 

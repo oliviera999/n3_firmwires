@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-  constexpr const char* VERSION = "11.97"; // v11.97: Fix conversion types GPIO virtuels (seuils aquarium/réservoir et autres CONFIG_INT/FLOAT)
+  constexpr const char* VERSION = "11.98"; // v11.98: Fix parsing valeurs string dans restoreRemoteConfigFromCache et applyConfigFromJson (seuils + température)
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -719,26 +719,6 @@ namespace DisplayConfig {
 }
 
 // =============================================================================
-// FEATURES FLAGS
-// =============================================================================
-namespace Features {
-    // Fonctionnalités activées/désactivées selon le profil
-    #if defined(PROFILE_PROD)
-        constexpr bool OLED_ENABLED = true;
-        constexpr bool OTA_ENABLED = true;
-        constexpr bool MAIL_ENABLED = true;
-        constexpr bool WEB_SERVER_ENABLED = true;
-        constexpr bool ARDUINO_OTA_ENABLED = false; // Désactivé en prod pour sécurité
-    #else
-        constexpr bool OLED_ENABLED = true;
-        constexpr bool OTA_ENABLED = true;
-        constexpr bool MAIL_ENABLED = true;
-        constexpr bool WEB_SERVER_ENABLED = true;
-        constexpr bool ARDUINO_OTA_ENABLED = true;
-    #endif
-}
-
-// =============================================================================
 // HELPERS ET UTILITAIRES
 // =============================================================================
 namespace Utils {
@@ -766,38 +746,7 @@ namespace Utils {
 // COMPATIBILITÉ ET ALIAS (pour migration depuis config.h)
 // =============================================================================
 
-// Macros de préprocesseur pour les features (nécessaires pour #if)
-#if defined(PROFILE_PROD)
-    #define FEATURE_OLED 1
-    #define FEATURE_OTA 1
-    #ifndef FEATURE_MAIL
-        #define FEATURE_MAIL 1
-    #endif
-    #define FEATURE_ARDUINO_OTA 0  // Désactivé en prod pour sécurité
-    #define FEATURE_HTTP_OTA 1
-    #define FEATURE_WIFI_APSTA 1
-#else
-    #define FEATURE_OLED 1
-    #define FEATURE_OTA 1
-    #ifndef FEATURE_MAIL
-        #define FEATURE_MAIL 1
-    #endif
-    #ifndef FEATURE_ARDUINO_OTA
-        #define FEATURE_ARDUINO_OTA 1
-    #endif
-    #define FEATURE_HTTP_OTA 1
-    #define FEATURE_WIFI_APSTA 1
-#endif
-
 namespace CompatibilityAliases {
-    // Features flags (ancien style) - maintenant synchronisées avec les macros
-    constexpr bool FEATURE_OLED_BOOL = Features::OLED_ENABLED;
-    constexpr bool FEATURE_OTA_BOOL = Features::OTA_ENABLED;
-    constexpr bool FEATURE_MAIL_BOOL = Features::MAIL_ENABLED;
-    constexpr bool FEATURE_ARDUINO_OTA_BOOL = Features::ARDUINO_OTA_ENABLED;
-    constexpr bool FEATURE_HTTP_OTA_BOOL = Features::OTA_ENABLED;
-    constexpr bool FEATURE_WIFI_APSTA_BOOL = true; // Toujours activé
-    
     // Configuration display (alias)
     constexpr uint8_t OLED_WIDTH = DisplayConfig::OLED_WIDTH;
     constexpr uint8_t OLED_HEIGHT = DisplayConfig::OLED_HEIGHT;

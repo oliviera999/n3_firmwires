@@ -9,7 +9,9 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <cstring>
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
+#endif
 #include "web_routes_status.h"
 #include "web_routes_ui.h"
 #include "web_server_context.h"

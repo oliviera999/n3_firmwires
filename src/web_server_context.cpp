@@ -1,5 +1,7 @@
 #include "web_server_context.h"
 
+#ifndef DISABLE_ASYNC_WEBSERVER
+
 #include <ESPAsyncWebServer.h>
 
 #include "automatism.h"
@@ -137,5 +139,15 @@ bool WebServerContext::sendManualActionEmail(const char* action,
                 emailType);
   return false;
 }
+
+#else
+// Stubs si DISABLE_ASYNC_WEBSERVER est défini
+// Note: Les signatures doivent correspondre au header même si AsyncWebServer n'est pas disponible
+// On utilise des forward declarations pour éviter les erreurs de compilation
+struct AsyncWebServerRequest {};
+void WebServerContext::sendJson(AsyncWebServerRequest* req, const String& json, bool enableCors) const {}
+bool WebServerContext::sendManualActionEmail(const char* action, const char* subject, const char* emailType) const { return false; }
+bool WebServerContext::ensureHeap(AsyncWebServerRequest* req, uint32_t minHeap, const __FlashStringHelper* routeName) const { return false; }
+#endif
 
 

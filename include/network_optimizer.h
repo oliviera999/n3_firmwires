@@ -1,7 +1,9 @@
 #pragma once
 
 #include <Arduino.h>
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
+#endif
 #include <ArduinoJson.h>
 // #include <zlib.h>  // Temporairement désactivé - bibliothèque non disponible
 
@@ -79,6 +81,7 @@ public:
      * @param json Données JSON
      * @param statusCode Code de statut HTTP (défaut: 200)
      */
+    #ifndef DISABLE_ASYNC_WEBSERVER
     static void sendOptimizedJson(AsyncWebServerRequest* req, const String& json, int statusCode = 200) {
         // Toujours envoyer en clair sans Content-Encoding pour éviter les erreurs de décodage côté navigateur
         AsyncWebServerResponse* response = req->beginResponse(statusCode, "application/json", json);
@@ -169,6 +172,14 @@ public:
         encoding.toLowerCase();
         return encoding.indexOf("gzip") >= 0;
     }
+    #else
+    // Stubs pour les fonctions si DISABLE_ASYNC_WEBSERVER est défini
+    static void sendOptimizedJson(void* req, const String& json, int statusCode = 200) {}
+    static void sendWithCache(void* req, const String& content, const char* contentType, unsigned long maxAge = 3600) {}
+    static void sendOptimized(void* req, const String& content, const char* contentType, unsigned long maxAge = 3600) {}
+    static void addOptimizationHeaders(void* response) {}
+    static bool acceptsGzip(void* req) { return false; }
+    #endif
     
     /**
      * Obtient les statistiques de compression

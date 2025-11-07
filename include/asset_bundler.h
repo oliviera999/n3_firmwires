@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 #include <LittleFS.h>
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
+#endif
 
 /**
  * Bundler d'assets pour optimiser les requêtes HTTP
@@ -89,6 +91,7 @@ public:
      * Configure les routes de bundles pour le serveur web
      * @param server Serveur web AsyncWebServer
      */
+    #ifndef DISABLE_ASYNC_WEBSERVER
     static void setupBundleRoutes(AsyncWebServer* server) {
         if (!server) return;
         
@@ -154,6 +157,11 @@ public:
         
         Serial.println("[AssetBundler] Routes de bundles configurées");
     }
+    #else
+    static void setupBundleRoutes(void* server) {
+        // Fonction vide si DISABLE_ASYNC_WEBSERVER est défini
+    }
+    #endif
     
     /**
      * Obtient la taille d'un fichier
