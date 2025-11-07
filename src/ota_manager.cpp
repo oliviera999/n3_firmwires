@@ -431,6 +431,16 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
         }
     }
     
+    // IMPORTANT: Sauvegarder la partition cible AVANT Update.begin() pour garantir l'alternance
+    const esp_partition_t* target_partition = esp_ota_get_next_update_partition(NULL);
+    if (!target_partition) {
+        logError("Impossible de trouver la partition OTA pour la mise à jour");
+        esp_http_client_cleanup(m_httpClient);
+        m_httpClient = nullptr;
+        return false;
+    }
+    log("📍 Partition cible pour mise à jour: " + String(target_partition->label) + " (0x" + String(target_partition->address, HEX) + ")");
+    
     // Initialisation de la mise à jour
     log("🔧 Initialisation de la mise à jour...");
     size_t beginSize = OTAConfig::OTA_UNSAFE_FORCE ? (size_t)UPDATE_SIZE_UNKNOWN : (size_t)contentLength;
@@ -579,18 +589,18 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
         return false;
     }
 
-    // IMPORTANT: Marquer explicitement la nouvelle partition comme boot partition
-    const esp_partition_t* update_partition = esp_ota_get_next_update_partition(NULL);
-    if (update_partition) {
-        log("🔄 Marquage de la nouvelle partition comme boot: " + String(update_partition->label));
-        esp_err_t err = esp_ota_set_boot_partition(update_partition);
+    // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
+    // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
+    if (target_partition) {
+        log("🔄 Marquage de la partition mise à jour comme boot: " + String(target_partition->label));
+        esp_err_t err = esp_ota_set_boot_partition(target_partition);
         if (err != ESP_OK) {
             logError("Erreur marquage partition boot: " + String(esp_err_to_name(err)));
             return false;
         }
-        log("✅ Nouvelle partition marquée comme boot avec succès");
+        log("✅ Partition " + String(target_partition->label) + " marquée comme boot avec succès");
     } else {
-        logError("Impossible de trouver la partition de mise à jour");
+        logError("Partition cible non disponible pour marquage boot");
         return false;
     }
 
@@ -629,6 +639,15 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
     if (OTAConfig::OTA_UNSAFE_FORCE && expectedSize > 0 && expectedSize != contentLength) {
         log("⚠️ OTA_UNSAFE_FORCE: taille inattendue ignorée: attendu=" + String(expectedSize) + ", réel=" + String(contentLength));
     }
+
+    // IMPORTANT: Sauvegarder la partition cible AVANT Update.begin() pour garantir l'alternance
+    const esp_partition_t* target_partition = esp_ota_get_next_update_partition(NULL);
+    if (!target_partition) {
+        logError("Impossible de trouver la partition OTA pour la mise à jour");
+        http.end();
+        return false;
+    }
+    log("📍 Partition cible pour mise à jour: " + String(target_partition->label) + " (0x" + String(target_partition->address, HEX) + ")");
 
     // Initialisation de la mise à jour
     log("🔧 Initialisation de la mise à jour...");
@@ -738,18 +757,18 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
         return false;
     }
 
-    // IMPORTANT: Marquer explicitement la nouvelle partition comme boot partition
-    const esp_partition_t* update_partition = esp_ota_get_next_update_partition(NULL);
-    if (update_partition) {
-        log("🔄 Marquage de la nouvelle partition comme boot: " + String(update_partition->label));
-        esp_err_t err = esp_ota_set_boot_partition(update_partition);
+    // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
+    // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
+    if (target_partition) {
+        log("🔄 Marquage de la partition mise à jour comme boot: " + String(target_partition->label));
+        esp_err_t err = esp_ota_set_boot_partition(target_partition);
         if (err != ESP_OK) {
             logError("Erreur marquage partition boot: " + String(esp_err_to_name(err)));
             return false;
         }
-        log("✅ Nouvelle partition marquée comme boot avec succès");
+        log("✅ Partition " + String(target_partition->label) + " marquée comme boot avec succès");
     } else {
-        logError("Impossible de trouver la partition de mise à jour");
+        logError("Partition cible non disponible pour marquage boot");
         return false;
     }
 
@@ -977,6 +996,14 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
     // Buffer fixe réutilisé pour éviter la fragmentation du heap
     uint8_t buffer[MICRO_CHUNK_SIZE];
     
+    // IMPORTANT: Sauvegarder la partition cible AVANT Update.begin() pour garantir l'alternance
+    const esp_partition_t* target_partition = esp_ota_get_next_update_partition(NULL);
+    if (!target_partition) {
+        logError("Impossible de trouver la partition OTA pour la mise à jour");
+        return false;
+    }
+    log("📍 Partition cible pour mise à jour: " + String(target_partition->label) + " (0x" + String(target_partition->address, HEX) + ")");
+    
     // Initialisation de la mise à jour
     size_t beginSize3 = OTAConfig::OTA_UNSAFE_FORCE ? (size_t)UPDATE_SIZE_UNKNOWN : (size_t)expectedSize;
     if (OTAConfig::OTA_UNSAFE_FORCE) {
@@ -1143,18 +1170,18 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         if (Update.end(OTAConfig::OTA_UNSAFE_FORCE)) {
             log("✅ Mise à jour ultra-révolutionnaire finalisée avec succès");
             
-            // IMPORTANT: Marquer explicitement la nouvelle partition comme boot partition
-            const esp_partition_t* update_partition = esp_ota_get_next_update_partition(NULL);
-            if (update_partition) {
-                log("🔄 Marquage de la nouvelle partition comme boot: " + String(update_partition->label));
-                esp_err_t err = esp_ota_set_boot_partition(update_partition);
+            // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
+            // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
+            if (target_partition) {
+                log("🔄 Marquage de la partition mise à jour comme boot: " + String(target_partition->label));
+                esp_err_t err = esp_ota_set_boot_partition(target_partition);
                 if (err != ESP_OK) {
                     logError("Erreur marquage partition boot: " + String(esp_err_to_name(err)));
                     return false;
                 }
-                log("✅ Nouvelle partition marquée comme boot avec succès");
+                log("✅ Partition " + String(target_partition->label) + " marquée comme boot avec succès");
             } else {
-                logError("Impossible de trouver la partition de mise à jour");
+                logError("Partition cible non disponible pour marquage boot");
                 return false;
             }
             

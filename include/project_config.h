@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-  constexpr const char* VERSION = "11.100"; // v11.100: Correction persistance variables config (temp min, niveaux)
+  constexpr const char* VERSION = "11.101"; // v11.101: Fix alternance partitions OTA - garantie plusieurs mises à jour successives
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
