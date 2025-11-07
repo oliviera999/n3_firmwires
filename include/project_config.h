@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-  constexpr const char* VERSION = "11.98"; // v11.98: Fix parsing valeurs string dans restoreRemoteConfigFromCache et applyConfigFromJson (seuils + température)
+  constexpr const char* VERSION = "11.99"; // v11.99: Augmentation MIN_AWAKE_TIME_MS de 2.5 min à 8 min
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -382,7 +382,7 @@ namespace SleepConfig {
     
     // Délai minimum absolu depuis le dernier réveil
     // Protection : le système reste éveillé au moins ce temps après chaque réveil
-    constexpr uint32_t MIN_AWAKE_TIME_MS = 150000;          // 2.5 minutes minimum éveillé (augmenté de 1 à 2.5 min)
+    constexpr uint32_t MIN_AWAKE_TIME_MS = 480000;          // 8 minutes minimum éveillé (augmenté de 2.5 à 8 min)
     
     // Délai d'inactivité web avant autorisation de sommeil
     // Si activité web récente, attendre ce délai avant de permettre le sommeil
