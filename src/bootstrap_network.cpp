@@ -13,6 +13,7 @@
 #include "event_log.h"
 #include "ota_config.h"
 #include "project_config.h"
+#include "nvs_manager.h"
 
 namespace BootstrapNetwork {
 
@@ -54,10 +55,7 @@ void validatePendingOta(OtaState& state) {
         Serial.println("[OTA] ✅ Image validée et rollback annulé");
         state.justUpdated = true;
         {
-          Preferences prefs;
-          prefs.begin("ota", true);
-          state.previousVersion = prefs.getString("prevVer", "");
-          prefs.end();
+          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", state.previousVersion, "");
         }
         break;
       case ESP_OTA_IMG_VALID:
@@ -288,10 +286,7 @@ void postConfiguration(AppContext& ctx,
     bool emailSent = ctx.mailer.sendAlert(subj.c_str(), body.c_str(), ctx.automatism.getEmailAddress());
     Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
     state.justUpdated = false;
-    Preferences prefs;
-    prefs.begin("ota", false);
-    prefs.remove("prevVer");
-    prefs.end();
+    g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_prevVer");
     state.previousVersion = "";
   }
 

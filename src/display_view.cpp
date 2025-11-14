@@ -239,7 +239,7 @@ bool DisplayView::begin() {
   if (!i2cInitialized) {
     // Initialiser I2C avec les pins définis
     Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
-    delay(ExtendedSensorConfig::I2C_STABILIZATION_DELAY_MS); // Attendre la stabilisation I2C
+    delay(SensorConfig::I2C_STABILIZATION_DELAY_MS); // Attendre la stabilisation I2C
     i2cInitialized = true;
     
 #ifdef OLED_DIAGNOSTIC
@@ -290,8 +290,8 @@ bool DisplayView::begin() {
       _disp.println(txt);
     };
 
-    // Ligne 1 : "Projet farmflow FFP3" (taille 1, centré)
-    centerPrint("Projet farmflow FFP3", 1, 0);
+    // Ligne 1 : "Projet farmflow FFP5" (taille 1, centré)
+    centerPrint("Projet farmflow FFP5", 1, 0);
     
     // Ligne 2 : Version du firmware (taille 1, centré)
     char vbuf[16];

@@ -1,7 +1,7 @@
 #include "sensors.h"
+#include "nvs_manager.h" // v11.112
 #include <math.h> // Pour fabs()
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
-#include <Preferences.h> // Pour la persistance NVS
 #include "project_config.h"
 
 // -------- UltrasonicManager ---------
@@ -38,7 +38,7 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
-      uint16_t cm = duration / ExtendedSensorConfig::ULTRASONIC_US_TO_CM_FACTOR; // Conversion µs -> cm (vitesse du son ~340 m/s)
+      uint16_t cm = duration / SensorConfig::Ultrasonic::US_TO_CM_FACTOR; // Conversion µs -> cm (vitesse du son ~340 m/s)
       if (cm > MIN_DISTANCE && cm < MAX_DISTANCE) {
         total += cm;
         ++valid;
@@ -404,7 +404,7 @@ bool WaterTempSensor::isSensorConnected() {
       
       // Test de lecture rapide pour vérifier la fonctionnalité
       _sensors.requestTemperatures();
-      vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::SENSOR_READ_DELAY_MS)); // Délai court pour test
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::SENSOR_READ_DELAY_MS)); // Délai court pour test
       float testTemp = _sensors.getTempCByIndex(0);
       
       if (!isnan(testTemp)) {
@@ -418,7 +418,7 @@ bool WaterTempSensor::isSensorConnected() {
     
     // Délai avant retry
     if (attempt < 2) {
-      vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::SENSOR_READ_DELAY_MS));
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::SENSOR_READ_DELAY_MS));
     }
   }
   
@@ -542,7 +542,7 @@ float WaterTempSensor::filteredTemperatureC() {
     // Non-bloquant: vérifier si une conversion précédente est prête
     if (!_pipelineReady) {
       _sensors.requestTemperatures();
-      vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::DS18B20::STABILIZATION_DELAY_MS)); // Délai de stabilisation
       _lastRequestMs = millis();
       _pipelineReady = true;
       vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS));
@@ -556,7 +556,7 @@ float WaterTempSensor::filteredTemperatureC() {
     _pipelineReady = false;
     // Planifier suivante
     _sensors.requestTemperatures();
-    vTaskDelay(pdMS_TO_TICKS(SensorSpecificConfig::DS18B20_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::DS18B20::STABILIZATION_DELAY_MS)); // Délai de stabilisation
     _lastRequestMs = millis();
     _pipelineReady = true;
     
@@ -775,7 +775,7 @@ AirSensor::AirSensor() : _dht(Pins::DHT_PIN,
 
 void AirSensor::begin() { 
   _dht.begin(); 
-  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation après initialisation
+  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation après initialisation
   resetHistory();
   
   // Test initial de connectivité
@@ -796,7 +796,7 @@ bool AirSensor::isSensorConnected() {
   float temp = _dht.readTemperature();
   // FIX: Délai minimum DHT augmenté à 2.5 secondes pour stabilité
   // Le DHT11/DHT22 nécessite au moins 2 secondes entre lectures selon datasheet
-  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS));
+  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::MIN_READ_INTERVAL_MS));
   
   float humidity = _dht.readHumidity();
   
@@ -814,7 +814,7 @@ void AirSensor::resetSensor() {
   
   // Reset de la bibliothèque DHT
   _dht.begin();
-  vTaskDelay(pdMS_TO_TICKS(ExtendedSensorConfig::DHT_INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation
+  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation
   vTaskDelay(pdMS_TO_TICKS(SENSOR_RESET_DELAY_MS));
   
   // Reset de l'historique
@@ -880,7 +880,7 @@ float AirSensor::humidity() { return _dht.readHumidity(); }
 float AirSensor::filteredTemperatureC() {
   // Throttle: une seule lecture toutes les 2s, lissage EMA
   unsigned long now = millis();
-  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS) {
+  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < SensorConfig::DHT::MIN_READ_INTERVAL_MS) {
     return _emaInit ? _emaTemp : NAN;
   }
   _lastDhtReadMs = now;
@@ -905,7 +905,7 @@ float AirSensor::filteredTemperatureC() {
 
 float AirSensor::filteredHumidity() {
   unsigned long now = millis();
-  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < ExtendedSensorConfig::DHT_MIN_READ_INTERVAL_MS) {
+  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < SensorConfig::DHT::MIN_READ_INTERVAL_MS) {
     return _emaInit ? _emaHumidity : NAN;
   }
   _lastDhtReadMs = now;
@@ -995,18 +995,13 @@ void AirSensor::resetHistory() {
 
 // -------- Méthodes NVS pour WaterTempSensor --------
 void WaterTempSensor::saveLastValidTempToNVS(float temp) {
-  Preferences prefs;
-  prefs.begin("waterTemp", false);
-  prefs.putFloat("lastValid", temp);
-  prefs.end();
+  g_nvsManager.saveFloat(NVS_NAMESPACES::SENSORS, "temp_lastValid", temp);
   Serial.printf("[WaterTemp] Dernière température valide sauvegardée en NVS: %.1f°C\n", temp);
 }
 
 float WaterTempSensor::loadLastValidTempFromNVS() {
-  Preferences prefs;
-  prefs.begin("waterTemp", true);
-  float temp = prefs.getFloat("lastValid", NAN);
-  prefs.end();
+  float temp;
+  g_nvsManager.loadFloat(NVS_NAMESPACES::SENSORS, "temp_lastValid", temp, NAN);
   
   if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
     Serial.printf("[WaterTemp] Dernière température valide chargée depuis NVS: %.1f°C\n", temp);

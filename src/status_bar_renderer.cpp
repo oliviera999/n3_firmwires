@@ -116,3 +116,10 @@ void StatusBarRenderer::draw(DisplayView& view, Adafruit_SSD1306& disp, const St
 
 
 
+
+
+
+
+
+
+

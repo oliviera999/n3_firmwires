@@ -1,4 +1,5 @@
 #include "automatism/automatism_network.h"
+#include "nvs_manager.h" // v11.115
 #include "automatism.h"
 #include "automatism_persistence.h"
 #include "project_config.h"
@@ -106,81 +107,91 @@ bool AutomatismNetwork::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 }
 
 void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
-    // Lambda helper pour assignation conditionnelle avec parsing amélioré
-    auto assignIfPresent = [&doc](const char* key, auto& var) {
-        if (!doc.containsKey(key)) return;
-        using T = std::decay_t<decltype(var)>;
-        
-        // Parsing amélioré qui gère les strings (comme dans Automatism::applyConfigFromJson)
-        T v;
-        if constexpr (std::is_integral_v<T>) {
-            if (doc[key].is<int>()) {
-                v = static_cast<T>(doc[key].as<int>());
-            } else if (doc[key].is<const char*>()) {
-                v = static_cast<T>(atoi(doc[key].as<const char*>()));
-            } else {
-                v = doc[key].as<T>();
-            }
-            // Pour les variables de configuration, accepter 0 et valeurs positives
-            // Ne pas ignorer 0 car certaines valeurs légitimes peuvent être 0
-            if (v < 0) return; // Rejeter uniquement les valeurs négatives
-        } else if constexpr (std::is_floating_point_v<T>) {
-            if (doc[key].is<float>()) {
-                v = static_cast<T>(doc[key].as<float>());
-            } else if (doc[key].is<int>()) {
-                v = static_cast<T>(doc[key].as<int>());
-            } else if (doc[key].is<const char*>()) {
-                v = static_cast<T>(atof(doc[key].as<const char*>()));
-            } else {
-                v = doc[key].as<T>();
-            }
-            // Pour les floats, rejeter uniquement les valeurs négatives ou NaN
-            if (v < 0.0f || isnan(v)) return;
-        } else {
-            v = doc[key].as<T>();
+  auto parseIntValue = [](ArduinoJson::JsonVariantConst value) -> int {
+    if (value.is<int>()) return value.as<int>();
+    if (value.is<float>()) return static_cast<int>(value.as<float>());
+    if (value.is<const char*>()) return atoi(value.as<const char*>());
+    return value.as<int>();
+  };
+
+  auto parseFloatValue = [](ArduinoJson::JsonVariantConst value) -> float {
+    if (value.is<float>()) return value.as<float>();
+    if (value.is<int>()) return static_cast<float>(value.as<int>());
+    if (value.is<const char*>()) return atof(value.as<const char*>());
+    return value.as<float>();
+  };
+
+  if (doc.containsKey("mail")) {
+    const char* emailPtr = doc["mail"].as<const char*>();
+    setEmailAddress(emailPtr);
+  }
+
+  if (doc.containsKey("mailNotif")) {
+    auto v = doc["mailNotif"];
+    bool enabled = _emailEnabled;
+    if (v.is<bool>()) {
+      enabled = v.as<bool>();
+    } else if (v.is<int>()) {
+      enabled = (v.as<int>() == 1);
+    } else if (v.is<const char*>()) {
+      const char* p = v.as<const char*>();
+      if (p) {
+        char buffer[16];
+        size_t len = strnlen(p, sizeof(buffer) - 1);
+        memcpy(buffer, p, len);
+        buffer[len] = '\0';
+        char* start = buffer;
+        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+        char* end = start + strlen(start);
+        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+        *end = '\0';
+        for (char* c = start; *c; ++c) {
+          *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
         }
-        var = v;
-    };
-    
-    // Application de la configuration
-    if (doc.containsKey("mail")) {
-        const char* emailPtr = doc["mail"].as<const char*>();
-        setEmailAddress(emailPtr);
+        enabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+                   strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
+                   strcmp(start, "yes") == 0);
+      }
     }
-    // Accepter mailNotif (compat server)
-    if (doc.containsKey("mailNotif")) {
-        auto v = doc["mailNotif"];
-        if (v.is<bool>()) _emailEnabled = v.as<bool>();
-        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
-        else if (v.is<const char*>()) {
-            const char* p = v.as<const char*>();
-            if (p) {
-                char buffer[16];
-                size_t len = strnlen(p, sizeof(buffer) - 1);
-                memcpy(buffer, p, len);
-                buffer[len] = '\0';
-                // Trim spaces
-                char* start = buffer;
-                while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
-                char* end = start + strlen(start);
-                while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
-                *end = '\0';
-                for (char* c = start; *c; ++c) {
-                    *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
-                }
-                _emailEnabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
-                                 strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
-                                 strcmp(start, "yes") == 0);
-            }
-        }
+    setEmailEnabled(enabled);
+  }
+
+  if (doc.containsKey("FreqWakeUp")) {
+    int value = parseIntValue(doc["FreqWakeUp"]);
+    if (value >= 0) {
+      setFreqWakeSec(static_cast<uint16_t>(value));
     }
-    assignIfPresent("FreqWakeUp", _freqWakeSec);
-    assignIfPresent("limFlood", _limFlood);
-    assignIfPresent("aqThreshold", _aqThresholdCm);
-    assignIfPresent("tankThreshold", _tankThresholdCm);
-    assignIfPresent("chauffageThreshold", _heaterThresholdC);
-    
-    Serial.println(F("[Network] Configuration appliquée depuis JSON"));
+  }
+
+  if (doc.containsKey("limFlood")) {
+    int value = parseIntValue(doc["limFlood"]);
+    if (value >= 0) {
+      setLimFlood(static_cast<uint16_t>(value));
+    }
+  }
+
+  if (doc.containsKey("aqThreshold")) {
+    int value = parseIntValue(doc["aqThreshold"]);
+    if (value > 0) {
+      setAqThresholdCm(static_cast<uint16_t>(value));
+    }
+  }
+
+  if (doc.containsKey("tankThreshold")) {
+    int value = parseIntValue(doc["tankThreshold"]);
+    if (value > 0) {
+      setTankThresholdCm(static_cast<uint16_t>(value));
+    }
+  }
+
+  if (doc.containsKey("chauffageThreshold")) {
+    float value = parseFloatValue(doc["chauffageThreshold"]);
+    if (value > 0.0f && !isnan(value)) {
+      setHeaterThresholdC(value);
+    }
+  }
+
+  Serial.println(F("[Network] Configuration appliquée depuis JSON"));
 }
 
 // ============================================================================
@@ -581,22 +592,19 @@ bool AutomatismNetwork::handleResetCommand(const ArduinoJson::JsonDocument& doc,
     
     // === PROTECTION ANTI-BOUCLE INFINIE ===
     // Vérifier si un reset a déjà été effectué récemment
-    Preferences prefs;
-    prefs.begin("reset", false);
-    uint32_t lastResetTime = prefs.getULong("lastReset", 0);
+    unsigned long lastResetTime;
+    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "reset_lastReset", lastResetTime, 0);
     uint32_t currentTime = millis();
     
     // Si reset dans les 30 dernières secondes, ignorer pour éviter la boucle
     if (lastResetTime > 0 && (currentTime - lastResetTime) < 30000) {
         Serial.printf("[Network] ⚠️ Reset ignoré - déjà effectué il y a %lu ms\n", 
                       currentTime - lastResetTime);
-        prefs.end();
         return false;
     }
     
     // Marquer le reset en cours
-    prefs.putULong("lastReset", currentTime);
-    prefs.end();
+    g_nvsManager.saveULong(NVS_NAMESPACES::SYSTEM, "reset_lastReset", currentTime);
     
     // Email notification si activé
     if (_emailEnabled) {
@@ -669,67 +677,97 @@ bool AutomatismNetwork::handleResetCommand(const ArduinoJson::JsonDocument& doc,
 // ============================================================================
 
 void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
-    // Application variables basiques
-    assignIfPresent(doc, "aqThreshold", _aqThresholdCm);
-    assignIfPresent(doc, "tankThreshold", _tankThresholdCm);
-    assignIfPresent(doc, "limFlood", _limFlood);
-    
-    // Durées de remplissage
-    if (doc.containsKey("tempsRemplissageSec")) {
-        // NOTE: refillDurationMs est dans Automatism, on devrait ajouter un setter
-        // Pour l'instant, on log juste
-        int refillSec = doc["tempsRemplissageSec"].as<int>();
-        Serial.printf("[Network] tempsRemplissageSec reçu: %d (non appliqué - TODO setter)\n", refillSec);
+  auto parseIntValue = [](ArduinoJson::JsonVariantConst value) -> int {
+    if (value.is<int>()) return value.as<int>();
+    if (value.is<float>()) return static_cast<int>(value.as<float>());
+    if (value.is<const char*>()) return atoi(value.as<const char*>());
+    return value.as<int>();
+  };
+
+  auto parseFloatValue = [](ArduinoJson::JsonVariantConst value) -> float {
+    if (value.is<float>()) return value.as<float>();
+    if (value.is<int>()) return static_cast<float>(value.as<int>());
+    if (value.is<const char*>()) return atof(value.as<const char*>());
+    return value.as<float>();
+  };
+
+  if (doc.containsKey("aqThreshold")) {
+    int value = parseIntValue(doc["aqThreshold"]);
+    if (value > 0) {
+      setAqThresholdCm(static_cast<uint16_t>(value));
     }
-    
-    // Threshold chauffage
-    if (doc.containsKey("chauffageThreshold")) {
-        float newThreshold = doc["chauffageThreshold"].as<float>();
-        if (newThreshold > 0.0f) { // Protection contre valeurs invalides
-            _heaterThresholdC = newThreshold;
-            Serial.printf("[Network] 🔥 Seuil chauffage mis à jour dans Network: %.1f°C\n", _heaterThresholdC);
+  }
+
+  if (doc.containsKey("tankThreshold")) {
+    int value = parseIntValue(doc["tankThreshold"]);
+    if (value > 0) {
+      setTankThresholdCm(static_cast<uint16_t>(value));
+    }
+  }
+
+  if (doc.containsKey("limFlood")) {
+    int value = parseIntValue(doc["limFlood"]);
+    if (value >= 0) {
+      setLimFlood(static_cast<uint16_t>(value));
+    }
+  }
+
+  if (doc.containsKey("tempsRemplissageSec")) {
+    int refillSec = doc["tempsRemplissageSec"].as<int>();
+    Serial.printf("[Network] tempsRemplissageSec reçu: %d (non appliqué - TODO setter)\n", refillSec);
+  }
+
+  if (doc.containsKey("chauffageThreshold")) {
+    float value = parseFloatValue(doc["chauffageThreshold"]);
+    if (value > 0.0f && !isnan(value)) {
+      setHeaterThresholdC(value);
+      Serial.printf("[Network] 🔥 Seuil chauffage mis à jour dans Network: %.1f°C\n", _heaterThresholdC);
+    }
+  }
+
+  if (doc.containsKey("mail")) {
+    const char* m = doc["mail"].as<const char*>();
+    setEmailAddress(m);
+  }
+
+  if (doc.containsKey("mailNotif")) {
+    auto v = doc["mailNotif"];
+    bool enabled = _emailEnabled;
+    if (v.is<bool>()) {
+      enabled = v.as<bool>();
+    } else if (v.is<int>()) {
+      enabled = (v.as<int>() == 1);
+    } else if (v.is<const char*>()) {
+      const char* p = v.as<const char*>();
+      if (p) {
+        char buffer[16];
+        size_t len = strnlen(p, sizeof(buffer) - 1);
+        memcpy(buffer, p, len);
+        buffer[len] = '\0';
+        char* start = buffer;
+        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
+        char* end = start + strlen(start);
+        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
+        *end = '\0';
+        for (char* c = start; *c; ++c) {
+          *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
         }
+        enabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
+                   strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
+                   strcmp(start, "yes") == 0);
+      }
     }
-    
-    // Email configuration
-    if (doc.containsKey("mail")) {
-        const char* m = doc["mail"].as<const char*>();
-        setEmailAddress(m);
+    setEmailEnabled(enabled);
+  }
+
+  if (doc.containsKey("FreqWakeUp")) {
+    int fv = parseIntValue(doc["FreqWakeUp"]);
+    if (fv > 0) {
+      setFreqWakeSec(static_cast<uint16_t>(fv));
     }
-    
-    if (doc.containsKey("mailNotif")) {
-        auto v = doc["mailNotif"];
-        if (v.is<bool>()) _emailEnabled = v.as<bool>();
-        else if (v.is<int>()) _emailEnabled = (v.as<int>() == 1);
-        else if (v.is<const char*>()) {
-            const char* p = v.as<const char*>();
-            if (p) {
-                char buffer[16];
-                size_t len = strnlen(p, sizeof(buffer) - 1);
-                memcpy(buffer, p, len);
-                buffer[len] = '\0';
-                char* start = buffer;
-                while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
-                char* end = start + strlen(start);
-                while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
-                *end = '\0';
-                for (char* c = start; *c; ++c) {
-                    *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
-                }
-                _emailEnabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
-                                 strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
-                                 strcmp(start, "yes") == 0);
-            }
-        }
-    }
-    
-    // FreqWakeUp
-    if (doc.containsKey("FreqWakeUp")) {
-        int fv = doc["FreqWakeUp"].as<int>();
-        if (fv > 0) _freqWakeSec = fv;
-    }
-    
-    Serial.println(F("[Network] Configuration distante appliquée"));
+  }
+
+  Serial.println(F("[Network] Configuration distante appliquée"));
 }
 
 // ============================================================================
@@ -1085,26 +1123,27 @@ bool AutomatismNetwork::sendCommandAck(const char* command, const char* status) 
 }
 
 void AutomatismNetwork::logRemoteCommandExecution(const char* command, bool success) {
-    Preferences prefs;
-    prefs.begin("cmdLog", false);
-    
     // Compteurs globaux
-    uint32_t totalCmds = prefs.getUInt("total", 0) + 1;
-    uint32_t successCmds = prefs.getUInt("success", 0) + (success ? 1 : 0);
-    
-    prefs.putUInt("total", totalCmds);
-    prefs.putUInt("success", successCmds);
-    
-    // Compteurs par commande (limité à 10 commandes max pour économiser NVS)
-    String key = String("cmd_") + command;
-    uint32_t cmdTotal = prefs.getUInt(key.c_str(), 0) + 1;
-    prefs.putUInt(key.c_str(), cmdTotal);
-    
-    prefs.end();
+    int totalCmds, successCmds;
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "cmd_total", totalCmds, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "cmd_success", successCmds, 0);
+    totalCmds++;
+    if (success) successCmds++;
+
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "cmd_total", totalCmds);
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "cmd_success", successCmds);
+
+    // Compteurs par commande
+    char key[32];
+    snprintf(key, sizeof(key), "cmd_%s", command);
+    int cmdTotal;
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, key, cmdTotal, 0);
+    cmdTotal++;
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, key, cmdTotal);
     
     // Log avec statistiques
     float successRate = (totalCmds > 0) ? ((float)successCmds / totalCmds * 100.0f) : 0.0f;
-    Serial.printf("[Network] Command '%s': %s (Global: %.1f%% success, Total: %lu, This cmd: %lu times)\n", 
+    Serial.printf("[Network] Command '%s': %s (Global: %.1f%% success, Total: %u, This cmd: %u times)\n", 
                   command, success ? "✓ OK" : "✗ FAILED", successRate, totalCmds, cmdTotal);
 }
 

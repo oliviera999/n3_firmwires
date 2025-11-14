@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <Preferences.h>
 #include <type_traits>
 
 #include "web_client.h"
@@ -52,11 +51,15 @@ class AutomatismNetwork {
 
   void logRemoteCommandExecution(const char* command, bool success);
 
-            void setEmailAddress(const char* address);
+  void setEmailAddress(const char* address);
   void setEmailEnabled(bool enabled) { _emailEnabled = enabled; }
   void setFreqWakeSec(uint16_t freq) { _freqWakeSec = freq; }
+  void setLimFlood(uint16_t lim) { _limFlood = lim; }
+  void setAqThresholdCm(uint16_t value) { _aqThresholdCm = value; }
+  void setTankThresholdCm(uint16_t value) { _tankThresholdCm = value; }
+  void setHeaterThresholdC(float value) { _heaterThresholdC = value; }
 
-            const char* getEmailAddress() const { return _emailAddress; }
+  const char* getEmailAddress() const { return _emailAddress; }
   bool isEmailEnabled() const { return _emailEnabled; }
   uint16_t getFreqWakeSec() const { return _freqWakeSec; }
   uint16_t getLimFlood() const { return _limFlood; }

@@ -1,4 +1,5 @@
 #include "diagnostics.h"
+#include "nvs_manager.h" // v11.106
 #include <ArduinoJson.h>
 #include <esp_core_dump.h>
 #include <soc/rtc_cntl_reg.h>
@@ -30,15 +31,19 @@ void Diagnostics::begin() {
   capturePanicInfo();
   
   // Charger les valeurs précédentes
-  _prefs.begin("diagnostics", false);
-  _stats.rebootCount = _prefs.getUInt("rebootCnt", 0) + 1;
-  _stats.minFreeHeap = _prefs.getUInt("minHeap", UINT32_MAX);
-  _stats.httpSuccessCount = _prefs.getUInt("httpOk", 0);
-  _stats.httpFailCount = _prefs.getUInt("httpKo", 0);
-  _stats.otaSuccessCount = _prefs.getUInt("otaOk", 0);
-  _stats.otaFailCount = _prefs.getUInt("otaKo", 0);
-  _prefs.putUInt("rebootCnt", _stats.rebootCount);
-  _prefs.end();
+  int rebootCount;
+  unsigned int minFreeHeap, httpSuccessCount, httpFailCount, otaSuccessCount, otaFailCount;
+
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
+  _stats.rebootCount = rebootCount + 1;
+  
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", (int&)_stats.minFreeHeap, UINT32_MAX);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpOk", (int&)_stats.httpSuccessCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpKo", (int&)_stats.httpFailCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaKo", (int&)_stats.otaFailCount, 0);
+
+  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", _stats.rebootCount);
 
   // Initialisation des variables de suivi
   _lastSavedMinHeap = _stats.minFreeHeap;
@@ -157,9 +162,7 @@ void Diagnostics::update() {
     }
     
     if (shouldSave) {
-      _prefs.begin("diagnostics", false);
-      _prefs.putUInt("minHeap", _stats.minFreeHeap);
-      _prefs.end();
+      g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_minHeap", _stats.minFreeHeap);
       
       _lastHeapSave = now;
       _lastSavedMinHeap = _stats.minFreeHeap;
@@ -193,29 +196,25 @@ void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
 
 void Diagnostics::recordHttpResult(bool success, int httpCode) {
   _stats.lastHttpCode = httpCode;
-  _prefs.begin("diagnostics", false);
   if (success) {
     _stats.httpSuccessCount++;
-    _prefs.putUInt("httpOk", _stats.httpSuccessCount);
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_httpOk", _stats.httpSuccessCount);
   } else {
     _stats.httpFailCount++;
-    _prefs.putUInt("httpKo", _stats.httpFailCount);
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_httpKo", _stats.httpFailCount);
   }
-  _prefs.end();
 }
 
 void Diagnostics::recordOtaResult(bool success, const char* errorMsg) {
-  _prefs.begin("diagnostics", false);
   if (success) {
     _stats.otaSuccessCount++;
-    _prefs.putUInt("otaOk", _stats.otaSuccessCount);
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_otaOk", _stats.otaSuccessCount);
     _stats.lastOtaError = "";
   } else {
     _stats.otaFailCount++;
-    _prefs.putUInt("otaKo", _stats.otaFailCount);
+    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_otaKo", _stats.otaFailCount);
     _stats.lastOtaError = errorMsg ? String(errorMsg) : String("");
   }
-  _prefs.end();
 }
 
 String Diagnostics::generateRestartReport() const {
@@ -418,35 +417,31 @@ void Diagnostics::capturePanicInfo() {
 void Diagnostics::savePanicInfo() {
   if (!_stats.panicInfo.hasPanicInfo) return;
   
-  _prefs.begin("diagnostics", false);
-  _prefs.putBool("hasPanic", true);
-  _prefs.putString("panicCause", _stats.panicInfo.exceptionCause);
-  _prefs.putUInt("panicAddr", _stats.panicInfo.exceptionAddress);
-  _prefs.putUInt("panicExcv", _stats.panicInfo.excvaddr);
-  _prefs.putString("panicTask", _stats.panicInfo.taskName);
-  _prefs.putInt("panicCore", _stats.panicInfo.core);
-  _prefs.putString("panicInfo", _stats.panicInfo.additionalInfo);
-  _prefs.end();
+  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", true);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause);
+  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress);
+  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName);
+  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo);
   
   Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
 }
 
 // Charger les informations de panic depuis NVS
 void Diagnostics::loadPanicInfo() {
-  _prefs.begin("diagnostics", true); // read-only
-  _stats.panicInfo.hasPanicInfo = _prefs.getBool("hasPanic", false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", _stats.panicInfo.hasPanicInfo, false);
   
   if (_stats.panicInfo.hasPanicInfo) {
-    _stats.panicInfo.exceptionCause = _prefs.getString("panicCause", "Unknown");
-    _stats.panicInfo.exceptionAddress = _prefs.getUInt("panicAddr", 0);
-    _stats.panicInfo.excvaddr = _prefs.getUInt("panicExcv", 0);
-    _stats.panicInfo.taskName = _prefs.getString("panicTask", "");
-    _stats.panicInfo.core = _prefs.getInt("panicCore", -1);
-    _stats.panicInfo.additionalInfo = _prefs.getString("panicInfo", "");
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause, "Unknown");
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr, 0);
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName, "");
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core, -1);
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo, "");
     
     Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
   }
-  _prefs.end();
   
   // Nettoyer les infos après lecture pour le prochain boot
   if (_stats.panicInfo.hasPanicInfo) {
@@ -456,13 +451,11 @@ void Diagnostics::loadPanicInfo() {
 
 // Nettoyer les informations de panic dans NVS
 void Diagnostics::clearPanicInfo() {
-  _prefs.begin("diagnostics", false);
-  _prefs.remove("hasPanic");
-  _prefs.remove("panicCause");
-  _prefs.remove("panicAddr");
-  _prefs.remove("panicExcv");
-  _prefs.remove("panicTask");
-  _prefs.remove("panicCore");
-  _prefs.remove("panicInfo");
-  _prefs.end();
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_hasPanic");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCause");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicAddr");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicExcv");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicTask");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCore");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicInfo");
 }

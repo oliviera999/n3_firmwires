@@ -1,6 +1,6 @@
 #include "gpio_parser.h"
 #include "automatism.h"
-#include <Preferences.h>
+#include "nvs_manager.h" // v11.108
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
@@ -275,59 +275,52 @@ String GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value) {
 }
 
 void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
-    // v11.79: Sécurisation de l'accès NVS
-    Preferences prefs;
+    // v11.108: Utilisation de g_nvsManager
     
+    // Créer la clé préfixée
+    char key[32];
+    snprintf(key, sizeof(key), "gpio_%s", mapping.nvsKey);
+
     // Vérifier que la clé NVS n'est pas trop longue ou invalide
     if (mapping.nvsKey == nullptr || strlen(mapping.nvsKey) == 0 || strlen(mapping.nvsKey) > 15) {
         Serial.printf("[NVS] ⚠️ Clé NVS invalide, ignorée: %s\n", mapping.nvsKey ? mapping.nvsKey : "NULL");
         return;
     }
     
-    bool nvsOpened = prefs.begin("gpio", false);
-    if (!nvsOpened) {
-        Serial.printf("[NVS] ❌ Impossible d'ouvrir namespace gpio pour %s\n", mapping.nvsKey);
-        return;
-    }
-    
-    // v11.79: Gestion sécurisée sans try-catch (ESP32 Arduino)
     switch (mapping.type) {
         case GPIOType::ACTUATOR:
         case GPIOType::CONFIG_BOOL: {
             bool boolVal = parseBool(value);
-            bool success = prefs.putBool(mapping.nvsKey, boolVal);
-            Serial.printf("[NVS] Sauvegardé bool %s = %s (%s)\n", mapping.nvsKey, boolVal ? "true" : "false", success ? "OK" : "FAIL");
+            g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, key, boolVal);
+            Serial.printf("[NVS] Sauvegardé bool %s = %s\n", key, boolVal ? "true" : "false");
             break;
         }
         case GPIOType::CONFIG_INT: {
             int intVal = parseInt(value);
-            bool success = prefs.putInt(mapping.nvsKey, intVal);
-            Serial.printf("[NVS] Sauvegardé int %s = %d (%s)\n", mapping.nvsKey, intVal, success ? "OK" : "FAIL");
+            g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, key, intVal);
+            Serial.printf("[NVS] Sauvegardé int %s = %d\n", key, intVal);
             break;
         }
         case GPIOType::CONFIG_FLOAT: {
             float floatVal = parseFloat(value);
-            bool success = prefs.putFloat(mapping.nvsKey, floatVal);
-            Serial.printf("[NVS] Sauvegardé float %s = %.2f (%s)\n", mapping.nvsKey, floatVal, success ? "OK" : "FAIL");
+            g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, key, floatVal);
+            Serial.printf("[NVS] Sauvegardé float %s = %.2f\n", key, floatVal);
             break;
         }
         case GPIOType::CONFIG_STRING: {
             String stringVal = parseString(value);
-            // Vérifier la taille de la string avant sauvegarde
             if (stringVal.length() > 100) {
-                Serial.printf("[NVS] ⚠️ String trop longue pour %s (%u chars), tronquée\n", mapping.nvsKey, stringVal.length());
+                Serial.printf("[NVS] ⚠️ String trop longue pour %s (%u chars), tronquée\n", key, stringVal.length());
                 stringVal = stringVal.substring(0, 100);
             }
-            bool success = prefs.putString(mapping.nvsKey, stringVal);
-            Serial.printf("[NVS] Sauvegardé string %s = '%s' (%s)\n", mapping.nvsKey, stringVal.c_str(), success ? "OK" : "FAIL");
+            g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
+            Serial.printf("[NVS] Sauvegardé string %s = '%s'\n", key, stringVal.c_str());
             break;
         }
         default:
-            Serial.printf("[NVS] ⚠️ Type non géré pour %s\n", mapping.nvsKey);
+            Serial.printf("[NVS] ⚠️ Type non géré pour %s\n", key);
             break;
     }
-    
-    prefs.end();
 }
 
 bool GPIOParser::parseBool(JsonVariantConst v) {
@@ -360,13 +353,6 @@ String GPIOParser::parseString(JsonVariantConst v) {
 
 void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] Chargement des états GPIO depuis NVS..."));
-    Preferences prefs;
-    
-    bool nvsOpened = prefs.begin("gpio", true);
-    if (!nvsOpened) {
-        Serial.println(F("[GPIOParser] ⚠️ Impossible d'ouvrir namespace gpio"));
-        return;
-    }
     
     // Charger les états des actionneurs depuis NVS
     for (size_t i = 0; i < GPIOMap::MAPPING_COUNT; i++) {
@@ -382,7 +368,11 @@ void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {
             continue;
         }
         
-        bool state = prefs.getBool(mapping.nvsKey, false);
+        char key[32];
+        snprintf(key, sizeof(key), "gpio_%s", mapping.nvsKey);
+
+        bool state;
+        g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, key, state, false);
         
         // Appliquer l'état selon le GPIO
         if (mapping.gpio == GPIOMap::HEATER.gpio) {
@@ -415,6 +405,5 @@ void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {
         // Note: PUMP_TANK volontairement exclue pour sécurité
     }
     
-    prefs.end();
     Serial.println(F("[GPIOParser] ✅ États GPIO chargés depuis NVS"));
 }

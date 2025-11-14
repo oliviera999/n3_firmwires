@@ -1,4 +1,5 @@
 #include "ota_manager.h"
+#include "nvs_manager.h" // v11.109
 #include <WiFi.h>
 #include <Update.h>
 #include <HTTPClient.h>
@@ -12,7 +13,6 @@
 #include <freertos/task.h>
 #include <algorithm>
 #include "project_config.h"
-#include <Preferences.h>
 #include "mailer.h"
 #include "automatism.h"
 #include "event_log.h"
@@ -830,16 +830,8 @@ void OTAManager::updateTask(void* parameter) {
 
     // Persister l'ancienne version pour notification post-reboot
     {
-        Preferences prefs;
-        prefs.begin("ota", false);
-        // Sauvegarder la version courante si non vide
-        String cur = ota->getCurrentVersion();
-        if (cur.length() > 0) {
-            prefs.putString("prevVer", cur);
-        }
-        // Marque un indicateur d'update en cours (optionnel)
-        prefs.putBool("inProgress", true);
-        prefs.end();
+        g_nvsManager.saveString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", ota->getCurrentVersion());
+        g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_inProgress", true);
     }
     
     // Essayer d'abord la méthode moderne, puis fallback si échec
@@ -944,10 +936,7 @@ void OTAManager::updateTask(void* parameter) {
         
         // Nettoyer le flag inProgress avant reboot
         {
-            Preferences prefs;
-            prefs.begin("ota", false);
-            prefs.putBool("inProgress", false);
-            prefs.end();
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_inProgress", false);
         }
         TaskMonitor::Snapshot successSnapshot = TaskMonitor::collectSnapshot();
         TaskMonitor::logSnapshot(successSnapshot, "ota-task-success");

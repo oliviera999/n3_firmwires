@@ -1,4 +1,5 @@
 #include "time_drift_monitor.h"
+#include "nvs_manager.h" // v11.109
 
 #include <WiFi.h>
 #include <time.h>
@@ -8,7 +9,6 @@
 #include "project_config.h"
 #include "power.h"
 
-const char* TimeDriftMonitor::NVS_NAMESPACE = "timeDrift";
 
 TimeDriftMonitor::TimeDriftMonitor()
   : _driftPPM(0.0f),
@@ -366,53 +366,46 @@ String TimeDriftMonitor::generateDriftReport() const {
 }
 
 void TimeDriftMonitor::saveToNVS() {
-  _preferences.begin(NVS_NAMESPACE, false);
-
   // Données de dérive
-  _preferences.putFloat("driftPPM", _driftPPM);
-  _preferences.putFloat("driftSeconds", _driftSeconds);
-  _preferences.putBool("driftCalculated", _driftCalculated);
+  g_nvsManager.saveFloat(NVS_NAMESPACES::TIME, "drift_driftPPM", _driftPPM);
+  g_nvsManager.saveFloat(NVS_NAMESPACES::TIME, "drift_driftSeconds", _driftSeconds);
+  g_nvsManager.saveBool(NVS_NAMESPACES::TIME, "drift_driftCalculated", _driftCalculated);
 
   // Configuration
-  _preferences.putULong("syncInterval", _syncInterval);
-  _preferences.putFloat("driftThrPPM", _driftThresholdPPM);  // v11.10: raccourci (18→12 car)
-  _preferences.putULong("lastSyncTime", static_cast<unsigned long>(_lastSyncTime));
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "drift_syncInterval", _syncInterval);
+  g_nvsManager.saveFloat(NVS_NAMESPACES::TIME, "drift_driftThrPPM", _driftThresholdPPM);
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "drift_lastSyncTime", static_cast<unsigned long>(_lastSyncTime));
 
-  // Variables de suivi temporel (nécessaires pour la persistance)
-  _preferences.putULong("lastNtpEpoch", static_cast<unsigned long>(_lastNtpEpoch));
-  _preferences.putULong("lastLocalEpoch", static_cast<unsigned long>(_lastLocalEpoch));
+  // Variables de suivi temporel
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "drift_lastNtpEpoch", static_cast<unsigned long>(_lastNtpEpoch));
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "drift_lastLocalEpoch", static_cast<unsigned long>(_lastLocalEpoch));
 
-  // Variables de référence précédente (v11.10: clés raccourcies pour NVS)
-  _preferences.putULong("prevNtpEpoch", static_cast<unsigned long>(_previousNtpEpoch));    // 17→13 car
-  _preferences.putULong("prevLocalEpo", static_cast<unsigned long>(_previousLocalEpoch));  // 19→12 car
-
-  _preferences.end();
+  // Variables de référence précédente
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "drift_prevNtpEpoch", static_cast<unsigned long>(_previousNtpEpoch));
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "drift_prevLocalEpo", static_cast<unsigned long>(_previousLocalEpoch));
 
   Serial.println("[TimeDrift] Données sauvegardées en NVS");
 }
 
 void TimeDriftMonitor::loadFromNVS() {
-  _preferences.begin(NVS_NAMESPACE, true);
-
   // Données de dérive
-  _driftPPM = _preferences.getFloat("driftPPM", 0.0f);
-  _driftSeconds = _preferences.getFloat("driftSeconds", 0.0f);
-  _driftCalculated = _preferences.getBool("driftCalculated", false);
+  g_nvsManager.loadFloat(NVS_NAMESPACES::TIME, "drift_driftPPM", _driftPPM, 0.0f);
+  g_nvsManager.loadFloat(NVS_NAMESPACES::TIME, "drift_driftSeconds", _driftSeconds, 0.0f);
+  g_nvsManager.loadBool(NVS_NAMESPACES::TIME, "drift_driftCalculated", _driftCalculated, false);
 
   // Configuration
-  _syncInterval = _preferences.getULong("syncInterval", DEFAULT_SYNC_INTERVAL);
-  _driftThresholdPPM = _preferences.getFloat("driftThrPPM", DEFAULT_DRIFT_THRESHOLD_PPM);  // v11.10: raccourci
-  unsigned long storedSyncTime = _preferences.getULong("lastSyncTime", 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "drift_syncInterval", _syncInterval, DEFAULT_SYNC_INTERVAL);
+  g_nvsManager.loadFloat(NVS_NAMESPACES::TIME, "drift_driftThrPPM", _driftThresholdPPM, DEFAULT_DRIFT_THRESHOLD_PPM);
+  unsigned long storedSyncTime;
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "drift_lastSyncTime", storedSyncTime, 0);
 
   // Variables de suivi temporel
-  _lastNtpEpoch = static_cast<time_t>(_preferences.getULong("lastNtpEpoch", 0));
-  _lastLocalEpoch = static_cast<time_t>(_preferences.getULong("lastLocalEpoch", 0));
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "drift_lastNtpEpoch", reinterpret_cast<unsigned long&>(_lastNtpEpoch), 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "drift_lastLocalEpoch", reinterpret_cast<unsigned long&>(_lastLocalEpoch), 0);
 
-  // Variables de référence précédente (v11.10: clés raccourcies pour NVS)
-  _previousNtpEpoch = static_cast<time_t>(_preferences.getULong("prevNtpEpoch", 0));
-  _previousLocalEpoch = static_cast<time_t>(_preferences.getULong("prevLocalEpo", 0));
-
-  _preferences.end();
+  // Variables de référence précédente
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "drift_prevNtpEpoch", reinterpret_cast<unsigned long&>(_previousNtpEpoch), 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "drift_prevLocalEpo", reinterpret_cast<unsigned long&>(_previousLocalEpoch), 0);
 
   // Réinitialiser les compteurs millis() non persistants au boot
   _lastSyncMillis = 0;
@@ -422,17 +415,15 @@ void TimeDriftMonitor::loadFromNVS() {
   _previousLocalMillis = 0;
 
   // Nettoyage one-shot des anciennes clés NVS (millis() + clés trop longues v11.10)
-  _preferences.begin(NVS_NAMESPACE, false);
-  _preferences.remove("lastSyncMillis");
-  _preferences.remove("lastNtpMillis");
-  _preferences.remove("lastLocalMillis");
-  _preferences.remove("previousNtpMillis");
-  _preferences.remove("previousLocalMillis");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_lastSyncMillis");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_lastNtpMillis");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_lastLocalMillis");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_previousNtpMillis");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_previousLocalMillis");
   // v11.10: Supprimer anciennes clés trop longues
-  _preferences.remove("driftThresholdPPM");
-  _preferences.remove("previousNtpEpoch");
-  _preferences.remove("previousLocalEpoch");
-  _preferences.end();
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_driftThresholdPPM");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_previousNtpEpoch");
+  g_nvsManager.removeKey(NVS_NAMESPACES::TIME, "drift_previousLocalEpoch");
 
   if (storedSyncTime >= SleepConfig::EPOCH_MIN_VALID && storedSyncTime <= SleepConfig::EPOCH_MAX_VALID) {
     _lastSyncTime = static_cast<time_t>(storedSyncTime);

@@ -1,10 +1,10 @@
 #pragma once
 
 #include <Arduino.h>
-#include <Preferences.h>
 #include <WiFi.h>
 #include <time.h>
 #include "log.h"
+#include "nvs_manager.h" // v11.109
 
 class PowerManager;
 
@@ -68,10 +68,6 @@ private:
   unsigned long _previousLocalMillis; // millis() de la sync précédente
 
   PowerManager* _powerManager;        // Interface vers PowerManager pour corrections
-
-  // Persistance NVS
-  Preferences _preferences;
-  static const char* NVS_NAMESPACE;
 
   // Constantes
   static const unsigned long DEFAULT_SYNC_INTERVAL = 3600000UL; // 1 heure

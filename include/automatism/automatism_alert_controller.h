@@ -9,6 +9,9 @@ public:
 
 private:
   Automatism& _core;
+  bool _lowAquaSent{false};
+  bool _highAquaSent{false};
+  bool _lowTankSent{false};
 };
 
 

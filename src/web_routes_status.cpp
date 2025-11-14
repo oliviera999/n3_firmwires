@@ -11,7 +11,6 @@
 #include "json_pool.h"
 #include "network_optimizer.h"
 #include "project_config.h"
-#include "pump_stats_cache.h"
 #include "automatism.h"
 #include "config_manager.h"
 #include "power.h"
@@ -442,21 +441,32 @@ void registerVersionEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
 
 void registerPumpStats(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/pumpstats", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    auto stats = pumpStatsCache.getStats(ctx.actuators);
+    auto& acts = ctx.actuators;
+    const unsigned long now = millis();
+    const bool isRunning = acts.isTankPumpRunning();
+    const unsigned long currentRuntime = acts.getTankPumpCurrentRuntime();
+    const unsigned long totalRuntime = acts.getTankPumpTotalRuntime();
+    const unsigned long totalStops = acts.getTankPumpTotalStops();
+    const unsigned long lastStopTime = acts.getTankPumpLastStopTime();
+    const unsigned long timeSinceLastStop =
+        (lastStopTime > 0U && now >= lastStopTime) ? (now - lastStopTime) : 0U;
+    const unsigned long timeSinceLastStopSec = timeSinceLastStop / 1000U;
+    const unsigned long currentRuntimeSec = currentRuntime / 1000U;
+    const unsigned long totalRuntimeSec = totalRuntime / 1000U;
 
     ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
     if (!doc) {
       ArduinoJson::DynamicJsonDocument fallbackDoc(512);
-      fallbackDoc["isRunning"] = stats.isRunning;
-      fallbackDoc["currentRuntime"] = stats.currentRuntime;
-      fallbackDoc["currentRuntimeSec"] = stats.currentRuntimeSec;
-      fallbackDoc["totalRuntime"] = stats.totalRuntime;
-      fallbackDoc["totalRuntimeSec"] = stats.totalRuntimeSec;
-      fallbackDoc["totalStops"] = stats.totalStops;
-      fallbackDoc["lastStopTime"] = stats.lastStopTime;
-      fallbackDoc["timeSinceLastStop"] = stats.timeSinceLastStop;
-      fallbackDoc["timeSinceLastStopSec"] = stats.timeSinceLastStopSec;
-      fallbackDoc["timestamp"] = millis();
+      fallbackDoc["isRunning"] = isRunning;
+      fallbackDoc["currentRuntime"] = currentRuntime;
+      fallbackDoc["currentRuntimeSec"] = currentRuntimeSec;
+      fallbackDoc["totalRuntime"] = totalRuntime;
+      fallbackDoc["totalRuntimeSec"] = totalRuntimeSec;
+      fallbackDoc["totalStops"] = totalStops;
+      fallbackDoc["lastStopTime"] = lastStopTime;
+      fallbackDoc["timeSinceLastStop"] = timeSinceLastStop;
+      fallbackDoc["timeSinceLastStopSec"] = timeSinceLastStopSec;
+      fallbackDoc["timestamp"] = now;
 
       String json;
       json.reserve(512);
@@ -465,16 +475,16 @@ void registerPumpStats(AsyncWebServer& server, WebServerContext& ctx) {
       return;
     }
 
-    (*doc)["isRunning"] = stats.isRunning;
-    (*doc)["currentRuntime"] = stats.currentRuntime;
-    (*doc)["currentRuntimeSec"] = stats.currentRuntimeSec;
-    (*doc)["totalRuntime"] = stats.totalRuntime;
-    (*doc)["totalRuntimeSec"] = stats.totalRuntimeSec;
-    (*doc)["totalStops"] = stats.totalStops;
-    (*doc)["lastStopTime"] = stats.lastStopTime;
-    (*doc)["timeSinceLastStop"] = stats.timeSinceLastStop;
-    (*doc)["timeSinceLastStopSec"] = stats.timeSinceLastStopSec;
-    (*doc)["timestamp"] = millis();
+    (*doc)["isRunning"] = isRunning;
+    (*doc)["currentRuntime"] = currentRuntime;
+    (*doc)["currentRuntimeSec"] = currentRuntimeSec;
+    (*doc)["totalRuntime"] = totalRuntime;
+    (*doc)["totalRuntimeSec"] = totalRuntimeSec;
+    (*doc)["totalStops"] = totalStops;
+    (*doc)["lastStopTime"] = lastStopTime;
+    (*doc)["timeSinceLastStop"] = timeSinceLastStop;
+    (*doc)["timeSinceLastStopSec"] = timeSinceLastStopSec;
+    (*doc)["timestamp"] = now;
 
     String json;
     json.reserve(512);

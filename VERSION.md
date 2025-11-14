@@ -1,5 +1,34 @@
 # VERSION.md - GPIO Parsing Unifié v11.68
 
+## Version 11.103 - Cache Cleanup Non Mesuré
+
+**Date**: 2025-11-12  
+**Type**: Nettoyage optimisations
+
+### ✨ Points clés
+- Suppression des modules `PumpStatsCache`, `EmailBufferPool` et `RuleEvaluationCache` jugés sans impact mesuré.
+- Simplification de l’endpoint `/pumpstats` : calcul direct à partir de `SystemActuators` sans couche de cache supplémentaire.
+- Nettoyage des dépendances associées (`pump_stats_cache.h/cpp`, `email_buffer_pool.h/cpp`, `rule_cache.h`) et du bootstrap `app.cpp`.
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.103`
+- Fichiers modifiés : `src/web_routes_status.cpp`, `src/web_server.cpp`, `src/app.cpp`, `include/project_config.h`
+- Fichiers supprimés : `include/pump_stats_cache.h`, `src/pump_stats_cache.cpp`, `include/email_buffer_pool.h`, `src/email_buffer_pool.cpp`, `include/rule_cache.h`
+
+## Version 11.102 - Alert Controller Extraction
+
+**Date**: 2025-11-12  
+**Type**: Refactoring automatismes (phase 2)
+
+### ✨ Points clés
+- Migration complète de `Automatism::handleAlertsInternal()` vers `AutomatismAlertController::process()` pour clarifier les responsabilités.
+- Suppression des `static` locaux remplacés par un état interne du contrôleur (flags de notifications Aqua/Tank) afin d’éviter les effets de bord lors des tests.
+- Conservation des protections anti-spam (NVS `floodLast`) et des commandes chauffage directement orchestrées par le contrôleur.
+
+### 🔧 Impact
+- Version firmware : `include/project_config.h` → `11.102`
+- Fichiers modifiés : `include/automatism/automatism_alert_controller.h`, `src/automatism/automatism_alert_controller.cpp`, `include/automatism.h`, `include/project_config.h`
+
 ## Version 11.100 - Correction persistance variables config
 
 **Date**: 2025-01-16  

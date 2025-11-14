@@ -151,6 +151,7 @@ void Automatism::logSleepTransitionEnd(uint32_t scheduledSeconds,
 void Automatism::storeEmailAddress(const char* address) {
   if (!address) {
     _emailAddress[0] = '\0';
+    _network.setEmailAddress(_emailAddress);
     return;
   }
 
@@ -170,6 +171,7 @@ void Automatism::storeEmailAddress(const char* address) {
 
   memcpy(_emailAddress, address, len);
   _emailAddress[len] = '\0';
+  _network.setEmailAddress(_emailAddress);
 }
 
 void Automatism::startAquaPumpManualLocal() {
@@ -214,6 +216,7 @@ void Automatism::stopLightManualLocal() {
 void Automatism::toggleEmailNotifications() {
   // Toggle local de mailNotif
   mailNotif = !mailNotif;
+  _network.setEmailEnabled(mailNotif);
   // Délégation au module Actuators pour sync
   AutomatismActuators actuators(_acts, _config);
   actuators.toggleEmailNotifications();
@@ -292,6 +295,14 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
   Serial.printf("[Auto] mail par défaut: '%s'\n", _emailAddress);
   Serial.printf("[Auto] DEFAULT_MAIL_TO: '%s'\n", Config::DEFAULT_MAIL_TO);
   Serial.println(F("[Auto] ======================================"));
+
+  _network.setEmailAddress(_emailAddress);
+  _network.setEmailEnabled(mailNotif);
+  _network.setAqThresholdCm(aqThresholdCm);
+  _network.setTankThresholdCm(tankThresholdCm);
+  _network.setHeaterThresholdC(heaterThresholdC);
+  _network.setLimFlood(limFlood);
+  _network.setFreqWakeSec(freqWakeSec);
 }
 
 // (v11.95) Legacy makeRefillRuntimeState removed
@@ -433,6 +444,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     if (val > 0) {  // Accepter uniquement valeurs positives
       aqThresholdCm = val;
       Serial.printf("[Auto] 📊 Seuil aquarium restauré depuis NVS: %d cm\n", aqThresholdCm);
+      _network.setAqThresholdCm(aqThresholdCm);
     }
   }
   if (doc.containsKey("tankThreshold")) {
@@ -440,6 +452,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     if (val > 0) {  // Accepter uniquement valeurs positives
       tankThresholdCm = val;
       Serial.printf("[Auto] 📊 Seuil réservoir restauré depuis NVS: %d cm\n", tankThresholdCm);
+      _network.setTankThresholdCm(tankThresholdCm);
     }
   }
 
@@ -454,6 +467,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
   if (doc.containsKey("limFlood")) {
     int val = parseIntValue(doc["limFlood"]);
     if (val > 0) limFlood = val;  // Accepter uniquement valeurs positives
+    if (val > 0) _network.setLimFlood(limFlood);
   }
 
   if (doc.containsKey("tempsRemplissageSec")) {
@@ -466,6 +480,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     if (newThreshold > 0.0f) {
       heaterThresholdC = newThreshold;
       Serial.printf("[Auto] 🔥 Seuil chauffage restauré depuis NVS: %.1f°C\n", heaterThresholdC);
+      _network.setHeaterThresholdC(heaterThresholdC);
     }
   }
 
@@ -481,6 +496,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     Serial.printf("[Auto] 📧 mailNotif chargé: '%s' -> mailNotif=%s\n",
                  doc["mailNotif"].as<const char*>(),
                  mailNotif ? "TRUE" : "FALSE");
+    _network.setEmailEnabled(mailNotif);
   }
 
   // v11.97: Parsing amélioré pour heures nourrissage (clés textuelles)
@@ -526,6 +542,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
       }
       case 101:
         mailNotif = parseTruthy(kv.value());
+        _network.setEmailEnabled(mailNotif);
         break;
       case 102: {
         // v11.97: Parser qui gère les strings
@@ -534,6 +551,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
         if (val > 0) {
           aqThresholdCm = val;
           Serial.printf("[Auto] 📊 Seuil aquarium restauré (GPIO 102): %d cm\n", aqThresholdCm);
+          _network.setAqThresholdCm(aqThresholdCm);
         }
         break;
       }
@@ -544,6 +562,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
         if (val > 0) {
           tankThresholdCm = val;
           Serial.printf("[Auto] 📊 Seuil réservoir restauré (GPIO 103): %d cm\n", tankThresholdCm);
+          _network.setTankThresholdCm(tankThresholdCm);
         }
         break;
       }
@@ -555,6 +574,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
         if (newThreshold > 0.0f) {
           heaterThresholdC = newThreshold;
           Serial.printf("[Auto] 🔥 Seuil chauffage restauré (GPIO 104): %.1f°C\n", heaterThresholdC);
+          _network.setHeaterThresholdC(heaterThresholdC);
         }
         break;
       }
@@ -598,6 +618,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
         int v = (kv.value().is<int>()) ? kv.value().as<int>() : 
                 (kv.value().is<const char*>()) ? atoi(kv.value().as<const char*>()) : 0;
         if (v > 0) limFlood = v;
+        if (v > 0) _network.setLimFlood(limFlood);
         break;
       }
       case 115: {
@@ -634,6 +655,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
       }
       case 116:
         freqWakeSec = kv.value().as<int>();
+        _network.setFreqWakeSec(freqWakeSec);
         break;
       default:
         break;
@@ -676,6 +698,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     int fv = doc["FreqWakeUp"].as<int>();
     if (fv > 0) {
       freqWakeSec = fv;
+      _network.setFreqWakeSec(freqWakeSec);
     }
   }
 
@@ -1273,6 +1296,7 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
     if (val > 0) {  // Accepter uniquement valeurs positives
       aqThresholdCm = val;
       Serial.printf("[Auto] 📊 Seuil aquarium mis à jour: %d cm\n", aqThresholdCm);
+      _network.setAqThresholdCm(aqThresholdCm);
     }
   }
   if (doc.containsKey("tankThreshold")) {
@@ -1280,6 +1304,7 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
     if (val > 0) {  // Accepter uniquement valeurs positives
       tankThresholdCm = val;
       Serial.printf("[Auto] 📊 Seuil réservoir mis à jour: %d cm\n", tankThresholdCm);
+      _network.setTankThresholdCm(tankThresholdCm);
     }
   }
   
@@ -1289,6 +1314,7 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
     if (newThreshold > 0.0f) { // Protection contre valeurs invalides
       heaterThresholdC = newThreshold;
       Serial.printf("[Auto] 🔥 Seuil chauffage mis à jour: %.1f°C\n", heaterThresholdC);
+      _network.setHeaterThresholdC(heaterThresholdC);
     }
   }
   // Alias serveur (compat): chauffageThreshold
@@ -1297,6 +1323,7 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
     if (newThreshold > 0.0f) { // Protection contre valeurs invalides
       heaterThresholdC = newThreshold;
       Serial.printf("[Auto] 🔥 Seuil chauffage mis à jour (alias): %.1f°C\n", heaterThresholdC);
+      _network.setHeaterThresholdC(heaterThresholdC);
     }
   }
   
@@ -1311,7 +1338,10 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
   }
   if (doc.containsKey("limFlood")) {
     int val = parseIntValue(doc["limFlood"]);
-    if (val > 0) limFlood = val;  // Accepter uniquement valeurs positives
+    if (val > 0) {
+      limFlood = val;  // Accepter uniquement valeurs positives
+      _network.setLimFlood(limFlood);
+    }
   }
   
   // Marée montante (réglages)
@@ -1358,11 +1388,13 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
     Serial.printf("[Auto] 📧 mailNotif chargé: '%s' -> %s\n",
                  mailNotifStr ? mailNotifStr : (mailNotif ? "1" : "0"),
                  mailNotif ? "TRUE" : "FALSE");
+    _network.setEmailEnabled(mailNotif);
   }
   // Alias serveur (compat): mailNotif
   if (doc.containsKey("mailNotif")) {
     mailNotif = parseTruthy(doc["mailNotif"]);
     Serial.printf("[Auto] 📧 mailNotif chargé (alias) -> %s\n", mailNotif ? "TRUE" : "FALSE");
+    _network.setEmailEnabled(mailNotif);
   }
 
   // Wake flags
@@ -1380,7 +1412,10 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc){
   // Fréquence de wakeup
   if (doc.containsKey("FreqWakeUp")) {
     int fv = doc["FreqWakeUp"].as<int>();
-    if (fv > 0) freqWakeSec = fv;
+    if (fv > 0) {
+      freqWakeSec = fv;
+      _network.setFreqWakeSec(freqWakeSec);
+    }
   }
   
   // v11.41: Propager immédiatement au module Feeding
@@ -2589,4 +2624,6 @@ bool Automatism::isRefillingInManualMode() const {
   return _manualTankOverride || 
          (_lastTankManualOrigin != ManualOrigin::NONE);
 }
+
+
 

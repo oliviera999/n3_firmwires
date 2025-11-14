@@ -329,7 +329,6 @@ class Automatism {
                              const TaskMonitor::Snapshot& tasksAfter);
 
   void handleRefillInternal(const AutomatismRuntimeContext& ctx);
-  void handleAlertsInternal(const AutomatismRuntimeContext& ctx);
   void updateDisplayInternal(const AutomatismRuntimeContext& ctx);
   uint32_t getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) const;
 

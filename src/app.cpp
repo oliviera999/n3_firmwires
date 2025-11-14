@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
-#include <Preferences.h>
 #include <time.h>
 
 #include "wifi_manager.h"
@@ -20,9 +19,7 @@
 #include "nvs_manager.h"
 #include "event_log.h"
 #include "time_drift_monitor.h"
-#include "email_buffer_pool.h"
 #include "timer_manager.h"
-#include "optimized_logger.h"
 #include "gpio_parser.h"
 #include "task_monitor.h"
 #include "app_context.h"
@@ -77,7 +74,6 @@ static const unsigned long DIGEST_INTERVAL_MS = TimingConfig::DIGEST_INTERVAL_MS
 
 static unsigned long g_lastDigestMs = 0;
 static uint32_t g_lastDigestSeq = 0;
-static Preferences g_prefsDigest;
 
 void setup() {
   esp_task_wdt_deinit();
@@ -97,7 +93,7 @@ void setup() {
 
   BootstrapStorage::initialize(g_appContext, g_lastDigestMs, g_lastDigestSeq);
   
-  Serial.printf("[App] Démarrage FFP3CS v%s\n", Config::VERSION);
+  LOG_INFO("Démarrage FFP5CS v%s", Config::VERSION);
   
   time_t bootTime = time(nullptr);
   struct tm bootTimeInfo;
@@ -139,10 +135,10 @@ void setup() {
   BootstrapServices::finalizeDisplay(g_appContext);
 
   if (!AppTasks::start(g_appContext)) {
-    Serial.println(F("[App] ⚠️ Système dégradé: pas de tâches FreeRTOS"));
+    LOG_WARN("Système dégradé: pas de tâches FreeRTOS");
   }
   
-  Serial.println(F("[App] Initialisation terminée"));
+  LOG_INFO("Initialisation terminée");
   EventLog::add("Init done");
 }
 
@@ -161,7 +157,7 @@ void loop() {
   static bool otaTimerAdded = false;
   if (!otaTimerAdded) {
     TimerManager::addTimer("OTA_CHECK", OTA_CHECK_INTERVAL, []() {
-      Serial.println("[OTA] Vérification périodique des mises à jour...");
+      LOG_INFO("Vérification périodique des mises à jour OTA...");
       BootstrapNetwork::checkForOtaUpdate(g_appContext);
     });
     otaTimerAdded = true;
@@ -175,56 +171,54 @@ void loop() {
     TimerManager::addTimer("EMAIL_DIGEST", DIGEST_INTERVAL_MS, []() {
       if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
         unsigned long currentTime = millis();
-        String body;
-        body.reserve(BufferConfig::JSON_DOCUMENT_SIZE);
-        body += "Résumé des événements récents (";
+        
+        // Utiliser un buffer char[] pour éviter la fragmentation par 'String'
+        char bodyBuffer[BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES];
+        char* p = bodyBuffer;
+        const char* end = bodyBuffer + sizeof(bodyBuffer);
+
+        // Construire l'en-tête de l'e-mail
         char systemInfo[128];
         Utils::getSystemInfo(systemInfo, sizeof(systemInfo));
-        body += systemInfo;
-        body += ")\n\n";
-        body += "[Stacks] Marges (bytes):\n";
+        p += snprintf(p, end - p, "Résumé des événements récents (%s)\\n\\n", systemInfo);
+        p += snprintf(p, end - p, "[Stacks] Marges (bytes):\\n");
 
+        // Récupérer les informations de stack
         AppTasks::Handles handles = AppTasks::getHandles();
         if (handles.sensor) {
-          body += "- sensorTask: ";
-          body += uxTaskGetStackHighWaterMark(handles.sensor);
-          body += "\n";
+          p += snprintf(p, end - p, "- sensorTask: %u\\n", uxTaskGetStackHighWaterMark(handles.sensor));
         }
         if (handles.web) {
-          body += "- webTask: ";
-          body += uxTaskGetStackHighWaterMark(handles.web);
-          body += "\n";
+          p += snprintf(p, end - p, "- webTask: %u\\n", uxTaskGetStackHighWaterMark(handles.web));
         }
         if (handles.automation) {
-          body += "- autoTask: ";
-          body += uxTaskGetStackHighWaterMark(handles.automation);
-          body += "\n";
+          p += snprintf(p, end - p, "- autoTask: %u\\n", uxTaskGetStackHighWaterMark(handles.automation));
         }
         if (handles.display) {
-          body += "- displayTask: ";
-          body += uxTaskGetStackHighWaterMark(handles.display);
-          body += "\n";
+          p += snprintf(p, end - p, "- displayTask: %u\\n", uxTaskGetStackHighWaterMark(handles.display));
         }
-        body += "- loop(): ";
-        body += uxTaskGetStackHighWaterMark(nullptr);
-        body += "\n\n";
+        p += snprintf(p, end - p, "- loop(): %u\\n\\n", uxTaskGetStackHighWaterMark(nullptr));
+        
+        p += snprintf(p, end - p, "[TIME DRIFT] Dérive temporelle:\\n");
+        // Copier le rapport de dérive temporelle
+        strncpy(p, timeDriftMonitor.generateDriftReport().c_str(), end - p);
+        p[end - p - 1] = '\\0'; // Assurer la terminaison null
+        p += strlen(p);
+        p += snprintf(p, end - p, "\\n");
 
-        body += "[TIME DRIFT] Dérive temporelle:\n";
-        body += timeDriftMonitor.generateDriftReport();
-        body += "\n";
+        // Préparer l'objet String pour EventLog::dumpSince
+        String body(bodyBuffer);
+        body.reserve(BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES);
 
         uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq,
                                               body,
-                                              BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES);
+                                              BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - body.length());
         if (newSeq != g_lastDigestSeq) {
-          String subjDigest = "FFP3CS - Digest événements [";
-          subjDigest += g_hostname;
-          subjDigest += "]";
-          if (body.length() > BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES) {
-            body = body.substring(0, BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - 3);
-            body += "...";
-          }
-          bool ok = mailer.send(subjDigest.c_str(),
+          char subjDigest[128];
+          snprintf(subjDigest, sizeof(subjDigest), "FFP5CS - Digest événements [%s]", g_hostname);
+
+          // Pas besoin de vérifier la longueur/substring, car `dumpSince` a déjà respecté la limite
+          bool ok = mailer.send(subjDigest,
                                 body.c_str(),
                                 "User",
                                 autoCtrl.getEmailAddress());
@@ -234,10 +228,8 @@ void loop() {
           EventLog::add("Digest: no new events");
         }
         g_lastDigestMs = currentTime;
-        g_prefsDigest.begin("digest", false);
-        g_prefsDigest.putUInt("lastSeq", g_lastDigestSeq);
-        g_prefsDigest.putULong("lastMs", g_lastDigestMs);
-        g_prefsDigest.end();
+        g_nvsManager.saveInt(NVS_NAMESPACES::SENSORS, "digest_lastSeq", g_lastDigestSeq);
+        g_nvsManager.saveULong(NVS_NAMESPACES::SENSORS, "digest_lastMs", g_lastDigestMs);
       }
     });
     digestTimerAdded = true;
@@ -247,7 +239,6 @@ void loop() {
   if (!statsTimerAdded) {
     TimerManager::addTimer("STATS_REPORT", 300000, []() {
       TimerManager::logStats();
-      OptimizedLogger::logStats();
     });
     statsTimerAdded = true;
   }
@@ -261,12 +252,12 @@ void loop() {
   
   static bool cleanupScheduled = false;
   if (!cleanupScheduled && g_nvsManager.shouldPerformCleanup()) {
-    Serial.println(F("[App] 🧹 Démarrage nettoyage périodique NVS"));
+    LOG_INFO("Démarrage nettoyage périodique NVS");
     g_nvsManager.rotateLogs(NVS_NAMESPACES::LOGS, 50);
     g_nvsManager.cleanupOldData(NVS_NAMESPACES::STATE, 604800000UL);
     g_nvsManager.schedulePeriodicCleanup();
     cleanupScheduled = true;
-    Serial.println(F("[App] ✅ Nettoyage périodique NVS terminé"));
+    LOG_INFO("Nettoyage périodique NVS terminé");
   }
   
   vTaskDelay(pdMS_TO_TICKS(500));

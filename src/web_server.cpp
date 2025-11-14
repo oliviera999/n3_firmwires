@@ -19,7 +19,6 @@
 // Optimisations
 #include "json_pool.h"
 #include "sensor_cache.h"
-#include "pump_stats_cache.h"
 #include "network_optimizer.h"
 #include "realtime_websocket.h"
 #include "asset_bundler.h"
@@ -66,6 +65,67 @@ WebServerManager::~WebServerManager() {
   g_webServerContext = nullptr;
 }
 
+// Structure pour passer les paramètres à la tâche de synchronisation des relais
+struct RelaySyncTaskParams {
+    SystemSensors* sensors;
+    const char* relayName;
+};
+
+const char* WebServerManager::handleRelayAction(
+    const char* relayName,
+    std::function<bool()> isRunning,
+    std::function<void()> start,
+    std::function<void()> stop,
+    const char* onResponse,
+    const char* offResponse
+) {
+    bool newState;
+    const char* response;
+    if (isRunning()) {
+        Serial.printf("[Web] 💧 Stopping %s...\\n", relayName);
+        stop();
+        newState = false;
+        response = offResponse;
+        Serial.printf("[Web] ✅ %s stopped\\n", relayName);
+    } else {
+        Serial.printf("[Web] 💧 Starting %s...\\n", relayName);
+        start();
+        newState = true;
+        response = onResponse;
+        Serial.printf("[Web] ✅ %s started\\n", relayName);
+    }
+
+    // Sauvegarde NVS + pending sync
+    AutomatismPersistence::saveCurrentActuatorState(relayName, newState);
+    AutomatismPersistence::markPendingSync(relayName, newState);
+
+    // Feedback WebSocket immédiat
+    realtimeWebSocket.broadcastNow();
+
+    // Créer les paramètres pour la tâche
+    RelaySyncTaskParams* params = new RelaySyncTaskParams{&_sensors, relayName};
+
+    // Sync serveur en tâche asynchrone
+    xTaskCreate([](void* param) {
+        RelaySyncTaskParams* p = (RelaySyncTaskParams*)param;
+        vTaskDelay(pdMS_TO_TICKS(100));
+        SensorReadings readings = p->sensors->read();
+        bool syncSuccess = autoCtrl.sendFullUpdate(readings);
+        
+        if (syncSuccess) {
+            AutomatismPersistence::clearPendingSync(p->relayName);
+            Serial.printf("[Web] ✅ %s synced (async)\\n", p->relayName);
+        } else {
+            Serial.printf("[Web] ⏳ %s sync pending\\n", p->relayName);
+        }
+
+        delete p; // Libérer la mémoire des paramètres
+        vTaskDelete(NULL);
+    }, "relay_sync", 4096, params, 1, nullptr);
+
+    return response;
+}
+
 bool WebServerManager::begin() {
   #ifdef DISABLE_ASYNC_WEBSERVER
   // Mode minimal sans serveur web
@@ -103,10 +163,13 @@ bool WebServerManager::begin() {
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
   _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
       autoCtrl.notifyLocalWebActivity();
-      String resp="";
+      const char* resp = "OK";
       
       Serial.printf("[Web] 🎮 Action request from %s\n", req->client()->remoteIP().toString().c_str());
       
+      // Compteur partagé pour les tâches de fond (email/sync)
+      static uint8_t asyncTaskCount = 0;
+
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
           String c = req->getParam("cmd")->value();
@@ -125,7 +188,6 @@ bool WebServerManager::begin() {
               
               // 4. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
               auto* sensorsPtr = &_sensors;
-              static uint8_t asyncTaskCount = 0;
               const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
               if (asyncTaskCount < MAX_ASYNC_TASKS) {
@@ -144,6 +206,7 @@ bool WebServerManager::begin() {
                   bool syncSuccess = autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
                   Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
+                  asyncTaskCount--; // Décrémenter le compteur
                   vTaskDelete(NULL);
                 }, "feed_small_sync", 4096, sensorsPtr, 1, nullptr);
               } else {
@@ -169,7 +232,6 @@ bool WebServerManager::begin() {
               
               // 4. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
               auto* sensorsPtr = &_sensors;
-              static uint8_t asyncTaskCount = 0;
               const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
               if (asyncTaskCount < MAX_ASYNC_TASKS) {
@@ -188,6 +250,7 @@ bool WebServerManager::begin() {
                   bool syncSuccess = autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
                   Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
+                  asyncTaskCount--; // Décrémenter le compteur
                   vTaskDelete(NULL);
                 }, "feed_big_sync", 4096, sensorsPtr, 1, nullptr);
               } else {
@@ -256,170 +319,40 @@ bool WebServerManager::begin() {
       // Traitement des relais avec feedback immédiat
       if (req->hasParam("relay")) {
           String rel = req->getParam("relay")->value();
-          Serial.printf("[Web] 🔌 Relay control: %s\n", rel.c_str());
+          Serial.printf("[Web] 🔌 Relay control: %s\\n", rel.c_str());
           
           if (rel == "pumpTank") {
-              bool newState;
-              if (_acts.isTankPumpRunning()) {
-                  Serial.println("[Web] 💧 Stopping tank pump...");
-                  autoCtrl.stopTankPumpManual();
-                  newState = false;
-                  resp="PUMP_TANK OFF";
-                  Serial.println("[Web] ✅ Tank pump stopped");
-              }
-              else {
-                  Serial.println("[Web] 💧 Starting tank pump...");
-                  autoCtrl.startTankPumpManual();
-                  newState = true;
-                  resp="PUMP_TANK ON";
-                  Serial.println("[Web] ✅ Tank pump started");
-              }
-              
-              // Sauvegarde NVS + pending sync
-              AutomatismPersistence::saveCurrentActuatorState("tank", newState);
-              AutomatismPersistence::markPendingSync("tank", newState);
-              
-              // Feedback WebSocket immédiat
-              realtimeWebSocket.broadcastNow();
-              
-              // Sync serveur en tâche asynchrone (v11.40)
-              auto* sensorsPtr = &_sensors;
-              xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  SensorReadings readings = sensors->read();
-                  bool syncSuccess = autoCtrl.sendFullUpdate(readings);
-                  if (syncSuccess) {
-                      AutomatismPersistence::clearPendingSync("tank");
-                      Serial.println("[Web] ✅ Tank pump synced (async)");
-                  } else {
-                      Serial.println("[Web] ⏳ Tank pump sync pending");
-                  }
-                  vTaskDelete(NULL);
-              }, "relay_sync", 4096, sensorsPtr, 1, nullptr);
+              resp = handleRelayAction("tank",
+                  [&](){ return _acts.isTankPumpRunning(); },
+                  [&](){ autoCtrl.startTankPumpManual(); },
+                  [&](){ autoCtrl.stopTankPumpManual(); },
+                  "PUMP_TANK ON", "PUMP_TANK OFF"
+              );
           } else if (rel == "pumpAqua") {
-              bool newState;
-              if (_acts.isAquaPumpRunning()) {
-                  Serial.println("[Web] 🐠 Stopping aqua pump...");
-                  autoCtrl.stopAquaPumpManualLocal(); 
-                  newState = false;
-                  resp="PUMP_AQUA OFF";
-                  Serial.println("[Web] ✅ Aqua pump stopped");
-              }
-              else { 
-                  Serial.println("[Web] 🐠 Starting aqua pump...");
-                  autoCtrl.startAquaPumpManualLocal(); 
-                  newState = true;
-                  resp="PUMP_AQUA ON"; 
-                  Serial.println("[Web] ✅ Aqua pump started");
-              }
-              
-              // Sauvegarde NVS + pending sync
-              AutomatismPersistence::saveCurrentActuatorState("aqua", newState);
-              AutomatismPersistence::markPendingSync("aqua", newState);
-              
-              // Feedback WebSocket immédiat
-              realtimeWebSocket.broadcastNow();
-              
-              // Sync serveur en tâche asynchrone (v11.40)
-              auto* sensorsPtr = &_sensors;
-              xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  SensorReadings readings = sensors->read();
-                  bool syncSuccess = autoCtrl.sendFullUpdate(readings);
-                  if (syncSuccess) {
-                      AutomatismPersistence::clearPendingSync("aqua");
-                      Serial.println("[Web] ✅ Aqua pump synced (async)");
-                  } else {
-                      Serial.println("[Web] ⏳ Aqua pump sync pending");
-                  }
-                  vTaskDelete(NULL);
-              }, "relay_sync", 4096, sensorsPtr, 1, nullptr);
+              resp = handleRelayAction("aqua",
+                  [&](){ return _acts.isAquaPumpRunning(); },
+                  [&](){ autoCtrl.startAquaPumpManualLocal(); },
+                  [&](){ autoCtrl.stopAquaPumpManualLocal(); },
+                  "PUMP_AQUA ON", "PUMP_AQUA OFF"
+              );
           } else if (rel == "heater") {
-              bool newState;
-              if (_acts.isHeaterOn()) { 
-                  Serial.println("[Web] 🔥 Stopping heater...");
-                  autoCtrl.stopHeaterManualLocal(); 
-                  newState = false;
-                  resp="HEATER OFF"; 
-                  Serial.println("[Web] ✅ Heater stopped");
-              }
-              else { 
-                  Serial.println("[Web] 🔥 Starting heater...");
-                  autoCtrl.startHeaterManualLocal(); 
-                  newState = true;
-                  resp="HEATER ON"; 
-                  Serial.println("[Web] ✅ Heater started");
-              }
-              
-              // Sauvegarde NVS + pending sync
-              AutomatismPersistence::saveCurrentActuatorState("heater", newState);
-              AutomatismPersistence::markPendingSync("heater", newState);
-              
-              // Feedback WebSocket immédiat
-              realtimeWebSocket.sendActionConfirm("heater", resp);
-              
-              // Sync serveur en tâche asynchrone (v11.40)
-              auto* sensorsPtr = &_sensors;
-              xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  SensorReadings readings = sensors->read();
-                  bool syncSuccess = autoCtrl.sendFullUpdate(readings);
-                  if (syncSuccess) {
-                      AutomatismPersistence::clearPendingSync("heater");
-                      Serial.println("[Web] ✅ Heater synced (async)");
-                  } else {
-                      Serial.println("[Web] ⏳ Heater sync pending");
-                  }
-                  vTaskDelete(NULL);
-              }, "relay_sync", 4096, sensorsPtr, 1, nullptr);
+              resp = handleRelayAction("heater",
+                  [&](){ return _acts.isHeaterOn(); },
+                  [&](){ autoCtrl.startHeaterManualLocal(); },
+                  [&](){ autoCtrl.stopHeaterManualLocal(); },
+                  "HEATER ON", "HEATER OFF"
+              );
           } else if (rel == "light") {
-              bool newState;
-              if (_acts.isLightOn()) { 
-                  Serial.println("[Web] 💡 Stopping light...");
-                  autoCtrl.stopLightManualLocal(); 
-                  newState = false;
-                  resp="LIGHT OFF"; 
-                  Serial.println("[Web] ✅ Light stopped");
-              }
-              else { 
-                  Serial.println("[Web] 💡 Starting light...");
-                  autoCtrl.startLightManualLocal(); 
-                  newState = true;
-                  resp="LIGHT ON"; 
-                  Serial.println("[Web] ✅ Light started");
-              }
-              
-              // Sauvegarde NVS + pending sync
-              AutomatismPersistence::saveCurrentActuatorState("light", newState);
-              AutomatismPersistence::markPendingSync("light", newState);
-              
-              // Feedback WebSocket immédiat
-              realtimeWebSocket.sendActionConfirm("light", resp);
-              
-              // Sync serveur en tâche asynchrone (v11.40)
-              auto* sensorsPtr = &_sensors;
-              xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  SensorReadings readings = sensors->read();
-                  bool syncSuccess = autoCtrl.sendFullUpdate(readings);
-                  if (syncSuccess) {
-                      AutomatismPersistence::clearPendingSync("light");
-                      Serial.println("[Web] ✅ Light synced (async)");
-                  } else {
-                      Serial.println("[Web] ⏳ Light sync pending");
-                  }
-                  vTaskDelete(NULL);
-              }, "relay_sync", 4096, sensorsPtr, 1, nullptr);
+              resp = handleRelayAction("light",
+                  [&](){ return _acts.isLightOn(); },
+                  [&](){ autoCtrl.startLightManualLocal(); },
+                  [&](){ autoCtrl.stopLightManualLocal(); },
+                  "LIGHT ON", "LIGHT OFF"
+              );
           }
       }
       
-      if(resp=="") resp="OK";
-      
-      Serial.printf("[Web] 📤 Sending response: %s\n", resp.c_str());
+      Serial.printf("[Web] 📤 Sending response: %s\\n", resp);
       
       // Réponse immédiate avec headers optimisés
       AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", resp);
@@ -523,15 +456,14 @@ bool WebServerManager::begin() {
       
       fallbackDoc["timestamp"] = millis();
       
-      String json;
-      json.reserve(512);
-      serializeJson(fallbackDoc, json);
+      char jsonBuffer[512];
+      serializeJson(fallbackDoc, jsonBuffer, sizeof(jsonBuffer));
       
       Serial.printf("[Web] 📤 Sending fallback JSON (%u bytes) to %s\n", 
-                    json.length(), req->client()->remoteIP().toString().c_str());
+                    strlen(jsonBuffer), req->client()->remoteIP().toString().c_str());
       
       // Réponse optimisée avec headers de cache intelligents
-      AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+      AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuffer);
       if (response) {
         response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         response->addHeader("Pragma", "no-cache");
@@ -594,15 +526,14 @@ bool WebServerManager::begin() {
     
     (*doc)["timestamp"] = millis();
     
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
+    char jsonBuffer[512];
+    size_t jsonSize = serializeJson(*doc, jsonBuffer, sizeof(jsonBuffer));
     
     // Libérer le document du pool
     jsonPool.release(doc);
     
     // Réponse optimisée avec headers de cache intelligents (v11.39: vérification null)
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuffer);
     if (response) {
       response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       response->addHeader("Pragma", "no-cache");
@@ -786,7 +717,9 @@ bool WebServerManager::begin() {
       "mail","mailNotif"
     };
 
-    String extraPairs;
+    char extraPairs[512] = {0}; // Buffer pour les paires clé-valeur
+    char* p = extraPairs;
+    const char* end = extraPairs + sizeof(extraPairs);
     bool any = false;
 
     // Charger JSON NVS existant (si présent)
@@ -798,11 +731,15 @@ bool WebServerManager::begin() {
 
     auto appendPair = [&](const char* key, const String& value){
       if (value.length() == 0) return;
-      if (any) extraPairs += "&";
-      extraPairs += key; extraPairs += "="; extraPairs += value;
-      any = true;
-      // MàJ du cache NVS pour persistance locale immédiate
-      nvsDoc[key] = value;
+      if (p >= end - 1) return; // Pas assez d'espace
+
+      size_t written = snprintf(p, end - p, "%s%s=%s", any ? "&" : "", key, value.c_str());
+      if (written > 0) {
+        p += written;
+        any = true;
+        // MàJ du cache NVS pour persistance locale immédiate
+        nvsDoc[key] = value;
+      }
     };
 
     // v11.70: Lecture directe des paramètres - clés standardisées
@@ -840,7 +777,7 @@ bool WebServerManager::begin() {
     AutomatismPersistence::markConfigPendingSync();
 
     // Envoi immédiat vers la BDD distante pour répercuter les changements
-    bool sent = (WiFi.status()==WL_CONNECTED) ? autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs.c_str() : nullptr) : false;
+    bool sent = (WiFi.status()==WL_CONNECTED) ? autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs : nullptr) : false;
     
     if (sent) {
       // Sync réussi : effacer pending sync
@@ -852,9 +789,9 @@ bool WebServerManager::begin() {
     
     // Toujours retourner 200 pour indiquer que l'enregistrement local s'est bien passé,
     // et indiquer séparément si l'envoi distant a réussi
-    String resp; resp.reserve(64);
-    resp = "{\"status\":\"OK\",\"remoteSent\":"; resp += (sent ? "true" : "false"); resp += "}";
-    ctx.sendJson(req, resp);
+    char respBuffer[64];
+    snprintf(respBuffer, sizeof(respBuffer), "{\"status\":\"OK\",\"remoteSent\":%s}", sent ? "true" : "false");
+    ctx.sendJson(req, respBuffer);
   });
 
   // Fichiers statiques avec compression optimisée et gestion Content-Length
@@ -968,8 +905,8 @@ bool WebServerManager::begin() {
   _server->on("/update", HTTP_GET, [](AsyncWebServerRequest* req) {
     // v11.40: Pas de notifyLocalWebActivity() - page info OTA
     req->send(200, "text/html", 
-      "<html><head><title>FFP3 OTA</title></head><body>"
-      "<h1>FFP3 - Mise à jour OTA</h1>"
+      "<html><head><title>FFP5CS OTA</title></head><body>"
+      "<h1>FFP5CS - Mise à jour OTA</h1>"
       "<p>Le système OTA est géré automatiquement par le firmware.</p>"
       "<p>Les mises à jour sont vérifiées toutes les 2 heures.</p>"
       "<p><a href='/'>Retour au dashboard</a></p>"
@@ -980,7 +917,7 @@ bool WebServerManager::begin() {
   _server->on("/mailtest", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action utilisateur critique
     autoCtrl.notifyLocalWebActivity();
-    String subj = req->hasParam("subject") ? req->getParam("subject")->value() : "Test FFP3";
+    String subj = req->hasParam("subject") ? req->getParam("subject")->value() : "Test FFP5CS";
     String body = req->hasParam("body") ? req->getParam("body")->value() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
     String dest = req->hasParam("to") ? req->getParam("to")->value() : String(Config::DEFAULT_MAIL_TO);
     bool ok = mailer.sendAlert(subj.c_str(), body, dest.c_str());
@@ -988,6 +925,7 @@ bool WebServerManager::begin() {
     req->send(200, "text/plain", resp);
   });
 
+#ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
   // Maintenance: format LittleFS (use with care)
   _server->on("/fs/format", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action maintenance critique
@@ -997,6 +935,7 @@ bool WebServerManager::begin() {
     bool ok = LittleFS.format();
     req->send(ok ? 200 : 500, "text/plain", ok ? "LittleFS formatted" : "Format failed");
   });
+#endif // FFP_ENABLE_DANGEROUS_ENDPOINTS
 
   // Page simple de formulaire pour modifier les variables BDD locales et pousser vers le serveur
   _server->on("/dbvars/form", HTTP_GET, [](AsyncWebServerRequest* req){
@@ -1045,6 +984,7 @@ bool WebServerManager::begin() {
   // -------------------------------------------------------------------
   // NVS Inspector: lister, modifier, effacer les variables persistantes
   // -------------------------------------------------------------------
+#ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
   _server->on("/nvs.json", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Outil de debug interactif
     autoCtrl.notifyLocalWebActivity();
@@ -1284,6 +1224,7 @@ bool WebServerManager::begin() {
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase namespace failed"); return; }
     ctx.sendJson(req, String("{\"status\":\"OK\"}"));
   });
+#endif // FFP_ENABLE_DANGEROUS_ENDPOINTS
 
   // ========================================
   // GESTIONNAIRE WIFI - ENDPOINTS BACKEND

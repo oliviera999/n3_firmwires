@@ -1,0 +1,82 @@
+========================================
+RAPPORT D'ANALYSE DES CRASHES PANIC
+========================================
+Date: 2025-11-13 13:28:56
+Durée du monitoring: 15 minutes
+Fichier de log: monitor_15min_panic_2025-11-13_13-13-45.log
+========================================
+
+🔴 PRIORITÉ 1: ERREURS CRITIQUES
+========================================
+
+1. GURU MEDITATION / PANIC: 0 occurrence(s)
+   ✅ Aucun crash PANIC détecté pendant le monitoring
+
+2. BROWNOUT (Alimentation): 0 occurrence(s)
+   ✅ Aucun brownout détecté
+
+3. CORE DUMP: 0 occurrence(s)
+   ✅ Aucun core dump détecté
+
+
+🟡 PRIORITÉ 2: WATCHDOG ET TIMEOUTS
+========================================
+
+1. WATCHDOG TIMEOUT: 0 occurrence(s)
+   ✅ Aucun timeout watchdog détecté
+
+2. STACK OVERFLOW: 0 occurrence(s)
+   ✅ Aucun stack overflow détecté
+
+
+🟢 PRIORITÉ 3: MÉMOIRE (HEAP/STACK)
+========================================
+
+1. HEAP (Mémoire libre): 37 référence(s)
+   - Minimum: 2 bytes
+   - Maximum: 6 bytes
+   - Moyenne: 4 bytes
+   ⚠️ ATTENTION: Heap minimum très faible (< 50KB) !
+
+2. FRAGMENTATION MÉMOIRE: 0 occurrence(s)
+   ✅ Aucune fragmentation détectée dans les logs
+
+
+⚪ PRIORITÉ 4: WIFI ET WEBSOCKET
+========================================
+
+1. WIFI: 0 erreur(s), 0 déconnexion(s)
+   ✅ Pas de problème WiFi majeur détecté
+
+2. WEBSOCKET: 0 erreur(s), 0 déconnexion(s)
+   ✅ Pas de problème WebSocket majeur détecté
+
+
+🔄 REDÉMARRAGES DÉTECTÉS
+========================================
+
+Nombre de redémarrages détectés: 8
+   Détails des redémarrages:
+   - [2025-11-13 13:13:49] [HB] Payload avant CRC: uptime=236&free=64744&min=59600&reboots=72
+   - [2025-11-13 13:13:49] [HB] Payload final: uptime=236&free=64744&min=59600&reboots=72&crc=5946A8B0
+   - [2025-11-13 13:13:49] [HB] Reboot count: 72
+   - [2025-11-13 13:13:49] [13:13:48][VERB] [HTTP] Payload (55/55): uptime=236&free=64744&min=59600&reboots=72&crc=5946A8B0
+   - [2025-11-13 13:14:22] [HB] Payload avant CRC: uptime=269&free=64680&min=59600&reboots=72
+   - [2025-11-13 13:14:22] [HB] Payload final: uptime=269&free=64680&min=59600&reboots=72&crc=DE94DACC
+   - [2025-11-13 13:14:22] [HB] Reboot count: 72
+   - [2025-11-13 13:14:22] [13:14:21][VERB] [HTTP] Payload (55/55): uptime=269&free=64680&min=59600&reboots=72&crc=DE94DACC
+
+
+📊 RÉSUMÉ ET RECOMMANDATIONS
+========================================
+
+Problèmes critiques détectés: 1
+Avertissements: 0
+
+🔴 ACTIONS IMMÉDIATES REQUISES:
+========================================
+9. Réduire l'utilisation de String Arduino (utiliser char[] à la place)
+10. Vérifier les fuites mémoire (allocations non libérées)
+11. Réduire la taille des buffers statiques si possible
+
+

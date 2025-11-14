@@ -1,0 +1,3 @@
+--- forcing DTR inactive
+UserSideException: could not open port 'COM6': PermissionError(13, 'Acc├¿s refus├®.', None, 5)
+--- forcing RTS inactive

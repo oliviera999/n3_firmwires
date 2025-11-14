@@ -1,0 +1,14 @@
+Checks: >
+  modernize-*,
+  performance-*,
+  readability-*,
+  bugprone-*,
+  misc-unused-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-type-reinterpret-cast
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'ffp5cs/.*'
+AnalyzeTemporaryDtors: false
+FormatStyle: none

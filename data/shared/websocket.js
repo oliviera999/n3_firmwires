@@ -1,4 +1,4 @@
-// FFP3 Dashboard - Gestion WebSocket et WiFi
+// FFP5CS Dashboard - Gestion WebSocket et WiFi
 
 // WebSocket + Fallback polling avec essai de plusieurs ports
 function connectWS() {
@@ -767,7 +767,7 @@ window.initializeDashboard = function initializeDashboard() {
       const v = j && j.version ? String(j.version) : '--';
       const el = $('fwVersion');
       if (el) el.textContent = v;
-      try { document.title = `FFP3 Dashboard v${v}`; } catch(e){}
+      try { document.title = `FFP5CS Dashboard v${v}`; } catch(e){}
     })
     .catch(e => console.warn('Version fetch failed:', e.message));
   
@@ -1000,7 +1000,7 @@ window.initializeDashboard = function initializeDashboard() {
   
   // Attendre la version avant d'afficher le toast final
   Promise.all([versionPromise]).then(() => {
-    toast('Dashboard FFP3 chargé avec succès', 'success');
+    toast('Dashboard FFP5CS chargé avec succès', 'success');
   });
   
   // Enregistrer le Service Worker pour PWA

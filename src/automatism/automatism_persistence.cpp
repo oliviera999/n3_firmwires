@@ -1,41 +1,37 @@
 #include "automatism_persistence.h"
 #include <Arduino.h>
+#include "nvs_manager.h" // v11.105: Utilisation du gestionnaire NVS centralisé
 
 // ============================================================================
 // Module: AutomatismPersistence
 // Responsabilité: Sauvegarde/chargement état actionneurs en NVS
+// v11.105: Ce module a été migré pour utiliser g_nvsManager
 // ============================================================================
 
-// Namespace "actSnap" : Snapshots pour sleep/wake (temporaire)
-// Namespace "actState": États actuels persistants (priorité locale)
+// Namespace "actSnap"  -> NVS_NAMESPACES::STATE (prefixe "snap_")
+// Namespace "actState" -> NVS_NAMESPACES::STATE (prefixe "state_")
 
 void AutomatismPersistence::saveActuatorSnapshot(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn) {
-  Preferences prefs;
-  prefs.begin("actSnap", false);
-  prefs.putBool("pending", true);
-  prefs.putBool("aqua", pumpAquaWasOn);
-  prefs.putBool("heater", heaterWasOn);
-  prefs.putBool("light", lightWasOn);
-  prefs.end();
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_pending", true);
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_aqua", pumpAquaWasOn);
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_heater", heaterWasOn);
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_light", lightWasOn);
   
   Serial.printf("[Persistence] Snapshot actionneurs NVS: aqua=%s heater=%s light=%s\n",
                 pumpAquaWasOn?"ON":"OFF", heaterWasOn?"ON":"OFF", lightWasOn?"ON":"OFF");
 }
 
 bool AutomatismPersistence::loadActuatorSnapshot(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn) {
-  Preferences prefs;
-  prefs.begin("actSnap", true);
-  bool pending = prefs.getBool("pending", false);
+  bool pending;
+  g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_pending", pending, false);
   
   if (!pending) { 
-    prefs.end(); 
     return false; 
   }
   
-  pumpAquaWasOn = prefs.getBool("aqua", false);
-  heaterWasOn   = prefs.getBool("heater", false);
-  lightWasOn    = prefs.getBool("light", false);
-  prefs.end();
+  g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_aqua", pumpAquaWasOn, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_heater", heaterWasOn, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_light", lightWasOn, false);
   
   Serial.printf("[Persistence] Snapshot chargé depuis NVS: aqua=%s heater=%s light=%s\n",
                 pumpAquaWasOn?"ON":"OFF", heaterWasOn?"ON":"OFF", lightWasOn?"ON":"OFF");
@@ -44,10 +40,7 @@ bool AutomatismPersistence::loadActuatorSnapshot(bool& pumpAquaWasOn, bool& heat
 }
 
 void AutomatismPersistence::clearActuatorSnapshot() {
-  Preferences prefs;
-  prefs.begin("actSnap", false);
-  prefs.putBool("pending", false);
-  prefs.end();
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_pending", false);
   
   Serial.println("[Persistence] Snapshot actionneurs effacé");
 }
@@ -57,33 +50,32 @@ void AutomatismPersistence::clearActuatorSnapshot() {
 // ============================================================================
 
 void AutomatismPersistence::saveCurrentActuatorState(const char* actuator, bool state) {
-  Preferences prefs;
-  prefs.begin("actState", false);
+  // Concaténation pour créer la clé préfixée
+  char key[32];
+  snprintf(key, sizeof(key), "state_%s", actuator);
+
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, key, state);
   
-  prefs.putBool(actuator, state);
   // Timestamp de la dernière modification locale (millisecondes)
-  prefs.putUInt("lastLocal", millis());
-  
-  prefs.end();
-  
+  g_nvsManager.saveULong(NVS_NAMESPACES::STATE, "state_lastLocal", millis());
+
   Serial.printf("[Persistence] État %s=%s sauvegardé en NVS (priorité locale)\n",
                 actuator, state ? "ON" : "OFF");
 }
 
 bool AutomatismPersistence::loadCurrentActuatorState(const char* actuator, bool defaultValue) {
-  Preferences prefs;
-  prefs.begin("actState", true);
-  bool state = prefs.getBool(actuator, defaultValue);
-  prefs.end();
+  char key[32];
+  snprintf(key, sizeof(key), "state_%s", actuator);
+  
+  bool state;
+  g_nvsManager.loadBool(NVS_NAMESPACES::STATE, key, state, defaultValue);
   
   return state;
 }
 
 uint32_t AutomatismPersistence::getLastLocalActionTime() {
-  Preferences prefs;
-  prefs.begin("actState", true);
-  uint32_t timestamp = prefs.getUInt("lastLocal", 0);
-  prefs.end();
+  unsigned long timestamp;
+  g_nvsManager.loadULong(NVS_NAMESPACES::STATE, "state_lastLocal", timestamp, 0);
   
   return timestamp;
 }
@@ -101,60 +93,51 @@ bool AutomatismPersistence::hasRecentLocalAction(uint32_t timeoutMs) {
 // ============================================================================
 
 void AutomatismPersistence::markPendingSync(const char* actuator, bool state) {
-  Preferences prefs;
-  prefs.begin("pendingSync", false);
+  char key_state[32];
+  snprintf(key_state, sizeof(key_state), "sync_%s", actuator);
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, key_state, state);
+
+  int count;
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
   
-  // Sauvegarder l'état de l'actionneur
-  prefs.putBool(actuator, state);
-  
-  // Incrémenter le compteur
-  uint8_t count = prefs.getUChar("count", 0);
-  
-  // Vérifier si cet actionneur était déjà en attente
   bool alreadyPending = false;
-  for (uint8_t i = 0; i < count; i++) {
-    char key[16];
-    snprintf(key, sizeof(key), "item_%u", i);
-    String item = prefs.getString(key, "");
+  for (int i = 0; i < count; i++) {
+    char key_item[16];
+    snprintf(key_item, sizeof(key_item), "sync_item_%d", i);
+    String item;
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, "");
     if (item == String(actuator)) {
       alreadyPending = true;
       break;
     }
   }
   
-  // Ajouter à la liste si pas déjà présent
   if (!alreadyPending) {
-    char key[16];
-    snprintf(key, sizeof(key), "item_%u", count);
-    prefs.putString(key, actuator);
+    char key_item[16];
+    snprintf(key_item, sizeof(key_item), "sync_item_%d", count);
+    g_nvsManager.saveString(NVS_NAMESPACES::STATE, key_item, actuator);
     count++;
-    prefs.putUChar("count", count);
+    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", count);
   }
   
-  // Timestamp du dernier pending sync
-  prefs.putUInt("lastSync", millis());
-  
-  prefs.end();
+  g_nvsManager.saveULong(NVS_NAMESPACES::STATE, "sync_lastSync", millis());
   
   Serial.printf("[Persistence] ⏳ Pending sync marqué: %s=%s (total: %u)\n",
                 actuator, state ? "ON" : "OFF", count);
 }
 
 void AutomatismPersistence::markConfigPendingSync() {
-  Preferences prefs;
-  prefs.begin("pendingSync", false);
+  g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "sync_config", true);
   
-  // Marquer la config comme pending
-  prefs.putBool("config", true);
+  int count;
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
   
-  // Incrémenter le compteur si pas déjà présent
-  uint8_t count = prefs.getUChar("count", 0);
   bool alreadyPending = false;
-  
-  for (uint8_t i = 0; i < count; i++) {
-    char key[16];
-    snprintf(key, sizeof(key), "item_%u", i);
-    String item = prefs.getString(key, "");
+  for (int i = 0; i < count; i++) {
+    char key_item[16];
+    snprintf(key_item, sizeof(key_item), "sync_item_%d", i);
+    String item;
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, "");
     if (item == "config") {
       alreadyPending = true;
       break;
@@ -162,114 +145,111 @@ void AutomatismPersistence::markConfigPendingSync() {
   }
   
   if (!alreadyPending) {
-    char key[16];
-    snprintf(key, sizeof(key), "item_%u", count);
-    prefs.putString(key, "config");
+    char key_item[16];
+    snprintf(key_item, sizeof(key_item), "sync_item_%d", count);
+    g_nvsManager.saveString(NVS_NAMESPACES::STATE, key_item, "config");
     count++;
-    prefs.putUChar("count", count);
+    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", count);
   }
   
-  prefs.putUInt("lastSync", millis());
-  prefs.end();
-  
+  g_nvsManager.saveULong(NVS_NAMESPACES::STATE, "sync_lastSync", millis());
+
   Serial.printf("[Persistence] ⏳ Config pending sync marquée (total: %u)\n", count);
 }
 
 void AutomatismPersistence::clearPendingSync(const char* actuator) {
-  Preferences prefs;
-  prefs.begin("pendingSync", false);
+  char key_state[32];
+  snprintf(key_state, sizeof(key_state), "sync_%s", actuator);
+  g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key_state);
   
-  // Supprimer l'état de l'actionneur
-  prefs.remove(actuator);
+  int count;
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
   
-  // Retirer de la liste
-  uint8_t count = prefs.getUChar("count", 0);
-  uint8_t newCount = 0;
-  
-  for (uint8_t i = 0; i < count; i++) {
+  int newCount = 0;
+  for (int i = 0; i < count; i++) {
     char oldKey[16];
-    snprintf(oldKey, sizeof(oldKey), "item_%u", i);
-    String item = prefs.getString(oldKey, "");
+    snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+    String item;
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, "");
     
     if (item != String(actuator) && item.length() > 0) {
-      // Garder cet item, le renuméroter
       if (newCount != i) {
         char newKey[16];
-        snprintf(newKey, sizeof(newKey), "item_%u", newCount);
-        prefs.putString(newKey, item);
+        snprintf(newKey, sizeof(newKey), "sync_item_%d", newCount);
+        g_nvsManager.saveString(NVS_NAMESPACES::STATE, newKey, item);
       }
       newCount++;
-    } else {
-      // Supprimer cet item
-      prefs.remove(oldKey);
     }
   }
+
+  // Supprimer les anciennes clés non re-numérotées
+  for (int i = newCount; i < count; i++) {
+    char oldKey[16];
+    snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, oldKey);
+  }
   
-  prefs.putUChar("count", newCount);
-  prefs.end();
+  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", newCount);
   
   Serial.printf("[Persistence] ✅ Pending sync effacé: %s (reste: %u)\n", actuator, newCount);
 }
 
 void AutomatismPersistence::clearConfigPendingSync() {
-  Preferences prefs;
-  prefs.begin("pendingSync", false);
+  g_nvsManager.removeKey(NVS_NAMESPACES::STATE, "sync_config");
   
-  prefs.remove("config");
-  
-  // Retirer de la liste
-  uint8_t count = prefs.getUChar("count", 0);
-  uint8_t newCount = 0;
-  
-  for (uint8_t i = 0; i < count; i++) {
+  int count;
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+
+  int newCount = 0;
+  for (int i = 0; i < count; i++) {
     char oldKey[16];
-    snprintf(oldKey, sizeof(oldKey), "item_%u", i);
-    String item = prefs.getString(oldKey, "");
+    snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+    String item;
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, "");
     
     if (item != "config" && item.length() > 0) {
       if (newCount != i) {
         char newKey[16];
-        snprintf(newKey, sizeof(newKey), "item_%u", newCount);
-        prefs.putString(newKey, item);
+        snprintf(newKey, sizeof(newKey), "sync_item_%d", newCount);
+        g_nvsManager.saveString(NVS_NAMESPACES::STATE, newKey, item);
       }
       newCount++;
-    } else {
-      prefs.remove(oldKey);
     }
   }
-  
-  prefs.putUChar("count", newCount);
-  prefs.end();
-  
+
+  // Supprimer les anciennes clés non re-numérotées
+  for (int i = newCount; i < count; i++) {
+    char oldKey[16];
+    snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, oldKey);
+  }
+
+  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", newCount);
+
   Serial.printf("[Persistence] ✅ Config pending sync effacée (reste: %u)\n", newCount);
 }
 
 bool AutomatismPersistence::hasPendingSync() {
-  Preferences prefs;
-  prefs.begin("pendingSync", true);
-  uint8_t count = prefs.getUChar("count", 0);
-  prefs.end();
-  
+  int count;
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
   return count > 0;
 }
 
 uint8_t AutomatismPersistence::getPendingSyncCount() {
-  Preferences prefs;
-  prefs.begin("pendingSync", true);
-  uint8_t count = prefs.getUChar("count", 0);
-  prefs.end();
-  
-  return count;
+  int count;
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+  return (uint8_t)count;
 }
 
 uint32_t AutomatismPersistence::getLastPendingSyncTime() {
-  Preferences prefs;
-  prefs.begin("pendingSync", true);
-  uint32_t timestamp = prefs.getUInt("lastSync", 0);
-  prefs.end();
-  
+  unsigned long timestamp;
+  g_nvsManager.loadULong(NVS_NAMESPACES::STATE, "sync_lastSync", timestamp, 0);
   return timestamp;
 }
+
+
+
+
 
 
 

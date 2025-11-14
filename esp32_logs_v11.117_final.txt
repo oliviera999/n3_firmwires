@@ -1,0 +1,431 @@
+--- forcing DTR inactive
+--- forcing RTS inactive
+--- Terminal on COM6 | 115200 8-N-1
+--- Available filters and text transformations: colorize, debug, default, direct, esp32_exception_decoder, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+14:53:21.612 > [Ultrasonic] Lecture r├®active 1: 126 cm
+14:53:21.680 > [Ultrasonic] Lecture r├®active 2: 126 cm
+14:53:21.748 > [Ultrasonic] Lecture r├®active 3: 126 cm
+14:53:21.751 > [Ultrasonic] Mode r├®actif: 126 cm (moyenne de 3 lectures sur 3)
+14:53:21.757 > [Ultrasonic] Lecture r├®active 1: 66 cm
+14:53:21.824 > [Ultrasonic] Lecture r├®active 2: 169 cm
+14:53:21.895 > [Ultrasonic] Lecture r├®active 3: 169 cm
+14:53:21.898 > [Ultrasonic] Saut important d├®tect├®: 76 -> 134 cm (╬ö=58), accepte pour r├®activit├®
+14:53:21.906 > [Ultrasonic] Mode r├®actif: 134 cm (moyenne de 3 lectures sur 3)
+14:53:21.913 > [Ultrasonic] Lecture 1: 62 cm
+14:53:21.932 > [Ultrasonic] Lecture 2: 166 cm
+14:53:21.947 > [Ultrasonic] Lecture 3: 66 cm
+14:53:21.996 > [Ultrasonic] Saut d├®tect├®: 164 cm -> 66 cm (├®cart: 98 cm, ref: m├®diane historique)
+14:53:22.002 > [Ultrasonic] Saut vers le bas accept├® (niveau qui baisse)
+14:53:22.007 > [Ultrasonic] Distance m├®diane: 66 cm (3 lectures valides)
+14:53:22.020 > [14:53:21][DEBUG] Sensors TWater=22.2C TAir=23.0C Hum=67.0% wlA=134 wlT=66 wlP=126 Lux=1269
+14:53:22.026 > [Actuators] ­ƒôî Sync serveur marqu├®e: etatUV=0
+14:53:22.031 > [GPIOParser] ­ƒÆí Lumi├¿re restaur├®e: OFF
+14:53:22.034 > [GPIOParser] Ô£à ├ëtats GPIO charg├®s depuis NVS
+14:53:22.039 > [Config] ­ƒôÑ Chargement variables distantes depuis NVS centralis├® (d├®compress├®)
+14:53:22.045 > [NVS] Decompressing JSON for cfg::remote_json
+14:53:22.050 > [NVS] ­ƒôû Charg├® depuis cache: cfg::remote_json = {"2":1,"15":0,"16":0,"18":0,"100":"oliv.arn.lau@gmail.com","101":1,"102":"20","103":"80","104":"20","105":"5","106":"11","107":"21","108":0,"109":0,"110":0,"111":"5","112":"6","113":"10","114":"6","115":1,"116":"4"}
+14:53:22.073 > [NVS] JSON decompressed: 215 -> 215 bytes
+14:53:22.078 > [Config] Ô£à Variables distantes charg├®es depuis NVS centralis├® (d├®compress├®)
+14:53:22.084 > [Auto] ­ƒôè Seuil aquarium restaur├® (GPIO 102): 20 cm
+14:53:22.089 > [Auto] ­ƒôè Seuil r├®servoir restaur├® (GPIO 103): 80 cm
+14:53:22.095 > [Auto] ­ƒöÑ Seuil chauffage restaur├® (GPIO 104): 20.0┬░C
+14:53:22.100 > [Config] Force wake up chang├®: true
+14:53:22.103 > [Feeding] Dur├®es configur├®es - Gros: 5s, Petits: 6s
+14:53:22.105 > [Feeding] Horaires configur├®s - Matin: 5h, Midi: 11h, Soir: 21h
+14:53:22.111 > [Auto] Config Feeding: Dur├®es 5s/6s, Horaires 5h/11h/21h
+14:53:22.117 > [Auto] Variables distantes restaur├®es depuis NVS
+14:53:22.122 > [Auto] forceWakeUp restaur├®: true
+14:53:25.155 > [NVS] ­ƒÆ¥ Valeur inchang├®e, pas de sauvegarde: sens::temp_lastValid
+14:53:25.160 > [WaterTemp] Derni├¿re temp├®rature valide sauvegard├®e en NVS: 22.2┬░C
+14:53:28.525 > [Ultrasonic] Lecture r├®active 1: 128 cm
+14:53:28.596 > [Ultrasonic] Lecture r├®active 2: 164 cm
+14:53:28.664 > [Ultrasonic] Lecture r├®active 3: 127 cm
+14:53:28.667 > [Ultrasonic] Mode r├®actif: 139 cm (moyenne de 3 lectures sur 3)
+14:53:28.673 > [Ultrasonic] Lecture r├®active 1: 66 cm
+14:53:28.742 > [Ultrasonic] Lecture r├®active 2: 211 cm
+14:53:28.815 > [Ultrasonic] Lecture r├®active 3: 211 cm
+14:53:28.818 > [Ultrasonic] Mode r├®actif: 162 cm (moyenne de 3 lectures sur 3)
+14:53:28.827 > [Ultrasonic] Lecture 1: 167 cm
+14:53:28.842 > [Ultrasonic] Lecture 2: 69 cm
+14:53:28.863 > [Ultrasonic] Lecture 3: 165 cm
+14:53:28.912 > [Ultrasonic] Distance m├®diane: 165 cm (3 lectures valides)
+14:53:28.926 > [14:53:28][DEBUG] Sensors TWater=22.2C TAir=23.0C Hum=67.0% wlA=162 wlT=165 wlP=139 Lux=370
+14:53:28.932 > [Network] ­ƒöÆ resetMode=0 ajout├® automatiquement pour s├®curit├®
+14:53:28.940 > === D├ëBUT POSTRAW ===
+14:53:28.940 > [PR] Timestamp: 38399 ms
+14:53:28.943 > [PR] Payload input: 491 bytes
+14:53:28.945 > [PR] Has API key: OUI
+14:53:28.948 > [PR] Using payload as-is (already has API key)
+14:53:28.951 > [PR] Final payload size: 491 bytes
+14:53:28.954 > [PR] API Key: fdGTMoptd5CD2ert3
+14:53:28.957 > [PR] Sensor: esp32-wroom
+14:53:28.959 > [PR] Sending to primary server...
+14:53:28.962 > [14:53:28][DEBUG] [HTTP] POST https://iot.olution.info/ffp3/post-data-test (payload=491 bytes, timeout=5000 ms)
+14:53:28.973 > [14:53:28][DEBUG] [HTTP] WiFi status=3 connected=YES RSSI=-70 dBm
+14:53:28.979 > [14:53:28][DEBUG] [HTTP] IP=192.168.0.220 gateway=192.168.0.1 dns=192.168.0.1
+14:53:28.984 > [14:53:28][DEBUG] [HTTP] Heap libre=130044 bytes (min=105408)
+14:53:28.990 > [14:53:28][VERB] [HTTP] Payload (200/491): api_key=fdGTMoptd5CD2ert3&sensor=esp32-wroom&version=11.117&TempAir=23.0&Humidite=67.0&TempEau=22.2&EauPotager=139&EauAquarium=162&EauReserve=165&diffMaree=34&Luminosite=370&etatPompeAqua=0&etatPompeT ...
+14:53:29.012 > [14:53:28][DEBUG] [HTTP] Modem sleep d├®sactiv├® pendant le transfert
+14:53:29.017 > [14:53:28][DEBUG] [HTTP] Boucle de retry max=3
+14:53:29.020 > [14:53:28][DEBUG] [HTTP] Tentative 1/3
+14:53:29.025 > [ 38485][V][HTTPClient.cpp:242] beginInternal(): url: https://iot.olution.info/ffp3/post-data-test
+14:53:29.034 > [ 38496][D][HTTPClient.cpp:293] beginInternal(): protocol: https, host: iot.olution.info port: 443 url: /ffp3/post-data-test
+14:53:29.046 > [14:53:28][DEBUG] [HTTP] Client HTTPS utilis├®
+14:53:29.048 > [14:53:28][DEBUG] [HTTP] Headers positionn├®s, timeout requ├¬te=30000
+14:53:29.054 > [14:53:28][DEBUG] [HTTP] POST en cours (elapsed=54 ms)
+14:53:29.059 > [ 38518][D][HTTPClient.cpp:574] sendRequest(): request type: 'POST' redirCount: 0
+14:53:29.067 > 
+14:53:29.069 > [ 38530][D][NetworkManager.cpp:127] hostByName(): DNS found IPv4 109.234.162.74
+14:53:29.075 > [ 38538][V][ssl_client.cpp:68] start_ssl_client(): Free internal heap before TLS 129444
+14:53:29.084 > [ 38545][V][ssl_client.cpp:75] start_ssl_client(): Starting socket (domain 2)
+14:53:29.210 > [ 38671][V][ssl_client.cpp:170] start_ssl_client(): Seeding the random number generator
+14:53:29.220 > [ 38680][V][ssl_client.cpp:178] start_ssl_client(): Setting up the SSL/TLS structure...
+14:53:29.225 > [ 38688][D][ssl_client.cpp:196] start_ssl_client(): WARNING: Skipping SSL Verification. INSECURE!
+14:53:29.234 > [ 38697][V][ssl_client.cpp:292] start_ssl_client(): Setting hostname for TLS session...
+14:53:29.243 > [ 38706][V][ssl_client.cpp:313] ssl_starttls_handshake(): Performing the SSL/TLS handshake...
+14:53:30.407 > [ 39868][V][ssl_client.cpp:334] ssl_starttls_handshake(): Verifying peer X.509 certificate...
+14:53:30.413 > [ 39877][V][ssl_client.cpp:342] ssl_starttls_handshake(): Certificate verified.
+14:53:30.422 > [ 39884][V][ssl_client.cpp:358] ssl_starttls_handshake(): Free internal heap after TLS 87136
+14:53:30.430 > [ 39892][D][HTTPClient.cpp:1112] connect():  connected to iot.olution.info:443
+14:53:30.568 > [ 40029][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'HTTP/1.1 200 OK'
+14:53:30.577 > [ 40038][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Date: Thu, 13 Nov 2025 13:53:28 GMT'
+14:53:30.587 > [ 40048][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Content-Type: text/plain; charset=utf-8'
+14:53:30.597 > [ 40058][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Transfer-Encoding: chunked'
+14:53:30.604 > [ 40067][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Connection: close'
+14:53:30.613 > [ 40075][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Vary: Accept-Encoding'
+14:53:30.623 > [ 40084][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Server: o2switch-PowerBoost-v3'
+14:53:30.629 > [ 40093][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: ''
+14:53:30.637 > [ 40098][D][HTTPClient.cpp:1257] handleHeaderResponse(): code: 200
+14:53:30.643 > [ 40104][D][HTTPClient.cpp:1264] handleHeaderResponse(): Transfer-Encoding: chunked
+14:53:30.649 > [ 40112][D][HTTPClient.cpp:618] sendRequest(): sendRequest code=200
+14:53:30.654 > 
+14:53:30.658 > [14:53:29][DEBUG] [HTTP] POST termin├® en 1644 ms
+14:53:30.660 > [ 40119][V][HTTPClient.cpp:902] writeToStream():  read chunk len: 35
+14:53:30.666 > [ 40129][V][HTTPClient.cpp:1399] writeToStreamDataBlock(): connection closed or file end (written: 35).
+14:53:30.678 > [ 40139][V][HTTPClient.cpp:902] writeToStream():  read chunk len: 0
+14:53:30.684 > [ 40145][D][HTTPClient.cpp:373] disconnect(): still data in buffer (2), clean up.
+14:53:30.689 > 
+14:53:30.689 > [ 40152][D][HTTPClient.cpp:380] disconnect(): tcp stop
+14:53:30.695 > [ 40157][V][ssl_client.cpp:364] stop_ssl_socket(): Cleaning SSL connection.
+14:53:30.706 > [14:53:29][DEBUG] [HTTP] R├®ponse re├ºue code=200 bytes=35 en 48 ms
+14:53:30.712 > [14:53:29][VERB] [HTTP] Content-Type=
+14:53:30.715 > [14:53:29][VERB] [HTTP] Server=
+14:53:30.717 > [14:53:29][VERB] [HTTP] Connection=
+14:53:30.720 > [14:53:29][VERB] [HTTP] Content-Length=
+14:53:30.723 > [14:53:29][VERB] [HTTP] Transfer-Encoding=
+14:53:30.728 > [14:53:29][VERB] [HTTP] Response (35/35): Donn├®es enregistr├®es avec succ├¿s
+14:53:30.734 > [ 40189][D][HTTPClient.cpp:393] disconnect(): tcp is closed
+14:53:30.740 > 
+14:53:30.740 > [14:53:29][DEBUG] [HTTP] Tentative 1/3 termin├®e en 1728 ms
+14:53:30.745 > [NVS] Ô£à Sauvegard├®: logs::diag_httpOk = 669
+14:53:30.748 > [NVS] Forcing flush
+14:53:30.751 > [NVS] Flush complete
+14:53:30.753 > [14:53:29][DEBUG] [HTTP] Succ├¿s 200, arr├¬t des tentatives
+14:53:30.759 > [14:53:29][INFO] [HTTP] Fin requ├¬te: dur├®e=1798 ms, tentatives=1/3, code=200, succ├¿s=oui, r├®ponse=35 bytes, heap=129896
+14:53:30.767 > [PR] Primary server result: SUCCESS
+14:53:30.773 > [PR] === FIN POSTRAW ===
+14:53:30.773 > [PR] Dur├®e totale: 1830 ms
+14:53:30.776 > [PR] Primary: SUCCESS
+14:53:30.778 > [PR] Secondary: FAILED
+14:53:30.781 > [PR] Final result: SUCCESS
+14:53:30.781 > [PR] M├®moire finale: 129960 bytes
+14:53:30.787 > =========================
+14:53:30.787 > [Network] Ô£à Telemetry: payload=491B dur=1841ms heap╬ö=-84 queue=0
+14:53:30.792 > [Network] sendFullUpdate SUCCESS
+14:53:30.798 > [Auto] Synchronisation initiale de forceWakeUp envoy├®e au serveur (apr├¿s d├®lai)
+14:53:30.803 > [App] Chargement imm├®diat des variables distantes...
+14:53:30.809 > === D├ëBUT REQU├èTE GET REMOTE STATE ===
+14:53:30.811 > [GET] Timestamp: 40260 ms
+14:53:30.814 > [GET] URL: https://iot.olution.info/ffp3/api/outputs-test/state
+14:53:30.820 > [GET] WiFi Status: 3 (connected=YES)
+14:53:30.823 > [GET] RSSI: -71 dBm
+14:53:30.825 > [GET] IP: 192.168.0.220
+14:53:30.828 > [GET] Heap before GET: 131056 bytes
+14:53:30.831 > [GET] Free heap: 131056 bytes
+14:53:30.834 > [ 40292][V][HTTPClient.cpp:242] beginInternal(): url: https://iot.olution.info/ffp3/api/outputs-test/state
+14:53:30.842 > [ 40304][D][HTTPClient.cpp:293] beginInternal(): protocol: https, host: iot.olution.info port: 443 url: /ffp3/api/outputs-test/state
+14:53:30.853 > [GET] ­ƒöÆ Using HTTPS client
+14:53:30.856 > [GET] Sending GET request (timeout: 30000 ms)...
+14:53:30.862 > [ 40316][D][HTTPClient.cpp:574] sendRequest(): request type: 'GET' redirCount: 0
+14:53:30.868 > 
+14:53:30.868 > [ 40331][D][NetworkManager.cpp:127] hostByName(): DNS found IPv4 109.234.162.74
+14:53:30.877 > [ 40338][V][ssl_client.cpp:68] start_ssl_client(): Free internal heap before TLS 131088
+14:53:30.885 > [ 40346][V][ssl_client.cpp:75] start_ssl_client(): Starting socket (domain 2)
+14:53:30.970 > [ 40430][V][ssl_client.cpp:170] start_ssl_client(): Seeding the random number generator
+14:53:30.979 > [ 40440][V][ssl_client.cpp:178] start_ssl_client(): Setting up the SSL/TLS structure...
+14:53:30.985 > [ 40448][D][ssl_client.cpp:196] start_ssl_client(): WARNING: Skipping SSL Verification. INSECURE!
+14:53:30.993 > [ 40457][V][ssl_client.cpp:292] start_ssl_client(): Setting hostname for TLS session...
+14:53:31.003 > [ 40465][V][ssl_client.cpp:313] ssl_starttls_handshake(): Performing the SSL/TLS handshake...
+14:53:32.141 > [ 41601][V][ssl_client.cpp:334] ssl_starttls_handshake(): Verifying peer X.509 certificate...
+14:53:32.146 > [ 41610][V][ssl_client.cpp:342] ssl_starttls_handshake(): Certificate verified.
+14:53:32.155 > [ 41617][V][ssl_client.cpp:358] ssl_starttls_handshake(): Free internal heap after TLS 88776
+14:53:32.163 > [ 41625][D][HTTPClient.cpp:1112] connect():  connected to iot.olution.info:443
+14:53:32.279 > [ 41739][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'HTTP/1.1 200 OK'
+14:53:32.287 > [ 41748][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Date: Thu, 13 Nov 2025 13:53:29 GMT'
+14:53:32.297 > [ 41758][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Content-Type: application/json'
+14:53:32.306 > [ 41767][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Transfer-Encoding: chunked'
+14:53:32.313 > [ 41776][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Connection: close'
+14:53:32.323 > [ 41784][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Server: o2switch-PowerBoost-v3'
+14:53:32.330 > [ 41793][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: ''
+14:53:32.338 > [ 41799][D][HTTPClient.cpp:1257] handleHeaderResponse(): code: 200
+14:53:32.344 > [ 41805][D][HTTPClient.cpp:1264] handleHeaderResponse(): Transfer-Encoding: chunked
+14:53:32.350 > [ 41812][D][HTTPClient.cpp:618] sendRequest(): sendRequest code=200
+14:53:32.355 > 
+14:53:32.358 > [GET] GET completed in 1559 ms, HTTP code: 200
+14:53:32.361 > [GET] Heap after GET: 88440 bytes
+14:53:32.364 > [ 41820][V][HTTPClient.cpp:902] writeToStream():  read chunk len: 215
+14:53:32.370 > [ 41833][V][HTTPClient.cpp:1399] writeToStreamDataBlock(): connection closed or file end (written: 215).
+14:53:32.381 > [ 41842][V][HTTPClient.cpp:902] writeToStream():  read chunk len: 0
+14:53:32.387 > [ 41848][D][HTTPClient.cpp:373] disconnect(): still data in buffer (2), clean up.
+14:53:32.392 > 
+14:53:32.392 > [ 41856][D][HTTPClient.cpp:380] disconnect(): tcp stop
+14:53:32.398 > [ 41861][V][ssl_client.cpp:364] stop_ssl_socket(): Cleaning SSL connection.
+14:53:32.409 > [ 41870][D][HTTPClient.cpp:393] disconnect(): tcp is closed
+14:53:32.412 > 
+14:53:32.412 > [GET] Response received in 51 ms, size: 215 bytes
+14:53:32.418 > [GET] Heap after readString: 130812 bytes
+14:53:32.421 > [GET] === R├ëPONSE REMOTE STATE ===
+14:53:32.426 > [GET] {"2":1,"15":0,"16":0,"18":0,"100":"oliv.arn.lau@gmail.com","101":1,"102":"20","103":"80","104":"20","105":"5","106":"11","107":"21","108":0,"109":0,"110":0,"111":"5","112":"6","113":"10","114":"6","115":1,"116":"4"}
+14:53:32.443 > [GET] === FIN R├ëPONSE ===
+14:53:32.446 > [GET] Ô£ô Remote JSON parsed successfully in 1 ms
+14:53:32.451 > [GET] JSON object with 21 keys
+14:53:32.454 > [GET] === FIN REQU├èTE GET ===
+14:53:32.457 > [GET] Dur├®e totale: 1648 ms
+14:53:32.459 > [GET] Succ├¿s: OUI
+14:53:32.459 > [GET] M├®moire finale: 130404 bytes
+14:53:32.462 > ===============================
+14:53:32.465 > [Config] ­ƒÆ¥ Sauvegarde variables distantes vers NVS centralis├® (compress├®)
+14:53:32.473 > [NVS] Decompressing JSON for cfg::remote_json
+14:53:32.476 > [NVS] ­ƒôû Charg├® depuis cache: cfg::remote_json = {"2":1,"15":0,"16":0,"18":0,"100":"oliv.arn.lau@gmail.com","101":1,"102":"20","103":"80","104":"20","105":"5","106":"11","107":"21","108":0,"109":0,"110":0,"111":"5","112":"6","113":"10","114":"6","115":1,"116":"4"}
+14:53:32.501 > [NVS] JSON decompressed: 215 -> 215 bytes
+14:53:32.503 > [Config] Variables distantes inchang├®es - pas de sauvegarde NVS
+14:53:32.509 > [App] Variables distantes charg├®es avec succ├¿s
+14:53:32.515 > [App] V├®rification des flags OTA...
+14:53:32.517 > [App] state.justUpdated: false
+14:53:32.520 > [App] ctx.config.getOtaUpdateFlag(): false
+14:53:32.523 > [App] ctx.automatism.isEmailEnabled(): true
+14:53:32.551 > [NVS] ­ƒÆ¥ Valeur inchang├®e, pas de sauvegarde: sens::temp_lastValid
+14:53:32.557 > [WaterTemp] Derni├¿re temp├®rature valide sauvegard├®e en NVS: 22.2┬░C
+14:53:35.911 > [Ultrasonic] Lecture r├®active 1: 126 cm
+14:53:35.980 > [Ultrasonic] Lecture r├®active 2: 126 cm
+14:53:36.048 > [Ultrasonic] Lecture r├®active 3: 126 cm
+14:53:36.051 > [Ultrasonic] Mode r├®actif: 126 cm (moyenne de 3 lectures sur 3)
+14:53:36.056 > [Ultrasonic] Lecture r├®active 1: 66 cm
+14:53:36.123 > [Ultrasonic] Lecture r├®active 2: 168 cm
+14:53:36.194 > [Ultrasonic] Lecture r├®active 3: 169 cm
+14:53:36.197 > [Ultrasonic] Mode r├®actif: 134 cm (moyenne de 3 lectures sur 3)
+14:53:36.203 > [Ultrasonic] Lecture 1: 130 cm
+14:53:36.221 > [Ultrasonic] Lecture 2: 94 cm
+14:53:36.240 > [Ultrasonic] Lecture 3: 128 cm
+14:53:36.290 > [Ultrasonic] Saut d├®tect├®: 165 cm -> 128 cm (├®cart: 37 cm, ref: m├®diane historique)
+14:53:36.295 > [Ultrasonic] Saut vers le bas accept├® (niveau qui baisse)
+14:53:36.301 > [Ultrasonic] Distance m├®diane: 128 cm (3 lectures valides)
+14:53:36.313 > [14:53:35][DEBUG] Sensors TWater=22.2C TAir=23.0C Hum=67.0% wlA=134 wlT=128 wlP=126 Lux=868
+14:53:36.319 > [Network] Ô£à resetMode=0 confirm├® dans payload
+14:53:36.325 > === D├ëBUT POSTRAW ===
+14:53:36.327 > [PR] Timestamp: 45785 ms
+14:53:36.327 > [PR] Payload input: 490 bytes
+14:53:36.330 > [PR] Has API key: OUI
+14:53:36.333 > [PR] Using payload as-is (already has API key)
+14:53:36.338 > [PR] Final payload size: 490 bytes
+14:53:36.341 > [PR] API Key: fdGTMoptd5CD2ert3
+14:53:36.344 > [PR] Sensor: esp32-wroom
+14:53:36.344 > [PR] Sending to primary server...
+14:53:36.349 > [14:53:35][DEBUG] [HTTP] POST https://iot.olution.info/ffp3/post-data-test (payload=490 bytes, timeout=5000 ms)
+14:53:36.357 > [14:53:35][DEBUG] [HTTP] WiFi status=3 connected=YES RSSI=-69 dBm
+14:53:36.363 > [14:53:35][DEBUG] [HTTP] IP=192.168.0.220 gateway=192.168.0.1 dns=192.168.0.1
+14:53:36.371 > [14:53:35][DEBUG] [HTTP] Heap libre=129584 bytes (min=80044)
+14:53:36.374 > [14:53:35][VERB] [HTTP] Payload (200/490): api_key=fdGTMoptd5CD2ert3&sensor=esp32-wroom&version=11.117&TempAir=23.0&Humidite=67.0&TempEau=22.2&EauPotager=126&EauAquarium=134&EauReserve=128&diffMaree=0&Luminosite=868&etatPompeAqua=0&etatPompeTa ...
+14:53:36.396 > [14:53:35][DEBUG] [HTTP] Modem sleep d├®sactiv├® pendant le transfert
+14:53:36.402 > [14:53:35][DEBUG] [HTTP] Boucle de retry max=3
+14:53:36.407 > [14:53:35][DEBUG] [HTTP] Tentative 1/3
+14:53:36.410 > [ 45871][V][HTTPClient.cpp:242] beginInternal(): url: https://iot.olution.info/ffp3/post-data-test
+14:53:36.419 > [ 45881][D][HTTPClient.cpp:293] beginInternal(): protocol: https, host: iot.olution.info port: 443 url: /ffp3/post-data-test
+14:53:36.430 > [14:53:35][DEBUG] [HTTP] Client HTTPS utilis├®
+14:53:36.435 > [14:53:35][DEBUG] [HTTP] Headers positionn├®s, timeout requ├¬te=30000
+14:53:36.441 > [14:53:35][DEBUG] [HTTP] POST en cours (elapsed=54 ms)
+14:53:36.446 > [ 45904][D][HTTPClient.cpp:574] sendRequest(): request type: 'POST' redirCount: 0
+14:53:36.452 > 
+14:53:36.455 > [ 45915][D][NetworkManager.cpp:127] hostByName(): DNS found IPv4 109.234.162.74
+14:53:36.461 > [ 45923][V][ssl_client.cpp:68] start_ssl_client(): Free internal heap before TLS 129068
+14:53:36.469 > [ 45931][V][ssl_client.cpp:75] start_ssl_client(): Starting socket (domain 2)
+14:53:36.555 > [ 46015][V][ssl_client.cpp:170] start_ssl_client(): Seeding the random number generator
+14:53:36.565 > [ 46026][V][ssl_client.cpp:178] start_ssl_client(): Setting up the SSL/TLS structure...
+14:53:36.571 > [ 46034][D][ssl_client.cpp:196] start_ssl_client(): WARNING: Skipping SSL Verification. INSECURE!
+14:53:36.579 > [ 46042][V][ssl_client.cpp:292] start_ssl_client(): Setting hostname for TLS session...
+14:53:36.588 > [ 46051][V][ssl_client.cpp:313] ssl_starttls_handshake(): Performing the SSL/TLS handshake...
+14:53:38.089 > [ 47549][V][ssl_client.cpp:334] ssl_starttls_handshake(): Verifying peer X.509 certificate...
+14:53:38.095 > [ 47558][V][ssl_client.cpp:342] ssl_starttls_handshake(): Certificate verified.
+14:53:38.103 > [ 47565][V][ssl_client.cpp:358] ssl_starttls_handshake(): Free internal heap after TLS 86760
+14:53:38.112 > [ 47573][D][HTTPClient.cpp:1112] connect():  connected to iot.olution.info:443
+14:53:38.251 > [ 47711][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'HTTP/1.1 200 OK'
+14:53:38.259 > [ 47719][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Date: Thu, 13 Nov 2025 13:53:35 GMT'
+14:53:38.269 > [ 47730][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Content-Type: text/plain; charset=utf-8'
+14:53:38.279 > [ 47740][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Transfer-Encoding: chunked'
+14:53:38.286 > [ 47749][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Connection: close'
+14:53:38.295 > [ 47757][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Vary: Accept-Encoding'
+14:53:38.306 > [ 47766][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: 'Server: o2switch-PowerBoost-v3'
+14:53:38.312 > [ 47775][V][HTTPClient.cpp:1201] handleHeaderResponse(): RX: ''
+14:53:38.320 > [ 47781][D][HTTPClient.cpp:1257] handleHeaderResponse(): code: 200
+14:53:38.326 > [ 47787][D][HTTPClient.cpp:1264] handleHeaderResponse(): Transfer-Encoding: chunked
+14:53:38.332 > [ 47794][D][HTTPClient.cpp:618] sendRequest(): sendRequest code=200
+14:53:38.337 > 
+14:53:38.340 > [14:53:37][DEBUG] [HTTP] POST termin├® en 1940 ms
+14:53:38.343 > [ 47801][V][HTTPClient.cpp:902] writeToStream():  read chunk len: 35
+14:53:38.349 > [ 47812][V][HTTPClient.cpp:1399] writeToStreamDataBlock(): connection closed or file end (written: 35).
+14:53:38.361 > [ 47821][V][HTTPClient.cpp:902] writeToStream():  read chunk len: 0
+14:53:38.366 > [ 47827][D][HTTPClient.cpp:373] disconnect(): still data in buffer (2), clean up.
+14:53:38.372 > 
+14:53:38.372 > [ 47835][D][HTTPClient.cpp:380] disconnect(): tcp stop
+14:53:38.378 > [ 47840][V][ssl_client.cpp:364] stop_ssl_socket(): Cleaning SSL connection.
+14:53:38.389 > [14:53:37][DEBUG] [HTTP] R├®ponse re├ºue code=200 bytes=35 en 48 ms
+14:53:38.394 > [14:53:37][VERB] [HTTP] Content-Type=
+14:53:38.397 > [14:53:37][VERB] [HTTP] Server=
+14:53:38.400 > [14:53:37][VERB] [HTTP] Connection=
+14:53:38.403 > [14:53:37][VERB] [HTTP] Content-Length=
+14:53:38.406 > [14:53:37][VERB] [HTTP] Transfer-Encoding=
+14:53:38.411 > [14:53:37][VERB] [HTTP] Response (35/35): Donn├®es enregistr├®es avec succ├¿s
+14:53:38.417 > [ 47872][D][HTTPClient.cpp:393] disconnect(): tcp is closed
+14:53:38.422 > 
+14:53:38.422 > [14:53:37][DEBUG] [HTTP] Tentative 1/3 termin├®e en 2023 ms
+14:53:38.428 > [NVS] Ô£à Sauvegard├®: logs::diag_httpOk = 670
+14:53:38.431 > [NVS] Forcing flush
+14:53:38.434 > [NVS] Flush complete
+14:53:38.436 > [14:53:37][DEBUG] [HTTP] Succ├¿s 200, arr├¬t des tentatives
+14:53:38.442 > [14:53:37][INFO] [HTTP] Fin requ├¬te: dur├®e=2094 ms, tentatives=1/3, code=200, succ├¿s=oui, r├®ponse=35 bytes, heap=129476
+14:53:38.450 > [PR] Primary server result: SUCCESS
+14:53:38.456 > [PR] === FIN POSTRAW ===
+14:53:38.456 > [PR] Dur├®e totale: 2127 ms
+14:53:38.459 > [PR] Primary: SUCCESS
+14:53:38.461 > [PR] Secondary: FAILED
+14:53:38.464 > [PR] Final result: SUCCESS
+14:53:38.464 > [PR] M├®moire finale: 129540 bytes
+14:53:38.470 > =========================
+14:53:38.470 > [Network] Ô£à Telemetry: payload=490B dur=2137ms heap╬ö=-44 queue=0
+14:53:38.475 > [Network] sendFullUpdate SUCCESS
+14:53:38.481 > [OLED] Force fin du splash screen
+14:53:38.483 > [ 47944][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:38.492 > [ 47954][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=6
+14:53:38.504 > [ 47965][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=2
+14:53:38.513 > [ 47975][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.527 > [ 47988][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.541 > [ 48001][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.554 > [ 48015][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.567 > [ 48028][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.581 > [ 48041][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.594 > [ 48055][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.607 > [ 48068][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:38.620 > [ 48081][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=9
+14:53:38.629 > [ 48091][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:39.641 > [App] Ô£à Queue capteurs cr├®├®e avec succ├¿s (100 slots)
+14:53:39.671 > [NVS] ­ƒÆ¥ Valeur inchang├®e, pas de sauvegarde: sens::temp_lastValid
+14:53:39.677 > [WaterTemp] Derni├¿re temp├®rature valide sauvegard├®e en NVS: 22.2┬░C
+14:53:39.682 > [Web] T├óche webTask d├®marr├®e - interface web d├®di├®e
+14:53:39.688 > [Display] T├óche displayTask d├®marr├®e - cadence dynamique
+14:53:39.694 > [Display] updateDisplay appel├®e - OLED pr├®sent: OUI
+14:53:39.704 > [ 49164][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:39.713 > [ 49174][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=6
+14:53:39.722 > [ 49185][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=2
+14:53:39.733 > [Stacks] HWM at boot - sensor:3892 web:5328 auto:8412 display:3820 loop:1248 bytes
+14:53:39.739 > [INFO] Initialisation termin├®e
+14:53:39.741 > =========== After Setup Start ============
+14:53:39.747 > INTERNAL Memory Info:
+14:53:39.750 > [ 49209][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.758 > ------------------------------------------
+14:53:39.761 > [ 49224][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.773 >   Total Size        :   283172 B ( 276.5 KB)
+14:53:39.775 > [ 49238][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.786 >   Free Bytes        :    97440 B (  95.2 KB)
+14:53:39.789 > [ 49252][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.800 >   Allocated Bytes   :   170120 B ( 166.1 KB)
+14:53:39.803 > [ 49266][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.814 >   Minimum Free Bytes:    79232 B (  77.4 KB)
+14:53:39.817 > [  4 9L2a8r0g]e[sVt] [Fersepe3 2B-lhoaclk-:i 2 c - n6g5.5c2:42 6B9 ](  i 26c4W.r0i tKeB())
+:
+14:53:39.825 >  i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.831 > ------------------------------------------
+14:53:39.836 > GPIO Info:
+14:53:39.836 > ------------------------------------------
+14:53:39.839 >   GPIO : BUS_TYPE[bus/unit][chan]
+14:53:39.845 > [ 49303][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.853 >   --------------------------------------  
+14:53:39.856 > [ 49319][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.867 >      1 : UART_TX[0]
+14:53:39.870 >      2 : GPIO
+14:53:39.870 >      3 : [ 49332][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=9
+14:53:39.881 > UART_RX[0][ 49343][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:39.892 > 
+14:53:39.892 >      4 : GPIO
+14:53:39.892 >     12 : [ 49355][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:39.903 > LEDC[ 49365][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=6
+14:53:39.911 > [0][0]
+14:53:39.914 >     13 : [ 49375][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=2
+14:53:39.923 > LEDC[1][ 49386][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.934 > [0]
+14:53:39.934 >     15 : GPIO
+14:53:39.937 >     16 : GPIO
+14:53:39.937 >     18 : GPIO
+14:53:39.939 >     19 : [ 49401][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.948 > GPIO
+14:53:39.950 >     21 : I2C_MASTER_SDA[0]
+14:53:39.953 >     22 : I2C_MASTER_SCL[0]
+14:53:39.953 >     26 : GPIO
+14:53:39.956 > [ 49417][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.964 >     27 : GPIO
+14:53:39.967 >     33 : GPIO
+14:53:39.967 >     34 : ADC_ONESHOT[ 49431][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.981 > [0][6]
+14:53:39.981 > ============ After Setup End =============
+14:53:39.984 > [ 49445][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:39.999 > [ 49459][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:40.014 > [ 49473][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:40.023 > [14:53:39][INFO][DRIFT] D├®but synchronisation NTP - Heure locale avant: 14:53:39 13/11/2025 (epoch: 1073422784)
+14:53:40.033 > [14:53:39][INFO][DRIFT] Synchronisation NTP r├®ussie - Heure NTP: 14:53:39 13/11/2025 (epoch: 1073422784)
+14:53:40.042 > [14:53:39][INFO][DRIFT] Premi├¿re synchronisation NTP - initialisation des r├®f├®rences
+14:53:40.050 > [NVS] Ô£à Sauvegard├®: time::drift_driftPPM = 0.00
+14:53:40.053 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_driftSeconds (18 chars)
+14:53:40.058 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_driftSeconds)
+14:53:40.064 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_driftCalculated (21 chars)
+14:53:40.069 > [NVS] ÔØî saveBool: Invalid key (ns: time) (key: drift_driftCalculated)
+14:53:40.077 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_syncInterval (18 chars)
+14:53:40.083 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_syncInterval)
+14:53:40.088 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_driftThrPPM (17 chars)
+14:53:40.094 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_driftThrPPM)
+14:53:40.099 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_lastSyncTime (18 chars)
+14:53:40.105 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_lastSyncTime)
+14:53:40.111 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_lastNtpEpoch (18 chars)
+14:53:40.116 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_lastNtpEpoch)
+14:53:40.122 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_lastLocalEpoch (20 chars)
+14:53:40.127 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_lastLocalEpoch)
+14:53:40.135 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_prevNtpEpoch (18 chars)
+14:53:40.138 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_prevNtpEpoch)
+14:53:40.146 > [NVS] ÔÜá´©Å Cl├® trop longue: drift_prevLocalEpo (18 chars)
+14:53:40.152 > [NVS] ÔØî saveString: Invalid key (ns: time) (key: drift_prevLocalEpo)
+14:53:40.158 > [TimeDrift] Donn├®es sauvegard├®es en NVS
+14:53:40.161 > [14:53:39][INFO][DRIFT] Sync NTP r├®ussie: 14:53:39 13/11/2025
+14:53:40.166 > === INFORMATIONS DE D├ëRIVE TEMPORELLE ===
+14:53:40.171 > D├®rive: 0.00 PPM (0.00 secondes)
+14:53:40.174 > Derni├¿re sync: 14:53:39 13/11/2025
+14:53:40.177 > Statut: Non calcul├®e
+14:53:40.177 > Seuil d'alerte: 100.00 PPM
+14:53:40.180 > =========================================
+14:53:40.185 > [TimerManager] Ô£à Timer 'OTA_CHECK' ajout├® (ID: 0, interval: 7200000 ms)
+14:53:40.191 > [TimerManager] Ô£à Timer 'EMAIL_DIGEST' ajout├® (ID: 1, interval: 900000 ms)
+14:53:40.196 > [TimerManager] Ô£à Timer 'STATS_REPORT' ajout├® (ID: 2, interval: 300000 ms)
+14:53:40.209 > [ 49669][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=128
+14:53:40.223 > [ 49683][V][esp32-hal-i2c-ng.c:269] i2cWrite(): i2c_master_transmit: bus=0 addr=0x3c handle=0x3ffb486c size=9
+14:53:40.232 > [ 49694][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:40.674 > [Auto] Timeout queue capteurs - cycle continu
+14:53:40.676 > [Auto] ÔûÂ´©Å Poll distant (fallback sans capteurs)
+14:53:40.682 > === D├ëBUT REQU├èTE GET REMOTE STATE ===
+14:53:40.685 > [GET] Timestamp: 50134 ms
+14:53:40.687 > [GET] URL: https://iot.olution.info/ffp3/api/outputs-test/state
+14:53:40.693 > [GET] WiFi Status: 3 (co[ 50150][V][esp32-hal-i2c-ng.c:228] i2cAddDeviceIfNeeded(): added device: bus=0 addr=0x3c handle=0x3ffb486c
+14:53:40.704 > nnected=YES)
+14:53:40.704 > [GET] RSSI: -70 dBm
+14:53:40.707 > [GET] IP: 192.168.0.220
+14:53:40.709 > [GET] Heap before GET: 97144 bytes
+14:53:40.712 > [GET] Free heap: 97144 bytes
+14:53:40.715 > [ 50166][V][HTTPClient.cpp:242] beginInternal(): url: https://iot.olution.info/ffp3/api/outputs-test/state

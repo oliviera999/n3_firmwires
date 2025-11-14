@@ -37,7 +37,7 @@ void MainScreenRenderer::render(DisplayView& view,
 
   {
     char buf[32];
-    snprintf(buf, sizeof(buf), "FFP3 v%s %s", ProjectConfig::VERSION, ProjectConfig::PROFILE_TYPE);
+    snprintf(buf, sizeof(buf), "FFP5CS v%s %s", ProjectConfig::VERSION, ProjectConfig::PROFILE_TYPE);
     view.printClipped(0, 0, buf, 1);
   }
 
@@ -204,6 +204,13 @@ void InfoScreenRenderer::appendDiagnosticLine(DisplayView& view,
   display.setTextSize(1);
   view.printClipped(0, lineIndex * 8, line, 1);
 }
+
+
+
+
+
+
+
 
 
 

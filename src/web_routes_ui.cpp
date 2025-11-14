@@ -27,7 +27,7 @@ bool serveIndexStreaming(WebServerContext& ctx, AsyncWebServerRequest* req) {
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>FFP3 Dashboard - mémoire basse</title>
+  <title>FFP5CS Dashboard - mémoire basse</title>
   <style>
     body{font-family:Arial,Helvetica,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:1.5rem;}
     .card{background:#1e293b;border-radius:12px;padding:2rem;max-width:480px;box-shadow:0 10px 35px rgba(15,23,42,0.35);}

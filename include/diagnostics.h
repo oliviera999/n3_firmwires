@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <ArduinoJson.h>
@@ -58,7 +57,6 @@ class Diagnostics {
   
  private:
   DiagnosticStats _stats;
-  Preferences _prefs;
   unsigned long _lastUpdate;
   static const unsigned long UPDATE_INTERVAL_MS = 30000; // 30 secondes
   

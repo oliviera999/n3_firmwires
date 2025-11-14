@@ -4,7 +4,6 @@
 #include <esp_sleep.h>
 #include <esp_timer.h>
 #include <esp_task_wdt.h>
-#include <Preferences.h>
 #include <time.h>
 #include <sys/time.h>
 #include "project_config.h"
@@ -65,8 +64,6 @@ class PowerManager {
   void forceSaveTimeToFlash();
 
  private:
-  Preferences _preferences;
-
   // Paramètres NTP
   int _gmtOffsetSec;
   int _daylightOffsetSec;

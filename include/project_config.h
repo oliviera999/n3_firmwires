@@ -1,7 +1,7 @@
 #pragma once
 
 // =============================================================================
-// CONFIGURATION CENTRALE DU PROJET FFP3CS4
+// CONFIGURATION CENTRALE DU PROJET FFP5CS
 // =============================================================================
 // Ce fichier centralise TOUTES les constantes et configurations du projet
 // Pour changer d'environnement, utiliser les flags dans platformio.ini
@@ -24,7 +24,7 @@
 // VERSION ET IDENTIFICATION
 // =============================================================================
 namespace ProjectConfig {
-  constexpr const char* VERSION = "11.101"; // v11.101: Fix alternance partitions OTA - garantie plusieurs mises à jour successives
+  constexpr const char* VERSION = "11.117"; // v11.117: Finalisation migration FFP5CS - Toutes r\u00e9f\u00e9rences FFP3 corrig\u00e9es
     
     // Type d'environnement (dev, test, prod)
     #if defined(PROFILE_DEV)
@@ -79,11 +79,6 @@ namespace DefaultValues {
 // =============================================================================
 namespace ServerConfig {
     constexpr const char* BASE_URL = "https://iot.olution.info";
-    // Option: serveur secondaire (auto-hébergé/local). Laisser vide pour désactiver.
-    // Exemple: "http://192.168.1.50" ou "http://nas.local:8080"
-    #ifndef SECONDARY_BASE_URL
-    #define SECONDARY_BASE_URL ""
-    #endif
     
     // Endpoints selon le profil
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
@@ -104,27 +99,6 @@ namespace ServerConfig {
     inline void getOutputUrl(char* buffer, size_t bufferSize) {
         snprintf(buffer, bufferSize, "%s%s", BASE_URL, OUTPUT_ENDPOINT);
     }
-
-    // URLs complètes (serveur secondaire) si configuré
-    inline bool getSecondaryPostDataUrl(char* buffer, size_t bufferSize) {
-        const char* b = SECONDARY_BASE_URL;
-        if (b && b[0]) {
-            snprintf(buffer, bufferSize, "%s%s", b, POST_DATA_ENDPOINT);
-            return true;
-        }
-        buffer[0] = '\0';
-        return false;
-    }
-    
-    inline bool getSecondaryOutputUrl(char* buffer, size_t bufferSize) {
-        const char* b = SECONDARY_BASE_URL;
-        if (b && b[0]) {
-            snprintf(buffer, bufferSize, "%s%s", b, OUTPUT_ENDPOINT);
-            return true;
-        }
-        buffer[0] = '\0';
-        return false;
-    }
     
     // Autres endpoints
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
@@ -143,15 +117,6 @@ namespace ServerConfig {
 
     inline void getHeartbeatUrl(char* buffer, size_t bufferSize) { 
         snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT); 
-    }
-    inline bool getSecondaryHeartbeatUrl(char* buffer, size_t bufferSize) {
-        const char* b = SECONDARY_BASE_URL;
-        if (b && b[0]) {
-            snprintf(buffer, bufferSize, "%s%s", b, HEARTBEAT_ENDPOINT);
-            return true;
-        }
-        buffer[0] = '\0';
-        return false;
     }
     
     inline void getServerUrl(char* buffer, size_t bufferSize) {
@@ -278,59 +243,115 @@ namespace LogConfig {
 }
 
 // Désactivation complète de Serial en production quand le moniteur est off
+// v11.116: Implémentation sûre qui évite les crashs et optimise le code compilé
 #if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 0)) || (!defined(ENABLE_SERIAL_MONITOR) && defined(PROFILE_PROD))
-namespace LogConfig {
-    struct NullSerialType {
-        template<typename... Args>
-        inline size_t printf(const char*, Args...) const { return 0U; }
-        inline size_t println() const { return 0U; }
-        template<typename T>
-        inline size_t println(const T&) const { return 0U; }
-        template<typename T>
-        inline size_t print(const T&) const { return 0U; }
-    };
-    static const NullSerialType NullSerial{};
-}
-#define Serial LogConfig::NullSerial
+    // Structure NullSerial optimisée pour être complètement éliminée à la compilation
+    namespace LogConfig {
+        struct NullSerialType {
+            // Toutes les méthodes sont inline constexpr pour élimination à la compilation
+            template<typename... Args>
+            inline constexpr size_t printf(const char*, Args...) const { return 0U; }
+            inline constexpr size_t println() const { return 0U; }
+            template<typename T>
+            inline constexpr size_t println(const T&) const { return 0U; }
+            template<typename T>
+            inline constexpr size_t print(const T&) const { return 0U; }
+            // Méthodes supplémentaires pour compatibilité complète
+            inline constexpr void begin(unsigned long) const {}
+            inline constexpr void end() const {}
+            inline constexpr void flush() const {}
+            inline constexpr int available() const { return 0; }
+            inline constexpr int read() const { return -1; }
+            inline constexpr size_t write(uint8_t) const { return 0U; }
+            inline constexpr size_t write(const uint8_t*, size_t) const { return 0U; }
+            inline constexpr operator bool() const { return false; }
+        };
+        static constexpr NullSerialType NullSerial{};
+    }
+    // Redéfinition de Serial uniquement si PROFILE_PROD et SERIAL désactivé
+    #define Serial LogConfig::NullSerial
+    // Désactiver aussi Serial1 et Serial2 s'ils existent
+    #define Serial1 LogConfig::NullSerial
+    #define Serial2 LogConfig::NullSerial
 #endif
 
 // =============================================================================
 // CONFIGURATION CAPTEURS ET VALIDATION
 // =============================================================================
 namespace SensorConfig {
-    // Validation température eau (DS18B20)
+    // Délais et stabilisation génériques
+    constexpr uint32_t SENSOR_READ_DELAY_MS = 100;
+    constexpr uint32_t I2C_STABILIZATION_DELAY_MS = 100;
+
+    namespace DefaultValues {
+        constexpr float TEMP_AIR_DEFAULT = 20.0f;
+        constexpr float HUMIDITY_DEFAULT = 50.0f;
+        constexpr float TEMP_WATER_DEFAULT = 20.0f;
+    }
+
+    namespace ValidationRanges {
+        constexpr float TEMP_MIN = -50.0f;
+        constexpr float TEMP_MAX = 100.0f;
+        constexpr float HUMIDITY_MIN = 0.0f;
+        constexpr float HUMIDITY_MAX = 100.0f;
+    }
+
+    // DS18B20 (température eau)
+    namespace DS18B20 {
+        constexpr uint8_t RESOLUTION_BITS = 10;
+        constexpr uint16_t CONVERSION_DELAY_MS = 250;
+        constexpr uint16_t READING_INTERVAL_MS = 400;
+        constexpr uint8_t STABILIZATION_READINGS = 1;
+        constexpr uint16_t STABILIZATION_DELAY_MS = 50;
+        constexpr uint16_t ONEWIRE_RESET_DELAY_MS = 100;
+    }
+
+    // Validation température eau (après filtrage)
     namespace WaterTemp {
-        constexpr float MIN_VALID = 5.0f;   // Minimum réaliste pour aquarium
-        constexpr float MAX_VALID = 60.0f;  // Maximum réaliste pour aquarium
-        constexpr float MAX_DELTA = 3.0f;   // Écart max entre mesures
-        constexpr uint8_t MIN_READINGS = 4; // Lectures minimales pour médiane
-        constexpr uint8_t TOTAL_READINGS = 7; // Total de lectures
+        constexpr float MIN_VALID = 5.0f;
+        constexpr float MAX_VALID = 60.0f;
+        constexpr float MAX_DELTA = 3.0f;
+        constexpr uint8_t MIN_READINGS = 4;
+        constexpr uint8_t TOTAL_READINGS = 7;
         constexpr uint16_t RETRY_DELAY_MS = 200;
         constexpr uint8_t MAX_RETRIES = 5;
     }
-    
-    // Validation température/humidité air (DHT)
+
+    // DHT11/DHT22 (air)
     namespace AirSensor {
-        // Plages unifiées pour DHT11 et DHT22 selon spécifications projet
-        constexpr float TEMP_MIN = 3.0f;      // +3°C minimum
-        constexpr float TEMP_MAX = 50.0f;     // +50°C maximum
-        constexpr float HUMIDITY_MIN = 10.0f; // 10% minimum
-        constexpr float HUMIDITY_MAX = 100.0f; // 100% maximum
+        constexpr float TEMP_MIN = 3.0f;
+        constexpr float TEMP_MAX = 50.0f;
+        constexpr float HUMIDITY_MIN = 10.0f;
+        constexpr float HUMIDITY_MAX = 100.0f;
     }
-    
-    // Validation capteurs ultrasoniques (conformément à la datasheet HC-SR04)
+
+    namespace DHT {
+        constexpr uint32_t MIN_READ_INTERVAL_MS = 3000;
+        constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 2000;
+        constexpr float TEMP_MAX_DELTA_C = 3.0f;
+        constexpr float HUMIDITY_MAX_DELTA_PERCENT = 10.0f;
+    }
+
+    // Ultrasoniques (HC-SR04)
     namespace Ultrasonic {
-        constexpr uint16_t MIN_DISTANCE_CM = 2;       // Minimum spécifié par datasheet HC-SR04
-        constexpr uint16_t MAX_DISTANCE_CM = 400;     // Maximum spécifié par datasheet HC-SR04 (4m)
-        constexpr uint16_t MAX_DELTA_CM = 30;         // Tolérance de variation entre lectures
-        constexpr uint32_t TIMEOUT_US = 30000;        // 30ms - suffisant pour 400cm (23.5ms théorique)
-        constexpr uint8_t DEFAULT_SAMPLES = 5;        // Nombre d'échantillons pour moyenne
-        constexpr uint32_t MIN_DELAY_MS = 60;         // Délai minimum recommandé entre mesures (datasheet)
+        constexpr uint16_t MIN_DISTANCE_CM = 2;
+        constexpr uint16_t MAX_DISTANCE_CM = 400;
+        constexpr uint16_t MAX_DELTA_CM = 30;
+        constexpr uint32_t TIMEOUT_US = 30000;
+        constexpr uint8_t DEFAULT_SAMPLES = 5;
+        constexpr uint32_t MIN_DELAY_MS = 60;
+        constexpr uint16_t US_TO_CM_FACTOR = 58;
+        constexpr uint8_t FILTERED_READINGS_COUNT = 3;
     }
-    
-    // Validation autres capteurs
+
+    // Autres capteurs analogiques
     namespace Analog {
-        constexpr uint16_t ADC_MAX_VALUE = 4095; // 12-bit ADC
+        constexpr uint16_t ADC_MAX_VALUE = 4095;
+    }
+
+    namespace History {
+        constexpr uint8_t AQUA_HISTORY_SIZE = 16;
+        constexpr uint8_t SENSOR_READINGS_COUNT = 3;
     }
 }
 
@@ -368,6 +389,42 @@ namespace TimingConfig {
     
     // Délais minimums
     constexpr uint32_t MIN_DISPLAY_INTERVAL_MS = 100;        // 100ms minimum
+
+  // ========================================
+  // DÉLAIS CAPTEURS ET MESURES (étendus)
+  // ========================================
+  constexpr uint32_t ULTRASONIC_PRE_TRIGGER_DELAY_US = 2;     // Délai avant déclenchement pulse ultrasonique
+  constexpr uint32_t ULTRASONIC_PULSE_DURATION_US = 10;       // Durée du pulse ultrasonique (µs)
+  constexpr uint32_t SENSOR_READ_DELAY_MS = 50;              // Délai entre lectures capteurs individuels
+  constexpr uint32_t SENSOR_RESET_DELAY_MS = 500;            // Délai après reset d'un capteur
+  constexpr uint32_t SENSOR_STABILIZATION_DELAY_MS = 1;      // Délai entre échantillons pour stabilisation
+
+  // ========================================
+  // DÉLAIS SYSTÈME, WIFI ET ACTIONNEURS
+  // ========================================
+  constexpr uint32_t SYSTEM_INIT_SAFETY_DELAY_MS = 3000;     // Délai de sécurité après initialisation système
+  constexpr uint32_t TASK_START_LATENCY_MS = 50;             // Latence pour laisser démarrer les tâches
+  constexpr uint32_t CPU_LOAD_REDUCTION_DELAY_MS = 500;     // Délai pour réduire la charge CPU
+  constexpr uint32_t WIFI_INIT_DELAY_MS = 50;                // Délai initialisation WiFi
+  constexpr uint32_t WIFI_RECONNECT_DELAY_FAST_MS = 100;    // Délai optimisé pour reconnexion WiFi
+  constexpr uint32_t WIFI_CONNECTION_TIMEOUT_MS = 10000;    // Timeout connexion WiFi (10 secondes)
+  constexpr uint32_t SERVO_ACTION_DELAY_MS = 200;           // Délai entre actions servo
+  constexpr uint32_t ACTUATOR_SHORT_DELAY_MS = 50;          // Délai court entre actions actionneurs
+  constexpr uint32_t ACTUATOR_MEDIUM_DELAY_MS = 100;        // Délai moyen entre actions actionneurs
+  constexpr uint32_t ACTUATOR_LONG_DELAY_MS = 150;          // Délai long entre actions actionneurs
+
+  // ========================================
+  // DÉLAIS OTA ET MONITORING
+  // ========================================
+  constexpr uint32_t OTA_MICRO_DELAY_MS = 1;                // Délai micro entre opérations OTA
+  constexpr uint32_t OTA_FAILURE_DELAY_MS = 3000;           // Délai après échec OTA
+  constexpr uint32_t OTA_RETRY_PAUSE_MS = 500;             // Pause entre tentatives OTA
+  constexpr uint32_t OTA_SHORT_PAUSE_MS = 5;                // Pause courte entre opérations OTA
+  constexpr uint32_t OTA_CHUNK_PAUSE_MS = 10;              // Pause entre chunks OTA
+  constexpr uint32_t OTA_SPECIFIC_DELAY_MS = 100;          // Délai spécifique OTA
+  constexpr uint32_t TIME_DRIFT_RETRY_DELAY_MS = 1000;     // Délai entre tentatives correction drift
+  constexpr uint32_t DEBUG_LOG_INTERVAL_MS = 10000;        // Intervalle log debug (10 secondes)
+  constexpr uint32_t LOG_PER_SECOND_INTERVAL_MS = 1000;    // Intervalle log toutes les secondes
 }
 
 // =============================================================================
@@ -588,7 +645,7 @@ namespace SystemConfig {
     constexpr uint32_t FINAL_INIT_DELAY_MS = 1000;
     
     // Hostname
-    constexpr const char* HOSTNAME_PREFIX = "ffp3";
+    constexpr const char* HOSTNAME_PREFIX = "ffp5";
     constexpr size_t HOSTNAME_BUFFER_SIZE = 20;
 }
 
@@ -671,32 +728,7 @@ namespace NetworkConfig {
 // =============================================================================
 // CONFIGURATION CAPTEURS ÉTENDUE
 // =============================================================================
-namespace ExtendedSensorConfig {
-    // Facteurs de conversion
-    constexpr uint16_t ULTRASONIC_US_TO_CM_FACTOR = 58;  // µs vers cm
-    
-    // Délais entre lectures
-    constexpr uint32_t DHT_MIN_READ_INTERVAL_MS = 3000;       // Augmenté de 2500ms à 3000ms pour fiabilité DHT22 (v11.09)
-    constexpr uint32_t DHT_INIT_STABILIZATION_DELAY_MS = 2000; // Délai stabilisation après begin() pour DHT - Conforme aux datasheets (1-2s recommandés)
-    constexpr uint32_t SENSOR_READ_DELAY_MS = 100;
-    constexpr uint32_t I2C_STABILIZATION_DELAY_MS = 100;
-    
-    // Valeurs par défaut en cas d'erreur
-    namespace DefaultValues {
-        constexpr float TEMP_AIR_DEFAULT = 20.0f;
-        constexpr float HUMIDITY_DEFAULT = 50.0f;
-        constexpr float TEMP_WATER_DEFAULT = 20.0f;
-    }
-    
-    // Plages de validation
-    namespace ValidationRanges {
-        constexpr float TEMP_MIN = -50.0f;
-        constexpr float TEMP_MAX = 100.0f;
-        constexpr float HUMIDITY_MIN = 0.0f;
-        constexpr float HUMIDITY_MAX = 100.0f;
-    }
-}
-
+// Fusionné dans SensorConfig
 // =============================================================================
 // CONFIGURATION DISPLAY ÉTENDUE
 // =============================================================================
@@ -716,6 +748,27 @@ namespace DisplayConfig {
     
     // Limites pourcentage
     constexpr int PERCENTAGE_MAX = 100;
+
+  // ========================================
+  // BARRES DE PROGRESSION
+  // ========================================
+  constexpr int PROGRESS_BAR_X = 4;
+  constexpr int PROGRESS_BAR_Y = 48;
+  constexpr int PROGRESS_BAR_WIDTH = 120;
+  constexpr int PROGRESS_BAR_HEIGHT = 10;
+  constexpr int PROGRESS_BAR_ALT_Y = 40;
+
+  // ========================================
+  // ROTATION D'ÉCRAN
+  // ========================================
+  constexpr uint32_t SCREEN_SWITCH_INTERVAL_MS = 4000;    // Intervalle changement écran (4s)
+
+  // ========================================
+  // PARAMÈTRES OLED BAS NIVEAU
+  // ========================================
+  constexpr uint8_t DISPLAY_WHITE = 1;
+  constexpr uint8_t DISPLAY_BLACK = 0;
+  constexpr uint8_t SSD1306_SWITCHCAPVCC = 0;
 }
 
 // =============================================================================
@@ -737,7 +790,7 @@ namespace Utils {
     
     // Obtenir une description complète du système
     inline void getSystemInfo(char* buffer, size_t bufferSize) {
-        snprintf(buffer, bufferSize, "FFP3CS4 v%s [%s/%s]", 
+        snprintf(buffer, bufferSize, "FFP5CS v%s [%s/%s]", 
                  ProjectConfig::VERSION, ProjectConfig::BOARD_TYPE, getProfileName());
     }
 }
@@ -785,92 +838,30 @@ namespace CompatibilityUtils {
 // Les macros DEBUG_PRINT* sont maintenant définies dans config.h pour éviter les conflits
 
 // =============================================================================
-// RÉTRO-COMPATIBILITÉ (temporaire, à supprimer progressivement)
+// RÉTRO-COMPATIBILITÉ (minimal pour compilation)
 // =============================================================================
-// Ces alias permettent de ne pas casser le code existant
 namespace Config {
-    using namespace ProjectConfig;
     constexpr const char* VERSION = ProjectConfig::VERSION;
     constexpr const char* SENSOR = ProjectConfig::BOARD_TYPE;
+    constexpr const char* API_KEY = ApiConfig::API_KEY;
+    constexpr const char* DEFAULT_MAIL_TO = EmailConfig::DEFAULT_RECIPIENT;
     constexpr const char* SERVER_POST_DATA = ServerConfig::POST_DATA_ENDPOINT;
     constexpr const char* SERVER_OUTPUT = ServerConfig::OUTPUT_ENDPOINT;
-    constexpr const char* API_KEY = ApiConfig::API_KEY;
     constexpr const char* SMTP_HOST = EmailConfig::SMTP_HOST;
     constexpr uint16_t SMTP_PORT_SSL = EmailConfig::SMTP_PORT;
-    constexpr const char* DEFAULT_MAIL_TO = EmailConfig::DEFAULT_RECIPIENT;
     
     namespace Default {
-        using namespace ActuatorConfig::Default;
-        constexpr int AQ_LIMIT_CM = AQUA_LEVEL_CM;
-        constexpr int TANK_LIMIT_CM = TANK_LEVEL_CM;
-        constexpr int HEATER_THRESHOLD = static_cast<int>(HEATER_THRESHOLD_C);
+        constexpr int AQ_LIMIT_CM = ActuatorConfig::Default::AQUA_LEVEL_CM;
+        constexpr int TANK_LIMIT_CM = ActuatorConfig::Default::TANK_LEVEL_CM;
+        constexpr float HEATER_THRESHOLD = ActuatorConfig::Default::HEATER_THRESHOLD_C;
     }
 }
 
-// Fin du namespace Config de rétro-compatibilité
 
 // =============================================================================
 // CONFIGURATION DÉLAIS ET TIMING ÉTENDUE
 // =============================================================================
-namespace TimingConfigExtended {
-    // ========================================
-    // DÉLAIS CAPTEURS ET MESURES
-    // ========================================
-    
-    // Délais ultrasoniques (microsecondes)
-    constexpr uint32_t ULTRASONIC_PRE_TRIGGER_DELAY_US = 2;     // Délai avant déclenchement pulse ultrasonique
-    constexpr uint32_t ULTRASONIC_PULSE_DURATION_US = 10;       // Durée du pulse ultrasonique (µs)
-    
-    // Délais entre lectures capteurs (millisecondes)
-    constexpr uint32_t SENSOR_READ_DELAY_MS = 50;              // Délai entre lectures capteurs individuels
-    constexpr uint32_t SENSOR_RESET_DELAY_MS = 500;            // Délai après reset d'un capteur
-    constexpr uint32_t SENSOR_STABILIZATION_DELAY_MS = 1;      // Délai entre échantillons pour stabilisation
-    
-    // ========================================
-    // DÉLAIS SYSTÈME ET INITIALISATION
-    // ========================================
-    
-    // Délais d'initialisation
-    constexpr uint32_t SYSTEM_INIT_SAFETY_DELAY_MS = 3000;     // Délai de sécurité après initialisation système
-    constexpr uint32_t TASK_START_LATENCY_MS = 50;             // Latence pour laisser démarrer les tâches
-    constexpr uint32_t CPU_LOAD_REDUCTION_DELAY_MS = 500;     // Délai pour réduire la charge CPU
-    
-    // Délais WiFi et réseau
-    constexpr uint32_t WIFI_INIT_DELAY_MS = 50;                // Délai initialisation WiFi
-    constexpr uint32_t WIFI_RECONNECT_DELAY_MS = 100;         // Délai optimisé pour reconnexion WiFi
-    constexpr uint32_t WIFI_CONNECTION_TIMEOUT_MS = 10000;    // Timeout connexion WiFi (10 secondes)
-    
-    // ========================================
-    // DÉLAIS ACTIONNEURS ET SERVOS
-    // ========================================
-    
-    // Délais servo et actionneurs
-    constexpr uint32_t SERVO_ACTION_DELAY_MS = 200;           // Délai entre actions servo
-    constexpr uint32_t ACTUATOR_SHORT_DELAY_MS = 50;          // Délai court entre actions actionneurs
-    constexpr uint32_t ACTUATOR_MEDIUM_DELAY_MS = 100;        // Délai moyen entre actions actionneurs
-    constexpr uint32_t ACTUATOR_LONG_DELAY_MS = 150;         // Délai long entre actions actionneurs
-    
-    // ========================================
-    // DÉLAIS OTA ET MISE À JOUR
-    // ========================================
-    
-    // Délais OTA spécifiques
-    constexpr uint32_t OTA_MICRO_DELAY_MS = 1;                // Délai micro entre opérations OTA
-    constexpr uint32_t OTA_FAILURE_DELAY_MS = 3000;          // Délai après échec OTA
-    constexpr uint32_t OTA_RETRY_PAUSE_MS = 500;             // Pause entre tentatives OTA
-    constexpr uint32_t OTA_SHORT_PAUSE_MS = 5;                // Pause courte entre opérations OTA
-    constexpr uint32_t OTA_CHUNK_PAUSE_MS = 10;              // Pause entre chunks OTA
-    constexpr uint32_t OTA_SPECIFIC_DELAY_MS = 100;          // Délai spécifique OTA
-    
-    // ========================================
-    // DÉLAIS MONITORING ET DRIFT
-    // ========================================
-    
-    // Délais monitoring temps
-    constexpr uint32_t TIME_DRIFT_RETRY_DELAY_MS = 1000;      // Délai entre tentatives correction drift
-    constexpr uint32_t DEBUG_LOG_INTERVAL_MS = 10000;         // Intervalle log debug (10 secondes)
-    constexpr uint32_t LOG_PER_SECOND_INTERVAL_MS = 1000;    // Intervalle log toutes les secondes
-}
+// Fusionné dans TimingConfig
 
 // =============================================================================
 // CONFIGURATION RETRY ET TENTATIVES
@@ -919,152 +910,9 @@ namespace RetryConfig {
 }
 
 // =============================================================================
-// CONFIGURATION AFFICHAGE ÉTENDUE
-// =============================================================================
-namespace DisplayConfigExtended {
-    // ========================================
-    // POSITIONS ET DIMENSIONS BARRES DE PROGRESSION
-    // ========================================
-    
-    // Barre de progression principale
-    constexpr int PROGRESS_BAR_X = 4;                        // Position X barre de progression
-    constexpr int PROGRESS_BAR_Y = 48;                       // Position Y barre de progression principale
-    constexpr int PROGRESS_BAR_WIDTH = 120;                 // Largeur barre de progression (px)
-    constexpr int PROGRESS_BAR_HEIGHT = 10;                  // Hauteur barre de progression (px)
-    
-    // Barre de progression alternative
-    constexpr int PROGRESS_BAR_ALT_Y = 40;                   // Position Y barre de progression alternative
-    
-    // ========================================
-    // INTERVALLES D'AFFICHAGE
-    // ========================================
-    
-    // Intervalles changement écran
-    constexpr uint32_t SCREEN_SWITCH_INTERVAL_MS = 4000;    // Intervalle changement écran (4s pour plus de dynamisme)
-    
-    // ========================================
-    // CONFIGURATION OLED ÉTENDUE
-    // ========================================
-    
-    // Couleurs et constantes d'affichage
-    constexpr uint8_t DISPLAY_WHITE = 1;                     // Valeur couleur blanche OLED
-    constexpr uint8_t DISPLAY_BLACK = 0;                     // Valeur couleur noire OLED
-    constexpr uint8_t SSD1306_SWITCHCAPVCC = 0;              // Mode d'alimentation SSD1306
-}
-
-// =============================================================================
-// CONFIGURATION VALIDATION ET SEUILS
-// =============================================================================
-namespace ValidationConfig {
-    // ========================================
-    // SEUILS TEMPÉRATURE ET HUMIDITÉ
-    // ========================================
-    
-    // Validation température eau
-    constexpr float WATER_TEMP_MAX_DELTA_C = 5.0f;          // Écart max accepté entre mesures température eau (°C)
-    
-    // Validation humidité
-    constexpr float HUMIDITY_MIN_PERCENT = 0.0f;             // Humidité minimum valide (%)
-    constexpr float HUMIDITY_MAX_PERCENT = 100.0f;           // Humidité maximum valide (%)
-    
-    // ========================================
-    // VALEURS PAR DÉFAUT EN CAS D'ERREUR
-    // ========================================
-    
-    // Valeurs par défaut capteurs
-    constexpr float DEFAULT_WATER_LEVEL_AQUA = 0.0f;        // Valeur par défaut niveau aquarium
-    constexpr float DEFAULT_WATER_LEVEL_TANK = 0.0f;         // Valeur par défaut niveau réservoir
-    constexpr float DEFAULT_WATER_LEVEL_POTA = 0.0f;         // Valeur par défaut niveau potager
-    constexpr float DEFAULT_LUMINOSITY = 0.0f;               // Valeur par défaut luminosité
-    
-    // ========================================
-    // LIMITES ET SEUILS SYSTÈME
-    // ========================================
-    
-    // Limites compteurs et timers
-    constexpr uint32_t MAX_SECONDS_COUNTER = 65535u;         // Limite supérieure compteur secondes (16-bit)
-    
-    // Seuils de fonctionnement
-    constexpr uint32_t IMMEDIATE_MODE_PERCENTAGE = 25;       // Pourcentage de temps en mode immédiat (25%)
-    constexpr uint32_t MAIL_BLINK_FREQUENCY_MS = 200;       // Fréquence clignotement mail (200ms)
-    
-    // ========================================
-    // SEUILS TEMPORELS
-    // ========================================
-    
-    // Seuils de drift temps
-    constexpr int32_t TIME_DRIFT_THRESHOLD_SEC = 3600;      // Seuil drift temps (1 heure en secondes)
-    constexpr uint32_t MIN_TIME_SAVE_INTERVAL_MULTIPLIER = 3; // Multiplicateur intervalle sauvegarde temps
-}
-
-// =============================================================================
-// CONFIGURATION CONVERSION ET CALCULS
-// =============================================================================
-namespace ConversionConfig {
-    // ========================================
-    // CONVERSIONS TEMPORELLES
-    // ========================================
-    
-    // Conversion secondes vers heures
-    constexpr uint32_t SECONDS_TO_HOURS_FACTOR = 3600;      // Facteur conversion secondes vers heures
-    
-    // Conversion millisecondes vers secondes
-    constexpr uint32_t MILLISECONDS_TO_SECONDS_FACTOR = 1000; // Facteur conversion ms vers secondes
-    
-    // ========================================
-    // CONVERSIONS ULTRASONIQUES
-    // ========================================
-    
-    // Calcul délai entre pings ultrasoniques
-    constexpr uint32_t ULTRASONIC_PING_DELAY_MULTIPLIER = 20; // Multiplicateur pour délai entre pings ultrasoniques
-    
-    // ========================================
-    // CONVERSIONS AFFICHAGE
-    // ========================================
-    
-    // Conversion pour affichage pourcentage
-    constexpr uint32_t PERCENTAGE_DISPLAY_DIVISOR = 100;     // Diviseur pour affichage pourcentage
-}
-
-// =============================================================================
 // CONFIGURATION CAPTEURS SPÉCIFIQUES
 // =============================================================================
-namespace SensorSpecificConfig {
-    // ========================================
-    // CONFIGURATION DS18B20
-    // ========================================
-    
-    // Paramètres DS18B20
-    constexpr uint8_t DS18B20_RESOLUTION_BITS = 10;          // Résolution DS18B20 (10 bits)
-    constexpr uint16_t DS18B20_CONVERSION_DELAY_MS = 250;     // Délai conversion température DS18B20 (augmenté de 200ms à 250ms pour marge de sécurité)
-    constexpr uint16_t DS18B20_READING_INTERVAL_MS = 400;    // Intervalle lectures DS18B20 (augmenté de 300ms à 400ms pour stabilité)
-    constexpr uint8_t DS18B20_STABILIZATION_READINGS = 1;    // Lectures stabilisation DS18B20
-    constexpr uint16_t DS18B20_STABILIZATION_DELAY_MS = 50;  // Délai stabilisation après requestTemperatures() (50ms)
-    constexpr uint16_t ONEWIRE_RESET_DELAY_MS = 100;         // Délai reset bus OneWire
-    
-    // ========================================
-    // CONFIGURATION CAPTEURS AIR (DHT)
-    // ========================================
-    
-    // Seuils validation DHT
-    constexpr float DHT_TEMP_MAX_DELTA_C = 3.0f;             // Écart max accepté entre mesures température air (°C)
-    constexpr float DHT_HUMIDITY_MAX_DELTA_PERCENT = 10.0f;  // Écart max accepté entre mesures humidité (%)
-    
-    // ========================================
-    // CONFIGURATION ULTRASONIQUES
-    // ========================================
-    
-    // Paramètres lectures ultrasoniques
-    constexpr uint8_t ULTRASONIC_FILTERED_READINGS_COUNT = 3; // Nombre de lectures pour filtrage ultrasonique
-    
-    // ========================================
-    // CONFIGURATION SYSTÈME CAPTEURS
-    // ========================================
-    
-    // Historique et buffers
-    constexpr uint8_t AQUA_HISTORY_SIZE = 16;                // Taille historique mesures aquarium
-    constexpr uint8_t SENSOR_READINGS_COUNT = 3;             // Nombre de lectures pour validation capteurs
-}
+// Fusionnée dans SensorConfig
 
 // =============================================================================
 // CONFIGURATION MONITORING ET DRIFT
@@ -1090,32 +938,6 @@ namespace MonitoringConfig {
     constexpr uint32_t PER_SECOND_LOG_INTERVAL_MS = 1000;   // Intervalle log toutes les secondes
 }
 
-// =============================================================================
-// CONFIGURATION RÉSEAU ÉTENDUE
-// =============================================================================
-namespace NetworkConfigExtended {
-    // ========================================
-    // CONFIGURATION SERVEURS LOCAUX
-    // ========================================
-    
-    // Serveur OTA local
-    constexpr const char* LOCAL_OTA_SERVER_URL = "http://192.168.1.100:8080/ota/"; // URL serveur OTA local
-    
-    // ========================================
-    // CONFIGURATION FIRMWARE
-    // ========================================
-    
-    // Tailles firmware
-    constexpr size_t ESP32_S3_MAX_FIRMWARE_SIZE = 16777216;  // Taille max firmware ESP32-S3 (16MB)
-    constexpr size_t ESP32_WROOM_MAX_FIRMWARE_SIZE = 16777216; // Taille max firmware ESP32-WROOM (16MB)
-    
-    // ========================================
-    // CONFIGURATION HTTP ÉTENDUE
-    // ========================================
-    
-    // Timeouts HTTP spécifiques
-    constexpr uint32_t OTA_HTTP_TIMEOUT_MS = 30000;          // Timeout HTTP pour OTA (30 secondes)
-}
 
 // =============================================================================
 // CONFIGURATION MODEM SLEEP + LIGHT SLEEP

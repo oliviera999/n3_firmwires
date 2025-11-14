@@ -3,7 +3,6 @@
 #include <Arduino.h>
 
 #include "event_log.h"
-#include "optimized_logger.h"
 #include "project_config.h"
 #include "timer_manager.h"
 
@@ -62,7 +61,6 @@ void initializePeripherals(AppContext& ctx) {
   ctx.power.initModemSleep();
 
   TimerManager::init();
-  OptimizedLogger::init(OptimizedLogger::LOG_INFO);
 }
 
 void loadConfiguration(AppContext& ctx) {

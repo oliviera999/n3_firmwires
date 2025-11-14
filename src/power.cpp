@@ -1,4 +1,5 @@
 #include "power.h"
+#include "nvs_manager.h" // v11.107
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
@@ -248,20 +249,14 @@ void PowerManager::forceSaveTimeToFlash() {
     return;
   }
   
-  _preferences.begin("rtc", false);
-  if (!_preferences.putULong("epoch", currentEpoch)) {
-    Serial.println(F("[Power] Erreur: impossible d'enregistrer l'heure"));
-    _preferences.end();
-    return;
-  }
-  
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "rtc_epoch", currentEpoch);
+
   // Mise à jour des variables de suivi
   _lastTimeSave = millis();
   _lastSavedEpoch = currentEpoch;
   
   Serial.printf("[Power] Heure sauvegardée de force: %s (epoch: %lu)\n", 
                 getCurrentTimeString().c_str(), currentEpoch);
-  _preferences.end();
 }
 
 void PowerManager::loadTimeFromFlash() {
@@ -367,9 +362,9 @@ bool PowerManager::isValidEpoch(time_t epoch) const {
 }
 
 time_t PowerManager::loadTimeWithFallback() {
-  _preferences.begin("rtc", true);
-  time_t savedEpoch = _preferences.getULong("epoch", 0);
-  _preferences.end();
+  unsigned long savedEpochUL;
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpochUL, 0);
+  time_t savedEpoch = static_cast<time_t>(savedEpochUL);
   
   // Fallback 1: Epoch sauvegardé valide
   if (isValidEpoch(savedEpoch)) {
@@ -519,18 +514,12 @@ void PowerManager::smartSaveTime() {
   }
   
   // Sauvegarde en NVS
-  _preferences.begin("rtc", false);
-  bool success = _preferences.putULong("epoch", currentEpoch);
-  _preferences.end();
-  
-  if (success) {
-    _lastTimeSave = currentMillis;
-    _lastSavedEpoch = currentEpoch;
-    Serial.printf("[Power] Heure sauvegardée: %s (epoch: %lu)\n", 
-                  getCurrentTimeString().c_str(), currentEpoch);
-  } else {
-    Serial.println(F("[Power] Erreur: impossible d'enregistrer l'heure"));
-  }
+  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "rtc_epoch", currentEpoch);
+
+  _lastTimeSave = currentMillis;
+  _lastSavedEpoch = currentEpoch;
+  Serial.printf("[Power] Heure sauvegardée: %s (epoch: %lu)\n", 
+                getCurrentTimeString().c_str(), currentEpoch);
 }
 
 // ========================================

@@ -603,21 +603,8 @@ bool WebClient::postRaw(const String& payload){
   bool okPrimary = httpRequest(postDataUrl, full, respPrimary);
   Serial.printf("[PR] Primary server result: %s\n", okPrimary ? "SUCCESS" : "FAILED");
   
-  // Tentative d'envoi vers le serveur secondaire si configuré
-  char secondary[256];
-  bool okSecondary = false; // considéré faux si non configuré
-  if (ServerConfig::getSecondaryPostDataUrl(secondary, sizeof(secondary))) {
-    Serial.printf("[PR] Secondary server configured: %s\n", secondary);
-    String respSecondary;
-    Serial.println(F("[PR] Sending to secondary server..."));
-    okSecondary = httpRequest(secondary, full, respSecondary);
-    Serial.printf("[PR] Secondary server result: %s\n", okSecondary ? "SUCCESS" : "FAILED");
-    if (!okSecondary) {
-      Serial.println(F("[PR] Alerte: échec POST sur serveur secondaire"));
-    }
-  } else {
-    Serial.println(F("[PR] No secondary server configured"));
-  }
+  // Serveur secondaire supprimé (code mort v11.116)
+  bool okSecondary = false;
   
   // Réussite si au moins un des serveurs a reçu l'update
   bool finalSuccess = okPrimary || okSecondary;

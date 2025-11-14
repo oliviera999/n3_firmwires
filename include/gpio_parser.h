@@ -1,6 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
 #include "gpio_mapping.h"
+#include "nvs_manager.h" // v11.108
 
 class Automatism; // Forward declaration
 

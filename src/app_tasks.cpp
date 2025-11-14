@@ -9,7 +9,6 @@
 #include "event_log.h"
 #include "gpio_parser.h"
 #include "project_config.h"
-#include "optimized_logger.h"
 
 namespace {
 
@@ -60,9 +59,9 @@ void sensorTask(void* pv) {
         readings.humidity < SensorConfig::AirSensor::HUMIDITY_MIN ||
         readings.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
       SENSOR_LOG_PRINTLN(F("[Sensor] Erreur lors de la lecture des capteurs"));
-      readings.tempAir = ExtendedSensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
-      readings.humidity = ExtendedSensorConfig::DefaultValues::HUMIDITY_DEFAULT;
-      readings.tempWater = ExtendedSensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
+      readings.tempAir = SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+      readings.humidity = SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
+      readings.tempWater = SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
       readings.wlPota = 0;
       readings.wlAqua = 0;
       readings.wlTank = 0;

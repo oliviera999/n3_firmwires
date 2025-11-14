@@ -5,6 +5,8 @@
 #include "system_actuators.h"
 #include "project_config.h"
 #include "diagnostics.h"
+#include <ESPAsyncWebServer.h>
+#include <functional> // Pour std::function
 
 // Forward declarations pour éviter les problèmes d'includes
 #ifndef DISABLE_ASYNC_WEBSERVER
@@ -20,6 +22,16 @@ class WebServerManager {
   bool begin();
   void loop(); // Nouvelle méthode pour traiter les boucles WebSocket
  private:
+  void initializeServer(); // Méthode privée pour éviter la duplication
+  const char* handleRelayAction(
+    const char* relayName,
+    std::function<bool()> isRunning,
+    std::function<void()> start,
+    std::function<void()> stop,
+    const char* onResponse,
+    const char* offResponse
+  );
+
   SystemSensors& _sensors;
   SystemActuators& _acts;
   Diagnostics* _diag;
@@ -27,5 +39,4 @@ class WebServerManager {
   AsyncWebServer* _server;
   #endif
   WebServerContext* _ctx;
-  void initializeServer(); // Méthode privée pour éviter la duplication
 }; 

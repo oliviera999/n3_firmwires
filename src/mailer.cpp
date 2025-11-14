@@ -4,8 +4,8 @@
 #include "system_sensors.h"
 #include "system_actuators.h"
 #include "diagnostics.h"
+#include "nvs_manager.h"
 #include <WiFi.h>
-#include <Preferences.h>
 #include <time.h>
 #include <LittleFS.h>
 
@@ -115,10 +115,8 @@ static String buildSystemInfoFooter() {
   // }
   
   // Informations RTC/Flash
-  Preferences prefs;
-  prefs.begin("rtc", true);
-  unsigned long savedEpoch = prefs.getULong("epoch", 0);
-  prefs.end();
+  unsigned long savedEpoch;
+  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
   if (savedEpoch > 0) {
     footer += "- RTC Flash epoch: "; footer += String(savedEpoch); footer += "\n";
     if (savedEpoch != (unsigned long)now) {
@@ -138,11 +136,11 @@ static String buildSystemInfoFooter() {
   }
 
   // Diagnostics persistés si disponibles
-  prefs.begin("diagnostics", true);
-  unsigned int rebootCnt = prefs.getUInt("rebootCnt", 0);
-  unsigned int minHeap   = prefs.getUInt("minHeap", 0);
-  prefs.end();
-  footer += "- Reboots: "; footer += String(rebootCnt); footer += "\n";
+  int rebootCount;
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
+  int minHeap;
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap, 0);
+  footer += "- Reboots: "; footer += String(rebootCount); footer += "\n";
   if (minHeap > 0) { footer += "- Min heap: "; footer += String(minHeap); footer += " bytes\n"; }
 
   // Uptime
@@ -210,26 +208,30 @@ static String buildSystemInfoFooter() {
   // ======================
   footer += "\n-- NVS principales --\n";
   {
-    Preferences prefs;
     // Namespace bouffe
-    prefs.begin("bouffe", true);
-    footer += "- bouffeMatinOk: "; footer += prefs.getBool("bouffeMatinOk", false) ? "true" : "false"; footer += "\n";
-    footer += "- bouffeMidiOk: ";  footer += prefs.getBool("bouffeMidiOk", false)  ? "true" : "false"; footer += "\n";
-    footer += "- bouffeSoirOk: ";  footer += prefs.getBool("bouffeSoirOk", false)  ? "true" : "false"; footer += "\n";
-    footer += "- lastJourBouf: ";  footer += String(prefs.getInt("lastJourBouf", -1)); footer += "\n";
-    footer += "- pompeAquaLocked: "; footer += prefs.getBool("pompeAquaLocked", false) ? "true" : "false"; footer += "\n";
-    footer += "- forceWakeUp: "; footer += prefs.getBool("forceWakeUp", false) ? "true" : "false"; footer += "\n";
-    prefs.end();
+    bool bouffeMatinOk, bouffeMidiOk, bouffeSoirOk, pompeAquaLocked, forceWakeUp;
+    int lastJourBouf;
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", bouffeMatinOk, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", bouffeMidiOk, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", bouffeSoirOk, false);
+    g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_pompe_lock", pompeAquaLocked, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_force_wakeup", forceWakeUp, false);
+    footer += "- bouffeMatinOk: "; footer += bouffeMatinOk ? "true" : "false"; footer += "\n";
+    footer += "- bouffeMidiOk: ";  footer += bouffeMidiOk  ? "true" : "false"; footer += "\n";
+    footer += "- bouffeSoirOk: ";  footer += bouffeSoirOk  ? "true" : "false"; footer += "\n";
+    footer += "- lastJourBouf: ";  footer += String(lastJourBouf); footer += "\n";
+    footer += "- pompeAquaLocked: "; footer += pompeAquaLocked ? "true" : "false"; footer += "\n";
+    footer += "- forceWakeUp: "; footer += forceWakeUp ? "true" : "false"; footer += "\n";
 
     // Namespace ota
-    prefs.begin("ota", true);
-    footer += "- ota.updateFlag: "; footer += prefs.getBool("updateFlag", true) ? "true" : "false"; footer += "\n";
-    prefs.end();
+    bool otaUpdateFlag;
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_updateFlag", otaUpdateFlag, true);
+    footer += "- ota.updateFlag: "; footer += otaUpdateFlag ? "true" : "false"; footer += "\n";
 
-    // Namespace remoteVars (aperçu)
-    prefs.begin("remoteVars", true);
-    String remoteJson = prefs.getString("json", "");
-    prefs.end();
+    // Namespace remoteVars (aperçu) - v11.103: Utilisation du gestionnaire NVS centralisé
+    String remoteJson;
+    g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, "");
     if (remoteJson.length() > 0) {
       String preview = remoteJson.substring(0, min((size_t)200, (size_t)remoteJson.length()));
       footer += "- remoteVars.json: ";
@@ -241,16 +243,14 @@ static String buildSystemInfoFooter() {
     }
 
     // Namespace rtc
-    prefs.begin("rtc", true);
-    unsigned long savedEpoch = prefs.getULong("epoch", 0);
-    prefs.end();
+    unsigned long savedEpoch;
+    g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
     footer += "- rtc.epoch: "; footer += String(savedEpoch); footer += "\n";
 
     // Namespace diagnostics (déjà partiellement inclus plus haut, rappel condensé)
-    prefs.begin("diagnostics", true);
-    unsigned int rebootCnt2 = prefs.getUInt("rebootCnt", 0);
-    unsigned int minHeap2   = prefs.getUInt("minHeap", 0);
-    prefs.end();
+    int rebootCnt2, minHeap2;
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCnt2, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap2, 0);
     footer += "- diagnostics.rebootCnt: "; footer += String(rebootCnt2); footer += "\n";
     footer += "- diagnostics.minHeap: "; footer += String(minHeap2); footer += "\n";
   }
@@ -321,10 +321,8 @@ static String buildDetailedTimeReport(const Diagnostics& diagnostics) {
     // }
     
     // Informations RTC/Flash
-    Preferences prefs;
-    prefs.begin("rtc", true);
-    unsigned long savedEpoch = prefs.getULong("epoch", 0);
-    prefs.end();
+    unsigned long savedEpoch;
+    g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
     if (savedEpoch > 0) {
       report += "RTC Flash epoch: "; report += String(savedEpoch); report += "\n";
       if (savedEpoch != (unsigned long)now) {
@@ -417,7 +415,7 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   const char* envName = CompatibilityUtils::getEnvironmentName();
   
   // Construction du nom d'expéditeur dans un buffer statique
-  snprintf(fromNameBuf, sizeof(fromNameBuf), "FFP3 [%s]", envName ? envName : "");
+  snprintf(fromNameBuf, sizeof(fromNameBuf), "FFP5CS [%s]", envName ? envName : "");
   
   // Construction du sujet dans un buffer statique
   snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
@@ -494,7 +492,7 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
     return false;
   }
   
-  String alertSubject = String("FFP3 - ") + subject;
+  String alertSubject = String("FFP5CS - ") + subject;
   Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject.c_str());
   
   // Ajouter le rapport temporel détaillé au message d'alerte
@@ -520,11 +518,11 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
 }
 
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
-  String sleepSubject = String("FFP3 - Mise en veille");
+  String sleepSubject = String("FFP5CS - Mise en veille");
   
   String sleepMessage;
   sleepMessage.reserve(1024);
-  sleepMessage += "Le système FFP3CS entre en veille légère\n\n";
+  sleepMessage += "Le système FFP5CS entre en veille légère\n\n";
   sleepMessage += "-- INFORMATIONS DE MISE EN VEILLE --\n";
   sleepMessage += "Raison: "; sleepMessage += reason; sleepMessage += "\n";
   sleepMessage += "Durée prévue: "; sleepMessage += String(sleepDurationSeconds); sleepMessage += " secondes\n";
@@ -570,11 +568,11 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
 }
 
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
-  String wakeSubject = String("FFP3 - Réveil du système");
+  String wakeSubject = String("FFP5CS - Réveil du système");
   
   String wakeMessage;
   wakeMessage.reserve(1024);
-  wakeMessage += "Le système FFP3CS s'est réveillé de sa veille légère\n\n";
+  wakeMessage += "Le système FFP5CS s'est réveillé de sa veille légère\n\n";
   wakeMessage += "-- INFORMATIONS DE RÉVEIL --\n";
   wakeMessage += "Raison: "; wakeMessage += reason; wakeMessage += "\n";
   wakeMessage += "Durée réelle de veille: "; wakeMessage += String(actualSleepSeconds); wakeMessage += " secondes\n";
