@@ -1,5 +1,7 @@
 # PLAN D'ACTION IMMÉDIAT - ESP32 FFP5CS v11.03
 
+> ℹ️ **Mise à jour (nov. 2025)** : Les mentions aux namespaces `CompatibilityAliases` / `CompatibilityUtils` appartiennent à l’ancienne architecture. Utiliser désormais directement les namespaces natifs (`ProjectConfig`, `EmailConfig`, `ActuatorConfig`, etc.).
+
 **Date**: 2025-10-10  
 **Objectif**: Actions concrètes et priorisées pour améliorer le projet  
 **Durée estimée PHASE 1**: 1 heure (quick wins)
@@ -627,7 +629,7 @@ namespace TimingConfig {
 #### 2. Supprimer compatibilité obsolète (2h)
 ```cpp
 // SUPPRIMER: project_config.h lignes 637-732
-namespace CompatibilityAliases { ... }
+> *Section historique (legacy)*: `namespace CompatibilityAliases { ... }` (supprimé en v11.118)
 namespace Config { ... }  // Rétro-compatibilité
 ```
 

@@ -919,7 +919,7 @@ bool WebServerManager::begin() {
     autoCtrl.notifyLocalWebActivity();
     String subj = req->hasParam("subject") ? req->getParam("subject")->value() : "Test FFP5CS";
     String body = req->hasParam("body") ? req->getParam("body")->value() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
-    String dest = req->hasParam("to") ? req->getParam("to")->value() : String(Config::DEFAULT_MAIL_TO);
+    String dest = req->hasParam("to") ? req->getParam("to")->value() : String(EmailConfig::DEFAULT_RECIPIENT);
     bool ok = mailer.sendAlert(subj.c_str(), body, dest.c_str());
     String resp = ok ? "OK" : "FAIL";
     req->send(200, "text/plain", resp);

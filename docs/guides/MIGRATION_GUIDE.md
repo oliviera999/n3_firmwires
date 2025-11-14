@@ -1,5 +1,8 @@
 # 🚀 Guide de Migration : `config.h` → `project_config.h`
 
+> ℹ️ **Note (nov. 2025)**  
+> Les anciens namespaces de compatibilité (`CompatibilityAliases`, `CompatibilityUtils`, `Config`) ont été supprimés. Ce guide fait désormais référence uniquement aux namespaces natifs (`ProjectConfig`, `ApiConfig`, `EmailConfig`, etc.).
+
 ## 📋 **Vue d'ensemble**
 
 Ce guide explique comment migrer votre code de l'ancien système de configuration (`config.h`) vers le nouveau système unifié (`project_config.h`).
@@ -75,6 +78,8 @@ namespace ProjectConfig {
 // =============================================================================
 // ALIAS DE COMPATIBILITÉ (temporaire)
 // =============================================================================
+> *Section historique (legacy)* : l'extrait ci-dessous documente l'ancien namespace supprimé en v11.118.
+
 namespace CompatibilityAliases {
     // Anciennes constantes redirigées
     constexpr bool FEATURE_OLED = Features::OLED_ENABLED;
@@ -265,7 +270,7 @@ pio run --target upload
 ### **Problèmes courants :**
 
 #### **1. Erreur de compilation : "FEATURE_OLED not declared"**
-**Solution :** Utiliser `CompatibilityAliases::FEATURE_OLED` ou `ProjectConfig::Features::OLED_ENABLED`
+**Solution (legacy)** : Utiliser `CompatibilityAliases::FEATURE_OLED` ou désormais `ProjectConfig::Features::OLED_ENABLED`
 
 #### **2. Conflit de macros DEBUG_PRINT**
 **Solution :** Les macros sont maintenant définies dans `config.h` pour éviter les conflits

@@ -287,13 +287,13 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
 {
   // Initialisation des valeurs par défaut
   mailNotif = false;  // Par défaut, emails désactivés
-  storeEmailAddress(Config::DEFAULT_MAIL_TO);
+  storeEmailAddress(EmailConfig::DEFAULT_RECIPIENT);
   
   // Diagnostic initial email
   Serial.println(F("[Auto] ===== DIAGNOSTIC EMAIL INITIAL ====="));
   Serial.printf("[Auto] mailNotif par défaut: %s\n", mailNotif ? "TRUE" : "FALSE");
   Serial.printf("[Auto] mail par défaut: '%s'\n", _emailAddress);
-  Serial.printf("[Auto] DEFAULT_MAIL_TO: '%s'\n", Config::DEFAULT_MAIL_TO);
+  Serial.printf("[Auto] DEFAULT_MAIL_TO: '%s'\n", EmailConfig::DEFAULT_RECIPIENT);
   Serial.println(F("[Auto] ======================================"));
 
   _network.setEmailAddress(_emailAddress);

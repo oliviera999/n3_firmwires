@@ -22,7 +22,7 @@ struct Measurements {
 
 class WebClient {
  public:
-  explicit WebClient(const char* apiKey = Config::API_KEY);
+  explicit WebClient(const char* apiKey = ApiConfig::API_KEY);
 
   bool sendMeasurements(const Measurements& m, bool includeReset=false);
   bool sendHeartbeat(const class Diagnostics& diag);

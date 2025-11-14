@@ -64,8 +64,8 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
   // Fix v11.29: Délai minimum entre requêtes HTTP pour éviter saturation TCP
   if (_lastRequestMs > 0) {
     unsigned long timeSinceLastRequest = millis() - _lastRequestMs;
-    if (timeSinceLastRequest < ServerConfig::MIN_DELAY_BETWEEN_REQUESTS_MS) {
-      uint32_t delayNeeded = ServerConfig::MIN_DELAY_BETWEEN_REQUESTS_MS - timeSinceLastRequest;
+    if (timeSinceLastRequest < NetworkConfig::MIN_DELAY_BETWEEN_REQUESTS_MS) {
+      uint32_t delayNeeded = NetworkConfig::MIN_DELAY_BETWEEN_REQUESTS_MS - timeSinceLastRequest;
       if (debugLogging) {
         LOG(LOG_DEBUG, "[HTTP] Délai inter-requêtes %u ms", delayNeeded);
       }
@@ -114,7 +114,7 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
     if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] Headers positionnés, timeout requête=%u", ServerConfig::REQUEST_TIMEOUT_MS);
+      LOG(LOG_DEBUG, "[HTTP] Headers positionnés, timeout requête=%u", NetworkConfig::REQUEST_TIMEOUT_MS);
     }
     
     // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
@@ -345,7 +345,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   Serial.println(F("[SM] Construction du payload..."));
   
   // Ordre exact aligné sur la liste utilisée côté serveur
-  appendKV("version", String(Config::VERSION));
+  appendKV("version", String(ProjectConfig::VERSION));
   appendKV("TempAir", fmtFloat(tempAir));
   appendKV("Humidite", fmtFloat(humidity));
   appendKV("TempEau", fmtFloat(tempWater));
@@ -380,7 +380,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   appendKV("FreqWakeUp", String(""));
 
   Serial.printf("[SM] Payload construit: %u bytes\n", payload.length());
-  Serial.printf("[SM] Version: %s\n", Config::VERSION);
+  Serial.printf("[SM] Version: %s\n", ProjectConfig::VERSION);
   Serial.printf("[SM] Seuils - Aqua: %u, Tank: %u, Heat: %.1f°C\n", 
                ActuatorConfig::Default::AQUA_LEVEL_CM, 
                ActuatorConfig::Default::TANK_LEVEL_CM,
@@ -437,7 +437,7 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     Serial.println(F("[GET] 🌐 Using HTTP client"));
   }
   
-  Serial.printf("[GET] Sending GET request (timeout: %u ms)...\n", ServerConfig::REQUEST_TIMEOUT_MS);
+  Serial.printf("[GET] Sending GET request (timeout: %u ms)...\n", NetworkConfig::REQUEST_TIMEOUT_MS);
   int code = _http.GET();
   unsigned long getDurationMs = millis() - getStartMs;
   Serial.printf("[GET] GET completed in %lu ms, HTTP code: %d\n", getDurationMs, code);
@@ -582,7 +582,7 @@ bool WebClient::postRaw(const String& payload){
   
   if (!hasApi) {
     // v11.70: Simplification - pas de skeleton, construction directe
-    full = String("api_key=") + _apiKey + "&sensor=" + Config::SENSOR;
+    full = String("api_key=") + _apiKey + "&sensor=" + ProjectConfig::BOARD_TYPE;
     if (payload.length()) {
       full += "&";
       full += payload;
@@ -594,7 +594,7 @@ bool WebClient::postRaw(const String& payload){
 
   Serial.printf("[PR] Final payload size: %u bytes\n", full.length());
   Serial.printf("[PR] API Key: %s\n", _apiKey.c_str());
-  Serial.printf("[PR] Sensor: %s\n", Config::SENSOR);
+  Serial.printf("[PR] Sensor: %s\n", ProjectConfig::BOARD_TYPE);
 
   String respPrimary;
   Serial.println(F("[PR] Sending to primary server..."));

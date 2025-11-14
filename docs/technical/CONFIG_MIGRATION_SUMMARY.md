@@ -45,8 +45,7 @@
   - `include/web_server.h`
 
 ### **2. Enrichissement de `project_config.h`**
-- **Namespace `CompatibilityAliases`** : Alias pour les anciennes constantes
-- **Namespace `CompatibilityUtils`** : Fonctions utilitaires de compatibilité
+- **Futures étapes (2025)** : les anciens namespaces de compatibilité ont été retirés au profit des namespaces natifs (`ProjectConfig`, `EmailConfig`, etc.). Les notes historiques ci-dessous sont conservées pour mémoire.
 - **Macros de debug** : `DEBUG_PRINT*`, `VERBOSE_PRINT*`
 
 ### **3. Suppression complète de `config.h`**
@@ -59,7 +58,7 @@
 - **Résolution des conflits** de macros DEBUG_PRINT avec DHT
 - **Correction AsyncWebServer** : Forward declaration + pointeur
 - **Gestion mémoire** : Destructeur pour AsyncWebServer
-- **Correction des scopes** : `CompatibilityAliases::FEATURE_*`
+- **Correction des scopes** : `CompatibilityAliases::FEATURE_*` (legacy – supprimé)
 
 ---
 

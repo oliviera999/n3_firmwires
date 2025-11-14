@@ -261,7 +261,7 @@ bool AutomatismNetwork::sendFullUpdate(
         "aqThreshold=%u&tankThreshold=%u&chauffageThreshold=%.1f&"
         "tempsRemplissageSec=%u&limFlood=%u&WakeUp=%d&FreqWakeUp=%u&"
         "bouffePetits=%s&bouffeGros=%s&mail=%s&mailNotif=%s",
-        Config::API_KEY, Config::SENSOR, Config::VERSION,
+        ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION,
         tempAir, humidity, tempWater,
         readings.wlPota, readings.wlAqua, readings.wlTank, diffMaree, readings.luminosite,
         acts.isAquaPumpRunning(), acts.isTankPumpRunning(), acts.isHeaterOn(), acts.isLightOn(),
@@ -1105,7 +1105,7 @@ bool AutomatismNetwork::sendCommandAck(const char* command, const char* status) 
     char ackPayload[256];
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
-             Config::API_KEY, Config::SENSOR, command, status, millis());
+             ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
     
     // Envoi non-bloquant vers endpoint principal
     // NOTE: Le serveur peut ignorer les champs ack_* si endpoint non prévu

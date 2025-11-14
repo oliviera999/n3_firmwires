@@ -36,9 +36,9 @@ static String buildSystemInfoFooter() {
 #else
   const char* board = "ESP32";
 #endif
-  footer += "- Version: "; footer += Config::VERSION; footer += "\n";
+  footer += "- Version: "; footer += ProjectConfig::VERSION; footer += "\n";
   footer += "- Carte: "; footer += board; footer += "\n";
-  footer += "- Environnement: "; footer += CompatibilityUtils::getEnvironmentName(); footer += "\n";
+  footer += "- Environnement: "; footer += Utils::getProfileName(); footer += "\n";
 
   // Réseau
   bool connected = WiFi.isConnected();
@@ -200,8 +200,8 @@ static String buildSystemInfoFooter() {
   }
 
   // Endpoints serveur utiles
-  footer += "- POST URL: "; footer += Config::SERVER_POST_DATA; footer += "\n";
-  footer += "- OUTPUT URL: "; footer += Config::SERVER_OUTPUT; footer += "\n";
+  footer += "- POST URL: "; footer += ServerConfig::POST_DATA_ENDPOINT; footer += "\n";
+  footer += "- OUTPUT URL: "; footer += ServerConfig::OUTPUT_ENDPOINT; footer += "\n";
 
   // ======================
   // NVS principales (resume)
@@ -351,19 +351,19 @@ bool Mailer::begin() {
   // La connexion TLS/SMTP sera établie à la première utilisation dans send().
 
   _cfg = Session_Config();
-  _cfg.server.host_name = Config::SMTP_HOST;
-  _cfg.server.port      = Config::SMTP_PORT_SSL;
+  _cfg.server.host_name = EmailConfig::SMTP_HOST;
+  _cfg.server.port      = EmailConfig::SMTP_PORT;
   _cfg.login.email      = Secrets::AUTHOR_EMAIL;
   _cfg.login.password   = Secrets::AUTHOR_PASSWORD;
 
   // Diagnostic de la configuration
-  Serial.printf("[Mail] SMTP_HOST: '%s'\n", Config::SMTP_HOST);
-  Serial.printf("[Mail] SMTP_PORT: %d\n", Config::SMTP_PORT_SSL);
+  Serial.printf("[Mail] SMTP_HOST: '%s'\n", EmailConfig::SMTP_HOST);
+  Serial.printf("[Mail] SMTP_PORT: %d\n", EmailConfig::SMTP_PORT);
   Serial.printf("[Mail] AUTHOR_EMAIL: '%s'\n", Secrets::AUTHOR_EMAIL);
   Serial.printf("[Mail] AUTHOR_PASSWORD length: %d\n", strlen(Secrets::AUTHOR_PASSWORD));
   
   // Vérifications de configuration
-  if (!Config::SMTP_HOST || strlen(Config::SMTP_HOST) == 0) {
+  if (!EmailConfig::SMTP_HOST || strlen(EmailConfig::SMTP_HOST) == 0) {
     Serial.println(F("[Mail] ❌ ERREUR: SMTP_HOST non configuré"));
     return false;
   }
@@ -412,7 +412,7 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   static String finalMessageStatic;  // String statique pour persistance
   
   // Construire l'objet avec l'environnement de manière explicite
-  const char* envName = CompatibilityUtils::getEnvironmentName();
+  const char* envName = Utils::getProfileName();
   
   // Construction du nom d'expéditeur dans un buffer statique
   snprintf(fromNameBuf, sizeof(fromNameBuf), "FFP5CS [%s]", envName ? envName : "");
@@ -564,7 +564,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   Serial.println(F("[Mail] ⚡ Utilisation des dernières lectures (pas de nouvelle lecture capteurs)"));
   Serial.println(F("[Mail] =============================="));
   
-  return send(sleepSubject.c_str(), sleepMessage.c_str(), "User", Config::DEFAULT_MAIL_TO);
+  return send(sleepSubject.c_str(), sleepMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
 }
 
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
@@ -624,6 +624,6 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   Serial.printf("[Mail] Durée veille: %u s\n", actualSleepSeconds);
   Serial.println(F("[Mail] =============================="));
   
-  return send(wakeSubject.c_str(), wakeMessage.c_str(), "User", Config::DEFAULT_MAIL_TO);
+  return send(wakeSubject.c_str(), wakeMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
 }
 #endif

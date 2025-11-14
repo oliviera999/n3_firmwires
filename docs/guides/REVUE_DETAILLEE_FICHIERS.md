@@ -1,5 +1,7 @@
 # 📝 REVUE DÉTAILLÉE - ANALYSE FICHIER PAR FICHIER
 
+> ℹ️ **Mise à jour (nov. 2025)** : les anciennes références aux namespaces `Compatibility*` ont été retirées du firmware. Cette revue conserve les sections historiques mais il faut désormais utiliser les namespaces natifs (`ProjectConfig`, `ApiConfig`, `EmailConfig`, etc.).
+
 ## 📋 Table des matières
 1. [platformio.ini](#1-platformioini)
 2. [src/app.cpp](#2-srcappcpp)

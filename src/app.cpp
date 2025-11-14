@@ -93,7 +93,7 @@ void setup() {
 
   BootstrapStorage::initialize(g_appContext, g_lastDigestMs, g_lastDigestSeq);
   
-  LOG_INFO("Démarrage FFP5CS v%s", Config::VERSION);
+  LOG_INFO("Démarrage FFP5CS v%s", ProjectConfig::VERSION);
   
   time_t bootTime = time(nullptr);
   struct tm bootTimeInfo;
@@ -110,7 +110,7 @@ void setup() {
   } else {
     LOG_TIME(LOG_WARN, "Impossible de récupérer l'heure au démarrage");
   }
-  EventLog::addf("App start v%s", Config::VERSION);
+  EventLog::addf("App start v%s", ProjectConfig::VERSION);
   
   BootstrapNetwork::OtaState otaState{g_otaJustUpdated, g_previousVersion, g_lastOtaCheck};
   BootstrapNetwork::validatePendingOta(otaState);

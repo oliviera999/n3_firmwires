@@ -191,9 +191,9 @@ class Automatism {
   const unsigned long remoteFetchInterval = 4000; // 4 s - cohérent avec la fréquence des capteurs
 
   // thresholds modifiables à distance
-  uint16_t aqThresholdCm = Config::Default::AQ_LIMIT_CM;
-  uint16_t tankThresholdCm = Config::Default::TANK_LIMIT_CM;
-  float heaterThresholdC  = Config::Default::HEATER_THRESHOLD;
+  uint16_t aqThresholdCm = ActuatorConfig::Default::AQUA_LEVEL_CM;
+  uint16_t tankThresholdCm = ActuatorConfig::Default::TANK_LEVEL_CM;
+  float heaterThresholdC  = ActuatorConfig::Default::HEATER_THRESHOLD_C;
 
   // durées nourrissage (s) - synchronisées avec BDD distante par défaut
   uint16_t tempsGros = ActuatorConfig::Default::FEED_BIG_DURATION_SEC;

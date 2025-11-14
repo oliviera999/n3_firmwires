@@ -1,5 +1,24 @@
 # VERSION.md - GPIO Parsing Unifié v11.68
 
+## Version 11.118 - Optimisation mémoire - Buffers adaptatifs
+
+**Date**: 2025-11-14  
+**Type**: Optimisation mémoire critique
+
+### ✨ Points clés
+- Configuration des buffers adaptative selon le type de board (WROOM vs S3)
+- Réduction de 50% des tailles de buffers pour ESP32-WROOM (HTTP, JSON, Email)
+- Introduction de tailles JSON standardisées (SMALL=512B, MEDIUM=1.5KB, LARGE=3KB)
+- Ajout de monitoring mémoire avec `MemoryMonitor::logStats()`
+- JsonPool optimisé : de 15.9KB à 5.5KB pour WROOM (-65%)
+
+### 🔧 Impact
+- Version firmware : `include/config/version_config.h` → `11.118`
+- Fichiers créés : `include/config/memory_config_optimized.h`
+- Fichiers modifiés : `include/project_config.h`, `include/config/version_config.h`
+- **Gains mémoire estimés** : ~30KB libérés sur ESP32-WROOM
+- **Heap minimum attendu** : de 15.5KB à ~40KB (+158%)
+
 ## Version 11.103 - Cache Cleanup Non Mesuré
 
 **Date**: 2025-11-12  

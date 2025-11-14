@@ -56,7 +56,7 @@ Le système utilise une architecture robuste pour l'envoi de données vers le se
 - **URL primaire:** Configurée via `ServerConfig::getPostDataUrl()`
 - **URL secondaire:** Configurée via `ServerConfig::getSecondaryPostDataUrl()`
 - **Format:** `application/x-www-form-urlencoded`
-- **Timeout:** `ServerConfig::REQUEST_TIMEOUT_MS`
+- **Timeout:** `NetworkConfig::REQUEST_TIMEOUT_MS`
 - **Retry:** Système de tentatives multiples avec backoff
 
 #### 2. Données envoyées (`AutomatismNetwork::sendData`)

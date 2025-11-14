@@ -805,13 +805,13 @@ void OTAManager::updateTask(void* parameter) {
     extern Mailer mailer;
     extern Automatism autoCtrl;
     bool emailEnabled = autoCtrl.isEmailEnabled();
-    const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : Config::DEFAULT_MAIL_TO;
+    const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
     String part = running ? String(running->label) : String("(inconnue)");
     String md5 = ota->getFirmwareMD5();
     String body = String("Début de mise à jour OTA (Serveur distant)\n\n") +
                   "Détails:\n" +
                   "- Méthode: Tâche dédiée HTTP OTA\n" +
-                  "- Environnement: " + String(CompatibilityUtils::getEnvironmentName()) + "\n" +
+                  "- Environnement: " + String(Utils::getProfileName()) + "\n" +
                   "- Version courante: " + ota->getCurrentVersion() + "\n" +
                   "- Version distante: " + ota->getRemoteVersion() + "\n" +
                   "- URL firmware: " + ota->getFirmwareUrl() + "\n" +
@@ -898,7 +898,7 @@ void OTAManager::updateTask(void* parameter) {
             const esp_partition_t* prev_running = esp_ota_get_running_partition();
             const char* fromLbl = prev_running ? prev_running->label : "?";
             const char* toLbl   = new_boot ? new_boot->label : "?";
-            const char* curV = Config::VERSION;
+            const char* curV = ProjectConfig::VERSION;
             const char* newV = ota->getRemoteVersion().c_str();
             // Pas d'accès direct au SSID ici de façon fiable, passer label simple
             oled.showOtaProgressEx(100, fromLbl, toLbl, "Terminé", curV, newV, "OTA");
@@ -909,7 +909,7 @@ void OTAManager::updateTask(void* parameter) {
             extern Mailer mailer;
             extern Automatism autoCtrl;
             bool emailEnabled = autoCtrl.isEmailEnabled();
-            const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : Config::DEFAULT_MAIL_TO;
+            const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
             const esp_partition_t* prev_running = esp_ota_get_running_partition();
             String fromPart = prev_running ? String(prev_running->label) + " (0x" + String(prev_running->address, HEX) + ")" : String("(inconnue)");
             String bootPart = new_boot ? String(new_boot->label) + " (0x" + String(new_boot->address, HEX) + ")" : String("(inconnue)");
@@ -918,7 +918,7 @@ void OTAManager::updateTask(void* parameter) {
             String body = String("Fin de mise à jour OTA (Serveur distant)\n\n") +
                           "Détails:\n" +
                           "- Méthode: Tâche dédiée HTTP OTA\n" +
-                          "- Environnement: " + String(CompatibilityUtils::getEnvironmentName()) + "\n" +
+                          "- Environnement: " + String(Utils::getProfileName()) + "\n" +
                           "- Ancienne version: " + ota->getCurrentVersion() + "\n" +
                           "- Nouvelle version: " + ota->getRemoteVersion() + "\n" +
                           "- URL firmware: " + ota->getFirmwareUrl() + "\n" +

@@ -1,5 +1,7 @@
 # ANALYSE EXHAUSTIVE DU PROJET ESP32 FFP5CS v11.03
 
+> ℹ️ **Mise à jour (nov. 2025)** : Les sections mentionnant `CompatibilityAliases`, `CompatibilityUtils` ou `namespace Config` concernent l’ancienne architecture. Depuis v11.118, ces alias ont été supprimés au profit des namespaces natifs (`ProjectConfig`, `EmailConfig`, etc.).
+
 **Date d'analyse**: 2025-10-10  
 **Version analysée**: 11.03  
 **Environnement**: ESP32-WROOM-32 & ESP32-S3  
@@ -91,7 +93,7 @@ TimingConfig::HEARTBEAT_INTERVAL_MS = 30000               // millisecondes
 
 3. **Macros de compatibilité obsolètes** (lignes 637-697):
 ```cpp
-namespace CompatibilityAliases { ... }  // ⚠️ Pour migration depuis config.h
+namespace CompatibilityAliases { ... }  // ⚠️ ARCHIVE – supprimé depuis v11.118
 namespace Config { ... }                // ⚠️ Rétro-compatibilité temporaire
 ```
 Commentaire indique "à supprimer progressivement" mais toujours présent en v11.03
@@ -522,8 +524,8 @@ Peut être court dans environnements chargés
 
 1. **Timeouts agressifs**:
 ```cpp
-ServerConfig::CONNECTION_TIMEOUT_MS = 5000      // 5s
-ServerConfig::REQUEST_TIMEOUT_MS = 15000        // 15s
+NetworkConfig::CONNECTION_TIMEOUT_MS = 5000     // 5s
+NetworkConfig::REQUEST_TIMEOUT_MS = 15000       // 15s
 ```
 Peut causer échecs sur réseaux lents
 

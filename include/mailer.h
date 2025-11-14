@@ -14,7 +14,7 @@ class Mailer {
  public:
   bool begin();
   bool send(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
-  bool sendAlert(const char* subject, const String& message, const char* toEmail = Config::DEFAULT_MAIL_TO);
+  bool sendAlert(const char* subject, const String& message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings);
   bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings);
  private:

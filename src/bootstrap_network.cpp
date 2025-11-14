@@ -105,7 +105,7 @@ void checkForOtaUpdate(AppContext& ctx) {
   Serial.println("[OTA] ✅ Fonctionnalités: Tâche dédiée, esp_http_client, fallback");
   Serial.println("[OTA] ✅ Sécurité: Watchdog désactivé, validation complète");
 
-  ctx.otaManager.setCurrentVersion(Config::VERSION);
+  ctx.otaManager.setCurrentVersion(ProjectConfig::VERSION);
   ctx.otaManager.setCheckInterval(TimingConfig::OTA_CHECK_INTERVAL_MS);
 
   ctx.otaManager.setStatusCallback([&ctx](const String& message) {
@@ -162,7 +162,7 @@ void checkForOtaUpdate(AppContext& ctx) {
 
   Serial.printf("[OTA] 📊 Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());
   Serial.printf("[OTA] 📊 Heap libre: %d bytes\n", ESP.getFreeHeap());
-  Serial.printf("[OTA] 📊 Version courante: %s\n", Config::VERSION);
+  Serial.printf("[OTA] 📊 Version courante: %s\n", ProjectConfig::VERSION);
 
   const esp_partition_t* running = esp_ota_get_running_partition();
   if (running) {
@@ -207,11 +207,11 @@ void onWifiReady(AppContext& ctx,
       }
 
       bool mailNotif = ctx.automatism.isEmailEnabled();
-      const char* toEmail = mailNotif ? ctx.automatism.getEmailAddress() : Config::DEFAULT_MAIL_TO;
+      const char* toEmail = mailNotif ? ctx.automatism.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
       String body = String("Début de mise à jour OTA (Interface web ArduinoOTA)\n\n") +
                     "Détails:\n" +
                     "- Méthode: Interface web ArduinoOTA\n" +
-                    "- Version courante: " + String(Config::VERSION) + "\n" +
+                    "- Version courante: " + String(ProjectConfig::VERSION) + "\n" +
                     "- Hostname: " + String(hostname) + "\n";
       body += "- Hôte: "; body += hostname; body += ":"; body += String(SystemConfig::ARDUINO_OTA_PORT);
       ctx.mailer.sendAlert("OTA début - Interface web", body, toEmail);
@@ -275,7 +275,7 @@ void postConfiguration(AppContext& ctx,
     body += "Détails de la mise à jour:\n";
     body += "- Méthode: Serveur distant automatique\n";
     body += "- Ancienne version: " + state.previousVersion + "\n";
-    body += "- Nouvelle version: " + String(Config::VERSION) + "\n";
+    body += "- Nouvelle version: " + String(ProjectConfig::VERSION) + "\n";
     body += "- Hostname: "; body += hostname; body += "\n";
     body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
     body += "- Redémarrage automatique effectué";
@@ -293,7 +293,7 @@ void postConfiguration(AppContext& ctx,
 #if FEATURE_OTA && FEATURE_OTA != 0
   if (ctx.config.getOtaUpdateFlag()) {
     bool mailNotif = ctx.automatism.isEmailEnabled();
-    const char* mail = mailNotif ? ctx.automatism.getEmailAddress() : Config::DEFAULT_MAIL_TO;
+    const char* mail = mailNotif ? ctx.automatism.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
 
     if (mailNotif) {
       Serial.println("[App] Envoi email pour mise à jour OTA interface web...");
@@ -304,7 +304,7 @@ void postConfiguration(AppContext& ctx,
     String body = String("Mise à jour OTA effectuée avec succès.\n\n");
     body += "Détails de la mise à jour:\n";
     body += "- Méthode: Interface web ElegantOTA\n";
-    body += "- Nouvelle version: " + String(Config::VERSION) + "\n";
+    body += "- Nouvelle version: " + String(ProjectConfig::VERSION) + "\n";
     const char* safeHost = (hostname && hostname[0] != '\0') ? hostname : "(unknown)";
     body += "- Hostname: "; body += safeHost; body += "\n";
     body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
