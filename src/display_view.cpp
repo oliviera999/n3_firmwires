@@ -2,7 +2,7 @@
 #include "display_text_utils.h"
 #include "display_renderers.h"
 #include "status_bar_renderer.h"
-#include "project_config.h"
+#include "config.h"
 #include "pins.h"
 #include "oled_logo.h"
 #include <WiFi.h>

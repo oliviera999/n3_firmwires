@@ -6,7 +6,7 @@
 #include <esp_task_wdt.h>
 #include <time.h>
 #include <sys/time.h>
-#include "project_config.h"
+#include "config.h"
 #include "log.h"
 
 class PowerManager {
@@ -55,6 +55,9 @@ class PowerManager {
 
   // Configuration NTP
   void setNTPConfig(int gmtOffset, int daylightOffset, const char* ntpServer);
+
+  // Méthode rendue publique pour usage par AutomatismSleep
+  void logWakeupCause(esp_sleep_wakeup_cause_t cause);
 
   // Gestion WiFi pour light sleep
   void saveCurrentWifiCredentials();
@@ -105,6 +108,6 @@ class PowerManager {
   
   // Méthodes privées pour modem sleep
   void configurePowerDomainsForModemSleep();
-  void logWakeupCause(esp_sleep_wakeup_cause_t cause);
+  // void logWakeupCause(esp_sleep_wakeup_cause_t cause); // Rendue publique
   uint32_t getSleptTime(uint64_t startUs);
 };

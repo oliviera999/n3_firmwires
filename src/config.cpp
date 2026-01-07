@@ -1,4 +1,4 @@
-#include "project_config.h"
+#include "config.h"
 #include "config_manager.h"
 #include <ArduinoJson.h>
 #include <cstring>
@@ -303,12 +303,12 @@ bool ConfigManager::loadConfigFromNVS() {
     Serial.println(F("[Config] ✅ JSON valide, contenu:"));
     
     // Logger les principales variables trouvées
-    if (doc.containsKey("mail")) {
+    if (doc["mail"].is<const char*>()) {
       const char* email = doc["mail"].as<const char*>();
       Serial.printf("[Config]   - Email: %s\n", email ? email : "(vide)");
     }
     
-    if (doc.containsKey("mailNotif")) {
+    if (doc["mailNotif"].is<const char*>()) {
       const char* notifStr = doc["mailNotif"].as<const char*>();
       bool enabled = false;
       if (notifStr) {
@@ -329,55 +329,55 @@ bool ConfigManager::loadConfigFromNVS() {
       Serial.printf("[Config]   - Email notifications: %s\n", enabled ? "activées" : "désactivées");
     }
     
-    if (doc.containsKey("bouffeMatin") || doc.containsKey("105")) {
-      int val = doc.containsKey("bouffeMatin") ? doc["bouffeMatin"].as<int>() : doc["105"].as<int>();
+    if (doc["bouffeMatin"].is<int>() || doc["105"].is<int>()) {
+      int val = doc["bouffeMatin"].is<int>() ? doc["bouffeMatin"].as<int>() : doc["105"].as<int>();
       Serial.printf("[Config]   - Heure matin: %dh\n", val);
     }
     
-    if (doc.containsKey("bouffeMidi") || doc.containsKey("106")) {
-      int val = doc.containsKey("bouffeMidi") ? doc["bouffeMidi"].as<int>() : doc["106"].as<int>();
+    if (doc["bouffeMidi"].is<int>() || doc["106"].is<int>()) {
+      int val = doc["bouffeMidi"].is<int>() ? doc["bouffeMidi"].as<int>() : doc["106"].as<int>();
       Serial.printf("[Config]   - Heure midi: %dh\n", val);
     }
     
-    if (doc.containsKey("bouffeSoir") || doc.containsKey("107")) {
-      int val = doc.containsKey("bouffeSoir") ? doc["bouffeSoir"].as<int>() : doc["107"].as<int>();
+    if (doc["bouffeSoir"].is<int>() || doc["107"].is<int>()) {
+      int val = doc["bouffeSoir"].is<int>() ? doc["bouffeSoir"].as<int>() : doc["107"].as<int>();
       Serial.printf("[Config]   - Heure soir: %dh\n", val);
     }
     
-    if (doc.containsKey("tempsGros") || doc.containsKey("111")) {
-      int val = doc.containsKey("tempsGros") ? doc["tempsGros"].as<int>() : doc["111"].as<int>();
+    if (doc["tempsGros"].is<int>() || doc["111"].is<int>()) {
+      int val = doc["tempsGros"].is<int>() ? doc["tempsGros"].as<int>() : doc["111"].as<int>();
       Serial.printf("[Config]   - Durée gros: %ds\n", val);
     }
     
-    if (doc.containsKey("tempsPetits") || doc.containsKey("112")) {
-      int val = doc.containsKey("tempsPetits") ? doc["tempsPetits"].as<int>() : doc["112"].as<int>();
+    if (doc["tempsPetits"].is<int>() || doc["112"].is<int>()) {
+      int val = doc["tempsPetits"].is<int>() ? doc["tempsPetits"].as<int>() : doc["112"].as<int>();
       Serial.printf("[Config]   - Durée petits: %ds\n", val);
     }
     
-    if (doc.containsKey("aqThreshold") || doc.containsKey("102")) {
-      int val = doc.containsKey("aqThreshold") ? doc["aqThreshold"].as<int>() : doc["102"].as<int>();
+    if (doc["aqThreshold"].is<int>() || doc["102"].is<int>()) {
+      int val = doc["aqThreshold"].is<int>() ? doc["aqThreshold"].as<int>() : doc["102"].as<int>();
       Serial.printf("[Config]   - Seuil aquarium: %d cm\n", val);
     }
     
-    if (doc.containsKey("tankThreshold") || doc.containsKey("103")) {
-      int val = doc.containsKey("tankThreshold") ? doc["tankThreshold"].as<int>() : doc["103"].as<int>();
+    if (doc["tankThreshold"].is<int>() || doc["103"].is<int>()) {
+      int val = doc["tankThreshold"].is<int>() ? doc["tankThreshold"].as<int>() : doc["103"].as<int>();
       Serial.printf("[Config]   - Seuil réservoir: %d cm\n", val);
     }
     
-    if (doc.containsKey("heaterThreshold") || doc.containsKey("chauffageThreshold") || doc.containsKey("104")) {
-      float val = doc.containsKey("heaterThreshold") ? doc["heaterThreshold"].as<float>() : 
-                  (doc.containsKey("chauffageThreshold") ? doc["chauffageThreshold"].as<float>() : doc["104"].as<float>());
+    if (doc["heaterThreshold"].is<float>() || doc["chauffageThreshold"].is<float>() || doc["104"].is<float>()) {
+      float val = doc["heaterThreshold"].is<float>() ? doc["heaterThreshold"].as<float>() : 
+                  (doc["chauffageThreshold"].is<float>() ? doc["chauffageThreshold"].as<float>() : doc["104"].as<float>());
       Serial.printf("[Config]   - Seuil chauffage: %.1f°C\n", val);
     }
     
-    if (doc.containsKey("refillDuration") || doc.containsKey("tempsRemplissageSec") || doc.containsKey("113")) {
-      int val = doc.containsKey("refillDuration") ? doc["refillDuration"].as<int>() : 
-                (doc.containsKey("tempsRemplissageSec") ? doc["tempsRemplissageSec"].as<int>() : doc["113"].as<int>());
+    if (doc["refillDuration"].is<int>() || doc["tempsRemplissageSec"].is<int>() || doc["113"].is<int>()) {
+      int val = doc["refillDuration"].is<int>() ? doc["refillDuration"].as<int>() : 
+                (doc["tempsRemplissageSec"].is<int>() ? doc["tempsRemplissageSec"].as<int>() : doc["113"].as<int>());
       Serial.printf("[Config]   - Durée remplissage: %ds\n", val);
     }
     
-    if (doc.containsKey("limFlood") || doc.containsKey("114")) {
-      int val = doc.containsKey("limFlood") ? doc["limFlood"].as<int>() : doc["114"].as<int>();
+    if (doc["limFlood"].is<int>() || doc["114"].is<int>()) {
+      int val = doc["limFlood"].is<int>() ? doc["limFlood"].as<int>() : doc["114"].as<int>();
       Serial.printf("[Config]   - Limite inondation: %d cm\n", val);
     }
     
@@ -389,4 +389,4 @@ bool ConfigManager::loadConfigFromNVS() {
   
   Serial.println(F("========================================"));
   return true; // Config chargée depuis NVS
-} 
+}

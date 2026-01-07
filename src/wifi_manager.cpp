@@ -1,6 +1,6 @@
 #include "wifi_manager.h"
 #include "display_view.h"
-#include "project_config.h"
+#include "config.h"
 #include "event_log.h"
 #include <vector>
 #include <algorithm>

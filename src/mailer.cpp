@@ -1,6 +1,6 @@
 // Mailer implementation can be compiled out to save flash on ESP32 WROOM
 #include "mailer.h"
-#include "project_config.h"
+#include "config.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
 #include "diagnostics.h"
@@ -421,6 +421,8 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
   
   // Construction du message final (String statique pour persistance)
+  // Note: Nous utilisons toujours String ici car buildSystemInfoFooter() retourne une String
+  // et le contenu peut être très long
   finalMessageStatic = message ? message : "";
   finalMessageStatic += buildSystemInfoFooter();
   
@@ -444,8 +446,8 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   Serial.printf("[Mail] De: %s <%s>\n", msg.sender.name, msg.sender.email);
   Serial.printf("[Mail] À: %s <%s>\n", toName, toEmail);
   Serial.printf("[Mail] Objet: %s\n", msg.subject);
-  Serial.println(F("[Mail] Contenu:"));
-  Serial.println(finalMessageStatic);
+  Serial.println(F("[Mail] Contenu (aperçu):"));
+  Serial.println(finalMessageStatic.substring(0, 200));
   Serial.println(F("[Mail] ==========================="));
   
   bool ok = MailClient.sendMail(&_smtp, &msg);

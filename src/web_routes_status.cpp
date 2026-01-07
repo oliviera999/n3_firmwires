@@ -8,13 +8,11 @@
 
 #include "asset_bundler.h"
 #include "event_log.h"
-#include "json_pool.h"
-#include "network_optimizer.h"
-#include "project_config.h"
+// #include "json_pool.h" - Supprimé
+#include "config.h"
 #include "automatism.h"
 #include "config_manager.h"
 #include "power.h"
-#include "psram_optimizer.h"
 #include "realtime_websocket.h"
 #include "sensor_cache.h"
 #include "system_actuators.h"
@@ -35,9 +33,7 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
     doc["timestamp"] = ctx.power.getCurrentTimeString();
     doc["uptime_ms"] = millis();
 
-    String response;
-    serializeJson(doc, response);
-    ctx.sendJson(req, response);
+    ctx.sendJson(req, doc);
   });
 
   server.on("/wakeup", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
@@ -50,9 +46,7 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
     doc["wakeup_source"] = "http_request";
     doc["uptime_ms"] = millis();
 
-    String response;
-    serializeJson(doc, response);
-    ctx.sendJson(req, response);
+    ctx.sendJson(req, doc);
 
     ctx.realtimeWs.broadcastNow();
   });
@@ -85,9 +79,7 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
         statusDoc["wifi_rssi"] = WiFi.RSSI();
       }
 
-      String response;
-      serializeJson(statusDoc, response);
-      ctx.sendJson(req, response);
+      ctx.sendJson(req, statusDoc);
     } else if (action == "feed") {
       Serial.println("[Web] 🍽️ Déclenchement nourrissage à distance");
       ctx.automatism.manualFeedSmall();
@@ -99,18 +91,14 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
       feedDoc["status"] = "feeding_triggered";
       feedDoc["timestamp"] = ctx.power.getCurrentTimeString();
 
-      String response;
-      serializeJson(feedDoc, response);
-      ctx.sendJson(req, response);
+      ctx.sendJson(req, feedDoc);
     } else {
       StaticJsonDocument<128> respDoc;
       respDoc["status"] = "awake";
       respDoc["action"] = action;
       respDoc["timestamp"] = ctx.power.getCurrentTimeString();
 
-      String response;
-      serializeJson(respDoc, response);
-      ctx.sendJson(req, response);
+      ctx.sendJson(req, respDoc);
     }
 
     ctx.realtimeWs.broadcastNow();
@@ -119,48 +107,38 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
 
 void registerWifiStatus(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/wifi/status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
-    if (!doc) {
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
-
+    JsonDocument doc;
+    
     bool staConnected = WiFi.status() == WL_CONNECTED;
-    (*doc)["staConnected"] = staConnected;
+    doc["staConnected"] = staConnected;
     if (staConnected) {
-      (*doc)["staSSID"] = WiFi.SSID();
-      (*doc)["staIP"] = WiFi.localIP().toString();
-      (*doc)["staRSSI"] = WiFi.RSSI();
-      (*doc)["staMac"] = WiFi.macAddress();
+      doc["staSSID"] = WiFi.SSID();
+      doc["staIP"] = WiFi.localIP().toString();
+      doc["staRSSI"] = WiFi.RSSI();
+      doc["staMac"] = WiFi.macAddress();
     } else {
-      (*doc)["staSSID"] = "";
-      (*doc)["staIP"] = "";
-      (*doc)["staRSSI"] = 0;
-      (*doc)["staMac"] = WiFi.macAddress();
+      doc["staSSID"] = "";
+      doc["staIP"] = "";
+      doc["staRSSI"] = 0;
+      doc["staMac"] = WiFi.macAddress();
     }
 
     wifi_mode_t mode = WiFi.getMode();
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    (*doc)["apActive"] = apActive;
+    doc["apActive"] = apActive;
     if (apActive) {
-      (*doc)["apSSID"] = WiFi.softAPSSID();
-      (*doc)["apIP"] = WiFi.softAPIP().toString();
-      (*doc)["apClients"] = WiFi.softAPgetStationNum();
+      doc["apSSID"] = WiFi.softAPSSID();
+      doc["apIP"] = WiFi.softAPIP().toString();
+      doc["apClients"] = WiFi.softAPgetStationNum();
     } else {
-      (*doc)["apSSID"] = "";
-      (*doc)["apIP"] = "";
-      (*doc)["apClients"] = 0;
+      doc["apSSID"] = "";
+      doc["apIP"] = "";
+      doc["apClients"] = 0;
     }
 
-    (*doc)["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+    doc["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
 
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
-
-    jsonPool.release(doc);
-
-    ctx.sendJson(req, json);
+    ctx.sendJson(req, doc);
   });
 }
 
@@ -169,7 +147,7 @@ void registerServerStatus(AsyncWebServer& server, WebServerContext& ctx) {
     Serial.printf("[Web] 📊 Server status request from %s\n",
                   req->client()->remoteIP().toString().c_str());
 
-    ArduinoJson::DynamicJsonDocument doc(512);
+    JsonDocument doc;
     doc["heapFree"] = ESP.getFreeHeap();
     doc["heapTotal"] = ESP.getHeapSize();
     doc["psramFree"] = ESP.getFreePsram();
@@ -185,24 +163,21 @@ void registerServerStatus(AsyncWebServer& server, WebServerContext& ctx) {
     doc["webSocketClients"] = ctx.realtimeWs.getConnectedClients();
     doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
 
-    String json;
-    serializeJson(doc, json);
-    Serial.printf("[Web] 📤 Server status sent (%u bytes)\n", json.length());
+    Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-cache");
+    serializeJson(doc, *response);
     req->send(response);
   });
 }
 
 void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/api/remote-flags", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    ArduinoJson::DynamicJsonDocument doc(256);
+    JsonDocument doc;
     doc["sendEnabled"] = ctx.config.isRemoteSendEnabled();
     doc["recvEnabled"] = ctx.config.isRemoteRecvEnabled();
-    String json;
-    serializeJson(doc, json);
-    ctx.sendJson(req, json);
+    ctx.sendJson(req, doc);
   });
 
   server.on("/api/remote-flags", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
@@ -223,8 +198,12 @@ void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
       ctx.config.setRemoteRecvEnabled(enable);
       changed = true;
     }
-    String json = String("{\"ok\":true,\"changed\":") + (changed ? "true" : "false") + "}";
-    ctx.sendJson(req, json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["changed"] = changed;
+    serializeJson(doc, *response);
+    req->send(response);
   });
 }
 
@@ -233,7 +212,7 @@ void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
     Serial.printf("[Web] 🔍 Debug logs request from %s\n",
                   req->client()->remoteIP().toString().c_str());
 
-    ArduinoJson::DynamicJsonDocument doc(1024);
+    JsonDocument doc;
     doc["system"]["uptime"] = millis();
     doc["system"]["freeHeap"] = ESP.getFreeHeap();
     doc["system"]["heapSize"] = ESP.getHeapSize();
@@ -267,12 +246,11 @@ void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
     doc["actuators"]["heater"] = ctx.actuators.isHeaterOn();
     doc["actuators"]["light"] = ctx.actuators.isLightOn();
 
-    String json;
-    serializeJson(doc, json);
-    Serial.printf("[Web] 📤 Debug logs sent (%u bytes)\n", json.length());
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    Serial.println("[Web] 📤 Debug logs sent");
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-cache");
     response->addHeader("Access-Control-Allow-Origin", "*");
+    serializeJson(doc, *response);
     req->send(response);
   });
 }
@@ -309,10 +287,10 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
       return;
     }
 
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
+    ArduinoJson::JsonDocument* doc = new ArduinoJson::JsonDocument;
     if (!doc) {
-      Serial.println("[Web] ⚠️ JSON pool exhausted, using fallback allocation");
-      ArduinoJson::DynamicJsonDocument fallbackDoc(512);
+      Serial.println("[Web] ⚠️ Allocation failed, using fallback allocation");
+      ArduinoJson::JsonDocument fallbackDoc;
       SensorReadings r = sensorCache.getReadings(ctx.sensors);
 
       fallbackDoc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
@@ -355,10 +333,7 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
 
       fallbackDoc["timestamp"] = millis();
 
-      String json;
-      json.reserve(512);
-      serializeJson(fallbackDoc, json);
-      AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+      AsyncResponseStream* response = req->beginResponseStream("application/json");
       response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       response->addHeader("Pragma", "no-cache");
       response->addHeader("Expires", "0");
@@ -366,6 +341,7 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
       response->addHeader("Access-Control-Allow-Origin", "*");
       response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      serializeJson(fallbackDoc, *response);
       req->send(response);
       return;
     }
@@ -411,12 +387,7 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
 
     (*doc)["timestamp"] = millis();
 
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
-    jsonPool.release(doc);
-
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
@@ -424,18 +395,17 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(*doc, *response);
+    delete doc;
     req->send(response);
   });
 }
 
 void registerVersionEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/version", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    String js;
-    js.reserve(32);
-    js = "{\"version\":\"";
-    js += ProjectConfig::VERSION;
-    js += "\"}";
-    ctx.sendJson(req, js);
+    StaticJsonDocument<64> doc;
+    doc["version"] = ProjectConfig::VERSION;
+    ctx.sendJson(req, doc);
   });
 }
 
@@ -454,108 +424,68 @@ void registerPumpStats(AsyncWebServer& server, WebServerContext& ctx) {
     const unsigned long currentRuntimeSec = currentRuntime / 1000U;
     const unsigned long totalRuntimeSec = totalRuntime / 1000U;
 
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
-    if (!doc) {
-      ArduinoJson::DynamicJsonDocument fallbackDoc(512);
-      fallbackDoc["isRunning"] = isRunning;
-      fallbackDoc["currentRuntime"] = currentRuntime;
-      fallbackDoc["currentRuntimeSec"] = currentRuntimeSec;
-      fallbackDoc["totalRuntime"] = totalRuntime;
-      fallbackDoc["totalRuntimeSec"] = totalRuntimeSec;
-      fallbackDoc["totalStops"] = totalStops;
-      fallbackDoc["lastStopTime"] = lastStopTime;
-      fallbackDoc["timeSinceLastStop"] = timeSinceLastStop;
-      fallbackDoc["timeSinceLastStopSec"] = timeSinceLastStopSec;
-      fallbackDoc["timestamp"] = now;
+    JsonDocument doc;
+    doc["isRunning"] = isRunning;
+    doc["currentRuntime"] = currentRuntime;
+    doc["currentRuntimeSec"] = currentRuntimeSec;
+    doc["totalRuntime"] = totalRuntime;
+    doc["totalRuntimeSec"] = totalRuntimeSec;
+    doc["totalStops"] = totalStops;
+    doc["lastStopTime"] = lastStopTime;
+    doc["timeSinceLastStop"] = timeSinceLastStop;
+    doc["timeSinceLastStopSec"] = timeSinceLastStopSec;
+    doc["timestamp"] = now;
 
-      String json;
-      json.reserve(512);
-      serializeJson(fallbackDoc, json);
-      NetworkOptimizer::sendOptimizedJson(req, json);
-      return;
-    }
-
-    (*doc)["isRunning"] = isRunning;
-    (*doc)["currentRuntime"] = currentRuntime;
-    (*doc)["currentRuntimeSec"] = currentRuntimeSec;
-    (*doc)["totalRuntime"] = totalRuntime;
-    (*doc)["totalRuntimeSec"] = totalRuntimeSec;
-    (*doc)["totalStops"] = totalStops;
-    (*doc)["lastStopTime"] = lastStopTime;
-    (*doc)["timeSinceLastStop"] = timeSinceLastStop;
-    (*doc)["timeSinceLastStopSec"] = timeSinceLastStopSec;
-    (*doc)["timestamp"] = now;
-
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
-    jsonPool.release(doc);
-
-    NetworkOptimizer::sendWithCache(req, json, "application/json", 30);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "public, max-age=30");
+    serializeJson(doc, *response);
+    req->send(response);
   });
 }
 
 void registerOptimizationStats(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/optimization-stats", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(1024);
-    if (!doc) {
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
+    JsonDocument doc;
 
-    auto jsonPoolStats = jsonPool.getStats();
-    (*doc)["jsonPool"]["totalDocuments"] = jsonPoolStats.totalDocuments;
-    (*doc)["jsonPool"]["usedDocuments"] = jsonPoolStats.usedDocuments;
-    (*doc)["jsonPool"]["availableDocuments"] = jsonPoolStats.availableDocuments;
-    (*doc)["jsonPool"]["totalCapacity"] = jsonPoolStats.totalCapacity;
-    (*doc)["jsonPool"]["usedCapacity"] = jsonPoolStats.usedCapacity;
+    // JSON Pool supprimé
+    doc["jsonPool"]["totalDocuments"] = 0;
+    doc["jsonPool"]["usedDocuments"] = 0;
+    doc["jsonPool"]["availableDocuments"] = 0;
+    doc["jsonPool"]["totalCapacity"] = 0;
+    doc["jsonPool"]["usedCapacity"] = 0;
 
     auto sensorCacheStats = sensorCache.getStats();
-    (*doc)["sensorCache"]["lastUpdate"] = sensorCacheStats.lastUpdate;
-    (*doc)["sensorCache"]["cacheAge"] = sensorCacheStats.cacheAge;
-    (*doc)["sensorCache"]["cacheDuration"] = sensorCacheStats.cacheDuration;
-    (*doc)["sensorCache"]["isValid"] = sensorCacheStats.isValid;
-    (*doc)["sensorCache"]["freeHeap"] = sensorCacheStats.freeHeap;
+    doc["sensorCache"]["lastUpdate"] = sensorCacheStats.lastUpdate;
+    doc["sensorCache"]["cacheAge"] = sensorCacheStats.cacheAge;
+    doc["sensorCache"]["cacheDuration"] = sensorCacheStats.cacheDuration;
+    doc["sensorCache"]["isValid"] = sensorCacheStats.isValid;
+    doc["sensorCache"]["freeHeap"] = sensorCacheStats.freeHeap;
 
     auto wsStats = ctx.realtimeWs.getStats();
-    (*doc)["webSocket"]["connectedClients"] = wsStats.connectedClients;
-    (*doc)["webSocket"]["isActive"] = wsStats.isActive;
-    (*doc)["webSocket"]["lastBroadcast"] = wsStats.lastBroadcast;
-    (*doc)["webSocket"]["broadcastInterval"] = wsStats.broadcastInterval;
+    doc["webSocket"]["connectedClients"] = wsStats.connectedClients;
+    doc["webSocket"]["isActive"] = wsStats.isActive;
+    doc["webSocket"]["lastBroadcast"] = wsStats.lastBroadcast;
+    doc["webSocket"]["broadcastInterval"] = wsStats.broadcastInterval;
 
     auto bundleStats = AssetBundler::getBundleStats();
-    (*doc)["bundles"]["jsBundleSize"] = bundleStats.jsBundleSize;
-    (*doc)["bundles"]["cssBundleSize"] = bundleStats.cssBundleSize;
-    (*doc)["bundles"]["minBundleSize"] = bundleStats.minBundleSize;
-    (*doc)["bundles"]["jsAvailable"] = bundleStats.jsAvailable;
-    (*doc)["bundles"]["cssAvailable"] = bundleStats.cssAvailable;
-    (*doc)["bundles"]["minAvailable"] = bundleStats.minAvailable;
-    (*doc)["bundles"]["totalFiles"] = bundleStats.totalFiles;
-    (*doc)["bundles"]["totalSize"] = bundleStats.totalSize;
+    doc["bundles"]["jsBundleSize"] = bundleStats.jsBundleSize;
+    doc["bundles"]["cssBundleSize"] = bundleStats.cssBundleSize;
+    doc["bundles"]["minBundleSize"] = bundleStats.minBundleSize;
+    doc["bundles"]["jsAvailable"] = bundleStats.jsAvailable;
+    doc["bundles"]["cssAvailable"] = bundleStats.cssAvailable;
+    doc["bundles"]["minAvailable"] = bundleStats.minAvailable;
+    doc["bundles"]["totalFiles"] = bundleStats.totalFiles;
+    doc["bundles"]["totalSize"] = bundleStats.totalSize;
 
-#ifdef BOARD_S3
-    auto psramStats = PSRAMOptimizer::getStats();
-    (*doc)["psram"]["available"] = psramStats.available;
-    (*doc)["psram"]["total"] = psramStats.total;
-    (*doc)["psram"]["free"] = psramStats.free;
-    (*doc)["psram"]["used"] = psramStats.used;
-    (*doc)["psram"]["usagePercent"] = psramStats.usagePercent;
-#else
-    (*doc)["psram"]["available"] = false;
-    (*doc)["psram"]["total"] = 0;
-    (*doc)["psram"]["free"] = 0;
-    (*doc)["psram"]["used"] = 0;
-    (*doc)["psram"]["usagePercent"] = 0;
-#endif
+    doc["psram"]["available"] = false;
+    doc["psram"]["total"] = 0;
+    doc["psram"]["free"] = 0;
+    doc["psram"]["used"] = 0;
+    doc["psram"]["usagePercent"] = 0;
 
-    (*doc)["timestamp"] = millis();
+    doc["timestamp"] = millis();
 
-    String json;
-    json.reserve(1024);
-    serializeJson(*doc, json);
-    jsonPool.release(doc);
-
-    NetworkOptimizer::sendOptimizedJson(req, json);
+    ctx.sendJson(req, doc);
   });
 }
 
@@ -583,5 +513,3 @@ namespace WebRoutes {
 void registerStatusRoutes(void* server, void* ctx) {}
 }  // namespace WebRoutes
 #endif
-
-

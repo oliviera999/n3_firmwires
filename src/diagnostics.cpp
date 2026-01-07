@@ -175,6 +175,20 @@ void Diagnostics::update() {
   }
 }
 
+//   doc["freeStack"] = _stats.freeStack;
+//   doc["rebootCount"] = _stats.rebootCount;
+//   doc["lastRebootReason"] = _stats.lastRebootReason;
+//   if (_stats.idlePercent != 255) doc["idlePercent"] = _stats.idlePercent;
+//   if (_stats.taskStats.length() > 0) doc["taskStats"] = _stats.taskStats;
+//   // Réseau/OTA
+//   doc["httpOk"] = _stats.httpSuccessCount;
+//   doc["httpKo"] = _stats.httpFailCount;
+//   doc["lastHttpCode"] = _stats.lastHttpCode;
+//   doc["otaOk"] = _stats.otaSuccessCount;
+//   doc["otaKo"] = _stats.otaFailCount;
+//   if (_stats.lastOtaError.length() > 0) doc["lastOtaError"] = _stats.lastOtaError;
+// }
+
 void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   doc["uptime"] = _stats.uptimeSec;
   doc["freeHeap"] = _stats.freeHeap;

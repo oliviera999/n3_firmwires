@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include "system_sensors.h"
 #include "system_actuators.h"
-#include "project_config.h"
+#include "config.h"
 #include "diagnostics.h"
 #include <ESPAsyncWebServer.h>
 #include <functional> // Pour std::function

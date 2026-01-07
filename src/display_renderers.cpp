@@ -1,7 +1,7 @@
 #include "display_renderers.h"
 
 #include "display_view.h"
-#include "project_config.h"
+#include "config.h"
 #include <Adafruit_SSD1306.h>
 #include <cstring>
 

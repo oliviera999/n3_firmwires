@@ -3,7 +3,7 @@
 #include <DHT.h>
 #include <DallasTemperature.h>
 #include "pins.h"
-#include "project_config.h"
+#include "config.h"
 
 class UltrasonicManager {
  public:
@@ -11,7 +11,6 @@ class UltrasonicManager {
   // Renvoie la distance (cm), 0 si invalide
   uint16_t readFiltered(uint8_t samples = 5);
   uint16_t readAdvancedFiltered(); // Nouvelle méthode avec filtrage avancé
-  uint16_t readRobustFiltered(); // Lecture robuste avec fallback
   uint16_t readReactiveFiltered(); // Lecture réactive avec lissage minimal
   void resetHistory(); // Reset l'historique en cas de problème
  private:
@@ -90,8 +89,6 @@ class WaterTempSensor {
   void begin();
   float temperatureC();
   float filteredTemperatureC(); // Nouvelle méthode avec filtrage avancé
-  float robustTemperatureC(); // Nouvelle méthode avec récupération robuste (DÉPRÉCIÉE)
-  float ultraRobustTemperatureC(); // Méthode ultra-robuste avec validation croisée (DÉPRÉCIÉE)
   float getTemperatureWithFallback(); // NOUVELLE MÉTHODE NON-BLOQUANTE (v11.50)
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorConnected(); // Vérifie la connectivité du capteur

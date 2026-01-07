@@ -55,13 +55,13 @@ bool WebServerContext::ensureHeap(AsyncWebServerRequest* req,
 }
 
 void WebServerContext::sendJson(AsyncWebServerRequest* req,
-                                const String& json,
+                                const JsonDocument& doc,
                                 bool enableCors) const {
   if (!req) {
     return;
   }
 
-  AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+  AsyncResponseStream* response = req->beginResponseStream("application/json");
   if (!response) {
     Serial.println(F("[Web] ❌ Échec création réponse JSON (heap insuffisant)"));
     req->send(500, "text/plain", "Memory error");
@@ -72,6 +72,7 @@ void WebServerContext::sendJson(AsyncWebServerRequest* req,
   if (enableCors) {
     response->addHeader("Access-Control-Allow-Origin", "*");
   }
+  serializeJson(doc, *response);
   req->send(response);
 }
 
@@ -145,7 +146,7 @@ bool WebServerContext::sendManualActionEmail(const char* action,
 // Note: Les signatures doivent correspondre au header même si AsyncWebServer n'est pas disponible
 // On utilise des forward declarations pour éviter les erreurs de compilation
 struct AsyncWebServerRequest {};
-void WebServerContext::sendJson(AsyncWebServerRequest* req, const String& json, bool enableCors) const {}
+void WebServerContext::sendJson(AsyncWebServerRequest* req, const JsonDocument& doc, bool enableCors) const {}
 bool WebServerContext::sendManualActionEmail(const char* action, const char* subject, const char* emailType) const { return false; }
 bool WebServerContext::ensureHeap(AsyncWebServerRequest* req, uint32_t minHeap, const __FlashStringHelper* routeName) const { return false; }
 #endif

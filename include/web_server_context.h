@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <functional>
+#include <ArduinoJson.h>
 
 class AsyncWebServerRequest;
 class Automatism;
@@ -41,7 +42,7 @@ struct WebServerContext {
                   const __FlashStringHelper* routeName) const;
 
   void sendJson(AsyncWebServerRequest* req,
-                const String& json,
+                const JsonDocument& doc,
                 bool enableCors = true) const;
 
   bool sendManualActionEmail(const char* action,

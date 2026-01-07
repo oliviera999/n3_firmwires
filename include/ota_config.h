@@ -1,6 +1,6 @@
 #pragma once
 
-#include "project_config.h"
+#include "config.h"
 
 // Configuration des URLs OTA par modèle d'ESP32
 // Modifiez ces URLs selon votre infrastructure

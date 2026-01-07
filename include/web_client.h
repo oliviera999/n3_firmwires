@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "project_config.h"
+#include "config.h"
 #include <WiFiClientSecure.h>
 
 struct Measurements {

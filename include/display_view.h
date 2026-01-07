@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include "project_config.h"
+#include "config.h"
 #include "display_cache.h"
 
 class StatusBarRenderer;

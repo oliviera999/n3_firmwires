@@ -6,7 +6,7 @@
 // Utilise la configuration centralisée de project_config.h
 // =============================================================================
 
-#include "project_config.h"
+#include "config.h"
 
 // Rétro-compatibilité avec l'ancien système
 using LogLevel = LogConfig::LogLevel;

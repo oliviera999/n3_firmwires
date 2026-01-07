@@ -5,10 +5,10 @@
 #include "display_view.h"
 #include "power.h"
 #include "mailer.h"
-#include "project_config.h"
+#include "config.h"
 #include "config_manager.h"
 #include "automatism/automatism_feeding.h"
-#include "automatism/automatism_network.h"
+#include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
 #include "automatism/automatism_state.h"
 #include "automatism/automatism_refill_controller.h"
@@ -110,7 +110,7 @@ class Automatism {
   
   // === MODULES (Composition) ===
   AutomatismFeeding _feeding;
-  AutomatismNetwork _network;
+  AutomatismSync _network;
   AutomatismSleep _sleep;
   AutomatismRefillController _refillController;
   AutomatismAlertController _alertController;
@@ -320,7 +320,7 @@ class Automatism {
                                bool tideAscending,
                                int diff10s,
                                uint32_t heapAfterCleanup,
-                               const TaskMonitor::Snapshot& tasksBefore);
+                               const TaskMonitor::Snapshot& tasks);
 
   void logSleepTransitionEnd(uint32_t scheduledSeconds,
                              uint32_t actualSeconds,

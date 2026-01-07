@@ -3,7 +3,7 @@
 #include "log.h" // Ajouté pour LOG
 #include <math.h> // ajout pour isnan
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
-#include "project_config.h"
+#include "config.h"
 
 SystemSensors::SystemSensors() {}
 

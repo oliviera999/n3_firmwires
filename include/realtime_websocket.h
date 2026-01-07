@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
-#include "json_pool.h"
+// #include "json_pool.h" - Supprimé
 #include "sensor_cache.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
@@ -155,7 +155,7 @@ public:
      */
     void handleClientMessage(uint8_t clientNum, const String& message) {
         // Analyser le message JSON
-        ArduinoJson::DynamicJsonDocument doc(256);
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, message);
         
         if (error) {
@@ -164,8 +164,8 @@ public:
         }
         
         // Traiter les commandes
-        if (doc.containsKey("type")) {
-            String type = doc["type"];
+        if (doc["type"].is<const char*>()) {
+            String type = doc["type"].as<String>();
             
             if (type == "ping") {
                 // Répondre au ping
@@ -173,9 +173,9 @@ public:
             } else if (type == "subscribe") {
                 // Client s'abonne aux mises à jour
                 sendCurrentData(clientNum);
-            } else if (type == "control" && doc.containsKey("action")) {
+            } else if (type == "control" && doc["action"].is<const char*>()) {
                 // Commande de contrôle (si autorisé)
-                handleControlCommand(clientNum, doc["action"]);
+                handleControlCommand(clientNum, doc["action"].as<String>());
             }
         }
     }
@@ -186,64 +186,60 @@ public:
     void sendCurrentData(uint8_t clientNum) {
         if (!sensors || !actuators) return;
         
-        // Utiliser le pool JSON
-        ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(768);
-        if (!doc) return;
+        // Utiliser allocation standard
+        JsonDocument doc;
         
         // Récupérer les données via le cache
         SensorReadings readings = sensorCache.getReadings(*sensors);
         
         // Construire la réponse
-        (*doc)["type"] = "sensor_data";
-        (*doc)["tempWater"] = readings.tempWater;
-        (*doc)["tempAir"] = readings.tempAir;
-        (*doc)["humidity"] = readings.humidity;
-        (*doc)["wlAqua"] = readings.wlAqua;
-        (*doc)["wlTank"] = readings.wlTank;
-        (*doc)["wlPota"] = readings.wlPota;
-        (*doc)["luminosite"] = readings.luminosite;
-        (*doc)["pumpAqua"] = actuators->isAquaPumpRunning();
-        (*doc)["pumpTank"] = actuators->isTankPumpRunning();
-        (*doc)["heater"] = actuators->isHeaterOn();
-        (*doc)["light"] = actuators->isLightOn();
-        (*doc)["forceWakeup"] = forceWakeUpState;
-        (*doc)["resetMode"] = 0; // resetMode est toujours 0 en temps normal
-        (*doc)["timestamp"] = millis();
+        doc["type"] = "sensor_data";
+        doc["tempWater"] = readings.tempWater;
+        doc["tempAir"] = readings.tempAir;
+        doc["humidity"] = readings.humidity;
+        doc["wlAqua"] = readings.wlAqua;
+        doc["wlTank"] = readings.wlTank;
+        doc["wlPota"] = readings.wlPota;
+        doc["luminosite"] = readings.luminosite;
+        doc["pumpAqua"] = actuators->isAquaPumpRunning();
+        doc["pumpTank"] = actuators->isTankPumpRunning();
+        doc["heater"] = actuators->isHeaterOn();
+        doc["light"] = actuators->isLightOn();
+        doc["forceWakeup"] = forceWakeUpState;
+        doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
+        doc["timestamp"] = millis();
         
         // Informations WiFi STA
         bool staConnected = WiFi.status() == WL_CONNECTED;
-        (*doc)["wifiStaConnected"] = staConnected;
+        doc["wifiStaConnected"] = staConnected;
         if (staConnected) {
-            (*doc)["wifiStaSSID"] = WiFi.SSID();
-            (*doc)["wifiStaIP"] = WiFi.localIP().toString();
-            (*doc)["wifiStaRSSI"] = WiFi.RSSI();
+            doc["wifiStaSSID"] = WiFi.SSID();
+            doc["wifiStaIP"] = WiFi.localIP().toString();
+            doc["wifiStaRSSI"] = WiFi.RSSI();
         } else {
-            (*doc)["wifiStaSSID"] = "";
-            (*doc)["wifiStaIP"] = "";
-            (*doc)["wifiStaRSSI"] = 0;
+            doc["wifiStaSSID"] = "";
+            doc["wifiStaIP"] = "";
+            doc["wifiStaRSSI"] = 0;
         }
         
         // Informations WiFi AP
         wifi_mode_t mode = WiFi.getMode();
         bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-        (*doc)["wifiApActive"] = apActive;
+        doc["wifiApActive"] = apActive;
         if (apActive) {
-            (*doc)["wifiApSSID"] = WiFi.softAPSSID();
-            (*doc)["wifiApIP"] = WiFi.softAPIP().toString();
-            (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
+            doc["wifiApSSID"] = WiFi.softAPSSID();
+            doc["wifiApIP"] = WiFi.softAPIP().toString();
+            doc["wifiApClients"] = WiFi.softAPgetStationNum();
         } else {
-            (*doc)["wifiApSSID"] = "";
-            (*doc)["wifiApIP"] = "";
-            (*doc)["wifiApClients"] = 0;
+            doc["wifiApSSID"] = "";
+            doc["wifiApIP"] = "";
+            doc["wifiApClients"] = 0;
         }
         
         // Sérialiser et envoyer
         String json;
-        serializeJson(*doc, json);
+        serializeJson(doc, json);
         webSocket.sendTXT(clientNum, json);
-        
-        // Libérer le document
-        jsonPool.release(doc);
     }
     
     /**
@@ -305,64 +301,61 @@ public:
         }
         
         if (shouldBroadcast) {
-            // Utiliser le pool JSON
-            ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(768);
-            if (doc) {
-                // Récupérer les données via le cache
-                SensorReadings readings = sensorCache.getReadings(*sensors);
-                
-                // Construire la réponse
-                (*doc)["type"] = "sensor_update";
-                (*doc)["tempWater"] = readings.tempWater;
-                (*doc)["tempAir"] = readings.tempAir;
-                (*doc)["humidity"] = readings.humidity;
-                (*doc)["wlAqua"] = readings.wlAqua;
-                (*doc)["wlTank"] = readings.wlTank;
-                (*doc)["wlPota"] = readings.wlPota;
-                (*doc)["luminosite"] = readings.luminosite;
-                (*doc)["pumpAqua"] = actuators->isAquaPumpRunning();
-                (*doc)["pumpTank"] = actuators->isTankPumpRunning();
-                (*doc)["heater"] = actuators->isHeaterOn();
-                (*doc)["light"] = actuators->isLightOn();
-                (*doc)["forceWakeup"] = forceWakeUpState;
-                (*doc)["resetMode"] = 0; // resetMode est toujours 0 en temps normal
-                (*doc)["timestamp"] = now;
-                
-                // Informations WiFi STA
-                bool staConnected = WiFi.status() == WL_CONNECTED;
-                (*doc)["wifiStaConnected"] = staConnected;
-                if (staConnected) {
-                    (*doc)["wifiStaSSID"] = WiFi.SSID();
-                    (*doc)["wifiStaIP"] = WiFi.localIP().toString();
-                    (*doc)["wifiStaRSSI"] = WiFi.RSSI();
-                } else {
-                    (*doc)["wifiStaSSID"] = "";
-                    (*doc)["wifiStaIP"] = "";
-                    (*doc)["wifiStaRSSI"] = 0;
-                }
-                
-                // Informations WiFi AP
-                wifi_mode_t mode = WiFi.getMode();
-                bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-                (*doc)["wifiApActive"] = apActive;
-                if (apActive) {
-                    (*doc)["wifiApSSID"] = WiFi.softAPSSID();
-                    (*doc)["wifiApIP"] = WiFi.softAPIP().toString();
-                    (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
-                } else {
-                    (*doc)["wifiApSSID"] = "";
-                    (*doc)["wifiApIP"] = "";
-                    (*doc)["wifiApClients"] = 0;
-                }
-                
-                // Sérialiser et diffuser
-                String json;
-                serializeJson(*doc, json);
-                webSocket.broadcastTXT(json);
-                
-                // Libérer le document
-                jsonPool.release(doc);
+            // Utiliser allocation standard
+            JsonDocument doc;
+            
+            // Récupérer les données via le cache
+            SensorReadings readings = sensorCache.getReadings(*sensors);
+            
+            // Construire la réponse
+            doc["type"] = "sensor_update";
+            doc["tempWater"] = readings.tempWater;
+            doc["tempAir"] = readings.tempAir;
+            doc["humidity"] = readings.humidity;
+            doc["wlAqua"] = readings.wlAqua;
+            doc["wlTank"] = readings.wlTank;
+            doc["wlPota"] = readings.wlPota;
+            doc["luminosite"] = readings.luminosite;
+            doc["pumpAqua"] = actuators->isAquaPumpRunning();
+            doc["pumpTank"] = actuators->isTankPumpRunning();
+            doc["heater"] = actuators->isHeaterOn();
+            doc["light"] = actuators->isLightOn();
+            doc["forceWakeup"] = forceWakeUpState;
+            doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
+            doc["timestamp"] = now;
+            
+            // Informations WiFi STA
+            bool staConnected = WiFi.status() == WL_CONNECTED;
+            doc["wifiStaConnected"] = staConnected;
+            if (staConnected) {
+                doc["wifiStaSSID"] = WiFi.SSID();
+                doc["wifiStaIP"] = WiFi.localIP().toString();
+                doc["wifiStaRSSI"] = WiFi.RSSI();
+            } else {
+                doc["wifiStaSSID"] = "";
+                doc["wifiStaIP"] = "";
+                doc["wifiStaRSSI"] = 0;
             }
+            
+            // Informations WiFi AP
+            wifi_mode_t mode = WiFi.getMode();
+            bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
+            doc["wifiApActive"] = apActive;
+            if (apActive) {
+                doc["wifiApSSID"] = WiFi.softAPSSID();
+                doc["wifiApIP"] = WiFi.softAPIP().toString();
+                doc["wifiApClients"] = WiFi.softAPgetStationNum();
+            } else {
+                doc["wifiApSSID"] = "";
+                doc["wifiApIP"] = "";
+                doc["wifiApClients"] = 0;
+            }
+            
+            // Sérialiser et diffuser
+            String json;
+            serializeJson(doc, json);
+            webSocket.broadcastTXT(json);
+            
             lastBroadcast = now;
         }
         
@@ -400,56 +393,55 @@ public:
                 return;
             }
         }
-        // Utiliser le pool JSON
-        ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(768);
-        if (doc) {
-            SensorReadings readings = sensorCache.getReadings(*sensors);
-            (*doc)["type"] = "sensor_update";
-            (*doc)["tempWater"] = readings.tempWater;
-            (*doc)["tempAir"] = readings.tempAir;
-            (*doc)["humidity"] = readings.humidity;
-            (*doc)["wlAqua"] = readings.wlAqua;
-            (*doc)["wlTank"] = readings.wlTank;
-            (*doc)["wlPota"] = readings.wlPota;
-            (*doc)["luminosite"] = readings.luminosite;
-            (*doc)["pumpAqua"] = actuators->isAquaPumpRunning();
-            (*doc)["pumpTank"] = actuators->isTankPumpRunning();
-            (*doc)["heater"] = actuators->isHeaterOn();
-            (*doc)["light"] = actuators->isLightOn();
-            (*doc)["forceWakeup"] = forceWakeUpState;
-            (*doc)["timestamp"] = millis();
-            
-            // Informations WiFi STA
-            bool staConnected = WiFi.status() == WL_CONNECTED;
-            (*doc)["wifiStaConnected"] = staConnected;
-            if (staConnected) {
-                (*doc)["wifiStaSSID"] = WiFi.SSID();
-                (*doc)["wifiStaIP"] = WiFi.localIP().toString();
-                (*doc)["wifiStaRSSI"] = WiFi.RSSI();
-            } else {
-                (*doc)["wifiStaSSID"] = "";
-                (*doc)["wifiStaIP"] = "";
-                (*doc)["wifiStaRSSI"] = 0;
-            }
-            
-            // Informations WiFi AP
-            wifi_mode_t mode = WiFi.getMode();
-            bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-            (*doc)["wifiApActive"] = apActive;
-            if (apActive) {
-                (*doc)["wifiApSSID"] = WiFi.softAPSSID();
-                (*doc)["wifiApIP"] = WiFi.softAPIP().toString();
-                (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
-            } else {
-                (*doc)["wifiApSSID"] = "";
-                (*doc)["wifiApIP"] = "";
-                (*doc)["wifiApClients"] = 0;
-            }
-            
-            String json; serializeJson(*doc, json);
-            webSocket.broadcastTXT(json);
-            jsonPool.release(doc);
+        // Utiliser allocation standard
+        JsonDocument doc;
+        
+        SensorReadings readings = sensorCache.getReadings(*sensors);
+        doc["type"] = "sensor_update";
+        doc["tempWater"] = readings.tempWater;
+        doc["tempAir"] = readings.tempAir;
+        doc["humidity"] = readings.humidity;
+        doc["wlAqua"] = readings.wlAqua;
+        doc["wlTank"] = readings.wlTank;
+        doc["wlPota"] = readings.wlPota;
+        doc["luminosite"] = readings.luminosite;
+        doc["pumpAqua"] = actuators->isAquaPumpRunning();
+        doc["pumpTank"] = actuators->isTankPumpRunning();
+        doc["heater"] = actuators->isHeaterOn();
+        doc["light"] = actuators->isLightOn();
+        doc["forceWakeup"] = forceWakeUpState;
+        doc["timestamp"] = millis();
+        
+        // Informations WiFi STA
+        bool staConnected = WiFi.status() == WL_CONNECTED;
+        doc["wifiStaConnected"] = staConnected;
+        if (staConnected) {
+            doc["wifiStaSSID"] = WiFi.SSID();
+            doc["wifiStaIP"] = WiFi.localIP().toString();
+            doc["wifiStaRSSI"] = WiFi.RSSI();
+        } else {
+            doc["wifiStaSSID"] = "";
+            doc["wifiStaIP"] = "";
+            doc["wifiStaRSSI"] = 0;
         }
+        
+        // Informations WiFi AP
+        wifi_mode_t mode = WiFi.getMode();
+        bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
+        doc["wifiApActive"] = apActive;
+        if (apActive) {
+            doc["wifiApSSID"] = WiFi.softAPSSID();
+            doc["wifiApIP"] = WiFi.softAPIP().toString();
+            doc["wifiApClients"] = WiFi.softAPgetStationNum();
+        } else {
+            doc["wifiApSSID"] = "";
+            doc["wifiApIP"] = "";
+            doc["wifiApClients"] = 0;
+        }
+        
+        String json; serializeJson(doc, json);
+        webSocket.broadcastTXT(json);
+        
         lastBroadcast = millis();
         if (mutex) {
             xSemaphoreGive(mutex);

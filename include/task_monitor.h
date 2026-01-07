@@ -1,28 +1,36 @@
 #pragma once
 
-#include <stdint.h>
+#include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
 namespace TaskMonitor {
 
-struct Entry {
-  eTaskState state;
-  uint32_t highWaterMarkWords;
-};
+  // Structure simplifiée
+  struct TaskStats {
+    const char* name;
+    uint32_t highWaterMark; // Mots
+    eTaskState state;
+  };
 
-struct Snapshot {
-  Entry sensor;
-  Entry web;
-  Entry automation;
-  Entry display;
-};
+  // Snapshot global simplifié
+  struct Snapshot {
+    TaskStats sensor;
+    TaskStats web;
+    TaskStats automation;
+    TaskStats display;
+  };
 
-Snapshot collectSnapshot();
-void logSnapshot(const Snapshot& snapshot, const char* stage);
-void logDiff(const Snapshot& before, const Snapshot& after, const char* stage);
-bool detectAnomalies(const Snapshot& snapshot, const char* stage);
+  // Capture l'état actuel des tâches principales
+  Snapshot collectSnapshot();
 
-}  // namespace TaskMonitor
+  // Log simple de l'état
+  void logSnapshot(const Snapshot& snapshot, const char* stage);
 
+  // Comparaison simple (avant/après sleep par exemple)
+  void logDiff(const Snapshot& before, const Snapshot& after, const char* stage);
 
+  // Détection basique d'anomalies (stack overflow imminent)
+  bool detectAnomalies(const Snapshot& snapshot, const char* stage);
+
+} // namespace TaskMonitor

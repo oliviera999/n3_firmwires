@@ -2,7 +2,7 @@
 #include "config_manager.h"
 #include "diagnostics.h"
 #include "log.h"
-#include "project_config.h"
+#include "config.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
@@ -34,15 +34,14 @@ WebClient::WebClient(const char* apiKey) : _apiKey(apiKey) {
 bool WebClient::httpRequest(const String& url, const String& payload, String& response) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
-  // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
-  const uint32_t GLOBAL_TIMEOUT_MS = GlobalTimeouts::HTTP_MAX_MS;
+  size_t payloadLen = payload.length();
   uint32_t requestStartMs = millis();
   const bool debugLogging = (LOG_LEVEL >= LOG_DEBUG) && LogConfig::SERIAL_ENABLED;
   const bool verboseLogging = (LOG_LEVEL >= LOG_VERBOSE) && LogConfig::SERIAL_ENABLED;
 
   if (debugLogging) {
     LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes, timeout=%u ms)",
-        url.c_str(), payload.length(), GLOBAL_TIMEOUT_MS);
+        url.c_str(), payloadLen, GlobalTimeouts::HTTP_MAX_MS);
     LOG(LOG_DEBUG, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm",
         WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
     LOG(LOG_DEBUG, "[HTTP] IP=%s gateway=%s dns=%s",
@@ -51,13 +50,16 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
         WiFi.dnsIP().toString().c_str());
     LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes (min=%u)", ESP.getFreeHeap(), ESP.getMinFreeHeap());
 
-    if (verboseLogging && payload.length() > 0) {
-      const size_t previewLen = payload.length() > 200 ? 200 : payload.length();
+    if (verboseLogging && payloadLen > 0) {
+      const size_t previewLen = payloadLen > 200 ? 200 : payloadLen;
+      char previewBuf[201];
+      strncpy(previewBuf, payload.c_str(), previewLen);
+      previewBuf[previewLen] = '\0';
       LOG(LOG_VERBOSE, "[HTTP] Payload (%u/%u): %s%s",
           previewLen,
-          payload.length(),
-          payload.substring(0, previewLen).c_str(),
-          payload.length() > previewLen ? " ..." : "");
+          payloadLen,
+          previewBuf,
+          payloadLen > previewLen ? " ..." : "");
     }
   }
   
@@ -79,8 +81,8 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     LOG(LOG_DEBUG, "[HTTP] Modem sleep désactivé pendant le transfert");
   }
 
-  // Choix du client selon le schéma (HTTP = non-TLS / HTTPS = TLS)
-  bool secure = url.startsWith("https://");
+    // Choix du client selon le schéma (HTTP = non-TLS / HTTPS = TLS)
+    bool secure = url.startsWith("https://");
   WiFiClient plain; // client non-TLS (portée limitée à la fonction)
 
   // Politique de retry exponentiel simple
@@ -119,8 +121,8 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     
     // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
     uint32_t elapsedMs = millis() - requestStartMs;
-    if (elapsedMs >= GLOBAL_TIMEOUT_MS) {
-      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, GLOBAL_TIMEOUT_MS);
+    if (elapsedMs >= GlobalTimeouts::HTTP_MAX_MS) {
+      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, GlobalTimeouts::HTTP_MAX_MS);
       _http.end();
       return false;
     }
@@ -173,7 +175,7 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
           maxAttempts,
           errorTimeMs - requestStartMs,
           _http.errorToString(code).c_str());
-      LOG(LOG_WARN, "[HTTP] URL=%s", url.c_str());
+      LOG(LOG_WARN, "[HTTP] URL=%s", url);
       LOG(LOG_WARN, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm", WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
       LOG(LOG_WARN, "[HTTP] Heap libre=%u", ESP.getFreeHeap());
 
@@ -333,60 +335,84 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
     return String(buf, n);
   };
 
-  String payload;
-  payload.reserve(256);
-  auto appendKV = [&](const char* key, const String& value) {
-    if (payload.length()) payload += "&";
-    payload += key;
-    payload += "=";
-    payload += value;
+  char payload[512];
+  payload[0] = '\0';
+  size_t offset = 0;
+  
+  auto appendKV = [&](const char* key, const char* value) {
+    if (offset >= sizeof(payload) - 1) return;
+    if (offset > 0) offset += snprintf(payload + offset, sizeof(payload) - offset, "&");
+    offset += snprintf(payload + offset, sizeof(payload) - offset, "%s=%s", key, value);
   };
 
   Serial.println(F("[SM] Construction du payload..."));
   
-  // Ordre exact aligné sur la liste utilisée côté serveur
-  appendKV("version", String(ProjectConfig::VERSION));
-  appendKV("TempAir", fmtFloat(tempAir));
-  appendKV("Humidite", fmtFloat(humidity));
-  appendKV("TempEau", fmtFloat(tempWater));
-  appendKV("EauPotager", fmtUltrasonic(m.wlPota));
-  appendKV("EauAquarium", fmtUltrasonic(m.wlAqua));
-  appendKV("EauReserve", fmtUltrasonic(m.wlTank));
-  appendKV("diffMaree", String(m.diffMaree));
-  appendKV("Luminosite", String(m.luminosite));
-  appendKV("etatPompeAqua", String(m.pumpAqua ? 1 : 0));
-  appendKV("etatPompeTank", String(m.pumpTank ? 1 : 0));
-  appendKV("etatHeat", String(m.heater ? 1 : 0));
-  appendKV("etatUV", String(m.light ? 1 : 0));
-  // Champs non mesurés ici: valeurs vides (conforme exigence de complétude)
-  appendKV("bouffeMatin", String(""));
-  appendKV("bouffeMidi", String(""));
-  appendKV("bouffeSoir", String(""));
-  appendKV("bouffePetits", String(""));
-  appendKV("bouffeGros", String(""));
-  appendKV("tempsGros", String(""));
-  appendKV("tempsPetits", String(""));
-  // Seuils par défaut issus de la configuration centrale
-  appendKV("aqThreshold", String(ActuatorConfig::Default::AQUA_LEVEL_CM));
-  appendKV("tankThreshold", String(ActuatorConfig::Default::TANK_LEVEL_CM));
-  appendKV("chauffageThreshold", String((int)ActuatorConfig::Default::HEATER_THRESHOLD_C));
-  // Préférences/flags divers (laisser vide si non gérés localement)
-  appendKV("mail", String(""));
-  appendKV("mailNotif", String(""));
-  appendKV("resetMode", includeReset ? String(0) : String(""));
-  appendKV("tempsRemplissageSec", String(""));
-  appendKV("limFlood", String(""));
-  appendKV("WakeUp", String(""));
-  appendKV("FreqWakeUp", String(""));
+  // Helper strings
+  char buf_tempAir[16], buf_humid[16], buf_tempWater[16];
+  char buf_wlPota[8], buf_wlAqua[8], buf_wlTank[8];
+  char buf_diffMaree[16], buf_lum[16];
+  char buf_pumpAqua[2], buf_pumpTank[2], buf_heat[2], buf_uv[2];
+  char buf_threshAqua[8], buf_threshTank[8], buf_threshHeat[8];
+  
+  strcpy(buf_tempAir, fmtFloat(tempAir).c_str());
+  strcpy(buf_humid, fmtFloat(humidity).c_str());
+  strcpy(buf_tempWater, fmtFloat(tempWater).c_str());
+  strcpy(buf_wlPota, fmtUltrasonic(m.wlPota).c_str());
+  strcpy(buf_wlAqua, fmtUltrasonic(m.wlAqua).c_str());
+  strcpy(buf_wlTank, fmtUltrasonic(m.wlTank).c_str());
+  snprintf(buf_diffMaree, sizeof(buf_diffMaree), "%d", m.diffMaree);
+  snprintf(buf_lum, sizeof(buf_lum), "%u", m.luminosite);
+  snprintf(buf_pumpAqua, sizeof(buf_pumpAqua), "%d", m.pumpAqua ? 1 : 0);
+  snprintf(buf_pumpTank, sizeof(buf_pumpTank), "%d", m.pumpTank ? 1 : 0);
+  snprintf(buf_heat, sizeof(buf_heat), "%d", m.heater ? 1 : 0);
+  snprintf(buf_uv, sizeof(buf_uv), "%d", m.light ? 1 : 0);
+  snprintf(buf_threshAqua, sizeof(buf_threshAqua), "%d", ActuatorConfig::Default::AQUA_LEVEL_CM);
+  snprintf(buf_threshTank, sizeof(buf_threshTank), "%d", ActuatorConfig::Default::TANK_LEVEL_CM);
+  snprintf(buf_threshHeat, sizeof(buf_threshHeat), "%d", (int)ActuatorConfig::Default::HEATER_THRESHOLD_C);
 
-  Serial.printf("[SM] Payload construit: %u bytes\n", payload.length());
+  // Ordre exact aligné sur la liste utilisée côté serveur
+  appendKV("version", ProjectConfig::VERSION);
+  appendKV("TempAir", buf_tempAir);
+  appendKV("Humidite", buf_humid);
+  appendKV("TempEau", buf_tempWater);
+  appendKV("EauPotager", buf_wlPota);
+  appendKV("EauAquarium", buf_wlAqua);
+  appendKV("EauReserve", buf_wlTank);
+  appendKV("diffMaree", buf_diffMaree);
+  appendKV("Luminosite", buf_lum);
+  appendKV("etatPompeAqua", buf_pumpAqua);
+  appendKV("etatPompeTank", buf_pumpTank);
+  appendKV("etatHeat", buf_heat);
+  appendKV("etatUV", buf_uv);
+  // Champs non mesurés ici: valeurs vides
+  appendKV("bouffeMatin", "");
+  appendKV("bouffeMidi", "");
+  appendKV("bouffeSoir", "");
+  appendKV("bouffePetits", "");
+  appendKV("bouffeGros", "");
+  appendKV("tempsGros", "");
+  appendKV("tempsPetits", "");
+  // Seuils par défaut
+  appendKV("aqThreshold", buf_threshAqua);
+  appendKV("tankThreshold", buf_threshTank);
+  appendKV("chauffageThreshold", buf_threshHeat);
+  // Préférences/flags
+  appendKV("mail", "");
+  appendKV("mailNotif", "");
+  appendKV("resetMode", includeReset ? "0" : "");
+  appendKV("tempsRemplissageSec", "");
+  appendKV("limFlood", "");
+  appendKV("WakeUp", "");
+  appendKV("FreqWakeUp", "");
+
+  Serial.printf("[SM] Payload construit: %u bytes\n", strlen(payload));
   Serial.printf("[SM] Version: %s\n", ProjectConfig::VERSION);
   Serial.printf("[SM] Seuils - Aqua: %u, Tank: %u, Heat: %.1f°C\n", 
                ActuatorConfig::Default::AQUA_LEVEL_CM, 
                ActuatorConfig::Default::TANK_LEVEL_CM,
                ActuatorConfig::Default::HEATER_THRESHOLD_C);
 
-  LOG(LOG_DEBUG, "POST %s", payload.c_str());
+  LOG(LOG_DEBUG, "POST %s", payload);
   
   // Envoi direct: l'ordre exact est déjà respecté
   bool success = postRaw(payload);
@@ -401,7 +427,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   return success;
 }
 
-bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
+bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!config.isRemoteRecvEnabled()) {
     Serial.println(F("[GET] ⛔ Réception distante désactivée (config)"));
     return false;
@@ -487,22 +513,22 @@ bool WebClient::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
   
   Serial.printf("[GET] ✓ Remote JSON parsed successfully in %lu ms\n", parseDurationMs);
   
-  // Analyse du contenu JSON
-  if (doc.is<JsonObject>()) {
-    JsonObject obj = doc.as<JsonObject>();
-    Serial.printf("[GET] JSON object with %d keys\n", obj.size());
-    
-    // Log des clés principales pour debugging
-    if (obj.containsKey("version")) {
-      Serial.printf("[GET] Server version: %s\n", obj["version"].as<const char*>());
+    // Analyse du contenu JSON
+    if (doc.is<JsonObject>()) {
+      JsonObject obj = doc.as<JsonObject>();
+      Serial.printf("[GET] JSON object with %d keys\n", obj.size());
+      
+      // Log des clés principales pour debugging
+      if (obj["version"].is<const char*>()) {
+        Serial.printf("[GET] Server version: %s\n", obj["version"].as<const char*>());
+      }
+      if (obj["timestamp"].is<const char*>()) {
+        Serial.printf("[GET] Server timestamp: %s\n", obj["timestamp"].as<const char*>());
+      }
+      if (obj["status"].is<const char*>()) {
+        Serial.printf("[GET] Server status: %s\n", obj["status"].as<const char*>());
+      }
     }
-    if (obj.containsKey("timestamp")) {
-      Serial.printf("[GET] Server timestamp: %s\n", obj["timestamp"].as<const char*>());
-    }
-    if (obj.containsKey("status")) {
-      Serial.printf("[GET] Server status: %s\n", obj["status"].as<const char*>());
-    }
-  }
   
   unsigned long totalDurationMs = millis() - getStartMs;
   Serial.printf("[GET] === FIN REQUÊTE GET ===\n");
@@ -525,19 +551,23 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   Serial.printf("[HB] Timestamp: %lu ms\n", hbStartMs);
   
   String payload;
-  payload.reserve(128);
   const DiagnosticStats& s = diag.getStats();
   
   // Construction du payload avec logs détaillés
-  payload = String("uptime=") + s.uptimeSec + "&free=" + s.freeHeap + "&min=" + s.minFreeHeap + "&reboots=" + s.rebootCount;
-  Serial.printf("[HB] Payload avant CRC: %s\n", payload.c_str());
+  char payloadBuf[256];
+  snprintf(payloadBuf, sizeof(payloadBuf), "uptime=%lu&free=%u&min=%u&reboots=%u",
+           s.uptimeSec, s.freeHeap, s.minFreeHeap, s.rebootCount);
   
-  char bufCrc2[15];
-  snprintf(bufCrc2,sizeof(bufCrc2),"&crc=%08lX",crc32(payload.c_str()));
-  String pay2 = payload + bufCrc2;
+  Serial.printf("[HB] Payload avant CRC: %s\n", payloadBuf);
   
-  Serial.printf("[HB] Payload final: %s\n", pay2.c_str());
-  Serial.printf("[HB] Taille payload: %u bytes\n", pay2.length());
+  char bufCrc2[16];
+  snprintf(bufCrc2,sizeof(bufCrc2),"&crc=%08lX",crc32(payloadBuf));
+  
+  char pay2[272];
+  snprintf(pay2, sizeof(pay2), "%s%s", payloadBuf, bufCrc2);
+  
+  Serial.printf("[HB] Payload final: %s\n", pay2);
+  Serial.printf("[HB] Taille payload: %u bytes\n", strlen(pay2));
   
   // État système au moment du heartbeat
   Serial.printf("[HB] Uptime: %lu sec\n", s.uptimeSec);
@@ -570,29 +600,44 @@ bool WebClient::postRaw(const String& payload){
   }
   // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
   unsigned long prStartMs = millis();
+  size_t payloadLen = payload.length();
   Serial.println(F("=== DÉBUT POSTRAW ==="));
   Serial.printf("[PR] Timestamp: %lu ms\n", prStartMs);
-  Serial.printf("[PR] Payload input: %u bytes\n", payload.length());
+  Serial.printf("[PR] Payload input: %u bytes\n", payloadLen);
   
-  String full = payload;
+  // Utiliser un buffer dynamique pour éviter String
+  // Taille estimée: payload + api_key + sensor + clés + padding
+  size_t estimatedSize = payloadLen + _apiKey.length() + strlen(ProjectConfig::BOARD_TYPE) + 32;
+  char* fullBuffer = (char*)malloc(estimatedSize);
+  if (!fullBuffer) {
+    Serial.println(F("[PR] ❌ Malloc failed for payload"));
+    return false;
+  }
 
   // Ajoute api_key et sensor si absents
-  bool hasApi = payload.startsWith("api_key=");
+  bool hasApi = (payload.indexOf("api_key=") == 0); // Starts with
   Serial.printf("[PR] Has API key: %s\n", hasApi ? "OUI" : "NON");
   
   if (!hasApi) {
-    // v11.70: Simplification - pas de skeleton, construction directe
-    full = String("api_key=") + _apiKey + "&sensor=" + ProjectConfig::BOARD_TYPE;
-    if (payload.length()) {
-      full += "&";
-      full += payload;
+    snprintf(fullBuffer, estimatedSize, "api_key=%s&sensor=%s", _apiKey.c_str(), ProjectConfig::BOARD_TYPE);
+    if (payloadLen > 0) {
+      size_t currentLen = strlen(fullBuffer);
+      if (currentLen + 1 < estimatedSize) {
+        strncat(fullBuffer, "&", estimatedSize - currentLen - 1);
+      }
+      currentLen = strlen(fullBuffer);
+      if (currentLen < estimatedSize) {
+        strncat(fullBuffer, payload.c_str(), estimatedSize - currentLen - 1);
+      }
     }
-    Serial.printf("[PR] Full payload constructed: %u bytes\n", full.length());
+    Serial.printf("[PR] Full payload constructed: %u bytes\n", strlen(fullBuffer));
   } else {
+    strncpy(fullBuffer, payload.c_str(), estimatedSize - 1);
+    fullBuffer[estimatedSize - 1] = '\0';
     Serial.println(F("[PR] Using payload as-is (already has API key)"));
   }
 
-  Serial.printf("[PR] Final payload size: %u bytes\n", full.length());
+  Serial.printf("[PR] Final payload size: %u bytes\n", strlen(fullBuffer));
   Serial.printf("[PR] API Key: %s\n", _apiKey.c_str());
   Serial.printf("[PR] Sensor: %s\n", ProjectConfig::BOARD_TYPE);
 
@@ -600,8 +645,10 @@ bool WebClient::postRaw(const String& payload){
   Serial.println(F("[PR] Sending to primary server..."));
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-  bool okPrimary = httpRequest(postDataUrl, full, respPrimary);
+  bool okPrimary = httpRequest(postDataUrl, fullBuffer, respPrimary);
   Serial.printf("[PR] Primary server result: %s\n", okPrimary ? "SUCCESS" : "FAILED");
+  
+  free(fullBuffer); // Libérer la mémoire
   
   // Serveur secondaire supprimé (code mort v11.116)
   bool okSecondary = false;

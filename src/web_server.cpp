@@ -2,7 +2,7 @@
 #include "diagnostics.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
-#include "project_config.h"
+#include "config.h"
 #include "mailer.h"
 #include "automatism.h"
 #include "power.h"
@@ -17,13 +17,11 @@
 #include "web_server_context.h"
 
 // Optimisations
-#include "json_pool.h"
+// #include "json_pool.h" // Supprimé (suringénierie)
 #include "sensor_cache.h"
-#include "network_optimizer.h"
 #include "realtime_websocket.h"
 #include "asset_bundler.h"
 #include "event_log.h"
-#include "psram_optimizer.h"
 #include "automatism/automatism_persistence.h"  // Pour pending sync (v11.32)
  
 extern Automatism autoCtrl;
@@ -132,10 +130,6 @@ bool WebServerManager::begin() {
   Serial.println("[WebServer] Mode minimal - serveur web désactivé");
   return true;
   #else
-  // Initialiser l'optimiseur PSRAM (seulement pour ESP32-S3)
-  #ifdef BOARD_S3
-  PSRAMOptimizer::init();
-  #endif
   
   // Initialiser le serveur WebSocket temps réel
   realtimeWebSocket.begin(_sensors, _acts);
@@ -406,77 +400,10 @@ bool WebServerManager::begin() {
     }
     
     // Utiliser le pool JSON pour optimiser la mémoire
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
+    ArduinoJson::JsonDocument* doc = new ArduinoJson::JsonDocument;
     if (!doc) {
-      Serial.println("[Web] ⚠️ JSON pool exhausted, using fallback allocation");
-      // Fallback vers allocation directe si pool indisponible
-      ArduinoJson::DynamicJsonDocument fallbackDoc(512);
-      SensorReadings r = sensorCache.getReadings(_sensors);
-      
-      // Données réelles avec fallback intelligent
-      fallbackDoc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
-      fallbackDoc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
-      fallbackDoc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
-      fallbackDoc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
-      fallbackDoc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
-      fallbackDoc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
-      fallbackDoc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
-      fallbackDoc["pumpAqua"] = _acts.isAquaPumpRunning();
-      fallbackDoc["pumpTank"] = _acts.isTankPumpRunning();
-      fallbackDoc["heater"] = _acts.isHeaterOn();
-      fallbackDoc["light"] = _acts.isLightOn();
-      fallbackDoc["forceWakeup"] = autoCtrl.getForceWakeUp();
-      
-      // Informations WiFi STA
-      bool staConnected = WiFi.status() == WL_CONNECTED;
-      fallbackDoc["wifiStaConnected"] = staConnected;
-      if (staConnected) {
-        fallbackDoc["wifiStaSSID"] = WiFi.SSID();
-        fallbackDoc["wifiStaIP"] = WiFi.localIP().toString();
-        fallbackDoc["wifiStaRSSI"] = WiFi.RSSI();
-      } else {
-        fallbackDoc["wifiStaSSID"] = "";
-        fallbackDoc["wifiStaIP"] = "";
-        fallbackDoc["wifiStaRSSI"] = 0;
-      }
-      
-      // Informations WiFi AP
-      wifi_mode_t mode = WiFi.getMode();
-      bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-      fallbackDoc["wifiApActive"] = apActive;
-      if (apActive) {
-        fallbackDoc["wifiApSSID"] = WiFi.softAPSSID();
-        fallbackDoc["wifiApIP"] = WiFi.softAPIP().toString();
-        fallbackDoc["wifiApClients"] = WiFi.softAPgetStationNum();
-      } else {
-        fallbackDoc["wifiApSSID"] = "";
-        fallbackDoc["wifiApIP"] = "";
-        fallbackDoc["wifiApClients"] = 0;
-      }
-      
-      fallbackDoc["timestamp"] = millis();
-      
-      char jsonBuffer[512];
-      serializeJson(fallbackDoc, jsonBuffer, sizeof(jsonBuffer));
-      
-      Serial.printf("[Web] 📤 Sending fallback JSON (%u bytes) to %s\n", 
-                    strlen(jsonBuffer), req->client()->remoteIP().toString().c_str());
-      
-      // Réponse optimisée avec headers de cache intelligents
-      AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuffer);
-      if (response) {
-        response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        response->addHeader("Pragma", "no-cache");
-        response->addHeader("Expires", "0");
-        response->addHeader("X-Content-Type-Options", "nosniff");
-        response->addHeader("Access-Control-Allow-Origin", "*");
-        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        req->send(response);
-      } else {
-        Serial.println("[Web] ❌ Échec création réponse JSON (mémoire insuffisante)");
-        req->send(500, "text/plain", "Memory error");
-      }
+      Serial.println("[Web] ❌ Memory allocation failed for JSON document");
+      req->send(500, "text/plain", "Memory error");
       return;
     }
     
@@ -530,7 +457,7 @@ bool WebServerManager::begin() {
     size_t jsonSize = serializeJson(*doc, jsonBuffer, sizeof(jsonBuffer));
     
     // Libérer le document du pool
-    jsonPool.release(doc);
+    delete doc;
     
     // Réponse optimisée avec headers de cache intelligents (v11.39: vérification null)
     AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuffer);
@@ -553,19 +480,15 @@ bool WebServerManager::begin() {
   // /diag endpoint
   _server->on("/diag", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
     // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
-    ArduinoJson::DynamicJsonDocument doc(256);
     if (_diag) {
       // Augmente la capacité si l'on inclut taskStats (peut être long)
-      ArduinoJson::DynamicJsonDocument big(2048);
+      JsonDocument big;
       _diag->toJson(big);
-      String js;
-      serializeJson(big, js);
-      ctx.sendJson(req, js);
+      ctx.sendJson(req, big);
       return;
     }
-    String js;
-    serializeJson(doc, js);
-    ctx.sendJson(req, js);
+    JsonDocument doc;
+    ctx.sendJson(req, doc);
   });
 
   // /pumpstats endpoint optimisé : statistiques de la pompe de réserve
@@ -594,13 +517,13 @@ bool WebServerManager::begin() {
     
     // Cache côté serveur : utiliser les données en mémoire d'abord
     static unsigned long lastCacheUpdate = 0;
-    static ArduinoJson::DynamicJsonDocument cachedSrc(BufferConfig::JSON_DOCUMENT_SIZE);
+    static JsonDocument cachedSrc;
     static bool cacheValid = false;
     
     unsigned long now = millis();
     bool useCache = cacheValid && (now - lastCacheUpdate < 30000); // Cache valide 30s
     
-    ArduinoJson::DynamicJsonDocument src(BufferConfig::JSON_DOCUMENT_SIZE);
+    JsonDocument src;
     bool ok = false;
     
     if (useCache) {
@@ -633,7 +556,7 @@ bool WebServerManager::begin() {
       // L'automatisation se charge de mettre à jour le cache en arrière-plan
     }
     // Normalise les clés attendues par le dashboard (v11.40: simplifié car NVS normalisé)
-    ArduinoJson::DynamicJsonDocument out(1024);
+    JsonDocument out;
     
     // Helper pour valeurs par défaut
     auto getWithDefault = [&src](const char* key, int defaultVal) -> int {
@@ -688,14 +611,12 @@ bool WebServerManager::begin() {
     if (src.containsKey("bouffeGros"))   out["bouffeGros"]   = src["bouffeGros"].as<const char*>();
 
     out["ok"] = ok;
-    String js;
-    serializeJson(out, js);
     
-    // Envoyer avec en-têtes CORS
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", js);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(out, *response);
     req->send(response);
   });
 
@@ -724,7 +645,7 @@ bool WebServerManager::begin() {
 
     // Charger JSON NVS existant (si présent)
     String cachedJson;
-    ArduinoJson::DynamicJsonDocument nvsDoc(BufferConfig::JSON_DOCUMENT_SIZE);
+    JsonDocument nvsDoc;
     if (config.loadRemoteVars(cachedJson) && cachedJson.length() > 0) {
       deserializeJson(nvsDoc, cachedJson);
     }
@@ -789,9 +710,10 @@ bool WebServerManager::begin() {
     
     // Toujours retourner 200 pour indiquer que l'enregistrement local s'est bien passé,
     // et indiquer séparément si l'envoi distant a réussi
-    char respBuffer[64];
-    snprintf(respBuffer, sizeof(respBuffer), "{\"status\":\"OK\",\"remoteSent\":%s}", sent ? "true" : "false");
-    ctx.sendJson(req, respBuffer);
+    ArduinoJson::JsonDocument doc;
+    doc["status"] = "OK";
+    doc["remoteSent"] = sent;
+    ctx.sendJson(req, doc);
   });
 
   // Fichiers statiques avec compression optimisée et gestion Content-Length
@@ -1187,14 +1109,16 @@ bool WebServerManager::begin() {
     } else if (ns == "remoteVars" && key == "json") {
       String js = value;
       if (js.length()) {
-        ArduinoJson::DynamicJsonDocument tmp(BufferConfig::JSON_DOCUMENT_SIZE);
+        JsonDocument tmp;
         if (!deserializeJson(tmp, js)) {
           autoCtrl.applyConfigFromJson(tmp);
         }
       }
     }
 
-    ctx.sendJson(req, String("{\"status\":\"OK\"}"));
+    ArduinoJson::JsonDocument doc;
+    doc["status"] = "OK";
+    ctx.sendJson(req, doc);
   });
 
   _server->on("/nvs/erase", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
@@ -1208,7 +1132,10 @@ bool WebServerManager::begin() {
     err = nvs_erase_key(h, key.c_str()); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase failed"); return; }
-    ctx.sendJson(req, String("{\"status\":\"OK\"}"));
+    
+    ArduinoJson::JsonDocument doc;
+    doc["status"] = "OK";
+    ctx.sendJson(req, doc);
   });
 
   _server->on("/nvs/erase_ns", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
@@ -1222,7 +1149,10 @@ bool WebServerManager::begin() {
     err = nvs_erase_all(h); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase namespace failed"); return; }
-    ctx.sendJson(req, String("{\"status\":\"OK\"}"));
+    
+    ArduinoJson::JsonDocument doc;
+    doc["status"] = "OK";
+    ctx.sendJson(req, doc);
   });
 #endif // FFP_ENABLE_DANGEROUS_ENDPOINTS
 
@@ -1235,23 +1165,19 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Action WiFi critique
     autoCtrl.notifyLocalWebActivity();
     
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(1024);
-    if (!doc) {
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
+    JsonDocument doc;
     
     // Scanner les réseaux WiFi
     int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
     
-    (*doc)["success"] = (n >= 0);
-    (*doc)["count"] = n;
+    doc["success"] = (n >= 0);
+    doc["count"] = n;
     
     if (n > 0) {
-      ArduinoJson::JsonArray networks = (*doc).createNestedArray("networks");
+      JsonArray networks = doc.createNestedArray("networks");
       
       for (int i = 0; i < n; i++) {
-        ArduinoJson::JsonObject network = networks.createNestedObject();
+        JsonObject network = networks.createNestedObject();
         network["ssid"] = WiFi.SSID(i);
         network["rssi"] = WiFi.RSSI(i);
         network["encryption"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "secured";
@@ -1266,19 +1192,14 @@ bool WebServerManager::begin() {
         }
       }
     } else {
-      (*doc)["error"] = "No networks found or scan failed";
+      doc["error"] = "No networks found or scan failed";
     }
     
-    String json;
-    json.reserve(1024);
-    serializeJson(*doc, json);
-    
-    jsonPool.release(doc);
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(doc, *response);
     req->send(response);
   });
   
@@ -1286,18 +1207,14 @@ bool WebServerManager::begin() {
   _server->on("/wifi/saved", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
     
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(1024);
-    if (!doc) {
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
+    JsonDocument doc;
     
-    ArduinoJson::JsonArray networks = (*doc).createNestedArray("networks");
+    JsonArray networks = doc.createNestedArray("networks");
     size_t totalCount = 0;
     
     // 1. Ajouter les réseaux statiques de secrets.h
     for (size_t i = 0; i < Secrets::WIFI_COUNT; i++) {
-      ArduinoJson::JsonObject network = networks.createNestedObject();
+      JsonObject network = networks.createNestedObject();
       network["ssid"] = Secrets::WIFI_LIST[i].ssid;
       network["password"] = Secrets::WIFI_LIST[i].password;
       network["index"] = totalCount;
@@ -1329,7 +1246,7 @@ bool WebServerManager::begin() {
             if (buffer) {
               err = nvs_get_blob(nvsHandle, key, buffer, &required_size);
               if (err == ESP_OK) {
-                ArduinoJson::JsonObject network = networks.createNestedObject();
+                JsonObject network = networks.createNestedObject();
                 
                 // Parser le format: "ssid|password"
                 String data = String(buffer);
@@ -1366,19 +1283,14 @@ bool WebServerManager::begin() {
       nvs_close(nvsHandle);
     }
     
-    (*doc)["success"] = true;
-    (*doc)["count"] = totalCount;
+    doc["success"] = true;
+    doc["count"] = totalCount;
     
-    String json;
-    json.reserve(1024);
-    serializeJson(*doc, json);
-    
-    jsonPool.release(doc);
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(doc, *response);
     req->send(response);
   });
   
@@ -1398,16 +1310,11 @@ bool WebServerManager::begin() {
     
     Serial.printf("[WiFi] Demande de connexion à '%s'\n", ssid.c_str());
     
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
-    if (!doc) {
-      Serial.println("[WiFi] Erreur: JSON pool épuisé");
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
+    JsonDocument doc;
     
     if (ssid.length() == 0) {
-      (*doc)["success"] = false;
-      (*doc)["error"] = "SSID required";
+      doc["success"] = false;
+      doc["error"] = "SSID required";
       Serial.println("[WiFi] Erreur: SSID vide");
     } else {
       // Sauvegarder le réseau AVANT de se déconnecter pour éviter les pertes de connexion
@@ -1472,16 +1379,14 @@ bool WebServerManager::begin() {
       
       // Envoyer une réponse immédiate AVANT de déconnecter
       // Cela permet au client de recevoir la réponse avant la perte de connexion
-      (*doc)["success"] = true;
-      (*doc)["message"] = "Connection attempt started";
-      (*doc)["ssid"] = ssid;
-      (*doc)["note"] = "Connection may take up to 15 seconds. WebSocket will reconnect automatically.";
+      doc["success"] = true;
+      doc["message"] = "Connection attempt started";
+      doc["ssid"] = ssid;
+      doc["note"] = "Connection may take up to 15 seconds. WebSocket will reconnect automatically.";
       
       String json;
       json.reserve(512);
-      serializeJson(*doc, json);
-      
-      jsonPool.release(doc);
+      serializeJson(doc, json);
       
       AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
       response->addHeader("Access-Control-Allow-Origin", "*");
@@ -1565,16 +1470,11 @@ bool WebServerManager::begin() {
     }
     
     // Si on arrive ici, c'est qu'il y a eu une erreur
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
-    
-    jsonPool.release(doc);
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(doc, *response);
     req->send(response);
   });
   
@@ -1590,15 +1490,11 @@ bool WebServerManager::begin() {
     
     String ssid = getParam("ssid");
     
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(256);
-    if (!doc) {
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
+    JsonDocument doc;
     
     if (ssid.length() == 0) {
-      (*doc)["success"] = false;
-      (*doc)["error"] = "SSID required";
+      doc["success"] = false;
+      doc["error"] = "SSID required";
     } else {
       nvs_handle_t nvsHandle;
       esp_err_t err = nvs_open("wifi_saved", NVS_READWRITE, &nvsHandle);
@@ -1669,30 +1565,25 @@ bool WebServerManager::begin() {
           nvs_set_blob(nvsHandle, "count", &networkCount, sizeof(networkCount));
           nvs_commit(nvsHandle);
           
-          (*doc)["success"] = true;
-          (*doc)["message"] = "Network removed successfully";
+          doc["success"] = true;
+          doc["message"] = "Network removed successfully";
         } else {
-          (*doc)["success"] = false;
-          (*doc)["error"] = "Network not found";
+          doc["success"] = false;
+          doc["error"] = "Network not found";
         }
         
         nvs_close(nvsHandle);
       } else {
-        (*doc)["success"] = false;
-        (*doc)["error"] = "Failed to open NVS";
+        doc["success"] = false;
+        doc["error"] = "Failed to open NVS";
       }
     }
     
-    String json;
-    json.reserve(256);
-    serializeJson(*doc, json);
-    
-    jsonPool.release(doc);
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(doc, *response);
     req->send(response);
   });
   
@@ -1700,55 +1591,46 @@ bool WebServerManager::begin() {
   _server->on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
     
-    ArduinoJson::DynamicJsonDocument* doc = jsonPool.acquire(512);
-    if (!doc) {
-      req->send(500, "application/json", "{\"error\":\"No JSON document available\"}");
-      return;
-    }
+    JsonDocument doc;
     
     // Statut de connexion STA
     bool staConnected = WiFi.status() == WL_CONNECTED;
-    (*doc)["staConnected"] = staConnected;
+    doc["staConnected"] = staConnected;
     
     if (staConnected) {
-      (*doc)["staSSID"] = WiFi.SSID();
-      (*doc)["staIP"] = WiFi.localIP().toString();
-      (*doc)["staRSSI"] = WiFi.RSSI();
-      (*doc)["staMac"] = WiFi.macAddress();
+      doc["staSSID"] = WiFi.SSID();
+      doc["staIP"] = WiFi.localIP().toString();
+      doc["staRSSI"] = WiFi.RSSI();
+      doc["staMac"] = WiFi.macAddress();
     } else {
-      (*doc)["staSSID"] = "";
-      (*doc)["staIP"] = "";
-      (*doc)["staRSSI"] = 0;
-      (*doc)["staMac"] = WiFi.macAddress();
+      doc["staSSID"] = "";
+      doc["staIP"] = "";
+      doc["staRSSI"] = 0;
+      doc["staMac"] = WiFi.macAddress();
     }
     
     // Statut AP
     wifi_mode_t mode = WiFi.getMode();
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    (*doc)["apActive"] = apActive;
+    doc["apActive"] = apActive;
     
     if (apActive) {
-      (*doc)["apSSID"] = WiFi.softAPSSID();
-      (*doc)["apIP"] = WiFi.softAPIP().toString();
-      (*doc)["apClients"] = WiFi.softAPgetStationNum();
+      doc["apSSID"] = WiFi.softAPSSID();
+      doc["apIP"] = WiFi.softAPIP().toString();
+      doc["apClients"] = WiFi.softAPgetStationNum();
     } else {
-      (*doc)["apSSID"] = "";
-      (*doc)["apIP"] = "";
-      (*doc)["apClients"] = 0;
+      doc["apSSID"] = "";
+      doc["apIP"] = "";
+      doc["apClients"] = 0;
     }
     
-    (*doc)["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+    doc["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
     
-    String json;
-    json.reserve(512);
-    serializeJson(*doc, json);
-    
-    jsonPool.release(doc);
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    serializeJson(doc, *response);
     req->send(response);
   });
 
@@ -1758,7 +1640,7 @@ bool WebServerManager::begin() {
     
     Serial.printf("[Web] 📊 Server status request from %s\n", req->client()->remoteIP().toString().c_str());
     
-    ArduinoJson::DynamicJsonDocument doc(512);
+    JsonDocument doc;
     doc["heapFree"] = ESP.getFreeHeap();
     doc["heapTotal"] = ESP.getHeapSize();
     doc["psramFree"] = ESP.getFreePsram();
@@ -1775,24 +1657,20 @@ bool WebServerManager::begin() {
     doc["webSocketClients"] = realtimeWebSocket.getConnectedClients();
     doc["forceWakeup"] = autoCtrl.getForceWakeUp();
     
-    String json;
-    serializeJson(doc, json);
-    
-    Serial.printf("[Web] 📤 Server status sent (%u bytes)\n", json.length());
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-cache");
+    serializeJson(doc, *response);
     req->send(response);
   });
 
   // === API: Remote flags control (send/recv) ===
   _server->on("/api/remote-flags", HTTP_GET, [](AsyncWebServerRequest* req){
-    ArduinoJson::DynamicJsonDocument doc(256);
+    JsonDocument doc;
     doc["sendEnabled"] = config.isRemoteSendEnabled();
     doc["recvEnabled"] = config.isRemoteRecvEnabled();
-    String json; serializeJson(doc, json);
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
+    serializeJson(doc, *response);
     req->send(response);
   });
 
@@ -1808,9 +1686,13 @@ bool WebServerManager::begin() {
       bool enable = (v == "1" || v == "true" || v == "on");
       config.setRemoteRecvEnabled(enable); changed = true;
     }
-    String json = String("{\"ok\":true,\"changed\":") + (changed?"true":"false") + "}";
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
+    
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["changed"] = changed;
+    serializeJson(doc, *response);
     req->send(response);
   });
 
@@ -1820,7 +1702,7 @@ bool WebServerManager::begin() {
     
     Serial.printf("[Web] 🔍 Debug logs request from %s\n", req->client()->remoteIP().toString().c_str());
     
-    ArduinoJson::DynamicJsonDocument doc(1024);
+    JsonDocument doc;
     
     // Informations système
     doc["system"]["uptime"] = millis();
@@ -1861,14 +1743,10 @@ bool WebServerManager::begin() {
     doc["actuators"]["heater"] = _acts.isHeaterOn();
     doc["actuators"]["light"] = _acts.isLightOn();
     
-    String json;
-    serializeJson(doc, json);
-    
-    Serial.printf("[Web] 📤 Debug logs sent (%u bytes)\n", json.length());
-    
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-cache");
     response->addHeader("Access-Control-Allow-Origin", "*");
+    serializeJson(doc, *response);
     req->send(response);
   });
 

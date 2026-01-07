@@ -1,6 +1,8 @@
-#include "bootstrap_network.h"
+#include "system_boot.h"
 
+#include <Arduino.h>
 #include <WiFi.h>
+#include <LittleFS.h>
 #include <esp_ota_ops.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -12,10 +14,15 @@
 
 #include "event_log.h"
 #include "ota_config.h"
-#include "project_config.h"
+#include "config.h"
 #include "nvs_manager.h"
+#include "timer_manager.h"
 
-namespace BootstrapNetwork {
+namespace SystemBoot {
+
+// =============================================================================
+// Storage & Identifiers
+// =============================================================================
 
 void setupHostname(char* buffer, size_t bufferSize) {
   uint64_t chipId = ESP.getEfuseMac();
@@ -26,6 +33,69 @@ void setupHostname(char* buffer, size_t bufferSize) {
            static_cast<uint16_t>(chipId & 0xFFFF));
   WiFi.setHostname(buffer);
 }
+
+void initializeStorage(AppContext& ctx,
+                       unsigned long& lastDigestMs,
+                       uint32_t& lastDigestSeq) {
+  EventLog::begin();
+  EventLog::add("Boot start");
+
+  Serial.println("[FS] Mounting LittleFS...");
+  uint32_t fsStartTime = millis();
+  if (!LittleFS.begin(true)) {
+    Serial.println("[FS] ❌ LittleFS mount failed - tentative de format");
+    if (LittleFS.format()) {
+      Serial.println("[FS] ✅ Format réussi, tentative de remontage");
+      if (LittleFS.begin(false)) {
+        Serial.println("[FS] ✅ Remontage après format réussi");
+      } else {
+        Serial.println("[FS] ❌ CRITIQUE: Impossible de monter LittleFS même après format");
+      }
+    } else {
+      Serial.println("[FS] ❌ CRITIQUE: Format LittleFS échoué");
+    }
+  } else {
+    uint32_t fsDuration = millis() - fsStartTime;
+    size_t total = LittleFS.totalBytes();
+    size_t used = LittleFS.usedBytes();
+    Serial.printf("[FS] ✅ LittleFS ok: %u/%u bytes (montage: %u ms)\n",
+                  static_cast<unsigned>(used),
+                  static_cast<unsigned>(total),
+                  fsDuration);
+
+    if (!LittleFS.exists("/index.html")) {
+      Serial.println("[FS] ⚠️ Fichier index.html manquant");
+    }
+    if (!LittleFS.exists("/shared/common.js")) {
+      Serial.println("[FS] ⚠️ Fichier common.js manquant");
+    }
+  }
+
+  Serial.println(F("[App] 🚀 Initialisation du gestionnaire NVS centralisé"));
+  if (!g_nvsManager.begin()) {
+    Serial.println(F("[App] ❌ Erreur initialisation NVS Manager"));
+    return;
+  }
+
+  g_nvsManager.enableDeferredFlush(true);
+  g_nvsManager.setFlushInterval(3000);
+  g_nvsManager.schedulePeriodicCleanup();
+  g_nvsManager.migrateFromOldSystem();
+
+  Serial.println(F("[App] 📥 Chargement état digest depuis NVS centralisé"));
+  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS,
+                         "digest_last_seq",
+                         lastDigestSeq,
+                         0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS,
+                         "digest_last_ms",
+                         lastDigestMs,
+                         0);
+}
+
+// =============================================================================
+// OTA Validation
+// =============================================================================
 
 void validatePendingOta(OtaState& state) {
   const esp_partition_t* running = esp_ota_get_running_partition();
@@ -81,7 +151,87 @@ void validatePendingOta(OtaState& state) {
   Serial.println("==================================\n");
 }
 
-bool connect(AppContext& ctx, const char* hostname) {
+// =============================================================================
+// Services Initialization
+// =============================================================================
+
+void initializeTimekeeping(AppContext& ctx) {
+  ctx.power.initTime();
+  EventLog::add("Time init");
+
+  ctx.power.setNTPConfig(SystemConfig::NTP_GMT_OFFSET_SEC,
+                         SystemConfig::NTP_DAYLIGHT_OFFSET_SEC,
+                         SystemConfig::NTP_SERVER);
+
+  ctx.timeDriftMonitor.attachPowerManager(&ctx.power);
+  ctx.timeDriftMonitor.begin();
+  EventLog::add("Time drift monitor init");
+}
+
+bool initializeDisplay(AppContext& ctx) {
+  if (ctx.display.isPresent()) {
+    ctx.display.hideOtaProgressOverlay();
+  }
+
+  Serial.println(F("[DEBUG] Avant oled.begin()"));
+  bool result = ctx.display.begin();
+  Serial.printf("[DEBUG] oled.begin() retourné: %s\n", result ? "true" : "false");
+  Serial.printf("[DEBUG] oled.isPresent(): %s\n", ctx.display.isPresent() ? "true" : "false");
+  return result;
+}
+
+void initializePeripherals(AppContext& ctx) {
+  if (ctx.display.isPresent()) {
+    ctx.display.showDiagnostic("Sensors");
+  }
+  ctx.sensors.begin();
+
+  if (ctx.display.isPresent()) {
+    ctx.display.showDiagnostic("Actuators");
+  }
+  ctx.actuators.begin();
+
+  if (ctx.display.isPresent()) {
+    ctx.display.showDiagnostic("WebSrv");
+  }
+  ctx.webServer.begin();
+
+  if (ctx.display.isPresent()) {
+    ctx.display.showDiagnostic("Diag");
+  }
+  ctx.diagnostics.begin();
+
+  if (ctx.display.isPresent()) {
+    ctx.display.showDiagnostic("Systems");
+  }
+  ctx.power.initWatchdog();
+  ctx.power.initModemSleep();
+
+  TimerManager::init();
+}
+
+void loadConfiguration(AppContext& ctx) {
+  Serial.println(F("\n[App] Chargement configuration complète depuis NVS..."));
+  ctx.config.loadConfigFromNVS();
+  ctx.automatism.begin();
+}
+
+void finalizeDisplay(AppContext& ctx) {
+  if (!ctx.display.isPresent()) {
+    return;
+  }
+
+  ctx.display.forceEndSplash();
+  ctx.display.clear();
+  ctx.display.showDiagnostic("Init ok");
+  delay(SystemConfig::FINAL_INIT_DELAY_MS);
+}
+
+// =============================================================================
+// Network & OTA Operations
+// =============================================================================
+
+bool connectWifi(AppContext& ctx, const char* hostname) {
   if (ctx.display.isPresent()) {
     ctx.display.showDiagnostic("WiFi...");
   }
@@ -323,6 +473,8 @@ void postConfiguration(AppContext& ctx,
   ctx.automatism.sendFullUpdate(rs, "resetMode=0");
 }
 
-}  // namespace BootstrapNetwork
+} // namespace SystemBoot
+
+
 
 

@@ -1,6 +1,6 @@
 #include "gpio_notifier.h"
 #include "web_client.h"
-#include "project_config.h"
+#include "config.h"
 #include "secrets.h"
 
 bool GPIONotifier::notifyChange(uint8_t gpio, const String& value) {

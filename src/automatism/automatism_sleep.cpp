@@ -1,7 +1,10 @@
-#include "automatism_sleep.h"
-#include "project_config.h"
+#include "automatism/automatism_sleep.h"
+#include "automatism.h" // Pour accès aux méthodes de Automatism
+#include "config.h"
 #include "task_monitor.h"
+#include "realtime_websocket.h" // Pour getConnectedClients
 #include <ctime>
+#include <algorithm>
 
 // ============================================================================
 // Module: AutomatismSleep
@@ -21,16 +24,22 @@ AutomatismSleep::AutomatismSleep(PowerManager& power, ConfigManager& cfg)
     , _consecutiveWakeupFailures(0)
     , _tideTriggerCm(0)
 {
-    // Configuration sleep adaptatif (valeurs par défaut)
-    _sleepConfig.minSleepTime = 30;      // 30s min
-    _sleepConfig.maxSleepTime = 600;     // 10 min max
-    _sleepConfig.normalSleepTime = 120;  // 2 min normal
-    _sleepConfig.errorSleepTime = 60;    // 1 min si erreurs
-    _sleepConfig.nightSleepTime = 180;   // 3 min la nuit
-    _sleepConfig.adaptiveSleep = true;
+    // Configuration sleep adaptatif (valeurs par défaut de config.h)
+    _sleepConfig.minSleepTime = ::SleepConfig::MIN_INACTIVITY_DELAY_SEC;
+    _sleepConfig.maxSleepTime = ::SleepConfig::MAX_INACTIVITY_DELAY_SEC;
+    _sleepConfig.normalSleepTime = ::SleepConfig::NORMAL_INACTIVITY_DELAY_SEC;
+    _sleepConfig.errorSleepTime = ::SleepConfig::ERROR_INACTIVITY_DELAY_SEC;
+    _sleepConfig.nightSleepTime = ::SleepConfig::NIGHT_INACTIVITY_DELAY_SEC;
+    _sleepConfig.adaptiveSleep = ::SleepConfig::ADAPTIVE_SLEEP_ENABLED;
     
     _lastWakeMs = millis();
     Serial.println(F("[Sleep] Module initialisé - Sleep adaptatif activé"));
+}
+
+void AutomatismSleep::begin() {
+    _lastWakeMs = millis();
+    _lastActivityMs = millis();
+    // Restauration état éventuel si nécessaire
 }
 
 // ============================================================================
@@ -39,8 +48,9 @@ AutomatismSleep::AutomatismSleep(PowerManager& power, ConfigManager& cfg)
 
 void AutomatismSleep::handleMaree(const SensorReadings& r) {
     // Note: Le sleep anticipé marée est géré dans handleAutoSleep()
-    // Cette méthode fait juste le logging
-    Serial.printf("[Sleep] Marée - wlAqua=%u cm\n", r.wlAqua);
+    // Cette méthode fait juste le logging ou des actions spécifiques marée
+    // Pour l'instant minimaliste
+    // Serial.printf("[Sleep] Marée - wlAqua=%u cm\n", r.wlAqua);
 }
 
 // ============================================================================
@@ -72,7 +82,7 @@ void AutomatismSleep::notifyLocalWebActivity() {
     // NOTE: On n'active PLUS forceWakeUp automatiquement
     // On empêche juste le sleep temporairement pendant la consultation
     // forceWakeUp (GPIO 115) doit être contrôlé explicitement par l'utilisateur
-    Serial.println(F("[Sleep] Activité web détectée - sleep bloqué temporairement (10 min)"));
+    Serial.println(F("[Sleep] Activité web détectée - sleep bloqué temporairement"));
 }
 
 // ============================================================================
@@ -89,13 +99,13 @@ uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
     // Réduire si erreurs récentes
     if (hasRecentErrors()) {
         baseDelay = _sleepConfig.errorSleepTime;
-        Serial.println(F("[Sleep] Délai réduit (erreurs)"));
+        // Serial.println(F("[Sleep] Délai réduit (erreurs)"));
     }
     
     // Réduire la nuit (économie énergie)
     if (isNightTime()) {
         baseDelay = _sleepConfig.nightSleepTime;
-        Serial.println(F("[Sleep] Délai réduit (nuit)"));
+        // Serial.println(F("[Sleep] Délai réduit (nuit)"));
     }
     
     // Ajuster selon échecs réveil
@@ -111,13 +121,17 @@ uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
     return baseDelay;
 }
 
+bool AutomatismSleep::isAdaptiveSleepEnabled() const {
+    return _sleepConfig.adaptiveSleep;
+}
+
 bool AutomatismSleep::isNightTime() {
     time_t currentTime = _power.getCurrentEpoch();
     struct tm* timeinfo = localtime(&currentTime);
     
     if (timeinfo != nullptr) {
         int hour = timeinfo->tm_hour;
-        // Nuit: 22h-6h (selon SleepConfig)
+        // Nuit: 22h-6h (selon convention)
         return (hour >= 22 || hour < 6);
     }
     
@@ -148,7 +162,7 @@ bool AutomatismSleep::shouldEnterSleepEarly(const SensorReadings& r,
                                             unsigned long lastWakeMs,
                                             int diffMaree10s,
                                             int16_t tideTriggerCm) {
-    // Synchroniser l'état interne avec Automatism
+    // Synchroniser l'état interne
     _forceWakeUp = forceWakeUp;
     _forceWakeFromWeb = forceWakeFromWeb;
     _lastWebActivityMs = lastWebActivityMs;
@@ -156,21 +170,10 @@ bool AutomatismSleep::shouldEnterSleepEarly(const SensorReadings& r,
     _tideTriggerCm = tideTriggerCm;
 
     // Conditions bloquantes immédiates
-    if (_forceWakeUp) {
-        return false;
-    }
-
-    if (_forceWakeFromWeb) {
-        return false;
-    }
-
-    if (tankPumpRunning) {
-        return false;
-    }
-
-    if (feedingInProgress) {
-        return false;
-    }
+    if (_forceWakeUp) return false;
+    if (_forceWakeFromWeb) return false;
+    if (tankPumpRunning) return false;
+    if (feedingInProgress) return false;
 
     // Countdown long en cours (remplissage)
     unsigned long nowMs = millis();
@@ -300,16 +303,6 @@ bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
         return false;
     }
 
-    // 8. VÉRIFICATION WEBSOCKET RÉDUITE (placeholder)
-    if (false) { // WebSocket removed for v11.68
-        if (now - _lastWebSocketCheckMs > 10000) {
-            _lastWebSocketCheckMs = now;
-            Serial.println(F("[Auto] WebSocket actif - sleep différé (priorité réduite)"));
-        }
-        lastWakeMs = now;
-        return false;
-    }
-
     return true;
 }
 
@@ -347,82 +340,62 @@ void AutomatismSleep::logSleepDecision(bool pumpReservoirOn,
 }
 
 // ============================================================================
-// VALIDATION SYSTÈME
+// TRANSITION ET LOGS
 // ============================================================================
 
-bool AutomatismSleep::verifySystemStateAfterWakeup() {
-    Serial.println(F("[Sleep] Verification systeme apres reveil"));
-    TaskMonitor::Snapshot snapshot = TaskMonitor::collectSnapshot();
-    TaskMonitor::logSnapshot(snapshot, "sleep-verify");
-    bool anomalies = TaskMonitor::detectAnomalies(snapshot, "sleep-verify");
-    return !anomalies;
+void AutomatismSleep::logSleepTransitionStart(const char* reason,
+                                         uint32_t scheduledSeconds,
+                                         unsigned long awakeSec,
+                                         bool tideAscending,
+                                         int diff10s,
+                                         uint32_t heapAfterCleanup,
+                                         const TaskMonitor::Snapshot& tasks) {
+  LOG_INFO("=== DÉBUT TRANSITION VEILLE ===");
+  LOG_INFO("Raison: %s", reason);
+  LOG_INFO("Durée prévue: %u sec", scheduledSeconds);
+  LOG_INFO("Temps d'éveil: %lu sec", awakeSec);
+  LOG_INFO("Marée: %s (diff10s: %d)", tideAscending ? "Montante" : "Descendante", diff10s);
+  LOG_INFO("Heap avant sleep: %u bytes", heapAfterCleanup);
+  
+  TaskMonitor::logSnapshot(tasks, "pre-sleep");
 }
 
-void AutomatismSleep::detectSleepAnomalies() {
-    // TODO: Détection anomalies
-    Serial.println(F("[Sleep] Détection anomalies sleep"));
-}
-
-bool AutomatismSleep::validateSystemStateBeforeSleep() {
-    // TODO: Validation système avant sleep
-    Serial.println(F("[Sleep] Validation système avant sleep"));
-    return true;  // Placeholder
+void AutomatismSleep::logSleepTransitionEnd(uint32_t scheduledSeconds,
+                                       uint32_t actualSeconds,
+                                       esp_sleep_wakeup_cause_t wakeCause,
+                                       const TaskMonitor::Snapshot& tasksBefore,
+                                       const TaskMonitor::Snapshot& tasksAfter) {
+  LOG_INFO("=== FIN TRANSITION VEILLE ===");
+  LOG_INFO("Durée réelle: %u sec (prévue: %u)", actualSeconds, scheduledSeconds);
+  
+  // Utiliser le PowerManager pour logger la cause de réveil en détail
+  _power.logWakeupCause(wakeCause);
+  
+  TaskMonitor::logDiff(tasksBefore, tasksAfter, "sleep-resume");
 }
 
 // ============================================================================
-// HANDLE AUTO SLEEP (Méthode ÉNORME - 443 lignes)
-// NOTE: Cette méthode reste dans automatism.cpp pour l'instant
-// Sera divisée et migrée en Phase 2.8
+// MÉTHODE PRINCIPALE : PROCESS
 // ============================================================================
 
-void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts) {
-    // TODO: Méthode de 443 lignes à diviser en:
-    // - shouldSleep()
-    // - validateSystemState()
-    // - prepareSleep()
-    // - executeSleep()
-    // - handleWakeup()
+bool AutomatismSleep::process(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
+    // Cette méthode remplace handleAutoSleep() en centralisant la logique
+    // Pour l'instant, on redirige vers handleAutoSleep() pour compatibilité
+    handleAutoSleep(r, acts, core);
+    return false; // TODO: Retourner true si sleep exécuté
+}
+
+void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
+    // Récupérer l'état de l'automate via accesseurs/friends (à terme via interface propre)
+    // Ici on suppose que Automatism expose les getters nécessaires ou qu'on est friend
     
-    // Pour l'instant, implémentation dans automatism.cpp
-    Serial.println(F("[Sleep] handleAutoSleep() - Implémentation temporaire"));
-}
-
-// ============================================================================
-// HELPERS PRIVÉS
-// ============================================================================
-
-bool AutomatismSleep::shouldSleep() {
-    if (_forceWakeUp) return false;
+    // NOTE: Cette logique est complexe et dépend de beaucoup d'états de Automatism.
+    // Dans la phase 1 du refactoring, on a déplacé les méthodes utilitaires ici.
+    // La logique principale reste pour l'instant dans Automatism.cpp car elle accède à trop de membres privés.
+    // La migration complète se fera en Phase 2.8.
     
-    unsigned long now = millis();
-    unsigned long timeSinceWake = now - _lastWakeMs;
+    // Cependant, pour avancer, on implémente ici la logique "blocking conditions" qui est générique
     
-    // Critères de base
-    return (timeSinceWake > _sleepConfig.normalSleepTime * 1000);
+    // Récupérer les états nécessaires (à adapter selon les accesseurs disponibles)
+    // Pour l'instant, cette méthode est un placeholder pour la future migration complète
 }
-
-bool AutomatismSleep::validateSystemState() {
-    // Vérifications basiques
-    return true;  // Placeholder
-}
-
-void AutomatismSleep::prepareSleep(SystemActuators& acts) {
-    // Sauvegarde snapshot actionneurs
-    Serial.println(F("[Sleep] Préparation sleep (snapshot)"));
-}
-
-uint32_t AutomatismSleep::calculateSleepDuration() {
-    return calculateAdaptiveSleepDelay();
-}
-
-void AutomatismSleep::handleWakeup(SystemActuators& acts, uint32_t actualSlept) {
-    Serial.printf("[Sleep] Réveil après %u secondes\n", actualSlept);
-    _lastWakeMs = millis();
-}
-
-void AutomatismSleep::handleWakeupFailure() {
-    _consecutiveWakeupFailures++;
-    _hasRecentErrors = true;
-    Serial.printf("[Sleep] Échec réveil #%d\n", _consecutiveWakeupFailures);
-}
-

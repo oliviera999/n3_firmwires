@@ -18,15 +18,9 @@ Chaque fichier est volontairement court (max ~400 lignes) pour faciliter la main
 | `mailer.cpp` | `mailer.h` | Envoi SMTP SSL (Gmail) + file d’attente simple. |
 | `config.cpp` | `config.h` | Accès Preferences (NVS) pour persister seuils & flags. |
 | `diagnostics.cpp` | `diagnostics.h` | Lecture VIN (ADC), analyse raison reset, uptime, Brownout. |
-| `automatism.cpp` | `automatism.h` | **Cœur métier** :
-  * remontée d’eau automatique (refill)
-  * gestion marée & mise en veille
-  * nourrissage (3 créneaux) + servos
-  * chauffage piloté (seuil configurable)
-  * gestion lumière (photopériode)
-  * alertes e-mail & clignotement OLED
-  * envoi heartbeat + mesures distantes
-| `web_client.cpp` | `web_client.h` | Wrapper HTTP + retrys.
+| `automatism.cpp` | `automatism.h` | **Cœur métier** : gestion nourrissage, pompage, chauffage, alertes, veille. |
+| `time_drift_monitor.cpp` | `time_drift_monitor.h` | Monitoring simplifié de la dérive d'horloge. |
+| `task_monitor.cpp` | `task_monitor.h` | Monitoring léger des piles des tâches FreeRTOS. |
 
 ---
 
@@ -35,7 +29,7 @@ Chaque fichier est volontairement court (max ~400 lignes) pour faciliter la main
    * **sensorTask** (core 1, priorité 3) – Lecture capteurs → Queue FreeRTOS
    * **automationTask** (core 1, priorité 2) – Consomme la queue, exécute la logique `Automatism`, heartbeat/diag
    * **displayTask** (core 1, priorité 1) – Mise à jour OLED (~250 ms)
-   * **OTA_Update** (core 0, priorité 2) – Téléversement firmware (à la demande)
+   * **webTask** (core 0, priorité 2) - Gestion serveur HTTP
 2. La boucle `loop()` (core 1) effectue `ArduinoOTA.handle()`, gère le Wi‑Fi et fait un `vTaskDelay(200 ms)`.
 
 ---
@@ -46,4 +40,4 @@ Le flag est ajouté dans l’environnement PlatformIO `[env:test-esp32]` (commen
 
 ---
 
-> Consultez également le README racine pour le brochage et les instructions de build. 
+> Consultez également le README racine pour le brochage et les instructions de build.

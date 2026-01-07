@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "power.h"
-#include "project_config.h"
+#include "config.h"
 
 // Test du système Modem Sleep + Light Sleep
 void testModemSleepSystem() {

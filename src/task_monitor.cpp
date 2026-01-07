@@ -1,153 +1,73 @@
 #include "task_monitor.h"
-
-#include <Arduino.h>
-
 #include "app_tasks.h"
 #include "event_log.h"
-#include "project_config.h"
-
-namespace {
-
-const char* taskStateToString(eTaskState state) {
-  switch (state) {
-    case eRunning:    return "running";
-    case eReady:      return "ready";
-    case eBlocked:    return "blocked";
-    case eSuspended:  return "suspended";
-    case eDeleted:    return "deleted";
-    default:          return "unknown";
-  }
-}
-
-constexpr uint32_t toBytes(uint32_t words) {
-  return words * sizeof(StackType_t);
-}
-
-void logTaskEntry(const char* stage,
-                  const char* name,
-                  const TaskMonitor::Entry& entry,
-                  uint32_t configuredWords) {
-  uint32_t configuredBytes = toBytes(configuredWords);
-  uint32_t hwmBytes = toBytes(entry.highWaterMarkWords);
-  uint32_t usedBytes = configuredBytes > hwmBytes ? configuredBytes - hwmBytes : 0;
-  Serial.printf("[TaskMonitor] %s %s state=%s hwm=%u words (%u bytes) used=%u/%u bytes\n",
-                stage,
-                name,
-                taskStateToString(entry.state),
-                entry.highWaterMarkWords,
-                hwmBytes,
-                usedBytes,
-                configuredBytes);
-}
-
-}  // namespace
+#include "config.h"
 
 namespace TaskMonitor {
 
-Snapshot collectSnapshot() {
-  Snapshot snapshot{};
-  AppTasks::Handles handles = AppTasks::getHandles();
-
-  snapshot.sensor.state = handles.sensor ? eTaskGetState(handles.sensor) : eDeleted;
-  snapshot.sensor.highWaterMarkWords = handles.sensor ? uxTaskGetStackHighWaterMark(handles.sensor) : 0;
-
-  snapshot.web.state = handles.web ? eTaskGetState(handles.web) : eDeleted;
-  snapshot.web.highWaterMarkWords = handles.web ? uxTaskGetStackHighWaterMark(handles.web) : 0;
-
-  snapshot.automation.state = handles.automation ? eTaskGetState(handles.automation) : eDeleted;
-  snapshot.automation.highWaterMarkWords = handles.automation ? uxTaskGetStackHighWaterMark(handles.automation) : 0;
-
-  snapshot.display.state = handles.display ? eTaskGetState(handles.display) : eDeleted;
-  snapshot.display.highWaterMarkWords = handles.display ? uxTaskGetStackHighWaterMark(handles.display) : 0;
-
-  return snapshot;
+// Helper pour récupérer les stats d'une tâche
+static TaskStats getTaskStats(const char* name, TaskHandle_t handle) {
+  TaskStats stats;
+  stats.name = name;
+  if (handle) {
+    stats.state = eTaskGetState(handle);
+    stats.highWaterMark = uxTaskGetStackHighWaterMark(handle);
+  } else {
+    stats.state = eDeleted;
+    stats.highWaterMark = 0;
+  }
+  return stats;
 }
 
-void logSnapshot(const Snapshot& snapshot, const char* stage) {
-  logTaskEntry(stage, "sensorTask", snapshot.sensor, TaskConfig::SENSOR_TASK_STACK_SIZE);
-  logTaskEntry(stage, "webTask", snapshot.web, TaskConfig::WEB_TASK_STACK_SIZE);
-  logTaskEntry(stage, "autoTask", snapshot.automation, TaskConfig::AUTOMATION_TASK_STACK_SIZE);
-  logTaskEntry(stage, "displayTask", snapshot.display, TaskConfig::DISPLAY_TASK_STACK_SIZE);
+Snapshot collectSnapshot() {
+  Snapshot snap;
+  AppTasks::Handles handles = AppTasks::getHandles();
+  
+  snap.sensor = getTaskStats("Sensor", handles.sensor);
+  snap.web = getTaskStats("Web", handles.web);
+  snap.automation = getTaskStats("Auto", handles.automation);
+  snap.display = getTaskStats("Display", handles.display);
+  
+  return snap;
+}
 
-  char summary[196];
-  snprintf(summary,
-           sizeof(summary),
-           "Task snapshot %s | sensor=%u web=%u auto=%u display=%u",
-           stage,
-           snapshot.sensor.highWaterMarkWords,
-           snapshot.web.highWaterMarkWords,
-           snapshot.automation.highWaterMarkWords,
-           snapshot.display.highWaterMarkWords);
-  EventLog::add(summary);
+void logSnapshot(const Snapshot& s, const char* stage) {
+  // Log compact en une ligne
+  LOG_INFO("Tasks [%s] HWM: S=%u W=%u A=%u D=%u", 
+           stage, 
+           s.sensor.highWaterMark, 
+           s.web.highWaterMark, 
+           s.automation.highWaterMark, 
+           s.display.highWaterMark);
 }
 
 void logDiff(const Snapshot& before, const Snapshot& after, const char* stage) {
-  int32_t deltaSensor = static_cast<int32_t>(after.sensor.highWaterMarkWords) -
-                        static_cast<int32_t>(before.sensor.highWaterMarkWords);
-  int32_t deltaWeb = static_cast<int32_t>(after.web.highWaterMarkWords) -
-                     static_cast<int32_t>(before.web.highWaterMarkWords);
-  int32_t deltaAuto = static_cast<int32_t>(after.automation.highWaterMarkWords) -
-                      static_cast<int32_t>(before.automation.highWaterMarkWords);
-  int32_t deltaDisplay = static_cast<int32_t>(after.display.highWaterMarkWords) -
-                         static_cast<int32_t>(before.display.highWaterMarkWords);
-
-  Serial.printf("[TaskMonitor] %s diff sensor=%d web=%d auto=%d display=%d (words)\n",
-                stage,
-                deltaSensor,
-                deltaWeb,
-                deltaAuto,
-                deltaDisplay);
-
-  char summary[196];
-  snprintf(summary,
-           sizeof(summary),
-           "Task diff %s | sensor=%d web=%d auto=%d display=%d",
-           stage,
-           deltaSensor,
-           deltaWeb,
-           deltaAuto,
-           deltaDisplay);
-  EventLog::add(summary);
+  // Calculer les deltas uniquement si pertinent
+  int dS = (int)after.sensor.highWaterMark - (int)before.sensor.highWaterMark;
+  int dW = (int)after.web.highWaterMark - (int)before.web.highWaterMark;
+  int dA = (int)after.automation.highWaterMark - (int)before.automation.highWaterMark;
+  int dD = (int)after.display.highWaterMark - (int)before.display.highWaterMark;
+  
+  LOG_INFO("Tasks Diff [%s]: S=%d W=%d A=%d D=%d", stage, dS, dW, dA, dD);
 }
 
-bool detectAnomalies(const Snapshot& snapshot, const char* stage) {
-  bool hasAnomaly = false;
-
-  auto checkEntry = [&](const char* name, const Entry& entry, uint32_t stackWords) {
-    if (entry.state == eDeleted || entry.state == eInvalid) {
-      char msg[160];
-      snprintf(msg,
-               sizeof(msg),
-               "Task anomaly %s %s state=%s",
-               stage,
-               name,
-               taskStateToString(entry.state));
-      EventLog::add(msg);
-      Serial.println(msg);
-      hasAnomaly = true;
-    }
-    if (entry.highWaterMarkWords == 0) {
-      char msg[160];
-      snprintf(msg,
-               sizeof(msg),
-               "Task anomaly %s %s stack exhausted (configured=%u words)",
-               stage,
-               name,
-               stackWords);
-      EventLog::add(msg);
-      Serial.println(msg);
-      hasAnomaly = true;
+bool detectAnomalies(const Snapshot& s, const char* stage) {
+  bool anomaly = false;
+  const uint32_t LOW_STACK_THRESHOLD = 100; // Mots
+  
+  auto check = [&](const TaskStats& t) {
+    if (t.state != eDeleted && t.highWaterMark < LOW_STACK_THRESHOLD) {
+      LOG_WARN("Task Alert [%s]: %s low stack (%u)", stage, t.name, t.highWaterMark);
+      anomaly = true;
     }
   };
-
-  checkEntry("sensorTask", snapshot.sensor, TaskConfig::SENSOR_TASK_STACK_SIZE);
-  checkEntry("webTask", snapshot.web, TaskConfig::WEB_TASK_STACK_SIZE);
-  checkEntry("autoTask", snapshot.automation, TaskConfig::AUTOMATION_TASK_STACK_SIZE);
-  checkEntry("displayTask", snapshot.display, TaskConfig::DISPLAY_TASK_STACK_SIZE);
-
-  return hasAnomaly;
+  
+  check(s.sensor);
+  check(s.web);
+  check(s.automation);
+  check(s.display);
+  
+  return anomaly;
 }
 
-}  // namespace TaskMonitor
-
-
+} // namespace TaskMonitor

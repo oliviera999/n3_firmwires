@@ -1,5 +1,5 @@
 #include "nvs_manager.h"
-#include "project_config.h"
+#include "config.h"
 #include <esp_system.h>
 #include <nvs.h>
 #include <nvs_flash.h>

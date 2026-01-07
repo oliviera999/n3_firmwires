@@ -8,7 +8,7 @@
 
 #include "event_log.h"
 #include "gpio_parser.h"
-#include "project_config.h"
+#include "config.h"
 
 namespace {
 
@@ -212,7 +212,17 @@ void automationTask(void* pv) {
 
       if (now - lastDriftDisplay > driftInterval) {
         LOG_TIME(LOG_INFO, "=== INFORMATIONS DE DÉRIVE TEMPORELLE ===");
-        g_ctx->timeDriftMonitor.printDriftInfo();
+        // Simplification : lecture directe de la dernière sync
+        time_t lastSync = g_ctx->timeDriftMonitor.getLastSyncTime();
+        if (lastSync > 0) {
+          char buf[64];
+          struct tm ti;
+          localtime_r(&lastSync, &ti);
+          strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
+          LOG_TIME(LOG_INFO, "Dernière sync NTP: %s", buf);
+        } else {
+          LOG_TIME(LOG_INFO, "Aucune sync NTP effectuée");
+        }
 
         time_t currentEpoch = time(nullptr);
         struct tm timeinfo;

@@ -12,7 +12,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <algorithm>
-#include "project_config.h"
+#include "config.h"
 #include "mailer.h"
 #include "automatism.h"
 #include "event_log.h"

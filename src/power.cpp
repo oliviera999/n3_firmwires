@@ -5,7 +5,7 @@
 #include <sys/time.h>
 #include <cmath>
 #include <functional>
-#include "project_config.h"
+#include "config.h"
 #include "log.h"
 #include "realtime_websocket.h"
 
@@ -56,15 +56,26 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   }
   
   // Sauvegarde des identifiants WiFi avant la déconnexion (si configuré)
-  if (SleepConfig::SAVE_WIFI_CREDENTIALS_BEFORE_SLEEP) {
+  // Utiliser la configuration existante ou une valeur par défaut
+  #ifdef SAVE_WIFI_CREDENTIALS_BEFORE_SLEEP
+  if (SAVE_WIFI_CREDENTIALS_BEFORE_SLEEP) {
     saveCurrentWifiCredentials();
   }
+  #else
+  saveCurrentWifiCredentials(); // Par défaut, sauvegarder
+  #endif
   
   // Configuration du réveil
   esp_sleep_enable_timer_wakeup(sleepTimeSeconds * 1000000ULL); // Conversion en microsecondes
   
   // Déconnexion WiFi avant le sommeil (si configuré)
-  if (SleepConfig::DISCONNECT_WIFI_BEFORE_SLEEP) {
+  // Utiliser la configuration existante ou une valeur par défaut
+  bool disconnectWifi = true;
+  #ifdef DISCONNECT_WIFI_BEFORE_SLEEP
+  disconnectWifi = DISCONNECT_WIFI_BEFORE_SLEEP;
+  #endif
+
+  if (disconnectWifi) {
     // AMÉLIORATION: Fermer proprement le WebSocket avant de déconnecter le WiFi
     // pour éviter les erreurs 1006 (connexion fermée sans Close frame)
     uint8_t wsClients = realtimeWebSocket.getConnectedClients();
@@ -355,13 +366,13 @@ bool PowerManager::reconnectWithSavedCredentials() {
 // NOUVELLES MÉTHODES DE GESTION TEMPORELLE ROBUSTE
 // ========================================
 
-bool PowerManager::isValidEpoch(time_t epoch) const {
-  return epoch >= ::SleepConfig::EPOCH_MIN_VALID && 
-         epoch <= ::SleepConfig::EPOCH_MAX_VALID &&
+  bool PowerManager::isValidEpoch(time_t epoch) const {
+  return epoch >= SleepConfig::EPOCH_MIN_VALID && 
+         epoch <= SleepConfig::EPOCH_MAX_VALID &&
          epoch != 0;
 }
 
-time_t PowerManager::loadTimeWithFallback() {
+  time_t PowerManager::loadTimeWithFallback() {
   unsigned long savedEpochUL;
   g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpochUL, 0);
   time_t savedEpoch = static_cast<time_t>(savedEpochUL);
@@ -375,28 +386,28 @@ time_t PowerManager::loadTimeWithFallback() {
   }
   
   // Fallback 2: Epoch de compilation
-  if (isValidEpoch(::SleepConfig::EPOCH_COMPILE_TIME)) {
-    Serial.printf("[Power] Utilisation epoch de compilation: %lu\n", ::SleepConfig::EPOCH_COMPILE_TIME);
-    timeval tv = {::SleepConfig::EPOCH_COMPILE_TIME, 0};
+  if (isValidEpoch(SleepConfig::EPOCH_COMPILE_TIME)) {
+    Serial.printf("[Power] Utilisation epoch de compilation: %lu\n", SleepConfig::EPOCH_COMPILE_TIME);
+    timeval tv = {SleepConfig::EPOCH_COMPILE_TIME, 0};
     settimeofday(&tv, nullptr);
-    return ::SleepConfig::EPOCH_COMPILE_TIME;
+    return SleepConfig::EPOCH_COMPILE_TIME;
   }
   
   // Fallback 3: Epoch par défaut
-  Serial.printf("[Power] Utilisation epoch par défaut: %lu\n", ::SleepConfig::EPOCH_DEFAULT_FALLBACK);
-  timeval tv = {::SleepConfig::EPOCH_DEFAULT_FALLBACK, 0};
+  Serial.printf("[Power] Utilisation epoch par défaut: %lu\n", SleepConfig::EPOCH_DEFAULT_FALLBACK);
+  timeval tv = {SleepConfig::EPOCH_DEFAULT_FALLBACK, 0};
   settimeofday(&tv, nullptr);
-  return ::SleepConfig::EPOCH_DEFAULT_FALLBACK;
+  return SleepConfig::EPOCH_DEFAULT_FALLBACK;
 }
 
 void PowerManager::applyDriftCorrection() {
   // Interrupteur global: désactive toute correction
-  if (!::SleepConfig::ENABLE_DRIFT_CORRECTION) {
+  if (!SleepConfig::ENABLE_DRIFT_CORRECTION) {
     return;
   }
   const unsigned long now = millis();
 
-  if (_lastDriftCorrection != 0 && now - _lastDriftCorrection < ::SleepConfig::DRIFT_CORRECTION_INTERVAL_MS) {
+  if (_lastDriftCorrection != 0 && now - _lastDriftCorrection < SleepConfig::DRIFT_CORRECTION_INTERVAL_MS) {
     return;
   }
 
@@ -408,8 +419,8 @@ void PowerManager::applyDriftCorrection() {
     return;
   }
 
-  if (_lastNtpSync == 0 && ::SleepConfig::ENABLE_DEFAULT_DRIFT_CORRECTION) {
-    _defaultDriftAccumulator += (::SleepConfig::DEFAULT_DRIFT_CORRECTION_PPM * elapsedSeconds) / 1000000.0f;
+  if (_lastNtpSync == 0 && SleepConfig::ENABLE_DEFAULT_DRIFT_CORRECTION) {
+    _defaultDriftAccumulator += (SleepConfig::DEFAULT_DRIFT_CORRECTION_PPM * elapsedSeconds) / 1000000.0f;
     float wholeSeconds = std::trunc(_defaultDriftAccumulator);
     if (wholeSeconds != 0.0f) {
       const int correctionSeconds = static_cast<int>(wholeSeconds);
@@ -421,7 +432,7 @@ void PowerManager::applyDriftCorrection() {
         settimeofday(&tv, nullptr);
 
         Serial.printf("[Power] Correction de dérive par défaut appliquée: %d s (dérive configurée: %.2f PPM)\n",
-                      correctionSeconds, ::SleepConfig::DEFAULT_DRIFT_CORRECTION_PPM);
+                      correctionSeconds, SleepConfig::DEFAULT_DRIFT_CORRECTION_PPM);
         smartSaveTime();
       }
 
@@ -432,12 +443,12 @@ void PowerManager::applyDriftCorrection() {
     return;
   }
 
-  if (_lastNtpSync == 0 || std::fabs(_currentDriftPPM) < ::SleepConfig::DRIFT_CORRECTION_THRESHOLD_PPM) {
+  if (_lastNtpSync == 0 || std::fabs(_currentDriftPPM) < SleepConfig::DRIFT_CORRECTION_THRESHOLD_PPM) {
     _lastDriftCorrection = now;
     return;
   }
 
-  _measuredDriftAccumulator += (_currentDriftPPM * elapsedSeconds * ::SleepConfig::DRIFT_CORRECTION_FACTOR) / 1000000.0f;
+  _measuredDriftAccumulator += (_currentDriftPPM * elapsedSeconds * SleepConfig::DRIFT_CORRECTION_FACTOR) / 1000000.0f;
   float wholeSeconds = std::trunc(_measuredDriftAccumulator);
   if (wholeSeconds != 0.0f) {
     const int correctionSeconds = static_cast<int>(wholeSeconds);
@@ -498,13 +509,13 @@ void PowerManager::smartSaveTime() {
     Serial.println(F("[Power] Première sauvegarde d'heure"));
   }
   // 2. Sauvegarde forcée périodique
-  else if (currentMillis - _lastTimeSave > ::SleepConfig::MAX_SAVE_INTERVAL_MS) {
+  else if (currentMillis - _lastTimeSave > SleepConfig::MAX_SAVE_INTERVAL_MS) {
     shouldSave = true;
     Serial.println(F("[Power] Sauvegarde forcée périodique"));
   }
   // 3. Sauvegarde si différence significative
-  else if ((currentMillis - _lastTimeSave > ::SleepConfig::MIN_SAVE_INTERVAL_MS) && 
-           (abs(currentEpoch - _lastSavedEpoch) > ::SleepConfig::MIN_TIME_DIFF_FOR_SAVE_SEC)) {
+  else if ((currentMillis - _lastTimeSave > SleepConfig::MIN_SAVE_INTERVAL_MS) && 
+           (abs(currentEpoch - _lastSavedEpoch) > SleepConfig::MIN_TIME_DIFF_FOR_SAVE_SEC)) {
     shouldSave = true;
     Serial.printf("[Power] Sauvegarde (diff: %ld s)\n", abs(currentEpoch - _lastSavedEpoch));
   }

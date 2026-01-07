@@ -11,7 +11,7 @@
 #include "power.h"
 #include "diagnostics.h"
 #include "pins.h"
-#include "project_config.h"
+#include "config.h"
 #include "secrets.h"
 #include "automatism.h"
 #include "web_client.h"
@@ -24,9 +24,7 @@
 #include "task_monitor.h"
 #include "app_context.h"
 #include "app_tasks.h"
-#include "bootstrap_storage.h"
-#include "bootstrap_services.h"
-#include "bootstrap_network.h"
+#include "system_boot.h"
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
 #include <ArduinoOTA.h>
@@ -89,9 +87,9 @@ void setup() {
   Serial.println("[INIT] Moniteur série activé");
   #endif
 
-  BootstrapNetwork::setupHostname(g_hostname, sizeof(g_hostname));
+  SystemBoot::setupHostname(g_hostname, sizeof(g_hostname));
 
-  BootstrapStorage::initialize(g_appContext, g_lastDigestMs, g_lastDigestSeq);
+  SystemBoot::initializeStorage(g_appContext, g_lastDigestMs, g_lastDigestSeq);
   
   LOG_INFO("Démarrage FFP5CS v%s", ProjectConfig::VERSION);
   
@@ -112,27 +110,27 @@ void setup() {
   }
   EventLog::addf("App start v%s", ProjectConfig::VERSION);
   
-  BootstrapNetwork::OtaState otaState{g_otaJustUpdated, g_previousVersion, g_lastOtaCheck};
-  BootstrapNetwork::validatePendingOta(otaState);
+  SystemBoot::OtaState otaState{g_otaJustUpdated, g_previousVersion, g_lastOtaCheck};
+  SystemBoot::validatePendingOta(otaState);
   EventLog::add("OTA validation done");
   
-  BootstrapServices::initializeTimekeeping(g_appContext);
+  SystemBoot::initializeTimekeeping(g_appContext);
 
-  BootstrapServices::initializeDisplay(g_appContext);
+  SystemBoot::initializeDisplay(g_appContext);
 
-  bool wifiConnected = BootstrapNetwork::connect(g_appContext, g_hostname);
+  bool wifiConnected = SystemBoot::connectWifi(g_appContext, g_hostname);
   if (wifiConnected) {
-    BootstrapNetwork::onWifiReady(g_appContext, g_hostname, otaState);
+    SystemBoot::onWifiReady(g_appContext, g_hostname, otaState);
   }
 
-  BootstrapServices::initializePeripherals(g_appContext);
-  BootstrapServices::loadConfiguration(g_appContext);
+  SystemBoot::initializePeripherals(g_appContext);
+  SystemBoot::loadConfiguration(g_appContext);
 
   if (wifiConnected) {
-    BootstrapNetwork::postConfiguration(g_appContext, g_hostname, otaState);
+    SystemBoot::postConfiguration(g_appContext, g_hostname, otaState);
   }
 
-  BootstrapServices::finalizeDisplay(g_appContext);
+  SystemBoot::finalizeDisplay(g_appContext);
 
   if (!AppTasks::start(g_appContext)) {
     LOG_WARN("Système dégradé: pas de tâches FreeRTOS");
@@ -158,7 +156,7 @@ void loop() {
   if (!otaTimerAdded) {
     TimerManager::addTimer("OTA_CHECK", OTA_CHECK_INTERVAL, []() {
       LOG_INFO("Vérification périodique des mises à jour OTA...");
-      BootstrapNetwork::checkForOtaUpdate(g_appContext);
+      SystemBoot::checkForOtaUpdate(g_appContext);
     });
     otaTimerAdded = true;
   }
@@ -172,43 +170,49 @@ void loop() {
       if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
         unsigned long currentTime = millis();
         
-        // Utiliser un buffer char[] pour éviter la fragmentation par 'String'
-        char bodyBuffer[BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES];
-        char* p = bodyBuffer;
-        const char* end = bodyBuffer + sizeof(bodyBuffer);
+        // Optimisation: Utilisation directe de String pour éviter allocation stack massive (Fix audit)
+        String body;
+        if (!body.reserve(BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES)) {
+             LOG_WARN("Echec reservation memoire digest");
+             return;
+        }
 
         // Construire l'en-tête de l'e-mail
         char systemInfo[128];
         Utils::getSystemInfo(systemInfo, sizeof(systemInfo));
-        p += snprintf(p, end - p, "Résumé des événements récents (%s)\\n\\n", systemInfo);
-        p += snprintf(p, end - p, "[Stacks] Marges (bytes):\\n");
+        
+        // Petit buffer temporaire pour les formatages (safe stack size)
+        char lineBuf[256]; 
+        
+        snprintf(lineBuf, sizeof(lineBuf), "Résumé des événements récents (%s)\n\n", systemInfo);
+        body += lineBuf;
+        
+        body += "[Stacks] Marges (bytes):\n";
 
         // Récupérer les informations de stack
         AppTasks::Handles handles = AppTasks::getHandles();
         if (handles.sensor) {
-          p += snprintf(p, end - p, "- sensorTask: %u\\n", uxTaskGetStackHighWaterMark(handles.sensor));
+          snprintf(lineBuf, sizeof(lineBuf), "- sensorTask: %u\n", uxTaskGetStackHighWaterMark(handles.sensor));
+          body += lineBuf;
         }
         if (handles.web) {
-          p += snprintf(p, end - p, "- webTask: %u\\n", uxTaskGetStackHighWaterMark(handles.web));
+          snprintf(lineBuf, sizeof(lineBuf), "- webTask: %u\n", uxTaskGetStackHighWaterMark(handles.web));
+          body += lineBuf;
         }
         if (handles.automation) {
-          p += snprintf(p, end - p, "- autoTask: %u\\n", uxTaskGetStackHighWaterMark(handles.automation));
+          snprintf(lineBuf, sizeof(lineBuf), "- autoTask: %u\n", uxTaskGetStackHighWaterMark(handles.automation));
+          body += lineBuf;
         }
         if (handles.display) {
-          p += snprintf(p, end - p, "- displayTask: %u\\n", uxTaskGetStackHighWaterMark(handles.display));
+          snprintf(lineBuf, sizeof(lineBuf), "- displayTask: %u\n", uxTaskGetStackHighWaterMark(handles.display));
+          body += lineBuf;
         }
-        p += snprintf(p, end - p, "- loop(): %u\\n\\n", uxTaskGetStackHighWaterMark(nullptr));
+        snprintf(lineBuf, sizeof(lineBuf), "- loop(): %u\n\n", uxTaskGetStackHighWaterMark(nullptr));
+        body += lineBuf;
         
-        p += snprintf(p, end - p, "[TIME DRIFT] Dérive temporelle:\\n");
-        // Copier le rapport de dérive temporelle
-        strncpy(p, timeDriftMonitor.generateDriftReport().c_str(), end - p);
-        p[end - p - 1] = '\\0'; // Assurer la terminaison null
-        p += strlen(p);
-        p += snprintf(p, end - p, "\\n");
-
-        // Préparer l'objet String pour EventLog::dumpSince
-        String body(bodyBuffer);
-        body.reserve(BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES);
+        body += "[TIME DRIFT] Dérive temporelle:\n";
+        body += timeDriftMonitor.generateDriftReport();
+        body += "\n";
 
         uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq,
                                               body,
@@ -262,5 +266,3 @@ void loop() {
   
   vTaskDelay(pdMS_TO_TICKS(500));
 } 
-
- 

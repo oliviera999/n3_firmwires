@@ -2,7 +2,7 @@
 #include "nvs_manager.h" // v11.112
 #include <math.h> // Pour fabs()
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
-#include "project_config.h"
+#include "config.h"
 
 // -------- UltrasonicManager ---------
 UltrasonicManager::UltrasonicManager(int pinTrigEcho) : _pinTrigEcho(pinTrigEcho),
@@ -278,36 +278,6 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   return avgDistance;
 }
 
-uint16_t UltrasonicManager::readRobustFiltered() {
-  // 1) Lecture A
-  uint16_t a = readAdvancedFiltered();
-  if (a == 0) {
-    // Fallback lecture simple
-    a = readFiltered(3);
-  }
-  if (a == 0) {
-    return _lastValidDistance > 0 ? _lastValidDistance : 0;
-  }
-  
-  // 2) Confirmation temporelle: lecture B courte pour confirmer un saut important
-  vTaskDelay(pdMS_TO_TICKS(50));
-  uint16_t b = readFiltered(3);
-  if (b == 0) b = a; // si lecture courte échoue, ne bloque pas
-  
-  // 3) Si écart > MAX_DISTANCE_DELTA*2, exiger confirmation (proche de A)
-  int delta = abs((int)a - (int)b);
-  if (_lastValidDistance > 0 && abs((int)a - (int)_lastValidDistance) > (int)MAX_DISTANCE_DELTA*2) {
-    if (delta > (int)MAX_DISTANCE_DELTA) {
-      // Rejette saut non confirmé, conserve dernière valeur
-      return _lastValidDistance;
-    }
-  }
-  
-  // 4) Mise à jour dernière valeur valide
-  _lastValidDistance = a;
-  return a;
-}
-
 void UltrasonicManager::resetHistory() {
   _historyIndex = 0;
   _historyCount = 0;
@@ -482,27 +452,6 @@ float WaterTempSensor::getTemperatureWithFallback() {
   
   Serial.printf("[WaterTemp] Capteur défaillant, utilise valeur par défaut: %.1f°C\n", DefaultValues::WATER_TEMP);
   return DefaultValues::WATER_TEMP;
-}
-
-float WaterTempSensor::robustTemperatureC() {
-  // MÉTHODE DÉPRÉCIÉE - Utiliser getTemperatureWithFallback() à la place
-  Serial.println("[WaterTemp] ⚠️ robustTemperatureC() dépréciée - utilise getTemperatureWithFallback()");
-  return getTemperatureWithFallback();
-}
-
-float WaterTempSensor::ultraRobustTemperatureC() {
-  // SIMPLIFICATION: Utilise la méthode simple avec valeur par défaut
-  Serial.println("[WaterTemp] Lecture simplifiée (ultra-robuste dépréciée)...");
-  
-  float temp = getTemperatureWithFallback();
-  
-  // Si échec, retourner une valeur par défaut raisonnable
-  if (isnan(temp)) {
-    Serial.println("[WaterTemp] Lecture échouée, utilisation valeur par défaut: 20.0°C");
-    return 20.0f; // Température par défaut pour l'aquaponie
-  }
-  
-  return temp;
 }
 
 float WaterTempSensor::temperatureC() {

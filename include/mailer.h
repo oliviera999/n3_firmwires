@@ -1,5 +1,5 @@
 #pragma once
-#include "project_config.h"
+#include "config.h"
 #if FEATURE_MAIL
 #include <ESP_Mail_Client.h>
 #else
