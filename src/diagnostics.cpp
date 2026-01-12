@@ -1,9 +1,12 @@
 #include "diagnostics.h"
 #include "nvs_manager.h" // v11.106
+#include "app_tasks.h" // Pour les TaskHandle_t en mode debug
 #include <ArduinoJson.h>
 #include <esp_core_dump.h>
 #include <soc/rtc_cntl_reg.h>
 #include <rom/rtc.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 Diagnostics::Diagnostics() 
     : _lastUpdate(0), _lastHeapSave(0), _lastSavedMinHeap(UINT32_MAX) {
@@ -134,6 +137,16 @@ void Diagnostics::update() {
     }
   }
   _stats.idlePercent = idlePct;
+  
+  // En mode debug: sauvegarder périodiquement uptime et heap pour diagnostic reboot
+  #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
+  static unsigned long lastDiagnosticSave = 0;
+  if (now - lastDiagnosticSave > 60000) { // Toutes les minutes
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_lastUptime", _stats.uptimeSec);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_lastHeap", _stats.freeHeap);
+    lastDiagnosticSave = now;
+  }
+  #endif
   
   // Optimisation NVS : sauvegarder le minHeap seulement si nécessaire
   if (_stats.freeHeap < _stats.minFreeHeap) {
@@ -291,6 +304,52 @@ String Diagnostics::generateRestartReport() const {
     }
     report += "\n";
   }
+  
+  // Détails supplémentaires en mode DEBUG/PROFILE_TEST pour diagnostic
+  #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
+  // Informations détaillées pour WATCHDOG
+  if (resetReason == ESP_RST_TASK_WDT || resetReason == ESP_RST_INT_WDT || resetReason == ESP_RST_WDT) {
+    report += "\n🔍 DÉTAILS WATCHDOG (Mode Debug) 🔍\n";
+    
+    // Informations sur l'uptime avant reboot (si disponible dans NVS)
+    unsigned long lastUptime = 0;
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_lastUptime", lastUptime, 0);
+    if (lastUptime > 0) {
+      report += "Uptime avant reboot: "; 
+      unsigned long hours = lastUptime / 3600;
+      unsigned long mins = (lastUptime % 3600) / 60;
+      unsigned long secs = lastUptime % 60;
+      report += String(hours); report += "h "; 
+      report += String(mins); report += "m "; 
+      report += String(secs); report += "s\n";
+    }
+    
+    // État mémoire avant reboot
+    uint32_t lastHeap = 0;
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_lastHeap", lastHeap, 0);
+    if (lastHeap > 0) {
+      report += "Heap libre avant reboot: "; report += String(lastHeap); report += " bytes\n";
+    }
+    
+    // Configuration watchdog
+    report += "Watchdog timeout configuré: 60 secondes\n";
+    report += "Note: Une tâche n'a pas reset le watchdog pendant >60s\n";
+    report += "\n";
+  }
+  
+  // Informations supplémentaires pour PANIC en mode debug
+  if (_stats.panicInfo.hasPanicInfo) {
+    report += "🔍 DÉTAILS COMPLÉMENTAIRES PANIC (Mode Debug) 🔍\n";
+    report += "Reset reason code: "; report += String((int)resetReason); report += "\n";
+    RESET_REASON rtcReason = rtc_get_reset_reason(0);
+    report += "RTC reason code (Core 0): "; report += String((int)rtcReason); report += "\n";
+    RESET_REASON rtcReason1 = rtc_get_reset_reason(1);
+    if (rtcReason1 != NO_MEAN) {
+      report += "RTC reason code (Core 1): "; report += String((int)rtcReason1); report += "\n";
+    }
+    report += "\n";
+  }
+  #endif
   
   // Informations sur le redémarrage
   report += "Compteur de redémarrages: "; report += String(_stats.rebootCount); report += "\n";

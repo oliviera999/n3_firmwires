@@ -164,7 +164,8 @@ void setup() {
     // Reset watchdog avant envoi bloquant
     g_appContext.power.resetWatchdog();
     String emailSubject = "Démarrage système v" + String(ProjectConfig::VERSION);
-    bool sent = g_appContext.mailer.send(emailSubject.c_str(), bootMsg.c_str(), "User", targetEmail.c_str());
+    // Utiliser sendAlert() pour inclure automatiquement le rapport détaillé (incluant generateRestartReport())
+    bool sent = g_appContext.mailer.sendAlert(emailSubject.c_str(), bootMsg, targetEmail.c_str());
     
     if (sent) {
       LOG_INFO("✅ Mail de démarrage ENVOYÉ avec succès");
