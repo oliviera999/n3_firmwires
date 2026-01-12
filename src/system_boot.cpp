@@ -12,11 +12,29 @@
 #include <ArduinoOTA.h>
 #endif
 
+#include <ArduinoJson.h>
 #include "event_log.h"
 #include "ota_config.h"
 #include "config.h"
 #include "nvs_manager.h"
 #include "timer_manager.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+// Hook FreeRTOS pour détection stack overflow
+extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+  portDISABLE_INTERRUPTS();
+  
+  Serial.printf("\n\n⚠️⚠️⚠️ STACK OVERFLOW DÉTECTÉ ⚠️⚠️⚠️\n");
+  Serial.printf("Tâche: %s\n", pcTaskName ? pcTaskName : "UNKNOWN");
+  Serial.printf("Handle: %p\n", xTask);
+  
+  String logMsg = String("CRITICAL: Stack overflow in ") + (pcTaskName ? pcTaskName : "UNKNOWN");
+  EventLog::add(logMsg.c_str());
+  
+  delay(100);
+  // FreeRTOS va reboot automatiquement
+}
 
 namespace SystemBoot {
 
@@ -213,6 +231,20 @@ void initializePeripherals(AppContext& ctx) {
 void loadConfiguration(AppContext& ctx) {
   Serial.println(F("\n[App] Chargement configuration complète depuis NVS..."));
   ctx.config.loadConfigFromNVS();
+  
+  // Appliquer le JSON caché à l'automatisme immédiatement
+  String cachedJson;
+  if (ctx.config.loadRemoteVars(cachedJson) && cachedJson.length() > 0) {
+      DynamicJsonDocument doc(2048); // Utiliser Dynamic pour être sûr
+      DeserializationError err = deserializeJson(doc, cachedJson);
+      if (!err) {
+          ctx.automatism.applyConfigFromJson(doc);
+          Serial.println(F("[App] ✅ Config JSON NVS appliquée à Automatism"));
+      } else {
+          Serial.printf("[App] ⚠️ Erreur parsing JSON NVS: %s\n", err.c_str());
+      }
+  }
+  
   ctx.automatism.begin();
 }
 

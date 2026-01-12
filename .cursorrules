@@ -65,25 +65,13 @@ Ce projet est composé de deux parties principales :
 - Modem sleep WiFi activé par défaut (WIFI_PS_MIN_MODEM)
 - Ne pas accéder aux périphériques I2C/SPI pendant le sleep
 
+### 5. Principes de développement (extrêmement important)
+- Toujours préserver l'intégrité totale des fonctionnalités
+- Préférer générer différents petits fichiers plutôt qu'un gros fichier difficilement maintenable
+- La stabilité du système est essentielle, il ne doit pas crasher
+- Éviter la suringénierie
+
 ## 🏗️ Architecture du code
-
-### Structure des fichiers
-```
-src/
-├── main.cpp              # Point d'entrée, setup/loop
-├── config.cpp/h          # Configuration système
-├── wifi_manager.cpp/h    # Gestion WiFi et reconnexion
-├── web_server.cpp/h      # Serveur HTTP et WebSocket
-├── web_client.cpp/h      # Serveur client web (SPA)
-├── sensors.cpp/h         # Gestion capteurs (DHT, DS18B20)
-├── actuators.cpp/h       # Relais, servo, LED
-├── automatism.cpp/h      # Logique de nourrissage
-├── watchdog_manager.cpp/h # Gestion watchdog et sleep
-└── ota_manager.cpp/h     # Mise à jour OTA
-
-data/                     # Système de fichiers (SPIFFS/LittleFS)
-└── www/                  # Interface web (HTML/CSS/JS)
-```
 
 ### Patterns à suivre
 1. **Singleton**: Managers principaux (WiFi, Web, Sensors)
@@ -186,13 +174,38 @@ Le système de mesure du niveau de l'eau de l'aquarium, du potager, et de la ré
 ### Procédure de monitoring post-déploiement
 1. **OBLIGATOIRE**: Lancer un monitoring de **90 secondes** après chaque mise à jour
 2. Capturer les logs série complets pendant cette période
-3. Analyser les logs en priorisant :
-   - 🔴 **Priorité 1**: Guru Meditation, Panic, Brownout, Core dump
-   - 🟡 **Priorité 2**: Warnings watchdog, timeouts WiFi/WebSocket
-   - 🟢 **Priorité 3**: Utilisation mémoire (heap/stack)
-   - ⚪ **Secondaire**: Valeurs des capteurs (sauf indication contraire)
-4. Identifier et documenter tous les points d'attention
-5. Si erreurs critiques détectées → corriger avant de continuer
+3. **OBLIGATOIRE**: Analyser TOUS les aspects des logs (analyse complète requise) :
+   - 🔴 **Erreurs critiques**: Guru Meditation, Panic, Brownout, Core dump, Stack canary, Rebooting
+   - 🟡 **Warnings et erreurs non-critiques**: Watchdog warnings, timeouts, échecs d'opérations
+   - 🟢 **Performance système**: 
+     * Utilisation mémoire (heap libre/minimum, fragmentation)
+     * Utilisation stack par tâche (toutes les tâches FreeRTOS)
+     * Cycles CPU et latences
+   - 🔵 **Réseau et communications**:
+     * Connexion WiFi (statut, RSSI, déconnexions/reconnexions)
+     * WebSocket (connexions, déconnexions, messages envoyés/reçus)
+     * Requêtes HTTP/HTTPS (succès/échecs, latences, timeouts)
+     * OTA (tentatives, échecs, progress)
+   - 🟣 **Stabilité système**:
+     * Watchdog resets et timeouts
+     * Uptime et reboots
+     * Tâches FreeRTOS (création, suppression, stack overflows)
+   - ⚪ **Capteurs et périphériques**:
+     * État des capteurs (connectés/déconnectés, erreurs de lecture)
+     * Valeurs des capteurs (valeurs aberrantes, timeouts)
+     * GPIO et actionneurs (commandes, états)
+   - 🟠 **Patterns et tendances**:
+     * Fréquence des erreurs/warnings
+     * Évolution des métriques dans le temps
+     * Corrélations entre événements
+   - 🔶 **Métriques spécifiques**:
+     * Nombre de cycles automatisés réussis/échoués
+     * Temps de réponse des opérations critiques
+     * Utilisation des ressources système
+4. Identifier et documenter TOUS les points d'attention (pas seulement les erreurs critiques)
+5. Générer un rapport d'analyse complet incluant toutes les catégories ci-dessus
+6. Si erreurs critiques détectées → corriger avant de continuer
+7. Documenter les améliorations de performance et stabilité observées
 
 ### Patterns d'erreurs connues
 - **Guru Meditation**: Stack overflow, null pointer, division par zéro

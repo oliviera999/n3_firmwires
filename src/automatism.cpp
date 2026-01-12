@@ -146,8 +146,81 @@ bool Automatism::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 
 void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
     _network.applyConfigFromJson(doc);
-    // Appliquer localement les changements (seuils, etc.)
-    // Logique de parsing simplifiée ici ou déléguée
+    
+    // Synchroniser les variables depuis AutomatismNetwork vers Automatism
+    // (car applyConfigFromJson dans Network n'a pas accès à Automatism)
+    aqThresholdCm = _network.getAqThresholdCm();
+    tankThresholdCm = _network.getTankThresholdCm();
+    limFlood = _network.getLimFlood();
+    heaterThresholdC = _network.getHeaterThresholdC();
+    freqWakeSec = _network.getFreqWakeSec();
+    
+    // Appliquer les autres variables directement depuis le JSON
+    auto parseIntValue = [](ArduinoJson::JsonVariantConst value) -> int {
+        if (value.is<int>()) return value.as<int>();
+        if (value.is<float>()) return static_cast<int>(value.as<float>());
+        if (value.is<const char*>()) return atoi(value.as<const char*>());
+        return value.as<int>();
+    };
+    
+    // 113: Durée remplissage
+    if (doc.containsKey("tempsRemplissageSec") || doc.containsKey("refillDuration") || doc.containsKey("113")) {
+        auto v = doc.containsKey("tempsRemplissageSec") ? doc["tempsRemplissageSec"] : 
+                 (doc.containsKey("refillDuration") ? doc["refillDuration"] : doc["113"]);
+        int refillSec = parseIntValue(v);
+        if (refillSec > 0 && refillSec <= 600) {
+            refillDurationMs = static_cast<uint32_t>(refillSec) * 1000UL;
+            Serial.printf("[Auto] ✅ Durée remplissage mise à jour: %d s\n", refillSec);
+        }
+    }
+    
+    // 111: Durée nourrissage gros
+    if (doc.containsKey("tempsGros") || doc.containsKey("111")) {
+        auto v = doc.containsKey("tempsGros") ? doc["tempsGros"] : doc["111"];
+        int value = parseIntValue(v);
+        if (value > 0 && value <= 300) {
+            tempsGros = static_cast<uint16_t>(value);
+        }
+    }
+    
+    // 112: Durée nourrissage petits
+    if (doc.containsKey("tempsPetits") || doc.containsKey("112")) {
+        auto v = doc.containsKey("tempsPetits") ? doc["tempsPetits"] : doc["112"];
+        int value = parseIntValue(v);
+        if (value > 0 && value <= 300) {
+            tempsPetits = static_cast<uint16_t>(value);
+        }
+    }
+    
+    // 105: Heure nourrissage matin
+    if (doc.containsKey("bouffeMatin") || doc.containsKey("bm") || doc.containsKey("105")) {
+        auto v = doc.containsKey("bouffeMatin") ? doc["bouffeMatin"] : 
+                 (doc.containsKey("bm") ? doc["bm"] : doc["105"]);
+        int value = parseIntValue(v);
+        if (value >= 0 && value <= 23) {
+            bouffeMatin = static_cast<uint8_t>(value);
+        }
+    }
+    
+    // 106: Heure nourrissage midi
+    if (doc.containsKey("bouffeMidi") || doc.containsKey("bmi") || doc.containsKey("106")) {
+        auto v = doc.containsKey("bouffeMidi") ? doc["bouffeMidi"] : 
+                 (doc.containsKey("bmi") ? doc["bmi"] : doc["106"]);
+        int value = parseIntValue(v);
+        if (value >= 0 && value <= 23) {
+            bouffeMidi = static_cast<uint8_t>(value);
+        }
+    }
+    
+    // 107: Heure nourrissage soir
+    if (doc.containsKey("bouffeSoir") || doc.containsKey("bs") || doc.containsKey("107")) {
+        auto v = doc.containsKey("bouffeSoir") ? doc["bouffeSoir"] : 
+                 (doc.containsKey("bs") ? doc["bs"] : doc["107"]);
+        int value = parseIntValue(v);
+        if (value >= 0 && value <= 23) {
+            bouffeSoir = static_cast<uint8_t>(value);
+        }
+    }
 }
 
 // ============================================================================
@@ -231,6 +304,16 @@ bool Automatism::restoreRemoteConfigFromCache() {
     if (_config.loadRemoteVars(json)) {
         JsonDocument doc;
         deserializeJson(doc, json);
+        
+        // Charger l'email directement depuis NVS si disponible
+        String emailFromNVS;
+        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "gpio_email", emailFromNVS, "") == NVSError::SUCCESS) {
+            if (emailFromNVS.length() > 0) {
+                strncpy(_emailAddress, emailFromNVS.c_str(), EmailConfig::MAX_EMAIL_LENGTH - 1);
+                _emailAddress[EmailConfig::MAX_EMAIL_LENGTH - 1] = '\0';
+            }
+        }
+        
         applyConfigFromJson(doc);
         return true;
     }

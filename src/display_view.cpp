@@ -96,6 +96,10 @@ void DisplayView::resetMainCache() {
   _cache.resetMain();
 }
 
+void DisplayView::resetVariablesCache() {
+  _cache.resetVariables();
+}
+
 void DisplayView::forceClear() {
   if (!_present) return;
   
@@ -106,6 +110,7 @@ void DisplayView::forceClear() {
   // Réinitialise tous les caches
   resetMainCache();
   resetStatusCache();
+  resetVariablesCache();
   
   // Force le mode immédiat temporairement
   _immediateMode = true;
@@ -277,7 +282,7 @@ bool DisplayView::begin() {
     _disp.cp437(true);
 #endif
 
-    // --- SPLASH SCREEN UNIFIÉ (3 secondes, non bloquant) ---
+    // --- SPLASH SCREEN UNIFIÉ (non bloquant) ---
     Serial.println("[OLED] Affichage du splash screen...");
     _disp.clearDisplay();
     
@@ -310,9 +315,9 @@ bool DisplayView::begin() {
     
     _disp.display();
 
-    // Le splash reste visible 3 secondes (non bloquant)
-    _splashUntil = millis() + 3000;
-    Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: 3000 ms)\n", _splashUntil);
+    // Le splash reste visible selon DisplayConfig::SPLASH_DURATION_MS (non bloquant)
+    _splashUntil = millis() + DisplayConfig::SPLASH_DURATION_MS;
+    Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: %u ms)\n", _splashUntil, DisplayConfig::SPLASH_DURATION_MS);
 
     _diagLine = 0; // reset diagnostic line counter at each begin
     resetStatusCache(); // Réinitialise le cache des états
@@ -431,10 +436,24 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
 
 void DisplayView::showVariables(bool pumpAqua, bool pumpTank, bool heater, bool light) {
   if (!_present || splashActive() || isLocked()) return;
+  
+  // Vérifier si les valeurs ont changé (optimisation avec cache)
+  bool valuesChanged = _cache.variables().update(pumpAqua, pumpTank, heater, light);
+  
+  // Si les valeurs n'ont pas changé et qu'on n'est pas en mode immédiat, on peut sauter l'affichage
+  if (!valuesChanged && !_immediateMode && !_updateMode) {
+    return;
+  }
+  
   clear();
   InfoScreenRenderer::renderVariables(*this, _disp, pumpAqua, pumpTank, heater, light);
-  if (!_updateMode) flush();
-  else _needsFlush = true;
+  
+  // Mode immédiat pour les changements de valeurs, mode optimisé sinon
+  if (_immediateMode || valuesChanged) {
+    flush();
+  } else if (_updateMode) {
+    _needsFlush = true;
+  }
 }
 
 void DisplayView::showDiagnostic(const char* msg) {

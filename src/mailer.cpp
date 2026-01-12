@@ -356,6 +356,9 @@ bool Mailer::begin() {
   _cfg.login.email      = Secrets::AUTHOR_EMAIL;
   _cfg.login.password   = Secrets::AUTHOR_PASSWORD;
 
+  // DEBUG: Activer les logs SMTP détaillés
+  _smtp.debug(1);
+
   // Diagnostic de la configuration
   Serial.printf("[Mail] SMTP_HOST: '%s'\n", EmailConfig::SMTP_HOST);
   Serial.printf("[Mail] SMTP_PORT: %d\n", EmailConfig::SMTP_PORT);
@@ -384,6 +387,7 @@ bool Mailer::begin() {
 }
 
 bool Mailer::send(const char* subject, const char* message, const char* toName, const char* toEmail) {
+  Serial.println(F("[Mail] Trace 1: Start send"));
   Serial.println(F("[Mail] ===== DIAGNOSTIC SEND ====="));
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
   Serial.printf("[Mail] _smtp.connected(): %s\n", _smtp.connected() ? "TRUE" : "FALSE");
@@ -405,12 +409,16 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
     Serial.println(F("[Mail] ✅ Connexion SMTP déjà active"));
   }
   
+  Serial.println(F("[Mail] Trace 2: Connection OK"));
+
   // FIX: Utiliser des buffers statiques pour éviter les dangling pointers
   // La bibliothèque ESP Mail Client peut utiliser les pointeurs de manière asynchrone
   static char fromNameBuf[64];
   static char subjectBuf[128];
   static String finalMessageStatic;  // String statique pour persistance
   
+  Serial.println(F("[Mail] Trace 3: Buffers allocated"));
+
   // Construire l'objet avec l'environnement de manière explicite
   const char* envName = Utils::getProfileName();
   
@@ -424,8 +432,12 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   // Note: Nous utilisons toujours String ici car buildSystemInfoFooter() retourne une String
   // et le contenu peut être très long
   finalMessageStatic = message ? message : "";
-  finalMessageStatic += buildSystemInfoFooter();
+  Serial.println(F("[Mail] Trace 3.1: Appending footer..."));
+  // finalMessageStatic += buildSystemInfoFooter(); // DÉSACTIVÉ POUR TEST CRASH
+  finalMessageStatic += "\n\n[Footer désactivé pour debug]";
   
+  Serial.println(F("[Mail] Trace 4: Message built"));
+
   // Configuration du message SMTP
   SMTP_Message msg;
   msg.sender.name  = fromNameBuf;
@@ -434,6 +446,8 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   msg.addRecipient(toName, toEmail);
   msg.text.content = finalMessageStatic.c_str();
   
+  Serial.println(F("[Mail] Trace 5: Msg struct configured"));
+
   // Affichage des détails du mail avant envoi avec informations temporelles
   time_t mailTime = time(nullptr);
   struct tm mailTimeInfo;
@@ -450,7 +464,10 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   Serial.println(finalMessageStatic.substring(0, 200));
   Serial.println(F("[Mail] ==========================="));
   
+  Serial.println(F("[Mail] Trace 6: Calling sendMail..."));
   bool ok = MailClient.sendMail(&_smtp, &msg);
+  Serial.printf("[Mail] Trace 7: sendMail returned %s\n", ok ? "TRUE" : "FALSE");
+
   if (!ok) {
     Serial.printf("[Mail] ERREUR sendMail code=%d err=%d reason=%s\n", _smtp.statusCode(), _smtp.errorCode(), _smtp.errorReason().c_str());
   } else {
@@ -485,8 +502,8 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
     Serial.println(F("[Mail] ❌ ERREUR: subject est NULL"));
     return false;
   }
-  if (!toEmail) {
-    Serial.println(F("[Mail] ❌ ERREUR: toEmail est NULL"));
+  if (!toEmail || strlen(toEmail) == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: toEmail est vide/NULL (configuration incomplète)"));
     return false;
   }
   if (message.length() == 0) {

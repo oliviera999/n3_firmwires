@@ -114,6 +114,7 @@ class DisplayView {
   bool needsRefresh() const; // Vérifie si un rafraîchissement est nécessaire
   void resetStatusCache(); // Réinitialise le cache des états pour forcer un redessin complet
   void resetMainCache(); // Réinitialise le cache de l'affichage principal
+  void resetVariablesCache(); // Réinitialise le cache des variables pour forcer un redessin complet
   void forceClear(); // Force un nettoyage complet de l'écran
 
   // Verrouillage temporaire de l'écran pour éviter toute superposition

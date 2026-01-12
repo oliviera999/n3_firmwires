@@ -77,7 +77,7 @@ void setup() {
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};
   cfg.timeout_ms = 60000;
-  cfg.idle_core_mask = (1 << 0) | (1 << 1);
+  cfg.idle_core_mask = 0;  // Idle tasks non surveillées pour éviter les faux positifs
   cfg.trigger_panic = true;
   esp_task_wdt_init(&cfg);
   delay(SystemConfig::INITIAL_DELAY_MS);
@@ -86,6 +86,13 @@ void setup() {
   Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
   Serial.println("[INIT] Moniteur série activé");
   #endif
+
+  // Delay conditionnel pour debug uniquement
+  #if defined(DEBUG_MODE) || !defined(PROFILE_PROD)
+  delay(1000);  // 1 seconde pour stabiliser Serial Monitor en debug
+  #endif
+  
+  Serial.printf("\n\n=== BOOT FFP5CS v%s ===\n", ProjectConfig::VERSION);
 
   SystemBoot::setupHostname(g_hostname, sizeof(g_hostname));
 
@@ -136,6 +143,39 @@ void setup() {
     LOG_WARN("Système dégradé: pas de tâches FreeRTOS");
   }
   
+  // Notification de démarrage par mail (Diagnostic "fix mail")
+  if (g_appContext.wifi.isConnected()) {
+    LOG_INFO("=== TEST MAIL AU DÉMARRAGE ===");
+    
+    // Récupérer l'adresse configurée ou utiliser fallback
+    String targetEmail = g_appContext.automatism.getEmailAddress();
+    if (targetEmail.length() == 0) {
+      LOG_WARN("Email configuré vide, utilisation adresse fallback");
+      targetEmail = "oliv.arn.lau@gmail.com"; // HARDCODED pour test
+    }
+    
+    LOG_INFO("Cible: %s", targetEmail.c_str());
+    
+    String bootMsg = "Système démarré avec succès (v" + String(ProjectConfig::VERSION) + ").\n";
+    bootMsg += "IP: " + WiFi.localIP().toString() + "\n";
+    bootMsg += "SSID: " + g_appContext.wifi.currentSSID() + "\n";
+    bootMsg += "Raison: Test forcé au boot";
+    
+    // Reset watchdog avant envoi bloquant
+    g_appContext.power.resetWatchdog();
+    String emailSubject = "Démarrage système v" + String(ProjectConfig::VERSION);
+    bool sent = g_appContext.mailer.send(emailSubject.c_str(), bootMsg.c_str(), "User", targetEmail.c_str());
+    
+    if (sent) {
+      LOG_INFO("✅ Mail de démarrage ENVOYÉ avec succès");
+    } else {
+      LOG_ERROR("❌ ÉCHEC envoi mail de démarrage");
+    }
+    g_appContext.power.resetWatchdog();
+  } else {
+    LOG_ERROR("❌ Impossible d'envoyer mail: WiFi non connecté au boot");
+  }
+
   LOG_INFO("Initialisation terminée");
   EventLog::add("Init done");
 }

@@ -87,6 +87,18 @@ class Automatism {
   bool isFeedingInManualMode() const;
   bool isRefillingInManualMode() const;
   
+  // Méthodes pour mettre à jour les variables depuis le serveur distant
+  void setRefillDurationMs(uint32_t durationMs) { refillDurationMs = durationMs; }
+  void setAqThresholdCm(uint16_t threshold) { aqThresholdCm = threshold; }
+  void setTankThresholdCm(uint16_t threshold) { tankThresholdCm = threshold; }
+  void setLimFlood(uint16_t lim) { limFlood = lim; }
+  void setHeaterThresholdC(float threshold) { heaterThresholdC = threshold; }
+  void setTempsGros(uint16_t duration) { tempsGros = duration; }
+  void setTempsPetits(uint16_t duration) { tempsPetits = duration; }
+  void setBouffeMatin(uint8_t hour) { bouffeMatin = hour; }
+  void setBouffeMidi(uint8_t hour) { bouffeMidi = hour; }
+  void setBouffeSoir(uint8_t hour) { bouffeSoir = hour; }
+  
  private:
   friend class AutomatismRefillController;
   friend class AutomatismAlertController;

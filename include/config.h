@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.119"; // Config unifiée
+    constexpr const char* VERSION = "11.124"; // Audit général - Corrections prioritaires
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -360,7 +360,7 @@ namespace DisplayConfig {
     constexpr int OTA_OVERLAY_WIDTH = 28;
     constexpr int OTA_OVERLAY_HEIGHT = 8;
     
-    constexpr uint32_t SPLASH_DURATION_MS = 2000;
+    constexpr uint32_t SPLASH_DURATION_MS = 3000;  // Durée du splash screen (3 secondes)
     constexpr uint32_t SCREEN_SWITCH_INTERVAL_MS = 4000;
     
     constexpr uint8_t DISPLAY_WHITE = 1;
@@ -436,7 +436,7 @@ namespace TaskConfig {
     constexpr UBaseType_t WEB_TASK_PRIORITY = 2;
     constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
-    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 4096;
+    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 12288;  // 12 KB (augmenté de 8192 pour SSL/TLS)
     constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     

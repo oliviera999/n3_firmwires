@@ -101,18 +101,56 @@ class DisplayCache {
     String    _timeStr;
   };
 
+  struct VariablesCache {
+    bool update(bool pumpAqua,
+                bool pumpTank,
+                bool heater,
+                bool light,
+                bool force = false) {
+      bool changed = force ||
+                     pumpAqua != _pumpAqua ||
+                     pumpTank != _pumpTank ||
+                     heater != _heater ||
+                     light != _light;
+
+      _pumpAqua = pumpAqua;
+      _pumpTank = pumpTank;
+      _heater = heater;
+      _light = light;
+
+      return changed;
+    }
+
+    void reset() {
+      _pumpAqua = false;
+      _pumpTank = false;
+      _heater = false;
+      _light = false;
+    }
+
+   private:
+    bool _pumpAqua{false};
+    bool _pumpTank{false};
+    bool _heater{false};
+    bool _light{false};
+  };
+
   StatusCache& status() { return _status; }
   MainCache& main() { return _main; }
+  VariablesCache& variables() { return _variables; }
 
   const StatusCache& status() const { return _status; }
   const MainCache& main() const { return _main; }
+  const VariablesCache& variables() const { return _variables; }
 
   void resetStatus() { _status.reset(); }
   void resetMain() { _main.reset(); }
+  void resetVariables() { _variables.reset(); }
 
  private:
   StatusCache _status;
   MainCache _main;
+  VariablesCache _variables;
 };
 
 

@@ -121,77 +121,84 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
     return value.as<float>();
   };
 
-  if (doc.containsKey("mail")) {
-    const char* emailPtr = doc["mail"].as<const char*>();
+  // 100: Email
+  if (doc.containsKey("mail") || doc.containsKey("100")) {
+    const char* emailPtr = doc.containsKey("mail") ? doc["mail"].as<const char*>() : doc["100"].as<const char*>();
     setEmailAddress(emailPtr);
   }
 
-  if (doc.containsKey("mailNotif")) {
-    auto v = doc["mailNotif"];
+  // 101: Notifications Email
+  if (doc.containsKey("mailNotif") || doc.containsKey("101")) {
+    auto v = doc.containsKey("mailNotif") ? doc["mailNotif"] : doc["101"];
     bool enabled = _emailEnabled;
     if (v.is<bool>()) {
       enabled = v.as<bool>();
     } else if (v.is<int>()) {
       enabled = (v.as<int>() == 1);
     } else if (v.is<const char*>()) {
-      const char* p = v.as<const char*>();
-      if (p) {
-        char buffer[16];
-        size_t len = strnlen(p, sizeof(buffer) - 1);
-        memcpy(buffer, p, len);
-        buffer[len] = '\0';
-        char* start = buffer;
-        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
-        char* end = start + strlen(start);
-        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
-        *end = '\0';
-        for (char* c = start; *c; ++c) {
-          *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
-        }
-        enabled = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
-                   strcmp(start, "on") == 0 || strcmp(start, "checked") == 0 ||
-                   strcmp(start, "yes") == 0);
-      }
+        String s = String(v.as<const char*>());
+        s.trim();
+        s.toLowerCase();
+        enabled = (s == "1" || s == "true" || s == "on" || s == "yes");
     }
     setEmailEnabled(enabled);
   }
 
-  if (doc.containsKey("FreqWakeUp")) {
-    int value = parseIntValue(doc["FreqWakeUp"]);
+  // 116: Fréquence réveil
+  if (doc.containsKey("FreqWakeUp") || doc.containsKey("116")) {
+    auto v = doc.containsKey("FreqWakeUp") ? doc["FreqWakeUp"] : doc["116"];
+    int value = parseIntValue(v);
     if (value >= 0) {
       setFreqWakeSec(static_cast<uint16_t>(value));
     }
   }
 
-  if (doc.containsKey("limFlood")) {
-    int value = parseIntValue(doc["limFlood"]);
+  // 114: Limite inondation
+  if (doc.containsKey("limFlood") || doc.containsKey("114")) {
+    auto v = doc.containsKey("limFlood") ? doc["limFlood"] : doc["114"];
+    int value = parseIntValue(v);
     if (value >= 0) {
       setLimFlood(static_cast<uint16_t>(value));
     }
   }
 
-  if (doc.containsKey("aqThreshold")) {
-    int value = parseIntValue(doc["aqThreshold"]);
+  // 102: Seuil Aquarium
+  if (doc.containsKey("aqThreshold") || doc.containsKey("102")) {
+    auto v = doc.containsKey("aqThreshold") ? doc["aqThreshold"] : doc["102"];
+    int value = parseIntValue(v);
     if (value > 0) {
       setAqThresholdCm(static_cast<uint16_t>(value));
+      // Note: Synchronisation avec Automatism sera faite dans parseRemoteConfig
     }
   }
 
-  if (doc.containsKey("tankThreshold")) {
-    int value = parseIntValue(doc["tankThreshold"]);
+  // 103: Seuil Réservoir
+  if (doc.containsKey("tankThreshold") || doc.containsKey("103")) {
+    auto v = doc.containsKey("tankThreshold") ? doc["tankThreshold"] : doc["103"];
+    int value = parseIntValue(v);
     if (value > 0) {
       setTankThresholdCm(static_cast<uint16_t>(value));
+      // Note: Synchronisation avec Automatism sera faite dans parseRemoteConfig
     }
   }
 
-  if (doc.containsKey("chauffageThreshold")) {
-    float value = parseFloatValue(doc["chauffageThreshold"]);
+  // 104: Seuil Chauffage
+  if (doc.containsKey("chauffageThreshold") || doc.containsKey("104")) {
+    auto v = doc.containsKey("chauffageThreshold") ? doc["chauffageThreshold"] : doc["104"];
+    float value = parseFloatValue(v);
     if (value > 0.0f && !isnan(value)) {
       setHeaterThresholdC(value);
+      // Note: Synchronisation avec Automatism sera faite dans parseRemoteConfig
     }
   }
 
-  Serial.println(F("[Network] Configuration appliquée depuis JSON"));
+  // 113: Durée remplissage (sera appliquée dans parseRemoteConfig qui a accès à Automatism)
+  if (doc.containsKey("tempsRemplissageSec") || doc.containsKey("refillDuration") || doc.containsKey("113")) {
+    // Log seulement ici, l'application sera faite dans parseRemoteConfig
+    Serial.println(F("[Network] tempsRemplissageSec détecté (sera appliqué via parseRemoteConfig)"));
+  }
+
+  Serial.println(F("[Network] Configuration appliquée depuis JSON (support clés mixtes)"));
 }
 
 // ============================================================================
@@ -691,37 +698,113 @@ void AutomatismNetwork::parseRemoteConfig(const ArduinoJson::JsonDocument& doc, 
     return value.as<float>();
   };
 
-  if (doc.containsKey("aqThreshold")) {
-    int value = parseIntValue(doc["aqThreshold"]);
+  // 102: Seuil Aquarium
+  if (doc.containsKey("aqThreshold") || doc.containsKey("102")) {
+    auto v = doc.containsKey("aqThreshold") ? doc["aqThreshold"] : doc["102"];
+    int value = parseIntValue(v);
     if (value > 0) {
       setAqThresholdCm(static_cast<uint16_t>(value));
+      autoCtrl.setAqThresholdCm(static_cast<uint16_t>(value));
+      Serial.printf("[Network] ✅ Seuil aquarium synchronisé: %d cm\n", value);
     }
   }
 
-  if (doc.containsKey("tankThreshold")) {
-    int value = parseIntValue(doc["tankThreshold"]);
+  // 103: Seuil Réservoir
+  if (doc.containsKey("tankThreshold") || doc.containsKey("103")) {
+    auto v = doc.containsKey("tankThreshold") ? doc["tankThreshold"] : doc["103"];
+    int value = parseIntValue(v);
     if (value > 0) {
       setTankThresholdCm(static_cast<uint16_t>(value));
+      autoCtrl.setTankThresholdCm(static_cast<uint16_t>(value));
+      Serial.printf("[Network] ✅ Seuil réservoir synchronisé: %d cm\n", value);
     }
   }
 
-  if (doc.containsKey("limFlood")) {
-    int value = parseIntValue(doc["limFlood"]);
+  // 114: Limite inondation
+  if (doc.containsKey("limFlood") || doc.containsKey("114")) {
+    auto v = doc.containsKey("limFlood") ? doc["limFlood"] : doc["114"];
+    int value = parseIntValue(v);
     if (value >= 0) {
       setLimFlood(static_cast<uint16_t>(value));
+      autoCtrl.setLimFlood(static_cast<uint16_t>(value));
+      Serial.printf("[Network] ✅ Limite inondation synchronisée: %d cm\n", value);
     }
   }
 
-  if (doc.containsKey("tempsRemplissageSec")) {
-    int refillSec = doc["tempsRemplissageSec"].as<int>();
-    Serial.printf("[Network] tempsRemplissageSec reçu: %d (non appliqué - TODO setter)\n", refillSec);
+  // 113: Durée remplissage (tempsRemplissageSec ou refillDuration)
+  if (doc.containsKey("tempsRemplissageSec") || doc.containsKey("refillDuration") || doc.containsKey("113")) {
+    auto v = doc.containsKey("tempsRemplissageSec") ? doc["tempsRemplissageSec"] : 
+             (doc.containsKey("refillDuration") ? doc["refillDuration"] : doc["113"]);
+    int refillSec = parseIntValue(v);
+    if (refillSec > 0 && refillSec <= 600) { // Validation: entre 1s et 600s (10 min max)
+      uint32_t refillMs = static_cast<uint32_t>(refillSec) * 1000UL;
+      autoCtrl.setRefillDurationMs(refillMs);
+      Serial.printf("[Network] ✅ Durée remplissage mise à jour: %d s (%lu ms)\n", refillSec, refillMs);
+    } else {
+      Serial.printf("[Network] ⚠️ tempsRemplissageSec invalide: %d s (ignoré, doit être entre 1 et 600)\n", refillSec);
+    }
   }
 
-  if (doc.containsKey("chauffageThreshold")) {
-    float value = parseFloatValue(doc["chauffageThreshold"]);
+  // 111: Durée nourrissage gros (tempsGros)
+  if (doc.containsKey("tempsGros") || doc.containsKey("111")) {
+    auto v = doc.containsKey("tempsGros") ? doc["tempsGros"] : doc["111"];
+    int value = parseIntValue(v);
+    if (value > 0 && value <= 300) { // Validation: entre 1s et 300s (5 min max)
+      autoCtrl.setTempsGros(static_cast<uint16_t>(value));
+      Serial.printf("[Network] ✅ Durée nourrissage gros mise à jour: %d s\n", value);
+    }
+  }
+
+  // 112: Durée nourrissage petits (tempsPetits)
+  if (doc.containsKey("tempsPetits") || doc.containsKey("112")) {
+    auto v = doc.containsKey("tempsPetits") ? doc["tempsPetits"] : doc["112"];
+    int value = parseIntValue(v);
+    if (value > 0 && value <= 300) { // Validation: entre 1s et 300s (5 min max)
+      autoCtrl.setTempsPetits(static_cast<uint16_t>(value));
+      Serial.printf("[Network] ✅ Durée nourrissage petits mise à jour: %d s\n", value);
+    }
+  }
+
+  // 105: Heure nourrissage matin (bouffeMatin)
+  if (doc.containsKey("bouffeMatin") || doc.containsKey("bm") || doc.containsKey("105")) {
+    auto v = doc.containsKey("bouffeMatin") ? doc["bouffeMatin"] : 
+             (doc.containsKey("bm") ? doc["bm"] : doc["105"]);
+    int value = parseIntValue(v);
+    if (value >= 0 && value <= 23) {
+      autoCtrl.setBouffeMatin(static_cast<uint8_t>(value));
+      Serial.printf("[Network] ✅ Heure nourrissage matin mise à jour: %d h\n", value);
+    }
+  }
+
+  // 106: Heure nourrissage midi (bouffeMidi)
+  if (doc.containsKey("bouffeMidi") || doc.containsKey("bmi") || doc.containsKey("106")) {
+    auto v = doc.containsKey("bouffeMidi") ? doc["bouffeMidi"] : 
+             (doc.containsKey("bmi") ? doc["bmi"] : doc["106"]);
+    int value = parseIntValue(v);
+    if (value >= 0 && value <= 23) {
+      autoCtrl.setBouffeMidi(static_cast<uint8_t>(value));
+      Serial.printf("[Network] ✅ Heure nourrissage midi mise à jour: %d h\n", value);
+    }
+  }
+
+  // 107: Heure nourrissage soir (bouffeSoir)
+  if (doc.containsKey("bouffeSoir") || doc.containsKey("bs") || doc.containsKey("107")) {
+    auto v = doc.containsKey("bouffeSoir") ? doc["bouffeSoir"] : 
+             (doc.containsKey("bs") ? doc["bs"] : doc["107"]);
+    int value = parseIntValue(v);
+    if (value >= 0 && value <= 23) {
+      autoCtrl.setBouffeSoir(static_cast<uint8_t>(value));
+      Serial.printf("[Network] ✅ Heure nourrissage soir mise à jour: %d h\n", value);
+    }
+  }
+
+  if (doc.containsKey("chauffageThreshold") || doc.containsKey("104")) {
+    auto v = doc.containsKey("chauffageThreshold") ? doc["chauffageThreshold"] : doc["104"];
+    float value = parseFloatValue(v);
     if (value > 0.0f && !isnan(value)) {
       setHeaterThresholdC(value);
-      Serial.printf("[Network] 🔥 Seuil chauffage mis à jour dans Network: %.1f°C\n", _heaterThresholdC);
+      autoCtrl.setHeaterThresholdC(value);
+      Serial.printf("[Network] 🔥 Seuil chauffage synchronisé: %.1f°C\n", value);
     }
   }
 

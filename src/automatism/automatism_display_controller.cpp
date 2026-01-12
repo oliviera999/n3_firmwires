@@ -29,15 +29,14 @@ void AutomatismDisplayController::toggleScreen() {
 void AutomatismDisplayController::resetCache() {
     _display.resetMainCache();
     _display.resetStatusCache();
+    _display.resetVariablesCache();
 }
 
 uint32_t AutomatismDisplayController::getRecommendedDisplayIntervalMs(uint32_t nowMs) const {
-    // Si countdown actif, rafraîchissement rapide (250ms), sinon normal (1000ms)
-    // Note: La détection du countdown se fait via le contexte ou l'état interne
-    // Pour l'instant on garde une valeur par défaut safe
-    return 1000u; 
-    
-    // TODO: Passer l'état isCountdownMode en paramètre pour plus de précision
+    // CORRECTION v11.120: Utiliser OLED_INTERVAL_MS (80ms) au lieu de 1000ms
+    // Cette méthode retourne l'intervalle par défaut pour l'affichage
+    // L'ajustement pour les countdowns (250ms) se fait dans updateDisplay()
+    return OLED_INTERVAL_MS;
 }
 
 void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& ctx, 
@@ -49,10 +48,11 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
     if (!_display.isPresent()) return;
     if (_display.isLocked()) return;
 
-    // Gestion du splash screen
+    // Gestion du splash screen (timeout de sécurité)
     if (_splashStartTime == 0) {
         // Déjà terminé
-    } else if (currentMillis - _splashStartTime > 5000) {
+    } else if (currentMillis - _splashStartTime > DisplayConfig::SPLASH_DURATION_MS + 2000) {
+        // Timeout de sécurité : 2 secondes après la durée normale
         _display.forceEndSplash();
         _splashStartTime = 0;
     }
@@ -67,11 +67,14 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
     }
 
     // Intervalle de rafraîchissement
-    // On force un rafraîchissement rapide si countdown ou animation
-    // TODO: Récupérer isCountdownMode depuis core
-    bool isCountdownMode = false; // Placeholder
+    // CORRECTION v11.120: Vérifier si un countdown est actif pour ajuster l'intervalle
+    bool hasCountdown = (core._countdownEnd > 0 && currentMillis < core._countdownEnd);
+    bool hasFeedingPhase = (core._currentFeedingPhase != Automatism::FeedingPhase::NONE &&
+                            currentMillis < core._feedingPhaseEnd);
+    bool isCountdownMode = hasCountdown || hasFeedingPhase;
     
-    const uint32_t displayInterval = isCountdownMode ? 250u : 1000u;
+    // Utiliser l'intervalle recommandé (250ms si countdown, sinon OLED_INTERVAL_MS=80ms)
+    const uint32_t displayInterval = isCountdownMode ? 250u : OLED_INTERVAL_MS;
     
     if (currentMillis - _lastOled < displayInterval) {
         return;
@@ -101,13 +104,96 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
         readings.luminosite = 0;
     }
 
-    // Logique d'affichage complexe déléguée à Automatism::updateDisplayInternal pour l'instant
-    // car elle dépend de trop de variables privées de Automatism (countdown, phases, etc.)
-    // En attendant la migration complète en Phase 2.8, on appelle la méthode interne de core.
-    // Mais on prépare la structure ici.
+    // CORRECTION v11.120: Implémentation complète de l'affichage OLED
+    // Calcul de la différence de marée depuis Automatism (stocké dans _lastDiffMaree)
+    // Accès aux membres privés via friend class
+    int diffMaree = core._lastDiffMaree;
     
-    // core.updateDisplayInternal(ctx); // Appel temporaire à l'ancienne logique
+    // Si _lastDiffMaree n'est pas initialisé (-1), calculer la différence manuellement
+    // en utilisant _lastReadings stocké dans Automatism
+    if (diffMaree == -1 && core._lastReadings.wlAqua > 0) {
+        // Calcul simple: différence entre le niveau actuel et le niveau précédent
+        if (readings.wlAqua > 0 && core._lastReadings.wlAqua > 0) {
+            diffMaree = static_cast<int>(readings.wlAqua) - static_cast<int>(core._lastReadings.wlAqua);
+        } else {
+            diffMaree = 0;
+        }
+    } else if (diffMaree == -1) {
+        // Aucune valeur précédente, utiliser 0 par défaut
+        diffMaree = 0;
+    }
     
-    // TODO: Migrer ici toute la logique de showMain/showServerVars/showCountdown
-    // Cela nécessite d'exposer beaucoup de getters sur Automatism
+    // Calcul de la direction de marée (tideDir) : -1 = descente, 0 = stable, 1 = montée
+    int8_t tideDir = 0;
+    if (diffMaree > 1) {
+        tideDir = 1; // Montée
+    } else if (diffMaree < -1) {
+        tideDir = -1; // Descente
+    } else {
+        tideDir = 0; // Stable
+    }
+    
+    // Mise à jour de _lastDiffMaree local (pour tracking)
+    _lastDiffMaree = diffMaree;
+    
+    // Affichage du countdown si actif
+    if (hasCountdown && core._countdownLabel.length() > 0) {
+        uint32_t secLeft = (core._countdownEnd > currentMillis) ? 
+                          ((core._countdownEnd - currentMillis) / 1000) : 0;
+        bool isManual = core._manualFeedingActive;
+        _display.showCountdown(core._countdownLabel.c_str(), secLeft, isManual);
+        // Afficher aussi la barre d'état
+        bool mailBlink = (core.mailBlinkUntil > 0 && currentMillis < core.mailBlinkUntil);
+        int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+        _display.drawStatusEx(core.sendState, core.recvState, rssi, mailBlink, tideDir, diffMaree, false);
+        return;
+    }
+    
+    // Affichage du countdown de nourrissage si une phase est active
+    if (hasFeedingPhase) {
+        const char* fishType = core._manualFeedingActive ? "Manuel" : "Auto";
+        const char* phase = (core._currentFeedingPhase == Automatism::FeedingPhase::FEEDING_FORWARD) 
+                          ? "Avant" : "Retour";
+        uint32_t secLeft = (core._feedingPhaseEnd > currentMillis) ? 
+                          ((core._feedingPhaseEnd - currentMillis) / 1000) : 0;
+        bool isManual = core._manualFeedingActive;
+        _display.showFeedingCountdown(fishType, phase, secLeft, isManual);
+        // Afficher aussi la barre d'état
+        bool mailBlink = (core.mailBlinkUntil > 0 && currentMillis < core.mailBlinkUntil);
+        int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+        _display.drawStatusEx(core.sendState, core.recvState, rssi, mailBlink, tideDir, diffMaree, false);
+        return;
+    }
+    
+    // Affichage normal (écran principal ou écran variables)
+    // CORRECTION v11.120: Utiliser _power directement car getCurrentTimeString() n'est pas const
+    String timeStr = _power.getCurrentTimeString();
+    bool mailBlink = (core.mailBlinkUntil > 0 && currentMillis < core.mailBlinkUntil);
+    int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+    
+    // Basculement entre écran principal et écran variables
+    if (_oledToggle) {
+        // Écran principal avec données des capteurs
+        _display.showMain(
+            readings.tempWater,
+            readings.tempAir,
+            readings.humidity,
+            readings.wlAqua,
+            readings.wlTank,
+            readings.wlPota,
+            readings.luminosite,
+            timeStr
+        );
+    } else {
+        // Écran variables avec états des actionneurs
+        _display.showVariables(
+            acts.isAquaPumpRunning(),
+            acts.isTankPumpRunning(),
+            acts.isHeaterOn(),
+            acts.isLightOn()
+        );
+    }
+    
+    // Toujours afficher la barre d'état (en overlay)
+    _display.drawStatus(core.sendState, core.recvState, rssi, mailBlink, tideDir, diffMaree);
 }

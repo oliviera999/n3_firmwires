@@ -1,5 +1,37 @@
 # VERSION.md - GPIO Parsing Unifié v11.68
 
+## Version 11.124 - Audit général - Corrections prioritaires
+
+**Date**: 2026-01-10  
+**Type**: Correctifs audit général
+
+### ✨ Points clés
+- Correction incohérence de version : unifié config.h et app.cpp sur v11.124
+- Conditionnement delay de debug : 1 seconde uniquement en mode debug (au lieu de 3s toujours)
+- Utilisation de `ProjectConfig::VERSION` dans message de boot (plus de hardcode)
+- Réduction temps de boot en production (delay supprimé)
+
+### 🔧 Impact
+- Fichiers modifiés : `include/config.h`, `src/app.cpp`, `VERSION.md`, `README.md`
+- Version firmware : `11.124` (affichage boot, `/version`, endpoint status)
+- Temps de boot : -3 secondes en production
+
+## Version 11.120 - Stabilisation watchdog & stack automation
+
+**Date**: 2026-01-10  
+**Type**: Correctifs critiques post-monitoring
+
+### ✨ Points clés
+- Augmentation de la stack `automationTask` (4096 → 8192 bytes) pour éliminer les stack overflows observés.
+- Reconfiguration du Task Watchdog (TWDT) afin de ne plus surveiller les tâches IDLE et éviter les faux positifs `IDLE1`.
+- Désactivation explicite du Core Dump ESP-IDF pour supprimer les erreurs `esp_core_dump_flash` en absence de partition dédiée.
+- Version firmware incrémentée et rapport de monitoring `BILAN_MONITORING_v11.119_2026-01-10.md` ajouté pour traçabilité.
+
+### 🔧 Impact
+- Fichiers modifiés : `include/config.h`, `src/app.cpp`, `platformio.ini`, `VERSION.md`.
+- Fichiers ajoutés : `monitor_90s_v11.120.ps1`, `BILAN_MONITORING_v11.119_2026-01-10.md`.
+- Firmware reporté à `v11.120` (affichage boot, `/version`, endpoint status).
+
 ## Version 11.118 - Optimisation mémoire - Buffers adaptatifs
 
 **Date**: 2025-11-14  

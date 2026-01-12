@@ -386,16 +386,70 @@ bool AutomatismSleep::process(const SensorReadings& r, SystemActuators& acts, Au
 }
 
 void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
-    // Récupérer l'état de l'automate via accesseurs/friends (à terme via interface propre)
-    // Ici on suppose que Automatism expose les getters nécessaires ou qu'on est friend
+    // Récupération des informations via accesseurs publics
+    bool forceWakeUp = core.getForceWakeUp();
+    bool tankPumpRunning = core.isTankPumpRunning();
     
-    // NOTE: Cette logique est complexe et dépend de beaucoup d'états de Automatism.
-    // Dans la phase 1 du refactoring, on a déplacé les méthodes utilitaires ici.
-    // La logique principale reste pour l'instant dans Automatism.cpp car elle accède à trop de membres privés.
-    // La migration complète se fera en Phase 2.8.
+    // Valeurs par défaut pour les paramètres non accessibles publiquement
+    bool feedingInProgress = false; // Simplification : supposons qu'il n'y a pas de nourrissage en cours
+    uint32_t countdownEnd = 0; // Non accessible publiquement, utiliser 0
+    int diffMaree10s = 0; // Simplification : calcul de marée non disponible ici
+    int16_t tideTriggerCm = _tideTriggerCm > 0 ? _tideTriggerCm : ::SleepConfig::TIDE_TRIGGER_THRESHOLD_CM;
     
-    // Cependant, pour avancer, on implémente ici la logique "blocking conditions" qui est générique
+    // Récupération du nombre de clients WebSocket
+    extern RealtimeWebSocket realtimeWebSocket;
+    uint8_t wsClients = realtimeWebSocket.getConnectedClients();
     
-    // Récupérer les états nécessaires (à adapter selon les accesseurs disponibles)
-    // Pour l'instant, cette méthode est un placeholder pour la future migration complète
+    // Variables modifiables par handleBlockingConditions
+    bool localForceWakeUp = forceWakeUp;
+    bool localForceWakeFromWeb = _forceWakeFromWeb;
+    unsigned long localLastWebActivityMs = _lastWebActivityMs;
+    unsigned long localLastWakeMs = _lastWakeMs;
+    
+    // 1. Vérifier les conditions bloquantes
+    bool canSleep = handleBlockingConditions(acts,
+                                             localForceWakeUp,
+                                             localForceWakeFromWeb,
+                                             localLastWebActivityMs,
+                                             countdownEnd,
+                                             localLastWakeMs,
+                                             feedingInProgress,
+                                             tankPumpRunning,
+                                             wsClients);
+    
+    if (!canSleep) {
+        // Conditions bloquantes détectées, ne pas entrer en veille
+        return;
+    }
+    
+    // 2. Évaluer si le système doit entrer en veille
+    bool shouldSleep = shouldEnterSleepEarly(r,
+                                             localForceWakeUp,
+                                             localForceWakeFromWeb,
+                                             localLastWebActivityMs,
+                                             feedingInProgress,
+                                             tankPumpRunning,
+                                             countdownEnd,
+                                             localLastWakeMs,
+                                             diffMaree10s,
+                                             tideTriggerCm);
+    
+    if (!shouldSleep) {
+        // Conditions pour dormir non remplies
+        return;
+    }
+    
+    // 3. Entrer en veille
+    // Durée de veille par défaut : 600 secondes (10 minutes)
+    uint32_t sleepDurationSec = 600;
+    
+    Serial.println(F("[Auto] Conditions remplies - Entrée en veille"));
+    
+    // Appel à la veille
+    uint32_t actualSleptSec = _power.goToLightSleep(sleepDurationSec);
+    
+    // 4. Mettre à jour _lastWakeMs après le réveil
+    _lastWakeMs = millis();
+    
+    Serial.printf("[Auto] Réveil après %u secondes de veille\n", actualSleptSec);
 }

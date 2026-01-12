@@ -149,6 +149,11 @@ void automationTask(void* pv) {
   unsigned long lastDriftDisplay = 0;
   const unsigned long driftInterval = TimingConfig::DRIFT_DISPLAY_INTERVAL_MS;
 
+  #if defined(PROFILE_TEST)
+  unsigned long lastStackCheck = 0;
+  const unsigned long stackCheckInterval = 30000; // Toutes les 30 secondes
+  #endif
+
   static bool wdtRegistered = false;
   if (!wdtRegistered) {
     esp_task_wdt_add(nullptr);
@@ -160,11 +165,37 @@ void automationTask(void* pv) {
 
     if (xQueueReceive(g_sensorQueue, &readings, pdMS_TO_TICKS(1000)) == pdTRUE) {
       esp_task_wdt_reset();
+      
+      #if defined(PROFILE_TEST)
+      // Vérification périodique de la stack (wroom-test uniquement)
+      unsigned long now = millis();
+      if (now - lastStackCheck > stackCheckInterval) {
+        UBaseType_t stackHighWaterMark = uxTaskGetStackHighWaterMark(nullptr);
+        uint32_t stackUsed = TaskConfig::AUTOMATION_TASK_STACK_SIZE - stackHighWaterMark;
+        float stackPercent = (1.0 - (float)stackHighWaterMark / TaskConfig::AUTOMATION_TASK_STACK_SIZE) * 100.0;
+        Serial.printf("[autoTask] Stack HWM: %u bytes libres (sur %u bytes configurés)\n", 
+                      stackHighWaterMark, 
+                      TaskConfig::AUTOMATION_TASK_STACK_SIZE);
+        Serial.printf("[autoTask] Stack utilisée: %u bytes (%.1f%%)\n",
+                      stackUsed,
+                      stackPercent);
+        if (stackPercent > 85.0) {
+          Serial.printf("[autoTask] ⚠️ CRITIQUE: Stack utilisation > 85%% (%u bytes libres)\n", 
+                        stackHighWaterMark);
+          EventLog::add("CRITICAL: Stack usage > 85% in automationTask");
+        } else if (stackPercent > 70.0) {
+          Serial.printf("[autoTask] ⚠️ ATTENTION: Stack utilisation > 70%% (%u bytes libres)\n", 
+                        stackHighWaterMark);
+        }
+        lastStackCheck = now;
+      }
+      #else
+      unsigned long now = millis();
+      #endif
+      
       g_ctx->automatism.update(readings);
       g_ctx->power.resetWatchdog();
       g_ctx->diagnostics.update();
-
-      unsigned long now = millis();
       if (!g_ctx->otaManager.isUpdating()) {
         if (now - lastHeartbeat > 30000) {
           esp_task_wdt_reset();
