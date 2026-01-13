@@ -3,7 +3,7 @@
 ## 🎯 Vue d'ensemble
 
 **Projet**: Système de contrôle automatisé pour aquaponie avec ESP32  
-**Version actuelle**: v11.59  
+**Version actuelle**: v11.124  
 **État**: Production stable avec optimisations continues
 
 ---
@@ -108,7 +108,8 @@
 ## 🔄 Maintenance de la documentation
 
 ### Organisation automatique
-Cette structure a été créée par `organize_docs.ps1` v11.59.
+Cette structure a été créée par `organize_docs.ps1` v11.59.  
+**Note**: Documentation mise à jour pour v11.124 (2026-01-10).
 
 ### Ajout de nouveaux documents
 1. Placez le nouveau fichier .md à la racine du projet
@@ -138,4 +139,5 @@ Cette structure a été créée par `organize_docs.ps1` v11.59.
 
 ---
 
-*Organisé le 2025-10-16 21:48 - Version 11.59*
+*Organisé le 2025-10-16 21:48 - Version 11.59*  
+*Mis à jour le 2026-01-10 - Version 11.124*

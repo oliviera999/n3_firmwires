@@ -1,7 +1,10 @@
 # 🚀 START HERE - Projet ESP32 FFP5CS
 
-**Version**: v11.03  
-**Date**: 2025-10-11  
+> ⚠️ **Note (2026-01-10)**: Ce document date de v11.03. La version actuelle du projet est **v11.124**. Pour les informations les plus récentes, consultez `VERSION.md` à la racine du projet et `docs/README.md`.
+
+**Version documentée**: v11.03  
+**Version actuelle du projet**: v11.124  
+**Date de création**: 2025-10-11  
 **Note**: **6.9/10** (objectif 8.0/10)  
 **Phase actuelle**: 2 - Refactoring (33%)
 

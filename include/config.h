@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.124"; // Audit général - Corrections prioritaires
+    constexpr const char* VERSION = "11.128"; // Version incrémentée pour flash wroom-test
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

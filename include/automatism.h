@@ -7,7 +7,8 @@
 #include "mailer.h"
 #include "config.h"
 #include "config_manager.h"
-#include "automatism/automatism_feeding.h"
+#include "automatism/automatism_feeding_v2.h"
+#include "automatism/automatism_feeding_schedule.h"
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
 #include "automatism/automatism_state.h"
@@ -122,6 +123,7 @@ class Automatism {
   
   // === MODULES (Composition) ===
   AutomatismFeeding _feeding;
+  AutomatismFeedingSchedule _feedingSchedule;
   AutomatismSync _network;
   AutomatismSleep _sleep;
   AutomatismRefillController _refillController;
@@ -226,6 +228,8 @@ class Automatism {
   FeedingPhase _currentFeedingPhase = FeedingPhase::NONE;
   unsigned long _feedingPhaseEnd = 0;  // Fin de la phase actuelle
   unsigned long _feedingTotalEnd = 0;  // Fin totale du cycle de nourrissage
+  // Type de nourrissage actuel pour l'affichage OLED ("Gros" ou "Petits")
+  const char* _currentFeedingType = nullptr;
 
   // email config
   char _emailAddress[EmailConfig::MAX_EMAIL_LENGTH];

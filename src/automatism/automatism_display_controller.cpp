@@ -41,7 +41,7 @@ uint32_t AutomatismDisplayController::getRecommendedDisplayIntervalMs(uint32_t n
 
 void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& ctx, 
                                                 SystemActuators& acts, 
-                                                const Automatism& core) {
+                                                Automatism& core) {
     const uint32_t providedNow = ctx.nowMs;
     const uint32_t currentMillis = providedNow == 0 ? millis() : providedNow;
 
@@ -149,13 +149,57 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
         return;
     }
     
+    // CORRECTION: Réinitialisation automatique des variables de nourrissage manuel
+    // quand la phase est terminée
+    if (core._feedingPhaseEnd > 0 && currentMillis >= core._feedingPhaseEnd) {
+        // Phase terminée - réinitialisation des variables locales
+        const_cast<Automatism&>(core)._manualFeedingActive = false;
+        const_cast<Automatism&>(core)._currentFeedingPhase = Automatism::FeedingPhase::NONE;
+        const_cast<Automatism&>(core)._feedingPhaseEnd = 0;
+        const_cast<Automatism&>(core)._currentFeedingType = nullptr; // Réinitialiser le type
+        
+        // Reset des variables distantes (GPIO virtuels 108/109)
+        if (WiFi.status() == WL_CONNECTED && core._config.isRemoteSendEnabled()) {
+            SensorReadings curReadings = core.readSensors();
+            core.sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
+            Serial.println(F("[Display] ✅ Variables nourrissage réinitialisées (locales + distantes)"));
+        } else {
+            Serial.println(F("[Display] ✅ Variables nourrissage réinitialisées (locales uniquement)"));
+        }
+    }
+    
     // Affichage du countdown de nourrissage si une phase est active
     if (hasFeedingPhase) {
-        const char* fishType = core._manualFeedingActive ? "Manuel" : "Auto";
-        const char* phase = (core._currentFeedingPhase == Automatism::FeedingPhase::FEEDING_FORWARD) 
-                          ? "Avant" : "Retour";
+        const char* fishType = "Auto"; // Par défaut
         uint32_t secLeft = (core._feedingPhaseEnd > currentMillis) ? 
                           ((core._feedingPhaseEnd - currentMillis) / 1000) : 0;
+        
+        // Si _currentFeedingType est défini, l'utiliser
+        if (core._currentFeedingType != nullptr) {
+            fishType = core._currentFeedingType;
+        } else if (!core._manualFeedingActive) {
+            // Pour le nourrissage automatique séquentiel: déterminer la phase en fonction de la durée restante
+            // Durée phase gros = tempsGros + (tempsGros / 2) + délai (2s)
+            const uint32_t bigCycleMs = (core.tempsGros + (core.tempsGros / 2U)) * 1000UL;
+            const uint32_t delayMs = 2 * 1000UL;
+            const uint32_t bigPhaseTotalMs = bigCycleMs + delayMs;
+            const uint32_t smallCycleMs = (core.tempsPetits + (core.tempsPetits / 2U)) * 1000UL;
+            const uint32_t totalFeedingMs = bigPhaseTotalMs + smallCycleMs;
+            
+            // Calculer le temps écoulé depuis le début
+            uint32_t elapsedMs = (core._feedingPhaseEnd > currentMillis) ? 
+                                 (totalFeedingMs - ((core._feedingPhaseEnd - currentMillis))) : totalFeedingMs;
+            
+            // Si on est dans la première partie (gros), utiliser "Gros"
+            if (elapsedMs < bigPhaseTotalMs) {
+                fishType = "Gros";
+            } else {
+                fishType = "Petits";
+            }
+        }
+        
+        const char* phase = (core._currentFeedingPhase == Automatism::FeedingPhase::FEEDING_FORWARD) 
+                          ? "Avant" : "Retour";
         bool isManual = core._manualFeedingActive;
         _display.showFeedingCountdown(fishType, phase, secLeft, isManual);
         // Afficher aussi la barre d'état

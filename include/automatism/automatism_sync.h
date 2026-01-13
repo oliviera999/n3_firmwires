@@ -98,7 +98,7 @@ private:
     static constexpr uint16_t QUEUE_MAX_ENTRIES = 40;
     static constexpr size_t MAX_PAYLOAD_BYTES = 960;
     static constexpr unsigned long SEND_INTERVAL_MS = 120000;
-    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 4000;
+    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 12000; // 12 secondes (optimisation polling)
 
     // Helpers
     bool canAttemptSend(uint32_t nowMs) const;

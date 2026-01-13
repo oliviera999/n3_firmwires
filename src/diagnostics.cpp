@@ -332,8 +332,17 @@ String Diagnostics::generateRestartReport() const {
     }
     
     // Configuration watchdog
-    report += "Watchdog timeout configuré: 60 secondes\n";
-    report += "Note: Une tâche n'a pas reset le watchdog pendant >60s\n";
+    report += "Watchdog timeout configuré: 300 secondes (5 minutes)\n";
+    report += "Note: Une tâche n'a pas reset le watchdog pendant >300s\n";
+    
+    // Core Dump info
+    #if CONFIG_ESP_COREDUMP_ENABLE
+    report += "Core Dump: ACTIVÉ (Flash)\n";
+    report += "Note: Utilisez 'pio run -t monitor' ou esp-coredump pour extraire le dump\n";
+    #else
+    report += "Core Dump: DÉSACTIVÉ\n";
+    #endif
+
     report += "\n";
   }
   
@@ -516,10 +525,8 @@ void Diagnostics::loadPanicInfo() {
     Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
   }
   
-  // Nettoyer les infos après lecture pour le prochain boot
-  if (_stats.panicInfo.hasPanicInfo) {
-    clearPanicInfo();
-  }
+  // NOTE: Ne pas nettoyer immédiatement - les infos sont nécessaires pour le rapport de boot
+  // Le nettoyage sera fait après l'envoi du mail de boot (app.cpp)
 }
 
 // Nettoyer les informations de panic dans NVS
@@ -531,4 +538,13 @@ void Diagnostics::clearPanicInfo() {
   g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicTask");
   g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCore");
   g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicInfo");
+  _stats.panicInfo.hasPanicInfo = false;
+}
+
+// Nettoyer les informations de panic après génération du rapport (méthode publique)
+void Diagnostics::clearPanicInfoAfterReport() {
+  if (_stats.panicInfo.hasPanicInfo) {
+    clearPanicInfo();
+    Serial.println(F("[Diagnostics] ✅ Infos PANIC nettoyées après rapport"));
+  }
 }

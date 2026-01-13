@@ -34,6 +34,19 @@ WebClient::WebClient(const char* apiKey) : _apiKey(apiKey) {
 bool WebClient::httpRequest(const String& url, const String& payload, String& response) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
+  // Guard mémoire avant requête HTTPS (correction crash monitoring)
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t minHeap = ESP.getMinFreeHeap();
+  const uint32_t MIN_HEAP_FOR_HTTPS = 70000;  // 70 KB minimum requis pour HTTPS
+  bool isSecure = url.startsWith("https://");
+  
+  if (isSecure && freeHeap < MIN_HEAP_FOR_HTTPS) {
+    LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
+        freeHeap, MIN_HEAP_FOR_HTTPS);
+    LOG(LOG_WARN, "[HTTP] ⚠️ La requête HTTPS nécessite ~43 KB supplémentaires");
+    return false;
+  }
+  
   size_t payloadLen = payload.length();
   uint32_t requestStartMs = millis();
   const bool debugLogging = (LOG_LEVEL >= LOG_DEBUG) && LogConfig::SERIAL_ENABLED;
@@ -48,7 +61,7 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
         WiFi.localIP().toString().c_str(),
         WiFi.gatewayIP().toString().c_str(),
         WiFi.dnsIP().toString().c_str());
-    LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes (min=%u)", ESP.getFreeHeap(), ESP.getMinFreeHeap());
+    LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes (min=%u)", freeHeap, minHeap);
 
     if (verboseLogging && payloadLen > 0) {
       const size_t previewLen = payloadLen > 200 ? 200 : payloadLen;
@@ -249,7 +262,8 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
       }
       
       // Note: Watchdog géré par tâche appelante - vTaskDelay() yield le CPU
-      // Ne pas appeler esp_task_wdt_reset() ici (erreur "task not found")
+      // On tente un reset du watchdog ici pour éviter le timeout lors des retries multiples
+      esp_task_wdt_reset(); 
     }
   }
 
@@ -439,6 +453,22 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   Serial.println(F("=== DÉBUT REQUÊTE GET REMOTE STATE ==="));
   Serial.printf("[GET] Timestamp: %lu ms\n", getStartMs);
   
+  // Guard mémoire avant requête HTTPS (correction crash monitoring)
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t minHeap = ESP.getMinFreeHeap();
+  const uint32_t MIN_HEAP_FOR_HTTPS = 70000;  // 70 KB minimum requis pour HTTPS
+  
+  Serial.printf("[GET] Heap before GET: %u bytes\n", freeHeap);
+  Serial.printf("[GET] Free heap: %u bytes\n", freeHeap);
+  Serial.printf("[GET] Min heap: %u bytes\n", minHeap);
+  
+  if (freeHeap < MIN_HEAP_FOR_HTTPS) {
+    Serial.printf("[GET] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête\n", 
+                  freeHeap, MIN_HEAP_FOR_HTTPS);
+    Serial.printf("[GET] ⚠️ La requête HTTPS nécessite ~43 KB supplémentaires\n");
+    return false;
+  }
+  
   // Utiliser l'URL complète depuis la configuration serveur
   char url[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
@@ -448,8 +478,6 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   Serial.printf("[GET] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
   Serial.printf("[GET] RSSI: %d dBm\n", WiFi.RSSI());
   Serial.printf("[GET] IP: %s\n", WiFi.localIP().toString().c_str());
-  Serial.printf("[GET] Heap before GET: %u bytes\n", ESP.getFreeHeap());
-  Serial.printf("[GET] Free heap: %u bytes\n", ESP.getFreeHeap());
   
   // Sélectionne le bon type de client selon le schéma
   bool secure = strncmp(url, "https://", 8) == 0;

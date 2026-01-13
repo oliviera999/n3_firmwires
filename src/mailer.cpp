@@ -533,6 +533,15 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   
   bool result = send(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
   Serial.printf("[Mail] ===== RÉSULTAT SENDALERT: %s =====\n", result ? "SUCCESS" : "FAILED");
+  
+  // Nettoyer les infos PANIC après l'envoi réussi du mail (pour éviter de les réutiliser au prochain boot)
+  // Utiliser l'instance globale de Diagnostics pour nettoyer les infos dans NVS
+  if (result && tempDiag.hasPanicInfo()) {
+    extern Diagnostics diag;
+    diag.clearPanicInfoAfterReport();
+    Serial.println(F("[Mail] ✅ Infos PANIC nettoyées après envoi du mail"));
+  }
+  
   return result;
 }
 

@@ -64,7 +64,7 @@ AppContext g_appContext{wifi,
 
 static char g_hostname[SystemConfig::HOSTNAME_BUFFER_SIZE];
 static bool g_otaJustUpdated = false;
-static String g_previousVersion = "";
+static char g_previousVersion[32] = "";
 static unsigned long g_lastOtaCheck = 0;
 
 static const unsigned long OTA_CHECK_INTERVAL = TimingConfig::OTA_CHECK_INTERVAL_MS;
@@ -74,16 +74,39 @@ static unsigned long g_lastDigestMs = 0;
 static uint32_t g_lastDigestSeq = 0;
 
 void setup() {
+  // Log de la cause du redémarrage AVANT toute initialisation
+  #if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+  Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
+  delay(100);  // Petit délai pour stabiliser Serial
+  #endif
+  
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  Serial.printf("\n\n=== BOOT FFP5CS v%s ===\n", ProjectConfig::VERSION);
+  Serial.printf("[BOOT] Reset reason: %d - ", resetReason);
+  switch(resetReason) {
+    case ESP_RST_POWERON: Serial.println("Power-on reset"); break;
+    case ESP_RST_EXT: Serial.println("External reset (pin)"); break;
+    case ESP_RST_SW: Serial.println("Software reset (ESP.restart())"); break;
+    case ESP_RST_PANIC: Serial.println("⚠️ PANIC reset (crash)"); break;
+    case ESP_RST_INT_WDT: Serial.println("⚠️ Interrupt watchdog timeout"); break;
+    case ESP_RST_TASK_WDT: Serial.println("⚠️ Task watchdog timeout"); break;
+    case ESP_RST_WDT: Serial.println("⚠️ Other watchdog timeout"); break;
+    case ESP_RST_DEEPSLEEP: Serial.println("Deep sleep wake"); break;
+    case ESP_RST_BROWNOUT: Serial.println("⚠️ Brownout (alimentation)"); break;
+    case ESP_RST_SDIO: Serial.println("SDIO reset"); break;
+    default: Serial.printf("Unknown reset (%d)\n", resetReason); break;
+  }
+  
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};
-  cfg.timeout_ms = 60000;
+  cfg.timeout_ms = 300000;  // 300 secondes (5 minutes) - conforme à la documentation pour éviter les timeouts lors d'opérations réseau longues
   cfg.idle_core_mask = 0;  // Idle tasks non surveillées pour éviter les faux positifs
   cfg.trigger_panic = true;
   esp_task_wdt_init(&cfg);
+  Serial.printf("[BOOT] Watchdog configuré: timeout=%d ms\n", cfg.timeout_ms);
   delay(SystemConfig::INITIAL_DELAY_MS);
   
   #if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
-  Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
   Serial.println("[INIT] Moniteur série activé");
   #endif
 
@@ -91,8 +114,6 @@ void setup() {
   #if defined(DEBUG_MODE) || !defined(PROFILE_PROD)
   delay(1000);  // 1 seconde pour stabiliser Serial Monitor en debug
   #endif
-  
-  Serial.printf("\n\n=== BOOT FFP5CS v%s ===\n", ProjectConfig::VERSION);
 
   SystemBoot::setupHostname(g_hostname, sizeof(g_hostname));
 
@@ -117,7 +138,11 @@ void setup() {
   }
   EventLog::addf("App start v%s", ProjectConfig::VERSION);
   
-  SystemBoot::OtaState otaState{g_otaJustUpdated, g_previousVersion, g_lastOtaCheck};
+  SystemBoot::OtaState otaState{};
+  otaState.justUpdated = g_otaJustUpdated;
+  strncpy(otaState.previousVersion, g_previousVersion, sizeof(otaState.previousVersion) - 1);
+  otaState.previousVersion[sizeof(otaState.previousVersion) - 1] = '\0';
+  otaState.lastCheck = g_lastOtaCheck;
   SystemBoot::validatePendingOta(otaState);
   EventLog::add("OTA validation done");
   
@@ -147,25 +172,46 @@ void setup() {
   if (g_appContext.wifi.isConnected()) {
     LOG_INFO("=== TEST MAIL AU DÉMARRAGE ===");
     
+    // Buffers statiques pour éviter fragmentation mémoire
+    static char targetEmail[EmailConfig::MAX_EMAIL_LENGTH];
+    static char bootMsg[BufferConfig::EMAIL_MAX_SIZE_BYTES];
+    static char emailSubject[128];
+    
     // Récupérer l'adresse configurée ou utiliser fallback
-    String targetEmail = g_appContext.automatism.getEmailAddress();
-    if (targetEmail.length() == 0) {
+    const char* emailFromConfig = g_appContext.automatism.getEmailAddress();
+    if (!emailFromConfig || strlen(emailFromConfig) == 0) {
       LOG_WARN("Email configuré vide, utilisation adresse fallback");
-      targetEmail = "oliv.arn.lau@gmail.com"; // HARDCODED pour test
+      strncpy(targetEmail, "oliv.arn.lau@gmail.com", sizeof(targetEmail) - 1);
+      targetEmail[sizeof(targetEmail) - 1] = '\0';
+    } else {
+      strncpy(targetEmail, emailFromConfig, sizeof(targetEmail) - 1);
+      targetEmail[sizeof(targetEmail) - 1] = '\0';
     }
     
-    LOG_INFO("Cible: %s", targetEmail.c_str());
+    LOG_INFO("Cible: %s", targetEmail);
     
-    String bootMsg = "Système démarré avec succès (v" + String(ProjectConfig::VERSION) + ").\n";
-    bootMsg += "IP: " + WiFi.localIP().toString() + "\n";
-    bootMsg += "SSID: " + g_appContext.wifi.currentSSID() + "\n";
-    bootMsg += "Raison: Test forcé au boot";
+    // Construire le message avec snprintf pour éviter allocations
+    IPAddress ip = WiFi.localIP();
+    String ssid = g_appContext.wifi.currentSSID();
+    int written = snprintf(bootMsg, sizeof(bootMsg),
+                          "Système démarré avec succès (v%s).\n"
+                          "IP: %d.%d.%d.%d\n"
+                          "SSID: %s\n"
+                          "Raison: Test forcé au boot",
+                          ProjectConfig::VERSION,
+                          ip[0], ip[1], ip[2], ip[3],
+                          ssid.c_str());
+    if (written < 0 || (size_t)written >= sizeof(bootMsg)) {
+      bootMsg[sizeof(bootMsg) - 1] = '\0';
+    }
+    
+    // Construire le sujet
+    snprintf(emailSubject, sizeof(emailSubject), "Démarrage système v%s", ProjectConfig::VERSION);
     
     // Reset watchdog avant envoi bloquant
     g_appContext.power.resetWatchdog();
-    String emailSubject = "Démarrage système v" + String(ProjectConfig::VERSION);
     // Utiliser sendAlert() pour inclure automatiquement le rapport détaillé (incluant generateRestartReport())
-    bool sent = g_appContext.mailer.sendAlert(emailSubject.c_str(), bootMsg, targetEmail.c_str());
+    bool sent = g_appContext.mailer.sendAlert(emailSubject, bootMsg, targetEmail);
     
     if (sent) {
       LOG_INFO("✅ Mail de démarrage ENVOYÉ avec succès");
@@ -273,8 +319,10 @@ void loop() {
           EventLog::add("Digest: no new events");
         }
         g_lastDigestMs = currentTime;
-        g_nvsManager.saveInt(NVS_NAMESPACES::SENSORS, "digest_lastSeq", g_lastDigestSeq);
-        g_nvsManager.saveULong(NVS_NAMESPACES::SENSORS, "digest_lastMs", g_lastDigestMs);
+        if (g_nvsManager.isInitialized()) {
+          g_nvsManager.saveInt(NVS_NAMESPACES::SENSORS, "digest_lastSeq", g_lastDigestSeq);
+          g_nvsManager.saveULong(NVS_NAMESPACES::SENSORS, "digest_lastMs", g_lastDigestMs);
+        }
       }
     });
     digestTimerAdded = true;
@@ -291,12 +339,14 @@ void loop() {
   static unsigned long lastNvsCheck = 0;
   unsigned long currentTime = millis();
   if (currentTime - lastNvsCheck >= 1000) {
-    g_nvsManager.checkDeferredFlush();
+    if (g_nvsManager.isInitialized()) {
+      g_nvsManager.checkDeferredFlush();
+    }
     lastNvsCheck = currentTime;
   }
   
   static bool cleanupScheduled = false;
-  if (!cleanupScheduled && g_nvsManager.shouldPerformCleanup()) {
+  if (!cleanupScheduled && g_nvsManager.isInitialized() && g_nvsManager.shouldPerformCleanup()) {
     LOG_INFO("Démarrage nettoyage périodique NVS");
     g_nvsManager.rotateLogs(NVS_NAMESPACES::LOGS, 50);
     g_nvsManager.cleanupOldData(NVS_NAMESPACES::STATE, 604800000UL);

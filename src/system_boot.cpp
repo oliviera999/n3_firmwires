@@ -143,7 +143,13 @@ void validatePendingOta(OtaState& state) {
         Serial.println("[OTA] ✅ Image validée et rollback annulé");
         state.justUpdated = true;
         {
-          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", state.previousVersion, "");
+          String tempVersion;
+          if (g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", tempVersion, "") == NVSError::SUCCESS) {
+            strncpy(state.previousVersion, tempVersion.c_str(), sizeof(state.previousVersion) - 1);
+            state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
+          } else {
+            state.previousVersion[0] = '\0';
+          }
         }
         break;
       case ESP_OTA_IMG_VALID:
@@ -456,7 +462,9 @@ void postConfiguration(AppContext& ctx,
     String body = String("Mise à jour OTA effectuée avec succès.\n\n");
     body += "Détails de la mise à jour:\n";
     body += "- Méthode: Serveur distant automatique\n";
-    body += "- Ancienne version: " + state.previousVersion + "\n";
+    body += "- Ancienne version: ";
+    body += state.previousVersion;
+    body += "\n";
     body += "- Nouvelle version: " + String(ProjectConfig::VERSION) + "\n";
     body += "- Hostname: "; body += hostname; body += "\n";
     body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
@@ -469,7 +477,7 @@ void postConfiguration(AppContext& ctx,
     Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
     state.justUpdated = false;
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_prevVer");
-    state.previousVersion = "";
+    state.previousVersion[0] = '\0';
   }
 
 #if FEATURE_OTA && FEATURE_OTA != 0

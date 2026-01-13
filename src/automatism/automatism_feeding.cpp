@@ -6,12 +6,12 @@ AutomatismFeeding::AutomatismFeeding(SystemActuators& acts, ConfigManager& cfg)
 
 void AutomatismFeeding::feedSmall() {
     uint16_t duration = getSmallDuration();
-    _acts.startServoSequence(duration);
+    _acts.feedSmallFish(duration);
 }
 
 void AutomatismFeeding::feedBig() {
     uint16_t duration = getBigDuration();
-    _acts.startServoSequence(duration);
+    _acts.feedBigFish(duration);
 }
 
 uint16_t AutomatismFeeding::getBigDuration() const {

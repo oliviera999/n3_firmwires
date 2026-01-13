@@ -19,7 +19,7 @@ public:
     // Méthode principale appelée par Automatism::updateDisplay()
     void updateDisplay(const AutomatismRuntimeContext& ctx, 
                        SystemActuators& acts, 
-                       const Automatism& core);
+                       Automatism& core);
 
     // Recommande l'intervalle d'update OLED en fonction de l'état courant
     uint32_t getRecommendedDisplayIntervalMs(uint32_t nowMs) const;

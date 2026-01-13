@@ -8,7 +8,7 @@
 
 class NVSLockGuard {
 public:
-    explicit NVSLockGuard(NVSManager& manager, TickType_t timeout = portMAX_DELAY)
+    explicit NVSLockGuard(NVSManager& manager, TickType_t timeout = pdMS_TO_TICKS(100))
         : _manager(manager)
         , _locked(manager.lock(timeout)) {}
 

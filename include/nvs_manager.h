@@ -185,6 +185,9 @@ public:
     // Debug
     void printCacheStatus();
     void printNamespaceContents(const char* ns);
+    
+    // Vérification d'initialisation
+    bool isInitialized() const { return _initialized; }
 };
 
 // Instance globale

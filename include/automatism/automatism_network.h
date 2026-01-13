@@ -78,7 +78,7 @@ class AutomatismNetwork {
   static constexpr uint32_t BASE_BACKOFF_MS = 2000;
   static constexpr uint32_t MAX_BACKOFF_MS = 60000;
   static constexpr unsigned long SEND_INTERVAL_MS = 120000;
-  static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 4000;
+  static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 12000; // 12 secondes (optimisation polling)
 
   WebClient& _web;
   ConfigManager& _config;

@@ -1,1 +1,0 @@
-UserSideException: could not open port 'COM6': PermissionError(13, 'Accès refusé.', None, 5)

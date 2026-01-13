@@ -13,7 +13,7 @@ namespace SystemBoot {
     // OTA Validation
     struct OtaState {
         bool justUpdated;
-        String previousVersion;
+        char previousVersion[32];
         unsigned long lastCheck;
     };
     void validatePendingOta(OtaState& state);

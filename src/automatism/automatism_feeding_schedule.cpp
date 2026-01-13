@@ -30,7 +30,8 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
                                              uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
                                              uint16_t bigDuration, uint16_t smallDuration,
                                              const char* emailAddr, bool mailNotif,
-                                             std::function<void()> mailBlinkCallback) {
+                                             std::function<void()> mailBlinkCallback,
+                                             std::function<void(const char*)> feedingStartCallback) {
     // Vérifier changement de jour
     checkNewDay(dayOfYear);
     
@@ -41,19 +42,19 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     
     if (shouldFeedMorning) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback);
+        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback);
         _config.setBouffeMatinOk(true);
         _config.saveBouffeFlags();
         sendFeedingEmail("Bouffe matin", bigDuration, smallDuration, emailAddr, mailNotif);
     } else if (shouldFeedNoon) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MIDI (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback);
+        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback);
         _config.setBouffeMidiOk(true);
         _config.saveBouffeFlags();
         sendFeedingEmail("Bouffe midi", bigDuration, smallDuration, emailAddr, mailNotif);
     } else if (shouldFeedEvening) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique SOIR (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback);
+        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback);
         _config.setBouffeSoirOk(true);
         _config.saveBouffeFlags();
         sendFeedingEmail("Bouffe soir", bigDuration, smallDuration, emailAddr, mailNotif);
@@ -67,10 +68,16 @@ bool AutomatismFeedingSchedule::shouldFeedNow(int hour, int minute, uint8_t sche
 
 void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t smallDuration,
                                               const char* emailAddr, bool mailNotif,
-                                              std::function<void()> mailBlinkCallback) {
+                                              std::function<void()> mailBlinkCallback,
+                                              std::function<void(const char*)> feedingStartCallback) {
     // Déclencher le clignotement mail si callback fourni
     if (mailBlinkCallback) {
         mailBlinkCallback();
+    }
+    
+    // Notifier le début du nourrissage (phase "Gros")
+    if (feedingStartCallback) {
+        feedingStartCallback("Gros");
     }
     
     // Nourrissage séquentiel (gros puis petits avec délai de 2 secondes)

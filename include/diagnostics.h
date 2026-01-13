@@ -55,6 +55,12 @@ class Diagnostics {
   // Génère un rapport détaillé de redémarrage pour les emails
   String generateRestartReport() const;
   
+  // Vérifier si des infos PANIC sont disponibles
+  bool hasPanicInfo() const { return _stats.panicInfo.hasPanicInfo; }
+  
+  // Nettoyer les infos PANIC (appelé après envoi du mail de boot)
+  void clearPanicInfoAfterReport();
+  
  private:
   DiagnosticStats _stats;
   unsigned long _lastUpdate;

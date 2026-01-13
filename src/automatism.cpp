@@ -19,6 +19,7 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _mailer(mail)
     , _config(config)
     , _feeding(acts, config)
+    , _feedingSchedule(acts, config, mail, power)
     , _network(web, config)
     , _sleep(power, config)
     , _refillController(*this)
@@ -57,24 +58,31 @@ void Automatism::update(const SensorReadings& r) {
     _lastReadings = r;
     unsigned long now = millis();
 
-    // 1. Gestion affichage (délégué)
+    // ========================================
+    // PRIORITÉ ABSOLUE : NOURRISSAGE ET REMPLISSAGE
+    // ========================================
+    
+    // 1. Nourrissage automatique (PRIORITÉ 1 - temps critiques)
+    handleFeeding();
+    
+    // 2. Gestion affichage (délégué)
     AutomatismRuntimeContext ctx;
     ctx.readings = r;
     ctx.nowMs = now;
     _displayController.updateDisplay(ctx, _acts, *this);
 
-    // 2. Gestion réseau (polling commandes)
+    // 3. Gestion réseau (polling commandes)
     JsonDocument doc;
     if (_network.pollRemoteState(doc, now)) {
         // Appliquer commandes reçues
         _network.handleRemoteFeedingCommands(doc, *this);
     }
 
-    // 3. Gestion logique métier via contrôleurs
+    // 4. Gestion logique métier via contrôleurs
     _refillController.process(ctx);
     _alertController.process(ctx);
     
-    // 4. Gestion sommeil (délégué)
+    // 5. Gestion sommeil (délégué)
     _sleep.process(r, _acts, *this);
 }
 
@@ -97,18 +105,24 @@ uint32_t Automatism::getRecommendedDisplayIntervalMs() {
 
 void Automatism::manualFeedSmall() {
     Serial.println(F("[Auto] Nourrissage manuel PETITS déclenché"));
-    _feeding.feedSmall();
-  _manualFeedingActive = true;
+    Serial.printf("[Auto] Durée configurée: %u s\n", tempsPetits);
+    // CORRECTION: Utiliser directement les durées de Automatism (synchronisées avec serveur)
+    _acts.feedSmallFish(tempsPetits);
+    _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD; // Début animation
-    _feedingPhaseEnd = millis() + (_feeding.getSmallDuration() * 1000);
+    _feedingPhaseEnd = millis() + (tempsPetits * 1000);
+    _currentFeedingType = "Petits"; // Pour l'affichage OLED
 }
 
 void Automatism::manualFeedBig() {
     Serial.println(F("[Auto] Nourrissage manuel GROS déclenché"));
-    _feeding.feedBig();
-  _manualFeedingActive = true;
+    Serial.printf("[Auto] Durée configurée: %u s\n", tempsGros);
+    // CORRECTION: Utiliser directement les durées de Automatism (synchronisées avec serveur)
+    _acts.feedBigFish(tempsGros);
+    _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-    _feedingPhaseEnd = millis() + (_feeding.getBigDuration() * 1000);
+    _feedingPhaseEnd = millis() + (tempsGros * 1000);
+    _currentFeedingType = "Gros"; // Pour l'affichage OLED
 }
 
 void Automatism::toggleEmailNotifications() {
@@ -318,4 +332,36 @@ bool Automatism::restoreRemoteConfigFromCache() {
         return true;
     }
       return false;
+}
+
+// ============================================================================
+// NOURRISSAGE AUTOMATIQUE
+// ============================================================================
+
+void Automatism::handleFeeding() {
+    time_t now = _power.getCurrentEpoch();
+    struct tm timeinfo;
+    if (!localtime_r(&now, &timeinfo)) {
+        Serial.println(F("[Auto] ❌ Erreur récupération heure pour nourrissage"));
+        return;
+    }
+    
+    int dayOfYear = timeinfo.tm_yday;
+    int hour = timeinfo.tm_hour;
+    int minute = timeinfo.tm_min;
+    
+    _feedingSchedule.checkAndFeed(hour, minute, dayOfYear,
+                                   bouffeMatin, bouffeMidi, bouffeSoir,
+                                   tempsGros, tempsPetits,
+                                   _emailAddress, mailNotif,
+                                   [this]() { armMailBlink(); },
+                                   [this](const char* type) { 
+                                       _currentFeedingType = type;
+                                       _manualFeedingActive = false;
+                                       // Calculer la durée de la phase "Gros"
+                                       const uint32_t bigCycleMs = (tempsGros + (tempsGros / 2U)) * 1000UL;
+                                       const uint32_t delayMs = 2 * 1000UL;
+                                       _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
+                                       _feedingPhaseEnd = millis() + bigCycleMs + delayMs;
+                                   });
 }

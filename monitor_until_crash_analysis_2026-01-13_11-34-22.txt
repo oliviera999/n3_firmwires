@@ -1,0 +1,74 @@
+==================================================
+RAPPORT D'ANALYSE - MONITORING JUSQU'AU CRASH
+==================================================
+Date: 2026-01-13 11:35:24
+Port: COM4
+Temps jusqu'au reboot: 0.0 secondes
+Duree post-reboot: 60 secondes
+Fichier de log: monitor_until_crash_2026-01-13_11-34-22.log
+==================================================
+
+PRIORITE 1: ERREURS CRITIQUES
+==================================================
+
+1. GURU MEDITATION / PANIC: 6 occurrence(s)
+   CRITIQUE: Des crashes PANIC ont ete detectes !
+   Details:
+   [ 22827][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+   [NVS] 📖 Chargé booléen depuis cache: logs::diag_hasPanic = false
+   [NVS] 📖 Chargé booléen depuis cache: logs::diag_hasPanic = false
+   [NVS] 📖 Chargé booléen depuis cache: logs::diag_hasPanic = false
+   [NVS] 📖 Chargé booléen depuis cache: logs::diag_hasPanic = false
+   [NVS] 📖 Chargé booléen depuis cache: logs::diag_hasPanic = false
+
+2. BROWNOUT (Alimentation): 0 occurrence(s)
+   OK: Aucun brownout detecte
+
+3. CORE DUMP: 1 occurrence(s)
+   CRITIQUE: Core dump genere !
+   E (1142) esp_core_dump_flash: No core dump partition found!
+
+4. STACK OVERFLOW: 0 occurrence(s)
+   OK: Aucun stack overflow detecte
+
+PRIORITE 2: WATCHDOG ET TIMEOUTS
+==================================================
+
+1. WATCHDOG TIMEOUT: 3 occurrence(s)
+   ATTENTION: Timeouts watchdog detectes
+   [BOOT] Watchdog configuré: timeout=120000 ms
+   [OTA] ✅ Sécurité: Watchdog désactivé, validation complète
+   [Power] Watchdog prêt (géré par TWDT natif)
+
+PRIORITE 3: MEMOIRE (HEAP/STACK)
+==================================================
+
+1. HEAP (Memoire libre): 83 reference(s)
+   INFO: Aucune valeur de heap extraite
+
+PRIORITE 4: WIFI ET WEBSOCKET
+==================================================
+
+1. WIFI: 0 erreur(s), 0 deconnexion(s)
+   OK: Pas de probleme WiFi majeur detecte
+
+2. WEBSOCKET: 0 erreur(s), 0 deconnexion(s)
+   OK: Pas de probleme WebSocket majeur detecte
+
+RESUME ET RECOMMANDATIONS
+==================================================
+
+Problemes critiques detectes: 1
+Avertissements: 1
+
+ACTIONS IMMEDIATES REQUISES:
+==================================================
+1. Analyser les logs Guru Meditation pour identifier la tache/core concerne
+2. Verifier les stack sizes des taches FreeRTOS
+3. Verifier les timeouts watchdog
+4. Ajouter plus de esp_task_wdt_reset() dans les boucles longues
+
+STATISTIQUES GENERALES
+==================================================
+Total lignes loggees: 3238
+Duree totale: 62.1 secondes

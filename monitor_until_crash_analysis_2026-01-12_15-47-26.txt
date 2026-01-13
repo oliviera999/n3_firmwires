@@ -1,0 +1,11 @@
+==================================================
+RAPPORT D'ANALYSE - MONITORING JUSQU'AU CRASH
+==================================================
+Date: 2026-01-12 15:47:28
+Port: COM6
+Aucun reboot detecte
+Duree post-reboot: 60 secondes
+Fichier de log: monitor_until_crash_2026-01-12_15-47-26.log
+==================================================
+
+ERREUR: Aucun log capture

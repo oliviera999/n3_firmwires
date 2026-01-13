@@ -135,10 +135,12 @@ try {
         $progressPercent = [math]::Round(($progress / $monitorDuration) * 100)
         $elapsedMinutes = [math]::Floor($progress / 60)
         $elapsedSeconds = $progress % 60
+        $remainingMinutes = [math]::Floor($remaining / 60)
+        $remainingSeconds = $remaining % 60
         
         # Mise à jour toutes les 30 secondes
         if ($progress -ge $lastProgressUpdate + 30) {
-            Write-Host "[$elapsedMinutes:$($elapsedSeconds.ToString('00'))] Progression: $progressPercent% ($remaining s restantes)" -ForegroundColor Cyan
+            Write-Host "[$($elapsedMinutes.ToString('00')):$($elapsedSeconds.ToString('00'))] Progression: $progressPercent% ($($remainingMinutes.ToString('00')):$($remainingSeconds.ToString('00')) restantes)" -ForegroundColor Cyan
             $lastProgressUpdate = $progress
         }
         

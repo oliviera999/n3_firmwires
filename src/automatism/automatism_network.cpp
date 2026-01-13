@@ -136,10 +136,26 @@ void AutomatismNetwork::applyConfigFromJson(const ArduinoJson::JsonDocument& doc
     } else if (v.is<int>()) {
       enabled = (v.as<int>() == 1);
     } else if (v.is<const char*>()) {
-        String s = String(v.as<const char*>());
-        s.trim();
-        s.toLowerCase();
-        enabled = (s == "1" || s == "true" || s == "on" || s == "yes");
+        // Utiliser buffer statique au lieu de String pour éviter fragmentation
+        const char* str = v.as<const char*>();
+        char tempStr[32];
+        size_t len = strlen(str);
+        if (len >= sizeof(tempStr)) len = sizeof(tempStr) - 1;
+        strncpy(tempStr, str, len);
+        tempStr[len] = '\0';
+        
+        // Convertir en minuscules et comparer
+        for (size_t i = 0; i < len; i++) {
+          if (tempStr[i] >= 'A' && tempStr[i] <= 'Z') {
+            tempStr[i] = tempStr[i] - 'A' + 'a';
+          }
+        }
+        
+        // Comparer avec les valeurs acceptées
+        enabled = (strcmp(tempStr, "1") == 0 || 
+                   strcmp(tempStr, "true") == 0 || 
+                   strcmp(tempStr, "on") == 0 || 
+                   strcmp(tempStr, "yes") == 0);
     }
     setEmailEnabled(enabled);
   }

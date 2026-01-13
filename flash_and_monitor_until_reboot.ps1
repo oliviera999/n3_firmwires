@@ -1,5 +1,5 @@
 # Script de flash, monitoring jusqu'au reboot et analyse complète - wroom-test
-# Version: v11.124
+# Version: v11.125
 # Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 
 param(
@@ -9,7 +9,7 @@ param(
 )
 
 Write-Host "=== FLASH ET MONITORING JUSQU'AU REBOOT - WROOM-TEST ===" -ForegroundColor Green
-Write-Host "Version firmware: v11.124" -ForegroundColor Yellow
+Write-Host "Version firmware: v11.125" -ForegroundColor Yellow
 Write-Host "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "Port: $Port" -ForegroundColor Yellow
 Write-Host "Durée post-reboot: $PostRebootDuration secondes" -ForegroundColor Yellow
@@ -297,7 +297,7 @@ Port: $Port
 Temps jusqu'au reboot: $(if ($rebootDetected) { "$([math]::Round((($rebootTime - $startTime).TotalSeconds), 1)) secondes" } else { "Aucun reboot détecté" })
 Durée post-reboot: $PostRebootDuration secondes
 Fichier de log: $logFile
-Version firmware: v11.124
+Version firmware: v11.125
 ========================================
 
 "@
