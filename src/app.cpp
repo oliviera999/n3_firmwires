@@ -19,7 +19,6 @@
 #include "nvs_manager.h"
 #include "event_log.h"
 #include "time_drift_monitor.h"
-#include "timer_manager.h"
 #include "gpio_parser.h"
 #include "task_monitor.h"
 #include "app_context.h"
@@ -66,9 +65,6 @@ static char g_hostname[SystemConfig::HOSTNAME_BUFFER_SIZE];
 static bool g_otaJustUpdated = false;
 static char g_previousVersion[32] = "";
 static unsigned long g_lastOtaCheck = 0;
-
-static const unsigned long OTA_CHECK_INTERVAL = TimingConfig::OTA_CHECK_INTERVAL_MS;
-static const unsigned long DIGEST_INTERVAL_MS = TimingConfig::DIGEST_INTERVAL_MS;
 
 static unsigned long g_lastDigestMs = 0;
 static uint32_t g_lastDigestSeq = 0;
@@ -153,6 +149,9 @@ void setup() {
   bool wifiConnected = SystemBoot::connectWifi(g_appContext, g_hostname);
   if (wifiConnected) {
     SystemBoot::onWifiReady(g_appContext, g_hostname, otaState);
+    if (otaState.lastCheck > 0) {
+      g_lastOtaCheck = otaState.lastCheck;
+    }
   }
 
   SystemBoot::initializePeripherals(g_appContext);
@@ -229,7 +228,7 @@ void setup() {
 
 void loop() {
   power.updateTime();
-  TimerManager::process();
+  unsigned long now = millis();
   timeDriftMonitor.update();
   
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
@@ -241,110 +240,105 @@ void loop() {
   wifi.loop(&oled);
   
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-  static bool otaTimerAdded = false;
-  if (!otaTimerAdded) {
-    TimerManager::addTimer("OTA_CHECK", OTA_CHECK_INTERVAL, []() {
-      LOG_INFO("Vérification périodique des mises à jour OTA...");
-      SystemBoot::checkForOtaUpdate(g_appContext);
-    });
-    otaTimerAdded = true;
+  if (WiFi.status() == WL_CONNECTED &&
+      (now - g_lastOtaCheck >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
+    LOG_INFO("Vérification périodique des mises à jour OTA...");
+    SystemBoot::checkForOtaUpdate(g_appContext);
+    g_lastOtaCheck = now;
   }
   #endif
   
   power.resetWatchdog();
 
-  static bool digestTimerAdded = false;
-  if (WiFi.status() == WL_CONNECTED && g_autoCtrl.isEmailEnabled() && !digestTimerAdded) {
-    TimerManager::addTimer("EMAIL_DIGEST", DIGEST_INTERVAL_MS, []() {
-      if (WiFi.status() == WL_CONNECTED && g_autoCtrl.isEmailEnabled()) {
-        unsigned long currentTime = millis();
-        
-        // Optimisation: Utilisation directe de String pour éviter allocation stack massive (Fix audit)
-        String body;
-        if (!body.reserve(BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES)) {
-             LOG_WARN("Echec reservation memoire digest");
-             return;
-        }
+  #if FEATURE_DIAG_DIGEST
+  if (WiFi.status() == WL_CONNECTED && g_autoCtrl.isEmailEnabled() &&
+      (g_lastDigestMs == 0 ||
+       now - g_lastDigestMs >= TimingConfig::DIGEST_INTERVAL_MS)) {
+    // Optimisation: Utilisation directe de String pour éviter allocation stack massive (Fix audit)
+    String body;
+    if (!body.reserve(BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES)) {
+      LOG_WARN("Echec reservation memoire digest");
+    } else {
 
-        // Construire l'en-tête de l'e-mail
-        char systemInfo[128];
-        Utils::getSystemInfo(systemInfo, sizeof(systemInfo));
-        
-        // Petit buffer temporaire pour les formatages (safe stack size)
-        char lineBuf[256]; 
-        
-        snprintf(lineBuf, sizeof(lineBuf), "Résumé des événements récents (%s)\n\n", systemInfo);
-        body += lineBuf;
-        
-        body += "[Stacks] Marges (bytes):\n";
+    // Construire l'en-tête de l'e-mail
+    char systemInfo[128];
+    Utils::getSystemInfo(systemInfo, sizeof(systemInfo));
+    
+    // Petit buffer temporaire pour les formatages (safe stack size)
+    char lineBuf[256];
+    
+    snprintf(lineBuf, sizeof(lineBuf), "Résumé des événements récents (%s)\n\n", systemInfo);
+    body += lineBuf;
+    
+    body += "[Stacks] Marges (bytes):\n";
 
-        // Récupérer les informations de stack
-        AppTasks::Handles handles = AppTasks::getHandles();
-        if (handles.sensor) {
-          snprintf(lineBuf, sizeof(lineBuf), "- sensorTask: %u\n", uxTaskGetStackHighWaterMark(handles.sensor));
-          body += lineBuf;
-        }
-        if (handles.web) {
-          snprintf(lineBuf, sizeof(lineBuf), "- webTask: %u\n", uxTaskGetStackHighWaterMark(handles.web));
-          body += lineBuf;
-        }
-        if (handles.automation) {
-          snprintf(lineBuf, sizeof(lineBuf), "- autoTask: %u\n", uxTaskGetStackHighWaterMark(handles.automation));
-          body += lineBuf;
-        }
-        if (handles.display) {
-          snprintf(lineBuf, sizeof(lineBuf), "- displayTask: %u\n", uxTaskGetStackHighWaterMark(handles.display));
-          body += lineBuf;
-        }
-        snprintf(lineBuf, sizeof(lineBuf), "- loop(): %u\n\n", uxTaskGetStackHighWaterMark(nullptr));
-        body += lineBuf;
-        
-        body += "[TIME DRIFT] Dérive temporelle:\n";
-        body += timeDriftMonitor.generateDriftReport();
-        body += "\n";
+    // Récupérer les informations de stack
+    AppTasks::Handles handles = AppTasks::getHandles();
+    if (handles.sensor) {
+      snprintf(lineBuf, sizeof(lineBuf), "- sensorTask: %u\n", uxTaskGetStackHighWaterMark(handles.sensor));
+      body += lineBuf;
+    }
+    if (handles.web) {
+      snprintf(lineBuf, sizeof(lineBuf), "- webTask: %u\n", uxTaskGetStackHighWaterMark(handles.web));
+      body += lineBuf;
+    }
+    if (handles.automation) {
+      snprintf(lineBuf, sizeof(lineBuf), "- autoTask: %u\n", uxTaskGetStackHighWaterMark(handles.automation));
+      body += lineBuf;
+    }
+    if (handles.display) {
+      snprintf(lineBuf, sizeof(lineBuf), "- displayTask: %u\n", uxTaskGetStackHighWaterMark(handles.display));
+      body += lineBuf;
+    }
+    snprintf(lineBuf, sizeof(lineBuf), "- loop(): %u\n\n", uxTaskGetStackHighWaterMark(nullptr));
+    body += lineBuf;
 
-        uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq,
-                                              body,
-                                              BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - body.length());
-        if (newSeq != g_lastDigestSeq) {
-          char subjDigest[128];
-          snprintf(subjDigest, sizeof(subjDigest), "FFP5CS - Digest événements [%s]", g_hostname);
+    #if FEATURE_DIAG_TIME_DRIFT
+    body += "[TIME DRIFT] Dérive temporelle:\n";
+    body += timeDriftMonitor.generateDriftReport();
+    body += "\n";
+    #endif
 
-          // Pas besoin de vérifier la longueur/substring, car `dumpSince` a déjà respecté la limite
-          bool ok = mailer.send(subjDigest,
-                                body.c_str(),
-                                "User",
-                                g_autoCtrl.getEmailAddress());
-          EventLog::add(ok ? "Digest email sent" : "Digest email failed");
-          g_lastDigestSeq = newSeq;
-        } else {
-          EventLog::add("Digest: no new events");
-        }
-        g_lastDigestMs = currentTime;
-        if (g_nvsManager.isInitialized()) {
-          g_nvsManager.saveInt(NVS_NAMESPACES::SENSORS, "digest_lastSeq", g_lastDigestSeq);
-          g_nvsManager.saveULong(NVS_NAMESPACES::SENSORS, "digest_lastMs", g_lastDigestMs);
-        }
+      uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq,
+                                            body,
+                                            BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - body.length());
+      if (newSeq != g_lastDigestSeq) {
+        char subjDigest[128];
+        snprintf(subjDigest, sizeof(subjDigest), "FFP5CS - Digest événements [%s]", g_hostname);
+
+        // Pas besoin de vérifier la longueur/substring, car `dumpSince` a déjà respecté la limite
+        bool ok = mailer.send(subjDigest,
+                              body.c_str(),
+                              "User",
+                              g_autoCtrl.getEmailAddress());
+        EventLog::add(ok ? "Digest email sent" : "Digest email failed");
+        g_lastDigestSeq = newSeq;
+      } else {
+        EventLog::add("Digest: no new events");
       }
-    });
-    digestTimerAdded = true;
+      g_lastDigestMs = now;
+      if (g_nvsManager.isInitialized()) {
+        g_nvsManager.saveInt(NVS_NAMESPACES::SENSORS, "digest_last_seq", g_lastDigestSeq);
+        g_nvsManager.saveULong(NVS_NAMESPACES::SENSORS, "digest_last_ms", g_lastDigestMs);
+      }
+    }
   }
+  #endif
   
-  static bool statsTimerAdded = false;
-  if (!statsTimerAdded) {
-    TimerManager::addTimer("STATS_REPORT", 300000, []() {
-      TimerManager::logStats();
-    });
-    statsTimerAdded = true;
+  #if FEATURE_DIAG_STATS
+  static unsigned long lastStatsReportMs = 0;
+  if (now - lastStatsReportMs >= TimingConfig::STATS_REPORT_INTERVAL_MS) {
+    LOG_INFO("Diag stats: heap=%u min=%u", ESP.getFreeHeap(), ESP.getMinFreeHeap());
+    lastStatsReportMs = now;
   }
+  #endif
   
   static unsigned long lastNvsCheck = 0;
-  unsigned long currentTime = millis();
-  if (currentTime - lastNvsCheck >= 1000) {
+  if (now - lastNvsCheck >= 1000) {
     if (g_nvsManager.isInitialized()) {
       g_nvsManager.checkDeferredFlush();
     }
-    lastNvsCheck = currentTime;
+    lastNvsCheck = now;
   }
   
   static bool cleanupScheduled = false;

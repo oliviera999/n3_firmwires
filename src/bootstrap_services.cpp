@@ -4,7 +4,6 @@
 
 #include "event_log.h"
 #include "config.h"
-#include "timer_manager.h"
 
 namespace BootstrapServices {
 
@@ -60,7 +59,6 @@ void initializePeripherals(AppContext& ctx) {
   ctx.power.initWatchdog();
   ctx.power.initModemSleep();
 
-  TimerManager::init();
 }
 
 void loadConfiguration(AppContext& ctx) {

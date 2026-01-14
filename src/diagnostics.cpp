@@ -3,13 +3,50 @@
 #include "app_tasks.h" // Pour les TaskHandle_t en mode debug
 #include <ArduinoJson.h>
 #include <esp_core_dump.h>
+#include <esp_partition.h>
 #include <soc/rtc_cntl_reg.h>
 #include <rom/rtc.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <time.h>
+
+extern "C" esp_err_t esp_core_dump_image_get(size_t* out_addr,
+                                             size_t* out_size) __attribute__((weak));
+extern "C" esp_err_t esp_core_dump_image_erase(void) __attribute__((weak));
+
+namespace {
+
+const char* resetReasonToString(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_SW: return "SW";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "OTHER";
+  }
+}
+
+bool isBufferEmpty(const uint8_t* data, size_t len) {
+  for (size_t i = 0; i < len; ++i) {
+    if (data[i] != 0xFF) {
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
 
 Diagnostics::Diagnostics() 
-    : _lastUpdate(0), _lastHeapSave(0), _lastSavedMinHeap(UINT32_MAX) {
+    : _lastUpdate(0),
+      _lastHeapSave(0),
+      _lastSavedMinHeap(UINT32_MAX),
+      _bootRecorded(false) {
   _stats.uptimeSec = 0;
   _stats.freeHeap = 0;
   _stats.minFreeHeap = UINT32_MAX;
@@ -26,12 +63,20 @@ Diagnostics::Diagnostics()
   _stats.otaFailCount = 0;
   _stats.lastOtaError = "";
   _stats.panicInfo.hasPanicInfo = false;
+  _stats.crashStatus.hasCrashInfo = false;
+  _stats.crashStatus.resetReason = -1;
+  _stats.crashStatus.crashUptimeSec = 0;
+  _stats.crashStatus.crashEpoch = 0;
+  _stats.crashStatus.coredumpPresent = false;
+  _stats.crashStatus.coredumpSize = 0;
+  _stats.crashStatus.coredumpFormat = "UNKNOWN";
 }
 
 void Diagnostics::begin() {
-  // Capturer les informations de panic AVANT toute autre opération
-  // (car elles peuvent être perdues après certaines opérations)
-  capturePanicInfo();
+  if (_bootRecorded) {
+    return;
+  }
+  _bootRecorded = true;
   
   // Charger les valeurs précédentes
   int rebootCount;
@@ -52,14 +97,30 @@ void Diagnostics::begin() {
   _lastSavedMinHeap = _stats.minFreeHeap;
   _lastHeapSave = millis();
 
+  esp_reset_reason_t resetReason = esp_reset_reason();
   _stats.lastRebootReason = getRebootReason();
   
-  // Charger les informations de panic sauvegardées du dernier boot
-  loadPanicInfo();
+  loadCrashStatus();
+  updateCoredumpStatus(false);
   
-  // Si c'était un panic, sauvegarder les nouvelles infos
-  if (esp_reset_reason() == ESP_RST_PANIC) {
-    savePanicInfo();
+  // Crash: capturer les infos et les persister
+  if (isCrashResetReason(resetReason)) {
+    capturePanicInfo();
+    if (_stats.panicInfo.hasPanicInfo) {
+      savePanicInfo();
+    }
+    _stats.crashStatus.hasCrashInfo = true;
+    _stats.crashStatus.resetReason = static_cast<int>(resetReason);
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS,
+                           "diag_lastUptime",
+                           _stats.crashStatus.crashUptimeSec,
+                           0);
+    time_t now = time(nullptr);
+    _stats.crashStatus.crashEpoch = (now > 100000) ? static_cast<uint32_t>(now) : 0;
+    updateCoredumpStatus(true);
+  } else {
+    // Reboot normal: charger les infos de panic/crash précédentes si présentes
+    loadPanicInfo();
   }
   
   Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 
@@ -71,18 +132,32 @@ void Diagnostics::begin() {
   }
 }
 
+void Diagnostics::loadFromNvs() {
+  int rebootCount;
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
+  _stats.rebootCount = rebootCount;
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", (int&)_stats.minFreeHeap, UINT32_MAX);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpOk", (int&)_stats.httpSuccessCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpKo", (int&)_stats.httpFailCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaKo", (int&)_stats.otaFailCount, 0);
+
+  _stats.lastRebootReason = getRebootReason();
+  loadCrashStatus();
+  loadPanicInfo();
+  updateCoredumpStatus(false);
+}
+
 String Diagnostics::getRebootReason() const {
   esp_reset_reason_t r = esp_reset_reason();
-  switch (r) {
-    case ESP_RST_POWERON: return "POWERON";
-    case ESP_RST_SW:      return "SW";
-    case ESP_RST_PANIC:   return "PANIC";
-    case ESP_RST_INT_WDT: return "INT_WDT";
-    case ESP_RST_TASK_WDT:return "TASK_WDT";
-    case ESP_RST_WDT:     return "WDT";
-    case ESP_RST_DEEPSLEEP:return "DEEPSLEEP";
-    default: return "OTHER";
-  }
+  return resetReasonToString(r);
+}
+
+bool Diagnostics::isCrashResetReason(esp_reset_reason_t reason) const {
+  return (reason == ESP_RST_PANIC ||
+          reason == ESP_RST_INT_WDT ||
+          reason == ESP_RST_TASK_WDT ||
+          reason == ESP_RST_WDT);
 }
 
 void Diagnostics::update() {
@@ -219,6 +294,18 @@ void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   doc["otaOk"] = _stats.otaSuccessCount;
   doc["otaKo"] = _stats.otaFailCount;
   if (_stats.lastOtaError.length() > 0) doc["lastOtaError"] = _stats.lastOtaError;
+  if (_stats.crashStatus.hasCrashInfo || _stats.crashStatus.coredumpPresent) {
+    ArduinoJson::JsonObject crash = doc["crash"].to<ArduinoJson::JsonObject>();
+    crash["hasCrashInfo"] = _stats.crashStatus.hasCrashInfo;
+    crash["resetReason"] = _stats.crashStatus.resetReason;
+    crash["resetReasonLabel"] = resetReasonToString(
+        static_cast<esp_reset_reason_t>(_stats.crashStatus.resetReason));
+    crash["crashUptimeSec"] = _stats.crashStatus.crashUptimeSec;
+    crash["crashEpoch"] = _stats.crashStatus.crashEpoch;
+    crash["coredumpPending"] = _stats.crashStatus.coredumpPresent;
+    crash["coredumpSize"] = _stats.crashStatus.coredumpSize;
+    crash["coredumpFormat"] = _stats.crashStatus.coredumpFormat;
+  }
 } 
 
 void Diagnostics::recordHttpResult(bool success, int httpCode) {
@@ -251,38 +338,10 @@ String Diagnostics::generateRestartReport() const {
   // Raison du redémarrage actuel
   esp_reset_reason_t resetReason = esp_reset_reason();
   report += "Raison du redémarrage: ";
-  switch (resetReason) {
-    case ESP_RST_POWERON: 
-      report += "POWERON (mise sous tension)";
-      break;
-    case ESP_RST_SW: 
-      report += "SW (redémarrage logiciel)";
-      break;
-    case ESP_RST_PANIC: 
-      report += "PANIC (erreur critique)";
-      break;
-    case ESP_RST_INT_WDT: 
-      report += "INT_WDT (watchdog interrupt)";
-      break;
-    case ESP_RST_TASK_WDT: 
-      report += "TASK_WDT (watchdog tâche)";
-      break;
-    case ESP_RST_WDT: 
-      report += "WDT (watchdog système)";
-      break;
-    case ESP_RST_DEEPSLEEP: 
-      report += "DEEPSLEEP (réveil deep sleep)";
-      break;
-    case ESP_RST_BROWNOUT: 
-      report += "BROWNOUT (sous-tension)";
-      break;
-    case ESP_RST_SDIO: 
-      report += "SDIO (reset SDIO)";
-      break;
-    default: 
-      report += "OTHER (autre raison)";
-      break;
-  }
+  report += resetReasonToString(resetReason);
+  report += " (code ";
+  report += String((int)resetReason);
+  report += ")";
   report += "\n";
   
   // Informations détaillées de PANIC si disponibles
@@ -304,6 +363,41 @@ String Diagnostics::generateRestartReport() const {
     }
     report += "\n";
   }
+
+  if (_stats.crashStatus.hasCrashInfo) {
+    report += "\n-- DERNIER CRASH ENREGISTRÉ --\n";
+    report += "Reset reason: ";
+    report += resetReasonToString(static_cast<esp_reset_reason_t>(_stats.crashStatus.resetReason));
+    report += " (code ";
+    report += String(_stats.crashStatus.resetReason);
+    report += ")\n";
+    if (_stats.crashStatus.crashUptimeSec > 0) {
+      report += "Uptime avant crash: ";
+      report += String(_stats.crashStatus.crashUptimeSec);
+      report += " s\n";
+    }
+    if (_stats.crashStatus.crashEpoch > 0) {
+      report += "Epoch crash/boot: ";
+      report += String(_stats.crashStatus.crashEpoch);
+      report += "\n";
+    }
+  }
+  report += "Core Dump: ";
+  if (_stats.crashStatus.coredumpPresent) {
+    report += "PRÉSENT";
+    if (_stats.crashStatus.coredumpSize > 0) {
+      report += " (";
+      report += String(_stats.crashStatus.coredumpSize);
+      report += " bytes)";
+    }
+    if (_stats.crashStatus.coredumpFormat.length() > 0) {
+      report += " - ";
+      report += _stats.crashStatus.coredumpFormat;
+    }
+  } else {
+    report += "ABSENT";
+  }
+  report += "\n";
   
   // Détails supplémentaires en mode DEBUG/PROFILE_TEST pour diagnostic
   #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
@@ -546,5 +640,119 @@ void Diagnostics::clearPanicInfoAfterReport() {
   if (_stats.panicInfo.hasPanicInfo) {
     clearPanicInfo();
     Serial.println(F("[Diagnostics] ✅ Infos PANIC nettoyées après rapport"));
+  }
+}
+
+bool Diagnostics::clearCoreDump() {
+#if defined(CONFIG_ESP_COREDUMP_ENABLE) && (CONFIG_ESP_COREDUMP_ENABLE == 1)
+  bool cleared = false;
+  if (esp_core_dump_image_erase) {
+    cleared = (esp_core_dump_image_erase() == ESP_OK);
+  }
+  if (!cleared) {
+    const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                                           ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
+                                                           nullptr);
+    if (part) {
+      cleared = (esp_partition_erase_range(part, 0, part->size) == ESP_OK);
+    }
+  }
+
+  if (cleared) {
+    _stats.crashStatus.coredumpPresent = false;
+    _stats.crashStatus.coredumpSize = 0;
+    Serial.println(F("[Diagnostics] ✅ Core dump effacé"));
+    if (_stats.crashStatus.hasCrashInfo) {
+      saveCrashStatus();
+    }
+  } else {
+    Serial.println(F("[Diagnostics] ❌ Échec effacement core dump"));
+  }
+  return cleared;
+#else
+  Serial.println(F("[Diagnostics] ⚠️ Core dump désactivé - pas d'effacement"));
+  return false;
+#endif
+}
+
+void Diagnostics::loadCrashStatus() {
+  _stats.crashStatus.hasCrashInfo = false;
+  _stats.crashStatus.resetReason = -1;
+  _stats.crashStatus.crashUptimeSec = 0;
+  _stats.crashStatus.crashEpoch = 0;
+  _stats.crashStatus.coredumpPresent = false;
+  _stats.crashStatus.coredumpSize = 0;
+  _stats.crashStatus.coredumpFormat = "UNKNOWN";
+
+  bool hasCrash = false;
+  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_has", hasCrash, false);
+  _stats.crashStatus.hasCrashInfo = hasCrash;
+  if (!hasCrash) {
+    return;
+  }
+
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason, -1);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_uptime", _stats.crashStatus.crashUptimeSec, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch, 0);
+  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent, false);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize, 0);
+  g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", _stats.crashStatus.coredumpFormat, "UNKNOWN");
+}
+
+void Diagnostics::saveCrashStatus() {
+  if (!_stats.crashStatus.hasCrashInfo) {
+    return;
+  }
+  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_has", true);
+  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason);
+  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_uptime", _stats.crashStatus.crashUptimeSec);
+  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch);
+  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent);
+  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", _stats.crashStatus.coredumpFormat);
+}
+
+void Diagnostics::updateCoredumpStatus(bool persistIfCrash) {
+  _stats.crashStatus.coredumpPresent = false;
+  _stats.crashStatus.coredumpSize = 0;
+
+#if defined(CONFIG_ESP_COREDUMP_ENABLE) && (CONFIG_ESP_COREDUMP_ENABLE == 1)
+  _stats.crashStatus.coredumpFormat = "UNKNOWN";
+  #if defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF) && (CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF == 1)
+  _stats.crashStatus.coredumpFormat = "ELF";
+  #elif defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_BIN) && (CONFIG_ESP_COREDUMP_DATA_FORMAT_BIN == 1)
+  _stats.crashStatus.coredumpFormat = "BIN";
+  #endif
+
+  size_t imageAddr = 0;
+  size_t imageSize = 0;
+  bool hasDump = false;
+  if (esp_core_dump_image_get) {
+    if (esp_core_dump_image_get(&imageAddr, &imageSize) == ESP_OK && imageSize > 0) {
+      hasDump = true;
+      _stats.crashStatus.coredumpSize = static_cast<uint32_t>(imageSize);
+    }
+  }
+  if (!hasDump) {
+    const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                                           ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
+                                                           nullptr);
+    if (part) {
+      uint8_t header[32];
+      if (esp_partition_read(part, 0, header, sizeof(header)) == ESP_OK) {
+        if (!isBufferEmpty(header, sizeof(header))) {
+          hasDump = true;
+          _stats.crashStatus.coredumpSize = static_cast<uint32_t>(part->size);
+        }
+      }
+    }
+  }
+  _stats.crashStatus.coredumpPresent = hasDump;
+#else
+  _stats.crashStatus.coredumpFormat = "DISABLED";
+#endif
+
+  if (persistIfCrash && _stats.crashStatus.hasCrashInfo) {
+    saveCrashStatus();
   }
 }

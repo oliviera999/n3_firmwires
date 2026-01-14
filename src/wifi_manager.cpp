@@ -149,6 +149,65 @@ bool WifiManager::connect(DisplayView* disp) {
   return false;
 }
 
+bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView* disp) {
+  if (!ssid || ssid[0] == '\0') {
+    Serial.println(F("[WiFi] SSID vide - connexion manuelle annulée"));
+    return false;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println(F("[WiFi] Déjà connecté - connexion manuelle ignorée"));
+    return true;
+  }
+  if (_connecting) {
+    Serial.println(F("[WiFi] Connexion déjà en cours - manuel ignoré"));
+    return false;
+  }
+  _connecting = true;
+
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+
+  auto show = [disp](const char* msg){ if(disp && disp->isPresent()){ disp->showDiagnostic(msg);} };
+
+  show("WiFi...");
+  if (FEATURE_WIFI_APSTA) {
+    WiFi.mode(WIFI_AP_STA);
+  } else {
+    WiFi.mode(WIFI_STA);
+  }
+  WiFi.disconnect(false, true);
+  vTaskDelay(pdMS_TO_TICKS(50));
+
+  Serial.printf("[WiFi] 🔗 Connexion manuelle à %s...\n", ssid);
+  if (password && strlen(password) > 0) {
+    WiFi.begin(ssid, password);
+  } else {
+    WiFi.begin(ssid);
+  }
+
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    show("WiFi OK");
+    Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    EventLog::addf("WiFi manual connected %s IP=%s RSSI=%d", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    WiFi.setSleep(true);
+    _lastAttemptMs = millis();
+    _connecting = false;
+    return true;
+  }
+
+  show("Echec");
+  Serial.printf("[WiFi] ❌ Connexion manuelle à %s impossible\n", ssid);
+  EventLog::addf("WiFi manual connect failed %s", ssid);
+  _lastAttemptMs = millis();
+  _connecting = false;
+  return false;
+}
+
 bool WifiManager::startFallbackAP(){
   // Crée un SSID unique basé sur l'adresse MAC
   uint64_t chipId = ESP.getEfuseMac();

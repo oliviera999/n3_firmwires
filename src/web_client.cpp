@@ -352,11 +352,32 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   char payload[512];
   payload[0] = '\0';
   size_t offset = 0;
+  bool truncated = false;
   
   auto appendKV = [&](const char* key, const char* value) {
-    if (offset >= sizeof(payload) - 1) return;
-    if (offset > 0) offset += snprintf(payload + offset, sizeof(payload) - offset, "&");
-    offset += snprintf(payload + offset, sizeof(payload) - offset, "%s=%s", key, value);
+    if (truncated || offset >= sizeof(payload) - 1) {
+      truncated = true;
+      return;
+    }
+    size_t remaining = sizeof(payload) - offset;
+    int written = 0;
+    if (offset > 0) {
+      written = snprintf(payload + offset, remaining, "&");
+      if (written < 0 || static_cast<size_t>(written) >= remaining) {
+        truncated = true;
+        payload[sizeof(payload) - 1] = '\0';
+        return;
+      }
+      offset += static_cast<size_t>(written);
+      remaining = sizeof(payload) - offset;
+    }
+    written = snprintf(payload + offset, remaining, "%s=%s", key, value);
+    if (written < 0 || static_cast<size_t>(written) >= remaining) {
+      truncated = true;
+      payload[sizeof(payload) - 1] = '\0';
+      return;
+    }
+    offset += static_cast<size_t>(written);
   };
 
   Serial.println(F("[SM] Construction du payload..."));
@@ -418,6 +439,11 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   appendKV("limFlood", "");
   appendKV("WakeUp", "");
   appendKV("FreqWakeUp", "");
+
+  if (truncated) {
+    Serial.println(F("[SM] ❌ Payload tronqué - envoi annulé"));
+    return false;
+  }
 
   Serial.printf("[SM] Payload construit: %u bytes\n", strlen(payload));
   Serial.printf("[SM] Version: %s\n", ProjectConfig::VERSION);

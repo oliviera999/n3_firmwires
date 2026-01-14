@@ -1,0 +1,14 @@
+============================================================
+📋 Rapport d'Analyse Core Dump (Simple)
+============================================================
+Fichier: coredumps\coredump_20260114_recheck.elf
+Date: 2026-01-14 19:17:18
+
+Taille du fichier: 65536 bytes (64.00 KB)
+Format: Inconnu (magic: e4760000)
+
+============================================================
+💡 Pour une analyse complète avec stack trace:
+   1. Installez ESP-IDF
+   2. Utilisez: esp-coredump.py info_corefile --core <fichier> --prog <firmware.elf>
+============================================================

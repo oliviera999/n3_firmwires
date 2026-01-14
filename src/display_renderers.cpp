@@ -4,6 +4,7 @@
 #include "config.h"
 #include <Adafruit_SSD1306.h>
 #include <cstring>
+#include <math.h>
 
 namespace {
 
@@ -14,6 +15,28 @@ void formatLevel(uint16_t value, char* buffer, size_t size) {
   } else {
     snprintf(buffer, size, "%u", value);
   }
+}
+
+void formatTemp(float value, char* buffer, size_t size) {
+  if (isnan(value)) {
+    strncpy(buffer, "--.-", size);
+    buffer[size - 1] = '\0';
+    return;
+  }
+  snprintf(buffer, size, "%.1f", value);
+}
+
+void formatHumidity(float value, char* buffer, size_t size) {
+  if (isnan(value)) {
+    strncpy(buffer, "--.-", size);
+    buffer[size - 1] = '\0';
+    return;
+  }
+  snprintf(buffer, size, "%.1f", value);
+}
+
+const char* onOffLabel(bool value) {
+  return value ? "ON" : "OFF";
 }
 
 }  // namespace
@@ -51,7 +74,11 @@ void MainScreenRenderer::render(DisplayView& view,
 
   {
     char buf[32];
-    snprintf(buf, sizeof(buf), "Te:%.1f Ta:%.1f", tempEau, tempAir);
+    char tempEauBuf[8];
+    char tempAirBuf[8];
+    formatTemp(tempEau, tempEauBuf, sizeof(tempEauBuf));
+    formatTemp(tempAir, tempAirBuf, sizeof(tempAirBuf));
+    snprintf(buf, sizeof(buf), "Eau:%sC Air:%sC", tempEauBuf, tempAirBuf);
     view.printClipped(0, 24, buf, 1);
   }
 
@@ -69,7 +96,9 @@ void MainScreenRenderer::render(DisplayView& view,
 
   {
     char buf[32];
-    snprintf(buf, sizeof(buf), "H:%.1f%%  L:%u", humidite, lumi);
+    char humBuf[8];
+    formatHumidity(humidite, humBuf, sizeof(humBuf));
+    snprintf(buf, sizeof(buf), "Hum:%s%% Lum:%u", humBuf, lumi);
     view.printClipped(0, 40, buf, 1);
   }
 
@@ -144,16 +173,37 @@ void InfoScreenRenderer::renderVariables(DisplayView& view,
                                          bool pumpAqua,
                                          bool pumpTank,
                                          bool heater,
-                                         bool light) {
+                                         bool light,
+                                         uint8_t hMat,
+                                         uint8_t hMid,
+                                         uint8_t hSoir,
+                                         uint16_t tPetits,
+                                         uint16_t tGros,
+                                         uint16_t thAq,
+                                         uint16_t thTank,
+                                         float thHeat,
+                                         uint16_t limFlood) {
   display.setTextSize(1);
-  view.printClipped(0, 0, "Relais:", 1);
+  view.printClipped(0, 0, "Relais+Cfg:", 1);
 
   char buf[32];
-  snprintf(buf, sizeof(buf), "Paq:%d Pta:%d", pumpAqua, pumpTank);
+  snprintf(buf, sizeof(buf), "PomAq:%s PomTk:%s", onOffLabel(pumpAqua), onOffLabel(pumpTank));
   view.printClipped(0, 8, buf, 1);
 
-  snprintf(buf, sizeof(buf), "Heat:%d Light:%d", heater, light);
+  snprintf(buf, sizeof(buf), "Chauff:%s Lumi:%s", onOffLabel(heater), onOffLabel(light));
   view.printClipped(0, 16, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Feed h:%02u %02u %02u", hMat, hMid, hSoir);
+  view.printClipped(0, 24, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Tps P:%us G:%us", tPetits, tGros);
+  view.printClipped(0, 32, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Seuil Aq:%u Ta:%u", thAq, thTank);
+  view.printClipped(0, 40, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Ch:%.1fC F:%ucm", thHeat, limFlood);
+  view.printClipped(0, 48, buf, 1);
 }
 
 void InfoScreenRenderer::renderServerVars(DisplayView& view,

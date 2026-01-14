@@ -106,17 +106,44 @@ class DisplayCache {
                 bool pumpTank,
                 bool heater,
                 bool light,
+                uint8_t hMat,
+                uint8_t hMid,
+                uint8_t hSoir,
+                uint16_t tPetits,
+                uint16_t tGros,
+                uint16_t thAq,
+                uint16_t thTank,
+                float thHeat,
+                uint16_t limFlood,
                 bool force = false) {
       bool changed = force ||
                      pumpAqua != _pumpAqua ||
                      pumpTank != _pumpTank ||
                      heater != _heater ||
-                     light != _light;
+                     light != _light ||
+                     hMat != _hMat ||
+                     hMid != _hMid ||
+                     hSoir != _hSoir ||
+                     tPetits != _tPetits ||
+                     tGros != _tGros ||
+                     thAq != _thAq ||
+                     thTank != _thTank ||
+                     (fabsf(thHeat - _thHeat) > 0.05f) ||
+                     limFlood != _limFlood;
 
       _pumpAqua = pumpAqua;
       _pumpTank = pumpTank;
       _heater = heater;
       _light = light;
+      _hMat = hMat;
+      _hMid = hMid;
+      _hSoir = hSoir;
+      _tPetits = tPetits;
+      _tGros = tGros;
+      _thAq = thAq;
+      _thTank = thTank;
+      _thHeat = thHeat;
+      _limFlood = limFlood;
 
       return changed;
     }
@@ -126,6 +153,15 @@ class DisplayCache {
       _pumpTank = false;
       _heater = false;
       _light = false;
+      _hMat = 0;
+      _hMid = 0;
+      _hSoir = 0;
+      _tPetits = 0;
+      _tGros = 0;
+      _thAq = 0;
+      _thTank = 0;
+      _thHeat = 0.0f;
+      _limFlood = 0;
     }
 
    private:
@@ -133,6 +169,15 @@ class DisplayCache {
     bool _pumpTank{false};
     bool _heater{false};
     bool _light{false};
+    uint8_t _hMat{0};
+    uint8_t _hMid{0};
+    uint8_t _hSoir{0};
+    uint16_t _tPetits{0};
+    uint16_t _tGros{0};
+    uint16_t _thAq{0};
+    uint16_t _thTank{0};
+    float _thHeat{0.0f};
+    uint16_t _limFlood{0};
   };
 
   StatusCache& status() { return _status; }

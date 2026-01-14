@@ -434,11 +434,35 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   }
 }
 
-void DisplayView::showVariables(bool pumpAqua, bool pumpTank, bool heater, bool light) {
+void DisplayView::showVariables(bool pumpAqua,
+                                bool pumpTank,
+                                bool heater,
+                                bool light,
+                                uint8_t hMat,
+                                uint8_t hMid,
+                                uint8_t hSoir,
+                                uint16_t tPetits,
+                                uint16_t tGros,
+                                uint16_t thAq,
+                                uint16_t thTank,
+                                float thHeat,
+                                uint16_t limFlood) {
   if (!_present || splashActive() || isLocked()) return;
   
   // Vérifier si les valeurs ont changé (optimisation avec cache)
-  bool valuesChanged = _cache.variables().update(pumpAqua, pumpTank, heater, light);
+  bool valuesChanged = _cache.variables().update(pumpAqua,
+                                                 pumpTank,
+                                                 heater,
+                                                 light,
+                                                 hMat,
+                                                 hMid,
+                                                 hSoir,
+                                                 tPetits,
+                                                 tGros,
+                                                 thAq,
+                                                 thTank,
+                                                 thHeat,
+                                                 limFlood);
   
   // Si les valeurs n'ont pas changé et qu'on n'est pas en mode immédiat, on peut sauter l'affichage
   if (!valuesChanged && !_immediateMode && !_updateMode) {
@@ -446,7 +470,21 @@ void DisplayView::showVariables(bool pumpAqua, bool pumpTank, bool heater, bool 
   }
   
   clear();
-  InfoScreenRenderer::renderVariables(*this, _disp, pumpAqua, pumpTank, heater, light);
+  InfoScreenRenderer::renderVariables(*this,
+                                      _disp,
+                                      pumpAqua,
+                                      pumpTank,
+                                      heater,
+                                      light,
+                                      hMat,
+                                      hMid,
+                                      hSoir,
+                                      tPetits,
+                                      tGros,
+                                      thAq,
+                                      thTank,
+                                      thHeat,
+                                      limFlood);
   
   // Mode immédiat pour les changements de valeurs, mode optimisé sinon
   if (_immediateMode || valuesChanged) {
@@ -538,10 +576,10 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
 
   // Lignes partitions
   if (fromLabel && *fromLabel) {
-    printClipped(0, 10, String("From: ") + DisplayTextUtils::utf8ToCp437(fromLabel), 1);
+    printClipped(0, 10, String("De: ") + DisplayTextUtils::utf8ToCp437(fromLabel), 1);
   }
   if (toLabel && *toLabel) {
-    printClipped(0, 18, String("To:   ") + DisplayTextUtils::utf8ToCp437(toLabel), 1);
+    printClipped(0, 18, String("Vers: ") + DisplayTextUtils::utf8ToCp437(toLabel), 1);
   }
 
   // Pourcentage centré en grand
@@ -579,20 +617,20 @@ void DisplayView::showOtaProgressEx(uint8_t percent, const char* fromLabel, cons
 
   // En-tête
   printClipped(0, 0, String("OTA ") + (phase ? DisplayTextUtils::utf8ToCp437(phase) : String("")), 1);
-  // Hôte ou WiFi SSID
+  // Hote ou WiFi SSID
   if (hostLabel && *hostLabel) {
-    printClipped(0, 8, String("Host: ") + DisplayTextUtils::utf8ToCp437(hostLabel), 1);
+    printClipped(0, 8, String("Hote: ") + DisplayTextUtils::utf8ToCp437(hostLabel), 1);
   }
   // Versions
   if (currentVersion && *currentVersion) {
-    printClipped(0, 16, String("Cur: v") + currentVersion, 1);
+    printClipped(0, 16, String("Act: v") + currentVersion, 1);
   }
   if (newVersion && *newVersion) {
-    printClipped(72, 16, String("New: v") + newVersion, 1);
+    printClipped(72, 16, String("Nv: v") + newVersion, 1);
   }
   // Partitions
-  if (fromLabel && *fromLabel) printClipped(0, 24, String("From:") + DisplayTextUtils::utf8ToCp437(fromLabel), 1);
-  if (toLabel && *toLabel)     printClipped(64, 24, String("To:")   + DisplayTextUtils::utf8ToCp437(toLabel), 1);
+  if (fromLabel && *fromLabel) printClipped(0, 24, String("De:") + DisplayTextUtils::utf8ToCp437(fromLabel), 1);
+  if (toLabel && *toLabel)     printClipped(64, 24, String("Vers:") + DisplayTextUtils::utf8ToCp437(toLabel), 1);
 
   // Barre de progression
   const int barX = 4, barY = 40, barW = 120, barH = 10;
@@ -617,7 +655,7 @@ void DisplayView::showSleepReason(const char* cause, const char* detailLine1, co
   _disp.clearDisplay();
   resetMainCache();
   resetStatusCache();
-  printClipped(0, 0, "Light-sleep", 1);
+  printClipped(0, 0, "Veille", 1);
   if (cause && *cause) printClipped(0, 10, DisplayTextUtils::utf8ToCp437(cause), 1);
   if (detailLine1 && *detailLine1) printClipped(0, 20, DisplayTextUtils::utf8ToCp437(detailLine1), 1);
   if (detailLine2 && *detailLine2) printClipped(0, 30, DisplayTextUtils::utf8ToCp437(detailLine2), 1);
@@ -636,7 +674,7 @@ void DisplayView::showSleepInfo(const char* reason, const char* detail1, const c
   resetStatusCache();
 
   // Titre
-  printClipped(0, 0, "Light-sleep", 1);
+  printClipped(0, 0, "Veille", 1);
   // Raison explicite
   if (reason && *reason) {
     printClipped(0, 10, String("Raison: ") + DisplayTextUtils::utf8ToCp437(reason), 1);

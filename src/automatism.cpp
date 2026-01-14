@@ -71,18 +71,21 @@ void Automatism::update(const SensorReadings& r) {
     ctx.nowMs = now;
     _displayController.updateDisplay(ctx, _acts, *this);
 
-    // 3. Gestion réseau (polling commandes)
+    // 3. Finaliser le cycle de nourrissage si terminé
+    finalizeFeedingIfNeeded(now);
+
+    // 4. Gestion réseau (polling commandes)
     JsonDocument doc;
     if (_network.pollRemoteState(doc, now)) {
         // Appliquer commandes reçues
         _network.handleRemoteFeedingCommands(doc, *this);
     }
 
-    // 4. Gestion logique métier via contrôleurs
+    // 5. Gestion logique métier via contrôleurs
     _refillController.process(ctx);
     _alertController.process(ctx);
     
-    // 5. Gestion sommeil (délégué)
+    // 6. Gestion sommeil (délégué)
     _sleep.process(r, _acts, *this);
 }
 
@@ -93,6 +96,12 @@ void Automatism::updateDisplay() {
     ctx.readings = r;
     ctx.nowMs = now;
     _displayController.updateDisplay(ctx, _acts, *this);
+}
+
+int Automatism::computeDiffMaree(uint16_t currentAqua) {
+    int diff = _sensors.diffMaree(currentAqua);
+    _lastDiffMaree = diff;
+    return diff;
 }
 
 uint32_t Automatism::getRecommendedDisplayIntervalMs() {
@@ -237,6 +246,25 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
     }
 }
 
+void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
+    if (_feedingPhaseEnd == 0 || nowMs < _feedingPhaseEnd) {
+        return;
+    }
+
+    _manualFeedingActive = false;
+    _currentFeedingPhase = FeedingPhase::NONE;
+    _feedingPhaseEnd = 0;
+    _currentFeedingType = nullptr;
+
+    if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
+        SensorReadings curReadings = readSensors();
+        sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
+        Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)"));
+    } else {
+        Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales uniquement)"));
+    }
+}
+
 // ============================================================================
 // HELPERS (Migration progressive)
 // ============================================================================
@@ -277,13 +305,33 @@ void Automatism::startTankPumpManual() {
         Serial.println(F("[Auto] Pompe réservoir verrouillée - commande ignorée"));
         return;
     }
+    if (_acts.isTankPumpRunning()) {
+        Serial.println(F("[Auto] Pompe réservoir déjà active - commande ignorée"));
+        return;
+    }
+    const uint32_t nowMs = millis();
+    const SensorReadings cur = _sensors.read();
     _acts.startTankPump();
     _lastPumpManual = true;
     _manualTankOverride = true;
+    _countdownLabel = "Refill";
+    _countdownEnd = nowMs + refillDurationMs;
+    _pumpStartMs = nowMs;
+    _levelAtPumpStart = cur.wlAqua;
 }
 
 void Automatism::stopTankPumpManual() {
-    _acts.stopTankPump();
+    if (!_acts.isTankPumpRunning()) {
+        Serial.println(F("[Auto] Pompe réservoir déjà arrêtée - commande ignorée"));
+        _manualTankOverride = false;
+        _countdownEnd = 0;
+        _pumpStartMs = 0;
+        return;
+    }
+    _lastTankStopReason = TankPumpStopReason::MANUAL;
+    _acts.stopTankPump(_pumpStartMs);
+    _countdownEnd = 0;
+    _pumpStartMs = 0;
     _manualTankOverride = false;
 }
 

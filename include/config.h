@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.130"; // Stabilité: Serial off en prod (flash), WiFi loop unique, NaN capteurs, tests natifs
+    constexpr const char* VERSION = "11.134"; // Remplissage manuel: timers + anti-retrigger pompe réserve
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -99,6 +99,7 @@ namespace TimingConfig {
     constexpr uint32_t OTA_CHECK_INTERVAL_MS = 7200000; // 2h
     constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
     constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
+    constexpr uint32_t STATS_REPORT_INTERVAL_MS = 300000; // 5 min
     
     // Protection et Timeouts
     constexpr uint32_t WAKEUP_PROTECTION_DURATION_MS = 30000;
@@ -115,6 +116,41 @@ namespace MonitoringConfig {
     constexpr bool ENABLE_DRIFT_VISUAL_INDICATOR = true;
     constexpr uint32_t DRIFT_CHECK_INTERVAL_MS = 60000;
 }
+
+// -----------------------------------------------------------------------------
+// 2.1 DIAGNOSTICS (FEATURE FLAGS)
+// -----------------------------------------------------------------------------
+#ifndef FEATURE_DIAG_DIGEST
+  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #define FEATURE_DIAG_DIGEST 1
+  #else
+    #define FEATURE_DIAG_DIGEST 0
+  #endif
+#endif
+
+#ifndef FEATURE_DIAG_STATS
+  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #define FEATURE_DIAG_STATS 1
+  #else
+    #define FEATURE_DIAG_STATS 0
+  #endif
+#endif
+
+#ifndef FEATURE_DIAG_TIME_DRIFT
+  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #define FEATURE_DIAG_TIME_DRIFT 1
+  #else
+    #define FEATURE_DIAG_TIME_DRIFT 0
+  #endif
+#endif
+
+#ifndef FEATURE_DIAG_STACK_LOGS
+  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #define FEATURE_DIAG_STACK_LOGS 1
+  #else
+    #define FEATURE_DIAG_STACK_LOGS 0
+  #endif
+#endif
 
 // -----------------------------------------------------------------------------
 // 3. RÉSEAU ET SERVEUR
@@ -361,7 +397,7 @@ namespace DisplayConfig {
     constexpr int OTA_OVERLAY_HEIGHT = 8;
     
     constexpr uint32_t SPLASH_DURATION_MS = 3000;  // Durée du splash screen (3 secondes)
-    constexpr uint32_t SCREEN_SWITCH_INTERVAL_MS = 4000;
+    constexpr uint32_t SCREEN_SWITCH_INTERVAL_MS = 6000;
     
     constexpr uint8_t DISPLAY_WHITE = 1;
     constexpr uint8_t DISPLAY_BLACK = 0;

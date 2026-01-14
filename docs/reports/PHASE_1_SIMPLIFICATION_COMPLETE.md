@@ -1,10 +1,10 @@
 # ✅ PHASE 1 SIMPLIFICATION - TERMINÉE
 
-> 📋 **Document historique** : Ce rapport documente la Phase 1 terminée à la version **v11.59** (2025-10-16). La version actuelle du projet est **v11.127** (2026-01-13). Ce document est conservé à titre de référence historique.
+> 📋 **Document historique** : Ce rapport documente la Phase 1 terminée à la version **v11.59** (2025-10-16). La version actuelle du projet est **v11.129** (2026-01-13). Ce document est conservé à titre de référence historique.
 
 **Date**: 2025-10-16  
 **Version**: 11.59  
-**Version actuelle du projet**: 11.127 (2026-01-13)  
+**Version actuelle du projet**: 11.129 (2026-01-13)  
 **Durée**: ~2 heures  
 
 ---

@@ -154,7 +154,7 @@ void automationTask(void* pv) {
   unsigned long lastDriftDisplay = 0;
   const unsigned long driftInterval = TimingConfig::DRIFT_DISPLAY_INTERVAL_MS;
 
-  #if defined(PROFILE_TEST)
+  #if defined(PROFILE_TEST) && FEATURE_DIAG_STACK_LOGS
   unsigned long lastStackCheck = 0;
   const unsigned long stackCheckInterval = 30000; // Toutes les 30 secondes
   #endif
@@ -171,7 +171,7 @@ void automationTask(void* pv) {
     if (xQueueReceive(g_sensorQueue, &readings, pdMS_TO_TICKS(1000)) == pdTRUE) {
       esp_task_wdt_reset();
       
-      #if defined(PROFILE_TEST)
+      #if defined(PROFILE_TEST) && FEATURE_DIAG_STACK_LOGS
       // Vérification périodique de la stack (wroom-test uniquement)
       unsigned long now = millis();
       if (now - lastStackCheck > stackCheckInterval) {
@@ -243,6 +243,7 @@ void automationTask(void* pv) {
         lastPumpStatsDisplay = now;
       }
 
+      #if FEATURE_DIAG_TIME_DRIFT
       if (now - lastDriftDisplay > driftInterval) {
         LOG_TIME(LOG_INFO, "=== INFORMATIONS DE DÉRIVE TEMPORELLE ===");
         // Simplification : lecture directe de la dernière sync
@@ -277,6 +278,7 @@ void automationTask(void* pv) {
 
         lastDriftDisplay = now;
       }
+      #endif
 
       esp_task_wdt_reset();
     } else {

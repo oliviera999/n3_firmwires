@@ -4,7 +4,7 @@
 
 **Date d'analyse**: 2025-10-10  
 **Version analysée**: 11.03  
-**Version actuelle du projet**: 11.124 (2026-01-10)  
+**Version actuelle du projet**: 11.129 (2026-01-13)  
 **Environnement**: ESP32-WROOM-32 & ESP32-S3  
 **Framework**: PlatformIO + Arduino Framework
 

@@ -1,9 +1,17 @@
 # Audit Communication ESP32 ↔ Serveur (ffp3)
 
 **Date:** 2026-01-13  
-**Version ESP32:** 11.126  
+**Version ESP32:** 11.130  
 **Version Serveur:** 4.4.0+  
 **Statut:** ✅ Audit complet réalisé
+
+---
+
+## Mise à jour 2026-01-14
+
+- ✅ **Polling GET** : intervalle porté à 12s (réduction charge serveur)
+- ✅ **WiFi** : reconnexion manuelle centralisée côté `WifiManager`
+- ✅ **/dbvars** : flags d'état séparés des heures (`bouffeMatinOk`, `bouffeMidiOk`, `bouffeSoirOk`)
 
 ---
 
@@ -22,7 +30,7 @@ Cet audit examine en détail la communication bidirectionnelle entre l'ESP32 (ff
 **Points à améliorer:**
 - ⚠️ API key hardcodée dans le code
 - ⚠️ HTTPS avec certificat invalide accepté
-- ⚠️ Polling GET toutes les 4 secondes (surcharge potentielle)
+- ✅ Polling GET optimisé à 12 secondes (corrigé depuis v11.130)
 - ⚠️ Pas de circuit breaker pour pannes serveur prolongées
 
 ---

@@ -1,0 +1,22 @@
+﻿=== ANALYSE DU LOG - MONITORING 5min ===
+Version firmware: v11.131
+Date analyse: 2026-01-14 22:03:12
+Fichier log: monitor_5min_wroom_test_2026-01-14_21-53-36.log
+Duree monitoring: 5min (300 secondes)
+=== STATISTIQUES GENERALES ===
+- Total lignes loggees: 3
+- Taille du fichier: 0.15 KB
+- Duree effective: OK
+[OK] Aucune erreur critique detectee
+
+[OK] Aucun warning detecte
+
+
+
+[OK] Aucun reboot non prevu detecte
+
+=== RESUME FINAL ===
+[OK] SYSTEME STABLE - Aucune erreur critique ni warning detecte
+
+=== FIN DE L'ANALYSE ===
+

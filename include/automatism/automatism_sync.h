@@ -25,7 +25,7 @@ public:
     // Envoi immédiat (déclenché par événement)
     bool sendFullUpdate(const SensorReadings& readings,
                         SystemActuators& acts,
-                        const Automatism& core,
+                        Automatism& core,
                         const char* extraPairs = nullptr);
 
     // Récupération état distant
@@ -79,6 +79,7 @@ private:
     int8_t _recvState;
     unsigned long _lastSend;
     unsigned long _lastRemoteFetch;
+    unsigned long _lastRemoteFeedResetMs;
 
     // Configuration locale (miroir de Automatism)
     uint16_t _limFlood;
@@ -99,6 +100,7 @@ private:
     static constexpr size_t MAX_PAYLOAD_BYTES = 960;
     static constexpr unsigned long SEND_INTERVAL_MS = 120000;
     static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 12000; // 12 secondes (optimisation polling)
+    static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
 
     // Helpers
     bool canAttemptSend(uint32_t nowMs) const;

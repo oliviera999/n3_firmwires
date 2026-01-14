@@ -12,6 +12,34 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.134 - 2026-01-14
+
+### Remplissage manuel (pompe réserve)
+
+- ✅ **Mode manuel fiable** : timer + décompte initialisés au démarrage
+- ✅ **Commande distante robuste** : front montant/descendant pour éviter les retriggers
+- ✅ **Sécurité d'état** : ignore les commandes redondantes
+
+---
+
+## Version 11.133 - 2026-01-14
+
+### Nourrissage manuel
+
+- ✅ **Reset centralisé** : fin de phase gérée dans le cœur (indépendant OLED)
+- ✅ **Sync flags distants** : remise à 0 après commandes serveur (cooldown)
+- ✅ **OLED** : suppression du reset métier pour éviter dépendance écran
+
+---
+
+## Version 11.132 - 2026-01-14
+
+### OLED
+
+- ✅ **Ecran relais** : ajout des heures/temps de nourrissage et des seuils (aq, tank, chauffage, flood)
+
+---
+
 ## Version 11.130 - 2026-01-14
 
 ### Stabilité & robustesse (prod)
@@ -21,6 +49,13 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 - ✅ **Capteurs** : prise en compte explicite des `NaN` (évite propagation silencieuse)
 - ✅ **Serial en PROD** : désactivation sûre via stub `NullSerial` (réduction flash significative)
   - wroom-prod flash : ~96.9% → ~94.6% après compilation
+
+#### Correctifs complémentaires
+- ✅ **Digest email** : clés NVS harmonisées (`digest_last_seq`, `digest_last_ms`) pour éviter la perte d'état
+- ✅ **/dbvars** : séparation des heures de nourrissage et des flags d'état (`bouffeMatinOk`, etc.)
+- ✅ **Pompe réservoir** : statistiques fiabilisées (runtime courant + compteur d'arrêts)
+- ✅ **NVS** : `forceFlush()` écrit directement pour éviter la ré-entrée
+- ✅ **WiFi** : connexion manuelle centralisée via `WifiManager::connectTo()`
 
 #### Nettoyage / cohérence
 - ✅ **WatchdogManager** : suppression du module non utilisé (réduction surface de bugs + taille)

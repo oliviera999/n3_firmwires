@@ -11,6 +11,7 @@ struct SystemActuators {
   Feeder feederSmall{Pins::SERVO_PETITS};
 
   // Variables pour le tracking du timing de la pompe de réserve (ms)
+  uint32_t tankPumpStartTime = 0;
   uint32_t tankPumpLastStopTime = 0;
   uint32_t tankPumpTotalRuntime = 0;
   uint32_t tankPumpTotalStops = 0;

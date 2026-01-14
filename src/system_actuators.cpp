@@ -1,28 +1,20 @@
 #include "system_actuators.h"
 #include "event_log.h"
-#include "timer_manager.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/timers.h>
 
 namespace {
-int g_smallFeedTimerId = -1;
+TimerHandle_t g_smallFeedTimer = nullptr;
 SystemActuators* g_smallFeedInstance = nullptr;
 uint16_t g_smallFeedDurationSec = 0;
 
-void smallFeedTimerCallback() {
+void smallFeedTimerCallback(TimerHandle_t timer) {
+  (void)timer;
   if (!g_smallFeedInstance) {
-    if (g_smallFeedTimerId >= 0) {
-      TimerManager::enableTimer(g_smallFeedTimerId, false);
-    }
     return;
   }
 
   g_smallFeedInstance->feedSmallFish(g_smallFeedDurationSec);
-
-  if (g_smallFeedTimerId >= 0) {
-    TimerManager::enableTimer(g_smallFeedTimerId, false);
-    if (auto* timer = TimerManager::getTimerStats(g_smallFeedTimerId)) {
-      timer->lastRun = millis();
-    }
-  }
 
   g_smallFeedInstance = nullptr;
   g_smallFeedDurationSec = 0;
@@ -40,11 +32,10 @@ void SystemActuators::begin() {
 // Méthodes pour la gestion des pompes avec logs détaillés
 void SystemActuators::startTankPump() { 
   pumpTank.on(); 
-  tankPumpTotalStops++;
-  uint32_t startTime = millis();
-  LOG(LOG_INFO, "[POMPE_RESERV] DÉMARRAGE - Timestamp: %u ms", (unsigned)startTime);
-  Serial.printf("[POMPE_RESERV] DÉMARRAGE - Timestamp: %u ms\n", (unsigned)startTime);
-  EventLog::addf("Tank pump START; ts=%u", (unsigned)startTime);
+  tankPumpStartTime = millis();
+  LOG(LOG_INFO, "[POMPE_RESERV] DÉMARRAGE - Timestamp: %u ms", (unsigned)tankPumpStartTime);
+  Serial.printf("[POMPE_RESERV] DÉMARRAGE - Timestamp: %u ms\n", (unsigned)tankPumpStartTime);
+  EventLog::addf("Tank pump START; ts=%u", (unsigned)tankPumpStartTime);
 }
 
 void SystemActuators::stopTankPump(uint32_t startTime) { 
@@ -53,10 +44,11 @@ void SystemActuators::stopTankPump(uint32_t startTime) {
   
   pumpTank.off(); 
   
-  if (startTime > 0) {
-    uint32_t runtime = (uint32_t)(millis() - startTime);
+  uint32_t runtimeStart = startTime > 0 ? startTime : tankPumpStartTime;
+  if (wasRunning && runtimeStart > 0) {
+    uint32_t runtime = (uint32_t)(millis() - runtimeStart);
     tankPumpTotalRuntime += runtime;
-    tankPumpTotalStops++; // Incrémenter le compteur d'arrêts
+    tankPumpTotalStops++; // Incrémenter le compteur d'arrêts effectifs
     tankPumpLastStopTime = millis();
     LOG(LOG_INFO, "[POMPE_RESERV] ARRÊT - Durée: %u ms, Total runtime: %u ms, Arrêts: %u", 
         (unsigned)runtime, (unsigned)tankPumpTotalRuntime, (unsigned)tankPumpTotalStops);
@@ -77,6 +69,7 @@ void SystemActuators::stopTankPump(uint32_t startTime) {
     Serial.println(F("[POMPE_RESERV] ARRÊT - Commande redondante (pompe déjà arrêtée)"));
     // Pas d'ajout dans EventLog pour éviter le spam
   }
+  tankPumpStartTime = 0;
 }
 
 void SystemActuators::startAquaPump() { pumpAqua.on(); LOG(LOG_INFO, "Aqua pump ON"); EventLog::add("Aqua pump ON"); }
@@ -140,26 +133,34 @@ void SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDura
   LOG(LOG_INFO, "Planification phase 2 dans %lu ms (cycle: %lu ms + délai: %lu ms)", scheduleMs, totalBigTimeMs, delayMs);
   EventLog::addf("Feed phase 2 scheduled in %lu ms", scheduleMs);
 
-  TimerManager::init();
   g_smallFeedInstance = this;
   g_smallFeedDurationSec = smallDurationSec;
 
-  if (g_smallFeedTimerId < 0) {
-    g_smallFeedTimerId = TimerManager::addTimer("SEQ_FEED_SMALL", scheduleMs, smallFeedTimerCallback);
-    if (g_smallFeedTimerId < 0) {
-      LOG(LOG_ERROR, "Impossible de planifier le nourrissage des petits poissons (timer saturé)");
+  const TickType_t scheduleTicks = pdMS_TO_TICKS(scheduleMs);
+  if (!g_smallFeedTimer) {
+    g_smallFeedTimer = xTimerCreate("SEQ_FEED_SMALL",
+                                    scheduleTicks,
+                                    pdFALSE,
+                                    nullptr,
+                                    smallFeedTimerCallback);
+    if (!g_smallFeedTimer) {
+      LOG(LOG_ERROR, "Impossible de planifier le nourrissage des petits poissons (timer FreeRTOS)");
       EventLog::add("Feed phase 2 scheduling failed");
       g_smallFeedInstance = nullptr;
       g_smallFeedDurationSec = 0;
       return;
     }
   } else {
-    TimerManager::updateInterval(g_smallFeedTimerId, scheduleMs);
-    TimerManager::enableTimer(g_smallFeedTimerId, true);
+    xTimerStop(g_smallFeedTimer, 0);
+    xTimerChangePeriod(g_smallFeedTimer, scheduleTicks, 0);
   }
 
-  if (auto* timer = TimerManager::getTimerStats(g_smallFeedTimerId)) {
-    timer->lastRun = millis();
+  if (xTimerStart(g_smallFeedTimer, 0) != pdPASS) {
+    LOG(LOG_ERROR, "Échec démarrage timer nourrissage petits poissons");
+    EventLog::add("Feed phase 2 scheduling failed");
+    g_smallFeedInstance = nullptr;
+    g_smallFeedDurationSec = 0;
+    return;
   }
 
   LOG(LOG_INFO, "=== FIN PLANIFICATION NOURRISSAGE SÉQUENTIEL ===");
@@ -174,9 +175,10 @@ bool SystemActuators::isLightOn() const { return light.state(); }
 
 // Getters pour les statistiques de la pompe réservoir
 unsigned long SystemActuators::getTankPumpCurrentRuntime() const {
-  // Cette méthode nécessite maintenant un timestamp externe
-  // Elle sera appelée depuis Automatism avec _pumpStartMs
-  return 0; // Retourne 0 car on n'a plus accès au timestamp local
+  if (!pumpTank.state() || tankPumpStartTime == 0) {
+    return 0;
+  }
+  return millis() - tankPumpStartTime;
 }
 
 unsigned long SystemActuators::getTankPumpTotalRuntime() const { return tankPumpTotalRuntime; }

@@ -8,8 +8,10 @@ set CONFIG_DIR=%PROJECT_DIR%\audit\config
 
 if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
-echo 🔍 Running cppcheck...
-cppcheck --enable=all --inconclusive --quiet "%SRC_DIR%" --suppressions-list="%CONFIG_DIR%\cppcheck.suppress" 2> "%REPORT_DIR%\cppcheck.log"
+echo 🔍 Running cppcheck (installation globale)...
+cd /d "%SRC_DIR%"
+cppcheck --enable=all --inconclusive --quiet "%SRC_DIR%" --suppressions-list="%SRC_DIR%\config\cppcheck.suppress" 2> "%REPORT_DIR%\cppcheck.log"
+cd /d "%~dp0"
 
 echo 🔍 Running clang-tidy...
 for /r "%SRC_DIR%" %%f in (*.cpp *.ino) do (

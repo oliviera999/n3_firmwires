@@ -17,6 +17,16 @@ struct PanicInfo {
   String additionalInfo;      // Informations additionnelles
 };
 
+struct CrashStatus {
+  bool hasCrashInfo;
+  int resetReason;
+  uint32_t crashUptimeSec;
+  uint32_t crashEpoch;
+  bool coredumpPresent;
+  uint32_t coredumpSize;
+  String coredumpFormat;
+};
+
 struct DiagnosticStats {
   unsigned long uptimeSec;
   uint32_t freeHeap;
@@ -37,6 +47,8 @@ struct DiagnosticStats {
   String lastOtaError;
   // Informations de panic
   PanicInfo panicInfo;
+  // Informations de crash / coredump
+  CrashStatus crashStatus;
 };
 
 class Diagnostics {
@@ -44,6 +56,7 @@ class Diagnostics {
   Diagnostics();
   
   void begin();
+  void loadFromNvs();
   void update();
   void toJson(ArduinoJson::JsonDocument& doc) const;
   // Enregistreurs d'événements
@@ -57,13 +70,17 @@ class Diagnostics {
   
   // Vérifier si des infos PANIC sont disponibles
   bool hasPanicInfo() const { return _stats.panicInfo.hasPanicInfo; }
+  bool hasCrashInfo() const { return _stats.crashStatus.hasCrashInfo; }
+  const CrashStatus& getCrashStatus() const { return _stats.crashStatus; }
   
   // Nettoyer les infos PANIC (appelé après envoi du mail de boot)
   void clearPanicInfoAfterReport();
+  bool clearCoreDump();
   
  private:
   DiagnosticStats _stats;
   unsigned long _lastUpdate;
+  bool _bootRecorded;
   static const unsigned long UPDATE_INTERVAL_MS = 30000; // 30 secondes
   
   // Optimisation NVS - limitation de fréquence des sauvegardes
@@ -73,8 +90,12 @@ class Diagnostics {
   static const uint32_t MIN_HEAP_DIFF_FOR_SAVE = 1024; // 1KB de différence minimum pour sauvegarder
   
   String getRebootReason() const;
+  bool isCrashResetReason(esp_reset_reason_t reason) const;
   void capturePanicInfo();
   void savePanicInfo();
   void loadPanicInfo();
   void clearPanicInfo();
+  void loadCrashStatus();
+  void saveCrashStatus();
+  void updateCoredumpStatus(bool persistIfCrash);
 }; 

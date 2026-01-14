@@ -19,6 +19,15 @@ COREDUMP_SIZE = 0x10000  # 64 KB
 
 def find_esptool():
     """Trouve l'exécutable esptool.py"""
+    # Essayer d'abord python -m esptool (module installé via pip)
+    try:
+        result = subprocess.run([sys.executable, "-m", "esptool", "--help"], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            return "module"  # Indicateur spécial pour utiliser python -m esptool
+    except:
+        pass
+    
     # Essayer plusieurs emplacements possibles
     possible_paths = [
         "esptool.py",
@@ -57,15 +66,28 @@ def extract_coredump(port, offset, size, output_file):
     print(f"   Fichier de sortie: {output_file}")
     
     # Commande esptool pour lire la partition
-    cmd = [
-        sys.executable, esptool,
-        "--port", port,
-        "--baud", "921600",
-        "read_flash",
-        hex(offset),
-        hex(size),
-        output_file
-    ]
+    if esptool == "module":
+        # Utiliser python -m esptool
+        cmd = [
+            sys.executable, "-m", "esptool",
+            "--port", port,
+            "--baud", "921600",
+            "read_flash",
+            hex(offset),
+            hex(size),
+            output_file
+        ]
+    else:
+        # Utiliser esptool directement
+        cmd = [
+            sys.executable, esptool,
+            "--port", port,
+            "--baud", "921600",
+            "read_flash",
+            hex(offset),
+            hex(size),
+            output_file
+        ]
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)

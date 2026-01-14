@@ -832,9 +832,9 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   String enhancedMessage = message;
   Serial.printf("[Mail] enhancedMessage initial: %d chars\n", enhancedMessage.length());
   
-  // Créer une instance temporaire de Diagnostics pour accéder aux informations de redémarrage
+  // Instance temporaire de Diagnostics pour lire les infos persistées (sans effets de bord)
   Diagnostics tempDiag;
-  tempDiag.begin(); // Initialise avec les données NVS
+  tempDiag.loadFromNvs();
   const char* timeReport = buildDetailedTimeReport(tempDiag);
   enhancedMessage += timeReport;
   Serial.printf("[Mail] enhancedMessage final: %d chars\n", enhancedMessage.length());

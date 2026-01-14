@@ -63,7 +63,7 @@ void StatusBarRenderer::draw(DisplayView& view, Adafruit_SSD1306& disp, const St
 
   if (params.otaOverlayActive) {
     char percentStr[12];
-    snprintf(percentStr, sizeof(percentStr), "OTA: %u%%", params.otaPercent);
+    snprintf(percentStr, sizeof(percentStr), "MAJ: %u%%", params.otaPercent);
     view.printClipped(100, 0, percentStr, 1);
   }
 

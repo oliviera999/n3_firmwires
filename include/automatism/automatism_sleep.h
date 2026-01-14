@@ -83,6 +83,8 @@ private:
     bool _hasRecentErrors;
     uint8_t _consecutiveWakeupFailures;
     int16_t _tideTriggerCm;
+    bool _lastCanSleep;
+    bool _lastShouldSleep;
 
     // Logs et débogage
     unsigned long _wsBlockStartMs{0};
@@ -91,6 +93,7 @@ private:
     unsigned long _lastForceWakeLogMs{0};
     unsigned long _lastActivityLogMs{0};
     unsigned long _lastWebSocketCheckMs{0};
+    unsigned long _lastDecisionLogMs{0};
 
     // Configuration interne
     struct SleepConfigStruct {

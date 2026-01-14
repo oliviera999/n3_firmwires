@@ -19,6 +19,9 @@ class WifiManager {
   // Tente de se connecter ; retourne true si connecté
   bool connect(class DisplayView* disp = nullptr);
 
+  // Connexion manuelle à un SSID spécifique
+  bool connectTo(const char* ssid, const char* password, class DisplayView* disp = nullptr);
+
   // Renvoie le SSID auquel on est connecté ou "".
   String currentSSID() const;
 

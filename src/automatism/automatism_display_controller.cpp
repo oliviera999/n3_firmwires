@@ -60,9 +60,9 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
     // Basculement automatique d'écran
     if (_lastScreenSwitch == 0) {
         _lastScreenSwitch = currentMillis;
-    } else if (currentMillis - _lastScreenSwitch >= SCREEN_SWITCH_INTERVAL_MS) {
+    } else if (currentMillis - _lastScreenSwitch >= DisplayConfig::SCREEN_SWITCH_INTERVAL_MS) {
         _oledToggle = !_oledToggle;
-        _lastScreenSwitch += SCREEN_SWITCH_INTERVAL_MS;
+        _lastScreenSwitch += DisplayConfig::SCREEN_SWITCH_INTERVAL_MS;
         resetCache();
     }
 
@@ -149,25 +149,6 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
         return;
     }
     
-    // CORRECTION: Réinitialisation automatique des variables de nourrissage manuel
-    // quand la phase est terminée
-    if (core._feedingPhaseEnd > 0 && currentMillis >= core._feedingPhaseEnd) {
-        // Phase terminée - réinitialisation des variables locales
-        const_cast<Automatism&>(core)._manualFeedingActive = false;
-        const_cast<Automatism&>(core)._currentFeedingPhase = Automatism::FeedingPhase::NONE;
-        const_cast<Automatism&>(core)._feedingPhaseEnd = 0;
-        const_cast<Automatism&>(core)._currentFeedingType = nullptr; // Réinitialiser le type
-        
-        // Reset des variables distantes (GPIO virtuels 108/109)
-        if (WiFi.status() == WL_CONNECTED && core._config.isRemoteSendEnabled()) {
-            SensorReadings curReadings = core.readSensors();
-            core.sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
-            Serial.println(F("[Display] ✅ Variables nourrissage réinitialisées (locales + distantes)"));
-        } else {
-            Serial.println(F("[Display] ✅ Variables nourrissage réinitialisées (locales uniquement)"));
-        }
-    }
-    
     // Affichage du countdown de nourrissage si une phase est active
     if (hasFeedingPhase) {
         const char* fishType = "Auto"; // Par défaut
@@ -234,7 +215,16 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
             acts.isAquaPumpRunning(),
             acts.isTankPumpRunning(),
             acts.isHeaterOn(),
-            acts.isLightOn()
+            acts.isLightOn(),
+            core.bouffeMatin,
+            core.bouffeMidi,
+            core.bouffeSoir,
+            core.tempsPetits,
+            core.tempsGros,
+            core.aqThresholdCm,
+            core.tankThresholdCm,
+            core.heaterThresholdC,
+            core.limFlood
         );
     }
     

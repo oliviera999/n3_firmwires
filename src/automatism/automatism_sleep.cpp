@@ -23,6 +23,8 @@ AutomatismSleep::AutomatismSleep(PowerManager& power, ConfigManager& cfg)
     , _hasRecentErrors(false)
     , _consecutiveWakeupFailures(0)
     , _tideTriggerCm(0)
+    , _lastCanSleep(false)
+    , _lastShouldSleep(false)
 {
     // Configuration sleep adaptatif (valeurs par défaut de config.h)
     _sleepConfig.minSleepTime = ::SleepConfig::MIN_INACTIVITY_DELAY_SEC;
@@ -390,11 +392,10 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     bool forceWakeUp = core.getForceWakeUp();
     bool tankPumpRunning = core.isTankPumpRunning();
     
-    // Valeurs par défaut pour les paramètres non accessibles publiquement
-    bool feedingInProgress = false; // Simplification : supposons qu'il n'y a pas de nourrissage en cours
-    uint32_t countdownEnd = 0; // Non accessible publiquement, utiliser 0
-    int diffMaree10s = 0; // Simplification : calcul de marée non disponible ici
-    int16_t tideTriggerCm = _tideTriggerCm > 0 ? _tideTriggerCm : ::SleepConfig::TIDE_TRIGGER_THRESHOLD_CM;
+    bool feedingInProgress = core.isFeedingInProgress();
+    uint32_t countdownEnd = core.getCountdownEndMs();
+    int diffMaree10s = core.computeDiffMaree(r.wlAqua);
+    int16_t tideTriggerCm = core.getTideTriggerCm();
     
     // Récupération du nombre de clients WebSocket
     extern RealtimeWebSocket g_realtimeWebSocket;
@@ -433,6 +434,39 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
                                              localLastWakeMs,
                                              diffMaree10s,
                                              tideTriggerCm);
+
+    uint32_t sleepDurationSec = core.getFreqWakeSec();
+    if (sleepDurationSec == 0) {
+        sleepDurationSec = 600;
+    }
+    if (SleepConfig::LOCAL_SLEEP_DURATION_CONTROL && isNightTime()) {
+        sleepDurationSec = static_cast<uint32_t>(sleepDurationSec) *
+                           static_cast<uint32_t>(SleepConfig::NIGHT_SLEEP_MULTIPLIER);
+    }
+
+    const unsigned long nowMs = millis();
+    const uint32_t adaptiveDelaySec = calculateAdaptiveSleepDelay();
+    const bool delayReached = (nowMs - localLastWakeMs) >= (adaptiveDelaySec * 1000UL);
+    const bool tideAscending = (diffMaree10s > tideTriggerCm);
+    const bool decisionChanged = (canSleep != _lastCanSleep) || (shouldSleep != _lastShouldSleep);
+    if (decisionChanged || (nowMs - _lastDecisionLogMs > 30000)) {
+        _lastDecisionLogMs = nowMs;
+        _lastCanSleep = canSleep;
+        _lastShouldSleep = shouldSleep;
+        Serial.printf("[Auto] Sleep decision: can=%d should=%d delay=%d tide=%d diff=%d trig=%d ws=%u feed=%d pump=%d cd=%lu wake=%lu s sleep=%u s\n",
+                      canSleep ? 1 : 0,
+                      shouldSleep ? 1 : 0,
+                      delayReached ? 1 : 0,
+                      tideAscending ? 1 : 0,
+                      diffMaree10s,
+                      tideTriggerCm,
+                      wsClients,
+                      feedingInProgress ? 1 : 0,
+                      tankPumpRunning ? 1 : 0,
+                      static_cast<unsigned long>(countdownEnd),
+                      static_cast<unsigned long>((nowMs - localLastWakeMs) / 1000UL),
+                      sleepDurationSec);
+    }
     
     if (!shouldSleep) {
         // Conditions pour dormir non remplies
@@ -441,7 +475,7 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     
     // 3. Entrer en veille
     // Durée de veille par défaut : 600 secondes (10 minutes)
-    uint32_t sleepDurationSec = 600;
+    // sleepDurationSec calculé plus haut pour logging et cohérence
     
     Serial.println(F("[Auto] Conditions remplies - Entrée en veille"));
     

@@ -41,6 +41,5 @@ private:
     unsigned long _splashStartTime;
     int _lastDiffMaree;
 
-    static constexpr unsigned long SCREEN_SWITCH_INTERVAL_MS = 4000;
     static constexpr unsigned long OLED_INTERVAL_MS = 80;
 };

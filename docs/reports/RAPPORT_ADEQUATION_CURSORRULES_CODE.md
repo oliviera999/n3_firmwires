@@ -1,7 +1,7 @@
 # Rapport d'adéquation entre .cursorrules et le code
 
 **Date**: 2026-01-13  
-**Version du code analysée**: v11.127  
+**Version du code analysée**: v11.129  
 **Fichier de règles**: `.cursorrules`
 
 ---
@@ -241,12 +241,12 @@ Ce rapport analyse l'adéquation entre les règles définies dans `.cursorrules`
 ### ✅ Points conformes
 
 1. **Version définie**
-   - ✅ `ProjectConfig::VERSION = "11.127"` dans `config.h` (ligne 15)
+   - ✅ `ProjectConfig::VERSION = "11.129"` dans `config.h` (ligne 15)
    - ✅ Version affichée au démarrage (`app.cpp:84`)
    - ✅ Version accessible via `/api/status` et `/version`
 
 2. **Format de version**
-   - ✅ Format `MAJOR.MINOR` respecté (11.127)
+   - ✅ Format `MAJOR.MINOR` respecté (11.129)
 
 3. **Documentation**
    - ✅ Version incluse dans les logs de démarrage

@@ -16,7 +16,6 @@
 #include "ota_config.h"
 #include "config.h"
 #include "nvs_manager.h"
-#include "timer_manager.h"
 
 namespace SystemBoot {
 
@@ -167,40 +166,6 @@ void initializeStorage(AppContext& ctx, unsigned long& lastDigestMs, uint32_t& l
 // SERVICES
 // ============================================================================
 
-void initializeServices(AppContext& ctx) {
-  // Time
-  ctx.power.initTime();
-  EventLog::add("Time init");
-  ctx.power.setNTPConfig(SystemConfig::NTP_GMT_OFFSET_SEC,
-                         SystemConfig::NTP_DAYLIGHT_OFFSET_SEC,
-                         SystemConfig::NTP_SERVER);
-  ctx.timeDriftMonitor.attachPowerManager(&ctx.power);
-  ctx.timeDriftMonitor.begin();
-  
-  // Display (Preliminary)
-  if (ctx.display.isPresent()) ctx.display.hideOtaProgressOverlay();
-  ctx.display.begin();
-  
-  // Peripherals
-  if (ctx.display.isPresent()) ctx.display.showDiagnostic("Sensors");
-  ctx.sensors.begin();
-
-  if (ctx.display.isPresent()) ctx.display.showDiagnostic("Actuators");
-  ctx.actuators.begin();
-
-  if (ctx.display.isPresent()) ctx.display.showDiagnostic("WebSrv");
-  ctx.webServer.begin();
-
-  if (ctx.display.isPresent()) ctx.display.showDiagnostic("Diag");
-  ctx.diagnostics.begin();
-
-  if (ctx.display.isPresent()) ctx.display.showDiagnostic("Systems");
-  ctx.power.initWatchdog();
-  ctx.power.initModemSleep();
-
-  TimerManager::init();
-}
-
 void initializeTimekeeping(AppContext& ctx) {
   ctx.power.initTime();
   EventLog::add("Time init");
@@ -232,8 +197,6 @@ void initializePeripherals(AppContext& ctx) {
   if (ctx.display.isPresent()) ctx.display.showDiagnostic("Systems");
   ctx.power.initWatchdog();
   ctx.power.initModemSleep();
-
-  TimerManager::init();
 }
 
 void finalizeDisplay(AppContext& ctx) {
@@ -246,7 +209,7 @@ void finalizeDisplay(AppContext& ctx) {
 // NETWORK
 // ============================================================================
 
-bool connectNetwork(AppContext& ctx, const char* hostname) {
+bool connectWifi(AppContext& ctx, const char* hostname) {
   if (ctx.display.isPresent()) ctx.display.showDiagnostic("WiFi...");
 
   if (!ctx.wifi.connect(&ctx.display)) {
@@ -259,11 +222,7 @@ bool connectNetwork(AppContext& ctx, const char* hostname) {
   return true;
 }
 
-bool connectWifi(AppContext& ctx, const char* hostname) {
-  return connectNetwork(ctx, hostname);
-}
-
-void onNetworkReady(AppContext& ctx, const char* hostname, OtaState& state) {
+void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
   if (ctx.display.isPresent()) ctx.display.showDiagnostic("NTP sync");
   ctx.power.syncTimeFromNTP();
   Serial.printf("[Time] Heure après sync NTP: %s\n", ctx.power.getCurrentTimeString().c_str());
@@ -369,10 +328,6 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
 
   SensorReadings rs = ctx.sensors.read();
   ctx.automatism.sendFullUpdate(rs, "resetMode=0");
-}
-
-void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
-  onNetworkReady(ctx, hostname, state);
 }
 
 void finalizeBoot(AppContext& ctx) {

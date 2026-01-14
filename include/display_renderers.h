@@ -47,7 +47,16 @@ class InfoScreenRenderer {
                               bool pumpAqua,
                               bool pumpTank,
                               bool heater,
-                              bool light);
+                              bool light,
+                              uint8_t hMat,
+                              uint8_t hMid,
+                              uint8_t hSoir,
+                              uint16_t tPetits,
+                              uint16_t tGros,
+                              uint16_t thAq,
+                              uint16_t thTank,
+                              float thHeat,
+                              uint16_t limFlood);
 
   static void renderServerVars(DisplayView& view,
                                Adafruit_SSD1306& display,

@@ -44,6 +44,20 @@ class Automatism {
   const char* getEmailAddress() const { return _emailAddress; }
   uint16_t getFeedBigDur() const { return _feeding.getBigDuration(); }
   uint16_t getFeedSmallDur() const { return _feeding.getSmallDuration(); }
+  uint8_t getBouffeMatin() const { return bouffeMatin; }
+  uint8_t getBouffeMidi() const { return bouffeMidi; }
+  uint8_t getBouffeSoir() const { return bouffeSoir; }
+  uint16_t getTempsGros() const { return tempsGros; }
+  uint16_t getTempsPetits() const { return tempsPetits; }
+  uint32_t getRefillDurationSec() const { return refillDurationMs / 1000UL; }
+  uint16_t getLimFlood() const { return limFlood; }
+  const String& getBouffePetitsFlag() const { return bouffePetits; }
+  const String& getBouffeGrosFlag() const { return bouffeGros; }
+  int computeDiffMaree(uint16_t currentAqua);
+  bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
+  uint32_t getCountdownEndMs() const { return _countdownEnd; }
+  uint16_t getFreqWakeSec() const { return freqWakeSec; }
+  int16_t getTideTriggerCm() const { return tideTriggerCm; }
 
   // Déclenche le clignotement de l'icône "courrier" sur l'OLED
   void triggerMailBlink() { armMailBlink(); }
@@ -309,6 +323,7 @@ class Automatism {
   void handleAlerts(const SensorReadings& r);
   void handleRefill(const SensorReadings& r);
   void handleFeeding();
+  void finalizeFeedingIfNeeded(uint32_t nowMs);
   void handleRemoteState();
   void checkNewDay();
   void checkCriticalChanges();

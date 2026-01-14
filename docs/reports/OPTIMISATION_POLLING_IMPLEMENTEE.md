@@ -1,7 +1,7 @@
 # Optimisation Polling - Implémentation Complète
 
 **Date:** 2026-01-13  
-**Version:** 11.127  
+**Version:** 11.129  
 **Statut:** ✅ Implémenté
 
 ---

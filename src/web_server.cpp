@@ -9,6 +9,8 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <cstring>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
 #endif
@@ -31,6 +33,27 @@ extern PowerManager power;
 extern WifiManager wifi;
 
 static WebServerContext* g_webServerContext = nullptr;
+static portMUX_TYPE g_asyncTaskMux = portMUX_INITIALIZER_UNLOCKED;
+static uint8_t g_asyncTaskCount = 0;
+
+static bool tryAcquireAsyncSlot(uint8_t maxSlots) {
+  bool ok = false;
+  portENTER_CRITICAL(&g_asyncTaskMux);
+  if (g_asyncTaskCount < maxSlots) {
+    g_asyncTaskCount++;
+    ok = true;
+  }
+  portEXIT_CRITICAL(&g_asyncTaskMux);
+  return ok;
+}
+
+static void releaseAsyncSlot() {
+  portENTER_CRITICAL(&g_asyncTaskMux);
+  if (g_asyncTaskCount > 0) {
+    g_asyncTaskCount--;
+  }
+  portEXIT_CRITICAL(&g_asyncTaskMux);
+}
 
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts)
     : _sensors(sensors), _acts(acts), _diag(nullptr), _ctx(nullptr) {
@@ -69,6 +92,11 @@ struct RelaySyncTaskParams {
     const char* relayName;
 };
 
+struct WifiConnectTaskParams {
+  char ssid[33];
+  char password[65];
+};
+
 const char* WebServerManager::handleRelayAction(
     const char* relayName,
     std::function<bool()> isRunning,
@@ -104,7 +132,7 @@ const char* WebServerManager::handleRelayAction(
     RelaySyncTaskParams* params = new RelaySyncTaskParams{&_sensors, relayName};
 
     // Sync serveur en tâche asynchrone
-    xTaskCreate([](void* param) {
+    BaseType_t created = xTaskCreate([](void* param) {
         RelaySyncTaskParams* p = (RelaySyncTaskParams*)param;
         vTaskDelay(pdMS_TO_TICKS(100));
         SensorReadings readings = p->sensors->read();
@@ -120,6 +148,10 @@ const char* WebServerManager::handleRelayAction(
         delete p; // Libérer la mémoire des paramètres
         vTaskDelete(NULL);
     }, "relay_sync", 4096, params, 1, nullptr);
+    if (created != pdPASS) {
+        Serial.println("[Web] ❌ Échec création tâche relay_sync");
+        delete params;
+    }
 
     return response;
 }
@@ -161,9 +193,6 @@ bool WebServerManager::begin() {
       
       Serial.printf("[Web] 🎮 Action request from %s\n", req->client()->remoteIP().toString().c_str());
       
-      // Compteur partagé pour les tâches de fond (email/sync)
-      static uint8_t asyncTaskCount = 0;
-
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
           String c = req->getParam("cmd")->value();
@@ -184,9 +213,8 @@ bool WebServerManager::begin() {
               auto* sensorsPtr = &_sensors;
               const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
-              if (asyncTaskCount < MAX_ASYNC_TASKS) {
-                asyncTaskCount++;
-                xTaskCreate([](void* param) {
+              if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
+                BaseType_t created = xTaskCreate([](void* param) {
                   SystemSensors* sensors = (SystemSensors*)param;
                   vTaskDelay(pdMS_TO_TICKS(100));
                   
@@ -200,9 +228,13 @@ bool WebServerManager::begin() {
                   bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
                   Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
-                  asyncTaskCount--; // Décrémenter le compteur
+                  releaseAsyncSlot();
                   vTaskDelete(NULL);
                 }, "feed_small_sync", 4096, sensorsPtr, 1, nullptr);
+                if (created != pdPASS) {
+                  releaseAsyncSlot();
+                  Serial.println("[Web] ❌ Échec création tâche feed_small_sync");
+                }
               } else {
                 Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
@@ -228,9 +260,8 @@ bool WebServerManager::begin() {
               auto* sensorsPtr = &_sensors;
               const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
-              if (asyncTaskCount < MAX_ASYNC_TASKS) {
-                asyncTaskCount++;
-                xTaskCreate([](void* param) {
+              if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
+                BaseType_t created = xTaskCreate([](void* param) {
                   SystemSensors* sensors = (SystemSensors*)param;
                   vTaskDelay(pdMS_TO_TICKS(100));
                   
@@ -244,9 +275,13 @@ bool WebServerManager::begin() {
                   bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
                   Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
-                  asyncTaskCount--; // Décrémenter le compteur
+                  releaseAsyncSlot();
                   vTaskDelete(NULL);
                 }, "feed_big_sync", 4096, sensorsPtr, 1, nullptr);
+                if (created != pdPASS) {
+                  releaseAsyncSlot();
+                  Serial.println("[Web] ❌ Échec création tâche feed_big_sync");
+                }
               } else {
                 Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
@@ -453,14 +488,7 @@ bool WebServerManager::begin() {
     
     (*doc)["timestamp"] = millis();
     
-    char jsonBuffer[512];
-    size_t jsonSize = serializeJson(*doc, jsonBuffer, sizeof(jsonBuffer));
-    
-    // Libérer le document du pool
-    delete doc;
-    
-    // Réponse optimisée avec headers de cache intelligents (v11.39: vérification null)
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuffer);
+    AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (response) {
       response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       response->addHeader("Pragma", "no-cache");
@@ -469,8 +497,11 @@ bool WebServerManager::begin() {
       response->addHeader("Access-Control-Allow-Origin", "*");
       response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      serializeJson(*doc, *response);
+      delete doc;
       req->send(response);
     } else {
+      delete doc;
       Serial.println("[Web] ❌ Échec création réponse JSON (mémoire insuffisante)");
       req->send(500, "text/plain", "Memory error");
     }
@@ -603,10 +634,10 @@ bool WebServerManager::begin() {
       out["mailNotif"] = "";
     }
 
-    // Flags/commandes
-    if (src.containsKey("bouffeMatin")) out["bouffeMatin"] = src["bouffeMatin"].as<bool>();
-    if (src.containsKey("bouffeMidi"))  out["bouffeMidi"]  = src["bouffeMidi"].as<bool>();
-    if (src.containsKey("bouffeSoir"))  out["bouffeSoir"]  = src["bouffeSoir"].as<bool>();
+    // Flags/commandes (séparés des heures pour éviter l'écrasement)
+    out["bouffeMatinOk"] = config.getBouffeMatinOk();
+    out["bouffeMidiOk"] = config.getBouffeMidiOk();
+    out["bouffeSoirOk"] = config.getBouffeSoirOk();
     if (src.containsKey("bouffePetits")) out["bouffePetits"] = src["bouffePetits"].as<const char*>();
     if (src.containsKey("bouffeGros"))   out["bouffeGros"]   = src["bouffeGros"].as<const char*>();
 
@@ -1415,56 +1446,39 @@ bool WebServerManager::begin() {
       WiFi.disconnect(false, true);
       vTaskDelay(pdMS_TO_TICKS(200));
       
-      // Tenter la connexion
-      Serial.printf("[WiFi] Tentative de connexion à '%s'\n", ssid.c_str());
-      if (password.length() > 0) {
-        WiFi.begin(ssid.c_str(), password.c_str());
-      } else {
-        WiFi.begin(ssid.c_str());
-      }
-      
       // Attendre la connexion avec timeout dans une tâche séparée
       // pour ne pas bloquer le serveur web
-      static String targetSSID;
-      targetSSID = ssid;
+      WifiConnectTaskParams* params = new WifiConnectTaskParams{};
+      if (!params) {
+        Serial.println("[WiFi] ❌ Allocation paramètres connexion échouée");
+        return;
+      }
+      strncpy(params->ssid, ssid.c_str(), sizeof(params->ssid) - 1);
+      params->ssid[sizeof(params->ssid) - 1] = '\0';
+      strncpy(params->password, password.c_str(), sizeof(params->password) - 1);
+      params->password[sizeof(params->password) - 1] = '\0';
       
-      xTaskCreate([](void* param) {
-        uint32_t start = millis();
-        bool connected = false;
-        
-        // NOUVEAU TIMEOUT RÉDUIT (v11.50)
-        while (millis() - start < 10000) { // RÉDUIT de 15s à 10s
-          if (WiFi.status() == WL_CONNECTED) {
-            connected = true;
-            break;
-          }
-          
-          // Reset watchdog pendant attente WiFi
-          esp_task_wdt_reset();
-          vTaskDelay(pdMS_TO_TICKS(100));
-          
-          // Vérification mémoire pendant attente
-          if (ESP.getFreeHeap() < 20000) {
-            Serial.println("[WiFi] ⚠️ Mémoire critique pendant connexion");
-            break;
-          }
-        }
-        
+      BaseType_t created = xTaskCreate([](void* param) {
+        WifiConnectTaskParams* p = (WifiConnectTaskParams*)param;
+        bool connected = wifi.connectTo(p->ssid, p->password);
         if (connected) {
           Serial.printf("[WiFi] Connecté avec succès à '%s' (IP: %s, RSSI: %d dBm)\n", 
-            targetSSID.c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
-          WiFi.setSleep(false); // Désactiver le modem sleep
-          
+            p->ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
           // Notifier le changement via WebSocket (si encore connecté)
           g_realtimeWebSocket.broadcastNow();
         } else {
-          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", targetSSID.c_str());
+          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", p->ssid);
           // Retourner en mode AP si la connexion échoue
           // Le WifiManager s'en chargera automatiquement
         }
         
+        delete p;
         vTaskDelete(NULL); // Supprimer cette tâche
-      }, "wifi_connect_task", 4096, nullptr, 1, nullptr);
+      }, "wifi_connect_task", 4096, params, 1, nullptr);
+      if (created != pdPASS) {
+        Serial.println("[WiFi] ❌ Échec création tâche wifi_connect_task");
+        delete params;
+      }
       
       return; // Retourner immédiatement, la connexion se fait en arrière-plan
     }

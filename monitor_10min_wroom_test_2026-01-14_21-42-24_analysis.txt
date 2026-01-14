@@ -1,0 +1,22 @@
+﻿=== ANALYSE DU LOG - MONITORING 10 MINUTES ===
+Version firmware: v11.130
+Date analyse: 2026-01-14 21:53:37
+Fichier log: monitor_10min_wroom_test_2026-01-14_21-42-24.log
+DurÃƒÂ©e monitoring: 10 minutes (600 secondes)
+=== STATISTIQUES GÃƒâ€°NÃƒâ€°RALES ===
+- Total lignes loggÃƒÂ©es: 3
+- Taille du fichier: 0.15 KB
+- DurÃƒÂ©e effective: OK
+[OK] Aucune erreur critique detectee
+
+[OK] Aucun warning detecte
+
+
+
+[OK] Aucun reboot non prevu detecte
+
+=== RÃƒâ€°SUMÃƒâ€° FINAL ===
+[OK] SYSTEME STABLE - Aucune erreur critique ni warning detecte
+
+=== FIN DE L'ANALYSE ===
+

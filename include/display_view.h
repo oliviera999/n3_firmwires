@@ -66,7 +66,19 @@ class DisplayView {
   // Affichages standards
   void showMain(float tempEau, float tempAir, float humidite, uint16_t aquaLvl,
                 uint16_t tankLvl, uint16_t potaLvl, uint16_t lumi, const String& timeStr);
-  void showVariables(bool pumpAqua, bool pumpTank, bool heater, bool light);
+  void showVariables(bool pumpAqua,
+                     bool pumpTank,
+                     bool heater,
+                     bool light,
+                     uint8_t hMat,
+                     uint8_t hMid,
+                     uint8_t hSoir,
+                     uint16_t tPetits,
+                     uint16_t tGros,
+                     uint16_t thAq,
+                     uint16_t thTank,
+                     float thHeat,
+                     uint16_t limFlood);
   void showDiagnostic(const char* msg);
   // Nouveaux affichages
   // sendState / recvState : -1 = erreur (icône barrée), 0 = en cours (vide), 1 = OK (plein)

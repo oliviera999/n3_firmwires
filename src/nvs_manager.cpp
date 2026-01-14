@@ -1233,8 +1233,14 @@ void NVSManager::forceFlush() {
             if (_cache.find(ns) != _cache.end()) {
                 for (auto& entry : _cache[ns]) {
                     if (entry.key == key && entry.dirty) {
-                        saveString(ns.c_str(), key.c_str(), entry.value);
-                        entry.dirty = false;
+                        NVSError openErr = openNamespace(ns.c_str(), false);
+                        if (openErr == NVSError::SUCCESS) {
+                            _preferences.putString(entry.key.c_str(), entry.value);
+                            closeNamespace();
+                            entry.dirty = false;
+                        } else {
+                            Serial.printf("[NVS] ⚠️ ForceFlush: impossible d'ouvrir %s\n", ns.c_str());
+                        }
                         break;
                     }
                 }

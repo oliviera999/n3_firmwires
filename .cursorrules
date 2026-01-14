@@ -69,7 +69,8 @@ Ce projet est composé de deux parties principales :
 - Toujours préserver l'intégrité totale des fonctionnalités
 - Préférer générer différents petits fichiers plutôt qu'un gros fichier difficilement maintenable
 - La stabilité du système est essentielle, il ne doit pas crasher
-- Éviter la suringénierie
+- Éviter la suringénierie, le projet doit rester simple
+- **Cohérence du code** : Respecter les conventions de nommage, utiliser les patterns établis (Singleton, RAII), maintenir la structure modulaire existante
 
 ## 🏗️ Architecture du code
 
@@ -99,6 +100,22 @@ Ce projet est composé de deux parties principales :
 #ifdef DEBUG_MODE
   Serial.printf("[Module] Message avec %d paramètres\n", value);
 #endif
+```
+
+### Documentation du code
+- **Commentaires de fonction**: Décrire le but, paramètres, valeur de retour
+- **Commentaires complexes**: Expliquer la logique métier non évidente
+- **Headers de fichiers**: Inclure brève description du module
+- **Format**: Commentaires en français acceptables pour ce projet
+- **Exemple**:
+```cpp
+/**
+ * Initialise le gestionnaire NVS et pré-crée les namespaces.
+ * @return true si succès, false sinon
+ */
+bool NVSManager::begin() {
+  // ...
+}
 ```
 
 ## 🔧 Capteurs et périphériques
@@ -162,6 +179,45 @@ Le système de mesure du niveau de l'eau de l'aquarium, du potager, et de la ré
 - Minimiser taille JSON (pas de pretty print)
 - Chunked transfer pour gros fichiers
 
+## 💾 Gestion NVS (Non-Volatile Storage)
+
+### Principes critiques
+- **Usure de la flash**: La NVS a une durée de vie limitée (~100,000 cycles par secteur)
+- **Optimisation obligatoire**: Toujours vérifier si la valeur a changé avant d'écrire
+- **Namespaces consolidés**: Utiliser les 6 namespaces définis (SYSTEM, CONFIG, TIME, STATE, LOGS, SENSORS)
+- **Cache et flush**: Le NVSManager utilise un cache avec flush différé (5s par défaut)
+
+### Règles d'écriture
+1. **JAMAIS** écrire en NVS sans vérifier si la valeur a changé
+2. Utiliser `NVSManager` centralisé (singleton `g_nvsManager`)
+3. Utiliser `NVSLockGuard` pour accès thread-safe
+4. Vérifier les erreurs NVS (NVSError enum)
+5. Limiter la fréquence des écritures (ex: horodatage RTC max 1x/5min)
+
+### Exemple d'utilisation optimisée
+```cpp
+// ✅ BON: Vérifie le changement avant écriture
+void ConfigManager::setBouffeMatinOk(bool value) {
+  if (_bouffeMatinOk != value) {  // Changement détecté
+    _bouffeMatinOk = value;
+    _flagsChanged = true;
+  }
+}
+
+// ❌ MAUVAIS: Écriture systématique
+void setValue(int val) {
+  preferences.putInt("key", val);  // Écrit même si identique
+}
+```
+
+### Namespaces disponibles
+- `NVS_NAMESPACES::SYSTEM`: OTA, réseau, reset
+- `NVS_NAMESPACES::CONFIG`: Configuration (bouffe, remoteVars, gpio)
+- `NVS_NAMESPACES::TIME`: RTC, timeDrift
+- `NVS_NAMESPACES::STATE`: États actionneurs, pendingSync
+- `NVS_NAMESPACES::LOGS`: Diagnostics, commandes, alertes
+- `NVS_NAMESPACES::SENSORS`: Température eau, digest
+
 ## 🐛 Debugging
 
 ### Outils disponibles
@@ -222,13 +278,21 @@ Le système de mesure du niveau de l'eau de l'aquarium, du potager, et de la ré
 
 ## 📦 Dépendances et versions
 
-### Bibliothèques principales
-- ESPAsyncWebServer (version stable)
-- DHT sensor library
-- OneWire + DallasTemperature
-- Adafruit SSD1306 (OLED)
-- ArduinoJson (v6.x)
-- ESP32Servo
+### Bibliothèques principales (versions verrouillées)
+- **ESPAsyncWebServer**: `mathieucarbou/ESPAsyncWebServer@3.5.0`
+- **DHT sensor library**: `adafruit/DHT sensor library@1.4.6`
+- **OneWire**: `paulstoffregen/OneWire@2.3.8`
+- **DallasTemperature**: `milesburton/DallasTemperature@3.11.0`
+- **Adafruit SSD1306**: `adafruit/Adafruit SSD1306@2.5.9`
+- **ArduinoJson**: `bblanchon/ArduinoJson@7.4.2`
+- **ESP32Servo**: `madhephaestus/ESP32Servo@3.0.5`
+- **ESP Mail Client**: `mobizt/ESP Mail Client@3.4.24`
+- **WebSockets**: `links2004/WebSockets@2.7.0`
+- **ESP32Time**: `fbiego/ESP32Time@2.0.0`
+- **Adafruit GFX**: `adafruit/Adafruit GFX Library@1.11.10`
+- **Adafruit BusIO**: `adafruit/Adafruit BusIO@1.17.4`
+
+**IMPORTANT**: Ne jamais mettre à jour les versions sans tester complètement. Les versions sont verrouillées pour stabilité.
 
 ### Configuration PlatformIO
 - Board: esp32dev (ESP32-WROOM-32)
@@ -248,31 +312,38 @@ Le système de mesure du niveau de l'eau de l'aquarium, du potager, et de la ré
 - La version doit être accessible via l'interface web (`/api/status`)
 - Documenter chaque changement de version dans `VERSION.md` ou en commentaire git
 - **IMPORTANT**: Ne jamais déployer sans avoir incrémenté la version
+- **OBLIGATOIRE**: Pousser les modifications vers GitHub après chaque commit avec la version mise à jour
 
 ## ⚠️ Pièges à éviter
 
 ### Erreurs fréquentes
 1. ❌ **Oublier d'incrémenter la version avant de déployer**
-2. ❌ **Déployer sans faire le monitoring de 90 secondes et l'analyse du log**
-3. ❌ Oublier de vérifier si WebSocket est connecté avant envoi
-4. ❌ Bloquer dans `loop()` avec `delay()` long
-5. ❌ Ne pas libérer la mémoire des objets AsyncWebServerRequest
-6. ❌ Accéder aux capteurs pendant le sleep
-7. ❌ Modifier les variables partagées sans mutex
-8. ❌ Utiliser String au lieu de char[] pour les buffers
-9. ❌ Oublier le timeout sur les opérations réseau
-10. ❌ Ne pas reset le watchdog dans les boucles
+2. ❌ **Oublier de pousser les modifications vers GitHub après chaque commit**
+3. ❌ **Déployer sans faire le monitoring de 90 secondes et l'analyse du log**
+4. ❌ Oublier de vérifier si WebSocket est connecté avant envoi
+5. ❌ Bloquer dans `loop()` avec `delay()` long
+6. ❌ Ne pas libérer la mémoire des objets AsyncWebServerRequest
+7. ❌ Accéder aux capteurs pendant le sleep
+8. ❌ Modifier les variables partagées sans mutex
+9. ❌ Utiliser String au lieu de char[] pour les buffers
+10. ❌ Oublier le timeout sur les opérations réseau
+11. ❌ Ne pas reset le watchdog dans les boucles
+12. ❌ Écrire en NVS sans vérifier si la valeur a changé (usure flash)
+13. ❌ Oublier de tester sur hardware réel avant de pousser
 
 ### Bonnes pratiques
 1. ✅ **Incrémenter la version après chaque modification** (OBLIGATOIRE)
-2. ✅ **Faire un monitoring de 90s + analyse du log après chaque déploiement** (OBLIGATOIRE)
-3. ✅ Toujours vérifier les retours de fonctions (nullptr, -1, false)
-4. ✅ Utiliser des timeouts sur toutes les opérations bloquantes
-5. ✅ Logger les états critiques pour debugging
-6. ✅ Tester sur hardware réel (pas seulement simulation)
-7. ✅ Documenter les changements de version dans VERSION.md
-8. ✅ Faire des commits atomiques avec numéro de version
-9. ✅ Tester la reconnexion WiFi et WebSocket après chaque update
+2. ✅ **Pousser les modifications vers GitHub après chaque commit** (OBLIGATOIRE)
+3. ✅ **Faire un monitoring de 90s + analyse du log après chaque déploiement** (OBLIGATOIRE)
+4. ✅ Toujours vérifier les retours de fonctions (nullptr, -1, false)
+5. ✅ Utiliser des timeouts sur toutes les opérations bloquantes
+6. ✅ Logger les états critiques pour debugging
+7. ✅ Tester sur hardware réel (pas seulement simulation)
+8. ✅ Documenter les changements de version dans VERSION.md
+9. ✅ Faire des commits atomiques avec numéro de version
+10. ✅ Tester la reconnexion WiFi et WebSocket après chaque update
+11. ✅ Vérifier les changements avant écriture NVS (optimisation usure flash)
+12. ✅ Utiliser des branches Git pour les fonctionnalités importantes
 
 ## 📝 Workflow de développement
 
@@ -299,7 +370,118 @@ Le système de mesure du niveau de l'eau de l'aquarium, du potager, et de la ré
 6. Vérifier mémoire (heap/stack) dans les logs
 7. Tester reconnexion WiFi/WebSocket
 8. Documenter les changements dans VERSION.md ou fichier .md approprié
-9. Commit avec message descriptif incluant la version (ex: "v10.94: Fix WebSocket timeout")
+9. Commit avec message descriptif incluant la version
+   - Format: `vX.XX: Description courte et claire`
+   - Exemples:
+     * `v10.94: Fix WebSocket timeout`
+     * `v10.95: Optimize NVS writes to reduce flash wear`
+     * `v11.00: Add new feeding schedule feature`
+10. **OBLIGATOIRE: Pousser vers GitHub** avec `git push` après chaque commit
+    - Push immédiat après commit (pas de batch)
+    - Si push échoue (conflit), résoudre avant de continuer
+
+## 🧪 Tests et validation
+
+### Tests unitaires
+- Environnement `native` dans PlatformIO pour tests host-friendly
+- Tests disponibles: `test_rate_limiter`, `test_timer_manager`
+- Localisation: `test/unit/`
+- Exécution: `pio test -e native`
+
+### Tests d'intégration
+- Tests sur hardware réel obligatoires avant push
+- Monitoring 90 secondes après chaque déploiement
+- Vérification des fonctionnalités critiques:
+  - Nourrissage manuel/automatique
+  - Pompes (aquarium, réserve)
+  - Synchronisation serveur distant
+  - WebSocket updates
+  - Sauvegarde NVS
+  - Reconnexion WiFi
+
+### Scripts de test disponibles
+- `test_*.ps1`: Scripts PowerShell de test
+- `monitor_*.ps1`: Scripts de monitoring
+- `tools/testing/`: Outils de test automatisés
+
+### Checklist de validation avant push
+- [ ] Code compile sans warnings
+- [ ] Tests unitaires passent (si applicables)
+- [ ] Testé sur ESP32 réel
+- [ ] Monitoring 90s effectué et analysé
+- [ ] Aucune erreur critique dans les logs
+- [ ] Mémoire stable (heap/stack)
+- [ ] Version incrémentée
+- [ ] Documentation mise à jour
+
+## 🔐 Secrets et credentials
+
+### Gestion des secrets
+- **Fichier**: `include/secrets.h` (NE JAMAIS commiter)
+- **Template**: Créer `secrets.h.example` avec structure sans valeurs
+- **Gitignore**: `secrets.h` doit être dans `.gitignore`
+- **Contenu typique**:
+  - Credentials WiFi (SSID, password)
+  - API keys serveur distant
+  - Email SMTP credentials
+  - Tokens d'authentification
+
+### Règles strictes
+1. ❌ **JAMAIS** commiter `secrets.h` ou fichiers contenant des secrets
+2. ❌ **JAMAIS** hardcoder des secrets dans le code source
+3. ✅ Utiliser `#ifdef` pour compilation conditionnelle si nécessaire
+4. ✅ Documenter la structure dans `secrets.h.example`
+5. ✅ Vérifier `.gitignore` avant chaque commit
+
+## 🔄 Gestion Git et branches
+
+### Stratégie de branches
+- **main/master**: Code de production stable uniquement
+- **dev/develop**: Branche de développement principale
+- **feature/***: Nouvelles fonctionnalités (ex: `feature/ota-improvements`)
+- **fix/***: Corrections de bugs (ex: `fix/websocket-timeout`)
+- **hotfix/***: Corrections urgentes en production
+
+### Workflow recommandé
+1. Créer une branche depuis `main` ou `dev`
+2. Développer et tester localement
+3. Commit avec message descriptif incluant version
+4. Push de la branche vers GitHub
+5. Créer Pull Request si fonctionnalité importante
+6. Merge après validation et tests
+
+### Règles de commit
+- Format: `vX.XX: Description courte`
+- Messages en français acceptables
+- Un commit = une modification logique
+- Inclure le numéro de version dans le message
+
+## 📡 OTA (Over-The-Air Updates)
+
+### Configuration OTA
+- **HTTP OTA**: Activé par défaut (`FEATURE_HTTP_OTA=1`)
+- **Arduino OTA**: Optionnel selon environnement
+- **Partitions**: Voir fichiers `partitions_*.csv`
+- **Version check**: Comparaison de version avant mise à jour
+
+### Règles de déploiement OTA
+1. **OBLIGATOIRE**: Incrémenter la version avant déploiement
+2. Vérifier que le firmware compile et fonctionne localement
+3. Uploader le firmware sur le serveur OTA
+4. Tester la mise à jour sur un ESP32 de test d'abord
+5. Monitorer les logs après mise à jour OTA
+6. Vérifier la stabilité (90 secondes minimum)
+
+### Endpoints OTA
+- URL de mise à jour configurée dans `config.h` ou variables distantes
+- Vérification automatique de version côté ESP32
+- Rollback possible si partition OTA dual boot configurée
+
+### Précautions
+- Ne jamais déployer un firmware non testé en OTA
+- Toujours avoir un backup du firmware stable
+- Documenter chaque déploiement OTA dans VERSION.md
+- Vérifier l'espace flash disponible avant mise à jour
 
 ## 🎓 Ressources
 

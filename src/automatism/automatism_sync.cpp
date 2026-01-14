@@ -22,6 +22,7 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _consecutiveSendFailures(0)
     , _currentBackoffMs(0)
     , _lastSendAttemptMs(0)
+    , _lastRemoteFeedResetMs(0)
 {
     _emailAddress[0] = '\0';
     Serial.println(F("[Sync] Module initialisé"));
@@ -81,6 +82,20 @@ bool isTrue(ArduinoJson::JsonVariantConst v) {
 }
 
 void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+    const uint32_t nowMs = millis();
+    auto tryResetRemoteFlags = [&](const char* extraPairs) {
+        if (WiFi.status() != WL_CONNECTED || !_config.isRemoteSendEnabled()) {
+            return;
+        }
+        if (nowMs - _lastRemoteFeedResetMs < REMOTE_FEED_RESET_COOLDOWN_MS) {
+            return;
+        }
+        _lastRemoteFeedResetMs = nowMs;
+        SensorReadings readings = autoCtrl.readSensors();
+        bool resetOk = autoCtrl.sendFullUpdate(readings, extraPairs);
+        Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
+    };
+
     // Commande "bouffePetits" (ou GPIO 108 en fallback)
     bool triggerSmall = false;
     if (doc.containsKey("bouffePetits")) {
@@ -95,6 +110,7 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
         autoCtrl.manualFeedSmall();
         sendCommandAck("bouffePetits", "executed");
         logRemoteCommandExecution("fd_small", true);
+        tryResetRemoteFlags("bouffePetits=0&108=0");
         
         if (_emailEnabled) {
             char messageBuffer[256];
@@ -120,6 +136,7 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
         autoCtrl.manualFeedBig();
         sendCommandAck("bouffeGros", "executed");
         logRemoteCommandExecution("fd_large", true);
+        tryResetRemoteFlags("bouffeGros=0&109=0");
         
         if (_emailEnabled) {
             char messageBuffer[256];
@@ -184,7 +201,7 @@ void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
 
 bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
                                     SystemActuators& acts,
-                                    const Automatism& core,
+                                    Automatism& core,
                                     const char* extraPairs) {
     uint32_t attemptStartMs = millis();
     if (!canAttemptSend(attemptStartMs)) {
@@ -201,22 +218,25 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     char payloadBuffer[1024];
     // Construction du payload (logique migrée de AutomatismNetwork)
     // Nécessite des accesseurs sur Automatism (core)
+    int diffMaree = core.computeDiffMaree(readings.wlAqua);
     int len = snprintf(payloadBuffer, sizeof(payloadBuffer),
         "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&"
-        "EauPotager=%u&EauAquarium=%u&EauReserve=%u&Luminosite=%u&"
+        "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
         "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&"
         "bouffeMatin=%u&bouffeMidi=%u&bouffeSoir=%u&tempsGros=%u&tempsPetits=%u&"
         "aqThreshold=%u&tankThreshold=%u&chauffageThreshold=%.1f&"
-        "limFlood=%u&WakeUp=%d&FreqWakeUp=%u&mail=%s&mailNotif=%s",
+        "tempsRemplissageSec=%u&limFlood=%u&WakeUp=%d&FreqWakeUp=%u&"
+        "bouffePetits=%s&bouffeGros=%s&mail=%s&mailNotif=%s",
         ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION,
         readings.tempAir, readings.humidity, readings.tempWater,
-        readings.wlPota, readings.wlAqua, readings.wlTank, readings.luminosite,
+        readings.wlPota, readings.wlAqua, readings.wlTank, diffMaree, readings.luminosite,
         acts.isAquaPumpRunning(), acts.isTankPumpRunning(), acts.isHeaterOn(), acts.isLightOn(),
-        // TODO: Ajouter accesseurs manquants sur Automatism pour bouffeMatin, etc.
-        // Pour l'instant on met des placeholders ou on utilisera les variables membres de Sync si synchronisées
-        8, 12, 19, core.getFeedBigDur(), core.getFeedSmallDur(), // Valeurs par défaut ou getters
+        core.getBouffeMatin(), core.getBouffeMidi(), core.getBouffeSoir(),
+        core.getTempsGros(), core.getTempsPetits(),
         _aqThresholdCm, _tankThresholdCm, _heaterThresholdC,
-        _limFlood, core.getForceWakeUp() ? 1 : 0, _freqWakeSec,
+        core.getRefillDurationSec(), _limFlood,
+        core.getForceWakeUp() ? 1 : 0, _freqWakeSec,
+        core.getBouffePetitsFlag().c_str(), core.getBouffeGrosFlag().c_str(),
         _emailAddress, _emailEnabled ? "checked" : "");
 
     if (len < 0 || len >= (int)sizeof(payloadBuffer)) {
@@ -227,6 +247,10 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     if (extraPairs && extraPairs[0] != '\0') {
         strncat(payloadBuffer, "&", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
         strncat(payloadBuffer, extraPairs, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+    }
+
+    if (strstr(payloadBuffer, "resetMode=") == nullptr) {
+        strncat(payloadBuffer, "&resetMode=0", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
     }
 
     esp_task_wdt_reset();

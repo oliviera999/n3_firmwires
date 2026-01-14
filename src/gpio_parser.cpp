@@ -109,9 +109,18 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         Serial.printf("Pompe aqua %s\n", state ? "ON" : "OFF");
     }
     else if (gpio == GPIOMap::PUMP_TANK.gpio) {
+        static bool lastTankState = false;
         bool state = parseBool(value);
-        state ? autoCtrl.startTankPumpManual() : autoCtrl.stopTankPumpManual();
-        Serial.printf("Pompe tank %s\n", state ? "ON" : "OFF");
+        if (state && !lastTankState) {
+            autoCtrl.startTankPumpManual();
+            Serial.println("Pompe tank ON (front montant)");
+        } else if (!state && lastTankState) {
+            autoCtrl.stopTankPumpManual();
+            Serial.println("Pompe tank OFF (front descendant)");
+        } else {
+            Serial.printf("Pompe tank %s (commande redondante)\n", state ? "ON" : "OFF");
+        }
+        lastTankState = state;
     }
     else if (gpio == GPIOMap::HEATER.gpio) {
         bool state = parseBool(value);
