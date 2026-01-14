@@ -12,6 +12,41 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.129 - 2026-01-13
+
+### Core Dump - Outils d'extraction et analyse
+
+**Amélioration du système de debugging avec core dump**
+
+#### Nouvelles fonctionnalités
+- ✅ **Outils d'extraction** : Création de scripts Python pour extraire les core dumps depuis la flash
+  - `tools/coredump/extract_coredump.py` - Extraction depuis la partition flash
+  - `tools/coredump/analyze_coredump.py` - Analyse avec stack trace
+  - `tools/coredump/coredump_tool.py` - Outil intégré (extraction + analyse)
+  - Documentation complète dans `tools/coredump/README.md`
+
+#### Corrections de configuration
+- ✅ **Build flags harmonisés** : Ajout de `CONFIG_ESP_COREDUMP_ENABLE=1` dans `wroom-prod`
+  - Cohérence entre environnements test et production
+  - Fichier modifié : `platformio.ini`
+  
+- ✅ **Offsets de partition corrigés** : Remplacement des offsets automatiques par valeurs explicites
+  - Calcul manuel des offsets pour éviter les erreurs
+  - Fichier modifié : `partitions_esp32_wroom_ota_coredump.csv`
+  - Offsets: app1=0x1B0000, littlefs=0x350000, coredump=0x3F0000
+
+#### Documentation
+- ✅ **Guide d'utilisation** : Création de `docs/guides/COREDUMP_USAGE.md`
+  - Procédures d'extraction et d'analyse
+  - Interprétation des résultats
+  - Dépannage
+- ✅ **Rapport d'analyse** : Création de `docs/reports/RAPPORT_ANALYSE_PARTITION_COREDUMP.md`
+  - Analyse complète de la configuration core dump
+  - Problèmes identifiés et solutions
+  - Plan d'action et recommandations
+
+---
+
 ## Version 11.128 - 2026-01-13
 
 ### Corrections de conformité .cursorrules
