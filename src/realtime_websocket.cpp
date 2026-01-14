@@ -2,7 +2,7 @@
 #include "automatism.h"
 
 // Instance globale du serveur WebSocket temps réel
-RealtimeWebSocket realtimeWebSocket;
+RealtimeWebSocket g_realtimeWebSocket;
 
 // Implémentation de notifyClientActivity
 void RealtimeWebSocket::notifyClientActivity() {
@@ -10,9 +10,9 @@ void RealtimeWebSocket::notifyClientActivity() {
     hasActiveClients = true;
     
     Serial.printf("[WebSocket] 👤 Client activity detected - %u clients connected\n", 
-                  realtimeWebSocket.getConnectedClients());
+                  g_realtimeWebSocket.getConnectedClients());
     
     // Notifier aussi le système d'automatisme pour maintenir l'éveil
-    extern Automatism autoCtrl;
-    autoCtrl.notifyLocalWebActivity();
+    extern Automatism g_autoCtrl;
+    g_autoCtrl.notifyLocalWebActivity();
 }

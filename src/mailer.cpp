@@ -11,8 +11,11 @@
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 
+// Buffer statique pour formatUptime (conforme .cursorrules)
+static char g_uptimeBuffer[48];
+
 // Construit un bloc d'informations système (réseau, version, mémoire, uptime)
-static String formatUptime(unsigned long ms) {
+static const char* formatUptime(unsigned long ms) {
   unsigned long totalSec = ms / 1000UL;
   unsigned int days = totalSec / 86400UL;
   totalSec %= 86400UL;
@@ -20,15 +23,18 @@ static String formatUptime(unsigned long ms) {
   totalSec %= 3600UL;
   unsigned int mins = totalSec / 60UL;
   unsigned int secs = totalSec % 60UL;
-  char buf[48];
-  snprintf(buf, sizeof(buf), "%ud %02u:%02u:%02u", days, hours, mins, secs);
-  return String(buf);
+  snprintf(g_uptimeBuffer, sizeof(g_uptimeBuffer), "%ud %02u:%02u:%02u", days, hours, mins, secs);
+  return g_uptimeBuffer;
 }
 
-static String buildSystemInfoFooter() {
-  String footer;
-  footer.reserve(2048);
-  footer += "\n\n-- Infos système --\n";
+// Buffers statiques pour éviter fragmentation mémoire (conforme .cursorrules)
+static char g_systemInfoFooterBuffer[4096];
+static char g_detailedTimeReportBuffer[2048];
+
+static const char* buildSystemInfoFooter() {
+  char* buf = g_systemInfoFooterBuffer;
+  size_t remaining = sizeof(g_systemInfoFooterBuffer);
+  int written = 0;
 
   // Version / carte
 #ifdef BOARD_S3
@@ -36,66 +42,164 @@ static String buildSystemInfoFooter() {
 #else
   const char* board = "ESP32";
 #endif
-  footer += "- Version: "; footer += ProjectConfig::VERSION; footer += "\n";
-  footer += "- Carte: "; footer += board; footer += "\n";
-  footer += "- Environnement: "; footer += Utils::getProfileName(); footer += "\n";
+  
+  written = snprintf(buf, remaining, "\n\n-- Infos système --\n"
+                                     "- Version: %s\n"
+                                     "- Carte: %s\n"
+                                     "- Environnement: %s\n",
+                     ProjectConfig::VERSION, board, Utils::getProfileName());
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return buf;
+  }
+  buf += written;
+  remaining -= written;
 
   // Réseau
   bool connected = WiFi.isConnected();
-  String ssid = connected ? WiFi.SSID() : String("(déconnecté)");
-  String ip = connected ? WiFi.localIP().toString() : String("-");
+  const char* ssid = connected ? WiFi.SSID().c_str() : "(déconnecté)";
+  IPAddress ipAddr = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
   long rssi = connected ? WiFi.RSSI() : 0;
-  String mac = WiFi.macAddress();
-  footer += "- SSID: "; footer += ssid; footer += "\n";
-  footer += "- IP: "; footer += ip; footer += "\n";
-  footer += "- RSSI: "; footer += String(rssi); footer += " dBm\n";
-  footer += "- MAC: "; footer += mac; footer += "\n";
+  const char* mac = WiFi.macAddress().c_str();
+  
+  if (connected) {
+    written = snprintf(buf, remaining, "- SSID: %s\n"
+                                       "- IP: %d.%d.%d.%d\n"
+                                       "- RSSI: %ld dBm\n"
+                                       "- MAC: %s\n",
+                       ssid, ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3], rssi, mac);
+  } else {
+    written = snprintf(buf, remaining, "- SSID: %s\n"
+                                       "- IP: -\n"
+                                       "- RSSI: %ld dBm\n"
+                                       "- MAC: %s\n",
+                       ssid, rssi, mac);
+  }
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // Qualité WiFi (%), canal, BSSID, hostname, GW, masque, DNS
-  int wifiQuality = 0;
   if (connected) {
+    int wifiQuality = 0;
     if (rssi <= -100) wifiQuality = 0; else if (rssi >= -50) wifiQuality = 100; else wifiQuality = 2 * (rssi + 100);
-    footer += "- Qualité: "; footer += String(wifiQuality); footer += "%\n";
-    footer += "- Canal: "; footer += String(WiFi.channel()); footer += "\n";
-    footer += "- BSSID: "; footer += WiFi.BSSIDstr(); footer += "\n";
+    IPAddress gateway = WiFi.gatewayIP();
+    IPAddress subnet = WiFi.subnetMask();
+    IPAddress dns = WiFi.dnsIP(0);
     const char* host = WiFi.getHostname();
-    if (host && *host) { footer += "- Hostname: "; footer += host; footer += "\n"; }
-    footer += "- Passerelle: "; footer += WiFi.gatewayIP().toString(); footer += "\n";
-    footer += "- Masque: "; footer += WiFi.subnetMask().toString(); footer += "\n";
-    footer += "- DNS: "; footer += WiFi.dnsIP(0).toString(); footer += "\n";
+    const char* bssid = WiFi.BSSIDstr().c_str();
+    
+    if (host && *host) {
+      written = snprintf(buf, remaining, "- Qualité: %d%%\n"
+                                         "- Canal: %d\n"
+                                         "- BSSID: %s\n"
+                                         "- Hostname: %s\n"
+                                         "- Passerelle: %d.%d.%d.%d\n"
+                                         "- Masque: %d.%d.%d.%d\n"
+                                         "- DNS: %d.%d.%d.%d\n",
+                         wifiQuality, WiFi.channel(), bssid, host,
+                         gateway[0], gateway[1], gateway[2], gateway[3],
+                         subnet[0], subnet[1], subnet[2], subnet[3],
+                         dns[0], dns[1], dns[2], dns[3]);
+    } else {
+      written = snprintf(buf, remaining, "- Qualité: %d%%\n"
+                                         "- Canal: %d\n"
+                                         "- BSSID: %s\n"
+                                         "- Passerelle: %d.%d.%d.%d\n"
+                                         "- Masque: %d.%d.%d.%d\n"
+                                         "- DNS: %d.%d.%d.%d\n",
+                         wifiQuality, WiFi.channel(), bssid,
+                         gateway[0], gateway[1], gateway[2], gateway[3],
+                         subnet[0], subnet[1], subnet[2], subnet[3],
+                         dns[0], dns[1], dns[2], dns[3]);
+    }
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
   }
 
   // Mode WiFi et AP si actif
   wifi_mode_t mode = WiFi.getMode();
   const char* modeStr = (mode == WIFI_OFF ? "OFF" : mode == WIFI_STA ? "STA" : mode == WIFI_AP ? "AP" : mode == WIFI_AP_STA ? "AP+STA" : "UNKNOWN");
-  footer += "- WiFi mode: "; footer += modeStr; footer += "\n";
+  written = snprintf(buf, remaining, "- WiFi mode: %s\n", modeStr);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
   if (mode == WIFI_AP || mode == WIFI_AP_STA) {
-    footer += "- AP SSID: "; footer += WiFi.softAPSSID(); footer += "\n";
-    footer += "- AP IP: "; footer += WiFi.softAPIP().toString(); footer += "\n";
+    IPAddress apIp = WiFi.softAPIP();
+    written = snprintf(buf, remaining, "- AP SSID: %s\n"
+                                       "- AP IP: %d.%d.%d.%d\n",
+                       WiFi.softAPSSID().c_str(), apIp[0], apIp[1], apIp[2], apIp[3]);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
   }
 
   // ======================
   // INFORMATIONS TEMPORELLES DÉTAILLÉES
   // ======================
-  footer += "\n-- Informations temporelles --\n";
+  written = snprintf(buf, remaining, "\n-- Informations temporelles --\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
   time_t now = time(nullptr);
-  footer += "- Epoch: "; footer += String((unsigned long)now); footer += "\n";
+  written = snprintf(buf, remaining, "- Epoch: %lu\n", (unsigned long)now);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
   if (now > 100000) {
     struct tm tmInfo;
     localtime_r(&now, &tmInfo);
     char tbuf[32];
     strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
-    footer += "- Local time: "; footer += tbuf; footer += "\n";
-    footer += "- Jour de la semaine: "; footer += String(tmInfo.tm_wday); footer += " (0=dimanche)\n";
-    footer += "- Jour de l'année: "; footer += String(tmInfo.tm_yday); footer += "\n";
-    footer += "- DST actif: "; footer += (tmInfo.tm_isdst ? "OUI" : "NON"); footer += "\n";
-    footer += "- Timezone: Maroc UTC+1\n";
+    written = snprintf(buf, remaining, "- Local time: %s\n"
+                                       "- Jour de la semaine: %d (0=dimanche)\n"
+                                       "- Jour de l'année: %d\n"
+                                       "- DST actif: %s\n"
+                                       "- Timezone: Maroc UTC+1\n",
+                       tbuf, tmInfo.tm_wday, tmInfo.tm_yday, tmInfo.tm_isdst ? "OUI" : "NON");
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
   }
   
   // Informations NTP
-  footer += "- NTP Server: "; footer += SystemConfig::NTP_SERVER; footer += "\n";
-  footer += "- GMT Offset: +"; footer += String(SystemConfig::NTP_GMT_OFFSET_SEC/3600); footer += "h\n";
-  footer += "- DST Offset: +"; footer += String(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600); footer += "h\n";
+  written = snprintf(buf, remaining, "- NTP Server: %s\n"
+                                     "- GMT Offset: +%ldh\n"
+                                     "- DST Offset: +%ldh\n",
+                     SystemConfig::NTP_SERVER,
+                     SystemConfig::NTP_GMT_OFFSET_SEC/3600,
+                     SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
   
   // Informations de dérive temporelle si disponibles
   // extern TimeDriftMonitor timeDriftMonitor;
@@ -118,95 +222,201 @@ static String buildSystemInfoFooter() {
   unsigned long savedEpoch;
   g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
   if (savedEpoch > 0) {
-    footer += "- RTC Flash epoch: "; footer += String(savedEpoch); footer += "\n";
+    written = snprintf(buf, remaining, "- RTC Flash epoch: %lu\n", savedEpoch);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
+    
     if (savedEpoch != (unsigned long)now) {
       long diff = (long)now - (long)savedEpoch;
-      footer += "- Diff RTC vs actuel: "; footer += String(diff); footer += " secondes\n";
+      written = snprintf(buf, remaining, "- Diff RTC vs actuel: %ld secondes\n", diff);
+      if (written < 0 || (size_t)written >= remaining) {
+        buf[remaining - 1] = '\0';
+        return g_systemInfoFooterBuffer;
+      }
+      buf += written;
+      remaining -= written;
     }
   }
 
   // Mémoire
-  footer += "- Heap free: "; footer += String(ESP.getFreeHeap()); footer += " bytes\n";
-  footer += "- Heap min free: "; footer += String(ESP.getMinFreeHeap()); footer += " bytes\n";
-  footer += "- Heap max alloc: "; footer += String(ESP.getMaxAllocHeap()); footer += " bytes\n";
   size_t psram = ESP.getPsramSize();
   if (psram > 0) {
-    footer += "- PSRAM size: "; footer += String(psram); footer += " bytes\n";
-    footer += "- PSRAM free: "; footer += String(ESP.getFreePsram()); footer += " bytes\n";
+    written = snprintf(buf, remaining, "- Heap free: %u bytes\n"
+                                       "- Heap min free: %u bytes\n"
+                                       "- Heap max alloc: %u bytes\n"
+                                       "- PSRAM size: %zu bytes\n"
+                                       "- PSRAM free: %u bytes\n",
+                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(), psram, ESP.getFreePsram());
+  } else {
+    written = snprintf(buf, remaining, "- Heap free: %u bytes\n"
+                                       "- Heap min free: %u bytes\n"
+                                       "- Heap max alloc: %u bytes\n",
+                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
   }
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // Diagnostics persistés si disponibles
   int rebootCount;
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
   int minHeap;
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap, 0);
-  footer += "- Reboots: "; footer += String(rebootCount); footer += "\n";
-  if (minHeap > 0) { footer += "- Min heap: "; footer += String(minHeap); footer += " bytes\n"; }
+  if (minHeap > 0) {
+    written = snprintf(buf, remaining, "- Reboots: %d\n"
+                                       "- Min heap: %d bytes\n",
+                       rebootCount, minHeap);
+  } else {
+    written = snprintf(buf, remaining, "- Reboots: %d\n", rebootCount);
+  }
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // Uptime
-  footer += "- Uptime: "; footer += formatUptime(millis()); footer += "\n";
+  const char* uptimeStr = formatUptime(millis());
+  written = snprintf(buf, remaining, "- Uptime: %s\n", uptimeStr);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // ======================
   // Mesures & Actionneurs
   // ======================
-  footer += "\n-- Mesures / Actionneurs --\n";
+  written = snprintf(buf, remaining, "\n-- Mesures / Actionneurs --\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
   extern SystemSensors sensors;
   extern SystemActuators acts;
   // Lecture instantanée (peut prendre quelques centaines de ms)
   SensorReadings rs = sensors.read();
   int diffM = sensors.diffMaree(rs.wlAqua);
-  footer += "- Temp eau: "; footer += String(rs.tempWater, 1); footer += " °C\n";
-  footer += "- Temp air: "; footer += String(rs.tempAir, 1); footer += " °C\n";
-  footer += "- Humidité: "; footer += String(rs.humidity, 0); footer += " %\n";
-  footer += "- Aqua lvl: "; footer += String(rs.wlAqua); footer += " cm\n";
-  footer += "- Réserve lvl: "; footer += String(rs.wlTank); footer += " cm\n";
-  footer += "- Potager lvl: "; footer += String(rs.wlPota); footer += " cm\n";
-  footer += "- Luminosité: "; footer += String(rs.luminosite); footer += "\n";
-  footer += "- Diff marée: "; footer += String(diffM); footer += "\n";
+  written = snprintf(buf, remaining, "- Temp eau: %.1f °C\n"
+                                     "- Temp air: %.1f °C\n"
+                                     "- Humidité: %.0f %%\n"
+                                     "- Aqua lvl: %d cm\n"
+                                     "- Réserve lvl: %d cm\n"
+                                     "- Potager lvl: %d cm\n"
+                                     "- Luminosité: %d\n"
+                                     "- Diff marée: %d\n",
+                     rs.tempWater, rs.tempAir, rs.humidity, rs.wlAqua, rs.wlTank, rs.wlPota, rs.luminosite, diffM);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
   
   // Ajouter les informations de délai d'activité
-  footer += "\n-- Configuration Sleep --\n";
-  // Note: autoCtrl n'est pas accessible ici, utiliser des valeurs par défaut
-  footer += "- Délai d'activité: Configuration adaptative\n";
-  footer += "- Mode adaptatif: ACTIF\n";
+  written = snprintf(buf, remaining, "\n-- Configuration Sleep --\n"
+                                     "- Délai d'activité: Configuration adaptative\n"
+                                     "- Mode adaptatif: ACTIF\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
   
   // États actionneurs
-  footer += String("- Pompe aquarium: ") + (acts.isAquaPumpRunning()?"ON":"OFF") + "\n";
-  footer += String("- Pompe réservoir: ") + (acts.isTankPumpRunning()?"ON":"OFF") + "\n";
-  footer += String("- Chauffage: ") + (acts.isHeaterOn()?"ON":"OFF") + "\n";
-  footer += String("- Lumière: ") + (acts.isLightOn()?"ON":"OFF") + "\n";
-  // Statistiques pompe réservoir
   unsigned long curRun = acts.getTankPumpCurrentRuntime();
-  footer += "- Pompe réservoir runtime courant: "; footer += String(curRun); footer += " ms\n";
-  footer += "- Pompe réservoir runtime total: "; footer += String(acts.getTankPumpTotalRuntime()); footer += " ms\n";
-  footer += "- Pompe réservoir arrêts totaux: "; footer += String(acts.getTankPumpTotalStops()); footer += "\n";
+  written = snprintf(buf, remaining, "- Pompe aquarium: %s\n"
+                                     "- Pompe réservoir: %s\n"
+                                     "- Chauffage: %s\n"
+                                     "- Lumière: %s\n"
+                                     "- Pompe réservoir runtime courant: %lu ms\n"
+                                     "- Pompe réservoir runtime total: %lu ms\n"
+                                     "- Pompe réservoir arrêts totaux: %u\n",
+                     acts.isAquaPumpRunning() ? "ON" : "OFF",
+                     acts.isTankPumpRunning() ? "ON" : "OFF",
+                     acts.isHeaterOn() ? "ON" : "OFF",
+                     acts.isLightOn() ? "ON" : "OFF",
+                     curRun, acts.getTankPumpTotalRuntime(), acts.getTankPumpTotalStops());
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // CPU / Chip / SDK
-  footer += "- CPU freq: "; footer += String(getCpuFrequencyMhz()); footer += " MHz\n";
-  footer += "- Chip: "; footer += ESP.getChipModel(); footer += ", rev "; footer += String(ESP.getChipRevision()); footer += ", cores "; footer += String(ESP.getChipCores()); footer += "\n";
-  footer += "- SDK: "; footer += ESP.getSdkVersion(); footer += "\n";
+  written = snprintf(buf, remaining, "- CPU freq: %d MHz\n"
+                                     "- Chip: %s, rev %d, cores %d\n"
+                                     "- SDK: %s\n",
+                     getCpuFrequencyMhz(), ESP.getChipModel(), ESP.getChipRevision(), ESP.getChipCores(), ESP.getSdkVersion());
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // Sketch / flash
-  footer += "- Sketch size: "; footer += String(ESP.getSketchSize()); footer += " bytes\n";
-  footer += "- Free sketch: "; footer += String(ESP.getFreeSketchSpace()); footer += " bytes\n";
-  footer += "- Flash size: "; footer += String(ESP.getFlashChipSize()); footer += " bytes\n";
+  written = snprintf(buf, remaining, "- Sketch size: %u bytes\n"
+                                     "- Free sketch: %u bytes\n"
+                                     "- Flash size: %u bytes\n",
+                     ESP.getSketchSize(), ESP.getFreeSketchSpace(), ESP.getFlashChipSize());
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // Filesystem (LittleFS)
   if (LittleFS.begin(false)) {
     size_t total = LittleFS.totalBytes();
     size_t used  = LittleFS.usedBytes();
-    footer += "- FS LittleFS: "; footer += String(used); footer += "/"; footer += String(total); footer += " bytes\n";
+    written = snprintf(buf, remaining, "- FS LittleFS: %zu/%zu bytes\n", used, total);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
     // Ne pas démonter LittleFS ici pour éviter les erreurs de montage dans d'autres modules
   }
 
   // Endpoints serveur utiles
-  footer += "- POST URL: "; footer += ServerConfig::POST_DATA_ENDPOINT; footer += "\n";
-  footer += "- OUTPUT URL: "; footer += ServerConfig::OUTPUT_ENDPOINT; footer += "\n";
+  written = snprintf(buf, remaining, "- POST URL: %s\n"
+                                     "- OUTPUT URL: %s\n",
+                     ServerConfig::POST_DATA_ENDPOINT, ServerConfig::OUTPUT_ENDPOINT);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
 
   // ======================
   // NVS principales (resume)
   // ======================
-  footer += "\n-- NVS principales --\n";
+  written = snprintf(buf, remaining, "\n-- NVS principales --\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_systemInfoFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
   {
     // Namespace bouffe
     bool bouffeMatinOk, bouffeMidiOk, bouffeSoirOk, pompeAquaLocked, forceWakeUp;
@@ -217,63 +427,107 @@ static String buildSystemInfoFooter() {
     g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_pompe_lock", pompeAquaLocked, false);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_force_wakeup", forceWakeUp, false);
-    footer += "- bouffeMatinOk: "; footer += bouffeMatinOk ? "true" : "false"; footer += "\n";
-    footer += "- bouffeMidiOk: ";  footer += bouffeMidiOk  ? "true" : "false"; footer += "\n";
-    footer += "- bouffeSoirOk: ";  footer += bouffeSoirOk  ? "true" : "false"; footer += "\n";
-    footer += "- lastJourBouf: ";  footer += String(lastJourBouf); footer += "\n";
-    footer += "- pompeAquaLocked: "; footer += pompeAquaLocked ? "true" : "false"; footer += "\n";
-    footer += "- forceWakeUp: "; footer += forceWakeUp ? "true" : "false"; footer += "\n";
+    written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
+                                       "- bouffeMidiOk: %s\n"
+                                       "- bouffeSoirOk: %s\n"
+                                       "- lastJourBouf: %d\n"
+                                       "- pompeAquaLocked: %s\n"
+                                       "- forceWakeUp: %s\n",
+                       bouffeMatinOk ? "true" : "false",
+                       bouffeMidiOk ? "true" : "false",
+                       bouffeSoirOk ? "true" : "false",
+                       lastJourBouf,
+                       pompeAquaLocked ? "true" : "false",
+                       forceWakeUp ? "true" : "false");
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
 
     // Namespace ota
     bool otaUpdateFlag;
     g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_updateFlag", otaUpdateFlag, true);
-    footer += "- ota.updateFlag: "; footer += otaUpdateFlag ? "true" : "false"; footer += "\n";
+    written = snprintf(buf, remaining, "- ota.updateFlag: %s\n", otaUpdateFlag ? "true" : "false");
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
 
     // Namespace remoteVars (aperçu) - v11.103: Utilisation du gestionnaire NVS centralisé
     String remoteJson;
     g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, "");
     if (remoteJson.length() > 0) {
-      String preview = remoteJson.substring(0, min((size_t)200, (size_t)remoteJson.length()));
-      footer += "- remoteVars.json: ";
-      footer += preview;
-      if (remoteJson.length() > 200) footer += "...";
-      footer += "\n";
+      size_t previewLen = min((size_t)200, (size_t)remoteJson.length());
+      char previewBuf[201];
+      strncpy(previewBuf, remoteJson.c_str(), previewLen);
+      previewBuf[previewLen] = '\0';
+      if (remoteJson.length() > 200) {
+        written = snprintf(buf, remaining, "- remoteVars.json: %s...\n", previewBuf);
+      } else {
+        written = snprintf(buf, remaining, "- remoteVars.json: %s\n", previewBuf);
+      }
     } else {
-      footer += "- remoteVars.json: (vide)\n";
+      written = snprintf(buf, remaining, "- remoteVars.json: (vide)\n");
     }
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
 
     // Namespace rtc
-    unsigned long savedEpoch;
-    g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
-    footer += "- rtc.epoch: "; footer += String(savedEpoch); footer += "\n";
+    unsigned long savedEpoch2;
+    g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch2, 0);
+    written = snprintf(buf, remaining, "- rtc.epoch: %lu\n", savedEpoch2);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
 
     // Namespace diagnostics (déjà partiellement inclus plus haut, rappel condensé)
     int rebootCnt2, minHeap2;
     g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCnt2, 0);
     g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap2, 0);
-    footer += "- diagnostics.rebootCnt: "; footer += String(rebootCnt2); footer += "\n";
-    footer += "- diagnostics.minHeap: "; footer += String(minHeap2); footer += "\n";
+    written = snprintf(buf, remaining, "- diagnostics.rebootCnt: %d\n"
+                                       "- diagnostics.minHeap: %d\n",
+                       rebootCnt2, minHeap2);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
   }
 
-  return footer;
+  return g_systemInfoFooterBuffer;
 }
 
 // Fonction pour générer un rapport temporel détaillé
-static String buildDetailedTimeReport(const Diagnostics& diagnostics) {
-  String report;
-  report.reserve(1024);
-  report += "\n\n-- RAPPORT TEMPOREL DÉTAILLÉ --\n";
+static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
+  char* buf = g_detailedTimeReportBuffer;
+  size_t remaining = sizeof(g_detailedTimeReportBuffer);
+  int written = 0;
+  
+  written = snprintf(buf, remaining, "\n\n-- RAPPORT TEMPOREL DÉTAILLÉ --\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return buf;
+  }
+  buf += written;
+  remaining -= written;
   
   time_t now = time(nullptr);
   struct tm timeinfo;
   if (localtime_r(&now, &timeinfo)) {
     char timeBuf[64];
     strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    report += "Heure actuelle: "; report += timeBuf; report += "\n";
-    report += "Epoch: "; report += String((unsigned long)now); report += "\n";
-    report += "Jour de la semaine: "; report += String(timeinfo.tm_wday); report += " (0=dimanche)\n";
-    report += "Jour de l'année: "; report += String(timeinfo.tm_yday); report += "\n";
-    report += "DST actif: "; report += (timeinfo.tm_isdst ? "OUI" : "NON"); report += "\n";
     
     // Informations sur le temps de fonctionnement
     unsigned long uptimeMs = millis();
@@ -282,16 +536,42 @@ static String buildDetailedTimeReport(const Diagnostics& diagnostics) {
     unsigned long uptimeHour = uptimeMin / 60;
     unsigned long uptimeDay = uptimeHour / 24;
     
-    report += "Uptime: ";
-    if (uptimeDay > 0) report += String(uptimeDay) + "j ";
-    if (uptimeHour % 24 > 0) report += String(uptimeHour % 24) + "h ";
-    if (uptimeMin % 60 > 0) report += String(uptimeMin % 60) + "m ";
-    report += String(uptimeSec % 60) + "s\n";
+    // Construire uptime string
+    char uptimeStr[64] = "";
+    if (uptimeDay > 0) {
+      snprintf(uptimeStr, sizeof(uptimeStr), "%luj ", uptimeDay);
+    }
+    if (uptimeHour % 24 > 0) {
+      size_t len = strlen(uptimeStr);
+      snprintf(uptimeStr + len, sizeof(uptimeStr) - len, "%luh ", uptimeHour % 24);
+    }
+    if (uptimeMin % 60 > 0) {
+      size_t len = strlen(uptimeStr);
+      snprintf(uptimeStr + len, sizeof(uptimeStr) - len, "%lum ", uptimeMin % 60);
+    }
+    size_t len = strlen(uptimeStr);
+    snprintf(uptimeStr + len, sizeof(uptimeStr) - len, "%lus", uptimeSec % 60);
     
-    // Informations NTP
-    report += "Serveur NTP: "; report += SystemConfig::NTP_SERVER; report += "\n";
-    report += "GMT Offset: +"; report += String(SystemConfig::NTP_GMT_OFFSET_SEC/3600); report += "h\n";
-    report += "DST Offset: +"; report += String(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600); report += "h\n";
+    written = snprintf(buf, remaining, "Heure actuelle: %s\n"
+                                       "Epoch: %lu\n"
+                                       "Jour de la semaine: %d (0=dimanche)\n"
+                                       "Jour de l'année: %d\n"
+                                       "DST actif: %s\n"
+                                       "Uptime: %s\n"
+                                       "Serveur NTP: %s\n"
+                                       "GMT Offset: +%ldh\n"
+                                       "DST Offset: +%ldh\n",
+                       timeBuf, (unsigned long)now, timeinfo.tm_wday, timeinfo.tm_yday,
+                       timeinfo.tm_isdst ? "OUI" : "NON", uptimeStr,
+                       SystemConfig::NTP_SERVER,
+                       SystemConfig::NTP_GMT_OFFSET_SEC/3600,
+                       SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_detailedTimeReportBuffer;
+    }
+    buf += written;
+    remaining -= written;
     
     // Informations de dérive si disponibles
     // extern TimeDriftMonitor timeDriftMonitor;
@@ -324,24 +604,59 @@ static String buildDetailedTimeReport(const Diagnostics& diagnostics) {
     unsigned long savedEpoch;
     g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
     if (savedEpoch > 0) {
-      report += "RTC Flash epoch: "; report += String(savedEpoch); report += "\n";
+      written = snprintf(buf, remaining, "RTC Flash epoch: %lu\n", savedEpoch);
+      if (written < 0 || (size_t)written >= remaining) {
+        buf[remaining - 1] = '\0';
+        return g_detailedTimeReportBuffer;
+      }
+      buf += written;
+      remaining -= written;
+      
       if (savedEpoch != (unsigned long)now) {
         long diff = (long)now - (long)savedEpoch;
-        report += "Diff RTC vs actuel: "; report += String(diff); report += " secondes\n";
         if (abs(diff) > 60) {
-          report += "⚠️ Écart important entre RTC et temps actuel!\n";
+          written = snprintf(buf, remaining, "Diff RTC vs actuel: %ld secondes\n"
+                                             "⚠️ Écart important entre RTC et temps actuel!\n",
+                             diff);
+        } else {
+          written = snprintf(buf, remaining, "Diff RTC vs actuel: %ld secondes\n", diff);
         }
+        if (written < 0 || (size_t)written >= remaining) {
+          buf[remaining - 1] = '\0';
+          return g_detailedTimeReportBuffer;
+        }
+        buf += written;
+        remaining -= written;
       }
     }
   } else {
-    report += "Erreur: Impossible de récupérer l'heure locale\n";
+    written = snprintf(buf, remaining, "Erreur: Impossible de récupérer l'heure locale\n");
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_detailedTimeReportBuffer;
+    }
+    buf += written;
+    remaining -= written;
   }
   
   // Ajouter les informations de redémarrage
-  report += "\n-- INFORMATIONS DE REDÉMARRAGE --\n";
-  report += diagnostics.generateRestartReport();
+  written = snprintf(buf, remaining, "\n-- INFORMATIONS DE REDÉMARRAGE --\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_detailedTimeReportBuffer;
+  }
+  buf += written;
+  remaining -= written;
   
-  return report;
+  // Ajouter le rapport de redémarrage (qui retourne un String)
+  String restartReport = diagnostics.generateRestartReport();
+  size_t restartLen = restartReport.length();
+  if (restartLen > 0 && restartLen < remaining) {
+    strncpy(buf, restartReport.c_str(), remaining - 1);
+    buf[remaining - 1] = '\0';
+  }
+  
+  return g_detailedTimeReportBuffer;
 }
 
 bool Mailer::begin() {
@@ -429,8 +744,7 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
   
   // Construction du message final (String statique pour persistance)
-  // Note: Nous utilisons toujours String ici car buildSystemInfoFooter() retourne une String
-  // et le contenu peut être très long
+  // Note: buildSystemInfoFooter() retourne maintenant const char* (buffer statique)
   finalMessageStatic = message ? message : "";
   Serial.println(F("[Mail] Trace 3.1: Appending footer..."));
   // finalMessageStatic += buildSystemInfoFooter(); // DÉSACTIVÉ POUR TEST CRASH
@@ -521,7 +835,8 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   // Créer une instance temporaire de Diagnostics pour accéder aux informations de redémarrage
   Diagnostics tempDiag;
   tempDiag.begin(); // Initialise avec les données NVS
-  enhancedMessage += buildDetailedTimeReport(tempDiag);
+  const char* timeReport = buildDetailedTimeReport(tempDiag);
+  enhancedMessage += timeReport;
   Serial.printf("[Mail] enhancedMessage final: %d chars\n", enhancedMessage.length());
   
   Serial.println(F("[Mail] ===== ENVOI D'ALERTE ====="));

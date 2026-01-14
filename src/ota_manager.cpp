@@ -543,8 +543,8 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
             }
         }
         
-        // Petit délai pour éviter les blocages
-        delay(1);
+        // Petit délai pour éviter les blocages - utiliser vTaskDelay() dans tâche OTA
+        vTaskDelay(pdMS_TO_TICKS(1));
         
         // Vérification du timeout
         if (currentTime - startTime > NetworkConfig::OTA_DOWNLOAD_TIMEOUT_MS) { // 5 minutes max
@@ -717,8 +717,8 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
             }
         }
         
-        // Petit délai pour éviter les blocages
-        delay(1);
+        // Petit délai pour éviter les blocages - utiliser vTaskDelay() dans tâche OTA
+        vTaskDelay(pdMS_TO_TICKS(1));
         
         // Vérification du timeout
         if (currentTime - startTime > NetworkConfig::OTA_DOWNLOAD_TIMEOUT_MS) { // 5 minutes max
@@ -803,9 +803,9 @@ void OTAManager::updateTask(void* parameter) {
     
     // Email de début d'OTA (serveur distant)
     extern Mailer mailer;
-    extern Automatism autoCtrl;
-    bool emailEnabled = autoCtrl.isEmailEnabled();
-    const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
+    extern Automatism g_autoCtrl;
+    bool emailEnabled = g_autoCtrl.isEmailEnabled();
+    const char* toEmail = emailEnabled ? g_autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
     String part = running ? String(running->label) : String("(inconnue)");
     String md5 = ota->getFirmwareMD5();
     String body = String("Début de mise à jour OTA (Serveur distant)\n\n") +
@@ -907,9 +907,9 @@ void OTAManager::updateTask(void* parameter) {
         // Email de fin d'OTA (succès) avant reboot
         {
             extern Mailer mailer;
-            extern Automatism autoCtrl;
-            bool emailEnabled = autoCtrl.isEmailEnabled();
-            const char* toEmail = emailEnabled ? autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
+            extern Automatism g_autoCtrl;
+            bool emailEnabled = g_autoCtrl.isEmailEnabled();
+            const char* toEmail = emailEnabled ? g_autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
             const esp_partition_t* prev_running = esp_ota_get_running_partition();
             String fromPart = prev_running ? String(prev_running->label) + " (0x" + String(prev_running->address, HEX) + ")" : String("(inconnue)");
             String bootPart = new_boot ? String(new_boot->label) + " (0x" + String(new_boot->address, HEX) + ")" : String("(inconnue)");
@@ -947,6 +947,7 @@ void OTAManager::updateTask(void* parameter) {
                        ota->getRemoteVersion().c_str());
 
         ota->log("🔄 Redémarrage dans 3 secondes...");
+        // delay() acceptable ici car juste avant ESP.restart() (pas de yield nécessaire)
         delay(3000);
         ESP.restart();
     } else {
@@ -1065,7 +1066,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         for (int retry = 0; retry < MAX_RETRIES && !chunkSuccess; retry++) {
             if (retry > 0) {
                 log("🔄 Retry " + String(retry) + " pour micro-chunk " + String(chunkNumber));
-                delay(500); // Pause entre tentatives
+                vTaskDelay(pdMS_TO_TICKS(500)); // Pause entre tentatives
             }
             
             // Reset watchdog pour ce micro-chunk
@@ -1086,7 +1087,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
                             esp_task_wdt_reset();
                         }
                     } else if (read == 0) {
-                        delay(5); // Pause plus courte
+                        vTaskDelay(pdMS_TO_TICKS(5)); // Pause plus courte
                     } else {
                         break;
                     }
@@ -1121,7 +1122,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
                     if (chunkNumber % 20 == 0) {
                         log("📊 Heap libre: " + String(ESP.getFreeHeap()) + " bytes");
                         // Pause de récupération
-                        delay(100);
+                        vTaskDelay(pdMS_TO_TICKS(100));
                     }
                 } else {
                     logError("Échec écriture micro-chunk: " + String(written) + "/" + String(chunkSize));
@@ -1305,8 +1306,8 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
             }
         }
         
-        // Petit délai pour éviter les blocages
-        delay(1);
+        // Petit délai pour éviter les blocages - utiliser vTaskDelay() dans tâche OTA
+        vTaskDelay(pdMS_TO_TICKS(1));
         
         // Vérification du timeout
         if (currentTime - startTime > NetworkConfig::OTA_DOWNLOAD_TIMEOUT_MS) { // 5 minutes max

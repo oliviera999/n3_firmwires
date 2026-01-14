@@ -397,8 +397,8 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     int16_t tideTriggerCm = _tideTriggerCm > 0 ? _tideTriggerCm : ::SleepConfig::TIDE_TRIGGER_THRESHOLD_CM;
     
     // Récupération du nombre de clients WebSocket
-    extern RealtimeWebSocket realtimeWebSocket;
-    uint8_t wsClients = realtimeWebSocket.getConnectedClients();
+    extern RealtimeWebSocket g_realtimeWebSocket;
+    uint8_t wsClients = g_realtimeWebSocket.getConnectedClients();
     
     // Variables modifiables par handleBlockingConditions
     bool localForceWakeUp = forceWakeUp;

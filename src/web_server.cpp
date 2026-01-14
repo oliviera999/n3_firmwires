@@ -24,7 +24,7 @@
 #include "event_log.h"
 #include "automatism/automatism_persistence.h"  // Pour pending sync (v11.32)
  
-extern Automatism autoCtrl;
+extern Automatism g_g_autoCtrl;
 extern Mailer mailer;
 extern ConfigManager config;
 extern PowerManager power;
@@ -98,7 +98,7 @@ const char* WebServerManager::handleRelayAction(
     AutomatismPersistence::markPendingSync(relayName, newState);
 
     // Feedback WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
 
     // Créer les paramètres pour la tâche
     RelaySyncTaskParams* params = new RelaySyncTaskParams{&_sensors, relayName};
@@ -108,7 +108,7 @@ const char* WebServerManager::handleRelayAction(
         RelaySyncTaskParams* p = (RelaySyncTaskParams*)param;
         vTaskDelay(pdMS_TO_TICKS(100));
         SensorReadings readings = p->sensors->read();
-        bool syncSuccess = autoCtrl.sendFullUpdate(readings);
+        bool syncSuccess = g_autoCtrl.sendFullUpdate(readings);
         
         if (syncSuccess) {
             AutomatismPersistence::clearPendingSync(p->relayName);
@@ -132,7 +132,7 @@ bool WebServerManager::begin() {
   #else
   
   // Initialiser le serveur WebSocket temps réel
-  realtimeWebSocket.begin(_sensors, _acts);
+  g_realtimeWebSocket.begin(_sensors, _acts);
   
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
@@ -140,14 +140,14 @@ bool WebServerManager::begin() {
   if (_ctx) {
     delete _ctx;
   }
-  _ctx = new WebServerContext(autoCtrl,
+  _ctx = new WebServerContext(g_autoCtrl,
                               mailer,
                               config,
                               power,
                               wifi,
                               _sensors,
                               _acts,
-                              realtimeWebSocket);
+                              g_realtimeWebSocket);
   g_webServerContext = _ctx;
   WebServerContext& ctx = *_ctx;
   
@@ -156,7 +156,7 @@ bool WebServerManager::begin() {
 
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
   _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
-      autoCtrl.notifyLocalWebActivity();
+      g_autoCtrl.notifyLocalWebActivity();
       const char* resp = "OK";
       
       Serial.printf("[Web] 🎮 Action request from %s\n", req->client()->remoteIP().toString().c_str());
@@ -172,10 +172,10 @@ bool WebServerManager::begin() {
           if (c == "feedSmall") {
               Serial.println("[Web] 🐟 Starting manual feed small...");
               // 1. EXÉCUTION IMMÉDIATE de l'action physique
-              autoCtrl.manualFeedSmall();
+              g_autoCtrl.manualFeedSmall();
               
               // 2. Feedback WebSocket IMMÉDIAT
-              realtimeWebSocket.broadcastNow();
+              g_realtimeWebSocket.broadcastNow();
               
               // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_SMALL OK";
@@ -197,7 +197,7 @@ bool WebServerManager::begin() {
                   
                   // Synchronisation serveur avec reset flag
                   SensorReadings readings = sensors->read();
-                  bool syncSuccess = autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
+                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
                   Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
                   asyncTaskCount--; // Décrémenter le compteur
@@ -216,10 +216,10 @@ bool WebServerManager::begin() {
           else if (c == "feedBig") {
               Serial.println("[Web] 🐠 Starting manual feed big...");
               // 1. EXÉCUTION IMMÉDIATE de l'action physique
-              autoCtrl.manualFeedBig();
+              g_autoCtrl.manualFeedBig();
               
               // 2. Feedback WebSocket IMMÉDIAT
-              realtimeWebSocket.broadcastNow();
+              g_realtimeWebSocket.broadcastNow();
               
               // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_BIG OK";
@@ -241,7 +241,7 @@ bool WebServerManager::begin() {
                   
                   // Synchronisation serveur avec reset flag
                   SensorReadings readings = sensors->read();
-                  bool syncSuccess = autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
+                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
                   Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
                   
                   asyncTaskCount--; // Décrémenter le compteur
@@ -260,27 +260,27 @@ bool WebServerManager::begin() {
           else if (c == "toggleEmail") {
               Serial.println("[Web] 📧 Toggling Email Notifications...");
               // Toggle Email Notifications
-              autoCtrl.toggleEmailNotifications();
+              g_autoCtrl.toggleEmailNotifications();
               // Push UI refresh IMMÉDIAT
-              realtimeWebSocket.broadcastNow();
-              resp = autoCtrl.isEmailEnabled() ? "EMAIL_NOTIF_ACTIVÉ" : "EMAIL_NOTIF_DÉSACTIVÉ";
-              Serial.printf("[Web] ✅ Email Notifications toggled: %s\n", autoCtrl.isEmailEnabled() ? "ON" : "OFF");
+              g_realtimeWebSocket.broadcastNow();
+              resp = g_autoCtrl.isEmailEnabled() ? "EMAIL_NOTIF_ACTIVÉ" : "EMAIL_NOTIF_DÉSACTIVÉ";
+              Serial.printf("[Web] ✅ Email Notifications toggled: %s\n", g_autoCtrl.isEmailEnabled() ? "ON" : "OFF");
           }
           else if (c == "forceWakeup") {
               Serial.println("[Web] 🔄 Toggling Force Wakeup...");
               // Toggle Force Wakeup
-              autoCtrl.toggleForceWakeup();
+              g_autoCtrl.toggleForceWakeup();
               // Push UI refresh IMMÉDIAT
-              realtimeWebSocket.broadcastNow();
+              g_realtimeWebSocket.broadcastNow();
               resp="FORCE_WAKEUP TOGGLE OK";
-              Serial.printf("[Web] ✅ Force Wakeup toggled: %s\n", autoCtrl.getForceWakeUp() ? "ON" : "OFF");
+              Serial.printf("[Web] ✅ Force Wakeup toggled: %s\n", g_autoCtrl.getForceWakeUp() ? "ON" : "OFF");
           }
           else if (c == "resetMode") {
               Serial.println("[Web] 🔄 Triggering Reset Mode...");
               // Trigger Reset Mode
-              autoCtrl.triggerResetMode();
+              g_autoCtrl.triggerResetMode();
               // Push UI refresh IMMÉDIAT
-              realtimeWebSocket.broadcastNow();
+              g_realtimeWebSocket.broadcastNow();
               resp="RESET_MODE TRIGGERED OK";
               Serial.println("[Web] ✅ Reset Mode triggered");
           }
@@ -306,7 +306,7 @@ bool WebServerManager::begin() {
                   }
               }
               // Push UI refresh IMMÉDIAT
-              realtimeWebSocket.broadcastNow();
+              g_realtimeWebSocket.broadcastNow();
           }
       }
       
@@ -318,29 +318,29 @@ bool WebServerManager::begin() {
           if (rel == "pumpTank") {
               resp = handleRelayAction("tank",
                   [&](){ return _acts.isTankPumpRunning(); },
-                  [&](){ autoCtrl.startTankPumpManual(); },
-                  [&](){ autoCtrl.stopTankPumpManual(); },
+                  [&](){ g_autoCtrl.startTankPumpManual(); },
+                  [&](){ g_autoCtrl.stopTankPumpManual(); },
                   "PUMP_TANK ON", "PUMP_TANK OFF"
               );
           } else if (rel == "pumpAqua") {
               resp = handleRelayAction("aqua",
                   [&](){ return _acts.isAquaPumpRunning(); },
-                  [&](){ autoCtrl.startAquaPumpManualLocal(); },
-                  [&](){ autoCtrl.stopAquaPumpManualLocal(); },
+                  [&](){ g_autoCtrl.startAquaPumpManualLocal(); },
+                  [&](){ g_autoCtrl.stopAquaPumpManualLocal(); },
                   "PUMP_AQUA ON", "PUMP_AQUA OFF"
               );
           } else if (rel == "heater") {
               resp = handleRelayAction("heater",
                   [&](){ return _acts.isHeaterOn(); },
-                  [&](){ autoCtrl.startHeaterManualLocal(); },
-                  [&](){ autoCtrl.stopHeaterManualLocal(); },
+                  [&](){ g_autoCtrl.startHeaterManualLocal(); },
+                  [&](){ g_autoCtrl.stopHeaterManualLocal(); },
                   "HEATER ON", "HEATER OFF"
               );
           } else if (rel == "light") {
               resp = handleRelayAction("light",
                   [&](){ return _acts.isLightOn(); },
-                  [&](){ autoCtrl.startLightManualLocal(); },
-                  [&](){ autoCtrl.stopLightManualLocal(); },
+                  [&](){ g_autoCtrl.startLightManualLocal(); },
+                  [&](){ g_autoCtrl.stopLightManualLocal(); },
                   "LIGHT ON", "LIGHT OFF"
               );
           }
@@ -379,7 +379,7 @@ bool WebServerManager::begin() {
 
   // Gestion des requêtes HEAD pour /json (connectivité check)
   _server->on("/json", HTTP_HEAD, [](AsyncWebServerRequest* req){
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     AsyncWebServerResponse* response = req->beginResponse(200, "application/json", "");
     if (response) {
       response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -392,7 +392,7 @@ bool WebServerManager::begin() {
 
   // Point de terminaison JSON optimisé - RÉACTIVITÉ MAXIMALE
   _server->on("/json", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     
     // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
     if (!ctx.ensureHeap(req, ctx.jsonMinHeapBytes, F("/json"))) {
@@ -422,7 +422,7 @@ bool WebServerManager::begin() {
     (*doc)["pumpTank"] = _acts.isTankPumpRunning();
     (*doc)["heater"] = _acts.isHeaterOn();
     (*doc)["light"] = _acts.isLightOn();
-    (*doc)["forceWakeup"] = autoCtrl.getForceWakeUp();
+    (*doc)["forceWakeup"] = g_autoCtrl.getForceWakeUp();
     
     // Informations WiFi STA
     bool staConnected = WiFi.status() == WL_CONNECTED;
@@ -504,7 +504,7 @@ bool WebServerManager::begin() {
 
   // /dbvars endpoint : expose variables fetched from remote server - OPTIMISÉ
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     
     // NOUVELLE VÉRIFICATION MÉMOIRE AUGMENTÉE (v11.58)
     const uint32_t MIN_HEAP_FOR_DBVARS = 55000; // 55KB minimum pour dbvars (augmenté de 37%)
@@ -622,7 +622,7 @@ bool WebServerManager::begin() {
 
   // Mise à jour des variables distantes locales et envoi vers la BDD distante
   _server->on("/dbvars/update", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req){
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     // Récupère les paramètres envoyés en x-www-form-urlencoded
     auto getParam = [req](const char* name)->String{
       if (req->hasParam(name, /*post*/true)) return req->getParam(name, true)->value();
@@ -690,7 +690,7 @@ bool WebServerManager::begin() {
 
     // Applique les valeurs localement (sans dépendre du distant)
     {
-      autoCtrl.applyConfigFromJson(nvsDoc);
+      g_autoCtrl.applyConfigFromJson(nvsDoc);
       Serial.println("[Web] ✅ Config appliquée localement");
     }
     
@@ -698,7 +698,7 @@ bool WebServerManager::begin() {
     AutomatismPersistence::markConfigPendingSync();
 
     // Envoi immédiat vers la BDD distante pour répercuter les changements
-    bool sent = (WiFi.status()==WL_CONNECTED) ? autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs : nullptr) : false;
+    bool sent = (WiFi.status()==WL_CONNECTED) ? g_autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs : nullptr) : false;
     
     if (sent) {
       // Sync réussi : effacer pending sync
@@ -838,7 +838,7 @@ bool WebServerManager::begin() {
   // /mailtest endpoint: envoie un e-mail de test
   _server->on("/mailtest", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action utilisateur critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     String subj = req->hasParam("subject") ? req->getParam("subject")->value() : "Test FFP5CS";
     String body = req->hasParam("body") ? req->getParam("body")->value() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
     String dest = req->hasParam("to") ? req->getParam("to")->value() : String(EmailConfig::DEFAULT_RECIPIENT);
@@ -851,7 +851,7 @@ bool WebServerManager::begin() {
   // Maintenance: format LittleFS (use with care)
   _server->on("/fs/format", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action maintenance critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     if (!req->hasParam("confirm")) { req->send(400, "text/plain", "Missing confirm=1"); return; }
     if (req->getParam("confirm")->value() != "1") { req->send(400, "text/plain", "confirm must be 1"); return; }
     bool ok = LittleFS.format();
@@ -909,7 +909,7 @@ bool WebServerManager::begin() {
 #ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
   _server->on("/nvs.json", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Outil de debug interactif
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     AsyncResponseStream* res = req->beginResponseStream("application/json");
     res->print('{');
     res->print("\"namespaces\":{");
@@ -1020,7 +1020,7 @@ bool WebServerManager::begin() {
 
   _server->on("/nvs", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Page NVS Inspector interactive
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     const char* html =
       "<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
       "<title>NVS Inspector</title>"
@@ -1065,7 +1065,7 @@ bool WebServerManager::begin() {
 
   _server->on("/nvs/set", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
     String ns = getP("ns"), key = getP("key"), type = getP("type"), value = getP("value");
     if (!ns.length() || !key.length() || !type.length()) { req->send(400, "text/plain", "Missing ns/key/type"); return; }
@@ -1111,7 +1111,7 @@ bool WebServerManager::begin() {
       if (js.length()) {
         JsonDocument tmp;
         if (!deserializeJson(tmp, js)) {
-          autoCtrl.applyConfigFromJson(tmp);
+          g_autoCtrl.applyConfigFromJson(tmp);
         }
       }
     }
@@ -1123,7 +1123,7 @@ bool WebServerManager::begin() {
 
   _server->on("/nvs/erase", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
     String ns = getP("ns"), key = getP("key");
     if (!ns.length() || !key.length()) { req->send(400, "text/plain", "Missing ns/key"); return; }
@@ -1140,7 +1140,7 @@ bool WebServerManager::begin() {
 
   _server->on("/nvs/erase_ns", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
     String ns = getP("ns");
     if (!ns.length()) { req->send(400, "text/plain", "Missing ns"); return; }
@@ -1163,7 +1163,7 @@ bool WebServerManager::begin() {
   // Scanner les réseaux WiFi disponibles
   _server->on("/wifi/scan", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action WiFi critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     
     JsonDocument doc;
     
@@ -1297,7 +1297,7 @@ bool WebServerManager::begin() {
   // Connecter à un réseau WiFi
   _server->on("/wifi/connect", HTTP_POST, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Changement WiFi critique
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     
     auto getParam = [req](const char* name)->String{
       if (req->hasParam(name, true)) return req->getParam(name, true)->value();
@@ -1400,12 +1400,12 @@ bool WebServerManager::begin() {
       
       // Notifier les clients WebSocket du changement imminent
       Serial.println("[WiFi] Notification des clients WebSocket...");
-      realtimeWebSocket.notifyWifiChange(ssid);
+      g_realtimeWebSocket.notifyWifiChange(ssid);
       vTaskDelay(pdMS_TO_TICKS(200));
       
       // Fermer proprement toutes les connexions WebSocket
       Serial.println("[WiFi] Fermeture des connexions WebSocket...");
-      realtimeWebSocket.closeAllConnections();
+      g_realtimeWebSocket.closeAllConnections();
       
       // Attendre que toutes les connexions soient bien fermées
       vTaskDelay(pdMS_TO_TICKS(500));
@@ -1456,7 +1456,7 @@ bool WebServerManager::begin() {
           WiFi.setSleep(false); // Désactiver le modem sleep
           
           // Notifier le changement via WebSocket (si encore connecté)
-          realtimeWebSocket.broadcastNow();
+          g_realtimeWebSocket.broadcastNow();
         } else {
           Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", targetSSID.c_str());
           // Retourner en mode AP si la connexion échoue
@@ -1481,7 +1481,7 @@ bool WebServerManager::begin() {
   // Supprimer un réseau WiFi sauvegardé
   _server->on("/wifi/remove", HTTP_POST, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification WiFi
-    autoCtrl.notifyLocalWebActivity();
+    g_autoCtrl.notifyLocalWebActivity();
     
     auto getParam = [req](const char* name)->String{
       if (req->hasParam(name, true)) return req->getParam(name, true)->value();
@@ -1654,8 +1654,8 @@ bool WebServerManager::begin() {
     doc["wifiSSID"] = WiFi.SSID();
     doc["wifiIP"] = WiFi.localIP().toString();
     doc["wifiRSSI"] = WiFi.RSSI();
-    doc["webSocketClients"] = realtimeWebSocket.getConnectedClients();
-    doc["forceWakeup"] = autoCtrl.getForceWakeUp();
+    doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
+    doc["forceWakeup"] = g_autoCtrl.getForceWakeUp();
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-cache");
@@ -1719,13 +1719,13 @@ bool WebServerManager::begin() {
     doc["wifi"]["mac"] = WiFi.macAddress();
     
     // Informations WebSocket
-    doc["websocket"]["connectedClients"] = realtimeWebSocket.getConnectedClients();
-    doc["websocket"]["isActive"] = realtimeWebSocket.isRunning();
+    doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
+    doc["websocket"]["isActive"] = g_realtimeWebSocket.isRunning();
     
     // Informations automatisme
-    doc["automatism"]["forceWakeup"] = autoCtrl.getForceWakeUp();
-    doc["automatism"]["mailNotif"] = autoCtrl.isEmailEnabled();
-    doc["automatism"]["mail"] = autoCtrl.getEmailAddress();
+    doc["automatism"]["forceWakeup"] = g_autoCtrl.getForceWakeUp();
+    doc["automatism"]["mailNotif"] = g_autoCtrl.isEmailEnabled();
+    doc["automatism"]["mail"] = g_autoCtrl.getEmailAddress();
     
     // Informations capteurs (via cache)
     SensorReadings readings = sensorCache.getReadings(_sensors);
@@ -1763,9 +1763,9 @@ bool WebServerManager::begin() {
 void WebServerManager::loop() {
   #ifndef DISABLE_ASYNC_WEBSERVER
   // Traiter les boucles du serveur WebSocket temps réel
-  realtimeWebSocket.loop();
+  g_realtimeWebSocket.loop();
   
   // Diffuser les données capteurs aux clients WebSocket connectés
-  realtimeWebSocket.broadcastSensorData();
+  g_realtimeWebSocket.broadcastSensorData();
   #endif
 } 

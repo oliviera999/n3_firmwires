@@ -239,14 +239,20 @@ public:
         // Sérialiser et envoyer
         String json;
         serializeJson(doc, json);
-        webSocket.sendTXT(clientNum, json);
+        // Vérifier qu'il y a des clients connectés avant envoi
+        if (webSocket.connectedClients() > 0) {
+            webSocket.sendTXT(clientNum, json);
+        }
     }
     
     /**
      * Envoie un pong en réponse à un ping
      */
     void sendPong(uint8_t clientNum) {
-        webSocket.sendTXT(clientNum, "{\"type\":\"pong\"}");
+        // Vérifier qu'il y a des clients connectés avant envoi
+        if (webSocket.connectedClients() > 0) {
+            webSocket.sendTXT(clientNum, "{\"type\":\"pong\"}");
+        }
     }
     
     /**
@@ -260,7 +266,10 @@ public:
             sendCurrentData(clientNum);
         } else {
             // Commande non reconnue
-            webSocket.sendTXT(clientNum, "{\"type\":\"error\",\"message\":\"Unknown command\"}");
+            // Vérifier qu'il y a des clients connectés avant envoi
+            if (webSocket.connectedClients() > 0) {
+                webSocket.sendTXT(clientNum, "{\"type\":\"error\",\"message\":\"Unknown command\"}");
+            }
         }
     }
     
@@ -354,7 +363,10 @@ public:
             // Sérialiser et diffuser
             String json;
             serializeJson(doc, json);
-            webSocket.broadcastTXT(json);
+            // Vérifier qu'il y a des clients connectés avant envoi
+            if (webSocket.connectedClients() > 0) {
+                webSocket.broadcastTXT(json);
+            }
             
             lastBroadcast = now;
         }
@@ -376,7 +388,10 @@ public:
                       String(millis()) + "}";
         
         // Envoi direct sans mutex pour éviter les deadlocks
-        webSocket.broadcastTXT(json);
+        // Vérifier qu'il y a des clients connectés avant envoi
+        if (webSocket.connectedClients() > 0) {
+            webSocket.broadcastTXT(json);
+        }
         Serial.printf("[WebSocket] ✅ Confirmation action: %s = %s\n", action.c_str(), result.c_str());
     }
     
@@ -440,7 +455,10 @@ public:
         }
         
         String json; serializeJson(doc, json);
-        webSocket.broadcastTXT(json);
+        // Vérifier qu'il y a des clients connectés avant envoi
+        if (webSocket.connectedClients() > 0) {
+            webSocket.broadcastTXT(json);
+        }
         
         lastBroadcast = millis();
         if (mutex) {
@@ -490,7 +508,10 @@ public:
             message = "{\"type\":\"wifi_change\",\"ssid\":\"" + newSSID + "\",\"message\":\"Changement de réseau WiFi en cours...\"}";
         }
         
-        webSocket.broadcastTXT(message);
+        // Vérifier qu'il y a des clients connectés avant envoi
+        if (webSocket.connectedClients() > 0) {
+            webSocket.broadcastTXT(message);
+        }
         Serial.printf("[WebSocket] 📤 Notification envoyée aux clients: %s\n", msgType.c_str());
         
         // Donner le temps au message d'être envoyé
@@ -507,7 +528,10 @@ public:
         
         // Envoyer un message de fermeture à tous les clients
         String closeMessage = "{\"type\":\"server_closing\",\"message\":\"Serveur en cours de reconfiguration\"}";
-        webSocket.broadcastTXT(closeMessage);
+        // Vérifier qu'il y a des clients connectés avant envoi
+        if (webSocket.connectedClients() > 0) {
+            webSocket.broadcastTXT(closeMessage);
+        }
         
         // Donner le temps au message d'être envoyé
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -580,4 +604,4 @@ public:
 };
 
 // Instance globale du serveur WebSocket temps réel
-extern RealtimeWebSocket realtimeWebSocket;
+extern RealtimeWebSocket g_realtimeWebSocket;

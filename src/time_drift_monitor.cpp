@@ -3,6 +3,8 @@
 #include <time.h>
 #include <sys/time.h>
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "config.h"
 #include "power.h"
 
@@ -55,8 +57,8 @@ void TimeDriftMonitor::syncWithNTP() {
   if (getLocalTime(&timeinfo)) {
     syncSuccess = true;
   } else {
-    // Retry rapide
-    delay(500);
+    // Retry rapide - utiliser vTaskDelay() car peut être appelé depuis loop()
+    vTaskDelay(pdMS_TO_TICKS(500));
     if (getLocalTime(&timeinfo)) {
       syncSuccess = true;
     }

@@ -45,7 +45,7 @@ SystemSensors sensors;
 SystemActuators acts;
 Diagnostics diag;
 WebServerManager webSrv(sensors, acts, diag);
-Automatism autoCtrl(sensors, acts, web, oled, power, mailer, config);
+Automatism g_autoCtrl(sensors, acts, web, oled, power, mailer, config);
 TimeDriftMonitor timeDriftMonitor;
 
 AppContext g_appContext{wifi,
@@ -59,7 +59,7 @@ AppContext g_appContext{wifi,
                         acts,
                         diag,
                         webSrv,
-                        autoCtrl,
+                        g_autoCtrl,
                         timeDriftMonitor};
 
 static char g_hostname[SystemConfig::HOSTNAME_BUFFER_SIZE];
@@ -252,9 +252,9 @@ void loop() {
   power.resetWatchdog();
 
   static bool digestTimerAdded = false;
-  if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled() && !digestTimerAdded) {
+  if (WiFi.status() == WL_CONNECTED && g_autoCtrl.isEmailEnabled() && !digestTimerAdded) {
     TimerManager::addTimer("EMAIL_DIGEST", DIGEST_INTERVAL_MS, []() {
-      if (WiFi.status() == WL_CONNECTED && autoCtrl.isEmailEnabled()) {
+      if (WiFi.status() == WL_CONNECTED && g_autoCtrl.isEmailEnabled()) {
         unsigned long currentTime = millis();
         
         // Optimisation: Utilisation directe de String pour éviter allocation stack massive (Fix audit)
@@ -312,7 +312,7 @@ void loop() {
           bool ok = mailer.send(subjDigest,
                                 body.c_str(),
                                 "User",
-                                autoCtrl.getEmailAddress());
+                                g_autoCtrl.getEmailAddress());
           EventLog::add(ok ? "Digest email sent" : "Digest email failed");
           g_lastDigestSeq = newSeq;
         } else {

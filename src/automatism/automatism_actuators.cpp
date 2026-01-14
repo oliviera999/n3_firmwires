@@ -6,8 +6,8 @@
 #include <ArduinoJson.h>
 
 // Déclarations externes
-extern Automatism autoCtrl;
-extern RealtimeWebSocket realtimeWebSocket;
+extern Automatism g_autoCtrl;
+extern RealtimeWebSocket g_realtimeWebSocket;
 
 // ============================================================================
 // Module: AutomatismActuators
@@ -52,7 +52,7 @@ void AutomatismActuators::startAquaPumpManual() {
     Serial.printf("[Actuators] ✅ Pompe aquarium démarrée - Heap: %u bytes\n", ESP.getFreeHeap());
     
     // 3. WebSocket immédiat (feedback utilisateur instantané)
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatPompeAqua=1");
@@ -70,7 +70,7 @@ void AutomatismActuators::stopAquaPumpManual() {
     Serial.printf("[Actuators] ✅ Pompe aquarium arrêtée - Heap: %u bytes\n", ESP.getFreeHeap());
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatPompeAqua=0");
@@ -95,7 +95,7 @@ void AutomatismActuators::startTankPumpManual() {
     Serial.printf("[Actuators] ✅ Pompe réserve démarrée - Heap: %u bytes\n", ESP.getFreeHeap());
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatPompeReserve=1");
@@ -113,7 +113,7 @@ void AutomatismActuators::stopTankPumpManual() {
     Serial.printf("[Actuators] ✅ Pompe réserve arrêtée - Heap: %u bytes\n", ESP.getFreeHeap());
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatPompeReserve=0");
@@ -133,7 +133,7 @@ void AutomatismActuators::startHeaterManual() {
     AutomatismPersistence::saveCurrentActuatorState("heater", true);
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatHeat=1");
@@ -149,7 +149,7 @@ void AutomatismActuators::stopHeaterManual() {
     AutomatismPersistence::saveCurrentActuatorState("heater", false);
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatHeat=0");
@@ -169,7 +169,7 @@ void AutomatismActuators::startLightManual() {
     AutomatismPersistence::saveCurrentActuatorState("light", true);
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatUV=1");
@@ -185,7 +185,7 @@ void AutomatismActuators::stopLightManual() {
     AutomatismPersistence::saveCurrentActuatorState("light", false);
     
     // 3. WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // 4. Marquer pour synchronisation serveur au prochain cycle
     markForSync("etatUV=0");
@@ -196,9 +196,9 @@ void AutomatismActuators::stopLightManual() {
 // ============================================================================
 
 void AutomatismActuators::toggleEmailNotifications() {
-    // Récupérer état actuel depuis autoCtrl (car stocké dans network module)
-    extern Automatism autoCtrl;
-    bool currentState = autoCtrl.isEmailEnabled();
+    // Récupérer état actuel depuis g_autoCtrl (car stocké dans network module)
+    extern Automatism g_autoCtrl;
+    bool currentState = g_autoCtrl.isEmailEnabled();
     bool newState = !currentState;
     
     Serial.printf("[Actuators] 📧 Toggle notifications email: %s → %s\n",
@@ -209,7 +209,7 @@ void AutomatismActuators::toggleEmailNotifications() {
     // Cette méthode trigger juste le toggle et la sync serveur
     
     // WebSocket immédiat pour feedback
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // Marquer pour synchronisation serveur au prochain cycle
     const char* payload = newState ? "mailNotif=1" : "mailNotif=0";
@@ -229,7 +229,7 @@ void AutomatismActuators::toggleForceWakeup() {
     _config.forceSaveBouffeFlags();  // Sauvegarde immédiate
     
     // WebSocket immédiat
-    realtimeWebSocket.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
     
     // Marquer pour synchronisation serveur au prochain cycle
     const char* payload = newState ? "forceWakeUp=1" : "forceWakeUp=0";

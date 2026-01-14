@@ -5,6 +5,8 @@
 #include <sys/time.h>
 #include <cmath>
 #include <functional>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "config.h"
 #include "log.h"
 #include "realtime_websocket.h"
@@ -78,17 +80,17 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   if (disconnectWifi) {
     // AMÉLIORATION: Fermer proprement le WebSocket avant de déconnecter le WiFi
     // pour éviter les erreurs 1006 (connexion fermée sans Close frame)
-    uint8_t wsClients = realtimeWebSocket.getConnectedClients();
+    uint8_t wsClients = g_realtimeWebSocket.getConnectedClients();
     
     if (wsClients > 0) {
       Serial.printf("[Power] 🔌 Fermeture propre de %u connexion(s) WebSocket avant sleep...\n", wsClients);
       
       // Notifier les clients que le serveur entre en veille avec message explicite
       // Le client recevra un message "server_closing" qui bloquera temporairement les reconnexions
-      realtimeWebSocket.notifyWifiChange("System entering light sleep mode");
+      g_realtimeWebSocket.notifyWifiChange("System entering light sleep mode");
       
       // Fermer toutes les connexions proprement avec Close frame
-      realtimeWebSocket.closeAllConnections();
+      g_realtimeWebSocket.closeAllConnections();
       
       // Délai critique pour assurer l'envoi des Close frames avant déconnexion WiFi
       // Réduit le risque de code 1006 (fermeture anormale)
@@ -209,7 +211,8 @@ void PowerManager::syncTimeFromNTP() {
       break;
     }
     attempts++;
-    delay(100);
+    // Utiliser vTaskDelay() pour être conforme aux règles (peut être appelé depuis loop())
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
   
   unsigned long syncDuration = millis() - startTime;
@@ -652,7 +655,9 @@ bool PowerManager::testDTIMCompatibility() {
   enableModemSleepMode();
   
   // Attendre quelques cycles DTIM (5 secondes)
-  delay(5000);
+  // Note: Utilisation de vTaskDelay() car cette fonction est appelée après l'initialisation de FreeRTOS
+  // Si cette fonction est appelée avant l'initialisation de FreeRTOS, utiliser delay() à la place
+  vTaskDelay(pdMS_TO_TICKS(5000));
   
   // Vérifier si la connexion est maintenue
   bool stillConnected = (WiFi.status() == WL_CONNECTED);
