@@ -29,7 +29,8 @@ public:
         void configure(const char* n, uint32_t i, TimerCallback cb) {
             name = n;
             interval = i;
-            lastRun = 0;
+            // Démarre la fenêtre à partir de l'instant d'ajout (évite déclenchement immédiat si ajouté tard)
+            lastRun = millis();
             callback = cb;
             enabled = true;
             callCount = 0;
@@ -49,6 +50,11 @@ public:
      * Initialise le Timer Manager
      */
     static void init();
+
+#if defined(UNIT_TEST)
+    // Helper pour tests natifs: réinitialise l'état statique entre les tests.
+    static void resetForTests();
+#endif
     
     /**
      * Ajoute un timer au manager

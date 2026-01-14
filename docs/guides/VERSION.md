@@ -1692,7 +1692,7 @@ Voir historique Git pour versions précédentes.
 
 ---
 
-**Version actuelle**: **v11.129** (2026-01-13)  
+**Version actuelle**: **v11.130** (2026-01-14)  
 **Note**: Ce fichier documente l'historique jusqu'à v11.04. Pour les versions récentes, consultez `VERSION.md` à la racine du projet.  
 **Status**: **PRODUCTION READY** ✅  
 **Note historique**: **7.2/10** (v11.04)

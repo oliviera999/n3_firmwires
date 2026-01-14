@@ -19,8 +19,6 @@ PowerManager::PowerManager()
       _useModemSleep(false), _modemSleepEnabled(false), _wifiWakeupEnabled(false), _lastModemSleepTest(0),
       _lastTimeSave(0), _lastSavedEpoch(0), _lastDriftCorrection(0), _currentDriftPPM(0.0f), _lastSyncEpoch(0),
       _lastDriftSeconds(0.0f), _defaultDriftAccumulator(0.0f), _measuredDriftAccumulator(0.0f), _sleepRemainderUs(0) {
-  
-  Serial.println("[Power] ✅ PowerManager initialisé avec support Modem Sleep + Light Sleep");
 }
 
 void PowerManager::initWatchdog() {

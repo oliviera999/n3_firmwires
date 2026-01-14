@@ -6,6 +6,17 @@ size_t TimerManager::timerCount = 0;
 uint32_t TimerManager::lastCheck = 0;
 bool TimerManager::initialized = false;
 
+#if defined(UNIT_TEST)
+void TimerManager::resetForTests() {
+    for (size_t i = 0; i < MAX_TIMERS; i++) {
+        timers[i] = Timer();
+    }
+    timerCount = 0;
+    lastCheck = 0;
+    initialized = false;
+}
+#endif
+
 void TimerManager::init() {
     if (initialized) return;
     

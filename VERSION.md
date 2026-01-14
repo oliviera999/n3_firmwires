@@ -12,6 +12,26 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.130 - 2026-01-14
+
+### Stabilité & robustesse (prod)
+
+#### Correctifs critiques
+- ✅ **WiFi** : suppression du double pilotage (un seul `wifi.loop()` dans `src/app.cpp`)
+- ✅ **Capteurs** : prise en compte explicite des `NaN` (évite propagation silencieuse)
+- ✅ **Serial en PROD** : désactivation sûre via stub `NullSerial` (réduction flash significative)
+  - wroom-prod flash : ~96.9% → ~94.6% après compilation
+
+#### Nettoyage / cohérence
+- ✅ **WatchdogManager** : suppression du module non utilisé (réduction surface de bugs + taille)
+- ✅ **Config** : headers historiques `include/config/*` convertis en wrappers vers `include/config.h` (évite divergence)
+
+#### Tests
+- ✅ **Tests natifs (PlatformIO env:native)** : remise en état des suites unitaires + mocks Arduino minimalistes
+  - `RateLimiter` et `TimerManager` passent sur hôte
+
+---
+
 ## Version 11.129 - 2026-01-13
 
 ### Core Dump - Outils d'extraction et analyse

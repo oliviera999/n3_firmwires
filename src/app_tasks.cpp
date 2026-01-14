@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 #include <time.h>
+#include <math.h> // isnan
 
 #include "event_log.h"
 #include "gpio_parser.h"
@@ -52,10 +53,14 @@ void sensorTask(void* pv) {
 
     esp_task_wdt_reset();
 
-    if (readings.tempWater < SensorConfig::WaterTemp::MIN_VALID ||
+    // IMPORTANT: les comparaisons ne détectent pas NaN (NaN < x == false, NaN > x == false)
+    if (isnan(readings.tempWater) ||
+        readings.tempWater < SensorConfig::WaterTemp::MIN_VALID ||
         readings.tempWater > SensorConfig::WaterTemp::MAX_VALID ||
+        isnan(readings.tempAir) ||
         readings.tempAir < SensorConfig::AirSensor::TEMP_MIN ||
         readings.tempAir > SensorConfig::AirSensor::TEMP_MAX ||
+        isnan(readings.humidity) ||
         readings.humidity < SensorConfig::AirSensor::HUMIDITY_MIN ||
         readings.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
       SENSOR_LOG_PRINTLN(F("[Sensor] Erreur lors de la lecture des capteurs"));
@@ -203,9 +208,6 @@ void automationTask(void* pv) {
           lastHeartbeat = now;
         }
       }
-
-      g_ctx->wifi.checkConnectionStability();
-      g_ctx->wifi.loop(&g_ctx->display);
 
       if (now - lastBouffeDisplay > bouffeInterval) {
         Serial.println(F("=== ÉTAT DES FLAGS DE BOUFFE ==="));

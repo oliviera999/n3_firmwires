@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.129"; // Core dump: outils d'extraction/analyse + corrections config
+    constexpr const char* VERSION = "11.130"; // Stabilité: Serial off en prod (flash), WiFi loop unique, NaN capteurs, tests natifs
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -450,3 +450,37 @@ namespace TaskConfig {
 namespace DefaultValues {
     constexpr float WATER_TEMP = 20.0f;
 }
+
+// -----------------------------------------------------------------------------
+// 9. DÉSACTIVATION SÛRE DE SERIAL EN PROD
+// -----------------------------------------------------------------------------
+// Quand ENABLE_SERIAL_MONITOR=0 (ou profil PROD sans override), on redirige Serial
+// vers un stub constexpr pour éliminer à la compilation les appels Serial.* et
+// réduire la taille flash (wroom-prod est proche de la limite de partition).
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 0)) || \
+    (!defined(ENABLE_SERIAL_MONITOR) && defined(PROFILE_PROD))
+namespace LogConfig {
+    struct NullSerialType {
+        template<typename... Args>
+        inline constexpr size_t printf(const char*, Args...) const { return 0U; }
+        inline constexpr size_t println() const { return 0U; }
+        template<typename T>
+        inline constexpr size_t println(const T&) const { return 0U; }
+        template<typename T>
+        inline constexpr size_t print(const T&) const { return 0U; }
+        inline constexpr void begin(unsigned long) const {}
+        inline constexpr void end() const {}
+        inline constexpr void flush() const {}
+        inline constexpr int available() const { return 0; }
+        inline constexpr int read() const { return -1; }
+        inline constexpr size_t write(uint8_t) const { return 0U; }
+        inline constexpr size_t write(const uint8_t*, size_t) const { return 0U; }
+        inline constexpr operator bool() const { return false; }
+    };
+    static constexpr NullSerialType NullSerial{};
+}  // namespace LogConfig
+
+#define Serial LogConfig::NullSerial
+#define Serial1 LogConfig::NullSerial
+#define Serial2 LogConfig::NullSerial
+#endif

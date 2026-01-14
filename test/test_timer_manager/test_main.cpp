@@ -8,10 +8,13 @@ static int callback2_count = 0;
 
 void test_callback1() {
   callback1_count++;
+  // Simuler un temps d'exécution non-nul (TimerManager mesure via micros()).
+  advance_time(0, 100);
 }
 
 void test_callback2() {
   callback2_count++;
+  advance_time(0, 100);
 }
 
 void setUp(void) {
@@ -20,8 +23,8 @@ void setUp(void) {
   callback1_count = 0;
   callback2_count = 0;
   
-  // Réinitialiser TimerManager (nécessite accès aux variables statiques)
-  // Note: En production, il faudrait une méthode reset() ou utiliser setUp/tearDown
+  // Réinitialiser TimerManager (état statique partagé)
+  TimerManager::resetForTests();
 }
 
 void tearDown(void) {
@@ -68,10 +71,10 @@ void test_timer_manager_max_capacity() {
   TimerManager::init();
   
   // Ajouter jusqu'à la capacité max
+  static char names[TimerManager::MAX_TIMERS][16];
   for (size_t i = 0; i < TimerManager::MAX_TIMERS; i++) {
-    char name[16];
-    snprintf(name, sizeof(name), "timer%zu", i);
-    int id = TimerManager::addTimer(name, 100, test_callback1);
+    snprintf(names[i], sizeof(names[i]), "timer%zu", i);
+    int id = TimerManager::addTimer(names[i], 100, test_callback1);
     TEST_ASSERT_GREATER_OR_EQUAL(0, id);
   }
   
@@ -235,7 +238,7 @@ void test_timer_manager_stats_tracking() {
   TimerManager::Timer* stats = TimerManager::getTimerStats(id);
   TEST_ASSERT_NOT_NULL(stats);
   TEST_ASSERT_EQUAL(5, stats->callCount);
-  TEST_ASSERT_GREATER(0, stats->totalTime);
+  TEST_ASSERT_TRUE(stats->totalTime > 0);
 }
 
 void test_timer_manager_duplicate_name_returns_existing() {
@@ -276,3 +279,4 @@ int main(void) {
   
   return UNITY_END();
 }
+

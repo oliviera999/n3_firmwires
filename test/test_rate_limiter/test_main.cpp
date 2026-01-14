@@ -3,11 +3,6 @@
 #include "rate_limiter.h"
 #include <string>
 
-// Mock Serial pour RateLimiter (qui utilise Serial.printf)
-namespace Arduino {
-  HardwareSerial Serial;
-}
-
 void setUp(void) {
   reset_mock_time();
   setup_mock_time(1000, 0);
@@ -274,3 +269,4 @@ int main(void) {
   
   return UNITY_END();
 }
+

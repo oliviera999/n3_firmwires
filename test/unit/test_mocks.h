@@ -10,8 +10,9 @@
 #include <cstring>
 
 // Mocks pour millis() et micros()
-static unsigned long g_mock_millis = 0;
-static unsigned long g_mock_micros = 0;
+// C++17 inline variables: une seule instance partagée entre translation units
+inline unsigned long g_mock_millis = 0;
+inline unsigned long g_mock_micros = 0;
 
 inline unsigned long millis() {
   return g_mock_millis;
@@ -53,11 +54,6 @@ public:
 
 // Définir Serial globalement (utilisé dans le code source)
 static HardwareSerial Serial;
-
-// Définir aussi dans namespace Arduino pour compatibilité
-namespace Arduino {
-  HardwareSerial& Serial = ::Serial;
-}
 
 // Types Arduino basiques
 using byte = uint8_t;

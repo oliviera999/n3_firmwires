@@ -236,6 +236,8 @@ void loop() {
   ArduinoOTA.handle();
   #endif
 
+  // Centraliser les opérations WiFi dans le loop Arduino (évite concurrence multi-tâches)
+  wifi.checkConnectionStability();
   wifi.loop(&oled);
   
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
