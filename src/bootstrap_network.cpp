@@ -1,8 +1,6 @@
-#include "system_boot.h"
+#include "bootstrap_network.h"
 
-#include <Arduino.h>
 #include <WiFi.h>
-#include <LittleFS.h>
 #include <esp_ota_ops.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -12,35 +10,12 @@
 #include <ArduinoOTA.h>
 #endif
 
-#include <ArduinoJson.h>
 #include "event_log.h"
 #include "ota_config.h"
 #include "config.h"
 #include "nvs_manager.h"
-#include "timer_manager.h"
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
-// Hook FreeRTOS pour détection stack overflow
-extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
-  portDISABLE_INTERRUPTS();
-  
-  Serial.printf("\n\n⚠️⚠️⚠️ STACK OVERFLOW DÉTECTÉ ⚠️⚠️⚠️\n");
-  Serial.printf("Tâche: %s\n", pcTaskName ? pcTaskName : "UNKNOWN");
-  Serial.printf("Handle: %p\n", xTask);
-  
-  String logMsg = String("CRITICAL: Stack overflow in ") + (pcTaskName ? pcTaskName : "UNKNOWN");
-  EventLog::add(logMsg.c_str());
-  
-  delay(100);
-  // FreeRTOS va reboot automatiquement
-}
-
-namespace SystemBoot {
-
-// =============================================================================
-// Storage & Identifiers
-// =============================================================================
+namespace BootstrapNetwork {
 
 void setupHostname(char* buffer, size_t bufferSize) {
   uint64_t chipId = ESP.getEfuseMac();
@@ -51,69 +26,6 @@ void setupHostname(char* buffer, size_t bufferSize) {
            static_cast<uint16_t>(chipId & 0xFFFF));
   WiFi.setHostname(buffer);
 }
-
-void initializeStorage(AppContext& ctx,
-                       unsigned long& lastDigestMs,
-                       uint32_t& lastDigestSeq) {
-  EventLog::begin();
-  EventLog::add("Boot start");
-
-  Serial.println("[FS] Mounting LittleFS...");
-  uint32_t fsStartTime = millis();
-  if (!LittleFS.begin(true)) {
-    Serial.println("[FS] ❌ LittleFS mount failed - tentative de format");
-    if (LittleFS.format()) {
-      Serial.println("[FS] ✅ Format réussi, tentative de remontage");
-      if (LittleFS.begin(false)) {
-        Serial.println("[FS] ✅ Remontage après format réussi");
-      } else {
-        Serial.println("[FS] ❌ CRITIQUE: Impossible de monter LittleFS même après format");
-      }
-    } else {
-      Serial.println("[FS] ❌ CRITIQUE: Format LittleFS échoué");
-    }
-  } else {
-    uint32_t fsDuration = millis() - fsStartTime;
-    size_t total = LittleFS.totalBytes();
-    size_t used = LittleFS.usedBytes();
-    Serial.printf("[FS] ✅ LittleFS ok: %u/%u bytes (montage: %u ms)\n",
-                  static_cast<unsigned>(used),
-                  static_cast<unsigned>(total),
-                  fsDuration);
-
-    if (!LittleFS.exists("/index.html")) {
-      Serial.println("[FS] ⚠️ Fichier index.html manquant");
-    }
-    if (!LittleFS.exists("/shared/common.js")) {
-      Serial.println("[FS] ⚠️ Fichier common.js manquant");
-    }
-  }
-
-  Serial.println(F("[App] 🚀 Initialisation du gestionnaire NVS centralisé"));
-  if (!g_nvsManager.begin()) {
-    Serial.println(F("[App] ❌ Erreur initialisation NVS Manager"));
-    return;
-  }
-
-  g_nvsManager.enableDeferredFlush(true);
-  g_nvsManager.setFlushInterval(3000);
-  g_nvsManager.schedulePeriodicCleanup();
-  g_nvsManager.migrateFromOldSystem();
-
-  Serial.println(F("[App] 📥 Chargement état digest depuis NVS centralisé"));
-  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS,
-                         "digest_last_seq",
-                         lastDigestSeq,
-                         0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS,
-                         "digest_last_ms",
-                         lastDigestMs,
-                         0);
-}
-
-// =============================================================================
-// OTA Validation
-// =============================================================================
 
 void validatePendingOta(OtaState& state) {
   const esp_partition_t* running = esp_ota_get_running_partition();
@@ -143,13 +55,7 @@ void validatePendingOta(OtaState& state) {
         Serial.println("[OTA] ✅ Image validée et rollback annulé");
         state.justUpdated = true;
         {
-          String tempVersion;
-          if (g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", tempVersion, "") == NVSError::SUCCESS) {
-            strncpy(state.previousVersion, tempVersion.c_str(), sizeof(state.previousVersion) - 1);
-            state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
-          } else {
-            state.previousVersion[0] = '\0';
-          }
+          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", state.previousVersion, "");
         }
         break;
       case ESP_OTA_IMG_VALID:
@@ -175,101 +81,7 @@ void validatePendingOta(OtaState& state) {
   Serial.println("==================================\n");
 }
 
-// =============================================================================
-// Services Initialization
-// =============================================================================
-
-void initializeTimekeeping(AppContext& ctx) {
-  ctx.power.initTime();
-  EventLog::add("Time init");
-
-  ctx.power.setNTPConfig(SystemConfig::NTP_GMT_OFFSET_SEC,
-                         SystemConfig::NTP_DAYLIGHT_OFFSET_SEC,
-                         SystemConfig::NTP_SERVER);
-
-  ctx.timeDriftMonitor.attachPowerManager(&ctx.power);
-  ctx.timeDriftMonitor.begin();
-  EventLog::add("Time drift monitor init");
-}
-
-bool initializeDisplay(AppContext& ctx) {
-  if (ctx.display.isPresent()) {
-    ctx.display.hideOtaProgressOverlay();
-  }
-
-  Serial.println(F("[DEBUG] Avant oled.begin()"));
-  bool result = ctx.display.begin();
-  Serial.printf("[DEBUG] oled.begin() retourné: %s\n", result ? "true" : "false");
-  Serial.printf("[DEBUG] oled.isPresent(): %s\n", ctx.display.isPresent() ? "true" : "false");
-  return result;
-}
-
-void initializePeripherals(AppContext& ctx) {
-  if (ctx.display.isPresent()) {
-    ctx.display.showDiagnostic("Sensors");
-  }
-  ctx.sensors.begin();
-
-  if (ctx.display.isPresent()) {
-    ctx.display.showDiagnostic("Actuators");
-  }
-  ctx.actuators.begin();
-
-  if (ctx.display.isPresent()) {
-    ctx.display.showDiagnostic("WebSrv");
-  }
-  ctx.webServer.begin();
-
-  if (ctx.display.isPresent()) {
-    ctx.display.showDiagnostic("Diag");
-  }
-  ctx.diagnostics.begin();
-
-  if (ctx.display.isPresent()) {
-    ctx.display.showDiagnostic("Systems");
-  }
-  ctx.power.initWatchdog();
-  ctx.power.initModemSleep();
-
-  TimerManager::init();
-}
-
-void loadConfiguration(AppContext& ctx) {
-  Serial.println(F("\n[App] Chargement configuration complète depuis NVS..."));
-  ctx.config.loadConfigFromNVS();
-  
-  // Appliquer le JSON caché à l'automatisme immédiatement
-  String cachedJson;
-  if (ctx.config.loadRemoteVars(cachedJson) && cachedJson.length() > 0) {
-      DynamicJsonDocument doc(2048); // Utiliser Dynamic pour être sûr
-      DeserializationError err = deserializeJson(doc, cachedJson);
-      if (!err) {
-          ctx.automatism.applyConfigFromJson(doc);
-          Serial.println(F("[App] ✅ Config JSON NVS appliquée à Automatism"));
-      } else {
-          Serial.printf("[App] ⚠️ Erreur parsing JSON NVS: %s\n", err.c_str());
-      }
-  }
-  
-  ctx.automatism.begin();
-}
-
-void finalizeDisplay(AppContext& ctx) {
-  if (!ctx.display.isPresent()) {
-    return;
-  }
-
-  ctx.display.forceEndSplash();
-  ctx.display.clear();
-  ctx.display.showDiagnostic("Init ok");
-  delay(SystemConfig::FINAL_INIT_DELAY_MS);
-}
-
-// =============================================================================
-// Network & OTA Operations
-// =============================================================================
-
-bool connectWifi(AppContext& ctx, const char* hostname) {
+bool connect(AppContext& ctx, const char* hostname) {
   if (ctx.display.isPresent()) {
     ctx.display.showDiagnostic("WiFi...");
   }
@@ -462,9 +274,7 @@ void postConfiguration(AppContext& ctx,
     String body = String("Mise à jour OTA effectuée avec succès.\n\n");
     body += "Détails de la mise à jour:\n";
     body += "- Méthode: Serveur distant automatique\n";
-    body += "- Ancienne version: ";
-    body += state.previousVersion;
-    body += "\n";
+    body += "- Ancienne version: " + state.previousVersion + "\n";
     body += "- Nouvelle version: " + String(ProjectConfig::VERSION) + "\n";
     body += "- Hostname: "; body += hostname; body += "\n";
     body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
@@ -477,7 +287,7 @@ void postConfiguration(AppContext& ctx,
     Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
     state.justUpdated = false;
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_prevVer");
-    state.previousVersion[0] = '\0';
+    state.previousVersion = "";
   }
 
 #if FEATURE_OTA && FEATURE_OTA != 0
@@ -513,8 +323,6 @@ void postConfiguration(AppContext& ctx,
   ctx.automatism.sendFullUpdate(rs, "resetMode=0");
 }
 
-} // namespace SystemBoot
-
-
+}  // namespace BootstrapNetwork
 
 

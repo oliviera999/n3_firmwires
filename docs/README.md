@@ -3,7 +3,7 @@
 ## 🎯 Vue d'ensemble
 
 **Projet**: Système de contrôle automatisé pour aquaponie avec ESP32  
-**Version actuelle**: v11.124  
+**Version actuelle**: v11.129  
 **État**: Production stable avec optimisations continues
 
 ---
@@ -109,7 +109,7 @@
 
 ### Organisation automatique
 Cette structure a été créée par `organize_docs.ps1` v11.59.  
-**Note**: Documentation mise à jour pour v11.124 (2026-01-10).
+**Note**: Documentation mise à jour pour v11.129 (2026-01-13).
 
 ### Ajout de nouveaux documents
 1. Placez le nouveau fichier .md à la racine du projet
@@ -132,12 +132,13 @@ Cette structure a été créée par `organize_docs.ps1` v11.59.
 - 🔄 Simplification capteurs (watchdog + robustesse)
 - 🔄 Suppression optimisations non mesurées
 
-### Phase 2 - Refactoring (Planifiée)
-- 📋 Finalisation refactoring `automatism.cpp`
-- 📋 Simplification `project_config.h`
-- 📋 Tests et validation
+### Phase 2 - Refactoring (Terminée)
+- ✅ Refactoring `automatism.cpp` en modules spécialisés
+- ✅ Modules créés : persistence, actuators, feeding, network, sleep, refill, alert, display, sync
+- ✅ Simplification `project_config.h` → `config.h` (configuration unifiée)
+- ✅ Tests et validation effectués
 
 ---
 
 *Organisé le 2025-10-16 21:48 - Version 11.59*  
-*Mis à jour le 2026-01-10 - Version 11.124*
+*Mis à jour le 2026-01-13 - Version 11.129*

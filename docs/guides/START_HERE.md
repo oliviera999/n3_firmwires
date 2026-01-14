@@ -1,12 +1,13 @@
 # 🚀 START HERE - Projet ESP32 FFP5CS
 
-> ⚠️ **Note (2026-01-10)**: Ce document date de v11.03. La version actuelle du projet est **v11.124**. Pour les informations les plus récentes, consultez `VERSION.md` à la racine du projet et `docs/README.md`.
+> ⚠️ **Note (2026-01-13)**: Ce document date de v11.03. La version actuelle du projet est **v11.129**. Pour les informations les plus récentes, consultez `VERSION.md` à la racine du projet et `docs/README.md`.
 
 **Version documentée**: v11.03  
-**Version actuelle du projet**: v11.124  
+**Version actuelle du projet**: v11.129  
 **Date de création**: 2025-10-11  
-**Note**: **6.9/10** (objectif 8.0/10)  
-**Phase actuelle**: 2 - Refactoring (33%)
+**Date de mise à jour**: 2026-01-13  
+**Note**: **7.5/10** (objectif 8.0/10)  
+**Phase actuelle**: 2 - Refactoring (Terminée ✅)
 
 ---
 
@@ -14,11 +15,12 @@
 
 ✅ **Projet analysé** (18 phases, 15 problèmes identifiés)  
 ✅ **Phases 1+1b terminées** (bugs, docs, optimisations)  
-✅ **Phase 2 démarrée** (33% - 2 modules sur 6)  
-✅ **19 documents** créés (~6500 lignes)  
-✅ **7 commits** Git
+✅ **Phase 2 terminée** (100% - tous les modules créés)  
+✅ **Architecture modulaire** complète (9 modules spécialisés)  
+✅ **Configuration unifiée** (`config.h` remplace `project_config.h`)  
+✅ **Documentation** organisée et à jour
 
-**Prochaine étape**: Continuer Phase 2 (2-3 jours restants)
+**État actuel**: Production stable, architecture modulaire complète
 
 ---
 
@@ -42,25 +44,26 @@
 
 ## 📊 OÙ EN EST-ON ?
 
-### Phases Complétées (3/8)
+### Phases Complétées
 
 ✅ **Phase 1**: Quick Wins (bugs + docs)  
 ✅ **Phase 1b**: Optimisations (caches + code mort)  
-⏳ **Phase 2**: Refactoring (33% fait - 2 modules/6)
+✅ **Phase 2**: Refactoring (100% terminée - tous les modules créés)
 
-### Phase 2 Détails
+### Phase 2 - Modules Créés (Terminée ✅)
 
-**Modules créés** (2/6):
-- ✅ Persistence (3 méthodes, ~50 lignes)
-- ✅ Actuators (10 méthodes, ~240 lignes factorisées)
+**Modules spécialisés** (9 modules):
+- ✅ `automatism_persistence` - Gestion NVS et persistance
+- ✅ `automatism_actuators` - Contrôle des actionneurs (pompes, chauffage, lumière)
+- ✅ `automatism_feeding` - Logique de nourrissage
+- ✅ `automatism_network` - Communication serveur distant
+- ✅ `automatism_sleep` - Gestion du sommeil et économie d'énergie
+- ✅ `automatism_refill` - Contrôle du remplissage
+- ✅ `automatism_alert_controller` - Gestion des alertes
+- ✅ `automatism_display_controller` - Contrôle de l'affichage OLED
+- ✅ `automatism_sync` - Synchronisation avec serveur
 
-**Modules restants** (4/6):
-- ⏸️ Feeding (8 méthodes, ~500 lignes)
-- ⏸️ Network (5 méthodes, ~700 lignes)
-- ⏸️ Sleep (13 méthodes, ~800 lignes)
-- ⏸️ Core (refactoring final, ~700 lignes)
-
-**Durée restante**: 2-3 jours
+**Architecture**: Code modulaire, maintenable et testable
 
 ---
 
@@ -106,13 +109,17 @@ ffp5cs/
 │   └── README.md                 # Navigation projet
 │
 ├── src/
-│   ├── automatism/               # ⭐ NOUVEAU (Phase 2)
-│   │   ├── automatism_persistence.h/cpp     ✅ Fait
-│   │   ├── automatism_actuators.h/cpp       ✅ Fait
-│   │   ├── automatism_feeding.h/cpp         ⏸️ À faire
-│   │   ├── automatism_network.h/cpp         ⏸️ À faire
-│   │   └── automatism_sleep.h/cpp           ⏸️ À faire
-│   ├── automatism.cpp            # En refactoring (3421 → ~700)
+│   ├── automatism/               # ⭐ Architecture modulaire (Phase 2 terminée)
+│   │   ├── automatism_persistence.h/cpp     ✅ Terminé
+│   │   ├── automatism_actuators.h/cpp       ✅ Terminé
+│   │   ├── automatism_feeding.h/cpp         ✅ Terminé
+│   │   ├── automatism_network.h/cpp         ✅ Terminé
+│   │   ├── automatism_sleep.h/cpp           ✅ Terminé
+│   │   ├── automatism_refill.h/cpp          ✅ Terminé
+│   │   ├── automatism_alert_controller.cpp  ✅ Terminé
+│   │   ├── automatism_display_controller.cpp ✅ Terminé
+│   │   └── automatism_sync.cpp               ✅ Terminé
+│   ├── automatism.cpp            # Orchestration principale (refactorisé)
 │   └── ...
 │
 ├── GUIDES PHASE 2/

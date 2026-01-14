@@ -24,7 +24,7 @@
 #include "event_log.h"
 #include "automatism/automatism_persistence.h"  // Pour pending sync (v11.32)
  
-extern Automatism g_g_autoCtrl;
+extern Automatism g_autoCtrl;
 extern Mailer mailer;
 extern ConfigManager config;
 extern PowerManager power;
