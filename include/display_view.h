@@ -151,8 +151,19 @@ class DisplayView {
 
   // Impression protégée contre le dépassement horizontal (ajoute "..." si besoin)
   void printClipped(int16_t x, int16_t y, const String& text, uint8_t size);
+  
+  // Vérification santé I2C avant opération d'affichage
+  bool checkI2cHealth();
+  void reportI2cError();
+  
   bool _present{false};
   Adafruit_SSD1306 _disp;
+  
+  // Protection contre spam I2C - désactive l'écran si trop d'erreurs
+  uint8_t _i2cErrorCount{0};
+  static constexpr uint8_t I2C_ERROR_LIMIT = 5;  // Désactive après 5 erreurs consécutives
+  unsigned long _lastI2cCheck{0};
+  static constexpr unsigned long I2C_CHECK_INTERVAL_MS = 30000;  // Revérifier toutes les 30s
   // Index de la prochaine ligne (base 0, en lignes de texte de 8px de hauteur) utilisé par showDiagnostic
   uint8_t _diagLine{0};
   // Durée pendant laquelle le splash initial reste affiché

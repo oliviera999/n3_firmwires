@@ -21,6 +21,20 @@ SensorReadings SystemSensors::read() {
   const uint32_t GLOBAL_TIMEOUT_MS = GlobalTimeouts::GLOBAL_MAX_MS;
   uint32_t startTime = millis();
   uint32_t phaseStart;
+  auto timeoutExceeded = [&](const char* phase) -> bool {
+    uint32_t elapsed = millis() - startTime;
+    if (elapsed > GLOBAL_TIMEOUT_MS) {
+      SENSOR_LOG_PRINTF("[SystemSensors] ⚠️ TIMEOUT GLOBAL: %s apres %u ms (limite: %u ms)\n",
+                        phase, elapsed, GLOBAL_TIMEOUT_MS);
+      return true;
+    }
+    return false;
+  };
+  auto finalizeOnTimeout = [&]() {
+    r.tempWater = NAN;
+    r.tempAir = NAN;
+    r.humidity = NAN;
+  };
 
   // --- Mesures sécurisées avec timeout strict ---
   
@@ -41,6 +55,11 @@ SensorReadings SystemSensors::read() {
       r.tempWater = val;
     }
   }
+  esp_task_wdt_reset();
+  if (timeoutExceeded("temperature eau")) {
+    finalizeOnTimeout();
+    return r;
+  }
 
   // Température air avec méthode non-bloquante
   {
@@ -55,6 +74,11 @@ SensorReadings SystemSensors::read() {
     } else {
       r.tempAir = val;
     }
+  }
+  esp_task_wdt_reset();
+  if (timeoutExceeded("temperature air")) {
+    finalizeOnTimeout();
+    return r;
   }
 
   // Humidité avec méthode non-bloquante
@@ -71,6 +95,11 @@ SensorReadings SystemSensors::read() {
       r.humidity = val;
     }
   }
+  esp_task_wdt_reset();
+  if (timeoutExceeded("humidite")) {
+    finalizeOnTimeout();
+    return r;
+  }
 
   // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
   {
@@ -83,6 +112,11 @@ SensorReadings SystemSensors::read() {
     } else {
       r.wlPota = val;
     }
+  }
+  esp_task_wdt_reset();
+  if (timeoutExceeded("niveau potager")) {
+    finalizeOnTimeout();
+    return r;
   }
   
   {
@@ -111,6 +145,11 @@ SensorReadings SystemSensors::read() {
       r.wlAqua = val;
       _lastValidWlAqua = val;
     }
+  }
+  esp_task_wdt_reset();
+  if (timeoutExceeded("niveau aquarium")) {
+    finalizeOnTimeout();
+    return r;
   }
   
   // Met à jour l'historique wlAqua pour calcul ~15s
@@ -145,6 +184,11 @@ SensorReadings SystemSensors::read() {
       _lastValidWlTank = val;
     }
   }
+  esp_task_wdt_reset();
+  if (timeoutExceeded("niveau reservoir")) {
+    finalizeOnTimeout();
+    return r;
+  }
   
   // Luminosité avec validation
   {
@@ -154,6 +198,13 @@ SensorReadings SystemSensors::read() {
     for (uint8_t i = 0; i < NB_LUMI_SAMPLES; ++i) {
       lumiSum += analogRead(Pins::LUMINOSITE);
       vTaskDelay(pdMS_TO_TICKS(1)); // 1 ms entre échantillons
+      if ((i % 4) == 0) {
+        esp_task_wdt_reset();
+      }
+      if (timeoutExceeded("luminosite")) {
+        r.luminosite = 0;
+        break;
+      }
     }
     uint16_t val = static_cast<uint16_t>(lumiSum / NB_LUMI_SAMPLES);
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Luminosité: %u ms\n", millis() - phaseStart);

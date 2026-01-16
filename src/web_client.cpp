@@ -382,12 +382,11 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 
   Serial.println(F("[SM] Construction du payload..."));
   
-  // Helper strings
+  // Helper strings - UNIQUEMENT les mesures et états actuels (pas les configs!)
   char buf_tempAir[16], buf_humid[16], buf_tempWater[16];
   char buf_wlPota[8], buf_wlAqua[8], buf_wlTank[8];
   char buf_diffMaree[16], buf_lum[16];
   char buf_pumpAqua[2], buf_pumpTank[2], buf_heat[2], buf_uv[2];
-  char buf_threshAqua[8], buf_threshTank[8], buf_threshHeat[8];
   
   strcpy(buf_tempAir, fmtFloat(tempAir).c_str());
   strcpy(buf_humid, fmtFloat(humidity).c_str());
@@ -401,11 +400,10 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   snprintf(buf_pumpTank, sizeof(buf_pumpTank), "%d", m.pumpTank ? 1 : 0);
   snprintf(buf_heat, sizeof(buf_heat), "%d", m.heater ? 1 : 0);
   snprintf(buf_uv, sizeof(buf_uv), "%d", m.light ? 1 : 0);
-  snprintf(buf_threshAqua, sizeof(buf_threshAqua), "%d", ActuatorConfig::Default::AQUA_LEVEL_CM);
-  snprintf(buf_threshTank, sizeof(buf_threshTank), "%d", ActuatorConfig::Default::TANK_LEVEL_CM);
-  snprintf(buf_threshHeat, sizeof(buf_threshHeat), "%d", (int)ActuatorConfig::Default::HEATER_THRESHOLD_C);
 
-  // Ordre exact aligné sur la liste utilisée côté serveur
+  // v11.141: Envoi UNIQUEMENT des mesures et états actuels
+  // Les configurations (seuils, durées, heures, etc.) sont gérées côté serveur
+  // et ne doivent PAS être envoyées par l'ESP pour éviter d'écraser les valeurs distantes
   appendKV("version", ProjectConfig::VERSION);
   appendKV("TempAir", buf_tempAir);
   appendKV("Humidite", buf_humid);
@@ -419,26 +417,11 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   appendKV("etatPompeTank", buf_pumpTank);
   appendKV("etatHeat", buf_heat);
   appendKV("etatUV", buf_uv);
-  // Champs non mesurés ici: valeurs vides
-  appendKV("bouffeMatin", "");
-  appendKV("bouffeMidi", "");
-  appendKV("bouffeSoir", "");
-  appendKV("bouffePetits", "");
-  appendKV("bouffeGros", "");
-  appendKV("tempsGros", "");
-  appendKV("tempsPetits", "");
-  // Seuils par défaut
-  appendKV("aqThreshold", buf_threshAqua);
-  appendKV("tankThreshold", buf_threshTank);
-  appendKV("chauffageThreshold", buf_threshHeat);
-  // Préférences/flags
-  appendKV("mail", "");
-  appendKV("mailNotif", "");
-  appendKV("resetMode", includeReset ? "0" : "");
-  appendKV("tempsRemplissageSec", "");
-  appendKV("limFlood", "");
-  appendKV("WakeUp", "");
-  appendKV("FreqWakeUp", "");
+  
+  // Reset mode - envoyé uniquement si demandé explicitement
+  if (includeReset) {
+    appendKV("resetMode", "0");
+  }
 
   if (truncated) {
     Serial.println(F("[SM] ❌ Payload tronqué - envoi annulé"));
@@ -447,10 +430,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 
   Serial.printf("[SM] Payload construit: %u bytes\n", strlen(payload));
   Serial.printf("[SM] Version: %s\n", ProjectConfig::VERSION);
-  Serial.printf("[SM] Seuils - Aqua: %u, Tank: %u, Heat: %.1f°C\n", 
-               ActuatorConfig::Default::AQUA_LEVEL_CM, 
-               ActuatorConfig::Default::TANK_LEVEL_CM,
-               ActuatorConfig::Default::HEATER_THRESHOLD_C);
+  Serial.println(F("[SM] Note: Configurations non envoyées (gérées côté serveur)"));
 
   LOG(LOG_DEBUG, "POST %s", payload);
   

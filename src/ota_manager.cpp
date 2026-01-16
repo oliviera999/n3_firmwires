@@ -19,6 +19,12 @@
 #include "diagnostics.h"
 #include "task_monitor.h"
 
+namespace {
+bool hasOtaPartition() {
+    return esp_ota_get_next_update_partition(nullptr) != nullptr;
+}
+} // namespace
+
 OTAManager::OTAManager() 
     : m_isUpdating(false)
     , m_lastCheck(0)
@@ -125,6 +131,11 @@ bool OTAManager::validateSpace(size_t required) {
     size_t freeSpace = ESP.getFreeSketchSpace();
     size_t freeHeap = ESP.getFreeHeap();
     
+    if (freeSpace == 0) {
+        log("ℹ️ OTA désactivée: aucune partition OTA (free sketch space=0)");
+        return false;
+    }
+
     log("📊 Espace libre sketch: " + formatBytes(freeSpace));
     log("📊 Heap libre: " + formatBytes(freeHeap));
     
@@ -1387,6 +1398,11 @@ bool OTAManager::checkForUpdate() {
     }
     
     log("✅ WiFi connecté");
+
+    if (!hasOtaPartition()) {
+        log("ℹ️ OTA désactivée: aucune partition OTA disponible");
+        return false;
+    }
     
     // Vérification de l'espace disponible
     if (!validateSpace(1024 * 1024)) { // Minimum 1MB

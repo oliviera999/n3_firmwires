@@ -18,7 +18,11 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _tankThresholdCm(30)
     , _heaterThresholdC(24.0f)
     , _emailEnabled(false)
-    , _freqWakeSec(600)
+    #if defined(PROFILE_TEST)
+    , _freqWakeSec(6)  // 6s par défaut pour wroom-test
+    #else
+    , _freqWakeSec(600)  // 600s par défaut pour production
+    #endif
     , _consecutiveSendFailures(0)
     , _currentBackoffMs(0)
     , _lastSendAttemptMs(0)

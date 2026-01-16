@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include "esp_task_wdt.h"
 #include "task_monitor.h"
+#include "gpio_parser.h"
 
 // ============================================================================
 // Automatism: Chef d'orchestre
@@ -77,7 +78,12 @@ void Automatism::update(const SensorReadings& r) {
     // 4. Gestion réseau (polling commandes)
     JsonDocument doc;
     if (_network.pollRemoteState(doc, now)) {
-        // Appliquer commandes reçues
+        // 4.1 Parser et appliquer tous les GPIO (actionneurs + configs)
+        // GPIOParser::parseAndApply appelle applyConfigFromJson() en interne
+        // ce qui synchronise toutes les configurations (seuils, durées, heures)
+        GPIOParser::parseAndApply(doc, *this);
+        
+        // 4.2 Appliquer commandes nourrissage distant
         _network.handleRemoteFeedingCommands(doc, *this);
     }
 

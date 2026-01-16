@@ -14,13 +14,14 @@ void initialize(AppContext& ctx,
   EventLog::begin();
   EventLog::add("Boot start");
 
-  Serial.println("[FS] Mounting LittleFS...");
+  const char* fsLabel = "littlefs";
+  Serial.printf("[FS] Mounting LittleFS (label=%s)...\n", fsLabel);
   uint32_t fsStartTime = millis();
-  if (!LittleFS.begin(true)) {
+  if (!LittleFS.begin(false, "/littlefs", 10, fsLabel)) {
     Serial.println("[FS] ❌ LittleFS mount failed - tentative de format");
     if (LittleFS.format()) {
       Serial.println("[FS] ✅ Format réussi, tentative de remontage");
-      if (LittleFS.begin(false)) {
+      if (LittleFS.begin(false, "/littlefs", 10, fsLabel)) {
         Serial.println("[FS] ✅ Remontage après format réussi");
       } else {
         Serial.println("[FS] ❌ CRITIQUE: Impossible de monter LittleFS même après format");

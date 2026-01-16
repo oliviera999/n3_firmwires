@@ -90,7 +90,10 @@ bool NVSManager::begin() {
     }
     
     Serial.println(F("[NVS] 🚀 Initialisation du gestionnaire NVS centralisé"));
-    
+
+    // Marquer initialisé avant la création des namespaces (openNamespace en dépend)
+    _initialized = true;
+
     // Pré-créer les namespaces consolidés
     const char* nss[] = {
         NVS_NAMESPACES::SYSTEM,
@@ -109,7 +112,6 @@ bool NVSManager::begin() {
         closeNamespace();
     }
     
-    _initialized = true;
     Serial.println(F("[NVS] ✅ Gestionnaire NVS initialisé"));
     
     // Afficher les statistiques initiales

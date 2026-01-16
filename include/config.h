@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.134"; // Remplissage manuel: timers + anti-retrigger pompe réserve
+    constexpr const char* VERSION = "11.148"; // Nettoyage includes: suppression refs vers fichiers supprimés
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -120,12 +120,10 @@ namespace MonitoringConfig {
 // -----------------------------------------------------------------------------
 // 2.1 DIAGNOSTICS (FEATURE FLAGS)
 // -----------------------------------------------------------------------------
+// v11.145: Désactivation des diagnostics non essentiels pour simplification
+// Ces features ajoutent de la complexité sans bénéfice réel en production
 #ifndef FEATURE_DIAG_DIGEST
-  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-    #define FEATURE_DIAG_DIGEST 1
-  #else
-    #define FEATURE_DIAG_DIGEST 0
-  #endif
+  #define FEATURE_DIAG_DIGEST 0  // Désactivé: emails digest non essentiels
 #endif
 
 #ifndef FEATURE_DIAG_STATS
@@ -137,11 +135,7 @@ namespace MonitoringConfig {
 #endif
 
 #ifndef FEATURE_DIAG_TIME_DRIFT
-  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-    #define FEATURE_DIAG_TIME_DRIFT 1
-  #else
-    #define FEATURE_DIAG_TIME_DRIFT 0
-  #endif
+  #define FEATURE_DIAG_TIME_DRIFT 0  // Désactivé: monitoring drift non essentiel
 #endif
 
 #ifndef FEATURE_DIAG_STACK_LOGS
@@ -472,7 +466,7 @@ namespace TaskConfig {
     constexpr UBaseType_t WEB_TASK_PRIORITY = 2;
     constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
-    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 12288;  // 12 KB (augmenté de 8192 pour SSL/TLS)
+    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;   // 8 KB (réduit de 12 KB - v11.144 optim mémoire)
     constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     
@@ -481,6 +475,12 @@ namespace TaskConfig {
     constexpr BaseType_t DISPLAY_TASK_CORE_ID = 1;
 
     constexpr uint32_t OTA_TASK_STACK_SIZE = 8192;
+    
+    // Tâche mail asynchrone (v11.143) - évite de bloquer automationTask pendant SMTP
+    constexpr uint32_t MAIL_TASK_STACK_SIZE = 10240;  // 10 KB (requis pour TLS/SMTP avec mbedTLS)
+    constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
+    constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
+    constexpr uint8_t MAIL_QUEUE_SIZE = 2;            // 2 mails en attente (réduit de 5 - v11.144)
 }
 
 namespace DefaultValues {

@@ -183,7 +183,15 @@ void onWifiReady(AppContext& ctx,
 
 #if FEATURE_MAIL
   ctx.mailer.begin();
-  EventLog::add("Mailer ready");
+  Serial.println(F("[Boot] Appel de startMailTask..."));
+  // v11.143: Démarrer la tâche mail asynchrone pour éviter de bloquer automationTask
+  bool mailTaskOk = ctx.mailer.startMailTask();
+  Serial.printf("[Boot] startMailTask retourne: %s\n", mailTaskOk ? "OK" : "ECHEC");
+  if (mailTaskOk) {
+    EventLog::add("Mailer ready (async task started)");
+  } else {
+    EventLog::add("Mailer ready (async task FAILED - fallback sync)");
+  }
 #else
   EventLog::add("Mailer disabled (FEATURE_MAIL=0)");
 #endif

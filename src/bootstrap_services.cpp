@@ -57,7 +57,6 @@ void initializePeripherals(AppContext& ctx) {
     ctx.display.showDiagnostic("Systems");
   }
   ctx.power.initWatchdog();
-  ctx.power.initModemSleep();
 
 }
 

@@ -342,8 +342,55 @@ void DisplayView::clear() {
 
 void DisplayView::flush() {
   if (!_present) return;
+  
+  // Vérifier la santé I2C avant d'écrire
+  if (!checkI2cHealth()) return;
+  
   _disp.display();
   _needsFlush = false;
+  
+  // Reset du compteur d'erreurs si le flush réussit
+  _i2cErrorCount = 0;
+}
+
+bool DisplayView::checkI2cHealth() {
+  if (!_present) return false;
+  
+  // Vérification périodique pour ré-activer l'écran si les erreurs ont cessé
+  unsigned long now = millis();
+  if (_i2cErrorCount >= I2C_ERROR_LIMIT) {
+    // Écran désactivé temporairement, vérifier si on peut le réactiver
+    if (now - _lastI2cCheck >= I2C_CHECK_INTERVAL_MS) {
+      _lastI2cCheck = now;
+      
+      // Test silencieux de présence I2C
+      Wire.beginTransmission(Pins::OLED_ADDR);
+      byte error = Wire.endTransmission();
+      
+      if (error == 0) {
+        // L'écran répond à nouveau, réinitialiser
+        Serial.println(F("[OLED] Écran I2C détecté à nouveau, réactivation..."));
+        _i2cErrorCount = 0;
+        return true;
+      } else {
+        // Toujours pas de réponse, log silencieux (une seule fois)
+        return false;
+      }
+    }
+    return false;  // Écran désactivé, ne pas tenter d'écrire
+  }
+  
+  return true;
+}
+
+void DisplayView::reportI2cError() {
+  if (_i2cErrorCount < I2C_ERROR_LIMIT) {
+    _i2cErrorCount++;
+    if (_i2cErrorCount >= I2C_ERROR_LIMIT) {
+      Serial.printf("[OLED] %d erreurs I2C consécutives - écran désactivé temporairement\n", I2C_ERROR_LIMIT);
+      _lastI2cCheck = millis();
+    }
+  }
 }
 
 void DisplayView::lockScreen(uint32_t durationMs) {

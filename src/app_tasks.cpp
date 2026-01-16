@@ -7,9 +7,9 @@
 #include <time.h>
 #include <math.h> // isnan
 
-#include "event_log.h"
 #include "gpio_parser.h"
 #include "config.h"
+#include "event_log.h"
 
 namespace {
 
@@ -307,14 +307,15 @@ namespace AppTasks {
 bool start(AppContext& ctx) {
   g_ctx = &ctx;
 
-  g_sensorQueue = xQueueCreate(100, sizeof(SensorReadings));
+  // v11.144: Réduit de 100 à 10 slots (~1.8 KB économisés)
+  g_sensorQueue = xQueueCreate(10, sizeof(SensorReadings));
   if (!g_sensorQueue) {
     Serial.println(F("[App] ❌ CRITIQUE: Échec création queue capteurs - arrêt système"));
     EventLog::add("CRITICAL: Failed to create sensor queue");
     return false;
   }
 
-  Serial.printf("[App] ✅ Queue capteurs créée avec succès (100 slots)\n");
+  Serial.printf("[App] ✅ Queue capteurs créée avec succès (10 slots)\n");
 
   BaseType_t sensorCreated = xTaskCreatePinnedToCore(sensorTask,
                                                      "sensorTask",

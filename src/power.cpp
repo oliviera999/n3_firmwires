@@ -16,7 +16,6 @@
 PowerManager::PowerManager()
     : _gmtOffsetSec(SystemConfig::NTP_GMT_OFFSET_SEC), _daylightOffsetSec(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC), _ntpServer(SystemConfig::NTP_SERVER),
       _lastNtpSync(0), _lastSSID(""), _lastPassword(""), _hasSavedCredentials(false),
-      _useModemSleep(false), _modemSleepEnabled(false), _wifiWakeupEnabled(false), _lastModemSleepTest(0),
       _lastTimeSave(0), _lastSavedEpoch(0), _lastDriftCorrection(0), _currentDriftPPM(0.0f), _lastSyncEpoch(0),
       _lastDriftSeconds(0.0f), _defaultDriftAccumulator(0.0f), _measuredDriftAccumulator(0.0f), _sleepRemainderUs(0) {
 }
@@ -38,13 +37,6 @@ void PowerManager::resetWatchdog() {
 }
 
 uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
-  // NOUVELLE LOGIQUE : Utiliser modem sleep si configuré et WiFi connecté
-  if (_useModemSleep && WiFi.status() == WL_CONNECTED) {
-    Serial.println("[Power] Mode modem sleep activé - Utilisation du nouveau système");
-    return goToModemSleepWithLightSleep(sleepTimeSeconds);
-  }
-  
-  // LOGIQUE EXISTANTE : Light sleep classique
   Serial.printf("[Power] Mise en veille légère pour %u secondes\n", sleepTimeSeconds);
   
   // Timestamp avant le passage en veille
@@ -355,11 +347,56 @@ bool PowerManager::reconnectWithSavedCredentials() {
     Serial.printf("[Power] Reconnexion WiFi réussie à %s (%s)\n", 
                   _lastSSID.c_str(), WiFi.localIP().toString().c_str());
     WiFi.setSleep(true);  // Active le modem-sleep pour économie d'énergie
+    
+    // Attente stabilisation stack TCP/IP (évite "connection refused" après réveil)
+    waitForNetworkReady();
+    
     return true;
   } else {
     Serial.printf("[Power] Échec de reconnexion WiFi à %s (timeout après %u ms)\n", 
                   _lastSSID.c_str(), timeoutMs);
     return false;
+  }
+}
+
+// ========================================
+// ATTENTE STABILISATION RÉSEAU
+// ========================================
+void PowerManager::waitForNetworkReady() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println(F("[Power] waitForNetworkReady: WiFi non connecté, abandon"));
+    return;
+  }
+  
+  const uint32_t STABILIZATION_DELAY_MS = 1500;  // 1.5 secondes de stabilisation
+  const uint32_t MAX_WAIT_MS = 5000;             // 5 secondes max d'attente totale
+  uint32_t startMs = millis();
+  
+  Serial.println(F("[Power] Attente stabilisation réseau..."));
+  
+  // Phase 1: Délai minimum de stabilisation TCP/IP
+  vTaskDelay(pdMS_TO_TICKS(STABILIZATION_DELAY_MS));
+  
+  // Phase 2: Vérifier que l'IP est toujours valide
+  while ((millis() - startMs) < MAX_WAIT_MS) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+      // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
+      IPAddress dnsResult;
+      if (WiFi.hostByName("pool.ntp.org", dnsResult)) {
+        Serial.printf("[Power] ✅ Réseau prêt (%s, DNS OK, %lu ms)\n", 
+                      WiFi.localIP().toString().c_str(), millis() - startMs);
+        return;
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+  
+  // Timeout atteint mais WiFi connecté - on continue quand même
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[Power] ⚠️ Réseau partiellement prêt après %lu ms (DNS timeout)\n", 
+                  millis() - startMs);
+  } else {
+    Serial.println(F("[Power] ❌ Réseau perdu pendant stabilisation"));
   }
 }
 
@@ -534,177 +571,6 @@ void PowerManager::smartSaveTime() {
                 getCurrentTimeString().c_str(), currentEpoch);
 }
 
-// ========================================
-// NOUVELLES MÉTHODES : MODEM SLEEP AVEC LIGHT SLEEP
-// ========================================
-
-uint32_t PowerManager::goToModemSleepWithLightSleep(uint32_t sleepTimeSeconds) {
-  Serial.printf("[Power] Modem sleep + Light sleep pour %u secondes\n", sleepTimeSeconds);
-  
-  // Vérifier si WiFi est connecté
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[Power] WiFi non connecté - Fallback vers light sleep classique");
-    return goToLightSleep(sleepTimeSeconds);
-  }
-  
-  // Timestamp avant le passage en veille
-  const uint64_t startUs = esp_timer_get_time();
-  
-  // Sauvegarde de l'heure avant le sommeil (si configuré)
-  if (SleepConfig::SAVE_TIME_BEFORE_SLEEP) {
-    saveTimeToFlash();
-  }
-  
-  // IMPORTANT : NE PAS déconnecter le WiFi
-  // Le WiFi reste connecté en modem sleep automatique
-  
-  // CRITIQUE : Attendre que toutes les opérations réseau soient terminées
-  // avant d'entrer en sleep pour éviter les conflits LWIP/TCPIP
-  vTaskDelay(pdMS_TO_TICKS(100));  // 100ms pour terminer les opérations en cours
-  
-  // Configuration du réveil par timer
-  esp_sleep_enable_timer_wakeup(sleepTimeSeconds * 1000000ULL);
-  
-  // NOTE : Le réveil WiFi fonctionne AUTOMATIQUEMENT avec le modem sleep
-  // PAS BESOIN d'appeler esp_sleep_enable_wifi_wakeup() qui n'est pas disponible partout
-  // Le modem WiFi reste actif en light sleep et peut réveiller l'ESP32
-  
-  // Configuration SIMPLIFIÉE des domaines de puissance pour light sleep avec WiFi
-  // On ne touche PAS aux power domains - le modem sleep gère tout automatiquement
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);   // RTC ON pour timer wakeup
-  
-  _wifiWakeupEnabled = true;  // Indicateur que WiFi peut réveiller
-  
-  Serial.println("[Power] WiFi maintenu connecté - Réveil réseau automatique via modem sleep");
-  Serial.printf("[Power] IP: %s, RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
-  
-  // Light sleep avec WiFi en modem sleep automatique
-  esp_light_sleep_start();
-  
-  // Après réveil, déterminer la cause
-  esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
-  logWakeupCause(wakeup_cause);
-  
-  _wifiWakeupEnabled = false;
-  
-  // Vérifier que le WiFi est toujours connecté
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[Power] WiFi toujours connecté après réveil (%s)\n", 
-                  WiFi.localIP().toString().c_str());
-  } else {
-    Serial.println("[Power] ⚠️ WiFi déconnecté après réveil - reconnexion nécessaire");
-    // Tentative de reconnexion avec identifiants sauvegardés
-    if (_hasSavedCredentials) {
-      reconnectWithSavedCredentials();
-    }
-  }
-  
-  return getSleptTime(startUs);
-}
-
-void PowerManager::enableModemSleepMode() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[Power] ⚠️ Impossible d'activer modem sleep - WiFi non connecté");
-    return;
-  }
-  
-  // Activation du modem sleep automatique
-  WiFi.setSleep(true);
-  
-  // Configuration DTIM optimale
-  // esp_wifi_set_ps(1); // WIFI_PS_MIN_MODEM - non disponible dans cette version
-  
-  _modemSleepEnabled = true;
-  
-  Serial.println("[Power] ✅ Modem sleep activé - Réveil WiFi possible");
-  Serial.printf("[Power] DTIM configuré, IP: %s\n", WiFi.localIP().toString().c_str());
-}
-
-void PowerManager::disableModemSleepMode() {
-  WiFi.setSleep(false);
-  // esp_wifi_set_ps(0); // WIFI_PS_NONE - non disponible dans cette version
-  _modemSleepEnabled = false;
-  
-  Serial.println("[Power] ❌ Modem sleep désactivé");
-}
-
-bool PowerManager::isWifiWakeupAvailable() const {
-  return _modemSleepEnabled && (WiFi.status() == WL_CONNECTED);
-}
-
-bool PowerManager::testDTIMCompatibility() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[Power] ⚠️ Test DTIM impossible - WiFi non connecté");
-    return false;
-  }
-  
-  unsigned long now = millis();
-  if (now - _lastModemSleepTest < MODEM_SLEEP_TEST_INTERVAL) {
-    Serial.println("[Power] Test DTIM récent - skip");
-    return true; // On assume que ça fonctionne si test récent
-  }
-  
-  Serial.println("[Power] 🧪 Test de compatibilité DTIM...");
-  
-  // Sauvegarder l'état actuel du modem sleep
-  bool wasEnabled = _modemSleepEnabled;
-  
-  // Activer modem sleep temporairement
-  enableModemSleepMode();
-  
-  // Attendre quelques cycles DTIM (5 secondes)
-  // Note: Utilisation de vTaskDelay() car cette fonction est appelée après l'initialisation de FreeRTOS
-  // Si cette fonction est appelée avant l'initialisation de FreeRTOS, utiliser delay() à la place
-  vTaskDelay(pdMS_TO_TICKS(5000));
-  
-  // Vérifier si la connexion est maintenue
-  bool stillConnected = (WiFi.status() == WL_CONNECTED);
-  
-  // Restaurer l'état précédent
-  if (!wasEnabled) {
-    disableModemSleepMode();
-  }
-  
-  _lastModemSleepTest = now;
-  
-  if (stillConnected) {
-    Serial.println("[Power] ✅ Test DTIM réussi - Compatible avec modem sleep");
-  } else {
-    Serial.println("[Power] ❌ Test DTIM échoué - Incompatible avec modem sleep");
-    Serial.println("[Power] 💡 Le routeur peut ne pas supporter le DTIM correctement");
-  }
-  
-  return stillConnected;
-}
-
-void PowerManager::setSleepMode(bool useModemSleep) {
-  _useModemSleep = useModemSleep;
-  
-  if (useModemSleep) {
-    Serial.println("[Power] 🔄 Mode de sleep changé : Modem Sleep + Light Sleep");
-    // Tester la compatibilité
-    testDTIMCompatibility();
-  } else {
-    Serial.println("[Power] 🔄 Mode de sleep changé : Light Sleep classique");
-    disableModemSleepMode();
-  }
-}
-
-void PowerManager::configurePowerDomainsForModemSleep() {
-  // DÉSACTIVÉ : Configuration trop agressive causant des conflits
-  // Le modem sleep + light sleep fonctionne AUTOMATIQUEMENT sans configuration manuelle
-  // des power domains. L'ESP-IDF gère cela de manière optimale.
-  
-  // ANCIENNE CONFIG (causait des crashes) :
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_OFF);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_VDDSDIO, ESP_PD_OPTION_OFF);
-  
-  Serial.println("[Power] Power domains: utilisation configuration automatique ESP-IDF");
-}
-
 void PowerManager::logWakeupCause(esp_sleep_wakeup_cause_t cause) {
   switch(cause) {
     case ESP_SLEEP_WAKEUP_TIMER:
@@ -753,24 +619,4 @@ uint32_t PowerManager::getSleptTime(uint64_t startUs) {
   }
   
   return sleptSec;
-}
-
-// Initialisation du nouveau système
-void PowerManager::initModemSleep() {
-  Serial.println("[Power] 🔧 Initialisation du système Modem Sleep");
-  
-  // Configuration par défaut : activer modem sleep si WiFi connecté
-  if (WiFi.status() == WL_CONNECTED) {
-    _useModemSleep = true;
-    enableModemSleepMode();
-    Serial.println("[Power] ✅ Modem sleep activé automatiquement (WiFi connecté)");
-  } else {
-    _useModemSleep = false;
-    Serial.println("[Power] ⚠️ Modem sleep désactivé (WiFi non connecté)");
-  }
-  
-  // Test de compatibilité DTIM
-  if (_useModemSleep) {
-    testDTIMCompatibility();
-  }
 }

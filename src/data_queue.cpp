@@ -1,5 +1,9 @@
 #include "data_queue.h"
 
+namespace {
+const char* kLittleFsLabel = "littlefs";
+}
+
 DataQueue::DataQueue(uint16_t maxEntries)
     : _maxEntries(maxEntries)
     , _currentSize(0)
@@ -13,7 +17,7 @@ bool DataQueue::begin() {
     }
     
     // Monter LittleFS si pas déjà fait
-    if (!LittleFS.begin(false)) {
+    if (!LittleFS.begin(false, "/littlefs", 10, kLittleFsLabel)) {
         Serial.println(F("[DataQueue] ✗ Échec montage LittleFS"));
         return false;
     }

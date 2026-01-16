@@ -17,13 +17,10 @@
 #include "web_routes_status.h"
 #include "web_routes_ui.h"
 #include "web_server_context.h"
-
-// Optimisations
-// #include "json_pool.h" // Supprimé (suringénierie)
-#include "sensor_cache.h"
 #include "realtime_websocket.h"
+#include "sensor_cache.h"
 #include "asset_bundler.h"
-#include "event_log.h"
+
 #include "automatism/automatism_persistence.h"  // Pour pending sync (v11.32)
  
 extern Automatism g_autoCtrl;

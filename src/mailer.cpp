@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <LittleFS.h>
+#include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 
@@ -28,8 +29,10 @@ static const char* formatUptime(unsigned long ms) {
 }
 
 // Buffers statiques pour éviter fragmentation mémoire (conforme .cursorrules)
-static char g_systemInfoFooterBuffer[4096];
-static char g_detailedTimeReportBuffer[2048];
+// v11.144: Réduits pour économiser ~4.5 KB de RAM
+static char g_systemInfoFooterBuffer[1024];   // Réduit de 4096
+static char g_detailedTimeReportBuffer[512];  // Réduit de 2048
+static const char* kLittleFsLabel = "littlefs";
 
 static const char* buildSystemInfoFooter() {
   char* buf = g_systemInfoFooterBuffer;
@@ -382,7 +385,7 @@ static const char* buildSystemInfoFooter() {
   remaining -= written;
 
   // Filesystem (LittleFS)
-  if (LittleFS.begin(false)) {
+  if (LittleFS.begin(false, "/littlefs", 10, kLittleFsLabel)) {
     size_t total = LittleFS.totalBytes();
     size_t used  = LittleFS.usedBytes();
     written = snprintf(buf, remaining, "- FS LittleFS: %zu/%zu bytes\n", used, total);
@@ -425,8 +428,8 @@ static const char* buildSystemInfoFooter() {
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", bouffeMidiOk, false);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", bouffeSoirOk, false);
     g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_pompe_lock", pompeAquaLocked, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_force_wakeup", forceWakeUp, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", pompeAquaLocked, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_force_wk", forceWakeUp, false);
     written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
                                        "- bouffeMidiOk: %s\n"
                                        "- bouffeSoirOk: %s\n"
@@ -701,11 +704,58 @@ bool Mailer::begin() {
   return true;
 }
 
-bool Mailer::send(const char* subject, const char* message, const char* toName, const char* toEmail) {
-  Serial.println(F("[Mail] Trace 1: Start send"));
+// Fonction d'attente réseau pour SMTP (similaire à PowerManager::waitForNetworkReady)
+static bool waitForNetworkReadyForSMTP() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println(F("[Mail] waitForNetworkReady: WiFi non connecté, abandon"));
+    return false;
+  }
+  
+  const uint32_t STABILIZATION_DELAY_MS = 2000;  // 2 secondes de stabilisation (plus long pour SMTP TLS)
+  const uint32_t MAX_WAIT_MS = 8000;             // 8 secondes max d'attente totale
+  uint32_t startMs = millis();
+  
+  Serial.println(F("[Mail] Attente stabilisation réseau pour SMTP..."));
+  
+  // Phase 1: Délai minimum de stabilisation TCP/IP
+  vTaskDelay(pdMS_TO_TICKS(STABILIZATION_DELAY_MS));
+  
+  // Phase 2: Vérifier que l'IP est toujours valide et DNS fonctionne
+  while ((millis() - startMs) < MAX_WAIT_MS) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+      // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
+      IPAddress dnsResult;
+      if (WiFi.hostByName("smtp.gmail.com", dnsResult)) {
+        Serial.printf("[Mail] ✅ Réseau prêt pour SMTP (%s, DNS OK, %lu ms)\n", 
+                      WiFi.localIP().toString().c_str(), millis() - startMs);
+        return true;
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(300));
+  }
+  
+  // Timeout atteint mais WiFi connecté - on tente quand même
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[Mail] ⚠️ Réseau partiellement prêt après %lu ms (DNS timeout), on tente quand même\n", 
+                  millis() - startMs);
+    return true;
+  }
+  
+  Serial.println(F("[Mail] ❌ Réseau perdu pendant stabilisation"));
+  return false;
+}
+
+bool Mailer::sendSync(const char* subject, const char* message, const char* toName, const char* toEmail) {
+  Serial.println(F("[Mail] Trace 1: Start sendSync"));
   Serial.println(F("[Mail] ===== DIAGNOSTIC SEND ====="));
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
   Serial.printf("[Mail] _smtp.connected(): %s\n", _smtp.connected() ? "TRUE" : "FALSE");
+  
+  // Vérifier que le réseau est prêt avant de tenter SMTP
+  if (!waitForNetworkReadyForSMTP()) {
+    Serial.println(F("[Mail] ❌ Réseau non prêt, abandon envoi mail"));
+    return false;
+  }
   
   if (!_ready || !_smtp.connected()) {
     Serial.println(F("[Mail] ⚠️ Connexion SMTP requise"));
@@ -787,12 +837,25 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   } else {
     Serial.println(F("[Mail] Message envoyé avec succès ✔"));
   }
+  
+  // CRITIQUE: Fermer la session SMTP après chaque envoi pour éviter les callbacks
+  // pendants qui peuvent causer un INT_WDT avec PC=0x0 si la connexion timeout
+  // côté serveur (Gmail ferme les sessions inactives après quelques minutes)
+  Serial.println(F("[Mail] Trace 8: Fermeture session SMTP..."));
+  _smtp.closeSession();
+  _ready = false;
+  Serial.println(F("[Mail] ✅ Session SMTP fermée proprement"));
+  
   return ok;
 }
 #else
 bool Mailer::begin() { Serial.println("[Mail] Désactivé (FEATURE_MAIL=0)"); return true; }
+bool Mailer::sendSync(const char*, const char*, const char*, const char*) { return false; }
 bool Mailer::send(const char*, const char*, const char*, const char*) { return false; }
 bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
+  (void)subject; (void)message; (void)toEmail; return false;
+}
+bool Mailer::sendAlertSync(const char* subject, const String& message, const char* toEmail) {
   (void)subject; (void)message; (void)toEmail; return false;
 }
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
@@ -801,10 +864,12 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
   (void)reason; (void)actualSleepSeconds; (void)readings; return false;
 }
+bool Mailer::startMailTask() { return true; }
+uint32_t Mailer::getQueuedMails() const { return 0; }
 #endif
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
-bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
+bool Mailer::sendAlertSync(const char* subject, const String& message, const char* toEmail) {
   Serial.println(F("[Mail] ===== DIAGNOSTIC SENDALERT ====="));
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
   Serial.printf("[Mail] subject: '%s'\n", subject ? subject : "NULL");
@@ -839,15 +904,15 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   enhancedMessage += timeReport;
   Serial.printf("[Mail] enhancedMessage final: %d chars\n", enhancedMessage.length());
   
-  Serial.println(F("[Mail] ===== ENVOI D'ALERTE ====="));
+  Serial.println(F("[Mail] ===== ENVOI D'ALERTE (SYNC) ====="));
   Serial.printf("[Mail] Type: Alerte système\n");
   Serial.printf("[Mail] Destinataire: %s\n", toEmail);
   Serial.printf("[Mail] Objet original: %s\n", subject);
   Serial.printf("[Mail] Objet final: %s\n", alertSubject.c_str());
   Serial.println(F("[Mail] ==========================="));
   
-  bool result = send(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
-  Serial.printf("[Mail] ===== RÉSULTAT SENDALERT: %s =====\n", result ? "SUCCESS" : "FAILED");
+  bool result = sendSync(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
+  Serial.printf("[Mail] ===== RÉSULTAT SENDALERTSYNC: %s =====\n", result ? "SUCCESS" : "FAILED");
   
   // Nettoyer les infos PANIC après l'envoi réussi du mail (pour éviter de les réutiliser au prochain boot)
   // Utiliser l'instance globale de Diagnostics pour nettoyer les infos dans NVS
@@ -907,7 +972,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   Serial.println(F("[Mail] ⚡ Utilisation des dernières lectures (pas de nouvelle lecture capteurs)"));
   Serial.println(F("[Mail] =============================="));
   
-  return send(sleepSubject.c_str(), sleepMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
+  return sendSync(sleepSubject.c_str(), sleepMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
 }
 
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
@@ -967,6 +1032,184 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   Serial.printf("[Mail] Durée veille: %u s\n", actualSleepSeconds);
   Serial.println(F("[Mail] =============================="));
   
-  return send(wakeSubject.c_str(), wakeMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
+  return sendSync(wakeSubject.c_str(), wakeMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
+}
+
+// ============================================================================
+// MÉTHODES ASYNCHRONES (v11.142) - Non-bloquantes
+// Ces méthodes ajoutent le mail à une queue et retournent immédiatement.
+// La tâche mailTask envoie les mails en arrière-plan.
+// ============================================================================
+
+uint32_t Mailer::getQueuedMails() const {
+  if (!_mailQueue) return 0;
+  return uxQueueMessagesWaiting(_mailQueue);
+}
+
+// Tâche FreeRTOS dédiée à l'envoi des mails
+void Mailer::mailTaskFunction(void* param) {
+  Mailer* self = static_cast<Mailer*>(param);
+  MailQueueItem item;
+  
+  Serial.println(F("[MailTask] Tâche mail asynchrone démarrée"));
+  
+  for (;;) {
+    // Attend un mail dans la queue (bloquant avec timeout de 5 secondes)
+    if (xQueueReceive(self->_mailQueue, &item, pdMS_TO_TICKS(5000)) == pdTRUE) {
+      Serial.printf("[MailTask] 📬 Mail à envoyer: '%s'\n", item.subject);
+      
+      // Reset watchdog avant l'envoi (peut être long)
+      esp_task_wdt_reset();
+      
+      bool success;
+      if (item.isAlert) {
+        success = self->sendAlertSync(item.subject, String(item.message), item.toEmail);
+      } else {
+        success = self->sendSync(item.subject, item.message, "User", item.toEmail);
+      }
+      
+      if (success) {
+        self->_mailsSent++;
+        Serial.printf("[MailTask] ✅ Mail envoyé avec succès (%u total)\n", self->_mailsSent);
+      } else {
+        self->_mailsFailed++;
+        Serial.printf("[MailTask] ❌ Échec envoi mail (%u échecs)\n", self->_mailsFailed);
+      }
+      
+      // Reset watchdog après l'envoi
+      esp_task_wdt_reset();
+    }
+    
+    // Petit délai entre les vérifications
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+}
+
+bool Mailer::startMailTask() {
+  Serial.println(F("[Mail] >>> DEMARRAGE TACHE MAIL ASYNC <<<"));
+  
+  // Créer la queue de mails
+  _mailQueue = xQueueCreate(TaskConfig::MAIL_QUEUE_SIZE, sizeof(MailQueueItem));
+  if (!_mailQueue) {
+    Serial.println(F("[Mail] ❌ Échec création queue mail"));
+    return false;
+  }
+  Serial.printf("[Mail] Queue mail creee (%d slots)\n", TaskConfig::MAIL_QUEUE_SIZE);
+  
+  // Créer la tâche mail sur le core 0 (pour ne pas impacter les capteurs sur core 1)
+  BaseType_t result = xTaskCreatePinnedToCore(
+    mailTaskFunction,
+    "mailTask",
+    TaskConfig::MAIL_TASK_STACK_SIZE,
+    this,
+    TaskConfig::MAIL_TASK_PRIORITY,
+    &_mailTaskHandle,
+    TaskConfig::MAIL_TASK_CORE_ID
+  );
+  
+  if (result != pdPASS) {
+    Serial.println(F("[Mail] ❌ Échec création tâche mail"));
+    vQueueDelete(_mailQueue);
+    _mailQueue = nullptr;
+    return false;
+  }
+  
+  Serial.printf("[Mail] ✅ Tâche mail démarrée (stack=%u, prio=%u, core=%d)\n",
+                TaskConfig::MAIL_TASK_STACK_SIZE,
+                TaskConfig::MAIL_TASK_PRIORITY,
+                TaskConfig::MAIL_TASK_CORE_ID);
+  
+  return true;
+}
+
+// Méthode send() asynchrone - ajoute à la queue et retourne immédiatement
+bool Mailer::send(const char* subject, const char* message, const char* toName, const char* toEmail) {
+  (void)toName; // Non utilisé dans la version asynchrone
+  
+  if (!_mailQueue) {
+    Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
+    return sendSync(subject, message, toName, toEmail);
+  }
+  
+  MailQueueItem item;
+  memset(&item, 0, sizeof(item));
+  
+  // Copie sécurisée des données
+  if (subject) {
+    strncpy(item.subject, subject, sizeof(item.subject) - 1);
+  }
+  if (message) {
+    strncpy(item.message, message, sizeof(item.message) - 1);
+  }
+  if (toEmail) {
+    strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
+  } else {
+    strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
+  }
+  item.isAlert = false;
+  
+  // Ajoute à la queue (non-bloquant, timeout 100ms)
+  if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
+    Serial.println(F("[Mail] ⚠️ Queue pleine, mail ignoré"));
+    return false;
+  }
+  
+  Serial.printf("[Mail] 📥 Mail ajouté à la queue (%u en attente): '%s'\n", 
+                getQueuedMails(), subject);
+  return true;
+}
+
+// Méthode sendAlert() asynchrone - ajoute à la queue et retourne immédiatement
+bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
+  Serial.println(F("[Mail] ===== SENDALERT ASYNC (v11.142) ====="));
+  
+  if (!_mailQueue) {
+    Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
+    return sendAlertSync(subject, message, toEmail);
+  }
+  
+  // Vérifications préalables
+  if (!subject) {
+    Serial.println(F("[Mail] ❌ ERREUR: subject est NULL"));
+    return false;
+  }
+  if (!toEmail || strlen(toEmail) == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: toEmail est vide/NULL"));
+    return false;
+  }
+  if (message.length() == 0) {
+    Serial.println(F("[Mail] ❌ ERREUR: message vide"));
+    return false;
+  }
+  
+  MailQueueItem item;
+  memset(&item, 0, sizeof(item));
+  
+  // Copie sécurisée des données
+  strncpy(item.subject, subject, sizeof(item.subject) - 1);
+  
+  // Tronquer le message si trop long
+  size_t msgLen = message.length();
+  if (msgLen >= sizeof(item.message)) {
+    Serial.printf("[Mail] ⚠️ Message tronqué de %u à %u caractères\n", 
+                  msgLen, sizeof(item.message) - 1);
+    msgLen = sizeof(item.message) - 1;
+  }
+  strncpy(item.message, message.c_str(), msgLen);
+  item.message[msgLen] = '\0';
+  
+  strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
+  item.isAlert = true;
+  
+  // Ajoute à la queue (non-bloquant, timeout 100ms)
+  if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
+    Serial.println(F("[Mail] ⚠️ Queue pleine, alerte ignorée"));
+    return false;
+  }
+  
+  Serial.printf("[Mail] 📥 Alerte ajoutée à la queue (%u en attente): '%s'\n", 
+                getQueuedMails(), subject);
+  Serial.println(F("[Mail] ✅ Retour immédiat (non-bloquant)"));
+  return true;
 }
 #endif

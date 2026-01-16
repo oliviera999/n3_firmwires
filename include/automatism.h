@@ -118,6 +118,7 @@ class Automatism {
   friend class AutomatismRefillController;
   friend class AutomatismAlertController;
   friend class AutomatismDisplayController;
+  friend class AutomatismSleep;
 
   void initializeNetworkModule();
   void attachFeedingCallbacks();
@@ -163,7 +164,11 @@ class Automatism {
   unsigned long mailBlinkUntil = 0;
   unsigned long _countdownEnd = 0;
   String _countdownLabel;
-  uint16_t freqWakeSec = 600; // Fréquence de réveil en secondes (10 min par défaut)
+  #if defined(PROFILE_TEST)
+    uint16_t freqWakeSec = 6; // Fréquence de réveil en secondes (6s par défaut pour wroom-test)
+  #else
+    uint16_t freqWakeSec = 600; // Fréquence de réveil en secondes (10 min par défaut)
+  #endif
   
   // Protection contre l'écrasement du forceWakeUp au démarrage
   unsigned long _wakeupProtectionEnd = 0;
@@ -215,8 +220,8 @@ class Automatism {
   // remote fetch timing
   unsigned long _lastRemoteFetch{0};
   // Intervalle entre deux téléchargements de l'état distant
-  // Ajusté à 4s pour cohérence avec la fréquence des capteurs
-  const unsigned long remoteFetchInterval = 4000; // 4 s - cohérent avec la fréquence des capteurs
+  // v11.145: Augmenté à 60s pour réduire la charge réseau et améliorer la stabilité offline
+  const unsigned long remoteFetchInterval = 60000; // 60 s - réduit la dépendance réseau
 
   // thresholds modifiables à distance
   uint16_t aqThresholdCm = ActuatorConfig::Default::AQUA_LEVEL_CM;

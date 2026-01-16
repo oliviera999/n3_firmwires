@@ -12,6 +12,40 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.138 - 2026-01-15
+
+### Réseau / stabilité
+
+- ✅ **HTTP au boot** : suppression du GET distant pendant l'init NTP pour éviter un panic LWIP
+
+---
+
+## Version 11.137 - 2026-01-15
+
+### Mail / Filesystem
+
+- ✅ **ESP Mail Client** : flash FS désactivé pour éviter les erreurs `spiffs`
+
+---
+
+## Version 11.136 - 2026-01-15
+
+### Stockage LittleFS
+
+- ✅ **Montage stable** : base path `/littlefs` explicite pour éviter l'échec d'enregistrement VFS
+- ✅ **Montage partagé** : label `littlefs` conservé sur tous les points d'entrée
+
+---
+
+## Version 11.135 - 2026-01-15
+
+### Stockage LittleFS
+
+- ✅ **Montage fiable** : label `littlefs` explicite dans tous les modules
+- ✅ **Format cohérent** : remontage après format avec le bon label
+
+---
+
 ## Version 11.134 - 2026-01-14
 
 ### Remplissage manuel (pompe réserve)

@@ -12,27 +12,13 @@
 class PowerManager {
  public:
   PowerManager();
-  
-  // Initialisation
-  void initModemSleep(); // NOUVELLE MÉTHODE
 
   // Chien de garde
   void initWatchdog();
   void resetWatchdog();
 
-  // Veille légère - Méthodes existantes
+  // Veille légère
   uint32_t goToLightSleep(uint32_t sleepTimeSeconds);
-  
-  // NOUVELLES MÉTHODES : Modem Sleep avec Light Sleep automatique
-  uint32_t goToModemSleepWithLightSleep(uint32_t sleepTimeSeconds);
-  void enableModemSleepMode();
-  void disableModemSleepMode();
-  bool isWifiWakeupAvailable() const;
-  bool testDTIMCompatibility();
-  
-  // Configuration des modes de sleep
-  void setSleepMode(bool useModemSleep);
-  bool getSleepMode() const { return _useModemSleep; }
 
   // Gestion du temps avec persistance en mémoire flash
   void initTime();
@@ -45,7 +31,7 @@ class PowerManager {
   time_t getCurrentEpoch() { return time(nullptr); }
   String getCurrentTimeString();
 
-  // Nouvelles méthodes de validation et correction
+  // Validation et correction temps
   bool isValidEpoch(time_t epoch) const;
   time_t loadTimeWithFallback();
   void applyDriftCorrection();
@@ -56,14 +42,15 @@ class PowerManager {
   // Configuration NTP
   void setNTPConfig(int gmtOffset, int daylightOffset, const char* ntpServer);
 
-  // Méthode rendue publique pour usage par AutomatismSleep
+  // Log cause de réveil
   void logWakeupCause(esp_sleep_wakeup_cause_t cause);
 
   // Gestion WiFi pour light sleep
   void saveCurrentWifiCredentials();
   bool reconnectWithSavedCredentials();
+  void waitForNetworkReady();
 
-  // Sauvegarde forcée (pour les cas critiques)
+  // Sauvegarde forcée
   void forceSaveTimeToFlash();
 
  private:
@@ -84,13 +71,6 @@ class PowerManager {
   String _lastPassword;
   bool _hasSavedCredentials;
 
-  // NOUVELLES VARIABLES : Gestion modem sleep
-  bool _useModemSleep = false;
-  bool _modemSleepEnabled = false;
-  bool _wifiWakeupEnabled = false;
-  unsigned long _lastModemSleepTest = 0;
-  static const unsigned long MODEM_SLEEP_TEST_INTERVAL = 300000UL; // 5 minutes
-
   // Optimisation NVS - limitation de fréquence des sauvegardes
   unsigned long _lastTimeSave;
   time_t _lastSavedEpoch;
@@ -106,8 +86,6 @@ class PowerManager {
   // Accumulation de microsecondes résiduelles pour une meilleure précision du RTC
   uint32_t _sleepRemainderUs;
   
-  // Méthodes privées pour modem sleep
-  void configurePowerDomainsForModemSleep();
-  // void logWakeupCause(esp_sleep_wakeup_cause_t cause); // Rendue publique
+  // Méthode privée
   uint32_t getSleptTime(uint64_t startUs);
 };

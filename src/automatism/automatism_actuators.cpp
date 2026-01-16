@@ -7,7 +7,6 @@
 
 // Déclarations externes
 extern Automatism g_autoCtrl;
-extern RealtimeWebSocket g_realtimeWebSocket;
 
 // ============================================================================
 // Module: AutomatismActuators

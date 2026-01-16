@@ -24,7 +24,11 @@ AutomatismNetwork::AutomatismNetwork(WebClient& web, ConfigManager& cfg)
     , _config(cfg)
     , _dataQueue(QUEUE_MAX_ENTRIES)
     , _emailEnabled(false)
+    #if defined(PROFILE_TEST)
+    , _freqWakeSec(6)  // 6s par défaut pour wroom-test
+    #else
     , _freqWakeSec(600)  // 10 min par défaut
+    #endif
     , _limFlood(5)
     , _aqThresholdCm(30)
     , _tankThresholdCm(30)

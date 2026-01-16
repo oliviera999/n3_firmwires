@@ -1,7 +1,5 @@
 #include "automatism/automatism_feeding_schedule.h"
 #include "config.h"
-#include "event_log.h"
-#include "log.h"
 
 AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, ConfigManager& cfg,
                                                      Mailer& mail, PowerManager& power)
@@ -84,7 +82,7 @@ void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t sm
     const uint16_t delayBetweenSec = 2;
     _acts.feedSequential(bigDuration, smallDuration, delayBetweenSec);
     
-    EventLog::add("Automatic feeding triggered");
+    Serial.println(F("[FeedingSchedule] Automatic feeding triggered"));
 }
 
 void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigDur, uint16_t smallDur,

@@ -1,2 +1,0 @@
-Erreur : Syntaxe incorrecte. L'option par défaut n'est pas autorisée plus de 1 fois.
-Entrez "TIMEOUT /?" pour afficher la syntaxe.

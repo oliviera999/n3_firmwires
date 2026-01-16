@@ -1,4 +1,0 @@
-espcoredump.py v1.15.0
-===============================================================
-==================== ESP32 CORE DUMP START ====================
-GDB executable not found. Please install GDB or set up ESP-IDF to complete the action. Read more: https://github.com/espressif/esp-coredump/blob/master/README.md#installation

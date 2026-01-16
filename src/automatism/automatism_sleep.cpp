@@ -2,7 +2,7 @@
 #include "automatism.h" // Pour accès aux méthodes de Automatism
 #include "config.h"
 #include "task_monitor.h"
-#include "realtime_websocket.h" // Pour getConnectedClients
+#include "realtime_websocket.h"
 #include <ctime>
 #include <algorithm>
 
@@ -398,7 +398,6 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     int16_t tideTriggerCm = core.getTideTriggerCm();
     
     // Récupération du nombre de clients WebSocket
-    extern RealtimeWebSocket g_realtimeWebSocket;
     uint8_t wsClients = g_realtimeWebSocket.getConnectedClients();
     
     // Variables modifiables par handleBlockingConditions
@@ -437,7 +436,11 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
 
     uint32_t sleepDurationSec = core.getFreqWakeSec();
     if (sleepDurationSec == 0) {
-        sleepDurationSec = 600;
+        #if defined(PROFILE_TEST)
+            sleepDurationSec = 6;  // 6s par défaut pour wroom-test
+        #else
+            sleepDurationSec = 600; // 600s par défaut pour production
+        #endif
     }
     if (SleepConfig::LOCAL_SLEEP_DURATION_CONTROL && isNightTime()) {
         sleepDurationSec = static_cast<uint32_t>(sleepDurationSec) *
@@ -474,10 +477,13 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     }
     
     // 3. Entrer en veille
-    // Durée de veille par défaut : 600 secondes (10 minutes)
-    // sleepDurationSec calculé plus haut pour logging et cohérence
-    
     Serial.println(F("[Auto] Conditions remplies - Entrée en veille"));
+    
+    // Envoi du mail de mise en veille (si notifications activées)
+    if (core.isEmailEnabled()) {
+        const char* reason = tideAscending ? "Marée montante détectée" : "Délai d'inactivité atteint";
+        core._mailer.sendSleepMail(reason, sleepDurationSec, r);
+    }
     
     // Appel à la veille
     uint32_t actualSleptSec = _power.goToLightSleep(sleepDurationSec);
@@ -486,4 +492,11 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     _lastWakeMs = millis();
     
     Serial.printf("[Auto] Réveil après %u secondes de veille\n", actualSleptSec);
+    
+    // Envoi du mail de réveil (si notifications activées)
+    if (core.isEmailEnabled()) {
+        esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+        const char* wakeReason = (cause == ESP_SLEEP_WAKEUP_TIMER) ? "Timer" : "Autre";
+        core._mailer.sendWakeMail(wakeReason, actualSleptSec, r);
+    }
 }
