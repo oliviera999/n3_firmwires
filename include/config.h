@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.153"; // Fix validation indépendante capteurs (DHT22 n'efface plus les ultrasons)
+    constexpr const char* VERSION = "11.154"; // Ultrasons lus AVANT humidité (évite timeout si DHT22 échoue)
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -206,7 +206,7 @@ namespace ApiConfig {
 
 namespace EmailConfig {
     constexpr const char* SMTP_HOST = "smtp.gmail.com";
-    constexpr uint16_t SMTP_PORT = 465;  // SSL direct
+    constexpr uint16_t SMTP_PORT = 587;  // STARTTLS
     constexpr const char* DEFAULT_RECIPIENT = "oliv.arn.lau@gmail.com";
     constexpr size_t MAX_EMAIL_LENGTH = 96;
 }

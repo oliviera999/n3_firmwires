@@ -81,26 +81,10 @@ SensorReadings SystemSensors::read() {
     return r;
   }
 
-  // Humidité avec méthode non-bloquante
-  {
-    phaseStart = millis();
-    float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT22
-    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
-    
-    // Validation finale
-    if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Humidité invalide finale: %.1f%%, force NaN\n", val);
-      r.humidity = NAN;
-    } else {
-      r.humidity = val;
-    }
-  }
-  esp_task_wdt_reset();
-  if (timeoutExceeded("humidite")) {
-    finalizeOnTimeout();
-    return r;
-  }
-
+  // v11.154: ULTRASONS EN PREMIER (avant humidité qui peut timeout)
+  // Le DHT22 prend 7+ secondes quand il échoue, ce qui provoque un timeout global
+  // et empêche la lecture des ultrasons. On les lit donc en priorité.
+  
   // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
   {
     phaseStart = millis();
@@ -218,6 +202,23 @@ SensorReadings SystemSensors::read() {
     }
   }
   
+  // v11.154: Humidité EN DERNIER (peut prendre 7+ secondes si DHT22 échoue)
+  // Ainsi, même en cas de timeout, les ultrasons sont déjà lus
+  {
+    phaseStart = millis();
+    float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT22
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
+    
+    // Validation finale
+    if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
+      SENSOR_LOG_PRINTF("[SystemSensors] Humidité invalide finale: %.1f%%, force NaN\n", val);
+      r.humidity = NAN;
+    } else {
+      r.humidity = val;
+    }
+  }
+  esp_task_wdt_reset();
+  // Note: Pas de return anticipé ici - on continue même si timeout pour avoir le log final
 
   // marée diff
   uint16_t oldAquaMax = _aquaMax;
