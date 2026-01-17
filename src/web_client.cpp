@@ -3,6 +3,7 @@
 #include "diagnostics.h"
 #include "log.h"
 #include "config.h"
+#include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
@@ -31,13 +32,33 @@ WebClient::WebClient(const char* apiKey) : _apiKey(apiKey) {
   _http.setTimeout(GlobalTimeouts::HTTP_MAX_MS); // Timeout strict pour éviter blocage
 }
 
+// v11.150: Force la libération de mémoire TLS après une requête
+// Version simplifiée : juste arrêter le client sans le recréer (évite crash FreeRTOS)
+void WebClient::resetTLSClient() {
+  uint32_t heapBefore = ESP.getFreeHeap();
+  
+  // Stopper proprement le client TLS
+  _client.stop();
+  
+  // Petit délai pour laisser le temps à FreeRTOS de libérer les ressources
+  vTaskDelay(pdMS_TO_TICKS(50));
+  
+  uint32_t heapAfter = ESP.getFreeHeap();
+  int32_t recovered = (int32_t)heapAfter - (int32_t)heapBefore;
+  
+  if (recovered > 1000) {
+    Serial.printf("[HTTP] 🔄 TLS stop: récupéré %d bytes (heap: %u → %u)\n", 
+                  recovered, heapBefore, heapAfter);
+  }
+}
+
 bool WebClient::httpRequest(const String& url, const String& payload, String& response) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
   // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t minHeap = ESP.getMinFreeHeap();
-  const uint32_t MIN_HEAP_FOR_HTTPS = 70000;  // 70 KB minimum requis pour HTTPS
+  const uint32_t MIN_HEAP_FOR_HTTPS = 45000;  // 45 KB minimum (TLS ~42KB + marge 3KB)
   bool isSecure = url.startsWith("https://");
   
   if (isSecure && freeHeap < MIN_HEAP_FOR_HTTPS) {
@@ -137,6 +158,7 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     if (elapsedMs >= GlobalTimeouts::HTTP_MAX_MS) {
       LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, GlobalTimeouts::HTTP_MAX_MS);
       _http.end();
+      resetTLSClient();  // v11.150: Libère mémoire TLS après timeout
       return false;
     }
     
@@ -282,6 +304,10 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
   
   // Fix v11.29: Sauvegarder timestamp pour délai inter-requêtes
   _lastRequestMs = millis();
+  
+  // v11.150: Reset TLS client pour libérer mémoire (~46KB) après chaque requête
+  // Résout la fuite mémoire où le client TLS garde la mémoire après échec
+  resetTLSClient();
   
   // Ne pas réactiver le modem-sleep
   WiFi.setSleep(false);
@@ -454,6 +480,15 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
   if (WiFi.status() != WL_CONNECTED) return false;
   
+  // === v11.152: Protection TLS mutex STRICTE pour éviter collision avec SMTP ===
+  // Le GET DOIT avoir le mutex pour éviter les crashs par épuisement mémoire
+  // (coredump: strcat(NULL) dans ESP Mail Client quand SMTP+HTTPS concurrent)
+  if (!TLSMutex::acquire(3000)) {  // Timeout court pour GET
+    Serial.println(F("[GET] ⛔ Mutex TLS non disponible - GET ANNULÉ (collision SMTP probable)"));
+    return false;  // On abandonne au lieu de risquer un crash
+  }
+  bool hasMutex = true;  // Pour compatibilité avec le code existant
+  
   // === LOGS DÉTAILLÉS GET v11.32 ===
   unsigned long getStartMs = millis();
   Serial.println(F("=== DÉBUT REQUÊTE GET REMOTE STATE ==="));
@@ -462,7 +497,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t minHeap = ESP.getMinFreeHeap();
-  const uint32_t MIN_HEAP_FOR_HTTPS = 70000;  // 70 KB minimum requis pour HTTPS
+  const uint32_t MIN_HEAP_FOR_HTTPS = 45000;  // 45 KB minimum (TLS ~42KB + marge 3KB)
   
   Serial.printf("[GET] Heap before GET: %u bytes\n", freeHeap);
   Serial.printf("[GET] Free heap: %u bytes\n", freeHeap);
@@ -472,6 +507,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     Serial.printf("[GET] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête\n", 
                   freeHeap, MIN_HEAP_FOR_HTTPS);
     Serial.printf("[GET] ⚠️ La requête HTTPS nécessite ~43 KB supplémentaires\n");
+    if (hasMutex) TLSMutex::release();
     return false;
   }
   
@@ -507,6 +543,8 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     Serial.printf("[GET] ❌ ERROR %d: %s\n", code, _http.errorToString(code).c_str());
     Serial.printf("[GET] WiFi status at error: %d, RSSI: %d\n", WiFi.status(), WiFi.RSSI());
     _http.end();
+    resetTLSClient();  // v11.150: Libère mémoire TLS après erreur
+    if (hasMutex) TLSMutex::release();
     return false;
   }
   
@@ -515,12 +553,14 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   String payload = _http.getString();
   unsigned long responseDurationMs = millis() - responseStartMs;
   _http.end();
+  resetTLSClient();  // v11.150: Libère mémoire TLS (~46KB)
   
   Serial.printf("[GET] Response received in %lu ms, size: %u bytes\n", responseDurationMs, payload.length());
-  Serial.printf("[GET] Heap after readString: %u bytes\n", ESP.getFreeHeap());
+  Serial.printf("[GET] Heap after TLS reset: %u bytes\n", ESP.getFreeHeap());
   
   if (payload.length() == 0) {
     Serial.println(F("[GET] ⚠️ Empty response from server"));
+    if (hasMutex) TLSMutex::release();
     return false;
   }
   
@@ -542,6 +582,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (err) {
     Serial.printf("[GET] ❌ JSON parse error: %s (parsing took %lu ms)\n", err.c_str(), parseDurationMs);
     Serial.printf("[GET] Payload preview (first 200 chars): %.200s\n", payload.c_str());
+    if (hasMutex) TLSMutex::release();
     return false;
   }
   
@@ -570,6 +611,9 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   Serial.printf("[GET] Succès: OUI\n");
   Serial.printf("[GET] Mémoire finale: %u bytes\n", ESP.getFreeHeap());
   Serial.println(F("==============================="));
+  
+  // v11.149: Libérer le mutex TLS
+  if (hasMutex) TLSMutex::release();
   
   return true;
 }
@@ -632,6 +676,13 @@ bool WebClient::postRaw(const String& payload){
     Serial.println(F("[PR] ⛔ Envoi distant désactivé (config) - SKIP"));
     return false;
   }
+  
+  // === v11.149: Protection TLS mutex pour éviter collision avec SMTP ===
+  if (!TLSMutex::acquire(5000)) {  // Timeout 5s pour POST
+    Serial.println(F("[PR] ⛔ Impossible d'acquérir mutex TLS - SKIP"));
+    return false;
+  }
+  
   // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
   unsigned long prStartMs = millis();
   size_t payloadLen = payload.length();
@@ -698,6 +749,9 @@ bool WebClient::postRaw(const String& payload){
   Serial.printf("[PR] Final result: %s\n", finalSuccess ? "SUCCESS" : "FAILED");
   Serial.printf("[PR] Mémoire finale: %u bytes\n", ESP.getFreeHeap());
   Serial.println(F("========================="));
+  
+  // v11.149: Libérer le mutex TLS
+  TLSMutex::release();
   
   return finalSuccess;
 }
