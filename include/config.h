@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.148"; // Nettoyage includes: suppression refs vers fichiers supprimés
+    constexpr const char* VERSION = "11.153"; // Fix validation indépendante capteurs (DHT22 n'efface plus les ultrasons)
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -206,7 +206,7 @@ namespace ApiConfig {
 
 namespace EmailConfig {
     constexpr const char* SMTP_HOST = "smtp.gmail.com";
-    constexpr uint16_t SMTP_PORT = 465;
+    constexpr uint16_t SMTP_PORT = 465;  // SSL direct
     constexpr const char* DEFAULT_RECIPIENT = "oliv.arn.lau@gmail.com";
     constexpr size_t MAX_EMAIL_LENGTH = 96;
 }
@@ -463,7 +463,7 @@ namespace TaskConfig {
     constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
     constexpr uint32_t WEB_TASK_STACK_SIZE = 6144;
-    constexpr UBaseType_t WEB_TASK_PRIORITY = 2;
+    constexpr UBaseType_t WEB_TASK_PRIORITY = 1;      // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
     constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
     constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;   // 8 KB (réduit de 12 KB - v11.144 optim mémoire)
