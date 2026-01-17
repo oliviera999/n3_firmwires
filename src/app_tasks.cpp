@@ -53,25 +53,35 @@ void sensorTask(void* pv) {
 
     esp_task_wdt_reset();
 
-    // IMPORTANT: les comparaisons ne détectent pas NaN (NaN < x == false, NaN > x == false)
+    // v11.153: Validation INDÉPENDANTE par capteur
+    // Ne plus réinitialiser TOUS les capteurs si un seul échoue
+    // Les ultrasons restent valides même si DHT22 échoue
+    
+    // Vérification température eau
     if (isnan(readings.tempWater) ||
         readings.tempWater < SensorConfig::WaterTemp::MIN_VALID ||
-        readings.tempWater > SensorConfig::WaterTemp::MAX_VALID ||
-        isnan(readings.tempAir) ||
+        readings.tempWater > SensorConfig::WaterTemp::MAX_VALID) {
+      SENSOR_LOG_PRINTLN(F("[Sensor] ⚠️ Température eau invalide, utilise défaut"));
+      readings.tempWater = SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
+    }
+    
+    // Vérification température air + humidité (DHT22)
+    if (isnan(readings.tempAir) ||
         readings.tempAir < SensorConfig::AirSensor::TEMP_MIN ||
-        readings.tempAir > SensorConfig::AirSensor::TEMP_MAX ||
-        isnan(readings.humidity) ||
+        readings.tempAir > SensorConfig::AirSensor::TEMP_MAX) {
+      SENSOR_LOG_PRINTLN(F("[Sensor] ⚠️ Température air invalide, utilise défaut"));
+      readings.tempAir = SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+    }
+    
+    if (isnan(readings.humidity) ||
         readings.humidity < SensorConfig::AirSensor::HUMIDITY_MIN ||
         readings.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
-      SENSOR_LOG_PRINTLN(F("[Sensor] Erreur lors de la lecture des capteurs"));
-      readings.tempAir = SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+      SENSOR_LOG_PRINTLN(F("[Sensor] ⚠️ Humidité invalide, utilise défaut"));
       readings.humidity = SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
-      readings.tempWater = SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
-      readings.wlPota = 0;
-      readings.wlAqua = 0;
-      readings.wlTank = 0;
-      readings.luminosite = 0;
     }
+    
+    // Les ultrasons ne sont PAS réinitialisés - leurs valeurs sont préservées
+    // même si les capteurs de température/humidité échouent
 
     esp_task_wdt_reset();
 
