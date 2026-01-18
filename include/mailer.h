@@ -38,8 +38,15 @@ class Mailer {
   bool sendAlert(const char* subject, const String& message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   bool send(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   
-  // Démarrage de la tâche mail (appelé au boot)
-  bool startMailTask();
+  // Initialisation de la queue mail (appelé au boot, sans tâche dédiée)
+  bool initMailQueue();
+  
+  // Traitement séquentiel depuis automationTask
+  // Retourne true si un mail a été traité, false si aucun mail en attente
+  bool processOneMailSync();
+  
+  // Vérification si des mails sont en attente
+  bool hasPendingMails() const;
   
   // Statistiques
   uint32_t getMailsSent() const { return _mailsSent; }
@@ -51,10 +58,8 @@ class Mailer {
   Session_Config _cfg;
   bool _ready{false};
   
-  // Tâche mail asynchrone (v11.142)
-  static void mailTaskFunction(void* param);
+  // Queue mail (traitée séquentiellement depuis automationTask)
   QueueHandle_t _mailQueue{nullptr};
-  TaskHandle_t _mailTaskHandle{nullptr};
   
   // Statistiques
   uint32_t _mailsSent{0};

@@ -10,6 +10,7 @@
 #include "gpio_parser.h"
 #include "config.h"
 #include "event_log.h"
+#include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
 
 namespace {
 
@@ -212,11 +213,23 @@ void automationTask(void* pv) {
       g_ctx->power.resetWatchdog();
       g_ctx->diagnostics.update();
       if (!g_ctx->otaManager.isUpdating()) {
+        // Priorité 1: Heartbeat (toutes les 30s)
         if (now - lastHeartbeat > 30000) {
           esp_task_wdt_reset();
           g_ctx->webClient.sendHeartbeat(g_ctx->diagnostics);
           lastHeartbeat = now;
         }
+        
+        // Priorité 2: Mails en attente (traitement séquentiel - v11.155)
+        #if FEATURE_MAIL
+        if (g_ctx->mailer.hasPendingMails() && TLSMutex::canConnect()) {
+          esp_task_wdt_reset();
+          if (TLSMutex::acquire(3000)) {  // Timeout court pour ne pas bloquer
+            g_ctx->mailer.processOneMailSync();  // Traite UN mail
+            TLSMutex::release();
+          }
+        }
+        #endif
       }
 
       if (now - lastBouffeDisplay > bouffeInterval) {

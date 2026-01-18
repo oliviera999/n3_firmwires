@@ -5,6 +5,7 @@
 #include "system_actuators.h"
 #include "diagnostics.h"
 #include "nvs_manager.h"
+#include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 #include <WiFi.h>
 #include <time.h>
 #include <LittleFS.h>
@@ -676,6 +677,10 @@ bool Mailer::begin() {
 
   // DEBUG: Activer les logs SMTP détaillés
   _smtp.debug(1);
+  
+  // v11.151: Reconnexion automatique et timeout augmenté
+  MailClient.networkReconnect(true);
+  _smtp.setTCPTimeout(30);  // 30 secondes de timeout TCP
 
   // Diagnostic de la configuration
   Serial.printf("[Mail] SMTP_HOST: '%s'\n", EmailConfig::SMTP_HOST);
@@ -751,9 +756,37 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
   Serial.printf("[Mail] _smtp.connected(): %s\n", _smtp.connected() ? "TRUE" : "FALSE");
   
+  // === PROTECTION SIMPLIFIÉE v11.151 ===
+  // Garde seulement le mutex TLS, supprime la protection heap trop restrictive
+  // Le heap bas causait le blocage de TOUS les mails
+  
+  // 1. Vérifier que le système n'entre pas en light sleep
+  extern volatile bool g_enteringLightSleep;
+  if (g_enteringLightSleep) {
+    Serial.println(F("[Mail] ⛔ Envoi annulé: système en transition vers light sleep"));
+    return false;
+  }
+  
+  // 2. Log du heap (informatif seulement, n'empêche plus l'envoi)
+  uint32_t freeHeap = ESP.getFreeHeap();
+  Serial.printf("[Mail] 📊 Heap disponible: %u bytes\n", freeHeap);
+  if (freeHeap < 40000) {
+    Serial.println(F("[Mail] ⚠️ Heap bas - tentative d'envoi quand même"));
+  }
+  
+  // 3. Acquérir le mutex TLS (empêche collision SMTP/HTTPS)
+  if (!TLSMutex::acquire(10000)) {  // Timeout 10s pour SMTP
+    Serial.println(F("[Mail] ⛔ Envoi annulé: impossible d'acquérir le mutex TLS"));
+    return false;
+  }
+  
+  Serial.printf("[Mail] ✅ Mutex TLS acquis (heap: %u bytes)\n", ESP.getFreeHeap());
+  // === FIN PROTECTION ===
+  
   // Vérifier que le réseau est prêt avant de tenter SMTP
   if (!waitForNetworkReadyForSMTP()) {
     Serial.println(F("[Mail] ❌ Réseau non prêt, abandon envoi mail"));
+    TLSMutex::release();
     return false;
   }
   
@@ -766,6 +799,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
     if(!_ready){
       Serial.printf("[Mail] ❌ Reconnexion SMTP échouée - code: %d\n", _smtp.statusCode());
       Serial.printf("[Mail] ❌ Erreur: %s\n", _smtp.errorReason().c_str());
+      TLSMutex::release();  // v11.151: CRITIQUE - libérer le mutex avant return !
       return false;
     } else {
       Serial.println(F("[Mail] ✅ Connexion SMTP réussie"));
@@ -846,6 +880,9 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   _ready = false;
   Serial.println(F("[Mail] ✅ Session SMTP fermée proprement"));
   
+  // Libérer le mutex TLS (CRITIQUE - doit être fait après fermeture session)
+  TLSMutex::release();
+  
   return ok;
 }
 #else
@@ -864,7 +901,9 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
   (void)reason; (void)actualSleepSeconds; (void)readings; return false;
 }
-bool Mailer::startMailTask() { return true; }
+bool Mailer::initMailQueue() { return true; }
+bool Mailer::processOneMailSync() { return false; }
+bool Mailer::hasPendingMails() const { return false; }
 uint32_t Mailer::getQueuedMails() const { return 0; }
 #endif
 
@@ -1038,7 +1077,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
 // ============================================================================
 // MÉTHODES ASYNCHRONES (v11.142) - Non-bloquantes
 // Ces méthodes ajoutent le mail à une queue et retournent immédiatement.
-// La tâche mailTask envoie les mails en arrière-plan.
+// v11.155: Traitement séquentiel depuis automationTask (plus de tâche dédiée)
 // ============================================================================
 
 uint32_t Mailer::getQueuedMails() const {
@@ -1046,47 +1085,9 @@ uint32_t Mailer::getQueuedMails() const {
   return uxQueueMessagesWaiting(_mailQueue);
 }
 
-// Tâche FreeRTOS dédiée à l'envoi des mails
-void Mailer::mailTaskFunction(void* param) {
-  Mailer* self = static_cast<Mailer*>(param);
-  MailQueueItem item;
-  
-  Serial.println(F("[MailTask] Tâche mail asynchrone démarrée"));
-  
-  for (;;) {
-    // Attend un mail dans la queue (bloquant avec timeout de 5 secondes)
-    if (xQueueReceive(self->_mailQueue, &item, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Serial.printf("[MailTask] 📬 Mail à envoyer: '%s'\n", item.subject);
-      
-      // Reset watchdog avant l'envoi (peut être long)
-      esp_task_wdt_reset();
-      
-      bool success;
-      if (item.isAlert) {
-        success = self->sendAlertSync(item.subject, String(item.message), item.toEmail);
-      } else {
-        success = self->sendSync(item.subject, item.message, "User", item.toEmail);
-      }
-      
-      if (success) {
-        self->_mailsSent++;
-        Serial.printf("[MailTask] ✅ Mail envoyé avec succès (%u total)\n", self->_mailsSent);
-      } else {
-        self->_mailsFailed++;
-        Serial.printf("[MailTask] ❌ Échec envoi mail (%u échecs)\n", self->_mailsFailed);
-      }
-      
-      // Reset watchdog après l'envoi
-      esp_task_wdt_reset();
-    }
-    
-    // Petit délai entre les vérifications
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-}
-
-bool Mailer::startMailTask() {
-  Serial.println(F("[Mail] >>> DEMARRAGE TACHE MAIL ASYNC <<<"));
+// Initialisation de la queue mail (sans tâche dédiée - v11.155: séquentiel)
+bool Mailer::initMailQueue() {
+  Serial.println(F("[Mail] >>> INITIALISATION QUEUE MAIL SEQUENTIELLE <<<"));
   
   // Créer la queue de mails
   _mailQueue = xQueueCreate(TaskConfig::MAIL_QUEUE_SIZE, sizeof(MailQueueItem));
@@ -1094,32 +1095,49 @@ bool Mailer::startMailTask() {
     Serial.println(F("[Mail] ❌ Échec création queue mail"));
     return false;
   }
-  Serial.printf("[Mail] Queue mail creee (%d slots)\n", TaskConfig::MAIL_QUEUE_SIZE);
-  
-  // Créer la tâche mail sur le core 0 (pour ne pas impacter les capteurs sur core 1)
-  BaseType_t result = xTaskCreatePinnedToCore(
-    mailTaskFunction,
-    "mailTask",
-    TaskConfig::MAIL_TASK_STACK_SIZE,
-    this,
-    TaskConfig::MAIL_TASK_PRIORITY,
-    &_mailTaskHandle,
-    TaskConfig::MAIL_TASK_CORE_ID
-  );
-  
-  if (result != pdPASS) {
-    Serial.println(F("[Mail] ❌ Échec création tâche mail"));
-    vQueueDelete(_mailQueue);
-    _mailQueue = nullptr;
-    return false;
-  }
-  
-  Serial.printf("[Mail] ✅ Tâche mail démarrée (stack=%u, prio=%u, core=%d)\n",
-                TaskConfig::MAIL_TASK_STACK_SIZE,
-                TaskConfig::MAIL_TASK_PRIORITY,
-                TaskConfig::MAIL_TASK_CORE_ID);
+  Serial.printf("[Mail] ✅ Queue mail créée (%d slots, traitement séquentiel)\n", TaskConfig::MAIL_QUEUE_SIZE);
   
   return true;
+}
+
+// Traitement séquentiel d'un mail depuis la queue (appelé depuis automationTask)
+// Retourne true si un mail a été traité, false si aucun mail en attente
+bool Mailer::processOneMailSync() {
+  if (!_mailQueue) {
+    return false; // Queue non initialisée
+  }
+  
+  MailQueueItem item;
+  
+  // Lire un mail de la queue (non-bloquant)
+  if (xQueueReceive(_mailQueue, &item, 0) != pdTRUE) {
+    return false; // Aucun mail en attente
+  }
+  
+  Serial.printf("[Mail] 📬 Traitement mail séquentiel: '%s'\n", item.subject);
+  
+  bool success;
+  if (item.isAlert) {
+    success = sendAlertSync(item.subject, String(item.message), item.toEmail);
+  } else {
+    success = sendSync(item.subject, item.message, "User", item.toEmail);
+  }
+  
+  if (success) {
+    _mailsSent++;
+    Serial.printf("[Mail] ✅ Mail envoyé avec succès (%u total)\n", _mailsSent);
+  } else {
+    _mailsFailed++;
+    Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
+  }
+  
+  return true; // Un mail a été traité
+}
+
+// Vérification si des mails sont en attente
+bool Mailer::hasPendingMails() const {
+  if (!_mailQueue) return false;
+  return uxQueueMessagesWaiting(_mailQueue) > 0;
 }
 
 // Méthode send() asynchrone - ajoute à la queue et retourne immédiatement
