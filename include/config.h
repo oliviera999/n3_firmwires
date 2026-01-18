@@ -12,7 +12,7 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.155"; // Simplification séquentielle réseau (pas de tâche mail dédiée)
+    constexpr const char* VERSION = "11.155"; // Simplification séquentielle réseau (suppression mailTask)
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
