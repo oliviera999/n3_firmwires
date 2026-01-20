@@ -24,6 +24,7 @@
 #include "app_context.h"
 #include "app_tasks.h"
 #include "system_boot.h"
+#include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
 #include <ArduinoOTA.h>
@@ -92,6 +93,9 @@ void setup() {
     case ESP_RST_SDIO: Serial.println("SDIO reset"); break;
     default: Serial.printf("Unknown reset (%d)\n", resetReason); break;
   }
+  
+  // v11.149: Initialisation du mutex TLS (avant toute opération réseau)
+  TLSMutex::init();
   
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};

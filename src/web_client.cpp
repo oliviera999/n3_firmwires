@@ -548,21 +548,53 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     return false;
   }
   
-  // Utiliser getString() qui gère automatiquement Transfer-Encoding: chunked
+  // v11.156: Lecture limitée avec buffer fixe pour éviter fragmentation mémoire
+  // Limite stricte basée sur BufferConfig::JSON_DOCUMENT_SIZE
+  const size_t MAX_RESPONSE_SIZE = BufferConfig::JSON_DOCUMENT_SIZE;
+  char payloadBuffer[MAX_RESPONSE_SIZE + 1];
+  size_t totalRead = 0;
+  
   unsigned long responseStartMs = millis();
-  String payload = _http.getString();
+  WiFiClient* stream = _http.getStreamPtr();
+  
+  if (!stream) {
+    Serial.println(F("[GET] ❌ No stream available"));
+    _http.end();
+    resetTLSClient();
+    if (hasMutex) TLSMutex::release();
+    return false;
+  }
+  
+  // Lire avec limite stricte pour éviter épuisement mémoire
+  while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
+    size_t bytesRead = stream->readBytes(
+      payloadBuffer + totalRead,
+      MAX_RESPONSE_SIZE - totalRead
+    );
+    if (bytesRead == 0) break;
+    totalRead += bytesRead;
+  }
+  payloadBuffer[totalRead] = '\0';
+  
   unsigned long responseDurationMs = millis() - responseStartMs;
   _http.end();
   resetTLSClient();  // v11.150: Libère mémoire TLS (~46KB)
   
-  Serial.printf("[GET] Response received in %lu ms, size: %u bytes\n", responseDurationMs, payload.length());
+  if (totalRead >= MAX_RESPONSE_SIZE) {
+    Serial.printf("[GET] ⚠️ Response truncated at %u bytes (limite sécurité)\n", MAX_RESPONSE_SIZE);
+  }
+  
+  Serial.printf("[GET] Response received in %lu ms, size: %u bytes\n", responseDurationMs, totalRead);
   Serial.printf("[GET] Heap after TLS reset: %u bytes\n", ESP.getFreeHeap());
   
-  if (payload.length() == 0) {
+  if (totalRead == 0) {
     Serial.println(F("[GET] ⚠️ Empty response from server"));
     if (hasMutex) TLSMutex::release();
     return false;
   }
+  
+  // Créer String une seule fois après lecture complète (taille connue)
+  String payload = String(payloadBuffer);
   
   // Log détaillé de la réponse
   Serial.println(F("[GET] === RÉPONSE REMOTE STATE ==="));

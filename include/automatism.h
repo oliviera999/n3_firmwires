@@ -53,6 +53,8 @@ class Automatism {
   uint16_t getLimFlood() const { return limFlood; }
   const String& getBouffePetitsFlag() const { return bouffePetits; }
   const String& getBouffeGrosFlag() const { return bouffeGros; }
+  void setBouffePetitsFlag(const char* val) { bouffePetits = val; }
+  void setBouffeGrosFlag(const char* val) { bouffeGros = val; }
   int computeDiffMaree(uint16_t currentAqua);
   bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
   uint32_t getCountdownEndMs() const { return _countdownEnd; }

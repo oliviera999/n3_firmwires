@@ -35,7 +35,7 @@ class Mailer {
   
   // Méthodes asynchrones (non-bloquantes) - v11.142
   // Ces méthodes ajoutent le mail à une queue et retournent immédiatement
-  bool sendAlert(const char* subject, const String& message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+  bool sendAlert(const char* subject, const char* message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   bool send(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   
   // Initialisation de la queue mail (appelé au boot, sans tâche dédiée)
@@ -66,5 +66,5 @@ class Mailer {
   uint32_t _mailsFailed{0};
   
   // Implémentation interne de sendAlert (synchrone)
-  bool sendAlertSync(const char* subject, const String& message, const char* toEmail);
+  bool sendAlertSync(const char* subject, const char* message, const char* toEmail);
 }; 

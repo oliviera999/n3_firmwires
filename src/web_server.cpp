@@ -200,13 +200,16 @@ bool WebServerManager::begin() {
               // 1. EXÉCUTION IMMÉDIATE de l'action physique
               g_autoCtrl.manualFeedSmall();
               
-              // 2. Feedback WebSocket IMMÉDIAT
+              // 2. Marquer l'événement de nourrissage pour le graphique serveur
+              g_autoCtrl.setBouffePetitsFlag("1");
+              
+              // 3. Feedback WebSocket IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
               
-              // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
+              // 4. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_SMALL OK";
               
-              // 4. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
+              // 5. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
               auto* sensorsPtr = &_sensors;
               const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
@@ -220,10 +223,13 @@ bool WebServerManager::begin() {
                     g_webServerContext->sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
                   }
                   
-                  // Synchronisation serveur avec reset flag
+                  // Synchronisation serveur : envoie bouffePetits=1 (marqué ci-dessus)
                   SensorReadings readings = sensors->read();
-                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, "bouffePetits=0");
-                  Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
+                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
+                  Serial.printf("[Web] 📤 Server sync bouffePetits=1 %s\n", syncSuccess ? "completed" : "pending");
+                  
+                  // Remettre le flag à 0 pour les prochains envois
+                  g_autoCtrl.setBouffePetitsFlag("0");
                   
                   releaseAsyncSlot();
                   vTaskDelete(NULL);
@@ -231,6 +237,7 @@ bool WebServerManager::begin() {
                 if (created != pdPASS) {
                   releaseAsyncSlot();
                   Serial.println("[Web] ❌ Échec création tâche feed_small_sync");
+                  g_autoCtrl.setBouffePetitsFlag("0"); // Reset en cas d'échec
                 }
               } else {
                 Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
@@ -238,6 +245,7 @@ bool WebServerManager::begin() {
                 if (g_webServerContext && ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
                   g_webServerContext->sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
                 }
+                g_autoCtrl.setBouffePetitsFlag("0"); // Reset
               }
               
               Serial.println("[Web] ✅ Small feed completed, sync in background");
@@ -247,13 +255,16 @@ bool WebServerManager::begin() {
               // 1. EXÉCUTION IMMÉDIATE de l'action physique
               g_autoCtrl.manualFeedBig();
               
-              // 2. Feedback WebSocket IMMÉDIAT
+              // 2. Marquer l'événement de nourrissage pour le graphique serveur
+              g_autoCtrl.setBouffeGrosFlag("1");
+              
+              // 3. Feedback WebSocket IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
               
-              // 3. Réponse HTTP IMMÉDIATE (avant email/sync)
+              // 4. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_BIG OK";
               
-              // 4. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
+              // 5. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
               auto* sensorsPtr = &_sensors;
               const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
               
@@ -267,10 +278,13 @@ bool WebServerManager::begin() {
                     g_webServerContext->sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
                   }
                   
-                  // Synchronisation serveur avec reset flag
+                  // Synchronisation serveur : envoie bouffeGros=1 (marqué ci-dessus)
                   SensorReadings readings = sensors->read();
-                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, "bouffeGros=0");
-                  Serial.printf("[Web] 📤 Server sync %s\n", syncSuccess ? "completed" : "pending");
+                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
+                  Serial.printf("[Web] 📤 Server sync bouffeGros=1 %s\n", syncSuccess ? "completed" : "pending");
+                  
+                  // Remettre le flag à 0 pour les prochains envois
+                  g_autoCtrl.setBouffeGrosFlag("0");
                   
                   releaseAsyncSlot();
                   vTaskDelete(NULL);
@@ -278,6 +292,7 @@ bool WebServerManager::begin() {
                 if (created != pdPASS) {
                   releaseAsyncSlot();
                   Serial.println("[Web] ❌ Échec création tâche feed_big_sync");
+                  g_autoCtrl.setBouffeGrosFlag("0"); // Reset en cas d'échec
                 }
               } else {
                 Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
@@ -285,6 +300,7 @@ bool WebServerManager::begin() {
                 if (g_webServerContext && ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
                   g_webServerContext->sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
                 }
+                g_autoCtrl.setBouffeGrosFlag("0"); // Reset
               }
               
               Serial.println("[Web] ✅ Big feed completed, sync in background");
@@ -870,7 +886,7 @@ bool WebServerManager::begin() {
     String subj = req->hasParam("subject") ? req->getParam("subject")->value() : "Test FFP5CS";
     String body = req->hasParam("body") ? req->getParam("body")->value() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
     String dest = req->hasParam("to") ? req->getParam("to")->value() : String(EmailConfig::DEFAULT_RECIPIENT);
-    bool ok = mailer.sendAlert(subj.c_str(), body, dest.c_str());
+    bool ok = mailer.sendAlert(subj.c_str(), body.c_str(), dest.c_str());
     String resp = ok ? "OK" : "FAIL";
     req->send(200, "text/plain", resp);
   });

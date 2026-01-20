@@ -9,6 +9,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <time.h>
+#include <cstring>
 
 extern "C" esp_err_t esp_core_dump_image_get(size_t* out_addr,
                                              size_t* out_size) __attribute__((weak));
@@ -53,23 +54,31 @@ Diagnostics::Diagnostics()
   _stats.maxAllocHeap = 0;
   _stats.freeStack = 0;
   _stats.rebootCount = 0;
-  _stats.lastRebootReason = "UNKNOWN";
-  _stats.taskStats = "";
+  memset(_stats.lastRebootReason, 0, sizeof(_stats.lastRebootReason));
+  strncpy(_stats.lastRebootReason, "UNKNOWN", sizeof(_stats.lastRebootReason) - 1);
+  memset(_stats.taskStats, 0, sizeof(_stats.taskStats));
   _stats.idlePercent = 255; // inconnu
   _stats.httpSuccessCount = 0;
   _stats.httpFailCount = 0;
   _stats.lastHttpCode = 0;
   _stats.otaSuccessCount = 0;
   _stats.otaFailCount = 0;
-  _stats.lastOtaError = "";
+  memset(_stats.lastOtaError, 0, sizeof(_stats.lastOtaError));
   _stats.panicInfo.hasPanicInfo = false;
+  memset(_stats.panicInfo.exceptionCause, 0, sizeof(_stats.panicInfo.exceptionCause));
+  _stats.panicInfo.exceptionAddress = 0;
+  _stats.panicInfo.excvaddr = 0;
+  memset(_stats.panicInfo.taskName, 0, sizeof(_stats.panicInfo.taskName));
+  _stats.panicInfo.core = 0;
+  memset(_stats.panicInfo.additionalInfo, 0, sizeof(_stats.panicInfo.additionalInfo));
   _stats.crashStatus.hasCrashInfo = false;
   _stats.crashStatus.resetReason = -1;
   _stats.crashStatus.crashUptimeSec = 0;
   _stats.crashStatus.crashEpoch = 0;
   _stats.crashStatus.coredumpPresent = false;
   _stats.crashStatus.coredumpSize = 0;
-  _stats.crashStatus.coredumpFormat = "UNKNOWN";
+  memset(_stats.crashStatus.coredumpFormat, 0, sizeof(_stats.crashStatus.coredumpFormat));
+  strncpy(_stats.crashStatus.coredumpFormat, "UNKNOWN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
 }
 
 void Diagnostics::begin() {
@@ -98,7 +107,9 @@ void Diagnostics::begin() {
   _lastHeapSave = millis();
 
   esp_reset_reason_t resetReason = esp_reset_reason();
-  _stats.lastRebootReason = getRebootReason();
+  const char* reasonStr = getRebootReason();
+  strncpy(_stats.lastRebootReason, reasonStr, sizeof(_stats.lastRebootReason) - 1);
+  _stats.lastRebootReason[sizeof(_stats.lastRebootReason) - 1] = '\0';
   
   loadCrashStatus();
   updateCoredumpStatus(false);
@@ -126,7 +137,7 @@ void Diagnostics::begin() {
   Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 
                 _stats.rebootCount, _stats.minFreeHeap);
   if (_stats.panicInfo.hasPanicInfo) {
-    Serial.printf(" [PANIC: %s]\n", _stats.panicInfo.exceptionCause.c_str());
+    Serial.printf(" [PANIC: %s]\n", _stats.panicInfo.exceptionCause);
   } else {
     Serial.println();
   }
@@ -142,13 +153,15 @@ void Diagnostics::loadFromNvs() {
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaKo", (int&)_stats.otaFailCount, 0);
 
-  _stats.lastRebootReason = getRebootReason();
+  const char* reasonStr = getRebootReason();
+  strncpy(_stats.lastRebootReason, reasonStr, sizeof(_stats.lastRebootReason) - 1);
+  _stats.lastRebootReason[sizeof(_stats.lastRebootReason) - 1] = '\0';
   loadCrashStatus();
   loadPanicInfo();
   updateCoredumpStatus(false);
 }
 
-String Diagnostics::getRebootReason() const {
+const char* Diagnostics::getRebootReason() const {
   esp_reset_reason_t r = esp_reset_reason();
   return resetReasonToString(r);
 }
@@ -175,36 +188,61 @@ void Diagnostics::update() {
   buf[0] = '\0';
   #if (configGENERATE_RUN_TIME_STATS == 1)
   vTaskGetRunTimeStats(buf);
-  _stats.taskStats = String(buf);
+  strncpy(_stats.taskStats, buf, sizeof(_stats.taskStats) - 1);
+  _stats.taskStats[sizeof(_stats.taskStats) - 1] = '\0';
   #else
-  _stats.taskStats = "";
+  _stats.taskStats[0] = '\0';
   #endif
   
   // Estimation Idle%: parse simple de taskStats (lignes "IDLE" et/ou "IDLE1/IDLE0")
+  // v11.156: Utilisation de char[] au lieu de String pour éviter fragmentation mémoire
   uint8_t idlePct = 255;
-  if (_stats.taskStats.length() > 0) {
+  const size_t taskStatsLen = strlen(_stats.taskStats);
+  if (taskStatsLen > 0) {
+    const char* taskStatsPtr = _stats.taskStats;
     // Cherche la dernière colonne en % sur les lignes contenant "IDLE"
     uint16_t sumIdle = 0;
     uint8_t cnt = 0;
-    int idx = 0;
-    while ((idx = _stats.taskStats.indexOf("IDLE", idx)) != -1) {
-      int lineEnd = _stats.taskStats.indexOf('\n', idx);
-      if (lineEnd == -1) lineEnd = _stats.taskStats.length();
-      String line = _stats.taskStats.substring(idx, lineEnd);
-      int pctPos = line.lastIndexOf('%');
-      if (pctPos > 0) {
-        // remonte pour trouver le début du nombre
-        int start = pctPos - 1;
-        while (start >= 0 && isdigit(line[start])) start--;
-        start++;
-        int len = pctPos - start;
-        if (len > 0 && len <= 3) {
-          uint16_t val = (uint16_t) line.substring(start, pctPos).toInt();
-          sumIdle += val;
-          cnt++;
+    const char* searchPtr = taskStatsPtr;
+    while ((searchPtr = strstr(searchPtr, "IDLE")) != nullptr) {
+      int idx = searchPtr - taskStatsPtr;
+      const char* lineEndPtr = strchr(searchPtr, '\n');
+      int lineEnd = (lineEndPtr != nullptr) ? (lineEndPtr - taskStatsPtr) : taskStatsLen;
+      
+      // Buffer fixe au lieu de String::substring() pour éviter allocations
+      int lineLen = lineEnd - idx;
+      if (lineLen > 0 && lineLen < 120) {  // Limite raisonnable pour une ligne
+        char line[120];
+        strncpy(line, taskStatsPtr + idx, lineLen);
+        line[lineLen] = '\0';
+        
+        // Chercher le '%' depuis la fin de la ligne
+        int pctPos = -1;
+        for (int i = lineLen - 1; i >= 0; i--) {
+          if (line[i] == '%') {
+            pctPos = i;
+            break;
+          }
+        }
+        
+        if (pctPos > 0) {
+          // Remonter pour trouver le début du nombre
+          int start = pctPos - 1;
+          while (start >= 0 && isdigit(line[start])) start--;
+          start++;
+          int len = pctPos - start;
+          if (len > 0 && len <= 3) {
+            // Extraire le nombre avec atoi() au lieu de substring().toInt()
+            char numStr[4];
+            strncpy(numStr, line + start, len);
+            numStr[len] = '\0';
+            uint16_t val = (uint16_t) atoi(numStr);
+            sumIdle += val;
+            cnt++;
+          }
         }
       }
-      idx = lineEnd;
+      searchPtr = (lineEndPtr != nullptr) ? lineEndPtr + 1 : taskStatsPtr + taskStatsLen;
     }
     if (cnt > 0) {
       uint16_t avg = sumIdle / cnt;
@@ -286,14 +324,14 @@ void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   doc["rebootCount"] = _stats.rebootCount;
   doc["lastRebootReason"] = _stats.lastRebootReason;
   if (_stats.idlePercent != 255) doc["idlePercent"] = _stats.idlePercent;
-  if (_stats.taskStats.length() > 0) doc["taskStats"] = _stats.taskStats;
+  if (strlen(_stats.taskStats) > 0) doc["taskStats"] = _stats.taskStats;
   // Réseau/OTA
   doc["httpOk"] = _stats.httpSuccessCount;
   doc["httpKo"] = _stats.httpFailCount;
   doc["lastHttpCode"] = _stats.lastHttpCode;
   doc["otaOk"] = _stats.otaSuccessCount;
   doc["otaKo"] = _stats.otaFailCount;
-  if (_stats.lastOtaError.length() > 0) doc["lastOtaError"] = _stats.lastOtaError;
+  if (strlen(_stats.lastOtaError) > 0) doc["lastOtaError"] = _stats.lastOtaError;
   if (_stats.crashStatus.hasCrashInfo || _stats.crashStatus.coredumpPresent) {
     ArduinoJson::JsonObject crash = doc["crash"].to<ArduinoJson::JsonObject>();
     crash["hasCrashInfo"] = _stats.crashStatus.hasCrashInfo;
@@ -323,162 +361,380 @@ void Diagnostics::recordOtaResult(bool success, const char* errorMsg) {
   if (success) {
     _stats.otaSuccessCount++;
     g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_otaOk", _stats.otaSuccessCount);
-    _stats.lastOtaError = "";
+    _stats.lastOtaError[0] = '\0';
   } else {
     _stats.otaFailCount++;
     g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_otaKo", _stats.otaFailCount);
-    _stats.lastOtaError = errorMsg ? String(errorMsg) : String("");
+    if (errorMsg) {
+      strncpy(_stats.lastOtaError, errorMsg, sizeof(_stats.lastOtaError) - 1);
+      _stats.lastOtaError[sizeof(_stats.lastOtaError) - 1] = '\0';
+    } else {
+      _stats.lastOtaError[0] = '\0';
+    }
   }
 }
 
-String Diagnostics::generateRestartReport() const {
-  String report;
-  report.reserve(2048); // Augmenté pour inclure les infos de panic
+void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
+  if (!buffer || bufferSize == 0) return;
+  
+  buffer[0] = '\0';
+  size_t offset = 0;
+  size_t remaining = bufferSize;
+  int written = 0;
   
   // Raison du redémarrage actuel
   esp_reset_reason_t resetReason = esp_reset_reason();
-  report += "Raison du redémarrage: ";
-  report += resetReasonToString(resetReason);
-  report += " (code ";
-  report += String((int)resetReason);
-  report += ")";
-  report += "\n";
+  written = snprintf(buffer + offset, remaining, 
+                    "Raison du redémarrage: %s (code %d)\n",
+                    resetReasonToString(resetReason), (int)resetReason);
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
   
   // Informations détaillées de PANIC si disponibles
   if (_stats.panicInfo.hasPanicInfo) {
-    report += "\n⚠️ DÉTAILS DU PANIC (Guru Meditation) ⚠️\n";
-    report += "Exception: "; report += _stats.panicInfo.exceptionCause; report += "\n";
-    report += "Adresse PC: 0x"; report += String(_stats.panicInfo.exceptionAddress, HEX); report += "\n";
+    written = snprintf(buffer + offset, remaining,
+                      "\n⚠️ DÉTAILS DU PANIC (Guru Meditation) ⚠️\n"
+                      "Exception: %s\n"
+                      "Adresse PC: 0x%08X\n",
+                      _stats.panicInfo.exceptionCause, _stats.panicInfo.exceptionAddress);
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
+    
     if (_stats.panicInfo.excvaddr != 0) {
-      report += "Adresse mémoire fautive: 0x"; report += String(_stats.panicInfo.excvaddr, HEX); report += "\n";
+      written = snprintf(buffer + offset, remaining,
+                         "Adresse mémoire fautive: 0x%08X\n", _stats.panicInfo.excvaddr);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
-    if (_stats.panicInfo.taskName.length() > 0) {
-      report += "Tâche: "; report += _stats.panicInfo.taskName; report += "\n";
+    
+    if (strlen(_stats.panicInfo.taskName) > 0) {
+      written = snprintf(buffer + offset, remaining, "Tâche: %s\n", _stats.panicInfo.taskName);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
+    
     if (_stats.panicInfo.core >= 0) {
-      report += "CPU Core: "; report += String(_stats.panicInfo.core); report += "\n";
+      written = snprintf(buffer + offset, remaining, "CPU Core: %d\n", _stats.panicInfo.core);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
-    if (_stats.panicInfo.additionalInfo.length() > 0) {
-      report += "Info supplémentaire: "; report += _stats.panicInfo.additionalInfo; report += "\n";
+    
+    if (strlen(_stats.panicInfo.additionalInfo) > 0) {
+      written = snprintf(buffer + offset, remaining, "Info supplémentaire: %s\n", 
+                        _stats.panicInfo.additionalInfo);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
-    report += "\n";
+    
+    written = snprintf(buffer + offset, remaining, "\n");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
   }
 
   if (_stats.crashStatus.hasCrashInfo) {
-    report += "\n-- DERNIER CRASH ENREGISTRÉ --\n";
-    report += "Reset reason: ";
-    report += resetReasonToString(static_cast<esp_reset_reason_t>(_stats.crashStatus.resetReason));
-    report += " (code ";
-    report += String(_stats.crashStatus.resetReason);
-    report += ")\n";
-    if (_stats.crashStatus.crashUptimeSec > 0) {
-      report += "Uptime avant crash: ";
-      report += String(_stats.crashStatus.crashUptimeSec);
-      report += " s\n";
+    written = snprintf(buffer + offset, remaining,
+                      "\n-- DERNIER CRASH ENREGISTRÉ --\n"
+                      "Reset reason: %s (code %d)\n",
+                      resetReasonToString(static_cast<esp_reset_reason_t>(_stats.crashStatus.resetReason)),
+                      _stats.crashStatus.resetReason);
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
     }
+    offset += written;
+    remaining -= written;
+    
+    if (_stats.crashStatus.crashUptimeSec > 0) {
+      written = snprintf(buffer + offset, remaining, "Uptime avant crash: %u s\n",
+                         _stats.crashStatus.crashUptimeSec);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
+    }
+    
     if (_stats.crashStatus.crashEpoch > 0) {
-      report += "Epoch crash/boot: ";
-      report += String(_stats.crashStatus.crashEpoch);
-      report += "\n";
+      written = snprintf(buffer + offset, remaining, "Epoch crash/boot: %u\n",
+                         _stats.crashStatus.crashEpoch);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
   }
-  report += "Core Dump: ";
+  
+  written = snprintf(buffer + offset, remaining, "Core Dump: ");
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
+  
   if (_stats.crashStatus.coredumpPresent) {
-    report += "PRÉSENT";
-    if (_stats.crashStatus.coredumpSize > 0) {
-      report += " (";
-      report += String(_stats.crashStatus.coredumpSize);
-      report += " bytes)";
+    written = snprintf(buffer + offset, remaining, "PRÉSENT");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
     }
-    if (_stats.crashStatus.coredumpFormat.length() > 0) {
-      report += " - ";
-      report += _stats.crashStatus.coredumpFormat;
+    offset += written;
+    remaining -= written;
+    
+    if (_stats.crashStatus.coredumpSize > 0) {
+      written = snprintf(buffer + offset, remaining, " (%u bytes)", _stats.crashStatus.coredumpSize);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
+    }
+    
+    if (strlen(_stats.crashStatus.coredumpFormat) > 0) {
+      written = snprintf(buffer + offset, remaining, " - %s", _stats.crashStatus.coredumpFormat);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
   } else {
-    report += "ABSENT";
+    written = snprintf(buffer + offset, remaining, "ABSENT");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
   }
-  report += "\n";
+  
+  written = snprintf(buffer + offset, remaining, "\n");
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
   
   // Détails supplémentaires en mode DEBUG/PROFILE_TEST pour diagnostic
   #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
   // Informations détaillées pour WATCHDOG
   if (resetReason == ESP_RST_TASK_WDT || resetReason == ESP_RST_INT_WDT || resetReason == ESP_RST_WDT) {
-    report += "\n🔍 DÉTAILS WATCHDOG (Mode Debug) 🔍\n";
+    written = snprintf(buffer + offset, remaining, "\n🔍 DÉTAILS WATCHDOG (Mode Debug) 🔍\n");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
     
     // Informations sur l'uptime avant reboot (si disponible dans NVS)
     unsigned long lastUptime = 0;
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_lastUptime", lastUptime, 0);
     if (lastUptime > 0) {
-      report += "Uptime avant reboot: "; 
       unsigned long hours = lastUptime / 3600;
       unsigned long mins = (lastUptime % 3600) / 60;
       unsigned long secs = lastUptime % 60;
-      report += String(hours); report += "h "; 
-      report += String(mins); report += "m "; 
-      report += String(secs); report += "s\n";
+      written = snprintf(buffer + offset, remaining, "Uptime avant reboot: %luh %lum %lus\n",
+                         hours, mins, secs);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
     
     // État mémoire avant reboot
     uint32_t lastHeap = 0;
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_lastHeap", lastHeap, 0);
     if (lastHeap > 0) {
-      report += "Heap libre avant reboot: "; report += String(lastHeap); report += " bytes\n";
+      written = snprintf(buffer + offset, remaining, "Heap libre avant reboot: %u bytes\n", lastHeap);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
     
     // Configuration watchdog
-    report += "Watchdog timeout configuré: 300 secondes (5 minutes)\n";
-    report += "Note: Une tâche n'a pas reset le watchdog pendant >300s\n";
+    written = snprintf(buffer + offset, remaining,
+                      "Watchdog timeout configuré: 300 secondes (5 minutes)\n"
+                      "Note: Une tâche n'a pas reset le watchdog pendant >300s\n");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
     
     // Core Dump info
     #if CONFIG_ESP_COREDUMP_ENABLE
-    report += "Core Dump: ACTIVÉ (Flash)\n";
-    report += "Note: Utilisez 'pio run -t monitor' ou esp-coredump pour extraire le dump\n";
+    written = snprintf(buffer + offset, remaining,
+                      "Core Dump: ACTIVÉ (Flash)\n"
+                      "Note: Utilisez 'pio run -t monitor' ou esp-coredump pour extraire le dump\n");
     #else
-    report += "Core Dump: DÉSACTIVÉ\n";
+    written = snprintf(buffer + offset, remaining, "Core Dump: DÉSACTIVÉ\n");
     #endif
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
 
-    report += "\n";
+    written = snprintf(buffer + offset, remaining, "\n");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
   }
   
   // Informations supplémentaires pour PANIC en mode debug
   if (_stats.panicInfo.hasPanicInfo) {
-    report += "🔍 DÉTAILS COMPLÉMENTAIRES PANIC (Mode Debug) 🔍\n";
-    report += "Reset reason code: "; report += String((int)resetReason); report += "\n";
+    written = snprintf(buffer + offset, remaining,
+                      "🔍 DÉTAILS COMPLÉMENTAIRES PANIC (Mode Debug) 🔍\n"
+                      "Reset reason code: %d\n", (int)resetReason);
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
+    
     RESET_REASON rtcReason = rtc_get_reset_reason(0);
-    report += "RTC reason code (Core 0): "; report += String((int)rtcReason); report += "\n";
+    written = snprintf(buffer + offset, remaining, "RTC reason code (Core 0): %d\n", (int)rtcReason);
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
+    
     RESET_REASON rtcReason1 = rtc_get_reset_reason(1);
     if (rtcReason1 != NO_MEAN) {
-      report += "RTC reason code (Core 1): "; report += String((int)rtcReason1); report += "\n";
+      written = snprintf(buffer + offset, remaining, "RTC reason code (Core 1): %d\n", (int)rtcReason1);
+      if (written < 0 || (size_t)written >= remaining) {
+        buffer[bufferSize - 1] = '\0';
+        return;
+      }
+      offset += written;
+      remaining -= written;
     }
-    report += "\n";
+    
+    written = snprintf(buffer + offset, remaining, "\n");
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
   }
   #endif
   
   // Informations sur le redémarrage
-  report += "Compteur de redémarrages: "; report += String(_stats.rebootCount); report += "\n";
-  report += "Dernière raison sauvegardée: "; report += _stats.lastRebootReason; report += "\n";
+  written = snprintf(buffer + offset, remaining,
+                    "Compteur de redémarrages: %u\n"
+                    "Dernière raison sauvegardée: %s\n",
+                    _stats.rebootCount, _stats.lastRebootReason);
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
   
   // État de la mémoire
-  report += "Heap libre au démarrage: "; report += String(ESP.getFreeHeap()); report += " bytes\n";
-  report += "Heap libre minimum historique: "; report += String(_stats.minFreeHeap); report += " bytes\n";
+  written = snprintf(buffer + offset, remaining,
+                    "Heap libre au démarrage: %u bytes\n"
+                    "Heap libre minimum historique: %u bytes\n",
+                    ESP.getFreeHeap(), _stats.minFreeHeap);
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
   
   // Informations système
-  report += "Modèle chip: "; report += ESP.getChipModel(); report += "\n";
-  report += "Révision chip: "; report += String(ESP.getChipRevision()); report += "\n";
-  report += "Nombre de cores: "; report += String(ESP.getChipCores()); report += "\n";
-  report += "Fréquence CPU: "; report += String(getCpuFrequencyMhz()); report += " MHz\n";
-  report += "Version SDK: "; report += ESP.getSdkVersion(); report += "\n";
+  written = snprintf(buffer + offset, remaining,
+                    "Modèle chip: %s\n"
+                    "Révision chip: %d\n"
+                    "Nombre de cores: %d\n"
+                    "Fréquence CPU: %d MHz\n"
+                    "Version SDK: %s\n",
+                    ESP.getChipModel(), ESP.getChipRevision(), ESP.getChipCores(),
+                    getCpuFrequencyMhz(), ESP.getSdkVersion());
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
   
   // Statistiques réseau/OTA
-  report += "Requêtes HTTP réussies: "; report += String(_stats.httpSuccessCount); report += "\n";
-  report += "Requêtes HTTP échouées: "; report += String(_stats.httpFailCount); report += "\n";
-  report += "Mises à jour OTA réussies: "; report += String(_stats.otaSuccessCount); report += "\n";
-  report += "Mises à jour OTA échouées: "; report += String(_stats.otaFailCount); report += "\n";
-  if (_stats.lastOtaError.length() > 0) {
-    report += "Dernière erreur OTA: "; report += _stats.lastOtaError; report += "\n";
+  written = snprintf(buffer + offset, remaining,
+                    "Requêtes HTTP réussies: %u\n"
+                    "Requêtes HTTP échouées: %u\n"
+                    "Mises à jour OTA réussies: %u\n"
+                    "Mises à jour OTA échouées: %u\n",
+                    _stats.httpSuccessCount, _stats.httpFailCount,
+                    _stats.otaSuccessCount, _stats.otaFailCount);
+  if (written < 0 || (size_t)written >= remaining) {
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+  offset += written;
+  remaining -= written;
+  
+  if (strlen(_stats.lastOtaError) > 0) {
+    written = snprintf(buffer + offset, remaining, "Dernière erreur OTA: %s\n", _stats.lastOtaError);
+    if (written < 0 || (size_t)written >= remaining) {
+      buffer[bufferSize - 1] = '\0';
+      return;
+    }
+    offset += written;
+    remaining -= written;
   }
   
-  return report;
+  // S'assurer que le buffer est terminé par \0
+  buffer[offset] = '\0';
 }
 
 // Capturer les informations de panic depuis la mémoire RTC
@@ -500,76 +756,91 @@ void Diagnostics::capturePanicInfo() {
   _stats.panicInfo.exceptionAddress = 0;
   _stats.panicInfo.excvaddr = 0;
   _stats.panicInfo.core = 0;
-  _stats.panicInfo.taskName = "";
-  _stats.panicInfo.additionalInfo = "";
+  _stats.panicInfo.taskName[0] = '\0';
+  _stats.panicInfo.additionalInfo[0] = '\0';
   
   // Décoder la raison RTC en détails
   // Note: On utilise seulement les constantes disponibles dans toutes les versions du SDK
+  const char* exceptionCauseStr = nullptr;
   switch (rtcReason) {
     case RTCWDT_RTC_RESET:
-      _stats.panicInfo.exceptionCause = "RTC Watchdog Reset";
+      exceptionCauseStr = "RTC Watchdog Reset";
       break;
 #ifdef TGWDT_CPU_RESET
     case TGWDT_CPU_RESET:
-      _stats.panicInfo.exceptionCause = "Timer Group Watchdog (CPU)";
+      exceptionCauseStr = "Timer Group Watchdog (CPU)";
       break;
 #endif
     case TG0WDT_SYS_RESET:
-      _stats.panicInfo.exceptionCause = "Timer Group 0 Watchdog (System)";
+      exceptionCauseStr = "Timer Group 0 Watchdog (System)";
       break;
     case TG1WDT_SYS_RESET:
-      _stats.panicInfo.exceptionCause = "Timer Group 1 Watchdog (System)";
+      exceptionCauseStr = "Timer Group 1 Watchdog (System)";
       break;
 #ifdef SW_CPU_RESET
     case SW_CPU_RESET:
-      _stats.panicInfo.exceptionCause = "Software CPU Reset";
+      exceptionCauseStr = "Software CPU Reset";
       break;
 #endif
     case RTCWDT_CPU_RESET:
-      _stats.panicInfo.exceptionCause = "RTC Watchdog CPU Reset";
+      exceptionCauseStr = "RTC Watchdog CPU Reset";
       break;
     case INTRUSION_RESET:
-      _stats.panicInfo.exceptionCause = "Intrusion Test Reset";
+      exceptionCauseStr = "Intrusion Test Reset";
       break;
     case DEEPSLEEP_RESET:
-      _stats.panicInfo.exceptionCause = "Deep Sleep Reset";
+      exceptionCauseStr = "Deep Sleep Reset";
       break;
 #ifdef SDIO_RESET
     case SDIO_RESET:
-      _stats.panicInfo.exceptionCause = "SDIO Reset";
+      exceptionCauseStr = "SDIO Reset";
       break;
 #endif
     case POWERON_RESET:
-      _stats.panicInfo.exceptionCause = "Power-On Reset";
+      exceptionCauseStr = "Power-On Reset";
       break;
 #ifdef SW_RESET
     case SW_RESET:
-      _stats.panicInfo.exceptionCause = "Software Reset";
+      exceptionCauseStr = "Software Reset";
       break;
 #endif
     default:
       // Pour les codes inconnus, on affiche le code numérique
-      _stats.panicInfo.exceptionCause = "Unknown Exception";
-      _stats.panicInfo.additionalInfo += " (Reset code: " + String((int)rtcReason) + ")";
+      exceptionCauseStr = "Unknown Exception";
+      snprintf(_stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo),
+               " (Reset code: %d)", (int)rtcReason);
       break;
+  }
+  if (exceptionCauseStr) {
+    strncpy(_stats.panicInfo.exceptionCause, exceptionCauseStr, sizeof(_stats.panicInfo.exceptionCause) - 1);
+    _stats.panicInfo.exceptionCause[sizeof(_stats.panicInfo.exceptionCause) - 1] = '\0';
   }
   
   // Vérifier les deux cores pour identifier lequel a paniqué
   RESET_REASON rtcReason1 = rtc_get_reset_reason(1);
   if (rtcReason1 != rtcReason && rtcReason1 != NO_MEAN) {
     _stats.panicInfo.core = 1;
-    if (_stats.panicInfo.additionalInfo.length() > 0) {
-      _stats.panicInfo.additionalInfo += "; ";
+    size_t currentLen = strlen(_stats.panicInfo.additionalInfo);
+    if (currentLen > 0) {
+      snprintf(_stats.panicInfo.additionalInfo + currentLen, 
+               sizeof(_stats.panicInfo.additionalInfo) - currentLen,
+               "; Core 1 reason differs: %d", (int)rtcReason1);
+    } else {
+      snprintf(_stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo),
+               "Core 1 reason differs: %d", (int)rtcReason1);
     }
-    _stats.panicInfo.additionalInfo += "Core 1 reason differs: " + String((int)rtcReason1);
   }
   
   // Ajouter le code ESP reset reason pour plus de détails
-  if (_stats.panicInfo.additionalInfo.length() > 0) {
-    _stats.panicInfo.additionalInfo += "; ";
+  size_t currentLen = strlen(_stats.panicInfo.additionalInfo);
+  if (currentLen > 0) {
+    snprintf(_stats.panicInfo.additionalInfo + currentLen,
+             sizeof(_stats.panicInfo.additionalInfo) - currentLen,
+             "; ESP reset reason: %d, RTC reason: %d", (int)resetReason, (int)rtcReason);
+  } else {
+    snprintf(_stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo),
+             "ESP reset reason: %d, RTC reason: %d", (int)resetReason, (int)rtcReason);
   }
-  _stats.panicInfo.additionalInfo += "ESP reset reason: " + String((int)resetReason);
-  _stats.panicInfo.additionalInfo += ", RTC reason: " + String((int)rtcReason);
   
   // Note: Les détails supplémentaires (PC, registres, stack trace) nécessitent :
   // 1. Activation du Core Dump dans menuconfig
@@ -583,7 +854,7 @@ void Diagnostics::capturePanicInfo() {
   // Pour l'instant, on capture ce qui est disponible via RTC memory
   
   Serial.printf("[Diagnostics] 🔍 Panic capturé: %s (Core %d)\n", 
-                _stats.panicInfo.exceptionCause.c_str(), 
+                _stats.panicInfo.exceptionCause, 
                 _stats.panicInfo.core);
   Serial.printf("[Diagnostics] ℹ️ Pour plus de détails, consulter les logs série complets\n");
   Serial.printf("[Diagnostics] ℹ️ ou activer le Core Dump pour analyse post-mortem\n");
@@ -594,12 +865,15 @@ void Diagnostics::savePanicInfo() {
   if (!_stats.panicInfo.hasPanicInfo) return;
   
   g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", true);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause);
+  String tempStr = _stats.panicInfo.exceptionCause;
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", tempStr);
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress);
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName);
+  tempStr = _stats.panicInfo.taskName;
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicTask", tempStr);
   g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo);
+  tempStr = _stats.panicInfo.additionalInfo;
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicInfo", tempStr);
   
   Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
 }
@@ -609,12 +883,19 @@ void Diagnostics::loadPanicInfo() {
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", _stats.panicInfo.hasPanicInfo, false);
   
   if (_stats.panicInfo.hasPanicInfo) {
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause, "Unknown");
+    String tempStr;
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", tempStr, "Unknown");
+    strncpy(_stats.panicInfo.exceptionCause, tempStr.c_str(), sizeof(_stats.panicInfo.exceptionCause) - 1);
+    _stats.panicInfo.exceptionCause[sizeof(_stats.panicInfo.exceptionCause) - 1] = '\0';
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress, 0);
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr, 0);
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName, "");
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicTask", tempStr, "");
+    strncpy(_stats.panicInfo.taskName, tempStr.c_str(), sizeof(_stats.panicInfo.taskName) - 1);
+    _stats.panicInfo.taskName[sizeof(_stats.panicInfo.taskName) - 1] = '\0';
     g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core, -1);
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo, "");
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicInfo", tempStr, "");
+    strncpy(_stats.panicInfo.additionalInfo, tempStr.c_str(), sizeof(_stats.panicInfo.additionalInfo) - 1);
+    _stats.panicInfo.additionalInfo[sizeof(_stats.panicInfo.additionalInfo) - 1] = '\0';
     
     Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
   }
@@ -682,7 +963,8 @@ void Diagnostics::loadCrashStatus() {
   _stats.crashStatus.crashEpoch = 0;
   _stats.crashStatus.coredumpPresent = false;
   _stats.crashStatus.coredumpSize = 0;
-  _stats.crashStatus.coredumpFormat = "UNKNOWN";
+  strncpy(_stats.crashStatus.coredumpFormat, "UNKNOWN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
 
   bool hasCrash = false;
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_has", hasCrash, false);
@@ -696,7 +978,10 @@ void Diagnostics::loadCrashStatus() {
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch, 0);
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent, false);
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize, 0);
-  g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", _stats.crashStatus.coredumpFormat, "UNKNOWN");
+  String tempStr;
+  g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", tempStr, "UNKNOWN");
+  strncpy(_stats.crashStatus.coredumpFormat, tempStr.c_str(), sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
 }
 
 void Diagnostics::saveCrashStatus() {
@@ -709,7 +994,8 @@ void Diagnostics::saveCrashStatus() {
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch);
   g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent);
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", _stats.crashStatus.coredumpFormat);
+  String tempStr = _stats.crashStatus.coredumpFormat;
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", tempStr);
 }
 
 void Diagnostics::updateCoredumpStatus(bool persistIfCrash) {
@@ -717,11 +1003,14 @@ void Diagnostics::updateCoredumpStatus(bool persistIfCrash) {
   _stats.crashStatus.coredumpSize = 0;
 
 #if defined(CONFIG_ESP_COREDUMP_ENABLE) && (CONFIG_ESP_COREDUMP_ENABLE == 1)
-  _stats.crashStatus.coredumpFormat = "UNKNOWN";
+  strncpy(_stats.crashStatus.coredumpFormat, "UNKNOWN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
   #if defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF) && (CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF == 1)
-  _stats.crashStatus.coredumpFormat = "ELF";
+  strncpy(_stats.crashStatus.coredumpFormat, "ELF", sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
   #elif defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_BIN) && (CONFIG_ESP_COREDUMP_DATA_FORMAT_BIN == 1)
-  _stats.crashStatus.coredumpFormat = "BIN";
+  strncpy(_stats.crashStatus.coredumpFormat, "BIN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
   #endif
 
   size_t imageAddr = 0;
@@ -749,7 +1038,8 @@ void Diagnostics::updateCoredumpStatus(bool persistIfCrash) {
   }
   _stats.crashStatus.coredumpPresent = hasDump;
 #else
-  _stats.crashStatus.coredumpFormat = "DISABLED";
+  strncpy(_stats.crashStatus.coredumpFormat, "DISABLED", sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
 #endif
 
   if (persistIfCrash && _stats.crashStatus.hasCrashInfo) {

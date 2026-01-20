@@ -1,5 +1,6 @@
 #include "power.h"
 #include "nvs_manager.h" // v11.107
+#include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
@@ -38,6 +39,15 @@ void PowerManager::resetWatchdog() {
 
 uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   Serial.printf("[Power] Mise en veille légère pour %u secondes\n", sleepTimeSeconds);
+  
+  // === v11.149: Signaler la transition vers light sleep ===
+  // Bloque les nouvelles connexions TLS (SMTP, HTTPS) pour éviter les crashs
+  g_enteringLightSleep = true;
+  Serial.println(F("[Power] 🚦 Flag g_enteringLightSleep activé - nouvelles connexions TLS bloquées"));
+  
+  // Attendre brièvement que les connexions TLS en cours se terminent
+  // Le mutex TLS sera relâché par les tâches en cours
+  vTaskDelay(pdMS_TO_TICKS(500));
   
   // Timestamp avant le passage en veille
   const uint64_t startUs = esp_timer_get_time();
@@ -107,6 +117,11 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   
   // Calcul effectif du temps passé en veille légère
   const uint32_t sleptSec = getSleptTime(startUs);
+
+  // === v11.149: Désactiver le flag de transition sleep ===
+  // Autorise à nouveau les connexions TLS
+  g_enteringLightSleep = false;
+  Serial.println(F("[Power] 🚦 Flag g_enteringLightSleep désactivé - connexions TLS autorisées"));
 
   // Réveil - reconnexion WiFi avec les identifiants sauvegardés (si configuré)
   if (SleepConfig::AUTO_RECONNECT_WIFI_AFTER_SLEEP) {

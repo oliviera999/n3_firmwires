@@ -28,6 +28,9 @@ class WebClient {
   bool sendHeartbeat(const class Diagnostics& diag);
   bool postRaw(const String& payload);
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
+  
+  // v11.150: Force la libération de mémoire TLS
+  void resetTLSClient();
 
  private:
   String _apiKey;

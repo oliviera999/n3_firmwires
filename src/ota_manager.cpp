@@ -360,7 +360,7 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
     // Configuration du client HTTP moderne - CORRIGÉE
     esp_http_client_config_t config = {};
     config.url = url.c_str();
-    config.timeout_ms = NetworkConfig::HTTP_TIMEOUT_MS; // 30 secondes
+    config.timeout_ms = NetworkConfig::OTA_TIMEOUT_MS; // 30 secondes (timeout OTA justifié pour téléchargements firmware)
     config.buffer_size = BufferConfig::HTTP_BUFFER_SIZE; // Buffers augmentés pour débit
     config.buffer_size_tx = BufferConfig::HTTP_TX_BUFFER_SIZE;
     config.skip_cert_common_name_check = true; // Ignorer la vérification SSL
@@ -833,7 +833,7 @@ void OTAManager::updateTask(void* parameter) {
                   "- MD5 filesystem: " + (ota->getFilesystemMD5().length() ? ota->getFilesystemMD5() : String("-")) + "\n" +
                   "- Partition courante: " + part;
     if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-    mailer.sendAlert("OTA début - Serveur distant", body, toEmail);
+    mailer.sendAlert("OTA début - Serveur distant", body.c_str(), toEmail);
     
     // Ajouter cette tâche au TWDT et conserver le watchdog ACTIF pendant l'OTA
     esp_task_wdt_add(NULL);
@@ -942,7 +942,7 @@ void OTAManager::updateTask(void* parameter) {
                           "- Partition de boot (après MAJ): " + bootPart + "\n" +
                           "- Prochaine partition OTA: " + nextPart + "\n";
             if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-            mailer.sendAlert("OTA fin - Serveur distant", body, toEmail);
+            mailer.sendAlert("OTA fin - Serveur distant", body.c_str(), toEmail);
         }
         
         // Nettoyer le flag inProgress avant reboot

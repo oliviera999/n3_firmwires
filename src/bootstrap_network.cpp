@@ -222,7 +222,7 @@ void onWifiReady(AppContext& ctx,
                     "- Version courante: " + String(ProjectConfig::VERSION) + "\n" +
                     "- Hostname: " + String(hostname) + "\n";
       body += "- Hôte: "; body += hostname; body += ":"; body += String(SystemConfig::ARDUINO_OTA_PORT);
-      ctx.mailer.sendAlert("OTA début - Interface web", body, toEmail);
+      ctx.mailer.sendAlert("OTA début - Interface web", body.c_str(), toEmail);
     })
     .onProgress([&ctx](unsigned int progress, unsigned int total) {
       int percent = (progress * 100) / total;

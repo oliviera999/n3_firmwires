@@ -53,13 +53,15 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
       Serial.println(F("[CRITIQUE] Sécurité: aquarium trop plein – pompe réservoir verrouillée"));
     }
   } else {
-    // Déverrouillage automatique si l'aquarium n'est plus en état de trop-plein
-    if (tankPumpLocked && _tankPumpLockReason == TankPumpLockReason::AQUARIUM_OVERFILL && !inFlood) {
-      tankPumpLocked = false;
-      _tankPumpLockReason = TankPumpLockReason::NONE;
-      emailTankSent = false;
-      Serial.println(F("[Auto] Pompe réservoir déverrouillée (aquarium OK)"));
-    }
+      // Déverrouillage automatique si l'aquarium n'est plus en état de trop-plein
+      if (tankPumpLocked && _tankPumpLockReason == TankPumpLockReason::AQUARIUM_OVERFILL && !inFlood) {
+        tankPumpLocked = false;
+        _tankPumpLockReason = TankPumpLockReason::NONE;
+        emailTankSent = false;
+        emailTankStartSent = false; // Réinitialiser pour permettre un nouveau mail de démarrage
+        emailTankStopSent = false;   // Réinitialiser pour permettre un nouveau mail d'arrêt
+        Serial.println(F("[Auto] Pompe réservoir déverrouillée (aquarium OK)"));
+      }
   }
 
   // ========================================
@@ -125,6 +127,22 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
       Serial.printf("[CRITIQUE] Démarrage pompe réservoir (niveau: %d cm, seuil: %d cm, durée: %lu s)\n",
                     r.wlAqua, aqThresholdCm, refillDurationMs / 1000);
       Serial.println(F("[CRITIQUE] === REMPLISSAGE EN COURS ==="));
+      
+      // Mail informatif de démarrage
+      if (mailNotif && !emailTankStartSent) {
+        char msg[512];
+        snprintf(msg, sizeof(msg),
+                 "Démarrage REMPLISSAGE automatique\n"
+                 "- Niveau aquarium: %d cm (seuil: %d cm)\n"
+                 "- Réserve: %d cm\n"
+                 "- Durée prévue: %lu secondes\n"
+                 "- Mode: Automatique",
+                 r.wlAqua, aqThresholdCm, r.wlTank, refillDurationMs / 1000);
+        _mailer.send("Remplissage démarré", msg, "System", _emailAddress);
+        emailTankStartSent = true;
+        emailTankStopSent = false; // Réinitialiser pour permettre le mail de fin
+        Serial.println(F("[Auto] ✅ Email de démarrage remplissage envoyé"));
+      }
     }
   }
 
@@ -155,6 +173,26 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
         }
       } else {
         Serial.println(F("[Auto] ⚠️ WiFi déconnecté - notification fin cycle reportée"));
+      }
+      
+      // Mail informatif de fin de remplissage manuel
+      if (mailNotif && !emailTankStopSent) {
+        SensorReadings cur = _sensors.read();
+        int levelImprovement = _levelAtPumpStart - cur.wlAqua;
+        uint32_t actualDurationSec = refillDurationMs / 1000;
+        char msg[512];
+        snprintf(msg, sizeof(msg),
+                 "Remplissage MANUEL terminé\n"
+                 "- Durée: %u secondes\n"
+                 "- Amélioration niveau: %d cm\n"
+                 "- Niveau aquarium: %d cm (début: %d cm)\n"
+                 "- Réserve: %d cm\n"
+                 "- Mode: Manuel",
+                 actualDurationSec, levelImprovement, cur.wlAqua, _levelAtPumpStart, cur.wlTank);
+        _mailer.send("Remplissage terminé", msg, "System", _emailAddress);
+        emailTankStopSent = true;
+        emailTankStartSent = false; // Réinitialiser pour permettre le prochain mail de démarrage
+        Serial.println(F("[Auto] ✅ Email de fin remplissage manuel envoyé"));
       }
     }
   }
@@ -230,6 +268,24 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
       } else {
         tankPumpRetries = 0;
         Serial.printf("[CRITIQUE] Remplissage réussi: niveau amélioré de %d cm\n", levelImprovement);
+        
+        // Mail informatif de fin de remplissage réussi
+        if (mailNotif && !emailTankStopSent) {
+          uint32_t actualDurationSec = elapsedMs / 1000;
+          char msg[512];
+          snprintf(msg, sizeof(msg),
+                   "Remplissage TERMINÉ avec succès\n"
+                   "- Durée réelle: %u secondes\n"
+                   "- Amélioration niveau: %d cm\n"
+                   "- Niveau aquarium: %d cm (début: %d cm)\n"
+                   "- Réserve: %d cm\n"
+                   "- Mode: Automatique",
+                   actualDurationSec, levelImprovement, r.wlAqua, _levelAtPumpStart, r.wlTank);
+          _mailer.send("Remplissage terminé", msg, "System", _emailAddress);
+          emailTankStopSent = true;
+          emailTankStartSent = false; // Réinitialiser pour permettre le prochain mail de démarrage
+          Serial.println(F("[Auto] ✅ Email de fin remplissage envoyé"));
+        }
       }
 
       const uint32_t stopExecMs = (uint32_t)(millis() - stopStartMs);
@@ -291,6 +347,8 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
         tankPumpLocked = false;
         _tankPumpLockReason = TankPumpLockReason::NONE;
         emailTankSent = false;
+        emailTankStartSent = false; // Réinitialiser pour permettre un nouveau mail de démarrage
+        emailTankStopSent = false;   // Réinitialiser pour permettre un nouveau mail d'arrêt
         Serial.printf("[Auto] Pompe réservoir déverrouillée (réserve OK, distance: %d cm, confirmations)\n", r.wlTank);
       }
     } else {
@@ -310,6 +368,8 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
         tankPumpLocked = false;
         tankPumpRetries = 0;
         emailTankSent = false;
+        emailTankStartSent = false; // Réinitialiser pour permettre un nouveau mail de démarrage
+        emailTankStopSent = false;   // Réinitialiser pour permettre un nouveau mail d'arrêt
         _tankPumpLockReason = TankPumpLockReason::NONE;
         lastRecoveryAttempt = currentMillisLocal;
         Serial.println(F("[CRITIQUE] Récupération automatique: pompe réservoir débloquée"));

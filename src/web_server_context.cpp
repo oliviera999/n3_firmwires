@@ -118,7 +118,7 @@ bool WebServerContext::sendManualActionEmail(const char* action,
   constexpr int MAX_RETRIES = 2;
   for (int attempt = 1; attempt <= MAX_RETRIES; ++attempt) {
     Serial.printf("[Web] 📧 Tentative d'envoi %d/%d...\n", attempt, MAX_RETRIES);
-    if (mailer.sendAlert(subject, message, emailAddr)) {
+    if (mailer.sendAlert(subject, message.c_str(), emailAddr)) {
       Serial.printf("[Web] 📧 ✅ Email %s envoyé avec succès (tentative %d)\n",
                     emailType,
                     attempt);

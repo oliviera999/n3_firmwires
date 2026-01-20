@@ -153,7 +153,10 @@ namespace NetworkConfig {
     constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
     constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
     constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
-    constexpr uint32_t HTTP_TIMEOUT_MS = 10000;
+    constexpr uint32_t HTTP_TIMEOUT_MS = 5000; // Conforme à .cursorrules (max 5s pour opérations réseau)
+    // Timeout OTA séparé : téléchargement firmware nécessite plus de temps que requêtes HTTP standard
+    // Justification : connexions lentes peuvent nécessiter jusqu'à 30s pour télécharger un firmware complet
+    constexpr uint32_t OTA_TIMEOUT_MS = 30000; // 30s pour téléchargements OTA (justifié par taille firmware)
     constexpr uint32_t OTA_DOWNLOAD_TIMEOUT_MS = 300000; // 5 min
     constexpr uint32_t MIN_DELAY_BETWEEN_REQUESTS_MS = 1000;
     constexpr uint32_t BACKOFF_BASE_MS = 1000;

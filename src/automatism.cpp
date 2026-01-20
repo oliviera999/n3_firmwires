@@ -86,6 +86,10 @@ void Automatism::update(const SensorReadings& r) {
         // 4.2 Appliquer commandes nourrissage distant
         _network.handleRemoteFeedingCommands(doc, *this);
     }
+    
+    // 4.3 Envoi périodique des données capteurs (toutes les 2 minutes)
+    // Vérifie automatiquement si 2 minutes se sont écoulées depuis le dernier envoi
+    _network.update(r, _acts, *this);
 
     // 5. Gestion logique métier via contrôleurs
     _refillController.process(ctx);
@@ -283,17 +287,44 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
     char sysInfo[128];
     Utils::getSystemInfo(sysInfo, sizeof(sysInfo));
     
+    // Uptime formaté
+    unsigned long totalSec = millis() / 1000UL;
+    unsigned int days = totalSec / 86400UL;
+    totalSec %= 86400UL;
+    unsigned int hours = totalSec / 3600UL;
+    totalSec %= 3600UL;
+    unsigned int mins = totalSec / 60UL;
+    unsigned int secs = totalSec % 60UL;
+    char uptimeStr[32];
+    snprintf(uptimeStr, sizeof(uptimeStr), "%ud %02u:%02u:%02u", days, hours, mins, secs);
+    
+    // État réseau
+    bool wifiConnected = WiFi.status() == WL_CONNECTED;
+    const char* wifiStatus;
+    char wifiDetail[64] = "";
+    if (wifiConnected) {
+        const char* ssid = WiFi.SSID().c_str();
+        snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssid);
+        wifiStatus = "Connecté";
+    } else {
+        wifiStatus = "Déconnecté";
+    }
+    
     int n = snprintf(buffer, bufferSize,
         "%s\n\n"
         "Système: %s\n"
         "Heure: %s\n"
         "Durée Gros: %u s\n"
         "Durée Petits: %u s\n"
-        "Mode: Manuel\n",
+        "Mode: Manuel\n"
+        "Uptime: %s\n"
+        "WiFi: %s%s\n",
         type,
         sysInfo,
         _power.getCurrentTimeString().c_str(),
-        bigDur, smallDur);
+        bigDur, smallDur,
+        uptimeStr,
+        wifiStatus, wifiDetail);
         
     return (n >= 0 && (size_t)n < bufferSize) ? n : 0;
 }
@@ -417,5 +448,23 @@ void Automatism::handleFeeding() {
                                        const uint32_t delayMs = 2 * 1000UL;
                                        _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
                                        _feedingPhaseEnd = millis() + bigCycleMs + delayMs;
+                                   },
+                                   [this]() {
+                                       // Callback de fin de nourrissage automatique
+                                       // Marquer les événements pour le graphique serveur (gros+petits)
+                                       bouffePetits = "1";
+                                       bouffeGros = "1";
+                                       Serial.println(F("[Auto] 🍽️ Nourrissage auto terminé - sync serveur"));
+                                       
+                                       // Envoyer au serveur avec les flags à 1
+                                       if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
+                                           SensorReadings readings = _sensors.read();
+                                           bool ok = sendFullUpdate(readings, nullptr);
+                                           Serial.printf("[Auto] 📤 Sync nourrissage auto: %s\n", ok ? "OK" : "FAIL");
+                                       }
+                                       
+                                       // Remettre les flags à 0 pour les prochains envois
+                                       bouffePetits = "0";
+                                       bouffeGros = "0";
                                    });
 }

@@ -29,7 +29,8 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
                                              uint16_t bigDuration, uint16_t smallDuration,
                                              const char* emailAddr, bool mailNotif,
                                              std::function<void()> mailBlinkCallback,
-                                             std::function<void(const char*)> feedingStartCallback) {
+                                             std::function<void(const char*)> feedingStartCallback,
+                                             std::function<void()> feedingCompleteCallback) {
     // Vérifier changement de jour
     checkNewDay(dayOfYear);
     
@@ -40,19 +41,19 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     
     if (shouldFeedMorning) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback);
+        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
         _config.setBouffeMatinOk(true);
         _config.saveBouffeFlags();
         sendFeedingEmail("Bouffe matin", bigDuration, smallDuration, emailAddr, mailNotif);
     } else if (shouldFeedNoon) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MIDI (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback);
+        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
         _config.setBouffeMidiOk(true);
         _config.saveBouffeFlags();
         sendFeedingEmail("Bouffe midi", bigDuration, smallDuration, emailAddr, mailNotif);
     } else if (shouldFeedEvening) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique SOIR (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback);
+        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
         _config.setBouffeSoirOk(true);
         _config.saveBouffeFlags();
         sendFeedingEmail("Bouffe soir", bigDuration, smallDuration, emailAddr, mailNotif);
@@ -67,7 +68,8 @@ bool AutomatismFeedingSchedule::shouldFeedNow(int hour, int minute, uint8_t sche
 void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t smallDuration,
                                               const char* emailAddr, bool mailNotif,
                                               std::function<void()> mailBlinkCallback,
-                                              std::function<void(const char*)> feedingStartCallback) {
+                                              std::function<void(const char*)> feedingStartCallback,
+                                              std::function<void()> feedingCompleteCallback) {
     // Déclencher le clignotement mail si callback fourni
     if (mailBlinkCallback) {
         mailBlinkCallback();
@@ -83,6 +85,11 @@ void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t sm
     _acts.feedSequential(bigDuration, smallDuration, delayBetweenSec);
     
     Serial.println(F("[FeedingSchedule] Automatic feeding triggered"));
+    
+    // Notifier la fin du nourrissage pour synchroniser avec le serveur
+    if (feedingCompleteCallback) {
+        feedingCompleteCallback();
+    }
 }
 
 void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigDur, uint16_t smallDur,
@@ -96,17 +103,44 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
     char sysInfo[128];
     Utils::getSystemInfo(sysInfo, sizeof(sysInfo));
     
+    // Uptime formaté
+    unsigned long totalSec = millis() / 1000UL;
+    unsigned int days = totalSec / 86400UL;
+    totalSec %= 86400UL;
+    unsigned int hours = totalSec / 3600UL;
+    totalSec %= 3600UL;
+    unsigned int mins = totalSec / 60UL;
+    unsigned int secs = totalSec % 60UL;
+    char uptimeStr[32];
+    snprintf(uptimeStr, sizeof(uptimeStr), "%ud %02u:%02u:%02u", days, hours, mins, secs);
+    
+    // État réseau
+    bool wifiConnected = WiFi.status() == WL_CONNECTED;
+    const char* wifiStatus;
+    char wifiDetail[64] = "";
+    if (wifiConnected) {
+        const char* ssid = WiFi.SSID().c_str();
+        snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssid);
+        wifiStatus = "Connecté";
+    } else {
+        wifiStatus = "Déconnecté";
+    }
+    
     int n = snprintf(message, sizeof(message),
         "%s\n\n"
         "Système: %s\n"
         "Heure: %s\n"
         "Durée Gros: %u s\n"
         "Durée Petits: %u s\n"
-        "Mode: Automatique\n",
+        "Mode: Automatique\n"
+        "Uptime: %s\n"
+        "WiFi: %s%s\n",
         type,
         sysInfo,
         _power.getCurrentTimeString().c_str(),
-        bigDur, smallDur);
+        bigDur, smallDur,
+        uptimeStr,
+        wifiStatus, wifiDetail);
     
     if (n > 0 && (size_t)n < sizeof(message)) {
         char subject[128];

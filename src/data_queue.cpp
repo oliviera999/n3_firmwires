@@ -108,14 +108,29 @@ String DataQueue::pop() {
         return String();
     }
     
-    // Copier toutes les lignes sauf la première
+    // v11.156: Utilisation de buffer fixe au lieu de readStringUntil() pour éviter fragmentation mémoire
+    const size_t LINE_BUF_SIZE = 512;  // Taille max raisonnable pour une ligne JSON
+    char lineBuf[LINE_BUF_SIZE];
     bool firstLine = true;
+    
     while (src.available()) {
-        String line = src.readStringUntil('\n');
-        if (!firstLine && line.length() > 0) {
-            tmp.println(line);
+        size_t len = src.readBytesUntil('\n', lineBuf, LINE_BUF_SIZE - 1);
+        if (len > 0) {
+            lineBuf[len] = '\0';
+            // Supprimer \r si présent (format Windows)
+            if (len > 0 && lineBuf[len - 1] == '\r') {
+                lineBuf[len - 1] = '\0';
+                len--;
+            }
+            
+            if (!firstLine && len > 0) {
+                tmp.println(lineBuf);
+            }
+            firstLine = false;
+        } else {
+            // Fin de fichier ou ligne vide
+            break;
         }
-        firstLine = false;
     }
     
     src.close();

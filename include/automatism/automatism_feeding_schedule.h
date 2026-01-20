@@ -41,13 +41,16 @@ public:
      * @param emailAddr Adresse email pour notifications
      * @param mailNotif Email activé ou non
      * @param mailBlinkCallback Callback pour clignotement icône mail OLED
+     * @param feedingStartCallback Callback appelé au début du nourrissage (avec type)
+     * @param feedingCompleteCallback Callback appelé après nourrissage pour sync serveur
      */
     void checkAndFeed(int hour, int minute, int dayOfYear,
                      uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
                      uint16_t bigDuration, uint16_t smallDuration,
                      const char* emailAddr, bool mailNotif,
                      std::function<void()> mailBlinkCallback,
-                     std::function<void(const char*)> feedingStartCallback = nullptr);
+                     std::function<void(const char*)> feedingStartCallback = nullptr,
+                     std::function<void()> feedingCompleteCallback = nullptr);
     
     /**
      * Vérifie et gère le changement de jour (reset flags)
@@ -78,7 +81,8 @@ private:
     void performFeeding(uint16_t bigDuration, uint16_t smallDuration,
                        const char* emailAddr, bool mailNotif,
                        std::function<void()> mailBlinkCallback,
-                       std::function<void(const char*)> feedingStartCallback = nullptr);
+                       std::function<void(const char*)> feedingStartCallback = nullptr,
+                       std::function<void()> feedingCompleteCallback = nullptr);
     void sendFeedingEmail(const char* type, uint16_t bigDur, uint16_t smallDur,
                          const char* emailAddr, bool mailNotif);
 };

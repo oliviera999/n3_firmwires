@@ -33,7 +33,182 @@ static const char* formatUptime(unsigned long ms) {
 // v11.144: Réduits pour économiser ~4.5 KB de RAM
 static char g_systemInfoFooterBuffer[1024];   // Réduit de 4096
 static char g_detailedTimeReportBuffer[512];  // Réduit de 2048
+static char g_lightFooterBuffer[256];         // Footer allégé
 static const char* kLittleFsLabel = "littlefs";
+
+// ======================
+// FONCTIONS HELPER POUR ÉVITER LA DUPLICATION
+// ======================
+
+// Helper: Ajouter les informations temporelles (temps actuel, epoch, uptime)
+static int appendTimeInfo(char* buf, size_t& remaining) {
+  int written = 0;
+  time_t now = time(nullptr);
+  
+  written = snprintf(buf, remaining, "- Epoch: %lu\n", (unsigned long)now);
+  if (written < 0 || (size_t)written >= remaining) {
+    return -1;
+  }
+  buf += written;
+  remaining -= written;
+  
+  if (now > 100000) {
+    struct tm tmInfo;
+    localtime_r(&now, &tmInfo);
+    char tbuf[32];
+    strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
+    written = snprintf(buf, remaining, "- Local time: %s\n", tbuf);
+    if (written < 0 || (size_t)written >= remaining) {
+      return -1;
+    }
+    buf += written;
+    remaining -= written;
+  }
+  
+  const char* uptimeStr = formatUptime(millis());
+  written = snprintf(buf, remaining, "- Uptime: %s\n", uptimeStr);
+  if (written < 0 || (size_t)written >= remaining) {
+    return -1;
+  }
+  buf += written;
+  remaining -= written;
+  
+  return 0;
+}
+
+// Helper: Ajouter les informations réseau (WiFi, SSID, IP, RSSI)
+static int appendNetworkInfo(char* buf, size_t& remaining, bool detailed = false) {
+  int written = 0;
+  bool connected = WiFi.isConnected();
+  const char* ssid = connected ? WiFi.SSID().c_str() : "(déconnecté)";
+  IPAddress ipAddr = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
+  long rssi = connected ? WiFi.RSSI() : 0;
+  
+  if (connected) {
+    if (detailed) {
+      // Version détaillée avec IP complète
+      written = snprintf(buf, remaining, "- WiFi: Connecté\n"
+                                         "- SSID: %s\n"
+                                         "- IP: %d.%d.%d.%d\n"
+                                         "- RSSI: %ld dBm\n",
+                         ssid, ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3], rssi);
+    } else {
+      // Version allégée
+      written = snprintf(buf, remaining, "- WiFi: Connecté (%s)\n", ssid);
+    }
+  } else {
+    written = snprintf(buf, remaining, "- WiFi: Déconnecté\n");
+  }
+  
+  if (written < 0 || (size_t)written >= remaining) {
+    return -1;
+  }
+  buf += written;
+  remaining -= written;
+  
+  return 0;
+}
+
+// Helper: Ajouter les informations mémoire (heap libre, min heap)
+static int appendMemoryInfo(char* buf, size_t& remaining) {
+  int written = 0;
+  size_t psram = ESP.getPsramSize();
+  
+  if (psram > 0) {
+    written = snprintf(buf, remaining, "- Heap libre: %u bytes\n"
+                                       "- Heap min: %u bytes\n",
+                       ESP.getFreeHeap(), ESP.getMinFreeHeap());
+  } else {
+    written = snprintf(buf, remaining, "- Heap libre: %u bytes\n"
+                                       "- Heap min: %u bytes\n",
+                       ESP.getFreeHeap(), ESP.getMinFreeHeap());
+  }
+  
+  if (written < 0 || (size_t)written >= remaining) {
+    return -1;
+  }
+  buf += written;
+  remaining -= written;
+  
+  return 0;
+}
+
+// ======================
+// FOOTER ALLÉGÉ
+// ======================
+
+static const char* buildLightFooter() {
+  char* buf = g_lightFooterBuffer;
+  size_t remaining = sizeof(g_lightFooterBuffer);
+  int written = 0;
+  
+  // Version / environnement
+#ifdef BOARD_S3
+  const char* board = "ESP32-S3";
+#else
+  const char* board = "ESP32";
+#endif
+  
+  written = snprintf(buf, remaining, "\n\n-- Infos système --\n"
+                                     "- Version: %s\n"
+                                     "- Environnement: %s\n",
+                     ProjectConfig::VERSION, Utils::getProfileName());
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_lightFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
+  // Uptime
+  const char* uptimeStr = formatUptime(millis());
+  written = snprintf(buf, remaining, "- Uptime: %s\n", uptimeStr);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_lightFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
+  // Heap libre
+  written = snprintf(buf, remaining, "- Heap libre: %u bytes\n", ESP.getFreeHeap());
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_lightFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
+  // Réseau (version allégée)
+  bool connected = WiFi.isConnected();
+  if (connected) {
+    const char* ssid = WiFi.SSID().c_str();
+    IPAddress ipAddr = WiFi.localIP();
+    written = snprintf(buf, remaining, "- WiFi: Connecté (%s, %d.%d.%d.%d)\n",
+                       ssid, ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]);
+  } else {
+    written = snprintf(buf, remaining, "- WiFi: Déconnecté\n");
+  }
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_lightFooterBuffer;
+  }
+  buf += written;
+  remaining -= written;
+  
+  // Temp eau/air (lecture instantanée)
+  extern SystemSensors sensors;
+  SensorReadings rs = sensors.read();
+  written = snprintf(buf, remaining, "- Temp eau: %.1f °C\n"
+                                     "- Temp air: %.1f °C\n",
+                     rs.tempWater, rs.tempAir);
+  if (written < 0 || (size_t)written >= remaining) {
+    buf[remaining - 1] = '\0';
+    return g_lightFooterBuffer;
+  }
+  
+  return g_lightFooterBuffer;
+}
 
 static const char* buildSystemInfoFooter() {
   char* buf = g_systemInfoFooterBuffer;
@@ -163,26 +338,24 @@ static const char* buildSystemInfoFooter() {
   buf += written;
   remaining -= written;
   
-  time_t now = time(nullptr);
-  written = snprintf(buf, remaining, "- Epoch: %lu\n", (unsigned long)now);
-  if (written < 0 || (size_t)written >= remaining) {
+  // Utiliser le helper pour les infos temporelles de base
+  if (appendTimeInfo(buf, remaining) < 0) {
     buf[remaining - 1] = '\0';
     return g_systemInfoFooterBuffer;
   }
-  buf += written;
-  remaining -= written;
   
+  // Informations supplémentaires spécifiques au footer complet
+  time_t now = time(nullptr);
   if (now > 100000) {
     struct tm tmInfo;
     localtime_r(&now, &tmInfo);
     char tbuf[32];
     strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
-    written = snprintf(buf, remaining, "- Local time: %s\n"
-                                       "- Jour de la semaine: %d (0=dimanche)\n"
+    written = snprintf(buf, remaining, "- Jour de la semaine: %d (0=dimanche)\n"
                                        "- Jour de l'année: %d\n"
                                        "- DST actif: %s\n"
                                        "- Timezone: Maroc UTC+1\n",
-                       tbuf, tmInfo.tm_wday, tmInfo.tm_yday, tmInfo.tm_isdst ? "OUI" : "NON");
+                       tmInfo.tm_wday, tmInfo.tm_yday, tmInfo.tm_isdst ? "OUI" : "NON");
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
       return g_systemInfoFooterBuffer;
@@ -246,27 +419,35 @@ static const char* buildSystemInfoFooter() {
     }
   }
 
-  // Mémoire
-  size_t psram = ESP.getPsramSize();
-  if (psram > 0) {
-    written = snprintf(buf, remaining, "- Heap free: %u bytes\n"
-                                       "- Heap min free: %u bytes\n"
-                                       "- Heap max alloc: %u bytes\n"
-                                       "- PSRAM size: %zu bytes\n"
-                                       "- PSRAM free: %u bytes\n",
-                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(), psram, ESP.getFreePsram());
-  } else {
-    written = snprintf(buf, remaining, "- Heap free: %u bytes\n"
-                                       "- Heap min free: %u bytes\n"
-                                       "- Heap max alloc: %u bytes\n",
-                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
-  }
-  if (written < 0 || (size_t)written >= remaining) {
+  // Mémoire (utiliser helper de base, puis ajouter infos supplémentaires)
+  if (appendMemoryInfo(buf, remaining) < 0) {
     buf[remaining - 1] = '\0';
     return g_systemInfoFooterBuffer;
   }
-  buf += written;
-  remaining -= written;
+  
+  // Informations mémoire supplémentaires pour footer complet
+  size_t psram = ESP.getPsramSize();
+  if (psram > 0) {
+    written = snprintf(buf, remaining, "- Heap max alloc: %u bytes\n"
+                                       "- PSRAM size: %zu bytes\n"
+                                       "- PSRAM free: %u bytes\n",
+                       ESP.getMaxAllocHeap(), psram, ESP.getFreePsram());
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
+  } else {
+    written = snprintf(buf, remaining, "- Heap max alloc: %u bytes\n",
+                       ESP.getMaxAllocHeap());
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_systemInfoFooterBuffer;
+    }
+    buf += written;
+    remaining -= written;
+  }
 
   // Diagnostics persistés si disponibles
   int rebootCount;
@@ -287,15 +468,7 @@ static const char* buildSystemInfoFooter() {
   buf += written;
   remaining -= written;
 
-  // Uptime
-  const char* uptimeStr = formatUptime(millis());
-  written = snprintf(buf, remaining, "- Uptime: %s\n", uptimeStr);
-  if (written < 0 || (size_t)written >= remaining) {
-    buf[remaining - 1] = '\0';
-    return g_systemInfoFooterBuffer;
-  }
-  buf += written;
-  remaining -= written;
+  // Uptime déjà inclus dans appendTimeInfo(), pas besoin de le répéter
 
   // ======================
   // Mesures & Actionneurs
@@ -533,40 +706,36 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
     char timeBuf[64];
     strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
     
-    // Informations sur le temps de fonctionnement
-    unsigned long uptimeMs = millis();
-    unsigned long uptimeSec = uptimeMs / 1000;
-    unsigned long uptimeMin = uptimeSec / 60;
-    unsigned long uptimeHour = uptimeMin / 60;
-    unsigned long uptimeDay = uptimeHour / 24;
-    
-    // Construire uptime string
-    char uptimeStr[64] = "";
-    if (uptimeDay > 0) {
-      snprintf(uptimeStr, sizeof(uptimeStr), "%luj ", uptimeDay);
-    }
-    if (uptimeHour % 24 > 0) {
-      size_t len = strlen(uptimeStr);
-      snprintf(uptimeStr + len, sizeof(uptimeStr) - len, "%luh ", uptimeHour % 24);
-    }
-    if (uptimeMin % 60 > 0) {
-      size_t len = strlen(uptimeStr);
-      snprintf(uptimeStr + len, sizeof(uptimeStr) - len, "%lum ", uptimeMin % 60);
-    }
-    size_t len = strlen(uptimeStr);
-    snprintf(uptimeStr + len, sizeof(uptimeStr) - len, "%lus", uptimeSec % 60);
-    
+    // Utiliser le helper pour les infos temporelles de base
+    // Mais on doit d'abord ajouter le header et les infos spécifiques
     written = snprintf(buf, remaining, "Heure actuelle: %s\n"
                                        "Epoch: %lu\n"
                                        "Jour de la semaine: %d (0=dimanche)\n"
                                        "Jour de l'année: %d\n"
-                                       "DST actif: %s\n"
-                                       "Uptime: %s\n"
-                                       "Serveur NTP: %s\n"
+                                       "DST actif: %s\n",
+                       timeBuf, (unsigned long)now, timeinfo.tm_wday, timeinfo.tm_yday,
+                       timeinfo.tm_isdst ? "OUI" : "NON");
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_detailedTimeReportBuffer;
+    }
+    buf += written;
+    remaining -= written;
+    
+    // Uptime (utiliser formatUptime)
+    const char* uptimeStr = formatUptime(millis());
+    written = snprintf(buf, remaining, "Uptime: %s\n", uptimeStr);
+    if (written < 0 || (size_t)written >= remaining) {
+      buf[remaining - 1] = '\0';
+      return g_detailedTimeReportBuffer;
+    }
+    buf += written;
+    remaining -= written;
+    
+    // Informations NTP
+    written = snprintf(buf, remaining, "Serveur NTP: %s\n"
                                        "GMT Offset: +%ldh\n"
                                        "DST Offset: +%ldh\n",
-                       timeBuf, (unsigned long)now, timeinfo.tm_wday, timeinfo.tm_yday,
-                       timeinfo.tm_isdst ? "OUI" : "NON", uptimeStr,
                        SystemConfig::NTP_SERVER,
                        SystemConfig::NTP_GMT_OFFSET_SEC/3600,
                        SystemConfig::NTP_DAYLIGHT_OFFSET_SEC/3600);
@@ -652,11 +821,12 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
   buf += written;
   remaining -= written;
   
-  // Ajouter le rapport de redémarrage (qui retourne un String)
-  String restartReport = diagnostics.generateRestartReport();
-  size_t restartLen = restartReport.length();
+  // Ajouter le rapport de redémarrage (utilise buffer statique)
+  char restartReportBuffer[2048];
+  diagnostics.generateRestartReport(restartReportBuffer, sizeof(restartReportBuffer));
+  size_t restartLen = strlen(restartReportBuffer);
   if (restartLen > 0 && restartLen < remaining) {
-    strncpy(buf, restartReport.c_str(), remaining - 1);
+    strncpy(buf, restartReportBuffer, remaining - 1);
     buf[remaining - 1] = '\0';
   }
   
@@ -680,7 +850,7 @@ bool Mailer::begin() {
   
   // v11.151: Reconnexion automatique et timeout augmenté
   MailClient.networkReconnect(true);
-  _smtp.setTCPTimeout(30);  // 30 secondes de timeout TCP
+  _smtp.setTCPTimeout(60);  // 60 secondes de timeout TCP (augmenté pour TLS/SMTP lent)
 
   // Diagnostic de la configuration
   Serial.printf("[Mail] SMTP_HOST: '%s'\n", EmailConfig::SMTP_HOST);
@@ -814,7 +984,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // La bibliothèque ESP Mail Client peut utiliser les pointeurs de manière asynchrone
   static char fromNameBuf[64];
   static char subjectBuf[128];
-  static String finalMessageStatic;  // String statique pour persistance
+  static char finalMessageBuffer[4096];  // Buffer statique pour persistance
   
   Serial.println(F("[Mail] Trace 3: Buffers allocated"));
 
@@ -827,12 +997,44 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // Construction du sujet dans un buffer statique
   snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
   
-  // Construction du message final (String statique pour persistance)
-  // Note: buildSystemInfoFooter() retourne maintenant const char* (buffer statique)
-  finalMessageStatic = message ? message : "";
-  Serial.println(F("[Mail] Trace 3.1: Appending footer..."));
-  // finalMessageStatic += buildSystemInfoFooter(); // DÉSACTIVÉ POUR TEST CRASH
-  finalMessageStatic += "\n\n[Footer désactivé pour debug]";
+  // Construction du message final (buffer statique pour persistance)
+  // Copier le message initial
+  size_t msgLen = message ? strlen(message) : 0;
+  if (msgLen >= sizeof(finalMessageBuffer)) {
+    msgLen = sizeof(finalMessageBuffer) - 1;
+  }
+  if (msgLen > 0) {
+    strncpy(finalMessageBuffer, message, msgLen);
+    finalMessageBuffer[msgLen] = '\0';
+  } else {
+    finalMessageBuffer[0] = '\0';
+  }
+  
+  // Vérifier si un footer complet est déjà présent (alerte critique)
+  const char* footerMarker = "[Footer complet déjà inclus]";
+  size_t markerLen = strlen(footerMarker);
+  size_t currentLen = strlen(finalMessageBuffer);
+  bool hasFullFooter = (currentLen >= markerLen) && 
+                       (strcmp(finalMessageBuffer + currentLen - markerLen, footerMarker) == 0);
+  
+  if (hasFullFooter) {
+    // Retirer le marqueur
+    finalMessageBuffer[currentLen - markerLen] = '\0';
+    Serial.println(F("[Mail] Trace 3.1: Footer complet déjà présent, pas d'ajout footer allégé"));
+  } else {
+    Serial.println(F("[Mail] Trace 3.1: Appending light footer..."));
+    // Ajouter le footer allégé
+    const char* lightFooter = buildLightFooter();
+    size_t footerLen = strlen(lightFooter);
+    size_t remaining = sizeof(finalMessageBuffer) - currentLen - 1;
+    if (footerLen < remaining) {
+      strncat(finalMessageBuffer, lightFooter, remaining);
+    } else {
+      // Tronquer le footer si nécessaire
+      strncat(finalMessageBuffer, lightFooter, remaining - 1);
+      finalMessageBuffer[sizeof(finalMessageBuffer) - 1] = '\0';
+    }
+  }
   
   Serial.println(F("[Mail] Trace 4: Message built"));
 
@@ -842,7 +1044,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   msg.sender.email = Secrets::AUTHOR_EMAIL;
   msg.subject      = subjectBuf;
   msg.addRecipient(toName, toEmail);
-  msg.text.content = finalMessageStatic.c_str();
+  msg.text.content = finalMessageBuffer;
   
   Serial.println(F("[Mail] Trace 5: Msg struct configured"));
 
@@ -859,7 +1061,13 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.printf("[Mail] À: %s <%s>\n", toName, toEmail);
   Serial.printf("[Mail] Objet: %s\n", msg.subject);
   Serial.println(F("[Mail] Contenu (aperçu):"));
-  Serial.println(finalMessageStatic.substring(0, 200));
+  // Afficher un aperçu du message (max 200 caractères)
+  size_t previewLen = strlen(finalMessageBuffer);
+  if (previewLen > 200) previewLen = 200;
+  char preview[201];
+  strncpy(preview, finalMessageBuffer, previewLen);
+  preview[previewLen] = '\0';
+  Serial.println(preview);
   Serial.println(F("[Mail] ==========================="));
   
   Serial.println(F("[Mail] Trace 6: Calling sendMail..."));
@@ -889,10 +1097,10 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
 bool Mailer::begin() { Serial.println("[Mail] Désactivé (FEATURE_MAIL=0)"); return true; }
 bool Mailer::sendSync(const char*, const char*, const char*, const char*) { return false; }
 bool Mailer::send(const char*, const char*, const char*, const char*) { return false; }
-bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
+bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail) {
   (void)subject; (void)message; (void)toEmail; return false;
 }
-bool Mailer::sendAlertSync(const char* subject, const String& message, const char* toEmail) {
+bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail) {
   (void)subject; (void)message; (void)toEmail; return false;
 }
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
@@ -908,11 +1116,12 @@ uint32_t Mailer::getQueuedMails() const { return 0; }
 #endif
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
-bool Mailer::sendAlertSync(const char* subject, const String& message, const char* toEmail) {
+bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail) {
   Serial.println(F("[Mail] ===== DIAGNOSTIC SENDALERT ====="));
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
   Serial.printf("[Mail] subject: '%s'\n", subject ? subject : "NULL");
-  Serial.printf("[Mail] message length: %d\n", message.length());
+  size_t msgLen = message ? strlen(message) : 0;
+  Serial.printf("[Mail] message length: %d\n", msgLen);
   Serial.printf("[Mail] toEmail: '%s'\n", toEmail ? toEmail : "NULL");
   
   // Vérifications préalables
@@ -924,33 +1133,90 @@ bool Mailer::sendAlertSync(const char* subject, const String& message, const cha
     Serial.println(F("[Mail] ❌ ERREUR: toEmail est vide/NULL (configuration incomplète)"));
     return false;
   }
-  if (message.length() == 0) {
+  if (!message || msgLen == 0) {
     Serial.println(F("[Mail] ❌ ERREUR: message vide"));
     return false;
   }
   
-  String alertSubject = String("FFP5CS - ") + subject;
-  Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject.c_str());
+  // Buffer statique pour le sujet
+  static char alertSubject[128];
+  snprintf(alertSubject, sizeof(alertSubject), "FFP5CS - %s", subject);
+  Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject);
   
-  // Ajouter le rapport temporel détaillé au message d'alerte
-  String enhancedMessage = message;
-  Serial.printf("[Mail] enhancedMessage initial: %d chars\n", enhancedMessage.length());
+  // Buffer statique pour le message amélioré (peut contenir rapport complet)
+  static char enhancedMessage[4096];
+  size_t offset = 0;
+  size_t remaining = sizeof(enhancedMessage);
+  int written = 0;
+  
+  // Copier le message initial
+  size_t initialMsgLen = msgLen;
+  if (initialMsgLen >= remaining) {
+    initialMsgLen = remaining - 1;
+  }
+  strncpy(enhancedMessage, message, initialMsgLen);
+  enhancedMessage[initialMsgLen] = '\0';
+  offset = initialMsgLen;
+  remaining -= initialMsgLen;
+  Serial.printf("[Mail] enhancedMessage initial: %d chars\n", offset);
   
   // Instance temporaire de Diagnostics pour lire les infos persistées (sans effets de bord)
   Diagnostics tempDiag;
   tempDiag.loadFromNvs();
   const char* timeReport = buildDetailedTimeReport(tempDiag);
-  enhancedMessage += timeReport;
-  Serial.printf("[Mail] enhancedMessage final: %d chars\n", enhancedMessage.length());
+  size_t timeReportLen = strlen(timeReport);
+  
+  // Ajouter le rapport temporel détaillé
+  if (timeReportLen < remaining) {
+    strncat(enhancedMessage, timeReport, remaining - 1);
+    offset += timeReportLen;
+    remaining -= timeReportLen;
+  } else {
+    // Tronquer si nécessaire
+    strncat(enhancedMessage, timeReport, remaining - 1);
+    enhancedMessage[sizeof(enhancedMessage) - 1] = '\0';
+    remaining = 0;
+  }
+  Serial.printf("[Mail] enhancedMessage après timeReport: %d chars\n", strlen(enhancedMessage));
+  
+  // Vérifier si l'alerte est critique (PANIC ou crash)
+  bool isCritical = tempDiag.hasPanicInfo() || tempDiag.hasCrashInfo();
+  if (isCritical) {
+    Serial.println(F("[Mail] ⚠️ Alerte CRITIQUE détectée - ajout footer complet"));
+    const char* systemInfoFooter = buildSystemInfoFooter();
+    size_t footerLen = strlen(systemInfoFooter);
+    
+    // Ajouter le séparateur et le footer système
+    written = snprintf(enhancedMessage + offset, remaining, "\n\n-- Infos système (détaillées) --\n%s", systemInfoFooter);
+    if (written < 0 || (size_t)written >= remaining) {
+      enhancedMessage[sizeof(enhancedMessage) - 1] = '\0';
+    } else {
+      offset += written;
+      remaining -= written;
+    }
+    Serial.printf("[Mail] enhancedMessage après footer complet: %d chars\n", strlen(enhancedMessage));
+  } else {
+    Serial.println(F("[Mail] Alerte normale - footer allégé ajouté par sendSync()"));
+  }
   
   Serial.println(F("[Mail] ===== ENVOI D'ALERTE (SYNC) ====="));
-  Serial.printf("[Mail] Type: Alerte système\n");
+  Serial.printf("[Mail] Type: Alerte système %s\n", isCritical ? "(CRITIQUE)" : "(normale)");
   Serial.printf("[Mail] Destinataire: %s\n", toEmail);
   Serial.printf("[Mail] Objet original: %s\n", subject);
-  Serial.printf("[Mail] Objet final: %s\n", alertSubject.c_str());
+  Serial.printf("[Mail] Objet final: %s\n", alertSubject);
   Serial.println(F("[Mail] ==========================="));
   
-  bool result = sendSync(alertSubject.c_str(), enhancedMessage.c_str(), "User", toEmail);
+  // Si alerte critique, on a déjà ajouté le footer complet, donc on doit éviter que sendSync() ajoute le footer allégé
+  // Solution: ajouter un marqueur spécial à la fin du message pour indiquer qu'un footer est déjà présent
+  if (isCritical) {
+    const char* marker = "\n[Footer complet déjà inclus]";
+    size_t markerLen = strlen(marker);
+    if (markerLen < remaining) {
+      strncat(enhancedMessage, marker, remaining - 1);
+    }
+  }
+  
+  bool result = sendSync(alertSubject, enhancedMessage, "User", toEmail);
   Serial.printf("[Mail] ===== RÉSULTAT SENDALERTSYNC: %s =====\n", result ? "SUCCESS" : "FAILED");
   
   // Nettoyer les infos PANIC après l'envoi réussi du mail (pour éviter de les réutiliser au prochain boot)
@@ -965,15 +1231,28 @@ bool Mailer::sendAlertSync(const char* subject, const String& message, const cha
 }
 
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
-  String sleepSubject = String("FFP5CS - Mise en veille");
+  static char sleepSubject[64];
+  snprintf(sleepSubject, sizeof(sleepSubject), "FFP5CS - Mise en veille");
   
-  String sleepMessage;
-  sleepMessage.reserve(1024);
-  sleepMessage += "Le système FFP5CS entre en veille légère\n\n";
-  sleepMessage += "-- INFORMATIONS DE MISE EN VEILLE --\n";
-  sleepMessage += "Raison: "; sleepMessage += reason; sleepMessage += "\n";
-  sleepMessage += "Durée prévue: "; sleepMessage += String(sleepDurationSeconds); sleepMessage += " secondes\n";
-  sleepMessage += "Timestamp: "; 
+  static char sleepMessage[1024];
+  size_t offset = 0;
+  size_t remaining = sizeof(sleepMessage);
+  int written = 0;
+  
+  // Construire le message avec snprintf()
+  written = snprintf(sleepMessage + offset, remaining,
+    "Le système FFP5CS entre en veille légère\n\n"
+    "-- INFORMATIONS DE MISE EN VEILLE --\n"
+    "Raison: %s\n"
+    "Durée prévue: %u secondes\n"
+    "Timestamp: ",
+    reason ? reason : "N/A", sleepDurationSeconds);
+  if (written < 0 || (size_t)written >= remaining) {
+    sleepMessage[sizeof(sleepMessage) - 1] = '\0';
+    return false;
+  }
+  offset += written;
+  remaining -= written;
   
   // Ajouter l'heure actuelle
   time_t now = time(nullptr);
@@ -981,29 +1260,41 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   if (localtime_r(&now, &timeinfo)) {
     char timeBuf[32];
     strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    sleepMessage += timeBuf;
+    written = snprintf(sleepMessage + offset, remaining, "%s\n", timeBuf);
   } else {
-    sleepMessage += "Erreur heure";
+    written = snprintf(sleepMessage + offset, remaining, "Erreur heure\n");
   }
-  sleepMessage += "\n";
+  if (written < 0 || (size_t)written >= remaining) {
+    sleepMessage[sizeof(sleepMessage) - 1] = '\0';
+    return false;
+  }
+  offset += written;
+  remaining -= written;
   
   // Ajouter les informations système détaillées
   // UTILISE LES DERNIÈRES LECTURES (passées en paramètre) au lieu de relire les capteurs
-  sleepMessage += "\n-- ÉTAT SYSTÈME AVANT VEILLE --\n";
   extern SystemActuators acts;
-  sleepMessage += "- Temp eau: "; sleepMessage += String(readings.tempWater, 1); sleepMessage += " °C\n";
-  sleepMessage += "- Temp air: "; sleepMessage += String(readings.tempAir, 1); sleepMessage += " °C\n";
-  sleepMessage += "- Aqua lvl: "; sleepMessage += String(readings.wlAqua); sleepMessage += " cm\n";
-  sleepMessage += "- Réserve lvl: "; sleepMessage += String(readings.wlTank); sleepMessage += " cm\n";
-  sleepMessage += "- Pompe aquarium: "; sleepMessage += (acts.isAquaPumpRunning() ? "ON" : "OFF"); sleepMessage += "\n";
-  sleepMessage += "- Pompe réservoir: "; sleepMessage += (acts.isTankPumpRunning() ? "ON" : "OFF"); sleepMessage += "\n";
-  sleepMessage += "- Chauffage: "; sleepMessage += (acts.isHeaterOn() ? "ON" : "OFF"); sleepMessage += "\n";
-  sleepMessage += "- Lumière: "; sleepMessage += (acts.isLightOn() ? "ON" : "OFF"); sleepMessage += "\n";
-  
-  // Ajouter les informations de délai d'activité
-  sleepMessage += "\n-- Configuration Sleep --\n";
-  sleepMessage += "- Délai d'activité: Configuration adaptative\n";
-  sleepMessage += "- Mode adaptatif: ACTIF\n";
+  written = snprintf(sleepMessage + offset, remaining,
+    "\n-- ÉTAT SYSTÈME AVANT VEILLE --\n"
+    "- Temp eau: %.1f °C\n"
+    "- Temp air: %.1f °C\n"
+    "- Aqua lvl: %u cm\n"
+    "- Réserve lvl: %u cm\n"
+    "- Pompe aquarium: %s\n"
+    "- Pompe réservoir: %s\n"
+    "- Chauffage: %s\n"
+    "- Lumière: %s\n"
+    "\n-- Configuration Sleep --\n"
+    "- Délai d'activité: Configuration adaptative\n"
+    "- Mode adaptatif: ACTIF\n",
+    readings.tempWater, readings.tempAir, readings.wlAqua, readings.wlTank,
+    acts.isAquaPumpRunning() ? "ON" : "OFF",
+    acts.isTankPumpRunning() ? "ON" : "OFF",
+    acts.isHeaterOn() ? "ON" : "OFF",
+    acts.isLightOn() ? "ON" : "OFF");
+  if (written < 0 || (size_t)written >= remaining) {
+    sleepMessage[sizeof(sleepMessage) - 1] = '\0';
+  }
   
   Serial.println(F("[Mail] ===== ENVOI MAIL VEILLE ====="));
   Serial.printf("[Mail] Raison: %s\n", reason);
@@ -1011,19 +1302,32 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   Serial.println(F("[Mail] ⚡ Utilisation des dernières lectures (pas de nouvelle lecture capteurs)"));
   Serial.println(F("[Mail] =============================="));
   
-  return sendSync(sleepSubject.c_str(), sleepMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
+  return sendSync(sleepSubject, sleepMessage, "User", EmailConfig::DEFAULT_RECIPIENT);
 }
 
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
-  String wakeSubject = String("FFP5CS - Réveil du système");
+  static char wakeSubject[64];
+  snprintf(wakeSubject, sizeof(wakeSubject), "FFP5CS - Réveil du système");
   
-  String wakeMessage;
-  wakeMessage.reserve(1024);
-  wakeMessage += "Le système FFP5CS s'est réveillé de sa veille légère\n\n";
-  wakeMessage += "-- INFORMATIONS DE RÉVEIL --\n";
-  wakeMessage += "Raison: "; wakeMessage += reason; wakeMessage += "\n";
-  wakeMessage += "Durée réelle de veille: "; wakeMessage += String(actualSleepSeconds); wakeMessage += " secondes\n";
-  wakeMessage += "Timestamp: "; 
+  static char wakeMessage[1024];
+  size_t offset = 0;
+  size_t remaining = sizeof(wakeMessage);
+  int written = 0;
+  
+  // Construire le message avec snprintf()
+  written = snprintf(wakeMessage + offset, remaining,
+    "Le système FFP5CS s'est réveillé de sa veille légère\n\n"
+    "-- INFORMATIONS DE RÉVEIL --\n"
+    "Raison: %s\n"
+    "Durée réelle de veille: %u secondes\n"
+    "Timestamp: ",
+    reason ? reason : "N/A", actualSleepSeconds);
+  if (written < 0 || (size_t)written >= remaining) {
+    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    return false;
+  }
+  offset += written;
+  remaining -= written;
   
   // Ajouter l'heure actuelle
   time_t now = time(nullptr);
@@ -1031,39 +1335,63 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   if (localtime_r(&now, &timeinfo)) {
     char timeBuf[32];
     strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    wakeMessage += timeBuf;
+    written = snprintf(wakeMessage + offset, remaining, "%s\n", timeBuf);
   } else {
-    wakeMessage += "Erreur heure";
+    written = snprintf(wakeMessage + offset, remaining, "Erreur heure\n");
   }
-  wakeMessage += "\n";
+  if (written < 0 || (size_t)written >= remaining) {
+    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    return false;
+  }
+  offset += written;
+  remaining -= written;
   
   // Ajouter les informations système détaillées
   // UTILISE LES DERNIÈRES LECTURES (passées en paramètre) au lieu de relire les capteurs
-  wakeMessage += "\n-- ÉTAT SYSTÈME AU RÉVEIL --\n";
   extern SystemActuators acts;
-  wakeMessage += "- Temp eau: "; wakeMessage += String(readings.tempWater, 1); wakeMessage += " °C\n";
-  wakeMessage += "- Temp air: "; wakeMessage += String(readings.tempAir, 1); wakeMessage += " °C\n";
-  wakeMessage += "- Aqua lvl: "; wakeMessage += String(readings.wlAqua); wakeMessage += " cm\n";
-  wakeMessage += "- Réserve lvl: "; wakeMessage += String(readings.wlTank); wakeMessage += " cm\n";
-  wakeMessage += "- Pompe aquarium: "; wakeMessage += (acts.isAquaPumpRunning() ? "ON" : "OFF"); wakeMessage += "\n";
-  wakeMessage += "- Pompe réservoir: "; wakeMessage += (acts.isTankPumpRunning() ? "ON" : "OFF"); wakeMessage += "\n";
-  wakeMessage += "- Chauffage: "; wakeMessage += (acts.isHeaterOn() ? "ON" : "OFF"); wakeMessage += "\n";
-  wakeMessage += "- Lumière: "; wakeMessage += (acts.isLightOn() ? "ON" : "OFF"); wakeMessage += "\n";
-  
-  // Ajouter les informations de délai d'activité
-  wakeMessage += "\n-- Configuration Sleep --\n";
-  wakeMessage += "- Délai d'activité: Configuration adaptative\n";
-  wakeMessage += "- Mode adaptatif: ACTIF\n";
+  written = snprintf(wakeMessage + offset, remaining,
+    "\n-- ÉTAT SYSTÈME AU RÉVEIL --\n"
+    "- Temp eau: %.1f °C\n"
+    "- Temp air: %.1f °C\n"
+    "- Aqua lvl: %u cm\n"
+    "- Réserve lvl: %u cm\n"
+    "- Pompe aquarium: %s\n"
+    "- Pompe réservoir: %s\n"
+    "- Chauffage: %s\n"
+    "- Lumière: %s\n"
+    "\n-- Configuration Sleep --\n"
+    "- Délai d'activité: Configuration adaptative\n"
+    "- Mode adaptatif: ACTIF\n"
+    "\n-- CONNEXION RÉSEAU --\n",
+    readings.tempWater, readings.tempAir, readings.wlAqua, readings.wlTank,
+    acts.isAquaPumpRunning() ? "ON" : "OFF",
+    acts.isTankPumpRunning() ? "ON" : "OFF",
+    acts.isHeaterOn() ? "ON" : "OFF",
+    acts.isLightOn() ? "ON" : "OFF");
+  if (written < 0 || (size_t)written >= remaining) {
+    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    return false;
+  }
+  offset += written;
+  remaining -= written;
   
   // Ajouter les informations de connexion WiFi
-  wakeMessage += "\n-- CONNEXION RÉSEAU --\n";
   if (WiFi.status() == WL_CONNECTED) {
-    wakeMessage += "- WiFi: Connecté\n";
-    wakeMessage += "- SSID: "; wakeMessage += WiFi.SSID(); wakeMessage += "\n";
-    wakeMessage += "- IP: "; wakeMessage += WiFi.localIP().toString(); wakeMessage += "\n";
-    wakeMessage += "- RSSI: "; wakeMessage += String(WiFi.RSSI()); wakeMessage += " dBm\n";
+    // WiFi.SSID() et WiFi.localIP().toString() retournent des String temporaires
+    // Il faut copier immédiatement dans un buffer
+    String ssid = WiFi.SSID();
+    String ip = WiFi.localIP().toString();
+    written = snprintf(wakeMessage + offset, remaining,
+      "- WiFi: Connecté\n"
+      "- SSID: %s\n"
+      "- IP: %s\n"
+      "- RSSI: %d dBm\n",
+      ssid.c_str(), ip.c_str(), WiFi.RSSI());
   } else {
-    wakeMessage += "- WiFi: Déconnecté\n";
+    written = snprintf(wakeMessage + offset, remaining, "- WiFi: Déconnecté\n");
+  }
+  if (written < 0 || (size_t)written >= remaining) {
+    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
   }
   
   Serial.println(F("[Mail] ===== ENVOI MAIL RÉVEIL ====="));
@@ -1071,7 +1399,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   Serial.printf("[Mail] Durée veille: %u s\n", actualSleepSeconds);
   Serial.println(F("[Mail] =============================="));
   
-  return sendSync(wakeSubject.c_str(), wakeMessage.c_str(), "User", EmailConfig::DEFAULT_RECIPIENT);
+  return sendSync(wakeSubject, wakeMessage, "User", EmailConfig::DEFAULT_RECIPIENT);
 }
 
 // ============================================================================
@@ -1115,22 +1443,22 @@ bool Mailer::processOneMailSync() {
   }
   
   Serial.printf("[Mail] 📬 Traitement mail séquentiel: '%s'\n", item.subject);
-  
-  bool success;
-  if (item.isAlert) {
-    success = sendAlertSync(item.subject, String(item.message), item.toEmail);
-  } else {
+      
+      bool success;
+      if (item.isAlert) {
+    success = sendAlertSync(item.subject, item.message, item.toEmail);
+      } else {
     success = sendSync(item.subject, item.message, "User", item.toEmail);
-  }
-  
-  if (success) {
+      }
+      
+      if (success) {
     _mailsSent++;
     Serial.printf("[Mail] ✅ Mail envoyé avec succès (%u total)\n", _mailsSent);
-  } else {
+      } else {
     _mailsFailed++;
     Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
-  }
-  
+      }
+      
   return true; // Un mail a été traité
 }
 
@@ -1178,7 +1506,7 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
 }
 
 // Méthode sendAlert() asynchrone - ajoute à la queue et retourne immédiatement
-bool Mailer::sendAlert(const char* subject, const String& message, const char* toEmail) {
+bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail) {
   Serial.println(F("[Mail] ===== SENDALERT ASYNC (v11.142) ====="));
   
   if (!_mailQueue) {
@@ -1195,7 +1523,7 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
     Serial.println(F("[Mail] ❌ ERREUR: toEmail est vide/NULL"));
     return false;
   }
-  if (message.length() == 0) {
+  if (!message || strlen(message) == 0) {
     Serial.println(F("[Mail] ❌ ERREUR: message vide"));
     return false;
   }
@@ -1207,13 +1535,13 @@ bool Mailer::sendAlert(const char* subject, const String& message, const char* t
   strncpy(item.subject, subject, sizeof(item.subject) - 1);
   
   // Tronquer le message si trop long
-  size_t msgLen = message.length();
+  size_t msgLen = strlen(message);
   if (msgLen >= sizeof(item.message)) {
     Serial.printf("[Mail] ⚠️ Message tronqué de %u à %u caractères\n", 
                   msgLen, sizeof(item.message) - 1);
     msgLen = sizeof(item.message) - 1;
   }
-  strncpy(item.message, message.c_str(), msgLen);
+  strncpy(item.message, message, msgLen);
   item.message[msgLen] = '\0';
   
   strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
