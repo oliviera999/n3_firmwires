@@ -188,14 +188,17 @@ bool WebServerManager::begin() {
       g_autoCtrl.notifyLocalWebActivity();
       const char* resp = "OK";
       
-      Serial.printf("[Web] 🎮 Action request from %s\n", req->client()->remoteIP().toString().c_str());
+      IPAddress remoteIP = req->client()->remoteIP();
+      char remoteIPBuf[16];
+      snprintf(remoteIPBuf, sizeof(remoteIPBuf), "%d.%d.%d.%d", remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
+      Serial.printf("[Web] 🎮 Action request from %s\n", remoteIPBuf);
       
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
-          String c = req->getParam("cmd")->value();
-          Serial.printf("[Web] 🎯 Command: %s\n", c.c_str());
+          const char* c = req->getParam("cmd")->value().c_str();
+          Serial.printf("[Web] 🎯 Command: %s\n", c);
           
-          if (c == "feedSmall") {
+          if (strcmp(c, "feedSmall") == 0) {
               Serial.println("[Web] 🐟 Starting manual feed small...");
               // 1. EXÉCUTION IMMÉDIATE de l'action physique
               g_autoCtrl.manualFeedSmall();
@@ -360,31 +363,31 @@ bool WebServerManager::begin() {
       
       // Traitement des relais avec feedback immédiat
       if (req->hasParam("relay")) {
-          String rel = req->getParam("relay")->value();
-          Serial.printf("[Web] 🔌 Relay control: %s\\n", rel.c_str());
+          const char* rel = req->getParam("relay")->value().c_str();
+          Serial.printf("[Web] 🔌 Relay control: %s\\n", rel);
           
-          if (rel == "pumpTank") {
+          if (strcmp(rel, "pumpTank") == 0) {
               resp = handleRelayAction("tank",
                   [&](){ return _acts.isTankPumpRunning(); },
                   [&](){ g_autoCtrl.startTankPumpManual(); },
                   [&](){ g_autoCtrl.stopTankPumpManual(); },
                   "PUMP_TANK ON", "PUMP_TANK OFF"
               );
-          } else if (rel == "pumpAqua") {
+          } else if (strcmp(rel, "pumpAqua") == 0) {
               resp = handleRelayAction("aqua",
                   [&](){ return _acts.isAquaPumpRunning(); },
                   [&](){ g_autoCtrl.startAquaPumpManualLocal(); },
                   [&](){ g_autoCtrl.stopAquaPumpManualLocal(); },
                   "PUMP_AQUA ON", "PUMP_AQUA OFF"
               );
-          } else if (rel == "heater") {
+          } else if (strcmp(rel, "heater") == 0) {
               resp = handleRelayAction("heater",
                   [&](){ return _acts.isHeaterOn(); },
                   [&](){ g_autoCtrl.startHeaterManualLocal(); },
                   [&](){ g_autoCtrl.stopHeaterManualLocal(); },
                   "HEATER ON", "HEATER OFF"
               );
-          } else if (rel == "light") {
+          } else if (strcmp(rel, "light") == 0) {
               resp = handleRelayAction("light",
                   [&](){ return _acts.isLightOn(); },
                   [&](){ g_autoCtrl.startLightManualLocal(); },
@@ -408,7 +411,7 @@ bool WebServerManager::begin() {
         req->send(500, "text/plain", "Erreur mémoire serveur");
       }
       
-      Serial.printf("[Web] ✅ Action completed - Response sent to %s\n", req->client()->remoteIP().toString().c_str());
+      Serial.printf("[Web] ✅ Action completed - Response sent to %s\n", remoteIPBuf);
   });
 
   // Gestion des requêtes CORS preflight pour /json
@@ -476,8 +479,11 @@ bool WebServerManager::begin() {
     bool staConnected = WiFi.status() == WL_CONNECTED;
     (*doc)["wifiStaConnected"] = staConnected;
     if (staConnected) {
-      (*doc)["wifiStaSSID"] = WiFi.SSID();
-      (*doc)["wifiStaIP"] = WiFi.localIP().toString();
+      (*doc)["wifiStaSSID"] = WiFi.SSID().c_str();
+      char ipBuf[16];
+      IPAddress ip = WiFi.localIP();
+      snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+      (*doc)["wifiStaIP"] = ipBuf;
       (*doc)["wifiStaRSSI"] = WiFi.RSSI();
     } else {
       (*doc)["wifiStaSSID"] = "";
@@ -490,8 +496,11 @@ bool WebServerManager::begin() {
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
     (*doc)["wifiApActive"] = apActive;
     if (apActive) {
-      (*doc)["wifiApSSID"] = WiFi.softAPSSID();
-      (*doc)["wifiApIP"] = WiFi.softAPIP().toString();
+      (*doc)["wifiApSSID"] = WiFi.softAPSSID().c_str();
+      char apIpBuf[16];
+      IPAddress apIP = WiFi.softAPIP();
+      snprintf(apIpBuf, sizeof(apIpBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+      (*doc)["wifiApIP"] = apIpBuf;
       (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
     } else {
       (*doc)["wifiApSSID"] = "";
@@ -578,8 +587,8 @@ bool WebServerManager::begin() {
     } else {
       // OPTIMISATION: Utiliser UNIQUEMENT le cache flash - JAMAIS d'appel distant bloquant
       // Les appels distants doivent être faits de manière asynchrone dans la tâche d'automatisation
-      String cached;
-      if (config.loadRemoteVars(cached) && cached.length() > 0) {
+      char cached[2048];
+      if (config.loadRemoteVars(cached, sizeof(cached)) && strlen(cached) > 0) {
         auto err = deserializeJson(src, cached);
         if (!err) {
           ok = true;
@@ -668,10 +677,7 @@ bool WebServerManager::begin() {
   _server->on("/dbvars/update", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req){
     g_autoCtrl.notifyLocalWebActivity();
     // Récupère les paramètres envoyés en x-www-form-urlencoded
-    auto getParam = [req](const char* name)->String{
-      if (req->hasParam(name, /*post*/true)) return req->getParam(name, true)->value();
-      return String();
-    };
+    // (getParamCStr défini plus bas)
 
     // v11.70: Clés acceptées standardisées (schéma serveur)
     const char* KEYS[] = {
@@ -688,17 +694,29 @@ bool WebServerManager::begin() {
     bool any = false;
 
     // Charger JSON NVS existant (si présent)
-    String cachedJson;
+    char cachedJson[2048];
     JsonDocument nvsDoc;
-    if (config.loadRemoteVars(cachedJson) && cachedJson.length() > 0) {
+    if (config.loadRemoteVars(cachedJson, sizeof(cachedJson)) && strlen(cachedJson) > 0) {
       deserializeJson(nvsDoc, cachedJson);
     }
 
-    auto appendPair = [&](const char* key, const String& value){
-      if (value.length() == 0) return;
+    // Buffer pour getParam (thread-safe car lambda locale)
+    char paramBuf[128];
+    auto getParamCStr = [req, &paramBuf](const char* name) -> const char* {
+      if (req->hasParam(name, true)) {
+        const char* val = req->getParam(name, true)->value().c_str();
+        strncpy(paramBuf, val, sizeof(paramBuf) - 1);
+        paramBuf[sizeof(paramBuf) - 1] = '\0';
+        return paramBuf;
+      }
+      return "";
+    };
+
+    auto appendPair = [&](const char* key, const char* value){
+      if (value == nullptr || strlen(value) == 0) return;
       if (p >= end - 1) return; // Pas assez d'espace
 
-      size_t written = snprintf(p, end - p, "%s%s=%s", any ? "&" : "", key, value.c_str());
+      size_t written = snprintf(p, end - p, "%s%s=%s", any ? "&" : "", key, value);
       if (written > 0) {
         p += written;
         any = true;
@@ -709,27 +727,28 @@ bool WebServerManager::begin() {
 
     // v11.70: Lecture directe des paramètres - clés standardisées
     // Heures de nourrissage (GPIO numériques)
-    appendPair("105", getParam("bouffeMatin"));  // bouffeMatin
-    appendPair("106", getParam("bouffeMidi"));   // bouffeMidi
-    appendPair("107", getParam("bouffeSoir"));   // bouffeSoir
+    appendPair("105", getParamCStr("bouffeMatin"));  // bouffeMatin
+    appendPair("106", getParamCStr("bouffeMidi"));   // bouffeMidi
+    appendPair("107", getParamCStr("bouffeSoir"));   // bouffeSoir
     // Durées nourrissage
-    appendPair("tempsGros", getParam("tempsGros"));
-    appendPair("tempsPetits", getParam("tempsPetits"));
+    appendPair("tempsGros", getParamCStr("tempsGros"));
+    appendPair("tempsPetits", getParamCStr("tempsPetits"));
     // Seuils/paramètres
-    appendPair("aqThreshold", getParam("aqThreshold"));
-    appendPair("tankThreshold", getParam("tankThreshold"));
-    appendPair("chauffageThreshold", getParam("chauffageThreshold"));
-    appendPair("tempsRemplissageSec", getParam("tempsRemplissageSec"));
-    appendPair("limFlood", getParam("limFlood"));
+    appendPair("aqThreshold", getParamCStr("aqThreshold"));
+    appendPair("tankThreshold", getParamCStr("tankThreshold"));
+    appendPair("chauffageThreshold", getParamCStr("chauffageThreshold"));
+    appendPair("tempsRemplissageSec", getParamCStr("tempsRemplissageSec"));
+    appendPair("limFlood", getParamCStr("limFlood"));
     // Email
-    appendPair("mail", getParam("mail"));
-    appendPair("mailNotif", getParam("mailNotif"));
+    appendPair("mail", getParamCStr("mail"));
+    appendPair("mailNotif", getParamCStr("mailNotif"));
 
     // Sauvegarde immédiate en NVS du JSON fusionné
     {
-      String saveStr; serializeJson(nvsDoc, saveStr);
+      char saveStr[2048];
+      serializeJson(nvsDoc, saveStr, sizeof(saveStr));
       config.saveRemoteVars(saveStr);
-      Serial.printf("[Web] 📥 Config sauvegardée en NVS (%u bytes)\n", saveStr.length());
+      Serial.printf("[Web] 📥 Config sauvegardée en NVS (%zu bytes)\n", strlen(saveStr));
     }
 
     // Applique les valeurs localement (sans dépendre du distant)
@@ -768,14 +787,15 @@ bool WebServerManager::begin() {
     
     if (acceptsGzip) {
       // Essayer d'abord la version gzip
-      String gz = String(path) + ".gz";
+      char gz[128];
+      snprintf(gz, sizeof(gz), "%s.gz", path);
       if (LittleFS.exists(gz)) {
         // CORRECTION: Vérifier la taille du fichier gzip
         File file = LittleFS.open(gz, "r");
         if (file) {
           size_t fileSize = file.size();
           file.close();
-          Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz.c_str(), fileSize);
+          Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz, fileSize);
           
           AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
           if (r) {
@@ -883,11 +903,11 @@ bool WebServerManager::begin() {
   _server->on("/mailtest", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action utilisateur critique
     g_autoCtrl.notifyLocalWebActivity();
-    String subj = req->hasParam("subject") ? req->getParam("subject")->value() : "Test FFP5CS";
-    String body = req->hasParam("body") ? req->getParam("body")->value() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
-    String dest = req->hasParam("to") ? req->getParam("to")->value() : String(EmailConfig::DEFAULT_RECIPIENT);
-    bool ok = mailer.sendAlert(subj.c_str(), body.c_str(), dest.c_str());
-    String resp = ok ? "OK" : "FAIL";
+    const char* subj = req->hasParam("subject") ? req->getParam("subject")->value().c_str() : "Test FFP5CS";
+    const char* body = req->hasParam("body") ? req->getParam("body")->value().c_str() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
+    const char* dest = req->hasParam("to") ? req->getParam("to")->value().c_str() : EmailConfig::DEFAULT_RECIPIENT;
+    bool ok = mailer.sendAlert(subj, body, dest);
+    const char* resp = ok ? "OK" : "FAIL";
     req->send(200, "text/plain", resp);
   });
 
@@ -943,8 +963,7 @@ bool WebServerManager::begin() {
   _server->on("/testota", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint de test
     config.setOtaUpdateFlag(true);
-    String resp = "Flag OTA activé - redémarrez pour tester l'email";
-    req->send(200, "text/plain", resp);
+    req->send(200, "text/plain", "Flag OTA activé - redémarrez pour tester l'email");
   });
 
   // -------------------------------------------------------------------
@@ -1110,34 +1129,53 @@ bool WebServerManager::begin() {
   _server->on("/nvs/set", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
-    auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
-    String ns = getP("ns"), key = getP("key"), type = getP("type"), value = getP("value");
-    if (!ns.length() || !key.length() || !type.length()) { req->send(400, "text/plain", "Missing ns/key/type"); return; }
-    nvs_handle_t h; esp_err_t err = nvs_open(ns.c_str(), NVS_READWRITE, &h);
+    char nsBuf[32], keyBuf[64], typeBuf[16], valueBuf[256];
+    auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
+      if (req->hasParam(n, true)) {
+        const char* val = req->getParam(n, true)->value().c_str();
+        strncpy(buf, val, bufSize - 1);
+        buf[bufSize - 1] = '\0';
+        return true;
+      }
+      buf[0] = '\0';
+      return false;
+    };
+    if (!getP("ns", nsBuf, sizeof(nsBuf)) || !getP("key", keyBuf, sizeof(keyBuf)) || !getP("type", typeBuf, sizeof(typeBuf))) {
+      req->send(400, "text/plain", "Missing ns/key/type");
+      return;
+    }
+    getP("value", valueBuf, sizeof(valueBuf));
+    
+    nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
     if (err != ESP_OK) { req->send(500, "text/plain", "nvs_open failed"); return; }
 
-    auto strToType = [](const String& s)->nvs_type_t{
-      if (s=="U8") return NVS_TYPE_U8; if (s=="I8") return NVS_TYPE_I8;
-      if (s=="U16")return NVS_TYPE_U16; if (s=="I16")return NVS_TYPE_I16;
-      if (s=="U32")return NVS_TYPE_U32; if (s=="I32")return NVS_TYPE_I32;
-      if (s=="U64")return NVS_TYPE_U64; if (s=="I64")return NVS_TYPE_I64;
-      if (s=="STR")return NVS_TYPE_STR; if (s=="BLOB")return NVS_TYPE_BLOB;
+    auto strToType = [](const char* s)->nvs_type_t{
+      if (strcmp(s, "U8") == 0) return NVS_TYPE_U8;
+      if (strcmp(s, "I8") == 0) return NVS_TYPE_I8;
+      if (strcmp(s, "U16") == 0) return NVS_TYPE_U16;
+      if (strcmp(s, "I16") == 0) return NVS_TYPE_I16;
+      if (strcmp(s, "U32") == 0) return NVS_TYPE_U32;
+      if (strcmp(s, "I32") == 0) return NVS_TYPE_I32;
+      if (strcmp(s, "U64") == 0) return NVS_TYPE_U64;
+      if (strcmp(s, "I64") == 0) return NVS_TYPE_I64;
+      if (strcmp(s, "STR") == 0) return NVS_TYPE_STR;
+      if (strcmp(s, "BLOB") == 0) return NVS_TYPE_BLOB;
       return NVS_TYPE_ANY;
     };
 
-    nvs_type_t t = strToType(type);
+    nvs_type_t t = strToType(typeBuf);
     if (t == NVS_TYPE_ANY) { nvs_close(h); req->send(400, "text/plain", "Invalid type"); return; }
 
     switch (t) {
-      case NVS_TYPE_U8:  { uint8_t  v = (uint8_t) value.toInt(); err = nvs_set_u8(h, key.c_str(), v); } break;
-      case NVS_TYPE_I8:  { int8_t   v = (int8_t)  value.toInt(); err = nvs_set_i8(h, key.c_str(), v); } break;
-      case NVS_TYPE_U16: { uint16_t v = (uint16_t) value.toInt(); err = nvs_set_u16(h, key.c_str(), v);} break;
-      case NVS_TYPE_I16: { int16_t  v = (int16_t)  value.toInt(); err = nvs_set_i16(h, key.c_str(), v);} break;
-      case NVS_TYPE_U32: { uint32_t v = (uint32_t) value.toInt(); err = nvs_set_u32(h, key.c_str(), v);} break;
-      case NVS_TYPE_I32: { int32_t  v = (int32_t)  value.toInt(); err = nvs_set_i32(h, key.c_str(), v);} break;
-      case NVS_TYPE_U64: { uint64_t v = (uint64_t) value.toInt(); err = nvs_set_u64(h, key.c_str(), v);} break;
-      case NVS_TYPE_I64: { int64_t  v = (int64_t)  value.toInt(); err = nvs_set_i64(h, key.c_str(), v);} break;
-      case NVS_TYPE_STR: { err = nvs_set_str(h, key.c_str(), value.c_str()); } break;
+      case NVS_TYPE_U8:  { uint8_t  v = (uint8_t) atoi(valueBuf); err = nvs_set_u8(h, keyBuf, v); } break;
+      case NVS_TYPE_I8:  { int8_t   v = (int8_t)  atoi(valueBuf); err = nvs_set_i8(h, keyBuf, v); } break;
+      case NVS_TYPE_U16: { uint16_t v = (uint16_t) atoi(valueBuf); err = nvs_set_u16(h, keyBuf, v);} break;
+      case NVS_TYPE_I16: { int16_t  v = (int16_t)  atoi(valueBuf); err = nvs_set_i16(h, keyBuf, v);} break;
+      case NVS_TYPE_U32: { uint32_t v = (uint32_t) atol(valueBuf); err = nvs_set_u32(h, keyBuf, v);} break;
+      case NVS_TYPE_I32: { int32_t  v = (int32_t)  atol(valueBuf); err = nvs_set_i32(h, keyBuf, v);} break;
+      case NVS_TYPE_U64: { uint64_t v = (uint64_t) atoll(valueBuf); err = nvs_set_u64(h, keyBuf, v);} break;
+      case NVS_TYPE_I64: { int64_t  v = (int64_t)  atoll(valueBuf); err = nvs_set_i64(h, keyBuf, v);} break;
+      case NVS_TYPE_STR: { err = nvs_set_str(h, keyBuf, valueBuf); } break;
       case NVS_TYPE_BLOB:{ req->send(400, "text/plain", "BLOB set not supported"); nvs_close(h); return; }
       default: break;
     }
@@ -1146,13 +1184,15 @@ bool WebServerManager::begin() {
     if (err != ESP_OK) { req->send(500, "text/plain", "Write failed"); return; }
 
     // Rafraîchir l'état runtime si nécessaire
-    if (ns == "bouffe" || ns == "ota") {
+    if (strcmp(nsBuf, "bouffe") == 0 || strcmp(nsBuf, "ota") == 0) {
       config.loadBouffeFlags();
-    } else if (ns == "rtc") {
+    } else if (strcmp(nsBuf, "rtc") == 0) {
       power.loadTimeFromFlash();
-    } else if (ns == "remoteVars" && key == "json") {
-      String js = value;
-      if (js.length()) {
+    } else if (strcmp(nsBuf, "remoteVars") == 0 && strcmp(keyBuf, "json") == 0) {
+      char js[256];
+      strncpy(js, valueBuf, sizeof(js) - 1);
+      js[sizeof(js) - 1] = '\0';
+      if (strlen(js) > 0) {
         JsonDocument tmp;
         if (!deserializeJson(tmp, js)) {
           g_autoCtrl.applyConfigFromJson(tmp);
@@ -1168,12 +1208,24 @@ bool WebServerManager::begin() {
   _server->on("/nvs/erase", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
-    auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
-    String ns = getP("ns"), key = getP("key");
-    if (!ns.length() || !key.length()) { req->send(400, "text/plain", "Missing ns/key"); return; }
-    nvs_handle_t h; esp_err_t err = nvs_open(ns.c_str(), NVS_READWRITE, &h);
+    char nsBuf[32], keyBuf[64];
+    auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
+      if (req->hasParam(n, true)) {
+        const char* val = req->getParam(n, true)->value().c_str();
+        strncpy(buf, val, bufSize - 1);
+        buf[bufSize - 1] = '\0';
+        return true;
+      }
+      buf[0] = '\0';
+      return false;
+    };
+    if (!getP("ns", nsBuf, sizeof(nsBuf)) || !getP("key", keyBuf, sizeof(keyBuf))) { 
+      req->send(400, "text/plain", "Missing ns/key"); 
+      return; 
+    }
+    nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
     if (err != ESP_OK) { req->send(500, "text/plain", "nvs_open failed"); return; }
-    err = nvs_erase_key(h, key.c_str()); if (err == ESP_OK) err = nvs_commit(h);
+    err = nvs_erase_key(h, keyBuf); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase failed"); return; }
     
@@ -1185,10 +1237,22 @@ bool WebServerManager::begin() {
   _server->on("/nvs/erase_ns", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
-    auto getP = [req](const char* n)->String{ return req->hasParam(n, true) ? req->getParam(n, true)->value() : String(); };
-    String ns = getP("ns");
-    if (!ns.length()) { req->send(400, "text/plain", "Missing ns"); return; }
-    nvs_handle_t h; esp_err_t err = nvs_open(ns.c_str(), NVS_READWRITE, &h);
+    char nsBuf[32];
+    auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
+      if (req->hasParam(n, true)) {
+        const char* val = req->getParam(n, true)->value().c_str();
+        strncpy(buf, val, bufSize - 1);
+        buf[bufSize - 1] = '\0';
+        return true;
+      }
+      buf[0] = '\0';
+      return false;
+    };
+    if (!getP("ns", nsBuf, sizeof(nsBuf))) { 
+      req->send(400, "text/plain", "Missing ns"); 
+      return; 
+    }
+    nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
     if (err != ESP_OK) { req->send(500, "text/plain", "nvs_open failed"); return; }
     err = nvs_erase_all(h); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
@@ -1293,16 +1357,16 @@ bool WebServerManager::begin() {
                 JsonObject network = networks.createNestedObject();
                 
                 // Parser le format: "ssid|password"
-                String data = String(buffer);
-                int separator = data.indexOf('|');
-                if (separator > 0) {
-                  String ssid = data.substring(0, separator);
-                  String password = data.substring(separator + 1);
+                char* separator = strchr(buffer, '|');
+                if (separator != nullptr && separator > buffer) {
+                  *separator = '\0';  // Terminer ssid
+                  char* ssid = buffer;
+                  char* password = separator + 1;
                   
                   // Vérifier si ce réseau n'existe pas déjà dans les réseaux statiques
                   bool existsInStatic = false;
                   for (size_t j = 0; j < Secrets::WIFI_COUNT; j++) {
-                    if (strcmp(ssid.c_str(), Secrets::WIFI_LIST[j].ssid) == 0) {
+                    if (strcmp(ssid, Secrets::WIFI_LIST[j].ssid) == 0) {
                       existsInStatic = true;
                       break;
                     }
@@ -1343,26 +1407,33 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Changement WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
     
-    auto getParam = [req](const char* name)->String{
-      if (req->hasParam(name, true)) return req->getParam(name, true)->value();
-      return String();
+    char ssidBuf[64], passwordBuf[65], saveBuf[8];
+    auto getParam = [req](const char* name, char* buf, size_t bufSize) -> bool {
+      if (req->hasParam(name, true)) {
+        String val = req->getParam(name, true)->value();
+        strncpy(buf, val.c_str(), bufSize - 1);
+        buf[bufSize - 1] = '\0';
+        return true;
+      }
+      buf[0] = '\0';
+      return false;
     };
     
-    String ssid = getParam("ssid");
-    String password = getParam("password");
-    String save = getParam("save"); // "true" pour sauvegarder
+    bool hasSsid = getParam("ssid", ssidBuf, sizeof(ssidBuf));
+    bool hasPassword = getParam("password", passwordBuf, sizeof(passwordBuf));
+    bool hasSave = getParam("save", saveBuf, sizeof(saveBuf));
     
-    Serial.printf("[WiFi] Demande de connexion à '%s'\n", ssid.c_str());
+    Serial.printf("[WiFi] Demande de connexion à '%s'\n", ssidBuf);
     
     JsonDocument doc;
     
-    if (ssid.length() == 0) {
+    if (!hasSsid || strlen(ssidBuf) == 0) {
       doc["success"] = false;
       doc["error"] = "SSID required";
       Serial.println("[WiFi] Erreur: SSID vide");
     } else {
       // Sauvegarder le réseau AVANT de se déconnecter pour éviter les pertes de connexion
-      if (save == "true" && password.length() > 0) {
+      if (hasSave && strcmp(saveBuf, "true") == 0 && hasPassword && strlen(passwordBuf) > 0) {
         Serial.println("[WiFi] Sauvegarde du réseau en NVS");
         nvs_handle_t nvsHandle;
         esp_err_t err = nvs_open("wifi_saved", NVS_READWRITE, &nvsHandle);
@@ -1386,15 +1457,19 @@ bool WebServerManager::begin() {
               if (buffer) {
                 err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
                 if (err == ESP_OK) {
-                  String data = String(buffer);
-                  int separator = data.indexOf('|');
-                  if (separator > 0 && data.substring(0, separator) == ssid) {
-                    exists = true;
-                    // Mettre à jour le mot de passe
-                    String newData = ssid + "|" + password;
-                    nvs_set_blob(nvsHandle, key, newData.c_str(), newData.length() + 1);
-                    nvs_commit(nvsHandle);
-                    Serial.printf("[WiFi] Réseau '%s' mis à jour dans NVS\n", ssid.c_str());
+                  char* separator = strchr(buffer, '|');
+                  if (separator != nullptr && separator > buffer) {
+                    *separator = '\0';
+                    if (strcmp(buffer, ssidBuf) == 0) {
+                      exists = true;
+                      // Mettre à jour le mot de passe
+                      char newData[130];
+                      snprintf(newData, sizeof(newData), "%s|%s", ssidBuf, passwordBuf);
+                      nvs_set_blob(nvsHandle, key, newData, strlen(newData) + 1);
+                      nvs_commit(nvsHandle);
+                      Serial.printf("[WiFi] Réseau '%s' mis à jour dans NVS\n", ssidBuf);
+                    }
+                    *separator = '|';  // Restaurer pour free()
                   }
                 }
                 free(buffer);
@@ -1406,14 +1481,15 @@ bool WebServerManager::begin() {
           if (!exists) {
             char key[16];
             snprintf(key, sizeof(key), "net_%zu", networkCount);
-            String data = ssid + "|" + password;
+            char data[130];
+            snprintf(data, sizeof(data), "%s|%s", ssidBuf, passwordBuf);
             
-            err = nvs_set_blob(nvsHandle, key, data.c_str(), data.length() + 1);
+            err = nvs_set_blob(nvsHandle, key, data, strlen(data) + 1);
             if (err == ESP_OK) {
               networkCount++;
               nvs_set_blob(nvsHandle, "count", &networkCount, sizeof(networkCount));
               nvs_commit(nvsHandle);
-              Serial.printf("[WiFi] Réseau '%s' ajouté dans NVS (total: %zu)\n", ssid.c_str(), networkCount);
+              Serial.printf("[WiFi] Réseau '%s' ajouté dans NVS (total: %zu)\n", ssidBuf, networkCount);
             }
           }
           
@@ -1425,12 +1501,11 @@ bool WebServerManager::begin() {
       // Cela permet au client de recevoir la réponse avant la perte de connexion
       doc["success"] = true;
       doc["message"] = "Connection attempt started";
-      doc["ssid"] = ssid;
+      doc["ssid"] = ssidBuf;
       doc["note"] = "Connection may take up to 15 seconds. WebSocket will reconnect automatically.";
       
-      String json;
-      json.reserve(512);
-      serializeJson(doc, json);
+      char json[512];
+      serializeJson(doc, json, sizeof(json));
       
       AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
       response->addHeader("Access-Control-Allow-Origin", "*");
@@ -1444,7 +1519,7 @@ bool WebServerManager::begin() {
       
       // Notifier les clients WebSocket du changement imminent
       Serial.println("[WiFi] Notification des clients WebSocket...");
-      g_realtimeWebSocket.notifyWifiChange(ssid);
+      g_realtimeWebSocket.notifyWifiChange(ssidBuf);
       vTaskDelay(pdMS_TO_TICKS(200));
       
       // Fermer proprement toutes les connexions WebSocket
@@ -1466,9 +1541,9 @@ bool WebServerManager::begin() {
         Serial.println("[WiFi] ❌ Allocation paramètres connexion échouée");
         return;
       }
-      strncpy(params->ssid, ssid.c_str(), sizeof(params->ssid) - 1);
+      strncpy(params->ssid, ssidBuf, sizeof(params->ssid) - 1);
       params->ssid[sizeof(params->ssid) - 1] = '\0';
-      strncpy(params->password, password.c_str(), sizeof(params->password) - 1);
+      strncpy(params->password, passwordBuf, sizeof(params->password) - 1);
       params->password[sizeof(params->password) - 1] = '\0';
       
       BaseType_t created = xTaskCreate([](void* param) {
@@ -1510,16 +1585,20 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Modification WiFi
     g_autoCtrl.notifyLocalWebActivity();
     
-    auto getParam = [req](const char* name)->String{
-      if (req->hasParam(name, true)) return req->getParam(name, true)->value();
-      return String();
-    };
-    
-    String ssid = getParam("ssid");
+    char ssidBuf[64];
+    bool hasSsid = false;
+    if (req->hasParam("ssid", true)) {
+      String ssidVal = req->getParam("ssid", true)->value();
+      strncpy(ssidBuf, ssidVal.c_str(), sizeof(ssidBuf) - 1);
+      ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+      hasSsid = true;
+    } else {
+      ssidBuf[0] = '\0';
+    }
     
     JsonDocument doc;
     
-    if (ssid.length() == 0) {
+    if (!hasSsid || strlen(ssidBuf) == 0) {
       doc["success"] = false;
       doc["error"] = "SSID required";
     } else {
@@ -1547,12 +1626,16 @@ bool WebServerManager::begin() {
             if (buffer) {
               err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
               if (err == ESP_OK) {
-                String data = String(buffer);
-                int separator = data.indexOf('|');
-                if (separator > 0 && data.substring(0, separator) == ssid) {
-                  found = true;
-                  foundIndex = i;
-                  break;
+                char* separator = strchr(buffer, '|');
+                if (separator != nullptr && separator > buffer) {
+                  *separator = '\0';
+                  if (strcmp(buffer, ssidBuf) == 0) {
+                    found = true;
+                    foundIndex = i;
+                    *separator = '|';  // Restaurer pour free()
+                    break;
+                  }
+                  *separator = '|';  // Restaurer pour free()
                 }
               }
               free(buffer);

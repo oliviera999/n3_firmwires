@@ -8,7 +8,7 @@ namespace BootstrapNetwork {
 
 struct OtaState {
   bool& justUpdated;
-  String& previousVersion;
+  const char* previousVersion;
   unsigned long& lastCheck;
 };
 

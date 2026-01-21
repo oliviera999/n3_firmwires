@@ -59,8 +59,8 @@ public:
     bool loadConfigFromNVS();
     
     // Méthodes pour les variables distantes
-    void saveRemoteVars(const String& json);
-    bool loadRemoteVars(String& json);
+    void saveRemoteVars(const char* json);
+    bool loadRemoteVars(char* json, size_t jsonSize);
     
     // Méthodes pour le flag OTA
     void setOtaUpdateFlag(bool value);

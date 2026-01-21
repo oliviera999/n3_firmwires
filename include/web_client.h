@@ -26,16 +26,16 @@ class WebClient {
 
   bool sendMeasurements(const Measurements& m, bool includeReset=false);
   bool sendHeartbeat(const class Diagnostics& diag);
-  bool postRaw(const String& payload);
+  bool postRaw(const char* payload);
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
   
   // v11.150: Force la libération de mémoire TLS
   void resetTLSClient();
 
  private:
-  String _apiKey;
+  char _apiKey[65];  // API key max 64 chars + null terminator
   WiFiClientSecure _client;
   HTTPClient _http;
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
-  bool httpRequest(const String& url, const String& payload, String& response);
+  bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize);
 }; 

@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <map>
+#include <string>
 #ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
 #endif
@@ -26,7 +27,7 @@ public:
    * @param endpoint Endpoint demandé
    * @return true si autorisé, false si rate limited
    */
-  bool isAllowed(const String& clientIP, const String& endpoint);
+  bool isAllowed(const char* clientIP, const char* endpoint);
   
   /**
    * Configurer une limite pour un endpoint
@@ -34,7 +35,7 @@ public:
    * @param maxRequests Nombre max de requêtes
    * @param windowMs Fenêtre de temps en ms
    */
-  void setLimit(const String& endpoint, uint16_t maxRequests, uint32_t windowMs);
+  void setLimit(const char* endpoint, uint16_t maxRequests, uint32_t windowMs);
   
   /**
    * Nettoyer les entrées expirées (appelé périodiquement)
@@ -45,7 +46,7 @@ public:
    * Réinitialiser les compteurs pour une IP
    * @param clientIP IP à réinitialiser
    */
-  void resetClient(const String& clientIP);
+  void resetClient(const char* clientIP);
   
   /**
    * Obtenir les statistiques
@@ -64,10 +65,10 @@ private:
   };
   
   // Map endpoint -> limite configurée
-  std::map<String, RateLimit> _limits;
+  std::map<std::string, RateLimit> _limits;
   
   // Map (clientIP + endpoint) -> record
-  std::map<String, ClientRecord> _clients;
+  std::map<std::string, ClientRecord> _clients;
   
   // Statistiques
   uint32_t _totalRequests;
@@ -77,10 +78,10 @@ private:
   uint32_t _lastCleanup;
   
   // Générer clé unique pour client+endpoint
-  String makeKey(const String& clientIP, const String& endpoint) const;
+  std::string makeKey(const char* clientIP, const char* endpoint) const;
   
   // Obtenir ou créer un record client
-  ClientRecord& getOrCreateRecord(const String& key);
+  ClientRecord& getOrCreateRecord(const std::string& key);
 };
 
 // Instance globale

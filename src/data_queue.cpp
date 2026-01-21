@@ -43,13 +43,13 @@ bool DataQueue::ensureDirectoryExists() {
     return true;
 }
 
-bool DataQueue::push(const String& payload) {
+bool DataQueue::push(const char* payload) {
     if (!_initialized) {
         Serial.println(F("[DataQueue] ✗ Non initialisée"));
         return false;
     }
     
-    if (payload.length() == 0) {
+    if (payload == nullptr || strlen(payload) == 0) {
         Serial.println(F("[DataQueue] ✗ Payload vide"));
         return false;
     }
@@ -73,8 +73,8 @@ bool DataQueue::push(const String& payload) {
     file.close();
     
     _currentSize++;
-    Serial.printf("[DataQueue] ✓ Payload enregistré (%u bytes, total: %u entrées)\n", 
-                  payload.length(), _currentSize);
+    Serial.printf("[DataQueue] ✓ Payload enregistré (%zu bytes, total: %u entrées)\n", 
+                  strlen(payload), _currentSize);
 
     uint32_t heapAfter = ESP.getFreeHeap();
     int32_t heapDelta = static_cast<int32_t>(heapAfter) - static_cast<int32_t>(heapBefore);
@@ -86,18 +86,22 @@ bool DataQueue::push(const String& payload) {
     return true;
 }
 
-String DataQueue::pop() {
-    uint32_t heapBefore = ESP.getFreeHeap();
-    String first = peek();
-    if (first.length() == 0) {
-        return first;
+bool DataQueue::pop(char* buffer, size_t bufferSize) {
+    if (buffer == nullptr || bufferSize == 0) {
+        return false;
     }
+
+    if (!peek(buffer, bufferSize)) {
+        return false;
+    }
+    
+    uint32_t heapBefore = ESP.getFreeHeap();
     
     // Ouvrir fichier source
     File src = LittleFS.open(QUEUE_FILE, FILE_READ);
     if (!src) {
         Serial.println(F("[DataQueue] ✗ Échec lecture fichier"));
-        return String();
+        return false;
     }
     
     // Créer fichier temporaire
@@ -105,7 +109,7 @@ String DataQueue::pop() {
     if (!tmp) {
         Serial.println(F("[DataQueue] ✗ Échec création fichier temp"));
         src.close();
-        return String();
+        return false;
     }
     
     // v11.156: Utilisation de buffer fixe au lieu de readStringUntil() pour éviter fragmentation mémoire
@@ -150,28 +154,50 @@ String DataQueue::pop() {
                       heapDelta, heapBefore, heapAfter);
     }
     
-    return first;
+    return true;
 }
 
-String DataQueue::peek() {
+bool DataQueue::peek(char* buffer, size_t bufferSize) {
+    if (buffer == nullptr || bufferSize == 0) {
+        return false;
+    }
+
     if (!_initialized) {
-        return String();
+        buffer[0] = '\0';
+        return false;
     }
     
     File file = LittleFS.open(QUEUE_FILE, FILE_READ);
     if (!file) {
-        return String();
+        buffer[0] = '\0';
+        return false;
     }
     
     // Lire première ligne
-    String first;
     if (file.available()) {
-        first = file.readStringUntil('\n');
-        first.trim(); // Enlever \r\n
+        size_t len = file.readBytesUntil('\n', buffer, bufferSize - 1);
+        if (len > 0) {
+            buffer[len] = '\0';
+            // Supprimer \r si présent (format Windows)
+            if (len > 0 && buffer[len - 1] == '\r') {
+                buffer[len - 1] = '\0';
+            }
+            
+            // Supprimer espaces blancs
+            size_t actualLen = strlen(buffer);
+            while (actualLen > 0 && (buffer[actualLen - 1] == ' ' || buffer[actualLen - 1] == '\t')) {
+                buffer[actualLen - 1] = '\0';
+                actualLen--;
+            }
+            
+            file.close();
+            return true;
+        }
     }
     
+    buffer[0] = '\0';
     file.close();
-    return first;
+    return false;
 }
 
 uint16_t DataQueue::size() {
@@ -196,10 +222,20 @@ uint16_t DataQueue::countEntries() {
     }
     
     uint16_t count = 0;
+    const size_t LINE_BUF_SIZE = 512;
+    char lineBuf[LINE_BUF_SIZE];
     while (file.available()) {
-        String line = file.readStringUntil('\n');
-        if (line.length() > 0) {
-            count++;
+        size_t len = file.readBytesUntil('\n', lineBuf, LINE_BUF_SIZE - 1);
+        if (len > 0) {
+            lineBuf[len] = '\0';
+            // Supprimer \r si présent
+            if (len > 0 && lineBuf[len - 1] == '\r') {
+                lineBuf[len - 1] = '\0';
+                len--;
+            }
+            if (len > 0) {
+                count++;
+            }
         }
     }
     

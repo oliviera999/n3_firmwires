@@ -27,12 +27,13 @@ private:
     // Sauvegarde dans NVS
     static void saveToNVS(const GPIOMapping& mapping, JsonVariantConst value);
     
-    // Mapper GPIO vers clés de configuration
-    static String mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value);
+    // Mapper GPIO vers clés de configuration (retourne nullptr si non mappé)
+    static const char* mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value);
     
     // Helpers conversion
     static bool parseBool(JsonVariantConst v);
     static int parseInt(JsonVariantConst v);
     static float parseFloat(JsonVariantConst v);
-    static String parseString(JsonVariantConst v);
+    // Parse string et écrit dans le buffer fourni, retourne la taille écrite
+    static size_t parseString(JsonVariantConst v, char* buffer, size_t bufferSize);
 };

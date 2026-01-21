@@ -1,4 +1,6 @@
 #include "rate_limiter.h"
+#include <string.h>
+#include <sstream>
 
 // Instance globale
 RateLimiter rateLimiter;
@@ -18,18 +20,19 @@ RateLimiter::RateLimiter() : _totalRequests(0), _blockedRequests(0), _lastCleanu
   setLimit("/wifi/scan", 2, 30000);       // 2 scans / 30s (opération lente)
 }
 
-bool RateLimiter::isAllowed(const String& clientIP, const String& endpoint) {
+bool RateLimiter::isAllowed(const char* clientIP, const char* endpoint) {
   _totalRequests++;
   
   // Vérifier si l'endpoint a une limite configurée
-  auto limitIt = _limits.find(endpoint);
+  std::string endpointStr(endpoint);
+  auto limitIt = _limits.find(endpointStr);
   if (limitIt == _limits.end()) {
     // Pas de limite configurée, autoriser
     return true;
   }
   
   const RateLimit& limit = limitIt->second;
-  String key = makeKey(clientIP, endpoint);
+  std::string key = makeKey(clientIP, endpoint);
   ClientRecord& record = getOrCreateRecord(key);
   
   uint32_t now = millis();
@@ -47,7 +50,7 @@ bool RateLimiter::isAllowed(const String& clientIP, const String& endpoint) {
     // Limite atteinte
     _blockedRequests++;
     Serial.printf("[RateLimit] Blocked %s from %s (%u/%u requests)\n", 
-                  endpoint.c_str(), clientIP.c_str(), record.count, limit.maxRequests);
+                  endpoint, clientIP, record.count, limit.maxRequests);
     return false;
   }
   
@@ -56,14 +59,14 @@ bool RateLimiter::isAllowed(const String& clientIP, const String& endpoint) {
   return true;
 }
 
-void RateLimiter::setLimit(const String& endpoint, uint16_t maxRequests, uint32_t windowMs) {
+void RateLimiter::setLimit(const char* endpoint, uint16_t maxRequests, uint32_t windowMs) {
   RateLimit limit;
   limit.maxRequests = maxRequests;
   limit.windowMs = windowMs;
-  _limits[endpoint] = limit;
+  _limits[std::string(endpoint)] = limit;
   
   Serial.printf("[RateLimit] Set limit for %s: %u requests / %u ms\n", 
-                endpoint.c_str(), maxRequests, windowMs);
+                endpoint, maxRequests, windowMs);
 }
 
 void RateLimiter::cleanup() {
@@ -94,12 +97,13 @@ void RateLimiter::cleanup() {
   }
 }
 
-void RateLimiter::resetClient(const String& clientIP) {
+void RateLimiter::resetClient(const char* clientIP) {
   auto it = _clients.begin();
   uint32_t removed = 0;
+  std::string prefix = std::string(clientIP) + ":";
   
   while (it != _clients.end()) {
-    if (it->first.startsWith(clientIP + ":")) {
+    if (it->first.find(prefix) == 0) {
       it = _clients.erase(it);
       removed++;
     } else {
@@ -109,7 +113,7 @@ void RateLimiter::resetClient(const String& clientIP) {
   
   if (removed > 0) {
     Serial.printf("[RateLimit] Reset client %s: %u entries removed\n", 
-                  clientIP.c_str(), removed);
+                  clientIP, removed);
   }
 }
 
@@ -121,11 +125,11 @@ RateLimiter::Stats RateLimiter::getStats() const {
   return stats;
 }
 
-String RateLimiter::makeKey(const String& clientIP, const String& endpoint) const {
-  return clientIP + ":" + endpoint;
+std::string RateLimiter::makeKey(const char* clientIP, const char* endpoint) const {
+  return std::string(clientIP) + ":" + std::string(endpoint);
 }
 
-RateLimiter::ClientRecord& RateLimiter::getOrCreateRecord(const String& key) {
+RateLimiter::ClientRecord& RateLimiter::getOrCreateRecord(const std::string& key) {
   auto it = _clients.find(key);
   if (it != _clients.end()) {
     return it->second;

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <vector>
 #include <map>
+#include <string>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -42,29 +43,29 @@ enum class NVSError {
 
 // Structure pour le cache NVS
 struct NVSCacheEntry {
-    String key;
-    String value;
+    std::string key;
+    std::string value;
     time_t timestamp;
     uint32_t checksum;
     bool dirty; // Indique si la valeur a été modifiée
     
     NVSCacheEntry() : timestamp(0), checksum(0), dirty(false) {}
-    NVSCacheEntry(const String& k, const String& v) 
-        : key(k), value(v), timestamp(millis()), checksum(0), dirty(false) {
+    NVSCacheEntry(const char* k, const char* v) 
+        : key(k ? k : ""), value(v ? v : ""), timestamp(millis()), checksum(0), dirty(false) {
         calculateChecksum();
     }
     
     void calculateChecksum() {
         checksum = 0;
         for (size_t i = 0; i < value.length(); i++) {
-            checksum = checksum * 31 + value.charAt(i);
+            checksum = checksum * 31 + value[i];
         }
     }
     
     bool isValid() const {
         uint32_t currentChecksum = 0;
         for (size_t i = 0; i < value.length(); i++) {
-            currentChecksum = currentChecksum * 31 + value.charAt(i);
+            currentChecksum = currentChecksum * 31 + value[i];
         }
         return currentChecksum == checksum;
     }
@@ -89,7 +90,7 @@ private:
     friend class NVSLockGuard;
     Preferences _preferences;
     SemaphoreHandle_t _mutex;
-    std::map<String, std::vector<NVSCacheEntry>> _cache;
+    std::map<std::string, std::vector<NVSCacheEntry>> _cache;
     bool _initialized;
     size_t _maxCacheSize;
     
@@ -97,7 +98,7 @@ private:
     bool _deferredFlushEnabled;
     unsigned long _flushIntervalMs;
     unsigned long _lastFlushTime;
-    std::vector<String> _dirtyKeys;
+    std::vector<std::string> _dirtyKeys;
     
     // Phase 3: Variables pour nettoyage automatique
     unsigned long _lastCleanupTime;
@@ -107,13 +108,13 @@ private:
     NVSError openNamespace(const char* ns, bool readOnly = true);
     void closeNamespace();
     NVSError validateKey(const char* key);
-    NVSError validateValue(const String& value);
-    uint32_t calculateChecksum(const String& value);
+    NVSError validateValue(const char* value);
+    uint32_t calculateChecksum(const char* value);
     void logError(NVSError error, const char* context, const char* ns = nullptr, const char* key = nullptr);
     
     // Phase 2: Méthodes privées pour flush différé
-    void addDirtyKey(const String& ns, const char* key);
-    void removeDirtyKey(const String& ns, const char* key);
+    void addDirtyKey(const char* ns, const char* key);
+    void removeDirtyKey(const char* ns, const char* key);
     bool shouldFlush() const;
     bool lock(TickType_t timeout = portMAX_DELAY);
     void unlock();
@@ -127,8 +128,8 @@ public:
     void end();
     
     // Opérations de base
-    NVSError saveString(const char* ns, const char* key, const String& value);
-    NVSError loadString(const char* ns, const char* key, String& value, const String& defaultValue = "");
+    NVSError saveString(const char* ns, const char* key, const char* value);
+    NVSError loadString(const char* ns, const char* key, char* value, size_t valueSize, const char* defaultValue = "");
     NVSError saveBool(const char* ns, const char* key, bool value);
     NVSError loadBool(const char* ns, const char* key, bool& value, bool defaultValue = false);
     NVSError saveInt(const char* ns, const char* key, int value);
@@ -139,10 +140,10 @@ public:
     NVSError loadULong(const char* ns, const char* key, unsigned long& value, unsigned long defaultValue = 0);
     
     // Phase 2: Compression JSON
-    NVSError saveJsonCompressed(const char* ns, const char* key, const String& json);
-    NVSError loadJsonDecompressed(const char* ns, const char* key, String& json, const String& defaultValue = "");
-    String compressJson(const String& json);
-    String decompressJson(const String& compressed);
+    NVSError saveJsonCompressed(const char* ns, const char* key, const char* json);
+    NVSError loadJsonDecompressed(const char* ns, const char* key, char* json, size_t jsonSize, const char* defaultValue = "");
+    bool compressJson(const char* json, char* out, size_t outSize);
+    bool decompressJson(const char* compressed, char* out, size_t outSize);
     
     // Gestion du cache
     void flushCache();

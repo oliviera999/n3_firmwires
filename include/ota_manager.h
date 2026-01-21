@@ -19,16 +19,16 @@ private:
     bool m_isUpdating;
     unsigned long m_lastCheck;
     unsigned long m_checkInterval;
-    String m_currentVersion;
-    String m_remoteVersion;
-    String m_firmwareUrl;
+    char m_currentVersion[32];
+    char m_remoteVersion[32];
+    char m_firmwareUrl[256];
     int m_firmwareSize;
-    String m_firmwareMD5;
+    char m_firmwareMD5[33];
     
     // Variables pour les fichiers filesystem
-    String m_filesystemUrl;
+    char m_filesystemUrl[256];
     int m_filesystemSize;
-    String m_filesystemMD5;
+    char m_filesystemMD5[33];
     
     // Nouvelles variables pour la stabilité
     TaskHandle_t m_updateTaskHandle;
@@ -36,12 +36,12 @@ private:
     
     // Rappels (callbacks)
     std::function<void(int)> m_progressCallback;
-    std::function<void(const String&)> m_statusCallback;
-    std::function<void(const String&)> m_errorCallback;
+    std::function<void(const char*)> m_statusCallback;
+    std::function<void(const char*)> m_errorCallback;
     
     // Journalisation détaillée
-    void log(const String& message);
-    void logError(const String& error);
+    void log(const char* message);
+    void logError(const char* error);
     void logProgress(int progress, size_t downloaded, size_t total, float speed);
     
     // Validation
@@ -49,18 +49,18 @@ private:
     bool validateFirmwareSize(size_t expected, size_t actual);
     bool validateFilesystemSize(size_t expected, size_t actual);
     bool validateSpace(size_t required);
-    bool selectArtifactFromMetadata(const JsonDocument& doc, String& outVersion, String& outUrl, int& outSize, String& outMD5);
-    bool selectFilesystemFromMetadata(const JsonDocument& doc, String& outUrl, int& outSize, String& outMD5);
+    bool selectArtifactFromMetadata(const JsonDocument& doc, char* outVersion, size_t versionSize, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size);
+    bool selectFilesystemFromMetadata(const JsonDocument& doc, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size);
     
     // Téléchargement (méthodes multiples pour la robustesse)
-    bool downloadMetadata(String& payload);
-    bool downloadFirmware(const String& url, size_t expectedSize);
-    bool downloadFirmwareModern(const String& url, size_t expectedSize);
+    bool downloadMetadata(char* payload, size_t payloadSize);
+    bool downloadFirmware(const char* url, size_t expectedSize);
+    bool downloadFirmwareModern(const char* url, size_t expectedSize);
     // Ancienne variante supprimée dans l'implémentation. Conserver uniquement les modes modern et ultra.
-    bool downloadFirmwareUltraRevolutionary(const String& url, size_t expectedSize);
+    bool downloadFirmwareUltraRevolutionary(const char* url, size_t expectedSize);
     
     // Téléchargement des fichiers filesystem
-    bool downloadFilesystem(const String& url, size_t expectedSize, const String& expectedMD5);
+    bool downloadFilesystem(const char* url, size_t expectedSize, const char* expectedMD5);
     
     // Tâche dédiée pour l'OTA
     static void updateTask(void* parameter);
@@ -71,14 +71,14 @@ public:
     
     // Configuration
     void setProgressCallback(std::function<void(int)> callback);
-    void setStatusCallback(std::function<void(const String&)> callback);
-    void setErrorCallback(std::function<void(const String&)> callback);
+    void setStatusCallback(std::function<void(const char*)> callback);
+    void setErrorCallback(std::function<void(const char*)> callback);
     void setCheckInterval(unsigned long interval);
     
     // Gestion des versions
-    void setCurrentVersion(const String& version);
-    String getCurrentVersion() const;
-    String getRemoteVersion() const;
+    void setCurrentVersion(const char* version);
+    const char* getCurrentVersion() const;
+    const char* getRemoteVersion() const;
     
     // Vérification et mise à jour
     bool checkForUpdate();
@@ -88,16 +88,16 @@ public:
     // Statistiques
     unsigned long getLastCheck() const;
     int getFirmwareSize() const;
-    String getFirmwareUrl() const;
-    String getFirmwareMD5() const { return m_firmwareMD5; }
+    const char* getFirmwareUrl() const;
+    const char* getFirmwareMD5() const { return m_firmwareMD5; }
     
     // Statistiques filesystem
     int getFilesystemSize() const { return m_filesystemSize; }
-    String getFilesystemUrl() const { return m_filesystemUrl; }
-    String getFilesystemMD5() const { return m_filesystemMD5; }
+    const char* getFilesystemUrl() const { return m_filesystemUrl; }
+    const char* getFilesystemMD5() const { return m_filesystemMD5; }
     
     // Utilitaires
-    static int compareVersions(const String& version1, const String& version2);
-    static String formatBytes(size_t bytes);
-    static String formatSpeed(float speed);
+    static int compareVersions(const char* version1, const char* version2);
+    static void formatBytes(size_t bytes, char* buffer, size_t bufferSize);
+    static void formatSpeed(float speed, char* buffer, size_t bufferSize);
 }; 

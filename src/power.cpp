@@ -168,8 +168,10 @@ void PowerManager::initTime() {
   // Utilisation directe des offsets GMT en secondes (plus simple et fiable)
   configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
   
+  char timeBuf[64];
+  getCurrentTimeString(timeBuf, sizeof(timeBuf));
   LOG_TIME(LogConfig::LOG_INFO, "Heure actuelle: %s (epoch: %lu)", 
-           getCurrentTimeString().c_str(), loadedEpoch);
+           timeBuf, loadedEpoch);
   LOG_TIME(LogConfig::LOG_INFO, "Timezone configurée: GMT+%d heures (offset: %d secondes)", 
            _gmtOffsetSec/3600, _gmtOffsetSec);
   
@@ -237,8 +239,10 @@ void PowerManager::syncTimeFromNTP() {
 
     LOG_NTP(LogConfig::LOG_INFO, "Synchronisation NTP réussie en %lu ms (%d tentatives)", 
             syncDuration, attempts);
+    char timeBuf[64];
+    getCurrentTimeString(timeBuf, sizeof(timeBuf));
     LOG_NTP(LogConfig::LOG_INFO, "Heure NTP: %s (epoch: %lu)", 
-            getCurrentTimeString().c_str(), ntpEpoch);
+            timeBuf, ntpEpoch);
     
     // Calcul de la dérive si on avait une heure locale valide
     if (localBeforeEpoch > 1600000000) {
@@ -274,8 +278,10 @@ void PowerManager::forceSaveTimeToFlash() {
   _lastTimeSave = millis();
   _lastSavedEpoch = currentEpoch;
   
+  char timeBuf[64];
+  getCurrentTimeString(timeBuf, sizeof(timeBuf));
   Serial.printf("[Power] Heure sauvegardée de force: %s (epoch: %lu)\n", 
-                getCurrentTimeString().c_str(), currentEpoch);
+                timeBuf, currentEpoch);
 }
 
 void PowerManager::loadTimeFromFlash() {
@@ -300,17 +306,22 @@ void PowerManager::updateTime() {
 // ---------------------------------------------------------------------------
 // Formatage de l'heure en chaîne locale (HH:MM:SS JJ/MM/AAAA)
 // ---------------------------------------------------------------------------
-String PowerManager::getCurrentTimeString() {
+void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
+  if (buffer == nullptr || bufferSize == 0) {
+    return;
+  }
+
   time_t epoch = time(nullptr);
 
   struct tm timeinfo;
   if (!localtime_r(&epoch, &timeinfo)) {
-    return String("00:00:00 01/01/1970");
+    strncpy(buffer, "00:00:00 01/01/1970", bufferSize - 1);
+    buffer[bufferSize - 1] = '\0';
+    return;
   }
 
-  char buffer[25];
-  strftime(buffer, sizeof(buffer), "%H:%M:%S %d/%m/%Y", &timeinfo);
-  return String(buffer);
+  strftime(buffer, bufferSize, "%H:%M:%S %d/%m/%Y", &timeinfo);
+  buffer[bufferSize - 1] = '\0'; // Assurer null-terminator
 } 
 
 void PowerManager::saveCurrentWifiCredentials() {
@@ -359,8 +370,11 @@ bool PowerManager::reconnectWithSavedCredentials() {
   Serial.println();
   
   if (WiFi.status() == WL_CONNECTED) {
+    IPAddress ip = WiFi.localIP();
+    char ipBuf[16];
+    snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     Serial.printf("[Power] Reconnexion WiFi réussie à %s (%s)\n", 
-                  _lastSSID.c_str(), WiFi.localIP().toString().c_str());
+                  _lastSSID.c_str(), ipBuf);
     WiFi.setSleep(true);  // Active le modem-sleep pour économie d'énergie
     
     // Attente stabilisation stack TCP/IP (évite "connection refused" après réveil)
@@ -398,8 +412,11 @@ void PowerManager::waitForNetworkReady() {
       // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
       IPAddress dnsResult;
       if (WiFi.hostByName("pool.ntp.org", dnsResult)) {
+        IPAddress ip = WiFi.localIP();
+        char ipBuf[16];
+        snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         Serial.printf("[Power] ✅ Réseau prêt (%s, DNS OK, %lu ms)\n", 
-                      WiFi.localIP().toString().c_str(), millis() - startMs);
+                      ipBuf, millis() - startMs);
         return;
       }
     }
@@ -582,8 +599,10 @@ void PowerManager::smartSaveTime() {
 
   _lastTimeSave = currentMillis;
   _lastSavedEpoch = currentEpoch;
+  char timeBuf[64];
+  getCurrentTimeString(timeBuf, sizeof(timeBuf));
   Serial.printf("[Power] Heure sauvegardée: %s (epoch: %lu)\n", 
-                getCurrentTimeString().c_str(), currentEpoch);
+                timeBuf, currentEpoch);
 }
 
 void PowerManager::logWakeupCause(esp_sleep_wakeup_cause_t cause) {
@@ -628,9 +647,11 @@ uint32_t PowerManager::getSleptTime(uint64_t startUs) {
     timeval tv = {newEpoch, 0};
     settimeofday(&tv, nullptr);
     
+    char timeBuf[64];
+    getCurrentTimeString(timeBuf, sizeof(timeBuf));
     Serial.printf("[Power] Veille: %llu us (~%u s), reste=%u us – heure: %s\n",
                   (unsigned long long)sleptUs, sleptSec, _sleepRemainderUs, 
-                  getCurrentTimeString().c_str());
+                  timeBuf);
   }
   
   return sleptSec;

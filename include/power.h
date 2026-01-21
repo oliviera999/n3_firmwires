@@ -29,7 +29,7 @@ class PowerManager {
 
   // Accesseurs
   time_t getCurrentEpoch() { return time(nullptr); }
-  String getCurrentTimeString();
+  void getCurrentTimeString(char* buffer, size_t bufferSize);
 
   // Validation et correction temps
   bool isValidEpoch(time_t epoch) const;

@@ -29,14 +29,16 @@ OTAManager::OTAManager()
     : m_isUpdating(false)
     , m_lastCheck(0)
     , m_checkInterval(TimingConfig::OTA_CHECK_INTERVAL_MS) // 2 heures par défaut
-    , m_currentVersion("")
-    , m_remoteVersion("")
-    , m_firmwareUrl("")
     , m_firmwareSize(0)
-    , m_filesystemUrl("")
     , m_filesystemSize(0)
     , m_updateTaskHandle(nullptr)
     , m_httpClient(nullptr) {
+    m_currentVersion[0] = '\0';
+    m_remoteVersion[0] = '\0';
+    m_firmwareUrl[0] = '\0';
+    m_firmwareMD5[0] = '\0';
+    m_filesystemUrl[0] = '\0';
+    m_filesystemMD5[0] = '\0';
 }
 
 OTAManager::~OTAManager() {
@@ -52,25 +54,29 @@ OTAManager::~OTAManager() {
     }
 }
 
-void OTAManager::log(const String& message) {
-    Serial.printf("[OTA] %s\n", message.c_str());
-    EventLog::addf("OTA: %s", message.c_str());
+void OTAManager::log(const char* message) {
+    Serial.printf("[OTA] %s\n", message);
+    EventLog::addf("OTA: %s", message);
     if (m_statusCallback) {
         m_statusCallback(message);
     }
 }
 
-void OTAManager::logError(const String& error) {
-    Serial.printf("[OTA] ❌ %s\n", error.c_str());
-    EventLog::addf("OTA ERROR: %s", error.c_str());
+void OTAManager::logError(const char* error) {
+    Serial.printf("[OTA] ❌ %s\n", error);
+    EventLog::addf("OTA ERROR: %s", error);
     if (m_errorCallback) {
         m_errorCallback(error);
     }
 }
 
 void OTAManager::logProgress(int progress, size_t downloaded, size_t total, float speed) {
+    char downloadedBuf[16], totalBuf[16], speedBuf[16];
+    formatBytes(downloaded, downloadedBuf, sizeof(downloadedBuf));
+    formatBytes(total, totalBuf, sizeof(totalBuf));
+    formatSpeed(speed, speedBuf, sizeof(speedBuf));
     Serial.printf("[OTA] 📊 Progression: %d%% (%s/%s) - Vitesse: %s\n", 
-                 progress, formatBytes(downloaded).c_str(), formatBytes(total).c_str(), formatSpeed(speed).c_str());
+                 progress, downloadedBuf, totalBuf, speedBuf);
     if ((progress % 10) == 0) {
         EventLog::addf("OTA progress %d%%", progress);
     }
@@ -115,7 +121,12 @@ bool OTAManager::validateFilesystemSize(size_t expected, size_t actual) {
     }
     
     if (actual > OTAConfig::MAX_FILESYSTEM_SIZE) {
-        logError("Taille du filesystem trop importante: " + formatBytes(actual) + " > " + formatBytes(OTAConfig::MAX_FILESYSTEM_SIZE));
+        char actualBuf[16], maxBuf[16];
+        formatBytes(actual, actualBuf, sizeof(actualBuf));
+        formatBytes(OTAConfig::MAX_FILESYSTEM_SIZE, maxBuf, sizeof(maxBuf));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Taille du filesystem trop importante: %s > %s", actualBuf, maxBuf);
+        logError(errorMsg);
         return false;
     }
     
@@ -136,23 +147,36 @@ bool OTAManager::validateSpace(size_t required) {
         return false;
     }
 
-    log("📊 Espace libre sketch: " + formatBytes(freeSpace));
-    log("📊 Heap libre: " + formatBytes(freeHeap));
+    char freeSpaceBuf[16], freeHeapBuf[16];
+    formatBytes(freeSpace, freeSpaceBuf, sizeof(freeSpaceBuf));
+    formatBytes(freeHeap, freeHeapBuf, sizeof(freeHeapBuf));
+    char msg[128];
+    snprintf(msg, sizeof(msg), "📊 Espace libre sketch: %s", freeSpaceBuf);
+    log(msg);
+    snprintf(msg, sizeof(msg), "📊 Heap libre: %s", freeHeapBuf);
+    log(msg);
     
     if (freeSpace < required) {
-        logError("Espace insuffisant: " + formatBytes(freeSpace) + " < " + formatBytes(required));
+        char requiredBuf[16];
+        formatBytes(required, requiredBuf, sizeof(requiredBuf));
+        snprintf(msg, sizeof(msg), "Espace insuffisant: %s < %s", freeSpaceBuf, requiredBuf);
+        logError(msg);
         return false;
     }
     
     if (freeHeap < 50000) { // Minimum 50KB heap libre
-        logError("Heap insuffisant: " + formatBytes(freeHeap));
+        char heapBuf[16];
+        formatBytes(freeHeap, heapBuf, sizeof(heapBuf));
+        char errorMsg[64];
+        snprintf(errorMsg, sizeof(errorMsg), "Heap insuffisant: %s", heapBuf);
+        logError(errorMsg);
         return false;
     }
     
     return true;
 }
 
-bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, String& outVersion, String& outUrl, int& outSize, String& outMD5) {
+bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, char* outVersion, size_t versionSize, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
     // Déterminer environnement et modèle
     const char* envName = "prod";
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
@@ -167,28 +191,41 @@ bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, String& out
     modelName = "esp32-s3";
     #endif
 
-    log(String("🔎 Sélection OTA: env=") + envName + ", model=" + modelName);
+    char logMsg[128];
+    snprintf(logMsg, sizeof(logMsg), "🔎 Sélection OTA: env=%s, model=%s", envName, modelName);
+    log(logMsg);
 
     auto tryFillFrom = [&](JsonVariantConst v) -> bool {
         if (v.isNull()) return false;
 
-        String urlStr = v["bin_url"].as<String>();
-        String verStr = v["version"].as<String>();
+        const char* urlStr = v["bin_url"].as<const char*>();
+        const char* verStr = v["version"].as<const char*>();
         int size = v["size"].is<int>() ? v["size"].as<int>() : 0;
-        String md5Str = v["md5"].as<String>();
+        const char* md5Str = v["md5"].as<const char*>();
 
         // Fallbacks depuis top-level si certains champs manquent
-        if (urlStr.length() == 0) urlStr = doc["bin_url"].as<String>();
-        if (verStr.length() == 0) verStr = doc["version"].as<String>();
+        if (!urlStr || strlen(urlStr) == 0) urlStr = doc["bin_url"].as<const char*>();
+        if (!verStr || strlen(verStr) == 0) verStr = doc["version"].as<const char*>();
         if (size <= 0) size = doc["size"].is<int>() ? doc["size"].as<int>() : 0;
-        if (md5Str.length() == 0) md5Str = doc["md5"].as<String>();
+        if (!md5Str || strlen(md5Str) == 0) md5Str = doc["md5"].as<const char*>();
 
         // Nécessaire au minimum: une URL
-        if (urlStr.length() > 0) {
-            outUrl = urlStr;
-            outVersion = verStr; // peut être vide si non fourni
+        if (urlStr && strlen(urlStr) > 0) {
+            strncpy(outUrl, urlStr, urlSize - 1);
+            outUrl[urlSize - 1] = '\0';
+            if (verStr) {
+                strncpy(outVersion, verStr, versionSize - 1);
+                outVersion[versionSize - 1] = '\0';
+            } else {
+                outVersion[0] = '\0';
+            }
             outSize = size;
-            outMD5 = md5Str;
+            if (md5Str) {
+                strncpy(outMD5, md5Str, md5Size - 1);
+                outMD5[md5Size - 1] = '\0';
+            } else {
+                outMD5[0] = '\0';
+            }
             return true;
         }
         return false;
@@ -197,39 +234,65 @@ bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, String& out
     // 1) channels[env][model]
     if (!doc["channels"].isNull()) {
         JsonVariantConst v1 = doc["channels"][envName][modelName];
-        log("🔎 Test channels[" + String(envName) + "][" + String(modelName) + "]: " + String(v1.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v1)) { log("✅ Sélection via channels[" + String(envName) + "][" + String(modelName) + "]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[%s][%s]: %s", envName, modelName, v1.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v1)) { 
+            snprintf(logMsg, sizeof(logMsg), "✅ Sélection via channels[%s][%s]", envName, modelName);
+            log(logMsg);
+            return true;
+        }
         // 2) channels[env][default]
         JsonVariantConst v2 = doc["channels"][envName]["default"];
-        log("🔎 Test channels[" + String(envName) + "][default]: " + String(v2.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v2)) { log("✅ Sélection via channels[" + String(envName) + "][default]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[%s][default]: %s", envName, v2.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v2)) { 
+            snprintf(logMsg, sizeof(logMsg), "✅ Sélection via channels[%s][default]", envName);
+            log(logMsg);
+            return true;
+        }
         // 3) channels[prod][model]
         JsonVariantConst v3 = doc["channels"]["prod"][modelName];
-        log("🔎 Test channels[prod][" + String(modelName) + "]: " + String(v3.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v3)) { log("✅ Sélection via channels[prod][" + String(modelName) + "]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[prod][%s]: %s", modelName, v3.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v3)) { 
+            snprintf(logMsg, sizeof(logMsg), "✅ Sélection via channels[prod][%s]", modelName);
+            log(logMsg);
+            return true;
+        }
         // 4) channels[prod][default]
         JsonVariantConst v4 = doc["channels"]["prod"]["default"];
-        log("🔎 Test channels[prod][default]: " + String(v4.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v4)) { log("✅ Sélection via channels[prod][default]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[prod][default]: %s", v4.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v4)) { 
+            log("✅ Sélection via channels[prod][default]");
+            return true;
+        }
     }
 
     // 5) Fallback legacy top-level (direct)
     log("🔎 Test fallback top-level");
-    String urlStr = doc["bin_url"].as<String>();
-    String verStr = doc["version"].as<String>();
+    const char* urlStr = doc["bin_url"].as<const char*>();
+    const char* verStr = doc["version"].as<const char*>();
     int size = doc["size"].is<int>() ? doc["size"].as<int>() : 0;
-    String md5Str = doc["md5"].as<String>();
-    if (urlStr.length() > 0 && verStr.length() > 0) {
-        outUrl = urlStr;
-        outVersion = verStr;
+    const char* md5Str = doc["md5"].as<const char*>();
+    if (urlStr && strlen(urlStr) > 0 && verStr && strlen(verStr) > 0) {
+        strncpy(outUrl, urlStr, urlSize - 1);
+        outUrl[urlSize - 1] = '\0';
+        strncpy(outVersion, verStr, versionSize - 1);
+        outVersion[versionSize - 1] = '\0';
         outSize = size;
-        outMD5 = md5Str;
+        if (md5Str) {
+            strncpy(outMD5, md5Str, md5Size - 1);
+            outMD5[md5Size - 1] = '\0';
+        } else {
+            outMD5[0] = '\0';
+        }
         return true;
     }
     return false;
 }
 
-bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, String& outUrl, int& outSize, String& outMD5) {
+bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
     // Déterminer environnement et modèle
     const char* envName = "prod";
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
@@ -244,25 +307,33 @@ bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, String& o
     modelName = "esp32-s3";
     #endif
 
-    log(String("🔎 Sélection Filesystem OTA: env=") + envName + ", model=" + modelName);
+    char logMsg[128];
+    snprintf(logMsg, sizeof(logMsg), "🔎 Sélection Filesystem OTA: env=%s, model=%s", envName, modelName);
+    log(logMsg);
 
     auto tryFillFrom = [&](JsonVariantConst v) -> bool {
         if (v.isNull()) return false;
 
-        String urlStr = v["filesystem_url"].as<String>();
+        const char* urlStr = v["filesystem_url"].as<const char*>();
         int size = v["filesystem_size"].is<int>() ? v["filesystem_size"].as<int>() : 0;
-        String md5Str = v["filesystem_md5"].as<String>();
+        const char* md5Str = v["filesystem_md5"].as<const char*>();
 
         // Fallbacks depuis top-level si certains champs manquent
-        if (urlStr.length() == 0) urlStr = doc["filesystem_url"].as<String>();
+        if (!urlStr || strlen(urlStr) == 0) urlStr = doc["filesystem_url"].as<const char*>();
         if (size <= 0) size = doc["filesystem_size"].is<int>() ? doc["filesystem_size"].as<int>() : 0;
-        if (md5Str.length() == 0) md5Str = doc["filesystem_md5"].as<String>();
+        if (!md5Str || strlen(md5Str) == 0) md5Str = doc["filesystem_md5"].as<const char*>();
 
         // Nécessaire au minimum: une URL
-        if (urlStr.length() > 0) {
-            outUrl = urlStr;
+        if (urlStr && strlen(urlStr) > 0) {
+            strncpy(outUrl, urlStr, urlSize - 1);
+            outUrl[urlSize - 1] = '\0';
             outSize = size;
-            outMD5 = md5Str;
+            if (md5Str) {
+                strncpy(outMD5, md5Str, md5Size - 1);
+                outMD5[md5Size - 1] = '\0';
+            } else {
+                outMD5[0] = '\0';
+            }
             return true;
         }
         return false;
@@ -271,42 +342,70 @@ bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, String& o
     // 1) channels[env][model]
     if (!doc["channels"].isNull()) {
         JsonVariantConst v1 = doc["channels"][envName][modelName];
-        log("🔎 Test filesystem channels[" + String(envName) + "][" + String(modelName) + "]: " + String(v1.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v1)) { log("✅ Sélection filesystem via channels[" + String(envName) + "][" + String(modelName) + "]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[%s][%s]: %s", envName, modelName, v1.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v1)) { 
+            snprintf(logMsg, sizeof(logMsg), "✅ Sélection filesystem via channels[%s][%s]", envName, modelName);
+            log(logMsg);
+            return true;
+        }
         // 2) channels[env][default]
         JsonVariantConst v2 = doc["channels"][envName]["default"];
-        log("🔎 Test filesystem channels[" + String(envName) + "][default]: " + String(v2.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v2)) { log("✅ Sélection filesystem via channels[" + String(envName) + "][default]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[%s][default]: %s", envName, v2.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v2)) { 
+            snprintf(logMsg, sizeof(logMsg), "✅ Sélection filesystem via channels[%s][default]", envName);
+            log(logMsg);
+            return true;
+        }
         // 3) channels[prod][model]
         JsonVariantConst v3 = doc["channels"]["prod"][modelName];
-        log("🔎 Test filesystem channels[prod][" + String(modelName) + "]: " + String(v3.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v3)) { log("✅ Sélection filesystem via channels[prod][" + String(modelName) + "]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[prod][%s]: %s", modelName, v3.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v3)) { 
+            snprintf(logMsg, sizeof(logMsg), "✅ Sélection filesystem via channels[prod][%s]", modelName);
+            log(logMsg);
+            return true;
+        }
         // 4) channels[prod][default]
         JsonVariantConst v4 = doc["channels"]["prod"]["default"];
-        log("🔎 Test filesystem channels[prod][default]: " + String(v4.isNull() ? "absent" : "ok"));
-        if (tryFillFrom(v4)) { log("✅ Sélection filesystem via channels[prod][default]"); return true; }
+        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[prod][default]: %s", v4.isNull() ? "absent" : "ok");
+        log(logMsg);
+        if (tryFillFrom(v4)) { 
+            log("✅ Sélection filesystem via channels[prod][default]");
+            return true;
+        }
     }
 
     // 5) Fallback legacy top-level (direct)
     log("🔎 Test fallback filesystem top-level");
-    String urlStr = doc["filesystem_url"].as<String>();
+    const char* urlStr = doc["filesystem_url"].as<const char*>();
     int size = doc["filesystem_size"].is<int>() ? doc["filesystem_size"].as<int>() : 0;
-    String md5Str = doc["filesystem_md5"].as<String>();
-    if (urlStr.length() > 0) {
-        outUrl = urlStr;
+    const char* md5Str = doc["filesystem_md5"].as<const char*>();
+    if (urlStr && strlen(urlStr) > 0) {
+        strncpy(outUrl, urlStr, urlSize - 1);
+        outUrl[urlSize - 1] = '\0';
         outSize = size;
-        outMD5 = md5Str;
+        if (md5Str) {
+            strncpy(outMD5, md5Str, md5Size - 1);
+            outMD5[md5Size - 1] = '\0';
+        } else {
+            outMD5[0] = '\0';
+        }
         return true;
     }
     return false;
 }
 
-bool OTAManager::downloadMetadata(String& payload) {
+bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     log("🔍 Début de la vérification des mises à jour...");
     
     HTTPClient http;
-    String metadataUrl = OTAConfig::getMetadataUrl();
-    log("📡 URL métadonnées: " + metadataUrl);
+    String metadataUrlStr = OTAConfig::getMetadataUrl();
+    const char* metadataUrl = metadataUrlStr.c_str();
+    char logMsg[256];
+    snprintf(logMsg, sizeof(logMsg), "📡 URL métadonnées: %s", metadataUrl);
+    log(logMsg);
 
     if (!http.begin(metadataUrl)) {
         logError("Échec initialisation HTTPClient");
@@ -314,27 +413,34 @@ bool OTAManager::downloadMetadata(String& payload) {
     }
 
     http.setTimeout(OTAConfig::HTTP_TIMEOUT);
-    log("⏱️ Timeout HTTP: " + String(OTAConfig::HTTP_TIMEOUT) + " ms");
+    snprintf(logMsg, sizeof(logMsg), "⏱️ Timeout HTTP: %d ms", OTAConfig::HTTP_TIMEOUT);
+    log(logMsg);
 
     int code = http.GET();
-    log("📡 Code de réponse HTTP: " + String(code));
+    snprintf(logMsg, sizeof(logMsg), "📡 Code de réponse HTTP: %d", code);
+    log(logMsg);
     
     if (code != HTTP_CODE_OK) {
-        logError("Erreur GET métadonnées: " + String(code));
+        snprintf(logMsg, sizeof(logMsg), "Erreur GET métadonnées: %d", code);
+        logError(logMsg);
         // Fallback: réessayer l'URL fixe racine
         if (code == 404) {
             http.end();
-            String fallbackUrl = OTAConfig::getMetadataUrl();
-            log("🔁 Fallback métadonnées (URL fixe): " + fallbackUrl);
+            String fallbackUrlStr = OTAConfig::getMetadataUrl();
+            const char* fallbackUrl = fallbackUrlStr.c_str();
+            snprintf(logMsg, sizeof(logMsg), "🔁 Fallback métadonnées (URL fixe): %s", fallbackUrl);
+            log(logMsg);
             if (!http.begin(fallbackUrl)) {
                 logError("Échec initialisation HTTPClient (fallback)");
                 return false;
             }
             http.setTimeout(OTAConfig::HTTP_TIMEOUT);
             code = http.GET();
-            log("📡 Code de réponse HTTP (fallback): " + String(code));
+            snprintf(logMsg, sizeof(logMsg), "📡 Code de réponse HTTP (fallback): %d", code);
+            log(logMsg);
             if (code != HTTP_CODE_OK) {
-                logError("Erreur GET métadonnées (fallback): " + String(code));
+                snprintf(logMsg, sizeof(logMsg), "Erreur GET métadonnées (fallback): %d", code);
+                logError(logMsg);
                 http.end();
                 return false;
             }
@@ -344,22 +450,31 @@ bool OTAManager::downloadMetadata(String& payload) {
         }
     }
 
-    payload = http.getString();
+    String tempPayload = http.getString();
     http.end();
     
-    log("📄 Taille payload: " + String(payload.length()) + " bytes");
-    log("📄 Payload: " + payload);
+    size_t payloadLen = tempPayload.length();
+    if (payloadLen >= payloadSize) {
+        payloadLen = payloadSize - 1;
+    }
+    strncpy(payload, tempPayload.c_str(), payloadLen);
+    payload[payloadLen] = '\0';
+    
+    snprintf(logMsg, sizeof(logMsg), "📄 Taille payload: %zu bytes", payloadLen);
+    log(logMsg);
+    snprintf(logMsg, sizeof(logMsg), "📄 Payload: %s", payload);
+    log(logMsg);
 
     return true;
 }
 
 // Nouvelle méthode utilisant esp_http_client pour plus de stabilité
-bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) {
+bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     log("📥 Début du téléchargement moderne du firmware...");
     
     // Configuration du client HTTP moderne - CORRIGÉE
     esp_http_client_config_t config = {};
-    config.url = url.c_str();
+    config.url = url;
     config.timeout_ms = NetworkConfig::OTA_TIMEOUT_MS; // 30 secondes (timeout OTA justifié pour téléchargements firmware)
     config.buffer_size = BufferConfig::HTTP_BUFFER_SIZE; // Buffers augmentés pour débit
     config.buffer_size_tx = BufferConfig::HTTP_TX_BUFFER_SIZE;
@@ -378,12 +493,19 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
     
     // Diagnostic de la connectivité
     log("📡 Diagnostic WiFi:");
-    log("  - SSID: " + String(WiFi.SSID()));
-    log("  - RSSI: " + String(WiFi.RSSI()) + " dBm");
-    log("  - IP: " + WiFi.localIP().toString());
-    log("  - Gateway: " + WiFi.gatewayIP().toString());
-    log("  - DNS: " + WiFi.dnsIP().toString());
-    log("  - Heap libre: " + String(ESP.getFreeHeap()) + " bytes");
+    char logMsg[128];
+    snprintf(logMsg, sizeof(logMsg), "  - SSID: %s", WiFi.SSID().c_str());
+    log(logMsg);
+    snprintf(logMsg, sizeof(logMsg), "  - RSSI: %d dBm", WiFi.RSSI());
+    log(logMsg);
+    snprintf(logMsg, sizeof(logMsg), "  - IP: %s", WiFi.localIP().toString().c_str());
+    log(logMsg);
+    snprintf(logMsg, sizeof(logMsg), "  - Gateway: %s", WiFi.gatewayIP().toString().c_str());
+    log(logMsg);
+    snprintf(logMsg, sizeof(logMsg), "  - DNS: %s", WiFi.dnsIP().toString().c_str());
+    log(logMsg);
+    snprintf(logMsg, sizeof(logMsg), "  - Heap libre: %u bytes", ESP.getFreeHeap());
+    log(logMsg);
     
     // Nettoyer l'ancien client s'il existe
     if (m_httpClient) {
@@ -405,10 +527,15 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
     // Début de la requête avec gestion d'erreur améliorée
     esp_err_t err = esp_http_client_open(m_httpClient, 0);
     if (err != ESP_OK) {
-        logError("Erreur ouverture HTTP: " + String(esp_err_to_name(err)) + " (code: " + String(err) + ")");
-        logError("URL: " + url);
-        logError("WiFi status: " + String(WiFi.status()));
-        logError("Heap libre: " + String(ESP.getFreeHeap()));
+        char errorMsg[256];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur ouverture HTTP: %s (code: %d)", esp_err_to_name(err), err);
+        logError(errorMsg);
+        snprintf(errorMsg, sizeof(errorMsg), "URL: %s", url);
+        logError(errorMsg);
+        snprintf(errorMsg, sizeof(errorMsg), "WiFi status: %d", WiFi.status());
+        logError(errorMsg);
+        snprintf(errorMsg, sizeof(errorMsg), "Heap libre: %u", ESP.getFreeHeap());
+        logError(errorMsg);
         
         // Fallback vers HTTPClient classique
         log("🔄 Fallback vers HTTPClient classique...");
@@ -420,14 +547,19 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
     // Récupération des informations de la réponse
     int statusCode = esp_http_client_fetch_headers(m_httpClient);
     if (statusCode != NetworkConfig::HTTP_OK_CODE) {
-        logError("Erreur HTTP: " + String(statusCode));
+        char errorMsg[64];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur HTTP: %d", statusCode);
+        logError(errorMsg);
         esp_http_client_cleanup(m_httpClient);
         m_httpClient = nullptr;
         return false;
     }
     
     int contentLength = esp_http_client_get_content_length(m_httpClient);
-    log("📊 Taille réelle du firmware (entête): " + formatBytes(contentLength));
+    char sizeBuf[16];
+    formatBytes(contentLength, sizeBuf, sizeof(sizeBuf));
+    snprintf(logMsg, sizeof(logMsg), "📊 Taille réelle du firmware (entête): %s", sizeBuf);
+    log(logMsg);
     
     // Validation de la taille (désactivable)
     if (contentLength <= 0) {
@@ -435,7 +567,9 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
             log("⚠️ OTA_UNSAFE_FORCE: Content-Length manquant/0, on continue en mode stream continu");
             contentLength = INT_MAX; // boucle jusqu'à fin de stream
         } else {
-            logError("Taille de contenu invalide: " + String(contentLength));
+            char errorMsg[64];
+            snprintf(errorMsg, sizeof(errorMsg), "Taille de contenu invalide: %d", contentLength);
+            logError(errorMsg);
             esp_http_client_cleanup(m_httpClient);
             m_httpClient = nullptr;
             return false;
@@ -450,7 +584,8 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
         m_httpClient = nullptr;
         return false;
     }
-    log("📍 Partition cible pour mise à jour: " + String(target_partition->label) + " (0x" + String(target_partition->address, HEX) + ")");
+    snprintf(logMsg, sizeof(logMsg), "📍 Partition cible pour mise à jour: %s (0x%x)", target_partition->label, target_partition->address);
+    log(logMsg);
     
     // Initialisation de la mise à jour
     log("🔧 Initialisation de la mise à jour...");
@@ -459,17 +594,19 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
         log("⚠️ Mode OTA_UNSAFE_FORCE actif: initialisation avec UPDATE_SIZE_UNKNOWN");
     }
     if (!Update.begin(beginSize)) {
-        logError("Échec Update.begin(): " + String(Update.errorString()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Échec Update.begin(): %s", Update.errorString());
+        logError(errorMsg);
         esp_http_client_cleanup(m_httpClient);
         m_httpClient = nullptr;
         return false;
     }
     log("✅ Mise à jour initialisée avec succès");
     // MD5: ignoré si OTA_UNSAFE_FORCE
-    if (!OTAConfig::OTA_UNSAFE_FORCE && !m_firmwareMD5.isEmpty()) {
-        Update.setMD5(m_firmwareMD5.c_str());
+    if (!OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
+        Update.setMD5(m_firmwareMD5);
         log("🔐 MD5 défini pour vérification");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && !m_firmwareMD5.isEmpty()) {
+    } else if (OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
         log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
     
@@ -495,10 +632,14 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
                 break;
             } else {
                 if (OTAConfig::OTA_UNSAFE_FORCE) {
-                    log("⚠️ OTA_UNSAFE_FORCE: lecture terminée avec code " + String(bytesRead) + ", on finalise avec ce qui a été reçu");
+                    char logMsg[128];
+                    snprintf(logMsg, sizeof(logMsg), "⚠️ OTA_UNSAFE_FORCE: lecture terminée avec code %d, on finalise avec ce qui a été reçu", bytesRead);
+                    log(logMsg);
                     break;
                 }
-                logError("Erreur lecture HTTP: " + String(bytesRead));
+                char errorMsg[64];
+                snprintf(errorMsg, sizeof(errorMsg), "Erreur lecture HTTP: %d", bytesRead);
+                logError(errorMsg);
                 esp_http_client_cleanup(m_httpClient);
                 m_httpClient = nullptr;
                 return false;
@@ -509,7 +650,9 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
         size_t written = Update.write(buffer, bytesRead);
         
         if (written != bytesRead) {
-            logError("Erreur écriture: " + String(written) + "/" + String(bytesRead) + " bytes");
+            char errorMsg[64];
+            snprintf(errorMsg, sizeof(errorMsg), "Erreur écriture: %zu/%d bytes", written, bytesRead);
+            logError(errorMsg);
             esp_http_client_cleanup(m_httpClient);
             m_httpClient = nullptr;
             return false;
@@ -547,7 +690,11 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
         // Vérification périodique de la mémoire
         if (progressCounter % 100 == 0) {
             size_t currentHeap = ESP.getFreeHeap();
-            log("📊 Heap libre: " + formatBytes(currentHeap));
+            char heapBuf[16];
+            formatBytes(currentHeap, heapBuf, sizeof(heapBuf));
+            char logMsg[64];
+            snprintf(logMsg, sizeof(logMsg), "📊 Heap libre: %s", heapBuf);
+            log(logMsg);
             
             if (currentHeap < BufferConfig::CRITICAL_MEMORY_THRESHOLD_BYTES) {
                 log("⚠️ Heap critique détecté");
@@ -569,20 +716,40 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
     esp_http_client_cleanup(m_httpClient);
     m_httpClient = nullptr;
     
-    log("📥 Téléchargement terminé: " + formatBytes(totalWritten) + "/" + (contentLength == INT_MAX ? String("inconnu") : formatBytes(contentLength)));
+    char totalBuf[16], contentBuf[16];
+    formatBytes(totalWritten, totalBuf, sizeof(totalBuf));
+    if (contentLength == INT_MAX) {
+        char logMsg[128];
+        snprintf(logMsg, sizeof(logMsg), "📥 Téléchargement terminé: %s/inconnu", totalBuf);
+        log(logMsg);
+    } else {
+        formatBytes(contentLength, contentBuf, sizeof(contentBuf));
+        char logMsg[128];
+        snprintf(logMsg, sizeof(logMsg), "📥 Téléchargement terminé: %s/%s", totalBuf, contentBuf);
+        log(logMsg);
+    }
     
     // Forcer l'affichage à 100% à la fin du téléchargement
     logProgress(100, totalWritten, contentLength == INT_MAX ? 0 : (size_t)contentLength, 0);
     if (!OTAConfig::OTA_UNSAFE_FORCE) {
         if (contentLength != INT_MAX && totalWritten != (size_t)contentLength) {
-            logError("Téléchargement incomplet: " + formatBytes(totalWritten) + "/" + formatBytes(contentLength));
+            formatBytes(totalWritten, totalBuf, sizeof(totalBuf));
+            formatBytes(contentLength, contentBuf, sizeof(contentBuf));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Téléchargement incomplet: %s/%s", totalBuf, contentBuf);
+            logError(errorMsg);
             return false;
         }
     } else {
         if (contentLength == INT_MAX) {
-            log("⚠️ OTA_UNSAFE_FORCE: Content-Length inconnu, téléchargement finalisé avec " + formatBytes(totalWritten));
+            formatBytes(totalWritten, totalBuf, sizeof(totalBuf));
+            char logMsg[128];
+            snprintf(logMsg, sizeof(logMsg), "⚠️ OTA_UNSAFE_FORCE: Content-Length inconnu, téléchargement finalisé avec %s", totalBuf);
+            log(logMsg);
         } else if (totalWritten != (size_t)contentLength) {
-            log("⚠️ OTA_UNSAFE_FORCE: écart de taille ignoré: " + String(totalWritten) + "/" + String(contentLength));
+            char logMsg[128];
+            snprintf(logMsg, sizeof(logMsg), "⚠️ OTA_UNSAFE_FORCE: écart de taille ignoré: %zu/%d", totalWritten, contentLength);
+            log(logMsg);
         }
     }
 
@@ -590,26 +757,35 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
     log("🔧 Finalisation de la mise à jour...");
     bool endOk = Update.end(OTAConfig::OTA_UNSAFE_FORCE);
     if (!endOk) {
-        logError("Erreur Update.end(): " + String(Update.errorString()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.end(): %s", Update.errorString());
+        logError(errorMsg);
         return false;
     }
 
     // Validation de la mise à jour
     if (Update.hasError() && !OTAConfig::OTA_UNSAFE_FORCE) {
-        logError("Erreur de mise à jour: " + String(Update.errorString()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur de mise à jour: %s", Update.errorString());
+        logError(errorMsg);
         return false;
     }
 
     // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
     // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
     if (target_partition) {
-        log("🔄 Marquage de la partition mise à jour comme boot: " + String(target_partition->label));
+        char bootLogMsg3[128];
+        snprintf(bootLogMsg3, sizeof(bootLogMsg3), "🔄 Marquage de la partition mise à jour comme boot: %s", target_partition->label);
+        log(bootLogMsg3);
         esp_err_t err = esp_ota_set_boot_partition(target_partition);
         if (err != ESP_OK) {
-            logError("Erreur marquage partition boot: " + String(esp_err_to_name(err)));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Erreur marquage partition boot: %s", esp_err_to_name(err));
+            logError(errorMsg);
             return false;
         }
-        log("✅ Partition " + String(target_partition->label) + " marquée comme boot avec succès");
+        snprintf(bootLogMsg3, sizeof(bootLogMsg3), "✅ Partition %s marquée comme boot avec succès", target_partition->label);
+        log(bootLogMsg3);
     } else {
         logError("Partition cible non disponible pour marquage boot");
         return false;
@@ -620,7 +796,7 @@ bool OTAManager::downloadFirmwareModern(const String& url, size_t expectedSize) 
 }
 
 // Méthode de fallback utilisant HTTPClient classique
-bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
+bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     log("📥 Début du téléchargement du firmware (mode fallback)...");
     
     HTTPClient http;
@@ -632,23 +808,31 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
     http.setTimeout(OTAConfig::HTTP_TIMEOUT);
     
     int code = http.GET();
-    log("📡 Code de réponse firmware: " + String(code));
+    char logMsg2[128];
+    snprintf(logMsg2, sizeof(logMsg2), "📡 Code de réponse firmware: %d", code);
+    log(logMsg2);
     
     if (code != HTTP_CODE_OK) {
-        logError("Erreur GET firmware: " + String(code));
+        char errorMsg[64];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur GET firmware: %d", code);
+        logError(errorMsg);
         http.end();
         return false;
     }
 
     int contentLength = http.getSize();
-    log("📊 Taille réelle du firmware: " + formatBytes(contentLength));
+    char sizeBuf2[16];
+    formatBytes(contentLength, sizeBuf2, sizeof(sizeBuf2));
+    snprintf(logMsg2, sizeof(logMsg2), "📊 Taille réelle du firmware: %s", sizeBuf2);
+    log(logMsg2);
     
     if (!OTAConfig::OTA_UNSAFE_FORCE && !validateFirmwareSize(expectedSize, contentLength)) {
         http.end();
         return false;
     }
     if (OTAConfig::OTA_UNSAFE_FORCE && expectedSize > 0 && expectedSize != contentLength) {
-        log("⚠️ OTA_UNSAFE_FORCE: taille inattendue ignorée: attendu=" + String(expectedSize) + ", réel=" + String(contentLength));
+        snprintf(logMsg2, sizeof(logMsg2), "⚠️ OTA_UNSAFE_FORCE: taille inattendue ignorée: attendu=%zu, réel=%d", expectedSize, contentLength);
+        log(logMsg2);
     }
 
     // IMPORTANT: Sauvegarder la partition cible AVANT Update.begin() pour garantir l'alternance
@@ -658,7 +842,8 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
         http.end();
         return false;
     }
-    log("📍 Partition cible pour mise à jour: " + String(target_partition->label) + " (0x" + String(target_partition->address, HEX) + ")");
+    snprintf(logMsg2, sizeof(logMsg2), "📍 Partition cible pour mise à jour: %s (0x%x)", target_partition->label, target_partition->address);
+    log(logMsg2);
 
     // Initialisation de la mise à jour
     log("🔧 Initialisation de la mise à jour...");
@@ -668,16 +853,18 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
     }
     
     if (!Update.begin(beginSize2)) {
-        logError("Erreur Update.begin(): " + String(Update.errorString()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.begin(): %s", Update.errorString());
+        logError(errorMsg);
         http.end();
         return false;
     }
     
     log("✅ Mise à jour initialisée avec succès");
-    if (!OTAConfig::OTA_UNSAFE_FORCE && !m_firmwareMD5.isEmpty()) {
-        Update.setMD5(m_firmwareMD5.c_str());
+    if (!OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
+        Update.setMD5(m_firmwareMD5);
         log("🔐 MD5 défini pour vérification");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && !m_firmwareMD5.isEmpty()) {
+    } else if (OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
         log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
 
@@ -699,7 +886,9 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
         size_t written = Update.write(buffer, bytesRead);
         
         if (written != bytesRead) {
-            logError("Erreur écriture: " + String(written) + "/" + String(bytesRead) + " bytes");
+            char errorMsg[64];
+            snprintf(errorMsg, sizeof(errorMsg), "Erreur écriture: %zu/%d bytes", written, bytesRead);
+            logError(errorMsg);
             http.end();
             return false;
         }
@@ -721,7 +910,11 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
         // Vérification périodique de la mémoire
         if (progressCounter % 100 == 0) {
             size_t currentHeap = ESP.getFreeHeap();
-            log("📊 Heap libre: " + formatBytes(currentHeap));
+            char heapBuf3[16];
+            formatBytes(currentHeap, heapBuf3, sizeof(heapBuf3));
+            char logMsg3[64];
+            snprintf(logMsg3, sizeof(logMsg3), "📊 Heap libre: %s", heapBuf3);
+            log(logMsg3);
             
             if (currentHeap < BufferConfig::CRITICAL_MEMORY_THRESHOLD_BYTES) {
                 log("⚠️ Heap critique détecté");
@@ -741,15 +934,23 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
 
     http.end();
     
-    log("📥 Téléchargement terminé: " + formatBytes(totalWritten) + "/" + formatBytes(contentLength));
+    char totalBuf3[16], contentBuf3[16];
+    formatBytes(totalWritten, totalBuf3, sizeof(totalBuf3));
+    formatBytes(contentLength, contentBuf3, sizeof(contentBuf3));
+    char logMsg3[128];
+    snprintf(logMsg3, sizeof(logMsg3), "📥 Téléchargement terminé: %s/%s", totalBuf3, contentBuf3);
+    log(logMsg3);
     if (!OTAConfig::OTA_UNSAFE_FORCE) {
         if (totalWritten != contentLength) {
-            logError("Téléchargement incomplet: " + formatBytes(totalWritten) + "/" + formatBytes(contentLength));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Téléchargement incomplet: %s/%s", totalBuf3, contentBuf3);
+            logError(errorMsg);
             return false;
         }
     } else {
         if (totalWritten != contentLength) {
-            log("⚠️ OTA_UNSAFE_FORCE: écart de taille ignoré: " + String(totalWritten) + "/" + String(contentLength));
+            snprintf(logMsg3, sizeof(logMsg3), "⚠️ OTA_UNSAFE_FORCE: écart de taille ignoré: %zu/%d", totalWritten, contentLength);
+            log(logMsg3);
         }
     }
 
@@ -758,26 +959,35 @@ bool OTAManager::downloadFirmware(const String& url, size_t expectedSize) {
     bool endOk2 = Update.end(OTAConfig::OTA_UNSAFE_FORCE);
     
     if (!endOk2) {
-        logError("Erreur Update.end(): " + String(Update.errorString()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.end(): %s", Update.errorString());
+        logError(errorMsg);
         return false;
     }
 
     // Validation de la mise à jour
     if (Update.hasError() && !OTAConfig::OTA_UNSAFE_FORCE) {
-        logError("Erreur de mise à jour: " + String(Update.errorString()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur de mise à jour: %s", Update.errorString());
+        logError(errorMsg);
         return false;
     }
 
     // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
     // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
     if (target_partition) {
-        log("🔄 Marquage de la partition mise à jour comme boot: " + String(target_partition->label));
+        char bootLogMsg2[128];
+        snprintf(bootLogMsg2, sizeof(bootLogMsg2), "🔄 Marquage de la partition mise à jour comme boot: %s", target_partition->label);
+        log(bootLogMsg2);
         esp_err_t err = esp_ota_set_boot_partition(target_partition);
         if (err != ESP_OK) {
-            logError("Erreur marquage partition boot: " + String(esp_err_to_name(err)));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Erreur marquage partition boot: %s", esp_err_to_name(err));
+            logError(errorMsg);
             return false;
         }
-        log("✅ Partition " + String(target_partition->label) + " marquée comme boot avec succès");
+        snprintf(bootLogMsg2, sizeof(bootLogMsg2), "✅ Partition %s marquée comme boot avec succès", target_partition->label);
+        log(bootLogMsg2);
     } else {
         logError("Partition cible non disponible pour marquage boot");
         return false;
@@ -802,14 +1012,18 @@ void OTAManager::updateTask(void* parameter) {
     const esp_partition_t* next = esp_ota_get_next_update_partition(NULL);
     
     ota->log("📊 État des partitions AVANT mise à jour:");
+    char logMsgTask[128];
     if (running) {
-        ota->log("  - Partition en cours: " + String(running->label) + " (0x" + String(running->address, HEX) + ")");
+        snprintf(logMsgTask, sizeof(logMsgTask), "  - Partition en cours: %s (0x%x)", running->label, running->address);
+        ota->log(logMsgTask);
     }
     if (boot) {
-        ota->log("  - Partition de boot: " + String(boot->label) + " (0x" + String(boot->address, HEX) + ")");
+        snprintf(logMsgTask, sizeof(logMsgTask), "  - Partition de boot: %s (0x%x)", boot->label, boot->address);
+        ota->log(logMsgTask);
     }
     if (next) {
-        ota->log("  - Prochaine partition OTA: " + String(next->label) + " (0x" + String(next->address, HEX) + ")");
+        snprintf(logMsgTask, sizeof(logMsgTask), "  - Prochaine partition OTA: %s (0x%x)", next->label, next->address);
+        ota->log(logMsgTask);
     }
     
     // Email de début d'OTA (serveur distant)
@@ -817,23 +1031,33 @@ void OTAManager::updateTask(void* parameter) {
     extern Automatism g_autoCtrl;
     bool emailEnabled = g_autoCtrl.isEmailEnabled();
     const char* toEmail = emailEnabled ? g_autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
-    String part = running ? String(running->label) : String("(inconnue)");
-    String md5 = ota->getFirmwareMD5();
-    String body = String("Début de mise à jour OTA (Serveur distant)\n\n") +
-                  "Détails:\n" +
-                  "- Méthode: Tâche dédiée HTTP OTA\n" +
-                  "- Environnement: " + String(Utils::getProfileName()) + "\n" +
-                  "- Version courante: " + ota->getCurrentVersion() + "\n" +
-                  "- Version distante: " + ota->getRemoteVersion() + "\n" +
-                  "- URL firmware: " + ota->getFirmwareUrl() + "\n" +
-                  "- Taille firmware: " + OTAManager::formatBytes(ota->getFirmwareSize()) + "\n" +
-                  "- MD5 firmware: " + (md5.length() ? md5 : String("-")) + "\n" +
-                  "- URL filesystem: " + (ota->getFilesystemUrl().length() ? ota->getFilesystemUrl() : String("-")) + "\n" +
-                  "- Taille filesystem: " + (ota->getFilesystemUrl().length() ? OTAManager::formatBytes(ota->getFilesystemSize()) : String("-")) + "\n" +
-                  "- MD5 filesystem: " + (ota->getFilesystemMD5().length() ? ota->getFilesystemMD5() : String("-")) + "\n" +
-                  "- Partition courante: " + part;
-    if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-    mailer.sendAlert("OTA début - Serveur distant", body.c_str(), toEmail);
+    const char* part = running ? running->label : "(inconnue)";
+    const char* md5 = ota->getFirmwareMD5();
+    char body[1024];
+    char sizeBufEmail[16];
+    formatBytes(ota->getFirmwareSize(), sizeBufEmail, sizeof(sizeBufEmail));
+    const char* filesystemUrl = ota->getFilesystemUrl();
+    const char* filesystemMD5 = ota->getFilesystemMD5();
+    char filesystemSizeBuf[16];
+    if (strlen(filesystemUrl) > 0) {
+        formatBytes(ota->getFilesystemSize(), filesystemSizeBuf, sizeof(filesystemSizeBuf));
+    } else {
+        filesystemSizeBuf[0] = '-';
+        filesystemSizeBuf[1] = '\0';
+    }
+    const char* md5Str = strlen(md5) > 0 ? md5 : "-";
+    const char* fsUrlStr = strlen(filesystemUrl) > 0 ? filesystemUrl : "-";
+    const char* fsSizeStr = strlen(filesystemUrl) > 0 ? filesystemSizeBuf : "-";
+    const char* fsMD5Str = strlen(filesystemMD5) > 0 ? filesystemMD5 : "-";
+    snprintf(body, sizeof(body), "Début de mise à jour OTA (Serveur distant)\n\nDétails:\n- Méthode: Tâche dédiée HTTP OTA\n- Environnement: %s\n- Version courante: %s\n- Version distante: %s\n- URL firmware: %s\n- Taille firmware: %s\n- MD5 firmware: %s\n- URL filesystem: %s\n- Taille filesystem: %s\n- MD5 filesystem: %s\n- Partition courante: %s",
+             Utils::getProfileName(), ota->getCurrentVersion(), ota->getRemoteVersion(), ota->getFirmwareUrl(), sizeBufEmail, md5Str, fsUrlStr, fsSizeStr, fsMD5Str, part);
+    size_t bodyLen = strlen(body);
+    if (bodyLen > BufferConfig::EMAIL_MAX_SIZE_BYTES) {
+        size_t truncLen = BufferConfig::EMAIL_MAX_SIZE_BYTES - 3;
+        strncpy(body + truncLen, "...", 3);
+        body[BufferConfig::EMAIL_MAX_SIZE_BYTES] = '\0';
+    }
+    mailer.sendAlert("OTA début - Serveur distant", body, toEmail);
     
     // Ajouter cette tâche au TWDT et conserver le watchdog ACTIF pendant l'OTA
     esp_task_wdt_add(NULL);
@@ -865,7 +1089,7 @@ void OTAManager::updateTask(void* parameter) {
         ota->log("✅ Mise à jour firmware réussie, vérification du filesystem...");
         
         // Mise à jour du filesystem si disponible
-        if (!ota->m_filesystemUrl.isEmpty()) {
+        if (strlen(ota->m_filesystemUrl) > 0) {
             ota->log("📁 Mise à jour du filesystem en cours...");
             bool filesystemSuccess = ota->downloadFilesystem(ota->m_filesystemUrl, ota->m_filesystemSize, ota->m_filesystemMD5);
             if (filesystemSuccess) {
@@ -891,13 +1115,19 @@ void OTAManager::updateTask(void* parameter) {
         
         ota->log("📊 État des partitions APRÈS mise à jour:");
         if (new_running) {
-            ota->log("  - Partition en cours: " + String(new_running->label) + " (0x" + String(new_running->address, HEX) + ")");
+            char logMsgPart[128];
+            snprintf(logMsgPart, sizeof(logMsgPart), "  - Partition en cours: %s (0x%x)", new_running->label, new_running->address);
+            ota->log(logMsgPart);
         }
         if (new_boot) {
-            ota->log("  - Partition de boot (prochaine): " + String(new_boot->label) + " (0x" + String(new_boot->address, HEX) + ")");
+            char logMsgPart[128];
+            snprintf(logMsgPart, sizeof(logMsgPart), "  - Partition de boot (prochaine): %s (0x%x)", new_boot->label, new_boot->address);
+            ota->log(logMsgPart);
         }
         if (new_next) {
-            ota->log("  - Prochaine partition OTA: " + String(new_next->label) + " (0x" + String(new_next->address, HEX) + ")");
+            char logMsgPart[128];
+            snprintf(logMsgPart, sizeof(logMsgPart), "  - Prochaine partition OTA: %s (0x%x)", new_next->label, new_next->address);
+            ota->log(logMsgPart);
         }
 
         // OLED: masquer l'overlay et afficher 100% et partitions avant reboot
@@ -910,7 +1140,7 @@ void OTAManager::updateTask(void* parameter) {
             const char* fromLbl = prev_running ? prev_running->label : "?";
             const char* toLbl   = new_boot ? new_boot->label : "?";
             const char* curV = ProjectConfig::VERSION;
-            const char* newV = ota->getRemoteVersion().c_str();
+            const char* newV = ota->getRemoteVersion();
             // Pas d'accès direct au SSID ici de façon fiable, passer label simple
             oled.showOtaProgressEx(100, fromLbl, toLbl, "Terminé", curV, newV, "OTA");
         }
@@ -922,27 +1152,48 @@ void OTAManager::updateTask(void* parameter) {
             bool emailEnabled = g_autoCtrl.isEmailEnabled();
             const char* toEmail = emailEnabled ? g_autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
             const esp_partition_t* prev_running = esp_ota_get_running_partition();
-            String fromPart = prev_running ? String(prev_running->label) + " (0x" + String(prev_running->address, HEX) + ")" : String("(inconnue)");
-            String bootPart = new_boot ? String(new_boot->label) + " (0x" + String(new_boot->address, HEX) + ")" : String("(inconnue)");
-            String nextPart = new_next ? String(new_next->label) + " (0x" + String(new_next->address, HEX) + ")" : String("(inconnue)");
-            String md5 = ota->getFirmwareMD5();
-            String body = String("Fin de mise à jour OTA (Serveur distant)\n\n") +
-                          "Détails:\n" +
-                          "- Méthode: Tâche dédiée HTTP OTA\n" +
-                          "- Environnement: " + String(Utils::getProfileName()) + "\n" +
-                          "- Ancienne version: " + ota->getCurrentVersion() + "\n" +
-                          "- Nouvelle version: " + ota->getRemoteVersion() + "\n" +
-                          "- URL firmware: " + ota->getFirmwareUrl() + "\n" +
-                          "- Taille firmware: " + OTAManager::formatBytes(ota->getFirmwareSize()) + "\n" +
-                          "- MD5 firmware: " + (md5.length() ? md5 : String("-")) + "\n" +
-                          "- URL filesystem: " + (ota->getFilesystemUrl().length() ? ota->getFilesystemUrl() : String("-")) + "\n" +
-                          "- Taille filesystem: " + (ota->getFilesystemUrl().length() ? OTAManager::formatBytes(ota->getFilesystemSize()) : String("-")) + "\n" +
-                          "- MD5 filesystem: " + (ota->getFilesystemMD5().length() ? ota->getFilesystemMD5() : String("-")) + "\n" +
-                          "- Partition initiale: " + fromPart + "\n" +
-                          "- Partition de boot (après MAJ): " + bootPart + "\n" +
-                          "- Prochaine partition OTA: " + nextPart + "\n";
-            if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) { body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "..."; }
-            mailer.sendAlert("OTA fin - Serveur distant", body.c_str(), toEmail);
+            char fromPartBuf[64], bootPartBuf[64], nextPartBuf[64];
+            if (prev_running) {
+                snprintf(fromPartBuf, sizeof(fromPartBuf), "%s (0x%x)", prev_running->label, prev_running->address);
+            } else {
+                strcpy(fromPartBuf, "(inconnue)");
+            }
+            if (new_boot) {
+                snprintf(bootPartBuf, sizeof(bootPartBuf), "%s (0x%x)", new_boot->label, new_boot->address);
+            } else {
+                strcpy(bootPartBuf, "(inconnue)");
+            }
+            if (new_next) {
+                snprintf(nextPartBuf, sizeof(nextPartBuf), "%s (0x%x)", new_next->label, new_next->address);
+            } else {
+                strcpy(nextPartBuf, "(inconnue)");
+            }
+            const char* md5 = ota->getFirmwareMD5();
+            const char* md5Str = strlen(md5) > 0 ? md5 : "-";
+            const char* fsUrl = ota->getFilesystemUrl();
+            const char* fsMD5 = ota->getFilesystemMD5();
+            char fsSizeBufEmail[16];
+            if (strlen(fsUrl) > 0) {
+                formatBytes(ota->getFilesystemSize(), fsSizeBufEmail, sizeof(fsSizeBufEmail));
+            } else {
+                fsSizeBufEmail[0] = '-';
+                fsSizeBufEmail[1] = '\0';
+            }
+            const char* fsUrlStr = strlen(fsUrl) > 0 ? fsUrl : "-";
+            const char* fsSizeStr = strlen(fsUrl) > 0 ? fsSizeBufEmail : "-";
+            const char* fsMD5Str = strlen(fsMD5) > 0 ? fsMD5 : "-";
+            char firmwareSizeBuf[16];
+            formatBytes(ota->getFirmwareSize(), firmwareSizeBuf, sizeof(firmwareSizeBuf));
+            char body[1024];
+            snprintf(body, sizeof(body), "Fin de mise à jour OTA (Serveur distant)\n\nDétails:\n- Méthode: Tâche dédiée HTTP OTA\n- Environnement: %s\n- Ancienne version: %s\n- Nouvelle version: %s\n- URL firmware: %s\n- Taille firmware: %s\n- MD5 firmware: %s\n- URL filesystem: %s\n- Taille filesystem: %s\n- MD5 filesystem: %s\n- Partition initiale: %s\n- Partition de boot (après MAJ): %s\n- Prochaine partition OTA: %s\n",
+                     Utils::getProfileName(), ota->getCurrentVersion(), ota->getRemoteVersion(), ota->getFirmwareUrl(), firmwareSizeBuf, md5Str, fsUrlStr, fsSizeStr, fsMD5Str, fromPartBuf, bootPartBuf, nextPartBuf);
+            size_t bodyLen = strlen(body);
+            if (bodyLen > BufferConfig::EMAIL_MAX_SIZE_BYTES) {
+                size_t truncLen = BufferConfig::EMAIL_MAX_SIZE_BYTES - 3;
+                strncpy(body + truncLen, "...", 3);
+                body[BufferConfig::EMAIL_MAX_SIZE_BYTES] = '\0';
+            }
+            mailer.sendAlert("OTA fin - Serveur distant", body, toEmail);
         }
         
         // Nettoyer le flag inProgress avant reboot
@@ -954,8 +1205,8 @@ void OTAManager::updateTask(void* parameter) {
         TaskMonitor::logDiff(baselineSnapshot, successSnapshot, "ota-task");
         TaskMonitor::detectAnomalies(successSnapshot, "ota-task-success");
         EventLog::addf("OTA success %s -> %s",
-                       ota->getCurrentVersion().c_str(),
-                       ota->getRemoteVersion().c_str());
+                       ota->getCurrentVersion(),
+                       ota->getRemoteVersion());
 
         ota->log("🔄 Redémarrage dans 3 secondes...");
         // delay() acceptable ici car juste avant ESP.restart() (pas de yield nécessaire)
@@ -971,8 +1222,8 @@ void OTAManager::updateTask(void* parameter) {
         TaskMonitor::logDiff(baselineSnapshot, failureSnapshot, "ota-task");
         TaskMonitor::detectAnomalies(failureSnapshot, "ota-task-failure");
         EventLog::addf("OTA failure %s -> %s",
-                       ota->getCurrentVersion().c_str(),
-                       ota->getRemoteVersion().c_str());
+                       ota->getCurrentVersion(),
+                       ota->getRemoteVersion());
         
         // Masquer l'overlay OTA en cas d'échec
         extern DisplayView oled;
@@ -985,9 +1236,11 @@ void OTAManager::updateTask(void* parameter) {
 }
 
 // MÉTHODE ULTRA-RÉVOLUTIONNAIRE : Téléchargement en arrière-plan avec validation cryptographique
-bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t expectedSize) {
+bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expectedSize) {
     log("🔥 DÉBUT TÉLÉCHARGEMENT ULTRA-RÉVOLUTIONNAIRE");
-    log("📊 Taille attendue: " + String(expectedSize) + " bytes");
+    char logMsgUltra[64];
+    snprintf(logMsgUltra, sizeof(logMsgUltra), "📊 Taille attendue: %zu bytes", expectedSize);
+    log(logMsgUltra);
     
     // Configuration ultra-révolutionnaire
     const size_t MICRO_CHUNK_SIZE = 2048;  // Micro-chunks 2KB pour réduire overhead
@@ -1003,7 +1256,9 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         logError("Impossible de trouver la partition OTA pour la mise à jour");
         return false;
     }
-    log("📍 Partition cible pour mise à jour: " + String(target_partition->label) + " (0x" + String(target_partition->address, HEX) + ")");
+    char logMsgPartition[128];
+    snprintf(logMsgPartition, sizeof(logMsgPartition), "📍 Partition cible pour mise à jour: %s (0x%x)", target_partition->label, target_partition->address);
+    log(logMsgPartition);
     
     // Initialisation de la mise à jour
     size_t beginSize3 = OTAConfig::OTA_UNSAFE_FORCE ? (size_t)UPDATE_SIZE_UNKNOWN : (size_t)expectedSize;
@@ -1014,10 +1269,10 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         logError("Échec initialisation Update");
         return false;
     }
-    if (!OTAConfig::OTA_UNSAFE_FORCE && !m_firmwareMD5.isEmpty()) {
-        Update.setMD5(m_firmwareMD5.c_str());
+    if (!OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
+        Update.setMD5(m_firmwareMD5);
         log("🔐 MD5 défini pour vérification");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && !m_firmwareMD5.isEmpty()) {
+    } else if (OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
         log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
     
@@ -1037,7 +1292,9 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
     
     int httpCode = http.GET();
     if (httpCode != HTTP_CODE_OK) {
-        logError("Erreur HTTP: " + String(httpCode));
+        char errorMsg[64];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur HTTP: %d", httpCode);
+        logError(errorMsg);
         http.end();
         return false;
     }
@@ -1050,7 +1307,9 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         return false;
     }
     
-    log("📊 Taille réelle: " + String(contentLength) + " bytes");
+    char logMsgSize[64];
+    snprintf(logMsgSize, sizeof(logMsgSize), "📊 Taille réelle: %d bytes", contentLength);
+    log(logMsgSize);
     
     // Téléchargement par micro-chunks avec validation
     size_t totalDownloaded = 0;
@@ -1069,14 +1328,16 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         size_t chunkEnd = std::min(chunkStart + MICRO_CHUNK_SIZE - 1, static_cast<size_t>(contentLength - 1));
         size_t chunkSize = chunkEnd - chunkStart + 1;
         
-        log("📥 Micro-Chunk " + String(chunkNumber) + ": " + String(chunkStart) + "-" + String(chunkEnd) + 
-            " (" + String(chunkSize) + " bytes)");
+        char logMsgChunk[128];
+        snprintf(logMsgChunk, sizeof(logMsgChunk), "📥 Micro-Chunk %d: %zu-%zu (%zu bytes)", chunkNumber, chunkStart, chunkEnd, chunkSize);
+        log(logMsgChunk);
         
         // Tentatives multiples pour ce micro-chunk
         bool chunkSuccess = false;
         for (int retry = 0; retry < MAX_RETRIES && !chunkSuccess; retry++) {
             if (retry > 0) {
-                log("🔄 Retry " + String(retry) + " pour micro-chunk " + String(chunkNumber));
+                snprintf(logMsgChunk, sizeof(logMsgChunk), "🔄 Retry %d pour micro-chunk %d", retry, chunkNumber);
+                log(logMsgChunk);
                 vTaskDelay(pdMS_TO_TICKS(500)); // Pause entre tentatives
             }
             
@@ -1124,22 +1385,30 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
                     
                     // Progression
                     int progress = (totalDownloaded * 100) / contentLength;
-                    log("✅ Micro-Chunk " + String(chunkNumber-1) + " OK - Progression: " + String(progress) + "%");
+                    char logMsgProgress[128];
+                    snprintf(logMsgProgress, sizeof(logMsgProgress), "✅ Micro-Chunk %d OK - Progression: %d%%", chunkNumber-1, progress);
+                    log(logMsgProgress);
                     if (m_progressCallback) {
                         m_progressCallback(progress);
                     }
                     
                     // Validation mémoire périodique
                     if (chunkNumber % 20 == 0) {
-                        log("📊 Heap libre: " + String(ESP.getFreeHeap()) + " bytes");
+                        char logMsgHeap[64];
+                        snprintf(logMsgHeap, sizeof(logMsgHeap), "📊 Heap libre: %u bytes", ESP.getFreeHeap());
+                        log(logMsgHeap);
                         // Pause de récupération
                         vTaskDelay(pdMS_TO_TICKS(100));
                     }
                 } else {
-                    logError("Échec écriture micro-chunk: " + String(written) + "/" + String(chunkSize));
+                    char errorMsg[64];
+                    snprintf(errorMsg, sizeof(errorMsg), "Échec écriture micro-chunk: %zu/%zu", written, chunkSize);
+                    logError(errorMsg);
                 }
             } else {
-                logError("Échec lecture micro-chunk: " + String(bytesRead) + "/" + String(chunkSize));
+                char errorMsg[64];
+                snprintf(errorMsg, sizeof(errorMsg), "Échec lecture micro-chunk: %d/%zu", bytesRead, chunkSize);
+                logError(errorMsg);
             }
             
             
@@ -1150,7 +1419,9 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
         }
         
         if (!chunkSuccess) {
-            logError("Échec définitif micro-chunk " + String(chunkNumber) + " après " + String(MAX_RETRIES) + " tentatives");
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Échec définitif micro-chunk %d après %d tentatives", chunkNumber, MAX_RETRIES);
+            logError(errorMsg);
             downloadSuccess = false;
             break;
         }
@@ -1162,9 +1433,13 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
     http.end();
     
     if (downloadSuccess && (OTAConfig::OTA_UNSAFE_FORCE || totalDownloaded == contentLength)) {
-        log("🎯 Téléchargement ultra-révolutionnaire terminé: " + String(totalDownloaded) + " bytes");
+        char logMsgComplete[128];
+        snprintf(logMsgComplete, sizeof(logMsgComplete), "🎯 Téléchargement ultra-révolutionnaire terminé: %zu bytes", totalDownloaded);
+        log(logMsgComplete);
         if (!OTAConfig::OTA_UNSAFE_FORCE && totalDownloaded != contentLength) {
-            logError("Téléchargement incomplet: " + String(totalDownloaded) + "/" + String(contentLength));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Téléchargement incomplet: %zu/%d", totalDownloaded, contentLength);
+            logError(errorMsg);
             return false;
         }
         // Finalisation avec validation
@@ -1174,13 +1449,18 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
             // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
             // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
             if (target_partition) {
-                log("🔄 Marquage de la partition mise à jour comme boot: " + String(target_partition->label));
+                char logMsgBoot[128];
+                snprintf(logMsgBoot, sizeof(logMsgBoot), "🔄 Marquage de la partition mise à jour comme boot: %s", target_partition->label);
+                log(logMsgBoot);
                 esp_err_t err = esp_ota_set_boot_partition(target_partition);
                 if (err != ESP_OK) {
-                    logError("Erreur marquage partition boot: " + String(esp_err_to_name(err)));
+                    char errorMsg[128];
+                    snprintf(errorMsg, sizeof(errorMsg), "Erreur marquage partition boot: %s", esp_err_to_name(err));
+                    logError(errorMsg);
                     return false;
                 }
-                log("✅ Partition " + String(target_partition->label) + " marquée comme boot avec succès");
+                snprintf(logMsgBoot, sizeof(logMsgBoot), "✅ Partition %s marquée comme boot avec succès", target_partition->label);
+                log(logMsgBoot);
             } else {
                 logError("Partition cible non disponible pour marquage boot");
                 return false;
@@ -1198,10 +1478,10 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const String& url, size_t ex
 }
 
 // Méthode pour télécharger et installer le filesystem LittleFS
-bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, const String& expectedMD5) {
+bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const char* expectedMD5) {
     log("📁 Début du téléchargement du filesystem...");
     
-    if (url.isEmpty()) {
+    if (!url || strlen(url) == 0) {
         log("ℹ️ Aucune URL de filesystem fournie, on passe");
         return true; // Pas d'erreur si pas de filesystem à mettre à jour
     }
@@ -1215,23 +1495,33 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
     http.setTimeout(OTAConfig::HTTP_TIMEOUT);
     
     int code = http.GET();
-    log("📡 Code de réponse filesystem: " + String(code));
+    char logMsgCode[64];
+    snprintf(logMsgCode, sizeof(logMsgCode), "📡 Code de réponse filesystem: %d", code);
+    log(logMsgCode);
     
     if (code != HTTP_CODE_OK) {
-        logError("Erreur GET filesystem: " + String(code));
+        char errorMsg[64];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur GET filesystem: %d", code);
+        logError(errorMsg);
         http.end();
         return false;
     }
 
     int contentLength = http.getSize();
-    log("📊 Taille réelle du filesystem: " + formatBytes(contentLength));
+    char sizeBufFs[16];
+    formatBytes(contentLength, sizeBufFs, sizeof(sizeBufFs));
+    char logMsgSize[128];
+    snprintf(logMsgSize, sizeof(logMsgSize), "📊 Taille réelle du filesystem: %s", sizeBufFs);
+    log(logMsgSize);
     
     if (!OTAConfig::OTA_UNSAFE_FORCE && !validateFilesystemSize(expectedSize, contentLength)) {
         http.end();
         return false;
     }
     if (OTAConfig::OTA_UNSAFE_FORCE && expectedSize > 0 && expectedSize != contentLength) {
-        log("⚠️ OTA_UNSAFE_FORCE: taille filesystem inattendue ignorée: attendu=" + String(expectedSize) + ", réel=" + String(contentLength));
+        char logMsgForce[128];
+        snprintf(logMsgForce, sizeof(logMsgForce), "⚠️ OTA_UNSAFE_FORCE: taille filesystem inattendue ignorée: attendu=%zu, réel=%d", expectedSize, contentLength);
+        log(logMsgForce);
     }
 
     // Trouver la partition spiffs (LittleFS)
@@ -1242,11 +1532,20 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
         return false;
     }
     
-    log("📍 Partition spiffs trouvée: " + String(spiffs_partition->label) + " (0x" + String(spiffs_partition->address, HEX) + ", " + formatBytes(spiffs_partition->size) + ")");
+    char sizeBufPart[16];
+    formatBytes(spiffs_partition->size, sizeBufPart, sizeof(sizeBufPart));
+    char logMsgPart[128];
+    snprintf(logMsgPart, sizeof(logMsgPart), "📍 Partition spiffs trouvée: %s (0x%x, %s)", spiffs_partition->label, spiffs_partition->address, sizeBufPart);
+    log(logMsgPart);
 
     // Vérifier que le nouveau filesystem tient dans la partition
     if (contentLength > spiffs_partition->size) {
-        logError("Filesystem trop grand pour la partition: " + formatBytes(contentLength) + " > " + formatBytes(spiffs_partition->size));
+        char sizeBufFs1[16], sizeBufFs2[16];
+        formatBytes(contentLength, sizeBufFs1, sizeof(sizeBufFs1));
+        formatBytes(spiffs_partition->size, sizeBufFs2, sizeof(sizeBufFs2));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Filesystem trop grand pour la partition: %s > %s", sizeBufFs1, sizeBufFs2);
+        logError(errorMsg);
         http.end();
         return false;
     }
@@ -1274,7 +1573,9 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
     log("🧹 Effacement de la partition spiffs...");
     esp_err_t err = esp_partition_erase_range(partition_handle, 0, spiffs_partition->size);
     if (err != ESP_OK) {
-        logError("Erreur effacement partition: " + String(esp_err_to_name(err)));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur effacement partition: %s", esp_err_to_name(err));
+        logError(errorMsg);
         // Pas besoin de fermer la partition avec la nouvelle API
         http.end();
         return false;
@@ -1287,7 +1588,9 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
         // Écriture dans la partition spiffs
         err = esp_partition_write(partition_handle, totalWritten, buffer, bytesRead);
         if (err != ESP_OK) {
-            logError("Erreur écriture filesystem: " + String(esp_err_to_name(err)));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Erreur écriture filesystem: %s", esp_err_to_name(err));
+            logError(errorMsg);
             // Pas besoin de fermer la partition avec la nouvelle API
             http.end();
             return false;
@@ -1310,7 +1613,11 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
         // Vérification périodique de la mémoire
         if (progressCounter % 100 == 0) {
             size_t currentHeap = ESP.getFreeHeap();
-            log("📊 Heap libre: " + formatBytes(currentHeap));
+            char heapBufFs[16];
+            formatBytes(currentHeap, heapBufFs, sizeof(heapBufFs));
+            char logMsgHeap[64];
+            snprintf(logMsgHeap, sizeof(logMsgHeap), "📊 Heap libre: %s", heapBufFs);
+            log(logMsgHeap);
             
             if (currentHeap < BufferConfig::CRITICAL_MEMORY_THRESHOLD_BYTES) {
                 log("⚠️ Heap critique détecté");
@@ -1332,25 +1639,34 @@ bool OTAManager::downloadFilesystem(const String& url, size_t expectedSize, cons
     // Pas besoin de fermer la partition avec la nouvelle API
     http.end();
     
-    log("📥 Téléchargement filesystem terminé: " + formatBytes(totalWritten) + "/" + formatBytes(contentLength));
+    char totalBufFs[16], contentBufFs[16];
+    formatBytes(totalWritten, totalBufFs, sizeof(totalBufFs));
+    formatBytes(contentLength, contentBufFs, sizeof(contentBufFs));
+    char logMsgCompleteFs[128];
+    snprintf(logMsgCompleteFs, sizeof(logMsgCompleteFs), "📥 Téléchargement filesystem terminé: %s/%s", totalBufFs, contentBufFs);
+    log(logMsgCompleteFs);
     if (!OTAConfig::OTA_UNSAFE_FORCE) {
         if (totalWritten != contentLength) {
-            logError("Téléchargement filesystem incomplet: " + formatBytes(totalWritten) + "/" + formatBytes(contentLength));
+            char errorMsg[128];
+            snprintf(errorMsg, sizeof(errorMsg), "Téléchargement filesystem incomplet: %s/%s", totalBufFs, contentBufFs);
+            logError(errorMsg);
             return false;
         }
     } else {
         if (totalWritten != contentLength) {
-            log("⚠️ OTA_UNSAFE_FORCE: écart de taille filesystem ignoré: " + String(totalWritten) + "/" + String(contentLength));
+            char logMsgForceFs[128];
+            snprintf(logMsgForceFs, sizeof(logMsgForceFs), "⚠️ OTA_UNSAFE_FORCE: écart de taille filesystem ignoré: %zu/%d", totalWritten, contentLength);
+            log(logMsgForceFs);
         }
     }
 
     // Validation MD5 si fourni
-    if (!OTAConfig::OTA_UNSAFE_FORCE && !expectedMD5.isEmpty()) {
+    if (!OTAConfig::OTA_UNSAFE_FORCE && expectedMD5 && strlen(expectedMD5) > 0) {
         log("🔐 Validation MD5 du filesystem...");
         // Note: La validation MD5 complète nécessiterait de relire tout le filesystem
         // Pour l'instant, on fait confiance au téléchargement HTTP
         log("✅ Validation MD5 filesystem (simplifiée)");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && !expectedMD5.isEmpty()) {
+    } else if (OTAConfig::OTA_UNSAFE_FORCE && expectedMD5 && strlen(expectedMD5) > 0) {
         log("⚠️ OTA_UNSAFE_FORCE: validation MD5 filesystem ignorée");
     }
 
@@ -1362,11 +1678,11 @@ void OTAManager::setProgressCallback(std::function<void(int)> callback) {
     m_progressCallback = callback;
 }
 
-void OTAManager::setStatusCallback(std::function<void(const String&)> callback) {
+void OTAManager::setStatusCallback(std::function<void(const char*)> callback) {
     m_statusCallback = callback;
 }
 
-void OTAManager::setErrorCallback(std::function<void(const String&)> callback) {
+void OTAManager::setErrorCallback(std::function<void(const char*)> callback) {
     m_errorCallback = callback;
 }
 
@@ -1374,15 +1690,20 @@ void OTAManager::setCheckInterval(unsigned long interval) {
     m_checkInterval = interval;
 }
 
-void OTAManager::setCurrentVersion(const String& version) {
-    m_currentVersion = version;
+void OTAManager::setCurrentVersion(const char* version) {
+    if (version) {
+        strncpy(m_currentVersion, version, sizeof(m_currentVersion) - 1);
+        m_currentVersion[sizeof(m_currentVersion) - 1] = '\0';
+    } else {
+        m_currentVersion[0] = '\0';
+    }
 }
 
-String OTAManager::getCurrentVersion() const {
+const char* OTAManager::getCurrentVersion() const {
     return m_currentVersion;
 }
 
-String OTAManager::getRemoteVersion() const {
+const char* OTAManager::getRemoteVersion() const {
     return m_remoteVersion;
 }
 
@@ -1410,8 +1731,8 @@ bool OTAManager::checkForUpdate() {
     }
     
     // Téléchargement des métadonnées
-    String payload;
-    if (!downloadMetadata(payload)) {
+    char payload[4096];
+    if (!downloadMetadata(payload, sizeof(payload))) {
         return false;
     }
     
@@ -1420,7 +1741,9 @@ bool OTAManager::checkForUpdate() {
     DeserializationError error = deserializeJson(doc, payload);
     
     if (error) {
-        logError("Erreur parsing JSON: " + String(error.c_str()));
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur parsing JSON: %s", error.c_str());
+        logError(errorMsg);
         return false;
     }
     log("✅ JSON parsé avec succès");
@@ -1431,55 +1754,78 @@ bool OTAManager::checkForUpdate() {
     }
     
     // Sélection de l'artefact selon env/modèle avec fallbacks
-    String selVersion, selUrl, selMD5;
+    char selVersion[32], selUrl[256], selMD5[33];
     int selSize = 0;
-    if (!selectArtifactFromMetadata(doc, selVersion, selUrl, selSize, selMD5)) {
+    if (!selectArtifactFromMetadata(doc, selVersion, sizeof(selVersion), selUrl, sizeof(selUrl), selSize, selMD5, sizeof(selMD5))) {
         logError("Aucun artefact OTA valide trouvé dans les métadonnées");
         return false;
     }
 
-    m_remoteVersion = selVersion;
-    m_firmwareUrl = selUrl;
+    strncpy(m_remoteVersion, selVersion, sizeof(m_remoteVersion) - 1);
+    m_remoteVersion[sizeof(m_remoteVersion) - 1] = '\0';
+    strncpy(m_firmwareUrl, selUrl, sizeof(m_firmwareUrl) - 1);
+    m_firmwareUrl[sizeof(m_firmwareUrl) - 1] = '\0';
     m_firmwareSize = selSize;
-    m_firmwareMD5 = selMD5;
+    strncpy(m_firmwareMD5, selMD5, sizeof(m_firmwareMD5) - 1);
+    m_firmwareMD5[sizeof(m_firmwareMD5) - 1] = '\0';
     
     // Sélection du filesystem (optionnel)
-    String selFilesystemUrl, selFilesystemMD5;
+    char selFilesystemUrl[256], selFilesystemMD5[33];
     int selFilesystemSize = 0;
-    if (selectFilesystemFromMetadata(doc, selFilesystemUrl, selFilesystemSize, selFilesystemMD5)) {
-        m_filesystemUrl = selFilesystemUrl;
+    if (selectFilesystemFromMetadata(doc, selFilesystemUrl, sizeof(selFilesystemUrl), selFilesystemSize, selFilesystemMD5, sizeof(selFilesystemMD5))) {
+        strncpy(m_filesystemUrl, selFilesystemUrl, sizeof(m_filesystemUrl) - 1);
+        m_filesystemUrl[sizeof(m_filesystemUrl) - 1] = '\0';
         m_filesystemSize = selFilesystemSize;
-        m_filesystemMD5 = selFilesystemMD5;
-        log("📁 Filesystem trouvé: '" + m_filesystemUrl + "'");
-        log("📁 Taille filesystem: " + formatBytes(m_filesystemSize));
-        if (m_filesystemMD5.length() > 0) {
-            log("🔐 MD5 filesystem: '" + m_filesystemMD5 + "'");
+        strncpy(m_filesystemMD5, selFilesystemMD5, sizeof(m_filesystemMD5) - 1);
+        m_filesystemMD5[sizeof(m_filesystemMD5) - 1] = '\0';
+        char logMsg[128];
+        snprintf(logMsg, sizeof(logMsg), "📁 Filesystem trouvé: '%s'", m_filesystemUrl);
+        log(logMsg);
+        char sizeBuf[16];
+        formatBytes(m_filesystemSize, sizeBuf, sizeof(sizeBuf));
+        snprintf(logMsg, sizeof(logMsg), "📁 Taille filesystem: %s", sizeBuf);
+        log(logMsg);
+        if (strlen(m_filesystemMD5) > 0) {
+            char logMsgMD5[64];
+            snprintf(logMsgMD5, sizeof(logMsgMD5), "🔐 MD5 filesystem: '%s'", m_filesystemMD5);
+            log(logMsgMD5);
         }
     } else {
-        m_filesystemUrl = "";
+        m_filesystemUrl[0] = '\0';
         m_filesystemSize = 0;
-        m_filesystemMD5 = "";
+        m_filesystemMD5[0] = '\0';
         log("ℹ️ Aucun filesystem à mettre à jour");
     }
     
-    log("📋 Version distante: '" + m_remoteVersion + "'");
-    log("📋 Version locale: '" + m_currentVersion + "'");
-    log("📋 URL firmware: '" + m_firmwareUrl + "'");
-    log("📋 Taille firmware: " + formatBytes(m_firmwareSize));
-    if (m_firmwareMD5.length() > 0) {
-        log("🔐 MD5: '" + m_firmwareMD5 + "'");
+    char logMsgVersion[128];
+    snprintf(logMsgVersion, sizeof(logMsgVersion), "📋 Version distante: '%s'", m_remoteVersion);
+    log(logMsgVersion);
+    snprintf(logMsgVersion, sizeof(logMsgVersion), "📋 Version locale: '%s'", m_currentVersion);
+    log(logMsgVersion);
+    snprintf(logMsgVersion, sizeof(logMsgVersion), "📋 URL firmware: '%s'", m_firmwareUrl);
+    log(logMsgVersion);
+    char sizeBufFw[16];
+    formatBytes(m_firmwareSize, sizeBufFw, sizeof(sizeBufFw));
+    snprintf(logMsgVersion, sizeof(logMsgVersion), "📋 Taille firmware: %s", sizeBufFw);
+    log(logMsgVersion);
+    if (strlen(m_firmwareMD5) > 0) {
+        snprintf(logMsgVersion, sizeof(logMsgVersion), "🔐 MD5: '%s'", m_firmwareMD5);
+        log(logMsgVersion);
     }
     
     // Comparaison de version
     int versionCompare = compareVersions(m_remoteVersion, m_currentVersion);
-    log("🔄 Résultat comparaison: " + String(versionCompare) + " (0=égal, >0=nouvelle, <0=ancienne)");
+    snprintf(logMsgVersion, sizeof(logMsgVersion), "🔄 Résultat comparaison: %d (0=égal, >0=nouvelle, <0=ancienne)", versionCompare);
+    log(logMsgVersion);
     
     if (versionCompare <= 0) {
         log("✅ Aucune mise à jour disponible");
         return false;
     }
 
-    log("🆕 Nouvelle version " + m_remoteVersion + " trouvée (courante " + m_currentVersion + ")");
+    char logMsgNewVer[128];
+    snprintf(logMsgNewVer, sizeof(logMsgNewVer), "🆕 Nouvelle version %s trouvée (courante %s)", m_remoteVersion, m_currentVersion);
+    log(logMsgNewVer);
     
     // Vérification de la taille
     if (m_firmwareSize <= 0) {
@@ -1491,14 +1837,19 @@ bool OTAManager::checkForUpdate() {
         return false;
     }
     
-    log("✅ Espace suffisant: " + formatBytes(ESP.getFreeSketchSpace()) + " >= " + formatBytes(m_firmwareSize));
+    char freeSpaceBuf[16], firmwareSizeBuf2[16];
+    formatBytes(ESP.getFreeSketchSpace(), freeSpaceBuf, sizeof(freeSpaceBuf));
+    formatBytes(m_firmwareSize, firmwareSizeBuf2, sizeof(firmwareSizeBuf2));
+    char logMsgSpace[128];
+    snprintf(logMsgSpace, sizeof(logMsgSpace), "✅ Espace suffisant: %s >= %s", freeSpaceBuf, firmwareSizeBuf2);
+    log(logMsgSpace);
     
     m_lastCheck = millis();
     return true;
 }
 
 bool OTAManager::performUpdate() {
-    if (m_firmwareUrl.isEmpty()) {
+    if (strlen(m_firmwareUrl) == 0) {
         logError("Aucune URL de firmware disponible");
         return false;
     }
@@ -1512,8 +1863,8 @@ bool OTAManager::performUpdate() {
   TaskMonitor::logSnapshot(prepareSnapshot, "ota-perform");
   TaskMonitor::detectAnomalies(prepareSnapshot, "ota-perform");
   EventLog::addf("OTA perform start remote=%s url=%s size=%d",
-                 m_remoteVersion.c_str(),
-                 m_firmwareUrl.c_str(),
+                 m_remoteVersion,
+                 m_firmwareUrl,
                  m_firmwareSize);
 
     m_isUpdating = true;
@@ -1551,35 +1902,31 @@ int OTAManager::getFirmwareSize() const {
     return m_firmwareSize;
 }
 
-String OTAManager::getFirmwareUrl() const {
+const char* OTAManager::getFirmwareUrl() const {
     return m_firmwareUrl;
 }
 
-int OTAManager::compareVersions(const String& version1, const String& version2) {
+int OTAManager::compareVersions(const char* version1, const char* version2) {
     std::vector<int> v1_parts, v2_parts;
     
-    // Parse version1
-    String v1 = version1;
-    while (v1.length() > 0) {
-        int dotPos = v1.indexOf('.');
-        if (dotPos == -1) {
-            v1_parts.push_back(v1.toInt());
-            break;
-        }
-        v1_parts.push_back(v1.substring(0, dotPos).toInt());
-        v1 = v1.substring(dotPos + 1);
+    // Parse version1 avec strtok
+    char v1_copy[32];
+    strncpy(v1_copy, version1, sizeof(v1_copy) - 1);
+    v1_copy[sizeof(v1_copy) - 1] = '\0';
+    char* token = strtok(v1_copy, ".");
+    while (token != NULL) {
+        v1_parts.push_back(atoi(token));
+        token = strtok(NULL, ".");
     }
     
-    // Parse version2
-    String v2 = version2;
-    while (v2.length() > 0) {
-        int dotPos = v2.indexOf('.');
-        if (dotPos == -1) {
-            v2_parts.push_back(v2.toInt());
-            break;
-        }
-        v2_parts.push_back(v2.substring(0, dotPos).toInt());
-        v2 = v2.substring(dotPos + 1);
+    // Parse version2 avec strtok
+    char v2_copy[32];
+    strncpy(v2_copy, version2, sizeof(v2_copy) - 1);
+    v2_copy[sizeof(v2_copy) - 1] = '\0';
+    token = strtok(v2_copy, ".");
+    while (token != NULL) {
+        v2_parts.push_back(atoi(token));
+        token = strtok(NULL, ".");
     }
     
     // Compare les composants
@@ -1595,13 +1942,20 @@ int OTAManager::compareVersions(const String& version1, const String& version2) 
     return 0;
 }
 
-String OTAManager::formatBytes(size_t bytes) {
-    if (bytes < 1024) return String(bytes) + " B";
-    else if (bytes < 1024 * 1024) return String(bytes / 1024.0, 1) + " KB";
-    else return String(bytes / (1024.0 * 1024.0), 1) + " MB";
+void OTAManager::formatBytes(size_t bytes, char* buffer, size_t bufferSize) {
+    if (bytes < 1024) {
+        snprintf(buffer, bufferSize, "%zu B", bytes);
+    } else if (bytes < 1024 * 1024) {
+        snprintf(buffer, bufferSize, "%.1f KB", bytes / 1024.0);
+    } else {
+        snprintf(buffer, bufferSize, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
 }
 
-String OTAManager::formatSpeed(float speed) {
-    if (speed < 1024) return String(speed, 1) + " KB/s";
-    else return String(speed / 1024.0, 1) + " MB/s";
+void OTAManager::formatSpeed(float speed, char* buffer, size_t bufferSize) {
+    if (speed < 1024) {
+        snprintf(buffer, bufferSize, "%.1f KB/s", speed);
+    } else {
+        snprintf(buffer, bufferSize, "%.1f MB/s", speed / 1024.0);
+    }
 } 

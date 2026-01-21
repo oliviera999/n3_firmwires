@@ -35,19 +35,23 @@ public:
      * @param payload Payload à enregistrer
      * @return true si succès
      */
-    bool push(const String& payload);
+    bool push(const char* payload);
     
     /**
      * Récupère et supprime le premier payload
-     * @return Premier payload, ou String vide si queue vide
+     * @param buffer Buffer pour recevoir le payload
+     * @param bufferSize Taille du buffer
+     * @return true si succès, false si queue vide ou buffer trop petit
      */
-    String pop();
+    bool pop(char* buffer, size_t bufferSize);
     
     /**
      * Lit le premier payload sans le supprimer
-     * @return Premier payload, ou String vide si queue vide
+     * @param buffer Buffer pour recevoir le payload
+     * @param bufferSize Taille du buffer
+     * @return true si succès, false si queue vide ou buffer trop petit
      */
-    String peek();
+    bool peek(char* buffer, size_t bufferSize);
     
     /**
      * Nombre d'entrées en attente

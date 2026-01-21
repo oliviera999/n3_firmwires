@@ -382,12 +382,10 @@ void AutomatismSleep::logSleepTransitionEnd(uint32_t scheduledSeconds,
 
 bool AutomatismSleep::process(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
     // Cette méthode remplace handleAutoSleep() en centralisant la logique
-    // Pour l'instant, on redirige vers handleAutoSleep() pour compatibilité
-    handleAutoSleep(r, acts, core);
-    return false; // TODO: Retourner true si sleep exécuté
+    return handleAutoSleep(r, acts, core);
 }
 
-void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
+bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
     // Récupération des informations via accesseurs publics
     bool forceWakeUp = core.getForceWakeUp();
     bool tankPumpRunning = core.isTankPumpRunning();
@@ -419,7 +417,7 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     
     if (!canSleep) {
         // Conditions bloquantes détectées, ne pas entrer en veille
-        return;
+        return false;
     }
     
     // 2. Évaluer si le système doit entrer en veille
@@ -473,7 +471,7 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     
     if (!shouldSleep) {
         // Conditions pour dormir non remplies
-        return;
+        return false;
     }
     
     // 3. Entrer en veille
@@ -499,4 +497,7 @@ void AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
         const char* wakeReason = (cause == ESP_SLEEP_WAKEUP_TIMER) ? "Timer" : "Autre";
         core._mailer.sendWakeMail(wakeReason, actualSleptSec, r);
     }
+    
+    // Le système est entré en veille et s'est réveillé
+    return true;
 }

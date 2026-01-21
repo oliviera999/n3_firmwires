@@ -104,9 +104,9 @@ void AutomatismPersistence::markPendingSync(const char* actuator, bool state) {
   for (int i = 0; i < count; i++) {
     char key_item[16];
     snprintf(key_item, sizeof(key_item), "sync_item_%d", i);
-    String item;
-    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, "");
-    if (item == String(actuator)) {
+    char item[64];
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, sizeof(item), "");
+    if (strcmp(item, actuator) == 0) {
       alreadyPending = true;
       break;
     }
@@ -136,9 +136,9 @@ void AutomatismPersistence::markConfigPendingSync() {
   for (int i = 0; i < count; i++) {
     char key_item[16];
     snprintf(key_item, sizeof(key_item), "sync_item_%d", i);
-    String item;
-    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, "");
-    if (item == "config") {
+    char item[64];
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, sizeof(item), "");
+    if (strcmp(item, "config") == 0) {
       alreadyPending = true;
       break;
     }
@@ -169,10 +169,10 @@ void AutomatismPersistence::clearPendingSync(const char* actuator) {
   for (int i = 0; i < count; i++) {
     char oldKey[16];
     snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
-    String item;
-    g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, "");
+    char item[64];
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, sizeof(item), "");
     
-    if (item != String(actuator) && item.length() > 0) {
+    if (strcmp(item, actuator) != 0 && strlen(item) > 0) {
       if (newCount != i) {
         char newKey[16];
         snprintf(newKey, sizeof(newKey), "sync_item_%d", newCount);
@@ -204,10 +204,10 @@ void AutomatismPersistence::clearConfigPendingSync() {
   for (int i = 0; i < count; i++) {
     char oldKey[16];
     snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
-    String item;
-    g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, "");
+    char item[64];
+    g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, sizeof(item), "");
     
-    if (item != "config" && item.length() > 0) {
+    if (strcmp(item, "config") != 0 && strlen(item) > 0) {
       if (newCount != i) {
         char newKey[16];
         snprintf(newKey, sizeof(newKey), "sync_item_%d", newCount);

@@ -116,31 +116,35 @@ void ConfigManager::resetBouffeFlags() {
   Serial.println(F("[Config] Flags de bouffe réinitialisés"));
 } 
 
-void ConfigManager::saveRemoteVars(const String& json) {
+void ConfigManager::saveRemoteVars(const char* json) {
   // v11.80: Utilisation du gestionnaire NVS centralisé avec compression JSON
   Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé (compressé)"));
   
   // Vérifier si le JSON a changé avant de sauvegarder
-  String cachedJson;
-  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, "");
+  char cachedJson[2048];
+  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, sizeof(cachedJson), "");
   
-  if (cachedJson == json) {
+  if (json && strcmp(cachedJson, json) == 0) {
     Serial.println(F("[Config] Variables distantes inchangées - pas de sauvegarde NVS"));
     return;
   }
   
   // Sauvegarde compressée dans le namespace CONFIG
-  g_nvsManager.saveJsonCompressed(NVS_NAMESPACES::CONFIG, "remote_json", json);
+  g_nvsManager.saveJsonCompressed(NVS_NAMESPACES::CONFIG, "remote_json", json ? json : "");
   Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé (compressé)"));
 }
 
-bool ConfigManager::loadRemoteVars(String& json) {
+bool ConfigManager::loadRemoteVars(char* json, size_t jsonSize) {
   // v11.80: Utilisation du gestionnaire NVS centralisé avec décompression JSON
   Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé (décompressé)"));
   
-  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", json, "");
+  if (json == nullptr || jsonSize == 0) {
+    return false;
+  }
   
-  if (json.length() > 0) {
+  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", json, jsonSize, "");
+  
+  if (strlen(json) > 0) {
     Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé (décompressé)"));
     return true;
   }
@@ -272,10 +276,10 @@ bool ConfigManager::loadConfigFromNVS() {
   loadNetworkFlags();
   
   // 2. Charger les variables distantes depuis remoteVars
-  String cachedJson;
-  bool hasRemoteVars = loadRemoteVars(cachedJson);
+  char cachedJson[2048];
+  bool hasRemoteVars = loadRemoteVars(cachedJson, sizeof(cachedJson));
   
-  if (!hasRemoteVars || cachedJson.length() == 0) {
+  if (!hasRemoteVars || strlen(cachedJson) == 0) {
     Serial.println(F("[Config] ⚠️ Aucune config en NVS - Valeurs par défaut utilisées"));
     Serial.println(F("[Config] 📋 Config par défaut:"));
     Serial.println(F("[Config]   - Email: (non défini)"));
@@ -293,7 +297,7 @@ bool ConfigManager::loadConfigFromNVS() {
   // Note: Le JSON sera appliqué par AutomatismNetwork::applyConfigFromJson()
   // On se contente de logger ce qu'on a trouvé
   
-  Serial.printf("[Config] 📦 JSON NVS: %u bytes\n", cachedJson.length());
+  Serial.printf("[Config] 📦 JSON NVS: %zu bytes\n", strlen(cachedJson));
   
   // Parser pour logging (ne pas appliquer ici, c'est fait dans AutomatismNetwork)
   ArduinoJson::DynamicJsonDocument doc(1024);

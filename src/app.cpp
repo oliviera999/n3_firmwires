@@ -195,7 +195,8 @@ void setup() {
     
     // Construire le message avec snprintf pour éviter allocations
     IPAddress ip = WiFi.localIP();
-    String ssid = g_appContext.wifi.currentSSID();
+    char ssid[64];
+    g_appContext.wifi.currentSSID(ssid, sizeof(ssid));
     int written = snprintf(bootMsg, sizeof(bootMsg),
                           "Système démarré avec succès (v%s).\n"
                           "IP: %d.%d.%d.%d\n"
@@ -203,7 +204,7 @@ void setup() {
                           "Raison: Test forcé au boot",
                           ProjectConfig::VERSION,
                           ip[0], ip[1], ip[2], ip[3],
-                          ssid.c_str());
+                          ssid);
     if (written < 0 || (size_t)written >= sizeof(bootMsg)) {
       bootMsg[sizeof(bootMsg) - 1] = '\0';
     }

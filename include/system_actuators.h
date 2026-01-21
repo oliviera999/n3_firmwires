@@ -42,9 +42,6 @@ struct SystemActuators {
   
   // Nourrissage séquentiel pour éviter les conflits de puissance
   void feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10, uint16_t delayBetweenSec = 2);
-  
-  // NOUVEAU: Méthode générique pour séquence de servo (utilisée par AutomatismFeeding)
-  void startServoSequence(uint16_t durationSec);
 
   // Getters pour l'état
   bool isTankPumpRunning() const;

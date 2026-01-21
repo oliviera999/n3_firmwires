@@ -65,7 +65,7 @@ class DisplayView {
 
   // Affichages standards
   void showMain(float tempEau, float tempAir, float humidite, uint16_t aquaLvl,
-                uint16_t tankLvl, uint16_t potaLvl, uint16_t lumi, const String& timeStr);
+                uint16_t tankLvl, uint16_t potaLvl, uint16_t lumi, const char* timeStr);
   void showVariables(bool pumpAqua,
                      bool pumpTank,
                      bool heater,
@@ -150,7 +150,7 @@ class DisplayView {
   };
 
   // Impression protégée contre le dépassement horizontal (ajoute "..." si besoin)
-  void printClipped(int16_t x, int16_t y, const String& text, uint8_t size);
+  void printClipped(int16_t x, int16_t y, const char* text, uint8_t size);
   
   // Vérification santé I2C avant opération d'affichage
   bool checkI2cHealth();

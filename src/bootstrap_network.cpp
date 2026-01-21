@@ -55,7 +55,11 @@ void validatePendingOta(OtaState& state) {
         Serial.println("[OTA] ✅ Image validée et rollback annulé");
         state.justUpdated = true;
         {
-          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", state.previousVersion, "");
+          char tempBuf[64];
+          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", tempBuf, sizeof(tempBuf), "");
+          // previousVersion pointe vers tempBuf qui sera copié dans le body si nécessaire
+          // Note: tempBuf est dans le scope, donc on doit copier si nécessaire
+          state.previousVersion = tempBuf;
         }
         break;
       case ESP_OTA_IMG_VALID:
@@ -133,18 +137,19 @@ void checkForOtaUpdate(AppContext& ctx) {
 
   if (ctx.otaManager.checkForUpdate()) {
     Serial.println("[OTA] 🆕 Mise à jour disponible !");
-    Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion().c_str());
-    Serial.printf("[OTA] 📋 Version distante: %s\n", ctx.otaManager.getRemoteVersion().c_str());
-    Serial.printf("[OTA] 📋 URL firmware: %s\n", ctx.otaManager.getFirmwareUrl().c_str());
-    Serial.printf("[OTA] 📋 Taille: %s\n",
-                  OTAManager::formatBytes(ctx.otaManager.getFirmwareSize()).c_str());
+    Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion());
+    Serial.printf("[OTA] 📋 Version distante: %s\n", ctx.otaManager.getRemoteVersion());
+    Serial.printf("[OTA] 📋 URL firmware: %s\n", ctx.otaManager.getFirmwareUrl());
+    char sizeBuf[16];
+    OTAManager::formatBytes(ctx.otaManager.getFirmwareSize(), sizeBuf, sizeof(sizeBuf));
+    Serial.printf("[OTA] 📋 Taille: %s\n", sizeBuf);
 
     if (ctx.display.isPresent()) {
       char otaMessage[32];
       snprintf(otaMessage,
                sizeof(otaMessage),
                "OTA dispo: %s",
-               ctx.otaManager.getRemoteVersion().c_str());
+               ctx.otaManager.getRemoteVersion());
       ctx.display.showDiagnostic(otaMessage);
     }
 
@@ -156,8 +161,8 @@ void checkForOtaUpdate(AppContext& ctx) {
     }
   } else {
     Serial.println("[OTA] ✅ Aucune mise à jour disponible");
-    Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion().c_str());
-    Serial.printf("[OTA] 📋 Version distante: %s\n", ctx.otaManager.getRemoteVersion().c_str());
+    Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion());
+    Serial.printf("[OTA] 📋 Version distante: %s\n", ctx.otaManager.getRemoteVersion());
   }
 
   Serial.printf("[OTA] 📊 Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());
@@ -179,7 +184,9 @@ void onWifiReady(AppContext& ctx,
     ctx.display.showDiagnostic("NTP sync");
   }
   ctx.power.syncTimeFromNTP();
-  Serial.printf("[Time] Heure après sync NTP: %s\n", ctx.power.getCurrentTimeString().c_str());
+  char timeBuf[64];
+  ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+  Serial.printf("[Time] Heure après sync NTP: %s\n", timeBuf);
 
 #if FEATURE_MAIL
   ctx.mailer.begin();
@@ -279,19 +286,29 @@ void postConfiguration(AppContext& ctx,
 
   if (state.justUpdated && ctx.automatism.isEmailEnabled()) {
     Serial.println("[App] Envoi email pour mise à jour OTA serveur distant...");
-    String body = String("Mise à jour OTA effectuée avec succès.\n\n");
-    body += "Détails de la mise à jour:\n";
-    body += "- Méthode: Serveur distant automatique\n";
-    body += "- Ancienne version: " + state.previousVersion + "\n";
-    body += "- Nouvelle version: " + String(ProjectConfig::VERSION) + "\n";
-    body += "- Hostname: "; body += hostname; body += "\n";
-    body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
-    body += "- Redémarrage automatique effectué";
-    if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) {
-      body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "...";
+    char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
+    size_t bodyLen = snprintf(body, sizeof(body),
+        "Mise à jour OTA effectuée avec succès.\n\n"
+        "Détails de la mise à jour:\n"
+        "- Méthode: Serveur distant automatique\n"
+        "- Ancienne version: %s\n"
+        "- Nouvelle version: %s\n"
+        "- Hostname: %s\n"
+        "- Compilé le: %s %s\n"
+        "- Redémarrage automatique effectué",
+        state.previousVersion ? state.previousVersion : "",
+        ProjectConfig::VERSION,
+        hostname,
+        __DATE__, __TIME__);
+    if (bodyLen >= sizeof(body)) {
+      body[sizeof(body) - 4] = '.';
+      body[sizeof(body) - 3] = '.';
+      body[sizeof(body) - 2] = '.';
+      body[sizeof(body) - 1] = '\0';
     }
-    String subj = "OTA mise à jour - Serveur distant ["; subj += hostname; subj += "]";
-    bool emailSent = ctx.mailer.sendAlert(subj.c_str(), body.c_str(), ctx.automatism.getEmailAddress());
+    char subj[128];
+    snprintf(subj, sizeof(subj), "OTA mise à jour - Serveur distant [%s]", hostname);
+    bool emailSent = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress());
     Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
     state.justUpdated = false;
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_prevVer");

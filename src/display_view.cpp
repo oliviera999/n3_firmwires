@@ -10,8 +10,8 @@
 #include <string.h>
 
 // Texte protégé contre le dépassement horizontal (police 6x8 px par taille 1)
-void DisplayView::printClipped(int16_t x, int16_t y, const String& text, uint8_t size) {
-  if (!_present) return;
+void DisplayView::printClipped(int16_t x, int16_t y, const char* text, uint8_t size) {
+  if (!_present || !text) return;
   
   // CORRECTION v11.57: Suppression des vérifications I2C répétées
   // Les vérifications I2C sont faites uniquement lors de l'initialisation
@@ -22,17 +22,18 @@ void DisplayView::printClipped(int16_t x, int16_t y, const String& text, uint8_t
   uint8_t charWidth = DisplayTextUtils::characterWidth(size);
 
   // Convertit en CP437 pour cohérence avec l'affichage
-  String toPrint = DisplayTextUtils::utf8ToCp437(text);
+  char toPrint[256];
+  DisplayTextUtils::utf8ToCp437(text, toPrint, sizeof(toPrint));
   // Calcule le nombre max de caractères qui rentrent sur la ligne
   int16_t available = maxWidth - x;
   if (available <= 0) return;
   int16_t maxChars = available / charWidth;
   if (maxChars <= 0) return;
-  DisplayTextUtils::clipInPlace(toPrint, maxChars);
+  DisplayTextUtils::clipInPlace(toPrint, sizeof(toPrint), maxChars);
 
   _disp.setTextSize(size);
   _disp.setCursor(x, y);
-  _disp.println(toPrint.c_str());
+  _disp.println(toPrint);
 }
 
 DisplayView::DisplaySession::DisplaySession(DisplayView& view, bool immediateMode, uint32_t lockMs, bool setDisplaying)
@@ -225,13 +226,6 @@ bool DisplayView::begin() {
   return false;
 #endif
 
-  // Vérification supplémentaire pour cohérence runtime/compile-time
-  #if FEATURE_OLED == 0
-  Serial.println("[OLED] FEATURE_OLED=0 - OLED DÉSACTIVÉ (configuration compile-time)");
-  _present = false;
-  return false;
-  #endif
-
 #ifdef OLED_DIAGNOSTIC
   Serial.println("=== DIAGNOSTIC OLED DÉTAILLÉ ===");
   Serial.printf("Pins configurés: SDA=%d, SCL=%d\n", Pins::I2C_SDA, Pins::I2C_SCL);
@@ -411,7 +405,7 @@ bool DisplayView::isLocked() const {
 }
 
 void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_t aquaLvl,
-                           uint16_t tankLvl, uint16_t potaLvl, uint16_t lumi, const String& timeStr) {
+                           uint16_t tankLvl, uint16_t potaLvl, uint16_t lumi, const char* timeStr) {
   if (!_present || splashActive() || isLocked()) return;
   
   // Vérifier si les valeurs ont changé significativement
@@ -448,10 +442,21 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   }
   
   bool wifiConnected = (WiFi.status() == WL_CONNECTED);
-  String stationSsid = wifiConnected ? WiFi.SSID() : String();
-  String stationIp = wifiConnected ? WiFi.localIP().toString() : String();
-  String apSsid = WiFi.softAPSSID();
-  String apIp = WiFi.softAPIP().toString();
+  // Copier les valeurs WiFi dans des buffers car les String temporaires seraient détruites
+  char stationSsidBuf[33], stationIpBuf[16], apSsidBuf[33], apIpBuf[16];
+  if (wifiConnected) {
+    strncpy(stationSsidBuf, WiFi.SSID().c_str(), sizeof(stationSsidBuf) - 1);
+    stationSsidBuf[sizeof(stationSsidBuf) - 1] = '\0';
+    strncpy(stationIpBuf, WiFi.localIP().toString().c_str(), sizeof(stationIpBuf) - 1);
+    stationIpBuf[sizeof(stationIpBuf) - 1] = '\0';
+  } else {
+    stationSsidBuf[0] = '\0';
+    stationIpBuf[0] = '\0';
+  }
+  strncpy(apSsidBuf, WiFi.softAPSSID().c_str(), sizeof(apSsidBuf) - 1);
+  apSsidBuf[sizeof(apSsidBuf) - 1] = '\0';
+  strncpy(apIpBuf, WiFi.softAPIP().toString().c_str(), sizeof(apIpBuf) - 1);
+  apIpBuf[sizeof(apIpBuf) - 1] = '\0';
 
   MainScreenRenderer::render(*this,
                              _disp,
@@ -464,10 +469,10 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
                              lumi,
                              timeStr,
                              wifiConnected,
-                             stationSsid,
-                             stationIp,
-                             apSsid,
-                             apIp);
+                             stationSsidBuf,
+                             stationIpBuf,
+                             apSsidBuf,
+                             apIpBuf);
   
   // Mode immédiat pour les changements de valeurs, mode optimisé sinon
   if (_immediateMode || valuesChanged) {
@@ -570,7 +575,8 @@ void DisplayView::showDiagnostic(const char* msg) {
 
   // Positionne le curseur sur la ligne courante et écrit le message avec clipping horizontal
   {
-    String line = DisplayTextUtils::utf8ToCp437(msg);
+    char line[256];
+    DisplayTextUtils::utf8ToCp437(msg, line, sizeof(line));
     InfoScreenRenderer::appendDiagnosticLine(*this, _disp, line, _diagLine);
   }
   ++_diagLine;
@@ -619,14 +625,30 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
   resetStatusCache();
 
   // En-tête (phase claire)
-  printClipped(0, 0, String("OTA: ") + (phase ? DisplayTextUtils::utf8ToCp437(phase) : String("")), 1);
+  {
+    char headerBuf[128];
+    if (phase && *phase) {
+      char phaseBuf[64];
+      DisplayTextUtils::utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
+      snprintf(headerBuf, sizeof(headerBuf), "OTA: %s", phaseBuf);
+    } else {
+      strcpy(headerBuf, "OTA: ");
+    }
+    printClipped(0, 0, headerBuf, 1);
+  }
 
   // Lignes partitions
   if (fromLabel && *fromLabel) {
-    printClipped(0, 10, String("De: ") + DisplayTextUtils::utf8ToCp437(fromLabel), 1);
+    char fromBuf[128], labelBuf[64];
+    DisplayTextUtils::utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
+    snprintf(fromBuf, sizeof(fromBuf), "De: %s", labelBuf);
+    printClipped(0, 10, fromBuf, 1);
   }
   if (toLabel && *toLabel) {
-    printClipped(0, 18, String("Vers: ") + DisplayTextUtils::utf8ToCp437(toLabel), 1);
+    char toBuf[128], labelBuf[64];
+    DisplayTextUtils::utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
+    snprintf(toBuf, sizeof(toBuf), "Vers: %s", labelBuf);
+    printClipped(0, 18, toBuf, 1);
   }
 
   // Pourcentage centré en grand
@@ -634,7 +656,7 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
   snprintf(pbuf, sizeof(pbuf), "%u%%", (unsigned)percent);
   _disp.setTextSize(3);
   _disp.setCursor(0, 24);
-  printClipped(0, 24, String(pbuf), 2);
+  printClipped(0, 24, pbuf, 2);
 
   // Barre de progression (largeur 120px, hauteur 10px) sous le pourcentage
   const int barX = 4;
@@ -663,21 +685,48 @@ void DisplayView::showOtaProgressEx(uint8_t percent, const char* fromLabel, cons
   resetStatusCache();
 
   // En-tête
-  printClipped(0, 0, String("OTA ") + (phase ? DisplayTextUtils::utf8ToCp437(phase) : String("")), 1);
+  {
+    char headerBuf[128];
+    if (phase && *phase) {
+      char phaseBuf[64];
+      DisplayTextUtils::utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
+      snprintf(headerBuf, sizeof(headerBuf), "OTA %s", phaseBuf);
+    } else {
+      strcpy(headerBuf, "OTA ");
+    }
+    printClipped(0, 0, headerBuf, 1);
+  }
   // Hote ou WiFi SSID
   if (hostLabel && *hostLabel) {
-    printClipped(0, 8, String("Hote: ") + DisplayTextUtils::utf8ToCp437(hostLabel), 1);
+    char hostBuf[128], labelBuf[64];
+    DisplayTextUtils::utf8ToCp437(hostLabel, labelBuf, sizeof(labelBuf));
+    snprintf(hostBuf, sizeof(hostBuf), "Hote: %s", labelBuf);
+    printClipped(0, 8, hostBuf, 1);
   }
   // Versions
   if (currentVersion && *currentVersion) {
-    printClipped(0, 16, String("Act: v") + currentVersion, 1);
+    char actBuf[32];
+    snprintf(actBuf, sizeof(actBuf), "Act: v%s", currentVersion);
+    printClipped(0, 16, actBuf, 1);
   }
   if (newVersion && *newVersion) {
-    printClipped(72, 16, String("Nv: v") + newVersion, 1);
+    char nvBuf[32];
+    snprintf(nvBuf, sizeof(nvBuf), "Nv: v%s", newVersion);
+    printClipped(72, 16, nvBuf, 1);
   }
   // Partitions
-  if (fromLabel && *fromLabel) printClipped(0, 24, String("De:") + DisplayTextUtils::utf8ToCp437(fromLabel), 1);
-  if (toLabel && *toLabel)     printClipped(64, 24, String("Vers:") + DisplayTextUtils::utf8ToCp437(toLabel), 1);
+  if (fromLabel && *fromLabel) {
+    char fromBuf[128], labelBuf[64];
+    DisplayTextUtils::utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
+    snprintf(fromBuf, sizeof(fromBuf), "De:%s", labelBuf);
+    printClipped(0, 24, fromBuf, 1);
+  }
+  if (toLabel && *toLabel) {
+    char toBuf[128], labelBuf[64];
+    DisplayTextUtils::utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
+    snprintf(toBuf, sizeof(toBuf), "Vers:%s", labelBuf);
+    printClipped(64, 24, toBuf, 1);
+  }
 
   // Barre de progression
   const int barX = 4, barY = 40, barW = 120, barH = 10;
@@ -689,7 +738,7 @@ void DisplayView::showOtaProgressEx(uint8_t percent, const char* fromLabel, cons
   // Pourcentage
   char pbuf[8];
   snprintf(pbuf, sizeof(pbuf), "%u%%", (unsigned)percent);
-  printClipped(0, 52, String(pbuf), 1);
+  printClipped(0, 52, pbuf, 1);
 
   _disp.display();
   _needsFlush = false;
@@ -703,9 +752,21 @@ void DisplayView::showSleepReason(const char* cause, const char* detailLine1, co
   resetMainCache();
   resetStatusCache();
   printClipped(0, 0, "Veille", 1);
-  if (cause && *cause) printClipped(0, 10, DisplayTextUtils::utf8ToCp437(cause), 1);
-  if (detailLine1 && *detailLine1) printClipped(0, 20, DisplayTextUtils::utf8ToCp437(detailLine1), 1);
-  if (detailLine2 && *detailLine2) printClipped(0, 30, DisplayTextUtils::utf8ToCp437(detailLine2), 1);
+  if (cause && *cause) {
+    char causeBuf[128];
+    DisplayTextUtils::utf8ToCp437(cause, causeBuf, sizeof(causeBuf));
+    printClipped(0, 10, causeBuf, 1);
+  }
+  if (detailLine1 && *detailLine1) {
+    char detail1Buf[128];
+    DisplayTextUtils::utf8ToCp437(detailLine1, detail1Buf, sizeof(detail1Buf));
+    printClipped(0, 20, detail1Buf, 1);
+  }
+  if (detailLine2 && *detailLine2) {
+    char detail2Buf[128];
+    DisplayTextUtils::utf8ToCp437(detailLine2, detail2Buf, sizeof(detail2Buf));
+    printClipped(0, 30, detail2Buf, 1);
+  }
   // Statut bar with mail icon if blinking requested (force draw even when locked)
   drawStatusEx(0, 0, -127, mailBlink, 0, 0, true);
   _disp.display();
@@ -724,14 +785,21 @@ void DisplayView::showSleepInfo(const char* reason, const char* detail1, const c
   printClipped(0, 0, "Veille", 1);
   // Raison explicite
   if (reason && *reason) {
-    printClipped(0, 10, String("Raison: ") + DisplayTextUtils::utf8ToCp437(reason), 1);
+    char reasonBuf[128], labelBuf[64];
+    DisplayTextUtils::utf8ToCp437(reason, labelBuf, sizeof(labelBuf));
+    snprintf(reasonBuf, sizeof(reasonBuf), "Raison: %s", labelBuf);
+    printClipped(0, 10, reasonBuf, 1);
   }
   // Détails optionnels
   if (detail1 && *detail1) {
-    printClipped(0, 20, DisplayTextUtils::utf8ToCp437(detail1), 1);
+    char detail1Buf[128];
+    DisplayTextUtils::utf8ToCp437(detail1, detail1Buf, sizeof(detail1Buf));
+    printClipped(0, 20, detail1Buf, 1);
   }
   if (detail2 && *detail2) {
-    printClipped(0, 28, DisplayTextUtils::utf8ToCp437(detail2), 1);
+    char detail2Buf[128];
+    DisplayTextUtils::utf8ToCp437(detail2, detail2Buf, sizeof(detail2Buf));
+    printClipped(0, 28, detail2Buf, 1);
   }
 
   // Icône lune simple

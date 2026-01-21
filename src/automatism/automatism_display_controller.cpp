@@ -192,7 +192,8 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
     
     // Affichage normal (écran principal ou écran variables)
     // CORRECTION v11.120: Utiliser _power directement car getCurrentTimeString() n'est pas const
-    String timeStr = _power.getCurrentTimeString();
+    char timeStr[64];
+    _power.getCurrentTimeString(timeStr, sizeof(timeStr));
     bool mailBlink = (core.mailBlinkUntil > 0 && currentMillis < core.mailBlinkUntil);
     int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
     

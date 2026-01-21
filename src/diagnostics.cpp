@@ -94,7 +94,10 @@ void Diagnostics::begin() {
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
   _stats.rebootCount = rebootCount + 1;
   
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", (int&)_stats.minFreeHeap, UINT32_MAX);
+  // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
+  unsigned long minHeapUL = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
+  _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpOk", (int&)_stats.httpSuccessCount, 0);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpKo", (int&)_stats.httpFailCount, 0);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
@@ -147,7 +150,10 @@ void Diagnostics::loadFromNvs() {
   int rebootCount;
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
   _stats.rebootCount = rebootCount;
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", (int&)_stats.minFreeHeap, UINT32_MAX);
+  // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
+  unsigned long minHeapUL = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
+  _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpOk", (int&)_stats.httpSuccessCount, 0);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpKo", (int&)_stats.httpFailCount, 0);
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
@@ -288,7 +294,8 @@ void Diagnostics::update() {
     }
     
     if (shouldSave) {
-      g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_minHeap", _stats.minFreeHeap);
+      // Correction: utiliser saveULong pour uint32_t (minFreeHeap)
+      g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_minHeap", _stats.minFreeHeap);
       
       _lastHeapSave = now;
       _lastSavedMinHeap = _stats.minFreeHeap;
@@ -865,15 +872,12 @@ void Diagnostics::savePanicInfo() {
   if (!_stats.panicInfo.hasPanicInfo) return;
   
   g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", true);
-  String tempStr = _stats.panicInfo.exceptionCause;
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", tempStr);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause);
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress);
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr);
-  tempStr = _stats.panicInfo.taskName;
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicTask", tempStr);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName);
   g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core);
-  tempStr = _stats.panicInfo.additionalInfo;
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicInfo", tempStr);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo);
   
   Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
 }
@@ -883,19 +887,12 @@ void Diagnostics::loadPanicInfo() {
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", _stats.panicInfo.hasPanicInfo, false);
   
   if (_stats.panicInfo.hasPanicInfo) {
-    String tempStr;
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", tempStr, "Unknown");
-    strncpy(_stats.panicInfo.exceptionCause, tempStr.c_str(), sizeof(_stats.panicInfo.exceptionCause) - 1);
-    _stats.panicInfo.exceptionCause[sizeof(_stats.panicInfo.exceptionCause) - 1] = '\0';
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause, sizeof(_stats.panicInfo.exceptionCause), "Unknown");
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress, 0);
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr, 0);
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicTask", tempStr, "");
-    strncpy(_stats.panicInfo.taskName, tempStr.c_str(), sizeof(_stats.panicInfo.taskName) - 1);
-    _stats.panicInfo.taskName[sizeof(_stats.panicInfo.taskName) - 1] = '\0';
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName, sizeof(_stats.panicInfo.taskName), "");
     g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core, -1);
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicInfo", tempStr, "");
-    strncpy(_stats.panicInfo.additionalInfo, tempStr.c_str(), sizeof(_stats.panicInfo.additionalInfo) - 1);
-    _stats.panicInfo.additionalInfo[sizeof(_stats.panicInfo.additionalInfo) - 1] = '\0';
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo), "");
     
     Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
   }
@@ -978,9 +975,9 @@ void Diagnostics::loadCrashStatus() {
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch, 0);
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent, false);
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize, 0);
-  String tempStr;
-  g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", tempStr, "UNKNOWN");
-  strncpy(_stats.crashStatus.coredumpFormat, tempStr.c_str(), sizeof(_stats.crashStatus.coredumpFormat) - 1);
+  char tempStr[64];
+  g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", tempStr, sizeof(tempStr), "UNKNOWN");
+  strncpy(_stats.crashStatus.coredumpFormat, tempStr, sizeof(_stats.crashStatus.coredumpFormat) - 1);
   _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
 }
 
@@ -994,8 +991,7 @@ void Diagnostics::saveCrashStatus() {
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch);
   g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent);
   g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize);
-  String tempStr = _stats.crashStatus.coredumpFormat;
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", tempStr);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", _stats.crashStatus.coredumpFormat);
 }
 
 void Diagnostics::updateCoredumpStatus(bool persistIfCrash) {

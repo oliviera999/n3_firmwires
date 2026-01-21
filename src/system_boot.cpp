@@ -17,16 +17,12 @@ void initializeStorage(AppContext& ctx, unsigned long& lastDigestMs, uint32_t& l
 
 void validatePendingOta(OtaState& state) {
     // Adapter l'OtaState SystemBoot vers BootstrapNetwork::OtaState
-    String previousVersionStr(state.previousVersion);
     BootstrapNetwork::OtaState netState{
         state.justUpdated,
-        previousVersionStr,
+        state.previousVersion,
         state.lastCheck
     };
     BootstrapNetwork::validatePendingOta(netState);
-    // Copier le résultat
-    strncpy(state.previousVersion, previousVersionStr.c_str(), sizeof(state.previousVersion) - 1);
-    state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
 }
 
 void initializeTimekeeping(AppContext& ctx) {
@@ -58,27 +54,21 @@ void checkForOtaUpdate(AppContext& ctx) {
 }
 
 void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
-    String previousVersionStr(state.previousVersion);
     BootstrapNetwork::OtaState netState{
         state.justUpdated,
-        previousVersionStr,
+        state.previousVersion,
         state.lastCheck
     };
     BootstrapNetwork::onWifiReady(ctx, hostname, netState);
-    strncpy(state.previousVersion, previousVersionStr.c_str(), sizeof(state.previousVersion) - 1);
-    state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
 }
 
 void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
-    String previousVersionStr(state.previousVersion);
     BootstrapNetwork::OtaState netState{
         state.justUpdated,
-        previousVersionStr,
+        state.previousVersion,
         state.lastCheck
     };
     BootstrapNetwork::postConfiguration(ctx, hostname, netState);
-    strncpy(state.previousVersion, previousVersionStr.c_str(), sizeof(state.previousVersion) - 1);
-    state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
 }
 
 } // namespace SystemBoot

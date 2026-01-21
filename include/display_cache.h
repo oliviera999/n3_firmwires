@@ -57,7 +57,7 @@ class DisplayCache {
                 uint16_t tankLvl,
                 uint16_t potaLvl,
                 uint16_t lumi,
-                const String& timeStr) {
+                const char* timeStr) {
       bool changed = (fabsf(tempEau - _tempEau) > 0.1f) ||
                      (fabsf(tempAir - _tempAir) > 0.1f) ||
                      (fabsf(humidite - _humidite) > 0.5f) ||
@@ -65,7 +65,7 @@ class DisplayCache {
                      (tankLvl != _tankLvl) ||
                      (potaLvl != _potaLvl) ||
                      (abs(static_cast<int>(lumi) - static_cast<int>(_lumi)) > 1) ||
-                     (timeStr != _timeStr);
+                     (timeStr == nullptr || _timeStr[0] == '\0' ? (strlen(timeStr ? timeStr : "") != strlen(_timeStr)) : strcmp(timeStr, _timeStr) != 0);
 
       _tempEau = tempEau;
       _tempAir = tempAir;
@@ -74,7 +74,12 @@ class DisplayCache {
       _tankLvl = tankLvl;
       _potaLvl = potaLvl;
       _lumi = lumi;
-      _timeStr = timeStr;
+      if (timeStr) {
+        strncpy(_timeStr, timeStr, sizeof(_timeStr) - 1);
+        _timeStr[sizeof(_timeStr) - 1] = '\0';
+      } else {
+        _timeStr[0] = '\0';
+      }
 
       return changed;
     }
@@ -87,7 +92,7 @@ class DisplayCache {
       _tankLvl = 999;
       _potaLvl = 999;
       _lumi = 999;
-      _timeStr = "";
+      _timeStr[0] = '\0';
     }
 
    private:
@@ -98,7 +103,7 @@ class DisplayCache {
     uint16_t  _tankLvl{999};
     uint16_t  _potaLvl{999};
     uint16_t  _lumi{999};
-    String    _timeStr;
+    char      _timeStr[64];
   };
 
   struct VariablesCache {

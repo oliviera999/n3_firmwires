@@ -50,12 +50,12 @@ void MainScreenRenderer::render(DisplayView& view,
                                 uint16_t tankLvl,
                                 uint16_t potaLvl,
                                 uint16_t lumi,
-                                const String& timeStr,
+                                const char* timeStr,
                                 bool wifiConnected,
-                                const String& stationSsid,
-                                const String& stationIp,
-                                const String& apSsid,
-                                const String& apIp) {
+                                const char* stationSsid,
+                                const char* stationIp,
+                                const char* apSsid,
+                                const char* apIp) {
   display.setTextSize(1);
 
   {
@@ -123,7 +123,7 @@ void CountdownRenderer::render(DisplayView& view,
                                const char* label,
                                uint16_t secondsLeft,
                                bool isManual) {
-  view.printClipped(0, 0, String(label), 2);
+  view.printClipped(0, 0, label, 2);
 
   display.setTextSize(3);
   display.setCursor(0, 24);
@@ -149,8 +149,10 @@ void CountdownRenderer::renderFeeding(DisplayView& view,
                                       uint16_t secondsLeft,
                                       bool isManual) {
   view.printClipped(0, 0, "Nourriture", 1);
-  view.printClipped(0, 10, String(fishType), 2);
-  view.printClipped(0, 26, String("Temps ") + phase, 1);
+  view.printClipped(0, 10, fishType, 2);
+  char tempsBuf[64];
+  snprintf(tempsBuf, sizeof(tempsBuf), "Temps %s", phase);
+  view.printClipped(0, 26, tempsBuf, 1);
 
   display.setTextSize(2);
   display.setCursor(0, 36);
@@ -249,7 +251,7 @@ void InfoScreenRenderer::renderServerVars(DisplayView& view,
 
 void InfoScreenRenderer::appendDiagnosticLine(DisplayView& view,
                                               Adafruit_SSD1306& display,
-                                              const String& line,
+                                              const char* line,
                                               uint8_t lineIndex) {
   display.setTextSize(1);
   view.printClipped(0, lineIndex * 8, line, 1);

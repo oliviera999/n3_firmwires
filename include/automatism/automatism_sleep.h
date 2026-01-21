@@ -21,7 +21,8 @@ public:
     bool process(const SensorReadings& r, SystemActuators& acts, Automatism& core);
 
     // Gestion du sleep
-    void handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core);
+    // Renvoie true si le système est entré en veille
+    bool handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core);
     bool shouldEnterSleepEarly(const SensorReadings& r,
                                bool forceWakeUp,
                                bool forceWakeFromWeb,

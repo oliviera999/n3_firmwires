@@ -33,7 +33,7 @@ class Automatism {
   bool isPumpAquaLocked() const { return _config.getPompeAquaLocked(); }
   bool isTankPumpLocked() const { return tankPumpLocked; }
   time_t getCurrentTime() { return _power.getCurrentEpoch(); }
-  String getCurrentTimeString() { return _power.getCurrentTimeString(); }
+  void getCurrentTimeString(char* buffer, size_t bufferSize) { _power.getCurrentTimeString(buffer, bufferSize); }
   uint32_t getPumpStartTime() const { return _pumpStartMs; }  // Pour SystemActuators
   bool isTankPumpRunning() const { return _pumpStartMs > 0; }
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
@@ -121,6 +121,7 @@ class Automatism {
   friend class AutomatismAlertController;
   friend class AutomatismDisplayController;
   friend class AutomatismSleep;
+  friend class AutomatismSync;
 
   void initializeNetworkModule();
   void attachFeedingCallbacks();

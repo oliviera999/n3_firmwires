@@ -166,19 +166,26 @@ NVSError NVSManager::validateKey(const char* key) {
     return NVSError::SUCCESS;
 }
 
-NVSError NVSManager::validateValue(const String& value) {
-    if (value.length() > 4000) { // Limite ESP32
-        Serial.printf("[NVS] ⚠️ Valeur trop grande: %zu bytes\n", value.length());
+NVSError NVSManager::validateValue(const char* value) {
+    if (value == nullptr) {
+        return NVSError::INVALID_VALUE;
+    }
+    size_t len = strlen(value);
+    if (len > 4000) { // Limite ESP32
+        Serial.printf("[NVS] ⚠️ Valeur trop grande: %zu bytes\n", len);
         return NVSError::INVALID_VALUE;
     }
     
     return NVSError::SUCCESS;
 }
 
-uint32_t NVSManager::calculateChecksum(const String& value) {
+uint32_t NVSManager::calculateChecksum(const char* value) {
     uint32_t checksum = 0;
-    for (size_t i = 0; i < value.length(); i++) {
-        checksum = checksum * 31 + value.charAt(i);
+    if (value == nullptr) {
+        return 0;
+    }
+    for (size_t i = 0; value[i] != '\0'; i++) {
+        checksum = checksum * 31 + value[i];
     }
     return checksum;
 }
@@ -203,10 +210,14 @@ void NVSManager::logError(NVSError error, const char* context, const char* ns, c
     Serial.println();
 }
 
-NVSError NVSManager::saveString(const char* ns, const char* key, const String& value) {
+NVSError NVSManager::saveString(const char* ns, const char* key, const char* value) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
         return NVSError::WRITE_FAILED;
+    }
+
+    if (value == nullptr) {
+        value = "";
     }
 
     NVSError keyError = validateKey(key);
@@ -222,9 +233,9 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const String& v
     }
     
     // Vérifier le cache pour éviter les écritures inutiles
-    String cacheKey = String(ns) + "::" + String(key);
-    if (_cache.find(ns) != _cache.end()) {
-        for (auto& entry : _cache[ns]) {
+    std::string nsStr(ns ? ns : "");
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (auto& entry : _cache[nsStr]) {
             if (entry.key == key && entry.value == value && !entry.dirty) {
                 Serial.printf("[NVS] 💾 Valeur inchangée, pas de sauvegarde: %s::%s\n", ns, key);
                 return NVSError::SUCCESS;
@@ -246,15 +257,17 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const String& v
     }
     
     // Mettre à jour le cache
-    if (_cache.find(ns) == _cache.end()) {
-        _cache[ns] = std::vector<NVSCacheEntry>();
+    if (_cache.find(nsStr) == _cache.end()) {
+        _cache[nsStr] = std::vector<NVSCacheEntry>();
     }
     
     // Chercher une entrée existante
     bool found = false;
-    for (auto& entry : _cache[ns]) {
-        if (entry.key == key) {
-            entry.value = value;
+    std::string valueStr(value ? value : "");
+    std::string keyStr(key ? key : "");
+    for (auto& entry : _cache[nsStr]) {
+        if (entry.key == keyStr) {
+            entry.value = valueStr;
             entry.timestamp = millis();
             entry.calculateChecksum();
             entry.dirty = false;
@@ -265,45 +278,62 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const String& v
     
     // Ajouter une nouvelle entrée si pas trouvée
     if (!found) {
-        if (_cache[ns].size() >= _maxCacheSize) {
+        if (_cache[nsStr].size() >= _maxCacheSize) {
             // Supprimer la plus ancienne entrée
-            _cache[ns].erase(_cache[ns].begin());
+            _cache[nsStr].erase(_cache[nsStr].begin());
         }
-        _cache[ns].push_back(NVSCacheEntry(key, value));
+        _cache[nsStr].push_back(NVSCacheEntry(key, value));
     }
     
-    Serial.printf("[NVS] ✅ Sauvegardé: %s::%s = %s\n", ns, key, value.c_str());
+    Serial.printf("[NVS] ✅ Sauvegardé: %s::%s = %s\n", ns, key, value);
     
     // Phase 2: Marquer la clé comme sale pour flush différé
     if (_deferredFlushEnabled) {
-        addDirtyKey(String(ns), key);
+        addDirtyKey(ns, key);
         checkDeferredFlush();
     }
     
     return NVSError::SUCCESS;
 }
 
-NVSError NVSManager::loadString(const char* ns, const char* key, String& value, const String& defaultValue) {
+NVSError NVSManager::loadString(const char* ns, const char* key, char* value, size_t valueSize, const char* defaultValue) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
-        value = defaultValue;
+        if (defaultValue) {
+            strncpy(value, defaultValue, valueSize - 1);
+            value[valueSize - 1] = '\0';
+        } else {
+            value[0] = '\0';
+        }
         return NVSError::READ_FAILED;
+    }
+
+    if (value == nullptr || valueSize == 0) {
+        return NVSError::INVALID_VALUE;
     }
 
     NVSError keyError = validateKey(key);
     if (keyError != NVSError::SUCCESS) {
         logError(keyError, "loadString", ns, key);
-        value = defaultValue;
+        if (defaultValue) {
+            strncpy(value, defaultValue, valueSize - 1);
+            value[valueSize - 1] = '\0';
+        } else {
+            value[0] = '\0';
+        }
         return keyError;
     }
     
     // Vérifier le cache d'abord
-    if (_cache.find(ns) != _cache.end()) {
-        for (const auto& entry : _cache[ns]) {
-            if (entry.key == key) {
+    std::string nsStr(ns ? ns : "");
+    std::string keyStr(key ? key : "");
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (const auto& entry : _cache[nsStr]) {
+            if (entry.key == keyStr) {
                 if (entry.isValid()) {
-                    value = entry.value;
-                    Serial.printf("[NVS] 📖 Chargé depuis cache: %s::%s = %s\n", ns, key, value.c_str());
+                    strncpy(value, entry.value.c_str(), valueSize - 1);
+                    value[valueSize - 1] = '\0';
+                    Serial.printf("[NVS] 📖 Chargé depuis cache: %s::%s = %s\n", ns, key, value);
                     return NVSError::SUCCESS;
                 } else {
                     Serial.printf("[NVS] ⚠️ Corruption détectée dans cache: %s::%s\n", ns, key);
@@ -315,23 +345,32 @@ NVSError NVSManager::loadString(const char* ns, const char* key, String& value, 
     
     NVSError openError = openNamespace(ns, true);
     if (openError != NVSError::SUCCESS) {
-        value = defaultValue;
+        if (defaultValue) {
+            strncpy(value, defaultValue, valueSize - 1);
+            value[valueSize - 1] = '\0';
+        } else {
+            value[0] = '\0';
+        }
         return openError;
     }
     
-    value = _preferences.getString(key, defaultValue);
+    String tempValue = _preferences.getString(key, defaultValue ? defaultValue : "");
+    strncpy(value, tempValue.c_str(), valueSize - 1);
+    value[valueSize - 1] = '\0';
     closeNamespace();
     
     // Mettre à jour le cache
-    if (_cache.find(ns) == _cache.end()) {
-        _cache[ns] = std::vector<NVSCacheEntry>();
+    if (_cache.find(nsStr) == _cache.end()) {
+        _cache[nsStr] = std::vector<NVSCacheEntry>();
     }
     
     // Chercher une entrée existante
     bool found = false;
-    for (auto& entry : _cache[ns]) {
-        if (entry.key == key) {
-            entry.value = value;
+    std::string tempValueStr(tempValue.c_str());
+    std::string defaultValueStr(defaultValue ? defaultValue : "");
+    for (auto& entry : _cache[nsStr]) {
+        if (entry.key == keyStr) {
+            entry.value = tempValueStr;
             entry.timestamp = millis();
             entry.calculateChecksum();
             found = true;
@@ -340,14 +379,14 @@ NVSError NVSManager::loadString(const char* ns, const char* key, String& value, 
     }
     
     // Ajouter une nouvelle entrée si pas trouvée
-    if (!found && value != defaultValue) {
-        if (_cache[ns].size() >= _maxCacheSize) {
-            _cache[ns].erase(_cache[ns].begin());
+    if (!found && tempValueStr != defaultValueStr) {
+        if (_cache[nsStr].size() >= _maxCacheSize) {
+            _cache[nsStr].erase(_cache[nsStr].begin());
         }
-        _cache[ns].push_back(NVSCacheEntry(key, value));
+        _cache[nsStr].push_back(NVSCacheEntry(key, tempValue.c_str()));
     }
     
-    Serial.printf("[NVS] 📖 Chargé: %s::%s = %s\n", ns, key, value.c_str());
+    Serial.printf("[NVS] 📖 Chargé: %s::%s = %s\n", ns, key, value);
     return NVSError::SUCCESS;
 }
 
@@ -363,6 +402,19 @@ NVSError NVSManager::saveBool(const char* ns, const char* key, bool value) {
         return keyError;
     }
 
+    // Vérifier le cache pour éviter les écritures inutiles
+    std::string valueStr = value ? "1" : "0";
+    std::string nsStr(ns ? ns : "");
+    std::string keyStr(key ? key : "");
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (auto& entry : _cache[nsStr]) {
+            if (entry.key == keyStr && entry.value == valueStr && !entry.dirty) {
+                Serial.printf("[NVS] 💾 Valeur inchangée, pas de sauvegarde: %s::%s\n", ns, key);
+                return NVSError::SUCCESS;
+            }
+        }
+    }
+
     NVSError openError = openNamespace(ns, false);
     if (openError != NVSError::SUCCESS) {
         return openError;
@@ -376,14 +428,16 @@ NVSError NVSManager::saveBool(const char* ns, const char* key, bool value) {
         return NVSError::WRITE_FAILED;
     }
 
-    if (_cache.find(ns) == _cache.end()) {
-        _cache[ns] = std::vector<NVSCacheEntry>();
+    // Mettre à jour le cache
+    if (_cache.find(nsStr) == _cache.end()) {
+        _cache[nsStr] = std::vector<NVSCacheEntry>();
     }
 
+    // Chercher une entrée existante
     bool found = false;
-    for (auto& entry : _cache[ns]) {
-        if (entry.key == key) {
-            entry.value = value ? "1" : "0";
+    for (auto& entry : _cache[nsStr]) {
+        if (entry.key == keyStr) {
+            entry.value = valueStr;
             entry.timestamp = millis();
             entry.calculateChecksum();
             entry.dirty = false;
@@ -392,17 +446,22 @@ NVSError NVSManager::saveBool(const char* ns, const char* key, bool value) {
         }
     }
 
+    // Ajouter une nouvelle entrée si pas trouvée
     if (!found) {
-        if (_cache[ns].size() >= _maxCacheSize) {
-            _cache[ns].erase(_cache[ns].begin());
+        if (_cache[nsStr].size() >= _maxCacheSize) {
+            // Supprimer la plus ancienne entrée
+            _cache[nsStr].erase(_cache[nsStr].begin());
         }
-        NVSCacheEntry entry(key, value ? "1" : "0");
+        NVSCacheEntry entry(key, valueStr.c_str());
         entry.dirty = false;
-        _cache[ns].push_back(entry);
+        _cache[nsStr].push_back(entry);
     }
 
+    Serial.printf("[NVS] ✅ Sauvegardé: %s::%s = %s\n", ns, key, valueStr.c_str());
+
+    // Phase 2: Marquer la clé comme sale pour flush différé
     if (_deferredFlushEnabled) {
-        addDirtyKey(String(ns), key);
+        addDirtyKey(ns, key);
         checkDeferredFlush();
     }
 
@@ -424,9 +483,11 @@ NVSError NVSManager::loadBool(const char* ns, const char* key, bool& value, bool
     }
 
     // Vérifier le cache d'abord
-    if (_cache.find(ns) != _cache.end()) {
-        for (const auto& entry : _cache[ns]) {
-            if (entry.key == key && entry.isValid()) {
+    std::string nsStr(ns ? ns : "");
+    std::string keyStr(key ? key : "");
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (const auto& entry : _cache[nsStr]) {
+            if (entry.key == keyStr && entry.isValid()) {
                 value = (entry.value == "1" || entry.value == "true");
                 Serial.printf("[NVS] 📖 Chargé booléen depuis cache: %s::%s = %s\n",
                               ns, key, value ? "true" : "false");
@@ -446,14 +507,15 @@ NVSError NVSManager::loadBool(const char* ns, const char* key, bool& value, bool
 
     value = storedValue;
 
-    if (_cache.find(ns) == _cache.end()) {
-        _cache[ns] = std::vector<NVSCacheEntry>();
+    if (_cache.find(nsStr) == _cache.end()) {
+        _cache[nsStr] = std::vector<NVSCacheEntry>();
     }
 
     bool found = false;
-    for (auto& entry : _cache[ns]) {
-        if (entry.key == key) {
-            entry.value = value ? "1" : "0";
+    std::string valueStr = value ? "1" : "0";
+    for (auto& entry : _cache[nsStr]) {
+        if (entry.key == keyStr) {
+            entry.value = valueStr;
             entry.timestamp = millis();
             entry.calculateChecksum();
             found = true;
@@ -462,48 +524,138 @@ NVSError NVSManager::loadBool(const char* ns, const char* key, bool& value, bool
     }
 
     if (!found) {
-        if (_cache[ns].size() >= _maxCacheSize) {
-            _cache[ns].erase(_cache[ns].begin());
+        if (_cache[nsStr].size() >= _maxCacheSize) {
+            _cache[nsStr].erase(_cache[nsStr].begin());
         }
-        _cache[ns].push_back(NVSCacheEntry(key, value ? "1" : "0"));
+        _cache[nsStr].push_back(NVSCacheEntry(key, valueStr.c_str()));
     }
 
     return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::saveInt(const char* ns, const char* key, int value) {
-    String valueStr = String(value);
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) {
+        return NVSError::WRITE_FAILED;
+    }
+
+    NVSError keyError = validateKey(key);
+    if (keyError != NVSError::SUCCESS) {
+        logError(keyError, "saveInt", ns, key);
+        return keyError;
+    }
+
+    // Convertir en String pour vérification cache
+    char valueStr[16];
+    snprintf(valueStr, sizeof(valueStr), "%d", value);
+    
+    // Vérifier le cache pour éviter les écritures inutiles
+    std::string nsStr(ns ? ns : "");
+    std::string keyStr(key ? key : "");
+    std::string valueStrStr(valueStr);
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (auto& entry : _cache[nsStr]) {
+            if (entry.key == keyStr && entry.value == valueStrStr && !entry.dirty) {
+                Serial.printf("[NVS] 💾 Valeur inchangée, pas de sauvegarde: %s::%s\n", ns, key);
+                return NVSError::SUCCESS;
+            }
+        }
+    }
+
+    // Si valeur différente, appeler saveString() qui fera l'écriture
     return saveString(ns, key, valueStr);
 }
 
 NVSError NVSManager::loadInt(const char* ns, const char* key, int& value, int defaultValue) {
-    String valueStr;
-    NVSError error = loadString(ns, key, valueStr, String(defaultValue));
-    value = valueStr.toInt();
+    char valueStr[16];
+    char defaultValueStr[16];
+    snprintf(defaultValueStr, sizeof(defaultValueStr), "%d", defaultValue);
+    NVSError error = loadString(ns, key, valueStr, sizeof(valueStr), defaultValueStr);
+    value = atoi(valueStr);
     return error;
 }
 
 NVSError NVSManager::saveFloat(const char* ns, const char* key, float value) {
-    String valueStr = String(value, 2);
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) {
+        return NVSError::WRITE_FAILED;
+    }
+
+    NVSError keyError = validateKey(key);
+    if (keyError != NVSError::SUCCESS) {
+        logError(keyError, "saveFloat", ns, key);
+        return keyError;
+    }
+
+    // Convertir en String pour vérification cache
+    char valueStr[16];
+    snprintf(valueStr, sizeof(valueStr), "%.2f", value);
+    
+    // Vérifier le cache pour éviter les écritures inutiles
+    std::string nsStr(ns ? ns : "");
+    std::string keyStr(key ? key : "");
+    std::string valueStrStr(valueStr);
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (auto& entry : _cache[nsStr]) {
+            if (entry.key == keyStr && entry.value == valueStrStr && !entry.dirty) {
+                Serial.printf("[NVS] 💾 Valeur inchangée, pas de sauvegarde: %s::%s\n", ns, key);
+                return NVSError::SUCCESS;
+            }
+        }
+    }
+
+    // Si valeur différente, appeler saveString() qui fera l'écriture
     return saveString(ns, key, valueStr);
 }
 
 NVSError NVSManager::loadFloat(const char* ns, const char* key, float& value, float defaultValue) {
-    String valueStr;
-    NVSError error = loadString(ns, key, valueStr, String(defaultValue, 2));
-    value = valueStr.toFloat();
+    char valueStr[16];
+    char defaultValueStr[16];
+    snprintf(defaultValueStr, sizeof(defaultValueStr), "%.2f", defaultValue);
+    NVSError error = loadString(ns, key, valueStr, sizeof(valueStr), defaultValueStr);
+    value = atof(valueStr);
     return error;
 }
 
 NVSError NVSManager::saveULong(const char* ns, const char* key, unsigned long value) {
-    String valueStr = String(value);
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) {
+        return NVSError::WRITE_FAILED;
+    }
+
+    NVSError keyError = validateKey(key);
+    if (keyError != NVSError::SUCCESS) {
+        logError(keyError, "saveULong", ns, key);
+        return keyError;
+    }
+
+    // Convertir en String pour vérification cache
+    char valueStr[21];
+    snprintf(valueStr, sizeof(valueStr), "%lu", value);
+    
+    // Vérifier le cache pour éviter les écritures inutiles
+    std::string nsStr(ns ? ns : "");
+    std::string keyStr(key ? key : "");
+    std::string valueStrStr(valueStr);
+    if (_cache.find(nsStr) != _cache.end()) {
+        for (auto& entry : _cache[nsStr]) {
+            if (entry.key == keyStr && entry.value == valueStrStr && !entry.dirty) {
+                Serial.printf("[NVS] 💾 Valeur inchangée, pas de sauvegarde: %s::%s\n", ns, key);
+                return NVSError::SUCCESS;
+            }
+        }
+    }
+
+    // Si valeur différente, appeler saveString() qui fera l'écriture
     return saveString(ns, key, valueStr);
 }
 
 NVSError NVSManager::loadULong(const char* ns, const char* key, unsigned long& value, unsigned long defaultValue) {
-    String valueStr;
-    NVSError error = loadString(ns, key, valueStr, String(defaultValue));
-    value = strtoul(valueStr.c_str(), nullptr, 10);
+    char valueStr[21];
+    char defaultValueStr[21];
+    snprintf(defaultValueStr, sizeof(defaultValueStr), "%lu", defaultValue);
+    NVSError error = loadString(ns, key, valueStr, sizeof(valueStr), defaultValueStr);
+    value = strtoul(valueStr, nullptr, 10);
     return error;
 }
 
@@ -524,7 +676,7 @@ void NVSManager::flushCache() {
                 // Utiliser directement les fonctions primitives pour éviter la récursion
                 NVSError openErr = openNamespace(namespacePair.first.c_str(), false);
                 if (openErr == NVSError::SUCCESS) {
-                    _preferences.putString(entry.key.c_str(), entry.value);
+                    _preferences.putString(entry.key.c_str(), entry.value.c_str());
                     closeNamespace();
                     entry.dirty = false;
                 } else {
@@ -614,9 +766,9 @@ bool NVSManager::isSpaceLow(float threshold) {
 }
 
 bool NVSManager::keyExists(const char* ns, const char* key) {
-    String value;
-    NVSError error = loadString(ns, key, value, "");
-    return (error == NVSError::SUCCESS && value.length() > 0);
+    char value[1] = {0};
+    NVSError error = loadString(ns, key, value, sizeof(value), "");
+    return (error == NVSError::SUCCESS && strlen(value) > 0);
 }
 
 NVSError NVSManager::removeKey(const char* ns, const char* key) {
@@ -1123,72 +1275,157 @@ NVSError NVSManager::migrateFromOldSystem() {
 }
 
 // Phase 2: JSON compression helpers
-NVSError NVSManager::saveJsonCompressed(const char* ns, const char* key, const String& json) {
+NVSError NVSManager::saveJsonCompressed(const char* ns, const char* key, const char* json) {
     Serial.printf("[NVS] Compressing JSON for %s::%s\n", ns, key);
 
-    String compressed = compressJson(json);
+    if (json == nullptr) {
+        json = "";
+    }
+
+    size_t jsonLen = strlen(json);
+    char compressed[2048];
+    if (!compressJson(json, compressed, sizeof(compressed))) {
+        return NVSError::INVALID_VALUE;
+    }
+
     NVSError result = saveString(ns, key, compressed);
 
     if (result == NVSError::SUCCESS) {
-        float ratio = json.length() == 0 ? 0.0f : (static_cast<float>(compressed.length()) / json.length()) * 100.0f;
+        size_t compressedLen = strlen(compressed);
+        float ratio = jsonLen == 0 ? 0.0f : (static_cast<float>(compressedLen) / jsonLen) * 100.0f;
         Serial.printf("[NVS] JSON compressed: %zu -> %zu bytes (%.1f%%)\n",
-                      json.length(), compressed.length(), ratio);
+                      jsonLen, compressedLen, ratio);
     }
 
     return result;
 }
 
-NVSError NVSManager::loadJsonDecompressed(const char* ns, const char* key, String& json, const String& defaultValue) {
+NVSError NVSManager::loadJsonDecompressed(const char* ns, const char* key, char* json, size_t jsonSize, const char* defaultValue) {
     Serial.printf("[NVS] Decompressing JSON for %s::%s\n", ns, key);
 
-    String compressed;
-    NVSError result = loadString(ns, key, compressed, defaultValue);
+    if (json == nullptr || jsonSize == 0) {
+        return NVSError::INVALID_VALUE;
+    }
 
-    if (result == NVSError::SUCCESS && compressed.length() > 0) {
-        json = decompressJson(compressed);
+    char compressed[2048];
+    NVSError result = loadString(ns, key, compressed, sizeof(compressed), defaultValue ? defaultValue : "");
+
+    if (result == NVSError::SUCCESS && strlen(compressed) > 0) {
+        if (!decompressJson(compressed, json, jsonSize)) {
+            if (defaultValue) {
+                strncpy(json, defaultValue, jsonSize - 1);
+                json[jsonSize - 1] = '\0';
+            } else {
+                json[0] = '\0';
+            }
+        }
         Serial.printf("[NVS] JSON decompressed: %zu -> %zu bytes\n",
-                      compressed.length(), json.length());
+                      strlen(compressed), strlen(json));
     } else {
-        json = defaultValue;
+        if (defaultValue) {
+            strncpy(json, defaultValue, jsonSize - 1);
+            json[jsonSize - 1] = '\0';
+        } else {
+            json[0] = '\0';
+        }
     }
 
     return result;
 }
 
-String NVSManager::compressJson(const String& json) {
-    String compressed = json;
-    compressed.replace(" ", "");
-    compressed.replace("\n", "");
-    compressed.replace("\r", "");
-    compressed.replace("\t", "");
+bool NVSManager::compressJson(const char* json, char* out, size_t outSize) {
+    if (json == nullptr || out == nullptr || outSize == 0) {
+        return false;
+    }
 
-    compressed.replace("\"mail\":", "\"m\":");
-    compressed.replace("\"mailNotif\":", "\"mn\":");
-    compressed.replace("\"bouffeMatin\":", "\"bm\":");
-    compressed.replace("\"bouffeMidi\":", "\"bmi\":");
-    compressed.replace("\"bouffeSoir\":", "\"bs\":");
-    compressed.replace("\"threshold\":", "\"th\":");
-    compressed.replace("\"duration\":", "\"dur\":");
-    compressed.replace("\"enabled\":", "\"en\":");
-    compressed.replace("\"temperature\":", "\"temp\":");
-    compressed.replace("\"humidity\":", "\"hum\":");
+    strncpy(out, json, outSize - 1);
+    out[outSize - 1] = '\0';
 
-    return compressed;
+    // Remplacer les espaces blancs
+    size_t len = strlen(out);
+    for (size_t i = 0; i < len; i++) {
+        if (out[i] == ' ' || out[i] == '\n' || out[i] == '\r' || out[i] == '\t') {
+            memmove(out + i, out + i + 1, len - i);
+            len--;
+            i--;
+        }
+    }
+    out[len] = '\0';
+
+    // Remplacer les clés longues par des versions courtes
+    char* pos;
+    const char* replacements[][2] = {
+        {"\"mail\":", "\"m\":"},
+        {"\"mailNotif\":", "\"mn\":"},
+        {"\"bouffeMatin\":", "\"bm\":"},
+        {"\"bouffeMidi\":", "\"bmi\":"},
+        {"\"bouffeSoir\":", "\"bs\":"},
+        {"\"threshold\":", "\"th\":"},
+        {"\"duration\":", "\"dur\":"},
+        {"\"enabled\":", "\"en\":"},
+        {"\"temperature\":", "\"temp\":"},
+        {"\"humidity\":", "\"hum\":"}
+    };
+
+    for (size_t i = 0; i < sizeof(replacements) / sizeof(replacements[0]); i++) {
+        pos = out;
+        while ((pos = strstr(pos, replacements[i][0])) != nullptr) {
+            size_t oldLen = strlen(replacements[i][0]);
+            size_t newLen = strlen(replacements[i][1]);
+            if (len - oldLen + newLen < outSize - 1) {
+                memmove(pos + newLen, pos + oldLen, len - (pos - out) - oldLen + 1);
+                memcpy(pos, replacements[i][1], newLen);
+                len = len - oldLen + newLen;
+                pos += newLen;
+            } else {
+                break;
+            }
+        }
+    }
+
+    return true;
 }
 
-String NVSManager::decompressJson(const String& compressed) {
-    String json = compressed;
-    json.replace("\"m\":", "\"mail\":");
-    json.replace("\"mn\":", "\"mailNotif\":");
-    json.replace("\"bm\":", "\"bouffeMatin\":");
-    json.replace("\"bmi\":", "\"bouffeMidi\":");
-    json.replace("\"bs\":", "\"bouffeSoir\":");
-    json.replace("\"th\":", "\"threshold\":");
-    json.replace("\"dur\":", "\"duration\":");
-    json.replace("\"en\":", "\"enabled\":");
-    json.replace("\"temp\":", "\"temperature\":");
-    json.replace("\"hum\":", "\"humidity\":");
-    return json;
+bool NVSManager::decompressJson(const char* compressed, char* out, size_t outSize) {
+    if (compressed == nullptr || out == nullptr || outSize == 0) {
+        return false;
+    }
+
+    strncpy(out, compressed, outSize - 1);
+    out[outSize - 1] = '\0';
+
+    char* pos;
+    const char* replacements[][2] = {
+        {"\"m\":", "\"mail\":"},
+        {"\"mn\":", "\"mailNotif\":"},
+        {"\"bm\":", "\"bouffeMatin\":"},
+        {"\"bmi\":", "\"bouffeMidi\":"},
+        {"\"bs\":", "\"bouffeSoir\":"},
+        {"\"th\":", "\"threshold\":"},
+        {"\"dur\":", "\"duration\":"},
+        {"\"en\":", "\"enabled\":"},
+        {"\"temp\":", "\"temperature\":"},
+        {"\"hum\":", "\"humidity\":"}
+    };
+
+    size_t len = strlen(out);
+    for (size_t i = 0; i < sizeof(replacements) / sizeof(replacements[0]); i++) {
+        pos = out;
+        while ((pos = strstr(pos, replacements[i][0])) != nullptr) {
+            size_t oldLen = strlen(replacements[i][0]);
+            size_t newLen = strlen(replacements[i][1]);
+            if (len - oldLen + newLen < outSize - 1) {
+                memmove(pos + newLen, pos + oldLen, len - (pos - out) - oldLen + 1);
+                memcpy(pos, replacements[i][1], newLen);
+                len = len - oldLen + newLen;
+                pos += newLen;
+            } else {
+                break;
+            }
+        }
+    }
+
+    return true;
 }
 
 void NVSManager::enableDeferredFlush(bool enable) {
@@ -1226,22 +1463,22 @@ void NVSManager::forceFlush() {
 
     Serial.println(F("[NVS] Forcing flush"));
 
-    for (const String& dirtyKey : _dirtyKeys) {
-        size_t sep = dirtyKey.indexOf("::");
-        if (sep != -1) {
-            String ns = dirtyKey.substring(0, sep);
-            String key = dirtyKey.substring(sep + 2);
+    for (const std::string& dirtyKey : _dirtyKeys) {
+        size_t sep = dirtyKey.find("::");
+        if (sep != std::string::npos) {
+            std::string nsStr = dirtyKey.substr(0, sep);
+            std::string key = dirtyKey.substr(sep + 2);
 
-            if (_cache.find(ns) != _cache.end()) {
-                for (auto& entry : _cache[ns]) {
+            if (_cache.find(nsStr) != _cache.end()) {
+                for (auto& entry : _cache[nsStr]) {
                     if (entry.key == key && entry.dirty) {
-                        NVSError openErr = openNamespace(ns.c_str(), false);
+                        NVSError openErr = openNamespace(nsStr.c_str(), false);
                         if (openErr == NVSError::SUCCESS) {
-                            _preferences.putString(entry.key.c_str(), entry.value);
+                            _preferences.putString(entry.key.c_str(), entry.value.c_str());
                             closeNamespace();
                             entry.dirty = false;
                         } else {
-                            Serial.printf("[NVS] ⚠️ ForceFlush: impossible d'ouvrir %s\n", ns.c_str());
+                            Serial.printf("[NVS] ⚠️ ForceFlush: impossible d'ouvrir %s\n", nsStr.c_str());
                         }
                         break;
                     }
@@ -1356,33 +1593,37 @@ void NVSManager::checkDeferredFlush() {
     }
 }
 
-void NVSManager::addDirtyKey(const String& ns, const char* key) {
+void NVSManager::addDirtyKey(const char* ns, const char* key) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
         Serial.println(F("[NVS] ⚠️ Mutex addDirtyKey"));
         return;
     }
 
-    String dirtyKey = ns + "::" + String(key);
-    for (const String& existing : _dirtyKeys) {
-        if (existing == dirtyKey) {
+    char dirtyKey[64];
+    snprintf(dirtyKey, sizeof(dirtyKey), "%s::%s", ns, key);
+    std::string dirtyKeyStr(dirtyKey);
+    for (const std::string& existing : _dirtyKeys) {
+        if (existing == dirtyKeyStr) {
             return;
         }
     }
 
-    _dirtyKeys.push_back(dirtyKey);
+    _dirtyKeys.push_back(dirtyKeyStr);
 }
 
-void NVSManager::removeDirtyKey(const String& ns, const char* key) {
+void NVSManager::removeDirtyKey(const char* ns, const char* key) {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
         Serial.println(F("[NVS] ⚠️ Mutex removeDirtyKey"));
         return;
     }
 
-    String dirtyKey = ns + "::" + String(key);
+    char dirtyKey[64];
+    snprintf(dirtyKey, sizeof(dirtyKey), "%s::%s", ns, key);
+    std::string dirtyKeyStr(dirtyKey);
     for (auto it = _dirtyKeys.begin(); it != _dirtyKeys.end(); ++it) {
-        if (*it == dirtyKey) {
+        if (*it == dirtyKeyStr) {
             _dirtyKeys.erase(it);
             break;
         }

@@ -126,6 +126,9 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
         wifiStatus = "Déconnecté";
     }
     
+    char timeStr[64];
+    _power.getCurrentTimeString(timeStr, sizeof(timeStr));
+    
     int n = snprintf(message, sizeof(message),
         "%s\n\n"
         "Système: %s\n"
@@ -137,7 +140,7 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
         "WiFi: %s%s\n",
         type,
         sysInfo,
-        _power.getCurrentTimeString().c_str(),
+        timeStr,
         bigDur, smallDur,
         uptimeStr,
         wifiStatus, wifiDetail);

@@ -408,9 +408,9 @@ namespace SleepConfig {
     constexpr uint32_t LIGHT_SLEEP_DURATION_MS = 60000; // 1 minute
     constexpr uint32_t DEEP_SLEEP_DURATION_MS = 3600000; // 1 heure
 
-    // Time validation
-    constexpr time_t EPOCH_MIN_VALID = 1704067200; // 2024-01-01
-    constexpr time_t EPOCH_MAX_VALID = 2524608000; // 2050-01-01
+    // Time validation - Alias vers SystemConfig pour éviter duplication
+    constexpr time_t EPOCH_MIN_VALID = SystemConfig::EPOCH_MIN_VALID;
+    constexpr time_t EPOCH_MAX_VALID = SystemConfig::EPOCH_MAX_VALID;
     
     // Valeurs manquantes ajoutées
     constexpr int16_t TIDE_TRIGGER_THRESHOLD_CM = 10;

@@ -16,12 +16,12 @@ class MainScreenRenderer {
                      uint16_t tankLvl,
                      uint16_t potaLvl,
                      uint16_t lumi,
-                     const String& timeStr,
+                     const char* timeStr,
                      bool wifiConnected,
-                     const String& stationSsid,
-                     const String& stationIp,
-                     const String& apSsid,
-                     const String& apIp);
+                     const char* stationSsid,
+                     const char* stationIp,
+                     const char* apSsid,
+                     const char* apIp);
 };
 
 class CountdownRenderer {
@@ -78,9 +78,9 @@ class InfoScreenRenderer {
                                uint16_t freqWake);
 
   static void appendDiagnosticLine(DisplayView& view,
-                                   Adafruit_SSD1306& display,
-                                   const String& line,
-                                   uint8_t lineIndex);
+                                    Adafruit_SSD1306& display,
+                                    const char* line,
+                                    uint8_t lineIndex);
 };
 
 

@@ -23,7 +23,7 @@ class WifiManager {
   bool connectTo(const char* ssid, const char* password, class DisplayView* disp = nullptr);
 
   // Renvoie le SSID auquel on est connecté ou "".
-  String currentSSID() const;
+  void currentSSID(char* buffer, size_t bufferSize) const;
 
   bool isConnected() const { return WiFi.status() == WL_CONNECTED; }
 
@@ -37,7 +37,7 @@ class WifiManager {
   
   // Nouvelles méthodes pour gestion intelligente du signal
   int8_t getCurrentRSSI() const;
-  String getSignalQuality() const;
+  void getSignalQuality(char* buffer, size_t bufferSize) const;
   bool isSignalStable();
   bool shouldReconnect();
   void checkConnectionStability();
@@ -45,7 +45,7 @@ class WifiManager {
   // Méthodes pour contrôle manuel WiFi
   bool disconnect();
   bool reconnect(class DisplayView* disp = nullptr);
-  String getConnectionStatus() const;
+  void getConnectionStatus(char* buffer, size_t bufferSize) const;
 
  private:
   const Credential* _list;

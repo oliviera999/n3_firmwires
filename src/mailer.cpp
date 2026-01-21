@@ -453,7 +453,10 @@ static const char* buildSystemInfoFooter() {
   int rebootCount;
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
   int minHeap;
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap, 0);
+  // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
+  unsigned long minHeapUL = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, 0);
+  minHeap = static_cast<int>(minHeapUL);
   if (minHeap > 0) {
     written = snprintf(buf, remaining, "- Reboots: %d\n"
                                        "- Min heap: %d bytes\n",
@@ -635,14 +638,14 @@ static const char* buildSystemInfoFooter() {
     remaining -= written;
 
     // Namespace remoteVars (aperçu) - v11.103: Utilisation du gestionnaire NVS centralisé
-    String remoteJson;
-    g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, "");
-    if (remoteJson.length() > 0) {
-      size_t previewLen = min((size_t)200, (size_t)remoteJson.length());
+    char remoteJson[2048];
+    g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, sizeof(remoteJson), "");
+    if (strlen(remoteJson) > 0) {
+      size_t previewLen = min((size_t)200, strlen(remoteJson));
       char previewBuf[201];
-      strncpy(previewBuf, remoteJson.c_str(), previewLen);
+      strncpy(previewBuf, remoteJson, previewLen);
       previewBuf[previewLen] = '\0';
-      if (remoteJson.length() > 200) {
+      if (strlen(remoteJson) > 200) {
         written = snprintf(buf, remaining, "- remoteVars.json: %s...\n", previewBuf);
       } else {
         written = snprintf(buf, remaining, "- remoteVars.json: %s\n", previewBuf);

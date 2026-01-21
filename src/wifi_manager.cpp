@@ -50,14 +50,14 @@ bool WifiManager::connect(DisplayView* disp) {
   Cand initC{ -128,{0},0, WIFI_AUTH_OPEN, false};
   std::vector<Cand> cand(_count, initC);
   for (int j = 0; j < n; ++j) {
-    String ss = WiFi.SSID(j);
+    const char* ss = WiFi.SSID(j).c_str();
     int8_t r = WiFi.RSSI(j);
     uint8_t bssid[6];
     WiFi.BSSID(j, bssid);
     uint8_t ch = WiFi.channel(j);
     wifi_auth_mode_t auth = WiFi.encryptionType(j);
     for (size_t i = 0; i < _count; ++i) {
-      if (strcmp(ss.c_str(), _list[i].ssid) == 0 && r > cand[i].rssi) {
+      if (strcmp(ss, _list[i].ssid) == 0 && r > cand[i].rssi) {
         cand[i].rssi = r;
         memcpy(cand[i].bssid, bssid, 6);
         cand[i].chan = ch;
@@ -109,8 +109,11 @@ bool WifiManager::connect(DisplayView* disp) {
     }
     if (WiFi.status() == WL_CONNECTED) {
       show("WiFi OK");
-      Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", _list[i].ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
-      EventLog::addf("WiFi connected %s IP=%s RSSI=%d", _list[i].ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      IPAddress ip = WiFi.localIP();
+      char ipBuf[16];
+      snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+      Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", _list[i].ssid, ipBuf, WiFi.RSSI());
+      EventLog::addf("WiFi connected %s IP=%s RSSI=%d", _list[i].ssid, ipBuf, WiFi.RSSI());
       WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
       _connecting = false;
       return true;
@@ -130,8 +133,11 @@ bool WifiManager::connect(DisplayView* disp) {
       }
       if (WiFi.status() == WL_CONNECTED) {
         show("WiFi OK");
-        Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm) - 2ème tentative\n", _list[i].ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
-        EventLog::addf("WiFi connected (2nd) %s IP=%s RSSI=%d", _list[i].ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        IPAddress ip = WiFi.localIP();
+        char ipBuf[16];
+        snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm) - 2ème tentative\n", _list[i].ssid, ipBuf, WiFi.RSSI());
+        EventLog::addf("WiFi connected (2nd) %s IP=%s RSSI=%d", _list[i].ssid, ipBuf, WiFi.RSSI());
         WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
         _connecting = false;
         return true;
@@ -192,8 +198,11 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 
   if (WiFi.status() == WL_CONNECTED) {
     show("WiFi OK");
-    Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    EventLog::addf("WiFi manual connected %s IP=%s RSSI=%d", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    IPAddress ip = WiFi.localIP();
+    char ipBuf[16];
+    snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", ssid, ipBuf, WiFi.RSSI());
+    EventLog::addf("WiFi manual connected %s IP=%s RSSI=%d", ssid, ipBuf, WiFi.RSSI());
     WiFi.setSleep(true);
     _lastAttemptMs = millis();
     _connecting = false;
@@ -234,7 +243,10 @@ bool WifiManager::startFallbackAP(){
   bool ok = WiFi.softAP(ssid, nullptr, bestCh, false, 4); // AP ouvert, max 4 clients
   Serial.printf("[WiFi] 📡 softAP %s\n", ok?"✅ OK":"❌ ECHEC");
   if(ok){
-    Serial.printf("[WiFi] 🌐 AP IP: %s\n", WiFi.softAPIP().toString().c_str());
+    IPAddress apIP = WiFi.softAPIP();
+    char apIPBuf[16];
+    snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+    Serial.printf("[WiFi] 🌐 AP IP: %s\n", apIPBuf);
   }
   // En mode APSTA, active un intervalle de retry court pour capter rapidement un réseau connu
   // Objectif: connexion en <= 30 s lorsqu'un SSID connu arrive à portée
@@ -243,8 +255,14 @@ bool WifiManager::startFallbackAP(){
   return ok;
 }
 
-String WifiManager::currentSSID() const {
-  return (WiFi.status() == WL_CONNECTED) ? WiFi.SSID() : String("");
+void WifiManager::currentSSID(char* buffer, size_t bufferSize) const {
+  if (WiFi.status() == WL_CONNECTED) {
+    const char* ssid = WiFi.SSID().c_str();
+    strncpy(buffer, ssid, bufferSize - 1);
+    buffer[bufferSize - 1] = '\0';
+  } else {
+    buffer[0] = '\0';
+  }
 }
 
 void WifiManager::loop(DisplayView* disp){
@@ -286,15 +304,19 @@ int8_t WifiManager::getCurrentRSSI() const {
   return WiFi.RSSI();
 }
 
-String WifiManager::getSignalQuality() const {
+void WifiManager::getSignalQuality(char* buffer, size_t bufferSize) const {
   int8_t rssi = getCurrentRSSI();
+  const char* quality;
   
-  if (rssi >= ::SleepConfig::WIFI_RSSI_EXCELLENT) return "Excellent";
-  if (rssi >= ::SleepConfig::WIFI_RSSI_GOOD) return "Bon";
-  if (rssi >= ::SleepConfig::WIFI_RSSI_FAIR) return "Acceptable";
-  if (rssi >= ::SleepConfig::WIFI_RSSI_POOR) return "Faible";
-  if (rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) return "Très faible";
-  return "Critique";
+  if (rssi >= ::SleepConfig::WIFI_RSSI_EXCELLENT) quality = "Excellent";
+  else if (rssi >= ::SleepConfig::WIFI_RSSI_GOOD) quality = "Bon";
+  else if (rssi >= ::SleepConfig::WIFI_RSSI_FAIR) quality = "Acceptable";
+  else if (rssi >= ::SleepConfig::WIFI_RSSI_POOR) quality = "Faible";
+  else if (rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) quality = "Très faible";
+  else quality = "Critique";
+  
+  strncpy(buffer, quality, bufferSize - 1);
+  buffer[bufferSize - 1] = '\0';
 }
 
 bool WifiManager::isSignalStable() {
@@ -376,9 +398,10 @@ void WifiManager::checkConnectionStability() {
   
   if (WiFi.status() == WL_CONNECTED) {
     int8_t rssi = getCurrentRSSI();
-    String quality = getSignalQuality();
+    char quality[32];
+    getSignalQuality(quality, sizeof(quality));
     
-    Serial.printf("[WiFi] Vérification stabilité - RSSI: %d dBm (%s)\n", rssi, quality.c_str());
+    Serial.printf("[WiFi] Vérification stabilité - RSSI: %d dBm (%s)\n", rssi, quality);
     
     if (shouldReconnect()) {
       Serial.println("[WiFi] Reconnexion intelligente déclenchée");
@@ -408,9 +431,9 @@ bool WifiManager::disconnect() {
     return false;
   }
   
-  String currentSSID = WiFi.SSID();
-  Serial.printf("[WiFi] Déconnexion manuelle de %s\n", currentSSID.c_str());
-  EventLog::addf("WiFi manual disconnect from %s", currentSSID.c_str());
+  const char* currentSSID = WiFi.SSID().c_str();
+  Serial.printf("[WiFi] Déconnexion manuelle de %s\n", currentSSID);
+  EventLog::addf("WiFi manual disconnect from %s", currentSSID);
   
   // Déconnexion propre
   WiFi.disconnect(false, true);
@@ -453,18 +476,24 @@ bool WifiManager::reconnect(DisplayView* disp) {
   return success;
 }
 
-String WifiManager::getConnectionStatus() const {
+void WifiManager::getConnectionStatus(char* buffer, size_t bufferSize) const {
   if (WiFi.status() == WL_CONNECTED) {
-    String ssid = WiFi.SSID();
-    String ip = WiFi.localIP().toString();
+    const char* ssid = WiFi.SSID().c_str();
+    char ipBuf[16];
+    IPAddress ip = WiFi.localIP();
+    snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     int8_t rssi = WiFi.RSSI();
-    String quality = getSignalQuality();
+    char quality[32];
+    getSignalQuality(quality, sizeof(quality));
     
-    return String("Connecté à ") + ssid + " (" + ip + ") - " + quality + " (" + String(rssi) + " dBm)";
+    snprintf(buffer, bufferSize, "Connecté à %s (%s) - %s (%d dBm)", ssid, ipBuf, quality, rssi);
   } else if (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA) {
-    String apIP = WiFi.softAPIP().toString();
-    return String("Mode AP - IP: ") + apIP;
+    char apIPBuf[16];
+    IPAddress apIP = WiFi.softAPIP();
+    snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+    snprintf(buffer, bufferSize, "Mode AP - IP: %s", apIPBuf);
   } else {
-    return "Déconnecté";
+    strncpy(buffer, "Déconnecté", bufferSize - 1);
+    buffer[bufferSize - 1] = '\0';
   }
 }

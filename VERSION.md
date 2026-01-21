@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.155 - 2026-01-17
+
+### Corrections critiques
+
+- ✅ **Correction duplication constantes EPOCH** : Utilisation d'alias dans `SleepConfig` vers `SystemConfig` pour éviter duplication
+- ✅ **Documentation version** : Ajout de la version 11.155 dans l'historique
+
+---
+
 ## Version 11.138 - 2026-01-15
 
 ### Réseau / stabilité

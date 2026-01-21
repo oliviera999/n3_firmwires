@@ -14,17 +14,19 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     // Parcourir tous les GPIO définis dans le mapping
     for (size_t i = 0; i < GPIOMap::MAPPING_COUNT; i++) {
         const GPIOMapping& mapping = GPIOMap::ALL_MAPPINGS[i];
-        String key = String(mapping.gpio);
+        char key[16];
+        snprintf(key, sizeof(key), "%d", mapping.gpio);
         
         // Vérifier si la clé existe dans le document
-        if (!doc.containsKey(key.c_str())) {
+        if (!doc.containsKey(key)) {
             continue; // Ce GPIO n'est pas dans la réponse du serveur
         }
     presentKeys++;
         
-        JsonVariantConst value = doc[key.c_str()];
+        JsonVariantConst value = doc[key];
     Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
-    Serial.printf("[GPIO] key=%s raw=%s\n", key.c_str(), value.as<String>().c_str());
+    const char* valueStr = value.is<const char*>() ? value.as<const char*>() : (value.is<int>() ? "" : "");
+    Serial.printf("[GPIO] key=%s raw=%s\n", key, valueStr);
         
         // Appliquer selon type
         applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
@@ -50,11 +52,12 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
             bool alreadyProcessed = false;
             for (size_t j = 0; j < GPIOMap::MAPPING_COUNT; j++) {
                 const GPIOMapping& mapping = GPIOMap::ALL_MAPPINGS[j];
-                String gpioKey = String(mapping.gpio);
-                if (doc.containsKey(gpioKey.c_str())) {
+                char gpioKey[16];
+                snprintf(gpioKey, sizeof(gpioKey), "%d", mapping.gpio);
+                if (doc.containsKey(gpioKey)) {
                     // Vérifier si ce GPIO correspond à cette clé textuelle
-                    String mappedKey = mapGPIOToConfigKey(mapping.gpio, doc[gpioKey.c_str()]);
-                    if (mappedKey == textKey) {
+                    const char* mappedKey = mapGPIOToConfigKey(mapping.gpio, doc[gpioKey]);
+                    if (mappedKey && strcmp(mappedKey, textKey) == 0) {
                         alreadyProcessed = true;
                         break;
                     }
@@ -163,7 +166,8 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
     }
     // Configuration - appliquée via setters Automatism
     else {
-        Serial.printf("Config GPIO %d = %s\n", gpio, value.as<String>().c_str());
+        const char* valueStr = value.is<const char*>() ? value.as<const char*>() : "";
+        Serial.printf("Config GPIO %d = %s\n", gpio, valueStr);
         
         // v11.77: Appliquer immédiatement les configurations virtuelles
         const GPIOMapping* mapping = GPIOMap::findByGPIO(gpio);
@@ -173,13 +177,13 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                         mapping->type == GPIOType::CONFIG_BOOL)) {
             
             // Mapper GPIO vers clés attendues par applyConfigFromJson
-            String configKey = mapGPIOToConfigKey(gpio, value);
-            if (configKey.length() > 0) {
+            const char* configKey = mapGPIOToConfigKey(gpio, value);
+            if (configKey && strlen(configKey) > 0) {
                 // v11.79: Sécurisation renforcée de l'assignation JSON
                 // Vérifier que le document n'est pas plein avant d'ajouter
                 if (configDoc.size() < 15 && configDoc.memoryUsage() < 900) { // Limites de sécurité renforcées
-                    // Copie sécurisée en évitant les pointeurs temporaires
-                    String keyStr = configKey; // Copie pour éviter les problèmes de pointeur
+                    // Utiliser directement la clé const char*
+                    const char* keyStr = configKey;
                     
                     // v11.80: Conversion selon le type attendu du GPIO (pas le type reçu)
                     // Cela permet de gérer les cas où le serveur envoie des strings au lieu de nombres
@@ -189,10 +193,20 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                     if (mapping->type == GPIOType::CONFIG_INT) {
                         // Pour CONFIG_INT, toujours convertir en int (même si reçu comme string)
                         int intVal = parseInt(value);
+                        
+                        // Validation spécifique pour les heures de nourrissage (GPIO 105, 106, 107)
+                        if (gpio == 105 || gpio == 106 || gpio == 107) {
+                            if (intVal < 0 || intVal > 23) {
+                                Serial.printf("[GPIOParser] ⚠️ Heure invalide GPIO %d: %d (doit être 0-23), ignorée\n", 
+                                             gpio, intVal);
+                                return; // Ignorer la valeur invalide
+                            }
+                        }
+                        
                         configDoc[keyStr] = intVal;
                         assignmentOk = true;
                         Serial.printf("[GPIOParser] GPIO %d (INT) -> %s = %d (converti depuis %s)\n", 
-                                     gpio, keyStr.c_str(), intVal, value.as<String>().c_str());
+                                     gpio, keyStr, intVal, valueStr);
                     }
                     else if (mapping->type == GPIOType::CONFIG_FLOAT) {
                         // Pour CONFIG_FLOAT, toujours convertir en float (même si reçu comme string)
@@ -200,7 +214,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                         configDoc[keyStr] = floatVal;
                         assignmentOk = true;
                         Serial.printf("[GPIOParser] GPIO %d (FLOAT) -> %s = %.2f (converti depuis %s)\n", 
-                                     gpio, keyStr.c_str(), floatVal, value.as<String>().c_str());
+                                     gpio, keyStr, floatVal, valueStr);
                     }
                     else if (mapping->type == GPIOType::CONFIG_BOOL) {
                         // Pour CONFIG_BOOL, utiliser parseBool qui gère les strings
@@ -208,17 +222,17 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                         configDoc[keyStr] = boolVal;
                         assignmentOk = true;
                         Serial.printf("[GPIOParser] GPIO %d (BOOL) -> %s = %s (converti depuis %s)\n", 
-                                     gpio, keyStr.c_str(), boolVal ? "true" : "false", value.as<String>().c_str());
+                                     gpio, keyStr, boolVal ? "true" : "false", valueStr);
                     }
                     else if (mapping->type == GPIOType::CONFIG_STRING) {
                         // Pour CONFIG_STRING, vérifier que c'est bien une string valide
                         if (value.is<const char*>()) {
                             const char* valPtr = value.as<const char*>();
                             if (valPtr != nullptr && strlen(valPtr) < 100) { // Limite de taille
-                                configDoc[keyStr] = String(valPtr);
+                                configDoc[keyStr] = valPtr;
                                 assignmentOk = true;
                                 Serial.printf("[GPIOParser] GPIO %d (STRING) -> %s = '%s'\n", 
-                                             gpio, keyStr.c_str(), valPtr);
+                                             gpio, keyStr, valPtr);
                             } else {
                                 Serial.printf("[GPIOParser] ⚠️ String invalide GPIO %d, ignoré\n", gpio);
                             }
@@ -226,8 +240,8 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                             // Si ce n'est pas une string, convertir en string
                             configDoc[keyStr] = value.as<String>();
                             assignmentOk = true;
-                            Serial.printf("[GPIOParser] GPIO %d (STRING) -> %s = '%s' (converti)\n", 
-                                         gpio, keyStr.c_str(), value.as<String>().c_str());
+                                Serial.printf("[GPIOParser] GPIO %d (STRING) -> %s = '%s' (converti)\n", 
+                                         gpio, keyStr, valueStr);
                         }
                     }
                     else {
@@ -247,39 +261,39 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
     }
 }
 
-String GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value) {
+const char* GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value) {
     // Mapper les GPIO virtuels vers les clés attendues par applyConfigFromJson
     switch (gpio) {
         case 100: // EMAIL_ADDR
-            return String("mail");
+            return "mail";
         case 101: // EMAIL_EN  
-            return String("mailNotif");
+            return "mailNotif";
         case 102: // AQ_THRESHOLD
-            return String("aqThreshold");
+            return "aqThreshold";
         case 103: // TANK_THRESHOLD
-            return String("tankThreshold");
+            return "tankThreshold";
         case 104: // HEAT_THRESHOLD
-            return String("chauffageThreshold");
+            return "chauffageThreshold";
         case 105: // FEED_MORNING
-            return String("bouffeMatin");
+            return "bouffeMatin";
         case 106: // FEED_NOON
-            return String("bouffeMidi");
+            return "bouffeMidi";
         case 107: // FEED_EVENING
-            return String("bouffeSoir");
+            return "bouffeSoir";
         case 111: // FEED_BIG_DUR
-            return String("tempsGros");
+            return "tempsGros";
         case 112: // FEED_SMALL_DUR
-            return String("tempsPetits");
+            return "tempsPetits";
         case 113: // REFILL_DUR
-            return String("refillDuration");
+            return "refillDuration";
         case 114: // LIM_FLOOD
-            return String("limFlood");
+            return "limFlood";
         case 115: // WAKEUP
-            return String("forceWakeUp");
+            return "forceWakeUp";
         case 116: // FREQ_WAKEUP
-            return String("FreqWakeUp");
+            return "FreqWakeUp";
         default:
-            return String();
+            return nullptr;
     }
 }
 
@@ -317,13 +331,14 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
             break;
         }
         case GPIOType::CONFIG_STRING: {
-            String stringVal = parseString(value);
-            if (stringVal.length() > 100) {
-                Serial.printf("[NVS] ⚠️ String trop longue pour %s (%u chars), tronquée\n", key, stringVal.length());
-                stringVal = stringVal.substring(0, 100);
+            char stringVal[128];
+            size_t len = parseString(value, stringVal, sizeof(stringVal));
+            if (len > 100) {
+                stringVal[100] = '\0';
+                Serial.printf("[NVS] ⚠️ String trop longue pour %s (%zu chars), tronquée\n", key, len);
             }
             g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
-            Serial.printf("[NVS] Sauvegardé string %s = '%s'\n", key, stringVal.c_str());
+            Serial.printf("[NVS] Sauvegardé string %s = '%s'\n", key, stringVal);
             break;
         }
         default:
@@ -336,10 +351,12 @@ bool GPIOParser::parseBool(JsonVariantConst v) {
     if (v.is<bool>()) return v.as<bool>();
     if (v.is<int>()) return v.as<int>() == 1;
     if (v.is<const char*>()) {
-        String s = String(v.as<const char*>());
-        s.toLowerCase();
-        s.trim();
-        return s == "1" || s == "true" || s == "on" || s == "checked";
+        const char* s = v.as<const char*>();
+        // Comparaison case-insensitive
+        if (strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0 || 
+            strcasecmp(s, "on") == 0 || strcasecmp(s, "checked") == 0) {
+            return true;
+        }
     }
     return false;
 }
@@ -356,8 +373,26 @@ float GPIOParser::parseFloat(JsonVariantConst v) {
     return 0.0f;
 }
 
-String GPIOParser::parseString(JsonVariantConst v) {
-    return v.as<String>();
+size_t GPIOParser::parseString(JsonVariantConst v, char* buffer, size_t bufferSize) {
+    if (!buffer || bufferSize == 0) {
+        return 0;
+    }
+    if (v.is<const char*>()) {
+        const char* str = v.as<const char*>();
+        size_t len = strlen(str);
+        size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
+        strncpy(buffer, str, copyLen);
+        buffer[copyLen] = '\0';
+        return copyLen;
+    } else {
+        // Convertir en string via ArduinoJson
+        String temp = v.as<String>();
+        size_t len = temp.length();
+        size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
+        strncpy(buffer, temp.c_str(), copyLen);
+        buffer[copyLen] = '\0';
+        return copyLen;
+    }
 }
 
 void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {

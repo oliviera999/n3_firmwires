@@ -121,7 +121,11 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
             autoCtrl.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
                 "Bouffe manuelle - Petits poissons",
                 autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-            // TODO: Envoyer l'email via autoCtrl (qui délègue au Mailer)
+            // Envoyer l'email via autoCtrl (qui délègue au Mailer)
+            autoCtrl._mailer.send("Nourrissage manuel - Petits poissons", 
+                                  messageBuffer, 
+                                  "System", 
+                                  autoCtrl.getEmailAddress());
         }
         autoCtrl.armMailBlink();
     }
@@ -147,6 +151,11 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
             autoCtrl.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
                 "Bouffe manuelle - Gros poissons",
                 autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
+            // Envoyer l'email via autoCtrl (qui délègue au Mailer)
+            autoCtrl._mailer.send("Nourrissage manuel - Gros poissons", 
+                                  messageBuffer, 
+                                  "System", 
+                                  autoCtrl.getEmailAddress());
         }
         autoCtrl.armMailBlink();
     }
@@ -270,7 +279,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         if (_dataQueue.size() > 0) replayQueuedData();
     } else {
         _sendState = -1;
-        _dataQueue.push(String(payloadBuffer));
+        _dataQueue.push(payloadBuffer);
     }
 
     return success;
@@ -279,8 +288,8 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     bool ok = _web.fetchRemoteState(doc);
     if (ok && doc.size() > 0) {
-        String jsonStr;
-        serializeJson(doc, jsonStr);
+        char jsonStr[2048];
+        serializeJson(doc, jsonStr, sizeof(jsonStr));
         _config.saveRemoteVars(jsonStr);
         _serverOk = true;
         _recvState = 1;
@@ -321,10 +330,14 @@ void AutomatismSync::registerSendResult(bool success, size_t payloadBytes, uint3
 uint16_t AutomatismSync::replayQueuedData() {
     uint16_t sent = 0;
     while (_dataQueue.size() > 0 && sent < 5) {
-        String payload = _dataQueue.peek();
-        if (_web.postRaw(payload)) {
-            _dataQueue.pop();
-            sent++;
+        char payload[1024];
+        if (_dataQueue.peek(payload, sizeof(payload))) {
+            if (_web.postRaw(payload)) {
+                _dataQueue.pop(payload, sizeof(payload));
+                sent++;
+            } else {
+                break;
+            }
         } else {
             break;
         }
@@ -337,7 +350,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
              ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
-    return _web.postRaw(String(ackPayload));
+    return _web.postRaw(ackPayload);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {

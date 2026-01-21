@@ -5,6 +5,8 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
+#include <string.h>
+#include <ctype.h>
 
 #include "asset_bundler.h"
 #include "event_log.h"
@@ -30,7 +32,9 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
 
     StaticJsonDocument<128> doc;
     doc["status"] = "awake";
-    doc["timestamp"] = ctx.power.getCurrentTimeString();
+    char timeBuf[64];
+    ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+    doc["timestamp"] = timeBuf;
     doc["uptime_ms"] = millis();
 
     ctx.sendJson(req, doc);
@@ -42,7 +46,9 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
 
     StaticJsonDocument<256> doc;
     doc["status"] = "awake";
-    doc["timestamp"] = ctx.power.getCurrentTimeString();
+    char timeBuf[64];
+    ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+    doc["timestamp"] = timeBuf;
     doc["wakeup_source"] = "http_request";
     doc["uptime_ms"] = millis();
 
@@ -55,27 +61,32 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
     Serial.println("[Web] 🔔 Réveil par API POST");
 
     StaticJsonDocument<512> doc;
-    String body = req->_tempObject ? String((char*)req->_tempObject) : "";
+    const char* body = req->_tempObject ? (const char*)req->_tempObject : "";
     DeserializationError error = deserializeJson(doc, body);
     if (error) {
       req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
 
-    String action = doc["action"] | "unknown";
-    String source = doc["source"] | "api";
+    const char* action = doc["action"] | "unknown";
+    const char* source = doc["source"] | "api";
 
-    Serial.printf("[Web] Action de réveil: %s depuis %s\n", action.c_str(), source.c_str());
-    EventLog::addf("Réveil API: %s depuis %s", action.c_str(), source.c_str());
+    Serial.printf("[Web] Action de réveil: %s depuis %s\n", action, source);
+    EventLog::addf("Réveil API: %s depuis %s", action, source);
 
     if (action == "status") {
       StaticJsonDocument<1024> statusDoc;
       statusDoc["status"] = "awake";
-      statusDoc["timestamp"] = ctx.power.getCurrentTimeString();
+      char timeBuf[32];
+      ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+      statusDoc["timestamp"] = timeBuf;
       statusDoc["uptime_ms"] = millis();
       statusDoc["wifi_connected"] = (WiFi.status() == WL_CONNECTED);
       if (WiFi.status() == WL_CONNECTED) {
-        statusDoc["wifi_ip"] = WiFi.localIP().toString();
+        IPAddress ip = WiFi.localIP();
+        char ipBuf[16];
+        snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        statusDoc["wifi_ip"] = ipBuf;
         statusDoc["wifi_rssi"] = WiFi.RSSI();
       }
 
@@ -89,14 +100,18 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
 
       StaticJsonDocument<128> feedDoc;
       feedDoc["status"] = "feeding_triggered";
-      feedDoc["timestamp"] = ctx.power.getCurrentTimeString();
+      char timeBuf[32];
+      ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+      feedDoc["timestamp"] = timeBuf;
 
       ctx.sendJson(req, feedDoc);
     } else {
       StaticJsonDocument<128> respDoc;
       respDoc["status"] = "awake";
       respDoc["action"] = action;
-      respDoc["timestamp"] = ctx.power.getCurrentTimeString();
+      char timeBuf[32];
+      ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+      respDoc["timestamp"] = timeBuf;
 
       ctx.sendJson(req, respDoc);
     }
@@ -112,10 +127,13 @@ void registerWifiStatus(AsyncWebServer& server, WebServerContext& ctx) {
     bool staConnected = WiFi.status() == WL_CONNECTED;
     doc["staConnected"] = staConnected;
     if (staConnected) {
-      doc["staSSID"] = WiFi.SSID();
-      doc["staIP"] = WiFi.localIP().toString();
+      doc["staSSID"] = WiFi.SSID().c_str();
+      IPAddress ip = WiFi.localIP();
+      char ipBuf[16];
+      snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+      doc["staIP"] = ipBuf;
       doc["staRSSI"] = WiFi.RSSI();
-      doc["staMac"] = WiFi.macAddress();
+      doc["staMac"] = WiFi.macAddress().c_str();
     } else {
       doc["staSSID"] = "";
       doc["staIP"] = "";
@@ -127,8 +145,11 @@ void registerWifiStatus(AsyncWebServer& server, WebServerContext& ctx) {
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
     doc["apActive"] = apActive;
     if (apActive) {
-      doc["apSSID"] = WiFi.softAPSSID();
-      doc["apIP"] = WiFi.softAPIP().toString();
+      doc["apSSID"] = WiFi.softAPSSID().c_str();
+      IPAddress apIP = WiFi.softAPIP();
+      char apIPBuf[16];
+      snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+      doc["apIP"] = apIPBuf;
       doc["apClients"] = WiFi.softAPgetStationNum();
     } else {
       doc["apSSID"] = "";
@@ -144,8 +165,10 @@ void registerWifiStatus(AsyncWebServer& server, WebServerContext& ctx) {
 
 void registerServerStatus(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/server-status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    Serial.printf("[Web] 📊 Server status request from %s\n",
-                  req->client()->remoteIP().toString().c_str());
+    IPAddress remoteIP = req->client()->remoteIP();
+    char remoteIPBuf[16];
+    snprintf(remoteIPBuf, sizeof(remoteIPBuf), "%d.%d.%d.%d", remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
+    Serial.printf("[Web] 📊 Server status request from %s\n", remoteIPBuf);
 
     JsonDocument doc;
     doc["heapFree"] = ESP.getFreeHeap();
@@ -157,8 +180,11 @@ void registerServerStatus(AsyncWebServer& server, WebServerContext& ctx) {
     doc["maxConnections"] = NetworkConfig::WEB_SERVER_MAX_CONNECTIONS;
 
     doc["wifiStatus"] = WiFi.status();
-    doc["wifiSSID"] = WiFi.SSID();
-    doc["wifiIP"] = WiFi.localIP().toString();
+    doc["wifiSSID"] = WiFi.SSID().c_str();
+    IPAddress wifiIP = WiFi.localIP();
+    char wifiIPBuf[16];
+    snprintf(wifiIPBuf, sizeof(wifiIPBuf), "%d.%d.%d.%d", wifiIP[0], wifiIP[1], wifiIP[2], wifiIP[3]);
+    doc["wifiIP"] = wifiIPBuf;
     doc["wifiRSSI"] = WiFi.RSSI();
     doc["webSocketClients"] = ctx.realtimeWs.getConnectedClients();
     doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
@@ -183,18 +209,32 @@ void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/api/remote-flags", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
     bool changed = false;
     if (req->hasParam("send", true)) {
-      String v = req->getParam("send", true)->value();
-      v.toLowerCase();
-      v.trim();
-      bool enable = (v == "1" || v == "true" || v == "on");
+      const char* v = req->getParam("send", true)->value().c_str();
+      char vLower[16];
+      strncpy(vLower, v, sizeof(vLower) - 1);
+      vLower[sizeof(vLower) - 1] = '\0';
+      for (char* p = vLower; *p; ++p) *p = tolower(*p);
+      // Trim (simple)
+      char* start = vLower;
+      while (*start == ' ') start++;
+      char* end = start + strlen(start) - 1;
+      while (end > start && *end == ' ') *end-- = '\0';
+      bool enable = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || strcmp(start, "on") == 0);
       ctx.config.setRemoteSendEnabled(enable);
       changed = true;
     }
     if (req->hasParam("recv", true)) {
-      String v = req->getParam("recv", true)->value();
-      v.toLowerCase();
-      v.trim();
-      bool enable = (v == "1" || v == "true" || v == "on");
+      const char* v = req->getParam("recv", true)->value().c_str();
+      char vLower[16];
+      strncpy(vLower, v, sizeof(vLower) - 1);
+      vLower[sizeof(vLower) - 1] = '\0';
+      for (char* p = vLower; *p; ++p) *p = tolower(*p);
+      // Trim (simple)
+      char* start = vLower;
+      while (*start == ' ') start++;
+      char* end = start + strlen(start) - 1;
+      while (end > start && *end == ' ') *end-- = '\0';
+      bool enable = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || strcmp(start, "on") == 0);
       ctx.config.setRemoteRecvEnabled(enable);
       changed = true;
     }
@@ -209,8 +249,10 @@ void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
 
 void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/debug-logs", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    Serial.printf("[Web] 🔍 Debug logs request from %s\n",
-                  req->client()->remoteIP().toString().c_str());
+    IPAddress remoteIP = req->client()->remoteIP();
+    char remoteIPBuf[16];
+    snprintf(remoteIPBuf, sizeof(remoteIPBuf), "%d.%d.%d.%d", remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
+    Serial.printf("[Web] 🔍 Debug logs request from %s\n", remoteIPBuf);
 
     JsonDocument doc;
     doc["system"]["uptime"] = millis();
@@ -220,10 +262,13 @@ void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
     doc["system"]["psramSize"] = ESP.getPsramSize();
 
     doc["wifi"]["status"] = WiFi.status();
-    doc["wifi"]["ssid"] = WiFi.SSID();
-    doc["wifi"]["ip"] = WiFi.localIP().toString();
+    doc["wifi"]["ssid"] = WiFi.SSID().c_str();
+    IPAddress wifiIP = WiFi.localIP();
+    char wifiIPBuf[16];
+    snprintf(wifiIPBuf, sizeof(wifiIPBuf), "%d.%d.%d.%d", wifiIP[0], wifiIP[1], wifiIP[2], wifiIP[3]);
+    doc["wifi"]["ip"] = wifiIPBuf;
     doc["wifi"]["rssi"] = WiFi.RSSI();
-    doc["wifi"]["mac"] = WiFi.macAddress();
+    doc["wifi"]["mac"] = WiFi.macAddress().c_str();
 
     doc["websocket"]["connectedClients"] = ctx.realtimeWs.getConnectedClients();
     doc["websocket"]["isActive"] = ctx.realtimeWs.isRunning();
@@ -309,8 +354,11 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
       bool staConnected = WiFi.status() == WL_CONNECTED;
       fallbackDoc["wifiStaConnected"] = staConnected;
       if (staConnected) {
-        fallbackDoc["wifiStaSSID"] = WiFi.SSID();
-        fallbackDoc["wifiStaIP"] = WiFi.localIP().toString();
+        fallbackDoc["wifiStaSSID"] = WiFi.SSID().c_str();
+        IPAddress staIP = WiFi.localIP();
+        char staIPBuf[16];
+        snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
+        fallbackDoc["wifiStaIP"] = staIPBuf;
         fallbackDoc["wifiStaRSSI"] = WiFi.RSSI();
       } else {
         fallbackDoc["wifiStaSSID"] = "";
@@ -322,8 +370,11 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
       bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
       fallbackDoc["wifiApActive"] = apActive;
       if (apActive) {
-        fallbackDoc["wifiApSSID"] = WiFi.softAPSSID();
-        fallbackDoc["wifiApIP"] = WiFi.softAPIP().toString();
+        fallbackDoc["wifiApSSID"] = WiFi.softAPSSID().c_str();
+        IPAddress apIP = WiFi.softAPIP();
+        char apIPBuf[16];
+        snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+        fallbackDoc["wifiApIP"] = apIPBuf;
         fallbackDoc["wifiApClients"] = WiFi.softAPgetStationNum();
       } else {
         fallbackDoc["wifiApSSID"] = "";
@@ -363,8 +414,11 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
     bool staConnected = WiFi.status() == WL_CONNECTED;
     (*doc)["wifiStaConnected"] = staConnected;
     if (staConnected) {
-      (*doc)["wifiStaSSID"] = WiFi.SSID();
-      (*doc)["wifiStaIP"] = WiFi.localIP().toString();
+      (*doc)["wifiStaSSID"] = WiFi.SSID().c_str();
+      IPAddress staIP = WiFi.localIP();
+      char staIPBuf[16];
+      snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
+      (*doc)["wifiStaIP"] = staIPBuf;
       (*doc)["wifiStaRSSI"] = WiFi.RSSI();
     } else {
       (*doc)["wifiStaSSID"] = "";
@@ -376,8 +430,11 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
     (*doc)["wifiApActive"] = apActive;
     if (apActive) {
-      (*doc)["wifiApSSID"] = WiFi.softAPSSID();
-      (*doc)["wifiApIP"] = WiFi.softAPIP().toString();
+      (*doc)["wifiApSSID"] = WiFi.softAPSSID().c_str();
+      IPAddress apIP = WiFi.softAPIP();
+      char apIPBuf[16];
+      snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+      (*doc)["wifiApIP"] = apIPBuf;
       (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
     } else {
       (*doc)["wifiApSSID"] = "";

@@ -3,7 +3,7 @@
 #include "config.h"
 #include "secrets.h"
 
-bool GPIONotifier::notifyChange(uint8_t gpio, const String& value) {
+bool GPIONotifier::notifyChange(uint8_t gpio, const char* value) {
     // Vérifier mapping existe
     const GPIOMapping* mapping = GPIOMap::findByGPIO(gpio);
     if (!mapping) {
@@ -11,15 +11,16 @@ bool GPIONotifier::notifyChange(uint8_t gpio, const String& value) {
         return false;
     }
     
-    // Construire payload partiel
-    String payload;
-    payload.reserve(128);
-    payload = "api_key=" + String(ApiConfig::API_KEY);
-    payload += "&sensor=esp32-wroom";
-    payload += "&version=" + String(ProjectConfig::VERSION);
-    payload += "&" + String(gpio) + "=" + value;
+    if (value == nullptr) {
+        value = "";
+    }
     
-    Serial.printf("[GPIONotifier] POST instantané: GPIO %d = %s\n", gpio, value.c_str());
+    // Construire payload partiel
+    char payload[256];
+    snprintf(payload, sizeof(payload), "api_key=%s&sensor=esp32-wroom&version=%s&%d=%s",
+             ApiConfig::API_KEY, ProjectConfig::VERSION, gpio, value);
+    
+    Serial.printf("[GPIONotifier] POST instantané: GPIO %d = %s\n", gpio, value);
     
     // Envoi POST via WebClient public method
     WebClient client;
@@ -39,13 +40,17 @@ bool GPIONotifier::notifyActuator(uint8_t gpio, bool state) {
 }
 
 bool GPIONotifier::notifyConfig(uint8_t gpio, int value) {
-    return notifyChange(gpio, String(value));
+    char valueStr[16];
+    snprintf(valueStr, sizeof(valueStr), "%d", value);
+    return notifyChange(gpio, valueStr);
 }
 
 bool GPIONotifier::notifyConfig(uint8_t gpio, float value) {
-    return notifyChange(gpio, String(value, 2));
+    char valueStr[16];
+    snprintf(valueStr, sizeof(valueStr), "%.2f", value);
+    return notifyChange(gpio, valueStr);
 }
 
-bool GPIONotifier::notifyConfig(uint8_t gpio, const String& value) {
+bool GPIONotifier::notifyConfig(uint8_t gpio, const char* value) {
     return notifyChange(gpio, value);
 }

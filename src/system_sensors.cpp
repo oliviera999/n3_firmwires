@@ -67,8 +67,8 @@ SensorReadings SystemSensors::read() {
     float val = _air.robustTemperatureC(); // Garde la méthode robuste pour DHT22
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
     
-    // Validation finale
-    if (isnan(val) || val <= SensorConfig::AirSensor::TEMP_MIN || val >= SensorConfig::AirSensor::TEMP_MAX) {
+    // Validation finale (utilise < et > pour cohérence avec autres validations)
+    if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
       SENSOR_LOG_PRINTF("[SystemSensors] Température air invalide finale: %.1f°C, force NaN\n", val);
       r.tempAir = NAN;
     } else {

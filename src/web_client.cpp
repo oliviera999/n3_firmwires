@@ -21,7 +21,13 @@ static uint32_t crc32(const char* data){
   return ~crc;
 }
 
-WebClient::WebClient(const char* apiKey) : _apiKey(apiKey) {
+WebClient::WebClient(const char* apiKey) {
+  if (apiKey) {
+    strncpy(_apiKey, apiKey, sizeof(_apiKey) - 1);
+    _apiKey[sizeof(_apiKey) - 1] = '\0';
+  } else {
+    _apiKey[0] = '\0';
+  }
   _client.setInsecure();               // accepte tous certificats (à affiner)
   _client.setHandshakeTimeout(12000);  // + de temps pour TLS
   // Désactivation du keep-alive : certaines déconnexions moitié-fermées
@@ -52,14 +58,18 @@ void WebClient::resetTLSClient() {
   }
 }
 
-bool WebClient::httpRequest(const String& url, const String& payload, String& response) {
+bool WebClient::httpRequest(const char* url, const char* payload, char* response, size_t responseSize) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
+  if (url == nullptr || response == nullptr || responseSize == 0) {
+    return false;
+  }
+
   // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t minHeap = ESP.getMinFreeHeap();
   const uint32_t MIN_HEAP_FOR_HTTPS = 45000;  // 45 KB minimum (TLS ~42KB + marge 3KB)
-  bool isSecure = url.startsWith("https://");
+  bool isSecure = (strncmp(url, "https://", 8) == 0);
   
   if (isSecure && freeHeap < MIN_HEAP_FOR_HTTPS) {
     LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
@@ -68,26 +78,30 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     return false;
   }
   
-  size_t payloadLen = payload.length();
+  size_t payloadLen = payload ? strlen(payload) : 0;
   uint32_t requestStartMs = millis();
   const bool debugLogging = (LOG_LEVEL >= LOG_DEBUG) && LogConfig::SERIAL_ENABLED;
   const bool verboseLogging = (LOG_LEVEL >= LOG_VERBOSE) && LogConfig::SERIAL_ENABLED;
 
   if (debugLogging) {
     LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes, timeout=%u ms)",
-        url.c_str(), payloadLen, GlobalTimeouts::HTTP_MAX_MS);
+        url, payloadLen, GlobalTimeouts::HTTP_MAX_MS);
     LOG(LOG_DEBUG, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm",
         WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
-    LOG(LOG_DEBUG, "[HTTP] IP=%s gateway=%s dns=%s",
-        WiFi.localIP().toString().c_str(),
-        WiFi.gatewayIP().toString().c_str(),
-        WiFi.dnsIP().toString().c_str());
+    char ipBuf[16], gwBuf[16], dnsBuf[16];
+    IPAddress ip = WiFi.localIP();
+    snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    IPAddress gw = WiFi.gatewayIP();
+    snprintf(gwBuf, sizeof(gwBuf), "%d.%d.%d.%d", gw[0], gw[1], gw[2], gw[3]);
+    IPAddress dns = WiFi.dnsIP();
+    snprintf(dnsBuf, sizeof(dnsBuf), "%d.%d.%d.%d", dns[0], dns[1], dns[2], dns[3]);
+    LOG(LOG_DEBUG, "[HTTP] IP=%s gateway=%s dns=%s", ipBuf, gwBuf, dnsBuf);
     LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes (min=%u)", freeHeap, minHeap);
 
-    if (verboseLogging && payloadLen > 0) {
+    if (verboseLogging && payloadLen > 0 && payload) {
       const size_t previewLen = payloadLen > 200 ? 200 : payloadLen;
       char previewBuf[201];
-      strncpy(previewBuf, payload.c_str(), previewLen);
+      strncpy(previewBuf, payload, previewLen);
       previewBuf[previewLen] = '\0';
       LOG(LOG_VERBOSE, "[HTTP] Payload (%u/%u): %s%s",
           previewLen,
@@ -116,14 +130,14 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
   }
 
     // Choix du client selon le schéma (HTTP = non-TLS / HTTPS = TLS)
-    bool secure = url.startsWith("https://");
+    bool secure = isSecure;
   WiFiClient plain; // client non-TLS (portée limitée à la fonction)
 
   // Politique de retry exponentiel simple
   const int maxAttempts = 3;
   int attempt = 0;
   int code = -1;
-  response = "";
+  response[0] = '\0';
   
   if (debugLogging) {
     LOG(LOG_DEBUG, "[HTTP] Boucle de retry max=%d", maxAttempts);
@@ -166,18 +180,25 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
     if (debugLogging) {
       LOG(LOG_DEBUG, "[HTTP] POST en cours (elapsed=%lu ms)", attemptStartMs - requestStartMs);
     }
-    code = _http.POST(payload);
+    code = _http.POST(payload ? payload : "");
     unsigned long postDurationMs = millis() - attemptStartMs;
     if (debugLogging) {
       LOG(LOG_DEBUG, "[HTTP] POST terminé en %lu ms", postDurationMs);
     }
     if (code > 0) {
       unsigned long responseStartMs = millis();
-      response = _http.getString();
+      String tempResponse = _http.getString();
+      size_t responseLen = tempResponse.length();
+      if (responseLen >= responseSize) {
+        responseLen = responseSize - 1;
+      }
+      const char* tempResponseStr = tempResponse.c_str();
+      strncpy(response, tempResponseStr, responseLen);
+      response[responseLen] = '\0';
       unsigned long responseDurationMs = millis() - responseStartMs;
       
       if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Réponse reçue code=%d bytes=%u en %lu ms", code, response.length(), responseDurationMs);
+        LOG(LOG_DEBUG, "[HTTP] Réponse reçue code=%d bytes=%u en %lu ms", code, responseLen, responseDurationMs);
       }
 
       if (verboseLogging) {
@@ -187,17 +208,20 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
         LOG(LOG_VERBOSE, "[HTTP] Content-Length=%s", _http.header("Content-Length").c_str());
         LOG(LOG_VERBOSE, "[HTTP] Transfer-Encoding=%s", _http.header("Transfer-Encoding").c_str());
 
-        if (response.length() > 0) {
-          const size_t previewLen = response.length() > 200 ? 200 : response.length();
+        if (responseLen > 0) {
+          const size_t previewLen = responseLen > 200 ? 200 : responseLen;
+          char previewBuf[201];
+          strncpy(previewBuf, response, previewLen);
+          previewBuf[previewLen] = '\0';
           LOG(LOG_VERBOSE, "[HTTP] Response (%u/%u): %s%s",
               previewLen,
-              response.length(),
-              response.substring(0, previewLen).c_str(),
-              response.length() > previewLen ? " ..." : "");
+              responseLen,
+              previewBuf,
+              responseLen > previewLen ? " ..." : "");
         }
       }
 
-      if (response.length() == 0) {
+      if (responseLen == 0) {
         LOG(LOG_WARN, "[HTTP] Réponse vide reçue (code=%d)", code);
       } else if (code >= 400) {
         LOG(LOG_WARN, "[HTTP] Réponse erreur %d", code);
@@ -298,7 +322,7 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
         maxAttempts,
         code,
         (code >= 200 && code < 400) ? "oui" : "non",
-        response.length(),
+        strlen(response),
         ESP.getFreeHeap());
   }
   
@@ -311,7 +335,11 @@ bool WebClient::httpRequest(const String& url, const String& payload, String& re
   
   // Ne pas réactiver le modem-sleep
   WiFi.setSleep(false);
-  return (code >= 200 && code < 400);
+  bool success = (code >= 200 && code < 400);
+  if (!success) {
+    response[0] = '\0';  // En cas d'échec, vider la réponse
+  }
+  return success;
 }
 
 bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
@@ -355,24 +383,28 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   }
 
   // Logs des valeurs après validation
+  char tempWaterStr[16], tempAirStr[16], humidityStr[16];
+  snprintf(tempWaterStr, sizeof(tempWaterStr), isnan(tempWater) ? "NaN" : "%.1f", tempWater);
+  snprintf(tempAirStr, sizeof(tempAirStr), isnan(tempAir) ? "NaN" : "%.1f", tempAir);
+  snprintf(humidityStr, sizeof(humidityStr), isnan(humidity) ? "NaN" : "%.1f", humidity);
   Serial.printf("[SM] Valeurs validées - TempEau: %s, TempAir: %s, Humidité: %s\n",
-               isnan(tempWater) ? "NaN" : String(tempWater).c_str(),
-               isnan(tempAir) ? "NaN" : String(tempAir).c_str(),
-               isnan(humidity) ? "NaN" : String(humidity).c_str());
+               tempWaterStr, tempAirStr, humidityStr);
 
   // Construction d'un payload COMPLET et ORDONNÉ selon la liste attendue par le serveur
-  auto fmtFloat = [](float v) -> String {
-    if (isnan(v)) return String("");
-    char buf[16];
-    int n = snprintf(buf, sizeof(buf), "%.1f", v);
-    return String(buf, n);
+  auto fmtFloat = [](float v, char* buf, size_t bufSize) -> void {
+    if (isnan(v)) {
+      buf[0] = '\0';
+    } else {
+      snprintf(buf, bufSize, "%.1f", v);
+    }
   };
   // Pour les ultrasons: 0 signifie invalide → envoyer champ vide ""
-  auto fmtUltrasonic = [](uint16_t v) -> String {
-    if (v == 0) return String("");
-    char buf[8];
-    int n = snprintf(buf, sizeof(buf), "%u", (unsigned)v);
-    return String(buf, n);
+  auto fmtUltrasonic = [](uint16_t v, char* buf, size_t bufSize) -> void {
+    if (v == 0) {
+      buf[0] = '\0';
+    } else {
+      snprintf(buf, bufSize, "%u", (unsigned)v);
+    }
   };
 
   char payload[512];
@@ -414,12 +446,12 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   char buf_diffMaree[16], buf_lum[16];
   char buf_pumpAqua[2], buf_pumpTank[2], buf_heat[2], buf_uv[2];
   
-  strcpy(buf_tempAir, fmtFloat(tempAir).c_str());
-  strcpy(buf_humid, fmtFloat(humidity).c_str());
-  strcpy(buf_tempWater, fmtFloat(tempWater).c_str());
-  strcpy(buf_wlPota, fmtUltrasonic(m.wlPota).c_str());
-  strcpy(buf_wlAqua, fmtUltrasonic(m.wlAqua).c_str());
-  strcpy(buf_wlTank, fmtUltrasonic(m.wlTank).c_str());
+  fmtFloat(tempAir, buf_tempAir, sizeof(buf_tempAir));
+  fmtFloat(humidity, buf_humid, sizeof(buf_humid));
+  fmtFloat(tempWater, buf_tempWater, sizeof(buf_tempWater));
+  fmtUltrasonic(m.wlPota, buf_wlPota, sizeof(buf_wlPota));
+  fmtUltrasonic(m.wlAqua, buf_wlAqua, sizeof(buf_wlAqua));
+  fmtUltrasonic(m.wlTank, buf_wlTank, sizeof(buf_wlTank));
   snprintf(buf_diffMaree, sizeof(buf_diffMaree), "%d", m.diffMaree);
   snprintf(buf_lum, sizeof(buf_lum), "%u", m.luminosite);
   snprintf(buf_pumpAqua, sizeof(buf_pumpAqua), "%d", m.pumpAqua ? 1 : 0);
@@ -593,27 +625,30 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     return false;
   }
   
-  // Créer String une seule fois après lecture complète (taille connue)
-  String payload = String(payloadBuffer);
-  
   // Log détaillé de la réponse
   Serial.println(F("[GET] === RÉPONSE REMOTE STATE ==="));
-  if (payload.length() <= 600) {
-    Serial.printf("[GET] %s\n", payload.c_str());
+  if (totalRead <= 600) {
+    Serial.printf("[GET] %s\n", payloadBuffer);
   } else {
-    Serial.printf("[GET] %s ... (truncated)\n", payload.substring(0,600).c_str());
-    Serial.printf("[GET] ... (%u bytes restants)\n", payload.length() - 600);
+    char preview[601];
+    strncpy(preview, payloadBuffer, 600);
+    preview[600] = '\0';
+    Serial.printf("[GET] %s ... (truncated)\n", preview);
+    Serial.printf("[GET] ... (%u bytes restants)\n", totalRead - 600);
   }
   Serial.println(F("[GET] === FIN RÉPONSE ==="));
   
-  // Parser le JSON depuis le String
+  // Parser le JSON depuis le buffer directement
   unsigned long parseStartMs = millis();
-  DeserializationError err = deserializeJson(doc, payload);
+  DeserializationError err = deserializeJson(doc, payloadBuffer);
   unsigned long parseDurationMs = millis() - parseStartMs;
   
   if (err) {
     Serial.printf("[GET] ❌ JSON parse error: %s (parsing took %lu ms)\n", err.c_str(), parseDurationMs);
-    Serial.printf("[GET] Payload preview (first 200 chars): %.200s\n", payload.c_str());
+    char preview[201];
+    strncpy(preview, payloadBuffer, 200);
+    preview[200] = '\0';
+    Serial.printf("[GET] Payload preview (first 200 chars): %s\n", preview);
     if (hasMutex) TLSMutex::release();
     return false;
   }
@@ -660,7 +695,6 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   Serial.println(F("=== DÉBUT HEARTBEAT ==="));
   Serial.printf("[HB] Timestamp: %lu ms\n", hbStartMs);
   
-  String payload;
   const DiagnosticStats& s = diag.getStats();
   
   // Construction du payload avec logs détaillés
@@ -686,16 +720,16 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   Serial.printf("[HB] Reboot count: %u\n", s.rebootCount);
   Serial.printf("[HB] WiFi status: %d, RSSI: %d\n", WiFi.status(), WiFi.RSSI());
   
-  String resp;
+  char resp[1024];
   char heartbeatUrl[256];
   ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
-  bool success = httpRequest(heartbeatUrl, pay2, resp);
+  bool success = httpRequest(heartbeatUrl, pay2, resp, sizeof(resp));
   
   unsigned long hbDurationMs = millis() - hbStartMs;
   Serial.printf("[HB] === FIN HEARTBEAT ===\n");
   Serial.printf("[HB] Durée totale: %lu ms\n", hbDurationMs);
   Serial.printf("[HB] Succès: %s\n", success ? "OUI" : "NON");
-  Serial.printf("[HB] Réponse: %s\n", resp.c_str());
+  Serial.printf("[HB] Réponse: %s\n", resp);
   Serial.println(F("========================="));
   
   return success;
@@ -703,9 +737,14 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
 
 // v11.70: makeSkeleton() supprimé - jamais utilisé (includeSkeleton toujours false)
 
-bool WebClient::postRaw(const String& payload){
+bool WebClient::postRaw(const char* payload){
   if (!config.isRemoteSendEnabled()) {
     Serial.println(F("[PR] ⛔ Envoi distant désactivé (config) - SKIP"));
+    return false;
+  }
+  
+  if (payload == nullptr) {
+    Serial.println(F("[PR] ⛔ Payload null - SKIP"));
     return false;
   }
   
@@ -717,26 +756,27 @@ bool WebClient::postRaw(const String& payload){
   
   // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
   unsigned long prStartMs = millis();
-  size_t payloadLen = payload.length();
+  size_t payloadLen = strlen(payload);
   Serial.println(F("=== DÉBUT POSTRAW ==="));
   Serial.printf("[PR] Timestamp: %lu ms\n", prStartMs);
   Serial.printf("[PR] Payload input: %u bytes\n", payloadLen);
   
   // Utiliser un buffer dynamique pour éviter String
   // Taille estimée: payload + api_key + sensor + clés + padding
-  size_t estimatedSize = payloadLen + _apiKey.length() + strlen(ProjectConfig::BOARD_TYPE) + 32;
+  size_t estimatedSize = payloadLen + strlen(_apiKey) + strlen(ProjectConfig::BOARD_TYPE) + 32;
   char* fullBuffer = (char*)malloc(estimatedSize);
   if (!fullBuffer) {
     Serial.println(F("[PR] ❌ Malloc failed for payload"));
+    TLSMutex::release();
     return false;
   }
 
   // Ajoute api_key et sensor si absents
-  bool hasApi = (payload.indexOf("api_key=") == 0); // Starts with
+  bool hasApi = (strncmp(payload, "api_key=", 8) == 0); // Starts with
   Serial.printf("[PR] Has API key: %s\n", hasApi ? "OUI" : "NON");
   
   if (!hasApi) {
-    snprintf(fullBuffer, estimatedSize, "api_key=%s&sensor=%s", _apiKey.c_str(), ProjectConfig::BOARD_TYPE);
+    snprintf(fullBuffer, estimatedSize, "api_key=%s&sensor=%s", _apiKey, ProjectConfig::BOARD_TYPE);
     if (payloadLen > 0) {
       size_t currentLen = strlen(fullBuffer);
       if (currentLen + 1 < estimatedSize) {
@@ -744,25 +784,25 @@ bool WebClient::postRaw(const String& payload){
       }
       currentLen = strlen(fullBuffer);
       if (currentLen < estimatedSize) {
-        strncat(fullBuffer, payload.c_str(), estimatedSize - currentLen - 1);
+        strncat(fullBuffer, payload, estimatedSize - currentLen - 1);
       }
     }
     Serial.printf("[PR] Full payload constructed: %u bytes\n", strlen(fullBuffer));
   } else {
-    strncpy(fullBuffer, payload.c_str(), estimatedSize - 1);
+    strncpy(fullBuffer, payload, estimatedSize - 1);
     fullBuffer[estimatedSize - 1] = '\0';
     Serial.println(F("[PR] Using payload as-is (already has API key)"));
   }
 
   Serial.printf("[PR] Final payload size: %u bytes\n", strlen(fullBuffer));
-  Serial.printf("[PR] API Key: %s\n", _apiKey.c_str());
+  Serial.printf("[PR] API Key: %s\n", _apiKey);
   Serial.printf("[PR] Sensor: %s\n", ProjectConfig::BOARD_TYPE);
 
-  String respPrimary;
+  char respPrimary[1024];
   Serial.println(F("[PR] Sending to primary server..."));
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-  bool okPrimary = httpRequest(postDataUrl, fullBuffer, respPrimary);
+  bool okPrimary = httpRequest(postDataUrl, fullBuffer, respPrimary, sizeof(respPrimary));
   Serial.printf("[PR] Primary server result: %s\n", okPrimary ? "SUCCESS" : "FAILED");
   
   free(fullBuffer); // Libérer la mémoire

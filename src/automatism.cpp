@@ -310,6 +310,9 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
         wifiStatus = "Déconnecté";
     }
     
+    char timeStr[64];
+    _power.getCurrentTimeString(timeStr, sizeof(timeStr));
+    
     int n = snprintf(buffer, bufferSize,
         "%s\n\n"
         "Système: %s\n"
@@ -321,7 +324,7 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
         "WiFi: %s%s\n",
         type,
         sysInfo,
-        _power.getCurrentTimeString().c_str(),
+        timeStr,
         bigDur, smallDur,
         uptimeStr,
         wifiStatus, wifiDetail);
@@ -399,16 +402,16 @@ void Automatism::restoreActuatorState() {
 
 bool Automatism::restoreRemoteConfigFromCache() {
     // Chargement config depuis NVS
-    String json;
-    if (_config.loadRemoteVars(json)) {
+    char json[2048];
+    if (_config.loadRemoteVars(json, sizeof(json))) {
         JsonDocument doc;
         deserializeJson(doc, json);
         
         // Charger l'email directement depuis NVS si disponible
-        String emailFromNVS;
-        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "gpio_email", emailFromNVS, "") == NVSError::SUCCESS) {
-            if (emailFromNVS.length() > 0) {
-                strncpy(_emailAddress, emailFromNVS.c_str(), EmailConfig::MAX_EMAIL_LENGTH - 1);
+        char emailFromNVS[128];
+        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "gpio_email", emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
+            if (strlen(emailFromNVS) > 0) {
+                strncpy(_emailAddress, emailFromNVS, EmailConfig::MAX_EMAIL_LENGTH - 1);
                 _emailAddress[EmailConfig::MAX_EMAIL_LENGTH - 1] = '\0';
             }
         }
