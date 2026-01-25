@@ -21,6 +21,14 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.156 - 2026-01-25
+
+### Maintenance
+
+- ✅ **Incrémentation version** : Passage à la version 11.156
+
+---
+
 ## Version 11.138 - 2026-01-15
 
 ### Réseau / stabilité

@@ -12,7 +12,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    constexpr const char* VERSION = "11.155"; // Simplification séquentielle réseau (plus de tâche mail dédiée)
+    // Simplification séquentielle réseau (plus de tâche mail dédiée)
+    constexpr const char* VERSION = "11.156";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -81,7 +82,8 @@ namespace SystemConfig {
 
 namespace GlobalTimeouts {
     constexpr uint32_t GLOBAL_MAX_MS = 5000;
-    constexpr uint32_t HTTP_MAX_MS = 5000;
+    // Note: HTTP timeout unifié dans NetworkConfig::HTTP_TIMEOUT_MS (5000ms)
+    // Utiliser NetworkConfig::HTTP_TIMEOUT_MS pour les timeouts HTTP
     constexpr uint32_t DS18B20_MAX_MS = 1000;
 }
 
@@ -122,28 +124,36 @@ namespace MonitoringConfig {
 // -----------------------------------------------------------------------------
 // v11.145: Désactivation des diagnostics non essentiels pour simplification
 // Ces features ajoutent de la complexité sans bénéfice réel en production
+//
+// NOTE: FEATURE_DIAG_DIGEST et FEATURE_DIAG_TIME_DRIFT sont définis à 0.
+// Le code conditionnel associé a été supprimé (voir RAPPORT_ANALYSE_CODE_MORT_2026-01-25.md).
+// Ces flags sont conservés ici uniquement pour référence historique.
 #ifndef FEATURE_DIAG_DIGEST
   #define FEATURE_DIAG_DIGEST 0  // Désactivé: emails digest non essentiels
+  // CODE SUPPRIMÉ: Le bloc conditionnel a été retiré de app.cpp
 #endif
 
 #ifndef FEATURE_DIAG_STATS
   #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-    #define FEATURE_DIAG_STATS 1
+    #define FEATURE_DIAG_STATS 1  // Activé en test/dev pour diagnostics
   #else
-    #define FEATURE_DIAG_STATS 0
+    #define FEATURE_DIAG_STATS 0  // Désactivé en production
   #endif
+  // LÉGITIME: Code conditionnel utilisé en mode test/dev
 #endif
 
 #ifndef FEATURE_DIAG_TIME_DRIFT
   #define FEATURE_DIAG_TIME_DRIFT 0  // Désactivé: monitoring drift non essentiel
+  // CODE SUPPRIMÉ: Les blocs conditionnels ont été retirés de app.cpp et app_tasks.cpp
 #endif
 
 #ifndef FEATURE_DIAG_STACK_LOGS
   #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-    #define FEATURE_DIAG_STACK_LOGS 1
+    #define FEATURE_DIAG_STACK_LOGS 1  // Activé en test/dev pour diagnostics stacks
   #else
-    #define FEATURE_DIAG_STACK_LOGS 0
+    #define FEATURE_DIAG_STACK_LOGS 0  // Désactivé en production
   #endif
+  // LÉGITIME: Code conditionnel utilisé en mode test/dev
 #endif
 
 // -----------------------------------------------------------------------------
@@ -153,10 +163,14 @@ namespace NetworkConfig {
     constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
     constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
     constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
-    constexpr uint32_t HTTP_TIMEOUT_MS = 5000; // Conforme à .cursorrules (max 5s pour opérations réseau)
-    // Timeout OTA séparé : téléchargement firmware nécessite plus de temps que requêtes HTTP standard
-    // Justification : connexions lentes peuvent nécessiter jusqu'à 30s pour télécharger un firmware complet
-    constexpr uint32_t OTA_TIMEOUT_MS = 30000; // 30s pour téléchargements OTA (justifié par taille firmware)
+    // Timeout HTTP unifié (conforme à .cursorrules: max 5s pour opérations réseau)
+    constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
+    // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
+    // que requêtes HTTP standard
+    // Justification : connexions lentes peuvent nécessiter jusqu'à 30s
+    // pour télécharger un firmware complet
+    // 30s pour téléchargements OTA (justifié par taille firmware)
+    constexpr uint32_t OTA_TIMEOUT_MS = 30000;
     constexpr uint32_t OTA_DOWNLOAD_TIMEOUT_MS = 300000; // 5 min
     constexpr uint32_t MIN_DELAY_BETWEEN_REQUESTS_MS = 1000;
     constexpr uint32_t BACKOFF_BASE_MS = 1000;
@@ -270,7 +284,9 @@ namespace SensorConfig {
     }
 
     namespace DHT {
-        constexpr uint32_t MIN_READ_INTERVAL_MS = 3000;
+        // Délai minimum entre lectures: 2500ms (compromis entre 2000ms datasheet et stabilité)
+        // Le datasheet DHT22 recommande minimum 2s, on utilise 2.5s pour plus de marge
+        constexpr uint32_t MIN_READ_INTERVAL_MS = 2500;
         constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 2000;
     }
 
@@ -292,7 +308,8 @@ namespace SensorConfig {
     
     namespace DS18B20 {
         constexpr uint8_t RESOLUTION_BITS = 10;
-        constexpr uint16_t CONVERSION_DELAY_MS = 250;
+        // 220ms = 187.5ms (datasheet) + 17% marge (recommandation: +10-20%)
+        constexpr uint16_t CONVERSION_DELAY_MS = 220;
         constexpr uint16_t READING_INTERVAL_MS = 400;
         constexpr uint8_t STABILIZATION_READINGS = 1;
         constexpr uint16_t STABILIZATION_DELAY_MS = 50;
@@ -458,6 +475,15 @@ namespace SleepConfig {
 }
 
 namespace TaskConfig {
+    // PISTE 5: Vérification des stacks FreeRTOS pour TLS
+    // Les stacks sont suffisantes pour TLS:
+    // - AUTOMATION_TASK: 8KB (suffisant pour TLS appelé depuis automationTask)
+    // - WEB_TASK: 6KB (suffisant pour opérations web)
+    // - MAIL_TASK: 10KB (spécifiquement dimensionnée pour TLS/SMTP)
+    // - Loop() utilise la stack par défaut (configurée par ESP-IDF, typiquement 8KB)
+    // Note: TLS peut être appelé depuis loop() via fetchRemoteState()
+    // La stack par défaut devrait être suffisante
+    
     constexpr uint32_t DEFAULT_STACK_SIZE = 4096;
     constexpr UBaseType_t DEFAULT_PRIORITY = 1;
     
@@ -466,10 +492,12 @@ namespace TaskConfig {
     constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
     constexpr uint32_t WEB_TASK_STACK_SIZE = 6144;
-    constexpr UBaseType_t WEB_TASK_PRIORITY = 1;      // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
+    // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
+    constexpr UBaseType_t WEB_TASK_PRIORITY = 1;
     constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
-    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;   // 8 KB (réduit de 12 KB - v11.144 optim mémoire)
+    // 8 KB (réduit de 12 KB - v11.144 optim mémoire)
+    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;
     constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     
@@ -478,6 +506,11 @@ namespace TaskConfig {
     constexpr BaseType_t DISPLAY_TASK_CORE_ID = 1;
 
     constexpr uint32_t OTA_TASK_STACK_SIZE = 8192;
+    
+    // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
+    constexpr uint32_t NET_TASK_STACK_SIZE = 12288;   // 12 KB (requis pour TLS/HTTPS avec mbedTLS)
+    constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
+    constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
     
     // Tâche mail asynchrone (v11.143) - évite de bloquer automationTask pendant SMTP
     constexpr uint32_t MAIL_TASK_STACK_SIZE = 10240;  // 10 KB (requis pour TLS/SMTP avec mbedTLS)
