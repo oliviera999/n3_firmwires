@@ -5,6 +5,7 @@
 #include <nvs_flash.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <cstring>
 
 class NVSLockGuard {
 public:
@@ -59,7 +60,7 @@ NVSManager g_nvsManager;
 
 NVSManager::NVSManager()
     : _initialized(false)
-    , _maxCacheSize(50)
+    , _maxCacheSize(20)  // v11.158: Réduit de 50 à 20 pour simplifier et réduire mémoire
     , _deferredFlushEnabled(true)
     , _flushIntervalMs(5000)
     , _lastFlushTime(0)
@@ -354,9 +355,17 @@ NVSError NVSManager::loadString(const char* ns, const char* key, char* value, si
         return openError;
     }
     
-    String tempValue = _preferences.getString(key, defaultValue ? defaultValue : "");
-    strncpy(value, tempValue.c_str(), valueSize - 1);
-    value[valueSize - 1] = '\0';
+    // NOTE: Preferences::getString() retourne String Arduino (limitation de l'API ESP32)
+    // Il n'existe pas de méthode getString() avec buffer char[] dans Preferences
+    // La String est copiée immédiatement dans le buffer et détruite pour minimiser fragmentation
+    String tempValueStr = _preferences.getString(key, defaultValue ? defaultValue : "");
+    if (tempValueStr.length() > 0) {
+      size_t copyLen = tempValueStr.length() < valueSize - 1 ? tempValueStr.length() : valueSize - 1;
+      strncpy(value, tempValueStr.c_str(), copyLen);
+      value[copyLen] = '\0';
+    } else {
+      value[0] = '\0';
+    }
     closeNamespace();
     
     // Mettre à jour le cache
@@ -366,11 +375,11 @@ NVSError NVSManager::loadString(const char* ns, const char* key, char* value, si
     
     // Chercher une entrée existante
     bool found = false;
-    std::string tempValueStr(tempValue.c_str());
+    std::string tempValueStrStr(tempValueStr.c_str());
     std::string defaultValueStr(defaultValue ? defaultValue : "");
     for (auto& entry : _cache[nsStr]) {
         if (entry.key == keyStr) {
-            entry.value = tempValueStr;
+            entry.value = tempValueStrStr;
             entry.timestamp = millis();
             entry.calculateChecksum();
             found = true;
@@ -379,11 +388,11 @@ NVSError NVSManager::loadString(const char* ns, const char* key, char* value, si
     }
     
     // Ajouter une nouvelle entrée si pas trouvée
-    if (!found && tempValueStr != defaultValueStr) {
+    if (!found && tempValueStrStr != defaultValueStr) {
         if (_cache[nsStr].size() >= _maxCacheSize) {
             _cache[nsStr].erase(_cache[nsStr].begin());
         }
-        _cache[nsStr].push_back(NVSCacheEntry(key, tempValue.c_str()));
+        _cache[nsStr].push_back(NVSCacheEntry(key, tempValueStrStr.c_str()));
     }
     
     Serial.printf("[NVS] 📖 Chargé: %s::%s = %s\n", ns, key, value);
@@ -1094,15 +1103,16 @@ NVSError NVSManager::migrateFromOldSystem() {
             nvs_entry_info_t info;
             nvs_entry_info(it, &info);
 
-            String newKey = String(rule.keyPrefix) + info.key;
-            if (newKey.length() > 15) {
+            char newKey[128];
+            snprintf(newKey, sizeof(newKey), "%s%s", rule.keyPrefix ? rule.keyPrefix : "", info.key);
+            if (strlen(newKey) > 15) {
                 Serial.printf("[NVS] ⚠️ Clé ignorée (nom >15 caractères): %s/%s -> %s\n",
-                              rule.oldNamespace, info.key, newKey.c_str());
+                              rule.oldNamespace, info.key, newKey);
                 findErr = nvs_entry_next(&it);
                 continue;
             }
 
-            if (keyExists(newHandle, newKey.c_str(), info.type)) {
+            if (keyExists(newHandle, newKey, info.type)) {
                 findErr = nvs_entry_next(&it);
                 continue; // Donnée déjà migrée
             }
@@ -1114,7 +1124,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_U8: {
                     uint8_t value = 0;
                     readErr = nvs_get_u8(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_u8(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_u8(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1122,7 +1132,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_I8: {
                     int8_t value = 0;
                     readErr = nvs_get_i8(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_i8(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_i8(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1130,7 +1140,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_U16: {
                     uint16_t value = 0;
                     readErr = nvs_get_u16(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_u16(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_u16(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1138,7 +1148,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_I16: {
                     int16_t value = 0;
                     readErr = nvs_get_i16(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_i16(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_i16(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1146,7 +1156,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_U32: {
                     uint32_t value = 0;
                     readErr = nvs_get_u32(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_u32(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_u32(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1154,7 +1164,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_I32: {
                     int32_t value = 0;
                     readErr = nvs_get_i32(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_i32(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_i32(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1162,7 +1172,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_U64: {
                     uint64_t value = 0;
                     readErr = nvs_get_u64(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_u64(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_u64(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1170,7 +1180,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_I64: {
                     int64_t value = 0;
                     readErr = nvs_get_i64(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_i64(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_i64(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;
@@ -1181,7 +1191,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                     if (readErr == ESP_OK && length > 0) {
                         std::vector<char> buffer(length);
                         readErr = nvs_get_str(oldHandle, info.key, buffer.data(), &length);
-                        if (readErr == ESP_OK && nvs_set_str(newHandle, newKey.c_str(), buffer.data()) == ESP_OK) {
+                        if (readErr == ESP_OK && nvs_set_str(newHandle, newKey, buffer.data()) == ESP_OK) {
                             copied = true;
                         }
                     }
@@ -1192,14 +1202,14 @@ NVSError NVSManager::migrateFromOldSystem() {
                     readErr = nvs_get_blob(oldHandle, info.key, nullptr, &length);
                     if (readErr == ESP_OK) {
                         if (length == 0) {
-                            if (nvs_set_blob(newHandle, newKey.c_str(), nullptr, 0) == ESP_OK) {
+                            if (nvs_set_blob(newHandle, newKey, nullptr, 0) == ESP_OK) {
                                 copied = true;
                             }
                         } else {
                             std::vector<uint8_t> buffer(length);
                             readErr = nvs_get_blob(oldHandle, info.key, buffer.data(), &length);
                             if (readErr == ESP_OK &&
-                                nvs_set_blob(newHandle, newKey.c_str(), buffer.data(), length) == ESP_OK) {
+                                nvs_set_blob(newHandle, newKey, buffer.data(), length) == ESP_OK) {
                                 copied = true;
                             }
                         }
@@ -1210,7 +1220,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_DOUBLE: {
                     double value = 0.0;
                     readErr = nvs_get_double(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_double(newHandle, newKey.c_str(), value) == ESP_OK) {
+                    if (readErr == ESP_OK && nvs_set_double(newHandle, newKey, value) == ESP_OK) {
                         copied = true;
                     }
                     break;

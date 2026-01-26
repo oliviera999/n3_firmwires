@@ -28,9 +28,9 @@ class SystemSensors {
   uint16_t getAquaMax() const { return _aquaMax; }
   void resetAquaMax() { _aquaMax = 0; }
  private:
-  UltrasonicManager _usAqua{Pins::ULTRASON_AQUA};
-  UltrasonicManager _usTank{Pins::ULTRASON_TANK};
-  UltrasonicManager _usPota{Pins::ULTRASON_POTA};
+  UltrasonicManager _usAqua{Pins::ULTRASON_AQUA, "Ultrasonic-Aqua"};
+  UltrasonicManager _usTank{Pins::ULTRASON_TANK, "Ultrasonic-Tank"};
+  UltrasonicManager _usPota{Pins::ULTRASON_POTA, "Ultrasonic-Pota"};
   AirSensor _air;
   WaterTempSensor _water;
   uint16_t _aquaMax{0};

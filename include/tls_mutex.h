@@ -20,9 +20,11 @@
 #include <Arduino.h>
 
 // Seuil minimum de heap requis pour une connexion TLS sécurisée
-// SMTP/HTTPS + buffer = ~42KB, marge de 3KB pour les allocations dynamiques
-// Note: seuil abaissé à 45KB pour maximiser les chances d'envoi
-constexpr uint32_t TLS_MIN_HEAP_BYTES = 45000;
+// SMTP/HTTPS + buffer = ~42KB, marge augmentée pour éviter allocations à la limite
+// PISTE 2: Augmenté de 45KB à 52000 (52KB) pour marge de sécurité plus importante
+// v11.157: Augmenté à 62000 (62KB) pour résoudre échecs allocation mémoire TLS
+// Le handshake TLS nécessite ~42-46KB contiguë, avec fragmentation on a besoin de plus
+constexpr uint32_t TLS_MIN_HEAP_BYTES = 62000;
 
 // Flag global indiquant si le système entre en light sleep
 // Permet de bloquer les nouvelles connexions TLS pendant la transition
@@ -77,14 +79,17 @@ public:
         if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE) {
             // Double vérification après acquisition (le contexte peut avoir changé)
             if (g_enteringLightSleep) {
-                Serial.println(F("[TLS] ⛔ Light sleep détecté après acquisition, libération mutex"));
+                Serial.println(
+                  F("[TLS] ⛔ Light sleep détecté après acquisition, libération mutex"));
                 xSemaphoreGive(_mutex);
                 return false;
             }
             
             freeHeap = ESP.getFreeHeap();
             if (freeHeap < TLS_MIN_HEAP_BYTES) {
-                Serial.printf("[TLS] ⛔ Heap insuffisant après acquisition (%u bytes), libération\n", freeHeap);
+                Serial.printf(
+                  "[TLS] ⛔ Heap insuffisant après acquisition (%u bytes), libération\n",
+                  freeHeap);
                 xSemaphoreGive(_mutex);
                 return false;
             }

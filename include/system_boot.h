@@ -8,7 +8,7 @@ namespace SystemBoot {
 
     // Storage & Network Identifiers
     void setupHostname(char* buffer, size_t bufferSize);
-    void initializeStorage(AppContext& ctx, unsigned long& lastDigestMs, uint32_t& lastDigestSeq);
+    void initializeStorage(AppContext& ctx);
 
     // OTA Validation
     struct OtaState {

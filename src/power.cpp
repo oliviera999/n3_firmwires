@@ -5,6 +5,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -16,9 +17,11 @@
 
 PowerManager::PowerManager()
     : _gmtOffsetSec(SystemConfig::NTP_GMT_OFFSET_SEC), _daylightOffsetSec(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC), _ntpServer(SystemConfig::NTP_SERVER),
-      _lastNtpSync(0), _lastSSID(""), _lastPassword(""), _hasSavedCredentials(false),
-      _lastTimeSave(0), _lastSavedEpoch(0), _lastDriftCorrection(0), _currentDriftPPM(0.0f), _lastSyncEpoch(0),
-      _lastDriftSeconds(0.0f), _defaultDriftAccumulator(0.0f), _measuredDriftAccumulator(0.0f), _sleepRemainderUs(0) {
+      _lastNtpSync(0), _hasSavedCredentials(false),
+      _lastTimeSave(0), _lastSavedEpoch(0), _lastDriftCorrection(0), _currentDriftPPM(0.0f),
+      _lastDriftSeconds(0.0f), _driftAccumulator(0.0f), _sleepRemainderUs(0) {
+  _lastSSID[0] = '\0';
+  _lastPassword[0] = '\0';
 }
 
 void PowerManager::initWatchdog() {
@@ -156,10 +159,8 @@ void PowerManager::initTime() {
   // Initialiser les variables de dérive
   _lastDriftCorrection = 0;
   _currentDriftPPM = 0.0f;
-  _lastSyncEpoch = 0;
   _lastDriftSeconds = 0.0f;
-  _defaultDriftAccumulator = 0.0f;
-  _measuredDriftAccumulator = 0.0f;
+  _driftAccumulator = 0.0f;
   
   // Chargement de l'heure sauvegardée avec fallback robuste
   time_t loadedEpoch = loadTimeWithFallback();
@@ -175,20 +176,8 @@ void PowerManager::initTime() {
   LOG_TIME(LogConfig::LOG_INFO, "Timezone configurée: GMT+%d heures (offset: %d secondes)", 
            _gmtOffsetSec/3600, _gmtOffsetSec);
   
-  // Informations détaillées sur l'état temporel
-  time_t currentEpoch = time(nullptr);
-  struct tm timeinfo;
-  if (localtime_r(&currentEpoch, &timeinfo)) {
-    LOG_TIME(LogConfig::LOG_INFO, "Détails temporels - Année: %d, Mois: %d, Jour: %d, Heure: %d, Min: %d, Sec: %d",
-             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    LOG_TIME(LogConfig::LOG_INFO, "Jour de la semaine: %d, Jour de l'année: %d, DST: %s",
-             timeinfo.tm_wday, timeinfo.tm_yday, timeinfo.tm_isdst ? "OUI" : "NON");
-  }
-  
-  // Informations sur la configuration NTP (offsets désormais gérés par TZ)
-  LOG_NTP(LogConfig::LOG_INFO, "Configuration NTP - Serveur: %s (TZ active)", 
-          _ntpServer);
+  // Informations sur la configuration NTP
+  LOG_NTP(LogConfig::LOG_INFO, "Configuration NTP - Serveur: %s", _ntpServer);
 }
 
 void PowerManager::syncTimeFromNTP() {
@@ -206,20 +195,32 @@ void PowerManager::syncTimeFromNTP() {
   // Configuration NTP avec offset GMT en secondes (utilise les variables membres)
   configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
   
-  // Attente de la synchronisation avec timeout
+  // Tentative rapide de synchronisation (approche hybride)
   struct tm timeinfo;
-  unsigned long startTime = millis();
   bool syncSuccess = false;
+  unsigned long startTime = millis();
   int attempts = 0;
   
-  while (millis() - startTime < 10000) { // 10 secondes max
+  // Tentative immédiate
+  if (getLocalTime(&timeinfo)) {
+    syncSuccess = true;
+  } else {
+    // Retry rapide après 500ms
+    vTaskDelay(pdMS_TO_TICKS(500));
     if (getLocalTime(&timeinfo)) {
       syncSuccess = true;
-      break;
+      attempts = 1;
+    } else {
+      // Fallback: boucle avec timeout de 10 secondes max
+      while ((millis() - startTime) < 10000) {
+        if (getLocalTime(&timeinfo)) {
+          syncSuccess = true;
+          break;
+        }
+        attempts++;
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
     }
-    attempts++;
-    // Utiliser vTaskDelay() pour être conforme aux règles (peut être appelé depuis loop())
-    vTaskDelay(pdMS_TO_TICKS(100));
   }
   
   unsigned long syncDuration = millis() - startTime;
@@ -230,11 +231,41 @@ void PowerManager::syncTimeFromNTP() {
 
     unsigned long syncMillis = millis();
     time_t ntpEpoch = mktime(&timeinfo);
-    _lastSyncEpoch = ntpEpoch;
-    _currentDriftPPM = 0.0f;
-    _lastDriftSeconds = 0.0f;
-    _defaultDriftAccumulator = 0.0f;
-    _measuredDriftAccumulator = 0.0f;
+    
+    // Calcul de la dérive si on avait une heure locale valide
+    if (localBeforeEpoch > 1600000000 && syncMillis > localBeforeMillis) {
+      time_t timeDiff = ntpEpoch - localBeforeEpoch;
+      unsigned long millisDiff = syncMillis - localBeforeMillis;
+      
+      // Calcul de la dérive en PPM (parties par million)
+      if (millisDiff > 0) {
+        float expectedSeconds = millisDiff / 1000.0f;
+        float actualSeconds = static_cast<float>(timeDiff);
+        float driftSeconds = actualSeconds - expectedSeconds;
+        
+        // Éviter division par zéro et calculer PPM
+        if (expectedSeconds > 0.0f) {
+          _currentDriftPPM = (driftSeconds / expectedSeconds) * 1000000.0f;
+          _lastDriftSeconds = driftSeconds;
+          
+          LOG_DRIFT(LogConfig::LOG_INFO, "Dérive mesurée: %.2f PPM (%.2f s sur %.2f s)", 
+                    _currentDriftPPM, driftSeconds, expectedSeconds);
+        } else {
+          _currentDriftPPM = 0.0f;
+          _lastDriftSeconds = 0.0f;
+        }
+      } else {
+        _currentDriftPPM = 0.0f;
+        _lastDriftSeconds = 0.0f;
+      }
+    } else {
+      // Réinitialiser la dérive si pas de mesure valide
+      _currentDriftPPM = 0.0f;
+      _lastDriftSeconds = 0.0f;
+    }
+    
+    // Réinitialiser l'accumulateur de dérive après sync réussie
+    _driftAccumulator = 0.0f;
     _lastDriftCorrection = syncMillis;
 
     LOG_NTP(LogConfig::LOG_INFO, "Synchronisation NTP réussie en %lu ms (%d tentatives)", 
@@ -243,14 +274,6 @@ void PowerManager::syncTimeFromNTP() {
     getCurrentTimeString(timeBuf, sizeof(timeBuf));
     LOG_NTP(LogConfig::LOG_INFO, "Heure NTP: %s (epoch: %lu)", 
             timeBuf, ntpEpoch);
-    
-    // Calcul de la dérive si on avait une heure locale valide
-    if (localBeforeEpoch > 1600000000) {
-      time_t timeDiff = ntpEpoch - localBeforeEpoch;
-      unsigned long millisDiff = syncMillis - localBeforeMillis;
-      LOG_DRIFT(LogConfig::LOG_INFO, "Différence temps local vs NTP: %ld secondes (%lu ms)", 
-                timeDiff, millisDiff);
-    }
 
     _lastNtpSync = syncMillis;
   } else {
@@ -259,41 +282,32 @@ void PowerManager::syncTimeFromNTP() {
   }
 }
 
+// Wrappers pour compatibilité - délèguent vers les méthodes intelligentes
 void PowerManager::saveTimeToFlash() {
-  // Délégation vers la nouvelle méthode intelligente
   smartSaveTime();
 }
 
 void PowerManager::forceSaveTimeToFlash() {
-  time_t currentEpoch = time(nullptr);
-  
-  if (!isValidEpoch(currentEpoch)) {
-    Serial.printf("[Power] Epoch invalide ignoré: %lu\n", currentEpoch);
-    return;
-  }
-  
-  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "rtc_epoch", currentEpoch);
-
-  // Mise à jour des variables de suivi
-  _lastTimeSave = millis();
-  _lastSavedEpoch = currentEpoch;
-  
-  char timeBuf[64];
-  getCurrentTimeString(timeBuf, sizeof(timeBuf));
-  Serial.printf("[Power] Heure sauvegardée de force: %s (epoch: %lu)\n", 
-                timeBuf, currentEpoch);
+  // Forcer la sauvegarde en réinitialisant les variables de suivi
+  _lastTimeSave = 0;
+  _lastSavedEpoch = 0;
+  smartSaveTime();
 }
 
 void PowerManager::loadTimeFromFlash() {
-  // Délégation vers la nouvelle méthode avec fallback
   loadTimeWithFallback();
 }
 
 void PowerManager::updateTime() {
+  // Protection contre débordement de millis() : utiliser soustraction
+  unsigned long now = millis();
+  
   // Synchronisation périodique NTP si WiFi disponible
-  if (WiFi.status() == WL_CONNECTED && 
-      (millis() - _lastNtpSync > NTP_SYNC_INTERVAL || _lastNtpSync == 0)) {
-    syncTimeFromNTP();
+  // Protection débordement: (now - _lastNtpSync) < interval au lieu de (now > _lastNtpSync + interval)
+  if (WiFi.status() == WL_CONNECTED) {
+    if (_lastNtpSync == 0 || (now - _lastNtpSync) >= NTP_SYNC_INTERVAL) {
+      syncTimeFromNTP();
+    }
   }
   
   // Application de la correction de dérive
@@ -312,48 +326,53 @@ void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
   }
 
   time_t epoch = time(nullptr);
-
   struct tm timeinfo;
+  
   if (!localtime_r(&epoch, &timeinfo)) {
+    // Fallback en cas d'erreur
     strncpy(buffer, "00:00:00 01/01/1970", bufferSize - 1);
     buffer[bufferSize - 1] = '\0';
     return;
   }
 
+  // strftime garantit déjà le null-terminator
   strftime(buffer, bufferSize, "%H:%M:%S %d/%m/%Y", &timeinfo);
-  buffer[bufferSize - 1] = '\0'; // Assurer null-terminator
 } 
 
 void PowerManager::saveCurrentWifiCredentials() {
   if (WiFi.status() == WL_CONNECTED) {
-    _lastSSID = WiFi.SSID();
-    _lastPassword = WiFi.psk(); // Récupère le mot de passe actuel
+    strncpy(_lastSSID, WiFi.SSID().c_str(), sizeof(_lastSSID) - 1);
+    _lastSSID[sizeof(_lastSSID) - 1] = '\0';
+    strncpy(_lastPassword, WiFi.psk().c_str(), sizeof(_lastPassword) - 1);
+    _lastPassword[sizeof(_lastPassword) - 1] = '\0';
     _hasSavedCredentials = true;
-    Serial.printf("[Power] Identifiants WiFi sauvegardés: SSID=%s\n", _lastSSID.c_str());
+    Serial.printf("[Power] Identifiants WiFi sauvegardés: SSID=%s\n", _lastSSID);
   } else {
+    _lastSSID[0] = '\0';
+    _lastPassword[0] = '\0';
     _hasSavedCredentials = false;
     Serial.println(F("[Power] Pas de connexion WiFi active - pas d'identifiants à sauvegarder"));
   }
 }
 
 bool PowerManager::reconnectWithSavedCredentials() {
-  if (!_hasSavedCredentials || _lastSSID.isEmpty()) {
+  if (!_hasSavedCredentials || strlen(_lastSSID) == 0) {
     Serial.println(F("[Power] Aucun identifiant WiFi sauvegardé"));
     return false;
   }
   
-  Serial.printf("[Power] Tentative de reconnexion WiFi avec SSID: %s\n", _lastSSID.c_str());
+  Serial.printf("[Power] Tentative de reconnexion WiFi avec SSID: %s\n", _lastSSID);
   
   // Mode station
   WiFi.mode(WIFI_STA);
   
   // Démarrage de la connexion WiFi avec les identifiants sauvegardés
-  if (_lastPassword.isEmpty()) {
+  if (strlen(_lastPassword) == 0) {
     Serial.println(F("[Power] Connexion sans mot de passe"));
-    WiFi.begin(_lastSSID.c_str());
+    WiFi.begin(_lastSSID);
   } else {
     Serial.println(F("[Power] Connexion avec mot de passe"));
-    WiFi.begin(_lastSSID.c_str(), _lastPassword.c_str());
+    WiFi.begin(_lastSSID, _lastPassword);
   }
   
   // Attente de la connexion avec timeout
@@ -374,7 +393,7 @@ bool PowerManager::reconnectWithSavedCredentials() {
     char ipBuf[16];
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     Serial.printf("[Power] Reconnexion WiFi réussie à %s (%s)\n", 
-                  _lastSSID.c_str(), ipBuf);
+                  _lastSSID, ipBuf);
     WiFi.setSleep(true);  // Active le modem-sleep pour économie d'énergie
     
     // Attente stabilisation stack TCP/IP (évite "connection refused" après réveil)
@@ -383,7 +402,7 @@ bool PowerManager::reconnectWithSavedCredentials() {
     return true;
   } else {
     Serial.printf("[Power] Échec de reconnexion WiFi à %s (timeout après %u ms)\n", 
-                  _lastSSID.c_str(), timeoutMs);
+                  _lastSSID, timeoutMs);
     return false;
   }
 }
@@ -442,32 +461,38 @@ void PowerManager::waitForNetworkReady() {
          epoch != 0;
 }
 
-  time_t PowerManager::loadTimeWithFallback() {
+time_t PowerManager::loadTimeWithFallback() {
+  // Liste des fallbacks dans l'ordre de priorité
+  struct Fallback {
+    time_t epoch;
+    const char* name;
+  };
+  
+  // Fallback 1: Epoch sauvegardé en NVS
   unsigned long savedEpochUL;
   g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpochUL, 0);
   time_t savedEpoch = static_cast<time_t>(savedEpochUL);
   
-  // Fallback 1: Epoch sauvegardé valide
-  if (isValidEpoch(savedEpoch)) {
-    Serial.printf("[Power] Epoch sauvegardé valide: %lu\n", savedEpoch);
-    timeval tv = {savedEpoch, 0};
-    settimeofday(&tv, nullptr);
-    return savedEpoch;
+  Fallback fallbacks[] = {
+    {savedEpoch, "sauvegardé"},
+    {SleepConfig::EPOCH_COMPILE_TIME, "compilation"},
+    {SleepConfig::EPOCH_DEFAULT_FALLBACK, "défaut"}
+  };
+  
+  // Essayer chaque fallback dans l'ordre
+  for (size_t i = 0; i < sizeof(fallbacks) / sizeof(fallbacks[0]); i++) {
+    const Fallback& fb = fallbacks[i];
+    if (isValidEpoch(fb.epoch)) {
+      Serial.printf("[Power] Utilisation epoch %s: %lu\n", fb.name, fb.epoch);
+      timeval tv = {fb.epoch, 0};
+      settimeofday(&tv, nullptr);
+      return fb.epoch;
+    }
   }
   
-  // Fallback 2: Epoch de compilation
-  if (isValidEpoch(SleepConfig::EPOCH_COMPILE_TIME)) {
-    Serial.printf("[Power] Utilisation epoch de compilation: %lu\n", SleepConfig::EPOCH_COMPILE_TIME);
-    timeval tv = {SleepConfig::EPOCH_COMPILE_TIME, 0};
-    settimeofday(&tv, nullptr);
-    return SleepConfig::EPOCH_COMPILE_TIME;
-  }
-  
-  // Fallback 3: Epoch par défaut
-  Serial.printf("[Power] Utilisation epoch par défaut: %lu\n", SleepConfig::EPOCH_DEFAULT_FALLBACK);
-  timeval tv = {SleepConfig::EPOCH_DEFAULT_FALLBACK, 0};
-  settimeofday(&tv, nullptr);
-  return SleepConfig::EPOCH_DEFAULT_FALLBACK;
+  // Ne devrait jamais arriver (EPOCH_DEFAULT_FALLBACK devrait être valide)
+  Serial.println(F("[Power] ERREUR: Aucun epoch valide trouvé"));
+  return 0;
 }
 
 void PowerManager::applyDriftCorrection() {
@@ -475,13 +500,19 @@ void PowerManager::applyDriftCorrection() {
   if (!SleepConfig::ENABLE_DRIFT_CORRECTION) {
     return;
   }
-  const unsigned long now = millis();
-
-  if (_lastDriftCorrection != 0 && now - _lastDriftCorrection < SleepConfig::DRIFT_CORRECTION_INTERVAL_MS) {
-    return;
+  
+  // Protection contre débordement de millis()
+  unsigned long now = millis();
+  
+  // Vérifier l'intervalle de correction (protection débordement)
+  if (_lastDriftCorrection != 0) {
+    if ((now - _lastDriftCorrection) < SleepConfig::DRIFT_CORRECTION_INTERVAL_MS) {
+      return;
+    }
   }
 
-  const unsigned long elapsedMs = (_lastDriftCorrection == 0) ? now : (now - _lastDriftCorrection);
+  // Calculer le temps écoulé depuis la dernière correction
+  const unsigned long elapsedMs = (_lastDriftCorrection == 0) ? 0 : (now - _lastDriftCorrection);
   const float elapsedSeconds = elapsedMs / 1000.0f;
 
   if (elapsedSeconds <= 0.0f) {
@@ -489,37 +520,16 @@ void PowerManager::applyDriftCorrection() {
     return;
   }
 
-  if (_lastNtpSync == 0 && SleepConfig::ENABLE_DEFAULT_DRIFT_CORRECTION) {
-    _defaultDriftAccumulator += (SleepConfig::DEFAULT_DRIFT_CORRECTION_PPM * elapsedSeconds) / 1000000.0f;
-    float wholeSeconds = std::trunc(_defaultDriftAccumulator);
-    if (wholeSeconds != 0.0f) {
-      const int correctionSeconds = static_cast<int>(wholeSeconds);
-      time_t currentEpoch = time(nullptr);
-      time_t correctedEpoch = currentEpoch + correctionSeconds;
-
-      if (isValidEpoch(correctedEpoch)) {
-        timeval tv = {correctedEpoch, 0};
-        settimeofday(&tv, nullptr);
-
-        Serial.printf("[Power] Correction de dérive par défaut appliquée: %d s (dérive configurée: %.2f PPM)\n",
-                      correctionSeconds, SleepConfig::DEFAULT_DRIFT_CORRECTION_PPM);
-        smartSaveTime();
-      }
-
-      _defaultDriftAccumulator -= wholeSeconds;
-    }
-
-    _lastDriftCorrection = now;
-    return;
-  }
-
+  // Correction uniquement si on a une sync NTP réussie et une dérive mesurée significative
   if (_lastNtpSync == 0 || std::fabs(_currentDriftPPM) < SleepConfig::DRIFT_CORRECTION_THRESHOLD_PPM) {
     _lastDriftCorrection = now;
     return;
   }
 
-  _measuredDriftAccumulator += (_currentDriftPPM * elapsedSeconds * SleepConfig::DRIFT_CORRECTION_FACTOR) / 1000000.0f;
-  float wholeSeconds = std::trunc(_measuredDriftAccumulator);
+  // Accumuler la dérive avec facteur d'amortissement
+  _driftAccumulator += (_currentDriftPPM * elapsedSeconds * SleepConfig::DRIFT_CORRECTION_FACTOR) / 1000000.0f;
+  float wholeSeconds = std::trunc(_driftAccumulator);
+  
   if (wholeSeconds != 0.0f) {
     const int correctionSeconds = static_cast<int>(wholeSeconds);
     time_t currentEpoch = time(nullptr);
@@ -534,7 +544,7 @@ void PowerManager::applyDriftCorrection() {
       smartSaveTime();
     }
 
-    _measuredDriftAccumulator -= wholeSeconds;
+    _driftAccumulator -= wholeSeconds;
   }
 
   _lastDriftCorrection = now;
@@ -542,23 +552,6 @@ void PowerManager::applyDriftCorrection() {
 
 
 
-void PowerManager::setMeasuredDrift(float driftPpm, float driftSeconds) {
-  _currentDriftPPM = driftPpm;
-  _lastDriftSeconds = driftSeconds;
-  _measuredDriftAccumulator = 0.0f;
-  _defaultDriftAccumulator = 0.0f;
-  _lastDriftCorrection = millis();
-}
-
-void PowerManager::onExternalNtpSync(time_t epoch, unsigned long syncMillis) {
-  _lastSyncEpoch = epoch;
-  _lastNtpSync = syncMillis;
-  _currentDriftPPM = 0.0f;
-  _lastDriftSeconds = 0.0f;
-  _defaultDriftAccumulator = 0.0f;
-  _measuredDriftAccumulator = 0.0f;
-  _lastDriftCorrection = syncMillis;
-}
 
 void PowerManager::smartSaveTime() {
   time_t currentEpoch = time(nullptr);
@@ -570,7 +563,7 @@ void PowerManager::smartSaveTime() {
     return;
   }
   
-  // Logique de sauvegarde intelligente
+  // Logique de sauvegarde intelligente avec protection débordement millis()
   bool shouldSave = false;
   
   // 1. Première sauvegarde
@@ -578,16 +571,22 @@ void PowerManager::smartSaveTime() {
     shouldSave = true;
     Serial.println(F("[Power] Première sauvegarde d'heure"));
   }
-  // 2. Sauvegarde forcée périodique
-  else if (currentMillis - _lastTimeSave > SleepConfig::MAX_SAVE_INTERVAL_MS) {
+  // 2. Sauvegarde forcée périodique (protection débordement: utiliser soustraction)
+  else if ((currentMillis - _lastTimeSave) >= SleepConfig::MAX_SAVE_INTERVAL_MS) {
     shouldSave = true;
     Serial.println(F("[Power] Sauvegarde forcée périodique"));
   }
-  // 3. Sauvegarde si différence significative
-  else if ((currentMillis - _lastTimeSave > SleepConfig::MIN_SAVE_INTERVAL_MS) && 
-           (abs(currentEpoch - _lastSavedEpoch) > SleepConfig::MIN_TIME_DIFF_FOR_SAVE_SEC)) {
-    shouldSave = true;
-    Serial.printf("[Power] Sauvegarde (diff: %ld s)\n", abs(currentEpoch - _lastSavedEpoch));
+  // 3. Sauvegarde si différence significative (protection débordement)
+  else if ((currentMillis - _lastTimeSave) >= SleepConfig::MIN_SAVE_INTERVAL_MS) {
+    // Calcul sécurisé de la différence d'epoch (time_t peut être signé)
+    time_t epochDiff = (currentEpoch > _lastSavedEpoch) ? 
+                       (currentEpoch - _lastSavedEpoch) : 
+                       (_lastSavedEpoch - currentEpoch);
+    
+    if (epochDiff > SleepConfig::MIN_TIME_DIFF_FOR_SAVE_SEC) {
+      shouldSave = true;
+      Serial.printf("[Power] Sauvegarde (diff: %ld s)\n", epochDiff);
+    }
   }
   
   if (!shouldSave) {

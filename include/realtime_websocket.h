@@ -3,7 +3,9 @@
 #include <Arduino.h>
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
+#include <cstring>
 // #include "json_pool.h" - Supprimé
+#include "config.h"  // Pour BufferConfig::JSON_DOCUMENT_SIZE
 #include "sensor_cache.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
@@ -37,24 +39,27 @@ private:
         #endif
     
     // Configuration pour l'optimisation veille
-    static constexpr unsigned long NO_CLIENT_HEARTBEAT_INTERVAL_MS = 30000; // 30s quand aucun client
-    static constexpr unsigned long CLIENT_INACTIVITY_TIMEOUT_MS = 60000;   // 60s avant considérer inactif
+    // 30s quand aucun client
+    static constexpr unsigned long NO_CLIENT_HEARTBEAT_INTERVAL_MS = 30000;
+    // 60s avant considérer inactif
+    static constexpr unsigned long CLIENT_INACTIVITY_TIMEOUT_MS = 60000;
     
     unsigned long lastBroadcast = 0;
     unsigned long lastClientActivity = 0;
     unsigned long lastNoClientHeartbeat = 0;
-    bool isActive = false;
-    bool hasActiveClients = false;
+    bool _isActive = false;
+    bool _hasActiveClients = false;
     
     // Références vers les systèmes
     SystemSensors* sensors = nullptr;
     SystemActuators* actuators = nullptr;
-    bool forceWakeUpState = false; // État du Force Wakeup
+    bool _forceWakeUpState = false; // État du Force Wakeup
     
 public:
     RealtimeWebSocket() : webSocket(WS_PORT, "/ws"), mutex(xSemaphoreCreateMutex()) {
         // Configuration du serveur WebSocket avec heartbeat adaptatif
-        webSocket.enableHeartbeat(15000, 3000, 2); // Heartbeat toutes les 15s quand clients connectés
+        // Heartbeat toutes les 15s quand clients connectés
+        webSocket.enableHeartbeat(15000, 3000, 2);
     }
     
     ~RealtimeWebSocket() {
@@ -77,7 +82,7 @@ public:
             this->handleWebSocketEvent(num, type, payload, length);
         });
         
-        isActive = true;
+        _isActive = true;
         Serial.printf("[WebSocket] Serveur WebSocket démarré sur le port %d\n", WS_PORT);
         Serial.println("[WebSocket] Temps réel activé - Connexions WebSocket acceptées");
     }
@@ -88,7 +93,7 @@ public:
     void end() {
         if (mutex) {
             xSemaphoreTake(mutex, portMAX_DELAY);
-            isActive = false;
+            _isActive = false;
             xSemaphoreGive(mutex);
         }
         webSocket.close();
@@ -98,7 +103,7 @@ public:
      * Met à jour l'état du Force Wakeup
      */
     void updateForceWakeUpState(bool state) {
-        forceWakeUpState = state;
+        _forceWakeUpState = state;
     }
     
     /**
@@ -110,14 +115,16 @@ public:
                 Serial.printf("[WebSocket] Client %u déconnecté\n", num);
                 // Vérifier s'il reste des clients actifs
                 if (webSocket.connectedClients() == 0) {
-                    hasActiveClients = false;
-                    Serial.println("[WebSocket] Aucun client connecté - système peut entrer en veille");
+                    _hasActiveClients = false;
+                    Serial.println(
+                      "[WebSocket] Aucun client connecté - système peut entrer en veille");
                 }
                 break;
                 
             case WStype_CONNECTED: {
                 IPAddress ip = webSocket.remoteIP(num);
-                Serial.printf("[WebSocket] Client %u connecté depuis %s\n", num, ip.toString().c_str());
+                Serial.printf("[WebSocket] Client %u connecté depuis %d.%d.%d.%d\n",
+                              num, ip[0], ip[1], ip[2], ip[3]);
                 
                 // Notifier l'activité client et réveiller le système si nécessaire
                 notifyClientActivity();
@@ -129,7 +136,10 @@ public:
             
             case WStype_TEXT: {
                 // Traiter les messages du client
-                String message = String((char*)payload);
+                char message[512];
+                size_t msgLen = length < sizeof(message) - 1 ? length : sizeof(message) - 1;
+                memcpy(message, payload, msgLen);
+                message[msgLen] = '\0';
                 notifyClientActivity(); // Notifier l'activité client
                 handleClientMessage(num, message);
                 break;
@@ -153,29 +163,33 @@ public:
     /**
      * Gère les messages du client
      */
-    void handleClientMessage(uint8_t clientNum, const String& message) {
+    void handleClientMessage(uint8_t clientNum, const char* message) {
         // Analyser le message JSON
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, message);
         
         if (error) {
-            Serial.printf("[WebSocket] Erreur parsing JSON du client %u: %s\n", clientNum, error.c_str());
+            Serial.printf("[WebSocket] Erreur parsing JSON du client %u: %s\n",
+                          clientNum, error.c_str());
             return;
         }
         
         // Traiter les commandes
         if (doc["type"].is<const char*>()) {
-            String type = doc["type"].as<String>();
+            const char* type = doc["type"].as<const char*>();
             
-            if (type == "ping") {
+            if (type && strcmp(type, "ping") == 0) {
                 // Répondre au ping
                 sendPong(clientNum);
-            } else if (type == "subscribe") {
+            } else if (type && strcmp(type, "subscribe") == 0) {
                 // Client s'abonne aux mises à jour
                 sendCurrentData(clientNum);
-            } else if (type == "control" && doc["action"].is<const char*>()) {
+            } else if (type && strcmp(type, "control") == 0 && doc["action"].is<const char*>()) {
                 // Commande de contrôle (si autorisé)
-                handleControlCommand(clientNum, doc["action"].as<String>());
+                const char* action = doc["action"].as<const char*>();
+                if (action) {
+                    handleControlCommand(clientNum, action);
+                }
             }
         }
     }
@@ -186,8 +200,8 @@ public:
     void sendCurrentData(uint8_t clientNum) {
         if (!sensors || !actuators) return;
         
-        // Utiliser allocation standard
-        JsonDocument doc;
+        // Utiliser allocation statique pour éviter fragmentation mémoire
+        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         
         // Récupérer les données via le cache
         SensorReadings readings = sensorCache.getReadings(*sensors);
@@ -205,7 +219,7 @@ public:
         doc["pumpTank"] = actuators->isTankPumpRunning();
         doc["heater"] = actuators->isHeaterOn();
         doc["light"] = actuators->isLightOn();
-        doc["forceWakeup"] = forceWakeUpState;
+        doc["forceWakeup"] = _forceWakeUpState;
         doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
         doc["timestamp"] = millis();
         
@@ -213,8 +227,15 @@ public:
         bool staConnected = WiFi.status() == WL_CONNECTED;
         doc["wifiStaConnected"] = staConnected;
         if (staConnected) {
-            doc["wifiStaSSID"] = WiFi.SSID();
-            doc["wifiStaIP"] = WiFi.localIP().toString();
+            char staSSIDBuf[33];
+            strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
+            staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+            doc["wifiStaSSID"] = staSSIDBuf;
+            IPAddress staIP = WiFi.localIP();
+            char staIPBuf[16];
+            snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d",
+                     staIP[0], staIP[1], staIP[2], staIP[3]);
+            doc["wifiStaIP"] = staIPBuf;
             doc["wifiStaRSSI"] = WiFi.RSSI();
         } else {
             doc["wifiStaSSID"] = "";
@@ -227,8 +248,15 @@ public:
         bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
         doc["wifiApActive"] = apActive;
         if (apActive) {
-            doc["wifiApSSID"] = WiFi.softAPSSID();
-            doc["wifiApIP"] = WiFi.softAPIP().toString();
+            char apSSIDBuf[33];
+            strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
+            apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+            doc["wifiApSSID"] = apSSIDBuf;
+            IPAddress apIP = WiFi.softAPIP();
+            char apIPBuf[16];
+            snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d",
+                     apIP[0], apIP[1], apIP[2], apIP[3]);
+            doc["wifiApIP"] = apIPBuf;
             doc["wifiApClients"] = WiFi.softAPgetStationNum();
         } else {
             doc["wifiApSSID"] = "";
@@ -237,8 +265,8 @@ public:
         }
         
         // Sérialiser et envoyer
-        String json;
-        serializeJson(doc, json);
+        char json[1024];
+        serializeJson(doc, json, sizeof(json));
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
             webSocket.sendTXT(clientNum, json);
@@ -258,17 +286,18 @@ public:
     /**
      * Gère les commandes de contrôle
      */
-    void handleControlCommand(uint8_t clientNum, const String& action) {
+    void handleControlCommand(uint8_t clientNum, const char* action) {
         // Pour l'instant, on ne permet que les commandes de lecture
         // Les commandes de contrôle peuvent être ajoutées plus tard si nécessaire
         
-        if (action == "get_status") {
+        if (action && strcmp(action, "get_status") == 0) {
             sendCurrentData(clientNum);
         } else {
             // Commande non reconnue
             // Vérifier qu'il y a des clients connectés avant envoi
             if (webSocket.connectedClients() > 0) {
-                webSocket.sendTXT(clientNum, "{\"type\":\"error\",\"message\":\"Unknown command\"}");
+                webSocket.sendTXT(clientNum,
+                                  "{\"type\":\"error\",\"message\":\"Unknown command\"}");
             }
         }
     }
@@ -278,7 +307,7 @@ public:
      * Optimisé pour la veille : réduit l'activité quand aucun client actif
      */
     void broadcastSensorData() {
-        if (!isActive || !sensors || !actuators) return;
+        if (!_isActive || !sensors || !actuators) return;
         
         if (mutex) {
             xSemaphoreTake(mutex, portMAX_DELAY);
@@ -304,9 +333,10 @@ public:
         bool shouldBroadcast = (now - lastBroadcast > BROADCAST_INTERVAL_MS);
         
         // Si clients connectés mais inactifs, réduire la fréquence
-        if (hasActiveClients && (now - lastClientActivity > CLIENT_INACTIVITY_TIMEOUT_MS)) {
+        if (_hasActiveClients && (now - lastClientActivity > CLIENT_INACTIVITY_TIMEOUT_MS)) {
             // Réduire la fréquence de diffusion pour clients inactifs
-            shouldBroadcast = (now - lastBroadcast > (BROADCAST_INTERVAL_MS * 4)); // 4x moins fréquent
+            // 4x moins fréquent
+            shouldBroadcast = (now - lastBroadcast > (BROADCAST_INTERVAL_MS * 4));
         }
         
         if (shouldBroadcast) {
@@ -329,7 +359,7 @@ public:
             doc["pumpTank"] = actuators->isTankPumpRunning();
             doc["heater"] = actuators->isHeaterOn();
             doc["light"] = actuators->isLightOn();
-            doc["forceWakeup"] = forceWakeUpState;
+            doc["forceWakeup"] = _forceWakeUpState;
             doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
             doc["timestamp"] = now;
             
@@ -337,8 +367,15 @@ public:
             bool staConnected = WiFi.status() == WL_CONNECTED;
             doc["wifiStaConnected"] = staConnected;
             if (staConnected) {
-                doc["wifiStaSSID"] = WiFi.SSID();
-                doc["wifiStaIP"] = WiFi.localIP().toString();
+                char staSSIDBuf[33];
+                strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
+                staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+                doc["wifiStaSSID"] = staSSIDBuf;
+                IPAddress staIP = WiFi.localIP();
+                char staIPBuf[16];
+                snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d",
+                     staIP[0], staIP[1], staIP[2], staIP[3]);
+                doc["wifiStaIP"] = staIPBuf;
                 doc["wifiStaRSSI"] = WiFi.RSSI();
             } else {
                 doc["wifiStaSSID"] = "";
@@ -351,8 +388,15 @@ public:
             bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
             doc["wifiApActive"] = apActive;
             if (apActive) {
-                doc["wifiApSSID"] = WiFi.softAPSSID();
-                doc["wifiApIP"] = WiFi.softAPIP().toString();
+                char apSSIDBuf[33];
+                strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
+                apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+                doc["wifiApSSID"] = apSSIDBuf;
+                IPAddress apIP = WiFi.softAPIP();
+                char apIPBuf[16];
+                snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d",
+                     apIP[0], apIP[1], apIP[2], apIP[3]);
+                doc["wifiApIP"] = apIPBuf;
                 doc["wifiApClients"] = WiFi.softAPgetStationNum();
             } else {
                 doc["wifiApSSID"] = "";
@@ -361,8 +405,8 @@ public:
             }
             
             // Sérialiser et diffuser
-            String json;
-            serializeJson(doc, json);
+            char json[1024];
+            serializeJson(doc, json, sizeof(json));
             // Vérifier qu'il y a des clients connectés avant envoi
             if (webSocket.connectedClients() > 0) {
                 webSocket.broadcastTXT(json);
@@ -379,27 +423,31 @@ public:
     /**
      * Envoie une confirmation d'action immédiate (pour éviter les timeouts)
      */
-    void sendActionConfirm(const String& action, const String& result) {
-        if (!isActive) return;
+    void sendActionConfirm(const char* action, const char* result) {
+        if (!_isActive) return;
         
         // Message léger et ciblé pour confirmation immédiate
-        String json = "{\"type\":\"action_confirm\",\"action\":\"" + action + 
-                      "\",\"result\":\"" + result + "\",\"timestamp\":" + 
-                      String(millis()) + "}";
+        char json[256];
+        snprintf(json, sizeof(json), 
+                 "{\"type\":\"action_confirm\",\"action\":\"%s\","
+                 "\"result\":\"%s\",\"timestamp\":%lu}",
+                 action ? action : "", result ? result : "", millis());
         
         // Envoi direct sans mutex pour éviter les deadlocks
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
             webSocket.broadcastTXT(json);
         }
-        Serial.printf("[WebSocket] ✅ Confirmation action: %s = %s\n", action.c_str(), result.c_str());
+        Serial.printf("[WebSocket] ✅ Confirmation action: %s = %s\n",
+                      action ? action : "(null)",
+                      result ? result : "(null)");
     }
     
     /**
      * Diffuse immédiatement un état courant, sans attendre l'intervalle
      */
     void broadcastNow() {
-        if (!isActive || !sensors || !actuators) return;
+        if (!_isActive || !sensors || !actuators) return;
         
         // CORRECTION : Timeout au lieu de portMAX_DELAY pour éviter les deadlocks
         if (mutex) {
@@ -424,15 +472,22 @@ public:
         doc["pumpTank"] = actuators->isTankPumpRunning();
         doc["heater"] = actuators->isHeaterOn();
         doc["light"] = actuators->isLightOn();
-        doc["forceWakeup"] = forceWakeUpState;
+        doc["forceWakeup"] = _forceWakeUpState;
         doc["timestamp"] = millis();
         
         // Informations WiFi STA
         bool staConnected = WiFi.status() == WL_CONNECTED;
         doc["wifiStaConnected"] = staConnected;
         if (staConnected) {
-            doc["wifiStaSSID"] = WiFi.SSID();
-            doc["wifiStaIP"] = WiFi.localIP().toString();
+            char staSSIDBuf[33];
+            strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
+            staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+            doc["wifiStaSSID"] = staSSIDBuf;
+            IPAddress staIP = WiFi.localIP();
+            char staIPBuf[16];
+            snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d",
+                     staIP[0], staIP[1], staIP[2], staIP[3]);
+            doc["wifiStaIP"] = staIPBuf;
             doc["wifiStaRSSI"] = WiFi.RSSI();
         } else {
             doc["wifiStaSSID"] = "";
@@ -445,8 +500,15 @@ public:
         bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
         doc["wifiApActive"] = apActive;
         if (apActive) {
-            doc["wifiApSSID"] = WiFi.softAPSSID();
-            doc["wifiApIP"] = WiFi.softAPIP().toString();
+            char apSSIDBuf[33];
+            strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
+            apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+            doc["wifiApSSID"] = apSSIDBuf;
+            IPAddress apIP = WiFi.softAPIP();
+            char apIPBuf[16];
+            snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d",
+                     apIP[0], apIP[1], apIP[2], apIP[3]);
+            doc["wifiApIP"] = apIPBuf;
             doc["wifiApClients"] = WiFi.softAPgetStationNum();
         } else {
             doc["wifiApSSID"] = "";
@@ -454,7 +516,8 @@ public:
             doc["wifiApClients"] = 0;
         }
         
-        String json; serializeJson(doc, json);
+        char json[1024];
+        serializeJson(doc, json, sizeof(json));
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
             webSocket.broadcastTXT(json);
@@ -470,7 +533,7 @@ public:
      * Traite les boucles du serveur WebSocket
      */
     void loop() {
-        if (isActive) {
+        if (_isActive) {
             webSocket.loop();
         }
     }
@@ -486,33 +549,38 @@ public:
      * Vérifie si le serveur est actif
      */
     bool isRunning() const {
-        return isActive;
+        return _isActive;
     }
     
     /**
      * Notifie tous les clients d'un changement de réseau WiFi imminent
      */
-    void notifyWifiChange(const String& newSSID) {
-        if (!isActive) return;
+    void notifyWifiChange(const char* newSSID) {
+        if (!_isActive) return;
         
         // Déterminer le type de message selon le contenu
-        String msgType = "wifi_change";
-        String message = "";
+        const char* msgType = "wifi_change";
+        char message[512];
         
-        if (newSSID.indexOf("sleep") >= 0) {
+        if (newSSID && strstr(newSSID, "sleep")) {
             // Message de sleep
             msgType = "server_closing";
-            message = "{\"type\":\"server_closing\",\"message\":\"" + newSSID + "\"}";
+            snprintf(message, sizeof(message),
+                     "{\"type\":\"server_closing\",\"message\":\"%s\"}",
+                     newSSID ? newSSID : "");
         } else {
             // Message de changement WiFi normal
-            message = "{\"type\":\"wifi_change\",\"ssid\":\"" + newSSID + "\",\"message\":\"Changement de réseau WiFi en cours...\"}";
+            snprintf(message, sizeof(message), 
+                     "{\"type\":\"wifi_change\",\"ssid\":\"%s\","
+                     "\"message\":\"Changement de réseau WiFi en cours...\"}",
+                     newSSID ? newSSID : "");
         }
         
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
             webSocket.broadcastTXT(message);
         }
-        Serial.printf("[WebSocket] 📤 Notification envoyée aux clients: %s\n", msgType.c_str());
+        Serial.printf("[WebSocket] 📤 Notification envoyée aux clients: %s\n", msgType);
         
         // Donner le temps au message d'être envoyé
         vTaskDelay(pdMS_TO_TICKS(150));
@@ -522,12 +590,14 @@ public:
      * Ferme proprement toutes les connexions WebSocket
      */
     void closeAllConnections() {
-        if (!isActive) return;
+        if (!_isActive) return;
         
         Serial.println("[WebSocket] Fermeture de toutes les connexions...");
         
         // Envoyer un message de fermeture à tous les clients
-        String closeMessage = "{\"type\":\"server_closing\",\"message\":\"Serveur en cours de reconfiguration\"}";
+        const char* closeMessage = 
+          "{\"type\":\"server_closing\","
+          "\"message\":\"Serveur en cours de reconfiguration\"}";
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
             webSocket.broadcastTXT(closeMessage);
@@ -550,7 +620,7 @@ public:
      * @return true si aucun client actif et pas d'activité récente
      */
     bool canEnterSleep() const {
-        if (!isActive) return true;
+        if (!_isActive) return true;
         
         unsigned long now = millis();
         uint8_t clients = const_cast<WebSocketsServer&>(webSocket).connectedClients();
@@ -559,7 +629,7 @@ public:
         if (clients == 0) return true;
         
         // Clients connectés mais inactifs depuis longtemps
-        if (hasActiveClients && (now - lastClientActivity > CLIENT_INACTIVITY_TIMEOUT_MS)) {
+        if (_hasActiveClients && (now - lastClientActivity > CLIENT_INACTIVITY_TIMEOUT_MS)) {
             return true;
         }
         
@@ -587,8 +657,8 @@ public:
     WebSocketStats getStats() const {
         WebSocketStats stats;
         stats.connectedClients = const_cast<WebSocketsServer&>(webSocket).connectedClients();
-        stats.isActive = isActive;
-        stats.hasActiveClients = hasActiveClients;
+        stats.isActive = _isActive;
+        stats.hasActiveClients = _hasActiveClients;
         stats.canSleep = canEnterSleep();
         
         if (mutex) {

@@ -7,7 +7,7 @@ RealtimeWebSocket g_realtimeWebSocket;
 // Implémentation de notifyClientActivity
 void RealtimeWebSocket::notifyClientActivity() {
     lastClientActivity = millis();
-    hasActiveClients = true;
+    _hasActiveClients = true;
     
     Serial.printf("[WebSocket] 👤 Client activity detected - %u clients connected\n", 
                   g_realtimeWebSocket.getConnectedClients());

@@ -1,0 +1,60 @@
+﻿=== ANALYSE DU LOG - MONITORING WROOM-TEST AVEC NVS REINITIALISEE ===
+Version firmware: v11.155
+Date analyse: 2026-01-25 22:20:29
+Fichier log: monitor_wroom_test_nvs_v11.155_2026-01-25_22-11-07.log
+Duree monitoring: 15 minutes (900 secondes)
+NVS: Reinitialisee avant monitoring
+=== STATISTIQUES GENERALES ===
+- Total lignes loggees: 253
+- Taille du fichier: 29.33 KB
+- Duree effective: OK
+=== VERIFICATION POST-REINITIALISATION NVS ===
+
+1. Initialisation NVS:
+   - Initialisations detectees: 0
+   - Erreurs NVS: 17
+   - PROBLEME - Erreurs NVS detectees
+
+2. Parsing JSON GET:
+   - Parsing reussis: 0
+   - Erreurs de parsing: 0
+   - OK - Aucune erreur de parsing
+
+3. Envois POST serveur distant:
+   - Envois POST detectes: 0
+   - Erreurs POST: 0
+   - Logs de diagnostic: 0
+   - PROBLEME - Aucun envoi POST detecte
+   - OK - Aucune erreur POST
+
+4. Monitoring memoire:
+   - Verifications heap: 0
+   - Alertes memoire faible: 0
+   - OK - Aucune alerte memoire
+
+5. DHT22 gestion echecs:
+   - Desactivation detectee: 0
+   - Echecs DHT22: 0
+   - OK - Pas assez d'echecs pour desactivation (0)
+
+6. Queue capteurs:
+   - Erreurs queue pleine: 0
+   - OK - Aucune erreur de queue
+
+7. WiFi:
+   - Connexions detectees: 0
+   - Deconnexions detectees: 0
+   - PROBLEME - Aucune connexion WiFi detectee
+
+ERREUR - ERREURS CRITIQUES DETECTEES:
+  ERREUR - Panic: 1 occurrence(s)
+  ERREUR - Reboot inattendu: 4 occurrence(s)
+
+=== ERREURS ET WARNINGS ===
+- Warnings detectes: 5
+- Erreurs detectees: 25
+=== RESUME FINAL ===
+ERREUR - SYSTEME INSTABLE - Erreurs critiques detectees
+
+=== FIN DE L'ANALYSE ===
+

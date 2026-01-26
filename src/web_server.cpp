@@ -18,6 +18,7 @@
 #include "web_routes_ui.h"
 #include "web_server_context.h"
 #include "realtime_websocket.h"
+#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
 #include "sensor_cache.h"
 #include "asset_bundler.h"
 
@@ -57,7 +58,8 @@ WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts
   initializeServer();
 }
 
-WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts, Diagnostics& diag)
+WebServerManager::WebServerManager(SystemSensors& sensors, 
+                                   SystemActuators& acts, Diagnostics& diag)
     : _sensors(sensors), _acts(acts), _diag(&diag), _ctx(nullptr) {
   initializeServer();
 }
@@ -66,6 +68,9 @@ void WebServerManager::initializeServer() {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
   // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
+  
+  // Snapshot après création AsyncWebServer
+  MEM_DIAG_SNAPSHOT("after_asyncwebserver_created");
   #endif
 }
 
@@ -163,6 +168,9 @@ bool WebServerManager::begin() {
   // Initialiser le serveur WebSocket temps réel
   g_realtimeWebSocket.begin(_sensors, _acts);
   
+  // Snapshot après initialisation WebSocket
+  HeapSnapshot snapshot_after_websocket = MEM_DIAG_SNAPSHOT("after_websocket");
+  
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
 
@@ -190,12 +198,16 @@ bool WebServerManager::begin() {
       
       IPAddress remoteIP = req->client()->remoteIP();
       char remoteIPBuf[16];
-      snprintf(remoteIPBuf, sizeof(remoteIPBuf), "%d.%d.%d.%d", remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
+      snprintf(remoteIPBuf, sizeof(remoteIPBuf), "%d.%d.%d.%d",
+               remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
       Serial.printf("[Web] 🎮 Action request from %s\n", remoteIPBuf);
       
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
-          const char* c = req->getParam("cmd")->value().c_str();
+          char cmdBuf[64];
+          strncpy(cmdBuf, req->getParam("cmd")->value().c_str(), sizeof(cmdBuf) - 1);
+          cmdBuf[sizeof(cmdBuf) - 1] = '\0';
+          const char* c = cmdBuf;
           Serial.printf("[Web] 🎯 Command: %s\n", c);
           
           if (strcmp(c, "feedSmall") == 0) {
@@ -223,13 +235,17 @@ bool WebServerManager::begin() {
                   
                   // Utilisation de notre helper robuste d'envoi email
                   if (g_webServerContext) {
-                    g_webServerContext->sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+                    g_webServerContext->sendManualActionEmail(
+                      "Bouffe manuelle - Petits poissons", 
+                      "Bouffe manuelle", 
+                      "NOURRISSAGE_PETITS");
                   }
                   
                   // Synchronisation serveur : envoie bouffePetits=1 (marqué ci-dessus)
                   SensorReadings readings = sensors->read();
                   bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
-                  Serial.printf("[Web] 📤 Server sync bouffePetits=1 %s\n", syncSuccess ? "completed" : "pending");
+                  Serial.printf("[Web] 📤 Server sync bouffePetits=1 %s\n",
+                                syncSuccess ? "completed" : "pending");
                   
                   // Remettre le flag à 0 pour les prochains envois
                   g_autoCtrl.setBouffePetitsFlag("0");
@@ -243,10 +259,15 @@ bool WebServerManager::begin() {
                   g_autoCtrl.setBouffePetitsFlag("0"); // Reset en cas d'échec
                 }
               } else {
-                Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
+                Serial.println(
+                  "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                if (g_webServerContext && ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
-                  g_webServerContext->sendManualActionEmail("Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
+                if (g_webServerContext && 
+                    ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
+                  g_webServerContext->sendManualActionEmail(
+                    "Bouffe manuelle - Petits poissons", 
+                    "Bouffe manuelle", 
+                    "NOURRISSAGE_FALLBACK");
                 }
                 g_autoCtrl.setBouffePetitsFlag("0"); // Reset
               }
@@ -278,13 +299,17 @@ bool WebServerManager::begin() {
                   
                   // Utilisation de notre helper robuste d'envoi email
                   if (g_webServerContext) {
-                    g_webServerContext->sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
+                    g_webServerContext->sendManualActionEmail(
+                      "Bouffe manuelle - Gros poissons", 
+                      "Bouffe manuelle", 
+                      "NOURRISSAGE_GROS");
                   }
                   
                   // Synchronisation serveur : envoie bouffeGros=1 (marqué ci-dessus)
                   SensorReadings readings = sensors->read();
                   bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
-                  Serial.printf("[Web] 📤 Server sync bouffeGros=1 %s\n", syncSuccess ? "completed" : "pending");
+                  Serial.printf("[Web] 📤 Server sync bouffeGros=1 %s\n",
+                                syncSuccess ? "completed" : "pending");
                   
                   // Remettre le flag à 0 pour les prochains envois
                   g_autoCtrl.setBouffeGrosFlag("0");
@@ -298,10 +323,15 @@ bool WebServerManager::begin() {
                   g_autoCtrl.setBouffeGrosFlag("0"); // Reset en cas d'échec
                 }
               } else {
-                Serial.println("[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
+                Serial.println(
+                  "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                if (g_webServerContext && ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
-                  g_webServerContext->sendManualActionEmail("Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
+                if (g_webServerContext && 
+                    ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
+                  g_webServerContext->sendManualActionEmail(
+                    "Bouffe manuelle - Gros poissons", 
+                    "Bouffe manuelle", 
+                    "NOURRISSAGE_FALLBACK");
                 }
                 g_autoCtrl.setBouffeGrosFlag("0"); // Reset
               }
@@ -315,7 +345,8 @@ bool WebServerManager::begin() {
               // Push UI refresh IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
               resp = g_autoCtrl.isEmailEnabled() ? "EMAIL_NOTIF_ACTIVÉ" : "EMAIL_NOTIF_DÉSACTIVÉ";
-              Serial.printf("[Web] ✅ Email Notifications toggled: %s\n", g_autoCtrl.isEmailEnabled() ? "ON" : "OFF");
+              Serial.printf("[Web] ✅ Email Notifications toggled: %s\n",
+                            g_autoCtrl.isEmailEnabled() ? "ON" : "OFF");
           }
           else if (c == "forceWakeup") {
               Serial.println("[Web] 🔄 Toggling Force Wakeup...");
@@ -324,7 +355,8 @@ bool WebServerManager::begin() {
               // Push UI refresh IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
               resp="FORCE_WAKEUP TOGGLE OK";
-              Serial.printf("[Web] ✅ Force Wakeup toggled: %s\n", g_autoCtrl.getForceWakeUp() ? "ON" : "OFF");
+              Serial.printf("[Web] ✅ Force Wakeup toggled: %s\n",
+                            g_autoCtrl.getForceWakeUp() ? "ON" : "OFF");
           }
           else if (c == "resetMode") {
               Serial.println("[Web] 🔄 Triggering Reset Mode...");
@@ -363,7 +395,10 @@ bool WebServerManager::begin() {
       
       // Traitement des relais avec feedback immédiat
       if (req->hasParam("relay")) {
-          const char* rel = req->getParam("relay")->value().c_str();
+          char relayBuf[64];
+          strncpy(relayBuf, req->getParam("relay")->value().c_str(), sizeof(relayBuf) - 1);
+          relayBuf[sizeof(relayBuf) - 1] = '\0';
+          const char* rel = relayBuf;
           Serial.printf("[Web] 🔌 Relay control: %s\\n", rel);
           
           if (strcmp(rel, "pumpTank") == 0) {
@@ -450,65 +485,66 @@ bool WebServerManager::begin() {
       return;
     }
     
-    // Utiliser le pool JSON pour optimiser la mémoire
-    ArduinoJson::JsonDocument* doc = new ArduinoJson::JsonDocument;
-    if (!doc) {
-      Serial.println("[Web] ❌ Memory allocation failed for JSON document");
-      req->send(500, "text/plain", "Memory error");
-      return;
-    }
+    // Utiliser allocation statique pour éviter fragmentation mémoire
+    static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     // Récupérer les données via le cache (optimisé)
     SensorReadings r = sensorCache.getReadings(_sensors);
     
     // Données réelles avec fallback intelligent
-    (*doc)["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
-    (*doc)["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
-    (*doc)["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
-    (*doc)["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
-    (*doc)["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
-    (*doc)["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
-    (*doc)["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
-    (*doc)["pumpAqua"] = _acts.isAquaPumpRunning();
-    (*doc)["pumpTank"] = _acts.isTankPumpRunning();
-    (*doc)["heater"] = _acts.isHeaterOn();
-    (*doc)["light"] = _acts.isLightOn();
-    (*doc)["forceWakeup"] = g_autoCtrl.getForceWakeUp();
+    doc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
+    doc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
+    doc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
+    doc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
+    doc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
+    doc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
+    doc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
+    doc["pumpAqua"] = _acts.isAquaPumpRunning();
+    doc["pumpTank"] = _acts.isTankPumpRunning();
+    doc["heater"] = _acts.isHeaterOn();
+    doc["light"] = _acts.isLightOn();
+    doc["forceWakeup"] = g_autoCtrl.getForceWakeUp();
     
     // Informations WiFi STA
     bool staConnected = WiFi.status() == WL_CONNECTED;
-    (*doc)["wifiStaConnected"] = staConnected;
+    doc["wifiStaConnected"] = staConnected;
     if (staConnected) {
-      (*doc)["wifiStaSSID"] = WiFi.SSID().c_str();
+      char staSSIDBuf[33];
+      strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
+      staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+      doc["wifiStaSSID"] = staSSIDBuf;
       char ipBuf[16];
       IPAddress ip = WiFi.localIP();
       snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-      (*doc)["wifiStaIP"] = ipBuf;
-      (*doc)["wifiStaRSSI"] = WiFi.RSSI();
+      doc["wifiStaIP"] = ipBuf;
+      doc["wifiStaRSSI"] = WiFi.RSSI();
     } else {
-      (*doc)["wifiStaSSID"] = "";
-      (*doc)["wifiStaIP"] = "";
-      (*doc)["wifiStaRSSI"] = 0;
+      doc["wifiStaSSID"] = "";
+      doc["wifiStaIP"] = "";
+      doc["wifiStaRSSI"] = 0;
     }
     
     // Informations WiFi AP
     wifi_mode_t mode = WiFi.getMode();
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    (*doc)["wifiApActive"] = apActive;
+    doc["wifiApActive"] = apActive;
     if (apActive) {
-      (*doc)["wifiApSSID"] = WiFi.softAPSSID().c_str();
+      char apSSIDBuf[33];
+      strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
+      apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+      doc["wifiApSSID"] = apSSIDBuf;
       char apIpBuf[16];
       IPAddress apIP = WiFi.softAPIP();
       snprintf(apIpBuf, sizeof(apIpBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      (*doc)["wifiApIP"] = apIpBuf;
-      (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
+      doc["wifiApIP"] = apIpBuf;
+      doc["wifiApClients"] = WiFi.softAPgetStationNum();
     } else {
-      (*doc)["wifiApSSID"] = "";
-      (*doc)["wifiApIP"] = "";
-      (*doc)["wifiApClients"] = 0;
+      doc["wifiApSSID"] = "";
+      doc["wifiApIP"] = "";
+      doc["wifiApClients"] = 0;
     }
     
-    (*doc)["timestamp"] = millis();
+    doc["timestamp"] = millis();
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (response) {
@@ -519,11 +555,9 @@ bool WebServerManager::begin() {
       response->addHeader("Access-Control-Allow-Origin", "*");
       response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      serializeJson(*doc, *response);
-      delete doc;
+      serializeJson(doc, *response);
       req->send(response);
     } else {
-      delete doc;
       Serial.println("[Web] ❌ Échec création réponse JSON (mémoire insuffisante)");
       req->send(500, "text/plain", "Memory error");
     }
@@ -535,12 +569,12 @@ bool WebServerManager::begin() {
     // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
     if (_diag) {
       // Augmente la capacité si l'on inclut taskStats (peut être long)
-      JsonDocument big;
+      StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> big;
       _diag->toJson(big);
       ctx.sendJson(req, big);
       return;
     }
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     ctx.sendJson(req, doc);
   });
 
@@ -586,7 +620,8 @@ bool WebServerManager::begin() {
       Serial.println("[WebServer] /dbvars: Using cached data");
     } else {
       // OPTIMISATION: Utiliser UNIQUEMENT le cache flash - JAMAIS d'appel distant bloquant
-      // Les appels distants doivent être faits de manière asynchrone dans la tâche d'automatisation
+      // Les appels distants doivent être faits de manière asynchrone
+      // dans la tâche d'automatisation
       char cached[2048];
       if (config.loadRemoteVars(cached, sizeof(cached)) && strlen(cached) > 0) {
         auto err = deserializeJson(src, cached);
@@ -635,8 +670,10 @@ bool WebServerManager::begin() {
     out["bouffeSoir"]  = getWithDefault("bouffeSoir", 19);
 
     // Durées nourrissage (valeurs par défaut synchronisées avec BDD distante)
-    out["tempsGros"]   = getWithDefault("tempsGros", ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
-    out["tempsPetits"] = getWithDefault("tempsPetits", ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
+    out["tempsGros"] = getWithDefault("tempsGros",
+                                      ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
+    out["tempsPetits"] = getWithDefault("tempsPetits",
+                                        ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
 
     // Seuils (valeurs par défaut raisonnables)
     out["aqThreshold"]     = getWithDefault("aqThreshold", 18);
@@ -660,7 +697,9 @@ bool WebServerManager::begin() {
     out["bouffeMatinOk"] = config.getBouffeMatinOk();
     out["bouffeMidiOk"] = config.getBouffeMidiOk();
     out["bouffeSoirOk"] = config.getBouffeSoirOk();
-    if (src.containsKey("bouffePetits")) out["bouffePetits"] = src["bouffePetits"].as<const char*>();
+    if (src.containsKey("bouffePetits")) {
+      out["bouffePetits"] = src["bouffePetits"].as<const char*>();
+    }
     if (src.containsKey("bouffeGros"))   out["bouffeGros"]   = src["bouffeGros"].as<const char*>();
 
     out["ok"] = ok;
@@ -761,7 +800,9 @@ bool WebServerManager::begin() {
     AutomatismPersistence::markConfigPendingSync();
 
     // Envoi immédiat vers la BDD distante pour répercuter les changements
-    bool sent = (WiFi.status()==WL_CONNECTED) ? g_autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs : nullptr) : false;
+    bool sent = (WiFi.status() == WL_CONNECTED)
+      ? g_autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs : nullptr)
+      : false;
     
     if (sent) {
       // Sync réussi : effacer pending sync
@@ -773,14 +814,16 @@ bool WebServerManager::begin() {
     
     // Toujours retourner 200 pour indiquer que l'enregistrement local s'est bien passé,
     // et indiquer séparément si l'envoi distant a réussi
-    ArduinoJson::JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
     doc["remoteSent"] = sent;
     ctx.sendJson(req, doc);
   });
 
   // Fichiers statiques avec compression optimisée et gestion Content-Length
-  auto sendWithCompression = [](AsyncWebServerRequest* req, const char* path, const char* contentType){
+  auto sendWithCompression = [](AsyncWebServerRequest* req,
+                                const char* path,
+                                const char* contentType) {
     // Vérifier si le client accepte la compression
     bool acceptsGzip = req->hasHeader("Accept-Encoding") && 
                       req->getHeader("Accept-Encoding")->value().indexOf("gzip") >= 0;
@@ -846,7 +889,9 @@ bool WebServerManager::begin() {
         ".container-fluid{padding:0 12px;}\n"
         ".row{display:flex;flex-wrap:wrap;margin:0 -12px;}\n"
         "[class^=col-]{padding:0 12px;box-sizing:border-box;}\n"
-        ".btn{display:inline-block;padding:10px 20px;border-radius:6px;border:1px solid #ccc;background:#f8f9fa;cursor:pointer;}\n"
+        ".btn{display:inline-block;padding:10px 20px;"
+        "border-radius:6px;border:1px solid #ccc;"
+        "background:#f8f9fa;cursor:pointer;}\n"
         ".btn-primary{background:#0d6efd;border-color:#0d6efd;color:#fff;}\n"
         ".btn-warning{background:#ffc107;border-color:#ffc107;}\n"
         ".btn-info{background:#0dcaf0;border-color:#0dcaf0;}\n"
@@ -903,10 +948,31 @@ bool WebServerManager::begin() {
   _server->on("/mailtest", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action utilisateur critique
     g_autoCtrl.notifyLocalWebActivity();
-    const char* subj = req->hasParam("subject") ? req->getParam("subject")->value().c_str() : "Test FFP5CS";
-    const char* body = req->hasParam("body") ? req->getParam("body")->value().c_str() : "Ceci est un e-mail de test envoyé depuis l'ESP32.";
-    const char* dest = req->hasParam("to") ? req->getParam("to")->value().c_str() : EmailConfig::DEFAULT_RECIPIENT;
-    bool ok = mailer.sendAlert(subj, body, dest);
+    char subjBuf[128];
+    if (req->hasParam("subject")) {
+      strncpy(subjBuf, req->getParam("subject")->value().c_str(), sizeof(subjBuf) - 1);
+      subjBuf[sizeof(subjBuf) - 1] = '\0';
+    } else {
+      strncpy(subjBuf, "Test FFP5CS", sizeof(subjBuf) - 1);
+      subjBuf[sizeof(subjBuf) - 1] = '\0';
+    }
+    char bodyBuf[256];
+    if (req->hasParam("body")) {
+      strncpy(bodyBuf, req->getParam("body")->value().c_str(), sizeof(bodyBuf) - 1);
+      bodyBuf[sizeof(bodyBuf) - 1] = '\0';
+    } else {
+      strncpy(bodyBuf, "Ceci est un e-mail de test envoyé depuis l'ESP32.", sizeof(bodyBuf) - 1);
+      bodyBuf[sizeof(bodyBuf) - 1] = '\0';
+    }
+    char destBuf[128];
+    if (req->hasParam("to")) {
+      strncpy(destBuf, req->getParam("to")->value().c_str(), sizeof(destBuf) - 1);
+      destBuf[sizeof(destBuf) - 1] = '\0';
+    } else {
+      strncpy(destBuf, EmailConfig::DEFAULT_RECIPIENT, sizeof(destBuf) - 1);
+      destBuf[sizeof(destBuf) - 1] = '\0';
+    }
+    bool ok = mailer.sendAlert(subjBuf, bodyBuf, destBuf);
     const char* resp = ok ? "OK" : "FAIL";
     req->send(200, "text/plain", resp);
   });
@@ -916,8 +982,14 @@ bool WebServerManager::begin() {
   _server->on("/fs/format", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action maintenance critique
     g_autoCtrl.notifyLocalWebActivity();
-    if (!req->hasParam("confirm")) { req->send(400, "text/plain", "Missing confirm=1"); return; }
-    if (req->getParam("confirm")->value() != "1") { req->send(400, "text/plain", "confirm must be 1"); return; }
+    if (!req->hasParam("confirm")) {
+      req->send(400, "text/plain", "Missing confirm=1");
+      return;
+    }
+    if (req->getParam("confirm")->value() != "1") {
+      req->send(400, "text/plain", "confirm must be 1");
+      return;
+    }
     bool ok = LittleFS.format();
     req->send(ok ? 200 : 500, "text/plain", ok ? "LittleFS formatted" : "Format failed");
   });
@@ -929,7 +1001,10 @@ bool WebServerManager::begin() {
     const char* html =
       "<html><head><meta charset='utf-8'><title>Variables BDD</title>"
       "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-      "<style>body{font-family:sans-serif;padding:16px;}label{display:block;margin-top:8px;}input,button{font-size:16px;padding:6px 8px;}fieldset{margin-bottom:12px;}" 
+      "<style>body{font-family:sans-serif;padding:16px;}"
+      "label{display:block;margin-top:8px;}"
+      "input,button{font-size:16px;padding:6px 8px;}"
+      "fieldset{margin-bottom:12px;}" 
       "button{margin-right:8px;}</style></head><body>"
       "<h2>Modifier les variables BDD</h2>"
       "<form method='POST' action='/dbvars/update'>"
@@ -992,7 +1067,8 @@ bool WebServerManager::begin() {
         bool firstKey = true;
         // Itère toutes les clés de ce namespace en rouvrant l'itérateur filtré
         nvs_iterator_t it2 = nullptr;
-        if (nvs_entry_find(NVS_DEFAULT_PART_NAME, info.namespace_name, NVS_TYPE_ANY, &it2) == ESP_OK) {
+        if (nvs_entry_find(NVS_DEFAULT_PART_NAME, info.namespace_name,
+                           NVS_TYPE_ANY, &it2) == ESP_OK) {
           do {
             nvs_entry_info_t e2; nvs_entry_info(it2, &e2);
             if (strcmp(e2.namespace_name, info.namespace_name) != 0) continue;
@@ -1021,14 +1097,70 @@ bool WebServerManager::begin() {
 
               esp_err_t err = ESP_ERR_INVALID_ARG;
               switch (e2.type) {
-                case NVS_TYPE_U8:  { uint8_t v=0; err=nvs_get_u8(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print(v);} } break;
-                case NVS_TYPE_I8:  { int8_t  v=0; err=nvs_get_i8(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print(v);} } break;
-                case NVS_TYPE_U16: { uint16_t v=0; err=nvs_get_u16(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print(v);} } break;
-                case NVS_TYPE_I16: { int16_t v=0; err=nvs_get_i16(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print(v);} } break;
-                case NVS_TYPE_U32: { uint32_t v=0; err=nvs_get_u32(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print(v);} } break;
-                case NVS_TYPE_I32: { int32_t v=0; err=nvs_get_i32(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print(v);} } break;
-                case NVS_TYPE_U64: { uint64_t v=0; err=nvs_get_u64(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print((uint64_t)v);} } break;
-                case NVS_TYPE_I64: { int64_t v=0; err=nvs_get_i64(h, e2.key, &v); if(err==ESP_OK){ res->print(",\"value\":"); res->print((int64_t)v);} } break;
+                case NVS_TYPE_U8: {
+                  uint8_t v = 0;
+                  err = nvs_get_u8(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print(v);
+                  }
+                } break;
+                case NVS_TYPE_I8: {
+                  int8_t v = 0;
+                  err = nvs_get_i8(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print(v);
+                  }
+                } break;
+                case NVS_TYPE_U16: {
+                  uint16_t v = 0;
+                  err = nvs_get_u16(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print(v);
+                  }
+                } break;
+                case NVS_TYPE_I16: {
+                  int16_t v = 0;
+                  err = nvs_get_i16(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print(v);
+                  }
+                } break;
+                case NVS_TYPE_U32: {
+                  uint32_t v = 0;
+                  err = nvs_get_u32(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print(v);
+                  }
+                } break;
+                case NVS_TYPE_I32: {
+                  int32_t v = 0;
+                  err = nvs_get_i32(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print(v);
+                  }
+                } break;
+                case NVS_TYPE_U64: {
+                  uint64_t v = 0;
+                  err = nvs_get_u64(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print((uint64_t)v);
+                  }
+                } break;
+                case NVS_TYPE_I64: {
+                  int64_t v = 0;
+                  err = nvs_get_i64(h, e2.key, &v);
+                  if (err == ESP_OK) {
+                    res->print(",\"value\":");
+                    res->print((int64_t)v);
+                  }
+                } break;
                 case NVS_TYPE_STR: {
                   size_t len = 0; err = nvs_get_str(h, e2.key, nullptr, &len);
                   if (err == ESP_OK) {
@@ -1085,10 +1217,13 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Page NVS Inspector interactive
     g_autoCtrl.notifyLocalWebActivity();
     const char* html =
-      "<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+      "<html><head><meta charset='utf-8'>"
+      "<meta name='viewport' content='width=device-width, initial-scale=1'>"
       "<title>NVS Inspector</title>"
       "<style>body{font-family:sans-serif;margin:12px;}table{border-collapse:collapse;width:100%;}"
-      "th,td{border:1px solid #ddd;padding:6px;}th{background:#f3f3f3;}input[type=number]{width:120px;}"
+      "th,td{border:1px solid #ddd;padding:6px;}"
+      "th{background:#f3f3f3;}"
+      "input[type=number]{width:120px;}"
       "code{background:#f7f7f7;padding:2px 4px;border-radius:3px;}</style>"
       "</head><body>"
       "<h2>NVS - Variables persistantes</h2>"
@@ -1096,30 +1231,76 @@ bool WebServerManager::begin() {
       "<div id='content'>Chargement...</div>"
       "<script>"
       "function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}"
-      "async function load(){const r=await fetch('/nvs.json');const j=await r.json();"
-      "let h='';for(const ns in j.namespaces){h+=`<h3>Namespace <code>${esc(ns)}</code></h3>`;"
+      "async function load(){"
+      "const r=await fetch('/nvs.json');"
+      "const j=await r.json();"
+      "let h='';"
+      "for(const ns in j.namespaces){"
+      "h+=`<h3>Namespace <code>${esc(ns)}</code></h3>`;"
       "h+=`<table><tr><th>Clé</th><th>Type</th><th>Valeur</th><th>Actions</th></tr>`;"
-      "const obj=j.namespaces[ns];for(const k in obj){const it=obj[k];"
-      "let input='';const t=it.type;const id=ns+'::'+k;"
-      "if(t==='STR'){input=`<input id='v_${id}' type='text' value='${esc(it.value||'')}'/>`;}"
-      "else if(t==='BLOB'){input=`<em>blob (${it.length||0} bytes)</em>`;}"
-      "else{input=`<input id='v_${id}' type='number' value='${esc(it.value)}'/>`;}"
-      "h+=`<tr><td><code>${esc(k)}</code></td><td>${t}</td><td>${input}</td>`+`<td>`+`<button onclick=save('${ns}','${k}','${t}')>Enregistrer</button> `+`<button onclick=delKey('${ns}','${k}')>Effacer</button>`+`</td></tr>`;}"
-      "h+='</table>';h+=`<p><button onclick=clearNs('${ns}')>Effacer le namespace</button></p>`;}"
+      "const obj=j.namespaces[ns];"
+      "for(const k in obj){"
+      "const it=obj[k];"
+      "let input='';"
+      "const t=it.type;"
+      "const id=ns+'::'+k;"
+      "if(t==='STR'){"
+      "input=`<input id='v_${id}' type='text' "
+      "value='${esc(it.value||'')}'/>`;"
+      "}"
+      "else if(t==='BLOB'){"
+      "input=`<em>blob (${it.length||0} bytes)</em>`;"
+      "}"
+      "else{"
+      "input=`<input id='v_${id}' type='number' "
+      "value='${esc(it.value)}'/>`;"
+      "}"
+      "h+=`<tr><td><code>${esc(k)}</code></td><td>${t}</td><td>${input}</td>`+"
+      "`<td>`+`<button onclick=save('${ns}','${k}','${t}')>Enregistrer</button> `+"
+      "`<button onclick=delKey('${ns}','${k}')>Effacer</button>`+`</td></tr>`;}"
+      "h+='</table>';"
+      "h+=`<p><button onclick=clearNs('${ns}')>"
+      "Effacer le namespace</button></p>`;"
+      "}"
       "document.getElementById('content').innerHTML=h;}"
-      "async function save(ns,k,t){const id='v_'+ns+'::'+k;const el=document.getElementById(id);"
-      "let v=el?el.value:''; if(t!=='STR' && t!=='BLOB'){if(v==='')v='0';}"
-      "const p=new URLSearchParams();p.set('ns',ns);p.set('key',k);p.set('type',t);p.set('value',v);"
-      "const r=await fetch('/nvs/set',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});"
-      "alert('Statut: '+(r.ok?'OK':'ERREUR')); if(r.ok) load(); }"
-      "async function delKey(ns,k){if(!confirm('Effacer '+ns+'::'+k+' ?'))return;"
-      "const p=new URLSearchParams();p.set('ns',ns);p.set('key',k);"
-      "const r=await fetch('/nvs/erase',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});"
-      "alert('Statut: '+(r.ok?'OK':'ERREUR')); if(r.ok) load(); }"
-      "async function clearNs(ns){if(!confirm('Effacer tout le namespace '+ns+' ?'))return;"
+      "async function save(ns,k,t){"
+      "const id='v_'+ns+'::'+k;"
+      "const el=document.getElementById(id);"
+      "let v=el?el.value:'';"
+      "if(t!=='STR' && t!=='BLOB'){"
+      "if(v==='')v='0';"
+      "}"
+      "const p=new URLSearchParams();"
+      "p.set('ns',ns);p.set('key',k);"
+      "p.set('type',t);p.set('value',v);"
+      "const r=await fetch('/nvs/set',{"
+      "method:'POST',"
+      "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+      "body:p});"
+      "alert('Statut: '+(r.ok?'OK':'ERREUR'));"
+      "if(r.ok) load();"
+      "}"
+      "async function delKey(ns,k){"
+      "if(!confirm('Effacer '+ns+'::'+k+' ?'))return;"
+      "const p=new URLSearchParams();"
+      "p.set('ns',ns);p.set('key',k);"
+      "const r=await fetch('/nvs/erase',{"
+      "method:'POST',"
+      "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+      "body:p});"
+      "alert('Statut: '+(r.ok?'OK':'ERREUR'));"
+      "if(r.ok) load();"
+      "}"
+      "async function clearNs(ns){"
+      "if(!confirm('Effacer tout le namespace '+ns+' ?'))return;"
       "const p=new URLSearchParams();p.set('ns',ns);"
-      "const r=await fetch('/nvs/erase_ns',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});"
-      "alert('Statut: '+(r.ok?'OK':'ERREUR')); if(r.ok) load(); }"
+      "const r=await fetch('/nvs/erase_ns',{"
+      "method:'POST',"
+      "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+      "body:p});"
+      "alert('Statut: '+(r.ok?'OK':'ERREUR'));"
+      "if(r.ok) load();"
+      "}"
       "load();"
       "</script>"
       "</body></html>";
@@ -1140,7 +1321,9 @@ bool WebServerManager::begin() {
       buf[0] = '\0';
       return false;
     };
-    if (!getP("ns", nsBuf, sizeof(nsBuf)) || !getP("key", keyBuf, sizeof(keyBuf)) || !getP("type", typeBuf, sizeof(typeBuf))) {
+    if (!getP("ns", nsBuf, sizeof(nsBuf)) || 
+        !getP("key", keyBuf, sizeof(keyBuf)) || 
+        !getP("type", typeBuf, sizeof(typeBuf))) {
       req->send(400, "text/plain", "Missing ns/key/type");
       return;
     }
@@ -1164,19 +1347,51 @@ bool WebServerManager::begin() {
     };
 
     nvs_type_t t = strToType(typeBuf);
-    if (t == NVS_TYPE_ANY) { nvs_close(h); req->send(400, "text/plain", "Invalid type"); return; }
+    if (t == NVS_TYPE_ANY) {
+      nvs_close(h);
+      req->send(400, "text/plain", "Invalid type");
+      return;
+    }
 
     switch (t) {
-      case NVS_TYPE_U8:  { uint8_t  v = (uint8_t) atoi(valueBuf); err = nvs_set_u8(h, keyBuf, v); } break;
-      case NVS_TYPE_I8:  { int8_t   v = (int8_t)  atoi(valueBuf); err = nvs_set_i8(h, keyBuf, v); } break;
-      case NVS_TYPE_U16: { uint16_t v = (uint16_t) atoi(valueBuf); err = nvs_set_u16(h, keyBuf, v);} break;
-      case NVS_TYPE_I16: { int16_t  v = (int16_t)  atoi(valueBuf); err = nvs_set_i16(h, keyBuf, v);} break;
-      case NVS_TYPE_U32: { uint32_t v = (uint32_t) atol(valueBuf); err = nvs_set_u32(h, keyBuf, v);} break;
-      case NVS_TYPE_I32: { int32_t  v = (int32_t)  atol(valueBuf); err = nvs_set_i32(h, keyBuf, v);} break;
-      case NVS_TYPE_U64: { uint64_t v = (uint64_t) atoll(valueBuf); err = nvs_set_u64(h, keyBuf, v);} break;
-      case NVS_TYPE_I64: { int64_t  v = (int64_t)  atoll(valueBuf); err = nvs_set_i64(h, keyBuf, v);} break;
+      case NVS_TYPE_U8: {
+        uint8_t v = (uint8_t)atoi(valueBuf);
+        err = nvs_set_u8(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_I8: {
+        int8_t v = (int8_t)atoi(valueBuf);
+        err = nvs_set_i8(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_U16: {
+        uint16_t v = (uint16_t)atoi(valueBuf);
+        err = nvs_set_u16(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_I16: {
+        int16_t v = (int16_t)atoi(valueBuf);
+        err = nvs_set_i16(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_U32: {
+        uint32_t v = (uint32_t)atol(valueBuf);
+        err = nvs_set_u32(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_I32: {
+        int32_t v = (int32_t)atol(valueBuf);
+        err = nvs_set_i32(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_U64: {
+        uint64_t v = (uint64_t)atoll(valueBuf);
+        err = nvs_set_u64(h, keyBuf, v);
+      } break;
+      case NVS_TYPE_I64: {
+        int64_t v = (int64_t)atoll(valueBuf);
+        err = nvs_set_i64(h, keyBuf, v);
+      } break;
       case NVS_TYPE_STR: { err = nvs_set_str(h, keyBuf, valueBuf); } break;
-      case NVS_TYPE_BLOB:{ req->send(400, "text/plain", "BLOB set not supported"); nvs_close(h); return; }
+      case NVS_TYPE_BLOB: {
+        req->send(400, "text/plain", "BLOB set not supported");
+        nvs_close(h);
+        return;
+      }
       default: break;
     }
     if (err == ESP_OK) err = nvs_commit(h);
@@ -1200,7 +1415,7 @@ bool WebServerManager::begin() {
       }
     }
 
-    ArduinoJson::JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
     ctx.sendJson(req, doc);
   });
@@ -1229,7 +1444,7 @@ bool WebServerManager::begin() {
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase failed"); return; }
     
-    ArduinoJson::JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
     ctx.sendJson(req, doc);
   });
@@ -1258,7 +1473,7 @@ bool WebServerManager::begin() {
     nvs_close(h);
     if (err != ESP_OK) { req->send(500, "text/plain", "Erase namespace failed"); return; }
     
-    ArduinoJson::JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
     ctx.sendJson(req, doc);
   });
@@ -1273,7 +1488,7 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Action WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     // Scanner les réseaux WiFi
     int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
@@ -1315,7 +1530,7 @@ bool WebServerManager::begin() {
   _server->on("/wifi/saved", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     JsonArray networks = doc.createNestedArray("networks");
     size_t totalCount = 0;
@@ -1410,10 +1625,12 @@ bool WebServerManager::begin() {
     char ssidBuf[64], passwordBuf[65], saveBuf[8];
     auto getParam = [req](const char* name, char* buf, size_t bufSize) -> bool {
       if (req->hasParam(name, true)) {
-        String val = req->getParam(name, true)->value();
-        strncpy(buf, val.c_str(), bufSize - 1);
-        buf[bufSize - 1] = '\0';
-        return true;
+        const char* val = req->getParam(name, true)->value().c_str();
+        if (val) {
+          strncpy(buf, val, bufSize - 1);
+          buf[bufSize - 1] = '\0';
+          return true;
+        }
       }
       buf[0] = '\0';
       return false;
@@ -1425,7 +1642,7 @@ bool WebServerManager::begin() {
     
     Serial.printf("[WiFi] Demande de connexion à '%s'\n", ssidBuf);
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     if (!hasSsid || strlen(ssidBuf) == 0) {
       doc["success"] = false;
@@ -1489,7 +1706,8 @@ bool WebServerManager::begin() {
               networkCount++;
               nvs_set_blob(nvsHandle, "count", &networkCount, sizeof(networkCount));
               nvs_commit(nvsHandle);
-              Serial.printf("[WiFi] Réseau '%s' ajouté dans NVS (total: %zu)\n", ssidBuf, networkCount);
+              Serial.printf("[WiFi] Réseau '%s' ajouté dans NVS (total: %zu)\n",
+                            ssidBuf, networkCount);
             }
           }
           
@@ -1502,7 +1720,9 @@ bool WebServerManager::begin() {
       doc["success"] = true;
       doc["message"] = "Connection attempt started";
       doc["ssid"] = ssidBuf;
-      doc["note"] = "Connection may take up to 15 seconds. WebSocket will reconnect automatically.";
+      doc["note"] = 
+        "Connection may take up to 15 seconds. "
+        "WebSocket will reconnect automatically.";
       
       char json[512];
       serializeJson(doc, json, sizeof(json));
@@ -1550,12 +1770,15 @@ bool WebServerManager::begin() {
         WifiConnectTaskParams* p = (WifiConnectTaskParams*)param;
         bool connected = wifi.connectTo(p->ssid, p->password);
         if (connected) {
-          Serial.printf("[WiFi] Connecté avec succès à '%s' (IP: %s, RSSI: %d dBm)\n", 
-            p->ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+          IPAddress ip = WiFi.localIP();
+          Serial.printf(
+            "[WiFi] Connecté avec succès à '%s' (IP: %d.%d.%d.%d, RSSI: %d dBm)\n", 
+            p->ssid, ip[0], ip[1], ip[2], ip[3], WiFi.RSSI());
           // Notifier le changement via WebSocket (si encore connecté)
           g_realtimeWebSocket.broadcastNow();
         } else {
-          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", p->ssid);
+          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n",
+                        p->ssid);
           // Retourner en mode AP si la connexion échoue
           // Le WifiManager s'en chargera automatiquement
         }
@@ -1588,15 +1811,19 @@ bool WebServerManager::begin() {
     char ssidBuf[64];
     bool hasSsid = false;
     if (req->hasParam("ssid", true)) {
-      String ssidVal = req->getParam("ssid", true)->value();
-      strncpy(ssidBuf, ssidVal.c_str(), sizeof(ssidBuf) - 1);
-      ssidBuf[sizeof(ssidBuf) - 1] = '\0';
-      hasSsid = true;
+      const char* ssidVal = req->getParam("ssid", true)->value().c_str();
+      if (ssidVal) {
+        strncpy(ssidBuf, ssidVal, sizeof(ssidBuf) - 1);
+        ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+        hasSsid = true;
+      } else {
+        ssidBuf[0] = '\0';
+      }
     } else {
       ssidBuf[0] = '\0';
     }
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     if (!hasSsid || strlen(ssidBuf) == 0) {
       doc["success"] = false;
@@ -1701,22 +1928,34 @@ bool WebServerManager::begin() {
   _server->on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     // Statut de connexion STA
     bool staConnected = WiFi.status() == WL_CONNECTED;
     doc["staConnected"] = staConnected;
     
     if (staConnected) {
-      doc["staSSID"] = WiFi.SSID();
-      doc["staIP"] = WiFi.localIP().toString();
+      char staSSIDBuf[33];
+      strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
+      staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+      doc["staSSID"] = staSSIDBuf;
+      IPAddress staIP = WiFi.localIP();
+      char staIPBuf[16];
+      snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
+      doc["staIP"] = staIPBuf;
       doc["staRSSI"] = WiFi.RSSI();
-      doc["staMac"] = WiFi.macAddress();
+      char staMacBuf[18];
+      strncpy(staMacBuf, WiFi.macAddress().c_str(), sizeof(staMacBuf) - 1);
+      staMacBuf[sizeof(staMacBuf) - 1] = '\0';
+      doc["staMac"] = staMacBuf;
     } else {
       doc["staSSID"] = "";
       doc["staIP"] = "";
       doc["staRSSI"] = 0;
-      doc["staMac"] = WiFi.macAddress();
+      char staMacBuf[18];
+      strncpy(staMacBuf, WiFi.macAddress().c_str(), sizeof(staMacBuf) - 1);
+      staMacBuf[sizeof(staMacBuf) - 1] = '\0';
+      doc["staMac"] = staMacBuf;
     }
     
     // Statut AP
@@ -1725,8 +1964,14 @@ bool WebServerManager::begin() {
     doc["apActive"] = apActive;
     
     if (apActive) {
-      doc["apSSID"] = WiFi.softAPSSID();
-      doc["apIP"] = WiFi.softAPIP().toString();
+      char apSSIDBuf[33];
+      strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
+      apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+      doc["apSSID"] = apSSIDBuf;
+      IPAddress apIP = WiFi.softAPIP();
+      char apIPBuf[16];
+      snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+      doc["apIP"] = apIPBuf;
       doc["apClients"] = WiFi.softAPgetStationNum();
     } else {
       doc["apSSID"] = "";
@@ -1748,9 +1993,11 @@ bool WebServerManager::begin() {
   _server->on("/server-status", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
     
-    Serial.printf("[Web] 📊 Server status request from %s\n", req->client()->remoteIP().toString().c_str());
+    IPAddress remoteIP = req->client()->remoteIP();
+    Serial.printf("[Web] 📊 Server status request from %d.%d.%d.%d\n",
+                  remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["heapFree"] = ESP.getFreeHeap();
     doc["heapTotal"] = ESP.getHeapSize();
     doc["psramFree"] = ESP.getFreePsram();
@@ -1761,8 +2008,15 @@ bool WebServerManager::begin() {
     
     // Ajouter des informations de debug supplémentaires
     doc["wifiStatus"] = WiFi.status();
-    doc["wifiSSID"] = WiFi.SSID();
-    doc["wifiIP"] = WiFi.localIP().toString();
+    char wifiSSIDBuf[33];
+    strncpy(wifiSSIDBuf, WiFi.SSID().c_str(), sizeof(wifiSSIDBuf) - 1);
+    wifiSSIDBuf[sizeof(wifiSSIDBuf) - 1] = '\0';
+    doc["wifiSSID"] = wifiSSIDBuf;
+    IPAddress wifiIP = WiFi.localIP();
+    char wifiIPBuf[16];
+    snprintf(wifiIPBuf, sizeof(wifiIPBuf), "%d.%d.%d.%d",
+             wifiIP[0], wifiIP[1], wifiIP[2], wifiIP[3]);
+    doc["wifiIP"] = wifiIPBuf;
     doc["wifiRSSI"] = WiFi.RSSI();
     doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
     doc["forceWakeup"] = g_autoCtrl.getForceWakeUp();
@@ -1775,7 +2029,7 @@ bool WebServerManager::begin() {
 
   // === API: Remote flags control (send/recv) ===
   _server->on("/api/remote-flags", HTTP_GET, [](AsyncWebServerRequest* req){
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["sendEnabled"] = config.isRemoteSendEnabled();
     doc["recvEnabled"] = config.isRemoteRecvEnabled();
     AsyncResponseStream* response = req->beginResponseStream("application/json");
@@ -1787,19 +2041,53 @@ bool WebServerManager::begin() {
   _server->on("/api/remote-flags", HTTP_POST, [](AsyncWebServerRequest* req){
     bool changed = false;
     if (req->hasParam("send", true)) {
-      String v = req->getParam("send", true)->value(); v.toLowerCase(); v.trim();
-      bool enable = (v == "1" || v == "true" || v == "on");
-      config.setRemoteSendEnabled(enable); changed = true;
+      const char* v = req->getParam("send", true)->value().c_str();
+      if (v) {
+        char vLower[16];
+        strncpy(vLower, v, sizeof(vLower) - 1);
+        vLower[sizeof(vLower) - 1] = '\0';
+        // Convertir en minuscules et trim
+        for (char* p = vLower; *p; p++) {
+          if (*p >= 'A' && *p <= 'Z') *p += 32;  // tolower
+        }
+        // Trim (supprimer espaces début/fin)
+        char* start = vLower;
+        while (*start == ' ' || *start == '\t') start++;
+        char* end = start + strlen(start) - 1;
+        while (end > start && (*end == ' ' || *end == '\t')) end--;
+        *(end + 1) = '\0';
+        bool enable = (strcmp(start, "1") == 0 || 
+                      strcmp(start, "true") == 0 || 
+                      strcmp(start, "on") == 0);
+        config.setRemoteSendEnabled(enable); changed = true;
+      }
     }
     if (req->hasParam("recv", true)) {
-      String v = req->getParam("recv", true)->value(); v.toLowerCase(); v.trim();
-      bool enable = (v == "1" || v == "true" || v == "on");
-      config.setRemoteRecvEnabled(enable); changed = true;
+      const char* v = req->getParam("recv", true)->value().c_str();
+      if (v) {
+        char vLower[16];
+        strncpy(vLower, v, sizeof(vLower) - 1);
+        vLower[sizeof(vLower) - 1] = '\0';
+        // Convertir en minuscules et trim
+        for (char* p = vLower; *p; p++) {
+          if (*p >= 'A' && *p <= 'Z') *p += 32;  // tolower
+        }
+        // Trim (supprimer espaces début/fin)
+        char* start = vLower;
+        while (*start == ' ' || *start == '\t') start++;
+        char* end = start + strlen(start) - 1;
+        while (end > start && (*end == ' ' || *end == '\t')) end--;
+        *(end + 1) = '\0';
+        bool enable = (strcmp(start, "1") == 0 || 
+                      strcmp(start, "true") == 0 || 
+                      strcmp(start, "on") == 0);
+        config.setRemoteRecvEnabled(enable); changed = true;
+      }
     }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["ok"] = true;
     doc["changed"] = changed;
     serializeJson(doc, *response);
@@ -1810,9 +2098,11 @@ bool WebServerManager::begin() {
     _server->on("/debug-logs", HTTP_GET, [this](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint debug
     
-    Serial.printf("[Web] 🔍 Debug logs request from %s\n", req->client()->remoteIP().toString().c_str());
+    IPAddress remoteIP2 = req->client()->remoteIP();
+    Serial.printf("[Web] 🔍 Debug logs request from %d.%d.%d.%d\n",
+                  remoteIP2[0], remoteIP2[1], remoteIP2[2], remoteIP2[3]);
     
-    JsonDocument doc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     // Informations système
     doc["system"]["uptime"] = millis();
@@ -1823,10 +2113,20 @@ bool WebServerManager::begin() {
     
     // Informations WiFi
     doc["wifi"]["status"] = WiFi.status();
-    doc["wifi"]["ssid"] = WiFi.SSID();
-    doc["wifi"]["ip"] = WiFi.localIP().toString();
+    char wifiSSIDBuf2[33];
+    strncpy(wifiSSIDBuf2, WiFi.SSID().c_str(), sizeof(wifiSSIDBuf2) - 1);
+    wifiSSIDBuf2[sizeof(wifiSSIDBuf2) - 1] = '\0';
+    doc["wifi"]["ssid"] = wifiSSIDBuf2;
+    IPAddress wifiIP2 = WiFi.localIP();
+    char wifiIPBuf2[16];
+    snprintf(wifiIPBuf2, sizeof(wifiIPBuf2), "%d.%d.%d.%d",
+             wifiIP2[0], wifiIP2[1], wifiIP2[2], wifiIP2[3]);
+    doc["wifi"]["ip"] = wifiIPBuf2;
     doc["wifi"]["rssi"] = WiFi.RSSI();
-    doc["wifi"]["mac"] = WiFi.macAddress();
+    char wifiMacBuf[18];
+    strncpy(wifiMacBuf, WiFi.macAddress().c_str(), sizeof(wifiMacBuf) - 1);
+    wifiMacBuf[sizeof(wifiMacBuf) - 1] = '\0';
+    doc["wifi"]["mac"] = wifiMacBuf;
     
     // Informations WebSocket
     doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
@@ -1866,6 +2166,10 @@ bool WebServerManager::begin() {
   Serial.printf("[Web] Connexions max: %u\n", NetworkConfig::WEB_SERVER_MAX_CONNECTIONS);
   Serial.println(F("[Web] Serveur HTTP prêt - Interface web accessible"));
   Serial.println(F("[Web] WebSocket temps réel sur le port 81"));
+  
+  // Snapshot après démarrage serveur web
+  HeapSnapshot snapshot_after_web_server = MEM_DIAG_SNAPSHOT("after_web_server");
+  MEM_DIAG_COMPARE(snapshot_after_websocket, snapshot_after_web_server);
   return true;
   #endif
 }

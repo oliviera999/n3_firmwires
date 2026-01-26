@@ -6,7 +6,6 @@ const char* kLittleFsLabel = "littlefs";
 
 DataQueue::DataQueue(uint16_t maxEntries)
     : _maxEntries(maxEntries)
-    , _currentSize(0)
     , _initialized(false)
 {
 }
@@ -28,11 +27,10 @@ bool DataQueue::begin() {
         return false;
     }
     
-    // Compter les entrées existantes
-    _currentSize = countEntries();
     _initialized = true;
     
-    Serial.printf("[DataQueue] ✓ Initialisée: %u entrées en attente\n", _currentSize);
+    uint16_t entryCount = countEntries();
+    Serial.printf("[DataQueue] ✓ Initialisée: %u entrées en attente\n", entryCount);
     return true;
 }
 
@@ -54,10 +52,13 @@ bool DataQueue::push(const char* payload) {
         return false;
     }
     
-    // Vérifier limite mémoire
-    if (isFull()) {
+    // v11.157: Optimisation stack - calculer count une seule fois et réutiliser
+    uint16_t entryCount = countEntries();
+    if (entryCount >= _maxEntries) {
         Serial.println(F("[DataQueue] ⚠️ Queue pleine, rotation..."));
-        rotateIfNeeded();
+        rotateIfNeeded(entryCount);
+        // Après rotation, le count est réduit, mais on le recalculera après l'ajout
+        entryCount = _maxEntries; // Approximation: après rotation on a max _maxEntries
     }
     
     uint32_t heapBefore = ESP.getFreeHeap();
@@ -72,10 +73,11 @@ bool DataQueue::push(const char* payload) {
     file.println(payload);
     file.close();
     
-    _currentSize++;
-    Serial.printf("[DataQueue] ✓ Payload enregistré (%zu bytes, total: %u entrées)\n", 
-                  strlen(payload), _currentSize);
-
+    // v11.157: Réutiliser entryCount + 1 au lieu de recalculer (économie stack)
+    entryCount++;
+    Serial.printf("[DataQueue] ✓ Payload enregistré (%zu bytes, total: ~%u entrées)\n", 
+                  strlen(payload), entryCount);
+    
     uint32_t heapAfter = ESP.getFreeHeap();
     int32_t heapDelta = static_cast<int32_t>(heapAfter) - static_cast<int32_t>(heapBefore);
     if (heapDelta != 0) {
@@ -112,8 +114,8 @@ bool DataQueue::pop(char* buffer, size_t bufferSize) {
         return false;
     }
     
-    // v11.156: Utilisation de buffer fixe au lieu de readStringUntil() pour éviter fragmentation mémoire
-    const size_t LINE_BUF_SIZE = 512;  // Taille max raisonnable pour une ligne JSON
+    // v11.157: Réduire buffer de 512 à 256 bytes pour économiser stack
+    const size_t LINE_BUF_SIZE = 256;  // Taille suffisante pour la plupart des lignes JSON
     char lineBuf[LINE_BUF_SIZE];
     bool firstLine = true;
     
@@ -144,8 +146,8 @@ bool DataQueue::pop(char* buffer, size_t bufferSize) {
     LittleFS.remove(QUEUE_FILE);
     LittleFS.rename(TEMP_FILE, QUEUE_FILE);
     
-    _currentSize--;
-    Serial.printf("[DataQueue] ✓ Payload supprimé (restant: %u)\n", _currentSize);
+    uint16_t entryCount = countEntries();
+    Serial.printf("[DataQueue] ✓ Payload supprimé (restant: %u)\n", entryCount);
 
     uint32_t heapAfter = ESP.getFreeHeap();
     int32_t heapDelta = static_cast<int32_t>(heapAfter) - static_cast<int32_t>(heapBefore);
@@ -201,7 +203,10 @@ bool DataQueue::peek(char* buffer, size_t bufferSize) {
 }
 
 uint16_t DataQueue::size() {
-    return _currentSize;
+    if (!_initialized) {
+        return 0;
+    }
+    return countEntries();
 }
 
 void DataQueue::clear() {
@@ -210,7 +215,6 @@ void DataQueue::clear() {
     }
     
     LittleFS.remove(QUEUE_FILE);
-    _currentSize = 0;
     
     Serial.println(F("[DataQueue] ✓ Queue vidée"));
 }
@@ -222,7 +226,9 @@ uint16_t DataQueue::countEntries() {
     }
     
     uint16_t count = 0;
-    const size_t LINE_BUF_SIZE = 512;
+    // v11.157: Réduire buffer de 512 à 256 bytes pour économiser stack
+    // 256 bytes suffisent pour compter les lignes (on ne lit pas le contenu complet)
+    const size_t LINE_BUF_SIZE = 256;
     char lineBuf[LINE_BUF_SIZE];
     while (file.available()) {
         size_t len = file.readBytesUntil('\n', lineBuf, LINE_BUF_SIZE - 1);
@@ -243,13 +249,14 @@ uint16_t DataQueue::countEntries() {
     return count;
 }
 
-void DataQueue::rotateIfNeeded() {
-    if (_currentSize <= _maxEntries) {
+void DataQueue::rotateIfNeeded(uint16_t currentSize) {
+    // v11.157: currentSize passé en paramètre pour éviter de recalculer (économie stack)
+    if (currentSize <= _maxEntries) {
         return;
     }
     
     // Supprimer les entrées les plus anciennes
-    uint16_t toRemove = _currentSize - _maxEntries;
+    uint16_t toRemove = currentSize - _maxEntries;
     
     File src = LittleFS.open(QUEUE_FILE, FILE_READ);
     if (!src) {
@@ -262,18 +269,35 @@ void DataQueue::rotateIfNeeded() {
         return;
     }
     
-    // Sauter les N premières lignes
+    // v11.157: Réduire buffer de 512 à 256 bytes pour économiser stack
+    // 256 bytes suffisent pour la plupart des lignes JSON
+    const size_t LINE_BUF_SIZE = 256;
+    char lineBuf[LINE_BUF_SIZE];
     uint16_t skipped = 0;
     while (src.available() && skipped < toRemove) {
-        src.readStringUntil('\n');
+        size_t len = src.readBytesUntil('\n', lineBuf, LINE_BUF_SIZE - 1);
+        if (len > 0) {
+            // Ligne lue, on la saute
+        }
         skipped++;
     }
     
     // Copier le reste
     while (src.available()) {
-        String line = src.readStringUntil('\n');
-        if (line.length() > 0) {
-            tmp.println(line);
+        size_t len = src.readBytesUntil('\n', lineBuf, LINE_BUF_SIZE - 1);
+        if (len > 0) {
+            lineBuf[len] = '\0';
+            // Supprimer \r si présent (format Windows)
+            if (len > 0 && lineBuf[len - 1] == '\r') {
+                lineBuf[len - 1] = '\0';
+                len--;
+            }
+            if (len > 0) {
+                tmp.println(lineBuf);
+            }
+        } else {
+            // Fin de fichier ou ligne vide
+            break;
         }
     }
     
@@ -282,8 +306,6 @@ void DataQueue::rotateIfNeeded() {
     
     LittleFS.remove(QUEUE_FILE);
     LittleFS.rename(TEMP_FILE, QUEUE_FILE);
-    
-    _currentSize = _maxEntries;
     
     Serial.printf("[DataQueue] ⚠️ Rotation effectuée: %u entrées supprimées\n", toRemove);
 }
@@ -305,10 +327,16 @@ size_t DataQueue::getMemoryUsage() {
 }
 
 bool DataQueue::isFull() {
-    return _currentSize >= _maxEntries;
+    if (!_initialized) {
+        return false;
+    }
+    return countEntries() >= _maxEntries;
 }
 
 bool DataQueue::isEmpty() {
-    return _currentSize == 0;
+    if (!_initialized) {
+        return true;
+    }
+    return countEntries() == 0;
 }
 

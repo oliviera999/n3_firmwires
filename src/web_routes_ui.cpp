@@ -3,6 +3,7 @@
 #ifndef DISABLE_ASYNC_WEBSERVER
 
 #include <ESPAsyncWebServer.h>
+#include <cstring>
 #include <LittleFS.h>
 #include <esp_task_wdt.h>
 
@@ -122,8 +123,9 @@ void registerStaticAssets(AsyncWebServer& server) {
 void registerStreamingRoutes(AsyncWebServer& server, WebServerContext& ctx) {
   server.on("/", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     ctx.automatism.notifyLocalWebActivity();
-    Serial.printf("[Web] 🌐 Requête / depuis %s\n",
-                  req->client()->remoteIP().toString().c_str());
+    IPAddress remoteIP = req->client()->remoteIP();
+    Serial.printf("[Web] 🌐 Requête / depuis %d.%d.%d.%d\n",
+                  remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
 
     if (serveIndexStreaming(ctx, req)) {
       return;
@@ -272,13 +274,14 @@ void registerCompressedAssets(AsyncWebServer& server) {
                       req->getHeader("Accept-Encoding")->value().indexOf("gzip") >= 0;
 
     if (acceptsGzip) {
-      String gz = String(path) + ".gz";
+      char gz[128];
+      snprintf(gz, sizeof(gz), "%s.gz", path);
       if (LittleFS.exists(gz)) {
         File file = LittleFS.open(gz, "r");
         if (file) {
           size_t fileSize = file.size();
           file.close();
-          Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz.c_str(), fileSize);
+          Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz, fileSize);
           AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
           if (r) {
             r->addHeader("Content-Encoding", "gzip");

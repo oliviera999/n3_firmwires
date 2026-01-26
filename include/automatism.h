@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #include "system_sensors.h"
 #include "system_actuators.h"
 #include "web_client.h"
@@ -21,7 +22,9 @@
 
 class Automatism {
  public:
-  Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient& web, DisplayView& disp, PowerManager& power, Mailer& mail, ConfigManager& config);
+  Automatism(SystemSensors& sensors, SystemActuators& acts, 
+             WebClient& web, DisplayView& disp, 
+             PowerManager& power, Mailer& mail, ConfigManager& config);
   void begin();
   void update();               // collecte interne des capteurs
   void update(const SensorReadings& r); // usage dans tâche dédiée
@@ -33,7 +36,9 @@ class Automatism {
   bool isPumpAquaLocked() const { return _config.getPompeAquaLocked(); }
   bool isTankPumpLocked() const { return tankPumpLocked; }
   time_t getCurrentTime() { return _power.getCurrentEpoch(); }
-  void getCurrentTimeString(char* buffer, size_t bufferSize) { _power.getCurrentTimeString(buffer, bufferSize); }
+  void getCurrentTimeString(char* buffer, size_t bufferSize) {
+    _power.getCurrentTimeString(buffer, bufferSize);
+  }
   uint32_t getPumpStartTime() const { return _pumpStartMs; }  // Pour SystemActuators
   bool isTankPumpRunning() const { return _pumpStartMs > 0; }
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
@@ -51,10 +56,16 @@ class Automatism {
   uint16_t getTempsPetits() const { return tempsPetits; }
   uint32_t getRefillDurationSec() const { return refillDurationMs / 1000UL; }
   uint16_t getLimFlood() const { return limFlood; }
-  const String& getBouffePetitsFlag() const { return bouffePetits; }
-  const String& getBouffeGrosFlag() const { return bouffeGros; }
-  void setBouffePetitsFlag(const char* val) { bouffePetits = val; }
-  void setBouffeGrosFlag(const char* val) { bouffeGros = val; }
+  const char* getBouffePetitsFlag() const { return bouffePetits; }
+  const char* getBouffeGrosFlag() const { return bouffeGros; }
+  void setBouffePetitsFlag(const char* val) {
+    strncpy(bouffePetits, val ? val : "0", sizeof(bouffePetits) - 1);
+    bouffePetits[sizeof(bouffePetits) - 1] = '\0';
+  }
+  void setBouffeGrosFlag(const char* val) {
+    strncpy(bouffeGros, val ? val : "0", sizeof(bouffeGros) - 1);
+    bouffeGros[sizeof(bouffeGros) - 1] = '\0';
+  }
   int computeDiffMaree(uint16_t currentAqua);
   bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
   uint32_t getCountdownEndMs() const { return _countdownEnd; }
@@ -130,6 +141,11 @@ class Automatism {
   void restoreActuatorState();
   bool restoreRemoteConfigFromCache();
   void syncForceWakeupWithServer();
+  
+  // v11.158: Méthodes privées pour refactoriser update()
+  void updateFeedingAndDisplay(const SensorReadings& r, uint32_t nowMs);
+  void updateNetworkSync(const SensorReadings& r, uint32_t nowMs);
+  void updateBusinessLogic(const SensorReadings& r, uint32_t nowMs);
 
   SystemSensors& _sensors;
   SystemActuators& _acts;
@@ -166,7 +182,7 @@ class Automatism {
   bool forceWakeUp = false;
   unsigned long mailBlinkUntil = 0;
   unsigned long _countdownEnd = 0;
-  String _countdownLabel;
+  char _countdownLabel[64];
   #if defined(PROFILE_TEST)
     uint16_t freqWakeSec = 6; // Fréquence de réveil en secondes (6s par défaut pour wroom-test)
   #else
@@ -199,9 +215,11 @@ class Automatism {
   // Configuration du sleep adaptatif (utilise les constantes de project_config.h)
   // IMPORTANT: Ces valeurs contrôlent les DÉLAIS D'INACTIVITÉ, pas la durée de sommeil
   struct SleepConfig {
-    uint32_t minSleepTime = ::SleepConfig::MIN_INACTIVITY_DELAY_SEC;      // 5 min minimum d'inactivité
+    // 5 min minimum d'inactivité
+    uint32_t minSleepTime = ::SleepConfig::MIN_INACTIVITY_DELAY_SEC;
     uint32_t maxSleepTime = ::SleepConfig::MAX_INACTIVITY_DELAY_SEC;     // 1h maximum d'inactivité
-    uint32_t normalSleepTime = ::SleepConfig::NORMAL_INACTIVITY_DELAY_SEC;   // 5 min normal d'inactivité
+    // 5 min normal d'inactivité
+    uint32_t normalSleepTime = ::SleepConfig::NORMAL_INACTIVITY_DELAY_SEC;
     uint32_t errorSleepTime = ::SleepConfig::ERROR_INACTIVITY_DELAY_SEC;    // 1.5 min si erreurs
     uint32_t nightSleepTime = ::SleepConfig::NIGHT_INACTIVITY_DELAY_SEC;   // 30 min la nuit
     bool adaptiveSleep = ::SleepConfig::ADAPTIVE_SLEEP_ENABLED;        // sleep adaptatif activé
@@ -211,8 +229,8 @@ class Automatism {
   uint8_t bouffeMatin = 8;
   uint8_t bouffeMidi  = 12;
   uint8_t bouffeSoir  = 19;
-  String bouffePetits{"0"};
-  String bouffeGros{"0"};
+  char bouffePetits[8] = "0";
+  char bouffeGros[8] = "0";
   int  lastFeedDay = -1;
   // Indique si le cycle de nourrissage en cours a été déclenché manuellement
   bool _manualFeedingActive{false};
@@ -259,13 +277,18 @@ class Automatism {
 
   // Anti-spam e-mail inondation (trop plein)
   bool     inFlood{false};                 // état courant « en trop plein »
-  uint32_t floodCooldownMin{::SleepConfig::FLOOD_COOLDOWN_MIN};          // délai min entre 2 mails (minutes)
-  uint32_t floodDebounceMin{::SleepConfig::FLOOD_DEBOUNCE_MIN};            // temps minimal sous seuil avant de considérer le trop-plein (minutes)
-  uint16_t floodHystCm{::SleepConfig::FLOOD_HYST_CM};                 // hystérésis de sortie (cm au-dessus de limFlood)
-  uint32_t floodResetStableMin{::SleepConfig::FLOOD_RESET_STABLE_MIN};        // durée au-dessus du seuil+hyst avant réarmement (minutes)
+  // délai min entre 2 mails (minutes)
+  uint32_t floodCooldownMin{::SleepConfig::FLOOD_COOLDOWN_MIN};
+  // temps minimal sous seuil avant de considérer le trop-plein (minutes)
+  uint32_t floodDebounceMin{::SleepConfig::FLOOD_DEBOUNCE_MIN};
+  // hystérésis de sortie (cm au-dessus de limFlood)
+  uint16_t floodHystCm{::SleepConfig::FLOOD_HYST_CM};
+  // durée au-dessus du seuil+hyst avant réarmement (minutes)
+  uint32_t floodResetStableMin{::SleepConfig::FLOOD_RESET_STABLE_MIN};
   uint32_t lastFloodEmailEpoch{0};         // dernier envoi d'email (epoch secondes)
   uint32_t floodEnterSinceEpoch{0};        // depuis quand on est sous limFlood (epoch)
-  uint32_t aboveResetSinceEpoch{0};        // depuis quand on est au-dessus de limFlood+hyst (epoch)
+  // depuis quand on est au-dessus de limFlood+hyst (epoch)
+  uint32_t aboveResetSinceEpoch{0};
 
   // Permet de basculer entre écran principal et écran Vars.
   // true  => écran principal

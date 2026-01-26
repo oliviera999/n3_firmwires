@@ -8,9 +8,7 @@
 
 namespace BootstrapStorage {
 
-void initialize(AppContext& ctx,
-                unsigned long& lastDigestMs,
-                uint32_t& lastDigestSeq) {
+void initialize(AppContext& ctx) {
   EventLog::begin();
   EventLog::add("Boot start");
 
@@ -56,16 +54,6 @@ void initialize(AppContext& ctx,
   g_nvsManager.setFlushInterval(3000);
   g_nvsManager.schedulePeriodicCleanup();
   g_nvsManager.migrateFromOldSystem();
-
-  Serial.println(F("[App] 📥 Chargement état digest depuis NVS centralisé"));
-  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS,
-                         "digest_last_seq",
-                         lastDigestSeq,
-                         0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::SENSORS,
-                         "digest_last_ms",
-                         lastDigestMs,
-                         0);
 }
 
 }  // namespace BootstrapStorage

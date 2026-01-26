@@ -3,10 +3,13 @@
 #include <math.h> // Pour fabs()
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
+#include "sensor_failure_manager.h"
 
 // -------- UltrasonicManager ---------
-UltrasonicManager::UltrasonicManager(int pinTrigEcho) : _pinTrigEcho(pinTrigEcho),
-                                                       _historyIndex(0), _historyCount(0), _lastValidDistance(0) {
+UltrasonicManager::UltrasonicManager(int pinTrigEcho, const char* sensorName) 
+  : _pinTrigEcho(pinTrigEcho),
+    _historyIndex(0), _historyCount(0), _lastValidDistance(0),
+    _failureManager(sensorName, 10, 60000, 3) {
   // Initialise l'historique avec des valeurs 0
   for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
     _history[i] = 0;
@@ -60,6 +63,55 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
 }
 
 uint16_t UltrasonicManager::readAdvancedFiltered() {
+  // Si capteur désactivé, tester réactivation périodiquement
+  if (_failureManager.isDisabled()) {
+    if (_failureManager.shouldTestReactivation()) {
+      // Test rapide de réactivation avec une seule lecture
+      uint32_t testStart = millis();
+      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 500;
+      
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+      }
+      
+      // Test de lecture simple
+      pinMode(_pinTrigEcho, OUTPUT);
+      digitalWrite(_pinTrigEcho, LOW);
+      delayMicroseconds(2);
+      digitalWrite(_pinTrigEcho, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(_pinTrigEcho, LOW);
+      pinMode(_pinTrigEcho, INPUT);
+      unsigned long duration = readEchoPulseUs(SensorConfig::Ultrasonic::TIMEOUT_US);
+      
+      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+        // Timeout - capteur toujours absent
+        _failureManager.recordReactivationTestFailure();
+        // Fallback sur dernière valeur valide ou 0
+        return _lastValidDistance > 0 ? _lastValidDistance : 0;
+      }
+      
+      if (duration > 0) {
+        uint16_t testCm = duration / 58;
+        if (testCm >= MIN_DISTANCE && testCm < MAX_DISTANCE) {
+          if (_failureManager.recordReactivationTestSuccess()) {
+            // Capteur réactivé, retourner la valeur testée
+            _lastValidDistance = testCm;
+            return testCm;
+          }
+        } else {
+          _failureManager.recordReactivationTestFailure();
+        }
+      } else {
+        _failureManager.recordReactivationTestFailure();
+      }
+    }
+    
+    // Capteur toujours désactivé, retourner dernière valeur valide ou 0
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+  }
+  
+  // Capteur actif, lecture normale
   // 1. Filtrage statistique avancé avec médiane
   uint16_t readings[READINGS_COUNT];
   uint8_t validReadings = 0;
@@ -110,7 +162,8 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
   if (validReadings < 1) { // Réduit de MIN_VALID_READINGS (2) à 1
     Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/1), retourne 0\n", validReadings);
-    return 0;
+    _failureManager.recordFailure();
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
   
   // Trie les lectures pour calculer la médiane
@@ -189,6 +242,9 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     }
   }
   
+  // Succès - enregistrer et mettre à jour
+  _failureManager.recordSuccess();
+  
   // Met à jour l'historique
   _history[_historyIndex] = medianDistance;
   _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
@@ -203,6 +259,55 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
 }
 
 uint16_t UltrasonicManager::readReactiveFiltered() {
+  // Si capteur désactivé, tester réactivation périodiquement
+  if (_failureManager.isDisabled()) {
+    if (_failureManager.shouldTestReactivation()) {
+      // Test rapide de réactivation avec une seule lecture
+      uint32_t testStart = millis();
+      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 500;
+      
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+      }
+      
+      // Test de lecture simple
+      pinMode(_pinTrigEcho, OUTPUT);
+      digitalWrite(_pinTrigEcho, LOW);
+      delayMicroseconds(2);
+      digitalWrite(_pinTrigEcho, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(_pinTrigEcho, LOW);
+      pinMode(_pinTrigEcho, INPUT);
+      unsigned long duration = readEchoPulseUs(SensorConfig::Ultrasonic::TIMEOUT_US);
+      
+      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+        // Timeout - capteur toujours absent
+        _failureManager.recordReactivationTestFailure();
+        // Fallback sur dernière valeur valide ou 0
+        return _lastValidDistance > 0 ? _lastValidDistance : 0;
+      }
+      
+      if (duration > 0) {
+        uint16_t testCm = duration / 58;
+        if (testCm >= MIN_DISTANCE && testCm < MAX_DISTANCE) {
+          if (_failureManager.recordReactivationTestSuccess()) {
+            // Capteur réactivé, retourner la valeur testée
+            _lastValidDistance = testCm;
+            return testCm;
+          }
+        } else {
+          _failureManager.recordReactivationTestFailure();
+        }
+      } else {
+        _failureManager.recordReactivationTestFailure();
+      }
+    }
+    
+    // Capteur toujours désactivé, retourner dernière valeur valide ou 0
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+  }
+  
+  // Capteur actif, lecture normale
   // v11.41: Mode réactif - lissage minimal pour détecter rapidement les changements de niveau
   // Réduit le lissage excessif des capteurs ultrasoniques tout en gardant la fiabilité
   // Configuration: 3 lectures avec délai de 60ms entre chaque lecture
@@ -246,7 +351,8 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   
   if (validReadings < 1) {
     Serial.printf("[Ultrasonic] Pas assez de lectures réactives valides (%d/1), retourne 0\n", validReadings);
-    return 0;
+    _failureManager.recordFailure();
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
   
   // Calcul simple : moyenne des lectures valides (pas de médiane pour plus de réactivité)
@@ -266,6 +372,9 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
     }
   }
   
+  // Succès - enregistrer et mettre à jour
+  _failureManager.recordSuccess();
+  
   // Mise à jour de l'historique avec la nouvelle valeur
   _history[_historyIndex] = avgDistance;
   _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
@@ -278,6 +387,10 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   return avgDistance;
 }
 
+bool UltrasonicManager::isSensorDisabled() const {
+  return _failureManager.isDisabled();
+}
+
 void UltrasonicManager::resetHistory() {
   _historyIndex = 0;
   _historyCount = 0;
@@ -285,6 +398,7 @@ void UltrasonicManager::resetHistory() {
   for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
     _history[i] = 0;
   }
+  _failureManager.reset();
   Serial.println("[Ultrasonic] Historique réinitialisé");
 }
 
@@ -318,7 +432,8 @@ uint32_t UltrasonicManager::readEchoPulseUs(uint32_t timeoutUs) {
 }
 
 // -------- WaterTempSensor ------------
-WaterTempSensor::WaterTempSensor() : _historyIndex(0), _historyCount(0), _lastValidTemp(NAN) {
+WaterTempSensor::WaterTempSensor() : _historyIndex(0), _historyCount(0), _lastValidTemp(NAN),
+                                     _failureManager("WaterTemp", 10, 60000, 3) {
   // Initialise l'historique avec des valeurs NaN
   for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
     _history[i] = NAN;
@@ -334,12 +449,26 @@ void WaterTempSensor::begin() {
   // Chargement de la dernière température valide depuis NVS
   _lastValidTemp = loadLastValidTempFromNVS();
   
-  // Test initial de connectivité
+  // Test initial de connectivité avec timeout strict
+  uint32_t testStart = millis();
   if (!isSensorConnected()) {
     Serial.println("[WaterTemp] ATTENTION: Capteur non détecté lors de l'initialisation");
+    // Enregistrer plusieurs échecs pour désactiver immédiatement si non détecté au boot
+    for (uint8_t i = 0; i < 10; ++i) {
+      _failureManager.recordFailure();
+    }
   } else {
     Serial.printf("[WaterTemp] Capteur détecté et initialisé (résolution: %d bits, conversion: %d ms)\n", 
                   DS18B20_RESOLUTION, CONVERSION_DELAY_MS);
+    _failureManager.recordSuccess();
+  }
+  
+  // Vérifier que le test n'a pas pris trop de temps
+  if (millis() - testStart > 2000) {
+    Serial.println("[WaterTemp] ATTENTION: Test initial trop lent, désactivation préventive");
+    for (uint8_t i = 0; i < 10; ++i) {
+      _failureManager.recordFailure();
+    }
   }
 
   // Pré-charge pipeline de conversion
@@ -349,9 +478,16 @@ void WaterTempSensor::begin() {
 }
 
 bool WaterTempSensor::isSensorConnected() {
+  uint32_t testStart = millis();
+  const uint32_t CONNECTIVITY_TEST_TIMEOUT_MS = 1000;
+  
   // Reset du bus OneWire pour un test propre
   _oneWire.reset();
   vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
+  
+  if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+    return false; // Timeout - capteur trop lent
+  }
   
   // Vérifie la présence du capteur sur le bus OneWire
   uint8_t addr[8];
@@ -359,6 +495,10 @@ bool WaterTempSensor::isSensorConnected() {
   
   // Tentative de recherche avec retry
   for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+    if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+      return false; // Timeout - capteur trop lent
+    }
+    
     if (_oneWire.search(addr)) {
       // Vérifie que c'est bien un DS18B20
       if (_oneWire.crc8(addr, 7) != addr[7]) {
@@ -375,6 +515,11 @@ bool WaterTempSensor::isSensorConnected() {
       // Test de lecture rapide pour vérifier la fonctionnalité
       _sensors.requestTemperatures();
       vTaskDelay(pdMS_TO_TICKS(SensorConfig::SENSOR_READ_DELAY_MS)); // Délai court pour test
+      
+      if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+        return false; // Timeout - capteur trop lent
+      }
+      
       float testTemp = _sensors.getTempCByIndex(0);
       
       if (!isnan(testTemp)) {
@@ -407,8 +552,9 @@ void WaterTempSensor::resetSensor() {
   _sensors.begin();
   _sensors.setResolution(DS18B20_RESOLUTION); // Utilise la résolution optimisée
   
-  // Reset de l'historique
+  // Reset de l'historique et du gestionnaire de défaillances
   resetHistory();
+  _failureManager.reset();
   
   Serial.printf("[WaterTemp] Reset matériel terminé (résolution: %d bits)\n", DS18B20_RESOLUTION);
 }
@@ -417,6 +563,72 @@ float WaterTempSensor::getTemperatureWithFallback() {
   // NOUVELLE MÉTHODE NON-BLOQUANTE (v11.50)
   // Timeout strict pour éviter tout blocage système
   
+  // Si capteur désactivé, tester réactivation périodiquement
+  if (_failureManager.isDisabled()) {
+    if (_failureManager.shouldTestReactivation()) {
+      // Test rapide de réactivation avec timeout strict (1 seconde max)
+      uint32_t testStart = millis();
+      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 1000;
+      
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+      }
+      
+      // Test de connectivité rapide
+      bool connected = isSensorConnected();
+      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+        // Timeout - capteur toujours absent
+        _failureManager.recordReactivationTestFailure();
+        // Fallback sur dernière valeur ou défaut
+        if (!isnan(_lastValidTemp)) {
+          return _lastValidTemp;
+        }
+        return SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
+      }
+      
+      // Si connecté, tester une lecture rapide
+      if (connected) {
+        if (_pipelineReady && (millis() - _lastRequestMs) >= CONVERSION_DELAY_MS) {
+          float testTemp = _sensors.getTempCByIndex(0);
+          _pipelineReady = false;
+          _sensors.requestTemperatures();
+          _lastRequestMs = millis();
+          _pipelineReady = true;
+          
+          if (!isnan(testTemp) && 
+              testTemp >= SensorConfig::WaterTemp::MIN_VALID && 
+              testTemp <= SensorConfig::WaterTemp::MAX_VALID) {
+            if (_failureManager.recordReactivationTestSuccess()) {
+              // Capteur réactivé, retourner la valeur testée
+              _lastValidTemp = testTemp;
+              saveLastValidTempToNVS(testTemp);
+              return testTemp;
+            }
+          } else {
+            _failureManager.recordReactivationTestFailure();
+          }
+        } else {
+          // Pipeline pas prêt, lancer conversion pour prochaine fois
+          if (!_pipelineReady) {
+            _sensors.requestTemperatures();
+            _lastRequestMs = millis();
+            _pipelineReady = true;
+          }
+          _failureManager.recordReactivationTestFailure();
+        }
+      } else {
+        _failureManager.recordReactivationTestFailure();
+      }
+    }
+    
+    // Capteur toujours désactivé, retourner valeur par défaut ou dernière valide
+    if (!isnan(_lastValidTemp)) {
+      return _lastValidTemp;
+    }
+    return SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
+  }
+  
+  // Capteur actif, tentative de lecture normale
   uint32_t startTime = millis();
   const uint32_t timeoutMs = GlobalTimeouts::DS18B20_MAX_MS;
   
@@ -431,13 +643,18 @@ float WaterTempSensor::getTemperatureWithFallback() {
     _pipelineReady = true;
     
     if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+      // Succès
+      _failureManager.recordSuccess();
       _lastValidTemp = temp;
       saveLastValidTempToNVS(temp);
       return temp;
+    } else {
+      // Échec - valeur invalide
+      _failureManager.recordFailure();
     }
   }
   
-  // 2. Si pas prêt, lancer et retourner NaN immédiatement
+  // 2. Si pas prêt, lancer et retourner fallback
   if (!_pipelineReady) {
     _sensors.requestTemperatures();
     _lastRequestMs = millis();
@@ -445,13 +662,14 @@ float WaterTempSensor::getTemperatureWithFallback() {
   }
   
   // 3. Fallback immédiat - utiliser dernière valeur valide ou valeur par défaut
+  _failureManager.recordFailure();
   if (!isnan(_lastValidTemp)) {
     Serial.printf("[WaterTemp] Capteur défaillant, utilise dernière valeur valide: %.1f°C\n", _lastValidTemp);
     return _lastValidTemp;
   }
   
-  Serial.printf("[WaterTemp] Capteur défaillant, utilise valeur par défaut: %.1f°C\n", DefaultValues::WATER_TEMP);
-  return DefaultValues::WATER_TEMP;
+  Serial.printf("[WaterTemp] Capteur défaillant, utilise valeur par défaut: %.1f°C\n", SensorConfig::DefaultValues::TEMP_WATER_DEFAULT);
+  return SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
 }
 
 float WaterTempSensor::temperatureC() {
@@ -695,6 +913,10 @@ float WaterTempSensor::filteredTemperatureC() {
   return smoothedTemp;
 }
 
+bool WaterTempSensor::isSensorDisabled() const {
+  return _failureManager.isDisabled();
+}
+
 void WaterTempSensor::resetHistory() {
   _historyIndex = 0;
   _historyCount = 0;
@@ -714,7 +936,9 @@ AirSensor::AirSensor() : _dht(Pins::DHT_PIN,
 #endif
                             ), 
                         _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
-                        _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN) {
+                        _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN),
+                        _consecutiveTempFailures(0), _consecutiveHumidityFailures(0), _sensorDisabled(false), _disableLogged(false),
+                        _lastReactivationTestMs(0), _consecutiveReactivationSuccesses(0) {
   // Initialise l'historique avec des valeurs NaN
   for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
     _tempHistory[i] = NAN;
@@ -727,15 +951,30 @@ void AirSensor::begin() {
   vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation après initialisation
   resetHistory();
   
-  // Test initial de connectivité
+  // Test initial avec timeout strict (2 secondes max)
+  uint32_t testStart = millis();
   if (!isSensorConnected()) {
     SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation");
-  } else {
-    SENSOR_LOG_PRINTLN("[AirSensor] Capteur détecté et initialisé");
+    // Désactiver immédiatement si non détecté au boot
+    _sensorDisabled = true;
+    _disableLogged = true;
+    SENSOR_LOG_PRINTLN("[AirSensor] DHT22 désactivé - capteur absent au démarrage");
+    return;
   }
+  // Vérifier que le test n'a pas pris trop de temps
+  if (millis() - testStart > 2000) {
+    SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: Test initial trop lent, désactivation préventive");
+    _sensorDisabled = true;
+    _disableLogged = true;
+    return;
+  }
+  SENSOR_LOG_PRINTLN("[AirSensor] Capteur détecté et initialisé");
 }
 
 bool AirSensor::isSensorConnected() {
+  uint32_t testStart = millis();
+  const uint32_t CONNECTIVITY_TEST_TIMEOUT_MS = 2000;
+  
   // Test de lecture pour vérifier la connectivité du DHT
   // Reset watchdog une seule fois au début
   if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -743,11 +982,18 @@ bool AirSensor::isSensorConnected() {
   }
   
   float temp = _dht.readTemperature();
+  if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+    return false; // Timeout - capteur trop lent ou absent
+  }
+  
   // FIX: Délai minimum DHT augmenté à 2.5 secondes pour stabilité
   // Le DHT11/DHT22 nécessite au moins 2 secondes entre lectures selon datasheet
   vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::MIN_READ_INTERVAL_MS));
   
   float humidity = _dht.readHumidity();
+  if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+    return false; // Timeout - capteur trop lent ou absent
+  }
   
   // Vérifie si les lectures sont valides
   if (isnan(temp) && isnan(humidity)) {
@@ -773,53 +1019,174 @@ void AirSensor::resetSensor() {
 }
 
 float AirSensor::robustTemperatureC() {
+  // v11.156: Si capteur désactivé après échecs répétés, tester périodiquement la réactivation
+  if (_sensorDisabled) {
+    // Tester la réactivation toutes les REACTIVATION_TEST_INTERVAL_MS
+    uint32_t now = millis();
+    if (now - _lastReactivationTestMs >= REACTIVATION_TEST_INTERVAL_MS) {
+      _lastReactivationTestMs = now;
+      
+      // Test rapide de connectivité avec timeout strict (1 seconde max)
+      uint32_t testStart = millis();
+      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 1000;
+      
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+      }
+      
+      float testTemp = _dht.readTemperature();
+      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+        // Timeout - capteur toujours absent
+        _consecutiveReactivationSuccesses = 0;
+        return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+      }
+      
+      // Vérifier si la valeur est valide
+      if (!isnan(testTemp) && 
+          testTemp >= SensorConfig::AirSensor::TEMP_MIN && 
+          testTemp <= SensorConfig::AirSensor::TEMP_MAX) {
+        _consecutiveReactivationSuccesses++;
+        SENSOR_LOG_PRINTF("[AirSensor] Test réactivation: succès %d/%d (temp: %.1f°C)\n", 
+                          _consecutiveReactivationSuccesses, 
+                          REACTIVATION_SUCCESS_THRESHOLD, 
+                          testTemp);
+        
+        // Si 3 succès consécutifs, réactiver le capteur
+        if (_consecutiveReactivationSuccesses >= REACTIVATION_SUCCESS_THRESHOLD) {
+          _sensorDisabled = false;
+          _disableLogged = false;
+          _consecutiveTempFailures = 0;
+          _consecutiveHumidityFailures = 0;
+          _consecutiveReactivationSuccesses = 0;
+          SENSOR_LOG_PRINTLN("[AirSensor] ✅ DHT22 réactivé automatiquement - capteur présent à nouveau");
+          // Retourner la valeur testée
+          return testTemp;
+        }
+      } else {
+        // Échec du test - réinitialiser le compteur
+        _consecutiveReactivationSuccesses = 0;
+      }
+    }
+    
+    // Capteur toujours désactivé, retourner valeur par défaut
+    return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+  }
+  
+  // Timeout total pour éviter blocage: 2000ms (réduit de 3000ms - si capteur ne répond pas en 2s, il est absent)
+  const uint32_t DHT22_TIMEOUT_MS = 2000;
+  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  uint32_t recoveryStartMs = millis();
+  
   // 1. Tentative avec filtrage avancé
   float result = filteredTemperatureC();
   if (!isnan(result)) {
+    // Succès: reset le compteur d'échecs température
+    _consecutiveTempFailures = 0;
     return result;
+  }
+  
+  // Échec: incrémenter le compteur température
+  _consecutiveTempFailures++;
+  
+  // Log seulement les premiers échecs pour éviter spam
+  if (_consecutiveTempFailures <= 3) {
+    SENSOR_LOG_PRINTF("[AirSensor] Échec température %d/%d\n", _consecutiveTempFailures, MAX_CONSECUTIVE_FAILURES);
+  }
+  
+  // Vérifier timeout avant récupération
+  if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+    SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération, utilise dernière valeur");
+    goto use_last_valid;
   }
   
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
-  // 2. Vérification de la connectivité
-  if (!isSensorConnected()) {
-    SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
-    resetSensor();
-    
-    // Nouvelle tentative après reset
-    result = filteredTemperatureC();
-    if (!isnan(result)) {
-      SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
-      return result;
+  // 2. Vérification de la connectivité (avec timeout)
+  if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+    if (!isSensorConnected()) {
+      SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
+      resetSensor();
+      
+      // Nouvelle tentative après reset (si timeout pas atteint)
+      if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+        result = filteredTemperatureC();
+        if (!isnan(result)) {
+          SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
+          _consecutiveTempFailures = 0; // Reset sur succès
+          return result;
+        }
+      }
     }
   }
   
-  // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
-  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  // 3. Tentative avec lecture simple répétée (limité par timeout total)
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
+    // Reset watchdog pendant récupération pour éviter timeout
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    
+    // Vérifier timeout avant chaque tentative
+    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+      SENSOR_LOG_PRINTF("[AirSensor] Timeout atteint après %u ms, arrêt récupération\n", 
+                        millis() - recoveryStartMs);
+      break;
+    }
+    
     SENSOR_LOG_PRINTF("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
-    
-    // Lecture simple avec délai
+    // Lecture simple avec délai (peut bloquer jusqu'à timeout interne DHT ~2s)
+    // Note: _dht.readTemperature() a son propre timeout interne, mais peut prendre jusqu'à 7-8s si capteur défaillant
     float temp = _dht.readTemperature();
-    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    
+    // Reset watchdog après lecture pour éviter timeout
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    
+    // Vérifier timeout après lecture (peut avoir pris du temps)
+    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+      SENSOR_LOG_PRINTLN("[AirSensor] Timeout après lecture, arrêt récupération");
+      break;
+    }
     
     if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f°C\n", temp);
+      _consecutiveTempFailures = 0; // Reset sur succès
       return temp;
     }
     
-    // Délai entre tentatives
-    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    // Délai entre tentatives (seulement si timeout pas atteint)
+    if ((millis() - recoveryStartMs) < (DHT22_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
+      vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    }
   }
   
   // 4. Utilisation de la dernière valeur valide si disponible
+use_last_valid:
   if (!isnan(_lastValidTemp)) {
-    SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
+    if (_consecutiveTempFailures <= 5) {
+      SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
+    }
     return _lastValidTemp;
   }
   
-  SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
+  // 5. Désactiver le capteur si température OU humidité atteint MAX_CONSECUTIVE_FAILURES échecs
+  if ((_consecutiveTempFailures >= MAX_CONSECUTIVE_FAILURES || 
+       _consecutiveHumidityFailures >= MAX_CONSECUTIVE_FAILURES) && 
+      !_disableLogged) {
+    _sensorDisabled = true;
+    _disableLogged = true;
+    SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT22 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
+                      MAX_CONSECUTIVE_FAILURES, 
+                      _consecutiveTempFailures, 
+                      _consecutiveHumidityFailures,
+                      SensorConfig::DefaultValues::TEMP_AIR_DEFAULT);
+  }
+  
+  if (_consecutiveTempFailures < MAX_CONSECUTIVE_FAILURES) {
+    SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
+  }
   return NAN;
 }
 
@@ -877,57 +1244,139 @@ float AirSensor::filteredHumidity() {
 }
 
 float AirSensor::robustHumidity() {
+  // v11.156: Si capteur désactivé après échecs répétés, tester périodiquement la réactivation
+  // Note: La réactivation est testée dans robustTemperatureC(), donc ici on vérifie juste l'état
+  if (_sensorDisabled) {
+    // Si le capteur vient d'être réactivé dans robustTemperatureC(), on peut essayer de lire
+    // Sinon, retourner valeur par défaut
+    return SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
+  }
+  
+  // Timeout total pour éviter blocage: 1500ms (réduit de 2000ms - appelé après robustTemperatureC(), timeout plus court)
+  const uint32_t DHT22_TIMEOUT_MS = 1500;
+  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  uint32_t recoveryStartMs = millis();
+  
   // 1. Tentative avec filtrage avancé
   float result = filteredHumidity();
   if (!isnan(result)) {
+    // Succès: reset le compteur d'échecs humidité
+    _consecutiveHumidityFailures = 0;
     return result;
+  }
+  
+  // Échec: incrémenter le compteur humidité
+  _consecutiveHumidityFailures++;
+  
+  // Log seulement les premiers échecs pour éviter spam
+  if (_consecutiveHumidityFailures <= 3) {
+    SENSOR_LOG_PRINTF("[AirSensor] Échec humidité %d/%d\n", _consecutiveHumidityFailures, MAX_CONSECUTIVE_FAILURES);
+  }
+  
+  // Vérifier timeout avant récupération
+  if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+    SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération humidité, utilise dernière valeur");
+    goto use_last_valid_humidity;
   }
   
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
-  // 2. Vérification de la connectivité
-  if (!isSensorConnected()) {
-    SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
-    resetSensor();
-    
-    // Nouvelle tentative après reset
-    result = filteredHumidity();
-    if (!isnan(result)) {
-      SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
-      return result;
+  // 2. Vérification de la connectivité (avec timeout)
+  if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+    if (!isSensorConnected()) {
+      SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
+      resetSensor();
+      
+      // Nouvelle tentative après reset (si timeout pas atteint)
+      if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+        result = filteredHumidity();
+        if (!isnan(result)) {
+          SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
+          _consecutiveHumidityFailures = 0; // Reset sur succès
+          return result;
+        }
+      }
     }
   }
   
-  // 3. Tentative avec lecture simple répétée (limité à 2 tentatives pour éviter les blocages)
-  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  // 3. Tentative avec lecture simple répétée (limité par timeout total)
   for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
+    // Reset watchdog pendant récupération pour éviter timeout
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    
+    // Vérifier timeout avant chaque tentative
+    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+      SENSOR_LOG_PRINTF("[AirSensor] Timeout atteint après %u ms, arrêt récupération humidité\n", 
+                        millis() - recoveryStartMs);
+      break;
+    }
+    
     SENSOR_LOG_PRINTF("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
     
-    
-    // Lecture simple avec délai
+    // Lecture simple avec délai (peut bloquer jusqu'à timeout interne DHT ~2s)
     float humidity = _dht.readHumidity();
-    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    
+    // Reset watchdog après lecture pour éviter timeout
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    
+    // Vérifier timeout après lecture
+    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+      SENSOR_LOG_PRINTLN("[AirSensor] Timeout après lecture humidité, arrêt récupération");
+      break;
+    }
     
     if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
+      _consecutiveHumidityFailures = 0; // Reset sur succès
       return humidity;
     }
     
-    // Délai entre tentatives
-    vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    // Délai entre tentatives (seulement si timeout pas atteint)
+    if ((millis() - recoveryStartMs) < (DHT22_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
+      vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
+    }
   }
   
   // 4. Utilisation de la dernière valeur valide si disponible
+use_last_valid_humidity:
   if (!isnan(_lastValidHumidity)) {
-    SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f%%\n", _lastValidHumidity);
+    if (_consecutiveHumidityFailures <= 5) {
+      SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f%%\n", _lastValidHumidity);
+    }
     return _lastValidHumidity;
   }
   
-  SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
+  // 5. Désactiver le capteur si température OU humidité atteint MAX_CONSECUTIVE_FAILURES échecs
+  if ((_consecutiveTempFailures >= MAX_CONSECUTIVE_FAILURES || 
+       _consecutiveHumidityFailures >= MAX_CONSECUTIVE_FAILURES) && 
+      !_disableLogged) {
+    _sensorDisabled = true;
+    _disableLogged = true;
+    SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT22 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
+                      MAX_CONSECUTIVE_FAILURES, 
+                      _consecutiveTempFailures, 
+                      _consecutiveHumidityFailures,
+                      SensorConfig::DefaultValues::HUMIDITY_DEFAULT);
+  }
+  
+  if (_consecutiveHumidityFailures < MAX_CONSECUTIVE_FAILURES) {
+    SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
+  }
   return NAN;
 }
 
 void AirSensor::resetHistory() {
+  // v11.156: Réinitialiser aussi le compteur d'échecs pour permettre réactivation
+  _consecutiveTempFailures = 0;
+  _consecutiveHumidityFailures = 0;
+  _sensorDisabled = false;
+  _disableLogged = false;
+  _lastReactivationTestMs = 0;
+  _consecutiveReactivationSuccesses = 0;
   _tempHistoryIndex = 0;
   _tempHistoryCount = 0;
   _lastValidTemp = NAN;

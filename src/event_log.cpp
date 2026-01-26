@@ -1,5 +1,6 @@
 #include "event_log.h"
 #include <stdarg.h>
+#include <cstring>
 
 EventLog::Entry EventLog::s_buffer[EventLog::kCapacity];
 size_t EventLog::s_head = 0;
@@ -69,8 +70,8 @@ void EventLog::addf(const char* fmt, ...) {
   appendInternal(tmp);
 }
 
-uint32_t EventLog::dumpSince(uint32_t sinceSeq, String& out, size_t maxChars) {
-  if (!s_mutex) return 0;
+uint32_t EventLog::dumpSince(uint32_t sinceSeq, char* out, size_t outSize, size_t maxChars) {
+  if (!s_mutex || !out || outSize == 0) return 0;
   
   // CORRECTION : Timeout au lieu de portMAX_DELAY pour éviter les deadlocks
   if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
@@ -78,8 +79,8 @@ uint32_t EventLog::dumpSince(uint32_t sinceSeq, String& out, size_t maxChars) {
     return 0;
   }
   uint32_t maxSeq = s_seq;
-  if (out.length() > 0) out.reserve(out.length() + 128);
   size_t produced = 0;
+  out[0] = '\0';  // Initialize output buffer
 
   // Determine start
   size_t count = s_filled ? kCapacity : s_head;
@@ -88,10 +89,16 @@ uint32_t EventLog::dumpSince(uint32_t sinceSeq, String& out, size_t maxChars) {
     if (e.seq == 0) continue;
     if ((int32_t)(e.seq - sinceSeq) <= 0) continue; // only newer
     size_t len = strlen(e.msg);
-    if (produced + len + 1 > maxChars) break;
-    out += e.msg;
-    out += '\n';
-    produced += len + 1;
+    if (produced + len + 1 > maxChars || produced + len + 1 >= outSize) break;
+    
+    // Append message and newline
+    strncat(out, e.msg, outSize - produced - 1);
+    produced += len;
+    if (produced + 1 < outSize) {
+      out[produced] = '\n';
+      out[produced + 1] = '\0';
+      produced++;
+    }
   }
   xSemaphoreGive(s_mutex);
   return maxSeq;

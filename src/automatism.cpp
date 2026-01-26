@@ -4,6 +4,7 @@
 #include "esp_task_wdt.h"
 #include "task_monitor.h"
 #include "gpio_parser.h"
+#include <cstring>
 
 // ============================================================================
 // Automatism: Chef d'orchestre
@@ -56,9 +57,16 @@ void Automatism::update() {
 }
 
 void Automatism::update(const SensorReadings& r) {
-    _lastReadings = r;
     unsigned long now = millis();
+    _lastReadings = r;
 
+    // v11.158: Refactorisation - extraction en sous-méthodes pour améliorer lisibilité
+    updateFeedingAndDisplay(r, now);
+    updateNetworkSync(r, now);
+    updateBusinessLogic(r, now);
+}
+
+void Automatism::updateFeedingAndDisplay(const SensorReadings& r, uint32_t nowMs) {
     // ========================================
     // PRIORITÉ ABSOLUE : NOURRISSAGE ET REMPLISSAGE
     // ========================================
@@ -69,15 +77,19 @@ void Automatism::update(const SensorReadings& r) {
     // 2. Gestion affichage (délégué)
     AutomatismRuntimeContext ctx;
     ctx.readings = r;
-    ctx.nowMs = now;
+    ctx.nowMs = nowMs;
     _displayController.updateDisplay(ctx, _acts, *this);
 
     // 3. Finaliser le cycle de nourrissage si terminé
-    finalizeFeedingIfNeeded(now);
+    finalizeFeedingIfNeeded(nowMs);
+}
 
+void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     // 4. Gestion réseau (polling commandes)
-    JsonDocument doc;
-    if (_network.pollRemoteState(doc, now)) {
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+    bool pollResult = _network.pollRemoteState(doc, nowMs);
+    
+    if (pollResult) {
         // 4.1 Parser et appliquer tous les GPIO (actionneurs + configs)
         // GPIOParser::parseAndApply appelle applyConfigFromJson() en interne
         // ce qui synchronise toutes les configurations (seuils, durées, heures)
@@ -90,8 +102,14 @@ void Automatism::update(const SensorReadings& r) {
     // 4.3 Envoi périodique des données capteurs (toutes les 2 minutes)
     // Vérifie automatiquement si 2 minutes se sont écoulées depuis le dernier envoi
     _network.update(r, _acts, *this);
+}
 
+void Automatism::updateBusinessLogic(const SensorReadings& r, uint32_t nowMs) {
     // 5. Gestion logique métier via contrôleurs
+    AutomatismRuntimeContext ctx;
+    ctx.readings = r;
+    ctx.nowMs = nowMs;
+    
     _refillController.process(ctx);
     _alertController.process(ctx);
     
@@ -303,7 +321,10 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
     const char* wifiStatus;
     char wifiDetail[64] = "";
     if (wifiConnected) {
-        const char* ssid = WiFi.SSID().c_str();
+        char ssidBuf[33];
+        strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+        ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+        const char* ssid = ssidBuf;
         snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssid);
         wifiStatus = "Connecté";
     } else {
@@ -354,7 +375,8 @@ void Automatism::startTankPumpManual() {
     _acts.startTankPump();
     _lastPumpManual = true;
     _manualTankOverride = true;
-    _countdownLabel = "Refill";
+    strncpy(_countdownLabel, "Refill", sizeof(_countdownLabel) - 1);
+    _countdownLabel[sizeof(_countdownLabel) - 1] = '\0';
     _countdownEnd = nowMs + refillDurationMs;
     _pumpStartMs = nowMs;
     _levelAtPumpStart = cur.wlAqua;
@@ -404,7 +426,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     // Chargement config depuis NVS
     char json[2048];
     if (_config.loadRemoteVars(json, sizeof(json))) {
-        JsonDocument doc;
+        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         deserializeJson(doc, json);
         
         // Charger l'email directement depuis NVS si disponible
@@ -455,8 +477,10 @@ void Automatism::handleFeeding() {
                                    [this]() {
                                        // Callback de fin de nourrissage automatique
                                        // Marquer les événements pour le graphique serveur (gros+petits)
-                                       bouffePetits = "1";
-                                       bouffeGros = "1";
+                                       strncpy(bouffePetits, "1", sizeof(bouffePetits) - 1);
+                                       bouffePetits[sizeof(bouffePetits) - 1] = '\0';
+                                       strncpy(bouffeGros, "1", sizeof(bouffeGros) - 1);
+                                       bouffeGros[sizeof(bouffeGros) - 1] = '\0';
                                        Serial.println(F("[Auto] 🍽️ Nourrissage auto terminé - sync serveur"));
                                        
                                        // Envoyer au serveur avec les flags à 1
@@ -467,7 +491,9 @@ void Automatism::handleFeeding() {
                                        }
                                        
                                        // Remettre les flags à 0 pour les prochains envois
-                                       bouffePetits = "0";
-                                       bouffeGros = "0";
+                                       strncpy(bouffePetits, "0", sizeof(bouffePetits) - 1);
+                                       bouffePetits[sizeof(bouffePetits) - 1] = '\0';
+                                       strncpy(bouffeGros, "0", sizeof(bouffeGros) - 1);
+                                       bouffeGros[sizeof(bouffeGros) - 1] = '\0';
                                    });
 }

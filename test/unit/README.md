@@ -25,8 +25,8 @@ pio test -e native
 
 ## 📚 Documentation
 
-- **Guide d'utilisation**: `docs/guides/GUIDE_TESTS_UNITAIRES.md`
-- **Plan des tests**: `docs/guides/PLAN_TESTS_UNITAIRES.md`
+- **Documentation générale**: [docs/README.md](../../docs/README.md)
+- Les commandes et la structure des tests sont décrites ci‑dessous et dans la checklist.
 
 ## ✅ Checklist pour Nouveau Test
 

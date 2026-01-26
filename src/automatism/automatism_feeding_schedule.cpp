@@ -1,5 +1,6 @@
 #include "automatism/automatism_feeding_schedule.h"
 #include "config.h"
+#include <cstring>
 
 AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, ConfigManager& cfg,
                                                      Mailer& mail, PowerManager& power)
@@ -119,7 +120,10 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
     const char* wifiStatus;
     char wifiDetail[64] = "";
     if (wifiConnected) {
-        const char* ssid = WiFi.SSID().c_str();
+        char ssidBuf[33];
+        strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+        ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+        const char* ssid = ssidBuf;
         snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssid);
         wifiStatus = "Connecté";
     } else {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <cstring>
 #include "system_actuators.h"
 #include "config_manager.h"
 
@@ -49,7 +50,7 @@ public:
     bool needsSync() const { return _needsServerSync; }
     
     // Récupérer et consommer le payload de sync
-    String consumePendingSyncPayload();
+    bool consumePendingSyncPayload(char* buffer, size_t bufferSize);
     
 private:
     SystemActuators& _acts;
@@ -57,7 +58,7 @@ private:
     
     // Système de synchronisation serveur différée
     bool _needsServerSync = false;
-    String _pendingSyncPayload = "";
+    char _pendingSyncPayload[512];  // Taille JSON raisonnable
 };
 
 

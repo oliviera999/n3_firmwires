@@ -36,8 +36,6 @@ class PowerManager {
   time_t loadTimeWithFallback();
   void applyDriftCorrection();
   void smartSaveTime();
-  void setMeasuredDrift(float driftPpm, float driftSeconds);
-  void onExternalNtpSync(time_t epoch, unsigned long syncMillis);
 
   // Configuration NTP
   void setNTPConfig(int gmtOffset, int daylightOffset, const char* ntpServer);
@@ -63,12 +61,9 @@ class PowerManager {
   unsigned long _lastNtpSync;
   static const unsigned long NTP_SYNC_INTERVAL = 3600000UL; // 1 heure
 
-  // Epoch par défaut si aucun temps sauvegardé (1/1/2024 00:00:00)
-  static const time_t DEFAULT_EPOCH = 1704067200;
-
   // Identifiants WiFi sauvegardés pour light sleep
-  String _lastSSID;
-  String _lastPassword;
+  char _lastSSID[33];  // SSID max 32 chars + null terminator
+  char _lastPassword[65];  // WiFi password max 64 chars + null terminator
   bool _hasSavedCredentials;
 
   // Optimisation NVS - limitation de fréquence des sauvegardes
@@ -78,10 +73,8 @@ class PowerManager {
   // Variables pour correction de dérive
   unsigned long _lastDriftCorrection;
   float _currentDriftPPM;
-  time_t _lastSyncEpoch;
   float _lastDriftSeconds;
-  float _defaultDriftAccumulator;
-  float _measuredDriftAccumulator;
+  float _driftAccumulator;  // Accumulateur unique pour la correction de dérive
 
   // Accumulation de microsecondes résiduelles pour une meilleure précision du RTC
   uint32_t _sleepRemainderUs;

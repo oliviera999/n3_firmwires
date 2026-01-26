@@ -137,11 +137,11 @@ void AutomatismDisplayController::updateDisplay(const AutomatismRuntimeContext& 
     _lastDiffMaree = diffMaree;
     
     // Affichage du countdown si actif
-    if (hasCountdown && core._countdownLabel.length() > 0) {
+    if (hasCountdown && strlen(core._countdownLabel) > 0) {
         uint32_t secLeft = (core._countdownEnd > currentMillis) ? 
                           ((core._countdownEnd - currentMillis) / 1000) : 0;
         bool isManual = core._manualFeedingActive;
-        _display.showCountdown(core._countdownLabel.c_str(), secLeft, isManual);
+        _display.showCountdown(core._countdownLabel, secLeft, isManual);
         // Afficher aussi la barre d'état
         bool mailBlink = (core.mailBlinkUntil > 0 && currentMillis < core.mailBlinkUntil);
         int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;

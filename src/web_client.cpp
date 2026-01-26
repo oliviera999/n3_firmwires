@@ -7,6 +7,24 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <cstring>
+#include <esp_heap_caps.h>  // v11.157: Pour heap_caps_get_largest_free_block()
+#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
+
+// Diagnostic stack/tâche avant opérations TLS (point 4)
+static void logTaskAndStack(const char* tag) {
+  TaskHandle_t t = xTaskGetCurrentTaskHandle();
+  const char* name = pcTaskGetName(t);
+  UBaseType_t hwmWords = uxTaskGetStackHighWaterMark(t);
+  uint32_t hwmBytes = static_cast<uint32_t>(hwmWords) * sizeof(StackType_t);
+  Serial.printf("[%s] Task=%s handle=%p stackHWM=%u bytes\n",
+                tag,
+                name ? name : "?",
+                static_cast<void*>(t),
+                static_cast<unsigned>(hwmBytes));
+}
 
 // Simple CRC32 (polynôme 0xEDB88320) pour l'intégrité des payloads
 extern ConfigManager config;
@@ -35,19 +53,37 @@ WebClient::WebClient(const char* apiKey) {
   // suivant de se terminer et donc le rafraîchissement du watchdog.
   _http.setReuse(false);
   // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
-  _http.setTimeout(GlobalTimeouts::HTTP_MAX_MS); // Timeout strict pour éviter blocage
+  _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS); // Timeout strict pour éviter blocage
 }
 
 // v11.150: Force la libération de mémoire TLS après une requête
 // Version simplifiée : juste arrêter le client sans le recréer (évite crash FreeRTOS)
+// PISTE 6: LWIP Guards
+// Note: Les opérations LWIP (sys_untimeout, etc.) sont appelées par les bibliothèques
+// ESP-IDF/Arduino sous-jacentes (WiFiClientSecure, HTTPClient). Ces bibliothèques
+// gèrent normalement les locks TCPIP en interne. L'assert LWIP observé se produit
+// probablement lors d'un cleanup après un panic TLS, ce qui est difficile à protéger
+// directement depuis le code applicatif. La solution est de prévenir les panics TLS
+// plutôt que de protéger les opérations LWIP après-coup.
 void WebClient::resetTLSClient() {
   uint32_t heapBefore = ESP.getFreeHeap();
   
   // Stopper proprement le client TLS
   _client.stop();
   
-  // Petit délai pour laisser le temps à FreeRTOS de libérer les ressources
-  vTaskDelay(pdMS_TO_TICKS(50));
+  // v11.157: Délai augmenté + garbage collection forcé pour améliorer libération TLS
+  // Augmenté de 200ms à 500ms pour laisser plus de temps à FreeRTOS
+  vTaskDelay(pdMS_TO_TICKS(200));
+  
+  // Forcer garbage collection: allouer puis libérer un petit bloc pour encourager défragmentation
+  void* tempBlock = heap_caps_malloc(1024, MALLOC_CAP_DEFAULT);
+  if (tempBlock) {
+    free(tempBlock);
+    vTaskDelay(pdMS_TO_TICKS(100));  // Petit délai après free
+  }
+  
+  // Délai supplémentaire pour laisser FreeRTOS nettoyer complètement
+  vTaskDelay(pdMS_TO_TICKS(200));
   
   uint32_t heapAfter = ESP.getFreeHeap();
   int32_t recovered = (int32_t)heapAfter - (int32_t)heapBefore;
@@ -56,26 +92,55 @@ void WebClient::resetTLSClient() {
     Serial.printf("[HTTP] 🔄 TLS stop: récupéré %d bytes (heap: %u → %u)\n", 
                   recovered, heapBefore, heapAfter);
   }
+  
+  // Snapshot après libération TLS
+  MEM_DIAG_SNAPSHOT("after_tls_reset");
 }
 
-bool WebClient::httpRequest(const char* url, const char* payload, char* response, size_t responseSize) {
+bool WebClient::httpRequest(const char* url, const char* payload,
+                           char* response, size_t responseSize) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
   if (url == nullptr || response == nullptr || responseSize == 0) {
     return false;
   }
 
+  // Point 4: savoir quelle tâche exécute réellement les requêtes réseau
+  logTaskAndStack("HTTP");
+
   // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t minHeap = ESP.getMinFreeHeap();
-  const uint32_t MIN_HEAP_FOR_HTTPS = 45000;  // 45 KB minimum (TLS ~42KB + marge 3KB)
+  // v11.157: Aligné avec TLS_MIN_HEAP_BYTES (62KB) pour cohérence
+  const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;  // 62 KB minimum (TLS ~42KB + marge 20KB)
   bool isSecure = (strncmp(url, "https://", 8) == 0);
   
-  if (isSecure && freeHeap < MIN_HEAP_FOR_HTTPS) {
-    LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
-        freeHeap, MIN_HEAP_FOR_HTTPS);
-    LOG(LOG_WARN, "[HTTP] ⚠️ La requête HTTPS nécessite ~43 KB supplémentaires");
-    return false;
+  // Snapshot avant opération TLS (si HTTPS)
+  HeapSnapshot snapshot_before_tls;
+  if (isSecure) {
+    snapshot_before_tls = MEM_DIAG_SNAPSHOT("before_tls_http");
+    
+    // v11.157: Diagnostic mémoire détaillé avant TLS
+    
+    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    uint32_t fragmentation = (freeHeap > 0) ? ((freeHeap - largestBlock) * 100 / freeHeap) : 0;
+    LOG(LOG_DEBUG, "[HTTP] 📊 Diagnostic mémoire avant TLS: heap=%u, largest_block=%u, fragmentation=%u%%", 
+        freeHeap, largestBlock, fragmentation);
+    
+    if (freeHeap < MIN_HEAP_FOR_HTTPS) {
+      LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
+          freeHeap, MIN_HEAP_FOR_HTTPS);
+      LOG(LOG_WARN, "[HTTP] ⚠️ La requête HTTPS nécessite ~43 KB contiguë, fragmentation=%u%%", fragmentation);
+      return false;
+    }
+    
+    // Vérifier que le plus grand bloc est suffisant pour TLS
+    if (largestBlock < 45000) {
+      LOG(LOG_WARN, "[HTTP] ⚠️ Plus grand bloc insuffisant (%u bytes < 45KB), fragmentation=%u%%", 
+          largestBlock, fragmentation);
+      LOG(LOG_WARN, "[HTTP] ⚠️ TLS nécessite ~42-46KB contiguë, report de la requête");
+      return false;
+    }
   }
   
   size_t payloadLen = payload ? strlen(payload) : 0;
@@ -85,7 +150,7 @@ bool WebClient::httpRequest(const char* url, const char* payload, char* response
 
   if (debugLogging) {
     LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes, timeout=%u ms)",
-        url, payloadLen, GlobalTimeouts::HTTP_MAX_MS);
+        url, payloadLen, NetworkConfig::HTTP_TIMEOUT_MS);
     LOG(LOG_DEBUG, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm",
         WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
     char ipBuf[16], gwBuf[16], dnsBuf[16];
@@ -169,8 +234,8 @@ bool WebClient::httpRequest(const char* url, const char* payload, char* response
     
     // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
     uint32_t elapsedMs = millis() - requestStartMs;
-    if (elapsedMs >= GlobalTimeouts::HTTP_MAX_MS) {
-      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, GlobalTimeouts::HTTP_MAX_MS);
+    if (elapsedMs >= NetworkConfig::HTTP_TIMEOUT_MS) {
+      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, NetworkConfig::HTTP_TIMEOUT_MS);
       _http.end();
       resetTLSClient();  // v11.150: Libère mémoire TLS après timeout
       return false;
@@ -187,13 +252,50 @@ bool WebClient::httpRequest(const char* url, const char* payload, char* response
     }
     if (code > 0) {
       unsigned long responseStartMs = millis();
-      String tempResponse = _http.getString();
-      size_t responseLen = tempResponse.length();
+      // Utiliser un buffer fixe au lieu de String pour éviter fragmentation mémoire
+      const size_t MAX_TEMP_RESPONSE = 2048; // Taille max pour réponse temporaire
+      char tempResponseBuffer[MAX_TEMP_RESPONSE + 1];
+      WiFiClient* stream = _http.getStreamPtr();
+      size_t responseLen = 0;
+      
+      if (stream) {
+        // Lire directement dans le buffer sans String
+        while (stream->available() && responseLen < MAX_TEMP_RESPONSE) {
+          size_t bytesRead = stream->readBytes(
+            tempResponseBuffer + responseLen,
+            MAX_TEMP_RESPONSE - responseLen
+          );
+          if (bytesRead == 0) break;
+          responseLen += bytesRead;
+        }
+        tempResponseBuffer[responseLen] = '\0';
+      } else {
+        // Fallback: getStream() retourne NetworkClient (pas un pointeur), utiliser getString() à la place
+        // Note: getStream() n'est plus compatible avec la nouvelle API
+        {
+          // Dernier recours: getString() si aucun stream disponible
+          // Note: HTTPClient::getString() retourne String Arduino (limitation API)
+          // La String est copiée immédiatement et détruite pour minimiser fragmentation
+          String tempResponse = _http.getString();
+          responseLen = tempResponse.length();
+          if (responseLen >= MAX_TEMP_RESPONSE) {
+            responseLen = MAX_TEMP_RESPONSE - 1;
+          }
+          // Copier immédiatement pour libérer la String rapidement
+          if (responseLen > 0) {
+            strncpy(tempResponseBuffer, tempResponse.c_str(), responseLen);
+            tempResponseBuffer[responseLen] = '\0';
+          } else {
+            tempResponseBuffer[0] = '\0';
+          }
+          // String tempResponse est détruite ici, libérant la mémoire
+        }
+      }
+      
       if (responseLen >= responseSize) {
         responseLen = responseSize - 1;
       }
-      const char* tempResponseStr = tempResponse.c_str();
-      strncpy(response, tempResponseStr, responseLen);
+      strncpy(response, tempResponseBuffer, responseLen);
       response[responseLen] = '\0';
       unsigned long responseDurationMs = millis() - responseStartMs;
       
@@ -202,11 +304,22 @@ bool WebClient::httpRequest(const char* url, const char* payload, char* response
       }
 
       if (verboseLogging) {
-        LOG(LOG_VERBOSE, "[HTTP] Content-Type=%s", _http.header("Content-Type").c_str());
-        LOG(LOG_VERBOSE, "[HTTP] Server=%s", _http.header("Server").c_str());
-        LOG(LOG_VERBOSE, "[HTTP] Connection=%s", _http.header("Connection").c_str());
-        LOG(LOG_VERBOSE, "[HTTP] Content-Length=%s", _http.header("Content-Length").c_str());
-        LOG(LOG_VERBOSE, "[HTTP] Transfer-Encoding=%s", _http.header("Transfer-Encoding").c_str());
+        char headerBuf[128];
+        strncpy(headerBuf, _http.header("Content-Type").c_str(), sizeof(headerBuf) - 1);
+        headerBuf[sizeof(headerBuf) - 1] = '\0';
+        LOG(LOG_VERBOSE, "[HTTP] Content-Type=%s", headerBuf);
+        strncpy(headerBuf, _http.header("Server").c_str(), sizeof(headerBuf) - 1);
+        headerBuf[sizeof(headerBuf) - 1] = '\0';
+        LOG(LOG_VERBOSE, "[HTTP] Server=%s", headerBuf);
+        strncpy(headerBuf, _http.header("Connection").c_str(), sizeof(headerBuf) - 1);
+        headerBuf[sizeof(headerBuf) - 1] = '\0';
+        LOG(LOG_VERBOSE, "[HTTP] Connection=%s", headerBuf);
+        strncpy(headerBuf, _http.header("Content-Length").c_str(), sizeof(headerBuf) - 1);
+        headerBuf[sizeof(headerBuf) - 1] = '\0';
+        LOG(LOG_VERBOSE, "[HTTP] Content-Length=%s", headerBuf);
+        strncpy(headerBuf, _http.header("Transfer-Encoding").c_str(), sizeof(headerBuf) - 1);
+        headerBuf[sizeof(headerBuf) - 1] = '\0';
+        LOG(LOG_VERBOSE, "[HTTP] Transfer-Encoding=%s", headerBuf);
 
         if (responseLen > 0) {
           const size_t previewLen = responseLen > 200 ? 200 : responseLen;
@@ -228,12 +341,15 @@ bool WebClient::httpRequest(const char* url, const char* payload, char* response
       }
     } else {
       unsigned long errorTimeMs = millis();
+      char errorBuf2[64];
+      strncpy(errorBuf2, _http.errorToString(code).c_str(), sizeof(errorBuf2) - 1);
+      errorBuf2[sizeof(errorBuf2) - 1] = '\0';
       LOG(LOG_WARN, "[HTTP] Erreur %d (tentative %d/%d, %lu ms) : %s",
           code,
           attempt + 1,
           maxAttempts,
           errorTimeMs - requestStartMs,
-          _http.errorToString(code).c_str());
+          errorBuf2);
       LOG(LOG_WARN, "[HTTP] URL=%s", url);
       LOG(LOG_WARN, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm", WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
       LOG(LOG_WARN, "[HTTP] Heap libre=%u", ESP.getFreeHeap());
@@ -253,6 +369,13 @@ bool WebClient::httpRequest(const char* url, const char* payload, char* response
       }
     }
     _http.end();
+    resetTLSClient();  // Libère mémoire TLS après POST
+    
+    // Snapshot après opération TLS POST
+    if (isSecure) {
+      HeapSnapshot snapshot_after_tls_post = MEM_DIAG_SNAPSHOT("after_tls_post");
+      MEM_DIAG_COMPARE(snapshot_before_tls, snapshot_after_tls_post);
+    }
     
     // === STATISTIQUES DE LA TENTATIVE ===
     unsigned long attemptDurationMs = millis() - attemptStartMs;
@@ -511,6 +634,9 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     return false;
   }
   if (WiFi.status() != WL_CONNECTED) return false;
+
+  // Point 4: identifier la tâche et la marge de stack avant TLS
+  logTaskAndStack("GET");
   
   // === v11.152: Protection TLS mutex STRICTE pour éviter collision avec SMTP ===
   // Le GET DOIT avoir le mutex pour éviter les crashs par épuisement mémoire
@@ -521,7 +647,17 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
   bool hasMutex = true;  // Pour compatibilité avec le code existant
   
-  // === LOGS DÉTAILLÉS GET v11.32 ===
+  // === PISTE 8: DÉSACTIVER MODEM SLEEP AVANT TLS ===
+  // S'assurer que le modem sleep est désactivé AVANT toute opération TLS
+  WiFi.setSleep(false);
+  Serial.println(F("[GET] 🔒 Modem sleep désactivé avant TLS"));
+  
+  // === PISTE 3: DÉLAI APRÈS ACQUISITION MUTEX ===
+  // Petit délai pour laisser le système se stabiliser après acquisition du mutex
+  vTaskDelay(pdMS_TO_TICKS(100));  // 100ms de stabilisation
+  
+  // === PISTE 9: LOGS DÉTAILLÉS AVANT TLS ===
+  // Logs complets pour diagnostic en cas de panic
   unsigned long getStartMs = millis();
   Serial.println(F("=== DÉBUT REQUÊTE GET REMOTE STATE ==="));
   Serial.printf("[GET] Timestamp: %lu ms\n", getStartMs);
@@ -529,16 +665,49 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t minHeap = ESP.getMinFreeHeap();
-  const uint32_t MIN_HEAP_FOR_HTTPS = 45000;  // 45 KB minimum (TLS ~42KB + marge 3KB)
+  // v11.157: Aligné avec TLS_MIN_HEAP_BYTES (62KB) pour cohérence
+  const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;  // 62 KB minimum (TLS ~42KB + marge 20KB)
   
+  // Snapshot avant opération TLS GET
+  HeapSnapshot snapshot_before_tls_get = MEM_DIAG_SNAPSHOT("before_tls_get");
+  
+  // v11.157: Diagnostic mémoire détaillé avant TLS
+  uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+  uint32_t fragmentation = (freeHeap > 0) ? ((freeHeap - largestBlock) * 100 / freeHeap) : 0;
   Serial.printf("[GET] Heap before GET: %u bytes\n", freeHeap);
   Serial.printf("[GET] Free heap: %u bytes\n", freeHeap);
   Serial.printf("[GET] Min heap: %u bytes\n", minHeap);
+  Serial.printf("[GET] 📊 Largest free block: %u bytes\n", largestBlock);
+  Serial.printf("[GET] 📊 Fragmentation: %u%%\n", fragmentation);
   
+  // Logs détaillés WiFi, tâche et stack
+  Serial.printf("[GET] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
+  Serial.printf("[GET] RSSI: %d dBm\n", WiFi.RSSI());
+  char ipStr[16];
+  IPAddress ip = WiFi.localIP();
+  snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  Serial.printf("[GET] IP: %s\n", ipStr);
+  
+  // Log tâche active et stack libre
+  TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
+  UBaseType_t stackHighWaterMark = uxTaskGetStackHighWaterMark(currentTask);
+  Serial.printf("[GET] Current task: %p, Stack high water mark: %u bytes\n", 
+                currentTask, stackHighWaterMark * sizeof(StackType_t));
+  
+  // v11.157: Vérification heap et fragmentation avant TLS
   if (freeHeap < MIN_HEAP_FOR_HTTPS) {
     Serial.printf("[GET] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête\n", 
                   freeHeap, MIN_HEAP_FOR_HTTPS);
-    Serial.printf("[GET] ⚠️ La requête HTTPS nécessite ~43 KB supplémentaires\n");
+    Serial.printf("[GET] ⚠️ La requête HTTPS nécessite ~43 KB contiguë, fragmentation=%u%%\n", fragmentation);
+    if (hasMutex) TLSMutex::release();
+    return false;
+  }
+  
+  // Vérifier que le plus grand bloc est suffisant pour TLS
+  if (largestBlock < 45000) {
+    Serial.printf("[GET] ⚠️ Plus grand bloc insuffisant (%u bytes < 45KB), fragmentation=%u%%\n", 
+                  largestBlock, fragmentation);
+    Serial.printf("[GET] ⚠️ TLS nécessite ~42-46KB contiguë, report de la requête\n");
     if (hasMutex) TLSMutex::release();
     return false;
   }
@@ -548,16 +717,18 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   ServerConfig::getOutputUrl(url, sizeof(url));
   Serial.printf("[GET] URL: %s\n", url);
   
-  // État réseau détaillé
-  Serial.printf("[GET] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
-  Serial.printf("[GET] RSSI: %d dBm\n", WiFi.RSSI());
-  Serial.printf("[GET] IP: %s\n", WiFi.localIP().toString().c_str());
-  
   // Sélectionne le bon type de client selon le schéma
   bool secure = strncmp(url, "https://", 8) == 0;
   WiFiClient plain; // client non-TLS local
   
+  // PISTE 9: Log final avant opération TLS critique
+  Serial.println(F("[GET] === AVANT OPÉRATION TLS CRITIQUE ==="));
+  Serial.printf("[GET] Heap final avant TLS: %u bytes\n", ESP.getFreeHeap());
+  Serial.printf("[GET] URL: %s\n", url);
+  Serial.printf("[GET] Secure: %s\n", secure ? "YES (HTTPS)" : "NO (HTTP)");
+  
   if (secure) { 
+    Serial.println(F("[GET] 🔒 Initialisation client HTTPS..."));
     _http.begin(_client, url); 
     Serial.println(F("[GET] 🔒 Using HTTPS client"));
   } else { 
@@ -572,7 +743,10 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   Serial.printf("[GET] Heap after GET: %u bytes\n", ESP.getFreeHeap());
   
   if (code <= 0) {
-    Serial.printf("[GET] ❌ ERROR %d: %s\n", code, _http.errorToString(code).c_str());
+    char errorBuf[64];
+    strncpy(errorBuf, _http.errorToString(code).c_str(), sizeof(errorBuf) - 1);
+    errorBuf[sizeof(errorBuf) - 1] = '\0';
+    Serial.printf("[GET] ❌ ERROR %d: %s\n", code, errorBuf);
     Serial.printf("[GET] WiFi status at error: %d, RSSI: %d\n", WiFi.status(), WiFi.RSSI());
     _http.end();
     resetTLSClient();  // v11.150: Libère mémoire TLS après erreur
@@ -612,6 +786,10 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   _http.end();
   resetTLSClient();  // v11.150: Libère mémoire TLS (~46KB)
   
+  // Snapshot après opération TLS GET (resetTLSClient capture déjà un snapshot, mais on compare)
+  HeapSnapshot snapshot_after_tls_get = MEM_DIAG_SNAPSHOT("after_tls_get");
+  MEM_DIAG_COMPARE(snapshot_before_tls_get, snapshot_after_tls_get);
+  
   if (totalRead >= MAX_RESPONSE_SIZE) {
     Serial.printf("[GET] ⚠️ Response truncated at %u bytes (limite sécurité)\n", MAX_RESPONSE_SIZE);
   }
@@ -638,13 +816,32 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
   Serial.println(F("[GET] === FIN RÉPONSE ==="));
   
+  // v11.156: Nettoyer le préfixe chunked HTTP si présent
+  // Le serveur peut envoyer "d6" (taille du chunk) avant le JSON valide
+  char* jsonStart = strchr(payloadBuffer, '{');
+  if (!jsonStart) {
+    jsonStart = strchr(payloadBuffer, '[');
+  }
+  if (jsonStart && jsonStart != payloadBuffer) {
+    // Décaler le contenu pour commencer au JSON valide
+    size_t offset = jsonStart - payloadBuffer;
+    size_t newSize = totalRead - offset;
+    memmove(payloadBuffer, jsonStart, newSize);
+    payloadBuffer[newSize] = '\0';
+    totalRead = newSize;
+    Serial.printf("[GET] Nettoyé préfixe chunked (%u bytes supprimés, nouveau size: %u)\n", offset, totalRead);
+  }
+  
   // Parser le JSON depuis le buffer directement
   unsigned long parseStartMs = millis();
   DeserializationError err = deserializeJson(doc, payloadBuffer);
   unsigned long parseDurationMs = millis() - parseStartMs;
   
   if (err) {
-    Serial.printf("[GET] ❌ JSON parse error: %s (parsing took %lu ms)\n", err.c_str(), parseDurationMs);
+    char jsonErrorBuf[128];
+    strncpy(jsonErrorBuf, err.c_str(), sizeof(jsonErrorBuf) - 1);
+    jsonErrorBuf[sizeof(jsonErrorBuf) - 1] = '\0';
+    Serial.printf("[GET] ❌ JSON parse error: %s (parsing took %lu ms)\n", jsonErrorBuf, parseDurationMs);
     char preview[201];
     strncpy(preview, payloadBuffer, 200);
     preview[200] = '\0';
@@ -738,8 +935,12 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
 // v11.70: makeSkeleton() supprimé - jamais utilisé (includeSkeleton toujours false)
 
 bool WebClient::postRaw(const char* payload){
+  Serial.println(F("[PR] === DÉBUT POSTRAW ==="));
+  Serial.printf("[PR] isRemoteSendEnabled: %s\n", config.isRemoteSendEnabled() ? "YES" : "NO");
+  
   if (!config.isRemoteSendEnabled()) {
     Serial.println(F("[PR] ⛔ Envoi distant désactivé (config) - SKIP"));
+    Serial.printf("[PR] Vérifiez net_send_en dans NVS\n");
     return false;
   }
   
@@ -747,12 +948,22 @@ bool WebClient::postRaw(const char* payload){
     Serial.println(F("[PR] ⛔ Payload null - SKIP"));
     return false;
   }
+
+  // Point 4: identifier la tâche et la marge de stack avant TLS
+  logTaskAndStack("PR");
   
   // === v11.149: Protection TLS mutex pour éviter collision avec SMTP ===
   if (!TLSMutex::acquire(5000)) {  // Timeout 5s pour POST
     Serial.println(F("[PR] ⛔ Impossible d'acquérir mutex TLS - SKIP"));
     return false;
   }
+  
+  // === PISTE 8: DÉSACTIVER MODEM SLEEP AVANT TLS ===
+  WiFi.setSleep(false);
+  Serial.println(F("[PR] 🔒 Modem sleep désactivé avant TLS"));
+  
+  // === PISTE 3: DÉLAI APRÈS ACQUISITION MUTEX ===
+  vTaskDelay(pdMS_TO_TICKS(100));  // 100ms de stabilisation
   
   // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
   unsigned long prStartMs = millis();

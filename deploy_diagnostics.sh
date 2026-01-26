@@ -1,7 +1,25 @@
 #!/bin/bash
 
+# =============================================================================
 # Script de déploiement des diagnostics HTTP 500 TEST
+# =============================================================================
+# Description:
+#   Déploie les scripts de diagnostic sur le serveur distant et exécute
+#   des tests pour identifier les problèmes HTTP 500.
+#
+# Prérequis:
+#   - Accès SSH au serveur (clé SSH configurée)
+#   - Accès SCP pour le transfert de fichiers
+#   - Bash (Linux/Mac) ou Git Bash/WSL (Windows)
+#
+# Usage:
+#   ./deploy_diagnostics.sh
+#
+# Configuration:
+#   - Modifier les variables SERVER, USER, REMOTE_PATH si nécessaire
+#
 # Date: 2025-10-15
+# =============================================================================
 
 echo "========================================"
 echo "DÉPLOIEMENT DIAGNOSTICS HTTP 500 TEST"

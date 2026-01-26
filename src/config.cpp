@@ -49,15 +49,39 @@ void ConfigManager::loadNetworkFlags() {
   Serial.println(F("[Config] 📥 Chargement flags réseau depuis NVS centralisé"));
   
   // Chargement des flags réseau depuis le namespace SYSTEM
-  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_send_en", _remoteSendEnabled, true);
-  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_recv_en", _remoteRecvEnabled, true);
+  // Valeurs par défaut: true (activé par défaut)
+  bool defaultValueSend = true;
+  bool defaultValueRecv = true;
+  
+  bool beforeSend = _remoteSendEnabled;
+  bool beforeRecv = _remoteRecvEnabled;
+  
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_send_en", _remoteSendEnabled, defaultValueSend);
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_recv_en", _remoteRecvEnabled, defaultValueRecv);
   
   _cachedRemoteSendEnabled = _remoteSendEnabled;
   _cachedRemoteRecvEnabled = _remoteRecvEnabled;
   
-  Serial.printf("[Config] ✅ Net flags - send:%s recv:%s\n",
+  // v11.157: Log détaillé des valeurs chargées depuis NVS
+  Serial.printf("[Config] ✅ Net flags - send:%s recv:%s (NVS: send=%d, recv=%d)\n",
                 _remoteSendEnabled?"ON":"OFF",
-                _remoteRecvEnabled?"ON":"OFF");
+                _remoteRecvEnabled?"ON":"OFF",
+                _remoteSendEnabled, _remoteRecvEnabled);
+  
+  // Log si les valeurs ont changé
+  if (beforeSend != _remoteSendEnabled || beforeRecv != _remoteRecvEnabled) {
+    Serial.printf("[Config] ⚠️ Flags réseau modifiés: send %d→%d, recv %d→%d\n",
+                  beforeSend, _remoteSendEnabled,
+                  beforeRecv, _remoteRecvEnabled);
+  }
+  
+  // Avertissement si désactivé
+  if (!_remoteSendEnabled) {
+    Serial.println(F("[Config] ⚠️ ATTENTION: Envoi distant DÉSACTIVÉ en NVS (net_send_en=false)"));
+  }
+  if (!_remoteRecvEnabled) {
+    Serial.println(F("[Config] ⚠️ ATTENTION: Réception distante DÉSACTIVÉE en NVS (net_recv_en=false)"));
+  }
 }
 
 void ConfigManager::saveBouffeFlags() {
@@ -387,7 +411,10 @@ bool ConfigManager::loadConfigFromNVS() {
     
     Serial.println(F("[Config] ✅ Configuration chargée avec succès depuis NVS"));
   } else {
-    Serial.printf("[Config] ⚠️ Erreur parsing JSON: %s\n", err.c_str());
+    char jsonErrorBuf[128];
+    strncpy(jsonErrorBuf, err.c_str(), sizeof(jsonErrorBuf) - 1);
+    jsonErrorBuf[sizeof(jsonErrorBuf) - 1] = '\0';
+    Serial.printf("[Config] ⚠️ Erreur parsing JSON: %s\n", jsonErrorBuf);
     Serial.println(F("[Config] Valeurs par défaut seront utilisées"));
   }
   

@@ -11,8 +11,8 @@ void setupHostname(char* buffer, size_t bufferSize) {
     BootstrapNetwork::setupHostname(buffer, bufferSize);
 }
 
-void initializeStorage(AppContext& ctx, unsigned long& lastDigestMs, uint32_t& lastDigestSeq) {
-    BootstrapStorage::initialize(ctx, lastDigestMs, lastDigestSeq);
+void initializeStorage(AppContext& ctx) {
+    BootstrapStorage::initialize(ctx);
 }
 
 void validatePendingOta(OtaState& state) {

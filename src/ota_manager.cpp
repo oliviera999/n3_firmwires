@@ -12,6 +12,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <algorithm>
+#include <cstring>
 #include "config.h"
 #include "mailer.h"
 #include "automatism.h"
@@ -91,8 +92,8 @@ bool OTAManager::validateMetadata(const JsonDocument& doc) {
     if (doc["channels"].is<JsonObject>()) {
         return true;
     }
-    bool hasTopVersion = doc["version"].is<String>();
-    bool hasTopUrl = doc["bin_url"].is<String>();
+    bool hasTopVersion = doc["version"].is<const char*>();
+    bool hasTopUrl = doc["bin_url"].is<const char*>();
     if (!hasTopVersion || !hasTopUrl) {
         logError("Métadonnées invalides: ni 'channels' ni 'version/bin_url' valides");
         return false;
@@ -179,7 +180,7 @@ bool OTAManager::validateSpace(size_t required) {
 bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, char* outVersion, size_t versionSize, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
     // Déterminer environnement et modèle
     const char* envName = "prod";
-    #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
         envName = "test";
     #elif defined(PROFILE_PROD)
         envName = "prod";
@@ -295,7 +296,7 @@ bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, char* outVe
 bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
     // Déterminer environnement et modèle
     const char* envName = "prod";
-    #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
         envName = "test";
     #elif defined(PROFILE_PROD)
         envName = "prod";
@@ -401,8 +402,8 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     log("🔍 Début de la vérification des mises à jour...");
     
     HTTPClient http;
-    String metadataUrlStr = OTAConfig::getMetadataUrl();
-    const char* metadataUrl = metadataUrlStr.c_str();
+    char metadataUrl[256];
+    OTAConfig::getMetadataUrl(metadataUrl, sizeof(metadataUrl));
     char logMsg[256];
     snprintf(logMsg, sizeof(logMsg), "📡 URL métadonnées: %s", metadataUrl);
     log(logMsg);
@@ -426,8 +427,8 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
         // Fallback: réessayer l'URL fixe racine
         if (code == 404) {
             http.end();
-            String fallbackUrlStr = OTAConfig::getMetadataUrl();
-            const char* fallbackUrl = fallbackUrlStr.c_str();
+            char fallbackUrl[256];
+            OTAConfig::getMetadataUrl(fallbackUrl, sizeof(fallbackUrl));
             snprintf(logMsg, sizeof(logMsg), "🔁 Fallback métadonnées (URL fixe): %s", fallbackUrl);
             log(logMsg);
             if (!http.begin(fallbackUrl)) {
@@ -450,14 +451,43 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
         }
     }
 
-    String tempPayload = http.getString();
+    // Lire le payload dans un buffer statique
+    const size_t MAX_PAYLOAD_SIZE = 4096;
+    char tempPayload[MAX_PAYLOAD_SIZE];
+    WiFiClient* stream = http.getStreamPtr();
+    size_t payloadLen = 0;
+    if (stream) {
+      while (stream->available() && payloadLen < MAX_PAYLOAD_SIZE - 1) {
+        size_t bytesRead = stream->readBytes(tempPayload + payloadLen, MAX_PAYLOAD_SIZE - payloadLen - 1);
+        payloadLen += bytesRead;
+      }
+      tempPayload[payloadLen] = '\0';
+    } else {
+      // Fallback: getStream() retourne NetworkClient (pas un pointeur), utiliser getString() à la place
+      // Note: getStream() n'est plus compatible avec la nouvelle API
+      {
+        // Dernier recours: getString() si aucun stream disponible
+        // Note: HTTPClient::getString() retourne String Arduino (limitation API)
+        // La String est copiée immédiatement et détruite pour minimiser fragmentation
+        String tempPayloadStr = http.getString();
+        payloadLen = tempPayloadStr.length();
+        if (payloadLen >= MAX_PAYLOAD_SIZE) payloadLen = MAX_PAYLOAD_SIZE - 1;
+        // Copier immédiatement pour libérer la String rapidement
+        if (payloadLen > 0) {
+          strncpy(tempPayload, tempPayloadStr.c_str(), payloadLen);
+          tempPayload[payloadLen] = '\0';
+        } else {
+          tempPayload[0] = '\0';
+        }
+        // String tempPayloadStr est détruite ici, libérant la mémoire
+      }
+    }
     http.end();
     
-    size_t payloadLen = tempPayload.length();
     if (payloadLen >= payloadSize) {
         payloadLen = payloadSize - 1;
     }
-    strncpy(payload, tempPayload.c_str(), payloadLen);
+    strncpy(payload, tempPayload, payloadLen);
     payload[payloadLen] = '\0';
     
     snprintf(logMsg, sizeof(logMsg), "📄 Taille payload: %zu bytes", payloadLen);
@@ -494,15 +524,21 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     // Diagnostic de la connectivité
     log("📡 Diagnostic WiFi:");
     char logMsg[128];
-    snprintf(logMsg, sizeof(logMsg), "  - SSID: %s", WiFi.SSID().c_str());
+    char ssidBuf[33];
+    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    snprintf(logMsg, sizeof(logMsg), "  - SSID: %s", ssidBuf);
     log(logMsg);
     snprintf(logMsg, sizeof(logMsg), "  - RSSI: %d dBm", WiFi.RSSI());
     log(logMsg);
-    snprintf(logMsg, sizeof(logMsg), "  - IP: %s", WiFi.localIP().toString().c_str());
+    IPAddress localIP = WiFi.localIP();
+    snprintf(logMsg, sizeof(logMsg), "  - IP: %d.%d.%d.%d", localIP[0], localIP[1], localIP[2], localIP[3]);
     log(logMsg);
-    snprintf(logMsg, sizeof(logMsg), "  - Gateway: %s", WiFi.gatewayIP().toString().c_str());
+    IPAddress gatewayIP = WiFi.gatewayIP();
+    snprintf(logMsg, sizeof(logMsg), "  - Gateway: %d.%d.%d.%d", gatewayIP[0], gatewayIP[1], gatewayIP[2], gatewayIP[3]);
     log(logMsg);
-    snprintf(logMsg, sizeof(logMsg), "  - DNS: %s", WiFi.dnsIP().toString().c_str());
+    IPAddress dnsIP = WiFi.dnsIP();
+    snprintf(logMsg, sizeof(logMsg), "  - DNS: %d.%d.%d.%d", dnsIP[0], dnsIP[1], dnsIP[2], dnsIP[3]);
     log(logMsg);
     snprintf(logMsg, sizeof(logMsg), "  - Heap libre: %u bytes", ESP.getFreeHeap());
     log(logMsg);
@@ -595,7 +631,10 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     }
     if (!Update.begin(beginSize)) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Échec Update.begin(): %s", Update.errorString());
+        char updateErrorBuf[64];
+        strncpy(updateErrorBuf, Update.errorString(), sizeof(updateErrorBuf) - 1);
+        updateErrorBuf[sizeof(updateErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Échec Update.begin(): %s", updateErrorBuf);
         logError(errorMsg);
         esp_http_client_cleanup(m_httpClient);
         m_httpClient = nullptr;
@@ -758,7 +797,10 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     bool endOk = Update.end(OTAConfig::OTA_UNSAFE_FORCE);
     if (!endOk) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.end(): %s", Update.errorString());
+        char updateErrorBuf[64];
+        strncpy(updateErrorBuf, Update.errorString(), sizeof(updateErrorBuf) - 1);
+        updateErrorBuf[sizeof(updateErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.end(): %s", updateErrorBuf);
         logError(errorMsg);
         return false;
     }
@@ -766,7 +808,10 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     // Validation de la mise à jour
     if (Update.hasError() && !OTAConfig::OTA_UNSAFE_FORCE) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur de mise à jour: %s", Update.errorString());
+        char updateErrorBuf[64];
+        strncpy(updateErrorBuf, Update.errorString(), sizeof(updateErrorBuf) - 1);
+        updateErrorBuf[sizeof(updateErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur de mise à jour: %s", updateErrorBuf);
         logError(errorMsg);
         return false;
     }
@@ -854,7 +899,10 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     
     if (!Update.begin(beginSize2)) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.begin(): %s", Update.errorString());
+        char updateErrorBuf[64];
+        strncpy(updateErrorBuf, Update.errorString(), sizeof(updateErrorBuf) - 1);
+        updateErrorBuf[sizeof(updateErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.begin(): %s", updateErrorBuf);
         logError(errorMsg);
         http.end();
         return false;
@@ -960,7 +1008,10 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     
     if (!endOk2) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.end(): %s", Update.errorString());
+        char updateErrorBuf[64];
+        strncpy(updateErrorBuf, Update.errorString(), sizeof(updateErrorBuf) - 1);
+        updateErrorBuf[sizeof(updateErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur Update.end(): %s", updateErrorBuf);
         logError(errorMsg);
         return false;
     }
@@ -968,7 +1019,10 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     // Validation de la mise à jour
     if (Update.hasError() && !OTAConfig::OTA_UNSAFE_FORCE) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur de mise à jour: %s", Update.errorString());
+        char updateErrorBuf[64];
+        strncpy(updateErrorBuf, Update.errorString(), sizeof(updateErrorBuf) - 1);
+        updateErrorBuf[sizeof(updateErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur de mise à jour: %s", updateErrorBuf);
         logError(errorMsg);
         return false;
     }
@@ -1742,7 +1796,10 @@ bool OTAManager::checkForUpdate() {
     
     if (error) {
         char errorMsg[128];
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur parsing JSON: %s", error.c_str());
+        char jsonErrorBuf[128];
+        strncpy(jsonErrorBuf, error.c_str(), sizeof(jsonErrorBuf) - 1);
+        jsonErrorBuf[sizeof(jsonErrorBuf) - 1] = '\0';
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur parsing JSON: %s", jsonErrorBuf);
         logError(errorMsg);
         return false;
     }

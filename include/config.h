@@ -182,7 +182,7 @@ namespace NetworkConfig {
 namespace ServerConfig {
     constexpr const char* BASE_URL = "https://iot.olution.info";
     
-    #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
         constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-test";
         constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-test/state";
         constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-test";
@@ -241,11 +241,12 @@ namespace BufferConfig {
         constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 10000;
         constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 20000;
     #else
-        constexpr uint32_t HTTP_BUFFER_SIZE = 2048;
-        constexpr uint32_t HTTP_TX_BUFFER_SIZE = 2048;
-        constexpr uint32_t JSON_DOCUMENT_SIZE = 2048;
-        constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 3000;
-        constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 2500;
+        // v11.158: Optimisation buffers - réduits pour libérer mémoire et réduire fragmentation
+        constexpr uint32_t HTTP_BUFFER_SIZE = 1024;  // Réduit de 2048 (requêtes typiquement < 1024 bytes)
+        constexpr uint32_t HTTP_TX_BUFFER_SIZE = 1024;  // Réduit de 2048
+        constexpr uint32_t JSON_DOCUMENT_SIZE = 1024;  // Réduit de 2048 (réponses serveur < 500 bytes)
+        constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 2000;  // Réduit de 3000 (emails typiquement < 2000 bytes)
+        constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;  // Réduit de 2500
         constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 8000;
         constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 15000;
     #endif
@@ -487,28 +488,31 @@ namespace TaskConfig {
     constexpr uint32_t DEFAULT_STACK_SIZE = 4096;
     constexpr UBaseType_t DEFAULT_PRIORITY = 1;
     
-    constexpr uint32_t SENSOR_TASK_STACK_SIZE = 4096;
+    // v11.157: Réductions basées sur HWM analysés (sensor:1864, web:5332, display:2328 libres)
+    // autoTask: 7356 libres au boot mais 94.9% utilisé plus tard - NE PAS RÉDUIRE
+    constexpr uint32_t SENSOR_TASK_STACK_SIZE = 3072;  // Réduit de 4096 (HWM: 1864 libres, marge 1208)
     constexpr UBaseType_t SENSOR_TASK_PRIORITY = 2;
     constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
-    constexpr uint32_t WEB_TASK_STACK_SIZE = 6144;
+    constexpr uint32_t WEB_TASK_STACK_SIZE = 5120;  // Réduit de 6144 (HWM: 5332 libres, marge 212)
     // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
     constexpr UBaseType_t WEB_TASK_PRIORITY = 1;
     constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
-    // 8 KB (réduit de 12 KB - v11.144 optim mémoire)
+    // 8 KB - NE PAS RÉDUIRE (atteint 94.9% utilisation = 7776 bytes utilisés)
     constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;
     constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     
-    constexpr uint32_t DISPLAY_TASK_STACK_SIZE = 4096;
+    constexpr uint32_t DISPLAY_TASK_STACK_SIZE = 3072;  // Réduit de 4096 (HWM: 2328 libres, marge 744)
     constexpr UBaseType_t DISPLAY_TASK_PRIORITY = 1;
     constexpr BaseType_t DISPLAY_TASK_CORE_ID = 1;
 
     constexpr uint32_t OTA_TASK_STACK_SIZE = 8192;
     
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
-    constexpr uint32_t NET_TASK_STACK_SIZE = 12288;   // 12 KB (requis pour TLS/HTTPS avec mbedTLS)
+    // v11.157: Réduit de 12288 à 10240 (HWM: 5584 libres, marge 4656)
+    constexpr uint32_t NET_TASK_STACK_SIZE = 10240;   // 10 KB (requis pour TLS/HTTPS avec mbedTLS)
     constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
     

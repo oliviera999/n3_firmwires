@@ -10,6 +10,7 @@
 #include <time.h>
 #include <LittleFS.h>
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
+#include <cstring>
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 
@@ -80,7 +81,15 @@ static int appendTimeInfo(char* buf, size_t& remaining) {
 static int appendNetworkInfo(char* buf, size_t& remaining, bool detailed = false) {
   int written = 0;
   bool connected = WiFi.isConnected();
-  const char* ssid = connected ? WiFi.SSID().c_str() : "(déconnecté)";
+  char ssidBuf[33];
+  if (connected) {
+    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+  } else {
+    strncpy(ssidBuf, "(déconnecté)", sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+  }
+  const char* ssid = ssidBuf;
   IPAddress ipAddr = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
   long rssi = connected ? WiFi.RSSI() : 0;
   
@@ -182,7 +191,10 @@ static const char* buildLightFooter() {
   // Réseau (version allégée)
   bool connected = WiFi.isConnected();
   if (connected) {
-    const char* ssid = WiFi.SSID().c_str();
+    char ssidBuf[33];
+    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    const char* ssid = ssidBuf;
     IPAddress ipAddr = WiFi.localIP();
     written = snprintf(buf, remaining, "- WiFi: Connecté (%s, %d.%d.%d.%d)\n",
                        ssid, ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]);
@@ -236,10 +248,21 @@ static const char* buildSystemInfoFooter() {
 
   // Réseau
   bool connected = WiFi.isConnected();
-  const char* ssid = connected ? WiFi.SSID().c_str() : "(déconnecté)";
+  char ssidBuf[33];
+  if (connected) {
+    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+  } else {
+    strncpy(ssidBuf, "(déconnecté)", sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+  }
+  const char* ssid = ssidBuf;
   IPAddress ipAddr = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
   long rssi = connected ? WiFi.RSSI() : 0;
-  const char* mac = WiFi.macAddress().c_str();
+  char macBuf[18];
+  strncpy(macBuf, WiFi.macAddress().c_str(), sizeof(macBuf) - 1);
+  macBuf[sizeof(macBuf) - 1] = '\0';
+  const char* mac = macBuf;
   
   if (connected) {
     written = snprintf(buf, remaining, "- SSID: %s\n"
@@ -269,7 +292,10 @@ static const char* buildSystemInfoFooter() {
     IPAddress subnet = WiFi.subnetMask();
     IPAddress dns = WiFi.dnsIP(0);
     const char* host = WiFi.getHostname();
-    const char* bssid = WiFi.BSSIDstr().c_str();
+    char bssidBuf[18];
+    strncpy(bssidBuf, WiFi.BSSIDstr().c_str(), sizeof(bssidBuf) - 1);
+    bssidBuf[sizeof(bssidBuf) - 1] = '\0';
+    const char* bssid = bssidBuf;
     
     if (host && *host) {
       written = snprintf(buf, remaining, "- Qualité: %d%%\n"
@@ -316,9 +342,12 @@ static const char* buildSystemInfoFooter() {
   
   if (mode == WIFI_AP || mode == WIFI_AP_STA) {
     IPAddress apIp = WiFi.softAPIP();
+    char apSSIDBuf[33];
+    strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
+    apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
     written = snprintf(buf, remaining, "- AP SSID: %s\n"
                                        "- AP IP: %d.%d.%d.%d\n",
-                       WiFi.softAPSSID().c_str(), apIp[0], apIp[1], apIp[2], apIp[3]);
+                       apSSIDBuf, apIp[0], apIp[1], apIp[2], apIp[3]);
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
       return g_systemInfoFooterBuffer;
@@ -904,8 +933,9 @@ static bool waitForNetworkReadyForSMTP() {
       // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
       IPAddress dnsResult;
       if (WiFi.hostByName("smtp.gmail.com", dnsResult)) {
-        Serial.printf("[Mail] ✅ Réseau prêt pour SMTP (%s, DNS OK, %lu ms)\n", 
-                      WiFi.localIP().toString().c_str(), millis() - startMs);
+        IPAddress localIP = WiFi.localIP();
+        Serial.printf("[Mail] ✅ Réseau prêt pour SMTP (%d.%d.%d.%d, DNS OK, %lu ms)\n", 
+                      localIP[0], localIP[1], localIP[2], localIP[3], millis() - startMs);
         return true;
       }
     }
@@ -971,7 +1001,10 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
     _ready = _smtp.connect(&_cfg);
     if(!_ready){
       Serial.printf("[Mail] ❌ Reconnexion SMTP échouée - code: %d\n", _smtp.statusCode());
-      Serial.printf("[Mail] ❌ Erreur: %s\n", _smtp.errorReason().c_str());
+      char smtpErrorBuf[128];
+      strncpy(smtpErrorBuf, _smtp.errorReason().c_str(), sizeof(smtpErrorBuf) - 1);
+      smtpErrorBuf[sizeof(smtpErrorBuf) - 1] = '\0';
+      Serial.printf("[Mail] ❌ Erreur: %s\n", smtpErrorBuf);
       TLSMutex::release();  // v11.151: CRITIQUE - libérer le mutex avant return !
       return false;
     } else {
@@ -1078,7 +1111,10 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.printf("[Mail] Trace 7: sendMail returned %s\n", ok ? "TRUE" : "FALSE");
 
   if (!ok) {
-    Serial.printf("[Mail] ERREUR sendMail code=%d err=%d reason=%s\n", _smtp.statusCode(), _smtp.errorCode(), _smtp.errorReason().c_str());
+    char smtpErrorBuf2[128];
+    strncpy(smtpErrorBuf2, _smtp.errorReason().c_str(), sizeof(smtpErrorBuf2) - 1);
+    smtpErrorBuf2[sizeof(smtpErrorBuf2) - 1] = '\0';
+    Serial.printf("[Mail] ERREUR sendMail code=%d err=%d reason=%s\n", _smtp.statusCode(), _smtp.errorCode(), smtpErrorBuf2);
   } else {
     Serial.println(F("[Mail] Message envoyé avec succès ✔"));
   }
@@ -1380,16 +1416,20 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   
   // Ajouter les informations de connexion WiFi
   if (WiFi.status() == WL_CONNECTED) {
-    // WiFi.SSID() et WiFi.localIP().toString() retournent des String temporaires
+    // WiFi.SSID() et WiFi.localIP() retournent des String temporaires
     // Il faut copier immédiatement dans un buffer
-    String ssid = WiFi.SSID();
-    String ip = WiFi.localIP().toString();
+    char ssid[33];
+    strncpy(ssid, WiFi.SSID().c_str(), sizeof(ssid) - 1);
+    ssid[sizeof(ssid) - 1] = '\0';
+    IPAddress ipAddr = WiFi.localIP();
+    char ip[16];
+    snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]);
     written = snprintf(wakeMessage + offset, remaining,
       "- WiFi: Connecté\n"
       "- SSID: %s\n"
       "- IP: %s\n"
       "- RSSI: %d dBm\n",
-      ssid.c_str(), ip.c_str(), WiFi.RSSI());
+      ssid, ip, WiFi.RSSI());
   } else {
     written = snprintf(wakeMessage + offset, remaining, "- WiFi: Déconnecté\n");
   }

@@ -89,7 +89,6 @@ void Diagnostics::begin() {
   
   // Charger les valeurs précédentes
   int rebootCount;
-  unsigned int minFreeHeap, httpSuccessCount, httpFailCount, otaSuccessCount, otaFailCount;
 
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
   _stats.rebootCount = rebootCount + 1;
@@ -98,10 +97,16 @@ void Diagnostics::begin() {
   unsigned long minHeapUL = 0;
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
   _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpOk", (int&)_stats.httpSuccessCount, 0);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpKo", (int&)_stats.httpFailCount, 0);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaKo", (int&)_stats.otaFailCount, 0);
+  // Correction: utiliser loadULong pour uint32_t (compteurs HTTP/OTA)
+  unsigned long httpOkUL = 0, httpKoUL = 0, otaOkUL = 0, otaKoUL = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpOk", httpOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpKo", httpKoUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaOk", otaOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaKo", otaKoUL, 0);
+  _stats.httpSuccessCount = static_cast<uint32_t>(httpOkUL);
+  _stats.httpFailCount = static_cast<uint32_t>(httpKoUL);
+  _stats.otaSuccessCount = static_cast<uint32_t>(otaOkUL);
+  _stats.otaFailCount = static_cast<uint32_t>(otaKoUL);
 
   g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", _stats.rebootCount);
 
@@ -125,10 +130,12 @@ void Diagnostics::begin() {
     }
     _stats.crashStatus.hasCrashInfo = true;
     _stats.crashStatus.resetReason = static_cast<int>(resetReason);
+    unsigned long crashUptimeUL = 0;
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS,
                            "diag_lastUptime",
-                           _stats.crashStatus.crashUptimeSec,
+                           crashUptimeUL,
                            0);
+    _stats.crashStatus.crashUptimeSec = static_cast<uint32_t>(crashUptimeUL);
     time_t now = time(nullptr);
     _stats.crashStatus.crashEpoch = (now > 100000) ? static_cast<uint32_t>(now) : 0;
     updateCoredumpStatus(true);
@@ -154,10 +161,16 @@ void Diagnostics::loadFromNvs() {
   unsigned long minHeapUL = 0;
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
   _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpOk", (int&)_stats.httpSuccessCount, 0);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_httpKo", (int&)_stats.httpFailCount, 0);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaOk", (int&)_stats.otaSuccessCount, 0);
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_otaKo", (int&)_stats.otaFailCount, 0);
+  // Correction: utiliser loadULong pour uint32_t (compteurs HTTP/OTA)
+  unsigned long httpOkUL = 0, httpKoUL = 0, otaOkUL = 0, otaKoUL = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpOk", httpOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpKo", httpKoUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaOk", otaOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaKo", otaKoUL, 0);
+  _stats.httpSuccessCount = static_cast<uint32_t>(httpOkUL);
+  _stats.httpFailCount = static_cast<uint32_t>(httpKoUL);
+  _stats.otaSuccessCount = static_cast<uint32_t>(otaOkUL);
+  _stats.otaFailCount = static_cast<uint32_t>(otaKoUL);
 
   const char* reasonStr = getRebootReason();
   strncpy(_stats.lastRebootReason, reasonStr, sizeof(_stats.lastRebootReason) - 1);
@@ -357,21 +370,21 @@ void Diagnostics::recordHttpResult(bool success, int httpCode) {
   _stats.lastHttpCode = httpCode;
   if (success) {
     _stats.httpSuccessCount++;
-    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_httpOk", _stats.httpSuccessCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_httpOk", _stats.httpSuccessCount);
   } else {
     _stats.httpFailCount++;
-    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_httpKo", _stats.httpFailCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_httpKo", _stats.httpFailCount);
   }
 }
 
 void Diagnostics::recordOtaResult(bool success, const char* errorMsg) {
   if (success) {
     _stats.otaSuccessCount++;
-    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_otaOk", _stats.otaSuccessCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_otaOk", _stats.otaSuccessCount);
     _stats.lastOtaError[0] = '\0';
   } else {
     _stats.otaFailCount++;
-    g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_otaKo", _stats.otaFailCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_otaKo", _stats.otaFailCount);
     if (errorMsg) {
       strncpy(_stats.lastOtaError, errorMsg, sizeof(_stats.lastOtaError) - 1);
       _stats.lastOtaError[sizeof(_stats.lastOtaError) - 1] = '\0';
@@ -811,6 +824,9 @@ void Diagnostics::capturePanicInfo() {
       exceptionCauseStr = "Software Reset";
       break;
 #endif
+    case 12: // Code observé dans les logs - Watchdog timeout probable
+      exceptionCauseStr = "Watchdog Timeout (RTC code 12)";
+      break;
     default:
       // Pour les codes inconnus, on affiche le code numérique
       exceptionCauseStr = "Unknown Exception";
@@ -971,8 +987,11 @@ void Diagnostics::loadCrashStatus() {
   }
 
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason, -1);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_uptime", _stats.crashStatus.crashUptimeSec, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch, 0);
+  unsigned long crashUptimeUL = 0, crashEpochUL = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_uptime", crashUptimeUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_epoch", crashEpochUL, 0);
+  _stats.crashStatus.crashUptimeSec = static_cast<uint32_t>(crashUptimeUL);
+  _stats.crashStatus.crashEpoch = static_cast<uint32_t>(crashEpochUL);
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent, false);
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize, 0);
   char tempStr[64];

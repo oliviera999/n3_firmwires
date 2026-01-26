@@ -112,17 +112,17 @@ void checkForOtaUpdate(AppContext& ctx) {
   ctx.otaManager.setCurrentVersion(ProjectConfig::VERSION);
   ctx.otaManager.setCheckInterval(TimingConfig::OTA_CHECK_INTERVAL_MS);
 
-  ctx.otaManager.setStatusCallback([&ctx](const String& message) {
-    Serial.printf("[OTA] %s\n", message.c_str());
-    if (ctx.display.isPresent()) {
-      if (message.indexOf("Téléchargement") >= 0 || message.indexOf("Début") >= 0) {
+  ctx.otaManager.setStatusCallback([&ctx](const char* message) {
+    Serial.printf("[OTA] %s\n", message ? message : "(null)");
+    if (ctx.display.isPresent() && message) {
+      if (strstr(message, "Téléchargement") || strstr(message, "Début")) {
         ctx.display.showOtaProgressOverlay(0);
       }
     }
   });
 
-  ctx.otaManager.setErrorCallback([&ctx](const String& error) {
-    Serial.printf("[OTA] ❌ %s\n", error.c_str());
+  ctx.otaManager.setErrorCallback([&ctx](const char* error) {
+    Serial.printf("[OTA] ❌ %s\n", error ? error : "(null)");
     if (ctx.display.isPresent()) {
       ctx.display.hideOtaProgressOverlay();
     }
@@ -223,13 +223,19 @@ void onWifiReady(AppContext& ctx,
 
       bool mailNotif = ctx.automatism.isEmailEnabled();
       const char* toEmail = mailNotif ? ctx.automatism.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
-      String body = String("Début de mise à jour OTA (Interface web ArduinoOTA)\n\n") +
-                    "Détails:\n" +
-                    "- Méthode: Interface web ArduinoOTA\n" +
-                    "- Version courante: " + String(ProjectConfig::VERSION) + "\n" +
-                    "- Hostname: " + String(hostname) + "\n";
-      body += "- Hôte: "; body += hostname; body += ":"; body += String(SystemConfig::ARDUINO_OTA_PORT);
-      ctx.mailer.sendAlert("OTA début - Interface web", body.c_str(), toEmail);
+      char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
+      snprintf(body, sizeof(body),
+               "Début de mise à jour OTA (Interface web ArduinoOTA)\n\n"
+               "Détails:\n"
+               "- Méthode: Interface web ArduinoOTA\n"
+               "- Version courante: %s\n"
+               "- Hostname: %s\n"
+               "- Hôte: %s:%u",
+               ProjectConfig::VERSION,
+               hostname ? hostname : "(unknown)",
+               hostname ? hostname : "(unknown)",
+               SystemConfig::ARDUINO_OTA_PORT);
+      ctx.mailer.sendAlert("OTA début - Interface web", body, toEmail);
     })
     .onProgress([&ctx](unsigned int progress, unsigned int total) {
       int percent = (progress * 100) / total;
@@ -257,8 +263,8 @@ void onWifiReady(AppContext& ctx,
   ArduinoOTA.begin();
 #endif
 
-  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
-  ctx.automatism.fetchRemoteState(tmp);
+  // Point 2: TLS/HTTP déplacé dans netTask (sinon ça s'exécute depuis loopTask avant AppTasks::start)
+  // Le premier fetchRemoteState est désormais déclenché par netTask après la création des tâches.
 }
 
 void postConfiguration(AppContext& ctx,
@@ -268,14 +274,8 @@ void postConfiguration(AppContext& ctx,
     return;
   }
 
-  Serial.println("[App] Chargement immédiat des variables distantes...");
-  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
-  bool remoteOk = ctx.automatism.fetchRemoteState(tmp);
-  if (remoteOk) {
-    Serial.println("[App] Variables distantes chargées avec succès");
-  } else {
-    Serial.println("[App] Échec chargement variables distantes - utilisation du cache");
-  }
+  // Point 2: TLS/HTTP déplacé dans netTask (sinon loopTask)
+  Serial.println("[App] Chargement variables distantes: géré par netTask (déport TLS)");
 
   Serial.println("[App] Vérification des flags OTA...");
   Serial.printf("[App] state.justUpdated: %s\n", state.justUpdated ? "true" : "false");
@@ -326,19 +326,28 @@ void postConfiguration(AppContext& ctx,
       Serial.println("[App] Email non activé dans les variables distantes, utilisation de l'adresse par défaut...");
     }
 
-    String body = String("Mise à jour OTA effectuée avec succès.\n\n");
-    body += "Détails de la mise à jour:\n";
-    body += "- Méthode: Interface web ElegantOTA\n";
-    body += "- Nouvelle version: " + String(ProjectConfig::VERSION) + "\n";
     const char* safeHost = (hostname && hostname[0] != '\0') ? hostname : "(unknown)";
-    body += "- Hostname: "; body += safeHost; body += "\n";
-    body += "- Compilé le: "; body += __DATE__; body += " "; body += __TIME__; body += "\n";
-    body += "- Redémarrage automatique effectué";
-    if (body.length() > BufferConfig::EMAIL_MAX_SIZE_BYTES) {
-      body = body.substring(0, BufferConfig::EMAIL_MAX_SIZE_BYTES - 3) + "...";
+    char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
+    size_t bodyLen = snprintf(body, sizeof(body),
+        "Mise à jour OTA effectuée avec succès.\n\n"
+        "Détails de la mise à jour:\n"
+        "- Méthode: Interface web ElegantOTA\n"
+        "- Nouvelle version: %s\n"
+        "- Hostname: %s\n"
+        "- Compilé le: %s %s\n"
+        "- Redémarrage automatique effectué",
+        ProjectConfig::VERSION,
+        safeHost,
+        __DATE__, __TIME__);
+    if (bodyLen >= sizeof(body)) {
+      body[sizeof(body) - 4] = '.';
+      body[sizeof(body) - 3] = '.';
+      body[sizeof(body) - 2] = '.';
+      body[sizeof(body) - 1] = '\0';
     }
-    String subj = "OTA mise à jour - Interface web ["; subj += safeHost; subj += "]";
-    bool emailSent = ctx.mailer.sendAlert(subj.c_str(), body.c_str(), mail);
+    char subj[128];
+    snprintf(subj, sizeof(subj), "OTA mise à jour - Interface web [%s]", safeHost);
+    bool emailSent = ctx.mailer.sendAlert(subj, body, mail);
     Serial.printf("[App] Email interface web %s\n", emailSent ? "envoyé" : "échoué");
     ctx.config.setOtaUpdateFlag(false);
   }

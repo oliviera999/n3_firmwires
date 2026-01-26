@@ -12,8 +12,6 @@
 #include "diagnostics.h"
 #include "web_server.h"
 #include "automatism.h"
-#include "time_drift_monitor.h"
-
 struct AppContext {
   WifiManager& wifi;
   DisplayView& display;
@@ -27,7 +25,6 @@ struct AppContext {
   Diagnostics& diagnostics;
   WebServerManager& webServer;
   Automatism& automatism;
-  TimeDriftMonitor& timeDriftMonitor;
 };
 
 

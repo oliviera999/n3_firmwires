@@ -1,6 +1,7 @@
 #include "gpio_parser.h"
 #include "automatism.h"
 #include "nvs_manager.h" // v11.108
+#include <cstring>
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
@@ -237,11 +238,33 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                                 Serial.printf("[GPIOParser] ⚠️ String invalide GPIO %d, ignoré\n", gpio);
                             }
                         } else {
-                            // Si ce n'est pas une string, convertir en string
-                            configDoc[keyStr] = value.as<String>();
+                            // Si ce n'est pas une string, convertir en string via buffer temporaire
+                            char tempStr[256];
+                            if (value.is<const char*>()) {
+                                const char* str = value.as<const char*>();
+                                if (str) {
+                                    strncpy(tempStr, str, sizeof(tempStr) - 1);
+                                    tempStr[sizeof(tempStr) - 1] = '\0';
+                                } else {
+                                    tempStr[0] = '\0';
+                                }
+                            } else {
+                                // Conversion via snprintf pour les types numériques
+                                if (value.is<int>()) {
+                                    snprintf(tempStr, sizeof(tempStr), "%d", value.as<int>());
+                                } else if (value.is<float>()) {
+                                    snprintf(tempStr, sizeof(tempStr), "%.2f", value.as<float>());
+                                } else if (value.is<bool>()) {
+                                    strncpy(tempStr, value.as<bool>() ? "true" : "false", sizeof(tempStr) - 1);
+                                    tempStr[sizeof(tempStr) - 1] = '\0';
+                                } else {
+                                    tempStr[0] = '\0';
+                                }
+                            }
+                            configDoc[keyStr] = tempStr;
                             assignmentOk = true;
                                 Serial.printf("[GPIOParser] GPIO %d (STRING) -> %s = '%s' (converti)\n", 
-                                         gpio, keyStr, valueStr);
+                                         gpio, keyStr, tempStr);
                         }
                     }
                     else {
@@ -385,13 +408,32 @@ size_t GPIOParser::parseString(JsonVariantConst v, char* buffer, size_t bufferSi
         buffer[copyLen] = '\0';
         return copyLen;
     } else {
-        // Convertir en string via ArduinoJson
-        String temp = v.as<String>();
-        size_t len = temp.length();
-        size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
-        strncpy(buffer, temp.c_str(), copyLen);
-        buffer[copyLen] = '\0';
-        return copyLen;
+        // Convertir en string via ArduinoJson - essayer const char* d'abord
+        const char* str = v.as<const char*>();
+        if (str) {
+            size_t len = strlen(str);
+            size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
+            strncpy(buffer, str, copyLen);
+            buffer[copyLen] = '\0';
+            return copyLen;
+        }
+        // Si ce n'est pas une string, convertir via snprintf
+        if (v.is<int>()) {
+            int written = snprintf(buffer, bufferSize, "%d", v.as<int>());
+            return (written > 0 && (size_t)written < bufferSize) ? written : 0;
+        } else if (v.is<float>()) {
+            int written = snprintf(buffer, bufferSize, "%.2f", v.as<float>());
+            return (written > 0 && (size_t)written < bufferSize) ? written : 0;
+        } else if (v.is<bool>()) {
+            const char* boolStr = v.as<bool>() ? "true" : "false";
+            size_t len = strlen(boolStr);
+            size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
+            strncpy(buffer, boolStr, copyLen);
+            buffer[copyLen] = '\0';
+            return copyLen;
+        }
+        buffer[0] = '\0';
+        return 0;
     }
 }
 

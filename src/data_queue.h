@@ -88,7 +88,6 @@ private:
     static constexpr const char* TEMP_FILE = "/queue/temp.txt";
     
     uint16_t _maxEntries;
-    uint16_t _currentSize;
     bool _initialized;
     
     /**
@@ -98,8 +97,9 @@ private:
     
     /**
      * Rotation: supprime les entrées les plus anciennes si dépassement
+     * @param currentSize Nombre actuel d'entrées (évite de recalculer)
      */
-    void rotateIfNeeded();
+    void rotateIfNeeded(uint16_t currentSize);
     
     /**
      * Crée les répertoires nécessaires

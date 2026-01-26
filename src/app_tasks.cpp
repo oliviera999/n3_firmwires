@@ -6,20 +6,131 @@
 #include <esp_task_wdt.h>
 #include <time.h>
 #include <math.h> // isnan
+#include <esp_heap_caps.h>  // v11.157: Pour heap_caps_get_largest_free_block()
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>  // Pour xTaskCreateStaticPinnedToCore
 
 #include "gpio_parser.h"
 #include "config.h"
 #include "event_log.h"
 #include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
+#include "diagnostics.h"
+#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
+#include "system_sensors.h"  // Pour SensorReadings
 
 namespace {
 
 AppContext* g_ctx = nullptr;
 QueueHandle_t g_sensorQueue = nullptr;
+
+// v11.157: Buffers statiques pour stacks des petites tâches (allocation statique pour réduire fragmentation)
+// Approche hybride: statique pour petites tâches, dynamique pour grandes (évite overflow DRAM)
+// Ces buffers sont alloués à la compilation, pas sur le heap
+static StackType_t sensorTaskStack[TaskConfig::SENSOR_TASK_STACK_SIZE];
+static StaticTask_t sensorTaskTCB;
+
+static StackType_t displayTaskStack[TaskConfig::DISPLAY_TASK_STACK_SIZE];
+static StaticTask_t displayTaskTCB;
+
+// Note: webTask, automationTask et netTask utilisent allocation dynamique (trop grandes pour data segment)
 TaskHandle_t g_sensorTaskHandle = nullptr;
 TaskHandle_t g_webTaskHandle = nullptr;
 TaskHandle_t g_autoTaskHandle = nullptr;
 TaskHandle_t g_displayTaskHandle = nullptr;
+
+// ============================================================================
+// Point 2: netTask (unique propriétaire de WebClient/TLS)
+// ============================================================================
+enum class NetReqType : uint8_t {
+  FetchRemoteState = 1,
+  PostRaw = 2,
+  Heartbeat = 3,
+  BootFetchRemoteState = 4,
+};
+
+struct NetRequest {
+  NetReqType type;
+  TaskHandle_t requester;
+  uint32_t timeoutMs;
+  bool success;
+
+  ArduinoJson::JsonDocument* doc;   // FetchRemoteState
+  const Diagnostics* diag;          // Heartbeat
+  char payload[1024];               // PostRaw (copie)
+};
+
+QueueHandle_t g_netQueue = nullptr;
+TaskHandle_t g_netTaskHandle = nullptr;
+
+static void netNotifyDone(NetRequest* req) {
+  if (req && req->requester) {
+    xTaskNotifyGive(req->requester);
+  }
+}
+
+static void netTask(void* pv) {
+  (void)pv;
+  
+  // Enregistrer watchdog pour netTask
+  static bool wdtRegistered = false;
+  if (!wdtRegistered) {
+    esp_task_wdt_add(nullptr);
+    wdtRegistered = true;
+  }
+  
+  Serial.println(F("[netTask] Démarrée (TLS/HTTP propriétaire unique)"));
+
+  // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
+  // par une tentative depuis netTask dès que le WiFi est disponible.
+  unsigned long startMs = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 30000) {
+    esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+    Serial.println(F("[netTask] Boot: fetchRemoteState() (déplacé hors loopTask)"));
+    // CORRECTION DEADLOCK: Appeler directement webClient au lieu de automatism.fetchRemoteState()
+    // qui utilise RPC vers la même queue (deadlock)
+    bool ok = g_ctx->webClient.fetchRemoteState(tmp);
+    Serial.printf("[netTask] Boot fetchRemoteState: %s\n", ok ? "OK" : "ECHEC");
+  } else {
+    Serial.println(F("[netTask] Boot: WiFi non connecté, fetchRemoteState skip"));
+  }
+
+  for (;;) {
+    esp_task_wdt_reset();  // Reset watchdog dans boucle principale
+    NetRequest* req = nullptr;
+    if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(1000)) != pdTRUE) {
+      continue;
+    }
+    if (!req || !g_ctx) continue;
+
+    bool ok = false;
+    switch (req->type) {
+      case NetReqType::FetchRemoteState:
+        ok = (req->doc != nullptr) ? g_ctx->webClient.fetchRemoteState(*req->doc) : false;
+        break;
+      case NetReqType::PostRaw:
+        ok = g_ctx->webClient.postRaw(req->payload);
+        break;
+      case NetReqType::Heartbeat:
+        ok = (req->diag != nullptr) ? g_ctx->webClient.sendHeartbeat(*req->diag) : false;
+        break;
+      case NetReqType::BootFetchRemoteState: {
+        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+        ok = g_ctx->automatism.fetchRemoteState(tmp);
+        break;
+      }
+      default:
+        ok = false;
+        break;
+    }
+
+    req->success = ok;
+    netNotifyDone(req);
+  }
+}
 
 void sensorTask(void* pv) {
   SensorReadings readings;
@@ -91,7 +202,11 @@ void sensorTask(void* pv) {
                                            &readings,
                                            pdMS_TO_TICKS(200));
       if (result != pdTRUE) {
-        SENSOR_LOG_PRINTLN(F("[Sensor] ⚠️ Queue pleine - donnée de capteur perdue!"));
+        // v11.158: Simplification - queue pleine: retirer la plus ancienne et réessayer immédiatement
+        SensorReadings oldReading;
+        xQueueReceive(g_sensorQueue, &oldReading, 0);  // Ignore résultat (peut échouer si queue vide)
+        xQueueSendToBack(g_sensorQueue, &readings, 0);  // Réessayer immédiatement (timeout 0)
+        SENSOR_LOG_PRINTLN(F("[Sensor] ⚠️ Queue pleine - ancienne donnée écrasée"));
       }
     } else {
       SENSOR_LOG_PRINTLN(F("[Sensor] ❌ Queue non disponible - donnée ignorée"));
@@ -162,9 +277,6 @@ void automationTask(void* pv) {
   unsigned long lastPumpStatsDisplay = 0;
   const unsigned long pumpStatsInterval = TimingConfig::PUMP_STATS_DISPLAY_INTERVAL_MS;
 
-  unsigned long lastDriftDisplay = 0;
-  const unsigned long driftInterval = TimingConfig::DRIFT_DISPLAY_INTERVAL_MS;
-
   #if defined(PROFILE_TEST) && FEATURE_DIAG_STACK_LOGS
   unsigned long lastStackCheck = 0;
   const unsigned long stackCheckInterval = 30000; // Toutes les 30 secondes
@@ -175,7 +287,7 @@ void automationTask(void* pv) {
     esp_task_wdt_add(nullptr);
     wdtRegistered = true;
   }
-
+  
   for (;;) {
     esp_task_wdt_reset();
 
@@ -209,6 +321,48 @@ void automationTask(void* pv) {
       unsigned long now = millis();
       #endif
       
+      // v11.156: Monitoring proactif de la mémoire
+      static unsigned long lastHeapCheck = 0;
+      static unsigned long lastDiagSnapshot = 0;
+      // v11.157: Monitoring heap toutes les minutes avec diagnostics détaillés
+      const unsigned long heapCheckInterval = 60000; // Toutes les 60 secondes
+      const unsigned long diagSnapshotInterval = 300000; // Toutes les 5 minutes pour snapshots
+      if (now - lastHeapCheck > heapCheckInterval) {
+        uint32_t heapFree = ESP.getFreeHeap();
+        uint32_t heapMin = ESP.getMinFreeHeap();
+        uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
+        lastHeapCheck = now;
+        
+        // v11.157: Vérification critique basée sur TLS_MIN_HEAP_BYTES
+        if (heapMin < TLS_MIN_HEAP_BYTES) {
+          Serial.printf("[autoTask] 🔴 CRITICAL: Heap minimum critique: %u bytes (< %u KB requis pour TLS)\n", 
+                        heapMin, TLS_MIN_HEAP_BYTES / 1024);
+          Serial.printf("[autoTask] 🔴 Fragmentation: %u%%, Largest block: %u bytes\n", 
+                        fragmentation, largestBlock);
+          EventLog::add("CRITICAL: Low heap minimum - TLS operations may fail");
+        } else if (heapFree < TLS_MIN_HEAP_BYTES) {
+          Serial.printf("[autoTask] ⚠️ WARN: Heap libre faible: %u bytes (< %u KB requis pour TLS)\n", 
+                        heapFree, TLS_MIN_HEAP_BYTES / 1024);
+          Serial.printf("[autoTask] ⚠️ Fragmentation: %u%%, Largest block: %u bytes\n", 
+                        fragmentation, largestBlock);
+        } else if (largestBlock < 45000) {
+          Serial.printf("[autoTask] ⚠️ WARN: Plus grand bloc insuffisant: %u bytes (< 45KB pour TLS)\n", 
+                        largestBlock);
+          Serial.printf("[autoTask] ⚠️ Fragmentation: %u%%, Heap libre: %u bytes\n", 
+                        fragmentation, heapFree);
+        } else {
+          Serial.printf("[autoTask] 📊 Heap: libre=%u bytes, min=%u bytes, largest_block=%u bytes, fragmentation=%u%%\n", 
+                        heapFree, heapMin, largestBlock, fragmentation);
+        }
+      }
+      
+      // Snapshot périodique pour diagnostic fragmentation (toutes les 5 minutes)
+      if (now - lastDiagSnapshot > diagSnapshotInterval) {
+        MEM_DIAG_SNAPSHOT("periodic_5min");
+        lastDiagSnapshot = now;
+      }
+      
       g_ctx->automatism.update(readings);
       g_ctx->power.resetWatchdog();
       g_ctx->diagnostics.update();
@@ -216,7 +370,7 @@ void automationTask(void* pv) {
         // Priorité 1: Heartbeat (toutes les 30s)
         if (now - lastHeartbeat > 30000) {
           esp_task_wdt_reset();
-          g_ctx->webClient.sendHeartbeat(g_ctx->diagnostics);
+          AppTasks::netSendHeartbeat(g_ctx->diagnostics, 10000);
           lastHeartbeat = now;
         }
         
@@ -266,42 +420,6 @@ void automationTask(void* pv) {
         lastPumpStatsDisplay = now;
       }
 
-      #if FEATURE_DIAG_TIME_DRIFT
-      if (now - lastDriftDisplay > driftInterval) {
-        LOG_TIME(LOG_INFO, "=== INFORMATIONS DE DÉRIVE TEMPORELLE ===");
-        // Simplification : lecture directe de la dernière sync
-        time_t lastSync = g_ctx->timeDriftMonitor.getLastSyncTime();
-        if (lastSync > 0) {
-          char buf[64];
-          struct tm ti;
-          localtime_r(&lastSync, &ti);
-          strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
-          LOG_TIME(LOG_INFO, "Dernière sync NTP: %s", buf);
-        } else {
-          LOG_TIME(LOG_INFO, "Aucune sync NTP effectuée");
-        }
-
-        time_t currentEpoch = time(nullptr);
-        struct tm timeinfo;
-        if (localtime_r(&currentEpoch, &timeinfo)) {
-          LOG_TIME(LOG_INFO,
-                   "État temporel - Heure: %02d:%02d:%02d, Date: %02d/%02d/%04d",
-                   timeinfo.tm_hour,
-                   timeinfo.tm_min,
-                   timeinfo.tm_sec,
-                   timeinfo.tm_mday,
-                   timeinfo.tm_mon + 1,
-                   timeinfo.tm_year + 1900);
-          LOG_TIME(LOG_INFO,
-                   "Jour semaine: %d, Jour année: %d, DST: %s",
-                   timeinfo.tm_wday,
-                   timeinfo.tm_yday,
-                   timeinfo.tm_isdst ? "OUI" : "NON");
-        }
-
-        lastDriftDisplay = now;
-      }
-      #endif
 
       esp_task_wdt_reset();
     } else {
@@ -310,7 +428,7 @@ void automationTask(void* pv) {
         esp_task_wdt_reset();
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
         StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmpDoc;
-        bool ok = g_ctx->automatism.fetchRemoteState(tmpDoc);
+        bool ok = AppTasks::netFetchRemoteState(tmpDoc, 30000);
         Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
                      ok ? "OK" : "KO",
                      static_cast<unsigned>(tmpDoc.size()));
@@ -330,24 +448,49 @@ namespace AppTasks {
 bool start(AppContext& ctx) {
   g_ctx = &ctx;
 
-  // v11.144: Réduit de 100 à 10 slots (~1.8 KB économisés)
-  g_sensorQueue = xQueueCreate(10, sizeof(SensorReadings));
+  // v11.157: CORRECTION CRITIQUE - Créer les queues AVANT les tâches
+  // Les tâches utilisent immédiatement les queues, elles doivent donc exister
+  // Snapshot avant création des queues
+  HeapSnapshot snapshot_before_tasks = MEM_DIAG_SNAPSHOT("before_tasks");
+
+  // Créer la queue capteurs (utilisée par sensorTask et automationTask)
+  // v11.158: Réduit de 10 à 5 slots pour réduire fragmentation (données redondantes toutes les 500ms)
   if (!g_sensorQueue) {
-    Serial.println(F("[App] ❌ CRITIQUE: Échec création queue capteurs - arrêt système"));
-    EventLog::add("CRITICAL: Failed to create sensor queue");
-    return false;
+    g_sensorQueue = xQueueCreate(5, sizeof(SensorReadings));
+    if (!g_sensorQueue) {
+      Serial.println(F("[App] ❌ CRITIQUE: Échec création g_sensorQueue"));
+      EventLog::add("CRITICAL: g_sensorQueue creation failure");
+      return false;
+    }
+    Serial.println(F("[App] ✅ Queue capteurs créée"));
   }
 
-  Serial.printf("[App] ✅ Queue capteurs créée avec succès (10 slots)\n");
+  // Créer la queue réseau (utilisée par netTask)
+  // v11.158: Réduit de 5 à 3 slots (requêtes séquentielles via mutex TLS)
+  if (!g_netQueue) {
+    g_netQueue = xQueueCreate(3, sizeof(NetRequest*));
+    if (!g_netQueue) {
+      Serial.println(F("[App] ❌ CRITIQUE: Échec création g_netQueue"));
+      EventLog::add("CRITICAL: g_netQueue creation failure");
+      return false;
+    }
+    Serial.println(F("[App] ✅ Queue réseau créée"));
+  }
 
-  BaseType_t sensorCreated = xTaskCreatePinnedToCore(sensorTask,
+  // v11.157: Approche hybride - allocation statique pour petites tâches, dynamique pour grandes
+  // sensorTask et displayTask: allocation statique (réduit fragmentation, petites tailles)
+  g_sensorTaskHandle = xTaskCreateStaticPinnedToCore(
+                                                     sensorTask,
                                                      "sensorTask",
                                                      TaskConfig::SENSOR_TASK_STACK_SIZE,
                                                      nullptr,
                                                      TaskConfig::SENSOR_TASK_PRIORITY,
-                                                     &g_sensorTaskHandle,
+                                                     sensorTaskStack,
+                                                     &sensorTaskTCB,
                                                      TaskConfig::SENSOR_TASK_CORE_ID);
+  BaseType_t sensorCreated = (g_sensorTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
+  // webTask, automationTask: allocation dynamique (trop grandes pour data segment)
   BaseType_t webCreated = xTaskCreatePinnedToCore(webTask,
                                                   "webTask",
                                                   TaskConfig::WEB_TASK_STACK_SIZE,
@@ -364,19 +507,45 @@ bool start(AppContext& ctx) {
                                                    &g_autoTaskHandle,
                                                    TaskConfig::AUTOMATION_TASK_CORE_ID);
 
-  BaseType_t displayCreated = xTaskCreatePinnedToCore(displayTask,
+  g_displayTaskHandle = xTaskCreateStaticPinnedToCore(
+                                                      displayTask,
                                                       "displayTask",
                                                       TaskConfig::DISPLAY_TASK_STACK_SIZE,
                                                       nullptr,
                                                       TaskConfig::DISPLAY_TASK_PRIORITY,
-                                                      &g_displayTaskHandle,
+                                                      displayTaskStack,
+                                                      &displayTaskTCB,
                                                       TaskConfig::DISPLAY_TASK_CORE_ID);
+  BaseType_t displayCreated = (g_displayTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
+  BaseType_t netCreated = pdFAIL;
+  // Note: netTask créé après création de g_netQueue (voir plus bas)
+  
   if (sensorCreated != pdPASS || webCreated != pdPASS ||
       autoCreated != pdPASS || displayCreated != pdPASS) {
     Serial.println(F("[App] ❌ CRITIQUE: Échec création d'une tâche FreeRTOS"));
     EventLog::add("CRITICAL: Task creation failure");
   }
+
+  // Créer netTask APRÈS création de g_netQueue (nécessaire pour la queue)
+  // netTask: allocation dynamique (trop grande pour data segment)
+  if (g_netQueue) {
+    netCreated = xTaskCreatePinnedToCore(netTask,
+                                         "netTask",
+                                         TaskConfig::NET_TASK_STACK_SIZE,
+                                         nullptr,
+                                         TaskConfig::NET_TASK_PRIORITY,
+                                         &g_netTaskHandle,
+                                         TaskConfig::NET_TASK_CORE_ID);
+    if (netCreated != pdPASS) {
+      Serial.println(F("[App] ❌ CRITIQUE: Échec création netTask (TLS)"));
+      EventLog::add("CRITICAL: netTask creation failure");
+    }
+  }
+
+  // Snapshot après création des tâches principales
+  HeapSnapshot snapshot_after_main_tasks = MEM_DIAG_SNAPSHOT("after_main_tasks");
+  MEM_DIAG_COMPARE(snapshot_before_tasks, snapshot_after_main_tasks);
 
   vTaskDelay(pdMS_TO_TICKS(50));
 
@@ -414,6 +583,77 @@ Handles getHandles() {
 
 QueueHandle_t getSensorQueue() {
   return g_sensorQueue;
+}
+
+static bool netRpc(NetRequest& req) {
+  if (!g_netQueue || !g_netTaskHandle) return false;
+  req.requester = xTaskGetCurrentTaskHandle();
+  req.success = false;
+
+  // Clear any pending notification
+  (void)ulTaskNotifyTake(pdTRUE, 0);
+
+  NetRequest* ptr = &req;
+  if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(50)) != pdTRUE) {
+    return false;
+  }
+  
+  // v11.158: Simplification et correction synchronisation
+  // Utiliser un timeout absolu unique plus court (15s au lieu de 35s)
+  // pour éviter blocages longs tout en gardant une marge de sécurité
+  uint32_t waitStart = millis();
+  const uint32_t ABSOLUTE_TIMEOUT_MS = 15000;  // 15 secondes max (réduit de 35s)
+  const uint32_t CHECK_INTERVAL_MS = 100;      // Vérifier toutes les 100ms
+  
+  // Attendre la notification avec timeout absolu
+  while (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CHECK_INTERVAL_MS)) == 0) {
+    esp_task_wdt_reset();  // Reset watchdog pendant attente
+    
+    // Vérifier timeout absolu
+    uint32_t elapsed = millis() - waitStart;
+    if (elapsed > ABSOLUTE_TIMEOUT_MS) {
+      Serial.printf("[netRPC] ⚠️ Timeout absolu atteint (%lu ms), abandon requête\n", ABSOLUTE_TIMEOUT_MS);
+      return false;
+    }
+    
+    // Petit délai pour éviter consommation CPU excessive
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  
+  // Notification reçue
+  return req.success;
+}
+
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs) {
+  NetRequest req{};
+  req.type = NetReqType::FetchRemoteState;
+  req.timeoutMs = timeoutMs;
+  req.doc = &doc;
+  req.diag = nullptr;
+  req.payload[0] = '\0';
+  return netRpc(req);
+}
+
+bool netPostRaw(const char* payload, uint32_t timeoutMs) {
+  if (!payload) return false;
+  NetRequest req{};
+  req.type = NetReqType::PostRaw;
+  req.timeoutMs = timeoutMs;
+  req.doc = nullptr;
+  req.diag = nullptr;
+  strncpy(req.payload, payload, sizeof(req.payload) - 1);
+  req.payload[sizeof(req.payload) - 1] = '\0';
+  return netRpc(req);
+}
+
+bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
+  NetRequest req{};
+  req.type = NetReqType::Heartbeat;
+  req.timeoutMs = timeoutMs;
+  req.doc = nullptr;
+  req.diag = &diag;
+  req.payload[0] = '\0';
+  return netRpc(req);
 }
 
 }  // namespace AppTasks

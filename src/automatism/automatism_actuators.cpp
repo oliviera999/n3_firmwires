@@ -4,6 +4,7 @@
 #include "realtime_websocket.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
+#include <cstring>
 
 // Déclarations externes
 extern Automatism g_autoCtrl;
@@ -24,15 +25,24 @@ AutomatismActuators::AutomatismActuators(SystemActuators& acts, ConfigManager& c
 
 void AutomatismActuators::markForSync(const char* payload) {
     _needsServerSync = true;
-    _pendingSyncPayload = payload;
-    Serial.printf("[Actuators] 📌 Sync serveur marquée: %s\n", payload);
+    if (payload) {
+        strncpy(_pendingSyncPayload, payload, sizeof(_pendingSyncPayload) - 1);
+        _pendingSyncPayload[sizeof(_pendingSyncPayload) - 1] = '\0';
+    } else {
+        _pendingSyncPayload[0] = '\0';
+    }
+    Serial.printf("[Actuators] 📌 Sync serveur marquée: %s\n", payload ? payload : "(null)");
 }
 
-String AutomatismActuators::consumePendingSyncPayload() {
-    String payload = _pendingSyncPayload;
+bool AutomatismActuators::consumePendingSyncPayload(char* buffer, size_t bufferSize) {
+    if (!buffer || bufferSize == 0) {
+        return false;
+    }
+    strncpy(buffer, _pendingSyncPayload, bufferSize - 1);
+    buffer[bufferSize - 1] = '\0';
     _needsServerSync = false;
-    _pendingSyncPayload = "";
-    return payload;
+    _pendingSyncPayload[0] = '\0';
+    return strlen(buffer) > 0;
 }
 
 // ============================================================================

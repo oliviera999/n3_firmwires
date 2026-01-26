@@ -3,6 +3,7 @@
 #include "config.h"
 #include "esp_task_wdt.h"
 #include <WiFi.h>
+#include "app_tasks.h"
 
 AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     : _web(web)
@@ -53,9 +54,31 @@ void AutomatismSync::setEmailAddress(const char* address) {
 
 void AutomatismSync::update(const SensorReadings& readings, SystemActuators& acts, Automatism& core) {
     // Synchronisation périodique
-    if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-        if (millis() - _lastSend > SEND_INTERVAL_MS) {
+    uint32_t now = millis();
+    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+    bool sendEnabled = _config.isRemoteSendEnabled();
+    bool recvEnabled = _config.isRemoteRecvEnabled();
+    uint32_t timeSinceLastSend = now - _lastSend;
+    bool intervalReached = (timeSinceLastSend > SEND_INTERVAL_MS);
+    
+    if (wifiConnected && sendEnabled) {
+        if (intervalReached) {
+            Serial.printf("[Sync] ✅ Conditions remplies, envoi POST... (dernier envoi il y a %lu ms)\n", timeSinceLastSend);
             sendFullUpdate(readings, acts, core);
+        }
+    } else {
+        // Log seulement si conditions changent pour éviter spam
+        static bool lastWifiState = true;
+        static bool lastSendEnabledState = true;
+        static bool lastRecvEnabledState = true;
+        if (wifiConnected != lastWifiState || sendEnabled != lastSendEnabledState || recvEnabled != lastRecvEnabledState) {
+            Serial.printf("[Sync] ⚠️ Envoi POST bloqué: WiFi=%s, SendEnabled=%s, RecvEnabled=%s\n",
+                          wifiConnected ? "OK" : "NO",
+                          sendEnabled ? "YES" : "NO",
+                          recvEnabled ? "YES" : "NO");
+            lastWifiState = wifiConnected;
+            lastSendEnabledState = sendEnabled;
+            lastRecvEnabledState = recvEnabled;
         }
     }
 }
@@ -249,7 +272,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         _aqThresholdCm, _tankThresholdCm, _heaterThresholdC,
         core.getRefillDurationSec(), _limFlood,
         core.getForceWakeUp() ? 1 : 0, _freqWakeSec,
-        core.getBouffePetitsFlag().c_str(), core.getBouffeGrosFlag().c_str(),
+        core.getBouffePetitsFlag(), core.getBouffeGrosFlag(),
         _emailAddress, _emailEnabled ? "checked" : "");
 
     if (len < 0 || len >= (int)sizeof(payloadBuffer)) {
@@ -268,7 +291,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
     esp_task_wdt_reset();
     uint32_t sendStart = millis();
-    bool success = _web.postRaw(payloadBuffer);
+    bool success = AppTasks::netPostRaw(payloadBuffer, 30000);
     uint32_t durationMs = millis() - sendStart;
     
     registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -286,7 +309,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 }
 
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
-    bool ok = _web.fetchRemoteState(doc);
+    // v11.158: Réduire timeout de 30s à 12s pour éviter blocages longs
+    // Le timeout absolu dans netRpc() est de 15s, donc 12s laisse une marge
+    bool ok = AppTasks::netFetchRemoteState(doc, 12000);
     if (ok && doc.size() > 0) {
         char jsonStr[2048];
         serializeJson(doc, jsonStr, sizeof(jsonStr));
@@ -332,7 +357,7 @@ uint16_t AutomatismSync::replayQueuedData() {
     while (_dataQueue.size() > 0 && sent < 5) {
         char payload[1024];
         if (_dataQueue.peek(payload, sizeof(payload))) {
-            if (_web.postRaw(payload)) {
+            if (AppTasks::netPostRaw(payload, 30000)) {
                 _dataQueue.pop(payload, sizeof(payload));
                 sent++;
             } else {
@@ -350,7 +375,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
              ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
-    return _web.postRaw(ackPayload);
+    return AppTasks::netPostRaw(ackPayload, 30000);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {

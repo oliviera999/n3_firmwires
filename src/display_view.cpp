@@ -447,16 +447,16 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   if (wifiConnected) {
     strncpy(stationSsidBuf, WiFi.SSID().c_str(), sizeof(stationSsidBuf) - 1);
     stationSsidBuf[sizeof(stationSsidBuf) - 1] = '\0';
-    strncpy(stationIpBuf, WiFi.localIP().toString().c_str(), sizeof(stationIpBuf) - 1);
-    stationIpBuf[sizeof(stationIpBuf) - 1] = '\0';
+    IPAddress staIP = WiFi.localIP();
+    snprintf(stationIpBuf, sizeof(stationIpBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
   } else {
     stationSsidBuf[0] = '\0';
     stationIpBuf[0] = '\0';
   }
   strncpy(apSsidBuf, WiFi.softAPSSID().c_str(), sizeof(apSsidBuf) - 1);
   apSsidBuf[sizeof(apSsidBuf) - 1] = '\0';
-  strncpy(apIpBuf, WiFi.softAPIP().toString().c_str(), sizeof(apIpBuf) - 1);
-  apIpBuf[sizeof(apIpBuf) - 1] = '\0';
+  IPAddress apIP = WiFi.softAPIP();
+  snprintf(apIpBuf, sizeof(apIpBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
 
   MainScreenRenderer::render(*this,
                              _disp,

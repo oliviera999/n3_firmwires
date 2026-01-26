@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 #include <time.h>
+#include <cstring>
 
 #include "wifi_manager.h"
 #include "system_sensors.h"
@@ -17,7 +18,6 @@
 #include "web_client.h"
 #include "web_server.h"
 #include "nvs_manager.h"
-#include "time_drift_monitor.h"
 #include "gpio_parser.h"
 #include "event_log.h"
 #include "task_monitor.h"
@@ -25,6 +25,7 @@
 #include "app_tasks.h"
 #include "system_boot.h"
 #include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
+#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
 #include <ArduinoOTA.h>
@@ -46,8 +47,6 @@ SystemActuators acts;
 Diagnostics diag;
 WebServerManager webSrv(sensors, acts, diag);
 Automatism g_autoCtrl(sensors, acts, web, oled, power, mailer, config);
-TimeDriftMonitor timeDriftMonitor;
-
 AppContext g_appContext{wifi,
                         oled,
                         power,
@@ -59,16 +58,13 @@ AppContext g_appContext{wifi,
                         acts,
                         diag,
                         webSrv,
-                        g_autoCtrl,
-                        timeDriftMonitor};
+                        g_autoCtrl};
 
 static char g_hostname[SystemConfig::HOSTNAME_BUFFER_SIZE];
 static bool g_otaJustUpdated = false;
 static char g_previousVersion[32] = "";
 static unsigned long g_lastOtaCheck = 0;
 
-static unsigned long g_lastDigestMs = 0;
-static uint32_t g_lastDigestSeq = 0;
 
 void setup() {
   // Log de la cause du redémarrage AVANT toute initialisation
@@ -76,6 +72,9 @@ void setup() {
   Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
   delay(100);  // Petit délai pour stabiliser Serial
   #endif
+  
+  // Snapshot initial du heap (après Serial.begin, avant initialisations)
+  HeapSnapshot snapshot_boot = MEM_DIAG_SNAPSHOT("boot");
   
   esp_reset_reason_t resetReason = esp_reset_reason();
   Serial.printf("\n\n=== BOOT FFP5CS v%s ===\n", ProjectConfig::VERSION);
@@ -97,6 +96,13 @@ void setup() {
   // v11.149: Initialisation du mutex TLS (avant toute opération réseau)
   TLSMutex::init();
   
+  // PISTE 1: Vérification RNG
+  // Le RNG de l'ESP32 est initialisé automatiquement par ESP-IDF au boot.
+  // Aucun appel explicite à random() ou esp_random() dans le code applicatif.
+  // Le RNG est utilisé par les bibliothèques TLS (mbedTLS) sous-jacentes.
+  // Le RNG est thread-safe dans FreeRTOS (utilise un mutex interne ESP-IDF).
+  // Pas d'appels depuis ISR détectés dans le code applicatif.
+  
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};
   cfg.timeout_ms = 300000;  // 300 secondes (5 minutes) - conforme à la documentation pour éviter les timeouts lors d'opérations réseau longues
@@ -117,7 +123,7 @@ void setup() {
 
   SystemBoot::setupHostname(g_hostname, sizeof(g_hostname));
 
-  SystemBoot::initializeStorage(g_appContext, g_lastDigestMs, g_lastDigestSeq);
+  SystemBoot::initializeStorage(g_appContext);
   
   LOG_INFO("Démarrage FFP5CS v%s", ProjectConfig::VERSION);
   
@@ -170,6 +176,10 @@ void setup() {
   if (!AppTasks::start(g_appContext)) {
     LOG_WARN("Système dégradé: pas de tâches FreeRTOS");
   }
+  
+  // Snapshot après initialisation des queues et tâches
+  HeapSnapshot snapshot_after_tasks = MEM_DIAG_SNAPSHOT("after_tasks");
+  MEM_DIAG_COMPARE(snapshot_boot, snapshot_after_tasks);
   
   // Notification de démarrage par mail (Diagnostic "fix mail")
   if (g_appContext.wifi.isConnected()) {
@@ -229,12 +239,41 @@ void setup() {
 
   LOG_INFO("Initialisation terminée");
   EventLog::add("Init done");
+  
+  // Snapshot final après toutes les initialisations
+  HeapSnapshot snapshot_after_setup = MEM_DIAG_SNAPSHOT("after_setup");
+  MEM_DIAG_COMPARE(snapshot_after_tasks, snapshot_after_setup);
 }
 
 void loop() {
   power.updateTime();
   unsigned long now = millis();
-  timeDriftMonitor.update();
+  
+  // v11.156: Monitoring proactif de la mémoire (toutes les 5 minutes)
+  // Seuils alignés avec TLS_MIN_HEAP_BYTES (52 KB requis pour TLS)
+  static unsigned long lastHeapCheck = 0;
+  const unsigned long heapCheckInterval = 300000; // 5 minutes
+  if (now - lastHeapCheck > heapCheckInterval) {
+    uint32_t heapFree = ESP.getFreeHeap();
+    uint32_t heapMin = ESP.getMinFreeHeap();
+    lastHeapCheck = now;
+    
+    // Seuil critique: en dessous de TLS_MIN_HEAP_BYTES (52 KB)
+    // TLS ne pourra pas fonctionner en dessous de ce seuil
+    if (heapMin < TLS_MIN_HEAP_BYTES) {
+      Serial.printf("[loop] 🔴 CRITICAL: Heap minimum critique: %u bytes (< %u KB requis pour TLS)\n", 
+                    heapMin, TLS_MIN_HEAP_BYTES / 1024);
+    } 
+    // Seuil d'alerte intermédiaire: 40 KB (prévention avant échec TLS)
+    else if (heapMin < 40000) {
+      Serial.printf("[loop] ⚠️ WARN: Heap minimum faible: %u bytes (< 40 KB, approche limite TLS)\n", heapMin);
+    }
+    // Seuil d'alerte pour heap libre (moins critique que heap minimum)
+    else if (heapFree < TLS_MIN_HEAP_BYTES) {
+      Serial.printf("[loop] ⚠️ WARN: Heap libre faible: %u bytes (< %u KB requis pour TLS)\n", 
+                    heapFree, TLS_MIN_HEAP_BYTES / 1024);
+    }
+  }
   
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
   ArduinoOTA.handle();
@@ -254,81 +293,6 @@ void loop() {
   #endif
   
   power.resetWatchdog();
-
-  #if FEATURE_DIAG_DIGEST
-  if (WiFi.status() == WL_CONNECTED && g_autoCtrl.isEmailEnabled() &&
-      (g_lastDigestMs == 0 ||
-       now - g_lastDigestMs >= TimingConfig::DIGEST_INTERVAL_MS)) {
-    // Optimisation: Utilisation directe de String pour éviter allocation stack massive (Fix audit)
-    String body;
-    if (!body.reserve(BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES)) {
-      LOG_WARN("Echec reservation memoire digest");
-    } else {
-
-    // Construire l'en-tête de l'e-mail
-    char systemInfo[128];
-    Utils::getSystemInfo(systemInfo, sizeof(systemInfo));
-    
-    // Petit buffer temporaire pour les formatages (safe stack size)
-    char lineBuf[256];
-    
-    snprintf(lineBuf, sizeof(lineBuf), "Résumé des événements récents (%s)\n\n", systemInfo);
-    body += lineBuf;
-    
-    body += "[Stacks] Marges (bytes):\n";
-
-    // Récupérer les informations de stack
-    AppTasks::Handles handles = AppTasks::getHandles();
-    if (handles.sensor) {
-      snprintf(lineBuf, sizeof(lineBuf), "- sensorTask: %u\n", uxTaskGetStackHighWaterMark(handles.sensor));
-      body += lineBuf;
-    }
-    if (handles.web) {
-      snprintf(lineBuf, sizeof(lineBuf), "- webTask: %u\n", uxTaskGetStackHighWaterMark(handles.web));
-      body += lineBuf;
-    }
-    if (handles.automation) {
-      snprintf(lineBuf, sizeof(lineBuf), "- autoTask: %u\n", uxTaskGetStackHighWaterMark(handles.automation));
-      body += lineBuf;
-    }
-    if (handles.display) {
-      snprintf(lineBuf, sizeof(lineBuf), "- displayTask: %u\n", uxTaskGetStackHighWaterMark(handles.display));
-      body += lineBuf;
-    }
-    snprintf(lineBuf, sizeof(lineBuf), "- loop(): %u\n\n", uxTaskGetStackHighWaterMark(nullptr));
-    body += lineBuf;
-
-    #if FEATURE_DIAG_TIME_DRIFT
-    body += "[TIME DRIFT] Dérive temporelle:\n";
-    body += timeDriftMonitor.generateDriftReport();
-    body += "\n";
-    #endif
-
-      uint32_t newSeq = EventLog::dumpSince(g_lastDigestSeq,
-                                            body,
-                                            BufferConfig::EMAIL_DIGEST_MAX_SIZE_BYTES - body.length());
-      if (newSeq != g_lastDigestSeq) {
-        char subjDigest[128];
-        snprintf(subjDigest, sizeof(subjDigest), "FFP5CS - Digest événements [%s]", g_hostname);
-
-        // Pas besoin de vérifier la longueur/substring, car `dumpSince` a déjà respecté la limite
-        bool ok = mailer.send(subjDigest,
-                              body.c_str(),
-                              "User",
-                              g_autoCtrl.getEmailAddress());
-        EventLog::add(ok ? "Digest email sent" : "Digest email failed");
-        g_lastDigestSeq = newSeq;
-      } else {
-        EventLog::add("Digest: no new events");
-      }
-      g_lastDigestMs = now;
-      if (g_nvsManager.isInitialized()) {
-        g_nvsManager.saveInt(NVS_NAMESPACES::SENSORS, "digest_last_seq", g_lastDigestSeq);
-        g_nvsManager.saveULong(NVS_NAMESPACES::SENSORS, "digest_last_ms", g_lastDigestMs);
-      }
-    }
-  }
-  #endif
   
   #if FEATURE_DIAG_STATS
   static unsigned long lastStatsReportMs = 0;
@@ -346,13 +310,12 @@ void loop() {
     lastNvsCheck = now;
   }
   
-  static bool cleanupScheduled = false;
-  if (!cleanupScheduled && g_nvsManager.isInitialized() && g_nvsManager.shouldPerformCleanup()) {
+  // Nettoyage périodique NVS (shouldPerformCleanup() gère déjà la périodicité via _lastCleanupTime)
+  if (g_nvsManager.isInitialized() && g_nvsManager.shouldPerformCleanup()) {
     LOG_INFO("Démarrage nettoyage périodique NVS");
     g_nvsManager.rotateLogs(NVS_NAMESPACES::LOGS, 50);
     g_nvsManager.cleanupOldData(NVS_NAMESPACES::STATE, 604800000UL);
     g_nvsManager.schedulePeriodicCleanup();
-    cleanupScheduled = true;
     LOG_INFO("Nettoyage périodique NVS terminé");
   }
   

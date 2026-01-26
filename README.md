@@ -11,8 +11,8 @@
 
 ## 🚀 Démarrage rapide
 
-### 📖 Documentation organisée
-👉 **[📚 Documentation complète](docs/README.md)** - 136 documents structurés
+### 📖 Documentation
+👉 **[📚 Documentation technique](docs/README.md)** — structure, config, rapports
 
 ### ⚡ Installation rapide
 1. **Cloner le projet**
@@ -78,11 +78,11 @@ ffp5cs/
 │   ├── automatism.h       # API de l'automate
 │   └── web_server.h       # API du serveur web
 ├── data/www/              # Interface web (SPA, Assets)
-├── docs/                  # Documentation organisée
-│   ├── guides/           # Guides d'utilisation
-│   ├── reports/          # Rapports et analyses
-│   ├── technical/        # Corrections techniques
-│   └── archives/         # Documents obsolètes
+├── docs/                  # Documentation
+│   ├── README.md         # Vue d'ensemble
+│   ├── technical/        # Références techniques (seuils ESP32 vs serveur)
+│   ├── reports/          # Rapports (conformité, NVS, corrections, etc.)
+│   └── references        # Référence emails (32 types)
 └── platformio.ini        # Configuration build
 ```
 
@@ -141,21 +141,20 @@ pio run -e wroom-test -t clean
 pio run -e wroom-test -t uploadfs
 ```
 
-### 📚 Guides de développement
-- **[Configuration IDE](docs/guides/CURSOR_IDE_GUIDE.md)**
-- **[Upload et OTA](docs/guides/UPLOAD_INSTRUCTIONS.md)**
-- **[Monitoring système](docs/guides/SURVEILLANCE_MEMOIRE_GUIDE.md)**
-- **[Gestionnaire WiFi](docs/guides/GESTIONNAIRE_WIFI_GUIDE.md)**
+### 📚 Documentation
+- **[Documentation](docs/README.md)** — structure, compilation, principes
+- **[Seuils ESP32 / serveur](docs/technical/SEUILS_SERVEUR_ESP32.md)** — différences volontaires
+- **[Rapports](docs/reports/)** — conformité, NVS, corrections, origine problèmes
 
 ---
 
 ## 🐛 Résolution de problèmes
 
 ### 🔍 Diagnostics courants
-1. **Problème WiFi** → [Gestionnaire WiFi](docs/guides/GESTIONNAIRE_WIFI_GUIDE.md)
-2. **Erreurs mémoire** → [Surveillance mémoire](docs/guides/SURVEILLANCE_MEMOIRE_GUIDE.md)
-3. **OTA échoué** → [Guide OTA](docs/guides/OTA_DIRECT_UPDATE_GUIDE.md)
-4. **Capteurs instables** → [Corrections récentes](docs/technical/CORRECTIONS_NON_BLOQUANTES_V11.50.md)
+1. **Problème WiFi** → Logs série 115200 baud, vérifier RSSI et reconnexion
+2. **Erreurs mémoire** → [Rapport origine problèmes](docs/reports/monitoring/reports/ANALYSE_ORIGINE_PROBLEMES_CRITIQUES.md) (DHT22, heap, watchdog)
+3. **OTA échoué** → Vérifier WiFi, quota firmware, `pio run -e wroom-test -t upload`
+4. **Capteurs instables** → [Résumé corrections](docs/reports/corrections/RESUME_CORRECTIONS_APPLIQUEES.md) (DHT22, queue, timeouts)
 
 ### 📊 Monitoring en temps réel
 - **Interface web**: `http://ffp3-XXXX.local`
@@ -182,7 +181,7 @@ pio run -e wroom-test -t uploadfs
 - ✅ **Modernisation JSON** : Passage à `ArduinoJson 7` (`JsonDocument`).
 - ✅ **Monitoring Simplifié** : Réduction drastique de `TimeDriftMonitor` et `TaskMonitor`.
 
-[Voir toutes les versions](docs/guides/VERSION.md)
+[Voir toutes les versions](VERSION.md)
 
 ---
 
@@ -207,9 +206,9 @@ pio run -e wroom-test -t uploadfs
 ## 📞 Support
 
 ### 📚 Documentation
-- **[Documentation complète](docs/README.md)** - 136 documents
-- **[Guides d'utilisation](docs/guides/)** - 27 guides
-- **[Résolution problèmes](docs/technical/)** - 31 solutions
+- **[Documentation](docs/README.md)** — vue d'ensemble, structure, rapports
+- **[Technique](docs/technical/)** — seuils ESP32 vs serveur
+- **[Rapports](docs/reports/)** — conformité, NVS, corrections, monitoring
 
 ### 🔍 Debugging
 - **Logs série**: 115200 baud

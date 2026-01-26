@@ -18,7 +18,7 @@ class EventLog {
 
   // Dump events with sequence number strictly greater than sinceSeq into out.
   // Returns the highest sequence number included in the dump.
-  static uint32_t dumpSince(uint32_t sinceSeq, String& out, size_t maxChars = 8192);
+  static uint32_t dumpSince(uint32_t sinceSeq, char* out, size_t outSize, size_t maxChars = 8192);
 
   // Return the current highest sequence number (monotonic, wraps at 32-bit).
   static uint32_t currentSeq();

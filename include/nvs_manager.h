@@ -110,7 +110,8 @@ private:
     NVSError validateKey(const char* key);
     NVSError validateValue(const char* value);
     uint32_t calculateChecksum(const char* value);
-    void logError(NVSError error, const char* context, const char* ns = nullptr, const char* key = nullptr);
+    void logError(NVSError error, const char* context,
+                  const char* ns = nullptr, const char* key = nullptr);
     
     // Phase 2: Méthodes privées pour flush différé
     void addDirtyKey(const char* ns, const char* key);
@@ -129,7 +130,8 @@ public:
     
     // Opérations de base
     NVSError saveString(const char* ns, const char* key, const char* value);
-    NVSError loadString(const char* ns, const char* key, char* value, size_t valueSize, const char* defaultValue = "");
+    NVSError loadString(const char* ns, const char* key, char* value,
+                       size_t valueSize, const char* defaultValue = "");
     NVSError saveBool(const char* ns, const char* key, bool value);
     NVSError loadBool(const char* ns, const char* key, bool& value, bool defaultValue = false);
     NVSError saveInt(const char* ns, const char* key, int value);
@@ -137,11 +139,13 @@ public:
     NVSError saveFloat(const char* ns, const char* key, float value);
     NVSError loadFloat(const char* ns, const char* key, float& value, float defaultValue = 0.0f);
     NVSError saveULong(const char* ns, const char* key, unsigned long value);
-    NVSError loadULong(const char* ns, const char* key, unsigned long& value, unsigned long defaultValue = 0);
+    NVSError loadULong(const char* ns, const char* key, unsigned long& value,
+                      unsigned long defaultValue = 0);
     
     // Phase 2: Compression JSON
     NVSError saveJsonCompressed(const char* ns, const char* key, const char* json);
-    NVSError loadJsonDecompressed(const char* ns, const char* key, char* json, size_t jsonSize, const char* defaultValue = "");
+    NVSError loadJsonDecompressed(const char* ns, const char* key, char* json,
+                                 size_t jsonSize, const char* defaultValue = "");
     bool compressJson(const char* json, char* out, size_t outSize);
     bool decompressJson(const char* compressed, char* out, size_t outSize);
     
@@ -178,7 +182,8 @@ public:
     
     // Phase 3: Rotation automatique des logs et nettoyage
     NVSError rotateLogs(const char* ns, size_t maxEntries = 50);
-    NVSError cleanupOldData(const char* ns, unsigned long maxAgeMs = 604800000UL); // 7 jours par défaut
+    // 7 jours par défaut
+    NVSError cleanupOldData(const char* ns, unsigned long maxAgeMs = 604800000UL);
     NVSError cleanupObsoleteKeys();
     void schedulePeriodicCleanup();
     bool shouldPerformCleanup();

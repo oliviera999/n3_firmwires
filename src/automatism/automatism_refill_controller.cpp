@@ -109,7 +109,8 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
       uint32_t startTime = millis();
 
       _acts.startTankPump();
-      _countdownLabel = "Refill";
+      strncpy(_countdownLabel, "Refill", sizeof(_countdownLabel) - 1);
+      _countdownLabel[sizeof(_countdownLabel) - 1] = '\0';
       _countdownEnd = millis() + refillDurationMs;
       _pumpStartMs = millis(); // wrap-safe start time in ms
       _levelAtPumpStart = r.wlAqua;
@@ -204,8 +205,9 @@ void Automatism::handleRefillInternal(const AutomatismRuntimeContext& ctx) {
     const uint32_t nowMs = millis();
     const uint32_t elapsedMs = (uint32_t)(nowMs - _pumpStartMs); // wrap-safe
     const uint32_t maxMs = refillDurationMs;
-    if ((elapsedMs / 1000U) > 3000000U) {
-      Serial.printf("[CRITIQUE] Anomaly: elapsed=%u ms (>3e6 s). Resetting pumpStartMs to now. nowMs=%u, startMs(old)=%u, maxMs=%u\n",
+    // Détection anomalie: si pompe tourne depuis plus de 50 minutes (3e6 ms = 3000 s)
+    if (elapsedMs > 3000000UL) {
+      Serial.printf("[CRITIQUE] Anomaly: elapsed=%u ms (>50 min). Resetting pumpStartMs to now. nowMs=%u, startMs(old)=%u, maxMs=%u\n",
                     (unsigned)elapsedMs, (unsigned)nowMs, (unsigned)_pumpStartMs, (unsigned)maxMs);
       _pumpStartMs = nowMs;
     }

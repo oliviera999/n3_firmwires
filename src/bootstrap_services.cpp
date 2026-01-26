@@ -14,10 +14,6 @@ void initializeTimekeeping(AppContext& ctx) {
   ctx.power.setNTPConfig(SystemConfig::NTP_GMT_OFFSET_SEC,
                          SystemConfig::NTP_DAYLIGHT_OFFSET_SEC,
                          SystemConfig::NTP_SERVER);
-
-  ctx.timeDriftMonitor.attachPowerManager(&ctx.power);
-  ctx.timeDriftMonitor.begin();
-  EventLog::add("Time drift monitor init");
 }
 
 bool initializeDisplay(AppContext& ctx) {

@@ -4,15 +4,17 @@
 #include <DallasTemperature.h>
 #include "pins.h"
 #include "config.h"
+#include "sensor_failure_manager.h"
 
 class UltrasonicManager {
  public:
-  UltrasonicManager(int pinTrigEcho);
+  UltrasonicManager(int pinTrigEcho, const char* sensorName = "Ultrasonic");
   // Renvoie la distance (cm), 0 si invalide
   uint16_t readFiltered(uint8_t samples = 5);
   uint16_t readAdvancedFiltered(); // Nouvelle méthode avec filtrage avancé
   uint16_t readReactiveFiltered(); // Lecture réactive avec lissage minimal
   void resetHistory(); // Reset l'historique en cas de problème
+  bool isSensorDisabled() const; // Vérifier si le capteur est désactivé
  private:
   // Lecture manuelle par impulsion (pulseIn) – pas de dépendance lib requise
   int _pinTrigEcho; // pin partagé trig/echo
@@ -33,23 +35,29 @@ class UltrasonicManager {
   static const uint8_t REACTIVE_READINGS_COUNT = 3; // 3 lectures pour mode réactif
   static const uint16_t MIN_DISTANCE = 2; // Minimum selon datasheet HC-SR04
   static const uint16_t MAX_DISTANCE = 400; // Maximum selon datasheet HC-SR04 (4m)
-  static const uint32_t MIN_DELAY_BETWEEN_MEASUREMENTS_MS = 60; // Délai minimum recommandé entre mesures
+  // Délai minimum recommandé entre mesures
+  static const uint32_t MIN_DELAY_BETWEEN_MEASUREMENTS_MS = 60;
+  
+  // Gestion des défaillances
+  SensorFailureManager _failureManager;
 };
 
 class AirSensor {
  public:
   AirSensor();
   void begin();
-  float temperatureC();
-  float humidity();
-  float filteredTemperatureC(); // Nouvelle méthode avec filtrage avancé
-  float filteredHumidity(); // Nouvelle méthode avec filtrage avancé
-  float robustTemperatureC(); // Nouvelle méthode avec récupération robuste
-  float robustHumidity(); // Nouvelle méthode avec récupération robuste
+  // Méthodes publiques: utilisation robuste avec timeout et récupération automatique
+  float robustTemperatureC(); // Méthode recommandée: récupération robuste avec timeout
+  float robustHumidity(); // Méthode recommandée: récupération robuste avec timeout
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorConnected(); // Vérifie la connectivité du capteur
   void resetSensor(); // Reset matériel du capteur
  private:
+  // Méthodes internes: utilisation par robustTemperatureC() et robustHumidity()
+  float temperatureC(); // Lecture simple (interne)
+  float humidity(); // Lecture simple (interne)
+  float filteredTemperatureC(); // Filtrage EMA avec throttle (interne)
+  float filteredHumidity(); // Filtrage EMA avec throttle (interne)
   DHT _dht;
   
   // Historique glissant pour température
@@ -72,15 +80,33 @@ class AirSensor {
   static const uint8_t READINGS_COUNT = 5; // Nombre total de lectures pour médiane (DHT plus lent)
   
   // Configuration de récupération
-  static const uint8_t MAX_RECOVERY_ATTEMPTS = 3; // Nombre max de tentatives de récupération (DHT plus lent)
-  static const uint16_t RECOVERY_DELAY_MS = 300; // Délai optimisé entre tentatives de récupération (réduit de 500ms à 300ms)
-  static const uint16_t SENSOR_RESET_DELAY_MS = 1000; // Délai optimisé après reset matériel (réduit de 2000ms à 1000ms)
+  // Nombre max de tentatives de récupération (DHT plus lent)
+  static const uint8_t MAX_RECOVERY_ATTEMPTS = 3;
+  // Délai optimisé entre tentatives de récupération (réduit de 500ms à 300ms)
+  static const uint16_t RECOVERY_DELAY_MS = 300;
+  // Délai optimisé après reset matériel (réduit de 2000ms à 1000ms)
+  static const uint16_t SENSOR_RESET_DELAY_MS = 1000;
   
   // Min interval + EMA
   unsigned long _lastDhtReadMs{0};
   bool _emaInit{false};
   float _emaTemp{NAN};
   float _emaHumidity{NAN};
+  
+  // v11.156: Gestion désactivation automatique après échecs répétés
+  // Séparer les compteurs pour température et humidité pour éviter réinitialisation prématurée
+  uint8_t _consecutiveTempFailures{0};
+  uint8_t _consecutiveHumidityFailures{0};
+  bool _sensorDisabled{false};
+  bool _disableLogged{false};
+  static constexpr uint8_t MAX_CONSECUTIVE_FAILURES = 10;
+  
+  // Réactivation automatique : tester périodiquement si le capteur redevient présent
+  uint32_t _lastReactivationTestMs{0};
+  uint8_t _consecutiveReactivationSuccesses{0};
+  static constexpr uint32_t REACTIVATION_TEST_INTERVAL_MS = 60000; // Tester toutes les 60 secondes
+  // 3 succès consécutifs pour réactiver
+  static constexpr uint8_t REACTIVATION_SUCCESS_THRESHOLD = 3;
 };
 
 class WaterTempSensor {
@@ -93,6 +119,7 @@ class WaterTempSensor {
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorConnected(); // Vérifie la connectivité du capteur
   void resetSensor(); // Reset matériel du capteur
+  bool isSensorDisabled() const; // Vérifier si le capteur est désactivé
   
   // Méthodes NVS pour persistance
   void saveLastValidTempToNVS(float temp);
@@ -114,23 +141,26 @@ class WaterTempSensor {
   static constexpr uint8_t READINGS_COUNT = 2; // Optimisé : 2 lectures suffisent avec médiane
   
   // Configuration de récupération
-  static constexpr uint8_t MAX_RECOVERY_ATTEMPTS = SensorConfig::WaterTemp::MAX_RETRIES; // réutilise comme nombre de tentatives
+  // réutilise comme nombre de tentatives
+  static constexpr uint8_t MAX_RECOVERY_ATTEMPTS = SensorConfig::WaterTemp::MAX_RETRIES;
   static constexpr uint16_t RECOVERY_DELAY_MS = SensorConfig::WaterTemp::RETRY_DELAY_MS;
   static constexpr uint16_t SENSOR_RESET_DELAY_MS = 1000;
   
   // CONSTANTES OPTIMISÉES POUR ROBUSTESSE DS18B20
-  // Résolution 10-bit = 0.25°C, conversion = 187.5ms selon datasheet
-  // Délai de 220ms = 187.5ms + 17% de marge (recommandation officielle: +10-20%)
-  static constexpr uint8_t DS18B20_RESOLUTION = 10;
-  static constexpr uint16_t CONVERSION_DELAY_MS = 220;  // Augmenté de 200ms à 220ms pour conformité datasheet
-  static constexpr uint16_t READING_INTERVAL_MS = 300;
-  static constexpr uint8_t STABILIZATION_READINGS = 0; // Optimisé : pas de phase de stabilisation (pipeline suffit)
+  // Utilise les constantes de SensorConfig::DS18B20 (config.h) pour cohérence
+  static constexpr uint8_t DS18B20_RESOLUTION = SensorConfig::DS18B20::RESOLUTION_BITS;
+  static constexpr uint16_t CONVERSION_DELAY_MS = SensorConfig::DS18B20::CONVERSION_DELAY_MS;
+  static constexpr uint16_t READING_INTERVAL_MS = SensorConfig::DS18B20::READING_INTERVAL_MS;
+  static constexpr uint8_t STABILIZATION_READINGS = SensorConfig::DS18B20::STABILIZATION_READINGS;
   static constexpr uint8_t MAX_READING_RETRIES = SensorConfig::WaterTemp::MAX_RETRIES;
-  static constexpr uint16_t ONEWIRE_RESET_DELAY_MS = 100;
+  static constexpr uint16_t ONEWIRE_RESET_DELAY_MS = SensorConfig::DS18B20::ONEWIRE_RESET_DELAY_MS;
   
   // Non-bloquant
   unsigned long _lastRequestMs{0};
   bool _pipelineReady{false};
   bool _emaInit{false};
   float _emaTemp{NAN};
+  
+  // Gestion des défaillances
+  SensorFailureManager _failureManager;
 }; 

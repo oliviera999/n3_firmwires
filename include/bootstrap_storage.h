@@ -4,9 +4,7 @@
 
 namespace BootstrapStorage {
 
-void initialize(AppContext& ctx,
-                unsigned long& lastDigestMs,
-                uint32_t& lastDigestSeq);
+void initialize(AppContext& ctx);
 
 }  // namespace BootstrapStorage
 

@@ -1,5 +1,28 @@
+# =============================================================================
 # Script de build de production pour ESP32 FFP5CS
-# Minifie les assets, compile et prépare pour upload
+# =============================================================================
+# Description:
+#   Minifie les assets web, compile le firmware et le filesystem pour
+#   l'environnement de production. Optionnellement upload sur l'ESP32.
+#
+# Prérequis:
+#   - PlatformIO installé et dans le PATH
+#   - Python 3.x installé (pour minification)
+#   - PowerShell 5.1+ (Windows)
+#
+# Usage:
+#   .\scripts\build_production.ps1                    # Build uniquement
+#   .\scripts\build_production.ps1 -UploadFS          # Build + upload filesystem
+#   .\scripts\build_production.ps1 -UploadFirmware    # Build + upload firmware
+#   .\scripts\build_production.ps1 -SkipMinify        # Build sans minification
+#   .\scripts\build_production.ps1 -Port COM4         # Spécifier le port COM
+#
+# Paramètres:
+#   -SkipMinify      : Ignore la minification des assets
+#   -UploadFS        : Upload le filesystem après build
+#   -UploadFirmware  : Upload le firmware après build
+#   -Port            : Port COM de l'ESP32 (défaut: COM3)
+# =============================================================================
 
 param(
     [switch]$SkipMinify,
