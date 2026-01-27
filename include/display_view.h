@@ -4,10 +4,6 @@
 #include "config.h"
 #include "display_cache.h"
 
-class StatusBarRenderer;
-class MainScreenRenderer;
-class CountdownRenderer;
-class InfoScreenRenderer;
 #if FEATURE_OLED
 #include <Adafruit_SSD1306.h>
 #include <Wire.h>
@@ -53,11 +49,18 @@ class Adafruit_SSD1306 {
 static TwoWire Wire;
 #endif
 
+struct StatusBarParams {
+  int8_t sendState;
+  int8_t recvState;
+  int8_t rssi;
+  bool mailBlink;
+  int8_t tideDir;
+  int diffValue;
+  bool otaOverlayActive;
+  uint8_t otaPercent;
+};
+
 class DisplayView {
-  friend class StatusBarRenderer;
-  friend class MainScreenRenderer;
-  friend class CountdownRenderer;
-  friend class InfoScreenRenderer;
  public:
   explicit DisplayView(uint8_t addr = 0x3C, uint8_t w = 128, uint8_t h = 64);
   bool begin();
@@ -157,6 +160,35 @@ class DisplayView {
   // Vérification santé I2C avant opération d'affichage
   bool checkI2cHealth();
   void reportI2cError();
+  
+  // Méthodes de rendu (anciennement dans les classes renderer)
+  void renderMainScreen(float tempEau, float tempAir, float humidite,
+                        uint16_t aquaLvl, uint16_t tankLvl, uint16_t potaLvl,
+                        uint16_t lumi, const char* timeStr, bool wifiConnected,
+                        const char* stationSsid, const char* stationIp,
+                        const char* apSsid, const char* apIp);
+  void renderCountdown(const char* label, uint16_t secondsLeft, bool isManual);
+  void renderFeedingCountdown(const char* fishType, const char* phase,
+                              uint16_t secondsLeft, bool isManual);
+  void renderVariables(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                       uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                       uint16_t tPetits, uint16_t tGros,
+                       uint16_t thAq, uint16_t thTank, float thHeat,
+                       uint16_t limFlood);
+  void renderServerVars(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                        uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                        uint16_t tPetits, uint16_t tGros,
+                        uint16_t thAq, uint16_t thTank, float thHeat,
+                        uint16_t tRemp, uint16_t limFlood,
+                        bool wakeUp, uint16_t freqWake);
+  void renderStatusBar(const StatusBarParams& params);
+  void appendDiagnosticLine(const char* line, uint8_t lineIndex);
+  
+  // Helpers de formatage
+  static void formatLevel(uint16_t value, char* buffer, size_t size);
+  static void formatTemp(float value, char* buffer, size_t size);
+  static void formatHumidity(float value, char* buffer, size_t size);
+  static const char* onOffLabel(bool value);
   
   bool _present{false};
   Adafruit_SSD1306 _disp;

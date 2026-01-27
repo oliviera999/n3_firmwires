@@ -19,13 +19,11 @@
 #include "web_server.h"
 #include "nvs_manager.h"
 #include "gpio_parser.h"
-#include "event_log.h"
 #include "task_monitor.h"
 #include "app_context.h"
 #include "app_tasks.h"
 #include "system_boot.h"
 #include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
-#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
 #include <ArduinoOTA.h>
@@ -72,9 +70,6 @@ void setup() {
   Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
   delay(100);  // Petit délai pour stabiliser Serial
   #endif
-  
-  // Snapshot initial du heap (après Serial.begin, avant initialisations)
-  HeapSnapshot snapshot_boot = MEM_DIAG_SNAPSHOT("boot");
   
   esp_reset_reason_t resetReason = esp_reset_reason();
   Serial.printf("\n\n=== BOOT FFP5CS v%s ===\n", ProjectConfig::VERSION);
@@ -142,7 +137,7 @@ void setup() {
   } else {
     LOG_TIME(LOG_WARN, "Impossible de récupérer l'heure au démarrage");
   }
-  EventLog::addf("App start v%s", ProjectConfig::VERSION);
+  Serial.printf("[Event] App start v%s\n", ProjectConfig::VERSION);
   
   SystemBoot::OtaState otaState{};
   otaState.justUpdated = g_otaJustUpdated;
@@ -150,7 +145,7 @@ void setup() {
   otaState.previousVersion[sizeof(otaState.previousVersion) - 1] = '\0';
   otaState.lastCheck = g_lastOtaCheck;
   SystemBoot::validatePendingOta(otaState);
-  EventLog::add("OTA validation done");
+  Serial.println("[Event] OTA validation done");
   
   SystemBoot::initializeTimekeeping(g_appContext);
 
@@ -176,10 +171,6 @@ void setup() {
   if (!AppTasks::start(g_appContext)) {
     LOG_WARN("Système dégradé: pas de tâches FreeRTOS");
   }
-  
-  // Snapshot après initialisation des queues et tâches
-  HeapSnapshot snapshot_after_tasks = MEM_DIAG_SNAPSHOT("after_tasks");
-  MEM_DIAG_COMPARE(snapshot_boot, snapshot_after_tasks);
   
   // Notification de démarrage par mail (Diagnostic "fix mail")
   if (g_appContext.wifi.isConnected()) {
@@ -238,42 +229,12 @@ void setup() {
   }
 
   LOG_INFO("Initialisation terminée");
-  EventLog::add("Init done");
-  
-  // Snapshot final après toutes les initialisations
-  HeapSnapshot snapshot_after_setup = MEM_DIAG_SNAPSHOT("after_setup");
-  MEM_DIAG_COMPARE(snapshot_after_tasks, snapshot_after_setup);
+  Serial.println("[Event] Init done");
 }
 
 void loop() {
   power.updateTime();
   unsigned long now = millis();
-  
-  // v11.156: Monitoring proactif de la mémoire (toutes les 5 minutes)
-  // Seuils alignés avec TLS_MIN_HEAP_BYTES (52 KB requis pour TLS)
-  static unsigned long lastHeapCheck = 0;
-  const unsigned long heapCheckInterval = 300000; // 5 minutes
-  if (now - lastHeapCheck > heapCheckInterval) {
-    uint32_t heapFree = ESP.getFreeHeap();
-    uint32_t heapMin = ESP.getMinFreeHeap();
-    lastHeapCheck = now;
-    
-    // Seuil critique: en dessous de TLS_MIN_HEAP_BYTES (52 KB)
-    // TLS ne pourra pas fonctionner en dessous de ce seuil
-    if (heapMin < TLS_MIN_HEAP_BYTES) {
-      Serial.printf("[loop] 🔴 CRITICAL: Heap minimum critique: %u bytes (< %u KB requis pour TLS)\n", 
-                    heapMin, TLS_MIN_HEAP_BYTES / 1024);
-    } 
-    // Seuil d'alerte intermédiaire: 40 KB (prévention avant échec TLS)
-    else if (heapMin < 40000) {
-      Serial.printf("[loop] ⚠️ WARN: Heap minimum faible: %u bytes (< 40 KB, approche limite TLS)\n", heapMin);
-    }
-    // Seuil d'alerte pour heap libre (moins critique que heap minimum)
-    else if (heapFree < TLS_MIN_HEAP_BYTES) {
-      Serial.printf("[loop] ⚠️ WARN: Heap libre faible: %u bytes (< %u KB requis pour TLS)\n", 
-                    heapFree, TLS_MIN_HEAP_BYTES / 1024);
-    }
-  }
   
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
   ArduinoOTA.handle();
@@ -302,22 +263,6 @@ void loop() {
   }
   #endif
   
-  static unsigned long lastNvsCheck = 0;
-  if (now - lastNvsCheck >= 1000) {
-    if (g_nvsManager.isInitialized()) {
-      g_nvsManager.checkDeferredFlush();
-    }
-    lastNvsCheck = now;
-  }
-  
-  // Nettoyage périodique NVS (shouldPerformCleanup() gère déjà la périodicité via _lastCleanupTime)
-  if (g_nvsManager.isInitialized() && g_nvsManager.shouldPerformCleanup()) {
-    LOG_INFO("Démarrage nettoyage périodique NVS");
-    g_nvsManager.rotateLogs(NVS_NAMESPACES::LOGS, 50);
-    g_nvsManager.cleanupOldData(NVS_NAMESPACES::STATE, 604800000UL);
-    g_nvsManager.schedulePeriodicCleanup();
-    LOG_INFO("Nettoyage périodique NVS terminé");
-  }
   
   vTaskDelay(pdMS_TO_TICKS(500));
 } 

@@ -16,13 +16,11 @@
 #endif
 #include "web_routes_status.h"
 #include "web_routes_ui.h"
-#include "web_server_context.h"
+#include "app_context.h"
 #include "realtime_websocket.h"
-#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
 #include "sensor_cache.h"
 #include "asset_bundler.h"
 
-#include "automatism/automatism_persistence.h"  // Pour pending sync (v11.32)
  
 extern Automatism g_autoCtrl;
 extern Mailer mailer;
@@ -30,9 +28,26 @@ extern ConfigManager config;
 extern PowerManager power;
 extern WifiManager wifi;
 
-static WebServerContext* g_webServerContext = nullptr;
 static portMUX_TYPE g_asyncTaskMux = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t g_asyncTaskCount = 0;
+
+// Helper pour envoyer un email lors d'une action manuelle
+static void sendManualActionEmail(const char* subject, const char* actionType, const char* eventCode) {
+  const char* emailAddr = g_autoCtrl.getEmailAddress();
+  if (emailAddr && strlen(emailAddr) > 0) {
+    char message[256];
+    snprintf(message, sizeof(message), 
+             "Action manuelle effectuée:\n"
+             "Type: %s\n"
+             "Événement: %s\n"
+             "Timestamp: %lu",
+             actionType, eventCode, millis() / 1000);
+    mailer.sendAlert(subject, message, emailAddr);
+    Serial.printf("[Web] 📧 Email action manuelle envoyé: %s\n", subject);
+  } else {
+    Serial.println("[Web] ⚠️ Email non configuré - action manuelle non notifiée");
+  }
+}
 
 static bool tryAcquireAsyncSlot(uint8_t maxSlots) {
   bool ok = false;
@@ -54,13 +69,13 @@ static void releaseAsyncSlot() {
 }
 
 WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts)
-    : _sensors(sensors), _acts(acts), _diag(nullptr), _ctx(nullptr) {
+    : _sensors(sensors), _acts(acts), _diag(nullptr) {
   initializeServer();
 }
 
 WebServerManager::WebServerManager(SystemSensors& sensors, 
                                    SystemActuators& acts, Diagnostics& diag)
-    : _sensors(sensors), _acts(acts), _diag(&diag), _ctx(nullptr) {
+    : _sensors(sensors), _acts(acts), _diag(&diag) {
   initializeServer();
 }
 
@@ -68,9 +83,6 @@ void WebServerManager::initializeServer() {
   #ifndef DISABLE_ASYNC_WEBSERVER
   _server = new AsyncWebServer(80);
   // Note: setTimeout() n'est pas disponible dans cette version d'AsyncWebServer
-  
-  // Snapshot après création AsyncWebServer
-  MEM_DIAG_SNAPSHOT("after_asyncwebserver_created");
   #endif
 }
 
@@ -81,11 +93,6 @@ WebServerManager::~WebServerManager() {
     _server = nullptr;
   }
   #endif
-  if (_ctx) {
-    delete _ctx;
-    _ctx = nullptr;
-  }
-  g_webServerContext = nullptr;
 }
 
 // Structure pour passer les paramètres à la tâche de synchronisation des relais
@@ -124,8 +131,8 @@ const char* WebServerManager::handleRelayAction(
     }
 
     // Sauvegarde NVS + pending sync
-    AutomatismPersistence::saveCurrentActuatorState(relayName, newState);
-    AutomatismPersistence::markPendingSync(relayName, newState);
+    g_autoCtrl.saveCurrentActuatorState(relayName, newState);
+    g_autoCtrl.markPendingSync(relayName, newState);
 
     // Feedback WebSocket immédiat
     g_realtimeWebSocket.broadcastNow();
@@ -141,7 +148,7 @@ const char* WebServerManager::handleRelayAction(
         bool syncSuccess = g_autoCtrl.sendFullUpdate(readings);
         
         if (syncSuccess) {
-            AutomatismPersistence::clearPendingSync(p->relayName);
+            g_autoCtrl.clearPendingSync(p->relayName);
             Serial.printf("[Web] ✅ %s synced (async)\\n", p->relayName);
         } else {
             Serial.printf("[Web] ⏳ %s sync pending\\n", p->relayName);
@@ -168,25 +175,12 @@ bool WebServerManager::begin() {
   // Initialiser le serveur WebSocket temps réel
   g_realtimeWebSocket.begin(_sensors, _acts);
   
-  // Snapshot après initialisation WebSocket
-  HeapSnapshot snapshot_after_websocket = MEM_DIAG_SNAPSHOT("after_websocket");
-  
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
 
-  if (_ctx) {
-    delete _ctx;
-  }
-  _ctx = new WebServerContext(g_autoCtrl,
-                              mailer,
-                              config,
-                              power,
-                              wifi,
-                              _sensors,
-                              _acts,
-                              g_realtimeWebSocket);
-  g_webServerContext = _ctx;
-  WebServerContext& ctx = *_ctx;
+  // Utiliser AppContext global au lieu de WebServerContext
+  extern AppContext g_appContext;
+  AppContext& ctx = g_appContext;
   
   WebRoutes::registerUiRoutes(*_server, ctx);
   WebRoutes::registerStatusRoutes(*_server, ctx);
@@ -234,12 +228,10 @@ bool WebServerManager::begin() {
                   vTaskDelay(pdMS_TO_TICKS(100));
                   
                   // Utilisation de notre helper robuste d'envoi email
-                  if (g_webServerContext) {
-                    g_webServerContext->sendManualActionEmail(
-                      "Bouffe manuelle - Petits poissons", 
-                      "Bouffe manuelle", 
-                      "NOURRISSAGE_PETITS");
-                  }
+                  sendManualActionEmail(
+                    "Bouffe manuelle - Petits poissons", 
+                    "Bouffe manuelle", 
+                    "NOURRISSAGE_PETITS");
                   
                   // Synchronisation serveur : envoie bouffePetits=1 (marqué ci-dessus)
                   SensorReadings readings = sensors->read();
@@ -262,9 +254,9 @@ bool WebServerManager::begin() {
                 Serial.println(
                   "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                if (g_webServerContext && 
-                    ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
-                  g_webServerContext->sendManualActionEmail(
+                const uint32_t emailMinHeapBytes = 50000;
+                if (ESP.getFreeHeap() > emailMinHeapBytes) {
+                  sendManualActionEmail(
                     "Bouffe manuelle - Petits poissons", 
                     "Bouffe manuelle", 
                     "NOURRISSAGE_FALLBACK");
@@ -298,12 +290,10 @@ bool WebServerManager::begin() {
                   vTaskDelay(pdMS_TO_TICKS(100));
                   
                   // Utilisation de notre helper robuste d'envoi email
-                  if (g_webServerContext) {
-                    g_webServerContext->sendManualActionEmail(
-                      "Bouffe manuelle - Gros poissons", 
-                      "Bouffe manuelle", 
-                      "NOURRISSAGE_GROS");
-                  }
+                  sendManualActionEmail(
+                    "Bouffe manuelle - Gros poissons", 
+                    "Bouffe manuelle", 
+                    "NOURRISSAGE_GROS");
                   
                   // Synchronisation serveur : envoie bouffeGros=1 (marqué ci-dessus)
                   SensorReadings readings = sensors->read();
@@ -326,9 +316,9 @@ bool WebServerManager::begin() {
                 Serial.println(
                   "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                if (g_webServerContext && 
-                    ESP.getFreeHeap() > g_webServerContext->emailMinHeapBytes) {
-                  g_webServerContext->sendManualActionEmail(
+                const uint32_t emailMinHeapBytes = 50000;
+                if (ESP.getFreeHeap() > emailMinHeapBytes) {
+                  sendManualActionEmail(
                     "Bouffe manuelle - Gros poissons", 
                     "Bouffe manuelle", 
                     "NOURRISSAGE_FALLBACK");
@@ -481,7 +471,8 @@ bool WebServerManager::begin() {
     g_autoCtrl.notifyLocalWebActivity();
     
     // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
-    if (!ctx.ensureHeap(req, ctx.jsonMinHeapBytes, F("/json"))) {
+    const uint32_t jsonMinHeapBytes = 50000;
+    if (!ensureHeapForRoute(req, jsonMinHeapBytes, F("/json"))) {
       return;
     }
     
@@ -571,11 +562,11 @@ bool WebServerManager::begin() {
       // Augmente la capacité si l'on inclut taskStats (peut être long)
       StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> big;
       _diag->toJson(big);
-      ctx.sendJson(req, big);
+      sendJsonResponse(req, big);
       return;
     }
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 
   // /pumpstats endpoint optimisé : statistiques de la pompe de réserve
@@ -797,7 +788,7 @@ bool WebServerManager::begin() {
     }
     
     // PRIORITÉ LOCALE (v11.32): Marquer pending sync
-    AutomatismPersistence::markConfigPendingSync();
+    g_autoCtrl.markConfigPendingSync();
 
     // Envoi immédiat vers la BDD distante pour répercuter les changements
     bool sent = (WiFi.status() == WL_CONNECTED)
@@ -806,7 +797,7 @@ bool WebServerManager::begin() {
     
     if (sent) {
       // Sync réussi : effacer pending sync
-      AutomatismPersistence::clearConfigPendingSync();
+      g_autoCtrl.clearConfigPendingSync();
       Serial.println("[Web] ✅ Config synced to server");
     } else {
       Serial.println("[Web] ⏳ Config sync pending (will retry)");
@@ -817,7 +808,7 @@ bool WebServerManager::begin() {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
     doc["remoteSent"] = sent;
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 
   // Fichiers statiques avec compression optimisée et gestion Content-Length
@@ -1417,7 +1408,7 @@ bool WebServerManager::begin() {
 
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 
   _server->on("/nvs/erase", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
@@ -1446,7 +1437,7 @@ bool WebServerManager::begin() {
     
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 
   _server->on("/nvs/erase_ns", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
@@ -1475,7 +1466,7 @@ bool WebServerManager::begin() {
     
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 #endif // FFP_ENABLE_DANGEROUS_ENDPOINTS
 
@@ -2167,9 +2158,6 @@ bool WebServerManager::begin() {
   Serial.println(F("[Web] Serveur HTTP prêt - Interface web accessible"));
   Serial.println(F("[Web] WebSocket temps réel sur le port 81"));
   
-  // Snapshot après démarrage serveur web
-  HeapSnapshot snapshot_after_web_server = MEM_DIAG_SNAPSHOT("after_web_server");
-  MEM_DIAG_COMPARE(snapshot_after_websocket, snapshot_after_web_server);
   return true;
   #endif
 }

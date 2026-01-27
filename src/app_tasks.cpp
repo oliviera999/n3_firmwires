@@ -12,10 +12,8 @@
 
 #include "gpio_parser.h"
 #include "config.h"
-#include "event_log.h"
 #include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
 #include "diagnostics.h"
-#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
 #include "system_sensors.h"  // Pour SensorReadings
 
 namespace {
@@ -32,7 +30,15 @@ static StaticTask_t sensorTaskTCB;
 static StackType_t displayTaskStack[TaskConfig::DISPLAY_TASK_STACK_SIZE];
 static StaticTask_t displayTaskTCB;
 
-// Note: webTask, automationTask et netTask utilisent allocation dynamique (trop grandes pour data segment)
+// v11.159: Allocation statique pour grandes tâches aussi (Phase 2 - libère ~30KB heap)
+static StackType_t webTaskStack[TaskConfig::WEB_TASK_STACK_SIZE];
+static StaticTask_t webTaskTCB;
+
+static StackType_t automationTaskStack[TaskConfig::AUTOMATION_TASK_STACK_SIZE];
+static StaticTask_t automationTaskTCB;
+
+static StackType_t netTaskStack[TaskConfig::NET_TASK_STACK_SIZE];
+static StaticTask_t netTaskTCB;
 TaskHandle_t g_sensorTaskHandle = nullptr;
 TaskHandle_t g_webTaskHandle = nullptr;
 TaskHandle_t g_autoTaskHandle = nullptr;
@@ -310,7 +316,7 @@ void automationTask(void* pv) {
         if (stackPercent > 85.0) {
           Serial.printf("[autoTask] ⚠️ CRITIQUE: Stack utilisation > 85%% (%u bytes libres)\n", 
                         stackHighWaterMark);
-          EventLog::add("CRITICAL: Stack usage > 85% in automationTask");
+          Serial.println("[Event] CRITICAL: Stack usage > 85% in automationTask");
         } else if (stackPercent > 70.0) {
           Serial.printf("[autoTask] ⚠️ ATTENTION: Stack utilisation > 70%% (%u bytes libres)\n", 
                         stackHighWaterMark);
@@ -321,46 +327,31 @@ void automationTask(void* pv) {
       unsigned long now = millis();
       #endif
       
-      // v11.156: Monitoring proactif de la mémoire
+      // Monitoring unifié de la mémoire (toutes les 10-15 minutes)
       static unsigned long lastHeapCheck = 0;
-      static unsigned long lastDiagSnapshot = 0;
-      // v11.157: Monitoring heap toutes les minutes avec diagnostics détaillés
-      const unsigned long heapCheckInterval = 60000; // Toutes les 60 secondes
-      const unsigned long diagSnapshotInterval = 300000; // Toutes les 5 minutes pour snapshots
+      const unsigned long heapCheckInterval = 600000; // 10 minutes
       if (now - lastHeapCheck > heapCheckInterval) {
         uint32_t heapFree = ESP.getFreeHeap();
         uint32_t heapMin = ESP.getMinFreeHeap();
-        uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-        uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
         lastHeapCheck = now;
         
-        // v11.157: Vérification critique basée sur TLS_MIN_HEAP_BYTES
+        // Vérification critique basée sur TLS_MIN_HEAP_BYTES
         if (heapMin < TLS_MIN_HEAP_BYTES) {
           Serial.printf("[autoTask] 🔴 CRITICAL: Heap minimum critique: %u bytes (< %u KB requis pour TLS)\n", 
                         heapMin, TLS_MIN_HEAP_BYTES / 1024);
-          Serial.printf("[autoTask] 🔴 Fragmentation: %u%%, Largest block: %u bytes\n", 
-                        fragmentation, largestBlock);
-          EventLog::add("CRITICAL: Low heap minimum - TLS operations may fail");
+          Serial.println("[Event] CRITICAL: Low heap minimum - TLS operations may fail");
         } else if (heapFree < TLS_MIN_HEAP_BYTES) {
           Serial.printf("[autoTask] ⚠️ WARN: Heap libre faible: %u bytes (< %u KB requis pour TLS)\n", 
                         heapFree, TLS_MIN_HEAP_BYTES / 1024);
-          Serial.printf("[autoTask] ⚠️ Fragmentation: %u%%, Largest block: %u bytes\n", 
-                        fragmentation, largestBlock);
-        } else if (largestBlock < 45000) {
-          Serial.printf("[autoTask] ⚠️ WARN: Plus grand bloc insuffisant: %u bytes (< 45KB pour TLS)\n", 
-                        largestBlock);
-          Serial.printf("[autoTask] ⚠️ Fragmentation: %u%%, Heap libre: %u bytes\n", 
-                        fragmentation, heapFree);
-        } else {
-          Serial.printf("[autoTask] 📊 Heap: libre=%u bytes, min=%u bytes, largest_block=%u bytes, fragmentation=%u%%\n", 
-                        heapFree, heapMin, largestBlock, fragmentation);
         }
-      }
-      
-      // Snapshot périodique pour diagnostic fragmentation (toutes les 5 minutes)
-      if (now - lastDiagSnapshot > diagSnapshotInterval) {
-        MEM_DIAG_SNAPSHOT("periodic_5min");
-        lastDiagSnapshot = now;
+        
+        #if defined(PROFILE_TEST)
+        // Diagnostics détaillés uniquement en mode test
+        uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
+        Serial.printf("[autoTask] 📊 Heap: libre=%u bytes, min=%u bytes, largest_block=%u bytes, fragmentation=%u%%\n", 
+                      heapFree, heapMin, largestBlock, fragmentation);
+        #endif
       }
       
       g_ctx->automatism.update(readings);
@@ -450,16 +441,13 @@ bool start(AppContext& ctx) {
 
   // v11.157: CORRECTION CRITIQUE - Créer les queues AVANT les tâches
   // Les tâches utilisent immédiatement les queues, elles doivent donc exister
-  // Snapshot avant création des queues
-  HeapSnapshot snapshot_before_tasks = MEM_DIAG_SNAPSHOT("before_tasks");
-
   // Créer la queue capteurs (utilisée par sensorTask et automationTask)
   // v11.158: Réduit de 10 à 5 slots pour réduire fragmentation (données redondantes toutes les 500ms)
   if (!g_sensorQueue) {
     g_sensorQueue = xQueueCreate(5, sizeof(SensorReadings));
     if (!g_sensorQueue) {
       Serial.println(F("[App] ❌ CRITIQUE: Échec création g_sensorQueue"));
-      EventLog::add("CRITICAL: g_sensorQueue creation failure");
+      Serial.println("[Event] CRITICAL: g_sensorQueue creation failure");
       return false;
     }
     Serial.println(F("[App] ✅ Queue capteurs créée"));
@@ -471,7 +459,7 @@ bool start(AppContext& ctx) {
     g_netQueue = xQueueCreate(3, sizeof(NetRequest*));
     if (!g_netQueue) {
       Serial.println(F("[App] ❌ CRITIQUE: Échec création g_netQueue"));
-      EventLog::add("CRITICAL: g_netQueue creation failure");
+      Serial.println("[Event] CRITICAL: g_netQueue creation failure");
       return false;
     }
     Serial.println(F("[App] ✅ Queue réseau créée"));
@@ -490,22 +478,28 @@ bool start(AppContext& ctx) {
                                                      TaskConfig::SENSOR_TASK_CORE_ID);
   BaseType_t sensorCreated = (g_sensorTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
-  // webTask, automationTask: allocation dynamique (trop grandes pour data segment)
-  BaseType_t webCreated = xTaskCreatePinnedToCore(webTask,
-                                                  "webTask",
-                                                  TaskConfig::WEB_TASK_STACK_SIZE,
-                                                  nullptr,
-                                                  TaskConfig::WEB_TASK_PRIORITY,
-                                                  &g_webTaskHandle,
-                                                  TaskConfig::WEB_TASK_CORE_ID);
+  // v11.159: webTask, automationTask: allocation statique (Phase 2 - libère ~30KB heap)
+  g_webTaskHandle = xTaskCreateStaticPinnedToCore(
+                                                     webTask,
+                                                     "webTask",
+                                                     TaskConfig::WEB_TASK_STACK_SIZE,
+                                                     nullptr,
+                                                     TaskConfig::WEB_TASK_PRIORITY,
+                                                     webTaskStack,
+                                                     &webTaskTCB,
+                                                     TaskConfig::WEB_TASK_CORE_ID);
+  BaseType_t webCreated = (g_webTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
-  BaseType_t autoCreated = xTaskCreatePinnedToCore(automationTask,
-                                                   "autoTask",
-                                                   TaskConfig::AUTOMATION_TASK_STACK_SIZE,
-                                                   nullptr,
-                                                   TaskConfig::AUTOMATION_TASK_PRIORITY,
-                                                   &g_autoTaskHandle,
-                                                   TaskConfig::AUTOMATION_TASK_CORE_ID);
+  g_autoTaskHandle = xTaskCreateStaticPinnedToCore(
+                                                     automationTask,
+                                                     "autoTask",
+                                                     TaskConfig::AUTOMATION_TASK_STACK_SIZE,
+                                                     nullptr,
+                                                     TaskConfig::AUTOMATION_TASK_PRIORITY,
+                                                     automationTaskStack,
+                                                     &automationTaskTCB,
+                                                     TaskConfig::AUTOMATION_TASK_CORE_ID);
+  BaseType_t autoCreated = (g_autoTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
   g_displayTaskHandle = xTaskCreateStaticPinnedToCore(
                                                       displayTask,
@@ -524,28 +518,29 @@ bool start(AppContext& ctx) {
   if (sensorCreated != pdPASS || webCreated != pdPASS ||
       autoCreated != pdPASS || displayCreated != pdPASS) {
     Serial.println(F("[App] ❌ CRITIQUE: Échec création d'une tâche FreeRTOS"));
-    EventLog::add("CRITICAL: Task creation failure");
+    Serial.println("[Event] CRITICAL: Task creation failure");
   }
 
   // Créer netTask APRÈS création de g_netQueue (nécessaire pour la queue)
-  // netTask: allocation dynamique (trop grande pour data segment)
+  // v11.159: netTask: allocation statique (Phase 2 - libère ~30KB heap)
   if (g_netQueue) {
-    netCreated = xTaskCreatePinnedToCore(netTask,
-                                         "netTask",
-                                         TaskConfig::NET_TASK_STACK_SIZE,
-                                         nullptr,
-                                         TaskConfig::NET_TASK_PRIORITY,
-                                         &g_netTaskHandle,
-                                         TaskConfig::NET_TASK_CORE_ID);
+    g_netTaskHandle = xTaskCreateStaticPinnedToCore(
+                                                     netTask,
+                                                     "netTask",
+                                                     TaskConfig::NET_TASK_STACK_SIZE,
+                                                     nullptr,
+                                                     TaskConfig::NET_TASK_PRIORITY,
+                                                     netTaskStack,
+                                                     &netTaskTCB,
+                                                     TaskConfig::NET_TASK_CORE_ID);
+    netCreated = (g_netTaskHandle != nullptr) ? pdPASS : pdFAIL;
     if (netCreated != pdPASS) {
       Serial.println(F("[App] ❌ CRITIQUE: Échec création netTask (TLS)"));
-      EventLog::add("CRITICAL: netTask creation failure");
+      Serial.println("[Event] CRITICAL: netTask creation failure");
     }
   }
 
   // Snapshot après création des tâches principales
-  HeapSnapshot snapshot_after_main_tasks = MEM_DIAG_SNAPSHOT("after_main_tasks");
-  MEM_DIAG_COMPARE(snapshot_before_tasks, snapshot_after_main_tasks);
 
   vTaskDelay(pdMS_TO_TICKS(50));
 
@@ -561,7 +556,7 @@ bool start(AppContext& ctx) {
                 static_cast<unsigned>(hwmAuto),
                 static_cast<unsigned>(hwmDisplay),
                 static_cast<unsigned>(hwmLoop));
-  EventLog::addf("Stacks HWM boot sensor=%u web=%u auto=%u display=%u loop=%u",
+  Serial.printf("[Event] Stacks HWM boot sensor=%u web=%u auto=%u display=%u loop=%u\n",
                  static_cast<unsigned>(hwmSensor),
                  static_cast<unsigned>(hwmWeb),
                  static_cast<unsigned>(hwmAuto),

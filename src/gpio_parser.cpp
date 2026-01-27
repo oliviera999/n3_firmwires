@@ -193,7 +193,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                     // Convertir selon le type attendu du GPIO, pas le type reçu
                     if (mapping->type == GPIOType::CONFIG_INT) {
                         // Pour CONFIG_INT, toujours convertir en int (même si reçu comme string)
-                        int intVal = parseInt(value);
+                        int intVal = value.as<int>();
                         
                         // Validation spécifique pour les heures de nourrissage (GPIO 105, 106, 107)
                         if (gpio == 105 || gpio == 106 || gpio == 107) {
@@ -211,7 +211,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                     }
                     else if (mapping->type == GPIOType::CONFIG_FLOAT) {
                         // Pour CONFIG_FLOAT, toujours convertir en float (même si reçu comme string)
-                        float floatVal = parseFloat(value);
+                        float floatVal = value.as<float>();
                         configDoc[keyStr] = floatVal;
                         assignmentOk = true;
                         Serial.printf("[GPIOParser] GPIO %d (FLOAT) -> %s = %.2f (converti depuis %s)\n", 
@@ -342,26 +342,46 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
             break;
         }
         case GPIOType::CONFIG_INT: {
-            int intVal = parseInt(value);
+            int intVal = value.as<int>();
             g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, key, intVal);
             Serial.printf("[NVS] Sauvegardé int %s = %d\n", key, intVal);
             break;
         }
         case GPIOType::CONFIG_FLOAT: {
-            float floatVal = parseFloat(value);
+            float floatVal = value.as<float>();
             g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, key, floatVal);
             Serial.printf("[NVS] Sauvegardé float %s = %.2f\n", key, floatVal);
             break;
         }
         case GPIOType::CONFIG_STRING: {
             char stringVal[128];
-            size_t len = parseString(value, stringVal, sizeof(stringVal));
-            if (len > 100) {
-                stringVal[100] = '\0';
-                Serial.printf("[NVS] ⚠️ String trop longue pour %s (%zu chars), tronquée\n", key, len);
+            const char* str = value.as<const char*>();
+            if (str) {
+                size_t len = strlen(str);
+                size_t copyLen = (len < sizeof(stringVal) - 1) ? len : (sizeof(stringVal) - 1);
+                strncpy(stringVal, str, copyLen);
+                stringVal[copyLen] = '\0';
+                if (len > 100) {
+                    stringVal[100] = '\0';
+                    Serial.printf("[NVS] ⚠️ String trop longue pour %s (%zu chars), tronquée\n", key, len);
+                }
+                g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
+                Serial.printf("[NVS] Sauvegardé string %s = '%s'\n", key, stringVal);
+            } else {
+                // Conversion depuis autres types si nécessaire
+                if (value.is<int>()) {
+                    snprintf(stringVal, sizeof(stringVal), "%d", value.as<int>());
+                } else if (value.is<float>()) {
+                    snprintf(stringVal, sizeof(stringVal), "%.2f", value.as<float>());
+                } else if (value.is<bool>()) {
+                    strncpy(stringVal, value.as<bool>() ? "true" : "false", sizeof(stringVal) - 1);
+                    stringVal[sizeof(stringVal) - 1] = '\0';
+                } else {
+                    stringVal[0] = '\0';
+                }
+                g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
+                Serial.printf("[NVS] Sauvegardé string %s = '%s' (converti)\n", key, stringVal);
             }
-            g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
-            Serial.printf("[NVS] Sauvegardé string %s = '%s'\n", key, stringVal);
             break;
         }
         default:
@@ -370,72 +390,6 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
     }
 }
 
-bool GPIOParser::parseBool(JsonVariantConst v) {
-    if (v.is<bool>()) return v.as<bool>();
-    if (v.is<int>()) return v.as<int>() == 1;
-    if (v.is<const char*>()) {
-        const char* s = v.as<const char*>();
-        // Comparaison case-insensitive
-        if (strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0 || 
-            strcasecmp(s, "on") == 0 || strcasecmp(s, "checked") == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-int GPIOParser::parseInt(JsonVariantConst v) {
-    if (v.is<int>()) return v.as<int>();
-    if (v.is<const char*>()) return atoi(v.as<const char*>());
-    return 0;
-}
-
-float GPIOParser::parseFloat(JsonVariantConst v) {
-    if (v.is<float>()) return v.as<float>();
-    if (v.is<const char*>()) return atof(v.as<const char*>());
-    return 0.0f;
-}
-
-size_t GPIOParser::parseString(JsonVariantConst v, char* buffer, size_t bufferSize) {
-    if (!buffer || bufferSize == 0) {
-        return 0;
-    }
-    if (v.is<const char*>()) {
-        const char* str = v.as<const char*>();
-        size_t len = strlen(str);
-        size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
-        strncpy(buffer, str, copyLen);
-        buffer[copyLen] = '\0';
-        return copyLen;
-    } else {
-        // Convertir en string via ArduinoJson - essayer const char* d'abord
-        const char* str = v.as<const char*>();
-        if (str) {
-            size_t len = strlen(str);
-            size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
-            strncpy(buffer, str, copyLen);
-            buffer[copyLen] = '\0';
-            return copyLen;
-        }
-        // Si ce n'est pas une string, convertir via snprintf
-        if (v.is<int>()) {
-            int written = snprintf(buffer, bufferSize, "%d", v.as<int>());
-            return (written > 0 && (size_t)written < bufferSize) ? written : 0;
-        } else if (v.is<float>()) {
-            int written = snprintf(buffer, bufferSize, "%.2f", v.as<float>());
-            return (written > 0 && (size_t)written < bufferSize) ? written : 0;
-        } else if (v.is<bool>()) {
-            const char* boolStr = v.as<bool>() ? "true" : "false";
-            size_t len = strlen(boolStr);
-            size_t copyLen = (len < bufferSize - 1) ? len : (bufferSize - 1);
-            strncpy(buffer, boolStr, copyLen);
-            buffer[copyLen] = '\0';
-            return copyLen;
-        }
-        buffer[0] = '\0';
-        return 0;
-    }
-}
 
 void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] Chargement des états GPIO depuis NVS..."));

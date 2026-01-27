@@ -1,56 +1,53 @@
-# Script de monitoring 15 minutes
-$logFile = "monitor_wroom_test_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
-Write-Host "=== MONITORING ESP32 - 15 MINUTES ===" -ForegroundColor Green
-Write-Host "Port: COM4" -ForegroundColor Cyan
-Write-Host "Durée: 15 minutes (900 secondes)" -ForegroundColor Cyan
+# Script de monitoring ESP32 - 15 minutes
+# Capture la sortie série pendant 15 minutes
+
+$duration = 900  # 15 minutes en secondes
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$logFile = "monitor_wroom_test_$timestamp.log"
+$errorFile = "$logFile.errors"
+
+Write-Host "=== MONITORING ESP32 - 15 MINUTES ===" -ForegroundColor Cyan
+Write-Host "Durée: 15 minutes (900 secondes)" -ForegroundColor Yellow
 Write-Host "Log: $logFile" -ForegroundColor Yellow
 Write-Host ""
 
-# Démarrer le monitoring
-$monitorProcess = Start-Process -FilePath "pio" -ArgumentList @("run", "--target", "monitor", "--environment", "wroom-test", "--monitor-port", "COM4") -NoNewWindow -PassThru -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.errors"
-
-$endTime = (Get-Date).AddSeconds(900)
 Write-Host "Monitoring démarré..." -ForegroundColor Green
-Write-Host "Appuyez sur Ctrl+C pour arrêter prématurément" -ForegroundColor Gray
+Write-Host "Appuyez sur Ctrl+C pour arrêter prématurément" -ForegroundColor Yellow
 Write-Host ""
 
-$lastUpdate = 0
-while ((Get-Date) -lt $endTime) {
-    $remaining = [math]::Round(($endTime - (Get-Date)).TotalSeconds)
-    $progress = 900 - $remaining
-    $progressPercent = [math]::Round(($progress / 900) * 100)
-    $elapsedMinutes = [math]::Floor($progress / 60)
-    $elapsedSeconds = $progress % 60
-    $remainingMinutes = [math]::Floor($remaining / 60)
-    $remainingSeconds = $remaining % 60
+# Démarrer le monitoring en arrière-plan
+$job = Start-Job -ScriptBlock {
+    param($logFile, $errorFile)
+    cd "C:\Users\olivi\Mon Drive\travail\olution\Projets\prototypage\platformIO\Projects\ffp5cs"
+    pio device monitor -e wroom-test --filter time 2>&1 | Tee-Object -FilePath $logFile
+} -ArgumentList $logFile, $errorFile
+
+# Afficher la progression
+$startTime = Get-Date
+$elapsed = 0
+$lastProgress = 0
+
+while ($elapsed -lt $duration) {
+    Start-Sleep -Seconds 30
+    $elapsed = ((Get-Date) - $startTime).TotalSeconds
+    $progress = [math]::Round(($elapsed / $duration) * 100)
+    $remaining = [math]::Round(($duration - $elapsed) / 60, 1)
     
-    # Afficher progression toutes les 30 secondes
-    if ($progress -ge $lastUpdate + 30) {
-        $timeElapsed = "$($elapsedMinutes.ToString('00')):$($elapsedSeconds.ToString('00'))"
-        $timeRemaining = "$($remainingMinutes.ToString('00')):$($remainingSeconds.ToString('00'))"
-        Write-Host "[$timeElapsed] Progression: $progressPercent% ($timeRemaining restant)" -ForegroundColor Cyan
-        $lastUpdate = $progress
-    }
-    
-    Start-Sleep -Seconds 1
-    
-    if ($monitorProcess.HasExited) {
-        Write-Host ""
-        Write-Host "Le processus de monitoring s'est arrêté prématurément" -ForegroundColor Red
-        break
+    if ($progress -ne $lastProgress) {
+        $minutes = [math]::Floor($elapsed / 60)
+        $seconds = [math]::Round($elapsed % 60)
+        Write-Host "[$($minutes.ToString('00')):$($seconds.ToString('00'))] Progression: $progress% ($remaining min restant)" -ForegroundColor Cyan
+        $lastProgress = $progress
     }
 }
 
-if (-not $monitorProcess.HasExited) {
-    Write-Host ""
-    Write-Host "Arrêt du monitoring..." -ForegroundColor Yellow
-    $monitorProcess.Kill()
-    Start-Sleep -Seconds 2
-}
+# Arrêter le monitoring
+Write-Host ""
+Write-Host "Arrêt du monitoring..." -ForegroundColor Yellow
+Stop-Job $job
+Remove-Job $job
 
 Write-Host ""
 Write-Host "=== MONITORING TERMINÉ ===" -ForegroundColor Green
 Write-Host "Log sauvegardé: $logFile" -ForegroundColor Cyan
-if (Test-Path "$logFile.errors") {
-    Write-Host "Erreurs: $logFile.errors" -ForegroundColor Yellow
-}
+Write-Host "Erreurs: $errorFile" -ForegroundColor $(if (Test-Path $errorFile) { "Yellow" } else { "Green" })

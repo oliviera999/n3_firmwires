@@ -9,20 +9,21 @@
 
 #include "automatism.h"
 #include "web_assets.h"
-#include "web_server_context.h"
+#include "app_context.h"
 
 using WebRoutes::registerUiRoutes;
 
 namespace {
 
-bool serveIndexStreaming(WebServerContext& ctx, AsyncWebServerRequest* req) {
+bool serveIndexStreaming(AppContext& ctx, AsyncWebServerRequest* req) {
   uint32_t freeHeapBefore = ESP.getFreeHeap();
   Serial.printf("[Web] 📊 Heap libre avant index.html streaming: %u bytes\n", freeHeapBefore);
 
-  if (freeHeapBefore < ctx.streamMinHeapBytes) {
+  const uint32_t streamMinHeapBytes = 60000;
+  if (freeHeapBefore < streamMinHeapBytes) {
     Serial.printf("[Web] ⚠️ Mémoire insuffisante pour servir index.html (%u < %u bytes)\n",
                   freeHeapBefore,
-                  ctx.streamMinHeapBytes);
+                  streamMinHeapBytes);
     static const char LOW_MEM_PAGE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="fr">
@@ -70,7 +71,7 @@ bool serveIndexStreaming(WebServerContext& ctx, AsyncWebServerRequest* req) {
       [&ctx, file](uint8_t* buffer, size_t maxLen, size_t /*index*/) mutable -> size_t {
         esp_task_wdt_reset();
 
-        if (ESP.getFreeHeap() < ctx.streamMinHeapBytes) {
+        if (ESP.getFreeHeap() < streamMinHeapBytes) {
           Serial.println("[Web] ⚠️ Mémoire critique pendant streaming");
           file.close();
           return 0;
@@ -120,7 +121,7 @@ void registerStaticAssets(AsyncWebServer& server) {
   server.serveStatic("/assets/", LittleFS, "/assets/").setCacheControl("max-age=604800");
 }
 
-void registerStreamingRoutes(AsyncWebServer& server, WebServerContext& ctx) {
+void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
   server.on("/", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     ctx.automatism.notifyLocalWebActivity();
     IPAddress remoteIP = req->client()->remoteIP();
@@ -330,7 +331,7 @@ void registerCompressedAssets(AsyncWebServer& server) {
 
 namespace WebRoutes {
 
-void registerUiRoutes(AsyncWebServer& server, WebServerContext& ctx) {
+void registerUiRoutes(AsyncWebServer& server, AppContext& ctx) {
   registerStaticAssets(server);
   registerStreamingRoutes(server, ctx);
   server.on("/optimized", HTTP_GET, [](AsyncWebServerRequest* req) { req->redirect("/"); });

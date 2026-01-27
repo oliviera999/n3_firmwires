@@ -58,14 +58,14 @@ class DisplayCache {
                 uint16_t potaLvl,
                 uint16_t lumi,
                 const char* timeStr) {
-      bool changed = (fabsf(tempEau - _tempEau) > 0.1f) ||
-                     (fabsf(tempAir - _tempAir) > 0.1f) ||
-                     (fabsf(humidite - _humidite) > 0.5f) ||
+      bool changed = (tempEau != _tempEau) ||
+                     (tempAir != _tempAir) ||
+                     (humidite != _humidite) ||
                      (aquaLvl != _aquaLvl) ||
                      (tankLvl != _tankLvl) ||
                      (potaLvl != _potaLvl) ||
-                     (abs(static_cast<int>(lumi) - static_cast<int>(_lumi)) > 1) ||
-                     (timeStr == nullptr || _timeStr[0] == '\0' ? (strlen(timeStr ? timeStr : "") != strlen(_timeStr)) : strcmp(timeStr, _timeStr) != 0);
+                     (lumi != _lumi) ||
+                     (timeStr == nullptr ? _timeStr[0] != '\0' : strcmp(timeStr, _timeStr) != 0);
 
       _tempEau = tempEau;
       _tempAir = tempAir;
@@ -133,7 +133,7 @@ class DisplayCache {
                      tGros != _tGros ||
                      thAq != _thAq ||
                      thTank != _thTank ||
-                     (fabsf(thHeat - _thHeat) > 0.05f) ||
+                     (thHeat != _thHeat) ||
                      limFlood != _limFlood;
 
       _pumpAqua = pumpAqua;

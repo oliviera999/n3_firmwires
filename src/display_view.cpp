@@ -1,13 +1,103 @@
 #include "display_view.h"
-#include "display_text_utils.h"
-#include "display_renderers.h"
-#include "status_bar_renderer.h"
 #include "config.h"
 #include "pins.h"
 #include "oled_logo.h"
 #include <WiFi.h>
 #include <algorithm>
 #include <string.h>
+
+// Utilitaires d'affichage (fusionnés depuis display_text_utils)
+namespace {
+  // Convertit UTF-8 en CP437 et écrit dans le buffer
+  size_t utf8ToCp437(const char* input, char* output, size_t outputSize) {
+    if (!input || !output || outputSize == 0) {
+      if (output && outputSize > 0) {
+        output[0] = '\0';
+      }
+      return 0;
+    }
+    
+    size_t outIdx = 0;
+    const uint8_t* s = reinterpret_cast<const uint8_t*>(input);
+    
+    while (*s && outIdx < outputSize - 1) {
+      uint8_t c = *s++;
+      if (c == 0xC3) {
+        uint8_t n = *s;
+        if (n) {
+          ++s;
+          char cp437_char = 0;
+          switch (n) {
+            case 0xA9: cp437_char = 0x82; break; // é
+            case 0xA8: cp437_char = 0x8A; break; // è
+            case 0xAA: cp437_char = 0x88; break; // ê
+            case 0xA0: cp437_char = 0x85; break; // à
+            case 0xA2: cp437_char = 0x83; break; // â
+            case 0xB9: cp437_char = 0x97; break; // ù
+            case 0xBB: cp437_char = 0x96; break; // û
+            case 0xA7: cp437_char = 0x87; break; // ç
+            case 0xB4: cp437_char = 0x93; break; // ô
+            case 0xAF: cp437_char = 0x8B; break; // ï
+            case 0xAE: cp437_char = 0x8C; break; // î
+            case 0x89: cp437_char = 0x90; break; // É
+            case 0x87: cp437_char = 0x80; break; // Ç
+            default:
+              continue; // Caractère non supporté, on ignore
+          }
+          if (cp437_char != 0) {
+            output[outIdx++] = cp437_char;
+          }
+        }
+      } else if ((c & 0xE0) == 0xC0) {
+        if (*s) ++s;
+      } else if ((c & 0xF0) == 0xE0) {
+        if (*s) ++s;
+        if (*s) ++s;
+      } else if ((c & 0xF8) == 0xF0) {
+        if (*s) ++s;
+        if (*s) ++s;
+        if (*s) ++s;
+      } else {
+        output[outIdx++] = char(c);
+      }
+    }
+    
+    output[outIdx] = '\0';
+    return outIdx;
+  }
+
+  // Tronque un texte en place à maxChars caractères (ajoute "..." si nécessaire)
+  void clipInPlace(char* text, size_t textSize, int maxChars) {
+    if (!text || textSize == 0 || maxChars <= 0) {
+      if (text && textSize > 0) {
+        text[0] = '\0';
+      }
+      return;
+    }
+    
+    size_t len = strlen(text);
+    if (static_cast<int>(len) <= maxChars) {
+      return;
+    }
+    
+    if (maxChars >= 3) {
+      size_t newLen = maxChars - 3;
+      if (newLen < textSize - 1) {
+        text[newLen] = '\0';
+        strncat(text, "...", textSize - newLen - 1);
+      }
+    } else {
+      if (maxChars < static_cast<int>(textSize)) {
+        text[maxChars] = '\0';
+      }
+    }
+  }
+
+  uint8_t characterWidth(uint8_t size) {
+    if (size == 0) return 6;
+    return static_cast<uint8_t>(6 * size);
+  }
+}
 
 // Texte protégé contre le dépassement horizontal (police 6x8 px par taille 1)
 void DisplayView::printClipped(int16_t x, int16_t y, const char* text, uint8_t size) {
@@ -19,17 +109,17 @@ void DisplayView::printClipped(int16_t x, int16_t y, const char* text, uint8_t s
   // Largeur max pixels
   const int16_t maxWidth = _disp.width();
   // Largeur d'un caractère: 6 px en taille 1 (5 + 1 espace)
-  uint8_t charWidth = DisplayTextUtils::characterWidth(size);
+  uint8_t charWidth = characterWidth(size);
 
   // Convertit en CP437 pour cohérence avec l'affichage
   char toPrint[256];
-  DisplayTextUtils::utf8ToCp437(text, toPrint, sizeof(toPrint));
+  utf8ToCp437(text, toPrint, sizeof(toPrint));
   // Calcule le nombre max de caractères qui rentrent sur la ligne
   int16_t available = maxWidth - x;
   if (available <= 0) return;
   int16_t maxChars = available / charWidth;
   if (maxChars <= 0) return;
-  DisplayTextUtils::clipInPlace(toPrint, sizeof(toPrint), maxChars);
+  clipInPlace(toPrint, sizeof(toPrint), maxChars);
 
   _disp.setTextSize(size);
   _disp.setCursor(x, y);
@@ -145,7 +235,7 @@ void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bo
                          diffValue,
                          _otaOverlayActive,
                          _lastOtaPercent};
-  StatusBarRenderer::draw(*this, _disp, params);
+  renderStatusBar(params);
   
   // Marquer qu'un flush est nécessaire
   if (_updateMode) {
@@ -177,7 +267,7 @@ void DisplayView::drawStatusEx(int8_t sendState, int8_t recvState, int8_t rssi, 
                          diffValue,
                          _otaOverlayActive,
                          _lastOtaPercent};
-  StatusBarRenderer::draw(*this, _disp, params);
+  renderStatusBar(params);
 
   if (_updateMode) _needsFlush = true;
 }
@@ -190,7 +280,7 @@ void DisplayView::showCountdown(const char* label, uint16_t secLeft, bool isManu
   resetMainCache();
   resetStatusCache();
 
-  CountdownRenderer::render(*this, _disp, label, secLeft, isManual);
+  renderCountdown(label, secLeft, isManual);
   
   // Force le flush immédiat pour les décomptes (toujours fluide)
   _disp.display();
@@ -205,7 +295,7 @@ void DisplayView::showFeedingCountdown(const char* fishType, const char* phase, 
   resetMainCache();
   resetStatusCache();
 
-  CountdownRenderer::renderFeeding(*this, _disp, fishType, phase, secLeft, isManual);
+  renderFeedingCountdown(fishType, phase, secLeft, isManual);
   
   // Force le flush immédiat pour les décomptes de nourrissage (toujours fluide)
   _disp.display();
@@ -458,21 +548,11 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   IPAddress apIP = WiFi.softAPIP();
   snprintf(apIpBuf, sizeof(apIpBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
 
-  MainScreenRenderer::render(*this,
-                             _disp,
-                             tempEau,
-                             tempAir,
-                             humidite,
-                             aquaLvl,
-                             tankLvl,
-                             potaLvl,
-                             lumi,
-                             timeStr,
-                             wifiConnected,
-                             stationSsidBuf,
-                             stationIpBuf,
-                             apSsidBuf,
-                             apIpBuf);
+  renderMainScreen(tempEau, tempAir, humidite,
+                   aquaLvl, tankLvl, potaLvl,
+                   lumi, timeStr, wifiConnected,
+                   stationSsidBuf, stationIpBuf,
+                   apSsidBuf, apIpBuf);
   
   // Mode immédiat pour les changements de valeurs, mode optimisé sinon
   if (_immediateMode || valuesChanged) {
@@ -522,21 +602,11 @@ void DisplayView::showVariables(bool pumpAqua,
   }
   
   clear();
-  InfoScreenRenderer::renderVariables(*this,
-                                      _disp,
-                                      pumpAqua,
-                                      pumpTank,
-                                      heater,
-                                      light,
-                                      hMat,
-                                      hMid,
-                                      hSoir,
-                                      tPetits,
-                                      tGros,
-                                      thAq,
-                                      thTank,
-                                      thHeat,
-                                      limFlood);
+  renderVariables(pumpAqua, pumpTank, heater, light,
+                  hMat, hMid, hSoir,
+                  tPetits, tGros,
+                  thAq, thTank, thHeat,
+                  limFlood);
   
   // Mode immédiat pour les changements de valeurs, mode optimisé sinon
   if (_immediateMode || valuesChanged) {
@@ -576,8 +646,8 @@ void DisplayView::showDiagnostic(const char* msg) {
   // Positionne le curseur sur la ligne courante et écrit le message avec clipping horizontal
   {
     char line[256];
-    DisplayTextUtils::utf8ToCp437(msg, line, sizeof(line));
-    InfoScreenRenderer::appendDiagnosticLine(*this, _disp, line, _diagLine);
+utf8ToCp437(msg, line, sizeof(line));
+    appendDiagnosticLine(line, _diagLine);
   }
   ++_diagLine;
 
@@ -593,24 +663,12 @@ void DisplayView::showServerVars(bool pumpAqua,bool pumpTank,bool heater,bool li
                                  bool wakeUp,uint16_t freqWake){
   if(!_present || isLocked()) return;
   clear();
-  InfoScreenRenderer::renderServerVars(*this,
-                                       _disp,
-                                       pumpAqua,
-                                       pumpTank,
-                                       heater,
-                                       light,
-                                       hMat,
-                                       hMid,
-                                       hSoir,
-                                       tPetits,
-                                       tGros,
-                                       thAq,
-                                       thTank,
-                                       thHeat,
-                                       tRemp,
-                                       limFlood,
-                                       wakeUp,
-                                       freqWake);
+  renderServerVars(pumpAqua, pumpTank, heater, light,
+                   hMat, hMid, hSoir,
+                   tPetits, tGros,
+                   thAq, thTank, thHeat,
+                   tRemp, limFlood,
+                   wakeUp, freqWake);
   if (!_updateMode) flush();
   else _needsFlush = true;
 } 
@@ -629,7 +687,7 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
     char headerBuf[128];
     if (phase && *phase) {
       char phaseBuf[64];
-      DisplayTextUtils::utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
+utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
       snprintf(headerBuf, sizeof(headerBuf), "OTA: %s", phaseBuf);
     } else {
       strcpy(headerBuf, "OTA: ");
@@ -640,13 +698,13 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
   // Lignes partitions
   if (fromLabel && *fromLabel) {
     char fromBuf[128], labelBuf[64];
-    DisplayTextUtils::utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
     snprintf(fromBuf, sizeof(fromBuf), "De: %s", labelBuf);
     printClipped(0, 10, fromBuf, 1);
   }
   if (toLabel && *toLabel) {
     char toBuf[128], labelBuf[64];
-    DisplayTextUtils::utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
     snprintf(toBuf, sizeof(toBuf), "Vers: %s", labelBuf);
     printClipped(0, 18, toBuf, 1);
   }
@@ -689,7 +747,7 @@ void DisplayView::showOtaProgressEx(uint8_t percent, const char* fromLabel, cons
     char headerBuf[128];
     if (phase && *phase) {
       char phaseBuf[64];
-      DisplayTextUtils::utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
+utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
       snprintf(headerBuf, sizeof(headerBuf), "OTA %s", phaseBuf);
     } else {
       strcpy(headerBuf, "OTA ");
@@ -699,7 +757,7 @@ void DisplayView::showOtaProgressEx(uint8_t percent, const char* fromLabel, cons
   // Hote ou WiFi SSID
   if (hostLabel && *hostLabel) {
     char hostBuf[128], labelBuf[64];
-    DisplayTextUtils::utf8ToCp437(hostLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(hostLabel, labelBuf, sizeof(labelBuf));
     snprintf(hostBuf, sizeof(hostBuf), "Hote: %s", labelBuf);
     printClipped(0, 8, hostBuf, 1);
   }
@@ -717,13 +775,13 @@ void DisplayView::showOtaProgressEx(uint8_t percent, const char* fromLabel, cons
   // Partitions
   if (fromLabel && *fromLabel) {
     char fromBuf[128], labelBuf[64];
-    DisplayTextUtils::utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
     snprintf(fromBuf, sizeof(fromBuf), "De:%s", labelBuf);
     printClipped(0, 24, fromBuf, 1);
   }
   if (toLabel && *toLabel) {
     char toBuf[128], labelBuf[64];
-    DisplayTextUtils::utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
     snprintf(toBuf, sizeof(toBuf), "Vers:%s", labelBuf);
     printClipped(64, 24, toBuf, 1);
   }
@@ -754,17 +812,17 @@ void DisplayView::showSleepReason(const char* cause, const char* detailLine1, co
   printClipped(0, 0, "Veille", 1);
   if (cause && *cause) {
     char causeBuf[128];
-    DisplayTextUtils::utf8ToCp437(cause, causeBuf, sizeof(causeBuf));
+utf8ToCp437(cause, causeBuf, sizeof(causeBuf));
     printClipped(0, 10, causeBuf, 1);
   }
   if (detailLine1 && *detailLine1) {
     char detail1Buf[128];
-    DisplayTextUtils::utf8ToCp437(detailLine1, detail1Buf, sizeof(detail1Buf));
+utf8ToCp437(detailLine1, detail1Buf, sizeof(detail1Buf));
     printClipped(0, 20, detail1Buf, 1);
   }
   if (detailLine2 && *detailLine2) {
     char detail2Buf[128];
-    DisplayTextUtils::utf8ToCp437(detailLine2, detail2Buf, sizeof(detail2Buf));
+utf8ToCp437(detailLine2, detail2Buf, sizeof(detail2Buf));
     printClipped(0, 30, detail2Buf, 1);
   }
   // Statut bar with mail icon if blinking requested (force draw even when locked)
@@ -786,19 +844,19 @@ void DisplayView::showSleepInfo(const char* reason, const char* detail1, const c
   // Raison explicite
   if (reason && *reason) {
     char reasonBuf[128], labelBuf[64];
-    DisplayTextUtils::utf8ToCp437(reason, labelBuf, sizeof(labelBuf));
+utf8ToCp437(reason, labelBuf, sizeof(labelBuf));
     snprintf(reasonBuf, sizeof(reasonBuf), "Raison: %s", labelBuf);
     printClipped(0, 10, reasonBuf, 1);
   }
   // Détails optionnels
   if (detail1 && *detail1) {
     char detail1Buf[128];
-    DisplayTextUtils::utf8ToCp437(detail1, detail1Buf, sizeof(detail1Buf));
+utf8ToCp437(detail1, detail1Buf, sizeof(detail1Buf));
     printClipped(0, 20, detail1Buf, 1);
   }
   if (detail2 && *detail2) {
     char detail2Buf[128];
-    DisplayTextUtils::utf8ToCp437(detail2, detail2Buf, sizeof(detail2Buf));
+utf8ToCp437(detail2, detail2Buf, sizeof(detail2Buf));
     printClipped(0, 28, detail2Buf, 1);
   }
 
@@ -855,4 +913,274 @@ void DisplayView::forceEndSplash() {
   // Réinitialiser les caches pour forcer un redessin complet
   resetMainCache();
   resetStatusCache();
+}
+
+// Helpers de formatage
+void DisplayView::formatLevel(uint16_t value, char* buffer, size_t size) {
+  if (value == 0) {
+    strncpy(buffer, "--", size);
+    buffer[size - 1] = '\0';
+  } else {
+    snprintf(buffer, size, "%u", value);
+  }
+}
+
+void DisplayView::formatTemp(float value, char* buffer, size_t size) {
+  if (isnan(value)) {
+    strncpy(buffer, "--.-", size);
+    buffer[size - 1] = '\0';
+    return;
+  }
+  snprintf(buffer, size, "%.1f", value);
+}
+
+void DisplayView::formatHumidity(float value, char* buffer, size_t size) {
+  if (isnan(value)) {
+    strncpy(buffer, "--.-", size);
+    buffer[size - 1] = '\0';
+    return;
+  }
+  snprintf(buffer, size, "%.1f", value);
+}
+
+const char* DisplayView::onOffLabel(bool value) {
+  return value ? "ON" : "OFF";
+}
+
+// Méthodes de rendu
+void DisplayView::renderMainScreen(float tempEau, float tempAir, float humidite,
+                                    uint16_t aquaLvl, uint16_t tankLvl, uint16_t potaLvl,
+                                    uint16_t lumi, const char* timeStr, bool wifiConnected,
+                                    const char* stationSsid, const char* stationIp,
+                                    const char* apSsid, const char* apIp) {
+  _disp.setTextSize(1);
+
+  {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "FFP5CS v%s %s", ProjectConfig::VERSION, ProjectConfig::PROFILE_TYPE);
+    printClipped(0, 0, buf, 1);
+  }
+
+  if (wifiConnected) {
+    printClipped(0, 8, stationSsid, 1);
+    printClipped(0, 16, stationIp, 1);
+  } else {
+    printClipped(0, 8, apSsid, 1);
+    printClipped(0, 16, apIp, 1);
+  }
+
+  {
+    char buf[32];
+    char tempEauBuf[8];
+    char tempAirBuf[8];
+    formatTemp(tempEau, tempEauBuf, sizeof(tempEauBuf));
+    formatTemp(tempAir, tempAirBuf, sizeof(tempAirBuf));
+    snprintf(buf, sizeof(buf), "Eau:%sC Air:%sC", tempEauBuf, tempAirBuf);
+    printClipped(0, 24, buf, 1);
+  }
+
+  {
+    char buf[32];
+    char aqBuf[6];
+    char tkBuf[6];
+    char ptBuf[6];
+    formatLevel(aquaLvl, aqBuf, sizeof(aqBuf));
+    formatLevel(tankLvl, tkBuf, sizeof(tkBuf));
+    formatLevel(potaLvl, ptBuf, sizeof(ptBuf));
+    snprintf(buf, sizeof(buf), "Aq:%s Tk:%s Pt:%s", aqBuf, tkBuf, ptBuf);
+    printClipped(0, 32, buf, 1);
+  }
+
+  {
+    char buf[32];
+    char humBuf[8];
+    formatHumidity(humidite, humBuf, sizeof(humBuf));
+    snprintf(buf, sizeof(buf), "Hum:%s%% Lum:%u", humBuf, lumi);
+    printClipped(0, 40, buf, 1);
+  }
+
+  printClipped(0, 48, timeStr, 1);
+
+  if (::MonitoringConfig::ENABLE_DRIFT_VISUAL_INDICATOR) {
+    static unsigned long lastDriftCheck = 0;
+    unsigned long now = millis();
+    if (now - lastDriftCheck > ::MonitoringConfig::DRIFT_CHECK_INTERVAL_MS) {
+      lastDriftCheck = now;
+      if (!wifiConnected) {
+        _disp.drawPixel(127, 0, WHITE);
+      } else {
+        _disp.drawPixel(127, 0, BLACK);
+      }
+    }
+  }
+}
+
+void DisplayView::renderCountdown(const char* label, uint16_t secondsLeft, bool isManual) {
+  printClipped(0, 0, label, 2);
+
+  _disp.setTextSize(3);
+  _disp.setCursor(0, 24);
+  if (secondsLeft == 0) {
+    _disp.setTextSize(2);
+    _disp.print("Terminé");
+  } else {
+    _disp.printf("%u", secondsLeft);
+  }
+
+  _disp.setTextSize(1);
+  if (isManual) {
+    _disp.drawChar(110, 0, 'M', WHITE, BLACK, 1);
+  } else {
+    _disp.drawChar(110, 0, 'A', WHITE, BLACK, 1);
+  }
+}
+
+void DisplayView::renderFeedingCountdown(const char* fishType, const char* phase,
+                                         uint16_t secondsLeft, bool isManual) {
+  printClipped(0, 0, "Nourriture", 1);
+  printClipped(0, 10, fishType, 2);
+  char tempsBuf[64];
+  snprintf(tempsBuf, sizeof(tempsBuf), "Temps %s", phase);
+  printClipped(0, 26, tempsBuf, 1);
+
+  _disp.setTextSize(2);
+  _disp.setCursor(0, 36);
+  if (secondsLeft == 0) {
+    _disp.print("Terminé");
+  } else {
+    _disp.printf("%u", secondsLeft);
+  }
+
+  _disp.setTextSize(1);
+  if (isManual) {
+    _disp.drawChar(110, 0, 'M', WHITE, BLACK, 1);
+  } else {
+    _disp.drawChar(110, 0, 'A', WHITE, BLACK, 1);
+  }
+}
+
+void DisplayView::renderVariables(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                                  uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                                  uint16_t tPetits, uint16_t tGros,
+                                  uint16_t thAq, uint16_t thTank, float thHeat,
+                                  uint16_t limFlood) {
+  _disp.setTextSize(1);
+  printClipped(0, 0, "Relais+Cfg:", 1);
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "PomAq:%s PomTk:%s", onOffLabel(pumpAqua), onOffLabel(pumpTank));
+  printClipped(0, 8, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Chauff:%s Lumi:%s", onOffLabel(heater), onOffLabel(light));
+  printClipped(0, 16, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Feed h:%02u %02u %02u", hMat, hMid, hSoir);
+  printClipped(0, 24, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Tps P:%us G:%us", tPetits, tGros);
+  printClipped(0, 32, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Seuil Aq:%u Ta:%u", thAq, thTank);
+  printClipped(0, 40, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Ch:%.1fC F:%ucm", thHeat, limFlood);
+  printClipped(0, 48, buf, 1);
+}
+
+void DisplayView::renderServerVars(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                                   uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                                   uint16_t tPetits, uint16_t tGros,
+                                   uint16_t thAq, uint16_t thTank, float thHeat,
+                                   uint16_t tRemp, uint16_t limFlood,
+                                   bool wakeUp, uint16_t freqWake) {
+  _disp.setTextSize(1);
+  printClipped(0, 0, "Vars:", 1);
+
+  char buf[64];
+  snprintf(buf, sizeof(buf), "Paq:%d Pta:%d R:%d L:%d", pumpAqua, pumpTank, heater, light);
+  printClipped(0, 8, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Feed h:%u %u %u", hMat, hMid, hSoir);
+  printClipped(0, 16, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Tps P:%u G:%u", tPetits, tGros);
+  printClipped(0, 24, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Lim Aq:%u Ta:%u", thAq, thTank);
+  printClipped(0, 32, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Ch:%.1f R:%u F:%u", thHeat, tRemp, limFlood);
+  printClipped(0, 40, buf, 1);
+
+  snprintf(buf, sizeof(buf), "W:%d Fq:%us", wakeUp ? 1 : 0, freqWake);
+  printClipped(0, 48, buf, 1);
+}
+
+void DisplayView::renderStatusBar(const StatusBarParams& params) {
+  // Dessiner la barre d'état en haut de l'écran (8 pixels de hauteur)
+  
+  // Effacer la zone de la barre d'état
+  _disp.fillRect(0, 0, 128, 8, BLACK);
+  
+  // WiFi RSSI indicator (gauche)
+  _disp.setCursor(0, 0);
+  _disp.setTextSize(1);
+  _disp.setTextColor(WHITE);
+  
+  if (params.rssi >= -50) {
+    _disp.print(F("WiFi +++"));
+  } else if (params.rssi >= -70) {
+    _disp.print(F("WiFi ++ "));
+  } else if (params.rssi >= -85) {
+    _disp.print(F("WiFi +  "));
+  } else if (params.rssi > -100) {
+    _disp.print(F("WiFi -  "));
+  } else {
+    _disp.print(F("WiFi X  "));
+  }
+  
+  // Indicateur send/recv (milieu)
+  _disp.setCursor(60, 0);
+  if (params.sendState == 1) {
+    _disp.print(F("S"));
+  } else if (params.sendState == -1) {
+    _disp.print(F("!"));
+  } else {
+    _disp.print(F(" "));
+  }
+  
+  if (params.recvState == 1) {
+    _disp.print(F("R"));
+  } else if (params.recvState == -1) {
+    _disp.print(F("!"));
+  } else {
+    _disp.print(F(" "));
+  }
+  
+  // Indicateur marée (droite)
+  _disp.setCursor(80, 0);
+  if (params.tideDir > 0) {
+    _disp.print(F("^")); // Marée montante
+  } else if (params.tideDir < 0) {
+    _disp.print(F("v")); // Marée descendante
+  } else {
+    _disp.print(F("-")); // Stable
+  }
+  
+  // Mail blink indicator
+  if (params.mailBlink) {
+    _disp.setCursor(90, 0);
+    _disp.print(F("@"));
+  }
+  
+  // OTA progress overlay (si actif)
+  if (params.otaOverlayActive) {
+    _disp.setCursor(100, 0);
+    _disp.printf("%d%%", params.otaPercent);
+  }
+}
+
+void DisplayView::appendDiagnosticLine(const char* line, uint8_t lineIndex) {
+  _disp.setTextSize(1);
+  printClipped(0, lineIndex * 8, line, 1);
 }

@@ -494,13 +494,15 @@ namespace TaskConfig {
     constexpr UBaseType_t SENSOR_TASK_PRIORITY = 2;
     constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
-    constexpr uint32_t WEB_TASK_STACK_SIZE = 5120;  // Réduit de 6144 (HWM: 5332 libres, marge 212)
+    // v11.159: Réduit de 5KB à 4KB (Phase 3 - HWM: 5332 libres, marge 212)
+    constexpr uint32_t WEB_TASK_STACK_SIZE = 4096;  // 4KB
     // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
     constexpr UBaseType_t WEB_TASK_PRIORITY = 1;
     constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
-    // 8 KB - NE PAS RÉDUIRE (atteint 94.9% utilisation = 7776 bytes utilisés)
-    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;
+    // v11.157: Augmenté de 6KB à 8KB pour éviter stack overflow (HWM: 100 bytes libres = critique)
+    // Le crash se produit dans automationTask lors de la sauvegarde NVS
+    constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;  // 8KB
     constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     
@@ -511,8 +513,8 @@ namespace TaskConfig {
     constexpr uint32_t OTA_TASK_STACK_SIZE = 8192;
     
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
-    // v11.157: Réduit de 12288 à 10240 (HWM: 5584 libres, marge 4656)
-    constexpr uint32_t NET_TASK_STACK_SIZE = 10240;   // 10 KB (requis pour TLS/HTTPS avec mbedTLS)
+    // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
+    constexpr uint32_t NET_TASK_STACK_SIZE = 8192;   // 8 KB (requis pour TLS/HTTPS avec mbedTLS)
     constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
     

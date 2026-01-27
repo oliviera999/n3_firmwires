@@ -9,7 +9,6 @@
 #include <ctype.h>
 
 #include "asset_bundler.h"
-#include "event_log.h"
 // #include "json_pool.h" - Supprimé
 #include "config.h"
 #include "automatism.h"
@@ -19,16 +18,56 @@
 #include "sensor_cache.h"
 #include "system_actuators.h"
 #include "system_sensors.h"
-#include "web_server_context.h"
+#include "app_context.h"
 
 using WebRoutes::registerStatusRoutes;
 
+// Fonctions libres helpers (remplace WebServerContext) - accessibles depuis web_server.cpp
+void sendJsonResponse(AsyncWebServerRequest* req, const JsonDocument& doc, bool enableCors) {
+  if (!req) {
+    return;
+  }
+
+  AsyncResponseStream* response = req->beginResponseStream("application/json");
+  if (!response) {
+    Serial.println(F("[Web] ❌ Échec création réponse JSON (heap insuffisant)"));
+    req->send(500, "text/plain", "Memory error");
+    return;
+  }
+
+  response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  if (enableCors) {
+    response->addHeader("Access-Control-Allow-Origin", "*");
+  }
+  serializeJson(doc, *response);
+  req->send(response);
+}
+
+bool ensureHeapForRoute(AsyncWebServerRequest* req, uint32_t minHeap, const __FlashStringHelper* routeName) {
+  uint32_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap >= minHeap) {
+    return true;
+  }
+
+  if (req) {
+    char message[128];
+    snprintf(message, sizeof(message), "Service temporairement indisponible - mémoire faible (heap=%u bytes)", freeHeap);
+    req->send(503, "text/plain", message);
+  }
+
+  Serial.printf_P(PSTR("[Web] ⚠️ Mémoire insuffisante pour %s (%u < %u bytes)\n"),
+                  routeName ? (const char*)routeName : "route",
+                  freeHeap,
+                  minHeap);
+  return false;
+}
+
 namespace {
 
-void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
+void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
   server.on("/ping", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     Serial.println("[Web] 🏓 Ping reçu - Réveil système");
-    EventLog::add("Réveil par ping");
+    Serial.println("[Event] Réveil par ping");
 
     StaticJsonDocument<128> doc;
     doc["status"] = "awake";
@@ -37,12 +76,12 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
     doc["timestamp"] = timeBuf;
     doc["uptime_ms"] = millis();
 
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 
   server.on("/wakeup", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     Serial.println("[Web] 🔔 Réveil explicite demandé");
-    EventLog::add("Réveil par requête HTTP /wakeup");
+    Serial.println("[Event] Réveil par requête HTTP /wakeup");
 
     StaticJsonDocument<256> doc;
     doc["status"] = "awake";
@@ -52,9 +91,9 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
     doc["wakeup_source"] = "http_request";
     doc["uptime_ms"] = millis();
 
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
 
-    ctx.realtimeWs.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
   });
 
   server.on("/api/wakeup", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
@@ -72,7 +111,7 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
     const char* source = doc["source"] | "api";
 
     Serial.printf("[Web] Action de réveil: %s depuis %s\n", action, source);
-    EventLog::addf("Réveil API: %s depuis %s", action, source);
+    Serial.printf("[Event] Réveil API: %s depuis %s\n", action, source);
 
     if (action == "status") {
       StaticJsonDocument<1024> statusDoc;
@@ -90,7 +129,7 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
         statusDoc["wifi_rssi"] = WiFi.RSSI();
       }
 
-      ctx.sendJson(req, statusDoc);
+      sendJsonResponse(req, statusDoc);
     } else if (action == "feed") {
       Serial.println("[Web] 🍽️ Déclenchement nourrissage à distance");
       ctx.automatism.manualFeedSmall();
@@ -104,7 +143,7 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
       ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
       feedDoc["timestamp"] = timeBuf;
 
-      ctx.sendJson(req, feedDoc);
+      sendJsonResponse(req, feedDoc);
     } else {
       StaticJsonDocument<128> respDoc;
       respDoc["status"] = "awake";
@@ -113,14 +152,14 @@ void registerWakeRoutes(AsyncWebServer& server, WebServerContext& ctx) {
       ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
       respDoc["timestamp"] = timeBuf;
 
-      ctx.sendJson(req, respDoc);
+      sendJsonResponse(req, respDoc);
     }
 
-    ctx.realtimeWs.broadcastNow();
+    g_realtimeWebSocket.broadcastNow();
   });
 }
 
-void registerWifiStatus(AsyncWebServer& server, WebServerContext& ctx) {
+void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
   server.on("/wifi/status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
@@ -171,11 +210,11 @@ void registerWifiStatus(AsyncWebServer& server, WebServerContext& ctx) {
 
     doc["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
 
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 }
 
-void registerServerStatus(AsyncWebServer& server, WebServerContext& ctx) {
+void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
   server.on("/server-status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     IPAddress remoteIP = req->client()->remoteIP();
     char remoteIPBuf[16];
@@ -201,24 +240,29 @@ void registerServerStatus(AsyncWebServer& server, WebServerContext& ctx) {
     snprintf(wifiIPBuf, sizeof(wifiIPBuf), "%d.%d.%d.%d", wifiIP[0], wifiIP[1], wifiIP[2], wifiIP[3]);
     doc["wifiIP"] = wifiIPBuf;
     doc["wifiRSSI"] = WiFi.RSSI();
-    doc["webSocketClients"] = ctx.realtimeWs.getConnectedClients();
+    doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
     doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
 
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    if (!response) {
+      Serial.println("[Web] ❌ Échec beginResponseStream pour /api/status");
+      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      return;
+    }
     response->addHeader("Cache-Control", "no-cache");
     serializeJson(doc, *response);
     req->send(response);
   });
 }
 
-void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
+void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
   server.on("/api/remote-flags", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["sendEnabled"] = ctx.config.isRemoteSendEnabled();
     doc["recvEnabled"] = ctx.config.isRemoteRecvEnabled();
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 
   server.on("/api/remote-flags", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
@@ -254,6 +298,11 @@ void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
       changed = true;
     }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    if (!response) {
+      Serial.println("[Web] ❌ Échec beginResponseStream pour /api/remote-flags POST");
+      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      return;
+    }
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["ok"] = true;
     doc["changed"] = changed;
@@ -262,7 +311,7 @@ void registerRemoteFlags(AsyncWebServer& server, WebServerContext& ctx) {
   });
 }
 
-void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
+void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
   server.on("/debug-logs", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     IPAddress remoteIP = req->client()->remoteIP();
     char remoteIPBuf[16];
@@ -291,8 +340,8 @@ void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
     wifiMacBuf[sizeof(wifiMacBuf) - 1] = '\0';
     doc["wifi"]["mac"] = wifiMacBuf;
 
-    doc["websocket"]["connectedClients"] = ctx.realtimeWs.getConnectedClients();
-    doc["websocket"]["isActive"] = ctx.realtimeWs.isRunning();
+    doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
+    doc["websocket"]["isActive"] = g_realtimeWebSocket.isRunning();
 
     doc["automatism"]["forceWakeup"] = ctx.automatism.getForceWakeUp();
     doc["automatism"]["mailNotif"] = ctx.automatism.isEmailEnabled();
@@ -314,6 +363,11 @@ void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
 
     Serial.println("[Web] 📤 Debug logs sent");
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    if (!response) {
+      Serial.println("[Web] ❌ Échec beginResponseStream pour /debug-logs");
+      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      return;
+    }
     response->addHeader("Cache-Control", "no-cache");
     response->addHeader("Access-Control-Allow-Origin", "*");
     serializeJson(doc, *response);
@@ -321,7 +375,7 @@ void registerDebugLogs(AsyncWebServer& server, WebServerContext& ctx) {
   });
 }
 
-void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
+void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
   server.on("/json", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
     AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
     if (response) {
@@ -349,7 +403,8 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
 
   server.on("/json", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     ctx.automatism.notifyLocalWebActivity();
-    if (!ctx.ensureHeap(req, ctx.jsonMinHeapBytes, F("/json"))) {
+    const uint32_t jsonMinHeapBytes = 50000;
+    if (!ensureHeapForRoute(req, jsonMinHeapBytes, F("/json"))) {
       return;
     }
 
@@ -478,6 +533,12 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
     (*doc)["timestamp"] = millis();
 
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    if (!response) {
+      Serial.println("[Web] ❌ Échec beginResponseStream pour /json");
+      delete doc;
+      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      return;
+    }
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
@@ -491,15 +552,15 @@ void registerJsonEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
   });
 }
 
-void registerVersionEndpoint(AsyncWebServer& server, WebServerContext& ctx) {
+void registerVersionEndpoint(AsyncWebServer& server, AppContext& ctx) {
   server.on("/version", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     StaticJsonDocument<64> doc;
     doc["version"] = ProjectConfig::VERSION;
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 }
 
-void registerPumpStats(AsyncWebServer& server, WebServerContext& ctx) {
+void registerPumpStats(AsyncWebServer& server, AppContext& ctx) {
   server.on("/pumpstats", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     auto& acts = ctx.actuators;
     const unsigned long now = millis();
@@ -533,7 +594,7 @@ void registerPumpStats(AsyncWebServer& server, WebServerContext& ctx) {
   });
 }
 
-void registerOptimizationStats(AsyncWebServer& server, WebServerContext& ctx) {
+void registerOptimizationStats(AsyncWebServer& server, AppContext& ctx) {
   server.on("/optimization-stats", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
 
@@ -544,14 +605,7 @@ void registerOptimizationStats(AsyncWebServer& server, WebServerContext& ctx) {
     doc["jsonPool"]["totalCapacity"] = 0;
     doc["jsonPool"]["usedCapacity"] = 0;
 
-    auto sensorCacheStats = sensorCache.getStats();
-    doc["sensorCache"]["lastUpdate"] = sensorCacheStats.lastUpdate;
-    doc["sensorCache"]["cacheAge"] = sensorCacheStats.cacheAge;
-    doc["sensorCache"]["cacheDuration"] = sensorCacheStats.cacheDuration;
-    doc["sensorCache"]["isValid"] = sensorCacheStats.isValid;
-    doc["sensorCache"]["freeHeap"] = sensorCacheStats.freeHeap;
-
-    auto wsStats = ctx.realtimeWs.getStats();
+    auto wsStats = g_realtimeWebSocket.getStats();
     doc["webSocket"]["connectedClients"] = wsStats.connectedClients;
     doc["webSocket"]["isActive"] = wsStats.isActive;
     doc["webSocket"]["lastBroadcast"] = wsStats.lastBroadcast;
@@ -575,7 +629,7 @@ void registerOptimizationStats(AsyncWebServer& server, WebServerContext& ctx) {
 
     doc["timestamp"] = millis();
 
-    ctx.sendJson(req, doc);
+    sendJsonResponse(req, doc);
   });
 }
 
@@ -583,7 +637,7 @@ void registerOptimizationStats(AsyncWebServer& server, WebServerContext& ctx) {
 
 namespace WebRoutes {
 
-void registerStatusRoutes(AsyncWebServer& server, WebServerContext& ctx) {
+void registerStatusRoutes(AsyncWebServer& server, AppContext& ctx) {
   registerWakeRoutes(server, ctx);
   registerWifiStatus(server, ctx);
   registerServerStatus(server, ctx);

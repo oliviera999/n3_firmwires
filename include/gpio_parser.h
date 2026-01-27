@@ -30,10 +30,18 @@ private:
     // Mapper GPIO vers clés de configuration (retourne nullptr si non mappé)
     static const char* mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value);
     
-    // Helpers conversion
-    static bool parseBool(JsonVariantConst v);
-    static int parseInt(JsonVariantConst v);
-    static float parseFloat(JsonVariantConst v);
-    // Parse string et écrit dans le buffer fourni, retourne la taille écrite
-    static size_t parseString(JsonVariantConst v, char* buffer, size_t bufferSize);
+    // Helper conversion bool (gère strings "true"/"1"/"on")
+    static inline bool parseBool(JsonVariantConst v) {
+        if (v.is<bool>()) return v.as<bool>();
+        if (v.is<int>()) return v.as<int>() == 1;
+        if (v.is<const char*>()) {
+            const char* s = v.as<const char*>();
+            // Comparaison case-insensitive
+            if (strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0 || 
+                strcasecmp(s, "on") == 0 || strcasecmp(s, "checked") == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 };

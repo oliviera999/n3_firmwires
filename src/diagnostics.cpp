@@ -66,19 +66,8 @@ Diagnostics::Diagnostics()
   memset(_stats.lastOtaError, 0, sizeof(_stats.lastOtaError));
   _stats.panicInfo.hasPanicInfo = false;
   memset(_stats.panicInfo.exceptionCause, 0, sizeof(_stats.panicInfo.exceptionCause));
-  _stats.panicInfo.exceptionAddress = 0;
-  _stats.panicInfo.excvaddr = 0;
-  memset(_stats.panicInfo.taskName, 0, sizeof(_stats.panicInfo.taskName));
-  _stats.panicInfo.core = 0;
-  memset(_stats.panicInfo.additionalInfo, 0, sizeof(_stats.panicInfo.additionalInfo));
   _stats.crashStatus.hasCrashInfo = false;
   _stats.crashStatus.resetReason = -1;
-  _stats.crashStatus.crashUptimeSec = 0;
-  _stats.crashStatus.crashEpoch = 0;
-  _stats.crashStatus.coredumpPresent = false;
-  _stats.crashStatus.coredumpSize = 0;
-  memset(_stats.crashStatus.coredumpFormat, 0, sizeof(_stats.crashStatus.coredumpFormat));
-  strncpy(_stats.crashStatus.coredumpFormat, "UNKNOWN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
 }
 
 void Diagnostics::begin() {
@@ -120,9 +109,8 @@ void Diagnostics::begin() {
   _stats.lastRebootReason[sizeof(_stats.lastRebootReason) - 1] = '\0';
   
   loadCrashStatus();
-  updateCoredumpStatus(false);
   
-  // Crash: capturer les infos et les persister
+  // Crash: capturer les infos et les persister (simplifié)
   if (isCrashResetReason(resetReason)) {
     capturePanicInfo();
     if (_stats.panicInfo.hasPanicInfo) {
@@ -130,17 +118,9 @@ void Diagnostics::begin() {
     }
     _stats.crashStatus.hasCrashInfo = true;
     _stats.crashStatus.resetReason = static_cast<int>(resetReason);
-    unsigned long crashUptimeUL = 0;
-    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS,
-                           "diag_lastUptime",
-                           crashUptimeUL,
-                           0);
-    _stats.crashStatus.crashUptimeSec = static_cast<uint32_t>(crashUptimeUL);
-    time_t now = time(nullptr);
-    _stats.crashStatus.crashEpoch = (now > 100000) ? static_cast<uint32_t>(now) : 0;
-    updateCoredumpStatus(true);
+    saveCrashStatus();
   } else {
-    // Reboot normal: charger les infos de panic/crash précédentes si présentes
+    // Reboot normal: charger les infos de panic précédentes si présentes
     loadPanicInfo();
   }
   
@@ -177,7 +157,6 @@ void Diagnostics::loadFromNvs() {
   _stats.lastRebootReason[sizeof(_stats.lastRebootReason) - 1] = '\0';
   loadCrashStatus();
   loadPanicInfo();
-  updateCoredumpStatus(false);
 }
 
 const char* Diagnostics::getRebootReason() const {
@@ -352,17 +331,15 @@ void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   doc["otaOk"] = _stats.otaSuccessCount;
   doc["otaKo"] = _stats.otaFailCount;
   if (strlen(_stats.lastOtaError) > 0) doc["lastOtaError"] = _stats.lastOtaError;
-  if (_stats.crashStatus.hasCrashInfo || _stats.crashStatus.coredumpPresent) {
+  if (_stats.crashStatus.hasCrashInfo) {
     ArduinoJson::JsonObject crash = doc["crash"].to<ArduinoJson::JsonObject>();
     crash["hasCrashInfo"] = _stats.crashStatus.hasCrashInfo;
     crash["resetReason"] = _stats.crashStatus.resetReason;
     crash["resetReasonLabel"] = resetReasonToString(
         static_cast<esp_reset_reason_t>(_stats.crashStatus.resetReason));
-    crash["crashUptimeSec"] = _stats.crashStatus.crashUptimeSec;
-    crash["crashEpoch"] = _stats.crashStatus.crashEpoch;
-    crash["coredumpPending"] = _stats.crashStatus.coredumpPresent;
-    crash["coredumpSize"] = _stats.crashStatus.coredumpSize;
-    crash["coredumpFormat"] = _stats.crashStatus.coredumpFormat;
+  }
+  if (_stats.panicInfo.hasPanicInfo) {
+    doc["panicCause"] = _stats.panicInfo.exceptionCause;
   }
 } 
 
@@ -418,57 +395,14 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
   if (_stats.panicInfo.hasPanicInfo) {
     written = snprintf(buffer + offset, remaining,
                       "\n⚠️ DÉTAILS DU PANIC (Guru Meditation) ⚠️\n"
-                      "Exception: %s\n"
-                      "Adresse PC: 0x%08X\n",
-                      _stats.panicInfo.exceptionCause, _stats.panicInfo.exceptionAddress);
+                      "Exception: %s\n",
+                      _stats.panicInfo.exceptionCause);
     if (written < 0 || (size_t)written >= remaining) {
       buffer[bufferSize - 1] = '\0';
       return;
     }
     offset += written;
     remaining -= written;
-    
-    if (_stats.panicInfo.excvaddr != 0) {
-      written = snprintf(buffer + offset, remaining,
-                         "Adresse mémoire fautive: 0x%08X\n", _stats.panicInfo.excvaddr);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
-    
-    if (strlen(_stats.panicInfo.taskName) > 0) {
-      written = snprintf(buffer + offset, remaining, "Tâche: %s\n", _stats.panicInfo.taskName);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
-    
-    if (_stats.panicInfo.core >= 0) {
-      written = snprintf(buffer + offset, remaining, "CPU Core: %d\n", _stats.panicInfo.core);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
-    
-    if (strlen(_stats.panicInfo.additionalInfo) > 0) {
-      written = snprintf(buffer + offset, remaining, "Info supplémentaire: %s\n", 
-                        _stats.panicInfo.additionalInfo);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
     
     written = snprintf(buffer + offset, remaining, "\n");
     if (written < 0 || (size_t)written >= remaining) {
@@ -491,75 +425,15 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
     }
     offset += written;
     remaining -= written;
-    
-    if (_stats.crashStatus.crashUptimeSec > 0) {
-      written = snprintf(buffer + offset, remaining, "Uptime avant crash: %u s\n",
-                         _stats.crashStatus.crashUptimeSec);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
-    
-    if (_stats.crashStatus.crashEpoch > 0) {
-      written = snprintf(buffer + offset, remaining, "Epoch crash/boot: %u\n",
-                         _stats.crashStatus.crashEpoch);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
   }
   
-  written = snprintf(buffer + offset, remaining, "Core Dump: ");
+  written = snprintf(buffer + offset, remaining, "Core Dump: Géré par ESP-IDF (configuré dans platformio.ini)\n");
   if (written < 0 || (size_t)written >= remaining) {
     buffer[bufferSize - 1] = '\0';
     return;
   }
   offset += written;
   remaining -= written;
-  
-  if (_stats.crashStatus.coredumpPresent) {
-    written = snprintf(buffer + offset, remaining, "PRÉSENT");
-    if (written < 0 || (size_t)written >= remaining) {
-      buffer[bufferSize - 1] = '\0';
-      return;
-    }
-    offset += written;
-    remaining -= written;
-    
-    if (_stats.crashStatus.coredumpSize > 0) {
-      written = snprintf(buffer + offset, remaining, " (%u bytes)", _stats.crashStatus.coredumpSize);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
-    
-    if (strlen(_stats.crashStatus.coredumpFormat) > 0) {
-      written = snprintf(buffer + offset, remaining, " - %s", _stats.crashStatus.coredumpFormat);
-      if (written < 0 || (size_t)written >= remaining) {
-        buffer[bufferSize - 1] = '\0';
-        return;
-      }
-      offset += written;
-      remaining -= written;
-    }
-  } else {
-    written = snprintf(buffer + offset, remaining, "ABSENT");
-    if (written < 0 || (size_t)written >= remaining) {
-      buffer[bufferSize - 1] = '\0';
-      return;
-    }
-    offset += written;
-    remaining -= written;
-  }
   
   written = snprintf(buffer + offset, remaining, "\n");
   if (written < 0 || (size_t)written >= remaining) {
@@ -769,163 +643,40 @@ void Diagnostics::capturePanicInfo() {
     return;
   }
   
-  // Obtenir la raison RTC plus détaillée
-  RESET_REASON rtcReason = rtc_get_reset_reason(0);
-  
   _stats.panicInfo.hasPanicInfo = true;
-  _stats.panicInfo.exceptionAddress = 0;
-  _stats.panicInfo.excvaddr = 0;
-  _stats.panicInfo.core = 0;
-  _stats.panicInfo.taskName[0] = '\0';
-  _stats.panicInfo.additionalInfo[0] = '\0';
   
-  // Décoder la raison RTC en détails
-  // Note: On utilise seulement les constantes disponibles dans toutes les versions du SDK
-  const char* exceptionCauseStr = nullptr;
-  switch (rtcReason) {
-    case RTCWDT_RTC_RESET:
-      exceptionCauseStr = "RTC Watchdog Reset";
-      break;
-#ifdef TGWDT_CPU_RESET
-    case TGWDT_CPU_RESET:
-      exceptionCauseStr = "Timer Group Watchdog (CPU)";
-      break;
-#endif
-    case TG0WDT_SYS_RESET:
-      exceptionCauseStr = "Timer Group 0 Watchdog (System)";
-      break;
-    case TG1WDT_SYS_RESET:
-      exceptionCauseStr = "Timer Group 1 Watchdog (System)";
-      break;
-#ifdef SW_CPU_RESET
-    case SW_CPU_RESET:
-      exceptionCauseStr = "Software CPU Reset";
-      break;
-#endif
-    case RTCWDT_CPU_RESET:
-      exceptionCauseStr = "RTC Watchdog CPU Reset";
-      break;
-    case INTRUSION_RESET:
-      exceptionCauseStr = "Intrusion Test Reset";
-      break;
-    case DEEPSLEEP_RESET:
-      exceptionCauseStr = "Deep Sleep Reset";
-      break;
-#ifdef SDIO_RESET
-    case SDIO_RESET:
-      exceptionCauseStr = "SDIO Reset";
-      break;
-#endif
-    case POWERON_RESET:
-      exceptionCauseStr = "Power-On Reset";
-      break;
-#ifdef SW_RESET
-    case SW_RESET:
-      exceptionCauseStr = "Software Reset";
-      break;
-#endif
-    case 12: // Code observé dans les logs - Watchdog timeout probable
-      exceptionCauseStr = "Watchdog Timeout (RTC code 12)";
-      break;
-    default:
-      // Pour les codes inconnus, on affiche le code numérique
-      exceptionCauseStr = "Unknown Exception";
-      snprintf(_stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo),
-               " (Reset code: %d)", (int)rtcReason);
-      break;
-  }
-  if (exceptionCauseStr) {
-    strncpy(_stats.panicInfo.exceptionCause, exceptionCauseStr, sizeof(_stats.panicInfo.exceptionCause) - 1);
-    _stats.panicInfo.exceptionCause[sizeof(_stats.panicInfo.exceptionCause) - 1] = '\0';
-  }
+  // Capturer seulement la cause (simplifié)
+  const char* reasonStr = getRebootReason();
+  strncpy(_stats.panicInfo.exceptionCause, reasonStr, sizeof(_stats.panicInfo.exceptionCause) - 1);
+  _stats.panicInfo.exceptionCause[sizeof(_stats.panicInfo.exceptionCause) - 1] = '\0';
   
-  // Vérifier les deux cores pour identifier lequel a paniqué
-  RESET_REASON rtcReason1 = rtc_get_reset_reason(1);
-  if (rtcReason1 != rtcReason && rtcReason1 != NO_MEAN) {
-    _stats.panicInfo.core = 1;
-    size_t currentLen = strlen(_stats.panicInfo.additionalInfo);
-    if (currentLen > 0) {
-      snprintf(_stats.panicInfo.additionalInfo + currentLen, 
-               sizeof(_stats.panicInfo.additionalInfo) - currentLen,
-               "; Core 1 reason differs: %d", (int)rtcReason1);
-    } else {
-      snprintf(_stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo),
-               "Core 1 reason differs: %d", (int)rtcReason1);
-    }
-  }
-  
-  // Ajouter le code ESP reset reason pour plus de détails
-  size_t currentLen = strlen(_stats.panicInfo.additionalInfo);
-  if (currentLen > 0) {
-    snprintf(_stats.panicInfo.additionalInfo + currentLen,
-             sizeof(_stats.panicInfo.additionalInfo) - currentLen,
-             "; ESP reset reason: %d, RTC reason: %d", (int)resetReason, (int)rtcReason);
-  } else {
-    snprintf(_stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo),
-             "ESP reset reason: %d, RTC reason: %d", (int)resetReason, (int)rtcReason);
-  }
-  
-  // Note: Les détails supplémentaires (PC, registres, stack trace) nécessitent :
-  // 1. Activation du Core Dump dans menuconfig
-  // 2. Partition dédiée pour stocker le coredump
-  // 3. Analyse post-mortem avec esp-coredump.py
-  // 
-  // Pour activer, ajouter dans platformio.ini:
-  //   board_build.partitions = partitions_with_coredump.csv
-  //   build_flags = -DCONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH=1
-  //
-  // Pour l'instant, on capture ce qui est disponible via RTC memory
-  
-  Serial.printf("[Diagnostics] 🔍 Panic capturé: %s (Core %d)\n", 
-                _stats.panicInfo.exceptionCause, 
-                _stats.panicInfo.core);
-  Serial.printf("[Diagnostics] ℹ️ Pour plus de détails, consulter les logs série complets\n");
-  Serial.printf("[Diagnostics] ℹ️ ou activer le Core Dump pour analyse post-mortem\n");
+  Serial.printf("[Diagnostics] 🔍 Panic capturé: %s\n", _stats.panicInfo.exceptionCause);
 }
 
-// Sauvegarder les informations de panic dans NVS
+// Sauvegarder les informations de panic dans NVS (simplifié)
 void Diagnostics::savePanicInfo() {
   if (!_stats.panicInfo.hasPanicInfo) return;
   
   g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", true);
   g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause);
-  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress);
-  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName);
-  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo);
   
   Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
 }
 
-// Charger les informations de panic depuis NVS
+// Charger les informations de panic depuis NVS (simplifié)
 void Diagnostics::loadPanicInfo() {
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", _stats.panicInfo.hasPanicInfo, false);
   
   if (_stats.panicInfo.hasPanicInfo) {
     g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause, sizeof(_stats.panicInfo.exceptionCause), "Unknown");
-    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicAddr", _stats.panicInfo.exceptionAddress, 0);
-    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_panicExcv", _stats.panicInfo.excvaddr, 0);
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicTask", _stats.panicInfo.taskName, sizeof(_stats.panicInfo.taskName), "");
-    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_panicCore", _stats.panicInfo.core, -1);
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicInfo", _stats.panicInfo.additionalInfo, sizeof(_stats.panicInfo.additionalInfo), "");
-    
     Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
   }
-  
-  // NOTE: Ne pas nettoyer immédiatement - les infos sont nécessaires pour le rapport de boot
-  // Le nettoyage sera fait après l'envoi du mail de boot (app.cpp)
 }
 
-// Nettoyer les informations de panic dans NVS
+// Nettoyer les informations de panic dans NVS (simplifié)
 void Diagnostics::clearPanicInfo() {
   g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_hasPanic");
   g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCause");
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicAddr");
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicExcv");
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicTask");
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCore");
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicInfo");
   _stats.panicInfo.hasPanicInfo = false;
 }
 
@@ -937,47 +688,11 @@ void Diagnostics::clearPanicInfoAfterReport() {
   }
 }
 
-bool Diagnostics::clearCoreDump() {
-#if defined(CONFIG_ESP_COREDUMP_ENABLE) && (CONFIG_ESP_COREDUMP_ENABLE == 1)
-  bool cleared = false;
-  if (esp_core_dump_image_erase) {
-    cleared = (esp_core_dump_image_erase() == ESP_OK);
-  }
-  if (!cleared) {
-    const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
-                                                           ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
-                                                           nullptr);
-    if (part) {
-      cleared = (esp_partition_erase_range(part, 0, part->size) == ESP_OK);
-    }
-  }
-
-  if (cleared) {
-    _stats.crashStatus.coredumpPresent = false;
-    _stats.crashStatus.coredumpSize = 0;
-    Serial.println(F("[Diagnostics] ✅ Core dump effacé"));
-    if (_stats.crashStatus.hasCrashInfo) {
-      saveCrashStatus();
-    }
-  } else {
-    Serial.println(F("[Diagnostics] ❌ Échec effacement core dump"));
-  }
-  return cleared;
-#else
-  Serial.println(F("[Diagnostics] ⚠️ Core dump désactivé - pas d'effacement"));
-  return false;
-#endif
-}
+// clearCoreDump supprimé - ESP-IDF gère déjà le coredump (configuré dans platformio.ini)
 
 void Diagnostics::loadCrashStatus() {
   _stats.crashStatus.hasCrashInfo = false;
   _stats.crashStatus.resetReason = -1;
-  _stats.crashStatus.crashUptimeSec = 0;
-  _stats.crashStatus.crashEpoch = 0;
-  _stats.crashStatus.coredumpPresent = false;
-  _stats.crashStatus.coredumpSize = 0;
-  strncpy(_stats.crashStatus.coredumpFormat, "UNKNOWN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
-  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
 
   bool hasCrash = false;
   g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_has", hasCrash, false);
@@ -987,17 +702,6 @@ void Diagnostics::loadCrashStatus() {
   }
 
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason, -1);
-  unsigned long crashUptimeUL = 0, crashEpochUL = 0;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_uptime", crashUptimeUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_epoch", crashEpochUL, 0);
-  _stats.crashStatus.crashUptimeSec = static_cast<uint32_t>(crashUptimeUL);
-  _stats.crashStatus.crashEpoch = static_cast<uint32_t>(crashEpochUL);
-  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent, false);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize, 0);
-  char tempStr[64];
-  g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", tempStr, sizeof(tempStr), "UNKNOWN");
-  strncpy(_stats.crashStatus.coredumpFormat, tempStr, sizeof(_stats.crashStatus.coredumpFormat) - 1);
-  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
 }
 
 void Diagnostics::saveCrashStatus() {
@@ -1006,58 +710,6 @@ void Diagnostics::saveCrashStatus() {
   }
   g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_has", true);
   g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason);
-  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_uptime", _stats.crashStatus.crashUptimeSec);
-  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_epoch", _stats.crashStatus.crashEpoch);
-  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_coredump", _stats.crashStatus.coredumpPresent);
-  g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "crash_cd_size", _stats.crashStatus.coredumpSize);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "crash_cd_fmt", _stats.crashStatus.coredumpFormat);
 }
 
-void Diagnostics::updateCoredumpStatus(bool persistIfCrash) {
-  _stats.crashStatus.coredumpPresent = false;
-  _stats.crashStatus.coredumpSize = 0;
-
-#if defined(CONFIG_ESP_COREDUMP_ENABLE) && (CONFIG_ESP_COREDUMP_ENABLE == 1)
-  strncpy(_stats.crashStatus.coredumpFormat, "UNKNOWN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
-  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
-  #if defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF) && (CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF == 1)
-  strncpy(_stats.crashStatus.coredumpFormat, "ELF", sizeof(_stats.crashStatus.coredumpFormat) - 1);
-  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
-  #elif defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_BIN) && (CONFIG_ESP_COREDUMP_DATA_FORMAT_BIN == 1)
-  strncpy(_stats.crashStatus.coredumpFormat, "BIN", sizeof(_stats.crashStatus.coredumpFormat) - 1);
-  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
-  #endif
-
-  size_t imageAddr = 0;
-  size_t imageSize = 0;
-  bool hasDump = false;
-  if (esp_core_dump_image_get) {
-    if (esp_core_dump_image_get(&imageAddr, &imageSize) == ESP_OK && imageSize > 0) {
-      hasDump = true;
-      _stats.crashStatus.coredumpSize = static_cast<uint32_t>(imageSize);
-    }
-  }
-  if (!hasDump) {
-    const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
-                                                           ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
-                                                           nullptr);
-    if (part) {
-      uint8_t header[32];
-      if (esp_partition_read(part, 0, header, sizeof(header)) == ESP_OK) {
-        if (!isBufferEmpty(header, sizeof(header))) {
-          hasDump = true;
-          _stats.crashStatus.coredumpSize = static_cast<uint32_t>(part->size);
-        }
-      }
-    }
-  }
-  _stats.crashStatus.coredumpPresent = hasDump;
-#else
-  strncpy(_stats.crashStatus.coredumpFormat, "DISABLED", sizeof(_stats.crashStatus.coredumpFormat) - 1);
-  _stats.crashStatus.coredumpFormat[sizeof(_stats.crashStatus.coredumpFormat) - 1] = '\0';
-#endif
-
-  if (persistIfCrash && _stats.crashStatus.hasCrashInfo) {
-    saveCrashStatus();
-  }
-}
+// updateCoredumpStatus supprimé - ESP-IDF gère déjà le coredump (configuré dans platformio.ini)

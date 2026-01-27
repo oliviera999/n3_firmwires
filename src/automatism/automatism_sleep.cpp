@@ -480,7 +480,7 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     // Envoi du mail de mise en veille (si notifications activées)
     if (core.isEmailEnabled()) {
         const char* reason = tideAscending ? "Marée montante détectée" : "Délai d'inactivité atteint";
-        core._mailer.sendSleepMail(reason, sleepDurationSec, r);
+        core.sendSleepMail(reason, sleepDurationSec, r);
     }
     
     // Appel à la veille
@@ -495,7 +495,7 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     if (core.isEmailEnabled()) {
         esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
         const char* wakeReason = (cause == ESP_SLEEP_WAKEUP_TIMER) ? "Timer" : "Autre";
-        core._mailer.sendWakeMail(wakeReason, actualSleptSec, r);
+        core.sendWakeMail(wakeReason, actualSleptSec, r);
     }
     
     // Le système est entré en veille et s'est réveillé

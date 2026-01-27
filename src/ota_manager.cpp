@@ -16,7 +16,6 @@
 #include "config.h"
 #include "mailer.h"
 #include "automatism.h"
-#include "event_log.h"
 #include "diagnostics.h"
 #include "task_monitor.h"
 
@@ -57,7 +56,7 @@ OTAManager::~OTAManager() {
 
 void OTAManager::log(const char* message) {
     Serial.printf("[OTA] %s\n", message);
-    EventLog::addf("OTA: %s", message);
+    Serial.printf("[Event] OTA: %s\n", message);
     if (m_statusCallback) {
         m_statusCallback(message);
     }
@@ -65,7 +64,7 @@ void OTAManager::log(const char* message) {
 
 void OTAManager::logError(const char* error) {
     Serial.printf("[OTA] ❌ %s\n", error);
-    EventLog::addf("OTA ERROR: %s", error);
+    Serial.printf("[Event] OTA ERROR: %s\n", error);
     if (m_errorCallback) {
         m_errorCallback(error);
     }
@@ -79,7 +78,7 @@ void OTAManager::logProgress(int progress, size_t downloaded, size_t total, floa
     Serial.printf("[OTA] 📊 Progression: %d%% (%s/%s) - Vitesse: %s\n", 
                  progress, downloadedBuf, totalBuf, speedBuf);
     if ((progress % 10) == 0) {
-        EventLog::addf("OTA progress %d%%", progress);
+        Serial.printf("[Event] OTA progress %d%%\n", progress);
     }
     if (m_progressCallback) {
         m_progressCallback(progress);
@@ -1258,7 +1257,7 @@ void OTAManager::updateTask(void* parameter) {
         TaskMonitor::logSnapshot(successSnapshot, "ota-task-success");
         TaskMonitor::logDiff(baselineSnapshot, successSnapshot, "ota-task");
         TaskMonitor::detectAnomalies(successSnapshot, "ota-task-success");
-        EventLog::addf("OTA success %s -> %s",
+        Serial.printf("[Event] OTA success %s -> %s\n",
                        ota->getCurrentVersion(),
                        ota->getRemoteVersion());
 
@@ -1275,7 +1274,7 @@ void OTAManager::updateTask(void* parameter) {
         TaskMonitor::logSnapshot(failureSnapshot, "ota-task-failure");
         TaskMonitor::logDiff(baselineSnapshot, failureSnapshot, "ota-task");
         TaskMonitor::detectAnomalies(failureSnapshot, "ota-task-failure");
-        EventLog::addf("OTA failure %s -> %s",
+        Serial.printf("[Event] OTA failure %s -> %s\n",
                        ota->getCurrentVersion(),
                        ota->getRemoteVersion());
         
@@ -1919,7 +1918,7 @@ bool OTAManager::performUpdate() {
   TaskMonitor::Snapshot prepareSnapshot = TaskMonitor::collectSnapshot();
   TaskMonitor::logSnapshot(prepareSnapshot, "ota-perform");
   TaskMonitor::detectAnomalies(prepareSnapshot, "ota-perform");
-  EventLog::addf("OTA perform start remote=%s url=%s size=%d",
+  Serial.printf("[Event] OTA perform start remote=%s url=%s size=%d\n",
                  m_remoteVersion,
                  m_firmwareUrl,
                  m_firmwareSize);

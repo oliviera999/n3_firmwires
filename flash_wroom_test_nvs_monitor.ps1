@@ -441,10 +441,55 @@ NVS: Reinitialisee avant monitoring
         Write-Host "OK - Analyse sauvegardee: $analysisFile" -ForegroundColor Cyan
         
         # =============================================================================
-        # ETAPE 5: GENERATION DU RAPPORT MARKDOWN
+        # ETAPE 5: DIAGNOSTIC SERVEUR DISTANT
         # =============================================================================
         Write-Host ""
-        Write-Host "=== ETAPE 5: GENERATION DU RAPPORT ===" -ForegroundColor Cyan
+        Write-Host "=== ETAPE 5: DIAGNOSTIC SERVEUR DISTANT ===" -ForegroundColor Cyan
+        Write-Host ""
+        
+        if (Test-Path ".\diagnostic_serveur_distant.ps1") {
+            Write-Host "Execution du diagnostic serveur distant..." -ForegroundColor Yellow
+            & .\diagnostic_serveur_distant.ps1 -LogFile $logFile
+            Write-Host "OK - Diagnostic serveur distant termine" -ForegroundColor Green
+        } else {
+            Write-Host "WARNING - Script diagnostic_serveur_distant.ps1 non trouve" -ForegroundColor Yellow
+        }
+        
+        # =============================================================================
+        # ETAPE 6: DIAGNOSTIC MAILS
+        # =============================================================================
+        Write-Host ""
+        Write-Host "=== ETAPE 6: DIAGNOSTIC MAILS ===" -ForegroundColor Cyan
+        Write-Host ""
+        
+        if (Test-Path ".\check_emails_from_log.ps1") {
+            Write-Host "Execution du diagnostic mails..." -ForegroundColor Yellow
+            & .\check_emails_from_log.ps1 -LogFile $logFile
+            Write-Host "OK - Diagnostic mails termine" -ForegroundColor Green
+        } else {
+            Write-Host "WARNING - Script check_emails_from_log.ps1 non trouve" -ForegroundColor Yellow
+        }
+        
+        # =============================================================================
+        # ETAPE 7: ANALYSE EXHAUSTIVE
+        # =============================================================================
+        Write-Host ""
+        Write-Host "=== ETAPE 7: ANALYSE EXHAUSTIVE ===" -ForegroundColor Cyan
+        Write-Host ""
+        
+        if (Test-Path ".\analyze_log_exhaustive.ps1") {
+            Write-Host "Execution de l'analyse exhaustive..." -ForegroundColor Yellow
+            & .\analyze_log_exhaustive.ps1 -LogFile $logFile
+            Write-Host "OK - Analyse exhaustive terminee" -ForegroundColor Green
+        } else {
+            Write-Host "WARNING - Script analyze_log_exhaustive.ps1 non trouve" -ForegroundColor Yellow
+        }
+        
+        # =============================================================================
+        # ETAPE 8: GENERATION DU RAPPORT MARKDOWN COMPLET
+        # =============================================================================
+        Write-Host ""
+        Write-Host "=== ETAPE 8: GENERATION DU RAPPORT COMPLET ===" -ForegroundColor Cyan
         
         $report = @"
 # Rapport de Flash et Monitoring - WROOM-TEST avec NVS Reinitialisee
@@ -572,6 +617,21 @@ $(if ($status -eq "STABLE") {
         
         $report | Out-File -FilePath $reportFile -Encoding UTF8
         Write-Host "OK - Rapport sauvegarde: $reportFile" -ForegroundColor Cyan
+        
+        # =============================================================================
+        # ETAPE 9: GENERATION DU RAPPORT DE DIAGNOSTIC COMPLET
+        # =============================================================================
+        Write-Host ""
+        Write-Host "=== ETAPE 9: GENERATION DU RAPPORT DE DIAGNOSTIC COMPLET ===" -ForegroundColor Cyan
+        Write-Host ""
+        
+        if (Test-Path ".\generate_diagnostic_report.ps1") {
+            Write-Host "Generation du rapport de diagnostic complet..." -ForegroundColor Yellow
+            & .\generate_diagnostic_report.ps1 -LogFile $logFile
+            Write-Host "OK - Rapport de diagnostic complet genere" -ForegroundColor Green
+        } else {
+            Write-Host "WARNING - Script generate_diagnostic_report.ps1 non trouve" -ForegroundColor Yellow
+        }
         
         # Afficher un resume
         Write-Host ""

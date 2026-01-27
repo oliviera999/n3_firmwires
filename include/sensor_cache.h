@@ -75,31 +75,6 @@ public:
         lastUpdate = 0;
         xSemaphoreGive(mutex);
     }
-    
-    /**
-     * Statistiques du cache (simplifiées)
-     */
-    struct CacheStats {
-        unsigned long lastUpdate;
-        unsigned long cacheAge;
-        unsigned long cacheDuration;
-        bool isValid;
-        size_t freeHeap;
-    };
-    
-    CacheStats getStats() const {
-        CacheStats stats = {0, 0, CACHE_DURATION_MS, false, 0};
-        if (!mutex) return stats;
-        
-        xSemaphoreTake(mutex, portMAX_DELAY);
-        unsigned long now = millis();
-        stats.lastUpdate = lastUpdate;
-        stats.cacheAge = now - lastUpdate;
-        stats.isValid = (now - lastUpdate) <= CACHE_DURATION_MS;
-        stats.freeHeap = ESP.getFreeHeap();
-        xSemaphoreGive(mutex);
-        return stats;
-    }
 };
 
 // Instance globale du cache de capteurs

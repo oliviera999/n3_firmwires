@@ -13,6 +13,13 @@
  *       // Faire la connexion TLS
  *       TLSMutex::release();
  *   }
+ * 
+ * Note importante:
+ * - Les opérations réseau via netTask (via g_netQueue) sont déjà sérialisées
+ *   et n'ont PAS besoin de TLSMutex (sérialisation naturelle par la queue)
+ * - TLSMutex est nécessaire uniquement pour les appels directs à web_client:
+ *   * mailer.cpp: sendAlertSync() - appel direct avec TLSMutex
+ *   * app_tasks.cpp: netTask boot - appel direct fetchRemoteState()
  */
 
 #include <freertos/FreeRTOS.h>

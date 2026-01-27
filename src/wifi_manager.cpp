@@ -1,7 +1,6 @@
 #include "wifi_manager.h"
 #include "display_view.h"
 #include "config.h"
-#include "event_log.h"
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -38,7 +37,7 @@ bool WifiManager::connect(DisplayView* disp) {
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
   if (n <= 0) {
     Serial.println(F("[WiFi] ❌ Aucun réseau détecté (ou scan erreur)"));
-    EventLog::add("WiFi scan: no networks");
+    Serial.println("[Event] WiFi scan: no networks");
   } else {
     Serial.printf("[WiFi] 📡 %d réseaux trouvés:\n", n);
     for (int j = 0; j < n; ++j) {
@@ -96,7 +95,7 @@ bool WifiManager::connect(DisplayView* disp) {
       char buf[40]; snprintf(buf,sizeof(buf),"Conn %s", _list[i].ssid);
       show(buf);
       Serial.printf("[WiFi] 🔗 Tentative (vu) %s (RSSI %d dBm, ch %d)...\n", _list[i].ssid, cand[i].rssi, cand[i].chan);
-      EventLog::addf("WiFi try seen %s RSSI=%d ch=%d", _list[i].ssid, cand[i].rssi, cand[i].chan);
+      Serial.printf("[Event] WiFi try seen %s RSSI=%d ch=%d\n", _list[i].ssid, cand[i].rssi, cand[i].chan);
       // Utilise directement le BSSID et le canal détectés pour fiabiliser la connexion
       // Signature: WiFi.begin(ssid, pass, channel, bssid, connect)
       if (cand[i].enc == WIFI_AUTH_OPEN || strlen(_list[i].password) == 0) {
@@ -106,7 +105,7 @@ bool WifiManager::connect(DisplayView* disp) {
       }
     }else{
       Serial.printf("[WiFi] 🔍 Tentative (invisible) %s ...\n", _list[i].ssid);
-      EventLog::addf("WiFi try invisible %s", _list[i].ssid);
+      Serial.printf("[Event] WiFi try invisible %s\n", _list[i].ssid);
       if(strlen(_list[i].password)==0){ WiFi.begin(_list[i].ssid); }
       else { WiFi.begin(_list[i].ssid, _list[i].password); }
     }
@@ -120,7 +119,7 @@ bool WifiManager::connect(DisplayView* disp) {
       char ipBuf[16];
       snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
       Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-      EventLog::addf("WiFi connected %s IP=%s RSSI=%d", _list[i].ssid, ipBuf, WiFi.RSSI());
+      Serial.printf("[Event] WiFi connected %s IP=%s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
       WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
       _connecting = false;
       return true;
@@ -144,7 +143,7 @@ bool WifiManager::connect(DisplayView* disp) {
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm) - 2ème tentative\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-        EventLog::addf("WiFi connected (2nd) %s IP=%s RSSI=%d", _list[i].ssid, ipBuf, WiFi.RSSI());
+        Serial.printf("[Event] WiFi connected (2nd) %s IP=%s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
         WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
         _connecting = false;
         return true;
@@ -155,7 +154,7 @@ bool WifiManager::connect(DisplayView* disp) {
   }
   // Aucun réseau connu disponible ou connexion échouée => AP secours
   Serial.println(F("[WiFi] ❌ Échec de connexion - démarrage AP de secours"));
-  EventLog::add("WiFi connect failed; starting AP");
+  Serial.println("[Event] WiFi connect failed; starting AP");
   show("Echec totale");
   startFallbackAP();
   _connecting = false;
@@ -209,7 +208,7 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
     char ipBuf[16];
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", ssid, ipBuf, WiFi.RSSI());
-    EventLog::addf("WiFi manual connected %s IP=%s RSSI=%d", ssid, ipBuf, WiFi.RSSI());
+    Serial.printf("[Event] WiFi manual connected %s IP=%s RSSI=%d\n", ssid, ipBuf, WiFi.RSSI());
     WiFi.setSleep(true);
     _lastAttemptMs = millis();
     _connecting = false;
@@ -218,7 +217,7 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 
   show("Echec");
   Serial.printf("[WiFi] ❌ Connexion manuelle à %s impossible\n", ssid);
-  EventLog::addf("WiFi manual connect failed %s", ssid);
+  Serial.printf("[Event] WiFi manual connect failed %s\n", ssid);
   _lastAttemptMs = millis();
   _connecting = false;
   return false;
@@ -231,7 +230,7 @@ bool WifiManager::startFallbackAP(){
   snprintf(ssid, sizeof(ssid), "FFP3_%02X%02X", (uint8_t)(chipId>>8), (uint8_t)chipId);
 
   Serial.printf("[WiFi] 🚨 Démarrage AP de secours: %s\n", ssid);
-  EventLog::addf("WiFi AP start %s", ssid);
+  Serial.printf("[Event] WiFi AP start %s\n", ssid);
   if (FEATURE_WIFI_APSTA) {
     WiFi.mode(WIFI_AP_STA);
   } else {
@@ -414,7 +413,7 @@ void WifiManager::checkConnectionStability() {
     
     if (shouldReconnect()) {
       Serial.println("[WiFi] Reconnexion intelligente déclenchée");
-      EventLog::addf("WiFi smart reconnect triggered RSSI=%d", rssi);
+      Serial.printf("[Event] WiFi smart reconnect triggered RSSI=%d\n", rssi);
       
       // Incrémenter compteur de tentatives
       _reconnectAttempts++;
@@ -444,7 +443,7 @@ bool WifiManager::disconnect() {
   strncpy(currentSSIDBuf, WiFi.SSID().c_str(), sizeof(currentSSIDBuf) - 1);
   currentSSIDBuf[sizeof(currentSSIDBuf) - 1] = '\0';
   Serial.printf("[WiFi] Déconnexion manuelle de %s\n", currentSSIDBuf);
-  EventLog::addf("WiFi manual disconnect from %s", currentSSIDBuf);
+  Serial.printf("[Event] WiFi manual disconnect from %s\n", currentSSIDBuf);
   
   // Déconnexion propre
   WiFi.disconnect(false, true);
@@ -466,7 +465,7 @@ bool WifiManager::reconnect(DisplayView* disp) {
   }
   
   Serial.println(F("[WiFi] Reconnexion manuelle demandée"));
-  EventLog::add("WiFi manual reconnect requested");
+  Serial.println("[Event] WiFi manual reconnect requested");
   
   // Reset des compteurs pour permettre une reconnexion immédiate
   _lastAttemptMs = 0;
@@ -478,10 +477,10 @@ bool WifiManager::reconnect(DisplayView* disp) {
   
   if (success) {
     Serial.println(F("[WiFi] Reconnexion manuelle réussie"));
-    EventLog::add("WiFi manual reconnect successful");
+    Serial.println("[Event] WiFi manual reconnect successful");
   } else {
     Serial.println(F("[WiFi] Reconnexion manuelle échouée"));
-    EventLog::add("WiFi manual reconnect failed");
+    Serial.println("[Event] WiFi manual reconnect failed");
   }
   
   return success;

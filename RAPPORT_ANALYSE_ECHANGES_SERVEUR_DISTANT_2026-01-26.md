@@ -1,6 +1,6 @@
 # Rapport d'Analyse - Échanges avec le Serveur Distant
 **Date**: 26 janvier 2026  
-**Version**: 11.157 (post-correction queues)  
+**Version**: 11.156 (post-correction queues)  
 **Fichier log**: monitor_wroom_test_2026-01-26_14-26-16.log  
 **Durée**: 3 minutes
 

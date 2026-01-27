@@ -1,0 +1,46 @@
+---
+alwaysApply: true
+---
+
+---
+description: Conventions firmware ESP32 (C++/Arduino) pour FFP5CS
+globs: src/**/*
+alwaysApply: false
+---
+
+# Firmware ESP32 - Conventions
+
+- **Style de code**
+  - Indentation: 2 espaces, accolades style K&R.
+  - Nommage :
+    - Classes: `PascalCase`
+    - Fonctions: `camelCase`
+    - Membres: `_prefixCamelCase`
+    - Constantes: `UPPER_SNAKE_CASE`
+  - Lignes ≤ 100 caractères.
+
+- **Capteurs**
+  - Toujours valider les mesures (plage, `isnan`) et retourner une **valeur par défaut sûre** en cas d’erreur.
+  - DHT22 : délai min 2000ms entre deux lectures.
+  - DS18B20 : plage 5–60°C, défaut 20°C.
+  - HC-SR04 : logique **inverse** (valeur haute = niveau bas), timeout court et moyenne sur plusieurs mesures.
+
+- **Réseau**
+  - Toujours vérifier l’état WiFi avant d’appeler une API réseau.
+  - Imposer un **timeout** sur toutes les opérations HTTP/WebSocket.
+  - En cas d’échec réseau, continuer avec la configuration locale et ne pas boucler indéfiniment.
+
+- **NVS**
+  - N’écrire en NVS que si la valeur a changé (pour préserver la flash).
+  - Regrouper les clés dans quelques namespaces logiques, sans sur-fragmenter.
+
+- **Logging**
+  - Utiliser des logs `Serial.printf` simples, clairs et concis.
+  - Pas d’infrastructure de logging lourde à plusieurs niveaux.
+
+- **Évolution du code**
+  - Ne pas introduire de nouvelles abstractions “au cas où”.
+  - Si une nouvelle fonctionnalité est proposée, vérifier qu’elle ne viole pas :
+    - le mode offline-first,
+    - les contraintes mémoire,
+    - la simplicité de l’architecture.

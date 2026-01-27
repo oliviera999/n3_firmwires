@@ -1,31 +1,40 @@
 #pragma once
 
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <cstring>
 
 /**
- * File d'attente persistante pour données non envoyées au serveur
+ * File d'attente RAM simple pour données non envoyées au serveur
  * 
- * Utilise LittleFS pour stocker les payloads POST en attente
- * Format: JSON Lines (1 ligne = 1 payload)
+ * Version simplifiée: tableau circulaire en RAM (5 entrées max)
  * Garantit FIFO: première entrée = première envoyée
  * 
  * Architecture:
- * - Fichier: /queue/pending_data.txt
- * - Max: 50 entrées (configurable)
- * - Append-only pour performance
- * - Rotation automatique si dépassement
+ * - Tableau circulaire en RAM
+ * - Max: 5 entrées (configurable)
+ * - Pas de persistance (données perdues au reboot)
+ * 
+ * Thread-Safety:
+ * - DataQueue est thread-safe par design (pas de mutex nécessaire)
+ * - Utilisé uniquement depuis automationTask via AutomatismSync
+ * - Sérialisation naturelle garantie par l'exécution séquentielle de automationTask
+ * - Aucun accès concurrent possible (une seule tâche y accède)
  */
 class DataQueue {
 public:
     /**
      * Constructeur
-     * @param maxEntries Nombre maximum d'entrées (défaut: 50)
+     * @param maxEntries Nombre maximum d'entrées (défaut: 5)
      */
-    DataQueue(uint16_t maxEntries = 50);
+    DataQueue(uint16_t maxEntries = 5);
     
     /**
-     * Initialise la queue (monte LittleFS, crée répertoire)
+     * Destructeur - Libère toute la mémoire allouée
+     */
+    ~DataQueue();
+    
+    /**
+     * Initialise la queue (pas d'opération nécessaire pour RAM)
      * @return true si succès
      */
     bool begin();
@@ -83,27 +92,13 @@ public:
     bool isEmpty();
 
 private:
-    static constexpr const char* QUEUE_DIR = "/queue";
-    static constexpr const char* QUEUE_FILE = "/queue/pending_data.txt";
-    static constexpr const char* TEMP_FILE = "/queue/temp.txt";
+    static constexpr size_t PAYLOAD_SIZE = 1024;  // Taille max par payload
     
     uint16_t _maxEntries;
+    uint16_t _head;      // Index de la prochaine position d'écriture
+    uint16_t _tail;      // Index de la prochaine position de lecture
+    uint16_t _count;     // Nombre d'entrées actuellement en queue
+    char** _entries;     // Tableau de pointeurs vers les payloads
     bool _initialized;
-    
-    /**
-     * Recompte les entrées dans le fichier
-     */
-    uint16_t countEntries();
-    
-    /**
-     * Rotation: supprime les entrées les plus anciennes si dépassement
-     * @param currentSize Nombre actuel d'entrées (évite de recalculer)
-     */
-    void rotateIfNeeded(uint16_t currentSize);
-    
-    /**
-     * Crée les répertoires nécessaires
-     */
-    bool ensureDirectoryExists();
 };
 

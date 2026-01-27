@@ -13,9 +13,7 @@
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
 #include "automatism/automatism_state.h"
-#include "automatism/automatism_refill_controller.h"
-#include "automatism/automatism_alert_controller.h"
-#include "automatism/automatism_display_controller.h"
+#include "automatism/automatism_utils.h"
 #include "task_monitor.h"
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
@@ -111,6 +109,17 @@ class Automatism {
   // Accessor pour modules (permet l'accès contrôlé à _sensors)
   SensorReadings readSensors() const { return _sensors.read(); }
   
+  // Méthodes pour envoi email (exposées pour AutomatismSleep et AutomatismSync)
+  bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
+    return _mailer.sendSleepMail(reason, sleepDurationSeconds, readings);
+  }
+  bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
+    return _mailer.sendWakeMail(reason, actualSleepSeconds, readings);
+  }
+  bool sendEmail(const char* subject, const char* message, const char* toName, const char* toEmail) {
+    return _mailer.send(subject, message, toName, toEmail);
+  }
+  
   // v11.59: Indicateurs de mode pour OLED (A=Automatique, M=Manuel)
   bool isFeedingInManualMode() const;
   bool isRefillingInManualMode() const;
@@ -127,12 +136,20 @@ class Automatism {
   void setBouffeMidi(uint8_t hour) { bouffeMidi = hour; }
   void setBouffeSoir(uint8_t hour) { bouffeSoir = hour; }
   
+  // Méthodes de persistance (fusionnées depuis AutomatismPersistence, publiques pour web_server.cpp)
+  void saveCurrentActuatorState(const char* actuator, bool state);
+  bool loadCurrentActuatorState(const char* actuator, bool defaultValue = false);
+  uint32_t getLastLocalActionTime();
+  bool hasRecentLocalAction(uint32_t timeoutMs = 5000);
+  void markPendingSync(const char* actuator, bool state);
+  void markConfigPendingSync();
+  void clearPendingSync(const char* actuator);
+  void clearConfigPendingSync();
+  bool hasPendingSync();
+  uint8_t getPendingSyncCount();
+  uint32_t getLastPendingSyncTime();
+  
  private:
-  friend class AutomatismRefillController;
-  friend class AutomatismAlertController;
-  friend class AutomatismDisplayController;
-  friend class AutomatismSleep;
-  friend class AutomatismSync;
 
   void initializeNetworkModule();
   void attachFeedingCallbacks();
@@ -160,9 +177,6 @@ class Automatism {
   AutomatismFeedingSchedule _feedingSchedule;
   AutomatismSync _network;
   AutomatismSleep _sleep;
-  AutomatismRefillController _refillController;
-  AutomatismAlertController _alertController;
-  AutomatismDisplayController _displayController;
 
   // state flags
   bool tankPumpLocked = false;
@@ -255,6 +269,14 @@ class Automatism {
 
   // suivi marée pour affichage
   int _lastDiffMaree{-1};
+  
+  // États pour les alertes (anciennement dans AutomatismAlertController)
+  bool _lowAquaSent{false};
+  bool _highAquaSent{false};
+  bool _lowTankSent{false};
+  
+  // États pour l'affichage (anciennement dans AutomatismDisplayController)
+  unsigned long _splashStartTime{0};
 
   // Dernières mesures capteurs reçues (mise à jour par update(r))
   SensorReadings _lastReadings{};
@@ -390,11 +412,17 @@ class Automatism {
                              const TaskMonitor::Snapshot& tasksBefore,
                              const TaskMonitor::Snapshot& tasksAfter);
 
-  void handleRefillInternal(const AutomatismRuntimeContext& ctx);
+  // Méthodes pour remplissage (anciennement dans AutomatismRefillController)
+  void handleRefill(const AutomatismRuntimeContext& ctx);
+  
+  // Méthodes pour alertes (anciennement dans AutomatismAlertController)
+  void handleAlerts(const AutomatismRuntimeContext& ctx);
+  
+  // Méthodes pour affichage (anciennement dans AutomatismDisplayController)
   void updateDisplayInternal(const AutomatismRuntimeContext& ctx);
   uint32_t getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) const;
 
-  // Persistance NVS: snapshot des actionneurs autour du sleep
+  // Persistance NVS: snapshot des actionneurs autour du sleep (fusionné depuis AutomatismPersistence)
   void saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn);
   bool loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn);
   void clearActuatorSnapshotInNVS();

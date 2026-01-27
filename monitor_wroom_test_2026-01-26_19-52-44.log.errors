@@ -1,0 +1,1 @@
+UserSideException: could not open port 'COM4': PermissionError(13, 'Accès refusé.', None, 5)

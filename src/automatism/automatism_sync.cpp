@@ -4,6 +4,8 @@
 #include "esp_task_wdt.h"
 #include <WiFi.h>
 #include "app_tasks.h"
+#include <cmath>
+#include <cstring>
 
 AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     : _web(web)
@@ -25,7 +27,6 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _freqWakeSec(600)  // 600s par défaut pour production
     #endif
     , _consecutiveSendFailures(0)
-    , _currentBackoffMs(0)
     , _lastSendAttemptMs(0)
     , _lastRemoteFeedResetMs(0)
 {
@@ -34,9 +35,9 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
 }
 
 bool AutomatismSync::begin() {
-    // Initialiser la queue de données (après montage LittleFS)
+    // Initialiser la queue de données (RAM simple)
     if (_dataQueue.begin()) {
-        Serial.printf("[Sync] ✓ DataQueue initialisée (%u entrées)\n", _dataQueue.size());
+        Serial.printf("[Sync] ✓ DataQueue RAM initialisée (%u entrées max)\n", QUEUE_MAX_ENTRIES);
         return true;
     }
     Serial.println(F("[Sync] ⚠️ Échec DataQueue"));
@@ -83,30 +84,6 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
     }
 }
 
-// Helpers pour parsing JSON
-bool isTrue(ArduinoJson::JsonVariantConst v) {
-    if (v.is<bool>()) return v.as<bool>();
-    if (v.is<int>()) return v.as<int>() == 1;
-    if (v.is<const char*>()) {
-        const char* p = v.as<const char*>();
-        if (!p) return false;
-        char buffer[16];
-        size_t len = strnlen(p, sizeof(buffer) - 1);
-        memcpy(buffer, p, len);
-        buffer[len] = '\0';
-        char* start = buffer;
-        while (*start && isspace(static_cast<unsigned char>(*start))) ++start;
-        char* end = start + strlen(start);
-        while (end > start && isspace(static_cast<unsigned char>(end[-1]))) --end;
-        *end = '\0';
-        for (char* c = start; *c; ++c) {
-            *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
-        }
-        return strcmp(start, "1") == 0 || strcmp(start, "true") == 0 ||
-               strcmp(start, "on") == 0 || strcmp(start, "checked") == 0;
-    }
-    return false;
-}
 
 void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
     const uint32_t nowMs = millis();
@@ -126,9 +103,9 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
     // Commande "bouffePetits" (ou GPIO 108 en fallback)
     bool triggerSmall = false;
     if (doc.containsKey("bouffePetits")) {
-        triggerSmall = isTrue(doc["bouffePetits"]);
+        triggerSmall = doc["bouffePetits"].as<bool>() || doc["bouffePetits"].as<int>() == 1;
     } else if (doc.containsKey("108")) {
-        triggerSmall = isTrue(doc["108"]);
+        triggerSmall = doc["108"].as<bool>() || doc["108"].as<int>() == 1;
         Serial.println(F("[Sync] 🔧 Utilisation GPIO 108 pour nourrissage petits (fallback)"));
     }
     
@@ -145,10 +122,10 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
                 "Bouffe manuelle - Petits poissons",
                 autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
             // Envoyer l'email via autoCtrl (qui délègue au Mailer)
-            autoCtrl._mailer.send("Nourrissage manuel - Petits poissons", 
-                                  messageBuffer, 
-                                  "System", 
-                                  autoCtrl.getEmailAddress());
+            autoCtrl.sendEmail("Nourrissage manuel - Petits poissons", 
+                              messageBuffer, 
+                              "System", 
+                              autoCtrl.getEmailAddress());
         }
         autoCtrl.armMailBlink();
     }
@@ -156,9 +133,9 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
     // Commande "bouffeGros" (ou GPIO 109 en fallback)
     bool triggerBig = false;
     if (doc.containsKey("bouffeGros")) {
-        triggerBig = isTrue(doc["bouffeGros"]);
+        triggerBig = doc["bouffeGros"].as<bool>() || doc["bouffeGros"].as<int>() == 1;
     } else if (doc.containsKey("109")) {
-        triggerBig = isTrue(doc["109"]);
+        triggerBig = doc["109"].as<bool>() || doc["109"].as<int>() == 1;
         Serial.println(F("[Sync] 🔧 Utilisation GPIO 109 pour nourrissage gros (fallback)"));
     }
     
@@ -175,60 +152,46 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
                 "Bouffe manuelle - Gros poissons",
                 autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
             // Envoyer l'email via autoCtrl (qui délègue au Mailer)
-            autoCtrl._mailer.send("Nourrissage manuel - Gros poissons", 
-                                  messageBuffer, 
-                                  "System", 
-                                  autoCtrl.getEmailAddress());
+            autoCtrl.sendEmail("Nourrissage manuel - Gros poissons", 
+                              messageBuffer, 
+                              "System", 
+                              autoCtrl.getEmailAddress());
         }
         autoCtrl.armMailBlink();
     }
 }
 
 void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
-    auto parseIntValue = [](ArduinoJson::JsonVariantConst value) -> int {
-        if (value.is<int>()) return value.as<int>();
-        if (value.is<float>()) return static_cast<int>(value.as<float>());
-        if (value.is<const char*>()) return atoi(value.as<const char*>());
-        return value.as<int>();
-    };
-
-    auto parseFloatValue = [](ArduinoJson::JsonVariantConst value) -> float {
-        if (value.is<float>()) return value.as<float>();
-        if (value.is<int>()) return static_cast<float>(value.as<int>());
-        if (value.is<const char*>()) return atof(value.as<const char*>());
-        return value.as<float>();
-    };
-
     if (doc.containsKey("mail")) {
         setEmailAddress(doc["mail"].as<const char*>());
     }
 
     if (doc.containsKey("mailNotif")) {
-        setEmailEnabled(isTrue(doc["mailNotif"]));
+        setEmailEnabled(doc["mailNotif"].as<bool>() || doc["mailNotif"].as<int>() == 1);
     }
 
     if (doc.containsKey("FreqWakeUp")) {
-        int val = parseIntValue(doc["FreqWakeUp"]);
+        int val = doc["FreqWakeUp"].as<int>();
         if (val >= 0) setFreqWakeSec(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("limFlood")) {
-        int val = parseIntValue(doc["limFlood"]);
+        int val = doc["limFlood"].as<int>();
         if (val >= 0) setLimFlood(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("aqThreshold")) {
-        int val = parseIntValue(doc["aqThreshold"]);
+        int val = doc["aqThreshold"].as<int>();
         if (val > 0) setAqThresholdCm(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("tankThreshold")) {
-        int val = parseIntValue(doc["tankThreshold"]);
+        int val = doc["tankThreshold"].as<int>();
         if (val > 0) setTankThresholdCm(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("chauffageThreshold")) {
-        float val = parseFloatValue(doc["chauffageThreshold"]);
+        float val = doc["chauffageThreshold"].as<float>();
         if (val > 0.0f && !isnan(val)) setHeaterThresholdC(val);
     }
 
@@ -334,27 +297,28 @@ bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t cu
     return fetchRemoteState(doc);
 }
 
-// Helpers
+// Helpers simplifiés (backoff supprimé - géré par web_client retry)
 bool AutomatismSync::canAttemptSend(uint32_t nowMs) const {
-    if (_consecutiveSendFailures == 0) return true;
-    uint32_t elapsed = nowMs - _lastSendAttemptMs;
-    return elapsed >= _currentBackoffMs;
+    (void)nowMs;  // Pas de backoff, toujours autoriser
+    return true;
 }
 
 void AutomatismSync::registerSendResult(bool success, size_t payloadBytes, uint32_t durationMs, uint32_t heapBefore, uint32_t heapAfter) {
+    (void)payloadBytes;
+    (void)durationMs;
+    (void)heapBefore;
+    (void)heapAfter;
+    // Backoff supprimé - les retries sont gérés par web_client
     if (success) {
         _consecutiveSendFailures = 0;
-        _currentBackoffMs = 0;
     } else {
-        if (_consecutiveSendFailures < 32) _consecutiveSendFailures++;
-        _currentBackoffMs = 2000 << (_consecutiveSendFailures > 0 ? (_consecutiveSendFailures - 1) : 0);
-        if (_currentBackoffMs > 60000) _currentBackoffMs = 60000;
+        _consecutiveSendFailures++;
     }
 }
 
 uint16_t AutomatismSync::replayQueuedData() {
     uint16_t sent = 0;
-    while (_dataQueue.size() > 0 && sent < 5) {
+    while (_dataQueue.size() > 0 && sent < 2) {
         char payload[1024];
         if (_dataQueue.peek(payload, sizeof(payload))) {
             if (AppTasks::netPostRaw(payload, 30000)) {

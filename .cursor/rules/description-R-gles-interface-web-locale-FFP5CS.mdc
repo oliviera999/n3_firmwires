@@ -1,0 +1,27 @@
+---
+alwaysApply: true
+---
+
+---
+description: Règles interface web locale FFP5CS
+globs: data/web/**/*
+alwaysApply: false
+---
+
+# Interface Web locale
+
+- **Objectif**
+  - UI simple pour visualiser l’état (capteurs) et piloter quelques actions (nourrissage, config).
+  - Pas de framework lourd côté client si possible ; privilégier HTML/CSS/JS vanille.
+
+- **Endpoints contractuels**
+  - Ne pas modifier arbitrairement les endpoints essentiels :
+    - `GET /` (UI principale)
+    - `GET /api/status`
+    - `POST /api/config`
+    - `POST /api/feed`
+    - `GET /ws` pour le temps réel.
+
+- **Robustesse**
+  - Le front ne doit pas supposer une connexion WebSocket ou réseau permanente.
+  - Gérer les déconnexions (messages d’erreur simples, pas de boucle de retry agressive).

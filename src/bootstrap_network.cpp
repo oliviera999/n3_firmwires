@@ -10,7 +10,6 @@
 #include <ArduinoOTA.h>
 #endif
 
-#include "event_log.h"
 #include "ota_config.h"
 #include "config.h"
 #include "nvs_manager.h"
@@ -96,7 +95,7 @@ bool connect(AppContext& ctx, const char* hostname) {
       ctx.display.showDiagnostic("AP secours");
     }
     ctx.wifi.startFallbackAP();
-    EventLog::add("WiFi connect failed; fallback AP started");
+    Serial.println("[Event] WiFi connect failed; fallback AP started");
     return false;
   }
 
@@ -195,18 +194,18 @@ void onWifiReady(AppContext& ctx,
   bool mailQueueOk = ctx.mailer.initMailQueue();
   Serial.printf("[Boot] initMailQueue retourne: %s\n", mailQueueOk ? "OK" : "ECHEC");
   if (mailQueueOk) {
-    EventLog::add("Mailer ready (sequential processing)");
+    Serial.println("[Event] Mailer ready (sequential processing)");
   } else {
-    EventLog::add("Mailer ready (queue init FAILED - fallback sync)");
+    Serial.println("[Event] Mailer ready (queue init FAILED - fallback sync)");
   }
 #else
-  EventLog::add("Mailer disabled (FEATURE_MAIL=0)");
+  Serial.println("[Event] Mailer disabled (FEATURE_MAIL=0)");
 #endif
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
   checkForOtaUpdate(ctx);
   state.lastCheck = millis();
-  EventLog::add("OTA initial check done");
+  Serial.println("[Event] OTA initial check done");
 #endif
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
@@ -216,7 +215,7 @@ void onWifiReady(AppContext& ctx,
     .onStart([&ctx, hostname]() {
       Serial.println("[OTA] Début de la mise à jour");
       WiFi.setSleep(false);
-      EventLog::add("ArduinoOTA start");
+      Serial.println("[Event] ArduinoOTA start");
       if (ctx.display.isPresent()) {
         ctx.display.showOtaProgressOverlay(0);
       }

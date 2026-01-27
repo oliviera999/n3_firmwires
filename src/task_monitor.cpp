@@ -1,6 +1,5 @@
 #include "task_monitor.h"
 #include "app_tasks.h"
-#include "event_log.h"
 #include "config.h"
 
 namespace TaskMonitor {

@@ -10,8 +10,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
-#include <esp_heap_caps.h>  // v11.157: Pour heap_caps_get_largest_free_block()
-#include "memory_diagnostics.h"  // Diagnostic fragmentation mémoire
+#include <esp_heap_caps.h>  // Pour heap_caps_get_largest_free_block() (mode PROFILE_TEST uniquement)
 
 // Diagnostic stack/tâche avant opérations TLS (point 4)
 static void logTaskAndStack(const char* tag) {
@@ -47,7 +46,7 @@ WebClient::WebClient(const char* apiKey) {
     _apiKey[0] = '\0';
   }
   _client.setInsecure();               // accepte tous certificats (à affiner)
-  _client.setHandshakeTimeout(12000);  // + de temps pour TLS
+  _client.setHandshakeTimeout(5000);  // 5s max (conforme .cursorrules: max 5s pour opérations réseau)
   // Désactivation du keep-alive : certaines déconnexions moitié-fermées
   // généraient un blocage interne du client HTTP, empêchant l'appel
   // suivant de se terminer et donc le rafraîchissement du watchdog.
@@ -92,9 +91,6 @@ void WebClient::resetTLSClient() {
     Serial.printf("[HTTP] 🔄 TLS stop: récupéré %d bytes (heap: %u → %u)\n", 
                   recovered, heapBefore, heapAfter);
   }
-  
-  // Snapshot après libération TLS
-  MEM_DIAG_SNAPSHOT("after_tls_reset");
 }
 
 bool WebClient::httpRequest(const char* url, const char* payload,
@@ -115,24 +111,20 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;  // 62 KB minimum (TLS ~42KB + marge 20KB)
   bool isSecure = (strncmp(url, "https://", 8) == 0);
   
-  // Snapshot avant opération TLS (si HTTPS)
-  HeapSnapshot snapshot_before_tls;
   if (isSecure) {
-    snapshot_before_tls = MEM_DIAG_SNAPSHOT("before_tls_http");
+    // Vérification simple du heap avant TLS
+    if (freeHeap < MIN_HEAP_FOR_HTTPS) {
+      LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
+          freeHeap, MIN_HEAP_FOR_HTTPS);
+      return false;
+    }
     
-    // v11.157: Diagnostic mémoire détaillé avant TLS
-    
+    #if defined(PROFILE_TEST)
+    // Diagnostics détaillés uniquement en mode test
     uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
     uint32_t fragmentation = (freeHeap > 0) ? ((freeHeap - largestBlock) * 100 / freeHeap) : 0;
     LOG(LOG_DEBUG, "[HTTP] 📊 Diagnostic mémoire avant TLS: heap=%u, largest_block=%u, fragmentation=%u%%", 
         freeHeap, largestBlock, fragmentation);
-    
-    if (freeHeap < MIN_HEAP_FOR_HTTPS) {
-      LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
-          freeHeap, MIN_HEAP_FOR_HTTPS);
-      LOG(LOG_WARN, "[HTTP] ⚠️ La requête HTTPS nécessite ~43 KB contiguë, fragmentation=%u%%", fragmentation);
-      return false;
-    }
     
     // Vérifier que le plus grand bloc est suffisant pour TLS
     if (largestBlock < 45000) {
@@ -141,6 +133,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       LOG(LOG_WARN, "[HTTP] ⚠️ TLS nécessite ~42-46KB contiguë, report de la requête");
       return false;
     }
+    #endif
   }
   
   size_t payloadLen = payload ? strlen(payload) : 0;
@@ -371,12 +364,6 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     _http.end();
     resetTLSClient();  // Libère mémoire TLS après POST
     
-    // Snapshot après opération TLS POST
-    if (isSecure) {
-      HeapSnapshot snapshot_after_tls_post = MEM_DIAG_SNAPSHOT("after_tls_post");
-      MEM_DIAG_COMPARE(snapshot_before_tls, snapshot_after_tls_post);
-    }
-    
     // === STATISTIQUES DE LA TENTATIVE ===
     unsigned long attemptDurationMs = millis() - attemptStartMs;
     if (debugLogging) {
@@ -466,52 +453,24 @@ bool WebClient::httpRequest(const char* url, const char* payload,
 }
 
 bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
-  // === LOGS DÉTAILLÉS SENDMEASUREMENTS v11.32 ===
-  unsigned long smStartMs = millis();
-  Serial.println(F("=== DÉBUT SENDMEASUREMENTS ==="));
-  Serial.printf("[SM] Timestamp: %lu ms\n", smStartMs);
-  Serial.printf("[SM] Include reset: %s\n", includeReset ? "OUI" : "NON");
-  
   // VALIDATION COMPLÈTE DES MESURES AVANT ENVOI
   float tempWater = m.tempWater;
   float tempAir = m.tempAir;
   float humidity = m.humid;
 
-  // Logs des valeurs brutes avant validation
-  Serial.printf("[SM] Valeurs brutes - TempEau: %.1f°C, TempAir: %.1f°C, Humidité: %.1f%%\n", 
-               tempWater, tempAir, humidity);
-  Serial.printf("[SM] Valeurs brutes - EauPotager: %u, EauAquarium: %u, EauReserve: %u\n", 
-               m.wlPota, m.wlAqua, m.wlTank);
-  Serial.printf("[SM] Valeurs brutes - DiffMaree: %d, Luminosité: %u\n", 
-               m.diffMaree, m.luminosite);
-  Serial.printf("[SM] États actionneurs - PompeAqua: %s, PompeTank: %s, Heat: %s, UV: %s\n",
-               m.pumpAqua ? "ON" : "OFF", m.pumpTank ? "ON" : "OFF", 
-               m.heater ? "ON" : "OFF", m.light ? "ON" : "OFF");
-
   // Validation des températures (rejette 0°C car physiquement impossible)
   if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
-    Serial.printf("[SM] ⚠️ Température eau invalide avant envoi: %.1f°C, force NaN\n", tempWater);
     tempWater = NAN;
   }
 
   if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN || tempAir >= SensorConfig::AirSensor::TEMP_MAX) {
-    Serial.printf("[SM] ⚠️ Température air invalide avant envoi: %.1f°C, force NaN\n", tempAir);
     tempAir = NAN;
   }
 
   // Validation de l'humidité
   if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN || humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
-    Serial.printf("[SM] ⚠️ Humidité invalide avant envoi: %.1f%%, force NaN\n", humidity);
     humidity = NAN;
   }
-
-  // Logs des valeurs après validation
-  char tempWaterStr[16], tempAirStr[16], humidityStr[16];
-  snprintf(tempWaterStr, sizeof(tempWaterStr), isnan(tempWater) ? "NaN" : "%.1f", tempWater);
-  snprintf(tempAirStr, sizeof(tempAirStr), isnan(tempAir) ? "NaN" : "%.1f", tempAir);
-  snprintf(humidityStr, sizeof(humidityStr), isnan(humidity) ? "NaN" : "%.1f", humidity);
-  Serial.printf("[SM] Valeurs validées - TempEau: %s, TempAir: %s, Humidité: %s\n",
-               tempWaterStr, tempAirStr, humidityStr);
 
   // Construction d'un payload COMPLET et ORDONNÉ selon la liste attendue par le serveur
   auto fmtFloat = [](float v, char* buf, size_t bufSize) -> void {
@@ -560,8 +519,6 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
     }
     offset += static_cast<size_t>(written);
   };
-
-  Serial.println(F("[SM] Construction du payload..."));
   
   // Helper strings - UNIQUEMENT les mesures et états actuels (pas les configs!)
   char buf_tempAir[16], buf_humid[16], buf_tempWater[16];
@@ -605,151 +562,54 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   }
 
   if (truncated) {
-    Serial.println(F("[SM] ❌ Payload tronqué - envoi annulé"));
     return false;
   }
-
-  Serial.printf("[SM] Payload construit: %u bytes\n", strlen(payload));
-  Serial.printf("[SM] Version: %s\n", ProjectConfig::VERSION);
-  Serial.println(F("[SM] Note: Configurations non envoyées (gérées côté serveur)"));
-
-  LOG(LOG_DEBUG, "POST %s", payload);
   
   // Envoi direct: l'ordre exact est déjà respecté
   bool success = postRaw(payload);
-  
-  unsigned long smDurationMs = millis() - smStartMs;
-  Serial.printf("[SM] === FIN SENDMEASUREMENTS ===\n");
-  Serial.printf("[SM] Durée totale: %lu ms\n", smDurationMs);
-  Serial.printf("[SM] Succès: %s\n", success ? "OUI" : "NON");
-  Serial.printf("[SM] Mémoire finale: %u bytes\n", ESP.getFreeHeap());
-  Serial.println(F("==============================="));
   
   return success;
 }
 
 bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!config.isRemoteRecvEnabled()) {
-    Serial.println(F("[GET] ⛔ Réception distante désactivée (config)"));
     return false;
   }
   if (WiFi.status() != WL_CONNECTED) return false;
 
-  // Point 4: identifier la tâche et la marge de stack avant TLS
-  logTaskAndStack("GET");
-  
-  // === v11.152: Protection TLS mutex STRICTE pour éviter collision avec SMTP ===
-  // Le GET DOIT avoir le mutex pour éviter les crashs par épuisement mémoire
-  // (coredump: strcat(NULL) dans ESP Mail Client quand SMTP+HTTPS concurrent)
-  if (!TLSMutex::acquire(3000)) {  // Timeout court pour GET
-    Serial.println(F("[GET] ⛔ Mutex TLS non disponible - GET ANNULÉ (collision SMTP probable)"));
-    return false;  // On abandonne au lieu de risquer un crash
+  if (!TLSMutex::acquire(3000)) {
+    return false;
   }
-  bool hasMutex = true;  // Pour compatibilité avec le code existant
+  bool hasMutex = true;
   
-  // === PISTE 8: DÉSACTIVER MODEM SLEEP AVANT TLS ===
-  // S'assurer que le modem sleep est désactivé AVANT toute opération TLS
   WiFi.setSleep(false);
-  Serial.println(F("[GET] 🔒 Modem sleep désactivé avant TLS"));
+  vTaskDelay(pdMS_TO_TICKS(100));
   
-  // === PISTE 3: DÉLAI APRÈS ACQUISITION MUTEX ===
-  // Petit délai pour laisser le système se stabiliser après acquisition du mutex
-  vTaskDelay(pdMS_TO_TICKS(100));  // 100ms de stabilisation
-  
-  // === PISTE 9: LOGS DÉTAILLÉS AVANT TLS ===
-  // Logs complets pour diagnostic en cas de panic
-  unsigned long getStartMs = millis();
-  Serial.println(F("=== DÉBUT REQUÊTE GET REMOTE STATE ==="));
-  Serial.printf("[GET] Timestamp: %lu ms\n", getStartMs);
-  
-  // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
-  uint32_t minHeap = ESP.getMinFreeHeap();
-  // v11.157: Aligné avec TLS_MIN_HEAP_BYTES (62KB) pour cohérence
-  const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;  // 62 KB minimum (TLS ~42KB + marge 20KB)
+  const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;
   
-  // Snapshot avant opération TLS GET
-  HeapSnapshot snapshot_before_tls_get = MEM_DIAG_SNAPSHOT("before_tls_get");
-  
-  // v11.157: Diagnostic mémoire détaillé avant TLS
-  uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-  uint32_t fragmentation = (freeHeap > 0) ? ((freeHeap - largestBlock) * 100 / freeHeap) : 0;
-  Serial.printf("[GET] Heap before GET: %u bytes\n", freeHeap);
-  Serial.printf("[GET] Free heap: %u bytes\n", freeHeap);
-  Serial.printf("[GET] Min heap: %u bytes\n", minHeap);
-  Serial.printf("[GET] 📊 Largest free block: %u bytes\n", largestBlock);
-  Serial.printf("[GET] 📊 Fragmentation: %u%%\n", fragmentation);
-  
-  // Logs détaillés WiFi, tâche et stack
-  Serial.printf("[GET] WiFi Status: %d (connected=%s)\n", WiFi.status(), WiFi.isConnected() ? "YES" : "NO");
-  Serial.printf("[GET] RSSI: %d dBm\n", WiFi.RSSI());
-  char ipStr[16];
-  IPAddress ip = WiFi.localIP();
-  snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-  Serial.printf("[GET] IP: %s\n", ipStr);
-  
-  // Log tâche active et stack libre
-  TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
-  UBaseType_t stackHighWaterMark = uxTaskGetStackHighWaterMark(currentTask);
-  Serial.printf("[GET] Current task: %p, Stack high water mark: %u bytes\n", 
-                currentTask, stackHighWaterMark * sizeof(StackType_t));
-  
-  // v11.157: Vérification heap et fragmentation avant TLS
+  // Vérification simple du heap
   if (freeHeap < MIN_HEAP_FOR_HTTPS) {
-    Serial.printf("[GET] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête\n", 
-                  freeHeap, MIN_HEAP_FOR_HTTPS);
-    Serial.printf("[GET] ⚠️ La requête HTTPS nécessite ~43 KB contiguë, fragmentation=%u%%\n", fragmentation);
     if (hasMutex) TLSMutex::release();
     return false;
   }
   
-  // Vérifier que le plus grand bloc est suffisant pour TLS
-  if (largestBlock < 45000) {
-    Serial.printf("[GET] ⚠️ Plus grand bloc insuffisant (%u bytes < 45KB), fragmentation=%u%%\n", 
-                  largestBlock, fragmentation);
-    Serial.printf("[GET] ⚠️ TLS nécessite ~42-46KB contiguë, report de la requête\n");
-    if (hasMutex) TLSMutex::release();
-    return false;
-  }
-  
-  // Utiliser l'URL complète depuis la configuration serveur
   char url[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
-  Serial.printf("[GET] URL: %s\n", url);
-  
-  // Sélectionne le bon type de client selon le schéma
   bool secure = strncmp(url, "https://", 8) == 0;
-  WiFiClient plain; // client non-TLS local
-  
-  // PISTE 9: Log final avant opération TLS critique
-  Serial.println(F("[GET] === AVANT OPÉRATION TLS CRITIQUE ==="));
-  Serial.printf("[GET] Heap final avant TLS: %u bytes\n", ESP.getFreeHeap());
-  Serial.printf("[GET] URL: %s\n", url);
-  Serial.printf("[GET] Secure: %s\n", secure ? "YES (HTTPS)" : "NO (HTTP)");
+  WiFiClient plain;
   
   if (secure) { 
-    Serial.println(F("[GET] 🔒 Initialisation client HTTPS..."));
     _http.begin(_client, url); 
-    Serial.println(F("[GET] 🔒 Using HTTPS client"));
   } else { 
     _http.begin(plain, url); 
-    Serial.println(F("[GET] 🌐 Using HTTP client"));
   }
   
-  Serial.printf("[GET] Sending GET request (timeout: %u ms)...\n", NetworkConfig::REQUEST_TIMEOUT_MS);
   int code = _http.GET();
-  unsigned long getDurationMs = millis() - getStartMs;
-  Serial.printf("[GET] GET completed in %lu ms, HTTP code: %d\n", getDurationMs, code);
-  Serial.printf("[GET] Heap after GET: %u bytes\n", ESP.getFreeHeap());
   
   if (code <= 0) {
-    char errorBuf[64];
-    strncpy(errorBuf, _http.errorToString(code).c_str(), sizeof(errorBuf) - 1);
-    errorBuf[sizeof(errorBuf) - 1] = '\0';
-    Serial.printf("[GET] ❌ ERROR %d: %s\n", code, errorBuf);
-    Serial.printf("[GET] WiFi status at error: %d, RSSI: %d\n", WiFi.status(), WiFi.RSSI());
     _http.end();
-    resetTLSClient();  // v11.150: Libère mémoire TLS après erreur
+    resetTLSClient();
     if (hasMutex) TLSMutex::release();
     return false;
   }
@@ -760,18 +620,15 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   char payloadBuffer[MAX_RESPONSE_SIZE + 1];
   size_t totalRead = 0;
   
-  unsigned long responseStartMs = millis();
   WiFiClient* stream = _http.getStreamPtr();
   
   if (!stream) {
-    Serial.println(F("[GET] ❌ No stream available"));
     _http.end();
     resetTLSClient();
     if (hasMutex) TLSMutex::release();
     return false;
   }
   
-  // Lire avec limite stricte pour éviter épuisement mémoire
   while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
     size_t bytesRead = stream->readBytes(
       payloadBuffer + totalRead,
@@ -782,124 +639,47 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
   payloadBuffer[totalRead] = '\0';
   
-  unsigned long responseDurationMs = millis() - responseStartMs;
   _http.end();
-  resetTLSClient();  // v11.150: Libère mémoire TLS (~46KB)
-  
-  // Snapshot après opération TLS GET (resetTLSClient capture déjà un snapshot, mais on compare)
-  HeapSnapshot snapshot_after_tls_get = MEM_DIAG_SNAPSHOT("after_tls_get");
-  MEM_DIAG_COMPARE(snapshot_before_tls_get, snapshot_after_tls_get);
-  
-  if (totalRead >= MAX_RESPONSE_SIZE) {
-    Serial.printf("[GET] ⚠️ Response truncated at %u bytes (limite sécurité)\n", MAX_RESPONSE_SIZE);
-  }
-  
-  Serial.printf("[GET] Response received in %lu ms, size: %u bytes\n", responseDurationMs, totalRead);
-  Serial.printf("[GET] Heap after TLS reset: %u bytes\n", ESP.getFreeHeap());
+  resetTLSClient();
   
   if (totalRead == 0) {
-    Serial.println(F("[GET] ⚠️ Empty response from server"));
     if (hasMutex) TLSMutex::release();
     return false;
   }
   
-  // Log détaillé de la réponse
-  Serial.println(F("[GET] === RÉPONSE REMOTE STATE ==="));
-  if (totalRead <= 600) {
-    Serial.printf("[GET] %s\n", payloadBuffer);
-  } else {
-    char preview[601];
-    strncpy(preview, payloadBuffer, 600);
-    preview[600] = '\0';
-    Serial.printf("[GET] %s ... (truncated)\n", preview);
-    Serial.printf("[GET] ... (%u bytes restants)\n", totalRead - 600);
-  }
-  Serial.println(F("[GET] === FIN RÉPONSE ==="));
-  
-  // v11.156: Nettoyer le préfixe chunked HTTP si présent
-  // Le serveur peut envoyer "d6" (taille du chunk) avant le JSON valide
+  // Nettoyer le préfixe chunked HTTP si présent
   char* jsonStart = strchr(payloadBuffer, '{');
   if (!jsonStart) {
     jsonStart = strchr(payloadBuffer, '[');
   }
   if (jsonStart && jsonStart != payloadBuffer) {
-    // Décaler le contenu pour commencer au JSON valide
     size_t offset = jsonStart - payloadBuffer;
     size_t newSize = totalRead - offset;
     memmove(payloadBuffer, jsonStart, newSize);
     payloadBuffer[newSize] = '\0';
     totalRead = newSize;
-    Serial.printf("[GET] Nettoyé préfixe chunked (%u bytes supprimés, nouveau size: %u)\n", offset, totalRead);
   }
   
-  // Parser le JSON depuis le buffer directement
-  unsigned long parseStartMs = millis();
   DeserializationError err = deserializeJson(doc, payloadBuffer);
-  unsigned long parseDurationMs = millis() - parseStartMs;
-  
   if (err) {
-    char jsonErrorBuf[128];
-    strncpy(jsonErrorBuf, err.c_str(), sizeof(jsonErrorBuf) - 1);
-    jsonErrorBuf[sizeof(jsonErrorBuf) - 1] = '\0';
-    Serial.printf("[GET] ❌ JSON parse error: %s (parsing took %lu ms)\n", jsonErrorBuf, parseDurationMs);
-    char preview[201];
-    strncpy(preview, payloadBuffer, 200);
-    preview[200] = '\0';
-    Serial.printf("[GET] Payload preview (first 200 chars): %s\n", preview);
     if (hasMutex) TLSMutex::release();
     return false;
   }
   
-  Serial.printf("[GET] ✓ Remote JSON parsed successfully in %lu ms\n", parseDurationMs);
-  
-    // Analyse du contenu JSON
-    if (doc.is<JsonObject>()) {
-      JsonObject obj = doc.as<JsonObject>();
-      Serial.printf("[GET] JSON object with %d keys\n", obj.size());
-      
-      // Log des clés principales pour debugging
-      if (obj["version"].is<const char*>()) {
-        Serial.printf("[GET] Server version: %s\n", obj["version"].as<const char*>());
-      }
-      if (obj["timestamp"].is<const char*>()) {
-        Serial.printf("[GET] Server timestamp: %s\n", obj["timestamp"].as<const char*>());
-      }
-      if (obj["status"].is<const char*>()) {
-        Serial.printf("[GET] Server status: %s\n", obj["status"].as<const char*>());
-      }
-    }
-  
-  unsigned long totalDurationMs = millis() - getStartMs;
-  Serial.printf("[GET] === FIN REQUÊTE GET ===\n");
-  Serial.printf("[GET] Durée totale: %lu ms\n", totalDurationMs);
-  Serial.printf("[GET] Succès: OUI\n");
-  Serial.printf("[GET] Mémoire finale: %u bytes\n", ESP.getFreeHeap());
-  Serial.println(F("==============================="));
-  
-  // v11.149: Libérer le mutex TLS
   if (hasMutex) TLSMutex::release();
-  
   return true;
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   if (!config.isRemoteSendEnabled()) {
-    Serial.println(F("[HB] ⛔ Envoi heartbeat désactivé (config)"));
     return false;
   }
-  // === LOGS DÉTAILLÉS HEARTBEAT v11.32 ===
-  unsigned long hbStartMs = millis();
-  Serial.println(F("=== DÉBUT HEARTBEAT ==="));
-  Serial.printf("[HB] Timestamp: %lu ms\n", hbStartMs);
   
   const DiagnosticStats& s = diag.getStats();
   
-  // Construction du payload avec logs détaillés
   char payloadBuf[256];
   snprintf(payloadBuf, sizeof(payloadBuf), "uptime=%lu&free=%u&min=%u&reboots=%u",
            s.uptimeSec, s.freeHeap, s.minFreeHeap, s.rebootCount);
-  
-  Serial.printf("[HB] Payload avant CRC: %s\n", payloadBuf);
   
   char bufCrc2[16];
   snprintf(bufCrc2,sizeof(bufCrc2),"&crc=%08lX",crc32(payloadBuf));
@@ -907,84 +687,39 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   char pay2[272];
   snprintf(pay2, sizeof(pay2), "%s%s", payloadBuf, bufCrc2);
   
-  Serial.printf("[HB] Payload final: %s\n", pay2);
-  Serial.printf("[HB] Taille payload: %u bytes\n", strlen(pay2));
-  
-  // État système au moment du heartbeat
-  Serial.printf("[HB] Uptime: %lu sec\n", s.uptimeSec);
-  Serial.printf("[HB] Free heap: %u bytes\n", s.freeHeap);
-  Serial.printf("[HB] Min free heap: %u bytes\n", s.minFreeHeap);
-  Serial.printf("[HB] Reboot count: %u\n", s.rebootCount);
-  Serial.printf("[HB] WiFi status: %d, RSSI: %d\n", WiFi.status(), WiFi.RSSI());
-  
   char resp[1024];
   char heartbeatUrl[256];
   ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
-  bool success = httpRequest(heartbeatUrl, pay2, resp, sizeof(resp));
-  
-  unsigned long hbDurationMs = millis() - hbStartMs;
-  Serial.printf("[HB] === FIN HEARTBEAT ===\n");
-  Serial.printf("[HB] Durée totale: %lu ms\n", hbDurationMs);
-  Serial.printf("[HB] Succès: %s\n", success ? "OUI" : "NON");
-  Serial.printf("[HB] Réponse: %s\n", resp);
-  Serial.println(F("========================="));
-  
-  return success;
+  return httpRequest(heartbeatUrl, pay2, resp, sizeof(resp));
 }
 
 // v11.70: makeSkeleton() supprimé - jamais utilisé (includeSkeleton toujours false)
 
 bool WebClient::postRaw(const char* payload){
-  Serial.println(F("[PR] === DÉBUT POSTRAW ==="));
-  Serial.printf("[PR] isRemoteSendEnabled: %s\n", config.isRemoteSendEnabled() ? "YES" : "NO");
-  
   if (!config.isRemoteSendEnabled()) {
-    Serial.println(F("[PR] ⛔ Envoi distant désactivé (config) - SKIP"));
-    Serial.printf("[PR] Vérifiez net_send_en dans NVS\n");
     return false;
   }
   
   if (payload == nullptr) {
-    Serial.println(F("[PR] ⛔ Payload null - SKIP"));
     return false;
   }
 
-  // Point 4: identifier la tâche et la marge de stack avant TLS
-  logTaskAndStack("PR");
-  
-  // === v11.149: Protection TLS mutex pour éviter collision avec SMTP ===
-  if (!TLSMutex::acquire(5000)) {  // Timeout 5s pour POST
-    Serial.println(F("[PR] ⛔ Impossible d'acquérir mutex TLS - SKIP"));
+  if (!TLSMutex::acquire(5000)) {
     return false;
   }
   
-  // === PISTE 8: DÉSACTIVER MODEM SLEEP AVANT TLS ===
   WiFi.setSleep(false);
-  Serial.println(F("[PR] 🔒 Modem sleep désactivé avant TLS"));
+  vTaskDelay(pdMS_TO_TICKS(100));
   
-  // === PISTE 3: DÉLAI APRÈS ACQUISITION MUTEX ===
-  vTaskDelay(pdMS_TO_TICKS(100));  // 100ms de stabilisation
-  
-  // === LOGS DÉTAILLÉS POSTRAW v11.70 ===
-  unsigned long prStartMs = millis();
   size_t payloadLen = strlen(payload);
-  Serial.println(F("=== DÉBUT POSTRAW ==="));
-  Serial.printf("[PR] Timestamp: %lu ms\n", prStartMs);
-  Serial.printf("[PR] Payload input: %u bytes\n", payloadLen);
-  
-  // Utiliser un buffer dynamique pour éviter String
-  // Taille estimée: payload + api_key + sensor + clés + padding
   size_t estimatedSize = payloadLen + strlen(_apiKey) + strlen(ProjectConfig::BOARD_TYPE) + 32;
   char* fullBuffer = (char*)malloc(estimatedSize);
   if (!fullBuffer) {
-    Serial.println(F("[PR] ❌ Malloc failed for payload"));
     TLSMutex::release();
     return false;
   }
 
-  // Ajoute api_key et sensor si absents
-  bool hasApi = (strncmp(payload, "api_key=", 8) == 0); // Starts with
-  Serial.printf("[PR] Has API key: %s\n", hasApi ? "OUI" : "NON");
+  bool hasApi = (strncmp(payload, "api_key=", 8) == 0);
   
   if (!hasApi) {
     snprintf(fullBuffer, estimatedSize, "api_key=%s&sensor=%s", _apiKey, ProjectConfig::BOARD_TYPE);
@@ -998,45 +733,20 @@ bool WebClient::postRaw(const char* payload){
         strncat(fullBuffer, payload, estimatedSize - currentLen - 1);
       }
     }
-    Serial.printf("[PR] Full payload constructed: %u bytes\n", strlen(fullBuffer));
   } else {
     strncpy(fullBuffer, payload, estimatedSize - 1);
     fullBuffer[estimatedSize - 1] = '\0';
-    Serial.println(F("[PR] Using payload as-is (already has API key)"));
   }
 
-  Serial.printf("[PR] Final payload size: %u bytes\n", strlen(fullBuffer));
-  Serial.printf("[PR] API Key: %s\n", _apiKey);
-  Serial.printf("[PR] Sensor: %s\n", ProjectConfig::BOARD_TYPE);
-
   char respPrimary[1024];
-  Serial.println(F("[PR] Sending to primary server..."));
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
   bool okPrimary = httpRequest(postDataUrl, fullBuffer, respPrimary, sizeof(respPrimary));
-  Serial.printf("[PR] Primary server result: %s\n", okPrimary ? "SUCCESS" : "FAILED");
   
-  free(fullBuffer); // Libérer la mémoire
+  free(fullBuffer);
   
-  // Serveur secondaire supprimé (code mort v11.116)
-  bool okSecondary = false;
-  
-  // Réussite si au moins un des serveurs a reçu l'update
-  bool finalSuccess = okPrimary || okSecondary;
-  
-  unsigned long prDurationMs = millis() - prStartMs;
-  Serial.printf("[PR] === FIN POSTRAW ===\n");
-  Serial.printf("[PR] Durée totale: %lu ms\n", prDurationMs);
-  Serial.printf("[PR] Primary: %s\n", okPrimary ? "SUCCESS" : "FAILED");
-  Serial.printf("[PR] Secondary: %s\n", okSecondary ? "SUCCESS" : "FAILED");
-  Serial.printf("[PR] Final result: %s\n", finalSuccess ? "SUCCESS" : "FAILED");
-  Serial.printf("[PR] Mémoire finale: %u bytes\n", ESP.getFreeHeap());
-  Serial.println(F("========================="));
-  
-  // v11.149: Libérer le mutex TLS
   TLSMutex::release();
-  
-  return finalSuccess;
+  return okPrimary;
 }
 
 // Fonction supprimée - redéfinition causait erreur de compilation 

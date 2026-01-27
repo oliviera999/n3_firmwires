@@ -6,25 +6,16 @@
 #include <ArduinoJson.h>
 #include <rom/rtc.h>
 
-// Structure pour stocker les informations détaillées de panic
+// Structure simplifiée pour stocker les informations de panic
 struct PanicInfo {
   bool hasPanicInfo;
-  char exceptionCause[128];      // Cause de l'exception
-  uint32_t exceptionAddress;  // Adresse où s'est produit le panic
-  uint32_t excvaddr;          // Adresse virtuelle de l'exception (pour les fautes mémoire)
-  char taskName[32];            // Nom de la tâche qui a paniqué
-  int core;                   // Core CPU qui a paniqué
-  char additionalInfo[256];      // Informations additionnelles
+  char exceptionCause[128];      // Cause de l'exception (simplifié)
 };
 
+// Structure simplifiée pour crash (coredump géré par ESP-IDF)
 struct CrashStatus {
   bool hasCrashInfo;
-  int resetReason;
-  uint32_t crashUptimeSec;
-  uint32_t crashEpoch;
-  bool coredumpPresent;
-  uint32_t coredumpSize;
-  char coredumpFormat[16];
+  int resetReason;  // Seule info essentielle conservée
 };
 
 struct DiagnosticStats {
@@ -71,11 +62,9 @@ class Diagnostics {
   // Vérifier si des infos PANIC sont disponibles
   bool hasPanicInfo() const { return _stats.panicInfo.hasPanicInfo; }
   bool hasCrashInfo() const { return _stats.crashStatus.hasCrashInfo; }
-  const CrashStatus& getCrashStatus() const { return _stats.crashStatus; }
   
   // Nettoyer les infos PANIC (appelé après envoi du mail de boot)
   void clearPanicInfoAfterReport();
-  bool clearCoreDump();
   
  private:
   DiagnosticStats _stats;
@@ -91,11 +80,10 @@ class Diagnostics {
   
   const char* getRebootReason() const;
   bool isCrashResetReason(esp_reset_reason_t reason) const;
-  void capturePanicInfo();
+  void capturePanicInfo();  // Simplifié: capture seulement exceptionCause
   void savePanicInfo();
   void loadPanicInfo();
   void clearPanicInfo();
-  void loadCrashStatus();
+  void loadCrashStatus();  // Simplifié: charge seulement resetReason
   void saveCrashStatus();
-  void updateCoredumpStatus(bool persistIfCrash);
 }; 

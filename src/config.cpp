@@ -142,34 +142,34 @@ void ConfigManager::resetBouffeFlags() {
 
 void ConfigManager::saveRemoteVars(const char* json) {
   // v11.80: Utilisation du gestionnaire NVS centralisé avec compression JSON
-  Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé (compressé)"));
+  Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé"));
   
   // Vérifier si le JSON a changé avant de sauvegarder
   char cachedJson[2048];
-  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, sizeof(cachedJson), "");
+  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, sizeof(cachedJson), "");
   
   if (json && strcmp(cachedJson, json) == 0) {
     Serial.println(F("[Config] Variables distantes inchangées - pas de sauvegarde NVS"));
     return;
   }
   
-  // Sauvegarde compressée dans le namespace CONFIG
-  g_nvsManager.saveJsonCompressed(NVS_NAMESPACES::CONFIG, "remote_json", json ? json : "");
-  Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé (compressé)"));
+  // Sauvegarde dans le namespace CONFIG
+  g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, "remote_json", json ? json : "");
+  Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé"));
 }
 
 bool ConfigManager::loadRemoteVars(char* json, size_t jsonSize) {
-  // v11.80: Utilisation du gestionnaire NVS centralisé avec décompression JSON
-  Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé (décompressé)"));
+  // v11.80: Utilisation du gestionnaire NVS centralisé
+  Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé"));
   
   if (json == nullptr || jsonSize == 0) {
     return false;
   }
   
-  g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", json, jsonSize, "");
+  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", json, jsonSize, "");
   
   if (strlen(json) > 0) {
-    Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé (décompressé)"));
+    Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé"));
     return true;
   }
   

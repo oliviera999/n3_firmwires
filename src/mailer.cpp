@@ -668,7 +668,7 @@ static const char* buildSystemInfoFooter() {
 
     // Namespace remoteVars (aperçu) - v11.103: Utilisation du gestionnaire NVS centralisé
     char remoteJson[2048];
-    g_nvsManager.loadJsonDecompressed(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, sizeof(remoteJson), "");
+    g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, sizeof(remoteJson), "");
     if (strlen(remoteJson) > 0) {
       size_t previewLen = min((size_t)200, strlen(remoteJson));
       char previewBuf[201];
@@ -880,9 +880,9 @@ bool Mailer::begin() {
   // DEBUG: Activer les logs SMTP détaillés
   _smtp.debug(1);
   
-  // v11.151: Reconnexion automatique et timeout augmenté
+  // v11.151: Reconnexion automatique et timeout conforme à .cursorrules (max 5s)
   MailClient.networkReconnect(true);
-  _smtp.setTCPTimeout(60);  // 60 secondes de timeout TCP (augmenté pour TLS/SMTP lent)
+  _smtp.setTCPTimeout(5);  // 5 secondes de timeout TCP (conforme .cursorrules: max 5s pour opérations réseau)
 
   // Diagnostic de la configuration
   Serial.printf("[Mail] SMTP_HOST: '%s'\n", EmailConfig::SMTP_HOST);
@@ -1199,8 +1199,9 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   remaining -= initialMsgLen;
   Serial.printf("[Mail] enhancedMessage initial: %d chars\n", offset);
   
-  // Instance temporaire de Diagnostics pour lire les infos persistées (sans effets de bord)
-  Diagnostics tempDiag;
+  // Instance statique de Diagnostics pour éviter allocation sur la stack (stack overflow)
+  // v11.157: Rendu statique pour éviter stack overflow dans loopTask
+  static Diagnostics tempDiag;
   tempDiag.loadFromNvs();
   const char* timeReport = buildDetailedTimeReport(tempDiag);
   size_t timeReportLen = strlen(timeReport);

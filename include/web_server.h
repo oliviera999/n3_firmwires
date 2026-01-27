@@ -12,7 +12,6 @@
 #ifndef DISABLE_ASYNC_WEBSERVER
 class AsyncWebServer;
 #endif
-struct WebServerContext;
 
 class WebServerManager {
  public:
@@ -38,5 +37,4 @@ class WebServerManager {
   #ifndef DISABLE_ASYNC_WEBSERVER
   AsyncWebServer* _server;
   #endif
-  WebServerContext* _ctx;
 }; 

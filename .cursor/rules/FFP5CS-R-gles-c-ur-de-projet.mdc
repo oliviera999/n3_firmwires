@@ -1,0 +1,37 @@
+---
+alwaysApply: true
+---
+
+---
+description: Règles cœur de projet FFP5CS (offline-first, simplicité, robustesse)
+alwaysApply: true
+---
+
+# FFP5CS - Règles cœur de projet
+
+- **OFFLINE-FIRST**
+  - Le firmware doit TOUJOURS continuer à fonctionner sans réseau.
+  - Tout ce qui dépend du réseau doit avoir un **fallback local** (NVS / valeurs par défaut).
+  - Interdire toute logique qui bloque en attendant le réseau ou le serveur.
+
+- **Simplicité avant tout**
+  - Préférer du **code simple et lisible** à des patterns "enterprise".
+  - Ne pas introduire de DI complexe, de factories génériques ou de couches d’abstraction inutiles.
+  - Avant d’ajouter un module, vérifier s’il est possible de **simplifier ou supprimer** du code existant.
+
+- **Robustesse et valeurs par défaut**
+  - Le système ne doit **jamais crasher** : en cas d’erreur capteur ou réseau, utiliser des valeurs par défaut sûres.
+  - Toutes les lectures de capteurs doivent être **validées** (plage de valeurs, `isnan`, etc.).
+  - Ne jamais ignorer une erreur sans fallback explicite.
+
+- **Configuration locale prioritaire**
+  - La NVS est la **source de vérité** (horaires, seuils, durées, états).
+  - Le serveur distant ne sert qu’à **mettre à jour** la config locale, jamais à la remplacer en direct.
+
+- **Mémoire et watchdog**
+  - Éviter les allocations dynamiques dans les boucles ; préférer des buffers statiques.
+  - Ne pas utiliser `String` Arduino dans les chemins chauds (boucles, callbacks fréquents).
+  - Ne jamais bloquer le thread principal > 3s ; toujours prévoir des timeouts réseau courts (≤ 5s).
+
+- **Documents et fichiers**
+  - Ne pas demander à l’IA de créer de nouveaux fichiers `.md` pour ce projet, sauf demande explicite de l’utilisateur.

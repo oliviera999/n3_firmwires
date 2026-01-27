@@ -1,10 +1,10 @@
 #pragma once
 
 class AsyncWebServer;
-struct WebServerContext;
+struct AppContext;
 
 namespace WebRoutes {
-void registerUiRoutes(AsyncWebServer& server, WebServerContext& ctx);
+void registerUiRoutes(AsyncWebServer& server, AppContext& ctx);
 }
 
 
