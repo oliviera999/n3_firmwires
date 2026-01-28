@@ -141,10 +141,11 @@ void ConfigManager::resetBouffeFlags() {
 } 
 
 void ConfigManager::saveRemoteVars(const char* json) {
-  // v11.80: Utilisation du gestionnaire NVS centralisé avec compression JSON
+  // Point d'entrée central pour écriture config "serveur" en NVS (plan simplification).
+  // Ne jamais invoquer de logique réseau ici.
   Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé"));
-  
-  // Vérifier si le JSON a changé avant de sauvegarder
+
+  // Vérifier si le JSON a changé avant de sauvegarder (réduire écritures flash)
   char cachedJson[2048];
   g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, sizeof(cachedJson), "");
   

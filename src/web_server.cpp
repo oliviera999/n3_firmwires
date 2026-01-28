@@ -266,7 +266,7 @@ bool WebServerManager::begin() {
               
               Serial.println("[Web] ✅ Small feed completed, sync in background");
           }
-          else if (c == "feedBig") {
+          else if (strcmp(c, "feedBig") == 0) {
               Serial.println("[Web] 🐠 Starting manual feed big...");
               // 1. EXÉCUTION IMMÉDIATE de l'action physique
               g_autoCtrl.manualFeedBig();
@@ -704,10 +704,25 @@ bool WebServerManager::begin() {
   });
 
   // Mise à jour des variables distantes locales et envoi vers la BDD distante
+  // Flux serveur → NVS → logique locale (plan simplification):
+  // 1. Réception paramètres 2. Validation (clés connues) 3. Écriture NVS via config.saveRemoteVars
+  // 4. Mise à jour RAM via applyConfigFromJson 5. Sync distant optionnelle (non bloquante)
   _server->on("/dbvars/update", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req){
     g_autoCtrl.notifyLocalWebActivity();
-    // Récupère les paramètres envoyés en x-www-form-urlencoded
-    // (getParamCStr défini plus bas)
+
+    // Plan 3.3: debounce pour éviter écritures NVS trop fréquentes (sliders UI)
+    static unsigned long lastDbvarsUpdateMs = 0;
+    unsigned long nowMs = millis();
+    if (lastDbvarsUpdateMs > 0 && (nowMs - lastDbvarsUpdateMs) < 2000) {
+      StaticJsonDocument<128> doc;
+      doc["status"] = "OK";
+      doc["throttled"] = true;
+      char buf[128];
+      serializeJson(doc, buf, sizeof(buf));
+      req->send(200, "application/json", buf);
+      return;
+    }
+    lastDbvarsUpdateMs = nowMs;
 
     // v11.70: Clés acceptées standardisées (schéma serveur)
     const char* KEYS[] = {
@@ -921,18 +936,65 @@ bool WebServerManager::begin() {
     sendWithCompression(req, "/sw.js", "application/javascript");
   });
 
-  // Page de mise à jour OTA via le système personnalisé
-  // L'OTA est géré par le système personnalisé dans app.cpp
-  // Endpoint /update redirige vers les informations OTA
+  // Page de mise à jour OTA - Plan simplification: OTA manuel uniquement
   _server->on("/update", HTTP_GET, [](AsyncWebServerRequest* req) {
-    // v11.40: Pas de notifyLocalWebActivity() - page info OTA
-    req->send(200, "text/html", 
+    req->send(200, "text/html",
       "<html><head><title>FFP5CS OTA</title></head><body>"
       "<h1>FFP5CS - Mise à jour OTA</h1>"
-      "<p>Le système OTA est géré automatiquement par le firmware.</p>"
-      "<p>Les mises à jour sont vérifiées toutes les 2 heures.</p>"
+      "<p>OTA manuel uniquement. Utiliser <code>POST /api/ota</code> pour déclencher une vérification et mise à jour.</p>"
       "<p><a href='/'>Retour au dashboard</a></p>"
       "</body></html>");
+  });
+
+  // POST /api/ota - Déclenchement manuel OTA (vérification + mise à jour si disponible)
+  _server->on("/api/ota", HTTP_POST, [](AsyncWebServerRequest* req) {
+    g_autoCtrl.notifyLocalWebActivity();
+    extern AppContext g_appContext;
+    OTAManager& ota = g_appContext.otaManager;
+
+    if (WiFi.status() != WL_CONNECTED) {
+      StaticJsonDocument<256> doc;
+      doc["triggered"] = false;
+      doc["message"] = "WiFi non connecté";
+      doc["ok"] = false;
+      char buf[256];
+      serializeJson(doc, buf, sizeof(buf));
+      req->send(200, "application/json", buf);
+      return;
+    }
+    if (ESP.getFreeHeap() < 50000) {
+      StaticJsonDocument<256> doc;
+      doc["triggered"] = false;
+      doc["message"] = "Heap insuffisant pour OTA";
+      doc["ok"] = false;
+      char buf[256];
+      serializeJson(doc, buf, sizeof(buf));
+      req->send(200, "application/json", buf);
+      return;
+    }
+
+    ota.setCurrentVersion(ProjectConfig::VERSION);
+    bool hasUpdate = ota.checkForUpdate();
+    if (!hasUpdate) {
+      StaticJsonDocument<256> doc;
+      doc["triggered"] = false;
+      doc["message"] = "Aucune mise à jour disponible";
+      doc["currentVersion"] = ota.getCurrentVersion();
+      doc["ok"] = true;
+      char buf[256];
+      serializeJson(doc, buf, sizeof(buf));
+      req->send(200, "application/json", buf);
+      return;
+    }
+    bool started = ota.performUpdate();
+    StaticJsonDocument<256> doc;
+    doc["triggered"] = started;
+    doc["message"] = started ? "Mise à jour lancée" : "Échec lancement OTA";
+    doc["remoteVersion"] = ota.getRemoteVersion();
+    doc["ok"] = started;
+    char buf[256];
+    serializeJson(doc, buf, sizeof(buf));
+    req->send(200, "application/json", buf);
   });
 
   // /mailtest endpoint: envoie un e-mail de test
@@ -1556,6 +1618,15 @@ bool WebServerManager::begin() {
           err = nvs_get_blob(nvsHandle, key, nullptr, &required_size);
           
           if (err == ESP_OK && required_size > 0) {
+            // Plafond de sécurité: ignorer les entrées corrompues ou anormalement grosses
+            if (required_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+              Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée (%u bytes > max %u)\n",
+                            key,
+                            static_cast<unsigned>(required_size),
+                            static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
+              continue;
+            }
+
             char* buffer = (char*)malloc(required_size);
             if (buffer) {
               err = nvs_get_blob(nvsHandle, key, buffer, &required_size);
@@ -1651,6 +1722,12 @@ bool WebServerManager::begin() {
           size_t networkCount = 0;
           size_t required_size = sizeof(networkCount);
           nvs_get_blob(nvsHandle, "count", &networkCount, &required_size);
+          if (networkCount > NVSConfig::MAX_WIFI_SAVED_NETWORKS) {
+            Serial.printf("[WiFi] ⚠️ Compteur NVS wifi_saved.count trop élevé (%u > %u) - clamp à max\n",
+                          static_cast<unsigned>(networkCount),
+                          static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_NETWORKS));
+            networkCount = NVSConfig::MAX_WIFI_SAVED_NETWORKS;
+          }
           
           // Vérifier si le réseau existe déjà
           bool exists = false;
@@ -1837,28 +1914,38 @@ bool WebServerManager::begin() {
           char key[16];
           snprintf(key, sizeof(key), "net_%zu", i);
           
-          size_t data_size = 0;
-          err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
-          if (err == ESP_OK && data_size > 0) {
-            char* buffer = (char*)malloc(data_size);
-            if (buffer) {
-              err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
-              if (err == ESP_OK) {
-                char* separator = strchr(buffer, '|');
-                if (separator != nullptr && separator > buffer) {
-                  *separator = '\0';
-                  if (strcmp(buffer, ssidBuf) == 0) {
-                    found = true;
-                    foundIndex = i;
-                    *separator = '|';  // Restaurer pour free()
-                    break;
-                  }
-                  *separator = '|';  // Restaurer pour free()
-                }
+            size_t data_size = 0;
+            err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
+            if (err == ESP_OK && data_size > 0) {
+              // Plafond de sécurité sur la taille stockée
+              if (data_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+                Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée pour suppression (%u bytes > max %u)\n",
+                              key,
+                              static_cast<unsigned>(data_size),
+                              static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
+                continue;
               }
-              free(buffer);
+
+              char* buffer = (char*)malloc(data_size);
+              if (buffer) {
+                err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
+                if (err == ESP_OK) {
+                  char* separator = strchr(buffer, '|');
+                  if (separator != nullptr && separator > buffer) {
+                    *separator = '\0';
+                    if (strcmp(buffer, ssidBuf) == 0) {
+                      found = true;
+                      foundIndex = i;
+                      *separator = '|';  // Restaurer pour free()
+                      free(buffer);
+                      break;
+                    }
+                    *separator = '|';  // Restaurer pour free()
+                  }
+                }
+                free(buffer);
+              }
             }
-          }
         }
         
         if (found) {
@@ -1876,6 +1963,15 @@ bool WebServerManager::begin() {
             size_t data_size = 0;
             err = nvs_get_blob(nvsHandle, oldKey, nullptr, &data_size);
             if (err == ESP_OK && data_size > 0) {
+              if (data_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+                Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée lors du compactage (%u bytes > max %u)\n",
+                              oldKey,
+                              static_cast<unsigned>(data_size),
+                              static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
+                nvs_erase_key(nvsHandle, oldKey);
+                continue;
+              }
+
               char* buffer = (char*)malloc(data_size);
               if (buffer) {
                 err = nvs_get_blob(nvsHandle, oldKey, buffer, &data_size);

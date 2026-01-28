@@ -38,6 +38,29 @@ static uint32_t crc32(const char* data){
   return ~crc;
 }
 
+// Fallback HTTP: éligibilité et construction d'URL HTTP depuis HTTPS (iot.olution.info uniquement)
+static const char HTTPS_PREFIX[] = "https://";
+static const char HTTP_FALLBACK_HOST[] = "iot.olution.info";  // 16 chars
+
+static bool isEligibleForHttpFallback(const char* url) {
+  if (!url) return false;
+  if (strncmp(url, HTTPS_PREFIX, 8) != 0) return false;
+  if (strlen(url) < 8U + 16U) return false;
+  return (strncmp(url + 8, HTTP_FALLBACK_HOST, 16) == 0);
+}
+
+// Construit httpUrlOut = "http://" + reste de httpsUrl. Retourne true si ok, false si buffer trop petit ou url invalide.
+static bool buildHttpFallbackUrl(const char* httpsUrl, char* httpUrlOut, size_t httpUrlSize) {
+  if (!httpsUrl || !httpUrlOut || httpUrlSize < 9) return false;
+  if (strncmp(httpsUrl, HTTPS_PREFIX, 8) != 0) return false;
+  size_t restLen = strlen(httpsUrl + 8);
+  if (restLen + 8 >= httpUrlSize) return false;  // "http://" = 7, + rest + null
+  memcpy(httpUrlOut, "http://", 7);
+  httpUrlOut[7] = '\0';
+  strncat(httpUrlOut, httpsUrl + 8, httpUrlSize - 8 - 1);
+  return true;
+}
+
 WebClient::WebClient(const char* apiKey) {
   if (apiKey) {
     strncpy(_apiKey, apiKey, sizeof(_apiKey) - 1);
@@ -187,38 +210,53 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     LOG(LOG_DEBUG, "[HTTP] Modem sleep désactivé pendant le transfert");
   }
 
-    // Choix du client selon le schéma (HTTP = non-TLS / HTTPS = TLS)
-    bool secure = isSecure;
-  WiFiClient plain; // client non-TLS (portée limitée à la fonction)
-
-  // Politique de retry exponentiel simple
-  const int maxAttempts = 3;
-  int attempt = 0;
+  WiFiClient plain;  // client non-TLS (portée limitée à la fonction)
+  // Plan simplification: une seule tentative par appel, pas de retry interne (retry au prochain cycle tâche)
+  const int maxAttempts = 1;
   int code = -1;
   response[0] = '\0';
-  
-  if (debugLogging) {
-    LOG(LOG_DEBUG, "[HTTP] Boucle de retry max=%d", maxAttempts);
-  }
-  
-  while (attempt < maxAttempts) {
-    unsigned long attemptStartMs = millis();
+  bool success = false;
+  const char* currentUrl = url;
+  bool currentSecure = isSecure;
+  char httpUrlBuf[256];
+
+  // Phase 0 = HTTPS, Phase 1 = HTTP fallback (si éligible et temps restant)
+  for (int phase = 0; phase < 2 && !success; phase++) {
+    if (phase == 1) {
+      if (!isEligibleForHttpFallback(url)) break;
+      if ((millis() - requestStartMs) >= NetworkConfig::HTTP_TIMEOUT_MS) break;
+      if (!buildHttpFallbackUrl(url, httpUrlBuf, sizeof(httpUrlBuf))) break;
+      currentUrl = httpUrlBuf;
+      currentSecure = false;
+      LOG(LOG_WARN, "[HTTP] HTTPS failed, trying HTTP fallback");
+    }
+
+    int attempt = 0;
+    code = -1;
+    response[0] = '\0';
+
     if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] Tentative %d/%d", attempt + 1, maxAttempts);
+      LOG(LOG_DEBUG, "[HTTP] Boucle de retry max=%d %s", maxAttempts, phase == 1 ? "(HTTP fallback)" : "");
     }
-    
-    // Ré-initialise la requête
-    if (secure) {
-      _http.begin(_client, url);
+
+    while (attempt < maxAttempts) {
+      unsigned long attemptStartMs = millis();
       if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Client HTTPS utilisé");
+        LOG(LOG_DEBUG, "[HTTP] Tentative %d/%d", attempt + 1, maxAttempts);
       }
-    } else {
-      _http.begin(plain, url);
-      if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Client HTTP simple utilisé");
+
+      // Ré-initialise la requête
+      if (currentSecure) {
+        _http.begin(_client, currentUrl);
+        if (debugLogging) {
+          LOG(LOG_DEBUG, "[HTTP] Client HTTPS utilisé");
+        }
+      } else {
+        _http.begin(plain, currentUrl);
+        if (debugLogging) {
+          LOG(LOG_DEBUG, "[HTTP] Client HTTP simple utilisé");
+        }
       }
-    }
     
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
     if (debugLogging) {
@@ -343,7 +381,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
           maxAttempts,
           errorTimeMs - requestStartMs,
           errorBuf2);
-      LOG(LOG_WARN, "[HTTP] URL=%s", url);
+      LOG(LOG_WARN, "[HTTP] URL=%s", currentUrl);
       LOG(LOG_WARN, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm", WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
       LOG(LOG_WARN, "[HTTP] Heap libre=%u", ESP.getFreeHeap());
 
@@ -385,22 +423,22 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       }
       break;
     }
-    
+
     // Erreur client 4xx : pas de retry (v11.31)
     if (code >= 400 && code < 500) {
       LOG(LOG_WARN, "[HTTP] Erreur client %d, arrêt des retry", code);
       break;
     }
-    
+
     // Court-circuit si plus de WiFi
     if (WiFi.status() != WL_CONNECTED) {
       LOG(LOG_WARN, "[HTTP] WiFi déconnecté, arrêt des tentatives");
       break;
     }
-    
+
     // Incrémenter attempt avant backoff
     attempt++;
-    
+
     // Backoff exponentiel si retry possible (v11.31 amélioré)
     if (attempt < maxAttempts) {
       int backoff = NetworkConfig::BACKOFF_BASE_MS * attempt * attempt;
@@ -409,43 +447,50 @@ bool WebClient::httpRequest(const char* url, const char* payload,
         LOG(LOG_DEBUG, "[HTTP] Avant retry: WiFi=%d RSSI=%d Heap=%u",
             WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
       }
-      
+
       vTaskDelay(pdMS_TO_TICKS(backoff));
-      
+
       if (debugLogging) {
         LOG(LOG_DEBUG, "[HTTP] Après retry: WiFi=%d RSSI=%d Heap=%u",
             WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
       }
-      
+
       // Note: Watchdog géré par tâche appelante - vTaskDelay() yield le CPU
       // On tente un reset du watchdog ici pour éviter le timeout lors des retries multiples
-      esp_task_wdt_reset(); 
+      esp_task_wdt_reset();
     }
-  }
+    }  // end while (attempt < maxAttempts)
+
+    // Succès sur cette phase : sortir du for(phase)
+    if (code >= 200 && code < 400) {
+      success = true;
+      if (phase == 1) {
+        LOG(LOG_INFO, "[HTTP] HTTP fallback succeeded");
+      }
+      break;
+    }
+  }  // end for (phase)
 
   // === RÉSUMÉ FINAL DE LA REQUÊTE ===
   unsigned long totalDurationMs = millis() - requestStartMs;
-  if (debugLogging || code >= 400) {
-    LOG(LOG_INFO, "[HTTP] Fin requête: durée=%lu ms, tentatives=%d/%d, code=%d, succès=%s, réponse=%u bytes, heap=%u",
+  if (debugLogging || (code >= 400 && !success)) {
+    LOG(LOG_INFO, "[HTTP] Fin requête: durée=%lu ms, code=%d, succès=%s, réponse=%u bytes, heap=%u",
         totalDurationMs,
-        attempt + 1,
-        maxAttempts,
         code,
-        (code >= 200 && code < 400) ? "oui" : "non",
+        success ? "oui" : "non",
         strlen(response),
         ESP.getFreeHeap());
   }
-  
+
   // Fix v11.29: Sauvegarder timestamp pour délai inter-requêtes
   _lastRequestMs = millis();
-  
+
   // v11.150: Reset TLS client pour libérer mémoire (~46KB) après chaque requête
   // Résout la fuite mémoire où le client TLS garde la mémoire après échec
   resetTLSClient();
-  
+
   // Ne pas réactiver le modem-sleep
   WiFi.setSleep(false);
-  bool success = (code >= 200 && code < 400);
   if (!success) {
     response[0] = '\0';  // En cas d'échec, vider la réponse
   }
@@ -571,6 +616,19 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   return success;
 }
 
+bool WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!config.isRemoteRecvEnabled()) return false;
+  return fetchRemoteState(doc);
+}
+
+bool WebClient::tryPushStatusToServer(const char* payload) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!config.isRemoteSendEnabled()) return false;
+  if (payload == nullptr) return false;
+  return postRaw(payload);
+}
+
 bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!config.isRemoteRecvEnabled()) {
     return false;
@@ -581,93 +639,100 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     return false;
   }
   bool hasMutex = true;
-  
+
   WiFi.setSleep(false);
   vTaskDelay(pdMS_TO_TICKS(100));
-  
+
   uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;
-  
-  // Vérification simple du heap
+
   if (freeHeap < MIN_HEAP_FOR_HTTPS) {
     if (hasMutex) TLSMutex::release();
     return false;
   }
-  
-  char url[256];
-  ServerConfig::getOutputUrl(url, sizeof(url));
-  bool secure = strncmp(url, "https://", 8) == 0;
-  WiFiClient plain;
-  
-  if (secure) { 
-    _http.begin(_client, url); 
-  } else { 
-    _http.begin(plain, url); 
-  }
-  
-  int code = _http.GET();
-  
-  if (code <= 0) {
-    _http.end();
-    resetTLSClient();
-    if (hasMutex) TLSMutex::release();
-    return false;
-  }
-  
-  // v11.156: Lecture limitée avec buffer fixe pour éviter fragmentation mémoire
-  // Limite stricte basée sur BufferConfig::JSON_DOCUMENT_SIZE
+
   const size_t MAX_RESPONSE_SIZE = BufferConfig::JSON_DOCUMENT_SIZE;
   char payloadBuffer[MAX_RESPONSE_SIZE + 1];
-  size_t totalRead = 0;
-  
-  WiFiClient* stream = _http.getStreamPtr();
-  
-  if (!stream) {
+  char url[256];
+  char httpUrlBuf[256];
+  ServerConfig::getOutputUrl(url, sizeof(url));
+  uint32_t requestStartMs = millis();
+  WiFiClient plain;
+
+  for (int phase = 0; phase < 2; phase++) {
+    const char* currentUrl = url;
+    bool secure = (strncmp(url, "https://", 8) == 0);
+
+    if (phase == 1) {
+      if (!isEligibleForHttpFallback(url)) break;
+      if ((millis() - requestStartMs) >= NetworkConfig::HTTP_TIMEOUT_MS) break;
+      if (!buildHttpFallbackUrl(url, httpUrlBuf, sizeof(httpUrlBuf))) break;
+      currentUrl = httpUrlBuf;
+      secure = false;
+      LOG(LOG_WARN, "[HTTP] HTTPS failed, trying HTTP fallback (GET)");
+    }
+
+    if (secure) {
+      _http.begin(_client, currentUrl);
+    } else {
+      _http.begin(plain, currentUrl);
+    }
+
+    int code = _http.GET();
+
+    if (code <= 0) {
+      _http.end();
+      resetTLSClient();
+      continue;
+    }
+
+    WiFiClient* stream = _http.getStreamPtr();
+    if (!stream) {
+      _http.end();
+      resetTLSClient();
+      continue;
+    }
+
+    size_t totalRead = 0;
+    while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
+      size_t bytesRead = stream->readBytes(
+        payloadBuffer + totalRead,
+        MAX_RESPONSE_SIZE - totalRead
+      );
+      if (bytesRead == 0) break;
+      totalRead += bytesRead;
+    }
+    payloadBuffer[totalRead] = '\0';
+
     _http.end();
     resetTLSClient();
+
+    if (totalRead == 0) continue;
+
+    char* jsonStart = strchr(payloadBuffer, '{');
+    if (!jsonStart) {
+      jsonStart = strchr(payloadBuffer, '[');
+    }
+    if (jsonStart && jsonStart != payloadBuffer) {
+      size_t offset = jsonStart - payloadBuffer;
+      size_t newSize = totalRead - offset;
+      memmove(payloadBuffer, jsonStart, newSize);
+      payloadBuffer[newSize] = '\0';
+      totalRead = newSize;
+    }
+
+    DeserializationError err = deserializeJson(doc, payloadBuffer);
+    if (err) continue;
+
+    if (phase == 1) {
+      LOG(LOG_INFO, "[HTTP] HTTP fallback succeeded");
+    }
     if (hasMutex) TLSMutex::release();
-    return false;
+    return true;
   }
-  
-  while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
-    size_t bytesRead = stream->readBytes(
-      payloadBuffer + totalRead,
-      MAX_RESPONSE_SIZE - totalRead
-    );
-    if (bytesRead == 0) break;
-    totalRead += bytesRead;
-  }
-  payloadBuffer[totalRead] = '\0';
-  
-  _http.end();
-  resetTLSClient();
-  
-  if (totalRead == 0) {
-    if (hasMutex) TLSMutex::release();
-    return false;
-  }
-  
-  // Nettoyer le préfixe chunked HTTP si présent
-  char* jsonStart = strchr(payloadBuffer, '{');
-  if (!jsonStart) {
-    jsonStart = strchr(payloadBuffer, '[');
-  }
-  if (jsonStart && jsonStart != payloadBuffer) {
-    size_t offset = jsonStart - payloadBuffer;
-    size_t newSize = totalRead - offset;
-    memmove(payloadBuffer, jsonStart, newSize);
-    payloadBuffer[newSize] = '\0';
-    totalRead = newSize;
-  }
-  
-  DeserializationError err = deserializeJson(doc, payloadBuffer);
-  if (err) {
-    if (hasMutex) TLSMutex::release();
-    return false;
-  }
-  
+
   if (hasMutex) TLSMutex::release();
-  return true;
+  return false;
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {

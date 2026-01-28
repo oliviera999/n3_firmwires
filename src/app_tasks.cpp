@@ -44,6 +44,10 @@ TaskHandle_t g_webTaskHandle = nullptr;
 TaskHandle_t g_autoTaskHandle = nullptr;
 TaskHandle_t g_displayTaskHandle = nullptr;
 
+// v11.160: Document JSON de fallback réseau alloué statiquement
+// Évite un gros objet sur la stack d'automationTask lors des timeouts capteurs
+static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> g_remoteFallbackDoc;
+
 // ============================================================================
 // Point 2: netTask (unique propriétaire de WebClient/TLS)
 // ============================================================================
@@ -51,7 +55,6 @@ enum class NetReqType : uint8_t {
   FetchRemoteState = 1,
   PostRaw = 2,
   Heartbeat = 3,
-  BootFetchRemoteState = 4,
 };
 
 struct NetRequest {
@@ -95,11 +98,9 @@ static void netTask(void* pv) {
   }
   if (WiFi.status() == WL_CONNECTED) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
-    Serial.println(F("[netTask] Boot: fetchRemoteState() (déplacé hors loopTask)"));
-    // CORRECTION DEADLOCK: Appeler directement webClient au lieu de automatism.fetchRemoteState()
-    // qui utilise RPC vers la même queue (deadlock)
-    bool ok = g_ctx->webClient.fetchRemoteState(tmp);
-    Serial.printf("[netTask] Boot fetchRemoteState: %s\n", ok ? "OK" : "ECHEC");
+    Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
+    bool ok = g_ctx->webClient.tryFetchConfigFromServer(tmp);
+    Serial.printf("[netTask] Boot tryFetchConfigFromServer: %s\n", ok ? "OK" : "ECHEC");
   } else {
     Serial.println(F("[netTask] Boot: WiFi non connecté, fetchRemoteState skip"));
   }
@@ -115,19 +116,14 @@ static void netTask(void* pv) {
     bool ok = false;
     switch (req->type) {
       case NetReqType::FetchRemoteState:
-        ok = (req->doc != nullptr) ? g_ctx->webClient.fetchRemoteState(*req->doc) : false;
+        ok = (req->doc != nullptr) ? g_ctx->webClient.tryFetchConfigFromServer(*req->doc) : false;
         break;
       case NetReqType::PostRaw:
-        ok = g_ctx->webClient.postRaw(req->payload);
+        ok = g_ctx->webClient.tryPushStatusToServer(req->payload);
         break;
       case NetReqType::Heartbeat:
         ok = (req->diag != nullptr) ? g_ctx->webClient.sendHeartbeat(*req->diag) : false;
         break;
-      case NetReqType::BootFetchRemoteState: {
-        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
-        ok = g_ctx->automatism.fetchRemoteState(tmp);
-        break;
-      }
       default:
         ok = false;
         break;
@@ -146,7 +142,7 @@ void sensorTask(void* pv) {
     wdtRegistered = true;
   }
 
-  SENSOR_LOG_PRINTLN(F("[Sensor] Tâche sensorTask démarrée - exécution à rythme naturel avec repos de 500ms"));
+  SENSOR_LOG_PRINTF("[Sensor] Tâche sensorTask démarrée - intervalle %u ms\n", TimingConfig::SENSOR_TASK_INTERVAL_MS);
 
   for (;;) {
     if (g_ctx->otaManager.isUpdating()) {
@@ -219,7 +215,7 @@ void sensorTask(void* pv) {
     }
 
     esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(TimingConfig::SENSOR_TASK_INTERVAL_MS));
   }
 }
 
@@ -276,12 +272,13 @@ void webTask(void* pv) {
 
 void automationTask(void* pv) {
   SensorReadings readings;
-  unsigned long lastHeartbeat = 0;
-  unsigned long lastBouffeDisplay = 0;
-  const unsigned long bouffeInterval = TimingConfig::BOUFFE_DISPLAY_INTERVAL_MS;
+  // v11.160: Compteurs persistants en statique pour réduire légèrement l'empreinte stack
+  static unsigned long lastHeartbeat = 0;
+  static unsigned long lastBouffeDisplay = 0;
+  static const unsigned long bouffeInterval = TimingConfig::BOUFFE_DISPLAY_INTERVAL_MS;
 
-  unsigned long lastPumpStatsDisplay = 0;
-  const unsigned long pumpStatsInterval = TimingConfig::PUMP_STATS_DISPLAY_INTERVAL_MS;
+  static unsigned long lastPumpStatsDisplay = 0;
+  static const unsigned long pumpStatsInterval = TimingConfig::PUMP_STATS_DISPLAY_INTERVAL_MS;
 
   #if defined(PROFILE_TEST) && FEATURE_DIAG_STACK_LOGS
   unsigned long lastStackCheck = 0;
@@ -300,7 +297,7 @@ void automationTask(void* pv) {
     if (xQueueReceive(g_sensorQueue, &readings, pdMS_TO_TICKS(1000)) == pdTRUE) {
       esp_task_wdt_reset();
       
-      #if defined(PROFILE_TEST) && FEATURE_DIAG_STACK_LOGS
+      #if FEATURE_DIAG_STACK_LOGS
       // Vérification périodique de la stack (wroom-test uniquement)
       unsigned long now = millis();
       if (now - lastStackCheck > stackCheckInterval) {
@@ -327,7 +324,8 @@ void automationTask(void* pv) {
       unsigned long now = millis();
       #endif
       
-      // Monitoring unifié de la mémoire (toutes les 10-15 minutes)
+      #if FEATURE_DIAG_STATS
+      // Monitoring unifié de la mémoire (toutes les 10-15 minutes, activable par flag)
       static unsigned long lastHeapCheck = 0;
       const unsigned long heapCheckInterval = 600000; // 10 minutes
       if (now - lastHeapCheck > heapCheckInterval) {
@@ -353,13 +351,15 @@ void automationTask(void* pv) {
                       heapFree, heapMin, largestBlock, fragmentation);
         #endif
       }
+      #endif
       
       g_ctx->automatism.update(readings);
       g_ctx->power.resetWatchdog();
       g_ctx->diagnostics.update();
       if (!g_ctx->otaManager.isUpdating()) {
-        // Priorité 1: Heartbeat (toutes les 30s)
-        if (now - lastHeartbeat > 30000) {
+        // Plan simplification: push réseau toutes les 5 min (au lieu de 30s)
+        static const unsigned long HEARTBEAT_INTERVAL_MS = 300000;  // 5 min
+        if (now - lastHeartbeat > HEARTBEAT_INTERVAL_MS) {
           esp_task_wdt_reset();
           AppTasks::netSendHeartbeat(g_ctx->diagnostics, 10000);
           lastHeartbeat = now;
@@ -418,14 +418,15 @@ void automationTask(void* pv) {
       if (WiFi.status() == WL_CONNECTED) {
         esp_task_wdt_reset();
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
-        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmpDoc;
-        bool ok = AppTasks::netFetchRemoteState(tmpDoc, 30000);
+        // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
+        g_remoteFallbackDoc.clear();
+        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, 30000);
         Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
                      ok ? "OK" : "KO",
-                     static_cast<unsigned>(tmpDoc.size()));
+                     static_cast<unsigned>(g_remoteFallbackDoc.size()));
         if (ok) {
           Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
-          GPIOParser::parseAndApply(tmpDoc, g_ctx->automatism);
+          GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
         }
       }
     }
@@ -442,7 +443,7 @@ bool start(AppContext& ctx) {
   // v11.157: CORRECTION CRITIQUE - Créer les queues AVANT les tâches
   // Les tâches utilisent immédiatement les queues, elles doivent donc exister
   // Créer la queue capteurs (utilisée par sensorTask et automationTask)
-  // v11.158: Réduit de 10 à 5 slots pour réduire fragmentation (données redondantes toutes les 500ms)
+  // v11.158: 5 slots (données toutes les SENSOR_TASK_INTERVAL_MS, typ. 2.5s)
   if (!g_sensorQueue) {
     g_sensorQueue = xQueueCreate(5, sizeof(SensorReadings));
     if (!g_sensorQueue) {

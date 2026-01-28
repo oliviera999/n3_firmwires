@@ -244,10 +244,10 @@ void loop() {
   wifi.checkConnectionStability();
   wifi.loop(&oled);
   
-  #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  // Plan simplification: OTA manuel uniquement (POST /api/ota). Plus de vérification périodique.
+  #if 0
   if (WiFi.status() == WL_CONNECTED &&
       (now - g_lastOtaCheck >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
-    LOG_INFO("Vérification périodique des mises à jour OTA...");
     SystemBoot::checkForOtaUpdate(g_appContext);
     g_lastOtaCheck = now;
   }

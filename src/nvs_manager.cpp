@@ -290,20 +290,32 @@ NVSError NVSManager::saveBool(const char* ns, const char* key, bool value) {
         return keyError;
     }
 
-    NVSError openError = openNamespace(ns, false);
-    if (openError != NVSError::SUCCESS) {
-        return openError;
-    }
-
-    bool success = _preferences.putBool(key, value);
+  // Vérifier si la valeur a réellement changé avant d'écrire
+  NVSError openError = openNamespace(ns, true);
+  if (openError == NVSError::SUCCESS) {
+    bool current = _preferences.getBool(key, value);
     closeNamespace();
-
-    if (!success) {
-        logError(NVSError::WRITE_FAILED, "saveBool", ns, key);
-        return NVSError::WRITE_FAILED;
+    if (current == value) {
+      // Valeur inchangée, pas d'écriture pour préserver la flash
+      return NVSError::SUCCESS;
     }
+  }
 
-    return NVSError::SUCCESS;
+  // Écrire uniquement si la valeur est différente ou si la lecture précédente a échoué
+  openError = openNamespace(ns, false);
+  if (openError != NVSError::SUCCESS) {
+    return openError;
+  }
+
+  bool success = _preferences.putBool(key, value);
+  closeNamespace();
+
+  if (!success) {
+    logError(NVSError::WRITE_FAILED, "saveBool", ns, key);
+    return NVSError::WRITE_FAILED;
+  }
+
+  return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::loadBool(const char* ns, const char* key, bool& value, bool defaultValue) {
@@ -421,17 +433,26 @@ NVSUsageStats NVSManager::getUsageStats() {
     if (!guard.locked()) {
         return stats;
     }
-    
-    // Compter les namespaces (simplifié - pas de cache)
-    stats.namespaceCount = 6; // Namespaces consolidés
-    
-    // Estimation de l'espace utilisé (approximatif)
-    stats.totalBytes = 4096; // Taille typique partition NVS
-    stats.usedBytes = 0; // Non calculé (simplifié)
-    stats.freeBytes = stats.totalBytes;
-    stats.usagePercent = 0.0f;
-    stats.keyCount = 0; // Non calculé (simplifié)
-    
+
+  // Utiliser les statistiques réelles fournies par l'ESP-IDF
+  nvs_stats_t rawStats;
+  esp_err_t err = nvs_get_stats(NVS_DEFAULT_PART_NAME, &rawStats);
+  if (err == ESP_OK) {
+    stats.totalBytes = rawStats.total_entries;
+    stats.usedBytes = rawStats.used_entries;
+    stats.freeBytes = rawStats.free_entries;
+    stats.namespaceCount = rawStats.namespace_count;
+    stats.keyCount = rawStats.used_entries;
+    if (rawStats.total_entries > 0) {
+      stats.usagePercent = (100.0f * static_cast<float>(rawStats.used_entries)) /
+                           static_cast<float>(rawStats.total_entries);
+    } else {
+      stats.usagePercent = 0.0f;
+    }
+  } else {
+    Serial.printf("[NVS] ⚠️ Impossible de lire les statistiques NVS (err=%d)\n", static_cast<int>(err));
+  }
+
     return stats;
 }
 
@@ -441,8 +462,10 @@ void NVSManager::logUsageStats() {
     Serial.println(F("========================================"));
     Serial.println(F("[NVS] 📊 Statistiques d'utilisation"));
     Serial.println(F("========================================"));
-    Serial.printf("[NVS] Namespaces: %zu\n", stats.namespaceCount);
-    Serial.printf("[NVS] Espace total: %zu bytes\n", stats.totalBytes);
+  Serial.printf("[NVS] Namespaces: %zu\n", stats.namespaceCount);
+  Serial.printf("[NVS] Entrées totales: %zu, utilisées: %zu, libres: %zu (%.1f%%)\n",
+                stats.totalBytes, stats.usedBytes, stats.freeBytes, stats.usagePercent);
+  Serial.printf("[NVS] Clés utilisées (approx.): %zu\n", stats.keyCount);
     Serial.println(F("========================================"));
 }
 

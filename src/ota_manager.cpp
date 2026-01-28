@@ -18,6 +18,8 @@
 #include "automatism.h"
 #include "diagnostics.h"
 #include "task_monitor.h"
+#include "tls_mutex.h"
+
 
 namespace {
 bool hasOtaPartition() {
@@ -1922,6 +1924,22 @@ bool OTAManager::performUpdate() {
                  m_remoteVersion,
                  m_firmwareUrl,
                  m_firmwareSize);
+
+    // Vérifier qu'il reste suffisamment de heap avant de lancer une tâche OTA dédiée.
+    // Cela évite des échecs de création de tâche difficiles à diagnostiquer
+    // quand le heap est très fragmenté après un long uptime.
+    uint32_t freeHeap = ESP.getFreeHeap();
+    if (freeHeap < TLS_MIN_HEAP_BYTES) {
+        char heapBuf[16];
+        formatBytes(freeHeap, heapBuf, sizeof(heapBuf));
+        char logMsg[96];
+        snprintf(logMsg, sizeof(logMsg),
+                 "Heap insuffisant pour créer la tâche OTA: %s (< %u bytes requis)",
+                 heapBuf,
+                 TLS_MIN_HEAP_BYTES);
+        logError(logMsg);
+        return false;
+    }
 
     m_isUpdating = true;
     

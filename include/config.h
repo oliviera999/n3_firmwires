@@ -107,6 +107,9 @@ namespace TimingConfig {
     constexpr uint32_t WAKEUP_PROTECTION_DURATION_MS = 30000;
     constexpr uint32_t WEB_ACTIVITY_TIMEOUT_MS = 60000;
     
+    // Intervalle tâche capteurs: >= DHT MIN_READ_INTERVAL_MS (datasheet 2s, config 2.5s)
+    constexpr uint32_t SENSOR_TASK_INTERVAL_MS = 2500;
+
     // Intervalles d'affichage
     constexpr uint32_t MIN_DISPLAY_INTERVAL_MS = 100;
     constexpr uint32_t BOUFFE_DISPLAY_INTERVAL_MS = 1000;
@@ -252,6 +255,26 @@ namespace BufferConfig {
     #endif
     
     constexpr uint32_t JSON_PREVIEW_MAX_SIZE = 200;
+}
+
+// -----------------------------------------------------------------------------
+// 4.1 NVS – LIMITES SÉCURITÉ TAILLES
+// -----------------------------------------------------------------------------
+// Ces bornes protègent contre des valeurs corrompues en NVS qui pourraient
+// conduire à des malloc() ou blobs trop gros côté firmware. Elles doivent
+// rester prudentes mais suffisantes pour les usages prévus.
+namespace NVSConfig {
+    // Taille maximale acceptée pour un réseau WiFi sauvegardé "ssid|password"
+    // (côté écriture on limite déjà à ~130 octets).
+    constexpr size_t MAX_WIFI_SAVED_ENTRY_BYTES = 256;
+
+    // Nombre maximal de réseaux WiFi sauvegardés côté NVS pour éviter que
+    // la clé "count" ne fasse grossir indéfiniment la zone.
+    constexpr size_t MAX_WIFI_SAVED_NETWORKS = 10;
+
+    // Taille maximale de chaînes NVS lues dans les outils d’inspection
+    // (alignée sur la taille des documents JSON).
+    constexpr size_t MAX_INSPECTED_STRING_BYTES = BufferConfig::JSON_DOCUMENT_SIZE;
 }
 
 // -----------------------------------------------------------------------------

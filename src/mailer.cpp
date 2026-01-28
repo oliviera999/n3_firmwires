@@ -655,9 +655,9 @@ static const char* buildSystemInfoFooter() {
     buf += written;
     remaining -= written;
 
-    // Namespace ota
+    // Namespace OTA - clé unifiée avec ConfigManager ("ota_update_flag")
     bool otaUpdateFlag;
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_updateFlag", otaUpdateFlag, true);
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", otaUpdateFlag, true);
     written = snprintf(buf, remaining, "- ota.updateFlag: %s\n", otaUpdateFlag ? "true" : "false");
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
@@ -929,6 +929,7 @@ static bool waitForNetworkReadyForSMTP() {
   
   // Phase 2: Vérifier que l'IP est toujours valide et DNS fonctionne
   while ((millis() - startMs) < MAX_WAIT_MS) {
+    esp_task_wdt_reset();  // Plan: watchdog dans boucles longues
     if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
       // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
       IPAddress dnsResult;

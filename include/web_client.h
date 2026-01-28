@@ -28,7 +28,11 @@ class WebClient {
   bool sendHeartbeat(const class Diagnostics& diag);
   bool postRaw(const char* payload);
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
-  
+
+  // Couche réseau minimale (WiFi + timeout ≤5s, une tentative, pas de retry interne)
+  bool tryFetchConfigFromServer(ArduinoJson::JsonDocument& doc);
+  bool tryPushStatusToServer(const char* payload);
+
   // v11.150: Force la libération de mémoire TLS
   void resetTLSClient();
 

@@ -4,7 +4,7 @@
 
 param(
     [string]$Port = "",
-    [string]$DefaultPort = "COM6",
+    [string]$DefaultPort = "COM4",
     [int]$MonitorDuration = 600,
     [string]$Environment = "wroom-test",
     [switch]$SkipUploadFS

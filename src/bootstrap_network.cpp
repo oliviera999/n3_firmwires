@@ -134,35 +134,10 @@ void checkForOtaUpdate(AppContext& ctx) {
     }
   });
 
-  if (ctx.otaManager.checkForUpdate()) {
-    Serial.println("[OTA] 🆕 Mise à jour disponible !");
-    Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion());
-    Serial.printf("[OTA] 📋 Version distante: %s\n", ctx.otaManager.getRemoteVersion());
-    Serial.printf("[OTA] 📋 URL firmware: %s\n", ctx.otaManager.getFirmwareUrl());
-    char sizeBuf[16];
-    OTAManager::formatBytes(ctx.otaManager.getFirmwareSize(), sizeBuf, sizeof(sizeBuf));
-    Serial.printf("[OTA] 📋 Taille: %s\n", sizeBuf);
-
-    if (ctx.display.isPresent()) {
-      char otaMessage[32];
-      snprintf(otaMessage,
-               sizeof(otaMessage),
-               "OTA dispo: %s",
-               ctx.otaManager.getRemoteVersion());
-      ctx.display.showDiagnostic(otaMessage);
-    }
-
-    Serial.println("[OTA] 🚀 Déclenchement automatique de la mise à jour...");
-    if (ctx.otaManager.performUpdate()) {
-      Serial.println("[OTA] ✅ Mise à jour lancée avec succès");
-    } else {
-      Serial.println("[OTA] ❌ Échec du lancement de la mise à jour");
-    }
-  } else {
-    Serial.println("[OTA] ✅ Aucune mise à jour disponible");
-    Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion());
-    Serial.printf("[OTA] 📋 Version distante: %s\n", ctx.otaManager.getRemoteVersion());
-  }
+  // Plan simplification: OTA manuel uniquement. Plus de vérification auto au boot.
+  // Utiliser POST /api/ota pour déclencher une mise à jour.
+  Serial.println("[OTA] Mode manuel: pas de vérification automatique au boot");
+  Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion());
 
   Serial.printf("[OTA] 📊 Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());
   Serial.printf("[OTA] 📊 Heap libre: %d bytes\n", ESP.getFreeHeap());

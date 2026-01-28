@@ -6,6 +6,8 @@
 .ccls
 compile_commands.json
 .cache/
+desktop.ini
+
 
 # Build artifacts
 build/
@@ -13,12 +15,16 @@ build/
 *.elf
 *.bin
 *.map
+desktop.ini
+
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+desktop.ini
+
 
 # IDE
 .vscode/
@@ -26,6 +32,8 @@ __pycache__/
 *.swp
 *.swo
 *~
+desktop.ini
+
 
 # OS
 .DS_Store
@@ -38,11 +46,15 @@ desktop.ini
 monitor_*.log
 monitor_*.log.err
 monitor_analysis_*.log
+desktop.ini
+
 
 # Temporary files
 *.tmp
 *.bak
 *.old
+desktop.ini
+
 
 # Credentials (if any)
 secrets.h
