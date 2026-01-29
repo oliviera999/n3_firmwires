@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <string.h>
 #include <ctype.h>
 
@@ -167,8 +168,7 @@ void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["staConnected"] = staConnected;
     if (staConnected) {
       char staSSIDBuf[33];
-      strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
-      staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
       doc["staSSID"] = staSSIDBuf;
       IPAddress ip = WiFi.localIP();
       char ipBuf[16];
@@ -176,16 +176,14 @@ void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
       doc["staIP"] = ipBuf;
       doc["staRSSI"] = WiFi.RSSI();
       char staMacBuf[18];
-      strncpy(staMacBuf, WiFi.macAddress().c_str(), sizeof(staMacBuf) - 1);
-      staMacBuf[sizeof(staMacBuf) - 1] = '\0';
+      WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
       doc["staMac"] = staMacBuf;
     } else {
       doc["staSSID"] = "";
       doc["staIP"] = "";
       doc["staRSSI"] = 0;
       char staMacBuf2[18];
-      strncpy(staMacBuf2, WiFi.macAddress().c_str(), sizeof(staMacBuf2) - 1);
-      staMacBuf2[sizeof(staMacBuf2) - 1] = '\0';
+      WiFiHelpers::getMACString(staMacBuf2, sizeof(staMacBuf2));
       doc["staMac"] = staMacBuf2;
     }
 
@@ -194,8 +192,7 @@ void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["apActive"] = apActive;
     if (apActive) {
       char apSSIDBuf[33];
-      strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-      apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
       doc["apSSID"] = apSSIDBuf;
       IPAddress apIP = WiFi.softAPIP();
       char apIPBuf[16];
@@ -232,8 +229,7 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
 
     doc["wifiStatus"] = WiFi.status();
     char wifiSSIDBuf[33];
-    strncpy(wifiSSIDBuf, WiFi.SSID().c_str(), sizeof(wifiSSIDBuf) - 1);
-    wifiSSIDBuf[sizeof(wifiSSIDBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(wifiSSIDBuf, sizeof(wifiSSIDBuf));
     doc["wifiSSID"] = wifiSSIDBuf;
     IPAddress wifiIP = WiFi.localIP();
     char wifiIPBuf[16];
@@ -327,8 +323,7 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
 
     doc["wifi"]["status"] = WiFi.status();
     char wifiSSIDBuf2[33];
-    strncpy(wifiSSIDBuf2, WiFi.SSID().c_str(), sizeof(wifiSSIDBuf2) - 1);
-    wifiSSIDBuf2[sizeof(wifiSSIDBuf2) - 1] = '\0';
+    WiFiHelpers::getSSID(wifiSSIDBuf2, sizeof(wifiSSIDBuf2));
     doc["wifi"]["ssid"] = wifiSSIDBuf2;
     IPAddress wifiIP = WiFi.localIP();
     char wifiIPBuf[16];
@@ -336,8 +331,7 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     doc["wifi"]["ip"] = wifiIPBuf;
     doc["wifi"]["rssi"] = WiFi.RSSI();
     char wifiMacBuf[18];
-    strncpy(wifiMacBuf, WiFi.macAddress().c_str(), sizeof(wifiMacBuf) - 1);
-    wifiMacBuf[sizeof(wifiMacBuf) - 1] = '\0';
+    WiFiHelpers::getMACString(wifiMacBuf, sizeof(wifiMacBuf));
     doc["wifi"]["mac"] = wifiMacBuf;
 
     doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
@@ -427,8 +421,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     doc["wifiStaConnected"] = staConnected;
     if (staConnected) {
       char docStaSSIDBuf[33];
-      strncpy(docStaSSIDBuf, WiFi.SSID().c_str(), sizeof(docStaSSIDBuf) - 1);
-      docStaSSIDBuf[sizeof(docStaSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getSSID(docStaSSIDBuf, sizeof(docStaSSIDBuf));
       doc["wifiStaSSID"] = docStaSSIDBuf;
       IPAddress staIP = WiFi.localIP();
       char staIPBuf[16];
@@ -446,8 +439,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     doc["wifiApActive"] = apActive;
     if (apActive) {
       char docApSSIDBuf[33];
-      strncpy(docApSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(docApSSIDBuf) - 1);
-      docApSSIDBuf[sizeof(docApSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getAPSSID(docApSSIDBuf, sizeof(docApSSIDBuf));
       doc["wifiApSSID"] = docApSSIDBuf;
       IPAddress apIP = WiFi.softAPIP();
       char apIPBuf[16];

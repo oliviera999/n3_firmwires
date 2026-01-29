@@ -1,5 +1,6 @@
 #include "automatism/automatism_feeding_schedule.h"
 #include "config.h"
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <cstring>
 
 AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, ConfigManager& cfg,
@@ -121,10 +122,8 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
     char wifiDetail[64] = "";
     if (wifiConnected) {
         char ssidBuf[33];
-        strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-        ssidBuf[sizeof(ssidBuf) - 1] = '\0';
-        const char* ssid = ssidBuf;
-        snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssid);
+        WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
+        snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssidBuf);
         wifiStatus = "Connecté";
     } else {
         wifiStatus = "Déconnecté";

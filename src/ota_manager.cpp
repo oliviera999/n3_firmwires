@@ -1,6 +1,7 @@
 #include "ota_manager.h"
 #include "nvs_manager.h" // v11.109
 #include <WiFi.h>
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <Update.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -526,8 +527,7 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     log("📡 Diagnostic WiFi:");
     char logMsg[128];
     char ssidBuf[33];
-    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
     snprintf(logMsg, sizeof(logMsg), "  - SSID: %s", ssidBuf);
     log(logMsg);
     snprintf(logMsg, sizeof(logMsg), "  - RSSI: %d dBm", WiFi.RSSI());
@@ -1786,6 +1786,7 @@ bool OTAManager::checkForUpdate() {
     }
     
     // Téléchargement des métadonnées
+    // Note: buffer sur la stack - la tache OTA a 8KB de stack, suffisant pour 4KB + overhead
     char payload[4096];
     if (!downloadMetadata(payload, sizeof(payload))) {
         return false;

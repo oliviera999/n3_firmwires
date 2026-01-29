@@ -1,6 +1,7 @@
 #include "automatism.h"
 #include <Arduino.h>
 #include <WiFi.h>
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include "esp_task_wdt.h"
 #include "task_monitor.h"
 #include "gpio_parser.h"
@@ -47,6 +48,10 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
 
 void Automatism::begin() {
     Serial.println(F("[Auto] Démarrage Automatism..."));
+    
+    // v11.162: Timestamp de démarrage pour délayer les alertes non-critiques
+    _startupMs = millis();
+    Serial.printf("[Auto] Alertes non-critiques différées de %u secondes\n", STARTUP_ALERT_DELAY_MS / 1000);
     
     // Initialisation des sous-modules
     _sleep.begin();
@@ -345,10 +350,8 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
     char wifiDetail[64] = "";
     if (wifiConnected) {
         char ssidBuf[33];
-        strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-        ssidBuf[sizeof(ssidBuf) - 1] = '\0';
-        const char* ssid = ssidBuf;
-        snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssid);
+        WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
+        snprintf(wifiDetail, sizeof(wifiDetail), " (%s)", ssidBuf);
         wifiStatus = "Connecté";
     } else {
         wifiStatus = "Déconnecté";
@@ -575,7 +578,9 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
                 _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
                 _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
                 _countdownEnd = 0;
-                if (mailNotif && !emailTankSent) {
+                // v11.162: Pas d'alerte pendant la période de grâce au démarrage
+                const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
+                if (mailNotif && !emailTankSent && !startupGrace) {
                     char msg[512];
                     snprintf(msg, sizeof(msg),
                              "Démarrage REMPLISSAGE bloqué (réserve trop basse)\n"
@@ -585,6 +590,8 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
                              r.wlTank, tankThresholdCm, r.wlAqua, aqThresholdCm, (int)tankThresholdCm - 5);
                     _mailer.sendAlert("Pompe réservoir BLOQUÉE (réserve basse)", msg, _emailAddress);
                     emailTankSent = true;
+                } else if (startupGrace) {
+                    emailTankSent = true;  // Marquer comme envoyé pour éviter envoi après la période
                 }
                 return;
             }
@@ -782,7 +789,9 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
                 _countdownEnd = 0;
                 Serial.println(F("[CRITIQUE] Sécurité: pompe réservoir verrouillée (réserve trop basse confirmée)"));
                 Serial.println(F("[CRITIQUE] === PROTECTION ACTIVÉE ==="));
-                if (mailNotif && !emailTankSent) {
+                // v11.162: Pas d'alerte pendant la période de grâce au démarrage
+                const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
+                if (mailNotif && !emailTankSent && !startupGrace) {
                     char msg[512];
                     snprintf(msg, sizeof(msg),
                              "La pompe de réserve a été VERROUILLÉE (réserve trop basse)\n"
@@ -793,6 +802,8 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
                              r.wlTank, tankThresholdCm, r.wlAqua, (int)tankThresholdCm - 5);
                     _mailer.sendAlert("Pompe réservoir verrouillée (réserve trop basse)", msg, _emailAddress);
                     emailTankSent = true;
+                } else if (startupGrace) {
+                    emailTankSent = true;  // Marquer comme envoyé pour éviter envoi après période
                 }
             }
         } else if (r.wlTank < tankThresholdCm - 5) {
@@ -838,6 +849,17 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
 void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     const SensorReadings& readings = ctx.readings;
     const bool mailEnabled = mailNotif;
+    
+    // v11.162: Délai au démarrage pour éviter saturation queue mail
+    // Les alertes non-critiques sont différées de 30s après le boot
+    const bool startupGracePeriod = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
+    if (startupGracePeriod && mailEnabled) {
+        // Pendant la période de grâce, on met à jour les flags mais on n'envoie pas
+        // Cela évite d'envoyer des alertes pour des conditions pré-existantes au boot
+        if (readings.wlAqua > aqThresholdCm) _lowAquaSent = true;  // Déjà en alerte, pas de mail
+        if (readings.wlTank > tankThresholdCm) _lowTankSent = true;  // Déjà en alerte, pas de mail
+        return;  // Pas d'alertes pendant la période de grâce
+    }
 
     if (readings.wlAqua > aqThresholdCm && !_lowAquaSent && mailEnabled) {
         char msgBuffer[128];

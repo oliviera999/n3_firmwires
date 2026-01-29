@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.156";
+    inline constexpr const char* VERSION = "11.163";  // Délai 30s alertes au démarrage
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -180,7 +180,11 @@ namespace NetworkConfig {
 }
 
 namespace ServerConfig {
-    inline constexpr const char* BASE_URL = "https://iot.olution.info";
+    // v11.162: HTTP par défaut pour réduire fragmentation mémoire (TLS ~32KB contigu requis)
+    // Le serveur iot.olution.info est contrôlé, les données capteurs ne sont pas sensibles
+    inline constexpr const char* BASE_URL = "http://iot.olution.info";
+    // HTTPS réservé pour OTA (sécurité critique pour mises à jour firmware)
+    inline constexpr const char* BASE_URL_SECURE = "https://iot.olution.info";
     
     #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
         inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-test";
@@ -214,6 +218,11 @@ namespace ServerConfig {
     
     inline void getWebSocketEndpoint(char* buffer, size_t bufferSize) {
         snprintf(buffer, bufferSize, "%s/ws", BASE_URL);
+    }
+    
+    // v11.162: Helper OTA avec HTTPS explicite (sécurité requise)
+    inline void getOtaBaseUrl(char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "%s%s", BASE_URL_SECURE, OTA_BASE_PATH);
     }
 }
 
@@ -548,10 +557,11 @@ namespace TaskConfig {
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
     
     // Tâche mail asynchrone (v11.143) - évite de bloquer automationTask pendant SMTP
-    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 10240;  // 10 KB (requis pour TLS/SMTP avec mbedTLS)
+    // v11.161: Augmenté de 12KB à 16KB - stack overflow persistant pendant TLS/SMTP handshake
+    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 16384;  // 16 KB (ESP Mail Client + mbedTLS nécessitent beaucoup de stack)
     inline constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
     inline constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
-    inline constexpr uint8_t MAIL_QUEUE_SIZE = 4;            // 4 mails en attente (v11.144: 2, augmentation pour réduire "Queue pleine" au boot)
+    inline constexpr uint8_t MAIL_QUEUE_SIZE = 6;            // v11.163: 6 slots (~4KB) - marge supplémentaire avec délai démarrage
 }
 
 namespace DefaultValues {

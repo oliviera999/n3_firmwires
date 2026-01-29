@@ -197,7 +197,7 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const char* val
     }
     
     // Vérifier si la valeur a changé avant d'écrire (évite écritures inutiles)
-    // Buffer fixe pour éviter String Arduino et fragmentation
+    // Buffer sur la stack - taille modérée (384 bytes en test), mutex NVS protège l'accès
     NVSError openError = openNamespace(ns, true);  // Ouvrir en lecture d'abord
     if (openError == NVSError::SUCCESS) {
         char currentValue[NVSConfig::MAX_INSPECTED_STRING_BYTES];

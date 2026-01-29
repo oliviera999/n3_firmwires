@@ -32,8 +32,8 @@
 // v11.157: Augmenté à 62000 (62KB) pour résoudre échecs allocation mémoire TLS
 // v11.158: Réduit à 40000 (40KB) car avec CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=2048,
 //          l'empreinte TLS est réduite (~32-35KB), et le heap disponible est ~34KB
-// Le handshake TLS nécessite ~32-35KB contiguë avec buffers réduits (2048 bytes)
-constexpr uint32_t TLS_MIN_HEAP_BYTES = 40000;
+// v11.159: Réduit à 35000 (35KB) - TLS fonctionne avec ~32KB contigus grâce aux buffers réduits
+constexpr uint32_t TLS_MIN_HEAP_BYTES = 35000;
 
 // Flag global indiquant si le système entre en light sleep
 // Permet de bloquer les nouvelles connexions TLS pendant la transition

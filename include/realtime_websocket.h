@@ -6,6 +6,7 @@
 #include <cstring>
 // #include "json_pool.h" - Supprimé
 #include "config.h"  // Pour BufferConfig::JSON_DOCUMENT_SIZE
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include "sensor_cache.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
@@ -164,8 +165,8 @@ public:
      * Gère les messages du client
      */
     void handleClientMessage(uint8_t clientNum, const char* message) {
-        // Analyser le message JSON
-        JsonDocument doc;
+        // Analyser le message JSON - allocation statique pour éviter fragmentation
+        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         DeserializationError error = deserializeJson(doc, message);
         
         if (error) {
@@ -228,8 +229,7 @@ public:
         doc["wifiStaConnected"] = staConnected;
         if (staConnected) {
             char staSSIDBuf[33];
-            strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
-            staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+            WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
             doc["wifiStaSSID"] = staSSIDBuf;
             IPAddress staIP = WiFi.localIP();
             char staIPBuf[16];
@@ -249,8 +249,7 @@ public:
         doc["wifiApActive"] = apActive;
         if (apActive) {
             char apSSIDBuf[33];
-            strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-            apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+            WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
             doc["wifiApSSID"] = apSSIDBuf;
             IPAddress apIP = WiFi.softAPIP();
             char apIPBuf[16];
@@ -340,8 +339,8 @@ public:
         }
         
         if (shouldBroadcast) {
-            // Utiliser allocation standard
-            JsonDocument doc;
+            // Allocation statique pour éviter fragmentation mémoire
+            StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
             
             // Récupérer les données via le cache
             SensorReadings readings = sensorCache.getReadings(*sensors);
@@ -368,8 +367,7 @@ public:
             doc["wifiStaConnected"] = staConnected;
             if (staConnected) {
                 char staSSIDBuf[33];
-                strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
-                staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+                WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
                 doc["wifiStaSSID"] = staSSIDBuf;
                 IPAddress staIP = WiFi.localIP();
                 char staIPBuf[16];
@@ -389,8 +387,7 @@ public:
             doc["wifiApActive"] = apActive;
             if (apActive) {
                 char apSSIDBuf[33];
-                strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-                apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+                WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
                 doc["wifiApSSID"] = apSSIDBuf;
                 IPAddress apIP = WiFi.softAPIP();
                 char apIPBuf[16];
@@ -456,8 +453,8 @@ public:
                 return;
             }
         }
-        // Utiliser allocation standard
-        JsonDocument doc;
+        // Allocation statique pour éviter fragmentation mémoire
+        StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         
         SensorReadings readings = sensorCache.getReadings(*sensors);
         doc["type"] = "sensor_update";
@@ -480,8 +477,7 @@ public:
         doc["wifiStaConnected"] = staConnected;
         if (staConnected) {
             char staSSIDBuf[33];
-            strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
-            staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+            WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
             doc["wifiStaSSID"] = staSSIDBuf;
             IPAddress staIP = WiFi.localIP();
             char staIPBuf[16];
@@ -501,8 +497,7 @@ public:
         doc["wifiApActive"] = apActive;
         if (apActive) {
             char apSSIDBuf[33];
-            strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-            apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+            WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
             doc["wifiApSSID"] = apSSIDBuf;
             IPAddress apIP = WiFi.softAPIP();
             char apIPBuf[16];

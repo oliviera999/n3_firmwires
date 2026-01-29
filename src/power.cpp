@@ -2,6 +2,7 @@
 #include "nvs_manager.h" // v11.107
 #include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep
 #include <WiFi.h>
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <time.h>
 #include <sys/time.h>
 #include <cmath>
@@ -341,10 +342,13 @@ void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
 
 void PowerManager::saveCurrentWifiCredentials() {
   if (WiFi.status() == WL_CONNECTED) {
-    strncpy(_lastSSID, WiFi.SSID().c_str(), sizeof(_lastSSID) - 1);
-    _lastSSID[sizeof(_lastSSID) - 1] = '\0';
-    strncpy(_lastPassword, WiFi.psk().c_str(), sizeof(_lastPassword) - 1);
-    _lastPassword[sizeof(_lastPassword) - 1] = '\0';
+    WiFiHelpers::getSSID(_lastSSID, sizeof(_lastSSID));
+    // WiFi.psk() retourne aussi un String temporaire - copie immédiate
+    String psk = WiFi.psk();
+    size_t pskLen = psk.length();
+    if (pskLen >= sizeof(_lastPassword)) pskLen = sizeof(_lastPassword) - 1;
+    memcpy(_lastPassword, psk.c_str(), pskLen);
+    _lastPassword[pskLen] = '\0';
     _hasSavedCredentials = true;
     Serial.printf("[Power] Identifiants WiFi sauvegardés: SSID=%s\n", _lastSSID);
   } else {

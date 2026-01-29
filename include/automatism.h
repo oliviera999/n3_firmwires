@@ -281,6 +281,10 @@ class Automatism {
   bool _highAquaSent{false};
   bool _lowTankSent{false};
   
+  // v11.162: Délai avant alertes au démarrage (évite saturation queue mail)
+  static constexpr uint32_t STARTUP_ALERT_DELAY_MS = 30000;  // 30 secondes
+  uint32_t _startupMs{0};  // Timestamp du démarrage
+  
   // États pour l'affichage (anciennement dans AutomatismDisplayController)
   unsigned long _splashStartTime{0};
 

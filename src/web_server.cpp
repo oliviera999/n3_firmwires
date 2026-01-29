@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "diagnostics.h"
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include "config.h"
@@ -497,8 +498,7 @@ bool WebServerManager::begin() {
     doc["wifiStaConnected"] = staConnected;
     if (staConnected) {
       char staSSIDBuf[33];
-      strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
-      staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
       doc["wifiStaSSID"] = staSSIDBuf;
       char ipBuf[16];
       IPAddress ip = WiFi.localIP();
@@ -517,8 +517,7 @@ bool WebServerManager::begin() {
     doc["wifiApActive"] = apActive;
     if (apActive) {
       char apSSIDBuf[33];
-      strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-      apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
       doc["wifiApSSID"] = apSSIDBuf;
       char apIpBuf[16];
       IPAddress apIP = WiFi.softAPIP();
@@ -1538,17 +1537,20 @@ bool WebServerManager::begin() {
       JsonArray networks = doc.createNestedArray("networks");
       
       for (int i = 0; i < n; i++) {
+        // Cache local du SSID pour éviter multiples String temporaires (fragmentation)
+        String ssid = WiFi.SSID(i);
+        
         JsonObject network = networks.createNestedObject();
-        network["ssid"] = WiFi.SSID(i);
         network["rssi"] = WiFi.RSSI(i);
         network["encryption"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "secured";
         network["channel"] = WiFi.channel(i);
         
         // Masquer les réseaux cachés (SSID vide)
-        if (WiFi.SSID(i).length() == 0) {
+        if (ssid.length() == 0) {
           network["ssid"] = "<Hidden Network>";
           network["hidden"] = true;
         } else {
+          network["ssid"] = ssid;
           network["hidden"] = false;
         }
       }
@@ -1962,8 +1964,7 @@ bool WebServerManager::begin() {
     
     if (staConnected) {
       char staSSIDBuf[33];
-      strncpy(staSSIDBuf, WiFi.SSID().c_str(), sizeof(staSSIDBuf) - 1);
-      staSSIDBuf[sizeof(staSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
       doc["staSSID"] = staSSIDBuf;
       IPAddress staIP = WiFi.localIP();
       char staIPBuf[16];
@@ -1971,16 +1972,14 @@ bool WebServerManager::begin() {
       doc["staIP"] = staIPBuf;
       doc["staRSSI"] = WiFi.RSSI();
       char staMacBuf[18];
-      strncpy(staMacBuf, WiFi.macAddress().c_str(), sizeof(staMacBuf) - 1);
-      staMacBuf[sizeof(staMacBuf) - 1] = '\0';
+      WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
       doc["staMac"] = staMacBuf;
     } else {
       doc["staSSID"] = "";
       doc["staIP"] = "";
       doc["staRSSI"] = 0;
       char staMacBuf[18];
-      strncpy(staMacBuf, WiFi.macAddress().c_str(), sizeof(staMacBuf) - 1);
-      staMacBuf[sizeof(staMacBuf) - 1] = '\0';
+      WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
       doc["staMac"] = staMacBuf;
     }
     
@@ -1991,8 +1990,7 @@ bool WebServerManager::begin() {
     
     if (apActive) {
       char apSSIDBuf[33];
-      strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-      apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+      WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
       doc["apSSID"] = apSSIDBuf;
       IPAddress apIP = WiFi.softAPIP();
       char apIPBuf[16];
@@ -2035,8 +2033,7 @@ bool WebServerManager::begin() {
     // Ajouter des informations de debug supplémentaires
     doc["wifiStatus"] = WiFi.status();
     char wifiSSIDBuf[33];
-    strncpy(wifiSSIDBuf, WiFi.SSID().c_str(), sizeof(wifiSSIDBuf) - 1);
-    wifiSSIDBuf[sizeof(wifiSSIDBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(wifiSSIDBuf, sizeof(wifiSSIDBuf));
     doc["wifiSSID"] = wifiSSIDBuf;
     IPAddress wifiIP = WiFi.localIP();
     char wifiIPBuf[16];
@@ -2140,8 +2137,7 @@ bool WebServerManager::begin() {
     // Informations WiFi
     doc["wifi"]["status"] = WiFi.status();
     char wifiSSIDBuf2[33];
-    strncpy(wifiSSIDBuf2, WiFi.SSID().c_str(), sizeof(wifiSSIDBuf2) - 1);
-    wifiSSIDBuf2[sizeof(wifiSSIDBuf2) - 1] = '\0';
+    WiFiHelpers::getSSID(wifiSSIDBuf2, sizeof(wifiSSIDBuf2));
     doc["wifi"]["ssid"] = wifiSSIDBuf2;
     IPAddress wifiIP2 = WiFi.localIP();
     char wifiIPBuf2[16];
@@ -2150,8 +2146,7 @@ bool WebServerManager::begin() {
     doc["wifi"]["ip"] = wifiIPBuf2;
     doc["wifi"]["rssi"] = WiFi.RSSI();
     char wifiMacBuf[18];
-    strncpy(wifiMacBuf, WiFi.macAddress().c_str(), sizeof(wifiMacBuf) - 1);
-    wifiMacBuf[sizeof(wifiMacBuf) - 1] = '\0';
+    WiFiHelpers::getMACString(wifiMacBuf, sizeof(wifiMacBuf));
     doc["wifi"]["mac"] = wifiMacBuf;
     
     // Informations WebSocket

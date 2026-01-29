@@ -56,11 +56,12 @@ namespace OTAConfig {
     }
     
     // Fonction pour obtenir l'URL OTA selon le modèle
+    // v11.162: Utilise BASE_URL_SECURE (HTTPS) pour la sécurité des mises à jour firmware
     inline void getOTABaseUrl(char* buffer, size_t bufferSize) {
         if (!buffer || bufferSize == 0) return;
         
         // Normaliser OTA_BASE_PATH pour garantir un seul '/'
-        const char* base = ServerConfig::BASE_URL;
+        const char* base = ServerConfig::BASE_URL_SECURE;  // HTTPS pour OTA (sécurité critique)
         const char* path = ServerConfig::OTA_BASE_PATH;
         const char* folder = getOTAFolder();
         
@@ -87,10 +88,11 @@ namespace OTAConfig {
     }
     
     // Fonction pour obtenir l'URL de métadonnées (dérivée de ServerConfig et du chemin OTA)
+    // v11.162: Utilise BASE_URL_SECURE (HTTPS) pour la sécurité des mises à jour firmware
     inline void getMetadataUrl(char* buffer, size_t bufferSize) {
         if (!buffer || bufferSize == 0) return;
         
-        const char* base = ServerConfig::BASE_URL;
+        const char* base = ServerConfig::BASE_URL_SECURE;  // HTTPS pour OTA (sécurité critique)
         const char* path = ServerConfig::OTA_BASE_PATH;
         
         // Construire le chemin normalisé

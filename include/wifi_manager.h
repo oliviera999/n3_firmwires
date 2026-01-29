@@ -68,4 +68,88 @@ class WifiManager {
   uint32_t _lastReconnectAttempt = 0;
 };
 
+/**
+ * Helpers WiFi pour éviter les String temporaires et la duplication de code
+ * Utiliser ces fonctions au lieu de WiFi.SSID().c_str() etc.
+ */
+namespace WiFiHelpers {
+    /**
+     * Copie le SSID STA dans un buffer char[] sans créer de String temporaire
+     * @param buffer Buffer de destination (min 33 bytes recommandé)
+     * @param size Taille du buffer
+     */
+    inline void getSSID(char* buffer, size_t size) {
+        if (!buffer || size == 0) return;
+        String ssid = WiFi.SSID();
+        size_t len = ssid.length();
+        if (len >= size) len = size - 1;
+        memcpy(buffer, ssid.c_str(), len);
+        buffer[len] = '\0';
+    }
+    
+    /**
+     * Formate l'adresse IP locale dans un buffer char[]
+     * @param buffer Buffer de destination (min 16 bytes)
+     * @param size Taille du buffer
+     */
+    inline void getIPString(char* buffer, size_t size) {
+        if (!buffer || size == 0) return;
+        IPAddress ip = WiFi.localIP();
+        snprintf(buffer, size, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    }
+    
+    /**
+     * Copie l'adresse MAC dans un buffer char[]
+     * @param buffer Buffer de destination (min 18 bytes)
+     * @param size Taille du buffer
+     */
+    inline void getMACString(char* buffer, size_t size) {
+        if (!buffer || size == 0) return;
+        String mac = WiFi.macAddress();
+        size_t len = mac.length();
+        if (len >= size) len = size - 1;
+        memcpy(buffer, mac.c_str(), len);
+        buffer[len] = '\0';
+    }
+    
+    /**
+     * Retourne le RSSI actuel (évite appels répétés)
+     */
+    inline int8_t getRSSI() {
+        return WiFi.RSSI();
+    }
+    
+    /**
+     * Vérifie si connecté au WiFi STA
+     */
+    inline bool isConnected() {
+        return WiFi.status() == WL_CONNECTED;
+    }
+    
+    /**
+     * Copie le SSID AP dans un buffer char[]
+     * @param buffer Buffer de destination (min 33 bytes recommandé)
+     * @param size Taille du buffer
+     */
+    inline void getAPSSID(char* buffer, size_t size) {
+        if (!buffer || size == 0) return;
+        String ssid = WiFi.softAPSSID();
+        size_t len = ssid.length();
+        if (len >= size) len = size - 1;
+        memcpy(buffer, ssid.c_str(), len);
+        buffer[len] = '\0';
+    }
+    
+    /**
+     * Formate l'adresse IP AP dans un buffer char[]
+     * @param buffer Buffer de destination (min 16 bytes)
+     * @param size Taille du buffer
+     */
+    inline void getAPIPString(char* buffer, size_t size) {
+        if (!buffer || size == 0) return;
+        IPAddress ip = WiFi.softAPIP();
+        snprintf(buffer, size, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    }
+}
+
 #endif // WIFI_MANAGER_H 

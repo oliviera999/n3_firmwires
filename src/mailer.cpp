@@ -7,6 +7,7 @@
 #include "nvs_manager.h"
 #include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 #include <WiFi.h>
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <time.h>
 #include <LittleFS.h>
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
@@ -83,8 +84,7 @@ static int appendNetworkInfo(char* buf, size_t& remaining, bool detailed = false
   bool connected = WiFi.isConnected();
   char ssidBuf[33];
   if (connected) {
-    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
   } else {
     strncpy(ssidBuf, "(déconnecté)", sizeof(ssidBuf) - 1);
     ssidBuf[sizeof(ssidBuf) - 1] = '\0';
@@ -192,8 +192,7 @@ static const char* buildLightFooter() {
   bool connected = WiFi.isConnected();
   if (connected) {
     char ssidBuf[33];
-    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
     const char* ssid = ssidBuf;
     IPAddress ipAddr = WiFi.localIP();
     written = snprintf(buf, remaining, "- WiFi: Connecté (%s, %d.%d.%d.%d)\n",
@@ -250,8 +249,7 @@ static const char* buildSystemInfoFooter() {
   bool connected = WiFi.isConnected();
   char ssidBuf[33];
   if (connected) {
-    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
   } else {
     strncpy(ssidBuf, "(déconnecté)", sizeof(ssidBuf) - 1);
     ssidBuf[sizeof(ssidBuf) - 1] = '\0';
@@ -260,8 +258,7 @@ static const char* buildSystemInfoFooter() {
   IPAddress ipAddr = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
   long rssi = connected ? WiFi.RSSI() : 0;
   char macBuf[18];
-  strncpy(macBuf, WiFi.macAddress().c_str(), sizeof(macBuf) - 1);
-  macBuf[sizeof(macBuf) - 1] = '\0';
+  WiFiHelpers::getMACString(macBuf, sizeof(macBuf));
   const char* mac = macBuf;
   
   if (connected) {
@@ -343,8 +340,7 @@ static const char* buildSystemInfoFooter() {
   if (mode == WIFI_AP || mode == WIFI_AP_STA) {
     IPAddress apIp = WiFi.softAPIP();
     char apSSIDBuf[33];
-    strncpy(apSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(apSSIDBuf) - 1);
-    apSSIDBuf[sizeof(apSSIDBuf) - 1] = '\0';
+    WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
     written = snprintf(buf, remaining, "- AP SSID: %s\n"
                                        "- AP IP: %d.%d.%d.%d\n",
                        apSSIDBuf, apIp[0], apIp[1], apIp[2], apIp[3]);
@@ -590,18 +586,19 @@ static const char* buildSystemInfoFooter() {
   buf += written;
   remaining -= written;
 
-  // Filesystem (LittleFS)
-  if (LittleFS.begin(false, "/littlefs", 10, kLittleFsLabel)) {
+  // Filesystem (LittleFS) - FS deja montee au boot, appel direct sans begin()
+  {
     size_t total = LittleFS.totalBytes();
     size_t used  = LittleFS.usedBytes();
-    written = snprintf(buf, remaining, "- FS LittleFS: %zu/%zu bytes\n", used, total);
-    if (written < 0 || (size_t)written >= remaining) {
-      buf[remaining - 1] = '\0';
-      return g_systemInfoFooterBuffer;
+    if (total > 0) {  // FS accessible
+      written = snprintf(buf, remaining, "- FS LittleFS: %zu/%zu bytes\n", used, total);
+      if (written < 0 || (size_t)written >= remaining) {
+        buf[remaining - 1] = '\0';
+        return g_systemInfoFooterBuffer;
+      }
+      buf += written;
+      remaining -= written;
     }
-    buf += written;
-    remaining -= written;
-    // Ne pas démonter LittleFS ici pour éviter les erreurs de montage dans d'autres modules
   }
 
   // Endpoints serveur utiles
@@ -1183,8 +1180,8 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   snprintf(alertSubject, sizeof(alertSubject), "FFP5CS - %s", subject);
   Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject);
   
-  // Buffer statique pour le message amélioré (peut contenir rapport complet)
-  static char enhancedMessage[4096];
+  // Buffer statique pour le message amélioré - aligné sur EMAIL_MAX_SIZE_BYTES + marge footer
+  static char enhancedMessage[BufferConfig::EMAIL_MAX_SIZE_BYTES + 512];  // ~2512 bytes
   size_t offset = 0;
   size_t remaining = sizeof(enhancedMessage);
   int written = 0;
@@ -1418,14 +1415,10 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   
   // Ajouter les informations de connexion WiFi
   if (WiFi.status() == WL_CONNECTED) {
-    // WiFi.SSID() et WiFi.localIP() retournent des String temporaires
-    // Il faut copier immédiatement dans un buffer
     char ssid[33];
-    strncpy(ssid, WiFi.SSID().c_str(), sizeof(ssid) - 1);
-    ssid[sizeof(ssid) - 1] = '\0';
-    IPAddress ipAddr = WiFi.localIP();
     char ip[16];
-    snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]);
+    WiFiHelpers::getSSID(ssid, sizeof(ssid));
+    WiFiHelpers::getIPString(ip, sizeof(ip));
     written = snprintf(wakeMessage + offset, remaining,
       "- WiFi: Connecté\n"
       "- SSID: %s\n"

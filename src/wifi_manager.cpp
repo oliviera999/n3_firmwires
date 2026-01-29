@@ -265,11 +265,7 @@ bool WifiManager::startFallbackAP(){
 
 void WifiManager::currentSSID(char* buffer, size_t bufferSize) const {
   if (WiFi.status() == WL_CONNECTED) {
-    char ssidBuf[33];
-    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
-    strncpy(buffer, ssidBuf, bufferSize - 1);
-    buffer[bufferSize - 1] = '\0';
+    WiFiHelpers::getSSID(buffer, bufferSize);
   } else {
     buffer[0] = '\0';
   }
@@ -442,8 +438,7 @@ bool WifiManager::disconnect() {
   }
   
   char currentSSIDBuf[33];
-  strncpy(currentSSIDBuf, WiFi.SSID().c_str(), sizeof(currentSSIDBuf) - 1);
-  currentSSIDBuf[sizeof(currentSSIDBuf) - 1] = '\0';
+  WiFiHelpers::getSSID(currentSSIDBuf, sizeof(currentSSIDBuf));
   Serial.printf("[WiFi] Déconnexion manuelle de %s\n", currentSSIDBuf);
   Serial.printf("[Event] WiFi manual disconnect from %s\n", currentSSIDBuf);
   
@@ -491,8 +486,7 @@ bool WifiManager::reconnect(DisplayView* disp) {
 void WifiManager::getConnectionStatus(char* buffer, size_t bufferSize) const {
   if (WiFi.status() == WL_CONNECTED) {
     char ssidBuf[33];
-    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
-    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
     const char* ssid = ssidBuf;
     char ipBuf[16];
     IPAddress ip = WiFi.localIP();

@@ -1,29 +1,15 @@
+// v11.162: WebClient simplifié - HTTP par défaut (plus de TLS pour requêtes courantes)
+// Réduit fragmentation mémoire en éliminant le besoin de ~32KB contigu pour TLS
 #include "web_client.h"
 #include "config_manager.h"
 #include "diagnostics.h"
 #include "log.h"
 #include "config.h"
-#include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
-#include <esp_heap_caps.h>  // Pour heap_caps_get_largest_free_block() (si FEATURE_HTTP_HEAP_GUARD)
-
-// Diagnostic stack/tâche avant opérations TLS (point 4)
-static void logTaskAndStack(const char* tag) {
-  TaskHandle_t t = xTaskGetCurrentTaskHandle();
-  const char* name = pcTaskGetName(t);
-  UBaseType_t hwmWords = uxTaskGetStackHighWaterMark(t);
-  uint32_t hwmBytes = static_cast<uint32_t>(hwmWords) * sizeof(StackType_t);
-  Serial.printf("[%s] Task=%s handle=%p stackHWM=%u bytes\n",
-                tag,
-                name ? name : "?",
-                static_cast<void*>(t),
-                static_cast<unsigned>(hwmBytes));
-}
 
 // Simple CRC32 (polynôme 0xEDB88320) pour l'intégrité des payloads
 extern ConfigManager config;
@@ -38,29 +24,6 @@ static uint32_t crc32(const char* data){
   return ~crc;
 }
 
-// Fallback HTTP: éligibilité et construction d'URL HTTP depuis HTTPS (iot.olution.info uniquement)
-static const char HTTPS_PREFIX[] = "https://";
-static const char HTTP_FALLBACK_HOST[] = "iot.olution.info";  // 16 chars
-
-static bool isEligibleForHttpFallback(const char* url) {
-  if (!url) return false;
-  if (strncmp(url, HTTPS_PREFIX, 8) != 0) return false;
-  if (strlen(url) < 8U + 16U) return false;
-  return (strncmp(url + 8, HTTP_FALLBACK_HOST, 16) == 0);
-}
-
-// Construit httpUrlOut = "http://" + reste de httpsUrl. Retourne true si ok, false si buffer trop petit ou url invalide.
-static bool buildHttpFallbackUrl(const char* httpsUrl, char* httpUrlOut, size_t httpUrlSize) {
-  if (!httpsUrl || !httpUrlOut || httpUrlSize < 9) return false;
-  if (strncmp(httpsUrl, HTTPS_PREFIX, 8) != 0) return false;
-  size_t restLen = strlen(httpsUrl + 8);
-  if (restLen + 8 >= httpUrlSize) return false;  // "http://" = 7, + rest + null
-  memcpy(httpUrlOut, "http://", 7);
-  httpUrlOut[7] = '\0';
-  strncat(httpUrlOut, httpsUrl + 8, httpUrlSize - 8 - 1);
-  return true;
-}
-
 WebClient::WebClient(const char* apiKey) {
   if (apiKey) {
     strncpy(_apiKey, apiKey, sizeof(_apiKey) - 1);
@@ -68,54 +31,9 @@ WebClient::WebClient(const char* apiKey) {
   } else {
     _apiKey[0] = '\0';
   }
-  _client.setInsecure();               // accepte tous certificats (à affiner)
-  _client.setHandshakeTimeout(5000);  // 5s max (conforme .cursorrules: max 5s pour opérations réseau)
-  // Désactivation du keep-alive : certaines déconnexions moitié-fermées
-  // généraient un blocage interne du client HTTP, empêchant l'appel
-  // suivant de se terminer et donc le rafraîchissement du watchdog.
-  _http.setReuse(false);
-  // NOUVEAU TIMEOUT NON-BLOQUANT (v11.50)
-  _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS); // Timeout strict pour éviter blocage
-}
-
-WebClient::~WebClient() {
-  if (_tlsReserveBlock != nullptr) {
-    free(_tlsReserveBlock);
-    _tlsReserveBlock = nullptr;
-  }
-}
-
-// v11.150: Force la libération de mémoire TLS après une requête
-// Version simplifiée : juste arrêter le client sans le recréer (évite crash FreeRTOS)
-// PISTE 6: LWIP Guards
-// Note: Les opérations LWIP (sys_untimeout, etc.) sont appelées par les bibliothèques
-// ESP-IDF/Arduino sous-jacentes (WiFiClientSecure, HTTPClient). Ces bibliothèques
-// gèrent normalement les locks TCPIP en interne. L'assert LWIP observé se produit
-// probablement lors d'un cleanup après un panic TLS, ce qui est difficile à protéger
-// directement depuis le code applicatif. La solution est de prévenir les panics TLS
-// plutôt que de protéger les opérations LWIP après-coup.
-void WebClient::resetTLSClient() {
-  uint32_t heapBefore = ESP.getFreeHeap();
-
-  // Stopper proprement le client TLS
-  _client.stop();
-
-  // Délais pour laisser FreeRTOS libérer les ressources TLS (pas d'alloc/free ici pour éviter fragmentation)
-  vTaskDelay(pdMS_TO_TICKS(200));
-  vTaskDelay(pdMS_TO_TICKS(200));
-
-  // Option B: re-réserver le bloc pour la prochaine requête HTTPS
-  if (_tlsReserveBlock == nullptr) {
-    _tlsReserveBlock = malloc(TLS_RESERVE_BLOCK_BYTES);
-  }
-
-  uint32_t heapAfter = ESP.getFreeHeap();
-  int32_t recovered = (int32_t)heapAfter - (int32_t)heapBefore;
-
-  if (recovered > 1000) {
-    Serial.printf("[HTTP] 🔄 TLS stop: récupéré %d bytes (heap: %u → %u)\n",
-                  recovered, heapBefore, heapAfter);
-  }
+  // v11.162: Configuration HTTP simple (plus de TLS)
+  _http.setReuse(false);  // Désactive keep-alive pour éviter blocages
+  _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 }
 
 bool WebClient::httpRequest(const char* url, const char* payload,
@@ -126,189 +44,58 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     return false;
   }
 
-  // Point 4: savoir quelle tâche exécute réellement les requêtes réseau
-  logTaskAndStack("HTTP");
-
-  // Guard mémoire avant requête HTTPS (correction crash monitoring)
   uint32_t freeHeap = ESP.getFreeHeap();
-  uint32_t minHeap = ESP.getMinFreeHeap();
-  // v11.157: Aligné avec TLS_MIN_HEAP_BYTES (62KB) pour cohérence
-  const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;  // 62 KB minimum (TLS ~42KB + marge 20KB)
-  bool isSecure = (strncmp(url, "https://", 8) == 0);
-
-  // Option C: libérer une session TLS précédente avant de vérifier le heap (aide à réunir un gros bloc)
-  if (isSecure) {
-    resetTLSClient();
-  }
-
-  // Option B: libérer le bloc réservé juste avant HTTPS pour garantir ~48 KB contigus pour mbedTLS
-  if (isSecure) {
-    if (_tlsReserveBlock == nullptr) {
-      _tlsReserveBlock = malloc(TLS_RESERVE_BLOCK_BYTES);
-    }
-    if (_tlsReserveBlock != nullptr) {
-      free(_tlsReserveBlock);
-      _tlsReserveBlock = nullptr;
-      vTaskDelay(pdMS_TO_TICKS(1));
-    }
-  }
-
-  if (isSecure) {
-    // Vérification simple du heap avant TLS
-    if (freeHeap < MIN_HEAP_FOR_HTTPS) {
-      LOG(LOG_WARN, "[HTTP] ⚠️ Heap trop faible (%u bytes < %u bytes), report de la requête HTTPS", 
-          freeHeap, MIN_HEAP_FOR_HTTPS);
-      return false;
-    }
-    
-    #if FEATURE_HTTP_HEAP_GUARD
-    // Garde-fou fragmentation: refuser HTTPS si plus grand bloc < 32 KB (TLS ~32-35 KB contigus avec buffers réduits)
-    // v11.158: Réduit de 45KB à 32KB car CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=2048 réduit l'empreinte TLS
-    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    uint32_t fragmentation = (freeHeap > 0) ? ((freeHeap - largestBlock) * 100 / freeHeap) : 0;
-    LOG(LOG_DEBUG, "[HTTP] 📊 Diagnostic mémoire avant TLS: heap=%u, largest_block=%u, fragmentation=%u%%", 
-        freeHeap, largestBlock, fragmentation);
-    if (largestBlock < 32768) {
-      LOG(LOG_WARN, "[HTTP] ⚠️ Plus grand bloc insuffisant (%u bytes < 32KB), fragmentation=%u%%", 
-          largestBlock, fragmentation);
-      LOG(LOG_WARN, "[HTTP] ⚠️ TLS nécessite ~32-35KB contiguë (buffers réduits), report de la requête");
-      return false;
-    }
-    #endif
-  }
-  
   size_t payloadLen = payload ? strlen(payload) : 0;
   uint32_t requestStartMs = millis();
   const bool debugLogging = (LOG_LEVEL >= LOG_DEBUG) && LogConfig::SERIAL_ENABLED;
-  const bool verboseLogging = (LOG_LEVEL >= LOG_VERBOSE) && LogConfig::SERIAL_ENABLED;
 
   if (debugLogging) {
-    LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes, timeout=%u ms)",
-        url, payloadLen, NetworkConfig::HTTP_TIMEOUT_MS);
-    LOG(LOG_DEBUG, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm",
-        WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
-    char ipBuf[16], gwBuf[16], dnsBuf[16];
-    IPAddress ip = WiFi.localIP();
-    snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    IPAddress gw = WiFi.gatewayIP();
-    snprintf(gwBuf, sizeof(gwBuf), "%d.%d.%d.%d", gw[0], gw[1], gw[2], gw[3]);
-    IPAddress dns = WiFi.dnsIP();
-    snprintf(dnsBuf, sizeof(dnsBuf), "%d.%d.%d.%d", dns[0], dns[1], dns[2], dns[3]);
-    LOG(LOG_DEBUG, "[HTTP] IP=%s gateway=%s dns=%s", ipBuf, gwBuf, dnsBuf);
-    LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes (min=%u)", freeHeap, minHeap);
-
-    if (verboseLogging && payloadLen > 0 && payload) {
-      const size_t previewLen = payloadLen > 200 ? 200 : payloadLen;
-      char previewBuf[201];
-      strncpy(previewBuf, payload, previewLen);
-      previewBuf[previewLen] = '\0';
-      LOG(LOG_VERBOSE, "[HTTP] Payload (%u/%u): %s%s",
-          previewLen,
-          payloadLen,
-          previewBuf,
-          payloadLen > previewLen ? " ..." : "");
-    }
+    LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes)", url, payloadLen);
+    LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes", freeHeap);
   }
   
-  // Fix v11.29: Délai minimum entre requêtes HTTP pour éviter saturation TCP
+  // Délai minimum entre requêtes HTTP pour éviter saturation TCP
   if (_lastRequestMs > 0) {
     unsigned long timeSinceLastRequest = millis() - _lastRequestMs;
     if (timeSinceLastRequest < NetworkConfig::MIN_DELAY_BETWEEN_REQUESTS_MS) {
       uint32_t delayNeeded = NetworkConfig::MIN_DELAY_BETWEEN_REQUESTS_MS - timeSinceLastRequest;
-      if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Délai inter-requêtes %u ms", delayNeeded);
-      }
       vTaskDelay(pdMS_TO_TICKS(delayNeeded));
     }
   }
   
-  // Désactiver le modem sleep juste avant un transfert pour fiabilité
+  // Désactiver le modem sleep pendant le transfert
   WiFi.setSleep(false);
-  if (debugLogging) {
-    LOG(LOG_DEBUG, "[HTTP] Modem sleep désactivé pendant le transfert");
-  }
 
-  WiFiClient plain;  // client non-TLS (portée limitée à la fonction)
-  // 2 tentatives pour erreurs transitoires (connection refused, SSL fatal) ; 1 seule si cause basale corrigée
   const int maxAttempts = 2;
   int code = -1;
   response[0] = '\0';
   bool success = false;
-  const char* currentUrl = url;
-  bool currentSecure = isSecure;
-  char httpUrlBuf[256];
 
-  // Phase 0 = HTTPS, Phase 1 = HTTP fallback (si éligible et temps restant)
-  for (int phase = 0; phase < 2 && !success; phase++) {
-    if (phase == 1) {
-      if (!isEligibleForHttpFallback(url)) break;
-      if ((millis() - requestStartMs) >= NetworkConfig::HTTP_TIMEOUT_MS) break;
-      if (!buildHttpFallbackUrl(url, httpUrlBuf, sizeof(httpUrlBuf))) break;
-      currentUrl = httpUrlBuf;
-      currentSecure = false;
-      LOG(LOG_WARN, "[HTTP] HTTPS failed, trying HTTP fallback");
-    }
-
-    int attempt = 0;
-    code = -1;
-    response[0] = '\0';
-
-    if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] Boucle de retry max=%d %s", maxAttempts, phase == 1 ? "(HTTP fallback)" : "");
-    }
-
-    while (attempt < maxAttempts) {
-      unsigned long attemptStartMs = millis();
-      if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Tentative %d/%d", attempt + 1, maxAttempts);
-      }
-
-      // Ré-initialise la requête
-      if (currentSecure) {
-        _http.begin(_client, currentUrl);
-        if (debugLogging) {
-          LOG(LOG_DEBUG, "[HTTP] Client HTTPS utilisé");
-        }
-      } else {
-        _http.begin(plain, currentUrl);
-        if (debugLogging) {
-          LOG(LOG_DEBUG, "[HTTP] Client HTTP simple utilisé");
-        }
-      }
+  for (int attempt = 0; attempt < maxAttempts && !success; attempt++) {
+    unsigned long attemptStartMs = millis();
     
+    // v11.162: Utilise le client HTTP simple (membre de classe)
+    _http.begin(_client, url);
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] Headers positionnés, timeout requête=%u", NetworkConfig::REQUEST_TIMEOUT_MS);
-    }
     
-    // NOUVEAU TIMEOUT GLOBAL NON-BLOQUANT (v11.50)
+    // Timeout global
     uint32_t elapsedMs = millis() - requestStartMs;
     if (elapsedMs >= NetworkConfig::HTTP_TIMEOUT_MS) {
-      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u/%u ms", elapsedMs, NetworkConfig::HTTP_TIMEOUT_MS);
+      LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u ms", elapsedMs);
       _http.end();
-      resetTLSClient();  // v11.150: Libère mémoire TLS après timeout
       return false;
     }
     
-    // Log avant envoi POST
-    if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] POST en cours (elapsed=%lu ms)", attemptStartMs - requestStartMs);
-    }
     code = _http.POST(payload ? payload : "");
-    unsigned long postDurationMs = millis() - attemptStartMs;
-    if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] POST terminé en %lu ms", postDurationMs);
-    }
+    
     if (code > 0) {
-      unsigned long responseStartMs = millis();
-      // Utiliser un buffer fixe au lieu de String pour éviter fragmentation mémoire
-      const size_t MAX_TEMP_RESPONSE = 1024;  // Aligné BufferConfig::JSON_DOCUMENT_SIZE prod ; réponses config/status < 1 KB
+      // Lire la réponse
+      const size_t MAX_TEMP_RESPONSE = 1024;
       char tempResponseBuffer[MAX_TEMP_RESPONSE + 1];
       WiFiClient* stream = _http.getStreamPtr();
       size_t responseLen = 0;
       
       if (stream) {
-        // Lire directement dans le buffer sans String
         while (stream->available() && responseLen < MAX_TEMP_RESPONSE) {
           size_t bytesRead = stream->readBytes(
             tempResponseBuffer + responseLen,
@@ -319,25 +106,17 @@ bool WebClient::httpRequest(const char* url, const char* payload,
         }
         tempResponseBuffer[responseLen] = '\0';
       } else {
-        // Fallback: getStream() retourne NetworkClient (pas un pointeur), utiliser getString() à la place
-        // Note: getStream() n'est plus compatible avec la nouvelle API
-        {
-          // Dernier recours: getString() si aucun stream disponible
-          // Note: HTTPClient::getString() retourne String Arduino (limitation API)
-          // La String est copiée immédiatement et détruite pour minimiser fragmentation
-          String tempResponse = _http.getString();
-          responseLen = tempResponse.length();
-          if (responseLen >= MAX_TEMP_RESPONSE) {
-            responseLen = MAX_TEMP_RESPONSE - 1;
-          }
-          // Copier immédiatement pour libérer la String rapidement
-          if (responseLen > 0) {
-            strncpy(tempResponseBuffer, tempResponse.c_str(), responseLen);
-            tempResponseBuffer[responseLen] = '\0';
-          } else {
-            tempResponseBuffer[0] = '\0';
-          }
-          // String tempResponse est détruite ici, libérant la mémoire
+        // Fallback: getString() si aucun stream
+        String tempResponse = _http.getString();
+        responseLen = tempResponse.length();
+        if (responseLen >= MAX_TEMP_RESPONSE) {
+          responseLen = MAX_TEMP_RESPONSE - 1;
+        }
+        if (responseLen > 0) {
+          strncpy(tempResponseBuffer, tempResponse.c_str(), responseLen);
+          tempResponseBuffer[responseLen] = '\0';
+        } else {
+          tempResponseBuffer[0] = '\0';
         }
       }
       
@@ -346,87 +125,20 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       }
       strncpy(response, tempResponseBuffer, responseLen);
       response[responseLen] = '\0';
-      unsigned long responseDurationMs = millis() - responseStartMs;
       
       if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Réponse reçue code=%d bytes=%u en %lu ms", code, responseLen, responseDurationMs);
-      }
-
-      if (verboseLogging) {
-        char headerBuf[128];
-        strncpy(headerBuf, _http.header("Content-Type").c_str(), sizeof(headerBuf) - 1);
-        headerBuf[sizeof(headerBuf) - 1] = '\0';
-        LOG(LOG_VERBOSE, "[HTTP] Content-Type=%s", headerBuf);
-        strncpy(headerBuf, _http.header("Server").c_str(), sizeof(headerBuf) - 1);
-        headerBuf[sizeof(headerBuf) - 1] = '\0';
-        LOG(LOG_VERBOSE, "[HTTP] Server=%s", headerBuf);
-        strncpy(headerBuf, _http.header("Connection").c_str(), sizeof(headerBuf) - 1);
-        headerBuf[sizeof(headerBuf) - 1] = '\0';
-        LOG(LOG_VERBOSE, "[HTTP] Connection=%s", headerBuf);
-        strncpy(headerBuf, _http.header("Content-Length").c_str(), sizeof(headerBuf) - 1);
-        headerBuf[sizeof(headerBuf) - 1] = '\0';
-        LOG(LOG_VERBOSE, "[HTTP] Content-Length=%s", headerBuf);
-        strncpy(headerBuf, _http.header("Transfer-Encoding").c_str(), sizeof(headerBuf) - 1);
-        headerBuf[sizeof(headerBuf) - 1] = '\0';
-        LOG(LOG_VERBOSE, "[HTTP] Transfer-Encoding=%s", headerBuf);
-
-        if (responseLen > 0) {
-          const size_t previewLen = responseLen > 200 ? 200 : responseLen;
-          char previewBuf[201];
-          strncpy(previewBuf, response, previewLen);
-          previewBuf[previewLen] = '\0';
-          LOG(LOG_VERBOSE, "[HTTP] Response (%u/%u): %s%s",
-              previewLen,
-              responseLen,
-              previewBuf,
-              responseLen > previewLen ? " ..." : "");
-        }
-      }
-
-      if (responseLen == 0) {
-        LOG(LOG_WARN, "[HTTP] Réponse vide reçue (code=%d)", code);
-      } else if (code >= 400) {
-        LOG(LOG_WARN, "[HTTP] Réponse erreur %d", code);
+        LOG(LOG_DEBUG, "[HTTP] Réponse code=%d bytes=%u", code, responseLen);
       }
     } else {
-      unsigned long errorTimeMs = millis();
-      char errorBuf2[64];
-      strncpy(errorBuf2, _http.errorToString(code).c_str(), sizeof(errorBuf2) - 1);
-      errorBuf2[sizeof(errorBuf2) - 1] = '\0';
-      LOG(LOG_WARN, "[HTTP] Erreur %d (tentative %d/%d, %lu ms) : %s",
-          code,
-          attempt + 1,
-          maxAttempts,
-          errorTimeMs - requestStartMs,
-          errorBuf2);
-      LOG(LOG_WARN, "[HTTP] URL=%s", currentUrl);
-      LOG(LOG_WARN, "[HTTP] WiFi status=%d connected=%s RSSI=%d dBm", WiFi.status(), WiFi.isConnected() ? "YES" : "NO", WiFi.RSSI());
-      LOG(LOG_WARN, "[HTTP] Heap libre=%u", ESP.getFreeHeap());
-
-      if (code == HTTPC_ERROR_CONNECTION_REFUSED) {
-        LOG(LOG_WARN, "[HTTP] Diagnostic: connection refused");
-      } else if (code == HTTPC_ERROR_CONNECTION_LOST) {
-        LOG(LOG_WARN, "[HTTP] Diagnostic: connection lost");
-      } else if (code == HTTPC_ERROR_NO_STREAM) {
-        LOG(LOG_WARN, "[HTTP] Diagnostic: no stream");
-      } else if (code == HTTPC_ERROR_NO_HTTP_SERVER) {
-        LOG(LOG_WARN, "[HTTP] Diagnostic: no HTTP server");
-      } else if (code == HTTPC_ERROR_TOO_LESS_RAM) {
-        LOG(LOG_WARN, "[HTTP] Diagnostic: insufficient RAM");
-      } else if (code == HTTPC_ERROR_READ_TIMEOUT) {
-        LOG(LOG_WARN, "[HTTP] Diagnostic: read timeout");
-      }
+      char errorBuf[64];
+      strncpy(errorBuf, _http.errorToString(code).c_str(), sizeof(errorBuf) - 1);
+      errorBuf[sizeof(errorBuf) - 1] = '\0';
+      LOG(LOG_WARN, "[HTTP] Erreur %d: %s", code, errorBuf);
     }
+    
     _http.end();
-    resetTLSClient();  // Libère mémoire TLS après POST
     
-    // === STATISTIQUES DE LA TENTATIVE ===
-    unsigned long attemptDurationMs = millis() - attemptStartMs;
-    if (debugLogging) {
-      LOG(LOG_DEBUG, "[HTTP] Tentative %d/%d terminée en %lu ms", attempt + 1, maxAttempts, attemptDurationMs);
-    }
-    
-    // Record into diagnostics if available
+    // Enregistrer dans diagnostics
     extern Diagnostics diag;
     if (code > 0) {
       diag.recordHttpResult(code >= 200 && code < 400, code);
@@ -434,117 +146,71 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       diag.recordHttpResult(false, code);
     }
 
-    // Succès 2xx-3xx : sortir immédiatement
-    if (code >= 200 && code < 400) {
-      if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Succès %d, arrêt des tentatives", code);
-      }
-      break;
-    }
-
-    // Erreur client 4xx : pas de retry (v11.31)
-    if (code >= 400 && code < 500) {
-      LOG(LOG_WARN, "[HTTP] Erreur client %d, arrêt des retry", code);
-      break;
-    }
-
-    // Court-circuit si plus de WiFi
-    if (WiFi.status() != WL_CONNECTED) {
-      LOG(LOG_WARN, "[HTTP] WiFi déconnecté, arrêt des tentatives");
-      break;
-    }
-
-    // Incrémenter attempt avant backoff
-    attempt++;
-
-    // Backoff exponentiel si retry possible (v11.31 amélioré)
-    if (attempt < maxAttempts) {
-      int backoff = NetworkConfig::BACKOFF_BASE_MS * attempt * attempt;
-      if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Retry %d/%d dans %d ms", attempt + 1, maxAttempts, backoff);
-        LOG(LOG_DEBUG, "[HTTP] Avant retry: WiFi=%d RSSI=%d Heap=%u",
-            WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
-      }
-
-      vTaskDelay(pdMS_TO_TICKS(backoff));
-
-      if (debugLogging) {
-        LOG(LOG_DEBUG, "[HTTP] Après retry: WiFi=%d RSSI=%d Heap=%u",
-            WiFi.status(), WiFi.RSSI(), ESP.getFreeHeap());
-      }
-
-      // Note: Watchdog géré par tâche appelante - vTaskDelay() yield le CPU
-      // On tente un reset du watchdog ici pour éviter le timeout lors des retries multiples
-      esp_task_wdt_reset();
-    }
-    }  // end while (attempt < maxAttempts)
-
-    // Succès sur cette phase : sortir du for(phase)
+    // Succès 2xx-3xx
     if (code >= 200 && code < 400) {
       success = true;
-      if (phase == 1) {
-        LOG(LOG_INFO, "[HTTP] HTTP fallback succeeded");
-      }
       break;
     }
-  }  // end for (phase)
 
-  // === RÉSUMÉ FINAL DE LA REQUÊTE ===
-  unsigned long totalDurationMs = millis() - requestStartMs;
-  if (debugLogging || (code >= 400 && !success)) {
-    LOG(LOG_INFO, "[HTTP] Fin requête: durée=%lu ms, code=%d, succès=%s, réponse=%u bytes, heap=%u",
-        totalDurationMs,
-        code,
-        success ? "oui" : "non",
-        strlen(response),
-        ESP.getFreeHeap());
+    // Erreur client 4xx : pas de retry
+    if (code >= 400 && code < 500) {
+      LOG(LOG_WARN, "[HTTP] Erreur client %d, pas de retry", code);
+      break;
+    }
+
+    // WiFi perdu
+    if (WiFi.status() != WL_CONNECTED) {
+      LOG(LOG_WARN, "[HTTP] WiFi déconnecté");
+      break;
+    }
+
+    // Backoff avant retry
+    if (attempt + 1 < maxAttempts) {
+      int backoff = NetworkConfig::BACKOFF_BASE_MS * (attempt + 1);
+      vTaskDelay(pdMS_TO_TICKS(backoff));
+      esp_task_wdt_reset();
+    }
   }
 
-  // Fix v11.29: Sauvegarder timestamp pour délai inter-requêtes
+  // Log final
+  unsigned long totalDurationMs = millis() - requestStartMs;
+  if (debugLogging || !success) {
+    LOG(LOG_INFO, "[HTTP] Requête: %lu ms, code=%d, succès=%s",
+        totalDurationMs, code, success ? "oui" : "non");
+  }
+
   _lastRequestMs = millis();
-
-  // v11.150: Reset TLS client pour libérer mémoire (~46KB) après chaque requête
-  // Résout la fuite mémoire où le client TLS garde la mémoire après échec
-  resetTLSClient();
-
-  // Ne pas réactiver le modem-sleep
-  WiFi.setSleep(false);
+  
   if (!success) {
-    response[0] = '\0';  // En cas d'échec, vider la réponse
+    response[0] = '\0';
   }
   return success;
 }
 
 bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
-  // VALIDATION COMPLÈTE DES MESURES AVANT ENVOI
+  // Validation des mesures
   float tempWater = m.tempWater;
   float tempAir = m.tempAir;
   float humidity = m.humid;
 
-  // Validation des températures (rejette 0°C car physiquement impossible)
   if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
     tempWater = NAN;
   }
-
   if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN || tempAir >= SensorConfig::AirSensor::TEMP_MAX) {
     tempAir = NAN;
   }
-
-  // Validation de l'humidité
   if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN || humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
     humidity = NAN;
   }
 
-  // Construction d'un payload COMPLET et ORDONNÉ selon la liste attendue par le serveur
-  auto fmtFloat = [](float v, char* buf, size_t bufSize) -> void {
+  auto fmtFloat = [](float v, char* buf, size_t bufSize) {
     if (isnan(v)) {
       buf[0] = '\0';
     } else {
       snprintf(buf, bufSize, "%.1f", v);
     }
   };
-  // Pour les ultrasons: 0 signifie invalide → envoyer champ vide ""
-  auto fmtUltrasonic = [](uint16_t v, char* buf, size_t bufSize) -> void {
+  auto fmtUltrasonic = [](uint16_t v, char* buf, size_t bufSize) {
     if (v == 0) {
       buf[0] = '\0';
     } else {
@@ -568,7 +234,6 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
       written = snprintf(payload + offset, remaining, "&");
       if (written < 0 || static_cast<size_t>(written) >= remaining) {
         truncated = true;
-        payload[sizeof(payload) - 1] = '\0';
         return;
       }
       offset += static_cast<size_t>(written);
@@ -577,13 +242,11 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
     written = snprintf(payload + offset, remaining, "%s=%s", key, value);
     if (written < 0 || static_cast<size_t>(written) >= remaining) {
       truncated = true;
-      payload[sizeof(payload) - 1] = '\0';
       return;
     }
     offset += static_cast<size_t>(written);
   };
   
-  // Helper strings - UNIQUEMENT les mesures et états actuels (pas les configs!)
   char buf_tempAir[16], buf_humid[16], buf_tempWater[16];
   char buf_wlPota[8], buf_wlAqua[8], buf_wlTank[8];
   char buf_diffMaree[16], buf_lum[16];
@@ -602,9 +265,6 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   snprintf(buf_heat, sizeof(buf_heat), "%d", m.heater ? 1 : 0);
   snprintf(buf_uv, sizeof(buf_uv), "%d", m.light ? 1 : 0);
 
-  // v11.141: Envoi UNIQUEMENT des mesures et états actuels
-  // Les configurations (seuils, durées, heures, etc.) sont gérées côté serveur
-  // et ne doivent PAS être envoyées par l'ESP pour éviter d'écraser les valeurs distantes
   appendKV("version", ProjectConfig::VERSION);
   appendKV("TempAir", buf_tempAir);
   appendKV("Humidite", buf_humid);
@@ -619,7 +279,6 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   appendKV("etatHeat", buf_heat);
   appendKV("etatUV", buf_uv);
   
-  // Reset mode - envoyé uniquement si demandé explicitement
   if (includeReset) {
     appendKV("resetMode", "0");
   }
@@ -628,10 +287,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
     return false;
   }
   
-  // Envoi direct: l'ordre exact est déjà respecté
-  bool success = postRaw(payload);
-  
-  return success;
+  return postRaw(payload);
 }
 
 bool WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
@@ -653,126 +309,64 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
   if (WiFi.status() != WL_CONNECTED) return false;
 
-  if (!TLSMutex::acquire(3000)) {
-    return false;
-  }
-  bool hasMutex = true;
-
   WiFi.setSleep(false);
   vTaskDelay(pdMS_TO_TICKS(100));
-
-  uint32_t freeHeap = ESP.getFreeHeap();
-  const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;
-
-  if (freeHeap < MIN_HEAP_FOR_HTTPS) {
-    if (hasMutex) TLSMutex::release();
-    return false;
-  }
 
   const size_t MAX_RESPONSE_SIZE = BufferConfig::JSON_DOCUMENT_SIZE;
   char payloadBuffer[MAX_RESPONSE_SIZE + 1];
   char url[256];
-  char httpUrlBuf[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
 
-  // Option C: libérer session TLS précédente + même garde « plus grand bloc » que pour POST
-  if (strncmp(url, "https://", 8) == 0) {
-    resetTLSClient();
-    #if FEATURE_HTTP_HEAP_GUARD
-    // v11.158: Réduit de 45KB à 32KB pour cohérence avec buffers TLS réduits
-    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    if (largestBlock < 32768) {
-      LOG(LOG_WARN, "[HTTP] ⚠️ Plus grand bloc insuffisant (%u bytes < 32KB), report GET HTTPS",
-          largestBlock);
-      if (hasMutex) TLSMutex::release();
-      return false;
-    }
-    #endif
-    // Option B: libérer le bloc réservé pour garantir ~48 KB contigus pour mbedTLS
-    if (_tlsReserveBlock != nullptr) {
-      free(_tlsReserveBlock);
-      _tlsReserveBlock = nullptr;
-      vTaskDelay(pdMS_TO_TICKS(1));
-    }
-  }
+  // v11.162: Utilise le client HTTP simple (membre de classe)
+  _http.begin(_client, url);
 
-  uint32_t requestStartMs = millis();
-  WiFiClient plain;
+  int code = _http.GET();
 
-  for (int phase = 0; phase < 2; phase++) {
-    const char* currentUrl = url;
-    bool secure = (strncmp(url, "https://", 8) == 0);
-
-    if (phase == 1) {
-      if (!isEligibleForHttpFallback(url)) break;
-      if ((millis() - requestStartMs) >= NetworkConfig::HTTP_TIMEOUT_MS) break;
-      if (!buildHttpFallbackUrl(url, httpUrlBuf, sizeof(httpUrlBuf))) break;
-      currentUrl = httpUrlBuf;
-      secure = false;
-      LOG(LOG_WARN, "[HTTP] HTTPS failed, trying HTTP fallback (GET)");
-    }
-
-    if (secure) {
-      _http.begin(_client, currentUrl);
-    } else {
-      _http.begin(plain, currentUrl);
-    }
-
-    int code = _http.GET();
-
-    if (code <= 0) {
-      _http.end();
-      resetTLSClient();
-      continue;
-    }
-
-    WiFiClient* stream = _http.getStreamPtr();
-    if (!stream) {
-      _http.end();
-      resetTLSClient();
-      continue;
-    }
-
-    size_t totalRead = 0;
-    while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
-      size_t bytesRead = stream->readBytes(
-        payloadBuffer + totalRead,
-        MAX_RESPONSE_SIZE - totalRead
-      );
-      if (bytesRead == 0) break;
-      totalRead += bytesRead;
-    }
-    payloadBuffer[totalRead] = '\0';
-
+  if (code <= 0) {
     _http.end();
-    resetTLSClient();
-
-    if (totalRead == 0) continue;
-
-    char* jsonStart = strchr(payloadBuffer, '{');
-    if (!jsonStart) {
-      jsonStart = strchr(payloadBuffer, '[');
-    }
-    if (jsonStart && jsonStart != payloadBuffer) {
-      size_t offset = jsonStart - payloadBuffer;
-      size_t newSize = totalRead - offset;
-      memmove(payloadBuffer, jsonStart, newSize);
-      payloadBuffer[newSize] = '\0';
-      totalRead = newSize;
-    }
-
-    DeserializationError err = deserializeJson(doc, payloadBuffer);
-    if (err) continue;
-
-    if (phase == 1) {
-      LOG(LOG_INFO, "[HTTP] HTTP fallback succeeded");
-    }
-    if (hasMutex) TLSMutex::release();
-    return true;
+    return false;
   }
 
-  if (hasMutex) TLSMutex::release();
-  return false;
+  WiFiClient* stream = _http.getStreamPtr();
+  if (!stream) {
+    _http.end();
+    return false;
+  }
+
+  size_t totalRead = 0;
+  while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
+    size_t bytesRead = stream->readBytes(
+      payloadBuffer + totalRead,
+      MAX_RESPONSE_SIZE - totalRead
+    );
+    if (bytesRead == 0) break;
+    totalRead += bytesRead;
+  }
+  payloadBuffer[totalRead] = '\0';
+
+  _http.end();
+
+  if (totalRead == 0) return false;
+
+  // Trouver le début du JSON
+  char* jsonStart = strchr(payloadBuffer, '{');
+  if (!jsonStart) {
+    jsonStart = strchr(payloadBuffer, '[');
+  }
+  if (jsonStart && jsonStart != payloadBuffer) {
+    size_t offset = jsonStart - payloadBuffer;
+    size_t newSize = totalRead - offset;
+    memmove(payloadBuffer, jsonStart, newSize);
+    payloadBuffer[newSize] = '\0';
+  }
+
+  DeserializationError err = deserializeJson(doc, payloadBuffer);
+  if (err) {
+    LOG(LOG_WARN, "[HTTP] JSON parse error: %s", err.c_str());
+    return false;
+  }
+
+  return true;
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {
@@ -786,21 +380,19 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   snprintf(payloadBuf, sizeof(payloadBuf), "uptime=%lu&free=%u&min=%u&reboots=%u",
            s.uptimeSec, s.freeHeap, s.minFreeHeap, s.rebootCount);
   
-  char bufCrc2[16];
-  snprintf(bufCrc2,sizeof(bufCrc2),"&crc=%08lX",crc32(payloadBuf));
+  char bufCrc[16];
+  snprintf(bufCrc, sizeof(bufCrc), "&crc=%08lX", crc32(payloadBuf));
   
-  char pay2[272];
-  snprintf(pay2, sizeof(pay2), "%s%s", payloadBuf, bufCrc2);
+  char fullPayload[272];
+  snprintf(fullPayload, sizeof(fullPayload), "%s%s", payloadBuf, bufCrc);
   
   char resp[1024];
   char heartbeatUrl[256];
   ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
-  return httpRequest(heartbeatUrl, pay2, resp, sizeof(resp));
+  return httpRequest(heartbeatUrl, fullPayload, resp, sizeof(resp));
 }
 
-// v11.70: makeSkeleton() supprimé - jamais utilisé (includeSkeleton toujours false)
-
-bool WebClient::postRaw(const char* payload){
+bool WebClient::postRaw(const char* payload) {
   if (!config.isRemoteSendEnabled()) {
     return false;
   }
@@ -808,20 +400,15 @@ bool WebClient::postRaw(const char* payload){
   if (payload == nullptr) {
     return false;
   }
-
-  if (!TLSMutex::acquire(5000)) {
-    return false;
-  }
   
   WiFi.setSleep(false);
   vTaskDelay(pdMS_TO_TICKS(100));
   
-  // Buffer sur la stack (évite fragmentation et économise BSS; postRaw sous TLSMutex)
+  // Buffer sur la stack
   char postBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
   size_t payloadLen = strlen(payload);
   size_t estimatedSize = payloadLen + strlen(_apiKey) + strlen(ProjectConfig::BOARD_TYPE) + 32;
   if (estimatedSize > sizeof(postBuffer)) {
-    TLSMutex::release();
     return false;
   }
 
@@ -846,10 +433,5 @@ bool WebClient::postRaw(const char* payload){
   char respPrimary[1024];
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-  bool okPrimary = httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary));
-
-  TLSMutex::release();
-  return okPrimary;
+  return httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary));
 }
-
-// Fonction supprimée - redéfinition causait erreur de compilation 

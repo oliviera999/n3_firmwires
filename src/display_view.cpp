@@ -3,6 +3,7 @@
 #include "pins.h"
 #include "oled_logo.h"
 #include <WiFi.h>
+#include "wifi_manager.h"  // Pour WiFiHelpers
 #include <algorithm>
 #include <string.h>
 
@@ -535,18 +536,14 @@ void DisplayView::showMain(float tempEau, float tempAir, float humidite, uint16_
   // Copier les valeurs WiFi dans des buffers car les String temporaires seraient détruites
   char stationSsidBuf[33], stationIpBuf[16], apSsidBuf[33], apIpBuf[16];
   if (wifiConnected) {
-    strncpy(stationSsidBuf, WiFi.SSID().c_str(), sizeof(stationSsidBuf) - 1);
-    stationSsidBuf[sizeof(stationSsidBuf) - 1] = '\0';
-    IPAddress staIP = WiFi.localIP();
-    snprintf(stationIpBuf, sizeof(stationIpBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
+    WiFiHelpers::getSSID(stationSsidBuf, sizeof(stationSsidBuf));
+    WiFiHelpers::getIPString(stationIpBuf, sizeof(stationIpBuf));
   } else {
     stationSsidBuf[0] = '\0';
     stationIpBuf[0] = '\0';
   }
-  strncpy(apSsidBuf, WiFi.softAPSSID().c_str(), sizeof(apSsidBuf) - 1);
-  apSsidBuf[sizeof(apSsidBuf) - 1] = '\0';
-  IPAddress apIP = WiFi.softAPIP();
-  snprintf(apIpBuf, sizeof(apIpBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+  WiFiHelpers::getAPSSID(apSsidBuf, sizeof(apSsidBuf));
+  WiFiHelpers::getAPIPString(apIpBuf, sizeof(apIpBuf));
 
   renderMainScreen(tempEau, tempAir, humidite,
                    aquaLvl, tankLvl, potaLvl,

@@ -369,12 +369,22 @@ void automationTask(void* pv) {
         }
         
         // Priorité 2: Mails en attente (traitement séquentiel - v11.155)
+        // v11.162: Vérifier mémoire contiguë avant SMTP (TLS nécessite ~32KB)
+        // v11.163: Supprimé double acquisition mutex - mailer gère son propre mutex
         #if FEATURE_MAIL
         if (g_ctx->mailer.hasPendingMails() && TLSMutex::canConnect()) {
-          esp_task_wdt_reset();
-          if (TLSMutex::acquire(3000)) {  // Timeout court pour ne pas bloquer
-            g_ctx->mailer.processOneMailSync();  // Traite UN mail
-            TLSMutex::release();
+          // Vérifier qu'on a assez de mémoire contiguë pour TLS SMTP
+          uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+          if (largestBlock >= 32768) {  // 32KB minimum pour TLS
+            esp_task_wdt_reset();
+            g_ctx->mailer.processOneMailSync();  // Le mailer gère son propre mutex TLS
+          } else {
+            // Mémoire insuffisante, reporter le mail
+            static unsigned long lastMemWarnMs = 0;
+            if (now - lastMemWarnMs > 60000) {  // Log une fois par minute max
+              Serial.printf("[autoTask] ⚠️ Mail reporté: bloc max=%u bytes < 32KB requis\n", largestBlock);
+              lastMemWarnMs = now;
+            }
           }
         }
         #endif
