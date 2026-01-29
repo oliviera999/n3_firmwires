@@ -96,8 +96,7 @@ bool WifiManager::connect(DisplayView* disp) {
     if(cand[i].present){
       char buf[40]; snprintf(buf,sizeof(buf),"Conn %s", _list[i].ssid);
       show(buf);
-      Serial.printf("[WiFi] 🔗 Tentative (vu) %s (RSSI %d dBm, ch %d)...\n", _list[i].ssid, cand[i].rssi, cand[i].chan);
-      Serial.printf("[Event] WiFi try seen %s RSSI=%d ch=%d\n", _list[i].ssid, cand[i].rssi, cand[i].chan);
+      Serial.printf("[WiFi] Try %s RSSI=%d ch=%d\n", _list[i].ssid, cand[i].rssi, cand[i].chan);
       // Utilise directement le BSSID et le canal détectés pour fiabiliser la connexion
       // Signature: WiFi.begin(ssid, pass, channel, bssid, connect)
       if (cand[i].enc == WIFI_AUTH_OPEN || strlen(_list[i].password) == 0) {
@@ -120,8 +119,7 @@ bool WifiManager::connect(DisplayView* disp) {
       IPAddress ip = WiFi.localIP();
       char ipBuf[16];
       snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-      Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-      Serial.printf("[Event] WiFi connected %s IP=%s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
+      Serial.printf("[WiFi] OK %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
       WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
       _connecting = false;
       return true;
@@ -144,8 +142,7 @@ bool WifiManager::connect(DisplayView* disp) {
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-        Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm) - 2ème tentative\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-        Serial.printf("[Event] WiFi connected (2nd) %s IP=%s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
+        Serial.printf("[WiFi] OK(2nd) %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
         WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
         _connecting = false;
         return true;

@@ -107,17 +107,20 @@ bool WebClient::httpRequest(const char* url, const char* payload,
         tempResponseBuffer[responseLen] = '\0';
       } else {
         // Fallback: getString() si aucun stream
-        String tempResponse = _http.getString();
-        responseLen = tempResponse.length();
-        if (responseLen >= MAX_TEMP_RESPONSE) {
-          responseLen = MAX_TEMP_RESPONSE - 1;
-        }
-        if (responseLen > 0) {
-          strncpy(tempResponseBuffer, tempResponse.c_str(), responseLen);
-          tempResponseBuffer[responseLen] = '\0';
-        } else {
-          tempResponseBuffer[0] = '\0';
-        }
+        // Scope réduit pour destruction rapide de la String (minimise fragmentation)
+        {
+          String tempResponse = _http.getString();
+          responseLen = tempResponse.length();
+          if (responseLen >= MAX_TEMP_RESPONSE) {
+            responseLen = MAX_TEMP_RESPONSE - 1;
+          }
+          if (responseLen > 0) {
+            strncpy(tempResponseBuffer, tempResponse.c_str(), responseLen);
+            tempResponseBuffer[responseLen] = '\0';
+          } else {
+            tempResponseBuffer[0] = '\0';
+          }
+        } // String détruite ici
       }
       
       if (responseLen >= responseSize) {

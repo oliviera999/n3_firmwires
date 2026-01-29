@@ -424,6 +424,14 @@ class Automatism {
 
   // Méthodes pour remplissage (anciennement dans AutomatismRefillController)
   void handleRefill(const AutomatismRuntimeContext& ctx);
+  // Sous-fonctions de handleRefill pour clarté et maintenabilité
+  void handleRefillAquariumOverfillSecurity(const SensorReadings& r);
+  void handleRefillManualModeCheck();
+  bool handleRefillAutomaticStart(const SensorReadings& r);
+  void handleRefillManualCycleEnd(const SensorReadings& r);
+  void handleRefillMaxDurationStop(const SensorReadings& r);
+  void handleRefillReservoirLowSecurity(const SensorReadings& r);
+  void handleRefillAutomaticRecovery(const SensorReadings& r);
   
   // Méthodes pour alertes (anciennement dans AutomatismAlertController)
   void handleAlerts(const AutomatismRuntimeContext& ctx);

@@ -91,8 +91,9 @@ static void netTask(void* pv) {
 
   // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
   // par une tentative depuis netTask dès que le WiFi est disponible.
+  // Timeout court (5s max) pour respecter règle offline-first
   unsigned long startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 30000) {
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 5000) {
     esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
     vTaskDelay(pdMS_TO_TICKS(200));
   }
@@ -338,11 +339,11 @@ void automationTask(void* pv) {
         
         // Vérification critique basée sur TLS_MIN_HEAP_BYTES
         if (heapMin < TLS_MIN_HEAP_BYTES) {
-          Serial.printf("[autoTask] 🔴 CRITICAL: Heap minimum critique: %u bytes (< %u KB requis pour TLS)\n", 
+          Serial.printf("[autoTask] CRIT: Heap min=%u (<%uKB TLS)\n", 
                         heapMin, TLS_MIN_HEAP_BYTES / 1024);
-          Serial.println("[Event] CRITICAL: Low heap minimum - TLS operations may fail");
+          Serial.println("[Event] CRITICAL: Low heap - TLS may fail");
         } else if (heapFree < TLS_MIN_HEAP_BYTES) {
-          Serial.printf("[autoTask] ⚠️ WARN: Heap libre faible: %u bytes (< %u KB requis pour TLS)\n", 
+          Serial.printf("[autoTask] WARN: Heap=%u (<%uKB TLS)\n", 
                         heapFree, TLS_MIN_HEAP_BYTES / 1024);
         }
         
@@ -350,7 +351,7 @@ void automationTask(void* pv) {
         // Diagnostics détaillés uniquement en mode test
         uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
         uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
-        Serial.printf("[autoTask] 📊 Heap: libre=%u bytes, min=%u bytes, largest_block=%u bytes, fragmentation=%u%%\n", 
+        Serial.printf("[autoTask] Heap: %u/%u blk=%u frag=%u%%\n", 
                       heapFree, heapMin, largestBlock, fragmentation);
         #endif
       }

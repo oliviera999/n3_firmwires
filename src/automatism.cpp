@@ -528,13 +528,8 @@ void Automatism::handleFeeding() {
 // MÉTHODES FUSIONNÉES DEPUIS LES CONTRÔLEURS
 // ============================================================================
 
-// Fusionné depuis AutomatismRefillController::process() -> handleRefillInternal()
-void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
-    const SensorReadings& r = ctx.readings;
-    unsigned long currentMillis = ctx.nowMs;
-    unsigned long nowControllerMs = currentMillis == 0 ? millis() : currentMillis;
-
-    // 0. SÉCURITÉ AQUARIUM TROP PLEIN
+// Sous-fonction: Sécurité aquarium trop plein
+void Automatism::handleRefillAquariumOverfillSecurity(const SensorReadings& r) {
     if (r.wlAqua < limFlood) {
         if (!tankPumpLocked || _tankPumpLockReason != TankPumpLockReason::AQUARIUM_OVERFILL) {
             tankPumpLocked = true;
@@ -546,10 +541,10 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
                 if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
                     SensorReadings cur = _sensors.read();
                     sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-                    Serial.println(F("[Auto] ✅ Arrêt sécurité notifié au serveur - pump_tank=0"));
+                    Serial.println(F("[Auto] Arrêt sécurité notifié - pump_tank=0"));
                 }
             }
-            Serial.println(F("[CRITIQUE] Sécurité: aquarium trop plein – pompe réservoir verrouillée"));
+            Serial.println(F("[CRITIQUE] Aquarium trop plein - pompe verrouillée"));
         }
     } else {
         if (tankPumpLocked && _tankPumpLockReason == TankPumpLockReason::AQUARIUM_OVERFILL && !inFlood) {
@@ -558,48 +553,53 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
             emailTankSent = false;
             emailTankStartSent = false;
             emailTankStopSent = false;
-            Serial.println(F("[Auto] Pompe réservoir déverrouillée (aquarium OK)"));
+            Serial.println(F("[Auto] Pompe déverrouillée (aquarium OK)"));
         }
     }
+}
 
-    // 1. CONDITION DE DÉMARRAGE
+// Sous-fonction: Vérification cohérence mode manuel
+void Automatism::handleRefillManualModeCheck() {
     if (!_acts.isTankPumpRunning() && _manualTankOverride) {
-        Serial.println(F("[CRITIQUE] Mode manuel détecté sans pompe active - réinitialisation"));
+        Serial.println(F("[CRITIQUE] Mode manuel sans pompe - reset"));
         _manualTankOverride = false;
         _countdownEnd = 0;
         _pumpStartMs = 0;
     }
+}
 
-    if (r.wlAqua > aqThresholdCm && !tankPumpLocked && tankPumpRetries < MAX_PUMP_RETRIES && !_manualTankOverride) {
+// Sous-fonction: Démarrage automatique (retourne true si bloqué par réserve basse)
+bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
+    if (r.wlAqua > aqThresholdCm && !tankPumpLocked && 
+        tankPumpRetries < MAX_PUMP_RETRIES && !_manualTankOverride) {
         if (!_acts.isTankPumpRunning()) {
+            // Vérifier si réserve trop basse
             if (r.wlTank > tankThresholdCm) {
-                Serial.printf("[CRITIQUE] Démarrage bloqué: réserve trop basse (distance=%u cm > seuil=%u cm)\n", r.wlTank, tankThresholdCm);
+                Serial.printf("[CRITIQUE] Réserve basse: %u cm > seuil %u cm\n", 
+                              r.wlTank, tankThresholdCm);
                 tankPumpLocked = true;
                 _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
                 _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
                 _countdownEnd = 0;
-                // v11.162: Pas d'alerte pendant la période de grâce au démarrage
                 const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
                 if (mailNotif && !emailTankSent && !startupGrace) {
-                    char msg[512];
+                    char msg[384];
                     snprintf(msg, sizeof(msg),
-                             "Démarrage REMPLISSAGE bloqué (réserve trop basse)\n"
-                             "- Réserve (distance): %d cm (seuil: %d cm)\n"
-                             "- Aqua: %d cm (seuil: %d cm)\n"
-                             "Déblocage: lorsque la distance réservoir < %d cm (confirmée).",
-                             r.wlTank, tankThresholdCm, r.wlAqua, aqThresholdCm, (int)tankThresholdCm - 5);
-                    _mailer.sendAlert("Pompe réservoir BLOQUÉE (réserve basse)", msg, _emailAddress);
+                             "Remplissage bloqué (réserve basse)\n"
+                             "Réserve: %d cm (seuil: %d cm)\nAqua: %d cm",
+                             r.wlTank, tankThresholdCm, r.wlAqua);
+                    _mailer.sendAlert("Pompe BLOQUÉE (réserve basse)", msg, _emailAddress);
                     emailTankSent = true;
                 } else if (startupGrace) {
-                    emailTankSent = true;  // Marquer comme envoyé pour éviter envoi après la période
+                    emailTankSent = true;
                 }
-                return;
+                return true; // Bloqué
             }
-            Serial.println(F("[CRITIQUE] === DÉBUT REMPLISSAGE AUTOMATIQUE ==="));
-            Serial.printf("[CRITIQUE] Niveau aquarium: %d cm, Seuil: %d cm\n", r.wlAqua, aqThresholdCm);
-            Serial.printf("[CRITIQUE] Durée configurée: %lu s\n", refillDurationMs / 1000);
+            // Démarrage effectif
+            Serial.println(F("[CRITIQUE] === DÉBUT REMPLISSAGE AUTO ==="));
+            Serial.printf("[CRITIQUE] Aqua: %d cm, Seuil: %d cm, Durée: %lu s\n", 
+                          r.wlAqua, aqThresholdCm, refillDurationMs / 1000);
 
-            uint32_t startTime = millis();
             _acts.startTankPump();
             strncpy(_countdownLabel, "Refill", sizeof(_countdownLabel) - 1);
             _countdownLabel[sizeof(_countdownLabel) - 1] = '\0';
@@ -611,36 +611,27 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
             if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
                 SensorReadings currentReadings = _sensors.read();
                 sendFullUpdate(currentReadings, "etatPompeTank=1");
-                Serial.println(F("[Auto] Données envoyées au serveur - pompe réservoir activée"));
             }
 
-            uint32_t executionTime = (uint32_t)(millis() - startTime);
-            Serial.printf("[CRITIQUE] Pompe démarrée en %u ms\n", (unsigned)executionTime);
-            Serial.printf("[CRITIQUE] Démarrage pompe réservoir (niveau: %d cm, seuil: %d cm, durée: %lu s)\n",
-                          r.wlAqua, aqThresholdCm, refillDurationMs / 1000);
-            Serial.println(F("[CRITIQUE] === REMPLISSAGE EN COURS ==="));
-
             if (mailNotif && !emailTankStartSent) {
-                char msg[512];
+                char msg[256];
                 snprintf(msg, sizeof(msg),
-                         "Démarrage REMPLISSAGE automatique\n"
-                         "- Niveau aquarium: %d cm (seuil: %d cm)\n"
-                         "- Réserve: %d cm\n"
-                         "- Durée prévue: %lu secondes\n"
-                         "- Mode: Automatique",
-                         r.wlAqua, aqThresholdCm, r.wlTank, refillDurationMs / 1000);
+                         "Remplissage AUTO démarré\nAqua: %d cm, Réserve: %d cm, Durée: %lu s",
+                         r.wlAqua, r.wlTank, refillDurationMs / 1000);
                 _mailer.send("Remplissage démarré", msg, "System", _emailAddress);
                 emailTankStartSent = true;
                 emailTankStopSent = false;
-                Serial.println(F("[Auto] ✅ Email de démarrage remplissage envoyé"));
             }
         }
     }
+    return false;
+}
 
-    // 1.5. FIN CYCLE MANUEL
+// Sous-fonction: Fin cycle manuel
+void Automatism::handleRefillManualCycleEnd(const SensorReadings& r) {
     if (_manualTankOverride && _acts.isTankPumpRunning()) {
         if (_countdownEnd > 0 && millis() >= _countdownEnd) {
-            Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE MANUEL (timeout) ==="));
+            Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE MANUEL ==="));
             _acts.stopTankPump(_pumpStartMs);
             _lastTankStopReason = TankPumpStopReason::MANUAL;
             _manualTankOverride = false;
@@ -649,188 +640,149 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
 
             if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
                 SensorReadings cur = _sensors.read();
-                bool success = sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-                if (success) {
-                    Serial.println(F("[Auto] ✅ Fin cycle notifiée au serveur - pump_tank=0"));
-                } else {
-                    Serial.println(F("[Auto] ⚠️ Échec notification fin cycle au serveur - sera retentée"));
-                }
-            } else {
-                Serial.println(F("[Auto] ⚠️ WiFi déconnecté - notification fin cycle reportée"));
+                sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
             }
 
             if (mailNotif && !emailTankStopSent) {
                 SensorReadings cur = _sensors.read();
                 int levelImprovement = _levelAtPumpStart - cur.wlAqua;
-                uint32_t actualDurationSec = refillDurationMs / 1000;
-                char msg[512];
+                char msg[256];
                 snprintf(msg, sizeof(msg),
-                         "Remplissage MANUEL terminé\n"
-                         "- Durée: %u secondes\n"
-                         "- Amélioration niveau: %d cm\n"
-                         "- Niveau aquarium: %d cm (début: %d cm)\n"
-                         "- Réserve: %d cm\n"
-                         "- Mode: Manuel",
-                         actualDurationSec, levelImprovement, cur.wlAqua, _levelAtPumpStart, cur.wlTank);
+                         "Remplissage MANUEL terminé\nAmélioration: %d cm, Aqua: %d cm",
+                         levelImprovement, cur.wlAqua);
                 _mailer.send("Remplissage terminé", msg, "System", _emailAddress);
                 emailTankStopSent = true;
                 emailTankStartSent = false;
-                Serial.println(F("[Auto] ✅ Email de fin remplissage manuel envoyé"));
             }
         }
     }
+}
 
-    // 2. ARRÊT FORCÉ APRÈS DURÉE MAX
-    if (_acts.isTankPumpRunning()) {
-        const uint32_t nowMs = millis();
-        const uint32_t elapsedMs = (uint32_t)(nowMs - _pumpStartMs);
-        const uint32_t maxMs = refillDurationMs;
-        if (elapsedMs > 3000000UL) {
-            Serial.printf("[CRITIQUE] Anomaly: elapsed=%u ms (>50 min). Resetting pumpStartMs to now. nowMs=%u, startMs(old)=%u, maxMs=%u\n",
-                          (unsigned)elapsedMs, (unsigned)nowMs, (unsigned)_pumpStartMs, (unsigned)maxMs);
-            _pumpStartMs = nowMs;
+// Sous-fonction: Arrêt forcé après durée max
+void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
+    if (!_acts.isTankPumpRunning()) return;
+
+    const uint32_t nowMs = millis();
+    const uint32_t elapsedMs = (uint32_t)(nowMs - _pumpStartMs);
+    const uint32_t maxMs = refillDurationMs;
+    
+    // Détection anomalie timing (>50 min)
+    if (elapsedMs > 3000000UL) {
+        Serial.printf("[CRITIQUE] Anomalie timing: elapsed=%u ms, reset\n", (unsigned)elapsedMs);
+        _pumpStartMs = nowMs;
+        return;
+    }
+    
+    if (elapsedMs < maxMs) return;
+
+    // Arrêt forcé
+    Serial.println(F("[CRITIQUE] === ARRÊT FORCÉ REMPLISSAGE ==="));
+    Serial.printf("[CRITIQUE] Durée: %u s / %u s max\n", 
+                  (unsigned)(elapsedMs/1000U), (unsigned)(maxMs/1000U));
+
+    _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
+    _acts.stopTankPump(_pumpStartMs);
+    _pumpStartMs = 0;
+    _countdownEnd = 0;
+    _manualTankOverride = false;
+
+    if (WiFi.status() == WL_CONNECTED) {
+        SensorReadings cur = _sensors.read();
+        sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+    }
+
+    int levelImprovement = _levelAtPumpStart - r.wlAqua;
+    Serial.printf("[CRITIQUE] Amélioration niveau: %d cm\n", levelImprovement);
+
+    if (levelImprovement < 1) {
+        ++tankPumpRetries;
+        Serial.printf("[CRITIQUE] Pompe inefficace (%u/%u)\n", tankPumpRetries, MAX_PUMP_RETRIES);
+        if (tankPumpRetries >= MAX_PUMP_RETRIES) {
+            tankPumpLocked = true;
+            _tankPumpLockReason = TankPumpLockReason::INEFFICIENT;
+            Serial.println(F("[CRITIQUE] Pompe BLOQUÉE - max tentatives"));
+            sendFullUpdate(r, "etatPompeTank=0&pump_tankCmd=0&pump_tank=0");
+            if (mailNotif && !emailTankSent) {
+                char msg[384];
+                snprintf(msg, sizeof(msg),
+                         "Pompe BLOQUÉE (inefficace)\nTentatives: %d/%d, Amélioration: %d cm",
+                         tankPumpRetries, (unsigned)MAX_PUMP_RETRIES, levelImprovement);
+                _mailer.sendAlert("Pompe réservoir bloquée", msg, _emailAddress);
+                emailTankSent = true;
+            }
         }
-        if (elapsedMs >= maxMs) {
-            Serial.printf("[CRITIQUE] Timing stop diag: nowMs=%u, startMs=%u, elapsedMs=%u, maxMs=%u\n",
-                          (unsigned)nowMs, (unsigned)_pumpStartMs, (unsigned)elapsedMs, (unsigned)maxMs);
-            Serial.println(F("[CRITIQUE] === ARRÊT FORCÉ REMPLISSAGE ==="));
-            Serial.printf("[CRITIQUE] Durée écoulée: %u s, Durée max: %u s\n", (unsigned)(elapsedMs/1000U), (unsigned)(maxMs/1000U));
+    } else {
+        tankPumpRetries = 0;
+        Serial.printf("[CRITIQUE] Remplissage OK: +%d cm\n", levelImprovement);
+        if (mailNotif && !emailTankStopSent) {
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                     "Remplissage TERMINÉ\nDurée: %u s, Amélioration: %d cm, Aqua: %d cm",
+                     (unsigned)(elapsedMs / 1000), levelImprovement, r.wlAqua);
+            _mailer.send("Remplissage terminé", msg, "System", _emailAddress);
+            emailTankStopSent = true;
+            emailTankStartSent = false;
+        }
+    }
+    Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE ==="));
+}
 
-            const uint32_t stopStartMs = millis();
-            _lastTankStopReason = TankPumpStopReason::MAX_DURATION;
+// Sous-fonction: Sécurité réserve basse avec hystérésis
+void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
+    if (_manualTankOverride) return;
+
+    static uint8_t aboveCount = 0;
+    static uint8_t belowCount = 0;
+    
+    if (r.wlTank > tankThresholdCm) {
+        aboveCount = min<uint8_t>(aboveCount + 1, 3);
+        belowCount = 0;
+        if (!tankPumpLocked && aboveCount >= 2) {
+            Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
+            Serial.printf("[CRITIQUE] Réservoir: %d cm, Seuil: %d cm\n", r.wlTank, tankThresholdCm);
+            tankPumpLocked = true;
+            _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
             _acts.stopTankPump(_pumpStartMs);
-            _pumpStartMs = 0;
+            _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
             _countdownEnd = 0;
-            _manualTankOverride = false;
-
-            if (WiFi.status() == WL_CONNECTED) {
-                SensorReadings cur = _sensors.read();
-                bool success = sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-                if (success) {
-                    Serial.println(F("[Auto] ✅ Fin cycle forcé notifiée au serveur - pump_tank=0"));
-                } else {
-                    Serial.println(F("[Auto] ⚠️ Échec notification fin cycle forcé au serveur"));
-                }
+            const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
+            if (mailNotif && !emailTankSent && !startupGrace) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                         "Pompe VERROUILLÉE (réserve basse)\nRéserve: %d cm (seuil: %d cm)",
+                         r.wlTank, tankThresholdCm);
+                _mailer.sendAlert("Pompe verrouillée (réserve basse)", msg, _emailAddress);
+                emailTankSent = true;
+            } else if (startupGrace) {
+                emailTankSent = true;
             }
-
-            int levelImprovement = _levelAtPumpStart - r.wlAqua;
-            Serial.printf("[CRITIQUE] Amélioration du niveau: %d cm\n", levelImprovement);
-
-            if (levelImprovement < 1) {
-                ++tankPumpRetries;
-                Serial.printf("[CRITIQUE] Pompe inefficace (%u/%u) – niveau %d cm (début: %d cm, amélioration: %d cm)\n",
-                              tankPumpRetries, MAX_PUMP_RETRIES, r.wlAqua, _levelAtPumpStart, levelImprovement);
-                if (tankPumpRetries >= MAX_PUMP_RETRIES) {
-                    tankPumpLocked = true;
-                    _tankPumpLockReason = TankPumpLockReason::INEFFICIENT;
-                    Serial.println(F("[CRITIQUE] Pompe réservoir BLOQUÉE – plus d'essais"));
-                    sendFullUpdate(r, "etatPompeTank=0&pump_tankCmd=0&pump_tank=0");
-                    if (mailNotif && !emailTankSent) {
-                        char msg[1024];
-                        snprintf(msg, sizeof(msg),
-                                 "La pompe de réserve a été BLOQUÉE (inefficacité)\n"
-                                 "- Tentatives consécutives: %d/%d\n"
-                                 "- Amélioration mesurée: %.1f cm (min attendu: 1 cm)\n"
-                                 "- Aqua: %d cm, Réserve: %d cm\n"
-                                 "- Seuils: aqThreshold=%d, tankThreshold=%d cm\n"
-                                 "\nCe qui permettra le déblocage:\n"
-                                 "- Déblocage automatique: après ~30 s, si le niveau de réserve < %d cm\n"
-                                 "- Ou action manuelle: amorcer la pompe, vérifier tuyaux/filtres/prises d'air, s'assurer que la réserve est suffisante, puis relancer un cycle.\n",
-                                 tankPumpRetries, (unsigned)MAX_PUMP_RETRIES, levelImprovement, r.wlAqua, r.wlTank,
-                                 aqThresholdCm, tankThresholdCm, (int)tankThresholdCm - 10);
-                        _mailer.sendAlert("Pompe réservoir bloquée", msg, _emailAddress);
-                        emailTankSent = true;
-                        Serial.println(F("[CRITIQUE] Email d'alerte envoyé"));
-                    }
-                }
-            } else {
-                tankPumpRetries = 0;
-                Serial.printf("[CRITIQUE] Remplissage réussi: niveau amélioré de %d cm\n", levelImprovement);
-
-                if (mailNotif && !emailTankStopSent) {
-                    uint32_t actualDurationSec = elapsedMs / 1000;
-                    char msg[512];
-                    snprintf(msg, sizeof(msg),
-                             "Remplissage TERMINÉ avec succès\n"
-                             "- Durée réelle: %u secondes\n"
-                             "- Amélioration niveau: %d cm\n"
-                             "- Niveau aquarium: %d cm (début: %d cm)\n"
-                             "- Réserve: %d cm\n"
-                             "- Mode: Automatique",
-                             actualDurationSec, levelImprovement, r.wlAqua, _levelAtPumpStart, r.wlTank);
-                    _mailer.send("Remplissage terminé", msg, "System", _emailAddress);
-                    emailTankStopSent = true;
-                    emailTankStartSent = false;
-                    Serial.println(F("[Auto] ✅ Email de fin remplissage envoyé"));
-                }
-            }
-
-            const uint32_t stopExecMs = (uint32_t)(millis() - stopStartMs);
-            Serial.printf("[CRITIQUE] Arrêt effectué en %u ms\n", (unsigned)stopExecMs);
-            Serial.println(F("[CRITIQUE] Arrêt pompe réservoir (durée écoulée)"));
-            Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE ==="));
         }
-    }
-
-    // Sécurité réserve basse
-    if (!_manualTankOverride) {
-        static uint8_t aboveCount = 0;
-        static uint8_t belowCount = 0;
-        if (r.wlTank > tankThresholdCm) {
-            aboveCount = min<uint8_t>(aboveCount + 1, 3);
-            belowCount = 0;
-            if (!tankPumpLocked && aboveCount >= 2) {
-                Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
-                Serial.printf("[CRITIQUE] Niveau réservoir (distance): %d cm, Seuil: %d cm\n", r.wlTank, tankThresholdCm);
-                tankPumpLocked = true;
-                _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
-                _acts.stopTankPump(_pumpStartMs);
-                _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
-                _countdownEnd = 0;
-                Serial.println(F("[CRITIQUE] Sécurité: pompe réservoir verrouillée (réserve trop basse confirmée)"));
-                Serial.println(F("[CRITIQUE] === PROTECTION ACTIVÉE ==="));
-                // v11.162: Pas d'alerte pendant la période de grâce au démarrage
-                const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
-                if (mailNotif && !emailTankSent && !startupGrace) {
-                    char msg[512];
-                    snprintf(msg, sizeof(msg),
-                             "La pompe de réserve a été VERROUILLÉE (réserve trop basse)\n"
-                             "- Réserve (distance): %d cm (seuil: %d cm)\n"
-                             "- Aqua: %d cm\n"
-                             "\nDéblocage automatique: lorsque la distance réservoir < %d cm avec 3 confirmations consécutives.\n"
-                             "Conseil: remplissez la réserve (éviter marche à sec), puis relancez.",
-                             r.wlTank, tankThresholdCm, r.wlAqua, (int)tankThresholdCm - 5);
-                    _mailer.sendAlert("Pompe réservoir verrouillée (réserve trop basse)", msg, _emailAddress);
-                    emailTankSent = true;
-                } else if (startupGrace) {
-                    emailTankSent = true;  // Marquer comme envoyé pour éviter envoi après période
-                }
-            }
-        } else if (r.wlTank < tankThresholdCm - 5) {
-            belowCount = min<uint8_t>(belowCount + 1, 3);
-            aboveCount = 0;
-            if (tankPumpLocked && belowCount >= 3) {
-                tankPumpLocked = false;
-                _tankPumpLockReason = TankPumpLockReason::NONE;
-                emailTankSent = false;
-                emailTankStartSent = false;
-                emailTankStopSent = false;
-                Serial.printf("[Auto] Pompe réservoir déverrouillée (réserve OK, distance: %d cm, confirmations)\n", r.wlTank);
-            }
-        } else {
-            aboveCount = min<uint8_t>(aboveCount, 2);
-            belowCount = min<uint8_t>(belowCount, 2);
+    } else if (r.wlTank < tankThresholdCm - 5) {
+        belowCount = min<uint8_t>(belowCount + 1, 3);
+        aboveCount = 0;
+        if (tankPumpLocked && belowCount >= 3) {
+            tankPumpLocked = false;
+            _tankPumpLockReason = TankPumpLockReason::NONE;
+            emailTankSent = false;
+            emailTankStartSent = false;
+            emailTankStopSent = false;
+            Serial.printf("[Auto] Pompe déverrouillée (réserve: %d cm)\n", r.wlTank);
         }
+    } else {
+        aboveCount = min<uint8_t>(aboveCount, 2);
+        belowCount = min<uint8_t>(belowCount, 2);
     }
+}
 
-    // Récupération automatique
+// Sous-fonction: Récupération automatique après blocage
+void Automatism::handleRefillAutomaticRecovery(const SensorReadings& r) {
     static unsigned long lastRecoveryAttempt = 0;
     if (tankPumpLocked && tankPumpRetries >= MAX_PUMP_RETRIES) {
         unsigned long currentMillisLocal = millis();
         if (currentMillisLocal - lastRecoveryAttempt > 30 * 1000UL) {
             if (r.wlTank < tankThresholdCm - 10) {
-                Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTOMATIQUE ==="));
-                Serial.printf("[CRITIQUE] Niveau réservoir: %d cm, Seuil: %d cm\n", r.wlTank, tankThresholdCm);
+                Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTO ==="));
+                Serial.printf("[CRITIQUE] Réservoir: %d cm (OK)\n", r.wlTank);
                 tankPumpLocked = false;
                 tankPumpRetries = 0;
                 emailTankSent = false;
@@ -838,11 +790,38 @@ void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
                 emailTankStopSent = false;
                 _tankPumpLockReason = TankPumpLockReason::NONE;
                 lastRecoveryAttempt = currentMillisLocal;
-                Serial.println(F("[CRITIQUE] Récupération automatique: pompe réservoir débloquée"));
-                Serial.println(F("[CRITIQUE] === RÉCUPÉRATION EFFECTUÉE ==="));
+                Serial.println(F("[CRITIQUE] Pompe débloquée"));
             }
         }
     }
+}
+
+// Fonction principale refactorisée - appelle les sous-fonctions
+void Automatism::handleRefill(const AutomatismRuntimeContext& ctx) {
+    const SensorReadings& r = ctx.readings;
+
+    // 0. Sécurité aquarium trop plein
+    handleRefillAquariumOverfillSecurity(r);
+
+    // 1. Vérification cohérence mode manuel
+    handleRefillManualModeCheck();
+
+    // 2. Démarrage automatique (si conditions remplies)
+    if (handleRefillAutomaticStart(r)) {
+        return; // Bloqué par réserve basse
+    }
+
+    // 3. Fin cycle manuel (timeout)
+    handleRefillManualCycleEnd(r);
+
+    // 4. Arrêt forcé après durée max
+    handleRefillMaxDurationStop(r);
+
+    // 5. Sécurité réserve basse avec hystérésis
+    handleRefillReservoirLowSecurity(r);
+
+    // 6. Récupération automatique après blocage
+    handleRefillAutomaticRecovery(r);
 }
 
 // Fusionné depuis AutomatismAlertController::process()

@@ -402,7 +402,7 @@ bool DisplayView::begin() {
 
     // Le splash reste visible selon DisplayConfig::SPLASH_DURATION_MS (non bloquant)
     _splashUntil = millis() + DisplayConfig::SPLASH_DURATION_MS;
-    Serial.printf("[OLED] Splash screen activé jusqu'à %lu (durée: %u ms)\n", _splashUntil, DisplayConfig::SPLASH_DURATION_MS);
+    Serial.printf("[OLED] Splash %u ms\n", DisplayConfig::SPLASH_DURATION_MS);
 
     _diagLine = 0; // reset diagnostic line counter at each begin
     resetStatusCache(); // Réinitialise le cache des états
