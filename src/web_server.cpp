@@ -182,6 +182,62 @@ bool WebServerManager::begin() {
   WebRoutes::registerUiRoutes(*_server, ctx);
   WebRoutes::registerStatusRoutes(*_server, ctx);
 
+  // ============================================================================
+  // ALIAS ENDPOINTS CONTRACTUELS (conformité règles interface web locale)
+  // ============================================================================
+  
+  // /api/status -> alias pour /json (GET état capteurs/actionneurs)
+  _server->on("/api/status", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
+    // Redirige vers le handler /json existant
+    g_autoCtrl.notifyLocalWebActivity();
+    SensorReadings readings = _sensors.read();
+    char jsonBuf[1024];
+    snprintf(jsonBuf, sizeof(jsonBuf),
+      "{\"tempWater\":%.1f,\"tempAir\":%.1f,\"humidity\":%.1f,"
+      "\"wlAqua\":%u,\"wlTank\":%u,\"pumpAqua\":%s,\"pumpTank\":%s,"
+      "\"heater\":%s,\"light\":%s}",
+      readings.tempWater, readings.tempAir, readings.humidity,
+      readings.wlAqua, readings.wlTank,
+      _acts.isAquaPumpRunning() ? "true" : "false",
+      _acts.isTankPumpRunning() ? "true" : "false",
+      _acts.isHeaterOn() ? "true" : "false",
+      _acts.isLightOn() ? "true" : "false");
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuf);
+    if (response) {
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      req->send(response);
+    }
+  });
+
+  // /api/feed -> endpoint POST pour nourrissage (type=small|big)
+  _server->on("/api/feed", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    g_autoCtrl.notifyLocalWebActivity();
+    const char* type = "small"; // défaut
+    if (req->hasParam("type", true)) {
+      type = req->getParam("type", true)->value().c_str();
+    }
+    if (strcmp(type, "big") == 0) {
+      g_autoCtrl.manualFeedBig();
+      g_autoCtrl.setBouffeGrosFlag("1");
+      req->send(200, "application/json", "{\"success\":true,\"action\":\"feedBig\"}");
+    } else {
+      g_autoCtrl.manualFeedSmall();
+      g_autoCtrl.setBouffePetitsFlag("1");
+      req->send(200, "application/json", "{\"success\":true,\"action\":\"feedSmall\"}");
+    }
+    g_realtimeWebSocket.broadcastNow();
+  });
+
+  // /api/config -> alias pour /dbvars/update (POST mise à jour config)
+  // Note: Le endpoint /dbvars/update existant gère déjà la logique complète
+  // Cet alias permet d'utiliser le nom contractuel /api/config
+  _server->on("/api/config", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req) {
+    // Redirige la requête vers le handler /dbvars/update
+    // Pour éviter la duplication de code, on renvoie vers l'endpoint existant
+    g_autoCtrl.notifyLocalWebActivity();
+    req->redirect("/dbvars/update");
+  });
+
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
   _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
       g_autoCtrl.notifyLocalWebActivity();
@@ -1537,8 +1593,16 @@ bool WebServerManager::begin() {
       JsonArray networks = doc.createNestedArray("networks");
       
       for (int i = 0; i < n; i++) {
-        // Cache local du SSID pour éviter multiples String temporaires (fragmentation)
-        String ssid = WiFi.SSID(i);
+        // Buffer statique pour éviter String Arduino (fragmentation mémoire)
+        char ssidBuf[33]; // Max SSID length is 32 + null
+        {
+          // Scope réduit pour destruction rapide de la String temporaire
+          String ssid = WiFi.SSID(i);
+          size_t len = ssid.length();
+          if (len >= sizeof(ssidBuf)) len = sizeof(ssidBuf) - 1;
+          strncpy(ssidBuf, ssid.c_str(), len);
+          ssidBuf[len] = '\0';
+        } // String détruite ici
         
         JsonObject network = networks.createNestedObject();
         network["rssi"] = WiFi.RSSI(i);
@@ -1546,11 +1610,11 @@ bool WebServerManager::begin() {
         network["channel"] = WiFi.channel(i);
         
         // Masquer les réseaux cachés (SSID vide)
-        if (ssid.length() == 0) {
+        if (ssidBuf[0] == '\0') {
           network["ssid"] = "<Hidden Network>";
           network["hidden"] = true;
         } else {
-          network["ssid"] = ssid;
+          network["ssid"] = ssidBuf;
           network["hidden"] = false;
         }
       }

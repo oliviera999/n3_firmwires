@@ -2,6 +2,7 @@
 #include "automatism.h"
 #include "nvs_manager.h" // v11.108
 #include <cstring>
+#include <cmath>  // v11.164: fabsf pour comparaison float
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
@@ -321,7 +322,7 @@ const char* GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value)
 }
 
 void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
-    // v11.108: Utilisation de g_nvsManager
+    // v11.164: Vérification si valeur changée avant sauvegarde (préserve flash)
     
     // Créer la clé préfixée
     char key[32];
@@ -336,51 +337,66 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
     switch (mapping.type) {
         case GPIOType::ACTUATOR:
         case GPIOType::CONFIG_BOOL: {
-            bool boolVal = parseBool(value);
-            g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, key, boolVal);
-            Serial.printf("[NVS] Sauvegardé bool %s = %s\n", key, boolVal ? "true" : "false");
+            bool newVal = parseBool(value);
+            bool currentVal = false;
+            g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
+            if (currentVal != newVal) {
+                g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, key, newVal);
+                Serial.printf("[NVS] ✏️ Mis à jour bool %s = %s\n", key, newVal ? "true" : "false");
+            }
             break;
         }
         case GPIOType::CONFIG_INT: {
-            int intVal = value.as<int>();
-            g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, key, intVal);
-            Serial.printf("[NVS] Sauvegardé int %s = %d\n", key, intVal);
+            int newVal = value.as<int>();
+            int currentVal = 0;
+            g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
+            if (currentVal != newVal) {
+                g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, key, newVal);
+                Serial.printf("[NVS] ✏️ Mis à jour int %s = %d\n", key, newVal);
+            }
             break;
         }
         case GPIOType::CONFIG_FLOAT: {
-            float floatVal = value.as<float>();
-            g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, key, floatVal);
-            Serial.printf("[NVS] Sauvegardé float %s = %.2f\n", key, floatVal);
+            float newVal = value.as<float>();
+            float currentVal = 0.0f;
+            g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
+            // Comparaison avec tolérance pour les floats
+            if (fabsf(currentVal - newVal) > 0.001f) {
+                g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, key, newVal);
+                Serial.printf("[NVS] ✏️ Mis à jour float %s = %.2f\n", key, newVal);
+            }
             break;
         }
         case GPIOType::CONFIG_STRING: {
-            char stringVal[128];
+            char newVal[128];
             const char* str = value.as<const char*>();
             if (str) {
                 size_t len = strlen(str);
-                size_t copyLen = (len < sizeof(stringVal) - 1) ? len : (sizeof(stringVal) - 1);
-                strncpy(stringVal, str, copyLen);
-                stringVal[copyLen] = '\0';
+                size_t copyLen = (len < sizeof(newVal) - 1) ? len : (sizeof(newVal) - 1);
+                strncpy(newVal, str, copyLen);
+                newVal[copyLen] = '\0';
                 if (len > 100) {
-                    stringVal[100] = '\0';
+                    newVal[100] = '\0';
                     Serial.printf("[NVS] ⚠️ String trop longue pour %s (%zu chars), tronquée\n", key, len);
                 }
-                g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
-                Serial.printf("[NVS] Sauvegardé string %s = '%s'\n", key, stringVal);
             } else {
                 // Conversion depuis autres types si nécessaire
                 if (value.is<int>()) {
-                    snprintf(stringVal, sizeof(stringVal), "%d", value.as<int>());
+                    snprintf(newVal, sizeof(newVal), "%d", value.as<int>());
                 } else if (value.is<float>()) {
-                    snprintf(stringVal, sizeof(stringVal), "%.2f", value.as<float>());
+                    snprintf(newVal, sizeof(newVal), "%.2f", value.as<float>());
                 } else if (value.is<bool>()) {
-                    strncpy(stringVal, value.as<bool>() ? "true" : "false", sizeof(stringVal) - 1);
-                    stringVal[sizeof(stringVal) - 1] = '\0';
+                    strncpy(newVal, value.as<bool>() ? "true" : "false", sizeof(newVal) - 1);
+                    newVal[sizeof(newVal) - 1] = '\0';
                 } else {
-                    stringVal[0] = '\0';
+                    newVal[0] = '\0';
                 }
-                g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, stringVal);
-                Serial.printf("[NVS] Sauvegardé string %s = '%s' (converti)\n", key, stringVal);
+            }
+            char currentVal[128];
+            g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, key, currentVal, sizeof(currentVal), newVal);
+            if (strcmp(currentVal, newVal) != 0) {
+                g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, newVal);
+                Serial.printf("[NVS] ✏️ Mis à jour string %s = '%s'\n", key, newVal);
             }
             break;
         }
