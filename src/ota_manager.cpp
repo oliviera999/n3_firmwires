@@ -1791,8 +1791,8 @@ bool OTAManager::checkForUpdate() {
         return false;
     }
     
-    // Parsing JSON (capacité suffisante pour metadata + channels)
-    DynamicJsonDocument doc(BufferConfig::JSON_DOCUMENT_SIZE);
+    // Parsing JSON (buffer fixe, pas de heap)
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     DeserializationError error = deserializeJson(doc, payload);
     
     if (error) {
@@ -1981,38 +1981,37 @@ const char* OTAManager::getFirmwareUrl() const {
 }
 
 int OTAManager::compareVersions(const char* version1, const char* version2) {
-    std::vector<int> v1_parts, v2_parts;
-    
-    // Parse version1 avec strtok
+    // Tableaux fixes (pas de heap) - versions type "1.2.3" => au plus 8 composants
+    static constexpr size_t MAX_VERSION_PARTS = 8;
+    int v1_parts[MAX_VERSION_PARTS];
+    int v2_parts[MAX_VERSION_PARTS];
+    size_t v1_count = 0, v2_count = 0;
+
     char v1_copy[32];
     strncpy(v1_copy, version1, sizeof(v1_copy) - 1);
     v1_copy[sizeof(v1_copy) - 1] = '\0';
     char* token = strtok(v1_copy, ".");
-    while (token != NULL) {
-        v1_parts.push_back(atoi(token));
+    while (token != NULL && v1_count < MAX_VERSION_PARTS) {
+        v1_parts[v1_count++] = atoi(token);
         token = strtok(NULL, ".");
     }
-    
-    // Parse version2 avec strtok
+
     char v2_copy[32];
     strncpy(v2_copy, version2, sizeof(v2_copy) - 1);
     v2_copy[sizeof(v2_copy) - 1] = '\0';
     token = strtok(v2_copy, ".");
-    while (token != NULL) {
-        v2_parts.push_back(atoi(token));
+    while (token != NULL && v2_count < MAX_VERSION_PARTS) {
+        v2_parts[v2_count++] = atoi(token);
         token = strtok(NULL, ".");
     }
-    
-    // Compare les composants
-    int maxParts = max(v1_parts.size(), v2_parts.size());
-    for (int i = 0; i < maxParts; i++) {
-        int v1_part = (i < v1_parts.size()) ? v1_parts[i] : 0;
-        int v2_part = (i < v2_parts.size()) ? v2_parts[i] : 0;
-        
+
+    size_t maxParts = (v1_count > v2_count) ? v1_count : v2_count;
+    for (size_t i = 0; i < maxParts; i++) {
+        int v1_part = (i < v1_count) ? v1_parts[i] : 0;
+        int v2_part = (i < v2_count) ? v2_parts[i] : 0;
         if (v1_part < v2_part) return -1;
         if (v1_part > v2_part) return 1;
     }
-    
     return 0;
 }
 

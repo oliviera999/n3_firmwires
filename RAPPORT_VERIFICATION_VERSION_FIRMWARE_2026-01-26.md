@@ -98,8 +98,7 @@ Les fichiers suivants mentionnent la version `11.157`, qui n'existe pas dans le 
    - Lignes 49, 56, 77: `v11.156`
    - **Statut**: ✅ Cohérent
 
-5. **flash_and_monitor_15min_wroom_test.ps1**
-   - Lignes 20, 25, 31, 32, 200, 220, 221, 243, 297, 298: `v11.156`
+5. **flash_and_monitor_10min_wroom_test.ps1** (script flash+monitor paramétré, remplace 15min/30min)
    - **Statut**: ✅ Cohérent
 
 #### ✅ Rapports mentionnant `11.155` (HISTORIQUES)
@@ -107,9 +106,8 @@ Les fichiers suivants mentionnent la version `11.157`, qui n'existe pas dans le 
    - Ligne 4: `**Version firmware:** v11.155`
    - **Statut**: ✅ Historique (ancienne version)
 
-2. **flash_wroom_test_nvs_monitor.ps1**
-   - Lignes 21, 26, 32, 33, 34, 292, 453: `v11.155`
-   - **Statut**: ✅ Historique (ancienne version)
+2. **flash_wroom_test_nvs_monitor.ps1** (script supprimé, remplacé par flash_monitor_diagnose_simple.ps1)
+   - **Statut**: ✅ Historique (script retiré lors du ménage scripts)
 
 3. **rapport_wroom_test_nvs_v11.155_*.md**
    - **Statut**: ✅ Historique (ancienne version)

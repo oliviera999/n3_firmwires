@@ -408,134 +408,63 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
       return;
     }
 
-    ArduinoJson::JsonDocument* doc = new ArduinoJson::JsonDocument;
-    if (!doc) {
-      Serial.println("[Web] ⚠️ Allocation failed, using fallback allocation");
-      ArduinoJson::JsonDocument fallbackDoc;
-      SensorReadings r = sensorCache.getReadings(ctx.sensors);
-
-      fallbackDoc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
-      fallbackDoc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
-      fallbackDoc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
-      fallbackDoc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
-      fallbackDoc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
-      fallbackDoc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
-      fallbackDoc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
-      fallbackDoc["pumpAqua"] = ctx.actuators.isAquaPumpRunning();
-      fallbackDoc["pumpTank"] = ctx.actuators.isTankPumpRunning();
-      fallbackDoc["heater"] = ctx.actuators.isHeaterOn();
-      fallbackDoc["light"] = ctx.actuators.isLightOn();
-      fallbackDoc["forceWakeup"] = ctx.automatism.getForceWakeUp();
-
-      bool staConnected = WiFi.status() == WL_CONNECTED;
-      fallbackDoc["wifiStaConnected"] = staConnected;
-      if (staConnected) {
-        char fallbackStaSSIDBuf[33];
-        strncpy(fallbackStaSSIDBuf, WiFi.SSID().c_str(), sizeof(fallbackStaSSIDBuf) - 1);
-        fallbackStaSSIDBuf[sizeof(fallbackStaSSIDBuf) - 1] = '\0';
-        fallbackDoc["wifiStaSSID"] = fallbackStaSSIDBuf;
-        IPAddress staIP = WiFi.localIP();
-        char staIPBuf[16];
-        snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
-        fallbackDoc["wifiStaIP"] = staIPBuf;
-        fallbackDoc["wifiStaRSSI"] = WiFi.RSSI();
-      } else {
-        fallbackDoc["wifiStaSSID"] = "";
-        fallbackDoc["wifiStaIP"] = "";
-        fallbackDoc["wifiStaRSSI"] = 0;
-      }
-
-      wifi_mode_t mode = WiFi.getMode();
-      bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-      fallbackDoc["wifiApActive"] = apActive;
-      if (apActive) {
-        char fallbackApSSIDBuf[33];
-        strncpy(fallbackApSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(fallbackApSSIDBuf) - 1);
-        fallbackApSSIDBuf[sizeof(fallbackApSSIDBuf) - 1] = '\0';
-        fallbackDoc["wifiApSSID"] = fallbackApSSIDBuf;
-        IPAddress apIP = WiFi.softAPIP();
-        char apIPBuf[16];
-        snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-        fallbackDoc["wifiApIP"] = apIPBuf;
-        fallbackDoc["wifiApClients"] = WiFi.softAPgetStationNum();
-      } else {
-        fallbackDoc["wifiApSSID"] = "";
-        fallbackDoc["wifiApIP"] = "";
-        fallbackDoc["wifiApClients"] = 0;
-      }
-
-      fallbackDoc["timestamp"] = millis();
-
-      AsyncResponseStream* response = req->beginResponseStream("application/json");
-      response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      response->addHeader("Pragma", "no-cache");
-      response->addHeader("Expires", "0");
-      response->addHeader("X-Content-Type-Options", "nosniff");
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      serializeJson(fallbackDoc, *response);
-      req->send(response);
-      return;
-    }
-
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     SensorReadings r = sensorCache.getReadings(ctx.sensors);
-    (*doc)["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
-    (*doc)["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
-    (*doc)["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
-    (*doc)["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
-    (*doc)["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
-    (*doc)["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
-    (*doc)["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
-    (*doc)["pumpAqua"] = ctx.actuators.isAquaPumpRunning();
-    (*doc)["pumpTank"] = ctx.actuators.isTankPumpRunning();
-    (*doc)["heater"] = ctx.actuators.isHeaterOn();
-    (*doc)["light"] = ctx.actuators.isLightOn();
-    (*doc)["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
+    doc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
+    doc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
+    doc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
+    doc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
+    doc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
+    doc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
+    doc["pumpAqua"] = ctx.actuators.isAquaPumpRunning();
+    doc["pumpTank"] = ctx.actuators.isTankPumpRunning();
+    doc["heater"] = ctx.actuators.isHeaterOn();
+    doc["light"] = ctx.actuators.isLightOn();
+    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
 
     bool staConnected = WiFi.status() == WL_CONNECTED;
-    (*doc)["wifiStaConnected"] = staConnected;
+    doc["wifiStaConnected"] = staConnected;
     if (staConnected) {
       char docStaSSIDBuf[33];
       strncpy(docStaSSIDBuf, WiFi.SSID().c_str(), sizeof(docStaSSIDBuf) - 1);
       docStaSSIDBuf[sizeof(docStaSSIDBuf) - 1] = '\0';
-      (*doc)["wifiStaSSID"] = docStaSSIDBuf;
+      doc["wifiStaSSID"] = docStaSSIDBuf;
       IPAddress staIP = WiFi.localIP();
       char staIPBuf[16];
       snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
-      (*doc)["wifiStaIP"] = staIPBuf;
-      (*doc)["wifiStaRSSI"] = WiFi.RSSI();
+      doc["wifiStaIP"] = staIPBuf;
+      doc["wifiStaRSSI"] = WiFi.RSSI();
     } else {
-      (*doc)["wifiStaSSID"] = "";
-      (*doc)["wifiStaIP"] = "";
-      (*doc)["wifiStaRSSI"] = 0;
+      doc["wifiStaSSID"] = "";
+      doc["wifiStaIP"] = "";
+      doc["wifiStaRSSI"] = 0;
     }
 
     wifi_mode_t mode = WiFi.getMode();
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    (*doc)["wifiApActive"] = apActive;
+    doc["wifiApActive"] = apActive;
     if (apActive) {
       char docApSSIDBuf[33];
       strncpy(docApSSIDBuf, WiFi.softAPSSID().c_str(), sizeof(docApSSIDBuf) - 1);
       docApSSIDBuf[sizeof(docApSSIDBuf) - 1] = '\0';
-      (*doc)["wifiApSSID"] = docApSSIDBuf;
+      doc["wifiApSSID"] = docApSSIDBuf;
       IPAddress apIP = WiFi.softAPIP();
       char apIPBuf[16];
       snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      (*doc)["wifiApIP"] = apIPBuf;
-      (*doc)["wifiApClients"] = WiFi.softAPgetStationNum();
+      doc["wifiApIP"] = apIPBuf;
+      doc["wifiApClients"] = WiFi.softAPgetStationNum();
     } else {
-      (*doc)["wifiApSSID"] = "";
-      (*doc)["wifiApIP"] = "";
-      (*doc)["wifiApClients"] = 0;
+      doc["wifiApSSID"] = "";
+      doc["wifiApIP"] = "";
+      doc["wifiApClients"] = 0;
     }
 
-    (*doc)["timestamp"] = millis();
+    doc["timestamp"] = millis();
 
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /json");
-      delete doc;
       req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
       return;
     }
@@ -546,8 +475,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    serializeJson(*doc, *response);
-    delete doc;
+    serializeJson(doc, *response);
     req->send(response);
   });
 }

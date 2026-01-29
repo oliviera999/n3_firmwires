@@ -1021,7 +1021,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // La bibliothèque ESP Mail Client peut utiliser les pointeurs de manière asynchrone
   static char fromNameBuf[64];
   static char subjectBuf[128];
-  static char finalMessageBuffer[4096];  // Buffer statique pour persistance
+  static char finalMessageBuffer[2048];  // Aligné EMAIL_MAX_SIZE_BYTES (2000) + footer ~256 B ; réduit fragmentation
   
   Serial.println(F("[Mail] Trace 3: Buffers allocated"));
 

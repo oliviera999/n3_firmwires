@@ -97,6 +97,9 @@ static void netTask(void* pv) {
     vTaskDelay(pdMS_TO_TICKS(200));
   }
   if (WiFi.status() == WL_CONNECTED) {
+    // Cause basale: attente stabilisation stack TCP/IP avant 1ère requête HTTPS
+    // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
+    g_ctx->power.waitForNetworkReady();
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     bool ok = g_ctx->webClient.tryFetchConfigFromServer(tmp);

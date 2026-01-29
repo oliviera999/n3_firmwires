@@ -10,7 +10,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
-#include <esp_heap_caps.h>  // Pour heap_caps_get_largest_free_block() (mode PROFILE_TEST uniquement)
+#include <esp_heap_caps.h>  // Pour heap_caps_get_largest_free_block() (si FEATURE_HTTP_HEAP_GUARD)
 
 // Diagnostic stack/tâche avant opérations TLS (point 4)
 static void logTaskAndStack(const char* tag) {
@@ -78,6 +78,13 @@ WebClient::WebClient(const char* apiKey) {
   _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS); // Timeout strict pour éviter blocage
 }
 
+WebClient::~WebClient() {
+  if (_tlsReserveBlock != nullptr) {
+    free(_tlsReserveBlock);
+    _tlsReserveBlock = nullptr;
+  }
+}
+
 // v11.150: Force la libération de mémoire TLS après une requête
 // Version simplifiée : juste arrêter le client sans le recréer (évite crash FreeRTOS)
 // PISTE 6: LWIP Guards
@@ -89,29 +96,24 @@ WebClient::WebClient(const char* apiKey) {
 // plutôt que de protéger les opérations LWIP après-coup.
 void WebClient::resetTLSClient() {
   uint32_t heapBefore = ESP.getFreeHeap();
-  
+
   // Stopper proprement le client TLS
   _client.stop();
-  
-  // v11.157: Délai augmenté + garbage collection forcé pour améliorer libération TLS
-  // Augmenté de 200ms à 500ms pour laisser plus de temps à FreeRTOS
+
+  // Délais pour laisser FreeRTOS libérer les ressources TLS (pas d'alloc/free ici pour éviter fragmentation)
   vTaskDelay(pdMS_TO_TICKS(200));
-  
-  // Forcer garbage collection: allouer puis libérer un petit bloc pour encourager défragmentation
-  void* tempBlock = heap_caps_malloc(1024, MALLOC_CAP_DEFAULT);
-  if (tempBlock) {
-    free(tempBlock);
-    vTaskDelay(pdMS_TO_TICKS(100));  // Petit délai après free
+  vTaskDelay(pdMS_TO_TICKS(200));
+
+  // Option B: re-réserver le bloc pour la prochaine requête HTTPS
+  if (_tlsReserveBlock == nullptr) {
+    _tlsReserveBlock = malloc(TLS_RESERVE_BLOCK_BYTES);
   }
-  
-  // Délai supplémentaire pour laisser FreeRTOS nettoyer complètement
-  vTaskDelay(pdMS_TO_TICKS(200));
-  
+
   uint32_t heapAfter = ESP.getFreeHeap();
   int32_t recovered = (int32_t)heapAfter - (int32_t)heapBefore;
-  
+
   if (recovered > 1000) {
-    Serial.printf("[HTTP] 🔄 TLS stop: récupéré %d bytes (heap: %u → %u)\n", 
+    Serial.printf("[HTTP] 🔄 TLS stop: récupéré %d bytes (heap: %u → %u)\n",
                   recovered, heapBefore, heapAfter);
   }
 }
@@ -133,7 +135,24 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   // v11.157: Aligné avec TLS_MIN_HEAP_BYTES (62KB) pour cohérence
   const uint32_t MIN_HEAP_FOR_HTTPS = TLS_MIN_HEAP_BYTES;  // 62 KB minimum (TLS ~42KB + marge 20KB)
   bool isSecure = (strncmp(url, "https://", 8) == 0);
-  
+
+  // Option C: libérer une session TLS précédente avant de vérifier le heap (aide à réunir un gros bloc)
+  if (isSecure) {
+    resetTLSClient();
+  }
+
+  // Option B: libérer le bloc réservé juste avant HTTPS pour garantir ~48 KB contigus pour mbedTLS
+  if (isSecure) {
+    if (_tlsReserveBlock == nullptr) {
+      _tlsReserveBlock = malloc(TLS_RESERVE_BLOCK_BYTES);
+    }
+    if (_tlsReserveBlock != nullptr) {
+      free(_tlsReserveBlock);
+      _tlsReserveBlock = nullptr;
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+  }
+
   if (isSecure) {
     // Vérification simple du heap avant TLS
     if (freeHeap < MIN_HEAP_FOR_HTTPS) {
@@ -142,18 +161,17 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       return false;
     }
     
-    #if defined(PROFILE_TEST)
-    // Diagnostics détaillés uniquement en mode test
+    #if FEATURE_HTTP_HEAP_GUARD
+    // Garde-fou fragmentation: refuser HTTPS si plus grand bloc < 32 KB (TLS ~32-35 KB contigus avec buffers réduits)
+    // v11.158: Réduit de 45KB à 32KB car CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=2048 réduit l'empreinte TLS
     uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
     uint32_t fragmentation = (freeHeap > 0) ? ((freeHeap - largestBlock) * 100 / freeHeap) : 0;
     LOG(LOG_DEBUG, "[HTTP] 📊 Diagnostic mémoire avant TLS: heap=%u, largest_block=%u, fragmentation=%u%%", 
         freeHeap, largestBlock, fragmentation);
-    
-    // Vérifier que le plus grand bloc est suffisant pour TLS
-    if (largestBlock < 45000) {
-      LOG(LOG_WARN, "[HTTP] ⚠️ Plus grand bloc insuffisant (%u bytes < 45KB), fragmentation=%u%%", 
+    if (largestBlock < 32768) {
+      LOG(LOG_WARN, "[HTTP] ⚠️ Plus grand bloc insuffisant (%u bytes < 32KB), fragmentation=%u%%", 
           largestBlock, fragmentation);
-      LOG(LOG_WARN, "[HTTP] ⚠️ TLS nécessite ~42-46KB contiguë, report de la requête");
+      LOG(LOG_WARN, "[HTTP] ⚠️ TLS nécessite ~32-35KB contiguë (buffers réduits), report de la requête");
       return false;
     }
     #endif
@@ -211,8 +229,8 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   }
 
   WiFiClient plain;  // client non-TLS (portée limitée à la fonction)
-  // Plan simplification: une seule tentative par appel, pas de retry interne (retry au prochain cycle tâche)
-  const int maxAttempts = 1;
+  // 2 tentatives pour erreurs transitoires (connection refused, SSL fatal) ; 1 seule si cause basale corrigée
+  const int maxAttempts = 2;
   int code = -1;
   response[0] = '\0';
   bool success = false;
@@ -284,7 +302,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     if (code > 0) {
       unsigned long responseStartMs = millis();
       // Utiliser un buffer fixe au lieu de String pour éviter fragmentation mémoire
-      const size_t MAX_TEMP_RESPONSE = 2048; // Taille max pour réponse temporaire
+      const size_t MAX_TEMP_RESPONSE = 1024;  // Aligné BufferConfig::JSON_DOCUMENT_SIZE prod ; réponses config/status < 1 KB
       char tempResponseBuffer[MAX_TEMP_RESPONSE + 1];
       WiFiClient* stream = _http.getStreamPtr();
       size_t responseLen = 0;
@@ -656,6 +674,28 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   char url[256];
   char httpUrlBuf[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
+
+  // Option C: libérer session TLS précédente + même garde « plus grand bloc » que pour POST
+  if (strncmp(url, "https://", 8) == 0) {
+    resetTLSClient();
+    #if FEATURE_HTTP_HEAP_GUARD
+    // v11.158: Réduit de 45KB à 32KB pour cohérence avec buffers TLS réduits
+    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (largestBlock < 32768) {
+      LOG(LOG_WARN, "[HTTP] ⚠️ Plus grand bloc insuffisant (%u bytes < 32KB), report GET HTTPS",
+          largestBlock);
+      if (hasMutex) TLSMutex::release();
+      return false;
+    }
+    #endif
+    // Option B: libérer le bloc réservé pour garantir ~48 KB contigus pour mbedTLS
+    if (_tlsReserveBlock != nullptr) {
+      free(_tlsReserveBlock);
+      _tlsReserveBlock = nullptr;
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+  }
+
   uint32_t requestStartMs = millis();
   WiFiClient plain;
 
@@ -776,40 +816,38 @@ bool WebClient::postRaw(const char* payload){
   WiFi.setSleep(false);
   vTaskDelay(pdMS_TO_TICKS(100));
   
+  // Buffer sur la stack (évite fragmentation et économise BSS; postRaw sous TLSMutex)
+  char postBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
   size_t payloadLen = strlen(payload);
   size_t estimatedSize = payloadLen + strlen(_apiKey) + strlen(ProjectConfig::BOARD_TYPE) + 32;
-  char* fullBuffer = (char*)malloc(estimatedSize);
-  if (!fullBuffer) {
+  if (estimatedSize > sizeof(postBuffer)) {
     TLSMutex::release();
     return false;
   }
 
   bool hasApi = (strncmp(payload, "api_key=", 8) == 0);
-  
   if (!hasApi) {
-    snprintf(fullBuffer, estimatedSize, "api_key=%s&sensor=%s", _apiKey, ProjectConfig::BOARD_TYPE);
+    snprintf(postBuffer, sizeof(postBuffer), "api_key=%s&sensor=%s", _apiKey, ProjectConfig::BOARD_TYPE);
     if (payloadLen > 0) {
-      size_t currentLen = strlen(fullBuffer);
-      if (currentLen + 1 < estimatedSize) {
-        strncat(fullBuffer, "&", estimatedSize - currentLen - 1);
+      size_t currentLen = strlen(postBuffer);
+      if (currentLen + 1 < sizeof(postBuffer)) {
+        strncat(postBuffer, "&", sizeof(postBuffer) - currentLen - 1);
       }
-      currentLen = strlen(fullBuffer);
-      if (currentLen < estimatedSize) {
-        strncat(fullBuffer, payload, estimatedSize - currentLen - 1);
+      currentLen = strlen(postBuffer);
+      if (currentLen < sizeof(postBuffer)) {
+        strncat(postBuffer, payload, sizeof(postBuffer) - currentLen - 1);
       }
     }
   } else {
-    strncpy(fullBuffer, payload, estimatedSize - 1);
-    fullBuffer[estimatedSize - 1] = '\0';
+    strncpy(postBuffer, payload, sizeof(postBuffer) - 1);
+    postBuffer[sizeof(postBuffer) - 1] = '\0';
   }
 
   char respPrimary[1024];
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-  bool okPrimary = httpRequest(postDataUrl, fullBuffer, respPrimary, sizeof(respPrimary));
-  
-  free(fullBuffer);
-  
+  bool okPrimary = httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary));
+
   TLSMutex::release();
   return okPrimary;
 }

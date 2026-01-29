@@ -5,8 +5,20 @@
 #include "task_monitor.h"
 #include "gpio_parser.h"
 #include "nvs_manager.h"
-#include "automatism/automatism_utils.h"
 #include <cstring>
+
+namespace {
+
+static void formatDistanceAlert(char* buffer, size_t bufferSize, const char* prefix,
+                                float distance, const char* suffix, float threshold) {
+  snprintf(buffer, bufferSize, "%s%.1f cm (%s%.1f)", prefix, distance, suffix, threshold);
+}
+
+static void formatTemperatureAlert(char* buffer, size_t bufferSize, const char* prefix, float temp) {
+  snprintf(buffer, bufferSize, "%s%.1f°C", prefix, temp);
+}
+
+}  // namespace
 
 // ============================================================================
 // Automatism: Chef d'orchestre
@@ -829,7 +841,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
 
     if (readings.wlAqua > aqThresholdCm && !_lowAquaSent && mailEnabled) {
         char msgBuffer[128];
-        AutomatismUtils::formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " cm (> ", aqThresholdCm);
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " cm (> ", aqThresholdCm);
         _mailer.sendAlert("Alerte - Niveau aquarium BAS", msgBuffer, _emailAddress);
         _lowAquaSent = true;
         armMailBlink();
@@ -851,7 +863,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
             bool cooldownOk = (lastFloodEmailEpoch == 0) || ((nowEpoch - lastFloodEmailEpoch) >= (floodCooldownMin * 60UL));
             if (debounceOk && cooldownOk) {
                 char msgBuffer[128];
-                AutomatismUtils::formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " cm (< ", limFlood);
+                formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " cm (< ", limFlood);
                 if (tankPumpLocked || _config.getPompeAquaLocked()) {
                     strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
                 }
@@ -886,13 +898,13 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
 
     if (readings.wlTank > tankThresholdCm && !_lowTankSent && mailEnabled) {
         char msgBuffer[128];
-        AutomatismUtils::formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " cm (> ", tankThresholdCm);
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " cm (> ", tankThresholdCm);
         _mailer.sendAlert("Alerte - Réserve BASSE", msgBuffer, _emailAddress);
         _lowTankSent = true;
         armMailBlink();
     } else if (_lowTankSent && readings.wlTank <= tankThresholdCm - 5 && mailEnabled) {
         char msgBuffer[128];
-        AutomatismUtils::formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " cm (<= ", tankThresholdCm - 5);
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " cm (<= ", tankThresholdCm - 5);
         _mailer.sendAlert("Info - Réserve OK", msgBuffer, _emailAddress);
         _lowTankSent = false;
         armMailBlink();
@@ -903,7 +915,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         heaterPrevState = true;
         if (mailEnabled) {
             char msgBuffer[64];
-            AutomatismUtils::formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", readings.tempWater);
+            formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", readings.tempWater);
             _mailer.sendAlert("Chauffage ON", msgBuffer, _emailAddress);
             armMailBlink();
         }
@@ -912,7 +924,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         heaterPrevState = false;
         if (mailEnabled) {
             char msgBuffer[64];
-            AutomatismUtils::formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", readings.tempWater);
+            formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", readings.tempWater);
             _mailer.sendAlert("Chauffage OFF", msgBuffer, _emailAddress);
             armMailBlink();
         }

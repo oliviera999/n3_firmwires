@@ -12,11 +12,17 @@
 #include "automatism/automatism_feeding_schedule.h"
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
-#include "automatism/automatism_state.h"
-#include "automatism/automatism_utils.h"
 #include "task_monitor.h"
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
+
+// Contexte d'exécution passé aux méthodes internes (handleRefill, handleAlerts, updateDisplayInternal)
+struct AutomatismRuntimeContext {
+  SensorReadings readings;
+  uint32_t nowMs;
+  AutomatismRuntimeContext() : nowMs(0) {}
+  AutomatismRuntimeContext(const SensorReadings& r, uint32_t now) : readings(r), nowMs(now) {}
+};
 
 class Automatism {
  public:

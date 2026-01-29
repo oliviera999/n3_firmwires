@@ -1,0 +1,6 @@
+# Option A: Réduire l'empreinte TLS pour limiter le bloc contigu requis (~42-46 KB par défaut).
+# CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN : taille max des buffers in/out TLS (alloués deux fois).
+# 2048 suffit pour REST API à réponses courtes (config/status typiquement < 1 KB).
+# Si la plateforme Arduino-ESP32 n'utilise pas ce fichier, les options B+C (bloc réservé + gardes)
+# restent actives et règlent le problème de fragmentation.
+CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=2048

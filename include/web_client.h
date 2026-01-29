@@ -23,6 +23,7 @@ struct Measurements {
 class WebClient {
  public:
   explicit WebClient(const char* apiKey = ApiConfig::API_KEY);
+  ~WebClient();
 
   bool sendMeasurements(const Measurements& m, bool includeReset=false);
   bool sendHeartbeat(const class Diagnostics& diag);
@@ -37,9 +38,12 @@ class WebClient {
   void resetTLSClient();
 
  private:
+  static constexpr size_t TLS_RESERVE_BLOCK_BYTES = 32768;  // 32 KB, Option B: bloc release-at-use pour TLS (réduit de 48KB car heap disponible ~34KB)
+
   char _apiKey[65];  // API key max 64 chars + null terminator
   WiFiClientSecure _client;
   HTTPClient _http;
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
+  void* _tlsReserveBlock{nullptr};   // Option B: bloc réservé libéré juste avant requête HTTPS
   bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize);
 }; 

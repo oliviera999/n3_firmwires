@@ -197,11 +197,18 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const char* val
     }
     
     // Vérifier si la valeur a changé avant d'écrire (évite écritures inutiles)
+    // Buffer fixe pour éviter String Arduino et fragmentation
     NVSError openError = openNamespace(ns, true);  // Ouvrir en lecture d'abord
     if (openError == NVSError::SUCCESS) {
-        String currentValue = _preferences.getString(key, "");
+        char currentValue[NVSConfig::MAX_INSPECTED_STRING_BYTES];
+        size_t len = _preferences.getString(key, currentValue, sizeof(currentValue));
+        if (len < sizeof(currentValue)) {
+            currentValue[len] = '\0';
+        } else {
+            currentValue[sizeof(currentValue) - 1] = '\0';
+        }
         closeNamespace();
-        if (currentValue == value) {
+        if (strcmp(currentValue, value) == 0) {
             // Valeur inchangée, pas besoin d'écrire
             return NVSError::SUCCESS;
         }
@@ -772,16 +779,19 @@ NVSError NVSManager::migrateFromOldSystem() {
                 case NVS_TYPE_STR: {
                     size_t length = 0;
                     readErr = nvs_get_str(oldHandle, info.key, nullptr, &length);
-                    if (readErr == ESP_OK && length > 0) {
-                        std::vector<char> buffer(length);
-                        readErr = nvs_get_str(oldHandle, info.key, buffer.data(), &length);
-                        if (readErr == ESP_OK && nvs_set_str(newHandle, newKey, buffer.data()) == ESP_OK) {
+                    if (readErr == ESP_OK && length > 0 && length < NVSConfig::MAX_INSPECTED_STRING_BYTES) {
+                        char buffer[NVSConfig::MAX_INSPECTED_STRING_BYTES];
+                        readErr = nvs_get_str(oldHandle, info.key, buffer, &length);
+                        if (readErr == ESP_OK && nvs_set_str(newHandle, newKey, buffer) == ESP_OK) {
                             copied = true;
                         }
+                    } else if (readErr == ESP_OK && length >= NVSConfig::MAX_INSPECTED_STRING_BYTES) {
+                        Serial.printf("[NVS] ⚠️ Migration STR %s trop longue (%zu), ignorée\n", info.key, length);
                     }
                     break;
                 }
                 case NVS_TYPE_BLOB: {
+                    static constexpr size_t MAX_MIGRATION_BLOB = 2048;
                     size_t length = 0;
                     readErr = nvs_get_blob(oldHandle, info.key, nullptr, &length);
                     if (readErr == ESP_OK) {
@@ -789,13 +799,15 @@ NVSError NVSManager::migrateFromOldSystem() {
                             if (nvs_set_blob(newHandle, newKey, nullptr, 0) == ESP_OK) {
                                 copied = true;
                             }
-                        } else {
-                            std::vector<uint8_t> buffer(length);
-                            readErr = nvs_get_blob(oldHandle, info.key, buffer.data(), &length);
+                        } else if (length <= MAX_MIGRATION_BLOB) {
+                            uint8_t buffer[MAX_MIGRATION_BLOB];
+                            readErr = nvs_get_blob(oldHandle, info.key, buffer, &length);
                             if (readErr == ESP_OK &&
-                                nvs_set_blob(newHandle, newKey, buffer.data(), length) == ESP_OK) {
+                                nvs_set_blob(newHandle, newKey, buffer, length) == ESP_OK) {
                                 copied = true;
                             }
+                        } else {
+                            Serial.printf("[NVS] ⚠️ Migration BLOB %s trop gros (%zu), ignoré\n", info.key, length);
                         }
                     }
                     break;

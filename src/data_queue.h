@@ -10,8 +10,8 @@
  * Garantit FIFO: première entrée = première envoyée
  * 
  * Architecture:
- * - Tableau circulaire en RAM
- * - Max: 5 entrées (configurable)
+ * - Tableau circulaire en RAM, stockage fixe (pas de malloc)
+ * - Max: DATA_QUEUE_MAX_ENTRIES entrées (limite logique <= capacité fixe)
  * - Pas de persistance (données perdues au reboot)
  * 
  * Thread-Safety:
@@ -29,7 +29,7 @@ public:
     DataQueue(uint16_t maxEntries = 5);
     
     /**
-     * Destructeur - Libère toute la mémoire allouée
+     * Destructeur (stockage fixe, rien à libérer)
      */
     ~DataQueue();
     
@@ -92,13 +92,14 @@ public:
     bool isEmpty();
 
 private:
-    static constexpr size_t PAYLOAD_SIZE = 1024;  // Taille max par payload
-    
+    static constexpr size_t PAYLOAD_SIZE = 1024;
+    static constexpr uint16_t DATA_QUEUE_MAX_ENTRIES = 10;
+
     uint16_t _maxEntries;
-    uint16_t _head;      // Index de la prochaine position d'écriture
-    uint16_t _tail;      // Index de la prochaine position de lecture
-    uint16_t _count;     // Nombre d'entrées actuellement en queue
-    char** _entries;     // Tableau de pointeurs vers les payloads
+    uint16_t _head;
+    uint16_t _tail;
+    uint16_t _count;
+    char _storage[DATA_QUEUE_MAX_ENTRIES][PAYLOAD_SIZE];
     bool _initialized;
 };
 

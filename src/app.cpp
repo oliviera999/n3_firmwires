@@ -243,16 +243,7 @@ void loop() {
   // Centraliser les opérations WiFi dans le loop Arduino (évite concurrence multi-tâches)
   wifi.checkConnectionStability();
   wifi.loop(&oled);
-  
-  // Plan simplification: OTA manuel uniquement (POST /api/ota). Plus de vérification périodique.
-  #if 0
-  if (WiFi.status() == WL_CONNECTED &&
-      (now - g_lastOtaCheck >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
-    SystemBoot::checkForOtaUpdate(g_appContext);
-    g_lastOtaCheck = now;
-  }
-  #endif
-  
+
   power.resetWatchdog();
   
   #if FEATURE_DIAG_STATS

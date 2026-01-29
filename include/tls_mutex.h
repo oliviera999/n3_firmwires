@@ -30,8 +30,10 @@
 // SMTP/HTTPS + buffer = ~42KB, marge augmentée pour éviter allocations à la limite
 // PISTE 2: Augmenté de 45KB à 52000 (52KB) pour marge de sécurité plus importante
 // v11.157: Augmenté à 62000 (62KB) pour résoudre échecs allocation mémoire TLS
-// Le handshake TLS nécessite ~42-46KB contiguë, avec fragmentation on a besoin de plus
-constexpr uint32_t TLS_MIN_HEAP_BYTES = 62000;
+// v11.158: Réduit à 40000 (40KB) car avec CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=2048,
+//          l'empreinte TLS est réduite (~32-35KB), et le heap disponible est ~34KB
+// Le handshake TLS nécessite ~32-35KB contiguë avec buffers réduits (2048 bytes)
+constexpr uint32_t TLS_MIN_HEAP_BYTES = 40000;
 
 // Flag global indiquant si le système entre en light sleep
 // Permet de bloquer les nouvelles connexions TLS pendant la transition
@@ -100,8 +102,9 @@ public:
                 xSemaphoreGive(_mutex);
                 return false;
             }
-            
+#if defined(PROFILE_TEST) || defined(PROFILE_DEV)
             Serial.printf("[TLS] 🔒 Mutex acquis (heap: %u bytes)\n", freeHeap);
+#endif
             return true;
         }
         
@@ -115,7 +118,9 @@ public:
     static void release() {
         if (_mutex != nullptr) {
             xSemaphoreGive(_mutex);
+#if defined(PROFILE_TEST) || defined(PROFILE_DEV)
             Serial.printf("[TLS] 🔓 Mutex libéré (heap: %u bytes)\n", ESP.getFreeHeap());
+#endif
         }
     }
     

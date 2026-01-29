@@ -324,8 +324,8 @@ bool ConfigManager::loadConfigFromNVS() {
   
   Serial.printf("[Config] 📦 JSON NVS: %zu bytes\n", strlen(cachedJson));
   
-  // Parser pour logging (ne pas appliquer ici, c'est fait dans AutomatismNetwork)
-  ArduinoJson::DynamicJsonDocument doc(1024);
+  // Parser pour logging (buffer fixe, pas de heap)
+  ArduinoJson::StaticJsonDocument<1024> doc;
   auto err = deserializeJson(doc, cachedJson);
   
   if (!err) {

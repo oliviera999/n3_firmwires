@@ -1,7 +1,6 @@
 #include "wifi_manager.h"
 #include "display_view.h"
 #include "config.h"
-#include <vector>
 #include <algorithm>
 #include <cstring>
 
@@ -49,9 +48,11 @@ bool WifiManager::connect(DisplayView* disp) {
   }
 
   // Associer chaque credential à la meilleure valeur RSSI détectée + infos BSSID/chan
+  // Buffers fixes (pas de heap) - _count borné par NVSConfig::MAX_WIFI_SAVED_NETWORKS
   struct Cand { int8_t rssi; uint8_t bssid[6]; uint8_t chan; wifi_auth_mode_t enc; bool present; };
   Cand initC{ -128,{0},0, WIFI_AUTH_OPEN, false};
-  std::vector<Cand> cand(_count, initC);
+  Cand cand[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
+  for (size_t i = 0; i < _count; ++i) cand[i] = initC;
   for (int j = 0; j < n; ++j) {
     char scanSSIDBuf2[33];
     strncpy(scanSSIDBuf2, WiFi.SSID(j).c_str(), sizeof(scanSSIDBuf2) - 1);
@@ -74,22 +75,23 @@ bool WifiManager::connect(DisplayView* disp) {
   }
 
   // --- 1) Réseaux visibles, triés par RSSI décroissant (avec filtrage minimum) ----
-  std::vector<size_t> order; order.reserve(_count);
-  for(size_t i=0;i<_count;++i) {
-    if(cand[i].present && cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
-      order.push_back(i);
+  size_t order[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
+  size_t orderCount = 0;
+  for (size_t i = 0; i < _count; ++i) {
+    if (cand[i].present && cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
+      order[orderCount++] = i;
       Serial.printf("[WiFi] ✅ Réseau %s accepté (RSSI: %d dBm)\n", _list[i].ssid, cand[i].rssi);
     } else if (cand[i].present) {
-      Serial.printf("[WiFi] ⚠️ Réseau %s rejeté (RSSI trop faible: %d dBm < %d dBm)\n", 
+      Serial.printf("[WiFi] ⚠️ Réseau %s rejeté (RSSI trop faible: %d dBm < %d dBm)\n",
                     _list[i].ssid, cand[i].rssi, ::SleepConfig::WIFI_RSSI_MINIMUM);
     }
   }
-  std::sort(order.begin(), order.end(), [&](size_t a,size_t b){ return cand[a].rssi>cand[b].rssi; });
+  std::sort(order, order + orderCount, [&](size_t a, size_t b) { return cand[a].rssi > cand[b].rssi; });
 
   // Ajoute ensuite les credentials non détectés (afin de tenter quand même)
-  for(size_t i=0;i<_count;++i) if(!cand[i].present) order.push_back(i);
+  for (size_t i = 0; i < _count; ++i) if (!cand[i].present) order[orderCount++] = i;
 
-  for(size_t idx=0; idx<order.size(); ++idx){
+  for (size_t idx = 0; idx < orderCount; ++idx) {
     size_t i = order[idx];
     if(cand[i].present){
       char buf[40]; snprintf(buf,sizeof(buf),"Conn %s", _list[i].ssid);

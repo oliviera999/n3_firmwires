@@ -2,7 +2,12 @@
 #include "nvs_manager.h" // v11.106
 #include "app_tasks.h" // Pour les TaskHandle_t en mode debug
 #include <ArduinoJson.h>
+#if defined(FFP5CS_COREDUMP_ENABLE) && (FFP5CS_COREDUMP_ENABLE)
 #include <esp_core_dump.h>
+extern "C" esp_err_t esp_core_dump_image_get(size_t* out_addr,
+                                             size_t* out_size) __attribute__((weak));
+extern "C" esp_err_t esp_core_dump_image_erase(void) __attribute__((weak));
+#endif
 #include <esp_partition.h>
 #include <soc/rtc_cntl_reg.h>
 #include <rom/rtc.h>
@@ -10,10 +15,6 @@
 #include <freertos/task.h>
 #include <time.h>
 #include <cstring>
-
-extern "C" esp_err_t esp_core_dump_image_get(size_t* out_addr,
-                                             size_t* out_size) __attribute__((weak));
-extern "C" esp_err_t esp_core_dump_image_erase(void) __attribute__((weak));
 
 namespace {
 
@@ -427,7 +428,11 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
     remaining -= written;
   }
   
+#if defined(FFP5CS_COREDUMP_ENABLE) && (FFP5CS_COREDUMP_ENABLE)
   written = snprintf(buffer + offset, remaining, "Core Dump: Géré par ESP-IDF (configuré dans platformio.ini)\n");
+#else
+  written = snprintf(buffer + offset, remaining, "Core Dump: Désactivé\n");
+#endif
   if (written < 0 || (size_t)written >= remaining) {
     buffer[bufferSize - 1] = '\0';
     return;
@@ -497,7 +502,7 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
     remaining -= written;
     
     // Core Dump info
-    #if CONFIG_ESP_COREDUMP_ENABLE
+    #if defined(FFP5CS_COREDUMP_ENABLE) && (FFP5CS_COREDUMP_ENABLE)
     written = snprintf(buffer + offset, remaining,
                       "Core Dump: ACTIVÉ (Flash)\n"
                       "Note: Utilisez 'pio run -t monitor' ou esp-coredump pour extraire le dump\n");

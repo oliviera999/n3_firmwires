@@ -137,29 +137,25 @@ const char* WebServerManager::handleRelayAction(
     // Feedback WebSocket immédiat
     g_realtimeWebSocket.broadcastNow();
 
-    // Créer les paramètres pour la tâche
-    RelaySyncTaskParams* params = new RelaySyncTaskParams{&_sensors, relayName};
+    static RelaySyncTaskParams s_relayParams;
+    s_relayParams.sensors = &_sensors;
+    s_relayParams.relayName = relayName;
 
-    // Sync serveur en tâche asynchrone
     BaseType_t created = xTaskCreate([](void* param) {
         RelaySyncTaskParams* p = (RelaySyncTaskParams*)param;
         vTaskDelay(pdMS_TO_TICKS(100));
         SensorReadings readings = p->sensors->read();
         bool syncSuccess = g_autoCtrl.sendFullUpdate(readings);
-        
         if (syncSuccess) {
             g_autoCtrl.clearPendingSync(p->relayName);
             Serial.printf("[Web] ✅ %s synced (async)\\n", p->relayName);
         } else {
             Serial.printf("[Web] ⏳ %s sync pending\\n", p->relayName);
         }
-
-        delete p; // Libérer la mémoire des paramètres
         vTaskDelete(NULL);
-    }, "relay_sync", 4096, params, 1, nullptr);
+    }, "relay_sync", 4096, &s_relayParams, 1, nullptr);
     if (created != pdPASS) {
         Serial.println("[Web] ❌ Échec création tâche relay_sync");
-        delete params;
     }
 
     return response;
@@ -593,35 +589,27 @@ bool WebServerManager::begin() {
       return;
     }
     
-    // Cache côté serveur : utiliser les données en mémoire d'abord
+    // Cache côté serveur : utiliser les données en mémoire d'abord (buffer fixe, pas de heap)
     static unsigned long lastCacheUpdate = 0;
-    static JsonDocument cachedSrc;
+    static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> cachedSrc;
     static bool cacheValid = false;
     
     unsigned long now = millis();
     bool useCache = cacheValid && (now - lastCacheUpdate < 30000); // Cache valide 30s
     
-    JsonDocument src;
     bool ok = false;
     
     if (useCache) {
-      // Utiliser le cache en mémoire
-      src = cachedSrc;
       ok = true;
       Serial.println("[WebServer] /dbvars: Using cached data");
     } else {
       // OPTIMISATION: Utiliser UNIQUEMENT le cache flash - JAMAIS d'appel distant bloquant
-      // Les appels distants doivent être faits de manière asynchrone
-      // dans la tâche d'automatisation
       char cached[2048];
       if (config.loadRemoteVars(cached, sizeof(cached)) && strlen(cached) > 0) {
-        auto err = deserializeJson(src, cached);
+        auto err = deserializeJson(cachedSrc, cached);
         if (!err) {
           ok = true;
           Serial.println("[WebServer] /dbvars: Using flash cache (fast path)");
-          
-          // Mettre à jour le cache mémoire pour accélérer les prochains appels
-          cachedSrc = src;
           lastCacheUpdate = now;
           cacheValid = true;
         } else {
@@ -630,23 +618,20 @@ bool WebServerManager::begin() {
       } else {
         Serial.println("[WebServer] /dbvars: No flash cache available, using defaults");
       }
-      
-      // SUPPRESSION: Plus d'appel distant depuis le endpoint HTTP
-      // L'automatisation se charge de mettre à jour le cache en arrière-plan
     }
     // Normalise les clés attendues par le dashboard (v11.40: simplifié car NVS normalisé)
-    JsonDocument out;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> out;
     
-    // Helper pour valeurs par défaut
-    auto getWithDefault = [&src](const char* key, int defaultVal) -> int {
-      return src.containsKey(key) ? src[key].as<int>() : defaultVal;
+    // Helper pour valeurs par défaut (source = cachedSrc)
+    auto getWithDefault = [&cachedSrc](const char* key, int defaultVal) -> int {
+      return cachedSrc.containsKey(key) ? cachedSrc[key].as<int>() : defaultVal;
     };
-    auto getFloatWithDefault = [&src](const char* key, float defaultVal) -> float {
-      return src.containsKey(key) ? src[key].as<float>() : defaultVal;
+    auto getFloatWithDefault = [&cachedSrc](const char* key, float defaultVal) -> float {
+      return cachedSrc.containsKey(key) ? cachedSrc[key].as<float>() : defaultVal;
     };
-    auto getStringWithDefault = [&src](const char* key, const char* defaultVal) -> const char* {
-      if (src.containsKey(key)) {
-        const char* val = src[key].as<const char*>();
+    auto getStringWithDefault = [&cachedSrc](const char* key, const char* defaultVal) -> const char* {
+      if (cachedSrc.containsKey(key)) {
+        const char* val = cachedSrc[key].as<const char*>();
         return (val && strlen(val) > 0) ? val : defaultVal;
       }
       return defaultVal;
@@ -678,8 +663,8 @@ bool WebServerManager::begin() {
     out["mail"] = emailAddr;
     
     // Email enabled (valeur par défaut: false)
-    if (src.containsKey("mailNotif")) {
-      out["mailNotif"] = src["mailNotif"].as<const char*>();
+    if (cachedSrc.containsKey("mailNotif")) {
+      out["mailNotif"] = cachedSrc["mailNotif"].as<const char*>();
     } else {
       out["mailNotif"] = "";
     }
@@ -688,10 +673,10 @@ bool WebServerManager::begin() {
     out["bouffeMatinOk"] = config.getBouffeMatinOk();
     out["bouffeMidiOk"] = config.getBouffeMidiOk();
     out["bouffeSoirOk"] = config.getBouffeSoirOk();
-    if (src.containsKey("bouffePetits")) {
-      out["bouffePetits"] = src["bouffePetits"].as<const char*>();
+    if (cachedSrc.containsKey("bouffePetits")) {
+      out["bouffePetits"] = cachedSrc["bouffePetits"].as<const char*>();
     }
-    if (src.containsKey("bouffeGros"))   out["bouffeGros"]   = src["bouffeGros"].as<const char*>();
+    if (cachedSrc.containsKey("bouffeGros"))   out["bouffeGros"]   = cachedSrc["bouffeGros"].as<const char*>();
 
     out["ok"] = ok;
     
@@ -738,9 +723,9 @@ bool WebServerManager::begin() {
     const char* end = extraPairs + sizeof(extraPairs);
     bool any = false;
 
-    // Charger JSON NVS existant (si présent)
+    // Charger JSON NVS existant (si présent) - buffer fixe, pas de heap
     char cachedJson[2048];
-    JsonDocument nvsDoc;
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> nvsDoc;
     if (config.loadRemoteVars(cachedJson, sizeof(cachedJson)) && strlen(cachedJson) > 0) {
       deserializeJson(nvsDoc, cachedJson);
     }
@@ -1218,21 +1203,21 @@ bool WebServerManager::begin() {
                   size_t len = 0; err = nvs_get_str(h, e2.key, nullptr, &len);
                   if (err == ESP_OK) {
                     if (len > 0 && len < BufferConfig::JSON_DOCUMENT_SIZE) {
-                      char* buf = (char*)malloc(len);
-                      if (buf && nvs_get_str(h, e2.key, buf, &len) == ESP_OK) {
+                      static char nvsStrBuf[BufferConfig::JSON_DOCUMENT_SIZE];
+                      size_t bufLen = sizeof(nvsStrBuf);
+                      if (nvs_get_str(h, e2.key, nvsStrBuf, &bufLen) == ESP_OK) {
                         res->print(",\"value\":\"");
-                        for (size_t i=0;i<len && buf[i];++i){
-                          char c=buf[i];
-                          if (c=='"' || c=='\\') { res->print('\\'); res->print(c); }
-                          else if (c=='\n') { res->print("\\n"); }
-                          else if (c=='\r') { res->print("\\r"); }
+                        for (size_t i = 0; i < bufLen && nvsStrBuf[i]; ++i) {
+                          char c = nvsStrBuf[i];
+                          if (c == '"' || c == '\\') { res->print('\\'); res->print(c); }
+                          else if (c == '\n') { res->print("\\n"); }
+                          else if (c == '\r') { res->print("\\r"); }
                           else { res->print(c); }
                         }
                         res->print("\"");
                       } else {
-                        res->print(",\"value\":\"<OOM>\"");
+                        res->print(",\"value\":\"<err>\"");
                       }
-                      if (buf) free(buf);
                     } else if (len >= BufferConfig::JSON_DOCUMENT_SIZE) {
                       res->print(",\"value\":\"<too_long>\"");
                     } else {
@@ -1461,7 +1446,7 @@ bool WebServerManager::begin() {
       strncpy(js, valueBuf, sizeof(js) - 1);
       js[sizeof(js) - 1] = '\0';
       if (strlen(js) > 0) {
-        JsonDocument tmp;
+        StaticJsonDocument<256> tmp;
         if (!deserializeJson(tmp, js)) {
           g_autoCtrl.applyConfigFromJson(tmp);
         }
@@ -1616,9 +1601,7 @@ bool WebServerManager::begin() {
           
           size_t required_size = 0;
           err = nvs_get_blob(nvsHandle, key, nullptr, &required_size);
-          
           if (err == ESP_OK && required_size > 0) {
-            // Plafond de sécurité: ignorer les entrées corrompues ou anormalement grosses
             if (required_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
               Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée (%u bytes > max %u)\n",
                             key,
@@ -1626,40 +1609,31 @@ bool WebServerManager::begin() {
                             static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
               continue;
             }
-
-            char* buffer = (char*)malloc(required_size);
-            if (buffer) {
-              err = nvs_get_blob(nvsHandle, key, buffer, &required_size);
-              if (err == ESP_OK) {
-                JsonObject network = networks.createNestedObject();
-                
-                // Parser le format: "ssid|password"
-                char* separator = strchr(buffer, '|');
-                if (separator != nullptr && separator > buffer) {
-                  *separator = '\0';  // Terminer ssid
-                  char* ssid = buffer;
-                  char* password = separator + 1;
-                  
-                  // Vérifier si ce réseau n'existe pas déjà dans les réseaux statiques
-                  bool existsInStatic = false;
-                  for (size_t j = 0; j < Secrets::WIFI_COUNT; j++) {
-                    if (strcmp(ssid, Secrets::WIFI_LIST[j].ssid) == 0) {
-                      existsInStatic = true;
-                      break;
-                    }
-                  }
-                  
-                  // Ajouter seulement s'il n'existe pas déjà
-                  if (!existsInStatic) {
-                    network["ssid"] = ssid;
-                    network["password"] = password;
-                    network["index"] = totalCount;
-                    network["source"] = "saved"; // Marquer comme réseau sauvegardé
-                    totalCount++;
+            static char wifiListBlobBuf[NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES];
+            size_t bufLen = sizeof(wifiListBlobBuf);
+            err = nvs_get_blob(nvsHandle, key, wifiListBlobBuf, &bufLen);
+            if (err == ESP_OK) {
+              JsonObject network = networks.createNestedObject();
+              char* separator = strchr(wifiListBlobBuf, '|');
+              if (separator != nullptr && separator > wifiListBlobBuf) {
+                *separator = '\0';
+                char* ssid = wifiListBlobBuf;
+                char* password = separator + 1;
+                bool existsInStatic = false;
+                for (size_t j = 0; j < Secrets::WIFI_COUNT; j++) {
+                  if (strcmp(ssid, Secrets::WIFI_LIST[j].ssid) == 0) {
+                    existsInStatic = true;
+                    break;
                   }
                 }
+                if (!existsInStatic) {
+                  network["ssid"] = ssid;
+                  network["password"] = password;
+                  network["index"] = totalCount;
+                  network["source"] = "saved";
+                  totalCount++;
+                }
               }
-              free(buffer);
             }
           }
         }
@@ -1731,33 +1705,28 @@ bool WebServerManager::begin() {
           
           // Vérifier si le réseau existe déjà
           bool exists = false;
+          static char wifiConnectCheckBuf[NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES];
           for (size_t i = 0; i < networkCount; i++) {
             char key[16];
             snprintf(key, sizeof(key), "net_%zu", i);
-            
             size_t data_size = 0;
             err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
-            if (err == ESP_OK && data_size > 0) {
-              char* buffer = (char*)malloc(data_size);
-              if (buffer) {
-                err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
-                if (err == ESP_OK) {
-                  char* separator = strchr(buffer, '|');
-                  if (separator != nullptr && separator > buffer) {
-                    *separator = '\0';
-                    if (strcmp(buffer, ssidBuf) == 0) {
-                      exists = true;
-                      // Mettre à jour le mot de passe
-                      char newData[130];
-                      snprintf(newData, sizeof(newData), "%s|%s", ssidBuf, passwordBuf);
-                      nvs_set_blob(nvsHandle, key, newData, strlen(newData) + 1);
-                      nvs_commit(nvsHandle);
-                      Serial.printf("[WiFi] Réseau '%s' mis à jour dans NVS\n", ssidBuf);
-                    }
-                    *separator = '|';  // Restaurer pour free()
+            if (err == ESP_OK && data_size > 0 && data_size <= NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+              size_t bufLen = sizeof(wifiConnectCheckBuf);
+              err = nvs_get_blob(nvsHandle, key, wifiConnectCheckBuf, &bufLen);
+              if (err == ESP_OK) {
+                char* separator = strchr(wifiConnectCheckBuf, '|');
+                if (separator != nullptr && separator > wifiConnectCheckBuf) {
+                  *separator = '\0';
+                  if (strcmp(wifiConnectCheckBuf, ssidBuf) == 0) {
+                    exists = true;
+                    char newData[130];
+                    snprintf(newData, sizeof(newData), "%s|%s", ssidBuf, passwordBuf);
+                    nvs_set_blob(nvsHandle, key, newData, strlen(newData) + 1);
+                    nvs_commit(nvsHandle);
+                    Serial.printf("[WiFi] Réseau '%s' mis à jour dans NVS\n", ssidBuf);
                   }
                 }
-                free(buffer);
               }
             }
           }
@@ -1821,45 +1790,32 @@ bool WebServerManager::begin() {
       Serial.printf("[WiFi] Déconnexion du réseau actuel\n");
       WiFi.disconnect(false, true);
       vTaskDelay(pdMS_TO_TICKS(200));
-      
-      // Attendre la connexion avec timeout dans une tâche séparée
-      // pour ne pas bloquer le serveur web
-      WifiConnectTaskParams* params = new WifiConnectTaskParams{};
-      if (!params) {
-        Serial.println("[WiFi] ❌ Allocation paramètres connexion échouée");
-        return;
-      }
-      strncpy(params->ssid, ssidBuf, sizeof(params->ssid) - 1);
-      params->ssid[sizeof(params->ssid) - 1] = '\0';
-      strncpy(params->password, passwordBuf, sizeof(params->password) - 1);
-      params->password[sizeof(params->password) - 1] = '\0';
-      
+
+      static WifiConnectTaskParams s_wifiParams;
+      strncpy(s_wifiParams.ssid, ssidBuf, sizeof(s_wifiParams.ssid) - 1);
+      s_wifiParams.ssid[sizeof(s_wifiParams.ssid) - 1] = '\0';
+      strncpy(s_wifiParams.password, passwordBuf, sizeof(s_wifiParams.password) - 1);
+      s_wifiParams.password[sizeof(s_wifiParams.password) - 1] = '\0';
+
       BaseType_t created = xTaskCreate([](void* param) {
         WifiConnectTaskParams* p = (WifiConnectTaskParams*)param;
         bool connected = wifi.connectTo(p->ssid, p->password);
         if (connected) {
           IPAddress ip = WiFi.localIP();
           Serial.printf(
-            "[WiFi] Connecté avec succès à '%s' (IP: %d.%d.%d.%d, RSSI: %d dBm)\n", 
+            "[WiFi] Connecté avec succès à '%s' (IP: %d.%d.%d.%d, RSSI: %d dBm)\n",
             p->ssid, ip[0], ip[1], ip[2], ip[3], WiFi.RSSI());
-          // Notifier le changement via WebSocket (si encore connecté)
           g_realtimeWebSocket.broadcastNow();
         } else {
-          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n",
-                        p->ssid);
-          // Retourner en mode AP si la connexion échoue
-          // Le WifiManager s'en chargera automatiquement
+          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", p->ssid);
         }
-        
-        delete p;
-        vTaskDelete(NULL); // Supprimer cette tâche
-      }, "wifi_connect_task", 4096, params, 1, nullptr);
+        vTaskDelete(NULL);
+      }, "wifi_connect_task", 4096, &s_wifiParams, 1, nullptr);
       if (created != pdPASS) {
         Serial.println("[WiFi] ❌ Échec création tâche wifi_connect_task");
-        delete params;
       }
-      
-      return; // Retourner immédiatement, la connexion se fait en arrière-plan
+
+      return;
     }
     
     // Si on arrive ici, c'est qu'il y a eu une erreur
@@ -1910,42 +1866,32 @@ bool WebServerManager::begin() {
         size_t foundIndex = 0;
         
         // Trouver l'index du réseau à supprimer
+        static char wifiDeleteBuf[NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES];
         for (size_t i = 0; i < networkCount; i++) {
           char key[16];
           snprintf(key, sizeof(key), "net_%zu", i);
-          
-            size_t data_size = 0;
-            err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
-            if (err == ESP_OK && data_size > 0) {
-              // Plafond de sécurité sur la taille stockée
-              if (data_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
-                Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée pour suppression (%u bytes > max %u)\n",
-                              key,
-                              static_cast<unsigned>(data_size),
-                              static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
-                continue;
-              }
-
-              char* buffer = (char*)malloc(data_size);
-              if (buffer) {
-                err = nvs_get_blob(nvsHandle, key, buffer, &data_size);
-                if (err == ESP_OK) {
-                  char* separator = strchr(buffer, '|');
-                  if (separator != nullptr && separator > buffer) {
-                    *separator = '\0';
-                    if (strcmp(buffer, ssidBuf) == 0) {
-                      found = true;
-                      foundIndex = i;
-                      *separator = '|';  // Restaurer pour free()
-                      free(buffer);
-                      break;
-                    }
-                    *separator = '|';  // Restaurer pour free()
-                  }
+          size_t data_size = 0;
+          err = nvs_get_blob(nvsHandle, key, nullptr, &data_size);
+          if (err == ESP_OK && data_size > 0 && data_size <= NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+            size_t bufLen = sizeof(wifiDeleteBuf);
+            err = nvs_get_blob(nvsHandle, key, wifiDeleteBuf, &bufLen);
+            if (err == ESP_OK) {
+              char* separator = strchr(wifiDeleteBuf, '|');
+              if (separator != nullptr && separator > wifiDeleteBuf) {
+                *separator = '\0';
+                if (strcmp(wifiDeleteBuf, ssidBuf) == 0) {
+                  found = true;
+                  foundIndex = i;
+                  break;
                 }
-                free(buffer);
               }
             }
+          } else if (err == ESP_OK && data_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+            Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée pour suppression (%u bytes > max %u)\n",
+                          key,
+                          static_cast<unsigned>(data_size),
+                          static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
+          }
         }
         
         if (found) {
@@ -1959,28 +1905,21 @@ bool WebServerManager::begin() {
             char oldKey[16], newKey[16];
             snprintf(oldKey, sizeof(oldKey), "net_%zu", i);
             snprintf(newKey, sizeof(newKey), "net_%zu", i - 1);
-            
             size_t data_size = 0;
             err = nvs_get_blob(nvsHandle, oldKey, nullptr, &data_size);
-            if (err == ESP_OK && data_size > 0) {
-              if (data_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
-                Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée lors du compactage (%u bytes > max %u)\n",
-                              oldKey,
-                              static_cast<unsigned>(data_size),
-                              static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
+            if (err == ESP_OK && data_size > 0 && data_size <= NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+              size_t bufLen = sizeof(wifiDeleteBuf);
+              err = nvs_get_blob(nvsHandle, oldKey, wifiDeleteBuf, &bufLen);
+              if (err == ESP_OK) {
+                nvs_set_blob(nvsHandle, newKey, wifiDeleteBuf, bufLen);
                 nvs_erase_key(nvsHandle, oldKey);
-                continue;
               }
-
-              char* buffer = (char*)malloc(data_size);
-              if (buffer) {
-                err = nvs_get_blob(nvsHandle, oldKey, buffer, &data_size);
-                if (err == ESP_OK) {
-                  nvs_set_blob(nvsHandle, newKey, buffer, data_size);
-                  nvs_erase_key(nvsHandle, oldKey);
-                }
-                free(buffer);
-              }
+            } else if (err == ESP_OK && data_size > NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES) {
+              Serial.printf("[WiFi] ⚠️ Entrée NVS '%s' ignorée lors du compactage (%u bytes > max %u)\n",
+                            oldKey,
+                            static_cast<unsigned>(data_size),
+                            static_cast<unsigned>(NVSConfig::MAX_WIFI_SAVED_ENTRY_BYTES));
+              nvs_erase_key(nvsHandle, oldKey);
             }
           }
           
