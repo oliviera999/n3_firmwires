@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.166";  // Audit: boucle NVS securisee, http.begin() verifie, String→buffer, WiFi timeout 3s
+    inline constexpr const char* VERSION = "11.167";  // Build tous env, version documentee, push GitHub
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -504,8 +504,6 @@ namespace SleepConfig {
     inline constexpr time_t EPOCH_DEFAULT_FALLBACK = 1704067200;
     inline constexpr bool ENABLE_DRIFT_CORRECTION = true;
     inline constexpr uint32_t DRIFT_CORRECTION_INTERVAL_MS = 3600000;
-    inline constexpr bool ENABLE_DEFAULT_DRIFT_CORRECTION = true;
-    inline constexpr float DEFAULT_DRIFT_CORRECTION_PPM = 0.0f;
     inline constexpr float DRIFT_CORRECTION_THRESHOLD_PPM = 100.0f;
     inline constexpr float DRIFT_CORRECTION_FACTOR = 0.5f;
     inline constexpr uint32_t MAX_SAVE_INTERVAL_MS = 86400000;

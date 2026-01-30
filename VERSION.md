@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.167 - 2026-01-30
+
+### Maintenance
+
+- ✅ **Build tous environnements** : wroom-prod, wroom-test, wroom-beta, wroom-tls-test
+- ✅ **Version documentée** : 11.167 dans config.h et VERSION.md
+- ✅ **Push GitHub** : commit et push après validation build
+
+---
+
 ## Version 11.155 - 2026-01-17
 
 ### Corrections critiques
