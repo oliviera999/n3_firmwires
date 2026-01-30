@@ -380,8 +380,9 @@ bool PowerManager::reconnectWithSavedCredentials() {
   }
   
   // Attente de la connexion avec timeout
+  // v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
   uint32_t startTime = millis();
-  const uint32_t timeoutMs = 10000; // 10 secondes de timeout
+  const uint32_t timeoutMs = 3000; // 3 secondes de timeout
   
   Serial.print(F("[Power] Attente de connexion"));
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeoutMs) {
@@ -420,8 +421,9 @@ void PowerManager::waitForNetworkReady() {
     return;
   }
   
-  const uint32_t STABILIZATION_DELAY_MS = 1500;  // 1.5 secondes de stabilisation
-  const uint32_t MAX_WAIT_MS = 5000;             // 5 secondes max d'attente totale
+  // v11.165: Timeouts réduits (règle offline-first: max 3s blocage)
+  const uint32_t STABILIZATION_DELAY_MS = 500;   // 0.5 seconde de stabilisation
+  const uint32_t MAX_WAIT_MS = 3000;             // 3 secondes max d'attente totale
   uint32_t startMs = millis();
   
   Serial.println(F("[Power] Attente stabilisation réseau..."));

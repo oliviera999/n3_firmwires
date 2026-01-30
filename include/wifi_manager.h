@@ -14,7 +14,8 @@ class WifiManager {
     const char* password;
   };
 
-  WifiManager(const Credential* list, size_t count, uint32_t timeoutMs = 8000, uint32_t retryIntervalMs = 60000);
+  // v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
+  WifiManager(const Credential* list, size_t count, uint32_t timeoutMs = 3000, uint32_t retryIntervalMs = 60000);
 
   // Tente de se connecter ; retourne true si connecté
   bool connect(class DisplayView* disp = nullptr);

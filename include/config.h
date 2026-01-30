@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.164";  // GPIO NVS: sauvegarde uniquement si changement
+    inline constexpr const char* VERSION = "11.165";  // Audit: NULL checks, timeouts ≤3s, robustesse
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -88,8 +88,8 @@ namespace GlobalTimeouts {
 }
 
 namespace TimingConfig {
-    // WiFi
-    inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
+    // WiFi - v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
+    inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 3000;
     inline constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
     

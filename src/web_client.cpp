@@ -310,7 +310,11 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!config.isRemoteRecvEnabled()) {
     return false;
   }
-  if (WiFi.status() != WL_CONNECTED) return false;
+  
+  // v11.165: Fallback NVS si WiFi non disponible (audit offline-first)
+  if (WiFi.status() != WL_CONNECTED) {
+    return loadFromNVSFallback(doc);
+  }
 
   WiFi.setSleep(false);
   vTaskDelay(pdMS_TO_TICKS(100));
@@ -327,13 +331,14 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
 
   if (code <= 0) {
     _http.end();
-    return false;
+    // v11.165: Fallback NVS si HTTP échoue (audit offline-first)
+    return loadFromNVSFallback(doc);
   }
 
   WiFiClient* stream = _http.getStreamPtr();
   if (!stream) {
     _http.end();
-    return false;
+    return loadFromNVSFallback(doc);
   }
 
   size_t totalRead = 0;
@@ -349,7 +354,9 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
 
   _http.end();
 
-  if (totalRead == 0) return false;
+  if (totalRead == 0) {
+    return loadFromNVSFallback(doc);
+  }
 
   // Trouver le début du JSON
   char* jsonStart = strchr(payloadBuffer, '{');
@@ -366,10 +373,23 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   DeserializationError err = deserializeJson(doc, payloadBuffer);
   if (err) {
     LOG(LOG_WARN, "[HTTP] JSON parse error: %s", err.c_str());
-    return false;
+    return loadFromNVSFallback(doc);
   }
 
   return true;
+}
+
+// v11.165: Fonction helper pour fallback NVS (audit offline-first)
+bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
+  char cachedJson[1024];  // Buffer réduit pour économiser stack
+  if (config.loadRemoteVars(cachedJson, sizeof(cachedJson))) {
+    DeserializationError err = deserializeJson(doc, cachedJson);
+    if (!err) {
+      LOG(LOG_INFO, "[HTTP] Utilisation cache NVS (fallback)");
+      return true;
+    }
+  }
+  return false;  // Pas de log DEBUG pour économiser flash
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {

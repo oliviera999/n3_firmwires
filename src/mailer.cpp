@@ -915,8 +915,9 @@ static bool waitForNetworkReadyForSMTP() {
     return false;
   }
   
-  const uint32_t STABILIZATION_DELAY_MS = 2000;  // 2 secondes de stabilisation (plus long pour SMTP TLS)
-  const uint32_t MAX_WAIT_MS = 8000;             // 8 secondes max d'attente totale
+  // v11.165: Timeouts réduits (règle offline-first: max 3s blocage)
+  const uint32_t STABILIZATION_DELAY_MS = 1000;  // 1 seconde de stabilisation
+  const uint32_t MAX_WAIT_MS = 3000;             // 3 secondes max d'attente totale
   uint32_t startMs = millis();
   
   Serial.println(F("[Mail] Attente stabilisation réseau pour SMTP..."));

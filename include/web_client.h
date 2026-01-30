@@ -42,4 +42,5 @@ class WebClient {
   HTTPClient _http;
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
   bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize);
+  bool loadFromNVSFallback(ArduinoJson::JsonDocument& doc);  // v11.165: Fallback NVS
 }; 

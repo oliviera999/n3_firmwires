@@ -97,7 +97,7 @@ static void netTask(void* pv) {
     esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
     vTaskDelay(pdMS_TO_TICKS(200));
   }
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED && g_ctx) {
     // Cause basale: attente stabilisation stack TCP/IP avant 1ère requête HTTPS
     // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
     g_ctx->power.waitForNetworkReady();
@@ -105,6 +105,8 @@ static void netTask(void* pv) {
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     bool ok = g_ctx->webClient.tryFetchConfigFromServer(tmp);
     Serial.printf("[netTask] Boot tryFetchConfigFromServer: %s\n", ok ? "OK" : "ECHEC");
+  } else if (!g_ctx) {
+    Serial.println(F("[netTask] Boot: g_ctx NULL, skip fetch"));
   } else {
     Serial.println(F("[netTask] Boot: WiFi non connecté, fetchRemoteState skip"));
   }
@@ -149,6 +151,13 @@ void sensorTask(void* pv) {
   SENSOR_LOG_PRINTF("[Sensor] Tâche sensorTask démarrée - intervalle %u ms\n", TimingConfig::SENSOR_TASK_INTERVAL_MS);
 
   for (;;) {
+    // v11.165: Protection NULL pointer (audit robustesse)
+    if (!g_ctx) {
+      esp_task_wdt_reset();
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
+    
     if (g_ctx->otaManager.isUpdating()) {
       esp_task_wdt_reset();
       vTaskDelay(pdMS_TO_TICKS(4000));
@@ -234,6 +243,13 @@ void displayTask(void* pv) {
 
   TickType_t lastWake = xTaskGetTickCount();
   for (;;) {
+    // v11.165: Protection NULL pointer (audit robustesse)
+    if (!g_ctx) {
+      esp_task_wdt_reset();
+      vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(1000));
+      continue;
+    }
+    
     if (g_ctx->otaManager.isUpdating()) {
       esp_task_wdt_reset();
       vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(250));
@@ -262,6 +278,13 @@ void webTask(void* pv) {
   const TickType_t period = pdMS_TO_TICKS(100);
 
   for (;;) {
+    // v11.165: Protection NULL pointer (audit robustesse)
+    if (!g_ctx) {
+      esp_task_wdt_reset();
+      vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(1000));
+      continue;
+    }
+    
     if (g_ctx->otaManager.isUpdating()) {
       esp_task_wdt_reset();
       vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(500));
@@ -297,6 +320,12 @@ void automationTask(void* pv) {
   
   for (;;) {
     esp_task_wdt_reset();
+
+    // v11.165: Protection NULL pointer (audit robustesse)
+    if (!g_ctx) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
 
     if (xQueueReceive(g_sensorQueue, &readings, pdMS_TO_TICKS(1000)) == pdTRUE) {
       esp_task_wdt_reset();

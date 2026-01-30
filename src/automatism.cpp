@@ -72,6 +72,21 @@ void Automatism::begin() {
 void Automatism::update() {
     // Collecte des capteurs
     SensorReadings readings = _sensors.read();
+    
+    // v11.165: Validation des lectures capteurs (audit robustesse)
+    if (isnan(readings.tempWater) || readings.tempWater < SensorConfig::WaterTemp::MIN_VALID || 
+        readings.tempWater > SensorConfig::WaterTemp::MAX_VALID) {
+        readings.tempWater = SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
+    }
+    if (isnan(readings.tempAir) || readings.tempAir < SensorConfig::AirSensor::TEMP_MIN || 
+        readings.tempAir > SensorConfig::AirSensor::TEMP_MAX) {
+        readings.tempAir = SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+    }
+    if (isnan(readings.humidity) || readings.humidity < SensorConfig::AirSensor::HUMIDITY_MIN || 
+        readings.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
+        readings.humidity = SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
+    }
+    
     update(readings);
 }
 
@@ -405,7 +420,10 @@ void Automatism::startTankPumpManual() {
     _countdownLabel[sizeof(_countdownLabel) - 1] = '\0';
     _countdownEnd = nowMs + refillDurationMs;
     _pumpStartMs = nowMs;
-    _levelAtPumpStart = cur.wlAqua;
+    // v11.165: Validation niveau eau avant assignation (audit robustesse)
+    _levelAtPumpStart = (cur.wlAqua >= SensorConfig::Ultrasonic::MIN_DISTANCE_CM && 
+                         cur.wlAqua <= SensorConfig::Ultrasonic::MAX_DISTANCE_CM) 
+                        ? cur.wlAqua : 0;
 }
 
 void Automatism::stopTankPumpManual() {
@@ -453,7 +471,12 @@ bool Automatism::restoreRemoteConfigFromCache() {
     char json[2048];
     if (_config.loadRemoteVars(json, sizeof(json))) {
         StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-        deserializeJson(doc, json);
+        // v11.165: Check DeserializationError (audit robustesse)
+        DeserializationError err = deserializeJson(doc, json);
+        if (err) {
+            Serial.printf("[Auto] ⚠️ Erreur parsing JSON cache: %s\n", err.c_str());
+            return false;
+        }
         
         // Charger l'email directement depuis NVS si disponible
         char emailFromNVS[128];

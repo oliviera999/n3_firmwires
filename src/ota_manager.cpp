@@ -1786,8 +1786,9 @@ bool OTAManager::checkForUpdate() {
     }
     
     // Téléchargement des métadonnées
-    // Note: buffer sur la stack - la tache OTA a 8KB de stack, suffisant pour 4KB + overhead
-    char payload[4096];
+    // Note: buffer sur la stack - la tache OTA a 8KB de stack, suffisant pour 2KB + overhead
+    // v11.165: Réduit de 4KB à 2KB pour économiser DRAM (audit mémoire)
+    char payload[2048];
     if (!downloadMetadata(payload, sizeof(payload))) {
         return false;
     }
