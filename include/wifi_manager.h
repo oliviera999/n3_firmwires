@@ -71,7 +71,7 @@ class WifiManager {
 
 /**
  * Helpers WiFi pour éviter les String temporaires et la duplication de code
- * Utiliser ces fonctions au lieu de WiFi.SSID().c_str() etc.
+ * v11.166: Réécrit pour utiliser buffers statiques (audit fragmentation heap)
  */
 namespace WiFiHelpers {
     /**
@@ -81,11 +81,8 @@ namespace WiFiHelpers {
      */
     inline void getSSID(char* buffer, size_t size) {
         if (!buffer || size == 0) return;
-        String ssid = WiFi.SSID();
-        size_t len = ssid.length();
-        if (len >= size) len = size - 1;
-        memcpy(buffer, ssid.c_str(), len);
-        buffer[len] = '\0';
+        // v11.166: Utilise toCharArray pour éviter String temporaire sur heap
+        WiFi.SSID().toCharArray(buffer, size);
     }
     
     /**
@@ -100,17 +97,20 @@ namespace WiFiHelpers {
     }
     
     /**
-     * Copie l'adresse MAC dans un buffer char[]
+     * Copie l'adresse MAC dans un buffer char[] sans String temporaire
      * @param buffer Buffer de destination (min 18 bytes)
      * @param size Taille du buffer
      */
     inline void getMACString(char* buffer, size_t size) {
-        if (!buffer || size == 0) return;
-        String mac = WiFi.macAddress();
-        size_t len = mac.length();
-        if (len >= size) len = size - 1;
-        memcpy(buffer, mac.c_str(), len);
-        buffer[len] = '\0';
+        if (!buffer || size < 18) {
+            if (buffer && size > 0) buffer[0] = '\0';
+            return;
+        }
+        // v11.166: Utilise la version byte array de macAddress (pas de String)
+        uint8_t mac[6];
+        WiFi.macAddress(mac);
+        snprintf(buffer, size, "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
     
     /**
@@ -128,17 +128,14 @@ namespace WiFiHelpers {
     }
     
     /**
-     * Copie le SSID AP dans un buffer char[]
+     * Copie le SSID AP dans un buffer char[] sans String temporaire
      * @param buffer Buffer de destination (min 33 bytes recommandé)
      * @param size Taille du buffer
      */
     inline void getAPSSID(char* buffer, size_t size) {
         if (!buffer || size == 0) return;
-        String ssid = WiFi.softAPSSID();
-        size_t len = ssid.length();
-        if (len >= size) len = size - 1;
-        memcpy(buffer, ssid.c_str(), len);
-        buffer[len] = '\0';
+        // v11.166: Utilise toCharArray pour éviter String temporaire sur heap
+        WiFi.softAPSSID().toCharArray(buffer, size);
     }
     
     /**

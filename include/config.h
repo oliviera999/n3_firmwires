@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.165";  // Audit: NULL checks, timeouts ≤3s, robustesse
+    inline constexpr const char* VERSION = "11.166";  // Audit: boucle NVS securisee, http.begin() verifie, String→buffer, WiFi timeout 3s
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

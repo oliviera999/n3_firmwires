@@ -91,9 +91,9 @@ static void netTask(void* pv) {
 
   // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
   // par une tentative depuis netTask dès que le WiFi est disponible.
-  // Timeout court (5s max) pour respecter règle offline-first
+  // v11.166: Timeout reduit a 3s (regle offline-first: max 3s blocage)
   unsigned long startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 5000) {
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 3000) {
     esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
     vTaskDelay(pdMS_TO_TICKS(200));
   }

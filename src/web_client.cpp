@@ -325,7 +325,11 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   ServerConfig::getOutputUrl(url, sizeof(url));
 
   // v11.162: Utilise le client HTTP simple (membre de classe)
-  _http.begin(_client, url);
+  // v11.166: Verification retour http.begin() (audit robustesse)
+  if (!_http.begin(_client, url)) {
+    LOG(LOG_WARN, "[HTTP] Echec initialisation HTTPClient pour %s", url);
+    return loadFromNVSFallback(doc);
+  }
 
   int code = _http.GET();
 

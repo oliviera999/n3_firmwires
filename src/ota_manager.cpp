@@ -1343,7 +1343,11 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
     http.addHeader("Cache-Control", "no-cache");
     
     // Début de la requête
-    http.begin(url);
+    // v11.166: Verification retour http.begin() (audit robustesse)
+    if (!http.begin(url)) {
+        logError("Echec initialisation HTTPClient (micro-chunks)");
+        return false;
+    }
     
     int httpCode = http.GET();
     if (httpCode != HTTP_CODE_OK) {

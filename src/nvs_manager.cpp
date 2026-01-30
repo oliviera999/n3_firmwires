@@ -259,28 +259,60 @@ NVSError NVSManager::loadString(const char* ns, const char* key, char* value, si
         return keyError;
     }
     
-    NVSError openError = openNamespace(ns, true);
-    if (openError != NVSError::SUCCESS) {
+    // v11.166: Utilise API NVS bas niveau pour eviter String Arduino (audit fragmentation heap)
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(ns, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
         if (defaultValue) {
             strncpy(value, defaultValue, valueSize - 1);
             value[valueSize - 1] = '\0';
         } else {
             value[0] = '\0';
         }
-        return openError;
+        return NVSError::NAMESPACE_NOT_FOUND;
     }
     
-    // NOTE: Preferences::getString() retourne String Arduino (limitation de l'API ESP32)
-    // La String est copiée immédiatement dans le buffer et détruite pour minimiser fragmentation
-    String tempValueStr = _preferences.getString(key, defaultValue ? defaultValue : "");
-    if (tempValueStr.length() > 0) {
-      size_t copyLen = tempValueStr.length() < valueSize - 1 ? tempValueStr.length() : valueSize - 1;
-      strncpy(value, tempValueStr.c_str(), copyLen);
-      value[copyLen] = '\0';
-    } else {
-      value[0] = '\0';
+    // Obtenir la taille necessaire puis lire directement dans le buffer
+    size_t requiredSize = 0;
+    err = nvs_get_str(handle, key, nullptr, &requiredSize);
+    
+    if (err == ESP_ERR_NVS_NOT_FOUND || requiredSize == 0) {
+        // Clé non trouvée, utiliser valeur par défaut
+        nvs_close(handle);
+        if (defaultValue) {
+            strncpy(value, defaultValue, valueSize - 1);
+            value[valueSize - 1] = '\0';
+        } else {
+            value[0] = '\0';
+        }
+        return NVSError::SUCCESS;  // Pas une erreur, juste pas de valeur stockée
     }
-    closeNamespace();
+    
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        if (defaultValue) {
+            strncpy(value, defaultValue, valueSize - 1);
+            value[valueSize - 1] = '\0';
+        } else {
+            value[0] = '\0';
+        }
+        return NVSError::READ_FAILED;
+    }
+    
+    // Lire la valeur directement dans le buffer fourni
+    size_t actualSize = valueSize;
+    err = nvs_get_str(handle, key, value, &actualSize);
+    nvs_close(handle);
+    
+    if (err != ESP_OK) {
+        if (defaultValue) {
+            strncpy(value, defaultValue, valueSize - 1);
+            value[valueSize - 1] = '\0';
+        } else {
+            value[0] = '\0';
+        }
+        return NVSError::READ_FAILED;
+    }
     
     return NVSError::SUCCESS;
 }
@@ -690,7 +722,13 @@ NVSError NVSManager::migrateFromOldSystem() {
 
         nvs_iterator_t it = nullptr;
         esp_err_t findErr = nvs_entry_find(NVS_DEFAULT_PART_NAME, rule.oldNamespace, NVS_TYPE_ANY, &it);
-        while (findErr == ESP_OK) {
+        
+        // v11.166: Compteur limite pour eviter boucle infinie (max 100 entries par namespace)
+        constexpr size_t MAX_NVS_ENTRIES_PER_NAMESPACE = 100;
+        size_t entryCount = 0;
+        
+        while (findErr == ESP_OK && entryCount < MAX_NVS_ENTRIES_PER_NAMESPACE) {
+            ++entryCount;
             nvs_entry_info_t info;
             nvs_entry_info(it, &info);
 
@@ -839,6 +877,12 @@ NVSError NVSManager::migrateFromOldSystem() {
             }
 
             findErr = nvs_entry_next(&it);
+        }
+
+        // v11.166: Alerte si limite atteinte (possible corruption ou namespace anormalement grand)
+        if (entryCount >= MAX_NVS_ENTRIES_PER_NAMESPACE) {
+            Serial.printf("[NVS] ⚠️ Limite migration atteinte (%zu entries) pour %s, arret premature\n",
+                          entryCount, rule.oldNamespace);
         }
 
         if (it != nullptr) {
