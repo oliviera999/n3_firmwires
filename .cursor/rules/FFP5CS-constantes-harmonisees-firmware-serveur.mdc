@@ -1,0 +1,25 @@
+---
+description: Constantes harmonisées firmware et serveur distant FFP5CS (simplicité, lisibilité, robustesse, stabilité)
+alwaysApply: true
+---
+
+# Constantes – harmonisation firmware et serveur distant
+
+- **Objectif**
+  - Les constantes (noms, valeurs, sémantique) doivent être **harmonisées** dans tout le firmware (src/, include/) et **alignées avec le serveur distant** pour tout ce qui fait partie du contrat (API, config, statuts).
+  - L’ensemble reste **simple**, **lisible**, **robuste** et **stable**.
+
+- **Firmware (src/ + include/)**
+  - Une même notion = **un seul nom et une seule valeur** dans tout le projet (pas de doublons ni de variantes locales).
+  - Centraliser les constantes partagées dans des **headers dédiés** (ex. config.h, nvs_manager.h, web_client.h) ou des fichiers de constantes clairement identifiés.
+  - Nommage : **UPPER_SNAKE_CASE** pour toutes les constantes (déjà exigé par les conventions firmware).
+  - Éviter les nombres magiques : utiliser des constantes nommées avec un nom explicite.
+
+- **Contrat firmware ↔ serveur distant**
+  - Clés de config (NVS / API), codes de statut, noms de champs JSON, endpoints, valeurs d’énumération partagées : **mêmes noms et mêmes valeurs** des deux côtés, ou documentés de façon unique (ex. doc d’API ou fichier de référence partagé).
+  - Si le serveur distant est dans un autre dépôt : garder une **référence explicite** (fichier, section de doc ou commentaire) listant les constantes partagées et leur valeur, et mettre à jour cette référence à chaque changement.
+  - Ne pas introduire de nouvelle constante côté firmware ou serveur sans vérifier la **cohérence** avec l’autre partie.
+
+- **Stabilité et robustesse**
+  - Toute modification de constante utilisée dans le contrat (API, config synchro) doit être traitée comme un **changement de contrat** : mise à jour simultanée firmware + serveur (ou versioning/documentation claire).
+  - En cas de valeur par défaut ou de fallback, utiliser la **même constante** que celle définie pour la config/API (pas de valeur en dur dupliquée).
