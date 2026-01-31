@@ -1,5 +1,6 @@
 #include "config.h"
 #include "config_manager.h"
+#include "nvs_keys.h"
 #include <ArduinoJson.h>
 #include <cstring>
 #include <cctype>
@@ -19,15 +20,15 @@ void ConfigManager::loadBouffeFlags() {
   Serial.println(F("[Config] 📥 Chargement flags depuis NVS centralisé"));
   
   // Chargement des flags de bouffe depuis le namespace CONFIG
-  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", _bouffeMatinOk, false);
-  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", _bouffeMidiOk, false);
-  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk, false);
-  g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf, -1);
-  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", _pompeAquaLocked, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MATIN, _bouffeMatinOk, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, _bouffeMidiOk, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, _bouffeSoirOk, false);
+  g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, _lastJourBouf, -1);
+  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked, false);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
   // Chargement du flag OTA depuis le namespace SYSTEM
-  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", _otaUpdateFlag, true);
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, _otaUpdateFlag, true);
   
   // Initialisation du cache après chargement
   updateCache();
@@ -55,8 +56,8 @@ void ConfigManager::loadNetworkFlags() {
   bool beforeSend = _remoteSendEnabled;
   bool beforeRecv = _remoteRecvEnabled;
   
-  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_send_en", _remoteSendEnabled, defaultValueSend);
-  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "net_recv_en", _remoteRecvEnabled, defaultValueRecv);
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::NET_SEND_EN, _remoteSendEnabled, defaultValueSend);
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::NET_RECV_EN, _remoteRecvEnabled, defaultValueRecv);
   
   _cachedRemoteSendEnabled = _remoteSendEnabled;
   _cachedRemoteRecvEnabled = _remoteRecvEnabled;
@@ -94,11 +95,11 @@ void ConfigManager::saveBouffeFlags() {
   Serial.println(F("[Config] 💾 Sauvegarde flags vers NVS centralisé"));
   
   // Sauvegarde des flags de bouffe dans le namespace CONFIG
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", _bouffeMatinOk);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", _bouffeMidiOk);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk);
-  g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", _pompeAquaLocked);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MATIN, _bouffeMatinOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, _bouffeMidiOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, _bouffeSoirOk);
+  g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, _lastJourBouf);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
   // Mise à jour du cache après sauvegarde
@@ -113,11 +114,11 @@ void ConfigManager::forceSaveBouffeFlags() {
   Serial.println(F("[Config] 💾 Sauvegarde forcée flags vers NVS centralisé"));
   
   // Sauvegarde forcée des flags de bouffe dans le namespace CONFIG
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", _bouffeMatinOk);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", _bouffeMidiOk);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk);
-  g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", _pompeAquaLocked);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MATIN, _bouffeMatinOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, _bouffeMidiOk);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, _bouffeSoirOk);
+  g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, _lastJourBouf);
+  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
   updateCache();
@@ -146,7 +147,7 @@ void ConfigManager::saveRemoteVars(const char* json) {
 
   // Vérifier si le JSON a changé avant de sauvegarder (réduire écritures flash)
   char cachedJson[2048];
-  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", cachedJson, sizeof(cachedJson), "");
+  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, cachedJson, sizeof(cachedJson), "");
   
   if (json && strcmp(cachedJson, json) == 0) {
     Serial.println(F("[Config] Variables distantes inchangées - pas de sauvegarde NVS"));
@@ -154,7 +155,7 @@ void ConfigManager::saveRemoteVars(const char* json) {
   }
   
   // Sauvegarde dans le namespace CONFIG
-  g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, "remote_json", json ? json : "");
+  g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json ? json : "");
   Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé"));
 }
 
@@ -166,7 +167,7 @@ bool ConfigManager::loadRemoteVars(char* json, size_t jsonSize) {
     return false;
   }
   
-  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", json, jsonSize, "");
+  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json, jsonSize, "");
   
   if (strlen(json) > 0) {
     Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé"));
@@ -186,7 +187,7 @@ void ConfigManager::setOtaUpdateFlag(bool value) {
   _otaUpdateFlag = value;
   
   // v11.80: Utilisation du gestionnaire NVS centralisé
-  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", value);
+  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, value);
   _cachedOtaUpdateFlag = value;
   
   Serial.printf("[Config] ✅ Flag OTA update mis à jour: %s\n", value ? "true" : "false");
@@ -202,7 +203,7 @@ void ConfigManager::setRemoteSendEnabled(bool value){
   _remoteSendEnabled = value;
   
   // v11.80: Utilisation du gestionnaire NVS centralisé
-  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "net_send_en", value);
+  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::NET_SEND_EN, value);
   _cachedRemoteSendEnabled = value;
   Serial.printf("[Config] ✅ Net sendEnabled=%s\n", value?"true":"false");
 }
@@ -212,7 +213,7 @@ void ConfigManager::setRemoteRecvEnabled(bool value){
   _remoteRecvEnabled = value;
   
   // v11.80: Utilisation du gestionnaire NVS centralisé
-  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "net_recv_en", value);
+  g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::NET_RECV_EN, value);
   _cachedRemoteRecvEnabled = value;
   Serial.printf("[Config] ✅ Net recvEnabled=%s\n", value?"true":"false");
 }

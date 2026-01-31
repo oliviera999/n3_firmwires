@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "gpio_mapping.h"  // Pour GPIODefaults (source de vérité des valeurs par défaut)
 
 // =============================================================================
 // CONFIGURATION UNIFIÉE DU PROJET FFP5CS
@@ -80,12 +81,9 @@ namespace SystemConfig {
     inline constexpr size_t HOSTNAME_BUFFER_SIZE = 20;
 }
 
-namespace GlobalTimeouts {
-    inline constexpr uint32_t GLOBAL_MAX_MS = 5000;
-    // Note: HTTP timeout unifié dans NetworkConfig::HTTP_TIMEOUT_MS (5000ms)
-    // Utiliser NetworkConfig::HTTP_TIMEOUT_MS pour les timeouts HTTP
-    inline constexpr uint32_t DS18B20_MAX_MS = 1000;
-}
+// Note: GlobalTimeouts supprimé (v11.174 simplification)
+// - GLOBAL_MAX_MS remplacé par NetworkConfig::HTTP_TIMEOUT_MS
+// - DS18B20_MAX_MS déplacé dans SensorConfig::DS18B20::TIMEOUT_MS
 
 namespace TimingConfig {
     // WiFi - v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
@@ -166,7 +164,6 @@ namespace MonitoringConfig {
 namespace NetworkConfig {
     inline constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
-    inline constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
     // Timeout HTTP unifié (conforme à .cursorrules: max 5s pour opérations réseau)
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
@@ -213,15 +210,6 @@ namespace ServerConfig {
     
     inline void getHeartbeatUrl(char* buffer, size_t bufferSize) { 
         snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT); 
-    }
-    
-    inline void getServerUrl(char* buffer, size_t bufferSize) {
-        strncpy(buffer, BASE_URL, bufferSize - 1);
-        buffer[bufferSize - 1] = '\0';
-    }
-    
-    inline void getWebSocketEndpoint(char* buffer, size_t bufferSize) {
-        snprintf(buffer, bufferSize, "%s/ws", BASE_URL);
     }
     
     // v11.162: Helper OTA avec HTTPS explicite (sécurité requise)
@@ -272,8 +260,15 @@ namespace BufferConfig {
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 8000;
         inline constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 15000;
     #endif
-    
-    inline constexpr uint32_t JSON_PREVIEW_MAX_SIZE = 200;
+}
+
+// Seuils mémoire pour handlers HTTP (heap minimum requis)
+namespace HeapConfig {
+    inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 50000;      // /json endpoint
+    inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 55000;    // /dbvars endpoint
+    inline constexpr uint32_t MIN_HEAP_WIFI_ROUTE = 40000;      // /wifi/* endpoints
+    inline constexpr uint32_t MIN_HEAP_EMAIL_ASYNC = 50000;     // Email async task fallback
+    inline constexpr uint32_t MIN_HEAP_OTA = 50000;             // OTA check
 }
 
 // -----------------------------------------------------------------------------
@@ -307,6 +302,18 @@ namespace SensorConfig {
         inline constexpr float TEMP_AIR_DEFAULT = 20.0f;
         inline constexpr float HUMIDITY_DEFAULT = 50.0f;
         inline constexpr float TEMP_WATER_DEFAULT = 20.0f;
+    }
+    
+    // Valeurs fallback pour l'API JSON (affichage quand capteur invalide)
+    // Ces valeurs sont utilisées dans /json, WebSocket, etc.
+    namespace Fallback {
+        inline constexpr float TEMP_WATER = 25.5f;
+        inline constexpr float TEMP_AIR = 22.3f;
+        inline constexpr float HUMIDITY = 65.0f;
+        inline constexpr float WATER_LEVEL_AQUA = 15.2f;
+        inline constexpr float WATER_LEVEL_TANK = 8.7f;
+        inline constexpr float WATER_LEVEL_POTA = 12.1f;
+        inline constexpr uint16_t LUMINOSITY = 450;
     }
 
     namespace WaterTemp {
@@ -357,20 +364,28 @@ namespace SensorConfig {
         inline constexpr uint8_t STABILIZATION_READINGS = 1;
         inline constexpr uint16_t STABILIZATION_DELAY_MS = 50;
         inline constexpr uint16_t ONEWIRE_RESET_DELAY_MS = 100;
+        // Timeout global lecture DS18B20 (ex-GlobalTimeouts::DS18B20_MAX_MS)
+        inline constexpr uint32_t TIMEOUT_MS = 1000;
+    }
+    
+    // Timeouts de test de réactivation des capteurs désactivés
+    namespace Reactivation {
+        // Ultrasonic: timeout court car lecture rapide
+        inline constexpr uint32_t ULTRASONIC_TIMEOUT_MS = 500;
+        // Temperature sensors (WaterTemp, AirSensor): timeout plus long
+        inline constexpr uint32_t TEMPERATURE_TIMEOUT_MS = 1000;
     }
 }
 
 namespace ActuatorConfig {
+    // Valeurs par défaut - référencent GPIODefaults (gpio_mapping.h) comme source de vérité
     namespace Default {
-        inline constexpr int AQUA_LEVEL_CM = 18;
-        inline constexpr int TANK_LEVEL_CM = 80;
-        inline constexpr float HEATER_THRESHOLD_C = 18.0f;
-        inline constexpr uint16_t FEED_BIG_DURATION_SEC = 3;
-        inline constexpr uint16_t FEED_SMALL_DURATION_SEC = 2;
+        inline constexpr int AQUA_LEVEL_CM = GPIODefaults::AQ_THRESHOLD_CM;
+        inline constexpr int TANK_LEVEL_CM = GPIODefaults::TANK_THRESHOLD_CM;
+        inline constexpr float HEATER_THRESHOLD_C = GPIODefaults::HEAT_THRESHOLD_C;
+        inline constexpr uint16_t FEED_BIG_DURATION_SEC = GPIODefaults::FEED_BIG_DURATION_SEC;
+        inline constexpr uint16_t FEED_SMALL_DURATION_SEC = GPIODefaults::FEED_SMALL_DURATION_SEC;
     }
-    
-    inline constexpr int SERVO_MIN_ANGLE = 0;
-    inline constexpr int SERVO_MAX_ANGLE = 180;
 }
 
 // -----------------------------------------------------------------------------
@@ -465,9 +480,6 @@ namespace DisplayConfig {
 // 8. SOMMEIL ET ÉCONOMIE D'ÉNERGIE
 // -----------------------------------------------------------------------------
 namespace SleepConfig {
-    inline constexpr uint32_t LIGHT_SLEEP_DURATION_MS = 60000; // 1 minute
-    inline constexpr uint32_t DEEP_SLEEP_DURATION_MS = 3600000; // 1 heure
-
     // Time validation - Alias vers SystemConfig pour éviter duplication
     inline constexpr time_t EPOCH_MIN_VALID = SystemConfig::EPOCH_MIN_VALID;
     inline constexpr time_t EPOCH_MAX_VALID = SystemConfig::EPOCH_MAX_VALID;
@@ -484,8 +496,6 @@ namespace SleepConfig {
     inline constexpr uint32_t FLOOD_DEBOUNCE_MIN = 5;
     inline constexpr uint16_t FLOOD_HYST_CM = 2;
     inline constexpr uint32_t FLOOD_RESET_STABLE_MIN = 15;
-    inline constexpr uint8_t WAKEUP_FAILURE_ALERT_THRESHOLD = 3;
-    inline constexpr uint32_t MIN_AWAKE_TIME_MS = 15000;
     inline constexpr bool LOCAL_SLEEP_DURATION_CONTROL = true;
     inline constexpr float NIGHT_SLEEP_MULTIPLIER = 3.0f;
     
@@ -504,8 +514,8 @@ namespace SleepConfig {
     // Constantes PowerManager manquantes
     inline constexpr bool AUTO_RECONNECT_WIFI_AFTER_SLEEP = true;
     inline constexpr bool SAVE_TIME_BEFORE_SLEEP = true;
-    inline constexpr time_t EPOCH_COMPILE_TIME = 1704067200; // Fallback
-    inline constexpr time_t EPOCH_DEFAULT_FALLBACK = 1704067200;
+    inline constexpr time_t EPOCH_COMPILE_TIME = SystemConfig::EPOCH_MIN_VALID; // Fallback - unifié avec SystemConfig
+    inline constexpr time_t EPOCH_DEFAULT_FALLBACK = SystemConfig::EPOCH_MIN_VALID; // Unifié avec SystemConfig
     inline constexpr bool ENABLE_DRIFT_CORRECTION = true;
     inline constexpr uint32_t DRIFT_CORRECTION_INTERVAL_MS = 3600000;
     inline constexpr float DRIFT_CORRECTION_THRESHOLD_PPM = 100.0f;
@@ -524,9 +534,6 @@ namespace TaskConfig {
     // - Loop() utilise la stack par défaut (configurée par ESP-IDF, typiquement 8KB)
     // Note: TLS peut être appelé depuis loop() via fetchRemoteState()
     // La stack par défaut devrait être suffisante
-    
-    inline constexpr uint32_t DEFAULT_STACK_SIZE = 4096;
-    inline constexpr UBaseType_t DEFAULT_PRIORITY = 1;
     
     // v11.157: Réductions basées sur HWM analysés (sensor:1864, web:5332, display:2328 libres)
     // autoTask: 7356 libres au boot mais 94.9% utilisé plus tard - NE PAS RÉDUIRE
@@ -566,9 +573,8 @@ namespace TaskConfig {
     inline constexpr uint8_t MAIL_QUEUE_SIZE = 6;            // v11.163: 6 slots (~4KB) - marge supplémentaire avec délai démarrage
 }
 
-namespace DefaultValues {
-    inline constexpr float WATER_TEMP = 20.0f;
-}
+// Note: namespace DefaultValues supprimé (v11.174 simplification)
+// - WATER_TEMP était un doublon de SensorConfig::DefaultValues::TEMP_WATER_DEFAULT
 
 // -----------------------------------------------------------------------------
 // 9. DÉSACTIVATION SÛRE DE SERIAL EN PROD

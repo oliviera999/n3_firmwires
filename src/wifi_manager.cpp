@@ -283,9 +283,6 @@ void WifiManager::loop(DisplayView* disp){
   // Mémorise le moment pour éviter les rafales d’essais
   _lastAttemptMs = now;
 
-  // Si déjà connecté en STA -> rien à faire
-  if(WiFi.status() == WL_CONNECTED) return;
-
   // Sinon on essaye à nouveau de se connecter.
   Serial.println(F("[WiFi] Tentative périodique de reconnexion"));
   bool ok = connect(disp);
@@ -320,36 +317,6 @@ void WifiManager::getSignalQuality(char* buffer, size_t bufferSize) const {
   
   strncpy(buffer, quality, bufferSize - 1);
   buffer[bufferSize - 1] = '\0';
-}
-
-bool WifiManager::isSignalStable() {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  
-  int8_t currentRSSI = getCurrentRSSI();
-  
-  // Vérifier si le signal est suffisant
-  if (currentRSSI < ::SleepConfig::WIFI_RSSI_MINIMUM) return false;
-  
-  // Vérifier la stabilité temporelle (pas de variations trop importantes)
-  uint32_t now = millis();
-  if (_lastRSSICheck == 0) {
-    _lastRSSICheck = now;
-    _lastRSSI = currentRSSI;
-    return true; // Premier check, considéré comme stable
-  }
-  
-  if (now - _lastRSSICheck < ::SleepConfig::WIFI_STABILITY_CHECK_INTERVAL_MS) {
-    return true; // Pas encore temps de vérifier
-  }
-  
-  // Vérifier la variation du signal
-  int8_t rssiVariation = abs(currentRSSI - _lastRSSI);
-  bool stable = (rssiVariation <= 5); // Variation max de 5 dBm
-  
-  _lastRSSICheck = now;
-  _lastRSSI = currentRSSI;
-  
-  return stable;
 }
 
 bool WifiManager::shouldReconnect() {
@@ -478,28 +445,4 @@ bool WifiManager::reconnect(DisplayView* disp) {
   }
   
   return success;
-}
-
-void WifiManager::getConnectionStatus(char* buffer, size_t bufferSize) const {
-  if (WiFi.status() == WL_CONNECTED) {
-    char ssidBuf[33];
-    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
-    const char* ssid = ssidBuf;
-    char ipBuf[16];
-    IPAddress ip = WiFi.localIP();
-    snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    int8_t rssi = WiFi.RSSI();
-    char quality[32];
-    getSignalQuality(quality, sizeof(quality));
-    
-    snprintf(buffer, bufferSize, "Connecté à %s (%s) - %s (%d dBm)", ssid, ipBuf, quality, rssi);
-  } else if (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA) {
-    char apIPBuf[16];
-    IPAddress apIP = WiFi.softAPIP();
-    snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-    snprintf(buffer, bufferSize, "Mode AP - IP: %s", apIPBuf);
-  } else {
-    strncpy(buffer, "Déconnecté", bufferSize - 1);
-    buffer[bufferSize - 1] = '\0';
-  }
 }

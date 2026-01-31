@@ -8,6 +8,7 @@ struct AppContext;
 
 // Fonctions libres helpers (remplace WebServerContext)
 void sendJsonResponse(AsyncWebServerRequest* req, const JsonDocument& doc, bool enableCors = true);
+void sendErrorResponse(AsyncWebServerRequest* req, int httpCode, const char* errorMessage, bool enableCors = true);
 bool ensureHeapForRoute(AsyncWebServerRequest* req, uint32_t minHeap, const __FlashStringHelper* routeName);
 
 namespace WebRoutes {

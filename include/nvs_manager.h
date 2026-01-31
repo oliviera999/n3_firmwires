@@ -16,14 +16,80 @@ class NVSLockGuard;
  * Gestion d'erreurs centralisée avec validation simplifiée (longueur clé uniquement)
  * 
  * Version: 11.169 (simplifiée - 4 namespaces, TIME/SENSORS fusionnés)
+ * 
+ * =============================================================================
+ * REGISTRE DES CLÉS NVS
+ * =============================================================================
+ * 
+ * Les variables synchronisées avec le serveur distant (GPIO 16-18, 100-116) sont
+ * documentées dans gpio_mapping.h (GPIOMap). Les clés ci-dessous sont des
+ * ÉTATS INTERNES non synchronisés avec le serveur.
+ * 
+ * NAMESPACE "sys" (SYSTEM):
+ * -------------------------
+ *   force_wake_up   (bool)   - Forcer le réveil après deep sleep
+ *   rtc_epoch       (ulong)  - Epoch RTC sauvegardé avant sleep
+ *   ota_update_flag (bool)   - Flag activation OTA
+ *   ota_prevVer     (string) - Version précédente avant OTA
+ *   ota_in_progress (bool)   - OTA en cours (transitoire)
+ *   net_send_en     (bool)   - Envoi réseau activé
+ *   net_recv_en     (bool)   - Réception réseau activée
+ *   mig*_done       (uint8)  - Flags de migration (internes)
+ * 
+ * NAMESPACE "cfg" (CONFIG):
+ * -------------------------
+ *   remote_json     (string) - JSON config reçu du serveur distant
+ *   bouffe_matin    (bool)   - Flag "déjà nourri ce matin"
+ *   bouffe_midi     (bool)   - Flag "déjà nourri ce midi"
+ *   bouffe_soir     (bool)   - Flag "déjà nourri ce soir"
+ *   bouffe_jour     (int)    - Jour du dernier nourrissage (1-31)
+ *   bf_pmp_lock     (bool)   - Verrou pompe nourrissage actif
+ *   temp_last_valid (float)  - Dernière température eau valide (fallback capteur)
+ *   gpio_*          (bool)   - États actuateurs (gpio_pump_aqua, gpio_heater, etc.)
+ * 
+ * NAMESPACE "state" (STATE):
+ * --------------------------
+ *   snap_pending    (bool)   - Snapshot d'état en attente de restauration
+ *   snap_aqua       (bool)   - État pompe aqua au moment du snapshot
+ *   snap_heater     (bool)   - État chauffage au moment du snapshot
+ *   snap_light      (bool)   - État lumière au moment du snapshot
+ *   state_*         (bool)   - États actuateurs persistés (state_pumpAqua, etc.)
+ *   state_lastLocal (ulong)  - Timestamp dernière action locale
+ *   sync_count      (int)    - Nombre d'items dans la queue de sync
+ *   sync_item_*     (string) - Items de la queue de sync (sync_item_0, etc.)
+ *   sync_lastSync   (ulong)  - Timestamp dernière sync réussie
+ *   sync_config     (bool)   - Config en attente de sync
+ * 
+ * NAMESPACE "logs" (LOGS):
+ * ------------------------
+ *   diag_rebootCnt  (int)    - Compteur de redémarrages
+ *   diag_minHeap    (ulong)  - Heap minimum observé
+ *   diag_httpOk     (ulong)  - Compteur requêtes HTTP réussies
+ *   diag_httpKo     (ulong)  - Compteur requêtes HTTP échouées
+ *   diag_otaOk      (ulong)  - Compteur OTA réussies
+ *   diag_otaKo      (ulong)  - Compteur OTA échouées
+ *   diag_lastUptime (ulong)  - Dernier uptime (debug uniquement)
+ *   diag_lastHeap   (ulong)  - Dernier heap (debug uniquement)
+ *   diag_hasPanic   (bool)   - Flag panic détecté
+ *   diag_panicCause (string) - Cause du panic
+ *   alert_floodLast (ulong)  - Timestamp dernière alerte inondation
+ *   crash_has       (bool)   - Flag crash détecté
+ *   crash_reason    (int)    - Code raison du crash
+ * 
+ * NAMESPACE "wifi_saved" (géré séparément, pas par NVSManager):
+ * -------------------------------------------------------------
+ *   count           (blob)   - Nombre de réseaux WiFi sauvegardés
+ *   net_*           (blob)   - Réseaux sauvegardés (format "SSID|password")
+ * 
+ * =============================================================================
  */
 
 // Namespaces consolidés (réduction de 14 à 4)
 namespace NVS_NAMESPACES {
-    extern const char* SYSTEM;      // ota, net, reset, force_wake_up, rtc_epoch
-    extern const char* CONFIG;      // bouffe, remoteVars, gpio, temp_last_valid
-    extern const char* STATE;       // actSnap, actState, pendingSync
-    extern const char* LOGS;        // diagnostics, alerts, crash
+    extern const char* SYSTEM;      // sys: ota, net, reset, force_wake_up, rtc_epoch
+    extern const char* CONFIG;      // cfg: bouffe, remoteVars, gpio, temp_last_valid
+    extern const char* STATE;       // state: actSnap, actState, pendingSync
+    extern const char* LOGS;        // logs: diagnostics, alerts, crash
     // NOTE: TIME et SENSORS supprimés (fusionnés dans SYSTEM et CONFIG)
 }
 

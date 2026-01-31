@@ -68,7 +68,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     if (_failureManager.shouldTestReactivation()) {
       // Test rapide de réactivation avec une seule lecture
       uint32_t testStart = millis();
-      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 500;
       
       if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
@@ -84,7 +83,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       pinMode(_pinTrigEcho, INPUT);
       unsigned long duration = readEchoPulseUs(SensorConfig::Ultrasonic::TIMEOUT_US);
       
-      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+      if (millis() - testStart > SensorConfig::Reactivation::ULTRASONIC_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _failureManager.recordReactivationTestFailure();
         // Fallback sur dernière valeur valide ou 0
@@ -264,7 +263,6 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
     if (_failureManager.shouldTestReactivation()) {
       // Test rapide de réactivation avec une seule lecture
       uint32_t testStart = millis();
-      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 500;
       
       if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
@@ -280,7 +278,7 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       pinMode(_pinTrigEcho, INPUT);
       unsigned long duration = readEchoPulseUs(SensorConfig::Ultrasonic::TIMEOUT_US);
       
-      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+      if (millis() - testStart > SensorConfig::Reactivation::ULTRASONIC_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _failureManager.recordReactivationTestFailure();
         // Fallback sur dernière valeur valide ou 0
@@ -569,9 +567,8 @@ float WaterTempSensor::getTemperatureWithFallback() {
   // Si capteur désactivé, tester réactivation périodiquement
   if (_failureManager.isDisabled()) {
     if (_failureManager.shouldTestReactivation()) {
-      // Test rapide de réactivation avec timeout strict (1 seconde max)
+      // Test rapide de réactivation avec timeout strict
       uint32_t testStart = millis();
-      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 1000;
       
       if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
@@ -579,7 +576,7 @@ float WaterTempSensor::getTemperatureWithFallback() {
       
       // Test de connectivité rapide
       bool connected = isSensorConnected();
-      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+      if (millis() - testStart > SensorConfig::Reactivation::TEMPERATURE_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _failureManager.recordReactivationTestFailure();
         // Fallback sur dernière valeur ou défaut
@@ -633,7 +630,7 @@ float WaterTempSensor::getTemperatureWithFallback() {
   
   // Capteur actif, tentative de lecture normale
   uint32_t startTime = millis();
-  const uint32_t timeoutMs = GlobalTimeouts::DS18B20_MAX_MS;
+  const uint32_t timeoutMs = SensorConfig::DS18B20::TIMEOUT_MS;
   
   // 1. Tentative rapide avec lecture simple
   if (_pipelineReady && (millis() - _lastRequestMs) >= CONVERSION_DELAY_MS) {
@@ -1029,16 +1026,15 @@ float AirSensor::robustTemperatureC() {
     if (now - _lastReactivationTestMs >= REACTIVATION_TEST_INTERVAL_MS) {
       _lastReactivationTestMs = now;
       
-      // Test rapide de connectivité avec timeout strict (1 seconde max)
+      // Test rapide de connectivité avec timeout strict
       uint32_t testStart = millis();
-      const uint32_t REACTIVATION_TEST_TIMEOUT_MS = 1000;
       
       if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
       }
       
       float testTemp = _dht.readTemperature();
-      if (millis() - testStart > REACTIVATION_TEST_TIMEOUT_MS) {
+      if (millis() - testStart > SensorConfig::Reactivation::TEMPERATURE_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _consecutiveReactivationSuccesses = 0;
         return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;

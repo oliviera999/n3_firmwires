@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <functional>
+#include <ArduinoJson.h>
 class DisplayView;
 
 class WifiManager {
@@ -39,14 +40,12 @@ class WifiManager {
   // Nouvelles méthodes pour gestion intelligente du signal
   int8_t getCurrentRSSI() const;
   void getSignalQuality(char* buffer, size_t bufferSize) const;
-  bool isSignalStable();
   bool shouldReconnect();
   void checkConnectionStability();
   
   // Méthodes pour contrôle manuel WiFi
   bool disconnect();
   bool reconnect(class DisplayView* disp = nullptr);
-  void getConnectionStatus(char* buffer, size_t bufferSize) const;
 
  private:
   const Credential* _list;
@@ -147,6 +146,71 @@ namespace WiFiHelpers {
         if (!buffer || size == 0) return;
         IPAddress ip = WiFi.softAPIP();
         snprintf(buffer, size, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    }
+    
+    /**
+     * Ajoute les informations WiFi STA et AP à un document JSON
+     * Centralise le code de construction JSON WiFi dupliqué dans web_routes_status, realtime_websocket, etc.
+     * 
+     * Clés ajoutées:
+     * - wifiStaConnected, wifiStaSSID, wifiStaIP, wifiStaRSSI, wifiStaMac
+     * - wifiApActive, wifiApSSID, wifiApIP, wifiApClients
+     * - wifiMode
+     * 
+     * @param doc Document JSON (ArduinoJson) où ajouter les infos
+     * @param includeMac Inclure l'adresse MAC STA (optionnel, défaut true)
+     */
+    template<typename TDoc>
+    inline void addWifiInfoToJson(TDoc& doc, bool includeMac = true) {
+        // WiFi STA info
+        bool staConnected = WiFi.status() == WL_CONNECTED;
+        doc["wifiStaConnected"] = staConnected;
+        
+        if (staConnected) {
+            char ssidBuf[33];
+            getSSID(ssidBuf, sizeof(ssidBuf));
+            doc["wifiStaSSID"] = ssidBuf;
+            
+            char ipBuf[16];
+            getIPString(ipBuf, sizeof(ipBuf));
+            doc["wifiStaIP"] = ipBuf;
+            
+            doc["wifiStaRSSI"] = WiFi.RSSI();
+        } else {
+            doc["wifiStaSSID"] = "";
+            doc["wifiStaIP"] = "";
+            doc["wifiStaRSSI"] = 0;
+        }
+        
+        if (includeMac) {
+            char macBuf[18];
+            getMACString(macBuf, sizeof(macBuf));
+            doc["wifiStaMac"] = macBuf;
+        }
+        
+        // WiFi AP info
+        wifi_mode_t mode = WiFi.getMode();
+        bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
+        doc["wifiApActive"] = apActive;
+        
+        if (apActive) {
+            char apSSIDBuf[33];
+            getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
+            doc["wifiApSSID"] = apSSIDBuf;
+            
+            char apIPBuf[16];
+            getAPIPString(apIPBuf, sizeof(apIPBuf));
+            doc["wifiApIP"] = apIPBuf;
+            
+            doc["wifiApClients"] = WiFi.softAPgetStationNum();
+        } else {
+            doc["wifiApSSID"] = "";
+            doc["wifiApIP"] = "";
+            doc["wifiApClients"] = 0;
+        }
+        
+        // WiFi mode
+        doc["wifiMode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
     }
 }
 

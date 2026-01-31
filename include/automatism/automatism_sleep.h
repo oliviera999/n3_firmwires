@@ -4,8 +4,6 @@
 #include "system_actuators.h"
 #include "power.h"
 #include "config_manager.h"
-#include "task_monitor.h"
-#include <esp_sleep.h>
 
 class Automatism; // Forward declaration
 
@@ -15,10 +13,6 @@ public:
 
     // Initialisation
     void begin();
-
-    // Méthode principale appelée par Automatism::update()
-    // Renvoie true si le système est entré en veille
-    bool process(const SensorReadings& r, SystemActuators& acts, Automatism& core);
 
     // Gestion du sleep
     // Renvoie true si le système est entré en veille
@@ -36,12 +30,10 @@ public:
 
     // Activité
     void notifyLocalWebActivity();
-    void logActivity(const char* activity);
     void updateActivityTimestamp();
     bool hasSignificantActivity();
 
     // Helpers publics
-    bool isAdaptiveSleepEnabled() const;
     uint32_t calculateAdaptiveSleepDelay();
     bool hasRecentErrors();
     bool isNightTime();
@@ -51,24 +43,6 @@ public:
     unsigned long getLastActivityMs() const { return _lastActivityMs; }
     bool isForceWakeUp() const { return _forceWakeUp; }
     void setForceWakeUp(bool v) { _forceWakeUp = v; }
-
-    // Logs et transitions
-    void logSleepTransitionStart(const char* reason,
-                                 uint32_t scheduledSeconds,
-                                 unsigned long awakeSec,
-                                 bool tideAscending,
-                                 int diff10s,
-                                 uint32_t heapAfterCleanup,
-                                 const TaskMonitor::Snapshot& tasks);
-
-    void logSleepTransitionEnd(uint32_t scheduledSeconds,
-                               uint32_t actualSeconds,
-                               esp_sleep_wakeup_cause_t wakeCause,
-                               const TaskMonitor::Snapshot& tasksBefore,
-                               const TaskMonitor::Snapshot& tasksAfter);
-
-    // Marées
-    void handleMaree(const SensorReadings& r);
 
 private:
     PowerManager& _power;
@@ -117,42 +91,5 @@ private:
                                   bool tankPumpRunning,
                                   uint8_t wsClients);
 
-    // Validation
-    bool verifySystemStateAfterWakeup();
-    void detectSleepAnomalies();
-    bool validateSystemStateBeforeSleep();
-
-    // Méthodes découpées
-    bool shouldSleep();
-    bool validateSystemState();
-    void prepareSleep(SystemActuators& acts);
-    uint32_t calculateSleepDuration();
-    void handleWakeup(SystemActuators& acts, uint32_t actualSlept);
-    void handleWakeupFailure();
-    
-    // Contexte pour évaluation
-    struct AutoSleepContext {
-        unsigned long currentMillis;
-        unsigned long* lastWakeMs;
-        int diff10s;
-        int16_t tideTriggerCm;
-    };
-
-    struct AutoSleepDecision {
-        bool tideAscending;
-        uint32_t adaptiveDelaySec;
-        int diff10s;
-        unsigned long awakeSec;
-    };
-
-    bool evaluateAutoSleep(const AutoSleepContext& ctx, AutoSleepDecision& outDecision);
-    void logSleepDecision(bool pumpReservoirOn,
-                          bool feedingActive,
-                          bool countdownActive,
-                          bool tideAscending,
-                          int diff10s,
-                          unsigned long awakeSec,
-                          uint32_t adaptiveDelaySec,
-                          uint16_t nextWakeSec);
 };
 

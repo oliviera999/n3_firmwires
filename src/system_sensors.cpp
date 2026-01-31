@@ -18,7 +18,7 @@ SensorReadings SystemSensors::read() {
   
   // NOUVELLE VERSION NON-BLOQUANTE (v11.50)
   // Timeout global strict pour éviter tout blocage système
-  const uint32_t GLOBAL_TIMEOUT_MS = GlobalTimeouts::GLOBAL_MAX_MS;
+  const uint32_t GLOBAL_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
   uint32_t startTime = millis();
   uint32_t phaseStart;
   auto timeoutExceeded = [&](const char* phase) -> bool {

@@ -1,7 +1,6 @@
 #include "automatism/automatism_sleep.h"
 #include "automatism.h" // Pour accès aux méthodes de Automatism
 #include "config.h"
-#include "task_monitor.h"
 #include "realtime_websocket.h"
 #include <ctime>
 #include <algorithm>
@@ -45,17 +44,6 @@ void AutomatismSleep::begin() {
 }
 
 // ============================================================================
-// MARÉES
-// ============================================================================
-
-void AutomatismSleep::handleMaree(const SensorReadings& r) {
-    // Note: Le sleep anticipé marée est géré dans handleAutoSleep()
-    // Cette méthode fait juste le logging ou des actions spécifiques marée
-    // Pour l'instant minimaliste
-    // Serial.printf("[Sleep] Marée - wlAqua=%u cm\n", r.wlAqua);
-}
-
-// ============================================================================
 // ACTIVITÉ
 // ============================================================================
 
@@ -70,11 +58,6 @@ void AutomatismSleep::updateActivityTimestamp() {
     _lastActivityMs = currentMillis;
     _lastWakeMs = currentMillis;
     Serial.println(F("[Sleep] Timestamp activité mis à jour"));
-}
-
-void AutomatismSleep::logActivity(const char* activity) {
-    Serial.printf("[Sleep] Activité détectée: %s\n", activity);
-    updateActivityTimestamp();
 }
 
 void AutomatismSleep::notifyLocalWebActivity() {
@@ -121,10 +104,6 @@ uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
     baseDelay = std::min(baseDelay, _sleepConfig.maxSleepTime);
     
     return baseDelay;
-}
-
-bool AutomatismSleep::isAdaptiveSleepEnabled() const {
-    return _sleepConfig.adaptiveSleep;
 }
 
 bool AutomatismSleep::isNightTime() {
@@ -308,82 +287,9 @@ bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
     return true;
 }
 
-bool AutomatismSleep::evaluateAutoSleep(const AutoSleepContext& ctx, AutoSleepDecision& outDecision) {
-    AutoSleepDecision decision{};
-    decision.diff10s = ctx.diff10s;
-    decision.adaptiveDelaySec = calculateAdaptiveSleepDelay();
-    decision.awakeSec = (ctx.currentMillis - *ctx.lastWakeMs) / 1000UL;
-    decision.tideAscending = (ctx.diff10s > ctx.tideTriggerCm);
-
-    bool delayReached = (ctx.currentMillis - *ctx.lastWakeMs) >= (decision.adaptiveDelaySec * 1000UL);
-    bool ready = decision.tideAscending || delayReached;
-
-    outDecision = decision;
-    return ready;
-}
-
-void AutomatismSleep::logSleepDecision(bool pumpReservoirOn,
-                                      bool feedingActive,
-                                      bool countdownActive,
-                                      bool tideAscending,
-                                      int diff10s,
-                                      unsigned long awakeSec,
-                                      uint32_t adaptiveDelaySec,
-                                      uint16_t nextWakeSec) {
-    Serial.printf("[Auto] Délai écoulé: éveillé=%lu s, cible=%u s. Veille prévue=%u s\n",
-                  awakeSec, adaptiveDelaySec, nextWakeSec);
-    Serial.printf("[Auto] Raison du passage: aucune activité bloquante (pompeReserv=%s, nourrissage=%s, decompte=%s)\n",
-                  pumpReservoirOn ? "ON" : "OFF",
-                  feedingActive ? "OUI" : "NON",
-                  countdownActive ? "OUI" : "NON");
-    if (tideAscending) {
-        Serial.printf("[Auto] Sleep anticipé: marée montante (~10s, +%d cm)\n", diff10s);
-    }
-}
-
 // ============================================================================
-// TRANSITION ET LOGS
+// MÉTHODE PRINCIPALE : handleAutoSleep
 // ============================================================================
-
-void AutomatismSleep::logSleepTransitionStart(const char* reason,
-                                         uint32_t scheduledSeconds,
-                                         unsigned long awakeSec,
-                                         bool tideAscending,
-                                         int diff10s,
-                                         uint32_t heapAfterCleanup,
-                                         const TaskMonitor::Snapshot& tasks) {
-  LOG_INFO("=== DÉBUT TRANSITION VEILLE ===");
-  LOG_INFO("Raison: %s", reason);
-  LOG_INFO("Durée prévue: %u sec", scheduledSeconds);
-  LOG_INFO("Temps d'éveil: %lu sec", awakeSec);
-  LOG_INFO("Marée: %s (diff10s: %d)", tideAscending ? "Montante" : "Descendante", diff10s);
-  LOG_INFO("Heap avant sleep: %u bytes", heapAfterCleanup);
-  
-  TaskMonitor::logSnapshot(tasks, "pre-sleep");
-}
-
-void AutomatismSleep::logSleepTransitionEnd(uint32_t scheduledSeconds,
-                                       uint32_t actualSeconds,
-                                       esp_sleep_wakeup_cause_t wakeCause,
-                                       const TaskMonitor::Snapshot& tasksBefore,
-                                       const TaskMonitor::Snapshot& tasksAfter) {
-  LOG_INFO("=== FIN TRANSITION VEILLE ===");
-  LOG_INFO("Durée réelle: %u sec (prévue: %u)", actualSeconds, scheduledSeconds);
-  
-  // Utiliser le PowerManager pour logger la cause de réveil en détail
-  _power.logWakeupCause(wakeCause);
-  
-  TaskMonitor::logDiff(tasksBefore, tasksAfter, "sleep-resume");
-}
-
-// ============================================================================
-// MÉTHODE PRINCIPALE : PROCESS
-// ============================================================================
-
-bool AutomatismSleep::process(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
-    // Cette méthode remplace handleAutoSleep() en centralisant la logique
-    return handleAutoSleep(r, acts, core);
-}
 
 bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
     // Récupération des informations via accesseurs publics

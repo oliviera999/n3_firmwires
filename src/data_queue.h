@@ -72,24 +72,6 @@ public:
      * Vide complètement la queue
      */
     void clear();
-    
-    /**
-     * Obtient l'utilisation mémoire estimée
-     * @return Taille totale en bytes
-     */
-    size_t getMemoryUsage();
-    
-    /**
-     * Vérifie si la queue est pleine
-     * @return true si nombre max atteint
-     */
-    bool isFull();
-    
-    /**
-     * Vérifie si la queue est vide
-     * @return true si aucune entrée
-     */
-    bool isEmpty();
 
 private:
     static constexpr size_t PAYLOAD_SIZE = 1024;

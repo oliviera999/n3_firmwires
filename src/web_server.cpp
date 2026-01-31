@@ -146,9 +146,14 @@ const char* WebServerManager::handleRelayAction(
     // Feedback WebSocket immédiat
     g_realtimeWebSocket.broadcastNow();
 
-    static RelaySyncTaskParams s_relayParams;
-    s_relayParams.sensors = &_sensors;
-    s_relayParams.relayName = relayName;
+    // Allocation dynamique pour éviter race condition avec requêtes concurrentes
+    RelaySyncTaskParams* taskParams = new (std::nothrow) RelaySyncTaskParams;
+    if (!taskParams) {
+        Serial.println("[Web] ❌ Échec allocation RelaySyncTaskParams");
+        return response;
+    }
+    taskParams->sensors = &_sensors;
+    taskParams->relayName = relayName;
 
     BaseType_t created = xTaskCreate([](void* param) {
         RelaySyncTaskParams* p = (RelaySyncTaskParams*)param;
@@ -167,10 +172,12 @@ const char* WebServerManager::handleRelayAction(
             g_autoCtrl.clearPendingSync(p->relayName);
         }
         #endif
+        delete p;  // Libérer la mémoire allouée
         vTaskDelete(NULL);
-    }, "relay_sync", 4096, &s_relayParams, 1, nullptr);
+    }, "relay_sync", 4096, taskParams, 1, nullptr);
     if (created != pdPASS) {
         Serial.println("[Web] ❌ Échec création tâche relay_sync");
+        delete taskParams;  // Libérer si la tâche n'a pas été créée
     }
 
     return response;
@@ -200,37 +207,32 @@ bool WebServerManager::begin() {
   // ALIAS ENDPOINTS CONTRACTUELS (conformité règles interface web locale)
   // ============================================================================
   
-  // /api/status -> alias pour /json (GET état capteurs/actionneurs)
-  _server->on("/api/status", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
-    // Redirige vers le handler /json existant
+  // /api/status -> alias contractuel pour /json (GET état capteurs/actionneurs)
+  // Redirige vers /json pour éviter la duplication de code
+  _server->on("/api/status", HTTP_GET, [](AsyncWebServerRequest* req) {
     g_autoCtrl.notifyLocalWebActivity();
-    SensorReadings readings = _sensors.read();
-    char jsonBuf[1024];
-    snprintf(jsonBuf, sizeof(jsonBuf),
-      "{\"tempWater\":%.1f,\"tempAir\":%.1f,\"humidity\":%.1f,"
-      "\"wlAqua\":%u,\"wlTank\":%u,\"pumpAqua\":%s,\"pumpTank\":%s,"
-      "\"heater\":%s,\"light\":%s}",
-      readings.tempWater, readings.tempAir, readings.humidity,
-      readings.wlAqua, readings.wlTank,
-      _acts.isAquaPumpRunning() ? "true" : "false",
-      _acts.isTankPumpRunning() ? "true" : "false",
-      _acts.isHeaterOn() ? "true" : "false",
-      _acts.isLightOn() ? "true" : "false");
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", jsonBuf);
-    if (response) {
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      req->send(response);
-    }
+    req->redirect("/json");
   });
 
   // /api/feed -> endpoint POST pour nourrissage (type=small|big)
   _server->on("/api/feed", HTTP_POST, [this](AsyncWebServerRequest* req) {
     g_autoCtrl.notifyLocalWebActivity();
-    const char* type = "small"; // défaut
+    
+    // Extraire le paramètre type avec validation
+    char typeBuf[16] = "small"; // défaut
     if (req->hasParam("type", true)) {
-      type = req->getParam("type", true)->value().c_str();
+      const char* typeVal = req->getParam("type", true)->value().c_str();
+      strncpy(typeBuf, typeVal, sizeof(typeBuf) - 1);
+      typeBuf[sizeof(typeBuf) - 1] = '\0';
     }
-    if (strcmp(type, "big") == 0) {
+    
+    // Validation du type: doit être "small" ou "big"
+    if (strcmp(typeBuf, "small") != 0 && strcmp(typeBuf, "big") != 0) {
+      sendErrorResponse(req, 400, "Invalid type parameter. Must be 'small' or 'big'", true);
+      return;
+    }
+    
+    if (strcmp(typeBuf, "big") == 0) {
       g_autoCtrl.manualFeedBig();
       g_autoCtrl.setBouffeGrosFlag("1");
       req->send(200, "application/json", "{\"success\":true,\"action\":\"feedBig\"}");
@@ -326,8 +328,7 @@ bool WebServerManager::begin() {
                 Serial.println(
                   "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                const uint32_t emailMinHeapBytes = 50000;
-                if (ESP.getFreeHeap() > emailMinHeapBytes) {
+                if (ESP.getFreeHeap() > HeapConfig::MIN_HEAP_EMAIL_ASYNC) {
                   sendManualActionEmail(
                     "Bouffe manuelle - Petits poissons", 
                     "Bouffe manuelle", 
@@ -388,8 +389,7 @@ bool WebServerManager::begin() {
                 Serial.println(
                   "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
                 // Fallback: tentative d'envoi email immédiat si mémoire suffisante
-                const uint32_t emailMinHeapBytes = 50000;
-                if (ESP.getFreeHeap() > emailMinHeapBytes) {
+                if (ESP.getFreeHeap() > HeapConfig::MIN_HEAP_EMAIL_ASYNC) {
                   sendManualActionEmail(
                     "Bouffe manuelle - Gros poissons", 
                     "Bouffe manuelle", 
@@ -400,7 +400,7 @@ bool WebServerManager::begin() {
               
               Serial.println("[Web] ✅ Big feed completed, sync in background");
           }
-          else if (c == "toggleEmail") {
+          else if (strcmp(c, "toggleEmail") == 0) {
               Serial.println("[Web] 📧 Toggling Email Notifications...");
               // Toggle Email Notifications
               g_autoCtrl.toggleEmailNotifications();
@@ -410,7 +410,7 @@ bool WebServerManager::begin() {
               Serial.printf("[Web] ✅ Email Notifications toggled: %s\n",
                             g_autoCtrl.isEmailEnabled() ? "ON" : "OFF");
           }
-          else if (c == "forceWakeUp") {
+          else if (strcmp(c, "forceWakeUp") == 0) {
               Serial.println("[Web] 🔄 Toggling Force Wakeup...");
               // Toggle Force Wakeup
               g_autoCtrl.toggleForceWakeup();
@@ -420,7 +420,7 @@ bool WebServerManager::begin() {
               Serial.printf("[Web] ✅ Force Wakeup toggled: %s\n",
                             g_autoCtrl.getForceWakeUp() ? "ON" : "OFF");
           }
-          else if (c == "resetMode") {
+          else if (strcmp(c, "resetMode") == 0) {
               Serial.println("[Web] 🔄 Triggering Reset Mode...");
               // Trigger Reset Mode
               g_autoCtrl.triggerResetMode();
@@ -429,7 +429,7 @@ bool WebServerManager::begin() {
               resp="RESET_MODE TRIGGERED OK";
               Serial.println("[Web] ✅ Reset Mode triggered");
           }
-          else if (c == "wifiToggle") {
+          else if (strcmp(c, "wifiToggle") == 0) {
               Serial.println("[Web] 📶 WiFi toggle requested...");
               // Toggle WiFi connection/disconnection
               if (wifi.isConnected()) {
@@ -517,120 +517,9 @@ bool WebServerManager::begin() {
       #endif
   });
 
-  // Gestion des requêtes CORS preflight pour /json
-  _server->on("/json", HTTP_OPTIONS, [](AsyncWebServerRequest* req){
-    AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
-    if (response) {
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      response->addHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      response->addHeader("Access-Control-Max-Age", "86400");
-      req->send(response);
-    } else {
-      req->send(500);
-    }
-  });
+  // NOTE: /json endpoints (GET, HEAD, OPTIONS) sont enregistrés dans web_routes_status.cpp
+  // via registerJsonEndpoint() - ne pas dupliquer ici
 
-  // Gestion des requêtes HEAD pour /json (connectivité check)
-  _server->on("/json", HTTP_HEAD, [](AsyncWebServerRequest* req){
-    g_autoCtrl.notifyLocalWebActivity();
-    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", "");
-    if (response) {
-      response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      req->send(response);
-    } else {
-      req->send(500);
-    }
-  });
-
-  // Point de terminaison JSON optimisé - RÉACTIVITÉ MAXIMALE
-  _server->on("/json", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
-    g_autoCtrl.notifyLocalWebActivity();
-    
-    // NOUVELLE VÉRIFICATION MÉMOIRE (v11.50)
-    const uint32_t jsonMinHeapBytes = 50000;
-    if (!ensureHeapForRoute(req, jsonMinHeapBytes, F("/json"))) {
-      return;
-    }
-    
-    // Utiliser allocation statique pour éviter fragmentation mémoire
-    static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    
-    // Récupérer les données via le cache (optimisé)
-    SensorReadings r = sensorCache.getReadings(_sensors);
-    
-    // Données réelles avec fallback intelligent
-    doc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
-    doc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
-    doc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
-    doc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
-    doc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
-    doc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
-    doc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
-    doc["pumpAqua"] = _acts.isAquaPumpRunning();
-    doc["pumpTank"] = _acts.isTankPumpRunning();
-    doc["heater"] = _acts.isHeaterOn();
-    doc["light"] = _acts.isLightOn();
-    doc["forceWakeUp"] = g_autoCtrl.getForceWakeUp();
-    
-    // Informations WiFi STA
-    bool staConnected = WiFi.status() == WL_CONNECTED;
-    doc["wifiStaConnected"] = staConnected;
-    if (staConnected) {
-      char staSSIDBuf[33];
-      WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-      doc["wifiStaSSID"] = staSSIDBuf;
-      char ipBuf[16];
-      IPAddress ip = WiFi.localIP();
-      snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-      doc["wifiStaIP"] = ipBuf;
-      doc["wifiStaRSSI"] = WiFi.RSSI();
-    } else {
-      doc["wifiStaSSID"] = "";
-      doc["wifiStaIP"] = "";
-      doc["wifiStaRSSI"] = 0;
-    }
-    
-    // Informations WiFi AP
-    wifi_mode_t mode = WiFi.getMode();
-    bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    doc["wifiApActive"] = apActive;
-    if (apActive) {
-      char apSSIDBuf[33];
-      WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-      doc["wifiApSSID"] = apSSIDBuf;
-      char apIpBuf[16];
-      IPAddress apIP = WiFi.softAPIP();
-      snprintf(apIpBuf, sizeof(apIpBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      doc["wifiApIP"] = apIpBuf;
-      doc["wifiApClients"] = WiFi.softAPgetStationNum();
-    } else {
-      doc["wifiApSSID"] = "";
-      doc["wifiApIP"] = "";
-      doc["wifiApClients"] = 0;
-    }
-    
-    doc["timestamp"] = millis();
-    
-    AsyncResponseStream* response = req->beginResponseStream("application/json");
-    if (response) {
-      response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      response->addHeader("Pragma", "no-cache");
-      response->addHeader("Expires", "0");
-      response->addHeader("X-Content-Type-Options", "nosniff");
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      serializeJson(doc, *response);
-      req->send(response);
-    } else {
-      Serial.println("[Web] ❌ Échec création réponse JSON (mémoire insuffisante)");
-      req->send(500, "text/plain", "Memory error");
-    }
-  });
-
-  // Endpoint version firmware
   // /diag endpoint
   _server->on("/diag", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
     // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
@@ -660,11 +549,10 @@ bool WebServerManager::begin() {
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
     g_autoCtrl.notifyLocalWebActivity();
     
-    // NOUVELLE VÉRIFICATION MÉMOIRE AUGMENTÉE (v11.58)
-    const uint32_t MIN_HEAP_FOR_DBVARS = 55000; // 55KB minimum pour dbvars (augmenté de 37%)
-    if (ESP.getFreeHeap() < MIN_HEAP_FOR_DBVARS) {
+    // Vérification mémoire
+    if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_DBVARS_ROUTE) {
       Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /dbvars (%u < %u bytes)\n", 
-                    ESP.getFreeHeap(), MIN_HEAP_FOR_DBVARS);
+                    ESP.getFreeHeap(), HeapConfig::MIN_HEAP_DBVARS_ROUTE);
       req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
       return;
     }
@@ -815,15 +703,6 @@ bool WebServerManager::begin() {
       return;
     }
     lastDbvarsUpdateMs = nowMs;
-
-    // Harmonisation config: clés canoniques (même que serveur distant)
-    const char* KEYS[] = {
-      "bouffeMatin","bouffeMidi","bouffeSoir",
-      "tempsGros","tempsPetits",
-      "aqThreshold","tankThreshold","chauffageThreshold",
-      "tempsRemplissageSec","limFlood","FreqWakeUp",
-      "mail","mailNotif"
-    };
 
     char extraPairs[512] = {0}; // Buffer pour les paires clé-valeur
     char* p = extraPairs;
@@ -1062,7 +941,7 @@ bool WebServerManager::begin() {
       req->send(200, "application/json", buf);
       return;
     }
-    if (ESP.getFreeHeap() < 50000) {
+    if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {
       StaticJsonDocument<256> doc;
       doc["triggered"] = false;
       doc["message"] = "Heap insuffisant pour OTA";
@@ -1637,18 +1516,36 @@ bool WebServerManager::begin() {
   // ========================================
   
   // Scanner les réseaux WiFi disponibles
+  // NOTE: WiFi.scanNetworks() est intrinsèquement bloquant (2-5s) sur ESP32
   _server->on("/wifi/scan", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Action WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
     
     // v11.169: Vérification mémoire (audit robustesse)
-    if (!ensureHeapForRoute(req, 40000, F("/wifi/scan"))) {
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_WIFI_ROUTE, F("/wifi/scan"))) {
       return;
     }
     
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
-    // Scanner les réseaux WiFi
+    // Vérifier que le WiFi est dans un mode permettant le scan
+    wifi_mode_t wifiMode = WiFi.getMode();
+    if (wifiMode == WIFI_OFF) {
+      doc["success"] = false;
+      doc["count"] = 0;
+      doc["error"] = "WiFi is off - cannot scan";
+      AsyncResponseStream* response = req->beginResponseStream("application/json");
+      if (response) {
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        serializeJson(doc, *response);
+        req->send(response);
+      } else {
+        req->send(503, "text/plain", "Memory error");
+      }
+      return;
+    }
+    
+    // Scanner les réseaux WiFi (opération bloquante ~2-5s)
     int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
     
     doc["success"] = (n >= 0);
@@ -1705,7 +1602,7 @@ bool WebServerManager::begin() {
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
     
     // v11.169: Vérification mémoire (audit robustesse)
-    if (!ensureHeapForRoute(req, 40000, F("/wifi/saved"))) {
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_WIFI_ROUTE, F("/wifi/saved"))) {
       return;
     }
     
@@ -1805,7 +1702,7 @@ bool WebServerManager::begin() {
     g_autoCtrl.notifyLocalWebActivity();
     
     // v11.169: Vérification mémoire (audit robustesse)
-    if (!ensureHeapForRoute(req, 40000, F("/wifi/connect"))) {
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_WIFI_ROUTE, F("/wifi/connect"))) {
       return;
     }
     
@@ -1947,11 +1844,16 @@ bool WebServerManager::begin() {
       WiFi.disconnect(false, true);
       vTaskDelay(pdMS_TO_TICKS(200));
 
-      static WifiConnectTaskParams s_wifiParams;
-      strncpy(s_wifiParams.ssid, ssidBuf, sizeof(s_wifiParams.ssid) - 1);
-      s_wifiParams.ssid[sizeof(s_wifiParams.ssid) - 1] = '\0';
-      strncpy(s_wifiParams.password, passwordBuf, sizeof(s_wifiParams.password) - 1);
-      s_wifiParams.password[sizeof(s_wifiParams.password) - 1] = '\0';
+      // Allocation dynamique pour éviter race condition avec requêtes concurrentes
+      WifiConnectTaskParams* wifiParams = new (std::nothrow) WifiConnectTaskParams;
+      if (!wifiParams) {
+        Serial.println("[WiFi] ❌ Échec allocation WifiConnectTaskParams");
+        return;
+      }
+      strncpy(wifiParams->ssid, ssidBuf, sizeof(wifiParams->ssid) - 1);
+      wifiParams->ssid[sizeof(wifiParams->ssid) - 1] = '\0';
+      strncpy(wifiParams->password, passwordBuf, sizeof(wifiParams->password) - 1);
+      wifiParams->password[sizeof(wifiParams->password) - 1] = '\0';
 
       BaseType_t created = xTaskCreate([](void* param) {
         WifiConnectTaskParams* p = (WifiConnectTaskParams*)param;
@@ -1965,10 +1867,12 @@ bool WebServerManager::begin() {
         } else {
           Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", p->ssid);
         }
+        delete p;  // Libérer la mémoire allouée
         vTaskDelete(NULL);
-      }, "wifi_connect_task", 4096, &s_wifiParams, 1, nullptr);
+      }, "wifi_connect_task", 4096, wifiParams, 1, nullptr);
       if (created != pdPASS) {
         Serial.println("[WiFi] ❌ Échec création tâche wifi_connect_task");
+        delete wifiParams;  // Libérer si la tâche n'a pas été créée
       }
 
       return;
@@ -1994,7 +1898,7 @@ bool WebServerManager::begin() {
     g_autoCtrl.notifyLocalWebActivity();
     
     // v11.169: Vérification mémoire (audit robustesse)
-    if (!ensureHeapForRoute(req, 40000, F("/wifi/remove"))) {
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_WIFI_ROUTE, F("/wifi/remove"))) {
       return;
     }
     

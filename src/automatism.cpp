@@ -35,7 +35,6 @@ Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient&
     , _power(power)
     , _mailer(mail)
     , _config(config)
-    , _feeding(acts, config)
     , _feedingSchedule(acts, config, mail, power)
     , _network(web, config)
     , _sleep(power, config)
@@ -157,7 +156,7 @@ void Automatism::updateBusinessLogic(const SensorReadings& r, uint32_t nowMs) {
     handleAlerts(ctx);
     
     // 6. Gestion sommeil (délégué)
-    _sleep.process(r, _acts, *this);
+    _sleep.handleAutoSleep(r, _acts, *this);
 }
 
 void Automatism::updateDisplay() {
@@ -417,7 +416,8 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
 }
 
 void Automatism::logActivity(const char* activity) {
-  _sleep.logActivity(activity);
+  Serial.printf("[Auto] Activité: %s\n", activity);
+  _sleep.updateActivityTimestamp();
 }
 
 void Automatism::notifyLocalWebActivity() {
@@ -502,8 +502,9 @@ bool Automatism::restoreRemoteConfigFromCache() {
         }
         
         // Charger l'email directement depuis NVS si disponible
+        // v11.174: Clé corrigée "email" (alignée avec GPIOMap::EMAIL_ADDR.nvsKey)
         char emailFromNVS[128];
-        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "gpio_email", emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
+        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "email", emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
             if (strlen(emailFromNVS) > 0) {
                 // v11.172: Stocker dans _network (source de vérité)
                 _network.setEmailAddress(emailFromNVS);

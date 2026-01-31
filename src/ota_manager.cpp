@@ -1,5 +1,6 @@
 #include "ota_manager.h"
 #include "nvs_manager.h" // v11.109
+#include "nvs_keys.h"
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <Update.h>
@@ -1120,9 +1121,9 @@ void OTAManager::updateTask(void* parameter) {
 
     // Persister l'ancienne version pour notification post-reboot
     {
-        g_nvsManager.saveString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", ota->getCurrentVersion());
+        g_nvsManager.saveString(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_PREV_VER, ota->getCurrentVersion());
         // Clé harmonisée (snake_case)
-        g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_in_progress", true);
+        g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_IN_PROGRESS, true);
         // Migration: supprimer l'ancienne clé si elle existe
         g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_inProgress");
     }
@@ -1257,7 +1258,7 @@ void OTAManager::updateTask(void* parameter) {
         // Nettoyer le flag inProgress avant reboot
         {
             // Clé harmonisée (snake_case)
-            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_in_progress", false);
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_IN_PROGRESS, false);
             // Migration: supprimer l'ancienne clé si elle existe
             g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_inProgress");
         }

@@ -8,7 +8,6 @@
 #include "mailer.h"
 #include "config.h"
 #include "config_manager.h"
-#include "automatism/automatism_feeding_v2.h"
 #include "automatism/automatism_feeding_schedule.h"
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
@@ -52,8 +51,8 @@ class Automatism {
   bool isEmailEnabled() const { return _network.isEmailEnabled(); }
   void toggleEmailNotifications();
   const char* getEmailAddress() const { return _network.getEmailAddress(); }
-  uint16_t getFeedBigDur() const { return _feeding.getBigDuration(); }
-  uint16_t getFeedSmallDur() const { return _feeding.getSmallDuration(); }
+  uint16_t getFeedBigDur() const { return tempsGros; }
+  uint16_t getFeedSmallDur() const { return tempsPetits; }
   uint8_t getBouffeMatin() const { return bouffeMatin; }
   uint8_t getBouffeMidi() const { return bouffeMidi; }
   uint8_t getBouffeSoir() const { return bouffeSoir; }
@@ -187,7 +186,6 @@ class Automatism {
   ConfigManager& _config;
   
   // === MODULES (Composition) ===
-  AutomatismFeeding _feeding;
   AutomatismFeedingSchedule _feedingSchedule;
   AutomatismSync _network;
   AutomatismSleep _sleep;

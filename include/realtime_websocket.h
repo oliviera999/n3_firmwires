@@ -27,7 +27,6 @@ extern RealtimeWebSocket g_realtimeWebSocket;
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
 #include <cstring>
-// #include "json_pool.h" - Supprimé
 #include "config.h"  // Pour BufferConfig::JSON_DOCUMENT_SIZE
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include "sensor_cache.h"
@@ -116,9 +115,14 @@ public:
      */
     void end() {
         if (mutex) {
-            xSemaphoreTake(mutex, portMAX_DELAY);
-            _isActive = false;
-            xSemaphoreGive(mutex);
+            // Timeout long car c'est une opération de shutdown
+            if (xSemaphoreTake(mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+                _isActive = false;
+                xSemaphoreGive(mutex);
+            } else {
+                // Forcer l'arrêt même sans mutex
+                _isActive = false;
+            }
         }
         webSocket.close();
     }
@@ -331,8 +335,11 @@ public:
     void broadcastSensorData() {
         if (!_isActive || !sensors || !actuators) return;
         
+        // Timeout court pour éviter blocage dans la boucle principale
         if (mutex) {
-            xSemaphoreTake(mutex, portMAX_DELAY);
+            if (xSemaphoreTake(mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+                return; // Skip ce cycle si mutex non disponible
+            }
         }
         
         unsigned long now = millis();
@@ -645,11 +652,17 @@ public:
         stats.hasActiveClients = _hasActiveClients;
         stats.canSleep = canEnterSleep();
         
+        // Utiliser un timeout au lieu de portMAX_DELAY pour éviter blocage
         if (mutex) {
-            xSemaphoreTake(mutex, portMAX_DELAY);
-            stats.lastBroadcast = lastBroadcast;
-            stats.lastClientActivity = lastClientActivity;
-            xSemaphoreGive(mutex);
+            if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                stats.lastBroadcast = lastBroadcast;
+                stats.lastClientActivity = lastClientActivity;
+                xSemaphoreGive(mutex);
+            } else {
+                // Timeout: utiliser des valeurs par défaut sûres
+                stats.lastBroadcast = 0;
+                stats.lastClientActivity = 0;
+            }
         }
         
         stats.broadcastInterval = BROADCAST_INTERVAL_MS;

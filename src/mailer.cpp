@@ -5,6 +5,7 @@
 #include "system_actuators.h"
 #include "diagnostics.h"
 #include "nvs_manager.h"
+#include "nvs_keys.h"
 #include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
@@ -625,11 +626,11 @@ static const char* buildSystemInfoFooter() {
     // Namespace bouffe (CONFIG) + force_wake_up (SYSTEM)
     bool bouffeMatinOk, bouffeMidiOk, bouffeSoirOk, pompeAquaLocked, forceWakeUp;
     int lastJourBouf;
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", bouffeMatinOk, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_midi", bouffeMidiOk, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", bouffeSoirOk, false);
-    g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", pompeAquaLocked, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MATIN, bouffeMatinOk, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, bouffeMidiOk, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, bouffeSoirOk, false);
+    g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, lastJourBouf, -1);
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, pompeAquaLocked, false);
     // v11.172: Clé unique (migration terminée)
     g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp, false);
     written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
@@ -651,9 +652,9 @@ static const char* buildSystemInfoFooter() {
     buf += written;
     remaining -= written;
 
-    // Namespace OTA - clé unifiée avec ConfigManager ("ota_update_flag")
+    // Namespace OTA - clé unifiée avec ConfigManager
     bool otaUpdateFlag;
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", otaUpdateFlag, true);
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, otaUpdateFlag, true);
     written = snprintf(buf, remaining, "- ota.updateFlag: %s\n", otaUpdateFlag ? "true" : "false");
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
@@ -664,7 +665,7 @@ static const char* buildSystemInfoFooter() {
 
     // Namespace remoteVars (aperçu) - v11.103: Utilisation du gestionnaire NVS centralisé
     char remoteJson[2048];
-    g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "remote_json", remoteJson, sizeof(remoteJson), "");
+    g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, remoteJson, sizeof(remoteJson), "");
     if (strlen(remoteJson) > 0) {
       size_t previewLen = min((size_t)200, strlen(remoteJson));
       char previewBuf[201];

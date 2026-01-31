@@ -10,7 +10,6 @@
 #include <ctype.h>
 
 #include "asset_bundler.h"
-// #include "json_pool.h" - Supprimé
 #include "config.h"
 #include "automatism.h"
 #include "config_manager.h"
@@ -42,6 +41,32 @@ void sendJsonResponse(AsyncWebServerRequest* req, const JsonDocument& doc, bool 
   }
   serializeJson(doc, *response);
   req->send(response);
+}
+
+// Helper unifié pour réponses d'erreur JSON avec CORS
+void sendErrorResponse(AsyncWebServerRequest* req, int httpCode, const char* errorMessage, bool enableCors) {
+  if (!req) {
+    return;
+  }
+
+  // Buffer statique pour réponse d'erreur compacte
+  char jsonBuf[256];
+  snprintf(jsonBuf, sizeof(jsonBuf), "{\"error\":\"%s\",\"status\":\"error\"}", 
+           errorMessage ? errorMessage : "Unknown error");
+  
+  AsyncWebServerResponse* response = req->beginResponse(httpCode, "application/json", jsonBuf);
+  if (response) {
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    if (enableCors) {
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    }
+    req->send(response);
+  } else {
+    // Fallback si création réponse échoue
+    req->send(httpCode, "text/plain", errorMessage ? errorMessage : "Error");
+  }
 }
 
 bool ensureHeapForRoute(AsyncWebServerRequest* req, uint32_t minHeap, const __FlashStringHelper* routeName) {
@@ -114,7 +139,7 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
     Serial.printf("[Web] Action de réveil: %s depuis %s\n", action, source);
     Serial.printf("[Event] Réveil API: %s depuis %s\n", action, source);
 
-    if (action == "status") {
+    if (strcmp(action, "status") == 0) {
       StaticJsonDocument<1024> statusDoc;
       statusDoc["status"] = "awake";
       char timeBuf[32];
@@ -131,7 +156,7 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
       }
 
       sendJsonResponse(req, statusDoc);
-    } else if (action == "feed") {
+    } else if (strcmp(action, "feed") == 0) {
       const char* feedType = doc["feedType"] | "small";
       const bool isBig = (strcmp(feedType, "big") == 0);
 
@@ -181,49 +206,8 @@ void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
   server.on("/wifi/status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
-    // Clés harmonisées avec /json (préfixes wifiSta*/wifiAp*)
-    bool staConnected = WiFi.status() == WL_CONNECTED;
-    doc["wifiStaConnected"] = staConnected;
-    if (staConnected) {
-      char staSSIDBuf[33];
-      WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-      doc["wifiStaSSID"] = staSSIDBuf;
-      IPAddress ip = WiFi.localIP();
-      char ipBuf[16];
-      snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-      doc["wifiStaIP"] = ipBuf;
-      doc["wifiStaRSSI"] = WiFi.RSSI();
-      char staMacBuf[18];
-      WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
-      doc["wifiStaMac"] = staMacBuf;
-    } else {
-      doc["wifiStaSSID"] = "";
-      doc["wifiStaIP"] = "";
-      doc["wifiStaRSSI"] = 0;
-      char staMacBuf2[18];
-      WiFiHelpers::getMACString(staMacBuf2, sizeof(staMacBuf2));
-      doc["wifiStaMac"] = staMacBuf2;
-    }
-
-    wifi_mode_t mode = WiFi.getMode();
-    bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    doc["wifiApActive"] = apActive;
-    if (apActive) {
-      char apSSIDBuf[33];
-      WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-      doc["wifiApSSID"] = apSSIDBuf;
-      IPAddress apIP = WiFi.softAPIP();
-      char apIPBuf[16];
-      snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      doc["wifiApIP"] = apIPBuf;
-      doc["wifiApClients"] = WiFi.softAPgetStationNum();
-    } else {
-      doc["wifiApSSID"] = "";
-      doc["wifiApIP"] = "";
-      doc["wifiApClients"] = 0;
-    }
-
-    doc["wifiMode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+    // Utilise le helper centralisé pour construire le JSON WiFi
+    WiFiHelpers::addWifiInfoToJson(doc, true /* includeMac */);
 
     sendJsonResponse(req, doc);
   });
@@ -255,7 +239,7 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["wifiIP"] = wifiIPBuf;
     doc["wifiRSSI"] = WiFi.RSSI();
     doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
-    doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
+    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
 
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
@@ -355,7 +339,7 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
     doc["websocket"]["isActive"] = g_realtimeWebSocket.isRunning();
 
-    doc["automatism"]["forceWakeUp"] = ctx.automatism.getForceWakeUp();
+    doc["automatism"]["forceWakeup"] = ctx.automatism.getForceWakeUp();
     doc["automatism"]["mailNotif"] = ctx.automatism.isEmailEnabled();
     doc["automatism"]["mail"] = ctx.automatism.getEmailAddress();
 
@@ -415,60 +399,28 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
 
   server.on("/json", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     ctx.automatism.notifyLocalWebActivity();
-    const uint32_t jsonMinHeapBytes = 50000;
-    if (!ensureHeapForRoute(req, jsonMinHeapBytes, F("/json"))) {
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_JSON_ROUTE, F("/json"))) {
       return;
     }
 
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     SensorReadings r = sensorCache.getReadings(ctx.sensors);
-    doc["tempWater"] = isnan(r.tempWater) ? 25.5 : r.tempWater;
-    doc["tempAir"] = isnan(r.tempAir) ? 22.3 : r.tempAir;
-    doc["humidity"] = isnan(r.humidity) ? 65.0 : r.humidity;
-    doc["wlAqua"] = r.wlAqua == 0 ? 15.2 : r.wlAqua;
-    doc["wlTank"] = r.wlTank == 0 ? 8.7 : r.wlTank;
-    doc["wlPota"] = r.wlPota == 0 ? 12.1 : r.wlPota;
-    doc["luminosite"] = r.luminosite == 0 ? 450 : r.luminosite;
+    // Utiliser les constantes centralisées pour les valeurs fallback
+    doc["tempWater"] = isnan(r.tempWater) ? SensorConfig::Fallback::TEMP_WATER : r.tempWater;
+    doc["tempAir"] = isnan(r.tempAir) ? SensorConfig::Fallback::TEMP_AIR : r.tempAir;
+    doc["humidity"] = isnan(r.humidity) ? SensorConfig::Fallback::HUMIDITY : r.humidity;
+    doc["wlAqua"] = r.wlAqua == 0 ? SensorConfig::Fallback::WATER_LEVEL_AQUA : r.wlAqua;
+    doc["wlTank"] = r.wlTank == 0 ? SensorConfig::Fallback::WATER_LEVEL_TANK : r.wlTank;
+    doc["wlPota"] = r.wlPota == 0 ? SensorConfig::Fallback::WATER_LEVEL_POTA : r.wlPota;
+    doc["luminosite"] = r.luminosite == 0 ? SensorConfig::Fallback::LUMINOSITY : r.luminosite;
     doc["pumpAqua"] = ctx.actuators.isAquaPumpRunning();
     doc["pumpTank"] = ctx.actuators.isTankPumpRunning();
     doc["heater"] = ctx.actuators.isHeaterOn();
     doc["light"] = ctx.actuators.isLightOn();
-    doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
+    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
 
-    bool staConnected = WiFi.status() == WL_CONNECTED;
-    doc["wifiStaConnected"] = staConnected;
-    if (staConnected) {
-      char docStaSSIDBuf[33];
-      WiFiHelpers::getSSID(docStaSSIDBuf, sizeof(docStaSSIDBuf));
-      doc["wifiStaSSID"] = docStaSSIDBuf;
-      IPAddress staIP = WiFi.localIP();
-      char staIPBuf[16];
-      snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
-      doc["wifiStaIP"] = staIPBuf;
-      doc["wifiStaRSSI"] = WiFi.RSSI();
-    } else {
-      doc["wifiStaSSID"] = "";
-      doc["wifiStaIP"] = "";
-      doc["wifiStaRSSI"] = 0;
-    }
-
-    wifi_mode_t mode = WiFi.getMode();
-    bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    doc["wifiApActive"] = apActive;
-    if (apActive) {
-      char docApSSIDBuf[33];
-      WiFiHelpers::getAPSSID(docApSSIDBuf, sizeof(docApSSIDBuf));
-      doc["wifiApSSID"] = docApSSIDBuf;
-      IPAddress apIP = WiFi.softAPIP();
-      char apIPBuf[16];
-      snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      doc["wifiApIP"] = apIPBuf;
-      doc["wifiApClients"] = WiFi.softAPgetStationNum();
-    } else {
-      doc["wifiApSSID"] = "";
-      doc["wifiApIP"] = "";
-      doc["wifiApClients"] = 0;
-    }
+    // Utilise le helper centralisé pour construire le JSON WiFi (sans MAC)
+    WiFiHelpers::addWifiInfoToJson(doc, false /* includeMac */);
 
     doc["timestamp"] = millis();
 

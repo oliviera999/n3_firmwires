@@ -21,6 +21,20 @@
  * Version: 11.172
  */
 
+// =============================================================================
+// VALEURS PAR DÉFAUT - SOURCE DE VÉRITÉ UNIQUE
+// =============================================================================
+// Ces constantes sont la source de vérité pour les seuils et durées par défaut.
+// Elles sont utilisées dans GPIOMap et doivent être référencées par config.h
+// (namespace ActuatorConfig::Default).
+namespace GPIODefaults {
+    constexpr int AQ_THRESHOLD_CM = 18;       // Seuil aquarium (cm)
+    constexpr int TANK_THRESHOLD_CM = 80;     // Seuil réservoir (cm)
+    constexpr float HEAT_THRESHOLD_C = 18.0f; // Seuil chauffage (°C)
+    constexpr int FEED_BIG_DURATION_SEC = 3;  // Durée nourrissage gros (s)
+    constexpr int FEED_SMALL_DURATION_SEC = 2;// Durée nourrissage petits (s)
+}
+
 // Type de variable pour validation et sérialisation
 enum class GPIOType {
     ACTUATOR,      // GPIO physiques (relais, LED) - bool
@@ -56,6 +70,9 @@ struct GPIOMapping {
 
 // TABLE DE VÉRITÉ UNIQUE - Synchronisée avec serveur distant
 // Format: {gpio, type, nvsKey, serverPostName, internalName, description, defaultVal}
+//
+// Note: Les valeurs par défaut utilisent GPIODefaults (défini ci-dessus).
+// config.h::ActuatorConfig::Default référence également GPIODefaults.
 namespace GPIOMap {
     // ACTIONNEURS PHYSIQUES (états booléens)
     //                       GPIO  Type                NVS           POST              Interne         Desc                Default
@@ -69,17 +86,18 @@ namespace GPIOMap {
     constexpr GPIOMapping FEED_BIG      = {109, GPIOType::ACTUATOR, "feed_big", "bouffeGros", "feedBig", "Nourrir gros", false};
     
     // CONFIGURATION SYSTÈME
+    // Valeurs par défaut synchronisées avec ActuatorConfig::Default (config.h)
     constexpr GPIOMapping EMAIL_ADDR    = {100, GPIOType::CONFIG_STRING, "email", "mail", "emailAddress", "Email", ""};
     constexpr GPIOMapping EMAIL_EN      = {101, GPIOType::CONFIG_BOOL, "emailEn", "mailNotif", "emailEnabled", "Notif email", true};
-    constexpr GPIOMapping AQ_THRESHOLD  = {102, GPIOType::CONFIG_INT, "aqThr", "aqThreshold", "aqThresholdCm", "Seuil aquarium", 18};
-    constexpr GPIOMapping TANK_THRESHOLD= {103, GPIOType::CONFIG_INT, "tankThr", "tankThreshold", "tankThresholdCm", "Seuil réservoir", 80};
-    constexpr GPIOMapping HEAT_THRESHOLD= {104, GPIOType::CONFIG_FLOAT, "heatThr", "chauffageThreshold", "heaterThresholdC", "Seuil chauffage", 25.0f};
+    constexpr GPIOMapping AQ_THRESHOLD  = {102, GPIOType::CONFIG_INT, "aqThr", "aqThreshold", "aqThresholdCm", "Seuil aquarium", GPIODefaults::AQ_THRESHOLD_CM};
+    constexpr GPIOMapping TANK_THRESHOLD= {103, GPIOType::CONFIG_INT, "tankThr", "tankThreshold", "tankThresholdCm", "Seuil réservoir", GPIODefaults::TANK_THRESHOLD_CM};
+    constexpr GPIOMapping HEAT_THRESHOLD= {104, GPIOType::CONFIG_FLOAT, "heatThr", "chauffageThreshold", "heaterThresholdC", "Seuil chauffage", GPIODefaults::HEAT_THRESHOLD_C};
     constexpr GPIOMapping FEED_MORNING  = {105, GPIOType::CONFIG_INT, "feedMorn", "bouffeMatin", "bouffeMatin", "Heure matin", 8};
     constexpr GPIOMapping FEED_NOON     = {106, GPIOType::CONFIG_INT, "feedNoon", "bouffeMidi", "bouffeMidi", "Heure midi", 12};
     constexpr GPIOMapping FEED_EVENING  = {107, GPIOType::CONFIG_INT, "feedEve", "bouffeSoir", "bouffeSoir", "Heure soir", 19};
     constexpr GPIOMapping RESET_CMD     = {110, GPIOType::ACTUATOR, "reset", "resetMode", "resetMode", "Reset ESP32", false};
-    constexpr GPIOMapping FEED_BIG_DUR  = {111, GPIOType::CONFIG_INT, "feedBigD", "tempsGros", "tempsGros", "Durée gros", 3};
-    constexpr GPIOMapping FEED_SMALL_DUR= {112, GPIOType::CONFIG_INT, "feedSmD", "tempsPetits", "tempsPetits", "Durée petits", 2};
+    constexpr GPIOMapping FEED_BIG_DUR  = {111, GPIOType::CONFIG_INT, "feedBigD", "tempsGros", "tempsGros", "Durée gros", GPIODefaults::FEED_BIG_DURATION_SEC};
+    constexpr GPIOMapping FEED_SMALL_DUR= {112, GPIOType::CONFIG_INT, "feedSmD", "tempsPetits", "tempsPetits", "Durée petits", GPIODefaults::FEED_SMALL_DURATION_SEC};
     constexpr GPIOMapping REFILL_DUR    = {113, GPIOType::CONFIG_INT, "refillD", "tempsRemplissageSec", "refillDurationSec", "Durée remplissage", 120};
     constexpr GPIOMapping LIM_FLOOD     = {114, GPIOType::CONFIG_INT, "limFlood", "limFlood", "limFlood", "Limite inondation", 8};
     constexpr GPIOMapping WAKEUP        = {115, GPIOType::CONFIG_BOOL, "wakeup", "WakeUp", "forceWakeUp", "Forcer réveil", false};
@@ -155,5 +173,58 @@ namespace GPIOMap {
     inline GPIOType getType(uint8_t gpio) {
         const GPIOMapping* mapping = findByGPIO(gpio);
         return mapping ? mapping->type : GPIOType::CONFIG_INT;
+    }
+}
+
+// =============================================================================
+// SENSOR MAP - Mapping des noms de capteurs (firmware ↔ serveur distant)
+// =============================================================================
+// v11.173: Centralise les noms de champs capteurs pour éviter les strings codés
+// en dur dans web_client.cpp et realtime_websocket.cpp.
+// - internalName: Nom utilisé par le firmware et le serveur embarqué (WebSocket)
+// - serverPostName: Nom utilisé dans les POST vers le serveur distant (ffp3)
+namespace SensorMap {
+    struct SensorField {
+        const char* internalName;   // Firmware/WebSocket (ex: "tempWater")
+        const char* serverPostName; // Serveur distant POST (ex: "TempEau")
+    };
+    
+    // Température et humidité
+    constexpr SensorField TEMP_WATER = {"tempWater", "TempEau"};
+    constexpr SensorField TEMP_AIR   = {"tempAir", "TempAir"};
+    constexpr SensorField HUMIDITY   = {"humidity", "Humidite"};
+    
+    // Niveaux d'eau (ultrason)
+    constexpr SensorField WL_AQUA    = {"wlAqua", "EauAquarium"};
+    constexpr SensorField WL_TANK    = {"wlTank", "EauReserve"};
+    constexpr SensorField WL_POTA    = {"wlPota", "EauPotager"};
+    
+    // Autres capteurs
+    constexpr SensorField LUMINOSITY = {"luminosite", "Luminosite"};
+    constexpr SensorField DIFF_MAREE = {"diffMaree", "diffMaree"};
+    
+    // Array pour itération
+    constexpr SensorField ALL_SENSORS[] = {
+        TEMP_WATER, TEMP_AIR, HUMIDITY,
+        WL_AQUA, WL_TANK, WL_POTA,
+        LUMINOSITY, DIFF_MAREE
+    };
+    constexpr size_t SENSOR_COUNT = sizeof(ALL_SENSORS) / sizeof(SensorField);
+    
+    // Helper: Trouver par nom interne
+    inline const SensorField* findByInternalName(const char* name) {
+        if (!name) return nullptr;
+        for (size_t i = 0; i < SENSOR_COUNT; i++) {
+            if (strcmp(ALL_SENSORS[i].internalName, name) == 0) {
+                return &ALL_SENSORS[i];
+            }
+        }
+        return nullptr;
+    }
+    
+    // Helper: Convertir nom interne en nom serveur POST
+    inline const char* internalToServerPost(const char* internalName) {
+        const SensorField* s = findByInternalName(internalName);
+        return s ? s->serverPostName : internalName; // fallback to same name
     }
 }

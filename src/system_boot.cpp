@@ -14,6 +14,7 @@
 
 #include "config.h"
 #include "nvs_manager.h"
+#include "nvs_keys.h"
 
 namespace SystemBoot {
 
@@ -388,7 +389,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     bool emailSent = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress());
     Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
     state.justUpdated = false;
-    g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_prevVer");
+    g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_PREV_VER);
     state.previousVersion[0] = '\0';
   }
 

@@ -3,7 +3,7 @@
 // =============================================================================
 // SYSTÈME DE LOGS UNIFIÉ
 // =============================================================================
-// Utilise la configuration centralisée de project_config.h
+// Utilise la configuration centralisée de config.h
 // =============================================================================
 
 #include "config.h"
@@ -35,83 +35,39 @@ inline const char* logLevelStr(LogLevel level) {
     }
 }
 
-// Macro de log principale avec timestamp (compatibilité avec l'ancien système)
-#define LOG(level, fmt, ...) do { \
+// =============================================================================
+// MACRO INTERNE - IMPLÉMENTATION UNIQUE DU FORMATAGE TIMESTAMP
+// =============================================================================
+// Cette macro factorise le code de formatage pour éviter la duplication.
+// Le paramètre 'tag' permet d'ajouter un suffixe optionnel (ex: "[TIME]", "[NTP]").
+// =============================================================================
+#define _LOG_IMPL(tag, level, fmt, ...) do { \
     if((level) <= LOG_LEVEL && LogConfig::SERIAL_ENABLED) { \
         time_t now = time(nullptr); \
         struct tm timeinfo; \
         if (localtime_r(&now, &timeinfo)) { \
-            Serial.printf("[%02d:%02d:%02d][%s] " fmt "\n", \
+            Serial.printf("[%02d:%02d:%02d][%s]" tag " " fmt "\n", \
                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, \
                 logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
         } else { \
-            Serial.printf("[%lu][%s] " fmt "\n", millis()/1000, \
+            Serial.printf("[%lu][%s]" tag " " fmt "\n", millis()/1000, \
                 logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
         } \
     } \
 } while(0)
+
+// =============================================================================
+// MACROS DE LOG PUBLIQUES
+// =============================================================================
+
+// Macro de log principale avec timestamp (compatibilité avec l'ancien système)
+#define LOG(level, fmt, ...) _LOG_IMPL("", level, fmt, ##__VA_ARGS__)
 
 // Macros de log par niveau (nouveau système préféré)
-// Déjà définies dans project_config.h :
-// LOG_ERROR, LOG_WARN, LOG_INFO, LOG_DEBUG, LOG_VERBOSE
+// Déjà définies dans config.h : LOG_ERROR, LOG_WARN, LOG_INFO, LOG_DEBUG
 
 // Macros spécialisées pour les informations temporelles
-#define LOG_TIME(level, fmt, ...) do { \
-    if((level) <= LOG_LEVEL && LogConfig::SERIAL_ENABLED) { \
-        time_t now = time(nullptr); \
-        struct tm timeinfo; \
-        if (localtime_r(&now, &timeinfo)) { \
-            Serial.printf("[%02d:%02d:%02d][%s][TIME] " fmt "\n", \
-                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } else { \
-            Serial.printf("[%lu][%s][TIME] " fmt "\n", millis()/1000, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } \
-    } \
-} while(0)
-
-#define LOG_NTP(level, fmt, ...) do { \
-    if((level) <= LOG_LEVEL && LogConfig::SERIAL_ENABLED) { \
-        time_t now = time(nullptr); \
-        struct tm timeinfo; \
-        if (localtime_r(&now, &timeinfo)) { \
-            Serial.printf("[%02d:%02d:%02d][%s][NTP] " fmt "\n", \
-                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } else { \
-            Serial.printf("[%lu][%s][NTP] " fmt "\n", millis()/1000, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } \
-    } \
-} while(0)
-
-#define LOG_RTC(level, fmt, ...) do { \
-    if((level) <= LOG_LEVEL && LogConfig::SERIAL_ENABLED) { \
-        time_t now = time(nullptr); \
-        struct tm timeinfo; \
-        if (localtime_r(&now, &timeinfo)) { \
-            Serial.printf("[%02d:%02d:%02d][%s][RTC] " fmt "\n", \
-                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } else { \
-            Serial.printf("[%lu][%s][RTC] " fmt "\n", millis()/1000, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } \
-    } \
-} while(0)
-
-#define LOG_DRIFT(level, fmt, ...) do { \
-    if((level) <= LOG_LEVEL && LogConfig::SERIAL_ENABLED) { \
-        time_t now = time(nullptr); \
-        struct tm timeinfo; \
-        if (localtime_r(&now, &timeinfo)) { \
-            Serial.printf("[%02d:%02d:%02d][%s][DRIFT] " fmt "\n", \
-                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } else { \
-            Serial.printf("[%lu][%s][DRIFT] " fmt "\n", millis()/1000, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } \
-    } \
-} while(0)
+#define LOG_TIME(level, fmt, ...) _LOG_IMPL("[TIME]", level, fmt, ##__VA_ARGS__)
+#define LOG_NTP(level, fmt, ...) _LOG_IMPL("[NTP]", level, fmt, ##__VA_ARGS__)
+#define LOG_RTC(level, fmt, ...) _LOG_IMPL("[RTC]", level, fmt, ##__VA_ARGS__)
+#define LOG_DRIFT(level, fmt, ...) _LOG_IMPL("[DRIFT]", level, fmt, ##__VA_ARGS__)

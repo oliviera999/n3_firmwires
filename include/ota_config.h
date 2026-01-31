@@ -14,22 +14,12 @@ namespace OTAConfig {
     // Ne pas commencer par '/' pour éviter les doubles slash dans les URLs
     constexpr const char* ESP32_S3_FOLDER = "esp32-s3/";
     constexpr const char* ESP32_WROOM_FOLDER = "esp32-wroom/";
-    constexpr const char* ESP32_C3_FOLDER = "esp32-c3/";
-    constexpr const char* ESP32_DEFAULT_FOLDER = "esp32-wroom/";
     
     // Noms de fichiers pour les mises à jour
-    constexpr const char* FIRMWARE_FILE = "firmware.bin";
-    constexpr const char* FILESYSTEM_FILE = "filesystem.bin";
-    // Fichiers optionnels (non utilisés actuellement)
-    // constexpr const char* VERSION_FILE = "version.json";
-    // constexpr const char* MANIFEST_FILE = "manifest.json";
     constexpr const char* METADATA_FILE = "metadata.json";
     
     // Timeout pour les requêtes HTTP (en millisecondes)
     constexpr int HTTP_TIMEOUT = 30000;
-    
-    // Taille maximale du firmware (en bytes)
-    constexpr size_t MAX_FIRMWARE_SIZE = 16777216; // 16MB pour ESP32-S3
     
     // Taille maximale du filesystem (en bytes) - basée sur la partition spiffs
     constexpr size_t MAX_FILESYSTEM_SIZE = 1114112; // ~1MB (0x110000 bytes)
@@ -39,11 +29,6 @@ namespace OTAConfig {
     // - Ignore les écarts de taille entre attendu/réel
     // - Force Update.end(true)
     constexpr bool OTA_UNSAFE_FORCE = true;
-    
-    // Configuration pour les tests locaux
-    #ifdef OTA_LOCAL_TEST
-    constexpr const char* LOCAL_SERVER_URL = "http://192.168.1.100:8080/ota/";
-    #endif
     
     // Fonction pour obtenir le dossier OTA selon le modèle
     // (déclaration/definition placée avant l'utilisation)

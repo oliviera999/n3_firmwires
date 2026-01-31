@@ -108,24 +108,3 @@ void DataQueue::clear() {
     _count = 0;
 }
 
-size_t DataQueue::getMemoryUsage() {
-    if (!_initialized) {
-        return 0;
-    }
-    size_t total = 0;
-    for (uint16_t i = 0; i < _maxEntries; i++) {
-        if (_storage[i][0] != '\0') {
-            total += strlen(_storage[i]);
-        }
-    }
-    return total;
-}
-
-bool DataQueue::isFull() {
-    return _count >= _maxEntries;
-}
-
-bool DataQueue::isEmpty() {
-    return _count == 0;
-}
-
