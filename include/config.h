@@ -14,7 +14,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.170";  // UI controles, sync, web_server, web_client
+    inline constexpr const char* VERSION = "11.171";  // Audit: augmentation stack automationTask 10KB
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -548,8 +548,9 @@ namespace TaskConfig {
     inline constexpr BaseType_t WEB_TASK_CORE_ID = 0;
     
     // v11.157: Augmenté de 6KB à 8KB pour éviter stack overflow (HWM: 100 bytes libres = critique)
+    // v11.171: Augmenté de 8KB à 10KB (audit: HWM utilisé à 95%, marge insuffisante)
     // Le crash se produit dans automationTask lors de la sauvegarde NVS
-    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;  // 8KB
+    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 10240;  // 10KB
     inline constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     inline constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     

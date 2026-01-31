@@ -1,0 +1,560 @@
+# FFP5CS ESP32 API Endpoints
+# Version: 11.171
+# Generated from firmware audit
+# Format: OpenAPI 3.0 (simplified)
+
+openapi: 3.0.3
+info:
+  title: FFP5CS ESP32 Local API
+  version: "11.171"
+  description: |
+    API locale du firmware FFP5CS pour système d'aquaponie.
+    Toutes les routes sont servies par ESPAsyncWebServer sur le port 80.
+    WebSocket temps réel disponible sur le port 81.
+
+servers:
+  - url: http://{device_ip}
+    description: ESP32 local
+    variables:
+      device_ip:
+        default: "192.168.1.x"
+
+paths:
+  # ==========================================================================
+  # ENDPOINTS CONTRACTUELS (définis dans .cursorrules)
+  # ==========================================================================
+  
+  /:
+    get:
+      summary: UI principale
+      description: Page HTML principale de l'interface web
+      tags: [UI]
+      responses:
+        "200":
+          description: Page HTML
+          content:
+            text/html: {}
+
+  /api/status:
+    get:
+      summary: Status système (alias de /json)
+      description: Retourne l'état complet du système (capteurs + actionneurs)
+      tags: [Contractuel]
+      responses:
+        "200":
+          description: JSON avec état système
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+
+  /api/config:
+    post:
+      summary: Mise à jour configuration
+      description: Met à jour la configuration (alias de /dbvars/update)
+      tags: [Contractuel]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Configuration mise à jour
+        "400":
+          description: Paramètres invalides
+
+  /api/feed:
+    post:
+      summary: Déclenchement nourrissage
+      description: Déclenche un cycle de nourrissage
+      tags: [Contractuel]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [small, big]
+                  description: Type de nourrissage
+      responses:
+        "200":
+          description: Nourrissage déclenché
+
+  # ==========================================================================
+  # DONNÉES ET DIAGNOSTICS
+  # ==========================================================================
+  
+  /json:
+    get:
+      summary: État complet système
+      description: Retourne capteurs, actionneurs et configuration en JSON
+      tags: [Données]
+      responses:
+        "200":
+          description: État système complet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+
+  /diag:
+    get:
+      summary: Diagnostics système
+      description: Informations de diagnostic (heap, uptime, etc.)
+      tags: [Diagnostics]
+      responses:
+        "200":
+          description: Diagnostics JSON
+          content:
+            application/json: {}
+
+  /version:
+    get:
+      summary: Version firmware
+      description: Retourne la version du firmware
+      tags: [Diagnostics]
+      responses:
+        "200":
+          description: Version string
+
+  /pumpstats:
+    get:
+      summary: Statistiques pompe
+      description: Statistiques d'utilisation de la pompe de réserve
+      tags: [Diagnostics]
+      responses:
+        "200":
+          description: Stats pompe JSON
+
+  # ==========================================================================
+  # ACTIONS MANUELLES
+  # ==========================================================================
+  
+  /action:
+    get:
+      summary: Contrôles manuels
+      description: Exécute une action manuelle (relais, nourrissage)
+      tags: [Actions]
+      parameters:
+        - name: cmd
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - toggle_pump_aqua
+              - toggle_pump_tank
+              - toggle_heater
+              - toggle_light
+              - feed_small
+              - feed_big
+              - reset_flags
+      responses:
+        "200":
+          description: Action exécutée
+        "400":
+          description: Commande invalide
+
+  # ==========================================================================
+  # CONFIGURATION
+  # ==========================================================================
+  
+  /dbvars:
+    get:
+      summary: Variables de configuration
+      description: Retourne la configuration actuelle
+      tags: [Configuration]
+      responses:
+        "200":
+          description: Configuration JSON
+
+  /dbvars/update:
+    post:
+      summary: Mise à jour configuration
+      description: Met à jour les variables de configuration
+      tags: [Configuration]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                aqThreshold:
+                  type: integer
+                  description: Seuil niveau aquarium (cm)
+                tankThreshold:
+                  type: integer
+                  description: Seuil niveau réserve (cm)
+                chauffageThreshold:
+                  type: number
+                  description: Seuil température chauffage (°C)
+                tempsGros:
+                  type: integer
+                  description: Durée nourrissage gros (sec)
+                tempsPetits:
+                  type: integer
+                  description: Durée nourrissage petits (sec)
+      responses:
+        "200":
+          description: Configuration mise à jour
+
+  /dbvars/form:
+    get:
+      summary: Formulaire configuration
+      description: Page HTML pour modifier la configuration
+      tags: [UI]
+      responses:
+        "200":
+          description: Formulaire HTML
+
+  # ==========================================================================
+  # WIFI
+  # ==========================================================================
+  
+  /wifi/scan:
+    get:
+      summary: Scanner réseaux WiFi
+      description: Lance un scan des réseaux WiFi disponibles
+      tags: [WiFi]
+      responses:
+        "200":
+          description: Liste des réseaux trouvés
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ssid:
+                      type: string
+                    rssi:
+                      type: integer
+                    encryption:
+                      type: string
+
+  /wifi/saved:
+    get:
+      summary: Réseaux WiFi sauvegardés
+      description: Liste des réseaux WiFi enregistrés
+      tags: [WiFi]
+      responses:
+        "200":
+          description: Liste des réseaux sauvegardés
+
+  /wifi/status:
+    get:
+      summary: Status WiFi
+      description: État actuel de la connexion WiFi
+      tags: [WiFi]
+      responses:
+        "200":
+          description: Status WiFi
+
+  /wifi/connect:
+    post:
+      summary: Connexion WiFi
+      description: Se connecter à un réseau WiFi
+      tags: [WiFi]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [ssid]
+              properties:
+                ssid:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Connexion initiée
+        "400":
+          description: SSID manquant
+
+  /wifi/remove:
+    post:
+      summary: Supprimer réseau WiFi
+      description: Supprime un réseau WiFi sauvegardé
+      tags: [WiFi]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [ssid]
+              properties:
+                ssid:
+                  type: string
+      responses:
+        "200":
+          description: Réseau supprimé
+
+  # ==========================================================================
+  # NVS (DEBUG - conditionnel FFP_ENABLE_DANGEROUS_ENDPOINTS)
+  # ==========================================================================
+  
+  /nvs:
+    get:
+      summary: NVS Inspector
+      description: Page HTML pour inspecter la NVS
+      tags: [NVS Debug]
+      responses:
+        "200":
+          description: Page NVS Inspector
+
+  /nvs.json:
+    get:
+      summary: Dump NVS
+      description: Export complet de la NVS en JSON
+      tags: [NVS Debug]
+      responses:
+        "200":
+          description: Contenu NVS
+
+  /nvs/set:
+    post:
+      summary: Écrire NVS
+      description: Écrit une valeur dans la NVS
+      tags: [NVS Debug]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [ns, key, value, type]
+              properties:
+                ns:
+                  type: string
+                key:
+                  type: string
+                value:
+                  type: string
+                type:
+                  type: string
+                  enum: [string, int, bool]
+      responses:
+        "200":
+          description: Valeur écrite
+
+  /nvs/erase:
+    post:
+      summary: Effacer clé NVS
+      description: Supprime une clé de la NVS
+      tags: [NVS Debug]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [ns, key]
+              properties:
+                ns:
+                  type: string
+                key:
+                  type: string
+      responses:
+        "200":
+          description: Clé supprimée
+
+  /nvs/erase_ns:
+    post:
+      summary: Effacer namespace NVS
+      description: Supprime un namespace complet de la NVS
+      tags: [NVS Debug]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [ns]
+              properties:
+                ns:
+                  type: string
+      responses:
+        "200":
+          description: Namespace supprimé
+
+  # ==========================================================================
+  # OTA
+  # ==========================================================================
+  
+  /update:
+    get:
+      summary: Page OTA
+      description: Page pour les mises à jour OTA manuelles
+      tags: [OTA]
+      responses:
+        "200":
+          description: Page OTA HTML
+
+  /api/ota:
+    post:
+      summary: Déclencher OTA
+      description: Lance une vérification et mise à jour OTA
+      tags: [OTA]
+      responses:
+        "200":
+          description: OTA déclenché
+        "500":
+          description: Erreur OTA
+
+  /testota:
+    get:
+      summary: Test OTA
+      description: Active le flag OTA pour tests
+      tags: [OTA]
+      responses:
+        "200":
+          description: Flag OTA activé
+
+  # ==========================================================================
+  # UTILITAIRES
+  # ==========================================================================
+  
+  /ping:
+    get:
+      summary: Ping
+      description: Vérification que le serveur répond
+      tags: [Utilitaires]
+      responses:
+        "200":
+          description: pong
+
+  /wakeup:
+    get:
+      summary: Réveil système
+      description: Force le réveil du système (évite deep sleep)
+      tags: [Utilitaires]
+      responses:
+        "200":
+          description: Système réveillé
+
+  /api/wakeup:
+    post:
+      summary: Réveil système (POST)
+      description: Force le réveil du système via POST
+      tags: [Utilitaires]
+      responses:
+        "200":
+          description: Système réveillé
+
+  /mailtest:
+    get:
+      summary: Test email
+      description: Envoie un email de test
+      tags: [Utilitaires]
+      responses:
+        "200":
+          description: Email envoyé
+        "500":
+          description: Erreur envoi
+
+  /fs/format:
+    get:
+      summary: Formater LittleFS
+      description: Formate le système de fichiers (DANGER)
+      tags: [Maintenance]
+      responses:
+        "200":
+          description: Formatage effectué
+
+  # ==========================================================================
+  # REMOTE FLAGS
+  # ==========================================================================
+  
+  /api/remote-flags:
+    get:
+      summary: Flags synchronisation distante
+      description: État des flags de sync réseau (send/recv enabled)
+      tags: [Configuration]
+      responses:
+        "200":
+          description: Flags JSON
+    post:
+      summary: Modifier flags sync
+      description: Active/désactive la synchronisation distante
+      tags: [Configuration]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                send:
+                  type: boolean
+                recv:
+                  type: boolean
+      responses:
+        "200":
+          description: Flags mis à jour
+
+components:
+  schemas:
+    SystemStatus:
+      type: object
+      properties:
+        sensors:
+          type: object
+          properties:
+            tempWater:
+              type: number
+              description: Température eau (°C)
+            tempAir:
+              type: number
+              description: Température air (°C)
+            humidity:
+              type: number
+              description: Humidité (%)
+            wlAqua:
+              type: integer
+              description: Niveau aquarium (cm)
+            wlTank:
+              type: integer
+              description: Niveau réserve (cm)
+            wlPota:
+              type: integer
+              description: Niveau potager (cm)
+        actuators:
+          type: object
+          properties:
+            pumpAqua:
+              type: boolean
+            pumpTank:
+              type: boolean
+            heater:
+              type: boolean
+            light:
+              type: boolean
+        config:
+          type: object
+          properties:
+            aqThreshold:
+              type: integer
+            tankThreshold:
+              type: integer
+            chauffageThreshold:
+              type: number
+        system:
+          type: object
+          properties:
+            version:
+              type: string
+            uptime:
+              type: integer
+            freeHeap:
+              type: integer
+            wifiRssi:
+              type: integer
+
+# WebSocket sur port 81
+# Types de messages:
+#   - sensor_data: Mise à jour capteurs complète
+#   - sensor_update: Mise à jour partielle
+#   - action_confirm: Confirmation d'action
+#   - wifi_change: Changement état WiFi
+#   - server_closing: Fermeture serveur

@@ -36,6 +36,12 @@ class WebClient {
   bool tryFetchConfigFromServer(ArduinoJson::JsonDocument& doc);
   bool tryPushStatusToServer(const char* payload);
 
+  // v11.171: Queue persistante pour POSTs échoués (offline-first)
+  bool queueFailedPost(const char* payload);      // Ajoute à la queue NVS
+  bool processQueuedPosts();                       // Rejoue les POSTs en attente
+  uint8_t getQueuedPostsCount();                   // Nombre de POSTs en attente
+  void clearQueuedPosts();                         // Vide la queue
+
  private:
   char _apiKey[65];  // API key max 64 chars + null terminator
   WiFiClient _client;  // v11.162: Client HTTP simple (plus de TLS)
@@ -43,4 +49,8 @@ class WebClient {
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
   bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize);
   bool loadFromNVSFallback(ArduinoJson::JsonDocument& doc);  // v11.165: Fallback NVS
+  
+  // v11.171: Constantes queue persistante
+  static constexpr uint8_t MAX_QUEUED_POSTS = 3;   // Max 3 POSTs en queue (préserve flash)
+  static constexpr size_t MAX_POST_SIZE = 512;     // Taille max payload
 }; 
