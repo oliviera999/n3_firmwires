@@ -1,0 +1,60 @@
+﻿=== RAPPORT D'ANALYSE - MONITORING ESP32 ===
+Version firmware: v11.156 (post-corrections)
+Date analyse: 2026-01-31 11:29:35
+Fichier log: monitor_5min_2026-01-31_11-19-51.log
+
+=== STATISTIQUES GÃ‰NÃ‰RALES ===
+- Total lignes loggÃ©es: 24976
+- Taille du fichier: 2438.05 KB
+- PremiÃ¨re timestamp: 11:19:53
+- DerniÃ¨re timestamp: 11:24:51
+- DurÃ©e effective: 4 min 58 sec
+- DurÃ©e attendue: 15 minutes (900 secondes)
+- âš ï¸ Monitoring incomplet - seulement 4 minutes sur 15
+=== VÃ‰RIFICATION DES CORRECTIONS v11.156 ===
+
+1. Parsing JSON GET:
+   - Parsing rÃ©ussis: 0
+   - Erreurs de parsing: 0
+   - âœ… OK - Aucune erreur de parsing
+
+2. Envois POST serveur distant:
+   - Envois POST dÃ©tectÃ©s: 0
+   - Erreurs POST: 0
+   - Logs de diagnostic: 0
+   - âŒ PROBLÃˆME - Aucun envoi POST dÃ©tectÃ©
+   - âœ… OK - Aucune erreur POST
+
+3. Monitoring mÃ©moire:
+   - VÃ©rifications heap: 22
+   - Alertes mÃ©moire faible: 0
+   - âœ… OK - Aucune alerte mÃ©moire
+
+4. DHT22 gestion Ã©checs:
+   - DÃ©sactivation dÃ©tectÃ©e: 0
+   - Ã‰checs DHT22: 0
+   - âœ… OK - Pas assez d'Ã©checs pour dÃ©sactivation (0)
+
+5. Queue capteurs (g_sensorQueue 5 slots):
+   - Erreurs queue pleine: 31
+   - âš ï¸ ATTENDU - 31 erreur(s) (queue non agrandie)
+   - Explication: la tÃ¢che automationTask consomme les lectures (xQueueReceive). Si elle est bloquÃ©e ou lente (HTTP long, affichage, etc.), sensorTask remplit la queue (5 entrÃ©es). Quand elle est pleine, la plus ancienne est Ã©crasÃ©e (comportement voulu).
+
+=== BOOTS (rst:0x = raison reset ESP32) ===
+- Lignes rst:0x... (boots): 1
+- Reboot(s) aprÃ¨s 1er dÃ©marrage: 0
+- SW_CPU_RESET (logiciel/watchdog): 1
+
+=== ERREURS ET WARNINGS ===
+- Warnings dÃ©tectÃ©s: 76
+- Erreurs dÃ©tectÃ©es: 108
+
+âŒ ERREURS CRITIQUES DÃ‰TECTÃ‰ES:
+  âŒ Panic: 1 occurrence(s)
+  âŒ Reboot(s) non voulu(s): 1 (boots rst:0x = 1, SW_CPU_RESET = 1)
+
+=== RÃ‰SUMÃ‰ FINAL ===
+âŒ SYSTÃˆME INSTABLE - Erreurs critiques dÃ©tectÃ©es
+
+=== FIN DE L'ANALYSE ===
+

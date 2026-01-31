@@ -1,4 +1,4 @@
-# Script de vérification des mails depuis le dernier log
+﻿# Script de vérification des mails depuis le dernier log
 param(
     [string]$LogFile = ""
 )

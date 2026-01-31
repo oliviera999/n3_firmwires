@@ -331,6 +331,8 @@ void automationTask(void* pv) {
     }
 
     if (xQueueReceive(g_sensorQueue, &readings, pdMS_TO_TICKS(1000)) == pdTRUE) {
+      // Drainer les lectures en attente et ne traiter que la plus récente (évite queue pleine)
+      while (xQueueReceive(g_sensorQueue, &readings, 0) == pdTRUE) { }
       esp_task_wdt_reset();
       
       #if FEATURE_DIAG_STACK_LOGS
@@ -489,9 +491,9 @@ bool start(AppContext& ctx) {
   // v11.157: CORRECTION CRITIQUE - Créer les queues AVANT les tâches
   // Les tâches utilisent immédiatement les queues, elles doivent donc exister
   // Créer la queue capteurs (utilisée par sensorTask et automationTask)
-  // v11.158: 5 slots (données toutes les SENSOR_TASK_INTERVAL_MS, typ. 2.5s)
+  // 10 slots (données toutes les SENSOR_TASK_INTERVAL_MS, typ. 2.5s) — marge pendant blocages HTTP
   if (!g_sensorQueue) {
-    g_sensorQueue = xQueueCreate(5, sizeof(SensorReadings));
+    g_sensorQueue = xQueueCreate(10, sizeof(SensorReadings));
     if (!g_sensorQueue) {
       Serial.println(F("[App] ❌ CRITIQUE: Échec création g_sensorQueue"));
       Serial.println("[Event] CRITICAL: g_sensorQueue creation failure");
@@ -639,11 +641,9 @@ static bool netRpc(NetRequest& req) {
     return false;
   }
   
-  // v11.158: Simplification et correction synchronisation
-  // Utiliser un timeout absolu unique plus court (15s au lieu de 35s)
-  // pour éviter blocages longs tout en gardant une marge de sécurité
+  // Timeout absolu court pour éviter blocages longs (automationTask bloque → queue capteurs pleine)
   uint32_t waitStart = millis();
-  const uint32_t ABSOLUTE_TIMEOUT_MS = 15000;  // 15 secondes max (réduit de 35s)
+  const uint32_t ABSOLUTE_TIMEOUT_MS = 8000;   // 8 secondes max (aligné offline-first)
   const uint32_t CHECK_INTERVAL_MS = 100;      // Vérifier toutes les 100ms
   
   // Attendre la notification avec timeout absolu

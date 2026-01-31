@@ -1,4 +1,4 @@
-# Script d'analyse exhaustive des logs de monitoring
+﻿# Script d'analyse exhaustive des logs de monitoring
 param(
     [string]$LogFile = ""
 )

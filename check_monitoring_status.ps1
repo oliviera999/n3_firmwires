@@ -1,4 +1,4 @@
-# Script de vérification périodique du monitoring
+﻿# Script de vérification périodique du monitoring
 # Vérifie l'état du monitoring et affiche les informations
 
 param(

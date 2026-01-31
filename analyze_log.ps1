@@ -90,16 +90,21 @@ $lowHeapWarnings = ([regex]::Matches($logContent, "CRITICAL.*Heap|WARN.*Heap.*fa
 $dht22Disabled = ([regex]::Matches($logContent, "DHT22 désactivé|sensorDisabled|Capteur.*désactivé", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $dht22Failures = ([regex]::Matches($logContent, "AirSensor.*échec|DHT.*non détecté|Capteur DHT.*déconnecté", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 
-# 5. Queue capteurs
+# 5. Queue capteurs (Sensor = g_sensorQueue 5 slots; DataQueue = sync payloads)
 $queueFullErrors = ([regex]::Matches($logContent, "Queue pleine|queue.*full", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 
-# 6. Erreurs critiques
+# 6. Erreurs critiques — Reboot = uniquement lignes rst:0x... (raison reset ESP32), pas "Hard resetting" ni "Disconnected"
+$bootLines = [regex]::Matches($logContent, "rst:0x[0-9a-f]+?\s*\(", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$bootCount = $bootLines.Count
+$swCpuResetCount = ([regex]::Matches($logContent, "rst:0xc\s*\(SW_CPU_RESET\)", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$powerOnCount = ([regex]::Matches($logContent, "rst:0x1\s*\(POWERON_RESET\)", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$wdtCount = ([regex]::Matches($logContent, "rst:0x[0-9a-f]+.*(Watchdog|wdt|WDT)", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+
 $criticalPatterns = @(
     @{ Pattern = "Guru Meditation"; Name = "Guru Meditation" },
-    @{ Pattern = "Panic(?!.*diag_hasPanic)"; Name = "Panic" },
+    @{ Pattern = "panic'ed|panic\s*\("; Name = "Panic" },
     @{ Pattern = "Brownout"; Name = "Brownout" },
-    @{ Pattern = "Stack overflow|STACK OVERFLOW"; Name = "Stack Overflow" },
-    @{ Pattern = "Reboot|restart|reset"; Name = "Reboot" }
+    @{ Pattern = "Stack overflow|STACK OVERFLOW"; Name = "Stack Overflow" }
 )
 
 $criticalIssues = @()
@@ -108,6 +113,13 @@ foreach ($check in $criticalPatterns) {
     if ($matches.Count -gt 0) {
         $criticalIssues += "  ❌ $($check.Name): $($matches.Count) occurrence(s)"
     }
+}
+# Reboot: chaque ligne rst:0x... = un boot. SW_CPU_RESET (rst:0xc) = reset logiciel/watchdog = reboot non voulu
+$rebootsAfterFirst = if ($bootCount -gt 0) { $bootCount - 1 } else { 0 }
+$unwantedReboots = $rebootsAfterFirst
+if ($swCpuResetCount -gt 0 -and $unwantedReboots -eq 0) { $unwantedReboots = $swCpuResetCount }
+if ($unwantedReboots -gt 0) {
+    $criticalIssues += "  ❌ Reboot(s) non voulu(s): $unwantedReboots (boots rst:0x = $bootCount, SW_CPU_RESET = $swCpuResetCount)"
 }
 
 # 7. Warnings
@@ -139,9 +151,15 @@ $analysis += @"
    - Échecs DHT22: $dht22Failures
    - $(if ($dht22Disabled -gt 0) { "✅ OK - Désactivation automatique fonctionnelle" } elseif ($dht22Failures -lt 10) { "✅ OK - Pas assez d'échecs pour désactivation ($dht22Failures)" } else { "⚠️ WARNING - Beaucoup d'échecs ($dht22Failures) mais pas de désactivation" })
 
-5. Queue capteurs (non corrigée - exclue du plan):
+5. Queue capteurs (g_sensorQueue 5 slots):
    - Erreurs queue pleine: $queueFullErrors
    - $(if ($queueFullErrors -eq 0) { "✅ OK - Aucune erreur de queue" } else { "⚠️ ATTENDU - $queueFullErrors erreur(s) (queue non agrandie)" })
+   - Explication: la tâche automationTask consomme les lectures (xQueueReceive). Si elle est bloquée ou lente (HTTP long, affichage, etc.), sensorTask remplit la queue (5 entrées). Quand elle est pleine, la plus ancienne est écrasée (comportement voulu).
+
+=== BOOTS (rst:0x = raison reset ESP32) ===
+- Lignes rst:0x... (boots): $bootCount
+- Reboot(s) après 1er démarrage: $rebootsAfterFirst
+- SW_CPU_RESET (logiciel/watchdog): $swCpuResetCount
 
 === ERREURS ET WARNINGS ===
 - Warnings détectés: $warnings

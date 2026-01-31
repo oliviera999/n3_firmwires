@@ -1,4 +1,4 @@
-# Script de synchronisation complète du projet avec sous-modules
+﻿# Script de synchronisation complète du projet avec sous-modules
 # Usage: .\sync_all.ps1
 
 Write-Host "🚀 Synchronisation complète du projet ffp5cs" -ForegroundColor Cyan

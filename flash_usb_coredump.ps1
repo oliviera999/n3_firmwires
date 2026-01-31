@@ -1,4 +1,4 @@
-Write-Host "=== FLASHAGE COMPLET FFP5CS AVEC COREDUMP ==="
+﻿Write-Host "=== FLASHAGE COMPLET FFP5CS AVEC COREDUMP ==="
 Write-Host "Ce script va effacer la flash et repartitionner l'ESP32."
 Write-Host "Assurez-vous que l'ESP32 est connecté en USB."
 Write-Host ""

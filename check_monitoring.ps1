@@ -1,4 +1,4 @@
-# Script pour vérifier l'état du monitoring en cours
+﻿# Script pour vérifier l'état du monitoring en cours
 param()
 
 Write-Host "=== ÉTAT DU MONITORING ===" -ForegroundColor Cyan

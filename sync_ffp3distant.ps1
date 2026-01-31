@@ -1,4 +1,4 @@
-# Script de synchronisation du sous-module ffp3distant
+﻿# Script de synchronisation du sous-module ffp3distant
 # Usage: .\sync_ffp3distant.ps1 [update|push|pull]
 
 param(

@@ -1,4 +1,4 @@
-# Script de monitoring 5 minutes (avec option port et analyse du log)
+﻿# Script de monitoring 5 minutes (avec option port et analyse du log)
 param(
     [string]$Port = "",
     [int]$DurationSeconds = 300

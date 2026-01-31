@@ -1,4 +1,4 @@
-# Script de flash, monitoring jusqu'au reboot et analyse complète - wroom-test
+﻿# Script de flash, monitoring jusqu'au reboot et analyse complète - wroom-test
 # Version: v11.125
 # Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 

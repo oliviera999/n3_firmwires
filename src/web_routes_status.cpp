@@ -132,14 +132,31 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
 
       sendJsonResponse(req, statusDoc);
     } else if (action == "feed") {
-      Serial.println("[Web] 🍽️ Déclenchement nourrissage à distance");
-      ctx.automatism.manualFeedSmall();
+      const char* feedType = doc["feedType"] | "small";
+      const bool isBig = (strcmp(feedType, "big") == 0);
+
+      Serial.printf("[Web] 🍽️ Nourrissage à distance: %s\n", isBig ? "gros" : "petits");
+
+      if (isBig) {
+        ctx.automatism.setBouffeGrosFlag("1");
+        ctx.automatism.manualFeedBig();
+      } else {
+        ctx.automatism.setBouffePetitsFlag("1");
+        ctx.automatism.manualFeedSmall();
+      }
 
       SensorReadings readings = ctx.sensors.read();
-      ctx.automatism.sendFullUpdate(readings, "bouffePetits=0");
+      ctx.automatism.sendFullUpdate(readings, nullptr);
+
+      if (isBig) {
+        ctx.automatism.setBouffeGrosFlag("0");
+      } else {
+        ctx.automatism.setBouffePetitsFlag("0");
+      }
 
       StaticJsonDocument<128> feedDoc;
       feedDoc["status"] = "feeding_triggered";
+      feedDoc["feedType"] = isBig ? "big" : "small";
       char timeBuf[32];
       ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
       feedDoc["timestamp"] = timeBuf;

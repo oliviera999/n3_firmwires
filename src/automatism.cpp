@@ -186,23 +186,23 @@ uint32_t Automatism::getRecommendedDisplayIntervalMs() {
 void Automatism::manualFeedSmall() {
     Serial.println(F("[Auto] Nourrissage manuel PETITS déclenché"));
     Serial.printf("[Auto] Durée configurée: %u s\n", tempsPetits);
-    // CORRECTION: Utiliser directement les durées de Automatism (synchronisées avec serveur)
     _acts.feedSmallFish(tempsPetits);
     _manualFeedingActive = true;
-    _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD; // Début animation
-    _feedingPhaseEnd = millis() + (tempsPetits * 1000);
-    _currentFeedingType = "Petits"; // Pour l'affichage OLED
+    _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
+    const uint32_t cycleMs = (tempsPetits + (tempsPetits / 2U)) * 1000UL;
+    _feedingPhaseEnd = millis() + cycleMs;
+    _currentFeedingType = "Petits";
 }
 
 void Automatism::manualFeedBig() {
     Serial.println(F("[Auto] Nourrissage manuel GROS déclenché"));
     Serial.printf("[Auto] Durée configurée: %u s\n", tempsGros);
-    // CORRECTION: Utiliser directement les durées de Automatism (synchronisées avec serveur)
     _acts.feedBigFish(tempsGros);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-    _feedingPhaseEnd = millis() + (tempsGros * 1000);
-    _currentFeedingType = "Gros"; // Pour l'affichage OLED
+    const uint32_t cycleMs = (tempsGros + (tempsGros / 2U)) * 1000UL;
+    _feedingPhaseEnd = millis() + cycleMs;
+    _currentFeedingType = "Gros";
 }
 
 void Automatism::toggleEmailNotifications() {

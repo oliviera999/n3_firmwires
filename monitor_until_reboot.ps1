@@ -1,4 +1,4 @@
-# Script de monitoring ESP32 jusqu'à détection d'un reboot
+﻿# Script de monitoring ESP32 jusqu'à détection d'un reboot
 # Capture tous les logs et fait une analyse complète selon les priorités du projet
 
 param(

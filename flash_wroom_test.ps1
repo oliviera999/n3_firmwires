@@ -1,4 +1,4 @@
-# Script de flash wroom-test - Version v11.129
+﻿# Script de flash wroom-test - Version v11.129
 # Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
 Write-Host "=== FLASH WROOM-TEST v11.129 ===" -ForegroundColor Green

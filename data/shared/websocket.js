@@ -395,33 +395,37 @@ function displayDbVars(db) {
     };
     
     // Utiliser les valeurs par défaut si les données ne sont pas valides
+    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
     const defaultValues = {
-      feedMorning: 8,
-      feedNoon: 12,
-      feedEvening: 19,
-      feedBigDur: 10,
-      feedSmallDur: 10,
+      bouffeMatin: 8,
+      bouffeMidi: 12,
+      bouffeSoir: 19,
+      tempsGros: 10,
+      tempsPetits: 10,
       aqThreshold: 15,
       tankThreshold: 8,
       heaterThreshold: 25.0,
-      emailAddress: 'Non configuré',
-      emailEnabled: false
+      mail: 'Non configuré',
+      mailNotif: ''
     };
     
-    updateDbElement('dbFeedMorning', dataOk && db.feedMorning !== undefined && db.feedMorning !== null ? db.feedMorning : defaultValues.feedMorning);
-    updateDbElement('dbFeedNoon', dataOk && db.feedNoon !== undefined && db.feedNoon !== null ? db.feedNoon : defaultValues.feedNoon);
-    updateDbElement('dbFeedEvening', dataOk && db.feedEvening !== undefined && db.feedEvening !== null ? db.feedEvening : defaultValues.feedEvening);
-    updateDbElement('dbFeedBigDur', dataOk && db.feedBigDur !== undefined && db.feedBigDur !== null ? db.feedBigDur : defaultValues.feedBigDur);
-    updateDbElement('dbFeedSmallDur', dataOk && db.feedSmallDur !== undefined && db.feedSmallDur !== null ? db.feedSmallDur : defaultValues.feedSmallDur);
+    // Helper pour convertir mailNotif (string "checked"/"") en boolean
+    const isMailEnabled = (val) => val === 'checked' || val === '1' || val === 1 || val === true;
+    
+    updateDbElement('dbFeedMorning', dataOk && db.bouffeMatin !== undefined && db.bouffeMatin !== null ? db.bouffeMatin : defaultValues.bouffeMatin);
+    updateDbElement('dbFeedNoon', dataOk && db.bouffeMidi !== undefined && db.bouffeMidi !== null ? db.bouffeMidi : defaultValues.bouffeMidi);
+    updateDbElement('dbFeedEvening', dataOk && db.bouffeSoir !== undefined && db.bouffeSoir !== null ? db.bouffeSoir : defaultValues.bouffeSoir);
+    updateDbElement('dbFeedBigDur', dataOk && db.tempsGros !== undefined && db.tempsGros !== null ? db.tempsGros : defaultValues.tempsGros);
+    updateDbElement('dbFeedSmallDur', dataOk && db.tempsPetits !== undefined && db.tempsPetits !== null ? db.tempsPetits : defaultValues.tempsPetits);
     updateDbElement('dbAqThreshold', dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold);
-    updateDbElement('dbHeaterThreshold', dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? db.heaterThreshold.toFixed(1) : defaultValues.heaterThreshold.toFixed(1));
+    updateDbElement('dbHeaterThreshold', dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? parseFloat(db.heaterThreshold).toFixed(1) : defaultValues.heaterThreshold.toFixed(1));
     updateDbElement('dbRefillDuration', dataOk && db.refillDuration !== undefined && db.refillDuration !== null ? db.refillDuration : 120);
-    updateDbElement('dbEmailAddress', dataOk && db.emailAddress !== undefined && db.emailAddress !== null ? db.emailAddress : defaultValues.emailAddress);
+    updateDbElement('dbEmailAddress', dataOk && db.mail !== undefined && db.mail !== null ? db.mail : defaultValues.mail);
     
-    // Mise à jour du statut email
+    // Mise à jour du statut email - convertir mailNotif string en boolean
     const emailEnabledEl = $('dbEmailEnabled');
-    const emailEnabled = dataOk ? db.emailEnabled : defaultValues.emailEnabled;
+    const emailEnabled = dataOk ? isMailEnabled(db.mailNotif) : false;
     if (emailEnabledEl) {
       emailEnabledEl.textContent = emailEnabled ? 'Activées' : 'Désactivées';
       emailEnabledEl.className = `badge ${emailEnabled ? 'bg-success' : 'bg-secondary'}`;
@@ -440,17 +444,18 @@ function displayDbVars(db) {
     }
     
     // Remplir automatiquement le formulaire avec les vraies valeurs
+    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
     const fields = {
-      'formFeedMorning': dataOk && db.feedMorning !== undefined && db.feedMorning !== null ? db.feedMorning : defaultValues.feedMorning,
-      'formFeedNoon': dataOk && db.feedNoon !== undefined && db.feedNoon !== null ? db.feedNoon : defaultValues.feedNoon,
-      'formFeedEvening': dataOk && db.feedEvening !== undefined && db.feedEvening !== null ? db.feedEvening : defaultValues.feedEvening,
-      'formFeedBigDur': dataOk && db.feedBigDur !== undefined && db.feedBigDur !== null ? db.feedBigDur : defaultValues.feedBigDur,
-      'formFeedSmallDur': dataOk && db.feedSmallDur !== undefined && db.feedSmallDur !== null ? db.feedSmallDur : defaultValues.feedSmallDur,
+      'formFeedMorning': dataOk && db.bouffeMatin !== undefined && db.bouffeMatin !== null ? db.bouffeMatin : defaultValues.bouffeMatin,
+      'formFeedNoon': dataOk && db.bouffeMidi !== undefined && db.bouffeMidi !== null ? db.bouffeMidi : defaultValues.bouffeMidi,
+      'formFeedEvening': dataOk && db.bouffeSoir !== undefined && db.bouffeSoir !== null ? db.bouffeSoir : defaultValues.bouffeSoir,
+      'formFeedBigDur': dataOk && db.tempsGros !== undefined && db.tempsGros !== null ? db.tempsGros : defaultValues.tempsGros,
+      'formFeedSmallDur': dataOk && db.tempsPetits !== undefined && db.tempsPetits !== null ? db.tempsPetits : defaultValues.tempsPetits,
       'formAqThreshold': dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold,
       'formTankThreshold': dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold,
       'formHeaterThreshold': dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? db.heaterThreshold : defaultValues.heaterThreshold,
       'formRefillDuration': dataOk && db.refillDuration !== undefined && db.refillDuration !== null ? db.refillDuration : 120,
-      'formEmailAddress': dataOk && db.emailAddress ? db.emailAddress : ''
+      'formEmailAddress': dataOk && db.mail ? db.mail : ''
     };
     
     for (const [id, value] of Object.entries(fields)) {
@@ -555,18 +560,19 @@ window.loadDbVars = async function loadDbVars() {
     }
     
     // Fallback avec des valeurs par défaut pour éviter un affichage vide
+    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
     console.log('[DEBUG] Application des valeurs par défaut');
     const defaultValues = {
-      feedMorning: 8,
-      feedNoon: 12,
-      feedEvening: 19,
-      feedBigDur: 10,
-      feedSmallDur: 10,
+      bouffeMatin: 8,
+      bouffeMidi: 12,
+      bouffeSoir: 19,
+      tempsGros: 10,
+      tempsPetits: 10,
       aqThreshold: 15,
       tankThreshold: 8,
       heaterThreshold: 25.0,
-      emailAddress: 'Non configuré',
-      emailEnabled: false
+      mail: 'Non configuré',
+      mailNotif: ''
     };
     
     // Appliquer les valeurs par défaut
@@ -575,43 +581,38 @@ window.loadDbVars = async function loadDbVars() {
       if (el) el.textContent = value;
     };
     
-    updateDbElement('dbFeedMorning', defaultValues.feedMorning);
-    updateDbElement('dbFeedNoon', defaultValues.feedNoon);
-    updateDbElement('dbFeedEvening', defaultValues.feedEvening);
-    updateDbElement('dbFeedBigDur', defaultValues.feedBigDur);
-    updateDbElement('dbFeedSmallDur', defaultValues.feedSmallDur);
+    updateDbElement('dbFeedMorning', defaultValues.bouffeMatin);
+    updateDbElement('dbFeedNoon', defaultValues.bouffeMidi);
+    updateDbElement('dbFeedEvening', defaultValues.bouffeSoir);
+    updateDbElement('dbFeedBigDur', defaultValues.tempsGros);
+    updateDbElement('dbFeedSmallDur', defaultValues.tempsPetits);
     updateDbElement('dbAqThreshold', defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', defaultValues.tankThreshold);
     updateDbElement('dbHeaterThreshold', defaultValues.heaterThreshold.toFixed(1));
     updateDbElement('dbRefillDuration', 120);
-    updateDbElement('dbEmailAddress', defaultValues.emailAddress);
+    updateDbElement('dbEmailAddress', defaultValues.mail);
     
-    // Mise à jour du statut email
+    // Mise à jour du statut email (mailNotif vide = désactivé)
     const emailEnabledEl = $('dbEmailEnabled');
     if (emailEnabledEl) {
-      emailEnabledEl.textContent = defaultValues.emailEnabled ? 'Activées' : 'Désactivées';
-      emailEnabledEl.className = `badge ${defaultValues.emailEnabled ? 'bg-success' : 'bg-secondary'}`;
+      emailEnabledEl.textContent = 'Désactivées';
+      emailEnabledEl.className = 'badge bg-secondary';
     }
     
     // Mise à jour du bouton de notifications dans la page contrôles
     const btnEmailNotif = $('btnEmailNotif');
     if (btnEmailNotif) {
-      if (defaultValues.emailEnabled) {
-        btnEmailNotif.className = 'btn btn-success w-100';
-        btnEmailNotif.innerHTML = '🔔 Notifications ON';
-      } else {
-        btnEmailNotif.className = 'btn btn-outline-success w-100';
-        btnEmailNotif.innerHTML = '🔔 Notifications OFF';
-      }
+      btnEmailNotif.className = 'btn btn-outline-success w-100';
+      btnEmailNotif.innerHTML = '🔔 Notifications OFF';
     }
     
     // Remplir le formulaire avec les valeurs par défaut en cas d'erreur
     const fields = {
-      'formFeedMorning': defaultValues.feedMorning,
-      'formFeedNoon': defaultValues.feedNoon,
-      'formFeedEvening': defaultValues.feedEvening,
-      'formFeedBigDur': defaultValues.feedBigDur,
-      'formFeedSmallDur': defaultValues.feedSmallDur,
+      'formFeedMorning': defaultValues.bouffeMatin,
+      'formFeedNoon': defaultValues.bouffeMidi,
+      'formFeedEvening': defaultValues.bouffeSoir,
+      'formFeedBigDur': defaultValues.tempsGros,
+      'formFeedSmallDur': defaultValues.tempsPetits,
       'formAqThreshold': defaultValues.aqThreshold,
       'formTankThreshold': defaultValues.tankThreshold,
       'formHeaterThreshold': defaultValues.heaterThreshold,
@@ -655,17 +656,18 @@ window.fillFormFromDb = async function fillFormFromDb() {
     const db = await response.json();
     
     // Remplir le formulaire avec les valeurs actuelles
+    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
     const fields = {
-      'formFeedMorning': db.feedMorning,
-      'formFeedNoon': db.feedNoon,
-      'formFeedEvening': db.feedEvening,
-      'formFeedBigDur': db.feedBigDur,
-      'formFeedSmallDur': db.feedSmallDur,
+      'formFeedMorning': db.bouffeMatin,
+      'formFeedNoon': db.bouffeMidi,
+      'formFeedEvening': db.bouffeSoir,
+      'formFeedBigDur': db.tempsGros,
+      'formFeedSmallDur': db.tempsPetits,
       'formAqThreshold': db.aqThreshold,
       'formTankThreshold': db.tankThreshold,
       'formHeaterThreshold': db.heaterThreshold,
       'formRefillDuration': db.refillDuration,
-      'formEmailAddress': db.emailAddress
+      'formEmailAddress': db.mail
     };
     
     for (const [id, value] of Object.entries(fields)) {
@@ -701,15 +703,16 @@ window.submitDbVars = async function submitDbVars(ev) {
     };
     
     // Collecter les paramètres du formulaire
-    add('feedMorning', 'formFeedMorning');
-    add('feedNoon', 'formFeedNoon');
-    add('feedEvening', 'formFeedEvening');
-    add('feedBigDur', 'formFeedBigDur');
-    add('feedSmallDur', 'formFeedSmallDur');
+    // NOTE: Les clés correspondent à ce que le serveur /dbvars/update attend (noms français)
+    add('bouffeMatin', 'formFeedMorning');
+    add('bouffeMidi', 'formFeedNoon');
+    add('bouffeSoir', 'formFeedEvening');
+    add('tempsGros', 'formFeedBigDur');
+    add('tempsPetits', 'formFeedSmallDur');
     add('aqThreshold', 'formAqThreshold');
     add('tankThreshold', 'formTankThreshold');
-    add('heaterThreshold', 'formHeaterThreshold');
-    add('refillDuration', 'formRefillDuration');
+    add('chauffageThreshold', 'formHeaterThreshold');
+    add('tempsRemplissageSec', 'formRefillDuration');
     
     const email = $('formEmailAddress');
     if (email && email.value) params.append('mail', email.value);
@@ -853,11 +856,12 @@ window.initializeDashboard = function initializeDashboard() {
               window.cachedDbVars = dbVars.value;
             } else {
               console.log('[INIT] ⚠️ Erreur chargement BDD HTTP:', dbVars.reason);
+              // NOTE: Les clés correspondent au serveur /dbvars (noms français)
               window.cachedDbVars = {
-                feedMorning: 8, feedNoon: 12, feedEvening: 19,
-                feedBigDur: 10, feedSmallDur: 10,
+                bouffeMatin: 8, bouffeMidi: 12, bouffeSoir: 19,
+                tempsGros: 10, tempsPetits: 10,
                 aqThreshold: 15, tankThreshold: 8, heaterThreshold: 25.0,
-                emailEnabled: false, ok: false
+                mailNotif: '', ok: false
               };
             }
             

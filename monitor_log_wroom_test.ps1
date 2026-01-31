@@ -1,4 +1,4 @@
-# Script simple de monitoring avec enregistrement des logs
+﻿# Script simple de monitoring avec enregistrement des logs
 # Usage: .\monitor_log_wroom_test.ps1 [durée_en_secondes]
 
 param(

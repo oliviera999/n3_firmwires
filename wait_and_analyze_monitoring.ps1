@@ -1,4 +1,4 @@
-# Script pour attendre la fin du monitoring et analyser
+﻿# Script pour attendre la fin du monitoring et analyser
 param(
     [string]$LogFile,
     [int]$TimeoutSeconds = 960  # 16 minutes max (15 min + 1 min de marge)

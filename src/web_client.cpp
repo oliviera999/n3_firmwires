@@ -73,19 +73,19 @@ bool WebClient::httpRequest(const char* url, const char* payload,
 
   for (int attempt = 0; attempt < maxAttempts && !success; attempt++) {
     unsigned long attemptStartMs = millis();
-    
-    // v11.162: Utilise le client HTTP simple (membre de classe)
-    _http.begin(_client, url);
-    _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    
-    // Timeout global
+
+    // Timeout global: vérifier AVANT begin() pour éviter end() sur état incohérent
+    // (corrige LoadProhibited quand end() était appelé juste après begin() au retry)
     uint32_t elapsedMs = millis() - requestStartMs;
     if (elapsedMs >= NetworkConfig::HTTP_TIMEOUT_MS) {
       LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u ms", elapsedMs);
-      _http.end();
       return false;
     }
-    
+
+    // v11.162: Utilise le client HTTP simple (membre de classe)
+    _http.begin(_client, url);
+    _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
     code = _http.POST(payload ? payload : "");
     
     if (code > 0) {

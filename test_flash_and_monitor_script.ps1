@@ -1,4 +1,4 @@
-# Script de test pour vérifier que flash_and_monitor_until_reboot.ps1 fonctionne correctement
+﻿# Script de test pour vérifier que flash_and_monitor_until_reboot.ps1 fonctionne correctement
 # Teste la syntaxe et la logique sans flasher réellement l'ESP32
 
 Write-Host "=== TEST DU SCRIPT FLASH_AND_MONITOR_UNTIL_REBOOT ===" -ForegroundColor Cyan
@@ -7,18 +7,18 @@ Write-Host ""
 # Test 1: Vérification de la syntaxe
 Write-Host "1. Vérification de la syntaxe du script..." -ForegroundColor Yellow
 try {
-    $errors = $null
+    $parseErrors = $null
     $null = [System.Management.Automation.PSParser]::Tokenize(
         (Get-Content ".\flash_and_monitor_until_reboot.ps1" -Raw),
-        [ref]$errors
+        [ref]$parseErrors
     )
     
-    if ($errors.Count -eq 0) {
+    if ($parseErrors.Count -eq 0) {
         Write-Host "   ✅ Syntaxe valide" -ForegroundColor Green
     } else {
         Write-Host "   ❌ Erreurs de syntaxe détectées:" -ForegroundColor Red
-        foreach ($error in $errors) {
-            Write-Host "      Ligne $($error.Token.StartLine): $($error.Message)" -ForegroundColor Red
+        foreach ($err in $parseErrors) {
+            Write-Host "      Ligne $($err.Token.StartLine): $($err.Message)" -ForegroundColor Red
         }
         exit 1
     }

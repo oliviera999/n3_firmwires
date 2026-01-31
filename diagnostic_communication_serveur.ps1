@@ -1,4 +1,4 @@
-# Script de diagnostic - Communication Serveur Distant
+﻿# Script de diagnostic - Communication Serveur Distant
 # Usage: .\diagnostic_communication_serveur.ps1 <fichier_log>
 
 param(

@@ -1,4 +1,4 @@
-# Script pour forcer le redemarrage de l'ESP32
+﻿# Script pour forcer le redemarrage de l'ESP32
 # Utilise esptool pour envoyer un signal de reset
 
 Write-Host "=== REDEMARRAGE FORCE ESP32 ===" -ForegroundColor Cyan

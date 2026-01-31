@@ -1,4 +1,4 @@
-# Script d'installation de cppcheck pour Windows
+﻿# Script d'installation de cppcheck pour Windows
 # Usage: .\install_cppcheck.ps1
 
 Write-Host "🔍 Vérification de l'installation de cppcheck..." -ForegroundColor Cyan

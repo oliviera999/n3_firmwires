@@ -1,4 +1,4 @@
-# Script de flash et monitoring - wroom-test
+﻿# Script de flash et monitoring - wroom-test
 # Version: v11.131
 # Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 
@@ -490,7 +490,7 @@ Duree monitoring: $durationTag ($MonitorDuration secondes)
         Write-Host "Log complet: $logFile" -ForegroundColor Gray
         Write-Host "Analyse detaillee: $analysisFile" -ForegroundColor Gray
         Write-Host "Total lignes: $lineCount" -ForegroundColor Gray
-        Write-Host "ðŸ“ˆ Taille log: $([math]::Round($fileSize, 2)) KB" -ForegroundColor Gray
+                $tailleMsg = "Taille log: " + [math]::Round($fileSize, 2) + " KB"; Write-Host $tailleMsg -ForegroundColor Gray
         
     } else {
         Write-Host "[WARN] Le fichier de log est vide" -ForegroundColor Yellow
@@ -504,6 +504,8 @@ Duree monitoring: $durationTag ($MonitorDuration secondes)
 Write-Host ""
 Write-Host "=== PROCESSUS TERMINE ===" -ForegroundColor Green
 Write-Host "Verifiez les fichiers pour l'analyse detaillee:" -ForegroundColor Cyan
-Write-Host "  - Log: $logFile" -ForegroundColor Gray
-Write-Host "  - Analyse: $analysisFile" -ForegroundColor Gray
+$logPathMsg = "  - Log: " + $logFile
+$analysisPathMsg = "  - Analyse: " + $analysisFile
+Write-Host $logPathMsg -ForegroundColor Gray
+Write-Host $analysisPathMsg -ForegroundColor Gray
 

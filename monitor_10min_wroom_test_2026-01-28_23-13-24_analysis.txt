@@ -1,0 +1,41 @@
+﻿=== ANALYSE DU LOG - MONITORING 10min ===
+Version firmware: v11.131
+Date analyse: 2026-01-28 23:26:46
+Fichier log: monitor_10min_wroom_test_2026-01-28_23-13-24.log
+Duree monitoring: 10min (600 secondes)
+=== STATISTIQUES GENERALES ===
+- Total lignes loggees: 19297
+- Taille du fichier: 1726.09 KB
+- Duree effective: OK
+
+Details Panic:
+  - [2026-01-28 23:17:24] [ 37133][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+  - [2026-01-28 23:17:29] [ 42583][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+  - [2026-01-28 23:18:05] [ 78796][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+  - [2026-01-28 23:19:56] [190164][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+  - [2026-01-28 23:20:43] [237245][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+  - [2026-01-28 23:20:54] [248349][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+  - [2026-01-28 23:21:05] [258665][V][Preferences.cpp:375] getUChar(): nvs_get_u8 fail: diag_hasPanic NOT_FOUND
+
+[ERROR] ERREURS CRITIQUES DETECTEES:
+  [ERROR] Panic: 7 occurrence(s)
+
+
+[WARN] WARNINGS DETECTES:
+  [WARN] Watchdog Timeout: 1 occurrence(s)
+
+[OK] INDICATEURS DE SUCCES:
+  [OK] Demarrage OK: 2 occurrence(s)
+  [OK] Initialisation OK: 1 occurrence(s)
+  [OK] WiFi Connecte: 30 occurrence(s)
+  [OK] API Repond: 49 occurrence(s)
+
+
+[WARN] REBOOTS DETECTES:
+  - Nombre de reboots detectes: 3
+
+=== RESUME FINAL ===
+[ERROR] SYSTEME INSTABLE - Erreurs critiques detectees
+
+=== FIN DE L'ANALYSE ===
+
