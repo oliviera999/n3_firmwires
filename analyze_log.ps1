@@ -1,7 +1,18 @@
 # Script d'analyse du log de monitoring
 param(
-    [string]$logFile = "monitor_15min_v11.156_2026-01-21_22-29-41.log"
+    [string]$logFile = ""
 )
+
+# Si pas de fichier fourni, chercher le plus récent monitor_*.log
+if ([string]::IsNullOrEmpty($logFile)) {
+    $logFile = Get-ChildItem -Filter "monitor_*.log" -ErrorAction SilentlyContinue |
+               Sort-Object LastWriteTime -Descending |
+               Select-Object -First 1 -ExpandProperty FullName
+    if (-not $logFile) {
+        Write-Host "❌ Aucun fichier monitor_*.log trouvé. Spécifiez -logFile <fichier>" -ForegroundColor Red
+        exit 1
+    }
+}
 
 Write-Host "=== ANALYSE DU LOG ===" -ForegroundColor Cyan
 Write-Host "Fichier: $logFile" -ForegroundColor Yellow
@@ -54,9 +65,15 @@ if ($firstTimestamp -and $lastTimestamp) {
 
 $analysisFile = $logFile -replace '\.log$', '_analysis.txt'
 
+# Extraire la version du log (pattern BOOT FFP5CS v11.xxx)
+$fwVersion = "voir log"
+if ($logContent -match 'BOOT FFP5CS (v\d+\.\d+)') {
+    $fwVersion = $matches[1]
+}
+
 $analysis = @"
 === RAPPORT D'ANALYSE - MONITORING ESP32 ===
-Version firmware: v11.156 (post-corrections)
+Version firmware: $fwVersion
 Date analyse: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Fichier log: $logFile
 
@@ -127,7 +144,7 @@ $warnings = ([regex]::Matches($logContent, "\[W\]|WARN|WARNING", [System.Text.Re
 $errors = ([regex]::Matches($logContent, "\[E\]|ERROR|ERREUR", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 
 $analysis += @"
-=== VÉRIFICATION DES CORRECTIONS v11.156 ===
+=== VÉRIFICATION DES CORRECTIONS ($fwVersion) ===
 
 1. Parsing JSON GET:
    - Parsing réussis: $jsonParseSuccess
@@ -176,7 +193,7 @@ if ($criticalIssues.Count -eq 0) {
 # Résumé final
 $analysis += "=== RÉSUMÉ FINAL ===`n"
 if ($criticalIssues.Count -eq 0 -and $postSends -gt 0 -and $jsonParseErrors -eq 0) {
-    $analysis += "✅ SYSTÈME STABLE - Corrections v11.156 efficaces`n"
+    $analysis += "✅ SYSTÈME STABLE - Corrections efficaces`n"
     $status = "STABLE"
 } elseif ($criticalIssues.Count -gt 0) {
     $analysis += "❌ SYSTÈME INSTABLE - Erreurs critiques détectées`n"

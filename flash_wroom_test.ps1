@@ -1,7 +1,12 @@
-﻿# Script de flash wroom-test - Version v11.129
-# Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+# Script de flash wroom-test
+$configPath = Join-Path $PSScriptRoot "include\config.h"
+$fwVersion = "?"
+if (Test-Path $configPath) {
+    $cfg = Get-Content $configPath -Raw
+    if ($cfg -match 'VERSION\s*=\s*"(\d+\.\d+)"') { $fwVersion = "v$($matches[1])" }
+}
 
-Write-Host "=== FLASH WROOM-TEST v11.129 ===" -ForegroundColor Green
+Write-Host "=== FLASH WROOM-TEST $fwVersion ===" -ForegroundColor Green
 Write-Host "Environnement: wroom-test" -ForegroundColor Yellow
 Write-Host "Core dump: Outils d'extraction/analyse + corrections config" -ForegroundColor Cyan
 Write-Host ""
@@ -30,7 +35,7 @@ Write-Host "2. Attente de libération du port (5 secondes)..." -ForegroundColor 
 Start-Sleep -Seconds 5
 
 # Compiler d'abord pour vérifier qu'il n'y a pas d'erreurs
-Write-Host "3. Compilation du firmware wroom-test v11.129..." -ForegroundColor Cyan
+Write-Host "3. Compilation du firmware wroom-test..." -ForegroundColor Cyan
 $compileResult = pio run -e wroom-test
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Erreur de compilation !" -ForegroundColor Red
@@ -81,11 +86,6 @@ if ($LASTEXITCODE -eq 0) {
 
 Write-Host ""
 Write-Host "=== FLASH COMPLET RÉUSSI ===" -ForegroundColor Green
-Write-Host "Version v11.129 flashée avec succès sur wroom-test !" -ForegroundColor Green
-Write-Host ""
-Write-Host "Nouvelles fonctionnalités v11.129:" -ForegroundColor Cyan
-Write-Host "- Outils d'extraction/analyse core dump (tools/coredump/)" -ForegroundColor White
-Write-Host "- Build flags core dump harmonisés" -ForegroundColor White
-Write-Host "- Offsets partition corrigés" -ForegroundColor White
+Write-Host "Version $fwVersion flashée avec succès sur wroom-test !" -ForegroundColor Green
 Write-Host ""
 Write-Host "Recommandation: Exécuter le monitoring pour vérifier la stabilité" -ForegroundColor Cyan

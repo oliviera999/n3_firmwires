@@ -10,12 +10,68 @@ on:
       - main
 
 jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Verify version incremented
+      run: |
+        # Base SHA : PR = base branch, push = commit précédent
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+        else
+          BASE_SHA=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+        fi
+
+        # Fallback si pas de parent (premier commit)
+        if [[ -z "$BASE_SHA" ]]; then
+          echo "⚠️ Pas de commit parent, vérification version ignorée."
+          exit 0
+        fi
+
+        # Extraire la version de include/config.h (format VERSION = "11.168")
+        BASE_VER=$(git show "$BASE_SHA:include/config.h" 2>/dev/null | grep -E 'VERSION\s*=' | head -1 | sed -n 's/.*"\([0-9][0-9.]*\)".*/\1/p')
+        HEAD_VER=$(grep -E 'VERSION\s*=' include/config.h | head -1 | sed -n 's/.*"\([0-9][0-9.]*\)".*/\1/p')
+
+        BASE_VER=${BASE_VER:-0}
+        HEAD_VER=${HEAD_VER:-0}
+
+        echo "Version base: $BASE_VER"
+        echo "Version actuelle: $HEAD_VER"
+
+        # Comparaison sémantique major.minor (11.168 < 11.169)
+        version_gt() {
+          IFS=. read -r -a v1 <<< "$1"
+          IFS=. read -r -a v2 <<< "$2"
+          for i in 0 1; do
+            a=${v1[i]:-0}; b=${v2[i]:-0}
+            if ((10#$a > 10#$b)); then return 0; fi
+            if ((10#$a < 10#$b)); then return 1; fi
+          done
+          return 1
+        }
+
+        if version_gt "$HEAD_VER" "$BASE_VER"; then
+          echo "✅ Version incrémentée correctement ($BASE_VER → $HEAD_VER)"
+        else
+          echo "::error::La version doit être incrémentée dans include/config.h (version base: $BASE_VER, actuelle: $HEAD_VER)."
+          echo "::error::Modifiez ProjectConfig::VERSION dans include/config.h (ex: 11.170)."
+          exit 1
+        fi
+
   build:
     runs-on: ubuntu-latest
     
     strategy:
       matrix:
-        environment: [wroom-prod, wroom-dev]
+        environment: [wroom-prod, wroom-test]
     
     steps:
     - name: Checkout code

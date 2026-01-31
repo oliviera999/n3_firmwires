@@ -7,7 +7,7 @@ Le workflow `build.yml` compile automatiquement le projet ESP32 sur chaque push 
 ### Environnements testés
 
 - **wroom-prod** : Version de production pour ESP32-WROOM-32
-- **wroom-dev** : Version de développement avec debug activé
+- **wroom-test** : Version de test avec debug activé (coredump, endpoints diagnostic)
 
 ### Corrections apportées
 
@@ -16,7 +16,7 @@ Le workflow `build.yml` compile automatiquement le projet ESP32 sur chaque push 
 Le build échouait avec deux erreurs principales :
 
 1. **Exit code 1** : Utilisation d'un environnement PlatformIO inexistant (`esp32dev`)
-   - **Solution** : Utilisation des environnements valides définis dans `platformio.ini` (wroom-prod, wroom-dev, etc.)
+   - **Solution** : Utilisation des environnements valides définis dans `platformio.ini` (wroom-prod, wroom-test, etc.)
 
 2. **Exit code 128** : Erreur git avec les sous-modules
    - **Cause** : `.gitmodules` référençait `ffp3distant` qui n'existe plus
@@ -40,7 +40,7 @@ Le workflow se déclenche automatiquement sur :
 Après chaque build réussi, les artifacts suivants sont disponibles :
 - `firmware-wroom-prod/firmware.bin` : Firmware de production
 - `firmware-wroom-prod/firmware.elf` : Fichier ELF pour debug
-- `firmware-wroom-dev/firmware.bin` : Firmware de développement
+- `firmware-wroom-test/firmware.bin` : Firmware de test
 - `littlefs-wroom-prod/littlefs.bin` : Système de fichiers (si disponible)
 
 ### Commandes locales utiles
@@ -49,8 +49,8 @@ Après chaque build réussi, les artifacts suivants sont disponibles :
 # Compiler pour production
 pio run --environment wroom-prod
 
-# Compiler pour développement
-pio run --environment wroom-dev
+# Compiler pour test (debug activé)
+pio run --environment wroom-test
 
 # Vérifier la taille du firmware
 pio run --environment wroom-prod --target size
@@ -97,14 +97,17 @@ Conformément aux règles du projet, après chaque déploiement réussi :
 
 ### Versions
 
-Le workflow vérifie automatiquement que la version a été incrémentée dans `src/config.h` ou `src/main.cpp`.
+La version firmware est définie dans **`include/config.h`** (`ProjectConfig::VERSION`). C’est la source de vérité unique (API `/version`, OTA, sync serveur).
 
-**Rappel** : Toujours incrémenter la version avant de push !
+**Vérification automatique** : Sur chaque PR vers `main` et chaque push direct sur `main`, le job `version-check` vérifie que la version a été incrémentée par rapport à la base. Si la version est identique ou inférieure, le CI échoue.
+
+**Rappel** : Incrémenter la version dans `include/config.h` avant de créer/merge une PR, et créer un tag Git pour les releases (`git tag v11.xxx`).
+
 - **MINOR** (+0.01) : Corrections, optimisations mineures
 - **MAJOR** (+1.00) : Nouvelles fonctionnalités majeures
 
 ---
 
-**Dernière mise à jour** : 2025-10-12  
+**Dernière mise à jour** : 2026-01-31  
 **Status** : ✅ Opérationnel
 

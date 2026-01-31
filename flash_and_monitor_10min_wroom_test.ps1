@@ -1,7 +1,4 @@
-﻿# Script de flash et monitoring - wroom-test
-# Version: v11.131
-# Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-
+# Script de flash et monitoring - wroom-test
 param(
     [string]$Port = "",
     [string]$DefaultPort = "COM4",
@@ -12,8 +9,16 @@ param(
 
 $durationTag = if ($MonitorDuration % 60 -eq 0) { "{0}min" -f ($MonitorDuration / 60) } else { "{0}s" -f $MonitorDuration }
 
+# Version firmware depuis config.h
+$configPath = Join-Path $PSScriptRoot "include\config.h"
+$fwVersion = "?"
+if (Test-Path $configPath) {
+    $cfg = Get-Content $configPath -Raw
+    if ($cfg -match 'VERSION\s*=\s*"(\d+\.\d+)"') { $fwVersion = "v$($matches[1])" }
+}
+
 Write-Host "=== FLASH ET MONITORING $durationTag - WROOM-TEST ===" -ForegroundColor Green
-Write-Host "Version firmware: v11.131" -ForegroundColor Yellow
+Write-Host "Version firmware: $fwVersion" -ForegroundColor Yellow
 Write-Host "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
 Write-Host ""
 
@@ -306,7 +311,7 @@ if (Test-Path $logFile) {
         # Initialiser le rapport d'analyse
         $analysis = @"
 === ANALYSE DU LOG - MONITORING $durationTag ===
-Version firmware: v11.131
+Version firmware: $fwVersion
 Date analyse: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Fichier log: $logFile
 Duree monitoring: $durationTag ($MonitorDuration secondes)

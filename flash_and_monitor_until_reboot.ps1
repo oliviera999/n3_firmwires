@@ -1,15 +1,20 @@
-﻿# Script de flash, monitoring jusqu'au reboot et analyse complète - wroom-test
-# Version: v11.125
-# Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-
+# Script de flash, monitoring jusqu'au reboot et analyse complète - wroom-test
 param(
     [string]$Port = "COM4",
     [int]$PostRebootDuration = 60,
     [int]$MaxWaitTime = 3600
 )
 
+# Version firmware depuis config.h
+$configPath = Join-Path $PSScriptRoot "include\config.h"
+$fwVersion = "?"
+if (Test-Path $configPath) {
+    $cfg = Get-Content $configPath -Raw
+    if ($cfg -match 'VERSION\s*=\s*"(\d+\.\d+)"') { $fwVersion = "v$($matches[1])" }
+}
+
 Write-Host "=== FLASH ET MONITORING JUSQU'AU REBOOT - WROOM-TEST ===" -ForegroundColor Green
-Write-Host "Version firmware: v11.125" -ForegroundColor Yellow
+Write-Host "Version firmware: $fwVersion" -ForegroundColor Yellow
 Write-Host "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "Port: $Port" -ForegroundColor Yellow
 Write-Host "Durée post-reboot: $PostRebootDuration secondes" -ForegroundColor Yellow
@@ -297,7 +302,7 @@ Port: $Port
 Temps jusqu'au reboot: $(if ($rebootDetected) { "$([math]::Round((($rebootTime - $startTime).TotalSeconds), 1)) secondes" } else { "Aucun reboot détecté" })
 Durée post-reboot: $PostRebootDuration secondes
 Fichier de log: $logFile
-Version firmware: v11.125
+Version firmware: $fwVersion
 ========================================
 
 "@

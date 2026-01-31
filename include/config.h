@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.168";  // Unification valeurs défaut, logging source config, timeout boot 8s
+    inline constexpr const char* VERSION = "11.169";  // CI: vérif version sur PR et push main
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
