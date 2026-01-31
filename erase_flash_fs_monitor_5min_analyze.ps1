@@ -36,14 +36,19 @@ Write-Host "4. Monitoring 5 minutes..." -ForegroundColor Cyan
 $latest = Get-ChildItem -Path $projectRoot -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $logFile = if ($latest) { $latest.Name } else { $null }
 
-# 5. Analyse du log
+# 5. Analyse du log (analyse_log + rapport diagnostic complet)
 if ($logFile -and (Test-Path $logFile)) {
+    $logFullPath = Join-Path $projectRoot $logFile
     Write-Host "5. Analyse du log: $logFile" -ForegroundColor Cyan
-    & "$projectRoot\analyze_log.ps1" -logFile $logFile
+    & "$projectRoot\analyze_log.ps1" -logFile $logFullPath
+    Write-Host ""
+    Write-Host "6. Rapport diagnostic complet (serveur distant, mails, exhaustive)..." -ForegroundColor Cyan
+    & "$projectRoot\generate_diagnostic_report.ps1" -LogFile $logFullPath
     Write-Host ""
     Write-Host "=== TERMINÉ ===" -ForegroundColor Green
     Write-Host "Log: $logFile" -ForegroundColor Gray
-    Write-Host "Rapport: $($logFile -replace '\.log$','_analysis.txt')" -ForegroundColor Gray
+    Write-Host "Analyse: $($logFile -replace '\.log$','_analysis.txt')" -ForegroundColor Gray
+    Write-Host "Rapport complet: rapport_diagnostic_complet_*.md" -ForegroundColor Gray
 } else {
     Write-Host "5. Aucun fichier log trouvé pour l'analyse." -ForegroundColor Yellow
 }

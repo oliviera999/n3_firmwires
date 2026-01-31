@@ -1,8 +1,10 @@
 # Convention de Nommage des Variables - FFP5CS
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Date:** 2026-01-31  
-**Statut:** Documentation de reference (ajout cles NVS dynamiques)
+**Statut:** Documentation de reference
+
+**Source de verite code:** `include/gpio_mapping.h` (VariableRegistry v11.172)
 
 ---
 

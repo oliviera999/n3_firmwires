@@ -7,6 +7,10 @@
 #include <cmath>
 #include <cstring>
 
+// v11.172: Les noms de variables utilisés ici sont définis dans gpio_mapping.h (VariableRegistry)
+// Source de vérité: GPIOMap::XXX.serverPostName pour noms POST serveur
+// Ex: GPIOMap::HEAT_THRESHOLD.serverPostName == "chauffageThreshold"
+
 AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     : _web(web)
     , _config(cfg)
@@ -19,12 +23,12 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _lastRemoteFeedResetMs(0)
     // v11.168: Flag configSynced - false tant qu'aucun poll serveur réussi
     , _configSyncedOnce(false)
-    , _limFlood(5)
-    // v11.168: Utiliser les constantes unifiées de config.h (évite désync avec Automatism)
+    // v11.172: AutomatismSync est la source de vérité pour toutes les variables de config
+    , _limFlood(8)  // Harmonisé avec ancienne valeur Automatism
     , _aqThresholdCm(ActuatorConfig::Default::AQUA_LEVEL_CM)
     , _tankThresholdCm(ActuatorConfig::Default::TANK_LEVEL_CM)
     , _heaterThresholdC(ActuatorConfig::Default::HEATER_THRESHOLD_C)
-    , _emailEnabled(false)
+    , _emailEnabled(true)  // v11.172: true par défaut (harmonisé avec ancien mailNotif)
     #if defined(PROFILE_TEST)
     , _freqWakeSec(6)  // 6s par défaut pour wroom-test
     #else

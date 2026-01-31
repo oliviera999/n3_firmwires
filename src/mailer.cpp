@@ -1169,13 +1169,16 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
     Serial.println(F("[Mail] ❌ ERREUR: subject est NULL"));
     return false;
   }
-  if (!toEmail || strlen(toEmail) == 0) {
-    Serial.println(F("[Mail] ❌ ERREUR: toEmail est vide/NULL (configuration incomplète)"));
-    return false;
-  }
   if (!message || msgLen == 0) {
     Serial.println(F("[Mail] ❌ ERREUR: message vide"));
     return false;
+  }
+  
+  // Utiliser fallback si toEmail vide (cohérent avec send() et sendAlert())
+  const char* targetEmail = toEmail;
+  if (!targetEmail || strlen(targetEmail) == 0) {
+    Serial.println(F("[Mail] ⚠️ toEmail vide, utilisation DEFAULT_RECIPIENT"));
+    targetEmail = EmailConfig::DEFAULT_RECIPIENT;
   }
   
   // Buffer statique pour le sujet
@@ -1242,7 +1245,7 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   
   Serial.println(F("[Mail] ===== ENVOI D'ALERTE (SYNC) ====="));
   Serial.printf("[Mail] Type: Alerte système %s\n", isCritical ? "(CRITIQUE)" : "(normale)");
-  Serial.printf("[Mail] Destinataire: %s\n", toEmail);
+  Serial.printf("[Mail] Destinataire: %s\n", targetEmail);
   Serial.printf("[Mail] Objet original: %s\n", subject);
   Serial.printf("[Mail] Objet final: %s\n", alertSubject);
   Serial.println(F("[Mail] ==========================="));
@@ -1257,7 +1260,7 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
     }
   }
   
-  bool result = sendSync(alertSubject, enhancedMessage, "User", toEmail);
+  bool result = sendSync(alertSubject, enhancedMessage, "User", targetEmail);
   Serial.printf("[Mail] ===== RÉSULTAT SENDALERTSYNC: %s =====\n", result ? "SUCCESS" : "FAILED");
   
   // Nettoyer les infos PANIC après l'envoi réussi du mail (pour éviter de les réutiliser au prochain boot)
@@ -1560,10 +1563,6 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
     Serial.println(F("[Mail] ❌ ERREUR: subject est NULL"));
     return false;
   }
-  if (!toEmail || strlen(toEmail) == 0) {
-    Serial.println(F("[Mail] ❌ ERREUR: toEmail est vide/NULL"));
-    return false;
-  }
   if (!message || strlen(message) == 0) {
     Serial.println(F("[Mail] ❌ ERREUR: message vide"));
     return false;
@@ -1585,7 +1584,13 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
   strncpy(item.message, message, msgLen);
   item.message[msgLen] = '\0';
   
-  strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
+  // Utiliser fallback si toEmail vide (cohérent avec send())
+  if (toEmail && strlen(toEmail) > 0) {
+    strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
+  } else {
+    Serial.println(F("[Mail] ⚠️ toEmail vide, utilisation DEFAULT_RECIPIENT"));
+    strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
+  }
   item.isAlert = true;
   
   // Ajoute à la queue (non-bloquant, timeout 100ms)

@@ -322,7 +322,12 @@ const char* GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value)
 }
 
 void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
-    // v11.164: Vérification si valeur changée avant sauvegarde (préserve flash)
+    // v11.172: Seuls les ACTUATORS sont sauvegardés individuellement en NVS
+    // Les CONFIG_* sont centralisés dans remote_json (source de vérité unique)
+    if (mapping.type != GPIOType::ACTUATOR) {
+        // Skip - config values are in remote_json
+        return;
+    }
     
     // Créer la clé préfixée
     char key[32];
@@ -334,75 +339,13 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
         return;
     }
     
-    switch (mapping.type) {
-        case GPIOType::ACTUATOR:
-        case GPIOType::CONFIG_BOOL: {
-            bool newVal = parseBool(value);
-            bool currentVal = false;
-            g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
-            if (currentVal != newVal) {
-                g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, key, newVal);
-                Serial.printf("[NVS] ✏️ Mis à jour bool %s = %s\n", key, newVal ? "true" : "false");
-            }
-            break;
-        }
-        case GPIOType::CONFIG_INT: {
-            int newVal = value.as<int>();
-            int currentVal = 0;
-            g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
-            if (currentVal != newVal) {
-                g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, key, newVal);
-                Serial.printf("[NVS] ✏️ Mis à jour int %s = %d\n", key, newVal);
-            }
-            break;
-        }
-        case GPIOType::CONFIG_FLOAT: {
-            float newVal = value.as<float>();
-            float currentVal = 0.0f;
-            g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
-            // Comparaison avec tolérance pour les floats
-            if (fabsf(currentVal - newVal) > 0.001f) {
-                g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, key, newVal);
-                Serial.printf("[NVS] ✏️ Mis à jour float %s = %.2f\n", key, newVal);
-            }
-            break;
-        }
-        case GPIOType::CONFIG_STRING: {
-            char newVal[128];
-            const char* str = value.as<const char*>();
-            if (str) {
-                size_t len = strlen(str);
-                size_t copyLen = (len < sizeof(newVal) - 1) ? len : (sizeof(newVal) - 1);
-                strncpy(newVal, str, copyLen);
-                newVal[copyLen] = '\0';
-                if (len > 100) {
-                    newVal[100] = '\0';
-                    Serial.printf("[NVS] ⚠️ String trop longue pour %s (%zu chars), tronquée\n", key, len);
-                }
-            } else {
-                // Conversion depuis autres types si nécessaire
-                if (value.is<int>()) {
-                    snprintf(newVal, sizeof(newVal), "%d", value.as<int>());
-                } else if (value.is<float>()) {
-                    snprintf(newVal, sizeof(newVal), "%.2f", value.as<float>());
-                } else if (value.is<bool>()) {
-                    strncpy(newVal, value.as<bool>() ? "true" : "false", sizeof(newVal) - 1);
-                    newVal[sizeof(newVal) - 1] = '\0';
-                } else {
-                    newVal[0] = '\0';
-                }
-            }
-            char currentVal[128];
-            g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, key, currentVal, sizeof(currentVal), newVal);
-            if (strcmp(currentVal, newVal) != 0) {
-                g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, key, newVal);
-                Serial.printf("[NVS] ✏️ Mis à jour string %s = '%s'\n", key, newVal);
-            }
-            break;
-        }
-        default:
-            Serial.printf("[NVS] ⚠️ Type non géré pour %s\n", key);
-            break;
+    // v11.172: Seulement les actionneurs (bool) sont sauvegardés ici
+    bool newVal = parseBool(value);
+    bool currentVal = false;
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
+    if (currentVal != newVal) {
+        g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, key, newVal);
+        Serial.printf("[NVS] ✏️ Actuateur %s = %s\n", key, newVal ? "ON" : "OFF");
     }
 }
 

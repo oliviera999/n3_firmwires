@@ -410,7 +410,7 @@ bool WebServerManager::begin() {
               Serial.printf("[Web] ✅ Email Notifications toggled: %s\n",
                             g_autoCtrl.isEmailEnabled() ? "ON" : "OFF");
           }
-          else if (c == "forceWakeup") {
+          else if (c == "forceWakeUp") {
               Serial.println("[Web] 🔄 Toggling Force Wakeup...");
               // Toggle Force Wakeup
               g_autoCtrl.toggleForceWakeup();
@@ -572,7 +572,7 @@ bool WebServerManager::begin() {
     doc["pumpTank"] = _acts.isTankPumpRunning();
     doc["heater"] = _acts.isHeaterOn();
     doc["light"] = _acts.isLightOn();
-    doc["forceWakeup"] = g_autoCtrl.getForceWakeUp();
+    doc["forceWakeUp"] = g_autoCtrl.getForceWakeUp();
     
     // Informations WiFi STA
     bool staConnected = WiFi.status() == WL_CONNECTED;
@@ -751,21 +751,34 @@ bool WebServerManager::begin() {
     const char* emailAddr = getStringWithDefault("mail", "Non configuré");
     out["mail"] = emailAddr;
     
-    // Email enabled (valeur par défaut: false)
+    // Email enabled (v11.171: retourne bool au lieu de string pour coherence API)
     if (cachedSrc.containsKey("mailNotif")) {
-      out["mailNotif"] = cachedSrc["mailNotif"].as<const char*>();
+      // Convertir "checked", "1", "true", "on" -> true, sinon false
+      const char* val = cachedSrc["mailNotif"].as<const char*>();
+      bool enabled = val && (strcmp(val, "checked") == 0 || strcmp(val, "1") == 0 || 
+                            strcmp(val, "true") == 0 || strcmp(val, "on") == 0);
+      out["mailNotif"] = enabled;
     } else {
-      out["mailNotif"] = "";
+      out["mailNotif"] = false;
     }
 
     // Flags/commandes (séparés des heures pour éviter l'écrasement)
     out["bouffeMatinOk"] = config.getBouffeMatinOk();
     out["bouffeMidiOk"] = config.getBouffeMidiOk();
     out["bouffeSoirOk"] = config.getBouffeSoirOk();
+    // v11.171: retourne int au lieu de string pour coherence API
     if (cachedSrc.containsKey("bouffePetits")) {
-      out["bouffePetits"] = cachedSrc["bouffePetits"].as<const char*>();
+      const char* val = cachedSrc["bouffePetits"].as<const char*>();
+      out["bouffePetits"] = (val && strlen(val) > 0) ? atoi(val) : 0;
+    } else {
+      out["bouffePetits"] = 0;
     }
-    if (cachedSrc.containsKey("bouffeGros"))   out["bouffeGros"]   = cachedSrc["bouffeGros"].as<const char*>();
+    if (cachedSrc.containsKey("bouffeGros")) {
+      const char* val = cachedSrc["bouffeGros"].as<const char*>();
+      out["bouffeGros"] = (val && strlen(val) > 0) ? atoi(val) : 0;
+    } else {
+      out["bouffeGros"] = 0;
+    }
 
     out["ok"] = ok;
     

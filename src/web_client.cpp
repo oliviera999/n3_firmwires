@@ -1,5 +1,7 @@
 // v11.162: WebClient simplifié - HTTP par défaut (plus de TLS pour requêtes courantes)
 // Réduit fragmentation mémoire en éliminant le besoin de ~32KB contigu pour TLS
+// v11.172: Les noms de variables POST sont définis dans gpio_mapping.h (VariableRegistry)
+// Source de vérité: GPIOMap::XXX.serverPostName (ex: "chauffageThreshold")
 #include "web_client.h"
 #include "config_manager.h"
 #include "diagnostics.h"

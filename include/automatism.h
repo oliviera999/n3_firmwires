@@ -48,9 +48,10 @@ class Automatism {
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
   // --- Accesseurs exposés pour le serveur Web local ---
-  bool isEmailEnabled() const { return mailNotif; }
+  // v11.172: Source de vérité = AutomatismSync (_network)
+  bool isEmailEnabled() const { return _network.isEmailEnabled(); }
   void toggleEmailNotifications();
-  const char* getEmailAddress() const { return _emailAddress; }
+  const char* getEmailAddress() const { return _network.getEmailAddress(); }
   uint16_t getFeedBigDur() const { return _feeding.getBigDuration(); }
   uint16_t getFeedSmallDur() const { return _feeding.getSmallDuration(); }
   uint8_t getBouffeMatin() const { return bouffeMatin; }
@@ -59,9 +60,12 @@ class Automatism {
   uint16_t getTempsGros() const { return tempsGros; }
   uint16_t getTempsPetits() const { return tempsPetits; }
   uint32_t getRefillDurationSec() const { return refillDurationMs / 1000UL; }
-  uint16_t getLimFlood() const { return limFlood; }
+  uint16_t getLimFlood() const { return _network.getLimFlood(); }
   const char* getBouffePetitsFlag() const { return bouffePetits; }
   const char* getBouffeGrosFlag() const { return bouffeGros; }
+  uint16_t getAqThresholdCm() const { return _network.getAqThresholdCm(); }
+  uint16_t getTankThresholdCm() const { return _network.getTankThresholdCm(); }
+  float getHeaterThresholdC() const { return _network.getHeaterThresholdC(); }
   void setBouffePetitsFlag(const char* val) {
     strncpy(bouffePetits, val ? val : "0", sizeof(bouffePetits) - 1);
     bouffePetits[sizeof(bouffePetits) - 1] = '\0';
@@ -73,7 +77,7 @@ class Automatism {
   int computeDiffMaree(uint16_t currentAqua);
   bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
   uint32_t getCountdownEndMs() const { return _countdownEnd; }
-  uint16_t getFreqWakeSec() const { return freqWakeSec; }
+  uint16_t getFreqWakeSec() const { return _network.getFreqWakeSec(); }
   int16_t getTideTriggerCm() const { return tideTriggerCm; }
 
   // Déclenche le clignotement de l'icône "courrier" sur l'OLED
@@ -131,16 +135,20 @@ class Automatism {
   bool isRefillingInManualMode() const;
   
   // Méthodes pour mettre à jour les variables depuis le serveur distant
+  // v11.172: Délègue à AutomatismSync (source de vérité)
   void setRefillDurationMs(uint32_t durationMs) { refillDurationMs = durationMs; }
-  void setAqThresholdCm(uint16_t threshold) { aqThresholdCm = threshold; }
-  void setTankThresholdCm(uint16_t threshold) { tankThresholdCm = threshold; }
-  void setLimFlood(uint16_t lim) { limFlood = lim; }
-  void setHeaterThresholdC(float threshold) { heaterThresholdC = threshold; }
+  void setAqThresholdCm(uint16_t threshold) { _network.setAqThresholdCm(threshold); }
+  void setTankThresholdCm(uint16_t threshold) { _network.setTankThresholdCm(threshold); }
+  void setLimFlood(uint16_t lim) { _network.setLimFlood(lim); }
+  void setHeaterThresholdC(float threshold) { _network.setHeaterThresholdC(threshold); }
   void setTempsGros(uint16_t duration) { tempsGros = duration; }
   void setTempsPetits(uint16_t duration) { tempsPetits = duration; }
   void setBouffeMatin(uint8_t hour) { bouffeMatin = hour; }
   void setBouffeMidi(uint8_t hour) { bouffeMidi = hour; }
   void setBouffeSoir(uint8_t hour) { bouffeSoir = hour; }
+  void setFreqWakeSec(uint16_t sec) { _network.setFreqWakeSec(sec); }
+  void setEmailAddress(const char* addr) { _network.setEmailAddress(addr); }
+  void setEmailEnabled(bool enabled) { _network.setEmailEnabled(enabled); }
   
   // Méthodes de persistance (fusionnées depuis AutomatismPersistence, publiques pour web_server.cpp)
   void saveCurrentActuatorState(const char* actuator, bool state);
@@ -203,17 +211,13 @@ class Automatism {
   unsigned long mailBlinkUntil = 0;
   unsigned long _countdownEnd = 0;
   char _countdownLabel[64];
-  #if defined(PROFILE_TEST)
-    uint16_t freqWakeSec = 6; // Fréquence de réveil en secondes (6s par défaut pour wroom-test)
-  #else
-    uint16_t freqWakeSec = 600; // Fréquence de réveil en secondes (10 min par défaut)
-  #endif
+  // v11.172: freqWakeSec supprimé - source de vérité = _network.getFreqWakeSec()
   
   // Protection contre l'écrasement du forceWakeUp au démarrage
   unsigned long _wakeupProtectionEnd = 0;
   
   // Variables de configuration distantes
-  uint16_t limFlood = 8; // cm threshold, modifiable via JSON
+  // v11.172: limFlood supprimé - source de vérité = _network.getLimFlood()
   uint32_t _pumpStartMs = 0; // time when tank pump started (ms)
   uint32_t refillDurationMs = 120000; // default 120s, can be updated from web
 
@@ -264,10 +268,8 @@ class Automatism {
   // v11.145: Augmenté à 60s pour réduire la charge réseau et améliorer la stabilité offline
   const unsigned long remoteFetchInterval = 60000; // 60 s - réduit la dépendance réseau
 
-  // thresholds modifiables à distance
-  uint16_t aqThresholdCm = ActuatorConfig::Default::AQUA_LEVEL_CM;
-  uint16_t tankThresholdCm = ActuatorConfig::Default::TANK_LEVEL_CM;
-  float heaterThresholdC  = ActuatorConfig::Default::HEATER_THRESHOLD_C;
+  // v11.172: thresholds supprimés - source de vérité = _network.getXxxThreshold()
+  // aqThresholdCm, tankThresholdCm, heaterThresholdC maintenant dans AutomatismSync
 
   // durées nourrissage (s) - synchronisées avec BDD distante par défaut
   uint16_t tempsGros = ActuatorConfig::Default::FEED_BIG_DURATION_SEC;
@@ -303,9 +305,7 @@ class Automatism {
   // Type de nourrissage actuel pour l'affichage OLED ("Gros" ou "Petits")
   const char* _currentFeedingType = nullptr;
 
-  // email config
-  char _emailAddress[EmailConfig::MAX_EMAIL_LENGTH];
-  bool   mailNotif = true;
+  // v11.172: email config supprimé - source de vérité = _network.getEmailAddress() / isEmailEnabled()
 
   // Anti-spam e-mail inondation (trop plein)
   bool     inFlood{false};                 // état courant « en trop plein »
