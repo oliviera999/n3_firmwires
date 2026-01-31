@@ -630,10 +630,8 @@ static const char* buildSystemInfoFooter() {
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", bouffeSoirOk, false);
     g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", pompeAquaLocked, false);
-    // Migration: essayer nouvelle clé d'abord, puis ancienne clé en fallback
-    if (g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp, false) != NVSError::SUCCESS) {
-      g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp, false);
-    }
+    // v11.172: Clé unique (migration terminée)
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp, false);
     written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
                                        "- bouffeMidiOk: %s\n"
                                        "- bouffeSoirOk: %s\n"

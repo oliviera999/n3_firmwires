@@ -1409,10 +1409,8 @@ void WaterTempSensor::saveLastValidTempToNVS(float temp) {
   if (!deltaOk && !timeOk) {
     return;  // Pas de changement significatif ni délai écoulé
   }
-  // Clé harmonisée (snake_case complet)
+  // v11.172: Clé unique (migration terminée)
   g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, "temp_last_valid", temp);
-  // Migration: supprimer l'ancienne clé si elle existe
-  g_nvsManager.removeKey(NVS_NAMESPACES::CONFIG, "temp_lastValid");
   _lastSavedTempToNVS = temp;
   _lastNvsSaveMs = now;
   Serial.printf("[WaterTemp] Dernière température valide sauvegardée en NVS: %.1f°C\n", temp);
@@ -1420,18 +1418,8 @@ void WaterTempSensor::saveLastValidTempToNVS(float temp) {
 
 float WaterTempSensor::loadLastValidTempFromNVS() {
   float temp;
-  // Migration: essayer nouvelle clé d'abord, puis ancienne clé en fallback
-  NVSError err = g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, "temp_last_valid", temp, NAN);
-  if (err != NVSError::SUCCESS || isnan(temp)) {
-    // Fallback: ancienne clé (migration en cours)
-    g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, "temp_lastValid", temp, NAN);
-    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
-      // Migrer vers nouvelle clé
-      g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, "temp_last_valid", temp);
-      g_nvsManager.removeKey(NVS_NAMESPACES::CONFIG, "temp_lastValid");
-      Serial.println(F("[WaterTemp] Migration NVS: temp_lastValid -> temp_last_valid"));
-    }
-  }
+  // v11.172: Clé unique (migration terminée)
+  g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, "temp_last_valid", temp, NAN);
   
   if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
     Serial.printf("[WaterTemp] Dernière température valide chargée depuis NVS: %.1f°C\n", temp);

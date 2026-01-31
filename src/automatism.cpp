@@ -478,18 +478,8 @@ bool Automatism::isRefillingInManualMode() const { return _manualTankOverride; }
 // Méthodes privées d'initialisation (simplifiées)
 void Automatism::restorePersistentForceWakeup() {
     bool saved = false;
-    // Migration: essayer nouvelle clé d'abord, puis ancienne clé en fallback
-    NVSError err = g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", saved, false);
-    if (err != NVSError::SUCCESS) {
-        // Fallback: ancienne clé (migration en cours)
-        g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", saved, false);
-        if (saved) {
-            // Migrer vers nouvelle clé
-            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", saved);
-            g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
-            Serial.println(F("[Auto] Migration NVS: forceWakeUp -> force_wake_up"));
-        }
-    }
+    // v11.172: Clé unique (migration terminée)
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", saved, false);
     forceWakeUp = saved;
     _sleep.setForceWakeUp(saved);
 }
