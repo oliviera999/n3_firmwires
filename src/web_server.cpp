@@ -716,14 +716,22 @@ bool WebServerManager::begin() {
       }
       return defaultVal;
     };
+    // Harmonisation config: clés canoniques (serveur distant) avec fallback anciennes clés
+    auto getIntCanonical = [&cachedSrc](const char* canonical, const char* legacy, int def) -> int {
+      if (cachedSrc.containsKey(canonical)) return cachedSrc[canonical].as<int>();
+      if (legacy && cachedSrc.containsKey(legacy)) return cachedSrc[legacy].as<int>();
+      return def;
+    };
+    auto getFloatCanonical = [&cachedSrc](const char* canonical, const char* legacy, float def) -> float {
+      if (cachedSrc.containsKey(canonical)) return cachedSrc[canonical].as<float>();
+      if (legacy && cachedSrc.containsKey(legacy)) return cachedSrc[legacy].as<float>();
+      return def;
+    };
 
-    // NOTE v11.40: Depuis la normalisation, NVS contient TOUJOURS les clés au format interface
-    // Les fallbacks vers anciens formats (tempsGros, mail, etc.) sont gardés pour compatibilité
-    
-    // Heures nourrissage (valeurs par défaut: 8h, 12h, 19h)
-    out["bouffeMatin"] = getWithDefault("bouffeMatin", 8);
-    out["bouffeMidi"]  = getWithDefault("bouffeMidi", 12);
-    out["bouffeSoir"]  = getWithDefault("bouffeSoir", 19);
+    // Heures nourrissage (clés canoniques, fallback 105/106/107 pour NVS existant)
+    out["bouffeMatin"] = getIntCanonical("bouffeMatin", "105", 8);
+    out["bouffeMidi"]  = getIntCanonical("bouffeMidi", "106", 12);
+    out["bouffeSoir"]  = getIntCanonical("bouffeSoir", "107", 19);
 
     // Durées nourrissage (valeurs par défaut synchronisées avec BDD distante)
     out["tempsGros"] = getWithDefault("tempsGros",
@@ -731,12 +739,13 @@ bool WebServerManager::begin() {
     out["tempsPetits"] = getWithDefault("tempsPetits",
                                         ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
 
-    // Seuils (valeurs par défaut raisonnables)
-    out["aqThreshold"]     = getWithDefault("aqThreshold", 18);
-    out["tankThreshold"]   = getWithDefault("tankThreshold", 80);
-    out["heaterThreshold"] = getFloatWithDefault("heaterThreshold", 25.0f);
-    out["refillDuration"]  = getWithDefault("refillDuration", 120); // v11.40: Ajouté
-    out["limFlood"]        = getWithDefault("limFlood", 5);
+    // Seuils (clés canoniques: chauffageThreshold, tempsRemplissageSec; fallback anciennes clés)
+    out["aqThreshold"]         = getWithDefault("aqThreshold", 18);
+    out["tankThreshold"]       = getWithDefault("tankThreshold", 80);
+    out["chauffageThreshold"]  = getFloatCanonical("chauffageThreshold", "heaterThreshold", 25.0f);
+    out["tempsRemplissageSec"] = getIntCanonical("tempsRemplissageSec", "refillDuration", 120);
+    out["limFlood"]            = getWithDefault("limFlood", 5);
+    out["FreqWakeUp"]          = getWithDefault("FreqWakeUp", 600);
 
     // Email (v11.40: Gestion améliorée avec message si non configuré)
     const char* emailAddr = getStringWithDefault("mail", "Non configuré");
@@ -794,12 +803,12 @@ bool WebServerManager::begin() {
     }
     lastDbvarsUpdateMs = nowMs;
 
-    // v11.70: Clés acceptées standardisées (schéma serveur)
+    // Harmonisation config: clés canoniques (même que serveur distant)
     const char* KEYS[] = {
-      "105","106","107",  // GPIO numériques pour heures nourrissage
+      "bouffeMatin","bouffeMidi","bouffeSoir",
       "tempsGros","tempsPetits",
       "aqThreshold","tankThreshold","chauffageThreshold",
-      "tempsRemplissageSec","limFlood",
+      "tempsRemplissageSec","limFlood","FreqWakeUp",
       "mail","mailNotif"
     };
 
@@ -840,11 +849,10 @@ bool WebServerManager::begin() {
       }
     };
 
-    // v11.70: Lecture directe des paramètres - clés standardisées
-    // Heures de nourrissage (GPIO numériques)
-    appendPair("105", getParamCStr("bouffeMatin"));  // bouffeMatin
-    appendPair("106", getParamCStr("bouffeMidi"));   // bouffeMidi
-    appendPair("107", getParamCStr("bouffeSoir"));   // bouffeSoir
+    // Harmonisation config: écriture en clés canoniques (serveur distant)
+    appendPair("bouffeMatin", getParamCStr("bouffeMatin"));
+    appendPair("bouffeMidi", getParamCStr("bouffeMidi"));
+    appendPair("bouffeSoir", getParamCStr("bouffeSoir"));
     // Durées nourrissage
     appendPair("tempsGros", getParamCStr("tempsGros"));
     appendPair("tempsPetits", getParamCStr("tempsPetits"));
@@ -854,6 +862,7 @@ bool WebServerManager::begin() {
     appendPair("chauffageThreshold", getParamCStr("chauffageThreshold"));
     appendPair("tempsRemplissageSec", getParamCStr("tempsRemplissageSec"));
     appendPair("limFlood", getParamCStr("limFlood"));
+    appendPair("FreqWakeUp", getParamCStr("FreqWakeUp"));
     // Email
     appendPair("mail", getParamCStr("mail"));
     appendPair("mailNotif", getParamCStr("mailNotif"));

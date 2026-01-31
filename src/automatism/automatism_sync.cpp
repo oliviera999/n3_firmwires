@@ -287,17 +287,34 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     // v11.158: Réduire timeout de 30s à 12s pour éviter blocages longs
-    // Le timeout absolu dans netRpc() est de 15s, donc 12s laisse une marge
     bool ok = AppTasks::netFetchRemoteState(doc, 12000);
     if (ok && doc.size() > 0) {
+        // Harmonisation config: normaliser les clés (canoniques serveur distant) avant sauvegarde NVS
+        StaticJsonDocument<2048> normalizedDoc;
+        JsonObject out = normalizedDoc.to<JsonObject>();
+        for (ArduinoJson::JsonPair p : doc.as<ArduinoJson::JsonObject>()) {
+            const char* k = p.key().c_str();
+            if (strcmp(k, "105") == 0) {
+                if (!out.containsKey("bouffeMatin")) out["bouffeMatin"] = p.value();
+            } else if (strcmp(k, "106") == 0) {
+                if (!out.containsKey("bouffeMidi")) out["bouffeMidi"] = p.value();
+            } else if (strcmp(k, "107") == 0) {
+                if (!out.containsKey("bouffeSoir")) out["bouffeSoir"] = p.value();
+            } else if (strcmp(k, "heaterThreshold") == 0) {
+                if (!out.containsKey("chauffageThreshold")) out["chauffageThreshold"] = p.value();
+            } else if (strcmp(k, "refillDuration") == 0) {
+                if (!out.containsKey("tempsRemplissageSec")) out["tempsRemplissageSec"] = p.value();
+            } else {
+                // Ne pas recopier les clés legacy (déjà mappées en canoniques)
+                out[k] = p.value();
+            }
+        }
         char jsonStr[2048];
-        serializeJson(doc, jsonStr, sizeof(jsonStr));
+        serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
         _config.saveRemoteVars(jsonStr);
         _serverOk = true;
         _recvState = 1;
-        
-        // v11.168: Marquer que la config a été synchronisée au moins une fois
-        // À partir de maintenant, les envois au serveur distant incluront configSynced=1
+
         if (!_configSyncedOnce) {
             _configSyncedOnce = true;
             Serial.println(F("[Sync] ✅ configSynced=true (1er poll serveur réussi)"));

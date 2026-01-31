@@ -59,6 +59,7 @@ struct NetRequest {
   TaskHandle_t requester;
   uint32_t timeoutMs;
   bool success;
+  volatile bool cancelled;  // Flag d'abandon (evite use-after-free si caller timeout)
 
   ArduinoJson::JsonDocument* doc;   // FetchRemoteState
   const Diagnostics* diag;          // Heartbeat
@@ -122,6 +123,12 @@ static void netTask(void* pv) {
     }
     if (!req || !g_ctx) continue;
 
+    // v11.169: Vérifier si le caller a déjà abandonné (timeout atteint)
+    if (req->cancelled) {
+      netNotifyDone(req);  // Notifier même si annulé
+      continue;
+    }
+
     bool ok = false;
     switch (req->type) {
       case NetReqType::FetchRemoteState:
@@ -138,7 +145,10 @@ static void netTask(void* pv) {
         break;
     }
 
-    req->success = ok;
+    // v11.169: Re-vérifier avant d'écrire success (le caller peut avoir timeout pendant le traitement)
+    if (!req->cancelled) {
+      req->success = ok;
+    }
     netNotifyDone(req);
   }
 }
@@ -632,6 +642,7 @@ static bool netRpc(NetRequest& req) {
   if (!g_netQueue || !g_netTaskHandle) return false;
   req.requester = xTaskGetCurrentTaskHandle();
   req.success = false;
+  req.cancelled = false;  // v11.169: Initialiser flag abandon
 
   // Clear any pending notification
   (void)ulTaskNotifyTake(pdTRUE, 0);
@@ -648,12 +659,15 @@ static bool netRpc(NetRequest& req) {
   
   // Attendre la notification avec timeout absolu
   while (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CHECK_INTERVAL_MS)) == 0) {
-    esp_task_wdt_reset();  // Reset watchdog pendant attente
-    
     // Vérifier timeout absolu
     uint32_t elapsed = millis() - waitStart;
     if (elapsed > ABSOLUTE_TIMEOUT_MS) {
-      Serial.printf("[netRPC] ⚠️ Timeout absolu atteint (%lu ms), abandon requête\n", ABSOLUTE_TIMEOUT_MS);
+      Serial.printf("[netRPC] Timeout absolu (%u ms), signalement abandon\n", (unsigned)ABSOLUTE_TIMEOUT_MS);
+      // v11.169: Signaler abandon pour éviter use-after-free
+      req.cancelled = true;
+      // Attendre que netTask ait terminé (max 500ms) avant de quitter
+      // Cela garantit que netTask ne touchera plus à req après notre retour
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
       return false;
     }
     

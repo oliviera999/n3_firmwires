@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.169";  // CI: vérif version sur PR et push main
+    inline constexpr const char* VERSION = "11.170";  // UI controles, sync, web_server, web_client
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

@@ -395,7 +395,7 @@ function displayDbVars(db) {
     };
     
     // Utiliser les valeurs par défaut si les données ne sont pas valides
-    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
+    // Harmonisation config: clés canoniques (chauffageThreshold, tempsRemplissageSec) avec fallback anciennes
     const defaultValues = {
       bouffeMatin: 8,
       bouffeMidi: 12,
@@ -404,14 +404,19 @@ function displayDbVars(db) {
       tempsPetits: 10,
       aqThreshold: 15,
       tankThreshold: 8,
-      heaterThreshold: 25.0,
+      chauffageThreshold: 25.0,
+      tempsRemplissageSec: 120,
+      limFlood: 5,
+      FreqWakeUp: 600,
       mail: 'Non configuré',
       mailNotif: ''
     };
-    
+    const heaterVal = (db.chauffageThreshold !== undefined && db.chauffageThreshold !== null) ? db.chauffageThreshold : db.heaterThreshold;
+    const refillVal = (db.tempsRemplissageSec !== undefined && db.tempsRemplissageSec !== null) ? db.tempsRemplissageSec : db.refillDuration;
+
     // Helper pour convertir mailNotif (string "checked"/"") en boolean
     const isMailEnabled = (val) => val === 'checked' || val === '1' || val === 1 || val === true;
-    
+
     updateDbElement('dbFeedMorning', dataOk && db.bouffeMatin !== undefined && db.bouffeMatin !== null ? db.bouffeMatin : defaultValues.bouffeMatin);
     updateDbElement('dbFeedNoon', dataOk && db.bouffeMidi !== undefined && db.bouffeMidi !== null ? db.bouffeMidi : defaultValues.bouffeMidi);
     updateDbElement('dbFeedEvening', dataOk && db.bouffeSoir !== undefined && db.bouffeSoir !== null ? db.bouffeSoir : defaultValues.bouffeSoir);
@@ -419,8 +424,10 @@ function displayDbVars(db) {
     updateDbElement('dbFeedSmallDur', dataOk && db.tempsPetits !== undefined && db.tempsPetits !== null ? db.tempsPetits : defaultValues.tempsPetits);
     updateDbElement('dbAqThreshold', dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold);
-    updateDbElement('dbHeaterThreshold', dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? parseFloat(db.heaterThreshold).toFixed(1) : defaultValues.heaterThreshold.toFixed(1));
-    updateDbElement('dbRefillDuration', dataOk && db.refillDuration !== undefined && db.refillDuration !== null ? db.refillDuration : 120);
+    updateDbElement('dbHeaterThreshold', dataOk && (heaterVal !== undefined && heaterVal !== null) ? parseFloat(heaterVal).toFixed(1) : defaultValues.chauffageThreshold.toFixed(1));
+    updateDbElement('dbRefillDuration', dataOk && (refillVal !== undefined && refillVal !== null) ? refillVal : defaultValues.tempsRemplissageSec);
+    updateDbElement('dbFreqWakeUp', dataOk && db.FreqWakeUp !== undefined && db.FreqWakeUp !== null ? db.FreqWakeUp : defaultValues.FreqWakeUp);
+    updateDbElement('dbLimFlood', dataOk && db.limFlood !== undefined && db.limFlood !== null ? db.limFlood : defaultValues.limFlood);
     updateDbElement('dbEmailAddress', dataOk && db.mail !== undefined && db.mail !== null ? db.mail : defaultValues.mail);
     
     // Mise à jour du statut email - convertir mailNotif string en boolean
@@ -443,8 +450,7 @@ function displayDbVars(db) {
       }
     }
     
-    // Remplir automatiquement le formulaire avec les vraies valeurs
-    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
+    // Remplir automatiquement le formulaire avec les vraies valeurs (clés canoniques + fallback)
     const fields = {
       'formFeedMorning': dataOk && db.bouffeMatin !== undefined && db.bouffeMatin !== null ? db.bouffeMatin : defaultValues.bouffeMatin,
       'formFeedNoon': dataOk && db.bouffeMidi !== undefined && db.bouffeMidi !== null ? db.bouffeMidi : defaultValues.bouffeMidi,
@@ -453,8 +459,10 @@ function displayDbVars(db) {
       'formFeedSmallDur': dataOk && db.tempsPetits !== undefined && db.tempsPetits !== null ? db.tempsPetits : defaultValues.tempsPetits,
       'formAqThreshold': dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold,
       'formTankThreshold': dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold,
-      'formHeaterThreshold': dataOk && db.heaterThreshold !== undefined && db.heaterThreshold !== null ? db.heaterThreshold : defaultValues.heaterThreshold,
-      'formRefillDuration': dataOk && db.refillDuration !== undefined && db.refillDuration !== null ? db.refillDuration : 120,
+      'formHeaterThreshold': dataOk && (heaterVal !== undefined && heaterVal !== null) ? heaterVal : defaultValues.chauffageThreshold,
+      'formRefillDuration': dataOk && (refillVal !== undefined && refillVal !== null) ? refillVal : defaultValues.tempsRemplissageSec,
+      'formFreqWakeUp': dataOk && db.FreqWakeUp !== undefined && db.FreqWakeUp !== null ? db.FreqWakeUp : defaultValues.FreqWakeUp,
+      'formLimFlood': dataOk && db.limFlood !== undefined && db.limFlood !== null ? db.limFlood : defaultValues.limFlood,
       'formEmailAddress': dataOk && db.mail ? db.mail : ''
     };
     
@@ -559,8 +567,7 @@ window.loadDbVars = async function loadDbVars() {
       toast(`Erreur chargement réglages: ${error.message}`, 'error');
     }
     
-    // Fallback avec des valeurs par défaut pour éviter un affichage vide
-    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
+    // Fallback avec des valeurs par défaut (clés canoniques)
     console.log('[DEBUG] Application des valeurs par défaut');
     const defaultValues = {
       bouffeMatin: 8,
@@ -570,17 +577,20 @@ window.loadDbVars = async function loadDbVars() {
       tempsPetits: 10,
       aqThreshold: 15,
       tankThreshold: 8,
-      heaterThreshold: 25.0,
+      chauffageThreshold: 25.0,
+      tempsRemplissageSec: 120,
+      limFlood: 5,
+      FreqWakeUp: 600,
       mail: 'Non configuré',
       mailNotif: ''
     };
-    
+
     // Appliquer les valeurs par défaut
     const updateDbElement = (id, value) => {
       const el = $(id);
       if (el) el.textContent = value;
     };
-    
+
     updateDbElement('dbFeedMorning', defaultValues.bouffeMatin);
     updateDbElement('dbFeedNoon', defaultValues.bouffeMidi);
     updateDbElement('dbFeedEvening', defaultValues.bouffeSoir);
@@ -588,8 +598,10 @@ window.loadDbVars = async function loadDbVars() {
     updateDbElement('dbFeedSmallDur', defaultValues.tempsPetits);
     updateDbElement('dbAqThreshold', defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', defaultValues.tankThreshold);
-    updateDbElement('dbHeaterThreshold', defaultValues.heaterThreshold.toFixed(1));
-    updateDbElement('dbRefillDuration', 120);
+    updateDbElement('dbHeaterThreshold', defaultValues.chauffageThreshold.toFixed(1));
+    updateDbElement('dbRefillDuration', defaultValues.tempsRemplissageSec);
+    updateDbElement('dbFreqWakeUp', defaultValues.FreqWakeUp);
+    updateDbElement('dbLimFlood', defaultValues.limFlood);
     updateDbElement('dbEmailAddress', defaultValues.mail);
     
     // Mise à jour du statut email (mailNotif vide = désactivé)
@@ -615,8 +627,10 @@ window.loadDbVars = async function loadDbVars() {
       'formFeedSmallDur': defaultValues.tempsPetits,
       'formAqThreshold': defaultValues.aqThreshold,
       'formTankThreshold': defaultValues.tankThreshold,
-      'formHeaterThreshold': defaultValues.heaterThreshold,
-      'formRefillDuration': 120, // Valeur par défaut pour refillDuration
+      'formHeaterThreshold': defaultValues.chauffageThreshold,
+      'formRefillDuration': defaultValues.tempsRemplissageSec,
+      'formFreqWakeUp': defaultValues.FreqWakeUp,
+      'formLimFlood': defaultValues.limFlood,
       'formEmailAddress': ''
     };
     
@@ -655,8 +669,9 @@ window.fillFormFromDb = async function fillFormFromDb() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const db = await response.json();
     
-    // Remplir le formulaire avec les valeurs actuelles
-    // NOTE: Les clés correspondent au serveur /dbvars (noms français)
+    // Remplir le formulaire (clés canoniques + fallback)
+    const heaterVal = db.chauffageThreshold !== undefined ? db.chauffageThreshold : db.heaterThreshold;
+    const refillVal = db.tempsRemplissageSec !== undefined ? db.tempsRemplissageSec : db.refillDuration;
     const fields = {
       'formFeedMorning': db.bouffeMatin,
       'formFeedNoon': db.bouffeMidi,
@@ -665,8 +680,10 @@ window.fillFormFromDb = async function fillFormFromDb() {
       'formFeedSmallDur': db.tempsPetits,
       'formAqThreshold': db.aqThreshold,
       'formTankThreshold': db.tankThreshold,
-      'formHeaterThreshold': db.heaterThreshold,
-      'formRefillDuration': db.refillDuration,
+      'formHeaterThreshold': heaterVal,
+      'formRefillDuration': refillVal,
+      'formFreqWakeUp': db.FreqWakeUp,
+      'formLimFlood': db.limFlood,
       'formEmailAddress': db.mail
     };
     
@@ -713,7 +730,9 @@ window.submitDbVars = async function submitDbVars(ev) {
     add('tankThreshold', 'formTankThreshold');
     add('chauffageThreshold', 'formHeaterThreshold');
     add('tempsRemplissageSec', 'formRefillDuration');
-    
+    add('FreqWakeUp', 'formFreqWakeUp');
+    add('limFlood', 'formLimFlood');
+
     const email = $('formEmailAddress');
     if (email && email.value) params.append('mail', email.value);
     

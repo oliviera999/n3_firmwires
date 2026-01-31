@@ -182,6 +182,22 @@
           </div>
           
           <div class="col-12 mt-3">
+            <h6 class="text-muted mb-2">⏰ Sync / Réveil</h6>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>⏰ Fréq. réveil (s)</span>
+              <span class="badge bg-info" id="dbFreqWakeUp">--</span>
+            </div>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🛡️ Limite flood</span>
+              <span class="badge bg-secondary" id="dbLimFlood">--</span>
+            </div>
+          </div>
+          
+          <div class="col-12 mt-3">
             <h6 class="text-muted mb-2">📧 Configuration Email</h6>
           </div>
           <div class="col-md-6 col-sm-12">
@@ -270,6 +286,19 @@
               <label class="form-label">Durée Remplissage (s)</label>
               <input type="number" class="form-control" id="formRefillDuration" min="10" max="600" placeholder="120">
               <small class="text-muted">Durée maximale du cycle de remplissage automatique de l'aquarium</small>
+            </div>
+            
+            <div class="col-12">
+              <h6 class="text-muted mb-2 mt-3">⏰ Sync / Réveil</h6>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Fréq. réveil (s)</label>
+              <input type="number" class="form-control" id="formFreqWakeUp" min="6" max="3600" placeholder="600">
+              <small class="text-muted">Intervalle entre deux réveils (sync)</small>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Limite flood</label>
+              <input type="number" class="form-control" id="formLimFlood" min="0" max="100" placeholder="5">
             </div>
             
             <div class="col-12">
