@@ -45,14 +45,13 @@ void NVSManager::unlock() {
 }
 
 
-// Définitions des constantes NVS_NAMESPACES
+// Définitions des constantes NVS_NAMESPACES (4 namespaces consolidés)
 namespace NVS_NAMESPACES {
-    const char* SYSTEM = "sys";      // ota, net, reset
-    const char* CONFIG = "cfg";      // bouffe, remoteVars, gpio
-    const char* TIME = "time";       // rtc, timeDrift
+    const char* SYSTEM = "sys";      // ota, net, reset, forceWakeUp, rtc_epoch
+    const char* CONFIG = "cfg";      // bouffe, remoteVars, gpio, temp_lastValid
     const char* STATE = "state";     // actSnap, actState, pendingSync
-    const char* LOGS = "logs";       // diagnostics, cmdLog, alerts
-    const char* SENSORS = "sens";    // waterTemp, digest
+    const char* LOGS = "logs";       // diagnostics, alerts, crash
+    // NOTE: TIME et SENSORS supprimés - fusionnés dans SYSTEM et CONFIG
 }
 
 // Instance globale
@@ -88,14 +87,12 @@ bool NVSManager::begin() {
     // Marquer initialisé avant la création des namespaces (openNamespace en dépend)
     _initialized = true;
 
-    // Pré-créer les namespaces consolidés
+    // Pré-créer les namespaces consolidés (4 namespaces)
     const char* nss[] = {
         NVS_NAMESPACES::SYSTEM,
         NVS_NAMESPACES::CONFIG,
-        NVS_NAMESPACES::TIME,
         NVS_NAMESPACES::STATE,
-        NVS_NAMESPACES::LOGS,
-        NVS_NAMESPACES::SENSORS
+        NVS_NAMESPACES::LOGS
     };
     
     for (size_t i = 0; i < sizeof(nss) / sizeof(nss[0]); i++) {
@@ -197,27 +194,28 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const char* val
     }
     
     // Vérifier si la valeur a changé avant d'écrire (évite écritures inutiles)
-    // Buffer sur la stack - taille modérée (384 bytes en test), mutex NVS protège l'accès
-    NVSError openError = openNamespace(ns, true);  // Ouvrir en lecture d'abord
-    if (openError == NVSError::SUCCESS) {
-        char currentValue[NVSConfig::MAX_INSPECTED_STRING_BYTES];
-        size_t len = _preferences.getString(key, currentValue, sizeof(currentValue));
-        if (len < sizeof(currentValue)) {
-            currentValue[len] = '\0';
+    // v11.168: API NVS bas niveau pour éviter Preferences.getString() qui log NOT_FOUND
+    nvs_handle_t handle;
+    if (nvs_open(ns, NVS_READONLY, &handle) == ESP_OK) {
+        size_t requiredSize = 0;
+        esp_err_t err = nvs_get_str(handle, key, nullptr, &requiredSize);
+        if (err == ESP_OK && requiredSize > 0 && requiredSize <= NVSConfig::MAX_INSPECTED_STRING_BYTES) {
+            char currentValue[NVSConfig::MAX_INSPECTED_STRING_BYTES];
+            size_t actualSize = sizeof(currentValue);
+            err = nvs_get_str(handle, key, currentValue, &actualSize);
+            nvs_close(handle);
+            if (err == ESP_OK && strcmp(currentValue, value) == 0) {
+                return NVSError::SUCCESS;  // Valeur inchangée
+            }
         } else {
-            currentValue[sizeof(currentValue) - 1] = '\0';
-        }
-        closeNamespace();
-        if (strcmp(currentValue, value) == 0) {
-            // Valeur inchangée, pas besoin d'écrire
-            return NVSError::SUCCESS;
+            nvs_close(handle);
         }
     }
     
     // Écrire la nouvelle valeur
-    openError = openNamespace(ns, false);
-    if (openError != NVSError::SUCCESS) {
-        return openError;
+    NVSError openErr = openNamespace(ns, false);
+    if (openErr != NVSError::SUCCESS) {
+        return openErr;
     }
     
     bool success = _preferences.putString(key, value);
@@ -395,19 +393,57 @@ NVSError NVSManager::saveInt(const char* ns, const char* key, int value) {
         return keyError;
     }
 
-    // Convertir en String et appeler saveString()
-    char valueStr[16];
-    snprintf(valueStr, sizeof(valueStr), "%d", value);
-    return saveString(ns, key, valueStr);
+    // Vérifier si la valeur a changé avant d'écrire (préserve flash)
+    NVSError openError = openNamespace(ns, true);
+    if (openError == NVSError::SUCCESS) {
+        int current = _preferences.getInt(key, value + 1); // +1 pour détecter si clé absente
+        closeNamespace();
+        if (current == value) {
+            return NVSError::SUCCESS; // Valeur inchangée
+        }
+    }
+
+    // Écrire la nouvelle valeur avec API native
+    openError = openNamespace(ns, false);
+    if (openError != NVSError::SUCCESS) {
+        return openError;
+    }
+
+    bool success = _preferences.putInt(key, value);
+    closeNamespace();
+
+    if (!success) {
+        logError(NVSError::WRITE_FAILED, "saveInt", ns, key);
+        return NVSError::WRITE_FAILED;
+    }
+
+    return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::loadInt(const char* ns, const char* key, int& value, int defaultValue) {
-    char valueStr[16];
-    char defaultValueStr[16];
-    snprintf(defaultValueStr, sizeof(defaultValueStr), "%d", defaultValue);
-    NVSError error = loadString(ns, key, valueStr, sizeof(valueStr), defaultValueStr);
-    value = atoi(valueStr);
-    return error;
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) {
+        value = defaultValue;
+        return NVSError::READ_FAILED;
+    }
+
+    NVSError keyError = validateKey(key);
+    if (keyError != NVSError::SUCCESS) {
+        logError(keyError, "loadInt", ns, key);
+        value = defaultValue;
+        return keyError;
+    }
+
+    NVSError openError = openNamespace(ns, true);
+    if (openError != NVSError::SUCCESS) {
+        value = defaultValue;
+        return openError;
+    }
+
+    value = _preferences.getInt(key, defaultValue);
+    closeNamespace();
+
+    return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::saveFloat(const char* ns, const char* key, float value) {
@@ -422,19 +458,59 @@ NVSError NVSManager::saveFloat(const char* ns, const char* key, float value) {
         return keyError;
     }
 
-    // Convertir en String et appeler saveString()
-    char valueStr[16];
-    snprintf(valueStr, sizeof(valueStr), "%.2f", value);
-    return saveString(ns, key, valueStr);
+    // Vérifier si la valeur a changé avant d'écrire (préserve flash)
+    // Note: comparaison float avec tolérance pour éviter faux positifs
+    NVSError openError = openNamespace(ns, true);
+    if (openError == NVSError::SUCCESS) {
+        float current = _preferences.getFloat(key, value + 999.0f);
+        closeNamespace();
+        float diff = (current > value) ? (current - value) : (value - current);
+        if (diff < 0.001f) {
+            return NVSError::SUCCESS; // Valeur inchangée
+        }
+    }
+
+    // Écrire la nouvelle valeur avec API native
+    openError = openNamespace(ns, false);
+    if (openError != NVSError::SUCCESS) {
+        return openError;
+    }
+
+    bool success = _preferences.putFloat(key, value);
+    closeNamespace();
+
+    if (!success) {
+        logError(NVSError::WRITE_FAILED, "saveFloat", ns, key);
+        return NVSError::WRITE_FAILED;
+    }
+
+    return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::loadFloat(const char* ns, const char* key, float& value, float defaultValue) {
-    char valueStr[16];
-    char defaultValueStr[16];
-    snprintf(defaultValueStr, sizeof(defaultValueStr), "%.2f", defaultValue);
-    NVSError error = loadString(ns, key, valueStr, sizeof(valueStr), defaultValueStr);
-    value = atof(valueStr);
-    return error;
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) {
+        value = defaultValue;
+        return NVSError::READ_FAILED;
+    }
+
+    NVSError keyError = validateKey(key);
+    if (keyError != NVSError::SUCCESS) {
+        logError(keyError, "loadFloat", ns, key);
+        value = defaultValue;
+        return keyError;
+    }
+
+    NVSError openError = openNamespace(ns, true);
+    if (openError != NVSError::SUCCESS) {
+        value = defaultValue;
+        return openError;
+    }
+
+    value = _preferences.getFloat(key, defaultValue);
+    closeNamespace();
+
+    return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::saveULong(const char* ns, const char* key, unsigned long value) {
@@ -449,19 +525,57 @@ NVSError NVSManager::saveULong(const char* ns, const char* key, unsigned long va
         return keyError;
     }
 
-    // Convertir en String et appeler saveString()
-    char valueStr[21];
-    snprintf(valueStr, sizeof(valueStr), "%lu", value);
-    return saveString(ns, key, valueStr);
+    // Vérifier si la valeur a changé avant d'écrire (préserve flash)
+    NVSError openError = openNamespace(ns, true);
+    if (openError == NVSError::SUCCESS) {
+        unsigned long current = _preferences.getULong(key, value + 1);
+        closeNamespace();
+        if (current == value) {
+            return NVSError::SUCCESS; // Valeur inchangée
+        }
+    }
+
+    // Écrire la nouvelle valeur avec API native
+    openError = openNamespace(ns, false);
+    if (openError != NVSError::SUCCESS) {
+        return openError;
+    }
+
+    bool success = _preferences.putULong(key, value);
+    closeNamespace();
+
+    if (!success) {
+        logError(NVSError::WRITE_FAILED, "saveULong", ns, key);
+        return NVSError::WRITE_FAILED;
+    }
+
+    return NVSError::SUCCESS;
 }
 
 NVSError NVSManager::loadULong(const char* ns, const char* key, unsigned long& value, unsigned long defaultValue) {
-    char valueStr[21];
-    char defaultValueStr[21];
-    snprintf(defaultValueStr, sizeof(defaultValueStr), "%lu", defaultValue);
-    NVSError error = loadString(ns, key, valueStr, sizeof(valueStr), defaultValueStr);
-    value = strtoul(valueStr, nullptr, 10);
-    return error;
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) {
+        value = defaultValue;
+        return NVSError::READ_FAILED;
+    }
+
+    NVSError keyError = validateKey(key);
+    if (keyError != NVSError::SUCCESS) {
+        logError(keyError, "loadULong", ns, key);
+        value = defaultValue;
+        return keyError;
+    }
+
+    NVSError openError = openNamespace(ns, true);
+    if (openError != NVSError::SUCCESS) {
+        value = defaultValue;
+        return openError;
+    }
+
+    value = _preferences.getULong(key, defaultValue);
+    closeNamespace();
+
+    return NVSError::SUCCESS;
 }
 
 
@@ -617,21 +731,20 @@ NVSError NVSManager::migrateFromOldSystem() {
         const char* keyPrefix;
     };
     
+    // Migration rules: ancien namespace -> nouveau namespace + préfixe
+    // NOTE: drift_, cmd_, digest_ supprimés (code mort, jamais utilisés)
     const MigrationRule rules[] = {
         {"bouffe",      NVS_NAMESPACES::CONFIG,  "bouffe_"},
         {"ota",         NVS_NAMESPACES::SYSTEM,  "ota_"},
         {"remoteVars",  NVS_NAMESPACES::CONFIG,  "remote_"},
-        {"rtc",         NVS_NAMESPACES::TIME,    "rtc_"},
+        {"rtc",         NVS_NAMESPACES::SYSTEM,  "rtc_"},      // TIME supprimé -> SYSTEM
         {"diagnostics", NVS_NAMESPACES::LOGS,    "diag_"},
         {"alerts",      NVS_NAMESPACES::LOGS,    "alert_"},
-        {"timeDrift",   NVS_NAMESPACES::TIME,    "drift_"},
         {"gpio",        NVS_NAMESPACES::CONFIG,  "gpio_"},
         {"actSnap",     NVS_NAMESPACES::STATE,   "snap_"},
         {"actState",    NVS_NAMESPACES::STATE,   "state_"},
         {"pendingSync", NVS_NAMESPACES::STATE,   "sync_"},
-        {"waterTemp",   NVS_NAMESPACES::SENSORS, "temp_"},
-        {"digest",      NVS_NAMESPACES::SENSORS, "digest_"},
-        {"cmdLog",      NVS_NAMESPACES::LOGS,    "cmd_"},
+        {"waterTemp",   NVS_NAMESPACES::CONFIG,  "temp_"},     // SENSORS supprimé -> CONFIG
         {"reset",       NVS_NAMESPACES::SYSTEM,  "reset_"},
         {"net",         NVS_NAMESPACES::SYSTEM,  "net_"}
     };

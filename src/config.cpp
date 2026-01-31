@@ -6,10 +6,10 @@
 
 ConfigManager::ConfigManager() 
     : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false), 
-      _lastJourBouf(-1), _pompeAquaLocked(false), _forceWakeUp(false), _otaUpdateFlag(true),
+      _lastJourBouf(-1), _pompeAquaLocked(false), _otaUpdateFlag(true),
       _remoteSendEnabled(true), _remoteRecvEnabled(true),
       _cachedBouffeMatinOk(false), _cachedBouffeMidiOk(false), _cachedBouffeSoirOk(false),
-      _cachedLastJourBouf(-1), _cachedPompeAquaLocked(false), _cachedForceWakeUp(false),
+      _cachedLastJourBouf(-1), _cachedPompeAquaLocked(false),
       _cachedOtaUpdateFlag(true), _flagsChanged(false),
       _cachedRemoteSendEnabled(true), _cachedRemoteRecvEnabled(true) {
 }
@@ -24,7 +24,7 @@ void ConfigManager::loadBouffeFlags() {
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk, false);
   g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf, -1);
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", _pompeAquaLocked, false);
-  g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_force_wk", _forceWakeUp, false);
+  // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
   // Chargement du flag OTA depuis le namespace SYSTEM
   g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "ota_update_flag", _otaUpdateFlag, true);
@@ -34,13 +34,12 @@ void ConfigManager::loadBouffeFlags() {
   _flagsChanged = false;
   
   Serial.println(F("[Config] ✅ Flags de bouffe chargés depuis NVS centralisé"));
-  Serial.printf("[Config] Matin: %s, Midi: %s, Soir: %s, Jour: %d, Pompe lock: %s, ForceWakeUp: %s\n",
+  Serial.printf("[Config] Matin: %s, Midi: %s, Soir: %s, Jour: %d, Pompe lock: %s\n",
                 _bouffeMatinOk ? "OK" : "KO", 
                 _bouffeMidiOk ? "OK" : "KO", 
                 _bouffeSoirOk ? "OK" : "KO", 
                 _lastJourBouf,
-                _pompeAquaLocked ? "OUI" : "NON",
-                _forceWakeUp ? "OUI" : "NON");
+                _pompeAquaLocked ? "OUI" : "NON");
   Serial.printf("[Config] Flag OTA update: %s\n", _otaUpdateFlag ? "true" : "false");
 }
 
@@ -100,7 +99,7 @@ void ConfigManager::saveBouffeFlags() {
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk);
   g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", _pompeAquaLocked);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bf_force_wk", _forceWakeUp);
+  // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
   // Mise à jour du cache après sauvegarde
   updateCache();
@@ -119,7 +118,7 @@ void ConfigManager::forceSaveBouffeFlags() {
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", _bouffeSoirOk);
   g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", _lastJourBouf);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", _pompeAquaLocked);
-  g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, "bf_force_wk", _forceWakeUp);
+  // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
   updateCache();
   _flagsChanged = false;
@@ -133,7 +132,7 @@ void ConfigManager::resetBouffeFlags() {
   _bouffeSoirOk = false;
   // Ne pas reset _lastJourBouf ici, il sera mis à jour par la logique de bouffe
   // Ne pas reset _pompeAquaLocked non plus
-  // Ne pas reset _forceWakeUp non plus
+  // forceWakeUp est géré par Automatism
   
   _flagsChanged = true; // Marquer comme changé pour forcer la sauvegarde
   
@@ -259,13 +258,7 @@ void ConfigManager::setPompeAquaLocked(bool value) {
   }
 }
 
-void ConfigManager::setForceWakeUp(bool value) {
-  if (_forceWakeUp != value) {
-    _forceWakeUp = value;
-    _flagsChanged = true;
-    Serial.printf("[Config] Force wake up changé: %s\n", value ? "true" : "false");
-  }
-}
+// NOTE: setForceWakeUp supprimé - utiliser Automatism::toggleForceWakeup()
 
 // Méthodes privées
 bool ConfigManager::hasChanges() const {
@@ -274,8 +267,7 @@ bool ConfigManager::hasChanges() const {
          _bouffeMidiOk != _cachedBouffeMidiOk ||
          _bouffeSoirOk != _cachedBouffeSoirOk ||
          _lastJourBouf != _cachedLastJourBouf ||
-         _pompeAquaLocked != _cachedPompeAquaLocked ||
-         _forceWakeUp != _cachedForceWakeUp;
+         _pompeAquaLocked != _cachedPompeAquaLocked;
 }
 
 void ConfigManager::updateCache() {
@@ -284,7 +276,6 @@ void ConfigManager::updateCache() {
   _cachedBouffeSoirOk = _bouffeSoirOk;
   _cachedLastJourBouf = _lastJourBouf;
   _cachedPompeAquaLocked = _pompeAquaLocked;
-  _cachedForceWakeUp = _forceWakeUp;
   _cachedOtaUpdateFlag = _otaUpdateFlag;
   _cachedRemoteSendEnabled = _remoteSendEnabled;
   _cachedRemoteRecvEnabled = _remoteRecvEnabled;
@@ -305,19 +296,23 @@ bool ConfigManager::loadConfigFromNVS() {
   bool hasRemoteVars = loadRemoteVars(cachedJson, sizeof(cachedJson));
   
   if (!hasRemoteVars || strlen(cachedJson) == 0) {
-    Serial.println(F("[Config] ⚠️ Aucune config en NVS - Valeurs par défaut utilisées"));
-    Serial.println(F("[Config] 📋 Config par défaut:"));
+    Serial.println(F("[Config] ⚠️ SOURCE: DEFAUT (NVS vide ou absente)"));
+    Serial.println(F("[Config] 📋 Valeurs par défaut du firmware:"));
+    Serial.printf("[Config]   - Seuil aquarium: %d cm\n", ActuatorConfig::Default::AQUA_LEVEL_CM);
+    Serial.printf("[Config]   - Seuil réservoir: %d cm\n", ActuatorConfig::Default::TANK_LEVEL_CM);
+    Serial.printf("[Config]   - Seuil chauffage: %.1f°C\n", ActuatorConfig::Default::HEATER_THRESHOLD_C);
+    Serial.printf("[Config]   - Durée gros: %u s\n", ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
+    Serial.printf("[Config]   - Durée petits: %u s\n", ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
     Serial.println(F("[Config]   - Email: (non défini)"));
     Serial.println(F("[Config]   - Email notifications: désactivées"));
-    Serial.println(F("[Config]   - Seuil aquarium: valeur code"));
-    Serial.println(F("[Config]   - Seuil réservoir: valeur code"));
-    Serial.println(F("[Config]   - Seuil chauffage: valeur code"));
+    Serial.println(F("[Config] ℹ️ Config serveur sera récupérée si WiFi disponible"));
     Serial.println(F("========================================"));
     return false; // Valeurs par défaut utilisées
   }
   
   // 3. Parser le JSON et extraire les variables
-  Serial.println(F("[Config] 📄 Config trouvée en NVS, parsing..."));
+  Serial.println(F("[Config] ✅ SOURCE: NVS (cache local trouvé)"));
+  Serial.println(F("[Config] 📄 Parsing config NVS..."));
   
   // Note: Le JSON sera appliqué par AutomatismNetwork::applyConfigFromJson()
   // On se contente de logger ce qu'on a trouvé

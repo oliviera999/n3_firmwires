@@ -315,6 +315,29 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
             bouffeSoir = static_cast<uint8_t>(value);
         }
     }
+    
+    // 115: Force Wake Up (maintien en éveil) - v11.170
+    if (doc.containsKey("forceWakeUp") || doc.containsKey("WakeUp") || doc.containsKey("115")) {
+        auto v = doc.containsKey("forceWakeUp") ? doc["forceWakeUp"] : 
+                 (doc.containsKey("WakeUp") ? doc["WakeUp"] : doc["115"]);
+        bool newValue = false;
+        if (v.is<bool>()) {
+            newValue = v.as<bool>();
+        } else if (v.is<int>()) {
+            newValue = (v.as<int>() != 0);
+        } else if (v.is<const char*>()) {
+            const char* str = v.as<const char*>();
+            newValue = (str && (strcmp(str, "1") == 0 || strcmp(str, "true") == 0 || strcmp(str, "TRUE") == 0));
+        }
+        
+        if (newValue != forceWakeUp) {
+            forceWakeUp = newValue;
+            _sleep.setForceWakeUp(forceWakeUp);
+            // Persistance NVS (même clé que toggleForceWakeup() pour cohérence au boot)
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp);
+            Serial.printf("[Auto] ✅ ForceWakeUp mis à jour depuis serveur: %s\n", forceWakeUp ? "ON" : "OFF");
+        }
+    }
 }
 
 void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {

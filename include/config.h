@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.167";  // Build tous env, version documentee, push GitHub
+    inline constexpr const char* VERSION = "11.168";  // Unification valeurs défaut, logging source config, timeout boot 8s
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -90,6 +90,10 @@ namespace GlobalTimeouts {
 namespace TimingConfig {
     // WiFi - v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 3000;
+    // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
+    // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
+    // où on peut récupérer la config distante de manière fiable
+    inline constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 8000;
     inline constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
     
@@ -324,7 +328,7 @@ namespace SensorConfig {
 
     namespace DHT {
         // Délai minimum entre lectures: 2500ms (compromis entre 2000ms datasheet et stabilité)
-        // Le datasheet DHT22 recommande minimum 2s, on utilise 2.5s pour plus de marge
+        // DHT11: 1s min, DHT22: 2s min (datasheet). On utilise 2.5s pour les deux.
         inline constexpr uint32_t MIN_READ_INTERVAL_MS = 2500;
         inline constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 2000;
     }
@@ -530,8 +534,8 @@ namespace TaskConfig {
     inline constexpr UBaseType_t SENSOR_TASK_PRIORITY = 2;
     inline constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
-    // v11.159: Réduit de 5KB à 4KB (Phase 3 - HWM: 5332 libres, marge 212)
-    inline constexpr uint32_t WEB_TASK_STACK_SIZE = 4096;  // 4KB
+    // v11.169: Augmenté de 4KB à 8KB - stack overflow webTask avec WebSocket (Guru Meditation)
+    inline constexpr uint32_t WEB_TASK_STACK_SIZE = 8192;  // 8KB - requis pour WebSocket + AsyncWebServer
     // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
     inline constexpr UBaseType_t WEB_TASK_PRIORITY = 1;
     inline constexpr BaseType_t WEB_TASK_CORE_ID = 0;

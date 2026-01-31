@@ -476,7 +476,7 @@ time_t PowerManager::loadTimeWithFallback() {
   
   // Fallback 1: Epoch sauvegardé en NVS
   unsigned long savedEpochUL;
-  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpochUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpochUL, 0);
   time_t savedEpoch = static_cast<time_t>(savedEpochUL);
   
   Fallback fallbacks[] = {
@@ -600,7 +600,7 @@ void PowerManager::smartSaveTime() {
   }
   
   // Sauvegarde en NVS
-  g_nvsManager.saveULong(NVS_NAMESPACES::TIME, "rtc_epoch", currentEpoch);
+  g_nvsManager.saveULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", currentEpoch);
 
   _lastTimeSave = currentMillis;
   _lastSavedEpoch = currentEpoch;

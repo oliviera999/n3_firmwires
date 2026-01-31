@@ -574,6 +574,6 @@ void registerStatusRoutes(AsyncWebServer& server, AppContext& ctx) {
 #else
 // Stub si DISABLE_ASYNC_WEBSERVER est défini
 namespace WebRoutes {
-void registerStatusRoutes(void* server, void* ctx) {}
+void registerStatusRoutes(AsyncWebServer& server, AppContext& ctx) { (void)server; (void)ctx; }
 }  // namespace WebRoutes
 #endif

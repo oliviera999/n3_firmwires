@@ -1,6 +1,29 @@
 #pragma once
 
 #include <Arduino.h>
+
+#ifdef DISABLE_ASYNC_WEBSERVER
+// Stub minimal : pas de serveur web ni WebSocket en prod/beta
+class RealtimeWebSocket {
+public:
+    void begin(class SystemSensors&, class SystemActuators&) {}
+    void end() {}
+    void updateForceWakeUpState(bool) {}
+    void loop() {}
+    uint8_t getConnectedClients() const { return 0; }
+    bool isRunning() const { return false; }
+    void broadcastNow() {}
+    void broadcastSensorData() {}
+    void notifyWifiChange(const char*) {}
+    void closeAllConnections() {}
+    void notifyClientActivity() {}
+    bool canEnterSleep() const { return true; }
+    struct WebSocketStats { uint8_t connectedClients = 0; bool isActive = false; bool hasActiveClients = false;
+        unsigned long lastBroadcast = 0; unsigned long lastClientActivity = 0; unsigned long broadcastInterval = 0; bool canSleep = true; };
+    WebSocketStats getStats() const { return WebSocketStats{}; }
+};
+extern RealtimeWebSocket g_realtimeWebSocket;
+#else
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
 #include <cstring>
@@ -339,13 +362,14 @@ public:
         }
         
         if (shouldBroadcast) {
-            // Allocation statique pour éviter fragmentation mémoire
-            StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+            // v11.169: Allocation réduite pour broadcast périodique (audit performance)
+            // JSON minimal : ~350 bytes au lieu de ~1KB
+            StaticJsonDocument<512> doc;
             
             // Récupérer les données via le cache
             SensorReadings readings = sensorCache.getReadings(*sensors);
             
-            // Construire la réponse
+            // Construire la réponse minimale (données essentielles uniquement)
             doc["type"] = "sensor_update";
             doc["tempWater"] = readings.tempWater;
             doc["tempAir"] = readings.tempAir;
@@ -359,50 +383,15 @@ public:
             doc["heater"] = actuators->isHeaterOn();
             doc["light"] = actuators->isLightOn();
             doc["forceWakeup"] = _forceWakeUpState;
-            doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
             doc["timestamp"] = now;
             
-            // Informations WiFi STA
-            bool staConnected = WiFi.status() == WL_CONNECTED;
-            doc["wifiStaConnected"] = staConnected;
-            if (staConnected) {
-                char staSSIDBuf[33];
-                WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-                doc["wifiStaSSID"] = staSSIDBuf;
-                IPAddress staIP = WiFi.localIP();
-                char staIPBuf[16];
-                snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d",
-                     staIP[0], staIP[1], staIP[2], staIP[3]);
-                doc["wifiStaIP"] = staIPBuf;
-                doc["wifiStaRSSI"] = WiFi.RSSI();
-            } else {
-                doc["wifiStaSSID"] = "";
-                doc["wifiStaIP"] = "";
-                doc["wifiStaRSSI"] = 0;
-            }
+            // v11.169: Infos WiFi minimales (connexion STA uniquement)
+            // Les détails WiFi complets sont envoyés via sendCurrentData() à la connexion
+            // et via broadcastNow() lors des actions
+            doc["wifiStaConnected"] = (WiFi.status() == WL_CONNECTED);
             
-            // Informations WiFi AP
-            wifi_mode_t mode = WiFi.getMode();
-            bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-            doc["wifiApActive"] = apActive;
-            if (apActive) {
-                char apSSIDBuf[33];
-                WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-                doc["wifiApSSID"] = apSSIDBuf;
-                IPAddress apIP = WiFi.softAPIP();
-                char apIPBuf[16];
-                snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d",
-                     apIP[0], apIP[1], apIP[2], apIP[3]);
-                doc["wifiApIP"] = apIPBuf;
-                doc["wifiApClients"] = WiFi.softAPgetStationNum();
-            } else {
-                doc["wifiApSSID"] = "";
-                doc["wifiApIP"] = "";
-                doc["wifiApClients"] = 0;
-            }
-            
-            // Sérialiser et diffuser
-            char json[1024];
+            // Sérialiser et diffuser (buffer réduit)
+            char json[512];
             serializeJson(doc, json, sizeof(json));
             // Vérifier qu'il y a des clients connectés avant envoi
             if (webSocket.connectedClients() > 0) {
@@ -670,3 +659,4 @@ public:
 
 // Instance globale du serveur WebSocket temps réel
 extern RealtimeWebSocket g_realtimeWebSocket;
+#endif  // !DISABLE_ASYNC_WEBSERVER

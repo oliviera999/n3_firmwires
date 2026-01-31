@@ -118,17 +118,25 @@ const char* WebServerManager::handleRelayAction(
     bool newState;
     const char* response;
     if (isRunning()) {
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         Serial.printf("[Web] 💧 Stopping %s...\\n", relayName);
+        #endif
         stop();
         newState = false;
         response = offResponse;
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         Serial.printf("[Web] ✅ %s stopped\\n", relayName);
+        #endif
     } else {
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         Serial.printf("[Web] 💧 Starting %s...\\n", relayName);
+        #endif
         start();
         newState = true;
         response = onResponse;
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         Serial.printf("[Web] ✅ %s started\\n", relayName);
+        #endif
     }
 
     // Sauvegarde NVS + pending sync
@@ -147,12 +155,18 @@ const char* WebServerManager::handleRelayAction(
         vTaskDelay(pdMS_TO_TICKS(100));
         SensorReadings readings = p->sensors->read();
         bool syncSuccess = g_autoCtrl.sendFullUpdate(readings);
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         if (syncSuccess) {
             g_autoCtrl.clearPendingSync(p->relayName);
             Serial.printf("[Web] ✅ %s synced (async)\\n", p->relayName);
         } else {
             Serial.printf("[Web] ⏳ %s sync pending\\n", p->relayName);
         }
+        #else
+        if (syncSuccess) {
+            g_autoCtrl.clearPendingSync(p->relayName);
+        }
+        #endif
         vTaskDelete(NULL);
     }, "relay_sync", 4096, &s_relayParams, 1, nullptr);
     if (created != pdPASS) {
@@ -243,11 +257,14 @@ bool WebServerManager::begin() {
       g_autoCtrl.notifyLocalWebActivity();
       const char* resp = "OK";
       
+      // v11.169: Logs verbeux conditionnés (audit performance)
+      #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
       IPAddress remoteIP = req->client()->remoteIP();
       char remoteIPBuf[16];
       snprintf(remoteIPBuf, sizeof(remoteIPBuf), "%d.%d.%d.%d",
                remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
       Serial.printf("[Web] 🎮 Action request from %s\n", remoteIPBuf);
+      #endif
       
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
@@ -255,7 +272,9 @@ bool WebServerManager::begin() {
           strncpy(cmdBuf, req->getParam("cmd")->value().c_str(), sizeof(cmdBuf) - 1);
           cmdBuf[sizeof(cmdBuf) - 1] = '\0';
           const char* c = cmdBuf;
+          #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
           Serial.printf("[Web] 🎯 Command: %s\n", c);
+          #endif
           
           if (strcmp(c, "feedSmall") == 0) {
               Serial.println("[Web] 🐟 Starting manual feed small...");
@@ -442,7 +461,9 @@ bool WebServerManager::begin() {
           strncpy(relayBuf, req->getParam("relay")->value().c_str(), sizeof(relayBuf) - 1);
           relayBuf[sizeof(relayBuf) - 1] = '\0';
           const char* rel = relayBuf;
+          #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
           Serial.printf("[Web] 🔌 Relay control: %s\\n", rel);
+          #endif
           
           if (strcmp(rel, "pumpTank") == 0) {
               resp = handleRelayAction("tank",
@@ -475,7 +496,9 @@ bool WebServerManager::begin() {
           }
       }
       
+      #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
       Serial.printf("[Web] 📤 Sending response: %s\\n", resp);
+      #endif
       
       // Réponse immédiate avec headers optimisés
       AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", resp);
@@ -489,7 +512,9 @@ bool WebServerManager::begin() {
         req->send(500, "text/plain", "Erreur mémoire serveur");
       }
       
+      #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
       Serial.printf("[Web] ✅ Action completed - Response sent to %s\n", remoteIPBuf);
+      #endif
   });
 
   // Gestion des requêtes CORS preflight pour /json
@@ -736,6 +761,11 @@ bool WebServerManager::begin() {
     out["ok"] = ok;
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    // v11.169: Vérification nullptr (audit robustesse)
+    if (!response) {
+      req->send(500, "text/plain", "Memory error");
+      return;
+    }
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -882,9 +912,13 @@ bool WebServerManager::begin() {
         // CORRECTION: Vérifier la taille du fichier gzip
         File file = LittleFS.open(gz, "r");
         if (file) {
+          #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
           size_t fileSize = file.size();
+          #endif
           file.close();
+          #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
           Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz, fileSize);
+          #endif
           
           AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
           if (r) {
@@ -902,9 +936,13 @@ bool WebServerManager::begin() {
     if (LittleFS.exists(path)) {
       File file = LittleFS.open(path, "r");
       if (file) {
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         size_t fileSize = file.size();
+        #endif
         file.close();
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
         Serial.printf("[Web] 📏 File %s size: %u bytes\n", path, fileSize);
+        #endif
         
         AsyncWebServerResponse* r = req->beginResponse(LittleFS, path, contentType);
         if (r) {
@@ -1581,6 +1619,11 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Action WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
     
+    // v11.169: Vérification mémoire (audit robustesse)
+    if (!ensureHeapForRoute(req, 40000, F("/wifi/scan"))) {
+      return;
+    }
+    
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     // Scanner les réseaux WiFi
@@ -1623,6 +1666,11 @@ bool WebServerManager::begin() {
     }
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    // v11.169: Vérification nullptr (audit robustesse)
+    if (!response) {
+      req->send(500, "text/plain", "Memory error");
+      return;
+    }
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -1633,6 +1681,11 @@ bool WebServerManager::begin() {
   // Lister les réseaux WiFi sauvegardés
   _server->on("/wifi/saved", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
+    
+    // v11.169: Vérification mémoire (audit robustesse)
+    if (!ensureHeapForRoute(req, 40000, F("/wifi/saved"))) {
+      return;
+    }
     
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
@@ -1712,6 +1765,11 @@ bool WebServerManager::begin() {
     doc["count"] = totalCount;
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    // v11.169: Vérification nullptr (audit robustesse)
+    if (!response) {
+      req->send(500, "text/plain", "Memory error");
+      return;
+    }
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -1723,6 +1781,11 @@ bool WebServerManager::begin() {
   _server->on("/wifi/connect", HTTP_POST, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Changement WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
+    
+    // v11.169: Vérification mémoire (audit robustesse)
+    if (!ensureHeapForRoute(req, 40000, F("/wifi/connect"))) {
+      return;
+    }
     
     char ssidBuf[64], passwordBuf[65], saveBuf[8];
     auto getParam = [req](const char* name, char* buf, size_t bufSize) -> bool {
@@ -1831,6 +1894,11 @@ bool WebServerManager::begin() {
       serializeJson(doc, json, sizeof(json));
       
       AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
+      // v11.169: Vérification nullptr (audit robustesse)
+      if (!response) {
+        req->send(500, "text/plain", "Memory error");
+        return;
+      }
       response->addHeader("Access-Control-Allow-Origin", "*");
       response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -1886,6 +1954,11 @@ bool WebServerManager::begin() {
     
     // Si on arrive ici, c'est qu'il y a eu une erreur
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    // v11.169: Vérification nullptr (audit robustesse)
+    if (!response) {
+      req->send(500, "text/plain", "Memory error");
+      return;
+    }
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -1897,6 +1970,11 @@ bool WebServerManager::begin() {
   _server->on("/wifi/remove", HTTP_POST, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification WiFi
     g_autoCtrl.notifyLocalWebActivity();
+    
+    // v11.169: Vérification mémoire (audit robustesse)
+    if (!ensureHeapForRoute(req, 40000, F("/wifi/remove"))) {
+      return;
+    }
     
     char ssidBuf[64];
     bool hasSsid = false;
@@ -2009,67 +2087,11 @@ bool WebServerManager::begin() {
     }
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    serializeJson(doc, *response);
-    req->send(response);
-  });
-  
-  // Obtenir le statut WiFi actuel
-  _server->on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
-    
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    
-    // Statut de connexion STA
-    bool staConnected = WiFi.status() == WL_CONNECTED;
-    doc["staConnected"] = staConnected;
-    
-    if (staConnected) {
-      char staSSIDBuf[33];
-      WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-      doc["staSSID"] = staSSIDBuf;
-      IPAddress staIP = WiFi.localIP();
-      char staIPBuf[16];
-      snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d", staIP[0], staIP[1], staIP[2], staIP[3]);
-      doc["staIP"] = staIPBuf;
-      doc["staRSSI"] = WiFi.RSSI();
-      char staMacBuf[18];
-      WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
-      doc["staMac"] = staMacBuf;
-    } else {
-      doc["staSSID"] = "";
-      doc["staIP"] = "";
-      doc["staRSSI"] = 0;
-      char staMacBuf[18];
-      WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
-      doc["staMac"] = staMacBuf;
+    // v11.169: Vérification nullptr (audit robustesse)
+    if (!response) {
+      req->send(500, "text/plain", "Memory error");
+      return;
     }
-    
-    // Statut AP
-    wifi_mode_t mode = WiFi.getMode();
-    bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    doc["apActive"] = apActive;
-    
-    if (apActive) {
-      char apSSIDBuf[33];
-      WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-      doc["apSSID"] = apSSIDBuf;
-      IPAddress apIP = WiFi.softAPIP();
-      char apIPBuf[16];
-      snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      doc["apIP"] = apIPBuf;
-      doc["apClients"] = WiFi.softAPgetStationNum();
-    } else {
-      doc["apSSID"] = "";
-      doc["apIP"] = "";
-      doc["apClients"] = 0;
-    }
-    
-    doc["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
-    
-    AsyncResponseStream* response = req->beginResponseStream("application/json");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -2077,173 +2099,8 @@ bool WebServerManager::begin() {
     req->send(response);
   });
 
-  // Endpoint de diagnostic pour les performances
-  _server->on("/server-status", HTTP_GET, [](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
-    
-    IPAddress remoteIP = req->client()->remoteIP();
-    Serial.printf("[Web] 📊 Server status request from %d.%d.%d.%d\n",
-                  remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
-    
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    doc["heapFree"] = ESP.getFreeHeap();
-    doc["heapTotal"] = ESP.getHeapSize();
-    doc["psramFree"] = ESP.getFreePsram();
-    doc["psramTotal"] = ESP.getPsramSize();
-    doc["uptime"] = millis();
-    doc["webServerTimeout"] = NetworkConfig::WEB_SERVER_TIMEOUT_MS;
-    doc["maxConnections"] = NetworkConfig::WEB_SERVER_MAX_CONNECTIONS;
-    
-    // Ajouter des informations de debug supplémentaires
-    doc["wifiStatus"] = WiFi.status();
-    char wifiSSIDBuf[33];
-    WiFiHelpers::getSSID(wifiSSIDBuf, sizeof(wifiSSIDBuf));
-    doc["wifiSSID"] = wifiSSIDBuf;
-    IPAddress wifiIP = WiFi.localIP();
-    char wifiIPBuf[16];
-    snprintf(wifiIPBuf, sizeof(wifiIPBuf), "%d.%d.%d.%d",
-             wifiIP[0], wifiIP[1], wifiIP[2], wifiIP[3]);
-    doc["wifiIP"] = wifiIPBuf;
-    doc["wifiRSSI"] = WiFi.RSSI();
-    doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
-    doc["forceWakeup"] = g_autoCtrl.getForceWakeUp();
-    
-    AsyncResponseStream* response = req->beginResponseStream("application/json");
-    response->addHeader("Cache-Control", "no-cache");
-    serializeJson(doc, *response);
-    req->send(response);
-  });
-
-  // === API: Remote flags control (send/recv) ===
-  _server->on("/api/remote-flags", HTTP_GET, [](AsyncWebServerRequest* req){
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    doc["sendEnabled"] = config.isRemoteSendEnabled();
-    doc["recvEnabled"] = config.isRemoteRecvEnabled();
-    AsyncResponseStream* response = req->beginResponseStream("application/json");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    serializeJson(doc, *response);
-    req->send(response);
-  });
-
-  _server->on("/api/remote-flags", HTTP_POST, [](AsyncWebServerRequest* req){
-    bool changed = false;
-    if (req->hasParam("send", true)) {
-      const char* v = req->getParam("send", true)->value().c_str();
-      if (v) {
-        char vLower[16];
-        strncpy(vLower, v, sizeof(vLower) - 1);
-        vLower[sizeof(vLower) - 1] = '\0';
-        // Convertir en minuscules et trim
-        for (char* p = vLower; *p; p++) {
-          if (*p >= 'A' && *p <= 'Z') *p += 32;  // tolower
-        }
-        // Trim (supprimer espaces début/fin)
-        char* start = vLower;
-        while (*start == ' ' || *start == '\t') start++;
-        char* end = start + strlen(start) - 1;
-        while (end > start && (*end == ' ' || *end == '\t')) end--;
-        *(end + 1) = '\0';
-        bool enable = (strcmp(start, "1") == 0 || 
-                      strcmp(start, "true") == 0 || 
-                      strcmp(start, "on") == 0);
-        config.setRemoteSendEnabled(enable); changed = true;
-      }
-    }
-    if (req->hasParam("recv", true)) {
-      const char* v = req->getParam("recv", true)->value().c_str();
-      if (v) {
-        char vLower[16];
-        strncpy(vLower, v, sizeof(vLower) - 1);
-        vLower[sizeof(vLower) - 1] = '\0';
-        // Convertir en minuscules et trim
-        for (char* p = vLower; *p; p++) {
-          if (*p >= 'A' && *p <= 'Z') *p += 32;  // tolower
-        }
-        // Trim (supprimer espaces début/fin)
-        char* start = vLower;
-        while (*start == ' ' || *start == '\t') start++;
-        char* end = start + strlen(start) - 1;
-        while (end > start && (*end == ' ' || *end == '\t')) end--;
-        *(end + 1) = '\0';
-        bool enable = (strcmp(start, "1") == 0 || 
-                      strcmp(start, "true") == 0 || 
-                      strcmp(start, "on") == 0);
-        config.setRemoteRecvEnabled(enable); changed = true;
-      }
-    }
-    AsyncResponseStream* response = req->beginResponseStream("application/json");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    doc["ok"] = true;
-    doc["changed"] = changed;
-    serializeJson(doc, *response);
-    req->send(response);
-  });
-
-  // Endpoint de debug pour les logs en temps réel
-    _server->on("/debug-logs", HTTP_GET, [this](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - endpoint debug
-    
-    IPAddress remoteIP2 = req->client()->remoteIP();
-    Serial.printf("[Web] 🔍 Debug logs request from %d.%d.%d.%d\n",
-                  remoteIP2[0], remoteIP2[1], remoteIP2[2], remoteIP2[3]);
-    
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    
-    // Informations système
-    doc["system"]["uptime"] = millis();
-    doc["system"]["freeHeap"] = ESP.getFreeHeap();
-    doc["system"]["heapSize"] = ESP.getHeapSize();
-    doc["system"]["freePsram"] = ESP.getFreePsram();
-    doc["system"]["psramSize"] = ESP.getPsramSize();
-    
-    // Informations WiFi
-    doc["wifi"]["status"] = WiFi.status();
-    char wifiSSIDBuf2[33];
-    WiFiHelpers::getSSID(wifiSSIDBuf2, sizeof(wifiSSIDBuf2));
-    doc["wifi"]["ssid"] = wifiSSIDBuf2;
-    IPAddress wifiIP2 = WiFi.localIP();
-    char wifiIPBuf2[16];
-    snprintf(wifiIPBuf2, sizeof(wifiIPBuf2), "%d.%d.%d.%d",
-             wifiIP2[0], wifiIP2[1], wifiIP2[2], wifiIP2[3]);
-    doc["wifi"]["ip"] = wifiIPBuf2;
-    doc["wifi"]["rssi"] = WiFi.RSSI();
-    char wifiMacBuf[18];
-    WiFiHelpers::getMACString(wifiMacBuf, sizeof(wifiMacBuf));
-    doc["wifi"]["mac"] = wifiMacBuf;
-    
-    // Informations WebSocket
-    doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
-    doc["websocket"]["isActive"] = g_realtimeWebSocket.isRunning();
-    
-    // Informations automatisme
-    doc["automatism"]["forceWakeup"] = g_autoCtrl.getForceWakeUp();
-    doc["automatism"]["mailNotif"] = g_autoCtrl.isEmailEnabled();
-    doc["automatism"]["mail"] = g_autoCtrl.getEmailAddress();
-    
-    // Informations capteurs (via cache)
-    SensorReadings readings = sensorCache.getReadings(_sensors);
-    doc["sensors"]["tempWater"] = readings.tempWater;
-    doc["sensors"]["tempAir"] = readings.tempAir;
-    doc["sensors"]["humidity"] = readings.humidity;
-    doc["sensors"]["wlAqua"] = readings.wlAqua;
-    doc["sensors"]["wlTank"] = readings.wlTank;
-    doc["sensors"]["wlPota"] = readings.wlPota;
-    doc["sensors"]["luminosite"] = readings.luminosite;
-    
-    // Informations actionneurs
-    doc["actuators"]["pumpAqua"] = _acts.isAquaPumpRunning();
-    doc["actuators"]["pumpTank"] = _acts.isTankPumpRunning();
-    doc["actuators"]["heater"] = _acts.isHeaterOn();
-    doc["actuators"]["light"] = _acts.isLightOn();
-    
-    AsyncResponseStream* response = req->beginResponseStream("application/json");
-    response->addHeader("Cache-Control", "no-cache");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    serializeJson(doc, *response);
-    req->send(response);
-  });
+  // v11.169: Routes /wifi/status, /server-status, /api/remote-flags, /debug-logs
+  // supprimées car dupliquées dans web_routes_status.cpp (audit simplification)
 
   _server->begin();
   Serial.println(F("[Web] AsyncWebServer démarré sur le port 80"));

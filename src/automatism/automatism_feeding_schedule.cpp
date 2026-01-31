@@ -36,10 +36,10 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     // Vérifier changement de jour
     checkNewDay(dayOfYear);
     
-    // Vérifier chaque horaire
-    bool shouldFeedMorning = shouldFeedNow(hour, minute, morningHour) && !_config.getBouffeMatinOk();
-    bool shouldFeedNoon = shouldFeedNow(hour, minute, noonHour) && !_config.getBouffeMidiOk();
-    bool shouldFeedEvening = shouldFeedNow(hour, minute, eveningHour) && !_config.getBouffeSoirOk();
+    // Vérifier chaque horaire (fenêtre heure + rattrapage si réveil après le créneau)
+    bool shouldFeedMorning = (shouldFeedNow(hour, minute, morningHour) || shouldCatchUpFeed(hour, morningHour)) && !_config.getBouffeMatinOk();
+    bool shouldFeedNoon = (shouldFeedNow(hour, minute, noonHour) || shouldCatchUpFeed(hour, noonHour)) && !_config.getBouffeMidiOk();
+    bool shouldFeedEvening = (shouldFeedNow(hour, minute, eveningHour) || shouldCatchUpFeed(hour, eveningHour)) && !_config.getBouffeSoirOk();
     
     if (shouldFeedMorning) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
@@ -63,8 +63,12 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
 }
 
 bool AutomatismFeedingSchedule::shouldFeedNow(int hour, int minute, uint8_t scheduleHour) const {
-    // Vérifier si on est à l'heure programmée (tolérance de 1 minute)
-    return (hour == scheduleHour && minute >= 0 && minute < 2);
+    // À l'heure programmée, fenêtre = toute l'heure (H:00 à H:59)
+    return (hour == scheduleHour);
+}
+
+bool AutomatismFeedingSchedule::shouldCatchUpFeed(int hour, uint8_t scheduleHour) const {
+    return (hour > scheduleHour);
 }
 
 void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t smallDuration,

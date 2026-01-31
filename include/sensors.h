@@ -124,6 +124,7 @@ class WaterTempSensor {
   // Méthodes NVS pour persistance
   void saveLastValidTempToNVS(float temp);
   float loadLastValidTempFromNVS();
+
  private:
   OneWire _oneWire{Pins::ONE_WIRE_BUS};
   DallasTemperature _sensors{&_oneWire};
@@ -134,7 +135,9 @@ class WaterTempSensor {
   uint8_t _historyIndex;
   uint8_t _historyCount;
   float _lastValidTemp;
-  
+  float _lastSavedTempToNVS{NAN};   // Dernière valeur écrite en NVS (debounce)
+  uint32_t _lastNvsSaveMs{0};       // Dernière sauvegarde NVS (debounce temporel)
+
   // Configuration du filtrage
   static constexpr float MAX_TEMP_DELTA = SensorConfig::WaterTemp::MAX_DELTA;
   static constexpr uint8_t MIN_VALID_READINGS = SensorConfig::WaterTemp::MIN_READINGS;

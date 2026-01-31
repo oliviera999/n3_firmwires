@@ -420,9 +420,9 @@ static const char* buildSystemInfoFooter() {
   //   footer += "- Dérive: Non calculée\n";
   // }
   
-  // Informations RTC/Flash
+  // Informations RTC/Flash (SYSTEM namespace)
   unsigned long savedEpoch;
-  g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch, 0);
   if (savedEpoch > 0) {
     written = snprintf(buf, remaining, "- RTC Flash epoch: %lu\n", savedEpoch);
     if (written < 0 || (size_t)written >= remaining) {
@@ -477,15 +477,13 @@ static const char* buildSystemInfoFooter() {
   // Diagnostics persistés si disponibles
   int rebootCount;
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
-  int minHeap;
-  // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
-  unsigned long minHeapUL = 0;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, 0);
-  minHeap = static_cast<int>(minHeapUL);
-  if (minHeap > 0) {
+  // minHeap: UINT32_MAX = pas encore de mesure
+  unsigned long minHeapUL = UINT32_MAX;
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
+  if (minHeapUL < UINT32_MAX) {
     written = snprintf(buf, remaining, "- Reboots: %d\n"
-                                       "- Min heap: %d bytes\n",
-                       rebootCount, minHeap);
+                                       "- Min heap: %lu bytes\n",
+                       rebootCount, minHeapUL);
   } else {
     written = snprintf(buf, remaining, "- Reboots: %d\n", rebootCount);
   }
@@ -624,7 +622,7 @@ static const char* buildSystemInfoFooter() {
   remaining -= written;
   
   {
-    // Namespace bouffe
+    // Namespace bouffe (CONFIG) + forceWakeUp (SYSTEM)
     bool bouffeMatinOk, bouffeMidiOk, bouffeSoirOk, pompeAquaLocked, forceWakeUp;
     int lastJourBouf;
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", bouffeMatinOk, false);
@@ -632,7 +630,7 @@ static const char* buildSystemInfoFooter() {
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", bouffeSoirOk, false);
     g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", pompeAquaLocked, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_force_wk", forceWakeUp, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp, false);
     written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
                                        "- bouffeMidiOk: %s\n"
                                        "- bouffeSoirOk: %s\n"
@@ -686,10 +684,10 @@ static const char* buildSystemInfoFooter() {
     buf += written;
     remaining -= written;
 
-    // Namespace rtc
+    // rtc_epoch (SYSTEM namespace)
     unsigned long savedEpoch2;
-    g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch2, 0);
-    written = snprintf(buf, remaining, "- rtc.epoch: %lu\n", savedEpoch2);
+    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch2, 0);
+    written = snprintf(buf, remaining, "- sys.rtc_epoch: %lu\n", savedEpoch2);
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
       return g_systemInfoFooterBuffer;
@@ -698,12 +696,13 @@ static const char* buildSystemInfoFooter() {
     remaining -= written;
 
     // Namespace diagnostics (déjà partiellement inclus plus haut, rappel condensé)
-    int rebootCnt2, minHeap2;
+    int rebootCnt2;
+    unsigned long minHeap2;
     g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCnt2, 0);
-    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap2, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap2, UINT32_MAX);
     written = snprintf(buf, remaining, "- diagnostics.rebootCnt: %d\n"
-                                       "- diagnostics.minHeap: %d\n",
-                       rebootCnt2, minHeap2);
+                                       "- diagnostics.minHeap: %lu\n",
+                       rebootCnt2, (minHeap2 < UINT32_MAX) ? minHeap2 : 0UL);
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
       return g_systemInfoFooterBuffer;
@@ -802,9 +801,9 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
     //   report += "Dérive: Non calculée\n";
     // }
     
-    // Informations RTC/Flash
+    // Informations RTC/Flash (SYSTEM namespace)
     unsigned long savedEpoch;
-    g_nvsManager.loadULong(NVS_NAMESPACES::TIME, "rtc_epoch", savedEpoch, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch, 0);
     if (savedEpoch > 0) {
       written = snprintf(buf, remaining, "RTC Flash epoch: %lu\n", savedEpoch);
       if (written < 0 || (size_t)written >= remaining) {

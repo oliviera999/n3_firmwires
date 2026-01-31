@@ -5,12 +5,11 @@
 #include "system_actuators.h"
 #include "config.h"
 #include "diagnostics.h"
-#include <ESPAsyncWebServer.h>
 #include <functional> // Pour std::function
-
-// Forward declarations pour éviter les problèmes d'includes
 #ifndef DISABLE_ASYNC_WEBSERVER
-class AsyncWebServer;
+#include <ESPAsyncWebServer.h>
+#else
+class AsyncWebServer;  // Forward declaration quand serveur web désactivé
 #endif
 
 class WebServerManager {

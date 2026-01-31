@@ -1,4 +1,6 @@
 #include "realtime_websocket.h"
+
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include "automatism.h"
 
 // Instance globale du serveur WebSocket temps réel
@@ -16,3 +18,7 @@ void RealtimeWebSocket::notifyClientActivity() {
     extern Automatism g_autoCtrl;
     g_autoCtrl.notifyLocalWebActivity();
 }
+#else
+// Stub : instance vide quand serveur web désactivé
+RealtimeWebSocket g_realtimeWebSocket;
+#endif

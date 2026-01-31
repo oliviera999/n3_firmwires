@@ -360,7 +360,7 @@ void registerUiRoutes(AsyncWebServer& server, AppContext& ctx) {
 #else
 // Stub si DISABLE_ASYNC_WEBSERVER est défini
 namespace WebRoutes {
-void registerUIRoutes(void* server, void* ctx) {}
+void registerUiRoutes(AsyncWebServer& server, AppContext& ctx) { (void)server; (void)ctx; }
 }  // namespace WebRoutes
 #endif
 

@@ -30,14 +30,14 @@ void setupHostname(char* buffer, size_t bufferSize) {
 void initializeStorage(AppContext& ctx) {
   Serial.println("[Event] Boot start");
 
-  const char* fsLabel = "littlefs";
+  const char* fsLabel = "spiffs";  // Label "spiffs" pour compatibilité ESP Mail Client
   Serial.printf("[FS] Mounting LittleFS (label=%s)...\n", fsLabel);
   uint32_t fsStartTime = millis();
-  if (!LittleFS.begin(false, "/littlefs", 10, fsLabel)) {
+  if (!LittleFS.begin(false, "/spiffs", 10, fsLabel)) {
     Serial.println("[FS] ❌ LittleFS mount failed - tentative de format");
     if (LittleFS.format()) {
       Serial.println("[FS] ✅ Format réussi, tentative de remontage");
-      if (LittleFS.begin(false, "/littlefs", 10, fsLabel)) {
+      if (LittleFS.begin(false, "/spiffs", 10, fsLabel)) {
         Serial.println("[FS] ✅ Remontage après format réussi");
       } else {
         Serial.println("[FS] ❌ CRITIQUE: Impossible de monter LittleFS même après format");

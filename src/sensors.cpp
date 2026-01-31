@@ -448,6 +448,9 @@ void WaterTempSensor::begin() {
   
   // Chargement de la dernière température valide depuis NVS
   _lastValidTemp = loadLastValidTempFromNVS();
+  if (!isnan(_lastValidTemp)) {
+    _lastSavedTempToNVS = _lastValidTemp;  // Évite réécriture immédiate au boot
+  }
   
   // Test initial de connectivité avec timeout strict
   uint32_t testStart = millis();
@@ -958,7 +961,7 @@ void AirSensor::begin() {
     // Désactiver immédiatement si non détecté au boot
     _sensorDisabled = true;
     _disableLogged = true;
-    SENSOR_LOG_PRINTLN("[AirSensor] DHT22 désactivé - capteur absent au démarrage");
+    SENSOR_LOG_PRINTLN("[AirSensor] DHT désactivé - capteur absent au démarrage");
     return;
   }
   // Vérifier que le test n'a pas pris trop de temps
@@ -1058,7 +1061,7 @@ float AirSensor::robustTemperatureC() {
           _consecutiveTempFailures = 0;
           _consecutiveHumidityFailures = 0;
           _consecutiveReactivationSuccesses = 0;
-          SENSOR_LOG_PRINTLN("[AirSensor] ✅ DHT22 réactivé automatiquement - capteur présent à nouveau");
+          SENSOR_LOG_PRINTLN("[AirSensor] ✅ DHT réactivé automatiquement - capteur présent à nouveau");
           // Retourner la valeur testée
           return testTemp;
         }
@@ -1073,7 +1076,7 @@ float AirSensor::robustTemperatureC() {
   }
   
   // Timeout total pour éviter blocage: 2000ms (réduit de 3000ms - si capteur ne répond pas en 2s, il est absent)
-  const uint32_t DHT22_TIMEOUT_MS = 2000;
+  const uint32_t DHT_RECOVERY_TIMEOUT_MS = 2000;
   const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
   uint32_t recoveryStartMs = millis();
   
@@ -1094,7 +1097,7 @@ float AirSensor::robustTemperatureC() {
   }
   
   // Vérifier timeout avant récupération
-  if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+  if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération, utilise dernière valeur");
     goto use_last_valid;
   }
@@ -1102,13 +1105,13 @@ float AirSensor::robustTemperatureC() {
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
   // 2. Vérification de la connectivité (avec timeout)
-  if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+  if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
     if (!isSensorConnected()) {
       SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
       resetSensor();
       
       // Nouvelle tentative après reset (si timeout pas atteint)
-      if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+      if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
         result = filteredTemperatureC();
         if (!isnan(result)) {
           SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
@@ -1127,7 +1130,7 @@ float AirSensor::robustTemperatureC() {
     }
     
     // Vérifier timeout avant chaque tentative
-    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
       SENSOR_LOG_PRINTF("[AirSensor] Timeout atteint après %u ms, arrêt récupération\n", 
                         millis() - recoveryStartMs);
       break;
@@ -1145,7 +1148,7 @@ float AirSensor::robustTemperatureC() {
     }
     
     // Vérifier timeout après lecture (peut avoir pris du temps)
-    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
       SENSOR_LOG_PRINTLN("[AirSensor] Timeout après lecture, arrêt récupération");
       break;
     }
@@ -1157,7 +1160,7 @@ float AirSensor::robustTemperatureC() {
     }
     
     // Délai entre tentatives (seulement si timeout pas atteint)
-    if ((millis() - recoveryStartMs) < (DHT22_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
+    if ((millis() - recoveryStartMs) < (DHT_RECOVERY_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
       vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     }
   }
@@ -1177,7 +1180,7 @@ use_last_valid:
       !_disableLogged) {
     _sensorDisabled = true;
     _disableLogged = true;
-    SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT22 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
+    SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
                       MAX_CONSECUTIVE_FAILURES, 
                       _consecutiveTempFailures, 
                       _consecutiveHumidityFailures,
@@ -1253,7 +1256,7 @@ float AirSensor::robustHumidity() {
   }
   
   // Timeout total pour éviter blocage: 1500ms (réduit de 2000ms - appelé après robustTemperatureC(), timeout plus court)
-  const uint32_t DHT22_TIMEOUT_MS = 1500;
+  const uint32_t DHT_RECOVERY_TIMEOUT_MS = 1500;
   const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
   uint32_t recoveryStartMs = millis();
   
@@ -1274,7 +1277,7 @@ float AirSensor::robustHumidity() {
   }
   
   // Vérifier timeout avant récupération
-  if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+  if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération humidité, utilise dernière valeur");
     goto use_last_valid_humidity;
   }
@@ -1282,13 +1285,13 @@ float AirSensor::robustHumidity() {
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
   // 2. Vérification de la connectivité (avec timeout)
-  if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+  if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
     if (!isSensorConnected()) {
       SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
       resetSensor();
       
       // Nouvelle tentative après reset (si timeout pas atteint)
-      if ((millis() - recoveryStartMs) < DHT22_TIMEOUT_MS) {
+      if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
         result = filteredHumidity();
         if (!isnan(result)) {
           SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
@@ -1307,7 +1310,7 @@ float AirSensor::robustHumidity() {
     }
     
     // Vérifier timeout avant chaque tentative
-    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
       SENSOR_LOG_PRINTF("[AirSensor] Timeout atteint après %u ms, arrêt récupération humidité\n", 
                         millis() - recoveryStartMs);
       break;
@@ -1324,7 +1327,7 @@ float AirSensor::robustHumidity() {
     }
     
     // Vérifier timeout après lecture
-    if ((millis() - recoveryStartMs) >= DHT22_TIMEOUT_MS) {
+    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
       SENSOR_LOG_PRINTLN("[AirSensor] Timeout après lecture humidité, arrêt récupération");
       break;
     }
@@ -1336,7 +1339,7 @@ float AirSensor::robustHumidity() {
     }
     
     // Délai entre tentatives (seulement si timeout pas atteint)
-    if ((millis() - recoveryStartMs) < (DHT22_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
+    if ((millis() - recoveryStartMs) < (DHT_RECOVERY_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
       vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     }
   }
@@ -1356,7 +1359,7 @@ use_last_valid_humidity:
       !_disableLogged) {
     _sensorDisabled = true;
     _disableLogged = true;
-    SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT22 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
+    SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
                       MAX_CONSECUTIVE_FAILURES, 
                       _consecutiveTempFailures, 
                       _consecutiveHumidityFailures,
@@ -1392,14 +1395,29 @@ void AirSensor::resetHistory() {
 }
 
 // -------- Méthodes NVS pour WaterTempSensor --------
+// v11.168: Debounce pour réduire usure flash - min 60s entre écritures, ou si delta ≥ 0.5°C
+static constexpr uint32_t NVS_TEMP_DEBOUNCE_MS = 60000;
+static constexpr float NVS_TEMP_MIN_DELTA = 0.5f;
+
 void WaterTempSensor::saveLastValidTempToNVS(float temp) {
-  g_nvsManager.saveFloat(NVS_NAMESPACES::SENSORS, "temp_lastValid", temp);
+  if (isnan(temp) || temp < SensorConfig::WaterTemp::MIN_VALID || temp > SensorConfig::WaterTemp::MAX_VALID) {
+    return;
+  }
+  uint32_t now = millis();
+  bool deltaOk = isnan(_lastSavedTempToNVS) || (fabsf(temp - _lastSavedTempToNVS) >= NVS_TEMP_MIN_DELTA);
+  bool timeOk = (_lastNvsSaveMs == 0) || ((now - _lastNvsSaveMs) >= NVS_TEMP_DEBOUNCE_MS);
+  if (!deltaOk && !timeOk) {
+    return;  // Pas de changement significatif ni délai écoulé
+  }
+  g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, "temp_lastValid", temp);
+  _lastSavedTempToNVS = temp;
+  _lastNvsSaveMs = now;
   Serial.printf("[WaterTemp] Dernière température valide sauvegardée en NVS: %.1f°C\n", temp);
 }
 
 float WaterTempSensor::loadLastValidTempFromNVS() {
   float temp;
-  g_nvsManager.loadFloat(NVS_NAMESPACES::SENSORS, "temp_lastValid", temp, NAN);
+  g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, "temp_lastValid", temp, NAN);
   
   if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
     Serial.printf("[WaterTemp] Dernière température valide chargée depuis NVS: %.1f°C\n", temp);

@@ -64,7 +64,7 @@ SensorReadings SystemSensors::read() {
   // Température air avec méthode non-bloquante
   {
     phaseStart = millis();
-    float val = _air.robustTemperatureC(); // Garde la méthode robuste pour DHT22
+    float val = _air.robustTemperatureC(); // Garde la méthode robuste pour DHT (air)
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
     
     // Validation finale (utilise < et > pour cohérence avec autres validations)
@@ -82,7 +82,7 @@ SensorReadings SystemSensors::read() {
   }
 
   // v11.154: ULTRASONS EN PREMIER (avant humidité qui peut timeout)
-  // Le DHT22 prend 7+ secondes quand il échoue, ce qui provoque un timeout global
+  // Le DHT (air) peut prendre 7+ secondes quand il échoue, ce qui provoque un timeout global
   // et empêche la lecture des ultrasons. On les lit donc en priorité.
   
   // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
@@ -202,11 +202,11 @@ SensorReadings SystemSensors::read() {
     }
   }
   
-  // v11.154: Humidité EN DERNIER (peut prendre 7+ secondes si DHT22 échoue)
+  // v11.154: Humidité EN DERNIER (peut prendre 7+ secondes si DHT air échoue)
   // Ainsi, même en cas de timeout, les ultrasons sont déjà lus
   {
     phaseStart = millis();
-    float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT22
+    float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT (air)
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);
     
     // Validation finale

@@ -78,6 +78,7 @@ private:
     
     // Helpers privés
     bool shouldFeedNow(int hour, int minute, uint8_t scheduleHour) const;
+    bool shouldCatchUpFeed(int hour, uint8_t scheduleHour) const;
     void performFeeding(uint16_t bigDuration, uint16_t smallDuration,
                        const char* emailAddr, bool mailNotif,
                        std::function<void()> mailBlinkCallback,

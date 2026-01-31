@@ -16,10 +16,14 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _recvState(0)
     , _lastSend(0)
     , _lastRemoteFetch(0)
+    , _lastRemoteFeedResetMs(0)
+    // v11.168: Flag configSynced - false tant qu'aucun poll serveur réussi
+    , _configSyncedOnce(false)
     , _limFlood(5)
-    , _aqThresholdCm(30)
-    , _tankThresholdCm(30)
-    , _heaterThresholdC(24.0f)
+    // v11.168: Utiliser les constantes unifiées de config.h (évite désync avec Automatism)
+    , _aqThresholdCm(ActuatorConfig::Default::AQUA_LEVEL_CM)
+    , _tankThresholdCm(ActuatorConfig::Default::TANK_LEVEL_CM)
+    , _heaterThresholdC(ActuatorConfig::Default::HEATER_THRESHOLD_C)
     , _emailEnabled(false)
     #if defined(PROFILE_TEST)
     , _freqWakeSec(6)  // 6s par défaut pour wroom-test
@@ -28,10 +32,9 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     #endif
     , _consecutiveSendFailures(0)
     , _lastSendAttemptMs(0)
-    , _lastRemoteFeedResetMs(0)
 {
     _emailAddress[0] = '\0';
-    Serial.println(F("[Sync] Module initialisé"));
+    Serial.println(F("[Sync] Module initialisé (configSynced=false)"));
 }
 
 bool AutomatismSync::begin() {
@@ -251,6 +254,17 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     if (strstr(payloadBuffer, "resetMode=") == nullptr) {
         strncat(payloadBuffer, "&resetMode=0", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
     }
+    
+    // v11.168: Ajouter configSynced pour indiquer si la config ESP est fiable
+    // Si configSynced=0, le serveur distant doit IGNORER les variables de config
+    // pour éviter l'écrasement par des valeurs par défaut
+    char configSyncedStr[16];
+    snprintf(configSyncedStr, sizeof(configSyncedStr), "&configSynced=%d", _configSyncedOnce ? 1 : 0);
+    strncat(payloadBuffer, configSyncedStr, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+    
+    if (!_configSyncedOnce) {
+        Serial.println(F("[Sync] ⚠️ configSynced=0 - variables config ignorées par serveur"));
+    }
 
     esp_task_wdt_reset();
     uint32_t sendStart = millis();
@@ -281,6 +295,13 @@ bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
         _config.saveRemoteVars(jsonStr);
         _serverOk = true;
         _recvState = 1;
+        
+        // v11.168: Marquer que la config a été synchronisée au moins une fois
+        // À partir de maintenant, les envois au serveur distant incluront configSynced=1
+        if (!_configSyncedOnce) {
+            _configSyncedOnce = true;
+            Serial.println(F("[Sync] ✅ configSynced=true (1er poll serveur réussi)"));
+        }
     } else {
         _serverOk = false;
         _recvState = -1;

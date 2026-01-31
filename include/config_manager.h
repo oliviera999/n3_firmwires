@@ -12,7 +12,7 @@ private:
     bool _bouffeSoirOk;
     int _lastJourBouf;
     bool _pompeAquaLocked;
-    bool _forceWakeUp;
+    // NOTE: forceWakeUp géré exclusivement par Automatism (SYSTEM::forceWakeUp)
     bool _otaUpdateFlag;
     // Flags réseau
     bool _remoteSendEnabled;   // Envoi vers serveur distant autorisé
@@ -24,7 +24,6 @@ private:
     bool _cachedBouffeSoirOk;
     int _cachedLastJourBouf;
     bool _cachedPompeAquaLocked;
-    bool _cachedForceWakeUp;
     bool _cachedOtaUpdateFlag;
     bool _flagsChanged;
     // Cache réseau (non lié à _flagsChanged)
@@ -78,7 +77,7 @@ public:
     void setBouffeSoirOk(bool value);
     void setLastJourBouf(int value);
     void setPompeAquaLocked(bool value);
-    void setForceWakeUp(bool value);
+    // NOTE: forceWakeUp géré exclusivement par Automatism::toggleForceWakeup()
     
     // Getters
     bool getBouffeMatinOk() const { return _bouffeMatinOk; }
@@ -86,7 +85,7 @@ public:
     bool getBouffeSoirOk() const { return _bouffeSoirOk; }
     int getLastJourBouf() const { return _lastJourBouf; }
     bool getPompeAquaLocked() const { return _pompeAquaLocked; }
-    bool getForceWakeUp() const { return _forceWakeUp; }
+    // NOTE: Utiliser g_autoCtrl.getForceWakeUp() à la place
 };
 
 #endif // CONFIG_MANAGER_H 

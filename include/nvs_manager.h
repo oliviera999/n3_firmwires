@@ -12,20 +12,19 @@ class NVSLockGuard;
 /**
  * Gestionnaire NVS Centralisé - Version Simplifiée
  * 
- * Consolidation des namespaces NVS de 14 à 6 pour réduire la fragmentation
+ * Consolidation des namespaces NVS de 14 à 4 pour réduire la fragmentation
  * Gestion d'erreurs centralisée avec validation simplifiée (longueur clé uniquement)
  * 
- * Version: 11.80 (simplifiée - cache, flush différé, compression JSON supprimés)
+ * Version: 11.169 (simplifiée - 4 namespaces, TIME/SENSORS fusionnés)
  */
 
-// Namespaces consolidés (réduction de 14 à 6)
+// Namespaces consolidés (réduction de 14 à 4)
 namespace NVS_NAMESPACES {
-    extern const char* SYSTEM;      // ota, net, reset
-    extern const char* CONFIG;      // bouffe, remoteVars, gpio
-    extern const char* TIME;        // rtc, timeDrift
+    extern const char* SYSTEM;      // ota, net, reset, forceWakeUp, rtc_epoch
+    extern const char* CONFIG;      // bouffe, remoteVars, gpio, temp_lastValid
     extern const char* STATE;       // actSnap, actState, pendingSync
-    extern const char* LOGS;        // diagnostics, cmdLog, alerts
-    extern const char* SENSORS;     // waterTemp, digest
+    extern const char* LOGS;        // diagnostics, alerts, crash
+    // NOTE: TIME et SENSORS supprimés (fusionnés dans SYSTEM et CONFIG)
 }
 
 // Types d'erreurs NVS

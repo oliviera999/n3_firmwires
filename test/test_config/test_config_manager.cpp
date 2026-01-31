@@ -12,6 +12,7 @@
 
 // Simulation minimale de ConfigManager pour tests
 // (évite d'inclure le vrai ConfigManager qui dépend de NVS réel)
+// NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp), pas ConfigManager
 class ConfigManagerTestable {
 private:
     bool _bouffeMatinOk = false;
@@ -19,7 +20,6 @@ private:
     bool _bouffeSoirOk = false;
     int _lastJourBouf = -1;
     bool _pompeAquaLocked = false;
-    bool _forceWakeUp = false;
     bool _otaUpdateFlag = false;
     bool _remoteSendEnabled = true;
     bool _remoteRecvEnabled = true;
@@ -65,10 +65,6 @@ public:
         _pompeAquaLocked = value;
     }
     
-    void setForceWakeUp(bool value) {
-        _forceWakeUp = value;
-    }
-    
     void setOtaUpdateFlag(bool value) {
         _otaUpdateFlag = value;
     }
@@ -87,7 +83,6 @@ public:
     bool getBouffeSoirOk() const { return _bouffeSoirOk; }
     int getLastJourBouf() const { return _lastJourBouf; }
     bool getPompeAquaLocked() const { return _pompeAquaLocked; }
-    bool getForceWakeUp() const { return _forceWakeUp; }
     bool getOtaUpdateFlag() const { return _otaUpdateFlag; }
     bool isRemoteSendEnabled() const { return _remoteSendEnabled; }
     bool isRemoteRecvEnabled() const { return _remoteRecvEnabled; }
@@ -236,12 +231,7 @@ void test_pompe_aqua_locked() {
     TEST_ASSERT_FALSE(config.getPompeAquaLocked());
 }
 
-void test_force_wakeup() {
-    TEST_ASSERT_FALSE(config.getForceWakeUp());
-    
-    config.setForceWakeUp(true);
-    TEST_ASSERT_TRUE(config.getForceWakeUp());
-}
+// NOTE: test_force_wakeup supprimé - forceWakeUp est géré par Automatism
 
 void test_ota_update_flag() {
     TEST_ASSERT_FALSE(config.getOtaUpdateFlag());
@@ -296,7 +286,7 @@ int main(void) {
     
     // Tests autres flags
     RUN_TEST(test_pompe_aqua_locked);
-    RUN_TEST(test_force_wakeup);
+    // NOTE: test_force_wakeup supprimé - forceWakeUp est géré par Automatism
     RUN_TEST(test_ota_update_flag);
     
     // Tests cache

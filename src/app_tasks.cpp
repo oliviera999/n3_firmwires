@@ -30,10 +30,7 @@ static StaticTask_t sensorTaskTCB;
 static StackType_t displayTaskStack[TaskConfig::DISPLAY_TASK_STACK_SIZE];
 static StaticTask_t displayTaskTCB;
 
-// v11.159: Allocation statique pour grandes tâches aussi (Phase 2 - libère ~30KB heap)
-static StackType_t webTaskStack[TaskConfig::WEB_TASK_STACK_SIZE];
-static StaticTask_t webTaskTCB;
-
+// v11.169: webTask en allocation dynamique (stack 8KB) pour éviter overflow DRAM tout en gardant 8KB stack
 static StackType_t automationTaskStack[TaskConfig::AUTOMATION_TASK_STACK_SIZE];
 static StaticTask_t automationTaskTCB;
 
@@ -91,9 +88,11 @@ static void netTask(void* pv) {
 
   // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
   // par une tentative depuis netTask dès que le WiFi est disponible.
-  // v11.166: Timeout reduit a 3s (regle offline-first: max 3s blocage)
+  // v11.168: Timeout boot augmenté à 8s pour récupérer config serveur (source de vérité)
+  // Ce timeout plus long au boot est acceptable car c'est le seul moment critique
+  // pour synchroniser la config distante. Après le boot, on utilise le timeout standard.
   unsigned long startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 3000) {
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
     esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
     vTaskDelay(pdMS_TO_TICKS(200));
   }
@@ -104,7 +103,11 @@ static void netTask(void* pv) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     bool ok = g_ctx->webClient.tryFetchConfigFromServer(tmp);
-    Serial.printf("[netTask] Boot tryFetchConfigFromServer: %s\n", ok ? "OK" : "ECHEC");
+    if (ok) {
+      Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée)"));
+    } else {
+      Serial.println(F("[netTask] ⚠️ Serveur injoignable - fallback NVS/DEFAUT"));
+    }
   } else if (!g_ctx) {
     Serial.println(F("[netTask] Boot: g_ctx NULL, skip fetch"));
   } else {
@@ -182,7 +185,7 @@ void sensorTask(void* pv) {
 
     // v11.153: Validation INDÉPENDANTE par capteur
     // Ne plus réinitialiser TOUS les capteurs si un seul échoue
-    // Les ultrasons restent valides même si DHT22 échoue
+    // Les ultrasons restent valides même si le DHT (air) échoue
     
     // Vérification température eau
     if (isnan(readings.tempWater) ||
@@ -192,7 +195,7 @@ void sensorTask(void* pv) {
       readings.tempWater = SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
     }
     
-    // Vérification température air + humidité (DHT22)
+    // Vérification température air + humidité (DHT air)
     if (isnan(readings.tempAir) ||
         readings.tempAir < SensorConfig::AirSensor::TEMP_MIN ||
         readings.tempAir > SensorConfig::AirSensor::TEMP_MAX) {
@@ -522,17 +525,16 @@ bool start(AppContext& ctx) {
                                                      TaskConfig::SENSOR_TASK_CORE_ID);
   BaseType_t sensorCreated = (g_sensorTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
-  // v11.159: webTask, automationTask: allocation statique (Phase 2 - libère ~30KB heap)
-  g_webTaskHandle = xTaskCreateStaticPinnedToCore(
+  // v11.169: webTask en dynamique (stack 8KB sur heap) - évite overflow DRAM, corrige stack overflow
+  BaseType_t webCreated = xTaskCreatePinnedToCore(
                                                      webTask,
                                                      "webTask",
-                                                     TaskConfig::WEB_TASK_STACK_SIZE,
+                                                     TaskConfig::WEB_TASK_STACK_SIZE / sizeof(StackType_t),
                                                      nullptr,
                                                      TaskConfig::WEB_TASK_PRIORITY,
-                                                     webTaskStack,
-                                                     &webTaskTCB,
+                                                     &g_webTaskHandle,
                                                      TaskConfig::WEB_TASK_CORE_ID);
-  BaseType_t webCreated = (g_webTaskHandle != nullptr) ? pdPASS : pdFAIL;
+  webCreated = (webCreated == pdPASS && g_webTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
   g_autoTaskHandle = xTaskCreateStaticPinnedToCore(
                                                      automationTask,

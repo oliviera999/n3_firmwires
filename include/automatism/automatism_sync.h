@@ -80,6 +80,10 @@ private:
     unsigned long _lastSend;
     unsigned long _lastRemoteFetch;
     unsigned long _lastRemoteFeedResetMs;
+    
+    // v11.168: Flag pour éviter l'écrasement des variables de config sur le serveur distant
+    // Si false, le payload contient configSynced=0 et le serveur ignore les variables de config
+    bool _configSyncedOnce;
 
     // Configuration locale (miroir de Automatism)
     uint16_t _limFlood;
