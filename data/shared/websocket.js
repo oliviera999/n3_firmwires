@@ -769,6 +769,157 @@ window.submitDbVars = async function submitDbVars(ev) {
   }
 }
 
+// ========================================
+// EDITION INLINE DES VARIABLES
+// ========================================
+
+// Transformer un badge en input éditable
+window.editVar = function(badge) {
+  // Éviter l'édition multiple simultanée
+  if (badge.classList.contains('editing')) return;
+  
+  const key = badge.dataset.key;
+  const type = badge.dataset.type || 'number';
+  const currentValue = badge.textContent.trim();
+  const originalClass = badge.className;
+  const badgeId = badge.id;
+  
+  // Créer l'input
+  const input = document.createElement('input');
+  input.type = type === 'email' ? 'email' : 'number';
+  input.value = currentValue === '--' ? '' : currentValue;
+  input.className = 'form-control form-control-sm inline-edit';
+  input.style.width = type === 'email' ? '180px' : '80px';
+  input.style.display = 'inline-block';
+  input.style.textAlign = 'center';
+  
+  // Ajouter min/max/step si définis
+  if (badge.dataset.min) input.min = badge.dataset.min;
+  if (badge.dataset.max) input.max = badge.dataset.max;
+  if (badge.dataset.step) input.step = badge.dataset.step;
+  
+  // Stocker les infos pour la restauration
+  input.dataset.originalClass = originalClass;
+  input.dataset.badgeId = badgeId;
+  input.dataset.key = key;
+  input.dataset.type = type;
+  if (badge.dataset.min) input.dataset.min = badge.dataset.min;
+  if (badge.dataset.max) input.dataset.max = badge.dataset.max;
+  if (badge.dataset.step) input.dataset.step = badge.dataset.step;
+  
+  // Flag pour éviter double save
+  let saved = false;
+  
+  const doSave = async () => {
+    if (saved) return;
+    saved = true;
+    await saveVar(input, key, currentValue);
+  };
+  
+  const doCancel = () => {
+    if (saved) return;
+    saved = true;
+    cancelEdit(input, currentValue);
+  };
+  
+  input.onblur = () => setTimeout(doSave, 100); // Petit délai pour permettre Escape
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doSave();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      doCancel();
+    }
+  };
+  
+  // Remplacer le badge par l'input
+  badge.replaceWith(input);
+  input.focus();
+  input.select();
+};
+
+// Sauvegarder la valeur modifiée
+async function saveVar(input, key, originalValue) {
+  const newValue = input.value.trim();
+  
+  // Si valeur inchangée ou vide, annuler
+  if (newValue === '' || newValue === originalValue) {
+    cancelEdit(input, originalValue);
+    return;
+  }
+  
+  // Recréer le badge
+  const badge = document.createElement('span');
+  badge.id = input.dataset.badgeId;
+  badge.className = input.dataset.originalClass;
+  badge.dataset.key = key;
+  badge.dataset.type = input.dataset.type;
+  if (input.dataset.min) badge.dataset.min = input.dataset.min;
+  if (input.dataset.max) badge.dataset.max = input.dataset.max;
+  if (input.dataset.step) badge.dataset.step = input.dataset.step;
+  badge.onclick = function() { editVar(this); };
+  badge.textContent = newValue;
+  
+  // Remplacer l'input par le badge
+  input.replaceWith(badge);
+  
+  // Envoyer la mise à jour au serveur
+  const params = new URLSearchParams();
+  params.append(key, newValue);
+  
+  try {
+    const resp = await fetch('/dbvars/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    
+    if (resp.ok) {
+      const js = await resp.json();
+      if (js.status === 'OK') {
+        // Succès - flash vert
+        badge.classList.add('save-success');
+        setTimeout(() => badge.classList.remove('save-success'), 1500);
+        toast(`${key} mis à jour`, 'success');
+        
+        // Mettre à jour le cache
+        if (window.cachedDbVars) {
+          window.cachedDbVars[key] = newValue;
+        }
+      } else {
+        throw new Error('Server returned error');
+      }
+    } else {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+  } catch (e) {
+    console.error('Erreur sauvegarde variable:', e);
+    // Erreur - flash rouge et restaurer ancienne valeur
+    badge.textContent = originalValue;
+    badge.classList.add('save-error');
+    setTimeout(() => badge.classList.remove('save-error'), 1500);
+    toast(`Erreur: ${key} non mis à jour`, 'error');
+  }
+}
+
+// Annuler l'édition et restaurer le badge
+function cancelEdit(input, originalValue) {
+  const badge = document.createElement('span');
+  badge.id = input.dataset.badgeId;
+  badge.className = input.dataset.originalClass;
+  badge.dataset.key = input.dataset.key;
+  badge.dataset.type = input.dataset.type;
+  if (input.dataset.min) badge.dataset.min = input.dataset.min;
+  if (input.dataset.max) badge.dataset.max = input.dataset.max;
+  if (input.dataset.step) badge.dataset.step = input.dataset.step;
+  badge.onclick = function() { editVar(this); };
+  badge.textContent = originalValue;
+  
+  input.replaceWith(badge);
+}
+
 // FIX v11.31: Fonction d'initialisation exportée pour contrôle du timing
 // Appelée explicitement après chargement des scripts (évite race condition DOMContentLoaded)
 window.initializeDashboard = function initializeDashboard() {
@@ -1066,19 +1217,21 @@ window.refreshWifiStatus = async function refreshWifiStatus() {
     const data = await response.json();
     
     // Mettre à jour le statut STA dans l'onglet WiFi
-    const staStatus = $('wifiTabStaStatus');
-    const staSSID = $('wifiTabStaSSID');
-    const staIP = $('wifiTabStaIP');
-    const staRSSI = $('wifiTabStaRSSI');
+    // Clés JSON harmonisées avec le serveur: wifiSta*, wifiAp*
+    // IDs HTML harmonisés avec wifi.html: wifiStaStatus, wifiStaSSID, etc.
+    const staStatus = $('wifiStaStatus');
+    const staSSID = $('wifiStaSSID');
+    const staIP = $('wifiStaIP');
+    const staRSSI = $('wifiStaRSSI');
     
-    if (data.staConnected) {
+    if (data.wifiStaConnected) {
       if (staStatus) {
         staStatus.textContent = 'Connecté';
         staStatus.className = 'badge bg-success';
       }
-      if (staSSID) staSSID.textContent = data.staSSID;
-      if (staIP) staIP.textContent = data.staIP;
-      if (staRSSI) staRSSI.textContent = `${data.staRSSI} dBm`;
+      if (staSSID) staSSID.textContent = data.wifiStaSSID || '--';
+      if (staIP) staIP.textContent = data.wifiStaIP || '--';
+      if (staRSSI) staRSSI.textContent = `${data.wifiStaRSSI} dBm`;
     } else {
       if (staStatus) {
         staStatus.textContent = 'Déconnecté';
@@ -1090,20 +1243,26 @@ window.refreshWifiStatus = async function refreshWifiStatus() {
     }
     
     // Mettre à jour le statut AP dans l'onglet WiFi
-    const apStatus = $('wifiTabApStatus');
-    const apClients = $('wifiTabApClients');
+    const apStatus = $('wifiApStatus');
+    const apSSID = $('wifiApSSID');
+    const apIP = $('wifiApIP');
+    const apClients = $('wifiApClients');
     
-    if (data.apActive) {
+    if (data.wifiApActive) {
       if (apStatus) {
         apStatus.textContent = 'Actif';
         apStatus.className = 'badge bg-info';
       }
-      if (apClients) apClients.textContent = data.apClients;
+      if (apSSID) apSSID.textContent = data.wifiApSSID || '--';
+      if (apIP) apIP.textContent = data.wifiApIP || '--';
+      if (apClients) apClients.textContent = data.wifiApClients;
     } else {
       if (apStatus) {
         apStatus.textContent = 'Inactif';
         apStatus.className = 'badge bg-secondary';
       }
+      if (apSSID) apSSID.textContent = '--';
+      if (apIP) apIP.textContent = '--';
       if (apClients) apClients.textContent = '--';
     }
     
