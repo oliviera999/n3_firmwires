@@ -20,8 +20,8 @@ class NVSLockGuard;
 
 // Namespaces consolidés (réduction de 14 à 4)
 namespace NVS_NAMESPACES {
-    extern const char* SYSTEM;      // ota, net, reset, forceWakeUp, rtc_epoch
-    extern const char* CONFIG;      // bouffe, remoteVars, gpio, temp_lastValid
+    extern const char* SYSTEM;      // ota, net, reset, force_wake_up, rtc_epoch
+    extern const char* CONFIG;      // bouffe, remoteVars, gpio, temp_last_valid
     extern const char* STATE;       // actSnap, actState, pendingSync
     extern const char* LOGS;        // diagnostics, alerts, crash
     // NOTE: TIME et SENSORS supprimés (fusionnés dans SYSTEM et CONFIG)

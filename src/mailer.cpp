@@ -622,7 +622,7 @@ static const char* buildSystemInfoFooter() {
   remaining -= written;
   
   {
-    // Namespace bouffe (CONFIG) + forceWakeUp (SYSTEM)
+    // Namespace bouffe (CONFIG) + force_wake_up (SYSTEM)
     bool bouffeMatinOk, bouffeMidiOk, bouffeSoirOk, pompeAquaLocked, forceWakeUp;
     int lastJourBouf;
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_matin", bouffeMatinOk, false);
@@ -630,7 +630,10 @@ static const char* buildSystemInfoFooter() {
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bouffe_soir", bouffeSoirOk, false);
     g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, "bouffe_jour", lastJourBouf, -1);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, "bf_pmp_lock", pompeAquaLocked, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp, false);
+    // Migration: essayer nouvelle clé d'abord, puis ancienne clé en fallback
+    if (g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp, false) != NVSError::SUCCESS) {
+      g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp, false);
+    }
     written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
                                        "- bouffeMidiOk: %s\n"
                                        "- bouffeSoirOk: %s\n"

@@ -194,7 +194,7 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   // Validation des mesures
   float tempWater = m.tempWater;
   float tempAir = m.tempAir;
-  float humidity = m.humid;
+  float humidity = m.humidity;
 
   if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
     tempWater = NAN;
@@ -345,17 +345,8 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     return loadFromNVSFallback(doc);
   }
 
-  // v11.169: Timeout explicite sur lecture stream (évite blocage si connexion lente/instable)
-  const uint32_t READ_TIMEOUT_MS = 5000;
-  uint32_t readStart = millis();
-  
   size_t totalRead = 0;
   while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
-    // Vérifier timeout lecture
-    if (millis() - readStart > READ_TIMEOUT_MS) {
-      LOG(LOG_WARN, "[HTTP] Timeout lecture stream (%u ms)", (unsigned)READ_TIMEOUT_MS);
-      break;
-    }
     size_t bytesRead = stream->readBytes(
       payloadBuffer + totalRead,
       MAX_RESPONSE_SIZE - totalRead

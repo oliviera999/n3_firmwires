@@ -7,7 +7,7 @@
 
 struct Measurements {
   float tempAir{0};
-  float humid{0};
+  float humidity{0};  // Harmonisé avec SensorReadings et l'API JSON
   float tempWater{0};
   uint16_t wlPota{0};
   uint16_t wlAqua{0};

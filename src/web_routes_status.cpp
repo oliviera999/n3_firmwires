@@ -181,48 +181,49 @@ void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
   server.on("/wifi/status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
+    // Clés harmonisées avec /json (préfixes wifiSta*/wifiAp*)
     bool staConnected = WiFi.status() == WL_CONNECTED;
-    doc["staConnected"] = staConnected;
+    doc["wifiStaConnected"] = staConnected;
     if (staConnected) {
       char staSSIDBuf[33];
       WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-      doc["staSSID"] = staSSIDBuf;
+      doc["wifiStaSSID"] = staSSIDBuf;
       IPAddress ip = WiFi.localIP();
       char ipBuf[16];
       snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-      doc["staIP"] = ipBuf;
-      doc["staRSSI"] = WiFi.RSSI();
+      doc["wifiStaIP"] = ipBuf;
+      doc["wifiStaRSSI"] = WiFi.RSSI();
       char staMacBuf[18];
       WiFiHelpers::getMACString(staMacBuf, sizeof(staMacBuf));
-      doc["staMac"] = staMacBuf;
+      doc["wifiStaMac"] = staMacBuf;
     } else {
-      doc["staSSID"] = "";
-      doc["staIP"] = "";
-      doc["staRSSI"] = 0;
+      doc["wifiStaSSID"] = "";
+      doc["wifiStaIP"] = "";
+      doc["wifiStaRSSI"] = 0;
       char staMacBuf2[18];
       WiFiHelpers::getMACString(staMacBuf2, sizeof(staMacBuf2));
-      doc["staMac"] = staMacBuf2;
+      doc["wifiStaMac"] = staMacBuf2;
     }
 
     wifi_mode_t mode = WiFi.getMode();
     bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-    doc["apActive"] = apActive;
+    doc["wifiApActive"] = apActive;
     if (apActive) {
       char apSSIDBuf[33];
       WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-      doc["apSSID"] = apSSIDBuf;
+      doc["wifiApSSID"] = apSSIDBuf;
       IPAddress apIP = WiFi.softAPIP();
       char apIPBuf[16];
       snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
-      doc["apIP"] = apIPBuf;
-      doc["apClients"] = WiFi.softAPgetStationNum();
+      doc["wifiApIP"] = apIPBuf;
+      doc["wifiApClients"] = WiFi.softAPgetStationNum();
     } else {
-      doc["apSSID"] = "";
-      doc["apIP"] = "";
-      doc["apClients"] = 0;
+      doc["wifiApSSID"] = "";
+      doc["wifiApIP"] = "";
+      doc["wifiApClients"] = 0;
     }
 
-    doc["mode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+    doc["wifiMode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
 
     sendJsonResponse(req, doc);
   });
@@ -254,7 +255,7 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["wifiIP"] = wifiIPBuf;
     doc["wifiRSSI"] = WiFi.RSSI();
     doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
-    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
 
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
@@ -354,7 +355,7 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
     doc["websocket"]["isActive"] = g_realtimeWebSocket.isRunning();
 
-    doc["automatism"]["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["automatism"]["forceWakeUp"] = ctx.automatism.getForceWakeUp();
     doc["automatism"]["mailNotif"] = ctx.automatism.isEmailEnabled();
     doc["automatism"]["mail"] = ctx.automatism.getEmailAddress();
 
@@ -432,7 +433,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     doc["pumpTank"] = ctx.actuators.isTankPumpRunning();
     doc["heater"] = ctx.actuators.isHeaterOn();
     doc["light"] = ctx.actuators.isLightOn();
-    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
 
     bool staConnected = WiFi.status() == WL_CONNECTED;
     doc["wifiStaConnected"] = staConnected;

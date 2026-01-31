@@ -14,15 +14,16 @@ let lastDataUpdate = 0;
 const DATA_UPDATE_THROTTLE = 1000; // Throttle les mises à jour à 1s max
 
 // Cache des dernières valeurs WiFi connues pour éviter qu'elles disparaissent
+// Clés harmonisées avec les endpoints /json et /wifi/status
 let lastWifiData = {
-  staConnected: false,
-  staSSID: '--',
-  staIP: '--',
-  staRSSI: '--',
-  apActive: false,
-  apSSID: '--',
-  apIP: '--',
-  apClients: '--'
+  wifiStaConnected: false,
+  wifiStaSSID: '--',
+  wifiStaIP: '--',
+  wifiStaRSSI: '--',
+  wifiApActive: false,
+  wifiApSSID: '--',
+  wifiApIP: '--',
+  wifiApClients: '--'
 };
 
 // Fonction utilitaire pour formater les valeurs
@@ -776,7 +777,7 @@ window.toggleForceWakeup = async function toggleForceWakeup() {
   addToHistory('Toggle Force Wakeup', 'loading');
   
   try {
-    const response = await fetch('/action?cmd=forceWakeup', { cache: 'no-store' });
+    const response = await fetch('/action?cmd=forceWakeUp', { cache: 'no-store' });
     const result = await response.text();
     
     addToHistory('Toggle Force Wakeup', 'success', result);
@@ -1033,18 +1034,19 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const el = $('statusLight');
       if (el) el.textContent = data.light ? 'ON' : 'OFF';
     }
-    if(data.forceWakeup !== undefined) {
+    if(data.forceWakeUp !== undefined) {
       const el = $('statusForceWakeup');
-      if (el) el.textContent = data.forceWakeup ? 'ON' : 'OFF';
+      if (el) el.textContent = data.forceWakeUp ? 'ON' : 'OFF';
     }
     
     // États WiFi STA (informations détaillées uniquement)
+    // Clés harmonisées: wifiSta* (cohérent avec /json et /wifi/status)
     if(data.wifiStaConnected !== undefined) {
       // Mettre à jour le cache avec les nouvelles valeurs
-      lastWifiData.staConnected = data.wifiStaConnected;
-      lastWifiData.staSSID = data.wifiStaSSID || '--';
-      lastWifiData.staIP = data.wifiStaIP || '--';
-      lastWifiData.staRSSI = data.wifiStaRSSI || '--';
+      lastWifiData.wifiStaConnected = data.wifiStaConnected;
+      lastWifiData.wifiStaSSID = data.wifiStaSSID || '--';
+      lastWifiData.wifiStaIP = data.wifiStaIP || '--';
+      lastWifiData.wifiStaRSSI = data.wifiStaRSSI || '--';
       
       // Mise à jour des informations détaillées WiFi STA
       const ssidEl = $('wifiStaSSID');
@@ -1053,9 +1055,9 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const statusEl = $('wifiStaStatus');
       
       if (data.wifiStaConnected) {
-        if (ssidEl) ssidEl.textContent = lastWifiData.staSSID;
-        if (ipEl) ipEl.textContent = lastWifiData.staIP;
-        if (rssiEl) rssiEl.textContent = lastWifiData.staRSSI;
+        if (ssidEl) ssidEl.textContent = lastWifiData.wifiStaSSID;
+        if (ipEl) ipEl.textContent = lastWifiData.wifiStaIP;
+        if (rssiEl) rssiEl.textContent = lastWifiData.wifiStaRSSI;
         if (statusEl) {
           statusEl.textContent = 'CONNECTÉ';
           statusEl.className = 'badge bg-success';
@@ -1077,10 +1079,10 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const rssiEl = $('wifiStaRSSI');
       const statusEl = $('wifiStaStatus');
       
-      if (lastWifiData.staConnected) {
-        if (ssidEl) ssidEl.textContent = lastWifiData.staSSID;
-        if (ipEl) ipEl.textContent = lastWifiData.staIP;
-        if (rssiEl) rssiEl.textContent = lastWifiData.staRSSI;
+      if (lastWifiData.wifiStaConnected) {
+        if (ssidEl) ssidEl.textContent = lastWifiData.wifiStaSSID;
+        if (ipEl) ipEl.textContent = lastWifiData.wifiStaIP;
+        if (rssiEl) rssiEl.textContent = lastWifiData.wifiStaRSSI;
         if (statusEl) {
           statusEl.textContent = 'CONNECTÉ';
           statusEl.className = 'badge bg-success';
@@ -1089,12 +1091,13 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     }
     
     // États WiFi AP (informations détaillées uniquement)
+    // Clés harmonisées: wifiAp* (cohérent avec /json et /wifi/status)
     if(data.wifiApActive !== undefined) {
       // Mettre à jour le cache avec les nouvelles valeurs
-      lastWifiData.apActive = data.wifiApActive;
-      lastWifiData.apSSID = data.wifiApSSID || '--';
-      lastWifiData.apIP = data.wifiApIP || '--';
-      lastWifiData.apClients = data.wifiApClients || '0';
+      lastWifiData.wifiApActive = data.wifiApActive;
+      lastWifiData.wifiApSSID = data.wifiApSSID || '--';
+      lastWifiData.wifiApIP = data.wifiApIP || '--';
+      lastWifiData.wifiApClients = data.wifiApClients || '0';
       
       // Mise à jour des informations détaillées WiFi AP
       const ssidEl = $('wifiApSSID');
@@ -1103,9 +1106,9 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const detailStatusEl = $('wifiApStatus');
       
       if (data.wifiApActive) {
-        if (ssidEl) ssidEl.textContent = lastWifiData.apSSID;
-        if (ipEl) ipEl.textContent = lastWifiData.apIP;
-        if (clientsEl) clientsEl.textContent = lastWifiData.apClients;
+        if (ssidEl) ssidEl.textContent = lastWifiData.wifiApSSID;
+        if (ipEl) ipEl.textContent = lastWifiData.wifiApIP;
+        if (clientsEl) clientsEl.textContent = lastWifiData.wifiApClients;
         if (detailStatusEl) {
           detailStatusEl.textContent = 'ACTIF';
           detailStatusEl.className = 'badge bg-success';
@@ -1127,10 +1130,10 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const clientsEl = $('wifiApClients');
       const detailStatusEl = $('wifiApStatus');
       
-      if (lastWifiData.apActive) {
-        if (ssidEl) ssidEl.textContent = lastWifiData.apSSID;
-        if (ipEl) ipEl.textContent = lastWifiData.apIP;
-        if (clientsEl) clientsEl.textContent = lastWifiData.apClients;
+      if (lastWifiData.wifiApActive) {
+        if (ssidEl) ssidEl.textContent = lastWifiData.wifiApSSID;
+        if (ipEl) ipEl.textContent = lastWifiData.wifiApIP;
+        if (clientsEl) clientsEl.textContent = lastWifiData.wifiApClients;
         if (detailStatusEl) {
           detailStatusEl.textContent = 'ACTIF';
           detailStatusEl.className = 'badge bg-success';

@@ -215,8 +215,10 @@ void Automatism::toggleForceWakeup() {
     forceWakeUp = !forceWakeUp;
     _sleep.setForceWakeUp(forceWakeUp);
     Serial.printf("[Auto] ForceWakeUp basculé: %s\n", forceWakeUp ? "ON" : "OFF");
-    // Persistance NVS
-    g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp);
+    // Persistance NVS - nouvelle clé harmonisée (snake_case)
+    g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp);
+    // Migration: supprimer l'ancienne clé si elle existe
+    g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
 }
 
 void Automatism::triggerResetMode() {
@@ -333,8 +335,10 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
         if (newValue != forceWakeUp) {
             forceWakeUp = newValue;
             _sleep.setForceWakeUp(forceWakeUp);
-            // Persistance NVS (même clé que toggleForceWakeup() pour cohérence au boot)
-            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", forceWakeUp);
+            // Persistance NVS - nouvelle clé harmonisée (snake_case)
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp);
+            // Migration: supprimer l'ancienne clé si elle existe
+            g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
             Serial.printf("[Auto] ✅ ForceWakeUp mis à jour depuis serveur: %s\n", forceWakeUp ? "ON" : "OFF");
         }
     }
@@ -479,7 +483,18 @@ bool Automatism::isRefillingInManualMode() const { return _manualTankOverride; }
 // Méthodes privées d'initialisation (simplifiées)
 void Automatism::restorePersistentForceWakeup() {
     bool saved = false;
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", saved, false);
+    // Migration: essayer nouvelle clé d'abord, puis ancienne clé en fallback
+    NVSError err = g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", saved, false);
+    if (err != NVSError::SUCCESS) {
+        // Fallback: ancienne clé (migration en cours)
+        g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "forceWakeUp", saved, false);
+        if (saved) {
+            // Migrer vers nouvelle clé
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", saved);
+            g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
+            Serial.println(F("[Auto] Migration NVS: forceWakeUp -> force_wake_up"));
+        }
+    }
     forceWakeUp = saved;
     _sleep.setForceWakeUp(saved);
 }

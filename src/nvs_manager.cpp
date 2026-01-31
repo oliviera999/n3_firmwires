@@ -47,8 +47,8 @@ void NVSManager::unlock() {
 
 // Définitions des constantes NVS_NAMESPACES (4 namespaces consolidés)
 namespace NVS_NAMESPACES {
-    const char* SYSTEM = "sys";      // ota, net, reset, forceWakeUp, rtc_epoch
-    const char* CONFIG = "cfg";      // bouffe, remoteVars, gpio, temp_lastValid
+    const char* SYSTEM = "sys";      // ota, net, reset, force_wake_up, rtc_epoch
+    const char* CONFIG = "cfg";      // bouffe, remoteVars, gpio, temp_last_valid
     const char* STATE = "state";     // actSnap, actState, pendingSync
     const char* LOGS = "logs";       // diagnostics, alerts, crash
     // NOTE: TIME et SENSORS supprimés - fusionnés dans SYSTEM et CONFIG

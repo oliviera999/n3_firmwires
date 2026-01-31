@@ -1121,7 +1121,10 @@ void OTAManager::updateTask(void* parameter) {
     // Persister l'ancienne version pour notification post-reboot
     {
         g_nvsManager.saveString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", ota->getCurrentVersion());
-        g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_inProgress", true);
+        // Clé harmonisée (snake_case)
+        g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_in_progress", true);
+        // Migration: supprimer l'ancienne clé si elle existe
+        g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_inProgress");
     }
     
     // Essayer d'abord la méthode moderne, puis fallback si échec
@@ -1253,7 +1256,10 @@ void OTAManager::updateTask(void* parameter) {
         
         // Nettoyer le flag inProgress avant reboot
         {
-            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_inProgress", false);
+            // Clé harmonisée (snake_case)
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "ota_in_progress", false);
+            // Migration: supprimer l'ancienne clé si elle existe
+            g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_inProgress");
         }
         TaskMonitor::Snapshot successSnapshot = TaskMonitor::collectSnapshot();
         TaskMonitor::logSnapshot(successSnapshot, "ota-task-success");
