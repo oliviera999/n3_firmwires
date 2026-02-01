@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <cmath>  // Pour isnan() dans SensorValidation
 #include "gpio_mapping.h"  // Pour GPIODefaults (source de vérité des valeurs par défaut)
 
 // =============================================================================
@@ -13,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // Simplification séquentielle réseau (plus de tâche mail dédiée)
-    inline constexpr const char* VERSION = "11.171";  // Audit: augmentation stack automationTask 10KB
+    // v11.182: Aligné avec serveur ffp3 4.9.41 (outputs/state avec défauts si table vide)
+    inline constexpr const char* VERSION = "11.182";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -51,6 +52,22 @@ namespace Utils {
     inline void getSystemInfo(char* buffer, size_t bufferSize) {
         snprintf(buffer, bufferSize, "FFP5CS v%s [%s/%s]", 
                  ProjectConfig::VERSION, ProjectConfig::BOARD_TYPE, getProfileName());
+    }
+    
+    // v11.178: Helpers utilitaires pour réduire duplication de code (audit helpers-utils)
+    
+    // Copie sûre de chaîne avec null-termination garantie
+    // Remplace le pattern: strncpy(dest, src, sizeof(dest)-1); dest[sizeof(dest)-1] = '\0';
+    inline void safeStrncpy(char* dest, const char* src, size_t destSize) {
+        if (destSize == 0) return;
+        strncpy(dest, src, destSize - 1);
+        dest[destSize - 1] = '\0';
+    }
+    
+    // Formatage d'adresse IP dans un buffer
+    // Remplace le pattern répété: snprintf(buf, sizeof(buf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3])
+    inline void formatIP(const uint8_t* ip, char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     }
 }
 
@@ -111,6 +128,8 @@ namespace TimingConfig {
     
     // Intervalle tâche capteurs: >= DHT MIN_READ_INTERVAL_MS (datasheet 2s, config 2.5s)
     inline constexpr uint32_t SENSOR_TASK_INTERVAL_MS = 2500;
+    // Timeout max pour lecture capteurs (protection watchdog)
+    inline constexpr uint32_t MAX_SENSOR_TIME_MS = 30000;
 
     // Intervalles d'affichage
     inline constexpr uint32_t MIN_DISPLAY_INTERVAL_MS = 100;
@@ -162,10 +181,14 @@ namespace MonitoringConfig {
 // 3. RÉSEAU ET SERVEUR
 // -----------------------------------------------------------------------------
 namespace NetworkConfig {
+    inline constexpr uint16_t WEB_SERVER_PORT = 80;
+    inline constexpr uint16_t WS_PORT = 81;  // v11.178: Port WebSocket centralisé (audit)
     inline constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
     // Timeout HTTP unifié (conforme à .cursorrules: max 5s pour opérations réseau)
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
+    // Timeout mutex TLS pour serialization SMTP/HTTPS
+    inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 10000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
     // que requêtes HTTP standard
     // Justification : connexions lentes peuvent nécessiter jusqu'à 30s
@@ -177,7 +200,16 @@ namespace NetworkConfig {
     inline constexpr uint32_t BACKOFF_BASE_MS = 1000;
     
     inline constexpr const char* HTTP_USER_AGENT = "FFP5CS-ESP32";
-    inline constexpr int HTTP_OK_CODE = 200;
+    
+    // v11.178: Codes HTTP centralisés (audit http-codes)
+    inline constexpr int HTTP_OK = 200;
+    inline constexpr int HTTP_NO_CONTENT = 204;
+    inline constexpr int HTTP_BAD_REQUEST = 400;
+    inline constexpr int HTTP_NOT_FOUND = 404;
+    inline constexpr int HTTP_INTERNAL_ERROR = 500;
+    inline constexpr int HTTP_SERVICE_UNAVAILABLE = 503;
+    // Alias pour compatibilité
+    inline constexpr int HTTP_OK_CODE = HTTP_OK;
 }
 
 namespace ServerConfig {
@@ -237,6 +269,7 @@ namespace BufferConfig {
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 4096;
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 4096;
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 4096;
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 4096;
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 6000;
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 5000;
@@ -246,14 +279,11 @@ namespace BufferConfig {
         // v11.158: Optimisation buffers - réduits pour libérer mémoire et réduire fragmentation
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 1024;  // Réduit de 2048 (requêtes typiquement < 1024 bytes)
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 1024;  // Réduit de 2048
-        // PROFILE_TEST (wroom-test): 384 pour tenir en DRAM; wroom-prod: 1024
-        inline constexpr uint32_t JSON_DOCUMENT_SIZE =
-            #if defined(PROFILE_TEST)
-            384
-            #else
-            1024
-            #endif
-            ;  // Réponses serveur typiquement < 500 bytes
+        // PROFILE_TEST aligné wroom-prod (1024) pour éviter IncompleteInput / sorties précoces
+        // GET /api/outputs/state: ~28 clés (numériques + symboliques), typ. < 900 bytes (logs: "28 clés")
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE = 1024;
+        // GET /dbvars: réponse plus grande (mail, mailNotif, ~20 clés) pour éviter troncature
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 2048;
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 1024;  // Limite payload postData (malloc si besoin pour tenir en DRAM)
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 2000;  // Réduit de 3000 (emails typiquement < 2000 bytes)
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;  // Réduit de 2500
@@ -263,12 +293,13 @@ namespace BufferConfig {
 }
 
 // Seuils mémoire pour handlers HTTP (heap minimum requis)
+// v11.173: Seuils réduits pour ESP32-WROOM (320KB RAM) - éviter 503 trop agressifs
 namespace HeapConfig {
-    inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 50000;      // /json endpoint
-    inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 55000;    // /dbvars endpoint
-    inline constexpr uint32_t MIN_HEAP_WIFI_ROUTE = 40000;      // /wifi/* endpoints
-    inline constexpr uint32_t MIN_HEAP_EMAIL_ASYNC = 50000;     // Email async task fallback
-    inline constexpr uint32_t MIN_HEAP_OTA = 50000;             // OTA check
+    inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 20000;      // /json endpoint (réduit de 50K)
+    inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 25000;    // /dbvars endpoint (réduit de 55K)
+    inline constexpr uint32_t MIN_HEAP_WIFI_ROUTE = 18000;      // /wifi/* endpoints (réduit de 40K)
+    inline constexpr uint32_t MIN_HEAP_EMAIL_ASYNC = 35000;     // Email async task fallback
+    inline constexpr uint32_t MIN_HEAP_OTA = 35000;             // OTA check
 }
 
 // -----------------------------------------------------------------------------
@@ -297,6 +328,10 @@ namespace NVSConfig {
 namespace SensorConfig {
     inline constexpr uint32_t SENSOR_READ_DELAY_MS = 100;
     inline constexpr uint32_t I2C_STABILIZATION_DELAY_MS = 100;
+    // Test de connectivité capteur (DHT, DS18B20)
+    inline constexpr uint32_t CONNECTIVITY_TEST_TIMEOUT_MS = 2000;
+    // Debounce pour sauvegarde température NVS
+    inline constexpr uint32_t NVS_TEMP_DEBOUNCE_MS = 60000;
 
     namespace DefaultValues {
         inline constexpr float TEMP_AIR_DEFAULT = 20.0f;
@@ -377,6 +412,58 @@ namespace SensorConfig {
     }
 }
 
+// -----------------------------------------------------------------------------
+// 5.1 HELPERS VALIDATION CAPTEURS (v11.176 - audit élimination duplications)
+// -----------------------------------------------------------------------------
+// Ces fonctions inline remplacent le pattern répété isnan() + range check
+// utilisé dans sensors.cpp, automatism.cpp, app_tasks.cpp, web_client.cpp
+namespace SensorValidation {
+    // Valide une température d'eau (DS18B20)
+    // Retourne true si la valeur est valide, false si NaN ou hors plage
+    // Note: -127.0f est le code erreur DallasTemperature
+    inline bool isValidWaterTemp(float temp) {
+        return !isnan(temp) && 
+               temp != -127.0f &&  // Code erreur Dallas
+               temp >= SensorConfig::WaterTemp::MIN_VALID && 
+               temp <= SensorConfig::WaterTemp::MAX_VALID;
+    }
+    
+    // Valide une température d'air (DHT22)
+    inline bool isValidAirTemp(float temp) {
+        return !isnan(temp) && 
+               temp >= SensorConfig::AirSensor::TEMP_MIN && 
+               temp <= SensorConfig::AirSensor::TEMP_MAX;
+    }
+    
+    // Valide une humidité (DHT22)
+    inline bool isValidHumidity(float humidity) {
+        return !isnan(humidity) && 
+               humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && 
+               humidity <= SensorConfig::AirSensor::HUMIDITY_MAX;
+    }
+    
+    // Valide une distance ultrasonique
+    inline bool isValidDistance(uint16_t distance) {
+        return distance >= SensorConfig::Ultrasonic::MIN_DISTANCE_CM && 
+               distance <= SensorConfig::Ultrasonic::MAX_DISTANCE_CM;
+    }
+    
+    // Applique une valeur par défaut si la température d'eau est invalide
+    inline float sanitizeWaterTemp(float temp) {
+        return isValidWaterTemp(temp) ? temp : SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
+    }
+    
+    // Applique une valeur par défaut si la température d'air est invalide
+    inline float sanitizeAirTemp(float temp) {
+        return isValidAirTemp(temp) ? temp : SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+    }
+    
+    // Applique une valeur par défaut si l'humidité est invalide
+    inline float sanitizeHumidity(float humidity) {
+        return isValidHumidity(humidity) ? humidity : SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
+    }
+}
+
 namespace ActuatorConfig {
     // Valeurs par défaut - référencent GPIODefaults (gpio_mapping.h) comme source de vérité
     namespace Default {
@@ -448,11 +535,6 @@ namespace LogConfig {
     #define SENSOR_LOG_PRINTLN(msg) ((void)0)
 #endif
 
-// Macros de compatibilité (désactivées car gérées par log.h)
-// #define LOG(level, fmt, ...) LOG_INFO(fmt, ##__VA_ARGS__)
-// #define LOG_TIME(level, fmt, ...) LOG_INFO(fmt, ##__VA_ARGS__)
-// #define LOG_DRIFT(level, fmt, ...) LOG_INFO(fmt, ##__VA_ARGS__)
-
 // -----------------------------------------------------------------------------
 // 7. DISPLAY
 // -----------------------------------------------------------------------------
@@ -462,7 +544,19 @@ namespace DisplayConfig {
     inline constexpr uint8_t OLED_I2C_ADDR = 0x3C;
     
     inline constexpr int PERCENTAGE_MAX = 100;
+    
+    // Intervalle de rafraîchissement OLED pour automatismes
+    inline constexpr uint32_t OLED_INTERVAL_MS = 80;
+    inline constexpr uint32_t OLED_COUNTDOWN_INTERVAL_MS = 250;
 
+    // Status bar layout (barre d'état en haut de l'écran)
+    inline constexpr int STATUS_BAR_HEIGHT = 8;
+    inline constexpr int STATUS_BAR_WIFI_X = 0;       // Position indicateur WiFi
+    inline constexpr int STATUS_BAR_SENDRECV_X = 60;  // Position indicateurs S/R
+    inline constexpr int STATUS_BAR_TIDE_X = 80;      // Position indicateur marée
+    inline constexpr int STATUS_BAR_MAIL_X = 90;      // Position indicateur mail
+
+    // OTA overlay position
     inline constexpr int OTA_OVERLAY_X_POS = 100;
     inline constexpr int OTA_OVERLAY_Y_POS = 0;
     inline constexpr int OTA_OVERLAY_WIDTH = 28;
