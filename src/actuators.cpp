@@ -89,6 +89,10 @@ void Feeder::returnToRest() {
 }
 
 void Feeder::begin() {
+  // Annuler tout detach programmé pour éviter les conflits LEDC
+  if (_detachTimer != nullptr) {
+    esp_timer_stop(_detachTimer);
+  }
   if (!_isAttached) {
     _servo.attach(_gpio, 500, 2500); // Min/Max pulse width optimisés
     _isAttached = true;

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstring>
+#include <atomic>
 #include "system_sensors.h"
 #include "system_actuators.h"
 #include "web_client.h"
@@ -45,6 +46,8 @@ class Automatism {
   uint32_t getPumpStartTime() const { return _pumpStartMs; }  // Pour SystemActuators
   bool isTankPumpRunning() const { return _pumpStartMs > 0; }
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
+  // Traite un doc déjà récupéré (normalise, sauve NVS). Utilisé par netTask au boot.
+  bool processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc);
 
   // --- Accesseurs exposés pour le serveur Web local ---
   // v11.172: Source de vérité = AutomatismSync (_network)
@@ -168,7 +171,7 @@ class Automatism {
   void attachFeedingCallbacks();
   void restorePersistentForceWakeup();
   void initializeRuntimeState();
-  void restoreActuatorState();
+  // v11.178: restoreActuatorState() supprimé (code mort - audit dead-code)
   bool restoreRemoteConfigFromCache();
   void syncForceWakeupWithServer();
   
@@ -190,8 +193,8 @@ class Automatism {
   AutomatismSync _network;
   AutomatismSleep _sleep;
 
-  // state flags
-  bool tankPumpLocked = false;
+  // state flags - v11.176: Atomic pour accès multi-tâches (audit race conditions)
+  std::atomic<bool> tankPumpLocked{false};
   bool serverOk = false;
   int8_t sendState = 0; // -1 erreur, 0 en cours/idle, 1 OK dernier transfert
   int8_t recvState = 0; // idem pour réception
@@ -216,11 +219,12 @@ class Automatism {
   
   // Variables de configuration distantes
   // v11.172: limFlood supprimé - source de vérité = _network.getLimFlood()
-  uint32_t _pumpStartMs = 0; // time when tank pump started (ms)
+  // v11.176: Atomic pour accès multi-tâches (audit race conditions)
+  std::atomic<uint32_t> _pumpStartMs{0}; // time when tank pump started (ms)
   uint32_t refillDurationMs = 120000; // default 120s, can be updated from web
 
   // maree / sleep
-  const uint16_t mareeThreshold = 1; // cm (legacy, plus utilisé pour sleep)
+  static constexpr uint16_t MAREE_THRESHOLD = 1; // cm (legacy, plus utilisé pour sleep)
   // Nouveau seuil de déclenchement marée montante (diff10s > tideTriggerCm)
   int16_t tideTriggerCm = ::SleepConfig::TIDE_TRIGGER_THRESHOLD_CM; // réglable via config
   // SUPPRIMÉ: autoSleepDelayMs obsolète - remplacé par le système adaptatif
@@ -297,11 +301,13 @@ class Automatism {
     FEEDING_FORWARD,    // Position de nourrissage (140°)
     FEEDING_BACKWARD    // Position intermédiaire (45°)
   };
-  FeedingPhase _currentFeedingPhase = FeedingPhase::NONE;
-  unsigned long _feedingPhaseEnd = 0;  // Fin de la phase actuelle
+  // v11.176: Atomic pour accès multi-tâches (audit race conditions)
+  std::atomic<FeedingPhase> _currentFeedingPhase{FeedingPhase::NONE};
+  std::atomic<unsigned long> _feedingPhaseEnd{0};  // Fin de la phase actuelle
   unsigned long _feedingTotalEnd = 0;  // Fin totale du cycle de nourrissage
   // Type de nourrissage actuel pour l'affichage OLED ("Gros" ou "Petits")
-  const char* _currentFeedingType = nullptr;
+  // v11.176: Atomic pointer pour accès multi-tâches
+  std::atomic<const char*> _currentFeedingType{nullptr};
 
   // v11.172: email config supprimé - source de vérité = _network.getEmailAddress() / isEmailEnabled()
 
@@ -325,9 +331,8 @@ class Automatism {
   // false => écran Vars
   bool _oledToggle = true; // commence par écran principal
   unsigned long _lastOled{0};
-  // Chronomètre de changement d'écran
+  // Chronomètre de changement d'écran (intervalle: DisplayConfig::SCREEN_SWITCH_INTERVAL_MS)
   unsigned long _lastScreenSwitch{0};
-  static constexpr unsigned long screenSwitchInterval = 4000; // 4 s pour plus de dynamisme
   // Intervalle de rafraîchissement ultra-fluide de l'OLED (100ms pour temps réel)
   const unsigned long oledInterval = 80; // Optimisé de 100ms à 80ms pour plus de fluidité
 
@@ -344,7 +349,8 @@ class Automatism {
   bool _lastPumpManual{false};
 
   // NEW: indique qu'une activation manuelle de la pompe réservoir est en cours
-  bool _manualTankOverride{false};
+  // v11.176: Atomic pour accès multi-tâches (audit race conditions)
+  std::atomic<bool> _manualTankOverride{false};
 
   // NEW: raison de verrouillage de la pompe de réserve
   enum class TankPumpLockReason {
@@ -378,11 +384,10 @@ class Automatism {
   ManualOrigin _lastTankManualOrigin{ManualOrigin::NONE};
   ManualOrigin _lastAquaManualOrigin{ManualOrigin::NONE};
 
-  void handleAutoSleep(const SensorReadings& r);
-  bool shouldEnterSleepEarly(const SensorReadings& r);
-  void handleMaree(const SensorReadings& r);
-  void handleAlerts(const SensorReadings& r);
-  void handleRefill(const SensorReadings& r);
+  // v11.179: Déclarations orphelines supprimées (audit code mort)
+  // handleAutoSleep/shouldEnterSleepEarly → délégués à AutomatismSleep
+  // handleMaree → legacy, jamais implémenté
+  // handleAlerts/handleRefill(SensorReadings&) → signatures incorrectes, voir lignes 429/440
   void handleFeeding();
   void finalizeFeedingIfNeeded(uint32_t nowMs);
   void handleRemoteState();
@@ -393,7 +398,7 @@ class Automatism {
   void traceFeedingEventSelective(bool feedSmall, bool feedBig);
 
   // Nouvelles méthodes pour la détection d'activité fine
-  bool hasSignificantActivity();
+  // v11.178: hasSignificantActivity() supprimé (toujours false - audit dead-code)
   void updateActivityTimestamp();
   uint32_t calculateAdaptiveSleepDelay();
   bool isAdaptiveSleepEnabled() const { return _sleepConfig.adaptiveSleep; }

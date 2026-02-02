@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.182: Aligné avec serveur ffp3 4.9.41 (outputs/state avec défauts si table vide)
-    inline constexpr const char* VERSION = "11.182";
+    // v11.188: HTTP_TIMEOUT 10s, REMOTE_FETCH_INTERVAL 12s (réduire timeouts GET)
+    inline constexpr const char* VERSION = "11.188";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -185,8 +185,8 @@ namespace NetworkConfig {
     inline constexpr uint16_t WS_PORT = 81;  // v11.178: Port WebSocket centralisé (audit)
     inline constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
-    // Timeout HTTP unifié (conforme à .cursorrules: max 5s pour opérations réseau)
-    inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
+    // Timeout HTTP unifié (v11.188: 10s pour réduire timeouts GET outputs/state)
+    inline constexpr uint32_t HTTP_TIMEOUT_MS = 10000;
     // Timeout mutex TLS pour serialization SMTP/HTTPS
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 10000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps

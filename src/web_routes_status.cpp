@@ -31,7 +31,7 @@ void sendJsonResponse(AsyncWebServerRequest* req, const JsonDocument& doc, bool 
   AsyncResponseStream* response = req->beginResponseStream("application/json");
   if (!response) {
     Serial.println(F("[Web] ❌ Échec création réponse JSON (heap insuffisant)"));
-    req->send(500, "text/plain", "Memory error");
+    req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
     return;
   }
 
@@ -78,7 +78,7 @@ bool ensureHeapForRoute(AsyncWebServerRequest* req, uint32_t minHeap, const __Fl
   if (req) {
     char message[128];
     snprintf(message, sizeof(message), "Service temporairement indisponible - mémoire faible (heap=%u bytes)", freeHeap);
-    req->send(503, "text/plain", message);
+    req->send(NetworkConfig::HTTP_SERVICE_UNAVAILABLE, "text/plain", message);
   }
 
   Serial.printf_P(PSTR("[Web] ⚠️ Mémoire insuffisante pour %s (%u < %u bytes)\n"),
@@ -129,7 +129,7 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
     const char* body = req->_tempObject ? (const char*)req->_tempObject : "";
     DeserializationError error = deserializeJson(doc, body);
     if (error) {
-      req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
 
@@ -246,7 +246,7 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /api/status");
-      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "application/json", "{\"error\":\"Internal server error\"}");
       return;
     }
     response->addHeader("Cache-Control", "no-cache");
@@ -298,7 +298,7 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /api/remote-flags POST");
-      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "application/json", "{\"error\":\"Internal server error\"}");
       return;
     }
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
@@ -361,7 +361,7 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /debug-logs");
-      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "application/json", "{\"error\":\"Internal server error\"}");
       return;
     }
     response->addHeader("Cache-Control", "no-cache");
@@ -381,7 +381,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
       response->addHeader("Access-Control-Max-Age", "86400");
       req->send(response);
     } else {
-      req->send(500);
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
     }
   });
 
@@ -393,7 +393,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
       response->addHeader("Access-Control-Allow-Origin", "*");
       req->send(response);
     } else {
-      req->send(500);
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
     }
   });
 
@@ -427,7 +427,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /json");
-      req->send(500, "application/json", "{\"error\":\"Internal server error\"}");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "application/json", "{\"error\":\"Internal server error\"}");
       return;
     }
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");

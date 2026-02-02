@@ -1,14 +1,15 @@
-﻿# Script de vérification des mails depuis le dernier log
+# Script de vérification des mails depuis le dernier log
 param(
     [string]$LogFile = ""
 )
 
 if ([string]::IsNullOrEmpty($LogFile)) {
-    # Trouver le dernier fichier de log
-    $LogFile = Get-ChildItem -Filter "monitor_wroom_test_*.log" | 
-               Sort-Object LastWriteTime -Descending | 
-               Select-Object -First 1 -ExpandProperty FullName
-    
+    # Trouver le dernier fichier de log (monitor_5min ou monitor_wroom_test)
+    $candidates = @(Get-ChildItem -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+    $candidates += @(Get-ChildItem -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $LogFile = if ($latest) { $latest.FullName } else { $null }
+
     if (-not $LogFile) {
         Write-Host "❌ Aucun fichier de log trouvé" -ForegroundColor Red
         exit 1
@@ -80,7 +81,9 @@ function Test-SubjectMatch {
     }
     
     # Correspondance partielle (l'un contient l'autre)
-    if ($norm1 -like "*$norm2*" -or $norm2 -like "*$norm1*") {
+    # v11.175: Utiliser .Contains() au lieu de -like pour éviter WildcardPatternException
+    # (les crochets [] dans les sujets comme "Réserve OK" causaient des erreurs)
+    if ($norm1.Contains($norm2) -or $norm2.Contains($norm1)) {
         return $true
     }
     

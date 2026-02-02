@@ -42,9 +42,10 @@ QueueHandle_t getSensorQueue();
 
 // Note: ces appels bloquent le caller jusqu'à la fin de l'opération réseau
 // (sinon risque de corruption si le caller retourne avant fin TLS).
-bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 30000);
-bool netPostRaw(const char* payload, uint32_t timeoutMs = 30000);
-bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 10000);
+// v11.178: Defaults réduits à 5s (règle offline-first: max 5s - audit)
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000);
+bool netPostRaw(const char* payload, uint32_t timeoutMs = 5000);
+bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 
 }  // namespace AppTasks
 

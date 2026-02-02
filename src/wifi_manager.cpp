@@ -3,6 +3,7 @@
 #include "config.h"
 #include <algorithm>
 #include <cstring>
+#include <esp_task_wdt.h>
 
 WifiManager::WifiManager(const Credential* list, size_t count, uint32_t timeoutMs, uint32_t retryIntervalMs)
     : _list(list), _count(count), _timeoutMs(timeoutMs), _retryIntervalMs(retryIntervalMs), _lastAttemptMs(0) {}
@@ -32,7 +33,15 @@ bool WifiManager::connect(DisplayView* disp) {
   vTaskDelay(pdMS_TO_TICKS(50));
 
   Serial.println(F("[WiFi] 🔍 Balayage des réseaux..."));
+  // v11.176: Watchdog reset avant scan bloquant (2-5s) - audit robustesse
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+  // v11.176: Watchdog reset après scan bloquant
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
   if (n <= 0) {
     Serial.println(F("[WiFi] ❌ Aucun réseau détecté (ou scan erreur)"));
@@ -112,6 +121,9 @@ bool WifiManager::connect(DisplayView* disp) {
     }
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
+      }
       vTaskDelay(pdMS_TO_TICKS(100)); // Optimized delay - reduced from 250ms to 100ms for faster connection
     }
     if (WiFi.status() == WL_CONNECTED) {
@@ -135,6 +147,9 @@ bool WifiManager::connect(DisplayView* disp) {
       }
       uint32_t start2 = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - start2 < _timeoutMs) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+          esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
+        }
         vTaskDelay(pdMS_TO_TICKS(100)); // Optimized delay - reduced from 250ms to 100ms for faster connection
       }
       if (WiFi.status() == WL_CONNECTED) {
@@ -198,6 +213,9 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 
@@ -237,7 +255,15 @@ bool WifiManager::startFallbackAP(){
   }
   // Choix de canal auto: scan rapide et sélection du canal le moins utilisé (1/6/11)
   int counts[12] = {0};
+  // v11.176: Watchdog reset avant scan bloquant (2-5s) - audit robustesse
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/false);
+  // v11.176: Watchdog reset après scan bloquant
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   for (int i = 0; i < n; ++i) {
     int ch = WiFi.channel(i);
     if (ch >= 1 && ch <= 11) counts[ch-1]++;

@@ -10,6 +10,7 @@
 #include "automatism.h"
 #include "web_assets.h"
 #include "app_context.h"
+#include "config.h"  // v11.178: Pour NetworkConfig::HTTP_* (audit http-codes)
 
 using WebRoutes::registerUiRoutes;
 
@@ -19,7 +20,8 @@ bool serveIndexStreaming(AppContext& ctx, AsyncWebServerRequest* req) {
   uint32_t freeHeapBefore = ESP.getFreeHeap();
   Serial.printf("[Web] 📊 Heap libre avant index.html streaming: %u bytes\n", freeHeapBefore);
 
-  const uint32_t streamMinHeapBytes = 60000;
+  // v11.173: Seuil réduit pour ESP32-WROOM (de 60K à 20K)
+  const uint32_t streamMinHeapBytes = 20000;
   if (freeHeapBefore < streamMinHeapBytes) {
     Serial.printf("[Web] ⚠️ Mémoire insuffisante pour servir index.html (%u < %u bytes)\n",
                   freeHeapBefore,
@@ -68,8 +70,10 @@ bool serveIndexStreaming(AppContext& ctx, AsyncWebServerRequest* req) {
 
   AsyncWebServerResponse* response = req->beginChunkedResponse(
       "text/html",
-      [&ctx, file](uint8_t* buffer, size_t maxLen, size_t /*index*/) mutable -> size_t {
-        esp_task_wdt_reset();
+      [&ctx, file, streamMinHeapBytes](uint8_t* buffer, size_t maxLen, size_t /*index*/) mutable -> size_t {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+          esp_task_wdt_reset();
+        }
 
         if (ESP.getFreeHeap() < streamMinHeapBytes) {
           Serial.println("[Web] ⚠️ Mémoire critique pendant streaming");
@@ -149,7 +153,7 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
       Serial.println("[Web] ✅ Fallback envoyé");
     } else {
       Serial.println("[Web] ❌ ERREUR CRITIQUE: Impossible d'envoyer fallback");
-      req->send(500, "text/plain", "Erreur interne serveur");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur interne serveur");
     }
   });
 
@@ -172,12 +176,12 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
       r->addHeader("X-Frame-Options", "DENY");
       req->send(r);
     } else {
-      req->send(500, "text/plain", "Erreur interne serveur");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur interne serveur");
     }
   });
 
   server.on("/dashboard.js", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->send(404, "text/plain", "Dashboard JS intégré dans la page HTML");
+    req->send(NetworkConfig::HTTP_NOT_FOUND, "text/plain", "Dashboard JS intégré dans la page HTML");
   });
 
   server.on("/dashboard.css", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -185,29 +189,30 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
   });
 
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->send(204);
+    req->send(NetworkConfig::HTTP_NO_CONTENT);
   });
 
   server.on("/shared/common.js", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
     uint32_t freeHeap = ESP.getFreeHeap();
     Serial.printf("[Web] 📊 Heap libre avant common.js: %u bytes\n", freeHeap);
 
-    if (freeHeap < 30000) {
+    // v11.173: Seuil réduit pour ESP32-WROOM
+    if (freeHeap < 15000) {
       Serial.println("[Web] ⚠️ Mémoire insuffisante pour servir common.js");
-      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
+      req->send(NetworkConfig::HTTP_SERVICE_UNAVAILABLE, "text/plain", "Service temporairement indisponible - mémoire faible");
       return;
     }
 
     if (!LittleFS.exists("/shared/common.js")) {
       Serial.println("[Web] ❌ common.js introuvable");
-      req->send(404, "text/plain", "Fichier non trouvé");
+      req->send(NetworkConfig::HTTP_NOT_FOUND, "text/plain", "Fichier non trouvé");
       return;
     }
 
     File file = LittleFS.open("/shared/common.js", "r");
     if (!file) {
       Serial.println("[Web] ❌ Impossible d'ouvrir common.js");
-      req->send(500, "text/plain", "Impossible d'ouvrir le fichier");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Impossible d'ouvrir le fichier");
       return;
     }
 
@@ -218,7 +223,7 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
     AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/shared/common.js", "application/javascript");
     if (!r) {
       Serial.println("[Web] ❌ Échec beginResponse pour common.js");
-      req->send(500, "text/plain", "Erreur interne");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur interne");
       return;
     }
 
@@ -232,22 +237,23 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
     uint32_t freeHeap = ESP.getFreeHeap();
     Serial.printf("[Web] 📊 Heap libre avant websocket.js: %u bytes\n", freeHeap);
 
-    if (freeHeap < 30000) {
+    // v11.173: Seuil réduit pour ESP32-WROOM
+    if (freeHeap < 15000) {
       Serial.println("[Web] ⚠️ Mémoire insuffisante pour servir websocket.js");
-      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
+      req->send(NetworkConfig::HTTP_SERVICE_UNAVAILABLE, "text/plain", "Service temporairement indisponible - mémoire faible");
       return;
     }
 
     if (!LittleFS.exists("/shared/websocket.js")) {
       Serial.println("[Web] ❌ websocket.js introuvable");
-      req->send(404, "text/plain", "Fichier non trouvé");
+      req->send(NetworkConfig::HTTP_NOT_FOUND, "text/plain", "Fichier non trouvé");
       return;
     }
 
     File file = LittleFS.open("/shared/websocket.js", "r");
     if (!file) {
       Serial.println("[Web] ❌ Impossible d'ouvrir websocket.js");
-      req->send(500, "text/plain", "Impossible d'ouvrir le fichier");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Impossible d'ouvrir le fichier");
       return;
     }
 
@@ -258,7 +264,7 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
     AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/shared/websocket.js", "application/javascript");
     if (!r) {
       Serial.println("[Web] ❌ Échec beginResponse pour websocket.js");
-      req->send(500, "text/plain", "Erreur interne");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur interne");
       return;
     }
 
@@ -311,7 +317,7 @@ void registerCompressedAssets(AsyncWebServer& server) {
       }
     }
 
-    req->send(404);
+    req->send(NetworkConfig::HTTP_NOT_FOUND);
   };
 
   server.on("/chart.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
@@ -348,7 +354,7 @@ void registerUiRoutes(AsyncWebServer& server, AppContext& ctx) {
       r->addHeader("X-Frame-Options", "DENY");
       req->send(r);
     } else {
-      req->send(500);
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
     }
   });
 

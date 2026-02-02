@@ -19,6 +19,12 @@ public:
     // Charge les états GPIO actionneurs depuis NVS au démarrage
     static void loadGPIOStatesFromNVS(Automatism& autoCtrl);
     
+    // v11.179: Réinitialise l'état de détection de front (appeler au boot)
+    static void resetEdgeDetectionState();
+
+    // Initialise l'état nourrissage depuis le doc serveur (1er poll) sans déclencher
+    static void seedFeedStateFromDoc(const JsonDocument& doc);
+    
 private:
     // Applique un GPIO selon son type
     static void applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl, 

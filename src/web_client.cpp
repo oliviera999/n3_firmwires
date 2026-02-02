@@ -9,11 +9,13 @@
 #include "log.h"
 #include "config.h"
 #include "nvs_manager.h"
+#include "nvs_keys.h"  // v11.178: Utilisation des clés NVS centralisées (audit)
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
+#include <atomic>
 
 // Simple CRC32 (polynôme 0xEDB88320) pour l'intégrité des payloads
 extern ConfigManager config;
@@ -70,12 +72,12 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   // Désactiver le modem sleep pendant le transfert
   WiFi.setSleep(false);
 
-  const int maxAttempts = 2;
+  const int MAX_ATTEMPTS = 2;
   int code = -1;
   response[0] = '\0';
   bool success = false;
 
-  for (int attempt = 0; attempt < maxAttempts && !success; attempt++) {
+  for (int attempt = 0; attempt < MAX_ATTEMPTS && !success; attempt++) {
     unsigned long attemptStartMs = millis();
 
     // Timeout global: vérifier AVANT begin() pour éviter end() sur état incohérent
@@ -87,7 +89,12 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     }
 
     // v11.162: Utilise le client HTTP simple (membre de classe)
-    _http.begin(_client, url);
+    if (!_http.begin(_client, url)) {
+      LOG(LOG_WARN, "[HTTP] begin() failed for URL");
+      // Pas de end() - HTTPClient pas initialisé
+      vTaskDelay(pdMS_TO_TICKS(200));
+      continue;  // Retry
+    }
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     code = _http.POST(payload ? payload : "");
@@ -100,31 +107,39 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       size_t responseLen = 0;
       
       if (stream) {
-        while (stream->available() && responseLen < MAX_TEMP_RESPONSE) {
-          size_t bytesRead = stream->readBytes(
-            tempResponseBuffer + responseLen,
-            MAX_TEMP_RESPONSE - responseLen
-          );
-          if (bytesRead == 0) break;
-          responseLen += bytesRead;
+        // v11.176: Ajout timeout pour éviter blocage indéfini (audit robustesse)
+        const unsigned long streamReadStart = millis();
+        const unsigned long STREAM_READ_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
+        uint8_t emptyReads = 0;
+        const uint8_t MAX_EMPTY_READS = 10;
+        
+        while (responseLen < MAX_TEMP_RESPONSE && 
+               (millis() - streamReadStart) < STREAM_READ_TIMEOUT_MS) {
+          if (stream->available()) {
+            size_t bytesRead = stream->readBytes(
+              tempResponseBuffer + responseLen,
+              MAX_TEMP_RESPONSE - responseLen
+            );
+            if (bytesRead == 0) {
+              emptyReads++;
+              if (emptyReads >= MAX_EMPTY_READS) break;
+              vTaskDelay(pdMS_TO_TICKS(10));
+            } else {
+              responseLen += bytesRead;
+              emptyReads = 0;
+            }
+          } else {
+            emptyReads++;
+            if (emptyReads >= MAX_EMPTY_READS) break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+          }
         }
         tempResponseBuffer[responseLen] = '\0';
       } else {
-        // Fallback: getString() si aucun stream
-        // Scope réduit pour destruction rapide de la String (minimise fragmentation)
-        {
-          String tempResponse = _http.getString();
-          responseLen = tempResponse.length();
-          if (responseLen >= MAX_TEMP_RESPONSE) {
-            responseLen = MAX_TEMP_RESPONSE - 1;
-          }
-          if (responseLen > 0) {
-            strncpy(tempResponseBuffer, tempResponse.c_str(), responseLen);
-            tempResponseBuffer[responseLen] = '\0';
-          } else {
-            tempResponseBuffer[0] = '\0';
-          }
-        } // String détruite ici
+        // v11.179: Désactivation getString() - cause crashes LoadProhibited dans destructeur String
+        // Fallback: réponse vide si pas de stream (rare, mais sûr)
+        tempResponseBuffer[0] = '\0';
+        responseLen = 0;
       }
       
       if (responseLen >= responseSize) {
@@ -137,14 +152,19 @@ bool WebClient::httpRequest(const char* url, const char* payload,
         LOG(LOG_DEBUG, "[HTTP] Réponse code=%d bytes=%u", code, responseLen);
       }
     } else {
-      char errorBuf[64];
-      strncpy(errorBuf, _http.errorToString(code).c_str(), sizeof(errorBuf) - 1);
-      errorBuf[sizeof(errorBuf) - 1] = '\0';
-      LOG(LOG_WARN, "[HTTP] Erreur %d: %s", code, errorBuf);
+      // v11.179: Pas de String temporaire pour éviter crash dans destructeur
+      LOG(LOG_WARN, "[HTTP] Erreur %d", code);
     }
-    
-    _http.end();
-    
+    // v11.182: SUPPRESSION du drain dangereux via stream->connected()/available()
+    // Le drain après erreur ou timeout peut causer LoadProhibited si stream invalide
+    // HTTPClient.end() gère le nettoyage proprement
+    if (_client.connected()) {
+      _http.end();
+    }
+    // Réinitialiser HTTPClient pour prochain appel (même si end() non appelé)
+    _http.setReuse(false);
+    _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
+
     // Enregistrer dans diagnostics
     extern Diagnostics diag;
     if (code > 0) {
@@ -172,26 +192,33 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     }
 
     // Backoff avant retry
-    if (attempt + 1 < maxAttempts) {
+    if (attempt + 1 < MAX_ATTEMPTS) {
       int backoff = NetworkConfig::BACKOFF_BASE_MS * (attempt + 1);
       vTaskDelay(pdMS_TO_TICKS(backoff));
-      esp_task_wdt_reset();
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+      }
     }
   }
 
-  // Log final
+  // Log final (v11.182: copie locale pour éviter tout usage de state HTTP après end())
   unsigned long totalDurationMs = millis() - requestStartMs;
-  if (debugLogging || !success) {
+  const int finalCode = code;
+  const bool finalSuccess = success;
+  if (debugLogging || !finalSuccess) {
+    const char* succStr = finalSuccess ? "oui" : "non";
     LOG(LOG_INFO, "[HTTP] Requête: %lu ms, code=%d, succès=%s",
-        totalDurationMs, code, success ? "oui" : "non");
+        totalDurationMs, finalCode, succStr);
   }
 
   _lastRequestMs = millis();
-  
-  if (!success) {
-    response[0] = '\0';
+
+  if (!finalSuccess) {
+    if (response && responseSize > 0) {
+      response[0] = '\0';
+    }
   }
-  return success;
+  return finalSuccess;
 }
 
 bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
@@ -338,29 +365,83 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   int code = _http.GET();
 
   if (code <= 0) {
-    _http.end();
-    // v11.165: Fallback NVS si HTTP échoue (audit offline-first)
+    Serial.printf("[HTTP] outputs/state: code=%d (skip read)\n", code);
+    if (_client.connected()) {
+      _http.end();
+    }
+    _http.setReuse(false);
+    _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc);
   }
 
+  // v11.175: Amélioration lecture HTTP - gestion Content-Length et chunked
+  int contentLength = _http.getSize();
+  bool hasContentLength = (contentLength > 0);
+  size_t totalRead = 0;  // Déclaré ici pour être accessible après le if/else
+  
   WiFiClient* stream = _http.getStreamPtr();
   if (!stream) {
-    _http.end();
+    LOG(LOG_WARN, "[HTTP] Pas de stream disponible, fallback NVS");
+    if (_client.connected()) {
+      _http.end();
+    }
+    _http.setReuse(false);
+    _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc);
   }
 
-  size_t totalRead = 0;
-  while (stream->available() && totalRead < MAX_RESPONSE_SIZE) {
-    size_t bytesRead = stream->readBytes(
-      payloadBuffer + totalRead,
-      MAX_RESPONSE_SIZE - totalRead
-    );
-    if (bytesRead == 0) break;
-    totalRead += bytesRead;
+  // v11.185: Quand Content-Length est connu, lecture en un bloc (évite body déjà consommé par
+  // le stack TCP/HTTP si on attend entre available() et read).
+  if (hasContentLength && (size_t)contentLength <= MAX_RESPONSE_SIZE) {
+    stream->setTimeout(3000);
+    totalRead = stream->readBytes(payloadBuffer, (size_t)contentLength);
+    payloadBuffer[totalRead] = '\0';
   }
-  payloadBuffer[totalRead] = '\0';
 
-  _http.end();
+  if (totalRead == 0) {
+    // Pas de Content-Length ou lecture bloc a échoué: boucle classique
+    unsigned long globalReadStart = millis();
+    const unsigned long READ_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
+    uint8_t emptyReads = 0;
+    const uint8_t MAX_EMPTY_READS = 10;
+
+    while (totalRead < MAX_RESPONSE_SIZE && (millis() - globalReadStart) < READ_TIMEOUT_MS) {
+      if (!stream->connected()) break;
+      if (stream->available()) {
+        size_t bytesRead = stream->readBytes(
+          payloadBuffer + totalRead,
+          MAX_RESPONSE_SIZE - totalRead
+        );
+        if (bytesRead > 0) {
+          totalRead += bytesRead;
+          emptyReads = 0;
+          if (hasContentLength && totalRead >= (size_t)contentLength) break;
+        } else {
+          emptyReads++;
+          if (!hasContentLength && emptyReads >= MAX_EMPTY_READS) break;
+          vTaskDelay(pdMS_TO_TICKS(20));
+        }
+      } else {
+        emptyReads++;
+        if (!hasContentLength && emptyReads >= MAX_EMPTY_READS) break;
+        vTaskDelay(pdMS_TO_TICKS(20));
+      }
+    }
+    payloadBuffer[totalRead] = '\0';
+  }
+
+  Serial.printf("[HTTP] outputs/state: code=%d contentLength=%d totalRead=%u\n",
+                code, contentLength, (unsigned)totalRead);
+
+  if (totalRead >= MAX_RESPONSE_SIZE || (hasContentLength && contentLength > (int)MAX_RESPONSE_SIZE)) {
+    LOG(LOG_WARN, "[HTTP] Réponse outputs/state tronquée (lu=%u, max=%u, contentLength=%d)",
+        (unsigned)totalRead, (unsigned)MAX_RESPONSE_SIZE, contentLength);
+  }
+  if (_client.connected()) {
+    _http.end();
+  }
+  _http.setReuse(false);
+  _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 
   if (totalRead == 0) {
     return loadFromNVSFallback(doc);
@@ -371,7 +452,13 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!jsonStart) {
     jsonStart = strchr(payloadBuffer, '[');
   }
-  if (jsonStart && jsonStart != payloadBuffer) {
+  
+  // v11.172: Si pas de JSON valide trouvé, fallback silencieux (normal si serveur non configuré)
+  if (!jsonStart) {
+    return loadFromNVSFallback(doc);
+  }
+  
+  if (jsonStart != payloadBuffer) {
     size_t offset = jsonStart - payloadBuffer;
     size_t newSize = totalRead - offset;
     memmove(payloadBuffer, jsonStart, newSize);
@@ -380,24 +467,67 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
 
   DeserializationError err = deserializeJson(doc, payloadBuffer);
   if (err) {
-    LOG(LOG_WARN, "[HTTP] JSON parse error: %s", err.c_str());
+    // v11.173: Rate-limiting des logs JSON error (log les 3 premiers, puis toutes les 30s)
+    // Atomic pour éviter race conditions (fetchRemoteState peut être appelé depuis plusieurs tâches)
+    static std::atomic<uint32_t> jsonErrorCount{0};
+    static std::atomic<unsigned long> lastJsonErrorLog{0};
+    uint32_t count = ++jsonErrorCount;
+    unsigned long now = millis();
+    unsigned long lastLog = lastJsonErrorLog.load();
+    if (count <= 3 || now - lastLog > 30000) {
+      // v11.179: Protection contre NULL pointer (fix crash LoadProhibited)
+      const char* errCStr = err.c_str();
+      if (errCStr) {
+        LOG(LOG_DEBUG, "[HTTP] JSON parse error: %s (total: %u)", errCStr, count);
+      } else {
+        LOG(LOG_DEBUG, "[HTTP] JSON parse error: (unknown) (total: %u)", count);
+      }
+      lastJsonErrorLog.store(now);
+    }
     return loadFromNVSFallback(doc);
   }
+
+  // Si le serveur renvoie un objet imbriqué {"outputs": {"16": 1, "100": "..."}},
+  // copier l'objet interne dans doc pour que GPIOParser et processFetchedRemoteConfig voient les clés.
+  if (doc["outputs"].is<JsonObject>()) {
+    JsonObject inner = doc["outputs"].as<JsonObject>();
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+    for (JsonPair p : inner) {
+      tmp[p.key().c_str()] = p.value();
+    }
+    doc.clear();
+    for (JsonPair p : tmp.as<JsonObject>()) {
+      doc[p.key().c_str()] = p.value();
+    }
+    Serial.println(F("[HTTP] Réponse outputs/state: objet imbriqué \"outputs\" déplié"));
+  }
+
+  // Diagnostic: distinguer serveur (réponse vide) vs ESP (parsing/application)
+  Serial.printf("[HTTP] GET outputs/state: body=%u bytes, doc keys=%u (0=vide serveur, ~28=OK)\n",
+                (unsigned)totalRead, (unsigned)doc.size());
 
   return true;
 }
 
 // v11.165: Fonction helper pour fallback NVS (audit offline-first)
+// v11.186: Parse dans un document temporaire pour éviter LoadProhibited dans doc.clear()
+// (crash dans ArduinoJson MemoryPool::destroy(allocator) quand doc est dans un état incohérent).
 bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
-  char cachedJson[1024];  // Buffer réduit pour économiser stack
-  if (config.loadRemoteVars(cachedJson, sizeof(cachedJson))) {
-    DeserializationError err = deserializeJson(doc, cachedJson);
-    if (!err) {
-      LOG(LOG_INFO, "[HTTP] Utilisation cache NVS (fallback)");
-      return true;
-    }
+  char cachedJson[1024];
+  if (!config.loadRemoteVars(cachedJson, sizeof(cachedJson))) {
+    return false;
   }
-  return false;  // Pas de log DEBUG pour économiser flash
+  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmpDoc;
+  DeserializationError err = deserializeJson(tmpDoc, cachedJson);
+  if (err) {
+    return false;
+  }
+  doc.clear();
+  for (JsonPair p : tmpDoc.as<JsonObject>()) {
+    doc[p.key().c_str()] = p.value();
+  }
+  LOG(LOG_INFO, "[HTTP] Utilisation cache NVS (fallback)");
+  return true;
 }
 
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {
@@ -490,16 +620,17 @@ bool WebClient::queueFailedPost(const char* payload) {
     return false;
   }
   
+  // v11.178: Utilisation des clés NVS centralisées (audit nvs-keys)
   int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "post_q_count", count, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
   
   // Queue pleine: supprimer le plus ancien (FIFO)
   if (count >= MAX_QUEUED_POSTS) {
     // Décaler tous les éléments
     for (int i = 0; i < count - 1; i++) {
       char srcKey[16], dstKey[16];
-      snprintf(srcKey, sizeof(srcKey), "post_q_%d", i + 1);
-      snprintf(dstKey, sizeof(dstKey), "post_q_%d", i);
+      snprintf(srcKey, sizeof(srcKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i + 1);
+      snprintf(dstKey, sizeof(dstKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
       
       char tempPayload[MAX_POST_SIZE];
       g_nvsManager.loadString(NVS_NAMESPACES::STATE, srcKey, tempPayload, sizeof(tempPayload), "");
@@ -512,10 +643,10 @@ bool WebClient::queueFailedPost(const char* payload) {
   
   // Ajouter le nouveau payload
   char key[16];
-  snprintf(key, sizeof(key), "post_q_%d", count);
+  snprintf(key, sizeof(key), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, count);
   g_nvsManager.saveString(NVS_NAMESPACES::STATE, key, payload);
   count++;
-  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "post_q_count", count);
+  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count);
   
   LOG(LOG_INFO, "[HTTP] POST mis en queue (total: %d)", count);
   return true;
@@ -531,7 +662,7 @@ bool WebClient::processQueuedPosts() {
   }
   
   int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "post_q_count", count, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
   
   if (count == 0) {
     return true;  // Rien à traiter
@@ -544,7 +675,7 @@ bool WebClient::processQueuedPosts() {
   
   for (int i = 0; i < count && i < MAX_QUEUED_POSTS; i++) {
     char key[16];
-    snprintf(key, sizeof(key), "post_q_%d", i);
+    snprintf(key, sizeof(key), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
     
     char payload[MAX_POST_SIZE];
     g_nvsManager.loadString(NVS_NAMESPACES::STATE, key, payload, sizeof(payload), "");
@@ -572,7 +703,9 @@ bool WebClient::processQueuedPosts() {
     
     // Délai entre requêtes
     vTaskDelay(pdMS_TO_TICKS(500));
-    esp_task_wdt_reset();
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
   }
   
   // Mettre à jour le compteur
@@ -584,7 +717,7 @@ bool WebClient::processQueuedPosts() {
     int newIdx = 0;
     for (int i = 0; i < count; i++) {
       char srcKey[16];
-      snprintf(srcKey, sizeof(srcKey), "post_q_%d", i);
+      snprintf(srcKey, sizeof(srcKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
       
       char payload[MAX_POST_SIZE];
       g_nvsManager.loadString(NVS_NAMESPACES::STATE, srcKey, payload, sizeof(payload), "");
@@ -592,7 +725,7 @@ bool WebClient::processQueuedPosts() {
       if (strlen(payload) > 0) {
         if (newIdx != i) {
           char dstKey[16];
-          snprintf(dstKey, sizeof(dstKey), "post_q_%d", newIdx);
+          snprintf(dstKey, sizeof(dstKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, newIdx);
           g_nvsManager.saveString(NVS_NAMESPACES::STATE, dstKey, payload);
           g_nvsManager.removeKey(NVS_NAMESPACES::STATE, srcKey);
         }
@@ -602,7 +735,7 @@ bool WebClient::processQueuedPosts() {
     remaining = newIdx;
   }
   
-  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "post_q_count", remaining);
+  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, remaining);
   
   LOG(LOG_INFO, "[HTTP] Queue traitée: %d envoyés, %d échoués, %d restants", 
       processed, failed, remaining);
@@ -612,20 +745,20 @@ bool WebClient::processQueuedPosts() {
 
 uint8_t WebClient::getQueuedPostsCount() {
   int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "post_q_count", count, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
   return (uint8_t)count;
 }
 
 void WebClient::clearQueuedPosts() {
   int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "post_q_count", count, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
   
   for (int i = 0; i < count && i < MAX_QUEUED_POSTS; i++) {
     char key[16];
-    snprintf(key, sizeof(key), "post_q_%d", i);
+    snprintf(key, sizeof(key), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
     g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key);
   }
   
-  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "post_q_count", 0);
+  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, 0);
   LOG(LOG_INFO, "[HTTP] Queue vidée (%d entrées supprimées)", count);
 }

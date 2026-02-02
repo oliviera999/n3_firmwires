@@ -458,15 +458,24 @@ NVSError NVSManager::saveFloat(const char* ns, const char* key, float value) {
         return keyError;
     }
 
+    // v11.179: Rejeter les valeurs NaN (invalides pour stockage)
+    if (isnan(value)) {
+        Serial.printf("[NVS] saveFloat: valeur NaN ignorée pour %s:%s\n", ns, key);
+        return NVSError::INVALID_VALUE;
+    }
+
     // Vérifier si la valeur a changé avant d'écrire (préserve flash)
     // Note: comparaison float avec tolérance pour éviter faux positifs
     NVSError openError = openNamespace(ns, true);
     if (openError == NVSError::SUCCESS) {
-        float current = _preferences.getFloat(key, value + 999.0f);
+        float current = _preferences.getFloat(key, NAN);
         closeNamespace();
-        float diff = (current > value) ? (current - value) : (value - current);
-        if (diff < 0.001f) {
-            return NVSError::SUCCESS; // Valeur inchangée
+        // Si current est NaN, on doit écrire la nouvelle valeur
+        if (!isnan(current)) {
+            float diff = fabsf(current - value);
+            if (diff < 0.001f) {
+                return NVSError::SUCCESS; // Valeur inchangée
+            }
         }
     }
 
@@ -623,9 +632,16 @@ void NVSManager::logUsageStats() {
 }
 
 bool NVSManager::keyExists(const char* ns, const char* key) {
-    char value[1] = {0};
-    NVSError error = loadString(ns, key, value, sizeof(value), "");
-    return (error == NVSError::SUCCESS && strlen(value) > 0);
+    NVSLockGuard guard(*this);
+    if (!guard.locked()) return false;
+    
+    NVSError openError = openNamespace(ns, true);
+    if (openError != NVSError::SUCCESS) return false;
+    
+    // Utiliser isKey() qui vérifie l'existence sans lire la valeur
+    bool exists = _preferences.isKey(key);
+    closeNamespace();
+    return exists;
 }
 
 NVSError NVSManager::removeKey(const char* ns, const char* key) {
@@ -800,13 +816,7 @@ NVSError NVSManager::migrateFromOldSystem() {
             case NVS_TYPE_BLOB:
                 res = nvs_get_blob(handle, key, nullptr, &length);
                 break;
-#ifdef NVS_TYPE_DOUBLE
-            case NVS_TYPE_DOUBLE: {
-                double tmp;
-                res = nvs_get_double(handle, key, &tmp);
-                break;
-            }
-#endif
+            // Note: NVS_TYPE_DOUBLE n'existe pas dans ESP-IDF NVS API
             default:
                 res = nvs_get_blob(handle, key, nullptr, &length);
                 break;
@@ -963,16 +973,7 @@ NVSError NVSManager::migrateFromOldSystem() {
                     }
                     break;
                 }
-#ifdef NVS_TYPE_DOUBLE
-                case NVS_TYPE_DOUBLE: {
-                    double value = 0.0;
-                    readErr = nvs_get_double(oldHandle, info.key, &value);
-                    if (readErr == ESP_OK && nvs_set_double(newHandle, newKey, value) == ESP_OK) {
-                        copied = true;
-                    }
-                    break;
-                }
-#endif
+                // Note: NVS_TYPE_DOUBLE n'existe pas dans ESP-IDF NVS API
                 default:
                     Serial.printf("[NVS] ⚠️ Type non pris en charge pour %s/%s (type=%d)\n",
                                   rule.oldNamespace, info.key, static_cast<int>(info.type));

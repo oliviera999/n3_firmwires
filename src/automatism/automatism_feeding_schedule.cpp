@@ -26,7 +26,7 @@ void AutomatismFeedingSchedule::checkNewDay(int currentDay) {
     }
 }
 
-void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear,
+void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear, uint32_t uptimeMs,
                                              uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
                                              uint16_t bigDuration, uint16_t smallDuration,
                                              const char* emailAddr, bool mailNotif,
@@ -36,10 +36,13 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     // Vérifier changement de jour
     checkNewDay(dayOfYear);
     
-    // Vérifier chaque horaire (fenêtre heure + rattrapage si réveil après le créneau)
-    bool shouldFeedMorning = (shouldFeedNow(hour, minute, morningHour) || shouldCatchUpFeed(hour, morningHour)) && !_config.getBouffeMatinOk();
-    bool shouldFeedNoon = (shouldFeedNow(hour, minute, noonHour) || shouldCatchUpFeed(hour, noonHour)) && !_config.getBouffeMidiOk();
-    bool shouldFeedEvening = (shouldFeedNow(hour, minute, eveningHour) || shouldCatchUpFeed(hour, eveningHour)) && !_config.getBouffeSoirOk();
+    // Désactiver le rattrapage pendant la période de boot (évite nourrissage au démarrage)
+    const bool catchUpAllowed = (uptimeMs >= FEEDING_BOOT_GRACE_MS);
+
+    // Vérifier chaque horaire (fenêtre heure + rattrapage limité si réveil après le créneau)
+    bool shouldFeedMorning = (shouldFeedNow(hour, minute, morningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, morningHour))) && !_config.getBouffeMatinOk();
+    bool shouldFeedNoon = (shouldFeedNow(hour, minute, noonHour) || (catchUpAllowed && shouldCatchUpFeed(hour, noonHour))) && !_config.getBouffeMidiOk();
+    bool shouldFeedEvening = (shouldFeedNow(hour, minute, eveningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, eveningHour))) && !_config.getBouffeSoirOk();
     
     if (shouldFeedMorning) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
@@ -68,7 +71,9 @@ bool AutomatismFeedingSchedule::shouldFeedNow(int hour, int minute, uint8_t sche
 }
 
 bool AutomatismFeedingSchedule::shouldCatchUpFeed(int hour, uint8_t scheduleHour) const {
-    return (hour > scheduleHour);
+    // Rattrapage limité à l'heure suivant le créneau (réveil sleep léger après l'horaire)
+    const int nextHour = (static_cast<int>(scheduleHour) + 1) % 24;
+    return (hour == nextHour);
 }
 
 void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t smallDuration,

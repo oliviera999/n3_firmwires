@@ -47,11 +47,8 @@ void AutomatismSleep::begin() {
 // ACTIVITÉ
 // ============================================================================
 
-bool AutomatismSleep::hasSignificantActivity() {
-    // Désactivé: seuls nourrissage/remplissage retardent le sleep
-    // Gérés explicitement dans handleAutoSleep()
-    return false;
-}
+// v11.178: hasSignificantActivity() supprimé (toujours false - audit dead-code)
+// Seuls nourrissage/remplissage retardent le sleep, gérés explicitement dans handleAutoSleep()
 
 void AutomatismSleep::updateActivityTimestamp() {
     unsigned long currentMillis = millis();
@@ -84,13 +81,11 @@ uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
     // Réduire si erreurs récentes
     if (hasRecentErrors()) {
         baseDelay = _sleepConfig.errorSleepTime;
-        // Serial.println(F("[Sleep] Délai réduit (erreurs)"));
     }
     
     // Réduire la nuit (économie énergie)
     if (isNightTime()) {
         baseDelay = _sleepConfig.nightSleepTime;
-        // Serial.println(F("[Sleep] Délai réduit (nuit)"));
     }
     
     // Ajuster selon échecs réveil
@@ -108,15 +103,16 @@ uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
 
 bool AutomatismSleep::isNightTime() {
     time_t currentTime = _power.getCurrentEpoch();
-    struct tm* timeinfo = localtime(&currentTime);
+    struct tm timeinfo;
     
-    if (timeinfo != nullptr) {
-        int hour = timeinfo->tm_hour;
+    // v11.179: Utiliser localtime_r() thread-safe au lieu de localtime()
+    if (localtime_r(&currentTime, &timeinfo) != nullptr) {
+        int hour = timeinfo.tm_hour;
         // Nuit: 22h-6h (selon convention)
         return (hour >= 22 || hour < 6);
     }
     
-    return false;
+    return false;  // Fallback sûr si conversion échoue
 }
 
 bool AutomatismSleep::hasRecentErrors() {
@@ -274,15 +270,7 @@ bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
         return false;
     }
 
-    // 7. ACTIVITÉ FINE
-    if (hasSignificantActivity()) {
-        if (now - _lastActivityLogMs > 5000) {
-            _lastActivityLogMs = now;
-            Serial.println(F("[Auto] Activité détectée - sleep différé (priorité réduite)"));
-        }
-        lastWakeMs = now;
-        return false;
-    }
+    // v11.178: Bloc hasSignificantActivity() supprimé (toujours false - audit dead-code)
 
     return true;
 }

@@ -33,15 +33,6 @@ const char* resetReasonToString(esp_reset_reason_t reason) {
   }
 }
 
-bool isBufferEmpty(const uint8_t* data, size_t len) {
-  for (size_t i = 0; i < len; ++i) {
-    if (data[i] != 0xFF) {
-      return false;
-    }
-  }
-  return true;
-}
-
 } // namespace
 
 Diagnostics::Diagnostics() 
@@ -125,8 +116,14 @@ void Diagnostics::begin() {
     loadPanicInfo();
   }
   
-  Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 
-                _stats.rebootCount, _stats.minFreeHeap);
+  // v11.172: Affichage conditionnel minHeap (évite UINT32_MAX aberrant au premier boot)
+  if (_stats.minFreeHeap == UINT32_MAX) {
+    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: N/A (premier boot)", 
+                  _stats.rebootCount);
+  } else {
+    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 
+                  _stats.rebootCount, _stats.minFreeHeap);
+  }
   if (_stats.panicInfo.hasPanicInfo) {
     Serial.printf(" [PANIC: %s]\n", _stats.panicInfo.exceptionCause);
   } else {
@@ -273,14 +270,18 @@ void Diagnostics::update() {
       Serial.println(F("[Diagnostics] 💾 Première sauvegarde minHeap"));
     }
     // 2. Sauvegarde si intervalle minimum écoulé ET différence significative
-    else if ((now - _lastHeapSave > MIN_HEAP_SAVE_INTERVAL) && 
+    // v11.174: Ajout vérification _lastSavedMinHeap != UINT32_MAX pour éviter overflow au premier boot
+    else if (_lastSavedMinHeap != UINT32_MAX &&
+             (now - _lastHeapSave > MIN_HEAP_SAVE_INTERVAL) && 
              (_lastSavedMinHeap - _stats.minFreeHeap > MIN_HEAP_DIFF_FOR_SAVE)) {
       shouldSave = true;
       Serial.printf("[Diagnostics] 💾 Sauvegarde minHeap (diff: %u bytes, interval: %lu ms)\n", 
                     _lastSavedMinHeap - _stats.minFreeHeap, now - _lastHeapSave);
     }
     // 3. Sauvegarde si perte très importante (plus de 10KB)
-    else if (_lastSavedMinHeap - _stats.minFreeHeap > 10240) {
+    // v11.173: Garde pour éviter calcul aberrant si _lastSavedMinHeap == UINT32_MAX (premier boot)
+    else if (_lastSavedMinHeap != UINT32_MAX && 
+             _lastSavedMinHeap - _stats.minFreeHeap > 10240) {
       shouldSave = true;
       Serial.printf("[Diagnostics] ⚠️ Sauvegarde minHeap forcée (perte importante: %u bytes)\n", 
                     _lastSavedMinHeap - _stats.minFreeHeap);
@@ -295,25 +296,17 @@ void Diagnostics::update() {
       
       Serial.printf("[Diagnostics] ✅ minHeap sauvegardé: %u bytes\n", _stats.minFreeHeap);
     } else {
-      Serial.printf("[Diagnostics] ⏭️ Sauvegarde minHeap ignorée (diff: %u bytes, interval: %lu ms)\n", 
-                    _lastSavedMinHeap - _stats.minFreeHeap, now - _lastHeapSave);
+      // v11.174: Éviter affichage diff aberrant si _lastSavedMinHeap == UINT32_MAX (premier boot)
+      if (_lastSavedMinHeap == UINT32_MAX) {
+        Serial.printf("[Diagnostics] ⏭️ Sauvegarde minHeap ignorée (premier boot, interval: %lu ms)\n", 
+                      now - _lastHeapSave);
+      } else {
+        Serial.printf("[Diagnostics] ⏭️ Sauvegarde minHeap ignorée (diff: %u bytes, interval: %lu ms)\n", 
+                      _lastSavedMinHeap - _stats.minFreeHeap, now - _lastHeapSave);
+      }
     }
   }
 }
-
-//   doc["freeStack"] = _stats.freeStack;
-//   doc["rebootCount"] = _stats.rebootCount;
-//   doc["lastRebootReason"] = _stats.lastRebootReason;
-//   if (_stats.idlePercent != 255) doc["idlePercent"] = _stats.idlePercent;
-//   if (_stats.taskStats.length() > 0) doc["taskStats"] = _stats.taskStats;
-//   // Réseau/OTA
-//   doc["httpOk"] = _stats.httpSuccessCount;
-//   doc["httpKo"] = _stats.httpFailCount;
-//   doc["lastHttpCode"] = _stats.lastHttpCode;
-//   doc["otaOk"] = _stats.otaSuccessCount;
-//   doc["otaKo"] = _stats.otaFailCount;
-//   if (_stats.lastOtaError.length() > 0) doc["lastOtaError"] = _stats.lastOtaError;
-// }
 
 void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   doc["uptime"] = _stats.uptimeSec;
@@ -662,7 +655,8 @@ void Diagnostics::capturePanicInfo() {
 void Diagnostics::savePanicInfo() {
   if (!_stats.panicInfo.hasPanicInfo) return;
   
-  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", true);
+  // v11.173: Renommé diag_hasPanic -> diag_crashFlag (évite faux positifs dans scripts d'analyse)
+  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_crashFlag", true);
   g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause);
   
   Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
@@ -670,7 +664,8 @@ void Diagnostics::savePanicInfo() {
 
 // Charger les informations de panic depuis NVS (simplifié)
 void Diagnostics::loadPanicInfo() {
-  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_hasPanic", _stats.panicInfo.hasPanicInfo, false);
+  // v11.173: Renommé diag_hasPanic -> diag_crashFlag (évite faux positifs dans scripts d'analyse)
+  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_crashFlag", _stats.panicInfo.hasPanicInfo, false);
   
   if (_stats.panicInfo.hasPanicInfo) {
     g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause, sizeof(_stats.panicInfo.exceptionCause), "Unknown");
@@ -680,7 +675,8 @@ void Diagnostics::loadPanicInfo() {
 
 // Nettoyer les informations de panic dans NVS (simplifié)
 void Diagnostics::clearPanicInfo() {
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_hasPanic");
+  // v11.173: Renommé diag_hasPanic -> diag_crashFlag (évite faux positifs dans scripts d'analyse)
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_crashFlag");
   g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCause");
   _stats.panicInfo.hasPanicInfo = false;
 }

@@ -2,13 +2,61 @@
 #include "automatism.h"
 #include "nvs_manager.h" // v11.108
 #include <cstring>
-#include <cmath>  // v11.164: fabsf pour comparaison float
+#include <cmath>   // v11.164: fabsf pour comparaison float
+#include <cstdlib> // v11.183: atoi/atof pour valeurs serveur en string
+
+// v11.179: Variables d'état de détection de front (module-level pour reset au boot)
+static bool s_lastTankState = false;
+static bool s_lastFeedSmallState = false;
+static bool s_lastFeedBigState = false;
+// v11.189: Reset ESP32 sur front montant uniquement (évite reboot en boucle si sync envoie 110:1)
+static bool s_lastResetState = false;
+
+void GPIOParser::resetEdgeDetectionState() {
+    s_lastTankState = false;
+    s_lastFeedSmallState = false;
+    s_lastFeedBigState = false;
+    s_lastResetState = false;
+    Serial.println(F("[GPIOParser] État détection de front réinitialisé"));
+}
+
+static bool parseBoolFromDoc(JsonVariantConst v) {
+    if (v.is<bool>()) return v.as<bool>();
+    if (v.is<int>()) return v.as<int>() == 1;
+    if (v.is<const char*>()) {
+        const char* s = v.as<const char*>();
+        if (s && (strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0 || strcasecmp(s, "on") == 0)) return true;
+        if (s && (strcasecmp(s, "0") == 0 || strcasecmp(s, "false") == 0)) return false;
+    }
+    return false;
+}
+
+void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
+    if (doc.containsKey("108")) {
+        s_lastFeedSmallState = parseBoolFromDoc(doc["108"]);
+    } else if (doc.containsKey("bouffePetits")) {
+        s_lastFeedSmallState = parseBoolFromDoc(doc["bouffePetits"]);
+    }
+    if (doc.containsKey("109")) {
+        s_lastFeedBigState = parseBoolFromDoc(doc["109"]);
+    } else if (doc.containsKey("bouffeGros")) {
+        s_lastFeedBigState = parseBoolFromDoc(doc["bouffeGros"]);
+    }
+    if (doc.containsKey("110")) {
+        s_lastResetState = parseBoolFromDoc(doc["110"]);
+    }
+    Serial.printf("[GPIOParser] État nourrissage/reset initialisé: petits=%d gros=%d reset=%d\n",
+                  s_lastFeedSmallState, s_lastFeedBigState, s_lastResetState);
+}
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
   // Diagnostics additionnels v11.74
   size_t presentKeys = 0;
-    
+    // v11.189: Seed état reset (110) pour ne pas redémarrer si le sync envoie 110:1 comme état courant
+    if (doc.containsKey("110")) {
+        s_lastResetState = parseBoolFromDoc(doc["110"]);
+    }
     // v11.78: Collecter les GPIO virtuels pour application immédiate
     StaticJsonDocument<1024> configDoc;  // Augmenté de 512 à 1024 pour éviter les dépassements
     bool hasVirtualConfig = false;
@@ -29,7 +77,12 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
     const char* valueStr = value.is<const char*>() ? value.as<const char*>() : (value.is<int>() ? "" : "");
     Serial.printf("[GPIO] key=%s raw=%s\n", key, valueStr);
-        
+        // v11.190: Ne jamais exécuter la commande reset (110) depuis le sync / doc serveur
+        // (évite reboot en boucle si le serveur envoie 110:1). Reset uniquement via UI web -> triggerResetMode().
+        if (mapping.gpio == GPIOMap::RESET_CMD.gpio) {
+            saveToNVS(mapping, value);
+            continue;
+        }
         // Appliquer selon type
         applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
         
@@ -69,7 +122,8 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
             if (!alreadyProcessed) {
                 // Ajouter à configDoc pour application
                 JsonVariantConst value = doc[textKey];
-                if (configDoc.size() < 15 && configDoc.memoryUsage() < 900) {
+                // v11.176: Limites augmentées (20 clés, 950 bytes) pour config complète serveur distant
+                if (configDoc.size() < 20 && configDoc.memoryUsage() < 950) {
                     configDoc[textKey] = value;
                     hasVirtualConfig = true;
                     Serial.printf("[GPIOParser] Clé textuelle '%s' ajoutée au document de config\n", textKey);
@@ -84,11 +138,11 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         Serial.printf("[GPIOParser] Document JSON: %u éléments, taille: %u bytes\n", 
                      configDoc.size(), configDoc.memoryUsage());
         
-        // v11.79: Vérification renforcée avant application
-        if (configDoc.size() > 0 && configDoc.size() < 20 && configDoc.memoryUsage() < 950) {
+        // v11.176: Limites augmentées (25 clés, 1000 bytes) pour config complète serveur distant
+        if (configDoc.size() > 0 && configDoc.size() < 25 && configDoc.memoryUsage() < 1000) {
             // Vérification supplémentaire de la mémoire disponible
             size_t freeHeap = ESP.getFreeHeap();
-            if (freeHeap > 50000) { // Minimum 50KB de heap libre
+            if (freeHeap > 40000) { // Minimum 40KB de heap libre (réduit de 50KB)
                 Serial.printf("[GPIOParser] Heap libre: %u bytes - Application sécurisée\n", freeHeap);
                 autoCtrl.applyConfigFromJson(configDoc);
                 Serial.println(F("[GPIOParser] ✅ Configurations virtuelles appliquées"));
@@ -102,6 +156,9 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     }
     
   Serial.printf("[GPIOParser] Présents: %u / %u\n", (unsigned)presentKeys, (unsigned)GPIOMap::MAPPING_COUNT);
+  if (presentKeys > 0 || hasVirtualConfig) {
+    Serial.printf("[GPIOParser] Config appliquée (RAM+NVS), clés: %u\n", (unsigned)presentKeys);
+  }
   Serial.println(F("[GPIOParser] === FIN PARSING ==="));
 }
 
@@ -114,18 +171,18 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         Serial.printf("Pompe aqua %s\n", state ? "ON" : "OFF");
     }
     else if (gpio == GPIOMap::PUMP_TANK.gpio) {
-        static bool lastTankState = false;
+        // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
-        if (state && !lastTankState) {
+        if (state && !s_lastTankState) {
             autoCtrl.startTankPumpManual();
             Serial.println("Pompe tank ON (front montant)");
-        } else if (!state && lastTankState) {
+        } else if (!state && s_lastTankState) {
             autoCtrl.stopTankPumpManual();
             Serial.println("Pompe tank OFF (front descendant)");
         } else {
             Serial.printf("Pompe tank %s (commande redondante)\n", state ? "ON" : "OFF");
         }
-        lastTankState = state;
+        s_lastTankState = state;
     }
     else if (gpio == GPIOMap::HEATER.gpio) {
         bool state = parseBool(value);
@@ -140,30 +197,33 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
     // Nourrissage
     else if (gpio == GPIOMap::FEED_SMALL.gpio) {
         // Déclenchement sur front montant uniquement (one-shot)
-        static bool lastFeedSmallState = false;
+        // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
-        if (state && !lastFeedSmallState) {
+        if (state && !s_lastFeedSmallState) {
             autoCtrl.manualFeedSmall();
             Serial.println("Nourrissage petits (rising edge)");
         }
-        lastFeedSmallState = state;
+        s_lastFeedSmallState = state;
     }
     else if (gpio == GPIOMap::FEED_BIG.gpio) {
         // Déclenchement sur front montant uniquement (one-shot)
-        static bool lastFeedBigState = false;
+        // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
-        if (state && !lastFeedBigState) {
+        if (state && !s_lastFeedBigState) {
             autoCtrl.manualFeedBig();
             Serial.println("Nourrissage gros (rising edge)");
         }
-        lastFeedBigState = state;
+        s_lastFeedBigState = state;
     }
-    // Reset
+    // Reset (GPIO 110): front montant uniquement pour éviter reboot en boucle si sync envoie 110:1
     else if (gpio == GPIOMap::RESET_CMD.gpio) {
-        if (parseBool(value)) {
-            // Protection anti-boucle (déjà implémentée)
+        bool state = parseBool(value);
+        if (state && !s_lastResetState) {
+            s_lastResetState = true;
             Serial.println("Reset demandé");
             ESP.restart();
+        } else if (!state) {
+            s_lastResetState = false;
         }
     }
     // Configuration - appliquée via setters Automatism
@@ -181,9 +241,9 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
             // Mapper GPIO vers clés attendues par applyConfigFromJson
             const char* configKey = mapGPIOToConfigKey(gpio, value);
             if (configKey && strlen(configKey) > 0) {
-                // v11.79: Sécurisation renforcée de l'assignation JSON
+                // v11.176: Limites augmentées (20 clés, 950 bytes) pour config complète serveur distant
                 // Vérifier que le document n'est pas plein avant d'ajouter
-                if (configDoc.size() < 15 && configDoc.memoryUsage() < 900) { // Limites de sécurité renforcées
+                if (configDoc.size() < 20 && configDoc.memoryUsage() < 950) {
                     // Utiliser directement la clé const char*
                     const char* keyStr = configKey;
                     
@@ -193,8 +253,10 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                     
                     // Convertir selon le type attendu du GPIO, pas le type reçu
                     if (mapping->type == GPIOType::CONFIG_INT) {
-                        // Pour CONFIG_INT, toujours convertir en int (même si reçu comme string)
-                        int intVal = value.as<int>();
+                        // v11.183: Serveur ffp3 envoie souvent des strings ("200", "9"); as<int>() retourne 0 sur string
+                        int intVal = value.is<const char*>()
+                            ? atoi(value.as<const char*>())
+                            : value.as<int>();
                         
                         // Validation spécifique pour les heures de nourrissage (GPIO 105, 106, 107)
                         if (gpio == 105 || gpio == 106 || gpio == 107) {
@@ -211,8 +273,10 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                                      gpio, keyStr, intVal, valueStr);
                     }
                     else if (mapping->type == GPIOType::CONFIG_FLOAT) {
-                        // Pour CONFIG_FLOAT, toujours convertir en float (même si reçu comme string)
-                        float floatVal = value.as<float>();
+                        // v11.183: Serveur envoie parfois string ("20"); as<float>() retourne 0 sur string
+                        float floatVal = value.is<const char*>()
+                            ? static_cast<float>(atof(value.as<const char*>()))
+                            : value.as<float>();
                         configDoc[keyStr] = floatVal;
                         assignmentOk = true;
                         Serial.printf("[GPIOParser] GPIO %d (FLOAT) -> %s = %.2f (converti depuis %s)\n", 

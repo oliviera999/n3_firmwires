@@ -91,8 +91,8 @@ Fichier log: $logFile
 Write-Host "Analyse des patterns..." -ForegroundColor Yellow
 
 # 1. Parsing JSON GET
-$jsonParseSuccess = ([regex]::Matches($logContent, "JSON parsed successfully|Nettoyé préfixe chunked", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
-$jsonParseErrors = ([regex]::Matches($logContent, "JSON parse error", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$jsonParseSuccess = ([regex]::Matches($logContent, "\[GPIOParser\].*PARSING.*SERVEUR|\[HTTP\] Utilisation cache NVS", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$jsonParseErrors = ([regex]::Matches($logContent, "\[HTTP\] JSON parse error|JSON parse error", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 
 # 2. Envois POST
 $postSends = ([regex]::Matches($logContent, "\[PR\]|POST.*sent|\[Sync\].*envoi POST|POST.*réussi", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count

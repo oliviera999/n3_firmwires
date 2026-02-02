@@ -382,7 +382,7 @@ bool PowerManager::reconnectWithSavedCredentials() {
   // Attente de la connexion avec timeout
   // v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
   uint32_t startTime = millis();
-  const uint32_t timeoutMs = 3000; // 3 secondes de timeout
+  const uint32_t timeoutMs = TimingConfig::WIFI_CONNECT_TIMEOUT_MS;
   
   Serial.print(F("[Power] Attente de connexion"));
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeoutMs) {

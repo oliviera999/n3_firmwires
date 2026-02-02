@@ -6,6 +6,7 @@
 #include "config.h"
 #include "mailer.h"
 #include "automatism.h"
+#include "nvs_manager.h"
 #include "power.h"
 #include <nvs.h>
 #include <nvs_flash.h>
@@ -28,6 +29,9 @@ extern Mailer mailer;
 extern ConfigManager config;
 extern PowerManager power;
 extern WifiManager wifi;
+
+static bool s_dbvarsCacheInvalid = false;
+void invalidateDbvarsCache() { s_dbvarsCacheInvalid = true; }
 
 static portMUX_TYPE g_asyncTaskMux = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t g_asyncTaskCount = 0;
@@ -69,10 +73,7 @@ static void releaseAsyncSlot() {
   portEXIT_CRITICAL(&g_asyncTaskMux);
 }
 
-WebServerManager::WebServerManager(SystemSensors& sensors, SystemActuators& acts)
-    : _sensors(sensors), _acts(acts), _diag(nullptr) {
-  initializeServer();
-}
+// v11.178: Constructeur 2 params supprimé (non utilisé - audit dead-code)
 
 WebServerManager::WebServerManager(SystemSensors& sensors, 
                                    SystemActuators& acts, Diagnostics& diag)
@@ -235,11 +236,11 @@ bool WebServerManager::begin() {
     if (strcmp(typeBuf, "big") == 0) {
       g_autoCtrl.manualFeedBig();
       g_autoCtrl.setBouffeGrosFlag("1");
-      req->send(200, "application/json", "{\"success\":true,\"action\":\"feedBig\"}");
+      req->send(NetworkConfig::HTTP_OK, "application/json", "{\"success\":true,\"action\":\"feedBig\"}");
     } else {
       g_autoCtrl.manualFeedSmall();
       g_autoCtrl.setBouffePetitsFlag("1");
-      req->send(200, "application/json", "{\"success\":true,\"action\":\"feedSmall\"}");
+      req->send(NetworkConfig::HTTP_OK, "application/json", "{\"success\":true,\"action\":\"feedSmall\"}");
     }
     g_realtimeWebSocket.broadcastNow();
   });
@@ -509,7 +510,7 @@ bool WebServerManager::begin() {
         req->send(response);
       } else {
         Serial.println("[Web] ❌ Échec création réponse (mémoire?)");
-        req->send(500, "text/plain", "Erreur mémoire serveur");
+        req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur mémoire serveur");
       }
       
       #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
@@ -553,7 +554,7 @@ bool WebServerManager::begin() {
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_DBVARS_ROUTE) {
       Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /dbvars (%u < %u bytes)\n", 
                     ESP.getFreeHeap(), HeapConfig::MIN_HEAP_DBVARS_ROUTE);
-      req->send(503, "text/plain", "Service temporairement indisponible - mémoire faible");
+      req->send(NetworkConfig::HTTP_SERVICE_UNAVAILABLE, "text/plain", "Service temporairement indisponible - mémoire faible");
       return;
     }
     
@@ -561,7 +562,10 @@ bool WebServerManager::begin() {
     static unsigned long lastCacheUpdate = 0;
     static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> cachedSrc;
     static bool cacheValid = false;
-    
+    if (s_dbvarsCacheInvalid) {
+      cacheValid = false;
+      s_dbvarsCacheInvalid = false;
+    }
     unsigned long now = millis();
     bool useCache = cacheValid && (now - lastCacheUpdate < 30000); // Cache valide 30s
     
@@ -587,8 +591,8 @@ bool WebServerManager::begin() {
         Serial.println("[WebServer] /dbvars: No flash cache available, using defaults");
       }
     }
-    // Normalise les clés attendues par le dashboard (v11.40: simplifié car NVS normalisé)
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> out;
+    // Normalise les clés attendues par le dashboard (buffer dédié pour éviter troncature mail/limFlood/FreqWakeUp)
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE_DBVARS> out;
     
     // Helper pour valeurs par défaut (source = cachedSrc)
     auto getWithDefault = [&cachedSrc](const char* key, int defaultVal) -> int {
@@ -616,64 +620,83 @@ bool WebServerManager::begin() {
       return def;
     };
 
-    // Heures nourrissage (clés canoniques, fallback 105/106/107 pour NVS existant)
-    out["bouffeMatin"] = getIntCanonical("bouffeMatin", "105", 8);
-    out["bouffeMidi"]  = getIntCanonical("bouffeMidi", "106", 12);
-    out["bouffeSoir"]  = getIntCanonical("bouffeSoir", "107", 19);
+    // v11.173: OFFLINE-FIRST - Utiliser g_autoCtrl (NVS locale) comme source de vérité
+    // Le cache distant sert uniquement pour les valeurs non présentes en local
+    
+    // Heures nourrissage - source: NVS locale via g_autoCtrl
+    out["bouffeMatin"] = ok && cachedSrc.containsKey("bouffeMatin") 
+                         ? cachedSrc["bouffeMatin"].as<int>() 
+                         : (int)g_autoCtrl.getBouffeMatin();
+    out["bouffeMidi"]  = ok && cachedSrc.containsKey("bouffeMidi") 
+                         ? cachedSrc["bouffeMidi"].as<int>() 
+                         : (int)g_autoCtrl.getBouffeMidi();
+    out["bouffeSoir"]  = ok && cachedSrc.containsKey("bouffeSoir") 
+                         ? cachedSrc["bouffeSoir"].as<int>() 
+                         : (int)g_autoCtrl.getBouffeSoir();
 
-    // Durées nourrissage (valeurs par défaut synchronisées avec BDD distante)
-    out["tempsGros"] = getWithDefault("tempsGros",
-                                      ActuatorConfig::Default::FEED_BIG_DURATION_SEC);
-    out["tempsPetits"] = getWithDefault("tempsPetits",
-                                        ActuatorConfig::Default::FEED_SMALL_DURATION_SEC);
+    // Durées nourrissage - source: NVS locale via g_autoCtrl
+    out["tempsGros"] = ok && cachedSrc.containsKey("tempsGros") 
+                       ? cachedSrc["tempsGros"].as<int>() 
+                       : (int)g_autoCtrl.getTempsGros();
+    out["tempsPetits"] = ok && cachedSrc.containsKey("tempsPetits") 
+                         ? cachedSrc["tempsPetits"].as<int>() 
+                         : (int)g_autoCtrl.getTempsPetits();
 
-    // Seuils (clés canoniques: chauffageThreshold, tempsRemplissageSec; fallback anciennes clés)
-    out["aqThreshold"]         = getWithDefault("aqThreshold", 18);
-    out["tankThreshold"]       = getWithDefault("tankThreshold", 80);
-    out["chauffageThreshold"]  = getFloatCanonical("chauffageThreshold", "heaterThreshold", 25.0f);
-    out["tempsRemplissageSec"] = getIntCanonical("tempsRemplissageSec", "refillDuration", 120);
-    out["limFlood"]            = getWithDefault("limFlood", 5);
-    out["FreqWakeUp"]          = getWithDefault("FreqWakeUp", 600);
+    // Seuils - source: NVS locale via g_autoCtrl
+    out["aqThreshold"]         = ok && cachedSrc.containsKey("aqThreshold") 
+                                 ? cachedSrc["aqThreshold"].as<int>() 
+                                 : (int)g_autoCtrl.getAqThresholdCm();
+    out["tankThreshold"]       = ok && cachedSrc.containsKey("tankThreshold") 
+                                 ? cachedSrc["tankThreshold"].as<int>() 
+                                 : (int)g_autoCtrl.getTankThresholdCm();
+    out["chauffageThreshold"]  = ok && (cachedSrc.containsKey("chauffageThreshold") || cachedSrc.containsKey("heaterThreshold"))
+                                 ? getFloatCanonical("chauffageThreshold", "heaterThreshold", g_autoCtrl.getHeaterThresholdC())
+                                 : g_autoCtrl.getHeaterThresholdC();
+    out["tempsRemplissageSec"] = ok && (cachedSrc.containsKey("tempsRemplissageSec") || cachedSrc.containsKey("refillDuration"))
+                                 ? getIntCanonical("tempsRemplissageSec", "refillDuration", (int)g_autoCtrl.getRefillDurationSec())
+                                 : (int)g_autoCtrl.getRefillDurationSec();
+    out["limFlood"]            = ok && cachedSrc.containsKey("limFlood") 
+                                 ? cachedSrc["limFlood"].as<int>() 
+                                 : (int)g_autoCtrl.getLimFlood();
+    out["FreqWakeUp"]          = ok && cachedSrc.containsKey("FreqWakeUp") 
+                                 ? cachedSrc["FreqWakeUp"].as<int>() 
+                                 : (int)g_autoCtrl.getFreqWakeSec();
 
-    // Email (v11.40: Gestion améliorée avec message si non configuré)
-    const char* emailAddr = getStringWithDefault("mail", "Non configuré");
+    // Email - source: NVS locale via g_autoCtrl
+    const char* localEmail = g_autoCtrl.getEmailAddress();
+    const char* emailAddr = (ok && cachedSrc.containsKey("mail"))
+                            ? getStringWithDefault("mail", localEmail && strlen(localEmail) > 0 ? localEmail : "Non configuré")
+                            : (localEmail && strlen(localEmail) > 0 ? localEmail : "Non configuré");
     out["mail"] = emailAddr;
     
-    // Email enabled (v11.171: retourne bool au lieu de string pour coherence API)
-    if (cachedSrc.containsKey("mailNotif")) {
-      // Convertir "checked", "1", "true", "on" -> true, sinon false
+    // Email enabled - source: NVS locale via g_autoCtrl
+    if (ok && cachedSrc.containsKey("mailNotif")) {
       const char* val = cachedSrc["mailNotif"].as<const char*>();
       bool enabled = val && (strcmp(val, "checked") == 0 || strcmp(val, "1") == 0 || 
                             strcmp(val, "true") == 0 || strcmp(val, "on") == 0);
       out["mailNotif"] = enabled;
     } else {
-      out["mailNotif"] = false;
+      out["mailNotif"] = g_autoCtrl.isEmailEnabled();
     }
 
-    // Flags/commandes (séparés des heures pour éviter l'écrasement)
+    // Flags/commandes - source: config locale
     out["bouffeMatinOk"] = config.getBouffeMatinOk();
     out["bouffeMidiOk"] = config.getBouffeMidiOk();
     out["bouffeSoirOk"] = config.getBouffeSoirOk();
-    // v11.171: retourne int au lieu de string pour coherence API
-    if (cachedSrc.containsKey("bouffePetits")) {
-      const char* val = cachedSrc["bouffePetits"].as<const char*>();
-      out["bouffePetits"] = (val && strlen(val) > 0) ? atoi(val) : 0;
-    } else {
-      out["bouffePetits"] = 0;
-    }
-    if (cachedSrc.containsKey("bouffeGros")) {
-      const char* val = cachedSrc["bouffeGros"].as<const char*>();
-      out["bouffeGros"] = (val && strlen(val) > 0) ? atoi(val) : 0;
-    } else {
-      out["bouffeGros"] = 0;
-    }
+    
+    // Flags nourrissage manuel - source: g_autoCtrl
+    const char* petitsFlag = g_autoCtrl.getBouffePetitsFlag();
+    out["bouffePetits"] = (petitsFlag && strlen(petitsFlag) > 0) ? atoi(petitsFlag) : 0;
+    const char* grosFlag = g_autoCtrl.getBouffeGrosFlag();
+    out["bouffeGros"] = (grosFlag && strlen(grosFlag) > 0) ? atoi(grosFlag) : 0;
 
-    out["ok"] = ok;
+    // v11.173: ok=true si données locales disponibles (toujours vrai avec NVS)
+    out["ok"] = true;
     
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
-      req->send(500, "text/plain", "Memory error");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
     response->addHeader("Access-Control-Allow-Origin", "*");
@@ -699,7 +722,7 @@ bool WebServerManager::begin() {
       doc["throttled"] = true;
       char buf[128];
       serializeJson(doc, buf, sizeof(buf));
-      req->send(200, "application/json", buf);
+      req->send(NetworkConfig::HTTP_OK, "application/json", buf);
       return;
     }
     lastDbvarsUpdateMs = nowMs;
@@ -765,6 +788,14 @@ bool WebServerManager::begin() {
       serializeJson(nvsDoc, saveStr, sizeof(saveStr));
       config.saveRemoteVars(saveStr);
       Serial.printf("[Web] 📥 Config sauvegardée en NVS (%zu bytes)\n", strlen(saveStr));
+    }
+
+    // Persister l'email en clé NVS dédiée pour chargement au boot (automatism.cpp lit "email")
+    if (nvsDoc.containsKey("mail")) {
+      const char* mailVal = nvsDoc["mail"].as<const char*>();
+      if (mailVal && strlen(mailVal) > 0) {
+        g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, "email", mailVal);
+      }
     }
 
     // Applique les valeurs localement (sans dépendre du distant)
@@ -917,7 +948,7 @@ bool WebServerManager::begin() {
 
   // Page de mise à jour OTA - Plan simplification: OTA manuel uniquement
   _server->on("/update", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->send(200, "text/html",
+    req->send(NetworkConfig::HTTP_OK, "text/html",
       "<html><head><title>FFP5CS OTA</title></head><body>"
       "<h1>FFP5CS - Mise à jour OTA</h1>"
       "<p>OTA manuel uniquement. Utiliser <code>POST /api/ota</code> pour déclencher une vérification et mise à jour.</p>"
@@ -938,7 +969,7 @@ bool WebServerManager::begin() {
       doc["ok"] = false;
       char buf[256];
       serializeJson(doc, buf, sizeof(buf));
-      req->send(200, "application/json", buf);
+      req->send(NetworkConfig::HTTP_OK, "application/json", buf);
       return;
     }
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {
@@ -948,7 +979,7 @@ bool WebServerManager::begin() {
       doc["ok"] = false;
       char buf[256];
       serializeJson(doc, buf, sizeof(buf));
-      req->send(200, "application/json", buf);
+      req->send(NetworkConfig::HTTP_OK, "application/json", buf);
       return;
     }
 
@@ -962,7 +993,7 @@ bool WebServerManager::begin() {
       doc["ok"] = true;
       char buf[256];
       serializeJson(doc, buf, sizeof(buf));
-      req->send(200, "application/json", buf);
+      req->send(NetworkConfig::HTTP_OK, "application/json", buf);
       return;
     }
     bool started = ota.performUpdate();
@@ -973,7 +1004,7 @@ bool WebServerManager::begin() {
     doc["ok"] = started;
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));
-    req->send(200, "application/json", buf);
+    req->send(NetworkConfig::HTTP_OK, "application/json", buf);
   });
 
   // /mailtest endpoint: envoie un e-mail de test
@@ -1006,7 +1037,7 @@ bool WebServerManager::begin() {
     }
     bool ok = mailer.sendAlert(subjBuf, bodyBuf, destBuf);
     const char* resp = ok ? "OK" : "FAIL";
-    req->send(200, "text/plain", resp);
+    req->send(NetworkConfig::HTTP_OK, "text/plain", resp);
   });
 
 #ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
@@ -1015,11 +1046,11 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Action maintenance critique
     g_autoCtrl.notifyLocalWebActivity();
     if (!req->hasParam("confirm")) {
-      req->send(400, "text/plain", "Missing confirm=1");
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing confirm=1");
       return;
     }
     if (req->getParam("confirm")->value() != "1") {
-      req->send(400, "text/plain", "confirm must be 1");
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "confirm must be 1");
       return;
     }
     bool ok = LittleFS.format();
@@ -1063,14 +1094,14 @@ bool WebServerManager::begin() {
       "</form>"
       "<p>Astuce: seuls les champs remplis seront envoyés et synchronisés.</p>"
       "</body></html>";
-    req->send(200, "text/html", html);
+    req->send(NetworkConfig::HTTP_OK, "text/html", html);
   });
 
   // /testota endpoint: active manuellement le flag OTA pour les tests
   _server->on("/testota", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint de test
     config.setOtaUpdateFlag(true);
-    req->send(200, "text/plain", "Flag OTA activé - redémarrez pour tester l'email");
+    req->send(NetworkConfig::HTTP_OK, "text/plain", "Flag OTA activé - redémarrez pour tester l'email");
   });
 
   // -------------------------------------------------------------------
@@ -1336,9 +1367,12 @@ bool WebServerManager::begin() {
       "load();"
       "</script>"
       "</body></html>";
-    req->send(200, "text/html", html);
+    req->send(NetworkConfig::HTTP_OK, "text/html", html);
   });
 
+  // v11.178: Note audit - NVS Inspector utilise intentionnellement l'API NVS directe
+  // (et non NVSManager) car il nécessite un accès bas niveau pour debug/inspection
+  // avec support de tous les types NVS (U8, I8, U16, I16, U32, I32, U64, I64, STR, BLOB)
   _server->on("/nvs/set", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
@@ -1356,13 +1390,13 @@ bool WebServerManager::begin() {
     if (!getP("ns", nsBuf, sizeof(nsBuf)) || 
         !getP("key", keyBuf, sizeof(keyBuf)) || 
         !getP("type", typeBuf, sizeof(typeBuf))) {
-      req->send(400, "text/plain", "Missing ns/key/type");
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing ns/key/type");
       return;
     }
     getP("value", valueBuf, sizeof(valueBuf));
     
     nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
-    if (err != ESP_OK) { req->send(500, "text/plain", "nvs_open failed"); return; }
+    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "nvs_open failed"); return; }
 
     auto strToType = [](const char* s)->nvs_type_t{
       if (strcmp(s, "U8") == 0) return NVS_TYPE_U8;
@@ -1381,7 +1415,7 @@ bool WebServerManager::begin() {
     nvs_type_t t = strToType(typeBuf);
     if (t == NVS_TYPE_ANY) {
       nvs_close(h);
-      req->send(400, "text/plain", "Invalid type");
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Invalid type");
       return;
     }
 
@@ -1420,7 +1454,7 @@ bool WebServerManager::begin() {
       } break;
       case NVS_TYPE_STR: { err = nvs_set_str(h, keyBuf, valueBuf); } break;
       case NVS_TYPE_BLOB: {
-        req->send(400, "text/plain", "BLOB set not supported");
+        req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "BLOB set not supported");
         nvs_close(h);
         return;
       }
@@ -1428,7 +1462,7 @@ bool WebServerManager::begin() {
     }
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    if (err != ESP_OK) { req->send(500, "text/plain", "Write failed"); return; }
+    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Write failed"); return; }
 
     // Rafraîchir l'état runtime si nécessaire
     if (strcmp(nsBuf, "bouffe") == 0 || strcmp(nsBuf, "ota") == 0) {
@@ -1467,14 +1501,14 @@ bool WebServerManager::begin() {
       return false;
     };
     if (!getP("ns", nsBuf, sizeof(nsBuf)) || !getP("key", keyBuf, sizeof(keyBuf))) { 
-      req->send(400, "text/plain", "Missing ns/key"); 
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing ns/key"); 
       return; 
     }
     nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
-    if (err != ESP_OK) { req->send(500, "text/plain", "nvs_open failed"); return; }
+    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "nvs_open failed"); return; }
     err = nvs_erase_key(h, keyBuf); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    if (err != ESP_OK) { req->send(500, "text/plain", "Erase failed"); return; }
+    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erase failed"); return; }
     
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
@@ -1496,14 +1530,14 @@ bool WebServerManager::begin() {
       return false;
     };
     if (!getP("ns", nsBuf, sizeof(nsBuf))) { 
-      req->send(400, "text/plain", "Missing ns"); 
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing ns"); 
       return; 
     }
     nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
-    if (err != ESP_OK) { req->send(500, "text/plain", "nvs_open failed"); return; }
+    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "nvs_open failed"); return; }
     err = nvs_erase_all(h); if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    if (err != ESP_OK) { req->send(500, "text/plain", "Erase namespace failed"); return; }
+    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erase namespace failed"); return; }
     
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["status"] = "OK";
@@ -1540,13 +1574,21 @@ bool WebServerManager::begin() {
         serializeJson(doc, *response);
         req->send(response);
       } else {
-        req->send(503, "text/plain", "Memory error");
+        req->send(NetworkConfig::HTTP_SERVICE_UNAVAILABLE, "text/plain", "Memory error");
       }
       return;
     }
     
     // Scanner les réseaux WiFi (opération bloquante ~2-5s)
+    // v11.176: Watchdog reset avant scan bloquant - audit robustesse
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+    // v11.176: Watchdog reset après scan bloquant
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     
     doc["success"] = (n >= 0);
     doc["count"] = n;
@@ -1587,7 +1629,7 @@ bool WebServerManager::begin() {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
-      req->send(500, "text/plain", "Memory error");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
     response->addHeader("Access-Control-Allow-Origin", "*");
@@ -1686,7 +1728,7 @@ bool WebServerManager::begin() {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
-      req->send(500, "text/plain", "Memory error");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
     response->addHeader("Access-Control-Allow-Origin", "*");
@@ -1815,7 +1857,7 @@ bool WebServerManager::begin() {
       AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
       // v11.169: Vérification nullptr (audit robustesse)
       if (!response) {
-        req->send(500, "text/plain", "Memory error");
+        req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
         return;
       }
       response->addHeader("Access-Control-Allow-Origin", "*");
@@ -1882,7 +1924,7 @@ bool WebServerManager::begin() {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
-      req->send(500, "text/plain", "Memory error");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
     response->addHeader("Access-Control-Allow-Origin", "*");
@@ -2015,7 +2057,7 @@ bool WebServerManager::begin() {
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
-      req->send(500, "text/plain", "Memory error");
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
     response->addHeader("Access-Control-Allow-Origin", "*");

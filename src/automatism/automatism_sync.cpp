@@ -1,11 +1,13 @@
 #include "automatism/automatism_sync.h"
 #include "automatism.h"
 #include "config.h"
+#include "gpio_parser.h"
 #include "esp_task_wdt.h"
 #include <WiFi.h>
 #include "app_tasks.h"
 #include <cmath>
 #include <cstring>
+#include <cstdlib>  // v11.183: atoi/atof pour valeurs serveur en string
 
 // v11.172: Les noms de variables utilisés ici sont définis dans gpio_mapping.h (VariableRegistry)
 // Source de vérité: GPIOMap::XXX.serverPostName pour noms POST serveur
@@ -91,9 +93,31 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
     }
 }
 
+void AutomatismSync::seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument& doc) {
+    if (_firstPollAfterBootDone) return;
+    GPIOParser::seedFeedStateFromDoc(doc);
+    if (doc.containsKey("bouffePetits")) {
+        _lastRemoteFeedSmallState = doc["bouffePetits"].as<bool>() || doc["bouffePetits"].as<int>() == 1;
+    } else if (doc.containsKey("108")) {
+        _lastRemoteFeedSmallState = doc["108"].as<bool>() || doc["108"].as<int>() == 1;
+    }
+    if (doc.containsKey("bouffeGros")) {
+        _lastRemoteFeedBigState = doc["bouffeGros"].as<bool>() || doc["bouffeGros"].as<int>() == 1;
+    } else if (doc.containsKey("109")) {
+        _lastRemoteFeedBigState = doc["109"].as<bool>() || doc["109"].as<int>() == 1;
+    }
+    _firstPollAfterBootDone = true;
+    Serial.println(F("[Sync] État nourrissage distant initialisé (1er poll)"));
+}
 
 void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
     const uint32_t nowMs = millis();
+    
+    // Protection contre les déclenchements multiples: ne pas déclencher si un nourrissage est déjà en cours
+    if (autoCtrl.isFeedingInProgress()) {
+        return;
+    }
+    
     auto tryResetRemoteFlags = [&](const char* extraPairs) {
         if (WiFi.status() != WL_CONNECTED || !_config.isRemoteSendEnabled()) {
             return;
@@ -107,17 +131,32 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
         Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
     };
 
-    // Commande "bouffePetits" (ou GPIO 108 en fallback)
-    bool triggerSmall = false;
+    // Lecture état actuel des commandes distantes
+    bool currentSmallState = false;
     if (doc.containsKey("bouffePetits")) {
-        triggerSmall = doc["bouffePetits"].as<bool>() || doc["bouffePetits"].as<int>() == 1;
+        currentSmallState = doc["bouffePetits"].as<bool>() || doc["bouffePetits"].as<int>() == 1;
     } else if (doc.containsKey("108")) {
-        triggerSmall = doc["108"].as<bool>() || doc["108"].as<int>() == 1;
-        Serial.println(F("[Sync] 🔧 Utilisation GPIO 108 pour nourrissage petits (fallback)"));
+        currentSmallState = doc["108"].as<bool>() || doc["108"].as<int>() == 1;
     }
     
+    bool currentBigState = false;
+    if (doc.containsKey("bouffeGros")) {
+        currentBigState = doc["bouffeGros"].as<bool>() || doc["bouffeGros"].as<int>() == 1;
+    } else if (doc.containsKey("109")) {
+        currentBigState = doc["109"].as<bool>() || doc["109"].as<int>() == 1;
+    }
+    
+    // Edge detection: déclencher UNIQUEMENT sur front montant (0 -> 1)
+    // Cela évite les re-déclenchements si le serveur garde le flag à 1
+    bool triggerSmall = currentSmallState && !_lastRemoteFeedSmallState;
+    bool triggerBig = currentBigState && !_lastRemoteFeedBigState;
+    
+    // Mettre à jour l'état mémorisé
+    _lastRemoteFeedSmallState = currentSmallState;
+    _lastRemoteFeedBigState = currentBigState;
+    
     if (triggerSmall) {
-        Serial.println(F("[Sync] 🐟 Commande nourrissage PETITS reçue du serveur distant"));
+        Serial.println(F("[Sync] 🐟 Commande nourrissage PETITS reçue du serveur distant (front montant)"));
         autoCtrl.manualFeedSmall();
         sendCommandAck("bouffePetits", "executed");
         logRemoteCommandExecution("fd_small", true);
@@ -128,26 +167,17 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
             autoCtrl.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
                 "Bouffe manuelle - Petits poissons",
                 autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-            // Envoyer l'email via autoCtrl (qui délègue au Mailer)
             autoCtrl.sendEmail("Nourrissage manuel - Petits poissons", 
                               messageBuffer, 
                               "System", 
                               autoCtrl.getEmailAddress());
         }
         autoCtrl.armMailBlink();
-    }
-    
-    // Commande "bouffeGros" (ou GPIO 109 en fallback)
-    bool triggerBig = false;
-    if (doc.containsKey("bouffeGros")) {
-        triggerBig = doc["bouffeGros"].as<bool>() || doc["bouffeGros"].as<int>() == 1;
-    } else if (doc.containsKey("109")) {
-        triggerBig = doc["109"].as<bool>() || doc["109"].as<int>() == 1;
-        Serial.println(F("[Sync] 🔧 Utilisation GPIO 109 pour nourrissage gros (fallback)"));
+        return; // Une seule commande de nourrissage par cycle
     }
     
     if (triggerBig) {
-        Serial.println(F("[Sync] 🐠 Commande nourrissage GROS reçue du serveur distant"));
+        Serial.println(F("[Sync] 🐠 Commande nourrissage GROS reçue du serveur distant (front montant)"));
         autoCtrl.manualFeedBig();
         sendCommandAck("bouffeGros", "executed");
         logRemoteCommandExecution("fd_large", true);
@@ -158,7 +188,6 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
             autoCtrl.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
                 "Bouffe manuelle - Gros poissons",
                 autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-            // Envoyer l'email via autoCtrl (qui délègue au Mailer)
             autoCtrl.sendEmail("Nourrissage manuel - Gros poissons", 
                               messageBuffer, 
                               "System", 
@@ -168,6 +197,28 @@ void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument
     }
 }
 
+// v11.183: Helper pour lire int depuis JSON (serveur envoie parfois string "200")
+static int parseIntFromVariant(ArduinoJson::JsonVariantConst v) {
+    if (v.is<int>()) return v.as<int>();
+    if (v.is<const char*>()) {
+        const char* s = v.as<const char*>();
+        return s ? atoi(s) : 0;
+    }
+    return v.as<int>();
+}
+
+static float parseFloatFromVariant(ArduinoJson::JsonVariantConst v) {
+    if (v.is<float>()) return v.as<float>();
+    if (v.is<int>()) return static_cast<float>(v.as<int>());
+    if (v.is<const char*>()) {
+        const char* s = v.as<const char*>();
+        return s ? static_cast<float>(atof(s)) : 0.0f;
+    }
+    return v.as<float>();
+}
+
+// Applique seuils + email + FreqWakeUp (clés 100-104, 116). Autres clés dans Automatism::applyConfigFromJson.
+// Référence: GPIOMap::ALL_MAPPINGS (include/gpio_mapping.h).
 void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
     if (doc.containsKey("mail")) {
         setEmailAddress(doc["mail"].as<const char*>());
@@ -178,27 +229,27 @@ void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
     }
 
     if (doc.containsKey("FreqWakeUp")) {
-        int val = doc["FreqWakeUp"].as<int>();
+        int val = parseIntFromVariant(doc["FreqWakeUp"]);
         if (val >= 0) setFreqWakeSec(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("limFlood")) {
-        int val = doc["limFlood"].as<int>();
+        int val = parseIntFromVariant(doc["limFlood"]);
         if (val >= 0) setLimFlood(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("aqThreshold")) {
-        int val = doc["aqThreshold"].as<int>();
+        int val = parseIntFromVariant(doc["aqThreshold"]);
         if (val > 0) setAqThresholdCm(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("tankThreshold")) {
-        int val = doc["tankThreshold"].as<int>();
+        int val = parseIntFromVariant(doc["tankThreshold"]);
         if (val > 0) setTankThresholdCm(static_cast<uint16_t>(val));
     }
 
     if (doc.containsKey("chauffageThreshold")) {
-        float val = doc["chauffageThreshold"].as<float>();
+        float val = parseFloatFromVariant(doc["chauffageThreshold"]);
         if (val > 0.0f && !isnan(val)) setHeaterThresholdC(val);
     }
 
@@ -270,9 +321,11 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         Serial.println(F("[Sync] ⚠️ configSynced=0 - variables config ignorées par serveur"));
     }
 
-    esp_task_wdt_reset();
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+    }
     uint32_t sendStart = millis();
-    bool success = AppTasks::netPostRaw(payloadBuffer, 30000);
+    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::OTA_TIMEOUT_MS);
     uint32_t durationMs = millis() - sendStart;
     
     registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -289,40 +342,83 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     return success;
 }
 
-bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
-    // v11.158: Réduire timeout de 30s à 12s pour éviter blocages longs
-    bool ok = AppTasks::netFetchRemoteState(doc, 12000);
-    if (ok && doc.size() > 0) {
-        // Harmonisation config: normaliser les clés (canoniques serveur distant) avant sauvegarde NVS
-        StaticJsonDocument<2048> normalizedDoc;
-        JsonObject out = normalizedDoc.to<JsonObject>();
-        for (ArduinoJson::JsonPair p : doc.as<ArduinoJson::JsonObject>()) {
-            const char* k = p.key().c_str();
-            if (strcmp(k, "105") == 0) {
-                if (!out.containsKey("bouffeMatin")) out["bouffeMatin"] = p.value();
-            } else if (strcmp(k, "106") == 0) {
-                if (!out.containsKey("bouffeMidi")) out["bouffeMidi"] = p.value();
-            } else if (strcmp(k, "107") == 0) {
-                if (!out.containsKey("bouffeSoir")) out["bouffeSoir"] = p.value();
-            } else if (strcmp(k, "heaterThreshold") == 0) {
-                if (!out.containsKey("chauffageThreshold")) out["chauffageThreshold"] = p.value();
-            } else if (strcmp(k, "refillDuration") == 0) {
-                if (!out.containsKey("tempsRemplissageSec")) out["tempsRemplissageSec"] = p.value();
-            } else {
-                // Ne pas recopier les clés legacy (déjà mappées en canoniques)
-                out[k] = p.value();
-            }
-        }
-        char jsonStr[2048];
-        serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
-        _config.saveRemoteVars(jsonStr);
-        _serverOk = true;
-        _recvState = 1;
+bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
+    if (doc.size() == 0) return false;
 
-        if (!_configSyncedOnce) {
-            _configSyncedOnce = true;
-            Serial.println(F("[Sync] ✅ configSynced=true (1er poll serveur réussi)"));
+    // Harmonisation config: normaliser les clés (canoniques serveur distant) avant sauvegarde NVS
+    StaticJsonDocument<2048> normalizedDoc;
+    JsonObject out = normalizedDoc.to<JsonObject>();
+    // v11.177: Normalisation complète de toutes les clés GPIO numériques vers clés canoniques
+    for (ArduinoJson::JsonPair p : doc.as<ArduinoJson::JsonObject>()) {
+        const char* k = p.key().c_str();
+        // GPIO 100-104: Email et seuils
+        if (strcmp(k, "100") == 0) {
+            if (!out.containsKey("mail")) out["mail"] = p.value();
+        } else if (strcmp(k, "101") == 0) {
+            if (!out.containsKey("mailNotif")) out["mailNotif"] = p.value();
+        } else if (strcmp(k, "102") == 0) {
+            if (!out.containsKey("aqThreshold")) out["aqThreshold"] = p.value();
+        } else if (strcmp(k, "103") == 0) {
+            if (!out.containsKey("tankThreshold")) out["tankThreshold"] = p.value();
+        } else if (strcmp(k, "104") == 0) {
+            if (!out.containsKey("chauffageThreshold")) out["chauffageThreshold"] = p.value();
         }
+        // GPIO 105-107: Heures nourrissage
+        else if (strcmp(k, "105") == 0) {
+            if (!out.containsKey("bouffeMatin")) out["bouffeMatin"] = p.value();
+        } else if (strcmp(k, "106") == 0) {
+            if (!out.containsKey("bouffeMidi")) out["bouffeMidi"] = p.value();
+        } else if (strcmp(k, "107") == 0) {
+            if (!out.containsKey("bouffeSoir")) out["bouffeSoir"] = p.value();
+        }
+        // GPIO 111-116: Durées et config
+        else if (strcmp(k, "111") == 0) {
+            if (!out.containsKey("tempsGros")) out["tempsGros"] = p.value();
+        } else if (strcmp(k, "112") == 0) {
+            if (!out.containsKey("tempsPetits")) out["tempsPetits"] = p.value();
+        } else if (strcmp(k, "113") == 0) {
+            if (!out.containsKey("tempsRemplissageSec")) out["tempsRemplissageSec"] = p.value();
+        } else if (strcmp(k, "114") == 0) {
+            if (!out.containsKey("limFlood")) out["limFlood"] = p.value();
+        } else if (strcmp(k, "115") == 0) {
+            if (!out.containsKey("forceWakeUp")) out["forceWakeUp"] = p.value();
+        } else if (strcmp(k, "116") == 0) {
+            if (!out.containsKey("FreqWakeUp")) out["FreqWakeUp"] = p.value();
+        }
+        // Clés legacy textuelles à normaliser
+        else if (strcmp(k, "heaterThreshold") == 0) {
+            if (!out.containsKey("chauffageThreshold")) out["chauffageThreshold"] = p.value();
+        } else if (strcmp(k, "refillDuration") == 0) {
+            if (!out.containsKey("tempsRemplissageSec")) out["tempsRemplissageSec"] = p.value();
+        } else {
+            // Autres clés: copier telles quelles (déjà canoniques ou non mappées)
+            out[k] = p.value();
+        }
+    }
+    char jsonStr[2048];
+    serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
+    _config.saveRemoteVars(jsonStr);
+
+    // Propager les données normalisées au document d'origine
+    doc.clear();
+    deserializeJson(doc, jsonStr);
+    Serial.printf("[Sync] Données normalisées propagées (%u clés)\n", doc.size());
+
+    _serverOk = true;
+    _recvState = 1;
+    _lastRemoteFetch = millis();
+    if (!_configSyncedOnce) {
+        _configSyncedOnce = true;
+        Serial.println(F("[Sync] configSynced=true (1er sync serveur réussi)"));
+    }
+    return true;
+}
+
+bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
+    // v11.178: Timeout réduit à 5s (règle offline-first: max 5s pour opérations réseau - audit)
+    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::HTTP_TIMEOUT_MS);
+    if (ok && doc.size() > 0) {
+        processFetchedRemoteConfig(doc);
     } else {
         _serverOk = false;
         _recvState = -1;
@@ -363,7 +459,7 @@ uint16_t AutomatismSync::replayQueuedData() {
     while (_dataQueue.size() > 0 && sent < 2) {
         char payload[1024];
         if (_dataQueue.peek(payload, sizeof(payload))) {
-            if (AppTasks::netPostRaw(payload, 30000)) {
+            if (AppTasks::netPostRaw(payload, NetworkConfig::OTA_TIMEOUT_MS)) {
                 _dataQueue.pop(payload, sizeof(payload));
                 sent++;
             } else {
@@ -381,7 +477,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
              ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
-    return AppTasks::netPostRaw(ackPayload, 30000);
+    return AppTasks::netPostRaw(ackPayload, NetworkConfig::OTA_TIMEOUT_MS);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {

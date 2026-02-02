@@ -460,30 +460,21 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     WiFiClient* stream = http.getStreamPtr();
     size_t payloadLen = 0;
     if (stream) {
-      while (stream->available() && payloadLen < MAX_PAYLOAD_SIZE - 1) {
+      // v11.178: Ajout timeout pour éviter blocage infini (audit bugs-high)
+      unsigned long streamStart = millis();
+      const unsigned long STREAM_TIMEOUT_MS = 5000;
+      while (stream->available() && payloadLen < MAX_PAYLOAD_SIZE - 1 
+             && (millis() - streamStart) < STREAM_TIMEOUT_MS) {
         size_t bytesRead = stream->readBytes(tempPayload + payloadLen, MAX_PAYLOAD_SIZE - payloadLen - 1);
         payloadLen += bytesRead;
       }
       tempPayload[payloadLen] = '\0';
     } else {
-      // Fallback: getStream() retourne NetworkClient (pas un pointeur), utiliser getString() à la place
-      // Note: getStream() n'est plus compatible avec la nouvelle API
-      {
-        // Dernier recours: getString() si aucun stream disponible
-        // Note: HTTPClient::getString() retourne String Arduino (limitation API)
-        // La String est copiée immédiatement et détruite pour minimiser fragmentation
-        String tempPayloadStr = http.getString();
-        payloadLen = tempPayloadStr.length();
-        if (payloadLen >= MAX_PAYLOAD_SIZE) payloadLen = MAX_PAYLOAD_SIZE - 1;
-        // Copier immédiatement pour libérer la String rapidement
-        if (payloadLen > 0) {
-          strncpy(tempPayload, tempPayloadStr.c_str(), payloadLen);
-          tempPayload[payloadLen] = '\0';
-        } else {
-          tempPayload[0] = '\0';
-        }
-        // String tempPayloadStr est détruite ici, libérant la mémoire
-      }
+      // v11.180: Suppression getString() - cause crashes LoadProhibited dans destructeur String
+      // Si pas de stream, retourner erreur (situation rare mais possible)
+      log("⚠️ Pas de stream HTTP disponible");
+      tempPayload[0] = '\0';
+      payloadLen = 0;
     }
     http.end();
     
@@ -662,7 +653,9 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     
     while (totalWritten < (size_t)contentLength) {
         // Reset watchdog pour éviter les timeouts
-        esp_task_wdt_reset();
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+        }
         
         // Lecture par chunks
         int bytesRead = esp_http_client_read(m_httpClient, (char*)buffer, sizeof(buffer));
@@ -926,12 +919,17 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     int progressCounter = 0;
     unsigned long startTime = millis();
     unsigned long lastProgressTime = startTime;
+    // v11.178: Timeout global pour éviter blocage infini (audit bugs-high)
+    const unsigned long OTA_DOWNLOAD_TIMEOUT_MS = NetworkConfig::OTA_DOWNLOAD_TIMEOUT_MS;
 
     log("📥 Téléchargement en cours...");
     
-    while (totalWritten < contentLength && (bytesRead = stream->readBytes(buffer, sizeof(buffer))) > 0) {
+    while (totalWritten < contentLength && (bytesRead = stream->readBytes(buffer, sizeof(buffer))) > 0
+           && (millis() - startTime) < OTA_DOWNLOAD_TIMEOUT_MS) {
         // Reset watchdog pour éviter les timeouts
-        esp_task_wdt_reset();
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+        }
         
         size_t written = Update.write(buffer, bytesRead);
         
@@ -1215,17 +1213,17 @@ void OTAManager::updateTask(void* parameter) {
             if (prev_running) {
                 snprintf(fromPartBuf, sizeof(fromPartBuf), "%s (0x%x)", prev_running->label, prev_running->address);
             } else {
-                strcpy(fromPartBuf, "(inconnue)");
+                snprintf(fromPartBuf, sizeof(fromPartBuf), "(inconnue)");
             }
             if (new_boot) {
                 snprintf(bootPartBuf, sizeof(bootPartBuf), "%s (0x%x)", new_boot->label, new_boot->address);
             } else {
-                strcpy(bootPartBuf, "(inconnue)");
+                snprintf(bootPartBuf, sizeof(bootPartBuf), "(inconnue)");
             }
             if (new_next) {
                 snprintf(nextPartBuf, sizeof(nextPartBuf), "%s (0x%x)", new_next->label, new_next->address);
             } else {
-                strcpy(nextPartBuf, "(inconnue)");
+                snprintf(nextPartBuf, sizeof(nextPartBuf), "(inconnue)");
             }
             const char* md5 = ota->getFirmwareMD5();
             const char* md5Str = strlen(md5) > 0 ? md5 : "-";
@@ -1271,8 +1269,11 @@ void OTAManager::updateTask(void* parameter) {
                        ota->getRemoteVersion());
 
         ota->log("🔄 Redémarrage dans 3 secondes...");
-        // delay() acceptable ici car juste avant ESP.restart() (pas de yield nécessaire)
-        delay(3000);
+        // Utiliser vTaskDelay() avec reset watchdog pour respecter la règle "jamais bloquer > 3s"
+        for (int i = 0; i < 6; i++) {
+          esp_task_wdt_reset();
+          vTaskDelay(pdMS_TO_TICKS(500));
+        }
         ESP.restart();
     } else {
         extern Diagnostics diag;
@@ -1408,7 +1409,9 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
             }
             
             // Reset watchdog pour ce micro-chunk
-            esp_task_wdt_reset();
+            if (esp_task_wdt_status(NULL) == ESP_OK) {
+                esp_task_wdt_reset();
+            }
             
             // Lecture du micro-chunk avec validation (buffer fixe réutilisé)
             size_t bytesRead = 0;
@@ -1421,7 +1424,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
                     if (read > 0) {
                         bytesRead += read;
                         // Reset watchdog toutes les 256 bytes
-                        if (bytesRead % 256 == 0) {
+                        if (bytesRead % 256 == 0 && esp_task_wdt_status(NULL) == ESP_OK) {
                             esp_task_wdt_reset();
                         }
                     } else if (read == 0) {
@@ -1624,6 +1627,8 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
     int progressCounter = 0;
     unsigned long startTime = millis();
     unsigned long lastProgressTime = startTime;
+    // v11.178: Timeout global pour éviter blocage infini (audit bugs-high)
+    const unsigned long FS_DOWNLOAD_TIMEOUT_MS = NetworkConfig::OTA_DOWNLOAD_TIMEOUT_MS;
 
     log("📥 Téléchargement filesystem en cours...");
     
@@ -1647,9 +1652,12 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         return false;
     }
     
-    while (totalWritten < contentLength && (bytesRead = stream->readBytes(buffer, sizeof(buffer))) > 0) {
+    while (totalWritten < contentLength && (bytesRead = stream->readBytes(buffer, sizeof(buffer))) > 0
+           && (millis() - startTime) < FS_DOWNLOAD_TIMEOUT_MS) {
         // Reset watchdog pour éviter les timeouts
-        esp_task_wdt_reset();
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+        }
         
         // Écriture dans la partition spiffs
         err = esp_partition_write(partition_handle, totalWritten, buffer, bytesRead);

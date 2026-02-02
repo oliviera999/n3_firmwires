@@ -1,14 +1,15 @@
-﻿# Script d'analyse exhaustive des logs de monitoring
+# Script d'analyse exhaustive des logs de monitoring
 param(
     [string]$LogFile = ""
 )
 
 if ([string]::IsNullOrEmpty($LogFile)) {
-    # Trouver le dernier fichier de log
-    $LogFile = Get-ChildItem -Filter "monitor_wroom_test_*.log" | 
-               Sort-Object LastWriteTime -Descending | 
-               Select-Object -First 1 -ExpandProperty FullName
-    
+    # Trouver le dernier fichier de log (monitor_5min ou monitor_wroom_test)
+    $candidates = @(Get-ChildItem -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+    $candidates += @(Get-ChildItem -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $LogFile = if ($latest) { $latest.FullName } else { $null }
+
     if (-not $LogFile) {
         Write-Host "❌ Aucun fichier de log trouvé" -ForegroundColor Red
         exit 1
@@ -34,7 +35,8 @@ Write-Host ""
 
 # 1. CRASHES ET ERREURS CRITIQUES
 Write-Host "🔴 CRASHES ET ERREURS CRITIQUES" -ForegroundColor Red
-$crashes = $lines | Select-String -Pattern "Guru Meditation|panic|abort\(\)|Stack canary|CORRUPTED|Re-entered core dump" -CaseSensitive:$false
+# v11.172: Exclure diag_hasPanic (lecture NVS normale, pas un crash)
+$crashes = $lines | Select-String -Pattern "Guru Meditation|panic|abort\(\)|Stack canary|CORRUPTED|Re-entered core dump" -CaseSensitive:$false | Where-Object { $_.Line -notmatch "diag_hasPanic" }
 if ($crashes) {
     Write-Host "  Nombre de crashes: $($crashes.Count)" -ForegroundColor Red
     $crashes | ForEach-Object { Write-Host "    - $($_.Line.Trim())" -ForegroundColor Yellow }

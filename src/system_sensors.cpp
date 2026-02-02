@@ -55,7 +55,9 @@ SensorReadings SystemSensors::read() {
       r.tempWater = val;
     }
   }
-  esp_task_wdt_reset();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   if (timeoutExceeded("temperature eau")) {
     finalizeOnTimeout();
     return r;
@@ -75,7 +77,9 @@ SensorReadings SystemSensors::read() {
       r.tempAir = val;
     }
   }
-  esp_task_wdt_reset();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   if (timeoutExceeded("temperature air")) {
     finalizeOnTimeout();
     return r;
@@ -97,7 +101,9 @@ SensorReadings SystemSensors::read() {
       r.wlPota = val;
     }
   }
-  esp_task_wdt_reset();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   if (timeoutExceeded("niveau potager")) {
     finalizeOnTimeout();
     return r;
@@ -130,7 +136,9 @@ SensorReadings SystemSensors::read() {
       _lastValidWlAqua = val;
     }
   }
-  esp_task_wdt_reset();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   if (timeoutExceeded("niveau aquarium")) {
     finalizeOnTimeout();
     return r;
@@ -168,7 +176,9 @@ SensorReadings SystemSensors::read() {
       _lastValidWlTank = val;
     }
   }
-  esp_task_wdt_reset();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   if (timeoutExceeded("niveau reservoir")) {
     finalizeOnTimeout();
     return r;
@@ -182,7 +192,7 @@ SensorReadings SystemSensors::read() {
     for (uint8_t i = 0; i < NB_LUMI_SAMPLES; ++i) {
       lumiSum += analogRead(Pins::LUMINOSITE);
       vTaskDelay(pdMS_TO_TICKS(1)); // 1 ms entre échantillons
-      if ((i % 4) == 0) {
+      if ((i % 4) == 0 && esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
       }
       if (timeoutExceeded("luminosite")) {
@@ -217,7 +227,9 @@ SensorReadings SystemSensors::read() {
       r.humidity = val;
     }
   }
-  esp_task_wdt_reset();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   // Note: Pas de return anticipé ici - on continue même si timeout pour avoir le log final
 
   // marée diff

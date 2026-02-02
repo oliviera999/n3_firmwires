@@ -30,7 +30,11 @@ public:
 
     // Récupération état distant
     bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
-    
+
+    // Traite un doc déjà récupéré (normalise, sauve NVS, met à jour doc).
+    // Utilisé par fetchRemoteState et par netTask au boot.
+    bool processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc);
+
     // Polling régulier des commandes distantes
     bool pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis);
 
@@ -50,6 +54,8 @@ public:
 
     // Nouvelles méthodes pour gérer les commandes distantes
     void handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl);
+    /// Initialise l'état edge detection depuis le doc (1er poll) sans déclencher
+    void seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument& doc);
     void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
 
     // Accesseurs configuration
@@ -98,12 +104,17 @@ private:
     uint8_t _consecutiveSendFailures;
     uint32_t _lastSendAttemptMs;
     
+    // Edge detection pour commandes distantes (évite re-déclenchements si serveur garde flag à 1)
+    bool _lastRemoteFeedSmallState{false};
+    bool _lastRemoteFeedBigState{false};
+    bool _firstPollAfterBootDone{false};
+    
     // Constantes
     // v11.158: Réduit de 40 à 20 entrées pour simplifier et libérer espace LittleFS
     static constexpr uint16_t QUEUE_MAX_ENTRIES = 5;  // Réduit de 20 à 5 (queue RAM simple)
     static constexpr size_t MAX_PAYLOAD_BYTES = 960;
     static constexpr unsigned long SEND_INTERVAL_MS = 120000;
-    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 7000;  // 7 secondes (poll serveur distant)
+    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 12000;  // 12 s (poll serveur distant, v11.188)
     static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
 
     // Helpers

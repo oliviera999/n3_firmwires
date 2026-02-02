@@ -74,14 +74,23 @@ class WifiManager {
  */
 namespace WiFiHelpers {
     /**
-     * Copie le SSID STA dans un buffer char[] sans créer de String temporaire
+     * Copie le SSID STA dans un buffer char[]
      * @param buffer Buffer de destination (min 33 bytes recommandé)
      * @param size Taille du buffer
+     * v11.182: Réactivation - uniquement si STA connecté et mode STA/AP_STA
      */
     inline void getSSID(char* buffer, size_t size) {
         if (!buffer || size == 0) return;
-        // v11.166: Utilise toCharArray pour éviter String temporaire sur heap
-        WiFi.SSID().toCharArray(buffer, size);
+        buffer[0] = '\0';
+        if (WiFi.status() != WL_CONNECTED) return;
+        wifi_mode_t mode = WiFi.getMode();
+        if (mode != WIFI_STA && mode != WIFI_AP_STA) return;
+        // Copie immédiate pour minimiser durée de vie String
+        String s = WiFi.SSID();
+        size_t len = s.length();
+        if (len >= size) len = size - 1;
+        strncpy(buffer, s.c_str(), len);
+        buffer[len] = '\0';
     }
     
     /**
@@ -169,11 +178,13 @@ namespace WiFiHelpers {
         if (staConnected) {
             char ssidBuf[33];
             getSSID(ssidBuf, sizeof(ssidBuf));
-            doc["wifiStaSSID"] = ssidBuf;
+            // Utilise String() pour forcer ArduinoJson à copier la chaîne
+            // (évite les pointeurs vers buffers locaux invalidés après retour)
+            doc["wifiStaSSID"].set(ssidBuf);
             
             char ipBuf[16];
             getIPString(ipBuf, sizeof(ipBuf));
-            doc["wifiStaIP"] = ipBuf;
+            doc["wifiStaIP"].set(ipBuf);
             
             doc["wifiStaRSSI"] = WiFi.RSSI();
         } else {
@@ -185,7 +196,7 @@ namespace WiFiHelpers {
         if (includeMac) {
             char macBuf[18];
             getMACString(macBuf, sizeof(macBuf));
-            doc["wifiStaMac"] = macBuf;
+            doc["wifiStaMac"].set(macBuf);
         }
         
         // WiFi AP info
@@ -196,11 +207,11 @@ namespace WiFiHelpers {
         if (apActive) {
             char apSSIDBuf[33];
             getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-            doc["wifiApSSID"] = apSSIDBuf;
+            doc["wifiApSSID"].set(apSSIDBuf);
             
             char apIPBuf[16];
             getAPIPString(apIPBuf, sizeof(apIPBuf));
-            doc["wifiApIP"] = apIPBuf;
+            doc["wifiApIP"].set(apIPBuf);
             
             doc["wifiApClients"] = WiFi.softAPgetStationNum();
         } else {
@@ -209,7 +220,7 @@ namespace WiFiHelpers {
             doc["wifiApClients"] = 0;
         }
         
-        // WiFi mode
+        // WiFi mode string literals sont OK (constantes statiques)
         doc["wifiMode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
     }
 }

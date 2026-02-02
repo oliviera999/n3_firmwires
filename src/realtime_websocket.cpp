@@ -6,10 +6,10 @@
 // Instance globale du serveur WebSocket temps réel
 RealtimeWebSocket g_realtimeWebSocket;
 
-// Implémentation de notifyClientActivity
+// Implémentation de notifyClientActivity (thread-safe via std::atomic)
 void RealtimeWebSocket::notifyClientActivity() {
-    lastClientActivity = millis();
-    _hasActiveClients = true;
+    lastClientActivity.store(millis());
+    _hasActiveClients.store(true);
     
     Serial.printf("[WebSocket] 👤 Client activity detected - %u clients connected\n", 
                   g_realtimeWebSocket.getConnectedClients());

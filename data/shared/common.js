@@ -26,6 +26,27 @@ let lastWifiData = {
   wifiApClients: '--'
 };
 
+/**
+ * Synchronise le cache WiFi (lastWifiData) avec une réponse /wifi/status ou équivalent.
+ * À appeler après refreshWifiStatus() pour que les mises à jour WebSocket périodiques
+ * n'écrasent pas l'affichage avec '--'.
+ */
+window.syncLastWifiData = function syncLastWifiData(data) {
+  if (!data) return;
+  if (data.wifiStaConnected !== undefined) {
+    lastWifiData.wifiStaConnected = !!data.wifiStaConnected;
+    if (data.wifiStaSSID !== undefined) lastWifiData.wifiStaSSID = data.wifiStaSSID || '--';
+    if (data.wifiStaIP !== undefined) lastWifiData.wifiStaIP = data.wifiStaIP || '--';
+    if (data.wifiStaRSSI !== undefined) lastWifiData.wifiStaRSSI = data.wifiStaRSSI;
+  }
+  if (data.wifiApActive !== undefined) {
+    lastWifiData.wifiApActive = !!data.wifiApActive;
+    if (data.wifiApSSID !== undefined) lastWifiData.wifiApSSID = data.wifiApSSID || '--';
+    if (data.wifiApIP !== undefined) lastWifiData.wifiApIP = data.wifiApIP || '--';
+    if (data.wifiApClients !== undefined) lastWifiData.wifiApClients = data.wifiApClients || '0';
+  }
+};
+
 // Fonction utilitaire pour formater les valeurs
 function formatValue(value, decimals = 1) {
   if (value === null || value === undefined || isNaN(value)) {
@@ -1041,12 +1062,20 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     
     // États WiFi STA (informations détaillées uniquement)
     // Clés harmonisées: wifiSta* (cohérent avec /json et /wifi/status)
+    // Ne mettre à jour le cache détaillé que si les champs sont présents (évite d'effacer le SSID
+    // à chaque broadcast périodique minimal qui n'envoie que wifiStaConnected)
+    // #region agent log
+    const hasSta = data.wifiStaConnected !== undefined;
+    const hasSSID = data.wifiStaSSID !== undefined;
+    const hasIP = data.wifiStaIP !== undefined;
+    const hasRSSI = data.wifiStaRSSI !== undefined;
+    fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiSta',message:'WiFi STA update',data:{hasSta,hasSSID,hasIP,hasRSSI,wifiStaConnected:data.wifiStaConnected,msgType:data.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:hasSta&&!hasSSID?'A':'B'})}).catch(()=>{});
+    // #endregion
     if(data.wifiStaConnected !== undefined) {
-      // Mettre à jour le cache avec les nouvelles valeurs
       lastWifiData.wifiStaConnected = data.wifiStaConnected;
-      lastWifiData.wifiStaSSID = data.wifiStaSSID || '--';
-      lastWifiData.wifiStaIP = data.wifiStaIP || '--';
-      lastWifiData.wifiStaRSSI = data.wifiStaRSSI || '--';
+      if (data.wifiStaSSID !== undefined) lastWifiData.wifiStaSSID = data.wifiStaSSID || '--';
+      if (data.wifiStaIP !== undefined) lastWifiData.wifiStaIP = data.wifiStaIP || '--';
+      if (data.wifiStaRSSI !== undefined) lastWifiData.wifiStaRSSI = data.wifiStaRSSI;
       
       // Mise à jour des informations détaillées WiFi STA
       const ssidEl = $('wifiStaSSID');
@@ -1062,6 +1091,9 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
           statusEl.textContent = 'CONNECTÉ';
           statusEl.className = 'badge bg-success';
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiStaConnected',message:'DOM set from lastWifiData',data:{ssid:lastWifiData.wifiStaSSID,ip:lastWifiData.wifiStaIP,rssi:lastWifiData.wifiStaRSSI},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
       } else {
         if (ssidEl) ssidEl.textContent = '--';
         if (ipEl) ipEl.textContent = '--';
@@ -1070,6 +1102,9 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
           statusEl.textContent = 'DÉCONNECTÉ';
           statusEl.className = 'badge bg-danger';
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiStaDisconnected',message:'DOM set to --',data:{wifiStaConnected:data.wifiStaConnected},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       }
     } else {
       // Utiliser les dernières valeurs connues si les données ne sont pas présentes
@@ -1078,7 +1113,9 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const ipEl = $('wifiStaIP');
       const rssiEl = $('wifiStaRSSI');
       const statusEl = $('wifiStaStatus');
-      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiStaElse',message:'wifiStaConnected undefined, use lastWifiData',data:{lastConnected:lastWifiData.wifiStaConnected,msgType:data.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       if (lastWifiData.wifiStaConnected) {
         if (ssidEl) ssidEl.textContent = lastWifiData.wifiStaSSID;
         if (ipEl) ipEl.textContent = lastWifiData.wifiStaIP;
@@ -1092,12 +1129,12 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     
     // États WiFi AP (informations détaillées uniquement)
     // Clés harmonisées: wifiAp* (cohérent avec /json et /wifi/status)
+    // Ne mettre à jour le cache détaillé que si les champs sont présents
     if(data.wifiApActive !== undefined) {
-      // Mettre à jour le cache avec les nouvelles valeurs
       lastWifiData.wifiApActive = data.wifiApActive;
-      lastWifiData.wifiApSSID = data.wifiApSSID || '--';
-      lastWifiData.wifiApIP = data.wifiApIP || '--';
-      lastWifiData.wifiApClients = data.wifiApClients || '0';
+      if (data.wifiApSSID !== undefined) lastWifiData.wifiApSSID = data.wifiApSSID || '--';
+      if (data.wifiApIP !== undefined) lastWifiData.wifiApIP = data.wifiApIP || '--';
+      if (data.wifiApClients !== undefined) lastWifiData.wifiApClients = data.wifiApClients || '0';
       
       // Mise à jour des informations détaillées WiFi AP
       const ssidEl = $('wifiApSSID');

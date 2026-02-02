@@ -426,11 +426,14 @@ function displayDbVars(db) {
     updateDbElement('dbTankThreshold', dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold);
     updateDbElement('dbHeaterThreshold', dataOk && (heaterVal !== undefined && heaterVal !== null) ? parseFloat(heaterVal).toFixed(1) : defaultValues.chauffageThreshold.toFixed(1));
     updateDbElement('dbRefillDuration', dataOk && (refillVal !== undefined && refillVal !== null) ? refillVal : defaultValues.tempsRemplissageSec);
-    updateDbElement('dbFreqWakeUp', dataOk && db.FreqWakeUp !== undefined && db.FreqWakeUp !== null ? db.FreqWakeUp : defaultValues.FreqWakeUp);
-    updateDbElement('dbLimFlood', dataOk && db.limFlood !== undefined && db.limFlood !== null ? db.limFlood : defaultValues.limFlood);
-    updateDbElement('dbEmailAddress', dataOk && db.mail !== undefined && db.mail !== null ? db.mail : defaultValues.mail);
-    
-    // Mise à jour du statut email - convertir mailNotif string en boolean
+    updateDbElement('dbFreqWakeUp', (db.FreqWakeUp ?? defaultValues.FreqWakeUp));
+    updateDbElement('dbLimFlood', (db.limFlood ?? defaultValues.limFlood));
+    const mailDisplay = (db.mail !== undefined && db.mail !== null && String(db.mail).trim() !== '')
+      ? String(db.mail)
+      : defaultValues.mail;
+    updateDbElement('dbEmailAddress', mailDisplay);
+
+    // Mise à jour du statut email - convertir mailNotif string en boolean, toujours afficher une valeur
     const emailEnabledEl = $('dbEmailEnabled');
     const emailEnabled = dataOk ? isMailEnabled(db.mailNotif) : false;
     if (emailEnabledEl) {
@@ -773,6 +776,22 @@ window.submitDbVars = async function submitDbVars(ev) {
 // EDITION INLINE DES VARIABLES
 // ========================================
 
+// Event delegation pour les badges éditables - ciblage contentArea pour le contenu dynamique
+// (page controles chargée via loadPage, les éléments .editable-var n'existent pas au chargement initial)
+let editableVarsDelegationSetup = false;
+function setupEditableVarsDelegation() {
+  if (editableVarsDelegationSetup) return;
+  editableVarsDelegationSetup = true;
+  const contentArea = document.getElementById('contentArea');
+  const target = contentArea || document;
+  target.addEventListener('click', function(e) {
+    const badge = e.target.closest('.editable-var');
+    if (badge && typeof window.editVar === 'function') {
+      window.editVar(badge);
+    }
+  });
+}
+
 // Transformer un badge en input éditable
 window.editVar = function(badge) {
   // Éviter l'édition multiple simultanée
@@ -933,6 +952,8 @@ window.initializeDashboard = function initializeDashboard() {
   console.log('[INIT] 🚀 Initialisation dashboard...');
   logInfo('Dashboard consolidé initialisé', null, 'INIT');
   
+  setupEditableVarsDelegation();
+  
   // Charger la version du firmware en parallèle
   const versionPromise = fetch('/version', { cache: 'no-store' })
     .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
@@ -1026,12 +1047,13 @@ window.initializeDashboard = function initializeDashboard() {
               window.cachedDbVars = dbVars.value;
             } else {
               console.log('[INIT] ⚠️ Erreur chargement BDD HTTP:', dbVars.reason);
-              // NOTE: Les clés correspondent au serveur /dbvars (noms français)
+              // NOTE: Les clés correspondent au serveur /dbvars (noms français), incl. Sync/Email
               window.cachedDbVars = {
                 bouffeMatin: 8, bouffeMidi: 12, bouffeSoir: 19,
                 tempsGros: 10, tempsPetits: 10,
                 aqThreshold: 15, tankThreshold: 8, heaterThreshold: 25.0,
-                mailNotif: '', ok: false
+                tempsRemplissageSec: 120, limFlood: 5, FreqWakeUp: 600,
+                mail: 'Non configuré', mailNotif: '', ok: false
               };
             }
             
@@ -1202,6 +1224,22 @@ window.initializeDashboard = function initializeDashboard() {
       document.head.appendChild(link);
     });
   }
+
+  // Délégation d'événements WiFi (évite injection SSID/password dans onclick)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const ssid = btn.getAttribute('data-ssid') || '';
+    if (action === 'connect-saved') {
+      const password = btn.getAttribute('data-password') || '';
+      connectToSavedNetwork(ssid, password);
+    } else if (action === 'remove-saved') {
+      removeSavedNetwork(ssid);
+    } else if (action === 'fill-form') {
+      fillWifiForm(ssid);
+    }
+  });
   
   console.log('[INIT] ✅ Initialisation dashboard terminée');
 };
@@ -1266,6 +1304,10 @@ window.refreshWifiStatus = async function refreshWifiStatus() {
       if (apClients) apClients.textContent = '--';
     }
     
+    // Synchroniser le cache WiFi pour que les mises à jour WebSocket périodiques
+    // n'écrasent pas l'affichage avec '--'
+    if (typeof window.syncLastWifiData === 'function') window.syncLastWifiData(data);
+    
   } catch (error) {
     console.error('Erreur lors de la récupération du statut WiFi:', error);
     toast('Erreur lors de la récupération du statut WiFi', 'error');
@@ -1291,7 +1333,7 @@ window.loadSavedNetworks = async function loadSavedNetworks() {
         
         const deleteButton = isStatic ? 
           '<button class="btn btn-outline-secondary btn-sm" disabled title="Réseau statique - non supprimable">🗑️ Supprimer</button>' :
-          `<button class="btn btn-outline-danger btn-sm" onclick="removeSavedNetwork('${escapeHtml(network.ssid)}')">🗑️ Supprimer</button>`;
+          `<button class="btn btn-outline-danger btn-sm" data-action="remove-saved" data-ssid="${escapeForAttr(network.ssid)}">🗑️ Supprimer</button>`;
         
         html += `
           <div class="list-group-item d-flex justify-content-between align-items-center">
@@ -1301,7 +1343,7 @@ window.loadSavedNetworks = async function loadSavedNetworks() {
               <br><small class="text-muted">Mot de passe: ${network.password ? '••••••••' : 'Aucun'}</small>
             </div>
             <div class="btn-group" role="group">
-              <button class="btn btn-outline-primary btn-sm" onclick="connectToSavedNetwork('${escapeHtml(network.ssid)}', '${escapeHtml(network.password)}')">
+              <button class="btn btn-outline-primary btn-sm" data-action="connect-saved" data-ssid="${escapeForAttr(network.ssid)}" data-password="${escapeForAttr(network.password || '')}">
                 🔗 Connecter
               </button>
               ${deleteButton}
@@ -1343,7 +1385,7 @@ window.scanWifiNetworks = async function scanWifiNetworks() {
             </div>
             <div>
               <span class="badge ${rssiClass}">${network.rssi} dBm</span>
-              <button class="btn btn-outline-primary btn-sm ms-2" onclick="fillWifiForm('${escapeHtml(network.ssid)}')">
+              <button class="btn btn-outline-primary btn-sm ms-2" data-action="fill-form" data-ssid="${escapeForAttr(network.ssid)}">
                 🔗 Sélectionner
               </button>
             </div>
@@ -1634,40 +1676,148 @@ window.connectToWifi = async function connectToWifi(event) {
   }
 }
 
-// Connecter à un réseau sauvegardé
+// Connecter à un réseau sauvegardé (connexion asynchrone comme connectToWifi)
 window.connectToSavedNetwork = async function connectToSavedNetwork(ssid, password) {
   const statusDiv = $('wifiConnectStatus');
-  statusDiv.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Connexion...</span></div> Connexion en cours...';
-  
+  statusDiv.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Connexion...</span></div> Tentative de connexion en cours...';
+
+  window.wifiChangePending = true;
+
   try {
     const formData = new FormData();
     formData.append('ssid', ssid);
-    formData.append('password', password);
-    formData.append('save', 'false'); // Ne pas sauvegarder à nouveau
-    
+    formData.append('password', password || '');
+    formData.append('save', 'false');
+
     const response = await fetch('/wifi/connect', {
       method: 'POST',
-      body: formData
+      body: formData,
+      signal: AbortSignal.timeout(18000)
     });
-    
+
     const data = await response.json();
-    
+
     if (data.success) {
-      statusDiv.innerHTML = `<div class="alert alert-success">✅ Connecté avec succès à ${escapeHtml(data.ssid)}<br>IP: ${data.ip} • RSSI: ${data.rssi} dBm</div>`;
-      toast(`Connecté à ${data.ssid}`, 'success');
-      
-      // Actualiser les données
-      setTimeout(() => {
-        refreshWifiStatus();
-      }, 1000);
+      statusDiv.innerHTML = `<div class="alert alert-info">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        🔄 Connexion à <strong>${escapeHtml(data.ssid)}</strong> en cours...<br>
+        <small>La page se reconnectera automatiquement dans quelques instants.</small>
+      </div>`;
+      toast(`Connexion à ${data.ssid} en cours...`, 'info');
+
+      let attempts = 0;
+      const maxAttempts = 20;
+
+      const checkConnection = () => {
+        attempts++;
+        fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(2000) })
+          .then(r => r.json())
+          .then(jsonData => {
+            if (jsonData.wifiStaConnected && jsonData.wifiStaSSID === ssid) {
+              window.wifiChangePending = false;
+              statusDiv.innerHTML = `<div class="alert alert-success">
+                ✅ Connecté avec succès à <strong>${escapeHtml(jsonData.wifiStaSSID)}</strong><br>
+                IP: ${escapeHtml(jsonData.wifiStaIP)} • RSSI: ${jsonData.wifiStaRSSI} dBm
+              </div>`;
+              toast(`Connecté à ${data.ssid}`, 'success');
+              setTimeout(() => {
+                refreshWifiStatus();
+                loadSavedNetworks();
+                connectWS();
+              }, 1000);
+            } else if (attempts < maxAttempts) {
+              statusDiv.innerHTML = `<div class="alert alert-info">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                🔄 Connexion en cours... (${attempts}/${maxAttempts})
+              </div>`;
+              setTimeout(checkConnection, 1000);
+            } else {
+              window.wifiChangePending = false;
+              statusDiv.innerHTML = `<div class="alert alert-warning">
+                ⚠️ Connexion au réseau prend plus de temps que prévu.<br>
+                Vérifiez l'état de la connexion manuellement.
+              </div>`;
+              toast('Connexion au réseau prend du temps', 'warning');
+              setTimeout(() => {
+                refreshWifiStatus();
+                loadSavedNetworks();
+              }, 2000);
+            }
+          })
+          .catch(() => {
+            if (attempts < maxAttempts) {
+              statusDiv.innerHTML = `<div class="alert alert-info">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                🔄 ESP32 en cours de reconnexion... (${attempts}/${maxAttempts})
+              </div>`;
+              setTimeout(checkConnection, 1000);
+            } else {
+              window.wifiChangePending = false;
+              statusDiv.innerHTML = `<div class="alert alert-danger">
+                ❌ Impossible de se reconnecter à l'ESP32.<br>
+                <small>Vérifiez que l'ESP32 est accessible sur le réseau.</small>
+              </div>`;
+              toast('Échec de reconnexion à l\'ESP32', 'error');
+            }
+          });
+      };
+
+      setTimeout(checkConnection, 2000);
     } else {
-      statusDiv.innerHTML = `<div class="alert alert-danger">❌ Échec de la connexion: ${escapeHtml(data.error)}</div>`;
-      toast(`Échec de la connexion: ${data.error}`, 'error');
+      window.wifiChangePending = false;
+      statusDiv.innerHTML = `<div class="alert alert-danger">❌ Échec: ${escapeHtml(data.error || 'Erreur inconnue')}</div>`;
+      toast(`Échec: ${data.error}`, 'error');
     }
   } catch (error) {
+    window.wifiChangePending = false;
     console.error('Erreur lors de la connexion WiFi:', error);
-    statusDiv.innerHTML = '<div class="alert alert-danger">❌ Erreur lors de la connexion</div>';
-    toast('Erreur lors de la connexion WiFi', 'error');
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      statusDiv.innerHTML = `<div class="alert alert-info">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        🔄 ESP32 en cours de connexion au réseau WiFi...<br>
+        <small>Cette opération peut prendre jusqu'à 15 secondes.</small>
+      </div>`;
+      toast('Connexion WiFi en cours...', 'info');
+      setTimeout(() => {
+        let attempts = 0;
+        const check = () => {
+          attempts++;
+          fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(3000) })
+            .then(r => r.json())
+            .then(jsonData => {
+              if (jsonData.wifiStaConnected && jsonData.wifiStaSSID === ssid) {
+                window.wifiChangePending = false;
+                statusDiv.innerHTML = `<div class="alert alert-success">
+                  ✅ Connecté à <strong>${escapeHtml(jsonData.wifiStaSSID)}</strong><br>
+                  IP: ${escapeHtml(jsonData.wifiStaIP)} • RSSI: ${jsonData.wifiStaRSSI} dBm
+                </div>`;
+                toast(`Connecté à ${ssid}`, 'success');
+                setTimeout(() => { refreshWifiStatus(); loadSavedNetworks(); connectWS(); }, 1000);
+              } else if (attempts < 12) {
+                statusDiv.innerHTML = `<div class="alert alert-info"><div class="spinner-border spinner-border-sm"></div> Connexion... (${attempts}/12)</div>`;
+                setTimeout(check, 2000);
+              } else {
+                window.wifiChangePending = false;
+                statusDiv.innerHTML = `<div class="alert alert-warning">⚠️ La connexion prend plus de temps que prévu.</div>`;
+                setTimeout(() => { refreshWifiStatus(); loadSavedNetworks(); }, 2000);
+              }
+            })
+            .catch(() => {
+              if (attempts < 12) {
+                statusDiv.innerHTML = `<div class="alert alert-info"><div class="spinner-border spinner-border-sm"></div> Reconnexion... (${attempts}/12)</div>`;
+                setTimeout(check, 2000);
+              } else {
+                window.wifiChangePending = false;
+                statusDiv.innerHTML = `<div class="alert alert-danger">❌ Impossible de se reconnecter à l'ESP32.</div>`;
+              }
+            });
+        };
+        check();
+      }, 3000);
+    } else {
+      statusDiv.innerHTML = `<div class="alert alert-danger">❌ Erreur: ${escapeHtml(error.message)}</div>`;
+      toast('Erreur lors de la connexion', 'error');
+    }
   }
 }
 
@@ -1719,4 +1869,14 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Échapper pour usage dans attributs HTML data-* (évite XSS dans onclick)
+function escapeForAttr(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

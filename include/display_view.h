@@ -95,13 +95,6 @@ class DisplayView {
   void showCountdown(const char* label, uint16_t secLeft, bool isManual = false);
   void showFeedingCountdown(const char* fishType, const char* phase,
                            uint16_t secLeft, bool isManual = false);
-  void showServerVars(bool pumpAqua,bool pumpTank,bool heater,bool light,
-                      uint8_t hMat,uint8_t hMid,uint8_t hSoir,
-                      uint16_t tPetits,uint16_t tGros,
-                      uint16_t thAq,uint16_t thTank,float thHeat,
-                      uint16_t tRemp,uint16_t limFlood,
-                      bool wakeUp,uint16_t freqWake);
-
   // Affichage spécifique OTA: progression + partitions
   void showOtaProgress(uint8_t percent, const char* fromLabel,
                       const char* toLabel, const char* phase = nullptr);
@@ -175,12 +168,6 @@ class DisplayView {
                        uint16_t tPetits, uint16_t tGros,
                        uint16_t thAq, uint16_t thTank, float thHeat,
                        uint16_t limFlood);
-  void renderServerVars(bool pumpAqua, bool pumpTank, bool heater, bool light,
-                        uint8_t hMat, uint8_t hMid, uint8_t hSoir,
-                        uint16_t tPetits, uint16_t tGros,
-                        uint16_t thAq, uint16_t thTank, float thHeat,
-                        uint16_t tRemp, uint16_t limFlood,
-                        bool wakeUp, uint16_t freqWake);
   void renderStatusBar(const StatusBarParams& params);
   void appendDiagnosticLine(const char* line, uint8_t lineIndex);
   
@@ -201,7 +188,7 @@ class DisplayView {
   // Index de la prochaine ligne (base 0, en lignes de texte de 8px de hauteur) utilisé par showDiagnostic
   uint8_t _diagLine{0};
   // Durée pendant laquelle le splash initial reste affiché
-  unsigned long _splashUntil{0};
+  mutable unsigned long _splashUntil{0};
   // Nouvelles variables d'optimisation
   bool _updateMode{false};     // Mode mise à jour en cours
   bool _needsFlush{false};     // Flag indiquant qu'un flush est nécessaire
@@ -209,8 +196,8 @@ class DisplayView {
   bool _isDisplaying{false};   // Protection contre les appels simultanés d'affichage
 
   // Verrouillage d'écran (mode exclusif)
-  bool _locked{false};
-  unsigned long _lockUntil{0};
+  mutable bool _locked{false};
+  mutable unsigned long _lockUntil{0};
 
   DisplayCache _cache;
 
@@ -227,7 +214,7 @@ class DisplayView {
     }
     // Splash expiré - remettre _splashUntil à 0 pour éviter les comparaisons futures
     Serial.printf("[OLED] Splash screen expiré (now=%lu, was=%lu)\n", now, _splashUntil);
-    const_cast<DisplayView*>(this)->_splashUntil = 0;
+    _splashUntil = 0;
     return false;
   }
 }; 

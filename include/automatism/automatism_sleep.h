@@ -31,7 +31,7 @@ public:
     // Activité
     void notifyLocalWebActivity();
     void updateActivityTimestamp();
-    bool hasSignificantActivity();
+    // v11.178: hasSignificantActivity() supprimé (toujours false - audit dead-code)
 
     // Helpers publics
     uint32_t calculateAdaptiveSleepDelay();

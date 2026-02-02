@@ -241,7 +241,10 @@ async function loadPage(pageName, event) {
     
     // Réinitialiser les fonctions spécifiques à la page si nécessaire
     if (pageName === 'controles') {
-      if (typeof window.loadDbVars === 'function') window.loadDbVars();
+      // Décaller d'un tick pour que le DOM (contentArea.innerHTML) soit à jour avant displayDbVars
+      setTimeout(() => {
+        if (typeof window.loadDbVars === 'function') window.loadDbVars();
+      }, 0);
     } else if (pageName === 'wifi') {
       // Charger automatiquement toutes les informations WiFi
       if (typeof window.refreshWifiStatus === 'function') window.refreshWifiStatus();

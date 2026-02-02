@@ -27,6 +27,7 @@ extern RealtimeWebSocket g_realtimeWebSocket;
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
 #include <cstring>
+#include <atomic>
 #include "config.h"  // Pour BufferConfig::JSON_DOCUMENT_SIZE
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include "sensor_cache.h"
@@ -68,10 +69,10 @@ private:
     static constexpr unsigned long CLIENT_INACTIVITY_TIMEOUT_MS = 60000;
     
     unsigned long lastBroadcast = 0;
-    unsigned long lastClientActivity = 0;
+    std::atomic<unsigned long> lastClientActivity{0};  // Atomic pour accès multi-tâches
     unsigned long lastNoClientHeartbeat = 0;
     bool _isActive = false;
-    bool _hasActiveClients = false;
+    std::atomic<bool> _hasActiveClients{false};  // Atomic pour accès multi-tâches
     
     // Références vers les systèmes
     SystemSensors* sensors = nullptr;
@@ -143,7 +144,7 @@ public:
                 Serial.printf("[WebSocket] Client %u déconnecté\n", num);
                 // Vérifier s'il reste des clients actifs
                 if (webSocket.connectedClients() == 0) {
-                    _hasActiveClients = false;
+                    _hasActiveClients.store(false);
                     Serial.println(
                       "[WebSocket] Aucun client connecté - système peut entrer en veille");
                 }
@@ -362,7 +363,7 @@ public:
         bool shouldBroadcast = (now - lastBroadcast > BROADCAST_INTERVAL_MS);
         
         // Si clients connectés mais inactifs, réduire la fréquence
-        if (_hasActiveClients && (now - lastClientActivity > CLIENT_INACTIVITY_TIMEOUT_MS)) {
+        if (_hasActiveClients.load() && (now - lastClientActivity.load() > CLIENT_INACTIVITY_TIMEOUT_MS)) {
             // Réduire la fréquence de diffusion pour clients inactifs
             // 4x moins fréquent
             shouldBroadcast = (now - lastBroadcast > (BROADCAST_INTERVAL_MS * 4));
@@ -620,7 +621,7 @@ public:
         if (clients == 0) return true;
         
         // Clients connectés mais inactifs depuis longtemps
-        if (_hasActiveClients && (now - lastClientActivity > CLIENT_INACTIVITY_TIMEOUT_MS)) {
+        if (_hasActiveClients.load() && (now - lastClientActivity.load() > CLIENT_INACTIVITY_TIMEOUT_MS)) {
             return true;
         }
         
@@ -649,19 +650,20 @@ public:
         WebSocketStats stats;
         stats.connectedClients = const_cast<WebSocketsServer&>(webSocket).connectedClients();
         stats.isActive = _isActive;
-        stats.hasActiveClients = _hasActiveClients;
+        stats.hasActiveClients = _hasActiveClients.load();
         stats.canSleep = canEnterSleep();
+        
+        // lastClientActivity est atomic, pas besoin de mutex
+        stats.lastClientActivity = lastClientActivity.load();
         
         // Utiliser un timeout au lieu de portMAX_DELAY pour éviter blocage
         if (mutex) {
             if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 stats.lastBroadcast = lastBroadcast;
-                stats.lastClientActivity = lastClientActivity;
                 xSemaphoreGive(mutex);
             } else {
                 // Timeout: utiliser des valeurs par défaut sûres
                 stats.lastBroadcast = 0;
-                stats.lastClientActivity = 0;
             }
         }
         

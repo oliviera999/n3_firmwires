@@ -15,6 +15,7 @@
 #include "config.h"
 #include "nvs_manager.h"
 #include "nvs_keys.h"
+#include "gpio_parser.h"  // v11.179: resetEdgeDetectionState
 
 namespace SystemBoot {
 
@@ -70,6 +71,9 @@ void initializeStorage(AppContext& ctx) {
   }
 
   g_nvsManager.migrateFromOldSystem();
+  
+  // v11.179: Réinitialiser l'état de détection de front GPIO au boot
+  GPIOParser::resetEdgeDetectionState();
 }
 
 void validatePendingOta(OtaState& state) {

@@ -14,14 +14,3 @@ bool ensureHeapForRoute(AsyncWebServerRequest* req, uint32_t minHeap, const __Fl
 namespace WebRoutes {
 void registerStatusRoutes(AsyncWebServer& server, AppContext& ctx);
 }
-
-
-
-
-
-
-
-
-
-
-

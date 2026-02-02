@@ -14,7 +14,7 @@ class AsyncWebServer;  // Forward declaration quand serveur web désactivé
 
 class WebServerManager {
  public:
-  WebServerManager(SystemSensors& sensors, SystemActuators& acts);
+  // v11.178: Constructeur 2 params supprimé (non utilisé - audit dead-code)
   WebServerManager(SystemSensors& sensors, SystemActuators& acts, Diagnostics& diag);
   ~WebServerManager();
   bool begin();

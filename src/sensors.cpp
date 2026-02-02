@@ -9,7 +9,8 @@
 UltrasonicManager::UltrasonicManager(int pinTrigEcho, const char* sensorName) 
   : _pinTrigEcho(pinTrigEcho),
     _historyIndex(0), _historyCount(0), _lastValidDistance(0),
-    _failureManager(sensorName, 10, 60000, 3) {
+    _failureManager(sensorName, 10, 60000, 3),
+    _timeoutCount(0) {  // v11.173: Init compteur timeout pour rate-limiting logs
   // Initialise l'historique avec des valeurs 0
   for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
     _history[i] = 0;
@@ -144,7 +145,11 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
         Serial.printf("[Ultrasonic] Lecture %d rejetée: %u cm (hors plage %u-%u)\n", i+1, cm, MIN_DISTANCE, MAX_DISTANCE-1);
       }
     } else {
-      Serial.printf("[Ultrasonic] Lecture %d timeout\n", i+1);
+      // v11.173: Rate-limiting des logs timeout (log les 3 premiers, puis tous les N)
+      _timeoutCount++;
+      if (_timeoutCount <= 3 || _timeoutCount % TIMEOUT_LOG_INTERVAL == 0) {
+        Serial.printf("[Ultrasonic] Lecture %d timeout (total: %u)\n", i+1, _timeoutCount);
+      }
     }
     
     // Délai minimal entre mesures (10ms suffisant pour éviter les interférences)
@@ -338,7 +343,20 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
         Serial.printf("[Ultrasonic] Lecture réactive %d rejetée: %u cm (hors plage)\n", i+1, cm);
       }
     } else {
-      Serial.printf("[Ultrasonic] Lecture réactive %d timeout\n", i+1);
+      // v11.175: Rate-limiting amélioré des logs timeout
+      // - Log les 3 premiers, puis tous les 10, puis arrêt après 100 (capteur absent)
+      // - Log synthèse périodique toutes les 60s
+      _timeoutCount++;
+      if (_timeoutCount <= 3 || (_timeoutCount % TIMEOUT_LOG_INTERVAL == 0 && _timeoutCount <= 100)) {
+        Serial.printf("[Ultrasonic] Lecture réactive %d timeout (total: %u)\n", i+1, _timeoutCount);
+      }
+      // Log synthèse périodique si beaucoup de timeouts
+      static unsigned long lastTimeoutSummary = 0;
+      unsigned long now = millis();
+      if (_timeoutCount > 100 && (now - lastTimeoutSummary > 60000)) {
+        Serial.printf("[Ultrasonic] Résumé: %u timeouts (capteur probablement absent)\n", _timeoutCount);
+        lastTimeoutSummary = now;
+      }
     }
     
     // Délai standard de 60ms entre lectures
@@ -972,45 +990,59 @@ void AirSensor::begin() {
 }
 
 bool AirSensor::isSensorConnected() {
+  // v11.180: Simplification pour éviter INT_WDT timeout (total max ~1s au lieu de ~6.5s)
+  // Une seule lecture rapide suffit pour détecter si le capteur est présent
   uint32_t testStart = millis();
-  const uint32_t CONNECTIVITY_TEST_TIMEOUT_MS = 2000;
+  const uint32_t FAST_CONNECTIVITY_TIMEOUT_MS = 1000; // 1s max (avant: 2s + 2.5s délai)
   
-  // Test de lecture pour vérifier la connectivité du DHT
-  // Reset watchdog une seule fois au début
+  // Reset watchdog au début
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
   
+  // Une seule lecture de température suffit pour tester la connectivité
+  // Pas de délai ni de double lecture - ça bloque trop longtemps si capteur absent
   float temp = _dht.readTemperature();
-  if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
-    return false; // Timeout - capteur trop lent ou absent
+  
+  // Reset watchdog après lecture (peut avoir pris du temps)
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
   }
   
-  // FIX: Délai minimum DHT augmenté à 2.5 secondes pour stabilité
-  // Le DHT11/DHT22 nécessite au moins 2 secondes entre lectures selon datasheet
-  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::MIN_READ_INTERVAL_MS));
-  
-  float humidity = _dht.readHumidity();
-  if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
-    return false; // Timeout - capteur trop lent ou absent
-  }
-  
-  // Vérifie si les lectures sont valides
-  if (isnan(temp) && isnan(humidity)) {
-    SENSOR_LOG_PRINTLN("[AirSensor] Capteur DHT non détecté ou déconnecté");
+  if (millis() - testStart > FAST_CONNECTIVITY_TIMEOUT_MS) {
+    SENSOR_LOG_PRINTLN("[AirSensor] Timeout connectivité - capteur absent");
     return false;
   }
   
-  return true;
+  // Si lecture valide, capteur connecté
+  if (!isnan(temp)) {
+    return true;
+  }
+  
+  SENSOR_LOG_PRINTLN("[AirSensor] Capteur DHT non détecté (lecture NaN)");
+  return false;
 }
 
 void AirSensor::resetSensor() {
+  // v11.180: Délais réduits pour éviter INT_WDT timeout (total ~1s au lieu de ~3s)
   SENSOR_LOG_PRINTLN("[AirSensor] Reset matériel du capteur...");
+  
+  // Reset watchdog avant opération potentiellement longue
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   
   // Reset de la bibliothèque DHT
   _dht.begin();
-  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation
-  vTaskDelay(pdMS_TO_TICKS(SENSOR_RESET_DELAY_MS));
+  
+  // Délai de stabilisation réduit (500ms au lieu de 2000ms + 1000ms = 3000ms)
+  // Le DHT a besoin de peu de temps pour se stabiliser après begin()
+  vTaskDelay(pdMS_TO_TICKS(500));
+  
+  // Reset watchdog après délai
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   
   // Reset de l'historique
   resetHistory();
@@ -1071,10 +1103,15 @@ float AirSensor::robustTemperatureC() {
     return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
   }
   
-  // Timeout total pour éviter blocage: 2000ms (réduit de 3000ms - si capteur ne répond pas en 2s, il est absent)
-  const uint32_t DHT_RECOVERY_TIMEOUT_MS = 2000;
-  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
+  // v11.180: Timeout réduit pour éviter INT_WDT (max ~2s au lieu de ~5-9s cumulés)
+  // Si capteur ne répond pas rapidement, on considère qu'il est absent
+  const uint32_t DHT_RECOVERY_TIMEOUT_MS = 2000; // 2s max total
   uint32_t recoveryStartMs = millis();
+  
+  // Reset watchdog au début de la récupération
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   
   // 1. Tentative avec filtrage avancé
   float result = filteredTemperatureC();
@@ -1092,6 +1129,11 @@ float AirSensor::robustTemperatureC() {
     SENSOR_LOG_PRINTF("[AirSensor] Échec température %d/%d\n", _consecutiveTempFailures, MAX_CONSECUTIVE_FAILURES);
   }
   
+  // Reset watchdog après filtrage avancé
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  
   // Vérifier timeout avant récupération
   if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération, utilise dernière valeur");
@@ -1100,64 +1142,21 @@ float AirSensor::robustTemperatureC() {
   
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
-  // 2. Vérification de la connectivité (avec timeout)
-  if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
-    if (!isSensorConnected()) {
-      SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
-      resetSensor();
-      
-      // Nouvelle tentative après reset (si timeout pas atteint)
-      if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
-        result = filteredTemperatureC();
-        if (!isnan(result)) {
-          SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
-          _consecutiveTempFailures = 0; // Reset sur succès
-          return result;
-        }
-      }
-    }
-  }
-  
-  // 3. Tentative avec lecture simple répétée (limité par timeout total)
-  for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
-    // Reset watchdog pendant récupération pour éviter timeout
-    if (esp_task_wdt_status(NULL) == ESP_OK) {
-      esp_task_wdt_reset();
-    }
-    
-    // Vérifier timeout avant chaque tentative
-    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
-      SENSOR_LOG_PRINTF("[AirSensor] Timeout atteint après %u ms, arrêt récupération\n", 
-                        millis() - recoveryStartMs);
-      break;
-    }
-    
-    SENSOR_LOG_PRINTF("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
-    
-    // Lecture simple avec délai (peut bloquer jusqu'à timeout interne DHT ~2s)
-    // Note: _dht.readTemperature() a son propre timeout interne, mais peut prendre jusqu'à 7-8s si capteur défaillant
+  // 2. UNE SEULE tentative de lecture directe (pas de boucle ni de reset)
+  // v11.180: Simplification drastique pour éviter INT_WDT
+  // On ne fait plus de isSensorConnected() + resetSensor() car ça bloque trop longtemps
+  {
     float temp = _dht.readTemperature();
     
-    // Reset watchdog après lecture pour éviter timeout
+    // Reset watchdog après lecture
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
-    }
-    
-    // Vérifier timeout après lecture (peut avoir pris du temps)
-    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
-      SENSOR_LOG_PRINTLN("[AirSensor] Timeout après lecture, arrêt récupération");
-      break;
     }
     
     if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f°C\n", temp);
-      _consecutiveTempFailures = 0; // Reset sur succès
+      _consecutiveTempFailures = 0;
       return temp;
-    }
-    
-    // Délai entre tentatives (seulement si timeout pas atteint)
-    if ((millis() - recoveryStartMs) < (DHT_RECOVERY_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
-      vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     }
   }
   
@@ -1189,8 +1188,21 @@ use_last_valid:
   return NAN;
 }
 
-float AirSensor::temperatureC() { return _dht.readTemperature(); }
-float AirSensor::humidity() { return _dht.readHumidity(); }
+float AirSensor::temperatureC() {
+  float val = _dht.readTemperature();
+  if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
+    return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
+  }
+  return val;
+}
+
+float AirSensor::humidity() {
+  float val = _dht.readHumidity();
+  if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
+    return SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
+  }
+  return val;
+}
 
 float AirSensor::filteredTemperatureC() {
   // Throttle: une seule lecture toutes les 2s, lissage EMA
@@ -1251,10 +1263,14 @@ float AirSensor::robustHumidity() {
     return SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
   }
   
-  // Timeout total pour éviter blocage: 1500ms (réduit de 2000ms - appelé après robustTemperatureC(), timeout plus court)
+  // v11.180: Timeout réduit pour éviter INT_WDT (max ~1.5s)
   const uint32_t DHT_RECOVERY_TIMEOUT_MS = 1500;
-  const uint8_t LIMITED_RECOVERY_ATTEMPTS = 2;
   uint32_t recoveryStartMs = millis();
+  
+  // Reset watchdog au début
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   
   // 1. Tentative avec filtrage avancé
   float result = filteredHumidity();
@@ -1272,6 +1288,11 @@ float AirSensor::robustHumidity() {
     SENSOR_LOG_PRINTF("[AirSensor] Échec humidité %d/%d\n", _consecutiveHumidityFailures, MAX_CONSECUTIVE_FAILURES);
   }
   
+  // Reset watchdog après filtrage
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  
   // Vérifier timeout avant récupération
   if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération humidité, utilise dernière valeur");
@@ -1280,63 +1301,20 @@ float AirSensor::robustHumidity() {
   
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
-  // 2. Vérification de la connectivité (avec timeout)
-  if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
-    if (!isSensorConnected()) {
-      SENSOR_LOG_PRINTLN("[AirSensor] Capteur non connecté, reset matériel...");
-      resetSensor();
-      
-      // Nouvelle tentative après reset (si timeout pas atteint)
-      if ((millis() - recoveryStartMs) < DHT_RECOVERY_TIMEOUT_MS) {
-        result = filteredHumidity();
-        if (!isnan(result)) {
-          SENSOR_LOG_PRINTLN("[AirSensor] Récupération réussie après reset matériel");
-          _consecutiveHumidityFailures = 0; // Reset sur succès
-          return result;
-        }
-      }
-    }
-  }
-  
-  // 3. Tentative avec lecture simple répétée (limité par timeout total)
-  for (uint8_t attempt = 0; attempt < LIMITED_RECOVERY_ATTEMPTS; ++attempt) {
-    // Reset watchdog pendant récupération pour éviter timeout
-    if (esp_task_wdt_status(NULL) == ESP_OK) {
-      esp_task_wdt_reset();
-    }
-    
-    // Vérifier timeout avant chaque tentative
-    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
-      SENSOR_LOG_PRINTF("[AirSensor] Timeout atteint après %u ms, arrêt récupération humidité\n", 
-                        millis() - recoveryStartMs);
-      break;
-    }
-    
-    SENSOR_LOG_PRINTF("[AirSensor] Tentative de récupération %d/%d...\n", attempt + 1, LIMITED_RECOVERY_ATTEMPTS);
-    
-    // Lecture simple avec délai (peut bloquer jusqu'à timeout interne DHT ~2s)
+  // 2. UNE SEULE tentative de lecture directe (pas de boucle ni de reset)
+  // v11.180: Simplification pour éviter INT_WDT
+  {
     float humidity = _dht.readHumidity();
     
-    // Reset watchdog après lecture pour éviter timeout
+    // Reset watchdog après lecture
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
-    }
-    
-    // Vérifier timeout après lecture
-    if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
-      SENSOR_LOG_PRINTLN("[AirSensor] Timeout après lecture humidité, arrêt récupération");
-      break;
     }
     
     if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
-      _consecutiveHumidityFailures = 0; // Reset sur succès
+      _consecutiveHumidityFailures = 0;
       return humidity;
-    }
-    
-    // Délai entre tentatives (seulement si timeout pas atteint)
-    if ((millis() - recoveryStartMs) < (DHT_RECOVERY_TIMEOUT_MS - RECOVERY_DELAY_MS)) {
-      vTaskDelay(pdMS_TO_TICKS(RECOVERY_DELAY_MS));
     }
   }
   

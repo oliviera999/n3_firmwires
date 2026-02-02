@@ -124,23 +124,15 @@ bool runSingleHttpsGet() {
       }
       payload[payloadLen] = '\0';
     } else {
-      // Fallback: utiliser getString() si stream non disponible
-      String tempPayload = g_http.getString();
-      payloadLen = tempPayload.length();
-      if (payloadLen >= MAX_PAYLOAD) payloadLen = MAX_PAYLOAD - 1;
-      if (payloadLen > 0) {
-        strncpy(payload, tempPayload.c_str(), payloadLen);
-        payload[payloadLen] = '\0';
-      } else {
-        payload[0] = '\0';
-      }
+      // v11.180: Suppression getString() - cause crashes LoadProhibited
+      Serial.println("[TEST] ⚠️ Pas de stream HTTP disponible");
+      payload[0] = '\0';
+      payloadLen = 0;
     }
     Serial.printf("[TEST] Réponse: %zu bytes\n", payloadLen);
   } else {
-    char errorBuf[64];
-    strncpy(errorBuf, g_http.errorToString(code).c_str(), sizeof(errorBuf) - 1);
-    errorBuf[sizeof(errorBuf) - 1] = '\0';
-    Serial.printf("[TEST] ❌ Erreur GET: %s\n", errorBuf);
+    // v11.180: Suppression errorToString() - cause crashes LoadProhibited
+    Serial.printf("[TEST] ❌ Erreur GET code: %d\n", code);
   }
 
   g_http.end();

@@ -24,7 +24,7 @@ const unsigned char epd_bitmap_logo_n3_site [] PROGMEM = {
 };
 
 // Array of all bitmaps for convenience. (Total bytes used to store images in PROGMEM = 288)
-const int epd_bitmap_allArray_LEN = 1;
+const int EPD_BITMAP_ALL_ARRAY_LEN = 1;
 const unsigned char* epd_bitmap_allArray[1] = {
 	epd_bitmap_logo_n3_site
 };

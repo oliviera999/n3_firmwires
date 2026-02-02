@@ -15,6 +15,7 @@
 #include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
 #include "diagnostics.h"
 #include "system_sensors.h"  // Pour SensorReadings
+#include "dbvars_cache.h"
 
 namespace {
 
@@ -66,12 +67,38 @@ struct NetRequest {
   char payload[1024];               // PostRaw (copie)
 };
 
+// v11.181: Pool statique pour éviter use-after-free (req sur stack détruite quand caller timeout)
+// Si HTTP > 5s et caller timeout, netNotifyDone(req) accédait à une stack libérée → LoadProhibited
+static NetRequest g_netRequestPool[3];
+static volatile uint8_t g_netRequestUsed = 0;  // Bitmask: bit i = slot i utilisé
+
+static NetRequest* allocNetRequest() {
+  for (int i = 0; i < 3; i++) {
+    if (!(g_netRequestUsed & (1u << i))) {
+      g_netRequestUsed |= (1u << i);
+      return &g_netRequestPool[i];
+    }
+  }
+  return nullptr;
+}
+
+static void freeNetRequest(NetRequest* req) {
+  if (req >= g_netRequestPool && req < g_netRequestPool + 3) {
+    int i = static_cast<int>(req - g_netRequestPool);
+    g_netRequestUsed &= ~(1u << i);
+  }
+}
+
 QueueHandle_t g_netQueue = nullptr;
 TaskHandle_t g_netTaskHandle = nullptr;
 
 static void netNotifyDone(NetRequest* req) {
   if (req && req->requester) {
     xTaskNotifyGive(req->requester);
+  }
+  // v11.181: Si caller a timeout (cancelled), libérer le slot (caller ne le fera pas)
+  if (req && req->cancelled) {
+    freeNetRequest(req);
   }
 }
 
@@ -104,10 +131,15 @@ static void netTask(void* pv) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     bool ok = g_ctx->webClient.tryFetchConfigFromServer(tmp);
-    if (ok) {
-      Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée)"));
-    } else {
-      Serial.println(F("[netTask] ⚠️ Serveur injoignable - fallback NVS/DEFAUT"));
+    if (ok && tmp.size() > 0) {
+      if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
+        GPIOParser::parseAndApply(tmp, g_ctx->automatism);
+        invalidateDbvarsCache();
+        Serial.println(F("[netTask] Config serveur appliquée (OLED + NVS + page contrôle)"));
+      }
+      Serial.println(F("[netTask] SOURCE: SERVEUR (config distante récupérée)"));
+    } else if (!ok) {
+      Serial.println(F("[netTask] Serveur injoignable - fallback NVS/DEFAUT"));
     }
   } else if (!g_ctx) {
     Serial.println(F("[netTask] Boot: g_ctx NULL, skip fetch"));
@@ -172,23 +204,25 @@ void sensorTask(void* pv) {
     }
     
     if (g_ctx->otaManager.isUpdating()) {
+      // v11.176: Split 4s delay en 2x2s pour éviter watchdog trigger - audit robustesse
       esp_task_wdt_reset();
-      vTaskDelay(pdMS_TO_TICKS(4000));
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      esp_task_wdt_reset();
+      vTaskDelay(pdMS_TO_TICKS(2000));
       continue;
     }
 
     esp_task_wdt_reset();
 
     uint32_t sensorStartTime = millis();
-    const uint32_t MAX_SENSOR_TIME_MS = 30000;
     readings = g_ctx->sensors.read();
 
     uint32_t sensorDuration = millis() - sensorStartTime;
-    if (sensorDuration > MAX_SENSOR_TIME_MS) {
+    if (sensorDuration > TimingConfig::MAX_SENSOR_TIME_MS) {
       SENSOR_LOG_PRINTF(
         "[Sensor] ⚠️ LECTURE CAPTEURS TROP LENTE: %u ms (limite: %u ms)\n",
         sensorDuration,
-        MAX_SENSOR_TIME_MS);
+        TimingConfig::MAX_SENSOR_TIME_MS);
     }
 
     esp_task_wdt_reset();
@@ -514,13 +548,21 @@ void automationTask(void* pv) {
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
         // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
         g_remoteFallbackDoc.clear();
-        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, 30000);
+        // v11.176: Timeout réduit à 5s (règle offline-first: max 5s pour opérations réseau)
+        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, NetworkConfig::HTTP_TIMEOUT_MS);
         Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
                      ok ? "OK" : "KO",
                      static_cast<unsigned>(g_remoteFallbackDoc.size()));
-        if (ok) {
+        if (ok && g_remoteFallbackDoc.size() > 0) {
+          // Aligner sur le flux normal: normaliser + sauver NVS puis appliquer (évite incohérence config non persistée)
+          if (g_ctx->automatism.processFetchedRemoteConfig(g_remoteFallbackDoc)) {
+            Serial.println(F("[Auto] ▶️ Config distante normalisée et sauvegardée NVS (fallback)"));
+          }
           Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
           GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
+          invalidateDbvarsCache();
+        } else if (ok && g_remoteFallbackDoc.size() == 0) {
+          Serial.println(F("[Auto] ▶️ Réponse serveur vide (outputs vides), pas d'application"));
         }
       }
     }
@@ -674,76 +716,78 @@ QueueHandle_t getSensorQueue() {
   return g_sensorQueue;
 }
 
-static bool netRpc(NetRequest& req) {
-  if (!g_netQueue || !g_netTaskHandle) return false;
-  req.requester = xTaskGetCurrentTaskHandle();
-  req.success = false;
-  req.cancelled = false;  // v11.169: Initialiser flag abandon
+/**
+ * @brief Envoie une requête réseau à netTask et attend la réponse avec timeout.
+ * v11.181: Utilise pool statique (plus de req sur stack) pour éviter use-after-free.
+ * @param req Requête depuis le pool (doit être libérée par le caller si succès)
+ * @return true si succès, false si échec ou timeout
+ */
+static bool netRpc(NetRequest* req) {
+  if (!g_netQueue || !g_netTaskHandle || !req) return false;
+  req->requester = xTaskGetCurrentTaskHandle();
+  req->success = false;
+  req->cancelled = false;
 
-  // Clear any pending notification
   (void)ulTaskNotifyTake(pdTRUE, 0);
 
-  NetRequest* ptr = &req;
-  if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(50)) != pdTRUE) {
+  if (xQueueSend(g_netQueue, &req, pdMS_TO_TICKS(50)) != pdTRUE) {
+    freeNetRequest(req);
     return false;
   }
-  
-  // Timeout absolu court pour éviter blocages longs (automationTask bloque → queue capteurs pleine)
+
   uint32_t waitStart = millis();
-  const uint32_t ABSOLUTE_TIMEOUT_MS = 8000;   // 8 secondes max (aligné offline-first)
-  const uint32_t CHECK_INTERVAL_MS = 100;      // Vérifier toutes les 100ms
-  
-  // Attendre la notification avec timeout absolu
+  const uint32_t ABSOLUTE_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
+  const uint32_t CHECK_INTERVAL_MS = 100;
+  const uint32_t GRACE_PERIOD_MS = 500;
+
   while (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CHECK_INTERVAL_MS)) == 0) {
-    // Vérifier timeout absolu
     uint32_t elapsed = millis() - waitStart;
     if (elapsed > ABSOLUTE_TIMEOUT_MS) {
       Serial.printf("[netRPC] Timeout absolu (%u ms), signalement abandon\n", (unsigned)ABSOLUTE_TIMEOUT_MS);
-      // v11.169: Signaler abandon pour éviter use-after-free
-      req.cancelled = true;
-      // Attendre que netTask ait terminé (max 500ms) avant de quitter
-      // Cela garantit que netTask ne touchera plus à req après notre retour
-      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
-      return false;
+      req->cancelled = true;
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(GRACE_PERIOD_MS));
+      return false;  // netTask libère le slot (cancelled)
     }
-    
-    // Petit délai pour éviter consommation CPU excessive
     vTaskDelay(pdMS_TO_TICKS(10));
   }
-  
-  // Notification reçue
-  return req.success;
+
+  bool ok = req->success;
+  freeNetRequest(req);
+  return ok;
 }
 
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs) {
-  NetRequest req{};
-  req.type = NetReqType::FetchRemoteState;
-  req.timeoutMs = timeoutMs;
-  req.doc = &doc;
-  req.diag = nullptr;
-  req.payload[0] = '\0';
+  NetRequest* req = allocNetRequest();
+  if (!req) return false;
+  req->type = NetReqType::FetchRemoteState;
+  req->timeoutMs = timeoutMs;
+  req->doc = &doc;
+  req->diag = nullptr;
+  req->payload[0] = '\0';
   return netRpc(req);
 }
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs) {
   if (!payload) return false;
-  NetRequest req{};
-  req.type = NetReqType::PostRaw;
-  req.timeoutMs = timeoutMs;
-  req.doc = nullptr;
-  req.diag = nullptr;
-  strncpy(req.payload, payload, sizeof(req.payload) - 1);
-  req.payload[sizeof(req.payload) - 1] = '\0';
+  NetRequest* req = allocNetRequest();
+  if (!req) return false;
+  req->type = NetReqType::PostRaw;
+  req->timeoutMs = timeoutMs;
+  req->doc = nullptr;
+  req->diag = nullptr;
+  strncpy(req->payload, payload, sizeof(req->payload) - 1);
+  req->payload[sizeof(req->payload) - 1] = '\0';
   return netRpc(req);
 }
 
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
-  NetRequest req{};
-  req.type = NetReqType::Heartbeat;
-  req.timeoutMs = timeoutMs;
-  req.doc = nullptr;
-  req.diag = &diag;
-  req.payload[0] = '\0';
+  NetRequest* req = allocNetRequest();
+  if (!req) return false;
+  req->type = NetReqType::Heartbeat;
+  req->timeoutMs = timeoutMs;
+  req->doc = nullptr;
+  req->diag = &diag;
+  req->payload[0] = '\0';
   return netRpc(req);
 }
 

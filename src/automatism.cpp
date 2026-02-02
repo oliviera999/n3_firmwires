@@ -6,6 +6,8 @@
 #include "task_monitor.h"
 #include "gpio_parser.h"
 #include "nvs_manager.h"
+#include "nvs_keys.h"  // v11.176: Constantes NVS centralisées
+#include "dbvars_cache.h"
 #include <cstring>
 
 namespace {
@@ -62,7 +64,7 @@ void Automatism::begin() {
     
     // Restauration état persistant
   restorePersistentForceWakeup();
-  restoreActuatorState();
+  // v11.178: restoreActuatorState() supprimé (code mort - audit dead-code)
     restoreRemoteConfigFromCache();
     
     Serial.println(F("[Auto] Initialisation terminée"));
@@ -72,19 +74,10 @@ void Automatism::update() {
     // Collecte des capteurs
     SensorReadings readings = _sensors.read();
     
-    // v11.165: Validation des lectures capteurs (audit robustesse)
-    if (isnan(readings.tempWater) || readings.tempWater < SensorConfig::WaterTemp::MIN_VALID || 
-        readings.tempWater > SensorConfig::WaterTemp::MAX_VALID) {
-        readings.tempWater = SensorConfig::DefaultValues::TEMP_WATER_DEFAULT;
-    }
-    if (isnan(readings.tempAir) || readings.tempAir < SensorConfig::AirSensor::TEMP_MIN || 
-        readings.tempAir > SensorConfig::AirSensor::TEMP_MAX) {
-        readings.tempAir = SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
-    }
-    if (isnan(readings.humidity) || readings.humidity < SensorConfig::AirSensor::HUMIDITY_MIN || 
-        readings.humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
-        readings.humidity = SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
-    }
+    // v11.176: Utilisation des helpers de validation (audit élimination duplications)
+    readings.tempWater = SensorValidation::sanitizeWaterTemp(readings.tempWater);
+    readings.tempAir = SensorValidation::sanitizeAirTemp(readings.tempAir);
+    readings.humidity = SensorValidation::sanitizeHumidity(readings.humidity);
     
     update(readings);
 }
@@ -123,13 +116,16 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     bool pollResult = _network.pollRemoteState(doc, nowMs);
     
     if (pollResult) {
-        // 4.1 Parser et appliquer tous les GPIO (actionneurs + configs)
-        // GPIOParser::parseAndApply appelle applyConfigFromJson() en interne
-        // ce qui synchronise toutes les configurations (seuils, durées, heures)
-        GPIOParser::parseAndApply(doc, *this);
-        
-        // 4.2 Appliquer commandes nourrissage distant
-        _network.handleRemoteFeedingCommands(doc, *this);
+        // Ne pas appliquer ni invalider le cache si la réponse est vide (ex. serveur renvoie {"outputs":{}})
+        if (doc.size() > 0) {
+            // 4.0 Initialiser l'état edge detection au 1er poll (évite faux déclenchement nourrissage)
+            _network.seedInitialStateIfFirstPoll(doc);
+            // 4.1 Parser et appliquer tous les GPIO (actionneurs + configs)
+            GPIOParser::parseAndApply(doc, *this);
+            invalidateDbvarsCache();
+            // 4.2 Appliquer commandes nourrissage distant
+            _network.handleRemoteFeedingCommands(doc, *this);
+        }
     }
     
     // 4.3 Envoi périodique des données capteurs (toutes les 2 minutes)
@@ -150,7 +146,9 @@ void Automatism::updateBusinessLogic(const SensorReadings& r, uint32_t nowMs) {
     if (duration > 75) {
         Serial.printf("[Auto] ⚠️ Traitement remplissage long: %u ms\n", static_cast<unsigned>(duration));
     }
-    esp_task_wdt_reset();
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+    }
     
     // Alertes (fusionné depuis AutomatismAlertController)
     handleAlerts(ctx);
@@ -215,8 +213,8 @@ void Automatism::toggleForceWakeup() {
     forceWakeUp = !forceWakeUp;
     _sleep.setForceWakeUp(forceWakeUp);
     Serial.printf("[Auto] ForceWakeUp basculé: %s\n", forceWakeUp ? "ON" : "OFF");
-    // Persistance NVS - nouvelle clé harmonisée (snake_case)
-    g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp);
+    // v11.176: Utilise constante NVS centralisée
+    g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::FORCE_WAKE_UP, forceWakeUp);
     // Migration: supprimer l'ancienne clé si elle existe
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
 }
@@ -240,11 +238,17 @@ bool Automatism::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     return _network.fetchRemoteState(doc);
 }
 
+bool Automatism::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
+    return _network.processFetchedRemoteConfig(doc);
+}
+
+// Applique la config depuis JSON (poll ou NVS). Clés appliquées ici + AutomatismSync:
+// Ici: tempsRemplissageSec/refillDuration/113, tempsGros/111, tempsPetits/112,
+// bouffeMatin/105, bouffeMidi/106, bouffeSoir/107, forceWakeUp/WakeUp/115.
+// Sync: mail, mailNotif, FreqWakeUp, limFlood, aqThreshold, tankThreshold, chauffageThreshold.
+// Référence: GPIOMap::ALL_MAPPINGS (include/gpio_mapping.h).
 void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
-    // v11.172: _network est la source de vérité pour les thresholds
-    // Plus besoin de synchroniser - on accède directement via getters
     _network.applyConfigFromJson(doc);
-    
     // Appliquer les autres variables directement depuis le JSON
     auto parseIntValue = [](ArduinoJson::JsonVariantConst value) -> int {
         if (value.is<int>()) return value.as<int>();
@@ -329,8 +333,8 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
         if (newValue != forceWakeUp) {
             forceWakeUp = newValue;
             _sleep.setForceWakeUp(forceWakeUp);
-            // Persistance NVS - nouvelle clé harmonisée (snake_case)
-            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp);
+            // v11.176: Utilise constante NVS centralisée
+            g_nvsManager.saveBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::FORCE_WAKE_UP, forceWakeUp);
             // Migration: supprimer l'ancienne clé si elle existe
             g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
             Serial.printf("[Auto] ✅ ForceWakeUp mis à jour depuis serveur: %s\n", forceWakeUp ? "ON" : "OFF");
@@ -343,17 +347,26 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
         return;
     }
 
+    // v11.179: Offline-first - l'état local est toujours mis à jour en premier
+    // Si l'envoi distant échoue, les données restent cohérentes localement
     _manualFeedingActive = false;
     _currentFeedingPhase = FeedingPhase::NONE;
     _feedingPhaseEnd = 0;
     _currentFeedingType = nullptr;
 
+    // Tentative de sync distante (non bloquante, avec timeout court)
     if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
         SensorReadings curReadings = readSensors();
-        sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
-        Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)"));
+        bool syncOk = sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
+        if (syncOk) {
+            Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)"));
+        } else {
+            // Offline-first: échec sync distant n'est pas critique, état local cohérent
+            Serial.println(F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
+        }
     } else {
-        Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales uniquement)"));
+        // Offline-first: fonctionnement normal sans réseau
+        Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales uniquement - offline)"));
     }
 }
 
@@ -478,21 +491,19 @@ bool Automatism::isRefillingInManualMode() const { return _manualTankOverride; }
 // Méthodes privées d'initialisation (simplifiées)
 void Automatism::restorePersistentForceWakeup() {
     bool saved = false;
-    // v11.172: Clé unique (migration terminée)
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", saved, false);
+    // v11.176: Utilise constante NVS centralisée
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::FORCE_WAKE_UP, saved, false);
     forceWakeUp = saved;
     _sleep.setForceWakeUp(saved);
 }
 
-void Automatism::restoreActuatorState() {
-    // Restauration état précédent après reboot (si pertinent)
-    // Logique simplifiée
-}
+// v11.178: restoreActuatorState() supprimé (code mort - audit dead-code)
 
 bool Automatism::restoreRemoteConfigFromCache() {
     // Chargement config depuis NVS
     char json[2048];
-    if (_config.loadRemoteVars(json, sizeof(json))) {
+    bool cacheOk = _config.loadRemoteVars(json, sizeof(json));
+    if (cacheOk) {
         StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         // v11.165: Check DeserializationError (audit robustesse)
         DeserializationError err = deserializeJson(doc, json);
@@ -514,7 +525,14 @@ bool Automatism::restoreRemoteConfigFromCache() {
         applyConfigFromJson(doc);
         return true;
     }
-      return false;
+    // Charger l'email depuis NVS même sans cache remote_json (offline-first: source de vérité NVS)
+    char emailFromNVS[128];
+    if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "email", emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
+        if (strlen(emailFromNVS) > 0) {
+            _network.setEmailAddress(emailFromNVS);
+        }
+    }
+    return false;
 }
 
 // ============================================================================
@@ -533,7 +551,7 @@ void Automatism::handleFeeding() {
     int hour = timeinfo.tm_hour;
     int minute = timeinfo.tm_min;
     
-    _feedingSchedule.checkAndFeed(hour, minute, dayOfYear,
+    _feedingSchedule.checkAndFeed(hour, minute, dayOfYear, millis(),
                                    bouffeMatin, bouffeMidi, bouffeSoir,
                                    tempsGros, tempsPetits,
                                    _network.getEmailAddress(), _network.isEmailEnabled(),
@@ -710,10 +728,13 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
     if (!_acts.isTankPumpRunning()) return;
 
     const uint32_t nowMs = millis();
-    const uint32_t elapsedMs = (uint32_t)(nowMs - _pumpStartMs);
+    // v11.176: Gestion overflow millis() (wrap après ~49 jours) - audit robustesse
+    // Si _pumpStartMs > nowMs, c'est un overflow -> calcul correct grâce à l'arithmétique unsigned
+    const uint32_t elapsedMs = nowMs - _pumpStartMs;
     const uint32_t maxMs = refillDurationMs;
     
-    // Détection anomalie timing (>50 min)
+    // Détection anomalie timing (>50 min = 3000000ms)
+    // Cela détecte aussi les cas où _pumpStartMs était invalide
     if (elapsedMs > 3000000UL) {
         Serial.printf("[CRITIQUE] Anomalie timing: elapsed=%u ms, reset\n", (unsigned)elapsedMs);
         _pumpStartMs = nowMs;
@@ -978,7 +999,9 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         }
     }
 
-    esp_task_wdt_reset();
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+    }
 }
 
 // Fusionné depuis AutomatismDisplayController
@@ -1003,7 +1026,7 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
         _lastScreenSwitch = currentMillis;
     } else if (currentMillis - _lastScreenSwitch >= DisplayConfig::SCREEN_SWITCH_INTERVAL_MS) {
         _oledToggle = !_oledToggle;
-        _lastScreenSwitch += DisplayConfig::SCREEN_SWITCH_INTERVAL_MS;
+        _lastScreenSwitch = currentMillis;  // Reset à "now" pour éviter rafales après countdown/veille
         _disp.resetMainCache();
         _disp.resetStatusCache();
         _disp.resetVariablesCache();
@@ -1015,8 +1038,7 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
     bool isCountdownMode = hasCountdown || hasFeedingPhase;
     
     // Utiliser l'intervalle recommandé (250ms si countdown, sinon 80ms)
-    const uint32_t OLED_INTERVAL_MS = 80;
-    const uint32_t displayInterval = isCountdownMode ? 250u : OLED_INTERVAL_MS;
+    const uint32_t displayInterval = isCountdownMode ? DisplayConfig::OLED_COUNTDOWN_INTERVAL_MS : DisplayConfig::OLED_INTERVAL_MS;
     
     if (currentMillis - _lastOled < displayInterval) {
         return;
@@ -1152,9 +1174,9 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
 }
 
 uint32_t Automatism::getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) const {
-    // Retourne l'intervalle par défaut pour l'affichage (80ms)
-    // L'ajustement pour les countdowns (250ms) se fait dans updateDisplayInternal()
-    return 80; // OLED_INTERVAL_MS
+    // Retourne l'intervalle par défaut pour l'affichage
+    // L'ajustement pour les countdowns se fait dans updateDisplayInternal()
+    return DisplayConfig::OLED_INTERVAL_MS;
 }
 
 // ============================================================================
@@ -1162,11 +1184,12 @@ uint32_t Automatism::getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) con
 // ============================================================================
 
 // Snapshots sleep/wake
+// v11.178: Utilisation des clés NVS centralisées (audit nvs-keys)
 void Automatism::saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn) {
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_pending", true);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_aqua", pumpAquaWasOn);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_heater", heaterWasOn);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_light", lightWasOn);
+    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, true);
+    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_AQUA, pumpAquaWasOn);
+    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_HEATER, heaterWasOn);
+    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_LIGHT, lightWasOn);
     
     Serial.printf("[Auto] Snapshot actionneurs NVS: aqua=%s heater=%s light=%s\n",
                   pumpAquaWasOn?"ON":"OFF", heaterWasOn?"ON":"OFF", lightWasOn?"ON":"OFF");
@@ -1174,15 +1197,15 @@ void Automatism::saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn,
 
 bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn) {
     bool pending;
-    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_pending", pending, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, pending, false);
     
     if (!pending) {
         return false;
     }
     
-    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_aqua", pumpAquaWasOn, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_heater", heaterWasOn, false);
-    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, "snap_light", lightWasOn, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_AQUA, pumpAquaWasOn, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_HEATER, heaterWasOn, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_LIGHT, lightWasOn, false);
     
     Serial.printf("[Auto] Snapshot chargé depuis NVS: aqua=%s heater=%s light=%s\n",
                   pumpAquaWasOn?"ON":"OFF", heaterWasOn?"ON":"OFF", lightWasOn?"ON":"OFF");
@@ -1191,23 +1214,24 @@ bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWa
 }
 
 void Automatism::clearActuatorSnapshotInNVS() {
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "snap_pending", false);
+    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, false);
     Serial.println("[Auto] Snapshot actionneurs effacé");
 }
 
 // États actuels persistants (méthodes statiques pour compatibilité avec web_server.cpp)
+// v11.178: Utilisation des clés NVS centralisées pour state_lastLocal (audit nvs-keys)
 void Automatism::saveCurrentActuatorState(const char* actuator, bool state) {
     char key[32];
-    snprintf(key, sizeof(key), "state_%s", actuator);
+    snprintf(key, sizeof(key), "state_%s", actuator);  // Dynamique basé sur nom actionneur
     g_nvsManager.saveBool(NVS_NAMESPACES::STATE, key, state);
-    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, "state_lastLocal", millis());
+    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, NVSKeys::Automatism::STATE_LAST_LOCAL, millis());
     Serial.printf("[Auto] État %s=%s sauvegardé en NVS (priorité locale)\n",
                    actuator, state ? "ON" : "OFF");
 }
 
 bool Automatism::loadCurrentActuatorState(const char* actuator, bool defaultValue) {
     char key[32];
-    snprintf(key, sizeof(key), "state_%s", actuator);
+    snprintf(key, sizeof(key), "state_%s", actuator);  // Dynamique basé sur nom actionneur
     bool state;
     g_nvsManager.loadBool(NVS_NAMESPACES::STATE, key, state, defaultValue);
     return state;
@@ -1215,7 +1239,7 @@ bool Automatism::loadCurrentActuatorState(const char* actuator, bool defaultValu
 
 uint32_t Automatism::getLastLocalActionTime() {
     unsigned long timestamp;
-    g_nvsManager.loadULong(NVS_NAMESPACES::STATE, "state_lastLocal", timestamp, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::STATE, NVSKeys::Automatism::STATE_LAST_LOCAL, timestamp, 0);
     return timestamp;
 }
 
@@ -1227,18 +1251,19 @@ bool Automatism::hasRecentLocalAction(uint32_t timeoutMs) {
 }
 
 // Pending sync
+// v11.178: Utilisation des clés NVS centralisées (audit nvs-keys)
 void Automatism::markPendingSync(const char* actuator, bool state) {
     char key_state[32];
     snprintf(key_state, sizeof(key_state), "sync_%s", actuator);
     g_nvsManager.saveBool(NVS_NAMESPACES::STATE, key_state, state);
     
     int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
     
     bool alreadyPending = false;
     for (int i = 0; i < count; i++) {
-        char key_item[16];
-        snprintf(key_item, sizeof(key_item), "sync_item_%d", i);
+        char key_item[24];
+        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
         char item[64];
         g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, sizeof(item), "");
         if (strcmp(item, actuator) == 0) {
@@ -1248,28 +1273,28 @@ void Automatism::markPendingSync(const char* actuator, bool state) {
     }
     
     if (!alreadyPending) {
-        char key_item[16];
-        snprintf(key_item, sizeof(key_item), "sync_item_%d", count);
+        char key_item[24];
+        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, count);
         g_nvsManager.saveString(NVS_NAMESPACES::STATE, key_item, actuator);
         count++;
-        g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", count);
+        g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count);
     }
     
-    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, "sync_lastSync", millis());
+    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, NVSKeys::Sync::LAST_SYNC, millis());
     Serial.printf("[Auto] ⏳ Pending sync marqué: %s=%s (total: %u)\n",
                    actuator, state ? "ON" : "OFF", count);
 }
 
 void Automatism::markConfigPendingSync() {
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, "sync_config", true);
+    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Sync::CONFIG, true);
     
     int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
     
     bool alreadyPending = false;
     for (int i = 0; i < count; i++) {
-        char key_item[16];
-        snprintf(key_item, sizeof(key_item), "sync_item_%d", i);
+        char key_item[24];
+        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
         char item[64];
         g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, sizeof(item), "");
         if (strcmp(item, "config") == 0) {
@@ -1279,14 +1304,14 @@ void Automatism::markConfigPendingSync() {
     }
     
     if (!alreadyPending) {
-        char key_item[16];
-        snprintf(key_item, sizeof(key_item), "sync_item_%d", count);
+        char key_item[24];
+        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, count);
         g_nvsManager.saveString(NVS_NAMESPACES::STATE, key_item, "config");
         count++;
-        g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", count);
+        g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count);
     }
     
-    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, "sync_lastSync", millis());
+    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, NVSKeys::Sync::LAST_SYNC, millis());
     Serial.printf("[Auto] ⏳ Config pending sync marquée (total: %u)\n", count);
 }
 
@@ -1296,19 +1321,19 @@ void Automatism::clearPendingSync(const char* actuator) {
     g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key_state);
     
     int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
     
     int newCount = 0;
     for (int i = 0; i < count; i++) {
-        char oldKey[16];
-        snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+        char oldKey[24];
+        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
         char item[64];
         g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, sizeof(item), "");
         
         if (strcmp(item, actuator) != 0 && strlen(item) > 0) {
             if (newCount != i) {
-                char newKey[16];
-                snprintf(newKey, sizeof(newKey), "sync_item_%d", newCount);
+                char newKey[24];
+                snprintf(newKey, sizeof(newKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, newCount);
                 g_nvsManager.saveString(NVS_NAMESPACES::STATE, newKey, item);
             }
             newCount++;
@@ -1316,32 +1341,32 @@ void Automatism::clearPendingSync(const char* actuator) {
     }
     
     for (int i = newCount; i < count; i++) {
-        char oldKey[16];
-        snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+        char oldKey[24];
+        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
         g_nvsManager.removeKey(NVS_NAMESPACES::STATE, oldKey);
     }
     
-    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", newCount);
+    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, newCount);
     Serial.printf("[Auto] ✅ Pending sync effacé: %s (reste: %u)\n", actuator, newCount);
 }
 
 void Automatism::clearConfigPendingSync() {
-    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, "sync_config");
+    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, NVSKeys::Sync::CONFIG);
     
     int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
     
     int newCount = 0;
     for (int i = 0; i < count; i++) {
-        char oldKey[16];
-        snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+        char oldKey[24];
+        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
         char item[64];
         g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, sizeof(item), "");
         
         if (strcmp(item, "config") != 0 && strlen(item) > 0) {
             if (newCount != i) {
-                char newKey[16];
-                snprintf(newKey, sizeof(newKey), "sync_item_%d", newCount);
+                char newKey[24];
+                snprintf(newKey, sizeof(newKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, newCount);
                 g_nvsManager.saveString(NVS_NAMESPACES::STATE, newKey, item);
             }
             newCount++;
@@ -1349,29 +1374,29 @@ void Automatism::clearConfigPendingSync() {
     }
     
     for (int i = newCount; i < count; i++) {
-        char oldKey[16];
-        snprintf(oldKey, sizeof(oldKey), "sync_item_%d", i);
+        char oldKey[24];
+        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
         g_nvsManager.removeKey(NVS_NAMESPACES::STATE, oldKey);
     }
     
-    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, "sync_count", newCount);
+    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, newCount);
     Serial.printf("[Auto] ✅ Config pending sync effacée (reste: %u)\n", newCount);
 }
 
 bool Automatism::hasPendingSync() {
     int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
     return count > 0;
 }
 
 uint8_t Automatism::getPendingSyncCount() {
     int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, "sync_count", count, 0);
+    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
     return (uint8_t)count;
 }
 
 uint32_t Automatism::getLastPendingSyncTime() {
     unsigned long timestamp;
-    g_nvsManager.loadULong(NVS_NAMESPACES::STATE, "sync_lastSync", timestamp, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::STATE, NVSKeys::Sync::LAST_SYNC, timestamp, 0);
     return timestamp;
 }

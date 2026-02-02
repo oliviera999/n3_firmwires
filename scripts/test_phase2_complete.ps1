@@ -326,18 +326,18 @@ try {
     $wifiStatus = Invoke-RestMethod -Uri "$baseUrl/wifi/status" -Method GET -TimeoutSec 5
     
     Write-Host "📶 WiFi STA:" -ForegroundColor Cyan
-    Write-Host "  Connecté: $($wifiStatus.staConnected)" -ForegroundColor Gray
-    if ($wifiStatus.staConnected) {
-        Write-Host "  SSID: $($wifiStatus.staSSID)" -ForegroundColor Gray
-        Write-Host "  IP: $($wifiStatus.staIP)" -ForegroundColor Gray
-        Write-Host "  RSSI: $($wifiStatus.staRSSI) dBm" -ForegroundColor Gray
+    Write-Host "  Connecté: $($wifiStatus.wifiStaConnected)" -ForegroundColor Gray
+    if ($wifiStatus.wifiStaConnected) {
+        Write-Host "  SSID: $($wifiStatus.wifiStaSSID)" -ForegroundColor Gray
+        Write-Host "  IP: $($wifiStatus.wifiStaIP)" -ForegroundColor Gray
+        Write-Host "  RSSI: $($wifiStatus.wifiStaRSSI) dBm" -ForegroundColor Gray
     }
     
     Write-Host "📡 WiFi AP:" -ForegroundColor Cyan
-    Write-Host "  Actif: $($wifiStatus.apActive)" -ForegroundColor Gray
-    if ($wifiStatus.apActive) {
-        Write-Host "  SSID: $($wifiStatus.apSSID)" -ForegroundColor Gray
-        Write-Host "  Clients: $($wifiStatus.apClients)" -ForegroundColor Gray
+    Write-Host "  Actif: $($wifiStatus.wifiApActive)" -ForegroundColor Gray
+    if ($wifiStatus.wifiApActive) {
+        Write-Host "  SSID: $($wifiStatus.wifiApSSID)" -ForegroundColor Gray
+        Write-Host "  Clients: $($wifiStatus.wifiApClients)" -ForegroundColor Gray
     }
     
     $testsPassed++

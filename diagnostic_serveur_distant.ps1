@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Script de diagnostic des échanges serveur distant
 # =============================================================================
 # Description:
@@ -15,23 +15,24 @@ param(
 )
 
 if ([string]::IsNullOrEmpty($LogFile)) {
-    # Trouver le dernier fichier de log
-    $LogFile = Get-ChildItem -Filter "monitor_wroom_test_*.log" | 
-               Sort-Object LastWriteTime -Descending | 
-               Select-Object -First 1 -ExpandProperty FullName
-    
+    # Trouver le dernier fichier de log (monitor_5min ou monitor_wroom_test)
+    $candidates = @(Get-ChildItem -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+    $candidates += @(Get-ChildItem -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $LogFile = if ($latest) { $latest.FullName } else { $null }
+
     if (-not $LogFile) {
-        Write-Host "❌ Aucun fichier de log trouvé" -ForegroundColor Red
+        Write-Host '[KO] Aucun fichier de log trouve' -ForegroundColor Red
         exit 1
     }
 }
 
-Write-Host "=== DIAGNOSTIC ÉCHANGES SERVEUR DISTANT ===" -ForegroundColor Green
-Write-Host "Fichier: $LogFile" -ForegroundColor Cyan
+Write-Host '=== DIAGNOSTIC ECHANGES SERVEUR DISTANT ===' -ForegroundColor Green
+Write-Host ('Fichier: ' + $LogFile) -ForegroundColor Cyan
 Write-Host ""
 
 if (-not (Test-Path $LogFile)) {
-    Write-Host "❌ Fichier non trouvé: $LogFile" -ForegroundColor Red
+    Write-Host ('[KO] Fichier non trouve: ' + $LogFile) -ForegroundColor Red
     exit 1
 }
 
@@ -44,20 +45,20 @@ $outputFile = "diagnostic_serveur_distant_$timestamp.txt"
 # 1. ANALYSE ENVOI POST DONNÉES CAPTEURS
 # =============================================================================
 
-Write-Host "📤 Analyse envoi POST données capteurs..." -ForegroundColor Yellow
+Write-Host 'Analyse envoi POST donnees capteurs...' -ForegroundColor Yellow
 
-# Patterns POST
-$postStarts = $lines | Select-String -Pattern "\[PR\] === DÉBUT POSTRAW ==="
-$postSuccess = $lines | Select-String -Pattern "\[PR\] Primary server result: SUCCESS|\[PR\] Final result: SUCCESS"
-$postFailed = $lines | Select-String -Pattern "\[PR\] Primary server result: FAILED|\[PR\] Final result: FAILED"
-$postDurations = $lines | Select-String -Pattern "\[PR\] Durée totale: (\d+) ms"
-$syncQueue = $lines | Select-String -Pattern "\[Sync\] Queue|DataQueue.*push|Queue.*pleine"
-$postMutexError = $lines | Select-String -Pattern "\[PR\] ⛔ Impossible d'acquérir mutex TLS"
+# Patterns POST (v11.182: alignés firmware actuel [Sync]/[HTTP] + rétro [PR])
+$postStarts = $lines | Select-String -Pattern '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ==='
+$postSuccess = $lines | Select-String -Pattern '\[HTTP\] Requête:.*succès=oui|\[PR\] Primary server result: SUCCESS|\[PR\] Final result: SUCCESS'
+$postFailed = $lines | Select-String -Pattern '\[HTTP\] Requête:.*succès=non|\[HTTP\] Erreur \d|\[PR\] Primary server result: FAILED|\[PR\] Final result: FAILED'
+$postDurations = $lines | Select-String -Pattern '\[HTTP\] Requête: (\d+) ms|\[PR\] Durée totale: (\d+) ms'
+$syncQueue = $lines | Select-String -Pattern '\[Sync\] Queue|DataQueue.*push|Queue.*pleine'
+$postMutexError = $lines | Select-String -Pattern "\[PR\] Impossible acquerir mutex TLS"
 
-# Calculer durées moyennes
+# Calculer durées moyennes (\[HTTP\] Requête: 5708 ms ou \[PR\] Durée totale: 123 ms)
 $durations = @()
 foreach ($match in $postDurations) {
-    if ($match.Line -match "(\d+) ms") {
+    if ($match.Line -match '(\d+)\s*ms') {
         $durations += [int]$matches[1]
     }
 }
@@ -68,10 +69,9 @@ $minDuration = if ($durations.Count -gt 0) { ($durations | Measure-Object -Minim
 # Vérifier fréquence (attendu: toutes les 2 minutes = 120 secondes)
 $postTimestamps = @()
 foreach ($line in $lines) {
-    if ($line -match "\[PR\] === DÉBUT POSTRAW ===") {
-        # Essayer d'extraire un timestamp si présent
-        if ($line -match "(\d{4}-\d{2}-\d{2}[\s:]\d{2}:\d{2}:\d{2})") {
-            $postTimestamps += [DateTime]::Parse($matches[1])
+    if ($line -match '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ===') {
+        if ($line -match '(\d{4}-\d{2}-\d{2}[\s:]\d{2}:\d{2}:\d{2})') {
+            try { $postTimestamps += [DateTime]::Parse($matches[1]) } catch {}
         }
     }
 }
@@ -86,7 +86,7 @@ if ($postTimestamps.Count -gt 1) {
 $avgInterval = if ($postIntervals.Count -gt 0) { [math]::Round(($postIntervals | Measure-Object -Average).Average, 2) } else { 0 }
 
 # Vérifier endpoint (attendu: /ffp3/post-data-test pour test)
-$postEndpoints = $lines | Select-String -Pattern "post-data-test|post-data[^-]"
+$postEndpoints = $lines | Select-String -Pattern 'post-data-test|post-data[^-]'
 $endpointTest = ($postEndpoints | Where-Object { $_.Line -match "post-data-test" }).Count
 $endpointProd = ($postEndpoints | Where-Object { $_.Line -match "post-data[^-]" -and $_.Line -notmatch "post-data-test" }).Count
 
@@ -94,20 +94,23 @@ $endpointProd = ($postEndpoints | Where-Object { $_.Line -match "post-data[^-]" 
 # 2. ANALYSE RÉCEPTION GET COMMANDES SERVEUR
 # =============================================================================
 
-Write-Host "📥 Analyse réception GET commandes serveur..." -ForegroundColor Yellow
+Write-Host 'Analyse reception GET commandes serveur...' -ForegroundColor Yellow
 
-$getFetch = $lines | Select-String -Pattern "\[Sync\] Fetch remote state|Fetch remote state"
-$jsonParseSuccess = $lines | Select-String -Pattern "JSON parsed successfully|Nettoye prefixe chunked"
-$jsonParseErrors = $lines | Select-String -Pattern "JSON parse error|JSON.*fail|Parse.*error"
+# GET: une tentative = une ligne contenant "outputs/state: code=" (v11.186: décompte correct,
+# insensible aux codes ANSI dans le log ; une seule ligne firmware par GET)
+$getFetch = $lines | Select-String -Pattern 'outputs/state:\s*code='
+# Parsing réussi = une ligne "GET outputs/state: body=... bytes" (HTTP) ou "Utilisation cache NVS" (fallback)
+$jsonParseSuccess = $lines | Select-String -Pattern 'GET outputs/state: body=\d+ bytes|Utilisation cache NVS|\[GPIOParser\].*PARSING.*SERVEUR'
+$jsonParseErrors = $lines | Select-String -Pattern '\[HTTP\] JSON parse error|JSON parse error|JSON.*fail|Parse.*error'
 $getEndpoints = $lines | Select-String -Pattern "outputs-test/state|outputs/state"
 $ackSent = $lines | Select-String -Pattern "ack_command|ACK.*envoyé"
 
-# Vérifier fréquence GET (attendu: toutes les 12 secondes selon REMOTE_FETCH_INTERVAL_MS)
+# Vérifier fréquence GET (attendu: ~12s, pattern aligné sur $getFetch)
 $getTimestamps = @()
 foreach ($line in $lines) {
-    if ($line -match "\[Sync\] Fetch remote state|Fetch remote state") {
-        if ($line -match "(\d{4}-\d{2}-\d{2}[\s:]\d{2}:\d{2}:\d{2})") {
-            $getTimestamps += [DateTime]::Parse($matches[1])
+    if ($line -match 'outputs/state:\s*code=') {
+        if ($line -match '(\d{4}-\d{2}-\d{2}[\s:]\d{2}:\d{2}:\d{2})') {
+            try { $getTimestamps += [DateTime]::Parse($matches[1]) } catch {}
         }
     }
 }
@@ -125,16 +128,16 @@ $avgGetInterval = if ($getIntervals.Count -gt 0) { [math]::Round(($getIntervals 
 # 3. ANALYSE HEARTBEAT
 # =============================================================================
 
-Write-Host "💓 Analyse heartbeat..." -ForegroundColor Yellow
+Write-Host "[HB] Analyse heartbeat..." -ForegroundColor Yellow
 
-$hbStarts = $lines | Select-String -Pattern "\[HB\] === DÉBUT HEARTBEAT ==="
-$hbSuccess = $lines | Select-String -Pattern "\[HB\] Succès: OUI"
-$hbFailed = $lines | Select-String -Pattern "\[HB\] Succès: NON"
-$hbDurations = $lines | Select-String -Pattern "\[HB\] Durée totale: (\d+) ms"
+$hbStarts = $lines | Select-String -Pattern '\[HB\] === DÉBUT HEARTBEAT ==='
+$hbSuccess = $lines | Select-String -Pattern '\[HB\] Succès: OUI'
+$hbFailed = $lines | Select-String -Pattern '\[HB\] Succès: NON'
+$hbDurations = $lines | Select-String -Pattern '\[HB\] Durée totale: (\d+) ms'
 
 $hbDurationsList = @()
 foreach ($match in $hbDurations) {
-    if ($match.Line -match "(\d+) ms") {
+    if ($match.Line -match '(\d+) ms') {
         $hbDurationsList += [int]$matches[1]
     }
 }
@@ -144,7 +147,7 @@ $avgHbDuration = if ($hbDurationsList.Count -gt 0) { [math]::Round(($hbDurations
 # 4. ANALYSE GESTION ERREURS RÉSEAU
 # =============================================================================
 
-Write-Host "🌐 Analyse gestion erreurs réseau..." -ForegroundColor Yellow
+Write-Host 'Analyse gestion erreurs reseau...' -ForegroundColor Yellow
 
 $wifiDisconnect = $lines | Select-String -Pattern "WiFi.*disconnect|WiFi.*deconnect|Connexion.*perdue"
 $wifiConnect = $lines | Select-String -Pattern "WiFi.*connect|WiFi.*connected|Connexion.*reussie"
@@ -157,152 +160,153 @@ $queueReplay = $lines | Select-String -Pattern "replayQueuedData|Queue.*replay|R
 # 5. VÉRIFICATIONS DE COHÉRENCE AVEC LE CODE
 # =============================================================================
 
-Write-Host "🔍 Vérifications de cohérence avec le code..." -ForegroundColor Yellow
+Write-Host 'Verifications de coherence avec le code...' -ForegroundColor Yellow
 
 $coherence = @()
 
-# POST: Fréquence attendue 120 secondes (REMOTE_SEND_INTERVAL_MS)
+# POST: Frequence attendue 120 secondes (REMOTE_SEND_INTERVAL_MS)
 if ($avgInterval -gt 0) {
     if ($avgInterval -ge 100 -and $avgInterval -le 140) {
-        $coherence += "✅ POST: Fréquence cohérente (~$avgInterval s, attendu: 120s)"
+        $coherence += '[OK] POST: Frequence coherente (~' + $avgInterval + ' s, attendu: 120s)'
     } else {
-        $coherence += "⚠️ POST: Fréquence anormale ($avgInterval s, attendu: 120s)"
+        $coherence += '[WARN] POST: Frequence anormale (' + $avgInterval + ' s, attendu: 120s)'
     }
 } else {
-    $coherence += "❌ POST: Impossible de calculer la fréquence"
+    $coherence += '[KO] POST: Impossible de calculer la frequence'
 }
 
-# GET: Fréquence attendue 12 secondes (REMOTE_FETCH_INTERVAL_MS)
+# GET: Frequence attendue 12 secondes (REMOTE_FETCH_INTERVAL_MS)
 if ($avgGetInterval -gt 0) {
     if ($avgGetInterval -ge 8 -and $avgGetInterval -le 20) {
-        $coherence += "✅ GET: Fréquence cohérente (~$avgGetInterval s, attendu: 12s)"
+        $coherence += '[OK] GET: Frequence coherente (~' + $avgGetInterval + ' s, attendu: 12s)'
     } else {
-        $coherence += "⚠️ GET: Fréquence anormale ($avgGetInterval s, attendu: 12s)"
+        $coherence += '[WARN] GET: Frequence anormale (' + $avgGetInterval + ' s, attendu: 12s)'
     }
 } else {
-    $coherence += "❌ GET: Impossible de calculer la fréquence"
+    $coherence += '[KO] GET: Impossible de calculer la frequence'
 }
 
-# POST: Durée < 5 secondes (REQUEST_TIMEOUT_MS = 5000)
+# POST: Duree < 5 secondes (REQUEST_TIMEOUT_MS = 5000)
 if ($maxDuration -gt 0) {
     if ($maxDuration -lt 5000) {
-        $coherence += "✅ POST: Durées dans les limites (max: $maxDuration ms, limite: 5000 ms)"
+        $coherence += '[OK] POST: Durees dans les limites (max: ' + $maxDuration + ' ms, limite: 5000 ms)'
     } else {
-        $coherence += "⚠️ POST: Durées trop longues (max: $maxDuration ms, limite: 5000 ms)"
+        $coherence += '[WARN] POST: Durees trop longues (max: ' + $maxDuration + ' ms, limite: 5000 ms)'
     }
 }
 
-# Endpoint test utilisé
+# Endpoint test utilise
 if ($endpointTest -gt 0) {
-    $coherence += "✅ Endpoint: Utilisation endpoint test (/ffp3/post-data-test)"
+    $coherence += '[OK] Endpoint: Utilisation endpoint test (/ffp3/post-data-test)'
 } elseif ($endpointProd -gt 0) {
-    $coherence += "⚠️ Endpoint: Utilisation endpoint prod au lieu de test"
+    $coherence += '[WARN] Endpoint: Utilisation endpoint prod au lieu de test'
 } else {
-    $coherence += "❌ Endpoint: Aucun endpoint détecté"
+    $coherence += '[KO] Endpoint: Aucun endpoint detecte'
 }
 
 # =============================================================================
 # 6. GÉNÉRATION DU RAPPORT
 # =============================================================================
 
-$report = @"
-=== DIAGNOSTIC ÉCHANGES SERVEUR DISTANT ===
-Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Fichier log: $LogFile
-
-=== 1. ENVOI POST DONNÉES CAPTEURS ===
-
-Statistiques:
-- Débuts POST détectés: $($postStarts.Count)
-- POST réussis: $($postSuccess.Count)
-- POST échoués: $($postFailed.Count)
-- Taux de succès: $(if ($postStarts.Count -gt 0) { [math]::Round(($postSuccess.Count / $postStarts.Count) * 100, 2) } else { 0 })%
-
-Performance:
-- Durée moyenne: $avgDuration ms
-- Durée min: $minDuration ms
-- Durée max: $maxDuration ms
-- Intervalle moyen: $avgInterval secondes (attendu: 120s)
-
-Endpoints:
-- Utilisation endpoint test: $endpointTest
-- Utilisation endpoint prod: $endpointProd
-
-Queue persistante:
-- Utilisations queue: $($syncQueue.Count)
-- Erreurs mutex TLS: $($postMutexError.Count)
-
-=== 2. RÉCEPTION GET COMMANDES SERVEUR ===
-
-Statistiques:
-- Tentatives GET: $($getFetch.Count)
-- Parsing JSON réussis: $($jsonParseSuccess.Count)
-- Erreurs parsing JSON: $($jsonParseErrors.Count)
-- Taux de succès parsing: $(if ($getFetch.Count -gt 0) { [math]::Round(($jsonParseSuccess.Count / $getFetch.Count) * 100, 2) } else { 0 })%
-
-Performance:
-- Intervalle moyen: $avgGetInterval secondes (attendu: 12s)
-
-Endpoints:
-- Utilisation endpoint test: $(($getEndpoints | Where-Object { $_.Line -match "outputs-test" }).Count)
-- Utilisation endpoint prod: $(($getEndpoints | Where-Object { $_.Line -match "outputs/state" -and $_.Line -notmatch "outputs-test" }).Count)
-
-ACK:
-- ACK envoyés: $($ackSent.Count)
-
-=== 3. HEARTBEAT ===
-
-Statistiques:
-- Heartbeats détectés: $($hbStarts.Count)
-- Heartbeats réussis: $($hbSuccess.Count)
-- Heartbeats échoués: $($hbFailed.Count)
-- Taux de succès: $(if ($hbStarts.Count -gt 0) { [math]::Round(($hbSuccess.Count / $hbStarts.Count) * 100, 2) } else { 0 })%
-
-Performance:
-- Durée moyenne: $avgHbDuration ms
-
-=== 4. GESTION ERREURS RÉSEAU ===
-
-WiFi:
-- Déconnexions: $($wifiDisconnect.Count)
-- Reconnexions: $($wifiConnect.Count)
-
-Erreurs:
-- Erreurs TLS: $($tlsErrors.Count)
-- Erreurs HTTP: $($httpErrors.Count)
-- Timeouts: $($timeouts.Count)
-
-Queue:
-- Replays queue: $($queueReplay.Count)
-
-=== 5. VÉRIFICATIONS DE COHÉRENCE AVEC LE CODE ===
-
-$($coherence -join "`n")
-
-=== RÉSUMÉ ===
-
-POST:
-- $(if ($postStarts.Count -gt 0 -and ($postSuccess.Count / $postStarts.Count) -gt 0.8) { "✅ OK" } elseif ($postStarts.Count -gt 0) { "⚠️ Taux de succès faible" } else { "❌ Aucun POST détecté" })
-
-GET:
-- $(if ($getFetch.Count -gt 0 -and ($jsonParseErrors.Count / $getFetch.Count) -lt 0.1) { "✅ OK" } elseif ($getFetch.Count -gt 0) { "⚠️ Erreurs parsing fréquentes" } else { "❌ Aucun GET détecté" })
-
-Heartbeat:
-- $(if ($hbStarts.Count -gt 0 -and ($hbSuccess.Count / $hbStarts.Count) -gt 0.8) { "✅ OK" } elseif ($hbStarts.Count -gt 0) { "⚠️ Taux de succès faible" } else { "ℹ️ Aucun heartbeat détecté" })
-
-Réseau:
-- $(if ($wifiDisconnect.Count -eq 0) { "✅ WiFi stable" } else { "⚠️ Déconnexions WiFi détectées" })
-
-=== FIN DU DIAGNOSTIC ===
-"@
+$dateFmt = 'yyyy-MM-dd HH:mm:ss'
+$report = @(
+  '=== DIAGNOSTIC ECHANGES SERVEUR DISTANT ===',
+  'Date: ' + (Get-Date -Format $dateFmt),
+  'Fichier log: ' + $LogFile,
+  '',
+  '=== 1. ENVOI POST DONNEES CAPTEURS ===',
+  '',
+  'Statistiques:',
+  '- Debuts POST detectes: ' + $postStarts.Count,
+  '- POST reussis: ' + $postSuccess.Count,
+  '- POST echoues: ' + $postFailed.Count,
+  '- Taux de succes: ' + $(if ($postStarts.Count -gt 0) { [math]::Round(($postSuccess.Count / $postStarts.Count) * 100, 2) } else { 0 }) + '%',
+  '',
+  'Performance:',
+  '- Duree moyenne: ' + $avgDuration + ' ms',
+  '- Duree min: ' + $minDuration + ' ms',
+  '- Duree max: ' + $maxDuration + ' ms',
+  '- Intervalle moyen: ' + $avgInterval + ' secondes (attendu: 120s)',
+  '',
+  'Endpoints:',
+  '- Utilisation endpoint test: ' + $endpointTest,
+  '- Utilisation endpoint prod: ' + $endpointProd,
+  '',
+  'Queue persistante:',
+  '- Utilisations queue: ' + $syncQueue.Count,
+  '- Erreurs mutex TLS: ' + $postMutexError.Count,
+  '',
+  '=== 2. RECEPTION GET COMMANDES SERVEUR ===',
+  '',
+  'Statistiques:',
+  '- Tentatives GET: ' + $getFetch.Count,
+  '- Parsing JSON reussis: ' + $jsonParseSuccess.Count,
+  '- Erreurs parsing JSON: ' + $jsonParseErrors.Count,
+  '- Taux de succes parsing: ' + $(if ($getFetch.Count -gt 0) { [math]::Round(($jsonParseSuccess.Count / $getFetch.Count) * 100, 2) } else { 0 }) + '%',
+  '',
+  'Performance:',
+  '- Intervalle moyen: ' + $avgGetInterval + ' secondes (attendu: 12s)',
+  '',
+  'Endpoints:',
+  '- Utilisation endpoint test: ' + (($getEndpoints | Where-Object { $_.Line -match 'outputs-test' }).Count),
+  '- Utilisation endpoint prod: ' + (($getEndpoints | Where-Object { $_.Line -match 'outputs/state' -and $_.Line -notmatch 'outputs-test' }).Count),
+  '',
+  'ACK:',
+  '- ACK envoyes: ' + $ackSent.Count,
+  '',
+  '=== 3. HEARTBEAT ===',
+  '',
+  'Statistiques:',
+  '- Heartbeats detectes: ' + $hbStarts.Count,
+  '- Heartbeats reussis: ' + $hbSuccess.Count,
+  '- Heartbeats echoues: ' + $hbFailed.Count,
+  '- Taux de succes: ' + $(if ($hbStarts.Count -gt 0) { [math]::Round(($hbSuccess.Count / $hbStarts.Count) * 100, 2) } else { 0 }) + '%',
+  '',
+  'Performance:',
+  '- Duree moyenne: ' + $avgHbDuration + ' ms',
+  '',
+  '=== 4. GESTION ERREURS RESEAU ===',
+  '',
+  'WiFi:',
+  '- Deconnexions: ' + $wifiDisconnect.Count,
+  '- Reconnexions: ' + $wifiConnect.Count,
+  '',
+  'Erreurs:',
+  '- Erreurs TLS: ' + $tlsErrors.Count,
+  '- Erreurs HTTP: ' + $httpErrors.Count,
+  '- Timeouts: ' + $timeouts.Count,
+  '',
+  'Queue:',
+  '- Replays queue: ' + $queueReplay.Count,
+  '',
+  '=== 5. VERIFICATIONS DE COHERENCE AVEC LE CODE ===',
+  '',
+  ($coherence -join [Environment]::NewLine),
+  '',
+  '=== RESUME ===',
+  '',
+  'POST:',
+  '- ' + $(if ($postStarts.Count -gt 0 -and ($postSuccess.Count / $postStarts.Count) -gt 0.8) { '[OK]' } elseif ($postStarts.Count -gt 0) { '[WARN] Taux de succes faible' } else { '[KO] Aucun POST detecte' }),
+  '',
+  'GET:',
+  '- ' + $(if ($getFetch.Count -gt 0 -and ($jsonParseErrors.Count / $getFetch.Count) -lt 0.1) { '[OK]' } elseif ($getFetch.Count -gt 0) { '[WARN] Erreurs parsing frequentes' } else { '[KO] Aucun GET detecte' }),
+  '',
+  'Heartbeat:',
+  '- ' + $(if ($hbStarts.Count -gt 0 -and ($hbSuccess.Count / $hbStarts.Count) -gt 0.8) { '[OK]' } elseif ($hbStarts.Count -gt 0) { '[WARN] Taux de succes faible' } else { '[INFO] Aucun heartbeat detecte' }),
+  '',
+  'Reseau:',
+  '- ' + $(if ($wifiDisconnect.Count -eq 0) { '[OK] WiFi stable' } else { '[WARN] Deconnexions WiFi detectees' }),
+  '',
+  '=== FIN DU DIAGNOSTIC ==='
+) -join ([Environment]::NewLine)
 
 $report | Out-File -FilePath $outputFile -Encoding UTF8
 
 Write-Host ""
-Write-Host "✅ Diagnostic sauvegardé: $outputFile" -ForegroundColor Green
+Write-Host ('[OK] Diagnostic sauvegarde: ' + $outputFile) -ForegroundColor Green
 Write-Host ""
-Write-Host "=== RÉSUMÉ ===" -ForegroundColor Cyan
-Write-Host "POST: $($postStarts.Count) tentatives, $($postSuccess.Count) réussis, $($postFailed.Count) échoués" -ForegroundColor White
-Write-Host "GET: $($getFetch.Count) tentatives, $($jsonParseSuccess.Count) parsing réussis, $($jsonParseErrors.Count) erreurs" -ForegroundColor White
-Write-Host "Heartbeat: $($hbStarts.Count) tentatives, $($hbSuccess.Count) réussis" -ForegroundColor White
+Write-Host '=== RESUME ===' -ForegroundColor Cyan
+Write-Host ('POST: ' + $postStarts.Count + ' tentatives, ' + $postSuccess.Count + ' reussis, ' + $postFailed.Count + ' echoues') -ForegroundColor White
+Write-Host ('GET: ' + $getFetch.Count + ' tentatives, ' + $jsonParseSuccess.Count + ' parsing reussis, ' + $jsonParseErrors.Count + ' erreurs') -ForegroundColor White
+Write-Host ('Heartbeat: ' + $hbStarts.Count + ' tentatives, ' + $hbSuccess.Count + ' reussis') -ForegroundColor White
 Write-Host ""

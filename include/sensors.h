@@ -40,6 +40,10 @@ class UltrasonicManager {
   
   // Gestion des défaillances
   SensorFailureManager _failureManager;
+  
+  // v11.173: Rate-limiting des logs timeout (évite bruit excessif si capteur non connecté)
+  uint16_t _timeoutCount;
+  static const uint16_t TIMEOUT_LOG_INTERVAL = 10; // Log seulement tous les N timeouts après les 3 premiers
 };
 
 class AirSensor {

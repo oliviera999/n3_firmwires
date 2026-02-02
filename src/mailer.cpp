@@ -37,7 +37,7 @@ static const char* formatUptime(unsigned long ms) {
 static char g_systemInfoFooterBuffer[1024];   // Réduit de 4096
 static char g_detailedTimeReportBuffer[512];  // Réduit de 2048
 static char g_lightFooterBuffer[256];         // Footer allégé
-static const char* kLittleFsLabel = "littlefs";
+// v11.178: kLittleFsLabel supprimé (non utilisé - audit dead-code)
 
 // ======================
 // FONCTIONS HELPER POUR ÉVITER LA DUPLICATION
@@ -159,10 +159,14 @@ static const char* buildLightFooter() {
   const char* board = "ESP32";
 #endif
   
+  // v11.179: Protection contre NULL (fix crash LoadProhibited)
+  const char* profileName = Utils::getProfileName();
+  if (!profileName) profileName = "(unknown)";
+  
   written = snprintf(buf, remaining, "\n\n-- Infos système --\n"
                                      "- Version: %s\n"
                                      "- Environnement: %s\n",
-                     ProjectConfig::VERSION, Utils::getProfileName());
+                     ProjectConfig::VERSION, profileName);
   if (written < 0 || (size_t)written >= remaining) {
     buf[remaining - 1] = '\0';
     return g_lightFooterBuffer;
@@ -171,7 +175,9 @@ static const char* buildLightFooter() {
   remaining -= written;
   
   // Uptime
+  // v11.179: Protection contre NULL (fix crash LoadProhibited)
   const char* uptimeStr = formatUptime(millis());
+  if (!uptimeStr) uptimeStr = "(unknown)";
   written = snprintf(buf, remaining, "- Uptime: %s\n", uptimeStr);
   if (written < 0 || (size_t)written >= remaining) {
     buf[remaining - 1] = '\0';
@@ -190,14 +196,11 @@ static const char* buildLightFooter() {
   remaining -= written;
   
   // Réseau (version allégée)
+  // v11.179: Simplification - pas d'appels WiFi pour éviter crashes LoadProhibited
+  // Les appels WiFi.SSID(), WiFi.localIP() peuvent crasher en état transitoire
   bool connected = WiFi.isConnected();
   if (connected) {
-    char ssidBuf[33];
-    WiFiHelpers::getSSID(ssidBuf, sizeof(ssidBuf));
-    const char* ssid = ssidBuf;
-    IPAddress ipAddr = WiFi.localIP();
-    written = snprintf(buf, remaining, "- WiFi: Connecté (%s, %d.%d.%d.%d)\n",
-                       ssid, ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]);
+    written = snprintf(buf, remaining, "- WiFi: Connecté\n");
   } else {
     written = snprintf(buf, remaining, "- WiFi: Déconnecté\n");
   }
@@ -234,11 +237,15 @@ static const char* buildSystemInfoFooter() {
   const char* board = "ESP32";
 #endif
   
+  // v11.179: Protection contre NULL (fix crash LoadProhibited)
+  const char* profileName = Utils::getProfileName();
+  if (!profileName) profileName = "(unknown)";
+  
   written = snprintf(buf, remaining, "\n\n-- Infos système --\n"
                                      "- Version: %s\n"
                                      "- Carte: %s\n"
                                      "- Environnement: %s\n",
-                     ProjectConfig::VERSION, board, Utils::getProfileName());
+                     ProjectConfig::VERSION, board, profileName);
   if (written < 0 || (size_t)written >= remaining) {
     buf[remaining - 1] = '\0';
     return buf;
@@ -289,9 +296,18 @@ static const char* buildSystemInfoFooter() {
     IPAddress gateway = WiFi.gatewayIP();
     IPAddress subnet = WiFi.subnetMask();
     IPAddress dns = WiFi.dnsIP(0);
+    // v11.179: Protection contre hostname NULL (fix crash LoadProhibited)
     const char* host = WiFi.getHostname();
+    if (!host) host = "(unknown)";
     char bssidBuf[18];
-    strncpy(bssidBuf, WiFi.BSSIDstr().c_str(), sizeof(bssidBuf) - 1);
+    // v11.179: Utiliser WiFi.BSSID() au lieu de BSSIDstr() pour éviter String temporaire corrompue
+    uint8_t* bssidPtr = WiFi.BSSID();
+    if (bssidPtr) {
+      snprintf(bssidBuf, sizeof(bssidBuf), "%02X:%02X:%02X:%02X:%02X:%02X",
+               bssidPtr[0], bssidPtr[1], bssidPtr[2], bssidPtr[3], bssidPtr[4], bssidPtr[5]);
+    } else {
+      strncpy(bssidBuf, "(unavailable)", sizeof(bssidBuf) - 1);
+    }
     bssidBuf[sizeof(bssidBuf) - 1] = '\0';
     const char* bssid = bssidBuf;
     
@@ -403,23 +419,6 @@ static const char* buildSystemInfoFooter() {
   }
   buf += written;
   remaining -= written;
-  
-  // Informations de dérive temporelle si disponibles
-  // extern TimeDriftMonitor timeDriftMonitor;
-  // if (timeDriftMonitor.isDriftCalculated()) {
-  //   footer += "- Dérive PPM: "; footer += String(timeDriftMonitor.getDriftPPM(), 2); footer += "\n";
-  //   footer += "- Dérive secondes: "; footer += String(timeDriftMonitor.getDriftSeconds(), 2); footer += "\n";
-  //   time_t lastSync = timeDriftMonitor.getLastSyncTime();
-  //   if (lastSync > 0) {
-  //     struct tm syncInfo;
-  //     localtime_r(&lastSync, &syncInfo);
-  //     char syncBuf[32];
-  //     strftime(syncBuf, sizeof(syncBuf), "%Y-%m-%d %H:%M:%S", &syncInfo);
-  //     footer += "- Dernière sync NTP: "; footer += syncBuf; footer += "\n";
-  //   }
-  // } else {
-  //   footer += "- Dérive: Non calculée\n";
-  // }
   
   // Informations RTC/Flash (SYSTEM namespace)
   unsigned long savedEpoch;
@@ -776,33 +775,6 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
     buf += written;
     remaining -= written;
     
-    // Informations de dérive si disponibles
-    // extern TimeDriftMonitor timeDriftMonitor;
-    // if (timeDriftMonitor.isDriftCalculated()) {
-    //   report += "Dérive PPM: "; report += String(timeDriftMonitor.getDriftPPM(), 3); report += "\n";
-    //   report += "Dérive secondes: "; report += String(timeDriftMonitor.getDriftSeconds(), 3); report += "\n";
-    //   time_t lastSync = timeDriftMonitor.getLastSyncTime();
-    //   if (lastSync > 0) {
-    //     struct tm syncInfo;
-    //     localtime_r(&lastSync, &syncInfo);
-    //     char syncBuf[32];
-    //     strftime(syncBuf, sizeof(syncBuf), "%Y-%m-%d %H:%M:%S", &syncInfo);
-    //     report += "Dernière sync NTP: "; report += syncBuf; report += "\n";
-    //     
-    //     // Calcul du temps écoulé depuis la dernière sync
-    //     time_t timeSinceSync = now - lastSync;
-    //     if (timeSinceSync < 3600) {
-    //       report += "Temps depuis sync: "; report += String(timeSinceSync/60); report += " minutes\n";
-    //     } else if (timeSinceSync < 86400) {
-    //       report += "Temps depuis sync: "; report += String(timeSinceSync/3600); report += " heures\n";
-    //     } else {
-    //       report += "Temps depuis sync: "; report += String(timeSinceSync/86400); report += " jours\n";
-    //     }
-    //   }
-    // } else {
-    //   report += "Dérive: Non calculée\n";
-    // }
-    
     // Informations RTC/Flash (SYSTEM namespace)
     unsigned long savedEpoch;
     g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch, 0);
@@ -928,7 +900,9 @@ static bool waitForNetworkReadyForSMTP() {
   
   // Phase 2: Vérifier que l'IP est toujours valide et DNS fonctionne
   while ((millis() - startMs) < MAX_WAIT_MS) {
-    esp_task_wdt_reset();  // Plan: watchdog dans boucles longues
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();  // Plan: watchdog dans boucles longues
+    }
     if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
       // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
       IPAddress dnsResult;
@@ -1000,11 +974,8 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
     Serial.println(F("[Mail] Tentative de connexion SMTP..."));
     _ready = _smtp.connect(&_cfg);
     if(!_ready){
+      // v11.179: Pas de String temporaire pour éviter crash dans destructeur
       Serial.printf("[Mail] ❌ Reconnexion SMTP échouée - code: %d\n", _smtp.statusCode());
-      char smtpErrorBuf[128];
-      strncpy(smtpErrorBuf, _smtp.errorReason().c_str(), sizeof(smtpErrorBuf) - 1);
-      smtpErrorBuf[sizeof(smtpErrorBuf) - 1] = '\0';
-      Serial.printf("[Mail] ❌ Erreur: %s\n", smtpErrorBuf);
       TLSMutex::release();  // v11.151: CRITIQUE - libérer le mutex avant return !
       return false;
     } else {
@@ -1020,7 +991,8 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // La bibliothèque ESP Mail Client peut utiliser les pointeurs de manière asynchrone
   static char fromNameBuf[64];
   static char subjectBuf[128];
-  static char finalMessageBuffer[2048];  // Aligné EMAIL_MAX_SIZE_BYTES (2000) + footer ~256 B ; réduit fragmentation
+  // v11.179: Harmoniser avec enhancedMessage (2512 bytes) pour éviter troncature
+  static char finalMessageBuffer[BufferConfig::EMAIL_MAX_SIZE_BYTES + 512];  // ~2512 bytes
   
   Serial.println(F("[Mail] Trace 3: Buffers allocated"));
 
@@ -1061,11 +1033,17 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
     Serial.println(F("[Mail] Trace 3.1: Appending light footer..."));
     // Ajouter le footer allégé
     const char* lightFooter = buildLightFooter();
+    // v11.179: Validation du pointeur (fix crash LoadProhibited)
+    if (!lightFooter) {
+      Serial.println(F("[Mail] ❌ buildLightFooter returned NULL"));
+      lightFooter = "\n-- Footer unavailable --\n";
+    }
     size_t footerLen = strlen(lightFooter);
     size_t remaining = sizeof(finalMessageBuffer) - currentLen - 1;
-    if (footerLen < remaining) {
+    // v11.178: Vérifier remaining > 0 avant strncat pour éviter underflow (audit bugs-high)
+    if (remaining > 0 && footerLen < remaining) {
       strncat(finalMessageBuffer, lightFooter, remaining);
-    } else {
+    } else if (remaining > 0) {
       // Tronquer le footer si nécessaire
       strncat(finalMessageBuffer, lightFooter, remaining - 1);
       finalMessageBuffer[sizeof(finalMessageBuffer) - 1] = '\0';
@@ -1111,10 +1089,8 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.printf("[Mail] Trace 7: sendMail returned %s\n", ok ? "TRUE" : "FALSE");
 
   if (!ok) {
-    char smtpErrorBuf2[128];
-    strncpy(smtpErrorBuf2, _smtp.errorReason().c_str(), sizeof(smtpErrorBuf2) - 1);
-    smtpErrorBuf2[sizeof(smtpErrorBuf2) - 1] = '\0';
-    Serial.printf("[Mail] ERREUR sendMail code=%d err=%d reason=%s\n", _smtp.statusCode(), _smtp.errorCode(), smtpErrorBuf2);
+    // v11.179: Pas de String temporaire pour éviter crash dans destructeur
+    Serial.printf("[Mail] ERREUR sendMail code=%d err=%d\n", _smtp.statusCode(), _smtp.errorCode());
   } else {
     Serial.println(F("[Mail] Message envoyé avec succès ✔"));
   }
@@ -1207,24 +1183,34 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   static Diagnostics tempDiag;
   tempDiag.loadFromNvs();
   const char* timeReport = buildDetailedTimeReport(tempDiag);
+  // v11.179: Validation du pointeur (robustesse)
+  if (!timeReport) {
+    Serial.println(F("[Mail] ❌ buildDetailedTimeReport returned NULL"));
+    return false;
+  }
   size_t timeReportLen = strlen(timeReport);
   
   // Ajouter le rapport temporel détaillé
-  if (timeReportLen < remaining) {
-    strncat(enhancedMessage, timeReport, remaining - 1);
-    offset += timeReportLen;
-    remaining -= timeReportLen;
-  } else {
-    // Tronquer si nécessaire
-    strncat(enhancedMessage, timeReport, remaining - 1);
-    enhancedMessage[sizeof(enhancedMessage) - 1] = '\0';
-    remaining = 0;
+  // v11.179: Remplacer strncat par snprintf pour tracking correct (fix corruption mémoire)
+  if (remaining > 0) {
+    written = snprintf(enhancedMessage + offset, remaining, "%s", timeReport);
+    if (written > 0 && (size_t)written < remaining) {
+      offset += written;
+      remaining -= written;
+    } else {
+      // Troncature - marquer buffer plein
+      enhancedMessage[sizeof(enhancedMessage) - 1] = '\0';
+      remaining = 0;
+    }
   }
   Serial.printf("[Mail] enhancedMessage après timeReport: %d chars\n", strlen(enhancedMessage));
   
   // Vérifier si l'alerte est critique (PANIC ou crash)
   bool isCritical = tempDiag.hasPanicInfo() || tempDiag.hasCrashInfo();
-  if (isCritical) {
+  // v11.179: DÉSACTIVATION buildSystemInfoFooter() - cause crashes LoadProhibited intermittents
+  // Raison: appels WiFi (BSSID, hostname, etc.) peuvent retourner pointeurs corrompus en état transitoire
+  // Solution temporaire: utiliser buildLightFooter() pour toutes les alertes
+  if (false && isCritical) {
     Serial.println(F("[Mail] ⚠️ Alerte CRITIQUE détectée - ajout footer complet"));
     const char* systemInfoFooter = buildSystemInfoFooter();
     size_t footerLen = strlen(systemInfoFooter);
@@ -1251,11 +1237,13 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   
   // Si alerte critique, on a déjà ajouté le footer complet, donc on doit éviter que sendSync() ajoute le footer allégé
   // Solution: ajouter un marqueur spécial à la fin du message pour indiquer qu'un footer est déjà présent
-  if (isCritical) {
+  // v11.179: Remplacer strncat par snprintf pour tracking correct (fix corruption mémoire)
+  if (isCritical && remaining > 0) {
     const char* marker = "\n[Footer complet déjà inclus]";
-    size_t markerLen = strlen(marker);
-    if (markerLen < remaining) {
-      strncat(enhancedMessage, marker, remaining - 1);
+    written = snprintf(enhancedMessage + offset, remaining, "%s", marker);
+    if (written > 0 && (size_t)written < remaining) {
+      offset += written;
+      remaining -= written;
     }
   }
   

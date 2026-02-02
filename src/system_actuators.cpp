@@ -71,25 +71,32 @@ void SystemActuators::stopTankPump(uint32_t startTime) {
   tankPumpStartTime = 0;
 }
 
-void SystemActuators::startAquaPump() { pumpAqua.on(); LOG(LOG_INFO, "Aqua pump ON"); Serial.println("[Event] Aqua pump ON"); }
-void SystemActuators::stopAquaPump()  { pumpAqua.off(); LOG(LOG_INFO, "Aqua pump OFF"); Serial.println("[Event] Aqua pump OFF"); }
+void SystemActuators::startAquaPump() { pumpAqua.on(); LOG(LOG_INFO, "[Event] Aqua pump ON"); }
+void SystemActuators::stopAquaPump()  { pumpAqua.off(); LOG(LOG_INFO, "[Event] Aqua pump OFF"); }
 
 // Méthodes pour le chauffage
-void SystemActuators::startHeater() { heater.on(); LOG(LOG_INFO, "Heater ON"); Serial.println("[Event] Heater ON"); }
-void SystemActuators::stopHeater()  { heater.off(); LOG(LOG_INFO, "Heater OFF"); Serial.println("[Event] Heater OFF"); }
+void SystemActuators::startHeater() { heater.on(); LOG(LOG_INFO, "[Event] Heater ON"); }
+void SystemActuators::stopHeater()  { heater.off(); LOG(LOG_INFO, "[Event] Heater OFF"); }
 
 // Méthodes pour la lumière
-void SystemActuators::startLight() { light.on(); LOG(LOG_INFO, "Light ON"); Serial.println("[Event] Light ON"); }
-void SystemActuators::stopLight()  { light.off(); LOG(LOG_INFO, "Light OFF"); Serial.println("[Event] Light OFF"); }
+void SystemActuators::startLight() { light.on(); LOG(LOG_INFO, "[Event] Light ON"); }
+void SystemActuators::stopLight()  { light.off(); LOG(LOG_INFO, "[Event] Light OFF"); }
 
 // Méthodes pour la nourriture
 // durationSec : durée pendant laquelle le servo reste dans la position de distribution.
 // Valeur par défaut : 10 s pour conserver la compatibilité avec les appels existants.
-void SystemActuators::feedBigFish(uint16_t durationSec)   { LOG(LOG_INFO, "Feed big fish (%u s)", durationSec); Serial.printf("[Event] Feed big fish %u s\n", durationSec); feederBig.dispenseWithIntermediate(140, 45, durationSec); }
-void SystemActuators::feedSmallFish(uint16_t durationSec) { LOG(LOG_INFO, "Feed small fish (%u s)", durationSec); Serial.printf("[Event] Feed small fish %u s\n", durationSec); feederSmall.dispenseWithIntermediate(140, 45, durationSec); }
+void SystemActuators::feedBigFish(uint16_t durationSec)   { LOG(LOG_INFO, "[Event] Feed big fish %u s", durationSec); feederBig.dispenseWithIntermediate(140, 45, durationSec); }
+void SystemActuators::feedSmallFish(uint16_t durationSec) { LOG(LOG_INFO, "[Event] Feed small fish %u s", durationSec); feederSmall.dispenseWithIntermediate(140, 45, durationSec); }
 
 // Nourrissage séquentiel pour éviter les conflits de puissance
 void SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDurationSec, uint16_t delayBetweenSec) {
+  // v11.179: Protection contre les appels multiples (race condition)
+  if (g_smallFeedInstance != nullptr) {
+    LOG(LOG_WARN, "Nourrissage séquentiel déjà en cours, ignoré");
+    Serial.println("[Event] Sequential feed already in progress, ignored");
+    return;
+  }
+  
   LOG(LOG_INFO, "=== NOURRISSAGE SÉQUENTIEL ===");
   LOG(LOG_INFO, "Gros poissons: %u s, Petits poissons: %u s, Délai: %u s", bigDurationSec, smallDurationSec, delayBetweenSec);
   Serial.printf("[Event] Sequential feed: big=%u s, small=%u s, delay=%u s\n", bigDurationSec, smallDurationSec, delayBetweenSec);
