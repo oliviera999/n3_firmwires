@@ -163,12 +163,15 @@ void PowerManager::initTime() {
   _lastDriftSeconds = 0.0f;
   _driftAccumulator = 0.0f;
   
+  // Configuration timezone UTC+1 (Maroc/France hiver)
+  setenv("TZ", "<+01>-1", 1);
+  tzset();
+  
   // Chargement de l'heure sauvegardée avec fallback robuste
   time_t loadedEpoch = loadTimeWithFallback();
   
-  // Configuration de la timezone pour le Maroc (UTC+1 fixe)
-  // Utilisation directe des offsets GMT en secondes (plus simple et fiable)
-  configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
+  // Configuration NTP avec offset UTC+1 (3600 secondes)
+  configTime(3600, 0, _ntpServer);
   
   char timeBuf[64];
   getCurrentTimeString(timeBuf, sizeof(timeBuf));
@@ -193,8 +196,8 @@ void PowerManager::syncTimeFromNTP() {
   time_t localBeforeEpoch = time(nullptr);
   unsigned long localBeforeMillis = millis();
   
-  // Configuration NTP avec offset GMT en secondes (utilise les variables membres)
-  configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
+  // Configuration NTP avec offset UTC+1 (3600 secondes)
+  configTime(3600, 0, _ntpServer);
   
   // Tentative rapide de synchronisation (approche hybride)
   struct tm timeinfo;
@@ -225,6 +228,14 @@ void PowerManager::syncTimeFromNTP() {
   }
   
   unsigned long syncDuration = millis() - startTime;
+  
+  if (syncSuccess) {
+    // Vérification que l'année est raisonnable (après 2024)
+    if (timeinfo.tm_year + 1900 < 2024) {
+      LOG_NTP(LogConfig::LOG_WARN, "Année invalide %d après sync", timeinfo.tm_year + 1900);
+      syncSuccess = false;
+    }
+  }
   
   if (syncSuccess) {
     // Sauvegarde de l'heure synchronisée
@@ -280,6 +291,12 @@ void PowerManager::syncTimeFromNTP() {
   } else {
     LOG_NTP(LogConfig::LOG_ERROR, "Échec de synchronisation NTP après %lu ms (%d tentatives)", 
             syncDuration, attempts);
+    // Restaurer l'heure valide précédente pour éviter régression (configTime peut corrompre le RTC)
+    if (isValidEpoch(localBeforeEpoch)) {
+      timeval tv = {localBeforeEpoch, 0};
+      settimeofday(&tv, nullptr);
+      LOG_NTP(LogConfig::LOG_WARN, "Heure restaurée (epoch: %lu)", (unsigned long)localBeforeEpoch);
+    }
   }
 }
 
@@ -319,6 +336,20 @@ void PowerManager::updateTime() {
 } 
 
 // ---------------------------------------------------------------------------
+// Epoch validé pour affichage (évite régressions / valeurs aberrantes)
+// ---------------------------------------------------------------------------
+time_t PowerManager::getCurrentEpochSafe() {
+  time_t t = time(nullptr);
+  if (isValidEpoch(t)) {
+    return t;
+  }
+  if (_lastSavedEpoch > 0 && isValidEpoch(_lastSavedEpoch)) {
+    return _lastSavedEpoch;
+  }
+  return SleepConfig::EPOCH_DEFAULT_FALLBACK;
+}
+
+// ---------------------------------------------------------------------------
 // Formatage de l'heure en chaîne locale (HH:MM:SS JJ/MM/AAAA)
 // ---------------------------------------------------------------------------
 void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
@@ -326,7 +357,7 @@ void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
     return;
   }
 
-  time_t epoch = time(nullptr);
+  time_t epoch = getCurrentEpochSafe();
   struct tm timeinfo;
   
   if (!localtime_r(&epoch, &timeinfo)) {
@@ -336,7 +367,6 @@ void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
     return;
   }
 
-  // strftime garantit déjà le null-terminator
   strftime(buffer, bufferSize, "%H:%M:%S %d/%m/%Y", &timeinfo);
 } 
 
@@ -565,7 +595,15 @@ void PowerManager::smartSaveTime() {
   
   // Validation stricte de l'epoch
   if (!isValidEpoch(currentEpoch)) {
-    Serial.printf("[Power] Epoch invalide ignoré: %lu\n", currentEpoch);
+    Serial.printf("[Power] Epoch invalide ignoré: %lu\n", (unsigned long)currentEpoch);
+    return;
+  }
+  
+  // Ne jamais persister une régression significative (évite corruption NVS)
+  constexpr time_t MAX_REGRESSION_SEC = 3600;  // 1 heure
+  if (_lastSavedEpoch > 0 && (time_t)(_lastSavedEpoch - currentEpoch) > (time_t)MAX_REGRESSION_SEC) {
+    Serial.printf("[Power] Régression d'heure ignorée (actuel: %lu, sauvegardé: %lu)\n",
+                  (unsigned long)currentEpoch, (unsigned long)_lastSavedEpoch);
     return;
   }
   

@@ -151,6 +151,9 @@ SensorReadings SystemSensors::read() {
   }
   
   {
+    // #region agent log
+    Serial.printf("{\"location\":\"system_sensors.cpp:tank_start\",\"message\":\"tank_read_start\",\"data\":{\"sensor\":\"tank\",\"order\":\"after_pota_aqua\",\"heap\":%u},\"hypothesisId\":\"H3\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", (unsigned long)ESP.getFreeHeap(), (unsigned long)millis());
+    // #endregion
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);

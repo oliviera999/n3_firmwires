@@ -244,6 +244,7 @@ async function loadPage(pageName, event) {
       // Décaller d'un tick pour que le DOM (contentArea.innerHTML) soit à jour avant displayDbVars
       setTimeout(() => {
         if (typeof window.loadDbVars === 'function') window.loadDbVars();
+        if (typeof window.applyRelayStateToButtons === 'function') window.applyRelayStateToButtons();
       }, 0);
     } else if (pageName === 'wifi') {
       // Charger automatiquement toutes les informations WiFi

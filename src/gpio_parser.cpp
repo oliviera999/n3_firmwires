@@ -51,6 +51,19 @@ void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
+  // #region agent log
+  {
+    size_t n = 0;
+    if (doc.is<JsonObject>()) {
+      JsonObjectConst obj = doc.as<JsonObjectConst>();
+      for (JsonPairConst p : obj) {
+        if (n < 5) Serial.printf("[DBG] H4 docKey[%u]=%s\n", (unsigned)n, p.key().c_str());
+        n++;
+      }
+    }
+    Serial.printf("[DBG] H4 docKeyCount=%u\n", (unsigned)n);
+  }
+  // #endregion
   // Diagnostics additionnels v11.74
   size_t presentKeys = 0;
     // v11.189: Seed état reset (110) pour ne pas redémarrer si le sync envoie 110:1 comme état courant
@@ -62,31 +75,34 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     bool hasVirtualConfig = false;
     
     // Parcourir tous les GPIO définis dans le mapping
+    // v11.191: Accepter clé numérique ("16") OU symbolique (serverPostName, ex: "etatPompeAqua")
+    // pour prise en compte des commandes serveur distant quel que soit le format renvoyé
     for (size_t i = 0; i < GPIOMap::MAPPING_COUNT; i++) {
         const GPIOMapping& mapping = GPIOMap::ALL_MAPPINGS[i];
-        char key[16];
-        snprintf(key, sizeof(key), "%d", mapping.gpio);
-        
-        // Vérifier si la clé existe dans le document
-        if (!doc.containsKey(key)) {
-            continue; // Ce GPIO n'est pas dans la réponse du serveur
+        char keyNum[16];
+        snprintf(keyNum, sizeof(keyNum), "%d", mapping.gpio);
+
+        const char* keyUsed = nullptr;
+        if (doc.containsKey(keyNum)) {
+            keyUsed = keyNum;
+        } else if (mapping.serverPostName && doc.containsKey(mapping.serverPostName)) {
+            keyUsed = mapping.serverPostName;
         }
-    presentKeys++;
-        
-        JsonVariantConst value = doc[key];
-    Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
-    const char* valueStr = value.is<const char*>() ? value.as<const char*>() : (value.is<int>() ? "" : "");
-    Serial.printf("[GPIO] key=%s raw=%s\n", key, valueStr);
+        if (!keyUsed) {
+            continue;
+        }
+        presentKeys++;
+
+        JsonVariantConst value = doc[keyUsed];
+        Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
+        const char* valueStr = value.is<const char*>() ? value.as<const char*>() : (value.is<int>() ? "" : "");
+        Serial.printf("[GPIO] key=%s raw=%s\n", keyUsed, valueStr);
         // v11.190: Ne jamais exécuter la commande reset (110) depuis le sync / doc serveur
-        // (évite reboot en boucle si le serveur envoie 110:1). Reset uniquement via UI web -> triggerResetMode().
         if (mapping.gpio == GPIOMap::RESET_CMD.gpio) {
             saveToNVS(mapping, value);
             continue;
         }
-        // Appliquer selon type
         applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
-        
-        // Sauvegarder NVS
         saveToNVS(mapping, value);
     }
     
@@ -103,15 +119,17 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     for (size_t i = 0; i < sizeof(textKeys) / sizeof(textKeys[0]); i++) {
         const char* textKey = textKeys[i];
         if (doc.containsKey(textKey)) {
-            // Vérifier que cette clé n'a pas déjà été traitée comme GPIO numérique
+            // Vérifier que cette clé n'a pas déjà été traitée (numérique ou symbolique)
             bool alreadyProcessed = false;
             for (size_t j = 0; j < GPIOMap::MAPPING_COUNT; j++) {
                 const GPIOMapping& mapping = GPIOMap::ALL_MAPPINGS[j];
                 char gpioKey[16];
                 snprintf(gpioKey, sizeof(gpioKey), "%d", mapping.gpio);
-                if (doc.containsKey(gpioKey)) {
-                    // Vérifier si ce GPIO correspond à cette clé textuelle
-                    const char* mappedKey = mapGPIOToConfigKey(mapping.gpio, doc[gpioKey]);
+                bool hasNum = doc.containsKey(gpioKey);
+                bool hasSym = mapping.serverPostName && doc.containsKey(mapping.serverPostName);
+                if (hasNum || hasSym) {
+                    JsonVariantConst v = hasNum ? doc[gpioKey] : doc[mapping.serverPostName];
+                    const char* mappedKey = mapGPIOToConfigKey(mapping.gpio, v);
                     if (mappedKey && strcmp(mappedKey, textKey) == 0) {
                         alreadyProcessed = true;
                         break;
@@ -156,6 +174,9 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     }
     
   Serial.printf("[GPIOParser] Présents: %u / %u\n", (unsigned)presentKeys, (unsigned)GPIOMap::MAPPING_COUNT);
+  // #region agent log
+  Serial.printf("[DBG] H4 H5 presentKeys=%u hasVirtualConfig=%d\n", (unsigned)presentKeys, hasVirtualConfig ? 1 : 0);
+  // #endregion
   if (presentKeys > 0 || hasVirtualConfig) {
     Serial.printf("[GPIOParser] Config appliquée (RAM+NVS), clés: %u\n", (unsigned)presentKeys);
   }

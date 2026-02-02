@@ -418,6 +418,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     doc["heater"] = ctx.actuators.isHeaterOn();
     doc["light"] = ctx.actuators.isLightOn();
     doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["mailNotif"] = ctx.automatism.isEmailEnabled();
 
     // Utilise le helper centralisé pour construire le JSON WiFi (sans MAC)
     WiFiHelpers::addWifiInfoToJson(doc, false /* includeMac */);

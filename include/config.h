@@ -188,6 +188,8 @@ namespace NetworkConfig {
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
+    // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
+    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 12000;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
@@ -271,6 +273,7 @@ namespace BufferConfig {
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 4096;
+        inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 4096;  // GET outputs/state body
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 4096;
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 6000;
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 5000;
@@ -285,6 +288,8 @@ namespace BufferConfig {
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 1024;
         // GET /dbvars: réponse plus grande (mail, mailNotif, ~20 clés) pour éviter troncature
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 2048;
+        // GET outputs/state: buffer lecture body plus grand pour éviter IncompleteInput (réponse > 1024)
+        inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 2048;
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 1024;  // Limite payload postData (malloc si besoin pour tenir en DRAM)
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 2000;  // Réduit de 3000 (emails typiquement < 2000 bytes)
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;  // Réduit de 2500

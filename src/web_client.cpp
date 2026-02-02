@@ -350,15 +350,19 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   WiFi.setSleep(false);
   vTaskDelay(pdMS_TO_TICKS(100));
 
-  const size_t MAX_RESPONSE_SIZE = BufferConfig::JSON_DOCUMENT_SIZE;
+  const size_t MAX_RESPONSE_SIZE = BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE;
   char payloadBuffer[MAX_RESPONSE_SIZE + 1];
   char url[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
+
+  // Timeout dédié plus long pour GET outputs/state (évite -11 read timeout si serveur/latence lents)
+  _http.setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
 
   // v11.162: Utilise le client HTTP simple (membre de classe)
   // v11.166: Verification retour http.begin() (audit robustesse)
   if (!_http.begin(_client, url)) {
     LOG(LOG_WARN, "[HTTP] Echec initialisation HTTPClient pour %s", url);
+    _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc);
   }
 
@@ -366,9 +370,8 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
 
   if (code <= 0) {
     Serial.printf("[HTTP] outputs/state: code=%d (skip read)\n", code);
-    if (_client.connected()) {
-      _http.end();
-    }
+    // Nettoyage systématique après timeout (-11) ou autre erreur: évite réutiliser un client en mauvais état
+    _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc);
@@ -382,9 +385,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   WiFiClient* stream = _http.getStreamPtr();
   if (!stream) {
     LOG(LOG_WARN, "[HTTP] Pas de stream disponible, fallback NVS");
-    if (_client.connected()) {
-      _http.end();
-    }
+    _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc);
@@ -401,7 +402,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (totalRead == 0) {
     // Pas de Content-Length ou lecture bloc a échoué: boucle classique
     unsigned long globalReadStart = millis();
-    const unsigned long READ_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
+    const unsigned long READ_TIMEOUT_MS = NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS;
     uint8_t emptyReads = 0;
     const uint8_t MAX_EMPTY_READS = 10;
 
@@ -437,13 +438,14 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     LOG(LOG_WARN, "[HTTP] Réponse outputs/state tronquée (lu=%u, max=%u, contentLength=%d)",
         (unsigned)totalRead, (unsigned)MAX_RESPONSE_SIZE, contentLength);
   }
-  if (_client.connected()) {
-    _http.end();
-  }
+  _http.end();
   _http.setReuse(false);
   _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 
   if (totalRead == 0) {
+    _http.end();
+    _http.setReuse(false);
+    _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc);
   }
 
@@ -466,6 +468,19 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   DeserializationError err = deserializeJson(doc, payloadBuffer);
+  // #region agent log
+  {
+    size_t previewLen = totalRead < 180 ? totalRead : 180;
+    char preview[184];
+    memcpy(preview, payloadBuffer, previewLen);
+    preview[previewLen] = '\0';
+    Serial.printf("[DBG] H1 rawPreview len=%u firstKeys=%s\n", (unsigned)previewLen, preview);
+    Serial.printf("[DBG] H1 hasOutputs=%d hasSwitches=%d docSize=%u\n",
+                  doc["outputs"].is<JsonObject>() ? 1 : 0,
+                  doc["switches"].is<JsonObject>() ? 1 : 0,
+                  (unsigned)doc.size());
+  }
+  // #endregion
   if (err) {
     // v11.173: Rate-limiting des logs JSON error (log les 3 premiers, puis toutes les 30s)
     // Atomic pour éviter race conditions (fetchRemoteState peut être appelé depuis plusieurs tâches)
@@ -482,15 +497,28 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
       } else {
         LOG(LOG_DEBUG, "[HTTP] JSON parse error: (unknown) (total: %u)", count);
       }
+      // Diagnostic troncature: IncompleteInput souvent = body tronqué (buffer trop petit ou lecture arrêtée trop tôt)
+      Serial.printf("[HTTP] parse fail: err=%s totalRead=%u maxBuf=%u contentLength=%d heap=%u\n",
+                    errCStr ? errCStr : "?", (unsigned)totalRead, (unsigned)MAX_RESPONSE_SIZE,
+                    contentLength, (unsigned)ESP.getFreeHeap());
       lastJsonErrorLog.store(now);
     }
     return loadFromNVSFallback(doc);
   }
 
-  // Si le serveur renvoie un objet imbriqué {"outputs": {"16": 1, "100": "..."}},
+  // Si le serveur renvoie un objet imbriqué {"outputs": {...}} ou {"switches": {...}},
   // copier l'objet interne dans doc pour que GPIOParser et processFetchedRemoteConfig voient les clés.
+  bool didUnwrap = false;
+  JsonObject inner;
   if (doc["outputs"].is<JsonObject>()) {
-    JsonObject inner = doc["outputs"].as<JsonObject>();
+    inner = doc["outputs"].as<JsonObject>();
+    didUnwrap = true;
+  } else if (doc["switches"].is<JsonObject>()) {
+    inner = doc["switches"].as<JsonObject>();
+    didUnwrap = true;
+    Serial.println(F("[HTTP] Réponse outputs/state: objet \"switches\" détecté, déplié"));
+  }
+  if (didUnwrap && !inner.isNull()) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     for (JsonPair p : inner) {
       tmp[p.key().c_str()] = p.value();
@@ -499,8 +527,11 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     for (JsonPair p : tmp.as<JsonObject>()) {
       doc[p.key().c_str()] = p.value();
     }
-    Serial.println(F("[HTTP] Réponse outputs/state: objet imbriqué \"outputs\" déplié"));
+    Serial.println(F("[HTTP] Réponse outputs/state: objet imbriqué déplié"));
   }
+  // #region agent log
+  Serial.printf("[DBG] H2 afterUnwrap docSize=%u\n", (unsigned)doc.size());
+  // #endregion
 
   // Diagnostic: distinguer serveur (réponse vide) vs ESP (parsing/application)
   Serial.printf("[HTTP] GET outputs/state: body=%u bytes, doc keys=%u (0=vide serveur, ~28=OK)\n",

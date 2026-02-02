@@ -415,8 +415,8 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
 }
 
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
-    // v11.178: Timeout réduit à 5s (règle offline-first: max 5s pour opérations réseau - audit)
-    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::HTTP_TIMEOUT_MS);
+    // GET outputs/state : timeout 12s (serveur/latence peuvent dépasser 5s, net task uniquement)
+    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
     if (ok && doc.size() > 0) {
         processFetchedRemoteConfig(doc);
     } else {

@@ -62,14 +62,20 @@ if (Test-Path $serverDiagFile) {
     }
 }
 
-# Analyse mails
+# Analyse mails (resilient: continue si script echoue, ex. encodage)
 Write-Host "  - Analyse mails..." -ForegroundColor Gray
 $emailDiagFile = 'check_emails_' + $timestamp + '.txt'
-& .\check_emails_from_log.ps1 -LogFile $LogFile *> $emailDiagFile
-if (Test-Path $emailDiagFile) {
-    $emailDiagContent = Get-Content $emailDiagFile -Raw
-} else {
-    $emailDiagContent = 'Analyse mails non disponible'
+$emailDiagContent = ''
+try {
+    & .\check_emails_from_log.ps1 -LogFile $LogFile *> $emailDiagFile 2>&1
+    if (Test-Path $emailDiagFile) {
+        $emailDiagContent = Get-Content $emailDiagFile -Raw -ErrorAction SilentlyContinue
+    }
+} catch {
+    # Ignore: parse error (encodage/accents dans check_emails_from_log.ps1)
+}
+if (-not $emailDiagContent) {
+    $emailDiagContent = 'Analyse mails non disponible (script echoue ou encodage)'
 }
 
 # Analyse exhaustive

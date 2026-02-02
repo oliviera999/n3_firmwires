@@ -49,21 +49,25 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
       }
     }
 
-    // Délai minimal entre mesures (10ms suffisant pour éviter les interférences)
+    // Délai entre mesures conforme datasheet HC-SR04 (cycle > 60 ms)
     if (i < samples - 1) {
-      vTaskDelay(pdMS_TO_TICKS(10));
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
     }
   }
   
-  // Un seul délai après toutes les mesures (respecte datasheet HC-SR04)
   if (samples > 1) {
-    vTaskDelay(pdMS_TO_TICKS(50)); // 50ms après toutes les mesures
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
   }
 
   return valid ? total / valid : 0;
 }
 
 uint16_t UltrasonicManager::readAdvancedFiltered() {
+  // #region agent log
+  if (_failureManager.isDisabled()) {
+    Serial.printf("{\"location\":\"sensors.cpp:readAdvancedFiltered\",\"message\":\"us_disabled\",\"data\":{\"disabled\":1},\"hypothesisId\":\"H5\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", (unsigned long)millis());
+  }
+  // #endregion
   // Si capteur désactivé, tester réactivation périodiquement
   if (_failureManager.isDisabled()) {
     if (_failureManager.shouldTestReactivation()) {
@@ -152,19 +156,21 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       }
     }
     
-    // Délai minimal entre mesures (10ms suffisant pour éviter les interférences)
+    // Délai entre mesures conforme datasheet HC-SR04 (cycle > 60 ms)
     if (i < READINGS_COUNT - 1) {
-      vTaskDelay(pdMS_TO_TICKS(10));
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
     }
   }
   
-  // Un seul délai après toutes les mesures (respecte datasheet HC-SR04)
   if (READINGS_COUNT > 1) {
-    vTaskDelay(pdMS_TO_TICKS(50)); // 50ms après toutes les mesures
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
   }
   
   // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
   if (validReadings < 1) { // Réduit de MIN_VALID_READINGS (2) à 1
+    // #region agent log
+    Serial.printf("{\"location\":\"sensors.cpp:adv_validReadings\",\"message\":\"us_few_valid\",\"data\":{\"validReadings\":%u,\"lastValid\":%u},\"hypothesisId\":\"H2\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", validReadings, _lastValidDistance, (unsigned long)millis());
+    // #endregion
     Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/1), retourne 0\n", validReadings);
     _failureManager.recordFailure();
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
@@ -183,7 +189,9 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   
   // Calcule la médiane
   uint16_t medianDistance = readings[validReadings / 2];
-  
+  // #region agent log
+  Serial.printf("{\"location\":\"sensors.cpp:adv_median\",\"message\":\"us_readings\",\"data\":{\"validReadings\":%u,\"r0\":%u,\"r1\":%u,\"r2\":%u,\"median\":%u},\"hypothesisId\":\"H2,H4\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", validReadings, readings[0], validReadings >= 2 ? readings[1] : 0u, validReadings >= 3 ? readings[2] : 0u, medianDistance, (unsigned long)millis());
+  // #endregion
   // v11.35: NOUVELLE LOGIQUE - Médiane glissante avec consensus pour éviter valeurs figées
   // Calcul de la médiane de l'historique (valeur de référence robuste)
   uint16_t historyMedian = 0;
@@ -217,6 +225,10 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   
   // Détection de saut par rapport à la référence robuste
   if (referenceValue > 0 && abs((int)medianDistance - (int)referenceValue) > MAX_DISTANCE_DELTA) {
+    // #region agent log
+    int delta = abs((int)medianDistance - (int)referenceValue);
+    Serial.printf("{\"location\":\"sensors.cpp:adv_jump\",\"message\":\"us_jump_detected\",\"data\":{\"median\":%u,\"ref\":%u,\"delta\":%d},\"hypothesisId\":\"H1\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", medianDistance, referenceValue, delta, (unsigned long)millis());
+    // #endregion
     Serial.printf("[Ultrasonic] Saut détecté: %u cm -> %u cm (écart: %d cm, ref: médiane historique)\n", 
                   referenceValue, medianDistance, abs((int)medianDistance - (int)referenceValue));
     
@@ -239,7 +251,9 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       if (consensusCount >= 2) {
         Serial.printf("[Ultrasonic] Consensus détecté (%d/3 lectures), accepte nouvelle référence\n", consensusCount);
       } else {
-        // Sinon, utilise la médiane historique par sécurité
+        // #region agent log
+        Serial.printf("{\"location\":\"sensors.cpp:adv_no_consensus\",\"message\":\"us_return_ref\",\"data\":{\"median\":%u,\"ref\":%u,\"consensusCount\":%u,\"returnedRef\":1},\"hypothesisId\":\"H1\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", medianDistance, referenceValue, consensusCount, (unsigned long)millis());
+        // #endregion
         Serial.printf("[Ultrasonic] Pas de consensus (%d/3), utilise médiane historique par sécurité\n", consensusCount);
         return referenceValue;
       }
@@ -257,6 +271,9 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   // Met à jour la dernière valeur valide
   _lastValidDistance = medianDistance;
   
+  // #region agent log
+  Serial.printf("{\"location\":\"sensors.cpp:adv_ok\",\"message\":\"us_return_median\",\"data\":{\"returned\":%u},\"hypothesisId\":\"H1\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", medianDistance, (unsigned long)millis());
+  // #endregion
   Serial.printf("[Ultrasonic] Distance médiane: %u cm (%d lectures valides)\n", 
                 medianDistance, validReadings);
   return medianDistance;
@@ -359,9 +376,9 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       }
     }
     
-    // Délai standard de 60ms entre lectures
+    // Délai entre mesures conforme datasheet HC-SR04 (cycle > 60 ms)
     if (i < REACTIVE_READINGS_COUNT - 1) {
-      vTaskDelay(pdMS_TO_TICKS(60));
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
     }
   }
   

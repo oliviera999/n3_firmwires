@@ -29,6 +29,8 @@ class PowerManager {
 
   // Accesseurs
   time_t getCurrentEpoch() { return time(nullptr); }
+  /** Retourne un epoch validé pour affichage (évite valeurs aberrantes) */
+  time_t getCurrentEpochSafe();
   void getCurrentTimeString(char* buffer, size_t bufferSize);
 
   // Validation et correction temps

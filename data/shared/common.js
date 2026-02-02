@@ -757,7 +757,11 @@ window.toggleEmailNotifications = async function toggleEmailNotifications() {
   try {
     const response = await fetch('/action?cmd=toggleEmail', { cache: 'no-store' });
     const result = await response.text();
-    
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'common.js:toggleEmailNotifications', message: 'toggle response', data: { result, resultLen: result.length }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'C' }) }).catch(() => {});
+    } catch (e) {}
+    // #endregion
     addToHistory('Toggle Email Notifications', 'success', result);
     toast(`Notifications Email: ${result}`, 'success');
     
@@ -773,8 +777,10 @@ window.toggleEmailNotifications = async function toggleEmailNotifications() {
       }
     }
     
-    // Rafraîchir les données pour mettre à jour l'affichage
+    // Rafraîchir les données pour mettre à jour l'affichage (badge Notifications)
+    // Invalider le cache client pour forcer un GET /dbvars et afficher la nouvelle valeur
     if (typeof loadDbVars === 'function') {
+      window.cachedDbVars = null;
       loadDbVars();
     }
   } catch (error) {
@@ -1003,6 +1009,56 @@ window.updateCharts = function updateCharts(data) {
   }
 }
 
+// Réapplique le dernier état des relais sur les boutons (page Contrôles chargée dynamiquement)
+window.applyRelayStateToButtons = function applyRelayStateToButtons() {
+  const state = window.lastRelayState;
+  if (!state) return;
+  const btn = (id) => document.getElementById(id);
+  if (state.pumpTank !== undefined) {
+    const b = btn('btnPumpTank');
+    if (b) {
+      b.innerHTML = state.pumpTank ? '📦 Pompe Réserve ON' : '📦 Pompe Réserve OFF';
+      b.className = state.pumpTank ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
+    }
+  }
+  if (state.pumpAqua !== undefined) {
+    const b = btn('btnPumpAqua');
+    if (b) {
+      b.innerHTML = state.pumpAqua ? '🐠 Pompe Aqua ON' : '🐠 Pompe Aqua OFF';
+      b.className = state.pumpAqua ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
+    }
+  }
+  if (state.heater !== undefined) {
+    const b = btn('btnHeater');
+    if (b) {
+      b.innerHTML = state.heater ? '🔥 Chauffage ON' : '🔥 Chauffage OFF';
+      b.className = state.heater ? 'btn btn-danger w-100' : 'btn btn-outline-danger w-100';
+    }
+  }
+  if (state.light !== undefined) {
+    const b = btn('btnLight');
+    if (b) {
+      b.innerHTML = state.light ? '💡 Lumière ON' : '💡 Lumière OFF';
+      b.className = state.light ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
+    }
+  }
+  if (state.forceWakeUp !== undefined) {
+    const b = btn('btnForceWakeup');
+    if (b) {
+      b.innerHTML = state.forceWakeUp ? '⏰ Force Wakeup ON' : '⏰ Force Wakeup OFF';
+      b.className = state.forceWakeUp ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
+    }
+  }
+  if (state.mailNotif !== undefined) {
+    const b = btn('btnEmailNotif');
+    if (b) {
+      const on = !!state.mailNotif;
+      b.innerHTML = on ? '🔔 Notifications ON' : '🔔 Notifications OFF';
+      b.className = on ? 'btn btn-success w-100' : 'btn btn-outline-success w-100';
+    }
+  }
+};
+
 // Fonction de mise à jour des capteurs avec KPIs (optimisée)
 window.updateSensorDisplay = function updateSensorDisplay(data) {
   const now = Date.now();
@@ -1038,26 +1094,58 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     updateElement('wlPota', data.wlPota, 0);
     updateElement('lumi', data.luminosite, 0);
     
-    // États des actionneurs avec vérifications
-    if(data.pumpTank !== undefined) {
-      const el = $('statusPump');
-      if (el) el.textContent = data.pumpTank ? 'ON' : 'OFF';
+    // États des actionneurs : affichage direct dans les boutons (comme Notifications)
+    // Mettre en cache pour réappliquer au chargement de la page Contrôles (contenu dynamique)
+    if (!window.lastRelayState) window.lastRelayState = {};
+    if (data.pumpTank !== undefined) window.lastRelayState.pumpTank = data.pumpTank;
+    if (data.pumpAqua !== undefined) window.lastRelayState.pumpAqua = data.pumpAqua;
+    if (data.heater !== undefined) window.lastRelayState.heater = data.heater;
+    if (data.light !== undefined) window.lastRelayState.light = data.light;
+    if (data.forceWakeUp !== undefined) window.lastRelayState.forceWakeUp = data.forceWakeUp;
+    if (data.mailNotif !== undefined) window.lastRelayState.mailNotif = !!data.mailNotif;
+
+    if (data.pumpTank !== undefined) {
+      const btn = $('btnPumpTank');
+      if (btn) {
+        btn.innerHTML = data.pumpTank ? '📦 Pompe Réserve ON' : '📦 Pompe Réserve OFF';
+        btn.className = data.pumpTank ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
+      }
     }
-    if(data.pumpAqua !== undefined) {
-      const el = $('statusPumpAqua');
-      if (el) el.textContent = data.pumpAqua ? 'ON' : 'OFF';
+    if (data.pumpAqua !== undefined) {
+      const btn = $('btnPumpAqua');
+      if (btn) {
+        btn.innerHTML = data.pumpAqua ? '🐠 Pompe Aqua ON' : '🐠 Pompe Aqua OFF';
+        btn.className = data.pumpAqua ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
+      }
     }
-    if(data.heater !== undefined) {
-      const el = $('statusHeater');
-      if (el) el.textContent = data.heater ? 'ON' : 'OFF';
+    if (data.heater !== undefined) {
+      const btn = $('btnHeater');
+      if (btn) {
+        btn.innerHTML = data.heater ? '🔥 Chauffage ON' : '🔥 Chauffage OFF';
+        btn.className = data.heater ? 'btn btn-danger w-100' : 'btn btn-outline-danger w-100';
+      }
     }
-    if(data.light !== undefined) {
-      const el = $('statusLight');
-      if (el) el.textContent = data.light ? 'ON' : 'OFF';
+    if (data.light !== undefined) {
+      const btn = $('btnLight');
+      if (btn) {
+        btn.innerHTML = data.light ? '💡 Lumière ON' : '💡 Lumière OFF';
+        btn.className = data.light ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
+      }
     }
-    if(data.forceWakeUp !== undefined) {
-      const el = $('statusForceWakeup');
-      if (el) el.textContent = data.forceWakeUp ? 'ON' : 'OFF';
+    if (data.forceWakeUp !== undefined) {
+      const btn = $('btnForceWakeup');
+      if (btn) {
+        btn.innerHTML = data.forceWakeUp ? '⏰ Force Wakeup ON' : '⏰ Force Wakeup OFF';
+        btn.className = data.forceWakeUp ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
+      }
+    }
+    if (data.mailNotif !== undefined) {
+      const btn = $('btnEmailNotif');
+      if (btn) {
+        const on = !!data.mailNotif;
+        btn.innerHTML = on ? '🔔 Notifications ON' : '🔔 Notifications OFF';
+        btn.className = on ? 'btn btn-success w-100' : 'btn btn-outline-success w-100';
+      }
     }
     
     // États WiFi STA (informations détaillées uniquement)

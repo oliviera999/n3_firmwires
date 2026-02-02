@@ -563,57 +563,62 @@ if ($notProcessedEmails.Count -gt 0) {
     foreach ($notProcessed in $notProcessedEmails) {
         $timestamp = if ($notProcessed.Queued.Timestamp) { '[' + $notProcessed.Queued.Timestamp + ']' } else { '[Ligne ' + $notProcessed.Queued.LineNumber + ']' }
         $subject = $notProcessed.Queued.Subject
-        Write-Host "  - $timestamp $subject (ajouté à la queue mais jamais traité)" -ForegroundColor Yellow
+        Write-Host ('  - ' + $timestamp + ' ' + $subject + ' (ajoute a la queue mais jamais traite)') -ForegroundColor Yellow
     }
     Write-Host ""
 }
 
-# 4.5 Mails échoués
+# 4.5 Mails echoues
 if ($failedEmails.Count -gt 0) {
-    Write-Host "❌ MAILS ÉCHOUÉS ($($failedEmails.Count))" -ForegroundColor Red
+    $nFailed = $failedEmails.Count
+    Write-Host ('[KO] MAILS ECHOUES (' + $nFailed + ')') -ForegroundColor Red
     foreach ($failed in $failedEmails) {
         $timestamp = if ($failed.Timestamp) { '[' + $failed.Timestamp + ']' } else { '[Ligne ' + $failed.LineNumber + ']' }
-        $subject = if ($failed.Subject) { $failed.Subject } else { "Sujet inconnu" }
-        Write-Host "  - $timestamp $subject" -ForegroundColor Yellow
-        Write-Host "    Erreur: $($failed.Error)" -ForegroundColor Gray
+        $subject = if ($failed.Subject) { $failed.Subject } else { 'Sujet inconnu' }
+        Write-Host ('  - ' + $timestamp + ' ' + $subject) -ForegroundColor Yellow
+        Write-Host ('    Erreur: ' + $failed.Error) -ForegroundColor Gray
     }
-    Write-Host ""
+    Write-Host ''
 }
 
 # 4.6 Erreurs de queue pleine
 if ($queueFullErrors.Count -gt 0) {
-    Write-Host "⚠️ ERREURS DE QUEUE PLEINE ($($queueFullErrors.Count))" -ForegroundColor Yellow
+    $nQ = $queueFullErrors.Count
+    Write-Host ('[WARN] ERREURS DE QUEUE PLEINE (' + $nQ + ')') -ForegroundColor Yellow
     foreach ($error in $queueFullErrors) {
         $timestamp = if ($error.Timestamp) { '[' + $error.Timestamp + ']' } else { '[Ligne ' + $error.LineNumber + ']' }
-        Write-Host "  - $timestamp $($error.Line)" -ForegroundColor Yellow
+        Write-Host ('  - ' + $timestamp + ' ' + $error.Line) -ForegroundColor Yellow
     }
-    Write-Host ""
+    Write-Host ''
 }
 
-# 4.7 Mails envoyés avec succès (résumé)
-$sentEmails = $emailStatus | Where-Object { $_.Status -eq "Envoyé" }
+# 4.7 Mails envoyes avec succes (resume)
+$sentEmails = $emailStatus | Where-Object { $_.Status -match 'Envoy' }
 if ($sentEmails.Count -gt 0 -and $sentEmails.Count -le 20) {
-    Write-Host "✅ MAILS ENVOYÉS AVEC SUCCÈS ($($sentEmails.Count))" -ForegroundColor Green
+    $nSent = $sentEmails.Count
+    Write-Host ('[OK] MAILS ENVOYES AVEC SUCCES (' + $nSent + ')') -ForegroundColor Green
     foreach ($sent in $sentEmails) {
         $timestamp = if ($sent.Processed.Timestamp) { '[' + $sent.Processed.Timestamp + ']' } else { '[Ligne ' + $sent.Processed.LineNumber + ']' }
         $subject = $sent.Processed.Subject
-        Write-Host "  - $timestamp $subject" -ForegroundColor White
+        Write-Host ('  - ' + $timestamp + ' ' + $subject) -ForegroundColor White
     }
-    Write-Host ""
+    Write-Host ''
 } elseif ($sentEmails.Count -gt 20) {
-    Write-Host "✅ MAILS ENVOYÉS AVEC SUCCÈS ($($sentEmails.Count))" -ForegroundColor Green
-    Write-Host "  (Trop nombreux pour afficher la liste complète)" -ForegroundColor Gray
-    Write-Host ""
+    $nSent = $sentEmails.Count
+    Write-Host ('[OK] MAILS ENVOYES AVEC SUCCES (' + $nSent + ')') -ForegroundColor Green
+    Write-Host '  (Trop nombreux pour afficher la liste complete)' -ForegroundColor Gray
+    Write-Host ''
 }
 
 # 4.8 Mails orphelins (en queue mais non attendus)
 if ($orphanQueued.Count -gt 0) {
-    Write-Host "ℹ️ MAILS EN QUEUE NON ATTENDUS ($($orphanQueued.Count))" -ForegroundColor Cyan
+    $nOrphan = $orphanQueued.Count
+    Write-Host ('[INFO] MAILS EN QUEUE NON ATTENDUS (' + $nOrphan + ')') -ForegroundColor Cyan
     foreach ($orphan in $orphanQueued) {
         $timestamp = if ($orphan.Timestamp) { '[' + $orphan.Timestamp + ']' } else { '[Ligne ' + $orphan.LineNumber + ']' }
-        Write-Host "  - $timestamp $($orphan.Subject)" -ForegroundColor Gray
+        Write-Host ('  - ' + $timestamp + ' ' + $orphan.Subject) -ForegroundColor Gray
     }
-    Write-Host ""
+    Write-Host ''
 }
 
-Write-Host "=== ANALYSE TERMINÉE ===" -ForegroundColor Green
+Write-Host '=== ANALYSE TERMINEE ===' -ForegroundColor Green

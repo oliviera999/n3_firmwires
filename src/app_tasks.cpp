@@ -16,6 +16,7 @@
 #include "diagnostics.h"
 #include "system_sensors.h"  // Pour SensorReadings
 #include "dbvars_cache.h"
+#include "realtime_websocket.h"
 
 namespace {
 
@@ -346,6 +347,8 @@ void webTask(void* pv) {
     }
 
     esp_task_wdt_reset();
+    // Synchroniser mailNotif pour le WebSocket (aligné avec les relais, bouton Contrôles)
+    g_realtimeWebSocket.updateMailNotifState(g_ctx->automatism.isEmailEnabled());
     g_ctx->webServer.loop();
     
     // v11.171: Vérification périodique HWM webTask (activé en prod car marge critique)
@@ -555,7 +558,7 @@ void automationTask(void* pv) {
         esp_task_wdt_reset();
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
         g_remoteFallbackDoc.clear();
-        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, NetworkConfig::HTTP_TIMEOUT_MS);
+        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
         Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
                      ok ? "OK" : "KO",
                      static_cast<unsigned>(g_remoteFallbackDoc.size()));
@@ -741,7 +744,7 @@ static bool netRpc(NetRequest* req) {
   }
 
   uint32_t waitStart = millis();
-  const uint32_t ABSOLUTE_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
+  const uint32_t ABSOLUTE_TIMEOUT_MS = req->timeoutMs;
   const uint32_t CHECK_INTERVAL_MS = 100;
   const uint32_t GRACE_PERIOD_MS = 500;
 

@@ -436,6 +436,11 @@ function displayDbVars(db) {
     // Mise à jour du statut email - convertir mailNotif string en boolean, toujours afficher une valeur
     const emailEnabledEl = $('dbEmailEnabled');
     const emailEnabled = dataOk ? isMailEnabled(db.mailNotif) : false;
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:displayDbVars', message: 'notif displayDbVars', data: { mailNotif: db.mailNotif, dataOk, emailEnabled }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A' }) }).catch(() => {});
+    } catch (e) {}
+    // #endregion
     if (emailEnabledEl) {
       emailEnabledEl.textContent = emailEnabled ? 'Activées' : 'Désactivées';
       emailEnabledEl.className = `badge ${emailEnabled ? 'bg-success' : 'bg-secondary'}`;
@@ -506,6 +511,11 @@ window.loadDbVars = async function loadDbVars() {
   // OPTIMISATION: Utiliser le cache si disponible (chargement instantané)
   if (window.cachedDbVars) {
     console.log('[DEBUG] Utilisation du cache pour affichage immédiat');
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:loadDbVars', message: 'loadDbVars from cache', data: { fromCache: true, cachedMailNotif: window.cachedDbVars.mailNotif }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'B' }) }).catch(() => {});
+    } catch (e) {}
+    // #endregion
     displayDbVars(window.cachedDbVars);
     return;
   }
@@ -547,7 +557,21 @@ window.loadDbVars = async function loadDbVars() {
     
     const db = JSON.parse(responseText);
     console.log('[DEBUG] JSON parsé:', db);
-    
+    // #region agent log
+    if (window._lastDbvarsPostAt != null) {
+      const msSincePost = Date.now() - window._lastDbvarsPostAt;
+      const bouffeMatinFromGet = db.bouffeMatin != null ? String(db.bouffeMatin) : null;
+      const bouffeMatinSent = window._dbvarsDebugSent && window._dbvarsDebugSent.bouffeMatin != null ? window._dbvarsDebugSent.bouffeMatin : null;
+      const stale = bouffeMatinSent != null && bouffeMatinFromGet !== bouffeMatinSent;
+      try {
+        fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:loadDbVars', message: 'GET /dbvars after POST', data: { bouffeMatinFromGet, bouffeMatinSent, msSincePost, stale }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1', runId: window._dbvarsRunId || 'pre-fix' }) }).catch(() => {});
+      } catch (e) {}
+      window._lastDbvarsPostAt = null;
+    }
+    try {
+      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:loadDbVars', message: 'dbvars response', data: { mailNotif: db.mailNotif, fromFetch: true }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'D' }) }).catch(() => {});
+    } catch (e) {}
+    // #endregion
     // Mettre à jour le cache
     window.cachedDbVars = db;
     
@@ -738,7 +762,15 @@ window.submitDbVars = async function submitDbVars(ev) {
 
     const email = $('formEmailAddress');
     if (email && email.value) params.append('mail', email.value);
-    
+
+    // #region agent log
+    const sentBouffeMatin = ($('formFeedMorning') && $('formFeedMorning').value !== '') ? String($('formFeedMorning').value) : null;
+    window._dbvarsDebugSent = { bouffeMatin: sentBouffeMatin };
+    try {
+      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:submitDbVars', message: 'before POST dbvars/update', data: { bouffeMatinSent: sentBouffeMatin }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1', runId: window._dbvarsRunId || 'pre-fix' }) }).catch(() => {});
+    } catch (e) {}
+    // #endregion
+
     // Envoyer les données
     const resp = await fetch('/dbvars/update', { 
       method: 'POST', 
@@ -755,6 +787,12 @@ window.submitDbVars = async function submitDbVars(ev) {
     }
     
     if (js.status === 'OK') {
+      // #region agent log
+      window._lastDbvarsPostAt = Date.now();
+      try {
+        fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:submitDbVars', message: 'POST success, loadDbVars in 500ms', data: { bouffeMatinSent: window._dbvarsDebugSent && window._dbvarsDebugSent.bouffeMatin }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H2', runId: window._dbvarsRunId || 'pre-fix' }) }).catch(() => {});
+      } catch (e) {}
+      // #endregion
       toast('Réglages mis à jour', 'success');
       // Recharger l'affichage des réglages
       setTimeout(() => loadDbVars(), 500);

@@ -9,6 +9,7 @@ public:
     void begin(class SystemSensors&, class SystemActuators&) {}
     void end() {}
     void updateForceWakeUpState(bool) {}
+    void updateMailNotifState(bool) {}
     void loop() {}
     uint8_t getConnectedClients() const { return 0; }
     bool isRunning() const { return false; }
@@ -78,6 +79,7 @@ private:
     SystemSensors* sensors = nullptr;
     SystemActuators* actuators = nullptr;
     bool _forceWakeUpState = false; // État du Force Wakeup
+    bool _mailNotifState = false;   // État des notifications email (aligné avec dbvars/mailNotif)
     
 public:
     RealtimeWebSocket() : webSocket(WS_PORT, "/ws"), mutex(xSemaphoreCreateMutex()) {
@@ -133,6 +135,14 @@ public:
      */
     void updateForceWakeUpState(bool state) {
         _forceWakeUpState = state;
+    }
+    
+    /**
+     * Met à jour l'état des notifications email (aligné avec dbvars/mailNotif)
+     * Permet au bouton Contrôles d'afficher ON/OFF comme les relais
+     */
+    void updateMailNotifState(bool state) {
+        _mailNotifState = state;
     }
     
     /**
@@ -249,6 +259,7 @@ public:
         doc["heater"] = actuators->isHeaterOn();
         doc["light"] = actuators->isLightOn();
         doc["forceWakeup"] = _forceWakeUpState;
+        doc["mailNotif"] = _mailNotifState;
         doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
         doc["timestamp"] = millis();
         
@@ -391,6 +402,7 @@ public:
             doc["heater"] = actuators->isHeaterOn();
             doc["light"] = actuators->isLightOn();
             doc["forceWakeup"] = _forceWakeUpState;
+            doc["mailNotif"] = _mailNotifState;
             doc["timestamp"] = now;
             
             // v11.169: Infos WiFi minimales (connexion STA uniquement)
@@ -467,6 +479,7 @@ public:
         doc["heater"] = actuators->isHeaterOn();
         doc["light"] = actuators->isLightOn();
         doc["forceWakeup"] = _forceWakeUpState;
+        doc["mailNotif"] = _mailNotifState;
         doc["timestamp"] = millis();
         
         // Informations WiFi STA

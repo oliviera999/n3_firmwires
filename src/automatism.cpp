@@ -115,6 +115,13 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     bool pollResult = _network.pollRemoteState(doc, nowMs);
     
+    // #region agent log
+    if (pollResult) {
+        Serial.printf("[DBG] H3 pollResult=OK docSize=%u\n", (unsigned)doc.size());
+    } else {
+        Serial.println(F("[DBG] H3 pollResult=KO (timeout/erreur)"));
+    }
+    // #endregion
     if (pollResult) {
         // Ne pas appliquer ni invalider le cache si la réponse est vide (ex. serveur renvoie {"outputs":{}})
         if (doc.size() > 0) {
@@ -125,6 +132,8 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
             invalidateDbvarsCache();
             // 4.2 Appliquer commandes nourrissage distant
             _network.handleRemoteFeedingCommands(doc, *this);
+        } else {
+            Serial.println(F("[DBG] H3 skip apply (doc.size()==0)"));
         }
     }
     
@@ -206,7 +215,39 @@ void Automatism::toggleEmailNotifications() {
     // v11.172: Source de vérité = _network
     bool current = _network.isEmailEnabled();
     _network.setEmailEnabled(!current);
-    // Persistance NVS via ConfigManager si nécessaire
+    bool enabled = _network.isEmailEnabled();
+
+    // Persistance NVS (remote vars JSON) pour survie au reboot et cohérence /dbvars
+    char cached[2048];
+    if (_config.loadRemoteVars(cached, sizeof(cached)) && strlen(cached) > 0) {
+        ArduinoJson::StaticJsonDocument<2048> doc;
+        if (!deserializeJson(doc, cached)) {
+            doc["mailNotif"] = enabled ? "checked" : "";
+            char out[2048];
+            size_t len = serializeJson(doc, out, sizeof(out));
+            if (len > 0 && len < sizeof(out)) {
+                out[len] = '\0';
+                _config.saveRemoteVars(out);
+            }
+        }
+    } else {
+        ArduinoJson::StaticJsonDocument<256> minDoc;
+        minDoc["mailNotif"] = enabled ? "checked" : "";
+        char out[256];
+        size_t len = serializeJson(minDoc, out, sizeof(out));
+        if (len > 0 && len < sizeof(out)) {
+            out[len] = '\0';
+            _config.saveRemoteVars(out);
+        }
+    }
+
+    invalidateDbvarsCache();
+
+    // Sync vers serveur distant (optionnel, non bloquant si réseau absent)
+    SensorReadings r = _sensors.read();
+    bool sent = sendFullUpdate(r, nullptr);
+    Serial.printf("[Auto] mailNotif %s, NVS + cache OK, sync distant %s\n",
+                  enabled ? "ON" : "OFF", sent ? "OK" : "pending");
 }
 
 void Automatism::toggleForceWakeup() {

@@ -405,6 +405,8 @@ bool WebServerManager::begin() {
               Serial.println("[Web] 📧 Toggling Email Notifications...");
               // Toggle Email Notifications
               g_autoCtrl.toggleEmailNotifications();
+              // Synchroniser mailNotif pour le WebSocket (même flux que les relais)
+              g_realtimeWebSocket.updateMailNotifState(g_autoCtrl.isEmailEnabled());
               // Push UI refresh IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
               resp = g_autoCtrl.isEmailEnabled() ? "EMAIL_NOTIF_ACTIVÉ" : "EMAIL_NOTIF_DÉSACTIVÉ";
