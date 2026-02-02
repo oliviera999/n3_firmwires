@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.188: HTTP_TIMEOUT 10s, REMOTE_FETCH_INTERVAL 12s (réduire timeouts GET)
-    inline constexpr const char* VERSION = "11.188";
+    // v11.189: Correctifs LoadProhibited (loadFromNVSFallback) + StoreProhibited (netNotifyDone)
+    inline constexpr const char* VERSION = "11.189";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -82,8 +82,9 @@ namespace SystemConfig {
     inline constexpr int32_t NTP_DAYLIGHT_OFFSET_SEC = 0;
     inline constexpr const char* NTP_SERVER = "pool.ntp.org";
 
-    // Time validation
-    inline constexpr time_t EPOCH_MIN_VALID = 1704067200; // 2024-01-01
+    // Time validation - EPOCH_MIN_VALID doit être proche de la date actuelle
+    // pour invalider les vieux epochs stockés en NVS
+    inline constexpr time_t EPOCH_MIN_VALID = 1767225600; // 2026-01-01 00:00:00 UTC
     inline constexpr time_t EPOCH_MAX_VALID = 2524608000; // 2050-01-01
     
     // OTA
@@ -608,8 +609,10 @@ namespace SleepConfig {
     // Constantes PowerManager manquantes
     inline constexpr bool AUTO_RECONNECT_WIFI_AFTER_SLEEP = true;
     inline constexpr bool SAVE_TIME_BEFORE_SLEEP = true;
-    inline constexpr time_t EPOCH_COMPILE_TIME = SystemConfig::EPOCH_MIN_VALID; // Fallback - unifié avec SystemConfig
-    inline constexpr time_t EPOCH_DEFAULT_FALLBACK = SystemConfig::EPOCH_MIN_VALID; // Unifié avec SystemConfig
+    // CORRECTION: Utiliser l'epoch correct pour 2026-02-01 00:00:00 UTC
+    // Cet epoch sera utilisé si la NVS est vide ET que la sync NTP échoue
+    inline constexpr time_t EPOCH_COMPILE_TIME = 1769904000; // 2026-02-01 00:00:00 UTC (vérifié)
+    inline constexpr time_t EPOCH_DEFAULT_FALLBACK = 1769904000; // 2026-02-01 00:00:00 UTC (vérifié)
     inline constexpr bool ENABLE_DRIFT_CORRECTION = true;
     inline constexpr uint32_t DRIFT_CORRECTION_INTERVAL_MS = 3600000;
     inline constexpr float DRIFT_CORRECTION_THRESHOLD_PPM = 100.0f;

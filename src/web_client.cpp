@@ -511,7 +511,10 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
 
 // v11.165: Fonction helper pour fallback NVS (audit offline-first)
 // v11.186: Parse dans un document temporaire pour éviter LoadProhibited dans doc.clear()
-// (crash dans ArduinoJson MemoryPool::destroy(allocator) quand doc est dans un état incohérent).
+// v11.189: Ne plus appeler doc.clear() — ArduinoJson MemoryPoolList::clear() peut crasher
+// (LoadProhibited à 0x2714) si le doc a déjà été clear() par le caller ou est dans un état
+// incohérent. On copie tmpDoc → doc sans clear ; les clés obsolètes restent mais le caller
+// ne lit que les clés connues.
 bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
   char cachedJson[1024];
   if (!config.loadRemoteVars(cachedJson, sizeof(cachedJson))) {
@@ -522,7 +525,7 @@ bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
   if (err) {
     return false;
   }
-  doc.clear();
+  // Ne pas appeler doc.clear() : évite crash dans MemoryPoolList::clear() (EXCVADDR 0x2714)
   for (JsonPair p : tmpDoc.as<JsonObject>()) {
     doc[p.key().c_str()] = p.value();
   }

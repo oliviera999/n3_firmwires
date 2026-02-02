@@ -93,7 +93,9 @@ QueueHandle_t g_netQueue = nullptr;
 TaskHandle_t g_netTaskHandle = nullptr;
 
 static void netNotifyDone(NetRequest* req) {
-  if (req && req->requester) {
+  // v11.189: Ne notifier que si le handle ressemble à un TCB valide (évite StoreProhibited
+  // à 0x6157 si requester est corrompu / petit entier).
+  if (req && req->requester && (uintptr_t)req->requester >= 0x3ff00000) {
     xTaskNotifyGive(req->requester);
   }
   // v11.181: Si caller a timeout (cancelled), libérer le slot (caller ne le fera pas)
@@ -543,18 +545,21 @@ void automationTask(void* pv) {
       esp_task_wdt_reset();
     } else {
       Serial.println(F("[Auto] Timeout queue capteurs - cycle continu"));
-      if (WiFi.status() == WL_CONNECTED) {
+      // v11.191: Throttle du fallback poll (12s) pour ne pas écraser les changements serveur/local
+      // Sans throttle, chaque timeout ré-appliquait l'état distant ~toutes les 3s et annulait l'impact des commandes
+      static constexpr unsigned long FALLBACK_POLL_INTERVAL_MS = 12000;
+      static unsigned long lastFallbackFetchMs = 0;
+      unsigned long nowMs = millis();
+      if (WiFi.status() == WL_CONNECTED && (nowMs - lastFallbackFetchMs) >= FALLBACK_POLL_INTERVAL_MS) {
+        lastFallbackFetchMs = nowMs;
         esp_task_wdt_reset();
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
-        // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
         g_remoteFallbackDoc.clear();
-        // v11.176: Timeout réduit à 5s (règle offline-first: max 5s pour opérations réseau)
         bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, NetworkConfig::HTTP_TIMEOUT_MS);
         Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
                      ok ? "OK" : "KO",
                      static_cast<unsigned>(g_remoteFallbackDoc.size()));
         if (ok && g_remoteFallbackDoc.size() > 0) {
-          // Aligner sur le flux normal: normaliser + sauver NVS puis appliquer (évite incohérence config non persistée)
           if (g_ctx->automatism.processFetchedRemoteConfig(g_remoteFallbackDoc)) {
             Serial.println(F("[Auto] ▶️ Config distante normalisée et sauvegardée NVS (fallback)"));
           }
