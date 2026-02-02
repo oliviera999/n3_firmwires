@@ -12,6 +12,14 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.190 - 2026-02
+
+### Points à surveiller
+
+- HTTP/TLS 5s, NVS remove idempotent, servo pin valide
+
+---
+
 ## Version 11.167 - 2026-01-30
 
 ### Maintenance

@@ -19,7 +19,6 @@ Chaque fichier est volontairement court (max ~400 lignes) pour faciliter la main
 | `config.cpp` | `config.h` | Accès Preferences (NVS) pour persister seuils & flags. |
 | `diagnostics.cpp` | `diagnostics.h` | Lecture VIN (ADC), analyse raison reset, uptime, Brownout. |
 | `automatism.cpp` | `automatism.h` | **Cœur métier** : gestion nourrissage, pompage, chauffage, alertes, veille. |
-| `time_drift_monitor.cpp` | `time_drift_monitor.h` | Monitoring simplifié de la dérive d'horloge. |
 | `task_monitor.cpp` | `task_monitor.h` | Monitoring léger des piles des tâches FreeRTOS. |
 
 ---

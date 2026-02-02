@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-11.124-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-11.190-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -77,7 +77,7 @@ ffp5cs/
 │   ├── config.h           # Configuration unifiée du projet
 │   ├── automatism.h       # API de l'automate
 │   └── web_server.h       # API du serveur web
-├── data/www/              # Interface web (SPA, Assets)
+├── data/                  # Interface web (index.html, pages/, assets/, sw.js)
 ├── docs/                  # Documentation
 │   ├── README.md         # Vue d'ensemble
 │   ├── technical/        # Références techniques (seuils ESP32 vs serveur)
@@ -104,12 +104,12 @@ ffp5cs/
 - [x] Mode veille optimisé
 - [x] Reconnexion WiFi
 
-### 🔄 Améliorations Récentes (v11.124)
+### 🔄 Améliorations Récentes (v11.190)
 - [x] Audit général - Corrections prioritaires (incohérence version, delay debug)
 - [x] Simplification capteurs (suppression "Optimizers" et méthodes obsolètes)
 - [x] Configuration unifiée (`include/config.h`)
 - [x] Modernisation JSON (`ArduinoJson 7`)
-- [x] Monitoring allégé (`TimeDriftMonitor`, `TaskMonitor`)
+- [x] Monitoring allégé (`TaskMonitor`)
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable
@@ -164,6 +164,9 @@ pio run -e wroom-test -t uploadfs
 ---
 
 ## 📈 Historique des versions
+
+### v11.190 (2026-02) - Points à surveiller
+- HTTP/TLS 5s, NVS remove idempotent, servo pin valide
 
 ### v11.124 (2026-01-10) - Audit général - Corrections prioritaires
 - ✅ **Correction incohérence version** : Unifié config.h et app.cpp sur v11.124
@@ -231,4 +234,4 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 
 ---
 
-*Dernière mise à jour: 2026-01-10 - Version 11.124*
+*Dernière mise à jour: 2026-02-02 - Version 11.190*

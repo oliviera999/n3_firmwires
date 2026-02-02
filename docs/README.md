@@ -15,6 +15,7 @@ Documentation technique du projet ESP32 Aquaponie Controller.
 docs/
 ├── README.md           # Ce fichier
 ├── technical/          # Références techniques
+│   ├── VARIABLE_NAMING.md        # Contrat nommage (NVS, API, serveur, firmware)
 │   └── SEUILS_SERVEUR_ESP32.md   # Seuils ESP32 vs serveur PHP
 ├── reports/            # Rapports et analyses
 │   ├── analysis/       # Qualité, conformité, NVS
@@ -25,6 +26,7 @@ docs/
 
 ### Liens utiles
 
+- **[Convention nommage / contrat](technical/VARIABLE_NAMING.md)** — NVS, API locale, serveur distant, firmware (source : `include/gpio_mapping.h`, `include/nvs_keys.h`)
 - **[Seuils ESP32 / serveur](technical/SEUILS_SERVEUR_ESP32.md)** — Différences volontaires (température, humidité, etc.)
 - **`references`** — Liste des 32 types d’emails, quotas, optimisations
 - **Rapports** :

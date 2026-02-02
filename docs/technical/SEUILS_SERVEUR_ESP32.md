@@ -1,7 +1,7 @@
 # Documentation des seuils serveur/ESP32
 
-**Date** : 2026-01-17  
-**Version** : 11.155
+**Date** : 2026-02-02  
+**Version** : 11.190
 
 ## Vue d'ensemble
 
@@ -15,7 +15,7 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
-| **ESP32** | 5.0°C | 60.0°C | `include/config.h` ligne 256-257 |
+| **ESP32** | 5.0°C | 60.0°C | `include/config.h` SensorConfig::WaterTemp (lignes 362-363) |
 | **Serveur PHP** | 3.0°C | 50.0°C | `ffp3/src/Service/SensorDataService.php` ligne 36-37 |
 
 **Justification** :
@@ -30,7 +30,7 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
-| **ESP32** | 3.0°C | 50.0°C | `include/config.h` ligne 266-267 |
+| **ESP32** | 3.0°C | 50.0°C | `include/config.h` SensorConfig::AirSensor (lignes 372-373) |
 | **Serveur PHP** | 3.0°C | - | `ffp3/src/Service/SensorDataService.php` ligne 40 |
 
 **Justification** :
@@ -45,7 +45,7 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
-| **ESP32** | 10.0% | 100.0% | `include/config.h` ligne 268-269 |
+| **ESP32** | 10.0% | 100.0% | `include/config.h` SensorConfig::AirSensor (lignes 374-375) |
 | **Serveur PHP** | 3.0% | - | `ffp3/src/Service/SensorDataService.php` ligne 43 |
 
 **Justification** :
@@ -60,7 +60,7 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
-| **ESP32** | 2 cm | 400 cm | `include/config.h` ligne 278-279 (Ultrasonic) |
+| **ESP32** | 2 cm | 400 cm | `include/config.h` SensorConfig::Ultrasonic (lignes 386-387) |
 | **Serveur PHP** | 4.0 cm | 70.0 cm | `ffp3/src/Service/SensorDataService.php` ligne 46-47 |
 
 **Justification** :
@@ -75,7 +75,7 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
-| **ESP32** | 2 cm | 400 cm | `include/config.h` ligne 278-279 (Ultrasonic) |
+| **ESP32** | 2 cm | 400 cm | `include/config.h` SensorConfig::Ultrasonic (lignes 386-387) |
 | **Serveur PHP** | 10.0 cm | 90.0 cm | `ffp3/src/Service/SensorDataService.php` ligne 50-51 |
 
 **Justification** :

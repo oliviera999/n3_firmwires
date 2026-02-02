@@ -1,12 +1,14 @@
 # Dossier `include/` – API interne du firmware
 
-Ce répertoire regroupe **tous les en-têtes publics** (interfaces) du firmware FarmFlow Proto 3.  
+Ce répertoire regroupe **tous les en-têtes publics** (interfaces) du firmware FFP5CS.  
 Chaque fichier possède son pendant dans `src/` qui contient l’implémentation.
 
 | Fichier | Rôle principal |
 |---------|----------------|
 | `pins.h` | Cartographie GPIO pour les profils **ESP32** vs **ESP32-S3** (sélection via `build_flags`). |
 | `config.h` | Configuration unifiée du système (version, timeouts, seuils par défaut, Wi-Fi, etc.). Remplace `project_config.h`. |
+| `nvs_keys.h` | Clés NVS centralisées (namespaces Config, System, Diag, etc.) – contrat firmware/serveur. |
+| `gpio_mapping.h` | VariableRegistry : noms POST/GET, NVS, firmware – source de vérité (voir `docs/technical/VARIABLE_NAMING.md`). |
 | `secrets.h` | Identifiants Wi-Fi et SMTP **privés** – **exclu du dépôt**. |
 | `wifi_manager.h` | Gestion multi-SSID avec timeout. |
 | `sensors.h` | Drivers de bas niveau (WaterTempSensor, AirSensor, UltrasonicManager). |
@@ -20,9 +22,8 @@ Chaque fichier possède son pendant dans `src/` qui contient l’implémentation
 | `mailer.h` | Envoi SMTP via Gmail (ESP Mail Client). |
 | `diagnostics.h` | Infos VIN, RSSI, cause reset, watchdog, brownout… |
 | `automatism.h` | **Cœur métier** : gestion nourrissage, pompage, chauffage, alertes, veille. |
-| `local_assets.h` / `web_assets.h` | Page Web, CSS, JS et icônes compressés en tableaux C (`PROGMEM`). |
+| `web_assets.h` / `asset_bundler.h` | Page Web, CSS, JS et icônes (compressés / bundlés). |
 | `task_monitor.h` | Outils légers pour surveiller la consommation de pile des tâches. |
-| `time_drift_monitor.h` | Outils légers pour surveiller la dérive d'horloge. |
 
 ---
 
