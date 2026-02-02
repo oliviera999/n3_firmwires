@@ -660,6 +660,12 @@ NVSError NVSManager::removeKey(const char* ns, const char* key) {
         return openError;
     }
     
+    // v11.190: Remove idempotent — si la clé n'existe pas, succès (évite log NOT_FOUND)
+    if (!_preferences.isKey(key)) {
+        closeNamespace();
+        return NVSError::SUCCESS;
+    }
+    
     bool success = _preferences.remove(key);
     closeNamespace();
     

@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.189: Correctifs LoadProhibited (loadFromNVSFallback) + StoreProhibited (netNotifyDone)
-    inline constexpr const char* VERSION = "11.189";
+    // v11.190: Points à surveiller — HTTP/TLS 5s, NVS remove idempotent, servo pin valide
+    inline constexpr const char* VERSION = "11.190";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -186,10 +186,10 @@ namespace NetworkConfig {
     inline constexpr uint16_t WS_PORT = 81;  // v11.178: Port WebSocket centralisé (audit)
     inline constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
-    // Timeout HTTP unifié (v11.188: 10s pour réduire timeouts GET outputs/state)
-    inline constexpr uint32_t HTTP_TIMEOUT_MS = 10000;
-    // Timeout mutex TLS pour serialization SMTP/HTTPS
-    inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 10000;
+    // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
+    inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
+    // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
+    inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
     // que requêtes HTTP standard
     // Justification : connexions lentes peuvent nécessiter jusqu'à 30s

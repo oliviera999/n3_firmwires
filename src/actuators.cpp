@@ -89,6 +89,10 @@ void Feeder::returnToRest() {
 }
 
 void Feeder::begin() {
+  // v11.190: Ne pas attacher si pin invalide (255 = "no pin" ESP32, ou hors plage 0-39)
+  if (_gpio == 255 || _gpio > 39) {
+    return;
+  }
   // Annuler tout detach programmé pour éviter les conflits LEDC
   if (_detachTimer != nullptr) {
     esp_timer_stop(_detachTimer);
