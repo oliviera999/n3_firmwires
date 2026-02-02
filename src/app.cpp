@@ -121,8 +121,19 @@ void setup() {
   SystemBoot::initializeStorage(g_appContext);
   
   LOG_INFO("Démarrage FFP5CS v%s", ProjectConfig::VERSION);
+  Serial.printf("[Event] App start v%s\n", ProjectConfig::VERSION);
   
-  time_t bootTime = time(nullptr);
+  SystemBoot::OtaState otaState{};
+  otaState.justUpdated = g_otaJustUpdated;
+  strncpy(otaState.previousVersion, g_previousVersion, sizeof(otaState.previousVersion) - 1);
+  otaState.previousVersion[sizeof(otaState.previousVersion) - 1] = '\0';
+  otaState.lastCheck = g_lastOtaCheck;
+  SystemBoot::validatePendingOta(otaState);
+  Serial.println("[Event] OTA validation done");
+  
+  SystemBoot::initializeTimekeeping(g_appContext);
+
+  time_t bootTime = g_appContext.power.getCurrentEpochSafe();
   struct tm bootTimeInfo;
   if (localtime_r(&bootTime, &bootTimeInfo)) {
     LOG_TIME(LOG_INFO,
@@ -137,17 +148,6 @@ void setup() {
   } else {
     LOG_TIME(LOG_WARN, "Impossible de récupérer l'heure au démarrage");
   }
-  Serial.printf("[Event] App start v%s\n", ProjectConfig::VERSION);
-  
-  SystemBoot::OtaState otaState{};
-  otaState.justUpdated = g_otaJustUpdated;
-  strncpy(otaState.previousVersion, g_previousVersion, sizeof(otaState.previousVersion) - 1);
-  otaState.previousVersion[sizeof(otaState.previousVersion) - 1] = '\0';
-  otaState.lastCheck = g_lastOtaCheck;
-  SystemBoot::validatePendingOta(otaState);
-  Serial.println("[Event] OTA validation done");
-  
-  SystemBoot::initializeTimekeeping(g_appContext);
 
   SystemBoot::initializeDisplay(g_appContext);
 

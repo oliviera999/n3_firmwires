@@ -119,7 +119,7 @@ Write-Host ""
 Write-Host "ERREURS NVS" -ForegroundColor DarkCyan
 $nvsErrors = $lines | Select-String -Pattern "NVS.*error|NVS.*fail|nvs_get.*fail|saveString.*fail" -CaseSensitive:$false
 if ($nvsErrors) {
-    Write-Host ('  Nombre d''erreurs NVS: ' + $nvsErrors.Count) -ForegroundColor Yellow
+    Write-Host "  Nombre d'erreurs NVS: $($nvsErrors.Count)" -ForegroundColor Yellow
     $nvsErrors | Select-Object -First 10 | ForEach-Object { Write-Host "    - $($_.Line.Trim())" -ForegroundColor White }
 } else {
     Write-Host "  Aucune erreur NVS detectee" -ForegroundColor Green

@@ -44,9 +44,20 @@ desktop.ini
 *.log
 *.log.err
 monitor_*.log
-monitor_*.log.err
-monitor_analysis_*.log
+monitor_*.log.errors
+monitor_*_analysis.txt
 desktop.ini
+
+# Artefacts de diagnostic (générés par les scripts PS1)
+analyze_exhaustive_*.txt
+check_emails_*.txt
+diagnostic_serveur_distant_*.txt
+rapport_diagnostic_complet_*.md
+RAPPORT_*.md
+ANALYSE_*.md
+!ANALYSE_SCRIPTS_PS1_RACINE.md
+DIAGNOSTIC_*.md
+POINT_*.md
 
 
 # Temporary files

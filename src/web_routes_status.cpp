@@ -420,6 +420,11 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
     doc["mailNotif"] = ctx.automatism.isEmailEnabled();
 
+    // Observabilité sync POST (compteurs et dernière durée)
+    doc["sync"]["post_ok"] = ctx.automatism.getSyncPostOkCount();
+    doc["sync"]["post_fail"] = ctx.automatism.getSyncPostFailCount();
+    doc["sync"]["last_post_duration_ms"] = ctx.automatism.getSyncLastPostDurationMs();
+
     // Utilise le helper centralisé pour construire le JSON WiFi (sans MAC)
     WiFiHelpers::addWifiInfoToJson(doc, false /* includeMac */);
 

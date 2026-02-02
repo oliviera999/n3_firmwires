@@ -21,9 +21,7 @@ alwaysApply: false
 
 - **Capteurs**
   - Toujours valider les mesures (plage, `isnan`) et retourner une **valeur par défaut sûre** en cas d’erreur.
-  - DHT22 : délai min 2000ms entre deux lectures.
-  - DS18B20 : plage 5–60°C, défaut 20°C.
-  - HC-SR04 : logique **inverse** (valeur haute = niveau bas), timeout court et moyenne sur plusieurs mesures.
+  - Pour le matériel de référence actuel : DHT22 délai min 2000ms entre deux lectures ; DS18B20 plage 5–60°C, défaut 20°C ; HC-SR04 logique **inverse** (valeur haute = niveau bas), timeout court et moyenne sur plusieurs mesures.
 
 - **Réseau**
   - Toujours vérifier l’état WiFi avant d’appeler une API réseau.

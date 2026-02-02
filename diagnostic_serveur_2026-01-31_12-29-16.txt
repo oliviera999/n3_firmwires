@@ -1,0 +1,16 @@
+=== DIAGNOSTIC ÉCHANGES SERVEUR DISTANT ===
+Fichier: C:\Users\olivi\Mon Drive\travail\olution\Projets\prototypage\platformIO\Projects\ffp5cs\monitor_wroom_test_validation_2026-01-26_11-39-09.log
+
+?? Analyse envoi POST données capteurs...
+?? Analyse réception GET commandes serveur...
+?? Analyse heartbeat...
+?? Analyse gestion erreurs réseau...
+?? Vérifications de cohérence avec le code...
+
+? Diagnostic sauvegardé: diagnostic_serveur_distant_2026-01-31_12-29-17.txt
+
+=== RÉSUMÉ ===
+POST: 0 tentatives, 0 réussis, 0 échoués
+GET: 0 tentatives, 0 parsing réussis, 0 erreurs
+Heartbeat: 0 tentatives, 0 réussis
+

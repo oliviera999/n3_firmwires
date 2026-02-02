@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Script de nettoyage des anciens logs (version améliorée)
 # =============================================================================
 # Description:
@@ -9,6 +9,8 @@
 #   - Logs de versions < v11.130 (liste explicite)
 #   - Logs > 30 jours (en gardant les 10 plus récents par type)
 #   - Fichiers d'analyse obsolètes
+#   - Artefacts de diagnostic (analyze_exhaustive, check_emails, diagnostic_serveur_distant,
+#     rapport_diagnostic_complet, ANALYSE_*, RAPPORT_*, DIAGNOSTIC_*, POINT_*)
 #
 # Prérequis:
 #   - PowerShell 5.1+ (Windows)
@@ -45,6 +47,7 @@ $stats = @{
     OldVersions = @{ Count = 0; Size = 0 }
     OldByType = @{ Count = 0; Size = 0 }
     OldAnalysis = @{ Count = 0; Size = 0 }
+    OldDiagArtifacts = @{ Count = 0; Size = 0 }
 }
 
 $cutoffDate = (Get-Date).AddDays(-30)
@@ -290,7 +293,43 @@ foreach ($logType in $analysisByType.Keys) {
 }
 
 # =============================================================================
-# 7. Rapport final détaillé
+# 7. Suppression des artefacts de diagnostic (générés par les scripts PS1)
+# =============================================================================
+Write-Host ""
+Write-Host "7. Suppression des artefacts de diagnostic obsolètes..." -ForegroundColor Yellow
+
+# analyze_exhaustive_*.txt, check_emails_*.txt, diagnostic_serveur_distant_*.txt : garder 5 plus récents
+$diagPatterns = @(
+    @{ Filter = "analyze_exhaustive_*.txt"; Keep = 5 }
+    @{ Filter = "check_emails_*.txt"; Keep = 5 }
+    @{ Filter = "diagnostic_serveur_distant_*.txt"; Keep = 5 }
+)
+foreach ($p in $diagPatterns) {
+    $files = Get-ChildItem -Path . -Filter $p.Filter -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+    for ($i = $p.Keep; $i -lt $files.Count; $i++) {
+        Remove-LogFile -FilePath $files[$i].FullName -Category "OldDiagArtifacts"
+    }
+}
+
+# rapport_diagnostic_complet_*.md : garder 3 plus récents
+$rapportComplet = Get-ChildItem -Path . -Filter "rapport_diagnostic_complet_*.md" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+for ($i = 3; $i -lt $rapportComplet.Count; $i++) {
+    Remove-LogFile -FilePath $rapportComplet[$i].FullName -Category "OldDiagArtifacts"
+}
+
+# ANALYSE_*.md, RAPPORT_*.md, DIAGNOSTIC_*.md, POINT_*.md : garder 2 plus récents par préfixe (sauf ANALYSE_SCRIPTS_PS1_RACINE.md)
+$reportPrefixes = @("ANALYSE_", "RAPPORT_", "DIAGNOSTIC_", "POINT_")
+foreach ($prefix in $reportPrefixes) {
+    $files = Get-ChildItem -Path . -File -Filter "${prefix}*.md" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "ANALYSE_SCRIPTS_PS1_RACINE.md" } |
+        Sort-Object LastWriteTime -Descending
+    for ($i = 2; $i -lt $files.Count; $i++) {
+        Remove-LogFile -FilePath $files[$i].FullName -Category "OldDiagArtifacts"
+    }
+}
+
+# =============================================================================
+# 8. Rapport final détaillé
 # =============================================================================
 Write-Host ""
 Write-Host "=== RÉSUMÉ DÉTAILLÉ ===" -ForegroundColor Cyan
@@ -306,7 +345,8 @@ $categories = @(
     @{ Name = "Logs très volumineux"; Key = "LargeLogs" },
     @{ Name = "Logs versions obsolètes"; Key = "OldVersions" },
     @{ Name = "Logs anciens par type"; Key = "OldByType" },
-    @{ Name = "Fichiers d'analyse obsolètes"; Key = "OldAnalysis" }
+    @{ Name = "Fichiers d'analyse obsolètes"; Key = "OldAnalysis" },
+    @{ Name = "Artefacts de diagnostic obsolètes"; Key = "OldDiagArtifacts" }
 )
 
 foreach ($cat in $categories) {

@@ -63,11 +63,6 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
 }
 
 uint16_t UltrasonicManager::readAdvancedFiltered() {
-  // #region agent log
-  if (_failureManager.isDisabled()) {
-    Serial.printf("{\"location\":\"sensors.cpp:readAdvancedFiltered\",\"message\":\"us_disabled\",\"data\":{\"disabled\":1},\"hypothesisId\":\"H5\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", (unsigned long)millis());
-  }
-  // #endregion
   // Si capteur désactivé, tester réactivation périodiquement
   if (_failureManager.isDisabled()) {
     if (_failureManager.shouldTestReactivation()) {
@@ -168,9 +163,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   
   // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
   if (validReadings < 1) { // Réduit de MIN_VALID_READINGS (2) à 1
-    // #region agent log
-    Serial.printf("{\"location\":\"sensors.cpp:adv_validReadings\",\"message\":\"us_few_valid\",\"data\":{\"validReadings\":%u,\"lastValid\":%u},\"hypothesisId\":\"H2\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", validReadings, _lastValidDistance, (unsigned long)millis());
-    // #endregion
     Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/1), retourne 0\n", validReadings);
     _failureManager.recordFailure();
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
@@ -187,11 +179,29 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     }
   }
   
-  // Calcule la médiane
   uint16_t medianDistance = readings[validReadings / 2];
-  // #region agent log
-  Serial.printf("{\"location\":\"sensors.cpp:adv_median\",\"message\":\"us_readings\",\"data\":{\"validReadings\":%u,\"r0\":%u,\"r1\":%u,\"r2\":%u,\"median\":%u},\"hypothesisId\":\"H2,H4\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", validReadings, readings[0], validReadings >= 2 ? readings[1] : 0u, validReadings >= 3 ? readings[2] : 0u, medianDistance, (unsigned long)millis());
-  // #endregion
+  
+  // Rejet d'outliers intra-batch (surface agitée : crête/creux, écho parasite)
+  uint16_t keptReadings[READINGS_COUNT];
+  uint8_t keptCount = 0;
+  for (uint8_t i = 0; i < validReadings; ++i) {
+    if (abs((int)readings[i] - (int)medianDistance) <= (int)OUTLIER_SPREAD_CM) {
+      keptReadings[keptCount++] = readings[i];
+    }
+  }
+  if (keptCount >= 2) {
+    for (uint8_t i = 0; i < keptCount - 1; ++i) {
+      for (uint8_t j = i + 1; j < keptCount; ++j) {
+        if (keptReadings[i] > keptReadings[j]) {
+          uint16_t t = keptReadings[i];
+          keptReadings[i] = keptReadings[j];
+          keptReadings[j] = t;
+        }
+      }
+    }
+    medianDistance = keptReadings[keptCount / 2];
+  }
+  
   // v11.35: NOUVELLE LOGIQUE - Médiane glissante avec consensus pour éviter valeurs figées
   // Calcul de la médiane de l'historique (valeur de référence robuste)
   uint16_t historyMedian = 0;
@@ -225,10 +235,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   
   // Détection de saut par rapport à la référence robuste
   if (referenceValue > 0 && abs((int)medianDistance - (int)referenceValue) > MAX_DISTANCE_DELTA) {
-    // #region agent log
-    int delta = abs((int)medianDistance - (int)referenceValue);
-    Serial.printf("{\"location\":\"sensors.cpp:adv_jump\",\"message\":\"us_jump_detected\",\"data\":{\"median\":%u,\"ref\":%u,\"delta\":%d},\"hypothesisId\":\"H1\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", medianDistance, referenceValue, delta, (unsigned long)millis());
-    // #endregion
     Serial.printf("[Ultrasonic] Saut détecté: %u cm -> %u cm (écart: %d cm, ref: médiane historique)\n", 
                   referenceValue, medianDistance, abs((int)medianDistance - (int)referenceValue));
     
@@ -251,9 +257,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       if (consensusCount >= 2) {
         Serial.printf("[Ultrasonic] Consensus détecté (%d/3 lectures), accepte nouvelle référence\n", consensusCount);
       } else {
-        // #region agent log
-        Serial.printf("{\"location\":\"sensors.cpp:adv_no_consensus\",\"message\":\"us_return_ref\",\"data\":{\"median\":%u,\"ref\":%u,\"consensusCount\":%u,\"returnedRef\":1},\"hypothesisId\":\"H1\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", medianDistance, referenceValue, consensusCount, (unsigned long)millis());
-        // #endregion
         Serial.printf("[Ultrasonic] Pas de consensus (%d/3), utilise médiane historique par sécurité\n", consensusCount);
         return referenceValue;
       }
@@ -271,9 +274,6 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   // Met à jour la dernière valeur valide
   _lastValidDistance = medianDistance;
   
-  // #region agent log
-  Serial.printf("{\"location\":\"sensors.cpp:adv_ok\",\"message\":\"us_return_median\",\"data\":{\"returned\":%u},\"hypothesisId\":\"H1\",\"timestamp\":%lu,\"sessionId\":\"debug-session\"}\n", medianDistance, (unsigned long)millis());
-  // #endregion
   Serial.printf("[Ultrasonic] Distance médiane: %u cm (%d lectures valides)\n", 
                 medianDistance, validReadings);
   return medianDistance;
@@ -328,15 +328,12 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   }
   
   // Capteur actif, lecture normale
-  // v11.41: Mode réactif - lissage minimal pour détecter rapidement les changements de niveau
-  // Réduit le lissage excessif des capteurs ultrasoniques tout en gardant la fiabilité
-  // Configuration: 3 lectures avec délai de 60ms entre chaque lecture
+  // v11.41: Mode réactif - médiane de 5 lectures pour surface agitée (prod)
   uint16_t readings[REACTIVE_READINGS_COUNT];
   uint8_t validReadings = 0;
   
   const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
   
-  // Effectue 3 lectures avec délai standard de 60ms
   for (uint8_t i = 0; i < REACTIVE_READINGS_COUNT; ++i) {
     // Déclenchement
     pinMode(_pinTrigEcho, OUTPUT);
@@ -388,36 +385,34 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
   
-  // Calcul simple : moyenne des lectures valides (pas de médiane pour plus de réactivité)
-  uint32_t total = 0;
-  for (uint8_t i = 0; i < validReadings; ++i) {
-    total += readings[i];
+  // Tri + médiane (robuste à l'eau agitée)
+  for (uint8_t i = 0; i < validReadings - 1; ++i) {
+    for (uint8_t j = i + 1; j < validReadings; ++j) {
+      if (readings[i] > readings[j]) {
+        uint16_t t = readings[i];
+        readings[i] = readings[j];
+        readings[j] = t;
+      }
+    }
   }
-  uint16_t avgDistance = total / validReadings;
+  uint16_t medianDistance = readings[validReadings / 2];
   
-  // Validation minimale : seulement vérifier les valeurs aberrantes extrêmes
   if (_lastValidDistance > 0) {
-    int delta = abs((int)avgDistance - (int)_lastValidDistance);
-    // Seuil plus permissif pour les sauts importants (50cm au lieu de 30cm)
+    int delta = abs((int)medianDistance - (int)_lastValidDistance);
     if (delta > 50) {
-      Serial.printf("[Ultrasonic] Saut important détecté: %u -> %u cm (Δ=%d), accepte pour réactivité\n", 
-                   _lastValidDistance, avgDistance, delta);
+      Serial.printf("[Ultrasonic] Saut important détecté: %u -> %u cm (Δ=%d), accepte pour réactivité\n",
+                   _lastValidDistance, medianDistance, delta);
     }
   }
   
-  // Succès - enregistrer et mettre à jour
   _failureManager.recordSuccess();
-  
-  // Mise à jour de l'historique avec la nouvelle valeur
-  _history[_historyIndex] = avgDistance;
+  _history[_historyIndex] = medianDistance;
   _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
   if (_historyCount < HISTORY_SIZE) _historyCount++;
+  _lastValidDistance = medianDistance;
   
-  // Mise à jour dernière valeur valide
-  _lastValidDistance = avgDistance;
-  
-  Serial.printf("[Ultrasonic] Mode réactif: %u cm (moyenne de %d lectures sur 3)\n", avgDistance, validReadings);
-  return avgDistance;
+  Serial.printf("[Ultrasonic] Mode réactif: %u cm (médiane de %d lectures)\n", medianDistance, validReadings);
+  return medianDistance;
 }
 
 bool UltrasonicManager::isSensorDisabled() const {

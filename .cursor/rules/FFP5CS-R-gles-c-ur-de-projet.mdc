@@ -22,7 +22,7 @@ alwaysApply: true
 - **Robustesse et valeurs par défaut**
   - Le système ne doit **jamais crasher** : en cas d’erreur capteur ou réseau, utiliser des valeurs par défaut sûres.
   - Toutes les lectures de capteurs doivent être **validées** (plage de valeurs, `isnan`, etc.).
-  - Ne jamais ignorer une erreur sans fallback explicite.
+  - Ne jamais ignorer une erreur sans fallback explicite (valeur par défaut sûre ou comportement documenté, ex. log + dernière valeur valide).
 
 - **Configuration locale prioritaire**
   - La NVS est la **source de vérité** (horaires, seuils, durées, états).
@@ -30,8 +30,8 @@ alwaysApply: true
 
 - **Mémoire et watchdog**
   - Éviter les allocations dynamiques dans les boucles ; préférer des buffers statiques.
-  - Ne pas utiliser `String` Arduino dans les chemins chauds (boucles, callbacks fréquents).
-  - Ne jamais bloquer le thread principal > 3s ; toujours prévoir des timeouts réseau courts (≤ 5s).
+  - Ne pas utiliser `String` Arduino dans les chemins chauds (boucles, callbacks fréquents) ; dans les chemins froids et pour des chaînes de taille bornée, `String` reste acceptable.
+  - Ne jamais bloquer le thread principal > 3s ; timeouts réseau courts (≤ 5s par défaut ; dérogation possible si documentée, ex. OTA avec feed watchdog).
 
 - **Documents et fichiers**
-  - Ne pas demander à l’IA de créer de nouveaux fichiers `.md` pour ce projet, sauf demande explicite de l’utilisateur.
+  - Ne pas créer de fichiers `.md` sans demande explicite de l'utilisateur. Les documentations liées à une tâche demandée (ex. doc d'API, contrat) sont autorisées lorsque l'utilisateur le demande.

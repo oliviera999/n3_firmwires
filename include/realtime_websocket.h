@@ -80,6 +80,7 @@ private:
     SystemActuators* actuators = nullptr;
     bool _forceWakeUpState = false; // État du Force Wakeup
     bool _mailNotifState = false;   // État des notifications email (aligné avec dbvars/mailNotif)
+    void (*_fillDbVars)(JsonObject&) = nullptr;  // Callback pour inclure dbVars (page Contrôles temps réel)
     
 public:
     RealtimeWebSocket() : webSocket(WS_PORT, "/ws"), mutex(xSemaphoreCreateMutex()) {
@@ -98,10 +99,12 @@ public:
      * Initialise le serveur WebSocket
      * @param sensors Référence vers le système de capteurs
      * @param actuators Référence vers le système d'actionneurs
+     * @param fillDbVars Callback optionnel pour remplir doc["dbVars"] (mise à jour temps réel page Contrôles)
      */
-    void begin(SystemSensors& sensors, SystemActuators& actuators) {
+    void begin(SystemSensors& sensors, SystemActuators& actuators, void (*fillDbVars)(JsonObject&) = nullptr) {
         this->sensors = &sensors;
         this->actuators = &actuators;
+        _fillDbVars = fillDbVars;
         
         webSocket.begin();
         webSocket.onEvent([this](uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
@@ -302,8 +305,13 @@ public:
             doc["wifiApClients"] = 0;
         }
         
-        // Sérialiser et envoyer
-        char json[1024];
+        if (_fillDbVars) {
+            JsonObject dbVars = doc.createNestedObject("dbVars");
+            _fillDbVars(dbVars);
+        }
+        
+        // Sérialiser et envoyer (buffer 2048 pour capteurs + relais + dbVars)
+        char json[2048];
         serializeJson(doc, json, sizeof(json));
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
@@ -521,7 +529,12 @@ public:
             doc["wifiApClients"] = 0;
         }
         
-        char json[1024];
+        if (_fillDbVars) {
+            JsonObject dbVars = doc.createNestedObject("dbVars");
+            _fillDbVars(dbVars);
+        }
+        
+        char json[2048];
         serializeJson(doc, json, sizeof(json));
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {

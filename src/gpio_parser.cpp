@@ -220,6 +220,10 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // Déclenchement sur front montant uniquement (one-shot)
         // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
+        // #region agent log
+        bool trigger = (state && !s_lastFeedSmallState);
+        Serial.printf("[DBG_FEED] H5 GPIOParser FEED_SMALL state=%d last=%d trigger=%d\n", state ? 1 : 0, s_lastFeedSmallState ? 1 : 0, trigger ? 1 : 0);
+        // #endregion
         if (state && !s_lastFeedSmallState) {
             autoCtrl.manualFeedSmall();
             Serial.println("Nourrissage petits (rising edge)");
@@ -230,6 +234,10 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // Déclenchement sur front montant uniquement (one-shot)
         // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
+        // #region agent log
+        bool trigger = (state && !s_lastFeedBigState);
+        Serial.printf("[DBG_FEED] H5 GPIOParser FEED_BIG state=%d last=%d trigger=%d\n", state ? 1 : 0, s_lastFeedBigState ? 1 : 0, trigger ? 1 : 0);
+        // #endregion
         if (state && !s_lastFeedBigState) {
             autoCtrl.manualFeedBig();
             Serial.println("Nourrissage gros (rising edge)");

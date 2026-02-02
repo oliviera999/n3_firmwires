@@ -28,11 +28,12 @@ class UltrasonicManager {
   uint8_t _historyCount;
   uint16_t _lastValidDistance;
   
-  // Configuration du filtrage - CORRECTION pour production
-  static const uint16_t MAX_DISTANCE_DELTA = 30; // Augmenté de 20 à 30 cm
-  static const uint8_t MIN_VALID_READINGS = 1; // Réduit de 2 à 1
-  static const uint8_t READINGS_COUNT = 3; // 3 lectures suffisent avec délais allongés
-  static const uint8_t REACTIVE_READINGS_COUNT = 3; // 3 lectures pour mode réactif
+  // Configuration du filtrage - renforcé pour surface agitée (prod)
+  static const uint16_t MAX_DISTANCE_DELTA = 30; // Seuil saut pour consensus
+  static const uint16_t OUTLIER_SPREAD_CM = 15; // Rejet intra-batch si écart > 15 cm de la médiane
+  static const uint8_t MIN_VALID_READINGS = 1;
+  static const uint8_t READINGS_COUNT = 5; // 5 lectures + médiane pour eau agitée
+  static const uint8_t REACTIVE_READINGS_COUNT = 5; // Idem mode réactif
   static const uint16_t MIN_DISTANCE = 2; // Minimum selon datasheet HC-SR04
   static const uint16_t MAX_DISTANCE = 400; // Maximum selon datasheet HC-SR04 (4m)
   // Délai minimum recommandé entre mesures

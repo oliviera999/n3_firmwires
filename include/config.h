@@ -104,8 +104,9 @@ namespace SystemConfig {
 // - DS18B20_MAX_MS déplacé dans SensorConfig::DS18B20::TIMEOUT_MS
 
 namespace TimingConfig {
-    // WiFi - v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
-    inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 3000;
+    // WiFi - v11.191: 5 s par tentative pour renforcer la connexion (routeurs lents / DHCP)
+    // Retries toutes les 5 s (WIFI_RETRY_INTERVAL_MS) donc pas de blocage long
+    inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
     // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
     // où on peut récupérer la config distante de manière fiable

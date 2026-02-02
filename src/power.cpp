@@ -1,5 +1,6 @@
 #include "power.h"
-#include "nvs_manager.h" // v11.107
+#include "nvs_manager.h"  // v11.107
+#include "nvs_keys.h"     // NVSKeys::System::RTC_EPOCH
 #include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
@@ -170,8 +171,8 @@ void PowerManager::initTime() {
   // Chargement de l'heure sauvegardée avec fallback robuste
   time_t loadedEpoch = loadTimeWithFallback();
   
-  // Configuration NTP avec offset UTC+1 (3600 secondes)
-  configTime(3600, 0, _ntpServer);
+  // Configuration NTP avec offset configuré (ex. UTC+1 Maroc)
+  configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
   
   char timeBuf[64];
   getCurrentTimeString(timeBuf, sizeof(timeBuf));
@@ -196,9 +197,9 @@ void PowerManager::syncTimeFromNTP() {
   time_t localBeforeEpoch = time(nullptr);
   unsigned long localBeforeMillis = millis();
   
-  // Configuration NTP avec offset UTC+1 (3600 secondes)
-  configTime(3600, 0, _ntpServer);
-  
+  // Configuration NTP avec offset configuré
+  configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
+
   // Tentative rapide de synchronisation (approche hybride)
   struct tm timeinfo;
   bool syncSuccess = false;
@@ -506,7 +507,7 @@ time_t PowerManager::loadTimeWithFallback() {
   
   // Fallback 1: Epoch sauvegardé en NVS
   unsigned long savedEpochUL;
-  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpochUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, NVSKeys::System::RTC_EPOCH, savedEpochUL, 0);
   time_t savedEpoch = static_cast<time_t>(savedEpochUL);
   
   Fallback fallbacks[] = {
@@ -638,7 +639,7 @@ void PowerManager::smartSaveTime() {
   }
   
   // Sauvegarde en NVS
-  g_nvsManager.saveULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", currentEpoch);
+  g_nvsManager.saveULong(NVS_NAMESPACES::SYSTEM, NVSKeys::System::RTC_EPOCH, currentEpoch);
 
   _lastTimeSave = currentMillis;
   _lastSavedEpoch = currentEpoch;

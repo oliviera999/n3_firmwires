@@ -102,7 +102,7 @@ uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
 }
 
 bool AutomatismSleep::isNightTime() {
-    time_t currentTime = _power.getCurrentEpoch();
+    time_t currentTime = _power.getCurrentEpochSafe();
     struct tm timeinfo;
     
     // v11.179: Utiliser localtime_r() thread-safe au lieu de localtime()

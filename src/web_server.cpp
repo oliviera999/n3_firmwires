@@ -33,6 +33,115 @@ extern WifiManager wifi;
 static bool s_dbvarsCacheInvalid = false;
 void invalidateDbvarsCache() { s_dbvarsCacheInvalid = true; }
 
+#ifndef DISABLE_ASYNC_WEBSERVER
+static unsigned long s_dbvarsLastCacheUpdate = 0;
+static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> s_dbvarsCachedSrc;
+static bool s_dbvarsCacheValid = false;
+
+static void fillDbVarsJson(JsonObject& out) {
+  if (s_dbvarsCacheInvalid) {
+    s_dbvarsCacheValid = false;
+    s_dbvarsCacheInvalid = false;
+  }
+  unsigned long now = millis();
+  bool useCache = s_dbvarsCacheValid && (now - s_dbvarsLastCacheUpdate < 30000);
+  bool ok = false;
+  if (useCache) {
+    ok = true;
+    Serial.println("[WebServer] /dbvars: Using cached data");
+  } else {
+    char cached[2048];
+    if (config.loadRemoteVars(cached, sizeof(cached)) && strlen(cached) > 0) {
+      auto err = deserializeJson(s_dbvarsCachedSrc, cached);
+      if (!err) {
+        ok = true;
+        Serial.println("[WebServer] /dbvars: Using flash cache (fast path)");
+        s_dbvarsLastCacheUpdate = now;
+        s_dbvarsCacheValid = true;
+      } else {
+        Serial.println("[WebServer] /dbvars: Flash cache parse error");
+      }
+    } else {
+      Serial.println("[WebServer] /dbvars: No flash cache available, using defaults");
+    }
+  }
+  auto getStringWithDefault = [](const char* key, const char* defaultVal) -> const char* {
+    if (s_dbvarsCachedSrc.containsKey(key)) {
+      const char* val = s_dbvarsCachedSrc[key].as<const char*>();
+      return (val && strlen(val) > 0) ? val : defaultVal;
+    }
+    return defaultVal;
+  };
+  auto getIntCanonical = [](const char* canonical, const char* legacy, int def) -> int {
+    if (s_dbvarsCachedSrc.containsKey(canonical)) return s_dbvarsCachedSrc[canonical].as<int>();
+    if (legacy && s_dbvarsCachedSrc.containsKey(legacy)) return s_dbvarsCachedSrc[legacy].as<int>();
+    return def;
+  };
+  auto getFloatCanonical = [](const char* canonical, const char* legacy, float def) -> float {
+    if (s_dbvarsCachedSrc.containsKey(canonical)) return s_dbvarsCachedSrc[canonical].as<float>();
+    if (legacy && s_dbvarsCachedSrc.containsKey(legacy)) return s_dbvarsCachedSrc[legacy].as<float>();
+    return def;
+  };
+
+  out["bouffeMatin"] = ok && s_dbvarsCachedSrc.containsKey("bouffeMatin")
+                       ? s_dbvarsCachedSrc["bouffeMatin"].as<int>()
+                       : (int)g_autoCtrl.getBouffeMatin();
+  out["bouffeMidi"]  = ok && s_dbvarsCachedSrc.containsKey("bouffeMidi")
+                       ? s_dbvarsCachedSrc["bouffeMidi"].as<int>()
+                       : (int)g_autoCtrl.getBouffeMidi();
+  out["bouffeSoir"]  = ok && s_dbvarsCachedSrc.containsKey("bouffeSoir")
+                       ? s_dbvarsCachedSrc["bouffeSoir"].as<int>()
+                       : (int)g_autoCtrl.getBouffeSoir();
+  out["tempsGros"] = ok && s_dbvarsCachedSrc.containsKey("tempsGros")
+                     ? s_dbvarsCachedSrc["tempsGros"].as<int>()
+                     : (int)g_autoCtrl.getTempsGros();
+  out["tempsPetits"] = ok && s_dbvarsCachedSrc.containsKey("tempsPetits")
+                       ? s_dbvarsCachedSrc["tempsPetits"].as<int>()
+                       : (int)g_autoCtrl.getTempsPetits();
+  out["aqThreshold"] = ok && s_dbvarsCachedSrc.containsKey("aqThreshold")
+                       ? s_dbvarsCachedSrc["aqThreshold"].as<int>()
+                       : (int)g_autoCtrl.getAqThresholdCm();
+  out["tankThreshold"] = ok && s_dbvarsCachedSrc.containsKey("tankThreshold")
+                         ? s_dbvarsCachedSrc["tankThreshold"].as<int>()
+                         : (int)g_autoCtrl.getTankThresholdCm();
+  out["chauffageThreshold"] = ok && (s_dbvarsCachedSrc.containsKey("chauffageThreshold") || s_dbvarsCachedSrc.containsKey("heaterThreshold"))
+                              ? getFloatCanonical("chauffageThreshold", "heaterThreshold", g_autoCtrl.getHeaterThresholdC())
+                              : g_autoCtrl.getHeaterThresholdC();
+  out["tempsRemplissageSec"] = ok && (s_dbvarsCachedSrc.containsKey("tempsRemplissageSec") || s_dbvarsCachedSrc.containsKey("refillDuration"))
+                               ? getIntCanonical("tempsRemplissageSec", "refillDuration", (int)g_autoCtrl.getRefillDurationSec())
+                               : (int)g_autoCtrl.getRefillDurationSec();
+  out["limFlood"] = ok && s_dbvarsCachedSrc.containsKey("limFlood")
+                    ? s_dbvarsCachedSrc["limFlood"].as<int>()
+                    : (int)g_autoCtrl.getLimFlood();
+  out["FreqWakeUp"] = ok && s_dbvarsCachedSrc.containsKey("FreqWakeUp")
+                     ? s_dbvarsCachedSrc["FreqWakeUp"].as<int>()
+                     : (int)g_autoCtrl.getFreqWakeSec();
+
+  const char* localEmail = g_autoCtrl.getEmailAddress();
+  const char* emailAddr = (ok && s_dbvarsCachedSrc.containsKey("mail"))
+                          ? getStringWithDefault("mail", localEmail && strlen(localEmail) > 0 ? localEmail : "Non configuré")
+                          : (localEmail && strlen(localEmail) > 0 ? localEmail : "Non configuré");
+  out["mail"] = emailAddr;
+
+  if (ok && s_dbvarsCachedSrc.containsKey("mailNotif")) {
+    const char* val = s_dbvarsCachedSrc["mailNotif"].as<const char*>();
+    bool enabled = val && (strcmp(val, "checked") == 0 || strcmp(val, "1") == 0 ||
+                          strcmp(val, "true") == 0 || strcmp(val, "on") == 0);
+    out["mailNotif"] = enabled;
+  } else {
+    out["mailNotif"] = g_autoCtrl.isEmailEnabled();
+  }
+  out["bouffeMatinOk"] = config.getBouffeMatinOk();
+  out["bouffeMidiOk"] = config.getBouffeMidiOk();
+  out["bouffeSoirOk"] = config.getBouffeSoirOk();
+  const char* petitsFlag = g_autoCtrl.getBouffePetitsFlag();
+  out["bouffePetits"] = (petitsFlag && strlen(petitsFlag) > 0) ? atoi(petitsFlag) : 0;
+  const char* grosFlag = g_autoCtrl.getBouffeGrosFlag();
+  out["bouffeGros"] = (grosFlag && strlen(grosFlag) > 0) ? atoi(grosFlag) : 0;
+  out["ok"] = true;
+}
+#endif
+
 static portMUX_TYPE g_asyncTaskMux = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t g_asyncTaskCount = 0;
 
@@ -190,9 +299,9 @@ bool WebServerManager::begin() {
   Serial.println("[WebServer] Mode minimal - serveur web désactivé");
   return true;
   #else
-  
-  // Initialiser le serveur WebSocket temps réel
-  g_realtimeWebSocket.begin(_sensors, _acts);
+
+  // Initialiser le serveur WebSocket temps réel (callback dbVars pour mise à jour temps réel page Contrôles)
+  g_realtimeWebSocket.begin(_sensors, _acts, &fillDbVarsJson);
   
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
@@ -551,152 +660,19 @@ bool WebServerManager::begin() {
   // /dbvars endpoint : expose variables fetched from remote server - OPTIMISÉ
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
     g_autoCtrl.notifyLocalWebActivity();
-    
-    // Vérification mémoire
+
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_DBVARS_ROUTE) {
-      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /dbvars (%u < %u bytes)\n", 
+      Serial.printf("[Web] ⚠️ Mémoire insuffisante pour /dbvars (%u < %u bytes)\n",
                     ESP.getFreeHeap(), HeapConfig::MIN_HEAP_DBVARS_ROUTE);
       req->send(NetworkConfig::HTTP_SERVICE_UNAVAILABLE, "text/plain", "Service temporairement indisponible - mémoire faible");
       return;
     }
-    
-    // Cache côté serveur : utiliser les données en mémoire d'abord (buffer fixe, pas de heap)
-    static unsigned long lastCacheUpdate = 0;
-    static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> cachedSrc;
-    static bool cacheValid = false;
-    if (s_dbvarsCacheInvalid) {
-      cacheValid = false;
-      s_dbvarsCacheInvalid = false;
-    }
-    unsigned long now = millis();
-    bool useCache = cacheValid && (now - lastCacheUpdate < 30000); // Cache valide 30s
-    
-    bool ok = false;
-    
-    if (useCache) {
-      ok = true;
-      Serial.println("[WebServer] /dbvars: Using cached data");
-    } else {
-      // OPTIMISATION: Utiliser UNIQUEMENT le cache flash - JAMAIS d'appel distant bloquant
-      char cached[2048];
-      if (config.loadRemoteVars(cached, sizeof(cached)) && strlen(cached) > 0) {
-        auto err = deserializeJson(cachedSrc, cached);
-        if (!err) {
-          ok = true;
-          Serial.println("[WebServer] /dbvars: Using flash cache (fast path)");
-          lastCacheUpdate = now;
-          cacheValid = true;
-        } else {
-          Serial.println("[WebServer] /dbvars: Flash cache parse error");
-        }
-      } else {
-        Serial.println("[WebServer] /dbvars: No flash cache available, using defaults");
-      }
-    }
-    // Normalise les clés attendues par le dashboard (buffer dédié pour éviter troncature mail/limFlood/FreqWakeUp)
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE_DBVARS> out;
-    
-    // Helper pour valeurs par défaut (source = cachedSrc)
-    auto getWithDefault = [&cachedSrc](const char* key, int defaultVal) -> int {
-      return cachedSrc.containsKey(key) ? cachedSrc[key].as<int>() : defaultVal;
-    };
-    auto getFloatWithDefault = [&cachedSrc](const char* key, float defaultVal) -> float {
-      return cachedSrc.containsKey(key) ? cachedSrc[key].as<float>() : defaultVal;
-    };
-    auto getStringWithDefault = [&cachedSrc](const char* key, const char* defaultVal) -> const char* {
-      if (cachedSrc.containsKey(key)) {
-        const char* val = cachedSrc[key].as<const char*>();
-        return (val && strlen(val) > 0) ? val : defaultVal;
-      }
-      return defaultVal;
-    };
-    // Harmonisation config: clés canoniques (serveur distant) avec fallback anciennes clés
-    auto getIntCanonical = [&cachedSrc](const char* canonical, const char* legacy, int def) -> int {
-      if (cachedSrc.containsKey(canonical)) return cachedSrc[canonical].as<int>();
-      if (legacy && cachedSrc.containsKey(legacy)) return cachedSrc[legacy].as<int>();
-      return def;
-    };
-    auto getFloatCanonical = [&cachedSrc](const char* canonical, const char* legacy, float def) -> float {
-      if (cachedSrc.containsKey(canonical)) return cachedSrc[canonical].as<float>();
-      if (legacy && cachedSrc.containsKey(legacy)) return cachedSrc[legacy].as<float>();
-      return def;
-    };
 
-    // v11.173: OFFLINE-FIRST - Utiliser g_autoCtrl (NVS locale) comme source de vérité
-    // Le cache distant sert uniquement pour les valeurs non présentes en local
-    
-    // Heures nourrissage - source: NVS locale via g_autoCtrl
-    out["bouffeMatin"] = ok && cachedSrc.containsKey("bouffeMatin") 
-                         ? cachedSrc["bouffeMatin"].as<int>() 
-                         : (int)g_autoCtrl.getBouffeMatin();
-    out["bouffeMidi"]  = ok && cachedSrc.containsKey("bouffeMidi") 
-                         ? cachedSrc["bouffeMidi"].as<int>() 
-                         : (int)g_autoCtrl.getBouffeMidi();
-    out["bouffeSoir"]  = ok && cachedSrc.containsKey("bouffeSoir") 
-                         ? cachedSrc["bouffeSoir"].as<int>() 
-                         : (int)g_autoCtrl.getBouffeSoir();
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE_DBVARS> doc;
+    JsonObject root = doc.to<JsonObject>();
+    fillDbVarsJson(root);
 
-    // Durées nourrissage - source: NVS locale via g_autoCtrl
-    out["tempsGros"] = ok && cachedSrc.containsKey("tempsGros") 
-                       ? cachedSrc["tempsGros"].as<int>() 
-                       : (int)g_autoCtrl.getTempsGros();
-    out["tempsPetits"] = ok && cachedSrc.containsKey("tempsPetits") 
-                         ? cachedSrc["tempsPetits"].as<int>() 
-                         : (int)g_autoCtrl.getTempsPetits();
-
-    // Seuils - source: NVS locale via g_autoCtrl
-    out["aqThreshold"]         = ok && cachedSrc.containsKey("aqThreshold") 
-                                 ? cachedSrc["aqThreshold"].as<int>() 
-                                 : (int)g_autoCtrl.getAqThresholdCm();
-    out["tankThreshold"]       = ok && cachedSrc.containsKey("tankThreshold") 
-                                 ? cachedSrc["tankThreshold"].as<int>() 
-                                 : (int)g_autoCtrl.getTankThresholdCm();
-    out["chauffageThreshold"]  = ok && (cachedSrc.containsKey("chauffageThreshold") || cachedSrc.containsKey("heaterThreshold"))
-                                 ? getFloatCanonical("chauffageThreshold", "heaterThreshold", g_autoCtrl.getHeaterThresholdC())
-                                 : g_autoCtrl.getHeaterThresholdC();
-    out["tempsRemplissageSec"] = ok && (cachedSrc.containsKey("tempsRemplissageSec") || cachedSrc.containsKey("refillDuration"))
-                                 ? getIntCanonical("tempsRemplissageSec", "refillDuration", (int)g_autoCtrl.getRefillDurationSec())
-                                 : (int)g_autoCtrl.getRefillDurationSec();
-    out["limFlood"]            = ok && cachedSrc.containsKey("limFlood") 
-                                 ? cachedSrc["limFlood"].as<int>() 
-                                 : (int)g_autoCtrl.getLimFlood();
-    out["FreqWakeUp"]          = ok && cachedSrc.containsKey("FreqWakeUp") 
-                                 ? cachedSrc["FreqWakeUp"].as<int>() 
-                                 : (int)g_autoCtrl.getFreqWakeSec();
-
-    // Email - source: NVS locale via g_autoCtrl
-    const char* localEmail = g_autoCtrl.getEmailAddress();
-    const char* emailAddr = (ok && cachedSrc.containsKey("mail"))
-                            ? getStringWithDefault("mail", localEmail && strlen(localEmail) > 0 ? localEmail : "Non configuré")
-                            : (localEmail && strlen(localEmail) > 0 ? localEmail : "Non configuré");
-    out["mail"] = emailAddr;
-    
-    // Email enabled - source: NVS locale via g_autoCtrl
-    if (ok && cachedSrc.containsKey("mailNotif")) {
-      const char* val = cachedSrc["mailNotif"].as<const char*>();
-      bool enabled = val && (strcmp(val, "checked") == 0 || strcmp(val, "1") == 0 || 
-                            strcmp(val, "true") == 0 || strcmp(val, "on") == 0);
-      out["mailNotif"] = enabled;
-    } else {
-      out["mailNotif"] = g_autoCtrl.isEmailEnabled();
-    }
-
-    // Flags/commandes - source: config locale
-    out["bouffeMatinOk"] = config.getBouffeMatinOk();
-    out["bouffeMidiOk"] = config.getBouffeMidiOk();
-    out["bouffeSoirOk"] = config.getBouffeSoirOk();
-    
-    // Flags nourrissage manuel - source: g_autoCtrl
-    const char* petitsFlag = g_autoCtrl.getBouffePetitsFlag();
-    out["bouffePetits"] = (petitsFlag && strlen(petitsFlag) > 0) ? atoi(petitsFlag) : 0;
-    const char* grosFlag = g_autoCtrl.getBouffeGrosFlag();
-    out["bouffeGros"] = (grosFlag && strlen(grosFlag) > 0) ? atoi(grosFlag) : 0;
-
-    // v11.173: ok=true si données locales disponibles (toujours vrai avec NVS)
-    out["ok"] = true;
-    
     AsyncResponseStream* response = req->beginResponseStream("application/json");
-    // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
@@ -704,7 +680,7 @@ bool WebServerManager::begin() {
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    serializeJson(out, *response);
+    serializeJson(doc, *response);
     req->send(response);
   });
 

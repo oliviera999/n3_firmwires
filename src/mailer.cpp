@@ -43,10 +43,25 @@ static char g_lightFooterBuffer[256];         // Footer allégé
 // FONCTIONS HELPER POUR ÉVITER LA DUPLICATION
 // ======================
 
+// Epoch validé pour affichage (évite valeurs aberrantes en cas de régression RTC)
+static time_t getSafeEpochForDisplay() {
+  time_t t = time(nullptr);
+  if (t >= SleepConfig::EPOCH_MIN_VALID && t <= SleepConfig::EPOCH_MAX_VALID && t != 0) {
+    return t;
+  }
+  unsigned long saved;
+  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, NVSKeys::System::RTC_EPOCH, saved, 0);
+  time_t savedEpoch = static_cast<time_t>(saved);
+  if (savedEpoch >= SleepConfig::EPOCH_MIN_VALID && savedEpoch <= SleepConfig::EPOCH_MAX_VALID) {
+    return savedEpoch;
+  }
+  return SleepConfig::EPOCH_DEFAULT_FALLBACK;
+}
+
 // Helper: Ajouter les informations temporelles (temps actuel, epoch, uptime)
 static int appendTimeInfo(char* buf, size_t& remaining) {
   int written = 0;
-  time_t now = time(nullptr);
+  time_t now = getSafeEpochForDisplay();
   
   written = snprintf(buf, remaining, "- Epoch: %lu\n", (unsigned long)now);
   if (written < 0 || (size_t)written >= remaining) {
@@ -57,15 +72,16 @@ static int appendTimeInfo(char* buf, size_t& remaining) {
   
   if (now > 100000) {
     struct tm tmInfo;
-    localtime_r(&now, &tmInfo);
-    char tbuf[32];
-    strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
-    written = snprintf(buf, remaining, "- Local time: %s\n", tbuf);
-    if (written < 0 || (size_t)written >= remaining) {
-      return -1;
+    if (localtime_r(&now, &tmInfo)) {
+      char tbuf[32];
+      strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
+      written = snprintf(buf, remaining, "- Local time: %s\n", tbuf);
+      if (written < 0 || (size_t)written >= remaining) {
+        return -1;
+      }
+      buf += written;
+      remaining -= written;
     }
-    buf += written;
-    remaining -= written;
   }
   
   const char* uptimeStr = formatUptime(millis());
@@ -387,23 +403,24 @@ static const char* buildSystemInfoFooter() {
   }
   
   // Informations supplémentaires spécifiques au footer complet
-  time_t now = time(nullptr);
+  time_t now = getSafeEpochForDisplay();
   if (now > 100000) {
     struct tm tmInfo;
-    localtime_r(&now, &tmInfo);
-    char tbuf[32];
-    strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
-    written = snprintf(buf, remaining, "- Jour de la semaine: %d (0=dimanche)\n"
-                                       "- Jour de l'année: %d\n"
-                                       "- DST actif: %s\n"
-                                       "- Timezone: Maroc UTC+1\n",
-                       tmInfo.tm_wday, tmInfo.tm_yday, tmInfo.tm_isdst ? "OUI" : "NON");
-    if (written < 0 || (size_t)written >= remaining) {
-      buf[remaining - 1] = '\0';
-      return g_systemInfoFooterBuffer;
+    if (localtime_r(&now, &tmInfo)) {
+      char tbuf[32];
+      strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", &tmInfo);
+      written = snprintf(buf, remaining, "- Jour de la semaine: %d (0=dimanche)\n"
+                                         "- Jour de l'année: %d\n"
+                                         "- DST actif: %s\n"
+                                         "- Timezone: Maroc UTC+1\n",
+                         tmInfo.tm_wday, tmInfo.tm_yday, tmInfo.tm_isdst ? "OUI" : "NON");
+      if (written < 0 || (size_t)written >= remaining) {
+        buf[remaining - 1] = '\0';
+        return g_systemInfoFooterBuffer;
+      }
+      buf += written;
+      remaining -= written;
     }
-    buf += written;
-    remaining -= written;
   }
   
   // Informations NTP
@@ -422,7 +439,7 @@ static const char* buildSystemInfoFooter() {
   
   // Informations RTC/Flash (SYSTEM namespace)
   unsigned long savedEpoch;
-  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, NVSKeys::System::RTC_EPOCH, savedEpoch, 0);
   if (savedEpoch > 0) {
     written = snprintf(buf, remaining, "- RTC Flash epoch: %lu\n", savedEpoch);
     if (written < 0 || (size_t)written >= remaining) {
@@ -687,7 +704,7 @@ static const char* buildSystemInfoFooter() {
 
     // rtc_epoch (SYSTEM namespace)
     unsigned long savedEpoch2;
-    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch2, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, NVSKeys::System::RTC_EPOCH, savedEpoch2, 0);
     written = snprintf(buf, remaining, "- sys.rtc_epoch: %lu\n", savedEpoch2);
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
@@ -729,7 +746,7 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
   buf += written;
   remaining -= written;
   
-  time_t now = time(nullptr);
+  time_t now = getSafeEpochForDisplay();
   struct tm timeinfo;
   if (localtime_r(&now, &timeinfo)) {
     char timeBuf[64];
@@ -777,7 +794,7 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
     
     // Informations RTC/Flash (SYSTEM namespace)
     unsigned long savedEpoch;
-    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, "rtc_epoch", savedEpoch, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::SYSTEM, NVSKeys::System::RTC_EPOCH, savedEpoch, 0);
     if (savedEpoch > 0) {
       written = snprintf(buf, remaining, "RTC Flash epoch: %lu\n", savedEpoch);
       if (written < 0 || (size_t)written >= remaining) {
@@ -883,8 +900,9 @@ bool Mailer::begin() {
 
 // Fonction d'attente réseau pour SMTP (similaire à PowerManager::waitForNetworkReady)
 static bool waitForNetworkReadyForSMTP() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("[Mail] waitForNetworkReady: WiFi non connecté, abandon"));
+  wl_status_t st = WiFi.status();
+  if (st != WL_CONNECTED) {
+    Serial.printf("[Mail] waitForNetworkReady: WiFi non connecté (status=%d), abandon\n", (int)st);
     return false;
   }
   
@@ -1063,7 +1081,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.println(F("[Mail] Trace 5: Msg struct configured"));
 
   // Affichage des détails du mail avant envoi avec informations temporelles
-  time_t mailTime = time(nullptr);
+  time_t mailTime = getSafeEpochForDisplay();
   struct tm mailTimeInfo;
   localtime_r(&mailTime, &mailTimeInfo);
   char mailTimeBuf[32];
@@ -1286,7 +1304,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   remaining -= written;
   
   // Ajouter l'heure actuelle
-  time_t now = time(nullptr);
+  time_t now = getSafeEpochForDisplay();
   struct tm timeinfo;
   if (localtime_r(&now, &timeinfo)) {
     char timeBuf[32];
@@ -1361,7 +1379,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   remaining -= written;
   
   // Ajouter l'heure actuelle
-  time_t now = time(nullptr);
+  time_t now = getSafeEpochForDisplay();
   struct tm timeinfo;
   if (localtime_r(&now, &timeinfo)) {
     char timeBuf[32];

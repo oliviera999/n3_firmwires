@@ -43,6 +43,11 @@ public:
     int8_t getSendState() const { return _sendState; }
     int8_t getRecvState() const { return _recvState; }
 
+    // Observabilité POST (pour /api/status)
+    uint32_t getPostOkCount() const { return _postOkCount; }
+    uint32_t getPostFailCount() const { return _postFailCount; }
+    uint32_t getLastPostDurationMs() const { return _lastPostDurationMs; }
+
     // Configuration des seuils (synchronisés avec AutomatismNetwork)
     void setLimFlood(uint16_t val) { _limFlood = val; }
     void setAqThresholdCm(uint16_t val) { _aqThresholdCm = val; }
@@ -103,6 +108,11 @@ private:
     // Gestion backoff (simplifié - backoff supprimé, retries gérés par web_client)
     uint8_t _consecutiveSendFailures;
     uint32_t _lastSendAttemptMs;
+
+    // Observabilité POST (exposé dans /api/status)
+    uint32_t _postOkCount{0};
+    uint32_t _postFailCount{0};
+    uint32_t _lastPostDurationMs{0};
     
     // Edge detection pour commandes distantes (évite re-déclenchements si serveur garde flag à 1)
     bool _lastRemoteFeedSmallState{false};

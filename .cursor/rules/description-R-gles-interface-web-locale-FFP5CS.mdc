@@ -24,4 +24,4 @@ alwaysApply: false
 
 - **Robustesse**
   - Le front ne doit pas supposer une connexion WebSocket ou réseau permanente.
-  - Gérer les déconnexions (messages d’erreur simples, pas de boucle de retry agressive).
+  - Gérer les déconnexions (messages d'erreur simples). Pas de retry sans backoff ni limite (ex. max 3 tentatives avec backoff autorisé).

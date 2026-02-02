@@ -581,7 +581,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
 // ============================================================================
 
 void Automatism::handleFeeding() {
-    time_t now = _power.getCurrentEpoch();
+    time_t now = _power.getCurrentEpochSafe();
     struct tm timeinfo;
     if (!localtime_r(&now, &timeinfo)) {
         Serial.println(F("[Auto] ❌ Erreur récupération heure pour nourrissage"));
@@ -961,7 +961,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         _lowAquaSent = false;
     }
 
-    time_t nowEpoch = _power.getCurrentEpoch();
+    time_t nowEpoch = _power.getCurrentEpochSafe();
     if (readings.wlAqua < _network.getLimFlood()) {
         if (floodEnterSinceEpoch == 0) {
             floodEnterSinceEpoch = nowEpoch;

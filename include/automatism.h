@@ -48,6 +48,8 @@ class Automatism {
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
   // Traite un doc déjà récupéré (normalise, sauve NVS). Utilisé par netTask au boot.
   bool processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc);
+  /// Met à jour l’état de bord nourrissage distant depuis un doc (chemin fallback = même état que chemin principal).
+  void applyRemoteFeedingCommandsFromDoc(const ArduinoJson::JsonDocument& doc) { _network.handleRemoteFeedingCommands(doc, *this); }
 
   // --- Accesseurs exposés pour le serveur Web local ---
   // v11.172: Source de vérité = AutomatismSync (_network)
@@ -105,7 +107,12 @@ class Automatism {
   void toggleForceWakeup();
   void triggerResetMode();
   bool getForceWakeUp() const { return forceWakeUp; }
-  
+
+  // Observabilité sync POST (exposé dans /api/status)
+  uint32_t getSyncPostOkCount() const { return _network.getPostOkCount(); }
+  uint32_t getSyncPostFailCount() const { return _network.getPostFailCount(); }
+  uint32_t getSyncLastPostDurationMs() const { return _network.getLastPostDurationMs(); }
+
   // Méthodes publiques pour le serveur web
   bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);
   void manualFeedSmall();

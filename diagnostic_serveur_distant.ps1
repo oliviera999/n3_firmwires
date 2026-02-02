@@ -67,12 +67,22 @@ $maxDuration = if ($durations.Count -gt 0) { ($durations | Measure-Object -Maxim
 $minDuration = if ($durations.Count -gt 0) { ($durations | Measure-Object -Minimum).Minimum } else { 0 }
 
 # Vérifier fréquence (attendu: toutes les 2 minutes = 120 secondes)
+# Extraire la date du nom de fichier (ex: monitor_5min_2026-02-02_20-34-34.log -> 2026-02-02)
+$logBaseName = [System.IO.Path]::GetFileNameWithoutExtension($LogFile)
+$dateFromFile = $null
+if ($logBaseName -match '(\d{4})-(\d{2})-(\d{2})') {
+    $dateFromFile = "$($matches[1])-$($matches[2])-$($matches[3])"
+}
 $postTimestamps = @()
 foreach ($line in $lines) {
     if ($line -match '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ===') {
-        if ($line -match '(\d{4}-\d{2}-\d{2}[\s:]\d{2}:\d{2}:\d{2})') {
-            try { $postTimestamps += [DateTime]::Parse($matches[1]) } catch {}
+        $dt = $null
+        if ($line -match '(\d{4})-(\d{2})-(\d{2})[\sT](\d{2}):(\d{2}):(\d{2})') {
+            try { $dt = [DateTime]::Parse("$($matches[1])-$($matches[2])-$($matches[3]) $($matches[4]):$($matches[5]):$($matches[6])") } catch {}
+        } elseif ($dateFromFile -and $line -match '(\d{1,2}):(\d{2}):(\d{2})') {
+            try { $dt = [DateTime]::Parse("$dateFromFile $($matches[1].PadLeft(2,'0')):$($matches[2]):$($matches[3])") } catch {}
         }
+        if ($null -ne $dt) { $postTimestamps += $dt }
     }
 }
 
@@ -109,9 +119,13 @@ $ackSent = $lines | Select-String -Pattern "ack_command|ACK.*envoyé"
 $getTimestamps = @()
 foreach ($line in $lines) {
     if ($line -match 'outputs/state:\s*code=') {
-        if ($line -match '(\d{4}-\d{2}-\d{2}[\s:]\d{2}:\d{2}:\d{2})') {
-            try { $getTimestamps += [DateTime]::Parse($matches[1]) } catch {}
+        $dt = $null
+        if ($line -match '(\d{4})-(\d{2})-(\d{2})[\sT](\d{2}):(\d{2}):(\d{2})') {
+            try { $dt = [DateTime]::Parse("$($matches[1])-$($matches[2])-$($matches[3]) $($matches[4]):$($matches[5]):$($matches[6])") } catch {}
+        } elseif ($dateFromFile -and $line -match '(\d{1,2}):(\d{2}):(\d{2})') {
+            try { $dt = [DateTime]::Parse("$dateFromFile $($matches[1].PadLeft(2,'0')):$($matches[2]):$($matches[3])") } catch {}
         }
+        if ($null -ne $dt) { $getTimestamps += $dt }
     }
 }
 

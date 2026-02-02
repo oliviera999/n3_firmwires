@@ -508,6 +508,14 @@ void automationTask(void* pv) {
           }
         }
         #endif
+
+        // Sauvegarder les identifiants WiFi quand connecté (pour reconnexion au réveil)
+        static unsigned long lastWifiCredSaveMs = 0;
+        const unsigned long WIFI_CRED_SAVE_INTERVAL_MS = 60000;  // 1 min
+        if (WiFi.status() == WL_CONNECTED && (now - lastWifiCredSaveMs) >= WIFI_CRED_SAVE_INTERVAL_MS) {
+          g_ctx->power.saveCurrentWifiCredentials();
+          lastWifiCredSaveMs = now;
+        }
       }
 
       if (now - lastBouffeDisplay > bouffeInterval) {
@@ -569,6 +577,7 @@ void automationTask(void* pv) {
           Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
           GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
           invalidateDbvarsCache();
+          g_ctx->automatism.applyRemoteFeedingCommandsFromDoc(g_remoteFallbackDoc);
         } else if (ok && g_remoteFallbackDoc.size() == 0) {
           Serial.println(F("[Auto] ▶️ Réponse serveur vide (outputs vides), pas d'application"));
         }

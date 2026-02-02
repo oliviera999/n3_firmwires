@@ -80,7 +80,19 @@
       <div class="card-body">
         <div class="row g-3">
           <div class="col-12">
-            <h6 class="text-muted mb-2">🕐 Horaires Nourrissage</h6>
+            <h6 class="text-muted mb-2">Nourrissage</h6>
+          </div>
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🐠 Durée Gros (s)</span>
+              <span class="badge bg-info editable-var" id="dbFeedBigDur" data-key="tempsGros" data-type="number" data-min="1" data-max="60">--</span>
+            </div>
+          </div>
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🐟 Durée Petits (s)</span>
+              <span class="badge bg-info editable-var" id="dbFeedSmallDur" data-key="tempsPetits" data-type="number" data-min="1" data-max="60">--</span>
+            </div>
           </div>
           <div class="col-md-4 col-sm-6">
             <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
@@ -100,25 +112,9 @@
               <span class="badge bg-primary editable-var" id="dbFeedEvening" data-key="bouffeSoir" data-type="number" data-min="0" data-max="23">--</span>
             </div>
           </div>
-          
+
           <div class="col-12 mt-3">
-            <h6 class="text-muted mb-2">⏱️ Durées Nourrissage</h6>
-          </div>
-          <div class="col-md-6 col-sm-6">
-            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-              <span>🐠 Durée Gros (s)</span>
-              <span class="badge bg-info editable-var" id="dbFeedBigDur" data-key="tempsGros" data-type="number" data-min="1" data-max="60">--</span>
-            </div>
-          </div>
-          <div class="col-md-6 col-sm-6">
-            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-              <span>🐟 Durée Petits (s)</span>
-              <span class="badge bg-info editable-var" id="dbFeedSmallDur" data-key="tempsPetits" data-type="number" data-min="1" data-max="60">--</span>
-            </div>
-          </div>
-          
-          <div class="col-12 mt-3">
-            <h6 class="text-muted mb-2">💧 Seuils Eau</h6>
+            <h6 class="text-muted mb-2">Gestion Eau</h6>
           </div>
           <div class="col-md-6 col-sm-6">
             <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
@@ -132,34 +128,10 @@
               <span class="badge bg-secondary editable-var" id="dbTankThreshold" data-key="tankThreshold" data-type="number" data-min="0" data-max="200">--</span>
             </div>
           </div>
-          
-          <div class="col-12 mt-3">
-            <h6 class="text-muted mb-2">🌡️ Température</h6>
-          </div>
-          <div class="col-md-6 col-sm-12">
-            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-              <span>🔥 Seuil Chauffage (°C)</span>
-              <span class="badge bg-warning text-dark editable-var" id="dbHeaterThreshold" data-key="chauffageThreshold" data-type="number" data-min="10" data-max="30" data-step="0.1">--</span>
-            </div>
-          </div>
-          
-          <div class="col-12 mt-3">
-            <h6 class="text-muted mb-2">💧 Remplissage</h6>
-          </div>
-          <div class="col-md-6 col-sm-12">
+          <div class="col-md-6 col-sm-6">
             <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
               <span>⏱️ Durée Remplissage (s)</span>
               <span class="badge bg-info editable-var" id="dbRefillDuration" data-key="tempsRemplissageSec" data-type="number" data-min="10" data-max="600">--</span>
-            </div>
-          </div>
-          
-          <div class="col-12 mt-3">
-            <h6 class="text-muted mb-2">⏰ Sync / Réveil</h6>
-          </div>
-          <div class="col-md-6 col-sm-6">
-            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-              <span>⏰ Fréq. réveil (s)</span>
-              <span class="badge bg-info editable-var" id="dbFreqWakeUp" data-key="FreqWakeUp" data-type="number" data-min="6" data-max="3600">--</span>
             </div>
           </div>
           <div class="col-md-6 col-sm-6">
@@ -168,9 +140,21 @@
               <span class="badge bg-secondary editable-var" id="dbLimFlood" data-key="limFlood" data-type="number" data-min="0" data-max="100">--</span>
             </div>
           </div>
-          
+
           <div class="col-12 mt-3">
-            <h6 class="text-muted mb-2">📧 Configuration Email</h6>
+            <h6 class="text-muted mb-2">Autre Réglages</h6>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🔥 Seuil Chauffage (°C)</span>
+              <span class="badge bg-warning text-dark editable-var" id="dbHeaterThreshold" data-key="chauffageThreshold" data-type="number" data-min="10" data-max="30" data-step="0.1">--</span>
+            </div>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>⏰ Fréq. réveil (s)</span>
+              <span class="badge bg-info editable-var" id="dbFreqWakeUp" data-key="FreqWakeUp" data-type="number" data-min="6" data-max="3600">--</span>
+            </div>
           </div>
           <div class="col-md-6 col-sm-12">
             <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">

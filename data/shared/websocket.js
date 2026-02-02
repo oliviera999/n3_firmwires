@@ -141,6 +141,9 @@ function connectWS() {
           // Gérer différents types de messages
           if (msg && (msg.type === 'sensor_update' || msg.type === 'sensor_data')) {
             updateSensorDisplay(msg);
+            if (msg.dbVars && typeof displayDbVars === 'function') {
+              displayDbVars(msg.dbVars);
+            }
           } else if (msg && msg.type === 'wifi_change') {
             // Changement de réseau WiFi en cours
             console.log(`🔄 Changement de réseau WiFi vers: ${msg.ssid}`);

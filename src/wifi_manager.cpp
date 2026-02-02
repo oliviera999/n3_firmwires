@@ -28,9 +28,9 @@ bool WifiManager::connect(DisplayView* disp) {
   } else {
     WiFi.mode(WIFI_STA);
   }
-  // Tente un disconnect propre avant scan, puis petite attente
+  // Tente un disconnect propre avant scan ; laisser le radio se stabiliser (renforce connexion)
   WiFi.disconnect(false, true);
-  vTaskDelay(pdMS_TO_TICKS(50));
+  vTaskDelay(pdMS_TO_TICKS(300));
 
   Serial.println(F("[WiFi] 🔍 Balayage des réseaux..."));
   // v11.176: Watchdog reset avant scan bloquant (2-5s) - audit robustesse
@@ -159,6 +159,32 @@ bool WifiManager::connect(DisplayView* disp) {
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         Serial.printf("[WiFi] OK(2nd) %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
         WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
+        _connecting = false;
+        return true;
+      }
+      // 3e tentative après court délai (routeur peut avoir besoin d'un moment après échec)
+      Serial.printf("[WiFi] 🔄 3e tentative %s (délai 500 ms)...\n", _list[i].ssid);
+      vTaskDelay(pdMS_TO_TICKS(500));
+      WiFi.disconnect(false, true);
+      if (strlen(_list[i].password) == 0) {
+        WiFi.begin(_list[i].ssid);
+      } else {
+        WiFi.begin(_list[i].ssid, _list[i].password);
+      }
+      uint32_t start3 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - start3 < _timeoutMs) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+          esp_task_wdt_reset();
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        show("WiFi OK");
+        IPAddress ip = WiFi.localIP();
+        char ipBuf[16];
+        snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        Serial.printf("[WiFi] OK(3e) %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
+        WiFi.setSleep(true);
         _connecting = false;
         return true;
       }
