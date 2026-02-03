@@ -106,7 +106,7 @@ void validatePendingOta(OtaState& state) {
         state.justUpdated = true;
         {
           char tempBuf[64];
-          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, "ota_prevVer", tempBuf, sizeof(tempBuf), "");
+          g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_PREV_VER, tempBuf, sizeof(tempBuf), "");
           strncpy(state.previousVersion, tempBuf, sizeof(state.previousVersion) - 1);
           state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
         }
@@ -148,10 +148,7 @@ bool initializeDisplay(AppContext& ctx) {
     ctx.display.hideOtaProgressOverlay();
   }
 
-  Serial.println(F("[DEBUG] Avant oled.begin()"));
   bool result = ctx.display.begin();
-  Serial.printf("[DEBUG] oled.begin() retourné: %s\n", result ? "true" : "false");
-  Serial.printf("[DEBUG] oled.isPresent(): %s\n", ctx.display.isPresent() ? "true" : "false");
   return result;
 }
 
@@ -326,7 +323,7 @@ void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
                hostname ? hostname : "(unknown)",
                hostname ? hostname : "(unknown)",
                SystemConfig::ARDUINO_OTA_PORT);
-      ctx.mailer.sendAlert("OTA début - Interface web", body, toEmail);
+      ctx.mailer.sendAlert("OTA début - Interface web", body, toEmail, true);
     })
     .onProgress([&ctx](unsigned int progress, unsigned int total) {
       int percent = (progress * 100) / total;
@@ -393,7 +390,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     }
     char subj[128];
     snprintf(subj, sizeof(subj), "OTA mise à jour - Serveur distant [%s]", hostname);
-    bool emailSent = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress());
+    bool emailSent = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress(), true);
     Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
     state.justUpdated = false;
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_PREV_VER);
@@ -432,7 +429,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     }
     char subj[128];
     snprintf(subj, sizeof(subj), "OTA mise à jour - Interface web [%s]", safeHost);
-    bool emailSent = ctx.mailer.sendAlert(subj, body, mail);
+    bool emailSent = ctx.mailer.sendAlert(subj, body, mail, true);
     Serial.printf("[App] Email interface web %s\n", emailSent ? "envoyé" : "échoué");
     ctx.config.setOtaUpdateFlag(false);
   }

@@ -51,20 +51,6 @@ void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
-  // #region agent log
-  {
-    size_t n = 0;
-    if (doc.is<JsonObject>()) {
-      JsonObjectConst obj = doc.as<JsonObjectConst>();
-      for (JsonPairConst p : obj) {
-        if (n < 5) Serial.printf("[DBG] H4 docKey[%u]=%s\n", (unsigned)n, p.key().c_str());
-        n++;
-      }
-    }
-    Serial.printf("[DBG] H4 docKeyCount=%u\n", (unsigned)n);
-  }
-  // #endregion
-  // Diagnostics additionnels v11.74
   size_t presentKeys = 0;
     // v11.189: Seed état reset (110) pour ne pas redémarrer si le sync envoie 110:1 comme état courant
     if (doc.containsKey("110")) {
@@ -174,9 +160,6 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     }
     
   Serial.printf("[GPIOParser] Présents: %u / %u\n", (unsigned)presentKeys, (unsigned)GPIOMap::MAPPING_COUNT);
-  // #region agent log
-  Serial.printf("[DBG] H4 H5 presentKeys=%u hasVirtualConfig=%d\n", (unsigned)presentKeys, hasVirtualConfig ? 1 : 0);
-  // #endregion
   if (presentKeys > 0 || hasVirtualConfig) {
     Serial.printf("[GPIOParser] Config appliquée (RAM+NVS), clés: %u\n", (unsigned)presentKeys);
   }
@@ -220,10 +203,6 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // Déclenchement sur front montant uniquement (one-shot)
         // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
-        // #region agent log
-        bool trigger = (state && !s_lastFeedSmallState);
-        Serial.printf("[DBG_FEED] H5 GPIOParser FEED_SMALL state=%d last=%d trigger=%d\n", state ? 1 : 0, s_lastFeedSmallState ? 1 : 0, trigger ? 1 : 0);
-        // #endregion
         if (state && !s_lastFeedSmallState) {
             autoCtrl.manualFeedSmall();
             autoCtrl.notifyRemoteFeedExecuted(true);
@@ -235,10 +214,6 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // Déclenchement sur front montant uniquement (one-shot)
         // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
-        // #region agent log
-        bool trigger = (state && !s_lastFeedBigState);
-        Serial.printf("[DBG_FEED] H5 GPIOParser FEED_BIG state=%d last=%d trigger=%d\n", state ? 1 : 0, s_lastFeedBigState ? 1 : 0, trigger ? 1 : 0);
-        // #endregion
         if (state && !s_lastFeedBigState) {
             autoCtrl.manualFeedBig();
             autoCtrl.notifyRemoteFeedExecuted(false);
@@ -428,8 +403,8 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
     char key[32];
     snprintf(key, sizeof(key), "gpio_%s", mapping.nvsKey);
 
-    // Vérifier que la clé NVS n'est pas trop longue ou invalide
-    if (mapping.nvsKey == nullptr || strlen(mapping.nvsKey) == 0 || strlen(mapping.nvsKey) > 15) {
+    // Clé complète = "gpio_" (5 car.) + nvsKey ; limite NVS = 15 car.
+    if (mapping.nvsKey == nullptr || strlen(mapping.nvsKey) == 0 || strlen(mapping.nvsKey) > 10) {
         Serial.printf("[NVS] ⚠️ Clé NVS invalide, ignorée: %s\n", mapping.nvsKey ? mapping.nvsKey : "NULL");
         return;
     }
@@ -457,8 +432,8 @@ void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {
             continue;
         }
         
-        // Vérifier que la clé NVS est valide
-        if (mapping.nvsKey == nullptr || strlen(mapping.nvsKey) == 0 || strlen(mapping.nvsKey) > 15) {
+        // Clé complète = "gpio_" (5 car.) + nvsKey ; limite NVS = 15 car.
+        if (mapping.nvsKey == nullptr || strlen(mapping.nvsKey) == 0 || strlen(mapping.nvsKey) > 10) {
             continue;
         }
         

@@ -33,6 +33,9 @@ class WebClient {
   // Retour: 0=échec, 1=OK HTTP, 2=OK NVS fallback (v11.193)
   int fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
+  /** Copie le dernier GET outputs/state (JSON) dans doc. À appeler depuis le *caller* après netFetchRemoteState retourne 1 et !fromNVSFallback (évite LoadProhibited en écrivant doc depuis netTask). */
+  bool copyLastFetchedTo(ArduinoJson::JsonDocument& doc);
+
   // Couche réseau minimale (WiFi + timeout GET/Heartbeat 5s, POST 7s dérogation, pas de retry interne)
   // Retour: 0 = échec, 1 = OK depuis HTTP, 2 = OK depuis NVS (fallback). v11.193: éviter processFetchedRemoteConfig quand 2.
   int tryFetchConfigFromServer(ArduinoJson::JsonDocument& doc);

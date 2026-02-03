@@ -246,8 +246,8 @@ void PowerManager::syncTimeFromNTP() {
     unsigned long syncMillis = millis();
     time_t ntpEpoch = mktime(&timeinfo);
     
-    // Calcul de la dérive si on avait une heure locale valide
-    if (localBeforeEpoch > 1600000000 && syncMillis > localBeforeMillis) {
+    // Calcul de la dérive si on avait une heure locale valide (seuil = EPOCH_MIN_VALID)
+    if (localBeforeEpoch > SleepConfig::EPOCH_MIN_VALID && syncMillis > localBeforeMillis) {
       time_t timeDiff = ntpEpoch - localBeforeEpoch;
       unsigned long millisDiff = syncMillis - localBeforeMillis;
       
@@ -260,6 +260,7 @@ void PowerManager::syncTimeFromNTP() {
         // Éviter division par zéro et calculer PPM
         if (expectedSeconds > 0.0f) {
           _currentDriftPPM = (driftSeconds / expectedSeconds) * 1000000.0f;
+          _currentDriftPPM = std::fmax(-SleepConfig::DRIFT_PPM_MAX, std::fmin(SleepConfig::DRIFT_PPM_MAX, _currentDriftPPM));
           _lastDriftSeconds = driftSeconds;
           
           LOG_DRIFT(LogConfig::LOG_INFO, "Dérive mesurée: %.2f PPM (%.2f s sur %.2f s)", 
@@ -325,7 +326,7 @@ void PowerManager::updateTime() {
   // Synchronisation périodique NTP si WiFi disponible
   // Protection débordement: (now - _lastNtpSync) < interval au lieu de (now > _lastNtpSync + interval)
   if (WiFi.status() == WL_CONNECTED) {
-    if (_lastNtpSync == 0 || (now - _lastNtpSync) >= NTP_SYNC_INTERVAL) {
+    if (_lastNtpSync == 0 || (now - _lastNtpSync) >= TimingConfig::NTP_SYNC_INTERVAL_MS) {
       syncTimeFromNTP();
     }
   }
@@ -606,8 +607,7 @@ void PowerManager::smartSaveTime() {
   }
   
   // Ne jamais persister une régression significative (évite corruption NVS)
-  constexpr time_t MAX_REGRESSION_SEC = 3600;  // 1 heure
-  if (_lastSavedEpoch > 0 && (time_t)(_lastSavedEpoch - currentEpoch) > (time_t)MAX_REGRESSION_SEC) {
+  if (_lastSavedEpoch > 0 && (time_t)(_lastSavedEpoch - currentEpoch) > (time_t)SleepConfig::MAX_RTC_REGRESSION_SEC) {
     Serial.printf("[Power] Régression d'heure ignorée (actuel: %lu, sauvegardé: %lu)\n",
                   (unsigned long)currentEpoch, (unsigned long)_lastSavedEpoch);
     return;

@@ -51,6 +51,7 @@ Write-Host 'Analyse envoi POST donnees capteurs...' -ForegroundColor Yellow
 $postStarts = $lines | Select-String -Pattern '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ==='
 $postSuccess = $lines | Select-String -Pattern '\[HTTP\] Requête:.*succès=oui|\[PR\] Primary server result: SUCCESS|\[PR\] Final result: SUCCESS'
 $postFailed = $lines | Select-String -Pattern '\[HTTP\] Requête:.*succès=non|\[HTTP\] Erreur \d|\[PR\] Primary server result: FAILED|\[PR\] Final result: FAILED'
+$postTimeout = $lines | Select-String -Pattern '\[HTTP\] POST timeout'
 $postDurations = $lines | Select-String -Pattern '\[HTTP\] Requête: (\d+) ms|\[PR\] Durée totale: (\d+) ms'
 $syncQueue = $lines | Select-String -Pattern '\[Sync\] Queue|DataQueue.*push|Queue.*pleine'
 $postMutexError = $lines | Select-String -Pattern "\[PR\] Impossible acquerir mutex TLS"
@@ -109,8 +110,10 @@ Write-Host 'Analyse reception GET commandes serveur...' -ForegroundColor Yellow
 # GET: une tentative = une ligne contenant "outputs/state: code=" (v11.186: décompte correct,
 # insensible aux codes ANSI dans le log ; une seule ligne firmware par GET)
 $getFetch = $lines | Select-String -Pattern 'outputs/state:\s*code='
+# Strip codes ANSI (ex. [37m) pour que "body=577 bytes" matche même avec couleurs dans le log
+$linesNoAnsi = $lines | ForEach-Object { $_ -replace '\[\d+(;\d+)*m', '' }
 # Parsing réussi = une ligne "GET outputs/state: body=... bytes" (HTTP) ou "Utilisation cache NVS" (fallback)
-$jsonParseSuccess = $lines | Select-String -Pattern 'GET outputs/state: body=\d+ bytes|Utilisation cache NVS|\[GPIOParser\].*PARSING.*SERVEUR'
+$jsonParseSuccess = $linesNoAnsi | Select-String -Pattern 'GET outputs/state: body=\d+ bytes|Utilisation cache NVS|\[GPIOParser\].*PARSING.*SERVEUR'
 $jsonParseErrors = $lines | Select-String -Pattern '\[HTTP\] JSON parse error|JSON parse error|JSON.*fail|Parse.*error'
 $getEndpoints = $lines | Select-String -Pattern "outputs-test/state|outputs/state"
 $ackSent = $lines | Select-String -Pattern "ack_command|ACK.*envoyé"
@@ -200,8 +203,8 @@ if ($avgGetInterval -gt 0) {
     $coherence += '[KO] GET: Impossible de calculer la frequence'
 }
 
-# POST: Duree <= 7 secondes (HTTP_POST_TIMEOUT_MS = 7000, derogation RAPPORT_WORKFLOW 2026-02-03)
-$postLimitMs = 7000
+# POST: Duree <= 8 secondes (HTTP_POST_TIMEOUT_MS = 8000)
+$postLimitMs = 8000
 if ($maxDuration -gt 0) {
     if ($maxDuration -le $postLimitMs) {
         $coherence += '[OK] POST: Durees dans les limites (max: ' + $maxDuration + ' ms, limite: ' + $postLimitMs + ' ms)'
@@ -235,6 +238,7 @@ $report = @(
   '- Debuts POST detectes: ' + $postStarts.Count,
   '- POST reussis: ' + $postSuccess.Count,
   '- POST echoues: ' + $postFailed.Count,
+  '- POST timeouts: ' + $postTimeout.Count,
   '- Taux de succes: ' + $(if ($postStarts.Count -gt 0) { [math]::Round(($postSuccess.Count / $postStarts.Count) * 100, 2) } else { 0 }) + '%',
   '',
   'Performance:',
@@ -321,7 +325,7 @@ Write-Host ""
 Write-Host ('[OK] Diagnostic sauvegarde: ' + $outputFile) -ForegroundColor Green
 Write-Host ""
 Write-Host '=== RESUME ===' -ForegroundColor Cyan
-Write-Host ('POST: ' + $postStarts.Count + ' tentatives, ' + $postSuccess.Count + ' reussis, ' + $postFailed.Count + ' echoues') -ForegroundColor White
+Write-Host ('POST: ' + $postStarts.Count + ' tentatives, ' + $postSuccess.Count + ' reussis, ' + $postFailed.Count + ' echoues, ' + $postTimeout.Count + ' timeouts') -ForegroundColor White
 Write-Host ('GET: ' + $getFetch.Count + ' tentatives, ' + $jsonParseSuccess.Count + ' parsing reussis, ' + $jsonParseErrors.Count + ' erreurs') -ForegroundColor White
 Write-Host ('Heartbeat: ' + $hbStarts.Count + ' tentatives, ' + $hbSuccess.Count + ' reussis') -ForegroundColor White
 Write-Host ""

@@ -33,6 +33,8 @@ class Automatism {
   void update();               // collecte interne des capteurs
   void update(const SensorReadings& r); // usage dans tâche dédiée
   void updateDisplay();        // mise à jour de l'affichage OLED (tâche dédiée)
+  // Mise à jour affichage avec readings déjà lus (évite double lecture capteurs, ex. depuis automationTask)
+  void updateDisplayWithReadings(const SensorReadings& r);
   // Recommande l'intervalle d'update OLED en fonction de l'état courant
   uint32_t getRecommendedDisplayIntervalMs();
   
@@ -46,8 +48,10 @@ class Automatism {
   uint32_t getPumpStartTime() const { return _pumpStartMs; }  // Pour SystemActuators
   bool isTankPumpRunning() const { return _pumpStartMs > 0; }
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
-  // Traite un doc déjà récupéré (normalise, sauve NVS). Utilisé par netTask au boot.
+  // Traite un doc déjà récupéré (normalise, enqueue sauvegarde NVS). Utilisé par netTask au boot.
   bool processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc);
+  /// Draine la file de sauvegarde NVS différée (à appeler depuis automation task uniquement).
+  void processDeferredRemoteVarsSave();
   /// Met à jour l’état de bord nourrissage distant depuis un doc (chemin fallback = même état que chemin principal).
 
   // --- Accesseurs exposés pour le serveur Web local ---

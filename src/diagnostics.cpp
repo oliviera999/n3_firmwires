@@ -1,5 +1,6 @@
 #include "diagnostics.h"
 #include "nvs_manager.h" // v11.106
+#include "nvs_keys.h"
 #include "app_tasks.h" // Pour les TaskHandle_t en mode debug
 #include <ArduinoJson.h>
 #if defined(FFP5CS_COREDUMP_ENABLE) && (FFP5CS_COREDUMP_ENABLE)
@@ -71,25 +72,25 @@ void Diagnostics::begin() {
   // Charger les valeurs précédentes
   int rebootCount;
 
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, rebootCount, 0);
   _stats.rebootCount = rebootCount + 1;
   
   // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
   unsigned long minHeapUL = 0;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, minHeapUL, UINT32_MAX);
   _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
   // Correction: utiliser loadULong pour uint32_t (compteurs HTTP/OTA)
   unsigned long httpOkUL = 0, httpKoUL = 0, otaOkUL = 0, otaKoUL = 0;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpOk", httpOkUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpKo", httpKoUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaOk", otaOkUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaKo", otaKoUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_OK, httpOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_KO, httpKoUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::OTA_OK, otaOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::OTA_KO, otaKoUL, 0);
   _stats.httpSuccessCount = static_cast<uint32_t>(httpOkUL);
   _stats.httpFailCount = static_cast<uint32_t>(httpKoUL);
   _stats.otaSuccessCount = static_cast<uint32_t>(otaOkUL);
   _stats.otaFailCount = static_cast<uint32_t>(otaKoUL);
 
-  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", _stats.rebootCount);
+  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, _stats.rebootCount);
 
   // Initialisation des variables de suivi
   _lastSavedMinHeap = _stats.minFreeHeap;
@@ -133,18 +134,18 @@ void Diagnostics::begin() {
 
 void Diagnostics::loadFromNvs() {
   int rebootCount;
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, rebootCount, 0);
   _stats.rebootCount = rebootCount;
   // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
   unsigned long minHeapUL = 0;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, minHeapUL, UINT32_MAX);
   _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
   // Correction: utiliser loadULong pour uint32_t (compteurs HTTP/OTA)
   unsigned long httpOkUL = 0, httpKoUL = 0, otaOkUL = 0, otaKoUL = 0;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpOk", httpOkUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_httpKo", httpKoUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaOk", otaOkUL, 0);
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_otaKo", otaKoUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_OK, httpOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_KO, httpKoUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::OTA_OK, otaOkUL, 0);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::OTA_KO, otaKoUL, 0);
   _stats.httpSuccessCount = static_cast<uint32_t>(httpOkUL);
   _stats.httpFailCount = static_cast<uint32_t>(httpKoUL);
   _stats.otaSuccessCount = static_cast<uint32_t>(otaOkUL);
@@ -251,8 +252,8 @@ void Diagnostics::update() {
   #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
   static unsigned long lastDiagnosticSave = 0;
   if (now - lastDiagnosticSave > 60000) { // Toutes les minutes
-    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_lastUptime", _stats.uptimeSec);
-    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_lastHeap", _stats.freeHeap);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::LAST_UPTIME, _stats.uptimeSec);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::LAST_HEAP, _stats.freeHeap);
     lastDiagnosticSave = now;
   }
   #endif
@@ -289,7 +290,7 @@ void Diagnostics::update() {
     
     if (shouldSave) {
       // Correction: utiliser saveULong pour uint32_t (minFreeHeap)
-      g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_minHeap", _stats.minFreeHeap);
+      g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, _stats.minFreeHeap);
       
       _lastHeapSave = now;
       _lastSavedMinHeap = _stats.minFreeHeap;
@@ -341,21 +342,21 @@ void Diagnostics::recordHttpResult(bool success, int httpCode) {
   _stats.lastHttpCode = httpCode;
   if (success) {
     _stats.httpSuccessCount++;
-    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_httpOk", _stats.httpSuccessCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_OK, _stats.httpSuccessCount);
   } else {
     _stats.httpFailCount++;
-    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_httpKo", _stats.httpFailCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_KO, _stats.httpFailCount);
   }
 }
 
 void Diagnostics::recordOtaResult(bool success, const char* errorMsg) {
   if (success) {
     _stats.otaSuccessCount++;
-    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_otaOk", _stats.otaSuccessCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::OTA_OK, _stats.otaSuccessCount);
     _stats.lastOtaError[0] = '\0';
   } else {
     _stats.otaFailCount++;
-    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "diag_otaKo", _stats.otaFailCount);
+    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::OTA_KO, _stats.otaFailCount);
     if (errorMsg) {
       strncpy(_stats.lastOtaError, errorMsg, sizeof(_stats.lastOtaError) - 1);
       _stats.lastOtaError[sizeof(_stats.lastOtaError) - 1] = '\0';
@@ -455,7 +456,7 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
     
     // Informations sur l'uptime avant reboot (si disponible dans NVS)
     unsigned long lastUptime = 0;
-    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_lastUptime", lastUptime, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::LAST_UPTIME, lastUptime, 0);
     if (lastUptime > 0) {
       unsigned long hours = lastUptime / 3600;
       unsigned long mins = (lastUptime % 3600) / 60;
@@ -472,7 +473,7 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
     
     // État mémoire avant reboot
     uint32_t lastHeap = 0;
-    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_lastHeap", lastHeap, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::LAST_HEAP, lastHeap, 0);
     if (lastHeap > 0) {
       written = snprintf(buffer + offset, remaining, "Heap libre avant reboot: %u bytes\n", lastHeap);
       if (written < 0 || (size_t)written >= remaining) {
@@ -656,8 +657,8 @@ void Diagnostics::savePanicInfo() {
   if (!_stats.panicInfo.hasPanicInfo) return;
   
   // v11.173: Renommé diag_hasPanic -> diag_crashFlag (évite faux positifs dans scripts d'analyse)
-  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "diag_crashFlag", true);
-  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause);
+  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_FLAG, true);
+  g_nvsManager.saveString(NVS_NAMESPACES::LOGS, NVSKeys::Diag::PANIC_CAUSE, _stats.panicInfo.exceptionCause);
   
   Serial.println(F("[Diagnostics] 💾 Informations de panic sauvegardées"));
 }
@@ -665,10 +666,10 @@ void Diagnostics::savePanicInfo() {
 // Charger les informations de panic depuis NVS (simplifié)
 void Diagnostics::loadPanicInfo() {
   // v11.173: Renommé diag_hasPanic -> diag_crashFlag (évite faux positifs dans scripts d'analyse)
-  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "diag_crashFlag", _stats.panicInfo.hasPanicInfo, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_FLAG, _stats.panicInfo.hasPanicInfo, false);
   
   if (_stats.panicInfo.hasPanicInfo) {
-    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, "diag_panicCause", _stats.panicInfo.exceptionCause, sizeof(_stats.panicInfo.exceptionCause), "Unknown");
+    g_nvsManager.loadString(NVS_NAMESPACES::LOGS, NVSKeys::Diag::PANIC_CAUSE, _stats.panicInfo.exceptionCause, sizeof(_stats.panicInfo.exceptionCause), "Unknown");
     Serial.println(F("[Diagnostics] 📖 Informations de panic chargées depuis NVS"));
   }
 }
@@ -676,8 +677,8 @@ void Diagnostics::loadPanicInfo() {
 // Nettoyer les informations de panic dans NVS (simplifié)
 void Diagnostics::clearPanicInfo() {
   // v11.173: Renommé diag_hasPanic -> diag_crashFlag (évite faux positifs dans scripts d'analyse)
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_crashFlag");
-  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, "diag_panicCause");
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_FLAG);
+  g_nvsManager.removeKey(NVS_NAMESPACES::LOGS, NVSKeys::Diag::PANIC_CAUSE);
   _stats.panicInfo.hasPanicInfo = false;
 }
 
@@ -696,21 +697,21 @@ void Diagnostics::loadCrashStatus() {
   _stats.crashStatus.resetReason = -1;
 
   bool hasCrash = false;
-  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, "crash_has", hasCrash, false);
+  g_nvsManager.loadBool(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_HAS, hasCrash, false);
   _stats.crashStatus.hasCrashInfo = hasCrash;
   if (!hasCrash) {
     return;
   }
 
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason, -1);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_REASON, _stats.crashStatus.resetReason, -1);
 }
 
 void Diagnostics::saveCrashStatus() {
   if (!_stats.crashStatus.hasCrashInfo) {
     return;
   }
-  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, "crash_has", true);
-  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, "crash_reason", _stats.crashStatus.resetReason);
+  g_nvsManager.saveBool(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_HAS, true);
+  g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::CRASH_REASON, _stats.crashStatus.resetReason);
 }
 
 // updateCoredumpStatus supprimé - ESP-IDF gère déjà le coredump (configuré dans platformio.ini)

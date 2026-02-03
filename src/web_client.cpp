@@ -17,6 +17,10 @@
 #include <cstring>
 #include <atomic>
 
+// Buffer pour dernier GET outputs/state : rempli par fetchRemoteState (netTask), lu par copyLastFetchedTo (caller) — évite LoadProhibited (écrire doc depuis netTask)
+static char s_lastFetchedJson[BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE + 1];
+static size_t s_lastFetchedSize = 0;
+
 // Simple CRC32 (polynôme 0xEDB88320) pour l'intégrité des payloads
 extern ConfigManager config;
 static uint32_t crc32(const char* data){
@@ -60,7 +64,11 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     LOG(LOG_DEBUG, "[HTTP] POST %s (payload=%u bytes)", url, payloadLen);
     LOG(LOG_DEBUG, "[HTTP] Heap libre=%u bytes", freeHeap);
   }
-  
+  // Un log avec l'URL permet au script diagnostic_serveur_distant.ps1 de détecter l'endpoint (post-data vs post-data-test)
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] POST %s\n", url);
+  }
+
   // Délai minimum entre requêtes HTTP pour éviter saturation TCP
   if (_lastRequestMs > 0) {
     unsigned long timeSinceLastRequest = millis() - _lastRequestMs;
@@ -84,6 +92,9 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     // Timeout global: vérifier AVANT begin() pour éviter end() sur état incohérent
     uint32_t elapsedMs = millis() - requestStartMs;
     if (elapsedMs >= timeoutMs) {
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.printf("[HTTP] POST timeout après %u ms\n", elapsedMs);
+      }
       LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u ms", elapsedMs);
       return false;
     }
@@ -203,14 +214,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   }
 
   // Log final (v11.182: copie locale pour éviter tout usage de state HTTP après end())
+  // Toujours logger pour que le script diagnostic_serveur_distant.ps1 puisse compter succès/échec
   unsigned long totalDurationMs = millis() - requestStartMs;
   const int finalCode = code;
   const bool finalSuccess = success;
-  if (debugLogging || !finalSuccess) {
-    const char* succStr = finalSuccess ? "oui" : "non";
-    LOG(LOG_INFO, "[HTTP] Requête: %lu ms, code=%d, succès=%s",
-        totalDurationMs, finalCode, succStr);
-  }
+  const char* succStr = finalSuccess ? "oui" : "non";
+  LOG(LOG_INFO, "[HTTP] Requête: %lu ms, code=%d, succès=%s",
+      totalDurationMs, finalCode, succStr);
 
   _lastRequestMs = millis();
 
@@ -369,14 +379,29 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   int code = _http.GET();
+  // Retry une fois sur timeout lecture (-11) pour améliorer le taux de succès GET
+  if (code == -11) {
+    _http.end();
+    _http.setReuse(false);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    if (_http.begin(_client, url)) {
+      _http.setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
+      code = _http.GET();
+    }
+  }
 
   if (code <= 0) {
     Serial.printf("[HTTP] outputs/state: code=%d (skip read)\n", code);
-    // Nettoyage systématique après timeout (-11) ou autre erreur: évite réutiliser un client en mauvais état
     _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
-    return loadFromNVSFallback(doc) ? 2 : 0;
+    if (loadFromNVSFallback(doc)) {
+      return 2;
+    }
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.printf("[HTTP] GET outputs/state: échec code=%d (pas de cache NVS)\n", code);
+    }
+    return 0;
   }
 
   // v11.175: Amélioration lecture HTTP - gestion Content-Length et chunked
@@ -456,9 +481,6 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 
   if (totalRead == 0) {
-    _http.end();
-    _http.setReuse(false);
-    _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
@@ -480,47 +502,40 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     payloadBuffer[newSize] = '\0';
   }
 
-  DeserializationError err = deserializeJson(doc, payloadBuffer);
-  // #region agent log
-  {
-    size_t previewLen = totalRead < 180 ? totalRead : 180;
-    char preview[184];
-    memcpy(preview, payloadBuffer, previewLen);
-    preview[previewLen] = '\0';
-    Serial.printf("[DBG] H1 rawPreview len=%u firstKeys=%s\n", (unsigned)previewLen, preview);
-    Serial.printf("[DBG] H1 hasOutputs=%d hasSwitches=%d docSize=%u\n",
-                  doc["outputs"].is<JsonObject>() ? 1 : 0,
-                  doc["switches"].is<JsonObject>() ? 1 : 0,
-                  (unsigned)doc.size());
-  }
-  // #endregion
+  // Parser dans un document LOCAL (stack netTask) — ne jamais écrire dans doc depuis netTask (LoadProhibited)
+  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> parseDoc;
+  DeserializationError err = deserializeJson(parseDoc, payloadBuffer);
   if (err) {
-    // v11.173: Rate-limiting des logs JSON error (log les 3 premiers, puis toutes les 30s)
-    // Atomic pour éviter race conditions (fetchRemoteState peut être appelé depuis plusieurs tâches)
     static std::atomic<uint32_t> jsonErrorCount{0};
     static std::atomic<unsigned long> lastJsonErrorLog{0};
     uint32_t count = ++jsonErrorCount;
     unsigned long now = millis();
     unsigned long lastLog = lastJsonErrorLog.load();
     if (count <= 3 || now - lastLog > 30000) {
-      // v11.179: Protection contre NULL pointer (fix crash LoadProhibited)
       const char* errCStr = err.c_str();
-      if (errCStr) {
-        LOG(LOG_DEBUG, "[HTTP] JSON parse error: %s (total: %u)", errCStr, count);
-      } else {
-        LOG(LOG_DEBUG, "[HTTP] JSON parse error: (unknown) (total: %u)", count);
-      }
-      // Diagnostic troncature: IncompleteInput souvent = body tronqué (buffer trop petit ou lecture arrêtée trop tôt)
-      Serial.printf("[HTTP] parse fail: err=%s totalRead=%u maxBuf=%u contentLength=%d heap=%u\n",
-                    errCStr ? errCStr : "?", (unsigned)totalRead, (unsigned)MAX_RESPONSE_SIZE,
-                    contentLength, (unsigned)ESP.getFreeHeap());
+      Serial.printf("[HTTP] parse fail: err=%s totalRead=%u heap=%u\n",
+                    errCStr ? errCStr : "?", (unsigned)totalRead, (unsigned)ESP.getFreeHeap());
       lastJsonErrorLog.store(now);
     }
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
-  // Si le serveur renvoie un objet imbriqué {"outputs": {...}} ou {"switches": {...}},
-  // copier l'objet interne dans doc pour que GPIOParser et processFetchedRemoteConfig voient les clés.
+  // Stocker le JSON brut pour que le caller (même tâche que doc) fasse copyLastFetchedTo(doc)
+  size_t jsonLen = strlen(payloadBuffer);
+  if (jsonLen >= sizeof(s_lastFetchedJson)) jsonLen = sizeof(s_lastFetchedJson) - 1;
+  memcpy(s_lastFetchedJson, payloadBuffer, jsonLen);
+  s_lastFetchedJson[jsonLen] = '\0';
+  s_lastFetchedSize = jsonLen;
+
+  Serial.printf("[HTTP] GET outputs/state: body=%u bytes, stored for copyLastFetchedTo\n", (unsigned)totalRead);
+  return 1;  // OK depuis HTTP
+}
+
+bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
+  if (s_lastFetchedSize == 0 || s_lastFetchedJson[0] == '\0') return false;
+  DeserializationError err = deserializeJson(doc, s_lastFetchedJson);
+  if (err) return false;
+  // Unwrap outputs/switches si présent (même logique qu'avant, exécutée dans le contexte du caller)
   bool didUnwrap = false;
   JsonObject inner;
   if (doc["outputs"].is<JsonObject>()) {
@@ -529,7 +544,6 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   } else if (doc["switches"].is<JsonObject>()) {
     inner = doc["switches"].as<JsonObject>();
     didUnwrap = true;
-    Serial.println(F("[HTTP] Réponse outputs/state: objet \"switches\" détecté, déplié"));
   }
   if (didUnwrap && !inner.isNull()) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
@@ -540,17 +554,8 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     for (JsonPair p : tmp.as<JsonObject>()) {
       doc[p.key().c_str()] = p.value();
     }
-    Serial.println(F("[HTTP] Réponse outputs/state: objet imbriqué déplié"));
   }
-  // #region agent log
-  Serial.printf("[DBG] H2 afterUnwrap docSize=%u\n", (unsigned)doc.size());
-  // #endregion
-
-  // Diagnostic: distinguer serveur (réponse vide) vs ESP (parsing/application)
-  Serial.printf("[HTTP] GET outputs/state: body=%u bytes, doc keys=%u (0=vide serveur, ~28=OK)\n",
-                (unsigned)totalRead, (unsigned)doc.size());
-
-  return 1;  // OK depuis HTTP
+  return true;
 }
 
 // v11.165: Fonction helper pour fallback NVS (audit offline-first)

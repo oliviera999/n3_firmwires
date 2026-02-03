@@ -9,6 +9,7 @@
 #include "nvs_keys.h"  // v11.176: Constantes NVS centralisées
 #include "dbvars_cache.h"
 #include <cstring>
+#include <cstdio>
 
 namespace {
 
@@ -114,14 +115,7 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     // 4. Gestion réseau (polling commandes)
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     bool pollResult = _network.pollRemoteState(doc, nowMs);
-    
-    // #region agent log
-    if (pollResult) {
-        Serial.printf("[DBG] H3 pollResult=OK docSize=%u\n", (unsigned)doc.size());
-    } else {
-        Serial.println(F("[DBG] H3 pollResult=KO (timeout/erreur)"));
-    }
-    // #endregion
+
     if (pollResult) {
         // Ne pas appliquer ni invalider le cache si la réponse est vide (ex. serveur renvoie {"outputs":{}})
         if (doc.size() > 0) {
@@ -130,8 +124,6 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
             // 4.1 Parser et appliquer tous les GPIO (actionneurs, configs, nourrissage distant)
             GPIOParser::parseAndApply(doc, *this);
             invalidateDbvarsCache();
-        } else {
-            Serial.println(F("[DBG] H3 skip apply (doc.size()==0)"));
         }
     }
     
@@ -173,6 +165,11 @@ void Automatism::updateDisplay() {
     updateDisplayInternal(ctx);
 }
 
+void Automatism::updateDisplayWithReadings(const SensorReadings& r) {
+    AutomatismRuntimeContext ctx(r, millis());
+    updateDisplayInternal(ctx);
+}
+
 int Automatism::computeDiffMaree(uint16_t currentAqua) {
     int diff = _sensors.diffMaree(currentAqua);
     _lastDiffMaree = diff;
@@ -190,6 +187,21 @@ uint32_t Automatism::getRecommendedDisplayIntervalMs() {
 void Automatism::manualFeedSmall() {
     Serial.println(F("[Auto] Nourrissage manuel PETITS déclenché"));
     Serial.printf("[Auto] Durée configurée: %u s\n", tempsPetits);
+    // #region agent log instrumentation
+    {
+        FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
+        if (f) {
+            fprintf(
+                f,
+                "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"automatism.cpp:manualFeedSmall\",\"message\":\"manualFeedSmall invoked\",\"data\":{\"tempsPetits\":%u,\"manualActiveBefore\":%s},\"timestamp\":%lu}\n",
+                tempsPetits,
+                _manualFeedingActive ? "true" : "false",
+                static_cast<unsigned long>(millis())
+            );
+            fclose(f);
+        }
+    }
+    // #endregion
     _acts.feedSmallFish(tempsPetits);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
@@ -201,6 +213,21 @@ void Automatism::manualFeedSmall() {
 void Automatism::manualFeedBig() {
     Serial.println(F("[Auto] Nourrissage manuel GROS déclenché"));
     Serial.printf("[Auto] Durée configurée: %u s\n", tempsGros);
+    // #region agent log instrumentation
+    {
+        FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
+        if (f) {
+            fprintf(
+                f,
+                "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"automatism.cpp:manualFeedBig\",\"message\":\"manualFeedBig invoked\",\"data\":{\"tempsGros\":%u,\"manualActiveBefore\":%s},\"timestamp\":%lu}\n",
+                tempsGros,
+                _manualFeedingActive ? "true" : "false",
+                static_cast<unsigned long>(millis())
+            );
+            fclose(f);
+        }
+    }
+    // #endregion
     _acts.feedBigFish(tempsGros);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
@@ -279,6 +306,10 @@ bool Automatism::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 
 bool Automatism::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
     return _network.processFetchedRemoteConfig(doc);
+}
+
+void Automatism::processDeferredRemoteVarsSave() {
+    _network.processDeferredRemoteVarsSave();
 }
 
 // Applique la config depuis JSON (poll ou NVS). Clés appliquées ici + AutomatismSync:
@@ -477,6 +508,21 @@ void Automatism::notifyLocalWebActivity() {
 }
 
 void Automatism::startTankPumpManual() {
+    // #region agent log instrumentation
+    {
+        FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
+        if (f) {
+            fprintf(
+                f,
+                "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H2\",\"location\":\"automatism.cpp:startTankPumpManual\",\"message\":\"startTankPumpManual request\",\"data\":{\"tankPumpLocked\":%s,\"pumpRunning\":%s},\"timestamp\":%lu}\n",
+                tankPumpLocked ? "true" : "false",
+                _acts.isTankPumpRunning() ? "true" : "false",
+                static_cast<unsigned long>(millis())
+            );
+            fclose(f);
+        }
+    }
+    // #endregion
     if (tankPumpLocked) {
         Serial.println(F("[Auto] Pompe réservoir verrouillée - commande ignorée"));
         return;
@@ -552,9 +598,9 @@ bool Automatism::restoreRemoteConfigFromCache() {
         }
         
         // Charger l'email directement depuis NVS si disponible
-        // v11.174: Clé corrigée "email" (alignée avec GPIOMap::EMAIL_ADDR.nvsKey)
+        // v11.174: Clé NVS centralisée (NVSKeys::Config::EMAIL alignée avec GPIOMap::EMAIL_ADDR.nvsKey)
         char emailFromNVS[128];
-        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "email", emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
+        if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::EMAIL, emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
             if (strlen(emailFromNVS) > 0) {
                 // v11.172: Stocker dans _network (source de vérité)
                 _network.setEmailAddress(emailFromNVS);
@@ -566,7 +612,7 @@ bool Automatism::restoreRemoteConfigFromCache() {
     }
     // Charger l'email depuis NVS même sans cache remote_json (offline-first: source de vérité NVS)
     char emailFromNVS[128];
-    if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, "email", emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
+    if (g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::EMAIL, emailFromNVS, sizeof(emailFromNVS), "") == NVSError::SUCCESS) {
         if (strlen(emailFromNVS) > 0) {
             _network.setEmailAddress(emailFromNVS);
         }
@@ -981,7 +1027,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
                     _highAquaSent = true;
                     armMailBlink();
                     lastFloodEmailEpoch = nowEpoch;
-                    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, "alert_floodLast", lastFloodEmailEpoch);
+                    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
                     Serial.println(F("[Auto] Email TROP PLEIN envoyé (anti-spam actif)"));
                 } else {
                     Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));

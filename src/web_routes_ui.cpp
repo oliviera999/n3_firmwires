@@ -5,6 +5,7 @@
 #include <ESPAsyncWebServer.h>
 #include <cstring>
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 
 #include "automatism.h"
@@ -123,6 +124,38 @@ void registerStaticAssets(AsyncWebServer& server) {
   server.serveStatic("/shared/", LittleFS, "/shared/").setCacheControl("max-age=86400");
   server.serveStatic("/pages/", LittleFS, "/pages/").setCacheControl("max-age=3600");
   server.serveStatic("/assets/", LittleFS, "/assets/").setCacheControl("max-age=604800");
+
+  // #region agent log instrumentation
+  server.on("/debug/static-assets", HTTP_GET, [](AsyncWebServerRequest* req) {
+    StaticJsonDocument<512> doc;
+    doc["sessionId"] = "debug-session";
+    doc["runId"] = "pre-fix";
+    doc["hypothesisId"] = "H1";
+    doc["location"] = F("web_routes_ui.cpp:registerStaticAssets");
+    doc["fsUsedBytes"] = LittleFS.usedBytes();
+    doc["fsTotalBytes"] = LittleFS.totalBytes();
+    JsonObject files = doc.createNestedObject("files");
+    files["shared/common.css"] = LittleFS.exists("/shared/common.css");
+    files["shared/common.css.gz"] = LittleFS.exists("/shared/common.css.gz");
+    files["shared/common.js"] = LittleFS.exists("/shared/common.js");
+    files["shared/common.js.gz"] = LittleFS.exists("/shared/common.js.gz");
+    files["shared/websocket.js"] = LittleFS.exists("/shared/websocket.js");
+    files["shared/websocket.js.gz"] = LittleFS.exists("/shared/websocket.js.gz");
+    files["assets/css/uplot.min.css"] = LittleFS.exists("/assets/css/uplot.min.css");
+    files["assets/css/uplot.min.css.gz"] = LittleFS.exists("/assets/css/uplot.min.css.gz");
+    files["assets/js/uplot.iife.min.js"] = LittleFS.exists("/assets/js/uplot.iife.min.js");
+    files["assets/js/uplot.iife.min.js.gz"] = LittleFS.exists("/assets/js/uplot.iife.min.js.gz");
+
+    AsyncResponseStream* res = req->beginResponseStream("application/json");
+    if (!res) {
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Debug stream unavailable");
+      return;
+    }
+    res->addHeader("Cache-Control", "no-store");
+    serializeJson(doc, *res);
+    req->send(res);
+  });
+  // #endregion
 }
 
 void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
@@ -325,11 +358,52 @@ void registerCompressedAssets(AsyncWebServer& server) {
   });
 
   server.on("/bootstrap.min.css", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
-    sendWithCompression(req, "/bootstrap.min.css", "text/css");
+    if (LittleFS.exists("/bootstrap.min.css")) {
+      sendWithCompression(req, "/bootstrap.min.css", "text/css");
+    } else {
+      static const char BOOTSTRAP_MIN_PLACEHOLDER[] PROGMEM =
+        "/* bootstrap placeholder */\n"
+        ".container-fluid{padding:0 12px;}\n"
+        ".row{display:flex;flex-wrap:wrap;margin:0 -12px;}\n"
+        "[class^=col-]{padding:0 12px;box-sizing:border-box;}\n"
+        ".btn{display:inline-block;padding:10px 20px;"
+        "border-radius:6px;border:1px solid #ccc;"
+        "background:#f8f9fa;cursor:pointer;}\n"
+        ".btn-primary{background:#0d6efd;border-color:#0d6efd;color:#fff;}\n"
+        ".btn-warning{background:#ffc107;border-color:#ffc107;}\n"
+        ".btn-info{background:#0dcaf0;border-color:#0dcaf0;}\n"
+        ".btn-danger{background:#dc3545;border-color:#dc3545;color:#fff;}\n"
+        ".btn-success{background:#198754;border-color:#198754;color:#fff;}\n"
+        ".badge{display:inline-block;padding:.35em .65em;border-radius:.25rem;}\n"
+        ".bg-secondary{background:#6c757d;color:#fff;}\n"
+        ".bg-primary{background:#0d6efd;color:#fff;}\n"
+        ".bg-info{background:#0dcaf0;color:#000;}\n"
+        ".bg-warning{background:#ffc107;color:#000;}\n"
+        ".bg-success{background:#198754;color:#fff;}\n"
+        ".bg-danger{background:#dc3545;color:#fff;}\n";
+      AsyncWebServerResponse* r = req->beginResponse_P(200, "text/css", BOOTSTRAP_MIN_PLACEHOLDER);
+      if (r) {
+        r->addHeader("Cache-Control", "public, max-age=604800");
+        r->addHeader("X-Content-Type-Options", "nosniff");
+        req->send(r);
+      } else {
+        req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
+      }
+    }
   });
 
   server.on("/bootstrap.bundle.min.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
     sendWithCompression(req, "/bootstrap.bundle.min.js", "application/javascript");
+  });
+
+  server.on("/utils.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
+    sendWithCompression(req, "/utils.js", "application/javascript");
+  });
+  server.on("/manifest.json", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
+    sendWithCompression(req, "/manifest.json", "application/json");
+  });
+  server.on("/sw.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
+    sendWithCompression(req, "/sw.js", "application/javascript");
   });
 }
 
@@ -340,24 +414,6 @@ namespace WebRoutes {
 void registerUiRoutes(AsyncWebServer& server, AppContext& ctx) {
   registerStaticAssets(server);
   registerStreamingRoutes(server, ctx);
-  server.on("/optimized", HTTP_GET, [](AsyncWebServerRequest* req) { req->redirect("/"); });
-  server.on("/classic", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
-    size_t len = strlen_P((PGM_P)INDEX_HTML);
-    AsyncWebServerResponse* r = req->beginResponse_P(
-        200,
-        "text/html",
-        reinterpret_cast<const uint8_t*>(INDEX_HTML),
-        len);
-    if (r) {
-      r->addHeader("Cache-Control", "public, max-age=300");
-      r->addHeader("X-Content-Type-Options", "nosniff");
-      r->addHeader("X-Frame-Options", "DENY");
-      req->send(r);
-    } else {
-      req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
-    }
-  });
-
   registerCompressedAssets(server);
 }
 

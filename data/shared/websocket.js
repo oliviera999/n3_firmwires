@@ -137,7 +137,13 @@ function connectWS() {
         try {
           const msg = JSON.parse(ev.data);
           logDebug('Message WebSocket reçu', msg, 'WEBSOCKET');
-          
+          // #region agent log
+          const hasDbVars = !!(msg && msg.dbVars);
+          const msgType = msg && msg.type;
+          try {
+            fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'websocket.js:onmessage', message: 'WS msg', data: { msgType, hasDbVars, hasPumpAqua: msg && msg.pumpAqua !== undefined }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: hasDbVars ? 'H1-no' : 'H1-yes' }) }).catch(function () {});
+          } catch (_) {}
+          // #endregion
           // Gérer différents types de messages
           if (msg && (msg.type === 'sensor_update' || msg.type === 'sensor_data')) {
             updateSensorDisplay(msg);
@@ -449,16 +455,11 @@ function displayDbVars(db) {
       emailEnabledEl.className = `badge ${emailEnabled ? 'bg-success' : 'bg-secondary'}`;
     }
     
-    // Mise à jour du bouton de notifications dans la page contrôles
+    // Mise à jour du bouton de notifications dans la page contrôles (vert = actif, rouge = inactif, pas de ON/OFF)
     const btnEmailNotif = $('btnEmailNotif');
     if (btnEmailNotif) {
-      if (emailEnabled) {
-        btnEmailNotif.className = 'btn btn-success w-100';
-        btnEmailNotif.innerHTML = '🔔 Notifications ON';
-      } else {
-        btnEmailNotif.className = 'btn btn-outline-success w-100';
-        btnEmailNotif.innerHTML = '🔔 Notifications OFF';
-      }
+      btnEmailNotif.innerHTML = '🔔 Notifications Email';
+      btnEmailNotif.className = emailEnabled ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
     }
     
     // Remplir automatiquement le formulaire avec les vraies valeurs (clés canoniques + fallback)
@@ -641,11 +642,11 @@ window.loadDbVars = async function loadDbVars() {
       emailEnabledEl.className = 'badge bg-secondary';
     }
     
-    // Mise à jour du bouton de notifications dans la page contrôles
+    // Mise à jour du bouton de notifications dans la page contrôles (vert = actif, rouge = inactif)
     const btnEmailNotif = $('btnEmailNotif');
     if (btnEmailNotif) {
-      btnEmailNotif.className = 'btn btn-outline-success w-100';
-      btnEmailNotif.innerHTML = '🔔 Notifications OFF';
+      btnEmailNotif.innerHTML = '🔔 Notifications Email';
+      btnEmailNotif.className = 'btn btn-outline-danger w-100';
     }
     
     // Remplir le formulaire avec les valeurs par défaut en cas d'erreur

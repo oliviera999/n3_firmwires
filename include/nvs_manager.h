@@ -70,10 +70,10 @@ class NVSLockGuard;
  *   diag_otaKo      (ulong)  - Compteur OTA échouées
  *   diag_lastUptime (ulong)  - Dernier uptime (debug uniquement)
  *   diag_lastHeap   (ulong)  - Dernier heap (debug uniquement)
- *   diag_hasPanic   (bool)   - Flag panic détecté
+ *   diag_crashFlag  (bool)   - Flag panic/exception détecté
  *   diag_panicCause (string) - Cause du panic
  *   alert_floodLast (ulong)  - Timestamp dernière alerte inondation
- *   crash_has       (bool)   - Flag crash détecté
+ *   crash_has       (bool)   - Flag crash (reset reason) détecté
  *   crash_reason    (int)    - Code raison du crash
  * 
  * NAMESPACE "wifi_saved" (géré séparément, pas par NVSManager):

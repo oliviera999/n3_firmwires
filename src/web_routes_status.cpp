@@ -27,6 +27,9 @@ void sendJsonResponse(AsyncWebServerRequest* req, const JsonDocument& doc, bool 
   if (!req) {
     return;
   }
+  if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("sendJson"))) {
+    return;
+  }
 
   AsyncResponseStream* response = req->beginResponseStream("application/json");
   if (!response) {
@@ -243,6 +246,9 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
 
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/api/status"))) {
+      return;
+    }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /api/status");
@@ -266,9 +272,8 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
   server.on("/api/remote-flags", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
     bool changed = false;
     if (req->hasParam("send", true)) {
-      const char* v = req->getParam("send", true)->value().c_str();
       char vLower[16];
-      strncpy(vLower, v, sizeof(vLower) - 1);
+      strncpy(vLower, req->getParam("send", true)->value().c_str(), sizeof(vLower) - 1);
       vLower[sizeof(vLower) - 1] = '\0';
       for (char* p = vLower; *p; ++p) *p = tolower(*p);
       // Trim (simple)
@@ -281,9 +286,8 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
       changed = true;
     }
     if (req->hasParam("recv", true)) {
-      const char* v = req->getParam("recv", true)->value().c_str();
       char vLower[16];
-      strncpy(vLower, v, sizeof(vLower) - 1);
+      strncpy(vLower, req->getParam("recv", true)->value().c_str(), sizeof(vLower) - 1);
       vLower[sizeof(vLower) - 1] = '\0';
       for (char* p = vLower; *p; ++p) *p = tolower(*p);
       // Trim (simple)
@@ -294,6 +298,9 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
       bool enable = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || strcmp(start, "on") == 0);
       ctx.config.setRemoteRecvEnabled(enable);
       changed = true;
+    }
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/api/remote-flags"))) {
+      return;
     }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
@@ -358,6 +365,9 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     doc["actuators"]["light"] = ctx.actuators.isLightOn();
 
     Serial.println("[Web] 📤 Debug logs sent");
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/debug-logs"))) {
+      return;
+    }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /debug-logs");
@@ -430,6 +440,9 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
 
     doc["timestamp"] = millis();
 
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/json"))) {
+      return;
+    }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       Serial.println("[Web] ❌ Échec beginResponseStream pour /json");
@@ -483,7 +496,14 @@ void registerPumpStats(AsyncWebServer& server, AppContext& ctx) {
     doc["timeSinceLastStopSec"] = timeSinceLastStopSec;
     doc["timestamp"] = now;
 
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/pumpstats"))) {
+      return;
+    }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
+    if (!response) {
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "application/json", "{\"error\":\"Internal server error\"}");
+      return;
+    }
     response->addHeader("Cache-Control", "public, max-age=30");
     serializeJson(doc, *response);
     req->send(response);

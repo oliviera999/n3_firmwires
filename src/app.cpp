@@ -215,8 +215,8 @@ void setup() {
     
     // Reset watchdog avant envoi bloquant
     g_appContext.power.resetWatchdog();
-    // Utiliser sendAlert() pour inclure automatiquement le rapport détaillé (incluant generateRestartReport())
-    bool sent = g_appContext.mailer.sendAlert(emailSubject, bootMsg, targetEmail);
+    // sendAlert(..., true) = alerte diagnostic (rapport temporel détaillé)
+    bool sent = g_appContext.mailer.sendAlert(emailSubject, bootMsg, targetEmail, true);
     
     if (sent) {
       LOG_INFO("✅ Mail de démarrage ENVOYÉ avec succès");

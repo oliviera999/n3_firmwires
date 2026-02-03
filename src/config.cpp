@@ -149,11 +149,14 @@ void ConfigManager::saveRemoteVars(const char* json) {
   char cachedJson[2048];
   g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, cachedJson, sizeof(cachedJson), "");
   
+  static uint32_t s_skipSaveCount = 0;
   if (json && strcmp(cachedJson, json) == 0) {
-    Serial.println(F("[Config] Variables distantes inchangées - pas de sauvegarde NVS"));
+    if ((++s_skipSaveCount % 20) == 1) {
+      Serial.printf("[Config] Variables distantes inchangées - pas de sauvegarde NVS (skip #%u)\n", s_skipSaveCount);
+    }
     return;
   }
-  
+  s_skipSaveCount = 0;
   // Sauvegarde dans le namespace CONFIG
   g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json ? json : "");
   Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé"));

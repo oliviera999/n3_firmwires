@@ -59,9 +59,8 @@ class PowerManager {
   int _daylightOffsetSec;
   const char* _ntpServer;
 
-  // Suivi synchronisation temps
+  // Suivi synchronisation temps (intervalle : TimingConfig::NTP_SYNC_INTERVAL_MS)
   unsigned long _lastNtpSync;
-  static const unsigned long NTP_SYNC_INTERVAL = 3600000UL; // 1 heure
 
   // Identifiants WiFi sauvegardés pour light sleep
   char _lastSSID[33];  // SSID max 32 chars + null terminator

@@ -7,13 +7,16 @@
 #include "mailer.h"
 #include "automatism.h"
 #include "nvs_manager.h"
+#include "nvs_keys.h"
 #include "power.h"
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <cstring>
+#include <time.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_heap_caps.h>
+#include <cstdio>
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
 #ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
@@ -144,53 +147,70 @@ static void fillDbVarsJson(JsonObject& out) {
 }
 #endif
 
-static portMUX_TYPE g_asyncTaskMux = portMUX_INITIALIZER_UNLOCKED;
-static uint8_t g_asyncTaskCount = 0;
-
 // Helper pour envoyer un email lors d'une action manuelle
 static void sendManualActionEmail(const char* subject, const char* actionType, const char* eventCode) {
   const char* emailAddr = g_autoCtrl.getEmailAddress();
   if (emailAddr && strlen(emailAddr) > 0) {
+    const bool emailConfigured = emailAddr && strlen(emailAddr) > 0;
+    unsigned long logStartMs = millis();
+    // #region agent log instrumentation
+    {
+      FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
+      if (f) {
+        fprintf(
+            f,
+            "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H3\",\"location\":\"web_server.cpp:sendManualActionEmail\",\"message\":\"manual action email start\",\"data\":{\"emailConfigured\":%s,\"eventCode\":\"%s\"},\"timestamp\":%lu}\n",
+            emailConfigured ? "true" : "false",
+            eventCode ? eventCode : "",
+            static_cast<unsigned long>(logStartMs)
+        );
+        fclose(f);
+      }
+    }
+    // #endregion
+    char timeStr[24] = "(heure N/A)";
+    time_t now = time(nullptr);
+    if (now > 100000) {
+      struct tm tmInfo;
+      if (localtime_r(&now, &tmInfo)) {
+        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M", &tmInfo);
+      }
+    }
     char message[256];
-    snprintf(message, sizeof(message), 
-             "Action manuelle effectuée:\n"
-             "Type: %s\n"
-             "Événement: %s\n"
-             "Timestamp: %lu",
-             actionType, eventCode, millis() / 1000);
-    mailer.sendAlert(subject, message, emailAddr);
+    snprintf(message, sizeof(message),
+             "Action manuelle: %s\nÉvénement: %s\nHeure: %s",
+             actionType, eventCode, timeStr);
+    bool sendOk = mailer.sendAlert(subject, message, emailAddr, false);
+    unsigned long logDurationMs = millis() - logStartMs;
+    // #region agent log instrumentation
+    {
+      FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
+      if (f) {
+        fprintf(
+            f,
+            "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H3\",\"location\":\"web_server.cpp:sendManualActionEmail\",\"message\":\"manual action email done\",\"data\":{\"emailConfigured\":%s,\"eventCode\":\"%s\",\"durationMs\":%lu,\"sendOk\":%s},\"timestamp\":%lu}\n",
+            emailConfigured ? "true" : "false",
+            eventCode ? eventCode : "",
+            static_cast<unsigned long>(logDurationMs),
+            sendOk ? "true" : "false",
+            static_cast<unsigned long>(millis())
+        );
+        fclose(f);
+      }
+    }
+    // #endregion
     Serial.printf("[Web] 📧 Email action manuelle envoyé: %s\n", subject);
   } else {
     Serial.println("[Web] ⚠️ Email non configuré - action manuelle non notifiée");
   }
 }
 
-// Garde fragmentation: ne pas créer de tâche one-shot si le plus grand bloc libre est trop petit
+// Garde fragmentation: ne pas bloquer webTask si heap trop fragmenté (ex. WiFi connect)
 static bool canCreateAsyncTask() {
   return heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) >= HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK;
 }
 
-static bool tryAcquireAsyncSlot(uint8_t maxSlots) {
-  bool ok = false;
-  portENTER_CRITICAL(&g_asyncTaskMux);
-  if (g_asyncTaskCount < maxSlots) {
-    g_asyncTaskCount++;
-    ok = true;
-  }
-  portEXIT_CRITICAL(&g_asyncTaskMux);
-  return ok;
-}
-
-static void releaseAsyncSlot() {
-  portENTER_CRITICAL(&g_asyncTaskMux);
-  if (g_asyncTaskCount > 0) {
-    g_asyncTaskCount--;
-  }
-  portEXIT_CRITICAL(&g_asyncTaskMux);
-}
-
-// Rate limit: évite de créer trop de tâches one-shot en peu de temps (fragmentation)
-static unsigned long s_lastFeedTaskAt = 0;
+// Rate limit WiFi connect (évite rafales)
 static unsigned long s_lastWifiConnectAt = 0;
 
 // v11.178: Constructeur 2 params supprimé (non utilisé - audit dead-code)
@@ -216,11 +236,6 @@ WebServerManager::~WebServerManager() {
   }
   #endif
 }
-
-struct WifiConnectTaskParams {
-  char ssid[33];
-  char password[65];
-};
 
 const char* WebServerManager::handleRelayAction(
     const char* relayName,
@@ -308,8 +323,7 @@ bool WebServerManager::begin() {
     // Extraire le paramètre type avec validation
     char typeBuf[16] = "small"; // défaut
     if (req->hasParam("type", true)) {
-      const char* typeVal = req->getParam("type", true)->value().c_str();
-      strncpy(typeBuf, typeVal, sizeof(typeBuf) - 1);
+      strncpy(typeBuf, req->getParam("type", true)->value().c_str(), sizeof(typeBuf) - 1);
       typeBuf[sizeof(typeBuf) - 1] = '\0';
     }
     
@@ -331,20 +345,35 @@ bool WebServerManager::begin() {
     g_realtimeWebSocket.broadcastNow();
   });
 
-  // /api/config -> alias pour /dbvars/update (POST mise à jour config)
-  // Note: Le endpoint /dbvars/update existant gère déjà la logique complète
-  // Cet alias permet d'utiliser le nom contractuel /api/config
-  _server->on("/api/config", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req) {
-    // Redirige la requête vers le handler /dbvars/update
-    // Pour éviter la duplication de code, on renvoie vers l'endpoint existant
-    g_autoCtrl.notifyLocalWebActivity();
-    req->redirect("/dbvars/update");
-  });
-
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
   _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
       g_autoCtrl.notifyLocalWebActivity();
       const char* resp = "OK";
+      char initialCmd[64] = {0};
+      char initialRelay[64] = {0};
+      if (req->hasParam("cmd")) {
+          strncpy(initialCmd, req->getParam("cmd")->value().c_str(), sizeof(initialCmd) - 1);
+      }
+      if (req->hasParam("relay")) {
+          strncpy(initialRelay, req->getParam("relay")->value().c_str(), sizeof(initialRelay) - 1);
+      }
+      // #region agent log instrumentation
+      {
+          FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
+          if (f) {
+              fprintf(
+                  f,
+                  "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H4\",\"location\":\"web_server.cpp:/action\",\"message\":\"manual action request\",\"data\":{\"hasCmd\":%s,\"cmd\":\"%s\",\"hasRelay\":%s,\"relay\":\"%s\"},\"timestamp\":%lu}\n",
+                  req->hasParam("cmd") ? "true" : "false",
+                  initialCmd,
+                  req->hasParam("relay") ? "true" : "false",
+                  initialRelay,
+                  static_cast<unsigned long>(millis())
+              );
+              fclose(f);
+          }
+      }
+      // #endregion
       
       // v11.169: Logs verbeux conditionnés (audit performance)
       #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
@@ -367,135 +396,35 @@ bool WebServerManager::begin() {
           
           if (strcmp(c, "feedSmall") == 0) {
               Serial.println("[Web] 🐟 Starting manual feed small...");
-              // 1. EXÉCUTION IMMÉDIATE de l'action physique
               g_autoCtrl.manualFeedSmall();
-              
-              // 2. Marquer l'événement de nourrissage pour le graphique serveur
               g_autoCtrl.setBouffePetitsFlag("1");
-              
-              // 3. Feedback WebSocket IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
-              
-              // 4. Réponse HTTP IMMÉDIATE (avant email/sync)
-              resp="FEED_SMALL OK";
-              
-              // 5. Email + Sync en tâche asynchrone (v11.81) ou synchrone si rate limit / heap fragmenté
-              auto* sensorsPtr = &_sensors;
-              const uint8_t MAX_ASYNC_TASKS = 5;
-              unsigned long nowFeed = millis();
-              bool rateLimited = (nowFeed - s_lastFeedTaskAt < AsyncTaskConfig::FEED_TASK_MIN_MS);
-              bool heapLow = !canCreateAsyncTask();
-              
-              if (rateLimited || heapLow) {
-                if (heapLow) {
-                  Serial.printf("[Web] Sync feed inline (heap blk=%u)\n",
-                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-                }
-                vTaskDelay(pdMS_TO_TICKS(100));
-                sendManualActionEmail(
-                  "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
-                SensorReadings readings = _sensors.read();
-                (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
-                g_autoCtrl.setBouffePetitsFlag("0");
-                Serial.println("[Web] ✅ Small feed completed, sync inline");
-              } else if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
-                s_lastFeedTaskAt = nowFeed;
-                BaseType_t created = xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  sendManualActionEmail(
-                    "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
-                  SensorReadings readings = sensors->read();
-                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
-                  Serial.printf("[Web] 📤 Server sync bouffePetits=1 %s\n",
-                                syncSuccess ? "completed" : "pending");
-                  g_autoCtrl.setBouffePetitsFlag("0");
-                  releaseAsyncSlot();
-                  vTaskDelete(NULL);
-                }, "feed_small_sync", 4096, sensorsPtr, 1, nullptr);
-                if (created != pdPASS) {
-                  releaseAsyncSlot();
-                  Serial.println("[Web] ❌ Échec création tâche feed_small_sync");
-                  g_autoCtrl.setBouffePetitsFlag("0");
-                } else {
-                  Serial.println("[Web] ✅ Small feed completed, sync in background");
-                }
-              } else {
-                Serial.println(
-                  "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
-                if (ESP.getFreeHeap() > HeapConfig::MIN_HEAP_EMAIL_ASYNC) {
-                  sendManualActionEmail(
-                    "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
-                }
-                g_autoCtrl.setBouffePetitsFlag("0");
-                Serial.println("[Web] ✅ Small feed completed, sync in background");
-              }
+              resp = "FEED_SMALL OK";
+              // DÉROGATION: blocage webTask 5–8 s acceptable pour action nourrissage (timeout POST 7s + email)
+              esp_task_wdt_reset();
+              vTaskDelay(pdMS_TO_TICKS(100));
+              sendManualActionEmail(
+                "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+              SensorReadings readings = _sensors.read();
+              (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
+              g_autoCtrl.setBouffePetitsFlag("0");
+              Serial.println("[Web] ✅ Small feed completed");
           }
           else if (strcmp(c, "feedBig") == 0) {
               Serial.println("[Web] 🐠 Starting manual feed big...");
-              // 1. EXÉCUTION IMMÉDIATE de l'action physique
               g_autoCtrl.manualFeedBig();
-              
-              // 2. Marquer l'événement de nourrissage pour le graphique serveur
               g_autoCtrl.setBouffeGrosFlag("1");
-              
-              // 3. Feedback WebSocket IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
-              
-              // 4. Réponse HTTP IMMÉDIATE (avant email/sync)
-              resp="FEED_BIG OK";
-              
-              // 5. Email + Sync en tâche asynchrone (v11.81) ou synchrone si rate limit / heap fragmenté
-              auto* sensorsPtr = &_sensors;
-              const uint8_t MAX_ASYNC_TASKS = 5;
-              unsigned long nowFeedBig = millis();
-              bool rateLimitedBig = (nowFeedBig - s_lastFeedTaskAt < AsyncTaskConfig::FEED_TASK_MIN_MS);
-              bool heapLowBig = !canCreateAsyncTask();
-              
-              if (rateLimitedBig || heapLowBig) {
-                if (heapLowBig) {
-                  Serial.printf("[Web] Sync feed inline (heap blk=%u)\n",
-                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-                }
-                vTaskDelay(pdMS_TO_TICKS(100));
-                sendManualActionEmail(
-                  "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
-                SensorReadings readings = _sensors.read();
-                (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
-                g_autoCtrl.setBouffeGrosFlag("0");
-                Serial.println("[Web] ✅ Big feed completed, sync inline");
-              } else if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
-                s_lastFeedTaskAt = nowFeedBig;
-                BaseType_t created = xTaskCreate([](void* param) {
-                  SystemSensors* sensors = (SystemSensors*)param;
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  sendManualActionEmail(
-                    "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
-                  SensorReadings readings = sensors->read();
-                  bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
-                  Serial.printf("[Web] 📤 Server sync bouffeGros=1 %s\n",
-                                syncSuccess ? "completed" : "pending");
-                  g_autoCtrl.setBouffeGrosFlag("0");
-                  releaseAsyncSlot();
-                  vTaskDelete(NULL);
-                }, "feed_big_sync", 4096, sensorsPtr, 1, nullptr);
-                if (created != pdPASS) {
-                  releaseAsyncSlot();
-                  Serial.println("[Web] ❌ Échec création tâche feed_big_sync");
-                  g_autoCtrl.setBouffeGrosFlag("0");
-                } else {
-                  Serial.println("[Web] ✅ Big feed completed, sync in background");
-                }
-              } else {
-                Serial.println(
-                  "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
-                if (ESP.getFreeHeap() > HeapConfig::MIN_HEAP_EMAIL_ASYNC) {
-                  sendManualActionEmail(
-                    "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
-                }
-                g_autoCtrl.setBouffeGrosFlag("0");
-                Serial.println("[Web] ✅ Big feed completed, sync in background");
-              }
+              resp = "FEED_BIG OK";
+              // DÉROGATION: blocage webTask 5–8 s acceptable pour action nourrissage (timeout POST 7s + email)
+              esp_task_wdt_reset();
+              vTaskDelay(pdMS_TO_TICKS(100));
+              sendManualActionEmail(
+                "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
+              SensorReadings readings = _sensors.read();
+              (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
+              g_autoCtrl.setBouffeGrosFlag("0");
+              Serial.println("[Web] ✅ Big feed completed");
           }
           else if (strcmp(c, "toggleEmail") == 0) {
               Serial.println("[Web] 📧 Toggling Email Notifications...");
@@ -675,7 +604,8 @@ bool WebServerManager::begin() {
   // Flux serveur → NVS → logique locale (plan simplification):
   // 1. Réception paramètres 2. Validation (clés connues) 3. Écriture NVS via config.saveRemoteVars
   // 4. Mise à jour RAM via applyConfigFromJson 5. Sync distant optionnelle (non bloquante)
-  _server->on("/dbvars/update", HTTP_POST, [this, &ctx](AsyncWebServerRequest* req){
+  // Handler partagé pour POST /dbvars/update et POST /api/config (alias contractuel, pas de redirect pour conserver le body)
+  auto handleDbVarsUpdate = [this, &ctx](AsyncWebServerRequest* req) {
     g_autoCtrl.notifyLocalWebActivity();
 
     // Plan 3.3: debounce pour éviter écritures NVS trop fréquentes (sliders UI)
@@ -708,8 +638,7 @@ bool WebServerManager::begin() {
     char paramBuf[128];
     auto getParamCStr = [req, &paramBuf](const char* name) -> const char* {
       if (req->hasParam(name, true)) {
-        const char* val = req->getParam(name, true)->value().c_str();
-        strncpy(paramBuf, val, sizeof(paramBuf) - 1);
+        strncpy(paramBuf, req->getParam(name, true)->value().c_str(), sizeof(paramBuf) - 1);
         paramBuf[sizeof(paramBuf) - 1] = '\0';
         return paramBuf;
       }
@@ -755,11 +684,11 @@ bool WebServerManager::begin() {
       Serial.printf("[Web] 📥 Config sauvegardée en NVS (%zu bytes)\n", strlen(saveStr));
     }
 
-    // Persister l'email en clé NVS dédiée pour chargement au boot (automatism.cpp lit "email")
+    // Persister l'email en clé NVS dédiée pour chargement au boot (automatism.cpp lit NVSKeys::Config::EMAIL)
     if (nvsDoc.containsKey("mail")) {
       const char* mailVal = nvsDoc["mail"].as<const char*>();
       if (mailVal && strlen(mailVal) > 0) {
-        g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, "email", mailVal);
+        g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::EMAIL, mailVal);
       }
     }
 
@@ -791,134 +720,35 @@ bool WebServerManager::begin() {
     doc["status"] = "OK";
     doc["remoteSent"] = sent;
     sendJsonResponse(req, doc);
-  });
-
-  // Fichiers statiques avec compression optimisée et gestion Content-Length
-  auto sendWithCompression = [](AsyncWebServerRequest* req,
-                                const char* path,
-                                const char* contentType) {
-    // Vérifier si le client accepte la compression
-    bool acceptsGzip = req->hasHeader("Accept-Encoding") && 
-                      req->getHeader("Accept-Encoding")->value().indexOf("gzip") >= 0;
-    
-    if (acceptsGzip) {
-      // Essayer d'abord la version gzip
-      char gz[128];
-      snprintf(gz, sizeof(gz), "%s.gz", path);
-      if (LittleFS.exists(gz)) {
-        // CORRECTION: Vérifier la taille du fichier gzip
-        File file = LittleFS.open(gz, "r");
-        if (file) {
-          #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-          size_t fileSize = file.size();
-          #endif
-          file.close();
-          #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-          Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz, fileSize);
-          #endif
-          
-          AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
-          if (r) {
-            r->addHeader("Content-Encoding", "gzip");
-            r->addHeader("Cache-Control", "public, max-age=604800");
-            r->addHeader("X-Content-Type-Options", "nosniff");
-            req->send(r);
-            return;
-          }
-        }
-      }
-    }
-    
-    // Fallback vers le fichier normal avec vérification de taille
-    if (LittleFS.exists(path)) {
-      File file = LittleFS.open(path, "r");
-      if (file) {
-        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-        size_t fileSize = file.size();
-        #endif
-        file.close();
-        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-        Serial.printf("[Web] 📏 File %s size: %u bytes\n", path, fileSize);
-        #endif
-        
-        AsyncWebServerResponse* r = req->beginResponse(LittleFS, path, contentType);
-        if (r) {
-          r->addHeader("Cache-Control", "public, max-age=604800");
-          r->addHeader("X-Content-Type-Options", "nosniff");
-          req->send(r);
-          return;
-        }
-      }
-    }
-    
-    req->send(404);
   };
+  _server->on("/dbvars/update", HTTP_POST, handleDbVarsUpdate);
+  _server->on("/api/config", HTTP_POST, handleDbVarsUpdate);
 
-  _server->on("/chart.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - asset statique
-    sendWithCompression(req, "/chart.js", "application/javascript");
-  });
-  _server->on("/bootstrap.min.css", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - asset statique
-    // Servir le fichier CSS consolidé depuis LittleFS
-    if (LittleFS.exists("/bootstrap.min.css")) {
-      sendWithCompression(req, "/bootstrap.min.css", "text/css");
-    } else {
-      // Fallback minimal pour compatibilité
-      static const char BOOTSTRAP_MIN_PLACEHOLDER[] PROGMEM =
-        "/* bootstrap placeholder */\n"
-        ".container-fluid{padding:0 12px;}\n"
-        ".row{display:flex;flex-wrap:wrap;margin:0 -12px;}\n"
-        "[class^=col-]{padding:0 12px;box-sizing:border-box;}\n"
-        ".btn{display:inline-block;padding:10px 20px;"
-        "border-radius:6px;border:1px solid #ccc;"
-        "background:#f8f9fa;cursor:pointer;}\n"
-        ".btn-primary{background:#0d6efd;border-color:#0d6efd;color:#fff;}\n"
-        ".btn-warning{background:#ffc107;border-color:#ffc107;}\n"
-        ".btn-info{background:#0dcaf0;border-color:#0dcaf0;}\n"
-        ".btn-danger{background:#dc3545;border-color:#dc3545;color:#fff;}\n"
-        ".btn-success{background:#198754;border-color:#198754;color:#fff;}\n"
-        ".badge{display:inline-block;padding:.35em .65em;border-radius:.25rem;}\n"
-        ".bg-secondary{background:#6c757d;color:#fff;}\n"
-        ".bg-primary{background:#0d6efd;color:#fff;}\n"
-        ".bg-info{background:#0dcaf0;color:#000;}\n"
-        ".bg-warning{background:#ffc107;color:#000;}\n"
-        ".bg-success{background:#198754;color:#fff;}\n"
-        ".bg-danger{background:#dc3545;color:#fff;}\n";
-      AsyncWebServerResponse* r = req->beginResponse_P(200, "text/css", BOOTSTRAP_MIN_PLACEHOLDER);
-      if (r) {
-        r->addHeader("Cache-Control", "public, max-age=604800");
-        r->addHeader("X-Content-Type-Options", "nosniff");
-        req->send(r);
-      } else {
-        req->send(500);
-      }
-    }
-  });
-  _server->on("/utils.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - asset statique
-    sendWithCompression(req, "/utils.js", "application/javascript");
-  });
-  // Manifest PWA
-  _server->on("/manifest.json", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - manifest statique
-    sendWithCompression(req, "/manifest.json", "application/json");
-  });
-
-  // Service Worker pour PWA
-  _server->on("/sw.js", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - service worker
-    sendWithCompression(req, "/sw.js", "application/javascript");
-  });
-
-  // Page de mise à jour OTA - Plan simplification: OTA manuel uniquement
+  // Page de mise à jour OTA avec bouton POST /api/ota
   _server->on("/update", HTTP_GET, [](AsyncWebServerRequest* req) {
     req->send(NetworkConfig::HTTP_OK, "text/html",
-      "<html><head><title>FFP5CS OTA</title></head><body>"
+      "<html><head><meta charset='utf-8'><title>FFP5CS OTA</title>"
+      "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+      "<style>body{font-family:sans-serif;padding:16px;max-width:480px;}"
+      "button{padding:10px 20px;margin:8px 0;cursor:pointer;border-radius:6px;border:1px solid #0d6efd;background:#0d6efd;color:#fff;} "
+      "button:disabled{opacity:0.6;cursor:not-allowed;} #msg{margin-top:12px;padding:8px;border-radius:4px;white-space:pre-wrap;}</style></head><body>"
       "<h1>FFP5CS - Mise à jour OTA</h1>"
-      "<p>OTA manuel uniquement. Utiliser <code>POST /api/ota</code> pour déclencher une vérification et mise à jour.</p>"
+      "<p>Vérifier et lancer une mise à jour firmware (WiFi requis).</p>"
+      "<button id='btn' onclick='runOta()'>Vérifier et mettre à jour</button>"
+      "<div id='msg'></div>"
       "<p><a href='/'>Retour au dashboard</a></p>"
-      "</body></html>");
+      "<script>"
+      "async function runOta(){"
+      "var btn=document.getElementById('btn');var msg=document.getElementById('msg');"
+      "btn.disabled=true;msg.textContent='Vérification...';"
+      "try{"
+      "var r=await fetch('/api/ota',{method:'POST'});"
+      "var j=await r.json();"
+      "msg.textContent=j.message||JSON.stringify(j);"
+      "msg.style.background=j.ok?'#d4edda':'#f8d7da';"
+      "}catch(e){msg.textContent='Erreur: '+e.message;msg.style.background='#f8d7da';}"
+      "btn.disabled=false;}"
+      "</script></body></html>");
   });
 
   // POST /api/ota - Déclenchement manuel OTA (vérification + mise à jour si disponible)
@@ -1023,45 +853,6 @@ bool WebServerManager::begin() {
   });
 #endif // FFP_ENABLE_DANGEROUS_ENDPOINTS
 
-  // Page simple de formulaire pour modifier les variables BDD locales et pousser vers le serveur
-  _server->on("/dbvars/form", HTTP_GET, [](AsyncWebServerRequest* req){
-    // v11.40: Pas de notifyLocalWebActivity() - formulaire legacy
-    const char* html =
-      "<html><head><meta charset='utf-8'><title>Variables BDD</title>"
-      "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-      "<style>body{font-family:sans-serif;padding:16px;}"
-      "label{display:block;margin-top:8px;}"
-      "input,button{font-size:16px;padding:6px 8px;}"
-      "fieldset{margin-bottom:12px;}" 
-      "button{margin-right:8px;}</style></head><body>"
-      "<h2>Modifier les variables BDD</h2>"
-      "<form method='POST' action='/dbvars/update'>"
-      "<fieldset><legend>Nourrissage</legend>"
-      "Heure matin: <input type='number' name='bouffeMatin' min='0' max='23'><br>"
-      "Heure midi: <input type='number' name='bouffeMidi' min='0' max='23'><br>"
-      "Heure soir: <input type='number' name='bouffeSoir' min='0' max='23'><br>"
-      "Durée gros (s): <input type='number' name='tempsGros' min='0' max='120'><br>"
-      "Durée petits (s): <input type='number' name='tempsPetits' min='0' max='120'><br>"
-      "</fieldset>"
-      "<fieldset><legend>Seuils</legend>"
-      "Seuil Aquarium (cm): <input type='number' name='aqThreshold' min='0' max='1000'><br>"
-      "Seuil Réservoir (cm): <input type='number' name='tankThreshold' min='0' max='1000'><br>"
-      "Seuil Chauffage (°C): <input type='number' step='0.1' name='heaterThreshold'><br>"
-      "Durée Remplissage (s): <input type='number' name='refillDuration' min='0' max='3600'><br>"
-      "Limite Inondation (cm): <input type='number' name='limFlood' min='0' max='1000'><br>"
-      "</fieldset>"
-      "<fieldset><legend>Email</legend>"
-      "Adresse: <input type='email' name='mail'><br>"
-      "Notifications: <input type='checkbox' name='mailNotif' value='checked'> activées<br>"
-      "</fieldset>"
-      "<button type='submit'>Enregistrer</button>"
-      "<a href='/'><button type='button'>Retour Dashboard</button></a>"
-      "</form>"
-      "<p>Astuce: seuls les champs remplis seront envoyés et synchronisés.</p>"
-      "</body></html>";
-    req->send(NetworkConfig::HTTP_OK, "text/html", html);
-  });
-
   // /testota endpoint: active manuellement le flag OTA pour les tests
   _server->on("/testota", HTTP_GET, [](AsyncWebServerRequest* req){
     // v11.40: Pas de notifyLocalWebActivity() - endpoint de test
@@ -1076,7 +867,14 @@ bool WebServerManager::begin() {
   _server->on("/nvs.json", HTTP_GET, [](AsyncWebServerRequest* req){
     // GARDER notifyLocalWebActivity() - Outil de debug interactif
     g_autoCtrl.notifyLocalWebActivity();
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/nvs.json"))) {
+      return;
+    }
     AsyncResponseStream* res = req->beginResponseStream("application/json");
+    if (!res) {
+      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
+      return;
+    }
     res->print('{');
     res->print("\"namespaces\":{");
 
@@ -1344,8 +1142,7 @@ bool WebServerManager::begin() {
     char nsBuf[32], keyBuf[64], typeBuf[16], valueBuf[256];
     auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
       if (req->hasParam(n, true)) {
-        const char* val = req->getParam(n, true)->value().c_str();
-        strncpy(buf, val, bufSize - 1);
+        strncpy(buf, req->getParam(n, true)->value().c_str(), bufSize - 1);
         buf[bufSize - 1] = '\0';
         return true;
       }
@@ -1457,8 +1254,7 @@ bool WebServerManager::begin() {
     char nsBuf[32], keyBuf[64];
     auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
       if (req->hasParam(n, true)) {
-        const char* val = req->getParam(n, true)->value().c_str();
-        strncpy(buf, val, bufSize - 1);
+        strncpy(buf, req->getParam(n, true)->value().c_str(), bufSize - 1);
         buf[bufSize - 1] = '\0';
         return true;
       }
@@ -1486,8 +1282,7 @@ bool WebServerManager::begin() {
     char nsBuf[32];
     auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
       if (req->hasParam(n, true)) {
-        const char* val = req->getParam(n, true)->value().c_str();
-        strncpy(buf, val, bufSize - 1);
+        strncpy(buf, req->getParam(n, true)->value().c_str(), bufSize - 1);
         buf[bufSize - 1] = '\0';
         return true;
       }
@@ -1716,17 +1511,14 @@ bool WebServerManager::begin() {
     char ssidBuf[64], passwordBuf[65], saveBuf[8];
     auto getParam = [req](const char* name, char* buf, size_t bufSize) -> bool {
       if (req->hasParam(name, true)) {
-        const char* val = req->getParam(name, true)->value().c_str();
-        if (val) {
-          strncpy(buf, val, bufSize - 1);
-          buf[bufSize - 1] = '\0';
-          return true;
-        }
+        strncpy(buf, req->getParam(name, true)->value().c_str(), bufSize - 1);
+        buf[bufSize - 1] = '\0';
+        return true;
       }
       buf[0] = '\0';
       return false;
     };
-    
+
     bool hasSsid = getParam("ssid", ssidBuf, sizeof(ssidBuf));
     bool hasPassword = getParam("password", passwordBuf, sizeof(passwordBuf));
     bool hasSave = getParam("save", saveBuf, sizeof(saveBuf));
@@ -1829,82 +1621,35 @@ bool WebServerManager::begin() {
         return;
       }
       s_lastWifiConnectAt = nowWifi;
-      
-      // Envoyer une réponse immédiate AVANT de déconnecter
-      // Cela permet au client de recevoir la réponse avant la perte de connexion
-      doc["success"] = true;
-      doc["message"] = "Connection attempt started";
-      doc["ssid"] = ssidBuf;
-      doc["note"] = 
-        "Connection may take up to 15 seconds. "
-        "WebSocket will reconnect automatically.";
-      
-      char json[512];
-      serializeJson(doc, json, sizeof(json));
-      
-      AsyncWebServerResponse* response = req->beginResponse(200, "application/json", json);
-      // v11.169: Vérification nullptr (audit robustesse)
-      if (!response) {
-        req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
-        return;
-      }
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      req->send(response);
-      
-      // Attendre que la réponse HTTP soit complètement envoyée
-      Serial.println("[WiFi] Attente envoi réponse HTTP...");
-      vTaskDelay(pdMS_TO_TICKS(300));
-      
+
       // Notifier les clients WebSocket du changement imminent
-      Serial.println("[WiFi] Notification des clients WebSocket...");
       g_realtimeWebSocket.notifyWifiChange(ssidBuf);
       vTaskDelay(pdMS_TO_TICKS(200));
-      
-      // Fermer proprement toutes les connexions WebSocket
-      Serial.println("[WiFi] Fermeture des connexions WebSocket...");
       g_realtimeWebSocket.closeAllConnections();
-      
-      // Attendre que toutes les connexions soient bien fermées
       vTaskDelay(pdMS_TO_TICKS(500));
-      
-      // MAINTENANT déconnecter et reconnecter le WiFi
       Serial.printf("[WiFi] Déconnexion du réseau actuel\n");
       WiFi.disconnect(false, true);
       vTaskDelay(pdMS_TO_TICKS(200));
 
-      // Allocation dynamique pour éviter race condition avec requêtes concurrentes
-      WifiConnectTaskParams* wifiParams = new (std::nothrow) WifiConnectTaskParams;
-      if (!wifiParams) {
-        Serial.println("[WiFi] ❌ Échec allocation WifiConnectTaskParams");
-        return;
-      }
-      strncpy(wifiParams->ssid, ssidBuf, sizeof(wifiParams->ssid) - 1);
-      wifiParams->ssid[sizeof(wifiParams->ssid) - 1] = '\0';
-      strncpy(wifiParams->password, passwordBuf, sizeof(wifiParams->password) - 1);
-      wifiParams->password[sizeof(wifiParams->password) - 1] = '\0';
-
-      BaseType_t created = xTaskCreate([](void* param) {
-        WifiConnectTaskParams* p = (WifiConnectTaskParams*)param;
-        bool connected = wifi.connectTo(p->ssid, p->password);
-        if (connected) {
-          IPAddress ip = WiFi.localIP();
-          Serial.printf(
-            "[WiFi] Connecté avec succès à '%s' (IP: %d.%d.%d.%d, RSSI: %d dBm)\n",
-            p->ssid, ip[0], ip[1], ip[2], ip[3], WiFi.RSSI());
-          g_realtimeWebSocket.broadcastNow();
-        } else {
-          Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", p->ssid);
-        }
-        delete p;  // Libérer la mémoire allouée
-        vTaskDelete(NULL);
-      }, "wifi_connect_task", 4096, wifiParams, 1, nullptr);
-      if (created != pdPASS) {
-        Serial.println("[WiFi] ❌ Échec création tâche wifi_connect_task");
-        delete wifiParams;  // Libérer si la tâche n'a pas été créée
+      // DÉROGATION: blocage webTask jusqu'à 5s (WIFI_CONNECT_TIMEOUT_MS) acceptable pour connexion WiFi
+      esp_task_wdt_reset();
+      bool connected = wifi.connectTo(ssidBuf, passwordBuf);
+      if (connected) {
+        IPAddress ip = WiFi.localIP();
+        Serial.printf(
+          "[WiFi] Connecté avec succès à '%s' (IP: %d.%d.%d.%d, RSSI: %d dBm)\n",
+          ssidBuf, ip[0], ip[1], ip[2], ip[3], WiFi.RSSI());
+        g_realtimeWebSocket.broadcastNow();
+      } else {
+        Serial.printf("[WiFi] Échec de connexion à '%s' (timeout)\n", ssidBuf);
       }
 
+      doc["success"] = connected;
+      doc["message"] = connected ? "Connected" : "Connection failed";
+      doc["ssid"] = ssidBuf;
+      char jsonSync[512];
+      serializeJson(doc, jsonSync, sizeof(jsonSync));
+      req->send(200, "application/json", jsonSync);
       return;
     }
     
@@ -1935,14 +1680,9 @@ bool WebServerManager::begin() {
     char ssidBuf[64];
     bool hasSsid = false;
     if (req->hasParam("ssid", true)) {
-      const char* ssidVal = req->getParam("ssid", true)->value().c_str();
-      if (ssidVal) {
-        strncpy(ssidBuf, ssidVal, sizeof(ssidBuf) - 1);
-        ssidBuf[sizeof(ssidBuf) - 1] = '\0';
-        hasSsid = true;
-      } else {
-        ssidBuf[0] = '\0';
-      }
+      strncpy(ssidBuf, req->getParam("ssid", true)->value().c_str(), sizeof(ssidBuf) - 1);
+      ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+      hasSsid = (ssidBuf[0] != '\0');
     } else {
       ssidBuf[0] = '\0';
     }

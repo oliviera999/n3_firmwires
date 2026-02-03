@@ -70,6 +70,7 @@ private:
     static constexpr unsigned long CLIENT_INACTIVITY_TIMEOUT_MS = 60000;
     
     unsigned long lastBroadcast = 0;
+    uint8_t _periodicBroadcastCount = 0;  // Pour envoyer dbVars périodiquement (page Contrôles)
     std::atomic<unsigned long> lastClientActivity{0};  // Atomic pour accès multi-tâches
     unsigned long lastNoClientHeartbeat = 0;
     bool _isActive = false;
@@ -389,43 +390,63 @@ public:
         }
         
         if (shouldBroadcast) {
-            // v11.169: Allocation réduite pour broadcast périodique (audit performance)
-            // JSON minimal : ~350 bytes au lieu de ~1KB
-            StaticJsonDocument<512> doc;
-            
-            // Récupérer les données via le cache
-            SensorReadings readings = sensorCache.getReadings(*sensors);
-            
-            // Construire la réponse minimale (données essentielles uniquement)
-            doc["type"] = "sensor_update";
-            doc["tempWater"] = readings.tempWater;
-            doc["tempAir"] = readings.tempAir;
-            doc["humidity"] = readings.humidity;
-            doc["wlAqua"] = readings.wlAqua;
-            doc["wlTank"] = readings.wlTank;
-            doc["wlPota"] = readings.wlPota;
-            doc["luminosite"] = readings.luminosite;
-            doc["pumpAqua"] = actuators->isAquaPumpRunning();
-            doc["pumpTank"] = actuators->isTankPumpRunning();
-            doc["heater"] = actuators->isHeaterOn();
-            doc["light"] = actuators->isLightOn();
-            doc["forceWakeup"] = _forceWakeUpState;
-            doc["mailNotif"] = _mailNotifState;
-            doc["timestamp"] = now;
-            
-            // v11.169: Infos WiFi minimales (connexion STA uniquement)
-            // Les détails WiFi complets sont envoyés via sendCurrentData() à la connexion
-            // et via broadcastNow() lors des actions
-            doc["wifiStaConnected"] = (WiFi.status() == WL_CONNECTED);
-            
-            // Sérialiser et diffuser (buffer réduit)
-            char json[512];
-            serializeJson(doc, json, sizeof(json));
-            // Vérifier qu'il y a des clients connectés avant envoi
-            if (webSocket.connectedClients() > 0) {
-                webSocket.broadcastTXT(json);
+            _periodicBroadcastCount++;
+            const bool sendDbVars = _fillDbVars && (_periodicBroadcastCount % 8 == 0);
+
+            if (sendDbVars) {
+                // Un broadcast sur 8 : payload complet avec dbVars pour mise à jour auto page Contrôles
+                StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+                SensorReadings readings = sensorCache.getReadings(*sensors);
+                doc["type"] = "sensor_update";
+                doc["tempWater"] = readings.tempWater;
+                doc["tempAir"] = readings.tempAir;
+                doc["humidity"] = readings.humidity;
+                doc["wlAqua"] = readings.wlAqua;
+                doc["wlTank"] = readings.wlTank;
+                doc["wlPota"] = readings.wlPota;
+                doc["luminosite"] = readings.luminosite;
+                doc["pumpAqua"] = actuators->isAquaPumpRunning();
+                doc["pumpTank"] = actuators->isTankPumpRunning();
+                doc["heater"] = actuators->isHeaterOn();
+                doc["light"] = actuators->isLightOn();
+                doc["forceWakeup"] = _forceWakeUpState;
+                doc["mailNotif"] = _mailNotifState;
+                doc["timestamp"] = now;
+                doc["wifiStaConnected"] = (WiFi.status() == WL_CONNECTED);
+                JsonObject dbVars = doc.createNestedObject("dbVars");
+                _fillDbVars(dbVars);
+                char json[2048];
+                size_t len = serializeJson(doc, json, sizeof(json));
+                if (len > 0 && len < sizeof(json) && webSocket.connectedClients() > 0) {
+                    webSocket.broadcastTXT(json);
+                }
+            } else {
+                // JSON minimal (données essentielles uniquement)
+                StaticJsonDocument<512> doc;
+                SensorReadings readings = sensorCache.getReadings(*sensors);
+                doc["type"] = "sensor_update";
+                doc["tempWater"] = readings.tempWater;
+                doc["tempAir"] = readings.tempAir;
+                doc["humidity"] = readings.humidity;
+                doc["wlAqua"] = readings.wlAqua;
+                doc["wlTank"] = readings.wlTank;
+                doc["wlPota"] = readings.wlPota;
+                doc["luminosite"] = readings.luminosite;
+                doc["pumpAqua"] = actuators->isAquaPumpRunning();
+                doc["pumpTank"] = actuators->isTankPumpRunning();
+                doc["heater"] = actuators->isHeaterOn();
+                doc["light"] = actuators->isLightOn();
+                doc["forceWakeup"] = _forceWakeUpState;
+                doc["mailNotif"] = _mailNotifState;
+                doc["timestamp"] = now;
+                doc["wifiStaConnected"] = (WiFi.status() == WL_CONNECTED);
+                char json[512];
+                serializeJson(doc, json, sizeof(json));
+                if (webSocket.connectedClients() > 0) {
+                    webSocket.broadcastTXT(json);
+                }
             }
-            
+
             lastBroadcast = now;
         }
         

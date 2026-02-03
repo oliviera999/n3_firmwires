@@ -5,9 +5,19 @@
 #include "esp_task_wdt.h"
 #include <WiFi.h>
 #include "app_tasks.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>  // v11.183: atoi/atof pour valeurs serveur en string
+
+namespace {
+constexpr size_t DEFERRED_JSON_SIZE = 2048;
+static char s_deferredRemoteJson[DEFERRED_JSON_SIZE];
+static SemaphoreHandle_t s_deferredSaveMutex = nullptr;
+static QueueHandle_t s_deferredSaveQueue = nullptr;
+}  // namespace
 
 // v11.172: Les noms de variables utilisés ici sont définis dans gpio_mapping.h (VariableRegistry)
 // Source de vérité: GPIOMap::XXX.serverPostName pour noms POST serveur
@@ -44,6 +54,12 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
 }
 
 bool AutomatismSync::begin() {
+    if (!s_deferredSaveMutex) {
+        s_deferredSaveMutex = xSemaphoreCreateMutex();
+    }
+    if (!s_deferredSaveQueue) {
+        s_deferredSaveQueue = xQueueCreate(1, 1);  // 1 slot, 1 byte (signal only)
+    }
     // Initialiser la queue de données (RAM simple)
     if (_dataQueue.begin()) {
         Serial.printf("[Sync] ✓ DataQueue RAM initialisée (%u entrées max)\n", QUEUE_MAX_ENTRIES);
@@ -353,14 +369,25 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
             out[k] = p.value();
         }
     }
-    char jsonStr[2048];
+    char jsonStr[DEFERRED_JSON_SIZE];
     serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
-    _config.saveRemoteVars(jsonStr);
+    // v11.192: Différer la sauvegarde NVS vers automation task pour éviter assert
+    // xTaskPriorityDisinherit (mutex/priorité) quand NVS est écrit depuis net task ou juste après notify.
+    if (s_deferredSaveMutex && s_deferredSaveQueue &&
+        xSemaphoreTake(s_deferredSaveMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        strncpy(s_deferredRemoteJson, jsonStr, DEFERRED_JSON_SIZE - 1);
+        s_deferredRemoteJson[DEFERRED_JSON_SIZE - 1] = '\0';
+        xSemaphoreGive(s_deferredSaveMutex);
+        uint8_t one = 1;
+        xQueueOverwrite(s_deferredSaveQueue, &one);
+    }
 
     // v11.191: Ne pas appeler doc.clear() ni deserializeJson(doc) — ArduinoJson MemoryPoolList::clear()
     // peut crasher (LoadProhibited) quand doc provient de loadFromNVSFallback. La config est déjà
-    // sauvegardée dans NVS ; le caller n'a pas besoin que doc soit mis à jour.
-    Serial.printf("[Sync] Données normalisées sauvegardées (%u clés)\n", normalizedDoc.size());
+    // en file pour sauvegarde NVS ; le caller n'a pas besoin que doc soit mis à jour.
+    if (!_configSyncedOnce) {
+        Serial.printf("[Sync] Données normalisées en file pour NVS (%u clés)\n", normalizedDoc.size());
+    }
 
     _serverOk = true;
     _recvState = 1;
@@ -372,14 +399,26 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
     return true;
 }
 
+void AutomatismSync::processDeferredRemoteVarsSave() {
+    if (!s_deferredSaveQueue || !s_deferredSaveMutex) return;
+    uint8_t one = 0;
+    if (xQueueReceive(s_deferredSaveQueue, &one, 0) != pdTRUE) return;
+    char copy[DEFERRED_JSON_SIZE];
+    if (xSemaphoreTake(s_deferredSaveMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    strncpy(copy, s_deferredRemoteJson, DEFERRED_JSON_SIZE - 1);
+    copy[DEFERRED_JSON_SIZE - 1] = '\0';
+    xSemaphoreGive(s_deferredSaveMutex);
+    _config.saveRemoteVars(copy);
+}
+
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
-    // GET outputs/state : timeout 12s (serveur/latence peuvent dépasser 5s, net task uniquement)
     bool fromNVSFallback = false;
     bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS, &fromNVSFallback);
-    // v11.193: Ne jamais appeler processFetchedRemoteConfig quand les données viennent du cache NVS —
-    // itérer ou lire doc provoque LoadProhibited (état interne ArduinoJson incohérent après loadFromNVSFallback).
-    if (ok && !fromNVSFallback && doc.size() > 0) {
-        processFetchedRemoteConfig(doc);
+    // v11.193: Données HTTP → copier dans doc depuis le caller (évite LoadProhibited en écrivant doc depuis netTask)
+    if (ok && !fromNVSFallback) {
+        if (_web.copyLastFetchedTo(doc) && doc.size() > 0) {
+            processFetchedRemoteConfig(doc);
+        }
     } else if (!ok) {
         _serverOk = false;
         _recvState = -1;

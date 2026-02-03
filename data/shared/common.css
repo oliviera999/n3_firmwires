@@ -140,6 +140,18 @@ a { color: var(--info); text-decoration: none; }
 .btn.danger { background: #3b1010; border-color: #7a2323; }
 .btn.success { background: #12321e; border-color: #1f6f46; }
 
+/* Boutons page Contrôles : badges colorés (vert = actif, rouge = inactif), texte lisible, pas de dépendance au survol */
+.btn.btn-success {
+  background: var(--success);
+  border-color: var(--success);
+  color: #022c22;
+}
+.btn.btn-outline-danger {
+  background: #991b1b;
+  border-color: var(--danger);
+  color: #fecaca;
+}
+
 .chart-container {
   background: var(--bg-2);
   border-radius: 15px;
@@ -349,35 +361,6 @@ img, canvas, svg, video { max-width: 100%; height: auto; display: block; }
 .list-group-item .d-flex { min-width: 0; }
 .btn, .badge { white-space: normal; }
 .container, .card, .nav-tabs, .header { word-break: break-word; overflow-wrap: anywhere; }
-
-/* État des actionneurs (page Contrôles, visible sur mobile) */
-.actuator-state-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 16px;
-  align-items: center;
-}
-.actuator-state-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-}
-.actuator-label {
-  font-size: 13px;
-  color: var(--muted);
-}
-.actuator-badge {
-  font-size: 13px;
-  font-weight: 600;
-  min-width: 36px;
-  text-align: center;
-}
-@media (max-width: 520px) {
-  .actuator-state-row { gap: 10px 12px; }
-  .actuator-label { font-size: 12px; }
-  .actuator-badge { font-size: 12px; min-width: 32px; }
-}
 
 /* Editable Variables - Inline Edit */
 .editable-var {

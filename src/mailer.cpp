@@ -12,6 +12,7 @@
 #include <time.h>
 #include <LittleFS.h>
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
+#include <esp_heap_caps.h>
 #include <cstring>
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
@@ -37,6 +38,8 @@ static const char* formatUptime(unsigned long ms) {
 static char g_systemInfoFooterBuffer[1024];   // Réduit de 4096
 static char g_detailedTimeReportBuffer[512];  // Réduit de 2048
 static char g_lightFooterBuffer[256];         // Footer allégé
+// Piste 4 rapport mémoire: un seul buffer pour sendSync et sendAlertSync (évite ~2.5 KB)
+static char s_mailMessageBuffer[BufferConfig::EMAIL_MAX_SIZE_BYTES + 512];
 // v11.178: kLittleFsLabel supprimé (non utilisé - audit dead-code)
 
 // ======================
@@ -172,81 +175,25 @@ static int appendMemoryInfo(char* buf, size_t& remaining) {
 // FOOTER ALLÉGÉ
 // ======================
 
+// Footer une ligne : version + heure + temp eau (pertinent, peu chargé)
 static const char* buildLightFooter() {
   char* buf = g_lightFooterBuffer;
   size_t remaining = sizeof(g_lightFooterBuffer);
-  int written = 0;
-  
-  // Version / environnement
-#ifdef BOARD_S3
-  const char* board = "ESP32-S3";
-#else
-  const char* board = "ESP32";
-#endif
-  
-  // v11.179: Protection contre NULL (fix crash LoadProhibited)
-  const char* profileName = Utils::getProfileName();
-  if (!profileName) profileName = "(unknown)";
-  
-  written = snprintf(buf, remaining, "\n\n-- Infos système --\n"
-                                     "- Version: %s\n"
-                                     "- Environnement: %s\n",
-                     ProjectConfig::VERSION, profileName);
-  if (written < 0 || (size_t)written >= remaining) {
-    buf[remaining - 1] = '\0';
-    return g_lightFooterBuffer;
+  time_t now = getSafeEpochForDisplay();
+  char timeBuf[24] = "(heure N/A)";
+  if (now >= SleepConfig::EPOCH_MIN_VALID && now <= SleepConfig::EPOCH_MAX_VALID) {
+    struct tm tmInfo;
+    if (localtime_r(&now, &tmInfo)) {
+      strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M", &tmInfo);
+    }
   }
-  buf += written;
-  remaining -= written;
-  
-  // Uptime
-  // v11.179: Protection contre NULL (fix crash LoadProhibited)
-  const char* uptimeStr = formatUptime(millis());
-  if (!uptimeStr) uptimeStr = "(unknown)";
-  written = snprintf(buf, remaining, "- Uptime: %s\n", uptimeStr);
-  if (written < 0 || (size_t)written >= remaining) {
-    buf[remaining - 1] = '\0';
-    return g_lightFooterBuffer;
-  }
-  buf += written;
-  remaining -= written;
-  
-  // Heap libre
-  written = snprintf(buf, remaining, "- Heap libre: %u bytes\n", ESP.getFreeHeap());
-  if (written < 0 || (size_t)written >= remaining) {
-    buf[remaining - 1] = '\0';
-    return g_lightFooterBuffer;
-  }
-  buf += written;
-  remaining -= written;
-  
-  // Réseau (version allégée)
-  // v11.179: Simplification - pas d'appels WiFi pour éviter crashes LoadProhibited
-  // Les appels WiFi.SSID(), WiFi.localIP() peuvent crasher en état transitoire
-  bool connected = WiFi.isConnected();
-  if (connected) {
-    written = snprintf(buf, remaining, "- WiFi: Connecté\n");
-  } else {
-    written = snprintf(buf, remaining, "- WiFi: Déconnecté\n");
-  }
-  if (written < 0 || (size_t)written >= remaining) {
-    buf[remaining - 1] = '\0';
-    return g_lightFooterBuffer;
-  }
-  buf += written;
-  remaining -= written;
-  
-  // Temp eau/air (lecture instantanée)
   extern SystemSensors sensors;
-  SensorReadings rs = sensors.read();
-  written = snprintf(buf, remaining, "- Temp eau: %.1f °C\n"
-                                     "- Temp air: %.1f °C\n",
-                     rs.tempWater, rs.tempAir);
-  if (written < 0 || (size_t)written >= remaining) {
+  float tempWater = sensors.read().tempWater;
+  int n = snprintf(buf, remaining, "\n[FFP5CS v%s] %s | Eau %.1f°C",
+                   ProjectConfig::VERSION, timeBuf, tempWater);
+  if (n < 0 || (size_t)n >= remaining) {
     buf[remaining - 1] = '\0';
-    return g_lightFooterBuffer;
   }
-  
   return g_lightFooterBuffer;
 }
 
@@ -502,10 +449,10 @@ static const char* buildSystemInfoFooter() {
 
   // Diagnostics persistés si disponibles
   int rebootCount;
-  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCount, 0);
+  g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, rebootCount, 0);
   // minHeap: UINT32_MAX = pas encore de mesure
   unsigned long minHeapUL = UINT32_MAX;
-  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeapUL, UINT32_MAX);
+  g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, minHeapUL, UINT32_MAX);
   if (minHeapUL < UINT32_MAX) {
     written = snprintf(buf, remaining, "- Reboots: %d\n"
                                        "- Min heap: %lu bytes\n",
@@ -657,7 +604,7 @@ static const char* buildSystemInfoFooter() {
     g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, lastJourBouf, -1);
     g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, pompeAquaLocked, false);
     // v11.172: Clé unique (migration terminée)
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, "force_wake_up", forceWakeUp, false);
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::FORCE_WAKE_UP, forceWakeUp, false);
     written = snprintf(buf, remaining, "- bouffeMatinOk: %s\n"
                                        "- bouffeMidiOk: %s\n"
                                        "- bouffeSoirOk: %s\n"
@@ -725,8 +672,8 @@ static const char* buildSystemInfoFooter() {
     // Namespace diagnostics (déjà partiellement inclus plus haut, rappel condensé)
     int rebootCnt2;
     unsigned long minHeap2;
-    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, "diag_rebootCnt", rebootCnt2, 0);
-    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, "diag_minHeap", minHeap2, UINT32_MAX);
+    g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, rebootCnt2, 0);
+    g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, minHeap2, UINT32_MAX);
     written = snprintf(buf, remaining, "- diagnostics.rebootCnt: %d\n"
                                        "- diagnostics.minHeap: %lu\n",
                        rebootCnt2, (minHeap2 < UINT32_MAX) ? minHeap2 : 0UL);
@@ -873,19 +820,10 @@ bool Mailer::begin() {
   _cfg.login.email      = Secrets::AUTHOR_EMAIL;
   _cfg.login.password   = Secrets::AUTHOR_PASSWORD;
 
-  // DEBUG: Activer les logs SMTP détaillés
-  _smtp.debug(1);
-  
   // v11.151: Reconnexion automatique et timeout conforme à .cursorrules (max 5s)
   MailClient.networkReconnect(true);
   _smtp.setTCPTimeout(5);  // 5 secondes de timeout TCP (conforme .cursorrules: max 5s pour opérations réseau)
 
-  // Diagnostic de la configuration
-  Serial.printf("[Mail] SMTP_HOST: '%s'\n", EmailConfig::SMTP_HOST);
-  Serial.printf("[Mail] SMTP_PORT: %d\n", EmailConfig::SMTP_PORT);
-  Serial.printf("[Mail] AUTHOR_EMAIL: '%s'\n", Secrets::AUTHOR_EMAIL);
-  Serial.printf("[Mail] AUTHOR_PASSWORD length: %d\n", strlen(Secrets::AUTHOR_PASSWORD));
-  
   // Vérifications de configuration
   if (!EmailConfig::SMTP_HOST || strlen(EmailConfig::SMTP_HOST) == 0) {
     Serial.println(F("[Mail] ❌ ERREUR: SMTP_HOST non configuré"));
@@ -995,6 +933,13 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   }
   
   if (!_ready || !_smtp.connected()) {
+    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS) {
+      Serial.printf("[Mail] ⛔ Connexion SMTP reportée: bloc contigu insuffisant (%u < %u bytes)\n",
+                    (unsigned)largestBlock, (unsigned)HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
+      TLSMutex::release();
+      return false;
+    }
     Serial.println(F("[Mail] ⚠️ Connexion SMTP requise"));
     // tentative de reconnexion
     _smtp.closeSession();
@@ -1018,8 +963,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // La bibliothèque ESP Mail Client peut utiliser les pointeurs de manière asynchrone
   static char fromNameBuf[64];
   static char subjectBuf[128];
-  // v11.179: Harmoniser avec enhancedMessage (2512 bytes) pour éviter troncature
-  static char finalMessageBuffer[BufferConfig::EMAIL_MAX_SIZE_BYTES + 512];  // ~2512 bytes
+  // Piste 4: un seul buffer partagé (s_mailMessageBuffer) pour sendSync et sendAlertSync
   
   Serial.println(F("[Mail] Trace 3: Buffers allocated"));
 
@@ -1032,29 +976,32 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // Construction du sujet dans un buffer statique
   snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
   
-  // Construction du message final (buffer statique pour persistance)
-  // Copier le message initial
+  // Copier le message dans le buffer partagé seulement si différent (sendAlertSync passe déjà s_mailMessageBuffer)
   size_t msgLen = message ? strlen(message) : 0;
-  if (msgLen >= sizeof(finalMessageBuffer)) {
-    msgLen = sizeof(finalMessageBuffer) - 1;
-  }
-  if (msgLen > 0) {
-    strncpy(finalMessageBuffer, message, msgLen);
-    finalMessageBuffer[msgLen] = '\0';
+  if (message != s_mailMessageBuffer) {
+    if (msgLen >= sizeof(s_mailMessageBuffer)) {
+      msgLen = sizeof(s_mailMessageBuffer) - 1;
+    }
+    if (msgLen > 0) {
+      strncpy(s_mailMessageBuffer, message, msgLen);
+      s_mailMessageBuffer[msgLen] = '\0';
+    } else {
+      s_mailMessageBuffer[0] = '\0';
+    }
   } else {
-    finalMessageBuffer[0] = '\0';
+    msgLen = strlen(s_mailMessageBuffer);
   }
   
   // Vérifier si un footer complet est déjà présent (alerte critique)
   const char* footerMarker = "[Footer complet déjà inclus]";
   size_t markerLen = strlen(footerMarker);
-  size_t currentLen = strlen(finalMessageBuffer);
+  size_t currentLen = strlen(s_mailMessageBuffer);
   bool hasFullFooter = (currentLen >= markerLen) && 
-                       (strcmp(finalMessageBuffer + currentLen - markerLen, footerMarker) == 0);
+                       (strcmp(s_mailMessageBuffer + currentLen - markerLen, footerMarker) == 0);
   
   if (hasFullFooter) {
     // Retirer le marqueur
-    finalMessageBuffer[currentLen - markerLen] = '\0';
+    s_mailMessageBuffer[currentLen - markerLen] = '\0';
     Serial.println(F("[Mail] Trace 3.1: Footer complet déjà présent, pas d'ajout footer allégé"));
   } else {
     Serial.println(F("[Mail] Trace 3.1: Appending light footer..."));
@@ -1066,14 +1013,14 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
       lightFooter = "\n-- Footer unavailable --\n";
     }
     size_t footerLen = strlen(lightFooter);
-    size_t remaining = sizeof(finalMessageBuffer) - currentLen - 1;
+    size_t remaining = sizeof(s_mailMessageBuffer) - currentLen - 1;
     // v11.178: Vérifier remaining > 0 avant strncat pour éviter underflow (audit bugs-high)
     if (remaining > 0 && footerLen < remaining) {
-      strncat(finalMessageBuffer, lightFooter, remaining);
+      strncat(s_mailMessageBuffer, lightFooter, remaining);
     } else if (remaining > 0) {
       // Tronquer le footer si nécessaire
-      strncat(finalMessageBuffer, lightFooter, remaining - 1);
-      finalMessageBuffer[sizeof(finalMessageBuffer) - 1] = '\0';
+      strncat(s_mailMessageBuffer, lightFooter, remaining - 1);
+      s_mailMessageBuffer[sizeof(s_mailMessageBuffer) - 1] = '\0';
     }
   }
   
@@ -1085,7 +1032,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   msg.sender.email = Secrets::AUTHOR_EMAIL;
   msg.subject      = subjectBuf;
   msg.addRecipient(toName, toEmail);
-  msg.text.content = finalMessageBuffer;
+  msg.text.content = s_mailMessageBuffer;
   
   Serial.println(F("[Mail] Trace 5: Msg struct configured"));
 
@@ -1113,10 +1060,10 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.println();
   Serial.println(F("[Mail] Contenu (aperçu):"));
   // Afficher un aperçu du message (max 200 caractères)
-  size_t previewLen = strlen(finalMessageBuffer);
+  size_t previewLen = strlen(s_mailMessageBuffer);
   if (previewLen > 200) previewLen = 200;
   char preview[201];
-  strncpy(preview, finalMessageBuffer, previewLen);
+  strncpy(preview, s_mailMessageBuffer, previewLen);
   preview[previewLen] = '\0';
   Serial.println(preview);
   Serial.println(F("[Mail] ==========================="));
@@ -1149,11 +1096,11 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
 bool Mailer::begin() { Serial.println("[Mail] Désactivé (FEATURE_MAIL=0)"); return true; }
 bool Mailer::sendSync(const char*, const char*, const char*, const char*) { return false; }
 bool Mailer::send(const char*, const char*, const char*, const char*) { return false; }
-bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail) {
-  (void)subject; (void)message; (void)toEmail; return false;
+bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
+  (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport; return false;
 }
-bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail) {
-  (void)subject; (void)message; (void)toEmail; return false;
+bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
+  (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport; return false;
 }
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
   (void)reason; (void)sleepDurationSeconds; (void)readings; return false;
@@ -1168,13 +1115,14 @@ uint32_t Mailer::getQueuedMails() const { return 0; }
 #endif
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
-bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail) {
+bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
   Serial.println(F("[Mail] ===== DIAGNOSTIC SENDALERT ====="));
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
   Serial.printf("[Mail] subject: '%s'\n", subject ? subject : "NULL");
   size_t msgLen = message ? strlen(message) : 0;
   Serial.printf("[Mail] message length: %d\n", msgLen);
   Serial.printf("[Mail] toEmail: '%s'\n", toEmail ? toEmail : "NULL");
+  Serial.printf("[Mail] includeDetailedReport: %s\n", includeDetailedReport ? "true" : "false");
   
   // Vérifications préalables
   if (!subject) {
@@ -1198,10 +1146,9 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   snprintf(alertSubject, sizeof(alertSubject), "FFP5CS - %s", subject);
   Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject);
   
-  // Buffer statique pour le message amélioré - aligné sur EMAIL_MAX_SIZE_BYTES + marge footer
-  static char enhancedMessage[BufferConfig::EMAIL_MAX_SIZE_BYTES + 512];  // ~2512 bytes
+  // Piste 4: utiliser le buffer partagé s_mailMessageBuffer (sendSync ne recopie pas si même pointeur)
   size_t offset = 0;
-  size_t remaining = sizeof(enhancedMessage);
+  size_t remaining = sizeof(s_mailMessageBuffer);
   int written = 0;
   
   // Copier le message initial
@@ -1209,86 +1156,54 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   if (initialMsgLen >= remaining) {
     initialMsgLen = remaining - 1;
   }
-  strncpy(enhancedMessage, message, initialMsgLen);
-  enhancedMessage[initialMsgLen] = '\0';
+  strncpy(s_mailMessageBuffer, message, initialMsgLen);
+  s_mailMessageBuffer[initialMsgLen] = '\0';
   offset = initialMsgLen;
   remaining -= initialMsgLen;
-  Serial.printf("[Mail] enhancedMessage initial: %d chars\n", offset);
+  Serial.printf("[Mail] s_mailMessageBuffer initial: %d chars\n", offset);
   
-  // Instance statique de Diagnostics pour éviter allocation sur la stack (stack overflow)
-  // v11.157: Rendu statique pour éviter stack overflow dans loopTask
+  // Rapport temporel détaillé uniquement pour alertes diagnostic (boot, OTA, panic)
   static Diagnostics tempDiag;
   tempDiag.loadFromNvs();
-  const char* timeReport = buildDetailedTimeReport(tempDiag);
-  // v11.179: Validation du pointeur (robustesse)
-  if (!timeReport) {
-    Serial.println(F("[Mail] ❌ buildDetailedTimeReport returned NULL"));
-    return false;
-  }
-  size_t timeReportLen = strlen(timeReport);
-  
-  // Ajouter le rapport temporel détaillé
-  // v11.179: Remplacer strncat par snprintf pour tracking correct (fix corruption mémoire)
-  if (remaining > 0) {
-    written = snprintf(enhancedMessage + offset, remaining, "%s", timeReport);
-    if (written > 0 && (size_t)written < remaining) {
-      offset += written;
-      remaining -= written;
-    } else {
-      // Troncature - marquer buffer plein
-      enhancedMessage[sizeof(enhancedMessage) - 1] = '\0';
-      remaining = 0;
-    }
-  }
-  Serial.printf("[Mail] enhancedMessage après timeReport: %d chars\n", strlen(enhancedMessage));
-  
-  // Vérifier si l'alerte est critique (PANIC ou crash)
   bool isCritical = tempDiag.hasPanicInfo() || tempDiag.hasCrashInfo();
-  // v11.179: DÉSACTIVATION buildSystemInfoFooter() - cause crashes LoadProhibited intermittents
-  // Raison: appels WiFi (BSSID, hostname, etc.) peuvent retourner pointeurs corrompus en état transitoire
-  // Solution temporaire: utiliser buildLightFooter() pour toutes les alertes
-  if (false && isCritical) {
-    Serial.println(F("[Mail] ⚠️ Alerte CRITIQUE détectée - ajout footer complet"));
-    const char* systemInfoFooter = buildSystemInfoFooter();
-    size_t footerLen = strlen(systemInfoFooter);
-    
-    // Ajouter le séparateur et le footer système
-    written = snprintf(enhancedMessage + offset, remaining, "\n\n-- Infos système (détaillées) --\n%s", systemInfoFooter);
-    if (written < 0 || (size_t)written >= remaining) {
-      enhancedMessage[sizeof(enhancedMessage) - 1] = '\0';
-    } else {
-      offset += written;
-      remaining -= written;
+  if (includeDetailedReport) {
+    const char* timeReport = buildDetailedTimeReport(tempDiag);
+    if (!timeReport) {
+      Serial.println(F("[Mail] ❌ buildDetailedTimeReport returned NULL"));
+      return false;
     }
-    Serial.printf("[Mail] enhancedMessage après footer complet: %d chars\n", strlen(enhancedMessage));
-  } else {
-    Serial.println(F("[Mail] Alerte normale - footer allégé ajouté par sendSync()"));
+    if (remaining > 0) {
+      written = snprintf(s_mailMessageBuffer + offset, remaining, "%s", timeReport);
+      if (written > 0 && (size_t)written < remaining) {
+        offset += written;
+        remaining -= written;
+      } else {
+        s_mailMessageBuffer[sizeof(s_mailMessageBuffer) - 1] = '\0';
+        remaining = 0;
+      }
+    }
+    Serial.printf("[Mail] s_mailMessageBuffer après timeReport: %d chars\n", strlen(s_mailMessageBuffer));
   }
   
   Serial.println(F("[Mail] ===== ENVOI D'ALERTE (SYNC) ====="));
-  Serial.printf("[Mail] Type: Alerte système %s\n", isCritical ? "(CRITIQUE)" : "(normale)");
+  Serial.printf("[Mail] Type: %s\n", includeDetailedReport ? "diagnostic" : "opérationnel");
   Serial.printf("[Mail] Destinataire: %s\n", targetEmail);
-  Serial.printf("[Mail] Objet original: %s\n", subject);
   Serial.printf("[Mail] Objet final: %s\n", alertSubject);
   Serial.println(F("[Mail] ==========================="));
   
-  // Si alerte critique, on a déjà ajouté le footer complet, donc on doit éviter que sendSync() ajoute le footer allégé
-  // Solution: ajouter un marqueur spécial à la fin du message pour indiquer qu'un footer est déjà présent
-  // v11.179: Remplacer strncat par snprintf pour tracking correct (fix corruption mémoire)
-  if (isCritical && remaining > 0) {
+  // Marqueur footer complet (alerte critique + rapport détaillé déjà inclus) - désactivé pour l'instant
+  if (false && isCritical && remaining > 0) {
     const char* marker = "\n[Footer complet déjà inclus]";
-    written = snprintf(enhancedMessage + offset, remaining, "%s", marker);
+    written = snprintf(s_mailMessageBuffer + offset, remaining, "%s", marker);
     if (written > 0 && (size_t)written < remaining) {
       offset += written;
       remaining -= written;
     }
   }
   
-  bool result = sendSync(alertSubject, enhancedMessage, "User", targetEmail);
+  bool result = sendSync(alertSubject, s_mailMessageBuffer, "User", targetEmail);
   Serial.printf("[Mail] ===== RÉSULTAT SENDALERTSYNC: %s =====\n", result ? "SUCCESS" : "FAILED");
   
-  // Nettoyer les infos PANIC après l'envoi réussi du mail (pour éviter de les réutiliser au prochain boot)
-  // Utiliser l'instance globale de Diagnostics pour nettoyer les infos dans NVS
   if (result && tempDiag.hasPanicInfo()) {
     extern Diagnostics diag;
     diag.clearPanicInfoAfterReport();
@@ -1511,11 +1426,10 @@ bool Mailer::processOneMailSync() {
   }
   
   Serial.printf("[Mail] 📬 Traitement mail séquentiel: '%s'\n", item.subject);
-  Serial.printf("[MAIL_DBG] H4 H5 processOneMailSync treating: '%s'\n", item.subject);
-      
+
   bool success;
   if (item.isAlert) {
-    success = sendAlertSync(item.subject, item.message, item.toEmail);
+    success = sendAlertSync(item.subject, item.message, item.toEmail, item.includeDetailedReport);
   } else {
     success = sendSync(item.subject, item.message, "User", item.toEmail);
   }
@@ -1532,12 +1446,10 @@ bool Mailer::processOneMailSync() {
       } else {
         _mailsFailed++;
         Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
-        Serial.printf("[MAIL_DBG] H5 processOneMailSync send failed for subject: %s\n", item.subject);
       }
     } else {
       _mailsFailed++;
       Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
-      Serial.printf("[MAIL_DBG] H5 processOneMailSync send failed for subject: %s\n", item.subject);
     }
   }
   
@@ -1582,7 +1494,6 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
     vTaskDelay(pdMS_TO_TICKS(200));
     if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
       Serial.println(F("[Mail] ⚠️ Queue pleine, mail ignoré"));
-      Serial.println(F("[MAIL_DBG] H2 Queue pleine -> mail ignoré (subject ci-dessus)"));
       return false;
     }
   }
@@ -1593,12 +1504,12 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
 }
 
 // Méthode sendAlert() asynchrone - ajoute à la queue et retourne immédiatement
-bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail) {
+bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
   Serial.println(F("[Mail] ===== SENDALERT ASYNC (v11.142) ====="));
   
   if (!_mailQueue) {
     Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
-    return sendAlertSync(subject, message, toEmail);
+    return sendAlertSync(subject, message, toEmail, includeDetailedReport);
   }
   
   // Vérifications préalables
@@ -1635,6 +1546,7 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
     strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
   }
   item.isAlert = true;
+  item.includeDetailedReport = includeDetailedReport;
   item.retryCount = 0;
   
   // Ajoute à la queue (timeout 100ms), retry une fois après 200ms si pleine (robustesse)
@@ -1642,7 +1554,6 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
     vTaskDelay(pdMS_TO_TICKS(200));
     if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
       Serial.println(F("[Mail] ⚠️ Queue pleine, alerte ignorée"));
-      Serial.println(F("[MAIL_DBG] H2 Queue pleine -> alerte ignorée (subject ci-dessus)"));
       return false;
     }
   }

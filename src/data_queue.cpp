@@ -46,7 +46,10 @@ bool DataQueue::push(const char* payload) {
         return false;
     }
     if (_count >= _maxEntries) {
-        Serial.println(F("[DataQueue] Ecrasement entree ancienne (queue pleine)"));
+        static uint32_t s_queueFullCount = 0;
+        if ((++s_queueFullCount % 10) == 1) {
+            Serial.printf("[DataQueue] Ecrasement entree ancienne (queue pleine, #%u)\n", s_queueFullCount);
+        }
         _tail = (_tail + 1) % _maxEntries;
         _count = _maxEntries;
     } else {

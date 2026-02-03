@@ -11,7 +11,7 @@
  * 
  * Architecture:
  * - Tableau circulaire en RAM, stockage fixe (pas de malloc)
- * - Max: DATA_QUEUE_MAX_ENTRIES entrées (limite logique <= capacité fixe)
+ * - Max: DATA_QUEUE_MAX_ENTRIES entrées (limite logique <= capacité fixe, défaut 5)
  * - Pas de persistance (données perdues au reboot)
  * 
  * Thread-Safety:
@@ -75,7 +75,7 @@ public:
 
 private:
     static constexpr size_t PAYLOAD_SIZE = 1024;
-    static constexpr uint16_t DATA_QUEUE_MAX_ENTRIES = 10;
+    static constexpr uint16_t DATA_QUEUE_MAX_ENTRIES = 5;  // Réduit de 10 → 5 (piste 1 rapport mémoire)
 
     uint16_t _maxEntries;
     uint16_t _head;

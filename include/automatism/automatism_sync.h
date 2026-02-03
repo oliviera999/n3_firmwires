@@ -31,9 +31,12 @@ public:
     // Récupération état distant
     bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
-    // Traite un doc déjà récupéré (normalise, sauve NVS, met à jour doc).
+    // Traite un doc déjà récupéré (normalise, enqueue sauvegarde NVS, met à jour doc).
     // Utilisé par fetchRemoteState et par netTask au boot.
     bool processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc);
+
+    /// Draine la file de sauvegarde NVS différée (à appeler depuis automation task uniquement).
+    void processDeferredRemoteVarsSave();
 
     // Polling régulier des commandes distantes
     bool pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis);

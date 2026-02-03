@@ -450,9 +450,9 @@ window.action = async function action(cmd) {
   
   if (btn) {
     btn.disabled = true;
+    btn.className = 'btn btn-success w-100';
     btn.innerHTML = '<span class="loading-spinner"></span> En cours...';
   }
-  
   addToHistory(actionName, 'loading');
   
   // FEEDBACK OPTIMISTE : Afficher immédiatement l'état "en cours" et attendre les données WebSocket
@@ -493,14 +493,10 @@ window.action = async function action(cmd) {
         logInfo(`Action ${cmd} confirmée via WebSocket après ${timeSinceAction}ms`, { cmd, timeSinceAction }, 'WEBSOCKET');
         
         if (btn) {
-          btn.innerHTML = '✅ Fait';
-          setTimeout(() => {
-            btn.disabled = false;
-            if (cmd === 'feedSmall') btn.innerHTML = '🐟 Nourrir Petits';
-            else if (cmd === 'feedBig') btn.innerHTML = '🐠 Nourrir Gros';
-          }, 1500);
+          btn.className = 'btn btn-outline-danger w-100';
+          btn.innerHTML = cmd === 'feedSmall' ? '🐟 Nourrir Petits' : '🐠 Nourrir Gros';
+          btn.disabled = false;
         }
-        
         addToHistory(actionName, 'success', 'Action exécutée via WebSocket');
         toast(`Action ${actionName} exécutée avec succès`, 'success');
         
@@ -526,32 +522,22 @@ window.action = async function action(cmd) {
       toast(`Action ${actionName} exécutée avec succès`, 'success');
       
       if (btn) {
-        btn.innerHTML = '✅ Fait';
-        setTimeout(() => {
-          btn.disabled = false;
-          if (cmd === 'feedSmall') btn.innerHTML = '🐟 Nourrir Petits';
-          else if (cmd === 'feedBig') btn.innerHTML = '🐠 Nourrir Gros';
-        }, 1500);
+        btn.className = 'btn btn-outline-danger w-100';
+        btn.innerHTML = cmd === 'feedSmall' ? '🐟 Nourrir Petits' : '🐠 Nourrir Gros';
+        btn.disabled = false;
       }
     }
-    
-    // Restaurer la fonction originale
     window.updateSensorDisplay = originalUpdateSensorDisplay;
-    
   } catch (error) {
     feedbackReceived = true;
     clearTimeout(websocketTimeout);
     logError(`Erreur action ${cmd}`, error, 'ACTION');
     addToHistory(actionName, 'error', error.message);
     toast(`Erreur lors de l'action ${actionName}`, 'error');
-    
     if (btn) {
-      btn.innerHTML = '❌ Erreur';
-      setTimeout(() => {
-        btn.disabled = false;
-        if (cmd === 'feedSmall') btn.innerHTML = '🐟 Nourrir Petits';
-        else if (cmd === 'feedBig') btn.innerHTML = '🐠 Nourrir Gros';
-      }, 2000);
+      btn.className = 'btn btn-outline-danger w-100';
+      btn.innerHTML = cmd === 'feedSmall' ? '🐟 Nourrir Petits' : '🐠 Nourrir Gros';
+      btn.disabled = false;
     }
     
     // Restaurer la fonction originale
@@ -571,138 +557,88 @@ window.toggleRelay = async function toggleRelay(name) {
   
   if (btn) {
     btn.disabled = true;
+    btn.className = 'btn btn-success w-100';
     btn.innerHTML = '<span class="loading-spinner"></span> En cours...';
   }
-  
   addToHistory(`Toggle ${actionName}`, 'loading');
-  
-  // FEEDBACK OPTIMISTE : Attendre les données WebSocket pour un feedback immédiat
   let feedbackReceived = false;
   let websocketTimeout;
-  
+  const labels = { light: '💡 Lumière', pumpTank: '📦 Pompe Réserve', pumpAqua: '🐠 Pompe Aqua', heater: '🔥 Chauffage' };
+  const label = labels[name] || name;
+
   // Timeout de sécurité pour le feedback WebSocket (6 secondes pour les relais)
   websocketTimeout = setTimeout(() => {
     if (!feedbackReceived) {
       logWarn(`Timeout WebSocket pour le relay ${name}, utilisation du feedback HTTP`, { name }, 'WEBSOCKET');
       feedbackReceived = true;
-      
-      // CORRECTION : Remettre le bouton dans un état fonctionnel après timeout
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `🔄 ${actionName}`;
-        btn.classList.remove('btn-success', 'btn-danger');
-        btn.classList.add('btn-warning');
+        btn.innerHTML = label;
+        btn.className = 'btn btn-outline-danger w-100';
       }
-      
-      // Restaurer la fonction originale
       window.updateSensorDisplay = originalUpdateSensorDisplay;
     }
   }, 6000);
-  
+
   // Écouter les mises à jour WebSocket pour un feedback immédiat
   const originalUpdateSensorDisplay = window.updateSensorDisplay;
   window.updateSensorDisplay = function(data) {
-    // Appeler la fonction originale
     originalUpdateSensorDisplay(data);
-    
-    // CORRECTION : Vérifier d'abord les confirmations d'action spécifiques
     if (!feedbackReceived && data.type === 'action_confirm' && data.action === name) {
       feedbackReceived = true;
       clearTimeout(websocketTimeout);
-      
-      // Mettre à jour l'interface avec le résultat de l'action
       const isOn = data.result.includes('ON');
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = isOn ? 
-          `<i class="fas fa-check-circle text-success"></i> ${actionName} ON` :
-          `<i class="fas fa-times-circle text-danger"></i> ${actionName} OFF`;
-        btn.classList.remove('btn-warning');
-        btn.classList.toggle('btn-success', isOn);
-        btn.classList.toggle('btn-danger', !isOn);
+        btn.innerHTML = label;
+        btn.className = isOn ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
       }
-      
       addToHistory(`Toggle ${actionName}`, 'success', data.result);
       toast(`${actionName}: ${data.result}`, 'success');
-      console.log(`✅ Confirmation reçue pour ${name}: ${data.result}`);
-      
-      // Restaurer la fonction originale après utilisation
       window.updateSensorDisplay = originalUpdateSensorDisplay;
-    }
-    // Fallback : vérifier les mises à jour générales si pas de confirmation spécifique
-    else if (!feedbackReceived && (data.type === 'sensor_update' || data.type === 'sensor_data')) {
+    } else if (!feedbackReceived && (data.type === 'sensor_update' || data.type === 'sensor_data') && data[name] !== undefined) {
       feedbackReceived = true;
       clearTimeout(websocketTimeout);
-      
-      // Mettre à jour l'interface avec le nouvel état
-      if (data[name] !== undefined) {
-        const isOn = data[name];
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = isOn ? 
-            `<i class="fas fa-check-circle text-success"></i> ${actionName} ON` :
-            `<i class="fas fa-times-circle text-danger"></i> ${actionName} OFF`;
-          btn.classList.remove('btn-warning');
-          btn.classList.toggle('btn-success', isOn);
-          btn.classList.toggle('btn-danger', !isOn);
-        }
-        
-        addToHistory(`Toggle ${actionName}`, 'success', isOn ? 'ON' : 'OFF');
-        toast(`${actionName}: ${isOn ? 'ON' : 'OFF'}`, 'success');
+      const isOn = data[name];
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = label;
+        btn.className = isOn ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
       }
-      
-      // Restaurer la fonction originale après utilisation
+      addToHistory(`Toggle ${actionName}`, 'success', isOn ? 'ON' : 'OFF');
+      toast(`${actionName}: ${isOn ? 'ON' : 'OFF'}`, 'success');
       window.updateSensorDisplay = originalUpdateSensorDisplay;
     }
   };
-  
+
   try {
     const response = await fetch(`/action?relay=${name}`, { cache: 'no-store' });
     const result = await response.text();
     console.log(`Relay ${name}: ${result}`);
-    
-    // Si le WebSocket n'a pas encore donné de feedback, utiliser la réponse HTTP
     if (!feedbackReceived) {
       feedbackReceived = true;
       clearTimeout(websocketTimeout);
-      
       addToHistory(`Toggle ${actionName}`, 'success', result);
       toast(`${actionName}: ${result}`, 'success');
-      
+      const isOn = result.includes('ON');
       if (btn) {
-        btn.innerHTML = '✅ Fait';
-        setTimeout(() => {
-          btn.disabled = false;
-          if (name === 'light') btn.innerHTML = '💡 Lumière';
-          else if (name === 'pumpTank') btn.innerHTML = '📦 Pompe Réserve';
-          else if (name === 'pumpAqua') btn.innerHTML = '🐠 Pompe Aqua';
-          else if (name === 'heater') btn.innerHTML = '🔥 Chauffage';
-        }, 1500);
+        btn.innerHTML = label;
+        btn.className = isOn ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
+        btn.disabled = false;
       }
     }
-    
-    // Restaurer la fonction originale
     window.updateSensorDisplay = originalUpdateSensorDisplay;
-    
   } catch (error) {
     feedbackReceived = true;
     clearTimeout(websocketTimeout);
     console.error(`Erreur relay ${name}:`, error);
     addToHistory(`Toggle ${actionName}`, 'error', error.message);
     toast(`Erreur ${actionName}`, 'error');
-    
     if (btn) {
-      btn.innerHTML = '❌ Erreur';
-      setTimeout(() => {
-        btn.disabled = false;
-        if (name === 'light') btn.innerHTML = '💡 Lumière';
-        else if (name === 'pumpTank') btn.innerHTML = '📦 Pompe Réserve';
-        else if (name === 'pumpAqua') btn.innerHTML = '🐠 Pompe Aqua';
-        else if (name === 'heater') btn.innerHTML = '🔥 Chauffage';
-      }, 2000);
+      btn.innerHTML = label;
+      btn.className = 'btn btn-outline-danger w-100';
+      btn.disabled = false;
     }
-    
-    // Restaurer la fonction originale
     window.updateSensorDisplay = originalUpdateSensorDisplay;
   }
 }
@@ -711,70 +647,50 @@ window.mailTest = async function mailTest() {
   const btn = $('btnMailTest');
   if (btn) {
     btn.disabled = true;
+    btn.className = 'btn btn-success w-100';
     btn.innerHTML = '<span class="loading-spinner"></span> Test...';
   }
-  
   addToHistory('Test Mail', 'loading');
-  
   try {
     const response = await fetch('/mailtest', { cache: 'no-store' });
     const result = await response.text();
-    
     addToHistory('Test Mail', 'success', result);
     toast(`Test Mail: ${result}`, 'success');
-    
     if (btn) {
-      btn.innerHTML = '✅ Envoyé';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '📧 Test Mail';
-      }, 2000);
+      btn.className = 'btn btn-outline-danger w-100';
+      btn.innerHTML = '📧 Test Mail';
+      btn.disabled = false;
     }
   } catch (error) {
     console.error('Erreur test mail:', error);
     addToHistory('Test Mail', 'error', error.message);
     toast(`Erreur test mail: ${error.message}`, 'error');
-    
     if (btn) {
-      btn.innerHTML = '❌ Erreur';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '📧 Test Mail';
-      }, 2000);
+      btn.className = 'btn btn-outline-danger w-100';
+      btn.innerHTML = '📧 Test Mail';
+      btn.disabled = false;
     }
   }
-}
+};
 
 window.toggleEmailNotifications = async function toggleEmailNotifications() {
   const btn = $('btnEmailNotif');
   if (btn) {
     btn.disabled = true;
+    btn.className = 'btn btn-success w-100';
     btn.innerHTML = '<span class="loading-spinner"></span> En cours...';
   }
-  
   addToHistory('Toggle Email Notifications', 'loading');
-  
   try {
     const response = await fetch('/action?cmd=toggleEmail', { cache: 'no-store' });
     const result = await response.text();
-    // #region agent log
-    try {
-      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'common.js:toggleEmailNotifications', message: 'toggle response', data: { result, resultLen: result.length }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'C' }) }).catch(() => {});
-    } catch (e) {}
-    // #endregion
     addToHistory('Toggle Email Notifications', 'success', result);
     toast(`Notifications Email: ${result}`, 'success');
-    
-    // Mettre à jour l'apparence du bouton selon l'état
     if (btn) {
       btn.disabled = false;
-      if (result.toLowerCase().includes('activé') || result.toLowerCase().includes('on')) {
-        btn.className = 'btn btn-success w-100';
-        btn.innerHTML = '🔔 Notifications ON';
-      } else {
-        btn.className = 'btn btn-outline-success w-100';
-        btn.innerHTML = '🔔 Notifications OFF';
-      }
+      const on = result.toLowerCase().includes('activé') || result.toLowerCase().includes('on');
+      btn.className = on ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
+      btn.innerHTML = '🔔 Notifications Email';
     }
     
     // Rafraîchir les données pour mettre à jour l'affichage (badge Notifications)
@@ -798,83 +714,33 @@ window.toggleForceWakeup = async function toggleForceWakeup() {
   const btn = $('btnForceWakeup');
   if (btn) {
     btn.disabled = true;
+    btn.className = 'btn btn-success w-100';
     btn.innerHTML = '<span class="loading-spinner"></span> En cours...';
   }
-  
   addToHistory('Toggle Force Wakeup', 'loading');
-  
   try {
     const response = await fetch('/action?cmd=forceWakeUp', { cache: 'no-store' });
     const result = await response.text();
-    
     addToHistory('Toggle Force Wakeup', 'success', result);
     toast(`Force Wakeup: ${result}`, 'success');
-    
-    // Rafraîchir immédiatement l'affichage
     setTimeout(() => refresh(), 500);
-    
     if (btn) {
-      btn.innerHTML = '✅ Fait';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '⚡ Force Wakeup';
-      }, 1500);
+      const on = result.toLowerCase().includes('on');
+      btn.className = on ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
+      btn.innerHTML = '⏰ Force Wakeup';
+      btn.disabled = false;
     }
   } catch (error) {
     console.error('Erreur Force Wakeup:', error);
     addToHistory('Toggle Force Wakeup', 'error', error.message);
     toast(`Erreur Force Wakeup: ${error.message}`, 'error');
-    
     if (btn) {
-      btn.innerHTML = '❌ Erreur';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '⚡ Force Wakeup';
-      }, 2000);
+      btn.className = 'btn btn-outline-danger w-100';
+      btn.innerHTML = '⏰ Force Wakeup';
+      btn.disabled = false;
     }
   }
-}
-
-window.toggleWifi = async function toggleWifi() {
-  const btn = $('btnWifi');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loading-spinner"></span> En cours...';
-  }
-  
-  addToHistory('Toggle WiFi', 'loading');
-  
-  try {
-    const response = await fetch('/action?cmd=wifiToggle', { cache: 'no-store' });
-    const result = await response.text();
-    
-    addToHistory('Toggle WiFi', 'success', result);
-    toast(`WiFi: ${result}`, 'success');
-    
-    // Rafraîchir immédiatement l'affichage
-    setTimeout(() => refresh(), 500);
-    
-    if (btn) {
-      btn.innerHTML = '✅ Fait';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '📶 WiFi';
-      }, 1500);
-    }
-  } catch (error) {
-    console.error('Erreur WiFi:', error);
-    addToHistory('Toggle WiFi', 'error', error.message);
-    toast(`Erreur WiFi: ${error.message}`, 'error');
-    
-    if (btn) {
-      btn.innerHTML = '❌ Erreur';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '📶 WiFi';
-      }, 2000);
-    }
-  }
-}
+};
 
 // Initialisation des graphiques avec uPlot
 window.initCharts = function initCharts() {
@@ -1009,75 +875,26 @@ window.updateCharts = function updateCharts(data) {
   }
 }
 
-// Met à jour les badges "État des actionneurs" (visibles sur mobile même si le texte des boutons est tronqué)
-function updateActuatorStateBadges() {
-  const state = window.lastRelayState;
-  if (!state) return;
-  const setBadge = (id, on, onClass, offClass) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.textContent = on ? 'ON' : 'OFF';
-      el.className = 'badge actuator-badge ' + (on ? onClass : offClass);
-    }
-  };
-  if (state.pumpTank !== undefined) setBadge('actuatorStatePumpTank', state.pumpTank, 'bg-info', 'bg-secondary');
-  if (state.pumpAqua !== undefined) setBadge('actuatorStatePumpAqua', state.pumpAqua, 'bg-info', 'bg-secondary');
-  if (state.heater !== undefined) setBadge('actuatorStateHeater', state.heater, 'bg-danger', 'bg-secondary');
-  if (state.light !== undefined) setBadge('actuatorStateLight', state.light, 'bg-warning text-dark', 'bg-secondary');
-}
-
-// Réapplique le dernier état des relais sur les boutons (page Contrôles chargée dynamiquement)
+// Réapplique le dernier état des relais sur les boutons (page Contrôles) : vert = actif, rouge = inactif, pas de mention ON/OFF
 window.applyRelayStateToButtons = function applyRelayStateToButtons() {
   const state = window.lastRelayState;
   if (!state) return;
   const btn = (id) => document.getElementById(id);
-  if (state.pumpTank !== undefined) {
-    const b = btn('btnPumpTank');
+  const setRelay = (b, label, on) => {
     if (b) {
-      b.innerHTML = state.pumpTank ? '📦 Pompe Réserve ON' : '📦 Pompe Réserve OFF';
-      b.className = state.pumpTank ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
+      b.innerHTML = label;
+      b.className = on ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
     }
-  }
-  if (state.pumpAqua !== undefined) {
-    const b = btn('btnPumpAqua');
-    if (b) {
-      b.innerHTML = state.pumpAqua ? '🐠 Pompe Aqua ON' : '🐠 Pompe Aqua OFF';
-      b.className = state.pumpAqua ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
-    }
-  }
-  if (state.heater !== undefined) {
-    const b = btn('btnHeater');
-    if (b) {
-      b.innerHTML = state.heater ? '🔥 Chauffage ON' : '🔥 Chauffage OFF';
-      b.className = state.heater ? 'btn btn-danger w-100' : 'btn btn-outline-danger w-100';
-    }
-  }
-  if (state.light !== undefined) {
-    const b = btn('btnLight');
-    if (b) {
-      b.innerHTML = state.light ? '💡 Lumière ON' : '💡 Lumière OFF';
-      b.className = state.light ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
-    }
-  }
-  if (state.forceWakeUp !== undefined) {
-    const b = btn('btnForceWakeup');
-    if (b) {
-      b.innerHTML = state.forceWakeUp ? '⏰ Force Wakeup ON' : '⏰ Force Wakeup OFF';
-      b.className = state.forceWakeUp ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
-    }
-  }
-  if (state.mailNotif !== undefined) {
-    const b = btn('btnEmailNotif');
-    if (b) {
-      const on = !!state.mailNotif;
-      b.innerHTML = on ? '🔔 Notifications ON' : '🔔 Notifications OFF';
-      b.className = on ? 'btn btn-success w-100' : 'btn btn-outline-success w-100';
-    }
-  }
-  updateActuatorStateBadges();
+  };
+  if (state.pumpTank !== undefined) setRelay(btn('btnPumpTank'), '📦 Pompe Réserve', state.pumpTank);
+  if (state.pumpAqua !== undefined) setRelay(btn('btnPumpAqua'), '🐠 Pompe Aqua', state.pumpAqua);
+  if (state.heater !== undefined) setRelay(btn('btnHeater'), '🔥 Chauffage', state.heater);
+  if (state.light !== undefined) setRelay(btn('btnLight'), '💡 Lumière', state.light);
+  if (state.forceWakeUp !== undefined) setRelay(btn('btnForceWakeup'), '⏰ Force Wakeup', state.forceWakeUp);
+  if (state.mailNotif !== undefined) setRelay(btn('btnEmailNotif'), '🔔 Notifications Email', !!state.mailNotif);
 };
 
-// Charge l'état des actionneurs depuis /json et l'affiche (garantit ON/OFF visible à l'ouverture Contrôles, ex. sur mobile)
+// Charge l'état des actionneurs depuis /json et l'affiche (badges vert/rouge à l'ouverture Contrôles)
 window.ensureActuatorStateDisplay = function ensureActuatorStateDisplay() {
   fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(5000) })
     .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
@@ -1100,10 +917,12 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
   
   // Vérifier si des données WiFi sont présentes - toujours les mettre à jour
   const hasWifiData = data.wifiStaConnected !== undefined || data.wifiApActive !== undefined;
+  // Ne pas throttler quand le message contient des états actionneurs (page Contrôles à jour)
+  const hasActuatorData = data.pumpAqua !== undefined || data.pumpTank !== undefined || data.heater !== undefined || data.light !== undefined;
   
-  // Throttle les mises à jour SAUF pour les données WiFi qui sont critiques
-  if (!hasWifiData && now - lastDataUpdate < DATA_UPDATE_THROTTLE) {
-    return; // Throttle les mises à jour sauf WiFi
+  // Throttle les mises à jour SAUF pour les données WiFi et les états actionneurs
+  if (!hasWifiData && !hasActuatorData && now - lastDataUpdate < DATA_UPDATE_THROTTLE) {
+    return; // Throttle les mises à jour sauf WiFi et actionneurs
   }
   lastDataUpdate = now;
   
@@ -1139,62 +958,24 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     if (data.forceWakeUp !== undefined) window.lastRelayState.forceWakeUp = data.forceWakeUp;
     if (data.mailNotif !== undefined) window.lastRelayState.mailNotif = !!data.mailNotif;
 
-    if (data.pumpTank !== undefined) {
-      const btn = $('btnPumpTank');
-      if (btn) {
-        btn.innerHTML = data.pumpTank ? '📦 Pompe Réserve ON' : '📦 Pompe Réserve OFF';
-        btn.className = data.pumpTank ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
+    const setRelay = (id, label, on) => {
+      const b = $(id);
+      if (b) {
+        b.innerHTML = label;
+        b.className = on ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
       }
-    }
-    if (data.pumpAqua !== undefined) {
-      const btn = $('btnPumpAqua');
-      if (btn) {
-        btn.innerHTML = data.pumpAqua ? '🐠 Pompe Aqua ON' : '🐠 Pompe Aqua OFF';
-        btn.className = data.pumpAqua ? 'btn btn-info w-100' : 'btn btn-outline-info w-100';
-      }
-    }
-    if (data.heater !== undefined) {
-      const btn = $('btnHeater');
-      if (btn) {
-        btn.innerHTML = data.heater ? '🔥 Chauffage ON' : '🔥 Chauffage OFF';
-        btn.className = data.heater ? 'btn btn-danger w-100' : 'btn btn-outline-danger w-100';
-      }
-    }
-    if (data.light !== undefined) {
-      const btn = $('btnLight');
-      if (btn) {
-        btn.innerHTML = data.light ? '💡 Lumière ON' : '💡 Lumière OFF';
-        btn.className = data.light ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
-      }
-    }
-    if (data.forceWakeUp !== undefined) {
-      const btn = $('btnForceWakeup');
-      if (btn) {
-        btn.innerHTML = data.forceWakeUp ? '⏰ Force Wakeup ON' : '⏰ Force Wakeup OFF';
-        btn.className = data.forceWakeUp ? 'btn btn-warning w-100' : 'btn btn-outline-warning w-100';
-      }
-    }
-    if (data.mailNotif !== undefined) {
-      const btn = $('btnEmailNotif');
-      if (btn) {
-        const on = !!data.mailNotif;
-        btn.innerHTML = on ? '🔔 Notifications ON' : '🔔 Notifications OFF';
-        btn.className = on ? 'btn btn-success w-100' : 'btn btn-outline-success w-100';
-      }
-    }
-    updateActuatorStateBadges();
-    
+    };
+    if (data.pumpTank !== undefined) setRelay('btnPumpTank', '📦 Pompe Réserve', data.pumpTank);
+    if (data.pumpAqua !== undefined) setRelay('btnPumpAqua', '🐠 Pompe Aqua', data.pumpAqua);
+    if (data.heater !== undefined) setRelay('btnHeater', '🔥 Chauffage', data.heater);
+    if (data.light !== undefined) setRelay('btnLight', '💡 Lumière', data.light);
+    if (data.forceWakeUp !== undefined) setRelay('btnForceWakeup', '⏰ Force Wakeup', data.forceWakeUp);
+    if (data.mailNotif !== undefined) setRelay('btnEmailNotif', '🔔 Notifications Email', !!data.mailNotif);
+
     // États WiFi STA (informations détaillées uniquement)
     // Clés harmonisées: wifiSta* (cohérent avec /json et /wifi/status)
     // Ne mettre à jour le cache détaillé que si les champs sont présents (évite d'effacer le SSID
     // à chaque broadcast périodique minimal qui n'envoie que wifiStaConnected)
-    // #region agent log
-    const hasSta = data.wifiStaConnected !== undefined;
-    const hasSSID = data.wifiStaSSID !== undefined;
-    const hasIP = data.wifiStaIP !== undefined;
-    const hasRSSI = data.wifiStaRSSI !== undefined;
-    fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiSta',message:'WiFi STA update',data:{hasSta,hasSSID,hasIP,hasRSSI,wifiStaConnected:data.wifiStaConnected,msgType:data.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:hasSta&&!hasSSID?'A':'B'})}).catch(()=>{});
-    // #endregion
     if(data.wifiStaConnected !== undefined) {
       lastWifiData.wifiStaConnected = data.wifiStaConnected;
       if (data.wifiStaSSID !== undefined) lastWifiData.wifiStaSSID = data.wifiStaSSID || '--';

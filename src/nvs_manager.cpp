@@ -516,6 +516,12 @@ NVSError NVSManager::loadFloat(const char* ns, const char* key, float& value, fl
         return openError;
     }
 
+    // Éviter getFloat quand la clé n'existe pas : Preferences logue NOT_FOUND en interne (ex. temp_last_valid au 1er boot)
+    if (!_preferences.isKey(key)) {
+        value = defaultValue;
+        closeNamespace();
+        return NVSError::SUCCESS;
+    }
     value = _preferences.getFloat(key, defaultValue);
     closeNamespace();
 

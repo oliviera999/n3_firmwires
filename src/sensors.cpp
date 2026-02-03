@@ -1,5 +1,6 @@
 #include "sensors.h"
 #include "nvs_manager.h" // v11.112
+#include "nvs_keys.h"
 #include <math.h> // Pour fabs()
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
@@ -1396,7 +1397,7 @@ void WaterTempSensor::saveLastValidTempToNVS(float temp) {
     return;  // Pas de changement significatif ni délai écoulé
   }
   // v11.172: Clé unique (migration terminée)
-  g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, "temp_last_valid", temp);
+  g_nvsManager.saveFloat(NVS_NAMESPACES::CONFIG, NVSKeys::Sensors::TEMP_LAST_VALID, temp);
   _lastSavedTempToNVS = temp;
   _lastNvsSaveMs = now;
   Serial.printf("[WaterTemp] Dernière température valide sauvegardée en NVS: %.1f°C\n", temp);
@@ -1405,7 +1406,7 @@ void WaterTempSensor::saveLastValidTempToNVS(float temp) {
 float WaterTempSensor::loadLastValidTempFromNVS() {
   float temp;
   // v11.172: Clé unique (migration terminée)
-  g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, "temp_last_valid", temp, NAN);
+  g_nvsManager.loadFloat(NVS_NAMESPACES::CONFIG, NVSKeys::Sensors::TEMP_LAST_VALID, temp, NAN);
   
   if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
     Serial.printf("[WaterTemp] Dernière température valide chargée depuis NVS: %.1f°C\n", temp);

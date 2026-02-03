@@ -20,34 +20,41 @@ namespace NVSKeys {
         constexpr const char* BOUFFE_JOUR = "bouffe_jour";
         constexpr const char* BF_PMP_LOCK = "bf_pmp_lock";
         constexpr const char* REMOTE_JSON = "remote_json";
+        constexpr const char* EMAIL = "email";
     }
     
-    // Clés système
+    // Clés système (noms ≤15 car. pour limite NVS ESP-IDF)
     namespace System {
-        constexpr const char* OTA_UPDATE_FLAG = "ota_update_flag";
+        constexpr const char* OTA_UPDATE_FLAG = "ota_upd_flag";
         constexpr const char* OTA_PREV_VER = "ota_prevVer";
-        constexpr const char* OTA_IN_PROGRESS = "ota_in_progress";
+        constexpr const char* OTA_IN_PROGRESS = "ota_in_prog";
         constexpr const char* NET_SEND_EN = "net_send_en";
         constexpr const char* NET_RECV_EN = "net_recv_en";
         constexpr const char* RTC_EPOCH = "rtc_epoch";
         constexpr const char* FORCE_WAKE_UP = "force_wake_up";
     }
     
-    // Clés diagnostics
+    // Clés diagnostics (LOGS)
+    // Note: diag_crashFlag/panicCause = panic exception; crash_has/crash_reason = reset reason.
+    // Les deux jeux coexistent (post-mortem vs boot); unification optionnelle à long terme.
     namespace Diag {
         constexpr const char* CRASH_FLAG = "diag_crashFlag";
+        constexpr const char* PANIC_CAUSE = "diag_panicCause";
         constexpr const char* CRASH_HAS = "crash_has";
+        constexpr const char* CRASH_REASON = "crash_reason";
         constexpr const char* REBOOT_CNT = "diag_rebootCnt";
         constexpr const char* MIN_HEAP = "diag_minHeap";
         constexpr const char* HTTP_OK = "diag_httpOk";
         constexpr const char* HTTP_KO = "diag_httpKo";
         constexpr const char* OTA_OK = "diag_otaOk";
         constexpr const char* OTA_KO = "diag_otaKo";
+        constexpr const char* LAST_UPTIME = "diag_lastUptime";
+        constexpr const char* LAST_HEAP = "diag_lastHeap";
     }
     
-    // Clés capteurs
+    // Clés capteurs (noms ≤15 car.)
     namespace Sensors {
-        constexpr const char* TEMP_LAST_VALID = "temp_last_valid";
+        constexpr const char* TEMP_LAST_VALID = "temp_last_ok";
     }
     
     // Clés automatisme - états et snapshots
@@ -59,7 +66,7 @@ namespace NVSKeys {
         constexpr const char* STATE_PUMP_AQUA = "state_pumpAqua";
         constexpr const char* STATE_HEATER = "state_heater";
         constexpr const char* STATE_LAST_LOCAL = "state_lastLocal";
-        constexpr const char* ALERT_FLOOD_LAST = "alert_floodLast";
+        constexpr const char* ALERT_FLOOD_LAST = "alert_flood_ts";
     }
     
     // Clés synchronisation serveur

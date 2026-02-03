@@ -121,6 +121,7 @@ L’agent peut adapter le niveau de détail selon le contexte, mais **ne doit pa
 - **But**: vérifier que le firmware se comporte correctement en mode “24/7”, au moins sur une période significative (par exemple plusieurs heures), en s’appuyant sur les **scripts de monitoring déjà présents dans le repo** (ex.: scripts PowerShell de monitoring, extraction de logs, analyse automatique).
 
 - **Instruction à l’agent** :
+  - Pour un **workflow complet** (erase flash, flash firmware + LittleFS, monitor 5 min, analyse du log), utiliser **préférentiellement** le script racine `erase_flash_fs_monitor_5min_analyze.ps1` (aligné avec les règles projet).
   - Identifier les scripts de monitoring pertinents dans le projet (par nom ou description, ex.: scripts contenant `monitor`, `diagnostic`, etc.).
   - Guider l’utilisateur pour:
     - lancer un ou plusieurs scripts de monitoring (durée raisonnable, par ex. 5–15 minutes pour un check rapide, ou plus si le contexte l’exige),

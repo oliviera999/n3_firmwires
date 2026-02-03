@@ -27,9 +27,6 @@ QueueHandle_t g_sensorQueue = nullptr;
 static StackType_t sensorTaskStack[TaskConfig::SENSOR_TASK_STACK_SIZE];
 static StaticTask_t sensorTaskTCB;
 
-static StackType_t displayTaskStack[TaskConfig::DISPLAY_TASK_STACK_SIZE];
-static StaticTask_t displayTaskTCB;
-
 // v11.169: webTask en allocation dynamique (stack 8KB) pour éviter overflow DRAM tout en gardant 8KB stack
 static StackType_t automationTaskStack[TaskConfig::AUTOMATION_TASK_STACK_SIZE];
 static StaticTask_t automationTaskTCB;
@@ -73,7 +70,89 @@ TaskHandle_t g_netTaskHandle = nullptr;
 #if FEATURE_MAIL
 // Réserve 32KB allouée au boot pour SMTP : libérée avant envoi si heap fragmenté, puis ré-allouée
 static uint8_t* s_mailReserve = nullptr;
+
+// Traitement séquentiel des mails en attente (extrait de automationTask pour lisibilité).
+static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
+  if (!ctx) return;
+  const uint32_t kMailBlockReq = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
+  if (!ctx->mailer.hasPendingMails()) {
+    if (s_mailReserve) {
+      free(s_mailReserve);
+      s_mailReserve = nullptr;
+    }
+    return;
+  }
+  bool canConn = TLSMutex::canConnect();
+  uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+  if (!canConn) {
+    return;
+  }
+  if (largestBlock >= kMailBlockReq) {
+    if (!s_mailReserve) {
+      s_mailReserve = (uint8_t*)malloc(kMailBlockReq);
+    }
+    // Libérer la réserve AVANT l'envoi pour laisser la pile TLS/AsyncTCP allouer pendant connect()
+    // (évite panic abort() quand new échoue dans tcp_poll / __cxa_allocate_exception)
+    if (s_mailReserve) {
+      free(s_mailReserve);
+      s_mailReserve = nullptr;
+    }
+    esp_task_wdt_reset();
+    ctx->mailer.processOneMailSync();
+    return;
+  }
+  if (s_mailReserve) {
+    free(s_mailReserve);
+    s_mailReserve = nullptr;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (largestBlock >= kMailBlockReq) {
+      esp_task_wdt_reset();
+      ctx->mailer.processOneMailSync();
+    }
+    return;
+  }
+  static unsigned long lastMemWarnMs = 0;
+  if (now - lastMemWarnMs > 60000) {
+    Serial.printf("[autoTask] ⚠️ Mail reporté: bloc max=%u bytes < %uKB requis\n", largestBlock, kMailBlockReq / 1024);
+    lastMemWarnMs = now;
+  }
+}
 #endif
+
+// Logs périodiques bouffe et pompe (centralisés pour alléger automationTask).
+static void logBouffeAndPumpStats(AppContext* ctx, unsigned long now,
+                                  unsigned long* lastBouffeDisplay, unsigned long* lastPumpStatsDisplay) {
+  if (!ctx) return;
+  if (now - *lastBouffeDisplay >= TimingConfig::BOUFFE_DISPLAY_INTERVAL_MS) {
+    Serial.println(F("=== ÉTAT DES FLAGS DE BOUFFE ==="));
+    Serial.printf("Bouffe Matin: %s\n", ctx->config.getBouffeMatinOk() ? "✓ FAIT" : "✗ À FAIRE");
+    Serial.printf("Bouffe Midi:  %s\n", ctx->config.getBouffeMidiOk() ? "✓ FAIT" : "✗ À FAIRE");
+    Serial.printf("Bouffe Soir:  %s\n", ctx->config.getBouffeSoirOk() ? "✓ FAIT" : "✗ À FAIRE");
+    Serial.printf("Dernier jour: %d\n", ctx->config.getLastJourBouf());
+    Serial.printf("Pompe lock:   %s\n", ctx->config.getPompeAquaLocked() ? "VERROUILLÉE" : "LIBRE");
+    Serial.println(F("==============================="));
+    *lastBouffeDisplay = now;
+  }
+  if (now - *lastPumpStatsDisplay >= TimingConfig::PUMP_STATS_DISPLAY_INTERVAL_MS) {
+    Serial.println(F("=== STATISTIQUES POMPE DE RÉSERVE ==="));
+    Serial.printf("État actuel: %s\n", ctx->actuators.isTankPumpRunning() ? "EN COURS" : "ARRÊTÉE");
+    if (ctx->actuators.isTankPumpRunning()) {
+      unsigned long currentRuntime = ctx->actuators.getTankPumpCurrentRuntime();
+      Serial.printf("Durée actuelle: %lu ms (%lu s)\n", currentRuntime, currentRuntime / 1000);
+    }
+    Serial.printf("Temps total d'activité: %lu ms (%lu s)\n",
+                  ctx->actuators.getTankPumpTotalRuntime(),
+                  ctx->actuators.getTankPumpTotalRuntime() / 1000);
+    Serial.printf("Nombre total d'arrêts: %lu\n", ctx->actuators.getTankPumpTotalStops());
+    if (ctx->actuators.getTankPumpLastStopTime() > 0) {
+      unsigned long timeSinceLastStop = now - ctx->actuators.getTankPumpLastStopTime();
+      Serial.printf("Dernier arrêt: il y a %lu ms (%lu s)\n", timeSinceLastStop, timeSinceLastStop / 1000);
+    }
+    Serial.println(F("====================================="));
+    *lastPumpStatsDisplay = now;
+  }
+}
 
 // v11.195: Valider req->requester avant xTaskNotifyGive — LoadStoreError dans xTaskGenericNotify
 // quand req pointe vers la stack du caller (queue) et requester peut être corrompu.
@@ -116,8 +195,14 @@ static void netTask(void* pv) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
-    bool ok = (r >= 1);
-    if (ok) {
+    // r==1: HTTP OK, r==2: NVS fallback (ne pas appeler processFetchedRemoteConfig sur doc NVS)
+    if (r == 1 && tmp.size() > 0) {
+      if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
+        Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée et appliquée)"));
+      } else {
+        Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config récupérée, application partielle)"));
+      }
+    } else if (r >= 1) {
       Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée)"));
     } else {
       Serial.println(F("[netTask] ⚠️ Serveur injoignable - fallback NVS/DEFAUT"));
@@ -262,39 +347,6 @@ void sensorTask(void* pv) {
   }
 }
 
-void displayTask(void* pv) {
-  static bool wdtRegistered = false;
-  if (!wdtRegistered) {
-    esp_task_wdt_add(nullptr);
-    wdtRegistered = true;
-  }
-
-  Serial.println(F("[Display] Tâche displayTask démarrée - cadence dynamique"));
-
-  TickType_t lastWake = xTaskGetTickCount();
-  for (;;) {
-    // v11.165: Protection NULL pointer (audit robustesse)
-    if (!g_ctx) {
-      esp_task_wdt_reset();
-      vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(1000));
-      continue;
-    }
-    
-    if (g_ctx->otaManager.isUpdating()) {
-      esp_task_wdt_reset();
-      vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(250));
-      continue;
-    }
-    g_ctx->automatism.updateDisplay();
-    esp_task_wdt_reset();
-    uint32_t intervalMs = g_ctx->automatism.getRecommendedDisplayIntervalMs();
-    if (intervalMs < TimingConfig::MIN_DISPLAY_INTERVAL_MS) {
-      intervalMs = TimingConfig::MIN_DISPLAY_INTERVAL_MS;
-    }
-    vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(intervalMs));
-  }
-}
-
 void webTask(void* pv) {
   static bool wdtRegistered = false;
   if (!wdtRegistered) {
@@ -361,10 +413,8 @@ void automationTask(void* pv) {
   // v11.160: Compteurs persistants en statique pour réduire légèrement l'empreinte stack
   static unsigned long lastHeartbeat = 0;
   static unsigned long lastBouffeDisplay = 0;
-  static const unsigned long bouffeInterval = TimingConfig::BOUFFE_DISPLAY_INTERVAL_MS;
-
   static unsigned long lastPumpStatsDisplay = 0;
-  static const unsigned long pumpStatsInterval = TimingConfig::PUMP_STATS_DISPLAY_INTERVAL_MS;
+  static uint32_t s_sensorTimeoutCount = 0;
 
   #if defined(PROFILE_TEST) && FEATURE_DIAG_STACK_LOGS
   unsigned long lastStackCheck = 0;
@@ -398,6 +448,9 @@ void automationTask(void* pv) {
       vTaskDelay(pdMS_TO_TICKS(1000));
       continue;
     }
+
+    // v11.192: Draine la sauvegarde NVS différée (évite assert xTaskPriorityDisinherit depuis net task)
+    g_ctx->automatism.processDeferredRemoteVarsSave();
 
     if (xQueueReceive(g_sensorQueue, &readings, pdMS_TO_TICKS(1000)) == pdTRUE) {
       // Drainer les lectures en attente et ne traiter que la plus récente (évite queue pleine)
@@ -464,6 +517,7 @@ void automationTask(void* pv) {
       #endif
       
       g_ctx->automatism.update(readings);
+      g_ctx->automatism.updateDisplayWithReadings(readings);
       g_ctx->power.resetWatchdog();
       g_ctx->diagnostics.update();
       if (!g_ctx->otaManager.isUpdating()) {
@@ -483,106 +537,37 @@ void automationTask(void* pv) {
         }
         
         // Priorité 2: Mails en attente (traitement séquentiel - v11.155)
-        // v11.162: Vérifier mémoire contiguë avant SMTP (TLS nécessite ~32KB)
-        // Réserve 32KB allouée au boot (s_mailReserve) : si heap fragmenté, on la libère pour débloquer l'envoi puis on ré-alloue
-        #if FEATURE_MAIL
-        {
-          const uint32_t kMailBlockReq = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
-          if (!g_ctx->mailer.hasPendingMails()) {
-            if (s_mailReserve) {
-              free(s_mailReserve);
-              s_mailReserve = nullptr;
-            }
-          } else {
-            bool canConn = TLSMutex::canConnect();
-            uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-            if (!canConn) {
-              static unsigned long lastH4SkipMs = 0;
-              if (now - lastH4SkipMs > 60000) {
-                Serial.printf("[MAIL_DBG] H4 skip processOneMailSync canConnect=false heap=%u\n", (unsigned)ESP.getFreeHeap());
-                lastH4SkipMs = now;
-              }
-            } else if (largestBlock >= kMailBlockReq) {
-              if (!s_mailReserve) {
-                s_mailReserve = (uint8_t*)malloc(kMailBlockReq);
-              }
-              if (s_mailReserve) {
-                esp_task_wdt_reset();
-                g_ctx->mailer.processOneMailSync();
-              }
-            } else if (s_mailReserve) {
-              free(s_mailReserve);
-              s_mailReserve = nullptr;
-              vTaskDelay(pdMS_TO_TICKS(100));
-              largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-              if (largestBlock >= kMailBlockReq) {
-                esp_task_wdt_reset();
-                g_ctx->mailer.processOneMailSync();
-                s_mailReserve = (uint8_t*)malloc(kMailBlockReq);
-              }
-            } else {
-              static unsigned long lastMemWarnMs = 0;
-              if (now - lastMemWarnMs > 60000) {
-                Serial.printf("[autoTask] ⚠️ Mail reporté: bloc max=%u bytes < %uKB requis\n", largestBlock, kMailBlockReq / 1024);
-                Serial.printf("[MAIL_DBG] H4 skip processOneMailSync bloc max=%u < %uKB\n", (unsigned)largestBlock, kMailBlockReq / 1024);
-                lastMemWarnMs = now;
-              }
-            }
-          }
-        }
-        #endif
+#if FEATURE_MAIL
+        processMailQueueIfReady(g_ctx, now);
+#endif
       }
 
-      if (now - lastBouffeDisplay > bouffeInterval) {
-        Serial.println(F("=== ÉTAT DES FLAGS DE BOUFFE ==="));
-        Serial.printf("Bouffe Matin: %s\n", g_ctx->config.getBouffeMatinOk() ? "✓ FAIT" : "✗ À FAIRE");
-        Serial.printf("Bouffe Midi:  %s\n", g_ctx->config.getBouffeMidiOk() ? "✓ FAIT" : "✗ À FAIRE");
-        Serial.printf("Bouffe Soir:  %s\n", g_ctx->config.getBouffeSoirOk() ? "✓ FAIT" : "✗ À FAIRE");
-        Serial.printf("Dernier jour: %d\n", g_ctx->config.getLastJourBouf());
-        Serial.printf("Pompe lock:   %s\n", g_ctx->config.getPompeAquaLocked() ? "VERROUILLÉE" : "LIBRE");
-        Serial.println(F("==============================="));
-        lastBouffeDisplay = now;
-      }
-
-      if (now - lastPumpStatsDisplay > pumpStatsInterval) {
-        Serial.println(F("=== STATISTIQUES POMPE DE RÉSERVE ==="));
-        Serial.printf("État actuel: %s\n", g_ctx->actuators.isTankPumpRunning() ? "EN COURS" : "ARRÊTÉE");
-        if (g_ctx->actuators.isTankPumpRunning()) {
-          unsigned long currentRuntime = g_ctx->actuators.getTankPumpCurrentRuntime();
-          Serial.printf("Durée actuelle: %lu ms (%lu s)\n",
-                       currentRuntime,
-                       currentRuntime / 1000);
-        }
-        Serial.printf("Temps total d'activité: %lu ms (%lu s)\n",
-                     g_ctx->actuators.getTankPumpTotalRuntime(),
-                     g_ctx->actuators.getTankPumpTotalRuntime() / 1000);
-        Serial.printf("Nombre total d'arrêts: %lu\n", g_ctx->actuators.getTankPumpTotalStops());
-        if (g_ctx->actuators.getTankPumpLastStopTime() > 0) {
-          unsigned long timeSinceLastStop = now - g_ctx->actuators.getTankPumpLastStopTime();
-          Serial.printf("Dernier arrêt: il y a %lu ms (%lu s)\n",
-                       timeSinceLastStop,
-                       timeSinceLastStop / 1000);
-        }
-        Serial.println(F("====================================="));
-        lastPumpStatsDisplay = now;
-      }
-
+      logBouffeAndPumpStats(g_ctx, now, &lastBouffeDisplay, &lastPumpStatsDisplay);
 
       esp_task_wdt_reset();
+      s_sensorTimeoutCount = 0;  // Réinitialiser quand on reçoit des capteurs
     } else {
-      Serial.println(F("[Auto] Timeout queue capteurs - cycle continu"));
+      // Log au plus tous les 10 timeouts pour limiter le spam (intervalle capteurs 2,5 s)
+      if ((++s_sensorTimeoutCount % 10) == 1) {
+        Serial.printf("[Auto] Timeout queue capteurs (x%u) - cycle continu\n", s_sensorTimeoutCount);
+      }
       if (WiFi.status() == WL_CONNECTED) {
         esp_task_wdt_reset();
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
         // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
         g_remoteFallbackDoc.clear();
-        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, 30000);
-        Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
-                     ok ? "OK" : "KO",
-                     static_cast<unsigned>(g_remoteFallbackDoc.size()));
-        if (ok) {
+        bool fromNVSFallback = false;
+        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, 30000, &fromNVSFallback);
+        if (ok && !fromNVSFallback && g_ctx->webClient.copyLastFetchedTo(g_remoteFallbackDoc)) {
+          Serial.printf("[Auto] Fetch distant fallback: OK, keys=%u\n",
+                       static_cast<unsigned>(g_remoteFallbackDoc.size()));
+          if (g_remoteFallbackDoc.size() > 0) {
+            g_ctx->automatism.processFetchedRemoteConfig(g_remoteFallbackDoc);
+          }
           Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
           GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
+        } else {
+          Serial.printf("[Auto] Fetch distant fallback: %s\n", ok ? "OK (NVS)" : "KO");
         }
       }
     }
@@ -623,7 +608,7 @@ bool start(AppContext& ctx) {
   }
 
   // v11.157: Approche hybride - allocation statique pour petites tâches, dynamique pour grandes
-  // sensorTask et displayTask: allocation statique (réduit fragmentation, petites tailles)
+  // sensorTask: allocation statique (displayTask supprimée, affichage dans automationTask)
   g_sensorTaskHandle = xTaskCreateStaticPinnedToCore(
                                                      sensorTask,
                                                      "sensorTask",
@@ -657,22 +642,13 @@ bool start(AppContext& ctx) {
                                                      TaskConfig::AUTOMATION_TASK_CORE_ID);
   BaseType_t autoCreated = (g_autoTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
-  g_displayTaskHandle = xTaskCreateStaticPinnedToCore(
-                                                      displayTask,
-                                                      "displayTask",
-                                                      TaskConfig::DISPLAY_TASK_STACK_SIZE,
-                                                      nullptr,
-                                                      TaskConfig::DISPLAY_TASK_PRIORITY,
-                                                      displayTaskStack,
-                                                      &displayTaskTCB,
-                                                      TaskConfig::DISPLAY_TASK_CORE_ID);
-  BaseType_t displayCreated = (g_displayTaskHandle != nullptr) ? pdPASS : pdFAIL;
+  // displayTask supprimée : affichage séquentiel dans automationTask via updateDisplayWithReadings(readings)
+  g_displayTaskHandle = nullptr;
 
   BaseType_t netCreated = pdFAIL;
   // Note: netTask créé après création de g_netQueue (voir plus bas)
   
-  if (sensorCreated != pdPASS || webCreated != pdPASS ||
-      autoCreated != pdPASS || displayCreated != pdPASS) {
+  if (sensorCreated != pdPASS || webCreated != pdPASS || autoCreated != pdPASS) {
     Serial.println(F("[App] ❌ CRITIQUE: Échec création d'une tâche FreeRTOS"));
     Serial.println("[Event] CRITICAL: Task creation failure");
   }
@@ -696,31 +672,31 @@ bool start(AppContext& ctx) {
     }
   }
 
-  // Snapshot après création des tâches principales
+  // Snapshot après création des tâches principales (piste 5: HWM loop = loopTask; piste 7: heap au boot)
 
   vTaskDelay(pdMS_TO_TICKS(50));
 
   UBaseType_t hwmSensor = g_sensorTaskHandle ? uxTaskGetStackHighWaterMark(g_sensorTaskHandle) : 0;
   UBaseType_t hwmWeb = g_webTaskHandle ? uxTaskGetStackHighWaterMark(g_webTaskHandle) : 0;
   UBaseType_t hwmAuto = g_autoTaskHandle ? uxTaskGetStackHighWaterMark(g_autoTaskHandle) : 0;
-  UBaseType_t hwmDisplay = g_displayTaskHandle ? uxTaskGetStackHighWaterMark(g_displayTaskHandle) : 0;
   UBaseType_t hwmLoop = uxTaskGetStackHighWaterMark(nullptr);
 
-  Serial.printf("[Stacks] HWM at boot - sensor:%u web:%u auto:%u display:%u loop:%u bytes\n",
+  Serial.printf("[Stacks] HWM at boot - sensor:%u web:%u auto:%u loop:%u bytes\n",
                 static_cast<unsigned>(hwmSensor),
                 static_cast<unsigned>(hwmWeb),
                 static_cast<unsigned>(hwmAuto),
-                static_cast<unsigned>(hwmDisplay),
                 static_cast<unsigned>(hwmLoop));
-  Serial.printf("[Event] Stacks HWM boot sensor=%u web=%u auto=%u display=%u loop=%u\n",
+  Serial.printf("[Event] Stacks HWM boot sensor=%u web=%u auto=%u loop=%u\n",
                  static_cast<unsigned>(hwmSensor),
                  static_cast<unsigned>(hwmWeb),
                  static_cast<unsigned>(hwmAuto),
-                 static_cast<unsigned>(hwmDisplay),
                  static_cast<unsigned>(hwmLoop));
+  Serial.printf("[Heap] Boot - free:%u largestBlock:%u bytes\n",
+                (unsigned)ESP.getFreeHeap(),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
   return sensorCreated == pdPASS && webCreated == pdPASS &&
-         autoCreated == pdPASS && displayCreated == pdPASS;
+         autoCreated == pdPASS && netCreated == pdPASS;
 }
 
 Handles getHandles() {

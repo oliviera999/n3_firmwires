@@ -1085,33 +1085,13 @@ void OTAManager::updateTask(void* parameter) {
     extern Automatism g_autoCtrl;
     bool emailEnabled = g_autoCtrl.isEmailEnabled();
     const char* toEmail = emailEnabled ? g_autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
-    const char* part = running ? running->label : "(inconnue)";
-    const char* md5 = ota->getFirmwareMD5();
-    char body[1024];
+    char body[256];
     char sizeBufEmail[16];
     formatBytes(ota->getFirmwareSize(), sizeBufEmail, sizeof(sizeBufEmail));
-    const char* filesystemUrl = ota->getFilesystemUrl();
-    const char* filesystemMD5 = ota->getFilesystemMD5();
-    char filesystemSizeBuf[16];
-    if (strlen(filesystemUrl) > 0) {
-        formatBytes(ota->getFilesystemSize(), filesystemSizeBuf, sizeof(filesystemSizeBuf));
-    } else {
-        filesystemSizeBuf[0] = '-';
-        filesystemSizeBuf[1] = '\0';
-    }
-    const char* md5Str = strlen(md5) > 0 ? md5 : "-";
-    const char* fsUrlStr = strlen(filesystemUrl) > 0 ? filesystemUrl : "-";
-    const char* fsSizeStr = strlen(filesystemUrl) > 0 ? filesystemSizeBuf : "-";
-    const char* fsMD5Str = strlen(filesystemMD5) > 0 ? filesystemMD5 : "-";
-    snprintf(body, sizeof(body), "Début de mise à jour OTA (Serveur distant)\n\nDétails:\n- Méthode: Tâche dédiée HTTP OTA\n- Environnement: %s\n- Version courante: %s\n- Version distante: %s\n- URL firmware: %s\n- Taille firmware: %s\n- MD5 firmware: %s\n- URL filesystem: %s\n- Taille filesystem: %s\n- MD5 filesystem: %s\n- Partition courante: %s",
-             Utils::getProfileName(), ota->getCurrentVersion(), ota->getRemoteVersion(), ota->getFirmwareUrl(), sizeBufEmail, md5Str, fsUrlStr, fsSizeStr, fsMD5Str, part);
-    size_t bodyLen = strlen(body);
-    if (bodyLen > BufferConfig::EMAIL_MAX_SIZE_BYTES) {
-        size_t truncLen = BufferConfig::EMAIL_MAX_SIZE_BYTES - 3;
-        strncpy(body + truncLen, "...", 3);
-        body[BufferConfig::EMAIL_MAX_SIZE_BYTES] = '\0';
-    }
-    mailer.sendAlert("OTA début - Serveur distant", body, toEmail);
+    snprintf(body, sizeof(body),
+             "OTA distant démarré\n\nVersion courante: %s\nVersion distante: %s\nEnvironnement: %s\nTaille firmware: %s",
+             ota->getCurrentVersion(), ota->getRemoteVersion(), Utils::getProfileName(), sizeBufEmail);
+    mailer.sendAlert("OTA début - Serveur distant", body, toEmail, true);
     
     // Ajouter cette tâche au TWDT et conserver le watchdog ACTIF pendant l'OTA
     esp_task_wdt_add(NULL);
@@ -1208,49 +1188,13 @@ void OTAManager::updateTask(void* parameter) {
             extern Automatism g_autoCtrl;
             bool emailEnabled = g_autoCtrl.isEmailEnabled();
             const char* toEmail = emailEnabled ? g_autoCtrl.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
-            const esp_partition_t* prev_running = esp_ota_get_running_partition();
-            char fromPartBuf[64], bootPartBuf[64], nextPartBuf[64];
-            if (prev_running) {
-                snprintf(fromPartBuf, sizeof(fromPartBuf), "%s (0x%x)", prev_running->label, prev_running->address);
-            } else {
-                snprintf(fromPartBuf, sizeof(fromPartBuf), "(inconnue)");
-            }
-            if (new_boot) {
-                snprintf(bootPartBuf, sizeof(bootPartBuf), "%s (0x%x)", new_boot->label, new_boot->address);
-            } else {
-                snprintf(bootPartBuf, sizeof(bootPartBuf), "(inconnue)");
-            }
-            if (new_next) {
-                snprintf(nextPartBuf, sizeof(nextPartBuf), "%s (0x%x)", new_next->label, new_next->address);
-            } else {
-                snprintf(nextPartBuf, sizeof(nextPartBuf), "(inconnue)");
-            }
-            const char* md5 = ota->getFirmwareMD5();
-            const char* md5Str = strlen(md5) > 0 ? md5 : "-";
-            const char* fsUrl = ota->getFilesystemUrl();
-            const char* fsMD5 = ota->getFilesystemMD5();
-            char fsSizeBufEmail[16];
-            if (strlen(fsUrl) > 0) {
-                formatBytes(ota->getFilesystemSize(), fsSizeBufEmail, sizeof(fsSizeBufEmail));
-            } else {
-                fsSizeBufEmail[0] = '-';
-                fsSizeBufEmail[1] = '\0';
-            }
-            const char* fsUrlStr = strlen(fsUrl) > 0 ? fsUrl : "-";
-            const char* fsSizeStr = strlen(fsUrl) > 0 ? fsSizeBufEmail : "-";
-            const char* fsMD5Str = strlen(fsMD5) > 0 ? fsMD5 : "-";
             char firmwareSizeBuf[16];
             formatBytes(ota->getFirmwareSize(), firmwareSizeBuf, sizeof(firmwareSizeBuf));
-            char body[1024];
-            snprintf(body, sizeof(body), "Fin de mise à jour OTA (Serveur distant)\n\nDétails:\n- Méthode: Tâche dédiée HTTP OTA\n- Environnement: %s\n- Ancienne version: %s\n- Nouvelle version: %s\n- URL firmware: %s\n- Taille firmware: %s\n- MD5 firmware: %s\n- URL filesystem: %s\n- Taille filesystem: %s\n- MD5 filesystem: %s\n- Partition initiale: %s\n- Partition de boot (après MAJ): %s\n- Prochaine partition OTA: %s\n",
-                     Utils::getProfileName(), ota->getCurrentVersion(), ota->getRemoteVersion(), ota->getFirmwareUrl(), firmwareSizeBuf, md5Str, fsUrlStr, fsSizeStr, fsMD5Str, fromPartBuf, bootPartBuf, nextPartBuf);
-            size_t bodyLen = strlen(body);
-            if (bodyLen > BufferConfig::EMAIL_MAX_SIZE_BYTES) {
-                size_t truncLen = BufferConfig::EMAIL_MAX_SIZE_BYTES - 3;
-                strncpy(body + truncLen, "...", 3);
-                body[BufferConfig::EMAIL_MAX_SIZE_BYTES] = '\0';
-            }
-            mailer.sendAlert("OTA fin - Serveur distant", body, toEmail);
+            char body[512];
+            snprintf(body, sizeof(body),
+                     "OTA distant terminé\n\nAncienne version: %s\nNouvelle version: %s\nEnvironnement: %s\nTaille firmware: %s",
+                     ota->getCurrentVersion(), ota->getRemoteVersion(), Utils::getProfileName(), firmwareSizeBuf);
+            mailer.sendAlert("OTA fin - Serveur distant", body, toEmail, true);
         }
         
         // Nettoyer le flag inProgress avant reboot
