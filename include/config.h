@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.190: Points à surveiller — HTTP/TLS 5s, NVS remove idempotent, servo pin valide
-    inline constexpr const char* VERSION = "11.190";
+    // v11.193: Incrément version
+    inline constexpr const char* VERSION = "11.193";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -82,8 +82,8 @@ namespace SystemConfig {
     inline constexpr int32_t NTP_DAYLIGHT_OFFSET_SEC = 0;
     inline constexpr const char* NTP_SERVER = "pool.ntp.org";
 
-    // Time validation - EPOCH_MIN_VALID doit être proche de la date actuelle
-    // pour invalider les vieux epochs stockés en NVS
+    // Time validation - À réviser en release majeure (rejet vieux NVS / validation epoch).
+    // EPOCH_MIN_VALID doit être proche de la date actuelle pour invalider les vieux epochs en NVS.
     inline constexpr time_t EPOCH_MIN_VALID = 1767225600; // 2026-01-01 00:00:00 UTC
     inline constexpr time_t EPOCH_MAX_VALID = 2524608000; // 2050-01-01
     
@@ -122,6 +122,7 @@ namespace TimingConfig {
     inline constexpr uint32_t OTA_CHECK_INTERVAL_MS = 7200000; // 2h
     inline constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
+    inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
     inline constexpr uint32_t STATS_REPORT_INTERVAL_MS = 300000; // 5 min
     
     // Protection et Timeouts
@@ -190,9 +191,9 @@ namespace NetworkConfig {
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
-    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 12000;
-    // POST post-data / ack : dérogation 7s (règle projet 5s) — latence serveur/hébergement observée (RAPPORT_WORKFLOW 2026-02-03)
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 7000;
+    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 15000;  // 15 s (était 12 s)
+    // POST post-data / ack : dérogation 8s (règle projet 5s) — latence serveur/hébergement observée
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 8000;  // 8 s (était 7 s)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 25;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
@@ -315,6 +316,8 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (stack 4 KB + marge)
     // Bloc contigu minimum pour SMTP/TLS (ESP Mail Client + mbedTLS). Réserve libérable utilisée si heap fragmenté.
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;  // 32 KB
+    // Minimum free heap avant beginResponseStream (cbuf 1460 + overhead). Évite abort() si allocation échoue.
+    inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 8192;  // 8 KB
 }
 
 // Intervalles minimum entre deux créations de tâches one-shot (réduit fragmentation / clics répétés)
@@ -629,14 +632,15 @@ namespace SleepConfig {
     // Constantes PowerManager manquantes
     inline constexpr bool AUTO_RECONNECT_WIFI_AFTER_SLEEP = true;
     inline constexpr bool SAVE_TIME_BEFORE_SLEEP = true;
-    // CORRECTION: Utiliser l'epoch correct pour 2026-02-01 00:00:00 UTC
-    // Cet epoch sera utilisé si la NVS est vide ET que la sync NTP échoue
+    // À réviser en release majeure : fallback si NVS vide ET sync NTP échoue.
     inline constexpr time_t EPOCH_COMPILE_TIME = 1769904000; // 2026-02-01 00:00:00 UTC (vérifié)
     inline constexpr time_t EPOCH_DEFAULT_FALLBACK = 1769904000; // 2026-02-01 00:00:00 UTC (vérifié)
     inline constexpr bool ENABLE_DRIFT_CORRECTION = true;
     inline constexpr uint32_t DRIFT_CORRECTION_INTERVAL_MS = 3600000;
     inline constexpr float DRIFT_CORRECTION_THRESHOLD_PPM = 100.0f;
     inline constexpr float DRIFT_CORRECTION_FACTOR = 0.5f;
+    inline constexpr float DRIFT_PPM_MAX = 500.0f;  // Plafond PPM (évite correction excessive si mesure aberrante)
+    inline constexpr uint32_t MAX_RTC_REGRESSION_SEC = 3600;  // 1 h - régression max acceptée avant refus sauvegarde
     inline constexpr uint32_t MAX_SAVE_INTERVAL_MS = 86400000;
     inline constexpr uint32_t MIN_SAVE_INTERVAL_MS = 3600000;
     inline constexpr uint32_t MIN_TIME_DIFF_FOR_SAVE_SEC = 60;
@@ -688,7 +692,7 @@ namespace TaskConfig {
     inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 16384;  // 16 KB (ESP Mail Client + mbedTLS nécessitent beaucoup de stack)
     inline constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
     inline constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
-    inline constexpr uint8_t MAIL_QUEUE_SIZE = 8;            // v11.163+: 8 slots - robustesse envoi (rafales démarrage, retry)
+    inline constexpr uint8_t MAIL_QUEUE_SIZE = 6;            // Réduit 8→6 (piste 2 rapport mémoire), robustesse envoi conservée
 }
 
 // Note: namespace DefaultValues supprimé (v11.174 simplification)

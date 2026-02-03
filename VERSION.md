@@ -12,11 +12,19 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 11.193 - 2026-02-03
+
+### Maintenance
+
+- Incrément version (config.h + VERSION.md), commit et push GitHub
+
+---
+
 ## Version 11.190 - 2026-02
 
 ### Points à surveiller
 
-- HTTP GET/Heartbeat 5s ; **POST 7s** (dérogation `HTTP_POST_TIMEOUT_MS`, RAPPORT_WORKFLOW 2026-02-03).
+- HTTP GET/Heartbeat 5s ; **POST 8s** (dérogation `HTTP_POST_TIMEOUT_MS`).
 - NVS remove idempotent, servo pin valide
 
 ---
