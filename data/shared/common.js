@@ -1009,6 +1009,23 @@ window.updateCharts = function updateCharts(data) {
   }
 }
 
+// Met à jour les badges "État des actionneurs" (visibles sur mobile même si le texte des boutons est tronqué)
+function updateActuatorStateBadges() {
+  const state = window.lastRelayState;
+  if (!state) return;
+  const setBadge = (id, on, onClass, offClass) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = on ? 'ON' : 'OFF';
+      el.className = 'badge actuator-badge ' + (on ? onClass : offClass);
+    }
+  };
+  if (state.pumpTank !== undefined) setBadge('actuatorStatePumpTank', state.pumpTank, 'bg-info', 'bg-secondary');
+  if (state.pumpAqua !== undefined) setBadge('actuatorStatePumpAqua', state.pumpAqua, 'bg-info', 'bg-secondary');
+  if (state.heater !== undefined) setBadge('actuatorStateHeater', state.heater, 'bg-danger', 'bg-secondary');
+  if (state.light !== undefined) setBadge('actuatorStateLight', state.light, 'bg-warning text-dark', 'bg-secondary');
+}
+
 // Réapplique le dernier état des relais sur les boutons (page Contrôles chargée dynamiquement)
 window.applyRelayStateToButtons = function applyRelayStateToButtons() {
   const state = window.lastRelayState;
@@ -1057,6 +1074,24 @@ window.applyRelayStateToButtons = function applyRelayStateToButtons() {
       b.className = on ? 'btn btn-success w-100' : 'btn btn-outline-success w-100';
     }
   }
+  updateActuatorStateBadges();
+};
+
+// Charge l'état des actionneurs depuis /json et l'affiche (garantit ON/OFF visible à l'ouverture Contrôles, ex. sur mobile)
+window.ensureActuatorStateDisplay = function ensureActuatorStateDisplay() {
+  fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(5000) })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+    .then(doc => {
+      if (!window.lastRelayState) window.lastRelayState = {};
+      if (doc.pumpTank !== undefined) window.lastRelayState.pumpTank = !!doc.pumpTank;
+      if (doc.pumpAqua !== undefined) window.lastRelayState.pumpAqua = !!doc.pumpAqua;
+      if (doc.heater !== undefined) window.lastRelayState.heater = !!doc.heater;
+      if (doc.light !== undefined) window.lastRelayState.light = !!doc.light;
+      if (doc.forceWakeup !== undefined) window.lastRelayState.forceWakeUp = !!doc.forceWakeup;
+      if (doc.mailNotif !== undefined) window.lastRelayState.mailNotif = !!doc.mailNotif;
+      if (typeof window.applyRelayStateToButtons === 'function') window.applyRelayStateToButtons();
+    })
+    .catch(() => { if (typeof window.applyRelayStateToButtons === 'function') window.applyRelayStateToButtons(); });
 };
 
 // Fonction de mise à jour des capteurs avec KPIs (optimisée)
@@ -1147,6 +1182,7 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
         btn.className = on ? 'btn btn-success w-100' : 'btn btn-outline-success w-100';
       }
     }
+    updateActuatorStateBadges();
     
     // États WiFi STA (informations détaillées uniquement)
     // Clés harmonisées: wifiSta* (cohérent avec /json et /wifi/status)

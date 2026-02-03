@@ -191,6 +191,10 @@ namespace NetworkConfig {
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
     inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 12000;
+    // POST post-data / ack : dérogation 7s (règle projet 5s) — latence serveur/hébergement observée (RAPPORT_WORKFLOW 2026-02-03)
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 7000;
+    // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
+    inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 25;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
@@ -307,6 +311,16 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_WIFI_ROUTE = 18000;      // /wifi/* endpoints (réduit de 40K)
     inline constexpr uint32_t MIN_HEAP_EMAIL_ASYNC = 35000;     // Email async task fallback
     inline constexpr uint32_t MIN_HEAP_OTA = 35000;             // OTA check
+    // Plus grand bloc libre minimum pour créer une tâche one-shot (évite fragmentation long uptime)
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (stack 4 KB + marge)
+    // Bloc contigu minimum pour SMTP/TLS (ESP Mail Client + mbedTLS). Réserve libérable utilisée si heap fragmenté.
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;  // 32 KB
+}
+
+// Intervalles minimum entre deux créations de tâches one-shot (réduit fragmentation / clics répétés)
+namespace AsyncTaskConfig {
+    inline constexpr unsigned long FEED_TASK_MIN_MS = 10000;   // 10 s entre deux tâches feed
+    inline constexpr unsigned long WIFI_CONNECT_MIN_MS = 30000; // 30 s entre deux tentatives WiFi
 }
 
 // -----------------------------------------------------------------------------
@@ -674,7 +688,7 @@ namespace TaskConfig {
     inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 16384;  // 16 KB (ESP Mail Client + mbedTLS nécessitent beaucoup de stack)
     inline constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
     inline constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
-    inline constexpr uint8_t MAIL_QUEUE_SIZE = 6;            // v11.163: 6 slots (~4KB) - marge supplémentaire avec délai démarrage
+    inline constexpr uint8_t MAIL_QUEUE_SIZE = 8;            // v11.163+: 8 slots - robustesse envoi (rafales démarrage, retry)
 }
 
 // Note: namespace DefaultValues supprimé (v11.174 simplification)

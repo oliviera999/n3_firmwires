@@ -4,8 +4,10 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include "esp_wifi.h"  // Pour getSSID sans String Arduino
 #include <functional>
 #include <ArduinoJson.h>
+#include <cstring>
 class DisplayView;
 
 class WifiManager {
@@ -85,11 +87,11 @@ namespace WiFiHelpers {
         if (WiFi.status() != WL_CONNECTED) return;
         wifi_mode_t mode = WiFi.getMode();
         if (mode != WIFI_STA && mode != WIFI_AP_STA) return;
-        // Copie immédiate pour minimiser durée de vie String
-        String s = WiFi.SSID();
-        size_t len = s.length();
+        wifi_config_t conf;
+        if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK) return;
+        size_t len = strnlen(reinterpret_cast<const char*>(conf.sta.ssid), 32);
         if (len >= size) len = size - 1;
-        strncpy(buffer, s.c_str(), len);
+        memcpy(buffer, conf.sta.ssid, len);
         buffer[len] = '\0';
     }
     

@@ -30,10 +30,12 @@ class WebClient {
   bool sendMeasurements(const Measurements& m, bool includeReset=false);
   bool sendHeartbeat(const class Diagnostics& diag);
   bool postRaw(const char* payload);
-  bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
+  // Retour: 0=échec, 1=OK HTTP, 2=OK NVS fallback (v11.193)
+  int fetchRemoteState(ArduinoJson::JsonDocument& doc);
 
-  // Couche réseau minimale (WiFi + timeout ≤5s, une tentative, pas de retry interne)
-  bool tryFetchConfigFromServer(ArduinoJson::JsonDocument& doc);
+  // Couche réseau minimale (WiFi + timeout GET/Heartbeat 5s, POST 7s dérogation, pas de retry interne)
+  // Retour: 0 = échec, 1 = OK depuis HTTP, 2 = OK depuis NVS (fallback). v11.193: éviter processFetchedRemoteConfig quand 2.
+  int tryFetchConfigFromServer(ArduinoJson::JsonDocument& doc);
   bool tryPushStatusToServer(const char* payload);
 
   // v11.171: Queue persistante pour POSTs échoués (offline-first)
@@ -47,7 +49,8 @@ class WebClient {
   WiFiClient _client;  // v11.162: Client HTTP simple (plus de TLS)
   HTTPClient _http;
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
-  bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize);
+  bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize,
+                   uint32_t timeoutMs = NetworkConfig::HTTP_TIMEOUT_MS);
   bool loadFromNVSFallback(ArduinoJson::JsonDocument& doc);  // v11.165: Fallback NVS
   
   // v11.171: Constantes queue persistante

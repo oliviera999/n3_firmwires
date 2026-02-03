@@ -43,6 +43,15 @@ static char g_lightFooterBuffer[256];         // Footer allégé
 // FONCTIONS HELPER POUR ÉVITER LA DUPLICATION
 // ======================
 
+// Affiche une chaîne en ASCII sûr (0x20–0x7E) pour les logs série (évite caractères UTF-8 illisibles)
+static void logSafeStr(const char* s, size_t maxLen) {
+  if (!s) return;
+  for (size_t i = 0; i < maxLen && s[i]; i++) {
+    unsigned char c = static_cast<unsigned char>(s[i]);
+    Serial.print((c >= 0x20 && c <= 0x7E) ? static_cast<char>(c) : '?');
+  }
+}
+
 // Epoch validé pour affichage (évite valeurs aberrantes en cas de régression RTC)
 static time_t getSafeEpochForDisplay() {
   time_t t = time(nullptr);
@@ -1089,9 +1098,19 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   
   Serial.println(F("[Mail] ===== DÉTAILS DU MAIL ====="));
   Serial.printf("[Mail] Heure d'envoi: %s (epoch: %lu)\n", mailTimeBuf, mailTime);
-  Serial.printf("[Mail] De: %s <%s>\n", msg.sender.name, msg.sender.email);
-  Serial.printf("[Mail] À: %s <%s>\n", toName, toEmail);
-  Serial.printf("[Mail] Objet: %s\n", msg.subject);
+  Serial.print(F("[Mail] De: "));
+  logSafeStr(msg.sender.name.c_str(), 60);
+  Serial.print(F(" <"));
+  logSafeStr(msg.sender.email.c_str(), 60);
+  Serial.println(F(">"));
+  Serial.print(F("[Mail] À: "));
+  logSafeStr(toName, 40);
+  Serial.print(F(" <"));
+  logSafeStr(toEmail, 60);
+  Serial.println(F(">"));
+  Serial.print(F("[Mail] Objet: "));
+  logSafeStr(msg.subject.c_str(), 80);
+  Serial.println();
   Serial.println(F("[Mail] Contenu (aperçu):"));
   // Afficher un aperçu du message (max 200 caractères)
   size_t previewLen = strlen(finalMessageBuffer);
@@ -1492,22 +1511,36 @@ bool Mailer::processOneMailSync() {
   }
   
   Serial.printf("[Mail] 📬 Traitement mail séquentiel: '%s'\n", item.subject);
+  Serial.printf("[MAIL_DBG] H4 H5 processOneMailSync treating: '%s'\n", item.subject);
       
-      bool success;
-      if (item.isAlert) {
+  bool success;
+  if (item.isAlert) {
     success = sendAlertSync(item.subject, item.message, item.toEmail);
-      } else {
+  } else {
     success = sendSync(item.subject, item.message, "User", item.toEmail);
-      }
-      
-      if (success) {
+  }
+  
+  if (success) {
     _mailsSent++;
     Serial.printf("[Mail] ✅ Mail envoyé avec succès (%u total)\n", _mailsSent);
+  } else {
+    // Re-queue une fois pour retry (échec transitoire WiFi/TLS), max 2 tentatives au total
+    if (item.retryCount < 2) {
+      item.retryCount++;
+      if (xQueueSendToFront(_mailQueue, &item, 0) == pdTRUE) {
+        Serial.printf("[Mail] 🔄 Mail remis en queue (retry %u/2): '%s'\n", item.retryCount, item.subject);
       } else {
-    _mailsFailed++;
-    Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
+        _mailsFailed++;
+        Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
+        Serial.printf("[MAIL_DBG] H5 processOneMailSync send failed for subject: %s\n", item.subject);
       }
-      
+    } else {
+      _mailsFailed++;
+      Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
+      Serial.printf("[MAIL_DBG] H5 processOneMailSync send failed for subject: %s\n", item.subject);
+    }
+  }
+  
   return true; // Un mail a été traité
 }
 
@@ -1542,14 +1575,19 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
     strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
   }
   item.isAlert = false;
+  item.retryCount = 0;
   
-  // Ajoute à la queue (non-bloquant, timeout 100ms)
+  // Ajoute à la queue (timeout 100ms), retry une fois après 200ms si pleine (robustesse)
   if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
-    Serial.println(F("[Mail] ⚠️ Queue pleine, mail ignoré"));
-    return false;
+    vTaskDelay(pdMS_TO_TICKS(200));
+    if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
+      Serial.println(F("[Mail] ⚠️ Queue pleine, mail ignoré"));
+      Serial.println(F("[MAIL_DBG] H2 Queue pleine -> mail ignoré (subject ci-dessus)"));
+      return false;
+    }
   }
   
-  Serial.printf("[Mail] 📥 Mail ajouté à la queue (%u en attente): '%s'\n", 
+  Serial.printf("[Mail] 📥 Mail ajouté à la queue (%u en attente): '%s'\n",
                 getQueuedMails(), subject);
   return true;
 }
@@ -1597,11 +1635,16 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
     strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
   }
   item.isAlert = true;
+  item.retryCount = 0;
   
-  // Ajoute à la queue (non-bloquant, timeout 100ms)
+  // Ajoute à la queue (timeout 100ms), retry une fois après 200ms si pleine (robustesse)
   if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
-    Serial.println(F("[Mail] ⚠️ Queue pleine, alerte ignorée"));
-    return false;
+    vTaskDelay(pdMS_TO_TICKS(200));
+    if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
+      Serial.println(F("[Mail] ⚠️ Queue pleine, alerte ignorée"));
+      Serial.println(F("[MAIL_DBG] H2 Queue pleine -> alerte ignorée (subject ci-dessus)"));
+      return false;
+    }
   }
   
   Serial.printf("[Mail] 📥 Alerte ajoutée à la queue (%u en attente): '%s'\n", 

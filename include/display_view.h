@@ -83,6 +83,12 @@ class DisplayView {
                      float thHeat,
                      uint16_t limFlood);
   void showDiagnostic(const char* msg);
+  void showServerVars(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                      uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                      uint16_t tPetits, uint16_t tGros,
+                      uint16_t thAq, uint16_t thTank, float thHeat,
+                      uint16_t tRemp, uint16_t limFlood,
+                      bool wakeUp, uint16_t freqWake);
   // Nouveaux affichages
   // sendState / recvState : -1 = erreur (icône barrée), 0 = en cours (vide), 1 = OK (plein)
   // tideDir : -1 = descente, 0 = stable, 1 = montée
@@ -168,6 +174,12 @@ class DisplayView {
                        uint16_t tPetits, uint16_t tGros,
                        uint16_t thAq, uint16_t thTank, float thHeat,
                        uint16_t limFlood);
+  void renderServerVars(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                        uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                        uint16_t tPetits, uint16_t tGros,
+                        uint16_t thAq, uint16_t thTank, float thHeat,
+                        uint16_t tRemp, uint16_t limFlood,
+                        bool wakeUp, uint16_t freqWake);
   void renderStatusBar(const StatusBarParams& params);
   void appendDiagnosticLine(const char* line, uint8_t lineIndex);
   

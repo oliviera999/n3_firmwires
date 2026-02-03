@@ -96,119 +96,53 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
 void AutomatismSync::seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument& doc) {
     if (_firstPollAfterBootDone) return;
     GPIOParser::seedFeedStateFromDoc(doc);
-    if (doc.containsKey("bouffePetits")) {
-        _lastRemoteFeedSmallState = doc["bouffePetits"].as<bool>() || doc["bouffePetits"].as<int>() == 1;
-    } else if (doc.containsKey("108")) {
-        _lastRemoteFeedSmallState = doc["108"].as<bool>() || doc["108"].as<int>() == 1;
-    }
-    if (doc.containsKey("bouffeGros")) {
-        _lastRemoteFeedBigState = doc["bouffeGros"].as<bool>() || doc["bouffeGros"].as<int>() == 1;
-    } else if (doc.containsKey("109")) {
-        _lastRemoteFeedBigState = doc["109"].as<bool>() || doc["109"].as<int>() == 1;
-    }
     _firstPollAfterBootDone = true;
-    // #region agent log
-    Serial.printf("[DBG_FEED] H3 firstPoll seed lastSmall=%d lastBig=%d\n", _lastRemoteFeedSmallState ? 1 : 0, _lastRemoteFeedBigState ? 1 : 0);
-    // #endregion
-    Serial.println(F("[Sync] État nourrissage distant initialisé (1er poll)"));
+    Serial.println(F("[Sync] État edge detection initialisé (1er poll)"));
 }
 
-void AutomatismSync::handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl) {
+void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
+    // Effets de bord après exécution nourrissage distant (appelé par GPIOParser)
     const uint32_t nowMs = millis();
-    // Lecture état actuel des commandes distantes (avant early return pour garder _lastRemote* à jour)
-    bool currentSmallState = false;
-    if (doc.containsKey("bouffePetits")) {
-        currentSmallState = doc["bouffePetits"].as<bool>() || doc["bouffePetits"].as<int>() == 1;
-    } else if (doc.containsKey("108")) {
-        currentSmallState = doc["108"].as<bool>() || doc["108"].as<int>() == 1;
-    }
-    bool currentBigState = false;
-    if (doc.containsKey("bouffeGros")) {
-        currentBigState = doc["bouffeGros"].as<bool>() || doc["bouffeGros"].as<int>() == 1;
-    } else if (doc.containsKey("109")) {
-        currentBigState = doc["109"].as<bool>() || doc["109"].as<int>() == 1;
-    }
-    // #region agent log
-    bool feedingInProgress = autoCtrl.isFeedingInProgress();
-    Serial.printf("[DBG_FEED] H1 H5 handleRemoteFeedingCommands entry isFeedingInProgress=%d currentSmall=%d currentBig=%d\n",
-                  feedingInProgress ? 1 : 0, currentSmallState ? 1 : 0, currentBigState ? 1 : 0);
-    // #endregion
-    // Protection contre les déclenchements multiples: ne pas déclencher si un nourrissage est déjà en cours
-    if (autoCtrl.isFeedingInProgress()) {
-        _lastRemoteFeedSmallState = currentSmallState;
-        _lastRemoteFeedBigState = currentBigState;
-        Serial.println(F("[DBG_FEED] H1 early return isFeedingInProgress (lastRemote* mis à jour)"));
-        return;
-    }
-    
-    auto tryResetRemoteFlags = [&](const char* extraPairs) {
-        if (WiFi.status() != WL_CONNECTED || !_config.isRemoteSendEnabled()) {
-            return;
-        }
-        if (nowMs - _lastRemoteFeedResetMs < REMOTE_FEED_RESET_COOLDOWN_MS) {
-            return;
-        }
-        _lastRemoteFeedResetMs = nowMs;
-        SensorReadings readings = autoCtrl.readSensors();
-        bool resetOk = autoCtrl.sendFullUpdate(readings, extraPairs);
-        Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
-    };
-
-    // Edge detection: déclencher UNIQUEMENT sur front montant (0 -> 1)
-    // Cela évite les re-déclenchements si le serveur garde le flag à 1
-    bool triggerSmall = currentSmallState && !_lastRemoteFeedSmallState;
-    bool triggerBig = currentBigState && !_lastRemoteFeedBigState;
-    // #region agent log
-    Serial.printf("[DBG_FEED] H2 H4 currentSmall=%d lastSmall=%d triggerSmall=%d currentBig=%d lastBig=%d triggerBig=%d\n",
-                  currentSmallState ? 1 : 0, _lastRemoteFeedSmallState ? 1 : 0, triggerSmall ? 1 : 0,
-                  currentBigState ? 1 : 0, _lastRemoteFeedBigState ? 1 : 0, triggerBig ? 1 : 0);
-    // #endregion
-    // Mettre à jour l'état mémorisé
-    _lastRemoteFeedSmallState = currentSmallState;
-    _lastRemoteFeedBigState = currentBigState;
-    
-    if (triggerSmall) {
-        Serial.println(F("[DBG_FEED] H2 H4 EXEC handleRemoteFeedingCommands triggerSmall"));
-        Serial.println(F("[Sync] 🐟 Commande nourrissage PETITS reçue du serveur distant (front montant)"));
-        autoCtrl.manualFeedSmall();
+    if (isSmall) {
+        Serial.println(F("[Sync] 🐟 Commande nourrissage PETITS exécutée (front montant)"));
         sendCommandAck("bouffePetits", "executed");
         logRemoteCommandExecution("fd_small", true);
-        tryResetRemoteFlags("bouffePetits=0&108=0");
-        
+        if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
+            (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
+            _lastRemoteFeedResetMs = nowMs;
+            SensorReadings readings = core.readSensors();
+            bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0");
+            Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
+        }
         if (_emailEnabled) {
             char messageBuffer[256];
-            autoCtrl.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
+            core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
                 "Bouffe manuelle - Petits poissons",
-                autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-            autoCtrl.sendEmail("Nourrissage manuel - Petits poissons", 
-                              messageBuffer, 
-                              "System", 
-                              autoCtrl.getEmailAddress());
+                core.getFeedBigDur(), core.getFeedSmallDur());
+            core.sendEmail("Nourrissage manuel - Petits poissons", messageBuffer,
+                "System", core.getEmailAddress());
         }
-        autoCtrl.armMailBlink();
-        return; // Une seule commande de nourrissage par cycle
-    }
-    
-    if (triggerBig) {
-        Serial.println(F("[DBG_FEED] H2 H4 EXEC handleRemoteFeedingCommands triggerBig"));
-        Serial.println(F("[Sync] 🐠 Commande nourrissage GROS reçue du serveur distant (front montant)"));
-        autoCtrl.manualFeedBig();
+    } else {
+        Serial.println(F("[Sync] 🐠 Commande nourrissage GROS exécutée (front montant)"));
         sendCommandAck("bouffeGros", "executed");
         logRemoteCommandExecution("fd_large", true);
-        tryResetRemoteFlags("bouffeGros=0&109=0");
-        
+        if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
+            (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
+            _lastRemoteFeedResetMs = nowMs;
+            SensorReadings readings = core.readSensors();
+            bool resetOk = core.sendFullUpdate(readings, "bouffeGros=0&109=0");
+            Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
+        }
         if (_emailEnabled) {
             char messageBuffer[256];
-            autoCtrl.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
+            core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
                 "Bouffe manuelle - Gros poissons",
-                autoCtrl.getFeedBigDur(), autoCtrl.getFeedSmallDur());
-            autoCtrl.sendEmail("Nourrissage manuel - Gros poissons", 
-                              messageBuffer, 
-                              "System", 
-                              autoCtrl.getEmailAddress());
+                core.getFeedBigDur(), core.getFeedSmallDur());
+            core.sendEmail("Nourrissage manuel - Gros poissons", messageBuffer,
+                "System", core.getEmailAddress());
         }
-        autoCtrl.armMailBlink();
     }
+    core.armMailBlink();
 }
 
 // v11.183: Helper pour lire int depuis JSON (serveur envoie parfois string "200")
@@ -339,7 +273,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         esp_task_wdt_reset();
     }
     uint32_t sendStart = millis();
-    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_TIMEOUT_MS);
+    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_TIMEOUT_MS);
     uint32_t durationMs = millis() - sendStart;
     
     registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -359,11 +293,21 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
     if (doc.size() == 0) return false;
 
+    // v11.192: Ne pas itérer directement sur doc — quand il provient de loadFromNVSFallback,
+    // l'état interne peut provoquer LoadProhibited (EXCVADDR 0x4). On sérialise puis désérialise
+    // dans une copie pour itérer sur un document sain.
+    char docJson[2048];
+    size_t len = serializeJson(doc, docJson, sizeof(docJson));
+    if (len == 0 || len >= sizeof(docJson)) return false;
+    StaticJsonDocument<2048> inputCopy;
+    DeserializationError err = deserializeJson(inputCopy, docJson);
+    if (err) return false;
+
     // Harmonisation config: normaliser les clés (canoniques serveur distant) avant sauvegarde NVS
     StaticJsonDocument<2048> normalizedDoc;
     JsonObject out = normalizedDoc.to<JsonObject>();
     // v11.177: Normalisation complète de toutes les clés GPIO numériques vers clés canoniques
-    for (ArduinoJson::JsonPair p : doc.as<ArduinoJson::JsonObject>()) {
+    for (ArduinoJson::JsonPair p : inputCopy.as<ArduinoJson::JsonObject>()) {
         const char* k = p.key().c_str();
         // GPIO 100-104: Email et seuils
         if (strcmp(k, "100") == 0) {
@@ -413,10 +357,10 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
     serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
     _config.saveRemoteVars(jsonStr);
 
-    // Propager les données normalisées au document d'origine
-    doc.clear();
-    deserializeJson(doc, jsonStr);
-    Serial.printf("[Sync] Données normalisées propagées (%u clés)\n", doc.size());
+    // v11.191: Ne pas appeler doc.clear() ni deserializeJson(doc) — ArduinoJson MemoryPoolList::clear()
+    // peut crasher (LoadProhibited) quand doc provient de loadFromNVSFallback. La config est déjà
+    // sauvegardée dans NVS ; le caller n'a pas besoin que doc soit mis à jour.
+    Serial.printf("[Sync] Données normalisées sauvegardées (%u clés)\n", normalizedDoc.size());
 
     _serverOk = true;
     _recvState = 1;
@@ -430,10 +374,13 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
 
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     // GET outputs/state : timeout 12s (serveur/latence peuvent dépasser 5s, net task uniquement)
-    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
-    if (ok && doc.size() > 0) {
+    bool fromNVSFallback = false;
+    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS, &fromNVSFallback);
+    // v11.193: Ne jamais appeler processFetchedRemoteConfig quand les données viennent du cache NVS —
+    // itérer ou lire doc provoque LoadProhibited (état interne ArduinoJson incohérent après loadFromNVSFallback).
+    if (ok && !fromNVSFallback && doc.size() > 0) {
         processFetchedRemoteConfig(doc);
-    } else {
+    } else if (!ok) {
         _serverOk = false;
         _recvState = -1;
     }
@@ -474,7 +421,7 @@ uint16_t AutomatismSync::replayQueuedData() {
     while (_dataQueue.size() > 0 && sent < 2) {
         char payload[1024];
         if (_dataQueue.peek(payload, sizeof(payload))) {
-            if (AppTasks::netPostRaw(payload, NetworkConfig::HTTP_TIMEOUT_MS)) {
+            if (AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_TIMEOUT_MS)) {
                 _dataQueue.pop(payload, sizeof(payload));
                 sent++;
             } else {
@@ -492,7 +439,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
              ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
-    return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_TIMEOUT_MS);
+    return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_TIMEOUT_MS);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {

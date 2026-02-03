@@ -4,6 +4,7 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <esp_ota_ops.h>
+#include <esp_heap_caps.h>  // Baseline heap au boot (stabilité long uptime)
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <Preferences.h>
@@ -235,6 +236,8 @@ static void checkForOtaUpdateInternal(AppContext& ctx) {
 
   Serial.printf("[OTA] 📊 Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());
   Serial.printf("[OTA] 📊 Heap libre: %d bytes\n", ESP.getFreeHeap());
+  Serial.printf("[OTA] 📊 Plus grand bloc libre: %u bytes (baseline boot)\n",
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
   Serial.printf("[OTA] 📊 Version courante: %s\n", ProjectConfig::VERSION);
 
   const esp_partition_t* running = esp_ota_get_running_partition();

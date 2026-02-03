@@ -15,8 +15,6 @@
 #include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
 #include "diagnostics.h"
 #include "system_sensors.h"  // Pour SensorReadings
-#include "dbvars_cache.h"
-#include "realtime_websocket.h"
 
 namespace {
 
@@ -62,46 +60,30 @@ struct NetRequest {
   uint32_t timeoutMs;
   bool success;
   volatile bool cancelled;  // Flag d'abandon (evite use-after-free si caller timeout)
+  bool fromNVSFallback;    // v11.193: true si FetchRemoteState a utilisé le cache NVS (ne pas itérer sur doc)
 
   ArduinoJson::JsonDocument* doc;   // FetchRemoteState
   const Diagnostics* diag;          // Heartbeat
   char payload[1024];               // PostRaw (copie)
 };
 
-// v11.181: Pool statique pour éviter use-after-free (req sur stack détruite quand caller timeout)
-// Si HTTP > 5s et caller timeout, netNotifyDone(req) accédait à une stack libérée → LoadProhibited
-static NetRequest g_netRequestPool[3];
-static volatile uint8_t g_netRequestUsed = 0;  // Bitmask: bit i = slot i utilisé
-
-static NetRequest* allocNetRequest() {
-  for (int i = 0; i < 3; i++) {
-    if (!(g_netRequestUsed & (1u << i))) {
-      g_netRequestUsed |= (1u << i);
-      return &g_netRequestPool[i];
-    }
-  }
-  return nullptr;
-}
-
-static void freeNetRequest(NetRequest* req) {
-  if (req >= g_netRequestPool && req < g_netRequestPool + 3) {
-    int i = static_cast<int>(req - g_netRequestPool);
-    g_netRequestUsed &= ~(1u << i);
-  }
-}
-
 QueueHandle_t g_netQueue = nullptr;
 TaskHandle_t g_netTaskHandle = nullptr;
 
+#if FEATURE_MAIL
+// Réserve 32KB allouée au boot pour SMTP : libérée avant envoi si heap fragmenté, puis ré-allouée
+static uint8_t* s_mailReserve = nullptr;
+#endif
+
+// v11.195: Valider req->requester avant xTaskNotifyGive — LoadStoreError dans xTaskGenericNotify
+// quand req pointe vers la stack du caller (queue) et requester peut être corrompu.
 static void netNotifyDone(NetRequest* req) {
-  // v11.189: Ne notifier que si le handle ressemble à un TCB valide (évite StoreProhibited
-  // à 0x6157 si requester est corrompu / petit entier).
-  if (req && req->requester && (uintptr_t)req->requester >= 0x3ff00000) {
-    xTaskNotifyGive(req->requester);
-  }
-  // v11.181: Si caller a timeout (cancelled), libérer le slot (caller ne le fera pas)
-  if (req && req->cancelled) {
-    freeNetRequest(req);
+  if (!req) return;
+  TaskHandle_t h = req->requester;
+  if (!h) return;
+  // N'appeler xTaskNotifyGive qu'avec un handle connu (évite crash si requester corrompu)
+  if (h == g_autoTaskHandle || h == g_webTaskHandle || h == g_sensorTaskHandle || h == g_displayTaskHandle) {
+    xTaskNotifyGive(h);
   }
 }
 
@@ -133,16 +115,12 @@ static void netTask(void* pv) {
     g_ctx->power.waitForNetworkReady();
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
-    bool ok = g_ctx->webClient.tryFetchConfigFromServer(tmp);
-    if (ok && tmp.size() > 0) {
-      if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
-        GPIOParser::parseAndApply(tmp, g_ctx->automatism);
-        invalidateDbvarsCache();
-        Serial.println(F("[netTask] Config serveur appliquée (OLED + NVS + page contrôle)"));
-      }
-      Serial.println(F("[netTask] SOURCE: SERVEUR (config distante récupérée)"));
-    } else if (!ok) {
-      Serial.println(F("[netTask] Serveur injoignable - fallback NVS/DEFAUT"));
+    int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
+    bool ok = (r >= 1);
+    if (ok) {
+      Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée)"));
+    } else {
+      Serial.println(F("[netTask] ⚠️ Serveur injoignable - fallback NVS/DEFAUT"));
     }
   } else if (!g_ctx) {
     Serial.println(F("[netTask] Boot: g_ctx NULL, skip fetch"));
@@ -165,10 +143,14 @@ static void netTask(void* pv) {
     }
 
     bool ok = false;
+    req->fromNVSFallback = false;
     switch (req->type) {
-      case NetReqType::FetchRemoteState:
-        ok = (req->doc != nullptr) ? g_ctx->webClient.tryFetchConfigFromServer(*req->doc) : false;
+      case NetReqType::FetchRemoteState: {
+        int r = (req->doc != nullptr) ? g_ctx->webClient.tryFetchConfigFromServer(*req->doc) : 0;
+        ok = (r >= 1);
+        req->fromNVSFallback = (r == 2);
         break;
+      }
       case NetReqType::PostRaw:
         ok = g_ctx->webClient.tryPushStatusToServer(req->payload);
         break;
@@ -207,25 +189,23 @@ void sensorTask(void* pv) {
     }
     
     if (g_ctx->otaManager.isUpdating()) {
-      // v11.176: Split 4s delay en 2x2s pour éviter watchdog trigger - audit robustesse
       esp_task_wdt_reset();
-      vTaskDelay(pdMS_TO_TICKS(2000));
-      esp_task_wdt_reset();
-      vTaskDelay(pdMS_TO_TICKS(2000));
+      vTaskDelay(pdMS_TO_TICKS(4000));
       continue;
     }
 
     esp_task_wdt_reset();
 
     uint32_t sensorStartTime = millis();
+    const uint32_t MAX_SENSOR_TIME_MS = 30000;
     readings = g_ctx->sensors.read();
 
     uint32_t sensorDuration = millis() - sensorStartTime;
-    if (sensorDuration > TimingConfig::MAX_SENSOR_TIME_MS) {
+    if (sensorDuration > MAX_SENSOR_TIME_MS) {
       SENSOR_LOG_PRINTF(
         "[Sensor] ⚠️ LECTURE CAPTEURS TROP LENTE: %u ms (limite: %u ms)\n",
         sensorDuration,
-        TimingConfig::MAX_SENSOR_TIME_MS);
+        MAX_SENSOR_TIME_MS);
     }
 
     esp_task_wdt_reset();
@@ -347,8 +327,6 @@ void webTask(void* pv) {
     }
 
     esp_task_wdt_reset();
-    // Synchroniser mailNotif pour le WebSocket (aligné avec les relais, bouton Contrôles)
-    g_realtimeWebSocket.updateMailNotifState(g_ctx->automatism.isEmailEnabled());
     g_ctx->webServer.loop();
     
     // v11.171: Vérification périodique HWM webTask (activé en prod car marge critique)
@@ -398,7 +376,20 @@ void automationTask(void* pv) {
     esp_task_wdt_add(nullptr);
     wdtRegistered = true;
   }
-  
+
+#if FEATURE_MAIL
+  // Allouer la réserve 32KB au premier passage (heap encore haut) pour débloquer les envois même si heap fragmenté ensuite
+  if (!s_mailReserve) {
+    uint32_t lb = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (lb >= HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS) {
+      s_mailReserve = (uint8_t*)malloc(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
+      if (s_mailReserve) {
+        Serial.println(F("[Mail] Réserve 32KB allouée au boot pour SMTP"));
+      }
+    }
+  }
+#endif
+
   for (;;) {
     esp_task_wdt_reset();
 
@@ -447,6 +438,7 @@ void automationTask(void* pv) {
       if (now - lastHeapCheck > heapCheckInterval) {
         uint32_t heapFree = ESP.getFreeHeap();
         uint32_t heapMin = ESP.getMinFreeHeap();
+        uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
         lastHeapCheck = now;
         
         // Vérification critique basée sur TLS_MIN_HEAP_BYTES
@@ -458,10 +450,12 @@ void automationTask(void* pv) {
           Serial.printf("[autoTask] WARN: Heap=%u (<%uKB TLS)\n", 
                         heapFree, TLS_MIN_HEAP_BYTES / 1024);
         }
+        // Alerte fragmentation (tous profils): bloc max < 12KB → sync/OTA peuvent échouer
+        if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK) {
+          Serial.printf("[autoTask] WARN: Fragmentation (blk=%u < 12KB)\n", (unsigned)largestBlock);
+        }
         
         #if defined(PROFILE_TEST)
-        // Diagnostics détaillés uniquement en mode test
-        uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
         uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
         Serial.printf("[autoTask] Heap: %u/%u blk=%u frag=%u%%\n", 
                       heapFree, heapMin, largestBlock, fragmentation);
@@ -490,32 +484,53 @@ void automationTask(void* pv) {
         
         // Priorité 2: Mails en attente (traitement séquentiel - v11.155)
         // v11.162: Vérifier mémoire contiguë avant SMTP (TLS nécessite ~32KB)
-        // v11.163: Supprimé double acquisition mutex - mailer gère son propre mutex
+        // Réserve 32KB allouée au boot (s_mailReserve) : si heap fragmenté, on la libère pour débloquer l'envoi puis on ré-alloue
         #if FEATURE_MAIL
-        if (g_ctx->mailer.hasPendingMails() && TLSMutex::canConnect()) {
-          // Vérifier qu'on a assez de mémoire contiguë pour TLS SMTP
-          uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-          if (largestBlock >= 32768) {  // 32KB minimum pour TLS
-            esp_task_wdt_reset();
-            g_ctx->mailer.processOneMailSync();  // Le mailer gère son propre mutex TLS
+        {
+          const uint32_t kMailBlockReq = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
+          if (!g_ctx->mailer.hasPendingMails()) {
+            if (s_mailReserve) {
+              free(s_mailReserve);
+              s_mailReserve = nullptr;
+            }
           } else {
-            // Mémoire insuffisante, reporter le mail
-            static unsigned long lastMemWarnMs = 0;
-            if (now - lastMemWarnMs > 60000) {  // Log une fois par minute max
-              Serial.printf("[autoTask] ⚠️ Mail reporté: bloc max=%u bytes < 32KB requis\n", largestBlock);
-              lastMemWarnMs = now;
+            bool canConn = TLSMutex::canConnect();
+            uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+            if (!canConn) {
+              static unsigned long lastH4SkipMs = 0;
+              if (now - lastH4SkipMs > 60000) {
+                Serial.printf("[MAIL_DBG] H4 skip processOneMailSync canConnect=false heap=%u\n", (unsigned)ESP.getFreeHeap());
+                lastH4SkipMs = now;
+              }
+            } else if (largestBlock >= kMailBlockReq) {
+              if (!s_mailReserve) {
+                s_mailReserve = (uint8_t*)malloc(kMailBlockReq);
+              }
+              if (s_mailReserve) {
+                esp_task_wdt_reset();
+                g_ctx->mailer.processOneMailSync();
+              }
+            } else if (s_mailReserve) {
+              free(s_mailReserve);
+              s_mailReserve = nullptr;
+              vTaskDelay(pdMS_TO_TICKS(100));
+              largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+              if (largestBlock >= kMailBlockReq) {
+                esp_task_wdt_reset();
+                g_ctx->mailer.processOneMailSync();
+                s_mailReserve = (uint8_t*)malloc(kMailBlockReq);
+              }
+            } else {
+              static unsigned long lastMemWarnMs = 0;
+              if (now - lastMemWarnMs > 60000) {
+                Serial.printf("[autoTask] ⚠️ Mail reporté: bloc max=%u bytes < %uKB requis\n", largestBlock, kMailBlockReq / 1024);
+                Serial.printf("[MAIL_DBG] H4 skip processOneMailSync bloc max=%u < %uKB\n", (unsigned)largestBlock, kMailBlockReq / 1024);
+                lastMemWarnMs = now;
+              }
             }
           }
         }
         #endif
-
-        // Sauvegarder les identifiants WiFi quand connecté (pour reconnexion au réveil)
-        static unsigned long lastWifiCredSaveMs = 0;
-        const unsigned long WIFI_CRED_SAVE_INTERVAL_MS = 60000;  // 1 min
-        if (WiFi.status() == WL_CONNECTED && (now - lastWifiCredSaveMs) >= WIFI_CRED_SAVE_INTERVAL_MS) {
-          g_ctx->power.saveCurrentWifiCredentials();
-          lastWifiCredSaveMs = now;
-        }
       }
 
       if (now - lastBouffeDisplay > bouffeInterval) {
@@ -556,30 +571,18 @@ void automationTask(void* pv) {
       esp_task_wdt_reset();
     } else {
       Serial.println(F("[Auto] Timeout queue capteurs - cycle continu"));
-      // v11.191: Throttle du fallback poll (12s) pour ne pas écraser les changements serveur/local
-      // Sans throttle, chaque timeout ré-appliquait l'état distant ~toutes les 3s et annulait l'impact des commandes
-      static constexpr unsigned long FALLBACK_POLL_INTERVAL_MS = 12000;
-      static unsigned long lastFallbackFetchMs = 0;
-      unsigned long nowMs = millis();
-      if (WiFi.status() == WL_CONNECTED && (nowMs - lastFallbackFetchMs) >= FALLBACK_POLL_INTERVAL_MS) {
-        lastFallbackFetchMs = nowMs;
+      if (WiFi.status() == WL_CONNECTED) {
         esp_task_wdt_reset();
         Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
+        // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
         g_remoteFallbackDoc.clear();
-        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
+        bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc, 30000);
         Serial.printf("[Auto] Fetch distant fallback: %s, keys=%u\n",
                      ok ? "OK" : "KO",
                      static_cast<unsigned>(g_remoteFallbackDoc.size()));
-        if (ok && g_remoteFallbackDoc.size() > 0) {
-          if (g_ctx->automatism.processFetchedRemoteConfig(g_remoteFallbackDoc)) {
-            Serial.println(F("[Auto] ▶️ Config distante normalisée et sauvegardée NVS (fallback)"));
-          }
+        if (ok) {
           Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
           GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
-          invalidateDbvarsCache();
-          g_ctx->automatism.applyRemoteFeedingCommandsFromDoc(g_remoteFallbackDoc);
-        } else if (ok && g_remoteFallbackDoc.size() == 0) {
-          Serial.println(F("[Auto] ▶️ Réponse serveur vide (outputs vides), pas d'application"));
         }
       }
     }
@@ -733,78 +736,78 @@ QueueHandle_t getSensorQueue() {
   return g_sensorQueue;
 }
 
-/**
- * @brief Envoie une requête réseau à netTask et attend la réponse avec timeout.
- * v11.181: Utilise pool statique (plus de req sur stack) pour éviter use-after-free.
- * @param req Requête depuis le pool (doit être libérée par le caller si succès)
- * @return true si succès, false si échec ou timeout
- */
-static bool netRpc(NetRequest* req) {
-  if (!g_netQueue || !g_netTaskHandle || !req) return false;
-  req->requester = xTaskGetCurrentTaskHandle();
-  req->success = false;
-  req->cancelled = false;
+static bool netRpc(NetRequest& req) {
+  if (!g_netQueue || !g_netTaskHandle) return false;
+  req.requester = xTaskGetCurrentTaskHandle();
+  req.success = false;
+  req.cancelled = false;  // v11.169: Initialiser flag abandon
 
+  // Clear any pending notification
   (void)ulTaskNotifyTake(pdTRUE, 0);
 
-  if (xQueueSend(g_netQueue, &req, pdMS_TO_TICKS(50)) != pdTRUE) {
-    freeNetRequest(req);
+  NetRequest* ptr = &req;
+  if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(50)) != pdTRUE) {
     return false;
   }
-
+  
+  // Timeout absolu court pour éviter blocages longs (automationTask bloque → queue capteurs pleine)
   uint32_t waitStart = millis();
-  const uint32_t ABSOLUTE_TIMEOUT_MS = req->timeoutMs;
-  const uint32_t CHECK_INTERVAL_MS = 100;
-  const uint32_t GRACE_PERIOD_MS = 500;
-
+  const uint32_t ABSOLUTE_TIMEOUT_MS = 8000;   // 8 secondes max (aligné offline-first)
+  const uint32_t CHECK_INTERVAL_MS = 100;      // Vérifier toutes les 100ms
+  
+  // Attendre la notification avec timeout absolu
   while (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CHECK_INTERVAL_MS)) == 0) {
+    // Vérifier timeout absolu
     uint32_t elapsed = millis() - waitStart;
     if (elapsed > ABSOLUTE_TIMEOUT_MS) {
       Serial.printf("[netRPC] Timeout absolu (%u ms), signalement abandon\n", (unsigned)ABSOLUTE_TIMEOUT_MS);
-      req->cancelled = true;
-      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(GRACE_PERIOD_MS));
-      return false;  // netTask libère le slot (cancelled)
+      // v11.169: Signaler abandon pour éviter use-after-free
+      req.cancelled = true;
+      // Attendre que netTask ait terminé (max 500ms) avant de quitter
+      // Cela garantit que netTask ne touchera plus à req après notre retour
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
+      return false;
     }
+    
+    // Petit délai pour éviter consommation CPU excessive
     vTaskDelay(pdMS_TO_TICKS(10));
   }
-
-  bool ok = req->success;
-  freeNetRequest(req);
-  return ok;
+  
+  // Notification reçue
+  return req.success;
 }
 
-bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs) {
-  NetRequest* req = allocNetRequest();
-  if (!req) return false;
-  req->type = NetReqType::FetchRemoteState;
-  req->timeoutMs = timeoutMs;
-  req->doc = &doc;
-  req->diag = nullptr;
-  req->payload[0] = '\0';
-  return netRpc(req);
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
+  NetRequest req{};
+  req.type = NetReqType::FetchRemoteState;
+  req.timeoutMs = timeoutMs;
+  req.doc = &doc;
+  req.diag = nullptr;
+  req.payload[0] = '\0';
+  bool ok = netRpc(req);
+  if (outFromNVSFallback) *outFromNVSFallback = req.fromNVSFallback;
+  return ok;
 }
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs) {
   if (!payload) return false;
-  NetRequest* req = allocNetRequest();
-  if (!req) return false;
-  req->type = NetReqType::PostRaw;
-  req->timeoutMs = timeoutMs;
-  req->doc = nullptr;
-  req->diag = nullptr;
-  strncpy(req->payload, payload, sizeof(req->payload) - 1);
-  req->payload[sizeof(req->payload) - 1] = '\0';
+  NetRequest req{};
+  req.type = NetReqType::PostRaw;
+  req.timeoutMs = timeoutMs;
+  req.doc = nullptr;
+  req.diag = nullptr;
+  strncpy(req.payload, payload, sizeof(req.payload) - 1);
+  req.payload[sizeof(req.payload) - 1] = '\0';
   return netRpc(req);
 }
 
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
-  NetRequest* req = allocNetRequest();
-  if (!req) return false;
-  req->type = NetReqType::Heartbeat;
-  req->timeoutMs = timeoutMs;
-  req->doc = nullptr;
-  req->diag = &diag;
-  req->payload[0] = '\0';
+  NetRequest req{};
+  req.type = NetReqType::Heartbeat;
+  req.timeoutMs = timeoutMs;
+  req.doc = nullptr;
+  req.diag = &diag;
+  req.payload[0] = '\0';
   return netRpc(req);
 }
 

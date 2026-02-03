@@ -13,6 +13,8 @@
 #include <cstring>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_heap_caps.h>
+#include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
 #ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
 #endif
@@ -163,6 +165,11 @@ static void sendManualActionEmail(const char* subject, const char* actionType, c
   }
 }
 
+// Garde fragmentation: ne pas créer de tâche one-shot si le plus grand bloc libre est trop petit
+static bool canCreateAsyncTask() {
+  return heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) >= HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK;
+}
+
 static bool tryAcquireAsyncSlot(uint8_t maxSlots) {
   bool ok = false;
   portENTER_CRITICAL(&g_asyncTaskMux);
@@ -181,6 +188,10 @@ static void releaseAsyncSlot() {
   }
   portEXIT_CRITICAL(&g_asyncTaskMux);
 }
+
+// Rate limit: évite de créer trop de tâches one-shot en peu de temps (fragmentation)
+static unsigned long s_lastFeedTaskAt = 0;
+static unsigned long s_lastWifiConnectAt = 0;
 
 // v11.178: Constructeur 2 params supprimé (non utilisé - audit dead-code)
 
@@ -205,12 +216,6 @@ WebServerManager::~WebServerManager() {
   }
   #endif
 }
-
-// Structure pour passer les paramètres à la tâche de synchronisation des relais
-struct RelaySyncTaskParams {
-    SystemSensors* sensors;
-    const char* relayName;
-};
 
 struct WifiConnectTaskParams {
   char ssid[33];
@@ -256,39 +261,11 @@ const char* WebServerManager::handleRelayAction(
     // Feedback WebSocket immédiat
     g_realtimeWebSocket.broadcastNow();
 
-    // Allocation dynamique pour éviter race condition avec requêtes concurrentes
-    RelaySyncTaskParams* taskParams = new (std::nothrow) RelaySyncTaskParams;
-    if (!taskParams) {
-        Serial.println("[Web] ❌ Échec allocation RelaySyncTaskParams");
-        return response;
-    }
-    taskParams->sensors = &_sensors;
-    taskParams->relayName = relayName;
-
-    BaseType_t created = xTaskCreate([](void* param) {
-        RelaySyncTaskParams* p = (RelaySyncTaskParams*)param;
-        vTaskDelay(pdMS_TO_TICKS(100));
-        SensorReadings readings = p->sensors->read();
-        bool syncSuccess = g_autoCtrl.sendFullUpdate(readings);
-        #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
-        if (syncSuccess) {
-            g_autoCtrl.clearPendingSync(p->relayName);
-            Serial.printf("[Web] ✅ %s synced (async)\\n", p->relayName);
-        } else {
-            Serial.printf("[Web] ⏳ %s sync pending\\n", p->relayName);
-        }
-        #else
-        if (syncSuccess) {
-            g_autoCtrl.clearPendingSync(p->relayName);
-        }
-        #endif
-        delete p;  // Libérer la mémoire allouée
-        vTaskDelete(NULL);
-    }, "relay_sync", 4096, taskParams, 1, nullptr);
-    if (created != pdPASS) {
-        Serial.println("[Web] ❌ Échec création tâche relay_sync");
-        delete taskParams;  // Libérer si la tâche n'a pas été créée
-    }
+    // Sync relais toujours en synchrone (moins de charge ESP: pas de tâche 4KB ni allocation)
+    vTaskDelay(pdMS_TO_TICKS(100));
+    SensorReadings readings = _sensors.read();
+    (void)g_autoCtrl.sendFullUpdate(readings);
+    g_autoCtrl.clearPendingSync(relayName);
 
     return response;
 }
@@ -402,52 +379,57 @@ bool WebServerManager::begin() {
               // 4. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_SMALL OK";
               
-              // 5. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
+              // 5. Email + Sync en tâche asynchrone (v11.81) ou synchrone si rate limit / heap fragmenté
               auto* sensorsPtr = &_sensors;
-              const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
+              const uint8_t MAX_ASYNC_TASKS = 5;
+              unsigned long nowFeed = millis();
+              bool rateLimited = (nowFeed - s_lastFeedTaskAt < AsyncTaskConfig::FEED_TASK_MIN_MS);
+              bool heapLow = !canCreateAsyncTask();
               
-              if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
+              if (rateLimited || heapLow) {
+                if (heapLow) {
+                  Serial.printf("[Web] Sync feed inline (heap blk=%u)\n",
+                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+                }
+                vTaskDelay(pdMS_TO_TICKS(100));
+                sendManualActionEmail(
+                  "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+                SensorReadings readings = _sensors.read();
+                (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
+                g_autoCtrl.setBouffePetitsFlag("0");
+                Serial.println("[Web] ✅ Small feed completed, sync inline");
+              } else if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
+                s_lastFeedTaskAt = nowFeed;
                 BaseType_t created = xTaskCreate([](void* param) {
                   SystemSensors* sensors = (SystemSensors*)param;
                   vTaskDelay(pdMS_TO_TICKS(100));
-                  
-                  // Utilisation de notre helper robuste d'envoi email
                   sendManualActionEmail(
-                    "Bouffe manuelle - Petits poissons", 
-                    "Bouffe manuelle", 
-                    "NOURRISSAGE_PETITS");
-                  
-                  // Synchronisation serveur : envoie bouffePetits=1 (marqué ci-dessus)
+                    "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
                   SensorReadings readings = sensors->read();
                   bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
                   Serial.printf("[Web] 📤 Server sync bouffePetits=1 %s\n",
                                 syncSuccess ? "completed" : "pending");
-                  
-                  // Remettre le flag à 0 pour les prochains envois
                   g_autoCtrl.setBouffePetitsFlag("0");
-                  
                   releaseAsyncSlot();
                   vTaskDelete(NULL);
                 }, "feed_small_sync", 4096, sensorsPtr, 1, nullptr);
                 if (created != pdPASS) {
                   releaseAsyncSlot();
                   Serial.println("[Web] ❌ Échec création tâche feed_small_sync");
-                  g_autoCtrl.setBouffePetitsFlag("0"); // Reset en cas d'échec
+                  g_autoCtrl.setBouffePetitsFlag("0");
+                } else {
+                  Serial.println("[Web] ✅ Small feed completed, sync in background");
                 }
               } else {
                 Serial.println(
                   "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
-                // Fallback: tentative d'envoi email immédiat si mémoire suffisante
                 if (ESP.getFreeHeap() > HeapConfig::MIN_HEAP_EMAIL_ASYNC) {
                   sendManualActionEmail(
-                    "Bouffe manuelle - Petits poissons", 
-                    "Bouffe manuelle", 
-                    "NOURRISSAGE_FALLBACK");
+                    "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
                 }
-                g_autoCtrl.setBouffePetitsFlag("0"); // Reset
+                g_autoCtrl.setBouffePetitsFlag("0");
+                Serial.println("[Web] ✅ Small feed completed, sync in background");
               }
-              
-              Serial.println("[Web] ✅ Small feed completed, sync in background");
           }
           else if (strcmp(c, "feedBig") == 0) {
               Serial.println("[Web] 🐠 Starting manual feed big...");
@@ -463,52 +445,57 @@ bool WebServerManager::begin() {
               // 4. Réponse HTTP IMMÉDIATE (avant email/sync)
               resp="FEED_BIG OK";
               
-              // 5. Email + Sync en tâche asynchrone (v11.81: Version améliorée)
+              // 5. Email + Sync en tâche asynchrone (v11.81) ou synchrone si rate limit / heap fragmenté
               auto* sensorsPtr = &_sensors;
-              const uint8_t MAX_ASYNC_TASKS = 5; // Augmenté pour plus de robustesse
+              const uint8_t MAX_ASYNC_TASKS = 5;
+              unsigned long nowFeedBig = millis();
+              bool rateLimitedBig = (nowFeedBig - s_lastFeedTaskAt < AsyncTaskConfig::FEED_TASK_MIN_MS);
+              bool heapLowBig = !canCreateAsyncTask();
               
-              if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
+              if (rateLimitedBig || heapLowBig) {
+                if (heapLowBig) {
+                  Serial.printf("[Web] Sync feed inline (heap blk=%u)\n",
+                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+                }
+                vTaskDelay(pdMS_TO_TICKS(100));
+                sendManualActionEmail(
+                  "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
+                SensorReadings readings = _sensors.read();
+                (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
+                g_autoCtrl.setBouffeGrosFlag("0");
+                Serial.println("[Web] ✅ Big feed completed, sync inline");
+              } else if (tryAcquireAsyncSlot(MAX_ASYNC_TASKS)) {
+                s_lastFeedTaskAt = nowFeedBig;
                 BaseType_t created = xTaskCreate([](void* param) {
                   SystemSensors* sensors = (SystemSensors*)param;
                   vTaskDelay(pdMS_TO_TICKS(100));
-                  
-                  // Utilisation de notre helper robuste d'envoi email
                   sendManualActionEmail(
-                    "Bouffe manuelle - Gros poissons", 
-                    "Bouffe manuelle", 
-                    "NOURRISSAGE_GROS");
-                  
-                  // Synchronisation serveur : envoie bouffeGros=1 (marqué ci-dessus)
+                    "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
                   SensorReadings readings = sensors->read();
                   bool syncSuccess = g_autoCtrl.sendFullUpdate(readings, nullptr);
                   Serial.printf("[Web] 📤 Server sync bouffeGros=1 %s\n",
                                 syncSuccess ? "completed" : "pending");
-                  
-                  // Remettre le flag à 0 pour les prochains envois
                   g_autoCtrl.setBouffeGrosFlag("0");
-                  
                   releaseAsyncSlot();
                   vTaskDelete(NULL);
                 }, "feed_big_sync", 4096, sensorsPtr, 1, nullptr);
                 if (created != pdPASS) {
                   releaseAsyncSlot();
                   Serial.println("[Web] ❌ Échec création tâche feed_big_sync");
-                  g_autoCtrl.setBouffeGrosFlag("0"); // Reset en cas d'échec
+                  g_autoCtrl.setBouffeGrosFlag("0");
+                } else {
+                  Serial.println("[Web] ✅ Big feed completed, sync in background");
                 }
               } else {
                 Serial.println(
                   "[Web] ⚠️ Limite de tâches async atteinte - tentative email immédiate");
-                // Fallback: tentative d'envoi email immédiat si mémoire suffisante
                 if (ESP.getFreeHeap() > HeapConfig::MIN_HEAP_EMAIL_ASYNC) {
                   sendManualActionEmail(
-                    "Bouffe manuelle - Gros poissons", 
-                    "Bouffe manuelle", 
-                    "NOURRISSAGE_FALLBACK");
+                    "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_FALLBACK");
                 }
-                g_autoCtrl.setBouffeGrosFlag("0"); // Reset
+                g_autoCtrl.setBouffeGrosFlag("0");
+                Serial.println("[Web] ✅ Big feed completed, sync in background");
               }
-              
-              Serial.println("[Web] ✅ Big feed completed, sync in background");
           }
           else if (strcmp(c, "toggleEmail") == 0) {
               Serial.println("[Web] 📧 Toggling Email Notifications...");
@@ -1571,27 +1558,25 @@ bool WebServerManager::begin() {
     doc["success"] = (n >= 0);
     doc["count"] = n;
     
-    if (n > 0) {
+    // Lecture des résultats via ESP-IDF (évite String Arduino → stabilité long uptime)
+    const uint16_t WIFI_SCAN_MAX_RECORDS = 16;
+    static wifi_ap_record_t s_apRecords[WIFI_SCAN_MAX_RECORDS];
+    uint16_t num = (n > 0 && n <= WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n : (n > 0 ? WIFI_SCAN_MAX_RECORDS : 0);
+    
+    if (num > 0 && esp_wifi_scan_get_ap_records(&num, s_apRecords) == ESP_OK) {
       JsonArray networks = doc.createNestedArray("networks");
-      
-      for (int i = 0; i < n; i++) {
-        // Buffer statique pour éviter String Arduino (fragmentation mémoire)
-        char ssidBuf[33]; // Max SSID length is 32 + null
-        {
-          // Scope réduit pour destruction rapide de la String temporaire
-          String ssid = WiFi.SSID(i);
-          size_t len = ssid.length();
-          if (len >= sizeof(ssidBuf)) len = sizeof(ssidBuf) - 1;
-          strncpy(ssidBuf, ssid.c_str(), len);
-          ssidBuf[len] = '\0';
-        } // String détruite ici
+      for (int i = 0; i < num; i++) {
+        char ssidBuf[33];
+        memcpy(ssidBuf, s_apRecords[i].ssid, 32);
+        ssidBuf[32] = '\0';
+        size_t len = strnlen(ssidBuf, 32);
+        ssidBuf[len] = '\0';
         
         JsonObject network = networks.createNestedObject();
-        network["rssi"] = WiFi.RSSI(i);
-        network["encryption"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "secured";
-        network["channel"] = WiFi.channel(i);
+        network["rssi"] = s_apRecords[i].rssi;
+        network["encryption"] = (s_apRecords[i].authmode == WIFI_AUTH_OPEN) ? "open" : "secured";
+        network["channel"] = s_apRecords[i].primary;
         
-        // Masquer les réseaux cachés (SSID vide)
         if (ssidBuf[0] == '\0') {
           network["ssid"] = "<Hidden Network>";
           network["hidden"] = true;
@@ -1600,6 +1585,8 @@ bool WebServerManager::begin() {
           network["hidden"] = false;
         }
       }
+    } else if (n > 0) {
+      doc["error"] = "Failed to get scan records";
     } else {
       doc["error"] = "No networks found or scan failed";
     }
@@ -1819,6 +1806,29 @@ bool WebServerManager::begin() {
           nvs_close(nvsHandle);
         }
       }
+      
+      // Rate limit: éviter tentatives WiFi trop rapprochées (fragmentation / boucles)
+      unsigned long nowWifi = millis();
+      if (nowWifi - s_lastWifiConnectAt < AsyncTaskConfig::WIFI_CONNECT_MIN_MS) {
+        doc["success"] = false;
+        doc["message"] = "Retry in a few seconds";
+        char jsonRate[256];
+        serializeJson(doc, jsonRate, sizeof(jsonRate));
+        req->send(200, "application/json", jsonRate);
+        return;
+      }
+      // Garde fragmentation: ne pas lancer la tâche WiFi si heap trop fragmenté (évite aggravation)
+      if (!canCreateAsyncTask()) {
+        doc["success"] = false;
+        doc["message"] = "Memory low, retry later";
+        Serial.printf("[Web] WiFi connect skipped (heap blk=%u)\n",
+          (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+        char jsonLow[256];
+        serializeJson(doc, jsonLow, sizeof(jsonLow));
+        req->send(200, "application/json", jsonLow);
+        return;
+      }
+      s_lastWifiConnectAt = nowWifi;
       
       // Envoyer une réponse immédiate AVANT de déconnecter
       // Cela permet au client de recevoir la réponse avant la perte de connexion
@@ -2054,7 +2064,12 @@ bool WebServerManager::begin() {
   Serial.printf("[Web] Connexions max: %u\n", NetworkConfig::WEB_SERVER_MAX_CONNECTIONS);
   Serial.println(F("[Web] Serveur HTTP prêt - Interface web accessible"));
   Serial.println(F("[Web] WebSocket temps réel sur le port 81"));
-  
+  // Afficher l'URL d'accès (STA ou AP) pour que l'utilisateur sache où se connecter
+  {
+    IPAddress addr = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP() : WiFi.softAPIP();
+    Serial.printf("[Web] Interface web: http://%d.%d.%d.%d/\n",
+                  addr[0], addr[1], addr[2], addr[3]);
+  }
   return true;
   #endif
 }

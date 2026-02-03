@@ -487,9 +487,9 @@ bool DisplayView::isLocked() const {
   if (!_locked) return false;
   unsigned long now = millis();
   if (now >= _lockUntil) {
-    // Auto-expiration du verrouillage (_locked et _lockUntil sont mutable)
-    _locked = false;
-    _lockUntil = 0;
+    // Auto-expiration du verrouillage (nécessite d'altérer l'état depuis une méthode const)
+    const_cast<DisplayView*>(this)->_locked = false;
+    const_cast<DisplayView*>(this)->_lockUntil = 0;
     return false;
   }
   return true;
@@ -616,7 +616,7 @@ void DisplayView::showVariables(bool pumpAqua,
 void DisplayView::showDiagnostic(const char* msg) {
   if (!_present || splashActive()) return;
 
-  const uint8_t MAX_LINES = 6; // header ("Diag:") on line 0 + 5 messages (1..5)
+  const uint8_t maxLines = 6; // header ("Diag:") on line 0 + 5 messages (1..5)
 
   // Verrouille l'écran pour éviter la superposition avec l'affichage principal
   // Chaque message prolonge le verrou ~0,8s (réduit pour accélérer l'init)
@@ -632,7 +632,7 @@ void DisplayView::showDiagnostic(const char* msg) {
   }
 
   // Si on dépasse le nombre de lignes disponible, on réinitialise l'écran diag
-  if (_diagLine > MAX_LINES) {
+  if (_diagLine > maxLines) {
     clear();
     _disp.setTextSize(1);
     _disp.setCursor(0, 0);
@@ -643,7 +643,7 @@ void DisplayView::showDiagnostic(const char* msg) {
   // Positionne le curseur sur la ligne courante et écrit le message avec clipping horizontal
   {
     char line[256];
-    utf8ToCp437(msg, line, sizeof(line));
+utf8ToCp437(msg, line, sizeof(line));
     appendDiagnosticLine(line, _diagLine);
   }
   ++_diagLine;
@@ -651,6 +651,24 @@ void DisplayView::showDiagnostic(const char* msg) {
   if (!_updateMode) flush();
   else _needsFlush = true;
 }
+
+void DisplayView::showServerVars(bool pumpAqua,bool pumpTank,bool heater,bool light,
+                                 uint8_t hMat,uint8_t hMid,uint8_t hSoir,
+                                 uint16_t tPetits,uint16_t tGros,
+                                 uint16_t thAq,uint16_t thTank,float thHeat,
+                                 uint16_t tRemp,uint16_t limFlood,
+                                 bool wakeUp,uint16_t freqWake){
+  if(!_present || isLocked()) return;
+  clear();
+  renderServerVars(pumpAqua, pumpTank, heater, light,
+                   hMat, hMid, hSoir,
+                   tPetits, tGros,
+                   thAq, thTank, thHeat,
+                   tRemp, limFlood,
+                   wakeUp, freqWake);
+  if (!_updateMode) flush();
+  else _needsFlush = true;
+} 
 
 void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const char* toLabel, const char* phase){
   if(!_present || splashActive() || _isDisplaying) return;
@@ -666,7 +684,7 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
     char headerBuf[128];
     if (phase && *phase) {
       char phaseBuf[64];
-      utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
+utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
       snprintf(headerBuf, sizeof(headerBuf), "OTA: %s", phaseBuf);
     } else {
       snprintf(headerBuf, sizeof(headerBuf), "OTA: ");
@@ -677,13 +695,13 @@ void DisplayView::showOtaProgress(uint8_t percent, const char* fromLabel, const 
   // Lignes partitions
   if (fromLabel && *fromLabel) {
     char fromBuf[128], labelBuf[64];
-    utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(fromLabel, labelBuf, sizeof(labelBuf));
     snprintf(fromBuf, sizeof(fromBuf), "De: %s", labelBuf);
     printClipped(0, 10, fromBuf, 1);
   }
   if (toLabel && *toLabel) {
     char toBuf[128], labelBuf[64];
-    utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(toLabel, labelBuf, sizeof(labelBuf));
     snprintf(toBuf, sizeof(toBuf), "Vers: %s", labelBuf);
     printClipped(0, 18, toBuf, 1);
   }
@@ -736,7 +754,7 @@ utf8ToCp437(phase, phaseBuf, sizeof(phaseBuf));
   // Hote ou WiFi SSID
   if (hostLabel && *hostLabel) {
     char hostBuf[128], labelBuf[64];
-    utf8ToCp437(hostLabel, labelBuf, sizeof(labelBuf));
+utf8ToCp437(hostLabel, labelBuf, sizeof(labelBuf));
     snprintf(hostBuf, sizeof(hostBuf), "Hote: %s", labelBuf);
     printClipped(0, 8, hostBuf, 1);
   }
@@ -791,17 +809,17 @@ void DisplayView::showSleepReason(const char* cause, const char* detailLine1, co
   printClipped(0, 0, "Veille", 1);
   if (cause && *cause) {
     char causeBuf[128];
-    utf8ToCp437(cause, causeBuf, sizeof(causeBuf));
+utf8ToCp437(cause, causeBuf, sizeof(causeBuf));
     printClipped(0, 10, causeBuf, 1);
   }
   if (detailLine1 && *detailLine1) {
     char detail1Buf[128];
-    utf8ToCp437(detailLine1, detail1Buf, sizeof(detail1Buf));
+utf8ToCp437(detailLine1, detail1Buf, sizeof(detail1Buf));
     printClipped(0, 20, detail1Buf, 1);
   }
   if (detailLine2 && *detailLine2) {
     char detail2Buf[128];
-    utf8ToCp437(detailLine2, detail2Buf, sizeof(detail2Buf));
+utf8ToCp437(detailLine2, detail2Buf, sizeof(detail2Buf));
     printClipped(0, 30, detail2Buf, 1);
   }
   // Statut bar with mail icon if blinking requested (force draw even when locked)
@@ -823,19 +841,19 @@ void DisplayView::showSleepInfo(const char* reason, const char* detail1, const c
   // Raison explicite
   if (reason && *reason) {
     char reasonBuf[128], labelBuf[64];
-    utf8ToCp437(reason, labelBuf, sizeof(labelBuf));
+utf8ToCp437(reason, labelBuf, sizeof(labelBuf));
     snprintf(reasonBuf, sizeof(reasonBuf), "Raison: %s", labelBuf);
     printClipped(0, 10, reasonBuf, 1);
   }
   // Détails optionnels
   if (detail1 && *detail1) {
     char detail1Buf[128];
-    utf8ToCp437(detail1, detail1Buf, sizeof(detail1Buf));
+utf8ToCp437(detail1, detail1Buf, sizeof(detail1Buf));
     printClipped(0, 20, detail1Buf, 1);
   }
   if (detail2 && *detail2) {
     char detail2Buf[128];
-    utf8ToCp437(detail2, detail2Buf, sizeof(detail2Buf));
+utf8ToCp437(detail2, detail2Buf, sizeof(detail2Buf));
     printClipped(0, 28, detail2Buf, 1);
   }
 
@@ -1066,14 +1084,43 @@ void DisplayView::renderVariables(bool pumpAqua, bool pumpTank, bool heater, boo
   printClipped(0, 48, buf, 1);
 }
 
+void DisplayView::renderServerVars(bool pumpAqua, bool pumpTank, bool heater, bool light,
+                                   uint8_t hMat, uint8_t hMid, uint8_t hSoir,
+                                   uint16_t tPetits, uint16_t tGros,
+                                   uint16_t thAq, uint16_t thTank, float thHeat,
+                                   uint16_t tRemp, uint16_t limFlood,
+                                   bool wakeUp, uint16_t freqWake) {
+  _disp.setTextSize(1);
+  printClipped(0, 0, "Vars:", 1);
+
+  char buf[64];
+  snprintf(buf, sizeof(buf), "Paq:%d Pta:%d R:%d L:%d", pumpAqua, pumpTank, heater, light);
+  printClipped(0, 8, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Feed h:%u %u %u", hMat, hMid, hSoir);
+  printClipped(0, 16, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Tps P:%u G:%u", tPetits, tGros);
+  printClipped(0, 24, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Lim Aq:%u Ta:%u", thAq, thTank);
+  printClipped(0, 32, buf, 1);
+
+  snprintf(buf, sizeof(buf), "Ch:%.1f R:%u F:%u", thHeat, tRemp, limFlood);
+  printClipped(0, 40, buf, 1);
+
+  snprintf(buf, sizeof(buf), "W:%d Fq:%us", wakeUp ? 1 : 0, freqWake);
+  printClipped(0, 48, buf, 1);
+}
+
 void DisplayView::renderStatusBar(const StatusBarParams& params) {
-  // Dessiner la barre d'état en haut de l'écran
+  // Dessiner la barre d'état en haut de l'écran (8 pixels de hauteur)
   
   // Effacer la zone de la barre d'état
-  _disp.fillRect(0, 0, DisplayConfig::OLED_WIDTH, DisplayConfig::STATUS_BAR_HEIGHT, BLACK);
+  _disp.fillRect(0, 0, 128, 8, BLACK);
   
   // WiFi RSSI indicator (gauche)
-  _disp.setCursor(DisplayConfig::STATUS_BAR_WIFI_X, 0);
+  _disp.setCursor(0, 0);
   _disp.setTextSize(1);
   _disp.setTextColor(WHITE);
   
@@ -1090,7 +1137,7 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   }
   
   // Indicateur send/recv (milieu)
-  _disp.setCursor(DisplayConfig::STATUS_BAR_SENDRECV_X, 0);
+  _disp.setCursor(60, 0);
   if (params.sendState == 1) {
     _disp.print(F("S"));
   } else if (params.sendState == -1) {
@@ -1108,7 +1155,7 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   }
   
   // Indicateur marée (droite)
-  _disp.setCursor(DisplayConfig::STATUS_BAR_TIDE_X, 0);
+  _disp.setCursor(80, 0);
   if (params.tideDir > 0) {
     _disp.print(F("^")); // Marée montante
   } else if (params.tideDir < 0) {
@@ -1119,13 +1166,13 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   
   // Mail blink indicator
   if (params.mailBlink) {
-    _disp.setCursor(DisplayConfig::STATUS_BAR_MAIL_X, 0);
+    _disp.setCursor(90, 0);
     _disp.print(F("@"));
   }
   
   // OTA progress overlay (si actif)
   if (params.otaOverlayActive) {
-    _disp.setCursor(DisplayConfig::OTA_OVERLAY_X_POS, 0);
+    _disp.setCursor(100, 0);
     _disp.printf("%d%%", params.otaPercent);
   }
 }

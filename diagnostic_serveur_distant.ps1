@@ -200,12 +200,13 @@ if ($avgGetInterval -gt 0) {
     $coherence += '[KO] GET: Impossible de calculer la frequence'
 }
 
-# POST: Duree < 5 secondes (REQUEST_TIMEOUT_MS = 5000)
+# POST: Duree <= 7 secondes (HTTP_POST_TIMEOUT_MS = 7000, derogation RAPPORT_WORKFLOW 2026-02-03)
+$postLimitMs = 7000
 if ($maxDuration -gt 0) {
-    if ($maxDuration -lt 5000) {
-        $coherence += '[OK] POST: Durees dans les limites (max: ' + $maxDuration + ' ms, limite: 5000 ms)'
+    if ($maxDuration -le $postLimitMs) {
+        $coherence += '[OK] POST: Durees dans les limites (max: ' + $maxDuration + ' ms, limite: ' + $postLimitMs + ' ms)'
     } else {
-        $coherence += '[WARN] POST: Durees trop longues (max: ' + $maxDuration + ' ms, limite: 5000 ms)'
+        $coherence += '[WARN] POST: Durees trop longues (max: ' + $maxDuration + ' ms, limite: ' + $postLimitMs + ' ms)'
     }
 }
 

@@ -5,6 +5,7 @@
 #include <freertos/task.h>
 
 #include "app_context.h"
+#include "config.h"
 #include <ArduinoJson.h>
 
 class Diagnostics;
@@ -42,9 +43,10 @@ QueueHandle_t getSensorQueue();
 
 // Note: ces appels bloquent le caller jusqu'à la fin de l'opération réseau
 // (sinon risque de corruption si le caller retourne avant fin TLS).
-// v11.178: Defaults réduits à 5s (règle offline-first: max 5s - audit)
-bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000);
-bool netPostRaw(const char* payload, uint32_t timeoutMs = 5000);
+// v11.178: Defaults 5s (règle offline-first). POST: dérogation 7s (HTTP_POST_TIMEOUT_MS, RAPPORT_WORKFLOW 2026-02-03).
+// outFromNVSFallback: si non null, reçoit true quand la config vient du cache NVS (v11.193: ne pas appeler processFetchedRemoteConfig dans ce cas)
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000, bool* outFromNVSFallback = nullptr);
+bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS);
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 
 }  // namespace AppTasks

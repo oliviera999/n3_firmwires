@@ -57,8 +57,8 @@ public:
     void setEmailEnabled(bool v) { _emailEnabled = v; }
     void setFreqWakeSec(uint16_t v) { _freqWakeSec = v; }
 
-    // Nouvelles méthodes pour gérer les commandes distantes
-    void handleRemoteFeedingCommands(const ArduinoJson::JsonDocument& doc, Automatism& autoCtrl);
+    /// Appelé par GPIOParser après exécution nourrissage distant (ack, reset flags, email)
+    void onRemoteFeedExecuted(bool isSmall, Automatism& core);
     /// Initialise l'état edge detection depuis le doc (1er poll) sans déclencher
     void seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument& doc);
     void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
@@ -114,9 +114,6 @@ private:
     uint32_t _postFailCount{0};
     uint32_t _lastPostDurationMs{0};
     
-    // Edge detection pour commandes distantes (évite re-déclenchements si serveur garde flag à 1)
-    bool _lastRemoteFeedSmallState{false};
-    bool _lastRemoteFeedBigState{false};
     bool _firstPollAfterBootDone{false};
     
     // Constantes

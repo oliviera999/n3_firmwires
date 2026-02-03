@@ -1,6 +1,6 @@
 # Analyse des scripts PowerShell à la racine du projet FFP5CS
 
-**Date:** 2026-01-31  
+**Date:** 2026-02-03  
 **Périmètre:** Tous les fichiers `.ps1` à la racine du projet (hors `scripts/`, `ffp3/`, `tools/`).
 
 ---
@@ -9,7 +9,7 @@
 
 | Catégorie | Nombre | Action recommandée |
 |-----------|--------|--------------------|
-| **À garder** | 22 | Conserver, éventuellement corriger les bugs mineurs |
+| **À garder** | 23 | Conserver, éventuellement corriger les bugs mineurs |
 | **À supprimer** | 3 | Scripts trompeurs ou redondants |
 | **À fusionner ou simplifier** | 2 | Réduire la duplication |
 
@@ -41,6 +41,7 @@
 | **analyze_log_exhaustive.ps1** | Analyse exhaustive (crashes, watchdog, mémoire, réseau, NVS, reboots) | Utilisé par generate_diagnostic_report. |
 | **analyze_log.ps1** | Analyse générique (patterns critiques, POST, JSON, heap, DHT22) | Générique, à garder après correction du fichier par défaut (voir § 4). |
 | **cleanup_old_logs.ps1** | Nettoyage logs vides, .errors orphelins, gros fichiers, anciens par type | Maintenance du repo. |
+| **decode_backtrace.ps1** | Décodage backtrace (Guru Meditation) à partir d'un log ou d'adresses brutes via `addr2line` | Permet d'obtenir la stack symbolisée immédiatement après un crash (auto-sélection du dernier `monitor_5min_*.log` si aucun fichier n'est passé). |
 
 ### 2.3 Vérification et utilitaires
 

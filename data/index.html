@@ -245,6 +245,7 @@ async function loadPage(pageName, event) {
       setTimeout(() => {
         if (typeof window.loadDbVars === 'function') window.loadDbVars();
         if (typeof window.applyRelayStateToButtons === 'function') window.applyRelayStateToButtons();
+        if (typeof window.ensureActuatorStateDisplay === 'function') window.ensureActuatorStateDisplay();
       }, 0);
     } else if (pageName === 'wifi') {
       // Charger automatiquement toutes les informations WiFi

@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "display_view.h"
 #include "config.h"
+#include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
 #include <algorithm>
 #include <cstring>
 #include <esp_task_wdt.h>
@@ -43,35 +44,45 @@ bool WifiManager::connect(DisplayView* disp) {
     esp_task_wdt_reset();
   }
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
-  if (n <= 0) {
+  // Lecture résultats via ESP-IDF (évite String Arduino → stabilité long uptime)
+  const uint16_t WIFI_SCAN_MAX = 16;
+  static wifi_ap_record_t s_apRecords[WIFI_SCAN_MAX];
+  uint16_t num = (n > 0 && n <= WIFI_SCAN_MAX) ? (uint16_t)n : (n > 0 ? WIFI_SCAN_MAX : 0);
+  if (num > 0 && esp_wifi_scan_get_ap_records(&num, s_apRecords) != ESP_OK) {
+    num = 0;
+  }
+  if (n <= 0 || num == 0) {
     Serial.println(F("[WiFi] ❌ Aucun réseau détecté (ou scan erreur)"));
     Serial.println("[Event] WiFi scan: no networks");
   } else {
-    Serial.printf("[WiFi] 📡 %d réseaux trouvés:\n", n);
-    for (int j = 0; j < n; ++j) {
+    Serial.printf("[WiFi] 📡 %d réseaux trouvés:\n", (int)num);
+    for (int j = 0; j < num; ++j) {
       char scanSSIDBuf[33];
-      strncpy(scanSSIDBuf, WiFi.SSID(j).c_str(), sizeof(scanSSIDBuf) - 1);
-      scanSSIDBuf[sizeof(scanSSIDBuf) - 1] = '\0';
-      Serial.printf("  - %s (%ddBm)%s\n", scanSSIDBuf, WiFi.RSSI(j), WiFi.encryptionType(j)==WIFI_AUTH_OPEN?" [OPEN]":"");
+      memcpy(scanSSIDBuf, s_apRecords[j].ssid, 32);
+      scanSSIDBuf[32] = '\0';
+      size_t slen = strnlen(scanSSIDBuf, 32);
+      scanSSIDBuf[slen] = '\0';
+      Serial.printf("  - %s (%ddBm)%s\n", scanSSIDBuf, s_apRecords[j].rssi,
+                    s_apRecords[j].authmode == WIFI_AUTH_OPEN ? " [OPEN]" : "");
     }
   }
 
   // Associer chaque credential à la meilleure valeur RSSI détectée + infos BSSID/chan
-  // Buffers fixes (pas de heap) - _count borné par NVSConfig::MAX_WIFI_SAVED_NETWORKS
   struct Cand { int8_t rssi; uint8_t bssid[6]; uint8_t chan; wifi_auth_mode_t enc; bool present; };
   Cand initC{ -128,{0},0, WIFI_AUTH_OPEN, false};
   Cand cand[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
   for (size_t i = 0; i < _count; ++i) cand[i] = initC;
-  for (int j = 0; j < n; ++j) {
+  for (int j = 0; j < num; ++j) {
     char scanSSIDBuf2[33];
-    strncpy(scanSSIDBuf2, WiFi.SSID(j).c_str(), sizeof(scanSSIDBuf2) - 1);
-    scanSSIDBuf2[sizeof(scanSSIDBuf2) - 1] = '\0';
+    memcpy(scanSSIDBuf2, s_apRecords[j].ssid, 32);
+    scanSSIDBuf2[32] = '\0';
+    size_t slen2 = strnlen(scanSSIDBuf2, 32);
+    scanSSIDBuf2[slen2] = '\0';
     const char* ss = scanSSIDBuf2;
-    int8_t r = WiFi.RSSI(j);
-    uint8_t bssid[6];
-    WiFi.BSSID(j, bssid);
-    uint8_t ch = WiFi.channel(j);
-    wifi_auth_mode_t auth = WiFi.encryptionType(j);
+    int8_t r = s_apRecords[j].rssi;
+    const uint8_t* bssid = s_apRecords[j].bssid;
+    uint8_t ch = s_apRecords[j].primary;
+    wifi_auth_mode_t auth = s_apRecords[j].authmode;
     for (size_t i = 0; i < _count; ++i) {
       if (strcmp(ss, _list[i].ssid) == 0 && r > cand[i].rssi) {
         cand[i].rssi = r;

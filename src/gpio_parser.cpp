@@ -32,21 +32,21 @@ static bool parseBoolFromDoc(JsonVariantConst v) {
 }
 
 void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
-    if (doc.containsKey("108")) {
-        s_lastFeedSmallState = parseBoolFromDoc(doc["108"]);
-    } else if (doc.containsKey("bouffePetits")) {
-        s_lastFeedSmallState = parseBoolFromDoc(doc["bouffePetits"]);
-    }
-    if (doc.containsKey("109")) {
-        s_lastFeedBigState = parseBoolFromDoc(doc["109"]);
-    } else if (doc.containsKey("bouffeGros")) {
-        s_lastFeedBigState = parseBoolFromDoc(doc["bouffeGros"]);
-    }
+    // Reset (110): seed pour ne pas redémarrer si le sync envoie 110:1 comme état courant.
     if (doc.containsKey("110")) {
         s_lastResetState = parseBoolFromDoc(doc["110"]);
     }
-    Serial.printf("[GPIOParser] État nourrissage/reset initialisé: petits=%d gros=%d reset=%d\n",
-                  s_lastFeedSmallState, s_lastFeedBigState, s_lastResetState);
+    // Nourrissage 108/109: seed au 1er poll pour éviter faux front si le serveur envoie
+    // 108:1 ou 109:1 comme état courant (ex. BDD ou cache). Seul un vrai changement 0→1
+    // après ce seed déclenchera un nourrissage.
+    if (doc.containsKey("108")) {
+        s_lastFeedSmallState = parseBoolFromDoc(doc["108"]);
+    }
+    if (doc.containsKey("109")) {
+        s_lastFeedBigState = parseBoolFromDoc(doc["109"]);
+    }
+    Serial.printf("[GPIOParser] État edge initialisé: reset=%d feedSmall=%d feedBig=%d\n",
+                  s_lastResetState ? 1 : 0, s_lastFeedSmallState ? 1 : 0, s_lastFeedBigState ? 1 : 0);
 }
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
@@ -226,6 +226,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // #endregion
         if (state && !s_lastFeedSmallState) {
             autoCtrl.manualFeedSmall();
+            autoCtrl.notifyRemoteFeedExecuted(true);
             Serial.println("Nourrissage petits (rising edge)");
         }
         s_lastFeedSmallState = state;
@@ -240,6 +241,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // #endregion
         if (state && !s_lastFeedBigState) {
             autoCtrl.manualFeedBig();
+            autoCtrl.notifyRemoteFeedExecuted(false);
             Serial.println("Nourrissage gros (rising edge)");
         }
         s_lastFeedBigState = state;

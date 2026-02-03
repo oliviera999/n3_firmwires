@@ -125,13 +125,11 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     if (pollResult) {
         // Ne pas appliquer ni invalider le cache si la réponse est vide (ex. serveur renvoie {"outputs":{}})
         if (doc.size() > 0) {
-            // 4.0 Initialiser l'état edge detection au 1er poll (évite faux déclenchement nourrissage)
+            // 4.0 Initialiser l'état edge detection au 1er poll (reset 110, pas nourrissage)
             _network.seedInitialStateIfFirstPoll(doc);
-            // 4.1 Parser et appliquer tous les GPIO (actionneurs + configs)
+            // 4.1 Parser et appliquer tous les GPIO (actionneurs, configs, nourrissage distant)
             GPIOParser::parseAndApply(doc, *this);
             invalidateDbvarsCache();
-            // 4.2 Appliquer commandes nourrissage distant
-            _network.handleRemoteFeedingCommands(doc, *this);
         } else {
             Serial.println(F("[DBG] H3 skip apply (doc.size()==0)"));
         }

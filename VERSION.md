@@ -16,7 +16,8 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ### Points à surveiller
 
-- HTTP/TLS 5s, NVS remove idempotent, servo pin valide
+- HTTP GET/Heartbeat 5s ; **POST 7s** (dérogation `HTTP_POST_TIMEOUT_MS`, RAPPORT_WORKFLOW 2026-02-03).
+- NVS remove idempotent, servo pin valide
 
 ---
 

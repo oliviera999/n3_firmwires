@@ -43,7 +43,8 @@ WebClient::WebClient(const char* apiKey) {
 }
 
 bool WebClient::httpRequest(const char* url, const char* payload,
-                           char* response, size_t responseSize) {
+                           char* response, size_t responseSize,
+                           uint32_t timeoutMs) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
   if (url == nullptr || response == nullptr || responseSize == 0) {
@@ -81,13 +82,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     unsigned long attemptStartMs = millis();
 
     // Timeout global: vérifier AVANT begin() pour éviter end() sur état incohérent
-    // (corrige LoadProhibited quand end() était appelé juste après begin() au retry)
     uint32_t elapsedMs = millis() - requestStartMs;
-    if (elapsedMs >= NetworkConfig::HTTP_TIMEOUT_MS) {
+    if (elapsedMs >= timeoutMs) {
       LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u ms", elapsedMs);
       return false;
     }
 
+    _http.setTimeout(timeoutMs);
     // v11.162: Utilise le client HTTP simple (membre de classe)
     if (!_http.begin(_client, url)) {
       LOG(LOG_WARN, "[HTTP] begin() failed for URL");
@@ -109,7 +110,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       if (stream) {
         // v11.176: Ajout timeout pour éviter blocage indéfini (audit robustesse)
         const unsigned long streamReadStart = millis();
-        const unsigned long STREAM_READ_TIMEOUT_MS = NetworkConfig::HTTP_TIMEOUT_MS;
+        const unsigned long STREAM_READ_TIMEOUT_MS = timeoutMs;
         uint8_t emptyReads = 0;
         const uint8_t MAX_EMPTY_READS = 10;
         
@@ -161,7 +162,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     if (_client.connected()) {
       _http.end();
     }
-    // Réinitialiser HTTPClient pour prochain appel (même si end() non appelé)
+    // Réinitialiser HTTPClient pour prochain appel (timeout standard 5s sauf POST 7s)
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 
@@ -324,9 +325,9 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   return postRaw(payload);
 }
 
-bool WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  if (!config.isRemoteRecvEnabled()) return false;
+int WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
+  if (WiFi.status() != WL_CONNECTED) return 0;
+  if (!config.isRemoteRecvEnabled()) return 0;
   return fetchRemoteState(doc);
 }
 
@@ -337,14 +338,15 @@ bool WebClient::tryPushStatusToServer(const char* payload) {
   return postRaw(payload);
 }
 
-bool WebClient::fetchRemoteState(JsonDocument& doc) {
+// v11.193: Retourne 0=échec, 1=OK HTTP, 2=OK NVS fallback (caller ne doit pas itérer sur doc si 2)
+int WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!config.isRemoteRecvEnabled()) {
-    return false;
+    return 0;
   }
   
   // v11.165: Fallback NVS si WiFi non disponible (audit offline-first)
   if (WiFi.status() != WL_CONNECTED) {
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
   WiFi.setSleep(false);
@@ -363,7 +365,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!_http.begin(_client, url)) {
     LOG(LOG_WARN, "[HTTP] Echec initialisation HTTPClient pour %s", url);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
   int code = _http.GET();
@@ -374,7 +376,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
   // v11.175: Amélioration lecture HTTP - gestion Content-Length et chunked
@@ -388,7 +390,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
   // v11.185: Quand Content-Length est connu, lecture en un bloc (évite body déjà consommé par
@@ -400,11 +402,11 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   if (totalRead == 0) {
-    // Pas de Content-Length ou lecture bloc a échoué: boucle classique
+    // Pas de Content-Length ou lecture bloc a échoué: boucle classique (réponse chunked)
     unsigned long globalReadStart = millis();
     const unsigned long READ_TIMEOUT_MS = NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS;
     uint8_t emptyReads = 0;
-    const uint8_t MAX_EMPTY_READS = 10;
+    const uint8_t MAX_EMPTY_READS = NetworkConfig::OUTPUTS_STATE_MAX_EMPTY_READS;
 
     while (totalRead < MAX_RESPONSE_SIZE && (millis() - globalReadStart) < READ_TIMEOUT_MS) {
       if (!stream->connected()) break;
@@ -431,6 +433,17 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     payloadBuffer[totalRead] = '\0';
   }
 
+  // Drain restant du stream avant end() pour éviter "still data in buffer" et IncompleteInput
+  while (stream->available() > 0 && totalRead < MAX_RESPONSE_SIZE) {
+    size_t n = stream->readBytes(
+      payloadBuffer + totalRead,
+      MAX_RESPONSE_SIZE - totalRead
+    );
+    if (n == 0) break;
+    totalRead += n;
+    payloadBuffer[totalRead] = '\0';
+  }
+
   Serial.printf("[HTTP] outputs/state: code=%d contentLength=%d totalRead=%u\n",
                 code, contentLength, (unsigned)totalRead);
 
@@ -446,7 +459,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
     _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
   // Trouver le début du JSON
@@ -457,7 +470,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   
   // v11.172: Si pas de JSON valide trouvé, fallback silencieux (normal si serveur non configuré)
   if (!jsonStart) {
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
   
   if (jsonStart != payloadBuffer) {
@@ -503,7 +516,7 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
                     contentLength, (unsigned)ESP.getFreeHeap());
       lastJsonErrorLog.store(now);
     }
-    return loadFromNVSFallback(doc);
+    return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
   // Si le serveur renvoie un objet imbriqué {"outputs": {...}} ou {"switches": {...}},
@@ -537,28 +550,24 @@ bool WebClient::fetchRemoteState(JsonDocument& doc) {
   Serial.printf("[HTTP] GET outputs/state: body=%u bytes, doc keys=%u (0=vide serveur, ~28=OK)\n",
                 (unsigned)totalRead, (unsigned)doc.size());
 
-  return true;
+  return 1;  // OK depuis HTTP
 }
 
 // v11.165: Fonction helper pour fallback NVS (audit offline-first)
-// v11.186: Parse dans un document temporaire pour éviter LoadProhibited dans doc.clear()
-// v11.189: Ne plus appeler doc.clear() — ArduinoJson MemoryPoolList::clear() peut crasher
-// (LoadProhibited à 0x2714) si le doc a déjà été clear() par le caller ou est dans un état
-// incohérent. On copie tmpDoc → doc sans clear ; les clés obsolètes restent mais le caller
-// ne lit que les clés connues.
+// v11.194: Ne plus écrire dans doc — l'écriture doc[key]=value provoque LoadProhibited (EXCVADDR 0x4)
+// quand doc est sur la stack d'une autre tâche. Le caller (fetchRemoteState) ne lit pas doc quand
+// fromNVSFallback, donc on valide seulement la présence du cache NVS et on retourne true.
 bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
+  (void)doc;
   char cachedJson[1024];
   if (!config.loadRemoteVars(cachedJson, sizeof(cachedJson))) {
     return false;
   }
+  // Valider que le JSON est parsable (évite retourner true avec cache corrompu)
   StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmpDoc;
   DeserializationError err = deserializeJson(tmpDoc, cachedJson);
   if (err) {
     return false;
-  }
-  // Ne pas appeler doc.clear() : évite crash dans MemoryPoolList::clear() (EXCVADDR 0x2714)
-  for (JsonPair p : tmpDoc.as<JsonObject>()) {
-    doc[p.key().c_str()] = p.value();
   }
   LOG(LOG_INFO, "[HTTP] Utilisation cache NVS (fallback)");
   return true;
@@ -628,7 +637,8 @@ bool WebClient::postRaw(const char* payload) {
   char respPrimary[1024];
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-  bool success = httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary));
+  bool success = httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary),
+                             NetworkConfig::HTTP_POST_TIMEOUT_MS);
   
   // v11.171: Queue si échec (offline-first)
   if (!success && WiFi.status() != WL_CONNECTED) {

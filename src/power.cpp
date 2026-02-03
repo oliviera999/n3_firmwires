@@ -3,6 +3,7 @@
 #include "nvs_keys.h"     // NVSKeys::System::RTC_EPOCH
 #include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep
 #include <WiFi.h>
+#include "esp_wifi.h"     // Pour esp_wifi_get_config (éviter String Arduino)
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <time.h>
 #include <sys/time.h>
@@ -374,12 +375,16 @@ void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
 void PowerManager::saveCurrentWifiCredentials() {
   if (WiFi.status() == WL_CONNECTED) {
     WiFiHelpers::getSSID(_lastSSID, sizeof(_lastSSID));
-    // WiFi.psk() retourne aussi un String temporaire - copie immédiate
-    String psk = WiFi.psk();
-    size_t pskLen = psk.length();
-    if (pskLen >= sizeof(_lastPassword)) pskLen = sizeof(_lastPassword) - 1;
-    memcpy(_lastPassword, psk.c_str(), pskLen);
-    _lastPassword[pskLen] = '\0';
+    // Lecture PSK via ESP-IDF (évite String Arduino → stabilité long uptime)
+    wifi_config_t conf;
+    if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
+      size_t plen = strnlen(reinterpret_cast<const char*>(conf.sta.password), 64);
+      if (plen >= sizeof(_lastPassword)) plen = sizeof(_lastPassword) - 1;
+      memcpy(_lastPassword, conf.sta.password, plen);
+      _lastPassword[plen] = '\0';
+    } else {
+      _lastPassword[0] = '\0';
+    }
     _hasSavedCredentials = true;
     Serial.printf("[Power] Identifiants WiFi sauvegardés: SSID=%s\n", _lastSSID);
   } else {

@@ -21,6 +21,7 @@ struct MailQueueItem {
   char message[512];   // Réduit de 1536 - message tronqué si trop long (v11.144)
   char toEmail[48];    // Réduit de 64 (v11.144)
   bool isAlert;        // true = sendAlert, false = send simple
+  uint8_t retryCount;  // Nombre de tentatives déjà effectuées (re-queue sur échec SMTP, max 2)
 };
 // Taille totale: ~660 bytes (vs 1729 avant) - économie ~5 KB avec 2 slots
 
