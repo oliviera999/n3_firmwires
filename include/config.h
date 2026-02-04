@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.193: Incrément version
-    inline constexpr const char* VERSION = "11.193";
+    // v11.194: Incrément version
+    inline constexpr const char* VERSION = "11.194";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -187,7 +187,8 @@ namespace NetworkConfig {
     inline constexpr uint16_t WEB_SERVER_PORT = 80;
     inline constexpr uint16_t WS_PORT = 81;  // v11.178: Port WebSocket centralisé (audit)
     inline constexpr uint32_t WEB_SERVER_TIMEOUT_MS = 2000;
-    inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 4;
+    // Réduit de 4 à 2 pour limiter pics heap (AsyncResponseStream/cbuf par connexion → moins de panic).
+    inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 2;
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
@@ -195,7 +196,7 @@ namespace NetworkConfig {
     // POST post-data / ack : dérogation 8s (règle projet 5s) — latence serveur/hébergement observée
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 8000;  // 8 s (était 7 s)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
-    inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 25;
+    inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
@@ -316,8 +317,10 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (stack 4 KB + marge)
     // Bloc contigu minimum pour SMTP/TLS (ESP Mail Client + mbedTLS). Réserve libérable utilisée si heap fragmenté.
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;  // 32 KB
-    // Minimum free heap avant beginResponseStream (cbuf 1460 + overhead). Évite abort() si allocation échoue.
-    inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 8192;  // 8 KB
+    // Minimum free heap avant beginResponseStream. La lib AsyncWebServer (cbuf/WebResponses)
+    // alloue et redimensionne pendant write(); en dessous → Failed to allocate → abort().
+    // 20 KB marge pour fragmentation + réponses en vol (évite panic run 30 min).
+    inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 20480;  // 20 KB
 }
 
 // Intervalles minimum entre deux créations de tâches one-shot (réduit fragmentation / clics répétés)
@@ -663,7 +666,8 @@ namespace TaskConfig {
     inline constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
     // v11.169: Augmenté de 4KB à 8KB - stack overflow webTask avec WebSocket (Guru Meditation)
-    inline constexpr uint32_t WEB_TASK_STACK_SIZE = 8192;  // 8KB - requis pour WebSocket + AsyncWebServer
+    // v11.194: Augmenté 8KB → 10KB - HWM observé 1268 bytes libres (marge insuffisante, risque overflow)
+    inline constexpr uint32_t WEB_TASK_STACK_SIZE = 10240;  // 10KB - WebSocket + AsyncWebServer + marge
     // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
     inline constexpr UBaseType_t WEB_TASK_PRIORITY = 1;
     inline constexpr BaseType_t WEB_TASK_CORE_ID = 0;
