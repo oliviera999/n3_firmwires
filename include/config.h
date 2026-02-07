@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.194: Incrément version
-    inline constexpr const char* VERSION = "11.194";
+    // v11.195: Incrément version
+    inline constexpr const char* VERSION = "11.195";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -41,7 +41,11 @@ namespace Utils {
         #if defined(PROFILE_PROD)
             return "PRODUCTION";
         #elif defined(PROFILE_TEST)
-            return "TEST";
+            #if defined(BOARD_S3)
+                return "S3-TEST";
+            #else
+                return "TEST";
+            #endif
         #elif defined(PROFILE_DEV)
             return "DEVELOPMENT";
         #else
@@ -104,15 +108,22 @@ namespace SystemConfig {
 // - DS18B20_MAX_MS déplacé dans SensorConfig::DS18B20::TIMEOUT_MS
 
 namespace TimingConfig {
-    // WiFi - v11.191: 5 s par tentative pour renforcer la connexion (routeurs lents / DHCP)
-    // Retries toutes les 5 s (WIFI_RETRY_INTERVAL_MS) donc pas de blocage long
+    // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
+    // 8 s par tentative d'association WiFi (routeurs lents, DHCP, signaux faibles)
+    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 8000;
     // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
     // où on peut récupérer la config distante de manière fiable
     inline constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 8000;
     inline constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
+    // Délai après disconnect avant scan (stabilisation chip WiFi)
+    inline constexpr uint32_t WIFI_POST_DISCONNECT_DELAY_MS = 500;
+    // Délai entre tentatives sur réseaux différents (évite états intermédiaires)
+    inline constexpr uint32_t WIFI_DELAY_BETWEEN_NETWORKS_MS = 250;
+    // Délai avant 4e tentative par réseau visible (routeur instable)
+    inline constexpr uint32_t WIFI_FOURTH_ATTEMPT_DELAY_MS = 1000;
     
     // Serveur
     inline constexpr uint32_t SERVER_SYNC_INTERVAL_MS = 60000;
@@ -129,8 +140,11 @@ namespace TimingConfig {
     inline constexpr uint32_t WAKEUP_PROTECTION_DURATION_MS = 30000;
     inline constexpr uint32_t WEB_ACTIVITY_TIMEOUT_MS = 60000;
     
-    // Intervalle tâche capteurs: >= DHT MIN_READ_INTERVAL_MS (datasheet 2s, config 2.5s)
-    inline constexpr uint32_t SENSOR_TASK_INTERVAL_MS = 2500;
+    // Intervalle tâche capteurs: >= DHT MIN_READ_INTERVAL_MS (datasheet 2s, config 2.5s). 10s adapté aquaponie.
+    inline constexpr uint32_t SENSOR_TASK_INTERVAL_MS = 10000;
+    // Timeout attente queue capteurs dans automationTask — 5s donne une fenêtre pour recevoir le prochain envoi (10s)
+    // et réduit le ratio timeout/data sans augmenter la charge capteurs.
+    inline constexpr uint32_t AUTOMATION_QUEUE_RECEIVE_TIMEOUT_MS = 5000;
     // Timeout max pour lecture capteurs (protection watchdog)
     inline constexpr uint32_t MAX_SENSOR_TIME_MS = 30000;
 
@@ -170,6 +184,14 @@ namespace MonitoringConfig {
   // LÉGITIME: Code conditionnel utilisé en mode test/dev
 #endif
 
+#ifndef FEATURE_DIAG_OLED_LOGS
+  #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
+    #define FEATURE_DIAG_OLED_LOGS 1  // Logs debug OLED (hypothesisId, throttle, etc.)
+  #else
+    #define FEATURE_DIAG_OLED_LOGS 0  // Désactivé en production
+  #endif
+#endif
+
 // Garde-fou HTTPS: refuser la requête si le plus grand bloc libre < 45 KB (TLS ~42–46 KB contigus).
 // Définir à 0 pour désactiver (tenter TLS quand même; échec si allocation impossible).
 #ifndef FEATURE_HTTP_HEAP_GUARD
@@ -193,8 +215,14 @@ namespace NetworkConfig {
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
     inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 15000;  // 15 s (était 12 s)
+    // RPC FetchRemoteState : timeout = HTTP + marge queue (POST ~8s peut précéder le GET)
+    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 30000;  // 30 s (évite abandon avant fin GET si file chargée)
+    // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
+    inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation 8s (règle projet 5s) — latence serveur/hébergement observée
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 8000;  // 8 s (était 7 s)
+    // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée (~9s) pour éviter abandon avant fin
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 18000;  // 18 s (marge si GET ~15s devant dans la file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
@@ -229,7 +257,17 @@ namespace ServerConfig {
     // HTTPS réservé pour OTA (sécurité critique pour mises à jour firmware)
     inline constexpr const char* BASE_URL_SECURE = "https://iot.olution.info";
     
-    #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
+    #if defined(USE_TEST3_ENDPOINTS)
+        // Profil wroom-s3-test : routes serveur TEST3 (aquaponie3-test, post-data3-test, outputs3-test, heartbeat3-test)
+        inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3-test";
+        inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3-test/state";
+        inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3-test";
+    #elif defined(BOARD_S3) && defined(PROFILE_PROD)
+        // Profil wroom-s3-prod : routes serveur S3 prod (post-data3, outputs3, heartbeat3)
+        inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3";
+        inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3/state";
+        inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3";
+    #elif defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
         inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-test";
         inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-test/state";
         inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-test";
@@ -307,7 +345,19 @@ namespace BufferConfig {
 
 // Seuils mémoire pour handlers HTTP (heap minimum requis)
 // v11.173: Seuils réduits pour ESP32-WROOM (320KB RAM) - éviter 503 trop agressifs
+// S3 (N16R8): seuils plus élevés pour réduire les 503 sous charge (plus de RAM/PSRAM)
 namespace HeapConfig {
+#if defined(BOARD_S3)
+    inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 28000;      // S3: moins restrictif
+    inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 35000;    // S3
+    inline constexpr uint32_t MIN_HEAP_WIFI_ROUTE = 24000;      // S3
+    inline constexpr uint32_t MIN_HEAP_EMAIL_ASYNC = 45000;     // S3
+    inline constexpr uint32_t MIN_HEAP_OTA = 50000;             // S3: 50 KB (réduit refus OTA)
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (inchangé)
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;   // 32 KB (inchangé)
+    inline constexpr uint32_t MIN_HEAP_MAIL_SEND = 45000;       // S3: 45 KB
+    inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 36864; // S3: 36 KB (réduit 503 streams)
+#else
     inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 20000;      // /json endpoint (réduit de 50K)
     inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 25000;    // /dbvars endpoint (réduit de 55K)
     inline constexpr uint32_t MIN_HEAP_WIFI_ROUTE = 18000;      // /wifi/* endpoints (réduit de 40K)
@@ -317,10 +367,13 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (stack 4 KB + marge)
     // Bloc contigu minimum pour SMTP/TLS (ESP Mail Client + mbedTLS). Réserve libérable utilisée si heap fragmenté.
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;  // 32 KB
+    // Heap libre minimum avant envoi mail (Core 1). Évite abort() si TLS/allocs internes échouent.
+    inline constexpr uint32_t MIN_HEAP_MAIL_SEND = 40000;  // 40 KB
     // Minimum free heap avant beginResponseStream. La lib AsyncWebServer (cbuf/WebResponses)
     // alloue et redimensionne pendant write(); en dessous → Failed to allocate → abort().
-    // 20 KB marge pour fragmentation + réponses en vol (évite panic run 30 min).
-    inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 20480;  // 20 KB
+    // 28 KB marge pour fragmentation + réponses en vol (run 30 min encore abort sans 20K).
+    inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 28672;  // 28 KB
+#endif
 }
 
 // Intervalles minimum entre deux créations de tâches one-shot (réduit fragmentation / clics répétés)
@@ -396,6 +449,7 @@ namespace SensorConfig {
     }
 
     namespace DHT {
+        // Type: DHT22 uniquement en wroom-prod (USE_DHT22), DHT11 pour tous les autres envs (sensors.cpp).
         // Délai minimum entre lectures: 2500ms (compromis entre 2000ms datasheet et stabilité)
         // DHT11: 1s min, DHT22: 2s min (datasheet). On utilise 2.5s pour les deux.
         inline constexpr uint32_t MIN_READ_INTERVAL_MS = 2500;
@@ -576,8 +630,9 @@ namespace DisplayConfig {
     inline constexpr uint32_t OLED_INTERVAL_MS = 80;
     inline constexpr uint32_t OLED_COUNTDOWN_INTERVAL_MS = 250;
 
-    // Status bar layout (barre d'état en haut de l'écran)
+    // Status bar layout (barre d'état sur la dernière ligne de l'écran)
     inline constexpr int STATUS_BAR_HEIGHT = 8;
+    inline constexpr int STATUS_BAR_Y = OLED_HEIGHT - STATUS_BAR_HEIGHT;  // 56 : dernière ligne
     inline constexpr int STATUS_BAR_WIFI_X = 0;       // Position indicateur WiFi
     inline constexpr int STATUS_BAR_SENDRECV_X = 60;  // Position indicateurs S/R
     inline constexpr int STATUS_BAR_TIDE_X = 80;      // Position indicateur marée
@@ -624,6 +679,8 @@ namespace SleepConfig {
     inline constexpr int8_t WIFI_RSSI_GOOD = -65;
     inline constexpr int8_t WIFI_RSSI_FAIR = -75;
     inline constexpr int8_t WIFI_RSSI_POOR = -85;
+    // Seuil en dessous duquel modem-sleep est désactivé pour stabiliser la liaison
+    inline constexpr int8_t WIFI_RSSI_MODEM_SLEEP_THRESHOLD = -80;
     inline constexpr int8_t WIFI_RSSI_MINIMUM = -90;
     inline constexpr int8_t WIFI_RSSI_CRITICAL = -95;
     
@@ -631,6 +688,14 @@ namespace SleepConfig {
     inline constexpr uint32_t WIFI_WEAK_SIGNAL_THRESHOLD_MS = 300000;
     inline constexpr uint8_t WIFI_MAX_RECONNECT_ATTEMPTS = 5;
     inline constexpr uint32_t WIFI_RECONNECT_DELAY_MS = 5000;
+
+    // Modem-sleep WiFi : activé par défaut (économie d'énergie). Désactiver via build -DWIFI_MODEM_SLEEP_ENABLED=0
+    // Nom C++ distinct du macro pour éviter expansion préprocesseur (WIFI_MODEM_SLEEP_ENABLED → 0).
+#if defined(WIFI_MODEM_SLEEP_ENABLED) && (WIFI_MODEM_SLEEP_ENABLED == 0)
+    inline constexpr bool MODEM_SLEEP_ENABLED = false;
+#else
+    inline constexpr bool MODEM_SLEEP_ENABLED = true;
+#endif
 
     // Constantes PowerManager manquantes
     inline constexpr bool AUTO_RECONNECT_WIFI_AFTER_SLEEP = true;
@@ -648,6 +713,9 @@ namespace SleepConfig {
     inline constexpr uint32_t MIN_SAVE_INTERVAL_MS = 3600000;
     inline constexpr uint32_t MIN_TIME_DIFF_FOR_SAVE_SEC = 60;
 }
+
+// N'appelle WiFi.setSleep(enable) que si SleepConfig::MODEM_SLEEP_ENABLED est vrai. Fichiers utilisateurs : inclure config.h et WiFi (ex. WiFi.h).
+#define WIFI_APPLY_MODEM_SLEEP(enable) do { if (::SleepConfig::MODEM_SLEEP_ENABLED) { ::WiFi.setSleep(enable); } } while(0)
 
 namespace TaskConfig {
     // PISTE 5: Vérification des stacks FreeRTOS pour TLS
@@ -687,7 +755,12 @@ namespace TaskConfig {
     
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
+    // S3: 12 KB (stack canary netTask sur S3 - mbedTLS/HTTP plus gourmand)
+#if defined(BOARD_S3)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (S3)
+#else
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 8192;   // 8 KB (requis pour TLS/HTTPS avec mbedTLS)
+#endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
     
