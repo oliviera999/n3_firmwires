@@ -83,6 +83,7 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 
 | Description | Serveur POST | Serveur GET | Firmware C++ | API Locale | NVS (sys) |
 |-------------|--------------|-------------|--------------|------------|-----------|
+| Déclenchement vérif. OTA | - | `triggerOtaCheck` (bool) | - | - | - |
 | Force wakeup | `WakeUp` | `"115"`, `WakeUp` | `forceWakeUp` | `forceWakeUp` | `forceWakeUp` |
 | Frequence wakeup | `FreqWakeUp` | `"116"`, `FreqWakeUp` | `freqWakeSec` | `FreqWakeUp` | - |
 | Email | `mail` | `"100"`, `mail` | `_emailAddress` | `mail` | - |
@@ -202,7 +203,7 @@ Ces cles sont generees dynamiquement avec le prefixe `gpio_` :
 | `diag_otaKo` | uint32 | Compteur OTA echecs | OK |
 | `diag_lastUptime` | uint32 | Dernier uptime (debug) | OK |
 | `diag_lastHeap` | uint32 | Dernier heap (debug) | OK |
-| `diag_hasPanic` | bool | Flag panic detecte | OK |
+| `diag_crashFlag` | bool | Flag panic detecte (ex-diag_hasPanic, v11.173) | OK |
 | `diag_panicCause` | string | Cause du panic | OK |
 | `alert_floodLast` | uint32 | Timestamp dernier email inondation | OK |
 | `crash_has` | bool | Flag crash detecte | OK |
