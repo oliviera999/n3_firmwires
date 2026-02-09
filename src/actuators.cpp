@@ -98,7 +98,10 @@ void Feeder::begin() {
     esp_timer_stop(_detachTimer);
   }
   if (!_isAttached) {
-    _servo.attach(_gpio, 500, 2500); // Min/Max pulse width optimisés
+    // P2: Libérer état LEDC résiduel avant attach (évite "Pin already attached to LEDC")
+    _servo.detach();
+    vTaskDelay(pdMS_TO_TICKS(50));
+    _servo.attach(_gpio, 500, 2500);  // Min/Max pulse width optimisés
     _isAttached = true;
     LOG(LOG_INFO, "Servo GPIO%d attaché (500-2500μs)", _gpio);
   }

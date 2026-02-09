@@ -723,13 +723,12 @@ window.toggleForceWakeup = async function toggleForceWakeup() {
     const result = await response.text();
     addToHistory('Toggle Force Wakeup', 'success', result);
     toast(`Force Wakeup: ${result}`, 'success');
-    setTimeout(() => refresh(), 500);
     if (btn) {
-      const on = result.toLowerCase().includes('on');
-      btn.className = on ? 'btn btn-success w-100' : 'btn btn-outline-danger w-100';
+      btn.className = 'btn btn-outline-danger w-100';
       btn.innerHTML = '⏰ Force Wakeup';
       btn.disabled = false;
     }
+    // L'état ON/OFF est mis à jour par le message WebSocket (setRelay dans le handler)
   } catch (error) {
     console.error('Erreur Force Wakeup:', error);
     addToHistory('Toggle Force Wakeup', 'error', error.message);
@@ -739,6 +738,36 @@ window.toggleForceWakeup = async function toggleForceWakeup() {
       btn.innerHTML = '⏰ Force Wakeup';
       btn.disabled = false;
     }
+  }
+};
+
+/**
+ * Redémarre l'ESP32 (équivalent au bouton reset du serveur distant).
+ * L'ESP envoie la réponse puis redémarre ; la connexion peut se couper avant la réponse.
+ */
+window.resetEsp = async function resetEsp() {
+  const btn = $('btnResetEsp');
+  if (btn) {
+    btn.disabled = true;
+    btn.className = 'btn btn-warning w-100';
+    btn.innerHTML = '<span class="loading-spinner"></span> Redémarrage...';
+  }
+  addToHistory('Reset ESP', 'loading');
+  try {
+    const response = await fetch('/action?cmd=resetMode', { cache: 'no-store' });
+    const result = await response.text();
+    addToHistory('Reset ESP', 'success', result);
+    toast('ESP redémarre. Reconnexion dans quelques secondes.', 'success');
+  } catch (error) {
+    addToHistory('Reset ESP', 'success', 'Commande envoyée (connexion perdue au redémarrage)');
+    toast('ESP redémarre. Reconnexion dans quelques secondes.', 'success');
+  }
+  if (btn) {
+    setTimeout(() => {
+      btn.className = 'btn btn-outline-warning w-100';
+      btn.innerHTML = '🔄 Reset ESP';
+      btn.disabled = false;
+    }, 15000);
   }
 };
 
@@ -996,9 +1025,6 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
           statusEl.textContent = 'CONNECTÉ';
           statusEl.className = 'badge bg-success';
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiStaConnected',message:'DOM set from lastWifiData',data:{ssid:lastWifiData.wifiStaSSID,ip:lastWifiData.wifiStaIP,rssi:lastWifiData.wifiStaRSSI},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
       } else {
         if (ssidEl) ssidEl.textContent = '--';
         if (ipEl) ipEl.textContent = '--';
@@ -1007,9 +1033,6 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
           statusEl.textContent = 'DÉCONNECTÉ';
           statusEl.className = 'badge bg-danger';
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiStaDisconnected',message:'DOM set to --',data:{wifiStaConnected:data.wifiStaConnected},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
       }
     } else {
       // Utiliser les dernières valeurs connues si les données ne sont pas présentes
@@ -1018,9 +1041,6 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       const ipEl = $('wifiStaIP');
       const rssiEl = $('wifiStaRSSI');
       const statusEl = $('wifiStaStatus');
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/1a861904-011e-4ae1-86f8-7b4ffb4caab2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'common.js:wifiStaElse',message:'wifiStaConnected undefined, use lastWifiData',data:{lastConnected:lastWifiData.wifiStaConnected,msgType:data.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       if (lastWifiData.wifiStaConnected) {
         if (ssidEl) ssidEl.textContent = lastWifiData.wifiStaSSID;
         if (ipEl) ipEl.textContent = lastWifiData.wifiStaIP;

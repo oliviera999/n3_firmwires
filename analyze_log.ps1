@@ -110,6 +110,17 @@ $dht22Failures = ([regex]::Matches($logContent, "AirSensor.*échec|DHT.*non dét
 # 5. Queue capteurs (Sensor = g_sensorQueue 5 slots; DataQueue = sync payloads)
 $queueFullErrors = ([regex]::Matches($logContent, "Queue pleine|queue.*full", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 
+# 5b. Diagnostic WiFi / netTask / timeout (branche data vs timeout, netRPC, WiFi)
+$branchData = ([regex]::Matches($logContent, '"branch"\s*:\s*"data"', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$branchTimeout = ([regex]::Matches($logContent, '"branch"\s*:\s*"timeout"', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$netRpcTimeouts = ([regex]::Matches($logContent, '\[netRPC\]\s*Timeout', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$wifiDisconnect = ([regex]::Matches($logContent, "WiFi.*disconnect|WiFi.*deconnect|Connexion.*perdue|\[HTTP\] WiFi (déconnecté|perdu)", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$wifiConnect = ([regex]::Matches($logContent, "\[WiFi\]\s*OK|WiFi.*connect.*OK|Connexion.*reussie|\[Event\] WiFi.*connect", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$getOutputsState = ([regex]::Matches($logContent, "outputs/state:\s*code=", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$syncEnvoiPost = ([regex]::Matches($logContent, "\[Sync\].*envoi POST", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+$totalBranch = $branchData + $branchTimeout
+$ratioDataPct = if ($totalBranch -gt 0) { [math]::Round(100.0 * $branchData / $totalBranch, 1) } else { 0 }
+
 # 6. Erreurs critiques — Reboot = uniquement lignes rst:0x... (raison reset ESP32), pas "Hard resetting" ni "Disconnected"
 $bootLines = [regex]::Matches($logContent, "rst:0x[0-9a-f]+?\s*\(", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 $bootCount = $bootLines.Count
@@ -172,6 +183,17 @@ $analysis += @"
    - Erreurs queue pleine: $queueFullErrors
    - $(if ($queueFullErrors -eq 0) { "✅ OK - Aucune erreur de queue" } else { "⚠️ ATTENDU - $queueFullErrors erreur(s) (queue non agrandie)" })
    - Explication: la tâche automationTask consomme les lectures (xQueueReceive). Si elle est bloquée ou lente (HTTP long, affichage, etc.), sensorTask remplit la queue (5 entrées). Quand elle est pleine, la plus ancienne est écrasée (comportement voulu).
+
+=== BILAN DIAGNOSTIC (WiFi / netTask / timeout) ===
+- Branche data (données capteurs reçues): $branchData
+- Branche timeout (queue capteurs vide): $branchTimeout
+- Ratio data: $ratioDataPct % (sur $totalBranch cycles)
+- Timeouts netRPC (appelant a abandonné en attente netTask): $netRpcTimeouts
+- WiFi: $wifiConnect reconnexion(s) / événement(s) OK, $wifiDisconnect déconnexion(s) / perte(s)
+- GET outputs/state exécutés (lignes code=): $getOutputsState
+- Départs POST [Sync] envoi POST: $syncEnvoiPost
+$(if ($netRpcTimeouts -gt 0) { "- ⚠️ Des requêtes réseau ont été abandonnées (timeout appelant) - netTask peut être saturée." } else { "" })
+$(if ($branchTimeout -gt 0 -and $totalBranch -gt 0 -and $ratioDataPct -lt 20) { "- ⚠️ Peu de cycles avec données capteurs ($ratioDataPct %) - timeouts capteurs fréquents." } else { "" })
 
 === BOOTS (rst:0x = raison reset ESP32) ===
 - Lignes rst:0x... (boots): $bootCount

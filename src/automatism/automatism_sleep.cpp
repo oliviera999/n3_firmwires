@@ -1,7 +1,11 @@
 #include "automatism/automatism_sleep.h"
-#include "automatism.h" // Pour accès aux méthodes de Automatism
+#include "automatism.h"  // Pour accès aux méthodes de Automatism
+#include "app_tasks.h"
 #include "config.h"
 #include "realtime_websocket.h"
+#include "esp_task_wdt.h"
+#include <ArduinoJson.h>
+#include <WiFi.h>
 #include <ctime>
 #include <algorithm>
 
@@ -370,19 +374,47 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     
     // 3. Entrer en veille
     Serial.println(F("[Auto] Conditions remplies - Entrée en veille"));
-    
+
+    // Envoi des données vers le serveur distant avant veille (si WiFi + envoi activé)
+    if (WiFi.status() == WL_CONNECTED && core.isRemoteSendEnabled()) {
+        core.sendFullUpdate(r, nullptr);
+    }
+
+    // Snapshot aqua / chauffage / lumière avant veille, puis coupure pour la veille
+    core.prepareActuatorsForSleep(acts);
+
     // Envoi du mail de mise en veille (si notifications activées)
     if (core.isEmailEnabled()) {
         const char* reason = tideAscending ? "Marée montante détectée" : "Délai d'inactivité atteint";
         core.sendSleepMail(reason, sleepDurationSec, r);
     }
-    
+
     // Appel à la veille
     uint32_t actualSleptSec = _power.goToLightSleep(sleepDurationSec);
-    
+
+    // Réveil: attente WiFi, poll états distants puis envoi si succès (comme au boot)
+    unsigned long wakeStartMs = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - wakeStartMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
+        esp_task_wdt_reset();
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        core.waitForNetworkReady();
+        ArduinoJson::StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+        bool fromNVSFallback = false;
+        bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS, &fromNVSFallback);
+        if (ok && !fromNVSFallback && doc.size() > 0) {
+            core.processFetchedRemoteConfig(doc);
+            core.sendFullUpdate(r, nullptr);
+        }
+    }
+
+    // Restauration aqua / chauffage / lumière au réveil
+    core.restoreActuatorsAfterWake(acts);
+
     // 4. Mettre à jour _lastWakeMs après le réveil
     _lastWakeMs = millis();
-    
+
     Serial.printf("[Auto] Réveil après %u secondes de veille\n", actualSleptSec);
     
     // Envoi du mail de réveil (si notifications activées)

@@ -29,9 +29,14 @@ bool WifiManager::connect(DisplayView* disp) {
   } else {
     WiFi.mode(WIFI_STA);
   }
-  // Tente un disconnect propre avant scan ; laisser le radio se stabiliser (renforce connexion)
-  WiFi.disconnect(false, true);
-  vTaskDelay(pdMS_TO_TICKS(300));
+  // Maximiser la puissance TX pour améliorer la connexion aux réseaux faibles/instables
+  esp_wifi_set_max_tx_power(82);  // 20.5 dBm (max 2.4 GHz), unité 0.25 dBm
+  // N'appeler disconnect() que si la STA a déjà été démarrée (begin() appelé au moins une fois).
+  // Sinon sur ESP32-S3 : "STA not started! You must call begin first" et le scan peut renvoyer 0 réseau.
+  if (WiFi.status() != WL_IDLE_STATUS) {
+    WiFi.disconnect(false, true);
+    vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_POST_DISCONNECT_DELAY_MS));
+  }
 
   Serial.println(F("[WiFi] 🔍 Balayage des réseaux..."));
   // v11.176: Watchdog reset avant scan bloquant (2-5s) - audit robustesse
@@ -94,21 +99,23 @@ bool WifiManager::connect(DisplayView* disp) {
     }
   }
 
-  // --- 1) Réseaux visibles, triés par RSSI décroissant (avec filtrage minimum) ----
+  // --- 1) Réseaux visibles: tous sont tentés (priorité au meilleur RSSI). Plus de rejet sur seuil. ----
   size_t order[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
   size_t orderCount = 0;
   for (size_t i = 0; i < _count; ++i) {
-    if (cand[i].present && cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
+    if (cand[i].present) {
       order[orderCount++] = i;
-      Serial.printf("[WiFi] ✅ Réseau %s accepté (RSSI: %d dBm)\n", _list[i].ssid, cand[i].rssi);
-    } else if (cand[i].present) {
-      Serial.printf("[WiFi] ⚠️ Réseau %s rejeté (RSSI trop faible: %d dBm < %d dBm)\n",
-                    _list[i].ssid, cand[i].rssi, ::SleepConfig::WIFI_RSSI_MINIMUM);
+      if (cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
+        Serial.printf("[WiFi] ✅ Réseau %s (RSSI: %d dBm)\n", _list[i].ssid, cand[i].rssi);
+      } else {
+        Serial.printf("[WiFi] ⚠️ Réseau %s signal faible (RSSI: %d dBm) - tentative quand même\n",
+                      _list[i].ssid, cand[i].rssi);
+      }
     }
   }
   std::sort(order, order + orderCount, [&](size_t a, size_t b) { return cand[a].rssi > cand[b].rssi; });
 
-  // Ajoute ensuite les credentials non détectés (afin de tenter quand même)
+  // Ajoute ensuite les credentials non détectés au scan (tenter quand même)
   for (size_t i = 0; i < _count; ++i) if (!cand[i].present) order[orderCount++] = i;
 
   for (size_t idx = 0; idx < orderCount; ++idx) {
@@ -127,8 +134,43 @@ bool WifiManager::connect(DisplayView* disp) {
     }else{
       Serial.printf("[WiFi] 🔍 Tentative (invisible) %s ...\n", _list[i].ssid);
       Serial.printf("[Event] WiFi try invisible %s\n", _list[i].ssid);
-      if(strlen(_list[i].password)==0){ WiFi.begin(_list[i].ssid); }
-      else { WiFi.begin(_list[i].ssid, _list[i].password); }
+      // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan
+      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+      int n2 = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+      bool foundInRescan = false;
+      int8_t rescanRssi = -128;
+      uint8_t rescanBssid[6] = {0};
+      uint8_t rescanChan = 0;
+      wifi_auth_mode_t rescanAuth = WIFI_AUTH_OPEN;
+      if (n2 > 0) {
+        uint16_t num2 = (n2 <= WIFI_SCAN_MAX) ? (uint16_t)n2 : WIFI_SCAN_MAX;
+        if (esp_wifi_scan_get_ap_records(&num2, s_apRecords) == ESP_OK) {
+          for (int j = 0; j < num2; ++j) {
+            char ssBuf[33];
+            memcpy(ssBuf, s_apRecords[j].ssid, 32);
+            ssBuf[32] = '\0';
+            if (strcmp(ssBuf, _list[i].ssid) == 0 && s_apRecords[j].rssi > rescanRssi) {
+              rescanRssi = s_apRecords[j].rssi;
+              memcpy(rescanBssid, s_apRecords[j].bssid, 6);
+              rescanChan = s_apRecords[j].primary;
+              rescanAuth = s_apRecords[j].authmode;
+              foundInRescan = true;
+            }
+          }
+        }
+      }
+      if (foundInRescan) {
+        Serial.printf("[WiFi] Rescan: %s trouvé RSSI=%d ch=%d\n", _list[i].ssid, rescanRssi, rescanChan);
+        if (rescanAuth == WIFI_AUTH_OPEN || strlen(_list[i].password) == 0) {
+          WiFi.begin(_list[i].ssid, nullptr, rescanChan, rescanBssid);
+        } else {
+          WiFi.begin(_list[i].ssid, _list[i].password, rescanChan, rescanBssid);
+        }
+      } else {
+        if (strlen(_list[i].password) == 0) { WiFi.begin(_list[i].ssid); }
+        else { WiFi.begin(_list[i].ssid, _list[i].password); }
+      }
     }
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {
@@ -143,7 +185,7 @@ bool WifiManager::connect(DisplayView* disp) {
       char ipBuf[16];
       snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
       Serial.printf("[WiFi] OK %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-      WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
+      WIFI_APPLY_MODEM_SLEEP(true);   // modem-sleep pour économie d'énergie
       _connecting = false;
       return true;
     }
@@ -169,7 +211,7 @@ bool WifiManager::connect(DisplayView* disp) {
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         Serial.printf("[WiFi] OK(2nd) %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-        WiFi.setSleep(true);   // active le modem-sleep pour économie d'énergie
+        WIFI_APPLY_MODEM_SLEEP(true);   // modem-sleep pour économie d'énergie
         _connecting = false;
         return true;
       }
@@ -195,13 +237,41 @@ bool WifiManager::connect(DisplayView* disp) {
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         Serial.printf("[WiFi] OK(3e) %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
-        WiFi.setSleep(true);
+        WIFI_APPLY_MODEM_SLEEP(true);
+        _connecting = false;
+        return true;
+      }
+      // 4e tentative après délai plus long (routeur instable)
+      Serial.printf("[WiFi] 🔄 4e tentative %s (délai 1 s)...\n", _list[i].ssid);
+      vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_FOURTH_ATTEMPT_DELAY_MS));
+      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+      WiFi.disconnect(false, true);
+      if (strlen(_list[i].password) == 0) {
+        WiFi.begin(_list[i].ssid);
+      } else {
+        WiFi.begin(_list[i].ssid, _list[i].password);
+      }
+      uint32_t start4 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - start4 < _timeoutMs) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        show("WiFi OK");
+        IPAddress ip = WiFi.localIP();
+        char ipBuf[16];
+        snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        Serial.printf("[WiFi] OK(4e) %s %s RSSI=%d\n", _list[i].ssid, ipBuf, WiFi.RSSI());
+        WIFI_APPLY_MODEM_SLEEP(true);
         _connecting = false;
         return true;
       }
     }
     show("Echec\nSuivant...");
     Serial.printf("[WiFi] ❌ Connexion à %s impossible\n", _list[i].ssid);
+    // Délai entre réseaux pour éviter états intermédiaires du chip
+    if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_DELAY_BETWEEN_NETWORKS_MS));
   }
   // Aucun réseau connu disponible ou connexion échouée => AP secours
   Serial.println(F("[WiFi] ❌ Échec de connexion - démarrage AP de secours"));
@@ -238,8 +308,11 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
   } else {
     WiFi.mode(WIFI_STA);
   }
-  WiFi.disconnect(false, true);
-  vTaskDelay(pdMS_TO_TICKS(50));
+  esp_wifi_set_max_tx_power(82);  // 20.5 dBm pour liens faibles
+  if (WiFi.status() != WL_IDLE_STATUS) {
+    WiFi.disconnect(false, true);
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
 
   Serial.printf("[WiFi] 🔗 Connexion manuelle à %s...\n", ssid);
   if (password && strlen(password) > 0) {
@@ -263,7 +336,7 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     Serial.printf("[WiFi] ✅ Connecté à %s (%s, RSSI %d dBm)\n", ssid, ipBuf, WiFi.RSSI());
     Serial.printf("[Event] WiFi manual connected %s IP=%s RSSI=%d\n", ssid, ipBuf, WiFi.RSSI());
-    WiFi.setSleep(true);
+    WIFI_APPLY_MODEM_SLEEP(true);
     _lastAttemptMs = millis();
     _connecting = false;
     return true;
@@ -337,7 +410,13 @@ void WifiManager::loop(DisplayView* disp){
     // Cadence plus douce quand connecté
     _baseRetryMs = max<uint32_t>(_baseRetryMs, 15000); // >=15 s
     _retryIntervalMs = _baseRetryMs;
-    // ✅ SUPPRIMÉ: WiFi.setSleep(false) - Garde le modem-sleep activé pour économie d'énergie
+    // Signal faible: désactiver modem-sleep pour stabiliser la liaison (évite déconnexions)
+    int8_t rssi = getCurrentRSSI();
+    if (rssi < ::SleepConfig::WIFI_RSSI_MODEM_SLEEP_THRESHOLD) {
+      WIFI_APPLY_MODEM_SLEEP(false);
+    } else {
+      WIFI_APPLY_MODEM_SLEEP(true);
+    }
     return;
   }
   if (_connecting) return; // éviter les conflits

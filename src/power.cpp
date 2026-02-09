@@ -436,7 +436,7 @@ bool PowerManager::reconnectWithSavedCredentials() {
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     Serial.printf("[Power] Reconnexion WiFi réussie à %s (%s)\n", 
                   _lastSSID, ipBuf);
-    WiFi.setSleep(true);  // Active le modem-sleep pour économie d'énergie
+    WIFI_APPLY_MODEM_SLEEP(true);  // modem-sleep pour économie d'énergie
     
     // Attente stabilisation stack TCP/IP (évite "connection refused" après réveil)
     waitForNetworkReady();

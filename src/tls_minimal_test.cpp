@@ -7,6 +7,8 @@
 #include <HTTPClient.h>
 #include <cstring>
 
+#include "config.h"
+
 // Réutiliser exactement les mêmes credentials WiFi que le firmware (sans WifiManager)
 #include "secrets.h"
 
@@ -29,7 +31,7 @@ void logHeap(const char* prefix) {
 void connectWifiSimple() {
   Serial.println("\n=== WIFI CONNECT (minimal) ===");
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
+  WIFI_APPLY_MODEM_SLEEP(false);
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(false, true);
   delay(500);
@@ -90,7 +92,7 @@ bool runSingleHttpsGet() {
   // Client TLS très basique
   g_client.setInsecure();           // évite gestion CA pour le test
   g_client.setHandshakeTimeout(5000);
-  WiFi.setSleep(false);
+  WIFI_APPLY_MODEM_SLEEP(false);
 
   Serial.println("[TEST] 🔒 Préparation client HTTPS...");
 

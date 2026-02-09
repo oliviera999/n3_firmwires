@@ -33,7 +33,8 @@ void setupHostname(char* buffer, size_t bufferSize) {
 void initializeStorage(AppContext& ctx) {
   Serial.println("[Event] Boot start");
 
-  const char* fsLabel = "spiffs";  // Label "spiffs" pour compatibilité ESP Mail Client
+  // Label "spiffs" partout (tables de partition : nom spiffs, subtype littlefs ou spiffs selon env)
+  const char* fsLabel = "spiffs";
   Serial.printf("[FS] Mounting LittleFS (label=%s)...\n", fsLabel);
   uint32_t fsStartTime = millis();
   if (!LittleFS.begin(false, "/spiffs", 10, fsLabel)) {
@@ -228,7 +229,7 @@ static void checkForOtaUpdateInternal(AppContext& ctx) {
     }
   });
 
-  Serial.println("[OTA] Mode manuel: pas de vérification automatique au boot");
+  Serial.println("[OTA] Vérification au boot et toutes les 2h gérées par netTask (prod)");
   Serial.printf("[OTA] 📋 Version courante: %s\n", ctx.otaManager.getCurrentVersion());
 
   Serial.printf("[OTA] 📊 Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());
@@ -303,7 +304,7 @@ void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
   ArduinoOTA
     .onStart([&ctx, hostname]() {
       Serial.println("[OTA] Début de la mise à jour");
-      WiFi.setSleep(false);
+      WIFI_APPLY_MODEM_SLEEP(false);
       Serial.println("[Event] ArduinoOTA start");
       if (ctx.display.isPresent()) {
         ctx.display.showOtaProgressOverlay(0);
@@ -337,7 +338,7 @@ void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
     })
     .onEnd([&ctx]() {
       Serial.println("[OTA] Fin de la mise à jour");
-      WiFi.setSleep(false);
+      WIFI_APPLY_MODEM_SLEEP(false);
       if (ctx.display.isPresent()) {
         ctx.display.hideOtaProgressOverlay();
       }
@@ -367,21 +368,42 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
                 ctx.automatism.isEmailEnabled() ? "true" : "false");
 
   if (state.justUpdated && ctx.automatism.isEmailEnabled()) {
-    Serial.println("[App] Envoi email pour mise à jour OTA serveur distant...");
+    const char* safeHost = (hostname && hostname[0] != '\0') ? hostname : "(unknown)";
+    const bool fromRemote = (state.previousVersion[0] != '\0');
+    if (fromRemote) {
+      Serial.println("[App] Envoi email pour mise à jour OTA serveur distant...");
+    } else {
+      Serial.println("[App] Envoi email pour mise à jour OTA ArduinoOTA...");
+    }
     char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
-    size_t bodyLen = snprintf(body, sizeof(body),
-        "Mise à jour OTA effectuée avec succès.\n\n"
-        "Détails de la mise à jour:\n"
-        "- Méthode: Serveur distant automatique\n"
-        "- Ancienne version: %s\n"
-        "- Nouvelle version: %s\n"
-        "- Hostname: %s\n"
-        "- Compilé le: %s %s\n"
-        "- Redémarrage automatique effectué",
-        state.previousVersion[0] != '\0' ? state.previousVersion : "",
-        ProjectConfig::VERSION,
-        hostname,
-        __DATE__, __TIME__);
+    size_t bodyLen;
+    if (fromRemote) {
+      bodyLen = snprintf(body, sizeof(body),
+          "Mise à jour OTA effectuée avec succès.\n\n"
+          "Détails de la mise à jour:\n"
+          "- Méthode: Serveur distant (HTTP OTA)\n"
+          "- Ancienne version: %s\n"
+          "- Nouvelle version: %s\n"
+          "- Hostname: %s\n"
+          "- Compilé le: %s %s\n"
+          "- Redémarrage automatique effectué",
+          state.previousVersion,
+          ProjectConfig::VERSION,
+          safeHost,
+          __DATE__, __TIME__);
+    } else {
+      bodyLen = snprintf(body, sizeof(body),
+          "Mise à jour OTA effectuée avec succès.\n\n"
+          "Détails de la mise à jour:\n"
+          "- Méthode: ArduinoOTA (interface native)\n"
+          "- Nouvelle version: %s\n"
+          "- Hostname: %s\n"
+          "- Compilé le: %s %s\n"
+          "- Redémarrage automatique effectué",
+          ProjectConfig::VERSION,
+          safeHost,
+          __DATE__, __TIME__);
+    }
     if (bodyLen >= sizeof(body)) {
       body[sizeof(body) - 4] = '.';
       body[sizeof(body) - 3] = '.';
@@ -389,9 +411,10 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
       body[sizeof(body) - 1] = '\0';
     }
     char subj[128];
-    snprintf(subj, sizeof(subj), "OTA mise à jour - Serveur distant [%s]", hostname);
-    bool emailSent = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress(), true);
-    Serial.printf("[App] Email serveur distant %s\n", emailSent ? "envoyé" : "échoué");
+    snprintf(subj, sizeof(subj), "OTA mise à jour - %s [%s]",
+             fromRemote ? "Serveur distant" : "ArduinoOTA", safeHost);
+    bool emailQueued = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress(), true);
+    Serial.printf("[App] Email OTA %s\n", emailQueued ? "ajouté à la queue" : "échoué (ajout queue)");
     state.justUpdated = false;
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_PREV_VER);
     state.previousVersion[0] = '\0';
@@ -403,7 +426,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     const char* mail = mailNotif ? ctx.automatism.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
 
     if (mailNotif) {
-      Serial.println("[App] Envoi email pour mise à jour OTA interface web...");
+      Serial.println("[App] Envoi email pour mise à jour OTA (flag interface web / test)...");
     } else {
       Serial.println("[App] Email non activé dans les variables distantes, utilisation de l'adresse par défaut...");
     }
@@ -413,7 +436,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     size_t bodyLen = snprintf(body, sizeof(body),
         "Mise à jour OTA effectuée avec succès.\n\n"
         "Détails de la mise à jour:\n"
-        "- Méthode: Interface web ElegantOTA\n"
+        "- Méthode: Interface web (/api/ota) ou ArduinoOTA\n"
         "- Nouvelle version: %s\n"
         "- Hostname: %s\n"
         "- Compilé le: %s %s\n"
@@ -429,8 +452,8 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     }
     char subj[128];
     snprintf(subj, sizeof(subj), "OTA mise à jour - Interface web [%s]", safeHost);
-    bool emailSent = ctx.mailer.sendAlert(subj, body, mail, true);
-    Serial.printf("[App] Email interface web %s\n", emailSent ? "envoyé" : "échoué");
+    bool emailQueued = ctx.mailer.sendAlert(subj, body, mail, true);
+    Serial.printf("[App] Email interface web %s\n", emailQueued ? "ajouté à la queue" : "échoué (ajout queue)");
     ctx.config.setOtaUpdateFlag(false);
   }
 #endif

@@ -85,7 +85,7 @@ class OTAMonitor:
         endpoints = [
             ("/ota/status", "Statut OTA"),
             ("/ota/check", "Vérification OTA"),
-            ("/update", "Interface ElegantOTA")
+            ("/update", "Page OTA (POST /api/ota)")
         ]
         
         for endpoint, description in endpoints:

@@ -1,6 +1,10 @@
 #pragma once
 #include <Arduino.h>
+#if defined(USE_AIR_SENSOR_BME280)
+#include <Adafruit_BME280.h>
+#else
 #include <DHT.h>
+#endif
 #include <DallasTemperature.h>
 #include "pins.h"
 #include "config.h"
@@ -63,7 +67,11 @@ class AirSensor {
   float humidity(); // Lecture simple (interne)
   float filteredTemperatureC(); // Filtrage EMA avec throttle (interne)
   float filteredHumidity(); // Filtrage EMA avec throttle (interne)
+#if defined(USE_AIR_SENSOR_BME280)
+  Adafruit_BME280 _bme;
+#else
   DHT _dht;
+#endif
   
   // Historique glissant pour température
   static const uint8_t HISTORY_SIZE = 5;

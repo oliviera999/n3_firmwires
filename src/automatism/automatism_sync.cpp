@@ -289,7 +289,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         esp_task_wdt_reset();
     }
     uint32_t sendStart = millis();
-    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_TIMEOUT_MS);
+    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS);
     uint32_t durationMs = millis() - sendStart;
     
     registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -413,10 +413,19 @@ void AutomatismSync::processDeferredRemoteVarsSave() {
 
 bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     bool fromNVSFallback = false;
-    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS, &fromNVSFallback);
+    // v11.195: RPC timeout plus long que HTTP (queue wait + GET) — évite "Timeout abandon" avant fin GET
+    bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS, &fromNVSFallback);
+    // #region agent log
+    Serial.printf("[DBG] fetchRemoteState ok=%d fromNVS=%d hypothesis=H3,H4\n", ok ? 1 : 0, fromNVSFallback ? 1 : 0);
+    // #endregion
     // v11.193: Données HTTP → copier dans doc depuis le caller (évite LoadProhibited en écrivant doc depuis netTask)
     if (ok && !fromNVSFallback) {
-        if (_web.copyLastFetchedTo(doc) && doc.size() > 0) {
+        bool copied = _web.copyLastFetchedTo(doc);
+        size_t docSize = doc.size();
+        // #region agent log
+        Serial.printf("[DBG] fetchRemoteState copyLastFetchedTo=%d docSize=%u hypothesis=H4,H6\n", copied ? 1 : 0, (unsigned)docSize);
+        // #endregion
+        if (copied && doc.size() > 0) {
             processFetchedRemoteConfig(doc);
         }
     } else if (!ok) {
@@ -428,10 +437,18 @@ bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 }
 
 bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis) {
-    if (!_config.isRemoteRecvEnabled()) return false;
+    // #region agent log
+    if (!_config.isRemoteRecvEnabled()) {
+        Serial.printf("[DBG] pollRemoteState skip recvDisabled hypothesis=H2,H5\n");
+        return false;
+    }
     if (currentMillis - _lastRemoteFetch < REMOTE_FETCH_INTERVAL_MS) return false;
-    if (WiFi.status() != WL_CONNECTED) return false;
-
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.printf("[DBG] pollRemoteState skip wifi hypothesis=H5\n");
+        return false;
+    }
+    Serial.printf("[DBG] pollRemoteState calling fetchRemoteState hypothesis=H5\n");
+    // #endregion
     return fetchRemoteState(doc);
 }
 
@@ -460,7 +477,7 @@ uint16_t AutomatismSync::replayQueuedData() {
     while (_dataQueue.size() > 0 && sent < 2) {
         char payload[1024];
         if (_dataQueue.peek(payload, sizeof(payload))) {
-            if (AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_TIMEOUT_MS)) {
+            if (AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS)) {
                 _dataQueue.pop(payload, sizeof(payload));
                 sent++;
             } else {
@@ -478,7 +495,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
              ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
-    return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_TIMEOUT_MS);
+    return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {

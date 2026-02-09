@@ -4,6 +4,7 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <freertos/semphr.h>
 #include <cstring>
 
@@ -375,6 +376,12 @@ NVSError NVSManager::loadBool(const char* ns, const char* key, bool& value, bool
         return openError;
     }
 
+    // Éviter getBool quand la clé n'existe pas (Preferences logue NOT_FOUND en [V])
+    if (!_preferences.isKey(key)) {
+        value = defaultValue;
+        closeNamespace();
+        return NVSError::SUCCESS;
+    }
     value = _preferences.getBool(key, defaultValue);
     closeNamespace();
 
@@ -587,6 +594,12 @@ NVSError NVSManager::loadULong(const char* ns, const char* key, unsigned long& v
         return openError;
     }
 
+    // Éviter getULong quand la clé n'existe pas (Preferences logue NOT_FOUND en [V], ex. diag_otaOk)
+    if (!_preferences.isKey(key)) {
+        value = defaultValue;
+        closeNamespace();
+        return NVSError::SUCCESS;
+    }
     value = _preferences.getULong(key, defaultValue);
     closeNamespace();
 
@@ -855,13 +868,14 @@ NVSError NVSManager::migrateFromOldSystem() {
 
         bool ruleMigrated = false;
 
-        nvs_iterator_t it = nullptr;
-        esp_err_t findErr = nvs_entry_find(NVS_DEFAULT_PART_NAME, rule.oldNamespace, NVS_TYPE_ANY, &it);
-        
         // v11.166: Compteur limite pour eviter boucle infinie (max 100 entries par namespace)
         constexpr size_t MAX_NVS_ENTRIES_PER_NAMESPACE = 100;
         size_t entryCount = 0;
-        
+
+#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+        nvs_iterator_t it = nullptr;
+        esp_err_t findErr = nvs_entry_find(NVS_DEFAULT_PART_NAME, rule.oldNamespace, NVS_TYPE_ANY, &it);
+
         while (findErr == ESP_OK && entryCount < MAX_NVS_ENTRIES_PER_NAMESPACE) {
             ++entryCount;
             nvs_entry_info_t info;
@@ -985,7 +999,6 @@ NVSError NVSManager::migrateFromOldSystem() {
                     }
                     break;
                 }
-                // Note: NVS_TYPE_DOUBLE n'existe pas dans ESP-IDF NVS API
                 default:
                     Serial.printf("[NVS] ⚠️ Type non pris en charge pour %s/%s (type=%d)\n",
                                   rule.oldNamespace, info.key, static_cast<int>(info.type));
@@ -1002,17 +1015,173 @@ NVSError NVSManager::migrateFromOldSystem() {
                 migratedSomething = true;
             }
 
+            if (entryCount % 10 == 0) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
             findErr = nvs_entry_next(&it);
-        }
-
-        // v11.166: Alerte si limite atteinte (possible corruption ou namespace anormalement grand)
-        if (entryCount >= MAX_NVS_ENTRIES_PER_NAMESPACE) {
-            Serial.printf("[NVS] ⚠️ Limite migration atteinte (%zu entries) pour %s, arret premature\n",
-                          entryCount, rule.oldNamespace);
         }
 
         if (it != nullptr) {
             nvs_release_iterator(it);
+        }
+#else
+        // IDF 4.x: nvs_entry_find(3 args) retourne l'itérateur, nvs_entry_next(it) retourne le suivant
+        nvs_iterator_t it = nvs_entry_find(NVS_DEFAULT_PART_NAME, rule.oldNamespace, NVS_TYPE_ANY);
+
+        while (it != nullptr && entryCount < MAX_NVS_ENTRIES_PER_NAMESPACE) {
+            ++entryCount;
+            nvs_entry_info_t info;
+            nvs_entry_info(it, &info);
+
+            char newKey[128];
+            snprintf(newKey, sizeof(newKey), "%s%s", rule.keyPrefix ? rule.keyPrefix : "", info.key);
+            if (strlen(newKey) > 15) {
+                Serial.printf("[NVS] ⚠️ Clé ignorée (nom >15 caractères): %s/%s -> %s\n",
+                              rule.oldNamespace, info.key, newKey);
+                it = nvs_entry_next(it);
+                continue;
+            }
+
+            if (keyExists(newHandle, newKey, info.type)) {
+                it = nvs_entry_next(it);
+                continue;
+            }
+
+            bool copied = false;
+            esp_err_t readErr = ESP_FAIL;
+
+            switch (info.type) {
+                case NVS_TYPE_U8: {
+                    uint8_t value = 0;
+                    readErr = nvs_get_u8(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_u8(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_I8: {
+                    int8_t value = 0;
+                    readErr = nvs_get_i8(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_i8(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_U16: {
+                    uint16_t value = 0;
+                    readErr = nvs_get_u16(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_u16(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_I16: {
+                    int16_t value = 0;
+                    readErr = nvs_get_i16(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_i16(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_U32: {
+                    uint32_t value = 0;
+                    readErr = nvs_get_u32(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_u32(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_I32: {
+                    int32_t value = 0;
+                    readErr = nvs_get_i32(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_i32(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_U64: {
+                    uint64_t value = 0;
+                    readErr = nvs_get_u64(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_u64(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_I64: {
+                    int64_t value = 0;
+                    readErr = nvs_get_i64(oldHandle, info.key, &value);
+                    if (readErr == ESP_OK && nvs_set_i64(newHandle, newKey, value) == ESP_OK) {
+                        copied = true;
+                    }
+                    break;
+                }
+                case NVS_TYPE_STR: {
+                    size_t length = 0;
+                    readErr = nvs_get_str(oldHandle, info.key, nullptr, &length);
+                    if (readErr == ESP_OK && length > 0 && length < NVSConfig::MAX_INSPECTED_STRING_BYTES) {
+                        char buffer[NVSConfig::MAX_INSPECTED_STRING_BYTES];
+                        readErr = nvs_get_str(oldHandle, info.key, buffer, &length);
+                        if (readErr == ESP_OK && nvs_set_str(newHandle, newKey, buffer) == ESP_OK) {
+                            copied = true;
+                        }
+                    } else if (readErr == ESP_OK && length >= NVSConfig::MAX_INSPECTED_STRING_BYTES) {
+                        Serial.printf("[NVS] ⚠️ Migration STR %s trop longue (%zu), ignorée\n", info.key, length);
+                    }
+                    break;
+                }
+                case NVS_TYPE_BLOB: {
+                    static constexpr size_t MAX_MIGRATION_BLOB = 2048;
+                    size_t length = 0;
+                    readErr = nvs_get_blob(oldHandle, info.key, nullptr, &length);
+                    if (readErr == ESP_OK) {
+                        if (length == 0) {
+                            if (nvs_set_blob(newHandle, newKey, nullptr, 0) == ESP_OK) {
+                                copied = true;
+                            }
+                        } else if (length <= MAX_MIGRATION_BLOB) {
+                            uint8_t buffer[MAX_MIGRATION_BLOB];
+                            readErr = nvs_get_blob(oldHandle, info.key, buffer, &length);
+                            if (readErr == ESP_OK &&
+                                nvs_set_blob(newHandle, newKey, buffer, length) == ESP_OK) {
+                                copied = true;
+                            }
+                        } else {
+                            Serial.printf("[NVS] ⚠️ Migration BLOB %s trop gros (%zu), ignoré\n", info.key, length);
+                        }
+                    }
+                    break;
+                }
+                default:
+                    Serial.printf("[NVS] ⚠️ Type non pris en charge pour %s/%s (type=%d)\n",
+                                  rule.oldNamespace, info.key, static_cast<int>(info.type));
+                    break;
+            }
+
+            if (!copied && readErr != ESP_OK) {
+                Serial.printf("[NVS] ⚠️ Lecture impossible pour %s/%s (err=%d)\n",
+                              rule.oldNamespace, info.key, readErr);
+            }
+
+            if (copied) {
+                ruleMigrated = true;
+                migratedSomething = true;
+            }
+
+            if (entryCount % 10 == 0) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
+            it = nvs_entry_next(it);
+        }
+
+        if (it != nullptr) {
+            nvs_release_iterator(it);
+        }
+#endif
+        // Fin branchement IDF 4/5
+
+        if (entryCount >= MAX_NVS_ENTRIES_PER_NAMESPACE) {
+            Serial.printf("[NVS] ⚠️ Limite migration atteinte (%zu entries) pour %s, arret premature\n",
+                          entryCount, rule.oldNamespace);
         }
 
         if (ruleMigrated) {

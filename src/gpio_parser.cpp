@@ -1,6 +1,7 @@
 #include "gpio_parser.h"
 #include "automatism.h"
-#include "nvs_manager.h" // v11.108
+#include "nvs_manager.h"  // v11.108
+#include "app_tasks.h"   // netRequestOtaCheck (déclenchement OTA depuis serveur distant)
 #include <cstring>
 #include <cmath>   // v11.164: fabsf pour comparaison float
 #include <cstdlib> // v11.183: atoi/atof pour valeurs serveur en string
@@ -47,10 +48,18 @@ void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
     }
     Serial.printf("[GPIOParser] État edge initialisé: reset=%d feedSmall=%d feedBig=%d\n",
                   s_lastResetState ? 1 : 0, s_lastFeedSmallState ? 1 : 0, s_lastFeedBigState ? 1 : 0);
+    Serial.printf("[DBG] seedFeedStateFromDoc 108=%d 109=%d lastSmall=%d lastBig=%d hypothesis=D\n",
+                  doc.containsKey("108") ? 1 : 0, doc.containsKey("109") ? 1 : 0,
+                  s_lastFeedSmallState ? 1 : 0, s_lastFeedBigState ? 1 : 0);
 }
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
     Serial.println(F("[GPIOParser] === PARSING JSON SERVEUR ==="));
+    // Déclenchement OTA depuis serveur distant (page contrôle prod/test) : triggerOtaCheck = true
+    if (doc.containsKey("triggerOtaCheck") && doc["triggerOtaCheck"].as<bool>()) {
+        AppTasks::netRequestOtaCheck();
+        Serial.println(F("[GPIOParser] triggerOtaCheck reçu: demande vérification OTA"));
+    }
   size_t presentKeys = 0;
     // v11.189: Seed état reset (110) pour ne pas redémarrer si le sync envoie 110:1 comme état courant
     if (doc.containsKey("110")) {
@@ -91,7 +100,10 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
         saveToNVS(mapping, value);
     }
-    
+    // #region agent log
+    Serial.printf("[DBG] parseAndApply presentKeys=%u hypothesis=H6\n", (unsigned)presentKeys);
+    // #endregion
+
     // v11.98: Traiter aussi les clés textuelles (compatibilité avec /dbvars/update et autres sources)
     // Mapping des clés textuelles vers les clés de configuration
     const char* textKeys[] = {
@@ -203,6 +215,8 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // Déclenchement sur front montant uniquement (one-shot)
         // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
+        int triggered = (state && !s_lastFeedSmallState) ? 1 : 0;
+        Serial.printf("[DBG] FEED_SMALL state=%d last=%d triggered=%d hypothesis=D\n", state ? 1 : 0, s_lastFeedSmallState ? 1 : 0, triggered);
         if (state && !s_lastFeedSmallState) {
             autoCtrl.manualFeedSmall();
             autoCtrl.notifyRemoteFeedExecuted(true);
@@ -214,6 +228,8 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         // Déclenchement sur front montant uniquement (one-shot)
         // v11.179: Utilise variable module-level pour reset au boot
         bool state = parseBool(value);
+        int triggered = (state && !s_lastFeedBigState) ? 1 : 0;
+        Serial.printf("[DBG] FEED_BIG state=%d last=%d triggered=%d hypothesis=D\n", state ? 1 : 0, s_lastFeedBigState ? 1 : 0, triggered);
         if (state && !s_lastFeedBigState) {
             autoCtrl.manualFeedBig();
             autoCtrl.notifyRemoteFeedExecuted(false);

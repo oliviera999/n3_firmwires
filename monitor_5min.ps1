@@ -1,14 +1,21 @@
-﻿# Script de monitoring 5 minutes (avec option port et analyse du log)
+# Script de monitoring N minutes (défaut 5 min, ex. 30 min via -DurationSeconds 1800)
 param(
     [string]$Port = "",
     [int]$DurationSeconds = 300
 )
 
 $timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-$logFile = "monitor_5min_${timestamp}.log"
-$durationTag = "5min"
+# Tag dans le nom du fichier : 5min, 30min, 10min, etc.
+if ($DurationSeconds -ge 3600) {
+    $durationTag = "{0}h" -f [math]::Floor($DurationSeconds / 3600)
+} elseif ($DurationSeconds % 60 -eq 0 -and $DurationSeconds -ge 60) {
+    $durationTag = "{0}min" -f ($DurationSeconds / 60)
+} else {
+    $durationTag = "{0}s" -f $DurationSeconds
+}
+$logFile = "monitor_${durationTag}_${timestamp}.log"
 
-Write-Host "=== MONITORING ESP32 - 5 MINUTES ===" -ForegroundColor Green
+Write-Host "=== MONITORING ESP32 - $durationTag ===" -ForegroundColor Green
 Write-Host "Durée: $DurationSeconds secondes ($durationTag)" -ForegroundColor Cyan
 Write-Host "Log: $logFile" -ForegroundColor Yellow
 if ($Port) { Write-Host "Port: $Port" -ForegroundColor Yellow }

@@ -6,7 +6,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-LOG_PATH = Path("c:/Users/olivi/Mon Drive/travail/olution/Projets/prototypage/platformIO/Projects/ffp5cs/.cursor/debug.log")
+# Racine projet (tools/ est à la racine du repo) — ex. c:/ffp5cs
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+LOG_PATH = _PROJECT_ROOT / ".cursor" / "debug.log"
 SESSION_ID = "debug-session"
 
 

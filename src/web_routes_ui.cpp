@@ -124,38 +124,6 @@ void registerStaticAssets(AsyncWebServer& server) {
   server.serveStatic("/shared/", LittleFS, "/shared/").setCacheControl("max-age=86400");
   server.serveStatic("/pages/", LittleFS, "/pages/").setCacheControl("max-age=3600");
   server.serveStatic("/assets/", LittleFS, "/assets/").setCacheControl("max-age=604800");
-
-  // #region agent log instrumentation
-  server.on("/debug/static-assets", HTTP_GET, [](AsyncWebServerRequest* req) {
-    StaticJsonDocument<512> doc;
-    doc["sessionId"] = "debug-session";
-    doc["runId"] = "pre-fix";
-    doc["hypothesisId"] = "H1";
-    doc["location"] = F("web_routes_ui.cpp:registerStaticAssets");
-    doc["fsUsedBytes"] = LittleFS.usedBytes();
-    doc["fsTotalBytes"] = LittleFS.totalBytes();
-    JsonObject files = doc.createNestedObject("files");
-    files["shared/common.css"] = LittleFS.exists("/shared/common.css");
-    files["shared/common.css.gz"] = LittleFS.exists("/shared/common.css.gz");
-    files["shared/common.js"] = LittleFS.exists("/shared/common.js");
-    files["shared/common.js.gz"] = LittleFS.exists("/shared/common.js.gz");
-    files["shared/websocket.js"] = LittleFS.exists("/shared/websocket.js");
-    files["shared/websocket.js.gz"] = LittleFS.exists("/shared/websocket.js.gz");
-    files["assets/css/uplot.min.css"] = LittleFS.exists("/assets/css/uplot.min.css");
-    files["assets/css/uplot.min.css.gz"] = LittleFS.exists("/assets/css/uplot.min.css.gz");
-    files["assets/js/uplot.iife.min.js"] = LittleFS.exists("/assets/js/uplot.iife.min.js");
-    files["assets/js/uplot.iife.min.js.gz"] = LittleFS.exists("/assets/js/uplot.iife.min.js.gz");
-
-    AsyncResponseStream* res = req->beginResponseStream("application/json");
-    if (!res) {
-      req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Debug stream unavailable");
-      return;
-    }
-    res->addHeader("Cache-Control", "no-store");
-    serializeJson(doc, *res);
-    req->send(res);
-  });
-  // #endregion
 }
 
 void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {

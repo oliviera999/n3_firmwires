@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.195: Incrément version
-    inline constexpr const char* VERSION = "11.195";
+    // v11.196: Incrément version (S3 TG0WDT: feed WDT plus tôt au boot)
+    inline constexpr const char* VERSION = "11.196";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -456,6 +456,13 @@ namespace SensorConfig {
         inline constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 2000;
     }
 
+    // Alternative DHT pour envs S3 (USE_AIR_SENSOR_BME280). I2C, plus rapide que DHT.
+    namespace BME280 {
+        inline constexpr uint32_t MIN_READ_INTERVAL_MS = 500;
+        inline constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 100;
+        inline constexpr uint8_t I2C_ADDRESS = 0x77;  // 0x76 si SDO à GND
+    }
+
     namespace Ultrasonic {
         inline constexpr uint16_t MIN_DISTANCE_CM = 2;
         inline constexpr uint16_t MAX_DISTANCE_CM = 400;
@@ -792,9 +799,9 @@ namespace LogConfig {
         inline constexpr size_t println(const T&) const { return 0U; }
         template<typename T>
         inline constexpr size_t print(const T&) const { return 0U; }
-        inline constexpr void begin(unsigned long) const {}
-        inline constexpr void end() const {}
-        inline constexpr void flush() const {}
+        inline void begin(unsigned long) const {}
+        inline void end() const {}
+        inline void flush() const {}
         inline constexpr int available() const { return 0; }
         inline constexpr int read() const { return -1; }
         inline constexpr size_t write(uint8_t) const { return 0U; }

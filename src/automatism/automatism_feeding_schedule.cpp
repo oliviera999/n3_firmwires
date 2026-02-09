@@ -161,11 +161,11 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
         char subject[128];
         snprintf(subject, sizeof(subject), "FFP5CS - %s [%s]", type, sysInfo);
         
-        bool sent = _mailer.send(subject, message, "System", emailAddr);
-        if (sent) {
-            Serial.printf("[FeedingSchedule] ✅ Email de nourrissage envoyé: %s\n", type);
+        bool queued = _mailer.send(subject, message, "System", emailAddr);
+        if (queued) {
+            Serial.printf("[FeedingSchedule] ✅ Email de nourrissage ajouté à la queue: %s\n", type);
         } else {
-            Serial.printf("[FeedingSchedule] ❌ Échec envoi email: %s\n", type);
+            Serial.printf("[FeedingSchedule] ❌ Échec ajout à la queue email: %s\n", type);
         }
     }
 }

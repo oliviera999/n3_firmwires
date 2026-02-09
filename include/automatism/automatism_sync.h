@@ -123,8 +123,8 @@ private:
     // v11.158: Réduit de 40 à 20 entrées pour simplifier et libérer espace LittleFS
     static constexpr uint16_t QUEUE_MAX_ENTRIES = 5;  // Réduit de 20 à 5 (queue RAM simple)
     static constexpr size_t MAX_PAYLOAD_BYTES = 960;
-    static constexpr unsigned long SEND_INTERVAL_MS = 120000;
-    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 12000;  // 12 s (poll serveur distant, v11.188)
+    static constexpr unsigned long SEND_INTERVAL_MS = 30000;   // 30 s
+    static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 6000;   // 6 s (poll serveur distant)
     static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
 
     // Helpers

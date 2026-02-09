@@ -5,6 +5,9 @@
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
 #include "sensor_failure_manager.h"
+#if defined(USE_AIR_SENSOR_BME280)
+#include <Wire.h>
+#endif
 
 // -------- UltrasonicManager ---------
 UltrasonicManager::UltrasonicManager(int pinTrigEcho, const char* sensorName) 
@@ -959,17 +962,26 @@ void WaterTempSensor::resetHistory() {
 }
 
 // -------- AirSensor ------------------
-AirSensor::AirSensor() : _dht(Pins::DHT_PIN, 
-#if defined(PROFILE_PROD)
-                            DHT22  // Production : utilise DHT22
+AirSensor::AirSensor()
+#if defined(USE_AIR_SENSOR_BME280)
+  : _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
+    _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN),
+    _consecutiveTempFailures(0), _consecutiveHumidityFailures(0), _sensorDisabled(false), _disableLogged(false),
+    _lastReactivationTestMs(0), _consecutiveReactivationSuccesses(0)
 #else
-                            DHT11  // Dev et Test : utilise DHT11
+  : _dht(Pins::DHT_PIN,
+#if defined(USE_DHT22)
+         DHT22  // wroom-prod uniquement
+#else
+         DHT11  // tous les autres envs (wroom-test, wroom-beta, wroom-s3-*)
 #endif
-                            ), 
-                        _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
-                        _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN),
-                        _consecutiveTempFailures(0), _consecutiveHumidityFailures(0), _sensorDisabled(false), _disableLogged(false),
-                        _lastReactivationTestMs(0), _consecutiveReactivationSuccesses(0) {
+        ),
+    _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
+    _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN),
+    _consecutiveTempFailures(0), _consecutiveHumidityFailures(0), _sensorDisabled(false), _disableLogged(false),
+    _lastReactivationTestMs(0), _consecutiveReactivationSuccesses(0)
+#endif
+{
   // Initialise l'historique avec des valeurs NaN
   for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
     _tempHistory[i] = NAN;
@@ -977,22 +989,36 @@ AirSensor::AirSensor() : _dht(Pins::DHT_PIN,
   }
 }
 
-void AirSensor::begin() { 
-  _dht.begin(); 
-  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS)); // Délai de stabilisation après initialisation
+void AirSensor::begin() {
+#if defined(USE_AIR_SENSOR_BME280)
+  Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
+  if (!_bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
+    SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: BME280 non détecté sur I2C");
+    _sensorDisabled = true;
+    _disableLogged = true;
+    SENSOR_LOG_PRINTLN("[AirSensor] BME280 désactivé - capteur absent au démarrage");
+    return;
+  }
+  vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+#else
+  _dht.begin();
+  vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS));
+#endif
   resetHistory();
-  
+
   // Test initial avec timeout strict (2 secondes max)
   uint32_t testStart = millis();
   if (!isSensorConnected()) {
     SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation");
-    // Désactiver immédiatement si non détecté au boot
     _sensorDisabled = true;
     _disableLogged = true;
+#if defined(USE_AIR_SENSOR_BME280)
+    SENSOR_LOG_PRINTLN("[AirSensor] BME280 désactivé - capteur absent au démarrage");
+#else
     SENSOR_LOG_PRINTLN("[AirSensor] DHT désactivé - capteur absent au démarrage");
+#endif
     return;
   }
-  // Vérifier que le test n'a pas pris trop de temps
   if (millis() - testStart > 2000) {
     SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: Test initial trop lent, désactivation préventive");
     _sensorDisabled = true;
@@ -1003,63 +1029,60 @@ void AirSensor::begin() {
 }
 
 bool AirSensor::isSensorConnected() {
-  // v11.180: Simplification pour éviter INT_WDT timeout (total max ~1s au lieu de ~6.5s)
-  // Une seule lecture rapide suffit pour détecter si le capteur est présent
   uint32_t testStart = millis();
-  const uint32_t FAST_CONNECTIVITY_TIMEOUT_MS = 1000; // 1s max (avant: 2s + 2.5s délai)
-  
-  // Reset watchdog au début
+  const uint32_t FAST_CONNECTIVITY_TIMEOUT_MS = 1000;
+
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-  
-  // Une seule lecture de température suffit pour tester la connectivité
-  // Pas de délai ni de double lecture - ça bloque trop longtemps si capteur absent
+
+#if defined(USE_AIR_SENSOR_BME280)
+  float temp = _bme.readTemperature();
+#else
   float temp = _dht.readTemperature();
-  
-  // Reset watchdog après lecture (peut avoir pris du temps)
+#endif
+
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-  
+
   if (millis() - testStart > FAST_CONNECTIVITY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout connectivité - capteur absent");
     return false;
   }
-  
-  // Si lecture valide, capteur connecté
+
   if (!isnan(temp)) {
     return true;
   }
-  
+
+#if defined(USE_AIR_SENSOR_BME280)
+  SENSOR_LOG_PRINTLN("[AirSensor] Capteur BME280 non détecté (lecture NaN)");
+#else
   SENSOR_LOG_PRINTLN("[AirSensor] Capteur DHT non détecté (lecture NaN)");
+#endif
   return false;
 }
 
 void AirSensor::resetSensor() {
-  // v11.180: Délais réduits pour éviter INT_WDT timeout (total ~1s au lieu de ~3s)
   SENSOR_LOG_PRINTLN("[AirSensor] Reset matériel du capteur...");
-  
-  // Reset watchdog avant opération potentiellement longue
+
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-  
-  // Reset de la bibliothèque DHT
+
+#if defined(USE_AIR_SENSOR_BME280)
+  _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
+  vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+#else
   _dht.begin();
-  
-  // Délai de stabilisation réduit (500ms au lieu de 2000ms + 1000ms = 3000ms)
-  // Le DHT a besoin de peu de temps pour se stabiliser après begin()
   vTaskDelay(pdMS_TO_TICKS(500));
-  
-  // Reset watchdog après délai
+#endif
+
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-  
-  // Reset de l'historique
+
   resetHistory();
-  
   SENSOR_LOG_PRINTLN("[AirSensor] Reset matériel terminé");
 }
 
@@ -1078,7 +1101,11 @@ float AirSensor::robustTemperatureC() {
         esp_task_wdt_reset();
       }
       
+#if defined(USE_AIR_SENSOR_BME280)
+      float testTemp = _bme.readTemperature();
+#else
       float testTemp = _dht.readTemperature();
+#endif
       if (millis() - testStart > SensorConfig::Reactivation::TEMPERATURE_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _consecutiveReactivationSuccesses = 0;
@@ -1102,7 +1129,11 @@ float AirSensor::robustTemperatureC() {
           _consecutiveTempFailures = 0;
           _consecutiveHumidityFailures = 0;
           _consecutiveReactivationSuccesses = 0;
+#if defined(USE_AIR_SENSOR_BME280)
+          SENSOR_LOG_PRINTLN("[AirSensor] ✅ BME280 réactivé automatiquement - capteur présent à nouveau");
+#else
           SENSOR_LOG_PRINTLN("[AirSensor] ✅ DHT réactivé automatiquement - capteur présent à nouveau");
+#endif
           // Retourner la valeur testée
           return testTemp;
         }
@@ -1156,10 +1187,12 @@ float AirSensor::robustTemperatureC() {
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
   // 2. UNE SEULE tentative de lecture directe (pas de boucle ni de reset)
-  // v11.180: Simplification drastique pour éviter INT_WDT
-  // On ne fait plus de isSensorConnected() + resetSensor() car ça bloque trop longtemps
   {
+#if defined(USE_AIR_SENSOR_BME280)
+    float temp = _bme.readTemperature();
+#else
     float temp = _dht.readTemperature();
+#endif
     
     // Reset watchdog après lecture
     if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -1188,13 +1221,17 @@ use_last_valid:
       !_disableLogged) {
     _sensorDisabled = true;
     _disableLogged = true;
+#if defined(USE_AIR_SENSOR_BME280)
+    SENSOR_LOG_PRINTF("[AirSensor] 🔴 BME280 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
+#else
     SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
+#endif
                       MAX_CONSECUTIVE_FAILURES, 
                       _consecutiveTempFailures, 
                       _consecutiveHumidityFailures,
                       SensorConfig::DefaultValues::TEMP_AIR_DEFAULT);
   }
-  
+
   if (_consecutiveTempFailures < MAX_CONSECUTIVE_FAILURES) {
     SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
   }
@@ -1202,7 +1239,11 @@ use_last_valid:
 }
 
 float AirSensor::temperatureC() {
+#if defined(USE_AIR_SENSOR_BME280)
+  float val = _bme.readTemperature();
+#else
   float val = _dht.readTemperature();
+#endif
   if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
     return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
   }
@@ -1210,7 +1251,11 @@ float AirSensor::temperatureC() {
 }
 
 float AirSensor::humidity() {
+#if defined(USE_AIR_SENSOR_BME280)
+  float val = _bme.readHumidity();
+#else
   float val = _dht.readHumidity();
+#endif
   if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
     return SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
   }
@@ -1218,14 +1263,22 @@ float AirSensor::humidity() {
 }
 
 float AirSensor::filteredTemperatureC() {
-  // Throttle: une seule lecture toutes les 2s, lissage EMA
   unsigned long now = millis();
-  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < SensorConfig::DHT::MIN_READ_INTERVAL_MS) {
+#if defined(USE_AIR_SENSOR_BME280)
+  const uint32_t minInterval = SensorConfig::BME280::MIN_READ_INTERVAL_MS;
+#else
+  const uint32_t minInterval = SensorConfig::DHT::MIN_READ_INTERVAL_MS;
+#endif
+  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < minInterval) {
     return _emaInit ? _emaTemp : NAN;
   }
   _lastDhtReadMs = now;
-  
+
+#if defined(USE_AIR_SENSOR_BME280)
+  float temp = _bme.readTemperature();
+#else
   float temp = _dht.readTemperature();
+#endif
   if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
     return _emaInit ? _emaTemp : NAN;
   }
@@ -1245,12 +1298,21 @@ float AirSensor::filteredTemperatureC() {
 
 float AirSensor::filteredHumidity() {
   unsigned long now = millis();
-  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < SensorConfig::DHT::MIN_READ_INTERVAL_MS) {
+#if defined(USE_AIR_SENSOR_BME280)
+  const uint32_t minInterval = SensorConfig::BME280::MIN_READ_INTERVAL_MS;
+#else
+  const uint32_t minInterval = SensorConfig::DHT::MIN_READ_INTERVAL_MS;
+#endif
+  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < minInterval) {
     return _emaInit ? _emaHumidity : NAN;
   }
   _lastDhtReadMs = now;
-  
+
+#if defined(USE_AIR_SENSOR_BME280)
+  float h = _bme.readHumidity();
+#else
   float h = _dht.readHumidity();
+#endif
   if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
     return _emaInit ? _emaHumidity : NAN;
   }
@@ -1315,9 +1377,12 @@ float AirSensor::robustHumidity() {
   SENSOR_LOG_PRINTLN("[AirSensor] Filtrage avancé échoué, tentative de récupération...");
   
   // 2. UNE SEULE tentative de lecture directe (pas de boucle ni de reset)
-  // v11.180: Simplification pour éviter INT_WDT
   {
+#if defined(USE_AIR_SENSOR_BME280)
+    float humidity = _bme.readHumidity();
+#else
     float humidity = _dht.readHumidity();
+#endif
     
     // Reset watchdog après lecture
     if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -1346,13 +1411,17 @@ use_last_valid_humidity:
       !_disableLogged) {
     _sensorDisabled = true;
     _disableLogged = true;
+#if defined(USE_AIR_SENSOR_BME280)
+    SENSOR_LOG_PRINTF("[AirSensor] 🔴 BME280 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
+#else
     SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
+#endif
                       MAX_CONSECUTIVE_FAILURES, 
                       _consecutiveTempFailures, 
                       _consecutiveHumidityFailures,
                       SensorConfig::DefaultValues::HUMIDITY_DEFAULT);
   }
-  
+
   if (_consecutiveHumidityFailures < MAX_CONSECUTIVE_FAILURES) {
     SENSOR_LOG_PRINTLN("[AirSensor] Échec de toutes les tentatives de récupération");
   }

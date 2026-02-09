@@ -1,0 +1,21 @@
+# CONFIG_ESP_INT_WDT is not set
+# TG0WDT boot loop: ne pas démarrer le TWDT au boot. Réinit 300s en setup() (app.cpp).
+# CONFIG_ESP_TASK_WDT_INIT is not set
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=300
+# Stack loopTask (DIAGNOSTIC_BACKTRACE_S3: stack canary loopTask sur S3)
+CONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+# Désactiver coredump ESP-IDF (pas de partition, évite "No core dump partition found!" au boot)
+# CONFIG_ESP_COREDUMP_ENABLE is not set
+CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
+# CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH is not set
+# CONFIG_ESP_COREDUMP_ENABLE_TO_UART is not set
+# Partition table S3 (aligné board_build.partitions) — évite "partitions.csv not found"
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="config/partitions/partitions_esp32_s3_test.csv"
+# PSRAM (SRAM externe 8 Mo) — explicite pour S3 avec SRAM active
+CONFIG_SPIRAM=y
+# Init PSRAM au boot (bootloader) : évite psramAddToHeap() dans initArduino() qui peut bloquer sur S3
+CONFIG_SPIRAM_BOOT_INIT=y
+# Éviter https_server.crt (bug chemin .S dupliqué) : utiliser transport MQTT pour Insights
+# CONFIG_ESP_INSIGHTS_TRANSPORT_HTTPS is not set
+CONFIG_ESP_INSIGHTS_TRANSPORT_MQTT=y

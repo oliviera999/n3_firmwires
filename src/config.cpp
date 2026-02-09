@@ -5,13 +5,19 @@
 #include <cstring>
 #include <cctype>
 
+namespace {
+constexpr size_t REMOTE_JSON_CACHE_SIZE = 2048;
+static char s_remoteJsonCache[REMOTE_JSON_CACHE_SIZE];
+static bool s_remoteJsonCacheValid = false;
+}  // namespace
+
 ConfigManager::ConfigManager() 
     : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false), 
-      _lastJourBouf(-1), _pompeAquaLocked(false), _otaUpdateFlag(true),
+      _lastJourBouf(-1), _pompeAquaLocked(false), _otaUpdateFlag(false),
       _remoteSendEnabled(true), _remoteRecvEnabled(true),
       _cachedBouffeMatinOk(false), _cachedBouffeMidiOk(false), _cachedBouffeSoirOk(false),
       _cachedLastJourBouf(-1), _cachedPompeAquaLocked(false),
-      _cachedOtaUpdateFlag(true), _flagsChanged(false),
+      _cachedOtaUpdateFlag(false), _flagsChanged(false),
       _cachedRemoteSendEnabled(true), _cachedRemoteRecvEnabled(true) {
 }
 
@@ -27,8 +33,8 @@ void ConfigManager::loadBouffeFlags() {
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked, false);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
-  // Chargement du flag OTA depuis le namespace SYSTEM
-  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, _otaUpdateFlag, true);
+  // Chargement du flag OTA depuis le namespace SYSTEM (défaut false: email uniquement après une vraie MAJ OTA)
+  g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, _otaUpdateFlag, false);
   
   // Initialisation du cache après chargement
   updateCache();
@@ -146,11 +152,8 @@ void ConfigManager::saveRemoteVars(const char* json) {
   Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé"));
 
   // Vérifier si le JSON a changé avant de sauvegarder (réduire écritures flash)
-  char cachedJson[2048];
-  g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, cachedJson, sizeof(cachedJson), "");
-  
   static uint32_t s_skipSaveCount = 0;
-  if (json && strcmp(cachedJson, json) == 0) {
+  if (s_remoteJsonCacheValid && json && strcmp(s_remoteJsonCache, json) == 0) {
     if ((++s_skipSaveCount % 20) == 1) {
       Serial.printf("[Config] Variables distantes inchangées - pas de sauvegarde NVS (skip #%u)\n", s_skipSaveCount);
     }
@@ -159,24 +162,44 @@ void ConfigManager::saveRemoteVars(const char* json) {
   s_skipSaveCount = 0;
   // Sauvegarde dans le namespace CONFIG
   g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json ? json : "");
+  // Mettre à jour le cache RAM pour éviter re-lecture NVS
+  if (json) {
+    strncpy(s_remoteJsonCache, json, REMOTE_JSON_CACHE_SIZE - 1);
+    s_remoteJsonCache[REMOTE_JSON_CACHE_SIZE - 1] = '\0';
+  } else {
+    s_remoteJsonCache[0] = '\0';
+  }
+  s_remoteJsonCacheValid = true;
   Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé"));
 }
 
 bool ConfigManager::loadRemoteVars(char* json, size_t jsonSize) {
-  // v11.80: Utilisation du gestionnaire NVS centralisé
-  Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé"));
-  
   if (json == nullptr || jsonSize == 0) {
     return false;
   }
-  
+  // Servir depuis le cache RAM si valide (réduit lectures NVS et verbosité logs)
+  if (s_remoteJsonCacheValid) {
+    size_t copyLen = jsonSize - 1;
+    if (copyLen > 0) {
+      strncpy(json, s_remoteJsonCache, copyLen);
+      json[copyLen] = '\0';
+    } else {
+      json[0] = '\0';
+    }
+    return strlen(json) > 0;
+  }
+  // Lecture NVS (premier accès ou cache invalidé)
+  Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé"));
   g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json, jsonSize, "");
-  
   if (strlen(json) > 0) {
+    strncpy(s_remoteJsonCache, json, REMOTE_JSON_CACHE_SIZE - 1);
+    s_remoteJsonCache[REMOTE_JSON_CACHE_SIZE - 1] = '\0';
+    s_remoteJsonCacheValid = true;
     Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé"));
     return true;
   }
-  
+  s_remoteJsonCache[0] = '\0';
+  s_remoteJsonCacheValid = true;  // Éviter de re-lire NVS en boucle si vide
   Serial.println(F("[Config] ⚠️ Aucune variable distante trouvée"));
   return false;
 }

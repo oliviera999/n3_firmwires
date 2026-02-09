@@ -30,8 +30,12 @@ alwaysApply: true
 
 - **Mémoire et watchdog**
   - Éviter les allocations dynamiques dans les boucles ; préférer des buffers statiques.
+  - La **fragmentation heap** doit rester **minimale** ; la **heap disponible** ne doit pas **décliner au cours du temps** (pas de fuite mémoire ni d’accumulation d’allocations non libérées).
   - Ne pas utiliser `String` Arduino dans les chemins chauds (boucles, callbacks fréquents) ; dans les chemins froids et pour des chaînes de taille bornée, `String` reste acceptable.
   - Ne jamais bloquer le thread principal > 3s ; timeouts réseau courts (≤ 5s par défaut ; dérogation possible si documentée, ex. OTA avec feed watchdog). Les dérogations sont à privilégier lorsque le blocage a lieu dans une tâche dédiée (ex. net task) ou avec feed watchdog (ex. OTA).
+
+- **Plateforme et build**
+  - Le firmware est construit avec la plateforme PlatformIO officielle **`platformio/espressif32`** (pas pioarduino).
 
 - **Workflow de validation**
   - Pour un workflow complet (erase flash, flash firmware + LittleFS, monitor 5 min, analyse du log), utiliser **préférentiellement** le script `erase_flash_fs_monitor_5min_analyze.ps1` (racine du projet). Il enchaîne erase, upload, uploadfs, monitor 5 min, puis analyse (analyze_log + rapport diagnostic). Option : `-Port COMx` si le port diffère de l’auto-détection.

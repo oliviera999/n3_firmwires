@@ -293,7 +293,8 @@ foreach ($match in $queuedMatches) {
 
 # 2.2 Mails traités avec succès (asynchrones via queue)
 # Note: Patterns flexibles pour gérer les emojis
-$processedPattern = '\[Mail\].*?Traitement mail séquentiel:.*?[''"](.+?)[''"]|\[Mail\].*?Traitement mail séquentiel:.*?"(.+?)"|\[Mail\].*?Mail envoyé avec succès|\[Mail\].*?Message envoyé avec succès'
+# Succès réel = SMTP (Traitement mail séquentiel + Mail/Message SMTP envoyé)
+$processedPattern = '\[Mail\].*?Traitement mail séquentiel:.*?[''"](.+?)[''"]|\[Mail\].*?Traitement mail séquentiel:.*?"(.+?)"|\[Mail\].*?Mail SMTP envoyé avec succès|\[Mail\].*?Message SMTP envoyé avec succès'
 $processedMatches = $lines | Select-String -Pattern $processedPattern
 foreach ($match in $processedMatches) {
     $subject = ""
@@ -311,7 +312,7 @@ foreach ($match in $processedMatches) {
     }
     
     # Pour les lignes de succès sans sujet, on va chercher le mail traité juste avant
-    if ([string]::IsNullOrEmpty($subject) -and $match.Line -match 'Mail envoyé avec succès') {
+    if ([string]::IsNullOrEmpty($subject) -and $match.Line -match 'SMTP envoyé avec succès') {
         # Chercher le mail traité précédemment dans les lignes
         $searchStart = [Math]::Max(1, $match.LineNumber - 10)
         $searchEnd = $match.LineNumber
@@ -341,8 +342,10 @@ foreach ($match in $processedMatches) {
     }
 }
 
-# 2.2b Mails synchrones (envoyés directement sans queue)
-# Détecter les confirmations d'envoi direct (ex: "[FeedingSchedule] ✅ Email de nourrissage envoyé")
+# 2.2b Mails synchrones (envoyés directement sans queue - rare)
+# Avec le firmware actuel, send/sendAlert sont asynchrones (queue). "Ajouté à la queue" n'est pas un envoi SMTP.
+# Les vrais envois sont dans processedPattern (Traitement mail séquentiel + Mail SMTP envoyé avec succès).
+# Ce pattern ne matche plus les nouveaux logs (on ne log plus "ENVOYÉ"/"envoyé" pour les ajouts queue).
 $syncPattern = '\[FeedingSchedule\].*?Email de nourrissage envoyé:\s*(.+)|\[Auto\].*?Email.*?envoyé|\[Web\].*?Email.*?envoyé|Mail de démarrage ENVOYÉ|\[App\].*?Email.*?envoyé'
 $syncMatches = $lines | Select-String -Pattern $syncPattern
 foreach ($match in $syncMatches) {
@@ -383,7 +386,7 @@ foreach ($match in $syncMatches) {
 }
 
 # 2.3 Mails échoués
-$failedPattern = '\[Mail\].*?Échec envoi mail|\[Mail\].*?ERREUR sendMail|\[FeedingSchedule\].*?Échec envoi email'
+$failedPattern = '\[Mail\].*?Échec envoi mail|\[Mail\].*?ERREUR sendMail|\[FeedingSchedule\].*?Échec envoi email|\[FeedingSchedule\].*?Échec ajout à la queue|Échec ajout à la queue mail de démarrage'
 $failedMatches = $lines | Select-String -Pattern $failedPattern
 foreach ($match in $failedMatches) {
     $subject = ""

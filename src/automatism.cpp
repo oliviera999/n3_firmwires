@@ -117,6 +117,10 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     bool pollResult = _network.pollRemoteState(doc, nowMs);
 
     if (pollResult) {
+        size_t docSize = doc.size();
+        // #region agent log
+        Serial.printf("[DBG] updateNetworkSync pollResult=1 docSize=%u hypothesis=H6\n", (unsigned)docSize);
+        // #endregion
         // Ne pas appliquer ni invalider le cache si la réponse est vide (ex. serveur renvoie {"outputs":{}})
         if (doc.size() > 0) {
             // 4.0 Initialiser l'état edge detection au 1er poll (reset 110, pas nourrissage)
@@ -124,6 +128,10 @@ void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
             // 4.1 Parser et appliquer tous les GPIO (actionneurs, configs, nourrissage distant)
             GPIOParser::parseAndApply(doc, *this);
             invalidateDbvarsCache();
+        } else {
+            // #region agent log
+            Serial.printf("[DBG] updateNetworkSync skip parseAndApply docSize=0 hypothesis=H4,H6\n");
+            // #endregion
         }
     }
     
@@ -176,10 +184,6 @@ int Automatism::computeDiffMaree(uint16_t currentAqua) {
     return diff;
 }
 
-uint32_t Automatism::getRecommendedDisplayIntervalMs() {
-    return getRecommendedDisplayIntervalMsInternal(millis());
-}
-
 // ============================================================================
 // ACTIONS MANUELLES (Exposées pour le serveur Web)
 // ============================================================================
@@ -187,21 +191,6 @@ uint32_t Automatism::getRecommendedDisplayIntervalMs() {
 void Automatism::manualFeedSmall() {
     Serial.println(F("[Auto] Nourrissage manuel PETITS déclenché"));
     Serial.printf("[Auto] Durée configurée: %u s\n", tempsPetits);
-    // #region agent log instrumentation
-    {
-        FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
-        if (f) {
-            fprintf(
-                f,
-                "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"automatism.cpp:manualFeedSmall\",\"message\":\"manualFeedSmall invoked\",\"data\":{\"tempsPetits\":%u,\"manualActiveBefore\":%s},\"timestamp\":%lu}\n",
-                tempsPetits,
-                _manualFeedingActive ? "true" : "false",
-                static_cast<unsigned long>(millis())
-            );
-            fclose(f);
-        }
-    }
-    // #endregion
     _acts.feedSmallFish(tempsPetits);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
@@ -213,21 +202,6 @@ void Automatism::manualFeedSmall() {
 void Automatism::manualFeedBig() {
     Serial.println(F("[Auto] Nourrissage manuel GROS déclenché"));
     Serial.printf("[Auto] Durée configurée: %u s\n", tempsGros);
-    // #region agent log instrumentation
-    {
-        FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
-        if (f) {
-            fprintf(
-                f,
-                "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"automatism.cpp:manualFeedBig\",\"message\":\"manualFeedBig invoked\",\"data\":{\"tempsGros\":%u,\"manualActiveBefore\":%s},\"timestamp\":%lu}\n",
-                tempsGros,
-                _manualFeedingActive ? "true" : "false",
-                static_cast<unsigned long>(millis())
-            );
-            fclose(f);
-        }
-    }
-    // #endregion
     _acts.feedBigFish(tempsGros);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
@@ -310,6 +284,10 @@ bool Automatism::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
 
 void Automatism::processDeferredRemoteVarsSave() {
     _network.processDeferredRemoteVarsSave();
+}
+
+void Automatism::waitForNetworkReady() {
+    _power.waitForNetworkReady();
 }
 
 // Applique la config depuis JSON (poll ou NVS). Clés appliquées ici + AutomatismSync:
@@ -508,21 +486,6 @@ void Automatism::notifyLocalWebActivity() {
 }
 
 void Automatism::startTankPumpManual() {
-    // #region agent log instrumentation
-    {
-        FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
-        if (f) {
-            fprintf(
-                f,
-                "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H2\",\"location\":\"automatism.cpp:startTankPumpManual\",\"message\":\"startTankPumpManual request\",\"data\":{\"tankPumpLocked\":%s,\"pumpRunning\":%s},\"timestamp\":%lu}\n",
-                tankPumpLocked ? "true" : "false",
-                _acts.isTankPumpRunning() ? "true" : "false",
-                static_cast<unsigned long>(millis())
-            );
-            fclose(f);
-        }
-    }
-    // #endregion
     if (tankPumpLocked) {
         Serial.println(F("[Auto] Pompe réservoir verrouillée - commande ignorée"));
         return;
@@ -725,7 +688,7 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
         if (!_acts.isTankPumpRunning()) {
             // Vérifier si réserve trop basse
             if (r.wlTank > _network.getTankThresholdCm()) {
-                Serial.printf("[CRITIQUE] Réserve basse: %u cm > seuil %u cm\n", 
+                Serial.printf("[CRITIQUE] Réserve basse (distance %u cm > seuil %u cm) - pompe verrouillée\n",
                               r.wlTank, _network.getTankThresholdCm());
                 tankPumpLocked = true;
                 _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
@@ -740,9 +703,9 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
                              r.wlTank, _network.getTankThresholdCm(), r.wlAqua);
                     _mailer.sendAlert("Pompe BLOQUÉE (réserve basse)", msg, _network.getEmailAddress());
                     emailTankSent = true;
-                } else if (startupGrace) {
-                    emailTankSent = true;
                 }
+                // En période de grâce on n'envoie pas et on ne marque pas emailTankSent :
+                // après 30s on enverra le mail si la condition est toujours vraie.
                 return true; // Bloqué
             }
             // Démarrage effectif
@@ -892,7 +855,8 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
         belowCount = 0;
         if (!tankPumpLocked && aboveCount >= 2) {
             Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
-            Serial.printf("[CRITIQUE] Réservoir: %d cm, Seuil: %d cm\n", r.wlTank, _network.getTankThresholdCm());
+            Serial.printf("[CRITIQUE] Réserve basse (distance %d cm > seuil %d cm) - pompe verrouillée\n",
+                          r.wlTank, _network.getTankThresholdCm());
             tankPumpLocked = true;
             _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
             _acts.stopTankPump(_pumpStartMs);
@@ -906,9 +870,9 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
                          r.wlTank, _network.getTankThresholdCm());
                 _mailer.sendAlert("Pompe verrouillée (réserve basse)", msg, _network.getEmailAddress());
                 emailTankSent = true;
-            } else if (startupGrace) {
-                emailTankSent = true;
             }
+            // En période de grâce on n'envoie pas et on ne marque pas emailTankSent :
+            // après 30s on enverra le mail si la condition est toujours vraie.
         }
     } else if (r.wlTank < _network.getTankThresholdCm() - 5) {
         belowCount = min<uint8_t>(belowCount + 1, 3);
@@ -986,10 +950,8 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     // Les alertes non-critiques sont différées de 30s après le boot
     const bool startupGracePeriod = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
     if (startupGracePeriod && mailEnabled) {
-        // Pendant la période de grâce, on met à jour les flags mais on n'envoie pas
-        // Cela évite d'envoyer des alertes pour des conditions pré-existantes au boot
-        if (readings.wlAqua > _network.getAqThresholdCm()) _lowAquaSent = true;  // Déjà en alerte, pas de mail
-        if (readings.wlTank > _network.getTankThresholdCm()) _lowTankSent = true;  // Déjà en alerte, pas de mail
+        // Pendant la période de grâce, on n'envoie pas mais on ne marque pas comme déjà envoyé :
+        // après 30s la première évaluation enverra l'alerte si la condition est toujours vraie.
         return;  // Pas d'alertes pendant la période de grâce
     }
 
@@ -1028,7 +990,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
                     armMailBlink();
                     lastFloodEmailEpoch = nowEpoch;
                     g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
-                    Serial.println(F("[Auto] Email TROP PLEIN envoyé (anti-spam actif)"));
+                    Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
                 } else {
                     Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
                 }
@@ -1124,7 +1086,13 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
     
     // Utiliser l'intervalle recommandé (250ms si countdown, sinon 80ms)
     const uint32_t displayInterval = isCountdownMode ? DisplayConfig::OLED_COUNTDOWN_INTERVAL_MS : DisplayConfig::OLED_INTERVAL_MS;
-    
+    const uint32_t delta = (currentMillis >= _lastOled) ? (currentMillis - _lastOled) : 0;
+#if FEATURE_DIAG_OLED_LOGS
+    const bool throttleBlock = (delta < displayInterval);
+    Serial.printf("{\"h\":\"H1\",\"t\":%lu,\"last\":%lu,\"int\":%u,\"delta\":%u,\"block\":%d,\"cd\":%d,\"feed\":%d}\n",
+                  (unsigned long)currentMillis, (unsigned long)_lastOled, (unsigned)displayInterval, (unsigned)delta,
+                  throttleBlock ? 1 : 0, hasCountdown ? 1 : 0, hasFeedingPhase ? 1 : 0);
+#endif
     if (currentMillis - _lastOled < displayInterval) {
         return;
     }
@@ -1171,6 +1139,9 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
     
     // Affichage du countdown si actif
     if (hasCountdown && strlen(_countdownLabel) > 0) {
+#if FEATURE_DIAG_OLED_LOGS
+        Serial.printf("{\"h\":\"H4\",\"drew\":\"countdown\",\"t\":%lu}\n", (unsigned long)currentMillis);
+#endif
         uint32_t secLeft = (_countdownEnd > currentMillis) ? 
                           ((_countdownEnd - currentMillis) / 1000) : 0;
         bool isManual = _manualFeedingActive;
@@ -1178,11 +1149,15 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
         bool mailBlink = (mailBlinkUntil > 0 && currentMillis < mailBlinkUntil);
         int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
         _disp.drawStatusEx(sendState, recvState, rssi, mailBlink, tideDir, diffMaree, false);
+        _disp.flush();
         return;
     }
     
     // Affichage du countdown de nourrissage si une phase est active
     if (hasFeedingPhase) {
+#if FEATURE_DIAG_OLED_LOGS
+        Serial.printf("{\"h\":\"H4\",\"drew\":\"feeding\",\"t\":%lu}\n", (unsigned long)currentMillis);
+#endif
         const char* fishType = "Auto";
         uint32_t secLeft = (_feedingPhaseEnd > currentMillis) ? 
                           ((_feedingPhaseEnd - currentMillis) / 1000) : 0;
@@ -1213,6 +1188,7 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
         bool mailBlink = (mailBlinkUntil > 0 && currentMillis < mailBlinkUntil);
         int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
         _disp.drawStatusEx(sendState, recvState, rssi, mailBlink, tideDir, diffMaree, false);
+        _disp.flush();
         return;
     }
     
@@ -1223,6 +1199,9 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
     int8_t rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
     
     // Basculement entre écran principal et écran variables
+#if FEATURE_DIAG_OLED_LOGS
+    Serial.printf("{\"h\":\"H2\",\"drew\":\"%s\",\"t\":%lu}\n", _oledToggle ? "main" : "vars", (unsigned long)currentMillis);
+#endif
     if (_oledToggle) {
         // Écran principal avec données des capteurs
         _disp.showMain(
@@ -1253,15 +1232,16 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
             _network.getLimFlood()
         );
     }
-    
+#if FEATURE_DIAG_OLED_LOGS
+    Serial.printf("{\"ts\":%lu,\"loc\":\"automatism.cpp:updateDisplay\",\"msg\":\"after showMain/showVar before drawStatus\",\"hypothesisId\":\"E\"}\n", millis());
+#endif
     // Toujours afficher la barre d'état (en overlay)
     _disp.drawStatus(sendState, recvState, rssi, mailBlink, tideDir, diffMaree);
-}
-
-uint32_t Automatism::getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) const {
-    // Retourne l'intervalle par défaut pour l'affichage
-    // L'ajustement pour les countdowns se fait dans updateDisplayInternal()
-    return DisplayConfig::OLED_INTERVAL_MS;
+    // Envoyer le buffer à l'écran : drawStatus modifie la ligne 0 mais ne fait pas flush quand _updateMode est false
+    _disp.flush();
+#if FEATURE_DIAG_OLED_LOGS
+    Serial.printf("{\"ts\":%lu,\"loc\":\"automatism.cpp:updateDisplay\",\"msg\":\"after drawStatus+flush\",\"hypothesisId\":\"A\"}\n", millis());
+#endif
 }
 
 // ============================================================================
@@ -1301,6 +1281,31 @@ bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWa
 void Automatism::clearActuatorSnapshotInNVS() {
     g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, false);
     Serial.println("[Auto] Snapshot actionneurs effacé");
+}
+
+void Automatism::prepareActuatorsForSleep(SystemActuators& acts) {
+    bool aquaOn = acts.isAquaPumpRunning();
+    bool heaterOn = acts.isHeaterOn();
+    bool lightOn = acts.isLightOn();
+    saveActuatorSnapshotToNVS(aquaOn, heaterOn, lightOn);
+    acts.stopAquaPump();
+    acts.stopHeater();
+    acts.stopLight();
+    Serial.printf("[Auto] Snapshot avant veille: aqua=%s heater=%s light=%s - actionneurs coupés\n",
+                  aquaOn ? "ON" : "OFF", heaterOn ? "ON" : "OFF", lightOn ? "ON" : "OFF");
+}
+
+void Automatism::restoreActuatorsAfterWake(SystemActuators& acts) {
+    bool restoreAqua, restoreHeater, restoreLight;
+    if (!loadActuatorSnapshotFromNVS(restoreAqua, restoreHeater, restoreLight)) {
+        return;
+    }
+    if (restoreAqua) acts.startAquaPump();
+    if (restoreHeater) acts.startHeater();
+    if (restoreLight) acts.startLight();
+    clearActuatorSnapshotInNVS();
+    Serial.printf("[Auto] État restauré au réveil: aqua=%s heater=%s light=%s\n",
+                  restoreAqua ? "ON" : "OFF", restoreHeater ? "ON" : "OFF", restoreLight ? "ON" : "OFF");
 }
 
 // États actuels persistants (méthodes statiques pour compatibilité avec web_server.cpp)

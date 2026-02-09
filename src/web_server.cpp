@@ -38,6 +38,9 @@ extern WifiManager wifi;
 static bool s_dbvarsCacheInvalid = false;
 void invalidateDbvarsCache() { s_dbvarsCacheInvalid = true; }
 
+/// Flag pour redémarrage ESP après envoi de la réponse (évite reset avant envoi HTTP)
+static bool s_pendingRestart = false;
+
 #ifndef DISABLE_ASYNC_WEBSERVER
 static unsigned long s_dbvarsLastCacheUpdate = 0;
 static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> s_dbvarsCachedSrc;
@@ -151,23 +154,6 @@ static void fillDbVarsJson(JsonObject& out) {
 static void sendManualActionEmail(const char* subject, const char* actionType, const char* eventCode) {
   const char* emailAddr = g_autoCtrl.getEmailAddress();
   if (emailAddr && strlen(emailAddr) > 0) {
-    const bool emailConfigured = emailAddr && strlen(emailAddr) > 0;
-    unsigned long logStartMs = millis();
-    // #region agent log instrumentation
-    {
-      FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
-      if (f) {
-        fprintf(
-            f,
-            "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H3\",\"location\":\"web_server.cpp:sendManualActionEmail\",\"message\":\"manual action email start\",\"data\":{\"emailConfigured\":%s,\"eventCode\":\"%s\"},\"timestamp\":%lu}\n",
-            emailConfigured ? "true" : "false",
-            eventCode ? eventCode : "",
-            static_cast<unsigned long>(logStartMs)
-        );
-        fclose(f);
-      }
-    }
-    // #endregion
     char timeStr[24] = "(heure N/A)";
     time_t now = time(nullptr);
     if (now > 100000) {
@@ -180,26 +166,8 @@ static void sendManualActionEmail(const char* subject, const char* actionType, c
     snprintf(message, sizeof(message),
              "Action manuelle: %s\nÉvénement: %s\nHeure: %s",
              actionType, eventCode, timeStr);
-    bool sendOk = mailer.sendAlert(subject, message, emailAddr, false);
-    unsigned long logDurationMs = millis() - logStartMs;
-    // #region agent log instrumentation
-    {
-      FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
-      if (f) {
-        fprintf(
-            f,
-            "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H3\",\"location\":\"web_server.cpp:sendManualActionEmail\",\"message\":\"manual action email done\",\"data\":{\"emailConfigured\":%s,\"eventCode\":\"%s\",\"durationMs\":%lu,\"sendOk\":%s},\"timestamp\":%lu}\n",
-            emailConfigured ? "true" : "false",
-            eventCode ? eventCode : "",
-            static_cast<unsigned long>(logDurationMs),
-            sendOk ? "true" : "false",
-            static_cast<unsigned long>(millis())
-        );
-        fclose(f);
-      }
-    }
-    // #endregion
-    Serial.printf("[Web] 📧 Email action manuelle envoyé: %s\n", subject);
+    (void)mailer.sendAlert(subject, message, emailAddr, false);
+    Serial.printf("[Web] 📧 Email action manuelle ajouté à la queue: %s\n", subject);
   } else {
     Serial.println("[Web] ⚠️ Email non configuré - action manuelle non notifiée");
   }
@@ -294,7 +262,10 @@ bool WebServerManager::begin() {
 
   // Initialiser le serveur WebSocket temps réel (callback dbVars pour mise à jour temps réel page Contrôles)
   g_realtimeWebSocket.begin(_sensors, _acts, &fillDbVarsJson);
-  
+  // Aligner le cache WebSocket avec l'automatism (NVS) pour forceWakeup et mailNotif
+  g_realtimeWebSocket.updateForceWakeUpState(g_autoCtrl.getForceWakeUp());
+  g_realtimeWebSocket.updateMailNotifState(g_autoCtrl.isEmailEnabled());
+
   // Configurer les routes de bundles d'assets
   AssetBundler::setupBundleRoutes(_server);
 
@@ -343,38 +314,16 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_OK, "application/json", "{\"success\":true,\"action\":\"feedSmall\"}");
     }
     g_realtimeWebSocket.broadcastNow();
+    // Remise à 0 pour cohérence avec GET /action et POST /api/wakeup (observabilité /json)
+    g_autoCtrl.setBouffePetitsFlag("0");
+    g_autoCtrl.setBouffeGrosFlag("0");
   });
 
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
   _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
       g_autoCtrl.notifyLocalWebActivity();
       const char* resp = "OK";
-      char initialCmd[64] = {0};
-      char initialRelay[64] = {0};
-      if (req->hasParam("cmd")) {
-          strncpy(initialCmd, req->getParam("cmd")->value().c_str(), sizeof(initialCmd) - 1);
-      }
-      if (req->hasParam("relay")) {
-          strncpy(initialRelay, req->getParam("relay")->value().c_str(), sizeof(initialRelay) - 1);
-      }
-      // #region agent log instrumentation
-      {
-          FILE* f = fopen("c:\\Users\\olivi\\Mon Drive\\travail\\olution\\Projets\\prototypage\\platformIO\\Projects\\ffp5cs\\.cursor\\debug.log", "a");
-          if (f) {
-              fprintf(
-                  f,
-                  "{\"sessionId\":\"debug-session\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H4\",\"location\":\"web_server.cpp:/action\",\"message\":\"manual action request\",\"data\":{\"hasCmd\":%s,\"cmd\":\"%s\",\"hasRelay\":%s,\"relay\":\"%s\"},\"timestamp\":%lu}\n",
-                  req->hasParam("cmd") ? "true" : "false",
-                  initialCmd,
-                  req->hasParam("relay") ? "true" : "false",
-                  initialRelay,
-                  static_cast<unsigned long>(millis())
-              );
-              fclose(f);
-          }
-      }
-      // #endregion
-      
+
       // v11.169: Logs verbeux conditionnés (audit performance)
       #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
       IPAddress remoteIP = req->client()->remoteIP();
@@ -449,13 +398,10 @@ bool WebServerManager::begin() {
                             g_autoCtrl.getForceWakeUp() ? "ON" : "OFF");
           }
           else if (strcmp(c, "resetMode") == 0) {
-              Serial.println("[Web] 🔄 Triggering Reset Mode...");
-              // Trigger Reset Mode
-              g_autoCtrl.triggerResetMode();
-              // Push UI refresh IMMÉDIAT
+              Serial.println("[Web] 🔄 Reset ESP demandé (réponse envoyée puis redémarrage)");
               g_realtimeWebSocket.broadcastNow();
-              resp="RESET_MODE TRIGGERED OK";
-              Serial.println("[Web] ✅ Reset Mode triggered");
+              resp = "RESET OK";
+              s_pendingRestart = true;  // Redémarrer après envoi de la réponse
           }
           else if (strcmp(c, "wifiToggle") == 0) {
               Serial.println("[Web] 📶 WiFi toggle requested...");
@@ -539,6 +485,13 @@ bool WebServerManager::begin() {
         Serial.println("[Web] ❌ Échec création réponse (mémoire?)");
         req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur mémoire serveur");
       }
+
+      if (s_pendingRestart) {
+        s_pendingRestart = false;
+        Serial.println("[Web] 🔄 Redémarrage ESP dans 1s...");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP.restart();
+      }
       
       #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
       Serial.printf("[Web] ✅ Action completed - Response sent to %s\n", remoteIPBuf);
@@ -588,6 +541,10 @@ bool WebServerManager::begin() {
     JsonObject root = doc.to<JsonObject>();
     fillDbVarsJson(root);
 
+    // Garde heap juste avant beginResponseStream (évite abort() cbuf/WebResponses si heap a baissé)
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/dbvars"))) {
+      return;
+    }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     if (!response) {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
@@ -827,7 +784,12 @@ bool WebServerManager::begin() {
       strncpy(destBuf, req->getParam("to")->value().c_str(), sizeof(destBuf) - 1);
       destBuf[sizeof(destBuf) - 1] = '\0';
     } else {
-      strncpy(destBuf, EmailConfig::DEFAULT_RECIPIENT, sizeof(destBuf) - 1);
+      const char* configured = g_autoCtrl.getEmailAddress();
+      if (configured && strlen(configured) > 0) {
+        strncpy(destBuf, configured, sizeof(destBuf) - 1);
+      } else {
+        strncpy(destBuf, EmailConfig::DEFAULT_RECIPIENT, sizeof(destBuf) - 1);
+      }
       destBuf[sizeof(destBuf) - 1] = '\0';
     }
     bool ok = mailer.sendAlert(subjBuf, bodyBuf, destBuf);
@@ -879,19 +841,18 @@ bool WebServerManager::begin() {
     res->print("\"namespaces\":{");
 
     bool firstNs = true;
+#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
     nvs_iterator_t it = nullptr;
     if (nvs_entry_find(NVS_DEFAULT_PART_NAME, nullptr, NVS_TYPE_ANY, &it) == ESP_OK) {
       do {
         nvs_entry_info_t info;
         nvs_entry_info(it, &info);
 
-        // Ouvre le namespace si c'est la première fois qu'on le rencontre
         if (!firstNs) res->print(',');
         firstNs = false;
         res->print('"'); res->print(info.namespace_name); res->print("\":{");
 
         bool firstKey = true;
-        // Itère toutes les clés de ce namespace en rouvrant l'itérateur filtré
         nvs_iterator_t it2 = nullptr;
         if (nvs_entry_find(NVS_DEFAULT_PART_NAME, info.namespace_name,
                            NVS_TYPE_ANY, &it2) == ESP_OK) {
@@ -1033,6 +994,90 @@ bool WebServerManager::begin() {
       } while (nvs_entry_next(&it) == ESP_OK);
       nvs_release_iterator(it);
     }
+#else
+    // IDF 4.x: nvs_entry_find(3 args) retourne l'itérateur, nvs_entry_next(it) retourne le suivant
+    nvs_iterator_t it = nvs_entry_find(NVS_DEFAULT_PART_NAME, nullptr, NVS_TYPE_ANY);
+    while (it != nullptr) {
+      nvs_entry_info_t info;
+      nvs_entry_info(it, &info);
+
+      if (!firstNs) res->print(',');
+      firstNs = false;
+      res->print('"'); res->print(info.namespace_name); res->print("\":{");
+
+      bool firstKey = true;
+      nvs_iterator_t it2 = nvs_entry_find(NVS_DEFAULT_PART_NAME, info.namespace_name, NVS_TYPE_ANY);
+      while (it2 != nullptr) {
+        nvs_entry_info_t e2; nvs_entry_info(it2, &e2);
+        if (strcmp(e2.namespace_name, info.namespace_name) != 0) { it2 = nvs_entry_next(it2); continue; }
+        if (!firstKey) res->print(',');
+        firstKey = false;
+        res->print('"'); res->print(e2.key); res->print("\":{");
+
+        nvs_handle_t h;
+        if (nvs_open(info.namespace_name, NVS_READONLY, &h) == ESP_OK) {
+          auto typeToStr = [](nvs_type_t t)->const char*{
+            switch (t) {
+              case NVS_TYPE_U8:  return "U8";
+              case NVS_TYPE_I8:  return "I8";
+              case NVS_TYPE_U16: return "U16";
+              case NVS_TYPE_I16: return "I16";
+              case NVS_TYPE_U32: return "U32";
+              case NVS_TYPE_I32: return "I32";
+              case NVS_TYPE_U64: return "U64";
+              case NVS_TYPE_I64: return "I64";
+              case NVS_TYPE_STR: return "STR";
+              case NVS_TYPE_BLOB:return "BLOB";
+              default: return "UNKNOWN";
+            }
+          };
+          res->print("\"type\":\""); res->print(typeToStr(e2.type)); res->print("\"");
+
+          esp_err_t err = ESP_ERR_INVALID_ARG;
+          switch (e2.type) {
+            case NVS_TYPE_U8: { uint8_t v = 0; err = nvs_get_u8(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
+            case NVS_TYPE_I8: { int8_t v = 0; err = nvs_get_i8(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
+            case NVS_TYPE_U16: { uint16_t v = 0; err = nvs_get_u16(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
+            case NVS_TYPE_I16: { int16_t v = 0; err = nvs_get_i16(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
+            case NVS_TYPE_U32: { uint32_t v = 0; err = nvs_get_u32(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
+            case NVS_TYPE_I32: { int32_t v = 0; err = nvs_get_i32(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
+            case NVS_TYPE_U64: { uint64_t v = 0; err = nvs_get_u64(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print((uint64_t)v); } } break;
+            case NVS_TYPE_I64: { int64_t v = 0; err = nvs_get_i64(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print((int64_t)v); } } break;
+            case NVS_TYPE_STR: {
+              size_t len = 0; err = nvs_get_str(h, e2.key, nullptr, &len);
+              if (err == ESP_OK && len > 0 && len < BufferConfig::JSON_DOCUMENT_SIZE) {
+                static char nvsStrBuf[BufferConfig::JSON_DOCUMENT_SIZE];
+                size_t bufLen = sizeof(nvsStrBuf);
+                if (nvs_get_str(h, e2.key, nvsStrBuf, &bufLen) == ESP_OK) {
+                  res->print(",\"value\":\"");
+                  for (size_t i = 0; i < bufLen && nvsStrBuf[i]; ++i) {
+                    char c = nvsStrBuf[i];
+                    if (c == '"' || c == '\\') { res->print('\\'); res->print(c); }
+                    else if (c == '\n') { res->print("\\n"); }
+                    else if (c == '\r') { res->print("\\r"); }
+                    else { res->print(c); }
+                  }
+                  res->print("\"");
+                } else { res->print(",\"value\":\"<err>\""); }
+              } else if (len >= BufferConfig::JSON_DOCUMENT_SIZE) { res->print(",\"value\":\"<too_long>\""); }
+              else { res->print(",\"value\":\"\""); }
+            } break;
+            case NVS_TYPE_BLOB: {
+              size_t len = 0; err = nvs_get_blob(h, e2.key, nullptr, &len);
+              if (err == ESP_OK) { res->print(",\"length\":"); res->print((uint32_t)len); res->print(",\"value\":\"<blob>\""); }
+            } break;
+            default: break;
+          }
+          nvs_close(h);
+        }
+        res->print('}');
+        it2 = nvs_entry_next(it2);
+      }
+
+      res->print('}');
+      it = nvs_entry_next(it);
+    }
+#endif
 
     res->print('}'); // namespaces
     res->print('}'); // root
@@ -1328,6 +1373,7 @@ bool WebServerManager::begin() {
       doc["success"] = false;
       doc["count"] = 0;
       doc["error"] = "WiFi is off - cannot scan";
+      if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/wifi/scan"))) { return; }
       AsyncResponseStream* response = req->beginResponseStream("application/json");
       if (response) {
         response->addHeader("Access-Control-Allow-Origin", "*");
@@ -1386,6 +1432,7 @@ bool WebServerManager::begin() {
       doc["error"] = "No networks found or scan failed";
     }
     
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/wifi/scan"))) { return; }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
@@ -1485,6 +1532,7 @@ bool WebServerManager::begin() {
     doc["success"] = true;
     doc["count"] = totalCount;
     
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/wifi/saved"))) { return; }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
@@ -1654,6 +1702,7 @@ bool WebServerManager::begin() {
     }
     
     // Si on arrive ici, c'est qu'il y a eu une erreur
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/wifi/connect"))) { return; }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {
@@ -1782,6 +1831,7 @@ bool WebServerManager::begin() {
       }
     }
     
+    if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/wifi/remove"))) { return; }
     AsyncResponseStream* response = req->beginResponseStream("application/json");
     // v11.169: Vérification nullptr (audit robustesse)
     if (!response) {

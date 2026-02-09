@@ -35,9 +35,7 @@ class Automatism {
   void updateDisplay();        // mise à jour de l'affichage OLED (tâche dédiée)
   // Mise à jour affichage avec readings déjà lus (évite double lecture capteurs, ex. depuis automationTask)
   void updateDisplayWithReadings(const SensorReadings& r);
-  // Recommande l'intervalle d'update OLED en fonction de l'état courant
-  uint32_t getRecommendedDisplayIntervalMs();
-  
+
   // Getters pour accéder aux états depuis l'extérieur
   bool isPumpAquaLocked() const { return _config.getPompeAquaLocked(); }
   bool isTankPumpLocked() const { return tankPumpLocked; }
@@ -110,6 +108,12 @@ class Automatism {
   void toggleForceWakeup();
   void triggerResetMode();
   bool getForceWakeUp() const { return forceWakeUp; }
+  bool isRemoteSendEnabled() const { return _config.isRemoteSendEnabled(); }
+  void waitForNetworkReady();
+
+  // Veille légère : couper aqua/chauffage/lumière avant sleep, restaurer au réveil (snapshot NVS)
+  void prepareActuatorsForSleep(SystemActuators& acts);
+  void restoreActuatorsAfterWake(SystemActuators& acts);
 
   // Observabilité sync POST (exposé dans /api/status)
   uint32_t getSyncPostOkCount() const { return _network.getPostOkCount(); }
@@ -345,8 +349,7 @@ class Automatism {
   unsigned long _lastOled{0};
   // Chronomètre de changement d'écran (intervalle: DisplayConfig::SCREEN_SWITCH_INTERVAL_MS)
   unsigned long _lastScreenSwitch{0};
-  // Intervalle de rafraîchissement ultra-fluide de l'OLED (100ms pour temps réel)
-  const unsigned long oledInterval = 80; // Optimisé de 100ms à 80ms pour plus de fluidité
+  // Intervalle de rafraîchissement OLED : DisplayConfig::OLED_INTERVAL_MS / OLED_COUNTDOWN_INTERVAL_MS (config.h)
 
   // Suivi des changements d'état critiques
   bool _prevPumpTankState{false};
@@ -453,7 +456,6 @@ class Automatism {
   
   // Méthodes pour affichage (anciennement dans AutomatismDisplayController)
   void updateDisplayInternal(const AutomatismRuntimeContext& ctx);
-  uint32_t getRecommendedDisplayIntervalMsInternal(uint32_t nowMs) const;
 
   // Persistance NVS: snapshot des actionneurs autour du sleep (fusionné depuis AutomatismPersistence)
   void saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn);

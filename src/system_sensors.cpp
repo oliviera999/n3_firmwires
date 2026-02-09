@@ -15,6 +15,7 @@ void SystemSensors::begin() {
 
 SensorReadings SystemSensors::read() {
   SensorReadings r{};
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield Core 1 avant phase ~1s (évite INT_WDT début de run)
   
   // NOUVELLE VERSION NON-BLOQUANTE (v11.50)
   // Timeout global strict pour éviter tout blocage système
@@ -37,57 +38,7 @@ SensorReadings SystemSensors::read() {
   };
 
   // --- Mesures sécurisées avec timeout strict ---
-  
-  // Température eau avec méthode non-bloquante
-  {
-    phaseStart = millis();
-    
-    // NOUVELLE MÉTHODE NON-BLOQUANTE
-    float val = _water.getTemperatureWithFallback();
-    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température eau: %u ms\n", millis() - phaseStart);
-    
-    // Validation finale renforcée
-    if (isnan(val) || val < SensorConfig::WaterTemp::MIN_VALID || val > SensorConfig::WaterTemp::MAX_VALID) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Température eau invalide finale: %.1f°C (plage: %.1f-%.1f°C), force NaN\n", 
-                   val, SensorConfig::WaterTemp::MIN_VALID, SensorConfig::WaterTemp::MAX_VALID);
-      r.tempWater = NAN;
-    } else {
-      r.tempWater = val;
-    }
-  }
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
-  }
-  if (timeoutExceeded("temperature eau")) {
-    finalizeOnTimeout();
-    return r;
-  }
-
-  // Température air avec méthode non-bloquante
-  {
-    phaseStart = millis();
-    float val = _air.robustTemperatureC(); // Garde la méthode robuste pour DHT (air)
-    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
-    
-    // Validation finale (utilise < et > pour cohérence avec autres validations)
-    if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Température air invalide finale: %.1f°C, force NaN\n", val);
-      r.tempAir = NAN;
-    } else {
-      r.tempAir = val;
-    }
-  }
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
-  }
-  if (timeoutExceeded("temperature air")) {
-    finalizeOnTimeout();
-    return r;
-  }
-
-  // v11.154: ULTRASONS EN PREMIER (avant humidité qui peut timeout)
-  // Le DHT (air) peut prendre 7+ secondes quand il échoue, ce qui provoque un timeout global
-  // et empêche la lecture des ultrasons. On les lit donc en priorité.
+  // Ultrasons en premier (niveaux critiques, lecture rapide ; DHT peut timeout 7+ s)
   
   // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
   {
@@ -104,6 +55,7 @@ SensorReadings SystemSensors::read() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (ultrason ~300 ms)
   if (timeoutExceeded("niveau potager")) {
     finalizeOnTimeout();
     return r;
@@ -139,6 +91,7 @@ SensorReadings SystemSensors::read() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (ultrason ~300 ms)
   if (timeoutExceeded("niveau aquarium")) {
     finalizeOnTimeout();
     return r;
@@ -179,11 +132,55 @@ SensorReadings SystemSensors::read() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (ultrason ~300 ms)
   if (timeoutExceeded("niveau reservoir")) {
     finalizeOnTimeout();
     return r;
   }
-  
+
+  // Température eau (DS18B20) avec méthode non-bloquante
+  {
+    phaseStart = millis();
+    float val = _water.getTemperatureWithFallback();
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température eau: %u ms\n", millis() - phaseStart);
+    if (isnan(val) || val < SensorConfig::WaterTemp::MIN_VALID || val > SensorConfig::WaterTemp::MAX_VALID) {
+      SENSOR_LOG_PRINTF("[SystemSensors] Température eau invalide finale: %.1f°C (plage: %.1f-%.1f°C), force NaN\n",
+                   val, SensorConfig::WaterTemp::MIN_VALID, SensorConfig::WaterTemp::MAX_VALID);
+      r.tempWater = NAN;
+    } else {
+      r.tempWater = val;
+    }
+  }
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (phase longue)
+  if (timeoutExceeded("temperature eau")) {
+    finalizeOnTimeout();
+    return r;
+  }
+
+  // Température air (DHT) avec méthode non-bloquante
+  {
+    phaseStart = millis();
+    float val = _air.robustTemperatureC();
+    SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
+    if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
+      SENSOR_LOG_PRINTF("[SystemSensors] Température air invalide finale: %.1f°C, force NaN\n", val);
+      r.tempAir = NAN;
+    } else {
+      r.tempAir = val;
+    }
+  }
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (phase longue)
+  if (timeoutExceeded("temperature air")) {
+    finalizeOnTimeout();
+    return r;
+  }
+
   // Luminosité avec validation
   {
     phaseStart = millis();
@@ -230,6 +227,7 @@ SensorReadings SystemSensors::read() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (DHT peut être long)
   // Note: Pas de return anticipé ici - on continue même si timeout pour avoir le log final
 
   // marée diff

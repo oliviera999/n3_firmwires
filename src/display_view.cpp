@@ -211,6 +211,9 @@ void DisplayView::forceClear() {
 
 void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bool mailBlink,
                              int8_t tideDir, int diffValue) {
+#if FEATURE_DIAG_OLED_LOGS
+  Serial.printf("{\"ts\":%lu,\"loc\":\"display_view.cpp:drawStatus\",\"msg\":\"entry\",\"data\":{\"updateMode\":%d},\"hypothesisId\":\"B\"}\n", millis(), _updateMode ? 1 : 0);
+#endif
   if (!_present) return;
   if (isLocked()) return;
 
@@ -225,7 +228,10 @@ void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bo
                                            mailBlink,
                                            tideDir,
                                            diffValue);
-  
+#if FEATURE_DIAG_OLED_LOGS
+  Serial.printf("{\"ts\":%lu,\"loc\":\"display_view.cpp:drawStatus\",\"msg\":\"cache\",\"data\":{\"needsUpdate\":%d,\"updateMode\":%d},\"hypothesisId\":\"B\"}\n", millis(), needsUpdate ? 1 : 0, _updateMode ? 1 : 0);
+#endif
+
   if (!needsUpdate && !_updateMode) return; // Pas de changement, pas de mise à jour nécessaire
 
   StatusBarParams params{sendState,
@@ -237,7 +243,10 @@ void DisplayView::drawStatus(int8_t sendState, int8_t recvState, int8_t rssi, bo
                          _otaOverlayActive,
                          _lastOtaPercent};
   renderStatusBar(params);
-  
+#if FEATURE_DIAG_OLED_LOGS
+  Serial.printf("{\"ts\":%lu,\"loc\":\"display_view.cpp:drawStatus\",\"msg\":\"after renderStatusBar\",\"data\":{\"willSetNeedsFlush\":%d},\"hypothesisId\":\"A\"}\n", millis(), _updateMode ? 1 : 0);
+#endif
+
   // Marquer qu'un flush est nécessaire
   if (_updateMode) {
     _needsFlush = true;
@@ -426,6 +435,9 @@ void DisplayView::clear() {
 }
 
 void DisplayView::flush() {
+#if FEATURE_DIAG_OLED_LOGS
+  Serial.printf("{\"ts\":%lu,\"loc\":\"display_view.cpp:flush\",\"msg\":\"called\",\"hypothesisId\":\"A\"}\n", millis());
+#endif
   if (!_present) return;
   
   // Vérifier la santé I2C avant d'écrire
@@ -1114,16 +1126,17 @@ void DisplayView::renderServerVars(bool pumpAqua, bool pumpTank, bool heater, bo
 }
 
 void DisplayView::renderStatusBar(const StatusBarParams& params) {
-  // Dessiner la barre d'état en haut de l'écran (8 pixels de hauteur)
-  
+  // Dessiner la barre d'état sur la dernière ligne de l'écran (8 pixels de hauteur)
+  const int barY = DisplayConfig::STATUS_BAR_Y;
+
   // Effacer la zone de la barre d'état
-  _disp.fillRect(0, 0, 128, 8, BLACK);
-  
+  _disp.fillRect(0, barY, 128, DisplayConfig::STATUS_BAR_HEIGHT, BLACK);
+
   // WiFi RSSI indicator (gauche)
-  _disp.setCursor(0, 0);
+  _disp.setCursor(0, barY);
   _disp.setTextSize(1);
   _disp.setTextColor(WHITE);
-  
+
   if (params.rssi >= -50) {
     _disp.print(F("WiFi +++"));
   } else if (params.rssi >= -70) {
@@ -1135,9 +1148,9 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   } else {
     _disp.print(F("WiFi X  "));
   }
-  
+
   // Indicateur send/recv (milieu)
-  _disp.setCursor(60, 0);
+  _disp.setCursor(60, barY);
   if (params.sendState == 1) {
     _disp.print(F("S"));
   } else if (params.sendState == -1) {
@@ -1145,7 +1158,7 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   } else {
     _disp.print(F(" "));
   }
-  
+
   if (params.recvState == 1) {
     _disp.print(F("R"));
   } else if (params.recvState == -1) {
@@ -1153,9 +1166,9 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   } else {
     _disp.print(F(" "));
   }
-  
+
   // Indicateur marée (droite)
-  _disp.setCursor(80, 0);
+  _disp.setCursor(80, barY);
   if (params.tideDir > 0) {
     _disp.print(F("^")); // Marée montante
   } else if (params.tideDir < 0) {
@@ -1163,16 +1176,16 @@ void DisplayView::renderStatusBar(const StatusBarParams& params) {
   } else {
     _disp.print(F("-")); // Stable
   }
-  
+
   // Mail blink indicator
   if (params.mailBlink) {
-    _disp.setCursor(90, 0);
+    _disp.setCursor(90, barY);
     _disp.print(F("@"));
   }
-  
+
   // OTA progress overlay (si actif)
   if (params.otaOverlayActive) {
-    _disp.setCursor(100, 0);
+    _disp.setCursor(100, barY);
     _disp.printf("%d%%", params.otaPercent);
   }
 }

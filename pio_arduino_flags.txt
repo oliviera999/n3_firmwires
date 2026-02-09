@@ -1,0 +1,1 @@
+flag_custom_sdkconfig=True flag_any_custom_sdkconfig=False

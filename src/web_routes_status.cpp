@@ -4,6 +4,7 @@
 
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
+#include <AsyncJson.h>
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <string.h>
@@ -125,19 +126,14 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
     g_realtimeWebSocket.broadcastNow();
   });
 
-  server.on("/api/wakeup", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
+  // POST /api/wakeup: AsyncCallbackJsonWebHandler collecte le body JSON (server.on ne le fait pas)
+  server.on(AsyncURIMatcher::exact("/api/wakeup"), HTTP_POST, [&ctx](AsyncWebServerRequest* req, JsonVariant& json) {
     Serial.println("[Web] 🔔 Réveil par API POST");
 
-    StaticJsonDocument<512> doc;
-    const char* body = req->_tempObject ? (const char*)req->_tempObject : "";
-    DeserializationError error = deserializeJson(doc, body);
-    if (error) {
-      req->send(NetworkConfig::HTTP_BAD_REQUEST, "application/json", "{\"error\":\"Invalid JSON\"}");
-      return;
-    }
-
-    const char* action = doc["action"] | "unknown";
-    const char* source = doc["source"] | "api";
+    const char* action = json["action"].as<const char*>();
+    if (!action) action = "unknown";
+    const char* source = json["source"].as<const char*>();
+    if (!source) source = "api";
 
     Serial.printf("[Web] Action de réveil: %s depuis %s\n", action, source);
     Serial.printf("[Event] Réveil API: %s depuis %s\n", action, source);
@@ -160,7 +156,8 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
 
       sendJsonResponse(req, statusDoc);
     } else if (strcmp(action, "feed") == 0) {
-      const char* feedType = doc["feedType"] | "small";
+      const char* feedType = json["feedType"].as<const char*>();
+      if (!feedType) feedType = "small";
       const bool isBig = (strcmp(feedType, "big") == 0);
 
       Serial.printf("[Web] 🍽️ Nourrissage à distance: %s\n", isBig ? "gros" : "petits");

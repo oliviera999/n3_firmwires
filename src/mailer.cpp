@@ -624,9 +624,9 @@ static const char* buildSystemInfoFooter() {
     buf += written;
     remaining -= written;
 
-    // Namespace OTA - clé unifiée avec ConfigManager
+    // Namespace OTA - clé unifiée avec ConfigManager (défaut false, cohérent avec config)
     bool otaUpdateFlag;
-    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, otaUpdateFlag, true);
+    g_nvsManager.loadBool(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_UPDATE_FLAG, otaUpdateFlag, false);
     written = snprintf(buf, remaining, "- ota.updateFlag: %s\n", otaUpdateFlag ? "true" : "false");
     if (written < 0 || (size_t)written >= remaining) {
       buf[remaining - 1] = '\0';
@@ -1076,7 +1076,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
     // v11.179: Pas de String temporaire pour éviter crash dans destructeur
     Serial.printf("[Mail] ERREUR sendMail code=%d err=%d\n", _smtp.statusCode(), _smtp.errorCode());
   } else {
-    Serial.println(F("[Mail] Message envoyé avec succès ✔"));
+    Serial.println(F("[Mail] Message SMTP envoyé avec succès ✔"));
   }
   
   // CRITIQUE: Fermer la session SMTP après chaque envoi pour éviter les callbacks
@@ -1086,7 +1086,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   _smtp.closeSession();
   _ready = false;
   Serial.println(F("[Mail] ✅ Session SMTP fermée proprement"));
-  
+
   // Libérer le mutex TLS (CRITIQUE - doit être fait après fermeture session)
   TLSMutex::release();
   
@@ -1190,7 +1190,7 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   Serial.printf("[Mail] Destinataire: %s\n", targetEmail);
   Serial.printf("[Mail] Objet final: %s\n", alertSubject);
   Serial.println(F("[Mail] ==========================="));
-  
+
   // Marqueur footer complet (alerte critique + rapport détaillé déjà inclus) - désactivé pour l'instant
   if (false && isCritical && remaining > 0) {
     const char* marker = "\n[Footer complet déjà inclus]";
@@ -1436,7 +1436,7 @@ bool Mailer::processOneMailSync() {
   
   if (success) {
     _mailsSent++;
-    Serial.printf("[Mail] ✅ Mail envoyé avec succès (%u total)\n", _mailsSent);
+    Serial.printf("[Mail] ✅ Mail SMTP envoyé avec succès (%u total)\n", _mailsSent);
   } else {
     // Re-queue une fois pour retry (échec transitoire WiFi/TLS), max 2 tentatives au total
     if (item.retryCount < 2) {

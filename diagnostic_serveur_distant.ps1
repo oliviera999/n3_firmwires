@@ -203,8 +203,8 @@ if ($avgGetInterval -gt 0) {
     $coherence += '[KO] GET: Impossible de calculer la frequence'
 }
 
-# POST: Duree <= 8 secondes (HTTP_POST_TIMEOUT_MS = 8000)
-$postLimitMs = 8000
+# POST: Duree <= 10 secondes (marge vs HTTP_POST_TIMEOUT_MS 8s / RPC 18s)
+$postLimitMs = 10000
 if ($maxDuration -gt 0) {
     if ($maxDuration -le $postLimitMs) {
         $coherence += '[OK] POST: Durees dans les limites (max: ' + $maxDuration + ' ms, limite: ' + $postLimitMs + ' ms)'

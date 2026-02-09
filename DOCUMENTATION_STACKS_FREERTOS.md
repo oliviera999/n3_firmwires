@@ -5,9 +5,9 @@
 
 ## Vue d'Ensemble
 
-Le système utilise **6 tâches FreeRTOS principales** pour gérer les différentes fonctionnalités. Chaque tâche possède son propre stack avec des caractéristiques spécifiques.
+Le système utilise **5 tâches FreeRTOS principales** (plus la loop Arduino). L'affichage OLED est intégré dans **automationTask** (plus de displayTask dédiée). Chaque tâche possède son propre stack avec des caractéristiques spécifiques.
 
-**Total stacks alloués** : ~30KB (allocation hybride : statique + dynamique)
+**Total stacks alloués** : ~27KB (allocation hybride : statique + dynamique)
 
 ---
 
@@ -98,29 +98,14 @@ Le système utilise **6 tâches FreeRTOS principales** pour gérer les différen
 
 ---
 
-### 4. displayTask
+### 4. Affichage OLED (intégré dans automationTask)
 
-**Fichier** : `src/app_tasks.cpp:228-252`
+La **displayTask** a été supprimée. L'affichage OLED est désormais mis à jour **depuis automationTask** :
 
-**Configuration** (`include/config.h:506-508`) :
-- **Taille stack** : 3072 bytes (3 KB)
-- **Priorité** : 1 (basse)
-- **Core** : 1 (Core dédié aux capteurs)
-- **Type allocation** : **Statique** (`xTaskCreateStaticPinnedToCore`)
-- **Buffer statique** : `displayTaskStack[3072]` (ligne 32)
+- **Quand une lecture capteur arrive** : `automatism.update(readings)` puis `automatism.updateDisplayWithReadings(readings)`.
+- **Quand la queue capteurs expire (timeout 1 s)** : si au moins une lecture a déjà été reçue, `automatism.updateDisplayWithReadings(s_lastReadings)` pour rafraîchir l'heure RTC et la barre d'état (~1 Hz).
 
-**Fonction principale** :
-- Mise à jour de l'affichage OLED
-- Appels à `automatism.updateDisplay()`
-- Intervalle dynamique (basé sur `getRecommendedDisplayIntervalMs()`)
-- Minimum : `MIN_DISPLAY_INTERVAL_MS`
-
-**Utilisation réelle (HWM observé)** :
-- **HWM au boot** : ~2328 bytes libres
-- **Stack utilisée** : ~744 bytes (24%)
-- **Marge de sécurité** : 744 bytes (bonne marge)
-
-**Réduction appliquée** : Réduit de 4096 à 3072 bytes (v11.157) basé sur HWM
+Le throttle (80 ms / 250 ms en countdown) est géré dans `updateDisplayInternal()` (voir `docs/technical/OLED_REFRESH_ANALYSIS.md`).
 
 ---
 
@@ -184,7 +169,7 @@ Le système utilise **6 tâches FreeRTOS principales** pour gérer les différen
 | **sensorTask** | 3072 (3 KB) | 2 | 1 | Statique | 1864 | 39% | 1208 | ✅ OK |
 | **webTask** | 5120 (5 KB) | 1 | 0 | Dynamique | 5332 | -4%* | 212 | ⚠️ Critique |
 | **automationTask** | 8192 (8 KB) | 3 | 1 | Dynamique | 416 | 95% | 416 | 🔴 Critique |
-| **displayTask** | 3072 (3 KB) | 1 | 1 | Statique | 2328 | 24% | 744 | ✅ OK |
+| **OLED** | — | — | — | Intégré automationTask | — | — | — | — |
 | **netTask** | 10240 (10 KB) | 2 | 0 | Dynamique | 5584 | 45% | 4656 | ✅ OK |
 | **loopTask** | ~8192 (8 KB) | 1 | 1 | ESP-IDF | ? | ? | ? | ✅ OK |
 
@@ -194,9 +179,9 @@ Le système utilise **6 tâches FreeRTOS principales** pour gérer les différen
 
 ## Analyse par Type d'Allocation
 
-### Allocation Statique (2 tâches)
+### Allocation Statique (1 tâche)
 
-**Tâches** : `sensorTask`, `displayTask`
+**Tâches** : `sensorTask` (displayTask supprimée, affichage OLED intégré dans automationTask)
 
 **Avantages** :
 - ✅ Pas de fragmentation mémoire (alloué à la compilation)
@@ -207,7 +192,7 @@ Le système utilise **6 tâches FreeRTOS principales** pour gérer les différen
 - ❌ Consomme de la mémoire statique (data segment)
 - ❌ Limité par la taille du data segment DRAM
 
-**Total alloué statiquement** : 6144 bytes (6 KB)
+**Total alloué statiquement** : 3072 bytes (3 KB)
 
 ---
 

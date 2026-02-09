@@ -471,11 +471,11 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
       remaining -= written;
     }
     
-    // État mémoire avant reboot
-    uint32_t lastHeap = 0;
+    // État mémoire avant reboot (unsigned long pour compat loadULong ref sur toutes plateformes)
+    unsigned long lastHeap = 0;
     g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::LAST_HEAP, lastHeap, 0);
     if (lastHeap > 0) {
-      written = snprintf(buffer + offset, remaining, "Heap libre avant reboot: %u bytes\n", lastHeap);
+      written = snprintf(buffer + offset, remaining, "Heap libre avant reboot: %lu bytes\n", (unsigned long)lastHeap);
       if (written < 0 || (size_t)written >= remaining) {
         buffer[bufferSize - 1] = '\0';
         return;

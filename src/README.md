@@ -14,7 +14,7 @@ Chaque fichier est volontairement court (max ~400 lignes) pour faciliter la main
 | `display_view.cpp` | `display_view.h` | Rendu texte & graphiques sur OLED (Adafruit GFX). |
 | `power.cpp` | `power.h` | NTP, sauvegarde temps en flash, watchdog, sleep. |
 | `web_client.cpp` | `web_client.h` | Envoi POST multipart/form-urlencoded, analyse JSON distant. |
-| `web_server.cpp` | `web_server.h` | Serveur AsyncWebServer + ElegantOTA + API JSON `/api/*`. |
+| `web_server.cpp` | `web_server.h` | Serveur AsyncWebServer + page OTA `/update` + API JSON `/api/*`. |
 | `mailer.cpp` | `mailer.h` | Envoi SMTP SSL (Gmail) + file d’attente simple. |
 | `config.cpp` | `config.h` | Accès Preferences (NVS) pour persister seuils & flags. |
 | `diagnostics.cpp` | `diagnostics.h` | Lecture VIN (ADC), analyse raison reset, uptime, Brownout. |

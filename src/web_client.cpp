@@ -79,7 +79,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   }
   
   // Désactiver le modem sleep pendant le transfert
-  WiFi.setSleep(false);
+  WIFI_APPLY_MODEM_SLEEP(false);
 
   const int MAX_ATTEMPTS = 2;
   int code = -1;
@@ -147,6 +147,23 @@ bool WebClient::httpRequest(const char* url, const char* payload,
           }
         }
         tempResponseBuffer[responseLen] = '\0';
+        // Drain octets restants de la réponse avant end() (évite "still data in buffer" / timeout readBytes)
+        if (code >= 200 && code < 400) {
+          unsigned long drainStart = millis();
+          const unsigned long POST_DRAIN_TIMEOUT_MS = 500;
+          size_t discarded = 0;
+          char trash[128];
+          while (stream->available() > 0 && discarded < 4096 &&
+                 (millis() - drainStart) < POST_DRAIN_TIMEOUT_MS) {
+            size_t n = stream->readBytes(trash, sizeof(trash));
+            if (n == 0) {
+              vTaskDelay(pdMS_TO_TICKS(10));
+              continue;
+            }
+            discarded += n;
+            drainStart = millis();
+          }
+        }
       } else {
         // v11.179: Désactivation getString() - cause crashes LoadProhibited dans destructeur String
         // Fallback: réponse vide si pas de stream (rare, mais sûr)
@@ -167,9 +184,6 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       // v11.179: Pas de String temporaire pour éviter crash dans destructeur
       LOG(LOG_WARN, "[HTTP] Erreur %d", code);
     }
-    // v11.182: SUPPRESSION du drain dangereux via stream->connected()/available()
-    // Le drain après erreur ou timeout peut causer LoadProhibited si stream invalide
-    // HTTPClient.end() gère le nettoyage proprement
     if (_client.connected()) {
       _http.end();
     }
@@ -337,7 +351,11 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 
 int WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
   if (WiFi.status() != WL_CONNECTED) return 0;
-  if (!config.isRemoteRecvEnabled()) return 0;
+  // #region agent log
+  bool recvEn = config.isRemoteRecvEnabled();
+  Serial.printf("[DBG] tryFetchConfig recvEnabled=%d hypothesis=H2\n", recvEn ? 1 : 0);
+  // #endregion
+  if (!recvEn) return 0;
   return fetchRemoteState(doc);
 }
 
@@ -359,13 +377,16 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
-  WiFi.setSleep(false);
+  WIFI_APPLY_MODEM_SLEEP(false);
   vTaskDelay(pdMS_TO_TICKS(100));
 
   const size_t MAX_RESPONSE_SIZE = BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE;
   char payloadBuffer[MAX_RESPONSE_SIZE + 1];
   char url[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
+  // #region agent log
+  Serial.printf("[DBG] fetchRemoteState URL=%s hypothesis=H1\n", url);
+  // #endregion
 
   // Timeout dédié plus long pour GET outputs/state (évite -11 read timeout si serveur/latence lents)
   _http.setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
@@ -392,6 +413,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
 
   if (code <= 0) {
     Serial.printf("[HTTP] outputs/state: code=%d (skip read)\n", code);
+    // #region agent log
+    Serial.printf("[DBG] fetchRemoteState code=%d useNVS=%d hypothesis=H3\n", code, loadFromNVSFallback(doc) ? 1 : 0);
+    // #endregion
     _http.end();
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
@@ -467,6 +491,50 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     if (n == 0) break;
     totalRead += n;
     payloadBuffer[totalRead] = '\0';
+    vTaskDelay(pdMS_TO_TICKS(10));  // Yield net task (évite WDT si flux gros)
+  }
+
+  // Chunked: laisser le temps aux derniers chunks d'arriver (évite IncompleteInput)
+  if (!hasContentLength && totalRead > 0) {
+    vTaskDelay(pdMS_TO_TICKS(400));
+  }
+  // Seconde passe: lire tout ce qui est disponible dans le buffer (chunked peut livrer en retard)
+  const unsigned long SECOND_DRAIN_MS = 1000;
+  unsigned long secondDrainStart = millis();
+  while (stream->available() > 0 && totalRead < MAX_RESPONSE_SIZE &&
+         (millis() - secondDrainStart) < SECOND_DRAIN_MS) {
+    size_t n = stream->readBytes(
+      payloadBuffer + totalRead,
+      MAX_RESPONSE_SIZE - totalRead
+    );
+    if (n > 0) {
+      totalRead += n;
+      payloadBuffer[totalRead] = '\0';
+      secondDrainStart = millis();
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(20));
+    }
+  }
+
+  // Discard octets restants quand buffer plein ou chunked non fini (évite "still data in buffer")
+  size_t discarded = 0;
+  const size_t MAX_DISCARD = 16384;
+  const unsigned long DISCARD_TIMEOUT_MS = 2000;
+  unsigned long discardStart = millis();
+  char trash[256];
+  while (stream->available() > 0 && discarded < MAX_DISCARD &&
+         (millis() - discardStart) < DISCARD_TIMEOUT_MS) {
+    size_t n = stream->readBytes(trash, sizeof(trash));
+    if (n == 0) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    discarded += n;
+    discardStart = millis();
+  }
+  if (discarded > 0) {
+    Serial.printf("[HTTP] outputs/state: drain discard=%u (totalRead=%u)\n",
+                  (unsigned)discarded, (unsigned)totalRead);
   }
 
   Serial.printf("[HTTP] outputs/state: code=%d contentLength=%d totalRead=%u\n",
@@ -506,6 +574,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> parseDoc;
   DeserializationError err = deserializeJson(parseDoc, payloadBuffer);
   if (err) {
+    // #region agent log
+    Serial.printf("[DBG] fetchRemoteState parse fail err=%s totalRead=%u hypothesis=H4\n", err.c_str(), (unsigned)totalRead);
+    // #endregion
     static std::atomic<uint32_t> jsonErrorCount{0};
     static std::atomic<unsigned long> lastJsonErrorLog{0};
     uint32_t count = ++jsonErrorCount;
@@ -528,13 +599,26 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   s_lastFetchedSize = jsonLen;
 
   Serial.printf("[HTTP] GET outputs/state: body=%u bytes, stored for copyLastFetchedTo\n", (unsigned)totalRead);
+  // #region agent log
+  Serial.printf("[DBG] fetchRemoteState result=1 totalRead=%u hypothesis=H1,H3,H4\n", (unsigned)totalRead);
+  // #endregion
   return 1;  // OK depuis HTTP
 }
 
 bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
-  if (s_lastFetchedSize == 0 || s_lastFetchedJson[0] == '\0') return false;
+  if (s_lastFetchedSize == 0 || s_lastFetchedJson[0] == '\0') {
+    // #region agent log
+    Serial.printf("[DBG] copyLastFetchedTo skip size=%u hypothesis=H4\n", (unsigned)s_lastFetchedSize);
+    // #endregion
+    return false;
+  }
   DeserializationError err = deserializeJson(doc, s_lastFetchedJson);
-  if (err) return false;
+  if (err) {
+    // #region agent log
+    Serial.printf("[DBG] copyLastFetchedTo deserialize err=%s hypothesis=H4\n", err.c_str());
+    // #endregion
+    return false;
+  }
   // Unwrap outputs/switches si présent (même logique qu'avant, exécutée dans le contexte du caller)
   bool didUnwrap = false;
   JsonObject inner;
@@ -547,14 +631,26 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
   }
   if (didUnwrap && !inner.isNull()) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+    char keyBuf[64];
     for (JsonPair p : inner) {
-      tmp[p.key().c_str()] = p.value();
+      strncpy(keyBuf, p.key().c_str(), sizeof(keyBuf) - 1);
+      keyBuf[sizeof(keyBuf) - 1] = '\0';
+      tmp[keyBuf] = p.value();
     }
     doc.clear();
     for (JsonPair p : tmp.as<JsonObject>()) {
-      doc[p.key().c_str()] = p.value();
+      strncpy(keyBuf, p.key().c_str(), sizeof(keyBuf) - 1);
+      keyBuf[sizeof(keyBuf) - 1] = '\0';
+      doc[keyBuf] = p.value();
     }
   }
+  size_t nKeys = doc.size();
+  int has108 = doc.containsKey("108") ? 1 : 0;
+  int has109 = doc.containsKey("109") ? 1 : 0;
+  // #region agent log
+  Serial.printf("[DBG] copyLastFetchedTo ok docSize=%u unwrap=%d has108=%d has109=%d hypothesis=H4,H6\n",
+                 (unsigned)nKeys, didUnwrap ? 1 : 0, has108, has109);
+  // #endregion
   return true;
 }
 
@@ -610,7 +706,7 @@ bool WebClient::postRaw(const char* payload) {
     return false;
   }
   
-  WiFi.setSleep(false);
+  WIFI_APPLY_MODEM_SLEEP(false);
   vTaskDelay(pdMS_TO_TICKS(100));
   
   // Buffer sur la stack
