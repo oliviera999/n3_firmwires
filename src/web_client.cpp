@@ -87,6 +87,9 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   bool success = false;
 
   for (int attempt = 0; attempt < MAX_ATTEMPTS && !success; attempt++) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();  // P1: feed WDT en début de chaque tentative (évite TWDT si POST long)
+    }
     unsigned long attemptStartMs = millis();
 
     // Timeout global: vérifier AVANT begin() pour éviter end() sur état incohérent
@@ -109,7 +112,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     }
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     code = _http.POST(payload ? payload : "");
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     
     if (code > 0) {
       // Lire la réponse
@@ -127,6 +136,9 @@ bool WebClient::httpRequest(const char* url, const char* payload,
         
         while (responseLen < MAX_TEMP_RESPONSE && 
                (millis() - streamReadStart) < STREAM_READ_TIMEOUT_MS) {
+          if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+          }
           if (stream->available()) {
             size_t bytesRead = stream->readBytes(
               tempResponseBuffer + responseLen,
@@ -155,6 +167,9 @@ bool WebClient::httpRequest(const char* url, const char* payload,
           char trash[128];
           while (stream->available() > 0 && discarded < 4096 &&
                  (millis() - drainStart) < POST_DRAIN_TIMEOUT_MS) {
+            if (esp_task_wdt_status(NULL) == ESP_OK) {
+              esp_task_wdt_reset();
+            }
             size_t n = stream->readBytes(trash, sizeof(trash));
             if (n == 0) {
               vTaskDelay(pdMS_TO_TICKS(10));
@@ -399,7 +414,13 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   int code = _http.GET();
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
   // Retry une fois sur timeout lecture (-11) pour améliorer le taux de succès GET
   if (code == -11) {
     _http.end();
@@ -446,7 +467,13 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   // le stack TCP/HTTP si on attend entre available() et read).
   if (hasContentLength && (size_t)contentLength <= MAX_RESPONSE_SIZE) {
     stream->setTimeout(3000);
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     totalRead = stream->readBytes(payloadBuffer, (size_t)contentLength);
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     payloadBuffer[totalRead] = '\0';
   }
 
@@ -458,6 +485,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     const uint8_t MAX_EMPTY_READS = NetworkConfig::OUTPUTS_STATE_MAX_EMPTY_READS;
 
     while (totalRead < MAX_RESPONSE_SIZE && (millis() - globalReadStart) < READ_TIMEOUT_MS) {
+      if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+      }
       if (!stream->connected()) break;
       if (stream->available()) {
         size_t bytesRead = stream->readBytes(
@@ -484,6 +514,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
 
   // Drain restant du stream avant end() pour éviter "still data in buffer" et IncompleteInput
   while (stream->available() > 0 && totalRead < MAX_RESPONSE_SIZE) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     size_t n = stream->readBytes(
       payloadBuffer + totalRead,
       MAX_RESPONSE_SIZE - totalRead
@@ -503,6 +536,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   unsigned long secondDrainStart = millis();
   while (stream->available() > 0 && totalRead < MAX_RESPONSE_SIZE &&
          (millis() - secondDrainStart) < SECOND_DRAIN_MS) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     size_t n = stream->readBytes(
       payloadBuffer + totalRead,
       MAX_RESPONSE_SIZE - totalRead
@@ -524,6 +560,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   char trash[256];
   while (stream->available() > 0 && discarded < MAX_DISCARD &&
          (millis() - discardStart) < DISCARD_TIMEOUT_MS) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     size_t n = stream->readBytes(trash, sizeof(trash));
     if (n == 0) {
       vTaskDelay(pdMS_TO_TICKS(10));

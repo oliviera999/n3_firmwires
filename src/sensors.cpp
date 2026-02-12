@@ -1165,14 +1165,6 @@ float AirSensor::robustTemperatureC() {
     return result;
   }
   
-  // Échec: incrémenter le compteur température
-  _consecutiveTempFailures++;
-  
-  // Log seulement les premiers échecs pour éviter spam
-  if (_consecutiveTempFailures <= 3) {
-    SENSOR_LOG_PRINTF("[AirSensor] Échec température %d/%d\n", _consecutiveTempFailures, MAX_CONSECUTIVE_FAILURES);
-  }
-  
   // Reset watchdog après filtrage avancé
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -1188,6 +1180,9 @@ float AirSensor::robustTemperatureC() {
   
   // 2. UNE SEULE tentative de lecture directe (pas de boucle ni de reset)
   {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
 #if defined(USE_AIR_SENSOR_BME280)
     float temp = _bme.readTemperature();
 #else
@@ -1206,8 +1201,12 @@ float AirSensor::robustTemperatureC() {
     }
   }
   
-  // 4. Utilisation de la dernière valeur valide si disponible
+  // 4. Utilisation de la dernière valeur valide si disponible (échec réel: filtrage et récupération ont échoué)
 use_last_valid:
+  _consecutiveTempFailures++;
+  if (_consecutiveTempFailures <= 3) {
+    SENSOR_LOG_PRINTF("[AirSensor] Échec température %d/%d\n", _consecutiveTempFailures, MAX_CONSECUTIVE_FAILURES);
+  }
   if (!isnan(_lastValidTemp)) {
     if (_consecutiveTempFailures <= 5) {
       SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f°C\n", _lastValidTemp);
@@ -1274,6 +1273,9 @@ float AirSensor::filteredTemperatureC() {
   }
   _lastDhtReadMs = now;
 
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
 #if defined(USE_AIR_SENSOR_BME280)
   float temp = _bme.readTemperature();
 #else
@@ -1308,6 +1310,9 @@ float AirSensor::filteredHumidity() {
   }
   _lastDhtReadMs = now;
 
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
 #if defined(USE_AIR_SENSOR_BME280)
   float h = _bme.readHumidity();
 #else
@@ -1355,14 +1360,6 @@ float AirSensor::robustHumidity() {
     return result;
   }
   
-  // Échec: incrémenter le compteur humidité
-  _consecutiveHumidityFailures++;
-  
-  // Log seulement les premiers échecs pour éviter spam
-  if (_consecutiveHumidityFailures <= 3) {
-    SENSOR_LOG_PRINTF("[AirSensor] Échec humidité %d/%d\n", _consecutiveHumidityFailures, MAX_CONSECUTIVE_FAILURES);
-  }
-  
   // Reset watchdog après filtrage
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -1378,6 +1375,9 @@ float AirSensor::robustHumidity() {
   
   // 2. UNE SEULE tentative de lecture directe (pas de boucle ni de reset)
   {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
 #if defined(USE_AIR_SENSOR_BME280)
     float humidity = _bme.readHumidity();
 #else
@@ -1396,8 +1396,12 @@ float AirSensor::robustHumidity() {
     }
   }
   
-  // 4. Utilisation de la dernière valeur valide si disponible
+  // 4. Utilisation de la dernière valeur valide si disponible (échec réel: filtrage et récupération ont échoué)
 use_last_valid_humidity:
+  _consecutiveHumidityFailures++;
+  if (_consecutiveHumidityFailures <= 3) {
+    SENSOR_LOG_PRINTF("[AirSensor] Échec humidité %d/%d\n", _consecutiveHumidityFailures, MAX_CONSECUTIVE_FAILURES);
+  }
   if (!isnan(_lastValidHumidity)) {
     if (_consecutiveHumidityFailures <= 5) {
       SENSOR_LOG_PRINTF("[AirSensor] Utilisation de la dernière valeur valide: %.1f%%\n", _lastValidHumidity);

@@ -47,8 +47,8 @@ $outputFile = "diagnostic_serveur_distant_$timestamp.txt"
 
 Write-Host 'Analyse envoi POST donnees capteurs...' -ForegroundColor Yellow
 
-# Patterns POST (v11.182: alignés firmware actuel [Sync]/[HTTP] + rétro [PR])
-$postStarts = $lines | Select-String -Pattern '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ==='
+# Patterns POST (v11.182 + P3: [HTTP] POST http pour détecter démarrage POST firmware actuel)
+$postStarts = $lines | Select-String -Pattern '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ===|\[HTTP\] POST http'
 $postSuccess = $lines | Select-String -Pattern '\[HTTP\] Requête:.*succès=oui|\[PR\] Primary server result: SUCCESS|\[PR\] Final result: SUCCESS'
 $postFailed = $lines | Select-String -Pattern '\[HTTP\] Requête:.*succès=non|\[HTTP\] Erreur \d|\[PR\] Primary server result: FAILED|\[PR\] Final result: FAILED'
 $postTimeout = $lines | Select-String -Pattern '\[HTTP\] POST timeout'
@@ -76,7 +76,7 @@ if ($logBaseName -match '(\d{4})-(\d{2})-(\d{2})') {
 }
 $postTimestamps = @()
 foreach ($line in $lines) {
-    if ($line -match '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ===') {
+    if ($line -match '\[Sync\].*envoi POST|\[PR\] === DÉBUT POSTRAW ===|\[HTTP\] POST http') {
         $dt = $null
         if ($line -match '(\d{4})-(\d{2})-(\d{2})[\sT](\d{2}):(\d{2}):(\d{2})') {
             try { $dt = [DateTime]::Parse("$($matches[1])-$($matches[2])-$($matches[3]) $($matches[4]):$($matches[5]):$($matches[6])") } catch {}

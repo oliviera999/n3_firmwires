@@ -30,12 +30,22 @@
 #endif
 
 // S3 TG0WDT: appelé au tout début de initArduino() (patch core via tools/patch_arduino_early_init_variant.py).
+// Avec CONFIG_ESP_TASK_WDT_INIT=n (sdkconfig_s3_wdt), le TWDT ne démarre pas — pas de deinit nécessaire.
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 extern "C" void earlyInitVariant(void) {
-  esp_task_wdt_deinit();
   // Diagnostic boot: premier point (avant nvs_flash_init etc.)
   Serial.begin(115200);
   Serial.println("[FFP5CS] earlyInitVariant");
+}
+
+// Diagnostic boot: appelé après bloc PSRAM dans initArduino() (patch core).
+extern "C" void ffp5cs_diag_after_psram(void) {
+  Serial.println("[FFP5CS] after PSRAM block");
+}
+
+// Diagnostic boot: appelé juste avant nvs_flash_init() dans initArduino() (patch core).
+extern "C" void ffp5cs_diag_before_nvs(void) {
+  Serial.println("[FFP5CS] before nvs_flash_init");
 }
 
 // Diagnostic boot: appelé juste après nvs_flash_init() dans initArduino() (patch core via tools/patch_arduino_diag_after_nvs.py).
@@ -44,13 +54,9 @@ extern "C" void ffp5cs_diag_after_nvs(void) {
 }
 #endif
 
-// S3 TG0WDT: secours dans initVariant() (fin de initArduino). Réinit 300s en setup().
+// S3: initVariant() (fin de initArduino). Avec CONFIG_ESP_TASK_WDT_INIT=n, pas d'appel WDT ici.
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 void initVariant(void) {
-  esp_task_wdt_deinit();
-  esp_task_wdt_reset();
-  yield();
-  esp_task_wdt_reset();
   Serial.println("[FFP5CS] initVariant");
 }
 #endif
@@ -91,17 +97,13 @@ static unsigned long g_lastOtaCheck = 0;
 
 
 void setup() {
-  // S3: nourrir le WDT immédiatement (au cas où timeout court avant reconfig)
-  #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  esp_task_wdt_reset();
-  #endif
   // Task WDT 300s (IDF 5+ uniquement; IDF 4.x garde la config par défaut)
   #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  // S3: reconfig 300s (initVariant() + feed ci-dessus ont pu nourrir le WDT)
+  // S3: reconfig WDT 300s (deinit si déjà init par le framework, puis init)
   delay(1);
   yield();
-  esp_task_wdt_deinit();
+  esp_task_wdt_deinit();  // No-op si TWDT jamais init, sinon permet reconfig
   esp_task_wdt_config_t wdtCfg = {};
   wdtCfg.timeout_ms = 300000;
   wdtCfg.idle_core_mask = 0;
@@ -135,20 +137,28 @@ void setup() {
     default: Serial.printf("Unknown reset (%d)\n", resetReason); break;
   }
   
-  // v11.149: Initialisation du mutex TLS (avant toute opération réseau)
-  TLSMutex::init();
-  
-  #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+  // WROOM (non-S3): reconfig TWDT 30 s au démarrage (évite reboot pendant POST 8s).
+  // IDF 5: esp_task_wdt_config_t + timeout_ms. IDF 4 (Arduino wroom-test): esp_task_wdt_init(timeout_sec).
   #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
+    #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};
-  cfg.timeout_ms = 300000;  // 300 secondes (5 minutes)
+  cfg.timeout_ms = 30000;   // 30 s (marge POST 8s + async_tcp core 0)
   cfg.idle_core_mask = 0;
   cfg.trigger_panic = true;
   esp_task_wdt_init(&cfg);
-  Serial.printf("[BOOT] Watchdog configuré: timeout=%d ms\n", (int)cfg.timeout_ms);
+  Serial.printf("[BOOT] Watchdog configuré: timeout=%lu ms (WROOM)\n", (unsigned long)cfg.timeout_ms);
+    #else
+  // API IDF 4.x: esp_task_wdt_init(timeout_sec, panic) — headers Arduino wroom-test n'ont pas esp_task_wdt_config_t
+  esp_task_wdt_deinit();
+  esp_task_wdt_init(30, true);   // 30 secondes, panic si timeout
+  Serial.println("[BOOT] Watchdog configuré: 30 s (WROOM, API IDF4)");
+    #endif
   #endif
-  #endif
+  
+  // v11.149: Initialisation du mutex TLS (avant toute opération réseau)
+  TLSMutex::init();
+  
   delay(SystemConfig::INITIAL_DELAY_MS);
   
   #if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
@@ -176,6 +186,7 @@ void setup() {
   Serial.println("[Event] OTA validation done");
   
   SystemBoot::initializeTimekeeping(g_appContext);
+  g_appContext.mailer.setPowerManager(&g_appContext.power);
 
   time_t bootTime = g_appContext.power.getCurrentEpochSafe();
   struct tm bootTimeInfo;

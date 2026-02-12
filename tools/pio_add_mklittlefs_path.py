@@ -41,6 +41,7 @@ def add_littlefs_include_for_s3():
     pioenv = env.get("PIOENV", "")
     if not pioenv.startswith("wroom-s3"):
         return
+    home = Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or "").expanduser()
     try:
         framework_dir = env.subst("$PIOFRAMEWORK_DIR")
     except Exception:
@@ -65,11 +66,23 @@ def add_littlefs_include_for_s3():
             if os.path.isdir(fs_include):
                 env.Prepend(CPPPATH=[fs_include])
                 env.Prepend(CPPFLAGS=["-I" + fs_include])
-            # esp_littlefs.h requis par LittleFS.cpp quand CONFIG_LITTLEFS_PAGE_SIZE est défini (SDK dans framework Arduino)
-            esp_littlefs_inc = os.path.join(framework_dir, "tools", "sdk", "esp32s3", "include", "esp_littlefs", "include")
-            if os.path.isdir(esp_littlefs_inc):
+            # esp_littlefs.h requis par LittleFS.cpp quand CONFIG_LITTLEFS_PAGE_SIZE est défini
+            # Chemin 1: framework Arduino classique (tools/sdk/esp32s3/include/esp_littlefs)
+            # Chemin 2: framework-arduinoespressif32-libs (pioarduino, joltwallet__littlefs)
+            esp_littlefs_candidates = [
+                os.path.join(framework_dir, "tools", "sdk", "esp32s3", "include", "esp_littlefs", "include"),
+                os.path.join(home, ".platformio", "packages", "framework-arduinoespressif32-libs",
+                             "esp32s3", "include", "joltwallet__littlefs", "include"),
+            ]
+            esp_littlefs_inc = None
+            for cand in esp_littlefs_candidates:
+                if os.path.isdir(cand):
+                    esp_littlefs_inc = cand
+                    break
+            if esp_littlefs_inc:
                 env.Prepend(CPPPATH=[esp_littlefs_inc])
                 env.Prepend(CPPFLAGS=["-I" + esp_littlefs_inc])
+                print("[pre-script] FFP5CS S3: esp_littlefs.h include ajouté:", esp_littlefs_inc)
             # Forcer compilation + link du LittleFS du framework (évite undefined reference au link)
             try:
                 build_subdir = os.path.join(env.subst("$BUILD_DIR"), "LittleFS_fw")

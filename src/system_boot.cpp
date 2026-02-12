@@ -33,8 +33,8 @@ void setupHostname(char* buffer, size_t bufferSize) {
 void initializeStorage(AppContext& ctx) {
   Serial.println("[Event] Boot start");
 
-  // Label "spiffs" partout (tables de partition : nom spiffs, subtype littlefs ou spiffs selon env)
-  const char* fsLabel = "spiffs";
+  // Label "littlefs" pour correspondre à la table de partition partitions_esp32_wroom_ota_fs_medium.csv
+  const char* fsLabel = "littlefs";
   Serial.printf("[FS] Mounting LittleFS (label=%s)...\n", fsLabel);
   uint32_t fsStartTime = millis();
   if (!LittleFS.begin(false, "/spiffs", 10, fsLabel)) {

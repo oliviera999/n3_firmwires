@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.196: Incrément version (S3 TG0WDT: feed WDT plus tôt au boot)
-    inline constexpr const char* VERSION = "11.196";
+    // v11.198: Incrémentation version
+    inline constexpr const char* VERSION = "11.198";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -120,6 +120,8 @@ namespace TimingConfig {
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
     // Délai après disconnect avant scan (stabilisation chip WiFi)
     inline constexpr uint32_t WIFI_POST_DISCONNECT_DELAY_MS = 500;
+    // Délai avant premier scan au boot (stabilisation RF)
+    inline constexpr uint32_t WIFI_PRE_SCAN_DELAY_MS = 300;
     // Délai entre tentatives sur réseaux différents (évite états intermédiaires)
     inline constexpr uint32_t WIFI_DELAY_BETWEEN_NETWORKS_MS = 250;
     // Délai avant 4e tentative par réseau visible (routeur instable)
@@ -142,9 +144,9 @@ namespace TimingConfig {
     
     // Intervalle tâche capteurs: >= DHT MIN_READ_INTERVAL_MS (datasheet 2s, config 2.5s). 10s adapté aquaponie.
     inline constexpr uint32_t SENSOR_TASK_INTERVAL_MS = 10000;
-    // Timeout attente queue capteurs dans automationTask — 5s donne une fenêtre pour recevoir le prochain envoi (10s)
-    // et réduit le ratio timeout/data sans augmenter la charge capteurs.
-    inline constexpr uint32_t AUTOMATION_QUEUE_RECEIVE_TIMEOUT_MS = 5000;
+    // Timeout attente queue capteurs dans automationTask — doit être >= SENSOR_TASK_INTERVAL_MS pour
+    // recevoir au moins une lecture par cycle (sinon timeouts et fallback fréquents alors que capteurs OK).
+    inline constexpr uint32_t AUTOMATION_QUEUE_RECEIVE_TIMEOUT_MS = 12000;
     // Timeout max pour lecture capteurs (protection watchdog)
     inline constexpr uint32_t MAX_SENSOR_TIME_MS = 30000;
 
@@ -214,19 +216,25 @@ namespace NetworkConfig {
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
-    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 15000;  // 15 s (était 12 s)
+    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 10000;  // 10 s (P1: limite blocage netTask vs TWDT 30s)
     // RPC FetchRemoteState : timeout = HTTP + marge queue (POST ~8s peut précéder le GET)
     inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 30000;  // 30 s (évite abandon avant fin GET si file chargée)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
-    // POST post-data / ack : dérogation 8s (règle projet 5s) — latence serveur/hébergement observée
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 8000;  // 8 s (était 7 s)
+    // POST post-data / ack : dérogation 8s (latence serveur ; webTask sur core 1 limite risque TWDT)
+    // En conditions réelles requêtes peuvent atteindre ~9 s ; WDT 30 s + feed dans web_client garantissent pas de reboot.
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 8000;  // 8 s
     // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée (~9s) pour éviter abandon avant fin
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 18000;  // 18 s (marge si GET ~15s devant dans la file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
+    // Fetch au réveil : timeout plus long (dérogation acceptable car critique pour commandes programmées)
+    inline constexpr uint32_t WAKEUP_FETCH_TIMEOUT_MS = 15000;  // 15s par tentative
+    inline constexpr int WAKEUP_FETCH_MAX_RETRIES = 3;
+    inline constexpr uint32_t WAKEUP_FETCH_RETRY_DELAY_MS = 2000;  // 2s entre retries
+    inline constexpr uint32_t WAKEUP_NETWORK_STABILIZATION_DELAY_MS = 1000;  // 1s après waitForNetworkReady
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
     // que requêtes HTTP standard
     // Justification : connexions lentes peuvent nécessiter jusqu'à 30s
@@ -357,6 +365,8 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;   // 32 KB (inchangé)
     inline constexpr uint32_t MIN_HEAP_MAIL_SEND = 45000;       // S3: 45 KB
     inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 36864; // S3: 36 KB (réduit 503 streams)
+    // Heap libre minimum pour accepter une connexion TLS (SMTP/HTTPS). Source de vérité unique.
+    inline constexpr uint32_t MIN_HEAP_FOR_TLS = 35000;        // 35 KB (aligné v11.159)
 #else
     inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 20000;      // /json endpoint (réduit de 50K)
     inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 25000;    // /dbvars endpoint (réduit de 55K)
@@ -373,6 +383,8 @@ namespace HeapConfig {
     // alloue et redimensionne pendant write(); en dessous → Failed to allocate → abort().
     // 28 KB marge pour fragmentation + réponses en vol (run 30 min encore abort sans 20K).
     inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 28672;  // 28 KB
+    // Heap libre minimum pour accepter une connexion TLS (SMTP/HTTPS). Source de vérité unique.
+    inline constexpr uint32_t MIN_HEAP_FOR_TLS = 35000;         // 35 KB (aligné v11.159)
 #endif
 }
 
@@ -466,6 +478,8 @@ namespace SensorConfig {
     namespace Ultrasonic {
         inline constexpr uint16_t MIN_DISTANCE_CM = 2;
         inline constexpr uint16_t MAX_DISTANCE_CM = 400;
+        // Plage validée dans system_sensors pour niveaux eau (potager, aquarium, réservoir)
+        inline constexpr uint16_t MAX_VALID_LEVEL_CM = 500;
         inline constexpr uint16_t MAX_DELTA_CM = 30;
         inline constexpr uint32_t TIMEOUT_US = 30000;
         inline constexpr uint8_t DEFAULT_SAMPLES = 5;
@@ -745,7 +759,8 @@ namespace TaskConfig {
     inline constexpr uint32_t WEB_TASK_STACK_SIZE = 10240;  // 10KB - WebSocket + AsyncWebServer + marge
     // Baissé de 2 à 1 - le web n'est pas critique (offline-first)
     inline constexpr UBaseType_t WEB_TASK_PRIORITY = 1;
-    inline constexpr BaseType_t WEB_TASK_CORE_ID = 0;
+    // Core 1 : évite starvation TWDT quand async_tcp monopolise core 0 pendant POST (P1)
+    inline constexpr BaseType_t WEB_TASK_CORE_ID = 1;
     
     // v11.157: Augmenté de 6KB à 8KB pour éviter stack overflow (HWM: 100 bytes libres = critique)
     // v11.171: Augmenté de 8KB à 10KB (audit: HWM utilisé à 95%, marge insuffisante)
@@ -762,11 +777,13 @@ namespace TaskConfig {
     
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
+    // v11.197: Augmenté 8KB → 12KB - stack overflow dans netTask lors de checkForUpdate OTA
+    //         (buffer 2KB + HTTPClient + TLS overhead dépasse 8KB)
     // S3: 12 KB (stack canary netTask sur S3 - mbedTLS/HTTP plus gourmand)
 #if defined(BOARD_S3)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (S3)
 #else
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 8192;   // 8 KB (requis pour TLS/HTTPS avec mbedTLS)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (WROOM - requis pour OTA checkForUpdate + TLS/HTTPS)
 #endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs

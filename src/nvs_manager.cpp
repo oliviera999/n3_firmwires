@@ -523,7 +523,8 @@ NVSError NVSManager::loadFloat(const char* ns, const char* key, float& value, fl
         return openError;
     }
 
-    // Éviter getFloat quand la clé n'existe pas : Preferences logue NOT_FOUND en interne (ex. temp_last_valid au 1er boot)
+    // Éviter getFloat quand la clé n'existe pas : Preferences logue NOT_FOUND en interne (ex. temp_last_ok au 1er boot).
+    // Premier boot : clé absente, NOT_FOUND attendu ; créée à la première sauvegarde température valide (WaterTemp).
     if (!_preferences.isKey(key)) {
         value = defaultValue;
         closeNamespace();

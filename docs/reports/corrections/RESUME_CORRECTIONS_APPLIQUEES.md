@@ -34,7 +34,7 @@
 #### 1.5 Seuil d'alerte mémoire TLS aligné
 - **Fichier**: `src/app.cpp:246-269`
 - **Changement**: 
-  - Seuil critique aligné avec TLS_MIN_HEAP_BYTES (52 KB)
+  - Seuil critique aligné avec TLS_MIN_HEAP_BYTES (35 KB). Le seuil est défini dans `include/config.h` (HeapConfig::MIN_HEAP_FOR_TLS), source de vérité unique.
   - Ajout alerte intermédiaire à 40 KB
   - Documentation améliorée
 - **Impact**: Alertes préventives avant échec TLS

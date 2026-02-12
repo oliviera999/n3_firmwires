@@ -18,10 +18,15 @@ pio test -e native
 
 ## 📁 Structure
 
-- `test_mocks.h` - Mocks pour fonctions Arduino/ESP32
-- `test_timer_manager.cpp` - Tests pour TimerManager
-- `test_rate_limiter.cpp` - Tests pour RateLimiter
-- `README.md` - Ce fichier
+- `test_mocks.h` — Mocks pour fonctions Arduino/ESP32 (millis, Serial, etc.)
+- `unity_config.h` — Configuration Unity pour tests natifs
+- `README.md` — Ce fichier
+
+Suites exécutées par l’env `native` (voir `test_filter` dans `platformio.ini`) :
+- `../test_nvs/` — Validation NVS (clés, mock)
+- `../test_config/` — ConfigManager (mock)
+
+La suite `test_rate_limiter` est exclue (dépend de `rate_limiter.h` absent du projet).
 
 ## 📚 Documentation
 
@@ -44,7 +49,7 @@ pio test -e native
 pio test -e native
 
 # Un test spécifique
-pio test -e native -f test_timer_manager
+pio test -e native -f test_nvs
 
 # Mode verbose
 pio test -e native -v

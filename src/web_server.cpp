@@ -1274,7 +1274,8 @@ bool WebServerManager::begin() {
     // Rafraîchir l'état runtime si nécessaire
     if (strcmp(nsBuf, "bouffe") == 0 || strcmp(nsBuf, "ota") == 0) {
       config.loadBouffeFlags();
-    } else if (strcmp(nsBuf, "rtc") == 0) {
+    } else if (strcmp(nsBuf, "rtc") == 0 ||
+               (strcmp(nsBuf, NVS_NAMESPACES::SYSTEM) == 0 && strcmp(keyBuf, NVSKeys::System::RTC_EPOCH) == 0)) {
       power.loadTimeFromFlash();
     } else if (strcmp(nsBuf, "remoteVars") == 0 && strcmp(keyBuf, "json") == 0) {
       char js[256];

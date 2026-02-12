@@ -14,6 +14,8 @@ struct Session_Config {};
 #include "secrets.h"
 #include "system_sensors.h"
 
+class PowerManager;
+
 // Structure pour les éléments de la queue de mail (v11.144 - optimisé mémoire)
 // Permet l'envoi asynchrone des emails sans bloquer automationTask
 struct MailQueueItem {
@@ -50,7 +52,10 @@ class Mailer {
   
   // Vérification si des mails sont en attente
   bool hasPendingMails() const;
-  
+
+  /** Définit le PowerManager pour l'epoch affiché (évite doublon getSafeEpoch). Appelé au boot. */
+  void setPowerManager(PowerManager* power);
+
   // Statistiques
   uint32_t getMailsSent() const { return _mailsSent; }
   uint32_t getMailsFailed() const { return _mailsFailed; }
@@ -63,7 +68,10 @@ class Mailer {
   
   // Queue mail (traitée séquentiellement depuis automationTask)
   QueueHandle_t _mailQueue{nullptr};
-  
+
+  // Epoch: délégation vers PowerManager (évite duplication logique NVS/fallback)
+  PowerManager* _power{nullptr};
+
   // Statistiques
   uint32_t _mailsSent{0};
   uint32_t _mailsFailed{0};

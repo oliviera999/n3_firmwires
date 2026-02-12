@@ -17,7 +17,7 @@ Write-Host "📦 Vérification de l'environnement..." -ForegroundColor Yellow
 # Compiler les tests
 Write-Host ""
 Write-Host "🔨 Compilation des tests..." -ForegroundColor Yellow
-pio test -e native --no-upload
+pio test -e native --without-uploading
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""

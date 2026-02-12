@@ -94,8 +94,8 @@ Write-Host "Analyse des patterns..." -ForegroundColor Yellow
 $jsonParseSuccess = ([regex]::Matches($logContent, "\[GPIOParser\].*PARSING.*SERVEUR|\[HTTP\] Utilisation cache NVS", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $jsonParseErrors = ([regex]::Matches($logContent, "\[HTTP\] JSON parse error|JSON parse error", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 
-# 2. Envois POST
-$postSends = ([regex]::Matches($logContent, "\[PR\]|POST.*sent|\[Sync\].*envoi POST|POST.*réussi", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+# 2. Envois POST (P3: inclure [HTTP] POST http://... émis par le firmware)
+$postSends = ([regex]::Matches($logContent, "\[PR\]|POST.*sent|\[Sync\].*envoi POST|\[HTTP\].*POST|POST.*réussi", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $postDiagnostic = ([regex]::Matches($logContent, "\[Sync\] Diagnostic|\[PR\] === DÉBUT POSTRAW", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $postErrors = ([regex]::Matches($logContent, "POST.*échec|POST.*error|POST.*failed", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 

@@ -35,6 +35,7 @@ Write-Host "Fermez tout moniteur série sur l'ESP32 avant de continuer." -Foregr
 Write-Host ""
 
 # 0. Pour S3 (test et prod) : patches + fullclean + build (fix TG1WDT boot loop, libs recompilées)
+# Si WinError 32 sur ArduinoJson/libdeps: fermer Cursor, PowerShell externe, .\tools\clean_s3_build.ps1 puis pio run.
 if ($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") {
     Write-Host "0. Préparation S3 test/prod (patches + fullclean + build, fix TG1WDT)..." -ForegroundColor Yellow
     python tools/patch_espressif32_custom_sdkconfig_only.py
@@ -45,6 +46,12 @@ if ($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     python tools/patch_arduino_libs_s3_wdt.py
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    # Vérifier CONFIG_SPIRAM_BOOT_INIT (évite psramAddToHeap blocage S3)
+    $sdkWdt = Join-Path $projectRoot "sdkconfig_s3_wdt.txt"
+    if (-not (Select-String -Path $sdkWdt -Pattern "CONFIG_SPIRAM_BOOT_INIT=y" -Quiet)) {
+        Write-Host "   WARN: CONFIG_SPIRAM_BOOT_INIT=y absent de sdkconfig_s3_wdt.txt" -ForegroundColor Red
+        Write-Host "   Risque de blocage boot (psramAddToHeap dans initArduino)" -ForegroundColor Red
+    }
     $pkgDirs = @(
         (Join-Path $env:USERPROFILE ".platformio\packages\framework-arduinoespressif32-libs\sdkconfig"),
         (Join-Path $projectRoot ".platformio\packages\framework-arduinoespressif32-libs\sdkconfig")
@@ -52,6 +59,8 @@ if ($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") {
     foreach ($sdk in $pkgDirs) {
         if (Test-Path $sdk) { Remove-Item $sdk -Force; Write-Host "   sdkconfig supprimé (force recompil libs)" -ForegroundColor Gray }
     }
+    # Force-suppression build/libdeps S3 si fullclean échoue (fichiers verrouillés)
+    & (Join-Path $projectRoot "tools\clean_s3_build.ps1")
     $prevErr = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
     pio run -e $Environment -t fullclean 2>&1 | Out-Null

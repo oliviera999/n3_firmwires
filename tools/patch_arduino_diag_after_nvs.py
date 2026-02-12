@@ -32,11 +32,29 @@ def find_framework_dirs():
     return found
 
 # Weak + défaut vide (C)
+DIAG_BEFORE_NVS_BLOCK = (
+    "void ffp5cs_diag_before_nvs(void) __attribute__((weak));\n"
+    "void ffp5cs_diag_before_nvs(void) {}\n"
+)
 DIAG_AFTER_NVS_BLOCK = (
     "void ffp5cs_diag_after_nvs(void) __attribute__((weak));\n"
     "void ffp5cs_diag_after_nvs(void) {}\n"
 )
 INIT_VARIANT_BLOCK = "void initVariant() __attribute__((weak));\nvoid initVariant() {}"
+
+# Après bloc PSRAM, avant APP_ROLLBACK — pour localiser blocage psramAddToHeap
+DIAG_AFTER_PSRAM_BLOCK = (
+    "void ffp5cs_diag_after_psram(void) __attribute__((weak));\n"
+    "void ffp5cs_diag_after_psram(void) {}\n"
+)
+AFTER_PSRAM_PATTERNS = (
+    ('#endif\n#endif\n#ifdef CONFIG_APP_ROLLBACK_ENABLE', '#endif\n#endif\n  ffp5cs_diag_after_psram();\n#ifdef CONFIG_APP_ROLLBACK_ENABLE'),
+)
+# Avant nvs_flash_init() — pour localiser blocage (PSRAM/APP_ROLLBACK vs NVS)
+BEFORE_NVS_PATTERNS = (
+    ('  esp_log_level_set("*", CONFIG_LOG_DEFAULT_LEVEL);\n  esp_err_t err = nvs_flash_init();', '  esp_log_level_set("*", CONFIG_LOG_DEFAULT_LEVEL);\n  ffp5cs_diag_before_nvs();\n  esp_err_t err = nvs_flash_init();'),
+    ('esp_log_level_set("*", CONFIG_LOG_DEFAULT_LEVEL);\n  esp_err_t err = nvs_flash_init();', 'esp_log_level_set("*", CONFIG_LOG_DEFAULT_LEVEL);\n  ffp5cs_diag_before_nvs();\n  esp_err_t err = nvs_flash_init();'),
+)
 
 # Après le bloc "if (err) { log_e(...); }" dans initArduino(), avant #if BLUEDROID / #ifdef CONFIG_BT
 # (pioarduino @src- utilise 2 espaces et CONFIG_BLUEDROID_ENABLED)
@@ -52,17 +70,43 @@ def patch_one(hal_misc):
     with open(hal_misc, "r", encoding="utf-8") as f:
         content = f.read()
     changes = []
-    if "ffp5cs_diag_after_nvs" not in content:
+    # Déclaration after_psram (localiser blocage psramAddToHeap)
+    if "ffp5cs_diag_after_psram" not in content:
         if INIT_VARIANT_BLOCK in content:
-            content = content.replace(
-                INIT_VARIANT_BLOCK,
-                INIT_VARIANT_BLOCK + "\n" + DIAG_AFTER_NVS_BLOCK,
-                1
-            )
-            changes.append("decl ffp5cs_diag_after_nvs")
+            content = content.replace(INIT_VARIANT_BLOCK, INIT_VARIANT_BLOCK + "\n" + DIAG_AFTER_PSRAM_BLOCK, 1)
+        else:
+            content = DIAG_AFTER_PSRAM_BLOCK + "\n" + content
+        changes.append("decl ffp5cs_diag_after_psram")
+    # Appel after_psram (après bloc PSRAM)
+    if "ffp5cs_diag_after_psram();" not in content:
+        for old, new in AFTER_PSRAM_PATTERNS:
+            if old in content:
+                content = content.replace(old, new, 1)
+                changes.append("call ffp5cs_diag_after_psram() after PSRAM block")
+                break
+    # Déclarations before_nvs + after_nvs
+    if "ffp5cs_diag_before_nvs" not in content:
+        insert = DIAG_BEFORE_NVS_BLOCK
+        if "ffp5cs_diag_after_nvs" not in content:
+            insert += "\n" + DIAG_AFTER_NVS_BLOCK
+        if INIT_VARIANT_BLOCK in content:
+            content = content.replace(INIT_VARIANT_BLOCK, INIT_VARIANT_BLOCK + "\n" + insert, 1)
+        else:
+            content = insert + "\n" + content
+        changes.append("decl ffp5cs_diag_before_nvs" + (" + ffp5cs_diag_after_nvs" if "ffp5cs_diag_after_nvs" in insert else ""))
+    elif "ffp5cs_diag_after_nvs" not in content:
+        if INIT_VARIANT_BLOCK in content:
+            content = content.replace(INIT_VARIANT_BLOCK, INIT_VARIANT_BLOCK + "\n" + DIAG_AFTER_NVS_BLOCK, 1)
         else:
             content = DIAG_AFTER_NVS_BLOCK + "\n" + content
-            changes.append("decl ffp5cs_diag_after_nvs")
+        changes.append("decl ffp5cs_diag_after_nvs")
+    # Appel before_nvs (avant nvs_flash_init)
+    if "ffp5cs_diag_before_nvs();" not in content:
+        for old, new in BEFORE_NVS_PATTERNS:
+            if old in content:
+                content = content.replace(old, new, 1)
+                changes.append("call ffp5cs_diag_before_nvs() before nvs_flash_init")
+                break
     if "ffp5cs_diag_after_nvs();" not in content:
         for old, new in NVS_PATTERNS:
             if old in content:

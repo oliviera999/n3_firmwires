@@ -392,20 +392,67 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     // Appel à la veille
     uint32_t actualSleptSec = _power.goToLightSleep(sleepDurationSec);
 
-    // Réveil: attente WiFi, poll états distants puis envoi si succès (comme au boot)
+    // Réveil: attente WiFi, stabilisation réseau, fetch config avec retries, puis envoi
     unsigned long wakeStartMs = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - wakeStartMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
         esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(200));
     }
+    
     if (WiFi.status() == WL_CONNECTED) {
+        // Phase 1: Stabilisation réseau (déjà fait par waitForNetworkReady)
         core.waitForNetworkReady();
+        
+        // Phase 2: Délai supplémentaire pour garantir stabilisation complète TCP/IP
+        // Après light sleep, le stack réseau peut nécessiter un délai supplémentaire
+        Serial.println(F("[Auto] Attente stabilisation complète réseau après réveil..."));
+        vTaskDelay(pdMS_TO_TICKS(NetworkConfig::WAKEUP_NETWORK_STABILIZATION_DELAY_MS));
+        esp_task_wdt_reset();
+        
+        // Phase 3: Fetch config avec retries (critique pour commandes programmées)
         ArduinoJson::StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+        bool fetchSuccess = false;
         bool fromNVSFallback = false;
-        bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS, &fromNVSFallback);
-        if (ok && !fromNVSFallback && doc.size() > 0) {
-            core.processFetchedRemoteConfig(doc);
-            core.sendFullUpdate(r, nullptr);
+        
+        for (int attempt = 1; attempt <= NetworkConfig::WAKEUP_FETCH_MAX_RETRIES && !fetchSuccess; attempt++) {
+            // Vérifier que WiFi est toujours connecté avant chaque tentative
+            if (WiFi.status() != WL_CONNECTED) {
+                Serial.printf("[Auto] ⚠️ WiFi déconnecté avant tentative fetch %d/%d\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
+                break;
+            }
+            
+            Serial.printf("[Auto] 🔄 Tentative fetch config %d/%d après réveil...\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
+            bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::WAKEUP_FETCH_TIMEOUT_MS, &fromNVSFallback);
+            
+            if (ok && !fromNVSFallback && doc.size() > 0) {
+                fetchSuccess = true;
+                Serial.printf("[Auto] ✅ Fetch config réussi (tentative %d/%d)\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
+                core.processFetchedRemoteConfig(doc);
+            } else {
+                Serial.printf("[Auto] ⚠️ Fetch config échoué (tentative %d/%d): ok=%d fromNVS=%d docSize=%u\n",
+                              attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES, ok ? 1 : 0, fromNVSFallback ? 1 : 0, doc.size());
+                if (attempt < NetworkConfig::WAKEUP_FETCH_MAX_RETRIES) {
+                    Serial.printf("[Auto] Retry dans %u ms...\n", NetworkConfig::WAKEUP_FETCH_RETRY_DELAY_MS);
+                    vTaskDelay(pdMS_TO_TICKS(NetworkConfig::WAKEUP_FETCH_RETRY_DELAY_MS));
+                    esp_task_wdt_reset();
+                }
+            }
+        }
+        
+        if (!fetchSuccess) {
+            Serial.println(F("[Auto] ⚠️ Fetch config échoué après tous les retries - envoi différé"));
+            // Optionnel: différer l'envoi si fetch critique échoue
+            // Pour l'instant, on continue avec l'envoi pour garantir les données
+        }
+        
+        // Phase 4: Envoi données (garanti si WiFi connecté et envoi activé)
+        if (core.isRemoteSendEnabled()) {
+            if (WiFi.status() == WL_CONNECTED) {
+                Serial.println(F("[Auto] 📤 Envoi données après réveil..."));
+                core.sendFullUpdate(r, nullptr);
+            } else {
+                Serial.println(F("[Auto] ⚠️ WiFi déconnecté - envoi annulé"));
+            }
         }
     }
 

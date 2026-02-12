@@ -28,6 +28,7 @@ class PowerManager {
   void updateTime();
 
   // Accesseurs
+  /** RTC brut (non validé). Préférer getCurrentEpochSafe() pour affichage et logique métier. */
   time_t getCurrentEpoch() { return time(nullptr); }
   /** Retourne un epoch validé pour affichage (évite valeurs aberrantes) */
   time_t getCurrentEpochSafe();

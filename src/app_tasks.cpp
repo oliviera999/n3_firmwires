@@ -233,7 +233,8 @@ static void netTask(void* pv) {
     esp_task_wdt_add(nullptr);
     wdtRegistered = true;
   }
-  
+  esp_task_wdt_reset();  // P1: démarrer la fenêtre TWDT après l'add (évite WDT si GET boot bloque)
+
   Serial.println(F("[netTask] Démarrée (TLS/HTTP propriétaire unique)"));
 
   // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
@@ -250,6 +251,7 @@ static void netTask(void* pv) {
     // Cause basale: attente stabilisation stack TCP/IP avant 1ère requête HTTPS
     // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
     g_ctx->power.waitForNetworkReady();
+    esp_task_wdt_reset();  // P1: reset avant GET boot (fetch peut bloquer jusqu'à OUTPUTS_STATE_HTTP_TIMEOUT_MS)
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
@@ -320,13 +322,16 @@ static void netTask(void* pv) {
         int r = (req->doc != nullptr) ? g_ctx->webClient.tryFetchConfigFromServer(*req->doc) : 0;
         ok = (r >= 1);
         req->fromNVSFallback = (r == 2);
+        esp_task_wdt_reset();
         break;
       }
       case NetReqType::PostRaw:
         ok = g_ctx->webClient.tryPushStatusToServer(req->payload);
+        esp_task_wdt_reset();
         break;
       case NetReqType::Heartbeat:
         ok = (req->diag != nullptr) ? g_ctx->webClient.sendHeartbeat(*req->diag) : false;
+        esp_task_wdt_reset();
         break;
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
       case NetReqType::OtaCheck: {
@@ -335,6 +340,7 @@ static void netTask(void* pv) {
         if (ok) {
           g_ctx->otaManager.performUpdate();
         }
+        esp_task_wdt_reset();
         netRequestFree(req);  // Fire-and-forget, rendre le slot
         continue;
       }
@@ -445,7 +451,13 @@ void sensorTask(void* pv) {
     }
 
     esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(TimingConfig::SENSOR_TASK_INTERVAL_MS));
+    // Découper le délai en tranches avec reset WDT pour ne pas dépasser le timeout (5s typ.)
+    const uint32_t intervalMs = TimingConfig::SENSOR_TASK_INTERVAL_MS;
+    const uint32_t chunkMs = 1000;
+    for (uint32_t remaining = intervalMs; remaining > 0; remaining -= (remaining > chunkMs ? chunkMs : remaining)) {
+      vTaskDelay(pdMS_TO_TICKS(remaining > chunkMs ? chunkMs : remaining));
+      esp_task_wdt_reset();
+    }
   }
 }
 
@@ -857,6 +869,9 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   const uint32_t CHECK_INTERVAL_MS = 100;
 
   while (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CHECK_INTERVAL_MS)) == 0) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();  // Caller (autoTask/webTask) attend réponse netTask
+    }
     uint32_t elapsed = millis() - waitStart;
     if (elapsed > limitMs) {
       Serial.printf("[netRPC] Timeout (%u ms), abandon\n", (unsigned)limitMs);

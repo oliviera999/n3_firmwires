@@ -25,15 +25,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <Arduino.h>
+#include "config.h"  // HeapConfig::MIN_HEAP_FOR_TLS (source de vérité unique)
 
-// Seuil minimum de heap requis pour une connexion TLS sécurisée
-// SMTP/HTTPS + buffer = ~42KB, marge augmentée pour éviter allocations à la limite
-// PISTE 2: Augmenté de 45KB à 52000 (52KB) pour marge de sécurité plus importante
-// v11.157: Augmenté à 62000 (62KB) pour résoudre échecs allocation mémoire TLS
-// v11.158: Réduit à 40000 (40KB) car avec CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=2048,
-//          l'empreinte TLS est réduite (~32-35KB), et le heap disponible est ~34KB
-// v11.159: Réduit à 35000 (35KB) - TLS fonctionne avec ~32KB contigus grâce aux buffers réduits
-constexpr uint32_t TLS_MIN_HEAP_BYTES = 35000;
+// Alias pour compatibilité avec app_tasks.cpp, ota_manager.cpp, etc.
+constexpr uint32_t TLS_MIN_HEAP_BYTES = HeapConfig::MIN_HEAP_FOR_TLS;
 
 // Flag global indiquant si le système entre en light sleep
 // Permet de bloquer les nouvelles connexions TLS pendant la transition

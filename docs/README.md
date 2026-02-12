@@ -7,7 +7,7 @@ Documentation technique du projet ESP32 Aquaponie Controller.
 - `src/` — Code source C++ (implémentation)
 - `include/` — Headers C++ (interfaces)
 - `data/` — Fichiers web (HTML, CSS, JS)
-- `test/` — Tests unitaires
+- `test/` — Tests unitaires (framework Unity, env `native`). Exécution : `pio test -e native` ou `.\scripts\test_unit_all.ps1`. Seuls `test_nvs` et `test_config` sont exécutés (voir `platformio.ini` env `native`, `test_filter`).
 
 ## Structure de la documentation
 

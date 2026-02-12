@@ -1,0 +1,2 @@
+# wroom-test / wroom-prod : timeout Task WDT 30 s (évite reset pendant HTTP/async_tcp)
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30

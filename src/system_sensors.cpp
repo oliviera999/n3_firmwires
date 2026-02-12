@@ -45,7 +45,7 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usPota.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
-    if (val == 0 || val > 500) { // 0 = invalide, >500cm = aberrant
+    if (val == 0 || val > SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM) {
       SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
       r.wlPota = 0;
     } else {
@@ -65,12 +65,12 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usAqua.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= 500);
+    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
     if (!valid) {
       SENSOR_LOG_PRINTF("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
       // Tentative de récupération avec méthode simple
       val = _usAqua.readFiltered(3);
-      valid = (val > 0 && val <= 500);
+      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
       if (valid) {
         SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u cm\n", val);
         r.wlAqua = val;
@@ -107,27 +107,39 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= 500);
+    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
     if (!valid) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Niveau réservoir invalide: %u cm\n", val);
+      uint32_t nowMs = millis();
+      bool shouldLog = _lastWlTankWasValid || (nowMs - _lastWlTankInvalidLogMs >= 30000);
+      if (shouldLog) {
+        SENSOR_LOG_PRINTF("[SystemSensors] Niveau réservoir invalide: %u cm\n", val);
+        _lastWlTankInvalidLogMs = nowMs;
+      }
       // Essai de récupération simple
       val = _usTank.readFiltered(3);
-      valid = (val > 0 && val <= 500);
+      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
       if (valid) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Récupération réservoir réussie: %u cm\n", val);
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération réservoir réussie: %u cm\n", val);
+        }
         r.wlTank = val;
         _lastValidWlTank = val;
       } else if (_lastValidWlTank > 0) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u cm\n", _lastValidWlTank);
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u cm\n", _lastValidWlTank);
+        }
         r.wlTank = _lastValidWlTank;
       } else {
-        SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – réservoir=0\n");
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – réservoir=0\n");
+        }
         r.wlTank = 0;
       }
     } else {
       r.wlTank = val;
       _lastValidWlTank = val;
     }
+    _lastWlTankWasValid = valid;
   }
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -162,6 +174,9 @@ SensorReadings SystemSensors::read() {
 
   // Température air (DHT) avec méthode non-bloquante
   {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     phaseStart = millis();
     float val = _air.robustTemperatureC();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Température air: %u ms\n", millis() - phaseStart);
@@ -212,6 +227,9 @@ SensorReadings SystemSensors::read() {
   // v11.154: Humidité EN DERNIER (peut prendre 7+ secondes si DHT air échoue)
   // Ainsi, même en cas de timeout, les ultrasons sont déjà lus
   {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
     phaseStart = millis();
     float val = _air.robustHumidity(); // Garde la méthode robuste pour DHT (air)
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Humidité: %u ms\n", millis() - phaseStart);

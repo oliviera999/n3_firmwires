@@ -9,6 +9,10 @@ Le workflow `build.yml` compile automatiquement le projet ESP32 sur chaque push 
 - **wroom-prod** : Version de production pour ESP32-WROOM-32
 - **wroom-test** : Version de test avec debug activé (coredump, endpoints diagnostic)
 
+**ESP32-S3 (wroom-s3-test, wroom-s3-prod)** : Les builds S3 ne sont pas exécutés en CI (patches et toolchain spécifiques, build long). Validation manuelle recommandée :
+- **Build + flash + monitor 1 min** : `.\run_s3_validation.ps1 [-Port COMx]`
+- **Workflow complet** : `.\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-s3-test [-Port COMx]`
+
 ### Corrections apportées
 
 #### Problème initial (Exit code 1 & 128)

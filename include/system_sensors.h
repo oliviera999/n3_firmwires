@@ -37,6 +37,9 @@ class SystemSensors {
   // Dernières valeurs valides (non nulles, non aberrantes) pour gestion fallback
   uint16_t _lastValidWlAqua{0};
   uint16_t _lastValidWlTank{0};
+  // Throttle logs réservoir invalide (évite spam série, fallback inchangé)
+  uint32_t _lastWlTankInvalidLogMs{0};
+  bool _lastWlTankWasValid{false};
   
   // Historique wlAqua pour calcul du diff ~10s
   static constexpr uint8_t AQUA_HIST_SIZE = 16;

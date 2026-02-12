@@ -28,16 +28,16 @@ agent("ESP32 Intelligent Assistant", async ({ status, run }, { fs }) => {
     if (criticalErrors.length > 0) {
       status(`🚨 ${criticalErrors.length} erreurs critiques détectées !`);
       
-      const mainFile = await getFile("src/main.cpp");
-      const configFile = await getFile("src/config.h");
+      const appFile = await getFile("src/app.cpp");
+      const configFile = await getFile("include/config.h");
       
       await run(`
         🚨 ERREURS CRITIQUES ESP32 DÉTECTÉES :
         ${criticalErrors.join("\n")}
         
         📋 CONTEXTE DU CODE :
-        - Main.cpp: ${mainFile.content.substring(0, 2000)}...
-        - Config.h: ${configFile.content.substring(0, 1000)}...
+        - app.cpp: ${appFile.content.substring(0, 2000)}...
+        - config.h: ${configFile.content.substring(0, 1000)}...
         
         🔧 ACTIONS REQUISES :
         1. Analyser les erreurs et proposer des corrections immédiates
@@ -99,8 +99,8 @@ agent("ESP32 Intelligent Assistant", async ({ status, run }, { fs }) => {
     `);
   });
 
-  // Surveillance du code source principal
-  await watchFile("src/main.cpp", async (changes) => {
+  // Surveillance du code source principal (point d'entrée setup/loop)
+  await watchFile("src/app.cpp", async (changes) => {
     const content = changes.after;
     
     // Détection de patterns problématiques
@@ -114,7 +114,7 @@ agent("ESP32 Intelligent Assistant", async ({ status, run }, { fs }) => {
     const issues = problematicPatterns.filter(({ pattern }) => pattern.test(content));
     
     if (issues.length > 0) {
-      status(`🔍 ${issues.length} patterns problématiques détectés dans main.cpp`);
+      status(`🔍 ${issues.length} patterns problématiques détectés dans app.cpp`);
       
       await run(`
         🔍 PATTERNS PROBLÉMATIQUES DÉTECTÉS :
@@ -132,7 +132,7 @@ agent("ESP32 Intelligent Assistant", async ({ status, run }, { fs }) => {
   });
 
   // Surveillance de la version
-  await watchFile("src/config.h", async (changes) => {
+  await watchFile("include/config.h", async (changes) => {
     const content = changes.after;
     const versionMatch = content.match(/VERSION\s+["']([0-9.]+)["']/);
     

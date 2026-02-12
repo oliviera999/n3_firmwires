@@ -1,6 +1,7 @@
 // Mailer implementation can be compiled out to save flash on ESP32 WROOM
 #include "mailer.h"
 #include "config.h"
+#include "power.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
 #include "diagnostics.h"
@@ -55,8 +56,12 @@ static void logSafeStr(const char* s, size_t maxLen) {
   }
 }
 
-// Epoch validé pour affichage (évite valeurs aberrantes en cas de régression RTC)
+// Epoch validé pour affichage : délègue à PowerManager si disponible (évite doublon NVS/fallback).
+static PowerManager* s_powerForEpoch = nullptr;
 static time_t getSafeEpochForDisplay() {
+  if (s_powerForEpoch) {
+    return s_powerForEpoch->getCurrentEpochSafe();
+  }
   time_t t = time(nullptr);
   if (t >= SleepConfig::EPOCH_MIN_VALID && t <= SleepConfig::EPOCH_MAX_VALID && t != 0) {
     return t;
@@ -808,6 +813,11 @@ static const char* buildDetailedTimeReport(const Diagnostics& diagnostics) {
   return g_detailedTimeReportBuffer;
 }
 
+void Mailer::setPowerManager(PowerManager* power) {
+  _power = power;
+  s_powerForEpoch = power;
+}
+
 bool Mailer::begin() {
   Serial.println(F("[Mail] ===== INITIALISATION MAILER ====="));
   
@@ -1093,6 +1103,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   return ok;
 }
 #else
+void Mailer::setPowerManager(PowerManager*) {}
 bool Mailer::begin() { Serial.println("[Mail] Désactivé (FEATURE_MAIL=0)"); return true; }
 bool Mailer::sendSync(const char*, const char*, const char*, const char*) { return false; }
 bool Mailer::send(const char*, const char*, const char*, const char*) { return false; }

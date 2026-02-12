@@ -499,9 +499,11 @@ void PowerManager::waitForNetworkReady() {
 // ========================================
 
   bool PowerManager::isValidEpoch(time_t epoch) const {
-  return epoch >= SleepConfig::EPOCH_MIN_VALID && 
-         epoch <= SleepConfig::EPOCH_MAX_VALID &&
-         epoch != 0;
+  // Comparaison en unsigned pour éviter overflow 32-bit (EPOCH_MAX_VALID > INT32_MAX)
+  unsigned long uepoch = (unsigned long)epoch;
+  unsigned long umin = (unsigned long)SleepConfig::EPOCH_MIN_VALID;
+  unsigned long umax = (unsigned long)SleepConfig::EPOCH_MAX_VALID;
+  return epoch != 0 && uepoch >= umin && uepoch <= umax;
 }
 
 time_t PowerManager::loadTimeWithFallback() {
@@ -602,7 +604,10 @@ void PowerManager::smartSaveTime() {
   
   // Validation stricte de l'epoch
   if (!isValidEpoch(currentEpoch)) {
-    Serial.printf("[Power] Epoch invalide ignoré: %lu\n", (unsigned long)currentEpoch);
+    Serial.printf("[Power] Epoch invalide: %lu (MIN=%lu MAX=%lu)\n",
+                  (unsigned long)currentEpoch,
+                  (unsigned long)SleepConfig::EPOCH_MIN_VALID,
+                  (unsigned long)SleepConfig::EPOCH_MAX_VALID);
     return;
   }
   

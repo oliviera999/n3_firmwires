@@ -36,6 +36,9 @@ bool WifiManager::connect(DisplayView* disp) {
   if (WiFi.status() != WL_IDLE_STATUS) {
     WiFi.disconnect(false, true);
     vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_POST_DISCONNECT_DELAY_MS));
+  } else {
+    // Premier scan au boot : court délai pour stabilisation RF avant le scan
+    vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_PRE_SCAN_DELAY_MS));
   }
 
   Serial.println(F("[WiFi] 🔍 Balayage des réseaux..."));
@@ -49,12 +52,25 @@ bool WifiManager::connect(DisplayView* disp) {
     esp_task_wdt_reset();
   }
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
-  // Lecture résultats via ESP-IDF (évite String Arduino → stabilité long uptime)
+  // Lecture résultats via API Arduino (scanNetworks a déjà consommé les résultats côté driver;
+  // esp_wifi_scan_get_ap_records() renvoyait 0 en double lecture → on lit depuis la couche Arduino).
   const uint16_t WIFI_SCAN_MAX = 16;
   static wifi_ap_record_t s_apRecords[WIFI_SCAN_MAX];
-  uint16_t num = (n > 0 && n <= WIFI_SCAN_MAX) ? (uint16_t)n : (n > 0 ? WIFI_SCAN_MAX : 0);
-  if (num > 0 && esp_wifi_scan_get_ap_records(&num, s_apRecords) != ESP_OK) {
-    num = 0;
+  uint16_t num = 0;
+  if (n > 0) {
+    num = (n <= (int)WIFI_SCAN_MAX) ? (uint16_t)n : WIFI_SCAN_MAX;
+    for (int j = 0; j < num; ++j) {
+      String ssidStr = WiFi.SSID(j);
+      memset(s_apRecords[j].ssid, 0, 32);
+      size_t sl = (ssidStr.length() < 32u) ? (size_t)ssidStr.length() : 32u;
+      if (sl > 0 && ssidStr.c_str()) memcpy(s_apRecords[j].ssid, ssidStr.c_str(), sl);
+      s_apRecords[j].rssi = (int8_t)WiFi.RSSI(j);
+      const uint8_t* bssidPtr = WiFi.BSSID(j);
+      if (bssidPtr) memcpy(s_apRecords[j].bssid, bssidPtr, 6);
+      else memset(s_apRecords[j].bssid, 0, 6);
+      s_apRecords[j].primary = (uint8_t)WiFi.channel(j);
+      s_apRecords[j].authmode = (wifi_auth_mode_t)WiFi.encryptionType(j);
+    }
   }
   if (n <= 0 || num == 0) {
     Serial.println(F("[WiFi] ❌ Aucun réseau détecté (ou scan erreur)"));
@@ -134,6 +150,8 @@ bool WifiManager::connect(DisplayView* disp) {
     }else{
       Serial.printf("[WiFi] 🔍 Tentative (invisible) %s ...\n", _list[i].ssid);
       Serial.printf("[Event] WiFi try invisible %s\n", _list[i].ssid);
+      // Court délai avant rescan pour AP caché (laisse le RF/router répondre)
+      vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_DELAY_BETWEEN_NETWORKS_MS));
       // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
       int n2 = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
@@ -144,19 +162,17 @@ bool WifiManager::connect(DisplayView* disp) {
       uint8_t rescanChan = 0;
       wifi_auth_mode_t rescanAuth = WIFI_AUTH_OPEN;
       if (n2 > 0) {
-        uint16_t num2 = (n2 <= WIFI_SCAN_MAX) ? (uint16_t)n2 : WIFI_SCAN_MAX;
-        if (esp_wifi_scan_get_ap_records(&num2, s_apRecords) == ESP_OK) {
-          for (int j = 0; j < num2; ++j) {
-            char ssBuf[33];
-            memcpy(ssBuf, s_apRecords[j].ssid, 32);
-            ssBuf[32] = '\0';
-            if (strcmp(ssBuf, _list[i].ssid) == 0 && s_apRecords[j].rssi > rescanRssi) {
-              rescanRssi = s_apRecords[j].rssi;
-              memcpy(rescanBssid, s_apRecords[j].bssid, 6);
-              rescanChan = s_apRecords[j].primary;
-              rescanAuth = s_apRecords[j].authmode;
-              foundInRescan = true;
-            }
+        uint16_t num2 = (n2 <= (int)WIFI_SCAN_MAX) ? (uint16_t)n2 : WIFI_SCAN_MAX;
+        for (int j = 0; j < num2; ++j) {
+          String ssidStr2 = WiFi.SSID(j);
+          int8_t rssi2 = (int8_t)WiFi.RSSI(j);
+          if (ssidStr2.equals(_list[i].ssid) && rssi2 > rescanRssi) {
+            rescanRssi = rssi2;
+            const uint8_t* bssidPtr2 = WiFi.BSSID(j);
+            if (bssidPtr2) memcpy(rescanBssid, bssidPtr2, 6);
+            rescanChan = (uint8_t)WiFi.channel(j);
+            rescanAuth = (wifi_auth_mode_t)WiFi.encryptionType(j);
+            foundInRescan = true;
           }
         }
       }
@@ -389,9 +405,9 @@ bool WifiManager::startFallbackAP(){
     snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
     Serial.printf("[WiFi] 🌐 AP IP: %s\n", apIPBuf);
   }
-  // En mode APSTA, active un intervalle de retry court pour capter rapidement un réseau connu
-  // Objectif: connexion en <= 30 s lorsqu'un SSID connu arrive à portée
-  _baseRetryMs = 5000;          // scan toutes les 5 s
+  // En mode AP fallback: intervalle allongé (20 s) pour éviter starvation core 0
+  // par la tâche wifi lors des scans/connexions répétés (évite TWDT).
+  _baseRetryMs = 20000;         // scan toutes les 20 s
   _retryIntervalMs = _baseRetryMs;
   return ok;
 }
@@ -429,9 +445,9 @@ void WifiManager::loop(DisplayView* disp){
   Serial.println(F("[WiFi] Tentative périodique de reconnexion"));
   bool ok = connect(disp);
   if (!ok && WiFi.status() != WL_CONNECTED) {
-    // Ajuster cadence pour compromis stabilité/conso: retry ~7-10 s
-    _retryIntervalMs = 7000;
-    _baseRetryMs = 7000;
+    // Cadence allongée pour éviter starvation core 0 (évite TWDT en mode AP)
+    _retryIntervalMs = 20000;
+    _baseRetryMs = 20000;
   } else {
     _retryIntervalMs = _baseRetryMs; // reset en cas de succès
   }

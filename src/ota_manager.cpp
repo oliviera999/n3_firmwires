@@ -1537,10 +1537,10 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         log(logMsgForce);
     }
 
-    // Trouver la partition spiffs (LittleFS)
-    const esp_partition_t* spiffs_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
+    // Trouver la partition littlefs (LittleFS) - label "littlefs" dans la table de partition
+    const esp_partition_t* spiffs_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "littlefs");
     if (!spiffs_partition) {
-        logError("Partition spiffs non trouvée");
+        logError("Partition littlefs non trouvée");
         http.end();
         return false;
     }

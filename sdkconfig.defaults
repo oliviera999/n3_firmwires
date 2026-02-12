@@ -2921,7 +2921,7 @@ CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 # Deprecated options for backward compatibility
 # CONFIG_APP_BUILD_TYPE_ELF_RAM is not set
 # CONFIG_NO_BLOBS is not set
-CONFIG_APP_ROLLBACK_ENABLE=y
+# CONFIG_APP_ROLLBACK_ENABLE is not set
 # CONFIG_APP_ANTI_ROLLBACK is not set
 # CONFIG_LOG_BOOTLOADER_LEVEL_NONE is not set
 CONFIG_LOG_BOOTLOADER_LEVEL_ERROR=y
@@ -3065,7 +3065,7 @@ CONFIG_CONSOLE_UART_BAUDRATE=115200
 CONFIG_TASK_WDT=y
 CONFIG_ESP_TASK_WDT=y
 CONFIG_TASK_WDT_PANIC=y
-CONFIG_TASK_WDT_TIMEOUT_S=5
+CONFIG_TASK_WDT_TIMEOUT_S=30
 CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
 # CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
 # CONFIG_ESP32_DEBUG_STUBS_ENABLE is not set
@@ -3177,6 +3177,7 @@ CONFIG_SEMIHOSTFS_MAX_MOUNT_POINTS=1
 # CONFIG_ESPTOOLPY_FLASHFREQ_26M is not set
 # CONFIG_SPIRAM_SPEED_20M is not set
 # CONFIG_SPIRAM_SPEED_200M is not set
+# DÃ©sactiver APP_ROLLBACK pour S3: Ã©vite blocage boot sur flash effacÃ©e (verifyRollbackLater/esp_ota_* avant NVS)
 # TG0WDT boot loop: ne pas dÃ©marrer le TWDT au boot. RÃ©init 300s en setup() (app.cpp).
 # Stack loopTask (DIAGNOSTIC_BACKTRACE_S3: stack canary loopTask sur S3)
 # DÃ©sactiver coredump ESP-IDF (pas de partition, Ã©vite "No core dump partition found!" au boot)

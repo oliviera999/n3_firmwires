@@ -1,3 +1,5 @@
+# Désactiver APP_ROLLBACK pour S3: évite blocage boot sur flash effacée (verifyRollbackLater/esp_ota_* avant NVS)
+# CONFIG_APP_ROLLBACK_ENABLE is not set
 # CONFIG_ESP_INT_WDT is not set
 # TG0WDT boot loop: ne pas démarrer le TWDT au boot. Réinit 300s en setup() (app.cpp).
 # CONFIG_ESP_TASK_WDT_INIT is not set
