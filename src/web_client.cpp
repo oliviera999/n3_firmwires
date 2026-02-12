@@ -55,6 +55,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     return false;
   }
 
+  // v11.XXX: Nettoyage systématique du client avant réutilisation (fiabilité WiFi capricieux)
+  // Fermer connexion précédente si encore ouverte pour éviter états incohérents
+  if (_client.connected()) {
+    _client.stop();  // Fermer explicitement la connexion TCP
+  }
+  _http.end();  // S'assurer que HTTPClient est nettoyé
+
   uint32_t freeHeap = ESP.getFreeHeap();
   size_t payloadLen = payload ? strlen(payload) : 0;
   uint32_t requestStartMs = millis();
@@ -104,10 +111,14 @@ bool WebClient::httpRequest(const char* url, const char* payload,
 
     _http.setTimeout(timeoutMs);
     // v11.162: Utilise le client HTTP simple (membre de classe)
+    // v11.XXX: Amélioration gestion erreur begin() avec nettoyage systématique
     if (!_http.begin(_client, url)) {
       LOG(LOG_WARN, "[HTTP] begin() failed for URL");
-      // Pas de end() - HTTPClient pas initialisé
-      vTaskDelay(pdMS_TO_TICKS(200));
+      _http.end();  // Nettoyer même en cas d'échec
+      if (_client.connected()) {
+        _client.stop();  // Fermer connexion si ouverte
+      }
+      vTaskDelay(pdMS_TO_TICKS(500));  // Délai plus long avant retry (WiFi instable)
       continue;  // Retry
     }
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -115,9 +126,29 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
+    unsigned long postStartMs = millis();
     code = _http.POST(payload ? payload : "");
+    unsigned long postDurationMs = millis() - postStartMs;
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
+    }
+    
+    // v11.XXX: Vérification timeout après POST() pour détecter dépassements
+    uint32_t totalElapsedMs = millis() - requestStartMs;
+    if (totalElapsedMs > timeoutMs) {
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.printf("[HTTP] POST a dépassé le timeout: %u ms (limite: %u ms)\n", totalElapsedMs, timeoutMs);
+      }
+      LOG(LOG_WARN, "[HTTP] POST timeout dépassé: %u ms (limite: %u ms)", totalElapsedMs, timeoutMs);
+      // Si code négatif (échec), considérer comme timeout
+      if (code <= 0) {
+        _http.end();
+        if (_client.connected()) {
+          _client.stop();
+        }
+        continue;  // Retry
+      }
+      // Si code > 0 (succès malgré dépassement), continuer (serveur a répondu)
     }
     
     if (code > 0) {
@@ -199,8 +230,10 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       // v11.179: Pas de String temporaire pour éviter crash dans destructeur
       LOG(LOG_WARN, "[HTTP] Erreur %d", code);
     }
+    // v11.XXX: Nettoyage systématique - toujours appeler end() même si client déconnecté
+    _http.end();  // Toujours nettoyer HTTPClient
     if (_client.connected()) {
-      _http.end();
+      _client.stop();  // Fermer explicitement la connexion TCP
     }
     // Réinitialiser HTTPClient pour prochain appel (timeout standard 5s sauf POST 7s)
     _http.setReuse(false);
@@ -232,12 +265,18 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       break;
     }
 
-    // Backoff avant retry
+    // Backoff avant retry avec vérification WiFi
     if (attempt + 1 < MAX_ATTEMPTS) {
-      int backoff = NetworkConfig::BACKOFF_BASE_MS * (attempt + 1);
+      // v11.XXX: Backoff exponentiel pour WiFi instable (1s, 2s)
+      int backoff = NetworkConfig::BACKOFF_BASE_MS * (1 << attempt);
       vTaskDelay(pdMS_TO_TICKS(backoff));
       if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
+      }
+      // Vérifier WiFi avant retry (peut avoir été perdu pendant backoff)
+      if (WiFi.status() != WL_CONNECTED) {
+        LOG(LOG_WARN, "[HTTP] WiFi perdu pendant backoff");
+        break;
       }
     }
   }
@@ -392,6 +431,12 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
+  // v11.XXX: Nettoyage systématique du client avant réutilisation (fiabilité WiFi capricieux)
+  if (_client.connected()) {
+    _client.stop();  // Fermer connexion précédente si encore ouverte
+  }
+  _http.end();  // S'assurer que HTTPClient est nettoyé
+
   WIFI_APPLY_MODEM_SLEEP(false);
   vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -408,8 +453,13 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
 
   // v11.162: Utilise le client HTTP simple (membre de classe)
   // v11.166: Verification retour http.begin() (audit robustesse)
+  // v11.XXX: Amélioration gestion erreur begin() avec nettoyage systématique
   if (!_http.begin(_client, url)) {
     LOG(LOG_WARN, "[HTTP] Echec initialisation HTTPClient pour %s", url);
+    _http.end();  // Nettoyer même en cas d'échec
+    if (_client.connected()) {
+      _client.stop();  // Fermer connexion si ouverte
+    }
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
@@ -423,12 +473,29 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   }
   // Retry une fois sur timeout lecture (-11) pour améliorer le taux de succès GET
   if (code == -11) {
-    _http.end();
+    _http.end();  // Nettoyer avant retry
+    if (_client.connected()) {
+      _client.stop();  // Fermer connexion avant retry
+    }
     _http.setReuse(false);
     vTaskDelay(pdMS_TO_TICKS(500));
+    // Vérifier WiFi avant retry
+    if (WiFi.status() != WL_CONNECTED) {
+      LOG(LOG_WARN, "[HTTP] WiFi perdu avant retry GET");
+      _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
+      return loadFromNVSFallback(doc) ? 2 : 0;
+    }
     if (_http.begin(_client, url)) {
       _http.setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
       code = _http.GET();
+    } else {
+      // Échec begin() lors du retry
+      _http.end();
+      if (_client.connected()) {
+        _client.stop();
+      }
+      _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
+      return loadFromNVSFallback(doc) ? 2 : 0;
     }
   }
 
@@ -437,7 +504,11 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     // #region agent log
     Serial.printf("[DBG] fetchRemoteState code=%d useNVS=%d hypothesis=H3\n", code, loadFromNVSFallback(doc) ? 1 : 0);
     // #endregion
-    _http.end();
+    // v11.XXX: Nettoyage systématique même en cas d'échec
+    _http.end();  // Toujours nettoyer HTTPClient
+    if (_client.connected()) {
+      _client.stop();  // Fermer connexion TCP
+    }
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     if (loadFromNVSFallback(doc)) {
@@ -457,7 +528,11 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   WiFiClient* stream = _http.getStreamPtr();
   if (!stream) {
     LOG(LOG_WARN, "[HTTP] Pas de stream disponible, fallback NVS");
-    _http.end();
+    // v11.XXX: Nettoyage systématique même en cas d'échec
+    _http.end();  // Toujours nettoyer HTTPClient
+    if (_client.connected()) {
+      _client.stop();  // Fermer connexion TCP
+    }
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
     return loadFromNVSFallback(doc) ? 2 : 0;
@@ -583,7 +658,11 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     LOG(LOG_WARN, "[HTTP] Réponse outputs/state tronquée (lu=%u, max=%u, contentLength=%d)",
         (unsigned)totalRead, (unsigned)MAX_RESPONSE_SIZE, contentLength);
   }
-  _http.end();
+  // v11.XXX: Nettoyage systématique après lecture réussie
+  _http.end();  // Toujours nettoyer HTTPClient
+  if (_client.connected()) {
+    _client.stop();  // Fermer connexion TCP
+  }
   _http.setReuse(false);
   _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 

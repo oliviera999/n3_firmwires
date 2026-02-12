@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.198: Incrémentation version
-    inline constexpr const char* VERSION = "11.198";
+    // v11.200: Timeout POST augmenté à 10s + vérification timeout pendant POST (WiFi capricieux)
+    inline constexpr const char* VERSION = "11.200";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -222,8 +222,8 @@ namespace NetworkConfig {
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation 8s (latence serveur ; webTask sur core 1 limite risque TWDT)
-    // En conditions réelles requêtes peuvent atteindre ~9 s ; WDT 30 s + feed dans web_client garantissent pas de reboot.
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 8000;  // 8 s
+    // En conditions réelles requêtes peuvent atteindre ~9-10 s avec WiFi instable ; WDT 30 s + feed dans web_client garantissent pas de reboot.
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 10000;  // 10 s (augmenté pour WiFi capricieux)
     // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée (~9s) pour éviter abandon avant fin
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 18000;  // 18 s (marge si GET ~15s devant dans la file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)

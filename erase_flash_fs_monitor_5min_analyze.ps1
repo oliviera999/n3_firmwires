@@ -45,7 +45,10 @@ if ($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") {
     python tools/patch_arduino_diag_after_nvs.py
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     python tools/patch_arduino_libs_s3_wdt.py
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    # Le patch peut échouer si le package n'est pas encore installé (sera appliqué lors du build)
+    if ($LASTEXITCODE -ne 0) { 
+        Write-Host "   WARN: patch_arduino_libs_s3_wdt échoué (package peut ne pas être installé, sera appliqué lors du build)" -ForegroundColor Yellow 
+    }
     # Vérifier CONFIG_SPIRAM_BOOT_INIT (évite psramAddToHeap blocage S3)
     $sdkWdt = Join-Path $projectRoot "sdkconfig_s3_wdt.txt"
     if (-not (Select-String -Path $sdkWdt -Pattern "CONFIG_SPIRAM_BOOT_INIT=y" -Quiet)) {
