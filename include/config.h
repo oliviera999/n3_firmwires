@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v11.200: Timeout POST augmenté à 10s + vérification timeout pendant POST (WiFi capricieux)
-    inline constexpr const char* VERSION = "11.201";
+    inline constexpr const char* VERSION = "11.203";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -223,6 +223,8 @@ namespace NetworkConfig {
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~13,5 s ; 14 s évite timeouts en bordure.
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 14000;  // 14 s (session 2026-02-13 10h : max 13517 ms)
+    // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
+    inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;
     // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée pour éviter abandon avant fin
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 24000;  // 24 s (marge vs POST 14 s + file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
@@ -375,7 +377,8 @@ namespace HeapConfig {
     // Plus grand bloc libre minimum pour créer une tâche one-shot (évite fragmentation long uptime)
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (stack 4 KB + marge)
     // Bloc contigu minimum pour SMTP/TLS (ESP Mail Client + mbedTLS). Réserve libérable utilisée si heap fragmenté.
-    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;  // 32 KB
+    // 32 KB - 768: marge fragmentation WROOM (bloc observé 32756 en session, 12 B sous 32K)
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32000;  // 31.25 KB
     // Heap libre minimum avant envoi mail (Core 1). Évite abort() si TLS/allocs internes échouent.
     inline constexpr uint32_t MIN_HEAP_MAIL_SEND = 40000;  // 40 KB
     // Minimum free heap avant beginResponseStream. La lib AsyncWebServer (cbuf/WebResponses)
@@ -465,6 +468,8 @@ namespace SensorConfig {
         // DHT11: 1s min, DHT22: 2s min (datasheet). On utilise 2.5s pour les deux.
         inline constexpr uint32_t MIN_READ_INTERVAL_MS = 2500;
         inline constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 2000;
+        // Timeout récupération temp/hum (robustTemperatureC, robustHumidityC) - évite INT_WDT
+        inline constexpr uint32_t RECOVERY_TIMEOUT_MS = 2000;
     }
 
     // Alternative DHT pour envs S3 (USE_AIR_SENSOR_BME280). I2C, plus rapide que DHT.
