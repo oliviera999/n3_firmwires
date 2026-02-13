@@ -306,3 +306,14 @@ int SystemSensors::diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const {
   // diffMaree = (valeur ~15s avant) - (valeur actuelle)
   return past - cur;
 }
+
+void SystemSensors::setLastCachedReadings(const SensorReadings& r) {
+  _lastCachedReadings = r;
+  _lastCachedReadingsValid = true;
+}
+
+bool SystemSensors::getLastCachedReadings(SensorReadings& out) const {
+  if (!_lastCachedReadingsValid) return false;
+  out = _lastCachedReadings;
+  return true;
+}

@@ -23,13 +23,11 @@ namespace {
 AppContext* g_ctx = nullptr;
 QueueHandle_t g_sensorQueue = nullptr;
 
-// v11.157: Buffers statiques pour stacks des petites tâches (allocation statique pour réduire fragmentation)
-// Approche hybride: statique pour petites tâches, dynamique pour grandes (évite overflow DRAM)
-// Ces buffers sont alloués à la compilation, pas sur le heap
+// v11.157: Buffers statiques pour stacks (allocation statique pour réduire fragmentation)
+// webTask reste en dynamique (heap) : passer en statique dépasserait la limite BSS 160 KB au link.
 static StackType_t sensorTaskStack[TaskConfig::SENSOR_TASK_STACK_SIZE];
 static StaticTask_t sensorTaskTCB;
 
-// v11.169: webTask en allocation dynamique (stack 10KB v11.194) pour éviter overflow DRAM
 static StackType_t automationTaskStack[TaskConfig::AUTOMATION_TASK_STACK_SIZE];
 static StaticTask_t automationTaskTCB;
 
@@ -567,6 +565,7 @@ void automationTask(void* pv) {
       esp_task_wdt_reset();
       s_lastReadings = readings;
       s_haveReadings = true;
+      g_ctx->sensors.setLastCachedReadings(readings);  // Pour handlers web (évite _sensors.read() bloquant)
 
       #if FEATURE_DIAG_STACK_LOGS
       // Vérification périodique de la stack (wroom-test uniquement)
@@ -751,7 +750,7 @@ bool start(AppContext& ctx) {
                                                      TaskConfig::SENSOR_TASK_CORE_ID);
   BaseType_t sensorCreated = (g_sensorTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
-  // v11.169: webTask en dynamique (stack 10KB sur heap, v11.194) - évite overflow DRAM
+  // v11.169: webTask en dynamique (stack 10KB sur heap) – statique dépasserait limite BSS 160 KB
   BaseType_t webCreated = xTaskCreatePinnedToCore(
                                                      webTask,
                                                      "webTask",

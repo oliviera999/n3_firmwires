@@ -181,12 +181,12 @@ Write-Host 'Verifications de coherence avec le code...' -ForegroundColor Yellow
 
 $coherence = @()
 
-# POST: Frequence attendue 120 secondes (REMOTE_SEND_INTERVAL_MS)
+# POST: Frequence attendue 30 secondes (SEND_INTERVAL_MS dans automatism_sync.h)
 if ($avgInterval -gt 0) {
-    if ($avgInterval -ge 100 -and $avgInterval -le 140) {
-        $coherence += '[OK] POST: Frequence coherente (~' + $avgInterval + ' s, attendu: 120s)'
+    if ($avgInterval -ge 15 -and $avgInterval -le 60) {
+        $coherence += '[OK] POST: Frequence coherente (~' + $avgInterval + ' s, attendu: 30s)'
     } else {
-        $coherence += '[WARN] POST: Frequence anormale (' + $avgInterval + ' s, attendu: 120s)'
+        $coherence += '[WARN] POST: Frequence anormale (' + $avgInterval + ' s, attendu: 30s)'
     }
 } else {
     $coherence += '[KO] POST: Impossible de calculer la frequence'
@@ -203,8 +203,8 @@ if ($avgGetInterval -gt 0) {
     $coherence += '[KO] GET: Impossible de calculer la frequence'
 }
 
-# POST: Duree <= 10 secondes (marge vs HTTP_POST_TIMEOUT_MS 8s / RPC 18s)
-$postLimitMs = 10000
+# POST: Duree <= 14 secondes (HTTP_POST_TIMEOUT_MS)
+$postLimitMs = 14000
 if ($maxDuration -gt 0) {
     if ($maxDuration -le $postLimitMs) {
         $coherence += '[OK] POST: Durees dans les limites (max: ' + $maxDuration + ' ms, limite: ' + $postLimitMs + ' ms)'

@@ -244,9 +244,9 @@ const char* WebServerManager::handleRelayAction(
     // Feedback WebSocket immédiat
     g_realtimeWebSocket.broadcastNow();
 
-    // Sync relais toujours en synchrone (moins de charge ESP: pas de tâche 4KB ni allocation)
-    vTaskDelay(pdMS_TO_TICKS(100));
-    SensorReadings readings = _sensors.read();
+    // Sync serveur avec dernière lecture connue (évite _sensors.read() 3–5 s dans webTask)
+    SensorReadings readings{};
+    _sensors.getLastCachedReadings(readings);
     (void)g_autoCtrl.sendFullUpdate(readings);
     g_autoCtrl.clearPendingSync(relayName);
 
@@ -349,12 +349,12 @@ bool WebServerManager::begin() {
               g_autoCtrl.setBouffePetitsFlag("1");
               g_realtimeWebSocket.broadcastNow();
               resp = "FEED_SMALL OK";
-              // DÉROGATION: blocage webTask 5–8 s acceptable pour action nourrissage (timeout POST 7s + email)
               esp_task_wdt_reset();
               vTaskDelay(pdMS_TO_TICKS(100));
               sendManualActionEmail(
                 "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
-              SensorReadings readings = _sensors.read();
+              SensorReadings readings{};
+              _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
               (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
               g_autoCtrl.setBouffePetitsFlag("0");
               Serial.println("[Web] ✅ Small feed completed");
@@ -365,12 +365,12 @@ bool WebServerManager::begin() {
               g_autoCtrl.setBouffeGrosFlag("1");
               g_realtimeWebSocket.broadcastNow();
               resp = "FEED_BIG OK";
-              // DÉROGATION: blocage webTask 5–8 s acceptable pour action nourrissage (timeout POST 7s + email)
               esp_task_wdt_reset();
               vTaskDelay(pdMS_TO_TICKS(100));
               sendManualActionEmail(
                 "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
-              SensorReadings readings = _sensors.read();
+              SensorReadings readings{};
+              _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
               (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
               g_autoCtrl.setBouffeGrosFlag("0");
               Serial.println("[Web] ✅ Big feed completed");
@@ -658,9 +658,11 @@ bool WebServerManager::begin() {
     // PRIORITÉ LOCALE (v11.32): Marquer pending sync
     g_autoCtrl.markConfigPendingSync();
 
-    // Envoi immédiat vers la BDD distante pour répercuter les changements
+    // Envoi immédiat avec dernière lecture connue (évite _sensors.read() bloquant dans webTask)
+    SensorReadings syncReadings{};
+    _sensors.getLastCachedReadings(syncReadings);
     bool sent = (WiFi.status() == WL_CONNECTED)
-      ? g_autoCtrl.sendFullUpdate(_sensors.read(), any ? extraPairs : nullptr)
+      ? g_autoCtrl.sendFullUpdate(syncReadings, any ? extraPairs : nullptr)
       : false;
     
     if (sent) {

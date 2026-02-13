@@ -17,6 +17,9 @@ class SystemSensors {
   SystemSensors();
   void begin();
   SensorReadings read();
+  // Cache mis à jour par automationTask (évite _sensors.read() bloquant dans handlers web)
+  void setLastCachedReadings(const SensorReadings& r);
+  bool getLastCachedReadings(SensorReadings& out) const;
   // Calcul de la différence de marée à partir de la dernière mesure fournie
   int diffMaree(uint16_t currentAqua);
   
@@ -48,6 +51,8 @@ class SystemSensors {
   uint8_t _aquaHistCount{0};
   uint8_t _aquaHistHead{0};
   uint32_t _tideWindowMs{15000};
+  SensorReadings _lastCachedReadings{};
+  bool _lastCachedReadingsValid{false};
   void pushAquaHist(uint16_t value, uint32_t nowMs);
   int diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const;
 }; 

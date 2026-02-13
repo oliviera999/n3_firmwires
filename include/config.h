@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v11.200: Timeout POST augmenté à 10s + vérification timeout pendant POST (WiFi capricieux)
-    inline constexpr const char* VERSION = "11.200";
+    inline constexpr const char* VERSION = "11.201";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -221,11 +221,10 @@ namespace NetworkConfig {
     inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 30000;  // 30 s (évite abandon avant fin GET si file chargée)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
-    // POST post-data / ack : dérogation 8s (latence serveur ; webTask sur core 1 limite risque TWDT)
-    // En conditions réelles requêtes peuvent atteindre ~9-10 s avec WiFi instable ; WDT 30 s + feed dans web_client garantissent pas de reboot.
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 10000;  // 10 s (augmenté pour WiFi capricieux)
-    // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée (~9s) pour éviter abandon avant fin
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 18000;  // 18 s (marge si GET ~15s devant dans la file)
+    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~13,5 s ; 14 s évite timeouts en bordure.
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 14000;  // 14 s (session 2026-02-13 10h : max 13517 ms)
+    // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée pour éviter abandon avant fin
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 24000;  // 24 s (marge vs POST 14 s + file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
@@ -708,6 +707,9 @@ namespace SleepConfig {
     inline constexpr uint32_t WIFI_STABILITY_CHECK_INTERVAL_MS = 60000;
     inline constexpr uint32_t WIFI_WEAK_SIGNAL_THRESHOLD_MS = 300000;
     inline constexpr uint8_t WIFI_MAX_RECONNECT_ATTEMPTS = 5;
+    // Exception documentée: 5s pour stabiliser la reconnexion WiFi (réseau instable).
+    // Dérogation à la règle "blocage thread principal ≤ 3s" : acceptée car reconnexion rare
+    // (intervalle WIFI_STABILITY_CHECK_INTERVAL_MS 60s) et priorité stabilité liaison.
     inline constexpr uint32_t WIFI_RECONNECT_DELAY_MS = 5000;
 
     // Modem-sleep WiFi : activé par défaut (économie d'énergie). Désactiver via build -DWIFI_MODEM_SLEEP_ENABLED=0
@@ -737,6 +739,21 @@ namespace SleepConfig {
 
 // N'appelle WiFi.setSleep(enable) que si SleepConfig::MODEM_SLEEP_ENABLED est vrai. Fichiers utilisateurs : inclure config.h et WiFi (ex. WiFi.h).
 #define WIFI_APPLY_MODEM_SLEEP(enable) do { if (::SleepConfig::MODEM_SLEEP_ENABLED) { ::WiFi.setSleep(enable); } } while(0)
+
+// -----------------------------------------------------------------------------
+// INVENTAIRE DRAM STATIQUE (ESP32-WROOM) – Ne pas dépasser la limite
+// -----------------------------------------------------------------------------
+// ESP32 : 520 KB SRAM = 320 KB DRAM + 200 KB IRAM.
+// Contrainte IDF : au plus 160 KB en allocation statique (.data + .bss) ; le reste
+// n'est disponible qu'en heap à l'exécution.
+// Inventaire application (WROOM, ordre de grandeur) :
+//   - Stacks + TCB (sensor, automation, net ; webTask en heap) : ~26 KB
+//   - Pools / cache (NetRequest, JSON fallback, remoteJson, deferredJson, etc.) : ~10 KB
+//   - Buffers applicatifs (app, mailer, web_server) : ~11 KB
+//   - Globaux (PowerManager, WebClient, Mailer, Diagnostics, NVSManager) : ~3 KB
+//   Total app ~50 KB. BSS système (IDF/WiFi/LwIP) consomme le reste ; la marge réelle
+//   sous 160 KB est faible (passer webTask en statique ou augmenter les stacks dépasse).
+// Éviter d'ajouter de gros buffers statiques sans vérifier le link (region dram0_0_seg).
 
 namespace TaskConfig {
     // PISTE 5: Vérification des stacks FreeRTOS pour TLS
@@ -778,7 +795,6 @@ namespace TaskConfig {
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
     // v11.197: Augmenté 8KB → 12KB - stack overflow dans netTask lors de checkForUpdate OTA
-    //         (buffer 2KB + HTTPClient + TLS overhead dépasse 8KB)
     // S3: 12 KB (stack canary netTask sur S3 - mbedTLS/HTTP plus gourmand)
 #if defined(BOARD_S3)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (S3)

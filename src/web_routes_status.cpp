@@ -170,7 +170,8 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
         ctx.automatism.manualFeedSmall();
       }
 
-      SensorReadings readings = ctx.sensors.read();
+      SensorReadings readings{};
+      ctx.sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
       ctx.automatism.sendFullUpdate(readings, nullptr);
 
       if (isBig) {
