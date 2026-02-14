@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.200: Timeout POST augmenté à 10s + vérification timeout pendant POST (WiFi capricieux)
-    inline constexpr const char* VERSION = "11.203";
+    // v11.204: HTTP_POST_TIMEOUT 18s (latence 4G), fix comptage POST diagnostic
+    inline constexpr const char* VERSION = "11.204";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -221,12 +221,12 @@ namespace NetworkConfig {
     inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 30000;  // 30 s (évite abandon avant fin GET si file chargée)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
-    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~13,5 s ; 14 s évite timeouts en bordure.
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 14000;  // 14 s (session 2026-02-13 10h : max 13517 ms)
+    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
     inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;
     // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée pour éviter abandon avant fin
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 24000;  // 24 s (marge vs POST 14 s + file)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 26000;  // 26 s (marge vs POST 18 s + file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
@@ -242,6 +242,8 @@ namespace NetworkConfig {
     // pour télécharger un firmware complet
     // 30s pour téléchargements OTA (justifié par taille firmware)
     inline constexpr uint32_t OTA_TIMEOUT_MS = 30000;
+    // Timeout phase connexion esp_http_client (méthode moderne) : 10s pour rester sous TWDT, éviter reboot si TLS/réseau échoue
+    inline constexpr uint32_t OTA_CONNECT_TIMEOUT_MS = 10000;
     inline constexpr uint32_t OTA_DOWNLOAD_TIMEOUT_MS = 300000; // 5 min
     inline constexpr uint32_t MIN_DELAY_BETWEEN_REQUESTS_MS = 1000;
     inline constexpr uint32_t BACKOFF_BASE_MS = 1000;
@@ -327,6 +329,8 @@ namespace BufferConfig {
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 4096;
+        // metadata.json ~1129 bytes, structure channels — parsing OTA
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
         inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 4096;  // GET outputs/state body
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 4096;
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 6000;
@@ -342,6 +346,8 @@ namespace BufferConfig {
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 1024;
         // GET /dbvars: réponse plus grande (mail, mailNotif, ~20 clés) pour éviter troncature
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 2048;
+        // metadata.json ~1129 bytes, structure channels — parsing OTA (1024 insuffisant)
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
         // GET outputs/state: buffer lecture body plus grand pour éviter IncompleteInput (réponse > 1024)
         inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 2048;
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 1024;  // Limite payload postData (malloc si besoin pour tenir en DRAM)
