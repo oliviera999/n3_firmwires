@@ -933,7 +933,7 @@ window.ensureActuatorStateDisplay = function ensureActuatorStateDisplay() {
       if (doc.pumpAqua !== undefined) window.lastRelayState.pumpAqua = !!doc.pumpAqua;
       if (doc.heater !== undefined) window.lastRelayState.heater = !!doc.heater;
       if (doc.light !== undefined) window.lastRelayState.light = !!doc.light;
-      if (doc.forceWakeup !== undefined) window.lastRelayState.forceWakeUp = !!doc.forceWakeup;
+      if (doc.forceWakeUp !== undefined) window.lastRelayState.forceWakeUp = !!doc.forceWakeUp;
       if (doc.mailNotif !== undefined) window.lastRelayState.mailNotif = !!doc.mailNotif;
       if (typeof window.applyRelayStateToButtons === 'function') window.applyRelayStateToButtons();
     })

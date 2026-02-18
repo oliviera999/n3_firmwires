@@ -1,10 +1,32 @@
 # Convention de Nommage des Variables - FFP5CS
 
-**Version:** 1.2  
-**Date:** 2026-01-31  
-**Statut:** Documentation de reference
+**Version:** 1.6  
+**Date:** 2026-02-15  
+**Statut:** Documentation de reference (alignement cles NVS avec include/nvs_keys.h ; gestion du temps §0)
 
-**Source de verite code:** `include/gpio_mapping.h` (VariableRegistry v11.172)
+---
+
+## Sources de verite (contrat firmware / serveur)
+
+Pour eviter les redondances et les desynchronisations, chaque cote du contrat doit avoir une source unique, tenue a jour a chaque changement de GPIO ou de cle.
+
+| Cote | Fichier(s) source | Contenu |
+|------|-------------------|--------|
+| **Firmware** | `include/gpio_mapping.h` | GPIOMap (GPIO, serverPostName, internalName, nvsKey), SensorMap (capteurs), GPIODefaults |
+| **Firmware** | `include/nvs_keys.h` | Cles NVS (namespaces Config, System, Diag, Automatism, Sync, WebClient) |
+| **Serveur (ffp3)** | `src/Controller/OutputController.php` | `$parameterGpioMap` (GPIO pour page controle) |
+| **Serveur (ffp3)** | `src/Repository/OutputRepository.php` | Mapping GPIO vers proprietes SensorData dans `syncStatesFromSensorData()` |
+| **Serveur (ffp3)** | `src/Controller/PostDataController.php` + `src/Domain/SensorData.php` | Cles POST et parametres du DTO |
+
+**Documentation API locale (serveur embarqué)** : liste des routes HTTP (port 80) et WebSocket (port 81, path `/ws`) dans `docs/technical/api-endpoints.yaml`.
+
+**Procedure de synchronisation** (ajout ou modification d'un GPIO / d'une cle) :
+1. Mettre a jour `include/gpio_mapping.h` (et `include/nvs_keys.h` si nouvelle cle NVS).
+2. Mettre a jour les fichiers serveur concernes (OutputController, OutputRepository, PostDataController/SensorData si cle POST).
+3. Mettre a jour le present document (tables et section 8) et les references croisees.
+4. Tester firmware + serveur (POST/GET, page controle).
+
+*Objectif a terme : centraliser le mapping GPIO cote serveur dans un seul fichier (ex. config ou classe dediee) derive par OutputController et OutputRepository pour reduire la redondance.*
 
 ---
 
@@ -18,13 +40,34 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 
 ---
 
+## 0. Gestion du temps (timezone, RTC, horaires)
+
+### Firmware (ESP32)
+
+- **RTC** : Heure systeme (epoch) initialisee par `loadTimeWithFallback()` : NVS `rtc_epoch` puis `EPOCH_COMPILE_TIME` puis `EPOCH_DEFAULT_FALLBACK`. Sync NTP quand WiFi disponible (`include/config.h` : `NTP_SERVER`, `NTP_GMT_OFFSET_SEC`, `NTP_DAYLIGHT_OFFSET_SEC`).
+- **Timezone firmware** : Fixe **UTC+1** (pas d'heure d'ete), configure dans `src/power.cpp` via `setenv("TZ", "<+01>-1", 1)`. Choix volontaire pour simplicite et alignement approximatif avec Maroc/France hiver. En ete, Casablanca peut différer (DST Maroc) ; les horaires de nourrissage et la fenetre « nuit » (22h–6h) restent en heure locale ESP32.
+- **Horaires nourrissage** : Heures matin/midi/soir en NVS (`gpio_feedMorn`, `gpio_feedNoon`, `gpio_feedEve`) et synchronises avec le serveur via les cles POST/GET `bouffeMatin`, `bouffeMidi`, `bouffeSoir` (voir §3). La logique metier utilise `getCurrentEpochSafe()` puis `localtime_r()` pour obtenir heure/minute/jour.
+- **Timestamps d'etat** : `state_lastLocal`, `sync_lastSync` en NVS (millisecondes, type `unsigned long`) ; pas d'echange d'horodatage device dans le POST principal vers le serveur (option future : champ `device_time` pour diagnostic).
+
+### Serveur (ffp3)
+
+- **Stockage** : Tous les timestamps applicatifs (Boards.`last_request`, Outputs.`requestTime`, etc.) sont en **heure serveur** (`APP_TIMEZONE`, defaut `Europe/Paris`). MySQL utilise `NOW()` ; la session doit etre coherente avec le timezone PHP (voir `ffp3/docs/TIMEZONE_MANAGEMENT.md`).
+- **Affichage** : Conversion vers `Africa/Casablanca` pour l'interface (moment-timezone, Highcharts). Voir doc timezone ffp3 pour details.
+
+### Alignement firmware / serveur
+
+- Les **horaires** (matin/midi/soir) sont harmonises (memes noms GET/POST). Le firmware est la source d'execution (NVS) ; le serveur met a jour la config locale via GET outputs/state.
+- Aucune **heure device** n'est envoyee dans le POST post-data aujourd'hui ; les dates cote serveur sont l'heure de reception. Si signature HMAC est utilisee (`timestamp` + `signature`), la fenetre de validite (`SIG_VALID_WINDOW`, ex. 300 s) doit etre compatible avec la derive max du RTC ESP32 (NTP + correction de derive).
+
+---
+
 ## 1. Variables Capteurs
 
 | Description | Serveur POST | Serveur GET | Firmware C++ | API Locale `/json` | NVS |
 |-------------|--------------|-------------|--------------|-------------------|-----|
 | Temperature air | `TempAir` | - | `tempAir` | `tempAir` | - |
 | Humidite | `Humidite` | - | `humidity` (SensorReadings) / `humid` (Measurements) | `humidity` | - |
-| Temperature eau | `TempEau` | - | `tempWater` | `tempWater` | `temp_lastValid` (cfg) |
+| Temperature eau | `TempEau` | - | `tempWater` | `tempWater` | `temp_last_ok` (cfg) |
 | Niveau potager | `EauPotager` | - | `wlPota` | `wlPota` | - |
 | Niveau aquarium | `EauAquarium` | - | `wlAqua` | `wlAqua` | - |
 | Niveau reservoir | `EauReserve` | - | `wlTank` | `wlTank` | - |
@@ -52,13 +95,15 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 
 | Description | Serveur POST | Serveur GET | Firmware C++ | API Locale `/dbvars` | NVS (cfg) |
 |-------------|--------------|-------------|--------------|---------------------|-----------|
-| Heure matin | `bouffeMatin` | `"105"`, `bouffeMat` | `bouffeMatin` | `bouffeMatin` | `bouffe_matin` |
-| Heure midi | `bouffeMidi` | `"106"`, `bouffeMid` | `bouffeMidi` | `bouffeMidi` | `bouffe_midi` |
-| Heure soir | `bouffeSoir` | `"107"`, `bouffeSoir` | `bouffeSoir` | `bouffeSoir` | `bouffe_soir` |
-| Duree gros | `tempsGros` | `"111"`, `tempsGros` | `tempsGros` | `tempsGros` | - |
-| Duree petits | `tempsPetits` | `"112"`, `tempsPetits` | `tempsPetits` | `tempsPetits` | - |
-| Flag petits | `bouffePetits` | `"108"`, `bouffePetits` | `bouffePetits` | `bouffePetits` | - |
-| Flag gros | `bouffeGros` | `"109"`, `bouffeGros` | `bouffeGros` | `bouffeGros` | - |
+| Heure matin | `bouffeMatin` | `"105"`, `bouffeMatin` | `bouffeMatin` | `bouffeMatin` | dans `remote_json` |
+| Heure midi | `bouffeMidi` | `"106"`, `bouffeMidi` | `bouffeMidi` | `bouffeMidi` | dans `remote_json` |
+| Heure soir | `bouffeSoir` | `"107"`, `bouffeSoir` | `bouffeSoir` | `bouffeSoir` | dans `remote_json` |
+| Duree gros | `tempsGros` | `"111"`, `tempsGros` | `tempsGros` | `tempsGros` | dans `remote_json` |
+| Duree petits | `tempsPetits` | `"112"`, `tempsPetits` | `tempsPetits` | `tempsPetits` | dans `remote_json` |
+| Flag petits | `bouffePetits` | `"108"`, `bouffePetits` | `bouffePetits` | `bouffePetits` | dans `remote_json` |
+| Flag gros | `bouffeGros` | `"109"`, `bouffeGros` | `bouffeGros` | `bouffeGros` | dans `remote_json` |
+
+Les noms d’horaires (matin, midi, soir) sont harmonisés : l’interface de contrôle serveur (page contrôle, paramètres) et le contrat POST/GET utilisent les mêmes clés `bouffeMatin`, `bouffeMidi`, `bouffeSoir` (plus de variante courte type bouffeMat/bouffeMid).
 
 ---
 
@@ -66,11 +111,13 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 
 | Description | Serveur POST | Serveur GET | Firmware C++ | API Locale `/dbvars` | NVS |
 |-------------|--------------|-------------|--------------|---------------------|-----|
-| Seuil aquarium | `aqThreshold` | `"102"`, `aqThr` | `aqThresholdCm` | `aqThreshold` | - |
-| Seuil reservoir | `tankThreshold` | `"103"`, `taThr` | `tankThresholdCm` | `tankThreshold` | - |
-| Seuil chauffage | `chauffageThreshold` | `"104"`, `chauff` | `heaterThresholdC` | `chauffageThreshold` | - |
-| Limite flood | `limFlood` | `"114"`, `limFlood` | `limFlood` | `limFlood` | - |
-| Duree remplissage | `tempsRemplissageSec` | `"113"`, `tempsRemplissageSec` | `refillDurationMs` | `tempsRemplissageSec` | - |
+| Seuil aquarium | `aqThreshold` | `"102"`, `aqThr` | `aqThresholdCm` | `aqThreshold` | dans `remote_json` |
+| Seuil reservoir | `tankThreshold` | `"103"`, `taThr` | `tankThresholdCm` | `tankThreshold` | dans `remote_json` |
+| Seuil chauffage | `chauffageThreshold` (float) | `"104"`, `chauff` | `heaterThresholdC` | `chauffageThreshold` | dans `remote_json` |
+| Limite flood | `limFlood` | `"114"`, `limFlood` | `limFlood` | `limFlood` | dans `remote_json` |
+| Duree remplissage | `tempsRemplissageSec` | `"113"`, `tempsRemplissageSec` | `refillDurationMs` (ms interne) / `refillDurationSec` (s pour sync) | `tempsRemplissageSec` | dans `remote_json` |
+
+**Note:** Cote firmware, `automatism.h` utilise `refillDurationMs` (millisecondes). Le serveur et l'API utilisent `tempsRemplissageSec` (secondes). GPIOMap internalName: `refillDurationSec` pour la valeur en secondes envoyee au serveur.
 
 ### Fallbacks existants
 
@@ -84,7 +131,7 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 | Description | Serveur POST | Serveur GET | Firmware C++ | API Locale | NVS (sys) |
 |-------------|--------------|-------------|--------------|------------|-----------|
 | Déclenchement vérif. OTA | - | `triggerOtaCheck` (bool) | - | - | - |
-| Force wakeup | `WakeUp` | `"115"`, `WakeUp` | `forceWakeUp` | `forceWakeUp` | `forceWakeUp` |
+| Force wakeup | `WakeUp` | `"115"`, `WakeUp` | `forceWakeUp` | `forceWakeUp` (clé JSON API locale) | `force_wake_up` |
 | Frequence wakeup | `FreqWakeUp` | `"116"`, `FreqWakeUp` | `freqWakeSec` | `FreqWakeUp` | - |
 | Email | `mail` | `"100"`, `mail` | `_emailAddress` | `mail` | - |
 | Notif email | `mailNotif` | `"101"`, `mailNotif` | - | `mailNotif` | - |
@@ -122,8 +169,9 @@ Les deux endpoints utilisent maintenant la meme convention avec prefixes `wifiSt
 | Cle | Type | Description | Status |
 |-----|------|-------------|--------|
 | `force_wake_up` | bool | Force le mode eveille | **NOUVELLE** (migration depuis `forceWakeUp`) |
-| `ota_update_flag` | bool | Flag mise a jour OTA activee | OK |
-| `ota_in_progress` | bool | OTA en cours | **NOUVELLE** (migration depuis `ota_inProgress`) |
+| `ota_upd_flag` | bool | Flag mise a jour OTA activee (cle stockee, limite 15 car. ESP-IDF) | OK |
+| `ota_prevVer` | string | Version firmware precedente avant OTA | OK |
+| `ota_in_prog` | bool | OTA en cours (cle stockee, limite 15 car.) | OK |
 | `net_send_en` | bool | Envoi distant active | OK |
 | `net_recv_en` | bool | Reception distante activee | OK |
 | `rtc_epoch` | uint32 | Epoch RTC | OK |
@@ -132,18 +180,22 @@ Les deux endpoints utilisent maintenant la meme convention avec prefixes `wifiSt
 
 | Cle | Type | Description | Status |
 |-----|------|-------------|--------|
-| `bouffe_matin` | int | Heure nourrissage matin | OK |
-| `bouffe_midi` | int | Heure nourrissage midi | OK |
-| `bouffe_soir` | int | Heure nourrissage soir | OK |
-| `bouffe_jour` | int | Jour de nourrissage | OK |
-| `bf_pmp_lock` | bool | Verrouillage pompe | OK |
+| `bouffe_matin` | bool | Flag deja nourri ce matin (valeur horaire = gpio_feedMorn, cf. cles dynamiques) | OK |
+| `bouffe_midi` | bool | Flag deja nourri ce midi | OK |
+| `bouffe_soir` | bool | Flag deja nourri ce soir | OK |
+| `bouffe_jour` | int | Jour du dernier nourrissage (1-31) | OK |
+| `bf_pmp_lock` | bool | Verrouillage pompe nourrissage | OK |
 | `remote_json` | string | Config distante JSON | OK |
-| `gpio_email` | string | Adresse email | OK |
-| `temp_last_valid` | float | Derniere temperature valide | **NOUVELLE** (migration depuis `temp_lastValid`) |
+| `email` | string | Adresse email (cle fixe, pas gpio_*) | OK |
+| `temp_last_ok` | float | Derniere temperature eau valide (fallback capteur) | OK |
+
+#### Stockage NVS : remote_json vs cles gpio_*
+
+En NVS (namespace `cfg`), la **configuration** (heures, seuils, durees, email, etc.) est stockee dans une seule cle : **`remote_json`** (JSON). Le firmware n'ecrit pas de cles `gpio_feedMorn`, `gpio_aqThr`, etc. en NVS pour ces parametres (voir `gpio_parser.cpp` : seuls les type ACTUATOR sont persistes en cles `gpio_*`). Les noms `gpio_*` ci-dessous servent au mapping GET/POST serveur et a l'API locale `/dbvars` ; la source de verite persistee pour la config est `remote_json`.
 
 #### Cles GPIO dynamiques (namespace `cfg`)
 
-Ces cles sont generees dynamiquement avec le prefixe `gpio_` :
+Les cles suivantes sont utilisees pour le contrat serveur et l'API ; en NVS, seules les **actionneurs** (bool) sont ecrites sous forme de cles `gpio_*` individuelles (pump_aqua, pump_tank, heater, light, etc.). Les parametres (heures, seuils, durees) sont lus/ecrits via **remote_json** :
 
 | Cle | Type | Description | GPIO |
 |-----|------|-------------|------|
@@ -205,16 +257,17 @@ Ces cles sont generees dynamiquement avec le prefixe `gpio_` :
 | `diag_lastHeap` | uint32 | Dernier heap (debug) | OK |
 | `diag_crashFlag` | bool | Flag panic detecte (ex-diag_hasPanic, v11.173) | OK |
 | `diag_panicCause` | string | Cause du panic | OK |
-| `alert_floodLast` | uint32 | Timestamp dernier email inondation | OK |
+| `alert_flood_ts` | uint32 | Timestamp dernier email inondation | OK |
 | `crash_has` | bool | Flag crash detecte | OK |
 | `crash_reason` | int | Raison du crash | OK |
 
 ### Migration effectuee (2026-01-31)
 
-Toutes les cles NVS utilisent maintenant la convention snake_case :
-- `forceWakeUp` -> `force_wake_up` (avec fallback)
-- `ota_inProgress` -> `ota_in_progress` (avec suppression ancienne cle)
-- `temp_lastValid` -> `temp_last_valid` (avec fallback)
+Toutes les cles NVS utilisent maintenant la convention snake_case. Cles actuelles (source : `include/nvs_keys.h`) :
+- `force_wake_up`, `rtc_epoch`
+- `ota_upd_flag` (limite 15 car. ESP-IDF), `ota_prevVer`, `ota_in_prog`
+- `temp_last_ok` (temperature eau fallback)
+- `alert_flood_ts` (timestamp alerte inondation)
 
 ---
 
@@ -249,6 +302,14 @@ Ces cles numeriques sont utilisees en BDD et doivent etre conservees indefinimen
 ---
 
 ## 9. Résumé des Actions d'Harmonisation
+
+### Corrections effectuees (2026-02-15, audit gestion du temps)
+
+1. **Documentation temps** : Nouvelle section §0 « Gestion du temps » (timezone firmware UTC+1, RTC/NVS, horaires, timestamps état ; stockage serveur APP_TIMEZONE ; alignement firmware/serveur). Référence croisée avec `ffp3/docs/TIMEZONE_MANAGEMENT.md` et `ffp3/docs/ENDPOINTS_ESP32_SERVEUR.md` (timestamp/signature, SIG_VALID_WINDOW).
+2. **Serveur distant** : `chauffageThreshold` typé `?float` dans SensorData.php (aligné firmware, évite perte de précision)
+3. **API locale** : `forceWakeup` harmonisé vers `forceWakeUp` (web_routes_status, realtime_websocket, common.js)
+4. **web_client.cpp** : utilisation de SensorMap et GPIOMap pour noms POST (source unique gpio_mapping.h)
+5. **Doc (v1.5)** : section « Sources de vérité » et procédure de synchronisation (audit redondance firmware/serveur) ; correction NVS §3 (heures = gpio_feedMorn / gpio_feedNoon / gpio_feedEve, pas bouffe_matin/midi/soir qui sont les flags « déjà nourri »)
 
 ### Corrections effectuees (2026-01-31)
 
@@ -288,7 +349,13 @@ Ces cles numeriques sont utilisees en BDD et doivent etre conservees indefinimen
 ### A faire plus tard (Phase 6 - apres plusieurs mois de stabilite)
 
 - Supprimer les fallbacks NVS pour anciennes cles
-- Supprimer les alias JSON legacy (`heaterThreshold`, etc.)
+- Supprimer les alias JSON legacy (`heaterThreshold`, `refillDuration`, cles numeriques "105"/"106" dans le parsing config)
+- Cote firmware : deriver les cles textuelles du parsing (gpio_parser, config, automatism) depuis GPIOMap pour eviter listes paralleles
+
+### Contrat API (échanges firmware / serveur)
+
+- **API_KEY** : cote firmware dans `include/config.h` (ApiConfig::API_KEY) ; cote serveur dans `.env` (API_KEY). Ne pas dupliquer la valeur en clair dans la doc ; une seule reference (deploiement ou commentaire) suffit.
+- **GET outputs/state** : la reponse peut contenir `dataStates`, `dataStatesReadingTime` (pour la page de controle) ; l'ESP32 **ignore** ces champs et n'utilise que les cles GPIO (numeriques ou symboliques) et `triggerOtaCheck`. Voir aussi `ffp3/docs/ENDPOINTS_ESP32_SERVEUR.md`.
 
 ---
 
@@ -305,4 +372,4 @@ Ces cles numeriques sont utilisees en BDD et doivent etre conservees indefinimen
 
 ---
 
-*Derniere mise a jour : 2026-01-31 - Harmonisation Phase 1-4 completee*
+*Derniere mise a jour : 2026-02-15 - v1.6 Section §0 Gestion du temps (timezone firmware/serveur, RTC, horaires, timestamps), audit gestion du temps*

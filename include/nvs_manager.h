@@ -29,9 +29,9 @@ class NVSLockGuard;
  * -------------------------
  *   force_wake_up   (bool)   - Forcer le réveil après deep sleep
  *   rtc_epoch       (ulong)  - Epoch RTC sauvegardé avant sleep
- *   ota_update_flag (bool)   - Flag activation OTA
+ *   ota_upd_flag    (bool)   - Flag activation OTA (cle 15 car. max)
  *   ota_prevVer     (string) - Version précédente avant OTA
- *   ota_in_progress (bool)   - OTA en cours (transitoire)
+ *   ota_in_prog     (bool)   - OTA en cours (transitoire, cle 15 car. max)
  *   net_send_en     (bool)   - Envoi réseau activé
  *   net_recv_en     (bool)   - Réception réseau activée
  *   mig*_done       (uint8)  - Flags de migration (internes)
@@ -44,7 +44,8 @@ class NVSLockGuard;
  *   bouffe_soir     (bool)   - Flag "déjà nourri ce soir"
  *   bouffe_jour     (int)    - Jour du dernier nourrissage (1-31)
  *   bf_pmp_lock     (bool)   - Verrou pompe nourrissage actif
- *   temp_last_valid (float)  - Dernière température eau valide (fallback capteur)
+ *   email           (string) - Adresse email
+ *   temp_last_ok    (float)  - Dernière température eau valide (fallback capteur)
  *   gpio_*          (bool)   - États actuateurs (gpio_pump_aqua, gpio_heater, etc.)
  * 
  * NAMESPACE "state" (STATE):
@@ -59,6 +60,8 @@ class NVSLockGuard;
  *   sync_item_*     (string) - Items de la queue de sync (sync_item_0, etc.)
  *   sync_lastSync   (ulong)  - Timestamp dernière sync réussie
  *   sync_config     (bool)   - Config en attente de sync
+ *   post_q_count    (int)    - Nombre de POSTs en attente (queue WebClient)
+ *   post_q_*        (string) - Payloads en queue (post_q_0, post_q_1, etc.)
  * 
  * NAMESPACE "logs" (LOGS):
  * ------------------------
@@ -72,7 +75,7 @@ class NVSLockGuard;
  *   diag_lastHeap   (ulong)  - Dernier heap (debug uniquement)
  *   diag_crashFlag  (bool)   - Flag panic/exception détecté
  *   diag_panicCause (string) - Cause du panic
- *   alert_floodLast (ulong)  - Timestamp dernière alerte inondation
+ *   alert_flood_ts  (ulong)  - Timestamp dernière alerte inondation
  *   crash_has       (bool)   - Flag crash (reset reason) détecté
  *   crash_reason    (int)    - Code raison du crash
  * 
@@ -80,14 +83,22 @@ class NVSLockGuard;
  * -------------------------------------------------------------
  *   count           (blob)   - Nombre de réseaux WiFi sauvegardés
  *   net_*           (blob)   - Réseaux sauvegardés (format "SSID|password")
- * 
+ *   Note: Accès via nvs_open() direct dans web_server (WiFi). Pas de
+ *   write-if-changed (opérations rares : ajout/suppression réseau).
+ *
+ * ROUTES /nvs/set, /nvs/erase (FFP_ENABLE_DANGEROUS_ENDPOINTS):
+ * -------------------------------------------------------------
+ *   API NVS brute pour debug. Commit uniquement si valueChanged (string
+ *   comparée avant nvs_set_str). Pas de write-if-changed pour types
+ *   numériques dans ce handler (écrit seulement si valeur lue différente).
+ *
  * =============================================================================
  */
 
 // Namespaces consolidés (réduction de 14 à 4)
 namespace NVS_NAMESPACES {
     extern const char* SYSTEM;      // sys: ota, net, reset, force_wake_up, rtc_epoch
-    extern const char* CONFIG;      // cfg: bouffe, remoteVars, gpio, temp_last_valid
+    extern const char* CONFIG;      // cfg: bouffe, remoteVars, gpio, email, temp_last_ok
     extern const char* STATE;       // state: actSnap, actState, pendingSync
     extern const char* LOGS;        // logs: diagnostics, alerts, crash
     // NOTE: TIME et SENSORS supprimés (fusionnés dans SYSTEM et CONFIG)
@@ -141,7 +152,6 @@ public:
     
     // Initialisation
     bool begin();
-    void end();
     
     // Opérations de base
     NVSError saveString(const char* ns, const char* key, const char* value);
@@ -158,7 +168,6 @@ public:
                       unsigned long defaultValue = 0);
     
     // Utilitaires
-    bool keyExists(const char* ns, const char* key);
     NVSError removeKey(const char* ns, const char* key);
     NVSError clearNamespace(const char* ns);
     
@@ -168,9 +177,6 @@ public:
     // Statistiques et monitoring (simplifiées)
     NVSUsageStats getUsageStats();
     void logUsageStats();
-    
-    // Debug
-    void printNamespaceContents(const char* ns);
     
     // Vérification d'initialisation
     bool isInitialized() const { return _initialized; }

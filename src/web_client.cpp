@@ -6,6 +6,7 @@
 #include "web_client.h"
 #include "config_manager.h"
 #include "diagnostics.h"
+#include "gpio_mapping.h"  // SensorMap, GPIOMap (source unique noms POST)
 #include "log.h"
 #include "config.h"
 #include "nvs_manager.h"
@@ -64,6 +65,8 @@ bool WebClient::httpRequest(const char* url, const char* payload,
 
   uint32_t freeHeap = ESP.getFreeHeap();
   size_t payloadLen = payload ? strlen(payload) : 0;
+  // Durée = de l'entrée dans httpRequest jusqu'à la fin (inclut délai inter-requêtes si applicable,
+  // begin(), envoi body, attente réponse, lecture body, et éventuels retries)
   uint32_t requestStartMs = millis();
   const bool debugLogging = (LOG_LEVEL >= LOG_DEBUG) && LogConfig::SERIAL_ENABLED;
 
@@ -92,6 +95,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   int code = -1;
   response[0] = '\0';
   bool success = false;
+  uint32_t connectMs = 0;  // DNS + TCP jusqu'à begin() réussi (pour diagnostic latence)
 
   for (int attempt = 0; attempt < MAX_ATTEMPTS && !success; attempt++) {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -121,6 +125,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       vTaskDelay(pdMS_TO_TICKS(500));  // Délai plus long avant retry (WiFi instable)
       continue;  // Retry
     }
+    connectMs = (uint32_t)(millis() - requestStartMs);  // DNS + TCP (diagnostic latence)
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -282,13 +287,15 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   }
 
   // Log final (v11.182: copie locale pour éviter tout usage de state HTTP après end())
-  // Toujours logger pour que le script diagnostic_serveur_distant.ps1 puisse compter succès/échec
+  // connect_ms = DNS + TCP jusqu'à begin() ; request_ms = envoi body + serveur + réception (diagnostic latence)
   unsigned long totalDurationMs = millis() - requestStartMs;
+  unsigned long requestPhaseMs = (connectMs > 0 && totalDurationMs >= connectMs) ? (totalDurationMs - connectMs) : totalDurationMs;
   const int finalCode = code;
   const bool finalSuccess = success;
   const char* succStr = finalSuccess ? "oui" : "non";
-  LOG(LOG_INFO, "[HTTP] Requête: %lu ms, code=%d, succès=%s",
-      totalDurationMs, finalCode, succStr);
+  int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+  LOG(LOG_INFO, "[HTTP] Requête: %lu ms, connect_ms=%lu, request_ms=%lu, code=%d, succès=%s, rssi=%d",
+      totalDurationMs, (unsigned long)connectMs, requestPhaseMs, finalCode, succStr, rssi);
 
   _lastRequestMs = millis();
 
@@ -378,22 +385,23 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   snprintf(buf_heat, sizeof(buf_heat), "%d", m.heater ? 1 : 0);
   snprintf(buf_uv, sizeof(buf_uv), "%d", m.light ? 1 : 0);
 
+  // Noms POST centralisés: SensorMap (capteurs), GPIOMap (actionneurs)
   appendKV("version", ProjectConfig::VERSION);
-  appendKV("TempAir", buf_tempAir);
-  appendKV("Humidite", buf_humid);
-  appendKV("TempEau", buf_tempWater);
-  appendKV("EauPotager", buf_wlPota);
-  appendKV("EauAquarium", buf_wlAqua);
-  appendKV("EauReserve", buf_wlTank);
-  appendKV("diffMaree", buf_diffMaree);
-  appendKV("Luminosite", buf_lum);
-  appendKV("etatPompeAqua", buf_pumpAqua);
-  appendKV("etatPompeTank", buf_pumpTank);
-  appendKV("etatHeat", buf_heat);
-  appendKV("etatUV", buf_uv);
-  
+  appendKV(SensorMap::TEMP_AIR.serverPostName, buf_tempAir);
+  appendKV(SensorMap::HUMIDITY.serverPostName, buf_humid);
+  appendKV(SensorMap::TEMP_WATER.serverPostName, buf_tempWater);
+  appendKV(SensorMap::WL_POTA.serverPostName, buf_wlPota);
+  appendKV(SensorMap::WL_AQUA.serverPostName, buf_wlAqua);
+  appendKV(SensorMap::WL_TANK.serverPostName, buf_wlTank);
+  appendKV(SensorMap::DIFF_MAREE.serverPostName, buf_diffMaree);
+  appendKV(SensorMap::LUMINOSITY.serverPostName, buf_lum);
+  appendKV(GPIOMap::PUMP_AQUA.serverPostName, buf_pumpAqua);
+  appendKV(GPIOMap::PUMP_TANK.serverPostName, buf_pumpTank);
+  appendKV(GPIOMap::HEATER.serverPostName, buf_heat);
+  appendKV(GPIOMap::LIGHT.serverPostName, buf_uv);
+
   if (includeReset) {
-    appendKV("resetMode", "0");
+    appendKV(GPIOMap::RESET_CMD.serverPostName, "0");
   }
 
   if (truncated) {
@@ -806,8 +814,12 @@ bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   char bufCrc[16];
   snprintf(bufCrc, sizeof(bufCrc), "&crc=%08lX", crc32(payloadBuf));
   
-  char fullPayload[272];
-  snprintf(fullPayload, sizeof(fullPayload), "%s%s", payloadBuf, bufCrc);
+  IPAddress addr = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP() : WiFi.softAPIP();
+  char ipStr[16];
+  snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
+  
+  char fullPayload[320];
+  snprintf(fullPayload, sizeof(fullPayload), "%s%s&ip=%s", payloadBuf, bufCrc, ipStr);
   
   char resp[1024];
   char heartbeatUrl[256];

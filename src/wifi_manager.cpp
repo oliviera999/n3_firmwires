@@ -6,6 +6,15 @@
 #include <cstring>
 #include <esp_task_wdt.h>
 
+// DNS personnalisé : l'API Arduino-ESP32 n'expose pas setDNS() ; garder DHCP.
+// Pour forcer un DNS (ex. 8.8.8.8), configurer le routeur (DHCP option 6) ou utiliser
+// une IP statique + WiFi.config(ip, gw, mask, dns1, dns2). Ici on ne fait rien.
+static void applyCustomDns() {
+#if defined(WIFI_USE_CUSTOM_DNS) && (WIFI_USE_CUSTOM_DNS)
+  (void)0;  // Réservé pour évolution (IDF API ou config statique)
+#endif
+}
+
 WifiManager::WifiManager(const Credential* list, size_t count, uint32_t timeoutMs, uint32_t retryIntervalMs)
     : _list(list), _count(count), _timeoutMs(timeoutMs), _retryIntervalMs(retryIntervalMs), _lastAttemptMs(0) {}
 
@@ -54,11 +63,10 @@ bool WifiManager::connect(DisplayView* disp) {
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
   // Lecture résultats via API Arduino (scanNetworks a déjà consommé les résultats côté driver;
   // esp_wifi_scan_get_ap_records() renvoyait 0 en double lecture → on lit depuis la couche Arduino).
-  const uint16_t WIFI_SCAN_MAX = 16;
-  static wifi_ap_record_t s_apRecords[WIFI_SCAN_MAX];
+  static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
   uint16_t num = 0;
   if (n > 0) {
-    num = (n <= (int)WIFI_SCAN_MAX) ? (uint16_t)n : WIFI_SCAN_MAX;
+    num = (n <= (int)NetworkConfig::WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n : NetworkConfig::WIFI_SCAN_MAX_RECORDS;
     for (int j = 0; j < num; ++j) {
       String ssidStr = WiFi.SSID(j);
       memset(s_apRecords[j].ssid, 0, 32);
@@ -162,7 +170,7 @@ bool WifiManager::connect(DisplayView* disp) {
       uint8_t rescanChan = 0;
       wifi_auth_mode_t rescanAuth = WIFI_AUTH_OPEN;
       if (n2 > 0) {
-        uint16_t num2 = (n2 <= (int)WIFI_SCAN_MAX) ? (uint16_t)n2 : WIFI_SCAN_MAX;
+        uint16_t num2 = (n2 <= (int)NetworkConfig::WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n2 : NetworkConfig::WIFI_SCAN_MAX_RECORDS;
         for (int j = 0; j < num2; ++j) {
           String ssidStr2 = WiFi.SSID(j);
           int8_t rssi2 = (int8_t)WiFi.RSSI(j);
@@ -197,6 +205,7 @@ bool WifiManager::connect(DisplayView* disp) {
     }
     if (WiFi.status() == WL_CONNECTED) {
       show("WiFi OK");
+      applyCustomDns();
       IPAddress ip = WiFi.localIP();
       char ipBuf[16];
       snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
@@ -223,6 +232,7 @@ bool WifiManager::connect(DisplayView* disp) {
       }
       if (WiFi.status() == WL_CONNECTED) {
         show("WiFi OK");
+        applyCustomDns();
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
@@ -249,6 +259,7 @@ bool WifiManager::connect(DisplayView* disp) {
       }
       if (WiFi.status() == WL_CONNECTED) {
         show("WiFi OK");
+        applyCustomDns();
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
@@ -274,6 +285,7 @@ bool WifiManager::connect(DisplayView* disp) {
       }
       if (WiFi.status() == WL_CONNECTED) {
         show("WiFi OK");
+        applyCustomDns();
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
@@ -347,6 +359,7 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 
   if (WiFi.status() == WL_CONNECTED) {
     show("WiFi OK");
+    applyCustomDns();
     IPAddress ip = WiFi.localIP();
     char ipBuf[16];
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);

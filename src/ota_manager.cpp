@@ -10,6 +10,7 @@
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 #include <esp_http_client.h>
+#include <esp_crt_bundle.h>
 #include <limits.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -21,6 +22,7 @@
 #include "diagnostics.h"
 #include "task_monitor.h"
 #include "tls_mutex.h"
+#include "display_view.h"
 
 
 namespace {
@@ -168,11 +170,11 @@ bool OTAManager::validateSpace(size_t required) {
         return false;
     }
     
-    if (freeHeap < 50000) { // Minimum 50KB heap libre
+    if (freeHeap < HeapConfig::MIN_HEAP_OTA) {
         char heapBuf[16];
         formatBytes(freeHeap, heapBuf, sizeof(heapBuf));
         char errorMsg[64];
-        snprintf(errorMsg, sizeof(errorMsg), "Heap insuffisant: %s", heapBuf);
+        snprintf(errorMsg, sizeof(errorMsg), "Heap insuffisant: %s (< %u bytes)", heapBuf, (unsigned)HeapConfig::MIN_HEAP_OTA);
         logError(errorMsg);
         return false;
     }
@@ -403,7 +405,9 @@ bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, char* out
 
 bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     log("🔍 Début de la vérification des mises à jour...");
-    
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();  // Feed WDT avant GET métadonnées (TLS peut bloquer > 30s)
+    }
     HTTPClient http;
     char metadataUrl[256];
     OTAConfig::getMetadataUrl(metadataUrl, sizeof(metadataUrl));
@@ -420,41 +424,35 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     snprintf(logMsg, sizeof(logMsg), "⏱️ Timeout HTTP: %d ms", OTAConfig::HTTP_TIMEOUT);
     log(logMsg);
 
-    int code = http.GET();
-    snprintf(logMsg, sizeof(logMsg), "📡 Code de réponse HTTP: %d", code);
-    log(logMsg);
-    
+    const int MAX_METADATA_RETRIES = 2;  // 1 tentative initiale + 2 retries
+    int code = -1;
+    for (int attempt = 0; attempt <= MAX_METADATA_RETRIES; attempt++) {
+        if (attempt > 0) {
+            log("🔄 Retry GET metadata...");
+            vTaskDelay(pdMS_TO_TICKS(1000));  // 1s entre tentatives
+        }
+        code = http.GET();
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+        }
+        snprintf(logMsg, sizeof(logMsg), "📡 Code de réponse HTTP: %d (tentative %d)", code, attempt + 1);
+        log(logMsg);
+        if (code == HTTP_CODE_OK) break;
+        // Retry sur erreurs temporaires : 5xx, -1 (échec connexion), 0 (timeout)
+        if (attempt < MAX_METADATA_RETRIES && (code >= 500 || code == -1 || code == 0)) {
+            continue;
+        }
+        break;
+    }
+
     if (code != HTTP_CODE_OK) {
         snprintf(logMsg, sizeof(logMsg), "Erreur GET métadonnées: %d", code);
         logError(logMsg);
-        // Fallback: réessayer l'URL fixe racine
-        if (code == 404) {
-            http.end();
-            char fallbackUrl[256];
-            OTAConfig::getMetadataUrl(fallbackUrl, sizeof(fallbackUrl));
-            snprintf(logMsg, sizeof(logMsg), "🔁 Fallback métadonnées (URL fixe): %s", fallbackUrl);
-            log(logMsg);
-            if (!http.begin(fallbackUrl)) {
-                logError("Échec initialisation HTTPClient (fallback)");
-                return false;
-            }
-            http.setTimeout(OTAConfig::HTTP_TIMEOUT);
-            code = http.GET();
-            snprintf(logMsg, sizeof(logMsg), "📡 Code de réponse HTTP (fallback): %d", code);
-            log(logMsg);
-            if (code != HTTP_CODE_OK) {
-                snprintf(logMsg, sizeof(logMsg), "Erreur GET métadonnées (fallback): %d", code);
-                logError(logMsg);
-                http.end();
-                return false;
-            }
-        } else {
-            http.end();
-            return false;
-        }
+        http.end();
+        return false;
     }
 
-    // Lire le payload dans un buffer statique
+    // Lecture du payload dans un buffer statique
     const size_t MAX_PAYLOAD_SIZE = 4096;
     char tempPayload[MAX_PAYLOAD_SIZE];
     WiFiClient* stream = http.getStreamPtr();
@@ -465,13 +463,19 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
       const unsigned long STREAM_TIMEOUT_MS = 5000;
       while (stream->available() && payloadLen < MAX_PAYLOAD_SIZE - 1 
              && (millis() - streamStart) < STREAM_TIMEOUT_MS) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+          esp_task_wdt_reset();
+        }
         size_t bytesRead = stream->readBytes(tempPayload + payloadLen, MAX_PAYLOAD_SIZE - payloadLen - 1);
         payloadLen += bytesRead;
       }
       tempPayload[payloadLen] = '\0';
+      // Détection troncation : buffer plein et données restantes
+      if (payloadLen >= MAX_PAYLOAD_SIZE - 1 && stream->available() > 0) {
+          log("⚠️ Payload metadata tronqué (taille max dépassée), JSON peut être invalide");
+      }
     } else {
       // v11.180: Suppression getString() - cause crashes LoadProhibited dans destructeur String
-      // Si pas de stream, retourner erreur (situation rare mais possible)
       log("⚠️ Pas de stream HTTP disponible");
       tempPayload[0] = '\0';
       payloadLen = 0;
@@ -480,6 +484,7 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     
     if (payloadLen >= payloadSize) {
         payloadLen = payloadSize - 1;
+        log("⚠️ Payload metadata tronqué (buffer sortie insuffisant)");
     }
     strncpy(payload, tempPayload, payloadLen);
     payload[payloadLen] = '\0';
@@ -499,11 +504,16 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     // Configuration du client HTTP moderne - CORRIGÉE
     esp_http_client_config_t config = {};
     config.url = url;
-    config.timeout_ms = NetworkConfig::OTA_TIMEOUT_MS; // 30 secondes (timeout OTA justifié pour téléchargements firmware)
+    config.timeout_ms = NetworkConfig::OTA_CONNECT_TIMEOUT_MS; // 10s phase connexion (sous TWDT), fallback si échec
     config.buffer_size = BufferConfig::HTTP_BUFFER_SIZE; // Buffers augmentés pour débit
     config.buffer_size_tx = BufferConfig::HTTP_TX_BUFFER_SIZE;
-    config.skip_cert_common_name_check = true; // Ignorer la vérification SSL
-    config.crt_bundle_attach = NULL; // Pas de bundle de certificats
+    config.skip_cert_common_name_check = true; // Tolérer écart nom commun (ex. IP vs hostname)
+    // Vérification serveur (requis ESP-IDF 5.x). Arduino-ESP32 : arduino_esp_crt_bundle_attach ; IDF/S3 : esp_crt_bundle_attach
+#if defined(BOARD_S3)
+    config.crt_bundle_attach = esp_crt_bundle_attach;
+#else
+    config.crt_bundle_attach = arduino_esp_crt_bundle_attach;
+#endif
     config.disable_auto_redirect = false; // Autoriser les redirections
     config.max_redirection_count = 3; // Max 3 redirections
     config.user_data = NULL;
@@ -552,7 +562,9 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     esp_http_client_set_header(m_httpClient, "User-Agent", NetworkConfig::HTTP_USER_AGENT);
     esp_http_client_set_header(m_httpClient, "Accept", "application/octet-stream");
     esp_http_client_set_header(m_httpClient, "Connection", "keep-alive");
-    
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();  // Feed WDT avant open (TLS handshake peut bloquer)
+    }
     // Début de la requête avec gestion d'erreur améliorée
     esp_err_t err = esp_http_client_open(m_httpClient, 0);
     if (err != ESP_OK) {
@@ -572,7 +584,9 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
         m_httpClient = nullptr;
         return downloadFirmware(url, expectedSize);
     }
-    
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();  // Feed WDT après open, avant fetch_headers
+    }
     // Récupération des informations de la réponse
     int statusCode = esp_http_client_fetch_headers(m_httpClient);
     if (statusCode != NetworkConfig::HTTP_OK_CODE) {
@@ -846,21 +860,32 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     }
 
     http.setTimeout(OTAConfig::HTTP_TIMEOUT);
-    
-    int code = http.GET();
-    char logMsg2[128];
-    snprintf(logMsg2, sizeof(logMsg2), "📡 Code de réponse firmware: %d", code);
-    log(logMsg2);
-    
-    if (code != HTTP_CODE_OK) {
+
+    int code = -1;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) {
+            log("🔄 Retry GET firmware...");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        code = http.GET();
+        char logMsg2[128];
+        snprintf(logMsg2, sizeof(logMsg2), "📡 Code de réponse firmware: %d (tentative %d)", code, attempt + 1);
+        log(logMsg2);
+        if (code == HTTP_CODE_OK) break;
+        if (attempt == 0 && (code >= 500 || code == -1 || code == 0)) continue;
         char errorMsg[64];
         snprintf(errorMsg, sizeof(errorMsg), "Erreur GET firmware: %d", code);
         logError(errorMsg);
         http.end();
         return false;
     }
+    if (code != HTTP_CODE_OK) {
+        http.end();
+        return false;
+    }
 
     int contentLength = http.getSize();
+    char logMsg2[128];
     char sizeBuf2[16];
     formatBytes(contentLength, sizeBuf2, sizeof(sizeBuf2));
     snprintf(logMsg2, sizeof(logMsg2), "📊 Taille réelle du firmware: %s", sizeBuf2);
@@ -1051,10 +1076,10 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     return true;
 }
 
-// Tâche dédiée pour l'OTA - VERSION ULTRA-RÉVOLUTIONNAIRE
+// Tâche dédiée pour l'OTA
 void OTAManager::updateTask(void* parameter) {
     OTAManager* ota = static_cast<OTAManager*>(parameter);
-    ota->log("🚀 Démarrage de la tâche OTA ULTRA-RÉVOLUTIONNAIRE...");
+    ota->log("🚀 Démarrage tâche OTA");
 
     TaskMonitor::Snapshot baselineSnapshot = TaskMonitor::collectSnapshot();
     TaskMonitor::logSnapshot(baselineSnapshot, "ota-task-start");
@@ -1095,6 +1120,7 @@ void OTAManager::updateTask(void* parameter) {
     
     // Ajouter cette tâche au TWDT et conserver le watchdog ACTIF pendant l'OTA
     esp_task_wdt_add(NULL);
+    esp_task_wdt_reset();  // Démarrer la fenêtre TWDT (évite reset avant premier feed dans download)
     ota->log("🛡️ Watchdog actif pendant OTA (reset périodique)");
 
     // Persister l'ancienne version pour notification post-reboot
@@ -1115,9 +1141,9 @@ void OTAManager::updateTask(void* parameter) {
         success = ota->downloadFirmware(ota->m_firmwareUrl, ota->m_firmwareSize);
     }
     
-    // Si les deux méthodes échouent, essayer la méthode ultra-révolutionnaire
+    // Fallback 3 : méthode micro-chunks (retry par chunk)
     if (!success) {
-        ota->log("🔄 Méthodes standard échouées, tentative avec méthode ultra-révolutionnaire...");
+        ota->log("🔄 Fallback micro-chunks...");
         success = ota->downloadFirmwareUltraRevolutionary(ota->m_firmwareUrl, ota->m_firmwareSize);
     }
     
@@ -1143,7 +1169,7 @@ void OTAManager::updateTask(void* parameter) {
     if (success) {
         extern Diagnostics diag;
         diag.recordOtaResult(true, nullptr);
-        ota->log("🎉 Mise à jour ULTRA-RÉVOLUTIONNAIRE réussie !");
+        ota->log("🎉 Mise à jour OTA réussie");
         
         // Diagnostic des partitions APRÈS la mise à jour
         const esp_partition_t* new_running = esp_ota_get_running_partition();
@@ -1167,19 +1193,16 @@ void OTAManager::updateTask(void* parameter) {
             ota->log(logMsgPart);
         }
 
-        // OLED: masquer l'overlay et afficher 100% et partitions avant reboot
-        extern DisplayView oled;
-        if (oled.isPresent()) {
-            // Masquer l'overlay OTA
-            oled.hideOtaProgressOverlay();
-            oled.lockScreen(2000);
+        // OLED: masquer l'overlay et afficher 100% et partitions avant reboot (via display du contexte)
+        if (ota->m_display && ota->m_display->isPresent()) {
+            ota->m_display->hideOtaProgressOverlay();
+            ota->m_display->lockScreen(2000);
             const esp_partition_t* prev_running = esp_ota_get_running_partition();
             const char* fromLbl = prev_running ? prev_running->label : "?";
             const char* toLbl   = new_boot ? new_boot->label : "?";
             const char* curV = ProjectConfig::VERSION;
             const char* newV = ota->getRemoteVersion();
-            // Pas d'accès direct au SSID ici de façon fiable, passer label simple
-            oled.showOtaProgressEx(100, fromLbl, toLbl, "Terminé", curV, newV, "OTA");
+            ota->m_display->showOtaProgressEx(100, fromLbl, toLbl, "Terminé", curV, newV, "OTA");
         }
 
         // Email de fin d'OTA (succès) avant reboot
@@ -1222,7 +1245,7 @@ void OTAManager::updateTask(void* parameter) {
     } else {
         extern Diagnostics diag;
         diag.recordOtaResult(false, "download/update failed");
-        ota->log("❌ Échec de la mise à jour ULTRA-RÉVOLUTIONNAIRE");
+        ota->log("❌ Échec mise à jour OTA");
         ota->m_isUpdating = false;
         TaskMonitor::Snapshot failureSnapshot = TaskMonitor::collectSnapshot();
         TaskMonitor::logSnapshot(failureSnapshot, "ota-task-failure");
@@ -1232,24 +1255,23 @@ void OTAManager::updateTask(void* parameter) {
                        ota->getCurrentVersion(),
                        ota->getRemoteVersion());
         
-        // Masquer l'overlay OTA en cas d'échec
-        extern DisplayView oled;
-        if (oled.isPresent()) {
-            oled.hideOtaProgressOverlay();
+        // Masquer l'overlay OTA en cas d'échec (via display du contexte)
+        if (ota->m_display && ota->m_display->isPresent()) {
+            ota->m_display->hideOtaProgressOverlay();
         }
     }
     
     vTaskDelete(NULL);
 }
 
-// MÉTHODE ULTRA-RÉVOLUTIONNAIRE : Téléchargement en arrière-plan avec validation cryptographique
+// Fallback micro-chunks : téléchargement par blocs 2KB avec retry par chunk
 bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expectedSize) {
-    log("🔥 DÉBUT TÉLÉCHARGEMENT ULTRA-RÉVOLUTIONNAIRE");
+    log("📥 Début téléchargement fallback micro-chunks");
     char logMsgUltra[64];
     snprintf(logMsgUltra, sizeof(logMsgUltra), "📊 Taille attendue: %zu bytes", expectedSize);
     log(logMsgUltra);
     
-    // Configuration ultra-révolutionnaire
+    // Configuration micro-chunks
     const size_t MICRO_CHUNK_SIZE = 2048;  // Micro-chunks 2KB pour réduire overhead
     const int MAX_RETRIES = 3;             // Moins de retries pour accélérer l'échec
     const int MICRO_CHUNK_TIMEOUT = 8000;  // Timeout un peu plus long
@@ -1283,13 +1305,10 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
         log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
     
-    // Configuration HTTP ultra-révolutionnaire
     HTTPClient http;
     http.setTimeout(MICRO_CHUNK_TIMEOUT);
     http.setReuse(true);
-    
-    // Headers ultra-révolutionnaires
-    http.addHeader("User-Agent", "ESP32-OTA-UltraRevolutionary");
+    http.addHeader("User-Agent", NetworkConfig::HTTP_USER_AGENT);
     http.addHeader("Accept", "application/octet-stream");
     http.addHeader("Connection", "keep-alive");
     http.addHeader("Cache-Control", "no-cache");
@@ -1447,7 +1466,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
     
     if (downloadSuccess && (OTAConfig::OTA_UNSAFE_FORCE || totalDownloaded == contentLength)) {
         char logMsgComplete[128];
-        snprintf(logMsgComplete, sizeof(logMsgComplete), "🎯 Téléchargement ultra-révolutionnaire terminé: %zu bytes", totalDownloaded);
+        snprintf(logMsgComplete, sizeof(logMsgComplete), "📥 Téléchargement micro-chunks terminé: %zu bytes", totalDownloaded);
         log(logMsgComplete);
         if (!OTAConfig::OTA_UNSAFE_FORCE && totalDownloaded != contentLength) {
             char errorMsg[128];
@@ -1457,7 +1476,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
         }
         // Finalisation avec validation
         if (Update.end(OTAConfig::OTA_UNSAFE_FORCE)) {
-            log("✅ Mise à jour ultra-révolutionnaire finalisée avec succès");
+            log("✅ Mise à jour micro-chunks finalisée");
             
             // IMPORTANT: Utiliser la partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance
             // Cela garantit que nous utilisons la partition qui a réellement été mise à jour
@@ -1485,7 +1504,7 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
             return false;
         }
     } else {
-        logError("Échec téléchargement ultra-révolutionnaire");
+        logError("Échec téléchargement micro-chunks");
         return false;
     }
 }
@@ -1537,10 +1556,10 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         log(logMsgForce);
     }
 
-    // Trouver la partition littlefs (LittleFS) - label "littlefs" dans la table de partition
-    const esp_partition_t* spiffs_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "littlefs");
+    // Trouver la partition LittleFS - label "spiffs" (aligné table de partition et esp_littlefs)
+    const esp_partition_t* spiffs_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
     if (!spiffs_partition) {
-        logError("Partition littlefs non trouvée");
+        logError("Partition spiffs non trouvée");
         http.end();
         return false;
     }
@@ -1584,7 +1603,11 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         return false;
     }
     
-    // Effacer la partition avant écriture
+    // Effacer la partition avant écriture.
+    // RISQUE: Si le téléchargement échoue (timeout, déconnexion), la partition reste partiellement
+    // écrite. LittleFS peut être invalide au prochain boot. Pas de buffer temporaire possible
+    // (taille ~720KB dépasse heap ESP32). En cas d'échec partiel, re-flash manuel du filesystem
+    // via uploadfs peut être nécessaire.
     log("🧹 Effacement de la partition spiffs...");
     esp_err_t err = esp_partition_erase_range(partition_handle, 0, spiffs_partition->size);
     if (err != ESP_OK) {
@@ -1678,14 +1701,10 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         }
     }
 
-    // Validation MD5 si fourni
-    if (!OTAConfig::OTA_UNSAFE_FORCE && expectedMD5 && strlen(expectedMD5) > 0) {
-        log("🔐 Validation MD5 du filesystem...");
-        // Note: La validation MD5 complète nécessiterait de relire tout le filesystem
-        // Pour l'instant, on fait confiance au téléchargement HTTP
-        log("✅ Validation MD5 filesystem (simplifiée)");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && expectedMD5 && strlen(expectedMD5) > 0) {
-        log("⚠️ OTA_UNSAFE_FORCE: validation MD5 filesystem ignorée");
+    // MD5 filesystem : non implémenté (nécessiterait relecture complète partition).
+    // On s'appuie sur la vérification de taille et l'intégrité HTTP.
+    if (expectedMD5 && strlen(expectedMD5) > 0 && OTAConfig::OTA_UNSAFE_FORCE) {
+        log("⚠️ OTA_UNSAFE_FORCE: validation MD5 filesystem désactivée");
     }
 
     log("✅ Mise à jour filesystem réussie !");
@@ -1726,6 +1745,9 @@ const char* OTAManager::getRemoteVersion() const {
 }
 
 bool OTAManager::checkForUpdate() {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();  // Feed WDT avant opérations longues (évite TWDT si TLS/metadata lent)
+    }
     if (m_isUpdating) {
         log("⚠️ Mise à jour déjà en cours");
         return false;
@@ -1756,16 +1778,14 @@ bool OTAManager::checkForUpdate() {
         return false;
     }
     
-    // Parsing JSON (buffer fixe, pas de heap)
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
+    // Parsing JSON (buffer dédié metadata ~1129 bytes, JSON_DOCUMENT_SIZE 1024 insuffisant WROOM)
+    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE_OTA_METADATA> doc;
     DeserializationError error = deserializeJson(doc, payload);
     
     if (error) {
-        char errorMsg[128];
-        char jsonErrorBuf[128];
-        strncpy(jsonErrorBuf, error.c_str(), sizeof(jsonErrorBuf) - 1);
-        jsonErrorBuf[sizeof(jsonErrorBuf) - 1] = '\0';
-        snprintf(errorMsg, sizeof(errorMsg), "Erreur parsing JSON: %s", jsonErrorBuf);
+        char errorMsg[160];
+        snprintf(errorMsg, sizeof(errorMsg), "Erreur parsing JSON metadata: %s (taille payload: %zu)",
+                 error.c_str(), strlen(payload));
         logError(errorMsg);
         return false;
     }
@@ -1842,7 +1862,9 @@ bool OTAManager::checkForUpdate() {
     log(logMsgVersion);
     
     if (versionCompare <= 0) {
-        log("✅ Aucune mise à jour disponible");
+        snprintf(logMsgVersion, sizeof(logMsgVersion), "✅ Aucune mise à jour: distant=%s, local=%s",
+                 m_remoteVersion, m_currentVersion);
+        log(logMsgVersion);
         return false;
     }
 
@@ -1852,8 +1874,8 @@ bool OTAManager::checkForUpdate() {
     
     // Vérification de la taille
     if (m_firmwareSize <= 0) {
-        log("⚠️ Taille firmware non spécifiée, utilisation de la taille par défaut");
-        m_firmwareSize = 1678528; // Taille par défaut
+        log("⚠️ Taille firmware non spécifiée dans metadata, utilisation taille partition OTA");
+        m_firmwareSize = static_cast<int>(OTAConfig::OTA_APP_PARTITION_SIZE);
     }
     
     if (!validateSpace(m_firmwareSize)) {

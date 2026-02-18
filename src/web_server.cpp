@@ -12,6 +12,8 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <cstring>
+#include <cstdlib>
+#include <cerrno>
 #include <time.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -25,7 +27,6 @@
 #include "web_routes_ui.h"
 #include "app_context.h"
 #include "realtime_websocket.h"
-#include "sensor_cache.h"
 #include "asset_bundler.h"
 
  
@@ -42,6 +43,134 @@ void invalidateDbvarsCache() { s_dbvarsCacheInvalid = true; }
 static bool s_pendingRestart = false;
 
 #ifndef DISABLE_ASYNC_WEBSERVER
+static bool getWebParam(AsyncWebServerRequest* req, const char* name, char* buf, size_t bufSize, bool post = true) {
+  if (req->hasParam(name, post)) {
+    const AsyncWebParameter* p = req->getParam(name, post);
+    if (p) {
+      Utils::safeStrncpy(buf, p->value().c_str(), bufSize);
+      return true;
+    }
+  }
+  buf[0] = '\0';
+  return false;
+}
+
+static const char* nvsTypeToStr(nvs_type_t t) {
+  switch (t) {
+    case NVS_TYPE_U8:  return "U8";
+    case NVS_TYPE_I8:  return "I8";
+    case NVS_TYPE_U16: return "U16";
+    case NVS_TYPE_I16: return "I16";
+    case NVS_TYPE_U32: return "U32";
+    case NVS_TYPE_I32: return "I32";
+    case NVS_TYPE_U64: return "U64";
+    case NVS_TYPE_I64: return "I64";
+    case NVS_TYPE_STR: return "STR";
+    case NVS_TYPE_BLOB: return "BLOB";
+    default: return "UNKNOWN";
+  }
+}
+
+static nvs_type_t nvsStrToType(const char* s) {
+  if (strcmp(s, "U8") == 0) return NVS_TYPE_U8;
+  if (strcmp(s, "I8") == 0) return NVS_TYPE_I8;
+  if (strcmp(s, "U16") == 0) return NVS_TYPE_U16;
+  if (strcmp(s, "I16") == 0) return NVS_TYPE_I16;
+  if (strcmp(s, "U32") == 0) return NVS_TYPE_U32;
+  if (strcmp(s, "I32") == 0) return NVS_TYPE_I32;
+  if (strcmp(s, "U64") == 0) return NVS_TYPE_U64;
+  if (strcmp(s, "I64") == 0) return NVS_TYPE_I64;
+  if (strcmp(s, "STR") == 0) return NVS_TYPE_STR;
+  if (strcmp(s, "BLOB") == 0) return NVS_TYPE_BLOB;
+  return NVS_TYPE_ANY;
+}
+
+static void printNvsEntryToJson(nvs_handle_t h, const nvs_entry_info_t& e2, Print* res) {
+  res->print("\"type\":\"");
+  res->print(nvsTypeToStr(e2.type));
+  res->print("\"");
+  esp_err_t err = ESP_ERR_INVALID_ARG;
+  switch (e2.type) {
+    case NVS_TYPE_U8: {
+      uint8_t v = 0;
+      err = nvs_get_u8(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); }
+    } break;
+    case NVS_TYPE_I8: {
+      int8_t v = 0;
+      err = nvs_get_i8(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); }
+    } break;
+    case NVS_TYPE_U16: {
+      uint16_t v = 0;
+      err = nvs_get_u16(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); }
+    } break;
+    case NVS_TYPE_I16: {
+      int16_t v = 0;
+      err = nvs_get_i16(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); }
+    } break;
+    case NVS_TYPE_U32: {
+      uint32_t v = 0;
+      err = nvs_get_u32(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); }
+    } break;
+    case NVS_TYPE_I32: {
+      int32_t v = 0;
+      err = nvs_get_i32(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); }
+    } break;
+    case NVS_TYPE_U64: {
+      uint64_t v = 0;
+      err = nvs_get_u64(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print((uint64_t)v); }
+    } break;
+    case NVS_TYPE_I64: {
+      int64_t v = 0;
+      err = nvs_get_i64(h, e2.key, &v);
+      if (err == ESP_OK) { res->print(",\"value\":"); res->print((int64_t)v); }
+    } break;
+    case NVS_TYPE_STR: {
+      size_t len = 0;
+      err = nvs_get_str(h, e2.key, nullptr, &len);
+      if (err == ESP_OK) {
+        if (len > 0 && len < BufferConfig::JSON_DOCUMENT_SIZE) {
+          static char nvsStrBuf[BufferConfig::JSON_DOCUMENT_SIZE];
+          size_t bufLen = sizeof(nvsStrBuf);
+          if (nvs_get_str(h, e2.key, nvsStrBuf, &bufLen) == ESP_OK) {
+            res->print(",\"value\":\"");
+            for (size_t i = 0; i < bufLen && nvsStrBuf[i]; ++i) {
+              char c = nvsStrBuf[i];
+              if (c == '"' || c == '\\') { res->print('\\'); res->print(c); }
+              else if (c == '\n') { res->print("\\n"); }
+              else if (c == '\r') { res->print("\\r"); }
+              else { res->print(c); }
+            }
+            res->print("\"");
+          } else {
+            res->print(",\"value\":\"<err>\"");
+          }
+        } else if (len >= BufferConfig::JSON_DOCUMENT_SIZE) {
+          res->print(",\"value\":\"<too_long>\"");
+        } else {
+          res->print(",\"value\":\"\"");
+        }
+      }
+    } break;
+    case NVS_TYPE_BLOB: {
+      size_t len = 0;
+      err = nvs_get_blob(h, e2.key, nullptr, &len);
+      if (err == ESP_OK) {
+        res->print(",\"length\":");
+        res->print((uint32_t)len);
+        res->print(",\"value\":\"<blob>\"");
+      }
+    } break;
+    default: break;
+  }
+}
+
 static unsigned long s_dbvarsLastCacheUpdate = 0;
 static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> s_dbvarsCachedSrc;
 static bool s_dbvarsCacheValid = false;
@@ -262,7 +391,7 @@ bool WebServerManager::begin() {
 
   // Initialiser le serveur WebSocket temps réel (callback dbVars pour mise à jour temps réel page Contrôles)
   g_realtimeWebSocket.begin(_sensors, _acts, &fillDbVarsJson);
-  // Aligner le cache WebSocket avec l'automatism (NVS) pour forceWakeup et mailNotif
+  // Aligner le cache WebSocket avec l'automatism (NVS) pour forceWakeUp et mailNotif
   g_realtimeWebSocket.updateForceWakeUpState(g_autoCtrl.getForceWakeUp());
   g_realtimeWebSocket.updateMailNotifState(g_autoCtrl.isEmailEnabled());
 
@@ -294,8 +423,10 @@ bool WebServerManager::begin() {
     // Extraire le paramètre type avec validation
     char typeBuf[16] = "small"; // défaut
     if (req->hasParam("type", true)) {
-      strncpy(typeBuf, req->getParam("type", true)->value().c_str(), sizeof(typeBuf) - 1);
-      typeBuf[sizeof(typeBuf) - 1] = '\0';
+      const AsyncWebParameter* p = req->getParam("type", true);
+      if (p) {
+        Utils::safeStrncpy(typeBuf, p->value().c_str(), sizeof(typeBuf));
+      }
     }
     
     // Validation du type: doit être "small" ou "big"
@@ -335,9 +466,10 @@ bool WebServerManager::begin() {
       
       // Traitement des commandes de nourrissage (PRIORITÉ ABSOLUE)
       if (req->hasParam("cmd")) {
+          const AsyncWebParameter* pCmd = req->getParam("cmd");
+          if (pCmd) {
           char cmdBuf[64];
-          strncpy(cmdBuf, req->getParam("cmd")->value().c_str(), sizeof(cmdBuf) - 1);
-          cmdBuf[sizeof(cmdBuf) - 1] = '\0';
+          Utils::safeStrncpy(cmdBuf, pCmd->value().c_str(), sizeof(cmdBuf));
           const char* c = cmdBuf;
           #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
           Serial.printf("[Web] 🎯 Command: %s\n", c);
@@ -427,13 +559,15 @@ bool WebServerManager::begin() {
               // Push UI refresh IMMÉDIAT
               g_realtimeWebSocket.broadcastNow();
           }
+          }
       }
       
       // Traitement des relais avec feedback immédiat
       if (req->hasParam("relay")) {
+          const AsyncWebParameter* pRelay = req->getParam("relay");
+          if (pRelay) {
           char relayBuf[64];
-          strncpy(relayBuf, req->getParam("relay")->value().c_str(), sizeof(relayBuf) - 1);
-          relayBuf[sizeof(relayBuf) - 1] = '\0';
+          Utils::safeStrncpy(relayBuf, pRelay->value().c_str(), sizeof(relayBuf));
           const char* rel = relayBuf;
           #if defined(PROFILE_TEST) || defined(PROFILE_DEV)
           Serial.printf("[Web] 🔌 Relay control: %s\\n", rel);
@@ -467,6 +601,7 @@ bool WebServerManager::begin() {
                   [&](){ g_autoCtrl.stopLightManualLocal(); },
                   "LIGHT ON", "LIGHT OFF"
               );
+          }
           }
       }
       
@@ -591,17 +726,7 @@ bool WebServerManager::begin() {
       deserializeJson(nvsDoc, cachedJson);
     }
 
-    // Buffer pour getParam (thread-safe car lambda locale)
     char paramBuf[128];
-    auto getParamCStr = [req, &paramBuf](const char* name) -> const char* {
-      if (req->hasParam(name, true)) {
-        strncpy(paramBuf, req->getParam(name, true)->value().c_str(), sizeof(paramBuf) - 1);
-        paramBuf[sizeof(paramBuf) - 1] = '\0';
-        return paramBuf;
-      }
-      return "";
-    };
-
     auto appendPair = [&](const char* key, const char* value){
       if (value == nullptr || strlen(value) == 0) return;
       if (p >= end - 1) return; // Pas assez d'espace
@@ -616,22 +741,19 @@ bool WebServerManager::begin() {
     };
 
     // Harmonisation config: écriture en clés canoniques (serveur distant)
-    appendPair("bouffeMatin", getParamCStr("bouffeMatin"));
-    appendPair("bouffeMidi", getParamCStr("bouffeMidi"));
-    appendPair("bouffeSoir", getParamCStr("bouffeSoir"));
-    // Durées nourrissage
-    appendPair("tempsGros", getParamCStr("tempsGros"));
-    appendPair("tempsPetits", getParamCStr("tempsPetits"));
-    // Seuils/paramètres
-    appendPair("aqThreshold", getParamCStr("aqThreshold"));
-    appendPair("tankThreshold", getParamCStr("tankThreshold"));
-    appendPair("chauffageThreshold", getParamCStr("chauffageThreshold"));
-    appendPair("tempsRemplissageSec", getParamCStr("tempsRemplissageSec"));
-    appendPair("limFlood", getParamCStr("limFlood"));
-    appendPair("FreqWakeUp", getParamCStr("FreqWakeUp"));
-    // Email
-    appendPair("mail", getParamCStr("mail"));
-    appendPair("mailNotif", getParamCStr("mailNotif"));
+    if (getWebParam(req, "bouffeMatin", paramBuf, sizeof(paramBuf))) appendPair("bouffeMatin", paramBuf);
+    if (getWebParam(req, "bouffeMidi", paramBuf, sizeof(paramBuf))) appendPair("bouffeMidi", paramBuf);
+    if (getWebParam(req, "bouffeSoir", paramBuf, sizeof(paramBuf))) appendPair("bouffeSoir", paramBuf);
+    if (getWebParam(req, "tempsGros", paramBuf, sizeof(paramBuf))) appendPair("tempsGros", paramBuf);
+    if (getWebParam(req, "tempsPetits", paramBuf, sizeof(paramBuf))) appendPair("tempsPetits", paramBuf);
+    if (getWebParam(req, "aqThreshold", paramBuf, sizeof(paramBuf))) appendPair("aqThreshold", paramBuf);
+    if (getWebParam(req, "tankThreshold", paramBuf, sizeof(paramBuf))) appendPair("tankThreshold", paramBuf);
+    if (getWebParam(req, "chauffageThreshold", paramBuf, sizeof(paramBuf))) appendPair("chauffageThreshold", paramBuf);
+    if (getWebParam(req, "tempsRemplissageSec", paramBuf, sizeof(paramBuf))) appendPair("tempsRemplissageSec", paramBuf);
+    if (getWebParam(req, "limFlood", paramBuf, sizeof(paramBuf))) appendPair("limFlood", paramBuf);
+    if (getWebParam(req, "FreqWakeUp", paramBuf, sizeof(paramBuf))) appendPair("FreqWakeUp", paramBuf);
+    if (getWebParam(req, "mail", paramBuf, sizeof(paramBuf))) appendPair("mail", paramBuf);
+    if (getWebParam(req, "mailNotif", paramBuf, sizeof(paramBuf))) appendPair("mailNotif", paramBuf);
 
     // Sauvegarde immédiate en NVS du JSON fusionné
     {
@@ -767,32 +889,46 @@ bool WebServerManager::begin() {
     g_autoCtrl.notifyLocalWebActivity();
     char subjBuf[128];
     if (req->hasParam("subject")) {
-      strncpy(subjBuf, req->getParam("subject")->value().c_str(), sizeof(subjBuf) - 1);
-      subjBuf[sizeof(subjBuf) - 1] = '\0';
+      const AsyncWebParameter* p = req->getParam("subject");
+      if (p) {
+        Utils::safeStrncpy(subjBuf, p->value().c_str(), sizeof(subjBuf));
+      } else {
+        Utils::safeStrncpy(subjBuf, "Test FFP5CS", sizeof(subjBuf));
+      }
     } else {
-      strncpy(subjBuf, "Test FFP5CS", sizeof(subjBuf) - 1);
-      subjBuf[sizeof(subjBuf) - 1] = '\0';
+      Utils::safeStrncpy(subjBuf, "Test FFP5CS", sizeof(subjBuf));
     }
     char bodyBuf[256];
     if (req->hasParam("body")) {
-      strncpy(bodyBuf, req->getParam("body")->value().c_str(), sizeof(bodyBuf) - 1);
-      bodyBuf[sizeof(bodyBuf) - 1] = '\0';
+      const AsyncWebParameter* p = req->getParam("body");
+      if (p) {
+        Utils::safeStrncpy(bodyBuf, p->value().c_str(), sizeof(bodyBuf));
+      } else {
+        Utils::safeStrncpy(bodyBuf, "Ceci est un e-mail de test envoyé depuis l'ESP32.", sizeof(bodyBuf));
+      }
     } else {
-      strncpy(bodyBuf, "Ceci est un e-mail de test envoyé depuis l'ESP32.", sizeof(bodyBuf) - 1);
-      bodyBuf[sizeof(bodyBuf) - 1] = '\0';
+      Utils::safeStrncpy(bodyBuf, "Ceci est un e-mail de test envoyé depuis l'ESP32.", sizeof(bodyBuf));
     }
     char destBuf[128];
     if (req->hasParam("to")) {
-      strncpy(destBuf, req->getParam("to")->value().c_str(), sizeof(destBuf) - 1);
-      destBuf[sizeof(destBuf) - 1] = '\0';
+      const AsyncWebParameter* p = req->getParam("to");
+      if (p) {
+        Utils::safeStrncpy(destBuf, p->value().c_str(), sizeof(destBuf));
+      } else {
+        const char* configured = g_autoCtrl.getEmailAddress();
+        if (configured && strlen(configured) > 0) {
+          Utils::safeStrncpy(destBuf, configured, sizeof(destBuf));
+        } else {
+          Utils::safeStrncpy(destBuf, EmailConfig::DEFAULT_RECIPIENT, sizeof(destBuf));
+        }
+      }
     } else {
       const char* configured = g_autoCtrl.getEmailAddress();
       if (configured && strlen(configured) > 0) {
-        strncpy(destBuf, configured, sizeof(destBuf) - 1);
+        Utils::safeStrncpy(destBuf, configured, sizeof(destBuf));
       } else {
-        strncpy(destBuf, EmailConfig::DEFAULT_RECIPIENT, sizeof(destBuf) - 1);
+        Utils::safeStrncpy(destBuf, EmailConfig::DEFAULT_RECIPIENT, sizeof(destBuf));
       }
-      destBuf[sizeof(destBuf) - 1] = '\0';
     }
     bool ok = mailer.sendAlert(subjBuf, bodyBuf, destBuf);
     const char* resp = ok ? "OK" : "FAIL";
@@ -808,7 +944,8 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing confirm=1");
       return;
     }
-    if (req->getParam("confirm")->value() != "1") {
+    const AsyncWebParameter* pConfirm = req->getParam("confirm");
+    if (!pConfirm || pConfirm->value() != "1") {
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "confirm must be 1");
       return;
     }
@@ -867,124 +1004,7 @@ bool WebServerManager::begin() {
 
             nvs_handle_t h;
             if (nvs_open(info.namespace_name, NVS_READONLY, &h) == ESP_OK) {
-              auto typeToStr = [](nvs_type_t t)->const char*{
-                switch (t) {
-                  case NVS_TYPE_U8:  return "U8";
-                  case NVS_TYPE_I8:  return "I8";
-                  case NVS_TYPE_U16: return "U16";
-                  case NVS_TYPE_I16: return "I16";
-                  case NVS_TYPE_U32: return "U32";
-                  case NVS_TYPE_I32: return "I32";
-                  case NVS_TYPE_U64: return "U64";
-                  case NVS_TYPE_I64: return "I64";
-                  case NVS_TYPE_STR: return "STR";
-                  case NVS_TYPE_BLOB:return "BLOB";
-                  default: return "UNKNOWN";
-                }
-              };
-              res->print("\"type\":\""); res->print(typeToStr(e2.type)); res->print("\"");
-
-              esp_err_t err = ESP_ERR_INVALID_ARG;
-              switch (e2.type) {
-                case NVS_TYPE_U8: {
-                  uint8_t v = 0;
-                  err = nvs_get_u8(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print(v);
-                  }
-                } break;
-                case NVS_TYPE_I8: {
-                  int8_t v = 0;
-                  err = nvs_get_i8(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print(v);
-                  }
-                } break;
-                case NVS_TYPE_U16: {
-                  uint16_t v = 0;
-                  err = nvs_get_u16(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print(v);
-                  }
-                } break;
-                case NVS_TYPE_I16: {
-                  int16_t v = 0;
-                  err = nvs_get_i16(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print(v);
-                  }
-                } break;
-                case NVS_TYPE_U32: {
-                  uint32_t v = 0;
-                  err = nvs_get_u32(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print(v);
-                  }
-                } break;
-                case NVS_TYPE_I32: {
-                  int32_t v = 0;
-                  err = nvs_get_i32(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print(v);
-                  }
-                } break;
-                case NVS_TYPE_U64: {
-                  uint64_t v = 0;
-                  err = nvs_get_u64(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print((uint64_t)v);
-                  }
-                } break;
-                case NVS_TYPE_I64: {
-                  int64_t v = 0;
-                  err = nvs_get_i64(h, e2.key, &v);
-                  if (err == ESP_OK) {
-                    res->print(",\"value\":");
-                    res->print((int64_t)v);
-                  }
-                } break;
-                case NVS_TYPE_STR: {
-                  size_t len = 0; err = nvs_get_str(h, e2.key, nullptr, &len);
-                  if (err == ESP_OK) {
-                    if (len > 0 && len < BufferConfig::JSON_DOCUMENT_SIZE) {
-                      static char nvsStrBuf[BufferConfig::JSON_DOCUMENT_SIZE];
-                      size_t bufLen = sizeof(nvsStrBuf);
-                      if (nvs_get_str(h, e2.key, nvsStrBuf, &bufLen) == ESP_OK) {
-                        res->print(",\"value\":\"");
-                        for (size_t i = 0; i < bufLen && nvsStrBuf[i]; ++i) {
-                          char c = nvsStrBuf[i];
-                          if (c == '"' || c == '\\') { res->print('\\'); res->print(c); }
-                          else if (c == '\n') { res->print("\\n"); }
-                          else if (c == '\r') { res->print("\\r"); }
-                          else { res->print(c); }
-                        }
-                        res->print("\"");
-                      } else {
-                        res->print(",\"value\":\"<err>\"");
-                      }
-                    } else if (len >= BufferConfig::JSON_DOCUMENT_SIZE) {
-                      res->print(",\"value\":\"<too_long>\"");
-                    } else {
-                      res->print(",\"value\":\"\"");
-                    }
-                  }
-                } break;
-                case NVS_TYPE_BLOB: {
-                  size_t len = 0; err = nvs_get_blob(h, e2.key, nullptr, &len);
-                  if (err == ESP_OK) {
-                    res->print(",\"length\":"); res->print((uint32_t)len);
-                    res->print(",\"value\":\"<blob>\"");
-                  }
-                } break;
-                default: break;
-              }
+              printNvsEntryToJson(h, e2, res);
               nvs_close(h);
             }
             res->print('}');
@@ -1018,58 +1038,7 @@ bool WebServerManager::begin() {
 
         nvs_handle_t h;
         if (nvs_open(info.namespace_name, NVS_READONLY, &h) == ESP_OK) {
-          auto typeToStr = [](nvs_type_t t)->const char*{
-            switch (t) {
-              case NVS_TYPE_U8:  return "U8";
-              case NVS_TYPE_I8:  return "I8";
-              case NVS_TYPE_U16: return "U16";
-              case NVS_TYPE_I16: return "I16";
-              case NVS_TYPE_U32: return "U32";
-              case NVS_TYPE_I32: return "I32";
-              case NVS_TYPE_U64: return "U64";
-              case NVS_TYPE_I64: return "I64";
-              case NVS_TYPE_STR: return "STR";
-              case NVS_TYPE_BLOB:return "BLOB";
-              default: return "UNKNOWN";
-            }
-          };
-          res->print("\"type\":\""); res->print(typeToStr(e2.type)); res->print("\"");
-
-          esp_err_t err = ESP_ERR_INVALID_ARG;
-          switch (e2.type) {
-            case NVS_TYPE_U8: { uint8_t v = 0; err = nvs_get_u8(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
-            case NVS_TYPE_I8: { int8_t v = 0; err = nvs_get_i8(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
-            case NVS_TYPE_U16: { uint16_t v = 0; err = nvs_get_u16(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
-            case NVS_TYPE_I16: { int16_t v = 0; err = nvs_get_i16(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
-            case NVS_TYPE_U32: { uint32_t v = 0; err = nvs_get_u32(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
-            case NVS_TYPE_I32: { int32_t v = 0; err = nvs_get_i32(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print(v); } } break;
-            case NVS_TYPE_U64: { uint64_t v = 0; err = nvs_get_u64(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print((uint64_t)v); } } break;
-            case NVS_TYPE_I64: { int64_t v = 0; err = nvs_get_i64(h, e2.key, &v); if (err == ESP_OK) { res->print(",\"value\":"); res->print((int64_t)v); } } break;
-            case NVS_TYPE_STR: {
-              size_t len = 0; err = nvs_get_str(h, e2.key, nullptr, &len);
-              if (err == ESP_OK && len > 0 && len < BufferConfig::JSON_DOCUMENT_SIZE) {
-                static char nvsStrBuf[BufferConfig::JSON_DOCUMENT_SIZE];
-                size_t bufLen = sizeof(nvsStrBuf);
-                if (nvs_get_str(h, e2.key, nvsStrBuf, &bufLen) == ESP_OK) {
-                  res->print(",\"value\":\"");
-                  for (size_t i = 0; i < bufLen && nvsStrBuf[i]; ++i) {
-                    char c = nvsStrBuf[i];
-                    if (c == '"' || c == '\\') { res->print('\\'); res->print(c); }
-                    else if (c == '\n') { res->print("\\n"); }
-                    else if (c == '\r') { res->print("\\r"); }
-                    else { res->print(c); }
-                  }
-                  res->print("\"");
-                } else { res->print(",\"value\":\"<err>\""); }
-              } else if (len >= BufferConfig::JSON_DOCUMENT_SIZE) { res->print(",\"value\":\"<too_long>\""); }
-              else { res->print(",\"value\":\"\""); }
-            } break;
-            case NVS_TYPE_BLOB: {
-              size_t len = 0; err = nvs_get_blob(h, e2.key, nullptr, &len);
-              if (err == ESP_OK) { res->print(",\"length\":"); res->print((uint32_t)len); res->print(",\"value\":\"<blob>\""); }
-            } break;
-            default: break;
-          }
+          printNvsEntryToJson(h, e2, res);
           nvs_close(h);
         }
         res->print('}');
@@ -1187,81 +1156,173 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
     char nsBuf[32], keyBuf[64], typeBuf[16], valueBuf[256];
-    auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
-      if (req->hasParam(n, true)) {
-        strncpy(buf, req->getParam(n, true)->value().c_str(), bufSize - 1);
-        buf[bufSize - 1] = '\0';
-        return true;
-      }
-      buf[0] = '\0';
-      return false;
-    };
-    if (!getP("ns", nsBuf, sizeof(nsBuf)) || 
-        !getP("key", keyBuf, sizeof(keyBuf)) || 
-        !getP("type", typeBuf, sizeof(typeBuf))) {
+    if (!getWebParam(req, "ns", nsBuf, sizeof(nsBuf)) ||
+        !getWebParam(req, "key", keyBuf, sizeof(keyBuf)) ||
+        !getWebParam(req, "type", typeBuf, sizeof(typeBuf))) {
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing ns/key/type");
       return;
     }
-    getP("value", valueBuf, sizeof(valueBuf));
+    getWebParam(req, "value", valueBuf, sizeof(valueBuf));
     
     nvs_handle_t h; esp_err_t err = nvs_open(nsBuf, NVS_READWRITE, &h);
     if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "nvs_open failed"); return; }
 
-    auto strToType = [](const char* s)->nvs_type_t{
-      if (strcmp(s, "U8") == 0) return NVS_TYPE_U8;
-      if (strcmp(s, "I8") == 0) return NVS_TYPE_I8;
-      if (strcmp(s, "U16") == 0) return NVS_TYPE_U16;
-      if (strcmp(s, "I16") == 0) return NVS_TYPE_I16;
-      if (strcmp(s, "U32") == 0) return NVS_TYPE_U32;
-      if (strcmp(s, "I32") == 0) return NVS_TYPE_I32;
-      if (strcmp(s, "U64") == 0) return NVS_TYPE_U64;
-      if (strcmp(s, "I64") == 0) return NVS_TYPE_I64;
-      if (strcmp(s, "STR") == 0) return NVS_TYPE_STR;
-      if (strcmp(s, "BLOB") == 0) return NVS_TYPE_BLOB;
-      return NVS_TYPE_ANY;
-    };
-
-    nvs_type_t t = strToType(typeBuf);
+    nvs_type_t t = nvsStrToType(typeBuf);
     if (t == NVS_TYPE_ANY) {
       nvs_close(h);
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Invalid type");
       return;
     }
 
+    auto sendBadValue = [req, &h](const char* msg) {
+      nvs_close(h);
+      req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", msg);
+    };
+
+    bool valueChanged = false;
+    errno = 0;
+    char* endptr = nullptr;
+
     switch (t) {
       case NVS_TYPE_U8: {
-        uint8_t v = (uint8_t)atoi(valueBuf);
-        err = nvs_set_u8(h, keyBuf, v);
+        long parsed = strtol(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE || parsed < 0 || parsed > 255) {
+          sendBadValue("Invalid value for U8 (0-255)");
+          return;
+        }
+        uint8_t v = (uint8_t)parsed;
+        uint8_t current = 0;
+        esp_err_t getErr = nvs_get_u8(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_u8(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_I8: {
-        int8_t v = (int8_t)atoi(valueBuf);
-        err = nvs_set_i8(h, keyBuf, v);
+        long parsed = strtol(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE || parsed < -128 || parsed > 127) {
+          sendBadValue("Invalid value for I8 (-128 to 127)");
+          return;
+        }
+        int8_t v = (int8_t)parsed;
+        int8_t current = 0;
+        esp_err_t getErr = nvs_get_i8(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_i8(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_U16: {
-        uint16_t v = (uint16_t)atoi(valueBuf);
-        err = nvs_set_u16(h, keyBuf, v);
+        long parsed = strtol(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE || parsed < 0 || parsed > 65535) {
+          sendBadValue("Invalid value for U16 (0-65535)");
+          return;
+        }
+        uint16_t v = (uint16_t)parsed;
+        uint16_t current = 0;
+        esp_err_t getErr = nvs_get_u16(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_u16(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_I16: {
-        int16_t v = (int16_t)atoi(valueBuf);
-        err = nvs_set_i16(h, keyBuf, v);
+        long parsed = strtol(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE || parsed < -32768 || parsed > 32767) {
+          sendBadValue("Invalid value for I16 (-32768 to 32767)");
+          return;
+        }
+        int16_t v = (int16_t)parsed;
+        int16_t current = 0;
+        esp_err_t getErr = nvs_get_i16(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_i16(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_U32: {
-        uint32_t v = (uint32_t)atol(valueBuf);
-        err = nvs_set_u32(h, keyBuf, v);
+        unsigned long parsed = strtoul(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE) {
+          sendBadValue("Invalid value for U32");
+          return;
+        }
+        uint32_t v = (uint32_t)parsed;
+        uint32_t current = 0;
+        esp_err_t getErr = nvs_get_u32(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_u32(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_I32: {
-        int32_t v = (int32_t)atol(valueBuf);
-        err = nvs_set_i32(h, keyBuf, v);
+        long parsed = strtol(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE) {
+          sendBadValue("Invalid value for I32");
+          return;
+        }
+        int32_t v = (int32_t)parsed;
+        int32_t current = 0;
+        esp_err_t getErr = nvs_get_i32(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_i32(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_U64: {
-        uint64_t v = (uint64_t)atoll(valueBuf);
-        err = nvs_set_u64(h, keyBuf, v);
+        unsigned long long parsed = strtoull(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE) {
+          sendBadValue("Invalid value for U64");
+          return;
+        }
+        uint64_t v = (uint64_t)parsed;
+        uint64_t current = 0;
+        esp_err_t getErr = nvs_get_u64(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_u64(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
       case NVS_TYPE_I64: {
-        int64_t v = (int64_t)atoll(valueBuf);
-        err = nvs_set_i64(h, keyBuf, v);
+        long long parsed = strtoll(valueBuf, &endptr, 10);
+        if (endptr == valueBuf || *endptr != '\0' || errno == ERANGE) {
+          sendBadValue("Invalid value for I64");
+          return;
+        }
+        int64_t v = (int64_t)parsed;
+        int64_t current = 0;
+        esp_err_t getErr = nvs_get_i64(h, keyBuf, &current);
+        if (getErr != ESP_OK && getErr != ESP_ERR_NVS_NOT_FOUND) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "NVS read failed"); return; }
+        if (getErr == ESP_ERR_NVS_NOT_FOUND || current != v) {
+          err = nvs_set_i64(h, keyBuf, v);
+          if (err == ESP_OK) valueChanged = true;
+        }
       } break;
-      case NVS_TYPE_STR: { err = nvs_set_str(h, keyBuf, valueBuf); } break;
+      case NVS_TYPE_STR: {
+        size_t len = 0;
+        esp_err_t getErr = nvs_get_str(h, keyBuf, nullptr, &len);
+        bool doSet = (getErr == ESP_ERR_NVS_NOT_FOUND);
+        if (getErr == ESP_OK && len > 0) {
+          if (len <= 512) {
+            char currentStr[512];
+            size_t readLen = len;
+            getErr = nvs_get_str(h, keyBuf, currentStr, &readLen);
+            if (getErr == ESP_OK && strcmp(currentStr, valueBuf) != 0) doSet = true;
+          } else {
+            doSet = true;
+          }
+        }
+        if (doSet) {
+          err = nvs_set_str(h, keyBuf, valueBuf);
+          if (err == ESP_OK) valueChanged = true;
+        }
+      } break;
       case NVS_TYPE_BLOB: {
         req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "BLOB set not supported");
         nvs_close(h);
@@ -1269,23 +1330,31 @@ bool WebServerManager::begin() {
       }
       default: break;
     }
-    if (err == ESP_OK) err = nvs_commit(h);
+    if (err != ESP_OK) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Write failed"); return; }
+    if (valueChanged && nvs_commit(h) != ESP_OK) { nvs_close(h); req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Commit failed"); return; }
     nvs_close(h);
-    if (err != ESP_OK) { req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Write failed"); return; }
 
-    // Rafraîchir l'état runtime si nécessaire
-    if (strcmp(nsBuf, "bouffe") == 0 || strcmp(nsBuf, "ota") == 0) {
+    // Rafraîchir l'état runtime si nécessaire (namespaces actuels cfg/sys + legacy bouffe/ota/rtc/remoteVars)
+    const bool nsCfg = (strcmp(nsBuf, NVS_NAMESPACES::CONFIG) == 0);
+    const bool nsSys = (strcmp(nsBuf, NVS_NAMESPACES::SYSTEM) == 0);
+    const bool legacyBouffe = (strcmp(nsBuf, "bouffe") == 0);
+    const bool legacyOta = (strcmp(nsBuf, "ota") == 0);
+    const bool legacyRtc = (strcmp(nsBuf, "rtc") == 0);
+    const bool legacyRemoteVars = (strcmp(nsBuf, "remoteVars") == 0);
+    const bool keyBouffe = (strcmp(keyBuf, NVSKeys::Config::BOUFFE_MATIN) == 0 || strcmp(keyBuf, NVSKeys::Config::BOUFFE_MIDI) == 0 ||
+                            strcmp(keyBuf, NVSKeys::Config::BOUFFE_SOIR) == 0 || strcmp(keyBuf, NVSKeys::Config::BOUFFE_JOUR) == 0 ||
+                            strcmp(keyBuf, NVSKeys::Config::BF_PMP_LOCK) == 0);
+    if ((nsCfg && keyBouffe) || legacyBouffe || (nsSys && strcmp(keyBuf, NVSKeys::System::OTA_UPDATE_FLAG) == 0) || legacyOta) {
       config.loadBouffeFlags();
-    } else if (strcmp(nsBuf, "rtc") == 0 ||
-               (strcmp(nsBuf, NVS_NAMESPACES::SYSTEM) == 0 && strcmp(keyBuf, NVSKeys::System::RTC_EPOCH) == 0)) {
+    }
+    if (legacyRtc || (nsSys && strcmp(keyBuf, NVSKeys::System::RTC_EPOCH) == 0)) {
       power.loadTimeFromFlash();
-    } else if (strcmp(nsBuf, "remoteVars") == 0 && strcmp(keyBuf, "json") == 0) {
-      char js[256];
-      strncpy(js, valueBuf, sizeof(js) - 1);
-      js[sizeof(js) - 1] = '\0';
-      if (strlen(js) > 0) {
+    }
+    if ((nsCfg && strcmp(keyBuf, NVSKeys::Config::REMOTE_JSON) == 0) || (legacyRemoteVars && strcmp(keyBuf, "json") == 0)) {
+      invalidateDbvarsCache();
+      if (strlen(valueBuf) > 0) {
         StaticJsonDocument<256> tmp;
-        if (!deserializeJson(tmp, js)) {
+        if (!deserializeJson(tmp, valueBuf)) {
           g_autoCtrl.applyConfigFromJson(tmp);
         }
       }
@@ -1300,16 +1369,7 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
     char nsBuf[32], keyBuf[64];
-    auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
-      if (req->hasParam(n, true)) {
-        strncpy(buf, req->getParam(n, true)->value().c_str(), bufSize - 1);
-        buf[bufSize - 1] = '\0';
-        return true;
-      }
-      buf[0] = '\0';
-      return false;
-    };
-    if (!getP("ns", nsBuf, sizeof(nsBuf)) || !getP("key", keyBuf, sizeof(keyBuf))) { 
+    if (!getWebParam(req, "ns", nsBuf, sizeof(nsBuf)) || !getWebParam(req, "key", keyBuf, sizeof(keyBuf))) { 
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing ns/key"); 
       return; 
     }
@@ -1328,16 +1388,7 @@ bool WebServerManager::begin() {
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
     char nsBuf[32];
-    auto getP = [req](const char* n, char* buf, size_t bufSize) -> bool {
-      if (req->hasParam(n, true)) {
-        strncpy(buf, req->getParam(n, true)->value().c_str(), bufSize - 1);
-        buf[bufSize - 1] = '\0';
-        return true;
-      }
-      buf[0] = '\0';
-      return false;
-    };
-    if (!getP("ns", nsBuf, sizeof(nsBuf))) { 
+    if (!getWebParam(req, "ns", nsBuf, sizeof(nsBuf))) { 
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "Missing ns"); 
       return; 
     }
@@ -1403,9 +1454,8 @@ bool WebServerManager::begin() {
     doc["count"] = n;
     
     // Lecture des résultats via ESP-IDF (évite String Arduino → stabilité long uptime)
-    const uint16_t WIFI_SCAN_MAX_RECORDS = 16;
-    static wifi_ap_record_t s_apRecords[WIFI_SCAN_MAX_RECORDS];
-    uint16_t num = (n > 0 && n <= WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n : (n > 0 ? WIFI_SCAN_MAX_RECORDS : 0);
+    static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+    uint16_t num = (n > 0 && n <= NetworkConfig::WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n : (n > 0 ? NetworkConfig::WIFI_SCAN_MAX_RECORDS : 0);
     
     if (num > 0 && esp_wifi_scan_get_ap_records(&num, s_apRecords) == ESP_OK) {
       JsonArray networks = doc.createNestedArray("networks");
@@ -1560,19 +1610,9 @@ bool WebServerManager::begin() {
     }
     
     char ssidBuf[64], passwordBuf[65], saveBuf[8];
-    auto getParam = [req](const char* name, char* buf, size_t bufSize) -> bool {
-      if (req->hasParam(name, true)) {
-        strncpy(buf, req->getParam(name, true)->value().c_str(), bufSize - 1);
-        buf[bufSize - 1] = '\0';
-        return true;
-      }
-      buf[0] = '\0';
-      return false;
-    };
-
-    bool hasSsid = getParam("ssid", ssidBuf, sizeof(ssidBuf));
-    bool hasPassword = getParam("password", passwordBuf, sizeof(passwordBuf));
-    bool hasSave = getParam("save", saveBuf, sizeof(saveBuf));
+    bool hasSsid = getWebParam(req, "ssid", ssidBuf, sizeof(ssidBuf));
+    bool hasPassword = getWebParam(req, "password", passwordBuf, sizeof(passwordBuf));
+    bool hasSave = getWebParam(req, "save", saveBuf, sizeof(saveBuf));
     
     Serial.printf("[WiFi] Demande de connexion à '%s'\n", ssidBuf);
     
@@ -1732,9 +1772,11 @@ bool WebServerManager::begin() {
     char ssidBuf[64];
     bool hasSsid = false;
     if (req->hasParam("ssid", true)) {
-      strncpy(ssidBuf, req->getParam("ssid", true)->value().c_str(), sizeof(ssidBuf) - 1);
-      ssidBuf[sizeof(ssidBuf) - 1] = '\0';
-      hasSsid = (ssidBuf[0] != '\0');
+      const AsyncWebParameter* p = req->getParam("ssid", true);
+      if (p) {
+        Utils::safeStrncpy(ssidBuf, p->value().c_str(), sizeof(ssidBuf));
+        hasSsid = (ssidBuf[0] != '\0');
+      }
     } else {
       ssidBuf[0] = '\0';
     }

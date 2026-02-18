@@ -68,7 +68,8 @@ struct NetRequest {
 QueueHandle_t g_netQueue = nullptr;
 TaskHandle_t g_netTaskHandle = nullptr;
 
-// Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation
+// Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
+// Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
 static constexpr size_t kNetRequestPoolSize = 3;
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
 static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
@@ -81,6 +82,7 @@ static NetRequest* netRequestAlloc() {
       return &s_netRequestPool[i];
     }
   }
+  Serial.println(F("[netRPC] Pool plein, netRequestAlloc échoue"));
   return nullptr;
 }
 
@@ -127,6 +129,7 @@ static void allocMailReserveIfNeeded(uint32_t kMailBlockReq) {
 static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
   if (!ctx) return;
   const uint32_t kMailBlockReq = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
+  const uint32_t kMailFreeReq = HeapConfig::MIN_HEAP_MAIL_SEND;
   if (!ctx->mailer.hasPendingMails()) {
     if (s_mailReserve) {
       free(s_mailReserve);
@@ -135,22 +138,29 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
     }
     return;
   }
-  bool canConn = TLSMutex::canConnect();
+  uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+  bool canConn = TLSMutex::canConnect();
+  uint32_t pending = ctx->mailer.getQueuedMails();
+
   if (!canConn) {
+    static unsigned long lastTlsSkipMs = 0;
+    if (now - lastTlsSkipMs > 30000) {
+      Serial.printf("[Mail] ⏸️ En attente: %u mail(s), skip TLS (heap=%u < 35K ou sleep)\n", pending, freeHeap);
+      lastTlsSkipMs = now;
+    }
     return;
   }
   // Garde heap libre (Core 1): éviter abort() si TLS/allocs internes échouent pendant processOneMailSync
-  uint32_t freeHeap = ESP.getFreeHeap();
-  if (largestBlock >= kMailBlockReq && freeHeap >= HeapConfig::MIN_HEAP_MAIL_SEND) {
+  if (largestBlock >= kMailBlockReq && freeHeap >= kMailFreeReq) {
     allocMailReserveIfNeeded(kMailBlockReq);
     // Libérer la réserve AVANT l'envoi seulement si elle est en RAM interne, pour créer un bloc 32KB pour TLS.
-    // Si réserve en PSRAM (S3), ne pas libérer : la RAM interne a déjà 32KB dispo car on n'a pas pris la réserve dedans.
     if (s_mailReserve && !s_mailReserveFromPSRAM) {
       free(s_mailReserve);
       s_mailReserve = nullptr;
     }
     esp_task_wdt_reset();
+    Serial.printf("[Mail] >>> ENVOI EFFECTIF (tentative) - heap free=%u bloc=%u <<<\n", freeHeap, largestBlock);
     ctx->mailer.processOneMailSync();
     return;
   }
@@ -160,15 +170,17 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
     vTaskDelay(pdMS_TO_TICKS(100));
     largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
     freeHeap = ESP.getFreeHeap();
-    if (largestBlock >= kMailBlockReq && freeHeap >= HeapConfig::MIN_HEAP_MAIL_SEND) {
+    if (largestBlock >= kMailBlockReq && freeHeap >= kMailFreeReq) {
       esp_task_wdt_reset();
+      Serial.printf("[Mail] >>> ENVOI EFFECTIF (tentative après libération réserve) - heap free=%u <<<\n", freeHeap);
       ctx->mailer.processOneMailSync();
     }
     return;
   }
   static unsigned long lastMemWarnMs = 0;
   if (now - lastMemWarnMs > 60000) {
-    Serial.printf("[autoTask] ⚠️ Mail reporté: bloc max=%u bytes < %uKB requis\n", largestBlock, kMailBlockReq / 1024);
+    Serial.printf("[Mail] ⏸️ En attente: %u mail(s), skip heap (bloc=%u < %uK requis, free=%u)\n",
+                  pending, largestBlock, kMailBlockReq / 1024, freeHeap);
     lastMemWarnMs = now;
   }
 }
@@ -245,6 +257,7 @@ static void netTask(void* pv) {
     esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
     vTaskDelay(pdMS_TO_TICKS(200));
   }
+  bool bootServerReachable = false;
   if (WiFi.status() == WL_CONNECTED && g_ctx) {
     // Cause basale: attente stabilisation stack TCP/IP avant 1ère requête HTTPS
     // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
@@ -253,6 +266,7 @@ static void netTask(void* pv) {
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
+    bootServerReachable = (r >= 1);
     // r==1: HTTP OK, r==2: NVS fallback (ne pas appeler processFetchedRemoteConfig sur doc NVS)
     if (r == 1 && tmp.size() > 0) {
       if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
@@ -271,26 +285,37 @@ static void netTask(void* pv) {
     Serial.println(F("[netTask] Boot: WiFi non connecté, fetchRemoteState skip"));
   }
 
-  // Vérification OTA au boot puis toutes les 2h (prod)
+  // Vérification OTA au boot puis toutes les 2h (prod / wroom-beta)
+  // Ne faire l'OTA au boot que si le serveur a répondu (évite blocage TLS > 30s sur serveur injoignable)
+  // wroom-test (PROFILE_TEST) uniquement: skip OTA au boot (downloadMetadata HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
   static unsigned long lastOtaCheckMs = 0;
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-  if (g_ctx && WiFi.status() == WL_CONNECTED) {
+  #if !defined(PROFILE_TEST)
+  if (g_ctx && WiFi.status() == WL_CONNECTED && bootServerReachable) {
+    esp_task_wdt_reset();  // Fenêtre TWDT avant checkForUpdate (downloadMetadata peut bloquer jusqu'à HTTP_TIMEOUT)
     g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
     Serial.println(F("[netTask] Boot: vérification OTA (serveur distant)"));
     if (g_ctx->otaManager.checkForUpdate()) {
       g_ctx->otaManager.performUpdate();  // Lance la tâche OTA, ne bloque pas longtemps
     }
     lastOtaCheckMs = millis();
+  } else if (g_ctx && WiFi.status() == WL_CONNECTED && !bootServerReachable) {
+    Serial.println(F("[netTask] Boot: OTA skip (serveur injoignable, évite TWDT)"));
+    lastOtaCheckMs = millis();  // Pour ne pas refaire OTA immédiatement en boucle
   }
+  #else
+  // wroom-test (PROFILE_TEST): OTA au boot désactivé (HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
+  lastOtaCheckMs = millis();
+  #endif
 #endif
 
   for (;;) {
     esp_task_wdt_reset();  // Reset watchdog dans boucle principale
     NetRequest* req = nullptr;
     const uint32_t queueTimeoutMs = 500;  // Court pour permettre vérif OTA périodique quand file vide
-    if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-      // Vérification OTA périodique toutes les 2h (prod)
+      if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && !defined(PROFILE_TEST)
+      // Vérification OTA périodique toutes les 2h (prod / wroom-beta). wroom-test: désactivé (HTTPS > TWDT)
       if (g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
           (millis() - lastOtaCheckMs >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
         g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
@@ -333,6 +358,7 @@ static void netTask(void* pv) {
         break;
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
       case NetReqType::OtaCheck: {
+        Serial.println(F("[netTask] Demande distante recherche OTA (triggerOtaCheck)"));
         g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
         ok = g_ctx->otaManager.checkForUpdate();
         if (ok) {
@@ -542,7 +568,7 @@ void automationTask(void* pv) {
   }
 
 #if FEATURE_MAIL
-  // Allouer la réserve 32KB au premier passage (PSRAM sur S3 si dispo, sinon RAM interne)
+  // Réserve 32KB déjà allouée au boot si possible (reserveMailBlockAtBoot) ; sinon tentative au 1er passage
   allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
 #endif
 
@@ -601,6 +627,7 @@ void automationTask(void* pv) {
       if (now - lastHeapCheck > heapCheckInterval) {
         uint32_t heapFree = ESP.getFreeHeap();
         uint32_t heapMin = ESP.getMinFreeHeap();
+        uint32_t heapTotal = ESP.getHeapSize();
         uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
         lastHeapCheck = now;
         
@@ -618,13 +645,32 @@ void automationTask(void* pv) {
           Serial.printf("[autoTask] WARN: Fragmentation (blk=%u < 12KB)\n", (unsigned)largestBlock);
         }
         
-        #if defined(PROFILE_TEST)
+        // Ligne MEM unique pour analyse fine (grep-friendly, toutes les 10 min)
         uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
+        UBaseType_t hwmS = g_sensorTaskHandle ? uxTaskGetStackHighWaterMark(g_sensorTaskHandle) : 0;
+        UBaseType_t hwmW = g_webTaskHandle ? uxTaskGetStackHighWaterMark(g_webTaskHandle) : 0;
+        UBaseType_t hwmA = g_autoTaskHandle ? uxTaskGetStackHighWaterMark(g_autoTaskHandle) : 0;
+        UBaseType_t hwmN = g_netTaskHandle ? uxTaskGetStackHighWaterMark(g_netTaskHandle) : 0;
+        Serial.printf("[MEM] free=%u min=%u total=%u blk=%u frag=%u hwm_s=%u hwm_w=%u hwm_a=%u hwm_n=%u\n",
+                      (unsigned)heapFree, (unsigned)heapMin, (unsigned)heapTotal,
+                      (unsigned)largestBlock, (unsigned)fragmentation,
+                      (unsigned)hwmS, (unsigned)hwmW, (unsigned)hwmA, (unsigned)hwmN);
+        
+        #if defined(PROFILE_TEST)
         Serial.printf("[autoTask] Heap: %u/%u blk=%u frag=%u%%\n", 
                       heapFree, heapMin, largestBlock, fragmentation);
         #endif
       }
       #endif
+
+      // Piste F: log périodique heap (free + plus grand bloc) toutes les 90 s pour analyse fragmentation
+      static unsigned long lastHeapDiagMs = 0;
+      if (now - lastHeapDiagMs >= 90000) {
+        lastHeapDiagMs = now;
+        Serial.printf("[HeapDiag] free=%u blk=%u\n",
+                      (unsigned)ESP.getFreeHeap(),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+      }
 
 #if FEATURE_DIAG_OLED_LOGS
       Serial.printf("{\"h\":\"H3\",\"branch\":\"data\",\"t\":%lu}\n", (unsigned long)now);
@@ -809,20 +855,26 @@ bool start(AppContext& ctx) {
   UBaseType_t hwmSensor = g_sensorTaskHandle ? uxTaskGetStackHighWaterMark(g_sensorTaskHandle) : 0;
   UBaseType_t hwmWeb = g_webTaskHandle ? uxTaskGetStackHighWaterMark(g_webTaskHandle) : 0;
   UBaseType_t hwmAuto = g_autoTaskHandle ? uxTaskGetStackHighWaterMark(g_autoTaskHandle) : 0;
+  UBaseType_t hwmNet = g_netTaskHandle ? uxTaskGetStackHighWaterMark(g_netTaskHandle) : 0;
   UBaseType_t hwmLoop = uxTaskGetStackHighWaterMark(nullptr);
 
-  Serial.printf("[Stacks] HWM at boot - sensor:%u web:%u auto:%u loop:%u bytes\n",
+  Serial.printf("[Stacks] HWM at boot - sensor:%u web:%u auto:%u net:%u loop:%u bytes\n",
                 static_cast<unsigned>(hwmSensor),
                 static_cast<unsigned>(hwmWeb),
                 static_cast<unsigned>(hwmAuto),
+                static_cast<unsigned>(hwmNet),
                 static_cast<unsigned>(hwmLoop));
-  Serial.printf("[Event] Stacks HWM boot sensor=%u web=%u auto=%u loop=%u\n",
+  Serial.printf("[Event] Stacks HWM boot sensor=%u web=%u auto=%u net=%u loop=%u\n",
                  static_cast<unsigned>(hwmSensor),
                  static_cast<unsigned>(hwmWeb),
                  static_cast<unsigned>(hwmAuto),
+                 static_cast<unsigned>(hwmNet),
                  static_cast<unsigned>(hwmLoop));
-  Serial.printf("[Heap] Boot - free:%u largestBlock:%u bytes\n",
-                (unsigned)ESP.getFreeHeap(),
+  uint32_t heapFree = ESP.getFreeHeap();
+  uint32_t heapTotal = ESP.getHeapSize();
+  Serial.printf("[Heap] Boot - free:%u total:%u largestBlock:%u bytes\n",
+                (unsigned)heapFree,
+                (unsigned)heapTotal,
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
   return sensorCreated == pdPASS && webCreated == pdPASS &&
@@ -835,6 +887,7 @@ Handles getHandles() {
   handles.web = g_webTaskHandle;
   handles.automation = g_autoTaskHandle;
   handles.display = g_displayTaskHandle;
+  handles.net = g_netTaskHandle;
   return handles;
 }
 
@@ -932,15 +985,25 @@ void netRequestOtaCheck() {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
   if (!g_netQueue) return;
   NetRequest* req = netRequestAlloc();
-  if (!req) return;
+  if (!req) {
+    Serial.println(F("[netRPC] OTA check renoncé: pool plein"));
+    return;
+  }
   req->type = NetReqType::OtaCheck;
   req->requester = nullptr;  // Fire-and-forget, netTask netRequestFree(req) après traitement
   NetRequest* ptr = req;
   if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(100)) != pdTRUE) {
     netRequestFree(req);
+    Serial.println(F("[netRPC] OTA check renoncé: queue net pleine"));
   }
 #endif
 }
+
+#if FEATURE_MAIL
+void reserveMailBlockAtBoot() {
+  allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
+}
+#endif
 
 }  // namespace AppTasks
 

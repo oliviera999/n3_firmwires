@@ -107,10 +107,12 @@ if ($Environment -ne "wroom-prod") {
     Write-Host "3. LittleFS ignoré (wroom-prod = pas de serveur embarqué)" -ForegroundColor Gray
 }
 
-# 4. Monitoring N min
+# 4. Monitoring N min (réutiliser le port d'upload si connu, pour éviter moniteur sur un autre COM)
+$monitorPort = $Port
+if (-not $monitorPort -and $env:PLATFORMIO_UPLOAD_PORT) { $monitorPort = $env:PLATFORMIO_UPLOAD_PORT }
 Write-Host "4. Monitoring $DurationMinutes minutes..." -ForegroundColor Cyan
 $monitorParams = @{ DurationSeconds = $durationSeconds }
-if ($Port) { $monitorParams["Port"] = $Port }
+if ($monitorPort) { $monitorParams["Port"] = $monitorPort }
 & "$projectRoot\monitor_5min.ps1" @monitorParams
 # Fichier créé par cette exécution = le plus récent monitor_*_*.log par date de création
 $latest = Get-ChildItem -Path $projectRoot -Filter "monitor_*.log" -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending | Select-Object -First 1

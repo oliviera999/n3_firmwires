@@ -350,7 +350,11 @@ bool ConfigManager::loadConfigFromNVS() {
   ArduinoJson::StaticJsonDocument<1024> doc;
   auto err = deserializeJson(doc, cachedJson);
   
-  if (!err) {
+  if (err) {
+    Serial.printf("[Config] ⚠️ Erreur parsing JSON cache: %s\n", err.c_str());
+    return false;
+  }
+  {
     Serial.println(F("[Config] ✅ JSON valide, contenu:"));
     
     // Logger les principales variables trouvées
@@ -433,12 +437,6 @@ bool ConfigManager::loadConfigFromNVS() {
     }
     
     Serial.println(F("[Config] ✅ Configuration chargée avec succès depuis NVS"));
-  } else {
-    char jsonErrorBuf[128];
-    strncpy(jsonErrorBuf, err.c_str(), sizeof(jsonErrorBuf) - 1);
-    jsonErrorBuf[sizeof(jsonErrorBuf) - 1] = '\0';
-    Serial.printf("[Config] ⚠️ Erreur parsing JSON: %s\n", jsonErrorBuf);
-    Serial.println(F("[Config] Valeurs par défaut seront utilisées"));
   }
   
   Serial.println(F("========================================"));

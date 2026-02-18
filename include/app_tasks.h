@@ -17,6 +17,7 @@ struct Handles {
   TaskHandle_t web;
   TaskHandle_t automation;
   TaskHandle_t display;
+  TaskHandle_t net;  // TLS/HTTP, stack 12 KB
 };
 
 /**
@@ -51,6 +52,11 @@ bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 
 /** Demande une vérification OTA au netTask (fire-and-forget). Utilisé par le boot, le timer 2h ou le serveur distant (triggerOtaCheck). */
 void netRequestOtaCheck();
+
+#if FEATURE_MAIL
+/** Réserve un bloc 32 KB pour SMTP au boot (heap peu fragmenté). Libéré au moment de l'envoi pour créer un bloc contigu pour TLS. */
+void reserveMailBlockAtBoot();
+#endif
 
 }  // namespace AppTasks
 

@@ -17,13 +17,18 @@ namespace OTAConfig {
     
     // Noms de fichiers pour les mises à jour
     constexpr const char* METADATA_FILE = "metadata.json";
+    // Champs metadata filesystem (alignés publish_ota.ps1 et selectFilesystemFromMetadata)
+    // filesystem_url, filesystem_size, filesystem_md5 dans channels.<canal>.<model>
     
-    // Timeout pour les requêtes HTTP (en millisecondes)
-    constexpr int HTTP_TIMEOUT = 30000;
+    // Timeout pour les requêtes HTTP métadonnées (ms) — dérogation règle "≤5s" : OTA critique, netTask
+    // avec feed watchdog. Doit rester < TWDT 30s pour éviter reset netTask.
+    constexpr int HTTP_TIMEOUT = 20000;
     
-    // Taille maximale du filesystem (en bytes) - basée sur la partition spiffs
-    constexpr size_t MAX_FILESYSTEM_SIZE = 1114112; // ~1MB (0x110000 bytes)
-    
+    // Taille maximale du filesystem (bytes) — alignée partition spiffs WROOM (0x0B0000)
+    constexpr size_t MAX_FILESYSTEM_SIZE = 720896;  // 0x0B0000 — partitions_esp32_wroom_ota_fs_medium.csv
+    // Taille partition app OTA (fallback si metadata.size absent) — 0x1A0000
+    constexpr size_t OTA_APP_PARTITION_SIZE = 1744896;
+
     // Mode DANGEREUX: forcer l'OTA sans vérifications (taille/MD5) pour tous les profils
     // - Utilise UPDATE_SIZE_UNKNOWN au lieu d'une taille fixe
     // - Ignore les écarts de taille entre attendu/réel

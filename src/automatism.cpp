@@ -259,11 +259,6 @@ void Automatism::toggleForceWakeup() {
     g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "forceWakeUp");
 }
 
-void Automatism::triggerResetMode() {
-    Serial.println(F("[Auto] Reset Mode activé -> Redémarrage"));
-    ESP.restart();
-}
-
 // ============================================================================
 // COMMUNICATION RÉSEAU (Proxy vers AutomatismNetwork)
 // ============================================================================

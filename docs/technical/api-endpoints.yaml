@@ -9,12 +9,18 @@ info:
   version: "11.171"
   description: |
     API locale du firmware FFP5CS pour système d'aquaponie.
-    Toutes les routes sont servies par ESPAsyncWebServer sur le port 80.
-    WebSocket temps réel disponible sur le port 81.
+    - HTTP : ESPAsyncWebServer sur le port 80.
+    - WebSocket temps réel : serveur dédié sur le port 81, path /ws.
+    Connexion client : ws://<device_ip>:81/ws (ex. ws://192.168.1.x:81/ws ou ws://esp32.local:81/ws).
 
 servers:
   - url: http://{device_ip}
-    description: ESP32 local
+    description: ESP32 local (HTTP port 80)
+    variables:
+      device_ip:
+        default: "192.168.1.x"
+  - url: ws://{device_ip}:81
+    description: ESP32 local (WebSocket port 81, path /ws)
     variables:
       device_ip:
         default: "192.168.1.x"
@@ -82,6 +88,14 @@ paths:
       responses:
         "200":
           description: Nourrissage déclenché
+
+  # ==========================================================================
+  # WEBSOCKET TEMPS RÉEL (port 81, path /ws - endpoint contractuel)
+  # ==========================================================================
+  # Le WebSocket est servi par un serveur distinct (WebSocketsServer) sur le port 81.
+  # URL de connexion : ws://<device_ip>:81/ws
+  # Messages reçus : sensor_data, sensor_update, action_confirm, wifi_change, server_closing
+  # Envoi client : type "ping" → pong ; type "subscribe" → envoi état courant ; type "control", action "get_status" → état courant
 
   # ==========================================================================
   # DONNÉES ET DIAGNOSTICS
@@ -319,7 +333,10 @@ paths:
   /nvs/set:
     post:
       summary: Écrire NVS
-      description: Écrit une valeur dans la NVS
+      description: |
+        Écrit une valeur dans la NVS (endpoint debug, FFP_ENABLE_DANGEROUS_ENDPOINTS).
+        Commit uniquement si la valeur a changé (write-if-changed pour string ; pour les types numériques, comparaison avant nvs_set).
+        Namespaces actuels cfg, sys, state, logs ; noms legacy bouffe, ota, rtc, remoteVars acceptés pour compatibilité.
       tags: [NVS Debug]
       requestBody:
         content:
@@ -550,11 +567,20 @@ components:
               type: integer
             wifiRssi:
               type: integer
+            timestamp:
+              type: string
+              description: "Selon l'endpoint : chaîne date/heure RTC (ex. HH:MM:SS JJ/MM/AAAA) pour /json, /api/status, /dbvars ; ou entier millis() (number) pour /diag, /pumpstats et messages WebSocket (sensor_data, action_confirm). Ne pas supposer un type unique côté client."
 
-# WebSocket sur port 81
-# Types de messages:
-#   - sensor_data: Mise à jour capteurs complète
-#   - sensor_update: Mise à jour partielle
-#   - action_confirm: Confirmation d'action
-#   - wifi_change: Changement état WiFi
-#   - server_closing: Fermeture serveur
+# =============================================================================
+# WebSocket (port 81, path /ws) - détail
+# =============================================================================
+# Connexion : ws://<device_ip>:81/ws (ex. ws://esp32.local:81/ws)
+# Pas d'authentification. Le firmware n'envoie que si connectedClients() > 0.
+# Types de messages reçus par le client :
+#   - sensor_data : mise à jour capteurs complète (connexion ou subscribe) ; champ timestamp = millis()
+#   - sensor_update : mise à jour périodique (capteurs + optionnel dbVars) ; timestamp = millis()
+#   - action_confirm : confirmation d'action (action, result, timestamp en ms)
+#   - wifi_change : changement réseau WiFi en cours (ssid, message)
+#   - server_closing : fermeture serveur (avant sleep ou reconnexion WiFi)
+#   - pong : réponse à un message type "ping"
+# Messages envoyés par le client : {"type":"ping"}, {"type":"subscribe"}, {"type":"control","action":"get_status"}

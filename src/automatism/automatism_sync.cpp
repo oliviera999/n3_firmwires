@@ -493,17 +493,13 @@ uint16_t AutomatismSync::replayQueuedData() {
 bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     char ackPayload[256];
     snprintf(ackPayload, sizeof(ackPayload),
-             "api_key=%s&sensor=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
-             ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, command, status, millis());
+             "api_key=%s&sensor=%s&version=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
+             ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION, command, status, millis());
     return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {
     // Logique simplifiée sans NVS pour l'instant
     Serial.printf("[Sync] Command '%s': %s\n", command, success ? "OK" : "FAILED");
-}
-
-void AutomatismSync::logQueueState(const char* reason, uint16_t size) const {
-    Serial.printf("[Sync] Queue %s (%u)\n", reason, size);
 }
 

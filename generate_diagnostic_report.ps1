@@ -98,6 +98,30 @@ $lines = Get-Content $LogFile
 $lineCount = $lines.Count
 $fileSize = (Get-Item $LogFile).Length / 1KB
 
+# Détection log incomplet (dernière activité device vs fin de capture)
+$lastDeviceTimestamp = ""
+$captureEndTimestamp = ""
+foreach ($line in $lines) {
+    if ($line -match '(\d{2}:\d{2}:\d{2})' -and $line -notmatch '^\s*#') {
+        $lastDeviceTimestamp = $matches[1]
+    }
+    if ($line -match '# Monitoring terminé à \d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})') {
+        $captureEndTimestamp = $matches[1]
+    }
+}
+$incompleteLogWarning = ""
+if ($lastDeviceTimestamp -and $captureEndTimestamp) {
+    try {
+        $tLast = [DateTime]::ParseExact($lastDeviceTimestamp, "HH:mm:ss", $null)
+        $tEnd = [DateTime]::ParseExact($captureEndTimestamp, "HH:mm:ss", $null)
+        if ($tEnd -lt $tLast) { $tEnd = $tEnd.AddDays(1) }
+        $gapMin = [math]::Round(($tEnd - $tLast).TotalMinutes, 1)
+        if ($gapMin -gt 5) {
+            $incompleteLogWarning = "**Log possiblement incomplet** : derniere activite device a $lastDeviceTimestamp, fin de capture a $captureEndTimestamp (ecart ${gapMin} min). POST/reboot/OTA peuvent avoir eu lieu hors fenetre."
+        }
+    } catch { }
+}
+
 # Statistiques générales
 $warnings = ($lines | Select-String -Pattern "\[W\]|WARN|WARNING" -CaseSensitive:$false).Count
 $errors = ($lines | Select-String -Pattern "\[E\]|ERROR|ERREUR" -CaseSensitive:$false).Count
@@ -207,6 +231,7 @@ __STATUS_GLOBAL__
 ### Statistiques Générales
 
 __STATS_LINES__
+__INCOMPLETE_WARNING__
 
 ---
 
@@ -284,6 +309,8 @@ $report = $report -replace '__LOGFILE__', $LogFile
 $report = $report -replace '__DURATION__', $durationMonitoring
 $report = $report -replace '__STATUS_GLOBAL__', $statusGlobal
 $report = $report -replace '__STATS_LINES__', $statsLines
+$incompletePlaceholder = if ($incompleteLogWarning) { [Environment]::NewLine + $incompleteLogWarning + [Environment]::NewLine } else { "" }
+$report = $report -replace '__INCOMPLETE_WARNING__', $incompletePlaceholder
 $report = $report -replace '__POST_SUMMARY__', $postSummary
 $report = $report -replace '__GET_SUMMARY__', $getSummary
 $report = $report -replace '__SERVER_DIAG__', $serverDiagContent

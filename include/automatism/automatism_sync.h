@@ -123,6 +123,8 @@ private:
     // v11.158: Réduit de 40 à 20 entrées pour simplifier et libérer espace LittleFS
     static constexpr uint16_t QUEUE_MAX_ENTRIES = 5;  // Réduit de 20 à 5 (queue RAM simple)
     static constexpr size_t MAX_PAYLOAD_BYTES = 960;
+    // Fenêtre priorité serveur (10 s / 20 s nourrissage) : ne pas écraser les changements web par le POST.
+    // Garder SEND_INTERVAL_MS >= 2 * REMOTE_FETCH_INTERVAL_MS pour qu'au moins un GET voie la valeur avant écrasement.
     static constexpr unsigned long SEND_INTERVAL_MS = 30000;   // 30 s
     static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 6000;   // 6 s (poll serveur distant)
     static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
@@ -130,6 +132,5 @@ private:
     // Helpers
     bool canAttemptSend(uint32_t nowMs) const;
     void registerSendResult(bool success, size_t payloadBytes, uint32_t durationMs, uint32_t heapBefore, uint32_t heapAfter);
-    void logQueueState(const char* reason, uint16_t size) const;
 };
 

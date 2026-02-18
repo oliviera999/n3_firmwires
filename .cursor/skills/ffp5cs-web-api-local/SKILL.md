@@ -26,7 +26,7 @@ L’API locale doit rester **prévisible et stable**. Les endpoints suivants son
 - `GET /api/status` : renvoie l’état courant (capteurs, automatismes, erreurs, etc.).
 - `POST /api/config` : reçoit la configuration (horaires, seuils, paramètres divers) depuis l’UI.
 - `POST /api/feed` : déclenche un nourrissage manuel ou une action ponctuelle.
-- `GET /ws` : WebSocket temps réel (état, événements, notifications UI).
+- WebSocket temps réel : **port 81**, path **/ws** (connexion `ws://<host>:81/ws`). État, événements, notifications UI.
 
 Règles :
 

@@ -61,10 +61,8 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         Serial.println(F("[GPIOParser] triggerOtaCheck reçu: demande vérification OTA"));
     }
   size_t presentKeys = 0;
-    // v11.189: Seed état reset (110) pour ne pas redémarrer si le sync envoie 110:1 comme état courant
-    if (doc.containsKey("110")) {
-        s_lastResetState = parseBoolFromDoc(doc["110"]);
-    }
+    // v11.189: Seed reset (110) géré uniquement par seedFeedStateFromDoc au 1er poll
+    // v11.192: Réactiver reset via serveur distant - edge detection dans applyGPIO
     // v11.78: Collecter les GPIO virtuels pour application immédiate
     StaticJsonDocument<1024> configDoc;  // Augmenté de 512 à 1024 pour éviter les dépassements
     bool hasVirtualConfig = false;
@@ -90,13 +88,17 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
 
         JsonVariantConst value = doc[keyUsed];
         Serial.printf("[GPIOParser] GPIO %d (%s): ", mapping.gpio, mapping.description);
-        const char* valueStr = value.is<const char*>() ? value.as<const char*>() : (value.is<int>() ? "" : "");
-        Serial.printf("[GPIO] key=%s raw=%s\n", keyUsed, valueStr);
-        // v11.190: Ne jamais exécuter la commande reset (110) depuis le sync / doc serveur
-        if (mapping.gpio == GPIOMap::RESET_CMD.gpio) {
-            saveToNVS(mapping, value);
-            continue;
+        if (value.is<int>()) {
+            Serial.printf("[GPIO] key=%s raw=%d\n", keyUsed, value.as<int>());
+        } else if (value.is<float>()) {
+            Serial.printf("[GPIO] key=%s raw=%.2f\n", keyUsed, value.as<float>());
+        } else if (value.is<const char*>()) {
+            const char* valueStr = value.as<const char*>();
+            Serial.printf("[GPIO] key=%s raw=%s\n", keyUsed, valueStr ? valueStr : "");
+        } else {
+            Serial.printf("[GPIO] key=%s raw=\n", keyUsed);
         }
+        // v11.192: Reset (110) réactivé via serveur - edge detection 0→1 dans applyGPIO
         applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
         saveToNVS(mapping, value);
     }
@@ -237,12 +239,13 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         }
         s_lastFeedBigState = state;
     }
-    // Reset (GPIO 110): front montant uniquement pour éviter reboot en boucle si sync envoie 110:1
+    // Reset (GPIO 110): front montant uniquement - serveur distant ou seed 1er poll évite reboot en boucle
     else if (gpio == GPIOMap::RESET_CMD.gpio) {
         bool state = parseBool(value);
         if (state && !s_lastResetState) {
             s_lastResetState = true;
-            Serial.println("Reset demandé");
+            Serial.println(F("Reset demandé"));
+            Serial.println(F("[Sync] Reboot distant exécuté (GPIO 110=1)"));
             ESP.restart();
         } else if (!state) {
             s_lastResetState = false;

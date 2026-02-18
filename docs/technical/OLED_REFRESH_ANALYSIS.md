@@ -88,26 +88,12 @@ Donc **un seul dessin par cycle** malgré les deux entrées dans `updateDisplayI
 
 ## 5. Incohérences et pistes
 
-### 5.1 Constante dupliquée et non utilisée
+### 5.1 Constantes dupliquées (résolu)
 
-Dans `include/automatism.h` (L.352–353) :
+La constante **`oledInterval`** et la fonction **`getRecommendedDisplayIntervalMs()`** (anciennement dans `automatism.h` / `automatism.cpp`) ont été supprimées. La source de vérité pour l'intervalle de rafraîchissement OLED est **`DisplayConfig::OLED_INTERVAL_MS`** et **`DisplayConfig::OLED_COUNTDOWN_INTERVAL_MS`** dans `include/config.h`. L'affichage est entièrement géré dans **automationTask** (plus de displayTask dédiée).
 
-```cpp
-// Intervalle de rafraîchissement ultra-fluide de l'OLED (100ms pour temps réel)
-const unsigned long oledInterval = 80; // Optimisé de 100ms à 80ms pour plus de fluidité
-```
 
-- **`oledInterval` n’est référencé nulle part** dans le projet ; la source de vérité est `DisplayConfig::OLED_INTERVAL_MS` dans `config.h`.
-- **Recommandation** : supprimer `oledInterval` et le commentaire dans `automatism.h` pour éviter la duplication et la désynchronisation.
-
-### 5.2 `getRecommendedDisplayIntervalMs()` inutilisé
-
-- **Défini** dans `automatism.cpp` / `automatism.h`, retourne `DisplayConfig::OLED_INTERVAL_MS` (80 ms).
-- **Jamais appelé** (aucune référence dans le code).
-- Historiquement lié à l’ancienne **displayTask** (supprimée) ; la doc `DOCUMENTATION_STACKS_FREERTOS.md` décrit encore une displayTask avec `updateDisplay()` et `getRecommendedDisplayIntervalMs()`.
-- **Recommandation** : soit supprimer la fonction si aucun usage prévu, soit la garder et mettre à jour la doc pour refléter que l’affichage est géré dans automationTask.
-
-### 5.3 Rafraîchissement piloté par le timeout 1 s (implémenté)
+### 5.2 Rafraîchissement piloté par le timeout 1 s (implémenté)
 
 En cas de **timeout** de la queue capteurs (1 s sans donnée), automationTask appelle `updateDisplayWithReadings(s_lastReadings)` avec la dernière lecture mémorisée, **sans** rappeler `update(readings)`. Cela permet un rafraîchissement **~1 Hz** (heure RTC, barre d’état) sans modifier la cadence des capteurs (10 s). Détails : `src/app_tasks.cpp` (statiques `s_lastReadings`, `s_haveReadings` ; branche `else` du `xQueueReceive`).
 

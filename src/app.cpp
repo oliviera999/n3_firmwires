@@ -137,22 +137,32 @@ void setup() {
     default: Serial.printf("Unknown reset (%d)\n", resetReason); break;
   }
   
-  // WROOM (non-S3): reconfig TWDT 30 s au démarrage (évite reboot pendant POST 8s).
+  // WROOM (non-S3): reconfig TWDT au démarrage (évite reboot pendant POST 8s, OTA HTTPS).
+  // USE_TEST_ENDPOINTS (wroom-beta): 60s pour marge OTA metadata HTTPS (handshake TLS peut bloquer ~20s).
   // IDF 5: esp_task_wdt_config_t + timeout_ms. IDF 4 (Arduino wroom-test): esp_task_wdt_init(timeout_sec).
   #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
     #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   esp_task_wdt_deinit();
   esp_task_wdt_config_t cfg = {};
-  cfg.timeout_ms = 30000;   // 30 s (marge POST 8s + async_tcp core 0)
+  #if defined(USE_TEST_ENDPOINTS)
+  cfg.timeout_ms = 60000;   // 60s wroom-beta (OTA metadata HTTPS peut bloquer ~20s)
+  #else
+  cfg.timeout_ms = 30000;   // 30s prod/test (marge POST 8s + async_tcp)
+  #endif
   cfg.idle_core_mask = 0;
   cfg.trigger_panic = true;
   esp_task_wdt_init(&cfg);
   Serial.printf("[BOOT] Watchdog configuré: timeout=%lu ms (WROOM)\n", (unsigned long)cfg.timeout_ms);
     #else
-  // API IDF 4.x: esp_task_wdt_init(timeout_sec, panic) — headers Arduino wroom-test n'ont pas esp_task_wdt_config_t
+  // API IDF 4.x: esp_task_wdt_init(timeout_sec, panic)
   esp_task_wdt_deinit();
-  esp_task_wdt_init(30, true);   // 30 secondes, panic si timeout
+  #if defined(USE_TEST_ENDPOINTS)
+  esp_task_wdt_init(60, true);   // 60s wroom-beta (OTA TLS)
+  Serial.println("[BOOT] Watchdog configuré: 60 s (WROOM-beta, API IDF4)");
+  #else
+  esp_task_wdt_init(30, true);   // 30s prod/test
   Serial.println("[BOOT] Watchdog configuré: 30 s (WROOM, API IDF4)");
+  #endif
     #endif
   #endif
   
@@ -205,6 +215,7 @@ void setup() {
   }
 
   SystemBoot::initializeDisplay(g_appContext);
+  g_appContext.otaManager.setDisplay(&g_appContext.display);
 
   bool wifiConnected = SystemBoot::connectWifi(g_appContext, g_hostname);
   if (wifiConnected) {
@@ -212,6 +223,10 @@ void setup() {
     if (otaState.lastCheck > 0) {
       g_lastOtaCheck = otaState.lastCheck;
     }
+#if FEATURE_MAIL
+    // Réserve 32 KB pour SMTP tant que le heap est peu fragmenté (libérée au moment de l'envoi)
+    AppTasks::reserveMailBlockAtBoot();
+#endif
   }
 
   SystemBoot::initializePeripherals(g_appContext);
@@ -236,11 +251,11 @@ void setup() {
     static char bootMsg[BufferConfig::EMAIL_MAX_SIZE_BYTES];
     static char emailSubject[128];
     
-    // Récupérer l'adresse configurée ou utiliser fallback
+    // Récupérer l'adresse configurée ou utiliser la constante par défaut (boot avant 1er sync → NVS vide)
     const char* emailFromConfig = g_appContext.automatism.getEmailAddress();
     if (!emailFromConfig || strlen(emailFromConfig) == 0) {
-      LOG_WARN("Email configuré vide, utilisation adresse fallback");
-      strncpy(targetEmail, "oliv.arn.lau@gmail.com", sizeof(targetEmail) - 1);
+      LOG_INFO("Email non configuré (boot avant sync), utilisation adresse par défaut");
+      strncpy(targetEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(targetEmail) - 1);
       targetEmail[sizeof(targetEmail) - 1] = '\0';
     } else {
       strncpy(targetEmail, emailFromConfig, sizeof(targetEmail) - 1);

@@ -112,8 +112,8 @@ void DisplayView::printClipped(int16_t x, int16_t y, const char* text, uint8_t s
   // Largeur d'un caractère: 6 px en taille 1 (5 + 1 espace)
   uint8_t charWidth = characterWidth(size);
 
-  // Convertit en CP437 pour cohérence avec l'affichage
-  char toPrint[256];
+  // Convertit en CP437 pour cohérence avec l'affichage (buffer limité pour stack)
+  char toPrint[128];
   utf8ToCp437(text, toPrint, sizeof(toPrint));
   // Calcule le nombre max de caractères qui rentrent sur la ligne
   int16_t available = maxWidth - x;
@@ -318,10 +318,14 @@ DisplayView::DisplayView(uint8_t addr, uint8_t w, uint8_t h)
 }
 
 bool DisplayView::begin() {
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
   Serial.printf("[OLED] Début initialisation - FEATURE_OLED=%d\n", FEATURE_OLED);
-  
+#endif
+
 #if FEATURE_OLED == 0
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
   Serial.println("[OLED] FEATURE_OLED=0 - OLED DÉSACTIVÉ (macro de compilation)");
+#endif
   _present = false;
   return false;
 #endif
@@ -356,14 +360,16 @@ bool DisplayView::begin() {
   
   // Si erreur I2C, désactiver immédiatement pour éviter le spam
   if (error != 0) {
-    Serial.printf("[OLED] Non détectée sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X) - Erreur: %d\n", 
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+    Serial.printf("[OLED] Non détectée sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X) - Erreur: %d\n",
                   Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR, error);
     Serial.println("[OLED] Mode dégradé activé (pas d'affichage)");
+#endif
     _present = false;
     return false;
   }
   
-  // OLED détectée, essayer de l'initialiser
+  // OLED détectée, essayer de l'initialiser (vcc: macro SSD1306_SWITCHCAPVCC de la lib Adafruit)
   if (_disp.begin(SSD1306_SWITCHCAPVCC, Pins::OLED_ADDR)) {
     _present = true;
     
@@ -377,7 +383,9 @@ bool DisplayView::begin() {
 #endif
 
     // --- SPLASH SCREEN UNIFIÉ (non bloquant) ---
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
     Serial.println("[OLED] Affichage du splash screen...");
+#endif
     _disp.clearDisplay();
     
     // Fonction helper pour centrer le texte
@@ -411,19 +419,24 @@ bool DisplayView::begin() {
 
     // Le splash reste visible selon DisplayConfig::SPLASH_DURATION_MS (non bloquant)
     _splashUntil = millis() + DisplayConfig::SPLASH_DURATION_MS;
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
     Serial.printf("[OLED] Splash %u ms\n", DisplayConfig::SPLASH_DURATION_MS);
+#endif
 
     _diagLine = 0; // reset diagnostic line counter at each begin
     resetStatusCache(); // Réinitialise le cache des états
     resetMainCache(); // Réinitialise le cache de l'affichage principal
     flush();
-    
-    Serial.printf("[OLED] Initialisée avec succès sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n", 
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+    Serial.printf("[OLED] Initialisée avec succès sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n",
                  Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
+#endif
   } else {
     _present = false;
-    Serial.printf("[OLED] Échec de l'initialisation sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n", 
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+    Serial.printf("[OLED] Échec de l'initialisation sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n",
                  Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
+#endif
   }
   
   return _present;
@@ -466,7 +479,9 @@ bool DisplayView::checkI2cHealth() {
       
       if (error == 0) {
         // L'écran répond à nouveau, réinitialiser
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
         Serial.println(F("[OLED] Écran I2C détecté à nouveau, réactivation..."));
+#endif
         _i2cErrorCount = 0;
         return true;
       } else {
@@ -484,7 +499,9 @@ void DisplayView::reportI2cError() {
   if (_i2cErrorCount < I2C_ERROR_LIMIT) {
     _i2cErrorCount++;
     if (_i2cErrorCount >= I2C_ERROR_LIMIT) {
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
       Serial.printf("[OLED] %d erreurs I2C consécutives - écran désactivé temporairement\n", I2C_ERROR_LIMIT);
+#endif
       _lastI2cCheck = millis();
     }
   }
@@ -654,8 +671,8 @@ void DisplayView::showDiagnostic(const char* msg) {
 
   // Positionne le curseur sur la ligne courante et écrit le message avec clipping horizontal
   {
-    char line[256];
-utf8ToCp437(msg, line, sizeof(line));
+    char line[128];
+    utf8ToCp437(msg, line, sizeof(line));
     appendDiagnosticLine(line, _diagLine);
   }
   ++_diagLine;
@@ -917,7 +934,9 @@ void DisplayView::hideOtaProgressOverlay() {
 }
 
 void DisplayView::forceEndSplash() {
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
   Serial.println("[OLED] Force fin du splash screen");
+#endif
   _splashUntil = 0;
   // Réinitialiser les caches pour forcer un redessin complet
   resetMainCache();

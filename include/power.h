@@ -43,9 +43,6 @@ class PowerManager {
   // Configuration NTP
   void setNTPConfig(int gmtOffset, int daylightOffset, const char* ntpServer);
 
-  // Log cause de réveil
-  void logWakeupCause(esp_sleep_wakeup_cause_t cause);
-
   // Gestion WiFi pour light sleep
   void saveCurrentWifiCredentials();
   bool reconnectWithSavedCredentials();

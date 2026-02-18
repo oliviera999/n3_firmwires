@@ -16,11 +16,11 @@ alwaysApply: false
 
 - **Endpoints contractuels**
   - Ne pas modifier arbitrairement les endpoints essentiels :
-    - `GET /` (UI principale)
-    - `GET /api/status`
-    - `POST /api/config`
-    - `POST /api/feed`
-    - `GET /ws` pour le temps réel.
+    - `GET /` (UI principale, port 80)
+    - `GET /api/status` (port 80, alias vers /json)
+    - `POST /api/config` (port 80, alias vers /dbvars/update)
+    - `POST /api/feed` (port 80)
+    - WebSocket temps réel : **port 81**, path **/ws** (connexion `ws://<host>:81/ws`). Les règles parlent de « GET /ws » au sens d’endpoint contractuel ; l’implémentation utilise un serveur WebSocket dédié sur le port 81.
 
 - **Robustesse**
   - Le front ne doit pas supposer une connexion WebSocket ou réseau permanente.

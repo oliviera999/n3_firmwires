@@ -225,7 +225,9 @@ class DisplayView {
       return true; // Splash encore actif
     }
     // Splash expiré - remettre _splashUntil à 0 pour éviter les comparaisons futures
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
     Serial.printf("[OLED] Splash screen expiré (now=%lu, was=%lu)\n", now, _splashUntil);
+#endif
     _splashUntil = 0;
     return false;
   }

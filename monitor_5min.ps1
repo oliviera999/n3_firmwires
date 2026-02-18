@@ -1,7 +1,8 @@
 # Script de monitoring N minutes (défaut 5 min, ex. 30 min via -DurationSeconds 1800)
 param(
     [string]$Port = "",
-    [int]$DurationSeconds = 300
+    [int]$DurationSeconds = 300,
+    [string]$Environment = "wroom-test"
 )
 
 $timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
@@ -18,6 +19,7 @@ $logFile = "monitor_${durationTag}_${timestamp}.log"
 Write-Host "=== MONITORING ESP32 - $durationTag ===" -ForegroundColor Green
 Write-Host "Durée: $DurationSeconds secondes ($durationTag)" -ForegroundColor Cyan
 Write-Host "Log: $logFile" -ForegroundColor Yellow
+Write-Host "Env: $Environment" -ForegroundColor Yellow
 if ($Port) { Write-Host "Port: $Port" -ForegroundColor Yellow }
 Write-Host ""
 
@@ -39,7 +41,7 @@ if ($usePython -and $Port) {
         Write-Host "[WARN] Script Python code sortie: $LASTEXITCODE" -ForegroundColor Yellow
     }
 } else {
-    $pioArgs = @("run", "--target", "monitor", "--environment", "wroom-test")
+    $pioArgs = @("run", "--target", "monitor", "--environment", $Environment)
     if ($Port) { $pioArgs += @("--port", $Port) }
     $monitorProcess = Start-Process -FilePath "pio" -ArgumentList $pioArgs -NoNewWindow -PassThru -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.errors"
 

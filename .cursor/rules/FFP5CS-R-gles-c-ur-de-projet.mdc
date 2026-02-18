@@ -40,5 +40,8 @@ alwaysApply: true
 - **Workflow de validation**
   - Pour un workflow complet (erase flash, flash firmware + LittleFS, monitor 5 min, analyse du log), utiliser **préférentiellement** le script `erase_flash_fs_monitor_5min_analyze.ps1` (racine du projet). Il enchaîne erase, upload, uploadfs, monitor 5 min, puis analyse (analyze_log + rapport diagnostic). Option : `-Port COMx` si le port diffère de l’auto-détection.
 
+- **Publication OTA distant**
+  - La publication des firmware pour l'OTA distant se fait via le script **`scripts/publish_ota.ps1`** : copie des `firmware.bin` compilés vers `ffp3/ota/` (sous-dossiers esp32-wroom, esp32-s3), mise à jour de `ffp3/ota/metadata.json`, puis commit et push dans le dépôt ffp3 (sous-module). Voir `docs/technical/OTA_PUBLISH.md` pour la procédure et les options.
+
 - **Documents et fichiers**
   - Ne pas créer de fichiers `.md` sans demande explicite de l'utilisateur. Les documentations liées à une tâche demandée (ex. doc d'API, contrat) sont autorisées lorsque l'utilisateur le demande.

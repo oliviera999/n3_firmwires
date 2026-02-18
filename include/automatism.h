@@ -104,9 +104,8 @@ class Automatism {
   void startLightManualLocal();
   void stopLightManualLocal();
   
-  // Nouvelles commandes pour Force Wakeup et Reset Mode
+  // Force Wakeup (toggle manuel)
   void toggleForceWakeup();
-  void triggerResetMode();
   bool getForceWakeUp() const { return forceWakeUp; }
   bool isRemoteSendEnabled() const { return _config.isRemoteSendEnabled(); }
   void waitForNetworkReady();
@@ -263,7 +262,7 @@ class Automatism {
     // 5 min normal d'inactivité
     uint32_t normalSleepTime = ::SleepConfig::NORMAL_INACTIVITY_DELAY_SEC;
     uint32_t errorSleepTime = ::SleepConfig::ERROR_INACTIVITY_DELAY_SEC;    // 1.5 min si erreurs
-    uint32_t nightSleepTime = ::SleepConfig::NIGHT_INACTIVITY_DELAY_SEC;   // 30 min la nuit
+    uint32_t nightSleepTime = ::SleepConfig::NIGHT_INACTIVITY_DELAY_SEC;   // 5 min la nuit (19h-6h)
     bool adaptiveSleep = ::SleepConfig::ADAPTIVE_SLEEP_ENABLED;        // sleep adaptatif activé
   } _sleepConfig;
 

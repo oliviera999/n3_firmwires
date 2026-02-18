@@ -14,6 +14,8 @@ typedef struct esp_http_client * esp_http_client_handle_t;
 #include <freertos/task.h>
 #include "ota_config.h"
 
+class DisplayView;
+
 class OTAManager {
 private:
     bool m_isUpdating;
@@ -34,6 +36,9 @@ private:
     TaskHandle_t m_updateTaskHandle;
     esp_http_client_handle_t m_httpClient;
     
+    // Affichage OLED (optionnel, défini par setDisplay depuis le contexte applicatif)
+    DisplayView* m_display = nullptr;
+
     // Rappels (callbacks)
     std::function<void(int)> m_progressCallback;
     std::function<void(const char*)> m_statusCallback;
@@ -70,6 +75,7 @@ public:
     ~OTAManager();
     
     // Configuration
+    void setDisplay(DisplayView* display) { m_display = display; }
     void setProgressCallback(std::function<void(int)> callback);
     void setStatusCallback(std::function<void(const char*)> callback);
     void setErrorCallback(std::function<void(const char*)> callback);

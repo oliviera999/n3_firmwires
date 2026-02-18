@@ -514,23 +514,23 @@ void WaterTempSensor::begin() {
 
 bool WaterTempSensor::isSensorConnected() {
   uint32_t testStart = millis();
-  const uint32_t CONNECTIVITY_TEST_TIMEOUT_MS = 1000;
-  
+  const uint32_t timeoutMs = SensorConfig::Reactivation::TEMPERATURE_TIMEOUT_MS;
+
   // Reset du bus OneWire pour un test propre
   _oneWire.reset();
   vTaskDelay(pdMS_TO_TICKS(ONEWIRE_RESET_DELAY_MS));
   
-  if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+  if (millis() - testStart > timeoutMs) {
     return false; // Timeout - capteur trop lent
   }
-  
+
   // Vérifie la présence du capteur sur le bus OneWire
   uint8_t addr[8];
   _oneWire.reset_search();
-  
+
   // Tentative de recherche avec retry
   for (uint8_t attempt = 0; attempt < 3; ++attempt) {
-    if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+    if (millis() - testStart > timeoutMs) {
       return false; // Timeout - capteur trop lent
     }
     
@@ -550,8 +550,8 @@ bool WaterTempSensor::isSensorConnected() {
       // Test de lecture rapide pour vérifier la fonctionnalité
       _sensors.requestTemperatures();
       vTaskDelay(pdMS_TO_TICKS(SensorConfig::SENSOR_READ_DELAY_MS)); // Délai court pour test
-      
-      if (millis() - testStart > CONNECTIVITY_TEST_TIMEOUT_MS) {
+
+      if (millis() - testStart > timeoutMs) {
         return false; // Timeout - capteur trop lent
       }
       
@@ -1030,7 +1030,7 @@ void AirSensor::begin() {
 
 bool AirSensor::isSensorConnected() {
   uint32_t testStart = millis();
-  const uint32_t FAST_CONNECTIVITY_TIMEOUT_MS = 1000;
+  const uint32_t timeoutMs = SensorConfig::Reactivation::TEMPERATURE_TIMEOUT_MS;
 
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -1046,7 +1046,7 @@ bool AirSensor::isSensorConnected() {
     esp_task_wdt_reset();
   }
 
-  if (millis() - testStart > FAST_CONNECTIVITY_TIMEOUT_MS) {
+  if (millis() - testStart > timeoutMs) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout connectivité - capteur absent");
     return false;
   }
@@ -1148,8 +1148,6 @@ float AirSensor::robustTemperatureC() {
   }
   
   // v11.180: Timeout réduit pour éviter INT_WDT (max ~2s au lieu de ~5-9s cumulés)
-  // Si capteur ne répond pas rapidement, on considère qu'il est absent
-  const uint32_t DHT_RECOVERY_TIMEOUT_MS = 2000; // 2s max total
   uint32_t recoveryStartMs = millis();
   
   // Reset watchdog au début de la récupération
@@ -1171,7 +1169,7 @@ float AirSensor::robustTemperatureC() {
   }
   
   // Vérifier timeout avant récupération
-  if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
+  if ((millis() - recoveryStartMs) >= SensorConfig::DHT::RECOVERY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération, utilise dernière valeur");
     goto use_last_valid;
   }
@@ -1343,8 +1341,7 @@ float AirSensor::robustHumidity() {
     return SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
   }
   
-  // v11.180: Timeout réduit pour éviter INT_WDT (max ~1.5s)
-  const uint32_t DHT_RECOVERY_TIMEOUT_MS = 1500;
+  // v11.180: Timeout réduit pour éviter INT_WDT (harmonisé avec robustTemperatureC)
   uint32_t recoveryStartMs = millis();
   
   // Reset watchdog au début
@@ -1366,7 +1363,7 @@ float AirSensor::robustHumidity() {
   }
   
   // Vérifier timeout avant récupération
-  if ((millis() - recoveryStartMs) >= DHT_RECOVERY_TIMEOUT_MS) {
+  if ((millis() - recoveryStartMs) >= SensorConfig::DHT::RECOVERY_TIMEOUT_MS) {
     SENSOR_LOG_PRINTLN("[AirSensor] Timeout avant récupération humidité, utilise dernière valeur");
     goto use_last_valid_humidity;
   }

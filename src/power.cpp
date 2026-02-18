@@ -217,8 +217,11 @@ void PowerManager::syncTimeFromNTP() {
       syncSuccess = true;
       attempts = 1;
     } else {
-      // Fallback: boucle avec timeout de 10 secondes max
+      // Fallback: boucle avec timeout de 10 secondes max (feed WDT pour tâche surveillée)
       while ((millis() - startTime) < 10000) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+          esp_task_wdt_reset();
+        }
         if (getLocalTime(&timeinfo)) {
           syncSuccess = true;
           break;
@@ -657,33 +660,6 @@ void PowerManager::smartSaveTime() {
   getCurrentTimeString(timeBuf, sizeof(timeBuf));
   Serial.printf("[Power] Heure sauvegardée: %s (epoch: %lu)\n", 
                 timeBuf, currentEpoch);
-}
-
-void PowerManager::logWakeupCause(esp_sleep_wakeup_cause_t cause) {
-  switch(cause) {
-    case ESP_SLEEP_WAKEUP_TIMER:
-      Serial.println("[Power] ⏰ Réveil par timer");
-      break;
-    case ESP_SLEEP_WAKEUP_WIFI:
-      Serial.println("[Power] 🌐 Réveil par activité WiFi !");
-      Serial.println("[Power] 📡 Paquet réseau reçu pendant le sommeil");
-      break;
-    case ESP_SLEEP_WAKEUP_EXT0:
-      Serial.println("[Power] 🔌 Réveil par interruption externe (EXT0)");
-      break;
-    case ESP_SLEEP_WAKEUP_EXT1:
-      Serial.println("[Power] 🔌 Réveil par interruption externe (EXT1)");
-      break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD:
-      Serial.println("[Power] 👆 Réveil par touchpad");
-      break;
-    case ESP_SLEEP_WAKEUP_ULP:
-      Serial.println("[Power] 🔋 Réveil par ULP coprocessor");
-      break;
-    default:
-      Serial.printf("[Power] ❓ Réveil par cause inconnue: %d\n", cause);
-      break;
-  }
 }
 
 uint32_t PowerManager::getSleptTime(uint64_t startUs) {

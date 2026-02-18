@@ -13,12 +13,13 @@ namespace TaskMonitor {
     eTaskState state;
   };
 
-  // Snapshot global simplifié
+  // Snapshot global simplifié (sensor, web, automation, display, net)
   struct Snapshot {
     TaskStats sensor;
     TaskStats web;
     TaskStats automation;
     TaskStats display;
+    TaskStats net;
   };
 
   // Capture l'état actuel des tâches principales

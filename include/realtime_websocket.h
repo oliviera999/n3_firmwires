@@ -31,7 +31,6 @@ extern RealtimeWebSocket g_realtimeWebSocket;
 #include <atomic>
 #include "config.h"  // Pour BufferConfig::JSON_DOCUMENT_SIZE
 #include "wifi_manager.h"  // Pour WiFiHelpers
-#include "sensor_cache.h"
 #include "system_sensors.h"
 #include "system_actuators.h"
 
@@ -246,8 +245,11 @@ public:
         // Utiliser allocation statique pour éviter fragmentation mémoire
         StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         
-        // Récupérer les données via le cache
-        SensorReadings readings = sensorCache.getReadings(*sensors);
+        SensorReadings readings{};
+        if (!sensors->getLastCachedReadings(readings)) {
+          readings.tempWater = readings.tempAir = readings.humidity = NAN;
+          readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
+        }
         
         // Construire la réponse
         doc["type"] = "sensor_data";
@@ -262,7 +264,7 @@ public:
         doc["pumpTank"] = actuators->isTankPumpRunning();
         doc["heater"] = actuators->isHeaterOn();
         doc["light"] = actuators->isLightOn();
-        doc["forceWakeup"] = _forceWakeUpState;
+        doc["forceWakeUp"] = _forceWakeUpState;
         doc["mailNotif"] = _mailNotifState;
         doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
         doc["timestamp"] = millis();
@@ -396,7 +398,11 @@ public:
             if (sendDbVars) {
                 // Un broadcast sur 8 : payload complet avec dbVars pour mise à jour auto page Contrôles
                 StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-                SensorReadings readings = sensorCache.getReadings(*sensors);
+                SensorReadings readings{};
+                if (!sensors->getLastCachedReadings(readings)) {
+                  readings.tempWater = readings.tempAir = readings.humidity = NAN;
+                  readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
+                }
                 doc["type"] = "sensor_update";
                 doc["tempWater"] = readings.tempWater;
                 doc["tempAir"] = readings.tempAir;
@@ -409,7 +415,7 @@ public:
                 doc["pumpTank"] = actuators->isTankPumpRunning();
                 doc["heater"] = actuators->isHeaterOn();
                 doc["light"] = actuators->isLightOn();
-                doc["forceWakeup"] = _forceWakeUpState;
+                doc["forceWakeUp"] = _forceWakeUpState;
                 doc["mailNotif"] = _mailNotifState;
                 doc["timestamp"] = now;
                 doc["wifiStaConnected"] = (WiFi.status() == WL_CONNECTED);
@@ -423,7 +429,11 @@ public:
             } else {
                 // JSON minimal (données essentielles uniquement)
                 StaticJsonDocument<512> doc;
-                SensorReadings readings = sensorCache.getReadings(*sensors);
+                SensorReadings readings{};
+                if (!sensors->getLastCachedReadings(readings)) {
+                  readings.tempWater = readings.tempAir = readings.humidity = NAN;
+                  readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
+                }
                 doc["type"] = "sensor_update";
                 doc["tempWater"] = readings.tempWater;
                 doc["tempAir"] = readings.tempAir;
@@ -436,7 +446,7 @@ public:
                 doc["pumpTank"] = actuators->isTankPumpRunning();
                 doc["heater"] = actuators->isHeaterOn();
                 doc["light"] = actuators->isLightOn();
-                doc["forceWakeup"] = _forceWakeUpState;
+                doc["forceWakeUp"] = _forceWakeUpState;
                 doc["mailNotif"] = _mailNotifState;
                 doc["timestamp"] = now;
                 doc["wifiStaConnected"] = (WiFi.status() == WL_CONNECTED);
@@ -494,7 +504,11 @@ public:
         // Allocation statique pour éviter fragmentation mémoire
         StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         
-        SensorReadings readings = sensorCache.getReadings(*sensors);
+        SensorReadings readings{};
+        if (!sensors->getLastCachedReadings(readings)) {
+          readings.tempWater = readings.tempAir = readings.humidity = NAN;
+          readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
+        }
         doc["type"] = "sensor_update";
         doc["tempWater"] = readings.tempWater;
         doc["tempAir"] = readings.tempAir;
@@ -507,7 +521,7 @@ public:
         doc["pumpTank"] = actuators->isTankPumpRunning();
         doc["heater"] = actuators->isHeaterOn();
         doc["light"] = actuators->isLightOn();
-        doc["forceWakeup"] = _forceWakeUpState;
+        doc["forceWakeUp"] = _forceWakeUpState;
         doc["mailNotif"] = _mailNotifState;
         doc["timestamp"] = millis();
         

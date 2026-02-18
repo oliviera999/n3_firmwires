@@ -33,15 +33,43 @@ $lines = Get-Content $logFile -ErrorAction SilentlyContinue
 $lineCount = if ($lines) { $lines.Count } else { 0 }
 $fileSize = (Get-Item $logFile).Length / 1KB
 
-# Extraire les timestamps
+# Extraire les timestamps (toutes lignes pour durée effective)
 $firstTimestamp = ""
 $lastTimestamp = ""
+$lastDeviceTimestamp = ""   # Dernière activité device (hors lignes #)
 foreach ($line in $lines) {
     if ($line -match '(\d{2}:\d{2}:\d{2})') {
         if (-not $firstTimestamp) {
             $firstTimestamp = $matches[1]
         }
         $lastTimestamp = $matches[1]
+        # Dernière activité device : exclure les lignes de commentaire du script (# Monitoring terminé...)
+        if ($line -notmatch '^\s*#') {
+            $lastDeviceTimestamp = $matches[1]
+        }
+    }
+}
+
+# Détection log incomplet : écart entre dernière activité device et fin de capture
+$captureEndTimestamp = ""
+$incompleteLogWarning = ""
+foreach ($line in $lines) {
+    if ($line -match '# Monitoring terminé à (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})') {
+        $captureEndTimestamp = $matches[2]   # HH:mm:ss
+        break
+    }
+}
+if ($lastDeviceTimestamp -and $captureEndTimestamp) {
+    try {
+        $tLast = [DateTime]::ParseExact($lastDeviceTimestamp, "HH:mm:ss", $null)
+        $tEnd = [DateTime]::ParseExact($captureEndTimestamp, "HH:mm:ss", $null)
+        if ($tEnd -lt $tLast) { $tEnd = $tEnd.AddDays(1) }
+        $gapMinutes = [math]::Round(($tEnd - $tLast).TotalMinutes, 1)
+        if ($gapMinutes -gt 5) {
+            $incompleteLogWarning = "Log possiblement incomplet : derniere activite device a $lastDeviceTimestamp, fin de capture a $captureEndTimestamp (ecart ${gapMinutes} min). POST/reboot/OTA peuvent avoir eu lieu hors fenetre."
+        }
+    } catch {
+        # Ignorer erreur de parsing
     }
 }
 
@@ -85,6 +113,8 @@ Fichier log: $logFile
 - Durée effective: $duration
 - Durée attendue: 15 minutes (900 secondes)
 - $(if ($duration -match "(\d+) min") { $actualMin = [int]$matches[1]; if ($actualMin -lt 15) { "⚠️ Monitoring incomplet - seulement $actualMin minutes sur 15" } else { "✅ Monitoring complet" } } else { "⚠️ Durée non calculable" })
+$(if ($incompleteLogWarning) { "`n- ⚠️ $incompleteLogWarning" } else { "" })
+$(if ($logContent -match 'Connexion serie perdue|capture interrompue') { "`n- ⚠️ Capture interrompue (deconnexion serie detectee dans le log)" } else { "" })
 
 "@
 
@@ -118,6 +148,8 @@ $wifiDisconnect = ([regex]::Matches($logContent, "WiFi.*disconnect|WiFi.*deconne
 $wifiConnect = ([regex]::Matches($logContent, "\[WiFi\]\s*OK|WiFi.*connect.*OK|Connexion.*reussie|\[Event\] WiFi.*connect", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $getOutputsState = ([regex]::Matches($logContent, "outputs/state:\s*code=", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $syncEnvoiPost = ([regex]::Matches($logContent, "\[Sync\].*envoi POST", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+# Demande distante recherche OTA (triggerOtaCheck reçu ou traitée par netTask)
+$otaCheckRequested = ([regex]::Matches($logContent, "triggerOtaCheck|demande vérification OTA|Demande distante recherche OTA", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
 $totalBranch = $branchData + $branchTimeout
 $ratioDataPct = if ($totalBranch -gt 0) { [math]::Round(100.0 * $branchData / $totalBranch, 1) } else { 0 }
 
@@ -192,6 +224,7 @@ $analysis += @"
 - WiFi: $wifiConnect reconnexion(s) / événement(s) OK, $wifiDisconnect déconnexion(s) / perte(s)
 - GET outputs/state exécutés (lignes code=): $getOutputsState
 - Départs POST [Sync] envoi POST: $syncEnvoiPost
+- Demande(s) distante(s) recherche OTA (triggerOtaCheck): $otaCheckRequested
 $(if ($netRpcTimeouts -gt 0) { "- ⚠️ Des requêtes réseau ont été abandonnées (timeout appelant) - netTask peut être saturée." } else { "" })
 $(if ($branchTimeout -gt 0 -and $totalBranch -gt 0 -and $ratioDataPct -lt 20) { "- ⚠️ Peu de cycles avec données capteurs ($ratioDataPct %) - timeouts capteurs fréquents." } else { "" })
 

@@ -16,7 +16,6 @@
 #include "config_manager.h"
 #include "power.h"
 #include "realtime_websocket.h"
-#include "sensor_cache.h"
 #include "system_actuators.h"
 #include "system_sensors.h"
 #include "app_context.h"
@@ -240,7 +239,7 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["wifiIP"] = wifiIPBuf;
     doc["wifiRSSI"] = WiFi.RSSI();
     doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
-    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
 
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
@@ -270,8 +269,10 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
   server.on("/api/remote-flags", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
     bool changed = false;
     if (req->hasParam("send", true)) {
+      const AsyncWebParameter* pSend = req->getParam("send", true);
+      if (pSend) {
       char vLower[16];
-      strncpy(vLower, req->getParam("send", true)->value().c_str(), sizeof(vLower) - 1);
+      strncpy(vLower, pSend->value().c_str(), sizeof(vLower) - 1);
       vLower[sizeof(vLower) - 1] = '\0';
       for (char* p = vLower; *p; ++p) *p = tolower(*p);
       // Trim (simple)
@@ -282,10 +283,13 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
       bool enable = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || strcmp(start, "on") == 0);
       ctx.config.setRemoteSendEnabled(enable);
       changed = true;
+      }
     }
     if (req->hasParam("recv", true)) {
+      const AsyncWebParameter* pRecv = req->getParam("recv", true);
+      if (pRecv) {
       char vLower[16];
-      strncpy(vLower, req->getParam("recv", true)->value().c_str(), sizeof(vLower) - 1);
+      strncpy(vLower, pRecv->value().c_str(), sizeof(vLower) - 1);
       vLower[sizeof(vLower) - 1] = '\0';
       for (char* p = vLower; *p; ++p) *p = tolower(*p);
       // Trim (simple)
@@ -296,6 +300,7 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
       bool enable = (strcmp(start, "1") == 0 || strcmp(start, "true") == 0 || strcmp(start, "on") == 0);
       ctx.config.setRemoteRecvEnabled(enable);
       changed = true;
+      }
     }
     if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/api/remote-flags"))) {
       return;
@@ -344,11 +349,17 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     doc["websocket"]["connectedClients"] = g_realtimeWebSocket.getConnectedClients();
     doc["websocket"]["isActive"] = g_realtimeWebSocket.isRunning();
 
-    doc["automatism"]["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["automatism"]["forceWakeUp"] = ctx.automatism.getForceWakeUp();
     doc["automatism"]["mailNotif"] = ctx.automatism.isEmailEnabled();
     doc["automatism"]["mail"] = ctx.automatism.getEmailAddress();
 
-    SensorReadings readings = sensorCache.getReadings(ctx.sensors);
+    SensorReadings readings{};
+    if (!ctx.sensors.getLastCachedReadings(readings)) {
+      readings.tempWater = NAN;
+      readings.tempAir = NAN;
+      readings.humidity = NAN;
+      readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
+    }
     doc["sensors"]["tempWater"] = readings.tempWater;
     doc["sensors"]["tempAir"] = readings.tempAir;
     doc["sensors"]["humidity"] = readings.humidity;
@@ -412,7 +423,11 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     }
 
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    SensorReadings r = sensorCache.getReadings(ctx.sensors);
+    SensorReadings r{};
+    if (!ctx.sensors.getLastCachedReadings(r)) {
+      r.tempWater = r.tempAir = r.humidity = NAN;
+      r.wlAqua = r.wlTank = r.wlPota = r.luminosite = 0;
+    }
     // Utiliser les constantes centralisées pour les valeurs fallback
     doc["tempWater"] = isnan(r.tempWater) ? SensorConfig::Fallback::TEMP_WATER : r.tempWater;
     doc["tempAir"] = isnan(r.tempAir) ? SensorConfig::Fallback::TEMP_AIR : r.tempAir;
@@ -425,7 +440,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     doc["pumpTank"] = ctx.actuators.isTankPumpRunning();
     doc["heater"] = ctx.actuators.isHeaterOn();
     doc["light"] = ctx.actuators.isLightOn();
-    doc["forceWakeup"] = ctx.automatism.getForceWakeUp();
+    doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
     doc["mailNotif"] = ctx.automatism.isEmailEnabled();
 
     // Observabilité sync POST (compteurs et dernière durée)

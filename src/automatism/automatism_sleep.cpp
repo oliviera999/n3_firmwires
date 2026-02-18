@@ -112,8 +112,8 @@ bool AutomatismSleep::isNightTime() {
     // v11.179: Utiliser localtime_r() thread-safe au lieu de localtime()
     if (localtime_r(&currentTime, &timeinfo) != nullptr) {
         int hour = timeinfo.tm_hour;
-        // Nuit: 22h-6h (selon convention)
-        return (hour >= 22 || hour < 6);
+        // Nuit: 19h-6h
+        return (hour >= 19 || hour < 6);
     }
     
     return false;  // Fallback sûr si conversion échoue

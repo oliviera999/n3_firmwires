@@ -278,8 +278,8 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
 
 void registerCompressedAssets(AsyncWebServer& server) {
   auto sendWithCompression = [](AsyncWebServerRequest* req, const char* path, const char* contentType) {
-    bool acceptsGzip = req->hasHeader("Accept-Encoding") &&
-                      req->getHeader("Accept-Encoding")->value().indexOf("gzip") >= 0;
+    const auto* encHeader = req->hasHeader("Accept-Encoding") ? req->getHeader("Accept-Encoding") : nullptr;
+    bool acceptsGzip = encHeader && encHeader->value().indexOf("gzip") >= 0;
 
     if (acceptsGzip) {
       char gz[128];

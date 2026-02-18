@@ -1,2 +1,11 @@
 # wroom-test / wroom-prod : timeout Task WDT 30 s (évite reset pendant HTTP/async_tcp)
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+# Désactiver coredump ESP-IDF (évite "No core dump partition found!" / "Core dump flash config is corrupted!" au boot)
+# CONFIG_ESP_COREDUMP_ENABLE is not set
+CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
+# CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH is not set
+# CONFIG_ESP_COREDUMP_ENABLE_TO_UART is not set
+# Bundle de certificats (requis pour esp_crt_bundle_attach dans OTA TLS)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=200

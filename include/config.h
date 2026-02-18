@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v11.204: HTTP_POST_TIMEOUT 18s (latence 4G), fix comptage POST diagnostic
-    inline constexpr const char* VERSION = "11.204";
+    inline constexpr const char* VERSION = "11.205";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -106,6 +106,13 @@ namespace SystemConfig {
 // Note: GlobalTimeouts supprimé (v11.174 simplification)
 // - GLOBAL_MAX_MS remplacé par NetworkConfig::HTTP_TIMEOUT_MS
 // - DS18B20_MAX_MS déplacé dans SensorConfig::DS18B20::TIMEOUT_MS
+
+// Optionnel : DNS personnalisé (réservé). Arduino-ESP32 n'expose pas setDNS() ; en pratique
+// configurer le DNS sur le routeur (DHCP option 6) ou accepter la latence. Définir à 1 pour
+// activer un éventuel futur code (ex. config IP statique + DNS).
+#ifndef WIFI_USE_CUSTOM_DNS
+#define WIFI_USE_CUSTOM_DNS 0
+#endif
 
 namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
@@ -265,6 +272,9 @@ namespace ServerConfig {
     // v11.162: HTTP par défaut pour réduire fragmentation mémoire (TLS ~32KB contigu requis)
     // Le serveur iot.olution.info est contrôlé, les données capteurs ne sont pas sensibles
     inline constexpr const char* BASE_URL = "http://iot.olution.info";
+    // Diagnostic latence : IP du serveur (iot.olution.info). Non utilisé par défaut : hébergement mutualisé
+    // renvoie 403/404 sur l'IP ; sur un VPS on pourrait l'utiliser + Host pour éviter le DNS.
+    inline constexpr const char* BASE_URL_TEST_IP = "http://109.234.162.74";
     // HTTPS réservé pour OTA (sécurité critique pour mises à jour firmware)
     inline constexpr const char* BASE_URL_SECURE = "https://iot.olution.info";
     
@@ -299,8 +309,8 @@ namespace ServerConfig {
         snprintf(buffer, bufferSize, "%s%s", BASE_URL, OUTPUT_ENDPOINT);
     }
     
-    inline void getHeartbeatUrl(char* buffer, size_t bufferSize) { 
-        snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT); 
+    inline void getHeartbeatUrl(char* buffer, size_t bufferSize) {
+        snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT);
     }
     
     // v11.162: Helper OTA avec HTTPS explicite (sécurité requise)
@@ -383,8 +393,8 @@ namespace HeapConfig {
     // Plus grand bloc libre minimum pour créer une tâche one-shot (évite fragmentation long uptime)
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (stack 4 KB + marge)
     // Bloc contigu minimum pour SMTP/TLS (ESP Mail Client + mbedTLS). Réserve libérable utilisée si heap fragmenté.
-    // 32 KB - 768: marge fragmentation WROOM (bloc observé 32756 en session, 12 B sous 32K)
-    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32000;  // 31.25 KB
+    // 31 KB: session 2026-02-15 bloc observé 31732 → seuil 32K jamais atteint ; 31K permet de tenter l'envoi (piste D).
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 31000;  // 31 KB (WROOM fragmentation)
     // Heap libre minimum avant envoi mail (Core 1). Évite abort() si TLS/allocs internes échouent.
     inline constexpr uint32_t MIN_HEAP_MAIL_SEND = 40000;  // 40 KB
     // Minimum free heap avant beginResponseStream. La lib AsyncWebServer (cbuf/WebResponses)
@@ -653,8 +663,8 @@ namespace LogConfig {
 namespace DisplayConfig {
     inline constexpr uint8_t OLED_WIDTH = 128;
     inline constexpr uint8_t OLED_HEIGHT = 64;
-    inline constexpr uint8_t OLED_I2C_ADDR = 0x3C;
-    
+    // Adresse I2C OLED : source unique dans include/pins.h (Pins::OLED_ADDR)
+
     inline constexpr int PERCENTAGE_MAX = 100;
     
     // Intervalle de rafraîchissement OLED pour automatismes
@@ -680,7 +690,7 @@ namespace DisplayConfig {
     
     inline constexpr uint8_t DISPLAY_WHITE = 1;
     inline constexpr uint8_t DISPLAY_BLACK = 0;
-    inline constexpr uint8_t SSD1306_SWITCHCAPVCC = 0;
+    // VCC OLED : utiliser la macro SSD1306_SWITCHCAPVCC de la lib Adafruit (0x02) dans display_view.cpp
 }
 
 // -----------------------------------------------------------------------------
@@ -697,7 +707,7 @@ namespace SleepConfig {
     inline constexpr uint32_t MAX_INACTIVITY_DELAY_SEC = 3600;
     inline constexpr uint32_t NORMAL_INACTIVITY_DELAY_SEC = 300;
     inline constexpr uint32_t ERROR_INACTIVITY_DELAY_SEC = 90;
-    inline constexpr uint32_t NIGHT_INACTIVITY_DELAY_SEC = 1800;
+    inline constexpr uint32_t NIGHT_INACTIVITY_DELAY_SEC = 300;  // 5 min (comme le jour)
     inline constexpr bool ADAPTIVE_SLEEP_ENABLED = true;
     inline constexpr uint32_t FLOOD_COOLDOWN_MIN = 60;
     inline constexpr uint32_t FLOOD_DEBOUNCE_MIN = 5;

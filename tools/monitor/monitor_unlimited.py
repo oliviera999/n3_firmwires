@@ -28,6 +28,7 @@ class UnlimitedSerialMonitor:
         self.duration = duration
         self.output_file = output_file
         self.running = True
+        self.serial_lost = False  # True si déconnexion série (ex. reboot ESP32)
         self.data_queue = Queue(maxsize=10000)  # Buffer plus grand
         self.serial_conn = None
         
@@ -70,10 +71,14 @@ class UnlimitedSerialMonitor:
                         
                 except Exception as e:
                     print(f"[{self.timestamp()}] Erreur lecture série: {e}")
+                    if self.running:
+                        self.serial_lost = True
                     time.sleep(0.1)
                     
         except Exception as e:
             print(f"[{self.timestamp()}] Erreur connexion série: {e}")
+            if self.running:
+                self.serial_lost = True
             self.running = False
     
     def data_writer(self):
@@ -141,11 +146,23 @@ class UnlimitedSerialMonitor:
             # Arrêter proprement
             self.running = False
             if self.serial_conn:
-                self.serial_conn.close()
+                try:
+                    self.serial_conn.close()
+                except Exception:
+                    pass
+                self.serial_conn = None
             
             # Attendre que les threads se terminent
             reader_thread.join(timeout=2)
             writer_thread.join(timeout=2)
+            
+            # Marquer dans le log si la capture a été interrompue par déconnexion série
+            if self.serial_lost and self.output_file:
+                try:
+                    with open(self.output_file, 'a', encoding='utf-8') as f:
+                        f.write(f"# Connexion serie perdue a {self.timestamp()} - capture interrompue\n")
+                except Exception as e:
+                    print(f"[{self.timestamp()}] Impossible d'ecrire marqueur déconnexion: {e}")
             
             print(f"\n[{self.timestamp()}] Monitoring terminé")
 

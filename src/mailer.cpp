@@ -1437,6 +1437,7 @@ bool Mailer::processOneMailSync() {
   }
   
   Serial.printf("[Mail] 📬 Traitement mail séquentiel: '%s'\n", item.subject);
+  Serial.println(F("[Mail] >>> ENVOI SMTP DÉBUT <<<"));  // Témoin début envoi effectif
 
   bool success;
   if (item.isAlert) {
@@ -1448,6 +1449,7 @@ bool Mailer::processOneMailSync() {
   if (success) {
     _mailsSent++;
     Serial.printf("[Mail] ✅ Mail SMTP envoyé avec succès (%u total)\n", _mailsSent);
+    Serial.println(F("[Mail] ENVOI SMTP EFFECTIF: OK"));  // Témoin pour analyse log / scripts
   } else {
     // Re-queue une fois pour retry (échec transitoire WiFi/TLS), max 2 tentatives au total
     if (item.retryCount < 2) {
@@ -1457,10 +1459,12 @@ bool Mailer::processOneMailSync() {
       } else {
         _mailsFailed++;
         Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
+        Serial.println(F("[Mail] ENVOI SMTP EFFECTIF: KO"));
       }
     } else {
       _mailsFailed++;
       Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
+      Serial.println(F("[Mail] ENVOI SMTP EFFECTIF: KO"));  // Témoin pour analyse log / scripts
     }
   }
   
@@ -1485,17 +1489,21 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   MailQueueItem item;
   memset(&item, 0, sizeof(item));
   
-  // Copie sécurisée des données
+  // Copie sécurisée des données (null-termination explicite après strncpy)
   if (subject) {
     strncpy(item.subject, subject, sizeof(item.subject) - 1);
+    item.subject[sizeof(item.subject) - 1] = '\0';
   }
   if (message) {
     strncpy(item.message, message, sizeof(item.message) - 1);
+    item.message[sizeof(item.message) - 1] = '\0';
   }
   if (toEmail) {
     strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
+    item.toEmail[sizeof(item.toEmail) - 1] = '\0';
   } else {
     strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
+    item.toEmail[sizeof(item.toEmail) - 1] = '\0';
   }
   item.isAlert = false;
   item.retryCount = 0;
@@ -1536,9 +1544,10 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
   MailQueueItem item;
   memset(&item, 0, sizeof(item));
   
-  // Copie sécurisée des données
+  // Copie sécurisée des données (null-termination explicite après strncpy)
   strncpy(item.subject, subject, sizeof(item.subject) - 1);
-  
+  item.subject[sizeof(item.subject) - 1] = '\0';
+
   // Tronquer le message si trop long
   size_t msgLen = strlen(message);
   if (msgLen >= sizeof(item.message)) {
@@ -1552,9 +1561,11 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
   // Utiliser fallback si toEmail vide (cohérent avec send())
   if (toEmail && strlen(toEmail) > 0) {
     strncpy(item.toEmail, toEmail, sizeof(item.toEmail) - 1);
+    item.toEmail[sizeof(item.toEmail) - 1] = '\0';
   } else {
     Serial.println(F("[Mail] ⚠️ toEmail vide, utilisation DEFAULT_RECIPIENT"));
     strncpy(item.toEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(item.toEmail) - 1);
+    item.toEmail[sizeof(item.toEmail) - 1] = '\0';
   }
   item.isAlert = true;
   item.includeDetailedReport = includeDetailedReport;
