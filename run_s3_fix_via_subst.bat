@@ -30,9 +30,9 @@ if "%PATH_HAS_SPACE%"=="0" (
 
   echo 3. Sdkconfig package...
   if defined SKIP_RECOMPILE (
-    echo. > "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig"
+    echo. > "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig"
   ) else (
-    del /q "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
+    del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
   )
 
   echo 4. Build wroom-s3-test...
@@ -68,9 +68,9 @@ python tools\patch_arduino_libs_s3_wdt.py
 
 echo 4. Sdkconfig package...
 if defined SKIP_RECOMPILE (
-  echo. > "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig"
+  echo. > "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig"
 ) else (
-  del /q "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
+  del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
 )
 
 echo 5. Build wroom-s3-test (depuis P:\ - mode verbose)...

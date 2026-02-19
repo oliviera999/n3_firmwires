@@ -871,8 +871,8 @@ bool WebClient::postRaw(const char* payload) {
   bool success = httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary),
                              NetworkConfig::HTTP_POST_TIMEOUT_MS);
   
-  // v11.171: Queue si échec (offline-first)
-  if (!success && WiFi.status() != WL_CONNECTED) {
+  // v11.171: Queue si échec (offline-first). Étendu aux échecs HTTP (timeout, 4xx/5xx) en plus du WiFi déconnecté.
+  if (!success) {
     queueFailedPost(postBuffer);
   }
   

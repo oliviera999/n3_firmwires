@@ -28,7 +28,7 @@ if "%PATH_HAS_SPACE%"=="0" (
   if errorlevel 1 exit /b 1
 
   echo 2. Suppression sdkconfig racine package (forcer recompil libs IWDT)...
-  del /q "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
+  del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
 
   echo 3. Build wroom-s3-test (15-25 min possible si recompile libs)...
   pio run -e wroom-s3-test -v
@@ -65,7 +65,7 @@ if errorlevel 1 (
 )
 
 echo 3. Suppression sdkconfig racine package (forcer recompil libs IWDT)...
-del /q "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
+del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
 
 echo 4. Build wroom-s3-test (depuis %BUILD_ROOT% - 15-25 min possible)...
 cd /d "%BUILD_ROOT%"

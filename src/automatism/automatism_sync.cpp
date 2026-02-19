@@ -300,6 +300,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         if (_dataQueue.size() > 0) replayQueuedData();
     } else {
         _sendState = -1;
+        Serial.println(F("[Sync] POST échoué (file pleine, timeout RPC ou HTTP)"));
         _dataQueue.push(payloadBuffer);
     }
 

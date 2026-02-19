@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v11.204: HTTP_POST_TIMEOUT 18s (latence 4G), fix comptage POST diagnostic
-    inline constexpr const char* VERSION = "11.205";
+    inline constexpr const char* VERSION = "12.01";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

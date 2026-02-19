@@ -1,0 +1,8 @@
+# ESP32-S3 8 MB flash (ex. DevKitC-1) : OTA dual (~3 Mo × 2) + LittleFS ~2 Mo
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x6000
+otadata,  data, ota,     0xF000,  0x2000
+app0,     app,  ota_0,   0x10000, 0x300000
+app1,     app,  ota_1,   0x310000, 0x300000
+# Nom "spiffs" pour cohérence code ; subtype spiffs, monté en LittleFS
+spiffs,   data, spiffs,  0x610000, 0x1F0000

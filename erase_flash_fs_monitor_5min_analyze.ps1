@@ -12,11 +12,15 @@
 #   30 min (recommandé avant release / déploiement hardware) :
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30 -Port COM4
+#
+# S3 : le build (étape 0) prend 20–40 min. Si le firmware est déjà compilé, sauter le rebuild :
+#   .\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-s3-test -Port COM4 -SkipBuild
 
 param(
     [string]$Port = "",
     [string]$Environment = "wroom-test",
-    [int]$DurationMinutes = 5
+    [int]$DurationMinutes = 5,
+    [switch]$SkipBuild = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,7 +40,8 @@ Write-Host ""
 
 # 0. Pour S3 (test et prod) : patches + fullclean + build (fix TG1WDT boot loop, libs recompilées)
 # Si WinError 32 sur ArduinoJson/libdeps: fermer Cursor, PowerShell externe, .\tools\clean_s3_build.ps1 puis pio run.
-if ($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") {
+# -SkipBuild : saute cette étape (erase + flash + monitor + analyse uniquement, build déjà fait).
+if (($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") -and -not $SkipBuild) {
     Write-Host "0. Préparation S3 test/prod (patches + fullclean + build, fix TG1WDT)..." -ForegroundColor Yellow
     python tools/patch_espressif32_custom_sdkconfig_only.py
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

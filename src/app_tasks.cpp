@@ -70,7 +70,8 @@ TaskHandle_t g_netTaskHandle = nullptr;
 
 // Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
 // Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
-static constexpr size_t kNetRequestPoolSize = 3;
+// Taille 5 (alignée g_netQueue) pour réduire abandons quand replayQueuedData + poll remplissent la file.
+static constexpr size_t kNetRequestPoolSize = 5;
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
 static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
 
@@ -772,9 +773,9 @@ bool start(AppContext& ctx) {
   }
 
   // Créer la queue réseau (utilisée par netTask)
-  // v11.158: Réduit de 5 à 3 slots (requêtes séquentielles via mutex TLS)
+  // Taille 5 pour réduire abandons POST quand file temporairement pleine (replay + poll + heartbeat).
   if (!g_netQueue) {
-    g_netQueue = xQueueCreate(3, sizeof(NetRequest*));
+    g_netQueue = xQueueCreate(5, sizeof(NetRequest*));
     if (!g_netQueue) {
       Serial.println(F("[App] ❌ CRITIQUE: Échec création g_netQueue"));
       Serial.println("[Event] CRITICAL: g_netQueue creation failure");
@@ -906,7 +907,9 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   (void)ulTaskNotifyTake(pdTRUE, 0);
 
   NetRequest* ptr = req;
-  if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(50)) != pdTRUE) {
+  const uint32_t QUEUE_SEND_TIMEOUT_MS = 200;  // Laisser une place se libérer avant d'abandonner
+  if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(QUEUE_SEND_TIMEOUT_MS)) != pdTRUE) {
+    Serial.println(F("[netRPC] Requête abandonnée: file net pleine"));
     netRequestFree(req);
     return false;
   }

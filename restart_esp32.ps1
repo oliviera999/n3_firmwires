@@ -1,4 +1,4 @@
-﻿# Script pour forcer le redemarrage de l'ESP32
+# Script pour forcer le redemarrage de l'ESP32
 # Utilise esptool pour envoyer un signal de reset
 
 Write-Host "=== REDEMARRAGE FORCE ESP32 ===" -ForegroundColor Cyan
@@ -22,7 +22,7 @@ Write-Host ""
 # 2. Essayer de redemarrer via esptool
 Write-Host "2. REDEMARRAGE VIA ESPTOOL:" -ForegroundColor Yellow
 try {
-    $esptoolPath = "C:\Users\olivi\.platformio\packages\tool-esptoolpy\esptool.py"
+    $esptoolPath = Join-Path $env:USERPROFILE ".platformio\packages\tool-esptoolpy\esptool.py"
     if (Test-Path $esptoolPath) {
         Write-Host "Utilisation d'esptool pour le reset..." -ForegroundColor White
         python $esptoolPath --port COM6 --baud 115200 run

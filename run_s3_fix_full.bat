@@ -15,7 +15,7 @@ echo 2. Patch sdkconfig package Arduino (sans sdkconfig racine pour eviter reins
 python tools/patch_arduino_libs_s3_wdt.py
 
 echo 3. Suppression sdkconfig racine si present (force call_compile_libs sans reinstall)...
-del /q "C:\Users\olivi\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
+del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
 
 echo 4. Build wroom-s3-test (peut prendre 15-20 min si recompile lib Arduino)...
 pio run -e wroom-s3-test > build_s3_full.log 2>&1
