@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.02: Sync POST en branche timeout (H1) pour ne pas couper la publication
-    inline constexpr const char* VERSION = "12.02";
+    // v12.03: OTA safe (OTA_UNSAFE_FORCE false), validation tailles par défaut, doc intégrité
+    inline constexpr const char* VERSION = "12.03";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
