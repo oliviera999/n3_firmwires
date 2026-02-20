@@ -12,6 +12,14 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 12.02 - 2026-02-19
+
+### Corrections
+
+- **Publication données après plusieurs heures** : exécution de la synchro (poll + POST) aussi en branche timeout de la queue capteurs, avec les dernières lectures (`s_lastReadings`), pour ne pas couper la publication lorsque des timeouts se répètent (hypothèse H1).
+
+---
+
 ## Version 11.193 - 2026-02-03
 
 ### Maintenance

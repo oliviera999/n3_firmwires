@@ -715,6 +715,8 @@ void automationTask(void* pv) {
       if (s_haveReadings) {
         g_ctx->automatism.updateDisplayWithReadings(s_lastReadings);
         g_ctx->power.resetWatchdog();
+        // H1: exécuter sync (poll + POST si intervalle) avec dernières lectures pour ne pas couper la publication
+        g_ctx->automatism.update(s_lastReadings);
       }
       // Log au plus tous les 10 timeouts pour limiter le spam (intervalle capteurs 2,5 s)
       if ((++s_sensorTimeoutCount % 10) == 1) {

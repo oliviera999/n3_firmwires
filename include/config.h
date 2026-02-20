@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v11.204: HTTP_POST_TIMEOUT 18s (latence 4G), fix comptage POST diagnostic
-    inline constexpr const char* VERSION = "12.01";
+    // v12.02: Sync POST en branche timeout (H1) pour ne pas couper la publication
+    inline constexpr const char* VERSION = "12.02";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
