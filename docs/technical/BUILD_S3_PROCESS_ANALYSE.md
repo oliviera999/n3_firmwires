@@ -1,5 +1,7 @@
 # Analyse du process de build wroom-s3-test
 
+**Matériel de référence S3** : ESP32-S3 (QFN56) révision v0.2, 16 Mo flash, 8 Mo PSRAM (N16R8). Env sans PSRAM : `wroom-s3-base` / `wroom-s3-test` / `wroom-s3-prod`. Env avec PSRAM pour ce matériel : `wroom-s3-test-psram`. Détails : [ESP32S3_HARDWARE_REFERENCE.md](ESP32S3_HARDWARE_REFERENCE.md).
+
 ## Enchaînement (sans -SkipBuild)
 
 1. **Script erase_flash_fs_monitor_5min_analyze.ps1 (étape 0)**
@@ -28,6 +30,23 @@
 - **Options C++ passées à des .c** : -fno-rtti, -fno-threadsafe-statics, -fno-use-cxa-atexit sont pour C++ ; certains fichiers IDF sont en C → warnings, pas d’échec.
 - **Error 3221225786** : code Windows = processus tué (ex. Ctrl+C). Pas un bug du build.
 - **firmware.elf does not exist** : conséquence d’un build interrompu avant l’étape link.
+
+## Build propre sans patches (wroom-s3-test)
+
+L’env **wroom-s3-test** n’applique plus les patches du core (earlyInitVariant, diag_after_nvs, libs_s3_wdt). Pour être certain que ce sont les **sources vierges** des packages qui sont compilées (et pas des fichiers déjà patchés par un build précédent ou un autre env S3), il faut supprimer les packages framework puis faire un fullclean :
+
+1. Fermer Cursor, moniteur série et tout processus utilisant le projet (évite WinError 32).
+2. **Supprimer les packages + fullclean :**
+   ```powershell
+   .\tools\clean_s3_build.ps1 -IncludeFramework -IncludeFrameworkLibs -FullClean
+   ```
+3. **Build :**
+   ```powershell
+   pio run -e wroom-s3-test
+   ```
+   PlatformIO réinstallera `framework-arduinoespressif32` et `framework-arduinoespressif32-libs` au premier build ; les sources seront vierges, aucun patch ne sera appliqué pour wroom-s3-test.
+
+Sans `-IncludeFramework` / `-IncludeFrameworkLibs`, un simple `pio run -e wroom-s3-test -t fullclean` puis `pio run -e wroom-s3-test` nettoie uniquement le cache du projet ; si les packages ont déjà été patchés (ex. par un build wroom-s3-prod), ce sont encore ces fichiers modifiés qui seront compilés.
 
 ## Recommandation
 

@@ -7,15 +7,18 @@ alwaysApply: false
 # ESP32-S3 (WROOM-S3) — différences et isolation du code
 
 - **Contexte**
+  - **Matériel de référence** : ESP32-S3 (QFN56) révision v0.2, 16 Mo flash, 8 Mo PSRAM (module type N16R8).
   - L’**ESP32-S3** (cible WROOM-S3, ex. DevKitC-1) a des **caractéristiques particulières** et des **composants supplémentaires** par rapport à l’ESP32 classique (WROOM) : PSRAM (OPI), flash 16 Mo, partitions dédiées, stack et périphériques spécifiques, etc.
   - Ces différences doivent être intégrées dans le **même codebase** sans impacter les builds WROOM. À partir du **bloc commun** de l’environnement S3 (`wroom-s3-base` dans `platformio.ini`), on définit des **flags de build** et on les utilise dans le code pour conditionner uniquement les parties spécifiques.
+  - Les env S3 par défaut (`wroom-s3-base`, `wroom-s3-test`, `wroom-s3-prod`) n’ont **pas** PSRAM activée (boot stable).
 
 - **Objectif**
   - Toute modification spécifique à l’**ESP32-S3** doit être **conditionnée par les flags d’environnement** définis pour S3, de sorte que le build **WROOM** ne soit **jamais impacté** (pas de code S3 compilé, pas de comportement différent).
 
 - **Flags d’environnement** (définis dans `platformio.ini`)
   - **BOARD_WROOM** : environnements `wroom-prod`, `wroom-test`, `wroom-beta`, `wroom-tls-test` (ESP32 classique).
-  - **BOARD_S3** : environnements `wroom-s3-test`, `wroom-s3-prod` (ESP32-S3, base commune `wroom-s3-base`).
+  - **BOARD_S3** : environnements `wroom-s3-test`, `wroom-s3-prod`, `wroom-s3-test-psram` (ESP32-S3, base commune `wroom-s3-base`).
+  - **BOARD_HAS_PSRAM** : défini uniquement pour l’env S3 avec PSRAM activée (`wroom-s3-test-psram`). Utilisé dans le code pour watchdog early / stack (voir `src/app.cpp`). Ne pas le définir pour les env S3 par défaut.
   - Ajouter d’autres flags dans le bloc commun S3 (`wroom-s3-base`) ou dans les env qui en héritent **si nécessaire** pour des différences matérielles ou logicielles (ex. composant présent uniquement sur S3, option de partition, etc.). Les nommer en **UPPER_SNAKE_CASE** et les documenter brièvement en commentaire dans `platformio.ini`.
 
 - **Règles de code**
