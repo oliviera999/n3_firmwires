@@ -12,6 +12,14 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 12.05 - 2026-02-21
+
+### Maintenance
+
+- Incrément version (config.h + VERSION.md), commit et push GitHub
+
+---
+
 ## Version 12.02 - 2026-02-19
 
 ### Corrections

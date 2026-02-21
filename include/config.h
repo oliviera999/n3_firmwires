@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.03: OTA safe (OTA_UNSAFE_FORCE false), validation tailles par défaut, doc intégrité
-    inline constexpr const char* VERSION = "12.03";
+    // v12.05: incrément version, commit et push
+    inline constexpr const char* VERSION = "12.05";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
