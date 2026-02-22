@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.05: incrément version, commit et push
-    inline constexpr const char* VERSION = "12.05";
+    // v12.06: incrément version, commit et push
+    inline constexpr const char* VERSION = "12.06";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -118,7 +118,12 @@ namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
     // 8 s par tentative d'association WiFi (routeurs lents, DHCP, signaux faibles)
+    // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 4000;
+#else
     inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 8000;
+#endif
     // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
     // où on peut récupérer la config distante de manière fiable
@@ -209,6 +214,18 @@ namespace MonitoringConfig {
   #else
     #define FEATURE_HTTP_HEAP_GUARD 0  // Désactivé en production
   #endif
+#endif
+
+// Reboot automatique quotidien : une fois par jour entre 0h et 4h (heure locale). Mettre à 0 pour désactiver.
+#ifndef FEATURE_DAILY_REBOOT
+#define FEATURE_DAILY_REBOOT 1
+#endif
+#if FEATURE_DAILY_REBOOT
+namespace DailyRebootConfig {
+    inline constexpr int HOUR_START = 0;   // Minuit
+    inline constexpr int HOUR_END = 4;     // Exclus (fenêtre 0h–3h59)
+    inline constexpr unsigned long CHECK_INTERVAL_MS = 60000;  // Vérification au plus une fois par minute
+}
 #endif
 
 // -----------------------------------------------------------------------------
