@@ -281,6 +281,9 @@ static void fillDbVarsJson(JsonObject& out) {
 
 // Helper pour envoyer un email lors d'une action manuelle
 static void sendManualActionEmail(const char* subject, const char* actionType, const char* eventCode) {
+  if (!g_autoCtrl.isEmailEnabled()) {
+    return;
+  }
   const char* emailAddr = g_autoCtrl.getEmailAddress();
   if (emailAddr && strlen(emailAddr) > 0) {
     char timeStr[24] = "(heure N/A)";
@@ -435,6 +438,10 @@ bool WebServerManager::begin() {
       return;
     }
     
+    if (g_autoCtrl.isFeedingInProgress()) {
+      req->send(409, "application/json", "{\"success\":false,\"error\":\"FEED_BUSY\",\"message\":\"Nourrissage en cours\"}");
+      return;
+    }
     if (strcmp(typeBuf, "big") == 0) {
       g_autoCtrl.manualFeedBig();
       g_autoCtrl.setBouffeGrosFlag("1");
@@ -476,36 +483,46 @@ bool WebServerManager::begin() {
           #endif
           
           if (strcmp(c, "feedSmall") == 0) {
-              Serial.println("[Web] 🐟 Starting manual feed small...");
-              g_autoCtrl.manualFeedSmall();
-              g_autoCtrl.setBouffePetitsFlag("1");
-              g_realtimeWebSocket.broadcastNow();
-              resp = "FEED_SMALL OK";
-              esp_task_wdt_reset();
-              vTaskDelay(pdMS_TO_TICKS(100));
-              sendManualActionEmail(
-                "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
-              SensorReadings readings{};
-              _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
-              (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
-              g_autoCtrl.setBouffePetitsFlag("0");
-              Serial.println("[Web] ✅ Small feed completed");
+              if (g_autoCtrl.isFeedingInProgress()) {
+                  resp = "FEED_BUSY";
+                  Serial.println("[Web] ⚠️ Nourrissage petits refusé - cycle en cours");
+              } else {
+                  Serial.println("[Web] 🐟 Starting manual feed small...");
+                  g_autoCtrl.manualFeedSmall();
+                  g_autoCtrl.setBouffePetitsFlag("1");
+                  g_realtimeWebSocket.broadcastNow();
+                  resp = "FEED_SMALL OK";
+                  esp_task_wdt_reset();
+                  vTaskDelay(pdMS_TO_TICKS(100));
+                  sendManualActionEmail(
+                    "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
+                  SensorReadings readings{};
+                  _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
+                  (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
+                  g_autoCtrl.setBouffePetitsFlag("0");
+                  Serial.println("[Web] ✅ Small feed completed");
+              }
           }
           else if (strcmp(c, "feedBig") == 0) {
-              Serial.println("[Web] 🐠 Starting manual feed big...");
-              g_autoCtrl.manualFeedBig();
-              g_autoCtrl.setBouffeGrosFlag("1");
-              g_realtimeWebSocket.broadcastNow();
-              resp = "FEED_BIG OK";
-              esp_task_wdt_reset();
-              vTaskDelay(pdMS_TO_TICKS(100));
-              sendManualActionEmail(
-                "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
-              SensorReadings readings{};
-              _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
-              (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
-              g_autoCtrl.setBouffeGrosFlag("0");
-              Serial.println("[Web] ✅ Big feed completed");
+              if (g_autoCtrl.isFeedingInProgress()) {
+                  resp = "FEED_BUSY";
+                  Serial.println("[Web] ⚠️ Nourrissage gros refusé - cycle en cours");
+              } else {
+                  Serial.println("[Web] 🐠 Starting manual feed big...");
+                  g_autoCtrl.manualFeedBig();
+                  g_autoCtrl.setBouffeGrosFlag("1");
+                  g_realtimeWebSocket.broadcastNow();
+                  resp = "FEED_BIG OK";
+                  esp_task_wdt_reset();
+                  vTaskDelay(pdMS_TO_TICKS(100));
+                  sendManualActionEmail(
+                    "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
+                  SensorReadings readings{};
+                  _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
+                  (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
+                  g_autoCtrl.setBouffeGrosFlag("0");
+                  Serial.println("[Web] ✅ Big feed completed");
+              }
           }
           else if (strcmp(c, "toggleEmail") == 0) {
               Serial.println("[Web] 📧 Toggling Email Notifications...");

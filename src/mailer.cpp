@@ -1113,11 +1113,13 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
 bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
   (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport; return false;
 }
-bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
-  (void)reason; (void)sleepDurationSeconds; (void)readings; return false;
+bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
+                           const char* toEmail) {
+  (void)reason; (void)sleepDurationSeconds; (void)readings; (void)toEmail; return false;
 }
-bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
-  (void)reason; (void)actualSleepSeconds; (void)readings; return false;
+bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
+                          const char* toEmail) {
+  (void)reason; (void)actualSleepSeconds; (void)readings; (void)toEmail; return false;
 }
 bool Mailer::initMailQueue() { return true; }
 bool Mailer::processOneMailSync() { return false; }
@@ -1224,7 +1226,9 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
   return result;
 }
 
-bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
+bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
+                           const char* toEmail) {
+  const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
   static char sleepSubject[64];
   snprintf(sleepSubject, sizeof(sleepSubject), "FFP5CS - Mise en veille");
   
@@ -1296,10 +1300,12 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   Serial.println(F("[Mail] ⚡ Utilisation des dernières lectures (pas de nouvelle lecture capteurs)"));
   Serial.println(F("[Mail] =============================="));
   
-  return sendSync(sleepSubject, sleepMessage, "User", EmailConfig::DEFAULT_RECIPIENT);
+  return sendSync(sleepSubject, sleepMessage, "User", dest);
 }
 
-bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
+bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
+                         const char* toEmail) {
+  const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
   static char wakeSubject[64];
   snprintf(wakeSubject, sizeof(wakeSubject), "FFP5CS - Réveil du système");
   
@@ -1393,7 +1399,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   Serial.printf("[Mail] Durée veille: %u s\n", actualSleepSeconds);
   Serial.println(F("[Mail] =============================="));
   
-  return sendSync(wakeSubject, wakeMessage, "User", EmailConfig::DEFAULT_RECIPIENT);
+  return sendSync(wakeSubject, wakeMessage, "User", dest);
 }
 
 // ============================================================================

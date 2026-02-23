@@ -2,6 +2,9 @@
 #include "config.h"
 #include "pins.h"
 #include "oled_logo.h"
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+#include "rom/ets_sys.h"
+#endif
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <algorithm>
@@ -449,7 +452,11 @@ void DisplayView::clear() {
 
 void DisplayView::flush() {
 #if FEATURE_DIAG_OLED_LOGS
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  (void)0;  // pas de Serial (CDC bloque sur S3)
+#else
   Serial.printf("{\"ts\":%lu,\"loc\":\"display_view.cpp:flush\",\"msg\":\"called\",\"hypothesisId\":\"A\"}\n", millis());
+#endif
 #endif
   if (!_present) return;
   
@@ -934,7 +941,9 @@ void DisplayView::hideOtaProgressOverlay() {
 }
 
 void DisplayView::forceEndSplash() {
-#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[OLED] Force fin splash\n");
+#elif (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
   Serial.println("[OLED] Force fin du splash screen");
 #endif
   _splashUntil = 0;

@@ -29,11 +29,11 @@ namespace OTAConfig {
     // Taille partition app OTA (fallback si metadata.size absent) — 0x1A0000
     constexpr size_t OTA_APP_PARTITION_SIZE = 1744896;
 
-    // Mode DANGEREUX: forcer l'OTA sans vérifications (taille/MD5) pour tous les profils
-    // - Utilise UPDATE_SIZE_UNKNOWN au lieu d'une taille fixe
-    // - Ignore les écarts de taille entre attendu/réel
-    // - Force Update.end(true)
-    constexpr bool OTA_UNSAFE_FORCE = true;
+    // Mode DANGEREUX: forcer l'OTA avec taille flexible (taille/MD5 partiellement assouplis).
+    // À false : le serveur doit envoyer Content-Length correct pour firmware.bin et littlefs.bin.
+    // - true : UPDATE_SIZE_UNKNOWN, ignore écarts de taille, Update.end(true).
+    // - false : taille connue, vérifications strictes, Update.end(false). Recommandé en production.
+    constexpr bool OTA_UNSAFE_FORCE = false;
     
     // Fonction pour obtenir le dossier OTA selon le modèle
     // (déclaration/definition placée avant l'utilisation)

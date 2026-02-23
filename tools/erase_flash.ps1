@@ -1,14 +1,14 @@
 # Efface la flash de l'ESP via PlatformIO (outils pio).
-# Carte sur COM7 = ESP32-S3 -> utiliser -Environment wroom-s3-test-official.
+# Carte sur COM7 = ESP32-S3 -> utiliser -Environment wroom-s3-test.
 #
 # Usage:
 #   .\tools\erase_flash.ps1 -Port COM7
-#   .\tools\erase_flash.ps1 -Port COM7 -Environment wroom-s3-test-official
+#   .\tools\erase_flash.ps1 -Port COM7 -Environment wroom-s3-test
 #   .\tools\erase_flash.ps1 -Port COM4 -Environment wroom-test
 
 param(
     [string]$Port = "COM7",
-    [string]$Environment = "wroom-s3-test-official"
+    [string]$Environment = "wroom-s3-test"
 )
 
 $ErrorActionPreference = "Stop"

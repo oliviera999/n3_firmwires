@@ -220,9 +220,14 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         int triggered = (state && !s_lastFeedSmallState) ? 1 : 0;
         Serial.printf("[DBG] FEED_SMALL state=%d last=%d triggered=%d hypothesis=D\n", state ? 1 : 0, s_lastFeedSmallState ? 1 : 0, triggered);
         if (state && !s_lastFeedSmallState) {
-            autoCtrl.manualFeedSmall();
-            autoCtrl.notifyRemoteFeedExecuted(true);
-            Serial.println("Nourrissage petits (rising edge)");
+            if (autoCtrl.isFeedingInProgress()) {
+                Serial.println(F("[GPIOParser] Nourrissage petits ignoré - cycle en cours"));
+            } else {
+                autoCtrl.manualFeedSmall();
+                autoCtrl.notifyRemoteFeedExecuted(true);
+                autoCtrl.markCurrentFeedingSlotAsDone();
+                Serial.println("Nourrissage petits (rising edge)");
+            }
         }
         s_lastFeedSmallState = state;
     }
@@ -233,9 +238,14 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         int triggered = (state && !s_lastFeedBigState) ? 1 : 0;
         Serial.printf("[DBG] FEED_BIG state=%d last=%d triggered=%d hypothesis=D\n", state ? 1 : 0, s_lastFeedBigState ? 1 : 0, triggered);
         if (state && !s_lastFeedBigState) {
-            autoCtrl.manualFeedBig();
-            autoCtrl.notifyRemoteFeedExecuted(false);
-            Serial.println("Nourrissage gros (rising edge)");
+            if (autoCtrl.isFeedingInProgress()) {
+                Serial.println(F("[GPIOParser] Nourrissage gros ignoré - cycle en cours"));
+            } else {
+                autoCtrl.manualFeedBig();
+                autoCtrl.notifyRemoteFeedExecuted(false);
+                autoCtrl.markCurrentFeedingSlotAsDone();
+                Serial.println("Nourrissage gros (rising edge)");
+            }
         }
         s_lastFeedBigState = state;
     }

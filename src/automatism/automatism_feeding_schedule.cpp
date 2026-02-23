@@ -139,7 +139,7 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
     }
     
     char timeStr[64];
-    _power.getCurrentTimeString(timeStr, sizeof(timeStr));
+    _power.getCurrentTimeStringForMail(timeStr, sizeof(timeStr));
     
     int n = snprintf(message, sizeof(message),
         "%s\n\n"

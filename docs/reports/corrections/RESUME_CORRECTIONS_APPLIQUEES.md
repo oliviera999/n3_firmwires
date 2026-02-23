@@ -1,7 +1,20 @@
 # Résumé des Corrections Appliquées - Incohérences Code
 ## Date: 2026-01-21
 
-## Corrections Implémentées
+---
+
+## Corrections S3 PSRAM / boot et loop (2026-02-22)
+
+Référence détaillée : [ESP32S3_HARDWARE_REFERENCE.md](../../technical/ESP32S3_HARDWARE_REFERENCE.md) — section « Comportement firmware S3 PSRAM ».
+
+- **Serial vs UART (CDC)** : Remplacement de `Serial.*` par `ets_printf` dans les chemins boot et tâches pour l’env `wroom-s3-test-psram`, afin d’éviter le blocage lorsque le moniteur est sur UART.
+- **Priorités tâches** : Création d’automationTask et netTask avec priorité 1 (au lieu de 3 et 2) pour S3 PSRAM, plus `vTaskDelay` dans la tâche principale et au démarrage d’automationTask, pour que la loop reçoive du CPU et que le boot aille jusqu’à « setup done » et `loop()`.
+- **Fin de setup()** : Pour S3 PSRAM, suppression des appels `Serial` / `LOG_*` en fin de setup ; affichage « setup done » / « init done » via `ets_printf` uniquement.
+- **OLED « Init ok »** : Dans `display_view.cpp`, `forceEndSplash()` et le log dans `flush()` utilisent `ets_printf` ou sont désactivés pour S3 PSRAM, pour ne pas bloquer avant l’affichage « Diag: Init ok ».
+
+---
+
+## Corrections Implémentées (2026-01-21)
 
 ### ✅ PRIORITÉ 1 - CRITIQUE (7 corrections)
 

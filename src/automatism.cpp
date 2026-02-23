@@ -450,7 +450,7 @@ size_t Automatism::createFeedingMessage(char* buffer, size_t bufferSize, const c
     }
     
     char timeStr[64];
-    _power.getCurrentTimeString(timeStr, sizeof(timeStr));
+    _power.getCurrentTimeStringForMail(timeStr, sizeof(timeStr));
     
     int n = snprintf(buffer, bufferSize,
         "%s\n\n"
@@ -583,6 +583,10 @@ bool Automatism::restoreRemoteConfigFromCache() {
 // ============================================================================
 
 void Automatism::handleFeeding() {
+    // Évite double nourrissage : ne pas lancer l'auto si un cycle est déjà en cours
+    if (isFeedingInProgress()) {
+        return;
+    }
     time_t now = _power.getCurrentEpochSafe();
     struct tm timeinfo;
     if (!localtime_r(&now, &timeinfo)) {
@@ -630,6 +634,30 @@ void Automatism::handleFeeding() {
                                        strncpy(bouffeGros, "0", sizeof(bouffeGros) - 1);
                                        bouffeGros[sizeof(bouffeGros) - 1] = '\0';
                                    });
+}
+
+void Automatism::markCurrentFeedingSlotAsDone() {
+    time_t now = _power.getCurrentEpochSafe();
+    struct tm timeinfo;
+    if (!localtime_r(&now, &timeinfo)) {
+        return;
+    }
+    int hour = timeinfo.tm_hour;
+    // Aligner sur la logique du planning : créneau à l'heure H ou rattrapage H+1
+    const int nextMatin = (static_cast<int>(bouffeMatin) + 1) % 24;
+    const int nextMidi = (static_cast<int>(bouffeMidi) + 1) % 24;
+    const int nextSoir = (static_cast<int>(bouffeSoir) + 1) % 24;
+    if (hour == static_cast<int>(bouffeMatin) || hour == nextMatin) {
+        _config.setBouffeMatinOk(true);
+        Serial.println(F("[Auto] Créneau matin marqué nourri (feed distant)"));
+    } else if (hour == static_cast<int>(bouffeMidi) || hour == nextMidi) {
+        _config.setBouffeMidiOk(true);
+        Serial.println(F("[Auto] Créneau midi marqué nourri (feed distant)"));
+    } else if (hour == static_cast<int>(bouffeSoir) || hour == nextSoir) {
+        _config.setBouffeSoirOk(true);
+        Serial.println(F("[Auto] Créneau soir marqué nourri (feed distant)"));
+    }
+    _config.saveBouffeFlags();
 }
 
 // ============================================================================

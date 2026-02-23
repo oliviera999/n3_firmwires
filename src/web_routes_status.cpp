@@ -159,34 +159,42 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
       if (!feedType) feedType = "small";
       const bool isBig = (strcmp(feedType, "big") == 0);
 
-      Serial.printf("[Web] 🍽️ Nourrissage à distance: %s\n", isBig ? "gros" : "petits");
-
-      if (isBig) {
-        ctx.automatism.setBouffeGrosFlag("1");
-        ctx.automatism.manualFeedBig();
+      if (ctx.automatism.isFeedingInProgress()) {
+        Serial.println("[Web] ⚠️ Nourrissage refusé (API) - cycle en cours");
+        StaticJsonDocument<128> errDoc;
+        errDoc["status"] = "feed_busy";
+        errDoc["error"] = "Nourrissage en cours";
+        sendJsonResponse(req, errDoc);
       } else {
-        ctx.automatism.setBouffePetitsFlag("1");
-        ctx.automatism.manualFeedSmall();
+        Serial.printf("[Web] 🍽️ Nourrissage à distance: %s\n", isBig ? "gros" : "petits");
+
+        if (isBig) {
+          ctx.automatism.setBouffeGrosFlag("1");
+          ctx.automatism.manualFeedBig();
+        } else {
+          ctx.automatism.setBouffePetitsFlag("1");
+          ctx.automatism.manualFeedSmall();
+        }
+
+        SensorReadings readings{};
+        ctx.sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
+        ctx.automatism.sendFullUpdate(readings, nullptr);
+
+        if (isBig) {
+          ctx.automatism.setBouffeGrosFlag("0");
+        } else {
+          ctx.automatism.setBouffePetitsFlag("0");
+        }
+
+        StaticJsonDocument<128> feedDoc;
+        feedDoc["status"] = "feeding_triggered";
+        feedDoc["feedType"] = isBig ? "big" : "small";
+        char timeBuf[32];
+        ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
+        feedDoc["timestamp"] = timeBuf;
+
+        sendJsonResponse(req, feedDoc);
       }
-
-      SensorReadings readings{};
-      ctx.sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
-      ctx.automatism.sendFullUpdate(readings, nullptr);
-
-      if (isBig) {
-        ctx.automatism.setBouffeGrosFlag("0");
-      } else {
-        ctx.automatism.setBouffePetitsFlag("0");
-      }
-
-      StaticJsonDocument<128> feedDoc;
-      feedDoc["status"] = "feeding_triggered";
-      feedDoc["feedType"] = isBig ? "big" : "small";
-      char timeBuf[32];
-      ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
-      feedDoc["timestamp"] = timeBuf;
-
-      sendJsonResponse(req, feedDoc);
     } else {
       StaticJsonDocument<128> respDoc;
       respDoc["status"] = "awake";

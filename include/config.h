@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.06: incrément version, commit et push
-    inline constexpr const char* VERSION = "12.06";
+    inline constexpr const char* VERSION = "12.07";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

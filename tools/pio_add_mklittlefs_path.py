@@ -105,4 +105,16 @@ def add_wno_error_for_s3():
     print("[pre-script] FFP5CS S3: -Wno-error ajouté (CFLAGS/CXXFLAGS)")
 
 
+def ensure_build_subdirs():
+    """Crée les sous-dossiers du build (src, src/automatism) pour éviter 'opening dependency file ... No such file or directory' en compilation parallèle."""
+    try:
+        build_dir = env.subst("$BUILD_DIR")
+        for sub in ("src", os.path.join("src", "automatism")):
+            d = os.path.join(build_dir, sub)
+            os.makedirs(d, exist_ok=True)
+    except Exception as e:
+        print("[pre-script] ensure_build_subdirs:", e)
+
+
 add_wno_error_for_s3()
+ensure_build_subdirs()

@@ -508,12 +508,8 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     config.buffer_size = BufferConfig::HTTP_BUFFER_SIZE; // Buffers augmentés pour débit
     config.buffer_size_tx = BufferConfig::HTTP_TX_BUFFER_SIZE;
     config.skip_cert_common_name_check = true; // Tolérer écart nom commun (ex. IP vs hostname)
-    // Vérification serveur (requis ESP-IDF 5.x). Arduino-ESP32 : arduino_esp_crt_bundle_attach ; IDF/S3 : esp_crt_bundle_attach
-#if defined(BOARD_S3)
-    config.crt_bundle_attach = esp_crt_bundle_attach;
-#else
+    // Vérification serveur (requis ESP-IDF 5.x). Plateforme Arduino-ESP32 : arduino_esp_crt_bundle_attach (WROOM et S3).
     config.crt_bundle_attach = arduino_esp_crt_bundle_attach;
-#endif
     config.disable_auto_redirect = false; // Autoriser les redirections
     config.max_redirection_count = 3; // Max 3 redirections
     config.user_data = NULL;
@@ -648,12 +644,10 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
         return false;
     }
     log("✅ Mise à jour initialisée avec succès");
-    // MD5: ignoré si OTA_UNSAFE_FORCE
-    if (!OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
+    // MD5: toujours défini quand disponible (même avec OTA_UNSAFE_FORCE) pour détecter binaires tronqués/corrompus
+    if (strlen(m_firmwareMD5) > 0) {
         Update.setMD5(m_firmwareMD5);
         log("🔐 MD5 défini pour vérification");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
-        log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
     
     // Buffer pour la lecture
@@ -840,6 +834,13 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
         }
         snprintf(bootLogMsg3, sizeof(bootLogMsg3), "✅ Partition %s marquée comme boot avec succès", target_partition->label);
         log(bootLogMsg3);
+        const esp_partition_t* bootNow = esp_ota_get_boot_partition();
+        if (bootNow) {
+            char logPart[128];
+            snprintf(logPart, sizeof(logPart), "[OTA] Partition écrite: %s (0x%x), boot après marquage: %s (0x%x)",
+                target_partition->label, (unsigned)target_partition->address, bootNow->label, (unsigned)bootNow->address);
+            log(logPart);
+        }
     } else {
         logError("Partition cible non disponible pour marquage boot");
         return false;
@@ -929,11 +930,9 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
     }
     
     log("✅ Mise à jour initialisée avec succès");
-    if (!OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
+    if (strlen(m_firmwareMD5) > 0) {
         Update.setMD5(m_firmwareMD5);
         log("🔐 MD5 défini pour vérification");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
-        log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
 
     // Téléchargement par chunks
@@ -1067,6 +1066,13 @@ bool OTAManager::downloadFirmware(const char* url, size_t expectedSize) {
         }
         snprintf(bootLogMsg2, sizeof(bootLogMsg2), "✅ Partition %s marquée comme boot avec succès", target_partition->label);
         log(bootLogMsg2);
+        const esp_partition_t* bootNow2 = esp_ota_get_boot_partition();
+        if (bootNow2) {
+            char logPart2[128];
+            snprintf(logPart2, sizeof(logPart2), "[OTA] Partition écrite: %s (0x%x), boot après marquage: %s (0x%x)",
+                target_partition->label, (unsigned)target_partition->address, bootNow2->label, (unsigned)bootNow2->address);
+            log(logPart2);
+        }
     } else {
         logError("Partition cible non disponible pour marquage boot");
         return false;
@@ -1114,7 +1120,7 @@ void OTAManager::updateTask(void* parameter) {
     char sizeBufEmail[16];
     formatBytes(ota->getFirmwareSize(), sizeBufEmail, sizeof(sizeBufEmail));
     snprintf(body, sizeof(body),
-             "OTA distant démarré\n\nVersion courante: %s\nVersion distante: %s\nEnvironnement: %s\nTaille firmware: %s",
+             "OTA distant démarré\n\nAncienne version: %s\nNouvelle version: %s\nEnvironnement: %s\nTaille firmware: %s",
              ota->getCurrentVersion(), ota->getRemoteVersion(), Utils::getProfileName(), sizeBufEmail);
     mailer.sendAlert("OTA début - Serveur distant", body, toEmail, true);
     
@@ -1298,11 +1304,9 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
         logError("Échec initialisation Update");
         return false;
     }
-    if (!OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
+    if (strlen(m_firmwareMD5) > 0) {
         Update.setMD5(m_firmwareMD5);
         log("🔐 MD5 défini pour vérification");
-    } else if (OTAConfig::OTA_UNSAFE_FORCE && strlen(m_firmwareMD5) > 0) {
-        log("⚠️ OTA_UNSAFE_FORCE: vérification MD5 ignorée");
     }
     
     HTTPClient http;
@@ -1493,6 +1497,13 @@ bool OTAManager::downloadFirmwareUltraRevolutionary(const char* url, size_t expe
                 }
                 snprintf(logMsgBoot, sizeof(logMsgBoot), "✅ Partition %s marquée comme boot avec succès", target_partition->label);
                 log(logMsgBoot);
+                const esp_partition_t* bootNow3 = esp_ota_get_boot_partition();
+                if (bootNow3) {
+                    char logPart3[128];
+                    snprintf(logPart3, sizeof(logPart3), "[OTA] Partition écrite: %s (0x%x), boot après marquage: %s (0x%x)",
+                        target_partition->label, (unsigned)target_partition->address, bootNow3->label, (unsigned)bootNow3->address);
+                    log(logPart3);
+                }
             } else {
                 logError("Partition cible non disponible pour marquage boot");
                 return false;

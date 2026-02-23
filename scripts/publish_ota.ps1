@@ -22,10 +22,11 @@ param(
     [switch]$DryRun,
     [switch]$Build,
     [switch]$BuildFs,
-    [switch]$Validate,
+    [switch]$SkipValidate,
     [bool]$IncludeFs = $true,
     [string]$OtaBaseUrl = "https://iot.olution.info/ffp3/ota"
 )
+# Validation des tailles (firmware/fs <= tailles partition) activée par défaut ; -SkipValidate pour désactiver.
 
 # Tailles partitions WROOM (partitions_esp32_wroom_ota_fs_medium.csv)
 $SCRIPT:OTA_APP_PARTITION_SIZE = 1744896   # 0x1A0000
@@ -81,11 +82,12 @@ $OtaBaseUrl = $OtaBaseUrl.TrimEnd('/')
 # -----------------------------------------------------------------------------
 if ($Build) {
     Write-Host "Build firmware des envs: $($Envs -join ', ')" -ForegroundColor Yellow
+    $buildJobs = if ($env:OS -eq "Windows_NT") { @("-j", "1") } else { @() }
     foreach ($e in $Envs) {
         $envPath = ".pio/build/$e/firmware.bin"
         if (-not (Test-Path $envPath)) {
             Write-Host "  Compilation $e..." -ForegroundColor Gray
-            pio run -e $e
+            pio run -e $e @buildJobs
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "Erreur: build $e a echoue." -ForegroundColor Red
                 exit 1
@@ -99,13 +101,14 @@ if ($Build) {
 # -----------------------------------------------------------------------------
 if ($BuildFs -and $IncludeFs) {
     Write-Host "Build filesystem des envs: $($Envs -join ', ')" -ForegroundColor Yellow
+    $buildJobs = if ($env:OS -eq "Windows_NT") { @("-j", "1") } else { @() }
     foreach ($e in $Envs) {
         $mapping = $EnvToOta[$e]
         if (-not $mapping) { continue }
         $fsPath = ".pio/build/$e/littlefs.bin"
         if (-not (Test-Path $fsPath)) {
             Write-Host "  Build filesystem $e..." -ForegroundColor Gray
-            pio run -e $e -t buildfs
+            pio run -e $e -t buildfs @buildJobs
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "Erreur: build filesystem $e a echoue." -ForegroundColor Red
                 exit 1
@@ -182,16 +185,16 @@ foreach ($envName in $Envs) {
 }
 
 # -----------------------------------------------------------------------------
-# Validation optionnelle des tailles (partitions WROOM)
+# Validation des tailles (partitions WROOM) — exécutée par défaut, -SkipValidate pour ignorer
 # -----------------------------------------------------------------------------
-if ($Validate) {
+if (-not $SkipValidate) {
     foreach ($a in $artifacts) {
         if ($a.Size -gt $SCRIPT:OTA_APP_PARTITION_SIZE) {
-            Write-Host "Erreur -Validate: firmware $($a.Subfolder) taille $($a.Size) > partition app $SCRIPT:OTA_APP_PARTITION_SIZE" -ForegroundColor Red
+            Write-Host "Erreur validation: firmware $($a.Subfolder) taille $($a.Size) > partition app $SCRIPT:OTA_APP_PARTITION_SIZE" -ForegroundColor Red
             exit 1
         }
         if ($a.FsSize -gt 0 -and $a.FsSize -gt $SCRIPT:OTA_FS_PARTITION_SIZE) {
-            Write-Host "Erreur -Validate: filesystem $($a.Subfolder) taille $($a.FsSize) > partition spiffs $SCRIPT:OTA_FS_PARTITION_SIZE" -ForegroundColor Red
+            Write-Host "Erreur validation: filesystem $($a.Subfolder) taille $($a.FsSize) > partition spiffs $SCRIPT:OTA_FS_PARTITION_SIZE" -ForegroundColor Red
             exit 1
         }
     }

@@ -38,7 +38,11 @@ class WifiManager {
   // reconnexion lorsqu'on est en mode AP ou déconnecté. L'intervalle est
   // fixé dans le constructeur (60 s par défaut).
   void loop(class DisplayView* disp = nullptr);
-  
+
+  // S3 PSRAM: initialise WiFi.mode() une seule fois après un délai (évite blocage au boot).
+  // À appeler depuis loop() ; sans effet sur les autres envs.
+  void tryDelayedModeInit();
+
   // Nouvelles méthodes pour gestion intelligente du signal
   int8_t getCurrentRSSI() const;
   void getSignalQuality(char* buffer, size_t bufferSize) const;

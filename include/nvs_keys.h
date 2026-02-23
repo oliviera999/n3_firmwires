@@ -28,10 +28,12 @@ namespace NVSKeys {
         constexpr const char* OTA_UPDATE_FLAG = "ota_upd_flag";
         constexpr const char* OTA_PREV_VER = "ota_prevVer";
         constexpr const char* OTA_IN_PROGRESS = "ota_in_prog";
+        constexpr const char* OTA_LAST_METHOD = "ota_last_meth";
         constexpr const char* NET_SEND_EN = "net_send_en";
         constexpr const char* NET_RECV_EN = "net_recv_en";
         constexpr const char* RTC_EPOCH = "rtc_epoch";
         constexpr const char* FORCE_WAKE_UP = "force_wake_up";
+        constexpr const char* LAST_DAILY_REBOOT_DAY = "lastDailyReboot";  // Jour dernier reboot auto (year*1000+tm_yday)
     }
     
     // Clés diagnostics (LOGS)

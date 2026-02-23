@@ -17,6 +17,9 @@
 #include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
 #include "diagnostics.h"
 #include "system_sensors.h"  // Pour SensorReadings
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+#include "rom/ets_sys.h"
+#endif
 
 namespace {
 
@@ -83,7 +86,11 @@ static NetRequest* netRequestAlloc() {
       return &s_netRequestPool[i];
     }
   }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[netRPC] Pool plein, netRequestAlloc échoue\n");
+#else
   Serial.println(F("[netRPC] Pool plein, netRequestAlloc échoue"));
+#endif
   return nullptr;
 }
 
@@ -111,7 +118,11 @@ static void allocMailReserveIfNeeded(uint32_t kMailBlockReq) {
     s_mailReserve = (uint8_t*)heap_caps_malloc(kMailBlockReq, MALLOC_CAP_SPIRAM);
     if (s_mailReserve) {
       s_mailReserveFromPSRAM = true;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[Mail] Réserve 32KB PSRAM SMTP (S3)\n");
+#else
       Serial.println(F("[Mail] Réserve 32KB allouée en PSRAM pour SMTP (S3)"));
+#endif
       return;
     }
   }
@@ -121,7 +132,11 @@ static void allocMailReserveIfNeeded(uint32_t kMailBlockReq) {
     s_mailReserve = (uint8_t*)malloc(kMailBlockReq);
     if (s_mailReserve) {
       s_mailReserveFromPSRAM = false;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[Mail] Réserve 32KB boot SMTP\n");
+#else
       Serial.println(F("[Mail] Réserve 32KB allouée au boot pour SMTP"));
+#endif
     }
   }
 }
@@ -147,7 +162,11 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
   if (!canConn) {
     static unsigned long lastTlsSkipMs = 0;
     if (now - lastTlsSkipMs > 30000) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[Mail] skip TLS pending=%u heap=%u\n", (unsigned)pending, (unsigned)freeHeap);
+#else
       Serial.printf("[Mail] ⏸️ En attente: %u mail(s), skip TLS (heap=%u < 35K ou sleep)\n", pending, freeHeap);
+#endif
       lastTlsSkipMs = now;
     }
     return;
@@ -161,7 +180,11 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
       s_mailReserve = nullptr;
     }
     esp_task_wdt_reset();
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[Mail] ENVOI heap=%u bloc=%u\n", (unsigned)freeHeap, (unsigned)largestBlock);
+#else
     Serial.printf("[Mail] >>> ENVOI EFFECTIF (tentative) - heap free=%u bloc=%u <<<\n", freeHeap, largestBlock);
+#endif
     ctx->mailer.processOneMailSync();
     return;
   }
@@ -173,15 +196,23 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
     freeHeap = ESP.getFreeHeap();
     if (largestBlock >= kMailBlockReq && freeHeap >= kMailFreeReq) {
       esp_task_wdt_reset();
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[Mail] ENVOI apres liberation heap=%u\n", (unsigned)freeHeap);
+#else
       Serial.printf("[Mail] >>> ENVOI EFFECTIF (tentative après libération réserve) - heap free=%u <<<\n", freeHeap);
+#endif
       ctx->mailer.processOneMailSync();
     }
     return;
   }
   static unsigned long lastMemWarnMs = 0;
   if (now - lastMemWarnMs > 60000) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[Mail] skip heap pending=%u blk=%u\n", (unsigned)pending, (unsigned)largestBlock);
+#else
     Serial.printf("[Mail] ⏸️ En attente: %u mail(s), skip heap (bloc=%u < %uK requis, free=%u)\n",
                   pending, largestBlock, kMailBlockReq / 1024, freeHeap);
+#endif
     lastMemWarnMs = now;
   }
 }
@@ -192,6 +223,12 @@ static void logBouffeAndPumpStats(AppContext* ctx, unsigned long now,
                                   unsigned long* lastBouffeDisplay, unsigned long* lastPumpStatsDisplay) {
   if (!ctx) return;
   if (now - *lastBouffeDisplay >= TimingConfig::BOUFFE_DISPLAY_INTERVAL_MS) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[Bouffe] M:%d Mi:%d S:%d jour:%d lock:%d\n",
+               ctx->config.getBouffeMatinOk() ? 1 : 0, ctx->config.getBouffeMidiOk() ? 1 : 0,
+               ctx->config.getBouffeSoirOk() ? 1 : 0, ctx->config.getLastJourBouf(),
+               ctx->config.getPompeAquaLocked() ? 1 : 0);
+#else
     Serial.println(F("=== ÉTAT DES FLAGS DE BOUFFE ==="));
     Serial.printf("Bouffe Matin: %s\n", ctx->config.getBouffeMatinOk() ? "✓ FAIT" : "✗ À FAIRE");
     Serial.printf("Bouffe Midi:  %s\n", ctx->config.getBouffeMidiOk() ? "✓ FAIT" : "✗ À FAIRE");
@@ -199,9 +236,16 @@ static void logBouffeAndPumpStats(AppContext* ctx, unsigned long now,
     Serial.printf("Dernier jour: %d\n", ctx->config.getLastJourBouf());
     Serial.printf("Pompe lock:   %s\n", ctx->config.getPompeAquaLocked() ? "VERROUILLÉE" : "LIBRE");
     Serial.println(F("==============================="));
+#endif
     *lastBouffeDisplay = now;
   }
   if (now - *lastPumpStatsDisplay >= TimingConfig::PUMP_STATS_DISPLAY_INTERVAL_MS) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[Pump] run:%d total:%lu stops:%lu\n",
+               ctx->actuators.isTankPumpRunning() ? 1 : 0,
+               (unsigned long)ctx->actuators.getTankPumpTotalRuntime(),
+               (unsigned long)ctx->actuators.getTankPumpTotalStops());
+#else
     Serial.println(F("=== STATISTIQUES POMPE DE RÉSERVE ==="));
     Serial.printf("État actuel: %s\n", ctx->actuators.isTankPumpRunning() ? "EN COURS" : "ARRÊTÉE");
     if (ctx->actuators.isTankPumpRunning()) {
@@ -217,6 +261,7 @@ static void logBouffeAndPumpStats(AppContext* ctx, unsigned long now,
       Serial.printf("Dernier arrêt: il y a %lu ms (%lu s)\n", timeSinceLastStop, timeSinceLastStop / 1000);
     }
     Serial.println(F("====================================="));
+#endif
     *lastPumpStatsDisplay = now;
   }
   // Yield Core 1 après burst Serial (évite INT_WDT si automationTask enchaîne sans relâche)
@@ -246,7 +291,11 @@ static void netTask(void* pv) {
   }
   esp_task_wdt_reset();  // P1: démarrer la fenêtre TWDT après l'add (évite WDT si GET boot bloque)
 
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[netTask] started\n");
+#else
   Serial.println(F("[netTask] Démarrée (TLS/HTTP propriétaire unique)"));
+#endif
 
   // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
   // par une tentative depuis netTask dès que le WiFi est disponible.
@@ -265,25 +314,53 @@ static void netTask(void* pv) {
     g_ctx->power.waitForNetworkReady();
     esp_task_wdt_reset();  // P1: reset avant GET boot (fetch peut bloquer jusqu'à OUTPUTS_STATE_HTTP_TIMEOUT_MS)
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[netTask] Boot tryFetchConfig\n");
+#else
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
+#endif
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
     bootServerReachable = (r >= 1);
     // r==1: HTTP OK, r==2: NVS fallback (ne pas appeler processFetchedRemoteConfig sur doc NVS)
     if (r == 1 && tmp.size() > 0) {
       if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[netTask] SOURCE SERVEUR applied\n");
+#else
         Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée et appliquée)"));
+#endif
       } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[netTask] SOURCE SERVEUR partial\n");
+#else
         Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config récupérée, application partielle)"));
+#endif
       }
     } else if (r >= 1) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[netTask] SOURCE SERVEUR ok\n");
+#else
       Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée)"));
+#endif
     } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[netTask] Serveur injoignable NVS/DEFAUT\n");
+#else
       Serial.println(F("[netTask] ⚠️ Serveur injoignable - fallback NVS/DEFAUT"));
+#endif
     }
   } else if (!g_ctx) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[netTask] Boot g_ctx NULL skip\n");
+#else
     Serial.println(F("[netTask] Boot: g_ctx NULL, skip fetch"));
+#endif
   } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[netTask] Boot WiFi not connected skip\n");
+#else
     Serial.println(F("[netTask] Boot: WiFi non connecté, fetchRemoteState skip"));
+#endif
   }
 
   // Vérification OTA au boot puis toutes les 2h (prod / wroom-beta)
@@ -295,13 +372,21 @@ static void netTask(void* pv) {
   if (g_ctx && WiFi.status() == WL_CONNECTED && bootServerReachable) {
     esp_task_wdt_reset();  // Fenêtre TWDT avant checkForUpdate (downloadMetadata peut bloquer jusqu'à HTTP_TIMEOUT)
     g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[netTask] Boot OTA check\n");
+#else
     Serial.println(F("[netTask] Boot: vérification OTA (serveur distant)"));
+#endif
     if (g_ctx->otaManager.checkForUpdate()) {
       g_ctx->otaManager.performUpdate();  // Lance la tâche OTA, ne bloque pas longtemps
     }
     lastOtaCheckMs = millis();
   } else if (g_ctx && WiFi.status() == WL_CONNECTED && !bootServerReachable) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[netTask] Boot OTA skip\n");
+#else
     Serial.println(F("[netTask] Boot: OTA skip (serveur injoignable, évite TWDT)"));
+#endif
     lastOtaCheckMs = millis();  // Pour ne pas refaire OTA immédiatement en boucle
   }
   #else
@@ -493,7 +578,11 @@ void webTask(void* pv) {
     wdtRegistered = true;
   }
 
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[Web] webTask started\n");
+#else
   Serial.println(F("[Web] Tâche webTask démarrée - interface web dédiée"));
+#endif
 
   // v11.171: Monitoring HWM webTask (toutes builds - marge critique ~212 bytes)
   static unsigned long lastStackCheckMs = 0;
@@ -548,6 +637,10 @@ void webTask(void* pv) {
 }
 
 void automationTask(void* pv) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[autoTask] started\n");
+  vTaskDelay(pdMS_TO_TICKS(100));  // Priorité 3 > loop 1: laisser tâche principale finir boot
+#endif
   SensorReadings readings;
   // v11.160: Compteurs persistants en statique pour réduire légèrement l'empreinte stack
   static unsigned long lastHeartbeat = 0;
@@ -572,7 +665,6 @@ void automationTask(void* pv) {
   // Réserve 32KB déjà allouée au boot si possible (reserveMailBlockAtBoot) ; sinon tentative au 1er passage
   allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
 #endif
-
   for (;;) {
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(1));  // Yield Core 1 chaque itération (évite INT_WDT si enchaîne long)
@@ -601,6 +693,15 @@ void automationTask(void* pv) {
         UBaseType_t stackHighWaterMark = uxTaskGetStackHighWaterMark(nullptr);
         uint32_t stackUsed = TaskConfig::AUTOMATION_TASK_STACK_SIZE - stackHighWaterMark;
         float stackPercent = (1.0 - (float)stackHighWaterMark / TaskConfig::AUTOMATION_TASK_STACK_SIZE) * 100.0;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[autoTask] Stack HWM: %u free (%.1f%% used)\n",
+                   (unsigned)stackHighWaterMark, (double)stackPercent);
+        if (stackPercent > 85.0) {
+          ets_printf("[autoTask] CRITICAL Stack > 85%%\n");
+        } else if (stackPercent > 70.0) {
+          ets_printf("[autoTask] WARN Stack > 70%%\n");
+        }
+#else
         Serial.printf("[autoTask] Stack HWM: %u bytes libres (sur %u bytes configurés)\n", 
                       stackHighWaterMark, 
                       TaskConfig::AUTOMATION_TASK_STACK_SIZE);
@@ -615,6 +716,7 @@ void automationTask(void* pv) {
           Serial.printf("[autoTask] ⚠️ ATTENTION: Stack utilisation > 70%% (%u bytes libres)\n", 
                         stackHighWaterMark);
         }
+#endif
         lastStackCheck = now;
       }
       #else
@@ -633,6 +735,24 @@ void automationTask(void* pv) {
         lastHeapCheck = now;
         
         // Vérification critique basée sur TLS_MIN_HEAP_BYTES
+        uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
+        UBaseType_t hwmS = g_sensorTaskHandle ? uxTaskGetStackHighWaterMark(g_sensorTaskHandle) : 0;
+        UBaseType_t hwmW = g_webTaskHandle ? uxTaskGetStackHighWaterMark(g_webTaskHandle) : 0;
+        UBaseType_t hwmA = g_autoTaskHandle ? uxTaskGetStackHighWaterMark(g_autoTaskHandle) : 0;
+        UBaseType_t hwmN = g_netTaskHandle ? uxTaskGetStackHighWaterMark(g_netTaskHandle) : 0;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        if (heapMin < TLS_MIN_HEAP_BYTES) {
+          ets_printf("[autoTask] CRIT Heap min=%u\n", (unsigned)heapMin);
+        } else if (heapFree < TLS_MIN_HEAP_BYTES) {
+          ets_printf("[autoTask] WARN Heap=%u\n", (unsigned)heapFree);
+        }
+        if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK) {
+          ets_printf("[autoTask] WARN Frag blk=%u\n", (unsigned)largestBlock);
+        }
+        ets_printf("[MEM] free=%u min=%u blk=%u frag=%u hwm_s=%u w=%u a=%u n=%u\n",
+                  (unsigned)heapFree, (unsigned)heapMin, (unsigned)largestBlock, (unsigned)fragmentation,
+                  (unsigned)hwmS, (unsigned)hwmW, (unsigned)hwmA, (unsigned)hwmN);
+#else
         if (heapMin < TLS_MIN_HEAP_BYTES) {
           Serial.printf("[autoTask] CRIT: Heap min=%u (<%uKB TLS)\n", 
                         heapMin, TLS_MIN_HEAP_BYTES / 1024);
@@ -641,26 +761,18 @@ void automationTask(void* pv) {
           Serial.printf("[autoTask] WARN: Heap=%u (<%uKB TLS)\n", 
                         heapFree, TLS_MIN_HEAP_BYTES / 1024);
         }
-        // Alerte fragmentation (tous profils): bloc max < 12KB → sync/OTA peuvent échouer
         if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK) {
           Serial.printf("[autoTask] WARN: Fragmentation (blk=%u < 12KB)\n", (unsigned)largestBlock);
         }
-        
-        // Ligne MEM unique pour analyse fine (grep-friendly, toutes les 10 min)
-        uint32_t fragmentation = (heapFree > 0) ? ((heapFree - largestBlock) * 100 / heapFree) : 0;
-        UBaseType_t hwmS = g_sensorTaskHandle ? uxTaskGetStackHighWaterMark(g_sensorTaskHandle) : 0;
-        UBaseType_t hwmW = g_webTaskHandle ? uxTaskGetStackHighWaterMark(g_webTaskHandle) : 0;
-        UBaseType_t hwmA = g_autoTaskHandle ? uxTaskGetStackHighWaterMark(g_autoTaskHandle) : 0;
-        UBaseType_t hwmN = g_netTaskHandle ? uxTaskGetStackHighWaterMark(g_netTaskHandle) : 0;
         Serial.printf("[MEM] free=%u min=%u total=%u blk=%u frag=%u hwm_s=%u hwm_w=%u hwm_a=%u hwm_n=%u\n",
                       (unsigned)heapFree, (unsigned)heapMin, (unsigned)heapTotal,
                       (unsigned)largestBlock, (unsigned)fragmentation,
                       (unsigned)hwmS, (unsigned)hwmW, (unsigned)hwmA, (unsigned)hwmN);
-        
         #if defined(PROFILE_TEST)
         Serial.printf("[autoTask] Heap: %u/%u blk=%u frag=%u%%\n", 
                       heapFree, heapMin, largestBlock, fragmentation);
         #endif
+#endif
       }
       #endif
 
@@ -668,13 +780,23 @@ void automationTask(void* pv) {
       static unsigned long lastHeapDiagMs = 0;
       if (now - lastHeapDiagMs >= 90000) {
         lastHeapDiagMs = now;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[HeapDiag] free=%u blk=%u\n",
+                   (unsigned)ESP.getFreeHeap(),
+                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+#else
         Serial.printf("[HeapDiag] free=%u blk=%u\n",
                       (unsigned)ESP.getFreeHeap(),
                       (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+#endif
       }
 
 #if FEATURE_DIAG_OLED_LOGS
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("{\"h\":\"H3\",\"branch\":\"data\",\"t\":%lu}\n", (unsigned long)now);
+#else
       Serial.printf("{\"h\":\"H3\",\"branch\":\"data\",\"t\":%lu}\n", (unsigned long)now);
+#endif
 #endif
       g_ctx->automatism.update(readings);
       g_ctx->automatism.updateDisplayWithReadings(readings);
@@ -690,7 +812,11 @@ void automationTask(void* pv) {
           
           // v11.171: Traiter la queue de POSTs échoués après le heartbeat
           if (WiFi.status() == WL_CONNECTED && g_ctx->webClient.getQueuedPostsCount() > 0) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            ets_printf("[autoTask] Queue POSTs: %u\n", (unsigned)g_ctx->webClient.getQueuedPostsCount());
+#else
             Serial.printf("[autoTask] Queue POSTs: %u en attente\n", g_ctx->webClient.getQueuedPostsCount());
+#endif
             esp_task_wdt_reset();
             g_ctx->webClient.processQueuedPosts();
           }
@@ -709,7 +835,11 @@ void automationTask(void* pv) {
       s_sensorTimeoutCount = 0;  // Réinitialiser quand on reçoit des capteurs
     } else {
 #if FEATURE_DIAG_OLED_LOGS
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("{\"h\":\"H3\",\"branch\":\"timeout\",\"t\":%lu}\n", (unsigned long)millis());
+#else
       Serial.printf("{\"h\":\"H3\",\"branch\":\"timeout\",\"t\":%lu}\n", (unsigned long)millis());
+#endif
 #endif
       // Rafraîchir l'OLED avec la dernière lecture (heure RTC, barre d'état) sans nouvelle donnée capteur
       if (s_haveReadings) {
@@ -720,7 +850,11 @@ void automationTask(void* pv) {
       }
       // Log au plus tous les 10 timeouts pour limiter le spam (intervalle capteurs 2,5 s)
       if ((++s_sensorTimeoutCount % 10) == 1) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[Auto] Timeout queue x%u\n", (unsigned)s_sensorTimeoutCount);
+#else
         Serial.printf("[Auto] Timeout queue capteurs (x%u) - cycle continu\n", s_sensorTimeoutCount);
+#endif
       }
       // Throttle GET fallback : même intervalle que branche data (6s) pour ne pas saturer netTask
       if (WiFi.status() == WL_CONNECTED) {
@@ -729,7 +863,11 @@ void automationTask(void* pv) {
         if (nowMs - s_lastFallbackFetchMs >= NetworkConfig::REMOTE_FETCH_FALLBACK_INTERVAL_MS) {
           s_lastFallbackFetchMs = nowMs;
           esp_task_wdt_reset();
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+          ets_printf("[Auto] Poll distant fallback\n");
+#else
           Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
+#endif
           // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
           g_remoteFallbackDoc.clear();
           bool fromNVSFallback = false;
@@ -737,15 +875,27 @@ void automationTask(void* pv) {
                                                   NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS,
                                                   &fromNVSFallback);
           if (ok && !fromNVSFallback && g_ctx->webClient.copyLastFetchedTo(g_remoteFallbackDoc)) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            ets_printf("[Auto] Fetch fallback OK keys=%u\n", static_cast<unsigned>(g_remoteFallbackDoc.size()));
+#else
             Serial.printf("[Auto] Fetch distant fallback: OK, keys=%u\n",
                          static_cast<unsigned>(g_remoteFallbackDoc.size()));
+#endif
             if (g_remoteFallbackDoc.size() > 0) {
               g_ctx->automatism.processFetchedRemoteConfig(g_remoteFallbackDoc);
             }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            ets_printf("[Auto] GPIO fallback applied\n");
+#else
             Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
+#endif
             GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
           } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            ets_printf("[Auto] Fetch fallback %s\n", ok ? "OK (NVS)" : "KO");
+#else
             Serial.printf("[Auto] Fetch distant fallback: %s\n", ok ? "OK (NVS)" : "KO");
+#endif
           }
         }
       }
@@ -759,7 +909,6 @@ namespace AppTasks {
 
 bool start(AppContext& ctx) {
   g_ctx = &ctx;
-
   // v11.157: CORRECTION CRITIQUE - Créer les queues AVANT les tâches
   // Les tâches utilisent immédiatement les queues, elles doivent donc exister
   // Créer la queue capteurs (utilisée par sensorTask et automationTask)
@@ -767,11 +916,19 @@ bool start(AppContext& ctx) {
   if (!g_sensorQueue) {
     g_sensorQueue = xQueueCreate(8, sizeof(SensorReadings));
     if (!g_sensorQueue) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[App] CRITICAL g_sensorQueue fail\n");
+#else
       Serial.println(F("[App] ❌ CRITIQUE: Échec création g_sensorQueue"));
       Serial.println("[Event] CRITICAL: g_sensorQueue creation failure");
+#endif
       return false;
     }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[App] queue sensor ok\n");
+#else
     Serial.println(F("[App] ✅ Queue capteurs créée"));
+#endif
   }
 
   // Créer la queue réseau (utilisée par netTask)
@@ -779,11 +936,19 @@ bool start(AppContext& ctx) {
   if (!g_netQueue) {
     g_netQueue = xQueueCreate(5, sizeof(NetRequest*));
     if (!g_netQueue) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[App] CRITICAL g_netQueue fail\n");
+#else
       Serial.println(F("[App] ❌ CRITIQUE: Échec création g_netQueue"));
       Serial.println("[Event] CRITICAL: g_netQueue creation failure");
+#endif
       return false;
     }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[App] queue net ok\n");
+#else
     Serial.println(F("[App] ✅ Queue réseau créée"));
+#endif
   }
 
   // v11.157: Approche hybride - allocation statique pour petites tâches, dynamique pour grandes
@@ -810,16 +975,21 @@ bool start(AppContext& ctx) {
                                                      TaskConfig::WEB_TASK_CORE_ID);
   webCreated = (webCreated == pdPASS && g_webTaskHandle != nullptr) ? pdPASS : pdFAIL;
 
+  // S3 PSRAM: mêmes priorités que les autres envs (loop cède avec vTaskDelay(1))
+  const UBaseType_t autoPrio = TaskConfig::AUTOMATION_TASK_PRIORITY;
   g_autoTaskHandle = xTaskCreateStaticPinnedToCore(
                                                      automationTask,
                                                      "autoTask",
                                                      TaskConfig::AUTOMATION_TASK_STACK_SIZE,
                                                      nullptr,
-                                                     TaskConfig::AUTOMATION_TASK_PRIORITY,
+                                                     autoPrio,
                                                      automationTaskStack,
                                                      &automationTaskTCB,
                                                      TaskConfig::AUTOMATION_TASK_CORE_ID);
   BaseType_t autoCreated = (g_autoTaskHandle != nullptr) ? pdPASS : pdFAIL;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  vTaskDelay(pdMS_TO_TICKS(50));  // Laisser autoTask démarrer
+#endif
 
   // displayTask supprimée : affichage séquentiel dans automationTask via updateDisplayWithReadings(readings)
   g_displayTaskHandle = nullptr;
@@ -828,28 +998,43 @@ bool start(AppContext& ctx) {
   // Note: netTask créé après création de g_netQueue (voir plus bas)
   
   if (sensorCreated != pdPASS || webCreated != pdPASS || autoCreated != pdPASS) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[App] CRITICAL task creation fail\n");
+#else
     Serial.println(F("[App] ❌ CRITIQUE: Échec création d'une tâche FreeRTOS"));
     Serial.println("[Event] CRITICAL: Task creation failure");
+#endif
   }
 
   // Créer netTask APRÈS création de g_netQueue (nécessaire pour la queue)
   // v11.159: netTask: allocation statique (Phase 2 - libère ~30KB heap)
   if (g_netQueue) {
+    const UBaseType_t netPrio = TaskConfig::NET_TASK_PRIORITY;
     g_netTaskHandle = xTaskCreateStaticPinnedToCore(
                                                      netTask,
                                                      "netTask",
                                                      TaskConfig::NET_TASK_STACK_SIZE,
                                                      nullptr,
-                                                     TaskConfig::NET_TASK_PRIORITY,
+                                                     netPrio,
                                                      netTaskStack,
                                                      &netTaskTCB,
                                                      TaskConfig::NET_TASK_CORE_ID);
     netCreated = (g_netTaskHandle != nullptr) ? pdPASS : pdFAIL;
     if (netCreated != pdPASS) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[App] CRITICAL netTask creation fail\n");
+#else
       Serial.println(F("[App] ❌ CRITIQUE: Échec création netTask (TLS)"));
       Serial.println("[Event] CRITICAL: netTask creation failure");
+#endif
     }
   }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  // Pas de log ici pour éviter collision UART avec setup done (main task)
+  // S3 PSRAM: pas de snapshot HWM ici pour que le setup termine et affiche "setup done"
+  return sensorCreated == pdPASS && webCreated == pdPASS &&
+         autoCreated == pdPASS && netCreated == pdPASS;
+#endif
 
   // Snapshot après création des tâches principales (piste 5: HWM loop = loopTask; piste 7: heap au boot)
 
@@ -861,6 +1046,7 @@ bool start(AppContext& ctx) {
   UBaseType_t hwmNet = g_netTaskHandle ? uxTaskGetStackHighWaterMark(g_netTaskHandle) : 0;
   UBaseType_t hwmLoop = uxTaskGetStackHighWaterMark(nullptr);
 
+#if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
   Serial.printf("[Stacks] HWM at boot - sensor:%u web:%u auto:%u net:%u loop:%u bytes\n",
                 static_cast<unsigned>(hwmSensor),
                 static_cast<unsigned>(hwmWeb),
@@ -879,6 +1065,7 @@ bool start(AppContext& ctx) {
                 (unsigned)heapFree,
                 (unsigned)heapTotal,
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+#endif
 
   return sensorCreated == pdPASS && webCreated == pdPASS &&
          autoCreated == pdPASS && netCreated == pdPASS;

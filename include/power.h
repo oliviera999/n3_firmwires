@@ -33,6 +33,8 @@ class PowerManager {
   /** Retourne un epoch validé pour affichage (évite valeurs aberrantes) */
   time_t getCurrentEpochSafe();
   void getCurrentTimeString(char* buffer, size_t bufferSize);
+  /** Format ISO pour emails (YYYY-MM-DD HH:MM), cohérent avec mailer footer */
+  void getCurrentTimeStringForMail(char* buffer, size_t bufferSize);
 
   // Validation et correction temps
   bool isValidEpoch(time_t epoch) const;

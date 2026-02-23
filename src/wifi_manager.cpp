@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cstring>
 #include <esp_task_wdt.h>
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+#include "rom/ets_sys.h"
+#endif
 
 // DNS personnalisé : l'API Arduino-ESP32 n'expose pas setDNS() ; garder DHCP.
 // Pour forcer un DNS (ex. 8.8.8.8), configurer le routeur (DHCP option 6) ou utiliser
@@ -19,6 +22,9 @@ WifiManager::WifiManager(const Credential* list, size_t count, uint32_t timeoutM
     : _list(list), _count(count), _timeoutMs(timeoutMs), _retryIntervalMs(retryIntervalMs), _lastAttemptMs(0) {}
 
 bool WifiManager::connect(DisplayView* disp) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[BOOT] connectWifi entry\n");
+#endif
   if (WiFi.status() == WL_CONNECTED) return true;
   if (_connecting) {
     Serial.println(F("[WiFi] Connexion déjà en cours - skip"));
@@ -32,25 +38,61 @@ bool WifiManager::connect(DisplayView* disp) {
 
   auto show = [disp](const char* msg){ if(disp && disp->isPresent()){ disp->showDiagnostic(msg);} };
 
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[BOOT] before show Scan\n");
+#endif
   show("Scan WiFi...");
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[BOOT] after show Scan\n");
+#endif
+  // #region agent log (H-A: WiFi.mode)
+  // S3 PSRAM: WiFi.mode() bloque durablement sur ce board/driver ; on skip l'init WiFi au boot pour que le setup termine (firmware opérationnel en offline + AP secours)
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  if (WiFi.getMode() != (FEATURE_WIFI_APSTA ? (wifi_mode_t)WIFI_AP_STA : (wifi_mode_t)WIFI_STA)) {
+    ets_printf("[BOOT] S3 PSRAM: skip WiFi.mode at boot (evite blocage)\n");
+    _connecting = false;
+    return false;
+  }
+  ets_printf("[DBG H-A] after WiFi.mode\n");
+#else
   if (FEATURE_WIFI_APSTA) {
     WiFi.mode(WIFI_AP_STA);
   } else {
     WiFi.mode(WIFI_STA);
   }
+#endif
+  // #endregion
   // Maximiser la puissance TX pour améliorer la connexion aux réseaux faibles/instables
   esp_wifi_set_max_tx_power(82);  // 20.5 dBm (max 2.4 GHz), unité 0.25 dBm
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[DBG H-B] after set_max_tx_power\n");
+#endif
   // N'appeler disconnect() que si la STA a déjà été démarrée (begin() appelé au moins une fois).
   // Sinon sur ESP32-S3 : "STA not started! You must call begin first" et le scan peut renvoyer 0 réseau.
   if (WiFi.status() != WL_IDLE_STATUS) {
     WiFi.disconnect(false, true);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[DBG H-C] after disconnect\n");
+#endif
     vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_POST_DISCONNECT_DELAY_MS));
   } else {
     // Premier scan au boot : court délai pour stabilisation RF avant le scan
     vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_PRE_SCAN_DELAY_MS));
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[DBG H-D] after vTaskDelay(pre/disc)\n");
+#endif
   }
 
+  // S3 USB CDC: Serial.println peut bloquer si aucun client CDC sur COM9 (utiliser UART via ets_printf)
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[DBG H-E] S3 branch\n");
+  ets_printf("[WiFi] scan\n");
+#else
   Serial.println(F("[WiFi] 🔍 Balayage des réseaux..."));
+#endif
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[BOOT] wifi scan start\n");
+#endif
   // v11.176: Watchdog reset avant scan bloquant (2-5s) - audit robustesse
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -60,6 +102,9 @@ bool WifiManager::connect(DisplayView* disp) {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[BOOT] wifi scan done n=%d\n", n);
+#endif
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
   // Lecture résultats via API Arduino (scanNetworks a déjà consommé les résultats côté driver;
   // esp_wifi_scan_get_ap_records() renvoyait 0 en double lecture → on lit depuis la couche Arduino).
@@ -156,15 +201,22 @@ bool WifiManager::connect(DisplayView* disp) {
         WiFi.begin(_list[i].ssid, _list[i].password, cand[i].chan, cand[i].bssid);
       }
     }else{
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[WiFi] try inv %s (no rescan S3)\n", _list[i].ssid);
+#else
       Serial.printf("[WiFi] 🔍 Tentative (invisible) %s ...\n", _list[i].ssid);
       Serial.printf("[Event] WiFi try invisible %s\n", _list[i].ssid);
+#endif
       // Court délai avant rescan pour AP caché (laisse le RF/router répondre)
       vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_DELAY_BETWEEN_NETWORKS_MS));
-      // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan
-      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
-      int n2 = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
-      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+      // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan (S3 PSRAM: skip, bloque)
+      int n2 = -1;
       bool foundInRescan = false;
+#if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
+      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+      n2 = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+      if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+#endif
       int8_t rescanRssi = -128;
       uint8_t rescanBssid[6] = {0};
       uint8_t rescanChan = 0;
@@ -195,6 +247,9 @@ bool WifiManager::connect(DisplayView* disp) {
         if (strlen(_list[i].password) == 0) { WiFi.begin(_list[i].ssid); }
         else { WiFi.begin(_list[i].ssid, _list[i].password); }
       }
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[DBG] after begin, wait conn\n");
+#endif
     }
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {
@@ -380,6 +435,10 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 }
 
 bool WifiManager::startFallbackAP(){
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[WiFi] S3 PSRAM: skip AP (WiFi.mode bloquant)\n");
+  return false;
+#endif
   // Crée un SSID unique basé sur l'adresse MAC
   uint64_t chipId = ESP.getEfuseMac();
   char ssid[32];
@@ -431,6 +490,21 @@ void WifiManager::currentSSID(char* buffer, size_t bufferSize) const {
   } else {
     buffer[0] = '\0';
   }
+}
+
+void WifiManager::tryDelayedModeInit() {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  static bool s_done = false;
+  if (s_done) return;
+  if (millis() < 3000) return;
+  s_done = true;
+  wifi_mode_t target = (FEATURE_WIFI_APSTA && (FEATURE_WIFI_APSTA != 0))
+      ? (wifi_mode_t)WIFI_AP_STA
+      : (wifi_mode_t)WIFI_STA;
+  WiFi.mode(target);
+  ets_printf("[WiFi] S3 PSRAM: WiFi.mode done (delayed 3s)\n");
+#endif
+  (void)0;
 }
 
 void WifiManager::loop(DisplayView* disp){

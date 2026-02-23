@@ -5,7 +5,7 @@
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
 #include "sensor_failure_manager.h"
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO) || defined(USE_AIR_SENSOR_BME280)
 #include <Wire.h>
 #endif
 
@@ -963,7 +963,20 @@ void WaterTempSensor::resetHistory() {
 
 // -------- AirSensor ------------------
 AirSensor::AirSensor()
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  : _dht(Pins::DHT_PIN,
+#if defined(USE_DHT22)
+         DHT22
+#else
+         DHT11
+#endif
+        ),
+    _useBme280(false),
+    _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
+    _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN),
+    _consecutiveTempFailures(0), _consecutiveHumidityFailures(0), _sensorDisabled(false), _disableLogged(false),
+    _lastReactivationTestMs(0), _consecutiveReactivationSuccesses(0)
+#elif defined(USE_AIR_SENSOR_BME280)
   : _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),
     _humidityHistoryIndex(0), _humidityHistoryCount(0), _lastValidHumidity(NAN),
     _consecutiveTempFailures(0), _consecutiveHumidityFailures(0), _sensorDisabled(false), _disableLogged(false),
@@ -990,7 +1003,23 @@ AirSensor::AirSensor()
 }
 
 void AirSensor::begin() {
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
+  if (_bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
+    _useBme280 = true;
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+    SENSOR_LOG_PRINTLN("[AirSensor] BME280 détecté, utilisation capteur I2C");
+  } else {
+    _useBme280 = false;
+    _dht.begin();
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS));
+#if defined(USE_DHT22)
+    SENSOR_LOG_PRINTLN("[AirSensor] BME280 absent, utilisation DHT22");
+#else
+    SENSOR_LOG_PRINTLN("[AirSensor] BME280 absent, utilisation DHT11");
+#endif
+  }
+#elif defined(USE_AIR_SENSOR_BME280)
   Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
   if (!_bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
     SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: BME280 non détecté sur I2C");
@@ -1012,7 +1041,9 @@ void AirSensor::begin() {
     SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: Capteur non détecté lors de l'initialisation");
     _sensorDisabled = true;
     _disableLogged = true;
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+    SENSOR_LOG_PRINTLN("[AirSensor] Capteur air désactivé - absent au démarrage");
+#elif defined(USE_AIR_SENSOR_BME280)
     SENSOR_LOG_PRINTLN("[AirSensor] BME280 désactivé - capteur absent au démarrage");
 #else
     SENSOR_LOG_PRINTLN("[AirSensor] DHT désactivé - capteur absent au démarrage");
@@ -1036,7 +1067,9 @@ bool AirSensor::isSensorConnected() {
     esp_task_wdt_reset();
   }
 
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  float temp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+#elif defined(USE_AIR_SENSOR_BME280)
   float temp = _bme.readTemperature();
 #else
   float temp = _dht.readTemperature();
@@ -1055,7 +1088,9 @@ bool AirSensor::isSensorConnected() {
     return true;
   }
 
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  SENSOR_LOG_PRINTLN("[AirSensor] Capteur air non détecté (lecture NaN)");
+#elif defined(USE_AIR_SENSOR_BME280)
   SENSOR_LOG_PRINTLN("[AirSensor] Capteur BME280 non détecté (lecture NaN)");
 #else
   SENSOR_LOG_PRINTLN("[AirSensor] Capteur DHT non détecté (lecture NaN)");
@@ -1070,7 +1105,15 @@ void AirSensor::resetSensor() {
     esp_task_wdt_reset();
   }
 
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  if (_useBme280) {
+    _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+  } else {
+    _dht.begin();
+    vTaskDelay(pdMS_TO_TICKS(500));
+  }
+#elif defined(USE_AIR_SENSOR_BME280)
   _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
   vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
 #else
@@ -1101,7 +1144,9 @@ float AirSensor::robustTemperatureC() {
         esp_task_wdt_reset();
       }
       
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+      float testTemp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+#elif defined(USE_AIR_SENSOR_BME280)
       float testTemp = _bme.readTemperature();
 #else
       float testTemp = _dht.readTemperature();
@@ -1129,7 +1174,9 @@ float AirSensor::robustTemperatureC() {
           _consecutiveTempFailures = 0;
           _consecutiveHumidityFailures = 0;
           _consecutiveReactivationSuccesses = 0;
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+          SENSOR_LOG_PRINTLN("[AirSensor] Capteur air réactivé automatiquement - présent à nouveau");
+#elif defined(USE_AIR_SENSOR_BME280)
           SENSOR_LOG_PRINTLN("[AirSensor] ✅ BME280 réactivé automatiquement - capteur présent à nouveau");
 #else
           SENSOR_LOG_PRINTLN("[AirSensor] ✅ DHT réactivé automatiquement - capteur présent à nouveau");
@@ -1181,17 +1228,19 @@ float AirSensor::robustTemperatureC() {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+    float temp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+#elif defined(USE_AIR_SENSOR_BME280)
     float temp = _bme.readTemperature();
 #else
     float temp = _dht.readTemperature();
 #endif
-    
+
     // Reset watchdog après lecture
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
-    
+
     if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f°C\n", temp);
       _consecutiveTempFailures = 0;
@@ -1213,18 +1262,20 @@ use_last_valid:
   }
   
   // 5. Désactiver le capteur si température OU humidité atteint MAX_CONSECUTIVE_FAILURES échecs
-  if ((_consecutiveTempFailures >= MAX_CONSECUTIVE_FAILURES || 
-       _consecutiveHumidityFailures >= MAX_CONSECUTIVE_FAILURES) && 
+  if ((_consecutiveTempFailures >= MAX_CONSECUTIVE_FAILURES ||
+       _consecutiveHumidityFailures >= MAX_CONSECUTIVE_FAILURES) &&
       !_disableLogged) {
     _sensorDisabled = true;
     _disableLogged = true;
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+    SENSOR_LOG_PRINTF("[AirSensor] Capteur air désactivé après %d échecs (temp:%d, hum:%d) (défaut: %.1f°C)\n",
+#elif defined(USE_AIR_SENSOR_BME280)
     SENSOR_LOG_PRINTF("[AirSensor] 🔴 BME280 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
 #else
     SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f°C)\n",
 #endif
-                      MAX_CONSECUTIVE_FAILURES, 
-                      _consecutiveTempFailures, 
+                      MAX_CONSECUTIVE_FAILURES,
+                      _consecutiveTempFailures,
                       _consecutiveHumidityFailures,
                       SensorConfig::DefaultValues::TEMP_AIR_DEFAULT);
   }
@@ -1236,7 +1287,9 @@ use_last_valid:
 }
 
 float AirSensor::temperatureC() {
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  float val = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+#elif defined(USE_AIR_SENSOR_BME280)
   float val = _bme.readTemperature();
 #else
   float val = _dht.readTemperature();
@@ -1248,7 +1301,9 @@ float AirSensor::temperatureC() {
 }
 
 float AirSensor::humidity() {
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  float val = _useBme280 ? _bme.readHumidity() : _dht.readHumidity();
+#elif defined(USE_AIR_SENSOR_BME280)
   float val = _bme.readHumidity();
 #else
   float val = _dht.readHumidity();
@@ -1261,7 +1316,9 @@ float AirSensor::humidity() {
 
 float AirSensor::filteredTemperatureC() {
   unsigned long now = millis();
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  const uint32_t minInterval = _useBme280 ? SensorConfig::BME280::MIN_READ_INTERVAL_MS : SensorConfig::DHT::MIN_READ_INTERVAL_MS;
+#elif defined(USE_AIR_SENSOR_BME280)
   const uint32_t minInterval = SensorConfig::BME280::MIN_READ_INTERVAL_MS;
 #else
   const uint32_t minInterval = SensorConfig::DHT::MIN_READ_INTERVAL_MS;
@@ -1274,7 +1331,9 @@ float AirSensor::filteredTemperatureC() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  float temp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+#elif defined(USE_AIR_SENSOR_BME280)
   float temp = _bme.readTemperature();
 #else
   float temp = _dht.readTemperature();
@@ -1298,7 +1357,9 @@ float AirSensor::filteredTemperatureC() {
 
 float AirSensor::filteredHumidity() {
   unsigned long now = millis();
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  const uint32_t minInterval = _useBme280 ? SensorConfig::BME280::MIN_READ_INTERVAL_MS : SensorConfig::DHT::MIN_READ_INTERVAL_MS;
+#elif defined(USE_AIR_SENSOR_BME280)
   const uint32_t minInterval = SensorConfig::BME280::MIN_READ_INTERVAL_MS;
 #else
   const uint32_t minInterval = SensorConfig::DHT::MIN_READ_INTERVAL_MS;
@@ -1311,7 +1372,9 @@ float AirSensor::filteredHumidity() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+  float h = _useBme280 ? _bme.readHumidity() : _dht.readHumidity();
+#elif defined(USE_AIR_SENSOR_BME280)
   float h = _bme.readHumidity();
 #else
   float h = _dht.readHumidity();
@@ -1375,24 +1438,26 @@ float AirSensor::robustHumidity() {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+    float humidity = _useBme280 ? _bme.readHumidity() : _dht.readHumidity();
+#elif defined(USE_AIR_SENSOR_BME280)
     float humidity = _bme.readHumidity();
 #else
     float humidity = _dht.readHumidity();
 #endif
-    
+
     // Reset watchdog après lecture
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
-    
+
     if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
       _consecutiveHumidityFailures = 0;
       return humidity;
     }
   }
-  
+
   // 4. Utilisation de la dernière valeur valide si disponible (échec réel: filtrage et récupération ont échoué)
 use_last_valid_humidity:
   _consecutiveHumidityFailures++;
@@ -1405,20 +1470,22 @@ use_last_valid_humidity:
     }
     return _lastValidHumidity;
   }
-  
+
   // 5. Désactiver le capteur si température OU humidité atteint MAX_CONSECUTIVE_FAILURES échecs
-  if ((_consecutiveTempFailures >= MAX_CONSECUTIVE_FAILURES || 
-       _consecutiveHumidityFailures >= MAX_CONSECUTIVE_FAILURES) && 
+  if ((_consecutiveTempFailures >= MAX_CONSECUTIVE_FAILURES ||
+       _consecutiveHumidityFailures >= MAX_CONSECUTIVE_FAILURES) &&
       !_disableLogged) {
     _sensorDisabled = true;
     _disableLogged = true;
-#if defined(USE_AIR_SENSOR_BME280)
+#if defined(USE_AIR_SENSOR_AUTO)
+    SENSOR_LOG_PRINTF("[AirSensor] Capteur air désactivé après %d échecs (temp:%d, hum:%d) (défaut: %.1f%%)\n",
+#elif defined(USE_AIR_SENSOR_BME280)
     SENSOR_LOG_PRINTF("[AirSensor] 🔴 BME280 désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
 #else
     SENSOR_LOG_PRINTF("[AirSensor] 🔴 DHT désactivé après %d échecs (temp:%d, hum:%d) (utilise valeur par défaut: %.1f%%)\n",
 #endif
-                      MAX_CONSECUTIVE_FAILURES, 
-                      _consecutiveTempFailures, 
+                      MAX_CONSECUTIVE_FAILURES,
+                      _consecutiveTempFailures,
                       _consecutiveHumidityFailures,
                       SensorConfig::DefaultValues::HUMIDITY_DEFAULT);
   }

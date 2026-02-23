@@ -13,8 +13,13 @@
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30 -Port COM4
 #
-# S3 : le build (étape 0) prend 20–40 min. Si le firmware est déjà compilé, sauter le rebuild :
-#   .\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-s3-test -Port COM4 -SkipBuild
+# -SkipBuild : sauter l'étape build (erase + flash + monitor + analyse uniquement).
+#
+# Sous Windows, le build utilise -j 1 (séquentiel) pour éviter les erreurs "No such file or directory"
+# (fichiers .d/.o/tmp et chemins longs avec libs type ESP Mail Client).
+#
+# Si -Port est fourni, le script tente de liberer le port COM avant erase (arret des processus
+# python / pio susceptibles de tenir le moniteur serie). Limite aux processus moniteur, pas de kill systeme.
 
 param(
     [string]$Port = "",
@@ -27,6 +32,45 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 Set-Location $projectRoot
 
+function Release-ComPortIfNeeded {
+    param([string]$Port = "")
+    if (-not $Port) { return }
+    # Tenter d'ouvrir le port : si succes, il est libre
+    try {
+        $sp = [System.IO.Ports.SerialPort]::new($Port, 115200)
+        $sp.Open()
+        $sp.Close()
+        $sp.Dispose()
+        Write-Host "Port $Port deja libre." -ForegroundColor Green
+        return
+    } catch {
+        # Port occupe ou inaccessible : arreter les processus typiques du moniteur
+    }
+    Write-Host "Liberation du port $Port (arret processus moniteur)..." -ForegroundColor Yellow
+    $killed = 0
+    try {
+        $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -like "*python*" -or $_.ProcessName -like "*pio*" -or
+            ($_.MainWindowTitle -and ($_.MainWindowTitle -like "*monitor*" -or $_.MainWindowTitle -like "*serial*"))
+        }
+        foreach ($p in $procs) {
+            try {
+                Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                Write-Host "  Arrete: $($p.ProcessName) (PID $($p.Id))" -ForegroundColor Gray
+                $killed++
+            } catch { }
+        }
+        if ($killed -gt 0) {
+            Start-Sleep -Seconds 3
+            Write-Host "Port $Port : $killed processus arrete(s)." -ForegroundColor Green
+        } else {
+            Write-Host "Aucun processus moniteur detecte. Verifiez que le port est libre." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "Erreur liberation port: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 $durationSeconds = $DurationMinutes * 60
 Write-Host "=== WORKFLOW: ERASE ALL / FLASH ALL / MONITOR ${DurationMinutes}MIN / ANALYSE ===" -ForegroundColor Green
 Write-Host "Environnement: $Environment" -ForegroundColor Cyan
@@ -36,45 +80,17 @@ if ($Port) {
     $env:PLATFORMIO_UPLOAD_PORT = $Port
 }
 Write-Host "Fermez tout moniteur série sur l'ESP32 avant de continuer." -ForegroundColor Yellow
+if ($Port) {
+    Release-ComPortIfNeeded -Port $Port
+}
 Write-Host ""
 
-# 0. Pour S3 (test et prod) : patches + fullclean + build (fix TG1WDT boot loop, libs recompilées)
-# Si WinError 32 sur ArduinoJson/libdeps: fermer Cursor, PowerShell externe, .\tools\clean_s3_build.ps1 puis pio run.
-# -SkipBuild : saute cette étape (erase + flash + monitor + analyse uniquement, build déjà fait).
-if (($Environment -eq "wroom-s3-test" -or $Environment -eq "wroom-s3-prod") -and -not $SkipBuild) {
-    Write-Host "0. Préparation S3 test/prod (patches + fullclean + build, fix TG1WDT)..." -ForegroundColor Yellow
-    python tools/patch_espressif32_custom_sdkconfig_only.py
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    python tools/patch_arduino_early_init_variant.py
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    python tools/patch_arduino_diag_after_nvs.py
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    python tools/patch_arduino_libs_s3_wdt.py
-    # Le patch peut échouer si le package n'est pas encore installé (sera appliqué lors du build)
-    if ($LASTEXITCODE -ne 0) { 
-        Write-Host "   WARN: patch_arduino_libs_s3_wdt échoué (package peut ne pas être installé, sera appliqué lors du build)" -ForegroundColor Yellow 
-    }
-    # Vérifier CONFIG_SPIRAM_BOOT_INIT (évite psramAddToHeap blocage S3)
-    $sdkWdt = Join-Path $projectRoot "sdkconfig_s3_wdt.txt"
-    if (-not (Select-String -Path $sdkWdt -Pattern "CONFIG_SPIRAM_BOOT_INIT=y" -Quiet)) {
-        Write-Host "   WARN: CONFIG_SPIRAM_BOOT_INIT=y absent de sdkconfig_s3_wdt.txt" -ForegroundColor Red
-        Write-Host "   Risque de blocage boot (psramAddToHeap dans initArduino)" -ForegroundColor Red
-    }
-    $pkgDirs = @(
-        (Join-Path $env:USERPROFILE ".platformio\packages\framework-arduinoespressif32-libs\sdkconfig"),
-        (Join-Path $projectRoot ".platformio\packages\framework-arduinoespressif32-libs\sdkconfig")
-    )
-    foreach ($sdk in $pkgDirs) {
-        if (Test-Path $sdk) { Remove-Item $sdk -Force; Write-Host "   sdkconfig supprimé (force recompil libs)" -ForegroundColor Gray }
-    }
-    # Force-suppression build/libdeps S3 si fullclean échoue (fichiers verrouillés)
-    & (Join-Path $projectRoot "tools\clean_s3_build.ps1")
-    $prevErr = $ErrorActionPreference
-    $ErrorActionPreference = "SilentlyContinue"
-    pio run -e $Environment -t fullclean 2>&1 | Out-Null
-    $ErrorActionPreference = $prevErr
-    Write-Host "   Build S3 (coredump désactivé)..." -ForegroundColor Gray
-    pio run -e $Environment
+# 0. Build (tous environnements, comme wroom-test) — sauf si -SkipBuild
+if (-not $SkipBuild) {
+    Write-Host "0. Build $Environment..." -ForegroundColor Cyan
+    # Sous Windows, build séquentiel (-j 1) pour éviter erreurs "No such file or directory" (fichiers .d/.o/tmp et chemins longs).
+    $buildJobs = if ($env:OS -eq "Windows_NT") { "-j", "1" } else { @() }
+    pio run -e $Environment @buildJobs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "   OK" -ForegroundColor Green
     Write-Host ""

@@ -53,7 +53,8 @@ Les scripts `run_s3_build_from_safe_path.bat` et `run_s3_fix_via_subst.bat` dét
 ## PSRAM et SRAM active (S3)
 - Board 4d R8N16 = 8 MB PSRAM OPI (qio_opi). Activé par la définition de la carte. `BOARD_HAS_PSRAM` dans build_flags.
 - `sdkconfig_s3_wdt.txt` : `CONFIG_SPIRAM=y` explicite pour garantir la PSRAM (SRAM externe) active ; table de partitions personnalisée `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME` pour éviter « partitions.csv not found ».
-- **Flash avec PSRAM** : `wroom-s3-test` a `upload_port = COM4` et le flag **`-mfix-esp32-psram-cache-issue`** (wroom-s3-base) pour limiter les échecs de flash ou boot avec PSRAM activé (inspiré LVGL_Widgets). Si le flash reste instable, tester `upload_speed = 460800` dans wroom-s3-base.
+- **Flash avec PSRAM** : l’env **wroom-s3-test-psram** utilise le flag **`-mfix-esp32-psram-cache-issue`** dans ses build_flags pour limiter les échecs de flash ou boot avec PSRAM activé (inspiré LVGL_Widgets). Si le flash reste instable, tester `upload_speed = 460800` dans l’env concerné.
+- **Validation PSRAM** : pour valider un build wroom-s3-test-psram (0 crash, 0 TG1WDT/TG0WDT), utiliser le script **`run_s3_psram_validation.ps1`** (ex. `.\run_s3_psram_validation.ps1 -Port COM7 -DurationMinutes 5`). Il enchaîne build, erase, flash, monitor N min, analyse et affiche un résumé (BOOT FFP5CS, setup done, nombre de crashes dans le rapport).
 - **Env alternatif (DevKit)** : `wroom-s3-test-devkit` utilise la plateforme officielle `platformio/espressif32`, la board `esp32-s3-devkitc-1`, `memory_type = qio_opi`, partitions 8 MB et COM4. Utile si la carte sur COM4 est un DevKitC-1 avec PSRAM ou pour tester une chaîne plus simple que pioarduino + 4d.
 - `include/config.h` : NET_TASK_STACK_SIZE = 12288 pour BOARD_S3 (évite stack canary netTask).
 - CONFIG_ARDUINO_LOOP_STACK_SIZE=32768 (évite stack canary loopTask). Voir DIAGNOSTIC_BACKTRACE_S3_2026-02-04.md.

@@ -34,9 +34,9 @@ Depuis la racine du projet (ffp5cs) :
 | `-DryRun`     | Aucun commit/push ; affiche le statut git de `ffp3/ota/`. |
 | `-Build`      | Lancer `pio run -e <env>` pour chaque env avant copie si firmware absent. |
 | `-BuildFs`    | Lancer `pio run -e <env> -t buildfs` pour chaque env avant copie si littlefs absent. |
-| `-IncludeFs`  | Inclure le filesystem LittleFS (défaut : true). Mettre `$false` pour publier uniquement le firmware. |
-| `-Validate`   | Vérifier que les tailles firmware/filesystem respectent les partitions avant publication. |
-| `-OtaBaseUrl` | URL de base pour les bin_url et filesystem_url (défaut : `https://iot.olution.info/ffp3/ota`). |
+| `-IncludeFs`    | Inclure le filesystem LittleFS (défaut : true). Mettre `$false` pour publier uniquement le firmware. |
+| `-SkipValidate` | Désactiver la validation des tailles (firmware/fs <= tailles partition). Par défaut la validation est exécutée. |
+| `-OtaBaseUrl`   | URL de base pour les bin_url et filesystem_url (défaut : `https://iot.olution.info/ffp3/ota`). |
 
 Exemples :
 
@@ -68,7 +68,7 @@ Les binaires sont attendus dans `.pio/build/<env>/firmware.bin` et `.pio/build/<
    - Champs racine legacy (version, bin_url, size, md5) = default prod.
 5. Si pas `-SkipCommit` ni `-DryRun` : `git add ota/`, `git commit`, `git push` dans le dépôt **ffp3**.
 
-Après déploiement du serveur (ffp3), les ESP32 récupèrent la nouvelle version via l'URL metadata puis téléchargent le firmware (et éventuellement le filesystem) correspondant à leur modèle et canal.
+Après déploiement du serveur (ffp3), les ESP32 récupèrent la nouvelle version via l'URL metadata puis téléchargent le firmware (et éventuellement le filesystem) correspondant à leur modèle et canal. Les URLs servies (firmware.bin, littlefs.bin) doivent renvoyer les mêmes octets que ceux pour lesquels `size` et `md5` ont été calculés dans metadata.json (éviter cache ou déploiement partiel incohérent).
 
 ## wroom-beta : OTA manuel uniquement
 
@@ -88,6 +88,40 @@ Règle projet : timeouts réseau ≤ 5 s. Dérogation OTA : GET metadata 20 s, e
 ## Ordre firmware puis filesystem
 
 Firmware appliqué d'abord, puis filesystem. Si le filesystem échoue après succès firmware, reboot avec nouveau firmware + ancien filesystem. Re-flash manuel via `uploadfs` possible.
+
+## Intégrité filesystem OTA
+
+La vérification d’intégrité du filesystem OTA côté appareil repose sur :
+
+- **Taille** : le firmware compare la taille téléchargée à la taille attendue (metadata `filesystem_size`) et à la taille de la partition. Un écart fait échouer l’OTA (sauf si `OTA_UNSAFE_FORCE` est actif).
+- **HTTPS** : le téléchargement se fait en HTTPS ; l’intégrité et la confidentialité du flux reposent sur TLS.
+
+Le champ **filesystem_md5** est calculé par le script et écrit dans `metadata.json`, mais le firmware **ne vérifie pas** ce MD5 (implémentation non réalisée côté device, relecture complète de la partition nécessaire). En résumé : intégrité filesystem = taille + HTTPS, pas de vérification MD5 côté appareil.
+
+## Rôle du MD5 et intégrité firmware
+
+- **Firmware (binaire app)** : quand les métadonnées fournissent un champ `md5`, le firmware le transmet à l’API `Update.setMD5()` pour vérifier le flux reçu. Le MD5 sert à **détecter corruption et troncature** du binaire ; il ne remplace pas la confidentialité, assurée par **HTTPS** (BASE_URL_SECURE).
+- **Metadata** : le champ `md5` dans `metadata.json` est la référence d’intégrité côté client pour le firmware. Le script calcule ce hash (MD5) après copie des binaires ; il est aligné avec l’API Arduino Update qui n’accepte que MD5 pour la vérification du flux.
+- **Évolution optionnelle** : si l’écosystème permet à l’avenir une vérification SHA256 du flux OTA, on pourra ajouter un champ `sha256` dans `metadata.json` et une vérification côté firmware ; en attendant, MD5 reste la référence pour l’intégrité du binaire app.
+
+## Vérification Content-Length (serveur)
+
+Le firmware (avec `OTA_UNSAFE_FORCE = false`) exige que les réponses HTTP pour les binaires OTA envoient un en-tête **Content-Length** correct. Sans cela, l’OTA échoue.
+
+À vérifier côté hébergeur de `https://iot.olution.info/ffp3/ota/` :
+
+- Les réponses pour `firmware.bin` et `littlefs.bin` doivent envoyer **Content-Length** (taille en octets du fichier).
+- En cas de reverse proxy (nginx, Apache, CDN), ne pas supprimer Content-Length ni forcer le transfert chunked sans longueur.
+- Servir les fichiers en mode body de taille connue (fichiers statiques).
+
+Vérification rapide après déploiement :
+
+```bash
+curl -I https://iot.olution.info/ffp3/ota/esp32-wroom/firmware.bin
+curl -I https://iot.olution.info/ffp3/ota/esp32-wroom/littlefs.bin
+```
+
+Confirmer la présence de `Content-Length: <taille>` cohérente avec les fichiers. Si Content-Length est absent ou 0, l’OTA distant échouera (ou il faudrait temporairement réactiver `OTA_UNSAFE_FORCE` en exception, non recommandé en production).
 
 ## Rappel dépôt parent
 

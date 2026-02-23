@@ -36,6 +36,41 @@ def _get_all_espidf_pkg_dirs():
         pass
     return out
 
+def _patch_ldgen_skip_missing_libs(pkg_dir):
+    """Évite l'échec ldgen quand un .a listé dans ldgen_libraries n'existe pas encore (ordre de build)."""
+    path = os.path.join(pkg_dir, "tools", "ldgen", "ldgen.py")
+    if not os.path.isfile(path):
+        return False
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if "skip missing library" in content or "ldgen: skip missing" in content:
+        return False
+    old_loop = """        for library in libraries_file:
+            library = library.strip()
+            if library:
+                new_env = os.environ.copy()
+                new_env['LC_ALL'] = 'C'
+                dump = StringIO(subprocess.check_output([objdump, '-h', library], env=new_env).decode())"""
+    new_loop = """        for library in libraries_file:
+            library = library.strip()
+            if library:
+                if not os.path.isfile(library):
+                    sys.stderr.write("ldgen: skip missing library '%s'\\n" % library)
+                    continue
+                new_env = os.environ.copy()
+                new_env['LC_ALL'] = 'C'
+                dump = StringIO(subprocess.check_output([objdump, '-h', library], env=new_env).decode())"""
+    if new_loop in content:
+        return False
+    if old_loop not in content:
+        return False
+    content = content.replace(old_loop, new_loop)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("FFP5CS S3: ldgen.py patché (skip libs manquantes)")
+    return True
+
+
 def _patch_ldgen_py(pkg_dir):
     path = os.path.join(pkg_dir, "tools", "ldgen", "ldgen.py")
     if not os.path.isfile(path):
@@ -118,6 +153,7 @@ def _patch_ldgen():
         return
     any_cmake_patched = False
     for pkg_dir in pkg_dirs:
+        _patch_ldgen_skip_missing_libs(pkg_dir)
         _patch_ldgen_py(pkg_dir)
         if _patch_ldgen_cmake(pkg_dir):
             any_cmake_patched = True

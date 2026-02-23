@@ -36,7 +36,8 @@ Start-Sleep -Seconds 5
 
 # Compiler d'abord pour vérifier qu'il n'y a pas d'erreurs
 Write-Host "3. Compilation du firmware wroom-test..." -ForegroundColor Cyan
-$compileResult = pio run -e wroom-test
+$buildJobs = if ($env:OS -eq "Windows_NT") { @("-j", "1") } else { @() }
+$compileResult = pio run -e wroom-test @buildJobs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Erreur de compilation !" -ForegroundColor Red
     exit $LASTEXITCODE

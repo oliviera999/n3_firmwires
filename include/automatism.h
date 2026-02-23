@@ -125,6 +125,8 @@ class Automatism {
   void manualFeedBig();
   /// Notifie le sync après nourrissage distant déclenché par GPIOParser (ack, reset, email)
   void notifyRemoteFeedExecuted(bool isSmall) { _network.onRemoteFeedExecuted(isSmall, *this); }
+  /// Marque le créneau horaire courant (matin/midi/soir) comme déjà nourri (évite auto après feed distant).
+  void markCurrentFeedingSlotAsDone();
   size_t createFeedingMessage(char* buffer,
                               size_t bufferSize,
                               const char* type,
@@ -138,10 +140,14 @@ class Automatism {
   
   // Méthodes pour envoi email (exposées pour AutomatismSleep et AutomatismSync)
   bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings) {
-    return _mailer.sendSleepMail(reason, sleepDurationSeconds, readings);
+    const char* to = _network.getEmailAddress();
+    return _mailer.sendSleepMail(reason, sleepDurationSeconds, readings,
+                                 (to && strlen(to) > 0) ? to : EmailConfig::DEFAULT_RECIPIENT);
   }
   bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings) {
-    return _mailer.sendWakeMail(reason, actualSleepSeconds, readings);
+    const char* to = _network.getEmailAddress();
+    return _mailer.sendWakeMail(reason, actualSleepSeconds, readings,
+                                (to && strlen(to) > 0) ? to : EmailConfig::DEFAULT_RECIPIENT);
   }
   bool sendEmail(const char* subject, const char* message, const char* toName, const char* toEmail) {
     return _mailer.send(subject, message, toName, toEmail);

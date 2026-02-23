@@ -470,7 +470,12 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
         const char* wakeReason = (cause == ESP_SLEEP_WAKEUP_TIMER) ? "Timer" : "Autre";
         core.sendWakeMail(wakeReason, actualSleptSec, r);
     }
-    
+
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+    Serial.println(F("[Auto] Demande vérification OTA après réveil"));
+    AppTasks::netRequestOtaCheck();
+#endif
+
     // Le système est entré en veille et s'est réveillé
     return true;
 }

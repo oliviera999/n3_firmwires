@@ -22,21 +22,14 @@ if "%PATH_HAS_SPACE%"=="0" (
   if defined RUN_WORKFLOW echo   + workflow erase/flash/monitor
   echo.
 
-  echo 1. Patch plateforme...
   cd /d "%PROJECT_ROOT%"
-  python "%~dp0tools\patch_espressif32_custom_sdkconfig_only.py"
-  if errorlevel 1 exit /b 1
-
-  echo 2. Suppression sdkconfig racine package (forcer recompil libs IWDT)...
-  del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
-
-  echo 3. Build wroom-s3-test (15-25 min possible si recompile libs)...
+  echo 1. Build wroom-s3-test...
   pio run -e wroom-s3-test -v
   if errorlevel 1 exit /b 1
 
   if defined RUN_WORKFLOW (
-    echo 4. Workflow erase / flash / monitor 1 min...
-    powershell -ExecutionPolicy Bypass -File ".\erase_flash_fs_monitor_5min_analyze.ps1" -Environment wroom-s3-test -Port COM7 -DurationMinutes 1
+    echo 2. Workflow erase / flash / monitor 1 min...
+    powershell -ExecutionPolicy Bypass -File ".\erase_flash_fs_monitor_5min_analyze.ps1" -Environment wroom-s3-test -Port COM7 -DurationMinutes 1 -SkipBuild
     if errorlevel 1 exit /b 1
     echo === Fin - Verifier le dernier monitor_1min_*.log ===
   ) else (
@@ -52,11 +45,7 @@ echo   Build dans : %BUILD_ROOT%
 if defined RUN_WORKFLOW echo   + workflow erase/flash/monitor depuis %BUILD_ROOT%
 echo.
 
-echo 1. Patch plateforme...
-python "%~dp0tools\patch_espressif32_custom_sdkconfig_only.py"
-if errorlevel 1 exit /b 1
-
-echo 2. Copie du projet vers %BUILD_ROOT%...
+echo 1. Copie du projet vers %BUILD_ROOT%...
 if not exist "%BUILD_ROOT%" mkdir "%BUILD_ROOT%"
 xcopy "%PROJECT_ROOT%\*" "%BUILD_ROOT%\" /E /I /H /Y
 if errorlevel 1 (
@@ -64,10 +53,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo 3. Suppression sdkconfig racine package (forcer recompil libs IWDT)...
-del /q "%USERPROFILE%\.platformio\packages\framework-arduinoespressif32-libs\sdkconfig" 2>nul
-
-echo 4. Build wroom-s3-test (depuis %BUILD_ROOT% - 15-25 min possible)...
+echo 2. Build wroom-s3-test (depuis %BUILD_ROOT%)...
 cd /d "%BUILD_ROOT%"
 pio run -e wroom-s3-test -v
 set BUILD_RESULT=%errorlevel%
@@ -77,7 +63,7 @@ if %BUILD_RESULT% neq 0 (
   exit /b %BUILD_RESULT%
 )
 
-echo 5. Recopie firmware et partition vers le projet...
+echo 3. Recopie firmware et partition vers le projet...
 set "BUILD_DIR=%BUILD_ROOT%\.pio\build\wroom-s3-test"
 set "DEST_DIR=%PROJECT_ROOT%\.pio\build\wroom-s3-test"
 if exist "%BUILD_DIR%\firmware.bin" (
@@ -91,9 +77,9 @@ if exist "%BUILD_DIR%\firmware.bin" (
 
 echo.
 if defined RUN_WORKFLOW (
-  echo 6. Workflow erase / flash / monitor 1 min depuis %BUILD_ROOT%...
+  echo 4. Workflow erase / flash / monitor 1 min depuis %BUILD_ROOT%...
   cd /d "%BUILD_ROOT%"
-  powershell -ExecutionPolicy Bypass -File ".\erase_flash_fs_monitor_5min_analyze.ps1" -Environment wroom-s3-test -Port COM7 -DurationMinutes 1
+  powershell -ExecutionPolicy Bypass -File ".\erase_flash_fs_monitor_5min_analyze.ps1" -Environment wroom-s3-test -Port COM7 -DurationMinutes 1 -SkipBuild
   if errorlevel 1 exit /b 1
   echo === Fin - Verifier le dernier monitor_1min_*.log dans %BUILD_ROOT% ===
 ) else (

@@ -374,7 +374,27 @@ void PowerManager::getCurrentTimeString(char* buffer, size_t bufferSize) {
   }
 
   strftime(buffer, bufferSize, "%H:%M:%S %d/%m/%Y", &timeinfo);
-} 
+}
+
+// ---------------------------------------------------------------------------
+// Format ISO pour emails (YYYY-MM-DD HH:MM), aligné avec mailer buildLightFooter
+// ---------------------------------------------------------------------------
+void PowerManager::getCurrentTimeStringForMail(char* buffer, size_t bufferSize) {
+  if (buffer == nullptr || bufferSize == 0) {
+    return;
+  }
+
+  time_t epoch = getCurrentEpochSafe();
+  struct tm timeinfo;
+
+  if (!localtime_r(&epoch, &timeinfo)) {
+    strncpy(buffer, "1970-01-01 00:00", bufferSize - 1);
+    buffer[bufferSize - 1] = '\0';
+    return;
+  }
+
+  strftime(buffer, bufferSize, "%Y-%m-%d %H:%M", &timeinfo);
+}
 
 void PowerManager::saveCurrentWifiCredentials() {
   if (WiFi.status() == WL_CONNECTED) {

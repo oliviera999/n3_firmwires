@@ -14,10 +14,8 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
 # Partition table S3 (aligné board_build.partitions) — évite "partitions.csv not found"
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="config/partitions/partitions_esp32_s3_test.csv"
-# PSRAM (SRAM externe 8 Mo) — explicite pour S3 avec SRAM active
-CONFIG_SPIRAM=y
-# Init PSRAM au boot (bootloader) : évite psramAddToHeap() dans initArduino() qui peut bloquer sur S3
-CONFIG_SPIRAM_BOOT_INIT=y
+# PSRAM désactivée — boot S3 stable sans PSRAM (limitations RAM ; réactiver plus tard si besoin)
+# CONFIG_SPIRAM is not set
 # Éviter https_server.crt (bug chemin .S dupliqué) : utiliser transport MQTT pour Insights
 # CONFIG_ESP_INSIGHTS_TRANSPORT_HTTPS is not set
 CONFIG_ESP_INSIGHTS_TRANSPORT_MQTT=y

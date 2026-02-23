@@ -34,8 +34,10 @@ class Mailer {
   
   // Méthodes synchrones (utilisées en interne par mailTask)
   bool sendSync(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
-  bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings);
-  bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings);
+  bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
+                     const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+  bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
+                    const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   
   // Méthodes asynchrones (non-bloquantes) - v11.142
   // Ces méthodes ajoutent le mail à une queue et retournent immédiatement
