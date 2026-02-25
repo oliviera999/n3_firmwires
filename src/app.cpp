@@ -290,6 +290,7 @@ void setup() {
   vTaskDelay(pdMS_TO_TICKS(20));
   BOOT_LOG("[BOOT] setup done, loop starts\n");
   BOOT_LOG("[BOOT] init done\n");
+  wifi.startDelayedModeInitTask();
 #else
   // Notification de démarrage par mail (Diagnostic "fix mail")
   if (g_appContext.wifi.isConnected()) {
@@ -359,6 +360,9 @@ void loop() {
   #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
   ArduinoOTA.handle();
   #endif
+
+  // S3 PSRAM : init WiFi.mode() après 3 s (évite blocage au boot) ; sans effet sur les autres envs
+  wifi.tryDelayedModeInit();
 
   // Centraliser les opérations WiFi dans le loop Arduino (évite concurrence multi-tâches)
   wifi.checkConnectionStability();

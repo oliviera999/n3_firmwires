@@ -156,9 +156,26 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
   }
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-  bool canConn = TLSMutex::canConnect();
   uint32_t pending = ctx->mailer.getQueuedMails();
 
+  // Stratégie anti-fragmentation : si la réserve 31K est déjà allouée (boot), on crée le bloc contigu en la libérant.
+  // Testée AVANT canConnect() : après libération on aura freeHeap+31K, donc assez pour TLS même si freeHeap actuel < 35K.
+  if (!g_enteringLightSleep && s_mailReserve && !s_mailReserveFromPSRAM &&
+      freeHeap >= HeapConfig::MIN_HEAP_FREE_WHEN_USING_MAIL_RESERVE) {
+    free(s_mailReserve);
+    s_mailReserve = nullptr;
+    esp_task_wdt_reset();
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[Mail] ENVOI (reserve liberee) heap=%u\n", (unsigned)ESP.getFreeHeap());
+#else
+    Serial.printf("[Mail] >>> ENVOI (réserve libérée, bloc 31K dispo) - heap free=%u <<<\n", (unsigned)ESP.getFreeHeap());
+#endif
+    ctx->mailer.processOneMailSync();
+    allocMailReserveIfNeeded(kMailBlockReq);  // Re-capturer le bloc contigu pour le prochain mail
+    return;
+  }
+
+  bool canConn = TLSMutex::canConnect();
   if (!canConn) {
     static unsigned long lastTlsSkipMs = 0;
     if (now - lastTlsSkipMs > 30000) {
@@ -186,6 +203,7 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
     Serial.printf("[Mail] >>> ENVOI EFFECTIF (tentative) - heap free=%u bloc=%u <<<\n", freeHeap, largestBlock);
 #endif
     ctx->mailer.processOneMailSync();
+    allocMailReserveIfNeeded(kMailBlockReq);  // Re-capturer le bloc contigu pour le prochain mail
     return;
   }
   if (s_mailReserve && !s_mailReserveFromPSRAM) {
@@ -202,8 +220,23 @@ static void processMailQueueIfReady(AppContext* ctx, unsigned long now) {
       Serial.printf("[Mail] >>> ENVOI EFFECTIF (tentative après libération réserve) - heap free=%u <<<\n", freeHeap);
 #endif
       ctx->mailer.processOneMailSync();
+      allocMailReserveIfNeeded(kMailBlockReq);  // Re-capturer le bloc contigu pour le prochain mail
     }
     return;
+  }
+  // Ré-allocation périodique : sans réserve (déjà utilisée pour un envoi), on retente toutes les 30 s
+  // de capturer un bloc 31K pour débloquer les mails suivants (fragmentation peut libérer un bloc plus tard).
+  static unsigned long lastReserveRetryMs = 0;
+  if (!s_mailReserve && pending > 0 && (now - lastReserveRetryMs) >= 30000) {
+    lastReserveRetryMs = now;
+    allocMailReserveIfNeeded(kMailBlockReq);
+    if (s_mailReserve) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[Mail] Reserve re-allouee (prochain envoi possible)\n");
+#else
+      Serial.println(F("[Mail] ✅ Réserve re-allouée (prochain envoi possible)"));
+#endif
+    }
   }
   static unsigned long lastMemWarnMs = 0;
   if (now - lastMemWarnMs > 60000) {
@@ -313,6 +346,12 @@ static void netTask(void* pv) {
     // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
     g_ctx->power.waitForNetworkReady();
     esp_task_wdt_reset();  // P1: reset avant GET boot (fetch peut bloquer jusqu'à OUTPUTS_STATE_HTTP_TIMEOUT_MS)
+#if defined(BOARD_WROOM)
+    // Délai avant premier TLS au boot pour laisser libérer des allocs de boot (piste A, HEAP_RECOVERY_OPTIONS.md)
+    const unsigned long FIRST_TLS_DELAY_MS = 2000;
+    vTaskDelay(pdMS_TO_TICKS(FIRST_TLS_DELAY_MS));
+    esp_task_wdt_reset();
+#endif
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     ets_printf("[netTask] Boot tryFetchConfig\n");
@@ -741,10 +780,13 @@ void automationTask(void* pv) {
         UBaseType_t hwmA = g_autoTaskHandle ? uxTaskGetStackHighWaterMark(g_autoTaskHandle) : 0;
         UBaseType_t hwmN = g_netTaskHandle ? uxTaskGetStackHighWaterMark(g_netTaskHandle) : 0;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-        if (heapMin < TLS_MIN_HEAP_BYTES) {
-          ets_printf("[autoTask] CRIT Heap min=%u\n", (unsigned)heapMin);
-        } else if (heapFree < TLS_MIN_HEAP_BYTES) {
-          ets_printf("[autoTask] WARN Heap=%u\n", (unsigned)heapFree);
+        static bool s_minHeapBelowTlsLogged = false;
+        if (heapFree < TLS_MIN_HEAP_BYTES) {
+          ets_printf("[autoTask] CRIT Heap free=%u\n", (unsigned)heapFree);
+        } else if (heapMin < TLS_MIN_HEAP_BYTES && !s_minHeapBelowTlsLogged) {
+          ets_printf("[autoTask] WARN Min heap historique sous %u KB (TLS): %u\n",
+                     (unsigned)(TLS_MIN_HEAP_BYTES / 1024), (unsigned)heapMin);
+          s_minHeapBelowTlsLogged = true;
         }
         if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK) {
           ets_printf("[autoTask] WARN Frag blk=%u\n", (unsigned)largestBlock);
@@ -753,13 +795,15 @@ void automationTask(void* pv) {
                   (unsigned)heapFree, (unsigned)heapMin, (unsigned)largestBlock, (unsigned)fragmentation,
                   (unsigned)hwmS, (unsigned)hwmW, (unsigned)hwmA, (unsigned)hwmN);
 #else
-        if (heapMin < TLS_MIN_HEAP_BYTES) {
-          Serial.printf("[autoTask] CRIT: Heap min=%u (<%uKB TLS)\n", 
-                        heapMin, TLS_MIN_HEAP_BYTES / 1024);
-          Serial.println("[Event] CRITICAL: Low heap - TLS may fail");
-        } else if (heapFree < TLS_MIN_HEAP_BYTES) {
-          Serial.printf("[autoTask] WARN: Heap=%u (<%uKB TLS)\n", 
+        static bool s_minHeapBelowTlsLogged = false;
+        if (heapFree < TLS_MIN_HEAP_BYTES) {
+          Serial.printf("[autoTask] CRIT: Heap free=%u (<%uKB TLS)\n",
                         heapFree, TLS_MIN_HEAP_BYTES / 1024);
+          Serial.println("[Event] CRITICAL: Low heap - TLS may fail");
+        } else if (heapMin < TLS_MIN_HEAP_BYTES && !s_minHeapBelowTlsLogged) {
+          Serial.printf("[autoTask] WARN: Min heap historique sous %u KB (TLS): %u\n",
+                        TLS_MIN_HEAP_BYTES / 1024, heapMin);
+          s_minHeapBelowTlsLogged = true;
         }
         if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_ASYNC_TASK) {
           Serial.printf("[autoTask] WARN: Fragmentation (blk=%u < 12KB)\n", (unsigned)largestBlock);
@@ -769,7 +813,7 @@ void automationTask(void* pv) {
                       (unsigned)largestBlock, (unsigned)fragmentation,
                       (unsigned)hwmS, (unsigned)hwmW, (unsigned)hwmA, (unsigned)hwmN);
         #if defined(PROFILE_TEST)
-        Serial.printf("[autoTask] Heap: %u/%u blk=%u frag=%u%%\n", 
+        Serial.printf("[autoTask] Heap: %u/%u blk=%u frag=%u%%\n",
                       heapFree, heapMin, largestBlock, fragmentation);
         #endif
 #endif

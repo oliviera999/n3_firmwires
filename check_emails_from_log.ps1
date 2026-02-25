@@ -96,6 +96,16 @@ function Test-SubjectMatch {
                 return $true
             }
         }
+        # L'un a la version, l'autre est juste le base (ex: "Démarrage système" attendu vs "Démarrage système v12.07" envoyé)
+        if ($norm2 -eq $base1) {
+            return $true
+        }
+    }
+    if ($norm2 -match '^(.+?)\s+v\d+\.\d+') {
+        $base2 = $matches[1]
+        if ($norm1 -eq $base2) {
+            return $true
+        }
     }
     
     return $false
@@ -105,8 +115,8 @@ function Test-SubjectMatch {
 
 Write-Host "🔍 Analyse des événements déclencheurs..." -ForegroundColor Yellow
 
-# 1.1 Mail de démarrage (Boot)
-$bootPattern = '=== TEST MAIL AU DÉMARRAGE ===|\[Mail\]\s*=====\s*SENDALERT ASYNC'
+# 1.1 Mail de démarrage (Boot) — une seule entrée attendue par boot (Alerte ajoutée = mise en queue)
+$bootPattern = '\[Mail\].*Alerte ajoutée.*queue.*Démarrage'
 $bootMatches = $lines | Select-String -Pattern $bootPattern
 foreach ($match in $bootMatches) {
     $expectedEmails += @{
@@ -155,14 +165,17 @@ foreach ($match in $manualMatches) {
     }
 }
 
-# 1.4 Alertes niveaux d'eau
+# 1.4 Alertes niveaux d'eau et actionneurs (état physique)
+# Chauffage ON/OFF et Lumière ON/OFF : NE PAS compter comme attendus ici. Le firmware logue "Chauffage OFF"
+# à chaque application de config serveur (GPIOParser), mais n'envoie un mail que sur transition d'état
+# (thermostat/automatism). On ne compte donc que les alertes qui déclenchent vraiment un envoi.
 $alertPatterns = @{
     "Alerte - Niveau aquarium BAS" = 'Alerte.*Niveau aquarium.*BAS|\[Auto\].*Niveau aquarium.*BAS'
     "Alerte - Aquarium TROP PLEIN" = 'Alerte.*Aquarium.*TROP PLEIN|\[Auto\].*TROP PLEIN|Email TROP PLEIN'
     "Alerte - Réserve BASSE" = 'Alerte.*Réserve.*BASSE|\[Auto\].*Réserve.*BASSE'
     "Info - Réserve OK" = 'Info.*Réserve.*OK|\[Auto\].*Réserve.*OK'
-    "Chauffage ON" = 'Chauffage ON|\[Auto\].*Chauffage.*ON'
-    "Chauffage OFF" = 'Chauffage OFF|\[Auto\].*Chauffage.*OFF'
+    # Chauffage/Lumière ON/OFF : retirés — le log "Chauffage OFF" vient du GPIOParser à chaque GET,
+    # pas d'un envoi mail (mail uniquement sur transition dans checkAlertsAndSendEmails).
 }
 
 foreach ($alertType in $alertPatterns.Keys) {
@@ -213,8 +226,8 @@ foreach ($match in $wakeMatches) {
     }
 }
 
-# 1.6 OTA Updates
-$otaPattern = 'OTA début|OTA fin|\[App\].*OTA|\[Mail\].*OTA'
+# 1.6 OTA Updates — uniquement les lignes qui indiquent un envoi email OTA (début/fin ou envoi explicite)
+$otaPattern = 'OTA début|OTA fin|Envoi email.*mise a jour OTA|Envoi email.*OTA|\[App\].*Envoi email.*OTA'
 $otaMatches = $lines | Select-String -Pattern $otaPattern
 foreach ($match in $otaMatches) {
     # Éviter les doublons

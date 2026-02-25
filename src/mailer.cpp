@@ -944,9 +944,9 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   
   if (!_ready || !_smtp.connected()) {
     uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS) {
+    if (largestBlock < HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS_CONNECT) {
       Serial.printf("[Mail] ⛔ Connexion SMTP reportée: bloc contigu insuffisant (%u < %u bytes)\n",
-                    (unsigned)largestBlock, (unsigned)HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
+                    (unsigned)largestBlock, (unsigned)HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS_CONNECT);
       TLSMutex::release();
       return false;
     }

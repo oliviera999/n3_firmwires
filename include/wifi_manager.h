@@ -39,9 +39,12 @@ class WifiManager {
   // fixé dans le constructeur (60 s par défaut).
   void loop(class DisplayView* disp = nullptr);
 
-  // S3 PSRAM: initialise WiFi.mode() une seule fois après un délai (évite blocage au boot).
+  // S3 PSRAM: initialise WiFi.mode() une seule fois après 10 s depuis loop() (tryDelayedModeInit).
   // À appeler depuis loop() ; sans effet sur les autres envs.
   void tryDelayedModeInit();
+
+  // S3 PSRAM: désactivé (init faite par tryDelayedModeInit depuis loop après 10 s).
+  void startDelayedModeInitTask();
 
   // Nouvelles méthodes pour gestion intelligente du signal
   int8_t getCurrentRSSI() const;

@@ -15,6 +15,9 @@
 #
 # -SkipBuild : sauter l'étape build (erase + flash + monitor + analyse uniquement).
 #
+# Quand -SkipBuild n'est pas utilisé, un clean est exécuté avant le build pour éviter les erreurs
+# "No such file or directory" (.d / .sconsign) après libération du port COM (processus moniteur arrêtés).
+#
 # Sous Windows, le build utilise -j 1 (séquentiel) pour éviter les erreurs "No such file or directory"
 # (fichiers .d/.o/tmp et chemins longs avec libs type ESP Mail Client).
 #
@@ -88,6 +91,9 @@ Write-Host ""
 # 0. Build (tous environnements, comme wroom-test) — sauf si -SkipBuild
 if (-not $SkipBuild) {
     Write-Host "0. Build $Environment..." -ForegroundColor Cyan
+    # Clean avant build pour éviter corruption cache (.d / .sconsign) après libération du port COM.
+    Write-Host "   Clean (évite erreurs .d / sconsign après libération port)..." -ForegroundColor Gray
+    pio run -e $Environment -t clean 2>&1 | Out-Null
     # Sous Windows, build séquentiel (-j 1) pour éviter erreurs "No such file or directory" (fichiers .d/.o/tmp et chemins longs).
     $buildJobs = if ($env:OS -eq "Windows_NT") { "-j", "1" } else { @() }
     pio run -e $Environment @buildJobs

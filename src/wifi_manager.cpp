@@ -7,6 +7,8 @@
 #include <esp_task_wdt.h>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #endif
 
 // DNS personnalisé : l'API Arduino-ESP32 n'expose pas setDNS() ; garder DHCP.
@@ -436,8 +438,10 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 
 bool WifiManager::startFallbackAP(){
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  ets_printf("[WiFi] S3 PSRAM: skip AP (WiFi.mode bloquant)\n");
-  return false;
+  // Mode initialisé par la tâche dédiée ; si pas encore fait, ne pas appeler WiFi.mode() ici (bloquant)
+  if (WiFi.getMode() != WIFI_AP && WiFi.getMode() != WIFI_AP_STA) {
+    return false;
+  }
 #endif
   // Crée un SSID unique basé sur l'adresse MAC
   uint64_t chipId = ESP.getEfuseMac();
@@ -494,17 +498,23 @@ void WifiManager::currentSSID(char* buffer, size_t bufferSize) const {
 
 void WifiManager::tryDelayedModeInit() {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  static bool s_done = false;
-  if (s_done) return;
-  if (millis() < 3000) return;
-  s_done = true;
-  wifi_mode_t target = (FEATURE_WIFI_APSTA && (FEATURE_WIFI_APSTA != 0))
-      ? (wifi_mode_t)WIFI_AP_STA
-      : (wifi_mode_t)WIFI_STA;
-  WiFi.mode(target);
-  ets_printf("[WiFi] S3 PSRAM: WiFi.mode done (delayed 3s)\n");
-#endif
+  // Désactivé: esp_wifi_init() bloque même depuis loop() après 10 s (stack actuelle ~3.0.x).
+  // Pas de tentative → pas de freeze à 10 s ; firmware reste opérationnel (offline, pas d'AP).
+  // Réactiver une tentative (ex. init après 10 s) quand platformio/espressif32 fournira
+  // arduino-esp32 3.3.x (voir ESP32S3_HARDWARE_REFERENCE.md § WiFi S3 PSRAM).
   (void)0;
+#else
+  (void)0;
+#endif
+}
+
+void WifiManager::startDelayedModeInitTask() {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  // Désactivé: on utilise tryDelayedModeInit() depuis loop() après 10 s (évite blocage dans la tâche).
+  (void)0;
+#else
+  (void)0;
+#endif
 }
 
 void WifiManager::loop(DisplayView* disp){
