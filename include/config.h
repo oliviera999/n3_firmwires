@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.06: incrément version, commit et push
-    inline constexpr const char* VERSION = "12.08";
+    // v12.09: incrément version, commit et push
+    inline constexpr const char* VERSION = "12.09";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -239,8 +239,8 @@ namespace NetworkConfig {
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 2;
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
-    // GET outputs/state : timeout plus long (net task uniquement, serveur/latence peuvent dépasser 5s)
-    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 10000;  // 10 s (P1: limite blocage netTask vs TWDT 30s)
+    // GET outputs/state : timeout plus long (net task uniquement). 8 s pour rester < FETCH_REMOTE_STATE_RPC_TIMEOUT_MS.
+    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s (évite abandon caller avant fin GET)
     // RPC FetchRemoteState : timeout = HTTP + marge queue (POST ~8s peut précéder le GET)
     inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 30000;  // 30 s (évite abandon avant fin GET si file chargée)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
@@ -278,11 +278,20 @@ namespace NetworkConfig {
     inline constexpr int HTTP_OK = 200;
     inline constexpr int HTTP_NO_CONTENT = 204;
     inline constexpr int HTTP_BAD_REQUEST = 400;
+    inline constexpr int HTTP_UNAUTHORIZED = 401;
     inline constexpr int HTTP_NOT_FOUND = 404;
     inline constexpr int HTTP_INTERNAL_ERROR = 500;
     inline constexpr int HTTP_SERVICE_UNAVAILABLE = 503;
     // Alias pour compatibilité
     inline constexpr int HTTP_OK_CODE = HTTP_OK;
+}
+
+// Authentification interface web locale (onglets protégés : admin / ffp3)
+namespace WebAuthConfig {
+    inline constexpr const char* WEB_AUTH_USER = "admin";
+    inline constexpr const char* WEB_AUTH_PASS = "ffp3";
+    inline constexpr size_t WEB_AUTH_COOKIE_NAME_LEN = 11;  // "ffp5cs_auth"
+    inline constexpr size_t WEB_AUTH_TOKEN_HEX_LEN = 32;     // 16 bytes en hex
 }
 
 namespace ServerConfig {
@@ -517,7 +526,7 @@ namespace SensorConfig {
     namespace BME280 {
         inline constexpr uint32_t MIN_READ_INTERVAL_MS = 500;
         inline constexpr uint32_t INIT_STABILIZATION_DELAY_MS = 100;
-        inline constexpr uint8_t I2C_ADDRESS = 0x77;  // 0x76 si SDO à GND
+        inline constexpr uint8_t I2C_ADDRESS = 0x76;  // SDO à GND (0x77 si SDO à VDD)
     }
 
     namespace Ultrasonic {
