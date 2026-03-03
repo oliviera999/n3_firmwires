@@ -14,8 +14,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.09: incrément version, commit et push
-    inline constexpr const char* VERSION = "12.09";
+    // v12.10: RTC DS3231 optionnel (option A), run propre
+    inline constexpr const char* VERSION = "12.11";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -861,7 +861,8 @@ namespace TaskConfig {
     
     // Tâche mail asynchrone (v11.143) - évite de bloquer automationTask pendant SMTP
     // v11.161: Augmenté de 12KB à 16KB - stack overflow persistant pendant TLS/SMTP handshake
-    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 16384;  // 16 KB (ESP Mail Client + mbedTLS nécessitent beaucoup de stack)
+    // Réduit pour résoudre overflow DRAM dram0_0_seg (sans mise à jour plateforme). 16384→15168 (-1216 B).
+    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 15168;  // ~14.8 KB (surveiller HWM mail/TLS)
     inline constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
     inline constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
     inline constexpr uint8_t MAIL_QUEUE_SIZE = 6;            // Réduit 8→6 (piste 2 rapport mémoire), robustesse envoi conservée

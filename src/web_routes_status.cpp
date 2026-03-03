@@ -212,6 +212,7 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
 
 void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {
   server.on("/wifi/status", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     
     // Utilise le helper centralisé pour construire le JSON WiFi
@@ -248,6 +249,9 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["wifiRSSI"] = WiFi.RSSI();
     doc["webSocketClients"] = g_realtimeWebSocket.getConnectedClients();
     doc["forceWakeUp"] = ctx.automatism.getForceWakeUp();
+    doc["sendState"] = ctx.automatism.getSendState();
+    doc["lastSendMs"] = ctx.automatism.getLastSendMs();
+    doc["lastDataSkipReason"] = ctx.automatism.getLastDataSkipReason();
 
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 

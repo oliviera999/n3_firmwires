@@ -53,6 +53,9 @@ class PowerManager {
   // Sauvegarde forcée
   void forceSaveTimeToFlash();
 
+  /** Applique l'heure du RTC externe DS3231 si présent (à appeler après I2CBus::init()). */
+  void applyExternalRTCIfPresent();
+
  private:
   // Paramètres NTP
   int _gmtOffsetSec;

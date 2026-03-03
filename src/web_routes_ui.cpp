@@ -12,6 +12,7 @@
 #include "web_assets.h"
 #include "app_context.h"
 #include "config.h"  // v11.178: Pour NetworkConfig::HTTP_* (audit http-codes)
+#include "web_routes_status.h"  // webAuthIsAuthenticated, webAuthSendRequired
 
 using WebRoutes::registerUiRoutes;
 
@@ -118,6 +119,17 @@ bool serveIndexStreaming(AppContext& ctx, AsyncWebServerRequest* req) {
   }
 
   return true;
+}
+
+void registerProtectedPageRoutes(AsyncWebServer& server) {
+  server.on("/pages/wifi.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
+    req->send(LittleFS, "/pages/wifi.html", "text/html");
+  });
+  server.on("/pages/controles.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
+    req->send(LittleFS, "/pages/controles.html", "text/html");
+  });
 }
 
 void registerStaticAssets(AsyncWebServer& server) {
@@ -380,6 +392,7 @@ void registerCompressedAssets(AsyncWebServer& server) {
 namespace WebRoutes {
 
 void registerUiRoutes(AsyncWebServer& server, AppContext& ctx) {
+  registerProtectedPageRoutes(server);  // avant serveStatic pour prendre le pas sur /pages/wifi.html et controles.html
   registerStaticAssets(server);
   registerStreamingRoutes(server, ctx);
   registerCompressedAssets(server);

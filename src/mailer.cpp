@@ -180,7 +180,11 @@ static int appendMemoryInfo(char* buf, size_t& remaining) {
 // FOOTER ALLÉGÉ
 // ======================
 
-// Footer une ligne : version + heure + temp eau (pertinent, peu chargé)
+// Accès état sync pour footer (défini dans app.cpp, évite dépendance circulaire)
+extern unsigned long ffp5csGetLastSendMsForMail();
+extern int ffp5csGetLastDataSkipReasonForMail();
+
+// Footer allégé : version + heure + temp eau + infos mémoire + indicateur data (diagnostic à distance)
 static const char* buildLightFooter() {
   char* buf = g_lightFooterBuffer;
   size_t remaining = sizeof(g_lightFooterBuffer);
@@ -194,10 +198,48 @@ static const char* buildLightFooter() {
   }
   extern SystemSensors sensors;
   float tempWater = sensors.read().tempWater;
-  int n = snprintf(buf, remaining, "\n[FFP5CS v%s] %s | Eau %.1f°C",
-                   ProjectConfig::VERSION, timeBuf, tempWater);
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t minHeap = ESP.getMinFreeHeap();
+  size_t psramSize = ESP.getPsramSize();
+  int n;
+  if (psramSize > 0) {
+    n = snprintf(buf, remaining,
+                 "\n[FFP5CS v%s] %s | Eau %.1f°C\n"
+                 "- Mémoire: heap libre %u, min %u bytes | PSRAM libre %u bytes",
+                 ProjectConfig::VERSION, timeBuf, tempWater,
+                 (unsigned)freeHeap, (unsigned)minHeap, (unsigned)ESP.getFreePsram());
+  } else {
+    n = snprintf(buf, remaining,
+                 "\n[FFP5CS v%s] %s | Eau %.1f°C\n"
+                 "- Mémoire: heap libre %u, min %u bytes",
+                 ProjectConfig::VERSION, timeBuf, tempWater,
+                 (unsigned)freeHeap, (unsigned)minHeap);
+  }
   if (n < 0 || (size_t)n >= remaining) {
     buf[remaining - 1] = '\0';
+  } else {
+    size_t used = strlen(buf);
+    remaining = sizeof(g_lightFooterBuffer) - used - 1;
+    if (remaining > 32) {
+      unsigned long lastSendMs = ffp5csGetLastSendMsForMail();
+      int skipReason = ffp5csGetLastDataSkipReasonForMail();
+      const char* dataLine;
+      if (lastSendMs == 0) {
+        dataLine = "\n- Data: jamais envoyé";
+      } else if (skipReason == 1) {
+        dataLine = "\n- Data: non envoyé (mémoire basse)";
+      } else if (skipReason == 2) {
+        dataLine = "\n- Data: dernier échec (réseau/timeout)";
+      } else {
+        unsigned long agoMin = (millis() - lastSendMs) / 60000UL;
+        (void)snprintf(buf + used, remaining, "\n- Data: OK (il y a %lu min)", agoMin);
+        dataLine = nullptr;  // déjà écrit
+      }
+      if (dataLine) {
+        strncat(buf, dataLine, remaining - 1);
+        buf[sizeof(g_lightFooterBuffer) - 1] = '\0';
+      }
+    }
   }
   return g_lightFooterBuffer;
 }

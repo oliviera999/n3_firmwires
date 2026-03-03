@@ -118,6 +118,9 @@ class Automatism {
   uint32_t getSyncPostOkCount() const { return _network.getPostOkCount(); }
   uint32_t getSyncPostFailCount() const { return _network.getPostFailCount(); }
   uint32_t getSyncLastPostDurationMs() const { return _network.getLastPostDurationMs(); }
+  unsigned long getLastSendMs() const { return _network.getLastSendMs(); }
+  int getLastDataSkipReason() const { return _network.getLastDataSkipReason(); }
+  int8_t getSendState() const { return _network.getSendState(); }
 
   // Méthodes publiques pour le serveur web
   bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);

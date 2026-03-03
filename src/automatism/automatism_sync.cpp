@@ -88,6 +88,10 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
     bool intervalReached = (timeSinceLastSend > SEND_INTERVAL_MS);
     
     if (wifiConnected && sendEnabled) {
+        // Drainer la file des POSTs en attente dès qu'un slot netRPC est dispo (même si sendFullUpdate échoue ou n'a pas lieu)
+        if (_dataQueue.size() > 0) {
+            replayQueuedData();
+        }
         if (intervalReached) {
             Serial.printf("[Sync] ✅ Conditions remplies, envoi POST... (dernier envoi il y a %lu ms)\n", timeSinceLastSend);
             sendFullUpdate(readings, acts, core);
@@ -232,6 +236,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
     uint32_t heapBefore = ESP.getFreeHeap();
     if (heapBefore < BufferConfig::LOW_MEMORY_THRESHOLD_BYTES) {
+        _lastDataSkipReason = SKIP_LOW_MEMORY;
         Serial.printf("[Sync] Mémoire faible (%u bytes), report envoi\n", heapBefore);
         return false;
     }
@@ -297,9 +302,11 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     if (success) {
         _sendState = 1;
         _lastSend = millis();
+        _lastDataSkipReason = SKIP_NONE;
         if (_dataQueue.size() > 0) replayQueuedData();
     } else {
         _sendState = -1;
+        _lastDataSkipReason = SKIP_NET_FAIL;
         Serial.println(F("[Sync] POST échoué (file pleine, timeout RPC ou HTTP)"));
         _dataQueue.push(payloadBuffer);
     }

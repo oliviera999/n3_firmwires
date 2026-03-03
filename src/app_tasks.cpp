@@ -73,8 +73,12 @@ TaskHandle_t g_netTaskHandle = nullptr;
 
 // Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
 // Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
-// Taille 5 (alignée g_netQueue) pour réduire abandons quand replayQueuedData + poll remplissent la file.
-static constexpr size_t kNetRequestPoolSize = 5;
+// WROOM : 5 (limite DRAM ~320KB). S3 : 8 pour absorber pics poll+POST quand serveur lent ou unreachable.
+#if defined(BOARD_WROOM)
+static constexpr size_t kNetRequestPoolSize = 6;
+#else
+static constexpr size_t kNetRequestPoolSize = 8;
+#endif
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
 static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
 
@@ -83,13 +87,22 @@ static NetRequest* netRequestAlloc() {
     if (!s_netRequestPoolUsed[i]) {
       s_netRequestPoolUsed[i] = true;
       memset(&s_netRequestPool[i], 0, sizeof(NetRequest));
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
+#else
+      Serial.printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
+#endif
       return &s_netRequestPool[i];
     }
   }
+  size_t used = 0;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[netRPC] Pool plein, netRequestAlloc échoue\n");
+  ets_printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
 #else
   Serial.println(F("[netRPC] Pool plein, netRequestAlloc échoue"));
+  Serial.printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
 #endif
   return nullptr;
 }
@@ -97,7 +110,13 @@ static NetRequest* netRequestAlloc() {
 static void netRequestFree(NetRequest* req) {
   if (!req) return;
   if (req >= s_netRequestPool && req < s_netRequestPool + kNetRequestPoolSize) {
-    s_netRequestPoolUsed[req - s_netRequestPool] = false;
+    size_t idx = (size_t)(req - s_netRequestPool);
+    s_netRequestPoolUsed[idx] = false;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[NETDBG] hypothesis=H4 netRequestFree slot=%u\n", (unsigned)idx);
+#else
+    Serial.printf("[NETDBG] hypothesis=H4 netRequestFree slot=%u\n", (unsigned)idx);
+#endif
   } else {
     free(req);  // Sécurité si jamais un malloc legacy
   }
@@ -452,9 +471,19 @@ static void netTask(void* pv) {
 #endif
       continue;
     }
-    if (!req || !g_ctx) continue;
+    if (!req) continue;
+    if (!g_ctx) {
+      netRequestFree(req);
+      continue;
+    }
 
     esp_task_wdt_reset();  // Reset WDT pendant traitement requête (évite reset si HTTP long)
+
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    ets_printf("[NETDBG] hypothesis=H2 netTask recv type=%u\n", (unsigned)static_cast<uint8_t>(req->type));
+#else
+    Serial.printf("[NETDBG] hypothesis=H2 netTask recv type=%u\n", (unsigned)static_cast<uint8_t>(req->type));
+#endif
 
     // v11.169: Vérifier si le caller a déjà abandonné (timeout atteint)
     if (req->cancelled) {
@@ -467,9 +496,19 @@ static void netTask(void* pv) {
     req->fromNVSFallback = false;
     switch (req->type) {
       case NetReqType::FetchRemoteState: {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[NETDBG] hypothesis=H1 FetchRemoteState start\n");
+#else
+        Serial.println(F("[NETDBG] hypothesis=H1 FetchRemoteState start"));
+#endif
         int r = (req->doc != nullptr) ? g_ctx->webClient.tryFetchConfigFromServer(*req->doc) : 0;
         ok = (r >= 1);
         req->fromNVSFallback = (r == 2);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        ets_printf("[NETDBG] hypothesis=H1,H4 FetchRemoteState done r=%d\n", r);
+#else
+        Serial.printf("[NETDBG] hypothesis=H1,H4 FetchRemoteState done r=%d\n", r);
+#endif
         esp_task_wdt_reset();
         break;
       }
@@ -976,9 +1015,9 @@ bool start(AppContext& ctx) {
   }
 
   // Créer la queue réseau (utilisée par netTask)
-  // Taille 5 pour réduire abandons POST quand file temporairement pleine (replay + poll + heartbeat).
+  // Taille alignée kNetRequestPoolSize (6 WROOM / 8 S3) pour absorber pics poll+POST.
   if (!g_netQueue) {
-    g_netQueue = xQueueCreate(5, sizeof(NetRequest*));
+    g_netQueue = xQueueCreate(kNetRequestPoolSize, sizeof(NetRequest*));
     if (!g_netQueue) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
       ets_printf("[App] CRITICAL g_netQueue fail\n");
@@ -1163,6 +1202,11 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
     uint32_t elapsed = millis() - waitStart;
     if (elapsed > limitMs) {
       Serial.printf("[netRPC] Timeout (%u ms), abandon\n", (unsigned)limitMs);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[NETDBG] hypothesis=H1 callerTimeout limitMs=%u\n", (unsigned)limitMs);
+#else
+      Serial.printf("[NETDBG] hypothesis=H1 callerTimeout limitMs=%u\n", (unsigned)limitMs);
+#endif
       req->cancelled = true;
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
       return false;  // netTask free(req)
@@ -1192,6 +1236,11 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
 bool netPostRaw(const char* payload, uint32_t timeoutMs) {
   if (!payload) return false;
   NetRequest* req = netRequestAlloc();
+  if (!req) {
+    // Hypothèse B: un retry après 1s si pool plein (netTask peut libérer un slot)
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    req = netRequestAlloc();
+  }
   if (!req) return false;
   req->type = NetReqType::PostRaw;
   req->timeoutMs = timeoutMs;

@@ -19,15 +19,15 @@ constexpr int POMPE_RESERV = 18;
 constexpr int RADIATEURS   = 13; // évite conflit avec ULTRASON_TANK
 constexpr int LUMIERE      = 15;
 
-// Servomoteurs (distributeurs)
-constexpr int SERVO_GROS   = 14;
+// Servomoteurs (distributeurs). 14/12/11/10 indispos → SERVO_GROS sur 21 (libre, PWM OK).
+constexpr int SERVO_GROS   = 21;
 constexpr int SERVO_PETITS = 17;
 
 // Capteurs
 constexpr int DHT_PIN      = 7;
 constexpr int ONE_WIRE_BUS = 37;  // Bus DS18B20
 
-// I2C (Wire) - Pins par défaut pour ESP32-S3 devkit
+// I2C (Wire) - Pins par défaut pour ESP32-S3 devkit. Vérifier câblage (VCC/GND/SDA/SCL) et pull-ups si OLED erratique (voir i2c_bus.cpp).
 constexpr int I2C_SDA = 8;  // GPIO 8 (SDA)
 constexpr int I2C_SCL = 9;  // GPIO 9 (SCL)
 
@@ -35,6 +35,9 @@ constexpr int I2C_SCL = 9;  // GPIO 9 (SCL)
 constexpr int OLED_SDA = I2C_SDA;
 constexpr int OLED_SCL = I2C_SCL;
 constexpr int OLED_ADDR = 0x3C;  // Adresse I2C de l'OLED
+
+// RTC DS3231 (I2C) - optionnel, pour heure précise offline
+constexpr uint8_t DS3231_I2C_ADDR = 0x68;
 
 } // namespace Pins
 
@@ -56,7 +59,7 @@ constexpr int SERVO_PETITS = 13;
 constexpr int DHT_PIN      = 27;
 constexpr int ONE_WIRE_BUS = 26;
 
-// I2C (Wire) - Pins par défaut pour ESP32
+// I2C (Wire) - Pins par défaut pour ESP32. Vérifier câblage (VCC/GND/SDA/SCL) et pull-ups si OLED erratique (voir i2c_bus.cpp).
 constexpr int I2C_SDA = 21;  // GPIO 21 (SDA)
 constexpr int I2C_SCL = 22;  // GPIO 22 (SCL)
 
@@ -64,6 +67,9 @@ constexpr int I2C_SCL = 22;  // GPIO 22 (SCL)
 constexpr int OLED_SDA = I2C_SDA;
 constexpr int OLED_SCL = I2C_SCL;
 constexpr int OLED_ADDR = 0x3C;  // Adresse I2C de l'OLED
+
+// RTC DS3231 (I2C) - optionnel, pour heure précise offline
+constexpr uint8_t DS3231_I2C_ADDR = 0x68;
 
 } // namespace Pins
 

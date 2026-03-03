@@ -43,6 +43,47 @@ void invalidateDbvarsCache() { s_dbvarsCacheInvalid = true; }
 static bool s_pendingRestart = false;
 
 #ifndef DISABLE_ASYNC_WEBSERVER
+// Authentification web locale : token session (perdu au reboot)
+static char s_webAuthToken[WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN + 1] = {0};
+
+static bool isAuthenticated(AsyncWebServerRequest* req) {
+  if (s_webAuthToken[0] == '\0') return false;
+  const AsyncWebHeader* h = req->getHeader("Cookie");
+  if (!h || !h->value().length()) return false;
+  const char* cookie = h->value().c_str();
+  const char* prefix = "ffp5cs_auth=";
+  const size_t prefixLen = 11;
+  const char* p = strstr(cookie, prefix);
+  if (!p) return false;
+  p += prefixLen;
+  size_t i = 0;
+  while (i < WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN && p[i] != '\0' && p[i] != ';' && p[i] != ' ') {
+    if (p[i] != s_webAuthToken[i]) return false;
+    i++;
+  }
+  return (i == WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN);
+}
+
+static void sendAuthRequired(AsyncWebServerRequest* req) {
+  req->send(NetworkConfig::HTTP_UNAUTHORIZED, "application/json", "{\"ok\":false}");
+}
+
+bool webAuthIsAuthenticated(AsyncWebServerRequest* req) {
+  return isAuthenticated(req);
+}
+void webAuthSendRequired(AsyncWebServerRequest* req) {
+  sendAuthRequired(req);
+}
+
+static void generateWebAuthToken() {
+  randomSeed(micros() + (unsigned long)ESP.getFreeHeap());
+  for (size_t i = 0; i < 16; i++) {
+    uint8_t b = (uint8_t)(random(0, 256));
+    snprintf(s_webAuthToken + (i * 2), 3, "%02x", (unsigned)b);
+  }
+  s_webAuthToken[WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN] = '\0';
+}
+
 static bool getWebParam(AsyncWebServerRequest* req, const char* name, char* buf, size_t bufSize, bool post = true) {
   if (req->hasParam(name, post)) {
     const AsyncWebParameter* p = req->getParam(name, post);
@@ -409,6 +450,42 @@ bool WebServerManager::begin() {
   WebRoutes::registerStatusRoutes(*_server, ctx);
 
   // ============================================================================
+  // AUTHENTIFICATION WEB LOCALE (onglets protégés : admin / ffp3)
+  // ============================================================================
+  _server->on("/api/auth/check", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (isAuthenticated(req)) {
+      req->send(NetworkConfig::HTTP_OK, "application/json", "{\"ok\":true}");
+    } else {
+      req->send(NetworkConfig::HTTP_UNAUTHORIZED, "application/json", "{\"ok\":false}");
+    }
+  });
+
+  _server->on(AsyncURIMatcher::exact("/api/login"), HTTP_POST, [](AsyncWebServerRequest* req, JsonVariant& json) {
+    const char* user = json["user"].as<const char*>();
+    const char* pass = json["pass"].as<const char*>();
+    if (!user) user = "";
+    if (!pass) pass = "";
+    if (strcmp(user, WebAuthConfig::WEB_AUTH_USER) != 0 || strcmp(pass, WebAuthConfig::WEB_AUTH_PASS) != 0) {
+      req->send(NetworkConfig::HTTP_UNAUTHORIZED, "application/json", "{\"ok\":false,\"error\":\"invalid\"}");
+      return;
+    }
+    if (s_webAuthToken[0] == '\0') {
+      generateWebAuthToken();
+    }
+    AsyncWebServerResponse* response = req->beginResponse(NetworkConfig::HTTP_OK, "application/json", "{\"ok\":true}");
+    char cookieVal[64];
+    snprintf(cookieVal, sizeof(cookieVal), "ffp5cs_auth=%s; Path=/", s_webAuthToken);
+    response->addHeader("Set-Cookie", cookieVal);
+    req->send(response);
+  });
+
+  _server->on(AsyncURIMatcher::exact("/api/logout"), HTTP_POST, [](AsyncWebServerRequest* req) {
+    AsyncWebServerResponse* response = req->beginResponse(NetworkConfig::HTTP_OK, "application/json", "{\"ok\":true}");
+    response->addHeader("Set-Cookie", "ffp5cs_auth=; Path=/; Max-Age=0");
+    req->send(response);
+  });
+
+  // ============================================================================
   // ALIAS ENDPOINTS CONTRACTUELS (conformité règles interface web locale)
   // ============================================================================
   
@@ -421,6 +498,7 @@ bool WebServerManager::begin() {
 
   // /api/feed -> endpoint POST pour nourrissage (type=small|big)
   _server->on("/api/feed", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     g_autoCtrl.notifyLocalWebActivity();
     
     // Extraire le paramètre type avec validation
@@ -459,6 +537,7 @@ bool WebServerManager::begin() {
 
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
   _server->on("/action", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req){
+      if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
       g_autoCtrl.notifyLocalWebActivity();
       const char* resp = "OK";
 
@@ -655,6 +734,7 @@ bool WebServerManager::begin() {
 
   // /diag endpoint
   _server->on("/diag", HTTP_GET, [this, &ctx](AsyncWebServerRequest* req) {
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // v11.40: Pas de notifyLocalWebActivity() - endpoint diagnostic
     if (_diag) {
       // Augmente la capacité si l'on inclut taskStats (peut être long)
@@ -680,6 +760,7 @@ bool WebServerManager::begin() {
 
   // /dbvars endpoint : expose variables fetched from remote server - OPTIMISÉ
   _server->on("/dbvars", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     g_autoCtrl.notifyLocalWebActivity();
 
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_DBVARS_ROUTE) {
@@ -715,6 +796,7 @@ bool WebServerManager::begin() {
   // 4. Mise à jour RAM via applyConfigFromJson 5. Sync distant optionnelle (non bloquante)
   // Handler partagé pour POST /dbvars/update et POST /api/config (alias contractuel, pas de redirect pour conserver le body)
   auto handleDbVarsUpdate = [this, &ctx](AsyncWebServerRequest* req) {
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     g_autoCtrl.notifyLocalWebActivity();
 
     // Plan 3.3: debounce pour éviter écritures NVS trop fréquentes (sliders UI)
@@ -824,6 +906,7 @@ bool WebServerManager::begin() {
 
   // Page de mise à jour OTA avec bouton POST /api/ota
   _server->on("/update", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     req->send(NetworkConfig::HTTP_OK, "text/html",
       "<html><head><meta charset='utf-8'><title>FFP5CS OTA</title>"
       "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -851,6 +934,7 @@ bool WebServerManager::begin() {
 
   // POST /api/ota - Déclenchement manuel OTA (vérification + mise à jour si disponible)
   _server->on("/api/ota", HTTP_POST, [](AsyncWebServerRequest* req) {
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     g_autoCtrl.notifyLocalWebActivity();
     extern AppContext g_appContext;
     OTAManager& ota = g_appContext.otaManager;
@@ -983,6 +1067,7 @@ bool WebServerManager::begin() {
   // -------------------------------------------------------------------
 #ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
   _server->on("/nvs.json", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Outil de debug interactif
     g_autoCtrl.notifyLocalWebActivity();
     if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/nvs.json"))) {
@@ -1073,6 +1158,7 @@ bool WebServerManager::begin() {
   });
 
   _server->on("/nvs", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Page NVS Inspector interactive
     g_autoCtrl.notifyLocalWebActivity();
     const char* html =
@@ -1170,6 +1256,7 @@ bool WebServerManager::begin() {
   // (et non NVSManager) car il nécessite un accès bas niveau pour debug/inspection
   // avec support de tous les types NVS (U8, I8, U16, I16, U32, I32, U64, I64, STR, BLOB)
   _server->on("/nvs/set", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
     char nsBuf[32], keyBuf[64], typeBuf[16], valueBuf[256];
@@ -1383,6 +1470,7 @@ bool WebServerManager::begin() {
   });
 
   _server->on("/nvs/erase", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
     char nsBuf[32], keyBuf[64];
@@ -1402,6 +1490,7 @@ bool WebServerManager::begin() {
   });
 
   _server->on("/nvs/erase_ns", HTTP_POST, [&ctx](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Modification NVS critique
     g_autoCtrl.notifyLocalWebActivity();
     char nsBuf[32];
@@ -1428,6 +1517,7 @@ bool WebServerManager::begin() {
   // Scanner les réseaux WiFi disponibles
   // NOTE: WiFi.scanNetworks() est intrinsèquement bloquant (2-5s) sur ESP32
   _server->on("/wifi/scan", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Action WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
     
@@ -1518,8 +1608,9 @@ bool WebServerManager::begin() {
   
   // Lister les réseaux WiFi sauvegardés
   _server->on("/wifi/saved", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // v11.40: Pas de notifyLocalWebActivity() - endpoint lecture seule
-    
+
     // v11.169: Vérification mémoire (audit robustesse)
     if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_WIFI_ROUTE, F("/wifi/saved"))) {
       return;
@@ -1618,6 +1709,7 @@ bool WebServerManager::begin() {
   
   // Connecter à un réseau WiFi
   _server->on("/wifi/connect", HTTP_POST, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Changement WiFi critique
     g_autoCtrl.notifyLocalWebActivity();
     
@@ -1778,6 +1870,7 @@ bool WebServerManager::begin() {
   
   // Supprimer un réseau WiFi sauvegardé
   _server->on("/wifi/remove", HTTP_POST, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Modification WiFi
     g_autoCtrl.notifyLocalWebActivity();
     

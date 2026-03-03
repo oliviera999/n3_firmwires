@@ -1,6 +1,7 @@
 #include "sensors.h"
 #include "nvs_manager.h" // v11.112
 #include "nvs_keys.h"
+#include "i2c_bus.h"
 #include <math.h> // Pour fabs()
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
@@ -1004,31 +1005,41 @@ AirSensor::AirSensor()
 
 void AirSensor::begin() {
 #if defined(USE_AIR_SENSOR_AUTO)
-  Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
-  if (_bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
-    _useBme280 = true;
-    vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
-    SENSOR_LOG_PRINTLN("[AirSensor] BME280 détecté, utilisation capteur I2C");
-  } else {
-    _useBme280 = false;
-    _dht.begin();
-    vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS));
+  {
+    I2CBusGuard guard;
+    if (guard && _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
+      _useBme280 = true;
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+      SENSOR_LOG_PRINTLN("[AirSensor] BME280 détecté, utilisation capteur I2C");
+    } else {
+      _useBme280 = false;
+      _dht.begin();
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS));
 #if defined(USE_DHT22)
-    SENSOR_LOG_PRINTLN("[AirSensor] BME280 absent, utilisation DHT22");
+      SENSOR_LOG_PRINTLN("[AirSensor] BME280 absent, utilisation DHT22");
 #else
-    SENSOR_LOG_PRINTLN("[AirSensor] BME280 absent, utilisation DHT11");
+      SENSOR_LOG_PRINTLN("[AirSensor] BME280 absent, utilisation DHT11");
 #endif
+    }
   }
 #elif defined(USE_AIR_SENSOR_BME280)
-  Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
-  if (!_bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
-    SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: BME280 non détecté sur I2C");
-    _sensorDisabled = true;
-    _disableLogged = true;
-    SENSOR_LOG_PRINTLN("[AirSensor] BME280 désactivé - capteur absent au démarrage");
-    return;
+  {
+    I2CBusGuard guard;
+    if (!guard) {
+      SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: mutex I2C non acquis");
+      _sensorDisabled = true;
+      _disableLogged = true;
+      return;
+    }
+    if (!_bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire)) {
+      SENSOR_LOG_PRINTLN("[AirSensor] ATTENTION: BME280 non détecté sur I2C");
+      _sensorDisabled = true;
+      _disableLogged = true;
+      SENSOR_LOG_PRINTLN("[AirSensor] BME280 désactivé - capteur absent au démarrage");
+      return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
   }
-  vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
 #else
   _dht.begin();
   vTaskDelay(pdMS_TO_TICKS(SensorConfig::DHT::INIT_STABILIZATION_DELAY_MS));
@@ -1067,12 +1078,23 @@ bool AirSensor::isSensorConnected() {
     esp_task_wdt_reset();
   }
 
+  float temp;
 #if defined(USE_AIR_SENSOR_AUTO)
-  float temp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+  if (_useBme280) {
+    I2CBusGuard guard;
+    if (!guard) return false;
+    temp = _bme.readTemperature();
+  } else {
+    temp = _dht.readTemperature();
+  }
 #elif defined(USE_AIR_SENSOR_BME280)
-  float temp = _bme.readTemperature();
+  {
+    I2CBusGuard guard;
+    if (!guard) return false;
+    temp = _bme.readTemperature();
+  }
 #else
-  float temp = _dht.readTemperature();
+  temp = _dht.readTemperature();
 #endif
 
   if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -1107,15 +1129,23 @@ void AirSensor::resetSensor() {
 
 #if defined(USE_AIR_SENSOR_AUTO)
   if (_useBme280) {
-    _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
-    vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+    I2CBusGuard guard;
+    if (guard) {
+      _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+    }
   } else {
     _dht.begin();
     vTaskDelay(pdMS_TO_TICKS(500));
   }
 #elif defined(USE_AIR_SENSOR_BME280)
-  _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
-  vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+  {
+    I2CBusGuard guard;
+    if (guard) {
+      _bme.begin(SensorConfig::BME280::I2C_ADDRESS, &Wire);
+      vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+    }
+  }
 #else
   _dht.begin();
   vTaskDelay(pdMS_TO_TICKS(500));
@@ -1145,9 +1175,19 @@ float AirSensor::robustTemperatureC() {
       }
       
 #if defined(USE_AIR_SENSOR_AUTO)
-      float testTemp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+      float testTemp;
+      if (_useBme280) {
+        I2CBusGuard guard;
+        testTemp = guard ? _bme.readTemperature() : NAN;
+      } else {
+        testTemp = _dht.readTemperature();
+      }
 #elif defined(USE_AIR_SENSOR_BME280)
-      float testTemp = _bme.readTemperature();
+      float testTemp;
+      {
+        I2CBusGuard guard;
+        testTemp = guard ? _bme.readTemperature() : NAN;
+      }
 #else
       float testTemp = _dht.readTemperature();
 #endif
@@ -1228,12 +1268,21 @@ float AirSensor::robustTemperatureC() {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
+    float temp;
 #if defined(USE_AIR_SENSOR_AUTO)
-    float temp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+    if (_useBme280) {
+      I2CBusGuard guard;
+      temp = guard ? _bme.readTemperature() : NAN;
+    } else {
+      temp = _dht.readTemperature();
+    }
 #elif defined(USE_AIR_SENSOR_BME280)
-    float temp = _bme.readTemperature();
+    {
+      I2CBusGuard guard;
+      temp = guard ? _bme.readTemperature() : NAN;
+    }
 #else
-    float temp = _dht.readTemperature();
+    temp = _dht.readTemperature();
 #endif
 
     // Reset watchdog après lecture
@@ -1287,12 +1336,21 @@ use_last_valid:
 }
 
 float AirSensor::temperatureC() {
+  float val;
 #if defined(USE_AIR_SENSOR_AUTO)
-  float val = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+  if (_useBme280) {
+    I2CBusGuard guard;
+    val = guard ? _bme.readTemperature() : NAN;
+  } else {
+    val = _dht.readTemperature();
+  }
 #elif defined(USE_AIR_SENSOR_BME280)
-  float val = _bme.readTemperature();
+  {
+    I2CBusGuard guard;
+    val = guard ? _bme.readTemperature() : NAN;
+  }
 #else
-  float val = _dht.readTemperature();
+  val = _dht.readTemperature();
 #endif
   if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
     return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
@@ -1301,12 +1359,21 @@ float AirSensor::temperatureC() {
 }
 
 float AirSensor::humidity() {
+  float val;
 #if defined(USE_AIR_SENSOR_AUTO)
-  float val = _useBme280 ? _bme.readHumidity() : _dht.readHumidity();
+  if (_useBme280) {
+    I2CBusGuard guard;
+    val = guard ? _bme.readHumidity() : NAN;
+  } else {
+    val = _dht.readHumidity();
+  }
 #elif defined(USE_AIR_SENSOR_BME280)
-  float val = _bme.readHumidity();
+  {
+    I2CBusGuard guard;
+    val = guard ? _bme.readHumidity() : NAN;
+  }
 #else
-  float val = _dht.readHumidity();
+  val = _dht.readHumidity();
 #endif
   if (isnan(val) || val < SensorConfig::AirSensor::HUMIDITY_MIN || val > SensorConfig::AirSensor::HUMIDITY_MAX) {
     return SensorConfig::DefaultValues::HUMIDITY_DEFAULT;
@@ -1331,12 +1398,21 @@ float AirSensor::filteredTemperatureC() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  float temp;
 #if defined(USE_AIR_SENSOR_AUTO)
-  float temp = _useBme280 ? _bme.readTemperature() : _dht.readTemperature();
+  if (_useBme280) {
+    I2CBusGuard guard;
+    temp = guard ? _bme.readTemperature() : NAN;
+  } else {
+    temp = _dht.readTemperature();
+  }
 #elif defined(USE_AIR_SENSOR_BME280)
-  float temp = _bme.readTemperature();
+  {
+    I2CBusGuard guard;
+    temp = guard ? _bme.readTemperature() : NAN;
+  }
 #else
-  float temp = _dht.readTemperature();
+  temp = _dht.readTemperature();
 #endif
   if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
     return _emaInit ? _emaTemp : NAN;
@@ -1372,12 +1448,21 @@ float AirSensor::filteredHumidity() {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  float h;
 #if defined(USE_AIR_SENSOR_AUTO)
-  float h = _useBme280 ? _bme.readHumidity() : _dht.readHumidity();
+  if (_useBme280) {
+    I2CBusGuard guard;
+    h = guard ? _bme.readHumidity() : NAN;
+  } else {
+    h = _dht.readHumidity();
+  }
 #elif defined(USE_AIR_SENSOR_BME280)
-  float h = _bme.readHumidity();
+  {
+    I2CBusGuard guard;
+    h = guard ? _bme.readHumidity() : NAN;
+  }
 #else
-  float h = _dht.readHumidity();
+  h = _dht.readHumidity();
 #endif
   if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
     return _emaInit ? _emaHumidity : NAN;
@@ -1438,12 +1523,21 @@ float AirSensor::robustHumidity() {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
+    float humidity;
 #if defined(USE_AIR_SENSOR_AUTO)
-    float humidity = _useBme280 ? _bme.readHumidity() : _dht.readHumidity();
+    if (_useBme280) {
+      I2CBusGuard guard;
+      humidity = guard ? _bme.readHumidity() : NAN;
+    } else {
+      humidity = _dht.readHumidity();
+    }
 #elif defined(USE_AIR_SENSOR_BME280)
-    float humidity = _bme.readHumidity();
+    {
+      I2CBusGuard guard;
+      humidity = guard ? _bme.readHumidity() : NAN;
+    }
 #else
-    float humidity = _dht.readHumidity();
+    humidity = _dht.readHumidity();
 #endif
 
     // Reset watchdog après lecture

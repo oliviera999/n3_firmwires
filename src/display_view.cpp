@@ -1,6 +1,7 @@
 #include "display_view.h"
 #include "config.h"
 #include "pins.h"
+#include "i2c_bus.h"
 #include "oled_logo.h"
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
@@ -339,27 +340,28 @@ bool DisplayView::begin() {
   Serial.printf("Adresse OLED: 0x%02X\n", Pins::OLED_ADDR);
 #endif
 
-  // CORRECTION v11.55: Gestion robuste I2C avec détection silencieuse
-  static bool i2cInitialized = false;
-  
-  if (!i2cInitialized) {
-    // Initialiser I2C avec les pins définis
-    Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
-    delay(SensorConfig::I2C_STABILIZATION_DELAY_MS); // Attendre la stabilisation I2C
-    i2cInitialized = true;
-    
-#ifdef OLED_DIAGNOSTIC
-    Serial.println("I2C initialisé, test de détection...");
+  I2CBusGuard guard;
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+  // #region agent log
+  Serial.printf("[OLED-DBG] begin guard=%s\n", guard ? "ok" : "FAIL");
+  // #endregion
 #endif
-  } else {
-#ifdef OLED_DIAGNOSTIC
-    Serial.println("I2C déjà initialisé, test de détection...");
-#endif
+  if (!guard) {
+    _present = false;
+    return false;
   }
-  
-  // CORRECTION v11.57: Détection robuste avec gestion d'erreur améliorée
+
+  {  // portée limitée : mutex libéré avant flush() pour éviter double lock
+  // CORRECTION v11.57: Répliquer l'ordre du scan I2C (0x76 puis 0x3C) pour réveil OLED cohérent avec runI2cScanAndLog.
+  Wire.beginTransmission(0x76);
+  Wire.endTransmission();
   Wire.beginTransmission(Pins::OLED_ADDR);
   byte error = Wire.endTransmission();
+  for (int retry = 0; error != 0 && error == 2 && retry < 2; retry++) {
+    delay(500);
+    Wire.beginTransmission(Pins::OLED_ADDR);
+    error = Wire.endTransmission();
+  }
   
   // Si erreur I2C, désactiver immédiatement pour éviter le spam
   if (error != 0) {
@@ -429,7 +431,6 @@ bool DisplayView::begin() {
     _diagLine = 0; // reset diagnostic line counter at each begin
     resetStatusCache(); // Réinitialise le cache des états
     resetMainCache(); // Réinitialise le cache de l'affichage principal
-    flush();
 #if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
     Serial.printf("[OLED] Initialisée avec succès sur I2C (SDA:%d, SCL:%d, ADDR:0x%02X)\n",
                  Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
@@ -441,8 +442,55 @@ bool DisplayView::begin() {
                  Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
 #endif
   }
-  
+
+  }  // fin portée guard
+
+  // Libérer le mutex avant flush() pour éviter double lock (flush() reprend le mutex)
+  if (_present) flush();
   return _present;
+}
+
+bool DisplayView::beginHoldingMutex() {
+#if FEATURE_OLED == 0
+  _present = false;
+  return false;
+#endif
+  if (!_disp.begin(SSD1306_SWITCHCAPVCC, Pins::OLED_ADDR)) {
+    _present = false;
+    return false;
+  }
+  _present = true;
+  _disp.clearDisplay();
+  _disp.setTextColor(WHITE);
+#if FEATURE_OLED
+  _disp.cp437(true);
+#endif
+  _disp.clearDisplay();
+  auto centerPrint = [&](const char* txt, uint8_t size, uint8_t y) {
+    _disp.setTextSize(size);
+    int16_t x = (_disp.width() - (strlen(txt) * 6 * size)) / 2;
+    if (x < 0) x = 0;
+    _disp.setCursor(x, y);
+    _disp.println(txt);
+  };
+  centerPrint("Projet farmflow FFP5", 1, 0);
+  char vbuf[16];
+  snprintf(vbuf, sizeof(vbuf), "v%s", ProjectConfig::VERSION);
+  centerPrint(vbuf, 1, 10);
+  int16_t logo_x = (_disp.width() - LOGO_WIDTH) / 2;
+  int16_t logo_y = 18;
+  _disp.fillRect(logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
+  _disp.drawBitmap(logo_x, logo_y, epd_bitmap_logo_n3_site, LOGO_WIDTH, LOGO_HEIGHT, BLACK);
+  _disp.display();
+  _splashUntil = millis() + DisplayConfig::SPLASH_DURATION_MS;
+  _diagLine = 0;
+  resetStatusCache();
+  resetMainCache();
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+  Serial.printf("[OLED] Initialisée avec succès (scan I2C) SDA:%d SCL:%d ADDR:0x%02X\n",
+                Pins::I2C_SDA, Pins::I2C_SCL, Pins::OLED_ADDR);
+#endif
+  return true;
 }
 
 void DisplayView::clear() {
@@ -459,6 +507,14 @@ void DisplayView::flush() {
 #endif
 #endif
   if (!_present) return;
+
+  I2CBusGuard guard;
+#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
+  // #region agent log
+  if (!guard) Serial.println(F("[OLED-DBG] flush guard FAIL"));
+  // #endregion
+#endif
+  if (!guard) return;
   
   // Vérifier la santé I2C avant d'écrire
   if (!checkI2cHealth()) return;
@@ -480,7 +536,7 @@ bool DisplayView::checkI2cHealth() {
     if (now - _lastI2cCheck >= I2C_CHECK_INTERVAL_MS) {
       _lastI2cCheck = now;
       
-      // Test silencieux de présence I2C
+      // Test silencieux de présence I2C (appelant flush() tient déjà le mutex I2C)
       Wire.beginTransmission(Pins::OLED_ADDR);
       byte error = Wire.endTransmission();
       

@@ -13,6 +13,10 @@
 #include "config.h"
 #include "sensor_failure_manager.h"
 
+#if (defined(USE_AIR_SENSOR_AUTO) || defined(USE_AIR_SENSOR_BME280)) && defined(BOARD_WROOM)
+#error "BME280 / USE_AIR_SENSOR_AUTO are only supported on BOARD_S3 (S3 envs)"
+#endif
+
 class UltrasonicManager {
  public:
   UltrasonicManager(int pinTrigEcho, const char* sensorName = "Ultrasonic");

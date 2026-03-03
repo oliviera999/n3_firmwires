@@ -64,6 +64,8 @@ class DisplayView {
  public:
   explicit DisplayView(uint8_t addr = 0x3C, uint8_t w = 128, uint8_t h = 64);
   bool begin();
+  /** À appeler quand le mutex I2C est déjà tenu (ex. juste après runI2cScan). Pas de flush(). */
+  bool beginHoldingMutex();
   bool isPresent() const { return _present; }
 
   // Affichages standards

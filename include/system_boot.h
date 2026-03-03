@@ -26,6 +26,8 @@ namespace SystemBoot {
     void initializePeripherals(AppContext& ctx);
     /// Scan du bus I2C (0x08..0x77), log série et remplissage de outBuf pour mail de démarrage.
     void runI2cScanAndLog(char* outBuf, size_t outSize);
+    /// Scan I2C puis init OLED dans le même mutex si 0x3C trouvé (évite NACK après relâche mutex). Retourne true si écran initialisé.
+    bool runI2cScanAndInitDisplay(AppContext& ctx);
     void loadConfiguration(AppContext& ctx);
     void finalizeDisplay(AppContext& ctx);
 

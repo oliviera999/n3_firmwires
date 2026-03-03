@@ -15,6 +15,9 @@
 #include "config.h"
 #include "log.h"
 #include "realtime_websocket.h"
+#if defined(USE_RTC_DS3231)
+#include "rtc_ds3231.h"
+#endif
 
 // Fonction tcpip_safe_call supprimée - appels directs utilisés à la place
 
@@ -246,6 +249,17 @@ void PowerManager::syncTimeFromNTP() {
     // Sauvegarde de l'heure synchronisée
     smartSaveTime();
 
+#if defined(USE_RTC_DS3231)
+    if (RtcDS3231::isPresent()) {
+      time_t ntpEpochForRtc = mktime(&timeinfo);
+      if (RtcDS3231::write(ntpEpochForRtc)) {
+        LOG_RTC(LogConfig::LOG_INFO, "DS3231 mis à jour après sync NTP");
+      } else {
+        LOG_RTC(LogConfig::LOG_WARN, "Échec écriture DS3231 après NTP");
+      }
+    }
+#endif
+
     unsigned long syncMillis = millis();
     time_t ntpEpoch = mktime(&timeinfo);
     
@@ -320,6 +334,32 @@ void PowerManager::forceSaveTimeToFlash() {
 
 void PowerManager::loadTimeFromFlash() {
   loadTimeWithFallback();
+}
+
+void PowerManager::applyExternalRTCIfPresent() {
+#if !defined(USE_RTC_DS3231)
+  return;
+#endif
+#if defined(USE_RTC_DS3231)
+  if (!RtcDS3231::isPresent()) {
+    return;
+  }
+  time_t rtcEpoch = 0;
+  if (!RtcDS3231::read(&rtcEpoch)) {
+    LOG_RTC(LogConfig::LOG_WARN, "DS3231 présent mais lecture heure invalide");
+    return;
+  }
+  if (!isValidEpoch(rtcEpoch)) {
+    LOG_RTC(LogConfig::LOG_WARN, "DS3231 epoch hors plage valide: %lu", (unsigned long)rtcEpoch);
+    return;
+  }
+  timeval tv = {rtcEpoch, 0};
+  settimeofday(&tv, nullptr);
+  smartSaveTime();
+  char timeBuf[64];
+  getCurrentTimeString(timeBuf, sizeof(timeBuf));
+  LOG_RTC(LogConfig::LOG_INFO, "Heure appliquée depuis DS3231: %s", timeBuf);
+#endif
 }
 
 void PowerManager::updateTime() {

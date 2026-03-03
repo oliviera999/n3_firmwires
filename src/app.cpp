@@ -24,6 +24,7 @@
 #include "app_tasks.h"
 #include "system_boot.h"
 #include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
+#include "i2c_bus.h"    // Bus I2C partagé (OLED, BME280, scan)
 #include "boot_log.h"   // BOOT_LOG : un seul #if centralisé (ets_printf vs Serial)
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "freertos/FreeRTOS.h"
@@ -102,6 +103,13 @@ static bool g_otaJustUpdated = false;
 static char g_previousVersion[32] = "";
 static unsigned long g_lastOtaCheck = 0;
 
+// Accès sync pour footer mail (évite dépendance circulaire mailer -> automatism)
+unsigned long ffp5csGetLastSendMsForMail() {
+  return g_autoCtrl.getLastSendMs();
+}
+int ffp5csGetLastDataSkipReasonForMail() {
+  return g_autoCtrl.getLastDataSkipReason();
+}
 
 void setup() {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
@@ -259,8 +267,13 @@ void setup() {
     BOOT_LOG("[TIME][WARN] Impossible de récupérer l'heure au démarrage\n");
   }
 
-  SystemBoot::initializeDisplay(g_appContext);
+  I2CBus::init();
+  if (!SystemBoot::runI2cScanAndInitDisplay(g_appContext)) {
+    SystemBoot::initializeDisplay(g_appContext);
+  }
   g_appContext.otaManager.setDisplay(&g_appContext.display);
+
+  g_appContext.power.applyExternalRTCIfPresent();
 
   bool wifiConnected = SystemBoot::connectWifi(g_appContext, g_hostname);
   if (wifiConnected) {

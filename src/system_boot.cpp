@@ -18,6 +18,7 @@
 #include "nvs_keys.h"
 #include "gpio_parser.h"  // v11.179: resetEdgeDetectionState
 #include "pins.h"
+#include "i2c_bus.h"
 #include "boot_log.h"  // BOOT_LOG : ets_printf (S3 PSRAM) ou Serial.printf (autres)
 #include <Wire.h>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
@@ -183,6 +184,11 @@ void runI2cScanAndLog(char* outBuf, size_t outSize) {
     return;
   }
   outBuf[0] = '\0';
+  I2CBusGuard guard;
+  if (!guard) {
+    BOOT_LOG("[BOOT] Scan I2C: mutex non acquis\n");
+    return;
+  }
   // Adresses 7 bits 0x08..0x77 (0x00-0x07 et 0x78-0x7F réservés / 10-bit)
   const uint8_t first = 0x08;
   const uint8_t last = 0x77;
@@ -209,7 +215,56 @@ void runI2cScanAndLog(char* outBuf, size_t outSize) {
   }
 }
 
+bool runI2cScanAndInitDisplay(AppContext& ctx) {
+  static char i2cScanBuf[128];
+  i2cScanBuf[0] = '\0';
+  bool oledFound = false;
+  {
+    I2CBusGuard guard;
+    if (!guard) {
+      BOOT_LOG("[BOOT] Scan I2C: mutex non acquis\n");
+      return false;
+    }
+    delay(500);
+    const uint8_t first = 0x08;
+    const uint8_t last = 0x77;
+    uint8_t count = 0;
+    char* p = i2cScanBuf;
+    size_t remaining = sizeof(i2cScanBuf);
+    for (uint8_t addr = first; addr <= last && remaining > 4; addr++) {
+      Wire.beginTransmission(addr);
+      uint8_t err = Wire.endTransmission();
+      if (err == 0) {
+        if (addr == Pins::OLED_ADDR) oledFound = true;
+        int n = snprintf(p, remaining, "%s0x%02X", count ? ", " : "", addr);
+        if (n > 0 && (size_t)n < remaining) {
+          p += n;
+          remaining -= (size_t)n;
+          count++;
+        }
+      }
+    }
+    BOOT_LOG("[BOOT] Scan I2C (SDA=%d, SCL=%d): %s\n",
+             Pins::I2C_SDA, Pins::I2C_SCL,
+             count ? i2cScanBuf : "aucun peripherique");
+    if (count == 0 && remaining >= 24) {
+      snprintf(i2cScanBuf, sizeof(i2cScanBuf), "aucun périphérique");
+    }
+    if (oledFound) {
+      ctx.display.beginHoldingMutex();
+    }
+  }
+  if (ctx.display.isPresent()) {
+    ctx.display.flush();
+    return true;
+  }
+  return false;
+}
+
 void initializePeripherals(AppContext& ctx) {
+  // Scan I2C au boot (Wire déjà initialisé par l'OLED) pour log et diagnostic
+  static char i2cScanBuf[128];
+  runI2cScanAndLog(i2cScanBuf, sizeof(i2cScanBuf));
   if (ctx.display.isPresent()) {
     ctx.display.showDiagnostic("Sensors");
   }

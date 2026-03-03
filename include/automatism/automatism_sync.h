@@ -45,6 +45,11 @@ public:
     bool isServerOk() const { return _serverOk; }
     int8_t getSendState() const { return _sendState; }
     int8_t getRecvState() const { return _recvState; }
+    /// Timestamp (millis) du dernier POST réussi (0 si jamais)
+    unsigned long getLastSendMs() const { return _lastSend; }
+    /// Raison du dernier non-envoi (diagnostic à distance)
+    enum DataSkipReason { SKIP_NONE = 0, SKIP_LOW_MEMORY = 1, SKIP_NET_FAIL = 2 };
+    int getLastDataSkipReason() const { return static_cast<int>(_lastDataSkipReason); }
 
     // Observabilité POST (pour /api/status)
     uint32_t getPostOkCount() const { return _postOkCount; }
@@ -116,7 +121,10 @@ private:
     uint32_t _postOkCount{0};
     uint32_t _postFailCount{0};
     uint32_t _lastPostDurationMs{0};
-    
+
+    /// Dernière raison de non-envoi (footer mail, diagnostic à distance)
+    uint8_t _lastDataSkipReason{0};  // DataSkipReason
+
     bool _firstPollAfterBootDone{false};
     
     // Constantes

@@ -130,10 +130,11 @@ SensorReadings SystemSensors::read() {
         }
         r.wlTank = _lastValidWlTank;
       } else {
+        // Aucune valeur valide connue : utiliser valeur par défaut sûre (cohérente API /json)
+        r.wlTank = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f);
         if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – réservoir=0\n");
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, réservoir=defaut %u cm\n", r.wlTank);
         }
-        r.wlTank = 0;
       }
     } else {
       r.wlTank = val;
