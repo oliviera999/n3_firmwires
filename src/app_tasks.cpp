@@ -421,12 +421,13 @@ static void netTask(void* pv) {
 #endif
   }
 
-  // Vérification OTA au boot puis toutes les 2h (prod / wroom-beta)
+  // Vérification OTA au boot puis toutes les 2h (prod / wroom-beta / wroom-s3-test)
   // Ne faire l'OTA au boot que si le serveur a répondu (évite blocage TLS > 30s sur serveur injoignable)
-  // wroom-test (PROFILE_TEST) uniquement: skip OTA au boot (downloadMetadata HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
+  // wroom-test (PROFILE_TEST + BOARD_WROOM): skip OTA au boot (HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
+  // wroom-s3-test (PROFILE_TEST + BOARD_S3): OTA au boot et périodique activés.
   static unsigned long lastOtaCheckMs = 0;
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-  #if !defined(PROFILE_TEST)
+  #if !defined(PROFILE_TEST) || defined(BOARD_S3)
   if (g_ctx && WiFi.status() == WL_CONNECTED && bootServerReachable) {
     esp_task_wdt_reset();  // Fenêtre TWDT avant checkForUpdate (downloadMetadata peut bloquer jusqu'à HTTP_TIMEOUT)
     g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
@@ -448,7 +449,7 @@ static void netTask(void* pv) {
     lastOtaCheckMs = millis();  // Pour ne pas refaire OTA immédiatement en boucle
   }
   #else
-  // wroom-test (PROFILE_TEST): OTA au boot désactivé (HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
+  // wroom-test (PROFILE_TEST + BOARD_WROOM): OTA au boot désactivé (HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
   lastOtaCheckMs = millis();
   #endif
 #endif
@@ -458,8 +459,8 @@ static void netTask(void* pv) {
     NetRequest* req = nullptr;
     const uint32_t queueTimeoutMs = 500;  // Court pour permettre vérif OTA périodique quand file vide
       if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && !defined(PROFILE_TEST)
-      // Vérification OTA périodique toutes les 2h (prod / wroom-beta). wroom-test: désactivé (HTTPS > TWDT)
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && (!defined(PROFILE_TEST) || defined(BOARD_S3))
+      // Vérification OTA périodique toutes les 2h (prod / wroom-beta / wroom-s3-test). wroom-test (WROOM): désactivé (HTTPS > TWDT)
       if (g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
           (millis() - lastOtaCheckMs >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
         g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Verify that the firmware version in project_config.h matches the latest entry in VERSION.md.
+  Verify that the firmware version in include/config.h matches the latest entry in VERSION.md.
 
 .PARAMETER VersionHeader
   Path to the header file containing the firmware version constant.
@@ -13,7 +13,7 @@
 #>
 
 param(
-    [string]$VersionHeader = "include/project_config.h",
+    [string]$VersionHeader = "include/config.h",
     [string]$VersionLog = "VERSION.md"
 )
 

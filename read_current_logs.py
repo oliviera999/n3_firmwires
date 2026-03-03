@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """Lecture des logs série actuels pour détecter un crash récent"""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools" / "monitor"))
+
 import serial
 import time
 import re
 from datetime import datetime
 
+from serial_utils import open_serial_with_release
+
 def read_recent_logs(port='COM4', baud=115200, duration=10):
     """Lit les logs série et cherche des traces de crash"""
     try:
-        ser = serial.Serial(port, baud, timeout=2)
+        ser = open_serial_with_release(port, baud, timeout=2)
         time.sleep(1)
         ser.reset_input_buffer()
         

@@ -4,11 +4,18 @@ Script de monitoring en temps réel pour l'ESP32 et l'OTA
 Surveille les logs série et teste la connectivité
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import serial
 import requests
 import time
 import threading
 from datetime import datetime
+
+from serial_utils import open_serial_with_release
 
 class OTAMonitor:
     def __init__(self, port="COM6", baudrate=115200, esp32_ip="192.168.1.100"):
@@ -25,7 +32,7 @@ class OTAMonitor:
     def connect_serial(self):
         """Connexion au port série"""
         try:
-            self.serial_conn = serial.Serial(
+            self.serial_conn = open_serial_with_release(
                 port=self.port,
                 baudrate=self.baudrate,
                 timeout=1

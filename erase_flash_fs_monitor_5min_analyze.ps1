@@ -14,6 +14,7 @@
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30 -Port COM4
 #
 # -SkipBuild : sauter l'étape build (erase + flash + monitor + analyse uniquement).
+# -SkipClean : ne pas lancer "pio run -t clean" avant le build (si le clean reste bloqué, utiliser ce flag).
 #
 # Quand -SkipBuild n'est pas utilisé, un clean est exécuté avant le build pour éviter les erreurs
 # "No such file or directory" (.d / .sconsign) après libération du port COM (processus moniteur arrêtés).
@@ -28,51 +29,15 @@ param(
     [string]$Port = "",
     [string]$Environment = "wroom-test",
     [int]$DurationMinutes = 5,
-    [switch]$SkipBuild = $false
+    [switch]$SkipBuild = $false,
+    [switch]$SkipClean = $false
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 Set-Location $projectRoot
 
-function Release-ComPortIfNeeded {
-    param([string]$Port = "")
-    if (-not $Port) { return }
-    # Tenter d'ouvrir le port : si succes, il est libre
-    try {
-        $sp = [System.IO.Ports.SerialPort]::new($Port, 115200)
-        $sp.Open()
-        $sp.Close()
-        $sp.Dispose()
-        Write-Host "Port $Port deja libre." -ForegroundColor Green
-        return
-    } catch {
-        # Port occupe ou inaccessible : arreter les processus typiques du moniteur
-    }
-    Write-Host "Liberation du port $Port (arret processus moniteur)..." -ForegroundColor Yellow
-    $killed = 0
-    try {
-        $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.ProcessName -like "*python*" -or $_.ProcessName -like "*pio*" -or
-            ($_.MainWindowTitle -and ($_.MainWindowTitle -like "*monitor*" -or $_.MainWindowTitle -like "*serial*"))
-        }
-        foreach ($p in $procs) {
-            try {
-                Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-                Write-Host "  Arrete: $($p.ProcessName) (PID $($p.Id))" -ForegroundColor Gray
-                $killed++
-            } catch { }
-        }
-        if ($killed -gt 0) {
-            Start-Sleep -Seconds 3
-            Write-Host "Port $Port : $killed processus arrete(s)." -ForegroundColor Green
-        } else {
-            Write-Host "Aucun processus moniteur detecte. Verifiez que le port est libre." -ForegroundColor Yellow
-        }
-    } catch {
-        Write-Host "Erreur liberation port: $($_.Exception.Message)" -ForegroundColor Yellow
-    }
-}
+. (Join-Path $PSScriptRoot "scripts\Release-ComPort.ps1")
 
 $durationSeconds = $DurationMinutes * 60
 Write-Host "=== WORKFLOW: ERASE ALL / FLASH ALL / MONITOR ${DurationMinutes}MIN / ANALYSE ===" -ForegroundColor Green
@@ -91,12 +56,17 @@ Write-Host ""
 # 0. Build (tous environnements, comme wroom-test) — sauf si -SkipBuild
 if (-not $SkipBuild) {
     Write-Host "0. Build $Environment..." -ForegroundColor Cyan
-    # Clean avant build pour éviter corruption cache (.d / .sconsign) après libération du port COM.
-    Write-Host "   Clean (évite erreurs .d / sconsign après libération port)..." -ForegroundColor Gray
-    pio run -e $Environment -t clean 2>&1 | Out-Null
+    if (-not $SkipClean) {
+        Write-Host "   Clean..." -ForegroundColor Gray
+        & pio run -e $Environment -t clean
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } else {
+        Write-Host "   Clean ignoré (-SkipClean)" -ForegroundColor Gray
+    }
     # Sous Windows, build séquentiel (-j 1) pour éviter erreurs "No such file or directory" (fichiers .d/.o/tmp et chemins longs).
     $buildJobs = if ($env:OS -eq "Windows_NT") { "-j", "1" } else { @() }
-    pio run -e $Environment @buildJobs
+    Write-Host "   Build en cours (plusieurs minutes avec -j 1)..." -ForegroundColor Gray
+    & pio run -e $Environment @buildJobs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "   OK" -ForegroundColor Green
     Write-Host ""

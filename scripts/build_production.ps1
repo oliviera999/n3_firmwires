@@ -177,6 +177,10 @@ Write-Host ""
 
 # Étape 6: Upload (optionnel)
 if ($UploadFS -or $UploadFirmware) {
+    $projectRoot = Split-Path $PSScriptRoot -Parent
+    . (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
+    Release-ComPortIfNeeded -Port $Port
+
     Write-Host "📤 Upload vers ESP32 (port: $Port)" -ForegroundColor Yellow
     Write-Host "----------------------------------------" -ForegroundColor Gray
     

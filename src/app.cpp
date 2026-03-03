@@ -237,7 +237,9 @@ void setup() {
   SystemBoot::setupHostname(g_hostname, sizeof(g_hostname));
 
   SystemBoot::initializeStorage(g_appContext);
-  
+#if defined(BOARD_S3)
+  SystemBoot::initializeSdCard();
+#endif
   BOOT_LOG("[INFO] Démarrage FFP5CS v%s\n", ProjectConfig::VERSION);
   BOOT_LOG("[Event] App start v%s\n", ProjectConfig::VERSION);
   

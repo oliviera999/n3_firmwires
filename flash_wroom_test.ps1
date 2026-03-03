@@ -1,4 +1,8 @@
 # Script de flash wroom-test
+param(
+    [string]$Port = ""
+)
+
 $configPath = Join-Path $PSScriptRoot "include\config.h"
 $fwVersion = "?"
 if (Test-Path $configPath) {
@@ -11,28 +15,22 @@ Write-Host "Environnement: wroom-test" -ForegroundColor Yellow
 Write-Host "Core dump: Outils d'extraction/analyse + corrections config" -ForegroundColor Cyan
 Write-Host ""
 
-# Arrêter tout processus qui pourrait bloquer le port COM
-Write-Host "1. Vérification des processus bloquant COM..." -ForegroundColor Cyan
-try {
-    $comProcesses = Get-Process | Where-Object { $_.ProcessName -like "*python*" -or 
-                                               $_.ProcessName -like "*pio*" -or
-                                               $_.MainWindowTitle -like "*monitor*" -or 
-                                               $_.MainWindowTitle -like "*serial*" }
-    if ($comProcesses) {
-        Write-Host "Processus détectés: $($comProcesses.Count)" -ForegroundColor Yellow
-        foreach ($proc in $comProcesses) {
-            Write-Host "  - $($proc.ProcessName) (ID: $($proc.Id))" -ForegroundColor Yellow
+# Port COM : paramètre, détection pio, ou défaut
+$portToUse = $Port
+if (-not $portToUse) {
+    try {
+        $pioDevices = pio device list 2>&1 | Out-String
+        if ($pioDevices -match "(COM\d+)") {
+            $portToUse = $Matches[1]
+            Write-Host "Port detecte: $portToUse" -ForegroundColor Gray
         }
-    } else {
-        Write-Host "Aucun processus bloquant détecté" -ForegroundColor Green
-    }
-} catch {
-    Write-Host "Erreur lors de la vérification des processus: $($_.Exception.Message)" -ForegroundColor Red
+    } catch { }
+    if (-not $portToUse) { $portToUse = "COM4" }
 }
 
-# Attendre un peu pour laisser le temps aux processus de se libérer
-Write-Host "2. Attente de libération du port (5 secondes)..." -ForegroundColor Cyan
-Start-Sleep -Seconds 5
+. (Join-Path $PSScriptRoot "scripts\Release-ComPort.ps1")
+Release-ComPortIfNeeded -Port $portToUse
+if ($portToUse) { $env:PLATFORMIO_UPLOAD_PORT = $portToUse }
 
 # Compiler d'abord pour vérifier qu'il n'y a pas d'erreurs
 Write-Host "3. Compilation du firmware wroom-test..." -ForegroundColor Cyan

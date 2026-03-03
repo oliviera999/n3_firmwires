@@ -12,6 +12,9 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+# Permettre l'import de serial_utils (tools/monitor) pour libération du port
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "monitor"))
+
 # Offsets de partition pour ESP32-WROOM 4MB
 COREDUMP_OFFSET_TEST = 0x3F0000  # partitions_esp32_wroom_test_coredump.csv
 COREDUMP_OFFSET_PROD = 0x3F0000  # partitions_esp32_wroom_ota_coredump.csv
@@ -53,6 +56,14 @@ def find_esptool():
 
 def extract_coredump(port, offset, size, output_file):
     """Extrait le core dump depuis la flash"""
+    try:
+        from serial_utils import release_com_port_windows
+        if release_com_port_windows(port):
+            import time
+            time.sleep(2)
+    except Exception:
+        pass
+
     esptool = find_esptool()
     if not esptool:
         print("❌ Erreur: esptool.py non trouvé!")

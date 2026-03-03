@@ -23,6 +23,8 @@ namespace SystemBoot {
     // Services Initialization
     void initializeTimekeeping(AppContext& ctx);
     bool initializeDisplay(AppContext& ctx);
+    /// Carte SD (SPI) optionnelle, ESP32-S3 uniquement : détection au boot, log présent/absent.
+    void initializeSdCard();
     void initializePeripherals(AppContext& ctx);
     /// Scan du bus I2C (0x08..0x77), log série et remplissage de outBuf pour mail de démarrage.
     void runI2cScanAndLog(char* outBuf, size_t outSize);

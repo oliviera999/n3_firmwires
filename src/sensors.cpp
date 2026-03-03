@@ -1011,6 +1011,8 @@ void AirSensor::begin() {
       _useBme280 = true;
       vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
       SENSOR_LOG_PRINTLN("[AirSensor] BME280 détecté, utilisation capteur I2C");
+      float pressureHpa = _bme.readPressure() / 100.0f;  // readPressure() en Pa -> hPa
+      SENSOR_LOG_PRINTF("[AirSensor] BME280 pression: %.1f hPa\n", pressureHpa);
     } else {
       _useBme280 = false;
       _dht.begin();
@@ -1039,6 +1041,8 @@ void AirSensor::begin() {
       return;
     }
     vTaskDelay(pdMS_TO_TICKS(SensorConfig::BME280::INIT_STABILIZATION_DELAY_MS));
+    float pressureHpa = _bme.readPressure() / 100.0f;  // readPressure() en Pa -> hPa
+    SENSOR_LOG_PRINTF("[AirSensor] BME280 pression: %.1f hPa\n", pressureHpa);
   }
 #else
   _dht.begin();

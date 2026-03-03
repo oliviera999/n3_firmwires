@@ -1,12 +1,19 @@
 <!-- Gestion WiFi -->
 <div class="row g-4">
-  <!-- Statut WiFi Station (Client) -->
-  <div class="col-md-6">
+  <!-- Statut WiFi (Client + Point d'accès fusionnés) -->
+  <div class="col-12">
     <div class="card">
       <div class="card-header">
-        <h5 class="mb-0">📡 Statut WiFi Client</h5>
+        <h5 class="mb-0">📡 Statut WiFi</h5>
       </div>
       <div class="card-body">
+        <div class="list-group list-group-flush">
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Mode</span>
+            <span class="badge" id="wifiMode">--</span>
+          </div>
+        </div>
+        <div class="small text-muted mt-2 mb-1">Client (STA)</div>
         <div class="list-group list-group-flush">
           <div class="list-group-item d-flex justify-content-between align-items-center">
             <span>État</span>
@@ -25,22 +32,7 @@
             <span class="badge bg-warning text-dark" id="wifiStaRSSI">--</span>
           </div>
         </div>
-        <div class="mt-3">
-          <button class="btn btn-outline-primary w-100" onclick="refreshWifiStatus()">
-            🔄 Actualiser
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Statut WiFi AP (Point d'accès) -->
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">
-        <h5 class="mb-0">📶 Point d'Accès WiFi</h5>
-      </div>
-      <div class="card-body">
+        <div class="small text-muted mt-2 mb-1">Point d'accès (AP)</div>
         <div class="list-group list-group-flush">
           <div class="list-group-item d-flex justify-content-between align-items-center">
             <span>État</span>
@@ -58,6 +50,11 @@
             <span>Clients</span>
             <span class="badge bg-success" id="wifiApClients">--</span>
           </div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-outline-primary w-100" onclick="refreshWifiStatus()">
+            🔄 Actualiser
+          </button>
         </div>
       </div>
     </div>

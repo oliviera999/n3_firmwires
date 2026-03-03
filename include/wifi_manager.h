@@ -8,6 +8,9 @@
 #include <functional>
 #include <ArduinoJson.h>
 #include <cstring>
+#if defined(BOARD_S3)
+#include <DNSServer.h>
+#endif
 class DisplayView;
 
 class WifiManager {
@@ -75,6 +78,11 @@ class WifiManager {
   uint32_t _weakSignalStartTime = 0;
   uint32_t _reconnectAttempts = 0;
   uint32_t _lastReconnectAttempt = 0;
+
+#if defined(BOARD_S3)
+  DNSServer _apDnsServer;
+  bool _apDnsStarted = false;
+#endif
 };
 
 /**

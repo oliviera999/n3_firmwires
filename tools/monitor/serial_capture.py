@@ -12,12 +12,18 @@ import argparse
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
+
+# Permettre l'import de serial_utils depuis le même répertoire
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     import serial  # type: ignore
 except Exception as exc:  # pragma: no cover
     sys.stderr.write("pyserial missing. Install with: pip install pyserial\n")
     raise
+
+from serial_utils import open_serial_with_release
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,7 +49,7 @@ def main() -> int:
     start_time = time.time()
     end_time = start_time + args.duration
 
-    with serial.Serial(args.port, args.baud, timeout=1) as ser, open(
+    with open_serial_with_release(args.port, args.baud, timeout=1) as ser, open(
         args.out, "a", encoding="utf-8", newline="\n"
     ) as f:
         f.write(f"# Serial capture started at {timestamp()} on {args.port} {args.baud}bps\n")

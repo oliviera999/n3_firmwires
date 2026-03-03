@@ -4,12 +4,19 @@ Analyseur de logs de démarrage ESP32 FFP3
 Capture et analyse les logs pendant 3 minutes après flash complet
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import serial
 import time
 import datetime
 import re
 import json
 from collections import defaultdict, Counter
+
+from serial_utils import open_serial_with_release
 
 class ESP32LogAnalyzer:
     def __init__(self, port='COM5', baudrate=115200):
@@ -22,7 +29,7 @@ class ESP32LogAnalyzer:
     def connect(self):
         """Établit la connexion série"""
         try:
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
+            self.ser = open_serial_with_release(self.port, self.baudrate, timeout=1)
             print(f"✅ Connexion établie sur {self.port} à {self.baudrate} baud")
             return True
         except Exception as e:

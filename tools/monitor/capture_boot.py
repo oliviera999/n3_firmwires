@@ -16,11 +16,15 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 try:
     import serial  # pyserial
 except ImportError:
     sys.stderr.write("pyserial not installed. Install with: pip install pyserial\n")
     sys.exit(1)
+
+from serial_utils import open_serial_with_release
 
 
 def capture(port: str = "COM6", baud: int = 115200, seconds: int = 90) -> int:
@@ -31,7 +35,7 @@ def capture(port: str = "COM6", baud: int = 115200, seconds: int = 90) -> int:
     sys.stdout.flush()
 
     try:
-        ser = serial.Serial(port=port, baudrate=baud, timeout=0.05)
+        ser = open_serial_with_release(port=port, baudrate=baud, timeout=0.05)
     except Exception as e:
         sys.stderr.write(f"Failed to open serial port {port}: {e}\n")
         return 2

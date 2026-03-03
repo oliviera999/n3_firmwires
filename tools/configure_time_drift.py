@@ -4,10 +4,17 @@ Script de configuration pour le système de surveillance de dérive temporelle
 Permet de configurer les paramètres du moniteur via l'interface série
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "monitor"))
+
 import serial
 import time
 import json
 from datetime import datetime
+
+from serial_utils import open_serial_with_release
 
 class TimeDriftConfigurator:
     def __init__(self, port, baudrate=115200):
@@ -18,7 +25,7 @@ class TimeDriftConfigurator:
     def connect(self):
         """Établir la connexion série"""
         try:
-            self.serial_conn = serial.Serial(self.port, baudrate, timeout=1)
+            self.serial_conn = open_serial_with_release(self.port, self.baudrate, timeout=1)
             print(f"✅ Connexion série établie sur {self.port}")
             return True
         except Exception as e:

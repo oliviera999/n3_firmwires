@@ -7,7 +7,12 @@ FFP3CS - Emergency Recovery
 import subprocess
 import time
 import os
+import sys
+from pathlib import Path
 from datetime import datetime
+
+# Permettre l'import de serial_utils (tools/monitor)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "monitor"))
 
 def emergency_recovery():
     """Récupération d'urgence de l'ESP32"""
@@ -115,8 +120,8 @@ def emergency_recovery():
         
         # Test de connexion série
         try:
-            import serial
-            ser = serial.Serial('COM6', 115200, timeout=5)
+            from serial_utils import open_serial_with_release
+            ser = open_serial_with_release('COM6', 115200, timeout=5)
             time.sleep(5)
             
             # Lire quelques lignes pour vérifier

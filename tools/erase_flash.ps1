@@ -19,6 +19,8 @@ $projectRoot = if ($PSScriptRoot) {
 
 Set-Location $projectRoot
 $env:UPLOAD_PORT = $Port
+. (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
+Release-ComPortIfNeeded -Port $Port
 Write-Host "Erase flash: env=$Environment port=$Port" -ForegroundColor Cyan
 pio run -e $Environment -t erase
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

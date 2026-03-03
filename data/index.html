@@ -6,6 +6,21 @@
 <title>FFP3 Dashboard v<span id="fwVersion">--</span></title>
 <link rel="stylesheet" href="/shared/common.css">
 <link rel="stylesheet" href="/assets/css/uplot.min.css">
+<style>
+.nav-link.auth-required { display: none; }
+body.web-auth .nav-link.auth-required { display: inline-block; }
+.btn-auth { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border, #334155); background: var(--card-bg, #1e293b); color: var(--text, #e2e8f0); cursor: pointer; }
+.auth-modal { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.auth-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.6); }
+.auth-modal-content { position: relative; background: var(--card-bg, #1e293b); border-radius: 12px; padding: 24px; max-width: 320px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+.auth-modal-title { margin: 0 0 16px; font-size: 1.25rem; }
+.auth-modal label { display: block; margin-bottom: 4px; font-size: 14px; }
+.auth-modal input { width: 100%; padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid var(--border, #334155); background: var(--input-bg, #0f172a); color: var(--text, #e2e8f0); box-sizing: border-box; }
+.auth-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.auth-modal-actions button { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; }
+.auth-modal-actions button[type=submit] { background: var(--accent, #38bdf8); color: #0f172a; }
+.auth-error { color: #f87171; font-size: 14px; margin-bottom: 8px; }
+</style>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0f172a">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,9 +38,11 @@
           <span>FFP3 Dashboard</span>
           <span class="muted" style="font-size: 12px;">v<span id="fwVersion">--</span></span>
         </div>
-        <div class="status-info">
+        <div class="status-info d-flex align-items-center gap-2">
           <span id="statusDot" class="status-indicator status-offline" aria-label="Statut"></span>
           <span id="lastUpdate" class="muted">Hors ligne</span>
+          <button type="button" id="authLoginBtn" class="btn-auth" style="display:none;" onclick="showLoginModal()" aria-label="Connexion admin">Connexion admin</button>
+          <button type="button" id="authLogoutBtn" class="btn-auth" style="display:none;" onclick="doLogout()" aria-label="Déconnexion">Déconnexion</button>
         </div>
       </div>
     </div>
@@ -33,12 +50,12 @@
     <!-- Navigation principale -->
     <div class="nav-tabs" role="tablist">
       <div class="nav-link active" role="tab" onclick="loadPage('mesures', event)">📈 Mesures</div>
-      <div class="nav-link" role="tab" onclick="loadPage('wifi', event)">📶 WiFi</div>
-      <div class="nav-link" role="tab" onclick="loadPage('controles', event)">🎛️ Contrôles</div>
-      <div class="nav-link" role="tab" onclick="window.open('/diag', '_blank')">🔍 Diagnostic</div>
-      <div class="nav-link" role="tab" onclick="window.open('/update', '_blank')">🔄 OTA</div>
-      <div class="nav-link" role="tab" onclick="window.open('/json', '_blank')">📄 JSON</div>
-      <div class="nav-link" role="tab" onclick="window.open('/nvs', '_blank')">💾 NVS</div>
+      <div class="nav-link auth-required" role="tab" data-page="wifi" onclick="loadPageOrAuth('wifi', event)">📶 WiFi</div>
+      <div class="nav-link auth-required" role="tab" data-page="controles" onclick="loadPageOrAuth('controles', event)">🎛️ Contrôles</div>
+      <div class="nav-link auth-required" role="tab" onclick="openOrAuth('/diag')">🔍 Diagnostic</div>
+      <div class="nav-link auth-required" role="tab" onclick="openOrAuth('/update')">🔄 OTA</div>
+      <div class="nav-link auth-required" role="tab" onclick="openOrAuth('/json')">📄 JSON</div>
+      <div class="nav-link auth-required" role="tab" onclick="openOrAuth('/nvs')">💾 NVS</div>
     </div>
 
     <!-- Zone de contenu dynamique -->
@@ -147,6 +164,25 @@
   </div>
 </div>
 
+<!-- Modal Connexion admin -->
+<div id="loginModal" class="auth-modal" role="dialog" aria-labelledby="loginModalTitle" aria-modal="true" style="display:none;">
+  <div class="auth-modal-backdrop" onclick="closeLoginModal()"></div>
+  <div class="auth-modal-content">
+    <h3 id="loginModalTitle" class="auth-modal-title">Connexion admin</h3>
+    <p id="loginError" class="auth-error" style="display:none;"></p>
+    <form id="loginForm" onsubmit="submitLogin(event)">
+      <label for="loginUser">Nom d'utilisateur</label>
+      <input type="text" id="loginUser" name="user" value="admin" autocomplete="username" required>
+      <label for="loginPass">Mot de passe</label>
+      <input type="password" id="loginPass" name="pass" autocomplete="current-password" required>
+      <div class="auth-modal-actions">
+        <button type="button" onclick="closeLoginModal()">Annuler</button>
+        <button type="submit">Se connecter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Toast Notifications -->
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
@@ -209,6 +245,81 @@
 })();
 </script>
 <script>
+// État d'authentification web locale (onglets protégés)
+window._webAuth = false;
+
+function applyAuthUI() {
+  document.body.classList.toggle('web-auth', !!window._webAuth);
+  var loginBtn = document.getElementById('authLoginBtn');
+  var logoutBtn = document.getElementById('authLogoutBtn');
+  if (window._webAuth) {
+    if (loginBtn) loginBtn.style.display = 'none';
+    if (logoutBtn) logoutBtn.style.display = 'inline-block';
+  } else {
+    if (loginBtn) loginBtn.style.display = 'inline-block';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+  }
+}
+
+function showLoginModal() {
+  var modal = document.getElementById('loginModal');
+  var errEl = document.getElementById('loginError');
+  if (modal) modal.style.display = 'flex';
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+
+function closeLoginModal() {
+  var modal = document.getElementById('loginModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function submitLogin(ev) {
+  ev.preventDefault();
+  var user = document.getElementById('loginUser').value.trim();
+  var pass = document.getElementById('loginPass').value;
+  var errEl = document.getElementById('loginError');
+  fetch('/api/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: user, pass: pass })
+  }).then(function(r) {
+    if (r.ok) {
+      window._webAuth = true;
+      applyAuthUI();
+      closeLoginModal();
+      if (typeof toast === 'function') toast('Connecté', 'success');
+    } else {
+      if (errEl) { errEl.textContent = 'Identifiants incorrects.'; errEl.style.display = 'block'; }
+    }
+  }).catch(function() {
+    if (errEl) { errEl.textContent = 'Erreur de connexion.'; errEl.style.display = 'block'; }
+  });
+}
+
+function doLogout() {
+  fetch('/api/logout', { method: 'POST', credentials: 'include' })
+    .then(function() { location.reload(); })
+    .catch(function() { location.reload(); });
+}
+
+function loadPageOrAuth(pageName, event) {
+  if (window._webAuth) loadPage(pageName, event);
+  else showLoginModal();
+}
+
+function openOrAuth(url) {
+  if (window._webAuth) window.open(url, '_blank');
+  else showLoginModal();
+}
+
+// Vérification auth au chargement
+document.addEventListener('DOMContentLoaded', function() {
+  fetch('/api/auth/check', { credentials: 'include' })
+    .then(function(r) { window._webAuth = r.ok; applyAuthUI(); })
+    .catch(function() { window._webAuth = false; applyAuthUI(); });
+});
+
 // Navigation dynamique entre les pages
 // NOTE: L'initialisation DOMContentLoaded est gérée dans websocket.js
 let currentPage = 'mesures';
@@ -224,7 +335,7 @@ async function loadPage(pageName, event) {
   }
   
   try {
-    const response = await fetch(`/pages/${pageName}.html`);
+    const response = await fetch(`/pages/${pageName}.html`, { credentials: 'include' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
     const html = await response.text();
@@ -248,10 +359,12 @@ async function loadPage(pageName, event) {
         if (typeof window.ensureActuatorStateDisplay === 'function') window.ensureActuatorStateDisplay();
       }, 0);
     } else if (pageName === 'wifi') {
-      // Charger automatiquement toutes les informations WiFi
-      if (typeof window.refreshWifiStatus === 'function') window.refreshWifiStatus();
-      if (typeof window.loadSavedNetworks === 'function') window.loadSavedNetworks();
-      if (typeof window.scanWifiNetworks === 'function') window.scanWifiNetworks();
+      // Décaller d'un tick pour que le DOM soit à jour avant refreshWifiStatus / loadSavedNetworks / scanWifiNetworks
+      setTimeout(() => {
+        if (typeof window.refreshWifiStatus === 'function') window.refreshWifiStatus();
+        if (typeof window.loadSavedNetworks === 'function') window.loadSavedNetworks();
+        if (typeof window.scanWifiNetworks === 'function') window.scanWifiNetworks();
+      }, 0);
     }
     
   } catch (e) {

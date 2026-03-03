@@ -15,7 +15,7 @@ Procédure pour publier les firmware et filesystem compilés vers `ffp3/ota/` af
   - `pio run -e wroom-prod -t buildfs` (filesystem LittleFS)
 - Ou utiliser les options `-Build` et `-BuildFs` du script.
 - Sous-module **ffp3** initialisé (répertoire `ffp3/` présent avec `.git`).
-- Version firmware définie dans `include/config.h` (`ProjectConfig::VERSION`).
+- Version firmware définie dans `include/config.h` (`ProjectConfig::VERSION`). Chaque build écrit aussi la version dans `.pio/build/<env>/version.txt` (script post-build `pio_write_build_version.py`) : le script de publication utilise cette version par env lorsqu’elle existe, sinon celle de `config.h`.
 
 ## Commande
 
@@ -29,7 +29,7 @@ Depuis la racine du projet (ffp5cs) :
 
 | Paramètre     | Description |
 |---------------|-------------|
-| `-Envs`       | Liste d'envs à publier (défaut : `wroom-prod`, `wroom-beta`). Ex. : `-Envs "wroom-prod","wroom-beta"` |
+| `-Envs`       | Liste d'envs à publier (défaut : `wroom-prod`, `wroom-beta`, `wroom-s3-prod`, `wroom-s3-test`). Ex. : `-Envs "wroom-prod","wroom-s3-test"` |
 | `-SkipCommit` | Ne pas faire de commit ni de push (copie + metadata uniquement). |
 | `-DryRun`     | Aucun commit/push ; affiche le statut git de `ffp3/ota/`. |
 | `-Build`      | Lancer `pio run -e <env>` pour chaque env avant copie si firmware absent. |
@@ -49,12 +49,14 @@ Exemples :
 
 ## Mapping env → dossier OTA
 
-| Env PlatformIO | Sous-dossier ffp3/ota/ | Canal metadata |
-|----------------|------------------------|----------------|
-| `wroom-prod`   | `esp32-wroom/`         | prod           |
-| `wroom-beta`   | `esp32-wroom-beta/`    | test           |
+| Env PlatformIO   | Sous-dossier ffp3/ota/ | Canal metadata | Partitions (app / fs)      |
+|------------------|------------------------|----------------|----------------------------|
+| `wroom-prod`     | `esp32-wroom/`         | prod           | WROOM 0x1A0000 / 0x0B0000  |
+| `wroom-beta`     | `esp32-wroom-beta/`    | test           | WROOM 0x1A0000 / 0x0B0000  |
+| `wroom-s3-prod`  | `esp32-s3/`            | prod           | S3 0x6F8000 / 0x200000     |
+| `wroom-s3-test`  | `esp32-s3-test/`       | test           | S3 0x6F8000 / 0x200000     |
 
-Les binaires sont attendus dans `.pio/build/<env>/firmware.bin` et `.pio/build/<env>/littlefs.bin` (filesystem).
+Par défaut le script publie les quatre envs (`wroom-prod`, `wroom-beta`, `wroom-s3-prod`, `wroom-s3-test`). Les binaires sont attendus dans `.pio/build/<env>/firmware.bin` et `.pio/build/<env>/littlefs.bin` (filesystem). Le numéro de version publié pour chaque env est celui du firmware concerné : lu depuis `.pio/build/<env>/version.txt` (écrit à la compilation par `pio_write_build_version.py`), sinon depuis `include/config.h`.
 
 ## Effet
 
@@ -70,9 +72,11 @@ Les binaires sont attendus dans `.pio/build/<env>/firmware.bin` et `.pio/build/<
 
 Après déploiement du serveur (ffp3), les ESP32 récupèrent la nouvelle version via l'URL metadata puis téléchargent le firmware (et éventuellement le filesystem) correspondant à leur modèle et canal. Les URLs servies (firmware.bin, littlefs.bin) doivent renvoyer les mêmes octets que ceux pour lesquels `size` et `md5` ont été calculés dans metadata.json (éviter cache ou déploiement partiel incohérent).
 
-## wroom-beta : OTA manuel uniquement
+## OTA selon l’environnement
 
-Pour wroom-beta (USE_TEST_ENDPOINTS) et wroom-test (PROFILE_TEST), l’OTA au boot est désactivé pour éviter que le GET metadata HTTPS ne bloque netTask au-delà du TWDT (30 s). L’OTA reste possible manuellement via :
+- **wroom-prod / wroom-beta** : OTA au boot (si serveur joignable) et périodique (toutes les 2 h), plus OTA manuel et trigger distant.
+- **wroom-s3-test** (PROFILE_TEST + BOARD_S3) : OTA au boot et périodique **activés** (comme prod). OTA manuel et trigger distant également disponibles.
+- **wroom-test** (PROFILE_TEST + BOARD_WROOM) uniquement : OTA au boot et périodique **désactivés** (GET metadata HTTPS peut bloquer netTask au-delà du TWDT 30 s). L’OTA reste possible manuellement via :
 
 - Interface web locale : page `/update` → bouton « Vérifier et mettre à jour » (POST `/api/ota`)
 - Serveur distant : page contrôle → bouton « Vérifier OTA » → prochain GET state renvoie `triggerOtaCheck: true` à l’ESP32

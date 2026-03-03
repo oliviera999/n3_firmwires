@@ -1,4 +1,4 @@
-﻿# Script simple de monitoring avec enregistrement des logs
+# Script simple de monitoring avec enregistrement des logs
 # Usage: .\monitor_log_wroom_test.ps1 [durée_en_secondes]
 
 param(
@@ -19,29 +19,9 @@ $comPort = "COM4"
 
 Write-Host "🔌 Port série: $comPort" -ForegroundColor Gray
 
-# Arrêter les processus qui pourraient bloquer le port COM
-Write-Host "🔍 Vérification des processus bloquants..." -ForegroundColor Yellow
-try {
-    $blockingProcesses = Get-Process | Where-Object { 
-        $_.ProcessName -like "*python*" -or 
-        $_.ProcessName -like "*pio*" -or
-        $_.MainWindowTitle -like "*monitor*" -or 
-        $_.MainWindowTitle -like "*serial*" 
-    }
-    if ($blockingProcesses) {
-        Write-Host "  Processus détectés: $($blockingProcesses.Count)" -ForegroundColor Yellow
-        foreach ($proc in $blockingProcesses) {
-            Write-Host "    - Arrêt: $($proc.ProcessName) (ID: $($proc.Id))" -ForegroundColor Gray
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        }
-        Start-Sleep -Seconds 2
-        Write-Host "  ✅ Processus arrêtés" -ForegroundColor Green
-    } else {
-        Write-Host "  ✅ Aucun processus bloquant détecté" -ForegroundColor Green
-    }
-} catch {
-    Write-Host "  ⚠️ Erreur lors de la vérification: $($_.Exception.Message)" -ForegroundColor Yellow
-}
+$projectRoot = $PSScriptRoot
+. (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
+Release-ComPortIfNeeded -Port $comPort
 
 Write-Host "📡 Démarrage du monitoring..." -ForegroundColor Cyan
 Write-Host ""

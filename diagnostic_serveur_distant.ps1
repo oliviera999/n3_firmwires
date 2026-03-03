@@ -96,10 +96,10 @@ if ($postTimestamps.Count -gt 1) {
 }
 $avgInterval = if ($postIntervals.Count -gt 0) { [math]::Round(($postIntervals | Measure-Object -Average).Average, 2) } else { 0 }
 
-# Vérifier endpoint (attendu: /ffp3/post-data-test pour test)
-$postEndpoints = $lines | Select-String -Pattern 'post-data-test|post-data[^-]'
-$endpointTest = ($postEndpoints | Where-Object { $_.Line -match "post-data-test" }).Count
-$endpointProd = ($postEndpoints | Where-Object { $_.Line -match "post-data[^-]" -and $_.Line -notmatch "post-data-test" }).Count
+# Vérifier endpoint (attendu: /ffp3/post-data-test ou /ffp3/post-data3-test pour test WROOM/S3)
+$postEndpoints = $lines | Select-String -Pattern 'post-data3-test|post-data-test|post-data[^-]'
+$endpointTest = ($postEndpoints | Where-Object { $_.Line -match "post-data3-test|post-data-test" }).Count
+$endpointProd = ($postEndpoints | Where-Object { $_.Line -match "post-data[^-]" -and $_.Line -notmatch "post-data3-test" -and $_.Line -notmatch "post-data-test" }).Count
 
 # =============================================================================
 # 2. ANALYSE RÉCEPTION GET COMMANDES SERVEUR
@@ -115,7 +115,7 @@ $linesNoAnsi = $lines | ForEach-Object { $_ -replace '\[\d+(;\d+)*m', '' }
 # Parsing réussi = une ligne "GET outputs/state: body=... bytes" (HTTP) ou "Utilisation cache NVS" (fallback)
 $jsonParseSuccess = $linesNoAnsi | Select-String -Pattern 'GET outputs/state: body=\d+ bytes|Utilisation cache NVS|\[GPIOParser\].*PARSING.*SERVEUR'
 $jsonParseErrors = $lines | Select-String -Pattern '\[HTTP\] JSON parse error|JSON parse error|JSON.*fail|Parse.*error'
-$getEndpoints = $lines | Select-String -Pattern "outputs-test/state|outputs/state"
+$getEndpoints = $lines | Select-String -Pattern "outputs3-test/state|outputs-test/state|outputs/state"
 $ackSent = $lines | Select-String -Pattern "ack_command|ACK.*envoyé"
 
 # Vérifier fréquence GET (attendu: ~12s, pattern aligné sur $getFetch)
@@ -213,9 +213,9 @@ if ($maxDuration -gt 0) {
     }
 }
 
-# Endpoint test utilise
+# Endpoint test utilise (post-data-test ou post-data3-test pour WROOM/S3)
 if ($endpointTest -gt 0) {
-    $coherence += '[OK] Endpoint: Utilisation endpoint test (/ffp3/post-data-test)'
+    $coherence += '[OK] Endpoint: Utilisation endpoint test (/ffp3/post-data-test ou post-data3-test)'
 } elseif ($endpointProd -gt 0) {
     $coherence += '[WARN] Endpoint: Utilisation endpoint prod au lieu de test'
 } else {
@@ -267,8 +267,8 @@ $report = @(
   '- Intervalle moyen: ' + $avgGetInterval + ' secondes (attendu: 12s)',
   '',
   'Endpoints:',
-  '- Utilisation endpoint test: ' + (($getEndpoints | Where-Object { $_.Line -match 'outputs-test' }).Count),
-  '- Utilisation endpoint prod: ' + (($getEndpoints | Where-Object { $_.Line -match 'outputs/state' -and $_.Line -notmatch 'outputs-test' }).Count),
+  '- Utilisation endpoint test: ' + (($getEndpoints | Where-Object { $_.Line -match 'outputs3-test|outputs-test' }).Count),
+  '- Utilisation endpoint prod: ' + (($getEndpoints | Where-Object { $_.Line -match 'outputs/state' -and $_.Line -notmatch 'outputs3-test' -and $_.Line -notmatch 'outputs-test' }).Count),
   '',
   'ACK:',
   '- ACK envoyes: ' + $ackSent.Count,

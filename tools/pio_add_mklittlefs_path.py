@@ -6,6 +6,11 @@ Import("env")
 # Diagnostic: confirme que le builder a demarré (si ce message n'apparait pas, le blocage est avant le pre script)
 print("FFP5CS: pre script started")
 
+# Forcer C++17 pour tout le build (sources + libs + framework) pour éviter warnings
+# "inline variables are only available with -std=c++17" et erreurs d'archive (WiFi.cpp.o).
+# Append systématique : à ce stade CXXFLAGS peut ne pas encore contenir les build_flags.
+env.Append(CXXFLAGS=["-std=gnu++17"])
+
 def add_mklittlefs_to_path():
     home = Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or "").expanduser()
     candidates = [
@@ -106,15 +111,35 @@ def add_wno_error_for_s3():
 
 
 def ensure_build_subdirs():
-    """Crée les sous-dossiers du build (src, src/automatism) pour éviter 'opening dependency file ... No such file or directory' en compilation parallèle."""
+    """Crée le répertoire de build et sous-dossiers (src, src/automatism) pour éviter
+    'opening dependency file ... No such file or directory' et .sconsign*.tmp en compilation parallèle.
+    Construit le chemin depuis PROJECT_DIR + PIOENV pour être sûr du bon répertoire (Windows)."""
     try:
-        build_dir = env.subst("$BUILD_DIR")
-        for sub in ("src", os.path.join("src", "automatism")):
-            d = os.path.join(build_dir, sub)
+        proj = env.subst("$PROJECT_DIR")
+        pioenv = env.get("PIOENV", "")
+        if not proj or not pioenv:
+            return
+        build_root = os.path.normpath(os.path.join(proj, ".pio", "build", pioenv))
+        for sub in ("", "src", os.path.join("src", "automatism")):
+            d = os.path.join(build_root, sub) if sub else build_root
             os.makedirs(d, exist_ok=True)
+        print("[pre-script] ensure_build_subdirs: %s" % build_root)
     except Exception as e:
         print("[pre-script] ensure_build_subdirs:", e)
 
 
-add_wno_error_for_s3()
+def _run_ensure_build_subdirs(source, target, env):
+    """Callback PreAction : recréer les répertoires juste avant la compilation."""
+    ensure_build_subdirs()
+
+# Création au chargement du script
 ensure_build_subdirs()
+# PreAction avant build : recrée src/ et src/automatism si besoin (après clean ou race)
+for alias in ("buildprog", "buildelf", "build"):
+    try:
+        env.AddPreAction(alias, _run_ensure_build_subdirs)
+        break
+    except Exception:
+        continue
+
+add_wno_error_for_s3()

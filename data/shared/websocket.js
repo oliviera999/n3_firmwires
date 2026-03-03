@@ -309,8 +309,9 @@ window.refresh = async function refresh() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // Timeout 5s
     
-    const response = await fetch('/json', { 
+    const response = await fetch('/json', {
       cache: 'no-store',
+      credentials: 'include',
       signal: controller.signal
     });
     
@@ -526,8 +527,9 @@ window.loadDbVars = async function loadDbVars() {
     const timeoutId = setTimeout(() => controller.abort(), 5000); // Timeout 5s pour les requêtes distantes (optimisé)
     
     console.log('[DEBUG] Envoi requête vers /dbvars');
-    const response = await fetch('/dbvars', { 
+    const response = await fetch('/dbvars', {
       cache: 'no-store',
+      credentials: 'include',
       signal: controller.signal
     });
     
@@ -664,7 +666,7 @@ window.loadDbVars = async function loadDbVars() {
 
 window.fillFormFromDb = async function fillFormFromDb() {
   try {
-    const response = await fetch('/dbvars', { cache: 'no-store' });
+    const response = await fetch('/dbvars', { cache: 'no-store', credentials: 'include' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const db = await response.json();
     
@@ -736,10 +738,11 @@ window.submitDbVars = async function submitDbVars(ev) {
     if (email && email.value) params.append('mail', email.value);
 
     // Envoyer les données
-    const resp = await fetch('/dbvars/update', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
-      body: params.toString() 
+    const resp = await fetch('/dbvars/update', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
     });
     
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -887,6 +890,7 @@ async function saveVar(input, key, originalValue) {
   try {
     const resp = await fetch('/dbvars/update', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString()
     });
@@ -951,7 +955,7 @@ window.initializeDashboard = function initializeDashboard() {
   setupEditableVarsDelegation();
   
   // Charger la version du firmware en parallèle
-  const versionPromise = fetch('/version', { cache: 'no-store' })
+  const versionPromise = fetch('/version', { cache: 'no-store', credentials: 'include' })
     .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
     .then(j => {
       const v = j && j.version ? String(j.version) : '--';
@@ -1011,13 +1015,15 @@ window.initializeDashboard = function initializeDashboard() {
           try {
             console.log('[INIT] Tentative de chargement HTTP...');
             const [sensorData, dbVars] = await Promise.allSettled([
-              fetch('/json', { 
+              fetch('/json', {
                 cache: 'no-store',
-                signal: AbortSignal.timeout(3000) // 3s max - optimisé après fix latence
+                credentials: 'include',
+                signal: AbortSignal.timeout(3000)
               }).then(r => r.json()),
-              fetch('/dbvars', { 
+              fetch('/dbvars', {
                 cache: 'no-store',
-                signal: AbortSignal.timeout(3000) // 3s max - optimisé après fix latence
+                credentials: 'include',
+                signal: AbortSignal.timeout(3000)
               }).then(r => r.json())
             ]);
             
@@ -1078,9 +1084,10 @@ window.initializeDashboard = function initializeDashboard() {
   setTimeout(async () => {
     try {
       const start = performance.now();
-      const response = await fetch('/server-status', { 
+      const response = await fetch('/server-status', {
         cache: 'no-store',
-        signal: AbortSignal.timeout(3000) // 3s max - optimisé après fix latence
+        credentials: 'include',
+        signal: AbortSignal.timeout(3000)
       });
       const end = performance.now();
       
@@ -1104,9 +1111,10 @@ window.initializeDashboard = function initializeDashboard() {
     if (!wsConnected && !isOnline) {
       console.log('[Status] WebSocket non connecté, vérification de la connectivité HTTP...');
       // Tester une requête simple pour vérifier la connectivité
-      fetch('/json', { 
+      fetch('/json', {
         method: 'HEAD',
         cache: 'no-store',
+        credentials: 'include',
         signal: AbortSignal.timeout(3000)
       }).then(() => {
         console.log('[Status] Connectivité HTTP confirmée, mise à jour du statut');
@@ -1210,16 +1218,7 @@ window.initializeDashboard = function initializeDashboard() {
       });
   }
   
-  // Optimisation: précharger les ressources critiques
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => {
-      // Précharger les ressources non critiques
-      const link = document.createElement('link');
-      link.rel = 'prefetch';
-      link.href = '/diag';
-      document.head.appendChild(link);
-    });
-  }
+  // Ne pas précharger /diag (page protégée : prefetch n'envoie pas les cookies → 401)
 
   // Délégation d'événements WiFi (évite injection SSID/password dans onclick)
   document.addEventListener('click', (e) => {
@@ -1247,7 +1246,7 @@ window.initializeDashboard = function initializeDashboard() {
 // Actualiser le statut WiFi
 window.refreshWifiStatus = async function refreshWifiStatus() {
   try {
-    const response = await fetch('/wifi/status');
+    const response = await fetch('/wifi/status', { credentials: 'include' });
     const data = await response.json();
     
     // Mettre à jour le statut STA dans l'onglet WiFi
@@ -1265,7 +1264,7 @@ window.refreshWifiStatus = async function refreshWifiStatus() {
       }
       if (staSSID) staSSID.textContent = data.wifiStaSSID || '--';
       if (staIP) staIP.textContent = data.wifiStaIP || '--';
-      if (staRSSI) staRSSI.textContent = `${data.wifiStaRSSI} dBm`;
+      if (staRSSI) staRSSI.textContent = (data.wifiStaRSSI != null ? `${data.wifiStaRSSI} dBm` : '--');
     } else {
       if (staStatus) {
         staStatus.textContent = 'Déconnecté';
@@ -1289,7 +1288,7 @@ window.refreshWifiStatus = async function refreshWifiStatus() {
       }
       if (apSSID) apSSID.textContent = data.wifiApSSID || '--';
       if (apIP) apIP.textContent = data.wifiApIP || '--';
-      if (apClients) apClients.textContent = data.wifiApClients;
+      if (apClients) apClients.textContent = (data.wifiApClients != null ? String(data.wifiApClients) : '--');
     } else {
       if (apStatus) {
         apStatus.textContent = 'Inactif';
@@ -1298,6 +1297,26 @@ window.refreshWifiStatus = async function refreshWifiStatus() {
       if (apSSID) apSSID.textContent = '--';
       if (apIP) apIP.textContent = '--';
       if (apClients) apClients.textContent = '--';
+    }
+    
+    // Mode WiFi (STA / AP / les deux)
+    const modeEl = $('wifiMode');
+    if (modeEl) {
+      const sta = !!data.wifiStaConnected;
+      const ap = !!data.wifiApActive;
+      if (sta && ap) {
+        modeEl.textContent = 'Client + Point d\'accès';
+        modeEl.className = 'badge bg-primary';
+      } else if (sta) {
+        modeEl.textContent = 'Client (STA)';
+        modeEl.className = 'badge bg-success';
+      } else if (ap) {
+        modeEl.textContent = 'Point d\'accès (AP)';
+        modeEl.className = 'badge bg-info';
+      } else {
+        modeEl.textContent = 'Déconnecté';
+        modeEl.className = 'badge bg-secondary';
+      }
     }
     
     // Synchroniser le cache WiFi pour que les mises à jour WebSocket périodiques
@@ -1316,7 +1335,7 @@ window.loadSavedNetworks = async function loadSavedNetworks() {
   savedList.innerHTML = '<div class="text-center text-muted"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Chargement...</span></div> Chargement des réseaux...</div>';
   
   try {
-    const response = await fetch('/wifi/saved');
+    const response = await fetch('/wifi/saved', { credentials: 'include' });
     const data = await response.json();
     
     if (data.success && data.networks.length > 0) {
@@ -1364,7 +1383,7 @@ window.scanWifiNetworks = async function scanWifiNetworks() {
   availableList.innerHTML = '<div class="text-center text-muted"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Scan en cours...</span></div> Scan en cours...</div>';
   
   try {
-    const response = await fetch('/wifi/scan');
+    const response = await fetch('/wifi/scan', { credentials: 'include' });
     const data = await response.json();
     
     if (data.success && data.networks.length > 0) {
@@ -1426,6 +1445,7 @@ window.connectToWifi = async function connectToWifi(event) {
     
     const response = await fetch('/wifi/connect', {
       method: 'POST',
+      credentials: 'include',
       body: formData,
       // Timeout aligné avec le serveur (15s + marge)
       signal: AbortSignal.timeout(18000)
@@ -1451,9 +1471,10 @@ window.connectToWifi = async function connectToWifi(event) {
         reconnectAttempts++;
         
         // Essayer de refaire une requête pour vérifier la connexion
-        fetch('/json', { 
+        fetch('/json', {
           method: 'GET',
           cache: 'no-cache',
+          credentials: 'include',
           signal: AbortSignal.timeout(2000)
         })
         .then(response => response.json())
@@ -1557,9 +1578,10 @@ window.connectToWifi = async function connectToWifi(event) {
         
         const checkConnection = () => {
           attempts++;
-          fetch('/json', { 
+          fetch('/json', {
             method: 'GET',
             cache: 'no-cache',
+            credentials: 'include',
             signal: AbortSignal.timeout(3000)
           })
           .then(response => response.json())
@@ -1629,11 +1651,12 @@ window.connectToWifi = async function connectToWifi(event) {
         let attempts = 0;
         const checkReconnect = () => {
           attempts++;
-          fetch('/json', { 
-            method: 'GET',
-            cache: 'no-cache',
-            signal: AbortSignal.timeout(2000)
-          })
+        fetch('/json', {
+          method: 'GET',
+          cache: 'no-cache',
+          credentials: 'include',
+          signal: AbortSignal.timeout(2000)
+        })
           .then(response => response.json())
           .then(jsonData => {
             window.wifiChangePending = false; // Réinitialiser le flag
@@ -1687,6 +1710,7 @@ window.connectToSavedNetwork = async function connectToSavedNetwork(ssid, passwo
 
     const response = await fetch('/wifi/connect', {
       method: 'POST',
+      credentials: 'include',
       body: formData,
       signal: AbortSignal.timeout(18000)
     });
@@ -1706,7 +1730,7 @@ window.connectToSavedNetwork = async function connectToSavedNetwork(ssid, passwo
 
       const checkConnection = () => {
         attempts++;
-        fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(2000) })
+        fetch('/json', { method: 'GET', cache: 'no-cache', credentials: 'include', signal: AbortSignal.timeout(2000) })
           .then(r => r.json())
           .then(jsonData => {
             if (jsonData.wifiStaConnected && jsonData.wifiStaSSID === ssid) {
@@ -1778,7 +1802,7 @@ window.connectToSavedNetwork = async function connectToSavedNetwork(ssid, passwo
         let attempts = 0;
         const check = () => {
           attempts++;
-          fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(3000) })
+          fetch('/json', { method: 'GET', cache: 'no-cache', credentials: 'include', signal: AbortSignal.timeout(3000) })
             .then(r => r.json())
             .then(jsonData => {
               if (jsonData.wifiStaConnected && jsonData.wifiStaSSID === ssid) {
@@ -1830,6 +1854,7 @@ window.removeSavedNetwork = async function removeSavedNetwork(ssid) {
     
     const response = await fetch('/wifi/remove', {
       method: 'POST',
+      credentials: 'include',
       body: formData
     });
     

@@ -93,34 +93,8 @@ Write-Host ""
 Write-Host "=== ETAPE 1: FLASH DU FIRMWARE ===" -ForegroundColor Cyan
 Write-Host ""
 
-# Arreter tout processus qui pourrait bloquer le port COM
-Write-Host "1.1. Verification des processus bloquant $comPort..." -ForegroundColor Yellow
-try {
-    $comProcesses = Get-Process | Where-Object { $_.ProcessName -like "*python*" -or 
-                                               $_.ProcessName -like "*pio*" -or
-                                               $_.MainWindowTitle -like "*monitor*" -or 
-                                               $_.MainWindowTitle -like "*serial*" }
-    if ($comProcesses) {
-        Write-Host "Processus detectes: $($comProcesses.Count)" -ForegroundColor Yellow
-        foreach ($proc in $comProcesses) {
-            Write-Host "  - $($proc.ProcessName) (ID: $($proc.Id))" -ForegroundColor Yellow
-            try {
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                Write-Host "    [OK] Arrete" -ForegroundColor Green
-            } catch {
-                Write-Host "    [WARN] Impossible d'arreter" -ForegroundColor Red
-            }
-        }
-    } else {
-        Write-Host "Aucun processus bloquant detecte" -ForegroundColor Green
-    }
-} catch {
-    Write-Host "Erreur lors de la verification des processus: $($_.Exception.Message)" -ForegroundColor Red
-}
-
-# Attendre un peu pour laisser le temps aux processus de se liberer
-Write-Host "1.2. Attente de liberation du port (5 secondes)..." -ForegroundColor Yellow
-Start-Sleep -Seconds 5
+. (Join-Path $PSScriptRoot "scripts\Release-ComPort.ps1")
+Release-ComPortIfNeeded -Port $comPort
 
 # Compiler d'abord pour verifier qu'il n'y a pas d'erreurs
 Write-Host "1.3. Compilation du firmware $Environment..." -ForegroundColor Yellow

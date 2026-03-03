@@ -10,6 +10,10 @@ $logFile = "monitor_log_$timestamp.txt"
 Write-Host "Debut du monitoring ESP32 sur $Port pendant $Duration secondes..."
 Write-Host "Logs sauvegardes dans: $logFile"
 
+$projectRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
+. (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
+Release-ComPortIfNeeded -Port $Port
+
 try {
     $serial = New-Object System.IO.Ports.SerialPort $Port, 115200
     $serial.Open()

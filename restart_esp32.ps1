@@ -4,6 +4,10 @@
 Write-Host "=== REDEMARRAGE FORCE ESP32 ===" -ForegroundColor Cyan
 Write-Host ""
 
+$projectRoot = $PSScriptRoot
+. (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
+Release-ComPortIfNeeded -Port "COM6"
+
 # 1. Verifier que le port est libre
 Write-Host "1. VERIFICATION DU PORT COM6:" -ForegroundColor Yellow
 try {

@@ -508,7 +508,7 @@ window.action = async function action(cmd) {
   
   try {
     logDebug(`Envoi requête HTTP pour action ${cmd}`, { cmd, actionStartTime }, 'HTTP');
-    const response = await fetch(`/action?cmd=${cmd}`, { cache: 'no-store' });
+    const response = await fetch(`/action?cmd=${cmd}`, { cache: 'no-store', credentials: 'include' });
     const result = await response.text();
     logInfo(`Action ${cmd}: ${result}`, { cmd, result, responseTime: Date.now() - actionStartTime }, 'HTTP');
     console.log(`Action ${cmd}: ${result}`);
@@ -612,7 +612,7 @@ window.toggleRelay = async function toggleRelay(name) {
   };
 
   try {
-    const response = await fetch(`/action?relay=${name}`, { cache: 'no-store' });
+    const response = await fetch(`/action?relay=${name}`, { cache: 'no-store', credentials: 'include' });
     const result = await response.text();
     console.log(`Relay ${name}: ${result}`);
     if (!feedbackReceived) {
@@ -652,7 +652,7 @@ window.mailTest = async function mailTest() {
   }
   addToHistory('Test Mail', 'loading');
   try {
-    const response = await fetch('/mailtest', { cache: 'no-store' });
+    const response = await fetch('/mailtest', { cache: 'no-store', credentials: 'include' });
     const result = await response.text();
     addToHistory('Test Mail', 'success', result);
     toast(`Test Mail: ${result}`, 'success');
@@ -682,7 +682,7 @@ window.toggleEmailNotifications = async function toggleEmailNotifications() {
   }
   addToHistory('Toggle Email Notifications', 'loading');
   try {
-    const response = await fetch('/action?cmd=toggleEmail', { cache: 'no-store' });
+    const response = await fetch('/action?cmd=toggleEmail', { cache: 'no-store', credentials: 'include' });
     const result = await response.text();
     addToHistory('Toggle Email Notifications', 'success', result);
     toast(`Notifications Email: ${result}`, 'success');
@@ -719,7 +719,7 @@ window.toggleForceWakeup = async function toggleForceWakeup() {
   }
   addToHistory('Toggle Force Wakeup', 'loading');
   try {
-    const response = await fetch('/action?cmd=forceWakeUp', { cache: 'no-store' });
+    const response = await fetch('/action?cmd=forceWakeUp', { cache: 'no-store', credentials: 'include' });
     const result = await response.text();
     addToHistory('Toggle Force Wakeup', 'success', result);
     toast(`Force Wakeup: ${result}`, 'success');
@@ -754,7 +754,7 @@ window.resetEsp = async function resetEsp() {
   }
   addToHistory('Reset ESP', 'loading');
   try {
-    const response = await fetch('/action?cmd=resetMode', { cache: 'no-store' });
+    const response = await fetch('/action?cmd=resetMode', { cache: 'no-store', credentials: 'include' });
     const result = await response.text();
     addToHistory('Reset ESP', 'success', result);
     toast('ESP redémarre. Reconnexion dans quelques secondes.', 'success');
@@ -925,7 +925,7 @@ window.applyRelayStateToButtons = function applyRelayStateToButtons() {
 
 // Charge l'état des actionneurs depuis /json et l'affiche (badges vert/rouge à l'ouverture Contrôles)
 window.ensureActuatorStateDisplay = function ensureActuatorStateDisplay() {
-  fetch('/json', { method: 'GET', cache: 'no-cache', signal: AbortSignal.timeout(5000) })
+  fetch('/json', { method: 'GET', cache: 'no-cache', credentials: 'include', signal: AbortSignal.timeout(5000) })
     .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
     .then(doc => {
       if (!window.lastRelayState) window.lastRelayState = {};
@@ -1103,6 +1103,26 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
       }
     }
     
+    // Mode WiFi (STA / AP / les deux) — cohérent avec refreshWifiStatus
+    const modeEl = $('wifiMode');
+    if (modeEl) {
+      const sta = !!lastWifiData.wifiStaConnected;
+      const ap = !!lastWifiData.wifiApActive;
+      if (sta && ap) {
+        modeEl.textContent = 'Client + Point d\'accès';
+        modeEl.className = 'badge bg-primary';
+      } else if (sta) {
+        modeEl.textContent = 'Client (STA)';
+        modeEl.className = 'badge bg-success';
+      } else if (ap) {
+        modeEl.textContent = 'Point d\'accès (AP)';
+        modeEl.className = 'badge bg-info';
+      } else {
+        modeEl.textContent = 'Déconnecté';
+        modeEl.className = 'badge bg-secondary';
+      }
+    }
+    
     // Mettre à jour les graphiques
     updateCharts(data);
   });
@@ -1121,7 +1141,7 @@ window._dbCache = window._dbCache || {};
 // Charger la version du firmware
 window.loadFirmwareVersion = async function loadFirmwareVersion() {
   try {
-    const response = await fetch('/version', { cache: 'no-store' });
+    const response = await fetch('/version', { cache: 'no-store', credentials: 'include' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     

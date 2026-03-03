@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.11";
+    inline constexpr const char* VERSION = "12.15";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -284,6 +284,24 @@ namespace NetworkConfig {
     inline constexpr int HTTP_SERVICE_UNAVAILABLE = 503;
     // Alias pour compatibilité
     inline constexpr int HTTP_OK_CODE = HTTP_OK;
+
+#if defined(BOARD_S3)
+    // S3 only: AP de secours – IP fixe (captive portal)
+    inline constexpr uint8_t AP_IP_B0 = 192;
+    inline constexpr uint8_t AP_IP_B1 = 168;
+    inline constexpr uint8_t AP_IP_B2 = 4;
+    inline constexpr uint8_t AP_IP_B3 = 1;
+    inline constexpr uint8_t AP_GW_B0 = 192;
+    inline constexpr uint8_t AP_GW_B1 = 168;
+    inline constexpr uint8_t AP_GW_B2 = 4;
+    inline constexpr uint8_t AP_GW_B3 = 1;
+    inline constexpr uint8_t AP_SUBNET_B0 = 255;
+    inline constexpr uint8_t AP_SUBNET_B1 = 255;
+    inline constexpr uint8_t AP_SUBNET_B2 = 255;
+    inline constexpr uint8_t AP_SUBNET_B3 = 0;
+    // Heap minimum pour démarrer le DNSServer (captive portal) en mode AP
+    inline constexpr uint32_t MIN_HEAP_AP_DNS = 40000;  // 40 KB
+#endif
 }
 
 // Authentification interface web locale (onglets protégés : admin / ffp3)

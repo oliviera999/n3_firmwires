@@ -12,6 +12,30 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 
 ---
 
+## Version 12.14 - 2026-03-03
+
+### Maintenance
+
+- Incrément version, build wroom-s3-test, publication OTA.
+
+---
+
+## Version 12.13 - 2026-03-03
+
+### Maintenance
+
+- Incrément version après flash wroom-s3-test et déploiement OTA.
+
+---
+
+## Version 12.12 - 2026-03-03
+
+### OTA distant pour wroom-s3-test
+
+- **OTA au boot et périodique (2 h) activés pour wroom-s3-test** : la condition `!defined(PROFILE_TEST)` est assouplie en `!defined(PROFILE_TEST) || defined(BOARD_S3)`, afin que les envs S3 (wroom-s3-test, wroom-s3-test-psram, etc.) bénéficient de l’OTA automatique. wroom-test (WROOM + PROFILE_TEST) conserve l’OTA manuel uniquement (évite blocage netTask > TWDT). Doc `docs/technical/OTA_PUBLISH.md` mise à jour.
+
+---
+
 ## Version 12.05 - 2026-02-21
 
 ### Maintenance

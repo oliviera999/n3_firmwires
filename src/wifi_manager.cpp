@@ -473,6 +473,12 @@ bool WifiManager::startFallbackAP(){
   int candidateChannels[3] = {1,6,11};
   int bestCh = 6; int bestCount = INT_MAX;
   for (int k=0;k<3;++k){ int ch=candidateChannels[k]; if (counts[ch-1] < bestCount){ bestCount=counts[ch-1]; bestCh=ch; } }
+#if defined(BOARD_S3)
+  WiFi.softAPConfig(
+    IPAddress(NetworkConfig::AP_IP_B0, NetworkConfig::AP_IP_B1, NetworkConfig::AP_IP_B2, NetworkConfig::AP_IP_B3),
+    IPAddress(NetworkConfig::AP_GW_B0, NetworkConfig::AP_GW_B1, NetworkConfig::AP_GW_B2, NetworkConfig::AP_GW_B3),
+    IPAddress(NetworkConfig::AP_SUBNET_B0, NetworkConfig::AP_SUBNET_B1, NetworkConfig::AP_SUBNET_B2, NetworkConfig::AP_SUBNET_B3));
+#endif
   bool ok = WiFi.softAP(ssid, nullptr, bestCh, false, 4); // AP ouvert, max 4 clients
   Serial.printf("[WiFi] 📡 softAP %s\n", ok?"✅ OK":"❌ ECHEC");
   if(ok){
@@ -480,6 +486,16 @@ bool WifiManager::startFallbackAP(){
     char apIPBuf[16];
     snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
     Serial.printf("[WiFi] 🌐 AP IP: %s\n", apIPBuf);
+#if defined(BOARD_S3)
+    if (ESP.getFreeHeap() >= NetworkConfig::MIN_HEAP_AP_DNS && !_apDnsStarted) {
+      if (_apDnsServer.start(53, "*", WiFi.softAPIP())) {
+        _apDnsStarted = true;
+        Serial.println(F("[WiFi] DNS captive portal demarre"));
+      }
+    } else if (ESP.getFreeHeap() < NetworkConfig::MIN_HEAP_AP_DNS) {
+      Serial.println(F("[WiFi] DNS AP skip heap low"));
+    }
+#endif
   }
   // En mode AP fallback: intervalle allongé (20 s) pour éviter starvation core 0
   // par la tâche wifi lors des scans/connexions répétés (évite TWDT).
@@ -520,6 +536,12 @@ void WifiManager::startDelayedModeInitTask() {
 void WifiManager::loop(DisplayView* disp){
   uint32_t now = millis();
   if (WiFi.status() == WL_CONNECTED) {
+#if defined(BOARD_S3)
+    if (_apDnsStarted) {
+      _apDnsServer.stop();
+      _apDnsStarted = false;
+    }
+#endif
     // Cadence plus douce quand connecté
     _baseRetryMs = max<uint32_t>(_baseRetryMs, 15000); // >=15 s
     _retryIntervalMs = _baseRetryMs;
@@ -534,6 +556,12 @@ void WifiManager::loop(DisplayView* disp){
   }
   if (_connecting) return; // éviter les conflits
   if(now - _lastAttemptMs < _retryIntervalMs) return;
+
+#if defined(BOARD_S3)
+  if (_apDnsStarted) {
+    _apDnsServer.processNextRequest();
+  }
+#endif
 
   // Mémorise le moment pour éviter les rafales d’essais
   _lastAttemptMs = now;

@@ -39,6 +39,12 @@ constexpr int OLED_ADDR = 0x3C;  // Adresse I2C de l'OLED
 // RTC DS3231 (I2C) - optionnel, pour heure précise offline
 constexpr uint8_t DS3231_I2C_ADDR = 0x68;
 
+// SD carte (SPI) - optionnel, broches 10/11/12/14 (libres, non utilisées par les servos)
+constexpr int SD_CS_PIN   = 10;
+constexpr int SD_MOSI_PIN = 11;
+constexpr int SD_CLK_PIN  = 12;
+constexpr int SD_MISO_PIN = 14;
+
 } // namespace Pins
 
 #else // ESP32-WROOM
