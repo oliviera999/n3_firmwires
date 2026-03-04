@@ -65,6 +65,7 @@ class AirSensor {
   // Méthodes publiques: utilisation robuste avec timeout et récupération automatique
   float robustTemperatureC(); // Méthode recommandée: récupération robuste avec timeout
   float robustHumidity(); // Méthode recommandée: récupération robuste avec timeout
+  float pressureHpa(); // BME280 uniquement : pression en hPa ; NAN si DHT ou non disponible
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorConnected(); // Vérifie la connectivité du capteur
   void resetSensor(); // Reset matériel du capteur

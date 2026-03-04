@@ -1594,6 +1594,27 @@ use_last_valid_humidity:
   return NAN;
 }
 
+float AirSensor::pressureHpa() {
+#if defined(USE_AIR_SENSOR_AUTO)
+  if (!_useBme280) return NAN;
+  I2CBusGuard guard;
+  if (!guard) return NAN;
+  float pa = _bme.readPressure();
+  if (isnan(pa) || pa <= 0.0f) return NAN;
+  return pa / 100.0f;  // Pa -> hPa
+#elif defined(USE_AIR_SENSOR_BME280)
+  if (_sensorDisabled) return NAN;
+  I2CBusGuard guard;
+  if (!guard) return NAN;
+  float pa = _bme.readPressure();
+  if (isnan(pa) || pa <= 0.0f) return NAN;
+  return pa / 100.0f;  // Pa -> hPa
+#else
+  (void)0;
+  return NAN;  // DHT seul : pas de pression
+#endif
+}
+
 void AirSensor::resetHistory() {
   // v11.156: Réinitialiser aussi le compteur d'échecs pour permettre réactivation
   _consecutiveTempFailures = 0;

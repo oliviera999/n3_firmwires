@@ -117,12 +117,12 @@ namespace SystemConfig {
 namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
-    // 8 s par tentative d'association WiFi (routeurs lents, DHCP, signaux faibles)
+    // 12 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP)
     // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 4000;
 #else
-    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 8000;
+    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 12000;
 #endif
     // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
@@ -138,7 +138,9 @@ namespace TimingConfig {
     inline constexpr uint32_t WIFI_DELAY_BETWEEN_NETWORKS_MS = 250;
     // Délai avant 4e tentative par réseau visible (routeur instable)
     inline constexpr uint32_t WIFI_FOURTH_ATTEMPT_DELAY_MS = 1000;
-    
+    // Intervalle entre tentatives en mode AP de secours (backoff long pour box 4G / AUTH_EXPIRE)
+    inline constexpr uint32_t WIFI_AP_FALLBACK_RETRY_INTERVAL_MS = 45000;
+
     // Serveur
     inline constexpr uint32_t SERVER_SYNC_INTERVAL_MS = 60000;
     inline constexpr uint32_t SERVER_RETRY_INTERVAL_MS = 5000;
@@ -246,11 +248,15 @@ namespace NetworkConfig {
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
+#if defined(BOARD_S3)
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 15000;  // 15 s (S3: rester sous TWDT 30s, monitoring 2026-03)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 20000;  // 20 s (S3: marge vs POST 15 s + file)
+#else
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 26000;  // 26 s (marge vs POST 18 s + file)
+#endif
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
     inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;
-    // Timeout RPC pour POST (attente netTask) — doit être > durée HTTP observée pour éviter abandon avant fin
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 26000;  // 26 s (marge vs POST 18 s + file)
     // Réponse chunked : nombre max de lectures vides avant arrêt (évite IncompleteInput entre paquets TCP)
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
@@ -868,9 +874,9 @@ namespace TaskConfig {
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
     // v11.197: Augmenté 8KB → 12KB - stack overflow dans netTask lors de checkForUpdate OTA
-    // S3: 12 KB (stack canary netTask sur S3 - mbedTLS/HTTP plus gourmand)
+    // S3: 16 KB (stack canary netTask observé sur S3 - mbedTLS/HTTP plus gourmands, monitoring 2026-03)
 #if defined(BOARD_S3)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (S3)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // 16 KB (S3)
 #else
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (WROOM - requis pour OTA checkForUpdate + TLS/HTTPS)
 #endif

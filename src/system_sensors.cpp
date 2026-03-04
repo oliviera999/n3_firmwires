@@ -35,6 +35,7 @@ SensorReadings SystemSensors::read() {
     r.tempWater = NAN;
     r.tempAir = NAN;
     r.humidity = NAN;
+    r.pressureHpa = NAN;
   };
 
   // --- Mesures sécurisées avec timeout strict ---
@@ -248,6 +249,12 @@ SensorReadings SystemSensors::read() {
   }
   vTaskDelay(pdMS_TO_TICKS(1));  // Yield pour IWDT (DHT peut être long)
   // Note: Pas de return anticipé ici - on continue même si timeout pour avoir le log final
+
+  // Pression atmosphérique (BME280 uniquement)
+  {
+    float val = _air.pressureHpa();
+    r.pressureHpa = (isnan(val) || val <= 0.0f || val > 1200.0f) ? NAN : val;
+  }
 
   // marée diff
   uint16_t oldAquaMax = _aquaMax;

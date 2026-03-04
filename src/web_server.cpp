@@ -1835,6 +1835,7 @@ bool WebServerManager::begin() {
       esp_task_wdt_reset();
       bool connected = wifi.connectTo(ssidBuf, passwordBuf);
       if (connected) {
+        power.saveCurrentWifiCredentials();
         IPAddress ip = WiFi.localIP();
         Serial.printf(
           "[WiFi] Connecté avec succès à '%s' (IP: %d.%d.%d.%d, RSSI: %d dBm)\n",

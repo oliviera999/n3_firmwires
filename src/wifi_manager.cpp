@@ -2,6 +2,7 @@
 #include "display_view.h"
 #include "config.h"
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
+#include <WiFiGeneric.h>
 #include <algorithm>
 #include <cstring>
 #include <esp_task_wdt.h>
@@ -10,6 +11,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #endif
+
+// Dernière raison de déconnexion STA (pour diagnostic quand connexion échoue)
+static volatile int s_lastStaDisconnectReason = -1;
+static void onStaDisconnected(arduino_event_id_t event, arduino_event_info_t info) {
+  (void)event;
+  s_lastStaDisconnectReason = (int)info.wifi_sta_disconnected.reason;
+}
 
 // DNS personnalisé : l'API Arduino-ESP32 n'expose pas setDNS() ; garder DHCP.
 // Pour forcer un DNS (ex. 8.8.8.8), configurer le routeur (DHCP option 6) ou utiliser
@@ -28,11 +36,28 @@ bool WifiManager::connect(DisplayView* disp) {
   ets_printf("[BOOT] connectWifi entry\n");
 #endif
   if (WiFi.status() == WL_CONNECTED) return true;
+  if (_count == 0) {
+    Serial.println(F("[WiFi] Aucun reseau configure (WIFI_LIST vide dans secrets.h) - configurer via AP secours puis inclure SSID/mdp dans include/secrets.h"));
+    Serial.println(F("[Event] WiFi no credentials; starting AP"));
+    if (disp && disp->isPresent()) disp->showDiagnostic("Pas de reseau config");
+    startFallbackAP();
+    return false;
+  }
   if (_connecting) {
     Serial.println(F("[WiFi] Connexion déjà en cours - skip"));
     return false;
   }
   _connecting = true;
+
+  // Enregistrer une fois le handler pour logger la raison de déconnexion en cas d'échec
+  {
+    static bool once = false;
+    if (!once) {
+      WiFi.onEvent(onStaDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+      once = true;
+    }
+  }
+  s_lastStaDisconnectReason = -1;
 
   // Assurer une gestion manuelle de la reconnexion (évite des états internes bloquants)
   WiFi.persistent(false);
@@ -353,7 +378,12 @@ bool WifiManager::connect(DisplayView* disp) {
       }
     }
     show("Echec\nSuivant...");
-    Serial.printf("[WiFi] ❌ Connexion à %s impossible\n", _list[i].ssid);
+    if (s_lastStaDisconnectReason >= 0) {
+      Serial.printf("[WiFi] ❌ Connexion à %s impossible (raison: %d)\n", _list[i].ssid, s_lastStaDisconnectReason);
+      s_lastStaDisconnectReason = -1;
+    } else {
+      Serial.printf("[WiFi] ❌ Connexion à %s impossible\n", _list[i].ssid);
+    }
     // Délai entre réseaux pour éviter états intermédiaires du chip
     if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_DELAY_BETWEEN_NETWORKS_MS));
@@ -497,9 +527,9 @@ bool WifiManager::startFallbackAP(){
     }
 #endif
   }
-  // En mode AP fallback: intervalle allongé (20 s) pour éviter starvation core 0
-  // par la tâche wifi lors des scans/connexions répétés (évite TWDT).
-  _baseRetryMs = 20000;         // scan toutes les 20 s
+  // En mode AP fallback: backoff long (45 s) pour éviter AUTH_EXPIRE et laisser la box 4G respirer
+  // et limiter starvation core 0 par scans/connexions répétés (évite TWDT).
+  _baseRetryMs = TimingConfig::WIFI_AP_FALLBACK_RETRY_INTERVAL_MS;
   _retryIntervalMs = _baseRetryMs;
   return ok;
 }
@@ -570,9 +600,9 @@ void WifiManager::loop(DisplayView* disp){
   Serial.println(F("[WiFi] Tentative périodique de reconnexion"));
   bool ok = connect(disp);
   if (!ok && WiFi.status() != WL_CONNECTED) {
-    // Cadence allongée pour éviter starvation core 0 (évite TWDT en mode AP)
-    _retryIntervalMs = 20000;
-    _baseRetryMs = 20000;
+    // Backoff long en mode AP pour éviter AUTH_EXPIRE et TWDT (scans répétés)
+    _retryIntervalMs = TimingConfig::WIFI_AP_FALLBACK_RETRY_INTERVAL_MS;
+    _baseRetryMs = _retryIntervalMs;
   } else {
     _retryIntervalMs = _baseRetryMs; // reset en cas de succès
   }

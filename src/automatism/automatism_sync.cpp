@@ -245,8 +245,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     // Construction du payload (logique migrée de AutomatismNetwork)
     // Nécessite des accesseurs sur Automatism (core)
     int diffMaree = core.computeDiffMaree(readings.wlAqua);
+    float pressureForPost = isnan(readings.pressureHpa) ? 0.0f : readings.pressureHpa;
     int len = snprintf(payloadBuffer, sizeof(payloadBuffer),
-        "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&TempEau=%.1f&"
+        "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&Pression=%.1f&TempEau=%.1f&"
         "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
         "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&"
         "bouffeMatin=%u&bouffeMidi=%u&bouffeSoir=%u&tempsGros=%u&tempsPetits=%u&"
@@ -254,7 +255,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         "tempsRemplissageSec=%u&limFlood=%u&WakeUp=%d&FreqWakeUp=%u&"
         "bouffePetits=%s&bouffeGros=%s&mail=%s&mailNotif=%s",
         ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION,
-        readings.tempAir, readings.humidity, readings.tempWater,
+        readings.tempAir, readings.humidity, pressureForPost, readings.tempWater,
         readings.wlPota, readings.wlAqua, readings.wlTank, diffMaree, readings.luminosite,
         acts.isAquaPumpRunning(), acts.isTankPumpRunning(), acts.isHeaterOn(), acts.isLightOn(),
         core.getBouffeMatin(), core.getBouffeMidi(), core.getBouffeSoir(),

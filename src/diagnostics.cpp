@@ -16,6 +16,12 @@ extern "C" esp_err_t esp_core_dump_image_erase(void) __attribute__((weak));
 #include <freertos/task.h>
 #include <time.h>
 #include <cstring>
+#if defined(BOARD_S3)
+#include "sd_card.h"
+#endif
+#if defined(USE_RTC_DS3231)
+#include "rtc_ds3231.h"
+#endif
 
 namespace {
 
@@ -336,6 +342,15 @@ void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   if (_stats.panicInfo.hasPanicInfo) {
     doc["panicCause"] = _stats.panicInfo.exceptionCause;
   }
+#if defined(BOARD_S3) || defined(USE_RTC_DS3231)
+  ArduinoJson::JsonObject hw = doc["hardware"].to<ArduinoJson::JsonObject>();
+#if defined(USE_RTC_DS3231)
+  hw["rtcDs3231Present"] = RtcDS3231::isPresent();
+#endif
+#if defined(BOARD_S3)
+  hw["sdCardPresent"] = SdCard::isPresent();
+#endif
+#endif
 } 
 
 void Diagnostics::recordHttpResult(bool success, int httpCode) {

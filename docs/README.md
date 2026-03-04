@@ -60,7 +60,7 @@ pio device monitor
 
 ## Principes de développement
 
-Voir [.cursorrules](../.cursorrules) à la racine du projet.
+Voir les règles du projet dans `.cursor/rules/` (ex. règles cœur FFP5CS).
 
 **Principes clés :**
 1. Offline-first : le système fonctionne sans réseau

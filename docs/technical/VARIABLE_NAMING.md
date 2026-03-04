@@ -67,6 +67,7 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 |-------------|--------------|-------------|--------------|-------------------|-----|
 | Temperature air | `TempAir` | - | `tempAir` | `tempAir` | - |
 | Humidite | `Humidite` | - | `humidity` (SensorReadings) / `humid` (Measurements) | `humidity` | - |
+| Pression atmospherique (BME280) | `Pression` | - | `pressureHpa` (SensorReadings) | `pressureHpa` | - |
 | Temperature eau | `TempEau` | - | `tempWater` | `tempWater` | `temp_last_ok` (cfg) |
 | Niveau potager | `EauPotager` | - | `wlPota` | `wlPota` | - |
 | Niveau aquarium | `EauAquarium` | - | `wlAqua` | `wlAqua` | - |
@@ -172,9 +173,11 @@ Les deux endpoints utilisent maintenant la meme convention avec prefixes `wifiSt
 | `ota_upd_flag` | bool | Flag mise a jour OTA activee (cle stockee, limite 15 car. ESP-IDF) | OK |
 | `ota_prevVer` | string | Version firmware precedente avant OTA | OK |
 | `ota_in_prog` | bool | OTA en cours (cle stockee, limite 15 car.) | OK |
+| `ota_last_meth` | string | Derniere methode OTA utilisee (cle stockee, limite 15 car.) | OK |
 | `net_send_en` | bool | Envoi distant active | OK |
 | `net_recv_en` | bool | Reception distante activee | OK |
 | `rtc_epoch` | uint32 | Epoch RTC | OK |
+| `lastDailyReboot` | int | Jour du dernier reboot auto (year*1000+tm_yday) | OK |
 
 ### Namespace CONFIG (`cfg`)
 
@@ -245,6 +248,8 @@ Les cles suivantes sont utilisees pour le contrat serveur et l'API ; en NVS, seu
 
 ### Namespace LOGS (`logs`)
 
+Côté NVS le namespace est `logs` ; dans le code (`include/nvs_keys.h`) les clés sont regroupées dans le namespace **Diag** (NVSKeys::Diag).
+
 | Cle | Type | Description | Status |
 |-----|------|-------------|--------|
 | `diag_rebootCnt` | int | Compteur de redemarrages | OK |
@@ -260,6 +265,15 @@ Les cles suivantes sont utilisees pour le contrat serveur et l'API ; en NVS, seu
 | `alert_flood_ts` | uint32 | Timestamp dernier email inondation | OK |
 | `crash_has` | bool | Flag crash detecte | OK |
 | `crash_reason` | int | Raison du crash | OK |
+
+### Namespace WebClient (queue POST)
+
+Clés utilisées pour la file d’attente des POST vers le serveur distant (namespace dédié ou partagé selon l’implémentation).
+
+| Cle | Type | Description | Status |
+|-----|------|-------------|--------|
+| `post_q_count` | int | Nombre de payloads en attente dans la queue | OK |
+| `post_q_{index}` | string | Payload en attente (post_q_0, post_q_1, …) | OK |
 
 ### Migration effectuee (2026-01-31)
 

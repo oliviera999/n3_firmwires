@@ -370,6 +370,11 @@ static void netTask(void* pv) {
     const unsigned long FIRST_TLS_DELAY_MS = 2000;
     vTaskDelay(pdMS_TO_TICKS(FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
+#elif defined(BOARD_S3) && !defined(BOARD_HAS_PSRAM)
+    // S3 sans PSRAM : laisser le heap se stabiliser après le boot pour limiter "SSL - Memory allocation failed"
+    const unsigned long S3_FIRST_TLS_DELAY_MS = 3000;
+    vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
+    esp_task_wdt_reset();
 #endif
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)

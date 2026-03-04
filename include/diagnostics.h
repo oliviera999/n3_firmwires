@@ -27,7 +27,11 @@ struct DiagnosticStats {
   uint32_t rebootCount;
   char lastRebootReason[32];
   // Statistiques CPU (optionnelles)
-  char taskStats[1024];     // sortie brute de vTaskGetRunTimeStats()
+#if defined(BOARD_WROOM)
+  char taskStats[496];     // réduit pour tenir en DRAM (dram0_0_seg overflow ~528 bytes sur wroom-test)
+#else
+  char taskStats[1024];    // sortie brute de vTaskGetRunTimeStats()
+#endif
   uint8_t idlePercent;  // somme des tâches IDLE (0..100), 255 si inconnu
   // Réseau/OTA
   uint32_t httpSuccessCount;

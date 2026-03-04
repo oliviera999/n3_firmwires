@@ -1,12 +1,12 @@
 # FFP5CS ESP32 API Endpoints
-# Version: 12.00
+# Version: 12.15 (aligné firmware)
 # Generated from firmware audit
 # Format: OpenAPI 3.0 (simplified)
 
 openapi: 3.0.3
 info:
   title: FFP5CS ESP32 Local API
-  version: "12.00"
+  version: "12.15"
   description: |
     API locale du firmware FFP5CS pour système d'aquaponie.
     - HTTP : ESPAsyncWebServer sur le port 80.

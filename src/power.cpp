@@ -342,6 +342,7 @@ void PowerManager::applyExternalRTCIfPresent() {
 #endif
 #if defined(USE_RTC_DS3231)
   if (!RtcDS3231::isPresent()) {
+    LOG_RTC(LogConfig::LOG_INFO, "DS3231 absent (optionnel)");
     return;
   }
   time_t rtcEpoch = 0;
@@ -438,6 +439,7 @@ void PowerManager::getCurrentTimeStringForMail(char* buffer, size_t bufferSize) 
 
 void PowerManager::saveCurrentWifiCredentials() {
   if (WiFi.status() == WL_CONNECTED) {
+    bool firstSave = !_hasSavedCredentials;
     WiFiHelpers::getSSID(_lastSSID, sizeof(_lastSSID));
     // Lecture PSK via ESP-IDF (évite String Arduino → stabilité long uptime)
     wifi_config_t conf;
@@ -450,7 +452,9 @@ void PowerManager::saveCurrentWifiCredentials() {
       _lastPassword[0] = '\0';
     }
     _hasSavedCredentials = true;
-    Serial.printf("[Power] Identifiants WiFi sauvegardés: SSID=%s\n", _lastSSID);
+    if (firstSave) {
+      Serial.printf("[Power] Identifiants WiFi sauvegardés: SSID=%s\n", _lastSSID);
+    }
   } else {
     _lastSSID[0] = '\0';
     _lastPassword[0] = '\0';

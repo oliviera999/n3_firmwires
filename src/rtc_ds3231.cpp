@@ -53,8 +53,14 @@ bool read(time_t* outEpoch) {
 
   Wire.beginTransmission(Pins::DS3231_I2C_ADDR);
   Wire.write(REG_SEC);
-  if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom(static_cast<uint8_t>(Pins::DS3231_I2C_ADDR), 7u) != 7) return false;
+  if (Wire.endTransmission(false) != 0) {
+    Serial.println(F("[RTC] DS3231 diagnostic: I2C endTransmission(false) a echoue"));
+    return false;
+  }
+  if (Wire.requestFrom(static_cast<uint8_t>(Pins::DS3231_I2C_ADDR), 7u) != 7) {
+    Serial.println(F("[RTC] DS3231 diagnostic: I2C requestFrom(7) n a pas retourne 7 octets"));
+    return false;
+  }
 
   uint8_t sec = bcdToByte(Wire.read() & 0x7F);
   uint8_t min = bcdToByte(Wire.read());
@@ -67,6 +73,8 @@ bool read(time_t* outEpoch) {
   int year = (monthReg & MONTH_CENTURY_BIT) ? (1900 + year2) : (2000 + year2);
 
   if (sec > 59 || min > 59 || hour > 23 || date < 1 || date > 31 || month < 1 || month > 12) {
+    Serial.printf("[RTC] DS3231 diagnostic: plage BCD invalide -> %04d-%02d-%02d %02d:%02d:%02d (sec=%u min=%u hour=%u date=%u month=%u year=%d)\n",
+                  year, month, date, hour, min, sec, sec, min, hour, date, month, year);
     return false;
   }
 
@@ -81,9 +89,16 @@ bool read(time_t* outEpoch) {
   t.tm_isdst = -1;
 
   time_t epoch = mktime(&t);
-  if (epoch == (time_t)-1) return false;
+  if (epoch == (time_t)-1) {
+    Serial.printf("[RTC] DS3231 diagnostic: mktime a echoue pour %04d-%02d-%02d %02d:%02d:%02d\n",
+                  year, month, date, hour, min, sec);
+    return false;
+  }
 
   if (epoch < SleepConfig::EPOCH_MIN_VALID || epoch > SleepConfig::EPOCH_MAX_VALID) {
+    Serial.printf("[RTC] DS3231 diagnostic: epoch %lu hors plage [%lu..%lu] (date lue: %04d-%02d-%02d %02d:%02d:%02d)\n",
+                  (unsigned long)epoch, (unsigned long)SleepConfig::EPOCH_MIN_VALID,
+                  (unsigned long)SleepConfig::EPOCH_MAX_VALID, year, month, date, hour, min, sec);
     return false;
   }
 

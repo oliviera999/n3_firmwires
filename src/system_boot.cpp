@@ -386,6 +386,8 @@ bool connectWifi(AppContext& ctx, const char* hostname) {
     return false;
   }
 
+  // Sauvegarder identifiants dès la première connexion réussie (réveil light sleep)
+  ctx.power.saveCurrentWifiCredentials();
   return true;
 }
 

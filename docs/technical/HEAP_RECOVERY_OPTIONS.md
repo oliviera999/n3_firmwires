@@ -1,6 +1,6 @@
 # Options de récupération heap (ESP32-WROOM)
 
-Ce document décrit le constat observé sur un run 2 h (log du 2026-02-23) et les pistes pour récupérer davantage de heap sur WROOM. Voir aussi [docs/reports/ANALYSE_DETAILLEE_LOG_2H_2026-02-23.md](../reports/ANALYSE_DETAILLEE_LOG_2H_2026-02-23.md).
+Ce document décrit le constat observé sur un run 2 h (log du 2026-02-23) et les pistes pour récupérer davantage de heap sur WROOM. Voir aussi [ANALYSE_ORIGINE_PROBLEMES_CRITIQUES.md](../reports/monitoring/reports/ANALYSE_ORIGINE_PROBLEMES_CRITIQUES.md) (origine problèmes DHT22, watchdog, mémoire).
 
 ## Constat
 

@@ -4,11 +4,19 @@ Ce fichier documente l'historique des versions du projet FFP5CS (ESP32 Aquaponie
 
 ## Format de version
 
-Le format de version suit le schéma `MAJOR.MINOR` :
-- **MAJOR** (+1.00) : Nouvelles fonctionnalités majeures, refactoring important, changements d'API
-- **MINOR** (+0.01) : Corrections de bugs, optimisations mineures, ajustements
+Le format de version suit le schéma **MAJOR.MINOR** (ex. 12.15, deux chiffres pour la partie mineure) :
+- **MAJOR** : Nouvelles fonctionnalités majeures, refactoring important, changements d'API (incrémenter le premier nombre).
+- **MINOR** : Corrections de bugs, optimisations mineures, ajustements (incrémenter les décimales, ex. 12.14 → 12.15).
 
-La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
+La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’historique est tenu dans ce fichier `VERSION.md`.
+
+---
+
+## Version 12.15 - 2026-03-03
+
+### Maintenance
+
+- Vérification et mise à jour de la documentation (plan doc) : cohérence VERSION.md / config.h, règles projet, liens, clés NVS.
 
 ---
 
@@ -287,5 +295,5 @@ La version est définie dans `include/config.h` dans `ProjectConfig::VERSION`.
 ## Références
 
 - Configuration de version : `include/config.h` → `ProjectConfig::VERSION`
-- Règles de développement : `.cursorrules`
+- Règles de développement : `.cursor/rules/` (ex. règles cœur FFP5CS)
 - Rapport d'adéquation : `docs/reports/RAPPORT_ADEQUATION_CURSORRULES_CODE.md`

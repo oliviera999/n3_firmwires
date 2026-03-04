@@ -381,7 +381,12 @@ void loop() {
 
   // Centraliser les opérations WiFi dans le loop Arduino (évite concurrence multi-tâches)
   wifi.checkConnectionStability();
+  bool wasWifiConnected = (WiFi.status() == WL_CONNECTED);
   wifi.loop(&oled);
+  // Sauvegarder identifiants dès reconnexion réussie (pour réveil light sleep)
+  if (!wasWifiConnected && WiFi.status() == WL_CONNECTED) {
+    power.saveCurrentWifiCredentials();
+  }
 
   power.resetWatchdog();
   

@@ -1,7 +1,7 @@
 # Documentation des seuils serveur/ESP32
 
 **Date** : 2026-02-02  
-**Version** : 12.00
+**Version** : 12.15
 
 ## Vue d'ensemble
 

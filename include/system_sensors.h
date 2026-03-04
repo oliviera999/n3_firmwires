@@ -6,6 +6,7 @@ struct SensorReadings {
   float tempWater;
   float tempAir;
   float humidity;
+  float pressureHpa;  // BME280 uniquement (hPa) ; NAN si non disponible
   uint16_t wlPota;
   uint16_t wlAqua;
   uint16_t wlTank;

@@ -22,7 +22,11 @@ namespace OTAConfig {
     
     // Timeout pour les requêtes HTTP métadonnées (ms) — dérogation règle "≤5s" : OTA critique, netTask
     // avec feed watchdog. Doit rester < TWDT 30s pour éviter reset netTask.
+#if defined(BOARD_S3)
+    constexpr int HTTP_TIMEOUT = 15000;  // 15 s (S3 sans PSRAM: TWDT 30s, monitoring 2026-03)
+#else
     constexpr int HTTP_TIMEOUT = 20000;
+#endif
     
     // Taille maximale du filesystem (bytes) — alignée partition spiffs WROOM (0x0B0000)
     constexpr size_t MAX_FILESYSTEM_SIZE = 720896;  // 0x0B0000 — partitions_esp32_wroom_ota_fs_medium.csv

@@ -247,7 +247,7 @@ public:
         
         SensorReadings readings{};
         if (!sensors->getLastCachedReadings(readings)) {
-          readings.tempWater = readings.tempAir = readings.humidity = NAN;
+          readings.tempWater = readings.tempAir = readings.humidity = readings.pressureHpa = NAN;
           readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
         }
         
@@ -256,6 +256,7 @@ public:
         doc["tempWater"] = readings.tempWater;
         doc["tempAir"] = readings.tempAir;
         doc["humidity"] = readings.humidity;
+        doc["pressureHpa"] = readings.pressureHpa;
         doc["wlAqua"] = readings.wlAqua;
         doc["wlTank"] = readings.wlTank;
         doc["wlPota"] = readings.wlPota;
@@ -400,13 +401,14 @@ public:
                 StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
                 SensorReadings readings{};
                 if (!sensors->getLastCachedReadings(readings)) {
-                  readings.tempWater = readings.tempAir = readings.humidity = NAN;
+                  readings.tempWater = readings.tempAir = readings.humidity = readings.pressureHpa = NAN;
                   readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
                 }
                 doc["type"] = "sensor_update";
                 doc["tempWater"] = readings.tempWater;
                 doc["tempAir"] = readings.tempAir;
                 doc["humidity"] = readings.humidity;
+                doc["pressureHpa"] = readings.pressureHpa;
                 doc["wlAqua"] = readings.wlAqua;
                 doc["wlTank"] = readings.wlTank;
                 doc["wlPota"] = readings.wlPota;
@@ -431,13 +433,14 @@ public:
                 StaticJsonDocument<512> doc;
                 SensorReadings readings{};
                 if (!sensors->getLastCachedReadings(readings)) {
-                  readings.tempWater = readings.tempAir = readings.humidity = NAN;
+                  readings.tempWater = readings.tempAir = readings.humidity = readings.pressureHpa = NAN;
                   readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
                 }
                 doc["type"] = "sensor_update";
                 doc["tempWater"] = readings.tempWater;
                 doc["tempAir"] = readings.tempAir;
                 doc["humidity"] = readings.humidity;
+                doc["pressureHpa"] = readings.pressureHpa;
                 doc["wlAqua"] = readings.wlAqua;
                 doc["wlTank"] = readings.wlTank;
                 doc["wlPota"] = readings.wlPota;
@@ -506,13 +509,14 @@ public:
         
         SensorReadings readings{};
         if (!sensors->getLastCachedReadings(readings)) {
-          readings.tempWater = readings.tempAir = readings.humidity = NAN;
+          readings.tempWater = readings.tempAir = readings.humidity = readings.pressureHpa = NAN;
           readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
         }
         doc["type"] = "sensor_update";
         doc["tempWater"] = readings.tempWater;
         doc["tempAir"] = readings.tempAir;
         doc["humidity"] = readings.humidity;
+        doc["pressureHpa"] = readings.pressureHpa;
         doc["wlAqua"] = readings.wlAqua;
         doc["wlTank"] = readings.wlTank;
         doc["wlPota"] = readings.wlPota;

@@ -19,6 +19,12 @@
 #include "system_actuators.h"
 #include "system_sensors.h"
 #include "app_context.h"
+#if defined(BOARD_S3)
+#include "sd_card.h"
+#endif
+#if defined(USE_RTC_DS3231)
+#include "rtc_ds3231.h"
+#endif
 
 using WebRoutes::registerStatusRoutes;
 
@@ -253,6 +259,16 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
     doc["lastSendMs"] = ctx.automatism.getLastSendMs();
     doc["lastDataSkipReason"] = ctx.automatism.getLastDataSkipReason();
 
+#if defined(BOARD_S3) || defined(USE_RTC_DS3231)
+    JsonObject hw = doc["hardware"].to<JsonObject>();
+#if defined(USE_RTC_DS3231)
+    hw["rtcDs3231Present"] = RtcDS3231::isPresent();
+#endif
+#if defined(BOARD_S3)
+    hw["sdCardPresent"] = SdCard::isPresent();
+#endif
+#endif
+
     Serial.printf("[Web] 📤 Server status sent (JSON)\n");
 
     if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/api/status"))) {
@@ -370,11 +386,13 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
       readings.tempWater = NAN;
       readings.tempAir = NAN;
       readings.humidity = NAN;
+      readings.pressureHpa = NAN;
       readings.wlAqua = readings.wlTank = readings.wlPota = readings.luminosite = 0;
     }
     doc["sensors"]["tempWater"] = readings.tempWater;
     doc["sensors"]["tempAir"] = readings.tempAir;
     doc["sensors"]["humidity"] = readings.humidity;
+    doc["sensors"]["pressureHpa"] = readings.pressureHpa;
     doc["sensors"]["wlAqua"] = readings.wlAqua;
     doc["sensors"]["wlTank"] = readings.wlTank;
     doc["sensors"]["wlPota"] = readings.wlPota;
