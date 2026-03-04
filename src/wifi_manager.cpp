@@ -19,6 +19,27 @@ static void onStaDisconnected(arduino_event_id_t event, arduino_event_info_t inf
   s_lastStaDisconnectReason = (int)info.wifi_sta_disconnected.reason;
 }
 
+// Renvoie une chaîne explicite pour les raisons de déconnexion courantes (diagnostic WiFi)
+static const char* wifiDisconnectReasonStr(int reason) {
+  switch (reason) {
+    case 1:  return "UNSPECIFIED";
+    case 2:  return "AUTH_EXPIRE";
+    case 3:  return "AUTH_LEAVE";
+    case 4:  return "ASSOC_EXPIRE";
+    case 5:  return "ASSOC_TOOMANY";
+    case 6:  return "NOT_AUTHED";
+    case 7:  return "NOT_ASSOCED";
+    case 8:  return "ASSOC_LEAVE";
+    case 9:  return "ASSOC_NOT_AUTHED";
+    case 15: return "4WAY_HANDSHAKE_TIMEOUT";
+    case 201: return "NO_AP_FOUND";
+    case 202: return "AUTH_FAIL";
+    case 204: return "HANDSHAKE_TIMEOUT";
+    case 205: return "CONNECTION_FAIL";
+    default: return nullptr;
+  }
+}
+
 // DNS personnalisé : l'API Arduino-ESP32 n'expose pas setDNS() ; garder DHCP.
 // Pour forcer un DNS (ex. 8.8.8.8), configurer le routeur (DHCP option 6) ou utiliser
 // une IP statique + WiFi.config(ip, gw, mask, dns1, dns2). Ici on ne fait rien.
@@ -31,7 +52,7 @@ static void applyCustomDns() {
 WifiManager::WifiManager(const Credential* list, size_t count, uint32_t timeoutMs, uint32_t retryIntervalMs)
     : _list(list), _count(count), _timeoutMs(timeoutMs), _retryIntervalMs(retryIntervalMs), _lastAttemptMs(0) {}
 
-bool WifiManager::connect(DisplayView* disp) {
+bool WifiManager::connect(DisplayView* disp, const char* hostname) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[BOOT] connectWifi entry\n");
 #endif
@@ -88,6 +109,9 @@ bool WifiManager::connect(DisplayView* disp) {
     WiFi.mode(WIFI_STA);
   }
 #endif
+  if (hostname && hostname[0] != '\0') {
+    WiFi.setHostname(hostname);
+  }
   // #endregion
   // Maximiser la puissance TX pour améliorer la connexion aux réseaux faibles/instables
   esp_wifi_set_max_tx_power(82);  // 20.5 dBm (max 2.4 GHz), unité 0.25 dBm
@@ -298,6 +322,7 @@ bool WifiManager::connect(DisplayView* disp) {
     }
     // Second tentative sans BSSID si la première (avec BSSID) a échoué
     if (cand[i].present) {
+      vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_SECOND_ATTEMPT_DELAY_MS));
       Serial.printf("[WiFi] 🔄 Second tentative (générique) %s ...\n", _list[i].ssid);
       WiFi.disconnect(false, true);  // purge état précédent
       if(strlen(_list[i].password)==0){
@@ -379,7 +404,12 @@ bool WifiManager::connect(DisplayView* disp) {
     }
     show("Echec\nSuivant...");
     if (s_lastStaDisconnectReason >= 0) {
-      Serial.printf("[WiFi] ❌ Connexion à %s impossible (raison: %d)\n", _list[i].ssid, s_lastStaDisconnectReason);
+      const char* reasonStr = wifiDisconnectReasonStr(s_lastStaDisconnectReason);
+      if (reasonStr) {
+        Serial.printf("[WiFi] ❌ Connexion à %s impossible (raison %d: %s)\n", _list[i].ssid, s_lastStaDisconnectReason, reasonStr);
+      } else {
+        Serial.printf("[WiFi] ❌ Connexion à %s impossible (raison: %d)\n", _list[i].ssid, s_lastStaDisconnectReason);
+      }
       s_lastStaDisconnectReason = -1;
     } else {
       Serial.printf("[WiFi] ❌ Connexion à %s impossible\n", _list[i].ssid);

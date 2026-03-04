@@ -371,12 +371,11 @@ static void checkForOtaUpdateInternal(AppContext& ctx) {
 }
 
 bool connectWifi(AppContext& ctx, const char* hostname) {
-  (void)hostname;
   if (ctx.display.isPresent()) {
     ctx.display.showDiagnostic("WiFi...");
   }
 
-  if (!ctx.wifi.connect(&ctx.display)) {
+  if (!ctx.wifi.connect(&ctx.display, hostname)) {
     BOOT_LOG("[App] WiFi non connecte - AP secours\n");
     if (ctx.display.isPresent()) {
       ctx.display.showDiagnostic("AP secours");

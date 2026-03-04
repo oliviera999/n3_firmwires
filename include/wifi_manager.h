@@ -23,8 +23,8 @@ class WifiManager {
   // v11.191: Timeout 5 s par tentative (renforce connexion routeurs lents) ; retries toutes les 5 s
   WifiManager(const Credential* list, size_t count, uint32_t timeoutMs = 5000, uint32_t retryIntervalMs = 5000);
 
-  // Tente de se connecter ; retourne true si connecté
-  bool connect(class DisplayView* disp = nullptr);
+  // Tente de se connecter ; retourne true si connecté. hostname optionnel (appliqué avant begin, utile au boot).
+  bool connect(class DisplayView* disp = nullptr, const char* hostname = nullptr);
 
   // Connexion manuelle à un SSID spécifique
   bool connectTo(const char* ssid, const char* password, class DisplayView* disp = nullptr);
