@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.20";
+    inline constexpr const char* VERSION = "12.23";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -117,7 +117,9 @@ namespace SystemConfig {
 namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
-    // 15 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP)
+    // Reconnexion après réveil : dérogation pour réseaux lents/faibles (DHCP, association jusqu'à 8s)
+    inline constexpr uint32_t WIFI_RECONNECT_AFTER_WAKE_MS = 8000;
+    // 15 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP) — permet liens faibles au boot et manuel
     // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 4000;

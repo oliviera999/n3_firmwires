@@ -2,6 +2,7 @@
 #include "display_view.h"
 #include "config.h"
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
+#include "esp_mac.h"   // Pour esp_base_mac_addr_set (override MAC avant WiFi init)
 #include <WiFiGeneric.h>
 #include <algorithm>
 #include <cstring>
@@ -49,6 +50,42 @@ static void applyCustomDns() {
 #endif
 }
 
+// Wrapper WiFi.begin() gérant les combinaisons password/channel/bssid
+static void wifiBeginSafe(const char* ssid, const char* pass,
+                          int32_t chan = 0, const uint8_t* bssid = nullptr) {
+  if (pass && strlen(pass) > 0) {
+    WiFi.begin(ssid, pass, chan, bssid);
+  } else {
+    if (chan > 0 || bssid) WiFi.begin(ssid, nullptr, chan, bssid);
+    else WiFi.begin(ssid);
+  }
+}
+
+// Certains routeurs 4G (ex. inwi Home 4G / Huawei) rejettent les MACs Espressif.
+// Override le MAC système AVANT esp_wifi_init() via esp_base_mac_addr_set().
+// Toutes les initialisations WiFi ultérieures utiliseront ce MAC.
+// Doit être appelé AVANT le premier WiFi.mode().
+static void overrideBaseMac() {
+  static bool done = false;
+  if (done) return;
+  uint8_t base[6];
+  uint64_t efuse = ESP.getEfuseMac();
+  memcpy(base, &efuse, 6);
+  uint8_t custom[6];
+  custom[0] = 0x02;
+  custom[1] = base[1] ^ 0x5A;
+  custom[2] = base[2] ^ 0xA3;
+  custom[3] = base[3] ^ 0x7E;
+  custom[4] = base[4] ^ 0xAB;
+  custom[5] = base[5] ^ 0xCD;
+  esp_err_t err = esp_base_mac_addr_set(custom);
+  if (err == ESP_OK) {
+    Serial.printf("[WiFi] MAC base: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  custom[0], custom[1], custom[2], custom[3], custom[4], custom[5]);
+    done = true;
+  }
+}
+
 WifiManager::WifiManager(const Credential* list, size_t count, uint32_t timeoutMs, uint32_t retryIntervalMs)
     : _list(list), _count(count), _timeoutMs(timeoutMs), _retryIntervalMs(retryIntervalMs), _lastAttemptMs(0) {}
 
@@ -70,7 +107,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   }
   _connecting = true;
 
-  // Enregistrer une fois le handler pour logger la raison de déconnexion en cas d'échec
+  // Enregistrer une fois les handlers de diagnostic WiFi
   {
     static bool once = false;
     if (!once) {
@@ -93,7 +130,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[BOOT] after show Scan\n");
 #endif
-  // #region agent log (H-A: WiFi.mode)
+  overrideBaseMac();  // MAC système avant WiFi.mode() → appliqué au hardware
   // S3 PSRAM: WiFi.mode() bloque durablement sur ce board/driver ; on skip l'init WiFi au boot pour que le setup termine (firmware opérationnel en offline + AP secours)
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   if (WiFi.getMode() != (FEATURE_WIFI_APSTA ? (wifi_mode_t)WIFI_AP_STA : (wifi_mode_t)WIFI_STA)) {
@@ -112,9 +149,8 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   if (hostname && hostname[0] != '\0') {
     WiFi.setHostname(hostname);
   }
-  // #endregion
-  // Maximiser la puissance TX pour améliorer la connexion aux réseaux faibles/instables
-  esp_wifi_set_max_tx_power(82);  // 20.5 dBm (max 2.4 GHz), unité 0.25 dBm
+  // TX réduit : routeurs 4G (ex. inwi) rejettent les clients avec TX > ~15 dBm
+  esp_wifi_set_max_tx_power(50);  // 12.5 dBm (unité 0.25 dBm)
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[DBG H-B] after set_max_tx_power\n");
 #endif
@@ -187,8 +223,21 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       scanSSIDBuf[32] = '\0';
       size_t slen = strnlen(scanSSIDBuf, 32);
       scanSSIDBuf[slen] = '\0';
-      Serial.printf("  - %s (%ddBm)%s\n", scanSSIDBuf, s_apRecords[j].rssi,
-                    s_apRecords[j].authmode == WIFI_AUTH_OPEN ? " [OPEN]" : "");
+      const char* authStr = "UNKNOWN";
+      switch (s_apRecords[j].authmode) {
+        case WIFI_AUTH_OPEN: authStr = "OPEN"; break;
+        case WIFI_AUTH_WEP: authStr = "WEP"; break;
+        case WIFI_AUTH_WPA_PSK: authStr = "WPA_PSK"; break;
+        case WIFI_AUTH_WPA2_PSK: authStr = "WPA2_PSK"; break;
+        case WIFI_AUTH_WPA_WPA2_PSK: authStr = "WPA_WPA2_PSK"; break;
+        case WIFI_AUTH_WPA2_ENTERPRISE: authStr = "WPA2_ENT"; break;
+        case WIFI_AUTH_WPA3_PSK: authStr = "WPA3_PSK"; break;
+        case WIFI_AUTH_WPA2_WPA3_PSK: authStr = "WPA2_WPA3_PSK"; break;
+        default: break;
+      }
+      Serial.printf("  - [%d] '%s' RSSI=%d ch=%d auth=%s(%d)\n",
+                    j, scanSSIDBuf, s_apRecords[j].rssi, s_apRecords[j].primary,
+                    authStr, (int)s_apRecords[j].authmode);
     }
   }
 
@@ -247,9 +296,9 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       // Utilise directement le BSSID et le canal détectés pour fiabiliser la connexion
       // Signature: WiFi.begin(ssid, pass, channel, bssid, connect)
       if (cand[i].enc == WIFI_AUTH_OPEN || strlen(_list[i].password) == 0) {
-        WiFi.begin(_list[i].ssid, nullptr /*pass*/, cand[i].chan, cand[i].bssid);
+        wifiBeginSafe(_list[i].ssid, nullptr, cand[i].chan, cand[i].bssid);
       } else {
-        WiFi.begin(_list[i].ssid, _list[i].password, cand[i].chan, cand[i].bssid);
+        wifiBeginSafe(_list[i].ssid, _list[i].password, cand[i].chan, cand[i].bssid);
       }
     }else{
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
@@ -290,13 +339,12 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       if (foundInRescan) {
         Serial.printf("[WiFi] Rescan: %s trouvé RSSI=%d ch=%d\n", _list[i].ssid, rescanRssi, rescanChan);
         if (rescanAuth == WIFI_AUTH_OPEN || strlen(_list[i].password) == 0) {
-          WiFi.begin(_list[i].ssid, nullptr, rescanChan, rescanBssid);
+          wifiBeginSafe(_list[i].ssid, nullptr, rescanChan, rescanBssid);
         } else {
-          WiFi.begin(_list[i].ssid, _list[i].password, rescanChan, rescanBssid);
+          wifiBeginSafe(_list[i].ssid, _list[i].password, rescanChan, rescanBssid);
         }
       } else {
-        if (strlen(_list[i].password) == 0) { WiFi.begin(_list[i].ssid); }
-        else { WiFi.begin(_list[i].ssid, _list[i].password); }
+        wifiBeginSafe(_list[i].ssid, _list[i].password);
       }
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
       ets_printf("[DBG] after begin, wait conn\n");
@@ -305,9 +353,9 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {
       if (esp_task_wdt_status(NULL) == ESP_OK) {
-        esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
+        esp_task_wdt_reset();
       }
-      vTaskDelay(pdMS_TO_TICKS(100)); // Optimized delay - reduced from 250ms to 100ms for faster connection
+      vTaskDelay(pdMS_TO_TICKS(100));
     }
     if (WiFi.status() == WL_CONNECTED) {
       show("WiFi OK");
@@ -325,11 +373,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_SECOND_ATTEMPT_DELAY_MS));
       Serial.printf("[WiFi] 🔄 Second tentative (générique) %s ...\n", _list[i].ssid);
       WiFi.disconnect(false, true);  // purge état précédent
-      if(strlen(_list[i].password)==0){
-        WiFi.begin(_list[i].ssid);
-      }else{
-        WiFi.begin(_list[i].ssid, _list[i].password);
-      }
+      wifiBeginSafe(_list[i].ssid, _list[i].password);
       uint32_t start2 = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - start2 < _timeoutMs) {
         if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -352,11 +396,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       Serial.printf("[WiFi] 🔄 3e tentative %s (délai 500 ms)...\n", _list[i].ssid);
       vTaskDelay(pdMS_TO_TICKS(500));
       WiFi.disconnect(false, true);
-      if (strlen(_list[i].password) == 0) {
-        WiFi.begin(_list[i].ssid);
-      } else {
-        WiFi.begin(_list[i].ssid, _list[i].password);
-      }
+      wifiBeginSafe(_list[i].ssid, _list[i].password);
       uint32_t start3 = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - start3 < _timeoutMs) {
         if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -380,11 +420,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_FOURTH_ATTEMPT_DELAY_MS));
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
       WiFi.disconnect(false, true);
-      if (strlen(_list[i].password) == 0) {
-        WiFi.begin(_list[i].ssid);
-      } else {
-        WiFi.begin(_list[i].ssid, _list[i].password);
-      }
+      wifiBeginSafe(_list[i].ssid, _list[i].password);
       uint32_t start4 = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - start4 < _timeoutMs) {
         if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
@@ -448,23 +484,20 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
   auto show = [disp](const char* msg){ if(disp && disp->isPresent()){ disp->showDiagnostic(msg);} };
 
   show("WiFi...");
+  overrideBaseMac();
   if (FEATURE_WIFI_APSTA) {
     WiFi.mode(WIFI_AP_STA);
   } else {
     WiFi.mode(WIFI_STA);
   }
-  esp_wifi_set_max_tx_power(82);  // 20.5 dBm pour liens faibles
+  esp_wifi_set_max_tx_power(50);  // 12.5 dBm (compatibilité routeurs 4G)
   if (WiFi.status() != WL_IDLE_STATUS) {
     WiFi.disconnect(false, true);
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   Serial.printf("[WiFi] 🔗 Connexion manuelle à %s...\n", ssid);
-  if (password && strlen(password) > 0) {
-    WiFi.begin(ssid, password);
-  } else {
-    WiFi.begin(ssid);
-  }
+  wifiBeginSafe(ssid, password);
 
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < _timeoutMs) {

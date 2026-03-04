@@ -12,6 +12,40 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.23 - 2026-03-04
+
+### Fix WiFi : compatibilité routeurs 4G (inwi Home 4G / Huawei)
+
+- **MAC override système** : `overrideBaseMac()` via `esp_base_mac_addr_set()` dérive un MAC localement administré depuis le MAC eFuse usine, appliqué avant `WiFi.mode()`. Contourne le filtrage OUI Espressif par certains routeurs 4G.
+- **TX power réduit à 12.5 dBm** : `esp_wifi_set_max_tx_power(50)` au lieu de 82 (20.5 dBm). Corrige AUTH_EXPIRE persistant avec les routeurs 4G type inwi Home 4G qui rejettent les clients WiFi à puissance TX élevée.
+- **Nettoyage** : suppression du wrapper `wifiBeginPMF` (hypothèse PMF rejetée), remplacé par `wifiBeginSafe` simplifié. Suppression des logs de debug `[DBG-289e1f]`.
+
+---
+
+## Version 12.22 - 2026-03-04
+
+### SD Data Logger : stockage offline et replay (BOARD_S3 uniquement)
+
+- **Nouveau module `sd_logger`** : stocke chaque payload POST sur carte micro SD en fichiers journaliers (`/sdcard/log/YYYYMMDD.csv`) et file d'attente persistante (`/sdcard/queue/SEQNUM.dat`).
+- **Idempotence** : champ `post_id` (BOARD_TYPE-epoch-seq) ajouté à tous les payloads POST pour déduplication côté serveur.
+- **Replay offline** : à la reconnexion WiFi, les POSTs non confirmés sont rejoués depuis la SD (max 5 par cycle dans autoTask).
+- **Rotation automatique** : les fichiers log de plus de 30 jours sont supprimés au boot.
+- **Endpoints locaux** : `GET /api/history?date=YYYYMMDD` (données historiques pour graphiques) et `GET /api/sd-status` (état SD + pending count).
+- **Serveur distant** : déduplication par `post_id` dans `PostDataController`, colonne `post_id` VARCHAR(64) UNIQUE nullable dans les tables ffp3Data*.
+- **Isolation S3** : tout le code SD est conditionné par `#if defined(BOARD_S3)`, stubs vides sur WROOM. Le `post_id` est ajouté sur tous les boards.
+
+---
+
+## Version 12.21 - 2026-03-04
+
+### Réseaux WiFi lents / faibles : timeouts reconnexion et stabilisation
+
+- **Reconnexion après réveil** : nouveau timeout dédié `WIFI_RECONNECT_AFTER_WAKE_MS` (8 s) dans `power.cpp` pour laisser plus de temps à l’association et au DHCP sur liens lents (dérogation par rapport à 5 s).
+- **Stabilisation réseau** : `waitForNetworkReady()` utilise 5 s max pour le DNS au lieu de 3 s (réseaux lents).
+- **Documentation** : commentaire corrigé dans `web_server.cpp` (connexion manuelle WiFi utilise `WIFI_CONNECT_ATTEMPT_TIMEOUT_MS`).
+
+---
+
 ## Version 12.20 - 2026-03-04
 
 ### netRPC : pool 16/10 + timeouts RPC réduits
