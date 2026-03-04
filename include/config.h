@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.18";
+    inline constexpr const char* VERSION = "12.20";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -117,12 +117,12 @@ namespace SystemConfig {
 namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
-    // 12 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP)
+    // 15 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP)
     // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 4000;
 #else
-    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 12000;
+    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 15000;
 #endif
     // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
@@ -132,10 +132,12 @@ namespace TimingConfig {
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
     // Délai après disconnect avant scan (stabilisation chip WiFi)
     inline constexpr uint32_t WIFI_POST_DISCONNECT_DELAY_MS = 500;
-    // Délai avant premier scan au boot (stabilisation RF)
-    inline constexpr uint32_t WIFI_PRE_SCAN_DELAY_MS = 300;
+    // Délai avant premier scan au boot (stabilisation RF, 500 ms améliore détection)
+    inline constexpr uint32_t WIFI_PRE_SCAN_DELAY_MS = 500;
     // Délai entre tentatives sur réseaux différents (évite états intermédiaires)
     inline constexpr uint32_t WIFI_DELAY_BETWEEN_NETWORKS_MS = 250;
+    // Délai avant 2e tentative (sans BSSID) pour laisser le routeur/box 4G respirer
+    inline constexpr uint32_t WIFI_SECOND_ATTEMPT_DELAY_MS = 500;
     // Délai avant 4e tentative par réseau visible (routeur instable)
     inline constexpr uint32_t WIFI_FOURTH_ATTEMPT_DELAY_MS = 1000;
     // Intervalle entre tentatives en mode AP de secours (backoff long pour box 4G / AUTH_EXPIRE)
@@ -243,17 +245,17 @@ namespace NetworkConfig {
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement). 8 s pour rester < FETCH_REMOTE_STATE_RPC_TIMEOUT_MS.
     inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s (évite abandon caller avant fin GET)
-    // RPC FetchRemoteState : timeout = HTTP + marge queue (POST ~8s peut précéder le GET)
-    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 30000;  // 30 s (évite abandon avant fin GET si file chargée)
+    // RPC FetchRemoteState : timeout = HTTP + marge queue ; 20 s pour libérer slots plus tôt (v12.20)
+    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 20000;  // 20 s
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
 #if defined(BOARD_S3)
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 15000;  // 15 s (S3: rester sous TWDT 30s, monitoring 2026-03)
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 20000;  // 20 s (S3: marge vs POST 15 s + file)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 16000;  // 16 s (v12.20: libérer slots plus tôt)
 #else
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 26000;  // 26 s (marge vs POST 18 s + file)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 22000;  // 22 s (v12.20: libérer slots plus tôt)
 #endif
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
     inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;

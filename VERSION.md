@@ -12,6 +12,26 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.20 - 2026-03-04
+
+### netRPC : pool 16/10 + timeouts RPC réduits
+
+- **Pool netRPC** : S3 12→16, WROOM 8→10 pour réduire la saturation sous charge (run 5 min 15:13 : used=12/12).
+- **Timeouts RPC** : `FETCH_REMOTE_STATE_RPC_TIMEOUT_MS` 30 s→20 s ; `HTTP_POST_RPC_TIMEOUT_MS` S3 20 s→16 s, WROOM 26 s→22 s. Libération des slots plus tôt en cas de serveur lent.
+- Déploiement OTA wroom-prod et wroom-s3-test.
+
+---
+
+## Version 12.19 - 2026-03-04
+
+### netRPC : pool agrandi + throttle quand quasi plein
+
+- **Pool netRPC** : taille augmentée (WROOM 6→8, S3 8→12) et file `g_netQueue` alignée pour limiter les échecs « Pool plein » et « POST échoué (file pleine…) » quand le serveur est lent ou la charge élevée.
+- **Throttle Sync** : dans `AutomatismSync::update()`, si le pool est quasi plein (`used >= size - 2`), on diffère replay et sendFullUpdate pour éviter de saturer ; log « POST différé: pool netRPC quasi plein » au plus une fois par minute.
+- **API** : `AppTasks::netRequestPoolUsedCount()` et `AppTasks::netRequestPoolSize()` exposées pour le throttle (et diagnostic).
+
+---
+
 ## Version 12.18 - 2026-03-04
 
 ### Maintenance

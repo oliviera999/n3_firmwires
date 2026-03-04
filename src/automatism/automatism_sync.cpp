@@ -88,13 +88,25 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
     bool intervalReached = (timeSinceLastSend > SEND_INTERVAL_MS);
     
     if (wifiConnected && sendEnabled) {
-        // Drainer la file des POSTs en attente dès qu'un slot netRPC est dispo (même si sendFullUpdate échoue ou n'a pas lieu)
-        if (_dataQueue.size() > 0) {
-            replayQueuedData();
-        }
-        if (intervalReached) {
-            Serial.printf("[Sync] ✅ Conditions remplies, envoi POST... (dernier envoi il y a %lu ms)\n", timeSinceLastSend);
-            sendFullUpdate(readings, acts, core);
+        // Throttle : ne pas ajouter de POST si le pool netRPC est quasi plein (évite saturation)
+        size_t poolUsed = AppTasks::netRequestPoolUsedCount();
+        size_t poolSize = AppTasks::netRequestPoolSize();
+        if (poolUsed >= poolSize - 2) {
+            // Log au plus une fois par minute pour limiter le spam
+            static unsigned long s_lastThrottleLog = 0;
+            if (now - s_lastThrottleLog >= 60000) {
+                Serial.printf("[Sync] ⏸️ POST différé: pool netRPC quasi plein (%u/%u)\n", (unsigned)poolUsed, (unsigned)poolSize);
+                s_lastThrottleLog = now;
+            }
+        } else {
+            // Drainer la file des POSTs en attente dès qu'un slot netRPC est dispo (même si sendFullUpdate échoue ou n'a pas lieu)
+            if (_dataQueue.size() > 0) {
+                replayQueuedData();
+            }
+            if (intervalReached) {
+                Serial.printf("[Sync] ✅ Conditions remplies, envoi POST... (dernier envoi il y a %lu ms)\n", timeSinceLastSend);
+                sendFullUpdate(readings, acts, core);
+            }
         }
     } else {
         // Log seulement si conditions changent pour éviter spam

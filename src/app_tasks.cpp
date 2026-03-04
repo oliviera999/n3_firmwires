@@ -73,11 +73,11 @@ TaskHandle_t g_netTaskHandle = nullptr;
 
 // Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
 // Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
-// WROOM : 5 (limite DRAM ~320KB). S3 : 8 pour absorber pics poll+POST quand serveur lent ou unreachable.
+// v12.20: Pool 16 S3 / 10 WROOM pour limiter saturation ; timeouts RPC réduits pour libérer slots plus tôt.
 #if defined(BOARD_WROOM)
-static constexpr size_t kNetRequestPoolSize = 6;
+static constexpr size_t kNetRequestPoolSize = 10;
 #else
-static constexpr size_t kNetRequestPoolSize = 8;
+static constexpr size_t kNetRequestPoolSize = 16;
 #endif
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
 static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
@@ -1037,7 +1037,7 @@ bool start(AppContext& ctx) {
   }
 
   // Créer la queue réseau (utilisée par netTask)
-  // Taille alignée kNetRequestPoolSize (6 WROOM / 8 S3) pour absorber pics poll+POST.
+  // Taille alignée kNetRequestPoolSize (10 WROOM / 16 S3) pour absorber pics poll+POST.
   if (!g_netQueue) {
     g_netQueue = xQueueCreate(kNetRequestPoolSize, sizeof(NetRequest*));
     if (!g_netQueue) {
@@ -1304,6 +1304,18 @@ void netRequestOtaCheck() {
     Serial.println(F("[netRPC] OTA check renoncé: queue net pleine"));
   }
 #endif
+}
+
+size_t netRequestPoolUsedCount() {
+  size_t n = 0;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) {
+    if (s_netRequestPoolUsed[i]) ++n;
+  }
+  return n;
+}
+
+size_t netRequestPoolSize() {
+  return kNetRequestPoolSize;
 }
 
 #if FEATURE_MAIL
