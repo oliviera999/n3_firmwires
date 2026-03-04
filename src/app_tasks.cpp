@@ -360,6 +360,8 @@ static void netTask(void* pv) {
     vTaskDelay(pdMS_TO_TICKS(200));
   }
   bool bootServerReachable = false;
+  static unsigned long lastOtaCheckMs = 0;
+  static bool otaBootDeferredDueToHeap = false;
   if (WiFi.status() == WL_CONNECTED && g_ctx) {
     // Cause basale: attente stabilisation stack TCP/IP avant 1ère requête HTTPS
     // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
@@ -376,6 +378,35 @@ static void netTask(void* pv) {
     vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
 #endif
+
+    // OTA au boot en premier (avant config) pour renforcer la faisabilité : pas de dépendance au GET config
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  #if !defined(PROFILE_TEST) || defined(BOARD_S3)
+    if (ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA) {
+      esp_task_wdt_reset();
+      g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[netTask] Boot OTA check\n");
+#else
+      Serial.println(F("[netTask] Boot: vérification OTA (prioritaire, avant config)"));
+#endif
+      if (g_ctx->otaManager.checkForUpdate()) {
+        g_ctx->otaManager.performUpdate();
+      }
+    } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[netTask] Boot OTA defer heap\n");
+#else
+      Serial.println(F("[netTask] Boot: OTA reporté (heap insuffisant), retry dans 60 s"));
+#endif
+      otaBootDeferredDueToHeap = true;
+    }
+    lastOtaCheckMs = millis();
+  #else
+    lastOtaCheckMs = millis();
+  #endif
+#endif
+
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     ets_printf("[netTask] Boot tryFetchConfig\n");
@@ -426,37 +457,11 @@ static void netTask(void* pv) {
 #endif
   }
 
-  // Vérification OTA au boot puis toutes les 2h (prod / wroom-beta / wroom-s3-test)
-  // Ne faire l'OTA au boot que si le serveur a répondu (évite blocage TLS > 30s sur serveur injoignable)
-  // wroom-test (PROFILE_TEST + BOARD_WROOM): skip OTA au boot (HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
-  // wroom-s3-test (PROFILE_TEST + BOARD_S3): OTA au boot et périodique activés.
-  static unsigned long lastOtaCheckMs = 0;
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-  #if !defined(PROFILE_TEST) || defined(BOARD_S3)
-  if (g_ctx && WiFi.status() == WL_CONNECTED && bootServerReachable) {
-    esp_task_wdt_reset();  // Fenêtre TWDT avant checkForUpdate (downloadMetadata peut bloquer jusqu'à HTTP_TIMEOUT)
-    g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-    ets_printf("[netTask] Boot OTA check\n");
-#else
-    Serial.println(F("[netTask] Boot: vérification OTA (serveur distant)"));
-#endif
-    if (g_ctx->otaManager.checkForUpdate()) {
-      g_ctx->otaManager.performUpdate();  // Lance la tâche OTA, ne bloque pas longtemps
-    }
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && (!defined(PROFILE_TEST) || defined(BOARD_S3))
+  // Si on n'a pas exécuté le bloc WiFi+g_ctx (pas de WiFi ou g_ctx null), initialiser lastOtaCheckMs pour le cycle 2h
+  if (lastOtaCheckMs == 0) {
     lastOtaCheckMs = millis();
-  } else if (g_ctx && WiFi.status() == WL_CONNECTED && !bootServerReachable) {
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-    ets_printf("[netTask] Boot OTA skip\n");
-#else
-    Serial.println(F("[netTask] Boot: OTA skip (serveur injoignable, évite TWDT)"));
-#endif
-    lastOtaCheckMs = millis();  // Pour ne pas refaire OTA immédiatement en boucle
   }
-  #else
-  // wroom-test (PROFILE_TEST + BOARD_WROOM): OTA au boot désactivé (HTTPS peut bloquer netTask > TWDT). OTA manuel via /api/ota.
-  lastOtaCheckMs = millis();
-  #endif
 #endif
 
   for (;;) {
@@ -465,8 +470,19 @@ static void netTask(void* pv) {
     const uint32_t queueTimeoutMs = 500;  // Court pour permettre vérif OTA périodique quand file vide
       if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && (!defined(PROFILE_TEST) || defined(BOARD_S3))
+      // Retry OTA boot une fois après 60s si reporté pour heap insuffisant (évite blocage, pas de boucle)
+      if (otaBootDeferredDueToHeap && g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
+          (millis() - lastOtaCheckMs >= 60000) && ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA) {
+        otaBootDeferredDueToHeap = false;
+        esp_task_wdt_reset();
+        g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+        if (g_ctx->otaManager.checkForUpdate()) {
+          g_ctx->otaManager.performUpdate();
+        }
+        lastOtaCheckMs = millis();
+      }
       // Vérification OTA périodique toutes les 2h (prod / wroom-beta / wroom-s3-test). wroom-test (WROOM): désactivé (HTTPS > TWDT)
-      if (g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
+      else if (g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
           (millis() - lastOtaCheckMs >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
         g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
         if (g_ctx->otaManager.checkForUpdate()) {

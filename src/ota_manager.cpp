@@ -176,6 +176,7 @@ bool OTAManager::validateSpace(size_t required) {
         char errorMsg[64];
         snprintf(errorMsg, sizeof(errorMsg), "Heap insuffisant: %s (< %u bytes)", heapBuf, (unsigned)HeapConfig::MIN_HEAP_OTA);
         logError(errorMsg);
+        log("[OTA] Reporté au prochain cycle (heap)");
         return false;
     }
     

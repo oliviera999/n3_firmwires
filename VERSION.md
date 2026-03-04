@@ -12,6 +12,33 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.18 - 2026-03-04
+
+### Maintenance
+
+- Incrément version pour déploiement OTA (wroom-prod, wroom-s3-test).
+
+---
+
+## Version 12.17 - 2026-03-04
+
+### OTA au boot prioritaire
+
+- **netTask** : la vérification OTA au boot s’exécute **avant** la récupération de la config serveur (première opération HTTPS après WiFi + délai TLS). Plus de dépendance à `bootServerReachable` : l’OTA est tenté dès que WiFi est connecté et la heap suffisante, ce qui renforce la faisabilité de la mise à jour au démarrage. Comportement offline-first et timeouts inchangés.
+
+---
+
+## Version 12.16 - 2026-03-04
+
+### Corrections run 5 min (wroom-s3-test)
+
+- **Stack autoTask (P2)** : `AUTOMATION_TASK_STACK_SIZE` porté à 12 KB pour BOARD_S3 uniquement (10 KB conservé pour WROOM) ; évite les alertes « Stack > 70 % » (HWM 78 % observé).
+- **Mail skip heap (P3)** : `MIN_HEAP_BLOCK_FOR_MAIL_TLS` abaissé à 32000 pour S3 pour accepter un bloc observé à 32756 sans risque TLS.
+- **OTA heap (P4)** : si heap insuffisante au boot, OTA reporté avec log « retry dans 60 s » ; retry automatique une fois après 60 s dans netTask (sans boucle bloquante). Log explicite dans ota_manager : « [OTA] Reporté au prochain cycle (heap) ».
+- **Doc coredump** : procédure `docs/technical/COREDUMP_PANIC_S3.md` pour extraire et analyser le coredump après un PANIC sur S3 (offset partition 0xE00000).
+
+---
+
 ## Version 12.15 - 2026-03-03
 
 ### Maintenance

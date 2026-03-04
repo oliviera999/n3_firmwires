@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.15";
+    inline constexpr const char* VERSION = "12.18";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -429,7 +429,8 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_EMAIL_ASYNC = 45000;     // S3
     inline constexpr uint32_t MIN_HEAP_OTA = 50000;             // S3: 50 KB (réduit refus OTA)
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_ASYNC_TASK = 12288;  // 12 KB (inchangé)
-    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32768;   // 32 KB (taille réserve)
+    // 32 KB réserve; seuil 32000 accepte bloc observé 32756 (run 5 min 2026-03) sans risque TLS
+    inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS = 32000;   // 32 KB - 768 (S3)
     inline constexpr uint32_t MIN_HEAP_BLOCK_FOR_MAIL_TLS_CONNECT = 30000;  // 30 KB (décision connexion SMTP)
     inline constexpr uint32_t MIN_HEAP_MAIL_SEND = 45000;       // S3: 45 KB
     // Heap libre minimum avant de libérer la réserve mail pour envoi (32K + ceci >= 45K).
@@ -861,7 +862,12 @@ namespace TaskConfig {
     // v11.157: Augmenté de 6KB à 8KB pour éviter stack overflow (HWM: 100 bytes libres = critique)
     // v11.171: Augmenté de 8KB à 10KB (audit: HWM utilisé à 95%, marge insuffisante)
     // Le crash se produit dans automationTask lors de la sauvegarde NVS
-    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 10240;  // 10KB
+    // S3: 12 KB (run 5 min 2026-03: HWM 78%, alerte >70% répétée; 10 KB insuffisant)
+#if defined(BOARD_S3)
+    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 12288;  // 12 KB (S3)
+#else
+    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 10240;  // 10KB (WROOM)
+#endif
     inline constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     inline constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
     
