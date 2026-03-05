@@ -55,7 +55,7 @@ void netRequestOtaCheck();
 
 /** Nombre de slots actuellement utilisés dans le pool netRPC (indicateur pour throttle). */
 size_t netRequestPoolUsedCount();
-/** Taille du pool netRPC (10 WROOM, 16 S3). */
+/** Taille du pool netRPC (10 WROOM, 16 S3). Un slot est réservé à l’OTA (netRequestOtaCheck). */
 size_t netRequestPoolSize();
 
 #if FEATURE_MAIL

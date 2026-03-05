@@ -12,7 +12,10 @@ AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, Conf
 
 void AutomatismFeedingSchedule::checkNewDay(int currentDay) {
     int lastDay = _config.getLastJourBouf();
-    
+    // #region agent log
+    const int didReset = (lastDay != currentDay && lastDay != -1) ? 1 : 0;
+    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"checkNewDay\",\"message\":\"day_check\",\"data\":{\"lastDay\":%d,\"currentDay\":%d,\"reset\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H1\"}\n", lastDay, currentDay, didReset, (unsigned long)millis());
+    // #endregion
     if (lastDay != currentDay && lastDay != -1) {
         // Nouveau jour détecté - réinitialiser les flags
         Serial.println(F("[FeedingSchedule] Nouveau jour détecté - réinitialisation flags"));
@@ -40,10 +43,16 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     const bool catchUpAllowed = (uptimeMs >= FEEDING_BOOT_GRACE_MS);
 
     // Vérifier chaque horaire (fenêtre heure + rattrapage limité si réveil après le créneau)
-    bool shouldFeedMorning = (shouldFeedNow(hour, minute, morningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, morningHour))) && !_config.getBouffeMatinOk();
-    bool shouldFeedNoon = (shouldFeedNow(hour, minute, noonHour) || (catchUpAllowed && shouldCatchUpFeed(hour, noonHour))) && !_config.getBouffeMidiOk();
-    bool shouldFeedEvening = (shouldFeedNow(hour, minute, eveningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, eveningHour))) && !_config.getBouffeSoirOk();
-    
+    const bool matinOk = _config.getBouffeMatinOk();
+    const bool midiOk = _config.getBouffeMidiOk();
+    const bool soirOk = _config.getBouffeSoirOk();
+    bool shouldFeedMorning = (shouldFeedNow(hour, minute, morningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, morningHour))) && !matinOk;
+    bool shouldFeedNoon = (shouldFeedNow(hour, minute, noonHour) || (catchUpAllowed && shouldCatchUpFeed(hour, noonHour))) && !midiOk;
+    bool shouldFeedEvening = (shouldFeedNow(hour, minute, eveningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, eveningHour))) && !soirOk;
+    // #region agent log
+    const int triggering = (shouldFeedMorning || shouldFeedNoon || shouldFeedEvening) ? 1 : 0;
+    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"checkAndFeed\",\"message\":\"feed_eval\",\"data\":{\"hour\":%d,\"min\":%d,\"dayOfYear\":%d,\"matinOk\":%d,\"midiOk\":%d,\"soirOk\":%d,\"shouldM\":%d,\"shouldMi\":%d,\"shouldS\":%d,\"triggering\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H2,H3,H4\"}\n", hour, minute, dayOfYear, matinOk ? 1 : 0, midiOk ? 1 : 0, soirOk ? 1 : 0, shouldFeedMorning ? 1 : 0, shouldFeedNoon ? 1 : 0, shouldFeedEvening ? 1 : 0, triggering, (unsigned long)millis());
+    // #endregion
     if (shouldFeedMorning) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
         performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);

@@ -5,12 +5,14 @@
 #include "esp_task_wdt.h"
 #include <WiFi.h>
 #include "app_tasks.h"
+#include "sd_logger.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>  // v11.183: atoi/atof pour valeurs serveur en string
+#include <time.h>
 
 namespace {
 constexpr size_t DEFERRED_JSON_SIZE = 2048;
@@ -106,6 +108,12 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
             if (intervalReached) {
                 Serial.printf("[Sync] ✅ Conditions remplies, envoi POST... (dernier envoi il y a %lu ms)\n", timeSinceLastSend);
                 sendFullUpdate(readings, acts, core);
+            } else if (checkInflectionPoint(readings.wlAqua, now)) {
+                Serial.printf("[Sync] 📈 POST inflexion marée (wlAqua=%u, trend=%d)\n",
+                              readings.wlAqua, _trendDir);
+                if (sendFullUpdate(readings, acts, core)) {
+                    _lastSend = now;
+                }
             }
         }
     } else {
@@ -303,6 +311,22 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         Serial.println(F("[Sync] ⚠️ configSynced=0 - variables config ignorées par serveur"));
     }
 
+    // post_id unique pour idempotence (BOARD_TYPE-epoch-seq)
+    time_t nowEpoch;
+    time(&nowEpoch);
+    uint32_t epochSec = (nowEpoch > 1700000000) ? (uint32_t)nowEpoch : (uint32_t)(millis() / 1000);
+    {
+        char postIdStr[64];
+        static uint32_t s_postSeq = 0;
+        snprintf(postIdStr, sizeof(postIdStr), "&post_id=%s-%lu-%lu",
+                 ProjectConfig::BOARD_TYPE, (unsigned long)epochSec, (unsigned long)(++s_postSeq));
+        strncat(payloadBuffer, postIdStr, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+    }
+
+#if defined(BOARD_S3)
+    SdLogger::QueueResult sdQ = SdLogger::logAndQueue(payloadBuffer, epochSec);
+#endif
+
     if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();
     }
@@ -316,6 +340,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         _sendState = 1;
         _lastSend = millis();
         _lastDataSkipReason = SKIP_NONE;
+#if defined(BOARD_S3)
+        if (sdQ.ok) SdLogger::markSent(sdQ.seqNum);
+#endif
         if (_dataQueue.size() > 0) replayQueuedData();
     } else {
         _sendState = -1;
@@ -471,6 +498,52 @@ bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t cu
     Serial.printf("[DBG] pollRemoteState calling fetchRemoteState hypothesis=H5\n");
     // #endregion
     return fetchRemoteState(doc);
+}
+
+bool AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
+    if (wlAqua == 0) return false;
+
+    if (_trendDir == 0) {
+        if (_extremeWlAqua == 0) {
+            _extremeWlAqua = wlAqua;
+            return false;
+        }
+        int16_t diff = (int16_t)wlAqua - (int16_t)_extremeWlAqua;
+        if (diff >= (int16_t)INFLECTION_NOISE_CM) {
+            _trendDir = 1;
+            _extremeWlAqua = wlAqua;
+        } else if (diff <= -(int16_t)INFLECTION_NOISE_CM) {
+            _trendDir = -1;
+            _extremeWlAqua = wlAqua;
+        }
+        return false;
+    }
+
+    if (_trendDir == 1) {
+        if (wlAqua >= _extremeWlAqua) {
+            _extremeWlAqua = wlAqua;
+        } else if ((_extremeWlAqua - wlAqua) >= INFLECTION_NOISE_CM) {
+            _trendDir = -1;
+            _extremeWlAqua = wlAqua;
+            if ((nowMs - _lastInflectionPostMs) >= MIN_INFLECTION_INTERVAL_MS) {
+                _lastInflectionPostMs = nowMs;
+                return true;
+            }
+        }
+    } else {
+        if (wlAqua <= _extremeWlAqua) {
+            _extremeWlAqua = wlAqua;
+        } else if ((wlAqua - _extremeWlAqua) >= INFLECTION_NOISE_CM) {
+            _trendDir = 1;
+            _extremeWlAqua = wlAqua;
+            if ((nowMs - _lastInflectionPostMs) >= MIN_INFLECTION_INTERVAL_MS) {
+                _lastInflectionPostMs = nowMs;
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // Helpers simplifiés (backoff supprimé - géré par web_client retry)

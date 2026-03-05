@@ -165,7 +165,8 @@ void Automatism::updateBusinessLogic(const SensorReadings& r, uint32_t nowMs) {
 }
 
 void Automatism::updateDisplay() {
-    SensorReadings r = _sensors.read();
+    SensorReadings r;
+    if (!_sensors.getLastCachedReadings(r)) r = _lastReadings;
     unsigned long now = millis();
     AutomatismRuntimeContext ctx;
     ctx.readings = r;
@@ -242,8 +243,9 @@ void Automatism::toggleEmailNotifications() {
 
     invalidateDbvarsCache();
 
-    // Sync vers serveur distant (optionnel, non bloquant si réseau absent)
-    SensorReadings r = _sensors.read();
+    // Sync vers serveur distant (cache ou _lastReadings pour éviter _sensors.read() bloquant)
+    SensorReadings r;
+    if (!_sensors.getLastCachedReadings(r)) r = _lastReadings;
     bool sent = sendFullUpdate(r, nullptr);
     Serial.printf("[Auto] mailNotif %s, NVS + cache OK, sync distant %s\n",
                   enabled ? "ON" : "OFF", sent ? "OK" : "pending");
@@ -490,7 +492,8 @@ void Automatism::startTankPumpManual() {
         return;
     }
     const uint32_t nowMs = millis();
-    const SensorReadings cur = _sensors.read();
+    SensorReadings cur;
+    if (!_sensors.getLastCachedReadings(cur)) cur = _lastReadings;
     _acts.startTankPump();
     _lastPumpManual = true;
     _manualTankOverride = true;
@@ -583,6 +586,10 @@ bool Automatism::restoreRemoteConfigFromCache() {
 // ============================================================================
 
 void Automatism::handleFeeding() {
+    // #region agent log
+    const int inProgress = isFeedingInProgress() ? 1 : 0;
+    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"handleFeeding\",\"message\":\"entry\",\"data\":{\"inProgress\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H3\"}\n", inProgress, (unsigned long)millis());
+    // #endregion
     // Évite double nourrissage : ne pas lancer l'auto si un cycle est déjà en cours
     if (isFeedingInProgress()) {
         return;
@@ -597,7 +604,9 @@ void Automatism::handleFeeding() {
     int dayOfYear = timeinfo.tm_yday;
     int hour = timeinfo.tm_hour;
     int minute = timeinfo.tm_min;
-    
+    // #region agent log
+    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"handleFeeding\",\"message\":\"time\",\"data\":{\"epoch\":%ld,\"hour\":%d,\"min\":%d,\"dayOfYear\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H4\"}\n", (long)now, hour, minute, dayOfYear, (unsigned long)millis());
+    // #endregion
     _feedingSchedule.checkAndFeed(hour, minute, dayOfYear, millis(),
                                    bouffeMatin, bouffeMidi, bouffeSoir,
                                    tempsGros, tempsPetits,
@@ -621,10 +630,9 @@ void Automatism::handleFeeding() {
                                        bouffeGros[sizeof(bouffeGros) - 1] = '\0';
                                        Serial.println(F("[Auto] 🍽️ Nourrissage auto terminé - sync serveur"));
                                        
-                                       // Envoyer au serveur avec les flags à 1
+                                       // Envoyer au serveur avec les flags à 1 (lecture déjà en cache, pas de _sensors.read() bloquant)
                                        if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-                                           SensorReadings readings = _sensors.read();
-                                           bool ok = sendFullUpdate(readings, nullptr);
+                                           bool ok = sendFullUpdate(_lastReadings, nullptr);
                                            Serial.printf("[Auto] 📤 Sync nourrissage auto: %s\n", ok ? "OK" : "FAIL");
                                        }
                                        
@@ -675,8 +683,7 @@ void Automatism::handleRefillAquariumOverfillSecurity(const SensorReadings& r) {
                 _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
                 _countdownEnd = 0;
                 if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-                    SensorReadings cur = _sensors.read();
-                    sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+                    sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
                     Serial.println(F("[Auto] Arrêt sécurité notifié - pump_tank=0"));
                 }
             }
@@ -745,8 +752,7 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
             logActivity("Démarrage pompe réservoir automatique");
 
             if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-                SensorReadings currentReadings = _sensors.read();
-                sendFullUpdate(currentReadings, "etatPompeTank=1");
+                sendFullUpdate(r, "etatPompeTank=1");
             }
 
             if (_network.isEmailEnabled() && !emailTankStartSent) {
@@ -775,17 +781,15 @@ void Automatism::handleRefillManualCycleEnd(const SensorReadings& r) {
             _pumpStartMs = 0;
 
             if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-                SensorReadings cur = _sensors.read();
-                sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+                sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
             }
 
             if (_network.isEmailEnabled() && !emailTankStopSent) {
-                SensorReadings cur = _sensors.read();
-                int levelImprovement = _levelAtPumpStart - cur.wlAqua;
+                int levelImprovement = _levelAtPumpStart - r.wlAqua;
                 char msg[256];
                 snprintf(msg, sizeof(msg),
                          "Remplissage MANUEL terminé\nAmélioration: %d cm, Aqua: %d cm",
-                         levelImprovement, cur.wlAqua);
+                         levelImprovement, r.wlAqua);
                 _mailer.send("Remplissage terminé", msg, "System", _network.getEmailAddress());
                 emailTankStopSent = true;
                 emailTankStartSent = false;
@@ -826,8 +830,7 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
     _manualTankOverride = false;
 
     if (WiFi.status() == WL_CONNECTED) {
-        SensorReadings cur = _sensors.read();
-        sendFullUpdate(cur, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+        sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
     }
 
     int levelImprovement = _levelAtPumpStart - r.wlAqua;

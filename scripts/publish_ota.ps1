@@ -4,6 +4,10 @@
 # Copie les firmware.bin et littlefs.bin compilés vers ffp3/ota/, met à jour
 # metadata.json (firmware + filesystem), puis commit + push dans le dépôt ffp3.
 #
+# Metadata : JSON compact, sans entrées "default", pour rester < 2048 octets
+# (firmware < 12.25 n'a qu'un buffer 2048 bytes → IncompleteInput sinon).
+# Voir docs/technical/OTA_PUBLISH.md section "Contrainte taille metadata".
+#
 # Prérequis: build déjà effectué pour les envs ciblés (pio run -e wroom-prod, etc.)
 #            ou utiliser -Build pour compiler avant copie.
 #            Pour le filesystem: pio run -e <env> -t buildfs ou -BuildFs.
@@ -284,20 +288,13 @@ foreach ($a in $artifacts) {
     }
 }
 
-# default par canal
-if ($prodDefaultEntry) {
-    if (-not $meta.channels.prod.PSObject.Properties["default"]) {
-        $meta.channels.prod | Add-Member -NotePropertyName "default" -NotePropertyValue $prodDefaultEntry -Force
-    } else {
-        $meta.channels.prod.default = $prodDefaultEntry
-    }
+# default par canal : omis pour garder metadata < 2048 octets (firmware utilise d'abord channels[env][model])
+# Retirer les cles "default" si presentes (fichier existant) pour reduire la taille
+if ($meta.channels.prod.PSObject.Properties["default"]) {
+    $meta.channels.prod.PSObject.Properties.Remove("default")
 }
-if ($testDefaultEntry) {
-    if (-not $meta.channels.test.PSObject.Properties["default"]) {
-        $meta.channels.test | Add-Member -NotePropertyName "default" -NotePropertyValue $testDefaultEntry -Force
-    } else {
-        $meta.channels.test.default = $testDefaultEntry
-    }
+if ($meta.channels.test.PSObject.Properties["default"]) {
+    $meta.channels.test.PSObject.Properties.Remove("default")
 }
 
 # Racine legacy (version, bin_url, size, md5) = default prod si present, sinon premier artifact
@@ -313,10 +310,15 @@ if ($legacyEntry) {
     $meta.md5     = $legacyEntry.md5
 }
 
-# Ecriture JSON (Depth 5 pour channels.prod.esp32-wroom etc.)
-$formatted = $meta | ConvertTo-Json -Depth 5
+# Ecriture JSON compact (sans indentation) pour rester sous 2048 octets :
+# les firmware avant 12.25 n'ont qu'un buffer metadata de 2048 bytes ; au-delà = IncompleteInput.
+$formatted = $meta | ConvertTo-Json -Depth 5 -Compress
 [System.IO.File]::WriteAllText((Join-Path $PWD $metaPath), $formatted, [System.Text.UTF8Encoding]::new($false))
-Write-Host "Metadata mis a jour: $metaPath" -ForegroundColor Green
+$metaSize = (Get-Item $metaPath).Length
+Write-Host "Metadata mis a jour: $metaPath ($metaSize bytes)" -ForegroundColor Green
+if ($metaSize -gt 2048) {
+    Write-Host "ATTENTION: metadata.json > 2048 bytes - firmware < 12.25 ne pourront pas parser (IncompleteInput)" -ForegroundColor Yellow
+}
 
 # -----------------------------------------------------------------------------
 # Git commit + push dans ffp3

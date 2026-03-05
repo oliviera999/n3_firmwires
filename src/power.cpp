@@ -19,6 +19,13 @@
 #include "rtc_ds3231.h"
 #endif
 
+// #region agent log
+#if defined(USE_RTC_DS3231)
+#define _PWR_DS3231_LOG(loc, msg, dataInner, hypId) \
+  Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"%s\",\"message\":\"%s\",\"data\":{%s},\"timestamp\":%lu,\"hypothesisId\":\"%s\"}\n", (loc), (msg), (dataInner), (unsigned long)millis(), (hypId))
+#endif
+// #endregion
+
 // Fonction tcpip_safe_call supprimée - appels directs utilisés à la place
 
 PowerManager::PowerManager()
@@ -253,8 +260,16 @@ void PowerManager::syncTimeFromNTP() {
     if (RtcDS3231::isPresent()) {
       time_t ntpEpochForRtc = mktime(&timeinfo);
       if (RtcDS3231::write(ntpEpochForRtc)) {
+        // #region agent log
+        Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:syncTimeFromNTP\",\"message\":\"rtc_ntp_write_ok\",\"data\":{\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H3\"}\n",
+                      (unsigned long)ntpEpochForRtc, (unsigned long)millis());
+        // #endregion
         LOG_RTC(LogConfig::LOG_INFO, "DS3231 mis à jour après sync NTP");
       } else {
+        // #region agent log
+        Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:syncTimeFromNTP\",\"message\":\"rtc_ntp_write_fail\",\"data\":{\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H3\"}\n",
+                      (unsigned long)ntpEpochForRtc, (unsigned long)millis());
+        // #endregion
         LOG_RTC(LogConfig::LOG_WARN, "Échec écriture DS3231 après NTP");
       }
     }
@@ -342,15 +357,25 @@ void PowerManager::applyExternalRTCIfPresent() {
 #endif
 #if defined(USE_RTC_DS3231)
   if (!RtcDS3231::isPresent()) {
+    // #region agent log
+    _PWR_DS3231_LOG("power.cpp:applyExternalRTC", "rtc_boot_absent", "\"branch\":\"absent\"", "H1");
+    // #endregion
     LOG_RTC(LogConfig::LOG_INFO, "DS3231 absent (optionnel)");
     return;
   }
   time_t rtcEpoch = 0;
   if (!RtcDS3231::read(&rtcEpoch)) {
+    // #region agent log
+    _PWR_DS3231_LOG("power.cpp:applyExternalRTC", "rtc_boot_read_fail", "\"branch\":\"read_invalid\"", "H2");
+    // #endregion
     LOG_RTC(LogConfig::LOG_WARN, "DS3231 présent mais lecture heure invalide");
     return;
   }
   if (!isValidEpoch(rtcEpoch)) {
+    // #region agent log
+    Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:applyExternalRTC\",\"message\":\"rtc_boot_epoch_invalid\",\"data\":{\"branch\":\"epoch_invalid\",\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H4\"}\n",
+                  (unsigned long)rtcEpoch, (unsigned long)millis());
+    // #endregion
     LOG_RTC(LogConfig::LOG_WARN, "DS3231 epoch hors plage valide: %lu", (unsigned long)rtcEpoch);
     return;
   }
@@ -359,6 +384,10 @@ void PowerManager::applyExternalRTCIfPresent() {
   smartSaveTime();
   char timeBuf[64];
   getCurrentTimeString(timeBuf, sizeof(timeBuf));
+  // #region agent log
+  Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:applyExternalRTC\",\"message\":\"rtc_boot_applied\",\"data\":{\"branch\":\"applied\",\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H4\"}\n",
+                (unsigned long)rtcEpoch, (unsigned long)millis());
+  // #endregion
   LOG_RTC(LogConfig::LOG_INFO, "Heure appliquée depuis DS3231: %s", timeBuf);
 #endif
 }
@@ -483,10 +512,9 @@ bool PowerManager::reconnectWithSavedCredentials() {
     WiFi.begin(_lastSSID, _lastPassword);
   }
   
-  // Attente de la connexion avec timeout
-  // v11.165: Timeout réduit à 3s (règle offline-first: max 3s blocage)
+  // Attente de la connexion avec timeout (réseaux lents/faibles: 8s dérogation après réveil)
   uint32_t startTime = millis();
-  const uint32_t timeoutMs = TimingConfig::WIFI_CONNECT_TIMEOUT_MS;
+  const uint32_t timeoutMs = TimingConfig::WIFI_RECONNECT_AFTER_WAKE_MS;
   
   Serial.print(F("[Power] Attente de connexion"));
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeoutMs) {
@@ -525,9 +553,9 @@ void PowerManager::waitForNetworkReady() {
     return;
   }
   
-  // v11.165: Timeouts réduits (règle offline-first: max 3s blocage)
+  // Dérogation réseaux lents: 5s max pour DNS/stabilisation (au lieu de 3s)
   const uint32_t STABILIZATION_DELAY_MS = 500;   // 0.5 seconde de stabilisation
-  const uint32_t MAX_WAIT_MS = 3000;             // 3 secondes max d'attente totale
+  const uint32_t MAX_WAIT_MS = 5000;             // 5 s max (réseaux lents / DNS)
   uint32_t startMs = millis();
   
   Serial.println(F("[Power] Attente stabilisation réseau..."));

@@ -22,6 +22,9 @@ ConfigManager::ConfigManager()
 }
 
 void ConfigManager::loadBouffeFlags() {
+  // #region agent log
+  Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"loadBouffeFlags\",\"message\":\"load_called\",\"data\":{},\"timestamp\":%lu,\"hypothesisId\":\"H5\"}\n", (unsigned long)millis());
+  // #endregion
   // v11.80: Utilisation du gestionnaire NVS centralisé
   Serial.println(F("[Config] 📥 Chargement flags depuis NVS centralisé"));
   
@@ -92,6 +95,9 @@ void ConfigManager::loadNetworkFlags() {
 
 void ConfigManager::saveBouffeFlags() {
   // Sauvegarde seulement si des changements ont été détectés
+  // #region agent log
+  Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"saveBouffeFlags\",\"message\":\"save_attempt\",\"data\":{\"flagsChanged\":%d,\"matinOk\":%d,\"midiOk\":%d,\"soirOk\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H2\"}\n", _flagsChanged ? 1 : 0, _bouffeMatinOk ? 1 : 0, _bouffeMidiOk ? 1 : 0, _bouffeSoirOk ? 1 : 0, (unsigned long)millis());
+  // #endregion
   if (!_flagsChanged) {
     Serial.println(F("[Config] Aucun changement détecté - pas de sauvegarde NVS"));
     return;

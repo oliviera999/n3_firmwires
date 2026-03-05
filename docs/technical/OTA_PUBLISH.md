@@ -64,10 +64,11 @@ Par défaut le script publie les quatre envs (`wroom-prod`, `wroom-beta`, `wroom
 2. Copie de chaque `firmware.bin` vers `ffp3/ota/<subfolder>/firmware.bin`.
 3. Si `littlefs.bin` existe et `-IncludeFs` est actif : copie vers `ffp3/ota/<subfolder>/littlefs.bin`.
 4. Mise à jour de `ffp3/ota/metadata.json` :
-   - `channels.prod.esp32-wroom` et `channels.prod.default` pour prod ;
-   - `channels.test.esp32-wroom` et `channels.test.default` pour test (wroom-beta) ;
+   - `channels.prod.esp32-wroom`, `channels.prod.esp32-s3` (pas d’entrée `default` pour rester sous 2048 octets) ;
+   - `channels.test.esp32-wroom`, `channels.test.esp32-s3` (idem) ;
    - Champs `filesystem_url`, `filesystem_size`, `filesystem_md5` ajoutés si filesystem publié ;
-   - Champs racine legacy (version, bin_url, size, md5) = default prod.
+   - Champs racine legacy (version, bin_url, size, md5) = premier artifact prod ;
+   - JSON écrit en **compact** (sans indentation) et sans entrées `channels.*.default` pour que la taille reste **&lt; 2048 octets** (voir section « Contrainte taille metadata »).
 5. Si pas `-SkipCommit` ni `-DryRun` : `git add ota/`, `git commit`, `git push` dans le dépôt **ffp3**.
 
 Après déploiement du serveur (ffp3), les ESP32 récupèrent la nouvelle version via l'URL metadata puis téléchargent le firmware (et éventuellement le filesystem) correspondant à leur modèle et canal. Les URLs servies (firmware.bin, littlefs.bin) doivent renvoyer les mêmes octets que ceux pour lesquels `size` et `md5` ont été calculés dans metadata.json (éviter cache ou déploiement partiel incohérent).
@@ -126,6 +127,20 @@ curl -I https://iot.olution.info/ffp3/ota/esp32-wroom/littlefs.bin
 ```
 
 Confirmer la présence de `Content-Length: <taille>` cohérente avec les fichiers. Si Content-Length est absent ou 0, l’OTA distant échouera (ou il faudrait temporairement réactiver `OTA_UNSAFE_FORCE` en exception, non recommandé en production).
+
+## Contrainte taille metadata (compatibilité firmware &lt; 12.25)
+
+Le firmware ESP32 lit le body HTTP du GET metadata dans un buffer de taille limitée. **Avant la version 12.25**, ce buffer faisait **2048 octets**. Si le JSON metadata servi dépasse 2048 octets, le payload est tronqué et le parseur ArduinoJson renvoie **IncompleteInput** : l’OTA ne peut pas démarrer (les ESP en ancien firmware ne voient jamais de mise à jour disponible).
+
+Pour que les ESP encore en firmware antérieur puissent récupérer et parser le metadata puis effectuer l’OTA vers 12.25, le script `publish_ota.ps1` :
+
+1. **Écrit le JSON en compact** : `ConvertTo-Json -Depth 5 -Compress` (sans espaces ni retours à la ligne).
+2. **N’écrit pas les entrées `channels.prod.default` et `channels.test.default`** : le firmware utilise d’abord `channels[env][model]` (ex. `channels.test.esp32-wroom`), donc ces fallbacks ne sont pas nécessaires ; les omettre réduit la taille d’environ 600 octets.
+3. **Supprime ces clés** si elles existent déjà dans le fichier lu (réécriture d’un metadata précédent).
+
+Objectif : **metadata.json &lt; 2048 octets** après chaque publication. Le script affiche la taille et un avertissement en jaune si elle dépasse 2048.
+
+À partir de la **version 12.25**, le buffer côté firmware est porté à **3072 octets** (`OTA_METADATA_PAYLOAD_BUFFER_SIZE` dans `include/config.h`, `BufferConfig`). Les firmware 12.25+ acceptent donc un metadata plus gros ; on conserve toutefois la règle « &lt; 2048 » côté script pour la compatibilité avec les appareils pas encore mis à jour.
 
 ## Rappel dépôt parent
 

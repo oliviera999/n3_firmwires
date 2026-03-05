@@ -1831,7 +1831,7 @@ bool WebServerManager::begin() {
       WiFi.disconnect(false, true);
       vTaskDelay(pdMS_TO_TICKS(200));
 
-      // DÉROGATION: blocage webTask jusqu'à 5s (WIFI_CONNECT_TIMEOUT_MS) acceptable pour connexion WiFi
+      // DÉROGATION: blocage webTask jusqu'à WIFI_CONNECT_ATTEMPT_TIMEOUT_MS (15s WROOM) pour connexion WiFi
       esp_task_wdt_reset();
       bool connected = wifi.connectTo(ssidBuf, passwordBuf);
       if (connected) {

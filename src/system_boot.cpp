@@ -21,6 +21,7 @@
 #include "i2c_bus.h"
 #include "boot_log.h"  // BOOT_LOG : ets_printf (S3 PSRAM) ou Serial.printf (autres)
 #include "sd_card.h"
+#include "sd_logger.h"
 #include <Wire.h>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
@@ -98,6 +99,9 @@ void initializeSdCard() {
 #if defined(BOARD_S3)
   if (SdCard::init()) {
     BOOT_LOG("[BOOT] SD carte détectée et opérationnelle\n");
+    if (SdLogger::begin()) {
+      SdLogger::rotateLogs(30);
+    }
   } else {
     BOOT_LOG("[BOOT] SD carte absente ou indisponible\n");
   }

@@ -21,6 +21,7 @@
 #include "app_context.h"
 #if defined(BOARD_S3)
 #include "sd_card.h"
+#include "sd_logger.h"
 #endif
 #if defined(USE_RTC_DS3231)
 #include "rtc_ds3231.h"
@@ -592,6 +593,58 @@ void registerOptimizationStats(AsyncWebServer& server, AppContext& ctx) {
   });
 }
 
+#if defined(BOARD_S3)
+void registerSdHistory(AsyncWebServer& server, AppContext& ctx) {
+  (void)ctx;
+  server.on("/api/history", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!SdCard::isPresent()) {
+      sendErrorResponse(req, 503, "SD card not available");
+      return;
+    }
+
+    char date[16] = "";
+    uint32_t offset = 0;
+    uint32_t limit = 50;
+
+    if (req->hasParam("date")) {
+      strncpy(date, req->getParam("date")->value().c_str(), sizeof(date) - 1);
+    } else {
+      time_t now;
+      time(&now);
+      struct tm ti;
+      gmtime_r(&now, &ti);
+      snprintf(date, sizeof(date), "%04d%02d%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday);
+    }
+
+    if (req->hasParam("offset")) {
+      offset = (uint32_t)atoi(req->getParam("offset")->value().c_str());
+    }
+    if (req->hasParam("limit")) {
+      limit = (uint32_t)atoi(req->getParam("limit")->value().c_str());
+      if (limit > 200) limit = 200;
+    }
+
+    static char histBuf[4096];
+    if (!SdLogger::readHistory(date, histBuf, sizeof(histBuf), offset, limit)) {
+      sendErrorResponse(req, 404, "No data for this date");
+      return;
+    }
+
+    AsyncWebServerResponse* response = req->beginResponse(200, "application/json", histBuf);
+    response->addHeader("Cache-Control", "no-cache");
+    req->send(response);
+  });
+
+  server.on("/api/sd-status", HTTP_GET, [](AsyncWebServerRequest* req) {
+    char buf[96];
+    snprintf(buf, sizeof(buf), "{\"present\":%s,\"pending\":%u}",
+             SdCard::isPresent() ? "true" : "false",
+             SdLogger::pendingCount());
+    req->send(200, "application/json", buf);
+  });
+}
+#endif
+
 }  // namespace
 
 namespace WebRoutes {
@@ -606,6 +659,9 @@ void registerStatusRoutes(AsyncWebServer& server, AppContext& ctx) {
   registerVersionEndpoint(server, ctx);
   registerPumpStats(server, ctx);
   registerOptimizationStats(server, ctx);
+#if defined(BOARD_S3)
+  registerSdHistory(server, ctx);
+#endif
 }
 
 }  // namespace WebRoutes

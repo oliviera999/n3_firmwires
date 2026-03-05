@@ -126,6 +126,11 @@ private:
     uint8_t _lastDataSkipReason{0};  // DataSkipReason
 
     bool _firstPollAfterBootDone{false};
+
+    // Détection d'inflexion marée (pic/creux wlAqua) pour POST événementiel
+    int8_t _trendDir{0};              // -1 = descente, 0 = inconnu, 1 = montée
+    uint16_t _extremeWlAqua{0};       // Valeur extrême candidate (pic ou creux en cours)
+    uint32_t _lastInflectionPostMs{0}; // Timestamp du dernier POST d'inflexion
     
     // Constantes
     // v11.158: Réduit de 40 à 20 entrées pour simplifier et libérer espace LittleFS
@@ -136,9 +141,12 @@ private:
     static constexpr unsigned long SEND_INTERVAL_MS = 30000;   // 30 s
     static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 6000;   // 6 s (poll serveur distant)
     static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
+    static constexpr uint8_t INFLECTION_NOISE_CM = 3;             // Hystérésis renversement (> bruit +/-1cm)
+    static constexpr uint32_t MIN_INFLECTION_INTERVAL_MS = 15000; // Min 15s entre POSTs d'inflexion
 
     // Helpers
     bool canAttemptSend(uint32_t nowMs) const;
     void registerSendResult(bool success, size_t payloadBytes, uint32_t durationMs, uint32_t heapBefore, uint32_t heapAfter);
+    bool checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs);
 };
 

@@ -17,6 +17,7 @@
 #include "tls_mutex.h"  // v11.155: Pour traitement mail séquentiel
 #include "diagnostics.h"
 #include "system_sensors.h"  // Pour SensorReadings
+#include "sd_logger.h"
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
 #endif
@@ -74,26 +75,38 @@ TaskHandle_t g_netTaskHandle = nullptr;
 // Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
 // Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
 // v12.20: Pool 16 S3 / 10 WROOM pour limiter saturation ; timeouts RPC réduits pour libérer slots plus tôt.
+// v12.26: Dernier slot réservé à l'OTA pour que la vérification OTA (après réveil, trigger distant) puisse toujours s'exécuter même si le pool est saturé.
 #if defined(BOARD_WROOM)
 static constexpr size_t kNetRequestPoolSize = 10;
 #else
 static constexpr size_t kNetRequestPoolSize = 16;
 #endif
+static constexpr size_t kNetRequestOtaReservedSlot = kNetRequestPoolSize - 1;  // Slot dédié OTA, non utilisé par les autres types
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
 static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
 
-static NetRequest* netRequestAlloc() {
-  for (size_t i = 0; i < kNetRequestPoolSize; ++i) {
-    if (!s_netRequestPoolUsed[i]) {
-      s_netRequestPoolUsed[i] = true;
-      memset(&s_netRequestPool[i], 0, sizeof(NetRequest));
+/** Marque le slot i comme utilisé et retourne le NetRequest, ou nullptr si déjà pris. */
+static NetRequest* netRequestAllocTrySlot(size_t i) {
+  if (s_netRequestPoolUsed[i]) return nullptr;
+  s_netRequestPoolUsed[i] = true;
+  memset(&s_netRequestPool[i], 0, sizeof(NetRequest));
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
+  ets_printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
 #else
-      Serial.printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
+  Serial.printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
 #endif
-      return &s_netRequestPool[i];
-    }
+  return &s_netRequestPool[i];
+}
+
+/** Alloue un slot du pool. Si forOta=true, tente d'abord le slot réservé OTA, puis le reste. Sinon n'utilise que les slots 0..N-2. */
+static NetRequest* netRequestAlloc(bool forOta = false) {
+  if (forOta) {
+    NetRequest* r = netRequestAllocTrySlot(kNetRequestOtaReservedSlot);
+    if (r) return r;
+  }
+  for (size_t i = 0; i < kNetRequestOtaReservedSlot; ++i) {
+    NetRequest* r = netRequestAllocTrySlot(i);
+    if (r) return r;
   }
   size_t used = 0;
   for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
@@ -925,6 +938,15 @@ void automationTask(void* pv) {
             esp_task_wdt_reset();
             g_ctx->webClient.processQueuedPosts();
           }
+#if defined(BOARD_S3)
+          if (WiFi.status() == WL_CONNECTED && SdLogger::pendingCount() > 0) {
+            esp_task_wdt_reset();
+            uint16_t replayed = SdLogger::replayPending(5);
+            if (replayed > 0) {
+              Serial.printf("[autoTask] SD replay: %u POSTs envoyés\n", replayed);
+            }
+          }
+#endif
         }
         
         // Priorité 2: Mails en attente (traitement séquentiel - v11.155)
@@ -1291,9 +1313,9 @@ bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
 void netRequestOtaCheck() {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
   if (!g_netQueue) return;
-  NetRequest* req = netRequestAlloc();
+  NetRequest* req = netRequestAlloc(true);  // Slot dédié OTA en priorité
   if (!req) {
-    Serial.println(F("[netRPC] OTA check renoncé: pool plein"));
+    Serial.println(F("[netRPC] OTA check renoncé: pool plein (slot OTA occupé)"));
     return;
   }
   req->type = NetReqType::OtaCheck;

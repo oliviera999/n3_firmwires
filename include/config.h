@@ -15,7 +15,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.23";
+    inline constexpr const char* VERSION = "12.27";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -395,6 +395,8 @@ namespace BufferConfig {
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 4096;
         // metadata.json ~1129 bytes, structure channels — parsing OTA
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
+        // Buffer réception body GET metadata. Voir docs/technical/OTA_PUBLISH.md (contrainte 2048 pour firmware < 12.25).
+        inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 3072;
         inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 4096;  // GET outputs/state body
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 4096;
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 6000;
@@ -412,6 +414,8 @@ namespace BufferConfig {
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 2048;
         // metadata.json ~1129 bytes, structure channels — parsing OTA (1024 insuffisant)
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
+        // Buffer réception body GET metadata (≥ 12.25). Avant : 2048 → troncature si metadata > 2KB → IncompleteInput. Voir docs/technical/OTA_PUBLISH.md.
+        inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 3072;
         // GET outputs/state: buffer lecture body plus grand pour éviter IncompleteInput (réponse > 1024)
         inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 2048;
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 1024;  // Limite payload postData (malloc si besoin pour tenir en DRAM)

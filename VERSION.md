@@ -12,6 +12,48 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.27 - 2026-03-05
+
+### Debug : instrumentation nourrissage automatique
+
+- **Contexte** : investigation des nourrissages auto intempestifs (session debug 9f8a7c).
+- **Changement** : logs NDJSON temporaires dans `checkNewDay`, `checkAndFeed`, `saveBouffeFlags`, `loadBouffeFlags`, `handleFeeding` pour valider les hypothèses (jour, flags, race, RTC, réécriture). À retirer après identification et correctif.
+
+---
+
+## Version 12.26 - 2026-03-05
+
+### OTA : slot dédié dans le pool netRPC
+
+- **Contexte** : lorsque le pool netRPC est saturé (ex. 16/16 sur S3), la « Demande vérification OTA après réveil » échouait systématiquement (« OTA check renoncé: pool plein »), sans tentative de GET metadata.
+- **Changement** : un slot du pool est réservé à l’OTA (dernier slot, index N-1). `netRequestAlloc(false)` n’utilise que les slots 0..N-2 ; `netRequestOtaCheck()` appelle `netRequestAlloc(true)` qui tente d’abord ce slot dédié, puis le reste du pool en secours.
+- **Effet** : la vérification OTA (après réveil, trigger distant, timer 2 h) peut toujours obtenir un slot même si les autres requêtes (Sync, GET state, Mail) saturent le pool. WROOM : 9 slots usage normal + 1 OTA ; S3 : 15 + 1.
+
+---
+
+## Version 12.25 - 2026-03-05
+
+### OTA : buffer metadata et metadata minifié côté serveur
+
+- **Contexte** : le JSON metadata OTA servi (~2,7 Ko) dépassait le buffer de réception ESP (2048 octets), provoquant troncature puis `IncompleteInput` au parsing.
+- **Firmware** : buffer payload metadata porté à 3072 octets (`OTA_METADATA_PAYLOAD_BUFFER_SIZE` dans `BufferConfig`, WROOM et S3) pour accepter le metadata actuel avec marge.
+- **Publication OTA** : le script `publish_ota.ps1` écrit `metadata.json` en JSON compact et omet les entrées `channels.*.default` pour rester sous 2048 octets ; les ESP en firmware antérieur peuvent ainsi parser le metadata et faire l’OTA vers 12.25. Détail : `docs/technical/OTA_PUBLISH.md` section « Contrainte taille metadata ».
+
+---
+
+## Version 12.24 - 2026-03-05
+
+### Robustesse : éviter _sensors.read() dans les chemins d'envoi serveur (automatism)
+
+- **Contexte** : les capteurs défaillants ou lents (ex. DHT) peuvent faire bloquer `sensors.read()` jusqu’à 5 s. Les appels à `_sensors.read()` depuis l’automatisme (pour envoyer l’état au serveur) bloquaient automationTask et exposaient au WDT.
+- **Changements** : tous les envois serveur depuis l’automatisme utilisent les lectures déjà disponibles au lieu de `_sensors.read()` :
+  - **Pompe / remplissage** : `handleRefillAquariumOverfillSecurity`, `handleRefillAutomaticStart`, `handleRefillManualCycleEnd`, `handleRefillMaxDurationStop` utilisent le paramètre `r` (lectures du cycle courant).
+  - **Fin de nourrissage auto** : callback utilise `_lastReadings` (mis à jour par `update(r)`).
+  - **toggleEmailNotifications**, **updateDisplay()**, **startTankPumpManual()** : utilisent `getLastCachedReadings()` avec repli sur `_lastReadings` (pas de lecture bloquante).
+- **Effet** : automationTask ne bloque plus dans une lecture capteur lors des sync serveur ; capteurs défaillants n’impactent plus la stabilité ni netTask.
+
+---
+
 ## Version 12.23 - 2026-03-04
 
 ### Fix WiFi : compatibilité routeurs 4G (inwi Home 4G / Huawei)
