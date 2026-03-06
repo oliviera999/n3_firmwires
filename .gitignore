@@ -1,0 +1,18 @@
+# Build / cache
+.pio/
+.pioenvs/
+.piolibdeps/
+*.pyc
+__pycache__/
+
+# IDE / OS
+.vscode/
+desktop.ini
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Fichiers sensibles (décommenter si vous externalisez les secrets)
+# credentials.h
+# config_private.h
