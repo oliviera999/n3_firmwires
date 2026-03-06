@@ -1,0 +1,81 @@
+# PlatformIO
+.pio/
+.vscode/
+.clang_complete
+.gcc-flags.json
+.ccls
+compile_commands.json
+.cache/
+desktop.ini
+
+
+# Build artifacts
+build/
+*.o
+*.elf
+*.bin
+*.map
+desktop.ini
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+desktop.ini
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+desktop.ini
+
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+*.log.err
+monitor_*.log
+monitor_*.log.errors
+monitor_*_analysis.txt
+desktop.ini
+
+# Artefacts de diagnostic (générés par les scripts PS1)
+analyze_exhaustive_*.txt
+check_emails_*.txt
+diagnostic_serveur_distant_*.txt
+rapport_diagnostic_complet_*.md
+RAPPORT_*.md
+ANALYSE_*.md
+!ANALYSE_SCRIPTS_PS1_RACINE.md
+DIAGNOSTIC_*.md
+POINT_*.md
+
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+desktop.ini
+
+
+# Credentials (if any)
+secrets.h
+credentials.h
+
+# Test files (optional - comment out if you want to keep them)
+# test_*.html
+# test_*.ps1
+# test_*.sh
+
+# Nested submodules in unused directories
+unused/**/ffp3datas/
+unused/**/ffp3distant/

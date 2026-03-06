@@ -1,0 +1,299 @@
+# Règles de développement - Projet ESP32 Aquaponie Controller (FFP5CS)
+
+## 🎯 PHILOSOPHIE DU PROJET
+
+### Principes Fondamentaux (par ordre de priorité)
+1. **OFFLINE-FIRST** : Le système DOIT fonctionner parfaitement sans connexion réseau
+2. **SIMPLICITÉ** : Moins de code = moins de bugs. Éviter toute abstraction non nécessaire
+3. **ROBUSTESSE** : Le système ne doit JAMAIS crasher. En cas d'erreur, continuer avec des valeurs par défaut
+4. **AUTONOMIE** : La configuration locale (NVS) est la source de vérité. Le serveur distant est un bonus
+
+### Ce que le projet N'EST PAS
+- ❌ Un projet "enterprise" avec des patterns complexes
+- ❌ Un système dépendant du cloud
+- ❌ Un projet qui nécessite une connexion permanente
+- ❌ Un showcase d'architecture logicielle
+
+### Ce que le projet EST
+- ✅ Un contrôleur aquaponie simple et fiable
+- ✅ Un système embarqué qui fonctionne 24/7 sans supervision
+- ✅ Un firmware robuste qui survit aux pannes réseau/électriques
+
+---
+
+## 👨‍💻 Niveau d'expertise requis
+- **Expert ESP32** : Maîtrise des contraintes hardware (mémoire, watchdog, power)
+- **Pragmatique** : Privilégier les solutions simples et éprouvées
+- **Orienté fiabilité** : La stabilité prime sur les fonctionnalités
+
+---
+
+## 🎯 Contexte technique
+- **Hardware**: ESP32-WROOM-32 (4MB Flash, pas de PSRAM fiable)
+- **Framework**: PlatformIO + Arduino
+- **Contrainte mémoire**: Heap libre > 50KB en fonctionnement normal
+- **Réseau**: WiFi optionnel, déconnexions fréquentes attendues
+
+---
+
+## 📋 Priorités de développement
+
+### 1. Mode Déconnecté (CRITIQUE)
+Le système DOIT fonctionner sans réseau :
+- Nourrissage automatique basé sur l'heure RTC interne
+- Remplissage basé sur les seuils locaux (NVS)
+- Chauffage basé sur le seuil local
+- Affichage OLED fonctionnel
+- Logs série pour debug
+
+**Règle d'or** : Si une fonctionnalité nécessite le réseau pour fonctionner, elle doit avoir un fallback local.
+
+### 2. Gestion de la mémoire
+- Éviter les allocations dynamiques dans les boucles
+- Utiliser des buffers statiques de taille fixe
+- Préférer `char[]` aux `String` Arduino
+- Monitorer `heap_caps_get_free_size()` régulièrement
+- Seuil d'alerte: < 30KB heap libre
+
+### 3. Watchdog et stabilité
+- JAMAIS bloquer le thread principal > 3 secondes
+- Timeout sur TOUTES les opérations réseau (max 5s)
+- Appeler `esp_task_wdt_reset()` dans les boucles longues
+- En cas d'erreur réseau, continuer avec les valeurs locales
+
+### 4. Configuration locale prioritaire
+La configuration est stockée en NVS et utilisée même sans réseau :
+- Heures de nourrissage (matin, midi, soir)
+- Seuils ultrason (aquarium, réservoir)
+- Durées nourrissage (gros, petits)
+- État des actionneurs
+- Mode forceWakeup
+
+Le serveur distant peut mettre à jour ces valeurs, mais elles sont TOUJOURS persistées localement.
+
+---
+
+## 🔧 Principes de code
+
+### Anti-sur-ingénierie
+- **1 fichier par fonctionnalité majeure** (pas 12 sous-modules pour l'automatisme)
+- **Pas de patterns "enterprise"** (pas de DI complexe, pas de factories)
+- **Pas d'abstractions prématurées** (pas de base classes si une seule implémentation)
+- **Pas d'enum classes pour chaque état** (utiliser des bool ou int simples si suffisant)
+- **Commentaires > architecture complexe** (un code simple bien commenté vaut mieux qu'une abstraction obscure)
+
+### Gestion réseau
+```cpp
+// ✅ BON : Timeout court, fallback local
+bool fetchConfig() {
+    if (WiFi.status() != WL_CONNECTED) {
+        return false; // Utiliser config locale
+    }
+    // Timeout 5s max
+    http.setTimeout(5000);
+    int code = http.GET();
+    if (code != 200) {
+        return false; // Utiliser config locale
+    }
+    // Appliquer et sauvegarder en NVS
+}
+
+// ❌ MAUVAIS : Retry infini, blocage
+while (!fetchRemoteConfig()) {
+    delay(5000); // DANGER: peut bloquer indéfiniment
+}
+```
+
+### Gestion des capteurs
+```cpp
+// ✅ BON : Valeur par défaut si erreur
+float readWaterTemp() {
+    float temp = sensor.getTempCByIndex(0);
+    if (isnan(temp) || temp < 5 || temp > 60) {
+        return 20.0f; // Valeur par défaut sécuritaire
+    }
+    return temp;
+}
+```
+
+---
+
+## 💻 Conventions de code
+
+### Nommage
+- Classes: `PascalCase`
+- Fonctions: `camelCase`
+- Variables membres: `_prefixCamelCase`
+- Constantes: `UPPER_SNAKE_CASE`
+
+### Format
+- Indentation: 2 espaces
+- Accolades: style K&R
+- Lignes: max 100 caractères
+
+### Logging simple
+```cpp
+Serial.printf("[Module] Message: %d\n", value);
+```
+Pas besoin de macros complexes multi-niveaux.
+
+---
+
+## 🔧 Capteurs et actionneurs
+
+### DHT22 (Température/Humidité air)
+- Délai min entre lectures: 2000ms
+- Toujours vérifier `isnan()` avant utilisation
+- Valeur par défaut: 20°C, 50%
+
+### DS18B20 (Température eau)
+- Résolution: 10-12 bits
+- Valeur par défaut si erreur: 20°C
+- Plage valide: 5-60°C
+
+### HC-SR04 (Niveaux ultrason)
+- **Logique inverse**: valeur haute = niveau bas (capteur loin de l'eau)
+- Timeout: 30ms max
+- Filtrage: moyenne sur 3-5 mesures
+- Distance valide: 2-400cm
+
+### Servo (Nourrissage)
+- Position repos: 0°
+- Position nourrissage: 140°
+- Durée cycle: configurable (2-5s typique)
+
+---
+
+## 💾 Gestion NVS
+
+### Règles d'écriture
+1. **Toujours vérifier si la valeur a changé** avant d'écrire
+2. Limiter les écritures (flash a une durée de vie limitée)
+3. Utiliser des namespaces logiques mais pas trop nombreux
+
+```cpp
+// ✅ BON
+void setBouffeMatin(uint8_t hour) {
+    if (_bouffeMatin != hour) {
+        _bouffeMatin = hour;
+        nvs.putUChar("bouffeMatin", hour);
+    }
+}
+
+// ❌ MAUVAIS
+void setBouffeMatin(uint8_t hour) {
+    nvs.putUChar("bouffeMatin", hour); // Écrit même si identique
+}
+```
+
+---
+
+## 🌐 Interface Web locale
+
+### Endpoints essentiels
+- `GET /` → Interface principale
+- `GET /api/status` → État JSON (capteurs, actionneurs)
+- `POST /api/config` → Modifier configuration
+- `POST /api/feed` → Nourrissage manuel
+- `GET /ws` → WebSocket temps réel
+
+### WebSocket
+- Vérifier `ws.count()` avant envoi
+- Reconnexion automatique côté client
+- Buffer limité: 1024 bytes max par message
+
+---
+
+## ⚠️ Pièges à éviter
+
+### Erreurs fréquentes
+1. ❌ Dépendre du réseau pour fonctionner
+2. ❌ Bloquer avec `delay()` > 100ms dans loop()
+3. ❌ Allouer de la mémoire sans la libérer
+4. ❌ Utiliser String dans les boucles (fragmentation)
+5. ❌ Ignorer les erreurs de capteurs
+6. ❌ Écrire en NVS sans vérifier le changement
+7. ❌ Créer des abstractions "au cas où"
+
+### Bonnes pratiques
+1. ✅ Fallback local pour tout ce qui dépend du réseau
+2. ✅ Valeurs par défaut pour tous les capteurs
+3. ✅ Timeouts courts sur les opérations réseau (5s max)
+4. ✅ Logs clairs et concis
+5. ✅ Code simple et lisible
+6. ✅ Tester sur hardware réel
+
+---
+
+## 📝 Workflow de développement
+
+### Avant de coder
+1. Se demander: "Cette modification est-elle vraiment nécessaire?"
+2. Vérifier si une solution plus simple existe
+3. S'assurer que le mode offline reste fonctionnel
+
+### Pendant le développement
+1. Garder le code simple et lisible
+2. Ajouter des logs de debug
+3. Gérer TOUS les cas d'erreur
+4. Tester régulièrement sur hardware
+
+### Après modifications
+1. Compiler sans warnings
+2. Tester sur ESP32 réel
+3. Vérifier que le mode offline fonctionne
+4. Vérifier la mémoire disponible
+5. Commit avec message clair
+
+---
+
+## 🚫 INTERDICTIONS
+
+### Ne JAMAIS faire
+1. **Ajouter un nouveau module** sans supprimer du code existant équivalent
+2. **Créer des abstractions** "pour le futur" ou "au cas où"
+3. **Ajouter des feature flags** sans justification critique
+4. **Dépendre du serveur distant** pour une fonction essentielle
+5. **Ignorer une erreur** sans valeur de fallback
+6. **Créer un fichier .md** sauf si explicitement demandé
+
+### Simplifier avant d'ajouter
+Avant d'ajouter du code, se demander:
+- Peut-on supprimer du code existant?
+- Peut-on fusionner des modules?
+- Peut-on simplifier une abstraction?
+
+---
+
+## 📦 Dépendances (versions verrouillées)
+```ini
+ESPAsyncWebServer@3.5.0
+ArduinoJson@7.4.2
+DHT sensor library@1.4.6
+OneWire@2.3.8
+DallasTemperature@3.11.0
+Adafruit SSD1306@2.5.9
+ESP32Servo@3.0.5
+ESP Mail Client@3.4.24
+ESP32Time@2.0.0
+```
+
+**IMPORTANT**: Ne jamais mettre à jour sans test complet.
+
+---
+
+## 🎓 Rappels architecturaux
+
+### Le système DOIT fonctionner si:
+- ❌ Le WiFi est down
+- ❌ Le serveur distant est inaccessible
+- ❌ Internet est coupé
+- ❌ Un capteur est défaillant
+
+### Le système peut dysfonctionner si:
+- L'alimentation est coupée (normal)
+- Tous les capteurs sont HS simultanément (rare)
+
+---
+
+**Note**: Ces règles visent à maintenir un projet **simple, robuste et maintenable**. La complexité est l'ennemi de la fiabilité.

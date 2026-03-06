@@ -1,0 +1,204 @@
+═══════════════════════════════════════════════════════════════════════
+  📧 RÉFÉRENCE RAPIDE - TOUS LES EMAILS ENVOYABLES (FFP5CS)
+═══════════════════════════════════════════════════════════════════════
+
+TOTAL : 32 types d'emails
+VOLUME : ~652 emails/jour (nominal) | ~688 emails/jour (avec alertes)
+
+───────────────────────────────────────────────────────────────────────
+🚀 DÉMARRAGE (1)
+───────────────────────────────────────────────────────────────────────
+1.  FFP3CS - Test de démarrage [HOSTNAME]
+    → 1×/boot
+
+───────────────────────────────────────────────────────────────────────
+🍽️ NOURRISSAGE (5)
+───────────────────────────────────────────────────────────────────────
+2.  FFP3 - Bouffe matin
+    → 1×/jour (01:00)
+
+3.  FFP3 - Bouffe midi
+    → 1×/jour (13:00)
+
+4.  FFP3 - Bouffe soir
+    → 1×/jour (19:00)
+
+5.  FFP3 - Bouffe manuelle (petits)
+    → À la demande
+
+6.  FFP3 - Bouffe manuelle (gros)
+    → À la demande
+
+───────────────────────────────────────────────────────────────────────
+🌊 ALERTES NIVEAUX D'EAU (4)
+───────────────────────────────────────────────────────────────────────
+7.  FFP3 - Alerte - Niveau aquarium BAS
+    → Distance > seuil | 1×/événement
+
+8.  FFP3 - Alerte - Aquarium TROP PLEIN
+    → Distance < limFlood | Max 1×/30min (cooldown + debounce 2min)
+
+9.  FFP3 - Alerte - Réserve BASSE
+    → Distance > seuil | 1×/événement
+
+10. FFP3 - Info - Réserve OK
+    → Retour sous seuil | 1×/événement
+
+───────────────────────────────────────────────────────────────────────
+💧 POMPE RÉSERVOIR - États (6)
+───────────────────────────────────────────────────────────────────────
+11. Pompe réservoir MANUELLE ON
+    → Démarrage manuel | 1×/changement
+
+12. Pompe réservoir AUTO ON
+    → Démarrage auto | 1×/changement
+
+13. Pompe réservoir MANUELLE OFF
+    → Arrêt manuel | 1×/changement
+
+14. Pompe réservoir AUTO OFF
+    → Arrêt auto | 1×/changement
+
+15. Pompe réservoir OFF (sécurité réserve basse)
+    → Arrêt sécurité | 1×/événement
+
+16. Pompe réservoir OFF (sécurité aquarium trop plein)
+    → Arrêt sécurité | 1×/événement
+
+───────────────────────────────────────────────────────────────────────
+🚫 POMPE RÉSERVOIR - Alertes (3)
+───────────────────────────────────────────────────────────────────────
+17. FFP3 - Pompe réservoir BLOQUÉE (réserve basse)
+    → Réserve insuffisante | 1×/blocage
+
+18. FFP3 - Pompe réservoir bloquée
+    → Timeout mécanique | 1×/blocage
+
+19. FFP3 - Pompe réservoir verrouillée (réserve trop basse)
+    → Verrouillage sécurité | 1×/verrouillage
+
+───────────────────────────────────────────────────────────────────────
+🔵 POMPE AQUARIUM (2)
+───────────────────────────────────────────────────────────────────────
+20. Pompe AQUARIUM ON (AUTO/MANUEL)
+    → Démarrage | 1×/changement
+
+21. Pompe AQUARIUM OFF (AUTO/MANUEL)
+    → Arrêt | 1×/changement
+
+───────────────────────────────────────────────────────────────────────
+🌡️ CHAUFFAGE (2)
+───────────────────────────────────────────────────────────────────────
+22. FFP3 - Chauffage ON
+    → Temp < 23°C | 1×/activation
+
+23. FFP3 - Chauffage OFF
+    → Temp ≥ 23°C | 1×/désactivation
+
+───────────────────────────────────────────────────────────────────────
+😴 SLEEP / WAKE (2) ⚠️ HAUTE FRÉQUENCE
+───────────────────────────────────────────────────────────────────────
+24. FFP3 - Mise en veille
+    → Toutes les 150s | ~576×/jour ⚠️
+
+25. FFP3 - Réveil du système
+    → Toutes les 1200s (20min) | ~72×/jour ⚠️
+
+    Conditions : WiFi + emailEnabled + heap ≥ 45KB
+    ⚡ Optimisé v11.06 : Utilise cache, pas de lecture capteurs
+
+───────────────────────────────────────────────────────────────────────
+🔄 OTA (MISE À JOUR) (4)
+───────────────────────────────────────────────────────────────────────
+26. FFP3 - OTA début - Serveur distant
+    → Début OTA automatique | 1×/OTA
+
+27. OTA mise à jour - Serveur distant [HOSTNAME]
+    → Succès OTA automatique | 1×/OTA
+
+28. OTA début - Interface web
+    → Début OTA manuel | 1×/OTA
+
+29. OTA mise à jour - Interface web [HOSTNAME]
+    → Succès OTA manuel | 1×/OTA
+
+───────────────────────────────────────────────────────────────────────
+🧪 MANUELS (2)
+───────────────────────────────────────────────────────────────────────
+30. FFP3 - [SUJET PERSONNALISÉ]
+    → Endpoint /mailtest | À la demande
+
+31. FFP3 - Redémarrage GPIO
+    → Reset GPIO 110 | 1×/reset
+
+───────────────────────────────────────────────────────────────────────
+📊 DIGEST (1)
+───────────────────────────────────────────────────────────────────────
+32. FFP3CS - Digest événements [HOSTNAME]
+    → Timer 24h | Max 1×/24h (si nouveaux événements)
+
+═══════════════════════════════════════════════════════════════════════
+📊 STATISTIQUES
+═══════════════════════════════════════════════════════════════════════
+
+FRÉQUENCE QUOTIDIENNE (nominal) :
+  • Boot           : 1
+  • Nourrissage    : 3
+  • Sleep          : 576  ⚠️
+  • Wake           : 72   ⚠️
+  • Digest         : 1
+  • Alertes/Pompes : 10-35 (variable)
+  ─────────────────────
+  TOTAL            : ~652-688 emails/jour
+
+⚠️ DÉPASSEMENT QUOTA GMAIL :
+  • Quota standard : 500 emails/jour
+  • Volume système : 652-688 emails/jour
+  • Dépassement    : ~150-188 emails/jour
+
+═══════════════════════════════════════════════════════════════════════
+💡 OPTIMISATION RECOMMANDÉE
+═══════════════════════════════════════════════════════════════════════
+
+🔴 CRITIQUE : Réduire Sleep/Wake (648/jour → 150/jour dépassement)
+
+Option 1 : Augmenter freqWakeSec (RECOMMANDÉ)
+  freqWakeSec = 3600  // 1 heure au lieu de 20min
+  → 24 wake/jour + 96 sleep/jour = 120 emails/jour
+  → TOTAL : 125 emails/jour (DANS QUOTA ✅)
+
+Option 2 : Désactiver Sleep/Wake
+  // Commenter _mailer.sendSleepMail() et sendWakeMail()
+  → Économise 648 emails/jour
+  → TOTAL : 5-40 emails/jour
+
+═══════════════════════════════════════════════════════════════════════
+✅ CONDITIONS D'ENVOI
+═══════════════════════════════════════════════════════════════════════
+
+COMPILATION :
+  -DFEATURE_MAIL=1 (platformio.ini)
+
+RUNTIME (cumulatif) :
+  1. WiFi.status() == WL_CONNECTED
+  2. autoCtrl.isEmailEnabled() == true
+  3. ESP.getFreeHeap() >= 45000 (sleep/wake uniquement)
+  4. autoCtrl.getEmailAddress() != ""
+
+SMTP :
+  smtp.gmail.com:465 (SSL)
+  arnould.svt@gmail.com
+
+═══════════════════════════════════════════════════════════════════════
+📋 STATUS ENVIRONNEMENTS (2025-10-14)
+═══════════════════════════════════════════════════════════════════════
+
+  wroom-test  : ✅ FEATURE_MAIL=1 (déjà OK)
+  wroom-prod  : ✅ FEATURE_MAIL=1 (déjà OK)
+  s3-test     : ✅ FEATURE_MAIL=1 (corrigé 2025-10-14)
+  s3-prod     : ✅ FEATURE_MAIL=1 (corrigé 2025-10-14)
+
+═══════════════════════════════════════════════════════════════════════
+
+
+

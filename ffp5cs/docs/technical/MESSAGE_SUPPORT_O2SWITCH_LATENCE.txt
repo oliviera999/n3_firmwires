@@ -1,0 +1,19 @@
+Objet : Latence très élevée (18–20 s) sur requêtes POST depuis un appareil IoT vers un seul de mes sites
+
+Bonjour,
+
+J’héberge plusieurs sites chez vous. Sur l’un d’entre eux (iot.olution.info), je constate une latence anormale pour les requêtes HTTP POST envoyées depuis un appareil embarqué (ESP32, type IoT), alors que le même endpoint répond en moins de 0,2 seconde depuis un PC (curl) sur le même réseau.
+
+Contexte technique
+- Domaine concerné : iot.olution.info (application PHP sous le chemin /ffp3, ex. POST vers /ffp3/post-data-test).
+- Depuis un PC (curl) : temps total typique 150–170 ms (DNS + connexion TCP + réponse).
+- Depuis l’appareil ESP32 (WiFi, même box que le PC) : temps total 18–20 secondes pour le même POST, avec code HTTP 200. La connexion TCP est établie en ~10 ms ; le délai est donc surtout entre l’envoi du corps de la requête et la réception de la réponse.
+- Côté serveur (logs PHP) : le traitement de la requête est de l’ordre de 1–5 ms. La lenteur ne vient donc pas du script PHP ni de la base de données.
+- J’ai d’autres sites hébergés chez vous pour lesquels la communication depuis le même type d’appareil se fait avec une latence bien plus faible.
+
+Question
+Y a-t-il, côté infrastructure (proxy, pare-feu applicatif, cache, ou règles par domaine / par type de client), un mécanisme qui pourrait retarder ou mettre en buffer les réponses pour certaines connexions (par ex. selon l’IP source, le User-Agent, ou le domaine) ? Si oui, est-il possible d’ajuster la configuration pour le domaine iot.olution.info afin de réduire cette latence ?
+
+Je reste à votre disposition pour fournir des horodatages, des logs ou des captures si besoin.
+
+Cordialement,

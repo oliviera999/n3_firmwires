@@ -1,0 +1,163 @@
+================================================================================
+RAPPORT D'AUDIT STABILITÉ – FIRMWARE FFP5CS
+================================================================================
+Date : 2026-02-13 (mis à jour 2026-02-15)
+Périmètre : règles cœur (offline-first, pas de crash, fallbacks, mémoire/watchdog)
+Référence : plan audit_stabilité_firmware ; audit bugs firmware + serveur (2026-02-15)
+
+--------------------------------------------------------------------------------
+1. ACTIONS CORRECTIVES APPLIQUÉES
+--------------------------------------------------------------------------------
+
+1.1 Watchdog – boucle NTP (power.cpp)
+  Fichier : src/power.cpp (lignes ~219-231)
+  Action : Ajout de esp_task_wdt_reset() dans la boucle de fallback NTP
+           (while ((millis() - startTime) < 10000)) avec test esp_task_wdt_status(NULL).
+  Justification : La boucle peut s'exécuter dans une tâche surveillée par le TWDT ;
+                  sans feed, un timeout NTP long pouvait déclencher un reset.
+
+1.2 Vérification défensive après getParam() (web_server.cpp, web_routes_status.cpp)
+  Fichiers : src/web_server.cpp, src/web_routes_status.cpp
+  Action : Pour chaque usage de req->getParam(...)->value(), introduction d'une
+           variable locale const AsyncWebParameter* p = req->getParam(...) et
+           test if (p) avant d'appeler p->value().c_str().
+  Emplacements renforcés :
+    - web_server.cpp : type, cmd, relay, getParamCStr, subject, body, to, confirm,
+                      getP (nvs/set, nvs/erase, nvs/erase_ns), getParam (wifi/connect),
+                      ssid (wifi/remove).
+    - web_routes_status.cpp : send, recv (/api/remote-flags).
+  Justification : Risque théorique de nullptr si getParam() ne correspond pas à hasParam() ;
+                  évite crash en cas de comportement inattendu de l'API AsyncWebServer.
+
+1.3 Vérification défensive getHeader() (web_routes_ui.cpp) – 2026-02-15
+  Fichier : src/web_routes_ui.cpp (registerCompressedAssets, ~l.280)
+  Action : Variable intermédiaire encHeader = req->getHeader("Accept-Encoding") avec test
+           encHeader non-null avant d'appeler encHeader->value().indexOf("gzip").
+  Justification : Évite déréférencement null si getHeader() retourne nullptr alors que
+                  hasHeader("Accept-Encoding") est vrai (comportement non garanti par l'API).
+
+1.4 Troncature mail/mailNotif (serveur ffp3) – 2026-02-15
+  Fichier : ffp3/src/Controller/PostDataController.php
+  Action : Limitation des champs mail et mailNotif à 255 caractères (substr) avant
+           construction de SensorData et insertion BDD.
+  Justification : Évite erreur SQL ou troncature non contrôlée si colonnes VARCHAR(255).
+
+1.5 Log explicite erreur parsing JSON cache (config.cpp) – 2026-02-15
+  Fichier : src/config.cpp (logConfigFromNvs)
+  Action : En cas d'échec deserializeJson sur le cache NVS, log "[Config] ⚠️ Erreur
+           parsing JSON cache: %s" puis return ; suppression du bloc else redondant.
+  Justification : Cohérence avec le reste du projet (pas d'erreur ignorée sans log).
+
+--------------------------------------------------------------------------------
+2. POINTS DÉJÀ CONFORMES (CONSTATÉS)
+--------------------------------------------------------------------------------
+
+2.1 Watchdog
+  - esp_task_wdt_reset() présent dans les boucles longues : netTask, sensorTask,
+    webTask, automationTask, web_client, wifi_manager, system_sensors, ota_manager,
+    mailer.
+  - Timeouts TWDT : 30 s (WROOM), 300 s (S3) ; documentés (docs/technical/WROOM_TASK_WDT_30S.md).
+  - Délais longs découpés (sensorTask : tranches 1 s avec WDT entre chaque).
+
+2.2 Validation capteurs
+  - isnan() et plages MIN/MAX utilisées (app_tasks, system_sensors, sensors,
+    web_client, web_routes_status).
+  - Valeurs par défaut : SensorConfig::DefaultValues::*, SensorConfig::Fallback::*.
+
+2.3 NVS
+  - Écriture uniquement si valeur changée : saveString, saveBool, saveInt
+    (nvs_manager.cpp).
+  - load* renvoient des valeurs par défaut en cas d'échec lock/lecture.
+
+2.4 Réseau
+  - Timeouts centralisés (config.h) : HTTP 5 s, POST 14 s, GET outputs/state 10 s,
+    OTA 30 s / 5 min.
+  - Vérification WiFi avant appels HTTP ; retour false / fallback en cas de timeout.
+
+2.5 Tâches
+  - Protection g_ctx (sensorTask, automationTask).
+  - RPC netTask : mécanisme cancelled + netRequestFree pour éviter use-after-free.
+  - req->requester validé avant xTaskNotifyGive (app_tasks.cpp).
+
+--------------------------------------------------------------------------------
+3. AUDIT MÉMOIRE / HEAP
+--------------------------------------------------------------------------------
+
+3.1 Allocations dynamiques
+  - app_tasks.cpp : malloc(kMailBlockReq) pour s_mailReserve (réserve SMTP 32 KB).
+    Contexte : allocation unique au boot ou à la première nécessité (processMailQueueIfReady),
+    libération quand plus de mails en attente. Pas dans une boucle chaude ; acceptable.
+  - web_server.cpp : new AsyncWebServer(80) en init une seule fois ; conforme.
+
+3.2 String Arduino
+  - wifi_manager.cpp : String ssidStr = WiFi.SSID(j) (lignes 63, 167) dans le chemin
+    scan WiFi. Contexte : exécuté au boot ou sur demande config (chemin froid).
+    Acceptable ; commentaires projet indiquent évitement de String dans chemins chauds.
+
+3.3 Buffers
+  - Tailles fixes utilisées : BufferConfig::JSON_DOCUMENT_SIZE, NVSConfig::MAX_INSPECTED_STRING_BYTES,
+    MAX_RESPONSE_SIZE (web_client). strncpy avec size-1 et null-termination utilisés
+    dans les routes web et NVS.
+
+3.4 TaskMonitor
+  - Seuil LOW_STACK_THRESHOLD = 100 mots (task_monitor.cpp). Recommandation : vérifier
+    en production sur runs longs que les HWM (sensor, web, automation, display, net)
+    restent au-dessus de ce seuil.
+
+--------------------------------------------------------------------------------
+4. AUDIT ERREURS / FALLBACKS
+--------------------------------------------------------------------------------
+
+4.1 NVS
+  - Les load* renvoient valeur par défaut et/ou NVSError ; appelants utilisent
+    les valeurs par défaut (config, state, etc.). Pas d'erreur ignorée sans fallback
+    identifié dans les zones auditées.
+
+4.2 web_client / OTA
+  - Chemins d'échec (timeout, WiFi non connecté, parse error) : return false ou
+    retour explicite avec log. Pas de boucle infinie sans timeout.
+
+4.3 Routes web
+  - Vérifications défensives getParam() ajoutées (voir 1.2). getHeader() défensif
+    (voir 1.3) dans web_routes_ui.cpp. hasParam() déjà utilisé avant chaque getParam() ;
+    le test if (p) renforce la robustesse.
+
+--------------------------------------------------------------------------------
+5. RÉSEAU ET OFFLINE-FIRST
+--------------------------------------------------------------------------------
+
+  - Logique métier (automation, capteurs, affichage) ne bloque pas sur "WiFi connecté"
+    sans timeout : timeouts courts, config NVS en fallback.
+  - Pas de boucle de retry sans limite identifiée ; timeouts et backoff présents
+    (ex. FETCH_REMOTE_STATE_RPC_TIMEOUT_MS, REMOTE_FETCH_FALLBACK_INTERVAL_MS).
+
+--------------------------------------------------------------------------------
+6. TÂCHES ET CONCURRENCE
+--------------------------------------------------------------------------------
+
+  - netTask : NetRequest alloué par le caller ; libération soit par netTask (timeout /
+    cancelled), soit par le caller (succès). Pas de double free identifié.
+  - sensorTask / automationTask : queue capteurs avec AUTOMATION_QUEUE_RECEIVE_TIMEOUT_MS (12 s) ;
+    branche timeout avec fallback (dernières valeurs).
+
+--------------------------------------------------------------------------------
+7. SYNTHÈSE ET RECOMMANDATIONS
+--------------------------------------------------------------------------------
+
+  - Corrections appliquées : feed WDT boucle NTP (power.cpp), vérifications
+    défensives getParam() (web_server, web_routes_status), getHeader() (web_routes_ui),
+    troncature mail/mailNotif (ffp3 PostDataController), log erreur JSON cache (config).
+    Build wroom-test OK.
+
+  - À surveiller en exploitation :
+    (1) Heap libre et HWM des tâches (TaskMonitor, logs heap si activés).
+    (2) Stabilité long uptime (script erase_flash_fs_monitor_5min_analyze.ps1
+        et analyse des logs).
+
+  - Aucune régression stabilité identifiée sur les fichiers récemment modifiés
+    (app_tasks, task_monitor) ; les ajouts (WDT power, null check getParam) sont
+    conformes aux règles projet.
+
+================================================================================
+Fin du rapport
+================================================================================

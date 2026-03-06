@@ -1,0 +1,32 @@
+---
+description: ESP32-S3 vs WROOM — caractéristiques, composants, flags d’env pour intégration propre
+globs: src/**/*, include/**/*, platformio.ini
+alwaysApply: false
+---
+
+# ESP32-S3 (WROOM-S3) — différences et isolation du code
+
+- **Contexte**
+  - **Matériel de référence** : ESP32-S3 (QFN56) révision v0.2, 16 Mo flash, 8 Mo PSRAM (module type N16R8).
+  - L’**ESP32-S3** (cible WROOM-S3, ex. DevKitC-1) a des **caractéristiques particulières** et des **composants supplémentaires** par rapport à l’ESP32 classique (WROOM) : PSRAM (OPI), flash 16 Mo, partitions dédiées, stack et périphériques spécifiques, etc.
+  - Ces différences doivent être intégrées dans le **même codebase** sans impacter les builds WROOM. À partir du **bloc commun** de l’environnement S3 (`wroom-s3-base` dans `platformio.ini`), on définit des **flags de build** et on les utilise dans le code pour conditionner uniquement les parties spécifiques.
+  - Les env S3 par défaut (`wroom-s3-base`, `wroom-s3-test`, `wroom-s3-prod`) n’ont **pas** PSRAM activée (boot stable).
+
+- **Objectif**
+  - Toute modification spécifique à l’**ESP32-S3** doit être **conditionnée par les flags d’environnement** définis pour S3, de sorte que le build **WROOM** ne soit **jamais impacté** (pas de code S3 compilé, pas de comportement différent).
+
+- **Flags d’environnement** (définis dans `platformio.ini`)
+  - **BOARD_WROOM** : environnements `wroom-prod`, `wroom-test`, `wroom-beta`, `wroom-tls-test` (ESP32 classique).
+  - **BOARD_S3** : environnements `wroom-s3-test`, `wroom-s3-prod`, `wroom-s3-test-psram` (ESP32-S3, base commune `wroom-s3-base`).
+  - **BOARD_HAS_PSRAM** : défini uniquement pour l’env S3 avec PSRAM activée (`wroom-s3-test-psram`). Utilisé dans le code pour watchdog early / stack (voir `src/app.cpp`). Ne pas le définir pour les env S3 par défaut.
+  - Ajouter d’autres flags dans le bloc commun S3 (`wroom-s3-base`) ou dans les env qui en héritent **si nécessaire** pour des différences matérielles ou logicielles (ex. composant présent uniquement sur S3, option de partition, etc.). Les nommer en **UPPER_SNAKE_CASE** et les documenter brièvement en commentaire dans `platformio.ini`.
+
+- **Règles de code**
+  - Tout code qui dépend du matériel ou du comportement **spécifique à l’ESP32-S3** (PSRAM, périphériques S3, partitions S3, composants supplémentaires, etc.) doit être entouré de préprocesseur :
+    - `#if defined(BOARD_S3)` … `#endif` pour du code uniquement S3.
+    - `#if defined(BOARD_WROOM)` … `#endif` pour du code uniquement WROOM si nécessaire.
+  - Ne pas introduire de chemins d’exécution ou de constantes S3 qui s’appliqueraient au build WROOM sans garde `BOARD_S3`.
+  - Les parties communes (comportement identique WROOM et S3) restent sans condition ; seules les **différences** sont conditionnées.
+
+- **Vérification**
+  - Après ajout ou modification de code S3 ou de flags, s’assurer qu’un build `wroom-test` ou `wroom-prod` compile et se comporte comme avant (aucune régression sur la cible non-S3).

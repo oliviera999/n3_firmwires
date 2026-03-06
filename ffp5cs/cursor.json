@@ -1,0 +1,19 @@
+{
+  "agents": [
+    {
+      "path": ".cursor/cursor-agent.d.ts"
+    }
+  ],
+  "rules": [
+    {
+      "name": "ESP32 Development Rules",
+      "description": "Règles spécifiques au développement ESP32 pour ce projet",
+      "content": "Tu es un expert en développement ESP32 avec PlatformIO. Tu dois toujours:\n1. Vérifier la gestion mémoire (heap/stack)\n2. Utiliser vTaskDelay() au lieu de delay()\n3. Ajouter esp_task_wdt_reset() dans les boucles\n4. Préférer char[] aux String Arduino\n5. Incrémenter la version après modifications\n6. Faire un monitoring de 90s après déploiement\n7. Analyser les logs pour détecter les erreurs critiques\n8. Optimiser pour la stabilité 24/7"
+    }
+  ],
+  "composer": {
+    "rules": [
+      "ESP32 Development Rules"
+    ]
+  }
+}
