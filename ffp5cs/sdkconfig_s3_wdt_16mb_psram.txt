@@ -1,0 +1,19 @@
+# S3 N16R8 (16 Mo flash + 8 Mo PSRAM) — env wroom-s3-test-psram
+# Désactiver APP_ROLLBACK pour S3: évite blocage boot sur flash effacée
+# CONFIG_APP_ROLLBACK_ENABLE is not set
+# IWDT désactivé : boot avec PSRAM dépasse 300 ms (évite TG1WDT_SYS_RST). Nécessite que les libs IDF soient compilées avec ce sdkconfig (voir doc).
+# CONFIG_ESP_INT_WDT is not set
+# TG0WDT : ne pas démarrer le TWDT au boot. Réinit 300s en setup() (app.cpp).
+# CONFIG_ESP_TASK_WDT_INIT is not set
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=300
+CONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+# CONFIG_ESP_COREDUMP_ENABLE is not set
+CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
+# CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH is not set
+# CONFIG_ESP_COREDUMP_ENABLE_TO_UART is not set
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="config/partitions/partitions_esp32_s3_test.csv"
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_BOOT_INIT=y
+# CONFIG_ESP_INSIGHTS_TRANSPORT_HTTPS is not set
+CONFIG_ESP_INSIGHTS_TRANSPORT_MQTT=y

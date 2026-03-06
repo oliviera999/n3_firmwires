@@ -1,0 +1,27 @@
+---
+alwaysApply: true
+---
+
+---
+description: Règles interface web locale FFP5CS
+globs: data/web/**/*
+alwaysApply: false
+---
+
+# Interface Web locale
+
+- **Objectif**
+  - UI simple pour visualiser l’état (capteurs) et piloter quelques actions (nourrissage, config).
+  - Pas de framework lourd côté client si possible ; privilégier HTML/CSS/JS vanille.
+
+- **Endpoints contractuels**
+  - Ne pas modifier arbitrairement les endpoints essentiels :
+    - `GET /` (UI principale, port 80)
+    - `GET /api/status` (port 80, alias vers /json)
+    - `POST /api/config` (port 80, alias vers /dbvars/update)
+    - `POST /api/feed` (port 80)
+    - WebSocket temps réel : **port 81**, path **/ws** (connexion `ws://<host>:81/ws`). Les règles parlent de « GET /ws » au sens d’endpoint contractuel ; l’implémentation utilise un serveur WebSocket dédié sur le port 81.
+
+- **Robustesse**
+  - Le front ne doit pas supposer une connexion WebSocket ou réseau permanente.
+  - Gérer les déconnexions (messages d'erreur simples). Pas de retry sans backoff ni limite (ex. max 3 tentatives avec backoff autorisé).

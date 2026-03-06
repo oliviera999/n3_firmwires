@@ -1,0 +1,55 @@
+---
+alwaysApply: true
+---
+
+---
+description: Règles cœur de projet FFP5CS (offline-first, simplicité, robustesse)
+alwaysApply: true
+---
+
+# FFP5CS - Règles cœur de projet
+
+- **OFFLINE-FIRST**
+  - Le firmware doit TOUJOURS continuer à fonctionner sans réseau.
+  - Tout ce qui dépend du réseau doit avoir un **fallback local** (NVS / valeurs par défaut).
+  - Interdire toute logique qui bloque en attendant le réseau ou le serveur.
+
+- **Simplicité avant tout**
+  - Préférer du **code simple et lisible** à des patterns "enterprise".
+  - Ne pas introduire de DI complexe, de factories génériques ou de couches d’abstraction inutiles.
+  - Avant d’ajouter un module, vérifier s’il est possible de **simplifier ou supprimer** du code existant.
+
+- **Robustesse et valeurs par défaut**
+  - Le système ne doit **jamais crasher** : en cas d’erreur capteur ou réseau, utiliser des valeurs par défaut sûres.
+  - Toutes les lectures de capteurs doivent être **validées** (plage de valeurs, `isnan`, etc.).
+  - Ne jamais ignorer une erreur sans fallback explicite (valeur par défaut sûre ou comportement documenté, ex. log + dernière valeur valide).
+
+- **Configuration locale prioritaire**
+  - La NVS est la **source de vérité** (horaires, seuils, durées, états).
+  - Le serveur distant ne sert qu’à **mettre à jour** la config locale, jamais à la remplacer en direct.
+
+- **Mémoire et watchdog**
+  - Éviter les allocations dynamiques dans les boucles ; préférer des buffers statiques.
+  - La **fragmentation heap** doit rester **minimale** ; la **heap disponible** ne doit pas **décliner au cours du temps** (pas de fuite mémoire ni d’accumulation d’allocations non libérées).
+  - Ne pas utiliser `String` Arduino dans les chemins chauds (boucles, callbacks fréquents) ; dans les chemins froids et pour des chaînes de taille bornée, `String` reste acceptable.
+  - Ne jamais bloquer le thread principal > 3s ; timeouts réseau courts (≤ 5s par défaut ; dérogation possible si documentée, ex. OTA avec feed watchdog). Les dérogations sont à privilégier lorsque le blocage a lieu dans une tâche dédiée (ex. net task) ou avec feed watchdog (ex. OTA).
+
+- **Plateforme et build**
+  - Le firmware est construit avec la plateforme PlatformIO officielle **`platformio/espressif32`** (pas pioarduino).
+
+- **Workflow de validation**
+  - Pour un workflow complet (erase flash, flash firmware + LittleFS, monitor 5 min, analyse du log), utiliser **préférentiellement** le script `erase_flash_fs_monitor_5min_analyze.ps1` (racine du projet). Il enchaîne erase, upload, uploadfs, monitor 5 min, puis analyse (analyze_log + rapport diagnostic). Option : `-Port COMx` si le port diffère de l’auto-détection.
+
+- **Workflow de développement (formalisation)**
+  - **Bugs complexes** (WDT, heap, réseau, logs d'erreur) : utiliser une approche **debug systématique** : formuler des hypothèses, les vérifier une par une, identifier la cause racine, corriger puis **vérifier que le correctif tient** (ex. rejouer le scénario, monitor 5 min, analyse de log).
+  - **Changements majeurs** (refactor réseau, OTA, automatismes, nouvelle API) : avant d'écrire le code, produire un **plan par étapes** : découpage en tâches courtes, fichiers concernés, critères de succès et vérifications (build, règles cœur, fallback NVS, timeouts). Exécuter ensuite en respectant ce plan.
+  - **Merges sensibles** (branche qui touche au réseau, à la NVS, aux tâches ou au watchdog) : faire une **revue explicite** contre les règles FFP5CS : offline-first, pas de blocage > 3s sans dérogation documentée, pas de fuite mémoire, fallbacks locaux, constantes harmonisées. Les points bloquants doivent être corrigés avant merge.
+
+- **Version et livraison après modification**
+  - Après **chaque modification du code**, procéder systématiquement à : **incrémenter la version** dans `include/config.h` (`ProjectConfig::VERSION`), **documenter** l’historique dans `VERSION.md` (à la racine), **commiter** les changements (code + `VERSION.md`) et **pousser** vers le dépôt distant. Sémantique : **MAJOR.MINOR** (deux chiffres mineurs, ex. 12.15).
+
+- **Publication OTA distant**
+  - La publication des firmware pour l'OTA distant se fait via le script **`scripts/publish_ota.ps1`** : copie des `firmware.bin` compilés vers `ffp3/ota/` (sous-dossiers esp32-wroom, esp32-s3), mise à jour de `ffp3/ota/metadata.json`, puis commit et push dans le dépôt ffp3 (sous-module). Voir `docs/technical/OTA_PUBLISH.md` pour la procédure et les options.
+
+- **Documents et fichiers**
+  - Ne pas créer de fichiers `.md` sans demande explicite de l'utilisateur. Les documentations liées à une tâche demandée (ex. doc d'API, contrat) sont autorisées lorsque l'utilisateur le demande.

@@ -1,0 +1,179 @@
+<!-- Blocs thématiques (modèle page contrôle serveur distant ffp3) : vert = actif / processus en cours, rouge = inactif -->
+
+<!-- 1. Gestion de l'eau -->
+<div class="row g-4 mb-3">
+  <div class="col-12">
+    <div class="card control-theme-card">
+      <div class="card-header">
+        <h5 class="mb-0">💧 Gestion de l'eau</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="toggleRelay('pumpTank')" id="btnPumpTank">📦 Pompe Réserve</button>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="toggleRelay('pumpAqua')" id="btnPumpAqua">🐠 Pompe Aqua</button>
+          </div>
+        </div>
+        <h6 class="text-muted mb-2">Paramètres de niveau</h6>
+        <div class="row g-3">
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>💧 Seuil Aquarium (cm)</span>
+              <span class="badge bg-secondary editable-var" id="dbAqThreshold" data-key="aqThreshold" data-type="number" data-min="0" data-max="100">--</span>
+            </div>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>📦 Seuil Réservoir (cm)</span>
+              <span class="badge bg-secondary editable-var" id="dbTankThreshold" data-key="tankThreshold" data-type="number" data-min="0" data-max="200">--</span>
+            </div>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>⏱️ Durée Remplissage (s)</span>
+              <span class="badge bg-info editable-var" id="dbRefillDuration" data-key="tempsRemplissageSec" data-type="number" data-min="10" data-max="600">--</span>
+            </div>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🛡️ Limite flood</span>
+              <span class="badge bg-secondary editable-var" id="dbLimFlood" data-key="limFlood" data-type="number" data-min="0" data-max="100">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. Nourrissage -->
+<div class="row g-4 mb-3">
+  <div class="col-12">
+    <div class="card control-theme-card">
+      <div class="card-header">
+        <h5 class="mb-0">🐟 Nourrissage</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="action('feedSmall')" id="btnFeedSmall">🐟 Nourrir Petits</button>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="action('feedBig')" id="btnFeedBig">🐠 Nourrir Gros</button>
+          </div>
+        </div>
+        <h6 class="text-muted mb-2">Programmation automatique</h6>
+        <div class="row g-3">
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🌅 Heure Matin</span>
+              <span class="badge bg-primary editable-var" id="dbFeedMorning" data-key="bouffeMatin" data-type="number" data-min="0" data-max="23">--</span>
+            </div>
+          </div>
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>☀️ Heure Midi</span>
+              <span class="badge bg-primary editable-var" id="dbFeedNoon" data-key="bouffeMidi" data-type="number" data-min="0" data-max="23">--</span>
+            </div>
+          </div>
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🌙 Heure Soir</span>
+              <span class="badge bg-primary editable-var" id="dbFeedEvening" data-key="bouffeSoir" data-type="number" data-min="0" data-max="23">--</span>
+            </div>
+          </div>
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🐠 Durée Gros (s)</span>
+              <span class="badge bg-info editable-var" id="dbFeedBigDur" data-key="tempsGros" data-type="number" data-min="1" data-max="60">--</span>
+            </div>
+          </div>
+          <div class="col-md-4 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🐟 Durée Petits (s)</span>
+              <span class="badge bg-info editable-var" id="dbFeedSmallDur" data-key="tempsPetits" data-type="number" data-min="1" data-max="60">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. Chauffage & Lumière -->
+<div class="row g-4 mb-3">
+  <div class="col-12">
+    <div class="card control-theme-card">
+      <div class="card-header">
+        <h5 class="mb-0">🌡️ Chauffage & Lumière</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="toggleRelay('light')" id="btnLight">💡 Lumière</button>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="toggleRelay('heater')" id="btnHeater">🔥 Chauffage</button>
+          </div>
+        </div>
+        <h6 class="text-muted mb-2">Paramètres environnementaux</h6>
+        <div class="row g-3">
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>🔥 Seuil Chauffage (°C)</span>
+              <span class="badge bg-warning text-dark editable-var" id="dbHeaterThreshold" data-key="chauffageThreshold" data-type="number" data-min="10" data-max="30" data-step="0.1">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. Notifications & Système -->
+<div class="row g-4 mb-3">
+  <div class="col-12">
+    <div class="card control-theme-card">
+      <div class="card-header">
+        <h5 class="mb-0">📧 Notifications & Système</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="mailTest()" id="btnMailTest">📧 Test Mail</button>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="toggleEmailNotifications()" id="btnEmailNotif">🔔 Notifications Email</button>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-danger w-100" onclick="toggleForceWakeup()" id="btnForceWakeup">⏰ Force Wakeup</button>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <button class="btn btn-outline-warning w-100" onclick="resetEsp()" id="btnResetEsp">🔄 Reset ESP</button>
+          </div>
+        </div>
+        <h6 class="text-muted mb-2">Configuration</h6>
+        <div class="row g-3">
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>📧 Email</span>
+              <span class="badge bg-success editable-var" id="dbEmailAddress" data-key="mail" data-type="email" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">--</span>
+            </div>
+          </div>
+          <div class="col-md-6 col-sm-6">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+              <span>⏰ Fréq. réveil (s)</span>
+              <span class="badge bg-info editable-var" id="dbFreqWakeUp" data-key="FreqWakeUp" data-type="number" data-min="6" data-max="3600">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+if (typeof loadDbVars === 'function') loadDbVars();
+</script>
