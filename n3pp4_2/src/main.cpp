@@ -1,58 +1,18 @@
-/* N3PhasmesProto (n3pp) control system : N3PPCS
- *  
- *  Système de contrôle pour le module ESP32 qui contrôle capteur et actionneur du système via différents relais.
- *  
- *  A CREUSER : PIN15 (light fonctionne pas via internet, mais via serveur autohébergé
- *  
- *  Fonctionnalités présentes :
- *  - température de l'air
- *  - humidité de l'air
- *  - 4 capteurs d'humidité
- *  - contrôle de la pompe de d'arrosage (relais pin 12 ; on/off)
- *  - contrôle de la consommation d'énergie (relais pin  ; on/off ; bibliothèque de faible consommation d'énergie)
- *  - luminosité
- *  - déclenchements de la pompe une fois par jour et si le sol est trop sec
- *  - nourrissage poisson 3 fois par jour à des heures définies
- *  - envoi d'un mail d'alerte si en cas d'arrosage ou de sécheresse excessive
- *  - synchro RTC avec serveur NTP
- *  - serveur Web http://iot.olution.info :
- *    * de statistiques (courbes, moyennes...)
- *    * contrôle à distance total
- *  - BUG//monitoring serie via le bluetooth
- *  - ESP en mode point d'accès (si pas de réseau wifi dispo) - fait paniquer le coeur
- *    
- *    !!!! WARNING !!!!
- *    Bluetooth en conflit avec sendmail
- *    APSTA fait paniquer le coeur
- *    Serveur Async fait paniquer le coeur
+/* N3PhasmesProto (n3pp) v4.3
+ * Serre / aquaponie — salle aeree n3
+ * Credentials externalises dans credentials.h
+ * OTA HTTP distant via n3_common
  */
 
-// Import required libraries
-
-//serveur wifi en mode client
 #include <WiFi.h>
-//serveur autohébergé
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-//serveur de mise à jour OTA
-//#include <AsyncElegantOTA.h>
-//OTA basique
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-//#include <ArduinoOTA.h>
-//bibliothèque générique arduino
 #include <Arduino.h>
-//#include <stdio.h>
-//bibliothèques pour le DHT
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
-//bibliothèque ?
 #include <HTTPClient.h>
-#include <ESP_Mail_Client.h>  // Bibliothèque pour envoyer des emails depuis un ESP32
-//bibliothèque ?
+#include <ESP_Mail_Client.h>
 #include <Arduino_JSON.h>
-
-//bibliothèques pour le moniteur OLED
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -60,7 +20,9 @@
 #include <esp_sleep.h>
 
 #include <ESP32Time.h>          //gestion de l'heure et de la date
-#include <Preferences.h>        //enregistrements dans la mémoire flash
+#include <Preferences.h>
+#include "credentials.h"
+#include "n3_ota.h"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13
@@ -131,17 +93,14 @@ RTC_DATA_ATTR int bootCount = 0;
 //touch_pad_t touchPin;
 bool WakeUpButton = 0;
 
-//définition des variables pour l'envoi de mail
 #define emailSubject "Information N3PP"
 
-#define SMTP_HOST "smtp.gmail.com"
-#define SMTP_PORT esp_mail_smtp_port_465  // port 465 is not available for Outlook.com
-/* The log in credentials */
-#define AUTHOR_EMAIL "arnould.svt@gmail.com"
-#define AUTHOR_PASSWORD "ddbfvlkssfleypdr"
+#define SMTP_HOST SMTP_HOST_ADDR
+#define SMTP_PORT esp_mail_smtp_port_465
+#define AUTHOR_EMAIL SMTP_EMAIL
+#define AUTHOR_PASSWORD SMTP_PASSWORD
 
-// Default Recipient Email Address
-RTC_DATA_ATTR String inputMessageMailAd = "oliv.arn.lau@gmail.com";
+RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
 RTC_DATA_ATTR String enableEmailChecked = "checked";
 
 String emailMessage;
@@ -172,12 +131,9 @@ int sampleTotal = 0;
 const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3pp-data.php";
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
 
-//version du microgiciel
-String version = "4.2";
+String version = "4.3";
 
-// Keep this API Key value to be compatible with the PHP code provided in the project page.
-// If you change the apiKeyValue value, the PHP file /post-esp-data.php also needs to have the same key
-String apiKeyValue = "fdGTMoptd5CD2ert3";
+String apiKeyValue = API_KEY;
 String sensorName = "n3pp";
 String sensorLocation = "T06";
 
@@ -188,28 +144,12 @@ String sensorLocation = "T06";
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-//déclarations des variables pour le Wifi
-// identifiant Wifi
-const char* ssid = "AP-Techno-T06";  // Nom du réseau WiFi principal
-const char* password = "Techno2024!";       // Mot de passe du WiFi principal
-//const char* ssid = "raspN3";
-//const char* password = "n3LLrasp";
-//const char* ssid = "dlink";
-//const char* password = "n3LLdlink";
-//const char* ssid = "inwi Home 4G 8306D9";
-//const char* password = "5KBB52W62M";
-//const char* ssid = "AndroidAP";
-//const char* password = "123456789";
-// identifiant Wifi alternatif2
-//const char* ssid2 = "raspN3";
-//const char* password2 = "n3LLrasp";
-//const char* ssid2 = "dlink";
-//const char* password2 = "n3LLdlink";
-const char* ssid2 = "AP-Techno-T06";
-const char* password2 = "Techno2024!";
-// identifiant Wifi alternatif
-const char* ssid3 = "AndroidAP";
-const char* password3 = "123456789";
+const char* ssid = WIFI_SSID1;
+const char* password = WIFI_PASS1;
+const char* ssid2 = WIFI_SSID2;
+const char* password2 = WIFI_PASS2;
+const char* ssid3 = WIFI_SSID3;
+const char* password3 = WIFI_PASS3;
 
 String Wifiactif;
 
@@ -1185,8 +1125,14 @@ void setup() {
   //serveur OTA 
   ArduinoOTA.begin();*/
 
-  // Connection à un réseau wifi
   Wificonnect();
+
+  // OTA distant : verification MAJ a chaque boot/reveil
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp/metadata.json",
+      "4.3", -1
+  };
+  n3OtaCheck(otaConfig);
 
   /* //init and get the time
   if(WiFi.status()== WL_CONNECTED ){ 

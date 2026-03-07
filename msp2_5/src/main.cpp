@@ -1,67 +1,31 @@
-/* MeteoStationPrototype1 (msp1) control system : msp1CS
- *  
- *  Système de contrôle pour le module ESP32 qui contrôle capteur et actionneur du système via différents relais. 
- *  Fonctionnalités présentes :
- *  - température de l'air
- *  - humidité de l'air
- *  - 4 capteurs d'humidité
- *  - contrôle de la pompe de d'arrosage (relais pin 12 ; on/off)
- *  - contrôle de la consommation d'énergie (relais pin  ; on/off ; bibliothèque de faible consommation d'énergie)
- *  - luminosité
- *  - déclenchements de la pompe une fois par jour et si le sol est trop sec
- *  - nourrissage poisson 3 fois par jour à des heures définies
- *  - envoi d'un mail d'alerte si en cas d'arrosage ou de sécheresse excessive
- *  - synchro RTC avec serveur NTP
- *  - serveur Web http://iot.olution.info :
- *    * de statistiques (courbes, moyennes...)
- *    * contrôle à distance total
+/* MeteoStationPrototype (msp1) v2.6
+ * Station meteo + tracker solaire — salle aeree n3
+ * Credentials externalises dans credentials.h
+ * OTA HTTP distant via n3_common
  */
 
-/* MeteoStationPrototype1 (msp1) control system : msp1CS
-*
-
-Système de contrôle pour le module ESP32 qui contrôle capteur et actionneur du système via différents relais.
-Fonctionnalités présentes :
-2 capteurs de température et d'humidité de l'air
-2 capteurs d'humidité
-contrôle de la consommation d'énergie (relais pin  ; on/off)
-Un tracker solaire basé sur 4 capteurs de luminosité
-envoi d'un mail d'alerte dans certaines situations
-synchro RTC avec serveur NTP
-serveur Web http://iot.olution.info :
-de statistiques (courbes, moyennes...)
-contrôle à distance total
-*/
-
-// Importation des bibliothèques nécessaires pour les fonctionnalités de l'application
-
-#include <WiFi.h>               // Bibliothèque pour la gestion des connexions WiFi
-#include <AsyncTCP.h>           // Bibliothèque pour les opérations TCP asynchrones (auto-hébergement)
-#include <ESPAsyncWebServer.h>  // Bibliothèque pour le serveur Web asynchrone
-#include <ESPmDNS.h>            // Bibliothèque pour supporter le protocole mDNS
-#include <WiFiUdp.h>            // Bibliothèque UDP pour la synchronisation de l'horloge
-
-#include <Arduino.h>  // Bibliothèque Arduino générique
-
-#include <Adafruit_Sensor.h>  // Bibliothèque Adafruit pour les capteurs multi-usages
-#include <DHT.h>              // Bibliothèque DHT pour les capteurs de température et d'humidité
-
-#include <HTTPClient.h>       // Bibliothèque pour effectuer des requêtes HTTP
-#include <ESP_Mail_Client.h>  // Bibliothèque pour envoyer des emails depuis un ESP32
-#include <Arduino_JSON.h>     // Bibliothèque pour la gestion des objets JSON
-
-#include <Wire.h>              // Bibliothèque pour une communication I2C
-#include <Adafruit_GFX.h>      // Bibliothèque GFX d'Adafruit pour les graphiques de base
-#include <Adafruit_SSD1306.h>  // Bibliothèque pour gérer l'affichage OLED SSD1306
-
-#include <esp_sleep.h>  // Bibliothèque pour gérer les modes veille/deep sleep
-
-#include <OneWire.h>            // Bibliothèque pour le protocole de communication OneWire
-#include <DallasTemperature.h>  // Bibliothèque pour lire les températures des capteurs Dallas (sondes DS18B20)
-#include <ESP32Servo.h>         // Bibliothèque pour contrôler les servomoteurs
-
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <Arduino.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <HTTPClient.h>
+#include <ESP_Mail_Client.h>
+#include <Arduino_JSON.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <esp_sleep.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <ESP32Servo.h>
 #include <ESP32Time.h>
 #include <Preferences.h>
+#include "credentials.h"
+#include "n3_ota.h"
 
 
 #define RELAIS 13  // Définition du pin du relais pour contrôler l'alimentation
@@ -159,14 +123,12 @@ RTC_DATA_ATTR int bootCount = 0;  // Compteur du nombre de démarrages
 
 #define emailSubject "Information MSP1"
 
-#define SMTP_HOST "smtp.gmail.com"
-#define SMTP_PORT esp_mail_smtp_port_465  // port 465 is not available for Outlook.com
-/* The log in credentials */
-#define AUTHOR_EMAIL "arnould.svt@gmail.com"
-#define AUTHOR_PASSWORD "ddbfvlkssfleypdr"
+#define SMTP_HOST SMTP_HOST_ADDR
+#define SMTP_PORT esp_mail_smtp_port_465
+#define AUTHOR_EMAIL SMTP_EMAIL
+#define AUTHOR_PASSWORD SMTP_PASSWORD
 
-// Default Recipient Email Address
-RTC_DATA_ATTR String inputMessageMailAd = "oliv.arn.lau@gmail.com";
+RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
 RTC_DATA_ATTR String enableEmailChecked = "checked";
 
 String emailMessage;
@@ -180,9 +142,9 @@ const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-ou
 // Send HTTP POST request
 unsigned int httpResponseCode;
 
-String version = "2.5";  // Version du microgiciel
+String version = "2.6";
 
-String apiKeyValue = "fdGTMoptd5CD2ert3";  // Valeur de la clé API pour interagir avec l'endpoint PHP
+String apiKeyValue = API_KEY;
 String sensorName = "msp1";                // Nom du capteur
 String sensorLocation = "T06";             // Location du capteur
 
@@ -190,17 +152,12 @@ String sensorLocation = "T06";             // Location du capteur
 #define SCREEN_HEIGHT 64                                           // Hauteur de l'affichage OLED
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);  // Instance pour gérer l'affichage OLED
 
-const char* ssid = "AP-Techno-T06";    // Nom du réseau WiFi principal
-const char* password = "Techno2024!";  // Mot de passe du WiFi principal
-
-//const char* ssid = "inwi Home 4G 8306D9";  // Nom du réseau WiFi principal
-//const char* password = "5KBB52W62M";       // Mot de passe du WiFi principal
-
-const char* ssid2 = "AP-Techno-T06";    // Nom de réseau WiFi alternatif 2
-const char* password2 = "Techno2024!";  // Mot de passe WiFi alternatif 2
-
-const char* ssid3 = "AndroidAP";      // Nom de réseau WiFi alternatif 3
-const char* password3 = "123456789";  // Mot de passe WiFi alternatif 3
+const char* ssid = WIFI_SSID1;
+const char* password = WIFI_PASS1;
+const char* ssid2 = WIFI_SSID2;
+const char* password2 = WIFI_PASS2;
+const char* ssid3 = WIFI_SSID3;
+const char* password3 = WIFI_PASS3;
 
 String Wifiactif;  // Indicateur pour savoir quel réseau WiFi est actif
 
@@ -1044,9 +1001,15 @@ void setup() {
   }
   Serial.println("lum ok");
 
-  // Connexion au WiFi
   Wificonnect();
   Serial.println("wifi ok");
+
+  // OTA distant : verification MAJ a chaque boot/reveil
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp/metadata.json",
+      "2.6", -1
+  };
+  n3OtaCheck(otaConfig);
 
   print_wakeup_reason();
 
