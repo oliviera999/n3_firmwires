@@ -1,4 +1,4 @@
-/* MeteoStationPrototype (msp1) v2.6
+/* MeteoStationPrototype (msp1) v2.7
  * Station meteo + tracker solaire — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
@@ -147,7 +147,7 @@ const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-ou
 // Send HTTP POST request
 unsigned int httpResponseCode;
 
-String version = "2.6";
+String version = "2.7";
 
 String apiKeyValue = API_KEY;
 String sensorName = "msp1";                // Nom du capteur
@@ -1009,11 +1009,18 @@ void setup() {
   Wificonnect();
   Serial.println("wifi ok");
 
-  // OTA distant : verification MAJ a chaque boot/reveil
+  // OTA distant : verification MAJ a chaque boot/reveil (prod vs test selon build)
+#ifdef TEST_MODE
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp-test/metadata.json",
+      version.c_str(), -1
+  };
+#else
   static const N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/msp/metadata.json",
-      "2.6", -1
+      version.c_str(), -1
   };
+#endif
   n3OtaCheck(otaConfig);
 
   print_wakeup_reason();

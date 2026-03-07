@@ -1,4 +1,4 @@
-/* N3PhasmesProto (n3pp) v4.3
+/* N3PhasmesProto (n3pp) v4.5
  * Serre / aquaponie — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
@@ -18,6 +18,8 @@
 #include <Adafruit_SSD1306.h>
 
 #include <esp_sleep.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include <ESP32Time.h>          //gestion de l'heure et de la date
 #include <Preferences.h>
@@ -136,7 +138,7 @@ const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
 #endif
 
-String version = "4.3";
+String version = "4.5";
 
 String apiKeyValue = API_KEY;
 String sensorName = "n3pp";
@@ -393,7 +395,6 @@ void printLocalTime() {
   Serial.println(annee);
 }*/
 
-//connection à un des réseaux wifi présent
 void Wificonnect() {
   display.clearDisplay();
   display.setTextSize(2);
@@ -401,66 +402,43 @@ void Wificonnect() {
   display.println("Wifi");
   display.println("CONNECTING");
   display.display();
-  for (int i = 0; i < 10; i++) {
-    if (WiFi.status() != WL_CONNECTED) {
-      WiFi.begin(ssid, password);
-      delay(200);
-      Serial.println("Connecting to WiFi..");
-      //WebSerial.println("Connecting to WiFi..");
+
+  struct { const char* ssid; const char* pass; } networks[] = {
+    {ssid, password}, {ssid2, password2}, {ssid3, password3}
+  };
+
+  for (int n = 0; n < 3; n++) {
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.begin(networks[n].ssid, networks[n].pass);
+    Serial.printf("Connexion a %s...\n", networks[n].ssid);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+      delay(500);
+      Serial.print(".");
     }
+    Serial.println();
+
     if (WiFi.status() == WL_CONNECTED) {
-      Wifiactif = ssid;
+      Wifiactif = networks[n].ssid;
+      break;
     }
+    Serial.printf("Echec %s\n", networks[n].ssid);
   }
+
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Test de l'autre réseau");
-    //WebSerial.println("WiFi Failed! Test de l'autre réseau");
-    //  return;
-    for (int i = 0; i < 10; i++) {
-      if (WiFi.status() != WL_CONNECTED) {
-        WiFi.begin(ssid2, password2);
-        delay(200);
-        Serial.println("Connecting to WiFi2..");
-        //WebSerial.println("Connecting to WiFi2..");
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        Wifiactif = ssid2;
-      }
-    }
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Test du dernier");
-    //WebSerial.println("WiFi Failed! Test du dernier");
-    //  return;
-    for (int i = 0; i < 10; i++) {
-      if (WiFi.status() != WL_CONNECTED) {
-        WiFi.begin(ssid3, password3);
-        delay(200);
-        Serial.println("Connecting to WiFi3...");
-        //WebSerial.println("Connecting to WiFi3...");
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        Wifiactif = ssid3;
-      }
-    }
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Test également échoué");
-    //WebSerial.println("WiFi Failed! Test également échoué");
-    //  return;
+    Serial.println("WiFi Failed! Tous les reseaux echoues");
     HeureSansWifi();
     display.println("FAILED");
     display.display();
   }
+
   delay(100);
-  Serial.print("Réseau wifi: ");
-  //WebSerial.print("Réseau wifi: ");
+  Serial.print("Reseau wifi: ");
   Serial.println(Wifiactif);
-  //WebSerial.println(Wifiactif);
   Serial.print("IP address: ");
-  //WebSerial.print("IP address: ");
   Serial.println(WiFi.localIP());
-  // WebSerial.println(WiFi.localIP());
   display.println(Wifiactif);
   display.println("END");
   display.display();
@@ -1014,13 +992,15 @@ void print_wakeup_reason() {
 
 void setup() {
   // Démarrage du moniteur série
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   pinMode(POMPE, OUTPUT);   //lumière
   pinMode(RELAIS, OUTPUT);  //lumière
   digitalWrite(RELAIS, 1);
 
   Serial.begin(115200);
+  delay(500);
 
-  //wifi en mode station
   WiFi.mode(WIFI_MODE_STA);
 
   print_wakeup_reason();
@@ -1132,11 +1112,18 @@ void setup() {
 
   Wificonnect();
 
-  // OTA distant : verification MAJ a chaque boot/reveil
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/n3pp/metadata.json",
-      "4.3", -1
+  // OTA distant : verification MAJ a chaque boot/reveil (prod vs test selon build)
+#ifdef TEST_MODE
+  N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp-test/metadata.json",
+      version.c_str(), -1
   };
+#else
+  N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp/metadata.json",
+      version.c_str(), -1
+  };
+#endif
   n3OtaCheck(otaConfig);
 
   /* //init and get the time
