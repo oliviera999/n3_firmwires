@@ -13,6 +13,8 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 | **Upload Photos MSP1** | `uploadphotosserver_msp1/` | ESP32-CAM | Capture photo, envoi HTTP POST vers iot.olution.info/msp1gallery/. OTA, pas de deep sleep. |
 | **Upload Photos N3PP** | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Envoi vers n3ppgallery (à la racine serveur) ; deep sleep 600 s ; EEPROM, SD_MMC. |
 | **Upload Photos FFP3** | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Envoi vers ffp3 gallery ; deep sleep 600 s. |
+| **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3. |
+| **LVGL_Widgets** | `LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. |
 | **Ratata (ZYC0108-EN)** | `ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. |
 
 ## Prérequis
@@ -52,6 +54,34 @@ pio device monitor -e 1_auto_move
 
 Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`, `COM4`, `/dev/ttyUSB0`) selon ta machine.
 
+## Scripts de monitoring et erase-flash (racine firmwires)
+
+À la racine de `firmwires/` sont disponibles des scripts **génériques** pour tous les projets (sauf **ratata** et **LVGL_Widgets**) :
+
+| Script | Rôle |
+|--------|------|
+| `monitor_Nmin.ps1` | Capture du moniteur série pendant N secondes (défaut 5 min). Log créé dans le dossier du projet. |
+| `erase_flash_monitor.ps1` | Workflow complet : erase flash → flash firmware (et LittleFS pour ffp5cs si applicable) → monitoring N min → analyse optionnelle si le projet le fournit (ex. ffp5cs). |
+| `scripts/Release-ComPort.ps1` | Libération du port COM (processus moniteur). Sourcé par les scripts ci‑dessus. |
+
+**Exemples (depuis `firmwires/`) :**
+
+```powershell
+# Monitoring 5 min sur n3pp4_2
+.\monitor_Nmin.ps1 -Project n3pp4_2
+
+# Erase + flash + monitor 5 min sur ffp5cs (env wroom-test), port COM4
+.\erase_flash_monitor.ps1 -Project ffp5cs -Port COM4
+
+# Erase + flash + monitor 10 min sur msp2_5, sans rebuild
+.\erase_flash_monitor.ps1 -Project msp2_5 -DurationMinutes 10 -SkipBuild
+
+# ffp5cs en prod : pas de LittleFS
+.\erase_flash_monitor.ps1 -Project ffp5cs -Environment wroom-prod -SkipUploadFs
+```
+
+**Projets supportés** : `n3pp4_2`, `msp2_5`, `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, les scripts dédiés dans `ffp5cs/` (ex. `erase_flash_fs_monitor_5min_analyze.ps1`, `monitor_5min.ps1`) restent utilisables et offrent l’analyse complète (analyse_log, rapport diagnostic).
+
 ## Configuration des ports série
 
 Chaque `platformio.ini` définit `upload_port` et `monitor_port` (souvent `COM3` par défaut). Pour une machine donnée, modifier ces valeurs dans le fichier du projet concerné. Selon l’environnement, il est possible d’utiliser des variables d’environnement (ex. `UPLOAD_PORT`, `MONITOR_PORT`) si votre configuration PlatformIO ou vos scripts les prennent en charge ; à défaut, adapter directement les lignes dans le `platformio.ini` du projet.
@@ -64,6 +94,10 @@ firmwires/
 ├── README.md
 ├── RECOMMANDATIONS.md
 ├── RAPPORT_ANALYSE.md
+├── monitor_Nmin.ps1            # Monitoring N min (tous projets sauf ratata, LVGL)
+├── erase_flash_monitor.ps1     # Erase + flash + monitor (tous projets sauf ratata, LVGL)
+├── scripts/
+│   └── Release-ComPort.ps1      # Libération port COM (partagé)
 ├── n3pp4_2/                    # N3PhasmesProto (ESP32)
 │   ├── platformio.ini
 │   ├── src/main.cpp
@@ -84,7 +118,8 @@ firmwires/
 │   ├── platformio.ini
 │   ├── src/main.cpp
 │   └── README.md
-├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) — submodule Git
+├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires)
+├── LVGL_Widgets/              # ESP32-S3 + écran LVGL (pas de serveur dédié)
 └── ratata/                     # Kit ZYC0108-EN (UNO + ESP32-CAM)
     ├── platformio.ini          # 8 environnements
     ├── README.md
@@ -94,4 +129,4 @@ firmwires/
     └── ZYC0108-EN/             # Sources d’origine du kit
 ```
 
-Les firmwares sont indépendants ; un partage de code commun pourra être ajouté plus tard si besoin. **ffp5cs** est un submodule Git (voir [RECOMMANDATIONS_IOT.md](../RECOMMANDATIONS_IOT.md)).
+Les firmwares sont indépendants ; un partage de code commun pourra être ajouté plus tard si besoin. **ffp5cs** est un dossier ordinaire dans firmwires (voir [RECOMMANDATIONS_IOT.md](../RECOMMANDATIONS_IOT.md)).
