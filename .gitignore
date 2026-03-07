@@ -1,18 +1,14 @@
-# Build / cache
+# PlatformIO
 .pio/
 .pioenvs/
 .piolibdeps/
-*.pyc
-__pycache__/
+
+# Secrets — ne jamais versionner
+credentials.h
+secrets.h
 
 # IDE / OS
 .vscode/
 desktop.ini
-*.swp
-*.swo
 .DS_Store
 Thumbs.db
-
-# Fichiers sensibles (décommenter si vous externalisez les secrets)
-# credentials.h
-# config_private.h
