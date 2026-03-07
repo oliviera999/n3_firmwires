@@ -7,6 +7,9 @@
 credentials.h
 secrets.h
 
+# Backups / temporaire
+ffp5cs_backup/
+
 # IDE / OS
 .vscode/
 desktop.ini
