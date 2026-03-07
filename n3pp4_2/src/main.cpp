@@ -138,7 +138,7 @@ const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
 #endif
 
-String version = "4.5";
+String version = "4.6";
 
 String apiKeyValue = API_KEY;
 String sensorName = "n3pp";
@@ -150,6 +150,7 @@ String sensorLocation = "T06";
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+bool displayOk = false;  // false si OLED absente ou I2C en erreur
 
 const char* ssid = WIFI_SSID1;
 const char* password = WIFI_PASS1;
@@ -195,12 +196,14 @@ void HeureSansWifi() {
   annee = preferences.getInt("annee", 2023);
   preferences.end();                                       //fermeutre de la session de lecture-écriture dans la mémoire flash
   rtc.setTime(seconde, minute, heure, jour, mois, annee);  // définition RTC de l'heure sans synchro NTP
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  display.println("Load H flash");
-  display.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
-  display.display();
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("Load H flash");
+    display.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
+    display.display();
+  }
   delay(500);
 }
 
@@ -222,10 +225,8 @@ String httpGETRequest(const char* serverNameOutput) {
 }
 
 void datatobdd() {
-  //requête publication datas dans bdd état pin dans la base de données
   Serial.println("DATATOBDD!!!");
-  display.drawCircle(5, 5, 5, WHITE);
-  display.display();
+  if (displayOk) { display.drawCircle(5, 5, 5, WHITE); display.display(); }
   if (WiFi.status() == WL_CONNECTED) {  //Check WiFi connection status
     WiFiClient client;
     HTTPClient http;
@@ -250,11 +251,15 @@ void datatobdd() {
                              + "&tempsArrosage=" + tempsArrosageSec
                              + "&bootCount=" + bootCount
                              + "";
-    display.fillCircle(5, 5, 5, WHITE);
-    display.display();
+    if (displayOk) { display.fillCircle(5, 5, 5, WHITE); display.display(); }
     Serial.println(httpRequestData);
     int httpResponseCode = http.POST(httpRequestData);
     Serial.println(httpResponseCode);
+    if (httpResponseCode == 200) {
+      Serial.println("Envoi BDD: OK");
+    } else {
+      Serial.printf("Envoi BDD: erreur HTTP %d\n", httpResponseCode);
+    }
     delay(500);
 
     /*// reset Mode
@@ -267,8 +272,7 @@ void datatobdd() {
 
 //Etape de changement d'état de pin en fonction de la bdd
 void variablestoesp() {
-  display.drawCircle(115, 5, 5, WHITE);
-  display.display();
+  if (displayOk) { display.drawCircle(115, 5, 5, WHITE); display.display(); }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("recup info bdd");
 
@@ -359,8 +363,7 @@ void variablestoesp() {
     Serial.println(JFreqWakeUp);
     FreqWakeUp = atoi(JFreqWakeUp);
   }
-  display.fillCircle(115, 5, 5, WHITE);
-  display.display();
+  if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }
 
 /*
@@ -396,12 +399,14 @@ void printLocalTime() {
 }*/
 
 void Wificonnect() {
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  display.println("Wifi");
-  display.println("CONNECTING");
-  display.display();
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("Wifi");
+    display.println("CONNECTING");
+    display.display();
+  }
 
   struct { const char* ssid; const char* pass; } networks[] = {
     {ssid, password}, {ssid2, password2}, {ssid3, password3}
@@ -430,8 +435,7 @@ void Wificonnect() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi Failed! Tous les reseaux echoues");
     HeureSansWifi();
-    display.println("FAILED");
-    display.display();
+    if (displayOk) { display.println("FAILED"); display.display(); }
   }
 
   delay(100);
@@ -439,9 +443,7 @@ void Wificonnect() {
   Serial.println(Wifiactif);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
-  display.println(Wifiactif);
-  display.println("END");
-  display.display();
+  if (displayOk) { display.println(Wifiactif); display.println("END"); display.display(); }
 }
 
 
@@ -634,7 +636,8 @@ void lectureCapteurs() {
   Serial.println(h);
   if (isnan(h) || isnan(temperatureAir)) {
     Serial.println("Echec de lecture du DHT");
-    //WebSerial.println("Echec de lecture du DHT");
+    if (isnan(temperatureAir)) temperatureAir = 0.0f;
+    if (isnan(h)) h = 0.0f;
   }
 
   //variable locale capteur de luminosité
@@ -662,7 +665,7 @@ void lectureCapteurs() {
 }
 
 void affichageOLED() {
-  //display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  if (!displayOk) return;
   display.clearDisplay();
   //display.setTextColor(0xFFE0);
   display.setTextSize(1);
@@ -760,13 +763,15 @@ void sommeil() {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       sendEmailNotification();
       datatobdd();
-      display.clearDisplay();
-      delay(100);  // Pause entre chaque balayage
-      display.setTextSize(1);
-      display.setCursor(0, 0);
-      display.println(" ");
-      display.println("   DODO");
-      display.display();
+      if (displayOk) {
+        display.clearDisplay();
+        delay(100);
+        display.setTextSize(1);
+        display.setCursor(0, 0);
+        display.println(" ");
+        display.println("   DODO");
+        display.display();
+      }
       delay(1000);
       EnregistrementHeureFlash();
       Serial.flush();
@@ -774,16 +779,17 @@ void sommeil() {
       esp_deep_sleep_start();
     }
 
-    display.clearDisplay();
+    if (displayOk) display.clearDisplay();
     datatobdd();
-    //temps de sommeil
     Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
-    display.setTextSize(1);
-    display.setCursor(0, 35);
-    display.println(" ");
-    display.println("   Going to sleep now");
+    if (displayOk) {
+      display.setTextSize(1);
+      display.setCursor(0, 35);
+      display.println(" ");
+      display.println("   Going to sleep now");
+      display.display();
+    }
     Serial.println("Going to sleep now");
-    display.display();
     delay(1000);
     EnregistrementHeureFlash();
     Serial.flush();
@@ -826,31 +832,35 @@ void batterie() {
   int battPercent = 100-((2100 - avgPontDiv)*0.2);
   int batteryVoltage2 = avgPontDiv*4.2/2100;
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("Read = ");
-  display.println(avgPontDiv);
-  display.print("Brut = ");
-  display.println(measuredVoltage);
-  display.print("Batt = ");
-  display.println(batteryVoltage);
-  display.print("Percent = ");
-  display.println(battPercent);
-  display.display();
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Read = ");
+    display.println(avgPontDiv);
+    display.print("Brut = ");
+    display.println(measuredVoltage);
+    display.print("Batt = ");
+    display.println(batteryVoltage);
+    display.print("Percent = ");
+    display.println(battPercent);
+    display.display();
+  }
   delay(2000);
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("Read = ");
-  display.println(avgPontDiv);
-  display.println(" ");
-  display.print("Batt = ");
-  display.println(batteryVoltage2);
-  display.print("Percent = ");
-  display.println(battPercent);
-  display.display();
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Read = ");
+    display.println(avgPontDiv);
+    display.println(" ");
+    display.print("Batt = ");
+    display.println(batteryVoltage2);
+    display.print("Percent = ");
+    display.println(battPercent);
+    display.display();
+  }
   delay(2000);
   //batteryVoltage =	
 
@@ -1001,29 +1011,36 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
+  n3OtaSyncBootPartition();
+
   WiFi.mode(WIFI_MODE_STA);
 
   print_wakeup_reason();
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // Address 0x3D for 128x64
-    //Serial.println(F("SSD1306 allocation failed"));
-    for (;;)
-      ;
+  // Detection I2C avant init OLED : evite les erreurs i2cWrite si ecran absent
+  Wire.begin();
+  Wire.beginTransmission(0x3C);
+  uint8_t i2cErr = Wire.endTransmission();
+  if (i2cErr != 0) {
+    displayOk = false;
+    Serial.println("OLED non detecte (I2C 0x3C), affichage desactive");
+  } else {
+    displayOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    if (!displayOk) Serial.println("OLED init echoue, affichage desactive");
   }
   delay(600);
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  // affichage OLED
-  //display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  //affichage version
-  display.println(" Starting");
-  display.println(" ");
-  display.println("  n3pp");
-  display.print("  v:");
-  display.println(version);
-  display.display();
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextColor(WHITE);
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println(" Starting");
+    display.println(" ");
+    display.println("  n3pp");
+    display.print("  v:");
+    display.println(version);
+    display.display();
+  }
 
   // définition de l'état initial des pins
   pinMode(humidite1, INPUT);
@@ -1178,6 +1195,8 @@ void setup() {
 }
 
 void loop() {
+  static bool firstLoop = true;
+
   // Update NTP time
   //printLocalTime();
 
@@ -1221,6 +1240,12 @@ void loop() {
 
   batterie();
 
+  // Premier tour : envoi POST de diagnostic pour voir immédiatement le code HTTP (200/401/500)
+  if (firstLoop) {
+    firstLoop = false;
+    datatobdd();
+  }
+
   affichageOLED();
 
   automatismes();
@@ -1236,17 +1261,14 @@ void loop() {
     datatobdd();
     EnregistrementHeureFlash();
     if (WiFi.status() != WL_CONNECTED) {
-      //Serial.println("WiFi Failed! Test également échoué");
-      //Web//Serial.println("WiFi Failed! Test également échoué");
-      //  return;
-      //display.println("FAILED");
-      display.display();
       HeureSansWifi();
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
-      display.display();
+      if (displayOk) {
+        display.clearDisplay();
+        display.setTextSize(2);
+        display.setCursor(0, 0);
+        display.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
+        display.display();
+      }
       delay(1000);
     }
 

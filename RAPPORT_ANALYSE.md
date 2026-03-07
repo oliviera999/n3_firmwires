@@ -1,6 +1,6 @@
 # Rapport d’analyse – Dossier firmwires
 
-**Date :** 5 mars 2025 (mise à jour doc : mars 2025)  
+**Date :** 5 mars 2026 (mise à jour doc : mars 2026)  
 **Périmètre :** `c:\IOT_n3\firmwires`
 
 ---
@@ -99,7 +99,7 @@ firmwires/
 
 ### 4.5 Versionnement
 
-- Dépôt Git à la racine **IOT_n3** ; **firmwires/ffp5cs** et **serveur/ffp3** en submodules. Voir RECOMMANDATIONS_IOT.md.
+- Dépôt Git à la racine **IOT_n3** ; **firmwires** (submodule) contient **ffp5cs** en dossier ordinaire ; **serveur** (submodule) contient **ffp3**. Voir RECOMMANDATIONS_IOT.md.
 
 ---
 
@@ -148,7 +148,7 @@ firmwires/
 |--------|-----|----------|------|
 | Corriger `sampleTotal` dans `batterie()` | n3pp4_2/src/main.cpp | Haute | Fait |
 | Corriger affichage variables OLED | n3pp4_2/src/main.cpp | Haute | Fait |
-| Externaliser identifiants / clé API | n3pp4_2, msp2_5 | Haute | À faire |
+| Externaliser identifiants / clé API | n3pp4_2, msp2_5 | Haute | Fait (n3pp4_2, msp2_5) |
 | Gérer ou supprimer `min_spiffs.csv` | msp2_5/platformio.ini | Moyenne | Fait |
 | `git init` + submodules | Racine IOT_n3 | Moyenne | Fait |
 | Documenter ratata et uploadphotosserver_* | README ou doc dédiée | Moyenne | Fait |

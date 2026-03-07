@@ -14,44 +14,37 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "esp_camera.h"
+#include "credentials.h"
 //basic OTA
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "time.h"
+#include <cstring>
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;
 const int   daylightOffset_sec = 3600;
 
-String serverName = "iot.olution.info";   // REPLACE WITH YOUR Raspberry Pi IP ADDRESS
-//String serverName = "example.com";   // OR REPLACE WITH YOUR DOMAIN NAME
-
-String serverPath = "/msp1/msp1gallery/upload.php";
+String serverName = SERVER_NAME;
+String serverPath = SERVER_PATH;
 
 const int serverPort = 80;
 
 WiFiClient client;
 
-//déclarations des variables pour le Wifi
-// identifiant Wifi
-//const char* ssid = "raspN3";
-//const char* password = "n3LLrasp";
-const char* ssid = "inwi Home 4G 8306D9";
-const char* password = "5KBB52W62M";
-//const char* ssid = "dlink";
-//const char* password = "n3LLdlink";
-//const char* ssid = "AndroidAP";
-//const char* password = "123456789";
-// identifiant Wifi alternatif2
-const char* ssid2 = "raspN3";
-const char* password2 = "n3LLrasp";
-//const char* ssid2 = "dlink";
-//const char* password2 = "n3LLdlink";
-// identifiant Wifi alternatif
-const char* ssid3 = "AndroidAP";
-const char* password3 = "123456789";
 String Wifiactif;
+
+// Constantes WiFi (logique type ffp5cs simplifiée)
+#define WIFI_CONNECT_TIMEOUT_MS   5000
+#define WIFI_DELAY_BETWEEN_MS     250
+#define WIFI_PRE_SCAN_DELAY_MS     300
+#define WIFI_SCAN_MAX              10
+#define WIFI_RECONNECT_INTERVAL_MS 60000
+#define FIRMWARE_VERSION "2.2"
+
+void Wificonnect();
+String sendPhoto();
 
 // CAMERA_MODEL_AI_THINKER
 #define PWDN_GPIO_NUM     32
@@ -98,8 +91,8 @@ void setup() {
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
@@ -159,10 +152,13 @@ void setup() {
 }
 
 void loop() {
-
-  // Connection à un réseau wifi
-  if(WiFi.waitForConnectResult()!= WL_CONNECTED ){ 
-    Wificonnect();
+  static uint32_t lastWifiAttempt = 0;
+  if (WiFi.status() != WL_CONNECTED) {
+    uint32_t now = millis();
+    if (lastWifiAttempt == 0 || (now - lastWifiAttempt) >= WIFI_RECONNECT_INTERVAL_MS) {
+      lastWifiAttempt = now;
+      Wificonnect();
+    }
   }
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= timerInterval) {
@@ -283,66 +279,123 @@ String sendPhoto() {
   }
   return getBody;
 
-  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    WiFi.begin(ssid, password);
-    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-      Serial.println("Connection Failed! Rebooting...");
-      delay(5000);
-      ESP.restart();
-    }
-  }
-
-    ArduinoOTA.handle();
+  ArduinoOTA.handle();
 }
 
-//connection à un réseau wifi
+// Connexion WiFi : scan, tri par RSSI, tentatives avec BSSID/canal (logique ffp5cs simplifiée)
+static void wifiBeginSafe(const char* ssid, const char* pass, int32_t chan, const uint8_t* bssid) {
+  if (pass && strlen(pass) > 0) {
+    WiFi.begin(ssid, pass, chan, bssid);
+  } else {
+    if (chan > 0 || bssid) WiFi.begin(ssid, nullptr, chan, bssid);
+    else WiFi.begin(ssid);
+  }
+}
+
+static bool waitConnected(uint32_t timeoutMs) {
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
+    delay(100);
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+
 void Wificonnect() {
-  WiFi.begin(ssid, password);
-  for (int i = 0; i < 10; i++) {
-    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-      delay(500);
-      Serial.println("Connecting to WiFi..");
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+  if (WiFi.status() == WL_CONNECTED) {
+    Wifiactif = WiFi.SSID();
+    return;
+  }
+  WiFi.mode(WIFI_STA);
+
+  delay(WIFI_PRE_SCAN_DELAY_MS);
+  int n = WiFi.scanNetworks(false, true);
+  if (n > WIFI_SCAN_MAX) n = WIFI_SCAN_MAX;
+
+  struct Cand { int8_t rssi; uint8_t bssid[6]; uint8_t chan; bool present; };
+  Cand cand[WIFI_SCAN_MAX];
+  for (size_t i = 0; i < WIFI_COUNT && i < WIFI_SCAN_MAX; i++) {
+    cand[i].rssi = -128;
+    cand[i].chan = 0;
+    cand[i].present = false;
+    memset(cand[i].bssid, 0, 6);
+  }
+
+  for (int j = 0; j < n; j++) {
+    char scanSsid[33];
+    strncpy(scanSsid, WiFi.SSID(j).c_str(), 32);
+    scanSsid[32] = '\0';
+    int8_t r = (int8_t)WiFi.RSSI(j);
+    for (size_t i = 0; i < WIFI_COUNT && i < WIFI_SCAN_MAX; i++) {
+      if (strcmp(scanSsid, WIFI_LIST[i].ssid) == 0 && r > cand[i].rssi) {
+        cand[i].rssi = r;
+        const uint8_t* b = WiFi.BSSID(j);
+        if (b) memcpy(cand[i].bssid, b, 6);
+        cand[i].chan = (uint8_t)WiFi.channel(j);
+        cand[i].present = true;
+      }
     }
-    if (WiFi.waitForConnectResult() == WL_CONNECTED) {
+  }
+
+  size_t order[WIFI_SCAN_MAX];
+  size_t orderCount = 0;
+  for (size_t i = 0; i < WIFI_COUNT && i < WIFI_SCAN_MAX; i++) {
+    if (cand[i].present) order[orderCount++] = i;
+  }
+  for (size_t k = 0; k < orderCount; k++) {
+    for (size_t j = k + 1; j < orderCount; j++) {
+      if (cand[order[j]].rssi > cand[order[k]].rssi) {
+        size_t t = order[k]; order[k] = order[j]; order[j] = t;
+      }
+    }
+  }
+  for (size_t i = 0; i < WIFI_COUNT && i < WIFI_SCAN_MAX; i++) {
+    if (!cand[i].present) order[orderCount++] = i;
+  }
+
+  for (size_t idx = 0; idx < orderCount; idx++) {
+    size_t i = order[idx];
+    const char* ssid = WIFI_LIST[i].ssid;
+    const char* pass = WIFI_LIST[i].password;
+
+    if (cand[i].present) {
+      Serial.printf("[WiFi] Try %s RSSI=%d ch=%d\n", ssid, cand[i].rssi, cand[i].chan);
+      wifiBeginSafe(ssid, pass, cand[i].chan, cand[i].bssid);
+    } else {
+      Serial.printf("[WiFi] Try (invisible) %s\n", ssid);
+      WiFi.begin(ssid, pass);
+    }
+
+    if (waitConnected(WIFI_CONNECT_TIMEOUT_MS)) {
       Wifiactif = ssid;
+      Serial.printf("[WiFi] OK %s %s RSSI=%d\n", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      Serial.print("Réseau wifi: ");
+      Serial.println(Wifiactif);
+      Serial.print("IP address: ");
+      Serial.println(WiFi.localIP());
+      return;
     }
-  }
-  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Test de l'autre réseau");
-    //  return;
-    WiFi.begin(ssid2, password2);
-    for (int i = 0; i < 10; i++) {
-      if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-        delay(500);
-        Serial.println("Connecting to WiFi2..");
-      }
-      if (WiFi.waitForConnectResult() == WL_CONNECTED) {
-        Wifiactif = ssid2;
+
+    if (cand[i].present) {
+      WiFi.disconnect(false, true);
+      delay(250);
+      Serial.printf("[WiFi] Retry sans BSSID %s\n", ssid);
+      WiFi.begin(ssid, pass);
+      if (waitConnected(WIFI_CONNECT_TIMEOUT_MS)) {
+        Wifiactif = ssid;
+        Serial.printf("[WiFi] OK(2e) %s %s RSSI=%d\n", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        Serial.print("Réseau wifi: ");
+        Serial.println(Wifiactif);
+        Serial.print("IP address: ");
+        Serial.println(WiFi.localIP());
+        return;
       }
     }
+
+    Serial.printf("[WiFi] Echec %s\n", ssid);
+    delay(WIFI_DELAY_BETWEEN_MS);
   }
 
-  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Test du dernier");
-    //  return;
-    WiFi.begin(ssid3,password3);
-    for (int i = 0; i < 10; i++) {
-      if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-        delay(500);
-        Serial.println("Connecting to WiFi3...");
-      }
-      if (WiFi.waitForConnectResult() == WL_CONNECTED) {
-        Wifiactif = ssid3;
-      }
-    }
-  }
-  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Test également échoué");
-    //  return;
-  }
-
-  Serial.print("Réseau wifi: ");
-  Serial.println(Wifiactif);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("[WiFi] Echec connexion - aucun reseau disponible");
 }

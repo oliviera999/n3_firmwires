@@ -147,7 +147,7 @@ const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-ou
 // Send HTTP POST request
 unsigned int httpResponseCode;
 
-String version = "2.7";
+String version = "2.8";
 
 String apiKeyValue = API_KEY;
 String sensorName = "msp1";                // Nom du capteur
@@ -952,6 +952,8 @@ void setup() {
   digitalWrite(RELAIS, 1);  // Activer le relais par défaut
 
   Serial.begin(115200);  // Initialiser la communication série
+
+  n3OtaSyncBootPartition();
 
   // Configurer le module ESP en mode station WiFi
   WiFi.mode(WIFI_MODE_STA);

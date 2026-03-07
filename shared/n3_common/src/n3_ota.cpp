@@ -2,6 +2,19 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
+#include <esp_ota_ops.h>
+
+void n3OtaSyncBootPartition() {
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* boot = esp_ota_get_boot_partition();
+    if (!running || !boot) return;
+    if (running->address != boot->address) {
+        esp_err_t err = esp_ota_set_boot_partition(running);
+        if (err == ESP_OK) {
+            Serial.printf("[OTA] Boot aligne sur partition courante: %s\n", running->label);
+        }
+    }
+}
 
 static int compareVersions(const char* v1, const char* v2) {
     int maj1 = 0, min1 = 0, pat1 = 0;
@@ -46,7 +59,11 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     int code = http.GET();
 
     if (code != 200) {
-        Serial.printf("[OTA] Erreur HTTP %d\n", code);
+        if (code == 404) {
+            Serial.println("[OTA] Metadata introuvable (404) - normal si env test sans fichier deploye");
+        } else {
+            Serial.printf("[OTA] Erreur HTTP %d\n", code);
+        }
         http.end();
         return false;
     }
