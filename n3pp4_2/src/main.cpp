@@ -128,8 +128,13 @@ int sampleIndex = 0;
 int sampleTotal = 0;
 
 // détinition des variables pour écrire dans la base de données d'olution
+#ifdef TEST_MODE
+const char* serverNamePostData = "http://iot.olution.info/n3pp-test/n3ppdatas/post-n3pp-data.php";
+const char* serverNameOutput = "http://iot.olution.info/n3pp-test/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
+#else
 const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3pp-data.php";
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
+#endif
 
 String version = "4.3";
 

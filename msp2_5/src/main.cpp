@@ -136,8 +136,13 @@ String emailMessage;
 /* Declare the global used SMTPSession object for SMTP transport */
 SMTPSession smtp;
 
-const char* serverNamePostData = "http://iot.olution.info/msp1/msp1datas/post-msp1-data.php";                                    // Endpoint pour envoyer des données
-const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";  // Endpoint pour récupérer l'état des sorties
+#ifdef TEST_MODE
+const char* serverNamePostData = "http://iot.olution.info/msp1-test/msp1datas/post-msp1-data.php";
+const char* serverNameOutput = "http://iot.olution.info/msp1-test/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+#else
+const char* serverNamePostData = "http://iot.olution.info/msp1/msp1datas/post-msp1-data.php";
+const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+#endif
 
 // Send HTTP POST request
 unsigned int httpResponseCode;
