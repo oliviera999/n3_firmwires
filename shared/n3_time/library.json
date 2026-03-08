@@ -1,0 +1,9 @@
+{
+  "name": "n3_time",
+  "version": "1.0.0",
+  "description": "RTC flash et raison de reveil pour projet n3 IoT (ESP32)",
+  "keywords": ["rtc", "time", "preferences", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": { "fbiego/ESP32Time": "*" }
+}

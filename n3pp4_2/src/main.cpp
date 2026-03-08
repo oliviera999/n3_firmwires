@@ -1,4 +1,4 @@
-/* N3PhasmesProto (n3pp) v4.5
+/* N3PhasmesProto (n3pp) v4.9
  * Serre / aquaponie — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
@@ -25,6 +25,7 @@
 #include <Preferences.h>
 #include "credentials.h"
 #include "n3_ota.h"
+#include "n3_wifi.h"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13
@@ -42,12 +43,12 @@
 #define LUMINOSITE 39
 
 //configuration DHT
-#define DHTPIN 18      // Digital pin connected to the DHT sensor (température et humidité)
-#define DHTTYPE DHT11  // DHT 22 (AM2302)
+#define DHTPIN 18      // Pin numérique connectée au DHT (température et humidité air)
+#define DHTTYPE DHT11  // Type de capteur DHT (DHT11)
 DHT dht(DHTPIN, DHTTYPE);
 
-#define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP FreqWakeUp  /* Time ESP32 will go to sleep (in seconds) */
+#define uS_TO_S_FACTOR 1000000ULL /* Facteur de conversion microsecondes → secondes */
+#define TIME_TO_SLEEP FreqWakeUp  /* Durée du sommeil en secondes avant réveil */
 
 //variable et témoin issues et pour la bdd
 int HeureArrosage = 6;
@@ -81,11 +82,11 @@ int Humid4;
 
  // int PontDiv; 
 
-// Interval between sensor readings. Learn more about timers: https://RandomNerdTutorials.com/esp32-pir-motion-sensor-interrupts-timers/
+// Intervalle entre deux lectures capteurs (en ms)
 unsigned long previousMillisDatas = 0;
 const long intervalDatas = 120000;
 
-// Flag variable to keep track if email notification was sent or not
+// Indicateur : email d'alerte déjà envoyé ou non (évite spam)
 bool emailHumidSent = 0;
 bool emailPontDivSent = 0;
 RTC_DATA_ATTR bool arrosageFait = 1;
@@ -107,7 +108,7 @@ RTC_DATA_ATTR String enableEmailChecked = "checked";
 
 String emailMessage;
 
-/* Declare the global used SMTPSession object for SMTP transport */
+/* Session SMTP globale pour l'envoi des emails (ESP Mail Client) */
 SMTPSession smtp;
 
 //#define pontdiv 36  // Pin pour la lecture du diviseur de tension
@@ -129,7 +130,7 @@ int samples[NUM_SAMPLES];
 int sampleIndex = 0;
 int sampleTotal = 0;
 
-// détinition des variables pour écrire dans la base de données d'olution
+// Définition des URLs serveur (base de données olution / iot.olution.info)
 #ifdef TEST_MODE
 const char* serverNamePostData = "http://iot.olution.info/n3pp-test/n3ppdatas/post-n3pp-data.php";
 const char* serverNameOutput = "http://iot.olution.info/n3pp-test/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
@@ -138,17 +139,17 @@ const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
 #endif
 
-String version = "4.6";
+String version = "4.9";
 
 String apiKeyValue = API_KEY;
 String sensorName = "n3pp";
 String sensorLocation = "T06";
 
-//définition de la résolution de l'écran
-#define SCREEN_WIDTH 128  // OLED display width, in pixels
-#define SCREEN_HEIGHT 64  // OLED display height, in pixels
+// Résolution de l'écran OLED
+#define SCREEN_WIDTH 128   // Largeur de l'écran OLED en pixels
+#define SCREEN_HEIGHT 64   // Hauteur de l'écran OLED en pixels
 
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+// Affichage SSD1306 connecté en I2C (broches SDA, SCL)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 bool displayOk = false;  // false si OLED absente ou I2C en erreur
 
@@ -161,12 +162,12 @@ const char* password3 = WIFI_PASS3;
 
 String Wifiactif;
 
-// Create AsyncWebServer object on port 80
+// Serveur web asynchrone sur le port 80 (interface locale)
 AsyncWebServer server(80);
 
 //temps NTP
 WiFiUDP wifiUdp;
-//NTPClient timeClient(wifiUdp, "pool.ntp.org", 3600, 60000);  // Ajust for your location
+// NTP : ajuster offset/fuseau dans gmtOffset_sec et daylightOffset_sec selon la localisation
 
 String outputsState;  // Variable pour gérer l'état des sorties à distance
 
@@ -183,24 +184,24 @@ int jour;
 int mois;
 int annee;
 
-// Send HTTP POST request
+// Code de réponse HTTP (requêtes GET/POST)
 unsigned int httpResponseCode;
 
 void HeureSansWifi() {
-  preferences.begin("rtc", true);           //ouverture de la session de lecture-écriture dans la mémoire flash
-  heure = preferences.getInt("heure", 12);  //lecture et attribution des variables enregistrées associées à l'heure
+  preferences.begin("rtc", true);           // Ouverture session NVS (lecture seule)
+  heure = preferences.getInt("heure", 12);  // Récupération heure sauvegardée (défaut 12h)
   minute = preferences.getInt("minute", 0);
   seconde = preferences.getInt("seconde", 0);
   jour = preferences.getInt("jour", 1);
   mois = preferences.getInt("mois", 1);
   annee = preferences.getInt("annee", 2023);
-  preferences.end();                                       //fermeutre de la session de lecture-écriture dans la mémoire flash
-  rtc.setTime(seconde, minute, heure, jour, mois, annee);  // définition RTC de l'heure sans synchro NTP
+  preferences.end();                                       // Fermeture de la session NVS
+  rtc.setTime(seconde, minute, heure, jour, mois, annee);   // Définition RTC sans synchro NTP
   if (displayOk) {
     display.clearDisplay();
     display.setTextSize(2);
     display.setCursor(0, 0);
-    display.println("Load H flash");
+    display.println("Heure depuis flash");
     display.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
     display.display();
   }
@@ -227,12 +228,12 @@ String httpGETRequest(const char* serverNameOutput) {
 void datatobdd() {
   Serial.println("DATATOBDD!!!");
   if (displayOk) { display.drawCircle(5, 5, 5, WHITE); display.display(); }
-  if (WiFi.status() == WL_CONNECTED) {  //Check WiFi connection status
+  if (WiFi.status() == WL_CONNECTED) {  // Vérifier la connexion WiFi
     WiFiClient client;
     HTTPClient http;
-    http.begin(client, serverNamePostData);                               // Your Domain name with URL path or IP address with path
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");  // Specify content-type header
-    // Prepare your HTTP POST request data
+    http.begin(client, serverNamePostData);                               // URL du serveur (domaine ou IP + chemin)
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");  // Type de contenu POST
+    // Construction des données du corps de la requête POST
     String httpRequestData = "api_key=" + apiKeyValue + "&sensor=" + sensorName
                              + "&version=" + version + "&TempAir=" + String(temperatureAir)
                              + "&Humidite=" + String(h) + "&Luminosite=" + photocellReading
@@ -278,7 +279,7 @@ void variablestoesp() {
 
     WiFiClient client;
     HTTPClient http;
-    http.begin(client, serverNameOutput);  // Your Domain name with URL path or IP address with path
+    http.begin(client, serverNameOutput);  // URL du serveur (état des sorties)
     outputsState = httpGETRequest(serverNameOutput);
     delay(2000);
 
@@ -287,7 +288,7 @@ void variablestoesp() {
     JSONVar myObject = JSON.parse(outputsState);
     // JSON.typeof(jsonVar) can be used to get the type of the var
     if (JSON.typeof(myObject) == "undefined") {
-      Serial.println("Parsing input failed!");
+      Serial.println("Erreur : parsing JSON echoue.");
       //WebSerial.println("Parsing input failed!");
       return;
     }
@@ -371,7 +372,7 @@ void variablestoesp() {
 void printLocalTime() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    Serial.println("Failed to obtain time");
+    Serial.println("Impossible d'obtenir l'heure NTP");
     return;
   }
   Serial.print("temps NTP ");
@@ -384,7 +385,7 @@ void printLocalTime() {
   mois = timeinfo.tm_mon + 1;
   annee = timeinfo.tm_year + 1900;
 
-  Serial.print("Print local time");
+  Serial.print("Heure locale ");
   Serial.print(heure);
   Serial.print(":");
   Serial.print(minute);
@@ -399,51 +400,43 @@ void printLocalTime() {
 }*/
 
 void Wificonnect() {
-  if (displayOk) {
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.println("Wifi");
-    display.println("CONNECTING");
-    display.display();
-  }
-
-  struct { const char* ssid; const char* pass; } networks[] = {
+  static const N3WifiNetwork networks[] = {
     {ssid, password}, {ssid2, password2}, {ssid3, password3}
   };
-
-  for (int n = 0; n < 3; n++) {
-    WiFi.disconnect(true);
-    delay(100);
-    WiFi.begin(networks[n].ssid, networks[n].pass);
-    Serial.printf("Connexion a %s...\n", networks[n].ssid);
-
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
-      delay(500);
-      Serial.print(".");
+  N3WifiConfig cfg = {};
+  cfg.networks = networks;
+  cfg.networkCount = 3;
+  cfg.timeoutMs = 5000;
+  cfg.delayBetweenMs = 250;
+  cfg.preScanDelayMs = 300;
+  cfg.scanMax = 10;
+  cfg.onConnecting = []() {
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.println("Wifi");
+      display.println("CONNEXION...");
+      display.display();
     }
-    Serial.println();
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Wifiactif = networks[n].ssid;
-      break;
-    }
-    Serial.printf("Echec %s\n", networks[n].ssid);
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi Failed! Tous les reseaux echoues");
+  };
+  cfg.onFailure = []() {
+    Serial.println("WiFi : echec. Tous les reseaux ont echoue.");
     HeureSansWifi();
-    if (displayOk) { display.println("FAILED"); display.display(); }
-  }
+    if (displayOk) { display.println("ECHEC"); display.display(); }
+  };
+  cfg.onSuccess = [](const char* s) {
+    (void)s;
+    if (displayOk) { display.println(Wifiactif); display.println("OK"); display.display(); }
+  };
+
+  n3WifiConnect(cfg, &Wifiactif);
 
   delay(100);
   Serial.print("Reseau wifi: ");
   Serial.println(Wifiactif);
-  Serial.print("IP address: ");
+  Serial.print("Adresse IP : ");
   Serial.println(WiFi.localIP());
-  if (displayOk) { display.println(Wifiactif); display.println("END"); display.display(); }
 }
 
 
@@ -467,45 +460,40 @@ void EnregistrementHeureFlash() {
 }
 
 /*
-Method to print the touchpad by which ESP32
-has been awaken from sleep
-*/
-/*
+ * Fonction (commentée) : afficher le touchpad qui a réveillé l'ESP32 du deep sleep.
  void print_wakeup_touchpad(){
   touchPin = esp_sleep_get_touchpad_wakeup_status();
 
   switch(touchPin)
   {
-    case 0  : Serial.println("Touch detected on GPIO 4"); break;
-    case 1  : Serial.println("Touch detected on GPIO 0"); break;
-    case 2  : Serial.println("Touch detected on GPIO 2"); break;
-    case 3  : Serial.println("Touch detected on GPIO 15"); break;
-    case 4  : Serial.println("Touch detected on GPIO 13"); break;
-    case 5  : Serial.println("Touch detected on GPIO 12"); break;
-    case 6  : Serial.println("Touch detected on GPIO 14"); break;
-    case 7  : Serial.println("Touch detected on GPIO 27"); break;
-    case 8  : Serial.println("Touch detected on GPIO 33"); break;
-    case 9  : Serial.println("Touch detected on GPIO 32"); break;
-    default : Serial.println("Wakeup not by touchpad"); break;
+    case 0  : Serial.println("Touch detecte sur GPIO 4"); break;
+    case 1  : Serial.println("Touch detecte sur GPIO 0"); break;
+    case 2  : Serial.println("Touch detecte sur GPIO 2"); break;
+    case 3  : Serial.println("Touch detecte sur GPIO 15"); break;
+    case 4  : Serial.println("Touch detecte sur GPIO 13"); break;
+    case 5  : Serial.println("Touch detecte sur GPIO 12"); break;
+    case 6  : Serial.println("Touch detecte sur GPIO 14"); break;
+    case 7  : Serial.println("Touch detecte sur GPIO 27"); break;
+    case 8  : Serial.println("Touch detecte sur GPIO 33"); break;
+    case 9  : Serial.println("Touch detecte sur GPIO 32"); break;
+    default : Serial.println("Reveil non cause par touchpad"); break;
   }
 }*/
 
-//configuration des paramètres pour l'envoi d'un mail
+// Configuration et envoi d'un email d'alerte (SMTP)
 void sendEmailNotification() {
-  /* Declare the Session_Config for user defined session credentials */
+  /* Paramètres de session SMTP (serveur, port, identifiants) */
   Session_Config config;
 
-  /* Set the session config */
   config.server.host_name = SMTP_HOST;
   config.server.port = SMTP_PORT;
   config.login.email = AUTHOR_EMAIL;
   config.login.password = AUTHOR_PASSWORD;
-											
 
-  /* Declare the message class */
+  /* Message à envoyer */
   SMTP_Message message;
 
-  /* Set the message headers */
+  /* En-têtes du message (expéditeur, destinataire, sujet) */
   message.sender.name = F("OAL");
   message.sender.email = AUTHOR_EMAIL;
 
@@ -517,35 +505,31 @@ void sendEmailNotification() {
 
   message.priority = esp_mail_smtp_priority::esp_mail_smtp_priority_low;
 
-  /* Connect to the server */
+  /* Connexion au serveur SMTP */
   if (!smtp.connect(&config)) {
-    MailClient.printf("Connection error, Status Code: %d, Error Code: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("SMTP erreur connexion, Status: %d, Error: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
     return;
   }
 
-  /** Or connect without log in and log in later
-
-     if (!smtp.connect(&config, false))
-       return;
-
-     if (!smtp.loginWithPassword(AUTHOR_EMAIL, AUTHOR_PASSWORD))
-       return;
+  /* Variante : connexion sans login, puis authentification séparée
+     if (!smtp.connect(&config, false)) return;
+     if (!smtp.loginWithPassword(AUTHOR_EMAIL, AUTHOR_PASSWORD)) return;
   */
 
   if (!smtp.isLoggedIn()) {
-    Serial.println("Not yet logged in.");
+    Serial.println("SMTP : pas encore connecte.");
   } else {
     if (smtp.isAuthenticated())
-      Serial.println("Successfully logged in.");
+      Serial.println("SMTP : authentification reussie.");
     else
-      Serial.println("Connected with no Auth.");
+      Serial.println("SMTP : connecte sans auth.");
   }
 
-  /* Start sending Email and close the session */
+  /* Envoi de l'email puis fermeture de la session */
   if (!MailClient.sendMail(&smtp, &message))
-    MailClient.printf("Error, Status Code: %d, Error Code: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("SMTP erreur envoi, Status: %d, Error: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
 
-  // to clear sending result log
+  // Vider le journal des résultats d'envoi (évite accumulation en mémoire)
   smtp.sendingResult.clear();
 }
 
@@ -560,7 +544,7 @@ void arrosage() {
 
 void lectureCapteurs() {
   //variable locale niveau eau potager
-  Humid1 = analogRead(humidite1);  // read the analog value from sensor
+  Humid1 = analogRead(humidite1);  // Lecture valeur analogique capteur humidité 1
   Humid1 = Humid1;
   if (Humid1 == 0) {
     Humid1 = 1;
@@ -573,7 +557,7 @@ void lectureCapteurs() {
   delay(100);
 
   //variable locale niveau eau potager
-  Humid2 = analogRead(humidite2);  // read the analog value from sensor
+  Humid2 = analogRead(humidite2);  // Lecture valeur analogique capteur humidité 2
   Humid2 = Humid2;
 
   if (Humid2 == 0) {
@@ -586,7 +570,7 @@ void lectureCapteurs() {
   delay(100);
 
   //variable locale niveau eau potager
-  Humid3 = analogRead(humidite3);  // read the analog value from sensor
+  Humid3 = analogRead(humidite3);  // Lecture valeur analogique capteur humidité 3
   if (Humid3 == 0) {
     Humid3 = 1;
   }
@@ -600,7 +584,7 @@ void lectureCapteurs() {
   delay(100);
 
   //variable locale niveau eau potager
-  Humid4 = analogRead(humidite4);  // read the analog value from sensor
+  Humid4 = analogRead(humidite4);  // Lecture valeur analogique capteur humidité 4
   if (Humid4 == 0) {
     Humid4 = 1;
   }
@@ -610,12 +594,12 @@ void lectureCapteurs() {
   //WebSerial.print(Humid4);
   delay(100);
 
-  HumidMoy = (Humid1 + Humid2 + Humid3 + Humid4) / 4;  // read the analog value from sensor
+  HumidMoy = (Humid1 + Humid2 + Humid3 + Humid4) / 4;  // Moyenne des quatre capteurs humidité sol
   Serial.print("Capteur humidité moyenne : ");
   Serial.println(HumidMoy);
 
   //variable locale niveau eau potager
-  PontDiv = analogRead(pontdiv);  // read the analog value from sensor
+  PontDiv = analogRead(pontdiv);  // Lecture diviseur de tension (batterie)
   Serial.print("pontdiv : ");
   //WebSerial.print("temperature eau : ");
   Serial.print(PontDiv);
@@ -786,7 +770,7 @@ void sommeil() {
       display.setTextSize(1);
       display.setCursor(0, 35);
       display.println(" ");
-      display.println("   Going to sleep now");
+      display.println("   Entree en sommeil");
       display.display();
     }
     Serial.println("Going to sleep now");
@@ -836,13 +820,13 @@ void batterie() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.print("Read = ");
+    display.print("Lecture = ");
     display.println(avgPontDiv);
     display.print("Brut = ");
     display.println(measuredVoltage);
     display.print("Batt = ");
     display.println(batteryVoltage);
-    display.print("Percent = ");
+    display.print("Pct = ");
     display.println(battPercent);
     display.display();
   }
@@ -852,12 +836,12 @@ void batterie() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.print("Read = ");
+    display.print("Lecture = ");
     display.println(avgPontDiv);
     display.println(" ");
     display.print("Batt = ");
     display.println(batteryVoltage2);
-    display.print("Percent = ");
+    display.print("Pct = ");
     display.println(battPercent);
     display.display();
   }
@@ -987,15 +971,15 @@ void print_wakeup_reason() {
     case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
     default:
       Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
-      preferences.begin("rtc", true);           //ouverture de la session de lecture-écriture dans la mémoire flash
-      heure = preferences.getInt("heure", 12);  //lecture et attribution des variables enregistrées associées à l'heure
+      preferences.begin("rtc", true);           // Ouverture session NVS (lecture seule)
+      heure = preferences.getInt("heure", 12);  // Récupération heure sauvegardée (défaut 12h)
       minute = preferences.getInt("minute", 0);
       seconde = preferences.getInt("seconde", 0);
       jour = preferences.getInt("jour", 1);
       mois = preferences.getInt("mois", 1);
       annee = preferences.getInt("annee", 2023);
-      preferences.end();                                       //fermeutre de la session de lecture-écriture dans la mémoire flash
-      rtc.setTime(seconde, minute, heure, jour, mois, annee);  // définition RTC de l'heure sans synchro NTP
+      preferences.end();                                       // Fermeture de la session NVS
+      rtc.setTime(seconde, minute, heure, jour, mois, annee);  // Définition RTC sans synchro NTP
       break;
   }
 }
@@ -1034,7 +1018,7 @@ void setup() {
     display.setTextColor(WHITE);
     display.setTextSize(2);
     display.setCursor(0, 0);
-    display.println(" Starting");
+    display.println(" Demarrage");
     display.println(" ");
     display.println("  n3pp");
     display.print("  v:");
@@ -1133,12 +1117,12 @@ void setup() {
 #ifdef TEST_MODE
   N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/n3pp-test/metadata.json",
-      version.c_str(), -1
+      version.c_str(), -1, nullptr
   };
 #else
   N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/n3pp/metadata.json",
-      version.c_str(), -1
+      version.c_str(), -1, nullptr
   };
 #endif
   n3OtaCheck(otaConfig);
@@ -1206,20 +1190,19 @@ void loop() {
   //démarrage du serveur autohébergé
   server.begin();
 
-  // Connection à un réseau wifi
+  // Connexion à un des réseaux WiFi configurés (n3_wifi)
   if (WiFi.status() != WL_CONNECTED) {
     Wificonnect();
   }
 
-  // Connection à un réseau wifi
+  // Si WiFi connecté : initialisation et récupération de l'heure NTP
   if (WiFi.status() == WL_CONNECTED) {
-    //init and get the time
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   }
   Serial.println("temps 2 : ");
   //printLocalTime();
 
-  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // (String) returns time with specified format
+  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
 
   etatRelais = 1;
   //récupération des infos de la bdd
@@ -1272,7 +1255,7 @@ void loop() {
       delay(1000);
     }
 
-    Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // (String) returns time with specified format
+    Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
 
   }
 }

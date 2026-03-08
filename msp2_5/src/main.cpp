@@ -1,4 +1,4 @@
-/* MeteoStationPrototype (msp1) v2.7
+/* MeteoStationPrototype (msp1) v2.11
  * Station meteo + tracker solaire — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
@@ -26,6 +26,7 @@
 #include <Preferences.h>
 #include "credentials.h"
 #include "n3_ota.h"
+#include "n3_wifi.h"
 
 
 #define RELAIS 13  // Définition du pin du relais pour contrôler l'alimentation
@@ -33,7 +34,7 @@
 const unsigned int oneWireBus = 2;    // GPIO sur lequel la sonde DS18B20 est connectée
 OneWire oneWire(oneWireBus);          // Instance pour la communication avec la sonde DS18B20
 DallasTemperature sensors(&oneWire);  // Instance Dallas pour lire le capteur de température
-float temperatureSol;                 //
+float temperatureSol;                 // Température du sol (sonde DS18B20)
 
 #define LUMINOSITEc 35  // Pins pour les capteurs de luminosité
 #define LUMINOSITEd 39
@@ -77,7 +78,7 @@ float tempAirExt;
 float humidAirExt;
 
 #define uS_TO_S_FACTOR 1000000ULL  // Facteur de conversion de microsecondes en secondes
-#define TIME_TO_SLEEP FreqWakeUp   /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP FreqWakeUp   /* Durée du sommeil en secondes avant réveil */
 bool WakeUp = 0;                   //variable de mise en endormissement ou pas
 int FreqWakeUp = 3000;             //temps d'endormissement en s
 //bool ArrosageManu = 0;
@@ -133,7 +134,7 @@ RTC_DATA_ATTR String enableEmailChecked = "checked";
 
 String emailMessage;
 
-/* Declare the global used SMTPSession object for SMTP transport */
+/* Session SMTP globale pour l'envoi des emails (ESP Mail Client) */
 SMTPSession smtp;
 
 #ifdef TEST_MODE
@@ -144,10 +145,10 @@ const char* serverNamePostData = "http://iot.olution.info/msp1/msp1datas/post-ms
 const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
 #endif
 
-// Send HTTP POST request
+// Code de réponse HTTP (requêtes GET/POST)
 unsigned int httpResponseCode;
 
-String version = "2.8";
+String version = "2.11";
 
 String apiKeyValue = API_KEY;
 String sensorName = "msp1";                // Nom du capteur
@@ -180,7 +181,7 @@ const char* ntpServer = "pool.ntp.org";  // Adresse du serveur NTP
 const long gmtOffset_sec = 3600;         // Décalage GMT en secondes
 const int daylightOffset_sec = 3600;     // Décalage pour l'heure d'été en secondes
 ESP32Time rtc;                           //initialisation du contrôle RTC via la bibliothèque ESP32time
-Preferences preferences;                 //initialisation du stockage dse l'heure dans la mémoire flash
+Preferences preferences;                 // Stockage de l'heure dans la mémoire flash (NVS)
 int seconde;
 int minute;
 int heure;
@@ -327,70 +328,38 @@ void printLocalTime() {
   annee = timeinfo.tm_year + 1900;
 }*/
 
-// Connection à un des réseaux WiFi disponibles
+// Connection à un des réseaux WiFi disponibles (scan + RSSI + BSSID via n3_wifi)
 void Wificonnect() {
-  Serial.print("Connecting1 ");
-
-  // Affichage OLED lors de la connexion
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  display.println("Wifi");
-  display.println("CONNECTING");
-  display.display();
-
-  // Connexion au réseau WiFi principal
-  for (int i = 0; i < 4; i++) {
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.print("Connecting2 ");
-
-      WiFi.begin(ssid, password);
-      delay(200);
-
-      Serial.print("Connecting to ");
-      Serial.println(ssid);
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-      Wifiactif = ssid;
-    }
-  }
-
-  // Tentative de connexion au réseau WiFi alternatif
-  if (WiFi.status() != WL_CONNECTED) {
-    for (int i = 0; i < 4; i++) {
-      if (WiFi.status() != WL_CONNECTED) {
-        WiFi.begin(ssid2, password2);
-        delay(200);
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        Wifiactif = ssid2;
-      }
-    }
-  }
-
-  // Tentative de connexion au dernier réseau WiFi alternatif
-  if (WiFi.status() != WL_CONNECTED) {
-
-    for (int i = 0; i < 4; i++) {
-      if (WiFi.status() != WL_CONNECTED) {
-        WiFi.begin(ssid3, password3);
-        delay(200);
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        Wifiactif = ssid3;
-      }
-    }
-  }
-
-  // Affichage de l'état de connexion
-  if (WiFi.status() != WL_CONNECTED) {
-    display.println("FAILED");
+  static const N3WifiNetwork networks[] = {
+    {ssid, password}, {ssid2, password2}, {ssid3, password3}
+  };
+  N3WifiConfig cfg = {};
+  cfg.networks = networks;
+  cfg.networkCount = 3;
+  cfg.timeoutMs = 5000;
+  cfg.delayBetweenMs = 250;
+  cfg.preScanDelayMs = 300;
+  cfg.scanMax = 10;
+  cfg.onConnecting = []() {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("Wifi");
+    display.println("CONNEXION...");
     display.display();
-  }
+  };
+  cfg.onFailure = []() {
+    display.println("ECHEC");
+    display.display();
+  };
+  cfg.onSuccess = [](const char*) {
+    display.println(Wifiactif);
+    display.println("OK");
+    display.display();
+  };
+
+  n3WifiConnect(cfg, &Wifiactif);
   delay(100);
-  display.println(Wifiactif);
-  display.println("END");
-  display.display();
 }
 /*
 // Callback pour l'envoi des emails
@@ -423,43 +392,42 @@ void print_wakeup_reason() {
   wakeup_reason = esp_sleep_get_wakeup_cause();
 
   switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Wakeup caused by external signal using RTC_IO"); break;
-    case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER: Serial.println("Wakeup caused by timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
+    case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Reveil : signal externe (RTC_IO)"); break;
+    case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Reveil : signal externe (RTC_CNTL)"); break;
+    case ESP_SLEEP_WAKEUP_TIMER: Serial.println("Reveil : timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Reveil : touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP: Serial.println("Reveil : programme ULP"); break;
     default:
-      Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
-      preferences.begin("rtc", true);           //ouverture de la session de lecture-écriture dans la mémoire flash
-      heure = preferences.getInt("heure", 12);  //lecture et attribution des variables enregistrées associées à l'heure
+      Serial.printf("Reveil non cause par deep sleep : %d\n", wakeup_reason);
+      preferences.begin("rtc", true);           // Ouverture session NVS (lecture seule)
+      heure = preferences.getInt("heure", 12);   // Récupération heure sauvegardée (défaut 12h)
       minute = preferences.getInt("minute", 0);
       seconde = preferences.getInt("seconde", 0);
       jour = preferences.getInt("jour", 1);
       mois = preferences.getInt("mois", 1);
       annee = preferences.getInt("annee", 2023);
-      preferences.end();                                       //fermeutre de la session de lecture-écriture dans la mémoire flash
+      preferences.end();                                       // Fermeture de la session NVS
       rtc.setTime(seconde, minute, heure, jour, mois, annee);  // définition RTC de l'heure sans synchro NTP
       break;
   }
 }
 
 
-//configuration des paramètres pour l'envoi d'un mail
+// Configuration et envoi d'un email d'alerte (SMTP)
 void sendEmailNotification() {
-  /* Declare the Session_Config for user defined session credentials */
+  /* Paramètres de session SMTP (serveur, port, identifiants) */
   Session_Config config;
 
-  /* Set the session config */
   config.server.host_name = SMTP_HOST;
   config.server.port = SMTP_PORT;
   config.login.email = AUTHOR_EMAIL;
   config.login.password = AUTHOR_PASSWORD;
 
 
-  /* Declare the message class */
+  /* Message à envoyer */
   SMTP_Message message;
 
-  /* Set the message headers */
+  /* En-têtes du message (expéditeur, destinataire, sujet) */
   message.sender.name = F("OAL");
   message.sender.email = AUTHOR_EMAIL;
 
@@ -471,35 +439,31 @@ void sendEmailNotification() {
 
   message.priority = esp_mail_smtp_priority::esp_mail_smtp_priority_low;
 
-  /* Connect to the server */
+  /* Connexion au serveur SMTP */
   if (!smtp.connect(&config)) {
-    MailClient.printf("Connection error, Status Code: %d, Error Code: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("SMTP erreur connexion, Status: %d, Error: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
     return;
   }
 
-  /** Or connect without log in and log in later
-
-     if (!smtp.connect(&config, false))
-       return;
-
-     if (!smtp.loginWithPassword(AUTHOR_EMAIL, AUTHOR_PASSWORD))
-       return;
+  /* Variante : connexion sans login, puis authentification séparée
+     if (!smtp.connect(&config, false)) return;
+     if (!smtp.loginWithPassword(AUTHOR_EMAIL, AUTHOR_PASSWORD)) return;
   */
 
   if (!smtp.isLoggedIn()) {
-    Serial.println("Not yet logged in.");
+    Serial.println("SMTP : pas encore connecte.");
   } else {
     if (smtp.isAuthenticated())
-      Serial.println("Successfully logged in.");
+      Serial.println("SMTP : authentification reussie.");
     else
-      Serial.println("Connected with no Auth.");
+      Serial.println("SMTP : connecte sans auth.");
   }
 
-  /* Start sending Email and close the session */
+  /* Envoi de l'email puis fermeture de la session */
   if (!MailClient.sendMail(&smtp, &message))
-    MailClient.printf("Error, Status Code: %d, Error Code: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("SMTP erreur envoi, Status: %d, Error: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
 
-  // to clear sending result log
+  // Vider le journal des résultats d'envoi (évite accumulation en mémoire)
   smtp.sendingResult.clear();
 }
 
@@ -786,7 +750,7 @@ void sommeil() {
     display.setTextSize(1);
     display.setCursor(0, 35);
     display.println(" ");
-    display.println("   Sleeping");
+    display.println("   SOMMEIL");
     display.display();
     delay(1000);
     EnregistrementHeureFlash();
@@ -969,7 +933,7 @@ void setup() {
   display.setTextColor(WHITE);
   display.setTextSize(2);
   display.setCursor(0, 0);
-  display.println(" Starting");
+  display.println(" Demarrage");
   display.println(" ");
   display.println("  msp1");
   display.print("  v:");
@@ -1015,12 +979,12 @@ void setup() {
 #ifdef TEST_MODE
   static const N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/msp-test/metadata.json",
-      version.c_str(), -1
+      version.c_str(), -1, nullptr
   };
 #else
   static const N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/msp/metadata.json",
-      version.c_str(), -1
+      version.c_str(), -1, nullptr
   };
 #endif
   n3OtaCheck(otaConfig);
@@ -1066,7 +1030,7 @@ void loop() {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   }
 
-  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // (String) returns time with specified format
+  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
 
   //printLocalTime();
 

@@ -1,8 +1,11 @@
 {
   "name": "n3_common",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Bibliothèque partagée n3 IoT : WiFi multi-réseaux, HTTP, email SMTP, batterie, temps NTP, OTA distant",
   "keywords": ["esp32", "wifi", "http", "email", "battery", "ntp", "ota"],
   "frameworks": "arduino",
-  "platforms": "espressif32"
+  "platforms": "espressif32",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^6.21.0"
+  }
 }

@@ -1,0 +1,8 @@
+{
+  "name": "n3_http",
+  "version": "1.0.0",
+  "description": "Client HTTP GET/POST pour projet n3 IoT (ESP32)",
+  "keywords": ["http", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

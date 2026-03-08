@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
+#include <ArduinoJson.h>
 
 void n3OtaSyncBootPartition() {
     const esp_partition_t* running = esp_ota_get_running_partition();
@@ -24,23 +25,6 @@ static int compareVersions(const char* v1, const char* v2) {
     if (maj1 != maj2) return maj1 - maj2;
     if (min1 != min2) return min1 - min2;
     return pat1 - pat2;
-}
-
-static String jsonExtractString(const String& json, const char* key) {
-    String search = String("\"") + key + "\"";
-    int keyIdx = json.indexOf(search);
-    if (keyIdx < 0) return "";
-
-    int colonIdx = json.indexOf(':', keyIdx + search.length());
-    if (colonIdx < 0) return "";
-
-    int quoteStart = json.indexOf('"', colonIdx + 1);
-    if (quoteStart < 0) return "";
-
-    int quoteEnd = json.indexOf('"', quoteStart + 1);
-    if (quoteEnd < 0) return "";
-
-    return json.substring(quoteStart + 1, quoteEnd);
 }
 
 bool n3OtaCheck(const N3OtaConfig& config) {
@@ -71,23 +55,40 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     String payload = http.getString();
     http.end();
 
-    String remoteVersion = jsonExtractString(payload, "version");
-    String firmwareUrl   = jsonExtractString(payload, "url");
-
-    if (remoteVersion.isEmpty() || firmwareUrl.isEmpty()) {
-        Serial.println("[OTA] JSON invalide ou champs manquants");
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, payload);
+    if (err) {
+        Serial.printf("[OTA] JSON invalide: %s\n", err.c_str());
         return false;
     }
 
-    Serial.printf("[OTA] Version distante : %s\n", remoteVersion.c_str());
+    JsonObject entry;
+    if (config.metadataKey && config.metadataKey[0] != '\0') {
+        if (!doc[config.metadataKey].is<JsonObject>()) {
+            Serial.printf("[OTA] Cle %s absente\n", config.metadataKey);
+            return false;
+        }
+        entry = doc[config.metadataKey].as<JsonObject>();
+    } else {
+        entry = doc.as<JsonObject>();
+    }
 
-    if (compareVersions(remoteVersion.c_str(), config.currentVersion) <= 0) {
+    const char* remoteVersion = entry["version"].as<const char*>();
+    const char* firmwareUrl = entry["url"].as<const char*>();
+    if (!remoteVersion || !firmwareUrl) {
+        Serial.println("[OTA] JSON invalide ou champs version/url manquants");
+        return false;
+    }
+
+    Serial.printf("[OTA] Version distante : %s\n", remoteVersion);
+
+    if (compareVersions(remoteVersion, config.currentVersion) <= 0) {
         Serial.println("[OTA] Deja a jour");
         return false;
     }
 
     Serial.printf("[OTA] MAJ disponible %s -> %s, telechargement...\n",
-                  config.currentVersion, remoteVersion.c_str());
+                  config.currentVersion, remoteVersion);
 
     if (config.ledPin >= 0) {
         httpUpdate.setLedPin(config.ledPin, LOW);

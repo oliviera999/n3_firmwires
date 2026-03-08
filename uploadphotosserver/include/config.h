@@ -1,14 +1,24 @@
-#pragma once
+#ifndef CONFIG_H
+#define CONFIG_H
 
-// ── Version firmware ────────────────────────────────────────────────
-#define FIRMWARE_VERSION "2.0"
+/* ========== Commun ========== */
+#define FIRMWARE_VERSION "2.7"
+#define SERVER_NAME     "iot.olution.info"
+#define SERVER_PORT     80
 
-// ── Serveur commun ──────────────────────────────────────────────────
-#define SERVER_NAME "iot.olution.info"
-#define SERVER_PORT 80
-#define BOUNDARY    "RandomNerdTutorials"
+/* NTP */
+#define NTP_SERVER         "pool.ntp.org"
+#define GMT_OFFSET_SEC     0
+#define DAYLIGHT_OFFSET_SEC 3600
 
-// ── Camera AI-Thinker (broches communes) ────────────────────────────
+/* Créneau horaire (photos entre 6h et 22h) */
+#define HOUR_START  6
+#define HOUR_END    22
+
+/* LED statut */
+#define LED_GPIO 33
+
+/* Pins caméra — ESP32-CAM AI Thinker, OV2640 */
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -26,62 +36,51 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-// ── LED statut ──────────────────────────────────────────────────────
-#define LED_STATUS_PIN    33
+/* OTA distant (metadata.json) — toutes cibles : vérif à chaque réveil */
+#define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
+#define OTA_CHECK_EVERY_N_BOOTS  1
 
-// ── NTP ─────────────────────────────────────────────────────────────
-#define NTP_SERVER "pool.ntp.org"
-#define GMT_OFFSET 0
-#define DST_OFFSET 3600
+/* WiFi */
+#define WIFI_CONNECT_TIMEOUT_MS  5000
+#define WIFI_DELAY_BETWEEN_MS    250
+#define WIFI_PRE_SCAN_DELAY_MS   300
+#define WIFI_SCAN_MAX            10
+#define WIFI_RECONNECT_INTERVAL_MS 60000
 
-// ── Configuration par cible ─────────────────────────────────────────
+/* HTTP upload — chunks */
+#define UPLOAD_CHUNK_SIZE 4096
 
+/* ========== Par cible ========== */
 #if defined(TARGET_MSP1)
-    #define OTA_TARGET_KEY     "msp1"
-    #define SERVER_PATH        "/msp1/msp1gallery/upload.php"
-    #define OTA_METADATA_URL   "http://iot.olution.info/ota/cam/metadata.json"
-    #define USE_DEEP_SLEEP     0
-    #define USE_SD             0
-    #define TIMER_INTERVAL_MS  1800000   // 30 min
-    #define HOUR_START         6
-    #define HOUR_END           20
-    #define FRAMESIZE_DEFAULT  FRAMESIZE_SXGA
-    #define JPEG_QUALITY       4
-    #define XCLK_FREQ          20000000
-    #define HTTP_CHUNK_SIZE    1024
-    #define HTTP_TIMEOUT_MS    30000
+#  define SERVER_PATH        "/msp1gallery/upload.php"
+#  define USE_DEEP_SLEEP     1
+#  define USE_SD             1
+#  define TIME_TO_SLEEP      5
+#  define CAM_XCLK_HZ        5000000
+#  define EEPROM_SIZE        1
 
 #elif defined(TARGET_N3PP)
-    #define OTA_TARGET_KEY     "n3pp"
-    #define SERVER_PATH        "/n3ppgallery/upload.php"
-    #define OTA_METADATA_URL   "http://iot.olution.info/ota/cam/metadata.json"
-    #define USE_DEEP_SLEEP     1
-    #define USE_SD             1
-    #define SLEEP_DURATION_S   600       // 10 min deep sleep
-    #define HOUR_START         6
-    #define HOUR_END           22
-    #define FRAMESIZE_DEFAULT  FRAMESIZE_SXGA
-    #define JPEG_QUALITY       3
-    #define XCLK_FREQ          5000000
-    #define HTTP_CHUNK_SIZE    4096
-    #define HTTP_TIMEOUT_MS    20000
-    #define OTA_CHECK_EVERY_N  6         // verifier OTA toutes les 6 boots (~1h)
+#  define SERVER_PATH        "/n3ppgallery/upload.php"
+#  define USE_DEEP_SLEEP     1
+#  define USE_SD             1
+#  define TIME_TO_SLEEP      5
+#  define CAM_XCLK_HZ        5000000
+#  define EEPROM_SIZE        1
 
 #elif defined(TARGET_FFP3)
-    #define OTA_TARGET_KEY     "ffp3"
-    #define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
-    #define OTA_METADATA_URL   "http://iot.olution.info/ota/cam/metadata.json"
-    #define USE_DEEP_SLEEP     0
-    #define USE_SD             0
-    #define TIMER_INTERVAL_MS  600000    // 10 min
-    #define HOUR_START         6
-    #define HOUR_END           22
-    #define FRAMESIZE_DEFAULT  FRAMESIZE_SVGA
-    #define JPEG_QUALITY       7
-    #define XCLK_FREQ          20000000
-    #define HTTP_CHUNK_SIZE    1024
-    #define HTTP_TIMEOUT_MS    30000
+#  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
+#  define USE_DEEP_SLEEP     1
+#  define USE_SD             1
+#  define TIME_TO_SLEEP      5
+#  define CAM_XCLK_HZ        5000000
+#  define EEPROM_SIZE        1
 
 #else
-    #error "Definir TARGET_MSP1, TARGET_N3PP ou TARGET_FFP3 dans platformio.ini"
+#  error "Un des TARGET_MSP1, TARGET_N3PP ou TARGET_FFP3 doit être défini (build_flags)."
 #endif
+
+#if USE_DEEP_SLEEP
+#  define uS_TO_S_FACTOR 1000000
+#endif
+
+#endif /* CONFIG_H */

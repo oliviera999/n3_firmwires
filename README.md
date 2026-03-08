@@ -10,9 +10,10 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 |--------|---------|-------|-------------|
 | **N3PhasmesProto (n3pp)** | `n3pp4_2/` | ESP32 dev | Contrôle serre / aquaponie : température/humidité air, 4 capteurs humidité sol, pompe, luminosité, mails d’alerte, serveur web, NTP, OLED, deep sleep. |
 | **MeteoStationPrototype (msp)** | `msp2_5/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
-| **Upload Photos MSP1** | `uploadphotosserver_msp1/` | ESP32-CAM | Capture photo, envoi HTTP POST vers iot.olution.info/msp1gallery/. OTA, pas de deep sleep. |
-| **Upload Photos N3PP** | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Envoi vers n3ppgallery (à la racine serveur) ; deep sleep 600 s ; EEPROM, SD_MMC. |
-| **Upload Photos FFP3** | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Envoi vers ffp3 gallery ; deep sleep 600 s. |
+| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA, 10 min), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
+| **Upload Photos MSP1** (legacy) | `uploadphotosserver_msp1/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env msp1. |
+| **Upload Photos N3PP** (legacy) | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env n3pp. |
+| **Upload Photos FFP3** (legacy) | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env ffp3. |
 | **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3. |
 | **LVGL_Widgets** | `LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. |
 | **Ratata (ZYC0108-EN)** | `ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. |
@@ -39,11 +40,12 @@ pio run
 pio run -t upload
 pio device monitor
 
-# Upload photos (ESP32-CAM) – ex. MSP1
-cd uploadphotosserver_msp1
-pio run
-pio run -t upload
-pio device monitor
+# Upload photos (ESP32-CAM unifié) – cible msp1, n3pp ou ffp3
+cd uploadphotosserver
+pio run -e msp1
+pio run -e msp1 -t upload
+pio device monitor -e msp1
+# Ou : -e n3pp, -e ffp3 selon la galerie cible.
 
 # Ratata – compiler un environnement (ex. 1_auto_move ou 6_1_esp32_car)
 cd ratata
@@ -80,20 +82,33 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 .\erase_flash_monitor.ps1 -Project ffp5cs -Environment wroom-prod -SkipUploadFs
 ```
 
-**Projets supportés** : `n3pp4_2`, `msp2_5`, `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, les scripts dédiés dans `ffp5cs/` (ex. `erase_flash_fs_monitor_5min_analyze.ps1`, `monitor_5min.ps1`) restent utilisables et offrent l’analyse complète (analyse_log, rapport diagnostic).
+**Projets supportés** : `n3pp4_2`, `msp2_5`, `uploadphotosserver` (env par défaut : msp1 ; utiliser `-Environment n3pp` ou `-Environment ffp3` pour les autres cibles), `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, les scripts dédiés dans `ffp5cs/` (ex. `erase_flash_fs_monitor_5min_analyze.ps1`, `monitor_5min.ps1`) restent utilisables et offrent l’analyse complète (analyse_log, rapport diagnostic).
 
 ## Configuration des ports série
 
 Chaque `platformio.ini` définit `upload_port` et `monitor_port` (souvent `COM3` par défaut). Pour une machine donnée, modifier ces valeurs dans le fichier du projet concerné. Selon l’environnement, il est possible d’utiliser des variables d’environnement (ex. `UPLOAD_PORT`, `MONITOR_PORT`) si votre configuration PlatformIO ou vos scripts les prennent en charge ; à défaut, adapter directement les lignes dans le `platformio.ini` du projet.
 
-## WiFi (ESP32-CAM MSP1 et N3PP)
+## WiFi (ESP32-CAM unifié et projets legacy)
 
-Les firmwares **uploadphotosserver_msp1** et **uploadphotosserver_n3pp_1_6_deppsleep** utilisent une logique WiFi alignée sur ffp5cs (simplifiée) :
+Le firmware **uploadphotosserver** (unifié) et les projets **uploadphotosserver_msp1** / **uploadphotosserver_n3pp_1_6_deppsleep** utilisent une logique WiFi alignée sur ffp5cs (simplifiée) :
 
-- **Credentials** : copier `credentials.h.example` vers `credentials.h` à la racine du projet (non versionné) et remplir la liste `WIFI_LIST[]` (paires SSID / mot de passe). Plusieurs réseaux sont supportés. Sans `credentials.h`, la compilation échoue ; le `platformio.ini` inclut `$PROJECT_DIR` pour trouver ce fichier.
+- **Credentials** : copier `credentials.h.example` vers `credentials.h` et remplir les macros (WiFi, SMTP, API). Emplacement : **à la racine de `firmwires/`** pour n3pp4_2 et msp2_5 (build_flags `-I../`) ; **dans `include/`** pour uploadphotosserver et legacy ; remplir `WIFI_LIST[]` pour les caméras. Sans `credentials.h`, la compilation échoue.
 - **Comportement** : au démarrage, scan des réseaux, association des credentials aux AP visibles, tri par RSSI (meilleur signal en premier), puis tentatives de connexion avec BSSID et canal si le réseau est visible (timeout 5 s par tentative, une retry sans BSSID en cas d’échec). Délai 250 ms entre chaque réseau. Pas d’AP de secours.
 - **MSP1** : en cas de déconnexion, tentative de reconnexion périodique (toutes les 60 s) dans `loop()`.
 - **N3PP** : deep sleep à chaque cycle ; au réveil, `Wificonnect()` est rappelé dans `setup()`.
+
+## Bibliothèques partagées (n3pp, msp)
+
+Les firmwares **n3pp4_2** et **msp2_5** utilisent des libs communes dans `shared/` (WiFi multi-réseaux, HTTP, mail SMTP, batterie, RTC/flash, OTA HTTP distant). Chaque lib est un module PlatformIO (dossier avec `library.json` + `src/`). Les secrets sont dans `credentials.h` à la racine de `firmwires/` (copier `credentials.h.example`).
+
+| Lib | Rôle |
+|-----|------|
+| `n3_wifi` | Connexion WiFi multi-réseaux (timeout, callbacks affichage/échec) |
+| `n3_http` | GET / POST HTTP |
+| `n3_mail` | Envoi email SMTP (ESP Mail Client) |
+| `n3_battery` | Lecture batterie pont diviseur + moyenne mobile |
+| `n3_time` | Sauvegarde/restauration heure en flash, raison de réveil |
+| `n3_ota` | OTA HTTP distant (metadata.json, vérification à chaque boot) |
 
 ## Structure
 
@@ -101,12 +116,20 @@ Les firmwares **uploadphotosserver_msp1** et **uploadphotosserver_n3pp_1_6_depps
 firmwires/
 ├── .gitignore
 ├── README.md
+├── credentials.h.example       # Template (copier en credentials.h, ne pas versionner)
 ├── RECOMMANDATIONS.md
 ├── RAPPORT_ANALYSE.md
 ├── monitor_Nmin.ps1            # Monitoring N min (tous projets sauf ratata, LVGL)
 ├── erase_flash_monitor.ps1     # Erase + flash + monitor (tous projets sauf ratata, LVGL)
 ├── scripts/
 │   └── Release-ComPort.ps1      # Libération port COM (partagé)
+├── shared/                     # Bibliothèques partagées n3 (n3pp, msp, futures ESP-CAM)
+│   ├── n3_wifi/
+│   ├── n3_http/
+│   ├── n3_mail/
+│   ├── n3_battery/
+│   ├── n3_time/
+│   └── n3_ota/
 ├── n3pp4_2/                    # N3PhasmesProto (ESP32)
 │   ├── platformio.ini
 │   ├── src/main.cpp
@@ -115,7 +138,11 @@ firmwires/
 │   ├── platformio.ini
 │   ├── src/main.cpp
 │   ├── lib/, include/, test/
-├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 gallery
+├── uploadphotosserver/         # ESP32-CAM unifié (envs msp1, n3pp, ffp3)
+│   ├── platformio.ini
+│   ├── include/config.h, credentials.h.example
+│   └── src/main.cpp
+├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 (legacy)
 │   ├── platformio.ini
 │   ├── src/main.cpp
 │   └── README.md

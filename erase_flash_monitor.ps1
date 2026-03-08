@@ -28,6 +28,7 @@ $firmwiresRoot = $PSScriptRoot
 $allowedProjects = @(
     "n3pp4_2",
     "msp2_5",
+    "uploadphotosserver",
     "uploadphotosserver_msp1",
     "uploadphotosserver_n3pp_1_6_deppsleep",
     "uploadphotosserver_ffp3_1_5_deppsleep",
@@ -48,6 +49,7 @@ if (-not (Test-Path $projectPath)) {
 $defaultEnvs = @{
     "n3pp4_2" = "esp32dev"
     "msp2_5" = "esp32dev"
+    "uploadphotosserver" = "msp1"
     "uploadphotosserver_msp1" = "esp32cam"
     "uploadphotosserver_n3pp_1_6_deppsleep" = "esp32cam"
     "uploadphotosserver_ffp3_1_5_deppsleep" = "esp32cam"

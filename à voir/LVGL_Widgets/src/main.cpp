@@ -139,7 +139,7 @@ String httpRequest(const char* url, const char* method = "GET", const String& pa
       if (httpResponseCode > 0) {
           response = http.getString();
       } else {
-          Serial.print("HTTP Error code: ");
+          Serial.print("Erreur HTTP, code : ");
           Serial.println(httpResponseCode);
       }
       http.end();
@@ -205,21 +205,20 @@ void loadConfig() {
   config.enableEmailChecked = (const char*)j["enableEmailChecked"];
 }
 
-//configuration des paramètres pour l'envoi d'un mail
+// Configuration et envoi d'un email d'alerte (SMTP)
 void sendEmailNotification() {
-  /* Declare the Session_Config for user defined session credentials */
+  /* Paramètres de session SMTP (serveur, port, identifiants) */
   Session_Config config;
 
-  /* Set the session config */
   config.server.host_name = SMTP_HOST;
   config.server.port = SMTP_PORT;
   config.login.email = AUTHOR_EMAIL;
   config.login.password = AUTHOR_PASSWORD;
 
-  /* Declare the message class */
+  /* Message à envoyer */
   SMTP_Message message;
 
-  /* Set the message headers */
+  /* En-têtes du message (expéditeur, destinataire, sujet) */
   message.sender.name = F("OAL");
   message.sender.email = AUTHOR_EMAIL;
 
@@ -231,26 +230,26 @@ void sendEmailNotification() {
 
   message.priority = esp_mail_smtp_priority::esp_mail_smtp_priority_low;
 
-  /* Connect to the server */
+  /* Connexion au serveur SMTP */
   if (!smtp.connect(&config)) {
-    MailClient.printf("Connection error, Status Code: %d, Error Code: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("SMTP erreur connexion, Status: %d, Error: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
     return;
   }
 
   if (!smtp.isLoggedIn()) {
-    Serial.println("Not yet logged in.");
+    Serial.println("SMTP : pas encore connecte.");
   } else {
     if (smtp.isAuthenticated())
-      Serial.println("Successfully logged in.");
+      Serial.println("SMTP : authentification reussie.");
     else
-      Serial.println("Connected with no Auth.");
+      Serial.println("SMTP : connecte sans auth.");
   }
 
-  /* Start sending Email and close the session */
+  /* Envoi de l'email puis fermeture de la session */
   if (!MailClient.sendMail(&smtp, &message))
-    MailClient.printf("Error, Status Code: %d, Error Code: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("SMTP erreur envoi, Status: %d, Error: %d, Reason: %s\n", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
 
-  // to clear sending result log
+  // Vider le journal des résultats d'envoi (évite accumulation en mémoire)
   smtp.sendingResult.clear();
 }
 
@@ -265,11 +264,11 @@ bool mesureMaree = 0;
 
 String Wifiactif;
 
-// Interval between sensor readings. Learn more about timers: https://RandomNerdTutorials.com/esp32-pir-motion-sensor-interrupts-timers/
+// Intervalle entre deux lectures capteurs (en ms)
 unsigned long previousMillisDatas = 0;
 const long intervalDatas = 120000;
 
-// Create AsyncWebServer object on port 80
+// Serveur web asynchrone sur le port 80 (interface locale)
 AsyncWebServer server(80);
 
 //récupération du temps sur un serveur NTP
@@ -279,21 +278,20 @@ WiFiUDP wifiUdp;
 String outputsState;
 String variablesState;
 
-// Send HTTP POST request
+// Code de réponse HTTP (requêtes GET/POST)
 unsigned int httpResponseCode;
 
-// Variables définissant si les mails ont déjà été envoyés
+// Indicateurs d'envoi d'email déjà effectué (évite spam)
 bool emailNiveauxSent = false;
 bool emailChauffageSent = false;
 bool emailTankSent = false;
 
-// The Email Sending data object contains config and data to send
-//SMTPData smtpData; (?)
+// Objet SMTP : config et données d'envoi (ESP Mail Client)
 bool oledPresent = true;
 
 /*void //safe//display() {
   if (oledPresent) //display.//display();  // Affiche le contenu du buffer d'affichage OLED
-  else Serial.println("OLED not present, skipping //display update.");
+  else Serial.println("OLED absente, pas de mise a jour affichage.");
 }*/
 
 /**
@@ -309,7 +307,7 @@ void print_wakeup_reason() {
 
   switch (wakeup_reason) {
     case ESP_SLEEP_WAKEUP_EXT0:
-      Serial.println("Wakeup caused by external signal using RTC_IO");
+      Serial.println("Reveil : signal externe (RTC_IO)");
       WakeUpButton = 1;
       if (oledPresent) {
 
@@ -320,9 +318,9 @@ void print_wakeup_reason() {
       delay(500);
       }
       break;
-    case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Reveil : signal externe (RTC_CNTL)"); break;
     case ESP_SLEEP_WAKEUP_TIMER:
-      Serial.println("Wakeup caused by timer");
+      Serial.println("Reveil : timer");
       if (oledPresent) {
 
       //display.clear//display();
@@ -331,10 +329,10 @@ void print_wakeup_reason() {
       //safe//display();
       }
       break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Reveil : touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP: Serial.println("Reveil : programme ULP"); break;
     default:
-      Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
+      Serial.printf("Reveil non cause par deep sleep : %d\n", wakeup_reason);
      // HeureSansWifi();
       break;
   }
@@ -373,7 +371,7 @@ void datatobdd() {
         );
 
         if (len < 0 || len >= sizeof(httpRequestData)) {
-            Serial.println("Error: snprintf encountered an issue or the buffer size is insufficient.");
+            Serial.println("Erreur : snprintf ou taille buffer insuffisante.");
             return;
         }
 
@@ -389,12 +387,12 @@ void datatobdd() {
         }
 
         if (response.isEmpty()) {
-            Serial.println("Error: No response received or empty response.");
+            Serial.println("Erreur : pas de reponse ou reponse vide.");
         } else {
             Serial.println(response);
         }*/
     } else {
-        Serial.println("Error: WiFi not connected.");
+        Serial.println("Erreur : WiFi non connecte.");
     }
 }
 
@@ -466,7 +464,7 @@ void dataJSONtoesp() {
 
     //httpResponseCode = http.POST(httpRequestData);
     Serial.println(outputsState);
-    Serial.print("Array length :");
+    Serial.print("Longueur tableau : ");
     Serial.println(sizeof(outputsState));
     if (sizeof(outputsState) > 0) { 
     //if (httpResponseCode > 0) {
@@ -475,7 +473,7 @@ void dataJSONtoesp() {
       JSONVar myObject = JSON.parse(outputsState);
       // JSON.typeof(jsonVar) can be used to get the type of the var
       if (JSON.typeof(myObject) == "undefined") {
-        Serial.println("Parsing input failed!");
+        Serial.println("Erreur : parsing JSON echoue.");
         //WebSerial.println("Parsing input failed!");
         return;
       }
