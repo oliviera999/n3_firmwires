@@ -24,35 +24,23 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;
 const int   daylightOffset_sec = 3600;
 
-String serverName = "iot.olution.info";   // REPLACE WITH YOUR Raspberry Pi IP ADDRESS
-//String serverName = "example.com";   // OR REPLACE WITH YOUR DOMAIN NAME
+#include "credentials.h"
 
-String serverPath = "/ffp3/ffp3gallery/upload.php";     // The default serverPath should be upload.php
+#define FIRMWARE_VERSION "1.5"
 
+String serverName = "iot.olution.info";
+String serverPath = "/ffp3/ffp3gallery/upload.php";
 const int serverPort = 80;
 
 WiFiClient client;
 
-//déclarations des variables pour le Wifi
-// identifiant Wifi
-//const char* ssid = "raspN3";
-//const char* password = "n3LLrasp";
-//const char* ssid = "Tenda_1654B8";
-//const char* password = "";
-const char* ssid = "dlink";
-const char* password = "n3LLdlink";
-//const char* ssid = "AndroidAP";
-//const char* password = "123456789";
-// identifiant Wifi alternatif2
-const char* ssid2 = "inwi Home 4G 8306D9";
-const char* password2 = "5KBB52W62M";
-//const char* ssid2 = "dlink";
-//const char* password2 = "n3LLdlink";
-// identifiant Wifi alternatif
-//const char* ssid2 = "inwi Home 4G 8306D9";
-//const char* password2 = "5KBB52W62M";
-const char* ssid3 = "AndroidAP";
-const char* password3 = "123456789";
+// WiFi — credentials externalisées dans credentials.h (copier credentials.h.example)
+const char* ssid = WIFI_SSID1;
+const char* password = WIFI_PASS1;
+const char* ssid2 = WIFI_SSID2;
+const char* password2 = WIFI_PASS2;
+const char* ssid3 = WIFI_SSID3;
+const char* password3 = WIFI_PASS3;
 String Wifiactif;
 
 // CAMERA_MODEL_AI_THINKER
@@ -76,6 +64,12 @@ String Wifiactif;
 
 const int timerInterval = 600000;    // time between each HTTP POST image
 unsigned long previousMillis = 0;   // last time image was sent
+
+void blink();
+void blinkWifi();
+void blinkPhoto();
+void Wificonnect();
+String sendPhoto();
 
 void setup() {
   pinMode(33, OUTPUT); // Set the pin as output
