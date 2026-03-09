@@ -6,6 +6,11 @@
 #include "msp_config.h"
 #include "msp_globals.h"
 #include <Arduino.h>
+#include "n3_battery.h"
+
+static const N3BatteryConfig batteryConfig = {
+  pontdiv, N3_BATTERY_R1, N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
+};
 
 void LectureCapteurs() {
   // Lire l'humidité du sol
@@ -69,65 +74,51 @@ void LectureCapteurs() {
 }
 
 void batterie() {
-  // Lire la valeur brute de l'ADC
   PontDiv = analogRead(pontdiv);
   Serial.println(PontDiv);
 
-  // Calculer la moyenne mobile en ajoutant la nouvelle valeur et en retirant l'ancienne
-  sampleTotal -= samples[sampleIndex];            // Soustraire l'ancienne valeur
-  samples[sampleIndex] = analogRead(pontdiv);     // Ajouter la nouvelle valeur
-  sampleTotal += analogRead(pontdiv);             // Mettre à jour le total
-  sampleIndex = (sampleIndex + 1) % NUM_SAMPLES;  // Passer à l'échantillon suivant
+  N3BatteryResult res = n3BatteryRead(batteryConfig, samples, &sampleIndex, &sampleTotal);
+  avgPontDiv = res.rawAvg;
+  measuredVoltage = res.measuredVoltage;
+  batteryVoltage = res.batteryVoltage;
 
-  // Calculer la moyenne des échantillons
-  avgPontDiv = sampleTotal / NUM_SAMPLES;
   Serial.print("Valeur  : ");
   Serial.print(avgPontDiv);
-
-  // Calculer la tension réelle de la batterie
-  //batt = avgPontDiv * (R1 + R2) / R2;
-
-
-  // Convertir la valeur ADC moyenne en tension (sur une plage de 0 à 3,3V)
-  measuredVoltage = (avgPontDiv / ADC_MAX_VALUE) * V_REF;
-  //measuredVoltage = (measuredVoltage * (1 + calibration));
-  // Afficher la tension mesurée
-  Serial.print("Tension brute mesurée : ");
+  Serial.print(" Tension brute : ");
   Serial.print(measuredVoltage);
   Serial.println(" V");
-
-  // Calculer la tension réelle de la batterie
-  batteryVoltage = measuredVoltage * ((R1 + R2) / R2);
 
   int battPercent = 100 - ((2100 - avgPontDiv) * 0.2);
   int batteryVoltage2 = avgPontDiv * 4.2 / 2100;
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("Read = ");
-  display.println(avgPontDiv);
-  display.print("Brut = ");
-  display.println(measuredVoltage);
-  display.print("Batt = ");
-  display.println(batteryVoltage);
-  display.print("Percent = ");
-  display.println(battPercent);
-  display.display();
-  delay(2000);
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Read = ");
+    display.println(avgPontDiv);
+    display.print("Brut = ");
+    display.println(measuredVoltage);
+    display.print("Batt = ");
+    display.println(batteryVoltage);
+    display.print("Percent = ");
+    display.println(battPercent);
+    display.display();
+    delay(2000);
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("Read = ");
-  display.println(avgPontDiv);
-  display.println(" ");
-  display.print("Batt = ");
-  display.println(batteryVoltage2);
-  display.print("Percent = ");
-  display.println(battPercent);
-  display.display();
-  delay(2000);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Read = ");
+    display.println(avgPontDiv);
+    display.println(" ");
+    display.print("Batt = ");
+    display.println(batteryVoltage2);
+    display.print("Percent = ");
+    display.println(battPercent);
+    display.display();
+    delay(2000);
+  }
   //batteryVoltage =
 
   // Afficher la tension mesurée
@@ -139,14 +130,15 @@ void batterie() {
 void Light_val() {
   photocellReadingMoy = ((analogRead(LUMINOSITEa) + analogRead(LUMINOSITEb) + analogRead(LUMINOSITEc) + analogRead(LUMINOSITEd)) / 4);
   if (photocellReadingMoy > 50) {
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.println("Scan");
-    display.print("LumMoy = ");
-    display.println(photocellReadingMoy);
-
-    display.display();
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.println("Scan");
+      display.print("LumMoy = ");
+      display.println(photocellReadingMoy);
+      display.display();
+    }
     delay(750);
     // Initialisation des tableaux de lectures
     for (int i = 0; i < numReadings; i++) {
@@ -181,14 +173,16 @@ void Light_val() {
       total2 = total2 + readings2[readIndex];
       average2 = total2 / numReadings;
 
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.print("Moy 1 ");
-      display.println(average1);
-      display.print("Moy 2 ");
-      display.println(average2);
-      display.display();
+      if (displayOk) {
+        display.clearDisplay();
+        display.setTextSize(2);
+        display.setCursor(0, 0);
+        display.print("Moy 1 ");
+        display.println(average1);
+        display.print("Moy 2 ");
+        display.println(average2);
+        display.display();
+      }
       delay(50);
 
       // Enregistrement de la valeur maximale pour les capteurs 1 et 2
@@ -206,17 +200,19 @@ void Light_val() {
       }
     }
 
-    AngleServoGD = (posLumMax1 + posLumMax2) / 2;  // Calcul des positions finales pour servomoteur gauche droite
-    servogd.write(AngleServoGD);                   // Positionnement final du servomoteur gauche droite
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.print(posLumMax1);
-    display.print(" ");
-    display.print(posLumMax2);
-    display.print("AngleM = ");
-    display.println(AngleServoGD);
-    display.display();
+    AngleServoGD = (posLumMax1 + posLumMax2) / 2;
+    servogd.write(AngleServoGD);
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.print(posLumMax1);
+      display.print(" ");
+      display.print(posLumMax2);
+      display.print("AngleM = ");
+      display.println(AngleServoGD);
+      display.display();
+    }
     delay(750);
 
     // Balayage du second servomoteur
@@ -237,14 +233,16 @@ void Light_val() {
       total4 = total4 + readings4[readIndex];
       average4 = total4 / numReadings;
 
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.print("Moy 3 ");
-      display.println(average3);
-      display.print("Moy 4 ");
-      display.println(average4);
-      display.display();
+      if (displayOk) {
+        display.clearDisplay();
+        display.setTextSize(2);
+        display.setCursor(0, 0);
+        display.print("Moy 3 ");
+        display.println(average3);
+        display.print("Moy 4 ");
+        display.println(average4);
+        display.display();
+      }
       delay(50);
 
       // Enregistrement de la valeur maximale pour les capteurs 3 et 4
@@ -268,16 +266,18 @@ void Light_val() {
     } else if (AngleServoHB < minAngleServoHB) {
       AngleServoHB = minAngleServoHB;
     }
-    servohb.write(AngleServoHB);  // Positionnement final du servomoteur haut bas
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.print(posLumMax3);
-    display.print(" ");
-    display.println(posLumMax4);
-    display.print("AngleM = ");
-    display.println(AngleServoHB);
-    display.display();
+    servohb.write(AngleServoHB);
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.print(posLumMax3);
+      display.print(" ");
+      display.println(posLumMax4);
+      display.print("AngleM = ");
+      display.println(AngleServoHB);
+      display.display();
+    }
     delay(750);
 
     // Affichage des positions finales
@@ -298,25 +298,29 @@ void Light_val() {
     photocellReadingMoy = (photocellReadingA + photocellReadingB + photocellReadingC + photocellReadingD) / 4;
     Serial.print("photocellReadingMoy :");
     Serial.println(photocellReadingMoy);
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.print("LumMoy = ");
-    display.println(photocellReadingMoy);
-    display.print("AngleGD = ");
-    display.println(AngleServoGD);
-    display.print("AngleHB = ");
-    display.println(AngleServoHB);
-    display.display();
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.print("LumMoy = ");
+      display.println(photocellReadingMoy);
+      display.print("AngleGD = ");
+      display.println(AngleServoGD);
+      display.print("AngleHB = ");
+      display.println(AngleServoHB);
+      display.display();
+    }
     delay(750);
   } else {
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.println("Pas de scan");
-    display.println("LumMoy = ");
-    display.println(photocellReadingMoy);
-    display.display();
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.println("Pas de scan");
+      display.println("LumMoy = ");
+      display.println(photocellReadingMoy);
+      display.display();
+    }
     delay(750);
   }
 }

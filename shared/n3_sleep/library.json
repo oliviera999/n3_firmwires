@@ -1,0 +1,8 @@
+{
+  "name": "n3_sleep",
+  "version": "1.0.0",
+  "description": "Deep sleep (timer + GPIO externe) pour firmwares n3 IoT ESP32",
+  "keywords": ["sleep", "deepsleep", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

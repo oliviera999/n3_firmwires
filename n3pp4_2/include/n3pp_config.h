@@ -1,8 +1,9 @@
 #pragma once
 
 #include "credentials.h"
+#include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "4.10"
+#define FIRMWARE_VERSION "4.11"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13
@@ -23,8 +24,8 @@
 #define DHTPIN 18      // Pin numérique connectée au DHT (température et humidité air)
 #define DHTTYPE DHT11  // Type de capteur DHT (DHT11)
 
-#define uS_TO_S_FACTOR 1000000ULL /* Facteur de conversion microsecondes → secondes */
-#define TIME_TO_SLEEP FreqWakeUp  /* Durée du sommeil en secondes avant réveil */
+#define uS_TO_S_FACTOR N3_US_TO_S_FACTOR
+#define TIME_TO_SLEEP FreqWakeUp
 
 #define emailSubject "Information N3PP"
 
@@ -34,10 +35,9 @@
 #define AUTHOR_PASSWORD SMTP_PASSWORD
 
 //#define pontdiv 36  // Pin pour la lecture du diviseur de tension
-#define R1 2200           // valeur de la résistances R1 en ohm du pont diviseur
-#define R2 2180           // valeur de la résistances R2 en ohm du pont diviseur
-#define NUM_SAMPLES 10    // Nombre d'échantillons à utiliser pour le filtrage
+#define R1 N3_BATTERY_R1
+#define R2 N3_BATTERY_R2
+#define NUM_SAMPLES N3_BATTERY_NUM_SAMPLES
 
-// Résolution de l'écran OLED
-#define SCREEN_WIDTH 128   // Largeur de l'écran OLED en pixels
-#define SCREEN_HEIGHT 64   // Hauteur de l'écran OLED en pixels
+#define SCREEN_WIDTH N3_OLED_WIDTH
+#define SCREEN_HEIGHT N3_OLED_HEIGHT

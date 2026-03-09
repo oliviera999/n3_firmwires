@@ -14,6 +14,8 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "n3_ota.h"
+#include "n3_display.h"
+#include "n3_sleep.h"
 
 //variable et témoin issues et pour la bdd
 int HeureArrosage = 6;
@@ -49,7 +51,7 @@ int Humid4;
 
 // Intervalle entre deux lectures capteurs (en ms)
 unsigned long previousMillisDatas = 0;
-extern const long intervalDatas = 120000;
+extern const long intervalDatas = N3_DATA_INTERVAL_MS;
 
 // Indicateur : email d'alerte déjà envoyé ou non (évite spam)
 bool emailHumidSent = 0;
@@ -75,10 +77,9 @@ float batt;
 float measuredVoltage;
 float batteryVoltage;
 int SeuilPontDiv = 1700;  // Seuil pour considérer la batterie faible
-// Constantes pour la conversion de la mesure analogique en tension réelle
-extern const float ADC_MAX_VALUE = 4095.0;  // Plage de l'ADC de l'ESP32 (12 bits)
-extern const float V_REF = 3.33;            // Tension de référence de l'ESP32
-extern const float calibration = 0.06;      //facteur de calibration
+extern const float ADC_MAX_VALUE = 4095.0;
+extern const float V_REF = N3_BATTERY_VREF;
+extern const float calibration = 0.06;
 // Tableau pour stocker les échantillons
 int samples[NUM_SAMPLES];
 int sampleIndex = 0;
@@ -122,9 +123,9 @@ WiFiUDP wifiUdp;
 String outputsState;  // Variable pour gérer l'état des sorties à distance
 
 //variables en lien avec le temps rtc et ntp
-const char* ntpServer = "pool.ntp.org";  // Adresse du serveur NTP
-extern const long gmtOffset_sec = 3600;         // Décalage GMT en secondes
-extern const int daylightOffset_sec = 3600;     // Décalage pour l'heure d'été en secondes
+const char* ntpServer = N3_NTP_SERVER;
+extern const long gmtOffset_sec = N3_GMT_OFFSET;
+extern const int daylightOffset_sec = N3_DAYLIGHT_OFFSET;
 ESP32Time rtc;                           //initialisation du contrôle RTC via la bibliothèque ESP32time
 Preferences preferences;                 //initialisation du stockage dse l'heure dans la mémoire flash
 int seconde;
@@ -188,17 +189,7 @@ void setup() {
 
   print_wakeup_reason();
 
-  // Detection I2C avant init OLED : evite les erreurs i2cWrite si ecran absent
-  Wire.begin();
-  Wire.beginTransmission(0x3C);
-  uint8_t i2cErr = Wire.endTransmission();
-  if (i2cErr != 0) {
-    displayOk = false;
-    Serial.println("OLED non detecte (I2C 0x3C), affichage desactive");
-  } else {
-    displayOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-    if (!displayOk) Serial.println("OLED init echoue, affichage desactive");
-  }
+  displayOk = n3DisplayInit(display);
   delay(600);
   if (displayOk) {
     display.clearDisplay();
@@ -351,18 +342,8 @@ void setup() {
 
 
 
-  //Configure GPIO33 as a wake-up source when the voltage is 3.3V
-  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_4, HIGH);
-  //Print the wakeup reason for ESP32 and touchpad too
-  //  print_wakeup_touchpad();
-
-
-  //Setup interrupt on Touch Pad 0 (GPIO4)
-  //touchAttachInterrupt(T0, loop, seuilContact);
-
-  //Configure Touchpad as wakeup source
-  //esp_sleep_enable_touchpad_wakeup();
+  N3SleepConfig sleepCfg = { N3_WAKEUP_GPIO, HIGH, (unsigned long)FreqWakeUp };
+  n3SleepConfigure(sleepCfg);
 }
 
 void loop() {

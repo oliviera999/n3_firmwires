@@ -1,5 +1,12 @@
 # N3PhasmesProto (n3pp4_2) — Historique des versions
 
+## v4.11 (2026-03)
+- Unification : utilisation des libs partagees n3_data, n3_battery, n3_sleep, n3_display, n3_defaults
+- Correction bug batterie (double lecture ADC dans moyenne mobile)
+- Correction affichage OLED (digitalRead remplace par valeur variable)
+- Remplacement httpGETRequest/datatobdd par n3DataGet/n3DataPost
+- Constantes communes via n3_defaults.h
+
 ## v4.10 (2026-03)
 - Harmonisation format version (`FIRMWARE_VERSION` dans main.cpp)
 - Externalisation des credentials dans `credentials.h`

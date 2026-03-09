@@ -8,7 +8,7 @@
 #include <WiFi.h>
 
 void affichageOLED() {
-  // Mise à jour de l'affichage OLED
+  if (!displayOk) return;
   for (int i = 0; i < 6; i++) {
     display.clearDisplay();
     display.setTextSize(1);

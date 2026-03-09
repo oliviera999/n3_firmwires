@@ -1,0 +1,8 @@
+{
+  "name": "n3_display",
+  "version": "1.0.0",
+  "description": "Init OLED SSD1306 avec detection I2C pour projet n3 IoT",
+  "keywords": ["oled", "ssd1306", "i2c", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

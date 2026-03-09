@@ -6,7 +6,7 @@
 #include "msp_config.h"
 #include "msp_globals.h"
 #include "msp_network.h"
-#include <esp_sleep.h>
+#include "n3_sleep.h"
 #include "credentials.h"
 
 #define SMTP_HOST SMTP_HOST_ADDR
@@ -115,39 +115,42 @@ void print_wakeup_reason() {
 
 void sommeil() {
   if (WakeUp == 0) {
-    if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "true") {
+    if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "checked") {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       sendEmailNotification();
       datatobdd();
-      display.clearDisplay();
+      if (displayOk) display.clearDisplay();
       photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
       posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
-      delay(100);  // Pause entre chaque balayage
-      display.setTextSize(1);
-      display.setCursor(0, 0);
-      display.println(" ");
-      display.println("   DODO");
-      display.display();
+      delay(100);
+      if (displayOk) {
+        display.setTextSize(1);
+        display.setCursor(0, 0);
+        display.println(" ");
+        display.println("   DODO");
+        display.display();
+      }
       delay(1000);
       EnregistrementHeureFlash();
-      Serial.flush();
-      esp_sleep_enable_timer_wakeup(0);
-      esp_deep_sleep_start();
+      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
+      n3SleepConfigure(emergencySleep);
+      n3SleepStart();
     }
 
-    display.clearDisplay();
+    if (displayOk) display.clearDisplay();
     datatobdd();
     photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
     posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
-    delay(100);  // Pause entre chaque balayage
-    display.setTextSize(1);
-    display.setCursor(0, 35);
-    display.println(" ");
-    display.println("   SOMMEIL");
-    display.display();
+    delay(100);
+    if (displayOk) {
+      display.setTextSize(1);
+      display.setCursor(0, 35);
+      display.println(" ");
+      display.println("   SOMMEIL");
+      display.display();
+    }
     delay(1000);
     EnregistrementHeureFlash();
-    Serial.flush();
-    esp_deep_sleep_start();
+    n3SleepStart();
   }
 }

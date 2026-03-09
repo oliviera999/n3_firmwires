@@ -102,6 +102,7 @@ extern const char* password3;
 
 // --- Affichage OLED ---
 extern Adafruit_SSD1306 display;
+extern bool displayOk;
 
 // --- Temps RTC / NTP ---
 extern ESP32Time rtc;

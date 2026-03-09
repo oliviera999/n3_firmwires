@@ -19,6 +19,8 @@
 #include <esp_sleep.h>
 #include "credentials.h"
 #include "n3_ota.h"
+#include "n3_display.h"
+#include "n3_sleep.h"
 
 // ============================================================
 // Définitions des variables globales
@@ -111,6 +113,7 @@ String sensorLocation = "T06";
 
 // --- Affichage OLED ---
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+bool displayOk = false;
 
 // --- WiFi ---
 const char* ssid = WIFI_SSID1;
@@ -153,23 +156,20 @@ void setup() {
   // Configurer le module ESP en mode station WiFi
   WiFi.mode(WIFI_MODE_STA);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // Initialiser l'affichage OLED
-    for (;;)
-      ;
+  displayOk = n3DisplayInit(display);
+  if (displayOk) {
+    delay(600);
+    display.clearDisplay();
+    display.setTextColor(WHITE);
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println(" Demarrage");
+    display.println(" ");
+    display.println("  msp1");
+    display.print("  v:");
+    display.println(version);
+    display.display();
   }
-  delay(600);
-
-  // Message initial sur l'affichage
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  display.println(" Demarrage");
-  display.println(" ");
-  display.println("  msp1");
-  display.print("  v:");
-  display.println(version);
-  display.display();
 
   pinMode(HumiditeSol, INPUT);  // Configurer le pin de l'humidité du sol
   pinMode(27, INPUT);           // Configurer le pin de l'humidité du sol
@@ -239,8 +239,8 @@ void setup() {
   //servohb.write(AngleServoHB);
   ++bootCount;  // Incrémenter le compteur de démarrage
 
-  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);  // Configurer temps de sommeil
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_4, HIGH);                 // Configurer la pin de sortie de sommeil
+  N3SleepConfig sleepCfg = { N3_WAKEUP_GPIO, HIGH, (unsigned long)FreqWakeUp };
+  n3SleepConfigure(sleepCfg);
   print_wakeup_reason();
 }
 

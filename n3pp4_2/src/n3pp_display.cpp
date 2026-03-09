@@ -65,15 +65,15 @@ void affichageOLED() {
   //affichage variables
   display.println(" variables");
   display.print("HeureArros:");
-  display.print(digitalRead(HeureArrosage));
+  display.print(HeureArrosage);
   display.print(" tpsArros:");
   display.println(tempsArrosageSec);
   display.print(" SSec:");
-  display.print(digitalRead(SeuilSec));
+  display.print(SeuilSec);
   display.print(" Spd:");
-  display.println(digitalRead(SeuilPontDiv));
+  display.println(SeuilPontDiv);
   display.print("WakeUp:");
-  display.print(digitalRead(WakeUp));
+  display.print(WakeUp);
   //Heures de nourrisage
   display.print(" FWakeUp:");
   display.println(FreqWakeUp);

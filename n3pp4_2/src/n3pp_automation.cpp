@@ -1,7 +1,7 @@
 #include "n3pp_automation.h"
 #include "n3pp_globals.h"
 #include "n3pp_network.h"
-#include <esp_sleep.h>
+#include "n3_sleep.h"
 
 void HeureSansWifi() {
   preferences.begin("rtc", true);           // Ouverture session NVS (lecture seule)
@@ -167,7 +167,7 @@ void automatismes() {
       // SerialBT.println(emailMessage);
         emailPontDivSent = true;
       }
-    esp_deep_sleep_start();
+    n3SleepStart();
   }
 
   //arrosage en cas de sécheresse
@@ -251,9 +251,9 @@ void sommeil() {
       }
       delay(1000);
       EnregistrementHeureFlash();
-      Serial.flush();
-      esp_sleep_enable_timer_wakeup(0);
-      esp_deep_sleep_start();
+      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
+      n3SleepConfigure(emergencySleep);
+      n3SleepStart();
     }
 
     if (displayOk) display.clearDisplay();
@@ -269,9 +269,7 @@ void sommeil() {
     Serial.println("Going to sleep now");
     delay(1000);
     EnregistrementHeureFlash();
-    Serial.flush();
-    esp_deep_sleep_start();
-    Serial.println("This will never be printed");
+    n3SleepStart();
   }
 }
 

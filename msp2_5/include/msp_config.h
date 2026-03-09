@@ -3,7 +3,9 @@
  */
 #pragma once
 
-#define FIRMWARE_VERSION "2.11"
+#include "n3_defaults.h"
+
+#define FIRMWARE_VERSION "2.12"
 
 // --- Pins ---
 #define RELAIS 13
@@ -19,7 +21,7 @@
 #define DHTTYPEEXT DHT11
 #define HumiditeSol 32
 #define PLUIE 27
-#define pontdiv 36
+#define pontdiv N3_PONTDIV_PIN
 
 // --- Servos ---
 const int minAngleServoGD = 1;
@@ -32,23 +34,23 @@ const unsigned int oneWireBus = 2;
 const int numReadings = 10;
 
 // --- Batterie / pont diviseur ---
-#define R1 2200
-#define R2 2180
+#define R1 N3_BATTERY_R1
+#define R2 N3_BATTERY_R2
 const float ADC_MAX_VALUE = 4095.0;
-const float V_REF = 3.33;
+const float V_REF = N3_BATTERY_VREF;
 const float calibration = 0.06;
-#define NUM_SAMPLES 10
+#define NUM_SAMPLES N3_BATTERY_NUM_SAMPLES
 
 // --- Deep sleep ---
-#define uS_TO_S_FACTOR 1000000ULL
+#define uS_TO_S_FACTOR N3_US_TO_S_FACTOR
 #define TIME_TO_SLEEP FreqWakeUp
 
 // --- Intervalles ---
-const long intervalDatas = 120000;
+const long intervalDatas = N3_DATA_INTERVAL_MS;
 
 // --- OLED ---
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
+#define SCREEN_WIDTH N3_OLED_WIDTH
+#define SCREEN_HEIGHT N3_OLED_HEIGHT
 
 // --- URLs serveur ---
 #ifdef TEST_MODE
@@ -60,9 +62,9 @@ const long intervalDatas = 120000;
 #endif
 
 // --- NTP ---
-#define MSP_NTP_SERVER "pool.ntp.org"
-#define MSP_GMT_OFFSET_SEC 3600
-#define MSP_DAYLIGHT_OFFSET_SEC 3600
+#define MSP_NTP_SERVER N3_NTP_SERVER
+#define MSP_GMT_OFFSET_SEC N3_GMT_OFFSET
+#define MSP_DAYLIGHT_OFFSET_SEC N3_DAYLIGHT_OFFSET
 
 // --- Email ---
 #define emailSubject "Information MSP1"
