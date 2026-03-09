@@ -125,7 +125,7 @@ void Diagnostics::begin() {
   
   // v11.172: Affichage conditionnel minHeap (évite UINT32_MAX aberrant au premier boot)
   if (_stats.minFreeHeap == UINT32_MAX) {
-    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: N/A (premier boot)", 
+    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: N/A (premier boot ou pas de minHeap sauvegardé)",
                   _stats.rebootCount);
   } else {
     Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 

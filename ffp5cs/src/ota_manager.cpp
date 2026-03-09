@@ -449,6 +449,9 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     if (code != HTTP_CODE_OK) {
         snprintf(logMsg, sizeof(logMsg), "Erreur GET métadonnées: %d", code);
         logError(logMsg);
+        if (code == -1) {
+            log("   (connexion ou timeout: serveur injoignable, DNS, ou délai dépassé)");
+        }
         http.end();
         return false;
     }

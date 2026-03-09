@@ -70,6 +70,7 @@ bool read(time_t* outEpoch) {
     // #region agent log
     _DS3231_DEBUG_LOG("rtc_ds3231.cpp:read", "read_fail", "\"reason\":\"guard\"", "H2");
     // #endregion
+    Serial.println(F("[RTC] DS3231 diagnostic: mutex/bus I2C non disponible"));
     return false;
   }
 

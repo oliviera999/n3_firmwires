@@ -1,5 +1,9 @@
 # Upload Photos Server (ESP32-CAM unifie) — Historique des versions
 
+## v2.8 (2026-03)
+- Ajout authentification par header X-Api-Key sur les uploads photo
+- Verrouillage des versions lib_deps dans platformio.ini
+
 ## v2.7 (2026-03)
 - Stabilisation upload photo et OTA distant pour les 3 cibles
 

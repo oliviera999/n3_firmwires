@@ -56,15 +56,28 @@ pio device monitor -e 1_auto_move
 
 Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`, `COM4`, `/dev/ttyUSB0`) selon ta machine.
 
-## Scripts de monitoring et erase-flash (racine firmwires)
+## Scripts de monitoring et erase-flash
 
-À la racine de `firmwires/` sont disponibles des scripts **génériques** pour tous les projets (sauf **ratata** et **LVGL_Widgets**) :
+### Référence FFP5CS (workflow complet)
+
+Le projet **ffp5cs** définit le workflow de validation de référence, aligné sur les règles cœur de projet (offline-first, robustesse, vérification après modification) :
+
+- **Workflow complet** : erase flash → flash firmware (+ LittleFS sauf prod) → monitoring N min → analyse du log. Script principal : `ffp5cs/erase_flash_fs_monitor_5min_analyze.ps1` (option `-Port`, `-Environment`, `-DurationMinutes`, `-SkipBuild`).
+- **Monitoring** : `ffp5cs/monitor_5min.ps1` — capture série N secondes, log `monitor_*_*.log` dans le dossier du projet.
+- **Analyse des logs** : `ffp5cs/analyze_log.ps1` (détaillée, spécifique FFP5CS/FFP3) et `ffp5cs/analyze_log_exhaustive.ps1` (crashes, WDT, heap, réseau, reboots). Rapport diagnostic : `ffp5cs/generate_diagnostic_report.ps1`.
+
+Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs/`. Voir aussi `ffp5cs/.cursor/rules/` et `ffp5cs/docs/INVENTAIRE_SCRIPTS_FFP5CS.md` pour l'inventaire des scripts.
+
+### Scripts racine firmwires (multi-projets)
+
+À la racine de `firmwires/`, les scripts suivants sont **prévus** pour un usage multi-projets (n3pp4_2, msp2_5, uploadphotosserver, ffp5cs). Lorsqu'ils sont en place :
 
 | Script | Rôle |
 |--------|------|
-| `monitor_Nmin.ps1` | Capture du moniteur série pendant N secondes (défaut 5 min). Log créé dans le dossier du projet. |
-| `erase_flash_monitor.ps1` | Workflow complet : erase flash → flash firmware (et LittleFS pour ffp5cs si applicable) → monitoring N min → analyse optionnelle si le projet le fournit (ex. ffp5cs). |
-| `scripts/Release-ComPort.ps1` | Libération du port COM (processus moniteur). Sourcé par les scripts ci‑dessus. |
+| `monitor_Nmin.ps1` | Capture du moniteur série pendant N secondes (défaut 5 min). Paramètres : `-Project`, `-DurationSeconds`, `-Port`, `-Environment`. Log créé dans le dossier du projet. |
+| `erase_flash_monitor.ps1` | Workflow : erase → flash firmware (et LittleFS pour ffp5cs si applicable) → monitoring N min → analyse (générique ou déléguée à ffp5cs). Paramètres : `-Project`, `-Port`, `-DurationMinutes`, `-SkipBuild`, `-SkipUploadFs`, `-Environment`. |
+| `scripts/Release-ComPort.ps1` | Libération du port COM (processus moniteur). Partagé ; peut être hérité de `ffp5cs/scripts/Release-ComPort.ps1`. |
+| `scripts/analyze_log_generic.ps1` | Analyse générique des logs (crashes, WDT, heap, réseau, reboots) pour tout firmware n'ayant pas d'analyse dédiée. |
 
 **Exemples (depuis `firmwires/`) :**
 
@@ -82,7 +95,7 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 .\erase_flash_monitor.ps1 -Project ffp5cs -Environment wroom-prod -SkipUploadFs
 ```
 
-**Projets supportés** : `n3pp4_2`, `msp2_5`, `uploadphotosserver` (env par défaut : msp1 ; utiliser `-Environment n3pp` ou `-Environment ffp3` pour les autres cibles), `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, les scripts dédiés dans `ffp5cs/` (ex. `erase_flash_fs_monitor_5min_analyze.ps1`, `monitor_5min.ps1`) restent utilisables et offrent l’analyse complète (analyse_log, rapport diagnostic).
+**Projets ciblés** : `n3pp4_2`, `msp2_5`, `uploadphotosserver` (env par défaut : msp1 ; utiliser `-Environment n3pp` ou `-Environment ffp3` pour les autres cibles), `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, le script racine délègue au workflow complet dans `ffp5cs/` ; analyse détaillée et rapport diagnostic. **ratata** et **LVGL_Widgets** sont exclus.
 
 ## Configuration des ports série
 
@@ -92,7 +105,7 @@ Chaque `platformio.ini` définit `upload_port` et `monitor_port` (souvent `COM3`
 
 Le firmware **uploadphotosserver** (unifié) et les projets **uploadphotosserver_msp1** / **uploadphotosserver_n3pp_1_6_deppsleep** utilisent une logique WiFi alignée sur ffp5cs (simplifiée) :
 
-- **Credentials** : copier `credentials.h.example` vers `credentials.h` et remplir les macros (WiFi, SMTP, API). Emplacement : **à la racine de `firmwires/`** pour n3pp4_2 et msp2_5 (build_flags `-I../`) ; **dans `include/`** pour uploadphotosserver et legacy ; remplir `WIFI_LIST[]` pour les caméras. Sans `credentials.h`, la compilation échoue.
+- **Credentials** : **un seul fichier partagé** : `firmwires/credentials.h` (copier `firmwires/credentials.h.example`). Utilisé par n3pp4_2, msp2_5 et uploadphotosserver (msp1, n3pp, ffp3). **ffp5cs** utilise son propre `include/secrets.h` (copier `include/secrets.h.example`). Sans le fichier de secrets correspondant, la compilation échoue.
 - **Comportement** : au démarrage, scan des réseaux, association des credentials aux AP visibles, tri par RSSI (meilleur signal en premier), puis tentatives de connexion avec BSSID et canal si le réseau est visible (timeout 5 s par tentative, une retry sans BSSID en cas d’échec). Délai 250 ms entre chaque réseau. Pas d’AP de secours.
 - **MSP1** : en cas de déconnexion, tentative de reconnexion périodique (toutes les 60 s) dans `loop()`.
 - **N3PP** : deep sleep à chaque cycle ; au réveil, `Wificonnect()` est rappelé dans `setup()`.
@@ -122,7 +135,8 @@ firmwires/
 ├── monitor_Nmin.ps1            # Monitoring N min (tous projets sauf ratata, LVGL)
 ├── erase_flash_monitor.ps1     # Erase + flash + monitor (tous projets sauf ratata, LVGL)
 ├── scripts/
-│   └── Release-ComPort.ps1      # Libération port COM (partagé)
+│   ├── Release-ComPort.ps1      # Libération port COM (partagé)
+│   └── analyze_log_generic.ps1  # Analyse générique des logs (prévu)
 ├── shared/                     # Bibliothèques partagées n3 (n3pp, msp, futures ESP-CAM)
 │   ├── n3_wifi/
 │   ├── n3_http/
@@ -140,7 +154,7 @@ firmwires/
 │   ├── lib/, include/, test/
 ├── uploadphotosserver/         # ESP32-CAM unifié (envs msp1, n3pp, ffp3)
 │   ├── platformio.ini
-│   ├── include/config.h, credentials.h.example
+│   ├── include/config.h, credentials.h.example (pointe vers firmwires/credentials.h)
 │   └── src/main.cpp
 ├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 (legacy)
 │   ├── platformio.ini

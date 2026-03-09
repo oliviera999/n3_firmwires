@@ -624,7 +624,7 @@ void registerSdHistory(AsyncWebServer& server, AppContext& ctx) {
       if (limit > 200) limit = 200;
     }
 
-    static char histBuf[4096];
+    static char histBuf[BufferConfig::STATUS_HISTORY_BUFFER_SIZE];
     if (!SdLogger::readHistory(date, histBuf, sizeof(histBuf), offset, limit)) {
       sendErrorResponse(req, 404, "No data for this date");
       return;

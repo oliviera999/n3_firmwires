@@ -512,6 +512,7 @@ static void netTask(void* pv) {
       continue;
     }
 
+    // Opérations longues (HTTP POST, GET OTA metadata, TLS) : feed WDT dans sous-appels (webClient, ota_manager)
     esp_task_wdt_reset();  // Reset WDT pendant traitement requête (évite reset si HTTP long)
 
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
@@ -1277,24 +1278,34 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
   return false;  // timeout ou échec : netTask a netRequestFree(req) si cancelled
 }
 
-bool netPostRaw(const char* payload, uint32_t timeoutMs) {
+bool netPostRaw(const char* payload, uint32_t timeoutMs, NetPostFailureReason* outFailure) {
   if (!payload) return false;
+  if (outFailure) *outFailure = NetPostFailureReason::None;
   NetRequest* req = netRequestAlloc();
   if (!req) {
     // Hypothèse B: un retry après 1s si pool plein (netTask peut libérer un slot)
     vTaskDelay(pdMS_TO_TICKS(1000));
     req = netRequestAlloc();
   }
-  if (!req) return false;
+  if (!req) {
+    if (outFailure) *outFailure = NetPostFailureReason::PoolFull;
+    return false;
+  }
   req->type = NetReqType::PostRaw;
   req->timeoutMs = timeoutMs;
   req->doc = nullptr;
   req->diag = nullptr;
   strncpy(req->payload, payload, sizeof(req->payload) - 1);
   req->payload[sizeof(req->payload) - 1] = '\0';
-  bool ok = netRpcAlloc(req, timeoutMs);
-  if (ok) netRequestFree(req);  // sur timeout netTask a netRequestFree(req)
-  return ok;
+  bool rpcOk = netRpcAlloc(req, timeoutMs);
+  if (rpcOk) {
+    bool success = req->success;
+    netRequestFree(req);
+    if (!success && outFailure) *outFailure = NetPostFailureReason::HttpError;
+    return success;
+  }
+  if (outFailure) *outFailure = NetPostFailureReason::TimeoutRpc;
+  return false;  // netTask netRequestFree(req) quand il traite req->cancelled
 }
 
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {

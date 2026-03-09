@@ -1,0 +1,7 @@
+{
+  "name": "n3_hmac",
+  "version": "1.0.0",
+  "description": "HMAC-SHA256 pour authentification API IoT n3",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

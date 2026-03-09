@@ -189,6 +189,7 @@ String sendPhoto() {
   client.println("Host: " + serverName);
   client.println("Content-Length: " + String(totalLen));
   client.println("Content-Type: multipart/form-data; boundary=RandomNerdTutorials");
+  client.println("X-Api-Key: " + String(API_KEY));
   client.println();
   client.print(head);
 

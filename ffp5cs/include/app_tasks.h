@@ -47,7 +47,10 @@ QueueHandle_t getSensorQueue();
 // v11.178: Defaults 5s (règle offline-first). POST: dérogation 8s (HTTP_POST_TIMEOUT_MS).
 // outFromNVSFallback: si non null, reçoit true quand la config vient du cache NVS (v11.193: ne pas appeler processFetchedRemoteConfig dans ce cas)
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000, bool* outFromNVSFallback = nullptr);
-bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS);
+
+/** Raison d'échec de netPostRaw (pour logs différenciés). */
+enum class NetPostFailureReason { None, PoolFull, TimeoutRpc, HttpError };
+bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS, NetPostFailureReason* outFailure = nullptr);
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 
 /** Demande une vérification OTA au netTask (fire-and-forget). Utilisé par le boot, le timer 2h ou le serveur distant (triggerOtaCheck). */

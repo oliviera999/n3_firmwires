@@ -331,7 +331,8 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         esp_task_wdt_reset();
     }
     uint32_t sendStart = millis();
-    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS);
+    AppTasks::NetPostFailureReason failReason = AppTasks::NetPostFailureReason::None;
+    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, &failReason);
     uint32_t durationMs = millis() - sendStart;
     
     registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -347,7 +348,15 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     } else {
         _sendState = -1;
         _lastDataSkipReason = SKIP_NET_FAIL;
-        Serial.println(F("[Sync] POST échoué (file pleine, timeout RPC ou HTTP)"));
+        if (failReason == AppTasks::NetPostFailureReason::PoolFull) {
+            Serial.println(F("[Sync] POST échoué (pool netRPC plein)"));
+        } else if (failReason == AppTasks::NetPostFailureReason::TimeoutRpc) {
+            Serial.println(F("[Sync] POST échoué (timeout RPC)"));
+        } else if (failReason == AppTasks::NetPostFailureReason::HttpError) {
+            Serial.println(F("[Sync] POST échoué (erreur HTTP)"));
+        } else {
+            Serial.println(F("[Sync] POST échoué (file pleine, timeout RPC ou HTTP)"));
+        }
         _dataQueue.push(payloadBuffer);
     }
 
