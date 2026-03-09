@@ -1,8 +1,10 @@
-/* N3PhasmesProto (n3pp) v4.9
+/* N3PhasmesProto (n3pp)
  * Serre / aquaponie — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
  */
+
+#define FIRMWARE_VERSION "4.10"
 
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -139,7 +141,7 @@ const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
 #endif
 
-String version = "4.10";
+String version = FIRMWARE_VERSION;
 
 String apiKeyValue = API_KEY;
 String sensorName = "n3pp";

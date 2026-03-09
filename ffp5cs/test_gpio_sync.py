@@ -5,12 +5,17 @@ Teste le nouveau système de parsing GPIO simplifié
 """
 
 import json
+import os
 import requests
+import sys
 import time
 
 # Configuration
-SERVER_URL = "http://localhost/ffp3"
-API_KEY = "fdGTMoptd5CD2ert3"
+SERVER_URL = os.environ.get("FFP3_SERVER_URL", "http://localhost/ffp3")
+API_KEY = os.environ.get("FFP3_API_KEY", "")
+if not API_KEY:
+    print("Erreur : variable d'environnement FFP3_API_KEY non définie")
+    sys.exit(1)
 
 def test_server_outputs_format():
     """Test 1: Vérifier que le serveur retourne uniquement GPIO numériques"""

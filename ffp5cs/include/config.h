@@ -4,6 +4,15 @@
 #include <cmath>  // Pour isnan() dans SensorValidation
 #include "gpio_mapping.h"  // Pour GPIODefaults (source de vérité des valeurs par défaut)
 
+#if __has_include("secrets_config.h")
+    #include "secrets_config.h"
+#else
+    namespace Secrets {
+        constexpr const char* API_KEY = "CHANGEZ_MOI";
+        constexpr const char* DEFAULT_RECIPIENT = "changez@moi.example";
+    }
+#endif
+
 // =============================================================================
 // CONFIGURATION UNIFIÉE DU PROJET FFP5CS
 // =============================================================================
@@ -374,13 +383,13 @@ namespace ServerConfig {
 }
 
 namespace ApiConfig {
-    inline constexpr const char* API_KEY = "fdGTMoptd5CD2ert3";
+    inline constexpr const char* API_KEY = Secrets::API_KEY;
 }
 
 namespace EmailConfig {
     inline constexpr const char* SMTP_HOST = "smtp.gmail.com";
     inline constexpr uint16_t SMTP_PORT = 465;  // SSL direct
-    inline constexpr const char* DEFAULT_RECIPIENT = "oliv.arn.lau@gmail.com";
+    inline constexpr const char* DEFAULT_RECIPIENT = Secrets::DEFAULT_RECIPIENT;
     inline constexpr size_t MAX_EMAIL_LENGTH = 96;
 }
 
@@ -403,6 +412,7 @@ namespace BufferConfig {
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 5000;
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 10000;
         inline constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 20000;
+        inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 4096;  // Route /api/sd-history
     #else
         // v11.158: Optimisation buffers - réduits pour libérer mémoire et réduire fragmentation
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 1024;  // Réduit de 2048 (requêtes typiquement < 1024 bytes)
@@ -423,6 +433,12 @@ namespace BufferConfig {
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;  // Réduit de 2500
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 8000;
         inline constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 15000;
+        // Route /api/sd-history : réduit en wroom-test pour éviter overflow DRAM (~3,7 KB)
+#if defined(PROFILE_TEST)
+        inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 1024;
+#else
+        inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 4096;
+#endif
     #endif
 }
 

@@ -1,8 +1,10 @@
-/* MeteoStationPrototype (msp1) v2.11
+/* MeteoStationPrototype (msp1)
  * Station meteo + tracker solaire — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
  */
+
+#define FIRMWARE_VERSION "2.11"
 
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -80,7 +82,7 @@ float humidAirExt;
 #define uS_TO_S_FACTOR 1000000ULL  // Facteur de conversion de microsecondes en secondes
 #define TIME_TO_SLEEP FreqWakeUp   /* Durée du sommeil en secondes avant réveil */
 bool WakeUp = 0;                   //variable de mise en endormissement ou pas
-int FreqWakeUp = 3000;             //temps d'endormissement en s
+int FreqWakeUp = 3;               // Durée du sommeil en secondes (valeur par défaut 3 s)
 //bool ArrosageManu = 0;
 
 #define pontdiv 36  // Pin pour la lecture du diviseur de tension
@@ -148,7 +150,7 @@ const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-ou
 // Code de réponse HTTP (requêtes GET/POST)
 unsigned int httpResponseCode;
 
-String version = "2.11";
+String version = FIRMWARE_VERSION;
 
 String apiKeyValue = API_KEY;
 String sensorName = "msp1";                // Nom du capteur

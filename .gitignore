@@ -6,9 +6,16 @@
 # Secrets — ne jamais versionner
 credentials.h
 secrets.h
+secrets_config.h
 
 # Backups / temporaire
 ffp5cs_backup/
+
+# Logs de monitoring (generees par scripts PS1)
+*.log
+*.log.err
+monitor_*.log
+monitor_*.log.err
 
 # IDE / OS
 .vscode/

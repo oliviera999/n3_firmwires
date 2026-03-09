@@ -69,6 +69,7 @@ desktop.ini
 
 # Credentials (if any)
 secrets.h
+secrets_config.h
 credentials.h
 
 # Test files (optional - comment out if you want to keep them)
