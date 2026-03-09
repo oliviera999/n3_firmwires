@@ -55,7 +55,7 @@ int HeureArrosage = 6;
 int SeuilSec = 5000;
 //int SeuilPontDiv = 1100;
 bool WakeUp = 0;
-int FreqWakeUp = 3000;
+int FreqWakeUp = 3;  // Durée du sommeil en secondes (valeur par défaut 3 s)
 bool ArrosageManu = 0;
 bool resetMode = 0;
 
@@ -139,7 +139,7 @@ const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3
 const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
 #endif
 
-String version = "4.9";
+String version = "4.10";
 
 String apiKeyValue = API_KEY;
 String sensorName = "n3pp";
