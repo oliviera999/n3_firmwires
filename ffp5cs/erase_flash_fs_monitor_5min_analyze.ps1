@@ -108,7 +108,7 @@ if ($Environment -ne "wroom-prod") {
 $monitorPort = $Port
 if (-not $monitorPort -and $env:PLATFORMIO_UPLOAD_PORT) { $monitorPort = $env:PLATFORMIO_UPLOAD_PORT }
 Write-Host "4. Monitoring $DurationMinutes minutes..." -ForegroundColor Cyan
-$monitorParams = @{ DurationSeconds = $durationSeconds }
+$monitorParams = @{ DurationSeconds = $durationSeconds; Environment = $Environment }
 if ($monitorPort) { $monitorParams["Port"] = $monitorPort }
 & "$projectRoot\monitor_5min.ps1" @monitorParams
 # Fichier créé par cette exécution = le plus récent monitor_*_*.log par date de création
