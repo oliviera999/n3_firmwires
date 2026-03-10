@@ -12,6 +12,67 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.35 - 2026-03-10
+
+### Correctif timeouts RPC POST (S3)
+
+- **RPC >= HTTP + marge** : `HTTP_POST_RPC_TIMEOUT_MS` porté à 17 s (S3) pour respecter la contrainte « RPC timeout >= HTTP timeout + 2 s ». Évite que l'appelant abandonne avant la fin réelle du POST (10 s < 15 s provoquait des abandons prématurés).
+
+---
+
+## Version 12.34 - 2026-03-10
+
+### Correctif DS3231 (WROOM-S3) : bit century et réparation au boot
+
+- **Bit century inversé** : convention DS3231 — bit 1 = 2000s, bit 0 = 1900s. Lecture et écriture corrigées. Élimine les faux « 1900-02-01 » au démarrage.
+- **Réparation au boot** : si lecture DS3231 invalide, écriture de l'heure NVS valide dans le RTC (utile si batterie morte ou RTC jamais initialisé).
+
+---
+
+## Version 12.33 - 2026-03-10
+
+### Correctifs monitoring 15 min (crash AP, pool NetRequest, heap)
+
+- **Crash LoadProhibited AP de secours** : garde heap dans `startFallbackAP()` — si heap < 12 KB (`MIN_HEAP_AP_SCAN`), skip `WiFi.scanNetworks()` et utilisation canal 6 direct (évite allocations internes qui échouent).
+- **Pool NetRequest saturé** : timeouts RPC réduits pour libérer slots plus tôt — `HTTP_POST_RPC_TIMEOUT_MS` 16→10 s (S3), `FETCH_REMOTE_STATE_RPC_TIMEOUT_MS` 20→12 s. Throttle renforcé : `poolUsed >= poolSize - 1`.
+- **Protection heap** : avant POST dans `AutomatismSync::update()`, vérifier `ESP.getFreeHeap() >= 20 KB`. Si insuffisant, différer et logger une fois par minute.
+
+---
+
+## Version 12.32 - 2026-03-10
+
+### Correctif overflow DRAM (region dram0_0_seg) sur wroom-test
+
+- **Contexte** : le link échouait avec « region dram0_0_seg overflowed by 3696 bytes » sur wroom-test (problème préexistant).
+- **Changements** (WROOM uniquement, conformité règles cœur et HEAP_RECOVERY_OPTIONS) :
+  - Pool NetRequest : 10 → 8 slots (saves ~2 KB). Slots 0..5 = POST/Heartbeat, 6 = Fetch, 7 = OTA.
+  - POST_PAYLOAD_MAX_SIZE : 1024 → 896 octets (payload sync typ. < 800 bytes).
+  - REMOTE_JSON_CACHE_SIZE (config, deferred) : 2048 → 1536 octets. GET outputs/state typ. < 900 bytes.
+- **Effet** : wroom-test compile et linke. RAM ~38 %. S3 inchangé.
+
+---
+
+## Version 12.29 - 2026-03-10
+
+### Slot réservé FetchRemoteState dans le pool netRPC
+
+- **Contexte** : lorsque le pool netRPC est saturé par des POSTs (15/16 sur S3, 9/10 sur WROOM), `fetchRemoteState` échouait systématiquement et les commandes distantes (GPIO, nourrissage) n’étaient plus appliquées.
+- **Changement** : slot N-2 réservé à FetchRemoteState (poll/GET outputs/state), comme le slot N-1 pour l’OTA. `netRequestAllocForFetch()` tente ce slot en priorité. POST/Heartbeat utilisent les slots 0..N-3.
+- **WROOM** : slot 9 (index) = OTA (« slot 10 »), slot 8 = Fetch, slots 0..7 = POST/Heartbeat.
+- **S3** : slot 15 = OTA, slot 14 = Fetch, slots 0..13 = POST/Heartbeat.
+- **Effet** : poll et GET s’exécutent toujours, même lorsque le pool est saturé.
+
+---
+
+## Version 12.28 - 2026-03-10
+
+### Diagnostic : fetchRemoteState InvalidInput
+
+- **Contexte** : GET `/ffp3/api/outputs3-test/state` renvoie HTTP 200 (968 bytes) mais ArduinoJson échoue avec `InvalidInput` au parsing.
+- **Changement** : ajout d’un dump de diagnostic quand le parse échoue (3 premières occurrences ou toutes les 30 s) : hex des 16 premiers octets, 80 premiers caractères imprimables, 60 derniers si totalRead > 120. Permet d’identifier BOM, en-têtes chunked, ou contenu non JSON.
+
+---
+
 ## Version 12.27 - 2026-03-05
 
 ### Debug : instrumentation nourrissage automatique

@@ -4,12 +4,23 @@
 #include <cmath>  // Pour isnan() dans SensorValidation
 #include "gpio_mapping.h"  // Pour GPIODefaults (source de vérité des valeurs par défaut)
 
+// API_KEY : secrets_config.h > credentials.h (firmwires/) > défaut. Aligné avec msp/n3pp et serveur .env.
 #if __has_include("secrets_config.h")
     #include "secrets_config.h"
+#elif __has_include("../../credentials.h")
+    #include "../../credentials.h"
+    namespace Secrets {
+        constexpr const char* API_KEY = API_KEY;
+        constexpr const char* DEFAULT_RECIPIENT = "changez@moi.example";
+        constexpr const char* WEB_AUTH_USER = "admin";
+        constexpr const char* WEB_AUTH_PASS = "ffp3";
+    }
 #else
     namespace Secrets {
         constexpr const char* API_KEY = "CHANGEZ_MOI";
         constexpr const char* DEFAULT_RECIPIENT = "changez@moi.example";
+        constexpr const char* WEB_AUTH_USER = "admin";
+        constexpr const char* WEB_AUTH_PASS = "ffp3";
     }
 #endif
 
@@ -24,7 +35,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.27";
+    inline constexpr const char* VERSION = "12.35";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -256,14 +267,15 @@ namespace NetworkConfig {
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
     // GET outputs/state : timeout plus long (net task uniquement). 8 s pour rester < FETCH_REMOTE_STATE_RPC_TIMEOUT_MS.
     inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s (évite abandon caller avant fin GET)
-    // RPC FetchRemoteState : timeout = HTTP + marge queue ; 20 s pour libérer slots plus tôt (v12.20)
-    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 20000;  // 20 s
+    // RPC FetchRemoteState : timeout = HTTP + marge queue ; 12 s (v12.33: libérer slots plus tôt serveur hors ligne)
+    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 12000;  // 12 s
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
 #if defined(BOARD_S3)
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 15000;  // 15 s (S3: rester sous TWDT 30s, monitoring 2026-03)
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 16000;  // 16 s (v12.20: libérer slots plus tôt)
+    // RPC >= HTTP + 2 s marge (évite abandon caller avant fin POST — v12.35)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 17000;  // 17 s
 #else
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 22000;  // 22 s (v12.20: libérer slots plus tôt)
@@ -321,12 +333,19 @@ namespace NetworkConfig {
     // Heap minimum pour démarrer le DNSServer (captive portal) en mode AP
     inline constexpr uint32_t MIN_HEAP_AP_DNS = 40000;  // 40 KB
 #endif
+    // v12.33: Heap minimum pour scan WiFi avant softAP (évite LoadProhibited si allocations échouent, tous boards)
+    inline constexpr uint32_t MIN_HEAP_AP_SCAN = 12288;  // 12 KB — en dessous : canal 6 direct, pas de scan
 }
 
-// Authentification interface web locale (onglets protégés : admin / ffp3)
+// Authentification interface web locale (onglets protégés). Source : secrets_config.h si SECRETS_INCLUDE_WEB_AUTH, sinon défaut.
 namespace WebAuthConfig {
+#if defined(SECRETS_INCLUDE_WEB_AUTH)
+    inline constexpr const char* WEB_AUTH_USER = Secrets::WEB_AUTH_USER;
+    inline constexpr const char* WEB_AUTH_PASS = Secrets::WEB_AUTH_PASS;
+#else
     inline constexpr const char* WEB_AUTH_USER = "admin";
     inline constexpr const char* WEB_AUTH_PASS = "ffp3";
+#endif
     inline constexpr size_t WEB_AUTH_COOKIE_NAME_LEN = 11;  // "ffp5cs_auth"
     inline constexpr size_t WEB_AUTH_TOKEN_HEX_LEN = 32;     // 16 bytes en hex
 }
@@ -389,6 +408,8 @@ namespace ApiConfig {
 namespace EmailConfig {
     inline constexpr const char* SMTP_HOST = "smtp.gmail.com";
     inline constexpr uint16_t SMTP_PORT = 465;  // SSL direct
+    // Placeholder : configurer une vraie adresse dans secrets_config.h (DEFAULT_RECIPIENT)
+    inline constexpr const char* PLACEHOLDER_RECIPIENT = "changez@moi.example";
     inline constexpr const char* DEFAULT_RECIPIENT = Secrets::DEFAULT_RECIPIENT;
     inline constexpr size_t MAX_EMAIL_LENGTH = 96;
 }
@@ -413,6 +434,7 @@ namespace BufferConfig {
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 10000;
         inline constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 20000;
         inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 4096;  // Route /api/sd-history
+        inline constexpr uint32_t REMOTE_JSON_CACHE_SIZE = 2048;
     #else
         // v11.158: Optimisation buffers - réduits pour libérer mémoire et réduire fragmentation
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 1024;  // Réduit de 2048 (requêtes typiquement < 1024 bytes)
@@ -428,7 +450,8 @@ namespace BufferConfig {
         inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 3072;
         // GET outputs/state: buffer lecture body plus grand pour éviter IncompleteInput (réponse > 1024)
         inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 2048;
-        inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 1024;  // Limite payload postData (malloc si besoin pour tenir en DRAM)
+        // POST_PAYLOAD_MAX_SIZE réduit 896 sur WROOM pour éviter overflow DRAM (~3,7 KB). Payload sync typ. < 800 bytes.
+        inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 896;
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 2000;  // Réduit de 3000 (emails typiquement < 2000 bytes)
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;  // Réduit de 2500
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 8000;
@@ -439,6 +462,8 @@ namespace BufferConfig {
 #else
         inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 4096;
 #endif
+        // REMOTE_JSON_CACHE / DEFERRED_JSON : réduit 1536 sur WROOM (overflow DRAM). GET outputs/state typ. < 900 bytes.
+        inline constexpr uint32_t REMOTE_JSON_CACHE_SIZE = 1536;
     #endif
 }
 
