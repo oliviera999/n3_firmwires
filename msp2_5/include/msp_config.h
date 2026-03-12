@@ -3,9 +3,10 @@
  */
 #pragma once
 
+#include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "2.12"
+#define FIRMWARE_VERSION "2.14"
 
 // --- Pins ---
 #define RELAIS 13

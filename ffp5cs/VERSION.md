@@ -12,6 +12,13 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.43 - 2026-03-12
+
+### Incrémentation pour OTA (audit échanges firmware-serveur)
+- **Résumé** : Version incrémentée pour publication OTA après audit serveur (suppression cache OutputCacheService, StateNormalizer, doc scénarios asymétriques).
+
+---
+
 ## Version 12.42 - 2026-03-12
 
 ### Phase 2 : 3 slots POST par catégorie (priorité 3 > 2 > 1)

@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.8"
+#define FIRMWARE_VERSION "2.10"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -49,6 +49,9 @@
 
 /* HTTP upload — chunks */
 #define UPLOAD_CHUNK_SIZE 4096
+
+/* Attente réponse HTTP après POST (dérogation conventions-firmwares 5s : traitement serveur image) */
+#define HTTP_RESPONSE_TIMEOUT_MS 15000
 
 /* ========== Par cible ========== */
 #if defined(TARGET_MSP1)

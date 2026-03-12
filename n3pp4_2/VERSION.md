@@ -1,25 +1,21 @@
-# N3PhasmesProto (n3pp4_2) — Historique des versions
+# Version N3PP4_2 (N3PhasmesProto — Serre / aquaponie)
 
-## v4.11 (2026-03)
-- Unification : utilisation des libs partagees n3_data, n3_battery, n3_sleep, n3_display, n3_defaults
-- Correction bug batterie (double lecture ADC dans moyenne mobile)
-- Correction affichage OLED (digitalRead remplace par valeur variable)
-- Remplacement httpGETRequest/datatobdd par n3DataGet/n3DataPost
-- Constantes communes via n3_defaults.h
+Version actuelle : **4.14** (définie dans `include/n3pp_config.h`).
 
-## v4.10 (2026-03)
-- Harmonisation format version (`FIRMWARE_VERSION` dans main.cpp)
-- Externalisation des credentials dans `credentials.h`
+---
 
-## v4.9 (2026-03)
-- Correction lecture DHT, stabilisation envoi de donnees
+## Historique
 
-## v4.6 (2026-02)
-- OTA URL conditionnelle TEST_MODE
+| Version | Date | Modifications |
+|---------|------|---------------|
+| 4.14 | 2026-03 | Incrémentation pour OTA (audit échanges) |
+| 4.13 | 2026-03 | Migration vers libn3_iot (drivers capteurs génériques) |
+| 4.12 | 2026-03 | Fallback DHT harmonise (20°C / 50 % si isnan) |
+| 4.11 | — | Version actuelle (inventaire appareils) |
 
-## v4.5 (2026-02)
-- OTA HTTP distant via n3_common
+---
 
-## v4.3 (2026-01)
-- Credentials externalises dans credentials.h
-- OTA HTTP distant via n3_common
+## Références
+
+- Configuration : `include/n3pp_config.h` → `FIRMWARE_VERSION`
+- Inventaire : `docs/inventaire_appareils.md`

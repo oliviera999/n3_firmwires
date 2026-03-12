@@ -8,6 +8,15 @@ Procédure pour publier les firmware et filesystem compilés vers `ffp3/ota/` af
 - Mettre à jour `ffp3/ota/metadata.json` (versions, size, md5, bin_url, filesystem_url, filesystem_size, filesystem_md5).
 - Committer et pousser les changements dans le dépôt **ffp3** (sous-module) pour que le déploiement serveur diffuse les binaires.
 
+## Synchronisation metadata ↔ version firmware
+
+**Règle** : Toujours **incrémenter** `ProjectConfig::VERSION` dans `include/config.h` **avant** d'exécuter `publish_ota.ps1`. Le script extrait la version depuis `config.h` (ou `.pio/build/<env>/version.txt` si présent) et l'écrit dans `metadata.json`. Une dérive (metadata en retard) empêche les ESP32 de détecter les mises à jour.
+
+**Checklist avant publication** :
+1. Incrémenter la version dans `include/config.h`
+2. Compiler : `pio run -e wroom-prod` (et autres envs)
+3. Exécuter : `.\scripts\publish_ota.ps1 -Build` (ou `-Build -BuildFs`)
+
 ## Prérequis
 
 - Build déjà effectué pour les environnements ciblés :

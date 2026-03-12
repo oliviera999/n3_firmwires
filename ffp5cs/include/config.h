@@ -35,7 +35,7 @@
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
     // v12.42: Phase 2 - 3 slots POST réservés (cat3 replay, cat2 ack, cat1 périodique)
-    inline constexpr const char* VERSION = "12.42";
+    inline constexpr const char* VERSION = "12.43";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
