@@ -13,14 +13,14 @@
         constexpr const char* API_KEY = API_KEY;
         constexpr const char* DEFAULT_RECIPIENT = "changez@moi.example";
         constexpr const char* WEB_AUTH_USER = "admin";
-        constexpr const char* WEB_AUTH_PASS = "ffp3";
+        constexpr const char* WEB_AUTH_PASS = "CHANGEZ_MOI";  // Remplacer dans secrets_config.h
     }
 #else
     namespace Secrets {
         constexpr const char* API_KEY = "CHANGEZ_MOI";
         constexpr const char* DEFAULT_RECIPIENT = "changez@moi.example";
         constexpr const char* WEB_AUTH_USER = "admin";
-        constexpr const char* WEB_AUTH_PASS = "ffp3";
+        constexpr const char* WEB_AUTH_PASS = "CHANGEZ_MOI";  // Obligatoire : configurer dans secrets_config.h
     }
 #endif
 
@@ -34,8 +34,8 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.10: RTC DS3231 optionnel (option A), run propre
-    inline constexpr const char* VERSION = "12.35";
+    // v12.42: Phase 2 - 3 slots POST réservés (cat3 replay, cat2 ack, cat1 périodique)
+    inline constexpr const char* VERSION = "12.42";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -333,6 +333,8 @@ namespace NetworkConfig {
     // Heap minimum pour démarrer le DNSServer (captive portal) en mode AP
     inline constexpr uint32_t MIN_HEAP_AP_DNS = 40000;  // 40 KB
 #endif
+    // v12.37: Heap minimum AVANT WiFi.mode()/softAP() — en dessous : skip AP secours (évite LoadProhibited)
+    inline constexpr uint32_t MIN_HEAP_AP_MODE = 10240;  // 10 KB
     // v12.33: Heap minimum pour scan WiFi avant softAP (évite LoadProhibited si allocations échouent, tous boards)
     inline constexpr uint32_t MIN_HEAP_AP_SCAN = 12288;  // 12 KB — en dessous : canal 6 direct, pas de scan
 }
@@ -344,7 +346,7 @@ namespace WebAuthConfig {
     inline constexpr const char* WEB_AUTH_PASS = Secrets::WEB_AUTH_PASS;
 #else
     inline constexpr const char* WEB_AUTH_USER = "admin";
-    inline constexpr const char* WEB_AUTH_PASS = "ffp3";
+    inline constexpr const char* WEB_AUTH_PASS = "CHANGEZ_MOI";  // Configurer secrets_config.h
 #endif
     inline constexpr size_t WEB_AUTH_COOKIE_NAME_LEN = 11;  // "ffp5cs_auth"
     inline constexpr size_t WEB_AUTH_TOKEN_HEX_LEN = 32;     // 16 bytes en hex
@@ -930,10 +932,11 @@ namespace TaskConfig {
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
     // v11.197: Augmenté 8KB → 12KB - stack overflow dans netTask lors de checkForUpdate OTA
     // S3: 16 KB (stack canary netTask observé sur S3 - mbedTLS/HTTP plus gourmands, monitoring 2026-03)
+    // v12.xx: WROOM aligné 16 KB - stack canary netTask observé wroom-prod (monitoring 2026-03-11)
 #if defined(BOARD_S3)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // 16 KB (S3)
 #else
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12288;  // 12 KB (WROOM - requis pour OTA checkForUpdate + TLS/HTTPS)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // 16 KB (WROOM - aligné S3, évite stack overflow TLS/OTA)
 #endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs

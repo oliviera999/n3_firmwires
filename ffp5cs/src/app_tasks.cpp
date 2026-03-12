@@ -66,7 +66,7 @@ struct NetRequest {
 
   ArduinoJson::JsonDocument* doc;   // FetchRemoteState
   const Diagnostics* diag;          // Heartbeat
-  char payload[1024];               // PostRaw (copie)
+  char payload[BufferConfig::POST_PAYLOAD_MAX_SIZE];  // PostRaw (copie). WROOM: 896 pour éviter overflow DRAM.
 };
 
 QueueHandle_t g_netQueue = nullptr;
@@ -76,12 +76,21 @@ TaskHandle_t g_netTaskHandle = nullptr;
 // Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
 // v12.20: Pool 16 S3 / 10 WROOM pour limiter saturation ; timeouts RPC réduits pour libérer slots plus tôt.
 // v12.26: Dernier slot réservé à l'OTA pour que la vérification OTA (après réveil, trigger distant) puisse toujours s'exécuter même si le pool est saturé.
+// v12.29: Slot N-2 réservé à FetchRemoteState (poll/GET) pour garantir exécution même si pool saturé par POSTs.
+// v12.40: Slot N-4 réservé au POST. v12.42: 3 slots POST (cat3 replay, cat2 ack, cat1 périodique, priorité 3>2>1).
+// WROOM: slot 7 = OTA, 6 = Fetch, 5 = POST cat3, 4 = POST cat2, 3 = POST cat1, 0..2 = partagés (Heartbeat, fallback).
+// S3: slot 15 = OTA, 14 = Fetch, 13 = cat3, 12 = cat2, 11 = cat1, 0..10 = partagés.
 #if defined(BOARD_WROOM)
-static constexpr size_t kNetRequestPoolSize = 10;
+static constexpr size_t kNetRequestPoolSize = 8;
 #else
 static constexpr size_t kNetRequestPoolSize = 16;
 #endif
-static constexpr size_t kNetRequestOtaReservedSlot = kNetRequestPoolSize - 1;  // Slot dédié OTA, non utilisé par les autres types
+static constexpr size_t kNetRequestOtaReservedSlot = kNetRequestPoolSize - 1;    // Slot dédié OTA
+static constexpr size_t kNetRequestFetchReservedSlot = kNetRequestPoolSize - 2;  // Slot dédié FetchRemoteState (poll/GET)
+static constexpr size_t kNetRequestPostCat3Slot = kNetRequestPoolSize - 3;   // POST replay (priorité haute)
+static constexpr size_t kNetRequestPostCat2Slot = kNetRequestPoolSize - 4;   // POST ack/événements
+static constexpr size_t kNetRequestPostCat1Slot = kNetRequestPoolSize - 5;   // POST données périodiques
+static constexpr size_t kNetRequestNormalMaxSlot = kNetRequestPoolSize - 6;  // Partagés: 0..NormalMax (WROOM: 0..2, S3: 0..10)
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
 static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
 
@@ -98,14 +107,66 @@ static NetRequest* netRequestAllocTrySlot(size_t i) {
   return &s_netRequestPool[i];
 }
 
-/** Alloue un slot du pool. Si forOta=true, tente d'abord le slot réservé OTA, puis le reste. Sinon n'utilise que les slots 0..N-2. */
+/** Alloue un slot pour Heartbeat et autres (pas POST données). Utilise 0..NormalMax en excluant le slot POST réservé. */
 static NetRequest* netRequestAlloc(bool forOta = false) {
   if (forOta) {
     NetRequest* r = netRequestAllocTrySlot(kNetRequestOtaReservedSlot);
     if (r) return r;
+    for (size_t i = 0; i <= kNetRequestFetchReservedSlot; ++i) {
+      if (i == kNetRequestOtaReservedSlot) continue;
+      NetRequest* r2 = netRequestAllocTrySlot(i);
+      if (r2) return r2;
+    }
+  } else {
+    for (size_t i = 0; i <= kNetRequestNormalMaxSlot; ++i) {
+      NetRequest* r = netRequestAllocTrySlot(i);
+      if (r) return r;
+    }
   }
-  for (size_t i = 0; i < kNetRequestOtaReservedSlot; ++i) {
-    NetRequest* r = netRequestAllocTrySlot(i);
+  size_t used = 0;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[netRPC] Pool plein, netRequestAlloc échoue\n");
+  ets_printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
+#else
+  Serial.println(F("[netRPC] Pool plein, netRequestAlloc échoue"));
+  Serial.printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
+#endif
+  return nullptr;
+}
+
+/** Alloue un slot pour POST par catégorie (v12.42). Tente slot dédié puis partagés. */
+static NetRequest* netRequestAllocForPostCategory(AppTasks::PostCategory cat) {
+  size_t slot = 0;
+  switch (cat) {
+    case AppTasks::PostCategory::Replay:   slot = kNetRequestPostCat3Slot; break;
+    case AppTasks::PostCategory::EventAck: slot = kNetRequestPostCat2Slot; break;
+    case AppTasks::PostCategory::Periodic: slot = kNetRequestPostCat1Slot; break;
+  }
+  NetRequest* r = netRequestAllocTrySlot(slot);
+  if (r) return r;
+  for (size_t i = 0; i <= kNetRequestNormalMaxSlot; ++i) {
+    r = netRequestAllocTrySlot(i);
+    if (r) return r;
+  }
+  size_t used = 0;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[netRPC] Pool plein, netRequestAllocForPostCategory échoue\n");
+  ets_printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
+#else
+  Serial.println(F("[netRPC] Pool plein, netRequestAllocForPostCategory échoue"));
+  Serial.printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
+#endif
+  return nullptr;
+}
+
+/** Alloue un slot pour FetchRemoteState (poll/GET). Tente le slot réservé en priorité, puis partagés 0..NormalMax. */
+static NetRequest* netRequestAllocForFetch() {
+  NetRequest* r = netRequestAllocTrySlot(kNetRequestFetchReservedSlot);
+  if (r) return r;
+  for (size_t i = 0; i <= kNetRequestNormalMaxSlot; ++i) {
+    r = netRequestAllocTrySlot(i);
     if (r) return r;
   }
   size_t used = 0;
@@ -704,7 +765,7 @@ void webTask(void* pv) {
   static UBaseType_t minHwmObserved = UINT16_MAX;  // Track minimum HWM
 
   TickType_t lastWake = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(100);
+  const TickType_t period = pdMS_TO_TICKS(200);
 
   for (;;) {
     // v11.165: Protection NULL pointer (audit robustesse)
@@ -1262,7 +1323,7 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
 }
 
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
-  NetRequest* req = netRequestAlloc();
+  NetRequest* req = netRequestAllocForFetch();
   if (!req) return false;
   req->type = NetReqType::FetchRemoteState;
   req->timeoutMs = timeoutMs;
@@ -1278,14 +1339,13 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
   return false;  // timeout ou échec : netTask a netRequestFree(req) si cancelled
 }
 
-bool netPostRaw(const char* payload, uint32_t timeoutMs, NetPostFailureReason* outFailure) {
+bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure) {
   if (!payload) return false;
   if (outFailure) *outFailure = NetPostFailureReason::None;
-  NetRequest* req = netRequestAlloc();
+  NetRequest* req = netRequestAllocForPostCategory(category);
   if (!req) {
-    // Hypothèse B: un retry après 1s si pool plein (netTask peut libérer un slot)
     vTaskDelay(pdMS_TO_TICKS(1000));
-    req = netRequestAlloc();
+    req = netRequestAllocForPostCategory(category);
   }
   if (!req) {
     if (outFailure) *outFailure = NetPostFailureReason::PoolFull;
@@ -1349,6 +1409,10 @@ size_t netRequestPoolUsedCount() {
 
 size_t netRequestPoolSize() {
   return kNetRequestPoolSize;
+}
+
+size_t netRequestPoolPostSlotsFullThreshold() {
+  return kNetRequestNormalMaxSlot + 1;  // Tous les slots POST (réservé + partagés) occupés
 }
 
 #if FEATURE_MAIL

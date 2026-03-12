@@ -265,10 +265,9 @@ void Automatism::toggleForceWakeup() {
 // COMMUNICATION RÉSEAU (Proxy vers AutomatismNetwork)
 // ============================================================================
 
-bool Automatism::sendFullUpdate(const SensorReadings& readings, const char* extraPairs) {
-    // Délégation complète à AutomatismSync
-    // On passe *this pour l'accès aux getters (durées, seuils, etc.)
-    return _network.sendFullUpdate(readings, _acts, *this, extraPairs);
+bool Automatism::sendFullUpdate(const SensorReadings& readings, const char* extraPairs,
+                                 AppTasks::PostCategory category) {
+    return _network.sendFullUpdate(readings, _acts, *this, extraPairs, category);
 }
 
 bool Automatism::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
@@ -392,8 +391,10 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
         return;
     }
 
+    // Distinguer nourrissage auto (gros+petits) vs manuel avant reset
+    const bool wasAutomatic = !_manualFeedingActive;
+
     // v11.179: Offline-first - l'état local est toujours mis à jour en premier
-    // Si l'envoi distant échoue, les données restent cohérentes localement
     _manualFeedingActive = false;
     _currentFeedingPhase = FeedingPhase::NONE;
     _feedingPhaseEnd = 0;
@@ -402,15 +403,18 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
     // Tentative de sync distante (non bloquante, avec timeout court)
     if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
         SensorReadings curReadings = readSensors();
-        bool syncOk = sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
-        if (syncOk) {
-            Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)"));
+        bool syncOk = false;
+        if (wasAutomatic) {
+            // Enregistrer l'événement nourrissage auto (gros+petits) pour le graphique serveur
+            syncOk = sendFullUpdate(curReadings, "bouffePetits=1&108=1&bouffeGros=1&109=1");
+            Serial.println(syncOk ? F("[Auto] ✅ Nourrissage auto enregistré (sync distant)") :
+                                     F("[Auto] ⚠️ Nourrissage auto - sync distant échoué"));
         } else {
-            // Offline-first: échec sync distant n'est pas critique, état local cohérent
-            Serial.println(F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
+            syncOk = sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
+            Serial.println(syncOk ? F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)") :
+                                     F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
         }
     } else {
-        // Offline-first: fonctionnement normal sans réseau
         Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales uniquement - offline)"));
     }
 }
@@ -586,10 +590,6 @@ bool Automatism::restoreRemoteConfigFromCache() {
 // ============================================================================
 
 void Automatism::handleFeeding() {
-    // #region agent log
-    const int inProgress = isFeedingInProgress() ? 1 : 0;
-    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"handleFeeding\",\"message\":\"entry\",\"data\":{\"inProgress\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H3\"}\n", inProgress, (unsigned long)millis());
-    // #endregion
     // Évite double nourrissage : ne pas lancer l'auto si un cycle est déjà en cours
     if (isFeedingInProgress()) {
         return;
@@ -600,48 +600,27 @@ void Automatism::handleFeeding() {
         Serial.println(F("[Auto] ❌ Erreur récupération heure pour nourrissage"));
         return;
     }
-    
+
     int dayOfYear = timeinfo.tm_yday;
     int hour = timeinfo.tm_hour;
     int minute = timeinfo.tm_min;
-    // #region agent log
-    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"handleFeeding\",\"message\":\"time\",\"data\":{\"epoch\":%ld,\"hour\":%d,\"min\":%d,\"dayOfYear\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H4\"}\n", (long)now, hour, minute, dayOfYear, (unsigned long)millis());
-    // #endregion
+
     _feedingSchedule.checkAndFeed(hour, minute, dayOfYear, millis(),
                                    bouffeMatin, bouffeMidi, bouffeSoir,
                                    tempsGros, tempsPetits,
                                    _network.getEmailAddress(), _network.isEmailEnabled(),
                                    [this]() { armMailBlink(); },
-                                   [this](const char* type) { 
+                                   [this](const char* type) {
                                        _currentFeedingType = type;
                                        _manualFeedingActive = false;
-                                       // Calculer la durée de la phase "Gros"
+                                       // Durée totale = gros + délai + petits (aligné avec feedSequential)
                                        const uint32_t bigCycleMs = (tempsGros + (tempsGros / 2U)) * 1000UL;
-                                       const uint32_t delayMs = 2 * 1000UL;
+                                       const uint32_t delayMs = static_cast<uint32_t>(AutomatismFeedingSchedule::FEEDING_DELAY_BETWEEN_SEC) * 1000UL;
+                                       const uint32_t smallCycleMs = (tempsPetits + (tempsPetits / 2U)) * 1000UL;
                                        _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-                                       _feedingPhaseEnd = millis() + bigCycleMs + delayMs;
+                                       _feedingPhaseEnd = millis() + bigCycleMs + delayMs + smallCycleMs;
                                    },
-                                   [this]() {
-                                       // Callback de fin de nourrissage automatique
-                                       // Marquer les événements pour le graphique serveur (gros+petits)
-                                       strncpy(bouffePetits, "1", sizeof(bouffePetits) - 1);
-                                       bouffePetits[sizeof(bouffePetits) - 1] = '\0';
-                                       strncpy(bouffeGros, "1", sizeof(bouffeGros) - 1);
-                                       bouffeGros[sizeof(bouffeGros) - 1] = '\0';
-                                       Serial.println(F("[Auto] 🍽️ Nourrissage auto terminé - sync serveur"));
-                                       
-                                       // Envoyer au serveur avec les flags à 1 (lecture déjà en cache, pas de _sensors.read() bloquant)
-                                       if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-                                           bool ok = sendFullUpdate(_lastReadings, nullptr);
-                                           Serial.printf("[Auto] 📤 Sync nourrissage auto: %s\n", ok ? "OK" : "FAIL");
-                                       }
-                                       
-                                       // Remettre les flags à 0 pour les prochains envois
-                                       strncpy(bouffePetits, "0", sizeof(bouffePetits) - 1);
-                                       bouffePetits[sizeof(bouffePetits) - 1] = '\0';
-                                       strncpy(bouffeGros, "0", sizeof(bouffeGros) - 1);
-                                       bouffeGros[sizeof(bouffeGros) - 1] = '\0';
-                                   });
+                                   nullptr);  // Sync déplacée dans finalizeFeedingIfNeeded (à la vraie fin du cycle)
 }
 
 void Automatism::markCurrentFeedingSlotAsDone() {

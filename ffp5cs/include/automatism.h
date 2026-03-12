@@ -123,7 +123,8 @@ class Automatism {
   int8_t getSendState() const { return _network.getSendState(); }
 
   // Méthodes publiques pour le serveur web
-  bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr);
+  bool sendFullUpdate(const SensorReadings& readings, const char* extraPairs = nullptr,
+                      AppTasks::PostCategory category = AppTasks::PostCategory::Periodic);
   void manualFeedSmall();
   void manualFeedBig();
   /// Notifie le sync après nourrissage distant déclenché par GPIOParser (ack, reset, email)

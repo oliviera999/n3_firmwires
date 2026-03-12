@@ -12,6 +12,77 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 12.42 - 2026-03-12
+
+### Phase 2 : 3 slots POST par catégorie (priorité 3 > 2 > 1)
+
+- **Slots réservés** : un slot par catégorie POST — cat3 replay (priorité haute), cat2 ack/événements, cat1 données périodiques. Isolation pour éviter qu’une catégorie bloque les autres en saturation.
+- **Layout WROOM** : slot 7 OTA, 6 Fetch, 5 cat3, 4 cat2, 3 cat1, 0..2 partagés (Heartbeat, fallback).
+- **API** : `netPostRaw(payload, timeout, PostCategory, outFailure)` ; `sendFullUpdate` et `sendCommandAck` propagent la catégorie.
+- **Fichiers** : `app_tasks.cpp`, `post_category.h`, `automatism_sync.cpp`, `sd_logger.cpp`, `automatism.h/cpp`.
+
+---
+
+## Version 12.41 - 2026-03-12
+
+### Corrections nourrissage automatique (audit 12 mars 2026)
+
+- **_feedingPhaseEnd** : inclut désormais la phase Petits (durée totale = gros + délai + petits). Évite que `isFeedingInProgress()` repasse à `false` pendant la phase Petits.
+- **Sync serveur** : déplacée de `feedingCompleteCallback` (appelée trop tôt) vers `finalizeFeedingIfNeeded` — envoi des flags `bouffePetits=1` / `bouffeGros=1` lorsque le cycle est **réellement** terminé.
+- **Constante** : `FEEDING_DELAY_BETWEEN_SEC` dans `automatism_feeding_schedule.h` (alignée avec `feedSequential`).
+- **Logs NDJSON** : retirés de `checkNewDay`, `checkAndFeed`, `loadBouffeFlags`, `saveBouffeFlags`, `handleFeeding`.
+- **Fichiers** : `automatism.cpp`, `automatism_feeding_schedule.cpp`, `automatism_feeding_schedule.h`, `config.cpp`.
+
+---
+
+## Version 12.40 - 2026-03-12
+
+### Garantie envoi POST régulier (slot réservé + throttle strict)
+
+- **Slot réservé POST** : `netRequestAllocForPost()` tente le slot N-4 en priorité (WROOM: slot 4) pour les POST données capteurs. Heartbeat et Fetch n’utilisent pas ce slot.
+- **Throttle strict** : seuil `netRequestPoolPostSlotsFullThreshold()` (WROOM: 6) — différer POST quand tous les slots POST sont occupés, au lieu de `poolSize - 1` (7).
+- **Effet** : en saturation du pool, au moins un POST peut toujours être envoyé via le slot réservé. Réduction des tentatives inutiles.
+- **Fichiers** : `app_tasks.cpp`, `automatism_sync.cpp`, `app_tasks.h`.
+
+---
+
+## Version 12.39 - 2026-03-11
+
+### Optimisation CPU : période webTask 150 → 200 ms (scénario 5)
+
+- **Changement** : période de polling webTask portée de 150 ms à 200 ms. Gain ~50 % d'appels en moins sur webServer.loop() par rapport à l'original (100 ms).
+- **Effet** : réduction de la charge CPU et des commutations de tâche sur core 1.
+
+---
+
+## Version 12.38 - 2026-03-11
+
+### Correctif stack overflow netTask wroom-prod (Stack canary)
+
+- **Contexte** : wroom-prod en crash loop (19 Guru Meditation en 5 min), `Stack canary watchpoint triggered (netTask)` lors des opérations TLS/OTA au boot.
+- **Changement** : `NET_TASK_STACK_SIZE` porté de 12 KB à 16 KB pour WROOM (aligné S3). La stack S3 avait déjà été augmentée pour le même symptôme (mbedTLS/HTTP gourmands).
+- **Validation** : monitor 5 min, 0 crash, 0 reboot. RAM wroom-prod ~36 %, flash 86,4 %.
+
+---
+
+## Version 12.37 - 2026-03-10
+
+### Correctif crash LoadProhibited AP de secours (monitoring 20 min 2026-03-10)
+
+- **Garde heap en entrée de startFallbackAP()** : vérification `ESP.getFreeHeap() >= MIN_HEAP_AP_MODE` (10 KB) **avant** tout appel à `WiFi.mode()` ou `WiFi.softAP()`. La garde v12.33 protégeait uniquement le scan ; le crash survenait dans `WiFi.mode(WIFI_AP)` quand la heap était ~6 KB.
+- **Constante** `MIN_HEAP_AP_MODE = 10240` (10 KB) dans `NetworkConfig`.
+- **Effet** : si heap < 10 KB au moment de l'échec WiFi, l'AP de secours n'est pas démarré (return false), le système reste en offline ; la prochaine tentative de connexion réessaiera plus tard.
+
+---
+
+## Version 12.36 - 2026-03-10
+
+### Optimisation CPU : période webTask 100 → 150 ms
+
+- **Scénario 5** : réduction de la fréquence de polling de webTask de 100 ms à 150 ms. Gain estimé ~33 % d'appels en moins sur webServer.loop() (WebSocket + broadcast). Validation : run 15 min avec client WebSocket connecté.
+
+---
+
 ## Version 12.35 - 2026-03-10
 
 ### Correctif timeouts RPC POST (S3)

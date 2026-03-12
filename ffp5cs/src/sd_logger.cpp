@@ -154,7 +154,8 @@ uint16_t replayPending(uint8_t maxBatch) {
 
     if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
 
-    bool ok = AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS);
+    bool ok = AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS,
+                               AppTasks::PostCategory::Replay);
     if (ok) {
       char fullPath[64];
       snprintf(fullPath, sizeof(fullPath), "%s/%s", QUEUE_DIR, name);

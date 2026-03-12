@@ -8,6 +8,7 @@
 #include "system_actuators.h"
 #include "data_queue.h"
 #include "config.h"
+#include "post_category.h"
 
 // Forward declaration
 class Automatism;
@@ -23,10 +24,12 @@ public:
     void update(const SensorReadings& readings, SystemActuators& acts, Automatism& core);
 
     // Envoi immédiat (déclenché par événement)
+    // category: Periodic (données 30s), EventAck (ack/événements), Replay (rattrapage)
     bool sendFullUpdate(const SensorReadings& readings,
                         SystemActuators& acts,
                         Automatism& core,
-                        const char* extraPairs = nullptr);
+                        const char* extraPairs = nullptr,
+                        AppTasks::PostCategory category = AppTasks::PostCategory::Periodic);
 
     // Récupération état distant
     bool fetchRemoteState(ArduinoJson::JsonDocument& doc);

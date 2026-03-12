@@ -15,8 +15,7 @@
 #include <time.h>
 
 namespace {
-constexpr size_t DEFERRED_JSON_SIZE = 2048;
-static char s_deferredRemoteJson[DEFERRED_JSON_SIZE];
+static char s_deferredRemoteJson[BufferConfig::REMOTE_JSON_CACHE_SIZE];
 static SemaphoreHandle_t s_deferredSaveMutex = nullptr;
 static QueueHandle_t s_deferredSaveQueue = nullptr;
 }  // namespace
@@ -90,14 +89,24 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
     bool intervalReached = (timeSinceLastSend > SEND_INTERVAL_MS);
     
     if (wifiConnected && sendEnabled) {
-        // Throttle : ne pas ajouter de POST si le pool netRPC est quasi plein (évite saturation)
+        // v12.33: Garde heap — différer POST si heap < 20 KB (évite allocation HTTP en état critique)
+        constexpr uint32_t MIN_HEAP_FOR_POST = 20000;
+        if (ESP.getFreeHeap() < MIN_HEAP_FOR_POST) {
+            static unsigned long s_lastHeapSkipLog = 0;
+            if (now - s_lastHeapSkipLog >= 60000) {
+                Serial.printf("[Sync] ⏸️ POST différé: heap faible (%u < %u)\n",
+                              (unsigned)ESP.getFreeHeap(), (unsigned)MIN_HEAP_FOR_POST);
+                s_lastHeapSkipLog = now;
+            }
+        } else {
+        // Throttle : différer POST quand tous les slots POST sont occupés (v12.40: seuil dédié)
         size_t poolUsed = AppTasks::netRequestPoolUsedCount();
-        size_t poolSize = AppTasks::netRequestPoolSize();
-        if (poolUsed >= poolSize - 2) {
+        size_t threshold = AppTasks::netRequestPoolPostSlotsFullThreshold();
+        if (poolUsed >= threshold) {
             // Log au plus une fois par minute pour limiter le spam
             static unsigned long s_lastThrottleLog = 0;
             if (now - s_lastThrottleLog >= 60000) {
-                Serial.printf("[Sync] ⏸️ POST différé: pool netRPC quasi plein (%u/%u)\n", (unsigned)poolUsed, (unsigned)poolSize);
+                Serial.printf("[Sync] ⏸️ POST différé: pool netRPC plein (%u >= %u)\n", (unsigned)poolUsed, (unsigned)threshold);
                 s_lastThrottleLog = now;
             }
         } else {
@@ -116,6 +125,7 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
                 }
             }
         }
+        }  // fin garde heap
     } else {
         // Log seulement si conditions changent pour éviter spam
         static bool lastWifiState = true;
@@ -151,7 +161,7 @@ void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
             (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
             _lastRemoteFeedResetMs = nowMs;
             SensorReadings readings = core.readSensors();
-            bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0");
+            bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0", AppTasks::PostCategory::EventAck);
             Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
         }
         if (_emailEnabled) {
@@ -170,7 +180,7 @@ void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
             (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
             _lastRemoteFeedResetMs = nowMs;
             SensorReadings readings = core.readSensors();
-            bool resetOk = core.sendFullUpdate(readings, "bouffeGros=0&109=0");
+            bool resetOk = core.sendFullUpdate(readings, "bouffeGros=0&109=0", AppTasks::PostCategory::EventAck);
             Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
         }
         if (_emailEnabled) {
@@ -247,7 +257,8 @@ void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
 bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
                                     SystemActuators& acts,
                                     Automatism& core,
-                                    const char* extraPairs) {
+                                    const char* extraPairs,
+                                    AppTasks::PostCategory category) {
     uint32_t attemptStartMs = millis();
     if (!canAttemptSend(attemptStartMs)) {
         return false;
@@ -261,7 +272,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         return false;
     }
 
-    char payloadBuffer[1024];
+    char payloadBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
     // Construction du payload (logique migrée de AutomatismNetwork)
     // Nécessite des accesseurs sur Automatism (core)
     int diffMaree = core.computeDiffMaree(readings.wlAqua);
@@ -332,7 +343,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     }
     uint32_t sendStart = millis();
     AppTasks::NetPostFailureReason failReason = AppTasks::NetPostFailureReason::None;
-    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, &failReason);
+    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, category, &failReason);
     uint32_t durationMs = millis() - sendStart;
     
     registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -426,14 +437,14 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
             out[k] = p.value();
         }
     }
-    char jsonStr[DEFERRED_JSON_SIZE];
+    char jsonStr[BufferConfig::REMOTE_JSON_CACHE_SIZE];
     serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
     // v11.192: Différer la sauvegarde NVS vers automation task pour éviter assert
     // xTaskPriorityDisinherit (mutex/priorité) quand NVS est écrit depuis net task ou juste après notify.
     if (s_deferredSaveMutex && s_deferredSaveQueue &&
         xSemaphoreTake(s_deferredSaveMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        strncpy(s_deferredRemoteJson, jsonStr, DEFERRED_JSON_SIZE - 1);
-        s_deferredRemoteJson[DEFERRED_JSON_SIZE - 1] = '\0';
+        strncpy(s_deferredRemoteJson, jsonStr, BufferConfig::REMOTE_JSON_CACHE_SIZE - 1);
+        s_deferredRemoteJson[BufferConfig::REMOTE_JSON_CACHE_SIZE - 1] = '\0';
         xSemaphoreGive(s_deferredSaveMutex);
         uint8_t one = 1;
         xQueueOverwrite(s_deferredSaveQueue, &one);
@@ -460,10 +471,10 @@ void AutomatismSync::processDeferredRemoteVarsSave() {
     if (!s_deferredSaveQueue || !s_deferredSaveMutex) return;
     uint8_t one = 0;
     if (xQueueReceive(s_deferredSaveQueue, &one, 0) != pdTRUE) return;
-    char copy[DEFERRED_JSON_SIZE];
+    char copy[BufferConfig::REMOTE_JSON_CACHE_SIZE];
     if (xSemaphoreTake(s_deferredSaveMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
-    strncpy(copy, s_deferredRemoteJson, DEFERRED_JSON_SIZE - 1);
-    copy[DEFERRED_JSON_SIZE - 1] = '\0';
+        strncpy(copy, s_deferredRemoteJson, BufferConfig::REMOTE_JSON_CACHE_SIZE - 1);
+        copy[BufferConfig::REMOTE_JSON_CACHE_SIZE - 1] = '\0';
     xSemaphoreGive(s_deferredSaveMutex);
     _config.saveRemoteVars(copy);
 }
@@ -580,7 +591,7 @@ uint16_t AutomatismSync::replayQueuedData() {
     while (_dataQueue.size() > 0 && sent < 2) {
         char payload[1024];
         if (_dataQueue.peek(payload, sizeof(payload))) {
-            if (AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS)) {
+            if (AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, AppTasks::PostCategory::Replay)) {
                 _dataQueue.pop(payload, sizeof(payload));
                 sent++;
             } else {
@@ -598,7 +609,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&version=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
              ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION, command, status, millis());
-    return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS);
+    return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, AppTasks::PostCategory::EventAck);
 }
 
 void AutomatismSync::logRemoteCommandExecution(const char* command, bool success) {
