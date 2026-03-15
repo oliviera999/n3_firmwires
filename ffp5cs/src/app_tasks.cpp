@@ -612,7 +612,8 @@ static void netTask(void* pv) {
       case NetReqType::PostRaw:
         ok = g_ctx->webClient.tryPushStatusToServer(req->payload);
         esp_task_wdt_reset();
-        break;
+        netRequestFree(req);  // fire-and-forget : libérer le slot, pas de notification caller
+        continue;
       case NetReqType::Heartbeat:
         ok = (req->diag != nullptr) ? g_ctx->webClient.sendHeartbeat(*req->diag) : false;
         esp_task_wdt_reset();
@@ -1344,28 +1345,28 @@ bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, 
   if (outFailure) *outFailure = NetPostFailureReason::None;
   NetRequest* req = netRequestAllocForPostCategory(category);
   if (!req) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    req = netRequestAllocForPostCategory(category);
-  }
-  if (!req) {
     if (outFailure) *outFailure = NetPostFailureReason::PoolFull;
     return false;
   }
   req->type = NetReqType::PostRaw;
   req->timeoutMs = timeoutMs;
+  req->requester = nullptr;  // fire-and-forget : pas de notification au caller
+  req->cancelled = false;
+  req->success = false;
   req->doc = nullptr;
   req->diag = nullptr;
   strncpy(req->payload, payload, sizeof(req->payload) - 1);
   req->payload[sizeof(req->payload) - 1] = '\0';
-  bool rpcOk = netRpcAlloc(req, timeoutMs);
-  if (rpcOk) {
-    bool success = req->success;
+  // Envoyer sans attendre — netTask libère le slot après traitement HTTP
+  NetRequest* ptr = req;
+  const uint32_t QUEUE_SEND_TIMEOUT_MS = 200;
+  if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(QUEUE_SEND_TIMEOUT_MS)) != pdTRUE) {
+    Serial.println(F("[netRPC] POST abandonné: file net pleine"));
     netRequestFree(req);
-    if (!success && outFailure) *outFailure = NetPostFailureReason::HttpError;
-    return success;
+    if (outFailure) *outFailure = NetPostFailureReason::PoolFull;
+    return false;
   }
-  if (outFailure) *outFailure = NetPostFailureReason::TimeoutRpc;
-  return false;  // netTask netRequestFree(req) quand il traite req->cancelled
+  return true;  // "mis en queue" — résultat HTTP traité en arrière-plan par netTask
 }
 
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
