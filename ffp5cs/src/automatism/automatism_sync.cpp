@@ -343,12 +343,15 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     }
     uint32_t sendStart = millis();
     AppTasks::NetPostFailureReason failReason = AppTasks::NetPostFailureReason::None;
-    bool success = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, category, &failReason);
-    uint32_t durationMs = millis() - sendStart;
-    
-    registerSendResult(success, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
-    
-    if (success) {
+    // fire-and-forget : retourne immédiatement (true = mis en queue, false = pool plein)
+    bool queued = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, category, &failReason);
+    uint32_t durationMs = millis() - sendStart;  // ~0 ms désormais
+
+    registerSendResult(queued, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
+
+    if (queued) {
+        // POST transmis à netTask — résultat HTTP traité en arrière-plan
+        // En cas d'échec HTTP, web_client queue en NVS automatiquement
         _sendState = 1;
         _lastSend = millis();
         _lastDataSkipReason = SKIP_NONE;
@@ -357,21 +360,14 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 #endif
         if (_dataQueue.size() > 0) replayQueuedData();
     } else {
+        // Pool netRPC plein : conserver en RAM pour retry au prochain cycle
         _sendState = -1;
         _lastDataSkipReason = SKIP_NET_FAIL;
-        if (failReason == AppTasks::NetPostFailureReason::PoolFull) {
-            Serial.println(F("[Sync] POST échoué (pool netRPC plein)"));
-        } else if (failReason == AppTasks::NetPostFailureReason::TimeoutRpc) {
-            Serial.println(F("[Sync] POST échoué (timeout RPC)"));
-        } else if (failReason == AppTasks::NetPostFailureReason::HttpError) {
-            Serial.println(F("[Sync] POST échoué (erreur HTTP)"));
-        } else {
-            Serial.println(F("[Sync] POST échoué (file pleine, timeout RPC ou HTTP)"));
-        }
+        Serial.println(F("[Sync] POST différé (pool netRPC plein)"));
         _dataQueue.push(payloadBuffer);
     }
 
-    return success;
+    return queued;
 }
 
 bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
