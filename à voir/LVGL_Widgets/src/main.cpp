@@ -19,6 +19,7 @@
 #include <ESP32Time.h>
 #include <Preferences.h>
 #include <nvs_flash.h>
+#include "credentials.h"
 
 constexpr int MAX_ULTRASON_DISTANCE = 90;
 constexpr int MIN_ULTRASON_DISTANCE = 2;
@@ -75,11 +76,8 @@ DHT dht(DHTPIN, DHTTYPE);
 Servo myservobig;
 Servo myservosmall;
 #define emailSubject "Information FFP3"
-#define SMTP_HOST "smtp.gmail.com"
-#define SMTP_PORT esp_mail_smtp_port_465
-#define AUTHOR_EMAIL "arnould.svt@gmail.com"
-#define AUTHOR_PASSWORD "ddbfvlkssfleypdr"
-String inputMessageMailAd = "oliv.arn.lau@gmail.com";
+// SMTP credentials: voir include/credentials.h (ignoré par git)
+String inputMessageMailAd = DEST_EMAIL;
 String enableEmailChecked = "checked";
 String emailMessage;
 SMTPSession smtp;
@@ -94,7 +92,7 @@ String inputMessageSoirFeed = "18";
 const char* serverNamePostData = "http://iot.olution.info/ffp3/ffp3datas/post-ffp3-data2.php";
 const char* serverNameOutput = "http://iot.olution.info/ffp3/ffp3control/ffp3-outputs-action2.php?action=outputs_state&board=1";
 String version = "4.0";
-String apiKeyValue = "fdGTMoptd5CD2ert3";
+String apiKeyValue = API_KEY_VALUE;
 String sensorName = "FFP3";
 String sensorLocation = "T06";
 OneWire oneWire(oneWireBus);
@@ -682,11 +680,11 @@ struct WifiCredential {
 };
 
 WifiCredential wifiList[] = {
-  { "AndroidAP", "123456789" },
+  { WIFI_SSID_1, WIFI_PASSWORD_1 },
   //{ "raspN3", "n3LLrasp" },
   //{ "AP-Techno-T06", "Techno2024!" },
-  //{ "dlink", "n3LLdlink" }, 
-  { "inwi Home 4G 8306D9", "5KBB52W62M" },
+  //{ "dlink", "n3LLdlink" },
+  { WIFI_SSID_2, WIFI_PASSWORD_2 },
 
 };
 
