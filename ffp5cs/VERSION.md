@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.04 - 2026-03-16
+
+### Correctif logs NVS sur S3 PSRAM (boot)
+
+- **Contexte** : En env `wroom-s3-test-psram`, Serial n'est pas démarré au boot ; les logs NVS (Serial.println) ne s'affichaient pas ou provoquaient des accès invalides.
+- **Correctif** : Dans `nvs_manager.cpp`, pour `BOARD_S3` et `BOARD_HAS_PSRAM`, utilisation de `BOOT_LOG` à la place de `Serial` pour tous les messages NVS (init, mutex, stats, migration).
+- **Fichiers** : `ffp5cs/src/nvs_manager.cpp`, `include/config.h` (version 13.04).
+
+---
+
 ## Version 13.03 - 2026-03-16
 
 ### Correctif stack overflow postSender (S3)

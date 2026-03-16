@@ -36,7 +36,8 @@
 namespace ProjectConfig {
     // v13.02: Doc PSRAM S3 (choix d'env, axe 2), commentaire POST_PAYLOAD_MAX_SIZE S3 PSRAM.
     // v13.03: Stack postSender 8 KB sur S3 (évite Stack canary / crash en boucle).
-    inline constexpr const char* VERSION = "13.03";
+    // v13.04: NVS manager logs via BOOT_LOG sur S3 PSRAM (Serial non démarré au boot).
+    inline constexpr const char* VERSION = "13.04";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

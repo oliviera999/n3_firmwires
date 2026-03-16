@@ -1,5 +1,6 @@
 #include "nvs_manager.h"
 #include "config.h"
+#include "boot_log.h"  // BOOT_LOG pour S3 PSRAM (Serial non démarré au boot)
 #include <esp_system.h>
 #include <nvs.h>
 #include <nvs_flash.h>
@@ -28,12 +29,20 @@ private:
 };
 bool NVSManager::lock(TickType_t timeout) {
     if (_mutex == nullptr) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Mutex non disponible\n");
+#else
         Serial.println(F("[NVS] ⚠️ Mutex non disponible"));
+#endif
         return true; // fallback: pas de mutex, autoriser l'accès
     }
     BaseType_t taken = xSemaphoreTakeRecursive(_mutex, timeout);
     if (taken != pdPASS) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Timeout mutex\n");
+#else
         Serial.println(F("[NVS] ❌ Timeout mutex"));
+#endif
         return false;
     }
     return true;
@@ -83,11 +92,18 @@ bool NVSManager::begin() {
     
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Impossible de prendre le mutex pour begin()\n");
+#else
         Serial.println(F("[NVS] ❌ Impossible de prendre le mutex pour begin()"));
+#endif
         return false;
     }
-    
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    BOOT_LOG("[NVS] Initialisation du gestionnaire NVS centralise\n");
+#else
     Serial.println(F("[NVS] 🚀 Initialisation du gestionnaire NVS centralisé"));
+#endif
 
     // Marquer initialisé avant la création des namespaces (openNamespace en dépend)
     _initialized = true;
@@ -103,12 +119,19 @@ bool NVSManager::begin() {
     for (size_t i = 0; i < sizeof(nss) / sizeof(nss[0]); i++) {
         NVSError error = openNamespace(nss[i], false);
         if (error != NVSError::SUCCESS) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            BOOT_LOG("[NVS] Erreur creation namespace %s: %d\n", nss[i], static_cast<int>(error));
+#else
             Serial.printf("[NVS] ⚠️ Erreur création namespace %s: %d\n", nss[i], static_cast<int>(error));
+#endif
         }
         closeNamespace();
     }
-    
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    BOOT_LOG("[NVS] Gestionnaire NVS initialise\n");
+#else
     Serial.println(F("[NVS] ✅ Gestionnaire NVS initialisé"));
+#endif
     
     // Afficher les statistiques initiales
     logUsageStats();
@@ -622,7 +645,11 @@ NVSUsageStats NVSManager::getUsageStats() {
       stats.usagePercent = 0.0f;
     }
   } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    BOOT_LOG("[NVS] Impossible de lire les statistiques NVS (err=%d)\n", static_cast<int>(err));
+#else
     Serial.printf("[NVS] ⚠️ Impossible de lire les statistiques NVS (err=%d)\n", static_cast<int>(err));
+#endif
   }
 
     return stats;
@@ -630,7 +657,16 @@ NVSUsageStats NVSManager::getUsageStats() {
 
 void NVSManager::logUsageStats() {
     NVSUsageStats stats = getUsageStats();
-    
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    BOOT_LOG("========================================\n");
+    BOOT_LOG("[NVS] Statistiques d'utilisation\n");
+    BOOT_LOG("========================================\n");
+    BOOT_LOG("[NVS] Namespaces: %u\n", (unsigned)stats.namespaceCount);
+    BOOT_LOG("[NVS] Entrees totales: %u, utilisees: %u, libres: %u (%.1f%%)\n",
+             (unsigned)stats.totalBytes, (unsigned)stats.usedBytes, (unsigned)stats.freeBytes, stats.usagePercent);
+    BOOT_LOG("[NVS] Cles utilisees (approx.): %u\n", (unsigned)stats.keyCount);
+    BOOT_LOG("========================================\n");
+#else
     Serial.println(F("========================================"));
     Serial.println(F("[NVS] 📊 Statistiques d'utilisation"));
     Serial.println(F("========================================"));
@@ -639,6 +675,7 @@ void NVSManager::logUsageStats() {
                 stats.totalBytes, stats.usedBytes, stats.freeBytes, stats.usagePercent);
     Serial.printf("[NVS] Clés utilisées (approx.): %zu\n", stats.keyCount);
     Serial.println(F("========================================"));
+#endif
 }
 
 NVSError NVSManager::removeKey(const char* ns, const char* key) {
@@ -704,14 +741,21 @@ NVSError NVSManager::clearNamespace(const char* ns) {
 NVSError NVSManager::migrateFromOldSystem() {
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Mutex migrateFromOldSystem\n");
+#else
         Serial.println(F("[NVS] ❌ Mutex migrateFromOldSystem"));
+#endif
         return NVSError::WRITE_FAILED;
     }
 
     static constexpr const char* MIGRATION_FLAG_KEY = "mig1180_done";
 
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+    BOOT_LOG("[NVS] Migration depuis l'ancien systeme NVS\n");
+#else
     Serial.println(F("[NVS] 🔄 Migration depuis l'ancien système NVS"));
-    
+#endif
     // Éviter les migrations répétées à chaque boot
     nvs_handle_t systemHandle = 0;
     esp_err_t systemOpenErr = nvs_open(NVS_NAMESPACES::SYSTEM, NVS_READWRITE, &systemHandle);
@@ -719,13 +763,22 @@ NVSError NVSManager::migrateFromOldSystem() {
         uint8_t doneFlag = 0;
         esp_err_t flagErr = nvs_get_u8(systemHandle, MIGRATION_FLAG_KEY, &doneFlag);
         if (flagErr == ESP_OK && doneFlag == 1) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            BOOT_LOG("[NVS] Migration deja effectuee - aucune action requise\n");
+#else
             Serial.println(F("[NVS] ✅ Migration déjà effectuée - aucune action requise"));
+#endif
             nvs_close(systemHandle);
             return NVSError::SUCCESS;
         }
     } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Impossible d'acceder au namespace %s pour le flag de migration (err=%d)\n",
+                 NVS_NAMESPACES::SYSTEM, systemOpenErr);
+#else
         Serial.printf("[NVS] ⚠️ Impossible d'accéder au namespace %s pour le flag de migration (err=%d)\n",
                       NVS_NAMESPACES::SYSTEM, systemOpenErr);
+#endif
     }
 
     struct MigrationRule {
@@ -815,7 +868,11 @@ NVSError NVSManager::migrateFromOldSystem() {
                     readErr = nvs_get_str(oldHandle, oldKey, buffer, &length);
                     if (readErr == ESP_OK && nvs_set_str(newHandle, newKey, buffer) == ESP_OK) copied = true;
                 } else if (readErr == ESP_OK && length >= NVSConfig::MAX_INSPECTED_STRING_BYTES) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                    BOOT_LOG("[NVS] Migration STR %s trop longue (%zu), ignoree\n", oldKey, length);
+#else
                     Serial.printf("[NVS] ⚠️ Migration STR %s trop longue (%zu), ignorée\n", oldKey, length);
+#endif
                 }
                 break;
             }
@@ -831,18 +888,31 @@ NVSError NVSManager::migrateFromOldSystem() {
                         if (readErr == ESP_OK &&
                             nvs_set_blob(newHandle, newKey, buffer, length) == ESP_OK) copied = true;
                     } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                        BOOT_LOG("[NVS] Migration BLOB %s trop gros (%zu), ignore\n", oldKey, length);
+#else
                         Serial.printf("[NVS] ⚠️ Migration BLOB %s trop gros (%zu), ignoré\n", oldKey, length);
+#endif
                     }
                 }
                 break;
             }
             default:
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                BOOT_LOG("[NVS] Type non pris en charge pour %s/%s (type=%d)\n",
+                         oldNsForLog, oldKey, static_cast<int>(type));
+#else
                 Serial.printf("[NVS] ⚠️ Type non pris en charge pour %s/%s (type=%d)\n",
                               oldNsForLog, oldKey, static_cast<int>(type));
+#endif
                 return false;
         }
         if (!copied && readErr != ESP_OK) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            BOOT_LOG("[NVS] Lecture impossible pour %s/%s (err=%d)\n", oldNsForLog, oldKey, readErr);
+#else
             Serial.printf("[NVS] ⚠️ Lecture impossible pour %s/%s (err=%d)\n", oldNsForLog, oldKey, readErr);
+#endif
         }
         return copied;
     };
@@ -941,8 +1011,13 @@ NVSError NVSManager::migrateFromOldSystem() {
             char newKey[128];
             snprintf(newKey, sizeof(newKey), "%s%s", rule.keyPrefix ? rule.keyPrefix : "", info.key);
             if (strlen(newKey) > 15) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                BOOT_LOG("[NVS] Cle ignoree (nom >15 caracteres): %s/%s -> %s\n",
+                         rule.oldNamespace, info.key, newKey);
+#else
                 Serial.printf("[NVS] ⚠️ Clé ignorée (nom >15 caractères): %s/%s -> %s\n",
                               rule.oldNamespace, info.key, newKey);
+#endif
                 findErr = nvs_entry_next(&it);
                 continue;
             }
@@ -980,8 +1055,13 @@ NVSError NVSManager::migrateFromOldSystem() {
             char newKey[128];
             snprintf(newKey, sizeof(newKey), "%s%s", rule.keyPrefix ? rule.keyPrefix : "", info.key);
             if (strlen(newKey) > 15) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                BOOT_LOG("[NVS] Cle ignoree (nom >15 caracteres): %s/%s -> %s\n",
+                         rule.oldNamespace, info.key, newKey);
+#else
                 Serial.printf("[NVS] ⚠️ Clé ignorée (nom >15 caractères): %s/%s -> %s\n",
                               rule.oldNamespace, info.key, newKey);
+#endif
                 it = nvs_entry_next(it);
                 continue;
             }
@@ -1011,17 +1091,30 @@ NVSError NVSManager::migrateFromOldSystem() {
         // Fin branchement IDF 4/5
 
         if (entryCount >= MAX_NVS_ENTRIES_PER_NAMESPACE) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            BOOT_LOG("[NVS] Limite migration atteinte (%zu entries) pour %s, arret premature\n",
+                     entryCount, rule.oldNamespace);
+#else
             Serial.printf("[NVS] ⚠️ Limite migration atteinte (%zu entries) pour %s, arret premature\n",
                           entryCount, rule.oldNamespace);
+#endif
         }
 
         if (ruleMigrated) {
             esp_err_t commitErr = nvs_commit(newHandle);
             if (commitErr != ESP_OK) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                BOOT_LOG("[NVS] Commit echoue pour %s (err=%d)\n", rule.newNamespace, commitErr);
+#else
                 Serial.printf("[NVS] ⚠️ Commit echoue pour %s (err=%d)\n", rule.newNamespace, commitErr);
+#endif
             } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+                BOOT_LOG("[NVS] Donnees migrees de %s vers %s\n", rule.oldNamespace, rule.newNamespace);
+#else
                 Serial.printf("[NVS] ✅ Donnees migrees de %s vers %s\n",
                               rule.oldNamespace, rule.newNamespace);
+#endif
             }
         }
 
@@ -1031,7 +1124,11 @@ NVSError NVSManager::migrateFromOldSystem() {
 
     if (systemHandle == 0 && systemOpenErr != ESP_OK) {
         if (nvs_open(NVS_NAMESPACES::SYSTEM, NVS_READWRITE, &systemHandle) != ESP_OK) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+            BOOT_LOG("[NVS] Impossible d'enregistrer le flag de migration\n");
+#else
             Serial.println(F("[NVS] ⚠️ Impossible d'enregistrer le flag de migration"));
+#endif
         }
     }
 
@@ -1042,9 +1139,17 @@ NVSError NVSManager::migrateFromOldSystem() {
     }
 
     if (!migratedSomething) {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Aucun ancien namespace detecte ou donnees deja migrees\n");
+#else
         Serial.println(F("[NVS] ℹ️ Aucun ancien namespace detecte ou donnees deja migrees"));
+#endif
     } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+        BOOT_LOG("[NVS] Migration des anciens namespaces terminee\n");
+#else
         Serial.println(F("[NVS] ✅ Migration des anciens namespaces terminee"));
+#endif
     }
 
     return NVSError::SUCCESS;
