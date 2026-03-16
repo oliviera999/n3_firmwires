@@ -34,14 +34,16 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v12.42: Phase 2 - 3 slots POST réservés (cat3 replay, cat2 ack, cat1 périodique)
-    inline constexpr const char* VERSION = "12.43";
+    // v13.00: Version majeure (release)
+    inline constexpr const char* VERSION = "13.00";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
         inline constexpr const char* PROFILE_TYPE = "dev";
     #elif defined(PROFILE_TEST)
         inline constexpr const char* PROFILE_TYPE = "test";
+    #elif defined(PROFILE_BETA)
+        inline constexpr const char* PROFILE_TYPE = "beta";
     #elif defined(PROFILE_PROD)
         inline constexpr const char* PROFILE_TYPE = "prod";
     #else
@@ -60,6 +62,8 @@ namespace Utils {
     inline const char* getProfileName() {
         #if defined(PROFILE_PROD)
             return "PRODUCTION";
+        #elif defined(PROFILE_BETA)
+            return "BETA";
         #elif defined(PROFILE_TEST)
             #if defined(BOARD_S3)
                 return "S3-TEST";
@@ -110,9 +114,6 @@ namespace SystemConfig {
     // EPOCH_MIN_VALID doit être proche de la date actuelle pour invalider les vieux epochs en NVS.
     inline constexpr time_t EPOCH_MIN_VALID = 1767225600; // 2026-01-01 00:00:00 UTC
     inline constexpr time_t EPOCH_MAX_VALID = 2524608000; // 2050-01-01
-    
-    // OTA
-    inline constexpr uint16_t ARDUINO_OTA_PORT = 3232;
     
     // Délais
     inline constexpr uint32_t INITIAL_DELAY_MS = 200;
@@ -940,6 +941,11 @@ namespace TaskConfig {
 #endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
+
+    // Tâche dédiée envoi POST (fire-and-forget : post-data + heartbeat)
+    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 4096;  // 4 KB
+    inline constexpr UBaseType_t POST_SENDER_TASK_PRIORITY = 1;    // Sous netTask
+    inline constexpr BaseType_t POST_SENDER_TASK_CORE_ID = 0;
     
     // Tâche mail asynchrone (v11.143) - évite de bloquer automationTask pendant SMTP
     // v11.161: Augmenté de 12KB à 16KB - stack overflow persistant pendant TLS/SMTP handshake
