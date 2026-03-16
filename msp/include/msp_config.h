@@ -6,7 +6,7 @@
 #include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "2.14"
+#define FIRMWARE_VERSION "2.15"
 
 // --- Pins ---
 #define RELAIS 13
