@@ -1,0 +1,9 @@
+# Partition WROOM avec petit FS pour ESP Mail Client (wroom-prod, wroom-beta).
+# OTA dual + partition spiffs 64 Ko (label "spiffs") pour la lib ESP Mail sans erreur "partition could not be found".
+# Slots app réduits à 0x1E0000 (1 966 080 octets) chacun — alignement 0x10000.
+# Name,Type,SubType,Offset,Size,Flags
+nvs,data,nvs,0x9000,0x5000
+otadata,data,ota,0xE000,0x2000
+app0,app,ota_0,0x10000,0x1E0000
+spiffs,data,spiffs,0x1F0000,0x10000
+app1,app,ota_1,0x200000,0x1E0000

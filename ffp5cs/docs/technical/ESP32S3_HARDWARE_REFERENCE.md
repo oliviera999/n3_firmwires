@@ -27,8 +27,16 @@ Référence module : type **N16R8** (16 Mo flash + 8 Mo PSRAM).
   - 16 Mo flash + 8 Mo PSRAM, flag `BOARD_HAS_PSRAM` défini, **`-mfix-esp32-psram-cache-issue`** en build pour limiter les échecs flash/boot (aligné LVGL_Widgets).  
   - Utiliser lorsque l’application doit exploiter la PSRAM (heap étendu, buffers, etc.).
   - **Validation recommandée** : script **`run_s3_psram_validation.ps1`** (build + erase + flash + monitor 2 ou 5 min + analyse). Voir aussi `docs/technical/ESP32S3_TG1WDT_BOOT_FIX.md`.
+- **Build sous Windows** : le pre-script **`tools/pio_ensure_lib_dirs_windows.py`** pré-crée les répertoires de build des libs dont le nom contient des espaces (ex. « Adafruit GFX Library »), ce qui évite l’erreur « opening dependency file … No such file or directory ». Il s’exécute automatiquement pour `wroom-s3-test-psram` sous Windows uniquement.
 
 Pour les cartes **8 Mo flash** + PSRAM (DevKit 8 Mo), utiliser l’env `wroom-s3-test-devkit` ; pour le matériel 16 Mo flash + 8 Mo PSRAM (N16R8), utiliser `wroom-s3-test-psram`.
+
+### Choix d’environnement (référence rapide)
+
+| Besoin | Environnement(s) à utiliser |
+|--------|-----------------------------|
+| **WiFi requis sur S3** | `wroom-s3-test` ou `wroom-s3-prod` (sans PSRAM). |
+| **PSRAM requise, WiFi optionnelle** (unités locales, écran, SD, capteurs) | `wroom-s3-test-psram` (WiFi désactivée avec la stack actuelle). |
 
 **Boot avec PSRAM (TG1WDT)** : l’init PSRAM dépasse 300 ms et l’Interrupt Watchdog (IWDT) du bootloader peut provoquer une boucle de reset (TG1WDT_SYS_RST). Le correctif combine : (1) un pre script (`tools/pio_s3_psram_patch_iwdt.py`) qui désactive l'IWDT dans le variant qio_opi (`CONFIG_ESP_INT_WDT=0`) ; (2) en début de `setup()`, désactivation runtime de l'IWDT (Timer Group 1 / MWDT1) via le HAL WDT (`wdt_hal_disable`), pour couvrir le cas où le bootloader l'aurait déjà activé. En cohérence avec la doc du projet test psram s3 2. Pour un **boot stable** sur N16R8, utiliser **wroom-s3-test** (sans PSRAM) si la PSRAM n'est pas requise ; **wroom-s3-test-psram** avec ce correctif pour exploiter la PSRAM.
 
@@ -39,12 +47,20 @@ Pour les cartes **8 Mo flash** + PSRAM (DevKit 8 Mo), utiliser l’env `wroom-s3
 | Élément | Situation |
 |--------|------------|
 | **Matériel cible** | ESP32-S3 N16R8 (16 Mo flash, 8 Mo PSRAM), variant qio_opi. |
-| **Stack actuelle** | platformio/espressif32 **6.12.0**, framework arduino-esp32 **~3.0.x** (bundlé). Dernière release arduino-esp32 : **3.3.7** (ESP-IDF 5.5.2), non utilisable telle quelle avec cette plateforme (structure du bundle différente). |
+| **Stack actuelle** | platformio/espressif32 **6.13.0**, framework arduino-esp32 **~3.0.x** (bundlé). Dernière release arduino-esp32 : **3.3.7** (ESP-IDF 5.5.2), non utilisable telle quelle avec cette plateforme (structure du bundle différente). |
 | **Problème WiFi** | Sur S3 + PSRAM, `WiFi.mode()` et `esp_wifi_init()` **bloquent sans retour** (bug connu arduino-esp32 #8377, conflit UART/PSRAM). Testé : au boot, depuis une tâche FreeRTOS, ou depuis la loop après 10 s — dans tous les cas `esp_wifi_init()` bloque et la carte fige. |
 | **Décision code** | Aucune tentative d’init WiFi sur l’env **wroom-s3-test-psram** : `connect()` / `startFallbackAP()` ne lancent pas `WiFi.mode()` ; `tryDelayedModeInit()` est un no-op. Conséquence : **pas de freeze**, firmware opérationnel en offline, **WiFi indisponible** (pas de STA ni d’AP). |
 | **Ce qui fonctionne** | Boot stable (avec correctif IWDT), LittleFS, NVS, tâches (sensor, web, auto, net), OLED, loop, pas de WDT. Validation : `run_s3_psram_validation.ps1`. |
 | **Choix d’env** | **WiFi requis sur S3** → `wroom-s3-test` ou `wroom-s3-prod` (sans PSRAM). **PSRAM requise, WiFi optionnelle** → `wroom-s3-test-psram` (WiFi désactivée jusqu’à mise à jour de la stack). |
 | **Évolution** | Réactiver une tentative d’init WiFi (ex. dans `tryDelayedModeInit()`) lorsque **platformio/espressif32** fournira un bundle avec **arduino-esp32 3.3.x**. Suivre les releases [platform-espressif32](https://github.com/platformio/platform-espressif32) et [arduino-esp32](https://github.com/espressif/arduino-esp32/releases). |
+
+### Évolution – PSRAM + WiFi (axe 2)
+
+Pour débloquer **PSRAM + WiFi** sur S3, revalider périodiquement :
+
+1. **Releases plateformes** : [platformio/platform-espressif32](https://github.com/platformio/platform-espressif32) (début 2025 : v6.13.0, Arduino 2.0.17 / IDF 4.4.7) et [pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) (arduino-esp32 3.3.7 / IDF 5.5.2 pour WROOM). Vérifier si une version récente propose un build S3 + qio_opi qui link correctement.
+2. **Issue arduino-esp32 #8377** (ESP32-S3 hang UART/Serial au boot avec PSRAM) : fermée en **Wontfix** (comportement IDF UART driver / timing). Contournement côté FFP5CS : `ets_printf()` pour les logs boot sur S3 PSRAM. Si un correctif ou une évolution IDF/Arduino corrige le blocage `esp_wifi_init()` avec PSRAM, réactiver une tentative d’init dans `tryDelayedModeInit()` et valider avec `run_s3_psram_validation.ps1`.
+3. **Actions si correctif disponible** : créer un env de test S3 sur la nouvelle plateforme (copie de wroom-s3-base / wroom-s3-test-psram), build + flash + monitor 5 min + analyse ; si WiFi+PSRAM fonctionnent, basculer les env S3 sur cette stack.
 
 ---
 

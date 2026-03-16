@@ -1,4 +1,4 @@
-﻿# Script de vérification périodique du monitoring
+# Script de vérification périodique du monitoring
 # Vérifie l'état du monitoring et affiche les informations
 
 param(
@@ -22,11 +22,22 @@ while ($checkCount -lt $MaxChecks) {
     
     Write-Host "[$currentTime] Vérification #$checkCount..." -ForegroundColor Gray
     
-    # Chercher les fichiers de monitoring les plus récents
-    $logFiles = Get-ChildItem -Filter "monitor_until_crash_*.log" -ErrorAction SilentlyContinue | 
-                Sort-Object LastWriteTime -Descending
-    $analysisFiles = Get-ChildItem -Filter "monitor_until_crash_analysis_*.txt" -ErrorAction SilentlyContinue | 
-                     Sort-Object LastWriteTime -Descending
+    # Chercher les fichiers de monitoring les plus récents (dossier dédié logs/ puis racine)
+    $logsDir = Join-Path $PSScriptRoot "logs"
+    $logFiles = @()
+    $analysisFiles = @()
+    if (Test-Path $logsDir) {
+        $logFiles = @(Get-ChildItem -Path $logsDir -Filter "monitor_until_crash_*.log" -ErrorAction SilentlyContinue)
+        $analysisFiles = @(Get-ChildItem -Path $logsDir -Filter "monitor_until_crash_analysis_*.txt" -ErrorAction SilentlyContinue)
+    }
+    if ($logFiles.Count -eq 0) {
+        $logFiles = @(Get-ChildItem -Path $PSScriptRoot -Filter "monitor_until_crash_*.log" -ErrorAction SilentlyContinue)
+    }
+    if ($analysisFiles.Count -eq 0) {
+        $analysisFiles = @(Get-ChildItem -Path $PSScriptRoot -Filter "monitor_until_crash_analysis_*.txt" -ErrorAction SilentlyContinue)
+    }
+    $logFiles = $logFiles | Sort-Object LastWriteTime -Descending
+    $analysisFiles = $analysisFiles | Sort-Object LastWriteTime -Descending
     
     $latestLog = $logFiles | Select-Object -First 1
     $latestAnalysis = $analysisFiles | Select-Object -First 1

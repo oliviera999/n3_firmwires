@@ -29,7 +29,7 @@ Chaque fichier est volontairement court (max ~400 lignes) pour faciliter la main
    * **automationTask** (core 1, priorité 2) – Consomme la queue, exécute la logique `Automatism`, heartbeat/diag
    * **displayTask** (core 1, priorité 1) – Mise à jour OLED (~250 ms)
    * **webTask** (core 0, priorité 2) - Gestion serveur HTTP
-2. La boucle `loop()` (core 1) effectue `ArduinoOTA.handle()`, gère le Wi‑Fi et fait un `vTaskDelay(200 ms)`.
+2. La boucle `loop()` (core 1) gère le Wi‑Fi et fait un `vTaskDelay(200 ms)`.
 
 ---
 

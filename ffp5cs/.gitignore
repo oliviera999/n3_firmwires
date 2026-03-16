@@ -40,15 +40,16 @@ desktop.ini
 Thumbs.db
 desktop.ini
 
-# Logs
+# Logs et analyses (dossier dédié par firmware)
+logs/
+desktop.ini
+
+# Anciens emplacements à la racine (rétrocompat)
 *.log
 *.log.err
 monitor_*.log
 monitor_*.log.errors
 monitor_*_analysis.txt
-desktop.ini
-
-# Artefacts de diagnostic (générés par les scripts PS1)
 analyze_exhaustive_*.txt
 check_emails_*.txt
 diagnostic_serveur_distant_*.txt

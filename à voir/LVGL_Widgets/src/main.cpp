@@ -4,7 +4,6 @@
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 #include <OneWire.h>
@@ -1720,18 +1719,6 @@ void setup()
     dht.begin();
     sensors.begin(); sensors.setResolution(10);
     variablestoesp();
-    ArduinoOTA.setPort(3232);
-    ArduinoOTA.setHostname("ffp3");
-    ArduinoOTA
-      .onStart([]() { Serial.println("Début de la mise à jour"); })
-      .onEnd([]() { Serial.println("\nFin"); })
-      .onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("Progression : %u%%\r", (progress / (total / 100)));
-      })
-      .onError([](ota_error_t error) {
-        Serial.printf("Erreur OTA [%u]\n", error);
-      });
-    ArduinoOTA.begin();
     preferences.begin("bouffe", true);
     bouffeMatinOk = preferences.getBool("bouffeMatinOk", 0);
     bouffeMidiOk = preferences.getBool("bouffeMidiOk", 0);
@@ -1784,7 +1771,6 @@ void loop()
   }
 
   printWiFiStatusReason();
-  ArduinoOTA.handle();
 
   if (WiFi.status() != WL_CONNECTED) {
     if (!connectToWiFi()) {

@@ -144,7 +144,7 @@ Le `sprintf` dans `n3_hmac.cpp` écrit exactement `2 × 32 = 64` caractères dan
 - `ffp5cs` : OTA complet avec `ota_manager.cpp` (2 035 lignes), gestion des partitions, rollback.
 - `uploadphotosserver` : OTA inclus via `n3_ota`.
 
-**Point d'attention :** L'OTA s'effectue en HTTP (`ArduinoOTA` ou update via serveur HTTP). Si un attaquant est sur le même réseau, il pourrait théoriquement injecter un firmware malveillant. Envisager la vérification de signature OTA.
+**Point d'attention :** L'OTA s'effectue en HTTP (update via serveur HTTP). Si un attaquant est sur le même réseau, il pourrait théoriquement injecter un firmware malveillant. Envisager la vérification de signature OTA.
 
 ### 4.4 Deep sleep et cohérence des wakeup
 

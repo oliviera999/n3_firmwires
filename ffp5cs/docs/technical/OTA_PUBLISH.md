@@ -60,8 +60,8 @@ Exemples :
 
 | Env PlatformIO   | Sous-dossier ffp3/ota/ | Canal metadata | Partitions (app / fs)      |
 |------------------|------------------------|----------------|----------------------------|
-| `wroom-prod`     | `esp32-wroom/`         | prod           | WROOM 0x1A0000 / 0x0B0000  |
-| `wroom-beta`     | `esp32-wroom-beta/`    | test           | WROOM 0x1A0000 / 0x0B0000  |
+| `wroom-prod`     | `esp32-wroom/`         | prod           | WROOM 0x1E0000 app / 0x10000 spiffs (ESP Mail) |
+| `wroom-beta`     | `esp32-wroom-beta/`    | test           | WROOM 0x1E0000 app / 0x10000 spiffs (ESP Mail) |
 | `wroom-s3-prod`  | `esp32-s3/`            | prod           | S3 0x6F8000 / 0x200000     |
 | `wroom-s3-test`  | `esp32-s3-test/`       | test           | S3 0x6F8000 / 0x200000     |
 

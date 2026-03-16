@@ -1,4 +1,4 @@
-﻿# Script pour vérifier l'état du monitoring en cours
+# Script pour vérifier l'état du monitoring en cours
 param()
 
 Write-Host "=== ÉTAT DU MONITORING ===" -ForegroundColor Cyan
@@ -14,8 +14,15 @@ if ($pythonProcess) {
 
 Write-Host ""
 
-# Vérifier le fichier de log
-$logFile = Get-ChildItem monitor_until_crash*.log -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+# Vérifier le fichier de log (dossier dédié logs/ puis racine)
+$logsDir = Join-Path $PSScriptRoot "logs"
+$logFile = $null
+if (Test-Path $logsDir) {
+    $logFile = Get-ChildItem -Path $logsDir -Filter "monitor_until_crash*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
+if (-not $logFile) {
+    $logFile = Get-ChildItem -Path $PSScriptRoot -Filter "monitor_until_crash*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
 
 if ($logFile) {
     Write-Host "📄 Fichier de log: $($logFile.Name)" -ForegroundColor Green

@@ -4,7 +4,7 @@
 
 #include <ESPAsyncWebServer.h>
 #include <cstring>
-#include <LittleFS.h>
+#include "ffp5cs_fs.h"
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 
@@ -56,12 +56,12 @@ bool serveIndexStreaming(AppContext& ctx, AsyncWebServerRequest* req) {
     return true;
   }
 
-  if (!LittleFS.exists("/index.html")) {
-    Serial.println("[Web] ⚠️ index.html non trouvé dans LittleFS");
+  if (!FFP5CS_FS.exists("/index.html")) {
+    Serial.println("[Web] ⚠️ index.html non trouvé dans " FFP5CS_FS_NAME);
     return false;
   }
 
-  File file = LittleFS.open("/index.html", "r");
+  File file = FFP5CS_FS.open("/index.html", "r");
   if (!file) {
     Serial.println("[Web] ❌ Impossible d'ouvrir index.html");
     return false;
@@ -124,18 +124,18 @@ bool serveIndexStreaming(AppContext& ctx, AsyncWebServerRequest* req) {
 void registerProtectedPageRoutes(AsyncWebServer& server) {
   server.on("/pages/wifi.html", HTTP_GET, [](AsyncWebServerRequest* req) {
     if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
-    req->send(LittleFS, "/pages/wifi.html", "text/html");
+    req->send(FFP5CS_FS, "/pages/wifi.html", "text/html");
   });
   server.on("/pages/controles.html", HTTP_GET, [](AsyncWebServerRequest* req) {
     if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
-    req->send(LittleFS, "/pages/controles.html", "text/html");
+    req->send(FFP5CS_FS, "/pages/controles.html", "text/html");
   });
 }
 
 void registerStaticAssets(AsyncWebServer& server) {
-  server.serveStatic("/shared/", LittleFS, "/shared/").setCacheControl("max-age=86400");
-  server.serveStatic("/pages/", LittleFS, "/pages/").setCacheControl("max-age=3600");
-  server.serveStatic("/assets/", LittleFS, "/assets/").setCacheControl("max-age=604800");
+  server.serveStatic("/shared/", FFP5CS_FS, "/shared/").setCacheControl("max-age=86400");
+  server.serveStatic("/pages/", FFP5CS_FS, "/pages/").setCacheControl("max-age=3600");
+  server.serveStatic("/assets/", FFP5CS_FS, "/assets/").setCacheControl("max-age=604800");
 }
 
 void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
@@ -216,13 +216,13 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
       return;
     }
 
-    if (!LittleFS.exists("/shared/common.js")) {
+    if (!FFP5CS_FS.exists("/shared/common.js")) {
       Serial.println("[Web] ❌ common.js introuvable");
       req->send(NetworkConfig::HTTP_NOT_FOUND, "text/plain", "Fichier non trouvé");
       return;
     }
 
-    File file = LittleFS.open("/shared/common.js", "r");
+    File file = FFP5CS_FS.open("/shared/common.js", "r");
     if (!file) {
       Serial.println("[Web] ❌ Impossible d'ouvrir common.js");
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Impossible d'ouvrir le fichier");
@@ -233,7 +233,7 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
     Serial.printf("[Web] 📏 common.js size: %u bytes\n", fileSize);
     file.close();
 
-    AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/shared/common.js", "application/javascript");
+    AsyncWebServerResponse* r = req->beginResponse(FFP5CS_FS, "/shared/common.js", "application/javascript");
     if (!r) {
       Serial.println("[Web] ❌ Échec beginResponse pour common.js");
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur interne");
@@ -257,13 +257,13 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
       return;
     }
 
-    if (!LittleFS.exists("/shared/websocket.js")) {
+    if (!FFP5CS_FS.exists("/shared/websocket.js")) {
       Serial.println("[Web] ❌ websocket.js introuvable");
       req->send(NetworkConfig::HTTP_NOT_FOUND, "text/plain", "Fichier non trouvé");
       return;
     }
 
-    File file = LittleFS.open("/shared/websocket.js", "r");
+    File file = FFP5CS_FS.open("/shared/websocket.js", "r");
     if (!file) {
       Serial.println("[Web] ❌ Impossible d'ouvrir websocket.js");
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Impossible d'ouvrir le fichier");
@@ -274,7 +274,7 @@ void registerStreamingRoutes(AsyncWebServer& server, AppContext& ctx) {
     Serial.printf("[Web] 📏 websocket.js size: %u bytes\n", fileSize);
     file.close();
 
-    AsyncWebServerResponse* r = req->beginResponse(LittleFS, "/shared/websocket.js", "application/javascript");
+    AsyncWebServerResponse* r = req->beginResponse(FFP5CS_FS, "/shared/websocket.js", "application/javascript");
     if (!r) {
       Serial.println("[Web] ❌ Échec beginResponse pour websocket.js");
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Erreur interne");
@@ -296,13 +296,13 @@ void registerCompressedAssets(AsyncWebServer& server) {
     if (acceptsGzip) {
       char gz[128];
       snprintf(gz, sizeof(gz), "%s.gz", path);
-      if (LittleFS.exists(gz)) {
-        File file = LittleFS.open(gz, "r");
+      if (FFP5CS_FS.exists(gz)) {
+        File file = FFP5CS_FS.open(gz, "r");
         if (file) {
           size_t fileSize = file.size();
           file.close();
           Serial.printf("[Web] 📏 Gzip file %s size: %u bytes\n", gz, fileSize);
-          AsyncWebServerResponse* r = req->beginResponse(LittleFS, gz, contentType);
+          AsyncWebServerResponse* r = req->beginResponse(FFP5CS_FS, gz, contentType);
           if (r) {
             r->addHeader("Content-Encoding", "gzip");
             r->addHeader("Cache-Control", "public, max-age=604800");
@@ -314,13 +314,13 @@ void registerCompressedAssets(AsyncWebServer& server) {
       }
     }
 
-    if (LittleFS.exists(path)) {
-      File file = LittleFS.open(path, "r");
+    if (FFP5CS_FS.exists(path)) {
+      File file = FFP5CS_FS.open(path, "r");
       if (file) {
         size_t fileSize = file.size();
         file.close();
         Serial.printf("[Web] 📏 File %s size: %u bytes\n", path, fileSize);
-        AsyncWebServerResponse* r = req->beginResponse(LittleFS, path, contentType);
+        AsyncWebServerResponse* r = req->beginResponse(FFP5CS_FS, path, contentType);
         if (r) {
           r->addHeader("Cache-Control", "public, max-age=604800");
           r->addHeader("X-Content-Type-Options", "nosniff");
@@ -338,7 +338,7 @@ void registerCompressedAssets(AsyncWebServer& server) {
   });
 
   server.on("/bootstrap.min.css", HTTP_GET, [sendWithCompression](AsyncWebServerRequest* req) {
-    if (LittleFS.exists("/bootstrap.min.css")) {
+    if (FFP5CS_FS.exists("/bootstrap.min.css")) {
       sendWithCompression(req, "/bootstrap.min.css", "text/css");
     } else {
       static const char BOOTSTRAP_MIN_PLACEHOLDER[] PROGMEM =

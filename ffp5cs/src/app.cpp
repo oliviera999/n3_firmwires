@@ -33,10 +33,6 @@
 #include "hal/wdt_types.h"
 #endif
 
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
-#include <ArduinoOTA.h>
-#endif
-
 // S3 TG0WDT: appelé au tout début de initArduino() (patch core via tools/patch_arduino_early_init_variant.py).
 // Avec CONFIG_ESP_TASK_WDT_INIT=n (sdkconfig_s3_wdt), le TWDT ne démarre pas — pas de deinit nécessaire.
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
@@ -292,15 +288,15 @@ void setup() {
   SystemBoot::initializePeripherals(g_appContext);
   SystemBoot::loadConfiguration(g_appContext);
 
+  if (!AppTasks::start(g_appContext)) {
+    BOOT_LOG("[WARN] Système dégradé: pas de tâches FreeRTOS\n");
+  }
+
   if (wifiConnected) {
     SystemBoot::postConfiguration(g_appContext, g_hostname, otaState);
   }
 
   SystemBoot::finalizeDisplay(g_appContext);
-
-  if (!AppTasks::start(g_appContext)) {
-    BOOT_LOG("[WARN] Système dégradé: pas de tâches FreeRTOS\n");
-  }
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   vTaskDelay(pdMS_TO_TICKS(20));
   BOOT_LOG("[BOOT] setup done, loop starts\n");
@@ -372,10 +368,6 @@ void loop() {
   power.updateTime();
   unsigned long now = millis();
   
-  #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
-  ArduinoOTA.handle();
-  #endif
-
   // S3 PSRAM : init WiFi.mode() après 3 s (évite blocage au boot) ; sans effet sur les autres envs
   wifi.tryDelayedModeInit();
 

@@ -11,7 +11,7 @@
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <time.h>
-#include <LittleFS.h>
+#include "ffp5cs_fs.h"
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
 #include <esp_heap_caps.h>
 #include <cstring>
@@ -604,12 +604,13 @@ static const char* buildSystemInfoFooter() {
   buf += written;
   remaining -= written;
 
-  // Filesystem (LittleFS) - FS deja montee au boot, appel direct sans begin()
+#ifndef DISABLE_ASYNC_WEBSERVER
+  // Filesystem (LittleFS sur S3, SPIFFS sur WROOM) - FS deja montee au boot
   {
-    size_t total = LittleFS.totalBytes();
-    size_t used  = LittleFS.usedBytes();
+    size_t total = FFP5CS_FS.totalBytes();
+    size_t used  = FFP5CS_FS.usedBytes();
     if (total > 0) {  // FS accessible
-      written = snprintf(buf, remaining, "- FS LittleFS: %zu/%zu bytes\n", used, total);
+      written = snprintf(buf, remaining, "- FS " FFP5CS_FS_NAME ": %zu/%zu bytes\n", used, total);
       if (written < 0 || (size_t)written >= remaining) {
         buf[remaining - 1] = '\0';
         return g_systemInfoFooterBuffer;
@@ -618,6 +619,7 @@ static const char* buildSystemInfoFooter() {
       remaining -= written;
     }
   }
+#endif
 
   // Endpoints serveur utiles
   written = snprintf(buf, remaining, "- POST URL: %s\n"

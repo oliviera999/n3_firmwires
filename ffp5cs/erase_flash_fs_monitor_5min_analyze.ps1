@@ -13,6 +13,7 @@
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30
 #   .\erase_flash_fs_monitor_5min_analyze.ps1 -DurationMinutes 30 -Port COM4
 #
+# -NoPrompt : ne pas attendre Entrée avant erase/flash (pour exécution non interactive, ex. Cursor/CI).
 # -SkipBuild : sauter l'étape build (erase + flash + monitor + analyse uniquement).
 # -SkipClean : ne pas lancer "pio run -t clean" avant le build (si le clean reste bloqué, utiliser ce flag).
 #
@@ -29,6 +30,7 @@ param(
     [string]$Port = "",
     [string]$Environment = "wroom-test",
     [int]$DurationMinutes = 5,
+    [switch]$NoPrompt = $false,
     [switch]$SkipBuild = $false,
     [switch]$SkipClean = $false
 )
@@ -50,6 +52,15 @@ if ($Port) {
 Write-Host "Fermez tout moniteur série sur l'ESP32 avant de continuer." -ForegroundColor Yellow
 if ($Port) {
     Release-ComPortIfNeeded -Port $Port
+}
+Write-Host ""
+
+# Attente mode download (erase/flash) : évite "Wrong boot mode" si la carte boote avant le run (sauf si -NoPrompt)
+if (-not $NoPrompt) {
+    Write-Host "Pour erase/flash: mettez l'ESP32 en mode download (BOOT enfoncé + EN/RST), puis appuyez sur Entrée..." -ForegroundColor Yellow
+    $null = Read-Host
+} else {
+    Write-Host "Mode non interactif (-NoPrompt): mettez l'ESP32 en mode download avant le début de l'erase." -ForegroundColor Yellow
 }
 Write-Host ""
 
@@ -75,14 +86,26 @@ if (-not $SkipBuild) {
 # 1. Erase (retry si port occupé)
 $maxRetries = if ($Port) { 3 } else { 1 }
 $eraseOk = $false
+$eraseErr = ""
 for ($r = 1; $r -le $maxRetries; $r++) {
     Write-Host "1. Erase complète flash..." -ForegroundColor Cyan
     if ($r -gt 1) { Write-Host "   Tentative $r/$maxRetries (attente 8s)..." -ForegroundColor Gray; Start-Sleep -Seconds 8 }
-    pio run -e $Environment --target erase
+    $eraseErr = pio run -e $Environment --target erase 2>&1 | Out-String
     if ($LASTEXITCODE -eq 0) { $eraseOk = $true; break }
-    if ($Port -and $r -lt $maxRetries) { Write-Host "   Port occupé? Fermez le moniteur série puis relance." -ForegroundColor Yellow }
+    if ($Port -and $r -lt $maxRetries) {
+        if ($eraseErr -match "Wrong boot mode|download mode") {
+            Write-Host "   ESP32 en mode normal: maintenez BOOT enfoncé, appuyez sur EN/RST, puis relancez." -ForegroundColor Yellow
+        } else {
+            Write-Host "   Port occupé? Fermez le moniteur série puis relance." -ForegroundColor Yellow
+        }
+    }
 }
-if (-not $eraseOk) { exit $LASTEXITCODE }
+if (-not $eraseOk) {
+    if ($eraseErr -match "Wrong boot mode|download mode") {
+        Write-Host "" ; Write-Host "ASTUCE: Mettez l'ESP32 en mode download (maintenez BOOT, appuyez EN/RST), puis relancez ce script." -ForegroundColor Yellow
+    }
+    exit $LASTEXITCODE
+}
 Write-Host "   OK" -ForegroundColor Green
 Start-Sleep -Seconds 2
 
@@ -93,15 +116,15 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "   OK" -ForegroundColor Green
 Start-Sleep -Seconds 3
 
-# 3. Upload FS (sauf wroom-prod : pas de serveur embarqué, inutile)
-if ($Environment -ne "wroom-prod") {
+# 3. Upload FS (sauf wroom-prod et wroom-beta : pas de serveur embarqué, inutile)
+if ($Environment -ne "wroom-prod" -and $Environment -ne "wroom-beta") {
     Write-Host "3. Flash LittleFS..." -ForegroundColor Cyan
     pio run -e $Environment --target uploadfs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "   OK" -ForegroundColor Green
     Start-Sleep -Seconds 2
 } else {
-    Write-Host "3. LittleFS ignoré (wroom-prod = pas de serveur embarqué)" -ForegroundColor Gray
+    Write-Host "3. LittleFS ignoré ($Environment = pas de serveur embarqué)" -ForegroundColor Gray
 }
 
 # 4. Monitoring N min (réutiliser le port d'upload si connu, pour éviter moniteur sur un autre COM)
@@ -111,26 +134,27 @@ Write-Host "4. Monitoring $DurationMinutes minutes..." -ForegroundColor Cyan
 $monitorParams = @{ DurationSeconds = $durationSeconds; Environment = $Environment }
 if ($monitorPort) { $monitorParams["Port"] = $monitorPort }
 & "$projectRoot\monitor_5min.ps1" @monitorParams
-# Fichier créé par cette exécution = le plus récent monitor_*_*.log par date de création
-$latest = Get-ChildItem -Path $projectRoot -Filter "monitor_*.log" -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending | Select-Object -First 1
-$logFile = if ($latest) { $latest.Name } else { $null }
+# Fichier créé par cette exécution = le plus récent monitor_*.log dans logs/ (dossier dédié par firmware)
+$logsDir = Join-Path $projectRoot "logs"
+$latest = Get-ChildItem -Path $logsDir -Filter "monitor_*.log" -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending | Select-Object -First 1
+$logFullPath = if ($latest) { $latest.FullName } else { $null }
 
 # 5. Analyse du log (analyse_log + rapport diagnostic complet)
-if ($logFile -and (Test-Path $logFile)) {
-    $logFullPath = Join-Path $projectRoot $logFile
+if ($logFullPath -and (Test-Path $logFullPath)) {
+    $logFile = $latest.Name
     $analysisFileName = $logFile -replace '\.log$', '_analysis.txt'
-    $analysisFullPath = Join-Path $projectRoot $analysisFileName
+    $analysisFullPath = Join-Path $logsDir $analysisFileName
 
     Write-Host "5. Analyse du log: $logFile" -ForegroundColor Cyan
     & "$projectRoot\analyze_log.ps1" -logFile $logFullPath
     Write-Host ""
     Write-Host "6. Rapport diagnostic complet (serveur distant, mails, exhaustive)..." -ForegroundColor Cyan
-    & "$projectRoot\generate_diagnostic_report.ps1" -LogFile $logFullPath
+    & "$projectRoot\generate_diagnostic_report.ps1" -LogFile $logFullPath -LogsDir $logsDir
     Write-Host ""
     Write-Host "=== WORKFLOW TERMINÉ ===" -ForegroundColor Green
     Write-Host "Log:           $logFullPath" -ForegroundColor Gray
     Write-Host "Analyse:       $analysisFullPath" -ForegroundColor Gray
-    Write-Host "Rapport MD:    rapport_diagnostic_complet_*.md (dernier créé)" -ForegroundColor Gray
+    Write-Host "Rapport MD:    $logsDir\rapport_diagnostic_complet_*.md (dernier créé)" -ForegroundColor Gray
 } else {
-    Write-Host "5. Aucun fichier log trouvé pour l'analyse." -ForegroundColor Yellow
+    Write-Host "5. Aucun fichier log trouvé dans $logsDir pour l'analyse." -ForegroundColor Yellow
 }

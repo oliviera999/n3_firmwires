@@ -2,7 +2,7 @@
 #include "diagnostics.h"
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <ArduinoJson.h>
-#include <LittleFS.h>
+#include "ffp5cs_fs.h"
 #include "config.h"
 #include "mailer.h"
 #include "automatism.h"
@@ -1050,7 +1050,7 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_BAD_REQUEST, "text/plain", "confirm must be 1");
       return;
     }
-    bool ok = LittleFS.format();
+    bool ok = FFP5CS_FS.format();
     req->send(ok ? 200 : 500, "text/plain", ok ? "LittleFS formatted" : "Format failed");
   });
 #endif // FFP_ENABLE_DANGEROUS_ENDPOINTS

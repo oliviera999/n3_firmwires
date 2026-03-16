@@ -1,9 +1,14 @@
 # Script de monitoring N minutes (défaut 5 min, ex. 30 min via -DurationSeconds 1800)
+# Les logs et analyses sont écrits dans le dossier dédié logs/ (par firmware).
 param(
     [string]$Port = "",
     [int]$DurationSeconds = 300,
     [string]$Environment = "wroom-test"
 )
+
+$projectRoot = $PSScriptRoot
+$LogsDir = Join-Path $projectRoot "logs"
+if (-not (Test-Path $LogsDir)) { New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null }
 
 $timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
 # Tag dans le nom du fichier : 5min, 30min, 10min, etc.
@@ -14,7 +19,7 @@ if ($DurationSeconds -ge 3600) {
 } else {
     $durationTag = "{0}s" -f $DurationSeconds
 }
-$logFile = "monitor_${durationTag}_${timestamp}.log"
+$logFile = Join-Path $LogsDir "monitor_${durationTag}_${timestamp}.log"
 
 Write-Host "=== MONITORING ESP32 - $durationTag ===" -ForegroundColor Green
 Write-Host "Durée: $DurationSeconds secondes ($durationTag)" -ForegroundColor Cyan
@@ -36,14 +41,14 @@ if ($Port -and (Test-Path "tools\monitor\monitor_unlimited.py")) {
 
 if ($usePython -and $Port) {
     Write-Host "Lancement moniteur Python (port $Port)..." -ForegroundColor Cyan
-    python tools\monitor\monitor_unlimited.py --port $Port --baud 115200 --duration $DurationSeconds --output $logFile
+    python (Join-Path $projectRoot "tools\monitor\monitor_unlimited.py") --port $Port --baud 115200 --duration $DurationSeconds --output $logFile
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[WARN] Script Python code sortie: $LASTEXITCODE" -ForegroundColor Yellow
     }
 } else {
     $pioArgs = @("run", "--target", "monitor", "--environment", $Environment)
     if ($Port) { $pioArgs += @("--port", $Port) }
-    $monitorProcess = Start-Process -FilePath "pio" -ArgumentList $pioArgs -NoNewWindow -PassThru -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.errors"
+    $monitorProcess = Start-Process -FilePath "pio" -ArgumentList $pioArgs -WorkingDirectory $projectRoot -NoNewWindow -PassThru -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.errors"
 
     $endTime = (Get-Date).AddSeconds($DurationSeconds)
     Write-Host "Monitoring démarré..." -ForegroundColor Green
@@ -94,10 +99,10 @@ if (Test-Path "$logFile.errors") {
 # Analyse du log avec monitor_summary.py si le script existe et que le log a du contenu
 if (Test-Path $logFile) {
     $lineCount = (Get-Content $logFile -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
-    if ($lineCount -gt 0 -and (Test-Path "tools\monitor\monitor_summary.py")) {
+    if ($lineCount -gt 0 -and (Test-Path (Join-Path $projectRoot "tools\monitor\monitor_summary.py"))) {
         Write-Host ""
         Write-Host "=== ANALYSE DU LOG ===" -ForegroundColor Cyan
-        python tools\monitor\monitor_summary.py $logFile
+        python (Join-Path $projectRoot "tools\monitor\monitor_summary.py") $logFile
         if ($LASTEXITCODE -eq 0) {
             Write-Host ""
             Write-Host "Analyse terminée." -ForegroundColor Green

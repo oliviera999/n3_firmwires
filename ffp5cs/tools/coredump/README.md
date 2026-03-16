@@ -1,5 +1,7 @@
 # Outils Core Dump ESP32
 
+> **Note (2026-03)** : Le core dump est **désactivé pour tous les environnements** FFP5CS (évite boot bloquant, source de bugs). Ces outils restent disponibles pour usage ponctuel si vous réactivez manuellement le coredump pour un debug spécifique.
+
 Ce dossier contient les outils pour extraire et analyser les core dumps depuis la partition flash de l'ESP32.
 
 ## 📋 Fichiers

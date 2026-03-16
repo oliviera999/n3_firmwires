@@ -27,7 +27,8 @@ $durationSeconds = $DurationHours * 3600
 $rotateSeconds = $RotateHours * 3600
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm"
 $outputDirName = "monitor_long_${DurationHours}h_${timestamp}"
-$outputDir = Join-Path $projectRoot $outputDirName
+$logsDir = Join-Path $projectRoot "logs"
+$outputDir = Join-Path $logsDir $outputDirName
 
 # Vérifier Python + pyserial
 $usePython = $false

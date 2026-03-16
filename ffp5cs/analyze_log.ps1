@@ -3,13 +3,18 @@ param(
     [string]$logFile = ""
 )
 
-# Si pas de fichier fourni, chercher le plus récent monitor_*.log
+# Si pas de fichier fourni, chercher le plus récent monitor_*.log dans logs/ puis racine
 if ([string]::IsNullOrEmpty($logFile)) {
-    $logFile = Get-ChildItem -Filter "monitor_*.log" -ErrorAction SilentlyContinue |
-               Sort-Object LastWriteTime -Descending |
-               Select-Object -First 1 -ExpandProperty FullName
+    $logsDir = Join-Path $PSScriptRoot "logs"
+    $candidates = @()
+    if (Test-Path $logsDir) {
+        $candidates = @(Get-ChildItem -Path $logsDir -Filter "monitor_*.log" -ErrorAction SilentlyContinue)
+    }
+    $candidates += @(Get-ChildItem -Path $PSScriptRoot -Filter "monitor_*.log" -ErrorAction SilentlyContinue)
+    $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $logFile = if ($latest) { $latest.FullName } else { $null }
     if (-not $logFile) {
-        Write-Host "❌ Aucun fichier monitor_*.log trouvé. Spécifiez -logFile <fichier>" -ForegroundColor Red
+        Write-Host "❌ Aucun fichier monitor_*.log trouvé (logs/ ou racine). Spécifiez -logFile <fichier>" -ForegroundColor Red
         exit 1
     }
 }

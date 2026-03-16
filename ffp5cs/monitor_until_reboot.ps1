@@ -1,4 +1,4 @@
-﻿# Script de monitoring ESP32 jusqu'à détection d'un reboot
+# Script de monitoring ESP32 jusqu'à détection d'un reboot
 # Capture tous les logs et fait une analyse complète selon les priorités du projet
 
 param(
@@ -8,9 +8,13 @@ param(
     [int]$MaxWaitTime = 3600
 )
 
+$projectRoot = $PSScriptRoot
+$logsDir = Join-Path $projectRoot "logs"
+if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
+
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$logFile = "monitor_until_reboot_$timestamp.log"
-$analysisFile = "monitor_until_reboot_analysis_$timestamp.txt"
+$logFile = Join-Path $logsDir "monitor_until_reboot_$timestamp.log"
+$analysisFile = Join-Path $logsDir "monitor_until_reboot_analysis_$timestamp.txt"
 
 Write-Host "=== MONITORING ESP32 JUSQU'AU REBOOT ===" -ForegroundColor Green
 Write-Host "Début: $(Get-Date)" -ForegroundColor Green

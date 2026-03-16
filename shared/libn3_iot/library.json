@@ -1,0 +1,11 @@
+{
+  "name": "libn3_iot",
+  "version": "1.0.0",
+  "description": "Bibliotheque IoT generique n3 : drivers capteurs, registre, cycle commun (n3pp, msp, futurs projets)",
+  "keywords": ["iot", "sensor", "esp32", "n3", "dht", "analog"],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": [
+    "adafruit/DHT sensor library"
+  ]
+}

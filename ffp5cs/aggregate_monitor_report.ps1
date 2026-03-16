@@ -125,7 +125,9 @@ if ($files.Count -eq 0) {
 }
 
 if (-not $OutputReport) {
-    $OutputReport = Join-Path $PSScriptRoot "RAPPORT_agregé_$(Get-Date -Format 'yyyy-MM-dd_HH-mm').md"
+    $logsDir = Join-Path $PSScriptRoot "logs"
+    if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
+    $OutputReport = Join-Path $logsDir "RAPPORT_agregé_$(Get-Date -Format 'yyyy-MM-dd_HH-mm').md"
 }
 
 Write-Host "=== RAPPORT AGRÉGÉ ===" -ForegroundColor Cyan

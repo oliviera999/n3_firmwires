@@ -12,6 +12,38 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.03 - 2026-03-16
+
+### Correctif stack overflow postSender (S3)
+
+- **Problème** : En wroom-s3-test, crash en boucle — `Stack canary watchpoint triggered (postSender)` (Guru Meditation). GET outputs/state OK, POST/heartbeat jamais envoyés.
+- **Cause** : Tâche postSender (fire-and-forget POST/heartbeat) avec stack 4 KB ; chemin HTTP/postToUrl sur S3 dépasse la pile.
+- **Correctif** : Pour `BOARD_S3`, `POST_SENDER_TASK_STACK_SIZE` = 8192 (8 KB). WROOM reste 4 KB.
+- **Fichiers** : `include/config.h` (TaskConfig, version 13.03).
+
+---
+
+## Version 13.02 - 2026-03-16
+
+### PSRAM S3 – documentation et choix d’env
+
+- **Documentation** : Section « Choix d’environnement » dans `docs/technical/ESP32S3_HARDWARE_REFERENCE.md` (WiFi requis → wroom-s3-test/prod ; PSRAM requise, WiFi optionnelle → wroom-s3-test-psram). Section « Évolution – PSRAM + WiFi (axe 2) » : vérification releases plateformes, issue #8377 (Wontfix), actions si correctif disponible.
+- **Config** : Commentaire dans `include/config.h` pour `POST_PAYLOAD_MAX_SIZE` S3 avec PSRAM (4096, heap étendu 8 Mo).
+- **Fichiers** : `docs/technical/ESP32S3_HARDWARE_REFERENCE.md`, `include/config.h` (version 13.02).
+
+---
+
+## Version 13.01 - 2026-03-16
+
+### Correctif réseau S3 sans PSRAM (wroom-s3-test)
+
+- **Problème** : Au boot, échec création `g_postSenderQueue` (heap insuffisant) → netTask et tâches réseau jamais créées → aucun POST/GET vers le serveur.
+- **Cause** : Sur S3 sans PSRAM, `POST_PAYLOAD_MAX_SIZE` était 4096 ; la queue (4 × ~4 Ko) nécessitait ~16 Ko contigus après réserve Mail 32 Ko et serveur web.
+- **Correctif** : Pour `BOARD_S3` sans `BOARD_HAS_PSRAM`, `POST_PAYLOAD_MAX_SIZE` = 896 (comme WROOM). Payload sync typ. < 800 bytes.
+- **Fichiers** : `include/config.h` (BufferConfig, version 13.01).
+
+---
+
 ## Version 13.00 - 2026-03-16
 
 ### Version majeure (release)

@@ -4,9 +4,18 @@ param(
 )
 
 if ([string]::IsNullOrEmpty($LogFile)) {
-    # Trouver le dernier fichier de log (monitor_5min ou monitor_wroom_test)
-    $candidates = @(Get-ChildItem -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
-    $candidates += @(Get-ChildItem -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    # Trouver le dernier fichier de log : d'abord dans logs/, puis racine
+    $logsDir = Join-Path $PSScriptRoot "logs"
+    $candidates = @()
+    if (Test-Path $logsDir) {
+        $candidates = @(Get-ChildItem -Path $logsDir -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $logsDir -Filter "monitor_*min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $logsDir -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    }
+    if ($candidates.Count -eq 0) {
+        $candidates = @(Get-ChildItem -Path $PSScriptRoot -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $PSScriptRoot -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    }
     $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $LogFile = if ($latest) { $latest.FullName } else { $null }
 

@@ -34,8 +34,9 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v13.00: Version majeure (release)
-    inline constexpr const char* VERSION = "13.00";
+    // v13.02: Doc PSRAM S3 (choix d'env, axe 2), commentaire POST_PAYLOAD_MAX_SIZE S3 PSRAM.
+    // v13.03: Stack postSender 8 KB sur S3 (évite Stack canary / crash en boucle).
+    inline constexpr const char* VERSION = "13.03";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -431,7 +432,14 @@ namespace BufferConfig {
         // Buffer réception body GET metadata. Voir docs/technical/OTA_PUBLISH.md (contrainte 2048 pour firmware < 12.25).
         inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 3072;
         inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 4096;  // GET outputs/state body
+        // S3 sans PSRAM (wroom-s3-test): heap limitée comme WROOM — 4096*4 pour g_postSenderQueue échoue au boot.
+        // Payload sync typ. < 800 bytes ; 896 suffit et permet création de la queue (POST/GET serveur opérationnels).
+        // S3 avec PSRAM (wroom-s3-test-psram) : heap étendu 8 Mo → 4096 autorisé (réduit pression RAM interne).
+#if defined(BOARD_HAS_PSRAM)
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 4096;
+#else
+        inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 896;
+#endif
         inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 6000;
         inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 5000;
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 10000;
@@ -943,7 +951,12 @@ namespace TaskConfig {
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
 
     // Tâche dédiée envoi POST (fire-and-forget : post-data + heartbeat)
-    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 4096;  // 4 KB
+    // S3: 8 KB — stack canary postSender (Stack overflow) observé wroom-s3-test (monitoring 2026-03-16)
+#if defined(BOARD_S3)
+    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 8192;  // 8 KB (S3: HTTP/postToUrl plus gourmand)
+#else
+    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 4096;  // 4 KB (WROOM)
+#endif
     inline constexpr UBaseType_t POST_SENDER_TASK_PRIORITY = 1;    // Sous netTask
     inline constexpr BaseType_t POST_SENDER_TASK_CORE_ID = 0;
     

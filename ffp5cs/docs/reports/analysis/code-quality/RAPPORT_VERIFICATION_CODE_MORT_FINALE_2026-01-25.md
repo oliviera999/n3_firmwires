@@ -87,7 +87,7 @@ Après vérification exhaustive du projet, **aucun code mort supplémentaire n'a
 | `FEATURE_MAIL` | 1 | ✅ Légitime | Stubs `FEATURE_MAIL=0` conservés pour flexibilité |
 | `FEATURE_OLED` | 1 | ✅ Légitime | Code `FEATURE_OLED=0` conservé pour flexibilité |
 | `FEATURE_OTA` | 1 | ✅ Légitime | Code conditionnel actif |
-| `FEATURE_ARDUINO_OTA` | 1 | ✅ Légitime | Code conditionnel actif |
+| `FEATURE_ARDUINO_OTA` | — | supprimé | ArduinoOTA retiré de tous les firmwares |
 | `FEATURE_HTTP_OTA` | 1 | ✅ Légitime | Code conditionnel actif |
 | `FEATURE_WIFI_APSTA` | 0 | ✅ Légitime | Code conditionnel conservé pour mode AP+STA |
 | `FEATURE_DIAG_STATS` | 0/1 | ✅ Légitime | Activé en test/dev uniquement |

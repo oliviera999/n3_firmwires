@@ -512,8 +512,12 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     config.buffer_size = BufferConfig::HTTP_BUFFER_SIZE; // Buffers augmentés pour débit
     config.buffer_size_tx = BufferConfig::HTTP_TX_BUFFER_SIZE;
     config.skip_cert_common_name_check = true; // Tolérer écart nom commun (ex. IP vs hostname)
-    // Vérification serveur (requis ESP-IDF 5.x). Plateforme Arduino-ESP32 : arduino_esp_crt_bundle_attach (WROOM et S3).
+    // Vérification serveur (requis ESP-IDF 5.x). WROOM (pioarduino) : esp_crt_bundle_attach ; S3 (platformio/espressif32) : arduino_esp_crt_bundle_attach.
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
     config.crt_bundle_attach = arduino_esp_crt_bundle_attach;
+#else
+    config.crt_bundle_attach = esp_crt_bundle_attach;
+#endif
     config.disable_auto_redirect = false; // Autoriser les redirections
     config.max_redirection_count = 3; // Max 3 redirections
     config.user_data = NULL;

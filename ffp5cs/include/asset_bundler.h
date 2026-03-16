@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <LittleFS.h>
+#include "ffp5cs_fs.h"
 #include <cstring>
 #include <vector>
 #ifndef DISABLE_ASYNC_WEBSERVER
@@ -47,8 +47,8 @@ public:
             const char* file = files[i];
             if (!file) continue;
             
-            if (LittleFS.exists(file)) {
-                File f = LittleFS.open(file, "r");
+            if (FFP5CS_FS.exists(file)) {
+                File f = FFP5CS_FS.open(file, "r");
                 if (f) {
                     // Ajouter un commentaire pour identifier le fichier
                     int written = snprintf(buffer + offset, bufferSize - offset,
@@ -97,8 +97,8 @@ public:
             const char* file = files[i];
             if (!file) continue;
             
-            if (LittleFS.exists(file)) {
-                File f = LittleFS.open(file, "r");
+            if (FFP5CS_FS.exists(file)) {
+                File f = FFP5CS_FS.open(file, "r");
                 if (f) {
                     // Ajouter un commentaire pour identifier le fichier
                     int written = snprintf(buffer + offset, bufferSize - offset,
@@ -204,9 +204,9 @@ public:
      * @return Taille en bytes (0 si fichier inexistant)
      */
     static size_t getFileSize(const char* path) {
-        if (!path || !LittleFS.exists(path)) return 0;
+        if (!path || !FFP5CS_FS.exists(path)) return 0;
         
-        File f = LittleFS.open(path, "r");
+        File f = FFP5CS_FS.open(path, "r");
         if (!f) return 0;
         
         size_t size = f.size();

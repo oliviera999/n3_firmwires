@@ -1,5 +1,7 @@
 # Procédure : analyser un PANIC après crash (ESP32-S3 wroom-s3-test)
 
+> **Archivé (2026-03)** : Le core dump est désactivé pour tous les environnements FFP5CS (source de problèmes au boot). Cette procédure reste documentée au cas où vous réactiveriez manuellement une partition coredump pour un debug ponctuel.
+
 Après un reset **PANIC** sur l’environnement **wroom-s3-test** (ESP32-S3 avec partition coredump), on peut extraire et analyser le coredump pour obtenir la tâche en cause et la backtrace.
 
 ## Prérequis
@@ -41,6 +43,6 @@ python tools/coredump/analyze_coredump.py <fichier_extraite>.elf --elf .pio/buil
 
 ## Références
 
-- Partition : `config/partitions/partitions_esp32_s3_test_coredump.csv` (coredump à `0xE00000`, taille `0x10000`).
+- Partition (si réactivée) : coredump à `0xE00000`, taille `0x10000` (fichier supprimé, recréer si besoin).
 - Outils : `tools/coredump/README.md`, `tools/coredump/extract_coredump.py`, `tools/coredump/analyze_coredump.py`.
 - Diagnostic panic : `src/diagnostics.cpp` (`capturePanicInfo`, `savePanicInfo`, `getRebootReason`).

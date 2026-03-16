@@ -36,10 +36,10 @@ $ErrorActionPreference = "Stop"
 
 # Mapping env PlatformIO -> (sous-dossier OTA, canal, clé metadata, tailles partition)
 # MetadataKey : clé dans channels.<canal> (ex. esp32-wroom, esp32-s3). Aligné firmware ota_config.h / getOTAFolder().
-# AppSize/FsSize : tailles max partition (partitions_esp32_wroom_ota_fs_medium.csv, partitions_esp32_s3_test.csv)
+# AppSize/FsSize : tailles max partition (wroom prod/beta = partitions_esp32_wroom_ota_no_fs.csv sans FS)
 $EnvToOta = @{
-    "wroom-prod"     = @{ Subfolder = "esp32-wroom";      Channel = "prod"; AppSize = 1744896; FsSize = 720896 }   # 0x1A0000, 0x0B0000
-    "wroom-beta"      = @{ Subfolder = "esp32-wroom-beta"; Channel = "test"; MetadataKey = "esp32-wroom"; AppSize = 1744896; FsSize = 720896 }
+    "wroom-prod"     = @{ Subfolder = "esp32-wroom";      Channel = "prod"; AppSize = 1966080; FsSize = 65536 }   # 0x1E0000 app, 0x10000 spiffs (ESP Mail)
+    "wroom-beta"      = @{ Subfolder = "esp32-wroom-beta"; Channel = "test"; MetadataKey = "esp32-wroom"; AppSize = 1966080; FsSize = 65536 }
     "wroom-s3-prod"   = @{ Subfolder = "esp32-s3";         Channel = "prod"; MetadataKey = "esp32-s3"; AppSize = 7307264; FsSize = 2097152 }  # 0x6F8000, 0x200000
     "wroom-s3-test"   = @{ Subfolder = "esp32-s3-test";    Channel = "test"; MetadataKey = "esp32-s3"; AppSize = 7307264; FsSize = 2097152 }
 }
@@ -213,7 +213,7 @@ if (-not $SkipValidate) {
             exit 1
         }
     }
-    Write-Host "Validation tailles OK (par env: WROOM app 0x1A0000/fs 0x0B0000, S3 app 0x6F8000/fs 0x200000)" -ForegroundColor Green
+    Write-Host "Validation tailles OK (WROOM prod/beta app 0x1E0000/fs 0x10000, wroom-test 0x1A0000/fs 0x0B0000, S3 app 0x6F8000/fs 0x200000)" -ForegroundColor Green
 }
 
 if ($artifacts.Count -eq 0) {

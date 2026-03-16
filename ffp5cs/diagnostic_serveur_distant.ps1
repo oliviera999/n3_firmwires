@@ -11,13 +11,24 @@
 # =============================================================================
 
 param(
-    [string]$LogFile = ""
+    [string]$LogFile = "",
+    [string]$OutputDir = "."
 )
 
+$scriptRoot = $PSScriptRoot
 if ([string]::IsNullOrEmpty($LogFile)) {
-    # Trouver le dernier fichier de log (monitor_5min ou monitor_wroom_test)
-    $candidates = @(Get-ChildItem -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
-    $candidates += @(Get-ChildItem -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    # Trouver le dernier fichier de log : d'abord dans logs/, puis à la racine
+    $logsDir = Join-Path $scriptRoot "logs"
+    $candidates = @()
+    if (Test-Path $logsDir) {
+        $candidates = @(Get-ChildItem -Path $logsDir -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $logsDir -Filter "monitor_*min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $logsDir -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    }
+    if ($candidates.Count -eq 0) {
+        $candidates = @(Get-ChildItem -Path $scriptRoot -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $scriptRoot -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    }
     $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $LogFile = if ($latest) { $latest.FullName } else { $null }
 
@@ -26,6 +37,10 @@ if ([string]::IsNullOrEmpty($LogFile)) {
         exit 1
     }
 }
+if (-not [System.IO.Path]::IsPathRooted($OutputDir)) {
+    $OutputDir = Join-Path $scriptRoot $OutputDir
+}
+if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 
 Write-Host '=== DIAGNOSTIC ECHANGES SERVEUR DISTANT ===' -ForegroundColor Green
 Write-Host ('Fichier: ' + $LogFile) -ForegroundColor Cyan
@@ -39,7 +54,7 @@ if (-not (Test-Path $LogFile)) {
 $lines = Get-Content $LogFile
 
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$outputFile = "diagnostic_serveur_distant_$timestamp.txt"
+$outputFile = Join-Path $OutputDir "diagnostic_serveur_distant_$timestamp.txt"
 
 # =============================================================================
 # 1. ANALYSE ENVOI POST DONNÉES CAPTEURS

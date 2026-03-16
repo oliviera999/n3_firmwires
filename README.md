@@ -62,9 +62,9 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 
 Le projet **ffp5cs** définit le workflow de validation de référence, aligné sur les règles cœur de projet (offline-first, robustesse, vérification après modification) :
 
-- **Workflow complet** : erase flash → flash firmware (+ LittleFS sauf prod) → monitoring N min → analyse du log. Script principal : `ffp5cs/erase_flash_fs_monitor_5min_analyze.ps1` (option `-Port`, `-Environment`, `-DurationMinutes`, `-SkipBuild`).
-- **Monitoring** : `ffp5cs/monitor_5min.ps1` — capture série N secondes, log `monitor_*_*.log` dans le dossier du projet.
-- **Analyse des logs** : `ffp5cs/analyze_log.ps1` (détaillée, spécifique FFP5CS/FFP3) et `ffp5cs/analyze_log_exhaustive.ps1` (crashes, WDT, heap, réseau, reboots). Rapport diagnostic : `ffp5cs/generate_diagnostic_report.ps1`.
+- **Workflow complet** : erase flash → flash firmware (+ LittleFS sauf prod) → monitoring N min → analyse du log. Script principal : `ffp5cs/erase_flash_fs_monitor_5min_analyze.ps1` (option `-Port`, `-Environment`, `-DurationMinutes`, `-SkipBuild`). Pour **ESP32-S3**, utiliser `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod` ; scripts dédiés : `ffp5cs/flash_s3_test.ps1`, `ffp5cs/run_s3_validation.ps1`, `ffp5cs/run_wroom_s3_prod_workflow.ps1`.
+- **Monitoring** : `ffp5cs/monitor_5min.ps1` — capture série N secondes. Les logs et rapports d'analyse sont écrits dans le dossier dédié `ffp5cs/logs/` (plus à la racine du projet).
+- **Analyse des logs** : `ffp5cs/analyze_log.ps1` (détaillée, spécifique FFP5CS/FFP3) et `ffp5cs/analyze_log_exhaustive.ps1` (crashes, WDT, heap, réseau, reboots). Rapport diagnostic : `ffp5cs/generate_diagnostic_report.ps1`. Toutes les sorties (fichiers .log, _analysis.txt, rapports .md) sont dans `ffp5cs/logs/`.
 
 Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs/`. Voir aussi `ffp5cs/.cursor/rules/` et `ffp5cs/docs/INVENTAIRE_SCRIPTS_FFP5CS.md` pour l'inventaire des scripts.
 
@@ -96,6 +96,19 @@ Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs
 ```
 
 **Projets ciblés** : `n3pp4_2`, `msp2_5`, `uploadphotosserver` (env par défaut : msp1 ; utiliser `-Environment n3pp` ou `-Environment ffp3` pour les autres cibles), `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, le script racine délègue au workflow complet dans `ffp5cs/` ; analyse détaillée et rapport diagnostic. **ratata** et **LVGL_Widgets** sont exclus.
+
+## Stack ESP-IDF et plateforme
+
+Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est : plateforme → arduino-esp32 → ESP-IDF (sous-jacent).
+
+**Versions arduino-ESP32 par type d'env :**
+- **WROOM** (ffp5cs wroom-prod/test/beta, msp2_5, n3pp4_2, uploadphotosserver) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt.
+- **S3** (ffp5cs wroom-s3-*) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
+- **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
+
+Le **premier build** des projets WROOM télécharge la plateforme pioarduino (~500 Mo) ; en cas d'erreur de verrouillage de fichier (WinError 32/183), fermer les processus PlatformIO/IDE puis relancer.
+
+Détails et APIs ESP-IDF utilisées en direct (ffp5cs) : [RECOMMANDATIONS_IOT.md § 2.9](../RECOMMANDATIONS_IOT.md#29-stack-esp-idf-et-conventions).
 
 ## Configuration des ports série
 

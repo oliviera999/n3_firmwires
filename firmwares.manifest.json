@@ -1,0 +1,90 @@
+{
+  "firmwares": [
+    {
+      "id": "n3pp4_2",
+      "path": "n3pp4_2",
+      "board": "esp32dev",
+      "serveurFolder": "n3pp",
+      "otaTarget": "n3pp",
+      "submodule": false,
+      "versionSource": {
+        "file": "include/n3pp_config.h",
+        "define": "FIRMWARE_VERSION"
+      },
+      "pioEnvs": [
+        { "name": "esp32dev", "versionDefine": null },
+        { "name": "esp32dev_test", "versionDefine": null }
+      ]
+    },
+    {
+      "id": "msp2_5",
+      "path": "msp2_5",
+      "board": "esp32dev",
+      "serveurFolder": "msp1",
+      "otaTarget": "msp",
+      "submodule": false,
+      "versionSource": {
+        "file": "include/msp_config.h",
+        "define": "FIRMWARE_VERSION"
+      },
+      "pioEnvs": [
+        { "name": "esp32dev", "versionDefine": null },
+        { "name": "esp32dev_test", "versionDefine": null }
+      ]
+    },
+    {
+      "id": "uploadphotosserver",
+      "path": "uploadphotosserver",
+      "board": "esp32cam",
+      "serveurFolder": "msp1gallery/n3ppgallery/ffp3gallery",
+      "otaTarget": "cam",
+      "submodule": false,
+      "versionSource": {
+        "file": "include/config.h",
+        "define": "FIRMWARE_VERSION"
+      },
+      "pioEnvs": [
+        { "name": "msp1", "versionDefine": null },
+        { "name": "n3pp", "versionDefine": null },
+        { "name": "ffp3", "versionDefine": null }
+      ]
+    },
+    {
+      "id": "ffp5cs",
+      "path": "ffp5cs",
+      "board": "esp32/esp32-s3",
+      "serveurFolder": "ffp3",
+      "otaTarget": "ffp3",
+      "submodule": false,
+      "versionSource": {
+        "file": "include/config.h",
+        "pattern": "VERSION\\s*=\\s*\"([^\"]+)\"",
+        "or": { "file": "VERSION.md" }
+      },
+      "pioEnvs": [
+        { "name": "wroom-prod", "versionDefine": null },
+        { "name": "wroom-test", "versionDefine": null }
+      ]
+    },
+    {
+      "id": "ratata",
+      "path": "ratata",
+      "board": "uno/esp32cam",
+      "serveurFolder": null,
+      "otaTarget": null,
+      "submodule": false,
+      "versionSource": null,
+      "pioEnvs": []
+    },
+    {
+      "id": "LVGL_Widgets",
+      "path": "LVGL_Widgets",
+      "board": "esp32-s3",
+      "serveurFolder": null,
+      "otaTarget": null,
+      "submodule": false,
+      "versionSource": null,
+      "pioEnvs": []
+    }
+  ]
+}

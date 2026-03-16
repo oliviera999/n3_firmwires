@@ -1,7 +1,8 @@
 # Décode un backtrace ESP32 (Guru Meditation) avec addr2line.
 # Usage:
-#   .\decode_backtrace.ps1                    # dernier log monitor_5min_*.log
+#   .\decode_backtrace.ps1                    # dernier log monitor_5min_*.log (ELF wroom-test par défaut)
 #   .\decode_backtrace.ps1 -LogFile xxx.log   # fichier spécifique
+#   .\decode_backtrace.ps1 -LogFile xxx.log -Elf .pio\build\wroom-beta\firmware.elf   # log + ELF d'un autre env
 #   .\decode_backtrace.ps1 -Addresses "0x40093cab 0x40128cad" -Elf .pio\build\wroom-test\firmware.elf
 
 param(
@@ -32,10 +33,18 @@ if ($LogFile -and -not (Test-Path $LogFile)) {
 }
 
 if (-not $LogFile) {
-    $latest = Get-ChildItem -Path $projectRoot -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue |
-        Sort-Object CreationTime -Descending | Select-Object -First 1
+    $logsDir = Join-Path $projectRoot "logs"
+    $latest = $null
+    if (Test-Path $logsDir) {
+        $latest = Get-ChildItem -Path $logsDir -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue |
+            Sort-Object CreationTime -Descending | Select-Object -First 1
+    }
     if (-not $latest) {
-        Write-Host "Aucun log monitor_5min_*.log trouvé." -ForegroundColor Red
+        $latest = Get-ChildItem -Path $projectRoot -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue |
+            Sort-Object CreationTime -Descending | Select-Object -First 1
+    }
+    if (-not $latest) {
+        Write-Host "Aucun log monitor_5min_*.log trouvé (logs/ ou racine)." -ForegroundColor Red
         exit 1
     }
     $LogFile = $latest.FullName
@@ -61,11 +70,12 @@ if ($addrs.Count -eq 0) {
     exit 0
 }
 
-$elfPath = $elfDefault
+$elfPath = if ($Elf -and (Test-Path $Elf)) { (Resolve-Path $Elf).Path } else { $elfDefault }
 if (-not (Test-Path $elfPath)) {
-    Write-Host "ELF introuvable: $elfPath (lancez 'pio run -e wroom-test' si besoin)." -ForegroundColor Yellow
+    Write-Host "ELF introuvable: $elfPath (lancez 'pio run -e wroom-test' ou précisez -Elf si besoin)." -ForegroundColor Yellow
     exit 1
 }
+Write-Host "ELF: $elfPath" -ForegroundColor Gray
 
 Write-Host "Adresses: $($addrs -join ' ')" -ForegroundColor Gray
 Write-Host ""

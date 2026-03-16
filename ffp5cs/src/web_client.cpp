@@ -15,8 +15,12 @@
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 #include <cstring>
 #include <atomic>
+
+// Mutex pour sérialiser HTTP (netTask GET et postSenderTask POST)
+static SemaphoreHandle_t s_httpMutex = nullptr;
 
 // Buffer pour dernier GET outputs/state : rempli par fetchRemoteState (netTask), lu par copyLastFetchedTo (caller) — évite LoadProhibited (écrire doc depuis netTask)
 static char s_lastFetchedJson[BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE + 1];
@@ -53,6 +57,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   if (WiFi.status() != WL_CONNECTED) return false;
   
   if (url == nullptr || response == nullptr || responseSize == 0) {
+    return false;
+  }
+
+  if (s_httpMutex == nullptr) {
+    s_httpMutex = xSemaphoreCreateMutex();
+  }
+  if (s_httpMutex != nullptr && xSemaphoreTake(s_httpMutex, portMAX_DELAY) != pdTRUE) {
     return false;
   }
 
@@ -110,6 +121,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
         Serial.printf("[HTTP] POST timeout après %u ms\n", elapsedMs);
       }
       LOG(LOG_WARN, "[HTTP] Timeout global atteint: %u ms", elapsedMs);
+      if (s_httpMutex != nullptr) xSemaphoreGive(s_httpMutex);
       return false;
     }
 
@@ -304,6 +316,7 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       response[0] = '\0';
     }
   }
+  if (s_httpMutex != nullptr) xSemaphoreGive(s_httpMutex);
   return finalSuccess;
 }
 
@@ -800,31 +813,34 @@ bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
   return true;
 }
 
-bool WebClient::sendHeartbeat(const Diagnostics& diag) {
-  if (!config.isRemoteSendEnabled()) {
-    return false;
-  }
-  
+bool WebClient::buildHeartbeatPayload(const Diagnostics& diag, char* buf, size_t bufSize) {
+  if (buf == nullptr || bufSize < 320) return false;
   const DiagnosticStats& s = diag.getStats();
-  
   char payloadBuf[256];
   snprintf(payloadBuf, sizeof(payloadBuf), "uptime=%lu&free=%u&min=%u&reboots=%u",
            s.uptimeSec, s.freeHeap, s.minFreeHeap, s.rebootCount);
-  
   char bufCrc[16];
   snprintf(bufCrc, sizeof(bufCrc), "&crc=%08lX", crc32(payloadBuf));
-  
   IPAddress addr = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP() : WiFi.softAPIP();
   char ipStr[16];
   snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
-  
-  char fullPayload[320];
-  snprintf(fullPayload, sizeof(fullPayload), "%s%s&ip=%s", payloadBuf, bufCrc, ipStr);
-  
+  snprintf(buf, bufSize, "%s%s&ip=%s", payloadBuf, bufCrc, ipStr);
+  return true;
+}
+
+bool WebClient::postToUrl(const char* url, const char* payload, uint32_t timeoutMs) {
+  if (url == nullptr || payload == nullptr) return false;
   char resp[1024];
+  return httpRequest(url, payload, resp, sizeof(resp), timeoutMs);
+}
+
+bool WebClient::sendHeartbeat(const Diagnostics& diag) {
+  if (!config.isRemoteSendEnabled()) return false;
+  char fullPayload[320];
+  if (!buildHeartbeatPayload(diag, fullPayload, sizeof(fullPayload))) return false;
   char heartbeatUrl[256];
   ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
-  return httpRequest(heartbeatUrl, fullPayload, resp, sizeof(resp));
+  return postToUrl(heartbeatUrl, fullPayload, NetworkConfig::HTTP_TIMEOUT_MS);
 }
 
 bool WebClient::postRaw(const char* payload) {

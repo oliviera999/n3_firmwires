@@ -28,10 +28,14 @@ namespace OTAConfig {
     constexpr int HTTP_TIMEOUT = 20000;
 #endif
     
-    // Taille maximale du filesystem (bytes) — alignée partition spiffs WROOM (0x0B0000)
+    // Taille maximale du filesystem (bytes) — 64 Ko pour ESP Mail (wroom-prod/beta) ou 0x0B0000 (wroom-test)
+#if defined(DISABLE_ASYNC_WEBSERVER)
+    constexpr size_t MAX_FILESYSTEM_SIZE = 65536;   // 0x10000 — partitions_esp32_wroom_ota_fs_mail.csv (lib ESP Mail)
+    constexpr size_t OTA_APP_PARTITION_SIZE = 1966080;  // 0x1E0000
+#else
     constexpr size_t MAX_FILESYSTEM_SIZE = 720896;  // 0x0B0000 — partitions_esp32_wroom_ota_fs_medium.csv
-    // Taille partition app OTA (fallback si metadata.size absent) — 0x1A0000
-    constexpr size_t OTA_APP_PARTITION_SIZE = 1744896;
+    constexpr size_t OTA_APP_PARTITION_SIZE = 1744896;  // 0x1A0000
+#endif
 
     // Mode DANGEREUX: forcer l'OTA avec taille flexible (taille/MD5 partiellement assouplis).
     // À false : le serveur doit envoyer Content-Length correct pour firmware.bin et littlefs.bin.

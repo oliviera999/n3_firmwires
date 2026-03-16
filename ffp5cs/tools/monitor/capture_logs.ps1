@@ -5,13 +5,15 @@ param(
     [int]$BaudRate = 115200
 )
 
+$projectRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
+$logsDir = Join-Path $projectRoot "logs"
+if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
+
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$logFile = "monitor_log_$timestamp.txt"
+$logFile = Join-Path $logsDir "monitor_log_$timestamp.txt"
 
 Write-Host "🔍 Début du monitoring ESP32 sur $Port pendant $Duration secondes..." -ForegroundColor Green
 Write-Host "📄 Logs sauvegardés dans: $logFile" -ForegroundColor Yellow
-
-$projectRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
 . (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
 Release-ComPortIfNeeded -Port $Port -Baud $BaudRate
 

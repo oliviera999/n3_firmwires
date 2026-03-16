@@ -62,8 +62,12 @@ if ($log) {
     }
 }
 
-# 4. Dernier rapport diagnostic
-$rapport = Get-ChildItem -Filter "rapport_diagnostic_complet_*.md" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+# 4. Dernier rapport diagnostic (dossier dédié logs/)
+$logsDir = Join-Path $PSScriptRoot "logs"
+$rapport = Get-ChildItem -Path $logsDir -Filter "rapport_diagnostic_complet_*.md" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $rapport) {
+    $rapport = Get-ChildItem -Path $PSScriptRoot -Filter "rapport_diagnostic_complet_*.md" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
 if ($rapport) {
     Write-Host "  Rapport: $($rapport.FullName)" -ForegroundColor Gray
     $rapportContent = Get-Content $rapport.FullName -Raw -ErrorAction SilentlyContinue

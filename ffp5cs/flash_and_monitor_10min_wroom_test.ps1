@@ -83,11 +83,13 @@ if (-not $comPort) {
     Write-Host "   (Modifiez la variable `$DefaultPort si necessaire)" -ForegroundColor Gray
 }
 
-$logFile = "monitor_${durationTag}_wroom_test_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
-$analysisFile = "monitor_${durationTag}_wroom_test_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss')_analysis.txt"
+$logsDir = Join-Path $PSScriptRoot "logs"
+if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
+$logFile = Join-Path $logsDir "monitor_${durationTag}_wroom_test_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
+$analysisFile = Join-Path $logsDir "monitor_${durationTag}_wroom_test_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss')_analysis.txt"
 
 # =============================================================================
-# Ã‰TAPE 1: FLASH DU FIRMWARE
+# ÉTAPE 1: FLASH DU FIRMWARE
 # =============================================================================
 Write-Host ""
 Write-Host "=== ETAPE 1: FLASH DU FIRMWARE ===" -ForegroundColor Cyan

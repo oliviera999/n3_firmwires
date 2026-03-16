@@ -18,6 +18,7 @@
 #include "diagnostics.h"
 #include "system_sensors.h"  // Pour SensorReadings
 #include "sd_logger.h"
+#include "web_client.h"  // buildHeartbeatPayload, postToUrl (postSenderTask)
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
 #endif
@@ -71,6 +72,15 @@ struct NetRequest {
 
 QueueHandle_t g_netQueue = nullptr;
 TaskHandle_t g_netTaskHandle = nullptr;
+
+// Fire-and-forget POST : tâche dédiée (post-data + heartbeat), netTask libère le slot immédiatement
+enum class PostSenderType : uint8_t { PostData = 0, Heartbeat = 1 };
+struct PostSenderMsg {
+  PostSenderType type;
+  char payload[BufferConfig::POST_PAYLOAD_MAX_SIZE];
+};
+static QueueHandle_t g_postSenderQueue = nullptr;
+static constexpr size_t kPostSenderQueueLen = 4;
 
 // Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
 // Pas d'allocation heap par requête ; payload et doc sont dans le pool ou passés par référence.
@@ -406,6 +416,30 @@ static void netNotifyDone(NetRequest* req) {
   }
 }
 
+// Tâche dédiée POST (fire-and-forget) : post-data et heartbeat, netTask libère le slot immédiatement
+static void postSenderTask(void* pv) {
+  (void)pv;
+  static bool wdtRegistered = false;
+  if (!wdtRegistered) {
+    esp_task_wdt_add(nullptr);
+    wdtRegistered = true;
+  }
+  PostSenderMsg msg;
+  for (;;) {
+    if (xQueueReceive(g_postSenderQueue, &msg, portMAX_DELAY) != pdTRUE) continue;
+    if (!g_ctx) continue;
+    esp_task_wdt_reset();
+    if (msg.type == PostSenderType::PostData) {
+      (void)g_ctx->webClient.tryPushStatusToServer(msg.payload);
+    } else if (msg.type == PostSenderType::Heartbeat) {
+      char heartbeatUrl[256];
+      ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
+      (void)g_ctx->webClient.postToUrl(heartbeatUrl, msg.payload, NetworkConfig::HTTP_TIMEOUT_MS);
+    }
+    esp_task_wdt_reset();
+  }
+}
+
 static void netTask(void* pv) {
   (void)pv;
   
@@ -609,15 +643,20 @@ static void netTask(void* pv) {
         esp_task_wdt_reset();
         break;
       }
-      case NetReqType::PostRaw:
-        ok = g_ctx->webClient.tryPushStatusToServer(req->payload);
-        esp_task_wdt_reset();
-        netRequestFree(req);  // fire-and-forget : libérer le slot, pas de notification caller
+      case NetReqType::PostRaw: {
+        PostSenderMsg msg;
+        msg.type = PostSenderType::PostData;
+        strncpy(msg.payload, req->payload, sizeof(msg.payload) - 1);
+        msg.payload[sizeof(msg.payload) - 1] = '\0';
+        if (xQueueSend(g_postSenderQueue, &msg, 0) != pdTRUE) {
+          g_ctx->webClient.queueFailedPost(req->payload);
+        }
+        netRequestFree(req);
         continue;
+      }
       case NetReqType::Heartbeat:
-        ok = (req->diag != nullptr) ? g_ctx->webClient.sendHeartbeat(*req->diag) : false;
-        esp_task_wdt_reset();
-        break;
+        netRequestFree(req);  // Heartbeat envoyé via postSenderQueue par netSendHeartbeat
+        continue;
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
       case NetReqType::OtaCheck: {
         Serial.println(F("[netTask] Demande distante recherche OTA (triggerOtaCheck)"));
@@ -1141,6 +1180,29 @@ bool start(AppContext& ctx) {
 #endif
   }
 
+  // Queue fire-and-forget POST (postSenderTask)
+  if (!g_postSenderQueue) {
+    g_postSenderQueue = xQueueCreate(kPostSenderQueueLen, sizeof(PostSenderMsg));
+    if (!g_postSenderQueue) {
+      Serial.println(F("[App] ❌ CRITIQUE: Échec création g_postSenderQueue"));
+      return false;
+    }
+    BaseType_t postSenderCreated = xTaskCreatePinnedToCore(
+        postSenderTask,
+        "postSender",
+        TaskConfig::POST_SENDER_TASK_STACK_SIZE / sizeof(StackType_t),
+        nullptr,
+        TaskConfig::POST_SENDER_TASK_PRIORITY,
+        nullptr,
+        TaskConfig::POST_SENDER_TASK_CORE_ID);
+    if (postSenderCreated != pdPASS) {
+      Serial.println(F("[App] ❌ CRITIQUE: Échec création postSenderTask"));
+      vQueueDelete(g_postSenderQueue);
+      g_postSenderQueue = nullptr;
+      return false;
+    }
+  }
+
   // v11.157: Approche hybride - allocation statique pour petites tâches, dynamique pour grandes
   // sensorTask: allocation statique (displayTask supprimée, affichage dans automationTask)
   g_sensorTaskHandle = xTaskCreateStaticPinnedToCore(
@@ -1343,6 +1405,7 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
 bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure) {
   if (!payload) return false;
   if (outFailure) *outFailure = NetPostFailureReason::None;
+  if (!g_netQueue) return false;
   NetRequest* req = netRequestAllocForPostCategory(category);
   if (!req) {
     if (outFailure) *outFailure = NetPostFailureReason::PoolFull;
@@ -1370,16 +1433,15 @@ bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, 
 }
 
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
-  NetRequest* req = netRequestAlloc();
-  if (!req) return false;
-  req->type = NetReqType::Heartbeat;
-  req->timeoutMs = timeoutMs;
-  req->doc = nullptr;
-  req->diag = &diag;
-  req->payload[0] = '\0';
-  bool ok = netRpcAlloc(req, timeoutMs);
-  if (ok) netRequestFree(req);
-  return ok;
+  (void)timeoutMs;
+  if (!g_ctx || !g_postSenderQueue) return false;
+  PostSenderMsg msg;
+  msg.type = PostSenderType::Heartbeat;
+  char buf[320];
+  if (!g_ctx->webClient.buildHeartbeatPayload(diag, buf, sizeof(buf))) return false;
+  strncpy(msg.payload, buf, sizeof(msg.payload) - 1);
+  msg.payload[sizeof(msg.payload) - 1] = '\0';
+  return (xQueueSend(g_postSenderQueue, &msg, 0) == pdTRUE);
 }
 
 void netRequestOtaCheck() {

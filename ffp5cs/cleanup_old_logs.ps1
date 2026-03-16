@@ -31,7 +31,15 @@ param(
     [switch]$WhatIf
 )
 
+# Dossier dédié des logs et analyses (par firmware)
+$LogsDir = Join-Path $PSScriptRoot "logs"
+if (-not (Test-Path $LogsDir)) {
+    New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
+    Write-Host "Dossier $LogsDir cree (vide)." -ForegroundColor Gray
+}
+
 Write-Host "=== NETTOYAGE DES LOGS OBSOLÈTES ===" -ForegroundColor Green
+Write-Host "Cible: $LogsDir" -ForegroundColor Cyan
 Write-Host "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
 if ($WhatIf) {
     Write-Host "Mode: DRY-RUN (aucune suppression réelle)" -ForegroundColor Yellow
@@ -84,7 +92,7 @@ function Remove-LogFile {
 # =============================================================================
 Write-Host "1. Suppression des logs vides (0 octets)..." -ForegroundColor Yellow
 
-$emptyLogs = Get-ChildItem -Path . -Filter "*.log" | Where-Object { $_.Length -eq 0 }
+$emptyLogs = Get-ChildItem -Path $LogsDir -Filter "*.log" -ErrorAction SilentlyContinue | Where-Object { $_.Length -eq 0 }
 foreach ($log in $emptyLogs) {
     Remove-LogFile -FilePath $log.FullName -Category "EmptyLogs"
 }
@@ -95,7 +103,7 @@ foreach ($log in $emptyLogs) {
 Write-Host ""
 Write-Host "2. Suppression des fichiers .errors vides et orphelins..." -ForegroundColor Yellow
 
-$errorFiles = Get-ChildItem -Path . -Filter "*.errors"
+$errorFiles = Get-ChildItem -Path $LogsDir -Filter "*.errors" -ErrorAction SilentlyContinue
 foreach ($errorFile in $errorFiles) {
     # Vérifier si vide
     if ($errorFile.Length -eq 0) {
@@ -103,9 +111,9 @@ foreach ($errorFile in $errorFiles) {
         continue
     }
     
-    # Vérifier si orphelin (pas de fichier .log associé)
+    # Vérifier si orphelin (pas de fichier .log associé dans le même dossier)
     $baseName = $errorFile.BaseName -replace '\.log$', ''
-    $logFile = "$baseName.log"
+    $logFile = Join-Path $errorFile.DirectoryName "$baseName.log"
     if (-not (Test-Path $logFile)) {
         Remove-LogFile -FilePath $errorFile.FullName -Category "OrphanErrors"
     }
@@ -117,7 +125,7 @@ foreach ($errorFile in $errorFiles) {
 Write-Host ""
 Write-Host "3. Suppression des logs très volumineux..." -ForegroundColor Yellow
 
-$largeLogs = Get-ChildItem -Path . -Filter "*.log" | Where-Object {
+$largeLogs = Get-ChildItem -Path $LogsDir -Filter "*.log" -ErrorAction SilentlyContinue | Where-Object {
     $_.Length -gt 10MB -and $_.LastWriteTime -lt $cutoffDateLarge
 } | Sort-Object Length -Descending
 
@@ -148,7 +156,7 @@ foreach ($log in $largeLogs) {
 Write-Host ""
 Write-Host "4. Suppression des logs de versions obsolètes (< v11.130)..." -ForegroundColor Yellow
 
-$oldVersionLogs = @(
+$oldVersionLogNames = @(
     'monitor_90s_v11.58_2025-10-16_20-39-34.log',
     'monitor_90s_v11.58_2025-10-16_20-41-33.log',
     'monitor_simple_v11.58_2025-10-16_20-52-40.log',
@@ -185,12 +193,14 @@ $oldVersionLogs = @(
     'monitor_15min_panic_2025-11-13_13-13-45.log'
 )
 
-foreach ($file in $oldVersionLogs) {
-    Remove-LogFile -FilePath $file -Category "OldVersions"
-    # Supprimer aussi le fichier .errors associé s'il existe
-    $errorFile = "$file.errors"
-    if (Test-Path $errorFile) {
-        Remove-LogFile -FilePath $errorFile -Category "OldVersions"
+foreach ($name in $oldVersionLogNames) {
+    $filePath = Join-Path $LogsDir $name
+    if (Test-Path $filePath) {
+        Remove-LogFile -FilePath $filePath -Category "OldVersions"
+        $errorFile = "$filePath.errors"
+        if (Test-Path $errorFile) {
+            Remove-LogFile -FilePath $errorFile -Category "OldVersions"
+        }
     }
 }
 
@@ -227,9 +237,8 @@ function Get-LogType {
 }
 
 # Supprimer les logs anciens (>30 jours) mais garder les plus récents par type
-$oldLogs = Get-ChildItem -Path . -Filter "*.log" | Where-Object {
-    $_.LastWriteTime -lt $cutoffDate -and 
-    $_.Name -notmatch "tools\\" -and
+$oldLogs = Get-ChildItem -Path $LogsDir -Filter "*.log" -ErrorAction SilentlyContinue | Where-Object {
+    $_.LastWriteTime -lt $cutoffDate -and
     $_.Length -gt 0  # Exclure les logs vides déjà traités
 } | Sort-Object LastWriteTime -Descending
 
@@ -261,7 +270,7 @@ foreach ($log in $oldLogs) {
 Write-Host ""
 Write-Host "6. Suppression des fichiers d'analyse obsolètes..." -ForegroundColor Yellow
 
-$analysisFiles = Get-ChildItem -Path . -Filter "*_analysis.txt" | Sort-Object LastWriteTime -Descending
+$analysisFiles = Get-ChildItem -Path $LogsDir -Filter "*_analysis.txt" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
 
 # Grouper les analyses par type de log associé
 $analysisByType = @{}
@@ -276,10 +285,11 @@ foreach ($analysis in $analysisFiles) {
     $analysisByType[$logType] += $analysis
 }
 
-# Supprimer les analyses orphelines (pas de log associé)
+# Supprimer les analyses orphelines (pas de log associé dans le même dossier)
 foreach ($analysis in $analysisFiles) {
     $logName = $analysis.Name -replace '_analysis\.txt$', '.log'
-    if (-not (Test-Path $logName)) {
+    $logPath = Join-Path $analysis.DirectoryName $logName
+    if (-not (Test-Path $logPath)) {
         Remove-LogFile -FilePath $analysis.FullName -Category "OldAnalysis"
     }
 }
@@ -305,14 +315,14 @@ $diagPatterns = @(
     @{ Filter = "diagnostic_serveur_distant_*.txt"; Keep = 5 }
 )
 foreach ($p in $diagPatterns) {
-    $files = Get-ChildItem -Path . -Filter $p.Filter -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+    $files = Get-ChildItem -Path $LogsDir -Filter $p.Filter -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
     for ($i = $p.Keep; $i -lt $files.Count; $i++) {
         Remove-LogFile -FilePath $files[$i].FullName -Category "OldDiagArtifacts"
     }
 }
 
 # rapport_diagnostic_complet_*.md : garder 3 plus récents
-$rapportComplet = Get-ChildItem -Path . -Filter "rapport_diagnostic_complet_*.md" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+$rapportComplet = Get-ChildItem -Path $LogsDir -Filter "rapport_diagnostic_complet_*.md" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
 for ($i = 3; $i -lt $rapportComplet.Count; $i++) {
     Remove-LogFile -FilePath $rapportComplet[$i].FullName -Category "OldDiagArtifacts"
 }
@@ -320,7 +330,7 @@ for ($i = 3; $i -lt $rapportComplet.Count; $i++) {
 # ANALYSE_*.md, RAPPORT_*.md, DIAGNOSTIC_*.md, POINT_*.md : garder 2 plus récents par préfixe (sauf ANALYSE_SCRIPTS_PS1_RACINE.md)
 $reportPrefixes = @("ANALYSE_", "RAPPORT_", "DIAGNOSTIC_", "POINT_")
 foreach ($prefix in $reportPrefixes) {
-    $files = Get-ChildItem -Path . -File -Filter "${prefix}*.md" -ErrorAction SilentlyContinue |
+    $files = Get-ChildItem -Path $LogsDir -File -Filter "${prefix}*.md" -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne "ANALYSE_SCRIPTS_PS1_RACINE.md" } |
         Sort-Object LastWriteTime -Descending
     for ($i = 2; $i -lt $files.Count; $i++) {

@@ -53,7 +53,8 @@ def _invalidate_cmake_cache():
                 pass
 
 PIOENV = env.get("PIOENV", "")
-if not PIOENV.startswith("wroom-s3"):
+# Appliquer le patch pour S3 et WROOM (pioarduino) : bug chemin .S dupliqué avec https_server.crt
+if not (PIOENV.startswith("wroom-s3") or PIOENV.startswith("wroom-")):
     pass
 else:
     # Désactiver le component manager pour ce build : évite qu'il réécrive

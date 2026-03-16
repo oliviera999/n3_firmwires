@@ -1,5 +1,5 @@
 """
-FFP5CS S3 : patch IDF (wpa_supplicant + mbedtls) pour -Wno-error.
+FFP5CS : patch IDF (wpa_supplicant + mbedtls) pour -Wno-error sur tous les envs wroom-*.
 Avec pioarduino des options C++ fuient vers les .c → warnings traités en erreurs (-Werror).
 """
 import os
@@ -7,23 +7,28 @@ Import("env")
 
 def _get_espidf_pkg_dir():
     pioenv = env.get("PIOENV", "")
-    if not pioenv.startswith("wroom-s3"):
+    if not pioenv.startswith("wroom-"):
         return None
     try:
         platform = env.PioPlatform()
+        # Noms possibles du package IDF (S3 = platformio/espressif32, WROOM = pioarduino)
         for name in ("framework-espidf", "framework-espidf@src-1e666e6a68efaa9903d5a0984e93801f"):
             try:
                 pkg_dir = platform.get_package_dir(name)
                 if pkg_dir and os.path.isdir(pkg_dir):
-                    return pkg_dir
+                    wpa_cmake = os.path.join(pkg_dir, "components", "wpa_supplicant", "CMakeLists.txt")
+                    if os.path.isfile(wpa_cmake):
+                        return pkg_dir
             except Exception:
                 continue
         home = os.environ.get("USERPROFILE") or os.environ.get("HOME") or ""
         base = os.path.join(home, ".platformio", "packages")
         if os.path.isdir(base):
             for n in os.listdir(base):
-                if n.startswith("framework-espidf"):
-                    return os.path.join(base, n)
+                pkg_dir = os.path.join(base, n)
+                wpa_cmake = os.path.join(pkg_dir, "components", "wpa_supplicant", "CMakeLists.txt")
+                if os.path.isfile(wpa_cmake):
+                    return pkg_dir
     except Exception:
         pass
     return None

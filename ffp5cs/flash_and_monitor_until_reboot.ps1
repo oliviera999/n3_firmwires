@@ -21,8 +21,10 @@ Write-Host "Durée post-reboot: $PostRebootDuration secondes" -ForegroundColor Y
 Write-Host "Temps max d'attente: $MaxWaitTime secondes" -ForegroundColor Yellow
 Write-Host ""
 
-$logFile = "flash_monitor_until_reboot_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
-$analysisFile = "flash_monitor_until_reboot_analysis_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+$logsDir = Join-Path $PSScriptRoot "logs"
+if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
+$logFile = Join-Path $logsDir "flash_monitor_until_reboot_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
+$analysisFile = Join-Path $logsDir "flash_monitor_until_reboot_analysis_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
 
 # =============================================================================
 # ÉTAPE 1: FLASH DU FIRMWARE

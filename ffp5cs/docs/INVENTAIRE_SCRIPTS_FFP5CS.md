@@ -9,7 +9,7 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| **monitor_5min.ps1** | PS1 | Monitoring N minutes (défaut 5 min), option port + env, écrit un log `monitor_*_*.log`. |
+| **monitor_5min.ps1** | PS1 | Monitoring N minutes (défaut 5 min), option port + env. Logs et analyses dans le dossier dédié **logs/** (plus à la racine). |
 | **monitor_until_reboot.ps1** | PS1 | Monitoring jusqu’à détection d’un reboot (sans flash). |
 | **monitor_until_crash.ps1** | PS1 | (Fichier vide dans l’état actuel.) |
 | **monitor_long_run.ps1** | PS1 | Monitoring longue durée. |
@@ -35,8 +35,8 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| **flash_usb_coredump.ps1** | PS1 | Flash complet avec partition coredump (erase + upload) – env wroom-prod. |
-| **flash_wroom_test.ps1** | PS1 | Flash seul (firmware + LittleFS) env wroom-test, sans monitoring. |
+| | **flash_wroom_test.ps1** | PS1 | Flash seul (firmware + LittleFS) env wroom-test, sans monitoring. |
+| **flash_s3_test.ps1** | PS1 | Flash seul (firmware + LittleFS) env wroom-s3-test (ESP32-S3), sans monitoring. | |
 | **flash_and_monitor_until_reboot.ps1** | PS1 | Flash + monitoring jusqu’à reboot + analyse. |
 | **flash_and_monitor_10min_wroom_test.ps1** | PS1 | Flash + monitoring 10 min + analyse (validation 24/7). |
 | **tools/erase_flash.ps1** | PS1 | Efface la flash via PlatformIO (port + env paramétrables). |
@@ -53,7 +53,7 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| **erase_flash_fs_monitor_5min_analyze.ps1** | PS1 | Workflow complet : erase → flash (firmware + FS sauf wroom-prod) → monitor N min → analyse. Référence recommandée. |
+| **erase_flash_fs_monitor_5min_analyze.ps1** | PS1 | Workflow complet : erase → flash (firmware + FS sauf wroom-prod) → monitor N min → analyse. Tous les logs et rapports sont écrits dans **logs/**. Référence recommandée. S'applique aussi à l'ESP32-S3 avec `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod`. Option **-NoPrompt** : exécution non interactive (pas d'attente Entrée avant erase/flash). |
 | **run_wroom_s3_prod_workflow.ps1** | PS1 | Workflow wroom-s3-prod : erase + flash + LittleFS + monitor 2 min + analyse. |
 | **run_s3_validation.ps1** | PS1 | Build wroom-s3-test puis erase + flash + monitor 1 min. |
 | **run_s3_psram_validation.ps1** | PS1 | Validation S3 PSRAM (build + workflow). |
@@ -72,7 +72,7 @@
 | **diagnostic_serveur_distant.ps1** | PS1 | Analyse POST/GET/Heartbeat, cohérence avec le code. |
 | **generate_diagnostic_report.ps1** | PS1 | Agrège serveur + mails + analyse exhaustive → rapport Markdown. |
 | **check_emails_from_log.ps1** | PS1 | Vérification mails (attendus vs envoyés/échoués) depuis un log. |
-| **cleanup_old_logs.ps1** | PS1 | Nettoyage logs vides, .errors orphelins, gros fichiers, anciens par type. |
+| **cleanup_old_logs.ps1** | PS1 | Nettoyage des logs obsolètes dans le dossier **logs/** (vides, .errors orphelins, gros fichiers, anciens par type). |
 | **tools/monitor/analyze_boot_log.py** | Python | Analyse des logs de boot. |
 | **tools/monitor/analyze_remote_server_exchanges.py** | Python | Analyse des échanges avec le serveur distant. |
 | **tools/monitor/diagnostic_analyzer.py** | Python | Analyseur de diagnostic. |
@@ -140,6 +140,7 @@ Scripts appelés par `platformio.ini` ou utilisés pour patcher l’environnemen
 |---------|------|------|
 | **tools/pio_ensure_secrets.py** | Python | Vérification des secrets (pre-build). |
 | **tools/pio_add_mklittlefs_path.py** | Python | Ajout du chemin mklittlefs (pre-build). |
+| **tools/pio_ensure_lib_dirs_windows.py** | Python | Pré-création des répertoires de build des libs à noms avec espaces (Windows, env S3 PSRAM). Évite « opening dependency file … No such file or directory ». |
 | **tools/pio_write_build_version.py** | Python | Écriture version de build (post-build). |
 | **tools/pio_s3_psram_patch_iwdt.py** | Python | Patch IWDT pour S3 PSRAM. |
 | **tools/pio_pre_apply_arduino_patches.py** | Python | Application des patches Arduino (pre). |
@@ -160,7 +161,8 @@ Scripts appelés par `platformio.ini` ou utilisés pour patcher l’environnemen
 
 ## 9. Références
 
-- **Workflow recommandé (règles projet) :** `erase_flash_fs_monitor_5min_analyze.ps1` pour erase → flash → monitor → analyse.
+- **Workflow recommandé (règles projet) :** `erase_flash_fs_monitor_5min_analyze.ps1` pour erase → flash → monitor → analyse. Pour **WROOM** : `-Environment wroom-test` (défaut). Pour **ESP32-S3** : `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod`. Exemple : `.\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-s3-test -Port COM7`.
+- **Scripts dédiés S3 :** `run_s3_validation.ps1` (wroom-s3-test, 1 min), `run_wroom_s3_prod_workflow.ps1` (wroom-s3-prod, 2 min), `flash_s3_test.ps1` (flash seul wroom-s3-test).
 - **Publication OTA :** `scripts/publish_ota.ps1` ; voir `docs/technical/OTA_PUBLISH.md`.
 - **Analyse détaillée des scripts racine :** `ANALYSE_SCRIPTS_PS1_RACINE.md` (recommandations garder/supprimer/fusionner, corrections).
 

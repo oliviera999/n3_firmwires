@@ -31,6 +31,9 @@ public:
     /** Délai après boot pendant lequel le rattrapage (catch-up) est désactivé. */
     static constexpr uint32_t FEEDING_BOOT_GRACE_MS = 120000;  // 2 min
 
+    /** Délai (secondes) entre nourrissage gros et petits poissons (aligné feedSequential). */
+    static constexpr uint16_t FEEDING_DELAY_BETWEEN_SEC = 2;
+
     /**
      * Vérifie et déclenche le nourrissage automatique selon l'heure
      * @param hour Heure actuelle (0-23)

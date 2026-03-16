@@ -11,13 +11,28 @@
 # =============================================================================
 
 param(
-    [string]$LogFile = ""
+    [string]$LogFile = "",
+    [string]$LogsDir = ""
 )
 
+$projectRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($LogsDir)) {
+    $LogsDir = Join-Path $projectRoot "logs"
+}
+if (-not [System.IO.Path]::IsPathRooted($LogsDir)) {
+    $LogsDir = Join-Path $projectRoot $LogsDir
+}
+if (-not (Test-Path $LogsDir)) { New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null }
+
 if ([string]::IsNullOrEmpty($LogFile)) {
-    # Trouver le dernier fichier de log (monitor_5min ou monitor_wroom_test)
-    $candidates = @(Get-ChildItem -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
-    $candidates += @(Get-ChildItem -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    # Trouver le dernier fichier de log dans le dossier dédié logs/ puis racine
+    $candidates = @(Get-ChildItem -Path $LogsDir -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+    $candidates += @(Get-ChildItem -Path $LogsDir -Filter "monitor_*min_*.log" -ErrorAction SilentlyContinue)
+    $candidates += @(Get-ChildItem -Path $LogsDir -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    if ($candidates.Count -eq 0) {
+        $candidates = @(Get-ChildItem -Path $projectRoot -Filter "monitor_5min_*.log" -ErrorAction SilentlyContinue)
+        $candidates += @(Get-ChildItem -Path $projectRoot -Filter "monitor_wroom_test_*.log" -ErrorAction SilentlyContinue)
+    }
     $latest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $LogFile = if ($latest) { $latest.FullName } else { $null }
 
@@ -46,14 +61,13 @@ Write-Host 'Execution des analyses...' -ForegroundColor Yellow
 
 # Analyse serveur distant
 Write-Host "  - Diagnostic serveur distant..." -ForegroundColor Gray
-$serverDiagFile = 'diagnostic_serveur_distant_' + $timestamp + '.txt'
-& .\diagnostic_serveur_distant.ps1 -LogFile $LogFile | Out-Null
+$serverDiagFile = Join-Path $LogsDir ('diagnostic_serveur_distant_' + $timestamp + '.txt')
+& .\diagnostic_serveur_distant.ps1 -LogFile $LogFile -OutputDir $LogsDir | Out-Null
 if (Test-Path $serverDiagFile) {
     $serverDiagContent = Get-Content $serverDiagFile -Raw
 } else {
-    # Chercher le dernier fichier généré
-    $serverDiagFile = Get-ChildItem -Filter "diagnostic_serveur_distant_*.txt" | 
-                     Sort-Object LastWriteTime -Descending | 
+    $serverDiagFile = Get-ChildItem -Path $LogsDir -Filter "diagnostic_serveur_distant_*.txt" -ErrorAction SilentlyContinue |
+                     Sort-Object LastWriteTime -Descending |
                      Select-Object -First 1 -ExpandProperty FullName
     if ($serverDiagFile) {
         $serverDiagContent = Get-Content $serverDiagFile -Raw
@@ -64,7 +78,7 @@ if (Test-Path $serverDiagFile) {
 
 # Analyse mails (resilient: continue si script echoue, ex. encodage)
 Write-Host "  - Analyse mails..." -ForegroundColor Gray
-$emailDiagFile = 'check_emails_' + $timestamp + '.txt'
+$emailDiagFile = Join-Path $LogsDir ('check_emails_' + $timestamp + '.txt')
 $emailDiagContent = ''
 try {
     & .\check_emails_from_log.ps1 -LogFile $LogFile *> $emailDiagFile 2>&1
@@ -80,7 +94,7 @@ if (-not $emailDiagContent) {
 
 # Analyse exhaustive
 Write-Host "  - Analyse exhaustive..." -ForegroundColor Gray
-$exhaustiveDiagFile = 'analyze_exhaustive_' + $timestamp + '.txt'
+$exhaustiveDiagFile = Join-Path $LogsDir ('analyze_exhaustive_' + $timestamp + '.txt')
 & .\analyze_log_exhaustive.ps1 -LogFile $LogFile *> $exhaustiveDiagFile
 if (Test-Path $exhaustiveDiagFile) {
     $exhaustiveDiagContent = Get-Content $exhaustiveDiagFile -Raw
@@ -134,7 +148,7 @@ $crashes = ($lines | Select-String -Pattern "Guru Meditation|panic|abort\(\)|Sta
 
 Write-Host 'Generation du rapport Markdown...' -ForegroundColor Yellow
 
-$reportFile = 'rapport_diagnostic_complet_' + $timestamp + '.md'
+$reportFile = Join-Path $LogsDir ('rapport_diagnostic_complet_' + $timestamp + '.md')
 
 # Lignes listant les stats
 $statsLines = '- **Total lignes loggees:** ' + $lineCount + [Environment]::NewLine + '- **Taille du fichier:** ' + [math]::Round($fileSize, 2) + ' KB' + [Environment]::NewLine + '- **Warnings:** ' + $warnings + [Environment]::NewLine + '- **Erreurs:** ' + $errors + [Environment]::NewLine + '- **Crashes:** ' + $crashes

@@ -1,17 +1,13 @@
 #include "system_boot.h"
 #include "system_sensors.h"
 #include <Arduino.h>
-#include <LittleFS.h>
+#include "ffp5cs_fs.h"
 #include <WiFi.h>
 #include <esp_ota_ops.h>
 #include <esp_heap_caps.h>  // Baseline heap au boot (stabilité long uptime)
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <Preferences.h>
-
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
-#include <ArduinoOTA.h>
-#endif
 
 #include "config.h"
 #include "nvs_manager.h"
@@ -44,38 +40,59 @@ void setupHostname(char* buffer, size_t bufferSize) {
 void initializeStorage(AppContext& ctx) {
   BOOT_LOG("[Event] Boot start\n");
 
+#ifndef DISABLE_ASYNC_WEBSERVER
   // Label "spiffs" pour correspondre à la table de partition et à la recherche esp_littlefs (partition "spiffs")
   const char* fsLabel = "spiffs";
-  BOOT_LOG("[FS] Mounting LittleFS (label=%s)...\n", fsLabel);
+  BOOT_LOG("[FS] Mounting " FFP5CS_FS_NAME " (label=%s)...\n", fsLabel);
   uint32_t fsStartTime = millis();
-  if (!LittleFS.begin(false, "/spiffs", 10, fsLabel)) {
-    BOOT_LOG("[FS] LittleFS mount failed - tentative de format\n");
-    if (LittleFS.format()) {
+  if (!FFP5CS_FS.begin(false, "/spiffs", 10, fsLabel)) {
+    BOOT_LOG("[FS] " FFP5CS_FS_NAME " mount failed - tentative de format\n");
+    if (FFP5CS_FS.format()) {
       BOOT_LOG("[FS] Format reussi, tentative de remontage\n");
-      if (LittleFS.begin(false, "/spiffs", 10, fsLabel)) {
+      if (FFP5CS_FS.begin(false, "/spiffs", 10, fsLabel)) {
         BOOT_LOG("[FS] Remontage apres format reussi\n");
       } else {
-        BOOT_LOG("[FS] CRITIQUE: Impossible de monter LittleFS meme apres format\n");
+        BOOT_LOG("[FS] CRITIQUE: Impossible de monter " FFP5CS_FS_NAME " meme apres format\n");
       }
     } else {
-      BOOT_LOG("[FS] CRITIQUE: Format LittleFS echoue\n");
+      BOOT_LOG("[FS] CRITIQUE: Format " FFP5CS_FS_NAME " echoue\n");
     }
   } else {
     uint32_t fsDuration = millis() - fsStartTime;
-    size_t total = LittleFS.totalBytes();
-    size_t used = LittleFS.usedBytes();
-    BOOT_LOG("[FS] LittleFS ok: %u/%u bytes (montage: %u ms)\n",
+    size_t total = FFP5CS_FS.totalBytes();
+    size_t used = FFP5CS_FS.usedBytes();
+    BOOT_LOG("[FS] " FFP5CS_FS_NAME " ok: %u/%u bytes (montage: %u ms)\n",
              static_cast<unsigned>(used),
              static_cast<unsigned>(total),
              fsDuration);
 
-    if (!LittleFS.exists("/index.html")) {
+    if (!FFP5CS_FS.exists("/index.html")) {
       BOOT_LOG("[FS] Fichier index.html manquant\n");
     }
-    if (!LittleFS.exists("/shared/common.js")) {
+    if (!FFP5CS_FS.exists("/shared/common.js")) {
       BOOT_LOG("[FS] Fichier common.js manquant\n");
     }
   }
+#else
+  // Partition spiffs 64 Ko présente (partitions_esp32_wroom_ota_fs_mail.csv) pour la lib ESP Mail Client
+  const char* fsLabel = "spiffs";
+  BOOT_LOG("[FS] Montage " FFP5CS_FS_NAME " (label=%s) pour ESP Mail...\n", fsLabel);
+  if (!FFP5CS_FS.begin(false, "/spiffs", 10, fsLabel)) {
+    BOOT_LOG("[FS] " FFP5CS_FS_NAME " mount failed - tentative de format\n");
+    if (FFP5CS_FS.format()) {
+      BOOT_LOG("[FS] Format reussi, remontage\n");
+      if (FFP5CS_FS.begin(false, "/spiffs", 10, fsLabel)) {
+        size_t total = FFP5CS_FS.totalBytes();
+        size_t used = FFP5CS_FS.usedBytes();
+        BOOT_LOG("[FS] " FFP5CS_FS_NAME " ok: %u/%u bytes\n", static_cast<unsigned>(used), static_cast<unsigned>(total));
+      }
+    }
+  } else {
+    size_t total = FFP5CS_FS.totalBytes();
+    size_t used = FFP5CS_FS.usedBytes();
+    BOOT_LOG("[FS] " FFP5CS_FS_NAME " ok: %u/%u bytes\n", static_cast<unsigned>(used), static_cast<unsigned>(total));
+  }
+#endif
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   vTaskDelay(pdMS_TO_TICKS(1));
 #endif
@@ -427,62 +444,6 @@ void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
   BOOT_LOG("[Event] OTA initial check done\n");
 #endif
 
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_ARDUINO_OTA && FEATURE_ARDUINO_OTA != 0
-  ArduinoOTA.setPort(SystemConfig::ARDUINO_OTA_PORT);
-  ArduinoOTA.setHostname(hostname);
-  ArduinoOTA
-    .onStart([&ctx, hostname]() {
-      BOOT_LOG("[OTA] Debut de la mise a jour\n");
-      WIFI_APPLY_MODEM_SLEEP(false);
-      BOOT_LOG("[Event] ArduinoOTA start\n");
-      g_nvsManager.saveString(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_LAST_METHOD, "ArduinoOTA");
-      if (ctx.display.isPresent()) {
-        ctx.display.showOtaProgressOverlay(0);
-      }
-
-      bool mailNotif = ctx.automatism.isEmailEnabled();
-      const char* toEmail = mailNotif ? ctx.automatism.getEmailAddress() : EmailConfig::DEFAULT_RECIPIENT;
-      char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
-      snprintf(body, sizeof(body),
-               "Début de mise à jour OTA (Interface web ArduinoOTA)\n\n"
-               "Détails:\n"
-               "- Méthode: Interface web ArduinoOTA\n"
-               "- Ancienne version: %s\n"
-               "- Hostname: %s\n"
-               "- Hôte: %s:%u\n"
-               "- Environnement: %s",
-               ProjectConfig::VERSION,
-               hostname ? hostname : "(unknown)",
-               hostname ? hostname : "(unknown)",
-               SystemConfig::ARDUINO_OTA_PORT,
-               Utils::getProfileName());
-      ctx.mailer.sendAlert("OTA début - Interface web", body, toEmail, true);
-    })
-    .onProgress([&ctx](unsigned int progress, unsigned int total) {
-      int percent = (progress * 100) / total;
-      BOOT_LOG("[OTA] Progression ArduinoOTA: %d%% (%u/%u)\n",
-               percent,
-               progress,
-               total);
-      if (ctx.display.isPresent()) {
-        ctx.display.showOtaProgressOverlay(static_cast<uint8_t>(percent));
-      }
-    })
-    .onEnd([&ctx]() {
-      BOOT_LOG("[OTA] Fin de la mise a jour\n");
-      WIFI_APPLY_MODEM_SLEEP(false);
-      if (ctx.display.isPresent()) {
-        ctx.display.hideOtaProgressOverlay();
-      }
-    })
-    .onError([&ctx](ota_error_t error) {
-      BOOT_LOG("[OTA] Erreur %u\n", (unsigned)error);
-      if (ctx.display.isPresent()) {
-        ctx.display.hideOtaProgressOverlay();
-      }
-    });
-  ArduinoOTA.begin();
-#endif
 }
 
 void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
@@ -505,7 +466,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     if (fromRemote) {
       BOOT_LOG("[App] Envoi email pour mise a jour OTA serveur distant...\n");
     } else {
-      BOOT_LOG("[App] Envoi email pour mise a jour OTA ArduinoOTA...\n");
+      BOOT_LOG("[App] Envoi email pour mise a jour OTA (interface web)...\n");
     }
     char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
     size_t bodyLen;
@@ -529,7 +490,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
       bodyLen = snprintf(body, sizeof(body),
           "Mise à jour OTA effectuée avec succès.\n\n"
           "Détails de la mise à jour:\n"
-          "- Méthode: ArduinoOTA (interface native)\n"
+          "- Méthode: Interface web\n"
           "- Nouvelle version: %s\n"
           "- Hostname: %s\n"
           "- Environnement: %s\n"
@@ -548,7 +509,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
     }
     char subj[128];
     snprintf(subj, sizeof(subj), "OTA mise à jour - %s [%s]",
-             fromRemote ? "Serveur distant" : "ArduinoOTA", safeHost);
+             fromRemote ? "Serveur distant" : "Interface web", safeHost);
     bool emailQueued = ctx.mailer.sendAlert(subj, body, ctx.automatism.getEmailAddress(), true);
     BOOT_LOG("[App] Email OTA %s\n", emailQueued ? "ajoute a la queue" : "echoue (ajout queue)");
     state.justUpdated = false;
@@ -566,7 +527,7 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
       char otaMethodBuf[32];
       g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_LAST_METHOD,
                               otaMethodBuf, sizeof(otaMethodBuf), "");
-      const char* otaMethod = (otaMethodBuf[0] != '\0') ? otaMethodBuf : "ArduinoOTA ou interface web";
+      const char* otaMethod = (otaMethodBuf[0] != '\0') ? otaMethodBuf : "Interface web";
       char body[BufferConfig::EMAIL_MAX_SIZE_BYTES];
       size_t bodyLen = snprintf(body, sizeof(body),
           "Mise à jour OTA effectuée avec succès.\n\n"

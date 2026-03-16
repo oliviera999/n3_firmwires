@@ -18,8 +18,12 @@ Write-Host "2. Workflow erase + flash + monitor 1 min (Port $Port)..." -Foregrou
 .\erase_flash_fs_monitor_5min_analyze.ps1 -Environment $envName -Port $Port -DurationMinutes 1 -SkipBuild
 if ($LASTEXITCODE -ne 0) { Write-Host "Workflow FAILED"; exit $LASTEXITCODE }
 
-# 3. Résumé du dernier log monitor
-$log = Get-ChildItem -Filter "monitor_1min_*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+# 3. Résumé du dernier log monitor (dossier dédié logs/)
+$logsDir = Join-Path $PSScriptRoot "logs"
+$log = Get-ChildItem -Path $logsDir -Filter "monitor_1min_*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $log) {
+    $log = Get-ChildItem -Path $PSScriptRoot -Filter "monitor_1min_*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
 if ($log) {
     $content = Get-Content $log.FullName -Raw
     $bootOk = $content -match "BOOT FFP5CS"

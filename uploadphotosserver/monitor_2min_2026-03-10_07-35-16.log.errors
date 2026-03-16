@@ -1,0 +1,4 @@
+Usage: pio run [OPTIONS]
+Try 'pio run -h' for help.
+
+Error: No such option: --port (Possible options: --monitor-port, --upload-port)

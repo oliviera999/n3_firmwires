@@ -29,6 +29,10 @@ class WebClient {
 
   bool sendMeasurements(const Measurements& m, bool includeReset=false);
   bool sendHeartbeat(const class Diagnostics& diag);
+  /** Construit le payload heartbeat (pour envoi fire-and-forget par postSenderTask). */
+  bool buildHeartbeatPayload(const class Diagnostics& diag, char* buf, size_t bufSize);
+  /** POST vers une URL donnée (timeout optionnel). Utilisé par postSenderTask pour heartbeat. */
+  bool postToUrl(const char* url, const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS);
   bool postRaw(const char* payload);
   // Retour: 0=échec, 1=OK HTTP, 2=OK NVS fallback (v11.193)
   int fetchRemoteState(ArduinoJson::JsonDocument& doc);

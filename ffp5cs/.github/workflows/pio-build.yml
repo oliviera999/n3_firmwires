@@ -9,6 +9,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [ wroom-prod, wroom-s3-prod ]
 
     steps:
       - name: Checkout code
@@ -32,6 +36,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pio-
 
-      - name: Build firmware
+      - name: Build firmware (${{ matrix.env }})
         run: |
-          pio run --environment wroom-prod 
+          pio run --environment ${{ matrix.env }}
