@@ -7,18 +7,23 @@
 #include "msp_globals.h"
 #include <Arduino.h>
 #include "n3_battery.h"
+#include "n3_analog_sensors.h"
 
 static const N3BatteryConfig batteryConfig = {
   pontdiv, N3_BATTERY_R1, N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
 };
 
+static const N3Analog::AnalogConfig cfgHumidSol = {
+  .pin = HumiditeSol, .numSamples = 8, .delayMs = 2,
+  .filterMode = N3Analog::MEDIANE_PUIS_MOYENNE, .outlierMax = 100,
+  .minValid = 0, .maxValid = 4095, .fallback = 1, .emaAlpha = 0.0f
+};
+
 void LectureCapteurs() {
-  // Lire l'humidité du sol
-  HumidSol = analogRead(HumiditeSol);
-  if (HumidSol == 0) {
-    HumidSol = 1;
-  }
-  delay(100);
+  // Lire l'humidité du sol (ADC filtré)
+  N3Analog::AnalogResult rHum = N3Analog::readFilteredAnalog(cfgHumidSol);
+  HumidSol = rHum.valid ? rHum.value : 1;
+  if (HumidSol == 0) HumidSol = 1;
   Serial.println(HumidSol);
 
 
@@ -77,7 +82,7 @@ void batterie() {
   PontDiv = analogRead(pontdiv);
   Serial.println(PontDiv);
 
-  N3BatteryResult res = n3BatteryRead(batteryConfig, samples, &sampleIndex, &sampleTotal);
+  N3BatteryResult res = n3BatteryRead(batteryConfig, (void*)samples, (void*)&sampleIndex, (void*)&sampleTotal);
   avgPontDiv = res.rawAvg;
   measuredVoltage = res.measuredVoltage;
   batteryVoltage = res.batteryVoltage;

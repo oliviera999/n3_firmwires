@@ -1,8 +1,8 @@
 {
   "name": "n3_battery",
   "version": "1.0.0",
-  "description": "Lecture batterie par pont diviseur avec moyenne mobile pour projet n3 IoT",
-  "keywords": ["battery", "adc", "esp32", "n3"],
+  "description": "Lecture batterie pont diviseur (délègue à n3_analog_sensors). Compatible n3pp, msp.",
+  "keywords": "esp32, battery, adc, divider",
   "frameworks": "arduino",
   "platforms": "espressif32"
 }

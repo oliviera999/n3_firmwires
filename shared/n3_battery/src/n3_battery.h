@@ -1,26 +1,30 @@
+/**
+ * n3_battery — API batterie pont diviseur (compatible n3pp, msp).
+ * Implémentation déléguée à n3_analog_sensors.
+ */
 #pragma once
 
 #include <Arduino.h>
 
 struct N3BatteryConfig {
-  int pin;
-  float r1;
-  float r2;
-  float vRef;
-  int numSamples;
+  uint8_t  pin;        /**< Broche ADC (ex. pontdiv) */
+  uint32_t R1;         /**< Résistance haute (ohm) */
+  uint32_t R2;         /**< Résistance basse (ohm) */
+  float    Vref;       /**< Référence ADC (V) */
+  uint8_t  numSamples; /**< Nombre d'échantillons */
 };
 
 struct N3BatteryResult {
-  int rawAvg;
-  float measuredVoltage;
-  float batteryVoltage;
+  uint16_t rawAvg;         /**< Moyenne raw ADC */
+  float    measuredVoltage; /**< Tension au diviseur (V) */
+  float    batteryVoltage; /**< Tension batterie (V) */
 };
 
 /**
- * Lit le pont diviseur, met a jour la moyenne mobile,
- * calcule la tension mesuree et la tension batterie.
- * samples[] doit etre un tableau de taille config.numSamples, initialise a 0.
- * sampleIndex et sampleTotal sont mis a jour par la fonction.
+ * Lecture batterie filtrée (multi-échantillons).
+ * samples, sampleIndex, sampleTotal conservés pour compatibilité API (non utilisés).
  */
 N3BatteryResult n3BatteryRead(const N3BatteryConfig& config,
-                              int* samples, int* sampleIndex, int* sampleTotal);
+                              void* samples,
+                              void* sampleIndex,
+                              void* sampleTotal);

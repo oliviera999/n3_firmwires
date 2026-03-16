@@ -2,10 +2,10 @@
 # Applicable à tous les firmwares (sauf ratata, LVGL_Widgets). À lancer depuis la racine de firmwires.
 #
 # Usage:
-#   .\erase_flash_monitor.ps1 -Project n3pp4_2
+#   .\erase_flash_monitor.ps1 -Project n3pp
 #   .\erase_flash_monitor.ps1 -Project ffp5cs -Port COM4 -DurationMinutes 5
 #   .\erase_flash_monitor.ps1 -Project ffp5cs -Environment wroom-prod -SkipUploadFs
-#   .\erase_flash_monitor.ps1 -Project msp2_5 -DurationMinutes 10 -SkipBuild
+#   .\erase_flash_monitor.ps1 -Project msp -DurationMinutes 10 -SkipBuild
 #
 # -SkipBuild : ne pas compiler (erase + flash + monitor uniquement).
 # -SkipClean : ne pas lancer "pio run -t clean" avant le build.
@@ -26,8 +26,8 @@ $ErrorActionPreference = "Stop"
 $firmwiresRoot = $PSScriptRoot
 
 $allowedProjects = @(
-    "n3pp4_2",
-    "msp2_5",
+    "n3pp",
+    "msp",
     "uploadphotosserver",
     "uploadphotosserver_msp1",
     "uploadphotosserver_n3pp_1_6_deppsleep",
@@ -47,8 +47,8 @@ if (-not (Test-Path $projectPath)) {
 }
 
 $defaultEnvs = @{
-    "n3pp4_2" = "esp32dev"
-    "msp2_5" = "esp32dev"
+    "n3pp" = "esp32dev"
+    "msp" = "esp32dev"
     "uploadphotosserver" = "msp1"
     "uploadphotosserver_msp1" = "esp32cam"
     "uploadphotosserver_n3pp_1_6_deppsleep" = "esp32cam"

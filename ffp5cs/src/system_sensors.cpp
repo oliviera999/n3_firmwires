@@ -4,6 +4,7 @@
 #include <math.h> // ajout pour isnan
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
+#include "n3_analog_sensors.h"
 
 SystemSensors::SystemSensors() {}
 
@@ -198,27 +199,20 @@ SensorReadings SystemSensors::read() {
     return r;
   }
 
-  // Luminosité avec validation
+  // Luminosité (ADC filtré via n3_analog_sensors)
   {
     phaseStart = millis();
-    uint32_t lumiSum = 0;
-    const uint8_t NB_LUMI_SAMPLES = 12; // 12 échantillons pour réduire le bruit
-    for (uint8_t i = 0; i < NB_LUMI_SAMPLES; ++i) {
-      lumiSum += analogRead(Pins::LUMINOSITE);
-      vTaskDelay(pdMS_TO_TICKS(1)); // 1 ms entre échantillons
-      if ((i % 4) == 0 && esp_task_wdt_status(NULL) == ESP_OK) {
-        esp_task_wdt_reset();
-      }
-      if (timeoutExceeded("luminosite")) {
-        r.luminosite = 0;
-        break;
-      }
-    }
-    uint16_t val = static_cast<uint16_t>(lumiSum / NB_LUMI_SAMPLES);
+    const N3Analog::AnalogConfig cfgLum = {
+      .pin = (uint8_t)Pins::LUMINOSITE, .numSamples = 12, .delayMs = 1,
+      .filterMode = N3Analog::MOYENNE, .outlierMax = 0,
+      .minValid = 0, .maxValid = 4095, .fallback = 0, .emaAlpha = 0.0f
+    };
+    N3Analog::AnalogResult resLum = N3Analog::readFilteredAnalog(cfgLum);
+    uint16_t val = resLum.value;
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Luminosité: %u ms\n", millis() - phaseStart);
-    
-    // Validation de la luminosité (0-4095 pour ESP32 ADC 12-bit)
-    if (val > 4095) {
+    if (timeoutExceeded("luminosite")) {
+      r.luminosite = 0;
+    } else if (!resLum.valid || val > 4095) {
       SENSOR_LOG_PRINTF("[SystemSensors] Luminosité invalide: %u, force 0\n", val);
       r.luminosite = 0;
     } else {

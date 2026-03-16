@@ -11,7 +11,7 @@ Le dossier **firmwires** regroupe plusieurs projets de firmware pour microcontr�
 
 | Élément | Détail |
 |--------|--------|
-| Projets principaux documentés | **n3pp4_2** (N3PhasmesProto), **msp2_5** (MeteoStationPrototype) |
+| Projets principaux documentés | **n3pp** (N3PhasmesProto), **msp** (MeteoStationPrototype) |
 | Autres dossiers présents | ratata, uploadphotosserver_ffp3_1_5_deppsleep, uploadphotosserver_msp1, uploadphotosserver_n3pp_1_6_deppsleep |
 | Outil de build | PlatformIO (Arduino, ESP32) |
 | Dépôt Git | Aucun à la racine (réponse « No » pour « Is directory a git repo ») |
@@ -26,11 +26,11 @@ firmwires/
 ├── README.md
 ├── RECOMMANDATIONS.md
 ├── RAPPORT_ANALYSE.md          ← ce rapport
-├── n3pp4_2/                    # N3PhasmesProto (serre / aquaponie)
+├── n3pp/                    # N3PhasmesProto (serre / aquaponie)
 │   ├── platformio.ini
 │   ├── src/main.cpp
-│   └── n3pp4_2.ino             # ancien sketch Arduino (référence)
-├── msp2_5/                     # MeteoStationPrototype (météo + tracker solaire)
+│   └── n3pp.ino             # ancien sketch Arduino (référence)
+├── msp/                     # MeteoStationPrototype (météo + tracker solaire)
 │   ├── platformio.ini
 │   ├── src/main.cpp
 │   ├── lib/, include/, test/
@@ -41,7 +41,7 @@ firmwires/
 └── uploadphotosserver_n3pp_1_6_deppsleep/
 ```
 
-- Les **deux projets principaux** ont bien un `src/main.cpp` (plus de fichier « msp2_5 copy.cpp »).
+- Les **deux projets principaux** ont bien un `src/main.cpp` (plus de fichier « msp copy.cpp »).
 - Un **.gitignore** existe à la racine (`.pio/`, `desktop.ini`, etc.).
 - **RECOMMANDATIONS.md** décrit une analyse antérieure ; plusieurs points ont été traités (README racine, main.cpp, .gitignore).
 
@@ -49,14 +49,14 @@ firmwires/
 
 ## 3. Projets principaux
 
-### 3.1 N3PhasmesProto (n3pp4_2) – v4.2
+### 3.1 N3PhasmesProto (n3pp) – v4.2
 
 - **Rôle :** Contrôle serre / aquaponie (température, humidité air, 4× humidité sol, pompe, luminosité, relais, deep sleep, NTP, OLED, mails, serveur web).
 - **Cible :** ESP32 (board `esp32dev`).
 - **Stack :** AsyncTCP, ESPAsyncWebServer, DHT, ESP Mail Client, Arduino_JSON, Adafruit GFX/SSD1306, ESP32Time.
 - **Serveur :** `http://iot.olution.info` (n3pp, board=3).
 
-### 3.2 MeteoStationPrototype (msp2_5) – v2.5
+### 3.2 MeteoStationPrototype (msp) – v2.5
 
 - **Rôle :** Station météo + tracker solaire (2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, NTP, OLED, mails, serveur web).
 - **Cible :** ESP32 (board `esp32dev`).
@@ -80,14 +80,14 @@ firmwires/
 | Problème | Détail |
 |----------|--------|
 | **Port série** | `upload_port = COM3` et `monitor_port = COM3` en dur dans les deux `platformio.ini`. À adapter selon la machine ou à documenter clairement. |
-| **Partition msp2_5** | `board_build.partitions = min_spiffs.csv` sans fichier `min_spiffs.csv` dans le projet. Soit ajouter le fichier, soit retirer la ligne pour utiliser la partition par défaut. |
+| **Partition msp** | `board_build.partitions = min_spiffs.csv` sans fichier `min_spiffs.csv` dans le projet. Soit ajouter le fichier, soit retirer la ligne pour utiliser la partition par défaut. |
 
 ### 4.3 Qualité du code
 
 | Projet | Problème | État |
 |--------|----------|------|
-| **n3pp4_2** | Dans `batterie()`, `sampleTotal += analogRead(pontdiv)` — incohérence avec la moyenne glissante. | **Résolu** : le code utilise déjà `sampleTotal += samples[sampleIndex];`. |
-| **n3pp4_2** | Dans `affichageOLED()`, `digitalRead(HeureArrosage)` etc. sur des variables au lieu des broches. | **Résolu** : affichage direct des variables (`HeureArrosage`, `SeuilSec`, `SeuilPontDiv`, `WakeUp`). |
+| **n3pp** | Dans `batterie()`, `sampleTotal += analogRead(pontdiv)` — incohérence avec la moyenne glissante. | **Résolu** : le code utilise déjà `sampleTotal += samples[sampleIndex];`. |
+| **n3pp** | Dans `affichageOLED()`, `digitalRead(HeureArrosage)` etc. sur des variables au lieu des broches. | **Résolu** : affichage direct des variables (`HeureArrosage`, `SeuilSec`, `SeuilPontDiv`, `WakeUp`). |
 | **Les deux** | Code monolithique (un seul `main.cpp` très long), ce qui complique la maintenance et la réutilisation. | À traiter (refactor). |
 
 ### 4.4 Documentation et périmètre
@@ -107,13 +107,13 @@ firmwires/
 
 ### Priorité haute
 
-1. ~~**Corriger le bug dans n3pp4_2**~~ **Fait.**  
+1. ~~**Corriger le bug dans n3pp**~~ **Fait.**  
    Dans `batterie()`, remplacer  
    `sampleTotal += analogRead(pontdiv);`  
    par  
    `sampleTotal += samples[sampleIndex];`.
 
-2. **Corriger l’affichage OLED dans n3pp4_2**  
+2. **Corriger l’affichage OLED dans n3pp**  
    Remplacer les `digitalRead(HeureArrosage)`, `digitalRead(SeuilSec)`, etc. par l’affichage direct des variables (`HeureArrosage`, `SeuilSec`, `SeuilPontDiv`, `WakeUp`).
 
 3. **Sécuriser les secrets**  
@@ -121,8 +121,8 @@ firmwires/
 
 ### Priorité moyenne
 
-4. ~~**Clarifier la partition msp2_5**~~ **Fait.**  
-   Ligne supprimée dans `msp2_5/platformio.ini` (partition par défaut).
+4. ~~**Clarifier la partition msp**~~ **Fait.**  
+   Ligne supprimée dans `msp/platformio.ini` (partition par défaut).
 
 5. **Initialiser Git à la racine (IOT_n3)**  
    `git init` dans `firmwires`, et s’assurer que le `.gitignore` racine couvre bien `.pio/`, `desktop.ini`, et les futurs fichiers de secrets.
@@ -130,7 +130,7 @@ firmwires/
 6. ~~**Documenter les autres dossiers**~~ **Fait.**  
    **Fait.** README racine et firmwires décrivent tous les projets (ratata, uploadphotosserver_*, ffp5cs).
 
-7. ~~**Mettre à jour RECOMMANDATIONS.md**~~ **Fait.** Références à `msp2_5 copy.cpp` et à l’absence de README, et noter les actions déjà réalisées.
+7. ~~**Mettre à jour RECOMMANDATIONS.md**~~ **Fait.** Références à `msp copy.cpp` et à l’absence de README, et noter les actions déjà réalisées.
 
 ### Priorité basse (refactor)
 
@@ -138,7 +138,7 @@ firmwires/
    Découper en modules (config, capteurs, actionneurs, web, mail, affichage) dans `src/` et `include/` pour les deux firmwares.
 
 9. **Code commun**  
-   Extraire WiFi, NTP, mail, OLED, requêtes HTTP dans un dossier partagé (ex. `common/`) pour limiter la duplication entre n3pp4_2 et msp2_5.
+   Extraire WiFi, NTP, mail, OLED, requêtes HTTP dans un dossier partagé (ex. `common/`) pour limiter la duplication entre n3pp et msp.
 
 ---
 
@@ -146,14 +146,14 @@ firmwires/
 
 | Action | Où | Priorité | État |
 |--------|-----|----------|------|
-| Corriger `sampleTotal` dans `batterie()` | n3pp4_2/src/main.cpp | Haute | Fait |
-| Corriger affichage variables OLED | n3pp4_2/src/main.cpp | Haute | Fait |
-| Externaliser identifiants / clé API | n3pp4_2, msp2_5 | Haute | Fait (n3pp4_2, msp2_5) |
-| Gérer ou supprimer `min_spiffs.csv` | msp2_5/platformio.ini | Moyenne | Fait |
+| Corriger `sampleTotal` dans `batterie()` | n3pp/src/main.cpp | Haute | Fait |
+| Corriger affichage variables OLED | n3pp/src/main.cpp | Haute | Fait |
+| Externaliser identifiants / clé API | n3pp, msp | Haute | Fait (n3pp, msp) |
+| Gérer ou supprimer `min_spiffs.csv` | msp/platformio.ini | Moyenne | Fait |
 | `git init` + submodules | Racine IOT_n3 | Moyenne | Fait |
 | Documenter ratata et uploadphotosserver_* | README ou doc dédiée | Moyenne | Fait |
 | Mettre à jour RECOMMANDATIONS.md | Racine | Moyenne | Fait |
-| Modulariser et factoriser le code | n3pp4_2, msp2_5 | Basse |
+| Modulariser et factoriser le code | n3pp, msp | Basse |
 
 ---
 

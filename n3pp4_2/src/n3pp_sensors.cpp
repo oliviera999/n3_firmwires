@@ -1,44 +1,66 @@
 #include "n3pp_sensors.h"
 #include "n3pp_globals.h"
 #include "n3_battery.h"
+#include "n3_analog_sensors.h"
 
 static const N3BatteryConfig batteryConfig = {
   pontdiv, N3_BATTERY_R1, N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
 };
 
+/* Config lecture ADC filtrée : 8 échantillons, médiane + rejet outliers, plage 0–4095 */
+static const N3Analog::AnalogConfig cfgHumid = {
+  .pin = 0, .numSamples = 8, .delayMs = 2,
+  .filterMode = N3Analog::MEDIANE_PUIS_MOYENNE, .outlierMax = 100,
+  .minValid = 0, .maxValid = 4095, .fallback = 1, .emaAlpha = 0.0f
+};
+
+static const N3Analog::AnalogConfig cfgLumi = {
+  .pin = 0, .numSamples = 12, .delayMs = 1,
+  .filterMode = N3Analog::MOYENNE, .outlierMax = 0,
+  .minValid = 0, .maxValid = 4095, .fallback = 1, .emaAlpha = 0.0f
+};
+
 void lectureCapteurs() {
-  Humid1 = analogRead(humidite1);
+  N3Analog::AnalogConfig c = cfgHumid;
+  c.pin = humidite1;
+  N3Analog::AnalogResult r1 = N3Analog::readFilteredAnalog(c);
+  Humid1 = r1.valid ? r1.value : 1;
   if (Humid1 == 0) Humid1 = 1;
   Serial.print("Capteur humidite 1 : ");
   Serial.println(Humid1);
-  delay(100);
 
-  Humid2 = analogRead(humidite2);
+  c.pin = humidite2;
+  N3Analog::AnalogResult r2 = N3Analog::readFilteredAnalog(c);
+  Humid2 = r2.valid ? r2.value : 1;
   if (Humid2 == 0) Humid2 = 1;
   Serial.print("Capteur humidite 2 : ");
   Serial.println(Humid2);
-  delay(100);
 
-  Humid3 = analogRead(humidite3);
+  c.pin = humidite3;
+  N3Analog::AnalogResult r3 = N3Analog::readFilteredAnalog(c);
+  Humid3 = r3.valid ? r3.value : 1;
   if (Humid3 == 0) Humid3 = 1;
   Serial.print("Capteur humidite 3 : ");
   Serial.println(Humid3);
-  delay(100);
 
-  Humid4 = analogRead(humidite4);
+  c.pin = humidite4;
+  N3Analog::AnalogResult r4 = N3Analog::readFilteredAnalog(c);
+  Humid4 = r4.valid ? r4.value : 1;
   if (Humid4 == 0) Humid4 = 1;
   Serial.print("Capteur humidite 4 : ");
   Serial.println(Humid4);
-  delay(100);
 
   HumidMoy = (Humid1 + Humid2 + Humid3 + Humid4) / 4;
   Serial.print("Capteur humidite moyenne : ");
   Serial.println(HumidMoy);
 
-  PontDiv = analogRead(pontdiv);
+  N3Analog::AnalogConfig cPont = cfgHumid;
+  cPont.pin = pontdiv;
+  cPont.numSamples = 8;
+  N3Analog::AnalogResult rPont = N3Analog::readFilteredAnalog(cPont);
+  PontDiv = rPont.valid ? rPont.value : (uint16_t)0;
   Serial.print("pontdiv : ");
   Serial.print(PontDiv);
-  delay(100);
 
   Serial.print("seuilsec2 : ");
   Serial.println(SeuilSec);
@@ -57,7 +79,10 @@ void lectureCapteurs() {
     if (isnan(h)) h = 0.0f;
   }
 
-  photocellReading = analogRead(LUMINOSITE);
+  N3Analog::AnalogConfig cLum = cfgLumi;
+  cLum.pin = LUMINOSITE;
+  N3Analog::AnalogResult rLum = N3Analog::readFilteredAnalog(cLum);
+  photocellReading = rLum.valid ? rLum.value : 1;
   if (photocellReading == 0) photocellReading = 1;
 }
 
@@ -65,7 +90,7 @@ void batterie() {
   PontDiv = analogRead(pontdiv);
   Serial.println(PontDiv);
 
-  N3BatteryResult res = n3BatteryRead(batteryConfig, samples, &sampleIndex, &sampleTotal);
+  N3BatteryResult res = n3BatteryRead(batteryConfig, (void*)samples, (void*)&sampleIndex, (void*)&sampleTotal);
   avgPontDiv = res.rawAvg;
   measuredVoltage = res.measuredVoltage;
   batteryVoltage = res.batteryVoltage;

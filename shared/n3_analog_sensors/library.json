@@ -1,0 +1,14 @@
+{
+  "name": "n3_analog_sensors",
+  "version": "1.0.0",
+  "description": "Lecture ADC filtrée commune (luminosité, pont diviseur, humidité sol) pour firmwares n3 (ffp5cs, n3pp, msp). Multi-échantillonnage, médiane, rejet d'outliers, EMA optionnel.",
+  "keywords": "esp32, adc, analog, filter, median, sensor",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "authors": [{ "name": "n3 IoT" }],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}
