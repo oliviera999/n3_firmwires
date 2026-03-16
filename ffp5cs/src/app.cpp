@@ -273,6 +273,12 @@ void setup() {
 
   g_appContext.power.applyExternalRTCIfPresent();
 
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  // S3 PSRAM : Serial activé après NVS pour que le chemin WiFi (wifi_manager) puisse logger sans bloquer
+  Serial.begin(SystemConfig::SERIAL_BAUD_RATE);
+  delay(100);
+#endif
+
   bool wifiConnected = SystemBoot::connectWifi(g_appContext, g_hostname);
   if (wifiConnected) {
     SystemBoot::onWifiReady(g_appContext, g_hostname, otaState);

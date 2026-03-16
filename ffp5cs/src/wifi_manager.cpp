@@ -131,21 +131,12 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   ets_printf("[BOOT] after show Scan\n");
 #endif
   overrideBaseMac();  // MAC système avant WiFi.mode() → appliqué au hardware
-  // S3 PSRAM: WiFi.mode() bloque durablement sur ce board/driver ; on skip l'init WiFi au boot pour que le setup termine (firmware opérationnel en offline + AP secours)
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  if (WiFi.getMode() != (FEATURE_WIFI_APSTA ? (wifi_mode_t)WIFI_AP_STA : (wifi_mode_t)WIFI_STA)) {
-    ets_printf("[BOOT] S3 PSRAM: skip WiFi.mode at boot (evite blocage)\n");
-    _connecting = false;
-    return false;
-  }
-  ets_printf("[DBG H-A] after WiFi.mode\n");
-#else
+  // Init WiFi : réactivée pour S3 PSRAM (Serial après NVS). En cas de blocage esp_wifi_init, voir ESP32S3_HARDWARE_REFERENCE.md et option FFP5CS_S3_PSRAM_WIFI_DISABLED.
   if (FEATURE_WIFI_APSTA) {
     WiFi.mode(WIFI_AP_STA);
   } else {
     WiFi.mode(WIFI_STA);
   }
-#endif
   if (hostname && hostname[0] != '\0') {
     WiFi.setHostname(hostname);
   }
@@ -530,12 +521,6 @@ bool WifiManager::connectTo(const char* ssid, const char* password, DisplayView*
 }
 
 bool WifiManager::startFallbackAP(){
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  // Mode initialisé par la tâche dédiée ; si pas encore fait, ne pas appeler WiFi.mode() ici (bloquant)
-  if (WiFi.getMode() != WIFI_AP && WiFi.getMode() != WIFI_AP_STA) {
-    return false;
-  }
-#endif
   // Crée un SSID unique basé sur l'adresse MAC
   uint64_t chipId = ESP.getEfuseMac();
   char ssid[32];
