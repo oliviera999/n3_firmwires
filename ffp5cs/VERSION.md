@@ -12,6 +12,59 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.00 - 2026-03-16
+
+### Version majeure (release)
+
+- **Changement** : Passage à la version majeure 13.00. Commit de release : merge de la branche pio-build dans master.
+- **Documentation** : VERSION.md et config.h alignés.
+
+---
+
+## Version 12.47 - 2026-03-15
+
+### Fire-and-forget POST (post-data + heartbeat)
+
+- **Changement** : Tâche dédiée `postSenderTask` pour l’envoi HTTP des POST (post-data et heartbeat). netTask transmet le payload à la queue dédiée et libère le slot immédiatement ; plus de blocage 6–18 s par POST.
+- **Heartbeat** : Envoi fire-and-forget côté appelant (plus d’attente dans `netRpcAlloc`, plus de slot netRequest réservé). Payload construit via `WebClient::buildHeartbeatPayload`, puis message envoyé à `postSenderQueue`.
+- **Post-data** : En cas de file postSender pleine, fallback `queueFailedPost` (NVS) pour conserver l’offline-first.
+- **Mutex HTTP** : Sérialisation des appels HTTP (GET dans netTask, POST dans postSenderTask) via un mutex dans `WebClient::httpRequest`.
+- **Fichiers** : `src/app_tasks.cpp` (PostSenderMsg, postSenderTask, création queue/tâche dans start, netTask PostRaw/Heartbeat), `src/web_client.cpp` (mutex, buildHeartbeatPayload, postToUrl), `include/web_client.h`, `include/config.h` (TaskConfig::POST_SENDER_*).
+
+---
+
+## Version 12.46 - 2026-03-15
+
+### Correction crash au boot (LoadProhibited 0x54)
+
+- **Changement** : `AppTasks::start()` appelé avant `postConfiguration()` dans `setup()` ; garde `if (!g_netQueue) return false;` au début de `netPostRaw()`.
+- **Raison** : `postConfiguration()` envoie un POST `resetMode=0` via `sendFullUpdate` → `netPostRaw` → `xQueueSend(g_netQueue, ...)` alors que `g_netQueue` n’était pas encore créé (il l’est dans `AppTasks::start()`), d’où crash.
+- **Fichiers** : `src/app.cpp`, `src/app_tasks.cpp`.
+
+---
+
+## Version 12.45 - 2026-03-15
+
+### Partition wroom-prod / wroom-beta sans FS (pas de serveur embarqué)
+
+- **Changement** : wroom-prod et wroom-beta utilisent `partitions_esp32_wroom_ota_no_fs.csv` (OTA dual, pas de partition spiffs). App 0x1F8000 par slot (~2 Mo).
+- **Raison** : Pas de serveur web embarqué sur ces envs ; éviter montage FS inutile et crash (LoadProhibited) au boot. Plus d’espace pour l’app.
+- **Fichiers** : `config/partitions/partitions_esp32_wroom_ota_no_fs.csv`, `platformio.ini`, `include/ota_config.h` (MAX_FILESYSTEM_SIZE=0, OTA_APP_PARTITION_SIZE=0x1F8000 si DISABLE_ASYNC_WEBSERVER), `scripts/publish_ota.ps1`, `docs/technical/OTA_PUBLISH.md`.
+
+---
+
+## Version 12.44 - 2026-03-15
+
+### Core dump désactivé partout (audit système)
+
+- **Changement** : `FFP5CS_COREDUMP_ENABLE=0` pour tous les env ; partitions sans coredump pour wroom-test et wroom-s3-test.
+- **Raison** : Évite boot bloquant ("No core dump partition found!"), source de bugs. Les logs série, NVS (capturePanicInfo) et monitor restent disponibles pour diagnostic.
+- **Nettoyage** : suppression `flash_usb_coredump.ps1`, `partitions_esp32_wroom_ota_coredump.csv`, `partitions_esp32_wroom_test_coredump.csv`, `partitions_esp32_s3_test_coredump.csv`.
+- **Nouvelle partition** : `config/partitions/partitions_esp32_wroom_test.csv` (spiffs 0xF0000, sans coredump).
+- **Fichiers** : `platformio.ini`, partitions, `tools/coredump/README.md`, `docs/technical/COREDUMP_PANIC_S3.md`, `docs/INVENTAIRE_SCRIPTS_FFP5CS.md`.
+
+---
+
 ## Version 12.43 - 2026-03-12
 
 ### Incrémentation pour OTA (audit échanges firmware-serveur)
