@@ -15,8 +15,8 @@
    - **pio run -e wroom-s3-test** → build complet (voir ci-dessous)
 
 2. **pio run -e wroom-s3-test (détail)**
-   - **Pre-scripts** (platformio.ini) : `pio_pre_apply_arduino_patches.py`, `pio_add_mklittlefs_path.py`, puis S3 : `s3_idf_git_data_fix.py`, `s3_patch_esp_insights_mqtt.py`, `s3_patch_wpa_supplicant_wno_error.py`, `s3_patch_ldgen_fragments_file.py`, `s3_patch_platform_espidf_ldgen.py`
-   - **Plateforme pioarduino** : déclenche "Compile Arduino IDF libs" (call_compile_libs) car custom_sdkconfig est défini
+   - **Pre-scripts** (platformio.ini, section [env] + héritage wroom-s3-base) : `pio_ensure_secrets.py`, `pio_add_mklittlefs_path.py`, `pio_ensure_git_data.py`, `s3_patch_esp_insights_mqtt.py` (uniquement pour les envs wroom-s3-*), `s3_patch_wpa_supplicant_wno_error.py`. Le script `pio_ensure_git_data.py` crée notamment `CMakeFiles/git-data/head-ref` dans le build dir (et un .git minimal dans le package framework-espidf si absent), ce qui évite l’erreur CMake GetGitRevisionDescription. Les scripts `s3_idf_git_data_fix.py`, `s3_patch_ldgen_fragments_file.py`, `s3_patch_platform_espidf_ldgen.py` ne sont pas utilisés dans la configuration actuelle ; en cas d’échec S3 lié à ldgen (ligne de commande trop longue) ou head-ref, on peut les réintégrer dans `[env:wroom-s3-base]` (extra_scripts).
+   - **Plateforme** : platformio/espressif32 (pas pioarduino pour S3). Déclenche "Compile Arduino IDF libs" (call_compile_libs) lorsque custom_sdkconfig est défini.
    - **Phase 1** : CMake + Ninja compilent les composants ESP-IDF (esp_psram, bootloader_support, esp_wifi, etc.) avec le sdkconfig mergé (sdkconfig_s3_wdt.txt) → durée ~10–20 min
    - **Phase 2** : copie des .a vers `framework-arduinoespressif32-libs/esp32s3/qio_opi/`
    - **Phase 3** : compilation des sources Arduino + projet (libs, src/) → durée ~5–15 min
@@ -52,6 +52,30 @@ Sans `-IncludeFramework` / `-IncludeFrameworkLibs`, un simple `pio run -e wroom-
 
 - Utiliser **-SkipBuild** pour les runs erase/flash/monitor/analyse une fois un build réussi disponible.
 - Pour obtenir un build complet : lancer **une fois** `pio run -e wroom-s3-test` (sans fullclean si on veut reprendre un build partiel) et attendre la fin sans interrompre.
+
+## Basculement WROOM ↔ S3
+
+Lors du passage d’un environnement **WROOM** (wroom-prod, wroom-test, wroom-beta) à un environnement **S3** (wroom-s3-test, wroom-s3-prod, etc.) ou l’inverse, des erreurs de compilation peuvent apparaître (ex. « WiFi.cpp.o: No such file or directory » à l’archive, ou cache incohérent).
+
+**Procédure recommandée :**
+
+1. **Avant de compiler l’env cible** après un build de l’autre famille : lancer un clean de l’env cible :
+   ```powershell
+   pio run -e <env_cible> -t clean
+   ```
+   puis `pio run -e <env_cible>`. En cas d’erreurs persistantes, utiliser `-t fullclean` à la place de `-t clean`.
+
+2. **Pour les envs S3** : en cas de blocage (fichiers verrouillés, WinError 32), utiliser le script dédié :
+   ```powershell
+   .\tools\clean_s3_build.ps1
+   ```
+   Options : `-IncludeFramework` pour supprimer aussi le package framework ; `-FullClean` pour supprimer le répertoire de build. Voir l’aide en en-tête du script.
+
+3. **Ordre recommandé pour wroom-beta** : si un build **wroom-beta** seul échoue (FRAMEWORK_DIR None), lancer d’abord une fois `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Voir la section « wroom-beta et FRAMEWORK_DIR » ci-dessous.
+
+### wroom-beta et FRAMEWORK_DIR
+
+Sur certains setups PlatformIO, un build **uniquement** de l’env `wroom-beta` peut échouer avec une erreur liée à `FRAMEWORK_DIR` (variable non résolue). Pour éviter cela : exécuter une première fois un build **wroom-prod** réussi (`pio run -e wroom-prod`), puis lancer `pio run -e wroom-beta`. La plateforme pioarduino est alors correctement résolue et le build wroom-beta peut aboutir.
 
 ---
 

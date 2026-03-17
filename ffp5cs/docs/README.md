@@ -58,6 +58,8 @@ pio run -e wroom-test -t upload
 pio device monitor
 ```
 
+**Basculement WROOM ↔ S3** : après un build d’une autre famille d’env (ex. wroom-test puis wroom-s3-test), il est recommandé de lancer `pio run -e <env_cible> -t clean` avant de compiler. **wroom-beta** : si le build échoue (FRAMEWORK_DIR None), lancer d’abord `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Détails : [BUILD_S3_PROCESS_ANALYSE.md](technical/BUILD_S3_PROCESS_ANALYSE.md) (sections « Basculement WROOM ↔ S3 » et « wroom-beta et FRAMEWORK_DIR »).
+
 ## Principes de développement
 
 Voir les règles du projet dans `.cursor/rules/` (ex. règles cœur FFP5CS).
