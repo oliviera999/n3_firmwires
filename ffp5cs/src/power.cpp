@@ -14,6 +14,7 @@
 #include <freertos/task.h>
 #include "config.h"
 #include "log.h"
+#include "esp_task_wdt.h"  // waitForNetworkReady : DNS peut bloquer > TWDT 30 s (otaTask)
 #include "realtime_websocket.h"
 #if defined(USE_RTC_DS3231)
 #include "rtc_ds3231.h"
@@ -559,27 +560,33 @@ void PowerManager::waitForNetworkReady() {
   uint32_t startMs = millis();
   
   Serial.println(F("[Power] Attente stabilisation réseau..."));
-  
+  esp_task_wdt_reset();
+
   // Phase 1: Délai minimum de stabilisation TCP/IP
   vTaskDelay(pdMS_TO_TICKS(STABILIZATION_DELAY_MS));
-  
+  esp_task_wdt_reset();
+
   // Phase 2: Vérifier que l'IP est toujours valide
   while ((millis() - startMs) < MAX_WAIT_MS) {
+    esp_task_wdt_reset();
     if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
       // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
       IPAddress dnsResult;
+      esp_task_wdt_reset();
       if (WiFi.hostByName("pool.ntp.org", dnsResult)) {
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         Serial.printf("[Power] ✅ Réseau prêt (%s, DNS OK, %lu ms)\n", 
                       ipBuf, millis() - startMs);
+        esp_task_wdt_reset();
         return;
       }
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }
-  
+  esp_task_wdt_reset();
+
   // Timeout atteint mais WiFi connecté - on continue quand même
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[Power] ⚠️ Réseau partiellement prêt après %lu ms (DNS timeout)\n", 

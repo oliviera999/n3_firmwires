@@ -12,6 +12,33 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.10 - 2026-03-18
+
+### WROOM boot-loop (postSender + otaTask TWDT)
+
+- **Problème** : boucle reboot — stack canary **postSender** (pile 4 Ko insuffisante pour HTTPS heartbeat) ; **TWDT otaTask** après **waitForNetworkReady** (DNS `hostByName` lent > 30 s sans nourrir le TWDT).
+- **Correctifs** : `POST_SENDER_TASK_STACK_SIZE` WROOM **8192** (aligné S3) ; `esp_task_wdt_reset()` dans `PowerManager::waitForNetworkReady()` (boucle + avant/après stabilisation).
+- **Flash complet** : `pio run -e wroom-prod -t upload --upload-port COMx` (bootloader + partitions + firmware) ; exécuter avec l’ESP branché et le port série libre.
+- **Option OTA boot différé (après netTask)** : non retenue — les correctifs ci-dessus couvrent le scénario observé ; réouvrir si DNS/TWDT persistent malgré 13.10.
+- **Fichiers** : `include/config.h`, `src/power.cpp`.
+
+---
+
+## Version 13.09 - 2026-03-18
+
+### Link dram0 WROOM + partitions S8 + build matriciel
+
+- **Contexte** : `wroom-prod` / `wroom-beta` échouaient au link (`dram0_0_seg` ~2 Ko) ; `wroom-test` ~10 Ko de plus (AsyncWeb/WebSockets) ; `wroom-s3-test-devkit` partitions CSV chevauchées ; tests natifs Unity cassés par héritage `framework=arduino` de `[env]`.
+- **Changements** :
+  - **WROOM prod/beta** : `NET_TASK_STACK_SIZE` = 14384 (≈−2 Ko BSS vs 16384).
+  - **WROOM `PROFILE_TEST` (wroom-test)** : stacks réduites (automation 8K, OTA 9K, net 9216, mail 12K) pour le link ; surveiller HWM sur carte.
+  - **Partitions 8 Mo S3** : `app0` @ `0x20000` (alignement 64 Ko), apps `0x2F0000`, LittleFS `0x200000`.
+  - **Tests natifs** : `platformio-native.ini` + `pio test -c platformio-native.ini -e native` ; `scripts/test_unit_all.ps1` mis à jour.
+  - **Script** : `scripts/build_all_envs.ps1` (build séquentiel de tous les envs firmware + compilation tests natifs).
+- **Fichiers** : `include/config.h`, `config/partitions/partitions_esp32_s3_8mb.csv`, `platformio.ini`, `platformio-native.ini`, `scripts/build_all_envs.ps1`, `scripts/test_unit_all.ps1`.
+
+---
+
 ## Version 13.08 - 2026-03-17
 
 ### Test OTA / déploiement serveur

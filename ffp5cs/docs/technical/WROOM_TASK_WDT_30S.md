@@ -55,6 +55,8 @@ Sur WROOM, la vérification OTA au boot (`checkForUpdate()` → `downloadMetadat
 
 Voir `src/app_tasks.cpp` (bootServerReachable, condition avant l’appel à `checkForUpdate()` au boot).
 
+**v13.10** : **otaTask** et **netTask** appellent `waitForNetworkReady()` (DNS `hostByName` jusqu’à ~5 s par tentative). Sans `esp_task_wdt_reset()` dans cette boucle, **otaTask** pouvait dépasser 30 s et déclencher le TWDT. **`src/power.cpp`** : resets WDT avant/après stabilisation et dans la boucle DNS.
+
 ## Lien avec le S3 (même code, timeout TWDT différent)
 
 Le code réseau/OTA (netTask, `checkForUpdate()`, `downloadMetadata()`) est **partagé** entre WROOM et S3. Sur **S3**, le Task WDT est configuré à **300 s** dans `src/app.cpp` (et `sdkconfig_s3_wdt.txt`), donc un blocage netTask de 30–60 s dans `downloadMetadata()` ne déclenche pas de reboot Task WDT sur S3. La même cause (blocage HTTPS/OTA) se manifeste donc surtout sur WROOM à cause du TWDT 30 s.

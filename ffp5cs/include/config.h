@@ -41,7 +41,8 @@ namespace ProjectConfig {
     // v13.06: Incrément pour déploiement OTA unifié (n3pp, msp, ffp5cs).
     // v13.07: OTA prioritaire — tâche dédiée otaTask (priorité 3, stack 12 KB), netTask ne fait plus l'OTA.
     // v13.08: Test OTA — déploiement serveur (wroom-beta et canaux associés).
-    inline constexpr const char* VERSION = "13.08";
+    // v13.10: WROOM — postSender 8 Ko (stack canary HTTPS) ; TWDT dans waitForNetworkReady (DNS).
+    inline constexpr const char* VERSION = "13.10";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -928,10 +929,13 @@ namespace TaskConfig {
     // v11.171: Augmenté de 8KB à 10KB (audit: HWM utilisé à 95%, marge insuffisante)
     // Le crash se produit dans automationTask lors de la sauvegarde NVS
     // S3: 12 KB (run 5 min 2026-03: HWM 78%, alerte >70% répétée; 10 KB insuffisant)
+    // WROOM + PROFILE_TEST : stacks réduites (dram0.bss AsyncWebServer/WebSockets ~+10 Ko vs prod)
 #if defined(BOARD_S3)
     inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 12288;  // 12 KB (S3)
+#elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
+    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 8192;   // wroom-test : marge link
 #else
-    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 10240;  // 10KB (WROOM)
+    inline constexpr uint32_t AUTOMATION_TASK_STACK_SIZE = 10240;  // 10KB (WROOM prod/beta)
 #endif
     inline constexpr UBaseType_t AUTOMATION_TASK_PRIORITY = 3;
     inline constexpr BaseType_t AUTOMATION_TASK_CORE_ID = 1;
@@ -941,7 +945,11 @@ namespace TaskConfig {
     inline constexpr BaseType_t DISPLAY_TASK_CORE_ID = 1;
 
     // Tâche OTA dédiée (prioritaire sur netTask) — stack dédiée pour éviter overflow TLS/Update
+#if defined(BOARD_WROOM) && defined(PROFILE_TEST)
+    inline constexpr uint32_t OTA_TASK_STACK_SIZE = 9216;   // wroom-test : BSS
+#else
     inline constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;  // 12 KB
+#endif
     inline constexpr UBaseType_t OTA_TASK_PRIORITY = 3;     // Supérieure à NET_TASK_PRIORITY (2)
     inline constexpr BaseType_t OTA_TASK_CORE_ID = 0;
     
@@ -949,29 +957,34 @@ namespace TaskConfig {
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)
     // v11.197: Augmenté 8KB → 12KB - stack overflow dans netTask lors de checkForUpdate OTA
     // S3: 16 KB (stack canary netTask observé sur S3 - mbedTLS/HTTP plus gourmands, monitoring 2026-03)
-    // v12.xx: WROOM aligné 16 KB - stack canary netTask observé wroom-prod (monitoring 2026-03-11)
+    // WROOM prod/beta : 14384 (marge dram0 link) ; wroom-test : 10240 (AsyncWeb + WS)
 #if defined(BOARD_S3)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // 16 KB (S3)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // S3
+#elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #else
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // 16 KB (WROOM - aligné S3, évite stack overflow TLS/OTA)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14384;   // WROOM prod/beta
 #endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
 
     // Tâche dédiée envoi POST (fire-and-forget : post-data + heartbeat)
-    // S3: 8 KB — stack canary postSender (Stack overflow) observé wroom-s3-test (monitoring 2026-03-16)
+    // 8 KB S3 et WROOM — stack canary postSender (HTTPS/postToUrl) observé S3 puis WROOM (monitoring 2026-03)
 #if defined(BOARD_S3)
-    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 8192;  // 8 KB (S3: HTTP/postToUrl plus gourmand)
+    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 8192;
 #else
-    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 4096;  // 4 KB (WROOM)
+    inline constexpr uint32_t POST_SENDER_TASK_STACK_SIZE = 8192;  // WROOM: aligné S3 (TLS heartbeat)
 #endif
     inline constexpr UBaseType_t POST_SENDER_TASK_PRIORITY = 1;    // Sous netTask
     inline constexpr BaseType_t POST_SENDER_TASK_CORE_ID = 0;
     
     // Tâche mail asynchrone (v11.143) - évite de bloquer automationTask pendant SMTP
     // v11.161: Augmenté de 12KB à 16KB - stack overflow persistant pendant TLS/SMTP handshake
-    // Réduit pour résoudre overflow DRAM dram0_0_seg (sans mise à jour plateforme). 16384→15168 (-1216 B).
-    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 15168;  // ~14.8 KB (surveiller HWM mail/TLS)
+#if defined(BOARD_WROOM) && defined(PROFILE_TEST)
+    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 12288;  // wroom-test : BSS
+#else
+    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 15168;  // WROOM prod / S3 (HWM mail/TLS)
+#endif
     inline constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
     inline constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
     inline constexpr uint8_t MAIL_QUEUE_SIZE = 6;            // Réduit 8→6 (piste 2 rapport mémoire), robustesse envoi conservée
