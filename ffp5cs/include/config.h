@@ -42,8 +42,10 @@ namespace ProjectConfig {
     // v13.07: OTA prioritaire — tâche dédiée otaTask (priorité 3, stack 12 KB), netTask ne fait plus l'OTA.
     // v13.08: Test OTA — déploiement serveur (wroom-beta et canaux associés).
     // v13.10: WROOM — postSender 8 Ko (stack canary HTTPS) ; TWDT dans waitForNetworkReady (DNS).
-    // v13.11: Déploiement OTA wroom-prod.
-    inline constexpr const char* VERSION = "13.11";
+    // v13.11: OTA — priorité absolue (10) pendant checkForUpdate/performUpdate.
+    // v13.12: OTA_BASE_PATH /ota/ (publication unifiée serveur/ota/, plus /ffp3/ota).
+    // v13.13: Incrément version — déploiement OTA.
+    inline constexpr const char* VERSION = "13.15";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -180,6 +182,8 @@ namespace TimingConfig {
     
     // Tâches périodiques
     inline constexpr uint32_t OTA_CHECK_INTERVAL_MS = 7200000; // 2h
+    // Pas d'attente otaTask : ne jamais bloquer plus longtemps sans reset WDT (TWDT 30s/60s)
+    inline constexpr uint32_t OTA_WDT_FEED_INTERVAL_MS = 10000; // 10s
     inline constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
@@ -391,7 +395,7 @@ namespace ServerConfig {
         inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat";
     #endif
     
-    inline constexpr const char* OTA_BASE_PATH = "/ffp3/ota/";
+    inline constexpr const char* OTA_BASE_PATH = "/ota/";
     
     // Helpers pour buffers statiques
     inline void getPostDataUrl(char* buffer, size_t bufferSize) {
@@ -949,9 +953,11 @@ namespace TaskConfig {
 #if defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t OTA_TASK_STACK_SIZE = 9216;   // wroom-test : BSS
 #else
-    inline constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;  // 12 KB
+    inline constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;  // 12 KB WROOM prod/beta (TLS OTA)
 #endif
     inline constexpr UBaseType_t OTA_TASK_PRIORITY = 3;     // Supérieure à NET_TASK_PRIORITY (2)
+    // Priorité absolue pendant checkForUpdate/performUpdate (évite préemption par netTask/postSender, réduit TWDT/stack)
+    inline constexpr UBaseType_t OTA_TASK_PRIORITY_WHILE_RUNNING = 10;
     inline constexpr BaseType_t OTA_TASK_CORE_ID = 0;
     
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
@@ -963,8 +969,10 @@ namespace TaskConfig {
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 16384;  // S3
 #elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
+#elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14256;  // wroom-beta : dram0 link (OTA 12 Ko)
 #else
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14384;   // WROOM prod/beta
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14376;   // WROOM prod (dram0 marge 8 o)
 #endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs

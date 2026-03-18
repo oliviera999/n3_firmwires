@@ -12,6 +12,26 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.15 - 2026-03-18
+
+### Incrément version — déploiement OTA wroom-beta
+
+- **Objectif** : version 13.15 pour publication OTA (canal test, esp32-wroom-beta).
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.14 - 2026-03-18
+
+### Correctif TWDT : nourrissage watchdog otaTask et postSender
+
+- **Problème** : redémarrages en boucle (COM3) — « Task watchdog got triggered … otaTask » (parfois postSender). otaTask bloquait 2h dans `xQueueReceive` sans appeler `esp_task_wdt_reset()` ; postSender bloquait en `portMAX_DELAY` sans limite.
+- **Correctif otaTask** : attente par pas de **OTA_WDT_FEED_INTERVAL_MS** (10s) au lieu de 2h d’un coup ; `esp_task_wdt_reset()` à chaque réveil (timeout ou message) ; périodicité 2h conservée via `lastOtaCheckMs` / `OTA_CHECK_INTERVAL_MS`.
+- **Correctif postSender** : `xQueueReceive` avec timeout **15s** au lieu de `portMAX_DELAY` ; `esp_task_wdt_reset()` à chaque retour.
+- **Fichiers** : `include/config.h` (VERSION 13.14, `OTA_WDT_FEED_INTERVAL_MS`), `src/app_tasks.cpp`, `VERSION.md`.
+
+---
+
 ## Version 13.13 - 2026-03-18
 
 ### Incrément version — déploiement OTA
