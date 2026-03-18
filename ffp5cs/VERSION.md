@@ -12,12 +12,33 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.13 - 2026-03-18
+
+### Incrément version — déploiement OTA
+
+- **Objectif** : version 13.13 pour publication OTA (serveur/ota/, URLs /ota/).
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+- **Publication wroom-beta** : même binaire sans LittleFS que wroom-prod ; script racine `publish_ota.ps1` avec `IncludeFsFfp5 = false` pour `ffp5-wroom-beta`. Doc : `docs/technical/OTA_PUBLISH.md`.
+
+---
+
+## Version 13.12 - 2026-03-18
+
+### OTA unifiée sur /ota/
+
+- **Changement** : `OTA_BASE_PATH = "/ota/"` ; metadata et binaires publiés via `scripts/publish_ota.ps1` (racine IOT_n3) dans **serveur/ota/** (plus de dépôt ffp3/ota).
+- **Script** : `firmwires/ffp5cs/scripts/publish_ota.ps1` délègue au script racine (cibles ffp5-wroom-prod, ffp5-wroom-beta, ffp5-s3-prod, ffp5-s3-test).
+- **Fichiers** : `include/config.h`, `docs/technical/OTA_PUBLISH.md`, `docs/INVENTAIRE_SCRIPTS_FFP5CS.md`.
+
+---
+
 ## Version 13.11 - 2026-03-18
 
-### Déploiement OTA wroom-prod
+### OTA priorité absolue pendant l’exécution
 
-- **Objectif** : Incrément version pour publication OTA (build + metadata) cible wroom-prod.
-- **Fichiers** : `include/config.h` (version 13.11), `VERSION.md`.
+- **Objectif** : pendant `checkForUpdate()` et `performUpdate()`, otaTask a la priorité absolue (plus préemptée par netTask/postSender) pour réduire TWDT et risques de stack canary.
+- **Changement** : montée en priorité à `OTA_TASK_PRIORITY_WHILE_RUNNING` (10) avant la vérification OTA, restauration à `OTA_TASK_PRIORITY` (3) à la fin (boot et boucle périodique).
+- **Fichiers** : `include/config.h`, `src/app_tasks.cpp`.
 
 ---
 
