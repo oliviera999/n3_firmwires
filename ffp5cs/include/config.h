@@ -42,7 +42,8 @@ namespace ProjectConfig {
     // v13.07: OTA prioritaire — tâche dédiée otaTask (priorité 3, stack 12 KB), netTask ne fait plus l'OTA.
     // v13.08: Test OTA — déploiement serveur (wroom-beta et canaux associés).
     // v13.10: WROOM — postSender 8 Ko (stack canary HTTPS) ; TWDT dans waitForNetworkReady (DNS).
-    inline constexpr const char* VERSION = "13.10";
+    // v13.11: Déploiement OTA wroom-prod.
+    inline constexpr const char* VERSION = "13.11";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

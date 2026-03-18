@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.11 - 2026-03-18
+
+### Déploiement OTA wroom-prod
+
+- **Objectif** : Incrément version pour publication OTA (build + metadata) cible wroom-prod.
+- **Fichiers** : `include/config.h` (version 13.11), `VERSION.md`.
+
+---
+
 ## Version 13.10 - 2026-03-18
 
 ### WROOM boot-loop (postSender + otaTask TWDT)
