@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.16 - 2026-03-18
+
+### Correctif TWDT au boot (WROOM / IDF 5) : éviter « TWDT was never initialized »
+
+- **Problème** : au boot, erreur « E (13) task_wdt: esp_task_wdt_deinit(644): TWDT was never initialized » lorsque le framework n’a pas encore initialisé le TWDT ; appel à `esp_task_wdt_deinit()` avant tout `esp_task_wdt_init()` provoquait ce log et pouvait affecter la suite du boot.
+- **Correctif** : pour WROOM avec IDF 5+, appeler `esp_task_wdt_init(&cfg)` en premier ; si retour `ESP_ERR_INVALID_STATE` (TWDT déjà configuré), alors `esp_task_wdt_deinit()` puis `esp_task_wdt_init(&cfg)`. Ainsi on ne fait `deinit` que lorsque le TWDT était déjà initialisé (reconfig).
+- **Fichiers** : `src/app.cpp` (deux blocs IDF 5 WROOM : avant Serial et reconfig 30s/60s), `include/config.h` (VERSION 13.16), `VERSION.md`. Correctif lié au bon déroulement du boot et de l’OTA (pas de blocage early boot).
+
+---
+
 ## Version 13.15 - 2026-03-18
 
 ### Incrément version — déploiement OTA wroom-beta

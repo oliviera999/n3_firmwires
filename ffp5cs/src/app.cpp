@@ -141,12 +141,17 @@ void setup() {
   #else
   delay(1);
   yield();
-  esp_task_wdt_deinit();  // No-op si TWDT jamais init, sinon permet reconfig
-  esp_task_wdt_config_t wdtCfg = {};
-  wdtCfg.timeout_ms = 300000;
-  wdtCfg.idle_core_mask = 0;
-  wdtCfg.trigger_panic = true;
-  esp_task_wdt_init(&wdtCfg);
+  {
+    esp_task_wdt_config_t wdtCfg = {};
+    wdtCfg.timeout_ms = 300000;
+    wdtCfg.idle_core_mask = 0;
+    wdtCfg.trigger_panic = true;
+    esp_err_t err = esp_task_wdt_init(&wdtCfg);
+    if (err == ESP_ERR_INVALID_STATE) {
+      esp_task_wdt_deinit();
+      esp_task_wdt_init(&wdtCfg);
+    }
+  }
   #endif
   #endif
   // Log de la cause du redémarrage AVANT toute initialisation (BOOT_LOG = ets_printf sur S3 PSRAM, pas de blocage UART)
@@ -192,17 +197,23 @@ void setup() {
   // IDF 5: esp_task_wdt_config_t + timeout_ms. IDF 4 (Arduino wroom-test): esp_task_wdt_init(timeout_sec).
   #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
     #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
-  esp_task_wdt_deinit();
-  esp_task_wdt_config_t cfg = {};
-  #if defined(USE_TEST_ENDPOINTS)
-  cfg.timeout_ms = 60000;   // 60s wroom-beta (OTA metadata HTTPS peut bloquer ~20s)
-  #else
-  cfg.timeout_ms = 30000;   // 30s prod/test (marge POST 8s + async_tcp)
-  #endif
-  cfg.idle_core_mask = 0;
-  cfg.trigger_panic = true;
-  esp_task_wdt_init(&cfg);
-  Serial.printf("[BOOT] Watchdog configuré: timeout=%lu ms (WROOM)\n", (unsigned long)cfg.timeout_ms);
+  // Éviter "TWDT was never initialized" : init d'abord, deinit seulement si déjà configuré
+  {
+    esp_task_wdt_config_t cfg = {};
+    #if defined(USE_TEST_ENDPOINTS)
+    cfg.timeout_ms = 60000;   // 60s wroom-beta (OTA metadata HTTPS peut bloquer ~20s)
+    #else
+    cfg.timeout_ms = 30000;   // 30s prod/test (marge POST 8s + async_tcp)
+    #endif
+    cfg.idle_core_mask = 0;
+    cfg.trigger_panic = true;
+    esp_err_t err = esp_task_wdt_init(&cfg);
+    if (err == ESP_ERR_INVALID_STATE) {
+      esp_task_wdt_deinit();
+      esp_task_wdt_init(&cfg);
+    }
+    Serial.printf("[BOOT] Watchdog configuré: timeout=%lu ms (WROOM)\n", (unsigned long)cfg.timeout_ms);
+  }
     #else
   // API IDF 4.x: esp_task_wdt_init(timeout_sec, panic)
   esp_task_wdt_deinit();
