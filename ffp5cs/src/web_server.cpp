@@ -26,6 +26,7 @@
 #include "web_routes_status.h"
 #include "web_routes_ui.h"
 #include "app_context.h"
+#include "app_tasks.h"
 #include "realtime_websocket.h"
 #include "asset_bundler.h"
 
@@ -932,12 +933,10 @@ bool WebServerManager::begin() {
       "</script></body></html>");
   });
 
-  // POST /api/ota - Déclenchement manuel OTA (vérification + mise à jour si disponible)
+  // POST /api/ota - Demande de vérification OTA à la tâche dédiée (prioritaire)
   _server->on("/api/ota", HTTP_POST, [](AsyncWebServerRequest* req) {
     if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     g_autoCtrl.notifyLocalWebActivity();
-    extern AppContext g_appContext;
-    OTAManager& ota = g_appContext.otaManager;
 
     if (WiFi.status() != WL_CONNECTED) {
       StaticJsonDocument<256> doc;
@@ -960,25 +959,12 @@ bool WebServerManager::begin() {
       return;
     }
 
-    ota.setCurrentVersion(ProjectConfig::VERSION);
-    bool hasUpdate = ota.checkForUpdate();
-    if (!hasUpdate) {
-      StaticJsonDocument<256> doc;
-      doc["triggered"] = false;
-      doc["message"] = "Aucune mise à jour disponible";
-      doc["currentVersion"] = ota.getCurrentVersion();
-      doc["ok"] = true;
-      char buf[256];
-      serializeJson(doc, buf, sizeof(buf));
-      req->send(NetworkConfig::HTTP_OK, "application/json", buf);
-      return;
-    }
-    bool started = ota.performUpdate();
+    AppTasks::netRequestOtaCheck();
     StaticJsonDocument<256> doc;
-    doc["triggered"] = started;
-    doc["message"] = started ? "Mise à jour lancée" : "Échec lancement OTA";
-    doc["remoteVersion"] = ota.getRemoteVersion();
-    doc["ok"] = started;
+    doc["triggered"] = true;
+    doc["message"] = "Vérification OTA envoyée à la tâche dédiée (prioritaire)";
+    doc["currentVersion"] = ProjectConfig::VERSION;
+    doc["ok"] = true;
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));
     req->send(NetworkConfig::HTTP_OK, "application/json", buf);

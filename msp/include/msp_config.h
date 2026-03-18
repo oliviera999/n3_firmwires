@@ -6,7 +6,7 @@
 #include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "2.15"
+#define FIRMWARE_VERSION "2.17"
 
 // --- Pins ---
 #define RELAIS 13
@@ -35,8 +35,7 @@ const unsigned int oneWireBus = 2;
 const int numReadings = 10;
 
 // --- Batterie / pont diviseur ---
-#define R1 N3_BATTERY_R1
-#define R2 N3_BATTERY_R2
+// R1/R2 non definis ici pour eviter conflit avec struct N3BatteryConfig (n3_battery.h) ; msp_sensors utilise N3_BATTERY_R1/R2
 const float ADC_MAX_VALUE = 4095.0;
 const float V_REF = N3_BATTERY_VREF;
 const float calibration = 0.06;

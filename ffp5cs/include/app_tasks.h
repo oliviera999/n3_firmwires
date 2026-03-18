@@ -56,7 +56,7 @@ bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_PO
                 PostCategory category = PostCategory::Periodic, NetPostFailureReason* outFailure = nullptr);
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 
-/** Demande une vérification OTA au netTask (fire-and-forget). Utilisé par le boot, le timer 2h ou le serveur distant (triggerOtaCheck). */
+/** Demande une vérification OTA à la tâche dédiée otaTask (fire-and-forget). Utilisé par le boot, le timer 2h ou le serveur distant (triggerOtaCheck). */
 void netRequestOtaCheck();
 
 /** Nombre de slots actuellement utilisés dans le pool netRPC (indicateur pour throttle). */

@@ -38,6 +38,15 @@ static StaticTask_t automationTaskTCB;
 
 static StackType_t netTaskStack[TaskConfig::NET_TASK_STACK_SIZE];
 static StaticTask_t netTaskTCB;
+
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+static QueueHandle_t g_otaTriggerQueue = nullptr;  // Notification vers tâche OTA (boot, 2h, triggerOtaCheck)
+static constexpr size_t kOtaTriggerQueueLen = 2;
+static StackType_t otaTaskStack[TaskConfig::OTA_TASK_STACK_SIZE / sizeof(StackType_t)];
+static StaticTask_t otaTaskTCB;
+TaskHandle_t g_otaTaskHandle = nullptr;
+#endif
+
 TaskHandle_t g_sensorTaskHandle = nullptr;
 TaskHandle_t g_webTaskHandle = nullptr;
 TaskHandle_t g_autoTaskHandle = nullptr;
@@ -440,6 +449,71 @@ static void postSenderTask(void* pv) {
   }
 }
 
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+// Tâche OTA dédiée : priorité supérieure à netTask, stack dédiée (évite stack overflow TLS/Update).
+// Exécute OTA au boot puis boucle périodique (2h) ou sur trigger (queue). Seul propriétaire des appels OTAManager.
+static void otaTask(void* pv) {
+  (void)pv;
+  static bool wdtRegistered = false;
+  if (!wdtRegistered) {
+    esp_task_wdt_add(nullptr);
+    wdtRegistered = true;
+  }
+  esp_task_wdt_reset();
+
+  unsigned long startMs = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+
+  if (WiFi.status() == WL_CONNECTED && g_ctx) {
+#if !defined(PROFILE_TEST) || defined(BOARD_S3)
+    g_ctx->power.waitForNetworkReady();
+    esp_task_wdt_reset();
+#if defined(BOARD_WROOM)
+    const unsigned long FIRST_TLS_DELAY_MS = 2000;
+    vTaskDelay(pdMS_TO_TICKS(FIRST_TLS_DELAY_MS));
+    esp_task_wdt_reset();
+#elif defined(BOARD_S3) && !defined(BOARD_HAS_PSRAM)
+    const unsigned long S3_FIRST_TLS_DELAY_MS = 3000;
+    vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
+    esp_task_wdt_reset();
+#endif
+    if (ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA && !g_ctx->otaManager.isUpdating()) {
+      esp_task_wdt_reset();
+      g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[otaTask] Boot OTA check\n");
+#else
+      Serial.println(F("[otaTask] Boot: vérification OTA (prioritaire, tâche dédiée)"));
+#endif
+      if (g_ctx->otaManager.checkForUpdate()) {
+        g_ctx->otaManager.performUpdate();
+      }
+    }
+#endif
+  }
+
+  for (;;) {
+    uint8_t trigger = 0;
+    (void)xQueueReceive(g_otaTriggerQueue, &trigger, pdMS_TO_TICKS(TimingConfig::OTA_CHECK_INTERVAL_MS));
+    esp_task_wdt_reset();
+    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isUpdating()) {
+      continue;
+    }
+    if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {
+      continue;
+    }
+    g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+    if (g_ctx->otaManager.checkForUpdate()) {
+      g_ctx->otaManager.performUpdate();
+    }
+    esp_task_wdt_reset();
+  }
+}
+#endif
+
 static void netTask(void* pv) {
   (void)pv;
   
@@ -457,62 +531,23 @@ static void netTask(void* pv) {
   Serial.println(F("[netTask] Démarrée (TLS/HTTP propriétaire unique)"));
 #endif
 
-  // Remplacer les fetchRemoteState() du boot (qui se faisaient dans loopTask)
-  // par une tentative depuis netTask dès que le WiFi est disponible.
-  // v11.168: Timeout boot augmenté à 8s pour récupérer config serveur (source de vérité)
-  // Ce timeout plus long au boot est acceptable car c'est le seul moment critique
-  // pour synchroniser la config distante. Après le boot, on utilise le timeout standard.
   unsigned long startMs = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
-    esp_task_wdt_reset();  // Reset watchdog pendant attente WiFi
+    esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(200));
   }
   bool bootServerReachable = false;
-  static unsigned long lastOtaCheckMs = 0;
-  static bool otaBootDeferredDueToHeap = false;
   if (WiFi.status() == WL_CONNECTED && g_ctx) {
-    // Cause basale: attente stabilisation stack TCP/IP avant 1ère requête HTTPS
-    // (évite "connection refused" / SSL fatal au boot, même logique que power.cpp après réveil)
     g_ctx->power.waitForNetworkReady();
-    esp_task_wdt_reset();  // P1: reset avant GET boot (fetch peut bloquer jusqu'à OUTPUTS_STATE_HTTP_TIMEOUT_MS)
+    esp_task_wdt_reset();
 #if defined(BOARD_WROOM)
-    // Délai avant premier TLS au boot pour laisser libérer des allocs de boot (piste A, HEAP_RECOVERY_OPTIONS.md)
     const unsigned long FIRST_TLS_DELAY_MS = 2000;
     vTaskDelay(pdMS_TO_TICKS(FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
 #elif defined(BOARD_S3) && !defined(BOARD_HAS_PSRAM)
-    // S3 sans PSRAM : laisser le heap se stabiliser après le boot pour limiter "SSL - Memory allocation failed"
     const unsigned long S3_FIRST_TLS_DELAY_MS = 3000;
     vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
-#endif
-
-    // OTA au boot en premier (avant config) pour renforcer la faisabilité : pas de dépendance au GET config
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-  #if !defined(PROFILE_TEST) || defined(BOARD_S3)
-    if (ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA) {
-      esp_task_wdt_reset();
-      g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[netTask] Boot OTA check\n");
-#else
-      Serial.println(F("[netTask] Boot: vérification OTA (prioritaire, avant config)"));
-#endif
-      if (g_ctx->otaManager.checkForUpdate()) {
-        g_ctx->otaManager.performUpdate();
-      }
-    } else {
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[netTask] Boot OTA defer heap\n");
-#else
-      Serial.println(F("[netTask] Boot: OTA reporté (heap insuffisant), retry dans 60 s"));
-#endif
-      otaBootDeferredDueToHeap = true;
-    }
-    lastOtaCheckMs = millis();
-  #else
-    lastOtaCheckMs = millis();
-  #endif
 #endif
 
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
@@ -565,40 +600,11 @@ static void netTask(void* pv) {
 #endif
   }
 
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && (!defined(PROFILE_TEST) || defined(BOARD_S3))
-  // Si on n'a pas exécuté le bloc WiFi+g_ctx (pas de WiFi ou g_ctx null), initialiser lastOtaCheckMs pour le cycle 2h
-  if (lastOtaCheckMs == 0) {
-    lastOtaCheckMs = millis();
-  }
-#endif
-
   for (;;) {
     esp_task_wdt_reset();  // Reset watchdog dans boucle principale
     NetRequest* req = nullptr;
-    const uint32_t queueTimeoutMs = 500;  // Court pour permettre vérif OTA périodique quand file vide
-      if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
-#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0 && (!defined(PROFILE_TEST) || defined(BOARD_S3))
-      // Retry OTA boot une fois après 60s si reporté pour heap insuffisant (évite blocage, pas de boucle)
-      if (otaBootDeferredDueToHeap && g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
-          (millis() - lastOtaCheckMs >= 60000) && ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA) {
-        otaBootDeferredDueToHeap = false;
-        esp_task_wdt_reset();
-        g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-        if (g_ctx->otaManager.checkForUpdate()) {
-          g_ctx->otaManager.performUpdate();
-        }
-        lastOtaCheckMs = millis();
-      }
-      // Vérification OTA périodique toutes les 2h (prod / wroom-beta / wroom-s3-test). wroom-test (WROOM): désactivé (HTTPS > TWDT)
-      else if (g_ctx && WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isUpdating() &&
-          (millis() - lastOtaCheckMs >= TimingConfig::OTA_CHECK_INTERVAL_MS)) {
-        g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-        if (g_ctx->otaManager.checkForUpdate()) {
-          g_ctx->otaManager.performUpdate();
-        }
-        lastOtaCheckMs = millis();
-      }
-#endif
+    const uint32_t queueTimeoutMs = 500;
+    if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
       continue;
     }
     if (!req) continue;
@@ -659,14 +665,12 @@ static void netTask(void* pv) {
         continue;
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
       case NetReqType::OtaCheck: {
-        Serial.println(F("[netTask] Demande distante recherche OTA (triggerOtaCheck)"));
-        g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-        ok = g_ctx->otaManager.checkForUpdate();
-        if (ok) {
-          g_ctx->otaManager.performUpdate();
+        Serial.println(F("[netTask] Demande distante OTA → tâche OTA dédiée"));
+        uint8_t t = 1;
+        if (g_otaTriggerQueue) {
+          xQueueSend(g_otaTriggerQueue, &t, 0);
         }
-        esp_task_wdt_reset();
-        netRequestFree(req);  // Fire-and-forget, rendre le slot
+        netRequestFree(req);
         continue;
       }
 #endif
@@ -1203,6 +1207,28 @@ bool start(AppContext& ctx) {
     }
   }
 
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  // Tâche OTA dédiée (priorité > netTask) : créée avant netTask pour que l'OTA soit prioritaire au boot
+  if (!g_otaTriggerQueue) {
+    g_otaTriggerQueue = xQueueCreate(kOtaTriggerQueueLen, sizeof(uint8_t));
+    if (g_otaTriggerQueue) {
+      g_otaTaskHandle = xTaskCreateStaticPinnedToCore(
+          otaTask,
+          "otaTask",
+          TaskConfig::OTA_TASK_STACK_SIZE / sizeof(StackType_t),
+          nullptr,
+          TaskConfig::OTA_TASK_PRIORITY,
+          otaTaskStack,
+          &otaTaskTCB,
+          TaskConfig::OTA_TASK_CORE_ID);
+      if (g_otaTaskHandle == nullptr) {
+        vQueueDelete(g_otaTriggerQueue);
+        g_otaTriggerQueue = nullptr;
+      }
+    }
+  }
+#endif
+
   // v11.157: Approche hybride - allocation statique pour petites tâches, dynamique pour grandes
   // sensorTask: allocation statique (displayTask supprimée, affichage dans automationTask)
   g_sensorTaskHandle = xTaskCreateStaticPinnedToCore(
@@ -1446,14 +1472,21 @@ bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
 
 void netRequestOtaCheck() {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  if (g_otaTriggerQueue) {
+    uint8_t t = 1;
+    if (xQueueSend(g_otaTriggerQueue, &t, 0) != pdTRUE) {
+      Serial.println(F("[OTA] Trigger renoncé: file tâche OTA pleine"));
+    }
+    return;
+  }
   if (!g_netQueue) return;
-  NetRequest* req = netRequestAlloc(true);  // Slot dédié OTA en priorité
+  NetRequest* req = netRequestAlloc(true);  // Fallback si tâche OTA non créée
   if (!req) {
     Serial.println(F("[netRPC] OTA check renoncé: pool plein (slot OTA occupé)"));
     return;
   }
   req->type = NetReqType::OtaCheck;
-  req->requester = nullptr;  // Fire-and-forget, netTask netRequestFree(req) après traitement
+  req->requester = nullptr;
   NetRequest* ptr = req;
   if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(100)) != pdTRUE) {
     netRequestFree(req);

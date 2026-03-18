@@ -3,7 +3,7 @@
 #include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "4.15"
+#define FIRMWARE_VERSION "4.17"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13
@@ -35,8 +35,7 @@
 #define AUTHOR_PASSWORD SMTP_PASSWORD
 
 //#define pontdiv 36  // Pin pour la lecture du diviseur de tension
-#define R1 N3_BATTERY_R1
-#define R2 N3_BATTERY_R2
+// R1/R2 non definis ici pour eviter conflit avec struct N3BatteryConfig (n3_battery.h) ; n3pp_sensors utilise N3_BATTERY_R1/R2
 #define NUM_SAMPLES N3_BATTERY_NUM_SAMPLES
 
 #define SCREEN_WIDTH N3_OLED_WIDTH

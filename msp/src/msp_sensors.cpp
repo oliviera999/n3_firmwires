@@ -10,7 +10,7 @@
 #include "n3_analog_sensors.h"
 
 static const N3BatteryConfig batteryConfig = {
-  pontdiv, N3_BATTERY_R1, N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
+  pontdiv, (uint32_t)N3_BATTERY_R1, (uint32_t)N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
 };
 
 static const N3Analog::AnalogConfig cfgHumidSol = {

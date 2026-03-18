@@ -146,16 +146,32 @@ int annee;
 // ============================================================
 
 void setup() {
-  pinMode(RELAIS, OUTPUT);  // Initialiser la pin du relais comme sortie
-  digitalWrite(RELAIS, 1);  // Activer le relais par défaut
+  // Démarrage minimal : relais, série, OTA partition, WiFi
+  pinMode(RELAIS, OUTPUT);
+  digitalWrite(RELAIS, 1);
 
-  Serial.begin(115200);  // Initialiser la communication série
+  Serial.begin(115200);
 
   n3OtaSyncBootPartition();
-
-  // Configurer le module ESP en mode station WiFi
   WiFi.mode(WIFI_MODE_STA);
 
+  // OTA prioritaire : vérification dès que le WiFi est connecté, avant tout le reste
+  Wificonnect();
+  Serial.println("wifi ok");
+#ifdef TEST_MODE
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp-test/metadata.json",
+      version.c_str(), -1, nullptr
+  };
+#else
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp/metadata.json",
+      version.c_str(), -1, nullptr
+  };
+#endif
+  n3OtaCheck(otaConfig);
+
+  // Après OTA : affichage, capteurs, NTP, etc.
   displayOk = n3DisplayInit(display);
   if (displayOk) {
     delay(600);
@@ -171,54 +187,33 @@ void setup() {
     display.display();
   }
 
-  pinMode(HumiditeSol, INPUT);  // Configurer le pin de l'humidité du sol
-  pinMode(27, INPUT);           // Configurer le pin de l'humidité du sol
-  pinMode(pontdiv, INPUT);      // Configurer le pin du pont diviseur
-  pinMode(LUMINOSITEa, INPUT);  // Configurer les pins de luminosité
+  pinMode(HumiditeSol, INPUT);
+  pinMode(27, INPUT);
+  pinMode(pontdiv, INPUT);
+  pinMode(LUMINOSITEa, INPUT);
   pinMode(LUMINOSITEb, INPUT);
   pinMode(LUMINOSITEc, INPUT);
   pinMode(LUMINOSITEd, INPUT);
-  pinMode(SERVOGD, OUTPUT);  // Configurer les pins pour servos
+  pinMode(SERVOGD, OUTPUT);
   pinMode(SERVOHB, OUTPUT);
 
-  servogd.attach(SERVOGD);  // Attacher servos aux pins respectifs
+  servogd.attach(SERVOGD);
   servohb.attach(SERVOHB);
 
-  pinMode(DHTPININT, INPUT);  // Pin pour le DHT interne
-  pinMode(DHTPINEXT, INPUT);  // Pin pour le DHT externe
-  // Initialiser les capteurs DHT
+  pinMode(DHTPININT, INPUT);
+  pinMode(DHTPINEXT, INPUT);
   dhtint.begin();
   dhtext.begin();
   Serial.println("dht ok");
 
-
-  //initialiser capteur température sol
-  sensors.begin();            // Initialiser les capteurs Dallas
-  sensors.setResolution(10);  // Définir la résolution du capteur à 10 bits (précision de 0,25 °C)
+  sensors.begin();
+  sensors.setResolution(10);
   Serial.println("t terre ok");
 
-  // Initialiser le tableau d'échantillons
   for (int i = 0; i < NUM_SAMPLES; i++) {
     samples[i] = 0;
   }
   Serial.println("lum ok");
-
-  Wificonnect();
-  Serial.println("wifi ok");
-
-  // OTA distant : verification MAJ a chaque boot/reveil (prod vs test selon build)
-#ifdef TEST_MODE
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp-test/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#else
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#endif
-  n3OtaCheck(otaConfig);
 
   print_wakeup_reason();
 

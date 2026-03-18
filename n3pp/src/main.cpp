@@ -173,7 +173,7 @@ void printLocalTime() {
 }*/
 
 void setup() {
-  // Démarrage du moniteur série
+  // Démarrage minimal : brown-out, pins critiques, série, OTA partition, WiFi
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   pinMode(POMPE, OUTPUT);   //lumière
@@ -184,9 +184,24 @@ void setup() {
   delay(500);
 
   n3OtaSyncBootPartition();
-
   WiFi.mode(WIFI_MODE_STA);
 
+  // OTA prioritaire : vérification dès que le WiFi est connecté, avant tout le reste
+  Wificonnect();
+#ifdef TEST_MODE
+  N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp-test/metadata.json",
+      version.c_str(), -1, nullptr
+  };
+#else
+  N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp/metadata.json",
+      version.c_str(), -1, nullptr
+  };
+#endif
+  n3OtaCheck(otaConfig);
+
+  // Après OTA : affichage, capteurs, NTP, etc.
   print_wakeup_reason();
 
   displayOk = n3DisplayInit(display);
@@ -204,106 +219,15 @@ void setup() {
     display.display();
   }
 
-  // définition de l'état initial des pins
   pinMode(humidite1, INPUT);
   pinMode(humidite2, INPUT);
   pinMode(humidite3, INPUT);
   pinMode(humidite4, INPUT);
   pinMode(pontdiv, INPUT);
-  //pinMode(contact, INPUT);
-  pinMode(LUMINOSITE, INPUT);  //lumière
+  pinMode(LUMINOSITE, INPUT);
 
-
-  //  attachInterrupt(LUMIERE, isr, RISING);
-
-  //démarrage du DHT
   dht.begin();
   Serial.println("dht begin");
-
-  /*
-  //démarrage de la fonction OTA autohébergé
-  AsyncElegantOTA.begin(&server);    // Start ElegantOTA*/
-  /*  
-  //démarrage du serveur autohébergé
-  server.begin();
-
-  //display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  //démarrage OLED
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;);
-  }
-  //delay(500);
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-*/
-  //affichage version
-  //Serial.print("version : ");
-  //Serial.println(version);
-  /*
-  //OTA basique
-    // Port defaults to 3232
-    ArduinoOTA.setPort(3232);
-
-  // Hostname defaults to esp3232-[MAC]
-   ArduinoOTA.setHostname("n3pp");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
-
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR); 
-      Serial.println("Auth Failed");
-      if (error == OTA_BEGIN_ERROR);
-      Serial.println("Begin Failed");
-      if (error == OTA_CONNECT_ERROR); 
-      Serial.println("Connect Failed");
-      if (error == OTA_RECEIVE_ERROR); 
-      Serial.println("Receive Failed");
-      if (error == OTA_END_ERROR); 
-      Serial.println("End Failed");
-    });
-
-  //serveur OTA 
-  ArduinoOTA.begin();*/
-
-  Wificonnect();
-
-  // OTA distant : verification MAJ a chaque boot/reveil (prod vs test selon build)
-#ifdef TEST_MODE
-  N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/n3pp-test/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#else
-  N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/n3pp/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#endif
-  n3OtaCheck(otaConfig);
 
   /* //init and get the time
   if(WiFi.status()== WL_CONNECTED ){ 

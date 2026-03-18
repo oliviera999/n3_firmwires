@@ -53,8 +53,9 @@ def _invalidate_cmake_cache():
                 pass
 
 PIOENV = env.get("PIOENV", "")
-# Appliquer le patch uniquement pour les envs S3 (évite de toucher managed_components lors d'un build WROOM).
-if PIOENV.startswith("wroom-s3"):
+# Appliquer le patch pour tous les envs wroom-* (WROOM et S3) : évite le bug chemin .S dupliqué avec https_server.crt.
+# Sans ce patch, les builds WROOM qui compilent managed_components (esp_insights) échouent sur https_server.crt.S.
+if PIOENV.startswith("wroom-s3") or PIOENV.startswith("wroom-"):
     # Désactiver le component manager pour ce build : évite qu'il réécrive
     # managed_components après notre patch (ordre: pre -> "Compile Arduino IDF libs" -> CMake).
     os.environ["IDF_COMPONENT_MANAGER"] = "0"

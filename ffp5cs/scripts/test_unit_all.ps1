@@ -17,7 +17,7 @@ Write-Host "📦 Vérification de l'environnement..." -ForegroundColor Yellow
 # Compiler les tests
 Write-Host ""
 Write-Host "🔨 Compilation des tests..." -ForegroundColor Yellow
-pio test -e native --without-uploading
+pio test -c platformio-native.ini -e native --without-uploading
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
@@ -30,7 +30,7 @@ Write-Host ""
 Write-Host "▶️  Exécution des tests..." -ForegroundColor Yellow
 Write-Host ""
 
-$testOutput = pio test -e native -v 2>&1
+$testOutput = pio test -c platformio-native.ini -e native -v 2>&1
 $exitCode = $LASTEXITCODE
 
 Write-Host $testOutput

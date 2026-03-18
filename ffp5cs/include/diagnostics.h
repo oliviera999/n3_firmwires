@@ -28,7 +28,7 @@ struct DiagnosticStats {
   char lastRebootReason[32];
   // Statistiques CPU (optionnelles)
 #if defined(BOARD_WROOM)
-  char taskStats[496];     // réduit pour tenir en DRAM (dram0_0_seg overflow ~528 bytes sur wroom-test)
+  char taskStats[104];     // réduit pour tenir en DRAM (dram0_0_seg overflow sur wroom-test)
 #else
   char taskStats[1024];    // sortie brute de vTaskGetRunTimeStats()
 #endif
@@ -39,7 +39,11 @@ struct DiagnosticStats {
   int lastHttpCode;
   uint32_t otaSuccessCount;
   uint32_t otaFailCount;
+#if defined(BOARD_WROOM)
+  char lastOtaError[128];  // réduit pour tenir en DRAM (wroom-test)
+#else
   char lastOtaError[256];
+#endif
   // Informations de panic
   PanicInfo panicInfo;
   // Informations de crash / coredump

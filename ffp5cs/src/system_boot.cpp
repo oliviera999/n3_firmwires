@@ -374,7 +374,7 @@ static void checkForOtaUpdateInternal(AppContext& ctx) {
     }
   });
 
-  BOOT_LOG("[OTA] Verification au boot et toutes les 2h gerees par netTask (prod)\n");
+  BOOT_LOG("[OTA] Verification au boot et toutes les 2h gerees par la tache dediee otaTask (prod)\n");
   BOOT_LOG("[OTA] Version courante: %s\n", ctx.otaManager.getCurrentVersion());
 
   BOOT_LOG("[OTA] Espace libre sketch: %d bytes\n", ESP.getFreeSketchSpace());

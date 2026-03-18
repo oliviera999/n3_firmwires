@@ -68,6 +68,9 @@ Le projet **ffp5cs** définit le workflow de validation de référence, aligné 
 
 Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs/`. Voir aussi `ffp5cs/.cursor/rules/` et `ffp5cs/docs/INVENTAIRE_SCRIPTS_FFP5CS.md` pour l'inventaire des scripts.
 
+- **Compilation de tous les envs** (évite les builds WROOM pioarduino en parallèle, qui peuvent corrompre le cache) : `ffp5cs/scripts/build_all_envs.ps1`.
+- **Tests unitaires natifs (Unity)** : `pio test -c platformio-native.ini -e native` depuis `ffp5cs/`, ou `ffp5cs/scripts/test_unit_all.ps1`.
+
 ### Scripts racine firmwires (multi-projets)
 
 À la racine de `firmwires/`, les scripts suivants sont **prévus** pour un usage multi-projets (n3pp, msp, uploadphotosserver, ffp5cs). Lorsqu'ils sont en place :
