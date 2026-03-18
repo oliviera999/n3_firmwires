@@ -37,7 +37,11 @@ namespace ProjectConfig {
     // v13.02: Doc PSRAM S3 (choix d'env, axe 2), commentaire POST_PAYLOAD_MAX_SIZE S3 PSRAM.
     // v13.03: Stack postSender 8 KB sur S3 (évite Stack canary / crash en boucle).
     // v13.04: NVS manager logs via BOOT_LOG sur S3 PSRAM (Serial non démarré au boot).
-    inline constexpr const char* VERSION = "13.04";
+    // v13.05: Test OTA (incrément version pour validation déploiement OTA).
+    // v13.06: Incrément pour déploiement OTA unifié (n3pp, msp, ffp5cs).
+    // v13.07: OTA prioritaire — tâche dédiée otaTask (priorité 3, stack 12 KB), netTask ne fait plus l'OTA.
+    // v13.08: Test OTA — déploiement serveur (wroom-beta et canaux associés).
+    inline constexpr const char* VERSION = "13.08";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -936,7 +940,10 @@ namespace TaskConfig {
     inline constexpr UBaseType_t DISPLAY_TASK_PRIORITY = 1;
     inline constexpr BaseType_t DISPLAY_TASK_CORE_ID = 1;
 
-    inline constexpr uint32_t OTA_TASK_STACK_SIZE = 8192;
+    // Tâche OTA dédiée (prioritaire sur netTask) — stack dédiée pour éviter overflow TLS/Update
+    inline constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;  // 12 KB
+    inline constexpr UBaseType_t OTA_TASK_PRIORITY = 3;     // Supérieure à NET_TASK_PRIORITY (2)
+    inline constexpr BaseType_t OTA_TASK_CORE_ID = 0;
     
     // Tâche réseau (TLS/HTTP) - propriétaire unique de WebClient/TLS
     // v11.159: Réduit de 10KB à 8KB (Phase 3 - HWM: 5584 libres, marge 4656)

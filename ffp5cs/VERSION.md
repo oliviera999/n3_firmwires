@@ -12,6 +12,46 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.08 - 2026-03-17
+
+### Test OTA / déploiement serveur
+
+- **Objectif** : Incrément pour validation OTA distante (metadata + firmware sur iot.olution.info).
+- **Fichiers** : `include/config.h` (version 13.08).
+
+---
+
+## Version 13.07 - 2026-03-17
+
+### OTA prioritaire — tâche dédiée
+
+- **Objectif** : Rendre l’OTA prioritaire sur tout (config, POST, heartbeat) et éviter les stack overflows dans netTask lors de checkForUpdate/performUpdate.
+- **Changements** :
+  - Nouvelle tâche FreeRTOS **otaTask** (priorité 3, stack 12 KB) : exécute uniquement la vérification et l’application OTA au boot puis en boucle (périodique 2h ou sur trigger). Créée avant netTask.
+  - **netTask** ne fait plus aucun appel à OTAManager (boot OTA, retry heap, périodique 2h et cas OtaCheck retirés ou délégués à otaTask).
+  - Déclenchement OTA (triggerOtaCheck, bouton web « Vérifier OTA ») envoie un message à la file `g_otaTriggerQueue` ; l’endpoint POST /api/ota notifie la tâche OTA au lieu d’appeler directement checkForUpdate/performUpdate.
+- **Fichiers** : `include/config.h` (OTA_TASK_PRIORITY, OTA_TASK_STACK_SIZE, version 13.07), `src/app_tasks.cpp` (otaTask, file trigger, retrait OTA de netTask), `src/web_server.cpp` (api/ota), `src/system_boot.cpp`, `include/app_tasks.h`.
+
+---
+
+## Version 13.06 - 2026-03-17
+
+### Déploiement OTA unifié
+
+- **Objectif** : Incrément pour déploiement OTA (n3pp, msp, ffp5cs) via script unifié.
+- **Fichiers** : `include/config.h` (version 13.06).
+
+---
+
+## Version 13.05 - 2026-03-17
+
+### Test OTA
+
+- **Objectif** : Incrément de version pour valider le déploiement OTA (wroom-beta).
+- **Fichiers** : `include/config.h` (version 13.05).
+
+---
+
 ## Version 13.04 - 2026-03-16
 
 ### Correctif logs NVS sur S3 PSRAM (boot)
