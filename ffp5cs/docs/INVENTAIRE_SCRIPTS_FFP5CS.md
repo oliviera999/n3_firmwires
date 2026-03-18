@@ -98,7 +98,7 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| **scripts/publish_ota.ps1** | PS1 | Publication OTA distant : copie firmware.bin/littlefs.bin vers ffp3/ota/, metadata.json, commit+push. |
+| **scripts/publish_ota.ps1** | PS1 | Délègue au script racine IOT_n3 : publication vers **serveur/ota/** (dépôt n3_serveur), URLs **/ota/**. |
 | **scripts/build_production.ps1** | PS1 | Build production (minify assets, compile, optionnel upload firmware/FS). |
 | **scripts/verify_version.ps1** | PS1 | Vérification de la version (config.h, etc.). |
 | **tools/pio_write_build_version.py** | Python | Écrit la version de build (hook post-build PlatformIO). |

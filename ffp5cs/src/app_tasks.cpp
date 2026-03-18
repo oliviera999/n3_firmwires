@@ -434,10 +434,12 @@ static void postSenderTask(void* pv) {
     wdtRegistered = true;
   }
   PostSenderMsg msg;
+  const TickType_t queueReceiveTicks = pdMS_TO_TICKS(15000);  // 15s max sans feed WDT (TWDT 30s/60s)
   for (;;) {
-    if (xQueueReceive(g_postSenderQueue, &msg, portMAX_DELAY) != pdTRUE) continue;
-    if (!g_ctx) continue;
+    BaseType_t got = xQueueReceive(g_postSenderQueue, &msg, queueReceiveTicks);
     esp_task_wdt_reset();
+    if (got != pdTRUE) continue;
+    if (!g_ctx) continue;
     if (msg.type == PostSenderType::PostData) {
       (void)g_ctx->webClient.tryPushStatusToServer(msg.payload);
     } else if (msg.type == PostSenderType::Heartbeat) {
@@ -483,22 +485,35 @@ static void otaTask(void* pv) {
     if (ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA && !g_ctx->otaManager.isUpdating()) {
       esp_task_wdt_reset();
       g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+      if (g_otaTaskHandle) {
+        vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
+      }
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
       ets_printf("[otaTask] Boot OTA check\n");
 #else
-      Serial.println(F("[otaTask] Boot: vérification OTA (prioritaire, tâche dédiée)"));
+      Serial.println(F("[otaTask] Boot: vérification OTA (priorité absolue)"));
 #endif
       if (g_ctx->otaManager.checkForUpdate()) {
         g_ctx->otaManager.performUpdate();
+      }
+      if (g_otaTaskHandle) {
+        vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
       }
     }
 #endif
   }
 
+  // Ne jamais bloquer plus de OTA_WDT_FEED_INTERVAL_MS sans reset WDT (TWDT 30s/60s)
+  unsigned long lastOtaCheckMs = millis();
   for (;;) {
     uint8_t trigger = 0;
-    (void)xQueueReceive(g_otaTriggerQueue, &trigger, pdMS_TO_TICKS(TimingConfig::OTA_CHECK_INTERVAL_MS));
+    BaseType_t received = xQueueReceive(g_otaTriggerQueue, &trigger, pdMS_TO_TICKS(TimingConfig::OTA_WDT_FEED_INTERVAL_MS));
     esp_task_wdt_reset();
+    bool doCheck = (received == pdTRUE) || (millis() - lastOtaCheckMs >= TimingConfig::OTA_CHECK_INTERVAL_MS);
+    if (!doCheck) {
+      continue;
+    }
+    lastOtaCheckMs = millis();
     if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isUpdating()) {
       continue;
     }
@@ -506,8 +521,14 @@ static void otaTask(void* pv) {
       continue;
     }
     g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+    if (g_otaTaskHandle) {
+      vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
+    }
     if (g_ctx->otaManager.checkForUpdate()) {
       g_ctx->otaManager.performUpdate();
+    }
+    if (g_otaTaskHandle) {
+      vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
     }
     esp_task_wdt_reset();
   }
