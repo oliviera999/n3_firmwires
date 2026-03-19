@@ -12,6 +12,24 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.18 - 2026-03-19
+
+### Incrément version — déploiement OTA (wroom-beta)
+
+- **Objectif** : version 13.18 pour publication OTA canal beta.
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.17 - 2026-03-18
+
+### Incrément version — déploiement OTA (wroom-beta, wroom-prod)
+
+- **Objectif** : version 13.17 pour publication OTA (canaux prod et test).
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.16 - 2026-03-18
 
 ### Correctif TWDT au boot (WROOM / IDF 5) : éviter « TWDT was never initialized »
