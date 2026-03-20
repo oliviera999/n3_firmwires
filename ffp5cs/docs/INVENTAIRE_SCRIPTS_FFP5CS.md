@@ -111,9 +111,9 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| **scripts/run_ci_checks.ps1** | PS1 | Exécution des vérifications CI. |
+| **scripts/run_ci_checks.ps1** | PS1 | Verifications CI : build (env defaut ou multi-env avec `-AllEnvs`) + analyse log serie. |
 | **scripts/test_unit_all.ps1** | PS1 | Tests unitaires : `pio test -c platformio-native.ini -e native`. |
-| **scripts/build_all_envs.ps1** | PS1 | Compile tous les envs firmware + tests natifs (séquentiel). |
+| **scripts/build_all_envs.ps1** | PS1 | Build multi-env : compile les 4 envs critiques (wroom-prod, wroom-test, wroom-s3-test, wroom-s3-prod) avec nettoyage auto au basculement WROOM/S3. Options : `-Clean`, `-StopOnError`, `-Verbose`, `-Envs`. |
 | **scripts/test_phase2_complete.ps1** | PS1 | Test phase 2 complète (NVS, etc.). |
 | **scripts/test_web_dedicated_architecture.sh** | Shell | Test architecture web dédiée. |
 | **scripts/Release-ComPort.ps1** | PS1 | Libération du port COM (arrêt processus moniteur). |
