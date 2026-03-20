@@ -12,6 +12,21 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.22 - 2026-03-20
+
+### OTA WROOM HTTP fallback, boot settle, scripts build multi-env
+
+- **OTA WROOM HTTP** : metadata OTA en HTTP sur WROOM (TLS impossible, heap fragmenté ~31 KB contigus vs ~45 KB requis par mbedTLS). S3 reste en HTTPS. Intégrité binaire garantie par vérification MD5.
+- **Boot settle** : attente progressive au boot (8s max) jusqu'à obtention d'un bloc contigu >= 45 KB. Libération temporaire de la réserve mail pour maximiser le bloc disponible.
+- **OTA périodique** : seuil de bloc contigu minimal (28 KB WROOM, TLS complet S3) avant vérification.
+- **platformio.ini** : moniteur série activé en wroom-beta (ENABLE_SERIAL_MONITOR=1).
+- **build_all_envs.ps1** : réécriture complète — paramètres (-Envs, -Clean, -StopOnError, -Verbose), nettoyage auto au basculement WROOM/S3, rapport résumé en fin d'exécution.
+- **run_ci_checks.ps1** : traduction FR, option -AllEnvs pour build multi-env via build_all_envs.ps1.
+- **Documentation** : matrice des environnements dans README.md, descriptions mises à jour dans INVENTAIRE_SCRIPTS_FFP5CS.md.
+- **Fichiers** : `config.h`, `ota_config.h`, `app_tasks.cpp`, `ota_manager.cpp`, `platformio.ini`, `build_all_envs.ps1`, `run_ci_checks.ps1`, `docs/README.md`, `docs/INVENTAIRE_SCRIPTS_FFP5CS.md`.
+
+---
+
 ## Version 13.18 - 2026-03-19
 
 ### Incrément version — déploiement OTA (wroom-beta)

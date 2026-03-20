@@ -85,12 +85,17 @@ namespace OTAConfig {
         snprintf(buffer, bufferSize, "%s%s%s", base, normalizedPath, folder);
     }
     
-    // Fonction pour obtenir l'URL de métadonnées (dérivée de ServerConfig et du chemin OTA)
-    // v11.162: Utilise BASE_URL_SECURE (HTTPS) pour la sécurité des mises à jour firmware
+    // URL de métadonnées OTA (version, tailles, MD5)
+    // WROOM: HTTP car TLS nécessite ~45 KB contigus non disponibles (heap fragmenté 31 KB max)
+    // S3: HTTPS (PSRAM ou heap suffisant). Intégrité du binaire garantie par vérification MD5.
     inline void getMetadataUrl(char* buffer, size_t bufferSize) {
         if (!buffer || bufferSize == 0) return;
         
-        const char* base = ServerConfig::BASE_URL_SECURE;  // HTTPS pour OTA (sécurité critique)
+#if defined(BOARD_S3)
+        const char* base = ServerConfig::BASE_URL_SECURE;
+#else
+        const char* base = ServerConfig::BASE_URL;  // HTTP sur WROOM (TLS impossible au boot)
+#endif
         const char* path = ServerConfig::OTA_BASE_PATH;
         
         // Construire le chemin normalisé

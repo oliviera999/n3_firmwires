@@ -44,8 +44,8 @@ namespace ProjectConfig {
     // v13.10: WROOM — postSender 8 Ko (stack canary HTTPS) ; TWDT dans waitForNetworkReady (DNS).
     // v13.11: OTA — priorité absolue (10) pendant checkForUpdate/performUpdate.
     // v13.12: OTA_BASE_PATH /ota/ (publication unifiée serveur/ota/, plus /ffp3/ota).
-    // v13.13: Incrément version — déploiement OTA.
-    inline constexpr const char* VERSION = "13.18";
+    // v13.22: Cible OTA pour validation end-to-end wroom-beta.
+    inline constexpr const char* VERSION = "13.22";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -970,7 +970,7 @@ namespace TaskConfig {
 #elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14256;  // wroom-beta : dram0 link (OTA 12 Ko)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14224;  // wroom-beta : -32 pour ENABLE_SERIAL_MONITOR=1
 #else
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 14376;   // WROOM prod (dram0 marge 8 o)
 #endif

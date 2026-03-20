@@ -474,30 +474,67 @@ static void otaTask(void* pv) {
     g_ctx->power.waitForNetworkReady();
     esp_task_wdt_reset();
 #if defined(BOARD_WROOM)
-    const unsigned long FIRST_TLS_DELAY_MS = 2000;
-    vTaskDelay(pdMS_TO_TICKS(FIRST_TLS_DELAY_MS));
+    // Attente longue au boot : laisser netTask/mailTask finir leurs premières allocations
+    // pour que le heap se défragmente avant la connexion TLS OTA (~45 KB contigus requis)
+    constexpr unsigned long OTA_BOOT_SETTLE_MS = 8000;
+    constexpr uint32_t OTA_MIN_CONTIGUOUS_BLOCK = 45000;
+    for (unsigned long waited = 0; waited < OTA_BOOT_SETTLE_MS; waited += 1000) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      esp_task_wdt_reset();
+      uint32_t blk = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+      if (blk >= OTA_MIN_CONTIGUOUS_BLOCK) break;
+    }
     esp_task_wdt_reset();
 #elif defined(BOARD_S3) && !defined(BOARD_HAS_PSRAM)
     const unsigned long S3_FIRST_TLS_DELAY_MS = 3000;
     vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
 #endif
-    if (ESP.getFreeHeap() >= HeapConfig::MIN_HEAP_OTA && !g_ctx->otaManager.isUpdating()) {
-      esp_task_wdt_reset();
-      g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-      if (g_otaTaskHandle) {
-        vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
+    {
+      uint32_t freeHeap = ESP.getFreeHeap();
+      uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+      // Libérer la réserve mail (31 KB) pour maximiser le bloc contigu disponible pour TLS OTA
+      bool mailReserveFreed = false;
+      if (s_mailReserve && !s_mailReserveFromPSRAM) {
+        free(s_mailReserve);
+        s_mailReserve = nullptr;
+        mailReserveFreed = true;
+        vTaskDelay(pdMS_TO_TICKS(100));
+        freeHeap = ESP.getFreeHeap();
+        largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        Serial.printf("[otaTask] Réserve mail libérée pour TLS OTA: free=%u blk=%u\n",
+                      (unsigned)freeHeap, (unsigned)largestBlock);
       }
+      // Seuil TLS aligné sur MIN_HEAP_BLOCK_FOR_MAIL_TLS (mail TLS fonctionne avec ce bloc)
+      const uint32_t otaTlsMinBlock = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
+      Serial.printf("[otaTask] Boot heap: free=%u blk=%u (min OTA=%u, min TLS blk=%u)\n",
+                    (unsigned)freeHeap, (unsigned)largestBlock,
+                    (unsigned)HeapConfig::MIN_HEAP_OTA, (unsigned)otaTlsMinBlock);
+      if (freeHeap >= HeapConfig::MIN_HEAP_OTA
+          && largestBlock >= otaTlsMinBlock
+          && !g_ctx->otaManager.isUpdating()) {
+        esp_task_wdt_reset();
+        g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+        if (g_otaTaskHandle) {
+          vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
+        }
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[otaTask] Boot OTA check\n");
+        ets_printf("[otaTask] Boot OTA check\n");
 #else
-      Serial.println(F("[otaTask] Boot: vérification OTA (priorité absolue)"));
+        Serial.println(F("[otaTask] Boot: vérification OTA (priorité absolue)"));
 #endif
-      if (g_ctx->otaManager.checkForUpdate()) {
-        g_ctx->otaManager.performUpdate();
+        if (g_ctx->otaManager.checkForUpdate()) {
+          g_ctx->otaManager.performUpdate();
+        }
+        if (g_otaTaskHandle) {
+          vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
+        }
+      } else {
+        Serial.printf("[otaTask] Boot OTA reportée: heap=%u blk=%u (insuffisant pour TLS)\n",
+                      (unsigned)freeHeap, (unsigned)largestBlock);
       }
-      if (g_otaTaskHandle) {
-        vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
+      if (mailReserveFreed) {
+        allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
       }
     }
 #endif
@@ -518,6 +555,19 @@ static void otaTask(void* pv) {
       continue;
     }
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {
+      continue;
+    }
+    // WROOM: metadata fetch en HTTP (pas de TLS), seuil réduit à 28 KB (marge post-réveil)
+    // S3: garde TLS complète (metadata en HTTPS)
+#if defined(BOARD_WROOM)
+    constexpr uint32_t OTA_MIN_BLOCK_PERIODIC = 28000;
+#else
+    constexpr uint32_t OTA_MIN_BLOCK_PERIODIC = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
+#endif
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) < OTA_MIN_BLOCK_PERIODIC) {
+      Serial.printf("[otaTask] OTA reportée: bloc contigu insuffisant (%u < %u)\n",
+                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
+                    (unsigned)OTA_MIN_BLOCK_PERIODIC);
       continue;
     }
     g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
