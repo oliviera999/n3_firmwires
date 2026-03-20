@@ -5,6 +5,24 @@
 #include "n3_data.h"
 #include "n3pp_automation.h"
 
+static const uint16_t OUTPUTS_FETCH_DELAY_MS = 250;
+
+static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
+  JSONVar val = obj[key];
+  if (JSON.typeof(val) != "undefined") {
+    return atoi((const char*)val);
+  }
+  return defaultValue;
+}
+
+static String readStringByKey(const JSONVar& obj, const char* key, const String& defaultValue) {
+  JSONVar val = obj[key];
+  if (JSON.typeof(val) != "undefined") {
+    return String((const char*)val);
+  }
+  return defaultValue;
+}
+
 void datatobdd() {
   Serial.println("DATATOBDD!!!");
   if (displayOk) { display.drawCircle(5, 5, 5, WHITE); display.display(); }
@@ -63,7 +81,7 @@ void variablestoesp() {
     Serial.println("recup info bdd");
 
     outputsState = n3DataGet(serverNameOutput, &httpResponseCode);
-    delay(2000);
+    delay(OUTPUTS_FETCH_DELAY_MS);
 
     Serial.println(outputsState);
     JSONVar myObject = JSON.parse(outputsState);
@@ -74,43 +92,24 @@ void variablestoesp() {
     Serial.print("GPIO bdd : ");
     Serial.println(myObject);
 
-    JSONVar keys = myObject.keys();
-
-    JSONVar Pompe = myObject[keys[0]];
+    String pumpGpioKey = String(POMPE);
+    int pumpState = readIntByKey(myObject, pumpGpioKey.c_str(), 0);
     Serial.print("variable Pompe est ");
-    Serial.println(Pompe);
-    pinMode(atoi(keys[0]), OUTPUT);
-    digitalWrite(atoi(keys[0]), atoi(Pompe));
+    Serial.println(pumpState);
+    pinMode(POMPE, OUTPUT);
+    digitalWrite(POMPE, pumpState);
 
-    JSONVar JArrosageManu = myObject[keys[1]];
-    ArrosageManu = atoi(JArrosageManu);
-
-    JSONVar Jreset = myObject[keys[2]];
-    resetMode = atoi(Jreset);
-
-    String Jmail = myObject[keys[3]];
-    inputMessageMailAd = Jmail;
-
-    String JmailNotif = myObject[keys[4]];
-    enableEmailChecked = JmailNotif;
-
-    JSONVar JSeuilSec = myObject[keys[5]];
-    SeuilSec = atoi(JSeuilSec);
-
-    JSONVar JSeuilPontDiv = myObject[keys[6]];
-    SeuilPontDiv = atoi(JSeuilPontDiv);
-
-    JSONVar JHeureArrosage = myObject[keys[7]];
-    HeureArrosage = atoi(JHeureArrosage);
-
-    JSONVar JtempsArrosage = myObject[keys[8]];
-    tempsArrosageSec = atoi(JtempsArrosage);
-
-    JSONVar JWakeUp = myObject[keys[9]];
-    WakeUp = atoi(JWakeUp);
-
-    JSONVar JFreqWakeUp = myObject[keys[10]];
-    FreqWakeUp = atoi(JFreqWakeUp);
+    String relaisGpioKey = String(RELAIS);
+    ArrosageManu = readIntByKey(myObject, relaisGpioKey.c_str(), ArrosageManu);
+    resetMode = readIntByKey(myObject, "110", resetMode);
+    inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
+    enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
+    SeuilSec = readIntByKey(myObject, "102", SeuilSec);
+    SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
+    HeureArrosage = readIntByKey(myObject, "104", HeureArrosage);
+    tempsArrosageSec = readIntByKey(myObject, "105", tempsArrosageSec);
+    WakeUp = readIntByKey(myObject, "106", WakeUp);
+    FreqWakeUp = readIntByKey(myObject, "107", FreqWakeUp);
   }
   if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }

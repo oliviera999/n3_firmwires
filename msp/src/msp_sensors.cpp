@@ -9,6 +9,8 @@
 #include "n3_battery.h"
 #include "n3_analog_sensors.h"
 
+static const uint16_t BATTERY_OLED_DELAY_MS = 500;
+
 static const N3BatteryConfig batteryConfig = {
   pontdiv, (uint32_t)N3_BATTERY_R1, (uint32_t)N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
 };
@@ -53,7 +55,9 @@ void LectureCapteurs() {
   humidAirInt = dhtint.readHumidity();
   delay(100);
   if (isnan(humidAirInt) || isnan(tempAirInt)) {
-    // Echec de la lecture DHT pour l'intérieur
+    Serial.println("Echec de lecture DHT interieur, fallback 20C / 50%");
+    tempAirInt = 20.0f;
+    humidAirInt = 50.0f;
   }
 
   // Lire la température et l'humidité de l'air extérieur
@@ -62,7 +66,9 @@ void LectureCapteurs() {
   humidAirExt = dhtext.readHumidity();
   delay(100);
   if (isnan(humidAirExt) || isnan(tempAirExt)) {
-    // Echec de la lecture DHT pour l'extérieur
+    Serial.println("Echec de lecture DHT exterieur, fallback 20C / 50%");
+    tempAirExt = 20.0f;
+    humidAirExt = 50.0f;
   }
 
   // Obtenir la température du sol
@@ -109,7 +115,7 @@ void batterie() {
     display.print("Percent = ");
     display.println(battPercent);
     display.display();
-    delay(2000);
+    delay(BATTERY_OLED_DELAY_MS);
 
     display.clearDisplay();
     display.setTextSize(1);
@@ -122,7 +128,7 @@ void batterie() {
     display.print("Percent = ");
     display.println(battPercent);
     display.display();
-    delay(2000);
+    delay(BATTERY_OLED_DELAY_MS);
   }
   //batteryVoltage =
 

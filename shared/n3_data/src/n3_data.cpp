@@ -3,6 +3,8 @@
 #include <HTTPClient.h>
 #include "n3_hmac.h"
 
+static const uint16_t N3_HTTP_TIMEOUT_MS = 5000;
+
 int n3DataPost(const N3PostConfig& config) {
   if (WiFi.status() != WL_CONNECTED) return -1;
 
@@ -17,6 +19,7 @@ int n3DataPost(const N3PostConfig& config) {
   WiFiClient client;
   HTTPClient http;
   http.begin(client, config.url);
+  http.setTimeout(N3_HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
   if (config.apiKey) {
@@ -36,6 +39,7 @@ String n3DataGet(const char* url, unsigned int* outHttpCode) {
   WiFiClient client;
   HTTPClient http;
   http.begin(client, url);
+  http.setTimeout(N3_HTTP_TIMEOUT_MS);
   int code = http.GET();
   String payload = (code > 0) ? http.getString() : "{}";
   http.end();

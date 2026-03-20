@@ -132,8 +132,14 @@ if ($doUploadFs) {
 Write-Host "4. Monitoring $DurationMinutes minutes..." -ForegroundColor Cyan
 & (Join-Path $firmwiresRoot "monitor_Nmin.ps1") -Project $Project -Environment $Environment -Port $Port -DurationSeconds $durationSeconds
 
-# 5. Analyse optionnelle (si le projet a analyze_log.ps1, ex. ffp5cs)
-$latest = Get-ChildItem -Path $projectPath -Filter "monitor_*.log" -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending | Select-Object -First 1
+# 5. Analyse: dediee (ffp5cs) ou generique (autres firmwares)
+$latestCandidates = @()
+$latestCandidates += Get-ChildItem -Path $projectPath -Filter "monitor_*.log" -ErrorAction SilentlyContinue
+$projectLogsDir = Join-Path $projectPath "logs"
+if (Test-Path $projectLogsDir) {
+    $latestCandidates += Get-ChildItem -Path $projectLogsDir -Filter "monitor_*.log" -ErrorAction SilentlyContinue
+}
+$latest = $latestCandidates | Sort-Object CreationTime -Descending | Select-Object -First 1
 $analyzeScript = Join-Path $projectPath "analyze_log.ps1"
 if ($latest -and (Test-Path $analyzeScript)) {
     Write-Host "5. Analyse du log: $($latest.Name)" -ForegroundColor Cyan
@@ -147,7 +153,13 @@ if ($latest -and (Test-Path $analyzeScript)) {
     Write-Host "=== WORKFLOW TERMINE ===" -ForegroundColor Green
     Write-Host "Log: $($latest.FullName)" -ForegroundColor Gray
 } else {
-    Write-Host "5. Analyse : non disponible pour ce projet (ou aucun log)." -ForegroundColor Gray
+    $genericAnalyze = Join-Path $firmwiresRoot "scripts\analyze_log_generic.ps1"
+    if ($latest -and (Test-Path $genericAnalyze)) {
+        Write-Host "5. Analyse generique du log: $($latest.Name)" -ForegroundColor Cyan
+        & $genericAnalyze -LogFile $latest.FullName
+    } else {
+        Write-Host "5. Analyse : non disponible pour ce projet (ou aucun log)." -ForegroundColor Gray
+    }
     Write-Host "=== WORKFLOW TERMINE ===" -ForegroundColor Green
     if ($latest) { Write-Host "Log: $($latest.FullName)" -ForegroundColor Gray }
 }

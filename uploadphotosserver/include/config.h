@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.10"
+#define FIRMWARE_VERSION "2.11"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -38,7 +38,7 @@
 
 /* OTA distant (metadata.json) — toutes cibles : vérif à chaque réveil */
 #define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
-#define OTA_CHECK_EVERY_N_BOOTS  1
+#define OTA_CHECK_EVERY_N_BOOTS  6
 
 /* WiFi */
 #define WIFI_CONNECT_TIMEOUT_MS  5000
@@ -52,31 +52,33 @@
 
 /* Attente réponse HTTP après POST (dérogation conventions-firmwares 5s : traitement serveur image) */
 #define HTTP_RESPONSE_TIMEOUT_MS 15000
+#define UPLOAD_CONNECT_RETRIES   2
+#define UPLOAD_RETRY_DELAY_MS    1000
 
 /* ========== Par cible ========== */
 #if defined(TARGET_MSP1)
 #  define SERVER_PATH        "/msp1gallery/upload.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      3
+#  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
-#  define EEPROM_SIZE        1
+#  define EEPROM_SIZE        4
 
 #elif defined(TARGET_N3PP)
 #  define SERVER_PATH        "/n3ppgallery/upload.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      3
+#  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
-#  define EEPROM_SIZE        1
+#  define EEPROM_SIZE        4
 
 #elif defined(TARGET_FFP3)
 #  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      3
+#  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
-#  define EEPROM_SIZE        1
+#  define EEPROM_SIZE        4
 
 #else
 #  error "Un des TARGET_MSP1, TARGET_N3PP ou TARGET_FFP3 doit être défini (build_flags)."

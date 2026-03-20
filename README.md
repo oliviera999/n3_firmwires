@@ -10,7 +10,7 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 |--------|---------|-------|-------------|
 | **N3PhasmesProto (n3pp)** | `n3pp/` | ESP32 dev | Contrôle serre / aquaponie : température/humidité air, 4 capteurs humidité sol, pompe, luminosité, mails d’alerte, serveur web, NTP, OLED, deep sleep. |
 | **MeteoStationPrototype (msp)** | `msp/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
-| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA, 10 min), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
+| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA, 10 min), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload avec header `X-Api-Key`, retries de connexion, vérification du code HTTP retour. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
 | **Upload Photos MSP1** (legacy) | `uploadphotosserver_msp1/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env msp1. |
 | **Upload Photos N3PP** (legacy) | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env n3pp. |
 | **Upload Photos FFP3** (legacy) | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env ffp3. |
@@ -73,11 +73,11 @@ Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs
 
 ### Scripts racine firmwires (multi-projets)
 
-À la racine de `firmwires/`, les scripts suivants sont **prévus** pour un usage multi-projets (n3pp, msp, uploadphotosserver, ffp5cs). Lorsqu'ils sont en place :
+À la racine de `firmwires/`, les scripts suivants sont disponibles pour un usage multi-projets (n3pp, msp, uploadphotosserver, ffp5cs) :
 
 | Script | Rôle |
 |--------|------|
-| `monitor_Nmin.ps1` | Capture du moniteur série pendant N secondes (défaut 5 min). Paramètres : `-Project`, `-DurationSeconds`, `-Port`, `-Environment`. Log créé dans le dossier du projet. |
+| `monitor_Nmin.ps1` | Capture du moniteur série pendant N secondes (défaut 5 min). Paramètres : `-Project`, `-DurationSeconds`, `-Port`, `-Environment`. Log créé dans le dossier du projet (et dans `uploadphotosserver/logs/` pour le firmware caméra unifié). |
 | `erase_flash_monitor.ps1` | Workflow : erase → flash firmware (et LittleFS pour ffp5cs si applicable) → monitoring N min → analyse (générique ou déléguée à ffp5cs). Paramètres : `-Project`, `-Port`, `-DurationMinutes`, `-SkipBuild`, `-SkipUploadFs`, `-Environment`. |
 | `scripts/Release-ComPort.ps1` | Libération du port COM (processus moniteur). Partagé ; peut être hérité de `ffp5cs/scripts/Release-ComPort.ps1`. |
 | `scripts/analyze_log_generic.ps1` | Analyse générique des logs (crashes, WDT, heap, réseau, reboots) pour tout firmware n'ayant pas d'analyse dédiée. |
@@ -100,6 +100,16 @@ Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs
 
 **Projets ciblés** : `n3pp`, `msp`, `uploadphotosserver` (env par défaut : msp1 ; utiliser `-Environment n3pp` ou `-Environment ffp3` pour les autres cibles), `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, le script racine délègue au workflow complet dans `ffp5cs/` ; analyse détaillée et rapport diagnostic. **ratata** et **LVGL_Widgets** sont exclus.
 
+### Uploadphotosserver — build multi-env séquentiel
+
+Le firmware caméra unifié dispose d'un script dédié : `uploadphotosserver/scripts/build_all_envs.ps1`.
+
+- Build de warmup pioarduino (par défaut `n3pp/esp32dev`) puis build séquentiel des envs `msp1`, `n3pp`, `ffp3`.
+- Usage :
+  - `cd uploadphotosserver`
+  - `.\scripts\build_all_envs.ps1`
+  - options utiles : `-SkipWarmup`, `-StopOnError`
+
 ## Stack ESP-IDF et plateforme
 
 Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est : plateforme → arduino-esp32 → ESP-IDF (sous-jacent).
@@ -110,6 +120,20 @@ Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est :
 - **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
 
 Le **premier build** des projets WROOM télécharge la plateforme pioarduino (~500 Mo) ; en cas d'erreur de verrouillage de fichier (WinError 32/183), fermer les processus PlatformIO/IDE puis relancer.
+
+### Recovery PlatformIO Windows (WROOM / esp32cam)
+
+En cas d'erreur intermittente du type `TypeError: _path_exists ... NoneType` ou `FRAMEWORK_DIR None` :
+
+1. Fermer Cursor/VSCode, tout moniteur série et tous les terminaux qui compilent/flashing.
+2. Depuis `firmwires/`, lancer un build de warmup sur un firmware WROOM stable :
+   - `cd n3pp`
+   - `pio run -e esp32dev`
+3. Revenir au firmware cible et relancer le build :
+   - `cd ../uploadphotosserver`
+   - `pio run -e msp1` (ou `-e n3pp`, `-e ffp3`)
+4. Si l'erreur persiste : nettoyer le cache/framework PlatformIO local puis relancer la séquence warmup + build cible.
+5. Sous Windows, éviter les builds parallèles pioarduino sur plusieurs projets en même temps.
 
 Détails et APIs ESP-IDF utilisées en direct (ffp5cs) : [RECOMMANDATIONS_IOT.md § 2.9](../RECOMMANDATIONS_IOT.md#29-stack-esp-idf-et-conventions).
 
@@ -138,7 +162,7 @@ Les firmwares **n3pp** et **msp** utilisent des libs communes dans `shared/` (Wi
 | `n3_http` | GET / POST HTTP |
 | `n3_mail` | Envoi email SMTP (ESP Mail Client) |
 | `n3_time` | Sauvegarde/restauration heure en flash, raison de réveil |
-| `n3_ota` | OTA HTTP distant (metadata.json, vérification à chaque boot) |
+| `n3_common` | Noyau partagé (OTA, constantes communes, helpers de base) |
 
 ## Structure
 
@@ -153,7 +177,7 @@ firmwires/
 ├── erase_flash_monitor.ps1     # Erase + flash + monitor (tous projets sauf ratata, LVGL)
 ├── scripts/
 │   ├── Release-ComPort.ps1      # Libération port COM (partagé)
-│   └── analyze_log_generic.ps1  # Analyse générique des logs (prévu)
+│   └── analyze_log_generic.ps1  # Analyse générique des logs
 ├── shared/                     # Bibliothèques partagées n3 (n3pp, msp, ffp5cs)
 │   ├── n3_analog_sensors/      # ADC filtré (luminosité, pont, humidité sol)
 │   ├── n3_battery/             # Batterie pont diviseur (délègue à n3_analog_sensors)
@@ -161,7 +185,7 @@ firmwires/
 │   ├── n3_http/
 │   ├── n3_mail/
 │   ├── n3_time/
-│   └── n3_ota/
+│   └── n3_common/
 ├── n3pp/                    # N3PhasmesProto (ESP32)
 │   ├── platformio.ini
 │   ├── src/main.cpp
@@ -173,7 +197,10 @@ firmwires/
 ├── uploadphotosserver/         # ESP32-CAM unifié (envs msp1, n3pp, ffp3)
 │   ├── platformio.ini
 │   ├── include/config.h, credentials.h.example (pointe vers firmwires/credentials.h)
-│   └── src/main.cpp
+│   ├── src/main.cpp
+│   ├── tools/pio_ensure_credentials.py
+│   ├── scripts/build_all_envs.ps1
+│   └── logs/ (creé automatiquement par monitor_Nmin.ps1)
 ├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 (legacy)
 │   ├── platformio.ini
 │   ├── src/main.cpp

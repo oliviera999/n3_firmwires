@@ -7,6 +7,8 @@
 #include "msp_globals.h"
 #include <WiFi.h>
 
+static const uint16_t OLED_PAGE_DELAY_MS = 500;
+
 void affichageOLED() {
   if (!displayOk) return;
   for (int i = 0; i < 6; i++) {
@@ -33,7 +35,7 @@ void affichageOLED() {
     display.println("V");
     display.print(rtc.getTime("%H:%M:%S %d/%m/%Y"));
     display.display();
-    delay(1000);
+    delay(OLED_PAGE_DELAY_MS);
   }
   for (int i = 0; i < 6; i++) {
     display.clearDisplay();
@@ -67,7 +69,7 @@ void affichageOLED() {
     display.println(batteryVoltage);
     display.print(rtc.getTime("%H:%M:%S %d/%m/%Y"));
     display.display();
-    delay(1000);
+    delay(OLED_PAGE_DELAY_MS);
   }
   for (int i = 0; i < 6; i++) {
     display.clearDisplay();
@@ -94,6 +96,6 @@ void affichageOLED() {
     display.print(batteryVoltage);
     display.print(rtc.getTime("%H:%M:%S %d/%m/%Y"));
     display.display();
-    delay(1000);
+    delay(OLED_PAGE_DELAY_MS);
   }
 }

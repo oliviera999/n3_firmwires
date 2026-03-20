@@ -13,6 +13,7 @@
 #include "credentials.h"
 #include "time.h"
 #include <cstring>
+#include <cstdio>
 #include "n3_http.h"
 #include "n3_time.h"
 #include "n3_wifi.h"
@@ -54,9 +55,10 @@ Preferences preferences;
 ESP32Time rtc;
 #endif
 
-void Wificonnect();
+bool Wificonnect();
 String sendPhoto();
 void ledBlink(int onMs, int offMs, int count);
+static int parseHttpStatusCode(const String& statusLine);
 
 #if USE_DEEP_SLEEP
 void warmupCamera();
@@ -76,7 +78,7 @@ void ledBlink(int onMs, int offMs, int count) {
 }
 
 /* ----- WiFi (scan + RSSI + BSSID via n3_wifi) ----- */
-void Wificonnect() {
+bool Wificonnect() {
   /* WIFI_LIST est WifiCredential { ssid, password } ; même layout que N3WifiNetwork { ssid, pass }. */
   const N3WifiNetwork* nets = reinterpret_cast<const N3WifiNetwork*>(WIFI_LIST);
   N3WifiConfig cfg = {};
@@ -87,7 +89,13 @@ void Wificonnect() {
   cfg.preScanDelayMs = WIFI_PRE_SCAN_DELAY_MS;
   cfg.scanMax = WIFI_SCAN_MAX;
   cfg.onSuccess = [](const char*) { ledBlink(500, 500, 1); };
-  n3WifiConnect(cfg, &Wifiactif);
+  return n3WifiConnect(cfg, &Wifiactif);
+}
+
+static int parseHttpStatusCode(const String& statusLine) {
+  int code = 0;
+  if (sscanf(statusLine.c_str(), "HTTP/%*d.%*d %d", &code) == 1) return code;
+  return 0;
 }
 
 #if USE_DEEP_SLEEP
@@ -148,7 +156,10 @@ String sendPhoto() {
 #if USE_SD
   if (sdAvailable) {
     EEPROM.begin(EEPROM_SIZE);
-    pictureNumber = EEPROM.read(0) + 1;
+    uint32_t persistedCount = 0;
+    EEPROM.get(0, persistedCount);
+    persistedCount++;
+    pictureNumber = static_cast<int>(persistedCount);
     String path = "/picture" + String(pictureNumber) + ".jpg";
     fs::FS& fs = SD_MMC;
     File file = fs.open(path.c_str(), FILE_WRITE);
@@ -156,7 +167,7 @@ String sendPhoto() {
       size_t written = file.write(fb->buf, fb->len);
       file.close();
       if (written == fb->len) {
-        EEPROM.write(0, pictureNumber);
+        EEPROM.put(0, persistedCount);
         EEPROM.commit();
       } else {
         Serial.println("SD : ecriture incomplete, desactivation SD.");
@@ -170,9 +181,21 @@ String sendPhoto() {
   /* Ne pas appeler esp_camera_fb_return(fb) ici : on envoie encore HTTP avec fb->buf */
 #endif
 
-  Serial.println("Connexion au serveur : " + serverName);
-  if (!client.connect(serverName.c_str(), serverPort)) {
-    getBody = "Connexion a " + serverName + " echouee.";
+  bool connected = false;
+  for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES; attempt++) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi deconnecte, tentative de reconnexion...");
+      Wificonnect();
+    }
+    Serial.printf("Connexion au serveur (%d/%d) : %s\n", attempt, UPLOAD_CONNECT_RETRIES, serverName.c_str());
+    if (client.connect(serverName.c_str(), serverPort)) {
+      connected = true;
+      break;
+    }
+    delay(UPLOAD_RETRY_DELAY_MS);
+  }
+  if (!connected) {
+    getBody = "Connexion a " + serverName + " echouee apres retries.";
     Serial.println(getBody);
     esp_camera_fb_return(fb);
     return getBody;
@@ -205,7 +228,7 @@ String sendPhoto() {
   /* Libérer le framebuffer après envoi complet (évite use-after-free) */
   esp_camera_fb_return(fb);
 
-  int timeoutTimer = 30000;
+  int timeoutTimer = HTTP_RESPONSE_TIMEOUT_MS;
   long startTimer = millis();
   boolean state = false;
   String statusLine;
@@ -226,7 +249,13 @@ String sendPhoto() {
   }
   Serial.println();
   client.stop();
-  if (statusLine.length() > 0) Serial.println("Reponse: " + statusLine);
+  if (statusLine.length() > 0) {
+    Serial.println("Reponse: " + statusLine);
+    int statusCode = parseHttpStatusCode(statusLine);
+    if (statusCode != 200) {
+      Serial.printf("Upload non confirme, code HTTP=%d\n", statusCode);
+    }
+  }
   Serial.println(getBody);
   ledBlink(1500, 1500, 2);
   return getBody;
@@ -254,7 +283,7 @@ void setup() {
 #endif
 
   WiFi.mode(WIFI_STA);
-  Wificonnect();
+  bool wifiOk = Wificonnect();
   ledBlink(100, 100, 1);
 
 #if USE_SD
@@ -352,7 +381,14 @@ void setup() {
 
   /* Une photo en setup si dans le créneau, puis deep sleep (toutes cibles) */
   if (inPhotoWindow()) {
+    if (!wifiOk && !sdAvailable) {
+      Serial.println("Photo ignoree: pas de WiFi et pas de SD disponible.");
+    } else if (!wifiOk) {
+      Serial.println("WiFi indisponible: tentative de sauvegarde locale SD + upload si reconnexion.");
+      sendPhoto();
+    } else {
     sendPhoto();
+    }
   }
 
   ledBlink(100, 100, 1);

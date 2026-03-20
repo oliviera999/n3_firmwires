@@ -2,11 +2,12 @@
 # À lancer depuis la racine de firmwires.
 #
 # Usage:
-#   .\monitor_Nmin.ps1 -Project n3pp4_2
+#   .\monitor_Nmin.ps1 -Project n3pp
 #   .\monitor_Nmin.ps1 -Project ffp5cs -Port COM4 -DurationSeconds 600
-#   .\monitor_Nmin.ps1 -Project msp2_5 -Environment esp32dev_test
+#   .\monitor_Nmin.ps1 -Project msp -Environment esp32dev_test
 #
-# Projets supportés : n3pp4_2, msp2_5, uploadphotosserver (env msp1/n3pp/ffp3), uploadphotosserver_msp1, uploadphotosserver_n3pp_1_6_deppsleep, uploadphotosserver_ffp3_1_5_deppsleep, ffp5cs
+# Projets supportes : n3pp, n3pp4_2, msp, msp2_5, uploadphotosserver (env msp1/n3pp/ffp3),
+# uploadphotosserver_msp1, uploadphotosserver_n3pp_1_6_deppsleep, uploadphotosserver_ffp3_1_5_deppsleep, ffp5cs
 
 param(
     [Parameter(Mandatory = $true)]
@@ -21,7 +22,9 @@ $firmwiresRoot = $PSScriptRoot
 
 # Projets autorisés (exclusion : ratata, LVGL_Widgets et sous-dossiers ffp5cs)
 $allowedProjects = @(
+    "n3pp",
     "n3pp4_2",
+    "msp",
     "msp2_5",
     "uploadphotosserver",
     "uploadphotosserver_msp1",
@@ -43,7 +46,9 @@ if (-not (Test-Path $projectPath)) {
 
 # Environnement par défaut selon le projet
 $defaultEnvs = @{
+    "n3pp" = "esp32dev"
     "n3pp4_2" = "esp32dev"
+    "msp" = "esp32dev"
     "msp2_5" = "esp32dev"
     "uploadphotosserver" = "msp1"
     "uploadphotosserver_msp1" = "esp32cam"
@@ -65,7 +70,14 @@ if ($DurationSeconds -ge 3600) {
 } else {
     $durationTag = "{0}s" -f $DurationSeconds
 }
-$logFile = "monitor_${durationTag}_${timestamp}.log"
+$logDir = $projectPath
+if ($Project -like "uploadphotosserver*") {
+    $logDir = Join-Path $projectPath "logs"
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir | Out-Null
+    }
+}
+$logFile = Join-Path $logDir "monitor_${durationTag}_${timestamp}.log"
 
 Write-Host "=== MONITORING ESP32 - $Project - $durationTag ===" -ForegroundColor Green
 Write-Host "Projet: $Project" -ForegroundColor Cyan
@@ -139,7 +151,7 @@ if ($usePython -and $Port) {
 
 Write-Host ""
 Write-Host "=== MONITORING TERMINÉ ===" -ForegroundColor Green
-Write-Host "Log: $projectPath\$logFile" -ForegroundColor Cyan
+Write-Host "Log: $logFile" -ForegroundColor Cyan
 if (Test-Path "$logFile.errors") {
     Write-Host "Erreurs: $logFile.errors" -ForegroundColor Yellow
 }

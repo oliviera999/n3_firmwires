@@ -10,6 +10,22 @@
 #include "n3_wifi.h"
 #include "n3_data.h"
 
+static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
+  JSONVar val = obj[key];
+  if (JSON.typeof(val) != "undefined") {
+    return atoi((const char*)val);
+  }
+  return defaultValue;
+}
+
+static String readStringByKey(const JSONVar& obj, const char* key, const String& defaultValue) {
+  JSONVar val = obj[key];
+  if (JSON.typeof(val) != "undefined") {
+    return String((const char*)val);
+  }
+  return defaultValue;
+}
+
 void datatobdd() {
   if (displayOk) { display.drawCircle(5, 5, 5, WHITE); display.display(); }
 
@@ -74,34 +90,16 @@ void variablestoesp() {
       if (JSON.typeof(myObject) == "undefined") {
         return;
       }
-      JSONVar keys = myObject.keys();
-
-      JSONVar Jreset = myObject[keys[2]];
-      resetMode = atoi(Jreset);
-
-      String Jmail = myObject[keys[3]];
-      inputMessageMailAd = Jmail;
-
-      String JmailNotif = myObject[keys[4]];
-      enableEmailChecked = JmailNotif;
-
-      JSONVar JSeuilSec = myObject[keys[5]];
-      SeuilSec = atoi(JSeuilSec);
-
-      JSONVar JSeuilPontDiv = myObject[keys[6]];
-      SeuilPontDiv = atoi(JSeuilPontDiv);
-
-      JSONVar JAngleServoHB = myObject[keys[7]];
-      AngleServoHB = atoi(JAngleServoHB);
-
-      JSONVar JAngleServoGD = myObject[keys[8]];
-      AngleServoGD = atoi(JAngleServoGD);
-
-      JSONVar JWakeUp = myObject[keys[9]];
-      WakeUp = atoi(JWakeUp);
-
-      JSONVar JFreqWakeUp = myObject[keys[10]];
-      FreqWakeUp = atoi(JFreqWakeUp);
+      // Mapping robuste: lecture directe par GPIO explicite (contrat serveur).
+      resetMode = readIntByKey(myObject, "110", resetMode);
+      inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
+      enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
+      SeuilSec = readIntByKey(myObject, "102", SeuilSec);
+      SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
+      AngleServoHB = readIntByKey(myObject, "104", AngleServoHB);
+      AngleServoGD = readIntByKey(myObject, "105", AngleServoGD);
+      WakeUp = readIntByKey(myObject, "106", WakeUp);
+      FreqWakeUp = readIntByKey(myObject, "107", FreqWakeUp);
     }
     if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
   }

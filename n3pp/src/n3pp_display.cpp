@@ -1,6 +1,8 @@
 #include "n3pp_display.h"
 #include "n3pp_globals.h"
 
+static const uint16_t OLED_PAGE_DELAY_MS = 800;
+
 void affichageOLED() {
   if (!displayOk) return;
   display.clearDisplay();
@@ -57,7 +59,7 @@ void affichageOLED() {
   Serial.print(rtc.getTime("%H:%M:%S %d/%m/%Y"));
 
   display.display();
-  delay(4000);
+  delay(OLED_PAGE_DELAY_MS);
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -87,5 +89,5 @@ void affichageOLED() {
   display.print("resetM: ");
   display.print(resetMode);
   display.display();
-  delay(4000);
+  delay(OLED_PAGE_DELAY_MS);
 }

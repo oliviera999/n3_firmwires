@@ -3,6 +3,9 @@
 #include "n3_battery.h"
 #include "n3_analog_sensors.h"
 
+static const uint16_t DHT_READ_DELAY_MS = 150;
+static const uint16_t BATTERY_OLED_DELAY_MS = 500;
+
 static const N3BatteryConfig batteryConfig = {
   pontdiv, (uint32_t)N3_BATTERY_R1, (uint32_t)N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
 };
@@ -69,14 +72,14 @@ void lectureCapteurs() {
 
   temperatureAir = dht.readTemperature();
   Serial.println(temperatureAir);
-  delay(500);
+  delay(DHT_READ_DELAY_MS);
   h = dht.readHumidity();
-  delay(500);
+  delay(DHT_READ_DELAY_MS);
   Serial.println(h);
   if (isnan(h) || isnan(temperatureAir)) {
-    Serial.println("Echec de lecture du DHT");
-    if (isnan(temperatureAir)) temperatureAir = 0.0f;
-    if (isnan(h)) h = 0.0f;
+    Serial.println("Echec de lecture du DHT, fallback 20C / 50%");
+    if (isnan(temperatureAir)) temperatureAir = 20.0f;
+    if (isnan(h)) h = 50.0f;
   }
 
   N3Analog::AnalogConfig cLum = cfgLumi;
@@ -118,7 +121,7 @@ void batterie() {
     display.println(battPercent);
     display.display();
   }
-  delay(2000);
+  delay(BATTERY_OLED_DELAY_MS);
 
   if (displayOk) {
     display.clearDisplay();
@@ -133,7 +136,7 @@ void batterie() {
     display.println(battPercent);
     display.display();
   }
-  delay(2000);
+  delay(BATTERY_OLED_DELAY_MS);
 
   Serial.print("Tension mesuree (filtree) : ");
   Serial.print(batteryVoltage);

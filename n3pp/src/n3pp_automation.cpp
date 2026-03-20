@@ -160,7 +160,7 @@ void automatismes() {
   //mail si tension trop basse
 
   if ((PontDiv < SeuilPontDiv)) {
-    if (enableEmailChecked == "true" && !emailPontDivSent) {
+    if (enableEmailChecked == "checked" && !emailPontDivSent) {
       String emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
     sendEmailNotification();
       Serial.println(emailMessage);
@@ -236,7 +236,7 @@ void sommeil() {
   Serial.print(WakeUp);
   if (WakeUp == 0) {
 
-    if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "true") {
+    if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "checked") {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       sendEmailNotification();
       datatobdd();
