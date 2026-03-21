@@ -59,6 +59,7 @@ bool Wificonnect();
 String sendPhoto();
 void ledBlink(int onMs, int offMs, int count);
 static int parseHttpStatusCode(const String& statusLine);
+static const char* currentTargetName();
 
 #if USE_DEEP_SLEEP
 void warmupCamera();
@@ -96,6 +97,18 @@ static int parseHttpStatusCode(const String& statusLine) {
   int code = 0;
   if (sscanf(statusLine.c_str(), "HTTP/%*d.%*d %d", &code) == 1) return code;
   return 0;
+}
+
+static const char* currentTargetName() {
+#if defined(TARGET_MSP1)
+  return "msp1";
+#elif defined(TARGET_N3PP)
+  return "n3pp";
+#elif defined(TARGET_FFP3)
+  return "ffp3";
+#else
+  return "unknown";
+#endif
 }
 
 #if USE_DEEP_SLEEP
@@ -202,7 +215,8 @@ String sendPhoto() {
   }
 
   Serial.println("Connexion serveur OK.");
-  String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"esp32-cam-" + String(FIRMWARE_VERSION) + ".jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
+  String photoFilename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
+  String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"" + photoFilename + "\"\r\nContent-Type: image/jpeg\r\n\r\n";
   String tail = "\r\n--RandomNerdTutorials--\r\n";
   uint32_t imageLen = fb->len;
   uint32_t extraLen = head.length() + tail.length();
@@ -274,6 +288,8 @@ static bool inPhotoWindow() {
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   Serial.begin(115200);
+  delay(200);
+  Serial.printf("[BOOT] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
   pinMode(LED_GPIO, OUTPUT);
   digitalWrite(LED_GPIO, LOW);
   ledBlink(100, 100, 2);
@@ -358,24 +374,20 @@ void setup() {
   }
 #endif
 
-  /* OTA distant : verification tous les N boots (toutes cibles en deep sleep) */
-#if defined(TARGET_MSP1)
+  /* OTA distant : logs explicites + verification tous les N boots */
+#if USE_DEEP_SLEEP
   otaBootCount++;
-  if (otaBootCount % OTA_CHECK_EVERY_N_BOOTS == 0) {
-    N3OtaConfig otaCfg = { OTA_METADATA_URL, FIRMWARE_VERSION, -1, "msp1" };
+  const int otaModulo = otaBootCount % OTA_CHECK_EVERY_N_BOOTS;
+  const int bootsBeforeCheck = (otaModulo == 0) ? 0 : (OTA_CHECK_EVERY_N_BOOTS - otaModulo);
+  Serial.printf("[OTA] cible=%s version_local=%s boot=%d cadence=%d metadata=%s\n",
+                currentTargetName(), FIRMWARE_VERSION, otaBootCount, OTA_CHECK_EVERY_N_BOOTS, OTA_METADATA_URL);
+  if (otaModulo == 0) {
+    Serial.println("[OTA] verification declenchee");
+    N3OtaConfig otaCfg = { OTA_METADATA_URL, FIRMWARE_VERSION, -1, currentTargetName() };
     n3OtaCheck(otaCfg);
-  }
-#elif defined(TARGET_N3PP)
-  otaBootCount++;
-  if (otaBootCount % OTA_CHECK_EVERY_N_BOOTS == 0) {
-    N3OtaConfig otaCfg = { OTA_METADATA_URL, FIRMWARE_VERSION, -1, "n3pp" };
-    n3OtaCheck(otaCfg);
-  }
-#elif defined(TARGET_FFP3)
-  otaBootCount++;
-  if (otaBootCount % OTA_CHECK_EVERY_N_BOOTS == 0) {
-    N3OtaConfig otaCfg = { OTA_METADATA_URL, FIRMWARE_VERSION, -1, "ffp3" };
-    n3OtaCheck(otaCfg);
+    Serial.println("[OTA] verification terminee");
+  } else {
+    Serial.printf("[OTA] verification sautee, prochain check dans %d boot(s)\n", bootsBeforeCheck);
   }
 #endif
 
@@ -396,7 +408,8 @@ void setup() {
 
 void loop() {
 #if USE_DEEP_SLEEP
-      Serial.println("Entree en deep sleep.");
+  Serial.printf("[LOOP] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
+  Serial.println("Entree en deep sleep.");
   delay(1000);
   Serial.flush();
   esp_sleep_enable_timer_wakeup((uint64_t)TIME_TO_SLEEP * uS_TO_S_FACTOR);
