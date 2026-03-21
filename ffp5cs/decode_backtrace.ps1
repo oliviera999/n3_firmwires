@@ -13,7 +13,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
-$elfDefault = Join-Path $projectRoot ".pio\build\wroom-test\firmware.elf"
+$helpers = Join-Path $projectRoot "..\scripts\Get-PioBuildHelpers.ps1"
+if (Test-Path -LiteralPath $helpers) {
+    . $helpers
+    $elfDefault = Get-N3PioFirmwareElf -ProjectRoot $projectRoot -Environment "wroom-test"
+} else {
+    $elfDefault = Join-Path $projectRoot ".pio\build\wroom-test\firmware.elf"
+}
 $addr2line = Join-Path $env:USERPROFILE ".platformio\packages\toolchain-xtensa-esp-elf\bin\xtensa-esp32-elf-addr2line.exe"
 
 if (-not (Test-Path $addr2line)) {

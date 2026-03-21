@@ -12,6 +12,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.23 - 2026-03-21
+
+### Build Windows : redirection C:\pio-builds, scripts et nettoyage
+
+- **pio_redirect_build_dir.py** : sous Windows, artefacts de build par défaut dans `C:\pio-builds\<slug-projet>\<env>\` (désactivation : `N3_PIO_BUILD_REDIRECT=0`, racine : `N3_PIO_BUILD_ROOT`).
+- **Get-PioBuildHelpers.ps1** : chemins firmware / littlefs / ELF alignés pour `publish_ota.ps1`, `build_production.ps1`, `decode_backtrace`, `clean_s3_build`, etc.
+- **clean-firmware-builds.ps1** (racine IOT_n3) : nettoyage `.pio` par projet + options `-IncludePioBuildsRoot`, `-IncludeLegacyFfp5Mirror` (ancien `C:\ffp5cs_build`).
+- **build_production.ps1** : environnement explicite `wroom-prod` (param `-Environment`), plus de chemin obsolète `esp32dev`.
+- **Fichiers** : `platformio.ini`, `test psram s3*/platformio.ini`, `scripts/publish_ota.ps1`, `scripts/find-bugs.ps1`, `run_s3_build_from_safe_path.bat`, `tools/coredump/analyze_coredump.py`, `VERSION.md`, `config.h`.
+
+---
+
 ## Version 13.22 - 2026-03-20
 
 ### OTA WROOM HTTP fallback, boot settle, scripts build multi-env

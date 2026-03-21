@@ -37,16 +37,42 @@ def find_esp_coredump():
     
     return None
 
+def _pio_redirect_root():
+    flag = os.environ.get("N3_PIO_BUILD_REDIRECT", "").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return None
+    custom = os.environ.get("N3_PIO_BUILD_ROOT", "").strip()
+    if custom:
+        return Path(os.path.expandvars(custom)).expanduser()
+    if os.name == "nt":
+        return Path(r"C:\pio-builds")
+    return None
+
+
+def _project_slug(project_dir):
+    return "-".join(Path(project_dir).name.split())
+
+
 def find_elf_file(project_root=None):
     """Trouve le fichier ELF du firmware compilé"""
     if project_root is None:
         project_root = Path.cwd()
-    
-    # Chercher dans .pio/build/
-    build_dirs = list(Path(project_root).glob(".pio/build/*/firmware.elf"))
+    project_root = Path(project_root).resolve()
+
+    build_dirs = list(project_root.glob(".pio/build/*/firmware.elf"))
     if build_dirs:
         return str(build_dirs[0])
-    
+
+    root = _pio_redirect_root()
+    if root and root.is_dir():
+        slug = _project_slug(project_root)
+        env_dir = root / slug
+        if env_dir.is_dir():
+            elves = list(env_dir.glob("*/firmware.elf"))
+            if elves:
+                elves.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                return str(elves[0])
+
     return None
 
 def analyze_with_esp_coredump(coredump_file, elf_file=None, output_file=None):

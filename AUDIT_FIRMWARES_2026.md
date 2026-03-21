@@ -81,14 +81,14 @@ src/msp_sensors.cpp      (326 lignes — DHT×2, DS18B20, LDR×4, batterie, plui
 ```cpp
 // Lignes 78-82 et 97 :
 #define SMTP_HOST       "smtp.gmail.com"
-#define AUTHOR_EMAIL    "arnould.svt@gmail.com"
-#define AUTHOR_PASSWORD "ddbfvlkssfleypdr"   // ← mot de passe d'application Gmail en clair
-String inputMessageMailAd = "oliv.arn.lau@gmail.com";
-String apiKeyValue = "fdGTMoptd5CD2ert3";   // ← clé API IoT en clair
+#define AUTHOR_EMAIL    "your_email@example.com"
+#define AUTHOR_PASSWORD "your_smtp_app_password"   // ← mot de passe d'application Gmail en clair
+String inputMessageMailAd = "your_notification_email@example.com";
+String apiKeyValue = "your_api_key_here";   // ← clé API IoT en clair
 ```
 
 **Risque :** Exposition de credentials réels dans le dépôt (même dans un sous-dossier "à voir"). Si le dépôt est partagé ou rendu public, ces informations sont compromises.
-**Action requise :** Révoquer le mot de passe d'application Gmail `ddbfvlkssfleypdr`, remplacer par `#include "credentials.h"`.
+**Action requise :** Révoquer le mot de passe d'application Gmail exposé, remplacer par `#include "credentials.h"`.
 
 #### 🟠 MOYEN — Valeurs de fallback exposées dans `ffp5cs/include/config.h`
 
@@ -183,8 +183,8 @@ Les `platformio.ini` de `n3pp4_2` et `msp2_5` ne contiennent plus de `upload_por
 
 | Priorité | Action | Firmware | État |
 |----------|--------|----------|------|
-| 🔴 Haute | Révoquer et supprimer credentials Gmail en dur (`AUTHOR_PASSWORD "ddbfvlkssfleypdr"`) | `à voir/LVGL_Widgets` | **À faire** |
-| 🔴 Haute | Remplacer API key en dur (`fdGTMoptd5CD2ert3`) par `#include "credentials.h"` | `à voir/LVGL_Widgets` | **À faire** |
+| 🔴 Haute | Révoquer et supprimer credentials Gmail en dur (`AUTHOR_PASSWORD "<smtp_password>"`) | `à voir/LVGL_Widgets` | **À faire** |
+| 🔴 Haute | Remplacer API key en dur (`your_api_key_here`) par `#include "credentials.h"` | `à voir/LVGL_Widgets` | **À faire** |
 | 🟠 Moyenne | Ajouter `#warning` si fallback sans secrets dans `ffp5cs/config.h` | `ffp5cs` | **À faire** |
 | 🟠 Moyenne | Remplacer `sprintf` par `snprintf` dans `n3_hmac.cpp:29` | `shared/n3_hmac` | **À faire** |
 | 🟡 Basse | Migrer serveur HTTP → HTTPS pour les envois de données | `n3pp4_2`, `msp2_5`, `uploadphotosserver` | Analyse requise |
@@ -203,7 +203,7 @@ Les `platformio.ini` de `n3pp4_2` et `msp2_5` ne contiennent plus de `upload_por
 
 Le dépôt est dans un **état globalement bon** : la modularisation est réalisée, les bibliothèques partagées évitent la duplication, les secrets sont externalisés via `credentials.h` (non versionné), et les dépendances sont verrouillées.
 
-**Le seul problème critique** est la présence de credentials Gmail réels (`arnould.svt@gmail.com` / `ddbfvlkssfleypdr`) et d'une clé API (`fdGTMoptd5CD2ert3`) en dur dans `à voir/LVGL_Widgets/src/main.cpp`. **Ces credentials doivent être révoqués immédiatement** si ce dépôt a été partagé ou est susceptible de l'être.
+**Le seul problème critique** est la présence de credentials Gmail réels (`your_email@example.com` / `<smtp_password>`) et d'une clé API (`your_api_key_here`) en dur dans `à voir/LVGL_Widgets/src/main.cpp`. **Ces credentials doivent être révoqués immédiatement** si ce dépôt a été partagé ou est susceptible de l'être.
 
 Les actions de priorité moyenne (avertissement de compilation, `snprintf`) sont des améliorations de robustesse sans impact sécurité immédiat. Les pistes HTTPS/OTA signé sont des améliorations à plus long terme.
 

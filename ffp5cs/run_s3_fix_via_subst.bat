@@ -1,5 +1,6 @@
 @echo off
 REM Build S3. Si le chemin a des espaces : lecteur virtuel P: pour eviter blocage SCons.
+REM Alternative : copie miroir sans espace (run_s3_build_from_safe_path.bat, racine C:\pio-builds\ffp5cs-space-mirror).
 REM Option: "workflow" = apres le build, lancer erase/flash/monitor 1 min.
 setlocal
 set "PROJECT_ROOT=%~dp0"

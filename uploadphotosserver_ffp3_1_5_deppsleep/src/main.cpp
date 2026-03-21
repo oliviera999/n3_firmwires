@@ -416,7 +416,7 @@ WiFiClient client;
 //const char* password = "";
 const char* ssid = "dlink";
 const char* password = "n3LLdlink";
-//const char* ssid = "AndroidAP";
+//const char* ssid = "VOTRE_SSID_TEST";
 //const char* password = "123456789";
 // identifiant Wifi alternatif2
 const char* ssid2 = "raspN3";
@@ -424,7 +424,7 @@ const char* password2 = "n3LLrasp";
 //const char* ssid2 = "dlink";
 //const char* password2 = "n3LLdlink";
 // identifiant Wifi alternatif
-const char* ssid3 = "AndroidAP";
+const char* ssid3 = "VOTRE_SSID_3";
 const char* password3 = "123456789";
 String Wifiactif;
 

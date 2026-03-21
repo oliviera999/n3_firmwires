@@ -1,4 +1,5 @@
-# Force-supprime .pio\build\wroom-s3-test et .pio\libdeps\wroom-s3-test avec retries.
+# Force-supprime le dossier de build wroom-s3-test (C:\pio-builds\ffp5cs\... si redirection active)
+# et .pio\libdeps\wroom-s3-test avec retries.
 # Utile quand fullclean ou Library Manager échoue (WinError 32: fichier utilisé par un autre processus).
 #
 # Si WinError 32 sur framework-arduinoespressif32: .\tools\clean_s3_build.ps1 -IncludeFramework
@@ -24,8 +25,17 @@ $projectRoot = if ($PSScriptRoot) {
     if (Test-Path (Join-Path $d "platformio.ini")) { $d } else { Get-Location }
 } else { Get-Location }
 
+$helpers = Join-Path $projectRoot "..\scripts\Get-PioBuildHelpers.ps1"
+$s3BuildDir = Join-Path $projectRoot ".pio\build\wroom-s3-test"
+if (Test-Path -LiteralPath $helpers) {
+    . $helpers
+    if (Get-Command Get-N3PioEnvBuildDir -ErrorAction SilentlyContinue) {
+        $s3BuildDir = Get-N3PioEnvBuildDir -ProjectRoot $projectRoot -Environment "wroom-s3-test"
+    }
+}
+
 $dirs = @(
-    (Join-Path $projectRoot ".pio\build\wroom-s3-test"),
+    $s3BuildDir,
     (Join-Path $projectRoot ".pio\libdeps\wroom-s3-test")
 )
 if ($IncludeFramework) {

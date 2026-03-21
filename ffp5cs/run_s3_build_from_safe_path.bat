@@ -2,10 +2,10 @@
 REM Build wroom-s3-test. Si le chemin du projet contient des espaces, copie vers BUILD_ROOT (sans espace).
 REM Si le chemin n'a pas d'espace : build direct depuis le projet (pas de copie).
 REM Option: "workflow" = apres le build, lancer erase/flash/monitor.
-setlocal
+setlocal EnableExtensions
 set "PROJECT_ROOT=%~dp0"
 if "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
-if not defined BUILD_ROOT set "BUILD_ROOT=C:\ffp5cs_build"
+if not defined BUILD_ROOT set "BUILD_ROOT=C:\pio-builds\ffp5cs-space-mirror"
 set "RUN_WORKFLOW="
 if /i "%~1"=="workflow" set "RUN_WORKFLOW=1"
 
@@ -63,14 +63,21 @@ if %BUILD_RESULT% neq 0 (
   exit /b %BUILD_RESULT%
 )
 
-echo 3. Recopie firmware et partition vers le projet...
-set "BUILD_DIR=%BUILD_ROOT%\.pio\build\wroom-s3-test"
+echo 3. Recopie firmware et partition vers le projet et C:\pio-builds\ffp5cs (OTA)...
+rem Avec pio_redirect_build_dir.py : sortie sous C:\pio-builds\<nom-du-miroir>\wroom-s3-test\
+for %%I in ("%BUILD_ROOT%") do set "BUILD_DIR=C:\pio-builds\%%~nxI\wroom-s3-test"
+if not exist "%BUILD_DIR%\firmware.bin" set "BUILD_DIR=%BUILD_ROOT%\.pio\build\wroom-s3-test"
 set "DEST_DIR=%PROJECT_ROOT%\.pio\build\wroom-s3-test"
+set "REDIRECT_DEST=C:\pio-builds\ffp5cs\wroom-s3-test"
 if exist "%BUILD_DIR%\firmware.bin" (
   if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
   copy /Y "%BUILD_DIR%\firmware.bin" "%DEST_DIR%\"
   copy /Y "%BUILD_DIR%\partitions.bin" "%DEST_DIR%\" 2>nul
   echo    firmware.bin + partitions.bin copies dans le projet.
+  if not exist "%REDIRECT_DEST%" mkdir "%REDIRECT_DEST%"
+  copy /Y "%BUILD_DIR%\firmware.bin" "%REDIRECT_DEST%\"
+  copy /Y "%BUILD_DIR%\partitions.bin" "%REDIRECT_DEST%\" 2>nul
+  echo    + copies vers %REDIRECT_DEST% (publish_ota / chemins courts).
 ) else (
   echo    [INFO] Dossier build non trouve, recopie manuelle si besoin.
 )

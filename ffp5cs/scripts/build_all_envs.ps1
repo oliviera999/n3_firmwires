@@ -46,6 +46,12 @@ try {
         exit 1
     }
 
+    $helpers = Join-Path $projectDir "..\scripts\Get-PioBuildHelpers.ps1"
+    if (Test-Path -LiteralPath $helpers) {
+        . $helpers
+        Write-N3PioWorkspaceAdvice -ProjectRoot $projectDir
+    }
+
     $prefix = "build"
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  FFP5CS - Build multi-environnements" -ForegroundColor Cyan

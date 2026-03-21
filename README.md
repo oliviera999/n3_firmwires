@@ -56,6 +56,16 @@ pio device monitor -e 1_auto_move
 
 Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`, `COM4`, `/dev/ttyUSB0`) selon ta machine.
 
+## Build Windows : chemins courts, redirection et nettoyage
+
+- **Redirection des artefacts** : les projets qui incluent `firmwires/scripts/pio_redirect_build_dir.py` (dont **ffp5cs** et les dossiers **test psram s3***) placent les binaires sous `C:\pio-builds\<slug-projet>\<env>\` sur Windows par défaut (évite chemins longs et soucis d’espaces dans le clone). **Linux / CI** : pas de redirection sauf si la variable d’environnement `N3_PIO_BUILD_ROOT` est définie — les artefacts restent alors sous `.pio/build/<env>/` (comportement GitHub Actions inchangé).
+- **Désactiver la redirection** : `N3_PIO_BUILD_REDIRECT=0` (PowerShell : `$env:N3_PIO_BUILD_REDIRECT='0'`). **Autre racine** : `N3_PIO_BUILD_ROOT=D:\mes-builds`.
+- **Chemins côté scripts** : `firmwires/scripts/Get-PioBuildHelpers.ps1` (fonctions `Get-N3PioFirmwareBin`, etc.) — utilisé par `IOT_n3/scripts/publish_ota.ps1` pour trouver `firmware.bin` / `littlefs.bin` que le build soit sous `C:\pio-builds` ou dans `.pio/build`.
+- **Nettoyage global** : depuis la racine **IOT_n3**, `.\scripts\clean-firmware-builds.ps1` (ajouter `-WhatIf` pour simulation). Options : `-IncludePioBuildsRoot` pour purger les sous-dossiers `C:\pio-builds\<slug>` des projets listés, `-IncludeLegacyFfp5Mirror` pour supprimer l’ancien miroir `C:\ffp5cs_build`.
+- **S3 + espaces dans le chemin** : `ffp5cs/run_s3_build_from_safe_path.bat` (miroir sous `C:\pio-builds\ffp5cs-space-mirror` par défaut) ou `run_s3_fix_via_subst.bat` (lecteur `P:`).
+
+Les firmwares **n3pp**, **msp**, **uploadphotosserver** (hors ffp5cs) n’incluent pas encore le pre-script de redirection dans ce dépôt : leurs builds restent par défaut dans `.pio/build/` jusqu’à ajout éventuel de la même ligne `pre:../scripts/pio_redirect_build_dir.py` dans leur `platformio.ini`.
+
 ## Scripts de monitoring et erase-flash
 
 ### Référence FFP5CS (workflow complet)
@@ -73,32 +83,21 @@ Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs
 
 ### Scripts racine firmwires (multi-projets)
 
-À la racine de `firmwires/`, les scripts suivants sont disponibles pour un usage multi-projets (n3pp, msp, uploadphotosserver, ffp5cs) :
+Des scripts **multi-projets** (`monitor_Nmin.ps1`, `erase_flash_monitor.ps1`, `firmwires/scripts/analyze_log_generic.ps1`) sont décrits dans les règles Cursor / conventions du projet comme cible d’unification ; **ils ne sont pas encore présents dans ce dépôt**. En attendant, utiliser les scripts **ffp5cs** ci-dessus pour le workflow erase / flash / monitor / analyse, ou lancer `pio device monitor` / `pio run -t upload` depuis chaque dossier de firmware.
 
-| Script | Rôle |
-|--------|------|
-| `monitor_Nmin.ps1` | Capture du moniteur série pendant N secondes (défaut 5 min). Paramètres : `-Project`, `-DurationSeconds`, `-Port`, `-Environment`. Log créé dans le dossier du projet (et dans `uploadphotosserver/logs/` pour le firmware caméra unifié). |
-| `erase_flash_monitor.ps1` | Workflow : erase → flash firmware (et LittleFS pour ffp5cs si applicable) → monitoring N min → analyse (générique ou déléguée à ffp5cs). Paramètres : `-Project`, `-Port`, `-DurationMinutes`, `-SkipBuild`, `-SkipUploadFs`, `-Environment`. |
-| `scripts/Release-ComPort.ps1` | Libération du port COM (processus moniteur). Partagé ; peut être hérité de `ffp5cs/scripts/Release-ComPort.ps1`. |
-| `scripts/analyze_log_generic.ps1` | Analyse générique des logs (crashes, WDT, heap, réseau, reboots) pour tout firmware n'ayant pas d'analyse dédiée. |
+| Emplacement | Rôle |
+|-------------|------|
+| `ffp5cs/scripts/Release-ComPort.ps1` | Libération du port COM (processus moniteur). |
 
-**Exemples (depuis `firmwires/`) :**
+**Exemples (référence ffp5cs, depuis `ffp5cs/`) :**
 
 ```powershell
-# Monitoring 5 min sur n3pp
-.\monitor_Nmin.ps1 -Project n3pp
+# Workflow complet : erase, flash, LittleFS (sauf prod), monitor, analyse
+.\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-test -Port COM4
 
-# Erase + flash + monitor 5 min sur ffp5cs (env wroom-test), port COM4
-.\erase_flash_monitor.ps1 -Project ffp5cs -Port COM4
-
-# Erase + flash + monitor 10 min sur msp, sans rebuild
-.\erase_flash_monitor.ps1 -Project msp -DurationMinutes 10 -SkipBuild
-
-# ffp5cs en prod : pas de LittleFS
-.\erase_flash_monitor.ps1 -Project ffp5cs -Environment wroom-prod -SkipUploadFs
+# Monitoring seul
+.\monitor_5min.ps1 -Port COM4
 ```
-
-**Projets ciblés** : `n3pp`, `msp`, `uploadphotosserver` (env par défaut : msp1 ; utiliser `-Environment n3pp` ou `-Environment ffp3` pour les autres cibles), `uploadphotosserver_msp1`, `uploadphotosserver_n3pp_1_6_deppsleep`, `uploadphotosserver_ffp3_1_5_deppsleep`, `ffp5cs`. Pour **ffp5cs**, le script racine délègue au workflow complet dans `ffp5cs/` ; analyse détaillée et rapport diagnostic. **ratata** et **LVGL_Widgets** sont exclus.
 
 ### Uploadphotosserver — build multi-env séquentiel
 

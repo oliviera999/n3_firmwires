@@ -7,7 +7,13 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 if (-not (Test-Path $ProjectRoot)) { $ProjectRoot = (Get-Location).Path }
 
-$buildDir = Join-Path $ProjectRoot (Join-Path ".pio" (Join-Path "build" "wroom-test"))
+$helpers = Join-Path $ProjectRoot "..\scripts\Get-PioBuildHelpers.ps1"
+if (Test-Path -LiteralPath $helpers) {
+    . $helpers
+    $buildDir = Get-N3PioEnvBuildDir -ProjectRoot $ProjectRoot -Environment "wroom-test"
+} else {
+    $buildDir = Join-Path $ProjectRoot (Join-Path ".pio" (Join-Path "build" "wroom-test"))
+}
 $expected = "CONFIG_ESP_TASK_WDT_TIMEOUT_S=30"
 $found = $false
 $path = $null
@@ -57,7 +63,7 @@ if (-not $path) {
 }
 
 if (-not $path) {
-    Write-Host "Aucun sdkconfig avec CONFIG_ESP_TASK_WDT_TIMEOUT_S trouvé dans .pio/build/wroom-test."
+    Write-Host "Aucun sdkconfig avec CONFIG_ESP_TASK_WDT_TIMEOUT_S trouvé dans le dossier de build wroom-test ($buildDir)."
     Write-Host "Pour un build Arduino, c'est normal: la reconfig au runtime (app.cpp) est la source de vérité."
     Write-Host "Vérifier en log au boot: [BOOT] Watchdog configuré: timeout=30000 ms (WROOM)"
 }

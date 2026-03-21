@@ -681,7 +681,7 @@ struct WifiCredential {
 WifiCredential wifiList[] = {
   { WIFI_SSID_1, WIFI_PASSWORD_1 },
   //{ "raspN3", "n3LLrasp" },
-  //{ "AP-Techno-T06", "Techno2024!" },
+  //{ "VOTRE_SSID_1", "VOTRE_MOT_DE_PASSE_1" },
   //{ "dlink", "n3LLdlink" },
   { WIFI_SSID_2, WIFI_PASSWORD_2 },
 

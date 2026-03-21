@@ -45,7 +45,7 @@ namespace ProjectConfig {
     // v13.11: OTA — priorité absolue (10) pendant checkForUpdate/performUpdate.
     // v13.12: OTA_BASE_PATH /ota/ (publication unifiée serveur/ota/, plus /ffp3/ota).
     // v13.22: Cible OTA pour validation end-to-end wroom-beta.
-    inline constexpr const char* VERSION = "13.22";
+    inline constexpr const char* VERSION = "13.23";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

@@ -72,8 +72,8 @@ firmwires/
 
 | Problème | Détail |
 |----------|--------|
-| **Identifiants en clair** | Mots de passe WiFi (`Techno2024!`, etc.) et SMTP (Gmail) dans `src/main.cpp` des deux projets. Risque en cas de partage ou mise sous Git public. |
-| **Clé API** | `apiKeyValue = "fdGTMoptd5CD2ert3"` en dur ; à externaliser (fichier non versionné ou variables d’environnement) pour la production. |
+| **Identifiants en clair** | Mots de passe WiFi (`<wifi_password>`, etc.) et SMTP (Gmail) dans `src/main.cpp` des deux projets. Risque en cas de partage ou mise sous Git public. |
+| **Clé API** | `apiKeyValue = "your_api_key_here"` en dur ; à externaliser (fichier non versionné ou variables d’environnement) pour la production. |
 
 ### 4.2 Configuration et build
 
