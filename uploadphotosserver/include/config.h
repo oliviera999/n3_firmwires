@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.18"
+#define FIRMWARE_VERSION "2.19"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -38,7 +38,7 @@
 
 /* OTA distant (metadata.json) — toutes cibles : vérif à chaque réveil */
 #define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
-#define OTA_CHECK_EVERY_N_BOOTS  6
+#define OTA_CHECK_EVERY_N_BOOTS  1
 
 /* WiFi */
 #define WIFI_CONNECT_TIMEOUT_MS  5000
