@@ -58,13 +58,14 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 
 ## Build Windows : chemins courts, redirection et nettoyage
 
-- **Redirection des artefacts** : les projets qui incluent `firmwires/scripts/pio_redirect_build_dir.py` (dont **ffp5cs** et les dossiers **test psram s3***) placent les binaires sous `C:\pio-builds\<slug-projet>\<env>\` sur Windows par défaut (évite chemins longs et soucis d’espaces dans le clone). **Linux / CI** : pas de redirection sauf si la variable d’environnement `N3_PIO_BUILD_ROOT` est définie — les artefacts restent alors sous `.pio/build/<env>/` (comportement GitHub Actions inchangé).
+- **Redirection des artefacts** : les projets qui incluent `firmwires/scripts/pio_redirect_build_dir.py` (**ffp5cs**, **n3pp**, **msp**, **uploadphotosserver**, dossiers **test psram s3***) placent les binaires sous `C:\pio-builds\<slug-projet>\<env>\` sur Windows par défaut (évite chemins longs et soucis d’espaces dans le clone). **Linux / CI** : pas de redirection sauf si la variable d’environnement `N3_PIO_BUILD_ROOT` est définie — les artefacts restent alors sous `.pio/build/<env>/` (comportement GitHub Actions inchangé).
 - **Désactiver la redirection** : `N3_PIO_BUILD_REDIRECT=0` (PowerShell : `$env:N3_PIO_BUILD_REDIRECT='0'`). **Autre racine** : `N3_PIO_BUILD_ROOT=D:\mes-builds`.
 - **Chemins côté scripts** : `firmwires/scripts/Get-PioBuildHelpers.ps1` (fonctions `Get-N3PioFirmwareBin`, etc.) — utilisé par `IOT_n3/scripts/publish_ota.ps1` pour trouver `firmware.bin` / `littlefs.bin` que le build soit sous `C:\pio-builds` ou dans `.pio/build`.
 - **Nettoyage global** : depuis la racine **IOT_n3**, `.\scripts\clean-firmware-builds.ps1` (ajouter `-WhatIf` pour simulation). Options : `-IncludePioBuildsRoot` pour purger les sous-dossiers `C:\pio-builds\<slug>` des projets listés, `-IncludeLegacyFfp5Mirror` pour supprimer l’ancien miroir `C:\ffp5cs_build`.
 - **S3 + espaces dans le chemin** : `ffp5cs/run_s3_build_from_safe_path.bat` (miroir sous `C:\pio-builds\ffp5cs-space-mirror` par défaut) ou `run_s3_fix_via_subst.bat` (lecteur `P:`).
+- **Toolchain GCC 14 (Xtensa) + Arduino-ESP32 3.3.x** : erreur de link `undefined reference to __atomic_fetch_add_4` (libstdc++ / `shared_ptr` dans Network, FS, SD) — fichier `src/gcc_atomic_compat.c` dans **n3pp**, **msp** et **uploadphotosserver**. **ESP Mail Client** sur partition SPIFFS uniquement : script `firmwires/scripts/pio_patch_esp_mail_fs_spiffs.py` (référencé par **n3pp** et **msp**), qui patche une fois `ESP_Mail_FS.h` dans `.pio/libdeps` (idempotent).
 
-Les firmwares **n3pp**, **msp**, **uploadphotosserver** (hors ffp5cs) n’incluent pas encore le pre-script de redirection dans ce dépôt : leurs builds restent par défaut dans `.pio/build/` jusqu’à ajout éventuel de la même ligne `pre:../scripts/pio_redirect_build_dir.py` dans leur `platformio.ini`.
+Les projets **legacy** caméra (`uploadphotosserver_*` hors dépôt unifié) ou exemples sans `platformio.ini` à la racine peuvent encore compiler uniquement sous `.pio/build/` : ajouter la même ligne `pre:../scripts/pio_redirect_build_dir.py` si besoin.
 
 ## Scripts de monitoring et erase-flash
 

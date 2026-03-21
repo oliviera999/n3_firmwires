@@ -137,13 +137,16 @@ def add_wno_error_for_wroom():
 def ensure_build_subdirs():
     """Crée le répertoire de build et sous-dossiers (src, src/automatism) pour éviter
     'opening dependency file ... No such file or directory' et .sconsign*.tmp en compilation parallèle.
-    Construit le chemin depuis PROJECT_DIR + PIOENV pour être sûr du bon répertoire (Windows)."""
+    Utilise BUILD_DIR (redirection C:\\pio-builds possible via pio_redirect_build_dir.py)."""
     try:
         proj = env.subst("$PROJECT_DIR")
         pioenv = env.get("PIOENV", "")
         if not proj or not pioenv:
             return
-        build_root = os.path.normpath(os.path.join(proj, ".pio", "build", pioenv))
+        try:
+            build_root = os.path.normpath(env.subst("$BUILD_DIR"))
+        except Exception:
+            build_root = os.path.normpath(os.path.join(proj, ".pio", "build", pioenv))
         for sub in ("", "src", os.path.join("src", "automatism")):
             d = os.path.join(build_root, sub) if sub else build_root
             os.makedirs(d, exist_ok=True)

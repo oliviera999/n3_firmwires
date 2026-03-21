@@ -140,10 +140,10 @@ function Write-N3PioWorkspaceAdvice {
     )
     $full = [System.IO.Path]::GetFullPath($ProjectRoot)
     if ($full -match '\s') {
-        Write-Host "N3 build: le chemin du projet contient des espaces — risque PlatformIO/SCons. Preferez un clone court ou N3_PIO_BUILD_ROOT." -ForegroundColor Yellow
+        Write-Host "N3 build: le chemin du projet contient des espaces - risque PlatformIO/SCons. Preferez un clone court ou N3_PIO_BUILD_ROOT." -ForegroundColor Yellow
     }
     if ($full.Length -gt 200) {
-        Write-Host "N3 build: chemin tres long ($($full.Length) caracteres) — preferez C:\pio-builds via redirection (Windows) ou deplacer le depot." -ForegroundColor Yellow
+        Write-Host ('N3 build: chemin tres long ({0} caracteres) - preferez C:\pio-builds via redirection (Windows) ou deplacer le depot.' -f $full.Length) -ForegroundColor Yellow
     }
     $r = Get-N3PioRedirectRoot
     if ($r) {

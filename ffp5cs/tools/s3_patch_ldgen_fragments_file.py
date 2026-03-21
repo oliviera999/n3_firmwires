@@ -134,9 +134,13 @@ def _patch_ldgen_cmake(pkg_dir):
 def _invalidate_ldgen_build_cache(pioenv):
     """Force reconfig pour que Ninja utilise --fragments-list-file au lieu de la longue ligne."""
     try:
-        proj = env.subst("$PROJECT_DIR")
-        cache = os.path.join(proj, ".pio", "build", pioenv, "CMakeCache.txt")
-        ninja = os.path.join(proj, ".pio", "build", pioenv, "build.ninja")
+        try:
+            build_dir = env.subst("$BUILD_DIR")
+        except Exception:
+            proj = env.subst("$PROJECT_DIR")
+            build_dir = os.path.join(proj, ".pio", "build", pioenv)
+        cache = os.path.join(build_dir, "CMakeCache.txt")
+        ninja = os.path.join(build_dir, "build.ninja")
         for p in (cache, ninja):
             if os.path.isfile(p):
                 os.remove(p)
