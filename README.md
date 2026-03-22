@@ -10,7 +10,7 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 |--------|---------|-------|-------------|
 | **N3PhasmesProto (n3pp)** | `n3pp/` | ESP32 dev | Contrôle serre / aquaponie : température/humidité air, 4 capteurs humidité sol, pompe, luminosité, mails d’alerte, serveur web, NTP, OLED, deep sleep. |
 | **MeteoStationPrototype (msp)** | `msp/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
-| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA, 10 min, version courante `2.19`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload avec header `X-Api-Key`, retries de connexion, vérification du code HTTP retour. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
+| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.21`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload avec header `X-Api-Key`, retries de connexion, vérification du code HTTP retour. Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
 | **Upload Photos MSP1** (legacy) | `uploadphotosserver_msp1/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env msp1. |
 | **Upload Photos N3PP** (legacy) | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env n3pp. |
 | **Upload Photos FFP3** (legacy) | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env ffp3. |
@@ -63,7 +63,7 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 - **Chemins côté scripts** : `firmwires/scripts/Get-PioBuildHelpers.ps1` (fonctions `Get-N3PioFirmwareBin`, etc.) — utilisé par `IOT_n3/scripts/publish_ota.ps1` pour trouver `firmware.bin` / `littlefs.bin` que le build soit sous `C:\pio-builds` ou dans `.pio/build`.
 - **Nettoyage global** : depuis la racine **IOT_n3**, `.\scripts\clean-firmware-builds.ps1` (ajouter `-WhatIf` pour simulation). Options : `-IncludePioBuildsRoot` pour purger les sous-dossiers `C:\pio-builds\<slug>` des projets listés, `-IncludeLegacyFfp5Mirror` pour supprimer l’ancien miroir `C:\ffp5cs_build`.
 - **S3 + espaces dans le chemin** : `ffp5cs/run_s3_build_from_safe_path.bat` (miroir sous `C:\pio-builds\ffp5cs-space-mirror` par défaut) ou `run_s3_fix_via_subst.bat` (lecteur `P:`).
-- **Toolchain GCC 14 (Xtensa) + Arduino-ESP32 3.3.x** : erreur de link `undefined reference to __atomic_fetch_add_4` (libstdc++ / `shared_ptr` dans Network, FS, SD) — fichier `src/gcc_atomic_compat.c` dans **n3pp**, **msp** et **uploadphotosserver**. **ESP Mail Client** sur partition SPIFFS uniquement : script `firmwires/scripts/pio_patch_esp_mail_fs_spiffs.py` (référencé par **n3pp** et **msp**), qui patche une fois `ESP_Mail_FS.h` dans `.pio/libdeps` (idempotent).
+- **Toolchain GCC 14 (Xtensa) + Arduino-ESP32 3.3.x** : erreur de link `undefined reference to __atomic_fetch_add_4` (libstdc++ / `shared_ptr` dans Network, FS, SD) — fichier `src/gcc_atomic_compat.c` dans **n3pp**, **msp** et **uploadphotosserver**. **ESP Mail Client** sur partition SPIFFS uniquement : script `firmwires/scripts/pio_patch_esp_mail_fs_spiffs.py` (référencé par **n3pp**, **msp** et **uploadphotosserver**), qui patche une fois `ESP_Mail_FS.h` dans `.pio/libdeps` (idempotent).
 
 Les projets **legacy** caméra (`uploadphotosserver_*` hors dépôt unifié) ou exemples sans `platformio.ini` à la racine peuvent encore compiler uniquement sous `.pio/build/` : ajouter la même ligne `pre:../scripts/pio_redirect_build_dir.py` si besoin.
 
@@ -100,15 +100,14 @@ Des scripts **multi-projets** (`monitor_Nmin.ps1`, `erase_flash_monitor.ps1`, `f
 .\monitor_5min.ps1 -Port COM4
 ```
 
-### Uploadphotosserver — build multi-env séquentiel
+### Uploadphotosserver — build multi-env
 
-Le firmware caméra unifié dispose d'un script dédié : `uploadphotosserver/scripts/build_all_envs.ps1`.
+Le firmware caméra unifié ne dispose pas (dans ce dépôt) d'un script `build_all_envs.ps1` versionné.
+Utiliser les commandes PlatformIO directes depuis `uploadphotosserver/` :
 
-- Build de warmup pioarduino (par défaut `n3pp/esp32dev`) puis build séquentiel des envs `msp1`, `n3pp`, `ffp3`.
-- Usage :
-  - `cd uploadphotosserver`
-  - `.\scripts\build_all_envs.ps1`
-  - options utiles : `-SkipWarmup`, `-StopOnError`
+- `pio run -e msp1`
+- `pio run -e n3pp`
+- `pio run -e ffp3`
 
 ## Stack ESP-IDF et plateforme
 
@@ -145,7 +144,7 @@ Chaque `platformio.ini` définit `upload_port` et `monitor_port` (souvent `COM3`
 
 Le firmware **uploadphotosserver** (unifié) et les projets **uploadphotosserver_msp1** / **uploadphotosserver_n3pp_1_6_deppsleep** utilisent une logique WiFi alignée sur ffp5cs (simplifiée) :
 
-- **Credentials** : **un seul fichier partagé** : `firmwires/credentials.h` (copier `firmwires/credentials.h.example`). Utilisé par n3pp, msp et uploadphotosserver (msp1, n3pp, ffp3). **ffp5cs** utilise son propre `include/secrets.h` (copier `include/secrets.h.example`). Sans le fichier de secrets correspondant, la compilation échoue.
+- **Credentials** : **un seul fichier partagé** : `firmwires/credentials.h` (copier `firmwires/credentials.h.example`). Utilisé par n3pp, msp et uploadphotosserver (msp1, n3pp, ffp3), y compris les identifiants SMTP (`SMTP_HOST_ADDR`, `SMTP_PORT_NUM`, `SMTP_EMAIL`, `SMTP_PASSWORD`, `SMTP_DEST`) pour les notifications mail caméra. **ffp5cs** utilise son propre `include/secrets.h` (copier `include/secrets.h.example`). Sans le fichier de secrets correspondant, la compilation échoue.
 - **Comportement** : au démarrage, scan des réseaux, association des credentials aux AP visibles, tri par RSSI (meilleur signal en premier), puis tentatives de connexion avec BSSID et canal si le réseau est visible (timeout 5 s par tentative, une retry sans BSSID en cas d’échec). Délai 250 ms entre chaque réseau. Pas d’AP de secours.
 - **MSP1** : en cas de déconnexion, tentative de reconnexion périodique (toutes les 60 s) dans `loop()`.
 - **N3PP** : deep sleep à chaque cycle ; au réveil, `Wificonnect()` est rappelé dans `setup()`.
@@ -196,10 +195,9 @@ firmwires/
 │   ├── lib/, include/, test/
 ├── uploadphotosserver/         # ESP32-CAM unifié (envs msp1, n3pp, ffp3)
 │   ├── platformio.ini
-│   ├── include/config.h, credentials.h.example (pointe vers firmwires/credentials.h)
+│   ├── include/config.h
 │   ├── src/main.cpp
 │   ├── tools/pio_ensure_credentials.py
-│   ├── scripts/build_all_envs.ps1
 │   └── logs/ (creé automatiquement par monitor_Nmin.ps1)
 ├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 (legacy)
 │   ├── platformio.ini

@@ -6,6 +6,9 @@ struct N3OtaConfig {
     const char* currentVersion;
     int ledPin;            // GPIO LED de feedback (-1 = désactivé), ou reserved (-1)
     const char* metadataKey; // NULL = objet unique {version,url,md5} ; sinon clé pour JSON multi-cible (ex. "msp1")
+    void (*onUpdateStart)(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
+    void (*onUpdateEnd)(bool success, const char* details, void* userData);
+    void* userData;
 };
 
 // Synchronise la partition de boot avec la partition en cours d'exécution.

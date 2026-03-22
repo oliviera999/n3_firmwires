@@ -20,13 +20,13 @@ function Get-N3PioRedirectRoot {
     if ($custom -and $custom.Trim()) {
         return $custom.Trim()
     }
-    $isWindows = $false
+    $isWinLocal = $false
     if ($PSVersionTable.PSVersion.Major -ge 6 -and $null -ne (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) -and $IsWindows) {
-        $isWindows = $true
+        $isWinLocal = $true
     } elseif ($env:OS -match 'Windows') {
-        $isWindows = $true
+        $isWinLocal = $true
     }
-    if ($isWindows) {
+    if ($isWinLocal) {
         if (-not $flag -or $flag.Trim().ToLowerInvariant() -notin @("0", "false", "no", "off")) {
             return "C:\pio-builds"
         }

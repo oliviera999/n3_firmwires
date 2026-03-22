@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.19"
+#define FIRMWARE_VERSION "2.21"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -39,6 +39,14 @@
 /* OTA distant (metadata.json) — toutes cibles : vérif à chaque réveil */
 #define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
 #define OTA_CHECK_EVERY_N_BOOTS  1
+
+/* Notifications mail */
+#define MAIL_NOTIFICATIONS_ENABLED 1
+#define MAIL_SUBJECT_MAX_LEN      128
+#define MAIL_BODY_MAX_LEN         1200
+#define MAIL_EXTRA_MAX_LEN        384
+#define MAIL_PENDING_EVENING      0x01
+#define MAIL_PENDING_MORNING      0x02
 
 /* WiFi */
 #define WIFI_CONNECT_TIMEOUT_MS  5000

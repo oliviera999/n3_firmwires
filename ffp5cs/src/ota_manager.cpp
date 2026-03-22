@@ -30,9 +30,9 @@ bool hasOtaPartition() {
     return esp_ota_get_next_update_partition(nullptr) != nullptr;
 }
 
-#if defined(BOARD_WROOM)
-// WROOM: convertit "https://..." en "http://..." (supprime le 's' de https).
-// TLS impossible sur WROOM (heap fragmenté ~31 KB contigus vs ~45 KB requis par mbedTLS).
+#if defined(BOARD_WROOM) || defined(BOARD_S3)
+// WROOM/S3: convertit "https://..." en "http://..." (supprime le 's' de https).
+// OTA homogénéisée en HTTP; intégrité du binaire assurée par MD5 avant flash.
 void downgradeToHttp(char* url, size_t bufSize) {
     if (!url || bufSize < 8) return;
     if (strncmp(url, "https://", 8) == 0) {
@@ -1843,9 +1843,9 @@ bool OTAManager::checkForUpdate() {
     strncpy(m_firmwareMD5, selMD5, sizeof(m_firmwareMD5) - 1);
     m_firmwareMD5[sizeof(m_firmwareMD5) - 1] = '\0';
 
-#if defined(BOARD_WROOM)
-    // WROOM sans PSRAM : TLS impossible (heap fragmenté, ~31 KB contigus max vs ~45 KB requis).
-    // Convertir les URLs HTTPS → HTTP. Intégrité garantie par vérification MD5 du binaire.
+#if defined(BOARD_WROOM) || defined(BOARD_S3)
+    // OTA WROOM/S3 en HTTP: convertir les URLs HTTPS → HTTP.
+    // Intégrité garantie par vérification MD5 du binaire.
     downgradeToHttp(m_firmwareUrl, sizeof(m_firmwareUrl));
 #endif
 
@@ -1855,7 +1855,7 @@ bool OTAManager::checkForUpdate() {
     if (selectFilesystemFromMetadata(doc, selFilesystemUrl, sizeof(selFilesystemUrl), selFilesystemSize, selFilesystemMD5, sizeof(selFilesystemMD5))) {
         strncpy(m_filesystemUrl, selFilesystemUrl, sizeof(m_filesystemUrl) - 1);
         m_filesystemUrl[sizeof(m_filesystemUrl) - 1] = '\0';
-#if defined(BOARD_WROOM)
+#if defined(BOARD_WROOM) || defined(BOARD_S3)
         downgradeToHttp(m_filesystemUrl, sizeof(m_filesystemUrl));
 #endif
         m_filesystemSize = selFilesystemSize;

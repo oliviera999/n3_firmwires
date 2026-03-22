@@ -12,18 +12,43 @@
 
 static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
   JSONVar val = obj[key];
-  if (JSON.typeof(val) != "undefined") {
-    return atoi((const char*)val);
+  String valueType = JSON.typeof(val);
+  if (valueType == "undefined" || valueType == "null") {
+    return defaultValue;
   }
+
+  if (valueType == "number" || valueType == "boolean") {
+    return (int)val;
+  }
+
+  if (valueType == "string") {
+    const char* raw = (const char*)val;
+    if (raw == nullptr || raw[0] == '\0') {
+      return defaultValue;
+    }
+    return atoi(raw);
+  }
+
   return defaultValue;
 }
 
 static String readStringByKey(const JSONVar& obj, const char* key, const String& defaultValue) {
   JSONVar val = obj[key];
-  if (JSON.typeof(val) != "undefined") {
-    return String((const char*)val);
+  String valueType = JSON.typeof(val);
+  if (valueType == "undefined" || valueType == "null") {
+    return defaultValue;
   }
-  return defaultValue;
+
+  if (valueType == "string") {
+    const char* raw = (const char*)val;
+    if (raw == nullptr) {
+      return defaultValue;
+    }
+    return String(raw);
+  }
+
+  // Fallback: stringify for numeric/boolean values returned by the server.
+  return JSON.stringify(val);
 }
 
 void datatobdd() {

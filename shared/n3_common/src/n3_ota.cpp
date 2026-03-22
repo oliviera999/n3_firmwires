@@ -4,6 +4,7 @@
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
 #include <ArduinoJson.h>
+#include <cstdio>
 
 void n3OtaSyncBootPartition() {
     const esp_partition_t* running = esp_ota_get_running_partition();
@@ -30,6 +31,7 @@ static int compareVersions(const char* v1, const char* v2) {
 bool n3OtaCheck(const N3OtaConfig& config) {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[OTA] Pas de WiFi, verification ignoree");
+        if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: WiFi indisponible.", config.userData);
         return false;
     }
 
@@ -45,8 +47,14 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     if (code != 200) {
         if (code == 404) {
             Serial.println("[OTA] Metadata introuvable (404) - normal si env test sans fichier deploye");
+            if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: metadata 404.", config.userData);
         } else {
             Serial.printf("[OTA] Erreur HTTP %d\n", code);
+            if (config.onUpdateEnd) {
+                char details[96];
+                snprintf(details, sizeof(details), "OTA ignoree: erreur HTTP metadata %d.", code);
+                config.onUpdateEnd(false, details, config.userData);
+            }
         }
         http.end();
         return false;
@@ -59,6 +67,7 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     DeserializationError err = deserializeJson(doc, payload);
     if (err) {
         Serial.printf("[OTA] JSON invalide: %s\n", err.c_str());
+        if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: metadata JSON invalide.", config.userData);
         return false;
     }
 
@@ -66,6 +75,7 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     if (config.metadataKey && config.metadataKey[0] != '\0') {
         if (!doc[config.metadataKey].is<JsonObject>()) {
             Serial.printf("[OTA] Cle %s absente\n", config.metadataKey);
+            if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: cle metadata absente.", config.userData);
             return false;
         }
         entry = doc[config.metadataKey].as<JsonObject>();
@@ -77,6 +87,7 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     const char* firmwareUrl = entry["url"].as<const char*>();
     if (!remoteVersion || !firmwareUrl) {
         Serial.println("[OTA] JSON invalide ou champs version/url manquants");
+        if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: champs version/url manquants.", config.userData);
         return false;
     }
 
@@ -84,11 +95,15 @@ bool n3OtaCheck(const N3OtaConfig& config) {
 
     if (compareVersions(remoteVersion, config.currentVersion) <= 0) {
         Serial.println("[OTA] Deja a jour");
+        if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: firmware deja a jour.", config.userData);
         return false;
     }
 
     Serial.printf("[OTA] MAJ disponible %s -> %s, telechargement...\n",
                   config.currentVersion, remoteVersion);
+    if (config.onUpdateStart) {
+        config.onUpdateStart(config.currentVersion, remoteVersion, firmwareUrl, config.userData);
+    }
 
     if (config.ledPin >= 0) {
         httpUpdate.setLedPin(config.ledPin, LOW);
@@ -101,13 +116,20 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     switch (ret) {
         case HTTP_UPDATE_OK:
             Serial.println("[OTA] MAJ reussie, redemarrage...");
+            if (config.onUpdateEnd) config.onUpdateEnd(true, "OTA terminee avec succes. Redemarrage imminent.", config.userData);
             return true;
         case HTTP_UPDATE_FAILED:
             Serial.printf("[OTA] Echec MAJ: %s\n",
                           httpUpdate.getLastErrorString().c_str());
+            if (config.onUpdateEnd) {
+                char details[192];
+                snprintf(details, sizeof(details), "OTA echec: %s", httpUpdate.getLastErrorString().c_str());
+                config.onUpdateEnd(false, details, config.userData);
+            }
             break;
         case HTTP_UPDATE_NO_UPDATES:
             Serial.println("[OTA] Pas de MAJ");
+            if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: pas de mise a jour.", config.userData);
             break;
     }
     return false;

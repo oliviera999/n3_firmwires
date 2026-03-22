@@ -12,6 +12,27 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.25 - 2026-03-22
+
+### Test OTA distant (wroom-beta)
+
+- **Objectif** : incrément de version pour valider un cycle OTA distant complet sur le canal beta (`ffp5-wroom-beta`).
+- **Déploiement OTA** : publication du firmware beta via `scripts/publish_ota.ps1` (cible `ffp5-wroom-beta`).
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.24 - 2026-03-21
+
+### OTA HTTP aussi pour S3 (alignement WROOM/S3)
+
+- **OTA S3 en HTTP** : la récupération `metadata.json` utilise maintenant HTTP côté S3, comme WROOM, pour homogénéiser les mises à jour OTA et réduire les échecs liés à TLS.
+- **Downgrade URL OTA** : conversion HTTPS → HTTP appliquée aussi aux URLs firmware/filesystem OTA sur S3 (comme sur WROOM).
+- **Intégrité** : l’intégrité du binaire reste contrôlée par la vérification MD5 avant flash.
+- **Fichiers** : `include/ota_config.h`, `src/ota_manager.cpp`, `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.23 - 2026-03-21
 
 ### Build Windows : redirection C:\pio-builds, scripts et nettoyage

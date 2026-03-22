@@ -1,0 +1,11 @@
+{
+  "name": "n3_mail",
+  "version": "1.0.0",
+  "description": "Envoi SMTP et formatage debug pour firmwares n3 IoT",
+  "keywords": ["mail", "smtp", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "mobizt/ESP Mail Client": "^3.4.24"
+  }
+}

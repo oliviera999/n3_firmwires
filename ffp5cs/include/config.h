@@ -45,7 +45,8 @@ namespace ProjectConfig {
     // v13.11: OTA — priorité absolue (10) pendant checkForUpdate/performUpdate.
     // v13.12: OTA_BASE_PATH /ota/ (publication unifiée serveur/ota/, plus /ffp3/ota).
     // v13.22: Cible OTA pour validation end-to-end wroom-beta.
-    inline constexpr const char* VERSION = "13.23";
+    // v13.25: Incrément pour test OTA distant (canal beta).
+    inline constexpr const char* VERSION = "13.25";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -372,7 +373,7 @@ namespace ServerConfig {
     // Diagnostic latence : IP du serveur (iot.olution.info). Non utilisé par défaut : hébergement mutualisé
     // renvoie 403/404 sur l'IP ; sur un VPS on pourrait l'utiliser + Host pour éviter le DNS.
     inline constexpr const char* BASE_URL_TEST_IP = "http://109.234.162.74";
-    // HTTPS réservé pour OTA (sécurité critique pour mises à jour firmware)
+    // HTTPS disponible pour tests/cas spécifiques (TLS), non utilisé par défaut en OTA
     inline constexpr const char* BASE_URL_SECURE = "https://iot.olution.info";
     
     #if defined(USE_TEST3_ENDPOINTS)
@@ -410,7 +411,7 @@ namespace ServerConfig {
         snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT);
     }
     
-    // v11.162: Helper OTA avec HTTPS explicite (sécurité requise)
+    // Helper OTA historique (HTTPS explicite) conservé pour compatibilité.
     inline void getOtaBaseUrl(char* buffer, size_t bufferSize) {
         snprintf(buffer, bufferSize, "%s%s", BASE_URL_SECURE, OTA_BASE_PATH);
     }
