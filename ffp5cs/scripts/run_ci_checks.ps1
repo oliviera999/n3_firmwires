@@ -28,10 +28,22 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Get-PioCliCommand {
+    $pioCmd = Get-Command "pio" -ErrorAction SilentlyContinue
+    if ($pioCmd) { return "pio" }
+    $platformioCmd = Get-Command "platformio" -ErrorAction SilentlyContinue
+    if ($platformioCmd) { return "platformio" }
+    throw "Ni 'pio' ni 'platformio' ne sont disponibles dans le PATH."
+}
+
 function Invoke-PlatformBuild {
+    $pioCli = Get-PioCliCommand
     if ($AllEnvs) {
         Write-Host "[CI] Build multi-environnements (4 envs critiques)" -ForegroundColor Cyan
         $buildScript = Join-Path $PSScriptRoot "build_all_envs.ps1"
+        if (-not (Test-Path -LiteralPath $buildScript)) {
+            Write-Error "Script introuvable: $buildScript"
+        }
         & $buildScript -StopOnError
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Build multi-env echoue. Voir le rapport ci-dessus."
@@ -41,7 +53,7 @@ function Invoke-PlatformBuild {
     }
 
     Write-Host "[CI] Build PlatformIO (env par defaut)" -ForegroundColor Cyan
-    & platformio run
+    & $pioCli run
     if ($LASTEXITCODE -ne 0) {
         Write-Error "PlatformIO build failed. Check compiler output."
     }

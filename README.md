@@ -73,8 +73,9 @@ Les projets **legacy** caméra (`uploadphotosserver_*` hors dépôt unifié) ou 
 
 Le projet **ffp5cs** définit le workflow de validation de référence, aligné sur les règles cœur de projet (offline-first, robustesse, vérification après modification) :
 
-- **Workflow complet** : erase flash → flash firmware (+ LittleFS sauf prod) → monitoring N min → analyse du log. Script principal : `ffp5cs/erase_flash_fs_monitor_5min_analyze.ps1` (option `-Port`, `-Environment`, `-DurationMinutes`, `-SkipBuild`). Pour **ESP32-S3**, utiliser `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod` ; scripts dédiés : `ffp5cs/flash_s3_test.ps1`, `ffp5cs/run_s3_validation.ps1`, `ffp5cs/run_wroom_s3_prod_workflow.ps1`.
+- **Workflow complet** : erase flash → flash firmware (+ LittleFS sauf prod) → monitoring N min → analyse du log. Script principal : `ffp5cs/erase_flash_fs_monitor_5min_analyze.ps1` (options `-Port`, `-Environment`, `-DurationMinutes`, `-SkipBuild`, `-NoPrompt`). Pour **ESP32-S3**, utiliser `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod` ; scripts dédiés : `ffp5cs/run_s3_validation.ps1`, `ffp5cs/run_s3_psram_validation.ps1`, `ffp5cs/run_wroom_s3_prod_workflow.ps1`.
 - **Monitoring** : `ffp5cs/monitor_5min.ps1` — capture série N secondes. Les logs et rapports d'analyse sont écrits dans le dossier dédié `ffp5cs/logs/` (plus à la racine du projet).
+- **Monitoring crash/reboot** : `ffp5cs/monitor_until_crash.ps1` (wrapper PowerShell) appelle `ffp5cs/tools/monitor/monitor_until_crash.py` pour capturer jusqu'au crash/reboot, puis générer un rapport.
 - **Analyse des logs** : `ffp5cs/analyze_log.ps1` (détaillée, spécifique FFP5CS/FFP3) et `ffp5cs/analyze_log_exhaustive.ps1` (crashes, WDT, heap, réseau, reboots). Rapport diagnostic : `ffp5cs/generate_diagnostic_report.ps1`. Toutes les sorties (fichiers .log, _analysis.txt, rapports .md) sont dans `ffp5cs/logs/`.
 
 Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs/`. Voir aussi `ffp5cs/.cursor/rules/` et `ffp5cs/docs/INVENTAIRE_SCRIPTS_FFP5CS.md` pour l'inventaire des scripts.
@@ -172,11 +173,10 @@ firmwires/
 ├── credentials.h.example       # Template (copier en credentials.h, ne pas versionner)
 ├── RECOMMANDATIONS.md
 ├── RAPPORT_ANALYSE.md
-├── monitor_Nmin.ps1            # Monitoring N min (tous projets sauf ratata, LVGL)
-├── erase_flash_monitor.ps1     # Erase + flash + monitor (tous projets sauf ratata, LVGL)
 ├── scripts/
-│   ├── Release-ComPort.ps1      # Libération port COM (partagé)
-│   └── analyze_log_generic.ps1  # Analyse générique des logs
+│   ├── Get-PioBuildHelpers.ps1         # Résolution des artefacts (.pio/build ou C:\pio-builds)
+│   ├── pio_redirect_build_dir.py       # Redirection build Windows vers C:\pio-builds
+│   └── pio_patch_esp_mail_fs_spiffs.py # Patch ESP Mail pour firmwares WROOM/cam
 ├── shared/                     # Bibliothèques partagées n3 (n3pp, msp, ffp5cs)
 │   ├── n3_analog_sensors/      # ADC filtré (luminosité, pont, humidité sol)
 │   ├── n3_battery/             # Batterie pont diviseur (délègue à n3_analog_sensors)

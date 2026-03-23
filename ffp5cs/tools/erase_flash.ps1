@@ -21,7 +21,33 @@ Set-Location $projectRoot
 $env:UPLOAD_PORT = $Port
 . (Join-Path $projectRoot "scripts\Release-ComPort.ps1")
 Release-ComPortIfNeeded -Port $Port
+
+function Get-PioCliCommand {
+    $pioCmd = Get-Command "pio" -ErrorAction SilentlyContinue
+    if ($pioCmd) { return "pio" }
+    $platformioCmd = Get-Command "platformio" -ErrorAction SilentlyContinue
+    if ($platformioCmd) { return "platformio" }
+    throw "Ni 'pio' ni 'platformio' ne sont disponibles dans le PATH."
+}
+
+function Test-ComPortExists {
+    param([string]$PortName)
+    if (-not $PortName) { return $true }
+    try {
+        $ports = [System.IO.Ports.SerialPort]::GetPortNames()
+        return $ports -contains $PortName
+    } catch {
+        return $true
+    }
+}
+
+if (-not (Test-ComPortExists -PortName $Port)) {
+    Write-Host "Erreur: port série '$Port' non détecté." -ForegroundColor Red
+    exit 1
+}
+
+$pioCli = Get-PioCliCommand
 Write-Host "Erase flash: env=$Environment port=$Port" -ForegroundColor Cyan
-pio run -e $Environment -t erase
+& $pioCli run -e $Environment -t erase
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "OK" -ForegroundColor Green

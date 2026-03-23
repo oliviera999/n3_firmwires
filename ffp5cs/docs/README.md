@@ -85,6 +85,15 @@ pio run -e wroom-test -t upload
 pio device monitor
 ```
 
+## Workflow de validation recommandé
+
+- Workflow complet (erase + flash + monitor + analyse) :
+  - `.\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-test -Port COM3`
+- Monitoring jusqu'au crash/reboot :
+  - `.\monitor_until_crash.ps1 -Port COM3 -PostRebootSeconds 60 -MaxWaitSeconds 3600`
+- Build multi-env critiques :
+  - `.\scripts\build_all_envs.ps1`
+
 **Basculement WROOM ↔ S3** : après un build d’une autre famille d’env (ex. wroom-test puis wroom-s3-test), il est recommandé de lancer `pio run -e <env_cible> -t clean` avant de compiler. Le script `build_all_envs.ps1` fait ce nettoyage automatiquement lors du basculement de famille. **wroom-beta** : si le build échoue (FRAMEWORK_DIR None), lancer d’abord `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Détails : [BUILD_S3_PROCESS_ANALYSE.md](technical/BUILD_S3_PROCESS_ANALYSE.md) (sections « Basculement WROOM ↔ S3 » et « wroom-beta et FRAMEWORK_DIR »).
 
 ## Principes de développement

@@ -41,8 +41,37 @@ $projectDir = Split-Path -Parent $scriptDir
 Push-Location $projectDir
 
 try {
+    function Get-PioCliCommand {
+        $pioCmd = Get-Command "pio" -ErrorAction SilentlyContinue
+        if ($pioCmd) { return "pio" }
+        $platformioCmd = Get-Command "platformio" -ErrorAction SilentlyContinue
+        if ($platformioCmd) { return "platformio" }
+        throw "Ni 'pio' ni 'platformio' ne sont disponibles dans le PATH."
+    }
+
+    function Get-DeclaredPioEnvs {
+        param([string]$IniPath)
+        if (-not (Test-Path -LiteralPath $IniPath)) { return @() }
+        $lines = Get-Content -LiteralPath $IniPath -ErrorAction SilentlyContinue
+        $envs = @()
+        foreach ($line in $lines) {
+            if ($line -match '^\[env:([^\]]+)\]') {
+                $envs += $Matches[1]
+            }
+        }
+        return $envs
+    }
+
     if (-not (Test-Path "platformio.ini")) {
         Write-Error "platformio.ini introuvable. Executez ce script depuis ffp5cs/ ou via scripts/."
+        exit 1
+    }
+
+    $pioCli = Get-PioCliCommand
+    $declaredEnvs = Get-DeclaredPioEnvs -IniPath (Join-Path $projectDir "platformio.ini")
+    $invalidEnvs = @($Envs | Where-Object { $_ -notin $declaredEnvs })
+    if ($invalidEnvs.Count -gt 0) {
+        Write-Error ("Environnement(s) inconnu(s) dans platformio.ini: {0}" -f ($invalidEnvs -join ", "))
         exit 1
     }
 
@@ -73,7 +102,7 @@ try {
     if ($Clean) {
         Write-Host "[$prefix] Nettoyage complet (tous les envs)..." -ForegroundColor Yellow
         foreach ($envName in $Envs) {
-            & platformio run -e $envName -t clean 2>&1 | Out-Null
+            & $pioCli run -e $envName -t clean 2>&1 | Out-Null
         }
         Write-Host "[$prefix] Nettoyage termine." -ForegroundColor Green
         Write-Host ""
@@ -85,16 +114,16 @@ try {
 
         if ($needsClean -and -not $Clean) {
             Write-Host "[$prefix] Basculement $previousFamily -> $family : nettoyage de $envName..." -ForegroundColor Yellow
-            & platformio run -e $envName -t clean 2>&1 | Out-Null
+            & $pioCli run -e $envName -t clean 2>&1 | Out-Null
         }
 
         Write-Host "[$prefix] Compilation : $envName ($family)" -ForegroundColor Cyan
         $envStart = Get-Date
 
         if ($Verbose) {
-            & platformio run -e $envName 2>&1 | ForEach-Object { Write-Host $_ }
+            & $pioCli run -e $envName 2>&1 | ForEach-Object { Write-Host $_ }
         } else {
-            $output = & platformio run -e $envName 2>&1
+            $output = & $pioCli run -e $envName 2>&1
         }
         $exitCode = $LASTEXITCODE
         $elapsed = [math]::Round(((Get-Date) - $envStart).TotalSeconds, 1)
@@ -102,7 +131,11 @@ try {
         if ($exitCode -eq 0) {
             Write-Host "[$prefix] $envName : OK (${elapsed}s)" -ForegroundColor Green
 
-            $binPath = Join-Path (Join-Path (Join-Path ".pio" "build") $envName) "firmware.bin"
+            $binPath = if (Get-Command Get-N3PioFirmwareBin -ErrorAction SilentlyContinue) {
+                Get-N3PioFirmwareBin -ProjectRoot $projectDir -Environment $envName
+            } else {
+                Join-Path (Join-Path (Join-Path ".pio" "build") $envName) "firmware.bin"
+            }
             if (Test-Path $binPath) {
                 $sizeKB = [math]::Round((Get-Item $binPath).Length / 1KB, 1)
                 Write-Host "        firmware.bin : $sizeKB KB" -ForegroundColor Gray

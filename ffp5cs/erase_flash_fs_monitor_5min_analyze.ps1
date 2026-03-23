@@ -41,11 +41,53 @@ Set-Location $projectRoot
 
 . (Join-Path $PSScriptRoot "scripts\Release-ComPort.ps1")
 
+function Get-PioCliCommand {
+    $pioCmd = Get-Command "pio" -ErrorAction SilentlyContinue
+    if ($pioCmd) { return "pio" }
+    $platformioCmd = Get-Command "platformio" -ErrorAction SilentlyContinue
+    if ($platformioCmd) { return "platformio" }
+    throw "Ni 'pio' ni 'platformio' ne sont disponibles dans le PATH."
+}
+
+function Get-DeclaredPioEnvs {
+    param([string]$IniPath)
+    if (-not (Test-Path -LiteralPath $IniPath)) { return @() }
+    $lines = Get-Content -LiteralPath $IniPath -ErrorAction SilentlyContinue
+    $envs = @()
+    foreach ($line in $lines) {
+        if ($line -match '^\[env:([^\]]+)\]') {
+            $envs += $Matches[1]
+        }
+    }
+    return $envs
+}
+
+function Test-ComPortExists {
+    param([string]$PortName)
+    if (-not $PortName) { return $true }
+    try {
+        $ports = [System.IO.Ports.SerialPort]::GetPortNames()
+        return $ports -contains $PortName
+    } catch {
+        return $true
+    }
+}
+
 $durationSeconds = $DurationMinutes * 60
+$pioCli = Get-PioCliCommand
+$declaredEnvs = Get-DeclaredPioEnvs -IniPath (Join-Path $projectRoot "platformio.ini")
+if ($Environment -notin $declaredEnvs) {
+    Write-Host "Erreur: environnement inconnu '$Environment' dans platformio.ini" -ForegroundColor Red
+    exit 1
+}
 Write-Host "=== WORKFLOW: ERASE ALL / FLASH ALL / MONITOR ${DurationMinutes}MIN / ANALYSE ===" -ForegroundColor Green
 Write-Host "Environnement: $Environment" -ForegroundColor Cyan
 Write-Host "Monitoring: $DurationMinutes min ($durationSeconds s)" -ForegroundColor Cyan
 if ($Port) {
+    if (-not (Test-ComPortExists -PortName $Port)) {
+        Write-Host "Erreur: port série '$Port' non détecté. Branche l'ESP puis relance." -ForegroundColor Red
+        exit 1
+    }
     Write-Host "Port série: $Port" -ForegroundColor Cyan
     $env:PLATFORMIO_UPLOAD_PORT = $Port
 }
@@ -69,7 +111,7 @@ if (-not $SkipBuild) {
     Write-Host "0. Build $Environment..." -ForegroundColor Cyan
     if (-not $SkipClean) {
         Write-Host "   Clean..." -ForegroundColor Gray
-        & pio run -e $Environment -t clean
+        & $pioCli run -e $Environment -t clean
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-Host "   Clean ignoré (-SkipClean)" -ForegroundColor Gray
@@ -77,7 +119,7 @@ if (-not $SkipBuild) {
     # Sous Windows, build séquentiel (-j 1) pour éviter erreurs "No such file or directory" (fichiers .d/.o/tmp et chemins longs).
     $buildJobs = if ($env:OS -eq "Windows_NT") { "-j", "1" } else { @() }
     Write-Host "   Build en cours (plusieurs minutes avec -j 1)..." -ForegroundColor Gray
-    & pio run -e $Environment @buildJobs
+    & $pioCli run -e $Environment @buildJobs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "   OK" -ForegroundColor Green
     Write-Host ""
@@ -90,7 +132,7 @@ $eraseErr = ""
 for ($r = 1; $r -le $maxRetries; $r++) {
     Write-Host "1. Erase complète flash..." -ForegroundColor Cyan
     if ($r -gt 1) { Write-Host "   Tentative $r/$maxRetries (attente 8s)..." -ForegroundColor Gray; Start-Sleep -Seconds 8 }
-    $eraseErr = pio run -e $Environment --target erase 2>&1 | Out-String
+    $eraseErr = & $pioCli run -e $Environment --target erase 2>&1 | Out-String
     if ($LASTEXITCODE -eq 0) { $eraseOk = $true; break }
     if ($Port -and $r -lt $maxRetries) {
         if ($eraseErr -match "Wrong boot mode|download mode") {
@@ -111,7 +153,7 @@ Start-Sleep -Seconds 2
 
 # 2. Upload firmware
 Write-Host "2. Flash firmware ($Environment)..." -ForegroundColor Cyan
-pio run -e $Environment --target upload
+& $pioCli run -e $Environment --target upload
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "   OK" -ForegroundColor Green
 Start-Sleep -Seconds 3
@@ -119,7 +161,7 @@ Start-Sleep -Seconds 3
 # 3. Upload FS (sauf wroom-prod et wroom-beta : pas de serveur embarqué, inutile)
 if ($Environment -ne "wroom-prod" -and $Environment -ne "wroom-beta") {
     Write-Host "3. Flash LittleFS..." -ForegroundColor Cyan
-    pio run -e $Environment --target uploadfs
+    & $pioCli run -e $Environment --target uploadfs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "   OK" -ForegroundColor Green
     Start-Sleep -Seconds 2

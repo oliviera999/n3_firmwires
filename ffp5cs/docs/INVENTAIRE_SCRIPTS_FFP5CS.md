@@ -11,7 +11,7 @@
 |---------|------|------|
 | **monitor_5min.ps1** | PS1 | Monitoring N minutes (défaut 5 min), option port + env. Logs et analyses dans le dossier dédié **logs/** (plus à la racine). |
 | **monitor_until_reboot.ps1** | PS1 | Monitoring jusqu’à détection d’un reboot (sans flash). |
-| **monitor_until_crash.ps1** | PS1 | (Fichier vide dans l’état actuel.) |
+| **monitor_until_crash.ps1** | PS1 | Wrapper PowerShell vers `tools/monitor/monitor_until_crash.py` (port, baud, post-reboot, max-wait). |
 | **monitor_long_run.ps1** | PS1 | Monitoring longue durée. |
 | **monitor_log_wroom_test.ps1** | PS1 | Monitoring avec enregistrement, durée paramétrable (défaut 3 min). |
 | **check_monitoring.ps1** | PS1 | État du monitoring (processus Python, dernier log, recherche de crash). |
@@ -35,8 +35,7 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| | **flash_wroom_test.ps1** | PS1 | Flash seul (firmware + LittleFS) env wroom-test, sans monitoring. |
-| **flash_s3_test.ps1** | PS1 | Flash seul (firmware + LittleFS) env wroom-s3-test (ESP32-S3), sans monitoring. | |
+| **flash_wroom_test.ps1** | PS1 | Flash seul (firmware + LittleFS) env wroom-test, sans monitoring. |
 | **flash_and_monitor_until_reboot.ps1** | PS1 | Flash + monitoring jusqu’à reboot + analyse. |
 | **flash_and_monitor_10min_wroom_test.ps1** | PS1 | Flash + monitoring 10 min + analyse (validation 24/7). |
 | **tools/erase_flash.ps1** | PS1 | Efface la flash via PlatformIO (port + env paramétrables). |
@@ -163,7 +162,7 @@ Scripts appelés par `platformio.ini` ou utilisés pour patcher l’environnemen
 ## 9. Références
 
 - **Workflow recommandé (règles projet) :** `erase_flash_fs_monitor_5min_analyze.ps1` pour erase → flash → monitor → analyse. Pour **WROOM** : `-Environment wroom-test` (défaut). Pour **ESP32-S3** : `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod`. Exemple : `.\erase_flash_fs_monitor_5min_analyze.ps1 -Environment wroom-s3-test -Port COM7`.
-- **Scripts dédiés S3 :** `run_s3_validation.ps1` (wroom-s3-test, 1 min), `run_wroom_s3_prod_workflow.ps1` (wroom-s3-prod, 2 min), `flash_s3_test.ps1` (flash seul wroom-s3-test).
+- **Scripts dédiés S3 :** `run_s3_validation.ps1` (wroom-s3-test, 1 min), `run_s3_psram_validation.ps1`, `run_wroom_s3_prod_workflow.ps1` (wroom-s3-prod, 2 min).
 - **Publication OTA :** `scripts/publish_ota.ps1` ; voir `docs/technical/OTA_PUBLISH.md`.
 - **Analyse détaillée des scripts racine :** `ANALYSE_SCRIPTS_PS1_RACINE.md` (recommandations garder/supprimer/fusionner, corrections).
 
