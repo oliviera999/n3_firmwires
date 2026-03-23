@@ -46,7 +46,10 @@ namespace ProjectConfig {
     // v13.12: OTA_BASE_PATH /ota/ (publication unifiée serveur/ota/, plus /ffp3/ota).
     // v13.22: Cible OTA pour validation end-to-end wroom-beta.
     // v13.25: Incrément pour test OTA distant (canal beta).
-    inline constexpr const char* VERSION = "13.25";
+    // v13.28: Correctif boot WROOM-beta après P1 (rollback normalisation stack, netRPC conservé).
+    // v13.29: Correctif boot loop Cache error (sdkconfig.defaults WROOM restauré depuis dernier état sain).
+    // v13.30: Ajustement DRAM beta-only (stacks statiques) pour rétablir le link wroom-beta.
+    inline constexpr const char* VERSION = "13.30";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -919,7 +922,12 @@ namespace TaskConfig {
     
     // v11.157: Réductions basées sur HWM analysés (sensor:1864, web:5332, display:2328 libres)
     // autoTask: 7356 libres au boot mais 94.9% utilisé plus tard - NE PAS RÉDUIRE
+#if defined(BOARD_WROOM) && defined(PROFILE_BETA)
+    // v13.29: réduction beta uniquement pour récupérer de la DRAM au link
+    inline constexpr uint32_t SENSOR_TASK_STACK_SIZE = 2560;
+#else
     inline constexpr uint32_t SENSOR_TASK_STACK_SIZE = 3072;  // Réduit de 4096 (HWM: 1864 libres, marge 1208)
+#endif
     inline constexpr UBaseType_t SENSOR_TASK_PRIORITY = 2;
     inline constexpr BaseType_t SENSOR_TASK_CORE_ID = 1;
     
@@ -953,6 +961,9 @@ namespace TaskConfig {
     // Tâche OTA dédiée (prioritaire sur netTask) — stack dédiée pour éviter overflow TLS/Update
 #if defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t OTA_TASK_STACK_SIZE = 9216;   // wroom-test : BSS
+#elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
+    // v13.29: réduction beta uniquement pour récupérer de la DRAM au link
+    inline constexpr uint32_t OTA_TASK_STACK_SIZE = 11264;
 #else
     inline constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;  // 12 KB WROOM prod/beta (TLS OTA)
 #endif

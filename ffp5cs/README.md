@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-11.190-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.26-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -104,12 +104,11 @@ ffp5cs/
 - [x] Mode veille optimisé
 - [x] Reconnexion WiFi
 
-### 🔄 Améliorations Récentes (v11.190)
-- [x] Audit général - Corrections prioritaires (incohérence version, delay debug)
-- [x] Simplification capteurs (suppression "Optimizers" et méthodes obsolètes)
-- [x] Configuration unifiée (`include/config.h`)
-- [x] Modernisation JSON (`ArduinoJson 7`)
-- [x] Monitoring allégé (`TaskMonitor`)
+### 🔄 Améliorations Récentes (v13.26)
+- [x] Audit mémoire wroom-beta (bornage sécurité tableaux WiFi)
+- [x] Suppression des `String` temporaires dans les scans WiFi (API ESP-IDF)
+- [x] Helper SSID AP sans `String` (`esp_wifi_get_config`)
+- [x] Vérification FreeRTOS stack depth sur toolchain actuelle
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable
@@ -234,4 +233,4 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 
 ---
 
-*Dernière mise à jour: 2026-02-02 - Version 11.190*
+*Dernière mise à jour: 2026-03-23 - Version 13.26*

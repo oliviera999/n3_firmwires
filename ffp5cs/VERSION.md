@@ -12,6 +12,65 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.30 - 2026-03-23
+
+### Correctif link DRAM wroom-beta (build)
+
+- **Symptôme** : échec link `dram0_0_seg overflowed by 1464 bytes` sur `wroom-beta` après restauration du correctif boot.
+- **Ajustement minimal** : réduction de stacks **statiques** uniquement en profil `PROFILE_BETA` sur WROOM :
+  - `SENSOR_TASK_STACK_SIZE` : `3072 -> 2560`
+  - `OTA_TASK_STACK_SIZE` : `12288 -> 11264`
+- **Impact** : récupération d'environ 1.5 KB en `.dram0.bss`, sans toucher aux valeurs prod ni test.
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.29 - 2026-03-23
+
+### Correctif boot loop WROOM-beta (Cache error au démarrage)
+
+- **Cause isolée par bisect matériel** : premier commit fautif `5e8f8a7`, dernier commit sain `a3c76af`.
+- **Cause technique** : `sdkconfig.defaults` contenait des options incompatibles WROOM (profil généré/élargi), provoquant un panic très tôt (`Cache disabled but cached memory region accessed`).
+- **Correctif appliqué** : restauration de `sdkconfig.defaults` depuis l'état sain (`a3c76af`) tout en conservant le reste des changements récents.
+- **Validation** : build + flash `wroom-beta` puis monitor série sans panic (boot normal et cycle WiFi actif).
+- **Fichiers** : `sdkconfig.defaults`, `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.28 - 2026-03-23
+
+### Correctif boot loop WROOM-beta apres P1
+
+- **Rollback ciblé stacks** : retour au dimensionnement précédent des stacks statiques dans `app_tasks.cpp` pour `sensorTask`, `automationTask` et `netTask`, afin d'éliminer le facteur de risque introduit par la normalisation.
+- **OTA inchangé** : `otaTask` conserve le comportement historique (`/ sizeof(StackType_t)`).
+- **netRPC conservé** : le correctif de libération de slot sur timeout/notification tardive est maintenu.
+- **Fichiers** : `src/app_tasks.cpp`, `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.27 - 2026-03-23
+
+### Audit WROOM P1/P2 : netRPC, stacks FreeRTOS et cohérence partitions/doc
+
+- **netRPC timeout/pool** : dans `netRpcAlloc`, quand le caller timeout puis reçoit une notification tardive de fin, le slot `NetRequest` est libéré immédiatement pour éviter un slot bloqué jusqu'au cycle suivant.
+- **Stacks FreeRTOS** : unification de l'unité de profondeur de pile via `STACK_DEPTH_WORDS(...)` pour toutes les tâches statiques (`sensorTask`, `automationTask`, `netTask`, `otaTask`) afin d'éliminer l'ambiguïté bytes/mots.
+- **Cohérence config/docs WROOM** : commentaires de `platformio.ini` (env `wroom-beta`) réalignés avec l'héritage réel (`wroom-prod` + partition `ota_fs_mail`), et mise à jour de `FLASH_ADDRESSES_WROOM_PROD.txt` vers la table effectivement utilisée.
+- **Fichiers** : `src/app_tasks.cpp`, `platformio.ini`, `FLASH_ADDRESSES_WROOM_PROD.txt`, `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.26 - 2026-03-23
+
+### Audit mémoire wroom-beta : bornage WiFi et suppression `String` au scan
+
+- **Bornage sécurité** : dans `WifiManager::connect()`, les tableaux locaux (`cand`, `order`) sont maintenant bornés à `NVSConfig::MAX_WIFI_SAVED_NETWORKS` avec log explicite si `WIFI_COUNT` dépasse la capacité locale. Évite tout dépassement de tableau sur stack.
+- **Anti-fragmentation** : suppression des `String` temporaires dans les scans WiFi (`WiFi.SSID(j)`) au profit de l'API ESP-IDF (`esp_wifi_scan_start` + `esp_wifi_scan_get_ap_records`) avec buffers `char[]`.
+- **Helper AP SSID** : `WiFiHelpers::getAPSSID()` n'utilise plus `WiFi.softAPSSID()` (String), lecture directe via `esp_wifi_get_config(WIFI_IF_AP, ...)`.
+- **Vérification point 2** : `xTaskCreatePinnedToCore` / `xTaskCreateStaticPinnedToCore` validés sur la toolchain actuelle ; `StackType_t` est `uint8_t`, la profondeur est traitée en bytes, donc pas de bug de conversion détecté dans le code actuel.
+- **Fichiers** : `src/wifi_manager.cpp`, `include/wifi_manager.h`, `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.25 - 2026-03-22
 
 ### Test OTA distant (wroom-beta)

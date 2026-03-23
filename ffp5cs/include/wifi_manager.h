@@ -159,8 +159,18 @@ namespace WiFiHelpers {
      */
     inline void getAPSSID(char* buffer, size_t size) {
         if (!buffer || size == 0) return;
-        // v11.166: Utilise toCharArray pour éviter String temporaire sur heap
-        WiFi.softAPSSID().toCharArray(buffer, size);
+        buffer[0] = '\0';
+        wifi_mode_t mode = WiFi.getMode();
+        if (mode != WIFI_AP && mode != WIFI_AP_STA) return;
+        wifi_config_t conf;
+        if (esp_wifi_get_config(WIFI_IF_AP, &conf) != ESP_OK) return;
+        size_t len = conf.ap.ssid_len;
+        if (len == 0) {
+            len = strnlen(reinterpret_cast<const char*>(conf.ap.ssid), 32);
+        }
+        if (len >= size) len = size - 1;
+        memcpy(buffer, conf.ap.ssid, len);
+        buffer[len] = '\0';
     }
     
     /**

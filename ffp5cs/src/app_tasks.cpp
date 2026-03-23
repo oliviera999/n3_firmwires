@@ -1434,8 +1434,10 @@ QueueHandle_t getSensorQueue() {
   return g_sensorQueue;
 }
 
-// Requête allouée sur le heap : évite use-after-return quand le caller timeout avant la fin du traitement netTask.
-// Caller alloue, envoie ; sur timeout caller met req->cancelled et retourne → netTask free. Sur succès caller free.
+// Requête allouée dans le pool statique : éviter use-after-return quand le caller timeout
+// avant la fin du traitement netTask.
+// Caller alloue, envoie ; sur timeout caller met req->cancelled et retourne (netTask finalise).
+// Sur succès caller free.
 static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   if (!g_netQueue || !g_netTaskHandle || !req) return false;
   req->requester = xTaskGetCurrentTaskHandle();
@@ -1474,8 +1476,13 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
       Serial.printf("[NETDBG] hypothesis=H1 callerTimeout limitMs=%u\n", (unsigned)limitMs);
 #endif
       req->cancelled = true;
-      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
-      return false;  // netTask free(req)
+      // Si la notification de fin arrive juste après le timeout caller, libérer ici le slot.
+      // netTask peut aussi exécuter netRequestFree(req) en parallèle ; double free inoffensif
+      // (pool statique, slot remis à false).
+      if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500)) > 0) {
+        netRequestFree(req);
+      }
+      return false;  // timeout/abandon : slot libéré par netTask ou sur notif tardive ci-dessus
     }
     vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -1496,7 +1503,7 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
     netRequestFree(req);
     return true;
   }
-  return false;  // timeout ou échec : netTask a netRequestFree(req) si cancelled
+  return false;  // timeout ou échec : slot déjà géré (netTask ou netRpcAlloc en notif tardive)
 }
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure) {

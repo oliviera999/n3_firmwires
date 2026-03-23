@@ -72,6 +72,8 @@ static const char* currentTargetName();
 static const char* wakeupCauseText(esp_sleep_wakeup_cause_t cause);
 static const char* resetReasonText(esp_reset_reason_t reason);
 static bool getLocalTimeString(char* out, size_t outSize);
+static void logMonitoringSnapshot(const char* stage);
+static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs);
 static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo);
 static void otaMailStartCallback(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
 static void otaMailEndCallback(bool success, const char* details, void* userData);
@@ -167,6 +169,54 @@ static bool getLocalTimeString(char* out, size_t outSize) {
   }
   strftime(out, outSize, "%Y-%m-%d %H:%M:%S", &timeinfo);
   return true;
+}
+
+static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs) {
+  Serial.printf("[MON] %s duree=%lu ms\n", step ? step : "step", static_cast<unsigned long>(durationMs));
+  if (warnMs > 0 && durationMs > warnMs) {
+    Serial.printf("[MON][WARN] %s lent (%lu ms > %lu ms)\n",
+                  step ? step : "step",
+                  static_cast<unsigned long>(durationMs),
+                  static_cast<unsigned long>(warnMs));
+  }
+}
+
+static void logMonitoringSnapshot(const char* stage) {
+  const bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+  const char* wifiState = wifiConnected ? "ok" : "ko";
+  const int wifiRssi = wifiConnected ? WiFi.RSSI() : 0;
+  String ipStr = wifiConnected ? WiFi.localIP().toString() : String("n/a");
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t minHeap = ESP.getMinFreeHeap();
+#if USE_SD
+  const char* sdState = sdAvailable ? "ok" : "off";
+  Serial.printf("[MON] stage=%s up=%lu s wifi=%s rssi=%d ip=%s heap=%lu min_heap=%lu sd=%s\n",
+                stage ? stage : "unknown",
+                static_cast<unsigned long>(millis() / 1000UL),
+                wifiState,
+                wifiRssi,
+                ipStr.c_str(),
+                static_cast<unsigned long>(freeHeap),
+                static_cast<unsigned long>(minHeap),
+                sdState);
+#else
+  Serial.printf("[MON] stage=%s up=%lu s wifi=%s rssi=%d ip=%s heap=%lu min_heap=%lu\n",
+                stage ? stage : "unknown",
+                static_cast<unsigned long>(millis() / 1000UL),
+                wifiState,
+                wifiRssi,
+                ipStr.c_str(),
+                static_cast<unsigned long>(freeHeap),
+                static_cast<unsigned long>(minHeap));
+#endif
+  if (freeHeap < MONITORING_HEAP_WARN_BYTES) {
+    Serial.printf("[MON][WARN] heap faible: %lu < %u bytes\n",
+                  static_cast<unsigned long>(freeHeap),
+                  static_cast<unsigned int>(MONITORING_HEAP_WARN_BYTES));
+  }
+  if (wifiConnected && wifiRssi < -80) {
+    Serial.printf("[MON][WARN] signal WiFi faible: RSSI=%d dBm\n", wifiRssi);
+  }
 }
 
 static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo) {
@@ -400,20 +450,27 @@ void initializeCamera() {
 
 /* ----- sendPhoto : capture, optionnel SD, envoi HTTP, puis esp_camera_fb_return ----- */
 String sendPhoto() {
+  const uint32_t sendPhotoStartMs = millis();
   String getAll, getBody;
+  logMonitoringSnapshot("sendPhoto:start");
 
 #if USE_DEEP_SLEEP
   adjustExposure();
 #endif
 
+  const uint32_t captureStartMs = millis();
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
     Serial.println("Echec capture camera");
+    logMonitoringSnapshot("sendPhoto:capture_ko");
     delay(1000);
     ESP.restart();
   }
+  logStepDuration("capture_camera", millis() - captureStartMs, 1200);
+  Serial.printf("[MON] capture taille=%u bytes\n", static_cast<unsigned int>(fb->len));
 
 #if USE_SD
+  const uint32_t sdWriteStartMs = millis();
   if (sdAvailable) {
     EEPROM.begin(EEPROM_SIZE);
     uint32_t persistedCount = 0;
@@ -438,10 +495,12 @@ String sendPhoto() {
       sdAvailable = false;
     }
   }
+  logStepDuration("ecriture_sd", millis() - sdWriteStartMs, 1500);
   /* Ne pas appeler esp_camera_fb_return(fb) ici : on envoie encore HTTP avec fb->buf */
 #endif
 
   bool connected = false;
+  const uint32_t connectStartMs = millis();
   for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES; attempt++) {
     if (WiFi.status() != WL_CONNECTED) {
       Serial.println("WiFi deconnecte, tentative de reconnexion...");
@@ -455,11 +514,15 @@ String sendPhoto() {
     delay(UPLOAD_RETRY_DELAY_MS);
   }
   if (!connected) {
+    logStepDuration("connexion_http", millis() - connectStartMs, 4000);
     getBody = "Connexion a " + serverName + " echouee apres retries.";
     Serial.println(getBody);
     esp_camera_fb_return(fb);
+    logMonitoringSnapshot("sendPhoto:connect_ko");
+    logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
     return getBody;
   }
+  logStepDuration("connexion_http", millis() - connectStartMs, 4000);
 
   Serial.println("Connexion serveur OK.");
   String photoFilename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
@@ -478,6 +541,7 @@ String sendPhoto() {
   client.print(head);
 
   const size_t chunk = UPLOAD_CHUNK_SIZE;
+  const uint32_t uploadStartMs = millis();
   size_t sent = 0;
   while (sent < fb->len) {
     size_t toSend = (fb->len - sent) > chunk ? chunk : (fb->len - sent);
@@ -485,12 +549,17 @@ String sendPhoto() {
     sent += toSend;
   }
   client.print(tail);
+  logStepDuration("upload_http", millis() - uploadStartMs, 5000);
+  Serial.printf("[MON] upload envoye=%u bytes payload=%u bytes\n",
+                static_cast<unsigned int>(sent),
+                static_cast<unsigned int>(imageLen));
 
   /* Libérer le framebuffer après envoi complet (évite use-after-free) */
   esp_camera_fb_return(fb);
 
   int timeoutTimer = HTTP_RESPONSE_TIMEOUT_MS;
-  long startTimer = millis();
+  uint32_t startTimer = millis();
+  const uint32_t responseStartMs = startTimer;
   boolean state = false;
   String statusLine;
   while ((startTimer + timeoutTimer) > millis()) {
@@ -508,6 +577,7 @@ String sendPhoto() {
     }
     if (getBody.length() > 0) break;
   }
+  logStepDuration("attente_reponse_http", millis() - responseStartMs, HTTP_RESPONSE_TIMEOUT_MS);
   Serial.println();
   client.stop();
   if (statusLine.length() > 0) {
@@ -518,7 +588,10 @@ String sendPhoto() {
     }
   }
   Serial.println(getBody);
+  Serial.printf("[MON] reponse_len=%u chars\n", static_cast<unsigned int>(getBody.length()));
   ledBlink(1500, 1500, 2);
+  logMonitoringSnapshot("sendPhoto:end");
+  logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
   return getBody;
 }
 
@@ -533,10 +606,15 @@ static bool inPhotoWindow() {
 }
 
 void setup() {
+  const uint32_t setupStartMs = millis();
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   Serial.begin(115200);
   delay(200);
   Serial.printf("[BOOT] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
+  Serial.printf("[BOOT] reset=%s wakeup=%s\n",
+                resetReasonText(esp_reset_reason()),
+                wakeupCauseText(esp_sleep_get_wakeup_cause()));
+  logMonitoringSnapshot("setup:start");
   pinMode(LED_GPIO, OUTPUT);
   digitalWrite(LED_GPIO, LOW);
   ledBlink(100, 100, 2);
@@ -545,11 +623,15 @@ void setup() {
   n3PrintWakeupReason(preferences, rtc);
 #endif
 
+  const uint32_t wifiStartMs = millis();
   WiFi.mode(WIFI_STA);
   bool wifiOk = Wificonnect();
+  logStepDuration("connexion_wifi", millis() - wifiStartMs, WIFI_CONNECT_TIMEOUT_MS + 1500);
+  logMonitoringSnapshot("setup:post_wifi");
   ledBlink(100, 100, 1);
 
 #if USE_SD
+  const uint32_t sdInitStartMs = millis();
   if (!SD_MMC.begin()) {
     Serial.println("Carte SD : montage echoue, continuation sans SD.");
     sdAvailable = false;
@@ -560,6 +642,8 @@ void setup() {
     sdAvailable = true;
     Serial.println("Carte SD OK.");
   }
+  logStepDuration("init_sd", millis() - sdInitStartMs, 1000);
+  logMonitoringSnapshot("setup:post_sd");
 #endif
 
   camera_config_t config = {};
@@ -595,19 +679,25 @@ void setup() {
     config.fb_count = 1;
   }
 
+  const uint32_t camInitStartMs = millis();
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x", err);
     delay(1000);
     ESP.restart();
   }
+  logStepDuration("init_camera", millis() - camInitStartMs, 2500);
+  logMonitoringSnapshot("setup:post_camera_init");
 
 #if USE_DEEP_SLEEP
+  const uint32_t warmupStartMs = millis();
   initializeCamera();
   warmupCamera();
   delay(1000);
+  logStepDuration("warmup_camera", millis() - warmupStartMs, 15000);
 #endif
 
+  const uint32_t ntpStartMs = millis();
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
 #if USE_DEEP_SLEEP
@@ -619,6 +709,8 @@ void setup() {
       n3TimeSaveToFlash(rtc, preferences);
     }
   }
+  logStepDuration("sync_ntp", millis() - ntpStartMs, 3000);
+  logMonitoringSnapshot("setup:post_ntp");
 #endif
 
 #if USE_DEEP_SLEEP
@@ -652,6 +744,7 @@ void setup() {
 #endif
 
   handlePhotoWindowTransitionMails(wifiOk);
+  logMonitoringSnapshot("setup:post_window_mail");
 
   /* Une photo en setup si dans le créneau, puis deep sleep (toutes cibles) */
   if (inPhotoWindow()) {
@@ -663,15 +756,20 @@ void setup() {
     } else {
     sendPhoto();
     }
+  } else {
+    Serial.println("[MON] en dehors du creneau photo, upload saute.");
   }
 
   ledBlink(100, 100, 1);
+  logMonitoringSnapshot("setup:end");
+  logStepDuration("setup_total", millis() - setupStartMs, 30000);
 }
 
 void loop() {
 #if USE_DEEP_SLEEP
   Serial.printf("[LOOP] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
-  Serial.println("Entree en deep sleep.");
+  logMonitoringSnapshot("loop:before_sleep");
+  Serial.printf("Entree en deep sleep (%u s).\n", static_cast<unsigned int>(TIME_TO_SLEEP));
   delay(1000);
   Serial.flush();
   esp_sleep_enable_timer_wakeup((uint64_t)TIME_TO_SLEEP * uS_TO_S_FACTOR);

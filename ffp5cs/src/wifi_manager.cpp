@@ -50,6 +50,43 @@ static void applyCustomDns() {
 #endif
 }
 
+// Scan WiFi synchrone via ESP-IDF (évite String Arduino et fragmentation heap).
+// Retourne le nombre total d'APs détectés (peut être > outCount quand tronqué à outMax).
+static int scanNetworksEspIdf(wifi_ap_record_t* outRecords, uint16_t outMax, uint16_t* outCount, bool showHidden) {
+  if (!outRecords || outMax == 0 || !outCount) return -1;
+  *outCount = 0;
+
+  wifi_scan_config_t cfg = {};
+  cfg.ssid = nullptr;
+  cfg.bssid = nullptr;
+  cfg.channel = 0;
+  cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+  cfg.show_hidden = showHidden;
+
+  esp_err_t err = esp_wifi_scan_start(&cfg, true);  // block=true
+  if (err != ESP_OK) {
+    return -1;
+  }
+
+  uint16_t total = 0;
+  err = esp_wifi_scan_get_ap_num(&total);
+  if (err != ESP_OK) {
+    return -1;
+  }
+  if (total == 0) {
+    return 0;
+  }
+
+  uint16_t toRead = (total < outMax) ? total : outMax;
+  err = esp_wifi_scan_get_ap_records(&toRead, outRecords);
+  if (err != ESP_OK) {
+    *outCount = 0;
+    return -1;
+  }
+  *outCount = toRead;
+  return (int)total;
+}
+
 // Wrapper WiFi.begin() gérant les combinaisons password/channel/bssid
 static void wifiBeginSafe(const char* ssid, const char* pass,
                           int32_t chan = 0, const uint8_t* bssid = nullptr) {
@@ -175,7 +212,9 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
-  int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+  static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+  uint16_t num = 0;
+  int n = scanNetworksEspIdf(s_apRecords, NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num, true);
   // v11.176: Watchdog reset après scan bloquant
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -184,25 +223,6 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   ets_printf("[BOOT] wifi scan done n=%d\n", n);
 #endif
   if(n<=0){ show("Aucun reseau"); } else { show("Scan OK"); }
-  // Lecture résultats via API Arduino (scanNetworks a déjà consommé les résultats côté driver;
-  // esp_wifi_scan_get_ap_records() renvoyait 0 en double lecture → on lit depuis la couche Arduino).
-  static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
-  uint16_t num = 0;
-  if (n > 0) {
-    num = (n <= (int)NetworkConfig::WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n : NetworkConfig::WIFI_SCAN_MAX_RECORDS;
-    for (int j = 0; j < num; ++j) {
-      String ssidStr = WiFi.SSID(j);
-      memset(s_apRecords[j].ssid, 0, 32);
-      size_t sl = (ssidStr.length() < 32u) ? (size_t)ssidStr.length() : 32u;
-      if (sl > 0 && ssidStr.c_str()) memcpy(s_apRecords[j].ssid, ssidStr.c_str(), sl);
-      s_apRecords[j].rssi = (int8_t)WiFi.RSSI(j);
-      const uint8_t* bssidPtr = WiFi.BSSID(j);
-      if (bssidPtr) memcpy(s_apRecords[j].bssid, bssidPtr, 6);
-      else memset(s_apRecords[j].bssid, 0, 6);
-      s_apRecords[j].primary = (uint8_t)WiFi.channel(j);
-      s_apRecords[j].authmode = (wifi_auth_mode_t)WiFi.encryptionType(j);
-    }
-  }
   if (n <= 0 || num == 0) {
     Serial.println(F("[WiFi] ❌ Aucun réseau détecté (ou scan erreur)"));
     Serial.println("[Event] WiFi scan: no networks");
@@ -236,7 +256,13 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   struct Cand { int8_t rssi; uint8_t bssid[6]; uint8_t chan; wifi_auth_mode_t enc; bool present; };
   Cand initC{ -128,{0},0, WIFI_AUTH_OPEN, false};
   Cand cand[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
-  for (size_t i = 0; i < _count; ++i) cand[i] = initC;
+  size_t credsCount = _count;
+  if (credsCount > NVSConfig::MAX_WIFI_SAVED_NETWORKS) {
+    Serial.printf("[WiFi] ⚠️ WIFI_COUNT=%u > max local=%u, bornage appliqué\n",
+                  (unsigned)credsCount, (unsigned)NVSConfig::MAX_WIFI_SAVED_NETWORKS);
+    credsCount = NVSConfig::MAX_WIFI_SAVED_NETWORKS;
+  }
+  for (size_t i = 0; i < credsCount; ++i) cand[i] = initC;
   for (int j = 0; j < num; ++j) {
     char scanSSIDBuf2[33];
     memcpy(scanSSIDBuf2, s_apRecords[j].ssid, 32);
@@ -248,7 +274,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
     const uint8_t* bssid = s_apRecords[j].bssid;
     uint8_t ch = s_apRecords[j].primary;
     wifi_auth_mode_t auth = s_apRecords[j].authmode;
-    for (size_t i = 0; i < _count; ++i) {
+    for (size_t i = 0; i < credsCount; ++i) {
       if (strcmp(ss, _list[i].ssid) == 0 && r > cand[i].rssi) {
         cand[i].rssi = r;
         memcpy(cand[i].bssid, bssid, 6);
@@ -262,7 +288,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   // --- 1) Réseaux visibles: tous sont tentés (priorité au meilleur RSSI). Plus de rejet sur seuil. ----
   size_t order[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
   size_t orderCount = 0;
-  for (size_t i = 0; i < _count; ++i) {
+  for (size_t i = 0; i < credsCount; ++i) {
     if (cand[i].present) {
       order[orderCount++] = i;
       if (cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
@@ -276,7 +302,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   std::sort(order, order + orderCount, [&](size_t a, size_t b) { return cand[a].rssi > cand[b].rssi; });
 
   // Ajoute ensuite les credentials non détectés au scan (tenter quand même)
-  for (size_t i = 0; i < _count; ++i) if (!cand[i].present) order[orderCount++] = i;
+  for (size_t i = 0; i < credsCount; ++i) if (!cand[i].present) order[orderCount++] = i;
 
   for (size_t idx = 0; idx < orderCount; ++idx) {
     size_t i = order[idx];
@@ -303,9 +329,11 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan (S3 PSRAM: skip, bloque)
       int n2 = -1;
       bool foundInRescan = false;
+      static wifi_ap_record_t s_rescanRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+      uint16_t num2 = 0;
 #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
-      n2 = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
+      n2 = scanNetworksEspIdf(s_rescanRecords, NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num2, true);
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
 #endif
       int8_t rescanRssi = -128;
@@ -313,16 +341,18 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       uint8_t rescanChan = 0;
       wifi_auth_mode_t rescanAuth = WIFI_AUTH_OPEN;
       if (n2 > 0) {
-        uint16_t num2 = (n2 <= (int)NetworkConfig::WIFI_SCAN_MAX_RECORDS) ? (uint16_t)n2 : NetworkConfig::WIFI_SCAN_MAX_RECORDS;
-        for (int j = 0; j < num2; ++j) {
-          String ssidStr2 = WiFi.SSID(j);
-          int8_t rssi2 = (int8_t)WiFi.RSSI(j);
-          if (ssidStr2.equals(_list[i].ssid) && rssi2 > rescanRssi) {
+        for (uint16_t j = 0; j < num2; ++j) {
+          char ssidRescan[33];
+          memcpy(ssidRescan, s_rescanRecords[j].ssid, 32);
+          ssidRescan[32] = '\0';
+          size_t len = strnlen(ssidRescan, 32);
+          ssidRescan[len] = '\0';
+          int8_t rssi2 = s_rescanRecords[j].rssi;
+          if (strcmp(ssidRescan, _list[i].ssid) == 0 && rssi2 > rescanRssi) {
             rescanRssi = rssi2;
-            const uint8_t* bssidPtr2 = WiFi.BSSID(j);
-            if (bssidPtr2) memcpy(rescanBssid, bssidPtr2, 6);
-            rescanChan = (uint8_t)WiFi.channel(j);
-            rescanAuth = (wifi_auth_mode_t)WiFi.encryptionType(j);
+            memcpy(rescanBssid, s_rescanRecords[j].bssid, 6);
+            rescanChan = s_rescanRecords[j].primary;
+            rescanAuth = s_rescanRecords[j].authmode;
             foundInRescan = true;
           }
         }

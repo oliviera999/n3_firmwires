@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.21"
+#define FIRMWARE_VERSION "2.22"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -57,6 +57,8 @@
 
 /* HTTP upload — chunks */
 #define UPLOAD_CHUNK_SIZE 4096
+/* Monitoring local */
+#define MONITORING_HEAP_WARN_BYTES 60000
 
 /* Attente réponse HTTP après POST (dérogation conventions-firmwares 5s : traitement serveur image) */
 #define HTTP_RESPONSE_TIMEOUT_MS 15000
@@ -68,7 +70,7 @@
 #  define SERVER_PATH        "/msp1gallery/upload.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      600
+#  define TIME_TO_SLEEP      15
 #  define CAM_XCLK_HZ        5000000
 #  define EEPROM_SIZE        4
 
@@ -76,7 +78,7 @@
 #  define SERVER_PATH        "/n3ppgallery/upload.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      600
+#  define TIME_TO_SLEEP      15
 #  define CAM_XCLK_HZ        5000000
 #  define EEPROM_SIZE        4
 
@@ -84,7 +86,7 @@
 #  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      600
+#  define TIME_TO_SLEEP      15
 #  define CAM_XCLK_HZ        5000000
 #  define EEPROM_SIZE        4
 

@@ -2,64 +2,50 @@
 REFERENCE RAPIDE - ADRESSES FLASH ESP32-WROOM-PROD
 ================================================================================
 Environnement: wroom-prod
-Table de partition: partitions_esp32_wroom_ota_fs_medium.csv
+Table de partition: partitions_esp32_wroom_ota_fs_mail.csv
 Flash totale: 4 MB
 
 ================================================================================
 ADRESSES FIXES (Standard ESP32)
 ================================================================================
-0x1000  → bootloader.bin          (~32 KB)    [OBLIGATOIRE]
-0x8000  → partitions.bin          (~3 KB)     [OBLIGATOIRE]
-0xE000  → boot_app0.bin           (~4 KB)     [RECOMMANDÉ]
+0x1000  -> bootloader.bin          (~32 KB)    [OBLIGATOIRE]
+0x8000  -> partitions.bin          (~3 KB)     [OBLIGATOIRE]
+0xE000  -> boot_app0.bin           (~4 KB)     [RECOMMANDE]
 
 ================================================================================
-ADRESSES PARTITIONS (Calculées depuis partition table)
+ADRESSES PARTITIONS (depuis partitions_esp32_wroom_ota_fs_mail.csv)
 ================================================================================
-0x10000 → firmware.bin (app0)     (1.625 MB)  [OBLIGATOIRE]
-0x1B0000 → app1 (OTA backup)      (1.625 MB)  [AUTO - Pas besoin de flasher]
-0x350000 → littlefs.bin           (704 KB)    [OPTIONNEL - Interface web]
-
-================================================================================
-CONFIGURATION FLASH DOWNLOAD TOOL
-================================================================================
-Chip Type:    ESP32
-Work Mode:    Develop
-Load Mode:    UART
-SPI Speed:    40 MHz
-SPI Mode:     DIO
-Flash Size:   4MB (32Mbit)
+0x9000   -> nvs                    (0x5000)
+0xE000   -> otadata                (0x2000)
+0x10000  -> app0 (firmware OTA_0)  (0x1E0000) [OBLIGATOIRE]
+0x1F0000 -> spiffs                 (0x10000)  [OPTIONNEL - support mail/cache]
+0x200000 -> app1 (firmware OTA_1)  (0x1E0000) [AUTO - slot OTA]
 
 ================================================================================
 FICHIERS DANS .pio/build/wroom-prod/
 ================================================================================
-bootloader.bin    → 0x1000
-partitions.bin    → 0x8000
-boot_app0.bin     → 0xE000
-firmware.bin      → 0x10000
-littlefs.bin      → 0x350000 (après: pio run -e wroom-prod -t buildfs)
+bootloader.bin    -> 0x1000
+partitions.bin    -> 0x8000
+boot_app0.bin     -> 0xE000
+firmware.bin      -> 0x10000
+spiffs.bin        -> 0x1F0000 (apres: pio run -e wroom-prod -t buildfs)
 
 ================================================================================
 CONFIGURATION MINIMALE (Firmware uniquement)
 ================================================================================
-☑ bootloader.bin  @ 0x1000
-☑ partitions.bin  @ 0x8000
-☑ boot_app0.bin   @ 0xE000
-☑ firmware.bin    @ 0x10000
+[x] bootloader.bin  @ 0x1000
+[x] partitions.bin  @ 0x8000
+[x] boot_app0.bin   @ 0xE000
+[x] firmware.bin    @ 0x10000
 
 ================================================================================
-CONFIGURATION COMPLETE (Firmware + Filesystem)
+CONFIGURATION COMPLETE (Firmware + SPIFFS)
 ================================================================================
-☑ bootloader.bin  @ 0x1000
-☑ partitions.bin  @ 0x8000
-☑ boot_app0.bin   @ 0xE000
-☑ firmware.bin    @ 0x10000
-☑ littlefs.bin    @ 0x350000
-
-================================================================================
-CALCULS DES OFFSETS
-================================================================================
-App1 offset    = 0x10000 + 0x1A0000 = 0x1B0000
-LittleFS offset = 0x1B0000 + 0x1A0000 = 0x350000
+[x] bootloader.bin  @ 0x1000
+[x] partitions.bin  @ 0x8000
+[x] boot_app0.bin   @ 0xE000
+[x] firmware.bin    @ 0x10000
+[x] spiffs.bin      @ 0x1F0000
 
 ================================================================================
 COMMANDES UTILES
@@ -67,14 +53,10 @@ COMMANDES UTILES
 # Compiler le firmware
 pio run -e wroom-prod
 
-# Générer le filesystem
+# Generer le filesystem SPIFFS
 pio run -e wroom-prod -t buildfs
 
-# Monitoring série
+# Monitoring serie
 pio device monitor -e wroom-prod
 
 ================================================================================
-
-
-
-
