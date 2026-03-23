@@ -49,7 +49,8 @@ namespace ProjectConfig {
     // v13.28: Correctif boot WROOM-beta après P1 (rollback normalisation stack, netRPC conservé).
     // v13.29: Correctif boot loop Cache error (sdkconfig.defaults WROOM restauré depuis dernier état sain).
     // v13.30: Ajustement DRAM beta-only (stacks statiques) pour rétablir le link wroom-beta.
-    inline constexpr const char* VERSION = "13.30";
+    // v13.31: Test OTA aquaponie-test (canal metadata test / esp32-wroom-beta).
+    inline constexpr const char* VERSION = "13.31";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

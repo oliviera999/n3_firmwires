@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.31 - 2026-03-23
+
+### Test OTA aquaponie-test
+
+- **Objectif** : incrément de version pour valider un cycle OTA sur le canal test WROOM (`channels.test.esp32-wroom` → `esp32-wroom-beta/firmware.bin`, endpoints `post-data-test` / `outputs-test` / `heartbeat-test` via `USE_TEST_ENDPOINTS` sur `wroom-beta`).
+- **Déploiement** : `scripts/publish_ota.ps1 -Targets ffp5-wroom-beta -Build`.
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.30 - 2026-03-23
 
 ### Correctif link DRAM wroom-beta (build)
