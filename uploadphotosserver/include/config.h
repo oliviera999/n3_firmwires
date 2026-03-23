@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.22"
+#define FIRMWARE_VERSION "2.23"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -60,6 +60,10 @@
 /* Monitoring local */
 #define MONITORING_HEAP_WARN_BYTES 60000
 
+/* Controle distant camera */
+#define REMOTE_SLEEP_MIN_SECONDS 10
+#define REMOTE_SLEEP_MAX_SECONDS 86400
+
 /* Attente réponse HTTP après POST (dérogation conventions-firmwares 5s : traitement serveur image) */
 #define HTTP_RESPONSE_TIMEOUT_MS 15000
 #define UPLOAD_CONNECT_RETRIES   2
@@ -68,6 +72,9 @@
 /* ========== Par cible ========== */
 #if defined(TARGET_MSP1)
 #  define SERVER_PATH        "/msp1gallery/upload.php"
+#  define REMOTE_BOARD_ID    6
+#  define REMOTE_OUTPUTS_STATE_URL "http://iot.olution.info/msp1gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=6"
+#  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/msp1gallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      15
@@ -76,6 +83,9 @@
 
 #elif defined(TARGET_N3PP)
 #  define SERVER_PATH        "/n3ppgallery/upload.php"
+#  define REMOTE_BOARD_ID    7
+#  define REMOTE_OUTPUTS_STATE_URL "http://iot.olution.info/n3ppgallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=7"
+#  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/n3ppgallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      15
@@ -84,6 +94,9 @@
 
 #elif defined(TARGET_FFP3)
 #  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
+#  define REMOTE_BOARD_ID    5
+#  define REMOTE_OUTPUTS_STATE_URL "http://iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=5"
+#  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/ffp3/ffp3gallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      15

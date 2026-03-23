@@ -19,6 +19,7 @@
 #include "n3_wifi.h"
 #include "n3_ota.h"
 #include "n3_mail.h"
+#include "camera_remote.h"
 #include <esp_sleep.h>
 #include <esp_system.h>
 
@@ -48,11 +49,18 @@ String Wifiactif;
 RTC_DATA_ATTR static int otaBootCount = 0;
 RTC_DATA_ATTR static int lastPhotoWindowState = -1;  /* -1: inconnu, 0: nuit, 1: jour */
 RTC_DATA_ATTR static uint8_t pendingWindowMailMask = 0;
+RTC_DATA_ATTR static int lastRemoteForceWakeupState = 0;
+RTC_DATA_ATTR static int lastRemoteResetModeState = 0;
 #endif
 
 static bool otaUpdateStartedThisBoot = false;
 static char otaRemoteVersion[16] = "";
 static char otaFirmwareUrl[160] = "";
+static bool remoteMailNotifEnabled = MAIL_NOTIFICATIONS_ENABLED;
+static String remoteMailRecipient = "";
+static uint32_t runtimeSleepSeconds = TIME_TO_SLEEP;
+static bool forceWakeupActiveThisBoot = false;
+static bool resetModeActiveThisBoot = false;
 
 #if USE_SD
 int pictureNumber = 0;
@@ -221,6 +229,10 @@ static void logMonitoringSnapshot(const char* stage) {
 
 static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo) {
 #if MAIL_NOTIFICATIONS_ENABLED && defined(SMTP_HOST_ADDR) && defined(SMTP_PORT_NUM) && defined(SMTP_EMAIL) && defined(SMTP_PASSWORD) && defined(SMTP_DEST)
+  if (!remoteMailNotifEnabled) {
+    Serial.println("[MAIL] Notifications desactivees par configuration distante.");
+    return false;
+  }
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[MAIL] Envoi annule: WiFi indisponible.");
     return false;
@@ -233,7 +245,7 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   smtpCfg.authorPassword = SMTP_PASSWORD;
   smtpCfg.senderName = "N3 uploadphotosserver";
   smtpCfg.recipientName = "N3";
-  smtpCfg.recipientEmail = SMTP_DEST;
+  smtpCfg.recipientEmail = (remoteMailRecipient.length() > 0) ? remoteMailRecipient.c_str() : SMTP_DEST;
 
   char subject[MAIL_SUBJECT_MAX_LEN];
   snprintf(subject, sizeof(subject), "[uploadphotosserver][%s] %s", currentTargetName(), subjectEvent);
@@ -626,6 +638,59 @@ void setup() {
   const uint32_t wifiStartMs = millis();
   WiFi.mode(WIFI_STA);
   bool wifiOk = Wificonnect();
+  #ifdef SMTP_DEST
+  remoteMailRecipient = SMTP_DEST;
+  #else
+  remoteMailRecipient = "";
+  #endif
+  remoteMailNotifEnabled = MAIL_NOTIFICATIONS_ENABLED;
+  runtimeSleepSeconds = TIME_TO_SLEEP;
+  forceWakeupActiveThisBoot = false;
+  resetModeActiveThisBoot = false;
+
+  if (wifiOk && WiFi.status() == WL_CONNECTED) {
+    CameraRemoteConfig remoteCfg = {};
+    unsigned int remoteHttpCode = 0;
+    if (cameraRemoteFetchConfig(remoteCfg, &remoteHttpCode)) {
+      if (remoteCfg.mail.length() > 0) {
+        remoteMailRecipient = remoteCfg.mail;
+      }
+      remoteMailNotifEnabled = remoteCfg.mailNotif;
+      runtimeSleepSeconds = remoteCfg.sleepTimeSeconds;
+
+#if USE_DEEP_SLEEP
+      if (remoteCfg.forceWakeUp) {
+        forceWakeupActiveThisBoot = (lastRemoteForceWakeupState == 0);
+        lastRemoteForceWakeupState = 1;
+      } else {
+        forceWakeupActiveThisBoot = false;
+        lastRemoteForceWakeupState = 0;
+      }
+
+      if (remoteCfg.resetMode) {
+        resetModeActiveThisBoot = (lastRemoteResetModeState == 0);
+        lastRemoteResetModeState = 1;
+      } else {
+        resetModeActiveThisBoot = false;
+        lastRemoteResetModeState = 0;
+      }
+#else
+      forceWakeupActiveThisBoot = remoteCfg.forceWakeUp;
+      resetModeActiveThisBoot = remoteCfg.resetMode;
+#endif
+
+      Serial.printf("[REMOTE] cfg ok mailNotif=%d forceWake=%d sleep=%lu resetMode=%d\n",
+                    remoteMailNotifEnabled ? 1 : 0,
+                    forceWakeupActiveThisBoot ? 1 : 0,
+                    static_cast<unsigned long>(runtimeSleepSeconds),
+                    resetModeActiveThisBoot ? 1 : 0);
+    } else {
+      Serial.printf("[REMOTE] cfg indisponible (HTTP=%u), valeurs locales conservees.\n", remoteHttpCode);
+    }
+
+    int versionPostCode = cameraRemotePostFirmwareVersion(currentTargetName());
+    Serial.printf("[REMOTE] post version HTTP=%d\n", versionPostCode);
+  }
   logStepDuration("connexion_wifi", millis() - wifiStartMs, WIFI_CONNECT_TIMEOUT_MS + 1500);
   logMonitoringSnapshot("setup:post_wifi");
   ledBlink(100, 100, 1);
@@ -746,8 +811,12 @@ void setup() {
   handlePhotoWindowTransitionMails(wifiOk);
   logMonitoringSnapshot("setup:post_window_mail");
 
-  /* Une photo en setup si dans le créneau, puis deep sleep (toutes cibles) */
-  if (inPhotoWindow()) {
+  /* Une photo en setup si dans le créneau, ou forceWakeUp distant one-shot. */
+  bool shouldCapture = inPhotoWindow() || forceWakeupActiveThisBoot;
+  if (forceWakeupActiveThisBoot) {
+    Serial.println("[REMOTE] forceWakeUp actif: capture autorisee hors creneau.");
+  }
+  if (shouldCapture) {
     if (!wifiOk && !sdAvailable) {
       Serial.println("Photo ignoree: pas de WiFi et pas de SD disponible.");
     } else if (!wifiOk) {
@@ -760,6 +829,12 @@ void setup() {
     Serial.println("[MON] en dehors du creneau photo, upload saute.");
   }
 
+  if (resetModeActiveThisBoot) {
+    Serial.println("[REMOTE] resetMode actif: redemarrage immediat.");
+    delay(200);
+    ESP.restart();
+  }
+
   ledBlink(100, 100, 1);
   logMonitoringSnapshot("setup:end");
   logStepDuration("setup_total", millis() - setupStartMs, 30000);
@@ -769,10 +844,10 @@ void loop() {
 #if USE_DEEP_SLEEP
   Serial.printf("[LOOP] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
   logMonitoringSnapshot("loop:before_sleep");
-  Serial.printf("Entree en deep sleep (%u s).\n", static_cast<unsigned int>(TIME_TO_SLEEP));
+  Serial.printf("Entree en deep sleep (%u s).\n", static_cast<unsigned int>(runtimeSleepSeconds));
   delay(1000);
   Serial.flush();
-  esp_sleep_enable_timer_wakeup((uint64_t)TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  esp_sleep_enable_timer_wakeup((uint64_t)runtimeSleepSeconds * uS_TO_S_FACTOR);
   esp_deep_sleep_start();
 #endif
 }
