@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.33** (définie dans `include/msp_config.h`).
+Version actuelle : **2.34** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.33** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.34 | 2026-03 | Durcissement de la sync config distante (logs d'application des clés 110/106/107, validation stricte) ; suppression de l'écrasement local `resetMode` au boot ; reconfiguration explicite du timer deep sleep avant sommeil |
 | 2.33 | 2026-03 | Ajout de logs détaillés des échanges serveur : affichage du payload POST (masquage `api_key`) et du body GET (`outputs_state`) dans le moniteur série |
 | 2.32 | 2026-03 | Logs série harmonisés par thème (`[WIFI]`, `[SERVER]`, `[DHT]`, `[SERVO]`) ; réduction de verbosité du scan `position max` avec résumé final ; mise en avant des échanges serveur GET/POST |
 | 2.31 | 2026-03 | OTA périodique: ajout d'une vérification OTA toutes les 2h (cumul RTC du deep sleep), maintien du check OTA prioritaire sur reset distant |
