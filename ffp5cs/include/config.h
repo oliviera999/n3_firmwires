@@ -50,7 +50,10 @@ namespace ProjectConfig {
     // v13.29: Correctif boot loop Cache error (sdkconfig.defaults WROOM restauré depuis dernier état sain).
     // v13.30: Ajustement DRAM beta-only (stacks statiques) pour rétablir le link wroom-beta.
     // v13.31: Test OTA aquaponie-test (canal metadata test / esp32-wroom-beta).
-    inline constexpr const char* VERSION = "13.31";
+    // v13.32: Reset local/distant: OTA prioritaire si disponible avant ESP.restart().
+    // v13.33: Passage des mesures ultrasons en millimètres (acquisition, filtrage, seuils convertis cm->mm).
+    // v13.34: Publication OTA wroom-beta + wroom-prod.
+    inline constexpr const char* VERSION = "13.34";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -590,9 +593,9 @@ namespace SensorConfig {
         inline constexpr float TEMP_WATER = 25.5f;
         inline constexpr float TEMP_AIR = 22.3f;
         inline constexpr float HUMIDITY = 65.0f;
-        inline constexpr float WATER_LEVEL_AQUA = 15.2f;
-        inline constexpr float WATER_LEVEL_TANK = 8.7f;
-        inline constexpr float WATER_LEVEL_POTA = 12.1f;
+        inline constexpr float WATER_LEVEL_AQUA = 152.0f;  // mm
+        inline constexpr float WATER_LEVEL_TANK = 87.0f;   // mm
+        inline constexpr float WATER_LEVEL_POTA = 121.0f;  // mm
         inline constexpr uint16_t LUMINOSITY = 450;
     }
 
@@ -631,16 +634,24 @@ namespace SensorConfig {
     }
 
     namespace Ultrasonic {
+        inline constexpr uint16_t MIN_DISTANCE_MM = 20;    // 2 cm
+        inline constexpr uint16_t MAX_DISTANCE_MM = 4000;  // 400 cm
+        // Compat héritée pour code non migré (cm)
         inline constexpr uint16_t MIN_DISTANCE_CM = 2;
         inline constexpr uint16_t MAX_DISTANCE_CM = 400;
         // Plage validée dans system_sensors pour niveaux eau (potager, aquarium, réservoir)
+        inline constexpr uint16_t MAX_VALID_LEVEL_MM = 5000;
         inline constexpr uint16_t MAX_VALID_LEVEL_CM = 500;
+        inline constexpr uint16_t MAX_DELTA_MM = 300;
         inline constexpr uint16_t MAX_DELTA_CM = 30;
         inline constexpr uint32_t TIMEOUT_US = 30000;
         inline constexpr uint8_t DEFAULT_SAMPLES = 5;
         inline constexpr uint32_t MIN_DELAY_MS = 60;
         inline constexpr uint16_t US_TO_CM_FACTOR = 58;
         inline constexpr uint8_t FILTERED_READINGS_COUNT = 3;
+
+        inline constexpr uint16_t cmToMm(uint16_t cm) { return static_cast<uint16_t>(cm * 10U); }
+        inline constexpr uint16_t mmToCmRounded(uint16_t mm) { return static_cast<uint16_t>((mm + 5U) / 10U); }
     }
 
     namespace History {
@@ -701,8 +712,8 @@ namespace SensorValidation {
     
     // Valide une distance ultrasonique
     inline bool isValidDistance(uint16_t distance) {
-        return distance >= SensorConfig::Ultrasonic::MIN_DISTANCE_CM && 
-               distance <= SensorConfig::Ultrasonic::MAX_DISTANCE_CM;
+        return distance >= SensorConfig::Ultrasonic::MIN_DISTANCE_MM && 
+               distance <= SensorConfig::Ultrasonic::MAX_DISTANCE_MM;
     }
     
     // Applique une valeur par défaut si la température d'eau est invalide

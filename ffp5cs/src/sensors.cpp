@@ -47,9 +47,10 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
-      uint16_t cm = duration / SensorConfig::Ultrasonic::US_TO_CM_FACTOR; // Conversion µs -> cm (vitesse du son ~340 m/s)
-      if (cm > MIN_DISTANCE && cm < MAX_DISTANCE) {
-        total += cm;
+      uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
+                                          SensorConfig::Ultrasonic::US_TO_CM_FACTOR); // Conversion µs -> mm
+      if (mm > MIN_DISTANCE && mm < MAX_DISTANCE) {
+        total += mm;
         ++valid;
       }
     }
@@ -96,12 +97,13 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       }
       
       if (duration > 0) {
-        uint16_t testCm = duration / 58;
-        if (testCm >= MIN_DISTANCE && testCm < MAX_DISTANCE) {
+        uint16_t testMm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
+                                                SensorConfig::Ultrasonic::US_TO_CM_FACTOR);
+        if (testMm >= MIN_DISTANCE && testMm < MAX_DISTANCE) {
           if (_failureManager.recordReactivationTestSuccess()) {
             // Capteur réactivé, retourner la valeur testée
-            _lastValidDistance = testCm;
-            return testCm;
+            _lastValidDistance = testMm;
+            return testMm;
           }
         } else {
           _failureManager.recordReactivationTestFailure();
@@ -139,14 +141,15 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
-      uint16_t cm = duration / 58; // Conversion µs -> cm (vitesse du son ~340 m/s)
+      uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
+                                          SensorConfig::Ultrasonic::US_TO_CM_FACTOR); // Conversion µs -> mm
       
       // CORRECTION : Plage de validation assouplie pour l'aquarium
-      if (cm >= MIN_DISTANCE && cm < MAX_DISTANCE) { // >= au lieu de >
-        readings[validReadings++] = cm;
-        Serial.printf("[Ultrasonic] Lecture %d: %u cm\n", i+1, cm);
+      if (mm >= MIN_DISTANCE && mm < MAX_DISTANCE) { // >= au lieu de >
+        readings[validReadings++] = mm;
+        Serial.printf("[Ultrasonic] Lecture %d: %u mm\n", i+1, mm);
       } else {
-        Serial.printf("[Ultrasonic] Lecture %d rejetée: %u cm (hors plage %u-%u)\n", i+1, cm, MIN_DISTANCE, MAX_DISTANCE-1);
+        Serial.printf("[Ultrasonic] Lecture %d rejetée: %u mm (hors plage %u-%u)\n", i+1, mm, MIN_DISTANCE, MAX_DISTANCE-1);
       }
     } else {
       // v11.173: Rate-limiting des logs timeout (log les 3 premiers, puis tous les N)
@@ -190,7 +193,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   uint16_t keptReadings[READINGS_COUNT];
   uint8_t keptCount = 0;
   for (uint8_t i = 0; i < validReadings; ++i) {
-    if (abs((int)readings[i] - (int)medianDistance) <= (int)OUTLIER_SPREAD_CM) {
+    if (abs((int)readings[i] - (int)medianDistance) <= (int)OUTLIER_SPREAD_MM) {
       keptReadings[keptCount++] = readings[i];
     }
   }
@@ -240,7 +243,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   
   // Détection de saut par rapport à la référence robuste
   if (referenceValue > 0 && abs((int)medianDistance - (int)referenceValue) > MAX_DISTANCE_DELTA) {
-    Serial.printf("[Ultrasonic] Saut détecté: %u cm -> %u cm (écart: %d cm, ref: médiane historique)\n", 
+    Serial.printf("[Ultrasonic] Saut détecté: %u mm -> %u mm (écart: %d mm, ref: médiane historique)\n", 
                   referenceValue, medianDistance, abs((int)medianDistance - (int)referenceValue));
     
     // v11.35: Si saut vers le bas, accepter (niveau qui baisse)
@@ -279,7 +282,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   // Met à jour la dernière valeur valide
   _lastValidDistance = medianDistance;
   
-  Serial.printf("[Ultrasonic] Distance médiane: %u cm (%d lectures valides)\n", 
+  Serial.printf("[Ultrasonic] Distance médiane: %u mm (%d lectures valides)\n", 
                 medianDistance, validReadings);
   return medianDistance;
 }
@@ -313,12 +316,13 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       }
       
       if (duration > 0) {
-        uint16_t testCm = duration / 58;
-        if (testCm >= MIN_DISTANCE && testCm < MAX_DISTANCE) {
+        uint16_t testMm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
+                                                SensorConfig::Ultrasonic::US_TO_CM_FACTOR);
+        if (testMm >= MIN_DISTANCE && testMm < MAX_DISTANCE) {
           if (_failureManager.recordReactivationTestSuccess()) {
             // Capteur réactivé, retourner la valeur testée
-            _lastValidDistance = testCm;
-            return testCm;
+            _lastValidDistance = testMm;
+            return testMm;
           }
         } else {
           _failureManager.recordReactivationTestFailure();
@@ -353,13 +357,14 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
-      uint16_t cm = duration / 58; // Conversion µs -> cm
+      uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
+                                          SensorConfig::Ultrasonic::US_TO_CM_FACTOR); // Conversion µs -> mm
       
-      if (cm >= MIN_DISTANCE && cm < MAX_DISTANCE) {
-        readings[validReadings++] = cm;
-        Serial.printf("[Ultrasonic] Lecture réactive %d: %u cm\n", i+1, cm);
+      if (mm >= MIN_DISTANCE && mm < MAX_DISTANCE) {
+        readings[validReadings++] = mm;
+        Serial.printf("[Ultrasonic] Lecture réactive %d: %u mm\n", i+1, mm);
       } else {
-        Serial.printf("[Ultrasonic] Lecture réactive %d rejetée: %u cm (hors plage)\n", i+1, cm);
+        Serial.printf("[Ultrasonic] Lecture réactive %d rejetée: %u mm (hors plage)\n", i+1, mm);
       }
     } else {
       // v11.175: Rate-limiting amélioré des logs timeout
@@ -404,8 +409,8 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   
   if (_lastValidDistance > 0) {
     int delta = abs((int)medianDistance - (int)_lastValidDistance);
-    if (delta > 50) {
-      Serial.printf("[Ultrasonic] Saut important détecté: %u -> %u cm (Δ=%d), accepte pour réactivité\n",
+    if (delta > 500) {
+      Serial.printf("[Ultrasonic] Saut important détecté: %u -> %u mm (Δ=%d), accepte pour réactivité\n",
                    _lastValidDistance, medianDistance, delta);
     }
   }
@@ -416,7 +421,7 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   if (_historyCount < HISTORY_SIZE) _historyCount++;
   _lastValidDistance = medianDistance;
   
-  Serial.printf("[Ultrasonic] Mode réactif: %u cm (médiane de %d lectures)\n", medianDistance, validReadings);
+  Serial.printf("[Ultrasonic] Mode réactif: %u mm (médiane de %d lectures)\n", medianDistance, validReadings);
   return medianDistance;
 }
 

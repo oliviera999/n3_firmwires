@@ -2,6 +2,9 @@
 #include "automatism.h"
 #include "nvs_manager.h"  // v11.108
 #include "app_tasks.h"   // netRequestOtaCheck (déclenchement OTA depuis serveur distant)
+#include "app_context.h"
+#include "config.h"
+#include <WiFi.h>
 #include <cstring>
 #include <cmath>   // v11.164: fabsf pour comparaison float
 #include <cstdlib> // v11.183: atoi/atof pour valeurs serveur en string
@@ -12,6 +15,34 @@ static bool s_lastFeedSmallState = false;
 static bool s_lastFeedBigState = false;
 // v11.189: Reset ESP32 sur front montant uniquement (évite reboot en boucle si sync envoie 110:1)
 static bool s_lastResetState = false;
+
+static bool tryStartOtaBeforeResetFromRemote() {
+    extern AppContext g_appContext;
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println(F("[Reset] distant: WiFi non connecté, reset direct"));
+        return false;
+    }
+
+    if (g_appContext.otaManager.isUpdating()) {
+        Serial.println(F("[Reset] distant: OTA déjà en cours, reset différé"));
+        return true;
+    }
+
+    g_appContext.otaManager.setCurrentVersion(ProjectConfig::VERSION);
+    if (!g_appContext.otaManager.checkForUpdate()) {
+        Serial.println(F("[Reset] distant: aucune OTA disponible, reset direct"));
+        return false;
+    }
+
+    if (g_appContext.otaManager.performUpdate()) {
+        Serial.println(F("[Reset] distant: OTA disponible, mise à jour lancée avant reset"));
+        return true;
+    }
+
+    Serial.println(F("[Reset] distant: OTA détectée mais échec démarrage update, reset direct"));
+    return false;
+}
 
 void GPIOParser::resetEdgeDetectionState() {
     s_lastTankState = false;
@@ -256,7 +287,9 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
             s_lastResetState = true;
             Serial.println(F("Reset demandé"));
             Serial.println(F("[Sync] Reboot distant exécuté (GPIO 110=1)"));
-            ESP.restart();
+            if (!tryStartOtaBeforeResetFromRemote()) {
+                ESP.restart();
+            }
         } else if (!state) {
             s_lastResetState = false;
         }

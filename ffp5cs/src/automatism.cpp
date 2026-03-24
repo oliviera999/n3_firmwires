@@ -15,11 +15,15 @@ namespace {
 
 static void formatDistanceAlert(char* buffer, size_t bufferSize, const char* prefix,
                                 float distance, const char* suffix, float threshold) {
-  snprintf(buffer, bufferSize, "%s%.1f cm (%s%.1f)", prefix, distance, suffix, threshold);
+  snprintf(buffer, bufferSize, "%s%.1f mm (%s%.1f)", prefix, distance, suffix, threshold);
 }
 
 static void formatTemperatureAlert(char* buffer, size_t bufferSize, const char* prefix, float temp) {
   snprintf(buffer, bufferSize, "%s%.1f°C", prefix, temp);
+}
+
+static uint16_t cmToMm(uint16_t cm) {
+  return SensorConfig::Ultrasonic::cmToMm(cm);
 }
 
 }  // namespace
@@ -506,8 +510,8 @@ void Automatism::startTankPumpManual() {
     _countdownEnd = nowMs + refillDurationMs;
     _pumpStartMs = nowMs;
     // v11.165: Validation niveau eau avant assignation (audit robustesse)
-    _levelAtPumpStart = (cur.wlAqua >= SensorConfig::Ultrasonic::MIN_DISTANCE_CM && 
-                         cur.wlAqua <= SensorConfig::Ultrasonic::MAX_DISTANCE_CM) 
+    _levelAtPumpStart = (cur.wlAqua >= SensorConfig::Ultrasonic::MIN_DISTANCE_MM &&
+                         cur.wlAqua <= SensorConfig::Ultrasonic::MAX_DISTANCE_MM)
                         ? cur.wlAqua : 0;
 }
 
@@ -653,7 +657,7 @@ void Automatism::markCurrentFeedingSlotAsDone() {
 
 // Sous-fonction: Sécurité aquarium trop plein
 void Automatism::handleRefillAquariumOverfillSecurity(const SensorReadings& r) {
-    if (r.wlAqua < _network.getLimFlood()) {
+    if (r.wlAqua < cmToMm(_network.getLimFlood())) {
         if (!tankPumpLocked || _tankPumpLockReason != TankPumpLockReason::AQUARIUM_OVERFILL) {
             tankPumpLocked = true;
             _tankPumpLockReason = TankPumpLockReason::AQUARIUM_OVERFILL;
@@ -692,13 +696,13 @@ void Automatism::handleRefillManualModeCheck() {
 
 // Sous-fonction: Démarrage automatique (retourne true si bloqué par réserve basse)
 bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
-    if (r.wlAqua > _network.getAqThresholdCm() && !tankPumpLocked && 
+    if (r.wlAqua > cmToMm(_network.getAqThresholdCm()) && !tankPumpLocked &&
         tankPumpRetries < MAX_PUMP_RETRIES && !_manualTankOverride) {
         if (!_acts.isTankPumpRunning()) {
             // Vérifier si réserve trop basse
-            if (r.wlTank > _network.getTankThresholdCm()) {
-                Serial.printf("[CRITIQUE] Réserve basse (distance %u cm > seuil %u cm) - pompe verrouillée\n",
-                              r.wlTank, _network.getTankThresholdCm());
+            if (r.wlTank > cmToMm(_network.getTankThresholdCm())) {
+                Serial.printf("[CRITIQUE] Réserve basse (distance %u mm > seuil %u mm) - pompe verrouillée\n",
+                              r.wlTank, cmToMm(_network.getTankThresholdCm()));
                 tankPumpLocked = true;
                 _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
                 _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
@@ -708,8 +712,8 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
                     char msg[384];
                     snprintf(msg, sizeof(msg),
                              "Remplissage bloqué (réserve basse)\n"
-                             "Réserve: %d cm (seuil: %d cm)\nAqua: %d cm",
-                             r.wlTank, _network.getTankThresholdCm(), r.wlAqua);
+                             "Réserve: %d mm (seuil: %d mm)\nAqua: %d mm",
+                             r.wlTank, cmToMm(_network.getTankThresholdCm()), r.wlAqua);
                     _mailer.sendAlert("Pompe BLOQUÉE (réserve basse)", msg, _network.getEmailAddress());
                     emailTankSent = true;
                 }
@@ -719,8 +723,8 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
             }
             // Démarrage effectif
             Serial.println(F("[CRITIQUE] === DÉBUT REMPLISSAGE AUTO ==="));
-            Serial.printf("[CRITIQUE] Aqua: %d cm, Seuil: %d cm, Durée: %lu s\n", 
-                          r.wlAqua, _network.getAqThresholdCm(), refillDurationMs / 1000);
+            Serial.printf("[CRITIQUE] Aqua: %d mm, Seuil: %d mm, Durée: %lu s\n",
+                          r.wlAqua, cmToMm(_network.getAqThresholdCm()), refillDurationMs / 1000);
 
             _acts.startTankPump();
             strncpy(_countdownLabel, "Refill", sizeof(_countdownLabel) - 1);
@@ -737,7 +741,7 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
             if (_network.isEmailEnabled() && !emailTankStartSent) {
                 char msg[256];
                 snprintf(msg, sizeof(msg),
-                         "Remplissage AUTO démarré\nAqua: %d cm, Réserve: %d cm, Durée: %lu s",
+                         "Remplissage AUTO démarré\nAqua: %d mm, Réserve: %d mm, Durée: %lu s",
                          r.wlAqua, r.wlTank, refillDurationMs / 1000);
                 _mailer.send("Remplissage démarré", msg, "System", _network.getEmailAddress());
                 emailTankStartSent = true;
@@ -767,7 +771,7 @@ void Automatism::handleRefillManualCycleEnd(const SensorReadings& r) {
                 int levelImprovement = _levelAtPumpStart - r.wlAqua;
                 char msg[256];
                 snprintf(msg, sizeof(msg),
-                         "Remplissage MANUEL terminé\nAmélioration: %d cm, Aqua: %d cm",
+                         "Remplissage MANUEL terminé\nAmélioration: %d mm, Aqua: %d mm",
                          levelImprovement, r.wlAqua);
                 _mailer.send("Remplissage terminé", msg, "System", _network.getEmailAddress());
                 emailTankStopSent = true;
@@ -813,7 +817,7 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
     }
 
     int levelImprovement = _levelAtPumpStart - r.wlAqua;
-    Serial.printf("[CRITIQUE] Amélioration niveau: %d cm\n", levelImprovement);
+    Serial.printf("[CRITIQUE] Amélioration niveau: %d mm\n", levelImprovement);
 
     if (levelImprovement < 1) {
         ++tankPumpRetries;
@@ -826,7 +830,7 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
             if (_network.isEmailEnabled() && !emailTankSent) {
                 char msg[384];
                 snprintf(msg, sizeof(msg),
-                         "Pompe BLOQUÉE (inefficace)\nTentatives: %d/%d, Amélioration: %d cm",
+                         "Pompe BLOQUÉE (inefficace)\nTentatives: %d/%d, Amélioration: %d mm",
                          tankPumpRetries, (unsigned)MAX_PUMP_RETRIES, levelImprovement);
                 _mailer.sendAlert("Pompe réservoir bloquée", msg, _network.getEmailAddress());
                 emailTankSent = true;
@@ -834,11 +838,11 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
         }
     } else {
         tankPumpRetries = 0;
-        Serial.printf("[CRITIQUE] Remplissage OK: +%d cm\n", levelImprovement);
+        Serial.printf("[CRITIQUE] Remplissage OK: +%d mm\n", levelImprovement);
         if (_network.isEmailEnabled() && !emailTankStopSent) {
             char msg[256];
             snprintf(msg, sizeof(msg),
-                     "Remplissage TERMINÉ\nDurée: %u s, Amélioration: %d cm, Aqua: %d cm",
+                     "Remplissage TERMINÉ\nDurée: %u s, Amélioration: %d mm, Aqua: %d mm",
                      (unsigned)(elapsedMs / 1000), levelImprovement, r.wlAqua);
             _mailer.send("Remplissage terminé", msg, "System", _network.getEmailAddress());
             emailTankStopSent = true;
@@ -855,13 +859,13 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
     static uint8_t aboveCount = 0;
     static uint8_t belowCount = 0;
     
-    if (r.wlTank > _network.getTankThresholdCm()) {
+    if (r.wlTank > cmToMm(_network.getTankThresholdCm())) {
         aboveCount = min<uint8_t>(aboveCount + 1, 3);
         belowCount = 0;
         if (!tankPumpLocked && aboveCount >= 2) {
             Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
-            Serial.printf("[CRITIQUE] Réserve basse (distance %d cm > seuil %d cm) - pompe verrouillée\n",
-                          r.wlTank, _network.getTankThresholdCm());
+            Serial.printf("[CRITIQUE] Réserve basse (distance %d mm > seuil %d mm) - pompe verrouillée\n",
+                          r.wlTank, cmToMm(_network.getTankThresholdCm()));
             tankPumpLocked = true;
             _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
             _acts.stopTankPump(_pumpStartMs);
@@ -871,15 +875,15 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
             if (_network.isEmailEnabled() && !emailTankSent && !startupGrace) {
                 char msg[256];
                 snprintf(msg, sizeof(msg),
-                         "Pompe VERROUILLÉE (réserve basse)\nRéserve: %d cm (seuil: %d cm)",
-                         r.wlTank, _network.getTankThresholdCm());
+                         "Pompe VERROUILLÉE (réserve basse)\nRéserve: %d mm (seuil: %d mm)",
+                         r.wlTank, cmToMm(_network.getTankThresholdCm()));
                 _mailer.sendAlert("Pompe verrouillée (réserve basse)", msg, _network.getEmailAddress());
                 emailTankSent = true;
             }
             // En période de grâce on n'envoie pas et on ne marque pas emailTankSent :
             // après 30s on enverra le mail si la condition est toujours vraie.
         }
-    } else if (r.wlTank < _network.getTankThresholdCm() - 5) {
+    } else if (r.wlTank < cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0)) {
         belowCount = min<uint8_t>(belowCount + 1, 3);
         aboveCount = 0;
         if (tankPumpLocked && belowCount >= 3) {
@@ -888,7 +892,7 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
             emailTankSent = false;
             emailTankStartSent = false;
             emailTankStopSent = false;
-            Serial.printf("[Auto] Pompe déverrouillée (réserve: %d cm)\n", r.wlTank);
+            Serial.printf("[Auto] Pompe déverrouillée (réserve: %d mm)\n", r.wlTank);
         }
     } else {
         aboveCount = min<uint8_t>(aboveCount, 2);
@@ -902,9 +906,9 @@ void Automatism::handleRefillAutomaticRecovery(const SensorReadings& r) {
     if (tankPumpLocked && tankPumpRetries >= MAX_PUMP_RETRIES) {
         unsigned long currentMillisLocal = millis();
         if (currentMillisLocal - lastRecoveryAttempt > 30 * 1000UL) {
-            if (r.wlTank < _network.getTankThresholdCm() - 10) {
+            if (r.wlTank < cmToMm((_network.getTankThresholdCm() > 10) ? (_network.getTankThresholdCm() - 10) : 0)) {
                 Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTO ==="));
-                Serial.printf("[CRITIQUE] Réservoir: %d cm (OK)\n", r.wlTank);
+                Serial.printf("[CRITIQUE] Réservoir: %d mm (OK)\n", r.wlTank);
                 tankPumpLocked = false;
                 tankPumpRetries = 0;
                 emailTankSent = false;
@@ -960,20 +964,20 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         return;  // Pas d'alertes pendant la période de grâce
     }
 
-    if (readings.wlAqua > _network.getAqThresholdCm() && !_lowAquaSent && mailEnabled) {
+    if (readings.wlAqua > cmToMm(_network.getAqThresholdCm()) && !_lowAquaSent && mailEnabled) {
         char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " cm (> ", _network.getAqThresholdCm());
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (> ", cmToMm(_network.getAqThresholdCm()));
         _mailer.sendAlert("Alerte - Niveau aquarium BAS", msgBuffer, _network.getEmailAddress());
         _lowAquaSent = true;
         armMailBlink();
     }
 
-    if (readings.wlAqua <= _network.getAqThresholdCm() - 5) {
+    if (readings.wlAqua <= cmToMm((_network.getAqThresholdCm() > 5) ? (_network.getAqThresholdCm() - 5) : 0)) {
         _lowAquaSent = false;
     }
 
     time_t nowEpoch = _power.getCurrentEpochSafe();
-    if (readings.wlAqua < _network.getLimFlood()) {
+    if (readings.wlAqua < cmToMm(_network.getLimFlood())) {
         if (floodEnterSinceEpoch == 0) {
             floodEnterSinceEpoch = nowEpoch;
         }
@@ -984,7 +988,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
             bool cooldownOk = (lastFloodEmailEpoch == 0) || ((nowEpoch - lastFloodEmailEpoch) >= (floodCooldownMin * 60UL));
             if (debounceOk && cooldownOk) {
                 char msgBuffer[128];
-                formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " cm (< ", _network.getLimFlood());
+                formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (< ", cmToMm(_network.getLimFlood()));
                 if (tankPumpLocked || _config.getPompeAquaLocked()) {
                     strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
                 }
@@ -1003,7 +1007,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         }
     } else {
         floodEnterSinceEpoch = 0;
-        if (readings.wlAqua >= _network.getLimFlood() + floodHystCm) {
+        if (readings.wlAqua >= cmToMm(_network.getLimFlood() + floodHystCm)) {
             if (aboveResetSinceEpoch == 0) {
                 aboveResetSinceEpoch = nowEpoch;
             }
@@ -1017,15 +1021,16 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         }
     }
 
-    if (readings.wlTank > _network.getTankThresholdCm() && !_lowTankSent && mailEnabled) {
+    if (readings.wlTank > cmToMm(_network.getTankThresholdCm()) && !_lowTankSent && mailEnabled) {
         char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " cm (> ", _network.getTankThresholdCm());
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (> ", cmToMm(_network.getTankThresholdCm()));
         _mailer.sendAlert("Alerte - Réserve BASSE", msgBuffer, _network.getEmailAddress());
         _lowTankSent = true;
         armMailBlink();
-    } else if (_lowTankSent && readings.wlTank <= _network.getTankThresholdCm() - 5 && mailEnabled) {
+    } else if (_lowTankSent && readings.wlTank <= cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0) && mailEnabled) {
         char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " cm (<= ", _network.getTankThresholdCm() - 5);
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (<= ",
+                            cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0));
         _mailer.sendAlert("Info - Réserve OK", msgBuffer, _network.getEmailAddress());
         _lowTankSent = false;
         armMailBlink();

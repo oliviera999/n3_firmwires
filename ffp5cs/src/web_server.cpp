@@ -43,6 +43,35 @@ void invalidateDbvarsCache() { s_dbvarsCacheInvalid = true; }
 /// Flag pour redémarrage ESP après envoi de la réponse (évite reset avant envoi HTTP)
 static bool s_pendingRestart = false;
 
+// Politique reset: tenter une OTA si disponible, puis reset classique sinon.
+static bool tryStartOtaBeforeReset(const char* sourceTag) {
+  extern AppContext g_appContext;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.printf("[Reset] %s: WiFi non connecté, reset direct\n", sourceTag);
+    return false;
+  }
+
+  if (g_appContext.otaManager.isUpdating()) {
+    Serial.printf("[Reset] %s: OTA déjà en cours, reset différé\n", sourceTag);
+    return true;
+  }
+
+  g_appContext.otaManager.setCurrentVersion(ProjectConfig::VERSION);
+  if (!g_appContext.otaManager.checkForUpdate()) {
+    Serial.printf("[Reset] %s: aucune OTA disponible, reset direct\n", sourceTag);
+    return false;
+  }
+
+  if (g_appContext.otaManager.performUpdate()) {
+    Serial.printf("[Reset] %s: OTA disponible, mise à jour lancée avant reset\n", sourceTag);
+    return true;
+  }
+
+  Serial.printf("[Reset] %s: OTA détectée mais échec démarrage update, reset direct\n", sourceTag);
+  return false;
+}
+
 #ifndef DISABLE_ASYNC_WEBSERVER
 // Authentification web locale : token session (perdu au reboot)
 static char s_webAuthToken[WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN + 1] = {0};
@@ -627,10 +656,14 @@ bool WebServerManager::begin() {
                             g_autoCtrl.getForceWakeUp() ? "ON" : "OFF");
           }
           else if (strcmp(c, "resetMode") == 0) {
-              Serial.println("[Web] 🔄 Reset ESP demandé (réponse envoyée puis redémarrage)");
+              Serial.println("[Web] 🔄 Reset ESP demandé");
               g_realtimeWebSocket.broadcastNow();
-              resp = "RESET OK";
-              s_pendingRestart = true;  // Redémarrer après envoi de la réponse
+              if (tryStartOtaBeforeReset("web-local")) {
+                  resp = "OTA BEFORE RESET";
+              } else {
+                  resp = "RESET OK";
+                  s_pendingRestart = true;  // Redémarrer après envoi de la réponse
+              }
           }
           else if (strcmp(c, "wifiToggle") == 0) {
               Serial.println("[Web] 📶 WiFi toggle requested...");

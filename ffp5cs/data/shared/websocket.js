@@ -1037,7 +1037,7 @@ window.initializeDashboard = function initializeDashboard() {
               // Utiliser des données par défaut pour un affichage immédiat
               updateSensorDisplay({
                 tempWater: 25.0, tempAir: 22.0, humidity: 65.0,
-                wlAqua: 15.0, wlTank: 8.0, wlPota: 12.0,
+                wlAqua: 152.0, wlTank: 87.0, wlPota: 121.0,
                 pumpAqua: false, pumpTank: false, heater: false, light: false
               });
               updateConnectionStatus(false);

@@ -832,9 +832,9 @@ window.initCharts = function initCharts() {
   const waterOpts = Object.assign({}, commonOpts, {
     series: [
       {},
-      { label: 'Aquarium cm', stroke: '#10b981', width: 2, fill: 'rgba(16, 185, 129, 0.1)' },
-      { label: 'Réservoir cm', stroke: '#8b5cf6', width: 2, fill: 'rgba(139, 92, 246, 0.1)' },
-      { label: 'Potager cm', stroke: '#f59e0b', width: 2, fill: 'rgba(245, 158, 11, 0.1)' }
+      { label: 'Aquarium mm', stroke: '#10b981', width: 2, fill: 'rgba(16, 185, 129, 0.1)' },
+      { label: 'Réservoir mm', stroke: '#8b5cf6', width: 2, fill: 'rgba(139, 92, 246, 0.1)' },
+      { label: 'Potager mm', stroke: '#f59e0b', width: 2, fill: 'rgba(245, 158, 11, 0.1)' }
     ]
   });
   waterChart = new uPlot(waterOpts, [[], [], [], []], waterEl);

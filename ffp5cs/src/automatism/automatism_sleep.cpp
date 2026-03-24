@@ -170,12 +170,13 @@ bool AutomatismSleep::shouldEnterSleepEarly(const SensorReadings& r,
     uint32_t adaptiveDelaySec = calculateAdaptiveSleepDelay();
     bool delayReached = (nowMs - lastWakeMs) >= (adaptiveDelaySec * 1000UL);
 
-    bool tideAscendingTrigger = (diffMaree10s > tideTriggerCm);
+    const int tideTriggerMm = static_cast<int>(SensorConfig::Ultrasonic::cmToMm(static_cast<uint16_t>(tideTriggerCm)));
+    bool tideAscendingTrigger = (diffMaree10s > tideTriggerMm);
 
     if (tideAscendingTrigger || delayReached) {
         unsigned long awakeSec = (nowMs - lastWakeMs) / 1000UL;
         if (tideAscendingTrigger) {
-            Serial.printf("[Auto] Sleep précoce déclenché: marée montante (~10s, +%d cm)\n",
+            Serial.printf("[Auto] Sleep précoce déclenché: marée montante (~10s, +%d mm)\n",
                           diffMaree10s);
         } else {
             Serial.printf("[Auto] Sleep précoce déclenché: délai atteint (%lu s)\n", awakeSec);
@@ -346,19 +347,20 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     const unsigned long nowMs = millis();
     const uint32_t adaptiveDelaySec = calculateAdaptiveSleepDelay();
     const bool delayReached = (nowMs - localLastWakeMs) >= (adaptiveDelaySec * 1000UL);
-    const bool tideAscending = (diffMaree10s > tideTriggerCm);
+    const int tideTriggerMm = static_cast<int>(SensorConfig::Ultrasonic::cmToMm(static_cast<uint16_t>(tideTriggerCm)));
+    const bool tideAscending = (diffMaree10s > tideTriggerMm);
     const bool decisionChanged = (canSleep != _lastCanSleep) || (shouldSleep != _lastShouldSleep);
     if (decisionChanged || (nowMs - _lastDecisionLogMs > 30000)) {
         _lastDecisionLogMs = nowMs;
         _lastCanSleep = canSleep;
         _lastShouldSleep = shouldSleep;
-        Serial.printf("[Auto] Sleep decision: can=%d should=%d delay=%d tide=%d diff=%d trig=%d ws=%u feed=%d pump=%d cd=%lu wake=%lu s sleep=%u s\n",
+        Serial.printf("[Auto] Sleep decision: can=%d should=%d delay=%d tide=%d diff_mm=%d trig_mm=%d ws=%u feed=%d pump=%d cd=%lu wake=%lu s sleep=%u s\n",
                       canSleep ? 1 : 0,
                       shouldSleep ? 1 : 0,
                       delayReached ? 1 : 0,
                       tideAscending ? 1 : 0,
                       diffMaree10s,
-                      tideTriggerCm,
+                      tideTriggerMm,
                       wsClients,
                       feedingInProgress ? 1 : 0,
                       tankPumpRunning ? 1 : 0,

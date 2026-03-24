@@ -525,10 +525,10 @@ bool AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
             return false;
         }
         int16_t diff = (int16_t)wlAqua - (int16_t)_extremeWlAqua;
-        if (diff >= (int16_t)INFLECTION_NOISE_CM) {
+        if (diff >= (int16_t)INFLECTION_NOISE_MM) {
             _trendDir = 1;
             _extremeWlAqua = wlAqua;
-        } else if (diff <= -(int16_t)INFLECTION_NOISE_CM) {
+        } else if (diff <= -(int16_t)INFLECTION_NOISE_MM) {
             _trendDir = -1;
             _extremeWlAqua = wlAqua;
         }
@@ -538,7 +538,7 @@ bool AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
     if (_trendDir == 1) {
         if (wlAqua >= _extremeWlAqua) {
             _extremeWlAqua = wlAqua;
-        } else if ((_extremeWlAqua - wlAqua) >= INFLECTION_NOISE_CM) {
+        } else if ((_extremeWlAqua - wlAqua) >= INFLECTION_NOISE_MM) {
             _trendDir = -1;
             _extremeWlAqua = wlAqua;
             if ((nowMs - _lastInflectionPostMs) >= MIN_INFLECTION_INTERVAL_MS) {
@@ -549,7 +549,7 @@ bool AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
     } else {
         if (wlAqua <= _extremeWlAqua) {
             _extremeWlAqua = wlAqua;
-        } else if ((wlAqua - _extremeWlAqua) >= INFLECTION_NOISE_CM) {
+        } else if ((wlAqua - _extremeWlAqua) >= INFLECTION_NOISE_MM) {
             _trendDir = 1;
             _extremeWlAqua = wlAqua;
             if ((nowMs - _lastInflectionPostMs) >= MIN_INFLECTION_INTERVAL_MS) {

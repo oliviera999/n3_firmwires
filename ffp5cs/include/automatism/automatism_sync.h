@@ -144,7 +144,7 @@ private:
     static constexpr unsigned long SEND_INTERVAL_MS = 30000;   // 30 s
     static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 6000;   // 6 s (poll serveur distant)
     static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
-    static constexpr uint8_t INFLECTION_NOISE_CM = 3;             // Hystérésis renversement (> bruit +/-1cm)
+    static constexpr uint8_t INFLECTION_NOISE_MM = 30;            // Hystérésis renversement (> bruit +/-10mm)
     static constexpr uint32_t MIN_INFLECTION_INTERVAL_MS = 15000; // Min 15s entre POSTs d'inflexion
 
     // Helpers

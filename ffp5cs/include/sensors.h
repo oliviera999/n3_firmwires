@@ -20,7 +20,7 @@
 class UltrasonicManager {
  public:
   UltrasonicManager(int pinTrigEcho, const char* sensorName = "Ultrasonic");
-  // Renvoie la distance (cm), 0 si invalide
+  // Renvoie la distance (mm), 0 si invalide
   uint16_t readFiltered(uint8_t samples = 5);
   uint16_t readAdvancedFiltered(); // Nouvelle méthode avec filtrage avancé
   uint16_t readReactiveFiltered(); // Lecture réactive avec lissage minimal
@@ -40,13 +40,13 @@ class UltrasonicManager {
   uint16_t _lastValidDistance;
   
   // Configuration du filtrage - renforcé pour surface agitée (prod)
-  static const uint16_t MAX_DISTANCE_DELTA = 30; // Seuil saut pour consensus
-  static const uint16_t OUTLIER_SPREAD_CM = 15; // Rejet intra-batch si écart > 15 cm de la médiane
+  static const uint16_t MAX_DISTANCE_DELTA = 300; // Seuil saut pour consensus (30 cm)
+  static const uint16_t OUTLIER_SPREAD_MM = 150; // Rejet intra-batch si écart > 150 mm de la médiane
   static const uint8_t MIN_VALID_READINGS = 1;
   static const uint8_t READINGS_COUNT = 5; // 5 lectures + médiane pour eau agitée
   static const uint8_t REACTIVE_READINGS_COUNT = 5; // Idem mode réactif
-  static const uint16_t MIN_DISTANCE = 2; // Minimum selon datasheet HC-SR04
-  static const uint16_t MAX_DISTANCE = 400; // Maximum selon datasheet HC-SR04 (4m)
+  static const uint16_t MIN_DISTANCE = 20; // Minimum selon datasheet HC-SR04 (2 cm)
+  static const uint16_t MAX_DISTANCE = 4000; // Maximum selon datasheet HC-SR04 (4m)
   // Délai minimum recommandé entre mesures
   static const uint32_t MIN_DELAY_BETWEEN_MEASUREMENTS_MS = 60;
   

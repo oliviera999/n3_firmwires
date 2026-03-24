@@ -12,6 +12,40 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.34 - 2026-03-24
+
+### Publication OTA WROOM beta + prod
+
+- **Version firmware** : incrémentation de `13.33` vers `13.34` pour préparer une publication OTA cohérente.
+- **Déploiement OTA demandé** : publication des canaux **`ffp5-wroom-beta`** et **`ffp5-wroom-prod`** via le script racine `scripts/publish_ota.ps1`.
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.33 - 2026-03-24
+
+### Ultrasons en millimètres (expérimental)
+
+- **Mesure ultrason** : conversion µs -> **mm** dans `UltrasonicManager` (lecture simple, avancée et réactive), avec logs alignés en mm.
+- **Validation/fallback** : bornes ultrason et fallbacks API `/json` passés en mm (`wlAqua`, `wlTank`, `wlPota`).
+- **Automatismes** : comparaisons avec les seuils serveur conservées en cm côté config mais converties en mm au moment des décisions (pompe/alertes/inondation) pour garder une logique cohérente.
+- **Marée / inflexion** : hystérésis et triggers adaptés à l’échelle mm (`+30 mm` au lieu de `+3 cm`).
+- **UI locale** : libellés des courbes d’eau mis à jour en mm, valeurs fallback front alignées.
+- **Fichiers** : `include/config.h`, `include/sensors.h`, `include/automatism/automatism_sync.h`, `src/sensors.cpp`, `src/system_sensors.cpp`, `src/automatism.cpp`, `src/automatism/automatism_sleep.cpp`, `src/automatism/automatism_sync.cpp`, `data/shared/common.js`, `data/shared/websocket.js`, `VERSION.md`.
+
+---
+
+## Version 13.32 - 2026-03-24
+
+### Reset priorisé OTA (local et distant)
+
+- **Règle appliquée** : sur une demande de reset (`resetMode`), le firmware tente d'abord une vérification OTA ; si une mise à jour est disponible, elle est lancée avant tout reset manuel.
+- **Reset local (web embarqué)** : commande `cmd=resetMode` met à jour la réponse (`OTA BEFORE RESET` quand une OTA démarre) et n'appelle `ESP.restart()` immédiatement que si aucune OTA n'est disponible (ou si son démarrage échoue).
+- **Reset distant (GPIO 110)** : au front montant, même logique OTA-prioritaire ; `ESP.restart()` direct uniquement en fallback.
+- **Fichiers** : `src/web_server.cpp`, `src/gpio_parser.cpp`, `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.31 - 2026-03-23
 
 ### Test OTA aquaponie-test

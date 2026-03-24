@@ -47,8 +47,8 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usPota.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
-    if (val == 0 || val > SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u cm, force 0\n", val);
+    if (val == 0 || val > SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM) {
+      SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u mm, force 0\n", val);
       r.wlPota = 0;
     } else {
       r.wlPota = val;
@@ -67,18 +67,18 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usAqua.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
+    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
     if (!valid) {
       SENSOR_LOG_PRINTF("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
       // Tentative de récupération avec méthode simple
       val = _usAqua.readFiltered(3);
-      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
+      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
       if (valid) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u cm\n", val);
+        SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u mm\n", val);
         r.wlAqua = val;
         _lastValidWlAqua = val;
       } else if (_lastValidWlAqua > 0) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u cm\n", _lastValidWlAqua);
+        SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u mm\n", _lastValidWlAqua);
         r.wlAqua = _lastValidWlAqua;
       } else {
         SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – utilise 0\n");
@@ -109,33 +109,33 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
+    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
     if (!valid) {
       uint32_t nowMs = millis();
       bool shouldLog = _lastWlTankWasValid || (nowMs - _lastWlTankInvalidLogMs >= 30000);
       if (shouldLog) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Niveau réservoir invalide: %u cm\n", val);
+        SENSOR_LOG_PRINTF("[SystemSensors] Niveau réservoir invalide: %u mm\n", val);
         _lastWlTankInvalidLogMs = nowMs;
       }
       // Essai de récupération simple
       val = _usTank.readFiltered(3);
-      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_CM);
+      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
       if (valid) {
         if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Récupération réservoir réussie: %u cm\n", val);
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération réservoir réussie: %u mm\n", val);
         }
         r.wlTank = val;
         _lastValidWlTank = val;
       } else if (_lastValidWlTank > 0) {
         if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u cm\n", _lastValidWlTank);
+          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u mm\n", _lastValidWlTank);
         }
         r.wlTank = _lastValidWlTank;
       } else {
         // Aucune valeur valide connue : utiliser valeur par défaut sûre (cohérente API /json)
         r.wlTank = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f);
         if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, réservoir=defaut %u cm\n", r.wlTank);
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, réservoir=defaut %u mm\n", r.wlTank);
         }
       }
     } else {
@@ -254,7 +254,7 @@ SensorReadings SystemSensors::read() {
   uint16_t oldAquaMax = _aquaMax;
   if (r.wlAqua > _aquaMax) {
     _aquaMax = r.wlAqua;
-    SENSOR_LOG_PRINTF("[Maree] Nouveau max: %u cm (précédent: %u cm)\n", _aquaMax, oldAquaMax);
+    SENSOR_LOG_PRINTF("[Maree] Nouveau max: %u mm (précédent: %u mm)\n", _aquaMax, oldAquaMax);
   }
 
   // Vérification du timeout global et affichage du temps d'exécution
@@ -276,7 +276,7 @@ int SystemSensors::diffMaree(uint16_t currentAqua) {
   int diff10s = diffMaree10s(currentAqua, nowMs);
   
   // Log détaillé du calcul de marée (15s)
-  SENSOR_LOG_PRINTF("[Maree] Calcul15s: actuel=%u, diff15s=%d cm\n", currentAqua, diff10s);
+  SENSOR_LOG_PRINTF("[Maree] Calcul15s: actuel=%u, diff15s=%d mm\n", currentAqua, diff10s);
   return diff10s;
 } 
 
