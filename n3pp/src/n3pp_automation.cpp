@@ -231,12 +231,16 @@ void automatismes() {
 }
 
 void sommeil() {
-  //Go to sleep now
-  Serial.println("WakeUp : ");
-  Serial.print(WakeUp);
+  Serial.println(String("[SLEEP][TRACE] entree WakeUp=") + String(WakeUp ? 1 : 0) +
+                 " FreqWakeUp=" + String(FreqWakeUp) +
+                 " resetMode=" + String(resetMode ? 1 : 0) +
+                 " PontDiv=" + String(PontDiv) +
+                 " SeuilPontDiv=" + String(SeuilPontDiv));
   if (WakeUp == 0) {
 
     if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "checked") {
+      Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
+                     " < SeuilPontDiv=" + String(SeuilPontDiv));
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       sendEmailNotification();
       datatobdd();
@@ -253,9 +257,11 @@ void sommeil() {
       EnregistrementHeureFlash();
       N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
       n3SleepConfigure(emergencySleep);
+      Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
       n3SleepStart();
     }
 
+    Serial.println(String("[SLEEP][TRACE] branche=regular WakeUp=0 timer=") + String(FreqWakeUp) + "s");
     if (displayOk) display.clearDisplay();
     datatobdd();
     Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
@@ -272,7 +278,11 @@ void sommeil() {
     N3SleepConfig regularSleep = { N3_WAKEUP_GPIO, HIGH, (unsigned long)FreqWakeUp };
     n3SleepConfigure(regularSleep);
     Serial.printf("[SLEEP] Timer configure a %d s\n", FreqWakeUp);
+    Serial.println(String("[SLEEP][TRACE] start deep sleep mode=regular timer=") + String(FreqWakeUp) + "s");
     n3SleepStart();
+  } else {
+    Serial.println(String("[SLEEP][TRACE] skip deep sleep: WakeUp=1 (commande serveur), FreqWakeUp=") +
+                   String(FreqWakeUp) + "s");
   }
 }
 

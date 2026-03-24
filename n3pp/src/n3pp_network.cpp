@@ -8,7 +8,10 @@
 
 static const uint16_t OUTPUTS_FETCH_DELAY_MS = 250;
 
-static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
+static int readIntByKey(JSONVar& obj, const char* key, int defaultValue) {
+  if (!obj.hasOwnProperty(key)) {
+    return defaultValue;
+  }
   JSONVar val = obj[key];
   String valueType = JSON.typeof(val);
   if (valueType == "undefined" || valueType == "null") {
@@ -30,8 +33,11 @@ static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
   return defaultValue;
 }
 
-static bool tryReadIntByKey(const JSONVar& obj, const char* key, int* outValue) {
+static bool tryReadIntByKey(JSONVar& obj, const char* key, int* outValue) {
   if (outValue == nullptr) return false;
+  if (!obj.hasOwnProperty(key)) {
+    return false;
+  }
   JSONVar val = obj[key];
   String valueType = JSON.typeof(val);
   if (valueType == "undefined" || valueType == "null") {
@@ -66,7 +72,10 @@ static bool tryReadIntByKey(const JSONVar& obj, const char* key, int* outValue) 
   return false;
 }
 
-static String readStringByKey(const JSONVar& obj, const char* key, const String& defaultValue) {
+static String readStringByKey(JSONVar& obj, const char* key, const String& defaultValue) {
+  if (!obj.hasOwnProperty(key)) {
+    return defaultValue;
+  }
   JSONVar val = obj[key];
   String valueType = JSON.typeof(val);
   if (valueType == "undefined" || valueType == "null") {
@@ -203,25 +212,25 @@ void variablestoesp() {
     String raw107 = readStringByKey(myObject, "107", "<absent>");
 
     if (!hasResetMode) {
-      Serial.printf("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=%s), conservation=%d\n",
-                    raw110.c_str(), resetMode ? 1 : 0);
+      Serial.println(String("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=") + raw110 +
+                     "), conservation=" + String(resetMode ? 1 : 0));
     } else {
       resetMode = (parsedResetMode != 0);
     }
 
     if (!hasWakeUp) {
-      Serial.printf("[SERVER][GET][WARN] Cle 106 absente/invalide (raw=%s), conservation=%d\n",
-                    raw106.c_str(), WakeUp ? 1 : 0);
+      Serial.println(String("[SERVER][GET][WARN] Cle 106 absente/invalide (raw=") + raw106 +
+                     "), conservation=" + String(WakeUp ? 1 : 0));
     } else {
       WakeUp = (parsedWakeUp != 0);
     }
 
     if (!hasFreqWakeUp) {
-      Serial.printf("[SERVER][GET][WARN] Cle 107 absente/invalide (raw=%s), conservation=%d\n",
-                    raw107.c_str(), FreqWakeUp);
+      Serial.println(String("[SERVER][GET][WARN] Cle 107 absente/invalide (raw=") + raw107 +
+                     "), conservation=" + String(FreqWakeUp));
     } else if (parsedFreqWakeUp < 1 || parsedFreqWakeUp > 86400) {
-      Serial.printf("[SERVER][GET][WARN] Cle 107 hors plage (raw=%s parsed=%d), conservation=%d\n",
-                    raw107.c_str(), parsedFreqWakeUp, FreqWakeUp);
+      Serial.println(String("[SERVER][GET][WARN] Cle 107 hors plage (raw=") + raw107 +
+                     " parsed=" + String(parsedFreqWakeUp) + "), conservation=" + String(FreqWakeUp));
     } else {
       FreqWakeUp = parsedFreqWakeUp;
     }
@@ -231,14 +240,12 @@ void variablestoesp() {
     SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
     HeureArrosage = readIntByKey(myObject, "104", HeureArrosage);
     tempsArrosageSec = readIntByKey(myObject, "105", tempsArrosageSec);
-    Serial.printf("[SERVER][GET][APPLY] 110:%s=>%d 106:%s=>%d 107:%s=>%d\n",
-                  raw110.c_str(), resetMode ? 1 : 0,
-                  raw106.c_str(), WakeUp ? 1 : 0,
-                  raw107.c_str(), FreqWakeUp);
-    Serial.printf("[SERVER][GET] resetMode=%d wakeUp=%d sleep=%d\n",
-                  resetMode ? 1 : 0,
-                  WakeUp ? 1 : 0,
-                  FreqWakeUp);
+    Serial.println(String("[SERVER][GET][APPLY] 110:") + raw110 + "=>" + String(resetMode ? 1 : 0) +
+                   " 106:" + raw106 + "=>" + String(WakeUp ? 1 : 0) +
+                   " 107:" + raw107 + "=>" + String(FreqWakeUp));
+    Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
+                   " wakeUp=" + String(WakeUp ? 1 : 0) +
+                   " sleep=" + String(FreqWakeUp));
   }
   if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }
