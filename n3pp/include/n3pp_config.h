@@ -3,7 +3,7 @@
 #include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "4.35"
+#define FIRMWARE_VERSION "4.36"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13

@@ -9,6 +9,7 @@ struct N3OtaConfig {
     void (*onUpdateStart)(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
     void (*onUpdateEnd)(bool success, const char* details, void* userData);
     void* userData;
+    void (*onUpdateProgress)(int current, int total, uint8_t percent, void* userData);
 };
 
 // Synchronise la partition de boot avec la partition en cours d'exécution.

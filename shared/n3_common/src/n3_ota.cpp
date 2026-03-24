@@ -7,6 +7,8 @@
 #include <cstdio>
 
 static uint8_t s_lastLoggedOtaPercent = 255;
+static void (*s_progressCallback)(int, int, uint8_t, void*) = nullptr;
+static void* s_progressUserData = nullptr;
 
 static void logOtaProgress(int current, int total) {
     if (total <= 0 || current < 0) return;
@@ -22,6 +24,9 @@ static void logOtaProgress(int current, int total) {
                   static_cast<unsigned>(pct),
                   current,
                   total);
+    if (s_progressCallback) {
+        s_progressCallback(current, total, pct, s_progressUserData);
+    }
     s_lastLoggedOtaPercent = pct;
 }
 
@@ -128,6 +133,8 @@ bool n3OtaCheck(const N3OtaConfig& config) {
         httpUpdate.setLedPin(config.ledPin, LOW);
     }
     s_lastLoggedOtaPercent = 255;
+    s_progressCallback = config.onUpdateProgress;
+    s_progressUserData = config.userData;
     Serial.println("[OTA][PROGRESS] debut telechargement");
     httpUpdate.onProgress(logOtaProgress);
     httpUpdate.rebootOnUpdate(true);
@@ -137,10 +144,14 @@ bool n3OtaCheck(const N3OtaConfig& config) {
 
     switch (ret) {
         case HTTP_UPDATE_OK:
+            s_progressCallback = nullptr;
+            s_progressUserData = nullptr;
             Serial.println("[OTA] MAJ reussie, redemarrage...");
             if (config.onUpdateEnd) config.onUpdateEnd(true, "OTA terminee avec succes. Redemarrage imminent.", config.userData);
             return true;
         case HTTP_UPDATE_FAILED:
+            s_progressCallback = nullptr;
+            s_progressUserData = nullptr;
             Serial.printf("[OTA] Echec MAJ: %s\n",
                           httpUpdate.getLastErrorString().c_str());
             if (config.onUpdateEnd) {
@@ -150,6 +161,8 @@ bool n3OtaCheck(const N3OtaConfig& config) {
             }
             break;
         case HTTP_UPDATE_NO_UPDATES:
+            s_progressCallback = nullptr;
+            s_progressUserData = nullptr;
             Serial.println("[OTA] Pas de MAJ");
             if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: pas de mise a jour.", config.userData);
             break;
