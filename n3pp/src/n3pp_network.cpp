@@ -1,6 +1,7 @@
 #include "n3pp_network.h"
 #include "n3pp_globals.h"
 #include <Arduino_JSON.h>
+#include <stdlib.h>
 #include "n3_wifi.h"
 #include "n3_data.h"
 #include "n3pp_automation.h"
@@ -27,6 +28,42 @@ static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
   }
 
   return defaultValue;
+}
+
+static bool tryReadIntByKey(const JSONVar& obj, const char* key, int* outValue) {
+  if (outValue == nullptr) return false;
+  JSONVar val = obj[key];
+  String valueType = JSON.typeof(val);
+  if (valueType == "undefined" || valueType == "null") {
+    return false;
+  }
+
+  if (valueType == "number" || valueType == "boolean") {
+    *outValue = (int)val;
+    return true;
+  }
+
+  if (valueType == "string") {
+    const char* raw = (const char*)val;
+    if (raw == nullptr) {
+      return false;
+    }
+    char* endPtr = nullptr;
+    long parsed = strtol(raw, &endPtr, 10);
+    if (endPtr == raw) {
+      return false;
+    }
+    while (endPtr != nullptr && (*endPtr == ' ' || *endPtr == '\t' || *endPtr == '\r' || *endPtr == '\n')) {
+      ++endPtr;
+    }
+    if (endPtr != nullptr && *endPtr != '\0') {
+      return false;
+    }
+    *outValue = (int)parsed;
+    return true;
+  }
+
+  return false;
 }
 
 static String readStringByKey(const JSONVar& obj, const char* key, const String& defaultValue) {
@@ -134,9 +171,13 @@ void variablestoesp() {
 
     Serial.printf("[SERVER][GET] HTTP=%u\n", httpResponseCode);
     Serial.println("[SERVER][GET][BODY] " + outputsState);
+    if (httpResponseCode == 0) {
+      Serial.println("[SERVER][GET][WARN] Requete echouee, config distante ignoree");
+      return;
+    }
     JSONVar myObject = JSON.parse(outputsState);
     if (JSON.typeof(myObject) == "undefined") {
-      Serial.println("Erreur : parsing JSON echoue.");
+      Serial.println("[SERVER][GET][WARN] JSON invalide, config distante ignoree");
       return;
     }
     Serial.print("GPIO bdd : ");
@@ -151,15 +192,53 @@ void variablestoesp() {
 
     String relaisGpioKey = String(RELAIS);
     ArrosageManu = readIntByKey(myObject, relaisGpioKey.c_str(), ArrosageManu);
-    resetMode = readIntByKey(myObject, "110", resetMode);
+    int parsedResetMode = resetMode ? 1 : 0;
+    int parsedWakeUp = WakeUp ? 1 : 0;
+    int parsedFreqWakeUp = FreqWakeUp;
+    bool hasResetMode = tryReadIntByKey(myObject, "110", &parsedResetMode);
+    bool hasWakeUp = tryReadIntByKey(myObject, "106", &parsedWakeUp);
+    bool hasFreqWakeUp = tryReadIntByKey(myObject, "107", &parsedFreqWakeUp);
+    String raw110 = readStringByKey(myObject, "110", "<absent>");
+    String raw106 = readStringByKey(myObject, "106", "<absent>");
+    String raw107 = readStringByKey(myObject, "107", "<absent>");
+
+    if (!hasResetMode) {
+      Serial.printf("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=%s), conservation=%d\n",
+                    raw110.c_str(), resetMode ? 1 : 0);
+    } else {
+      resetMode = (parsedResetMode != 0);
+    }
+
+    if (!hasWakeUp) {
+      Serial.printf("[SERVER][GET][WARN] Cle 106 absente/invalide (raw=%s), conservation=%d\n",
+                    raw106.c_str(), WakeUp ? 1 : 0);
+    } else {
+      WakeUp = (parsedWakeUp != 0);
+    }
+
+    if (!hasFreqWakeUp) {
+      Serial.printf("[SERVER][GET][WARN] Cle 107 absente/invalide (raw=%s), conservation=%d\n",
+                    raw107.c_str(), FreqWakeUp);
+    } else if (parsedFreqWakeUp < 1 || parsedFreqWakeUp > 86400) {
+      Serial.printf("[SERVER][GET][WARN] Cle 107 hors plage (raw=%s parsed=%d), conservation=%d\n",
+                    raw107.c_str(), parsedFreqWakeUp, FreqWakeUp);
+    } else {
+      FreqWakeUp = parsedFreqWakeUp;
+    }
     inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
     enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
     SeuilSec = readIntByKey(myObject, "102", SeuilSec);
     SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
     HeureArrosage = readIntByKey(myObject, "104", HeureArrosage);
     tempsArrosageSec = readIntByKey(myObject, "105", tempsArrosageSec);
-    WakeUp = readIntByKey(myObject, "106", WakeUp);
-    FreqWakeUp = readIntByKey(myObject, "107", FreqWakeUp);
+    Serial.printf("[SERVER][GET][APPLY] 110:%s=>%d 106:%s=>%d 107:%s=>%d\n",
+                  raw110.c_str(), resetMode ? 1 : 0,
+                  raw106.c_str(), WakeUp ? 1 : 0,
+                  raw107.c_str(), FreqWakeUp);
+    Serial.printf("[SERVER][GET] resetMode=%d wakeUp=%d sleep=%d\n",
+                  resetMode ? 1 : 0,
+                  WakeUp ? 1 : 0,
+                  FreqWakeUp);
   }
   if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }

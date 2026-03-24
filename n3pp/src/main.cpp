@@ -299,10 +299,9 @@ void setup() {
   //printLocalTime();
 
   variablestoesp();
-  resetMode = 0;
   etatPompe = 0;
   etatRelais = 1;
-  Serial.printf("[REMOTE] resetMode(setup)=%d\n", resetMode ? 1 : 0);
+  Serial.printf("[REMOTE] resetMode(setup apres sync)=%d\n", resetMode ? 1 : 0);
   //datatobdd();
 
   //Increment boot number and print it every reboot

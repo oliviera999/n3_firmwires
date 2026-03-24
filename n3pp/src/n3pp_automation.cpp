@@ -269,6 +269,9 @@ void sommeil() {
     Serial.println("Going to sleep now");
     delay(1000);
     EnregistrementHeureFlash();
+    N3SleepConfig regularSleep = { N3_WAKEUP_GPIO, HIGH, (unsigned long)FreqWakeUp };
+    n3SleepConfigure(regularSleep);
+    Serial.printf("[SLEEP] Timer configure a %d s\n", FreqWakeUp);
     n3SleepStart();
   }
 }
