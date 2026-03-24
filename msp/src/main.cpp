@@ -128,6 +128,63 @@ AsyncWebServer server(80);
 WiFiUDP wifiUdp;
 String outputsState;
 
+// Reset distant: edge detection with first-sample seeding to avoid reboot loops
+// if server state is already "110=1" at boot.
+static bool s_resetEdgeInitialized = false;
+static bool s_lastResetModeState = false;
+static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
+RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
+
+static bool tryOtaBeforeResetForRemoteCommand() {
+#ifdef TEST_MODE
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp-test/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#else
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#endif
+  return n3OtaCheck(otaConfig);
+}
+
+static void maybeRunPeriodicOtaCheck(const char* reason) {
+  if (s_otaElapsedSinceLastCheckSeconds < OTA_PERIODIC_INTERVAL_SECONDS) {
+    const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
+    Serial.printf("[OTA] check 2h ignore (%s), restant=%lu s\n",
+                  reason ? reason : "n/a",
+                  static_cast<unsigned long>(remaining));
+    return;
+  }
+
+#ifdef TEST_MODE
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp-test/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#else
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/msp/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#endif
+
+  Serial.printf("[OTA] check 2h declenche (%s)\n", reason ? reason : "n/a");
+  n3OtaCheck(otaConfig);
+  s_otaElapsedSinceLastCheckSeconds = 0;
+}
+
+static void accumulateOtaPeriodicElapsedFromSleep(int sleepSeconds) {
+  if (sleepSeconds <= 0) return;
+  if (s_otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS) return;
+
+  const uint32_t sleepSec = static_cast<uint32_t>(sleepSeconds);
+  const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
+  s_otaElapsedSinceLastCheckSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
+}
+
 // --- Temps RTC / NTP ---
 const char* ntpServer = MSP_NTP_SERVER;
 const long gmtOffset_sec = MSP_GMT_OFFSET_SEC;
@@ -155,21 +212,10 @@ void setup() {
   n3OtaSyncBootPartition();
   WiFi.mode(WIFI_MODE_STA);
 
-  // OTA prioritaire : vérification dès que le WiFi est connecté, avant tout le reste
+  // OTA périodique : vérification au boot seulement si la cadence 2h est atteinte
   Wificonnect();
-  Serial.println("wifi ok");
-#ifdef TEST_MODE
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp-test/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#else
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#endif
-  n3OtaCheck(otaConfig);
+  Serial.println("[WIFI] Connexion initiale OK");
+  maybeRunPeriodicOtaCheck("boot");
 
   // Après OTA : affichage, capteurs, NTP, etc.
   displayOk = n3DisplayInit(display);
@@ -204,30 +250,28 @@ void setup() {
   pinMode(DHTPINEXT, INPUT);
   dhtint.begin();
   dhtext.begin();
-  Serial.println("dht ok");
+  Serial.println("[DHT] Initialisation OK");
 
   sensors.begin();
   sensors.setResolution(10);
-  Serial.println("t terre ok");
+  Serial.println("[DS18B20] Initialisation OK");
 
   for (int i = 0; i < NUM_SAMPLES; i++) {
     samples[i] = 0;
   }
-  Serial.println("lum ok");
+  Serial.println("[LUM] Initialisation capteurs OK");
 
   print_wakeup_reason();
 
   // Configuration et synchronisation temporelles
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  Serial.println("Configuration NTP terminée");
+  Serial.println("[NTP] Configuration terminee");
 
   //printLocalTime();
 
   // Mettre à jour les informations depuis ESP (définitions)
   variablestoesp();
-  Serial.println("variables to esp ok");
-
-  resetMode = 0;  // Réinitialisation du mode
+  Serial.println("[SERVER][GET] Variables distantes synchronisees");
 
   // Initialiser les servos à des valeurs par défaut
   //servogd.write(AngleServoGD);
@@ -262,6 +306,23 @@ void loop() {
 
   variablestoesp();  // Mise à jour des variables depuis la BDD
 
+  // Reset mode distant (GPIO 110): OTA first if available, then restart fallback.
+  bool resetRequested = (resetMode == 1);
+  if (!s_resetEdgeInitialized) {
+    s_lastResetModeState = resetRequested;
+    s_resetEdgeInitialized = true;
+    if (resetRequested) {
+      Serial.println("[REMOTE] Reset distant seed=1 au premier poll (pas de reboot immediat)");
+    }
+  } else if (resetRequested && !s_lastResetModeState) {
+    Serial.println("[REMOTE] Reset distant demande (front montant)");
+    if (!tryOtaBeforeResetForRemoteCommand()) {
+      Serial.println("[REMOTE][OTA] Aucune MAJ OTA dispo, reset direct");
+      ESP.restart();
+    }
+  }
+  s_lastResetModeState = resetRequested;
+
   LectureCapteurs();
 
   batterie();
@@ -270,6 +331,7 @@ void loop() {
 
   Light_val();  // Suivi de la lumière
 
+  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
   sommeil();
 
   // Envoi régulier des données mesurées

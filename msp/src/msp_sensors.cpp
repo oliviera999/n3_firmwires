@@ -10,6 +10,8 @@
 #include "n3_analog_sensors.h"
 
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
+static const int LIGHT_SCAN_MIN_THRESHOLD = 50;
+static const bool MSP_VERBOSE_LIGHT_SCAN = false;
 
 static const N3BatteryConfig batteryConfig = {
   pontdiv, (uint32_t)N3_BATTERY_R1, (uint32_t)N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
@@ -26,7 +28,7 @@ void LectureCapteurs() {
   N3Analog::AnalogResult rHum = N3Analog::readFilteredAnalog(cfgHumidSol);
   HumidSol = rHum.valid ? rHum.value : 1;
   if (HumidSol == 0) HumidSol = 1;
-  Serial.println(HumidSol);
+  Serial.printf("[SENSOR] HumidSol=%d\n", HumidSol);
 
 
   // Lire la détection de pluie
@@ -35,7 +37,7 @@ void LectureCapteurs() {
     Pluie = 1;
   }
   delay(100);
-  Serial.println(Pluie);
+  Serial.printf("[SENSOR] Pluie=%d\n", Pluie);
 
 
   /*
@@ -55,7 +57,7 @@ void LectureCapteurs() {
   humidAirInt = dhtint.readHumidity();
   delay(100);
   if (isnan(humidAirInt) || isnan(tempAirInt)) {
-    Serial.println("Echec de lecture DHT interieur, fallback 20C / 50%");
+    Serial.println("[DHT][WARN] Lecture interieur invalide, fallback 20C / 50%");
     tempAirInt = 20.0f;
     humidAirInt = 50.0f;
   }
@@ -66,7 +68,7 @@ void LectureCapteurs() {
   humidAirExt = dhtext.readHumidity();
   delay(100);
   if (isnan(humidAirExt) || isnan(tempAirExt)) {
-    Serial.println("Echec de lecture DHT exterieur, fallback 20C / 50%");
+    Serial.println("[DHT][WARN] Lecture exterieur invalide, fallback 20C / 50%");
     tempAirExt = 20.0f;
     humidAirExt = 50.0f;
   }
@@ -86,18 +88,14 @@ void LectureCapteurs() {
 
 void batterie() {
   PontDiv = analogRead(pontdiv);
-  Serial.println(PontDiv);
+  Serial.printf("[BATT] PontDiv=%d\n", PontDiv);
 
   N3BatteryResult res = n3BatteryRead(batteryConfig, (void*)samples, (void*)&sampleIndex, (void*)&sampleTotal);
   avgPontDiv = res.rawAvg;
   measuredVoltage = res.measuredVoltage;
   batteryVoltage = res.batteryVoltage;
 
-  Serial.print("Valeur  : ");
-  Serial.print(avgPontDiv);
-  Serial.print(" Tension brute : ");
-  Serial.print(measuredVoltage);
-  Serial.println(" V");
+  Serial.printf("[BATT] ADC=%d tension_brute=%.2f V\n", avgPontDiv, measuredVoltage);
 
   int battPercent = 100 - ((2100 - avgPontDiv) * 0.2);
   int batteryVoltage2 = avgPontDiv * 4.2 / 2100;
@@ -133,14 +131,12 @@ void batterie() {
   //batteryVoltage =
 
   // Afficher la tension mesurée
-  Serial.print("Tension mesurée (filtrée) : ");
-  Serial.print(batteryVoltage);
-  Serial.println(" V");
+  Serial.printf("[BATT] tension_filtree=%.2f V\n", batteryVoltage);
 }
 
 void Light_val() {
   photocellReadingMoy = ((analogRead(LUMINOSITEa) + analogRead(LUMINOSITEb) + analogRead(LUMINOSITEc) + analogRead(LUMINOSITEd)) / 4);
-  if (photocellReadingMoy > 50) {
+  if (photocellReadingMoy > LIGHT_SCAN_MIN_THRESHOLD) {
     if (displayOk) {
       display.clearDisplay();
       display.setTextSize(2);
@@ -162,6 +158,9 @@ void Light_val() {
     // Initialisation des variables
     photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
     posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
+    total1 = total2 = total3 = total4 = 0;
+    average1 = average2 = average3 = average4 = 0;
+    readIndex = 0;
 
 
     // Balayage des positions et mesure de la luminosité pour les quatre capteurs
@@ -183,6 +182,7 @@ void Light_val() {
       readings2[readIndex] = currentReading2;
       total2 = total2 + readings2[readIndex];
       average2 = total2 / numReadings;
+      readIndex = (readIndex + 1) % numReadings;
 
       if (displayOk) {
         display.clearDisplay();
@@ -200,14 +200,16 @@ void Light_val() {
       if (average1 > photocellReadingA) {
         photocellReadingA = average1;
         posLumMax1 = pos;
-        Serial.print("position max a : ");
-        Serial.println(posLumMax1);
+        if (MSP_VERBOSE_LIGHT_SCAN) {
+          Serial.printf("[SERVO][SCAN] nouveau max A pos=%d lum=%d\n", posLumMax1, photocellReadingA);
+        }
       }
       if (average2 > photocellReadingB) {
         photocellReadingB = average2;
         posLumMax2 = pos;
-        Serial.print("position max b : ");
-        Serial.println(posLumMax2);
+        if (MSP_VERBOSE_LIGHT_SCAN) {
+          Serial.printf("[SERVO][SCAN] nouveau max B pos=%d lum=%d\n", posLumMax2, photocellReadingB);
+        }
       }
     }
 
@@ -227,6 +229,7 @@ void Light_val() {
     delay(750);
 
     // Balayage du second servomoteur
+    readIndex = 0;
     for (int pos = minAngleServoHB; pos <= maxAngleServoHB; pos++) {
       servohb.write(pos);
       delay(30);  // Attendre que le servomoteur se positionne
@@ -243,6 +246,7 @@ void Light_val() {
       readings4[readIndex] = currentReading4;
       total4 = total4 + readings4[readIndex];
       average4 = total4 / numReadings;
+      readIndex = (readIndex + 1) % numReadings;
 
       if (displayOk) {
         display.clearDisplay();
@@ -260,14 +264,16 @@ void Light_val() {
       if (average3 > photocellReadingC) {
         photocellReadingC = average3;
         posLumMax3 = pos;
-        Serial.print("position max c : ");
-        Serial.println(posLumMax3);
+        if (MSP_VERBOSE_LIGHT_SCAN) {
+          Serial.printf("[SERVO][SCAN] nouveau max C pos=%d lum=%d\n", posLumMax3, photocellReadingC);
+        }
       }
       if (average4 > photocellReadingD) {
         photocellReadingD = average4;
         posLumMax4 = pos;
-        Serial.print("position max d : ");
-        Serial.println(posLumMax4);
+        if (MSP_VERBOSE_LIGHT_SCAN) {
+          Serial.printf("[SERVO][SCAN] nouveau max D pos=%d lum=%d\n", posLumMax4, photocellReadingD);
+        }
       }
     }
 
@@ -292,23 +298,15 @@ void Light_val() {
     delay(750);
 
     // Affichage des positions finales
-    Serial.print("Capteur A : ");
-    Serial.println(photocellReadingA);
-    Serial.print("Capteur B : ");
-    Serial.println(photocellReadingB);
-    Serial.print("Capteur C : ");
-    Serial.println(photocellReadingC);
-    Serial.print("Capteur D : ");
-    Serial.println(photocellReadingD);
-    // Affichage des positions finales
-    Serial.print("Position de luminosité max pour Servo 1 : ");
-    Serial.println(AngleServoGD);
-    Serial.print("Position de luminosité max pour Servo 2 : ");
-    Serial.println(AngleServoHB);
+    Serial.printf("[SERVO][SCAN] A=%d@%d B=%d@%d C=%d@%d D=%d@%d\n",
+                  photocellReadingA, posLumMax1,
+                  photocellReadingB, posLumMax2,
+                  photocellReadingC, posLumMax3,
+                  photocellReadingD, posLumMax4);
+    Serial.printf("[SERVO] angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
 
     photocellReadingMoy = (photocellReadingA + photocellReadingB + photocellReadingC + photocellReadingD) / 4;
-    Serial.print("photocellReadingMoy :");
-    Serial.println(photocellReadingMoy);
+    Serial.printf("[SENSOR] LuminositeMoy=%d\n", photocellReadingMoy);
     if (displayOk) {
       display.clearDisplay();
       display.setTextSize(2);

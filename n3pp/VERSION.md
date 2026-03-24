@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.28** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.33** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,11 @@ Version actuelle : **4.28** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.33 | 2026-03 | Ajout de logs détaillés des échanges serveur : affichage du payload POST (masquage `api_key`) et du body GET (`outputs_state`) avec code HTTP |
+| 4.32 | 2026-03 | Logs série catégorisés (`[BOOT]`, `[TIME]`, `[REMOTE]`, `[SERVER]`) et mise en évidence explicite des échanges serveur (poll config, envoi diagnostic, envoi périodique) |
+| 4.31 | 2026-03 | OTA périodique: ajout d'une vérification OTA toutes les 2h (cumul RTC du deep sleep), maintien du check OTA prioritaire sur reset distant |
+| 4.30 | 2026-03 | compatibilité toolchain GCC 14/newlib: symboles `__atomic_fetch_add_4` et `__atomic_fetch_sub_4` passés en `weak` dans `gcc_atomic_compat.c` pour éviter le conflit de linkage avec `libnewlib` |
+| 4.29 | 2026-03 | resetMode distant: detection front montant avec seed au 1er poll, tentative OTA prioritaire (`n3OtaCheck`) avant reset, fallback `ESP.restart()` si aucune MAJ |
 | 4.28 | 2026-03 | Test OTA monitoré : incrément version et validation de la mise à jour distante sur COM4 |
 | 4.27 | 2026-03 | Correction crash `LoadProhibited` sur parsing JSON outputs (cast sécurisé, fallback types number/string/null) |
 | 4.26 | 2026-03 | Test OTA n3pp : incrément version et validation de la mise à jour distante |

@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.23"
+#define FIRMWARE_VERSION "2.26"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -36,9 +36,8 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-/* OTA distant (metadata.json) — toutes cibles : vérif à chaque réveil */
+/* OTA distant (metadata.json) — toutes cibles : vérif périodique toutes les 2h */
 #define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
-#define OTA_CHECK_EVERY_N_BOOTS  1
 
 /* Notifications mail */
 #define MAIL_NOTIFICATIONS_ENABLED 1

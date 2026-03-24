@@ -46,7 +46,8 @@ WiFiClient client;
 String Wifiactif;
 
 #if USE_DEEP_SLEEP
-RTC_DATA_ATTR static int otaBootCount = 0;
+static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
+RTC_DATA_ATTR static uint32_t otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
 RTC_DATA_ATTR static int lastPhotoWindowState = -1;  /* -1: inconnu, 0: nuit, 1: jour */
 RTC_DATA_ATTR static uint8_t pendingWindowMailMask = 0;
 RTC_DATA_ATTR static int lastRemoteForceWakeupState = 0;
@@ -86,6 +87,7 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
 static void otaMailStartCallback(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
 static void otaMailEndCallback(bool success, const char* details, void* userData);
 static void handlePhotoWindowTransitionMails(bool wifiOk);
+static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds);
 #if USE_DEEP_SLEEP
 static void trySendFirstBootMail(bool wifiOk);
 #endif
@@ -420,6 +422,18 @@ static void trySendFirstBootMail(bool wifiOk) {
 }
 #endif
 
+static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds) {
+#if USE_DEEP_SLEEP
+  if (sleepSeconds == 0) return;
+  if (otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS) return;
+
+  const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - otaElapsedSinceLastCheckSeconds;
+  otaElapsedSinceLastCheckSeconds += (sleepSeconds >= remaining) ? remaining : sleepSeconds;
+#else
+  (void)sleepSeconds;
+#endif
+}
+
 #if USE_DEEP_SLEEP
 void adjustExposure() {
   sensor_t* s = esp_camera_sensor_get();
@@ -473,7 +487,7 @@ String sendPhoto() {
   const uint32_t captureStartMs = millis();
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("Echec capture camera");
+    Serial.println("[CAM][ERROR] Echec capture camera");
     logMonitoringSnapshot("sendPhoto:capture_ko");
     delay(1000);
     ESP.restart();
@@ -499,11 +513,11 @@ String sendPhoto() {
         EEPROM.put(0, persistedCount);
         EEPROM.commit();
       } else {
-        Serial.println("SD : ecriture incomplete, desactivation SD.");
+        Serial.println("[SD][WARN] Ecriture incomplete, desactivation SD");
         sdAvailable = false;
       }
     } else {
-      Serial.println("SD : ouverture fichier impossible, desactivation SD.");
+      Serial.println("[SD][WARN] Ouverture fichier impossible, desactivation SD");
       sdAvailable = false;
     }
   }
@@ -515,10 +529,14 @@ String sendPhoto() {
   const uint32_t connectStartMs = millis();
   for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES; attempt++) {
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi deconnecte, tentative de reconnexion...");
+      Serial.println("[WIFI][WARN] Deconnecte, tentative de reconnexion");
       Wificonnect();
     }
-    Serial.printf("Connexion au serveur (%d/%d) : %s\n", attempt, UPLOAD_CONNECT_RETRIES, serverName.c_str());
+    Serial.printf("[SERVER][CONNECT] Tentative %d/%d host=%s:%d\n",
+                  attempt,
+                  UPLOAD_CONNECT_RETRIES,
+                  serverName.c_str(),
+                  serverPort);
     if (client.connect(serverName.c_str(), serverPort)) {
       connected = true;
       break;
@@ -527,7 +545,7 @@ String sendPhoto() {
   }
   if (!connected) {
     logStepDuration("connexion_http", millis() - connectStartMs, 4000);
-    getBody = "Connexion a " + serverName + " echouee apres retries.";
+    getBody = "[SERVER][CONNECT][ERROR] Connexion a " + serverName + " echouee apres retries.";
     Serial.println(getBody);
     esp_camera_fb_return(fb);
     logMonitoringSnapshot("sendPhoto:connect_ko");
@@ -536,7 +554,7 @@ String sendPhoto() {
   }
   logStepDuration("connexion_http", millis() - connectStartMs, 4000);
 
-  Serial.println("Connexion serveur OK.");
+  Serial.println("[SERVER][CONNECT] Connexion serveur OK");
   String photoFilename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
   String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"" + photoFilename + "\"\r\nContent-Type: image/jpeg\r\n\r\n";
   String tail = "\r\n--RandomNerdTutorials--\r\n";
@@ -549,6 +567,9 @@ String sendPhoto() {
   client.println("Content-Length: " + String(totalLen));
   client.println("Content-Type: multipart/form-data; boundary=RandomNerdTutorials");
   client.println("X-Api-Key: " + String(API_KEY));
+  Serial.printf("[SERVER][POST] %s payload=%u bytes\n",
+                serverPath.c_str(),
+                static_cast<unsigned int>(imageLen));
   client.println();
   client.print(head);
 
@@ -593,13 +614,13 @@ String sendPhoto() {
   Serial.println();
   client.stop();
   if (statusLine.length() > 0) {
-    Serial.println("Reponse: " + statusLine);
+    Serial.println("[SERVER][RESP] " + statusLine);
     int statusCode = parseHttpStatusCode(statusLine);
     if (statusCode != 200) {
-      Serial.printf("Upload non confirme, code HTTP=%d\n", statusCode);
+      Serial.printf("[SERVER][RESP][WARN] Upload non confirme, HTTP=%d\n", statusCode);
     }
   }
-  Serial.println(getBody);
+  Serial.println("[SERVER][BODY] " + getBody);
   Serial.printf("[MON] reponse_len=%u chars\n", static_cast<unsigned int>(getBody.length()));
   ledBlink(1500, 1500, 2);
   logMonitoringSnapshot("sendPhoto:end");
@@ -698,14 +719,14 @@ void setup() {
 #if USE_SD
   const uint32_t sdInitStartMs = millis();
   if (!SD_MMC.begin()) {
-    Serial.println("Carte SD : montage echoue, continuation sans SD.");
+    Serial.println("[SD][WARN] Montage echoue, continuation sans SD");
     sdAvailable = false;
   } else if (SD_MMC.cardType() == CARD_NONE) {
-    Serial.println("Aucune carte SD detectee, continuation sans SD.");
+    Serial.println("[SD][WARN] Aucune carte detectee, continuation sans SD");
     sdAvailable = false;
   } else {
     sdAvailable = true;
-    Serial.println("Carte SD OK.");
+    Serial.println("[SD] Carte SD OK");
   }
   logStepDuration("init_sd", millis() - sdInitStartMs, 1000);
   logMonitoringSnapshot("setup:post_sd");
@@ -747,7 +768,7 @@ void setup() {
   const uint32_t camInitStartMs = millis();
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
+    Serial.printf("[CAM][ERROR] Init camera echouee, err=0x%x\n", err);
     delay(1000);
     ESP.restart();
   }
@@ -782,16 +803,21 @@ void setup() {
   trySendFirstBootMail(wifiOk);
 #endif
 
-  /* OTA distant : logs explicites + verification tous les N boots */
+  /* OTA distant : logs explicites + verification toutes les 2 heures de cycles */
 #if USE_DEEP_SLEEP
-  otaBootCount++;
   otaUpdateStartedThisBoot = false;
-  const int otaModulo = otaBootCount % OTA_CHECK_EVERY_N_BOOTS;
-  const int bootsBeforeCheck = (otaModulo == 0) ? 0 : (OTA_CHECK_EVERY_N_BOOTS - otaModulo);
-  Serial.printf("[OTA] cible=%s version_local=%s boot=%d cadence=%d metadata=%s\n",
-                currentTargetName(), FIRMWARE_VERSION, otaBootCount, OTA_CHECK_EVERY_N_BOOTS, OTA_METADATA_URL);
-  if (otaModulo == 0) {
-    Serial.println("[OTA] verification declenchee");
+  const uint32_t remainingBeforeCheck =
+      (otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS)
+          ? 0
+          : (OTA_PERIODIC_INTERVAL_SECONDS - otaElapsedSinceLastCheckSeconds);
+  Serial.printf("[OTA] cible=%s version_local=%s elapsed=%lu/%lu s metadata=%s\n",
+                currentTargetName(),
+                FIRMWARE_VERSION,
+                static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
+                static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS),
+                OTA_METADATA_URL);
+  if (remainingBeforeCheck == 0) {
+    Serial.println("[OTA] verification 2h declenchee");
     N3OtaConfig otaCfg = {
       OTA_METADATA_URL,
       FIRMWARE_VERSION,
@@ -802,9 +828,11 @@ void setup() {
       nullptr
     };
     n3OtaCheck(otaCfg);
-    Serial.println("[OTA] verification terminee");
+    otaElapsedSinceLastCheckSeconds = 0;
+    Serial.println("[OTA] verification 2h terminee");
   } else {
-    Serial.printf("[OTA] verification sautee, prochain check dans %d boot(s)\n", bootsBeforeCheck);
+    Serial.printf("[OTA] verification 2h sautee, restante=%lu s\n",
+                  static_cast<unsigned long>(remainingBeforeCheck));
   }
 #endif
 
@@ -818,9 +846,9 @@ void setup() {
   }
   if (shouldCapture) {
     if (!wifiOk && !sdAvailable) {
-      Serial.println("Photo ignoree: pas de WiFi et pas de SD disponible.");
+      Serial.println("[CAPTURE][WARN] Photo ignoree: pas de WiFi et pas de SD disponible");
     } else if (!wifiOk) {
-      Serial.println("WiFi indisponible: tentative de sauvegarde locale SD + upload si reconnexion.");
+      Serial.println("[CAPTURE][WARN] WiFi indisponible: sauvegarde SD locale + upload si reconnexion");
       sendPhoto();
     } else {
     sendPhoto();
@@ -844,7 +872,11 @@ void loop() {
 #if USE_DEEP_SLEEP
   Serial.printf("[LOOP] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
   logMonitoringSnapshot("loop:before_sleep");
-  Serial.printf("Entree en deep sleep (%u s).\n", static_cast<unsigned int>(runtimeSleepSeconds));
+  accumulateOtaPeriodicElapsedFromSleep(runtimeSleepSeconds);
+  Serial.printf("[OTA] cumul avant reveil: %lu/%lu s\n",
+                static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
+                static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS));
+  Serial.printf("[SLEEP] Entree en deep sleep (%u s)\n", static_cast<unsigned int>(runtimeSleepSeconds));
   delay(1000);
   Serial.flush();
   esp_sleep_enable_timer_wakeup((uint64_t)runtimeSleepSeconds * uS_TO_S_FACTOR);

@@ -138,6 +138,63 @@ int annee;
 // Code de réponse HTTP (requêtes GET/POST)
 unsigned int httpResponseCode;
 
+// Reset distant: edge detection with first-sample seeding to avoid reboot loops
+// if server state is already "110=1" at boot.
+static bool s_resetEdgeInitialized = false;
+static bool s_lastResetModeState = false;
+static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
+RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
+
+static bool tryOtaBeforeResetForRemoteCommand() {
+#ifdef TEST_MODE
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp-test/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#else
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#endif
+  return n3OtaCheck(otaConfig);
+}
+
+static void maybeRunPeriodicOtaCheck(const char* reason) {
+  if (s_otaElapsedSinceLastCheckSeconds < OTA_PERIODIC_INTERVAL_SECONDS) {
+    const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
+    Serial.printf("[OTA] check 2h ignore (%s), restant=%lu s\n",
+                  reason ? reason : "n/a",
+                  static_cast<unsigned long>(remaining));
+    return;
+  }
+
+#ifdef TEST_MODE
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp-test/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#else
+  static const N3OtaConfig otaConfig = {
+      "http://iot.olution.info/ota/n3pp/metadata.json",
+      FIRMWARE_VERSION, -1, nullptr
+  };
+#endif
+
+  Serial.printf("[OTA] check 2h declenche (%s)\n", reason ? reason : "n/a");
+  n3OtaCheck(otaConfig);
+  s_otaElapsedSinceLastCheckSeconds = 0;
+}
+
+static void accumulateOtaPeriodicElapsedFromSleep(int sleepSeconds) {
+  if (sleepSeconds <= 0) return;
+  if (s_otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS) return;
+
+  const uint32_t sleepSec = static_cast<uint32_t>(sleepSeconds);
+  const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
+  s_otaElapsedSinceLastCheckSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
+}
+
 DHT dht(DHTPIN, DHTTYPE);
 
 /*
@@ -186,20 +243,9 @@ void setup() {
   n3OtaSyncBootPartition();
   WiFi.mode(WIFI_MODE_STA);
 
-  // OTA prioritaire : vérification dès que le WiFi est connecté, avant tout le reste
+  // OTA périodique : vérification au boot seulement si la cadence 2h est atteinte
   Wificonnect();
-#ifdef TEST_MODE
-  N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/n3pp-test/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#else
-  N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/n3pp/metadata.json",
-      version.c_str(), -1, nullptr
-  };
-#endif
-  n3OtaCheck(otaConfig);
+  maybeRunPeriodicOtaCheck("boot");
 
   // Après OTA : affichage, capteurs, NTP, etc.
   print_wakeup_reason();
@@ -227,7 +273,7 @@ void setup() {
   pinMode(LUMINOSITE, INPUT);
 
   dht.begin();
-  Serial.println("dht begin");
+  Serial.println("[DHT] Initialisation OK");
 
   /* //init and get the time
   if(WiFi.status()== WL_CONNECTED ){ 
@@ -256,13 +302,12 @@ void setup() {
   resetMode = 0;
   etatPompe = 0;
   etatRelais = 1;
-  Serial.print("RESET SETUP : ");
-  Serial.println(resetMode);
+  Serial.printf("[REMOTE] resetMode(setup)=%d\n", resetMode ? 1 : 0);
   //datatobdd();
 
   //Increment boot number and print it every reboot
   ++bootCount;
-  Serial.println("Boot number: " + String(bootCount));
+  Serial.println("[BOOT] Compteur demarrages: " + String(bootCount));
 
 
 
@@ -291,18 +336,37 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   }
-  Serial.println("temps 2 : ");
+  Serial.println("[TIME] Synchronisation cycle");
   //printLocalTime();
 
   Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
 
   etatRelais = 1;
   //récupération des infos de la bdd
+  Serial.println("[SERVER][GET] Poll configuration distante");
   variablestoesp();
+
+  // Reset mode distant (GPIO 110): OTA first if available, then restart fallback.
+  bool resetRequested = (resetMode == 1);
+  if (!s_resetEdgeInitialized) {
+    s_lastResetModeState = resetRequested;
+    s_resetEdgeInitialized = true;
+    if (resetRequested) {
+      Serial.println("[REMOTE] Reset distant seed=1 au premier poll (pas de reboot immediat)");
+    }
+  } else if (resetRequested && !s_lastResetModeState) {
+    Serial.println("[REMOTE] Reset distant demande (front montant)");
+    if (!tryOtaBeforeResetForRemoteCommand()) {
+      Serial.println("[REMOTE][OTA] Aucune MAJ OTA dispo, reset direct");
+      ESP.restart();
+    }
+  }
+  s_lastResetModeState = resetRequested;
 
   //contrôle de l'état actif de la pompe ou pas
   if (digitalRead(POMPE) == 1) {
     etatPompe = 1;
+    Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
     datatobdd();
     if (enableEmailChecked == "checked") {
       String emailMessage = String("ATTENTION, arrosage continu en cours !!!");
@@ -318,6 +382,7 @@ void loop() {
   // Premier tour : envoi POST de diagnostic pour voir immédiatement le code HTTP (200/401/500)
   if (firstLoop) {
     firstLoop = false;
+    Serial.println("[SERVER][POST] Envoi diagnostic premier tour");
     datatobdd();
   }
 
@@ -327,12 +392,14 @@ void loop() {
 
   etatRelais = 1;
 
+  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
   sommeil();
 
   //envoi régulier des datas mesurées sur iot.olution.info
   unsigned long currentMillisDatas = millis();
   if (currentMillisDatas - previousMillisDatas >= intervalDatas) {
     previousMillisDatas = currentMillisDatas;
+    Serial.println("[SERVER][POST] Envoi periodique capteurs");
     datatobdd();
     EnregistrementHeureFlash();
     if (WiFi.status() != WL_CONNECTED) {

@@ -83,6 +83,31 @@ void datatobdd() {
   cfg.apiKey = API_KEY;
   cfg.fields = fields;
   cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  String postPreview =
+      "api_key=<masque>&sensor=" + sensorName +
+      "&version=" + version +
+      "&TempAir=" + String(temperatureAir) +
+      "&Humidite=" + String(h) +
+      "&Luminosite=" + String(photocellReading) +
+      "&Humid1=" + String(Humid1) +
+      "&Humid2=" + String(Humid2) +
+      "&Humid3=" + String(Humid3) +
+      "&Humid4=" + String(Humid4) +
+      "&HumidMoy=" + String(HumidMoy) +
+      "&PontDiv=" + String(PontDiv) +
+      "&WakeUp=" + String(WakeUp) +
+      "&ArrosageManu=" + String(ArrosageManu) +
+      "&SeuilSec=" + String(SeuilSec) +
+      "&FreqWakeUp=" + String(FreqWakeUp) +
+      "&SeuilPontDiv=" + String(SeuilPontDiv) +
+      "&mail=" + inputMessageMailAd +
+      "&mailNotif=" + enableEmailChecked +
+      "&HeureArrosage=" + String(HeureArrosage) +
+      "&resetMode=" + String(resetMode) +
+      "&etatPompe=" + String(etatPompe) +
+      "&tempsArrosage=" + String(tempsArrosageSec) +
+      "&bootCount=" + String(bootCount);
+  Serial.println("[SERVER][POST][PAYLOAD] " + postPreview);
   cfg.onSending = []() {
     if (displayOk) { display.fillCircle(5, 5, 5, WHITE); display.display(); }
   };
@@ -102,12 +127,13 @@ void datatobdd() {
 void variablestoesp() {
   if (displayOk) { display.drawCircle(115, 5, 5, WHITE); display.display(); }
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("recup info bdd");
+    Serial.printf("[SERVER][GET] Lecture config distante depuis %s\n", serverNameOutput);
 
     outputsState = n3DataGet(serverNameOutput, &httpResponseCode);
     delay(OUTPUTS_FETCH_DELAY_MS);
 
-    Serial.println(outputsState);
+    Serial.printf("[SERVER][GET] HTTP=%u\n", httpResponseCode);
+    Serial.println("[SERVER][GET][BODY] " + outputsState);
     JSONVar myObject = JSON.parse(outputsState);
     if (JSON.typeof(myObject) == "undefined") {
       Serial.println("Erreur : parsing JSON echoue.");

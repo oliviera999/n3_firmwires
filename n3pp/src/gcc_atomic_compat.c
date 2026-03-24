@@ -5,14 +5,14 @@
  */
 #include <stdint.h>
 
-int __atomic_fetch_add_4(volatile int *ptr, int val, int memorder) {
+int __attribute__((weak)) __atomic_fetch_add_4(volatile int *ptr, int val, int memorder) {
     (void)memorder;
     int old = *ptr;
     *ptr = old + val;
     return old;
 }
 
-int __atomic_fetch_sub_4(volatile int *ptr, int val, int memorder) {
+int __attribute__((weak)) __atomic_fetch_sub_4(volatile int *ptr, int val, int memorder) {
     (void)memorder;
     int old = *ptr;
     *ptr = old - val;

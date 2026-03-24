@@ -43,7 +43,12 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
   outConfig.sleepTimeSeconds = TIME_TO_SLEEP;
   outConfig.resetMode = false;
 
+  Serial.printf("[REMOTE][GET] URL=%s\n", REMOTE_OUTPUTS_STATE_URL);
   String payload = n3DataGet(REMOTE_OUTPUTS_STATE_URL, outHttpCode);
+  if (outHttpCode) {
+    Serial.printf("[REMOTE][GET] HTTP=%u\n", *outHttpCode);
+  }
+  Serial.println("[REMOTE][GET][BODY] " + payload);
   if (outHttpCode && *outHttpCode != 200U) {
     return false;
   }
@@ -93,7 +98,15 @@ int cameraRemotePostFirmwareVersion(const char* targetName) {
   cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
   cfg.onSending = nullptr;
   cfg.onResult = nullptr;
+  String postPreview =
+      "api_key=<masque>&version=" + String(FIRMWARE_VERSION) +
+      "&board=" + String(REMOTE_BOARD_ID) +
+      "&sensor=" + String(targetName ? targetName : "cam");
+  Serial.printf("[REMOTE][POST] URL=%s\n", REMOTE_VERSION_POST_URL);
+  Serial.println("[REMOTE][POST][PAYLOAD] " + postPreview);
 
-  return n3DataPost(cfg);
+  int code = n3DataPost(cfg);
+  Serial.printf("[REMOTE][POST] HTTP=%d\n", code);
+  return code;
 }
 
