@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.34** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.35** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.34** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.35 | 2026-03 | Ajout des logs de progression OTA en pourcentage (`[OTA][PROGRESS]`) via la lib partagée pour suivre l'avancement du téléchargement dans le moniteur série |
 | 4.34 | 2026-03 | Durcissement sync config distante (`110/106/107`) avec logs d'application ; suppression de l'écrasement local `resetMode` au setup ; reconfiguration explicite du timer deep sleep avant sommeil |
 | 4.33 | 2026-03 | Ajout de logs détaillés des échanges serveur : affichage du payload POST (masquage `api_key`) et du body GET (`outputs_state`) avec code HTTP |
 | 4.32 | 2026-03 | Logs série catégorisés (`[BOOT]`, `[TIME]`, `[REMOTE]`, `[SERVER]`) et mise en évidence explicite des échanges serveur (poll config, envoi diagnostic, envoi périodique) |

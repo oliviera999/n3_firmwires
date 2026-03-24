@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.26"
+#define FIRMWARE_VERSION "2.27"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 

@@ -19,7 +19,7 @@ Un seul code source pour trois cibles (galeries iot.olution.info) :
 
 - `include/config.h` : constantes communes et par cible (SERVER_PATH, deep sleep, SD, NTP, créneau 6h–22h).
 - Les build flags `-DTARGET_MSP1`, `-DTARGET_N3PP`, `-DTARGET_FFP3` sont définis par l’env PlatformIO.
-- `FIRMWARE_VERSION` actuelle : `2.24`.
+- `FIRMWARE_VERSION` actuelle : `2.27`.
 
 ## Contrôle distant (GET + POST version)
 

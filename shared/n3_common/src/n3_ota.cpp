@@ -6,6 +6,25 @@
 #include <ArduinoJson.h>
 #include <cstdio>
 
+static uint8_t s_lastLoggedOtaPercent = 255;
+
+static void logOtaProgress(int current, int total) {
+    if (total <= 0 || current < 0) return;
+
+    uint8_t pct = static_cast<uint8_t>((static_cast<uint64_t>(current) * 100ULL) / static_cast<uint64_t>(total));
+    if (pct > 100) pct = 100;
+
+    // Log only milestones (every 5%) + bounds to keep monitor readable.
+    if (pct == s_lastLoggedOtaPercent) return;
+    if (pct != 0 && pct != 100 && (pct % 5) != 0) return;
+
+    Serial.printf("[OTA][PROGRESS] %u%% (%d/%d)\n",
+                  static_cast<unsigned>(pct),
+                  current,
+                  total);
+    s_lastLoggedOtaPercent = pct;
+}
+
 void n3OtaSyncBootPartition() {
     const esp_partition_t* running = esp_ota_get_running_partition();
     const esp_partition_t* boot = esp_ota_get_boot_partition();
@@ -108,6 +127,9 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     if (config.ledPin >= 0) {
         httpUpdate.setLedPin(config.ledPin, LOW);
     }
+    s_lastLoggedOtaPercent = 255;
+    Serial.println("[OTA][PROGRESS] debut telechargement");
+    httpUpdate.onProgress(logOtaProgress);
     httpUpdate.rebootOnUpdate(true);
 
     WiFiClient updateClient;
