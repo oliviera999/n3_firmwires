@@ -12,6 +12,17 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.35 - 2026-03-24
+
+### Rebuild + republication OTA pour validation chaîne mm
+
+- **Version firmware** : incrémentation `13.34` -> `13.35` pour tracer une publication dédiée à la vérification des niveaux ultrasons côté serveur distant.
+- **Déploiement OTA** : republication des canaux **`ffp5-wroom-beta`** et **`ffp5-wroom-prod`** avec binaires reconstruits.
+- **Objectif** : éliminer le doute de binaire/canal en production avant validation terrain des valeurs `EauAquarium/EauReserve/EauPotager`.
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.34 - 2026-03-24
 
 ### Publication OTA WROOM beta + prod

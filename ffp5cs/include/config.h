@@ -53,7 +53,8 @@ namespace ProjectConfig {
     // v13.32: Reset local/distant: OTA prioritaire si disponible avant ESP.restart().
     // v13.33: Passage des mesures ultrasons en millimètres (acquisition, filtrage, seuils convertis cm->mm).
     // v13.34: Publication OTA wroom-beta + wroom-prod.
-    inline constexpr const char* VERSION = "13.34";
+    // v13.35: Rebuild et republication OTA beta/prod pour validation chaîne mm.
+    inline constexpr const char* VERSION = "13.35";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
