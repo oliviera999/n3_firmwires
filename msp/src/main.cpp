@@ -48,6 +48,7 @@ Servo servohb;
 int posLumMax1 = 0, posLumMax2 = 0, posLumMax3 = 0, posLumMax4 = 0;
 int AngleServoGD;
 int AngleServoHB;
+bool servoModeAuto = true;
 
 // --- DHT intérieur / extérieur ---
 DHT dhtint(DHTPININT, DHTTYPEINT);
@@ -272,6 +273,7 @@ void setup() {
   // Mettre à jour les informations depuis ESP (définitions)
   variablestoesp();
   Serial.println("[SERVER][GET] Variables distantes synchronisees");
+  Serial.println("[SERVO][TRACE] Tags actifs: [SERVO][MODE] [SERVO][TARGET] [SERVO][AUTO] [SERVO][APPLY]");
 
   // Initialiser les servos à des valeurs par défaut
   //servogd.write(AngleServoGD);

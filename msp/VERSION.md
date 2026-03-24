@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.34** (définie dans `include/msp_config.h`).
+Version actuelle : **2.36** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **2.34** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.36 | 2026-03 | Ajout du mode servo Auto/Manuel piloté par BDD (clé `111`), application immédiate des angles manuels avec clamp firmware (`GD 1-179`, `HB 40-145`) et logs dédiés |
+| 2.35 | 2026-03 | Publication OTA MSP après correction de cohérence config distante (reset/wakeup/sleep) |
 | 2.34 | 2026-03 | Durcissement de la sync config distante (logs d'application des clés 110/106/107, validation stricte) ; suppression de l'écrasement local `resetMode` au boot ; reconfiguration explicite du timer deep sleep avant sommeil |
 | 2.33 | 2026-03 | Ajout de logs détaillés des échanges serveur : affichage du payload POST (masquage `api_key`) et du body GET (`outputs_state`) dans le moniteur série |
 | 2.32 | 2026-03 | Logs série harmonisés par thème (`[WIFI]`, `[SERVER]`, `[DHT]`, `[SERVO]`) ; réduction de verbosité du scan `position max` avec résumé final ; mise en avant des échanges serveur GET/POST |

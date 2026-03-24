@@ -39,6 +39,7 @@ extern Servo servohb;
 extern int posLumMax1, posLumMax2, posLumMax3, posLumMax4;
 extern int AngleServoGD;
 extern int AngleServoHB;
+extern bool servoModeAuto;
 
 // --- DHT intérieur / extérieur ---
 extern DHT dhtint;

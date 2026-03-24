@@ -171,6 +171,12 @@ void datatobdd() {
 }
 
 void variablestoesp() {
+  static bool s_servoModeKnown = false;
+  static bool s_prevServoModeAuto = true;
+  static bool s_servoTargetsKnown = false;
+  static int s_prevTargetGd = 0;
+  static int s_prevTargetHb = 0;
+
   if (displayOk) { display.drawCircle(115, 5, 5, WHITE); display.display(); }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[SERVER][GET] Lecture config distante depuis %s\n", serverNameOutput);
@@ -188,12 +194,15 @@ void variablestoesp() {
       int parsedResetMode = resetMode ? 1 : 0;
       int parsedWakeUp = WakeUp ? 1 : 0;
       int parsedFreqWakeUp = FreqWakeUp;
+      int parsedServoModeAuto = servoModeAuto ? 1 : 0;
       bool hasResetMode = tryReadIntByKey(myObject, "110", &parsedResetMode);
       bool hasWakeUp = tryReadIntByKey(myObject, "106", &parsedWakeUp);
       bool hasFreqWakeUp = tryReadIntByKey(myObject, "107", &parsedFreqWakeUp);
+      bool hasServoModeAuto = tryReadIntByKey(myObject, "111", &parsedServoModeAuto);
       String raw110 = readStringByKey(myObject, "110", "<absent>");
       String raw106 = readStringByKey(myObject, "106", "<absent>");
       String raw107 = readStringByKey(myObject, "107", "<absent>");
+      String raw111 = readStringByKey(myObject, "111", "<absent>");
 
       if (!hasResetMode) {
         Serial.printf("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=%s), conservation=%d\n",
@@ -219,20 +228,45 @@ void variablestoesp() {
         FreqWakeUp = parsedFreqWakeUp;
       }
 
+      if (!hasServoModeAuto) {
+        Serial.printf("[SERVER][GET][WARN] Cle 111 absente/invalide (raw=%s), conservation=%d\n",
+                      raw111.c_str(), servoModeAuto ? 1 : 0);
+      } else {
+        servoModeAuto = (parsedServoModeAuto != 0);
+      }
+
       inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
       enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
       SeuilSec = readIntByKey(myObject, "102", SeuilSec);
       SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
       AngleServoHB = readIntByKey(myObject, "104", AngleServoHB);
       AngleServoGD = readIntByKey(myObject, "105", AngleServoGD);
-      Serial.printf("[SERVER][GET][APPLY] 110:%s=>%d 106:%s=>%d 107:%s=>%d\n",
+      if (!s_servoModeKnown || s_prevServoModeAuto != servoModeAuto) {
+        Serial.printf("[SERVO][MODE] source=server mode=%s (raw111=%s)\n",
+                      servoModeAuto ? "AUTO" : "MANUEL",
+                      raw111.c_str());
+        s_prevServoModeAuto = servoModeAuto;
+        s_servoModeKnown = true;
+      }
+      if (!s_servoTargetsKnown || s_prevTargetGd != AngleServoGD || s_prevTargetHb != AngleServoHB) {
+        Serial.printf("[SERVO][TARGET] source=server mode=%s GD=%d HB=%d\n",
+                      servoModeAuto ? "AUTO" : "MANUEL",
+                      AngleServoGD,
+                      AngleServoHB);
+        s_prevTargetGd = AngleServoGD;
+        s_prevTargetHb = AngleServoHB;
+        s_servoTargetsKnown = true;
+      }
+      Serial.printf("[SERVER][GET][APPLY] 110:%s=>%d 106:%s=>%d 107:%s=>%d 111:%s=>%d\n",
                     raw110.c_str(), resetMode ? 1 : 0,
                     raw106.c_str(), WakeUp ? 1 : 0,
-                    raw107.c_str(), FreqWakeUp);
-      Serial.printf("[SERVER][GET] resetMode=%d wakeUp=%d sleep=%d\n",
+                    raw107.c_str(), FreqWakeUp,
+                    raw111.c_str(), servoModeAuto ? 1 : 0);
+      Serial.printf("[SERVER][GET] resetMode=%d wakeUp=%d sleep=%d servoModeAuto=%d\n",
                     resetMode,
                     WakeUp ? 1 : 0,
-                    FreqWakeUp);
+                    FreqWakeUp,
+                    servoModeAuto ? 1 : 0);
     } else {
       Serial.printf("[SERVER][GET][WARN] Requete echouee, HTTP=%u\n", httpResponseCode);
     }

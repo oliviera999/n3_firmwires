@@ -12,6 +12,32 @@
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
 static const int LIGHT_SCAN_MIN_THRESHOLD = 50;
 static const bool MSP_VERBOSE_LIGHT_SCAN = false;
+static bool s_lastServoModeAutoLogKnown = false;
+static bool s_lastServoModeAutoLogged = true;
+
+static int clampServoAngle(int value, int minAngle, int maxAngle) {
+  if (value < minAngle) return minAngle;
+  if (value > maxAngle) return maxAngle;
+  return value;
+}
+
+static void applyManualServoTargets() {
+  const int requestedGd = AngleServoGD;
+  const int requestedHb = AngleServoHB;
+  const int clampedGd = clampServoAngle(requestedGd, minAngleServoGD, maxAngleServoGD);
+  const int clampedHb = clampServoAngle(requestedHb, minAngleServoHB, maxAngleServoHB);
+
+  if (clampedGd != requestedGd || clampedHb != requestedHb) {
+    Serial.printf("[SERVO][MANUAL][WARN] clamp GD:%d->%d HB:%d->%d\n",
+                  requestedGd, clampedGd, requestedHb, clampedHb);
+  }
+
+  AngleServoGD = clampedGd;
+  AngleServoHB = clampedHb;
+  servogd.write(AngleServoGD);
+  servohb.write(AngleServoHB);
+  Serial.printf("[SERVO][APPLY] mode=MANUEL angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
+}
 
 static const N3BatteryConfig batteryConfig = {
   pontdiv, (uint32_t)N3_BATTERY_R1, (uint32_t)N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
@@ -135,8 +161,21 @@ void batterie() {
 }
 
 void Light_val() {
+  if (!s_lastServoModeAutoLogKnown || s_lastServoModeAutoLogged != servoModeAuto) {
+    Serial.printf("[SERVO][MODE] source=runtime mode=%s\n", servoModeAuto ? "AUTO" : "MANUEL");
+    s_lastServoModeAutoLogged = servoModeAuto;
+    s_lastServoModeAutoLogKnown = true;
+  }
+
+  if (!servoModeAuto) {
+    Serial.println("[SERVO][AUTO] scan=OFF raison=mode_manuel");
+    applyManualServoTargets();
+    return;
+  }
+
   photocellReadingMoy = ((analogRead(LUMINOSITEa) + analogRead(LUMINOSITEb) + analogRead(LUMINOSITEc) + analogRead(LUMINOSITEd)) / 4);
   if (photocellReadingMoy > LIGHT_SCAN_MIN_THRESHOLD) {
+    Serial.printf("[SERVO][AUTO] scan=ON lum=%d seuil=%d\n", photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
     if (displayOk) {
       display.clearDisplay();
       display.setTextSize(2);
@@ -321,6 +360,7 @@ void Light_val() {
     }
     delay(750);
   } else {
+    Serial.printf("[SERVO][AUTO] scan=SKIP lum=%d<=seuil=%d\n", photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
     if (displayOk) {
       display.clearDisplay();
       display.setTextSize(2);
