@@ -11,7 +11,10 @@
 #include "n3_wifi.h"
 #include "n3_data.h"
 
-static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
+static int readIntByKey(JSONVar& obj, const char* key, int defaultValue) {
+  if (!obj.hasOwnProperty(key)) {
+    return defaultValue;
+  }
   JSONVar val = obj[key];
   String valueType = JSON.typeof(val);
   if (valueType == "undefined" || valueType == "null") {
@@ -33,8 +36,11 @@ static int readIntByKey(const JSONVar& obj, const char* key, int defaultValue) {
   return defaultValue;
 }
 
-static bool tryReadIntByKey(const JSONVar& obj, const char* key, int* outValue) {
+static bool tryReadIntByKey(JSONVar& obj, const char* key, int* outValue) {
   if (outValue == nullptr) return false;
+  if (!obj.hasOwnProperty(key)) {
+    return false;
+  }
   JSONVar val = obj[key];
   String valueType = JSON.typeof(val);
   if (valueType == "undefined" || valueType == "null") {
@@ -69,7 +75,10 @@ static bool tryReadIntByKey(const JSONVar& obj, const char* key, int* outValue) 
   return false;
 }
 
-static String readStringByKey(const JSONVar& obj, const char* key, const String& defaultValue) {
+static String readStringByKey(JSONVar& obj, const char* key, const String& defaultValue) {
+  if (!obj.hasOwnProperty(key)) {
+    return defaultValue;
+  }
   JSONVar val = obj[key];
   String valueType = JSON.typeof(val);
   if (valueType == "undefined" || valueType == "null") {
@@ -205,32 +214,32 @@ void variablestoesp() {
       String raw111 = readStringByKey(myObject, "111", "<absent>");
 
       if (!hasResetMode) {
-        Serial.printf("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=%s), conservation=%d\n",
-                      raw110.c_str(), resetMode ? 1 : 0);
+        Serial.println(String("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=") + raw110 +
+                       "), conservation=" + String(resetMode ? 1 : 0));
       } else {
         resetMode = (parsedResetMode != 0);
       }
 
       if (!hasWakeUp) {
-        Serial.printf("[SERVER][GET][WARN] Cle 106 absente/invalide (raw=%s), conservation=%d\n",
-                      raw106.c_str(), WakeUp ? 1 : 0);
+        Serial.println(String("[SERVER][GET][WARN] Cle 106 absente/invalide (raw=") + raw106 +
+                       "), conservation=" + String(WakeUp ? 1 : 0));
       } else {
         WakeUp = (parsedWakeUp != 0);
       }
 
       if (!hasFreqWakeUp) {
-        Serial.printf("[SERVER][GET][WARN] Cle 107 absente/invalide (raw=%s), conservation=%d\n",
-                      raw107.c_str(), FreqWakeUp);
+        Serial.println(String("[SERVER][GET][WARN] Cle 107 absente/invalide (raw=") + raw107 +
+                       "), conservation=" + String(FreqWakeUp));
       } else if (parsedFreqWakeUp < 1 || parsedFreqWakeUp > 86400) {
-        Serial.printf("[SERVER][GET][WARN] Cle 107 hors plage (raw=%s parsed=%d), conservation=%d\n",
-                      raw107.c_str(), parsedFreqWakeUp, FreqWakeUp);
+        Serial.println(String("[SERVER][GET][WARN] Cle 107 hors plage (raw=") + raw107 +
+                       " parsed=" + String(parsedFreqWakeUp) + "), conservation=" + String(FreqWakeUp));
       } else {
         FreqWakeUp = parsedFreqWakeUp;
       }
 
       if (!hasServoModeAuto) {
-        Serial.printf("[SERVER][GET][WARN] Cle 111 absente/invalide (raw=%s), conservation=%d\n",
-                      raw111.c_str(), servoModeAuto ? 1 : 0);
+        Serial.println(String("[SERVER][GET][WARN] Cle 111 absente/invalide (raw=") + raw111 +
+                       "), conservation=" + String(servoModeAuto ? 1 : 0));
       } else {
         servoModeAuto = (parsedServoModeAuto != 0);
       }
@@ -242,31 +251,25 @@ void variablestoesp() {
       AngleServoHB = readIntByKey(myObject, "104", AngleServoHB);
       AngleServoGD = readIntByKey(myObject, "105", AngleServoGD);
       if (!s_servoModeKnown || s_prevServoModeAuto != servoModeAuto) {
-        Serial.printf("[SERVO][MODE] source=server mode=%s (raw111=%s)\n",
-                      servoModeAuto ? "AUTO" : "MANUEL",
-                      raw111.c_str());
+        Serial.println(String("[SERVO][MODE] source=server mode=") +
+                       (servoModeAuto ? "AUTO" : "MANUEL") + " (raw111=" + raw111 + ")");
         s_prevServoModeAuto = servoModeAuto;
         s_servoModeKnown = true;
       }
       if (!s_servoTargetsKnown || s_prevTargetGd != AngleServoGD || s_prevTargetHb != AngleServoHB) {
-        Serial.printf("[SERVO][TARGET] source=server mode=%s GD=%d HB=%d\n",
-                      servoModeAuto ? "AUTO" : "MANUEL",
-                      AngleServoGD,
-                      AngleServoHB);
+        Serial.println(String("[SERVO][TARGET] source=server mode=") +
+                       (servoModeAuto ? "AUTO" : "MANUEL") + " GD=" + String(AngleServoGD) +
+                       " HB=" + String(AngleServoHB));
         s_prevTargetGd = AngleServoGD;
         s_prevTargetHb = AngleServoHB;
         s_servoTargetsKnown = true;
       }
-      Serial.printf("[SERVER][GET][APPLY] 110:%s=>%d 106:%s=>%d 107:%s=>%d 111:%s=>%d\n",
-                    raw110.c_str(), resetMode ? 1 : 0,
-                    raw106.c_str(), WakeUp ? 1 : 0,
-                    raw107.c_str(), FreqWakeUp,
-                    raw111.c_str(), servoModeAuto ? 1 : 0);
-      Serial.printf("[SERVER][GET] resetMode=%d wakeUp=%d sleep=%d servoModeAuto=%d\n",
-                    resetMode,
-                    WakeUp ? 1 : 0,
-                    FreqWakeUp,
-                    servoModeAuto ? 1 : 0);
+      Serial.println(String("[SERVER][GET][APPLY] 110:") + raw110 + "=>" + String(resetMode ? 1 : 0) +
+                     " 106:" + raw106 + "=>" + String(WakeUp ? 1 : 0) + " 107:" + raw107 + "=>" +
+                     String(FreqWakeUp) + " 111:" + raw111 + "=>" + String(servoModeAuto ? 1 : 0));
+      Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
+                     " wakeUp=" + String(WakeUp ? 1 : 0) + " sleep=" + String(FreqWakeUp) +
+                     " servoModeAuto=" + String(servoModeAuto ? 1 : 0));
     } else {
       Serial.printf("[SERVER][GET][WARN] Requete echouee, HTTP=%u\n", httpResponseCode);
     }

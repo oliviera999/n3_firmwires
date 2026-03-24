@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.38** (définie dans `include/msp_config.h`).
+Version actuelle : **2.39** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.38** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.39 | 2026-03 | Logs GET `outputs_state` : concaténation `String` au lieu de `Serial.printf` multi-`%s` (affichage fiable sur ESP32) ; lecture JSON `hasOwnProperty` avant `operator[]` pour éviter l'injection de clés nulles (Arduino_JSON) |
 | 2.38 | 2026-03 | Affichage OTA sur OLED : écran d'état avec version courante/cible et progression (%) pendant le téléchargement OTA (check périodique + OTA avant reset distant) |
 | 2.37 | 2026-03 | Ajout des logs de progression OTA en pourcentage (`[OTA][PROGRESS]`) via la lib partagée pour suivre le téléchargement dans le moniteur série |
 | 2.36 | 2026-03 | Ajout du mode servo Auto/Manuel piloté par BDD (clé `111`), application immédiate des angles manuels avec clamp firmware (`GD 1-179`, `HB 40-145`) et logs dédiés |
