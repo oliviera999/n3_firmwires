@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.27"
+#define FIRMWARE_VERSION "2.35"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -36,6 +36,11 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+/* Caméra : seuils SPIRAM pour tenter SXGA + 2 buffers JPEG. Sinon CIF + 1 buffer d’emblée ;
+   si l’init haute résolution échoue quand même, repli automatique CIF (voir main.cpp). */
+#define CAM_SPIRAM_MIN_FREE_BYTES    (1536 * 1024)
+#define CAM_SPIRAM_MIN_LARGEST_BLOCK (1024 * 1024)
+
 /* OTA distant (metadata.json) — toutes cibles : vérif périodique toutes les 2h */
 #define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
 
@@ -67,6 +72,10 @@
 #define HTTP_RESPONSE_TIMEOUT_MS 15000
 #define UPLOAD_CONNECT_RETRIES   2
 #define UPLOAD_RETRY_DELAY_MS    1000
+
+/* Série UART0 : si le moniteur PC « ne reçoit rien », mettre 3000–5000 (ms) pour laisser le temps
+   d’ouvrir le port après réveil deep sleep ; en prod laisser 0. Voir README firmwires (ESP32-CAM). */
+#define SERIAL_BOOT_PAUSE_MS 4000
 
 /* ========== Par cible ========== */
 #if defined(TARGET_MSP1)
