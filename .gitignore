@@ -11,6 +11,12 @@ secrets_config.h
 # Backups / temporaire
 ffp5cs_backup/
 
+# Rapports locaux d'audit PlatformIO (scripts/Invoke-PioBuildAudit.ps1)
+build-audit-*.txt
+
+# Sauvegardes d'edition (*.orig)
+*.orig
+
 # Logs de monitoring (generees par scripts PS1)
 *.log
 *.log.err
