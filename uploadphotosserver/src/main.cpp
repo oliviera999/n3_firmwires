@@ -22,6 +22,9 @@
 #include "camera_remote.h"
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <esp_heap_caps.h>
+#include <esp_rom_sys.h>
+#include <esp_chip_info.h>
 
 #if USE_SD
 #include <EEPROM.h>
@@ -44,6 +47,68 @@ const int serverPort = SERVER_PORT;
 
 WiFiClient client;
 String Wifiactif;
+
+/* SPIRAM : board esp32dev → psramFound() souvent faux malgré tas IDF. Il faut assez de SPIRAM
+ * libre et un bloc contigu suffisant (sinon cam_hal: frame buffer malloc failed en SXGA). */
+static bool n3CameraSpiramLooksViableForSxga() {
+  const size_t largest =
+      heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  const size_t total = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  return (largest >= CAM_SPIRAM_MIN_LARGEST_BLOCK && total >= CAM_SPIRAM_MIN_FREE_BYTES);
+}
+
+static bool n3CameraUseHighResBuffers() {
+  if (psramFound()) {
+    return n3CameraSpiramLooksViableForSxga();
+  }
+  return n3CameraSpiramLooksViableForSxga();
+}
+
+/* Diagnostic serie : interpreter PSRAM / flash / puce (connectique, variante module, sdkconfig). */
+static void n3LogHardwareDiagnostics() {
+  esp_chip_info_t ci = {};
+  esp_chip_info(&ci);
+  const uint32_t flashSz = ESP.getFlashChipSize();
+  const size_t spiramTotal = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+  const size_t spiramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  const size_t spiramLargest =
+      heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  const uint32_t intTotal = heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const uint32_t intFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+  Serial.println("[DIAG] --- materiel (uploadphotosserver) ---");
+  Serial.printf("[DIAG] chip_model=%s cores=%d revision=%d features=0x%08lx\n",
+                ESP.getChipModel(),
+                ci.cores,
+                ci.revision,
+                static_cast<unsigned long>(ci.features));
+  Serial.printf("[DIAG] flash_chip_size=%lu bytes\n", static_cast<unsigned long>(flashSz));
+  Serial.printf("[DIAG] ram_internal total=%lu free=%lu min_free_heap=%lu\n",
+                static_cast<unsigned long>(intTotal),
+                static_cast<unsigned long>(intFree),
+                static_cast<unsigned long>(ESP.getMinFreeHeap()));
+  Serial.printf("[DIAG] spiram_heap total=%lu free=%lu largest_block=%lu bytes\n",
+                static_cast<unsigned long>(spiramTotal),
+                static_cast<unsigned long>(spiramFree),
+                static_cast<unsigned long>(spiramLargest));
+  Serial.printf("[DIAG] psramFound()=%s  SXGA_seuils total>=%u largest>=%u\n",
+                psramFound() ? "true" : "false",
+                static_cast<unsigned>(CAM_SPIRAM_MIN_FREE_BYTES),
+                static_cast<unsigned>(CAM_SPIRAM_MIN_LARGEST_BLOCK));
+  if (spiramTotal == 0) {
+    Serial.println("[DIAG][WARN] SPIRAM tas=0 : variante sans puce PSRAM, soudure, alim, ou profil "
+                   "build sans SPIRAM (verifier memory_type dio_qspi).");
+  } else if (spiramLargest < CAM_SPIRAM_MIN_LARGEST_BLOCK) {
+    Serial.println("[DIAG][WARN] Plus grand bloc SPIRAM < seuil SXGA : fragmentation, PSRAM "
+                   "partielle, ou charge memoire avant camera.");
+  } else if (spiramFree < CAM_SPIRAM_MIN_FREE_BYTES) {
+    Serial.println("[DIAG][WARN] SPIRAM libre < seuil total SXGA.");
+  } else {
+    Serial.println("[DIAG] Criteres quantitatifs SPIRAM OK pour tenter SXGA (init peut encore "
+                   "echouer : nappe OV2640, alim, timing).");
+  }
+  Serial.println("[DIAG] --------------------------------------");
+}
 
 #if USE_DEEP_SLEEP
 static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
@@ -80,6 +145,7 @@ static int parseHttpStatusCode(const String& statusLine);
 static const char* currentTargetName();
 static const char* wakeupCauseText(esp_sleep_wakeup_cause_t cause);
 static const char* resetReasonText(esp_reset_reason_t reason);
+static void n3LogHardwareDiagnostics();
 static bool getLocalTimeString(char* out, size_t outSize);
 static void logMonitoringSnapshot(const char* stage);
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs);
@@ -640,13 +706,24 @@ static bool inPhotoWindow() {
 
 void setup() {
   const uint32_t setupStartMs = millis();
+  /* Sortie immédiate sur UART0 (ROM) : utile si HardwareSerial ne va pas sur le bon port matériel. */
+  esp_rom_printf("\r\n\r\n[N3][ROM] boot env=%s ver=%s 115200 8N1 UART0 RX=GPIO3 TX=GPIO1\r\n",
+                 currentTargetName(), FIRMWARE_VERSION);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
-  Serial.begin(115200);
+  /* Broches explicites UART0 AI Thinker / programmateur 6 broches (évite ambiguïtés framework). */
+  Serial.begin(115200, SERIAL_8N1, 3, 1);
+  Serial.setDebugOutput(true);
   delay(200);
+#if SERIAL_BOOT_PAUSE_MS > 0
+  Serial.printf("[BOOT] SERIAL_BOOT_PAUSE_MS=%u — ouvrez le moniteur maintenant\r\n",
+                static_cast<unsigned>(SERIAL_BOOT_PAUSE_MS));
+  delay(SERIAL_BOOT_PAUSE_MS);
+#endif
   Serial.printf("[BOOT] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
   Serial.printf("[BOOT] reset=%s wakeup=%s\n",
                 resetReasonText(esp_reset_reason()),
                 wakeupCauseText(esp_sleep_get_wakeup_cause()));
+  n3LogHardwareDiagnostics();
   logMonitoringSnapshot("setup:start");
   pinMode(LED_GPIO, OUTPUT);
   digitalWrite(LED_GPIO, LOW);
@@ -754,8 +831,9 @@ void setup() {
   config.xclk_freq_hz = CAM_XCLK_HZ;
   config.pixel_format = PIXFORMAT_JPEG;
 
-  /* Qualité caméra identique pour toutes les cibles (alignée msp1) */
-  if (psramFound()) {
+  /* Qualité caméra : SXGA si SPIRAM viable ; sinon CIF. Repli CIF si init SXGA échoue. */
+  const bool wantHighRes = n3CameraUseHighResBuffers();
+  if (wantHighRes) {
     config.frame_size = FRAMESIZE_SXGA;
     config.jpeg_quality = 4;
     config.fb_count = 2;
@@ -766,11 +844,32 @@ void setup() {
   }
 
   const uint32_t camInitStartMs = millis();
+  Serial.printf("[CAM] init tentative: %s fb_count=%d (SPIRAM largest=%lu total=%lu)\n",
+                wantHighRes ? "SXGA" : "CIF",
+                wantHighRes ? 2 : 1,
+                static_cast<unsigned long>(
+                    heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)),
+                static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+
   esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK && wantHighRes) {
+    Serial.printf("[CAM][WARN] Init SXGA echouee (0x%x), repli CIF fb_count=1\n",
+                  static_cast<unsigned>(err));
+    esp_camera_deinit();
+    config.frame_size = FRAMESIZE_CIF;
+    config.jpeg_quality = 4;
+    config.fb_count = 1;
+    err = esp_camera_init(&config);
+  }
   if (err != ESP_OK) {
-    Serial.printf("[CAM][ERROR] Init camera echouee, err=0x%x\n", err);
+    Serial.printf("[CAM][ERROR] Init camera echouee, err=0x%x\n", static_cast<unsigned>(err));
     delay(1000);
     ESP.restart();
+  }
+  if (!wantHighRes || config.frame_size == FRAMESIZE_CIF) {
+    Serial.println("[CAM] mode actif: CIF fb_count=1");
+  } else {
+    Serial.println("[CAM] mode actif: SXGA fb_count=2");
   }
   logStepDuration("init_camera", millis() - camInitStartMs, 2500);
   logMonitoringSnapshot("setup:post_camera_init");
