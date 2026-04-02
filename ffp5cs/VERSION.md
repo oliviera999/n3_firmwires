@@ -12,6 +12,26 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.37 - 2026-04-02
+
+### Réveil light sleep : restauration actionneurs avant POST réseau
+
+- **Problème** : après veille, la pompe aquarium (et autres actionneurs restaurés) repassait systématiquement OFF car `sendFullUpdate` s’exécutait **avant** `restoreActuatorsAfterWake`, publiant `etatPompeAqua=0` puis le poll `parseAndApply` réappliquait l’état serveur.
+- **Correctif** : appeler `restoreActuatorsAfterWake` **immédiatement** après `goToLightSleep`, avant attente WiFi / fetch / envoi.
+- **Fichiers** : `src/automatism/automatism_sleep.cpp`, `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.36 - 2026-04-01
+
+### Link wroom-prod : marge dram0 (netTask stack BSS)
+
+- **Problème** : échec linker `region dram0_0_seg overflowed by 1472 bytes` sur `wroom-prod` (PIO + pioarduino 55.03.37, GCC 14).
+- **Correctif** : `NET_TASK_STACK_SIZE` porté à **12800** (−1576 × `StackType_t` vs 14376) pour **WROOM + PROFILE_PROD** uniquement — la stack mail dans `TaskConfig` ne réserve pas de BSS (pas de `mailTask` statique). À valider au moniteur (HWM netTask) après déploiement.
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.35 - 2026-03-24
 
 ### Rebuild + republication OTA pour validation chaîne mm

@@ -394,6 +394,10 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     // Appel à la veille
     uint32_t actualSleptSec = _power.goToLightSleep(sleepDurationSec);
 
+    // Restauration aqua / chauffage / lumière tout de suite après réveil (avant WiFi / POST).
+    // Sinon sendFullUpdate post-réveil envoyait etatPompeAqua=0 puis le poll réappliquait OFF.
+    core.restoreActuatorsAfterWake(acts);
+
     // Réveil: attente WiFi, stabilisation réseau, fetch config avec retries, puis envoi
     unsigned long wakeStartMs = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - wakeStartMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
@@ -457,9 +461,6 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
             }
         }
     }
-
-    // Restauration aqua / chauffage / lumière au réveil
-    core.restoreActuatorsAfterWake(acts);
 
     // 4. Mettre à jour _lastWakeMs après le réveil
     _lastWakeMs = millis();

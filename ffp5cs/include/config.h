@@ -54,7 +54,7 @@ namespace ProjectConfig {
     // v13.33: Passage des mesures ultrasons en millimètres (acquisition, filtrage, seuils convertis cm->mm).
     // v13.34: Publication OTA wroom-beta + wroom-prod.
     // v13.35: Rebuild et republication OTA beta/prod pour validation chaîne mm.
-    inline constexpr const char* VERSION = "13.35";
+    inline constexpr const char* VERSION = "13.37";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -996,8 +996,11 @@ namespace TaskConfig {
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 14224;  // wroom-beta : -32 pour ENABLE_SERIAL_MONITOR=1
+#elif defined(BOARD_WROOM) && defined(PROFILE_PROD)
+    // v13.36: netTaskStack[] en BSS — réduction vs 14376 pour link dram0_0_seg (GCC 14 / IDF 5.5 ; marge TLS)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12800;  // −1576 mots vs 14376 (link avril 2026)
 #else
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14376;   // WROOM prod (dram0 marge 8 o)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14376;   // WROOM (fallback)
 #endif
     inline constexpr UBaseType_t NET_TASK_PRIORITY = 2;      // Priorité moyenne pour traitement réseau
     inline constexpr BaseType_t NET_TASK_CORE_ID = 0;        // Core 0 pour ne pas impacter capteurs
@@ -1017,7 +1020,7 @@ namespace TaskConfig {
 #if defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 12288;  // wroom-test : BSS
 #else
-    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 15168;  // WROOM prod / S3 (HWM mail/TLS)
+    inline constexpr uint32_t MAIL_TASK_STACK_SIZE = 15168;  // WROOM prod/beta / S3 (réf. HWM mail/TLS ; pas de tâche dédiée)
 #endif
     inline constexpr UBaseType_t MAIL_TASK_PRIORITY = 1;     // Basse priorité (non critique)
     inline constexpr BaseType_t MAIL_TASK_CORE_ID = 0;       // Core 0 pour ne pas impacter capteurs
