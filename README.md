@@ -10,7 +10,7 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 |--------|---------|-------|-------------|
 | **N3PhasmesProto (n3pp)** | `n3pp/` | ESP32 dev | Contrôle serre / aquaponie : température/humidité air, 4 capteurs humidité sol, pompe, luminosité, mails d’alerte, serveur web, NTP, OLED, deep sleep. |
 | **MeteoStationPrototype (msp)** | `msp/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
-| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.24`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload avec header `X-Api-Key`, retries de connexion, vérification du code HTTP retour. Contrôle distant au réveil (GET paramètres + POST version firmware) via les tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
+| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.34`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload avec header `X-Api-Key`, retries de connexion, vérification du code HTTP retour. Contrôle distant au réveil (GET paramètres + POST version firmware) via les tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
 | **Upload Photos MSP1** (legacy) | `uploadphotosserver_msp1/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env msp1. |
 | **Upload Photos N3PP** (legacy) | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env n3pp. |
 | **Upload Photos FFP3** (legacy) | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env ffp3. |
@@ -61,11 +61,23 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 - **Redirection des artefacts** : les projets qui incluent `firmwires/scripts/pio_redirect_build_dir.py` (**ffp5cs**, **n3pp**, **msp**, **uploadphotosserver**, dossiers **test psram s3***) placent les binaires sous `C:\pio-builds\<slug-projet>\<env>\` sur Windows par défaut (évite chemins longs et soucis d’espaces dans le clone). **Linux / CI** : pas de redirection sauf si la variable d’environnement `N3_PIO_BUILD_ROOT` est définie — les artefacts restent alors sous `.pio/build/<env>/` (comportement GitHub Actions inchangé).
 - **Désactiver la redirection** : `N3_PIO_BUILD_REDIRECT=0` (PowerShell : `$env:N3_PIO_BUILD_REDIRECT='0'`). **Autre racine** : `N3_PIO_BUILD_ROOT=D:\mes-builds`.
 - **Chemins côté scripts** : `firmwires/scripts/Get-PioBuildHelpers.ps1` (fonctions `Get-N3PioFirmwareBin`, etc.) — utilisé par `IOT_n3/scripts/publish_ota.ps1` pour trouver `firmware.bin` / `littlefs.bin` que le build soit sous `C:\pio-builds` ou dans `.pio/build`.
+- **Audit build (taille, duree, anomalies)** : `firmwires/scripts/Invoke-PioBuildAudit.ps1` pour mesurer les deltas avant/apres compilation (`BUILD_DIR`, `.pio/libdeps/<env>`, artefacts `firmware.bin`/`firmware.elf`), signaler les anomalies (taille, temps, chemins longs, espace disque) et ecrire un rapport texte.
 - **Nettoyage global** : depuis la racine **IOT_n3**, `.\scripts\clean-firmware-builds.ps1` (ajouter `-WhatIf` pour simulation). Options : `-IncludePioBuildsRoot` pour purger les sous-dossiers `C:\pio-builds\<slug>` des projets listés, `-IncludeLegacyFfp5Mirror` pour supprimer l’ancien miroir `C:\ffp5cs_build`.
 - **S3 + espaces dans le chemin** : `ffp5cs/run_s3_build_from_safe_path.bat` (miroir sous `C:\pio-builds\ffp5cs-space-mirror` par défaut) ou `run_s3_fix_via_subst.bat` (lecteur `P:`).
 - **Toolchain GCC 14 (Xtensa) + Arduino-ESP32 3.3.x** : erreur de link `undefined reference to __atomic_fetch_add_4` (libstdc++ / `shared_ptr` dans Network, FS, SD) — fichier `src/gcc_atomic_compat.c` dans **n3pp**, **msp** et **uploadphotosserver**. **ESP Mail Client** sur partition SPIFFS uniquement : script `firmwires/scripts/pio_patch_esp_mail_fs_spiffs.py` (référencé par **n3pp**, **msp** et **uploadphotosserver**), qui patche une fois `ESP_Mail_FS.h` dans `.pio/libdeps` (idempotent).
 
 Les projets **legacy** caméra (`uploadphotosserver_*` hors dépôt unifié) ou exemples sans `platformio.ini` à la racine peuvent encore compiler uniquement sous `.pio/build/` : ajouter la même ligne `pre:../scripts/pio_redirect_build_dir.py` si besoin.
+
+Exemple (depuis la racine `firmwires/`, build + audit sur `uploadphotosserver` env `msp1`) :
+
+```powershell
+.\scripts\Invoke-PioBuildAudit.ps1 `
+  -ProjectRoot .\uploadphotosserver `
+  -Environment msp1 `
+  -PioArguments run,-e,msp1 `
+  -MaxDurationSeconds 900 `
+  -MaxBuildGrowthPercent 250
+```
 
 ## Scripts de monitoring et erase-flash
 
@@ -109,6 +121,8 @@ Utiliser les commandes PlatformIO directes depuis `uploadphotosserver/` :
 - `pio run -e msp1`
 - `pio run -e n3pp`
 - `pio run -e ffp3`
+- **ESP32-CAM avec PSRAM (photos haute résolution, stack historique)** : `pio run -e msp1-cam` / `-e n3pp-cam` / `-e ffp3-cam` — **platformio/espressif32@6.13.0** + **`board = esp32cam`** (Arduino 2.x) ; pas de `gcc_atomic_compat.c`. Les envs sans suffixe **`-cam`** restent en **pioarduino** + **esp32dev** + `dio_qspi` (alignement autres firmwares WROOM).
+- **Monitoring 1–2 min** (série fiable sous Windows : DTR/RTS désactivés) : depuis `uploadphotosserver/`, `python tools/monitor_serial_cam.py COM5 -s 120` — fermer tout autre moniteur / outil sur le même COM ; dépendance : `pip install pyserial`.
 
 ## Stack ESP-IDF et plateforme
 
@@ -116,6 +130,7 @@ Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est :
 
 **Versions arduino-ESP32 par type d'env :**
 - **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp, uploadphotosserver) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt.
+- **uploadphotosserver** (ESP32-CAM matériel) : **deux familles d’env** dans `uploadphotosserver/platformio.ini` — (1) **`msp1` / `n3pp` / `ffp3`** : **pioarduino** + **`esp32dev`** + **`dio_qspi`** (même toolchain que les autres WROOM ; liens `esp_psram_*` problématiques avec **`esp32cam`** sous pioarduino). (2) **`msp1-cam` / `n3pp-cam` / `ffp3-cam`** : **platformio/espressif32@6.13.0** + **`esp32cam`** pour retrouver **`psramFound()`** et résolutions type SXGA sur module avec PSRAM. Broches dans `uploadphotosserver/include/config.h`.
 - **S3** (ffp5cs wroom-s3-*) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
 - **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
 
@@ -140,6 +155,12 @@ Détails et APIs ESP-IDF utilisées en direct (ffp5cs) : [RECOMMANDATIONS_IOT.md
 ## Configuration des ports série
 
 Chaque `platformio.ini` définit `upload_port` et `monitor_port` (souvent `COM3` par défaut). Pour une machine donnée, modifier ces valeurs dans le fichier du projet concerné. Selon l’environnement, il est possible d’utiliser des variables d’environnement (ex. `UPLOAD_PORT`, `MONITOR_PORT`) si votre configuration PlatformIO ou vos scripts les prennent en charge ; à défaut, adapter directement les lignes dans le `platformio.ini` du projet.
+
+**ESP32-CAM (`uploadphotosserver`) — moniteur vide :** le projet définit **`monitor_rts = 0`** et **`monitor_dtr = 0`** pour que l’IDE ne force pas la carte en reset / bootloader via les lignes DTR/RTS du convertisseur USB–TTL (comportement fréquent sinon : aucune sortie série). Vérifier aussi **115200** bauds, TX/RX croisés et masse commune ; si besoin, appuyer sur **EN** après ouverture du moniteur. Pour un terminal externe (PuTTY, etc.), désactiver le contrôle de flux matériel et éviter de piloter DTR/RTS de la même façon.
+
+**Deep sleep :** entre deux réveils le module **n’émet plus rien** sur l’UART. Ouvrir le moniteur puis appuyer sur **EN** (ou attendre le timer, ex. **15 s**). Le firmware affiche une ligne **`[N3][ROM]`** via la ROM (UART0) avant `Serial` : si cette ligne n’apparaît jamais, le souci est câblage / mauvais port COM / adaptateur. Pour laisser le temps d’ouvrir le port au boot, définir **`SERIAL_BOOT_PAUSE_MS`** (ms) dans `uploadphotosserver/include/config.h` (ex. `4000`), recompiler et flasher.
+
+**Diagnostic matériel :** au boot, le firmware unifié émet un bloc **`[DIAG]`** (modèle de puce, taille flash, RAM interne, **tas SPIRAM total / libre / plus grand bloc**, `psramFound()`, seuils SXGA et message d’interprétation). Utile pour trancher **PSRAM absente vs fragmentée vs OK** avant d’incriminer la nappe caméra ou l’alim.
 
 ## WiFi (ESP32-CAM unifié et projets legacy)
 
