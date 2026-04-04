@@ -53,6 +53,7 @@ Les **4 environnements critiques** (qui doivent compiler sans erreur avant chaqu
 | **wroom-s3-test** * | esp32-s3-devkitc-1 | espressif32 6.13.0 | test | BME280/DHT auto | /ffp3/post-data3-test | s3_test | RTC DS3231, OLED diag |
 | **wroom-s3-prod** * | esp32-s3-devkitc-1 | espressif32 6.13.0 | prod | BME280/DHT auto | /ffp3/post-data3 | s3_test | Serveur web désactivé, serial off |
 | wroom-beta | esp32dev | pioarduino 55.03.37 | beta | DHT11 | /ffp3/post-data-test | wroom_ota_fs_mail | Reflet prod, entêtes beta |
+| wroom-beta-local | esp32dev | pioarduino 55.03.37 | beta | DHT11 | local `/ffp3/post-data-test` | wroom_ota_fs_mail | Clone beta avec `USE_LOCAL_SERVER_ENDPOINTS` + override local |
 | wroom-s3-test-psram | esp32-s3-devkitc-1 | espressif32 6.13.0 | test | BME280/DHT auto | /ffp3/post-data3-test | s3_test | N16R8 PSRAM, patches Arduino |
 | wroom-s3-test-psram-v2 | esp32-s3-devkitc-1 | espressif32 6.13.0 | test | BME280/DHT auto | /ffp3/post-data3-test | s3_test | PSRAM sans patches |
 | wroom-s3-test-devkit | esp32-s3-devkitc-1 | espressif32 6.13.0 | test | BME280/DHT auto | /ffp3/post-data3-test | s3_8mb | DevKitC-1 8 Mo flash |
@@ -85,6 +86,19 @@ pio run -e wroom-test -t upload
 pio device monitor
 ```
 
+### Override local pour `wroom-beta-local`
+
+La base URL locale n'est plus versionnee en dur.
+
+1. Copier `include/local_server_overrides.h.example` en `include/local_server_overrides.h` (fichier ignore par Git).
+2. Adapter `LOCAL_SERVER_BASE_URL_OVERRIDE` a l'IP LAN de la machine Docker (ex. `http://192.168.1.42:8082`).
+
+Alternative ponctuelle via CLI:
+
+```bash
+pio run -e wroom-beta-local --project-option "build_flags=-DLOCAL_SERVER_BASE_URL=\"http://192.168.1.42:8082\""
+```
+
 ## Workflow de validation recommandé
 
 - Workflow complet (erase + flash + monitor + analyse) :
@@ -93,6 +107,12 @@ pio device monitor
   - `.\monitor_until_crash.ps1 -Port COM3 -PostRebootSeconds 60 -MaxWaitSeconds 3600`
 - Build multi-env critiques :
   - `.\scripts\build_all_envs.ps1`
+- Build multi-env + beta-local :
+  - `.\scripts\build_all_envs.ps1 -IncludeBetaLocal`
+- Test cible beta-local (option 3) :
+  - `.\scripts\test_wroom_beta_local_serial.ps1 -Port COM7 -MonitorSeconds 150`
+- Test integration beta-local Docker + appareil (option 5) :
+  - `.\scripts\test_wroom_beta_local_docker_integration.ps1 -Port COM7`
 
 **Basculement WROOM ↔ S3** : après un build d’une autre famille d’env (ex. wroom-test puis wroom-s3-test), il est recommandé de lancer `pio run -e <env_cible> -t clean` avant de compiler. Le script `build_all_envs.ps1` fait ce nettoyage automatiquement lors du basculement de famille. **wroom-beta** : si le build échoue (FRAMEWORK_DIR None), lancer d’abord `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Détails : [BUILD_S3_PROCESS_ANALYSE.md](technical/BUILD_S3_PROCESS_ANALYSE.md) (sections « Basculement WROOM ↔ S3 » et « wroom-beta et FRAMEWORK_DIR »).
 

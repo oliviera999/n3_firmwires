@@ -7,6 +7,7 @@
 credentials.h
 secrets.h
 secrets_config.h
+ffp5cs/include/local_server_overrides.h
 
 # Backups / temporaire
 ffp5cs_backup/

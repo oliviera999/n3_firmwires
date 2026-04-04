@@ -12,6 +12,32 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.39 - 2026-04-04
+
+### Suite de tests `wroom-beta-local` (options 1, 3, 5)
+
+- **URL locale externalisee** : suppression de l'IP locale versionnee dans `platformio.ini` ; ajout d'un override non versionne `include/local_server_overrides.h` (modele `include/local_server_overrides.h.example`).
+- **Config testable en natif** : extraction des regles d'URLs serveur dans `include/server_url_config.h`, reutilisees par `include/config.h` (meme comportement firmware, mieux testable hors carte).
+- **Tests unitaires natifs** : nouvelle suite `test_server_url` (validation `post-data-test`, `heartbeat-test`, base OTA locale) integree a `platformio-native.ini` et `scripts/test_unit_all.ps1`.
+- **Tests sur cible / integration locale** :
+  - `scripts/test_wroom_beta_local_serial.ps1` : upload + capture serie + assertions endpoints/statut HTTP.
+  - `scripts/test_wroom_beta_local_docker_integration.ps1` : stack Docker locale + generation override URL LAN + test serie + verification BDD (`ffp3Data2` / `ffp3Heartbeat2`).
+- **CI build** : ajout de l'option `-IncludeBetaLocal` dans `scripts/build_all_envs.ps1` et `scripts/run_ci_checks.ps1`.
+- **Fichiers** : `platformio.ini`, `platformio-native.ini`, `include/config.h`, `include/server_url_config.h`, `include/local_server_overrides.h.example`, `.gitignore`, `scripts/test_unit_all.ps1`, `scripts/build_all_envs.ps1`, `scripts/run_ci_checks.ps1`, `scripts/test_wroom_beta_local_serial.ps1`, `scripts/test_wroom_beta_local_docker_integration.ps1`, documentation.
+
+---
+
+## Version 13.38 - 2026-04-04
+
+### Profil `wroom-beta-local` pour serveur local
+
+- **Nouveau profil PlatformIO** : ajout de `wroom-beta-local`, clone de `wroom-beta` avec un flag dédié `USE_LOCAL_SERVER_ENDPOINTS`.
+- **Endpoints serveur** : en mode local, toutes les URLs distantes passent par `LOCAL_SERVER_BASE_URL` (POST/GET/heartbeat + base OTA).
+- **Configuration** : URL locale par défaut dans `platformio.ini` (`LOCAL_SERVER_BASE_URL`), modifiable selon l'IP du serveur LAN.
+- **Fichiers** : `platformio.ini`, `include/config.h`, `docs/README.md`, `VERSION.md`.
+
+---
+
 ## Version 13.37 - 2026-04-02
 
 ### Réveil light sleep : restauration actionneurs avant POST réseau

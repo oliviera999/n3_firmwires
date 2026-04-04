@@ -111,8 +111,11 @@
 | Fichier | Type | Rôle |
 |---------|------|------|
 | **scripts/run_ci_checks.ps1** | PS1 | Verifications CI : build (env defaut ou multi-env avec `-AllEnvs`) + analyse log serie. |
-| **scripts/test_unit_all.ps1** | PS1 | Tests unitaires : `pio test -c platformio-native.ini -e native`. |
-| **scripts/build_all_envs.ps1** | PS1 | Build multi-env : compile les 4 envs critiques (wroom-prod, wroom-test, wroom-s3-test, wroom-s3-prod) avec nettoyage auto au basculement WROOM/S3. Options : `-Clean`, `-StopOnError`, `-Verbose`, `-Envs`. |
+| **scripts/test_unit_all.ps1** | PS1 | Tests unitaires natifs Unity (suites `test_config`, `test_nvs`, `test_server_url`) executes sequentiellement. |
+| **scripts/build_all_envs.ps1** | PS1 | Build multi-env : compile les 4 envs critiques (wroom-prod, wroom-test, wroom-s3-test, wroom-s3-prod) avec nettoyage auto au basculement WROOM/S3. Options : `-Clean`, `-StopOnError`, `-Verbose`, `-Envs`, `-IncludeBetaLocal`. |
+| **build_upload_monitor_wroom_beta_local_com4.ps1** | PS1 | Build + upload + monitor en `wroom-beta-local` sur COM4 (raccourci local). |
+| **scripts/test_wroom_beta_local_serial.ps1** | PS1 | Option 3 : upload `wroom-beta-local`, capture serie et assertions regex (`post-data-test`, `heartbeat-test`, statut HTTP). |
+| **scripts/test_wroom_beta_local_docker_integration.ps1** | PS1 | Option 5 : orchestration Docker local + override URL LAN + test serie + verification insertion DB (`ffp3Data2`, `ffp3Heartbeat2`). |
 | **scripts/test_phase2_complete.ps1** | PS1 | Test phase 2 complète (NVS, etc.). |
 | **scripts/test_web_dedicated_architecture.sh** | Shell | Test architecture web dédiée. |
 | **scripts/Release-ComPort.ps1** | PS1 | Libération du port COM (arrêt processus moniteur). |

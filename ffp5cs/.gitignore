@@ -73,6 +73,7 @@ desktop.ini
 secrets.h
 secrets_config.h
 credentials.h
+include/local_server_overrides.h
 
 # Test files (optional - comment out if you want to keep them)
 # test_*.html

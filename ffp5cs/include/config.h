@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <cmath>  // Pour isnan() dans SensorValidation
 #include "gpio_mapping.h"  // Pour GPIODefaults (source de vérité des valeurs par défaut)
+#include "server_url_config.h"
 
 // API_KEY : secrets_config.h > credentials.h (firmwires/) > défaut. Aligné avec msp/n3pp et serveur .env.
 #if __has_include("secrets_config.h")
@@ -54,7 +55,8 @@ namespace ProjectConfig {
     // v13.33: Passage des mesures ultrasons en millimètres (acquisition, filtrage, seuils convertis cm->mm).
     // v13.34: Publication OTA wroom-beta + wroom-prod.
     // v13.35: Rebuild et republication OTA beta/prod pour validation chaîne mm.
-    inline constexpr const char* VERSION = "13.37";
+    // v13.39: Suite de tests wroom-beta-local (URL locale externalisee + scripts serial/docker + tests URL natifs).
+    inline constexpr const char* VERSION = "13.39";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -375,53 +377,33 @@ namespace WebAuthConfig {
 }
 
 namespace ServerConfig {
-    // v11.162: HTTP par défaut pour réduire fragmentation mémoire (TLS ~32KB contigu requis)
-    // Le serveur iot.olution.info est contrôlé, les données capteurs ne sont pas sensibles
-    inline constexpr const char* BASE_URL = "http://iot.olution.info";
+    // URL serveurs (prod/test/local) resolues dans un header testable en natif.
+    inline constexpr const char* BASE_URL = ServerUrlConfig::BASE_URL;
     // Diagnostic latence : IP du serveur (iot.olution.info). Non utilisé par défaut : hébergement mutualisé
     // renvoie 403/404 sur l'IP ; sur un VPS on pourrait l'utiliser + Host pour éviter le DNS.
     inline constexpr const char* BASE_URL_TEST_IP = "http://109.234.162.74";
-    // HTTPS disponible pour tests/cas spécifiques (TLS), non utilisé par défaut en OTA
-    inline constexpr const char* BASE_URL_SECURE = "https://iot.olution.info";
-    
-    #if defined(USE_TEST3_ENDPOINTS)
-        // Profil wroom-s3-test : routes serveur TEST3 (aquaponie3-test, post-data3-test, outputs3-test, heartbeat3-test)
-        inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3-test";
-        inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3-test/state";
-        inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3-test";
-    #elif defined(BOARD_S3) && defined(PROFILE_PROD)
-        // Profil wroom-s3-prod : routes serveur S3 prod (post-data3, outputs3, heartbeat3)
-        inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3";
-        inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3/state";
-        inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3";
-    #elif defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
-        inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-test";
-        inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-test/state";
-        inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-test";
-    #else
-        inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data";
-        inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs/state";
-        inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat";
-    #endif
-    
-    inline constexpr const char* OTA_BASE_PATH = "/ota/";
+    inline constexpr const char* BASE_URL_SECURE = ServerUrlConfig::BASE_URL_SECURE;
+    inline constexpr const char* POST_DATA_ENDPOINT = ServerUrlConfig::POST_DATA_ENDPOINT;
+    inline constexpr const char* OUTPUT_ENDPOINT = ServerUrlConfig::OUTPUT_ENDPOINT;
+    inline constexpr const char* HEARTBEAT_ENDPOINT = ServerUrlConfig::HEARTBEAT_ENDPOINT;
+    inline constexpr const char* OTA_BASE_PATH = ServerUrlConfig::OTA_BASE_PATH;
     
     // Helpers pour buffers statiques
     inline void getPostDataUrl(char* buffer, size_t bufferSize) {
-        snprintf(buffer, bufferSize, "%s%s", BASE_URL, POST_DATA_ENDPOINT);
+        ServerUrlConfig::getPostDataUrl(buffer, bufferSize);
     }
     
     inline void getOutputUrl(char* buffer, size_t bufferSize) {
-        snprintf(buffer, bufferSize, "%s%s", BASE_URL, OUTPUT_ENDPOINT);
+        ServerUrlConfig::getOutputUrl(buffer, bufferSize);
     }
     
     inline void getHeartbeatUrl(char* buffer, size_t bufferSize) {
-        snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT);
+        ServerUrlConfig::getHeartbeatUrl(buffer, bufferSize);
     }
     
     // Helper OTA historique (HTTPS explicite) conservé pour compatibilité.
     inline void getOtaBaseUrl(char* buffer, size_t bufferSize) {
-        snprintf(buffer, bufferSize, "%s%s", BASE_URL_SECURE, OTA_BASE_PATH);
+        ServerUrlConfig::getOtaBaseUrl(buffer, bufferSize);
     }
 }
 

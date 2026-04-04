@@ -1,0 +1,6 @@
+#pragma once
+
+// Copiez ce fichier en local_server_overrides.h (non versionne)
+// puis adaptez l'URL a l'IP LAN de la machine qui execute Docker.
+// Exemple: http://192.168.1.42:8082
+#define LOCAL_SERVER_BASE_URL_OVERRIDE "http://192.168.1.42:8082"

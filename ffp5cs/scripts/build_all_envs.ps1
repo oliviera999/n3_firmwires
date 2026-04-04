@@ -11,6 +11,9 @@
 .PARAMETER Envs
   Liste des environnements a compiler. Par defaut les 4 critiques.
 
+.PARAMETER IncludeBetaLocal
+  Ajoute wroom-beta-local a la liste des environnements a compiler.
+
 .PARAMETER Clean
   Force un nettoyage complet de tous les envs avant de compiler.
 
@@ -31,7 +34,8 @@ param(
     [string[]]$Envs = @("wroom-prod", "wroom-test", "wroom-s3-test", "wroom-s3-prod"),
     [switch]$Clean,
     [switch]$StopOnError,
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$IncludeBetaLocal
 )
 
 $ErrorActionPreference = "Continue"
@@ -65,6 +69,10 @@ try {
     if (-not (Test-Path "platformio.ini")) {
         Write-Error "platformio.ini introuvable. Executez ce script depuis ffp5cs/ ou via scripts/."
         exit 1
+    }
+
+    if ($IncludeBetaLocal -and ($Envs -notcontains "wroom-beta-local")) {
+        $Envs += "wroom-beta-local"
     }
 
     $pioCli = Get-PioCliCommand

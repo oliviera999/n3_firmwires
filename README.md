@@ -93,7 +93,11 @@ Le projet **ffp5cs** définit le workflow de validation de référence, aligné 
 Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs/`. Voir aussi `ffp5cs/.cursor/rules/` et `ffp5cs/docs/INVENTAIRE_SCRIPTS_FFP5CS.md` pour l'inventaire des scripts.
 
 - **Compilation de tous les envs** (évite les builds WROOM pioarduino en parallèle, qui peuvent corrompre le cache) : `ffp5cs/scripts/build_all_envs.ps1`.
-- **Tests unitaires natifs (Unity)** : `pio test -c platformio-native.ini -e native` depuis `ffp5cs/`, ou `ffp5cs/scripts/test_unit_all.ps1`.
+- **Compilation de tous les envs + beta-local** : `ffp5cs/scripts/build_all_envs.ps1 -IncludeBetaLocal`.
+- **Build + upload + monitor beta-local (COM4)** : `ffp5cs/build_upload_monitor_wroom_beta_local_com4.ps1`.
+- **Tests unitaires natifs (Unity)** : `pio test -c platformio-native.ini -e native` depuis `ffp5cs/`, ou `ffp5cs/scripts/test_unit_all.ps1` (suites `test_config`, `test_nvs`, `test_server_url`).
+- **Tests beta-local sur cible** : `ffp5cs/scripts/test_wroom_beta_local_serial.ps1` (upload + monitor + assertions logs).
+- **Tests integration locale Docker + appareil** : `ffp5cs/scripts/test_wroom_beta_local_docker_integration.ps1` (stack docker, override URL LAN local, verification BDD).
 
 ### Scripts racine firmwires (multi-projets)
 

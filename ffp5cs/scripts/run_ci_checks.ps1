@@ -12,6 +12,9 @@
   Compile les 4 environnements critiques (wroom-prod, wroom-test, wroom-s3-test,
   wroom-s3-prod) au lieu du seul env par defaut. Delegue a build_all_envs.ps1.
 
+.PARAMETER IncludeBetaLocal
+  Ajoute wroom-beta-local au build multi-env (utile pour la validation locale).
+
 .EXAMPLE
   pwsh ./scripts/run_ci_checks.ps1 -LogPath .\pythonserial\esp32_logs.txt
   pwsh ./scripts/run_ci_checks.ps1 -AllEnvs
@@ -23,7 +26,8 @@
 param(
     [string]$LogPath = "pythonserial/esp32_logs.txt",
     [switch]$SkipBuild,
-    [switch]$AllEnvs
+    [switch]$AllEnvs,
+    [switch]$IncludeBetaLocal
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,7 +48,11 @@ function Invoke-PlatformBuild {
         if (-not (Test-Path -LiteralPath $buildScript)) {
             Write-Error "Script introuvable: $buildScript"
         }
-        & $buildScript -StopOnError
+        if ($IncludeBetaLocal) {
+            & $buildScript -StopOnError -IncludeBetaLocal
+        } else {
+            & $buildScript -StopOnError
+        }
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Build multi-env echoue. Voir le rapport ci-dessus."
         }
