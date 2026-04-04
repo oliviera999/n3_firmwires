@@ -56,7 +56,8 @@ namespace ProjectConfig {
     // v13.34: Publication OTA wroom-beta + wroom-prod.
     // v13.35: Rebuild et republication OTA beta/prod pour validation chaîne mm.
     // v13.39: Suite de tests wroom-beta-local (URL locale externalisee + scripts serial/docker + tests URL natifs).
-    inline constexpr const char* VERSION = "13.39";
+    // v13.40: Integration Docker beta-local (auth token/session), batterie de tests et secrets locaux non versionnes.
+    inline constexpr const char* VERSION = "13.40";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

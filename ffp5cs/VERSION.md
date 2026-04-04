@@ -12,6 +12,17 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.40 - 2026-04-04
+
+### Tests `wroom-beta-local` : auth Docker et orchestration
+
+- **Secrets locaux** : fichier optionnel `scripts/.beta-local-test.env` (non versionne, modele `.beta-local-test.env.example`) pour token admin, API key, URL LAN.
+- **Integration Docker** : `test_wroom_beta_local_docker_integration.ps1` — modes `AuthMode` token/session/both, override compose pour variables d’environnement, smoke via `serveur/tools/local-smoke-test.ps1`, option `-RequireHeartbeat` pour le test serie.
+- **Batterie de tests** : `run_wroom_beta_local_test_suite.ps1` + `wroom_beta_local_test_scenarios.json`.
+- **Gitignore** : exclusion de `ffp5cs/scripts/.beta-local-test.env` (racine et `ffp5cs/.gitignore`).
+
+---
+
 ## Version 13.39 - 2026-04-04
 
 ### Suite de tests `wroom-beta-local` (options 1, 3, 5)

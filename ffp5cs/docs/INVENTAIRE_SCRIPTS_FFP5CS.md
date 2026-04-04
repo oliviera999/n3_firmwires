@@ -115,7 +115,10 @@
 | **scripts/build_all_envs.ps1** | PS1 | Build multi-env : compile les 4 envs critiques (wroom-prod, wroom-test, wroom-s3-test, wroom-s3-prod) avec nettoyage auto au basculement WROOM/S3. Options : `-Clean`, `-StopOnError`, `-Verbose`, `-Envs`, `-IncludeBetaLocal`. |
 | **build_upload_monitor_wroom_beta_local_com4.ps1** | PS1 | Build + upload + monitor en `wroom-beta-local` sur COM4 (raccourci local). |
 | **scripts/test_wroom_beta_local_serial.ps1** | PS1 | Option 3 : upload `wroom-beta-local`, capture serie et assertions regex (`post-data-test`, `heartbeat-test`, statut HTTP). |
-| **scripts/test_wroom_beta_local_docker_integration.ps1** | PS1 | Option 5 : orchestration Docker local + override URL LAN + test serie + verification insertion DB (`ffp3Data2`, `ffp3Heartbeat2`). |
+| **scripts/test_wroom_beta_local_docker_integration.ps1** | PS1 | Option 5 : orchestration Docker local + override URL LAN + auth token/session + smoke `local-smoke-test` + test serie + verification insertion DB (`ffp3Data2`, `ffp3Heartbeat2`). |
+| **scripts/run_wroom_beta_local_test_suite.ps1** | PS1 | Batterie quick/full : unites natives + scenarios JSON (`wroom_beta_local_test_scenarios.json`) + integration Docker selon campagne/auth. |
+| **scripts/wroom_beta_local_test_scenarios.json** | JSON | Definition des scenarios pour `run_wroom_beta_local_test_suite.ps1`. |
+| **scripts/.beta-local-test.env.example** | exemple | Modele de secrets locaux (copier en `.beta-local-test.env`, non versionne). |
 | **scripts/test_phase2_complete.ps1** | PS1 | Test phase 2 complète (NVS, etc.). |
 | **scripts/test_web_dedicated_architecture.sh** | Shell | Test architecture web dédiée. |
 | **scripts/Release-ComPort.ps1** | PS1 | Libération du port COM (arrêt processus moniteur). |

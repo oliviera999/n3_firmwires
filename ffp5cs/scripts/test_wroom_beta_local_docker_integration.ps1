@@ -3,7 +3,7 @@
   Test d'integration local: Docker serveur + ESP32 wroom-beta-local.
 
 .DESCRIPTION
-  - Demarre la stack Docker locale (optionnel) et smoke test (optionnel).
+  - Demarre la stack Docker locale (optionnel) avec override auth/token/session.
   - Genere un override local non versionne pour LOCAL_SERVER_BASE_URL.
   - Lance le test serie wroom-beta-local (upload + capture + assertions endpoint).
   - Verifie qu'au moins une insertion apparait dans ffp3Data2 ou ffp3Heartbeat2.
@@ -17,10 +17,20 @@ param(
     [string]$Port,
     [int]$MonitorSeconds = 150,
     [int]$DbTimeoutSeconds = 180,
+    [ValidateSet("token", "session", "both")]
+    [string]$AuthMode = "token",
+    [string]$AdminToken,
+    [string]$AdminUsername,
+    [string]$AdminPassword,
+    [string]$AdminPasswordHash,
+    [string]$ApiKey,
+    [string]$LocalSecretsFile,
     [switch]$SkipDockerUp,
     [switch]$SkipSmoke,
     [switch]$SkipUpload,
     [switch]$SkipSerial,
+    [switch]$RequireHeartbeat,
+    [switch]$RunNegativeAuthChecks,
     [string]$LocalServerBaseUrl
 )
 
@@ -30,11 +40,37 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 $repoRoot = Split-Path -Parent (Split-Path -Parent $projectDir)
 $serverRoot = Join-Path $repoRoot "serveur"
-$dockerScript = Join-Path $serverRoot "tools/local-docker.ps1"
+$smokeScript = Join-Path $serverRoot "tools/local-smoke-test.ps1"
 $serialTestScript = Join-Path $scriptDir "test_wroom_beta_local_serial.ps1"
 $overrideHeader = Join-Path $projectDir "include/local_server_overrides.h"
 $compose = Join-Path $serverRoot "docker-compose.local.yml"
 $composeEnv = Join-Path $serverRoot ".env.docker.example"
+if ([string]::IsNullOrWhiteSpace($LocalSecretsFile)) {
+    $LocalSecretsFile = Join-Path $scriptDir ".beta-local-test.env"
+}
+
+function Import-LocalSecrets {
+    param([string]$FilePath)
+    $map = @{}
+    if (-not (Test-Path -LiteralPath $FilePath)) {
+        return $map
+    }
+
+    foreach ($line in (Get-Content -LiteralPath $FilePath -ErrorAction Stop)) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) {
+            continue
+        }
+        $idx = $trimmed.IndexOf("=")
+        if ($idx -lt 1) {
+            continue
+        }
+        $key = $trimmed.Substring(0, $idx).Trim()
+        $value = $trimmed.Substring($idx + 1).Trim().Trim('"')
+        $map[$key] = $value
+    }
+    return $map
+}
 
 function Get-LanIpv4 {
     $route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
@@ -60,12 +96,63 @@ function Get-LanIpv4 {
     throw "Impossible de determiner une IP LAN IPv4."
 }
 
+function Get-AdminPasswordHash {
+    param(
+        [string]$PlainPassword,
+        [string]$ProvidedHash
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ProvidedHash)) {
+        return $ProvidedHash
+    }
+
+    if ([string]::IsNullOrWhiteSpace($PlainPassword)) {
+        return ""
+    }
+
+    $hash = docker run --rm -e "N3_TEST_PASSWORD=$PlainPassword" php:8.2-cli php -r "echo password_hash(getenv('N3_TEST_PASSWORD'), PASSWORD_DEFAULT);"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($hash)) {
+        throw "Impossible de calculer ADMIN_PASSWORD_HASH via docker run php:8.2-cli."
+    }
+    return $hash.Trim()
+}
+
+function New-ComposeOverrideFile {
+    param(
+        [string]$AuthMethod,
+        [string]$Token,
+        [string]$Username,
+        [string]$PasswordHashValue,
+        [string]$ApiKeyValue
+    )
+
+    $tmpPath = Join-Path ([System.IO.Path]::GetTempPath()) ("n3-auth-override-{0}.yml" -f ([guid]::NewGuid().ToString("N")))
+    $lines = @(
+        "services:",
+        "  app:",
+        "    environment:",
+        "      AUTH_METHOD: `"$AuthMethod`""
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Token)) {
+        $lines += "      ADMIN_TOKEN: `"$Token`""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Username)) {
+        $lines += "      ADMIN_USERNAME: `"$Username`""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PasswordHashValue)) {
+        $lines += "      ADMIN_PASSWORD_HASH: `"$PasswordHashValue`""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ApiKeyValue)) {
+        $lines += "      API_KEY: `"$ApiKeyValue`""
+    }
+    Set-Content -LiteralPath $tmpPath -Value ($lines -join "`r`n") -Encoding UTF8
+    return $tmpPath
+}
+
 function Invoke-DbCount {
     param([Parameter(Mandatory = $true)][string]$TableName)
 
     $query = "SELECT COUNT(*) FROM iot_n3_local.$TableName;"
-    $raw = docker compose --env-file $composeEnv -f $compose exec -T db `
-        mysql -uroot -proot_local_iot_n3 --batch --skip-column-names -e $query
+    $raw = docker compose --env-file $composeEnv -f $compose exec -T db mysql -uroot -proot_local_iot_n3 --batch --skip-column-names -e $query
     if ($LASTEXITCODE -ne 0) {
         throw "Echec lecture DB pour table '$TableName'."
     }
@@ -77,16 +164,40 @@ function Invoke-DbCount {
     return [int]$value
 }
 
-if (-not (Test-Path -LiteralPath $dockerScript)) {
-    throw "Script introuvable: $dockerScript"
+if (-not (Test-Path -LiteralPath $smokeScript)) {
+    throw "Script introuvable: $smokeScript"
 }
 if (-not (Test-Path -LiteralPath $serialTestScript)) {
     throw "Script introuvable: $serialTestScript"
 }
 
+$secrets = Import-LocalSecrets -FilePath $LocalSecretsFile
+if ([string]::IsNullOrWhiteSpace($AdminToken) -and $secrets.ContainsKey("N3_TEST_ADMIN_TOKEN")) { $AdminToken = $secrets["N3_TEST_ADMIN_TOKEN"] }
+if ([string]::IsNullOrWhiteSpace($AdminUsername) -and $secrets.ContainsKey("N3_TEST_ADMIN_USERNAME")) { $AdminUsername = $secrets["N3_TEST_ADMIN_USERNAME"] }
+if ([string]::IsNullOrWhiteSpace($AdminPassword) -and $secrets.ContainsKey("N3_TEST_ADMIN_PASSWORD")) { $AdminPassword = $secrets["N3_TEST_ADMIN_PASSWORD"] }
+if ([string]::IsNullOrWhiteSpace($AdminPasswordHash) -and $secrets.ContainsKey("N3_TEST_ADMIN_PASSWORD_HASH")) { $AdminPasswordHash = $secrets["N3_TEST_ADMIN_PASSWORD_HASH"] }
+if ([string]::IsNullOrWhiteSpace($ApiKey) -and $secrets.ContainsKey("N3_TEST_API_KEY")) { $ApiKey = $secrets["N3_TEST_API_KEY"] }
+if ([string]::IsNullOrWhiteSpace($LocalServerBaseUrl) -and $secrets.ContainsKey("N3_TEST_LOCAL_SERVER_BASE_URL")) { $LocalServerBaseUrl = $secrets["N3_TEST_LOCAL_SERVER_BASE_URL"] }
+
+if ([string]::IsNullOrWhiteSpace($AdminUsername)) { $AdminUsername = "admin" }
+if ([string]::IsNullOrWhiteSpace($ApiKey)) { $ApiKey = "local_api_key_change_me" }
+
 if ([string]::IsNullOrWhiteSpace($LocalServerBaseUrl)) {
     $lanIp = Get-LanIpv4
     $LocalServerBaseUrl = "http://${lanIp}:8082"
+}
+
+if (($AuthMode -eq "token" -or $AuthMode -eq "both") -and [string]::IsNullOrWhiteSpace($AdminToken)) {
+    throw "AdminToken requis pour AuthMode '$AuthMode'."
+}
+if ($AuthMode -eq "session" -or $AuthMode -eq "both") {
+    $AdminPasswordHash = Get-AdminPasswordHash -PlainPassword $AdminPassword -ProvidedHash $AdminPasswordHash
+    if ([string]::IsNullOrWhiteSpace($AdminPasswordHash)) {
+        throw "AdminPasswordHash (ou AdminPassword) requis pour AuthMode '$AuthMode'."
+    }
+    if ([string]::IsNullOrWhiteSpace($AdminPassword)) {
+        throw "AdminPassword requis pour tester le login/session."
+    }
 }
 
 Write-Host "[beta-local] URL serveur local retenue: $LocalServerBaseUrl" -ForegroundColor Cyan
@@ -100,21 +211,37 @@ $overrideContent = @(
 Set-Content -Path $overrideHeader -Value $overrideContent -Encoding UTF8
 Write-Host "[beta-local] Override ecrit: $overrideHeader" -ForegroundColor Gray
 
+$composeOverride = New-ComposeOverrideFile -AuthMethod $AuthMode -Token $AdminToken -Username $AdminUsername -PasswordHashValue $AdminPasswordHash -ApiKeyValue $ApiKey
+Write-Host "[beta-local] Override compose auth: $composeOverride" -ForegroundColor Gray
+
 Push-Location $serverRoot
 try {
     if (-not $SkipDockerUp) {
-        powershell -ExecutionPolicy Bypass -File $dockerScript -Action up
+        docker compose --env-file $composeEnv -f $compose -f $composeOverride up -d --build
         if ($LASTEXITCODE -ne 0) {
-            throw "Echec local-docker up."
+            throw "Echec docker compose up."
         }
     } else {
         Write-Host "[beta-local] Docker up saute (--SkipDockerUp)." -ForegroundColor Yellow
     }
 
     if (-not $SkipSmoke) {
-        powershell -ExecutionPolicy Bypass -File $dockerScript -Action smoke
+        $smokeParams = @(
+            "-ExecutionPolicy", "Bypass",
+            "-File", $smokeScript,
+            "-BaseUrl", $LocalServerBaseUrl,
+            "-AuthMode", $AuthMode,
+            "-AdminToken", $AdminToken,
+            "-AdminUsername", $AdminUsername,
+            "-AdminPassword", $AdminPassword,
+            "-ApiKey", $ApiKey
+        )
+        if ($RunNegativeAuthChecks) {
+            $smokeParams += "-RunNegativeAuthChecks"
+        }
+        powershell @smokeParams
         if ($LASTEXITCODE -ne 0) {
-            throw "Echec local-docker smoke."
+            throw "Echec smoke auth/local."
         }
     } else {
         Write-Host "[beta-local] Smoke saute (--SkipSmoke)." -ForegroundColor Yellow
@@ -128,7 +255,7 @@ $beforeHeartbeat = Invoke-DbCount -TableName "ffp3Heartbeat2"
 Write-Host ("[beta-local] DB avant test: ffp3Data2={0}, ffp3Heartbeat2={1}" -f $beforeData, $beforeHeartbeat) -ForegroundColor Cyan
 
 if (-not $SkipSerial) {
-    & $serialTestScript -Port $Port -MonitorSeconds $MonitorSeconds -SkipUpload:$SkipUpload
+    & $serialTestScript -Port $Port -MonitorSeconds $MonitorSeconds -SkipUpload:$SkipUpload -RequireHeartbeat:$RequireHeartbeat
     if ($LASTEXITCODE -ne 0) {
         throw "Le test serie beta-local a echoue."
     }
@@ -156,3 +283,7 @@ if ($afterData -le $beforeData -and $afterHeartbeat -le $beforeHeartbeat) {
 }
 
 Write-Host "[beta-local] Integration Docker + device OK." -ForegroundColor Green
+
+if (Test-Path -LiteralPath $composeOverride) {
+    Remove-Item -LiteralPath $composeOverride -Force -ErrorAction SilentlyContinue
+}

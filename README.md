@@ -98,6 +98,7 @@ Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs
 - **Tests unitaires natifs (Unity)** : `pio test -c platformio-native.ini -e native` depuis `ffp5cs/`, ou `ffp5cs/scripts/test_unit_all.ps1` (suites `test_config`, `test_nvs`, `test_server_url`).
 - **Tests beta-local sur cible** : `ffp5cs/scripts/test_wroom_beta_local_serial.ps1` (upload + monitor + assertions logs).
 - **Tests integration locale Docker + appareil** : `ffp5cs/scripts/test_wroom_beta_local_docker_integration.ps1` (stack docker, override URL LAN local, verification BDD).
+- **Batterie de tests beta-local** : `ffp5cs/scripts/run_wroom_beta_local_test_suite.ps1` (secrets optionnels : copier `ffp5cs/scripts/.beta-local-test.env.example` vers `ffp5cs/scripts/.beta-local-test.env`).
 
 ### Scripts racine firmwires (multi-projets)
 

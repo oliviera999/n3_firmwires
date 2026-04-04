@@ -8,6 +8,7 @@ credentials.h
 secrets.h
 secrets_config.h
 ffp5cs/include/local_server_overrides.h
+ffp5cs/scripts/.beta-local-test.env
 
 # Backups / temporaire
 ffp5cs_backup/

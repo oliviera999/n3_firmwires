@@ -1,0 +1,34 @@
+[
+  {
+    "id": "quick-token",
+    "campaign": "quick",
+    "auth": "token",
+    "monitorSeconds": 90,
+    "requireHeartbeat": false,
+    "runNegativeAuthChecks": false
+  },
+  {
+    "id": "quick-session",
+    "campaign": "quick",
+    "auth": "session",
+    "monitorSeconds": 90,
+    "requireHeartbeat": false,
+    "runNegativeAuthChecks": false
+  },
+  {
+    "id": "full-token",
+    "campaign": "full",
+    "auth": "token",
+    "monitorSeconds": 240,
+    "requireHeartbeat": true,
+    "runNegativeAuthChecks": true
+  },
+  {
+    "id": "full-session",
+    "campaign": "full",
+    "auth": "session",
+    "monitorSeconds": 240,
+    "requireHeartbeat": true,
+    "runNegativeAuthChecks": true
+  }
+]
