@@ -234,7 +234,7 @@ const LogConfig = {
     DEBUG: 3,
     TRACE: 4
   },
-  currentLevel: 3, // DEBUG par défaut
+  currentLevel: 2, // INFO par défaut (DEBUG = 3 via l'UI logs si besoin)
   maxHistory: 1000,
   showTimestamp: true,
   showLevel: true,

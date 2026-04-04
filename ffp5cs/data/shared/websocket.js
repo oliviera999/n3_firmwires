@@ -1,5 +1,32 @@
 // FFP5CS Dashboard - Gestion WebSocket et WiFi
 
+/** Traces [DEBUG] : affichées seulement si common.js a chargé LogConfig avec niveau DEBUG ou TRACE. */
+function ffp5csWsDebugLog(...args) {
+  try {
+    if (typeof LogConfig !== 'undefined' && LogConfig.levels && typeof LogConfig.currentLevel === 'number') {
+      if (LogConfig.levels.DEBUG > LogConfig.currentLevel) return;
+    } else {
+      return;
+    }
+  } catch (_e) {
+    return;
+  }
+  console.log(...args);
+}
+
+function ffp5csWsDebugError(...args) {
+  try {
+    if (typeof LogConfig !== 'undefined' && LogConfig.levels && typeof LogConfig.currentLevel === 'number') {
+      if (LogConfig.levels.DEBUG > LogConfig.currentLevel) return;
+    } else {
+      return;
+    }
+  } catch (_e) {
+    return;
+  }
+  console.error(...args);
+}
+
 // WebSocket + Fallback polling avec essai de plusieurs ports
 function connectWS() {
   try {
@@ -389,7 +416,7 @@ function selectTab(name) {
 function displayDbVars(db) {
     // Vérifier si les données sont valides (plus permissif)
     const dataOk = db && (db.ok === true || db.ok === undefined) && Object.keys(db).length > 0;
-    console.log('[DEBUG] Données valides:', dataOk, 'db.ok:', db.ok, 'keys count:', Object.keys(db).length);
+    ffp5csWsDebugLog('[DEBUG] Données valides:', dataOk, 'db.ok:', db.ok, 'keys count:', Object.keys(db).length);
     
     // Mise à jour de l'affichage des variables actuelles
     const updateDbElement = (id, value) => {
@@ -499,11 +526,11 @@ function displayDbVars(db) {
 
 // Fonctions pour l'onglet Réglages
 window.loadDbVars = async function loadDbVars() {
-  console.log('[DEBUG] loadDbVars() appelée');
+  ffp5csWsDebugLog('[DEBUG] loadDbVars() appelée');
   
   // OPTIMISATION: Utiliser le cache si disponible (chargement instantané)
   if (window.cachedDbVars) {
-    console.log('[DEBUG] Utilisation du cache pour affichage immédiat');
+    ffp5csWsDebugLog('[DEBUG] Utilisation du cache pour affichage immédiat');
     displayDbVars(window.cachedDbVars);
     return;
   }
@@ -526,7 +553,7 @@ window.loadDbVars = async function loadDbVars() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // Timeout 5s pour les requêtes distantes (optimisé)
     
-    console.log('[DEBUG] Envoi requête vers /dbvars');
+    ffp5csWsDebugLog('[DEBUG] Envoi requête vers /dbvars');
     const response = await fetch('/dbvars', {
       cache: 'no-store',
       credentials: 'include',
@@ -535,33 +562,33 @@ window.loadDbVars = async function loadDbVars() {
     
     clearTimeout(timeoutId);
     
-    console.log('[DEBUG] Réponse reçue:', response.status, response.statusText);
+    ffp5csWsDebugLog('[DEBUG] Réponse reçue:', response.status, response.statusText);
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
     const responseText = await response.text();
-    console.log('[DEBUG] Contenu brut de la réponse:', responseText);
+    ffp5csWsDebugLog('[DEBUG] Contenu brut de la réponse:', responseText);
     
     const db = JSON.parse(responseText);
-    console.log('[DEBUG] JSON parsé:', db);
+    ffp5csWsDebugLog('[DEBUG] JSON parsé:', db);
     // Mettre à jour le cache
     window.cachedDbVars = db;
     
     // Afficher les données
     displayDbVars(db);
   } catch (error) {
-    console.error('[DEBUG] Erreur détaillée dans loadDbVars():', error);
-    console.error('[DEBUG] Type d\'erreur:', error.name);
-    console.error('[DEBUG] Message d\'erreur:', error.message);
-    console.error('[DEBUG] Stack trace:', error.stack);
+    ffp5csWsDebugError('[DEBUG] Erreur détaillée dans loadDbVars():', error);
+    ffp5csWsDebugError('[DEBUG] Type d\'erreur:', error.name);
+    ffp5csWsDebugError('[DEBUG] Message d\'erreur:', error.message);
+    ffp5csWsDebugError('[DEBUG] Stack trace:', error.stack);
     
     if (error.name === 'AbortError') {
-      console.log('[DEBUG] Requête annulée (timeout)');
+      ffp5csWsDebugLog('[DEBUG] Requête annulée (timeout)');
       toast('Timeout lors du chargement des réglages', 'warning');
     } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      console.log('[DEBUG] Erreur réseau - connexion impossible');
+      ffp5csWsDebugLog('[DEBUG] Erreur réseau - connexion impossible');
       toast('Erreur réseau - impossible de charger les réglages', 'warning');
     } else {
       console.error('Erreur chargement réglages:', error);
@@ -569,7 +596,7 @@ window.loadDbVars = async function loadDbVars() {
     }
     
     // Fallback avec des valeurs par défaut (clés canoniques)
-    console.log('[DEBUG] Application des valeurs par défaut');
+    ffp5csWsDebugLog('[DEBUG] Application des valeurs par défaut');
     const defaultValues = {
       bouffeMatin: 8,
       bouffeMidi: 12,

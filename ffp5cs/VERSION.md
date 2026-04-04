@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.42 - 2026-04-04
+
+### Dashboard web (LittleFS) — bruit console
+
+- **common.js** : niveau de log par défaut **INFO** (2) au lieu de DEBUG (3).
+- **websocket.js** : les traces `[DEBUG]` passent par un garde aligné sur `LogConfig` (affichées seulement si le niveau DEBUG ou TRACE est actif).
+
+---
+
 ## Version 13.41 - 2026-04-04
 
 ### Documentation tests `wroom-beta-local`
