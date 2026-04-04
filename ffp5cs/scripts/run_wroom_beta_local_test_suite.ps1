@@ -106,8 +106,12 @@ function Invoke-Step {
 
     $start = Get-Date
     Write-Host "[suite] START $Name" -ForegroundColor Cyan
-    $output = & powershell -ExecutionPolicy Bypass -File $ScriptPath @ScriptArguments 2>&1
-    $code = $LASTEXITCODE
+    # Un tableau splatte avec & $Script ne lie pas -Nom valeur ; un second powershell avec -File + argv le fait.
+    $allArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + $ScriptArguments
+    $p = Start-Process -FilePath powershell.exe -ArgumentList $allArgs -Wait -PassThru -NoNewWindow
+    $code = $p.ExitCode
+    if ($null -eq $code) { $code = 0 }
+    $output = @()
     $durationSec = [math]::Round(((Get-Date) - $start).TotalSeconds, 1)
     $status = if ($code -eq 0) { "passed" } else { "failed" }
     Write-Host "[suite] END   $Name => $status (${durationSec}s)" -ForegroundColor $(if ($code -eq 0) { "Green" } else { "Red" })
@@ -141,7 +145,7 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $results = @()
 
 # Step commun: tests unitaires natifs une seule fois.
-$results += Invoke-Step -Name "unit-native" -ScriptPath $unitScript -Args @()
+$results += Invoke-Step -Name "unit-native" -ScriptPath $unitScript -ScriptArguments @()
 if ($results[-1].exitCode -ne 0) {
     throw "Arret: tests unitaires natifs en echec."
 }

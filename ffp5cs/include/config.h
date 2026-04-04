@@ -58,7 +58,7 @@ namespace ProjectConfig {
     // v13.39: Suite de tests wroom-beta-local (URL locale externalisee + scripts serial/docker + tests URL natifs).
     // v13.40: Integration Docker beta-local (auth token/session), batterie de tests et secrets locaux non versionnes.
     // v13.41: Doc ffp5cs (README tests beta-local, inventaire scripts sans doublon).
-    inline constexpr const char* VERSION = "13.42";
+    inline constexpr const char* VERSION = "13.43";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

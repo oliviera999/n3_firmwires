@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.43 - 2026-04-04
+
+### Tests `wroom-beta-local` — invocation smoke
+
+- **`test_wroom_beta_local_docker_integration.ps1`** : appel direct `& local-smoke-test.ps1` (splat hashtable) au lieu d un second `powershell.exe`, pour un binding correct de `-BaseUrl` / `-AdminToken`.
+- **`run_wroom_beta_local_test_suite.ps1`** : etapes lancees via `Start-Process powershell.exe -ArgumentList (-File ...)` (binding correct des parametres ; le splat tableau `& $Script` ne convenait pas). Correction parametre `-ScriptArguments` pour l etape `unit-native` (evitait `-Args` invalide).
+
+---
+
 ## Version 13.42 - 2026-04-04
 
 ### Dashboard web (LittleFS) — bruit console

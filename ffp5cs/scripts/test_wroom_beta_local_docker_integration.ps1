@@ -226,21 +226,21 @@ try {
     }
 
     if (-not $SkipSmoke) {
-        $smokeParams = @(
-            "-ExecutionPolicy", "Bypass",
-            "-File", $smokeScript,
-            "-BaseUrl", $LocalServerBaseUrl,
-            "-AuthMode", $AuthMode,
-            "-AdminToken", $AdminToken,
-            "-AdminUsername", $AdminUsername,
-            "-AdminPassword", $AdminPassword,
-            "-ApiKey", $ApiKey
-        )
-        if ($RunNegativeAuthChecks) {
-            $smokeParams += "-RunNegativeAuthChecks"
+        # Appel dans le meme processus : un second powershell.exe + tableau d arguments
+        # peut corrompre le binding (ex. BaseUrl fusionne avec AdminToken).
+        $smokeArgs = @{
+            BaseUrl         = $LocalServerBaseUrl
+            AuthMode        = $AuthMode
+            AdminToken      = $AdminToken
+            AdminUsername   = $AdminUsername
+            AdminPassword   = $AdminPassword
+            ApiKey          = $ApiKey
         }
-        powershell @smokeParams
-        if ($LASTEXITCODE -ne 0) {
+        if ($RunNegativeAuthChecks) {
+            $smokeArgs["RunNegativeAuthChecks"] = $true
+        }
+        & $smokeScript @smokeArgs
+        if (-not $?) {
             throw "Echec smoke auth/local."
         }
     } else {
