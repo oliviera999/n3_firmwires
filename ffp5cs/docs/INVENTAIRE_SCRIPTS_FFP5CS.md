@@ -118,7 +118,7 @@
 | **scripts/test_wroom_beta_local_docker_integration.ps1** | PS1 | Option 5 : orchestration Docker local + override URL LAN + auth token/session + smoke `local-smoke-test` + test serie + verification insertion DB (`ffp3Data2`, `ffp3Heartbeat2`). |
 | **scripts/run_wroom_beta_local_test_suite.ps1** | PS1 | Batterie quick/full : unites natives + scenarios JSON (`wroom_beta_local_test_scenarios.json`) + integration Docker selon campagne/auth. |
 | **scripts/wroom_beta_local_test_scenarios.json** | JSON | Definition des scenarios pour `run_wroom_beta_local_test_suite.ps1`. |
-| **scripts/.beta-local-test.env.example** | exemple | Modele de secrets locaux (copier en `.beta-local-test.env`, non versionne). |
+| **scripts/.beta-local-test.env.example** | ENV (modele) | Variables locales de la batterie (`N3_TEST_ADMIN_TOKEN`, `N3_TEST_ADMIN_PASSWORD`, `N3_TEST_API_KEY`, etc.). Copier vers `.beta-local-test.env` (ignore par Git). |
 | **scripts/test_phase2_complete.ps1** | PS1 | Test phase 2 complète (NVS, etc.). |
 | **scripts/test_web_dedicated_architecture.sh** | Shell | Test architecture web dédiée. |
 | **scripts/Release-ComPort.ps1** | PS1 | Libération du port COM (arrêt processus moniteur). |

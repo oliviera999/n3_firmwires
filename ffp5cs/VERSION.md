@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.41 - 2026-04-04
+
+### Documentation tests `wroom-beta-local`
+
+- **ffp5cs/docs/README.md** : exemples batterie quick/full, `-AuthMode both`, fichier `.beta-local-test.env`.
+- **INVENTAIRE_SCRIPTS_FFP5CS.md** : ligne unique pour `.beta-local-test.env.example` (suppression doublon).
+
+---
+
 ## Version 13.40 - 2026-04-04
 
 ### Tests `wroom-beta-local` : auth Docker et orchestration

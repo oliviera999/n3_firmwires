@@ -112,7 +112,12 @@ pio run -e wroom-beta-local --project-option "build_flags=-DLOCAL_SERVER_BASE_UR
 - Test cible beta-local (option 3) :
   - `.\scripts\test_wroom_beta_local_serial.ps1 -Port COM7 -MonitorSeconds 150`
 - Test integration beta-local Docker + appareil (option 5) :
-  - `.\scripts\test_wroom_beta_local_docker_integration.ps1 -Port COM7`
+  - `.\scripts\test_wroom_beta_local_docker_integration.ps1 -Port COM7 -AuthMode both`
+- Batterie quick/full beta-local (token/session) :
+  - `.\scripts\run_wroom_beta_local_test_suite.ps1 -Port COM7 -Campaign quick -Auth both`
+  - `.\scripts\run_wroom_beta_local_test_suite.ps1 -Port COM7 -Campaign full -Auth both`
+- Secrets locaux batterie :
+  - copier `scripts/.beta-local-test.env.example` vers `scripts/.beta-local-test.env` (fichier ignore par Git).
 
 **Basculement WROOM ↔ S3** : après un build d’une autre famille d’env (ex. wroom-test puis wroom-s3-test), il est recommandé de lancer `pio run -e <env_cible> -t clean` avant de compiler. Le script `build_all_envs.ps1` fait ce nettoyage automatiquement lors du basculement de famille. **wroom-beta** : si le build échoue (FRAMEWORK_DIR None), lancer d’abord `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Détails : [BUILD_S3_PROCESS_ANALYSE.md](technical/BUILD_S3_PROCESS_ANALYSE.md) (sections « Basculement WROOM ↔ S3 » et « wroom-beta et FRAMEWORK_DIR »).
 
