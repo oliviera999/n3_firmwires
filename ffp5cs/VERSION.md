@@ -12,6 +12,14 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.47 - 2026-04-06
+
+### OTA distant (canal test / wroom-beta)
+
+- **Contexte** : validation de la chaîne OTA avec une version **strictement supérieure** à 13.46 dans `metadata.json` (canal `test` / `esp32-wroom`) et déclenchement « Vérifier OTA » côté serveur (persisté en BDD depuis serveur 5.0.300).
+
+---
+
 ## Version 13.46 - 2026-04-06
 
 ### NVS — snapshot veille / réveil (pompe aqua et autres actionneurs)
