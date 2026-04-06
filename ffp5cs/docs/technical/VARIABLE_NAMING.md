@@ -236,6 +236,8 @@ Les cles suivantes sont utilisees pour le contrat serveur et l'API ; en NVS, seu
 | `sync_lastSync` | uint32 | Timestamp derniere synchronisation | OK |
 | `sync_config` | bool | Config en attente de sync | OK |
 
+**Note (firmware 13.46)** : les cles `snap_*` reposent sur `NVSManager::saveBool` ; un correctif assure la premiere persistance en flash (voir `VERSION.md` § 13.46).
+
 #### Cles dynamiques STATE (generees a l'execution)
 
 | Format | Type | Description |

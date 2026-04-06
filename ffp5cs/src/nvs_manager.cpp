@@ -341,13 +341,19 @@ NVSError NVSManager::saveBool(const char* ns, const char* key, bool value) {
         return keyError;
     }
 
-  // Vérifier si la valeur a réellement changé avant d'écrire
+  // Vérifier si la valeur a réellement changé avant d'écrire.
+  // v13.46: Ne pas utiliser getBool(key, value) pour une clé absente : Preferences
+  // renvoie alors la valeur par défaut (= value), ce qui fausse « inchangé » et
+  // empêche la toute première persistance (ex. snap_pending / snap_aqua avant veille).
   NVSError openError = openNamespace(ns, true);
   if (openError == NVSError::SUCCESS) {
-    bool current = _preferences.getBool(key, value);
+    bool skipWrite = false;
+    if (_preferences.isKey(key)) {
+      bool current = _preferences.getBool(key, false);
+      skipWrite = (current == value);
+    }
     closeNamespace();
-    if (current == value) {
-      // Valeur inchangée, pas d'écriture pour préserver la flash
+    if (skipWrite) {
       return NVSError::SUCCESS;
     }
   }

@@ -60,7 +60,8 @@ namespace ProjectConfig {
     // v13.41: Doc ffp5cs (README tests beta-local, inventaire scripts sans doublon).
     // v13.44: Mutex GET/POST partagé + quiesce HTTP avant veille légère.
     // v13.45: sdkconfig WROOM (CPU/SPIRAM) + retrait LTO wroom-prod (panic cache esp_flash_init).
-    inline constexpr const char* VERSION = "13.45";
+    // v13.46: saveBool NVS — première écriture des bool (snap_* veille) ; logs diagnostic snapshot.
+    inline constexpr const char* VERSION = "13.46";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)

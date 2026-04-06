@@ -1261,13 +1261,19 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
 // Snapshots sleep/wake
 // v11.178: Utilisation des clés NVS centralisées (audit nvs-keys)
 void Automatism::saveActuatorSnapshotToNVS(bool pumpAquaWasOn, bool heaterWasOn, bool lightWasOn) {
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, true);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_AQUA, pumpAquaWasOn);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_HEATER, heaterWasOn);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_LIGHT, lightWasOn);
-    
+    NVSError ePending = g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, true);
+    NVSError eAqua = g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_AQUA, pumpAquaWasOn);
+    NVSError eHeat = g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_HEATER, heaterWasOn);
+    NVSError eLight = g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_LIGHT, lightWasOn);
+
     Serial.printf("[Auto] Snapshot actionneurs NVS: aqua=%s heater=%s light=%s\n",
-                  pumpAquaWasOn?"ON":"OFF", heaterWasOn?"ON":"OFF", lightWasOn?"ON":"OFF");
+                  pumpAquaWasOn ? "ON" : "OFF", heaterWasOn ? "ON" : "OFF", lightWasOn ? "ON" : "OFF");
+    if (ePending != NVSError::SUCCESS || eAqua != NVSError::SUCCESS ||
+        eHeat != NVSError::SUCCESS || eLight != NVSError::SUCCESS) {
+      Serial.printf("[Auto] ATTENTION: écriture snapshot NVS incomplète (codes: pend=%d aqua=%d heat=%d light=%d)\n",
+                    static_cast<int>(ePending), static_cast<int>(eAqua),
+                    static_cast<int>(eHeat), static_cast<int>(eLight));
+    }
 }
 
 bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn) {
@@ -1275,6 +1281,7 @@ bool Automatism::loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWa
     g_nvsManager.loadBool(NVS_NAMESPACES::STATE, NVSKeys::Automatism::SNAP_PENDING, pending, false);
     
     if (!pending) {
+        Serial.println(F("[Auto] Pas de snapshot NVS (snap_pending absent ou false) — restauration actionneurs après veille ignorée"));
         return false;
     }
     

@@ -12,6 +12,17 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.46 - 2026-04-06
+
+### NVS — snapshot veille / réveil (pompe aqua et autres actionneurs)
+
+- **Symptôme** : après la première mise en veille légère, la pompe aquarium restait OFF alors qu’elle était ON avant la veille ; `snap_pending` / `snap_aqua` pouvaient ne jamais être écrits en flash.
+- **Cause** : dans `NVSManager::saveBool`, l’optimisation « pas de réécriture si inchangé » utilisait `getBool(key, value)` ; pour une **clé absente**, Arduino `Preferences` renvoie la valeur par défaut passée (= la valeur à écrire), donc le code croyait « déjà à jour » et **ne faisait jamais** le premier `putBool`.
+- **Correctif** : ne comparer `current == value` que si `isKey(key)` ; sinon forcer l’écriture.
+- **Diagnostic** : `saveActuatorSnapshotToNVS` journalise les codes d’erreur NVS si une écriture échoue ; `loadActuatorSnapshotFromNVS` trace explicitement l’absence de `snap_pending`.
+
+---
+
 ## Version 13.45 - 2026-04-05
 
 ### Boot WROOM — panic cache dans `esp_flash_init`
