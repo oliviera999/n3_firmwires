@@ -71,6 +71,11 @@ size_t netRequestPoolPostSlotsFullThreshold();
 void reserveMailBlockAtBoot();
 #endif
 
+/** Attend files réseau vides puis acquiert le mutex HTTP (avant goToLightSleep). */
+bool quiesceHttpBeforeLightSleep(uint32_t timeoutMs = NetworkConfig::LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS);
+/** Relâche le mutex acquis par quiesceHttpBeforeLightSleep (appeler juste après goToLightSleep). */
+void releaseHttpAfterLightSleep();
+
 }  // namespace AppTasks
 
 

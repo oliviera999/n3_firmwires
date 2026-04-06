@@ -58,7 +58,9 @@ namespace ProjectConfig {
     // v13.39: Suite de tests wroom-beta-local (URL locale externalisee + scripts serial/docker + tests URL natifs).
     // v13.40: Integration Docker beta-local (auth token/session), batterie de tests et secrets locaux non versionnes.
     // v13.41: Doc ffp5cs (README tests beta-local, inventaire scripts sans doublon).
-    inline constexpr const char* VERSION = "13.43";
+    // v13.44: Mutex GET/POST partagé + quiesce HTTP avant veille légère.
+    // v13.45: sdkconfig WROOM (CPU/SPIRAM) + retrait LTO wroom-prod (panic cache esp_flash_init).
+    inline constexpr const char* VERSION = "13.45";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -317,6 +319,12 @@ namespace NetworkConfig {
     inline constexpr int WAKEUP_FETCH_MAX_RETRIES = 3;
     inline constexpr uint32_t WAKEUP_FETCH_RETRY_DELAY_MS = 2000;  // 2s entre retries
     inline constexpr uint32_t WAKEUP_NETWORK_STABILIZATION_DELAY_MS = 1000;  // 1s après waitForNetworkReady
+    // Attente files net/postSender vides + mutex transport avant WiFi.disconnect (veille légère)
+#if defined(BOARD_S3)
+    inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 32000;  // POST 15s + GET 8s + marge
+#else
+    inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 36000;  // POST 18s + GET 8s + marge
+#endif
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
     // que requêtes HTTP standard
     // Justification : connexions lentes peuvent nécessiter jusqu'à 30s

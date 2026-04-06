@@ -51,6 +51,11 @@ class WebClient {
   uint8_t getQueuedPostsCount();                   // Nombre de POSTs en attente
   void clearQueuedPosts();                         // Vide la queue
 
+  /** Prise exclusive du mutex transport HTTP (même mutex que GET/POST). Veille légère : avant WiFi.disconnect. */
+  static bool acquireHttpTransportLock(uint32_t timeoutMs);
+  /** Relâche le mutex si acquis par acquireHttpTransportLock (sans effet sinon). Après retour de goToLightSleep. */
+  static void releaseHttpTransportLockIfHeld();
+
  private:
   char _apiKey[65];  // API key max 64 chars + null terminator
   WiFiClient _client;  // v11.162: Client HTTP simple (plus de TLS)

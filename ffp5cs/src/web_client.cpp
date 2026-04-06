@@ -21,6 +21,34 @@
 
 // Mutex pour sérialiser HTTP (netTask GET et postSenderTask POST)
 static SemaphoreHandle_t s_httpMutex = nullptr;
+// Mutex acquis explicitement avant veille légère (autoTask) — évite double Give
+static std::atomic<bool> s_httpTransportLockHeldForSleep{false};
+
+namespace {
+
+// Sérialise fetchRemoteState avec httpRequest (même s_httpMutex)
+struct HttpTransportMutexGuard {
+  bool held{false};
+  HttpTransportMutexGuard() {
+    if (s_httpMutex == nullptr) {
+      s_httpMutex = xSemaphoreCreateMutex();
+    }
+    if (s_httpMutex != nullptr &&
+        xSemaphoreTake(s_httpMutex, portMAX_DELAY) == pdTRUE) {
+      held = true;
+    }
+  }
+  ~HttpTransportMutexGuard() {
+    if (held && s_httpMutex != nullptr) {
+      xSemaphoreGive(s_httpMutex);
+    }
+  }
+  HttpTransportMutexGuard(const HttpTransportMutexGuard&) = delete;
+  HttpTransportMutexGuard& operator=(const HttpTransportMutexGuard&) = delete;
+  explicit operator bool() const { return held; }
+};
+
+}  // namespace
 
 // Buffer pour dernier GET outputs/state : rempli par fetchRemoteState (netTask), lu par copyLastFetchedTo (caller) — évite LoadProhibited (écrire doc depuis netTask)
 static char s_lastFetchedJson[BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE + 1];
@@ -449,6 +477,11 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   
   // v11.165: Fallback NVS si WiFi non disponible (audit offline-first)
   if (WiFi.status() != WL_CONNECTED) {
+    return loadFromNVSFallback(doc) ? 2 : 0;
+  }
+
+  HttpTransportMutexGuard transportGuard;
+  if (!transportGuard) {
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
 
@@ -1052,4 +1085,27 @@ void WebClient::clearQueuedPosts() {
   
   g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, 0);
   LOG(LOG_INFO, "[HTTP] Queue vidée (%d entrées supprimées)", count);
+}
+
+bool WebClient::acquireHttpTransportLock(uint32_t timeoutMs) {
+  if (s_httpMutex == nullptr) {
+    s_httpMutex = xSemaphoreCreateMutex();
+  }
+  if (s_httpMutex == nullptr) {
+    return false;
+  }
+  if (xSemaphoreTake(s_httpMutex, pdMS_TO_TICKS(timeoutMs)) != pdTRUE) {
+    return false;
+  }
+  s_httpTransportLockHeldForSleep.store(true);
+  return true;
+}
+
+void WebClient::releaseHttpTransportLockIfHeld() {
+  if (!s_httpTransportLockHeldForSleep.exchange(false)) {
+    return;
+  }
+  if (s_httpMutex != nullptr) {
+    xSemaphoreGive(s_httpMutex);
+  }
 }

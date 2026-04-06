@@ -1,5 +1,18 @@
 # wroom-test / wroom-prod : timeout Task WDT 30 s (évite reset pendant HTTP/async_tcp)
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# --- Correctif boot WROOM : panic "Cache error" dans memset → esp_flash_read_chip_id (esp_flash_init) ---
+# Le sdkconfig.defaults embarqué mélange un export tiers (Tasmota) incohérent :
+#   - CONFIG_ESP32_DEFAULT_CPU_FREQ_240=y mais CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ=160
+#   - CONFIG_ESP32_SPIRAM_SUPPORT=y / CONFIG_SPIRAM_CACHE_WORKAROUND=y alors que SPIRAM est désactivé
+# Sur module WROOM 4 Mo sans PSRAM, cela peut casser le démarrage (accès cache invalide très tôt).
+CONFIG_ESP32_DEFAULT_CPU_FREQ_240=y
+# CONFIG_ESP32_DEFAULT_CPU_FREQ_80 is not set
+# CONFIG_ESP32_DEFAULT_CPU_FREQ_160 is not set
+CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ=240
+# CONFIG_ESP32_SPIRAM_SUPPORT is not set
+# CONFIG_SPIRAM_SUPPORT is not set
+# CONFIG_SPIRAM_CACHE_WORKAROUND is not set
 # Désactiver coredump ESP-IDF (évite "No core dump partition found!" / "Core dump flash config is corrupted!" au boot)
 # CONFIG_ESP_COREDUMP_ENABLE is not set
 CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y

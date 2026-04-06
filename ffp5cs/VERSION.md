@@ -12,6 +12,26 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.45 - 2026-04-05
+
+### Boot WROOM — panic cache dans `esp_flash_init`
+
+- **Symptôme** : boucle `Guru Meditation` / `Cache disabled but cached memory region accessed` juste après `entry`, PC dans `memset` appelé depuis `esp_flash_read_chip_id` → `esp_flash_init_main`.
+- **Cause** : combinaison d’un **`sdkconfig.defaults`** (export volumineux) **incohérent** sur la fréquence CPU et le SPIRAM, et du **LTO** (`-flto` / `-ffat-lto-objects`) en **wroom-prod**, source connue d’instabilités cache / linkage sur Xtensa.
+- **Correctif** : surcharges dans [`sdkconfig_wroom_wdt.txt`](sdkconfig_wroom_wdt.txt) — `CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ=240` aligné sur 240 MHz, désactivation explicite de `ESP32_SPIRAM_SUPPORT`, `SPIRAM_SUPPORT`, `SPIRAM_CACHE_WORKAROUND` ; **suppression du LTO** dans [`platformio.ini`](platformio.ini) (`env:wroom-prod` uniquement).
+
+---
+
+## Version 13.44 - 2026-04-05
+
+### Réseau — veille légère et HTTP
+
+- **`WebClient::fetchRemoteState`** : sérialisation sur le même mutex que `httpRequest` (POST), pour éviter l’usage concurrent de `_http` / `_client` entre `netTask` (GET) et `postSenderTask` (POST).
+- **Quiesce avant sommeil** : `AppTasks::quiesceHttpBeforeLightSleep` attend des files `g_netQueue` / `g_postSenderQueue` vides puis acquiert le mutex transport ; appelé depuis `automatism_sleep.cpp` après le mail de veille et avant `goToLightSleep`. `releaseHttpAfterLightSleep` relâche le mutex immédiatement après le retour de `goToLightSleep` (avant fetch / restauration actionneurs).
+- **`NetworkConfig::LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS`** : timeout global de la phase quiesce (WROOM / S3).
+
+---
+
 ## Version 13.43 - 2026-04-04
 
 ### Tests `wroom-beta-local` — invocation smoke

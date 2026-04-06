@@ -1595,6 +1595,39 @@ void reserveMailBlockAtBoot() {
 }
 #endif
 
+bool quiesceHttpBeforeLightSleep(uint32_t timeoutMs) {
+  const unsigned long startMs = millis();
+  while ((millis() - startMs) < timeoutMs) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    const UBaseType_t postWaiting =
+        (g_postSenderQueue != nullptr) ? uxQueueMessagesWaiting(g_postSenderQueue) : 0;
+    const UBaseType_t netWaiting =
+        (g_netQueue != nullptr) ? uxQueueMessagesWaiting(g_netQueue) : 0;
+    if (postWaiting == 0 && netWaiting == 0) {
+      const unsigned long elapsed = millis() - startMs;
+      const uint32_t remain = (elapsed < timeoutMs) ? static_cast<uint32_t>(timeoutMs - elapsed) : 1U;
+      if (WebClient::acquireHttpTransportLock(remain)) {
+        Serial.println(F("[Auto] Quiesce HTTP: files vides, mutex transport acquis avant veille"));
+        return true;
+      }
+      Serial.println(F("[Auto] Quiesce HTTP: échec acquisition mutex (transport occupé)"));
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+  Serial.println(F("[Auto] Quiesce HTTP: timeout attente files — tentative mutex courte"));
+  if (WebClient::acquireHttpTransportLock(500)) {
+    return true;
+  }
+  return false;
+}
+
+void releaseHttpAfterLightSleep() {
+  WebClient::releaseHttpTransportLockIfHeld();
+}
+
 }  // namespace AppTasks
 
 

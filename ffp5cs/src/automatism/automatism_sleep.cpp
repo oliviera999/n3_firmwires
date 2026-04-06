@@ -391,8 +391,14 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
         core.sendSleepMail(reason, sleepDurationSec, r);
     }
 
+    if (!AppTasks::quiesceHttpBeforeLightSleep(NetworkConfig::LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS)) {
+        Serial.println(F("[Auto] Avertissement: quiesce HTTP incomplet avant veille (transferts peuvent encore être actifs)"));
+    }
+
     // Appel à la veille
     uint32_t actualSleptSec = _power.goToLightSleep(sleepDurationSec);
+
+    AppTasks::releaseHttpAfterLightSleep();
 
     // Restauration aqua / chauffage / lumière tout de suite après réveil (avant WiFi / POST).
     // Sinon sendFullUpdate post-réveil envoyait etatPompeAqua=0 puis le poll réappliquait OFF.
