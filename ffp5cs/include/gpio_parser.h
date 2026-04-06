@@ -24,7 +24,10 @@ public:
 
     // Initialise l'état nourrissage depuis le doc serveur (1er poll) sans déclencher
     static void seedFeedStateFromDoc(const JsonDocument& doc);
-    
+
+    /// Après POST local (sync auto/manuel), aligner l’état edge 108/109 pour éviter un faux 0→1 au poll suivant.
+    static void syncFeedEdgeStateAfterLocalPost(bool smallLevel, bool bigLevel);
+
 private:
     // Applique un GPIO selon son type
     static void applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl, 

@@ -63,6 +63,13 @@ static bool parseBoolFromDoc(JsonVariantConst v) {
     return false;
 }
 
+void GPIOParser::syncFeedEdgeStateAfterLocalPost(bool smallLevel, bool bigLevel) {
+    s_lastFeedSmallState = smallLevel;
+    s_lastFeedBigState = bigLevel;
+    Serial.printf("[GPIOParser] Edge 108/109 aligné après POST local: small=%d big=%d\n",
+                  smallLevel ? 1 : 0, bigLevel ? 1 : 0);
+}
+
 void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
     // Reset (110): seed pour ne pas redémarrer si le sync envoie 110:1 comme état courant.
     if (doc.containsKey("110")) {

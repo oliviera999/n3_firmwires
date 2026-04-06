@@ -411,10 +411,13 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
         if (wasAutomatic) {
             // Enregistrer l'événement nourrissage auto (gros+petits) pour le graphique serveur
             syncOk = sendFullUpdate(curReadings, "bouffePetits=1&108=1&bouffeGros=1&109=1");
+            // Évite un faux front 0→1 au poll GET suivant (108/109 repassent à 1 côté BDD)
+            GPIOParser::syncFeedEdgeStateAfterLocalPost(true, true);
             Serial.println(syncOk ? F("[Auto] ✅ Nourrissage auto enregistré (sync distant)") :
                                      F("[Auto] ⚠️ Nourrissage auto - sync distant échoué"));
         } else {
             syncOk = sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
+            GPIOParser::syncFeedEdgeStateAfterLocalPost(false, false);
             Serial.println(syncOk ? F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)") :
                                      F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
         }

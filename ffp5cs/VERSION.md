@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.48 - 2026-04-06
+
+### Nourrissage — répétition à chaque réveil / doublon après auto
+
+- **Symptôme** : plusieurs cycles auto dans la même heure lorsque les créneaux 105/106/107 partagent la même heure ; second nourrissage après fin du cycle auto quand le POST enregistre `108=1`/`109=1` puis le poll suivant recrée un front 0→1.
+- **Correctifs** : après un auto à l’heure `H`, marquer « fait » tous les créneaux dont l’heure programmée vaut `H` ; après `finalizeFeedingIfNeeded`, aligner l’état edge GPIO 108/109 via `GPIOParser::syncFeedEdgeStateAfterLocalPost` (auto → 1/1, manuel → 0/0).
+
+---
+
 ## Version 13.47 - 2026-04-06
 
 ### OTA distant (canal test / wroom-beta)

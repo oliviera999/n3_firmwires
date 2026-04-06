@@ -56,22 +56,34 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     if (shouldFeedMorning) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
         performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
-        _config.setBouffeMatinOk(true);
-        _config.saveBouffeFlags();
+        markSlotsDoneForScheduleHour(morningHour, morningHour, noonHour, eveningHour);
         sendFeedingEmail("Bouffe matin", bigDuration, smallDuration, emailAddr, mailNotif);
     } else if (shouldFeedNoon) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MIDI (%02d:%02d)\n", hour, minute);
         performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
-        _config.setBouffeMidiOk(true);
-        _config.saveBouffeFlags();
+        markSlotsDoneForScheduleHour(noonHour, morningHour, noonHour, eveningHour);
         sendFeedingEmail("Bouffe midi", bigDuration, smallDuration, emailAddr, mailNotif);
     } else if (shouldFeedEvening) {
         Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique SOIR (%02d:%02d)\n", hour, minute);
         performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
-        _config.setBouffeSoirOk(true);
-        _config.saveBouffeFlags();
+        markSlotsDoneForScheduleHour(eveningHour, morningHour, noonHour, eveningHour);
         sendFeedingEmail("Bouffe soir", bigDuration, smallDuration, emailAddr, mailNotif);
     }
+}
+
+void AutomatismFeedingSchedule::markSlotsDoneForScheduleHour(uint8_t scheduleHour,
+                                                             uint8_t morningHour, uint8_t noonHour,
+                                                             uint8_t eveningHour) {
+    if (morningHour == scheduleHour) {
+        _config.setBouffeMatinOk(true);
+    }
+    if (noonHour == scheduleHour) {
+        _config.setBouffeMidiOk(true);
+    }
+    if (eveningHour == scheduleHour) {
+        _config.setBouffeSoirOk(true);
+    }
+    _config.saveBouffeFlags();
 }
 
 bool AutomatismFeedingSchedule::shouldFeedNow(int hour, int minute, uint8_t scheduleHour) const {

@@ -93,4 +93,8 @@ private:
                        std::function<void()> feedingCompleteCallback = nullptr);
     void sendFeedingEmail(const char* type, uint16_t bigDur, uint16_t smallDur,
                          const char* emailAddr, bool mailNotif);
+
+    /// Marque « fait » tous les créneaux dont l’heure programmée == scheduleHour (évite 3 repas si 105/106/107 identiques).
+    void markSlotsDoneForScheduleHour(uint8_t scheduleHour,
+                                      uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour);
 };
