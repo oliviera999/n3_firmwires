@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.40** (définie dans `include/msp_config.h`).
+Version actuelle : **2.41** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.40** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.41 | 2026-04 | Luminosité : lecture systématique des 4 photorésistances + moyenne avant la logique servo (mode manuel et seuil de scan), pour éviter l'envoi de zéros au serveur quand le balayage tracker est désactivé |
 | 2.40 | 2026-03 | Ajout de traces deep sleep `[SLEEP][TRACE]` (entrée, branche emergency/regular, timer appliqué, cas `WakeUp=1` sans sommeil) pour diagnostiquer l'application des paramètres distants (`106/107`) |
 | 2.39 | 2026-03 | Logs GET `outputs_state` : concaténation `String` au lieu de `Serial.printf` multi-`%s` (affichage fiable sur ESP32) ; lecture JSON `hasOwnProperty` avant `operator[]` pour éviter l'injection de clés nulles (Arduino_JSON) |
 | 2.38 | 2026-03 | Affichage OTA sur OLED : écran d'état avec version courante/cible et progression (%) pendant le téléchargement OTA (check périodique + OTA avant reset distant) |

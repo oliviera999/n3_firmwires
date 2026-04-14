@@ -167,13 +167,21 @@ void Light_val() {
     s_lastServoModeAutoLogKnown = true;
   }
 
+  // Télémétrie : toujours remplir LuminositeA–D et LuminositeMoy pour le POST serveur.
+  // Avant v2.41 : en mode servo manuel on retournait sans lecture → zéros côté BDD.
+  // Sous le seuil de scan, le balayage était ignoré et A–D n'étaient pas mises à jour (souvent 0).
+  photocellReadingA = analogRead(LUMINOSITEa);
+  photocellReadingB = analogRead(LUMINOSITEb);
+  photocellReadingC = analogRead(LUMINOSITEc);
+  photocellReadingD = analogRead(LUMINOSITEd);
+  photocellReadingMoy = (photocellReadingA + photocellReadingB + photocellReadingC + photocellReadingD) / 4;
+
   if (!servoModeAuto) {
     Serial.println("[SERVO][AUTO] scan=OFF raison=mode_manuel");
     applyManualServoTargets();
     return;
   }
 
-  photocellReadingMoy = ((analogRead(LUMINOSITEa) + analogRead(LUMINOSITEb) + analogRead(LUMINOSITEc) + analogRead(LUMINOSITEd)) / 4);
   if (photocellReadingMoy > LIGHT_SCAN_MIN_THRESHOLD) {
     Serial.printf("[SERVO][AUTO] scan=ON lum=%d seuil=%d\n", photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
     if (displayOk) {
