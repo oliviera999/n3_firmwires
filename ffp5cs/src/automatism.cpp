@@ -417,7 +417,11 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
                                      F("[Auto] ⚠️ Nourrissage auto - sync distant échoué"));
         } else {
             syncOk = sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
-            GPIOParser::syncFeedEdgeStateAfterLocalPost(false, false);
+            if (syncOk) {
+                GPIOParser::syncFeedEdgeStateAfterLocalPost(false, false);
+            } else {
+                Serial.println(F("[Auto] ⚠️ Edge 108/109 conservé: reset distant non confirmé"));
+            }
             Serial.println(syncOk ? F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)") :
                                      F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
         }

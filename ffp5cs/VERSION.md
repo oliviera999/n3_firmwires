@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.49 - 2026-05-12
+
+### Nourrissage manuel — éviter un faux front après échec de reset serveur
+
+- **Symptôme** : après un nourrissage manuel déclenché par `108=1`/`109=1`, si le POST de fin de cycle échouait pendant la remise à `0`, le firmware abaissait quand même son état edge local. Le poll suivant pouvait relire l'ancien `1` en BDD et recréer un front montant, donc relancer un nourrissage sans nouvelle commande utilisateur.
+- **Correctif** : conserver l'état edge haut tant que le reset distant `108=0`/`109=0` n'est pas confirmé. Un GET ultérieur à `0` le réinitialise naturellement ; un GET stale à `1` reste traité comme une commande déjà vue.
+
+---
+
 ## Version 13.48 - 2026-04-06
 
 ### Nourrissage — répétition à chaque réveil / doublon après auto
