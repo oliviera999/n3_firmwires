@@ -8,6 +8,7 @@
 #include "nvs_manager.h"
 #include "nvs_keys.h"  // v11.176: Constantes NVS centralisées
 #include "dbvars_cache.h"
+#include "automatism/feeding_slot_matcher.h"
 #include <cstring>
 #include <cstdio>
 
@@ -641,20 +642,23 @@ void Automatism::markCurrentFeedingSlotAsDone() {
     }
     int hour = timeinfo.tm_hour;
     // Aligner sur la logique du planning : créneau à l'heure H ou rattrapage H+1
-    const int nextMatin = (static_cast<int>(bouffeMatin) + 1) % 24;
-    const int nextMidi = (static_cast<int>(bouffeMidi) + 1) % 24;
-    const int nextSoir = (static_cast<int>(bouffeSoir) + 1) % 24;
-    if (hour == static_cast<int>(bouffeMatin) || hour == nextMatin) {
+    const FeedingSlotMatcher::SlotMatches matches =
+        FeedingSlotMatcher::slotsForCurrentWindow(hour, bouffeMatin, bouffeMidi, bouffeSoir);
+    if (matches.morning) {
         _config.setBouffeMatinOk(true);
         Serial.println(F("[Auto] Créneau matin marqué nourri (feed distant)"));
-    } else if (hour == static_cast<int>(bouffeMidi) || hour == nextMidi) {
+    }
+    if (matches.noon) {
         _config.setBouffeMidiOk(true);
         Serial.println(F("[Auto] Créneau midi marqué nourri (feed distant)"));
-    } else if (hour == static_cast<int>(bouffeSoir) || hour == nextSoir) {
+    }
+    if (matches.evening) {
         _config.setBouffeSoirOk(true);
         Serial.println(F("[Auto] Créneau soir marqué nourri (feed distant)"));
     }
-    _config.saveBouffeFlags();
+    if (matches.any()) {
+        _config.saveBouffeFlags();
+    }
 }
 
 // ============================================================================

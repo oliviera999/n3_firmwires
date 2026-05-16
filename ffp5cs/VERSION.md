@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.92 - 2026-06-03
+
+### Nourrissage distant — créneaux partagés (PR #9 IOT_n3)
+
+- **Symptôme** : si deux créneaux 105/106/107 partagent la même heure, un nourrissage distant via 108/109 ne marquait qu'un seul créneau comme déjà nourri ; le scheduler pouvait ensuite lancer un second nourrissage automatique dans la même fenêtre.
+- **Correctif** : `FeedingSlotMatcher` + `markCurrentFeedingSlotAsDone()` marque tous les créneaux actifs (heure H ou rattrapage H+1) ; test natif `test_feeding_slots`.
+- **Fichiers** : `include/automatism/feeding_slot_matcher.h`, `src/automatism.cpp`, `test/test_feeding_slots/`.
+
+---
+
 ## Version 13.91 - 2026-06-03
 
 ### OTA priorité absolue — mode exclusif à la détection
