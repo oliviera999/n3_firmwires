@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.49 - 2026-05-16
+
+### Nourrissage distant — créneaux partagés
+
+- **Symptôme** : si deux créneaux 105/106/107 partagent la même heure, un nourrissage distant via 108/109 ne marquait qu'un seul créneau comme déjà nourri ; le scheduler pouvait ensuite lancer un second nourrissage automatique dans la même fenêtre.
+- **Correctif** : `markCurrentFeedingSlotAsDone()` marque désormais tous les créneaux actifs pour l'heure courante ou sa fenêtre de rattrapage, avec test natif `test_feeding_slots`.
+
+---
+
 ## Version 13.48 - 2026-04-06
 
 ### Nourrissage — répétition à chaque réveil / doublon après auto

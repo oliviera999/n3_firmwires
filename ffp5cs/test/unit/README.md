@@ -25,6 +25,8 @@ pio test -e native
 Suites exécutées par l’env `native` (voir `test_filter` dans `platformio.ini`) :
 - `../test_nvs/` — Validation NVS (clés, mock)
 - `../test_config/` — ConfigManager (mock)
+- `../test_server_url/` — Résolution des URL serveur par profil
+- `../test_feeding_slots/` — Sélection des créneaux nourrissage actifs (heure/rattrapage)
 
 La suite `test_rate_limiter` est exclue (dépend de `rate_limiter.h` absent du projet).
 

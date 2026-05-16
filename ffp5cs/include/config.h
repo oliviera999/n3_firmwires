@@ -62,7 +62,8 @@ namespace ProjectConfig {
     // v13.45: sdkconfig WROOM (CPU/SPIRAM) + retrait LTO wroom-prod (panic cache esp_flash_init).
     // v13.46: saveBool NVS — première écriture des bool (snap_* veille) ; logs diagnostic snapshot.
     // v13.47: Test OTA distant (metadata test > 13.46) + chaîne triggerOtaCheck serveur persistée BDD.
-    inline constexpr const char* VERSION = "13.48";
+    // v13.49: Feed distant — marque tous les créneaux actifs (heure partagée ou rattrapage) pour éviter un doublon auto.
+    inline constexpr const char* VERSION = "13.49";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
