@@ -44,7 +44,7 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
   outConfig.resetMode = false;
 
   Serial.printf("[REMOTE][GET] URL=%s\n", REMOTE_OUTPUTS_STATE_URL);
-  String payload = n3DataGet(REMOTE_OUTPUTS_STATE_URL, outHttpCode);
+  String payload = n3DataGet(REMOTE_OUTPUTS_STATE_URL, outHttpCode, API_KEY);
   if (outHttpCode) {
     Serial.printf("[REMOTE][GET] HTTP=%u\n", *outHttpCode);
   }

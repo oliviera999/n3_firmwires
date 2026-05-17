@@ -26,5 +26,6 @@ int n3DataPost(const N3PostConfig& config);
 /**
  * GET HTTP simple. Retourne le body de la reponse.
  * outHttpCode recoit le code HTTP si non-NULL.
+ * deviceApiKey : si non NULL, envoie le header X-Api-Key (auth serveur galerie / device).
  */
-String n3DataGet(const char* url, unsigned int* outHttpCode);
+String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceApiKey = nullptr);

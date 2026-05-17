@@ -23,6 +23,7 @@ int n3DataPost(const N3PostConfig& config) {
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
   if (config.apiKey) {
+    http.addHeader("X-Api-Key", config.apiKey);
     n3HmacSignRequest(http, config.apiKey, body.c_str());
   }
 
@@ -35,11 +36,14 @@ int n3DataPost(const N3PostConfig& config) {
   return code;
 }
 
-String n3DataGet(const char* url, unsigned int* outHttpCode) {
+String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceApiKey) {
   WiFiClient client;
   HTTPClient http;
   http.begin(client, url);
   http.setTimeout(N3_HTTP_TIMEOUT_MS);
+  if (deviceApiKey != nullptr && deviceApiKey[0] != '\0') {
+    http.addHeader("X-Api-Key", deviceApiKey);
+  }
   int code = http.GET();
   String payload = (code > 0) ? http.getString() : "{}";
   http.end();
