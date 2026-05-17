@@ -12,6 +12,37 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.50 - 2026-05-09
+
+### Communication firmware ↔ serveur (correctifs)
+
+- **Boot** : après GET `outputs/state` OK, application de la config via `copyLastFetchedTo` (buffer interne du client HTTP).
+- **POST / queue NVS** : même timeout que `post-data` (`HTTP_POST_TIMEOUT_MS`) ; helper `postDataHttpRequest` ; lecture GET bloc avec timeout aligné sur `OUTPUTS_STATE_HTTP_TIMEOUT_MS`.
+- **Endpoints ESP32-S3** : profil test → `/ffp3/post-data-s3-test` (env **s3test**) ; tout autre build **BOARD_S3** → `/ffp3/post-data3` (env **s3**).
+- **Heartbeat** : file postSender avec attente courte + log si pleine ; timeout POST heartbeat aligné sur les autres POST longs.
+
+### Côté serveur (FFP3 post-data)
+
+- **INSERT** : colonnes optionnelles (`tempsGros`, `Pression`, `WakeUp`, etc.) si présentes en BDD ; schéma Docker `ffp3Data` enrichi.
+- **ACK** (`ack_command`) : réponse 200 sans ligne INSERT capteur ; mise à jour board uniquement.
+- **Dédup `post_id`** : après authentification (cohérence HTTP).
+- **Heartbeat** : réponse `Connection: close` comme les autres succès (`textClose`).
+
+---
+
+## Version 13.49 - 2026-04-07
+
+### Journaux série (diagnostic réseau)
+
+- **WiFi** : attente de reconnexion (`power.cpp`) — messages une fois par seconde avec délai écoulé / timeout au lieu d’une ligne de points.
+- **HTTP** : phases explicites (POST/GET), ligne **Verdict** (2xx/3xx, 4xx, 5xx, timeout) avec latence connect approximative ; rappel sur les erreurs 4xx (auth / contrat API).
+- **post-data / heartbeat** : libellés avant/après dans `postSender` ; distinction « mis en file » vs résultat HTTP réel dans `AutomatismSync` (note une fois au boot log).
+- **netTask** : libellés de requête en français au lieu des tags `NETDBG` / hypothesis.
+- **GET outputs/state** : jalons (préparation, envoi, code HTTP, fallback NVS) ; nettoyage des logs `[DBG] … hypothesis`.
+- **TLS minimal test** : même style d’attente WiFi lisible (sans points).
+
+---
+
 ## Version 13.48 - 2026-04-06
 
 ### Nourrissage — répétition à chaque réveil / doublon après auto

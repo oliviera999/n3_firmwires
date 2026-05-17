@@ -79,6 +79,13 @@ WebClient::WebClient(const char* apiKey) {
   _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 }
 
+bool WebClient::postDataHttpRequest(const char* payload, char* response, size_t responseSize) {
+  char postDataUrl[256];
+  ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
+  return httpRequest(postDataUrl, payload, response, responseSize,
+                     NetworkConfig::HTTP_POST_TIMEOUT_MS);
+}
+
 bool WebClient::httpRequest(const char* url, const char* payload,
                            char* response, size_t responseSize,
                            uint32_t timeoutMs) {
@@ -115,7 +122,9 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   }
   // Un log avec l'URL permet au script diagnostic_serveur_distant.ps1 de détecter l'endpoint (post-data vs post-data-test)
   if (LogConfig::SERIAL_ENABLED) {
-    Serial.printf("[HTTP] POST %s\n", url);
+    Serial.printf("[HTTP] Phase: POST HTTP (formulaire), timeout_total=%u ms\n", timeoutMs);
+    Serial.printf("[HTTP]   URL: %s\n", url);
+    Serial.println(F("[HTTP]   Étapes: DNS+TCP → envoi corps → lecture réponse (une ligne [HTTP] Verdict suivra)"));
   }
 
   // Délai minimum entre requêtes HTTP pour éviter saturation TCP
@@ -301,6 +310,9 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     // Erreur client 4xx : pas de retry
     if (code >= 400 && code < 500) {
       LOG(LOG_WARN, "[HTTP] Erreur client %d, pas de retry", code);
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.printf("[HTTP]   Explication: code 4xx = rejet côté serveur (souvent clé API, signature HMAC ou paramètres) — aucun nouvel essai automatique\n");
+      }
       break;
     }
 
@@ -336,6 +348,19 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
   LOG(LOG_INFO, "[HTTP] Requête: %lu ms, connect_ms=%lu, request_ms=%lu, code=%d, succès=%s, rssi=%d",
       totalDurationMs, (unsigned long)connectMs, requestPhaseMs, finalCode, succStr, rssi);
+  if (LogConfig::SERIAL_ENABLED) {
+    const char* verdict = finalSuccess
+                              ? "acceptée par le serveur (code 2xx/3xx)"
+                              : (finalCode >= 400 && finalCode < 500)
+                                    ? "rejet client 4xx (vérifier contrat API / clé / HMAC)"
+                                    : (finalCode >= 500)
+                                          ? "erreur serveur 5xx"
+                                          : (finalCode <= 0)
+                                                ? "échec réseau ou timeout (code <= 0)"
+                                                : "non classée";
+    Serial.printf("[HTTP] Verdict: %s | code_HTTP=%d | durée_totale=%lu ms | latence_connect≈%lu ms | RSSI=%d dBm\n",
+                  verdict, finalCode, totalDurationMs, (unsigned long)connectMs, rssi);
+  }
 
   _lastRequestMs = millis();
 
@@ -454,17 +479,28 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
 
 int WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
   if (WiFi.status() != WL_CONNECTED) return 0;
-  // #region agent log
   bool recvEn = config.isRemoteRecvEnabled();
-  Serial.printf("[DBG] tryFetchConfig recvEnabled=%d hypothesis=H2\n", recvEn ? 1 : 0);
-  // #endregion
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] tryFetchConfig: réception distante %s\n",
+                  recvEn ? "activée → GET outputs/state" : "désactivée (skip)");
+  }
   if (!recvEn) return 0;
   return fetchRemoteState(doc);
 }
 
 bool WebClient::tryPushStatusToServer(const char* payload) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  if (!config.isRemoteSendEnabled()) return false;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.println(F("[HTTP] tryPushStatusToServer: WiFi déconnecté — envoi annulé"));
+    }
+    return false;
+  }
+  if (!config.isRemoteSendEnabled()) {
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.println(F("[HTTP] tryPushStatusToServer: envoi distant désactivé (config) — annulé"));
+    }
+    return false;
+  }
   if (payload == nullptr) return false;
   return postRaw(payload);
 }
@@ -498,9 +534,9 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   char payloadBuffer[MAX_RESPONSE_SIZE + 1];
   char url[256];
   ServerConfig::getOutputUrl(url, sizeof(url));
-  // #region agent log
-  Serial.printf("[DBG] fetchRemoteState URL=%s hypothesis=H1\n", url);
-  // #endregion
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] GET outputs/state: préparation (URL=%s)\n", url);
+  }
 
   // Timeout dédié plus long pour GET outputs/state (évite -11 read timeout si serveur/latence lents)
   _http.setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
@@ -521,9 +557,15 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.println(F("[HTTP] GET outputs/state: envoi requête (lecture JSON config peut prendre plusieurs secondes)"));
+  }
   int code = _http.GET();
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
+  }
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] GET outputs/state: premier code HTTP=%d\n", code);
   }
   // Retry une fois sur timeout lecture (-11) pour améliorer le taux de succès GET
   if (code == -11) {
@@ -554,10 +596,7 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   if (code <= 0) {
-    Serial.printf("[HTTP] outputs/state: code=%d (skip read)\n", code);
-    // #region agent log
-    Serial.printf("[DBG] fetchRemoteState code=%d useNVS=%d hypothesis=H3\n", code, loadFromNVSFallback(doc) ? 1 : 0);
-    // #endregion
+    Serial.printf("[HTTP] outputs/state: code=%d (échec ou timeout — pas de corps à lire)\n", code);
     // v11.XXX: Nettoyage systématique même en cas d'échec
     _http.end();  // Toujours nettoyer HTTPClient
     if (_client.connected()) {
@@ -565,11 +604,15 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     }
     _http.setReuse(false);
     _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
-    if (loadFromNVSFallback(doc)) {
+    const bool nvsOk = loadFromNVSFallback(doc);
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.printf("[HTTP]   Fallback NVS cache config: %s\n", nvsOk ? "oui (r=2)" : "non (r=0)");
+    }
+    if (nvsOk) {
       return 2;
     }
     if (LogConfig::SERIAL_ENABLED) {
-      Serial.printf("[HTTP] GET outputs/state: échec code=%d (pas de cache NVS)\n", code);
+      Serial.printf("[HTTP] GET outputs/state: échec définitif code=%d (pas de cache NVS)\n", code);
     }
     return 0;
   }
@@ -595,7 +638,7 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   // v11.185: Quand Content-Length est connu, lecture en un bloc (évite body déjà consommé par
   // le stack TCP/HTTP si on attend entre available() et read).
   if (hasContentLength && (size_t)contentLength <= MAX_RESPONSE_SIZE) {
-    stream->setTimeout(3000);
+    stream->setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
@@ -746,9 +789,6 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> parseDoc;
   DeserializationError err = deserializeJson(parseDoc, payloadBuffer);
   if (err) {
-    // #region agent log
-    Serial.printf("[DBG] fetchRemoteState parse fail err=%s totalRead=%u hypothesis=H4\n", err.c_str(), (unsigned)totalRead);
-    // #endregion
     static std::atomic<uint32_t> jsonErrorCount{0};
     static std::atomic<unsigned long> lastJsonErrorLog{0};
     uint32_t count = ++jsonErrorCount;
@@ -770,25 +810,23 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   s_lastFetchedJson[jsonLen] = '\0';
   s_lastFetchedSize = jsonLen;
 
-  Serial.printf("[HTTP] GET outputs/state: body=%u bytes, stored for copyLastFetchedTo\n", (unsigned)totalRead);
-  // #region agent log
-  Serial.printf("[DBG] fetchRemoteState result=1 totalRead=%u hypothesis=H1,H3,H4\n", (unsigned)totalRead);
-  // #endregion
+  Serial.printf("[HTTP] GET outputs/state: body=%u octets, copie interne OK (prochaine étape: parse côté tâche auto)\n",
+                (unsigned)totalRead);
   return 1;  // OK depuis HTTP
 }
 
 bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
   if (s_lastFetchedSize == 0 || s_lastFetchedJson[0] == '\0') {
-    // #region agent log
-    Serial.printf("[DBG] copyLastFetchedTo skip size=%u hypothesis=H4\n", (unsigned)s_lastFetchedSize);
-    // #endregion
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.println(F("[HTTP] copyLastFetchedTo: rien à copier (aucun GET réussi précédent)"));
+    }
     return false;
   }
   DeserializationError err = deserializeJson(doc, s_lastFetchedJson);
   if (err) {
-    // #region agent log
-    Serial.printf("[DBG] copyLastFetchedTo deserialize err=%s hypothesis=H4\n", err.c_str());
-    // #endregion
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.printf("[HTTP] copyLastFetchedTo: JSON invalide (%s)\n", err.c_str());
+    }
     return false;
   }
   // Unwrap outputs/switches si présent (même logique qu'avant, exécutée dans le contexte du caller)
@@ -819,10 +857,10 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
   size_t nKeys = doc.size();
   int has108 = doc.containsKey("108") ? 1 : 0;
   int has109 = doc.containsKey("109") ? 1 : 0;
-  // #region agent log
-  Serial.printf("[DBG] copyLastFetchedTo ok docSize=%u unwrap=%d has108=%d has109=%d hypothesis=H4,H6\n",
-                 (unsigned)nKeys, didUnwrap ? 1 : 0, has108, has109);
-  // #endregion
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] copyLastFetchedTo: %u clés JSON, unwrap=%s, flags nourrissage 108/109=%d/%d\n",
+                  (unsigned)nKeys, didUnwrap ? "oui" : "non", has108, has109);
+  }
   return true;
 }
 
@@ -863,6 +901,10 @@ bool WebClient::buildHeartbeatPayload(const Diagnostics& diag, char* buf, size_t
 
 bool WebClient::postToUrl(const char* url, const char* payload, uint32_t timeoutMs) {
   if (url == nullptr || payload == nullptr) return false;
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.println(F("[HTTP] Phase: POST vers URL dédiée (ex. heartbeat) — voir lignes [HTTP] Verdict ci-dessous"));
+    Serial.printf("[HTTP]   URL: %s\n", url);
+  }
   char resp[1024];
   return httpRequest(url, payload, resp, sizeof(resp), timeoutMs);
 }
@@ -917,14 +959,22 @@ bool WebClient::postRaw(const char* payload) {
   char respPrimary[1024];
   char postDataUrl[256];
   ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-  bool success = httpRequest(postDataUrl, postBuffer, respPrimary, sizeof(respPrimary),
-                             NetworkConfig::HTTP_POST_TIMEOUT_MS);
-  
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] post-data: envoi mesures capteurs / état (%u octets payload) → %s\n",
+                  (unsigned)strlen(postBuffer), postDataUrl);
+  }
+  bool success = postDataHttpRequest(postBuffer, respPrimary, sizeof(respPrimary));
+  if (LogConfig::SERIAL_ENABLED) {
+    Serial.printf("[HTTP] post-data: %s\n",
+                  success ? "terminé avec succès HTTP (voir Verdict ci-dessus)"
+                          : "échec — mise en file NVS pour renvoi ultérieur si activé");
+  }
+
   // v11.171: Queue si échec (offline-first). Étendu aux échecs HTTP (timeout, 4xx/5xx) en plus du WiFi déconnecté.
   if (!success) {
     queueFailedPost(postBuffer);
   }
-  
+
   return success;
 }
 
@@ -1009,10 +1059,8 @@ bool WebClient::processQueuedPosts() {
     }
     
     char resp[1024];
-    char postDataUrl[256];
-    ServerConfig::getPostDataUrl(postDataUrl, sizeof(postDataUrl));
-    
-    if (httpRequest(postDataUrl, payload, resp, sizeof(resp))) {
+
+    if (postDataHttpRequest(payload, resp, sizeof(resp))) {
       processed++;
       // Marquer comme traité (effacer)
       g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key);

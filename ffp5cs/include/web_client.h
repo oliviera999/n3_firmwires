@@ -61,6 +61,8 @@ class WebClient {
   WiFiClient _client;  // v11.162: Client HTTP simple (plus de TLS)
   HTTPClient _http;
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
+  /** POST vers l'URL post-data courante avec timeout aligné envoi principal / queue NVS. */
+  bool postDataHttpRequest(const char* payload, char* response, size_t responseSize);
   bool httpRequest(const char* url, const char* payload, char* response, size_t responseSize,
                    uint32_t timeoutMs = NetworkConfig::HTTP_TIMEOUT_MS);
   bool loadFromNVSFallback(ArduinoJson::JsonDocument& doc);  // v11.165: Fallback NVS

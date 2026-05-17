@@ -115,7 +115,8 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
                 replayQueuedData();
             }
             if (intervalReached) {
-                Serial.printf("[Sync] ✅ Conditions remplies, envoi POST... (dernier envoi il y a %lu ms)\n", timeSinceLastSend);
+                Serial.printf("[Sync] Déclenchement envoi mesures (dernier POST il y a %lu ms ; résultat HTTP dans [postSender]/[HTTP])\n",
+                              static_cast<unsigned long>(timeSinceLastSend));
                 sendFullUpdate(readings, acts, core);
             } else if (checkInflectionPoint(readings.wlAqua, now)) {
                 Serial.printf("[Sync] 📈 POST inflexion marée (wlAqua=%u, trend=%d)\n",
@@ -352,6 +353,11 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     if (queued) {
         // POST transmis à netTask — résultat HTTP traité en arrière-plan
         // En cas d'échec HTTP, web_client queue en NVS automatiquement
+        static bool s_loggedAsyncPostHint = false;
+        if (LogConfig::SERIAL_ENABLED && !s_loggedAsyncPostHint) {
+            s_loggedAsyncPostHint = true;
+            Serial.println(F("[Sync] Note: « mis en file » ≠ succès HTTP — le verdict réel est dans [postSender] puis [HTTP] Verdict."));
+        }
         _sendState = 1;
         _lastSend = millis();
         _lastDataSkipReason = SKIP_NONE;
@@ -479,16 +485,9 @@ bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     bool fromNVSFallback = false;
     // v11.195: RPC timeout plus long que HTTP (queue wait + GET) — évite "Timeout abandon" avant fin GET
     bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS, &fromNVSFallback);
-    // #region agent log
-    Serial.printf("[DBG] fetchRemoteState ok=%d fromNVS=%d hypothesis=H3,H4\n", ok ? 1 : 0, fromNVSFallback ? 1 : 0);
-    // #endregion
     // v11.193: Données HTTP → copier dans doc depuis le caller (évite LoadProhibited en écrivant doc depuis netTask)
     if (ok && !fromNVSFallback) {
         bool copied = _web.copyLastFetchedTo(doc);
-        size_t docSize = doc.size();
-        // #region agent log
-        Serial.printf("[DBG] fetchRemoteState copyLastFetchedTo=%d docSize=%u hypothesis=H4,H6\n", copied ? 1 : 0, (unsigned)docSize);
-        // #endregion
         if (copied && doc.size() > 0) {
             processFetchedRemoteConfig(doc);
         }
@@ -501,18 +500,13 @@ bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
 }
 
 bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis) {
-    // #region agent log
     if (!_config.isRemoteRecvEnabled()) {
-        Serial.printf("[DBG] pollRemoteState skip recvDisabled hypothesis=H2,H5\n");
         return false;
     }
     if (currentMillis - _lastRemoteFetch < REMOTE_FETCH_INTERVAL_MS) return false;
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.printf("[DBG] pollRemoteState skip wifi hypothesis=H5\n");
         return false;
     }
-    Serial.printf("[DBG] pollRemoteState calling fetchRemoteState hypothesis=H5\n");
-    // #endregion
     return fetchRemoteState(doc);
 }
 

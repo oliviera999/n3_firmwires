@@ -32,7 +32,13 @@ namespace ServerUrlConfig {
     inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3-test";
     inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3-test/state";
     inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3-test";
-  #elif defined(BOARD_S3) && defined(PROFILE_PROD)
+  /* ESP32-S3 + profils test/dev : tables/env s3test (pas ffp3Data2 WROOM). */
+  #elif defined(BOARD_S3) && (defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS))
+    inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-s3-test";
+    inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-s3-test/state";
+    inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-s3-test";
+  /* ESP32-S3 (prod, bêta, ou défaut matériel) : env s3 / tables post-data3 */
+  #elif defined(BOARD_S3)
     inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3";
     inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3/state";
     inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3";

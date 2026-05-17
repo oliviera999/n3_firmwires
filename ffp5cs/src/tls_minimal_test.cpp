@@ -48,12 +48,17 @@ void connectWifiSimple() {
 
     WiFi.begin(ssid, pass);
     unsigned long start = millis();
+    uint32_t lastSecLog = 0;
     while (WiFi.status() != WL_CONNECTED &&
            millis() - start < perSsidTimeoutMs) {
       delay(250);
-      Serial.print(".");
+      unsigned long elapsed = millis() - start;
+      if (elapsed >= lastSecLog + 1000UL) {
+        lastSecLog = elapsed;
+        Serial.printf("[WiFi]   …attente association (%lu / %lu ms)\n",
+                      elapsed, perSsidTimeoutMs);
+      }
     }
-    Serial.println();
 
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("[WiFi] ✅ Connecté");

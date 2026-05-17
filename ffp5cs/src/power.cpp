@@ -517,14 +517,17 @@ bool PowerManager::reconnectWithSavedCredentials() {
   uint32_t startTime = millis();
   const uint32_t timeoutMs = TimingConfig::WIFI_RECONNECT_AFTER_WAKE_MS;
   
-  Serial.print(F("[Power] Attente de connexion"));
+  Serial.println(F("[Power] Attente WiFi (reconnexion identifiants sauvegardés)…"));
+  uint32_t lastProgressLogMs = 0;
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeoutMs) {
-    vTaskDelay(pdMS_TO_TICKS(100)); // Optimized delay - reduced from 250ms to 100ms for faster reconnection
-    if ((millis() - startTime) % 1000 == 0) {
-      Serial.print(".");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    uint32_t elapsed = millis() - startTime;
+    if (elapsed >= lastProgressLogMs + 1000u) {
+      lastProgressLogMs = elapsed;
+      Serial.printf("[Power]   …toujours en attente association WiFi (%lu / %u ms)\n",
+                    static_cast<unsigned long>(elapsed), static_cast<unsigned>(timeoutMs));
     }
   }
-  Serial.println();
   
   if (WiFi.status() == WL_CONNECTED) {
     IPAddress ip = WiFi.localIP();

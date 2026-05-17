@@ -66,6 +66,21 @@ enum class NetReqType : uint8_t {
   OtaCheck = 4,  // Vérification OTA (boot, périodique 2h, ou déclenchement serveur distant)
 };
 
+static const char* netRequestTypeLabel(NetReqType t) {
+  switch (t) {
+    case NetReqType::FetchRemoteState:
+      return "GET outputs/state (config)";
+    case NetReqType::PostRaw:
+      return "POST mesures -> file postSender";
+    case NetReqType::Heartbeat:
+      return "heartbeat (via file)";
+    case NetReqType::OtaCheck:
+      return "OTA";
+    default:
+      return "?";
+  }
+}
+
 struct NetRequest {
   NetReqType type;
   TaskHandle_t requester;
@@ -441,11 +456,41 @@ static void postSenderTask(void* pv) {
     if (got != pdTRUE) continue;
     if (!g_ctx) continue;
     if (msg.type == PostSenderType::PostData) {
-      (void)g_ctx->webClient.tryPushStatusToServer(msg.payload);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[postSender] post-data start\n");
+#else
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.println(F("[postSender] Exécution POST mesures (post-data) — le verdict HTTP suit sous [HTTP]"));
+      }
+#endif
+      bool postOk = g_ctx->webClient.tryPushStatusToServer(msg.payload);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[postSender] post-data end ok=%d\n", postOk ? 1 : 0);
+#else
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.printf("[postSender] Fin POST mesures: %s\n",
+                      postOk ? "succès (2xx/3xx) ou accepté"
+                             : "échec — voir [HTTP] Verdict ; payload peut être en file NVS");
+      }
+#endif
     } else if (msg.type == PostSenderType::Heartbeat) {
       char heartbeatUrl[256];
       ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
-      (void)g_ctx->webClient.postToUrl(heartbeatUrl, msg.payload, NetworkConfig::HTTP_TIMEOUT_MS);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[postSender] heartbeat start\n");
+#else
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.println(F("[postSender] Exécution POST heartbeat"));
+      }
+#endif
+      bool hbOk = g_ctx->webClient.postToUrl(heartbeatUrl, msg.payload, NetworkConfig::HTTP_POST_TIMEOUT_MS);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[postSender] heartbeat end ok=%d\n", hbOk ? 1 : 0);
+#else
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.printf("[postSender] Fin heartbeat: %s\n", hbOk ? "OK" : "échec — voir [HTTP] Verdict");
+      }
+#endif
     }
     esp_task_wdt_reset();
   }
@@ -629,8 +674,9 @@ static void netTask(void* pv) {
 #endif
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
     bootServerReachable = (r >= 1);
-    // r==1: HTTP OK, r==2: NVS fallback (ne pas appeler processFetchedRemoteConfig sur doc NVS)
-    if (r == 1 && tmp.size() > 0) {
+    // r==1: HTTP OK — fetchRemoteState remplit s_lastFetchedJson, pas tmp ; copier avant apply
+    // r==2: NVS fallback (ne pas appeler processFetchedRemoteConfig sur doc NVS)
+    if (r == 1 && g_ctx->webClient.copyLastFetchedTo(tmp)) {
       if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
         ets_printf("[netTask] SOURCE SERVEUR applied\n");
@@ -688,9 +734,11 @@ static void netTask(void* pv) {
     esp_task_wdt_reset();  // Reset WDT pendant traitement requête (évite reset si HTTP long)
 
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-    ets_printf("[NETDBG] hypothesis=H2 netTask recv type=%u\n", (unsigned)static_cast<uint8_t>(req->type));
+    ets_printf("[netTask] job: %s\n", netRequestTypeLabel(req->type));
 #else
-    Serial.printf("[NETDBG] hypothesis=H2 netTask recv type=%u\n", (unsigned)static_cast<uint8_t>(req->type));
+    if (LogConfig::SERIAL_ENABLED) {
+      Serial.printf("[netTask] Requête: %s\n", netRequestTypeLabel(req->type));
+    }
 #endif
 
     // v11.169: Vérifier si le caller a déjà abandonné (timeout atteint)
@@ -705,17 +753,23 @@ static void netTask(void* pv) {
     switch (req->type) {
       case NetReqType::FetchRemoteState: {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-        ets_printf("[NETDBG] hypothesis=H1 FetchRemoteState start\n");
+        ets_printf("[netTask] fetchRemoteState start\n");
 #else
-        Serial.println(F("[NETDBG] hypothesis=H1 FetchRemoteState start"));
+        if (LogConfig::SERIAL_ENABLED) {
+          Serial.println(F("[netTask] Début fetchRemoteState (GET outputs/state ou cache NVS)"));
+        }
 #endif
         int r = (req->doc != nullptr) ? g_ctx->webClient.tryFetchConfigFromServer(*req->doc) : 0;
         ok = (r >= 1);
         req->fromNVSFallback = (r == 2);
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-        ets_printf("[NETDBG] hypothesis=H1,H4 FetchRemoteState done r=%d\n", r);
+        ets_printf("[netTask] fetchRemoteState done r=%d (1=HTTP,2=NVS)\n", r);
 #else
-        Serial.printf("[NETDBG] hypothesis=H1,H4 FetchRemoteState done r=%d\n", r);
+        if (LogConfig::SERIAL_ENABLED) {
+          Serial.printf("[netTask] Fin fetchRemoteState: r=%d (%s)\n", r,
+                        r == 1 ? "JSON serveur"
+                               : r == 2 ? "fallback cache NVS" : "échec");
+        }
 #endif
         esp_task_wdt_reset();
         break;
@@ -1545,7 +1599,16 @@ bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
   if (!g_ctx->webClient.buildHeartbeatPayload(diag, buf, sizeof(buf))) return false;
   strncpy(msg.payload, buf, sizeof(msg.payload) - 1);
   msg.payload[sizeof(msg.payload) - 1] = '\0';
-  return (xQueueSend(g_postSenderQueue, &msg, 0) == pdTRUE);
+  if (xQueueSend(g_postSenderQueue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
+    return true;
+  }
+  static unsigned long s_lastHeartbeatDropLogMs = 0;
+  unsigned long now = millis();
+  if (LogConfig::SERIAL_ENABLED && (now - s_lastHeartbeatDropLogMs) >= 60000UL) {
+    Serial.println(F("[netRPC] Heartbeat non placé: file postSender pleine (retry au prochain cycle)"));
+    s_lastHeartbeatDropLogMs = now;
+  }
+  return false;
 }
 
 void netRequestOtaCheck() {
