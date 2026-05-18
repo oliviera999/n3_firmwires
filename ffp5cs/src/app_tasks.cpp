@@ -1491,9 +1491,19 @@ QueueHandle_t getSensorQueue() {
 // Requête allouée dans le pool statique : éviter use-after-return quand le caller timeout
 // avant la fin du traitement netTask.
 // Caller alloue, envoie ; sur timeout caller met req->cancelled et retourne (netTask finalise).
-// Sur succès caller free.
-static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
-  if (!g_netQueue || !g_netTaskHandle || !req) return false;
+// Sur réponse notifiée (succès ou échec métier/réseau), caller garde la propriété et libère le slot.
+enum class NetRpcResult : uint8_t {
+  CompletedSuccess,
+  CompletedFailure,
+  Abandoned
+};
+
+static NetRpcResult netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
+  if (!req) return NetRpcResult::Abandoned;
+  if (!g_netQueue || !g_netTaskHandle) {
+    netRequestFree(req);
+    return NetRpcResult::Abandoned;
+  }
   req->requester = xTaskGetCurrentTaskHandle();
   req->success = false;
   req->cancelled = false;
@@ -1505,7 +1515,7 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   if (xQueueSend(g_netQueue, &ptr, pdMS_TO_TICKS(QUEUE_SEND_TIMEOUT_MS)) != pdTRUE) {
     Serial.println(F("[netRPC] Requête abandonnée: file net pleine"));
     netRequestFree(req);
-    return false;
+    return NetRpcResult::Abandoned;
   }
 
   // Timeout : utiliser req->timeoutMs borné (aligné offline-first, max 30 s)
@@ -1536,11 +1546,11 @@ static bool netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
       if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500)) > 0) {
         netRequestFree(req);
       }
-      return false;  // timeout/abandon : slot libéré par netTask ou sur notif tardive ci-dessus
+      return NetRpcResult::Abandoned;  // timeout/abandon : slot libéré par netTask ou sur notif tardive ci-dessus
     }
     vTaskDelay(pdMS_TO_TICKS(10));
   }
-  return req->success;
+  return req->success ? NetRpcResult::CompletedSuccess : NetRpcResult::CompletedFailure;
 }
 
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
@@ -1551,13 +1561,16 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
   req->doc = &doc;
   req->diag = nullptr;
   req->payload[0] = '\0';
-  bool ok = netRpcAlloc(req, timeoutMs);
-  if (ok) {
+  NetRpcResult rpcResult = netRpcAlloc(req, timeoutMs);
+  if (rpcResult == NetRpcResult::CompletedSuccess) {
     if (outFromNVSFallback) *outFromNVSFallback = req->fromNVSFallback;
     netRequestFree(req);
     return true;
   }
-  return false;  // timeout ou échec : slot déjà géré (netTask ou netRpcAlloc en notif tardive)
+  if (rpcResult == NetRpcResult::CompletedFailure) {
+    netRequestFree(req);
+  }
+  return false;  // timeout/abandon : slot déjà géré ; échec notifié : slot libéré ci-dessus
 }
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure) {

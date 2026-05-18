@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.51 - 2026-05-18
+
+### Réseau FFP3 — robustesse netRPC
+
+- **GET `outputs/state`** : libération du slot `NetRequest` également quand la requête se termine avec un échec notifié (serveur indisponible, 4xx/5xx, JSON invalide sans fallback NVS).
+- **Impact corrigé** : empêche la saturation progressive du pool `netRPC` après plusieurs échecs GET, qui bloquait ensuite les récupérations de configuration distante jusqu'au redémarrage.
+
+---
+
 ## Version 13.50 - 2026-05-09
 
 ### Communication firmware ↔ serveur (correctifs)

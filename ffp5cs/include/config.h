@@ -63,7 +63,8 @@ namespace ProjectConfig {
     // v13.46: saveBool NVS — première écriture des bool (snap_* veille) ; logs diagnostic snapshot.
     // v13.47: Test OTA distant (metadata test > 13.46) + chaîne triggerOtaCheck serveur persistée BDD.
     // v13.49: Journaux série — phases HTTP/WiFi explicites, file postSender vs verdict HTTP, moins de bruit DBG.
-    inline constexpr const char* VERSION = "13.50";
+    // v13.51: netRPC GET outputs/state — libération du slot aussi après échec notifié.
+    inline constexpr const char* VERSION = "13.51";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
