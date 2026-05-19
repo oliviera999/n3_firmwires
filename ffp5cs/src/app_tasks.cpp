@@ -92,6 +92,8 @@ struct NetRequest {
   ArduinoJson::JsonDocument* doc;   // FetchRemoteState
   const Diagnostics* diag;          // Heartbeat
   char payload[BufferConfig::POST_PAYLOAD_MAX_SIZE];  // PostRaw (copie). WROOM: 896 pour éviter overflow DRAM.
+  uint32_t sdSeqNum;
+  bool hasSdQueueEntry;  // true: supprimer la file SD seulement après succès HTTP réel
 };
 
 QueueHandle_t g_netQueue = nullptr;
@@ -102,6 +104,8 @@ enum class PostSenderType : uint8_t { PostData = 0, Heartbeat = 1 };
 struct PostSenderMsg {
   PostSenderType type;
   char payload[BufferConfig::POST_PAYLOAD_MAX_SIZE];
+  uint32_t sdSeqNum;
+  bool hasSdQueueEntry;
 };
 static QueueHandle_t g_postSenderQueue = nullptr;
 static constexpr size_t kPostSenderQueueLen = 4;
@@ -464,6 +468,9 @@ static void postSenderTask(void* pv) {
       }
 #endif
       bool postOk = g_ctx->webClient.tryPushStatusToServer(msg.payload);
+      if (postOk && msg.hasSdQueueEntry) {
+        SdLogger::markSent(msg.sdSeqNum);
+      }
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
       ets_printf("[postSender] post-data end ok=%d\n", postOk ? 1 : 0);
 #else
@@ -779,6 +786,8 @@ static void netTask(void* pv) {
         msg.type = PostSenderType::PostData;
         strncpy(msg.payload, req->payload, sizeof(msg.payload) - 1);
         msg.payload[sizeof(msg.payload) - 1] = '\0';
+        msg.sdSeqNum = req->sdSeqNum;
+        msg.hasSdQueueEntry = req->hasSdQueueEntry;
         if (xQueueSend(g_postSenderQueue, &msg, 0) != pdTRUE) {
           g_ctx->webClient.queueFailedPost(req->payload);
         }
@@ -1560,7 +1569,7 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
   return false;  // timeout ou échec : slot déjà géré (netTask ou netRpcAlloc en notif tardive)
 }
 
-bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure) {
+bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure, uint32_t sdSeqNum) {
   if (!payload) return false;
   if (outFailure) *outFailure = NetPostFailureReason::None;
   if (!g_netQueue) return false;
@@ -1576,6 +1585,8 @@ bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, 
   req->success = false;
   req->doc = nullptr;
   req->diag = nullptr;
+  req->sdSeqNum = sdSeqNum;
+  req->hasSdQueueEntry = (sdSeqNum != 0);
   strncpy(req->payload, payload, sizeof(req->payload) - 1);
   req->payload[sizeof(req->payload) - 1] = '\0';
   // Envoyer sans attendre — netTask libère le slot après traitement HTTP

@@ -53,7 +53,8 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 50
 enum class NetPostFailureReason { None, PoolFull, TimeoutRpc, HttpError };
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS,
-                PostCategory category = PostCategory::Periodic, NetPostFailureReason* outFailure = nullptr);
+                PostCategory category = PostCategory::Periodic, NetPostFailureReason* outFailure = nullptr,
+                uint32_t sdSeqNum = 0);
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 
 /** Demande une vérification OTA à la tâche dédiée otaTask (fire-and-forget). Utilisé par le boot, le timer 2h ou le serveur distant (triggerOtaCheck). */

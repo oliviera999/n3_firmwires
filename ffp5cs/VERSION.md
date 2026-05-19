@@ -12,6 +12,13 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.51 - 2026-05-19
+
+### Correctif critique - SD replay S3 : suppression après succès HTTP réel
+- **Impact** : évite la perte silencieuse de mesures SD quand un POST est seulement mis en file asynchrone puis échoue, redémarre ou dort avant la réponse serveur.
+- **Changement** : les entrées SD (`logAndQueue` / `replayPending`) sont marquées envoyées uniquement par `postSenderTask` après un vrai succès HTTP 2xx/3xx ; la mise en file `netPostRaw` ne suffit plus.
+- **Fichiers** : `src/app_tasks.cpp`, `include/app_tasks.h`, `src/automatism/automatism_sync.cpp`, `src/sd_logger.cpp`, `include/config.h`, `VERSION.md`.
+
 ## Version 13.50 - 2026-05-09
 
 ### Communication firmware ↔ serveur (correctifs)

@@ -337,6 +337,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
 #if defined(BOARD_S3)
     SdLogger::QueueResult sdQ = SdLogger::logAndQueue(payloadBuffer, epochSec);
+    const uint32_t sdSeqNum = sdQ.ok ? sdQ.seqNum : 0;
+#else
+    const uint32_t sdSeqNum = 0;
 #endif
 
     if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -345,7 +348,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     uint32_t sendStart = millis();
     AppTasks::NetPostFailureReason failReason = AppTasks::NetPostFailureReason::None;
     // fire-and-forget : retourne immédiatement (true = mis en queue, false = pool plein)
-    bool queued = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, category, &failReason);
+    bool queued = AppTasks::netPostRaw(payloadBuffer, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, category, &failReason, sdSeqNum);
     uint32_t durationMs = millis() - sendStart;  // ~0 ms désormais
 
     registerSendResult(queued, strlen(payloadBuffer), durationMs, heapBefore, ESP.getFreeHeap());
@@ -361,9 +364,7 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
         _sendState = 1;
         _lastSend = millis();
         _lastDataSkipReason = SKIP_NONE;
-#if defined(BOARD_S3)
-        if (sdQ.ok) SdLogger::markSent(sdQ.seqNum);
-#endif
+        // S3: la suppression SD est faite par postSenderTask uniquement après succès HTTP réel.
         if (_dataQueue.size() > 0) replayQueuedData();
     } else {
         // Pool netRPC plein : conserver en RAM pour retry au prochain cycle
