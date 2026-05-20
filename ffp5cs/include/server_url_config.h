@@ -8,12 +8,19 @@
 #endif
 
 namespace ServerUrlConfig {
+  // v13.80 (audit) : flag `USE_HTTPS_ENDPOINTS` permet de basculer BASE_URL vers
+  // l'URL sécurisée pour POST/GET/heartbeat. Avant v13.80, ces flux étaient en
+  // HTTP clair même si BASE_URL_SECURE existait (utilisée uniquement OTA).
+  // Le flag est opt-in via build_flag `-DUSE_HTTPS_ENDPOINTS` (env wroom-prod-https).
   #if defined(USE_LOCAL_SERVER_ENDPOINTS) && defined(LOCAL_SERVER_BASE_URL)
     inline constexpr const char* BASE_URL = LOCAL_SERVER_BASE_URL;
   #elif defined(USE_LOCAL_SERVER_ENDPOINTS) && defined(LOCAL_SERVER_BASE_URL_OVERRIDE)
     inline constexpr const char* BASE_URL = LOCAL_SERVER_BASE_URL_OVERRIDE;
   #elif defined(USE_LOCAL_SERVER_ENDPOINTS)
     inline constexpr const char* BASE_URL = "http://127.0.0.1:8082";
+  #elif defined(USE_HTTPS_ENDPOINTS)
+    // v13.80 : flux POST/GET/heartbeat servis en HTTPS (TLS).
+    inline constexpr const char* BASE_URL = "https://iot.olution.info";
   #else
     inline constexpr const char* BASE_URL = "http://iot.olution.info";
   #endif

@@ -12,6 +12,76 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.80 - 2026-05-20
+
+### Audit général 2026-05 — migration contrat firmware-serveur (mode dual rétrocompatible, Incrément 6/7)
+
+Démarrage de la migration du contrat firmware <-> serveur identifiée par l'audit (sous-agent 5) comme BLOQUANTE pour exposition Internet. Mode dual : nouveaux mécanismes ajoutés en **complément** des existants, le serveur tolère les deux.
+
+Doc complète : [`docs/technical/MIGRATION_HMAC_HTTPS.md`](docs/technical/MIGRATION_HMAC_HTTPS.md).
+
+### HTTPS opt-in pour POST / GET / heartbeat
+
+[`include/server_url_config.h`](include/server_url_config.h) : nouveau flag de build `USE_HTTPS_ENDPOINTS` qui bascule `BASE_URL = https://iot.olution.info` au lieu de `http://`. Le `BASE_URL_SECURE` (HTTPS) reste utilisé pour metadata OTA dans tous les cas.
+
+[`platformio.ini`](platformio.ini) : nouvel environnement `[env:wroom-prod-https]` hérité de `wroom-prod` avec `-DUSE_HTTPS_ENDPOINTS`. Permet de valider HTTPS sur 1-2 appareils pilotes avant la bascule par défaut en v13.90.
+
+### HMAC-SHA256 (mode dual avec api_key legacy)
+
+Nouveau module [`include/hmac_sign.h`](include/hmac_sign.h) + [`src/hmac_sign.cpp`](src/hmac_sign.cpp) :
+
+- `HmacSign::isEnabled()` : `true` si `Secrets::API_SIG_SECRET` est configuré et non placeholder.
+- `HmacSign::generateNonce(out, bufSize)` : nonce 16 hex via `esp_fill_random` (HW RNG ; même primitive que cookie session v13.52).
+- `HmacSign::computeHmacHex(secret, ts, nonce, body, out, bufSize)` : HMAC-SHA256 lower-hex via `mbedtls/md.h`. Algorithme aligné serveur (`App\Security\SignatureValidator`) : `message = timestamp + "\n" + nonce + "\n" + body`.
+
+[`src/web_client.cpp::httpRequest`](src/web_client.cpp) ajoute trois en-têtes HTTP **en complément** du body `api_key=...` :
+
+- `X-Sig-Timestamp` : `time(nullptr)` (epoch UTC).
+- `X-Sig-Nonce` : nonce 16 hex.
+- `X-Sig-Hmac` : HMAC-SHA256 lower-hex (64 chars).
+
+Si `Secrets::API_SIG_SECRET` n'est pas configuré, les en-têtes ne sont pas envoyés (rétrocompat full legacy : aucun firmware existant ne casse).
+
+### Secrets — modèle enrichi
+
+[`include/secrets_config.h.example`](include/secrets_config.h.example) documente deux nouvelles sections optionnelles :
+
+- `API_SIG_SECRET` : secret partagé HMAC (correspond à `.env API_SIG_SECRET` serveur). Activation via `#define SECRETS_INCLUDE_API_SIG_SECRET 1`.
+- `OTA_PUBLIC_KEY_HEX` : clé publique Ed25519 32 octets / 64 hex (préparation v13.85). Activation via `#define SECRETS_INCLUDE_OTA_PUBLIC_KEY 1`.
+
+### Signature OTA Ed25519 — préparation (implémentation différée v13.85)
+
+Module `Ed25519` non encore intégré (mbedtls intermédiaire, ou bien libsodium plus lourd). La signature OTA reste basée sur MD5 en v13.80. Documentation prête pour la mise en œuvre :
+
+- `metadata.json` enrichi avec un champ `signature` (à coordonner avec `IOT_n3/scripts/publish_ota.ps1`).
+- `ota_manager.cpp` validera la signature **en plus** du MD5 si `OTA_PUBLIC_KEY_HEX` configuré.
+- En v13.90, la signature deviendra obligatoire en production.
+
+### Coordination serveur (prérequis avant déploiement pilote)
+
+Avant de flasher un appareil en `wroom-prod-https`, vérifier côté `serveur/src/Security/SignatureValidator.php` que :
+
+1. Les routes acceptent les en-têtes `X-Sig-Timestamp`, `X-Sig-Nonce`, `X-Sig-Hmac`.
+2. Le `SignatureValidator` valide en priorité HMAC s'il est présent, sinon fallback `api_key` (mode dual).
+3. `.env API_SIG_SECRET` est configuré côté serveur avec la même valeur que `Secrets::API_SIG_SECRET` firmware.
+4. Le certificat HTTPS de `iot.olution.info` est valide (Let's Encrypt typiquement) ; le firmware utilise désormais `esp_crt_bundle_attach` avec `skip_cert_common_name_check = false` depuis v13.60.
+
+### Plan de bascule v13.90
+
+Après 1-2 semaines de validation pilote sans régression :
+
+- `USE_HTTPS_ENDPOINTS` activé par défaut sur `wroom-prod` et `wroom-s3-prod`.
+- HMAC obligatoire si `API_SIG_SECRET` configuré ; échec auth → fallback NVS (queue offline, comportement existant pour POST échoué).
+- Flag `USE_LEGACY_HTTP` pour fallback explicite (transition d'appareils non encore mis à jour).
+- Signature OTA Ed25519 obligatoire en prod (si implémentée v13.85).
+
+### Prochain incrément
+
+v13.85 (futur) : implémenter signature OTA Ed25519.
+v13.90 : bascule HTTPS+HMAC par défaut après validation pilote.
+
+---
+
 ## Version 13.70 - 2026-05-20
 
 ### Audit général 2026-05 — robustesse mémoire/réseau + tests Unity (Incrément 5/7)
