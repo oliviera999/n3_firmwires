@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-13.60-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.65-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -109,6 +109,13 @@ ffp5cs/
 
 ### 🔄 Améliorations Récentes (audit général 2026-05)
 
+**v13.65 — refactor architecture ciblé (gros découpages reportés à v13.66+)**
+- [x] Mailer : footer mail utilise le cache capteurs (au lieu de `sensors.read()` bloquant 1-7s)
+- [x] Automatism : `getCachedReadings()` ajouté (non bloquant) avec fallbacks `SensorConfig::Fallback::*`
+- [ ] Découpage `app_tasks.cpp` (1709 l.) → reporté v13.66 (validation hardware requise)
+- [ ] Extraction routes admin de `web_server.cpp` (1949 l.) → reporté v13.67
+- [ ] `app_context.h` forward declarations + `extern` globals → reporté v13.68
+
 **v13.60 — hygiène + sécurité moyenne + restauration beta-local**
 - [x] 6 façades `config_*.h` + `board_traits.h` (constexpr) — préparation découpage `config.h`
 - [x] CORS `*` retiré sur `/dbvars`, `/json`, `/wifi/*`, `/debug-logs` (UI same-origin)
@@ -116,9 +123,9 @@ ffp5cs/
 - [x] AP secours S3 : WPA2 via `Secrets::AP_FALLBACK_PASSWORD` (legacy: ouvert)
 - [x] `lib_deps` Async épinglées (`AsyncTCP@3.3.5`, `ESPAsyncWebServer@3.7.6`)
 - [x] `platformio.ini` documenté (matrice des 13 environnements en commentaire)
-- [x] Suite `wroom-beta-local` restaurée (5 scripts + JSON scenarios + `.env.example`)
-- [x] `platformio-native.ini` restauré (env tests Unity) + `build_all_envs.ps1`
-- [x] `include/local_server_overrides.h.example` restauré
+- [x] Suite `wroom-beta-local` vérifiée présente (5 scripts + JSON scenarios + `.env.example`)
+- [x] `platformio-native.ini` + `build_all_envs.ps1` vérifiés présents (audit corrigé)
+- [x] `include/local_server_overrides.h.example` vérifié présent
 
 **v13.53 — fonctionnel critique**
 - [x] `wlAqua = 0` corrigé : fallback sur `_lastValidWlAqua` puis `Fallback::WATER_LEVEL_AQUA` (évite fausse alerte inondation)
@@ -138,7 +145,7 @@ ffp5cs/
 - [x] Bug correction `API_KEY = API_KEY` (auto-référence) dans `include/config.h`
 - [x] `static_assert PROFILE_PROD` rejette le placeholder `CHANGEZ_MOI` pour `API_KEY` et `WEB_AUTH_PASS`
 
-> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → **v13.60 (hygiène + beta-local)** → v13.65 (refactor) → v13.70 (robustesse) → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
+> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène + beta-local) → **v13.65 (refactor ciblé)** → v13.70 (robustesse) → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable
@@ -197,6 +204,7 @@ pio run -e wroom-test -t uploadfs
 L'historique complet est tenu dans **[VERSION.md](VERSION.md)** (source unique).
 
 Versions récentes :
+- **v13.65** (2026-05) — Audit général : refactor architecture ciblé (mailer cache, Automatism::getCachedReadings). Découpages app_tasks.cpp / web_server.cpp reportés à v13.66+.
 - **v13.60** (2026-05) — Audit général : hygiène + sécurité moyenne (CORS, OTA CN, AP WPA2, lib_deps épinglées, façades config_*.h, board_traits.h) + restauration suite beta-local.
 - **v13.53** (2026-05) — Audit général : fonctionnel critique (wlAqua/wlPota fallback, GPIOMap via Pins::*, SMTP feed TWDT, mutex HTTP timeout, initWatchdog factorisé).
 - **v13.52** (2026-05) — Audit général : sécurité web critique (auth routes admin, WebSocket auth, cookie hardened, bug API_KEY corrigé, /wifi/saved sans mdp).

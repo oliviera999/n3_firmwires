@@ -196,8 +196,18 @@ static const char* buildLightFooter() {
       strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M", &tmInfo);
     }
   }
+  // v13.65 (audit): utiliser le cache au lieu de sensors.read() (1-7s bloquant) pour
+  // remplir le footer mail. Si pas de cache valide, utiliser la valeur fallback.
   extern SystemSensors sensors;
-  float tempWater = sensors.read().tempWater;
+  float tempWater;
+  {
+    SensorReadings cached{};
+    if (sensors.getLastCachedReadings(cached) && !isnan(cached.tempWater)) {
+      tempWater = cached.tempWater;
+    } else {
+      tempWater = SensorConfig::Fallback::TEMP_WATER;
+    }
+  }
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t minHeap = ESP.getMinFreeHeap();
   size_t psramSize = ESP.getPsramSize();

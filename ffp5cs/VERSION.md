@@ -12,6 +12,44 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.65 - 2026-05-20
+
+### Audit général 2026-05 — refactor architecture ciblé (Incrément 4/7)
+
+Le rapport d'audit identifiait trois monolithes à découper : `app_tasks.cpp` (1709 l.), `web_server.cpp` (1949 l.), `ota_manager.cpp` (1963 l.), plus le couplage `extern` dans `web_server.cpp` et la cascade d'includes de `app_context.h`. Ces refactors profonds (volume important + risque de régression réseau/tâches) sont **reportés à des releases dédiées** (v13.66+) pour les traiter avec un seul focus et une validation hardware approfondie.
+
+Cet incrément livre les wins ciblés à faible risque :
+
+### Mailer — utilisation du cache capteurs
+
+[`src/mailer.cpp`](src/mailer.cpp:199-200) `buildLightFooter()` faisait `sensors.read().tempWater` — lecture capteurs **bloquante 1-7 s** depuis le contexte mailer (donc autoTask ou MailTask), alors qu'une lecture cache suffit pour un footer informationnel.
+
+Correctif : utiliser `sensors.getLastCachedReadings()`. Si le cache n'est pas encore disponible, utiliser `SensorConfig::Fallback::TEMP_WATER`. Effet : footer mail jamais bloqué sur lecture capteur.
+
+### Automatism — `getCachedReadings()` ajouté pour usage non bloquant
+
+[`include/automatism.h`](include/automatism.h:143) exposait `readSensors() const { return _sensors.read(); }` — une **lecture bloquante** accessible à tout consommateur. Risque : appel inadvertant depuis `webTask` ou un autre contexte non préparé à attendre 1-7 s.
+
+Ajouté : `getCachedReadings()` (non bloquant, retourne le cache `SystemSensors` ou des fallbacks `SensorConfig::Fallback::*`). `readSensors()` reste disponible pour les callers internes qui peuvent attendre (autoTask). Documentation explicite des deux usages dans le header.
+
+### Refactors différés (à venir)
+
+| Sujet | Fichier | Lignes | Cible release |
+|---|---|---:|---|
+| Découper `app_tasks.cpp` (netTask, postSenderTask, otaTask) | `src/app_tasks.cpp` | 1709 | v13.66 |
+| Extraire routes admin de `web_server.cpp` | `src/web_server.cpp` | 1949 | v13.67 |
+| `app_context.h` → forward declarations | `include/app_context.h` | 30 | v13.68 |
+| `extern` globals dans `web_server.cpp` → `AppContext&` | `src/web_server.cpp` | (nombreux call sites) | v13.68 |
+| Nettoyage commentaires `// v11.*` éparpillés | src/* + include/* | (script grep) | v13.66 |
+
+Justification du report : ces refactors touchent à des pools réseau FreeRTOS, des handles de tâches statiques, et à beaucoup de call sites — un build cassé sur l'une des 13 cibles PlatformIO est probable sans validation hardware extensive. Les livrer en releases ciblées (une par sujet) permet une validation focalisée et un rollback simple en cas de problème.
+
+### Prochain incrément
+
+v13.70 : robustesse mémoire/réseau + tests Unity (NVS isKey pattern généralisé, heartbeat slot réservé, MIN_HEAP_FOR_SMTP/HTTPS distincts, esp_ota_mark_app_valid_cancel_rollback explicite, tests sensor_validation/server_url_config/gpio_mapping, inventaire DRAM actualisé).
+
+---
+
 ## Version 13.60 - 2026-05-20
 
 ### Audit général 2026-05 — hygiène + sécurité moyenne + restauration beta-local (Incrément 3/7)
@@ -77,20 +115,20 @@ Les libs réseau Async étaient flottantes (régressions silencieuses) :
 
 Bloc d'en-tête commenté listant les 13 environnements : objectif et flags clés de chacun (`wroom-prod`, `wroom-test`, `wroom-beta`, `wroom-beta-local`, `wroom-s3-prod`, `wroom-s3-test`, `wroom-s3-test-psram`, `-psram-v2`, `-devkit`, `-usb`, `wroom-tls-test`). Rappel : `default_envs=wroom-test` est le défaut **dev** uniquement, livraison via `wroom-prod` / `wroom-s3-prod`.
 
-### Restauration — suite `wroom-beta-local` + `platformio-native.ini` + `build_all_envs.ps1`
+### Vérification — suite `wroom-beta-local` + `platformio-native.ini` + `build_all_envs.ps1`
 
-Plusieurs fichiers étaient documentés (`firmwires/README.md`, `docs/README.md`, règles Cursor) mais absents du dépôt sur la branche actuelle. Restaurés depuis l'historique :
+Le rapport d'audit indiquait certains fichiers comme manquants ; vérification approfondie : tous sont en réalité **présents** sur le HEAD de la branche actuelle (problème d'indexation de l'outil de recherche initial). Confirmé via `git ls-files` :
 
-- `scripts/run_wroom_beta_local_test_suite.ps1` (7550 o)
-- `scripts/test_wroom_beta_local_docker_integration.ps1` (11651 o)
-- `scripts/test_wroom_beta_local_serial.ps1` (3400 o)
-- `scripts/wroom_beta_local_test_scenarios.json` (727 o)
-- `scripts/.beta-local-test.env.example` (620 o)
-- `include/local_server_overrides.h.example` (255 o)
-- `platformio-native.ini` (517 o) — env native pour `pio test`
-- `scripts/build_all_envs.ps1` (7556 o)
+- `scripts/run_wroom_beta_local_test_suite.ps1` (7550 o) ✓
+- `scripts/test_wroom_beta_local_docker_integration.ps1` (11651 o) ✓
+- `scripts/test_wroom_beta_local_serial.ps1` (3400 o) ✓
+- `scripts/wroom_beta_local_test_scenarios.json` (727 o) ✓
+- `scripts/.beta-local-test.env.example` (620 o) ✓
+- `include/local_server_overrides.h.example` (255 o) ✓
+- `platformio-native.ini` (517 o) ✓ — env native pour `pio test`
+- `scripts/build_all_envs.ps1` (7556 o) ✓
 
-Permet à nouveau d'exécuter `pio test -c platformio-native.ini` (tests Unity) et la batterie de validation `wroom-beta-local` contre Docker.
+`pio test -c platformio-native.ini` (tests Unity) et la batterie `wroom-beta-local` Docker sont fonctionnels.
 
 ### Prochain incrément
 

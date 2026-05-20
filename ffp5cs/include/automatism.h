@@ -139,7 +139,24 @@ class Automatism {
   // Applique des variables de configuration depuis un document JSON local (NVS)
   void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
   
-  // Accessor pour modules (permet l'accès contrôlé à _sensors)
+  // v13.65 (audit): exposition contrôlée des capteurs.
+  // - getCachedReadings()  -> lecture cache (non bloquant), à utiliser depuis webTask / mail / etc.
+  // - readSensors()        -> lecture directe BLOQUANTE (1-7 s). À réserver à automationTask
+  //                          ou aux flux qui peuvent tolérer une attente capteur.
+  SensorReadings getCachedReadings() const {
+    SensorReadings r{};
+    if (!_sensors.getLastCachedReadings(r)) {
+      // Pas de cache encore disponible : valeurs fallback sûres (cohérent avec /json).
+      r.tempWater = SensorConfig::Fallback::TEMP_WATER;
+      r.tempAir = SensorConfig::Fallback::TEMP_AIR;
+      r.humidity = SensorConfig::Fallback::HUMIDITY;
+      r.wlAqua = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f);
+      r.wlTank = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f);
+      r.wlPota = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f);
+      r.luminosite = SensorConfig::Fallback::LUMINOSITY;
+    }
+    return r;
+  }
   SensorReadings readSensors() const { return _sensors.read(); }
   
   // Méthodes pour envoi email (exposées pour AutomatismSleep et AutomatismSync)
