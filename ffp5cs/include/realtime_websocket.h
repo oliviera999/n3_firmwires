@@ -37,6 +37,9 @@ extern RealtimeWebSocket g_realtimeWebSocket;
 // Forward declaration
 class Automatism;
 
+// v13.52 (audit sécurité): défini dans web_server.cpp pour validation token session web.
+bool webAuthIsTokenValid(const char* token);
+
 /**
  * Serveur WebSocket pour les mises à jour temps réel
  * Compatible ESP32 et ESP32-S3
@@ -67,7 +70,15 @@ private:
     static constexpr unsigned long NO_CLIENT_HEARTBEAT_INTERVAL_MS = 30000;
     // 60s avant considérer inactif
     static constexpr unsigned long CLIENT_INACTIVITY_TIMEOUT_MS = 60000;
-    
+
+    // v13.52 (audit sécurité): authentification WebSocket obligatoire.
+    // Le client doit envoyer `{"type":"auth","token":"<token>"}` dans WS_AUTH_GRACE_MS,
+    // sinon on le déconnecte. Token = même valeur que cookie ffp5cs_auth (32 hex).
+    static constexpr unsigned long WS_AUTH_GRACE_MS = 5000;  // 5 s pour s'authentifier
+    static constexpr size_t WS_MAX_INTERNAL = 16;            // borne sup pour _clientAuthorized
+    bool _clientAuthorized[WS_MAX_INTERNAL] = {false};
+    unsigned long _clientConnectedAt[WS_MAX_INTERNAL] = {0};
+
     unsigned long lastBroadcast = 0;
     uint8_t _periodicBroadcastCount = 0;  // Pour envoyer dbVars périodiquement (page Contrôles)
     std::atomic<unsigned long> lastClientActivity{0};  // Atomic pour accès multi-tâches
@@ -155,6 +166,10 @@ public:
         switch (type) {
             case WStype_DISCONNECTED:
                 Serial.printf("[WebSocket] Client %u déconnecté\n", num);
+                if (num < WS_MAX_INTERNAL) {
+                    _clientAuthorized[num] = false;
+                    _clientConnectedAt[num] = 0;
+                }
                 // Vérifier s'il reste des clients actifs
                 if (webSocket.connectedClients() == 0) {
                     _hasActiveClients.store(false);
@@ -165,14 +180,21 @@ public:
                 
             case WStype_CONNECTED: {
                 IPAddress ip = webSocket.remoteIP(num);
-                Serial.printf("[WebSocket] Client %u connecté depuis %d.%d.%d.%d\n",
+                Serial.printf("[WebSocket] Client %u connecté depuis %d.%d.%d.%d (auth requise)\n",
                               num, ip[0], ip[1], ip[2], ip[3]);
-                
-                // Notifier l'activité client et réveiller le système si nécessaire
+
+                // v13.52: client non autorisé tant qu'il n'a pas envoyé un token valide.
+                if (num < WS_MAX_INTERNAL) {
+                    _clientAuthorized[num] = false;
+                    _clientConnectedAt[num] = millis();
+                }
                 notifyClientActivity();
-                
-                // Envoyer les données actuelles au nouveau client
-                sendCurrentData(num);
+
+                // Demander l'auth (le client doit répondre avec {"type":"auth","token":"..."}).
+                if (webSocket.connectedClients() > 0) {
+                    webSocket.sendTXT(num, "{\"type\":\"auth_required\",\"timeout_ms\":5000}");
+                }
+                // sendCurrentData différé jusqu'à validation (cf. handleClientMessage).
                 break;
             }
             
@@ -219,18 +241,64 @@ public:
         // Traiter les commandes
         if (doc["type"].is<const char*>()) {
             const char* type = doc["type"].as<const char*>();
-            
+
+            // v13.52: gestion explicite du message d'authentification.
+            if (type && strcmp(type, "auth") == 0) {
+                const char* token = doc["token"].as<const char*>();
+                bool valid = webAuthIsTokenValid(token);
+                if (valid && clientNum < WS_MAX_INTERNAL) {
+                    _clientAuthorized[clientNum] = true;
+                    if (webSocket.connectedClients() > 0) {
+                        webSocket.sendTXT(clientNum, "{\"type\":\"auth_ok\"}");
+                    }
+                    sendCurrentData(clientNum);
+                } else {
+                    if (webSocket.connectedClients() > 0) {
+                        webSocket.sendTXT(clientNum, "{\"type\":\"auth_fail\"}");
+                    }
+                    webSocket.disconnect(clientNum);
+                }
+                return;
+            }
+
+            // v13.52: refuser tout autre message tant que le client n'est pas authentifié.
+            const bool authorized = (clientNum < WS_MAX_INTERNAL) && _clientAuthorized[clientNum];
+            if (!authorized) {
+                if (webSocket.connectedClients() > 0) {
+                    webSocket.sendTXT(clientNum, "{\"type\":\"error\",\"message\":\"unauthenticated\"}");
+                }
+                return;
+            }
+
             if (type && strcmp(type, "ping") == 0) {
-                // Répondre au ping
                 sendPong(clientNum);
             } else if (type && strcmp(type, "subscribe") == 0) {
-                // Client s'abonne aux mises à jour
                 sendCurrentData(clientNum);
             } else if (type && strcmp(type, "control") == 0 && doc["action"].is<const char*>()) {
-                // Commande de contrôle (si autorisé)
                 const char* action = doc["action"].as<const char*>();
                 if (action) {
                     handleControlCommand(clientNum, action);
+                }
+            }
+        }
+    }
+
+    // v13.52 (audit sécurité): déconnexion automatique des clients qui ne s'authentifient pas
+    // dans le délai de grâce. Appelé périodiquement par broadcastSensorData/loop.
+    void enforceAuthGrace() {
+        unsigned long now = millis();
+        for (uint8_t i = 0; i < WS_MAX_INTERNAL; i++) {
+            if (_clientConnectedAt[i] != 0 && !_clientAuthorized[i]) {
+                if ((long)(now - (_clientConnectedAt[i] + WS_AUTH_GRACE_MS)) >= 0) {
+                    if (webSocket.clientIsConnected(i)) {
+                        Serial.printf("[WebSocket] Client %u non authentifié - déconnexion (grace %lums dépassée)\n",
+                                      i, WS_AUTH_GRACE_MS);
+                        if (webSocket.connectedClients() > 0) {
+                            webSocket.sendTXT(i, "{\"type\":\"auth_timeout\"}");
+                        }
+                        webSocket.disconnect(i);
+                    }
+                    _clientConnectedAt[i] = 0;
                 }
             }
         }
@@ -426,7 +494,7 @@ public:
                 char json[2048];
                 size_t len = serializeJson(doc, json, sizeof(json));
                 if (len > 0 && len < sizeof(json) && webSocket.connectedClients() > 0) {
-                    webSocket.broadcastTXT(json);
+                    broadcastTxtAuthorized(json);  // v13.52: clients authentifiés uniquement
                 }
             } else {
                 // JSON minimal (données essentielles uniquement)
@@ -456,7 +524,7 @@ public:
                 char json[512];
                 serializeJson(doc, json, sizeof(json));
                 if (webSocket.connectedClients() > 0) {
-                    webSocket.broadcastTXT(json);
+                    broadcastTxtAuthorized(json);  // v13.52: clients authentifiés uniquement
                 }
             }
 
@@ -484,7 +552,7 @@ public:
         // Envoi direct sans mutex pour éviter les deadlocks
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
-            webSocket.broadcastTXT(json);
+            broadcastTxtAuthorized(json);  // v13.52: clients authentifiés uniquement
         }
         Serial.printf("[WebSocket] ✅ Confirmation action: %s = %s\n",
                       action ? action : "(null)",
@@ -577,7 +645,7 @@ public:
         serializeJson(doc, json, sizeof(json));
         // Vérifier qu'il y a des clients connectés avant envoi
         if (webSocket.connectedClients() > 0) {
-            webSocket.broadcastTXT(json);
+            broadcastTxtAuthorized(json);  // v13.52: clients authentifiés uniquement
         }
         
         lastBroadcast = millis();
@@ -592,6 +660,16 @@ public:
     void loop() {
         if (_isActive) {
             webSocket.loop();
+            enforceAuthGrace();  // v13.52: déconnecter les clients non authentifiés en délai
+        }
+    }
+
+    // v13.52 (audit sécurité): broadcast uniquement vers les clients ayant validé leur token.
+    void broadcastTxtAuthorized(const char* msg) {
+        for (uint8_t i = 0; i < WS_MAX_INTERNAL; i++) {
+            if (_clientAuthorized[i] && webSocket.clientIsConnected(i)) {
+                webSocket.sendTXT(i, msg);
+            }
         }
     }
     

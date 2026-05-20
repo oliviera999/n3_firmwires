@@ -14,6 +14,8 @@ bool ensureHeapForRoute(AsyncWebServerRequest* req, uint32_t minHeap, const __Fl
 // Auth web locale (implémentées dans web_server.cpp, utilisées par routes protégées)
 bool webAuthIsAuthenticated(AsyncWebServerRequest* req);
 void webAuthSendRequired(AsyncWebServerRequest* req);
+// v13.52: variante WebSocket - compare un token en clair reçu via payload JSON.
+bool webAuthIsTokenValid(const char* token);
 
 namespace WebRoutes {
 void registerStatusRoutes(AsyncWebServer& server, AppContext& ctx);

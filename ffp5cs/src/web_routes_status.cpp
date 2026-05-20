@@ -162,6 +162,10 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
 
       sendJsonResponse(req, statusDoc);
     } else if (strcmp(action, "feed") == 0) {
+      // v13.52 (audit sécurité): nourrissage à distance protégé par auth web locale.
+      // L'action "status" reste accessible sans auth pour le réveil/monitoring depuis le LAN.
+      if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
+
       const char* feedType = json["feedType"].as<const char*>();
       if (!feedType) feedType = "small";
       const bool isBig = (strcmp(feedType, "big") == 0);
@@ -288,7 +292,10 @@ void registerServerStatus(AsyncWebServer& server, AppContext& ctx) {
 }
 
 void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
+  // v13.52 (audit sécurité): GET et POST protégés - les flags d'envoi/réception serveur
+  // sont des contrôles administratifs (un attaquant pourrait couper la télémétrie).
   server.on("/api/remote-flags", HTTP_GET, [&ctx](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     doc["sendEnabled"] = ctx.config.isRemoteSendEnabled();
     doc["recvEnabled"] = ctx.config.isRemoteRecvEnabled();
@@ -296,6 +303,7 @@ void registerRemoteFlags(AsyncWebServer& server, AppContext& ctx) {
   });
 
   server.on("/api/remote-flags", HTTP_POST, [&ctx](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
     bool changed = false;
     if (req->hasParam("send", true)) {
       const AsyncWebParameter* pSend = req->getParam("send", true);

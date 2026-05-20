@@ -6,16 +6,29 @@
 #include "server_url_config.h"
 
 // API_KEY : secrets_config.h > credentials.h (firmwires/) > défaut. Aligné avec msp/n3pp et serveur .env.
+//
+// v13.52: correction du bug auto-référence `API_KEY = API_KEY` dans la branche credentials.h.
+//   credentials.h (firmwires/credentials.h) utilise `#define API_KEY "..."` (macro). L'ancien code
+//   `constexpr const char* API_KEY = API_KEY;` voyait sa LHS et sa RHS toutes deux remplacées par
+//   le préprocesseur en `constexpr const char* "..." = "...";`, ce qui ne compile pas.
+//   On capture la valeur via un macro intermédiaire puis on `#undef` pour éviter la pollution.
 #if __has_include("secrets_config.h")
     #include "secrets_config.h"
 #elif __has_include("../../credentials.h")
     #include "../../credentials.h"
+    #ifdef API_KEY
+        #define FFP5CS_CRED_API_KEY_VALUE API_KEY
+        #undef API_KEY
+    #else
+        #define FFP5CS_CRED_API_KEY_VALUE "CHANGEZ_MOI"
+    #endif
     namespace Secrets {
-        constexpr const char* API_KEY = API_KEY;
+        constexpr const char* API_KEY = FFP5CS_CRED_API_KEY_VALUE;
         constexpr const char* DEFAULT_RECIPIENT = "changez@moi.example";
         constexpr const char* WEB_AUTH_USER = "admin";
         constexpr const char* WEB_AUTH_PASS = "CHANGEZ_MOI";  // Remplacer dans secrets_config.h
     }
+    #undef FFP5CS_CRED_API_KEY_VALUE
 #else
     namespace Secrets {
         constexpr const char* API_KEY = "CHANGEZ_MOI";
@@ -23,6 +36,20 @@
         constexpr const char* WEB_AUTH_USER = "admin";
         constexpr const char* WEB_AUTH_PASS = "CHANGEZ_MOI";  // Obligatoire : configurer dans secrets_config.h
     }
+#endif
+
+// v13.52: Helper constexpr et static_assert pour rejeter en PROFILE_PROD un secret resté
+// au placeholder "CHANGEZ_MOI" (oubli de configurer secrets_config.h).
+namespace SecretsValidation {
+    constexpr bool strEq(const char* a, const char* b) {
+        while (*a && *b && *a == *b) { ++a; ++b; }
+        return *a == *b;
+    }
+}
+#if defined(PROFILE_PROD)
+static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
+    "PROFILE_PROD: Secrets::API_KEY vaut encore le placeholder \"CHANGEZ_MOI\". "
+    "Configurer firmwires/ffp5cs/include/secrets_config.h avec une vraie cle API.");
 #endif
 
 // =============================================================================
@@ -35,36 +62,9 @@
 // 1. VERSION ET IDENTIFICATION
 // -----------------------------------------------------------------------------
 namespace ProjectConfig {
-    // v13.02: Doc PSRAM S3 (choix d'env, axe 2), commentaire POST_PAYLOAD_MAX_SIZE S3 PSRAM.
-    // v13.03: Stack postSender 8 KB sur S3 (évite Stack canary / crash en boucle).
-    // v13.04: NVS manager logs via BOOT_LOG sur S3 PSRAM (Serial non démarré au boot).
-    // v13.05: Test OTA (incrément version pour validation déploiement OTA).
-    // v13.06: Incrément pour déploiement OTA unifié (n3pp, msp, ffp5cs).
-    // v13.07: OTA prioritaire — tâche dédiée otaTask (priorité 3, stack 12 KB), netTask ne fait plus l'OTA.
-    // v13.08: Test OTA — déploiement serveur (wroom-beta et canaux associés).
-    // v13.10: WROOM — postSender 8 Ko (stack canary HTTPS) ; TWDT dans waitForNetworkReady (DNS).
-    // v13.11: OTA — priorité absolue (10) pendant checkForUpdate/performUpdate.
-    // v13.12: OTA_BASE_PATH /ota/ (publication unifiée serveur/ota/, plus /ffp3/ota).
-    // v13.22: Cible OTA pour validation end-to-end wroom-beta.
-    // v13.25: Incrément pour test OTA distant (canal beta).
-    // v13.28: Correctif boot WROOM-beta après P1 (rollback normalisation stack, netRPC conservé).
-    // v13.29: Correctif boot loop Cache error (sdkconfig.defaults WROOM restauré depuis dernier état sain).
-    // v13.30: Ajustement DRAM beta-only (stacks statiques) pour rétablir le link wroom-beta.
-    // v13.31: Test OTA aquaponie-test (canal metadata test / esp32-wroom-beta).
-    // v13.32: Reset local/distant: OTA prioritaire si disponible avant ESP.restart().
-    // v13.33: Passage des mesures ultrasons en millimètres (acquisition, filtrage, seuils convertis cm->mm).
-    // v13.34: Publication OTA wroom-beta + wroom-prod.
-    // v13.35: Rebuild et republication OTA beta/prod pour validation chaîne mm.
-    // v13.39: Suite de tests wroom-beta-local (URL locale externalisee + scripts serial/docker + tests URL natifs).
-    // v13.40: Integration Docker beta-local (auth token/session), batterie de tests et secrets locaux non versionnes.
-    // v13.41: Doc ffp5cs (README tests beta-local, inventaire scripts sans doublon).
-    // v13.44: Mutex GET/POST partagé + quiesce HTTP avant veille légère.
-    // v13.45: sdkconfig WROOM (CPU/SPIRAM) + retrait LTO wroom-prod (panic cache esp_flash_init).
-    // v13.46: saveBool NVS — première écriture des bool (snap_* veille) ; logs diagnostic snapshot.
-    // v13.47: Test OTA distant (metadata test > 13.46) + chaîne triggerOtaCheck serveur persistée BDD.
-    // v13.49: Journaux série — phases HTTP/WiFi explicites, file postSender vs verdict HTTP, moins de bruit DBG.
-    // v13.51: netRPC GET outputs/state — libération du slot aussi après échec notifié.
-    inline constexpr const char* VERSION = "13.51";
+    // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
+    // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
+    inline constexpr const char* VERSION = "13.52";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -389,6 +389,13 @@ namespace WebAuthConfig {
     inline constexpr size_t WEB_AUTH_COOKIE_NAME_LEN = 11;  // "ffp5cs_auth"
     inline constexpr size_t WEB_AUTH_TOKEN_HEX_LEN = 32;     // 16 bytes en hex
 }
+
+// v13.52: refus en PROFILE_PROD si le mot de passe d'admin web est resté au placeholder.
+#if defined(PROFILE_PROD)
+static_assert(!SecretsValidation::strEq(WebAuthConfig::WEB_AUTH_PASS, "CHANGEZ_MOI"),
+    "PROFILE_PROD: WebAuthConfig::WEB_AUTH_PASS vaut encore le placeholder \"CHANGEZ_MOI\". "
+    "Configurer secrets_config.h avec WEB_AUTH_PASS et definir SECRETS_INCLUDE_WEB_AUTH.");
+#endif
 
 namespace ServerConfig {
     // URL serveurs (prod/test/local) resolues dans un header testable en natif.

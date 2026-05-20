@@ -12,6 +12,72 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.52 - 2026-05-20
+
+### Audit général 2026-05 — sécurité critique web (Incrément 1/7)
+
+Démarrage de la roadmap audit consolidé (rapport complet : `docs/reports/AUDIT_GENERAL_2026-05.md`). Cet incrément couvre les **bloquants sécurité web local** identifiés par les six sous-audits parallèles (architecture, réseau/OTA, mémoire/RTOS, capteurs/automatismes, sécurité/web, build/tests/doc).
+
+### Sécurité — secrets et configuration
+
+- **Bug `API_KEY = API_KEY` corrigé** (`include/config.h:11-26`). L'ancienne branche `__has_include("../../credentials.h")` faisait `constexpr const char* API_KEY = API_KEY;` qui, après expansion préprocesseur du macro `#define API_KEY "..."` côté `firmwires/credentials.h`, devenait `constexpr const char* "..." = "...";` (invalide). Capture de la valeur via macro intermédiaire `FFP5CS_CRED_API_KEY_VALUE` puis `#undef` pour libérer le nom avant la déclaration `constexpr`.
+- **`static_assert` PROFILE_PROD** : refus de compilation si `Secrets::API_KEY` ou `WebAuthConfig::WEB_AUTH_PASS` valent encore le placeholder `"CHANGEZ_MOI"` (helper `SecretsValidation::strEq` constexpr). Évite la mise en production avec des secrets non configurés.
+- **`include/secrets_config.h.example`** enrichi (`WEB_AUTH_USER`, `WEB_AUTH_PASS`, `SECRETS_INCLUDE_WEB_AUTH`).
+- **Nettoyage commentaires** : 30+ lignes `// v13.0x ... // v13.51` purgées de `config.h` au-dessus de `VERSION` (l'historique vit désormais uniquement dans `VERSION.md`).
+
+### Sécurité — interface web locale (audit sous-agent 5)
+
+Plusieurs routes administratives étaient accessibles **sans authentification** sur le LAN : un tiers connecté au même réseau pouvait nourrir les poissons à distance, désactiver l'envoi de télémétrie, envoyer des emails arbitraires depuis l'ESP32, déclencher l'OTA, formater le système de fichiers, ou récupérer les mots de passe WiFi en clair.
+
+- **`POST /api/wakeup` action `feed`** (`web_routes_status.cpp`) — auth obligatoire (l'action `status` reste publique pour réveil/monitoring).
+- **`GET / POST /api/remote-flags`** (`web_routes_status.cpp`) — auth obligatoire sur les deux verbes (contrôle administratif de la télémétrie).
+- **`GET /mailtest`** (`web_server.cpp`) — auth obligatoire (envoi mail arbitraire).
+- **`GET /testota`** (`web_server.cpp`) — auth obligatoire.
+- **`GET /fs/format?confirm=1`** (`web_server.cpp`, `FFP_ENABLE_DANGEROUS_ENDPOINTS`) — auth obligatoire.
+- **`GET /wifi/saved`** (`web_server.cpp`) — ne renvoie plus les mots de passe en clair, juste `{"ssid":..., "hasPassword":bool}` pour les réseaux statiques (`secrets.h`) et NVS.
+
+### Sécurité — cookie de session web (audit sous-agent 5)
+
+L'entropie du token de session était faible (`random()` + `randomSeed(micros()+heap)`), le cookie n'était pas marqué `HttpOnly` ni `SameSite`, pas d'expiration, pas de rotation au login.
+
+- **Entropie HW RNG** : `esp_fill_random(raw, 16)` via `esp_random.h` au lieu de `random()`. Token toujours 32 hex.
+- **Flags cookie** : `HttpOnly` (anti-XSS), `SameSite=Strict` (anti-CSRF), `Max-Age=86400` (TTL 24 h). Pas de `Secure` car HTTP en LAN ; à activer le jour où HTTPS local sera disponible.
+- **Rotation systématique** : token régénéré à chaque `/api/login` réussi (et plus seulement si vide).
+- **Expiration côté firmware** : `s_webAuthTokenExpiresAt` invalide le token après 24 h sans nouveau login.
+- **Logout effectif** : `/api/logout` invalide aussi le token côté firmware (pas seulement le cookie côté client).
+
+### Sécurité — WebSocket port 81 (audit sous-agent 5)
+
+Le serveur WebSocket diffusait en temps réel les capteurs, l'état des relais et `dbVars` (configuration) **sans aucune authentification**, sur le LAN — n'importe quel client pouvait se connecter et lire la configuration.
+
+- **Authentification obligatoire** : à la connexion, le firmware envoie `{"type":"auth_required","timeout_ms":5000}`. Le client doit répondre avec `{"type":"auth","token":"<32hex>"}` dans les 5 s, sinon il est déconnecté (`enforceAuthGrace` exécuté à chaque `loop()`).
+- **Token = session web** : nouveau symbole `webAuthIsTokenValid(const char*)` exposé par `web_server.cpp`, déclaré dans `web_routes_status.h`. Le token est aussi vérifié contre l'expiration TTL.
+- **Filtrage broadcast** : nouveau helper `broadcastTxtAuthorized(json)` qui itère les clients et n'envoie qu'à ceux dont `_clientAuthorized[num] = true`. Les diffusions périodiques (broadcastSensorData) et immédiates (broadcastNow) passent par ce helper. Les notifications système (`wifi_change`, `server_closing`, `auth_required`, `auth_fail`) restent diffusées à tous (intentionnel — pas de fuite de données).
+
+### Côté client web — propagation du token
+
+Le cookie est `HttpOnly` (donc inaccessible à JS) ; impossible de l'utiliser pour authentifier le WS. La réponse JSON de `/api/login` inclut désormais `wsToken` à stocker en `sessionStorage` ; le client WS l'envoie au handshake.
+
+- **`/api/login`** (firmware) : body `{"ok":true,"wsToken":"<32hex>"}`.
+- **`data/index.html`** : stocke `wsToken` dans `sessionStorage` après login, supprime au logout.
+- **`data/shared/websocket.js`** : envoie `{"type":"auth","token":wsToken}` immédiatement après `onopen`.
+
+### Documentation et version
+
+- `README.md` : badge `version-13.52`, env quick-start `wroom-s3-test` (l'ancien `s3-test` n'existait pas), section « Améliorations Récentes » réécrite avec le détail v13.52, historique réduit (lien vers `VERSION.md`), « Dernière mise à jour: 2026-05-20 ».
+- `docs/reports/AUDIT_GENERAL_2026-05.md` (nouveau, 616 lignes) : rapport consolidé des 6 sous-audits + plan d'action 7 incréments.
+
+### Prochains incréments
+
+- v13.53 : fonctionnel critique (`wlAqua` invalide, plages ultrason 4000/5000 mm, GPIOMap pompes, SMTP feed TWDT, mutex HTTP timeout au lieu de portMAX_DELAY).
+- v13.60 : hygiène + restauration suite `wroom-beta-local` + sécurité moyenne (AP WPA2, OTA CN check).
+- v13.65 : refactor architecture (`app_tasks.cpp` 1709 l. → 4 modules, `web_server.cpp` 1949 l. → routes extraites).
+- v13.70 : robustesse mémoire/réseau + tests Unity supplémentaires.
+- v13.80 : migration HTTPS + HMAC-SHA256 + signature OTA en mode dual rétrocompatible.
+- v13.90 : bascule HTTPS+HMAC par défaut après pilote 1-2 semaines.
+
+---
+
 ## Version 13.51 - 2026-05-18
 
 ### Réseau FFP3 — robustesse netRPC

@@ -20,6 +20,7 @@
 #include <esp_heap_caps.h>
 #include <cstdio>
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
+#include <esp_random.h>  // v13.52: esp_fill_random pour entropie token session web
 #ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
 #endif
@@ -74,10 +75,24 @@ static bool tryStartOtaBeforeReset(const char* sourceTag) {
 
 #ifndef DISABLE_ASYNC_WEBSERVER
 // Authentification web locale : token session (perdu au reboot)
+//
+// v13.52 (audit sécurité 2026-05) :
+// - Entropie : esp_fill_random (HW RNG) au lieu de random() + randomSeed (entropie faible).
+// - Cookie : flags HttpOnly + SameSite=Strict + Max-Age (TTL 24 h) pour limiter XSS et CSRF.
+// - Rotation : token régénéré à chaque /api/login réussi (et plus seulement si vide).
+// - TTL côté firmware : token invalidé après WEB_AUTH_TOKEN_TTL_MS sans /api/login.
 static char s_webAuthToken[WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN + 1] = {0};
+static unsigned long s_webAuthTokenExpiresAt = 0;  // 0 = pas de session active
+static constexpr unsigned long WEB_AUTH_TOKEN_TTL_MS = 24UL * 60UL * 60UL * 1000UL;  // 24 h
 
 static bool isAuthenticated(AsyncWebServerRequest* req) {
   if (s_webAuthToken[0] == '\0') return false;
+  // v13.52: vérifier expiration session (24 h sans login = forcer reconnexion)
+  if (s_webAuthTokenExpiresAt > 0 && (long)(millis() - s_webAuthTokenExpiresAt) >= 0) {
+    s_webAuthToken[0] = '\0';
+    s_webAuthTokenExpiresAt = 0;
+    return false;
+  }
   const AsyncWebHeader* h = req->getHeader("Cookie");
   if (!h || !h->value().length()) return false;
   const char* cookie = h->value().c_str();
@@ -105,13 +120,25 @@ void webAuthSendRequired(AsyncWebServerRequest* req) {
   sendAuthRequired(req);
 }
 
+// v13.52 (audit sécurité): variante utilisée par le WebSocket port 81 — pas d'accès aux
+// AsyncWebHeader, on compare directement le token reçu en payload `{"type":"auth","token":...}`.
+bool webAuthIsTokenValid(const char* token) {
+  if (!token || s_webAuthToken[0] == '\0') return false;
+  if (s_webAuthTokenExpiresAt > 0 && (long)(millis() - s_webAuthTokenExpiresAt) >= 0) return false;
+  if (strlen(token) != WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN) return false;
+  return strncmp(token, s_webAuthToken, WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN) == 0;
+}
+
+// v13.52: HW RNG (esp_fill_random) au lieu de random() — entropie cryptographique correcte.
+// Rotation systématique du token + (re)mise à jour TTL.
 static void generateWebAuthToken() {
-  randomSeed(micros() + (unsigned long)ESP.getFreeHeap());
-  for (size_t i = 0; i < 16; i++) {
-    uint8_t b = (uint8_t)(random(0, 256));
-    snprintf(s_webAuthToken + (i * 2), 3, "%02x", (unsigned)b);
+  uint8_t raw[16];
+  esp_fill_random(raw, sizeof(raw));
+  for (size_t i = 0; i < sizeof(raw); i++) {
+    snprintf(s_webAuthToken + (i * 2), 3, "%02x", (unsigned)raw[i]);
   }
   s_webAuthToken[WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN] = '\0';
+  s_webAuthTokenExpiresAt = millis() + WEB_AUTH_TOKEN_TTL_MS;
 }
 
 static bool getWebParam(AsyncWebServerRequest* req, const char* name, char* buf, size_t bufSize, bool post = true) {
@@ -499,19 +526,30 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_UNAUTHORIZED, "application/json", "{\"ok\":false,\"error\":\"invalid\"}");
       return;
     }
-    if (s_webAuthToken[0] == '\0') {
-      generateWebAuthToken();
-    }
-    AsyncWebServerResponse* response = req->beginResponse(NetworkConfig::HTTP_OK, "application/json", "{\"ok\":true}");
-    char cookieVal[64];
-    snprintf(cookieVal, sizeof(cookieVal), "ffp5cs_auth=%s; Path=/", s_webAuthToken);
+    // v13.52: rotation systématique du token à chaque login (limite vol par session ancien token).
+    generateWebAuthToken();
+    // v13.52: le token est aussi renvoyé dans le body JSON pour usage côté WebSocket
+    // (le cookie HttpOnly ne peut pas être lu par JS, donc le client stocke `wsToken`
+    // en sessionStorage et l'envoie via `{"type":"auth","token":...}` au handshake WS).
+    char body[96];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"wsToken\":\"%s\"}", s_webAuthToken);
+    AsyncWebServerResponse* response = req->beginResponse(NetworkConfig::HTTP_OK, "application/json", body);
+    char cookieVal[160];
+    // v13.52: HttpOnly (anti XSS), SameSite=Strict (anti CSRF), Max-Age 86400 s (24 h).
+    // Pas de flag `Secure` car le firmware sert HTTP en LAN ; à activer si HTTPS local un jour.
+    snprintf(cookieVal, sizeof(cookieVal),
+             "ffp5cs_auth=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400",
+             s_webAuthToken);
     response->addHeader("Set-Cookie", cookieVal);
     req->send(response);
   });
 
   _server->on(AsyncURIMatcher::exact("/api/logout"), HTTP_POST, [](AsyncWebServerRequest* req) {
+    // v13.52: invalider le token côté firmware ET demander suppression du cookie.
+    s_webAuthToken[0] = '\0';
+    s_webAuthTokenExpiresAt = 0;
     AsyncWebServerResponse* response = req->beginResponse(NetworkConfig::HTTP_OK, "application/json", "{\"ok\":true}");
-    response->addHeader("Set-Cookie", "ffp5cs_auth=; Path=/; Max-Age=0");
+    response->addHeader("Set-Cookie", "ffp5cs_auth=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
     req->send(response);
   });
 
@@ -1003,8 +1041,9 @@ bool WebServerManager::begin() {
     req->send(NetworkConfig::HTTP_OK, "application/json", buf);
   });
 
-  // /mailtest endpoint: envoie un e-mail de test
+  // /mailtest endpoint: envoie un e-mail de test (v13.52: protégé - envoi mail arbitraire)
   _server->on("/mailtest", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Action utilisateur critique
     g_autoCtrl.notifyLocalWebActivity();
     char subjBuf[128];
@@ -1056,8 +1095,9 @@ bool WebServerManager::begin() {
   });
 
 #ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
-  // Maintenance: format LittleFS (use with care)
+  // Maintenance: format LittleFS (use with care) (v13.52: auth obligatoire)
   _server->on("/fs/format", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // GARDER notifyLocalWebActivity() - Action maintenance critique
     g_autoCtrl.notifyLocalWebActivity();
     if (!req->hasParam("confirm")) {
@@ -1074,8 +1114,9 @@ bool WebServerManager::begin() {
   });
 #endif // FFP_ENABLE_DANGEROUS_ENDPOINTS
 
-  // /testota endpoint: active manuellement le flag OTA pour les tests
+  // /testota endpoint: active manuellement le flag OTA pour les tests (v13.52: auth obligatoire)
   _server->on("/testota", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (!isAuthenticated(req)) { sendAuthRequired(req); return; }
     // v11.40: Pas de notifyLocalWebActivity() - endpoint de test
     config.setOtaUpdateFlag(true);
     req->send(NetworkConfig::HTTP_OK, "text/plain", "Flag OTA activé - redémarrez pour tester l'email");
@@ -1641,10 +1682,14 @@ bool WebServerManager::begin() {
     size_t totalCount = 0;
     
     // 1. Ajouter les réseaux statiques de secrets.h
+    // v13.52 (audit sécurité): ne plus exposer les mots de passe en clair via l'API web.
+    // Indique seulement la présence d'un mot de passe (booléen) ; pour récupérer le mdp,
+    // passer par le code source (`include/secrets.h`) ou le re-saisir dans l'UI.
     for (size_t i = 0; i < Secrets::WIFI_COUNT; i++) {
       JsonObject network = networks.createNestedObject();
       network["ssid"] = Secrets::WIFI_LIST[i].ssid;
-      network["password"] = Secrets::WIFI_LIST[i].password;
+      network["hasPassword"] = (Secrets::WIFI_LIST[i].password != nullptr &&
+                                Secrets::WIFI_LIST[i].password[0] != '\0');
       network["index"] = totalCount;
       network["source"] = "static"; // Marquer comme réseau statique
       totalCount++;
@@ -1694,8 +1739,9 @@ bool WebServerManager::begin() {
                   }
                 }
                 if (!existsInStatic) {
+                  // v13.52 (audit sécurité): ne plus exposer le mot de passe NVS en clair.
                   network["ssid"] = ssid;
-                  network["password"] = password;
+                  network["hasPassword"] = (password != nullptr && password[0] != '\0');
                   network["index"] = totalCount;
                   network["source"] = "saved";
                   totalCount++;

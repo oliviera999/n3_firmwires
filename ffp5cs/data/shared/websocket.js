@@ -76,8 +76,23 @@ function connectWS() {
         stopPolling();
         toast(`Connexion WebSocket établie sur le port ${port}`, 'success');
         logInfo(`WebSocket connecté sur le port ${port}`, { port }, 'WEBSOCKET');
-        
-        // Envoyer un message de subscription pour recevoir les données (après un délai plus long)
+
+        // v13.52 (audit sécurité): authentification WebSocket avec le token de session
+        // récupéré au login (sessionStorage.wsToken). Le firmware déconnecte si pas
+        // d'auth dans 5 secondes.
+        try {
+          const wsToken = (typeof sessionStorage !== 'undefined') ? sessionStorage.getItem('wsToken') : null;
+          if (wsToken && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({type: 'auth', token: wsToken}));
+          } else {
+            console.warn('[WebSocket] Pas de wsToken en sessionStorage - le firmware va déconnecter (auth requise). Reconnectez-vous via /api/login.');
+          }
+        } catch (e) {
+          console.warn('[WebSocket] Erreur envoi auth:', e);
+        }
+
+        // Envoyer un message de subscription après réception de auth_ok (délai pour laisser
+        // le serveur valider le token avant de demander les données).
         setTimeout(() => {
           if (ws && ws.readyState === WebSocket.OPEN) {
             try {

@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-13.26-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.52-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -23,9 +23,9 @@
 
 2. **Configuration PlatformIO**
    ```bash
-   pio run -e wroom-test  # ESP32-WROOM (recommandé)
+   pio run -e wroom-test       # ESP32-WROOM (recommandé pour le dev)
    # ou
-   pio run -e s3-test     # ESP32-S3 (8MB)
+   pio run -e wroom-s3-test    # ESP32-S3 (16MB, sans PSRAM)
    ```
 
 3. **Flash initial**
@@ -86,11 +86,14 @@ ffp5cs/
 └── platformio.ini        # Configuration build
 ```
 
-### 🔧 Environnements de build
-- **`wroom-prod`** - Production ESP32-WROOM (optimisé)
-- **`wroom-test`** - Test ESP32-WROOM (debug activé, logs série)
-- **`s3-prod`** - Production ESP32-S3 (8MB)
-- **`s3-test`** - Test ESP32-S3 (debug activé)
+### 🔧 Environnements de build (extrait — voir `platformio.ini` pour la liste complète)
+- **`wroom-prod`** — Production ESP32-WROOM (LTO désactivé, sans web async, optimisé flash)
+- **`wroom-test`** — Test ESP32-WROOM (debug activé, logs série, web async)
+- **`wroom-beta`** — Bêta ESP32-WROOM (canal OTA test, endpoints `*-test`)
+- **`wroom-beta-local`** — Bêta contre serveur Docker local (`USE_LOCAL_SERVER_ENDPOINTS`)
+- **`wroom-s3-test`** — Test ESP32-S3 16 Mo sans PSRAM (env serveur `s3test`)
+- **`wroom-s3-test-psram`** / **`-psram-v2`** — ESP32-S3 16 Mo avec PSRAM 8 Mo
+- **`wroom-s3-prod`** — Production ESP32-S3 16 Mo
 
 ---
 
@@ -104,11 +107,18 @@ ffp5cs/
 - [x] Mode veille optimisé
 - [x] Reconnexion WiFi
 
-### 🔄 Améliorations Récentes (v13.26)
-- [x] Audit mémoire wroom-beta (bornage sécurité tableaux WiFi)
-- [x] Suppression des `String` temporaires dans les scans WiFi (API ESP-IDF)
-- [x] Helper SSID AP sans `String` (`esp_wifi_get_config`)
-- [x] Vérification FreeRTOS stack depth sur toolchain actuelle
+### 🔄 Améliorations Récentes (v13.52 — audit général 2026-05)
+- [x] Audit exhaustif consolidé : `docs/reports/AUDIT_GENERAL_2026-05.md`
+- [x] Sécurité web : routes admin (`/api/wakeup feed`, `/api/remote-flags`, `/mailtest`, `/testota`, `/fs/format`) protégées par `webAuthIsAuthenticated`
+- [x] Sécurité cookie session : `esp_fill_random` (HW RNG) + `HttpOnly; SameSite=Strict` + TTL 24 h + rotation à chaque login
+- [x] Sécurité WebSocket port 81 : authentification obligatoire via token session (`{"type":"auth","token":...}`), déconnexion après 5 s sans auth
+- [x] `/wifi/saved` : plus de mots de passe WiFi en clair, seulement `hasPassword` booléen
+- [x] Bug correction `API_KEY = API_KEY` (auto-référence) dans `include/config.h`
+- [x] `static_assert PROFILE_PROD` rejette le placeholder `CHANGEZ_MOI` pour `API_KEY` et `WEB_AUTH_PASS`
+- [x] `secrets_config.h.example` enrichi (`WEB_AUTH_USER/PASS`, `SECRETS_INCLUDE_WEB_AUTH`)
+- [x] Nettoyage : 30+ commentaires `// v13.0x ... // v13.51` purgés de `config.h` (renvoi à `VERSION.md`)
+
+> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène) → v13.65 (refactor) → v13.70 (robustesse) → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable
@@ -164,24 +174,14 @@ pio run -e wroom-test -t uploadfs
 
 ## 📈 Historique des versions
 
-### v11.190 (2026-02) - Points à surveiller
-- HTTP/TLS 5s, NVS remove idempotent, servo pin valide
+L'historique complet est tenu dans **[VERSION.md](VERSION.md)** (source unique).
 
-### v11.124 (2026-01-10) - Audit général - Corrections prioritaires
-- ✅ **Correction incohérence version** : Unifié config.h et app.cpp sur v11.124
-- ✅ **Optimisation boot** : Delay debug conditionnel (1s en debug, 0s en production)
-- ✅ **Code propre** : Utilisation de `ProjectConfig::VERSION` au lieu de hardcode
-
-### v11.120 (2026-01-10) - Stabilisation watchdog & stack automation
-- ✅ **Stack overflow corrigé** : `automationTask` stack augmenté 4096 → 8192 bytes
-- ✅ **Watchdog timeout corrigé** : IDLE tasks non surveillées (évite faux positifs)
-- ✅ **Core dump désactivé** : Économie flash en production
-
-### v11.119 (2026-01-07) - Refactorisation Majeure
-- ✅ **Nettoyage Code Mort** : Suppression `JsonPool`, `PSRAMOptimizer`.
-- ✅ **Configuration Unifiée** : Migration complète vers `include/config.h`.
-- ✅ **Modernisation JSON** : Passage à `ArduinoJson 7` (`JsonDocument`).
-- ✅ **Monitoring Simplifié** : Réduction drastique de `TimeDriftMonitor` et `TaskMonitor`.
+Versions récentes :
+- **v13.52** (2026-05) — Audit général : sécurité web critique (auth routes admin, WebSocket auth, cookie hardened, bug API_KEY corrigé, /wifi/saved sans mdp).
+- **v13.51** (2026-05) — netRPC GET outputs/state : libération du slot après échec notifié.
+- **v13.49** (2026-04) — Journaux série : phases HTTP/WiFi explicites, nettoyage logs DBG.
+- **v13.46** (2026-04) — NVS `saveBool` correctif première écriture (snap_* veille).
+- **v13.45** (2026-04) — sdkconfig WROOM (CPU/SPIRAM) + retrait LTO wroom-prod (panic cache).
 
 [Voir toutes les versions](VERSION.md)
 
@@ -233,4 +233,4 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 
 ---
 
-*Dernière mise à jour: 2026-03-23 - Version 13.26*
+*Dernière mise à jour: 2026-05-20 - Version 13.52*

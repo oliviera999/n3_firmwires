@@ -285,10 +285,23 @@ function submitLogin(ev) {
     body: JSON.stringify({ user: user, pass: pass })
   }).then(function(r) {
     if (r.ok) {
-      window._webAuth = true;
-      applyAuthUI();
-      closeLoginModal();
-      if (typeof toast === 'function') toast('Connecté', 'success');
+      // v13.52: stocker le wsToken pour authentifier la connexion WebSocket port 81.
+      r.json().then(function(data) {
+        try {
+          if (data && data.wsToken && typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem('wsToken', data.wsToken);
+          }
+        } catch (e) { /* pas critique */ }
+        window._webAuth = true;
+        applyAuthUI();
+        closeLoginModal();
+        if (typeof toast === 'function') toast('Connecté', 'success');
+      }).catch(function() {
+        // Si le body n'est pas JSON, on est quand même authentifié côté HTTP.
+        window._webAuth = true;
+        applyAuthUI();
+        closeLoginModal();
+      });
     } else {
       if (errEl) { errEl.textContent = 'Identifiants incorrects.'; errEl.style.display = 'block'; }
     }
@@ -298,6 +311,8 @@ function submitLogin(ev) {
 }
 
 function doLogout() {
+  // v13.52: nettoyer le wsToken pour empêcher la réutilisation après logout.
+  try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('wsToken'); } catch (e) {}
   fetch('/api/logout', { method: 'POST', credentials: 'include' })
     .then(function() { location.reload(); })
     .catch(function() { location.reload(); });
