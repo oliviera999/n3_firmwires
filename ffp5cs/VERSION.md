@@ -12,6 +12,92 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.60 - 2026-05-20
+
+### Audit général 2026-05 — hygiène + sécurité moyenne + restauration beta-local (Incrément 3/7)
+
+Suite de l'audit (cf. v13.52, v13.53). Cet incrément traite les **IMPORTANTS** de l'audit (hygiène architecture, sécurité moyenne) et restaure la suite de tests `wroom-beta-local` cassée.
+
+### Architecture — préparation au découpage de `config.h`
+
+`include/config.h` fait 1062 lignes (constantes, macros, helpers `Utils::*`, stub `NullSerial`, macro `WIFI_APPLY_MODEM_SLEEP`). Le découpage physique en 6 modules thématiques est trop risqué en une seule release. Cet incrément pose les **façades** :
+
+- [`include/config_system.h`](include/config_system.h) (ProjectConfig::VERSION, SystemConfig, TimingConfig, MonitoringConfig, Utils)
+- [`include/config_logging.h`](include/config_logging.h) (LogConfig, macros LOG_*, NullSerial)
+- [`include/config_buffers.h`](include/config_buffers.h) (BufferConfig, NVSConfig, HeapConfig, AsyncTaskConfig)
+- [`include/config_sensors.h`](include/config_sensors.h) (SensorConfig, SensorValidation, ActuatorConfig)
+- [`include/config_network.h`](include/config_network.h) (NetworkConfig, ServerConfig, ApiConfig, WebAuthConfig, EmailConfig)
+- [`include/config_tasks.h`](include/config_tasks.h) (TaskConfig, SleepConfig, DailyRebootConfig)
+
+Chacun est aujourd'hui une façade qui `#include "config.h"`. Migration progressive future : déplacer le contenu fichier par fichier sans casser les ~37 sources qui incluent encore `config.h`. Aucun changement de comportement à la compile.
+
+### Architecture — `include/board_traits.h` (nouveau)
+
+Helpers `constexpr` pour réduire la pollution des `#if defined(BOARD_S3)` / `BOARD_HAS_PSRAM` / `PROFILE_*` :
+
+- `BoardTraits::isS3()`, `isWroom()`, `hasPsram()`
+- `BoardTraits::isProd()`, `isBeta()`, `isTest()`, `isDev()`, `isNonProd()`
+- `BoardTraits::useTestEndpoints()`, `useTest3Endpoints()`, `useLocalServerEndpoints()`
+- `BoardTraits::dangerousEndpointsEnabled()`, `asyncWebServerDisabled()`
+
+Permet `if constexpr (BoardTraits::isS3()) { ... }` en lieu et place de cascades `#if`. Les `#if` restent obligatoires pour les inclusions d'en-têtes et `extern` plateforme. Utilisation progressive dans les futurs incréments.
+
+### Sécurité — CORS `*` retiré (audit sous-agent 5)
+
+Les routes web exposaient `Access-Control-Allow-Origin: *` permettant à n'importe quel site externe (sur le LAN ou via DNS rebinding) de lire la configuration et les capteurs. Toutes les routes sont **same-origin** (UI servie par le firmware lui-même).
+
+- Helpers `sendJsonResponse` / `sendErrorResponse` : défaut `enableCors=false` au lieu de `true`.
+- `web_server.cpp` : suppression des en-têtes `Access-Control-*` sur `/dbvars`, `/wifi/scan`, `/wifi/saved`, `/wifi/connect`, `/wifi/remove`. Préflight `/dbvars OPTIONS` → 204 No Content.
+- `web_routes_status.cpp` : suppression sur `/json`, `/debug-logs`. Préflight `/json OPTIONS` → 204 No Content.
+- Total : ~13 occurrences supprimées.
+
+### Sécurité — OTA metadata HTTPS strict CN (audit sous-agent 5)
+
+`ota_manager.cpp:526` faisait `config.skip_cert_common_name_check = true`. Si DNS détourné vers un serveur dont le certificat appartient à un autre domaine, MITM possible.
+
+Correctif : `skip_cert_common_name_check = false`. iot.olution.info est servi par un certificat valide pour ce domaine, donc le check doit passer normalement.
+
+### Sécurité — AP de secours WPA2 (audit sous-agent 5)
+
+`wifi_manager.cpp` faisait `WiFi.softAP(ssid, nullptr, ...)` — AP ouvert sur S3 quand le STA échoue. N'importe quel équipement à portée pouvait se connecter et accéder à l'UI.
+
+- Nouvelle constante `ApFallbackConfig::PASSWORD` (depuis `Secrets::AP_FALLBACK_PASSWORD` si `SECRETS_INCLUDE_AP_FALLBACK` défini).
+- `WiFi.softAP(ssid, password, ...)` : WPA2 si password configuré et >= 8 caractères (norme WPA2), sinon ouvert (legacy) avec log d'avertissement.
+- `secrets_config.h.example` documente l'option.
+
+### Build — `lib_deps` Async épinglées
+
+Les libs réseau Async étaient flottantes (régressions silencieuses) :
+
+- `ESP32Async/AsyncTCP@3.3.5` (étaient flottants)
+- `ESP32Async/ESPAsyncWebServer@3.7.6` (idem)
+- `links2004/WebSockets@2.7.0` (déjà épinglée)
+
+### Build — `platformio.ini` documenté
+
+Bloc d'en-tête commenté listant les 13 environnements : objectif et flags clés de chacun (`wroom-prod`, `wroom-test`, `wroom-beta`, `wroom-beta-local`, `wroom-s3-prod`, `wroom-s3-test`, `wroom-s3-test-psram`, `-psram-v2`, `-devkit`, `-usb`, `wroom-tls-test`). Rappel : `default_envs=wroom-test` est le défaut **dev** uniquement, livraison via `wroom-prod` / `wroom-s3-prod`.
+
+### Restauration — suite `wroom-beta-local` + `platformio-native.ini` + `build_all_envs.ps1`
+
+Plusieurs fichiers étaient documentés (`firmwires/README.md`, `docs/README.md`, règles Cursor) mais absents du dépôt sur la branche actuelle. Restaurés depuis l'historique :
+
+- `scripts/run_wroom_beta_local_test_suite.ps1` (7550 o)
+- `scripts/test_wroom_beta_local_docker_integration.ps1` (11651 o)
+- `scripts/test_wroom_beta_local_serial.ps1` (3400 o)
+- `scripts/wroom_beta_local_test_scenarios.json` (727 o)
+- `scripts/.beta-local-test.env.example` (620 o)
+- `include/local_server_overrides.h.example` (255 o)
+- `platformio-native.ini` (517 o) — env native pour `pio test`
+- `scripts/build_all_envs.ps1` (7556 o)
+
+Permet à nouveau d'exécuter `pio test -c platformio-native.ini` (tests Unity) et la batterie de validation `wroom-beta-local` contre Docker.
+
+### Prochain incrément
+
+v13.65 : refactor architecture (découpage `app_tasks.cpp` 1709 l. → `net_task.cpp`/`post_sender_task.cpp`/`ota_task.cpp` ; finir extraction routes de `web_server.cpp` 1949 l. ; retirer `Automatism::readSensors()` public).
+
+---
+
 ## Version 13.53 - 2026-05-20
 
 ### Audit général 2026-05 — fonctionnel critique (Incrément 2/7)

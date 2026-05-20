@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.53";
+    inline constexpr const char* VERSION = "13.60";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -375,6 +375,18 @@ namespace NetworkConfig {
     inline constexpr uint32_t MIN_HEAP_AP_MODE = 10240;  // 10 KB
     // v12.33: Heap minimum pour scan WiFi avant softAP (évite LoadProhibited si allocations échouent, tous boards)
     inline constexpr uint32_t MIN_HEAP_AP_SCAN = 12288;  // 12 KB — en dessous : canal 6 direct, pas de scan
+}
+
+// v13.60 (audit sécurité): mot de passe WPA2 pour l'AP de secours S3 (captive portal).
+// Vide / nullptr → AP ouvert (comportement legacy, déconseillé sur LAN partagé).
+// Pour activer WPA2 : définir `Secrets::AP_FALLBACK_PASSWORD` dans `secrets_config.h`
+// (8 caractères minimum exigés par la norme WPA2).
+namespace ApFallbackConfig {
+#if defined(SECRETS_INCLUDE_AP_FALLBACK)
+    inline constexpr const char* PASSWORD = Secrets::AP_FALLBACK_PASSWORD;
+#else
+    inline constexpr const char* PASSWORD = nullptr;  // AP ouvert (legacy)
+#endif
 }
 
 // Authentification interface web locale (onglets protégés). Source : secrets_config.h si SECRETS_INCLUDE_WEB_AUTH, sinon défaut.

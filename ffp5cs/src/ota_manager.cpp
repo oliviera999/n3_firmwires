@@ -523,7 +523,11 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     config.timeout_ms = NetworkConfig::OTA_CONNECT_TIMEOUT_MS; // 10s phase connexion (sous TWDT), fallback si échec
     config.buffer_size = BufferConfig::HTTP_BUFFER_SIZE; // Buffers augmentés pour débit
     config.buffer_size_tx = BufferConfig::HTTP_TX_BUFFER_SIZE;
-    config.skip_cert_common_name_check = true; // Tolérer écart nom commun (ex. IP vs hostname)
+    // v13.60 (audit sécurité): exiger la validation du CN du certificat HTTPS pour metadata OTA.
+    // L'ancien `skip_cert_common_name_check = true` permettait un MITM si DNS détourné vers
+    // un serveur dont le certificat appartient à un autre domaine. iot.olution.info est servi
+    // par un certificat valide pour ce domaine, donc le check doit passer normalement.
+    config.skip_cert_common_name_check = false;
     // Vérification serveur (requis ESP-IDF 5.x). WROOM (pioarduino) : esp_crt_bundle_attach ; S3 (platformio/espressif32) : arduino_esp_crt_bundle_attach.
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
     config.crt_bundle_attach = arduino_esp_crt_bundle_attach;

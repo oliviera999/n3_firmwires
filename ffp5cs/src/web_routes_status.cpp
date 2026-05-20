@@ -423,24 +423,17 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
       return;
     }
     response->addHeader("Cache-Control", "no-cache");
-    response->addHeader("Access-Control-Allow-Origin", "*");
+    // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI (/debug-logs).
     serializeJson(doc, *response);
     req->send(response);
   });
 }
 
 void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
+  // v13.60 (audit sécurité): preflight CORS supprimé pour /json (UI same-origin).
+  // /json reste désormais en HTTP_GET / HTTP_HEAD sans en-têtes Access-Control-*.
   server.on("/json", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
-    AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
-    if (response) {
-      response->addHeader("Access-Control-Allow-Origin", "*");
-      response->addHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-      response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      response->addHeader("Access-Control-Max-Age", "86400");
-      req->send(response);
-    } else {
-      req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
-    }
+    req->send(NetworkConfig::HTTP_NO_CONTENT);
   });
 
   server.on("/json", HTTP_HEAD, [&ctx](AsyncWebServerRequest* req) {
@@ -448,7 +441,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     AsyncWebServerResponse* response = req->beginResponse(200, "application/json", "");
     if (response) {
       response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      response->addHeader("Access-Control-Allow-Origin", "*");
+      // v13.60 (audit sécurité): pas de CORS - même origine.
       req->send(response);
     } else {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR);
@@ -505,9 +498,7 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
     response->addHeader("X-Content-Type-Options", "nosniff");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI (/json).
     serializeJson(doc, *response);
     req->send(response);
   });

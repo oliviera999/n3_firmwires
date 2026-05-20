@@ -587,8 +587,18 @@ bool WifiManager::startFallbackAP(){
     IPAddress(NetworkConfig::AP_GW_B0, NetworkConfig::AP_GW_B1, NetworkConfig::AP_GW_B2, NetworkConfig::AP_GW_B3),
     IPAddress(NetworkConfig::AP_SUBNET_B0, NetworkConfig::AP_SUBNET_B1, NetworkConfig::AP_SUBNET_B2, NetworkConfig::AP_SUBNET_B3));
 #endif
-  bool ok = WiFi.softAP(ssid, nullptr, bestCh, false, 4); // AP ouvert, max 4 clients
-  Serial.printf("[WiFi] 📡 softAP %s\n", ok?"✅ OK":"❌ ECHEC");
+  // v13.60 (audit sécurité): WPA2 si `Secrets::AP_FALLBACK_PASSWORD` configuré, sinon
+  // AP ouvert (legacy, déconseillé). ESP32 softAP exige >= 8 caractères pour WPA2.
+  const char* apPassword = ApFallbackConfig::PASSWORD;
+  if (apPassword && strlen(apPassword) < 8) {
+    Serial.printf("[WiFi] ⚠️ AP_FALLBACK_PASSWORD trop court (%u car, min 8 WPA2) - AP ouvert\n",
+                  (unsigned)strlen(apPassword));
+    apPassword = nullptr;
+  }
+  bool ok = WiFi.softAP(ssid, apPassword, bestCh, false, 4); // max 4 clients
+  Serial.printf("[WiFi] 📡 softAP %s (sécurité: %s)\n",
+                ok ? "✅ OK" : "❌ ECHEC",
+                apPassword ? "WPA2" : "ouvert (configurer Secrets::AP_FALLBACK_PASSWORD)");
   if(ok){
     IPAddress apIP = WiFi.softAPIP();
     char apIPBuf[16];

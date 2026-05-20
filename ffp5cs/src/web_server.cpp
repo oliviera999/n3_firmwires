@@ -580,7 +580,7 @@ bool WebServerManager::begin() {
     
     // Validation du type: doit être "small" ou "big"
     if (strcmp(typeBuf, "small") != 0 && strcmp(typeBuf, "big") != 0) {
-      sendErrorResponse(req, 400, "Invalid type parameter. Must be 'small' or 'big'", true);
+      sendErrorResponse(req, 400, "Invalid type parameter. Must be 'small' or 'big'");
       return;
     }
     
@@ -819,15 +819,13 @@ bool WebServerManager::begin() {
     sendJsonResponse(req, doc);
   });
 
-  // /pumpstats endpoint optimisé : statistiques de la pompe de réserve
-  // Gestion des requêtes CORS preflight pour /dbvars
+  // v13.60 (audit sécurité): /dbvars est same-origin (UI servie par le firmware lui-même).
+  // Le préflight CORS OPTIONS et les en-têtes Access-Control-* sont retirés (étaient à "*",
+  // permettant à n'importe quel site externe sur le LAN de lire la configuration).
+  // Garder la route OPTIONS pour répondre 204 si un client envoie un preflight, mais sans
+  // accorder de permission cross-origin.
   _server->on("/dbvars", HTTP_OPTIONS, [](AsyncWebServerRequest* req){
-    AsyncWebServerResponse* response = req->beginResponse(200, "text/plain", "");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    response->addHeader("Access-Control-Max-Age", "86400");
-    req->send(response);
+    req->send(NetworkConfig::HTTP_NO_CONTENT);
   });
 
   // /dbvars endpoint : expose variables fetched from remote server - OPTIMISÉ
@@ -855,9 +853,7 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    // v13.60 (audit sécurité): pas de CORS - même origine que l'UI (route /dbvars).
     serializeJson(doc, *response);
     req->send(response);
   });
@@ -1597,7 +1593,7 @@ bool WebServerManager::begin() {
       if (!ensureHeapForRoute(req, HeapConfig::MIN_HEAP_RESPONSE_STREAM, F("/wifi/scan"))) { return; }
       AsyncResponseStream* response = req->beginResponseStream("application/json");
       if (response) {
-        response->addHeader("Access-Control-Allow-Origin", "*");
+        // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI.
         serializeJson(doc, *response);
         req->send(response);
       } else {
@@ -1659,9 +1655,7 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI (/wifi/scan).
     serializeJson(doc, *response);
     req->send(response);
   });
@@ -1765,9 +1759,7 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI (/wifi/saved).
     serializeJson(doc, *response);
     req->send(response);
   });
@@ -1927,9 +1919,7 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI (/wifi/connect).
     serializeJson(doc, *response);
     req->send(response);
   });
@@ -2059,9 +2049,7 @@ bool WebServerManager::begin() {
       req->send(NetworkConfig::HTTP_INTERNAL_ERROR, "text/plain", "Memory error");
       return;
     }
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    // v13.60 (audit sécurité): retiré CORS * - même origine que l'UI (/wifi/remove).
     serializeJson(doc, *response);
     req->send(response);
   });
