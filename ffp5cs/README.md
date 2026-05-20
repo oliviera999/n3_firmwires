@@ -161,7 +161,9 @@ ffp5cs/
 - [x] Bug correction `API_KEY = API_KEY` (auto-référence) dans `include/config.h`
 - [x] `static_assert PROFILE_PROD` rejette le placeholder `CHANGEZ_MOI` pour `API_KEY` et `WEB_AUTH_PASS`
 
-> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène + beta-local) → v13.65 (refactor ciblé) → v13.70 (robustesse + tests) → **v13.80 (HMAC + HTTPS dual)** → v13.90 (bascule).
+> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène + beta-local) → v13.65 (refactor ciblé) → v13.70 (robustesse + tests) → **v13.80 (HMAC + HTTPS dual)** → v13.90 (bascule après validation pilote 1-2 sem.).
+>
+> **Audit clôturé** sur v13.80. Synthèse complète : [`docs/reports/AUDIT_GENERAL_2026-05.md`](docs/reports/AUDIT_GENERAL_2026-05.md).
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable

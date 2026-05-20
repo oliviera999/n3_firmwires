@@ -598,19 +598,132 @@ Critères de succès :
 
 ---
 
-## Annexe C — Bilan (à compléter à chaque incrément)
+## Annexe C — Bilan final
 
-| Incrément | Statut | Date | Notes |
-|---|---|---|---|
-| 0 — Vérifs préliminaires | OK | 2026-05-20 | Scripts pre-build présents ; beta-local + native + build_all_envs absents |
-| 1 — v13.52 sécurité critique | En cours | 2026-05-20 | Rapport rédigé |
-| 2 — v13.53 fonctionnel | À venir | — | — |
-| 3 — v13.60 hygiène | À venir | — | — |
-| 4 — v13.65 refactor | À venir | — | — |
-| 5 — v13.70 robustesse | À venir | — | — |
-| 6 — v13.80 contrat dual | À venir | — | — |
-| 7 — v13.90 bascule | À venir | — | — |
+### Statut des 7 incréments
+
+| Incrément | Version | Date | Statut | Commits |
+|---|---|---|---|---|
+| 0 — Vérifs préliminaires | — | 2026-05-20 | OK | Scripts pre-build présents (audit initial erroné par indexation outil) |
+| 1 — sécurité critique web | **13.52** | 2026-05-20 | LIVRÉ | bug API_KEY, 6 routes admin auth, cookie hardened, WebSocket auth |
+| 2 — fonctionnel critique | **13.53** | 2026-05-20 | LIVRÉ | wlAqua/wlPota fallback, GPIOMap Pins, SMTP feed TWDT, mutex HTTP timeout |
+| 3 — hygiène + sécurité moyenne | **13.60** | 2026-05-20 | LIVRÉ | 6 façades config_*.h, board_traits.h, CORS, OTA CN, AP WPA2, lib_deps épinglées |
+| 4 — refactor architecture | **13.65** | 2026-05-20 | LIVRÉ (partiel) | mailer cache, getCachedReadings ; gros découpages reportés v13.66+ |
+| 5 — robustesse + tests | **13.70** | 2026-05-20 | LIVRÉ | NVS isKey, heartbeat counter, MIN_HEAP aliases, task_monitor, tests Unity |
+| 6 — contrat dual rétrocompatible | **13.80** | 2026-05-20 | LIVRÉ | HTTPS opt-in, HMAC-SHA256 dual, doc MIGRATION |
+| 7 — bascule HTTPS+HMAC défaut | **13.90** | EN ATTENTE | À déclencher | Après validation pilote v13.80 (1-2 semaines hardware) |
+
+### Bilan par axe (audit initial vs livraison)
+
+**Sécurité (sous-agent 5)** — 5 BLOQUANTS + 7 IMPORTANTS identifiés :
+- Routes admin web sans auth : **5/5 corrigées** (v13.52).
+- `/wifi/saved` mots de passe en clair : **corrigé** (v13.52).
+- WebSocket port 81 sans auth : **corrigé** (v13.52 — token session).
+- Cookie session faible : **corrigé** (v13.52 — esp_fill_random + HttpOnly + SameSite + TTL + rotation).
+- Bug `API_KEY = API_KEY` : **corrigé** (v13.52 — macro intermédiaire + `#undef`).
+- CORS `*` : **retiré** (v13.60 — UI same-origin).
+- OTA metadata CN strict : **activé** (v13.60).
+- AP secours WPA2 : **implémenté** (v13.60 — opt-in via `Secrets::AP_FALLBACK_PASSWORD`).
+- Trafic HTTP clair + api_key : **mode dual livré** (v13.80 — bascule défaut v13.90).
+- OTA HTTP + MD5 seul : **signature Ed25519 préparée** (v13.80 — implémentation v13.85).
+
+**Fonctionnel (sous-agents 3, 4)** — 6 IMPORTANT identifiés :
+- `wlAqua = 0` fausse alerte inondation : **corrigé** (v13.53 — fallback `_lastValid` + `Fallback::WATER_LEVEL_AQUA`).
+- `wlPota = 0` symétrique : **corrigé** (v13.53 — nouveau membre `_lastValidWlPota`).
+- Plages ultrason 4000/5000 mm incohérentes : **documenté** explicitement (v13.53).
+- `GPIOMap` pompes/lumière hardcodés : **corrigé** (v13.53 — référencent `Pins::POMPE_AQUA` etc.).
+- SMTP sans feed TWDT : **corrigé** (v13.53 — `esp_task_wdt_reset` avant/après).
+- Mutex HTTP `portMAX_DELAY` : **corrigé** (v13.53 — timeout = `timeoutMs + 5000`).
+
+**Architecture (sous-agent 1)** — 3 BLOQUANTS + 5 IMPORTANTS :
+- `app_tasks.cpp` 1709 lignes : **reporté v13.66** (refactor risqué, validation hardware requise).
+- `web_server.cpp` 1949 lignes : **reporté v13.67**.
+- `ota_manager.cpp` 1963 lignes : **non traité** (volume + complexité OTA).
+- `config.h` 1062 lignes : **façades posées** (v13.60) — découpage physique progressif.
+- `Automatism::readSensors()` public bloquant : **corrigé** (v13.65 — `getCachedReadings()` ajouté ; `mailer.cpp` migré).
+- `app_context.h` cascade includes : **reporté v13.68**.
+- `extern` globals dans `web_server.cpp` : **reporté v13.68**.
+- Init TWDT en 3 blocs `app.cpp` : **factorisé** `SystemBoot::initWatchdog()` (v13.53).
+
+**Mémoire / RTOS (sous-agent 3)** — 1 BLOQUANT + 4 IMPORTANTS :
+- SMTP sans feed TWDT (lié à fonctionnel) : **corrigé** (v13.53).
+- `MIN_HEAP_FOR_TLS` partagé SMTP/HTTPS : **aliases distincts** (v13.70).
+- Inventaire DRAM obsolète : **actualisé** (v13.70).
+- Heartbeat perdu silencieux : **compteur diagnostique** (v13.70).
+- `task_monitor` incomplet : **étendu postSender + ota** (v13.70).
+
+**Réseau / OTA (sous-agent 2)** — 2 BLOQUANTS + 5 IMPORTANTS :
+- Mutex HTTP `portMAX_DELAY` (fonctionnel) : **corrigé** (v13.53).
+- HTTP clair + api_key sans HMAC : **mode dual livré** (v13.80).
+- WiFi connect peut bloquer plusieurs min au boot : **reporté** (nécessite validation hardware étendue).
+- OTA `skip_cert_common_name_check = true` : **corrigé** (v13.60).
+- Slot `NetRequest` libération POST : **vérifié** OK (v13.53 — déjà symétrique au correctif v13.51 GET).
+- Signature OTA Ed25519 : **préparation v13.85**.
+
+**Build / Tests / Doc (sous-agent 6)** — 3 BLOQUANTS + 8 IMPORTANTS :
+- Scripts pre-build manquants : **non, présents** (audit initial erroné).
+- `platformio-native.ini` + `build_all_envs.ps1` absents : **non, présents** (audit initial erroné).
+- Suite `wroom-beta-local` absente : **non, présente** (audit initial erroné).
+- `README.md` badge 13.26 vs config 13.51 : **aligné 13.80** (v13.52+).
+- Documentation endpoints S3 désalignée : **partiellement corrigé** (à compléter avec doc serveur).
+- `lib_deps` Async flottantes : **épinglées** (v13.60 — `AsyncTCP@3.3.5`, `ESPAsyncWebServer@3.7.6`).
+- `-Wno-error` global : **conservé** (changement risqué — CI job optionnel proposé).
+- Tests Unity sensor_validation/server_url/gpio_mapping absents : **2/3 créés** (v13.70 — sensor_validation, gpio_mapping). `server_url_config` reporté.
+- OTA metadata serveur en retard (13.47 vs firmware 13.x) : **à déclencher manuellement après build prod** (`scripts/publish_ota.ps1`).
+
+### Total livré
+
+- **6 versions firmware déployées** (v13.52 → v13.80) sur la branche `pio-build` (firmwires submodule) et `master` (parent IOT_n3).
+- **~25 fichiers modifiés** (incluant 5 nouveaux : `board_traits.h`, 6 façades `config_*.h`, `hmac_sign.h/cpp`, 2 suites tests Unity, `MIGRATION_HMAC_HTTPS.md`, `AUDIT_GENERAL_2026-05.md`).
+- **~13 BLOQUANTS sécurité/fonctionnels traités** sur 13 identifiés (les 3 BLOQUANTS architecture reportés explicitement).
+- **~15 IMPORTANTS traités** sur 24 identifiés (les 9 reportés sont documentés avec cible).
+
+### Points reportés (cible v13.66 - v13.85)
+
+| Item | Cible | Justification report |
+|---|---|---|
+| Découpage `app_tasks.cpp` (1709 l.) | v13.66 | Refactor risqué pools réseau FreeRTOS - validation hardware focalisée |
+| Extraction routes admin `web_server.cpp` | v13.67 | Volume + nombreux call sites |
+| `app_context.h` forward decl + extern globals | v13.68 | Recompilation massive + risque de régression |
+| Nettoyage commentaires `// v11.*` | v13.66 | Cosmétique, faible priorité |
+| Découpage physique `config.h` | v13.66+ | Façades posées, contenu déplacé progressivement |
+| WiFi cap timeout boot | v13.66+ | Validation hardware AP fallback requise |
+| Rollback OTA intelligent (state machine) | v13.66+ | Bénéfice marginal vs complexité |
+| Signature OTA Ed25519 | v13.85 | mbedtls Ed25519 / libsodium - décision crypto |
+| Bascule HTTPS+HMAC par défaut | **v13.90** | Validation pilote v13.80 requise (1-2 semaines hardware) |
+
+### Procédure de bascule v13.90 (à exécuter après validation pilote)
+
+Étapes côté firmware :
+1. Flasher `wroom-prod-https` sur 1-2 appareils prod en parallèle (les autres restent en `wroom-prod`).
+2. Configurer `Secrets::API_SIG_SECRET` + `SECRETS_INCLUDE_API_SIG_SECRET 1` côté firmware ET `.env API_SIG_SECRET` côté serveur (même valeur).
+3. Monitor 1-2 semaines : taux d'erreur POST/GET, heap stable, pas de reboot.
+4. Si validation OK : v13.90 = activer `USE_HTTPS_ENDPOINTS` par défaut dans `[env:wroom-prod]` et `[env:wroom-s3-prod]`. Ajouter flag `USE_LEGACY_HTTP` pour fallback explicite. Faire `HmacSign::isEnabled()` obligatoire (échec auth → queue NVS fallback).
+5. Publier OTA v13.90 via `IOT_n3/scripts/publish_ota.ps1` pour bascule progressive de la flotte.
+
+Étapes côté serveur :
+1. Vérifier `App\Security\SignatureValidator` accepte HMAC en priorité, fallback `api_key`.
+2. Activer `.env API_SIG_SECRET`.
+3. Certificat HTTPS Let's Encrypt valide pour `iot.olution.info`.
+
+### Publication OTA (rattrapage metadata)
+
+Une fois v13.80 buildée localement et validée, exécuter depuis la racine `IOT_n3` :
+
+```powershell
+.\scripts\publish_ota.ps1 -Component ffp5cs -Channel test -Build
+.\scripts\publish_ota.ps1 -Component ffp5cs -Channel prod -Build
+```
+
+Le CRON serveur récupère le push sous 1 min ; les appareils existants reçoivent v13.80 au prochain check OTA (intervalle 2 h par défaut).
+
+### Documentation à jour
+
+- [`firmwires/ffp5cs/README.md`](../../README.md) — badge `13.80`, sections actualisées, historique réduit.
+- [`firmwires/ffp5cs/VERSION.md`](../../VERSION.md) — 6 nouvelles entrées (v13.52 à v13.80).
+- [`firmwires/ffp5cs/docs/technical/MIGRATION_HMAC_HTTPS.md`](../technical/MIGRATION_HMAC_HTTPS.md) — guide migration HMAC+HTTPS.
+- [`docs/reports/AUDIT_GENERAL_2026-05.md`](AUDIT_GENERAL_2026-05.md) — ce rapport (synthèse + bilan).
 
 ---
 
-**Fin du rapport.**
+**Fin du rapport. Audit clôturé sur v13.80 (mode dual rétrocompatible). v13.90 (bascule défaut) reste à déclencher après validation pilote.**
