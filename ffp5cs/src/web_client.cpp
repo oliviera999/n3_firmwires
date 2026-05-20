@@ -26,16 +26,22 @@ static std::atomic<bool> s_httpTransportLockHeldForSleep{false};
 
 namespace {
 
-// Sérialise fetchRemoteState avec httpRequest (même s_httpMutex)
+// Sérialise fetchRemoteState avec httpRequest (même s_httpMutex).
+// v13.53 (audit): timeout au lieu de portMAX_DELAY pour éviter qu'un POST 18s bloque
+// indéfiniment un GET ou heartbeat. Timeout = max(POST_RPC, OUTPUTS_STATE_RPC) + marge 5s.
 struct HttpTransportMutexGuard {
   bool held{false};
+  static constexpr uint32_t MUTEX_ACQUIRE_TIMEOUT_MS =
+      NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS + 5000UL;
   HttpTransportMutexGuard() {
     if (s_httpMutex == nullptr) {
       s_httpMutex = xSemaphoreCreateMutex();
     }
     if (s_httpMutex != nullptr &&
-        xSemaphoreTake(s_httpMutex, portMAX_DELAY) == pdTRUE) {
+        xSemaphoreTake(s_httpMutex, pdMS_TO_TICKS(MUTEX_ACQUIRE_TIMEOUT_MS)) == pdTRUE) {
       held = true;
+    } else if (s_httpMutex != nullptr) {
+      Serial.println(F("[HTTP] ⚠️ HttpTransportMutexGuard: timeout acquisition mutex (saturation/concurrence)"));
     }
   }
   ~HttpTransportMutexGuard() {
@@ -98,7 +104,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   if (s_httpMutex == nullptr) {
     s_httpMutex = xSemaphoreCreateMutex();
   }
-  if (s_httpMutex != nullptr && xSemaphoreTake(s_httpMutex, portMAX_DELAY) != pdTRUE) {
+  // v13.53 (audit): timeout = timeoutMs + 5s marge (au lieu de portMAX_DELAY).
+  // Un POST 18s ne doit pas bloquer indéfiniment GET/heartbeat. En cas de saturation,
+  // le caller fait fallback NVS (POST queued) ou abandon (GET/heartbeat).
+  if (s_httpMutex != nullptr &&
+      xSemaphoreTake(s_httpMutex, pdMS_TO_TICKS(timeoutMs + 5000UL)) != pdTRUE) {
+    Serial.printf("[HTTP] ⚠️ httpRequest: mutex non acquis en %lu ms (saturation), abandon\n",
+                  (unsigned long)(timeoutMs + 5000UL));
     return false;
   }
 

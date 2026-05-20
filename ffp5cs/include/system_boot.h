@@ -6,6 +6,12 @@
 
 namespace SystemBoot {
 
+    // v13.53: Init Task Watchdog (TWDT) factorisé - cible WROOM/S3 sans PSRAM (S3+PSRAM
+    // garde son init précoce dans app.cpp à cause de earlyInitVariant et IWDT/MWDT1).
+    // Choisit le timeout selon le profil : 30s prod/test, 60s wroom-beta (USE_TEST_ENDPOINTS),
+    // 300s S3 (sans PSRAM).
+    void initWatchdog();
+
     // Storage & Network Identifiers
     void setupHostname(char* buffer, size_t bufferSize);
     void initializeStorage(AppContext& ctx);

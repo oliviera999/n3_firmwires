@@ -41,9 +41,16 @@ class SystemSensors {
   // Dernières valeurs valides (non nulles, non aberrantes) pour gestion fallback
   uint16_t _lastValidWlAqua{0};
   uint16_t _lastValidWlTank{0};
+  uint16_t _lastValidWlPota{0};  // v13.53: ajouté pour fallback potager (audit)
   // Throttle logs réservoir invalide (évite spam série, fallback inchangé)
   uint32_t _lastWlTankInvalidLogMs{0};
   bool _lastWlTankWasValid{false};
+  // v13.53: throttle logs potager + état précédent (cohérent avec _wlTank)
+  uint32_t _lastWlPotaInvalidLogMs{0};
+  bool _lastWlPotaWasValid{false};
+  // v13.53: throttle logs aquarium invalide (audit - évite spam si capteur HS)
+  uint32_t _lastWlAquaInvalidLogMs{0};
+  bool _lastWlAquaWasValid{false};
   
   // Historique wlAqua pour calcul du diff ~10s
   static constexpr uint8_t AQUA_HIST_SIZE = 16;

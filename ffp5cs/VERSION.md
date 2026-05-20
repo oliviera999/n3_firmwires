@@ -12,6 +12,61 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.53 - 2026-05-20
+
+### Audit général 2026-05 — fonctionnel critique (Incrément 2/7)
+
+Suite de l'audit (cf. v13.52). Cet incrément couvre les **bloquants fonctionnels** identifiés par les sous-audits 3 (mémoire/RTOS) et 4 (capteurs/automatismes).
+
+### Capteurs ultrason — fallback `wlAqua` / `wlPota`
+
+**Symptôme** : `system_sensors.cpp` retournait `r.wlAqua = 0` (et `r.wlPota = 0`) lorsque la lecture ultrason invalidait après tentative de récupération. Or `automatism.cpp:663` interprète `wlAqua < limFlood` (80 mm) comme **inondation** → fausse alerte + verrouillage de la pompe réservoir alors que le capteur est juste défaillant.
+
+**Correctifs** :
+- Aquarium : si lecture invalide et tentative simple échoue, on retombe sur `_lastValidWlAqua` ; sinon sur `Fallback::WATER_LEVEL_AQUA` (152 mm — niveau « normal »). Plus jamais 0.
+- Potager : symétrique (anciennement forçait 0 sans fallback). Nouveau membre `_lastValidWlPota`. Fallback final `Fallback::WATER_LEVEL_POTA` (121 mm).
+- Throttle logs `_lastWlAquaInvalidLogMs` et `_lastWlPotaInvalidLogMs` (alignés sur `_lastWlTankInvalidLogMs`) pour limiter le bruit série quand le capteur reste HS.
+
+### Plages ultrason — documentation explicite (4000 vs 5000 mm)
+
+Aligné dans la doc inline de `config.h::SensorConfig::Ultrasonic` : `MIN/MAX_DISTANCE_MM` = bornes physiques HC-SR04 (datasheet 2-400 cm), `MAX_VALID_LEVEL_MM = 5000` = borne « niveau eau » applicative (cuves profondes, marge mesure off-axis). L'écart est désormais documenté pour éviter un ré-alignement intempestif.
+
+### `GPIOMap` pompes/lumière — référencer `Pins::*`
+
+**Symptôme** : `gpio_mapping.h:79-82` codait en dur `PUMP_AQUA = {16, ...}`, `PUMP_TANK = {18, ...}`, `LIGHT = {15, ...}` au lieu de référencer `Pins::POMPE_AQUA`, `Pins::POMPE_RESERV`, `Pins::LUMIERE`. Risque de divergence WROOM ↔ S3 si on déplace une broche dans `pins.h`.
+
+**Correctif** : `GPIOMapping` utilise maintenant `Pins::*` (cohérent avec `HEATER` qui le faisait déjà via `Pins::RADIATEURS`). Pas de changement de valeur (les broches sont identiques sur WROOM et S3 actuels).
+
+### SMTP — feed TWDT pendant `_smtp.connect` et `MailClient.sendMail`
+
+**Symptôme** : `mailer.cpp::sendSync` exécutait `_smtp.connect(&_cfg)` (5-15 s) et `MailClient.sendMail(...)` (5-30 s) dans `automationTask` (souscrite TWDT 30 s WROOM). Risque de reboot par TWDT si SMTP ralenti.
+
+**Correctif** : `esp_task_wdt_reset()` avant et après chaque appel bloquant SMTP (`_smtp.connect` ligne 1001-1004, `MailClient.sendMail` ligne 1126-1132). La macro `esp_task_wdt_status(NULL) == ESP_OK` garde l'appel safe même si la tâche n'est pas souscrite.
+
+### HTTP — mutex `s_httpMutex` avec timeout au lieu de `portMAX_DELAY`
+
+**Symptôme** : `web_client.cpp:37,101` faisait `xSemaphoreTake(s_httpMutex, portMAX_DELAY)`. Un POST de 18 s pouvait bloquer indéfiniment tout GET ou heartbeat concurrent (typiquement netTask vs postSenderTask).
+
+**Correctif** :
+- `HttpTransportMutexGuard` : timeout = `HTTP_POST_RPC_TIMEOUT_MS + 5000` (~22-27 s) au lieu de `portMAX_DELAY`. Échec → log + `held=false` (l'appelant peut traiter le timeout).
+- `httpRequest()` : timeout = `timeoutMs + 5000` (marge 5 s sur le timeout HTTP du caller). Échec → retour `false` (caller fait fallback NVS pour POST, abandon pour GET).
+
+### Boot — extraction `SystemBoot::initWatchdog()`
+
+**Symptôme** : `app.cpp::setup()` contenait 3 blocs distincts d'init TWDT (S3 PSRAM lignes 111-135, fallback IDF5 lignes 138-156, WROOM lignes 198-228) avec gardes préprocesseur imbriquées sur 4 niveaux. Difficile à maintenir.
+
+**Correctif** : nouvelle fonction `SystemBoot::initWatchdog()` dans `system_boot.cpp` qui factorise les cas WROOM (30 s prod/test, 60 s wroom-beta) et S3 sans PSRAM. La cible S3 + PSRAM conserve son init précoce dans `app.cpp` (dépend de `earlyInitVariant` et de l'IWDT/MWDT1 spécifiques).
+
+### Slot `NetRequest` POST — vérification (pas de bug)
+
+Audit confirmé : les chemins POST (`netPostRaw`, `netTask::PostRaw`) et Heartbeat libèrent déjà correctement le slot dans tous les cas (succès, échec queue, échec réseau). Le correctif v13.51 était spécifique à la branche `FetchRemoteState` après échec notifié — déjà appliqué.
+
+### Prochain incrément
+
+v13.60 : hygiène (découpage `config.h`, `board_traits.h`, nettoyage commentaires v11.*) + sécurité moyenne (AP WPA2, OTA CN check, CORS) + restauration suite `wroom-beta-local`.
+
+---
+
 ## Version 13.52 - 2026-05-20
 
 ### Audit général 2026-05 — sécurité critique web (Incrément 1/7)

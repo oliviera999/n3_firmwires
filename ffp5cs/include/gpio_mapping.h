@@ -75,11 +75,13 @@ struct GPIOMapping {
 // config.h::ActuatorConfig::Default référence également GPIODefaults.
 namespace GPIOMap {
     // ACTIONNEURS PHYSIQUES (états booléens)
-    //                       GPIO  Type                NVS           POST              Interne         Desc                Default
-    constexpr GPIOMapping PUMP_AQUA     = {16, GPIOType::ACTUATOR, "pump_aqua", "etatPompeAqua", "pumpAqua", "Pompe aquarium", false};
-    constexpr GPIOMapping PUMP_TANK     = {18, GPIOType::ACTUATOR, "pump_tank", "etatPompeTank", "pumpTank", "Pompe réservoir", false};
-    constexpr GPIOMapping HEATER        = {Pins::RADIATEURS, GPIOType::ACTUATOR, "heater", "etatHeat", "heater", "Chauffage", false};
-    constexpr GPIOMapping LIGHT         = {15, GPIOType::ACTUATOR, "light", "etatUV", "light", "Lumière", false};
+    // v13.53 (audit): GPIO référencent Pins::* pour rester cohérents WROOM ↔ S3 (ex. RADIATEURS S3=13).
+    //                 Ancien code hardcodait 16/18/15, divergeait sur S3 (Pins::POMPE_AQUA différent).
+    //                       GPIO                  Type                NVS           POST              Interne         Desc                Default
+    constexpr GPIOMapping PUMP_AQUA     = {Pins::POMPE_AQUA,    GPIOType::ACTUATOR, "pump_aqua", "etatPompeAqua", "pumpAqua", "Pompe aquarium", false};
+    constexpr GPIOMapping PUMP_TANK     = {Pins::POMPE_RESERV,  GPIOType::ACTUATOR, "pump_tank", "etatPompeTank", "pumpTank", "Pompe réservoir", false};
+    constexpr GPIOMapping HEATER        = {Pins::RADIATEURS,    GPIOType::ACTUATOR, "heater",    "etatHeat",      "heater",   "Chauffage", false};
+    constexpr GPIOMapping LIGHT         = {Pins::LUMIERE,       GPIOType::ACTUATOR, "light",     "etatUV",        "light",    "Lumière", false};
     
     // COMMANDES NOURRISSAGE (flags)
     constexpr GPIOMapping FEED_SMALL    = {108, GPIOType::ACTUATOR, "feed_small", "bouffePetits", "feedSmall", "Nourrir petits", false};

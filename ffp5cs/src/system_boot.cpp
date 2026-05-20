@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <esp_ota_ops.h>
 #include <esp_heap_caps.h>  // Baseline heap au boot (stabilité long uptime)
+#include <esp_task_wdt.h>   // v13.53: TWDT init centralisé
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <Preferences.h>
@@ -26,6 +27,46 @@
 #endif
 
 namespace SystemBoot {
+
+// v13.53 (audit): factorisation de l'init TWDT - WROOM (30s prod/test, 60s wroom-beta)
+// et S3 sans PSRAM. La cible S3 + PSRAM garde son init précoce dans `app.cpp` à cause
+// de `earlyInitVariant()` et de l'IWDT/MWDT1 spécifiques à ce sous-cas matériel.
+void initWatchdog() {
+#if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
+  // Choix du timeout selon profil/cible.
+  uint32_t timeoutSec;
+  const char* tag;
+  #if defined(USE_TEST_ENDPOINTS)
+    timeoutSec = 60;   // wroom-beta : marge OTA metadata HTTPS (~20s handshake TLS)
+    tag        = "60s WROOM-beta (USE_TEST_ENDPOINTS, OTA TLS)";
+  #else
+    timeoutSec = 30;   // wroom-prod / wroom-test : marge POST 18s + async_tcp
+    tag        = "30s WROOM prod/test";
+  #endif
+
+  #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+  // IDF 5+ : init d'abord, deinit seulement si déjà configuré (évite "TWDT was never initialized").
+  esp_task_wdt_config_t cfg = {};
+  cfg.timeout_ms = timeoutSec * 1000UL;
+  cfg.idle_core_mask = 0;
+  cfg.trigger_panic = true;
+  esp_err_t err = esp_task_wdt_init(&cfg);
+  if (err == ESP_ERR_INVALID_STATE) {
+    esp_task_wdt_deinit();
+    esp_task_wdt_init(&cfg);
+  }
+  BOOT_LOG("[BOOT] Watchdog configuré: %s (IDF5)\n", tag);
+  #else
+  // IDF 4.x (Arduino wroom-test) : esp_task_wdt_init(timeout_sec, panic).
+  esp_task_wdt_deinit();
+  esp_task_wdt_init(timeoutSec, true);
+  BOOT_LOG("[BOOT] Watchdog configuré: %s (IDF4)\n", tag);
+  #endif
+#else
+  // S3 + PSRAM : init précoce dans app.cpp (TWDT 300s + IWDT MWDT1 désactivé tôt).
+  (void)0;
+#endif
+}
 
 void setupHostname(char* buffer, size_t bufferSize) {
   uint64_t chipId = ESP.getEfuseMac();

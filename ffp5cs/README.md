@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-13.52-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.53-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -107,7 +107,18 @@ ffp5cs/
 - [x] Mode veille optimisé
 - [x] Reconnexion WiFi
 
-### 🔄 Améliorations Récentes (v13.52 — audit général 2026-05)
+### 🔄 Améliorations Récentes (audit général 2026-05)
+
+**v13.53 — fonctionnel critique**
+- [x] `wlAqua = 0` corrigé : fallback sur `_lastValidWlAqua` puis `Fallback::WATER_LEVEL_AQUA` (évite fausse alerte inondation)
+- [x] `wlPota` symétrique avec `_lastValidWlPota` ajouté (anciennement forçait 0 sans fallback)
+- [x] `GPIOMap` pompes/lumière référencent `Pins::POMPE_AQUA`/`POMPE_RESERV`/`LUMIERE` (cohérence WROOM↔S3)
+- [x] Plages ultrason 4000/5000 mm documentées (capteur HC-SR04 vs validation niveau eau)
+- [x] `mailer.cpp` : feed TWDT pendant `_smtp.connect` et `MailClient.sendMail` (anti-reboot SMTP > 30s)
+- [x] `web_client.cpp` : mutex HTTP avec timeout (au lieu de `portMAX_DELAY`) — évite blocage GET par POST 18s
+- [x] `SystemBoot::initWatchdog()` extrait de `app.cpp` (factorise les 3 blocs TWDT WROOM/S3/IDF4-5)
+
+**v13.52 — sécurité critique**
 - [x] Audit exhaustif consolidé : `docs/reports/AUDIT_GENERAL_2026-05.md`
 - [x] Sécurité web : routes admin (`/api/wakeup feed`, `/api/remote-flags`, `/mailtest`, `/testota`, `/fs/format`) protégées par `webAuthIsAuthenticated`
 - [x] Sécurité cookie session : `esp_fill_random` (HW RNG) + `HttpOnly; SameSite=Strict` + TTL 24 h + rotation à chaque login
@@ -115,10 +126,8 @@ ffp5cs/
 - [x] `/wifi/saved` : plus de mots de passe WiFi en clair, seulement `hasPassword` booléen
 - [x] Bug correction `API_KEY = API_KEY` (auto-référence) dans `include/config.h`
 - [x] `static_assert PROFILE_PROD` rejette le placeholder `CHANGEZ_MOI` pour `API_KEY` et `WEB_AUTH_PASS`
-- [x] `secrets_config.h.example` enrichi (`WEB_AUTH_USER/PASS`, `SECRETS_INCLUDE_WEB_AUTH`)
-- [x] Nettoyage : 30+ commentaires `// v13.0x ... // v13.51` purgés de `config.h` (renvoi à `VERSION.md`)
 
-> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène) → v13.65 (refactor) → v13.70 (robustesse) → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
+> Roadmap audit : v13.52 (sécurité critique) → **v13.53 (fonctionnel critique)** → v13.60 (hygiène) → v13.65 (refactor) → v13.70 (robustesse) → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable
@@ -177,6 +186,7 @@ pio run -e wroom-test -t uploadfs
 L'historique complet est tenu dans **[VERSION.md](VERSION.md)** (source unique).
 
 Versions récentes :
+- **v13.53** (2026-05) — Audit général : fonctionnel critique (wlAqua/wlPota fallback, GPIOMap via Pins::*, SMTP feed TWDT, mutex HTTP timeout, initWatchdog factorisé).
 - **v13.52** (2026-05) — Audit général : sécurité web critique (auth routes admin, WebSocket auth, cookie hardened, bug API_KEY corrigé, /wifi/saved sans mdp).
 - **v13.51** (2026-05) — netRPC GET outputs/state : libération du slot après échec notifié.
 - **v13.49** (2026-04) — Journaux série : phases HTTP/WiFi explicites, nettoyage logs DBG.

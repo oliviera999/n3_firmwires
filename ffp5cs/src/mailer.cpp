@@ -998,7 +998,10 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
     // tentative de reconnexion
     _smtp.closeSession();
     Serial.println(F("[Mail] Tentative de connexion SMTP..."));
+    // v13.53 (audit): feed TWDT avant connexion SMTP TLS (peut bloquer 5-15s, TWDT 30s WROOM).
+    if (esp_task_wdt_status(NULL) == ESP_OK) { esp_task_wdt_reset(); }
     _ready = _smtp.connect(&_cfg);
+    if (esp_task_wdt_status(NULL) == ESP_OK) { esp_task_wdt_reset(); }
     if(!_ready){
       // v11.179: Pas de String temporaire pour éviter crash dans destructeur
       Serial.printf("[Mail] ❌ Reconnexion SMTP échouée - code: %d\n", _smtp.statusCode());
@@ -1123,7 +1126,10 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   Serial.println(F("[Mail] ==========================="));
   
   Serial.println(F("[Mail] Trace 6: Calling sendMail..."));
+  // v13.53 (audit): feed TWDT avant et après MailClient.sendMail (peut bloquer 5-30s sur SMTP lent).
+  if (esp_task_wdt_status(NULL) == ESP_OK) { esp_task_wdt_reset(); }
   bool ok = MailClient.sendMail(&_smtp, &msg);
+  if (esp_task_wdt_status(NULL) == ESP_OK) { esp_task_wdt_reset(); }
   Serial.printf("[Mail] Trace 7: sendMail returned %s\n", ok ? "TRUE" : "FALSE");
 
   if (!ok) {

@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.52";
+    inline constexpr const char* VERSION = "13.53";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -638,12 +638,17 @@ namespace SensorConfig {
     }
 
     namespace Ultrasonic {
-        inline constexpr uint16_t MIN_DISTANCE_MM = 20;    // 2 cm
-        inline constexpr uint16_t MAX_DISTANCE_MM = 4000;  // 400 cm
+        // v13.53 (audit): MIN/MAX_DISTANCE = bornes physiques HC-SR04 (datasheet ~2 cm à ~400 cm).
+        //                 MAX_VALID_LEVEL = borne « niveau eau » au sens application (cuves plus
+        //                 profondes, marge mesure off-axis). Les deux sont volontairement distincts.
+        //                 Documenter l'écart pour éviter ré-alignement intempestif.
+        inline constexpr uint16_t MIN_DISTANCE_MM = 20;    // 2 cm  (datasheet HC-SR04)
+        inline constexpr uint16_t MAX_DISTANCE_MM = 4000;  // 400 cm (datasheet HC-SR04)
         // Compat héritée pour code non migré (cm)
         inline constexpr uint16_t MIN_DISTANCE_CM = 2;
         inline constexpr uint16_t MAX_DISTANCE_CM = 400;
-        // Plage validée dans system_sensors pour niveaux eau (potager, aquarium, réservoir)
+        // Plage validée dans system_sensors pour niveaux eau (potager, aquarium, réservoir).
+        // Volontairement plus large que MAX_DISTANCE_MM : marge cuves profondes / lectures off-axis.
         inline constexpr uint16_t MAX_VALID_LEVEL_MM = 5000;
         inline constexpr uint16_t MAX_VALID_LEVEL_CM = 500;
         inline constexpr uint16_t MAX_DELTA_MM = 300;

@@ -192,40 +192,10 @@ void setup() {
   #endif
   #endif
   
-  // WROOM (non-S3): reconfig TWDT au démarrage (évite reboot pendant POST 8s, OTA HTTPS).
-  // USE_TEST_ENDPOINTS (wroom-beta): 60s pour marge OTA metadata HTTPS (handshake TLS peut bloquer ~20s).
-  // IDF 5: esp_task_wdt_config_t + timeout_ms. IDF 4 (Arduino wroom-test): esp_task_wdt_init(timeout_sec).
-  #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
-    #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
-  // Éviter "TWDT was never initialized" : init d'abord, deinit seulement si déjà configuré
-  {
-    esp_task_wdt_config_t cfg = {};
-    #if defined(USE_TEST_ENDPOINTS)
-    cfg.timeout_ms = 60000;   // 60s wroom-beta (OTA metadata HTTPS peut bloquer ~20s)
-    #else
-    cfg.timeout_ms = 30000;   // 30s prod/test (marge POST 8s + async_tcp)
-    #endif
-    cfg.idle_core_mask = 0;
-    cfg.trigger_panic = true;
-    esp_err_t err = esp_task_wdt_init(&cfg);
-    if (err == ESP_ERR_INVALID_STATE) {
-      esp_task_wdt_deinit();
-      esp_task_wdt_init(&cfg);
-    }
-    Serial.printf("[BOOT] Watchdog configuré: timeout=%lu ms (WROOM)\n", (unsigned long)cfg.timeout_ms);
-  }
-    #else
-  // API IDF 4.x: esp_task_wdt_init(timeout_sec, panic)
-  esp_task_wdt_deinit();
-  #if defined(USE_TEST_ENDPOINTS)
-  esp_task_wdt_init(60, true);   // 60s wroom-beta (OTA TLS)
-  Serial.println("[BOOT] Watchdog configuré: 60 s (WROOM-beta, API IDF4)");
-  #else
-  esp_task_wdt_init(30, true);   // 30s prod/test
-  Serial.println("[BOOT] Watchdog configuré: 30 s (WROOM, API IDF4)");
-  #endif
-    #endif
-  #endif
+  // v13.53 (audit): init TWDT extrait dans SystemBoot::initWatchdog() — factorise les
+  // 3 blocs WROOM/IDF4/IDF5/wroom-beta qui étaient en ligne ici. La cible S3+PSRAM
+  // conserve son init précoce plus haut (earlyInitVariant + IWDT MWDT1).
+  SystemBoot::initWatchdog();
   
   // v11.149: Initialisation du mutex TLS (avant toute opération réseau)
   TLSMutex::init();

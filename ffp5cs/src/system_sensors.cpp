@@ -43,16 +43,36 @@ SensorReadings SystemSensors::read() {
   // Ultrasons en premier (niveaux critiques, lecture rapide ; DHT peut timeout 7+ s)
   
   // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
+  // v13.53 (audit): plus jamais de fallback à 0 (interprété comme "niveau très haut" = inondation
+  // par certains automatismes) ; on retombe sur _lastValidWlPota puis sur Fallback::WATER_LEVEL_POTA.
   {
     phaseStart = millis();
     uint16_t val = _usPota.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
-    if (val == 0 || val > SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u mm, force 0\n", val);
-      r.wlPota = 0;
+    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
+    if (!valid) {
+      uint32_t nowMs = millis();
+      bool shouldLog = _lastWlPotaWasValid || (nowMs - _lastWlPotaInvalidLogMs >= 30000);
+      if (shouldLog) {
+        SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u mm\n", val);
+        _lastWlPotaInvalidLogMs = nowMs;
+      }
+      if (_lastValidWlPota > 0) {
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide potager: %u mm\n", _lastValidWlPota);
+        }
+        r.wlPota = _lastValidWlPota;
+      } else {
+        r.wlPota = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f);
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Aucune valeur valide connue, potager=defaut %u mm\n", r.wlPota);
+        }
+      }
     } else {
       r.wlPota = val;
+      _lastValidWlPota = val;
     }
+    _lastWlPotaWasValid = valid;
   }
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -63,32 +83,47 @@ SensorReadings SystemSensors::read() {
     return r;
   }
   
+  // v13.53 (audit): wlAqua = 0 sur invalide est interprété par automatism.cpp:663 comme
+  // "niveau très haut" (`wlAqua < limFlood` 80mm) → fausse alerte inondation et verrouillage
+  // pompe réservoir. On retombe sur _lastValidWlAqua puis Fallback::WATER_LEVEL_AQUA.
   {
     phaseStart = millis();
     uint16_t val = _usAqua.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
     bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
     if (!valid) {
-      SENSOR_LOG_PRINTF("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
+      uint32_t nowMs = millis();
+      bool shouldLog = _lastWlAquaWasValid || (nowMs - _lastWlAquaInvalidLogMs >= 30000);
+      if (shouldLog) {
+        SENSOR_LOG_PRINTF("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
+        _lastWlAquaInvalidLogMs = nowMs;
+      }
       // Tentative de récupération avec méthode simple
       val = _usAqua.readFiltered(3);
       valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
       if (valid) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u mm\n", val);
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u mm\n", val);
+        }
         r.wlAqua = val;
         _lastValidWlAqua = val;
       } else if (_lastValidWlAqua > 0) {
-        SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u mm\n", _lastValidWlAqua);
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u mm\n", _lastValidWlAqua);
+        }
         r.wlAqua = _lastValidWlAqua;
       } else {
-        SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – utilise 0\n");
-        r.wlAqua = 0;
+        // v13.53: défaut sûr (pas 0 - éviterait fausse alerte inondation).
+        r.wlAqua = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f);
+        if (shouldLog) {
+          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – fallback %u mm\n", r.wlAqua);
+        }
       }
     } else {
-      // Valeur valide
       r.wlAqua = val;
       _lastValidWlAqua = val;
     }
+    _lastWlAquaWasValid = valid;
   }
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
