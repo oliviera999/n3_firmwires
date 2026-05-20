@@ -419,13 +419,19 @@ NVSError NVSManager::saveInt(const char* ns, const char* key, int value) {
         return keyError;
     }
 
-    // Vérifier si la valeur a changé avant d'écrire (préserve flash)
+    // v13.70 (audit): même pattern que saveBool v13.46 - ne comparer que si la clé existe.
+    // L'ancien `getInt(key, value+1)` reposait sur "+1" comme sentinelle, ce qui échoue
+    // si la valeur réelle est exactement value+1 (coïncidence rare mais possible).
     NVSError openError = openNamespace(ns, true);
     if (openError == NVSError::SUCCESS) {
-        int current = _preferences.getInt(key, value + 1); // +1 pour détecter si clé absente
+        bool skipWrite = false;
+        if (_preferences.isKey(key)) {
+            int current = _preferences.getInt(key, 0);
+            skipWrite = (current == value);
+        }
         closeNamespace();
-        if (current == value) {
-            return NVSError::SUCCESS; // Valeur inchangée
+        if (skipWrite) {
+            return NVSError::SUCCESS;
         }
     }
 
@@ -567,13 +573,18 @@ NVSError NVSManager::saveULong(const char* ns, const char* key, unsigned long va
         return keyError;
     }
 
-    // Vérifier si la valeur a changé avant d'écrire (préserve flash)
+    // v13.70 (audit): même pattern que saveBool v13.46 - ne comparer que si la clé existe
+    // (la sentinelle "+1" pouvait coïncider avec une valeur réelle, faussant skipWrite).
     NVSError openError = openNamespace(ns, true);
     if (openError == NVSError::SUCCESS) {
-        unsigned long current = _preferences.getULong(key, value + 1);
+        bool skipWrite = false;
+        if (_preferences.isKey(key)) {
+            unsigned long current = _preferences.getULong(key, 0);
+            skipWrite = (current == value);
+        }
         closeNamespace();
-        if (current == value) {
-            return NVSError::SUCCESS; // Valeur inchangée
+        if (skipWrite) {
+            return NVSError::SUCCESS;
         }
     }
 

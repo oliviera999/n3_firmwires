@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-13.65-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.70-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -109,6 +109,14 @@ ffp5cs/
 
 ### 🔄 Améliorations Récentes (audit général 2026-05)
 
+**v13.70 — robustesse mémoire/réseau + tests Unity**
+- [x] NVS : pattern v13.46 (`isKey` avant compare) généralisé à `saveInt` et `saveULong`
+- [x] Heartbeat : compteur diagnostique `netHeartbeatDroppedCount()` (file postSender saturée)
+- [x] `MIN_HEAP_FOR_SMTP` / `MIN_HEAP_FOR_HTTPS` aliases (différenciation future v13.80+)
+- [x] Inventaire DRAM `config.h` actualisé (~60-65 KB BSS app vs ~50 KB annoncé)
+- [x] `task_monitor` étendu : postSender + ota (display retiré, task supprimée v13.65+)
+- [x] Tests Unity : `test_sensor_validation` (12 cas), `test_gpio_mapping` (9 cas)
+
 **v13.65 — refactor architecture ciblé (gros découpages reportés à v13.66+)**
 - [x] Mailer : footer mail utilise le cache capteurs (au lieu de `sensors.read()` bloquant 1-7s)
 - [x] Automatism : `getCachedReadings()` ajouté (non bloquant) avec fallbacks `SensorConfig::Fallback::*`
@@ -145,7 +153,7 @@ ffp5cs/
 - [x] Bug correction `API_KEY = API_KEY` (auto-référence) dans `include/config.h`
 - [x] `static_assert PROFILE_PROD` rejette le placeholder `CHANGEZ_MOI` pour `API_KEY` et `WEB_AUTH_PASS`
 
-> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène + beta-local) → **v13.65 (refactor ciblé)** → v13.70 (robustesse) → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
+> Roadmap audit : v13.52 (sécurité critique) → v13.53 (fonctionnel critique) → v13.60 (hygiène + beta-local) → v13.65 (refactor ciblé) → **v13.70 (robustesse + tests)** → v13.80 (HMAC + HTTPS dual) → v13.90 (bascule).
 
 ### 📈 Métriques
 - **Uptime**: 24/7 stable
@@ -204,6 +212,7 @@ pio run -e wroom-test -t uploadfs
 L'historique complet est tenu dans **[VERSION.md](VERSION.md)** (source unique).
 
 Versions récentes :
+- **v13.70** (2026-05) — Audit général : robustesse mémoire/réseau (NVS isKey, heartbeat counter, MIN_HEAP_SMTP/HTTPS aliases) + tests Unity (sensor_validation, gpio_mapping) + inventaire DRAM actualisé.
 - **v13.65** (2026-05) — Audit général : refactor architecture ciblé (mailer cache, Automatism::getCachedReadings). Découpages app_tasks.cpp / web_server.cpp reportés à v13.66+.
 - **v13.60** (2026-05) — Audit général : hygiène + sécurité moyenne (CORS, OTA CN, AP WPA2, lib_deps épinglées, façades config_*.h, board_traits.h) + restauration suite beta-local.
 - **v13.53** (2026-05) — Audit général : fonctionnel critique (wlAqua/wlPota fallback, GPIOMap via Pins::*, SMTP feed TWDT, mutex HTTP timeout, initWatchdog factorisé).

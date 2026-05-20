@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.65";
+    inline constexpr const char* VERSION = "13.70";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -533,6 +533,9 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 36864; // S3: 36 KB (réduit 503 streams)
     // Heap libre minimum pour accepter une connexion TLS (SMTP/HTTPS). Source de vérité unique.
     inline constexpr uint32_t MIN_HEAP_FOR_TLS = 35000;        // 35 KB (aligné v11.159)
+    // v13.70 (audit): aliases sémantiques pour différencier les usages futurs (v13.80 HTTPS).
+    inline constexpr uint32_t MIN_HEAP_FOR_SMTP  = MIN_HEAP_FOR_TLS;  // SMTP via mbedTLS (mailer)
+    inline constexpr uint32_t MIN_HEAP_FOR_HTTPS = MIN_HEAP_FOR_TLS;  // HTTPS (OTA metadata, v13.80+ data)
 #else
     inline constexpr uint32_t MIN_HEAP_JSON_ROUTE = 20000;      // /json endpoint (réduit de 50K)
     inline constexpr uint32_t MIN_HEAP_DBVARS_ROUTE = 25000;    // /dbvars endpoint (réduit de 55K)
@@ -557,6 +560,9 @@ namespace HeapConfig {
     inline constexpr uint32_t MIN_HEAP_RESPONSE_STREAM = 28672;  // 28 KB
     // Heap libre minimum pour accepter une connexion TLS (SMTP/HTTPS). Source de vérité unique.
     inline constexpr uint32_t MIN_HEAP_FOR_TLS = 35000;         // 35 KB (aligné v11.159)
+    // v13.70 (audit): aliases sémantiques pour différencier les usages futurs (v13.80 HTTPS).
+    inline constexpr uint32_t MIN_HEAP_FOR_SMTP  = MIN_HEAP_FOR_TLS;  // SMTP via mbedTLS (mailer)
+    inline constexpr uint32_t MIN_HEAP_FOR_HTTPS = MIN_HEAP_FOR_TLS;  // HTTPS (OTA metadata, v13.80+ data)
 #endif
 }
 
@@ -934,14 +940,36 @@ namespace SleepConfig {
 // ESP32 : 520 KB SRAM = 320 KB DRAM + 200 KB IRAM.
 // Contrainte IDF : au plus 160 KB en allocation statique (.data + .bss) ; le reste
 // n'est disponible qu'en heap à l'exécution.
-// Inventaire application (WROOM, ordre de grandeur) :
-//   - Stacks + TCB (sensor, automation, net ; webTask en heap) : ~26 KB
-//   - Pools / cache (NetRequest, JSON fallback, remoteJson, deferredJson, etc.) : ~10 KB
-//   - Buffers applicatifs (app, mailer, web_server) : ~11 KB
+//
+// Inventaire application v13.70 (audit 2026-05) - WROOM prod, ordres de grandeur :
+//   - Stacks statiques FreeRTOS :
+//       sensor    (3072 octets)
+//       auto      (10240)
+//       net       (12800 prod / 14224 beta / 9216 test)
+//       ota       (12288 prod / 11264 beta / 9216 test)
+//       Total stacks statiques ≈ 38,4 KB (prod) — était ~26 KB dans l'inventaire pré-v13.36.
+//   - Stacks heap (créées via xTaskCreatePinnedToCore avec malloc) :
+//       webTask         (10240)
+//       postSenderTask  (8192)
+//       Total heap stacks ≈ 18,4 KB.
+//   - TCB FreeRTOS (×~6) : ~0,4 KB statique.
+//   - Pools / caches statiques :
+//       NetRequest pool (8 × ~928 o, payload 896) : ~7,4 KB
+//       s_remoteJsonCache, s_lastFetchedJson, s_deferredRemoteJson : ~1,5 + 2 + 1,5 ≈ 5 KB
+//       g_remoteFallbackDoc, s_dbvarsCachedSrc : ~2,5 KB
+//   - Buffers applicatifs (mailer s_mailMessageBuffer ~4,3 KB, web_server, app) : ~10-12 KB
 //   - Globaux (PowerManager, WebClient, Mailer, Diagnostics, NVSManager) : ~3 KB
-//   Total app ~50 KB. BSS système (IDF/WiFi/LwIP) consomme le reste ; la marge réelle
-//   sous 160 KB est faible (passer webTask en statique ou augmenter les stacks dépasse).
-// Éviter d'ajouter de gros buffers statiques sans vérifier le link (region dram0_0_seg).
+//
+// Total BSS applicatif statique WROOM prod : **~60-65 KB** (était annoncé ~50 KB).
+// Marge restante sous 160 KB IDF : faible une fois BSS système (WiFi/LwIP/Arduino) ajouté.
+// Raison des réductions stacks beta/test : récupérer de la DRAM au link (`dram0_0_seg`).
+//
+// Bonnes pratiques :
+//   - Éviter d'ajouter de gros buffers statiques sans vérifier le link.
+//   - Préférer le heap pour tout ce qui peut être alloué après le boot.
+//   - Quand on ajoute une nouvelle tâche, choisir entre stack statique (BSS) vs malloc dans
+//     `xTaskCreatePinnedToCore` selon la taille (>= 4 KB en heap typiquement).
+// -----------------------------------------------------------------------------
 
 namespace TaskConfig {
     // PISTE 5: Vérification des stacks FreeRTOS pour TLS

@@ -17,8 +17,11 @@ struct Handles {
   TaskHandle_t sensor;
   TaskHandle_t web;
   TaskHandle_t automation;
-  TaskHandle_t display;
-  TaskHandle_t net;  // TLS/HTTP, stack 12 KB
+  TaskHandle_t display;     // déprécié v13.65+ : task supprimée, handle toujours nullptr
+  TaskHandle_t net;         // TLS/HTTP, stack 12 KB
+  // v13.70 (audit): exposition handles supplémentaires pour task_monitor (postSender, ota).
+  TaskHandle_t postSender;  // POST fire-and-forget (post-data + heartbeat)
+  TaskHandle_t ota;         // tâche dédiée OTA prioritaire
 };
 
 /**
@@ -55,6 +58,9 @@ enum class NetPostFailureReason { None, PoolFull, TimeoutRpc, HttpError };
 bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS,
                 PostCategory category = PostCategory::Periodic, NetPostFailureReason* outFailure = nullptr);
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
+// v13.70 (audit): compteur cumulatif de heartbeats perdus (file postSender saturée).
+// Reset au reboot. Métrique d'observabilité pour détecter saturation chronique.
+uint32_t netHeartbeatDroppedCount();
 
 /** Demande une vérification OTA à la tâche dédiée otaTask (fire-and-forget). Utilisé par le boot, le timer 2h ou le serveur distant (triggerOtaCheck). */
 void netRequestOtaCheck();

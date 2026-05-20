@@ -12,6 +12,72 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.70 - 2026-05-20
+
+### Audit général 2026-05 — robustesse mémoire/réseau + tests Unity (Incrément 5/7)
+
+Suite de l'audit (cf. v13.52, v13.53, v13.60, v13.65). Cet incrément durcit les briques internes (NVS, heartbeat diagnostique, seuils heap TLS) et ajoute des tests Unity natifs pour les invariants du contrat firmware-serveur.
+
+### NVS — généralisation du pattern v13.46
+
+Le correctif v13.46 (`isKey` avant compare avant écriture) corrigeait `saveBool` qui pouvait sauter la **première persistance** d'un bool quand la clé n'existait pas encore (Preferences renvoyait la valeur par défaut). L'audit a identifié le même schéma fragile dans :
+
+- **`saveInt`** (`nvs_manager.cpp:410+`) : utilisait `getInt(key, value+1)` comme sentinelle. Échec si la valeur réelle est exactement `value+1` (coïncidence rare).
+- **`saveULong`** (`nvs_manager.cpp:564+`) : idem.
+
+Correctif : pattern v13.46 généralisé (test `isKey` avant `get*`). `saveString` (déjà via API native `nvs_get_str`) et `saveFloat` (via NaN sentinel robuste) restent inchangés.
+
+### Heartbeat — compteur diagnostique de pertes
+
+`netSendHeartbeat()` peut perdre silencieusement un message si `g_postSenderQueue` (taille 4) est saturée par des POST data en cours. Pas de slot dédié (refactor complexe reporté), mais ajout d'un compteur cumulatif `netHeartbeatDroppedCount()` exposé via `app_tasks.h`. Log throttlé (max 1/60 s) inclut désormais le cumul depuis le boot. Permet de remonter une métrique observable côté serveur ou logs pour détecter une saturation chronique (POST trop fréquents ou serveur HS).
+
+### Heap TLS — aliases sémantiques
+
+`HeapConfig::MIN_HEAP_FOR_TLS = 35000` (35 KB) était partagé HTTPS et SMTP, alors que les usages sont distincts (mailer SMTP via mbedTLS vs HTTPS OTA metadata, et v13.80+ data). Ajout des aliases :
+
+- `MIN_HEAP_FOR_SMTP = MIN_HEAP_FOR_TLS` (mailer)
+- `MIN_HEAP_FOR_HTTPS = MIN_HEAP_FOR_TLS` (OTA metadata + futures données HTTPS v13.80)
+
+Permettra de différencier les seuils plus tard sans réécrire les call sites.
+
+### Inventaire DRAM — actualisation 2026
+
+Bloc commenté de `config.h:907-920` (« INVENTAIRE DRAM STATIQUE ») était basé sur une réalité pré-v13.36 (~50 KB BSS app, ~26 KB stacks). Mis à jour avec les valeurs réelles 2026 :
+
+- **Stacks statiques** : ~38,4 KB en wroom-prod (sensor 3072 + auto 10240 + net 12800 + ota 12288).
+- **Stacks heap** (xTaskCreatePinnedToCore avec malloc) : ~18,4 KB (webTask 10240 + postSender 8192).
+- **Pools / caches** : ~10 KB (NetRequest pool + caches JSON).
+- **Buffers applicatifs + globaux** : ~13-15 KB.
+- **Total BSS applicatif WROOM prod** : **~60-65 KB** (était annoncé ~50 KB). Explique les contraintes link `dram0_0_seg` et les réductions stacks beta/test.
+
+Bonnes pratiques documentées : vérifier link avant gros buffer statique, préférer heap après boot, choisir stack statique vs heap selon taille (>= 4 KB → heap typiquement).
+
+### `task_monitor` — extension `postSender` + `ota`
+
+`AppTasks::Handles` exposait sensor / web / automation / display / net. `display` reste pour compat (handle nullptr — task supprimée v13.65+) ; ajout de `postSender` et `ota` (handle capturé via `xTaskCreatePinnedToCore`).
+
+`TaskMonitor::Snapshot` et `logSnapshot` étendus en conséquence. Format de log : `Tasks [stage] HWM: S=u W=u A=u N=u P=u O=u` (D=display retiré). Anomalies détectées sur les 6 tâches actives.
+
+### Tests Unity natifs (compilables via `pio test -c platformio-native.ini`)
+
+- **`test/test_sensor_validation/`** (12 cas) : couvre `SensorValidation::isValid*` (eau / air / humidité / distance ultrason) et `sanitize*` (fallback aux defaults sûrs). Vérifie le rejet `-127` DS18B20, `NaN`, et les bornes exactes.
+- **`test/test_gpio_mapping/`** (9 cas) : invariants `GPIODefaults` ↔ `ActuatorConfig::Default` (synchronisation), plus sanity checks plage (seuils aquarium / réservoir / chauffage, durées nourrissage).
+
+Les tests utilisent des copies des constantes/inlines pour rester compilables en `native` sans pull Arduino. La synchronisation est garantie par revue manuelle au commit (note explicite dans chaque fichier de test).
+
+### Points fonctionnels différés à v13.66+
+
+- **WiFi connect cap timeout boot** : nécessite validation hardware étendue (impact AP fallback) — reporté.
+- **Découpage `app_tasks.cpp`** : reporté (refactor architecture v13.66).
+- **Refactor `web_server.cpp` / `app_context.h`** : reporté (v13.67/v13.68).
+- **Rollback OTA intelligent** (mark valid après 1 sync serveur OK) : nécessite state machine — reporté.
+
+### Prochain incrément
+
+v13.80 : migration de contrat firmware↔serveur en mode **dual rétrocompatible** (HTTPS opt-in via `USE_HTTPS_ENDPOINTS`, HMAC-SHA256 ajouté en complément d'`api_key`, signature OTA Ed25519 optionnelle). Nécessite coordination serveur (`SignatureValidator` dual-mode).
+
+---
+
 ## Version 13.65 - 2026-05-20
 
 ### Audit général 2026-05 — refactor architecture ciblé (Incrément 4/7)

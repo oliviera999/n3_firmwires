@@ -13,13 +13,15 @@ namespace TaskMonitor {
     eTaskState state;
   };
 
-  // Snapshot global simplifié (sensor, web, automation, display, net)
+  // Snapshot global (v13.70 audit : ajout postSender + ota, display déprécié)
   struct Snapshot {
     TaskStats sensor;
     TaskStats web;
     TaskStats automation;
-    TaskStats display;
+    TaskStats display;     // déprécié (task supprimée v13.65+) - toujours eDeleted
     TaskStats net;
+    TaskStats postSender;  // v13.70 (audit) - POST fire-and-forget
+    TaskStats ota;         // v13.70 (audit) - OTA dédiée
   };
 
   // Capture l'état actuel des tâches principales

@@ -45,6 +45,8 @@ static constexpr size_t kOtaTriggerQueueLen = 2;
 static StackType_t otaTaskStack[TaskConfig::OTA_TASK_STACK_SIZE / sizeof(StackType_t)];
 static StaticTask_t otaTaskTCB;
 TaskHandle_t g_otaTaskHandle = nullptr;
+// v13.70 (audit): handle postSender exposé pour task_monitor (HWM monitoring).
+TaskHandle_t g_postSenderTaskHandle = nullptr;
 #endif
 
 TaskHandle_t g_sensorTaskHandle = nullptr;
@@ -1322,7 +1324,7 @@ bool start(AppContext& ctx) {
         TaskConfig::POST_SENDER_TASK_STACK_SIZE / sizeof(StackType_t),
         nullptr,
         TaskConfig::POST_SENDER_TASK_PRIORITY,
-        nullptr,
+        &g_postSenderTaskHandle,  // v13.70 (audit): capturer handle pour task_monitor
         TaskConfig::POST_SENDER_TASK_CORE_ID);
     if (postSenderCreated != pdPASS) {
       Serial.println(F("[App] ❌ CRITIQUE: Échec création postSenderTask"));
@@ -1479,8 +1481,10 @@ Handles getHandles() {
   handles.sensor = g_sensorTaskHandle;
   handles.web = g_webTaskHandle;
   handles.automation = g_autoTaskHandle;
-  handles.display = g_displayTaskHandle;
+  handles.display = g_displayTaskHandle;       // déprécié v13.65+ (task supprimée)
   handles.net = g_netTaskHandle;
+  handles.postSender = g_postSenderTaskHandle; // v13.70 (audit)
+  handles.ota = g_otaTaskHandle;               // v13.70 (audit)
   return handles;
 }
 
@@ -1603,6 +1607,11 @@ bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, 
   return true;  // "mis en queue" — résultat HTTP traité en arrière-plan par netTask
 }
 
+// v13.70 (audit): compteur diagnostique pour les heartbeats perdus quand postSender est saturé.
+// Permet de remonter une métrique observable côté serveur ou logs si la file POST est régulièrement
+// pleine (signal d'investigation : POST périodiques trop fréquents ou serveur HS).
+static uint32_t s_heartbeatDroppedCount = 0;
+
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
   (void)timeoutMs;
   if (!g_ctx || !g_postSenderQueue) return false;
@@ -1615,13 +1624,20 @@ bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
   if (xQueueSend(g_postSenderQueue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
     return true;
   }
+  // v13.70 (audit): incrémenter le compteur global de pertes pour diagnostic.
+  s_heartbeatDroppedCount++;
   static unsigned long s_lastHeartbeatDropLogMs = 0;
   unsigned long now = millis();
   if (LogConfig::SERIAL_ENABLED && (now - s_lastHeartbeatDropLogMs) >= 60000UL) {
-    Serial.println(F("[netRPC] Heartbeat non placé: file postSender pleine (retry au prochain cycle)"));
+    Serial.printf("[netRPC] Heartbeat non placé: file postSender pleine (perdus cumul=%u, retry au prochain cycle)\n",
+                  (unsigned)s_heartbeatDroppedCount);
     s_lastHeartbeatDropLogMs = now;
   }
   return false;
+}
+
+uint32_t netHeartbeatDroppedCount() {
+  return s_heartbeatDroppedCount;
 }
 
 void netRequestOtaCheck() {
