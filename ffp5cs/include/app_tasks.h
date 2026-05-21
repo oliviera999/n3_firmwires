@@ -56,7 +56,8 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 50
 enum class NetPostFailureReason { None, PoolFull, TimeoutRpc, HttpError };
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS,
-                PostCategory category = PostCategory::Periodic, NetPostFailureReason* outFailure = nullptr);
+                PostCategory category = PostCategory::Periodic, NetPostFailureReason* outFailure = nullptr,
+                uint32_t sdSeqNum = 0);
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs = 5000);
 // v13.70 (audit): compteur cumulatif de heartbeats perdus (file postSender saturée).
 // Reset au reboot. Métrique d'observabilité pour détecter saturation chronique.

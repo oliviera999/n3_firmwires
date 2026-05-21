@@ -11,6 +11,7 @@
 
 #include <SD.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <time.h>
 #include "config.h"
@@ -69,6 +70,13 @@ static void dateStr(uint32_t epoch, char* out, size_t outSize) {
 
 static void seqToPath(uint32_t seq, char* out, size_t outSize) {
   snprintf(out, outSize, "%s/%06lu.dat", QUEUE_DIR, (unsigned long)seq);
+}
+
+static uint32_t seqFromEntryName(const char* name) {
+  if (!name) return 0;
+  const char* base = strrchr(name, '/');
+  base = base ? base + 1 : name;
+  return (uint32_t)strtoul(base, nullptr, 10);
 }
 
 }  // namespace
@@ -154,14 +162,12 @@ uint16_t replayPending(uint8_t maxBatch) {
 
     if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
 
+    const uint32_t seq = seqFromEntryName(name);
     bool ok = AppTasks::netPostRaw(payload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS,
-                               AppTasks::PostCategory::Replay);
+                               AppTasks::PostCategory::Replay, nullptr, seq);
     if (ok) {
-      char fullPath[64];
-      snprintf(fullPath, sizeof(fullPath), "%s/%s", QUEUE_DIR, name);
-      SD.remove(fullPath);
       sent++;
-      Serial.printf("[SdLog] Replay OK: %s\n", name);
+      Serial.printf("[SdLog] Replay en file: %s (suppression après HTTP 2xx/3xx)\n", name);
     } else {
       Serial.printf("[SdLog] Replay fail: %s, arrêt batch\n", name);
       break;

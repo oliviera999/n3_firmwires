@@ -24,9 +24,12 @@ Le serveur (App\Security\SignatureValidator) supportait déjà HMAC-SHA256, mais
 
 `include/server_url_config.h` introduit le flag de build `USE_HTTPS_ENDPOINTS` :
 - Sans flag (par défaut) : `BASE_URL = http://iot.olution.info` (legacy).
-- Avec flag : `BASE_URL = https://iot.olution.info` (TLS).
+- Avec flag : intention `BASE_URL = https://iot.olution.info` (TLS).
 
-L'env PlatformIO `wroom-prod-https` ajoute ce flag pour validation pilote. Le `BASE_URL_SECURE` (HTTPS) reste utilisé pour la metadata OTA dans tous les cas.
+Depuis v13.81, l'env PlatformIO `wroom-prod-https` est volontairement bloqué par un garde-fou
+de compilation tant que `WebClient` POST/GET/heartbeat ne possède pas de transport TLS validé.
+Le `BASE_URL_SECURE` (HTTPS) reste utilisé pour la metadata OTA dans tous les cas via
+`ota_manager.cpp`, qui utilise un chemin TLS séparé.
 
 ### HMAC-SHA256 en complément d'`api_key`
 
@@ -69,9 +72,9 @@ Doit correspondre à `.env API_SIG_SECRET` côté serveur. Recommandé : ≥ 32 
 ## Plan de migration
 
 ### Phase 1 — v13.80 (en cours)
-- Firmware : mode dual prêt (HTTPS opt-in + HMAC opt-in).
-- Serveur : vérifier `SignatureValidator` tolère les deux modes.
-- Pilote : flasher 1-2 appareils en `wroom-prod-https` + secrets HMAC configurés.
+- Firmware : mode dual HMAC prêt ; HTTPS métier préparé mais bloqué en v13.81 jusqu'à transport TLS.
+- Serveur : `SignatureValidator` doit tolérer les deux modes (`api_key` legacy et `X-Sig-*`).
+- Pilote : ne flasher `wroom-prod-https` qu'après retrait du garde-fou via un transport TLS testé.
 
 ### Phase 2 — Validation pilote (1-2 semaines)
 - Monitoring continu (logs `[HTTP] Verdict 2xx`, taux d'erreur).
@@ -96,7 +99,7 @@ Doit correspondre à `.env API_SIG_SECRET` côté serveur. Recommandé : ≥ 32 
 | Mode | api_key | X-Sig-* | HTTPS | Statut |
 |---|---|---|---|---|
 | Legacy (≤ v13.70) | obligatoire | absent | non | Supporté en v13.80, refusé v13.90+ prod |
-| Dual (v13.80) | obligatoire | présent | opt-in | **Configuration recommandée** pour pilote |
+| Dual (v13.80/13.81) | obligatoire | présent | non (HTTPS métier bloqué en 13.81) | Configuration recommandée pour HMAC pilote |
 | Cible (v13.90) | optionnel (fallback) | obligatoire | défaut | Production future |
 
 ## Sécurité

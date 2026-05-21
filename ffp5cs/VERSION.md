@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.83 - 2026-05-30
+
+### Correctifs PR — file SD et profil HTTPS
+
+- **File SD S3** : suppression de l'entrée queue uniquement après succès HTTP réel (`postSenderTask` + `sdSeqNum`).
+- **HTTPS métier** : garde-fou compilation si `USE_HTTPS_ENDPOINTS` sans `FFP5CS_WEBCLIENT_TLS_READY` (`server_url_config.h`).
+
+---
+
 ## Version 13.82 - 2026-05-30
 
 ### Correctif critique timeout capteurs — niveaux d'eau sûrs
