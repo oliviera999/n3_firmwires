@@ -41,9 +41,9 @@ Doc complète : [`docs/technical/MIGRATION_HMAC_HTTPS.md`](docs/technical/MIGRAT
 
 ### HTTPS opt-in pour POST / GET / heartbeat
 
-[`include/server_url_config.h`](include/server_url_config.h) : nouveau flag de build `USE_HTTPS_ENDPOINTS` qui bascule `BASE_URL = https://iot.olution.info` au lieu de `http://`. Le `BASE_URL_SECURE` (HTTPS) reste utilisé pour metadata OTA dans tous les cas.
+[`include/server_url_config.h`](include/server_url_config.h) : nouveau flag de build `USE_HTTPS_ENDPOINTS` prévu pour basculer `BASE_URL = https://iot.olution.info` au lieu de `http://`. **Supersédé par le garde-fou v13.81** : ce flag ne doit pas être utilisé tant que le transport TLS métier de `WebClient` n'est pas implémenté. Le `BASE_URL_SECURE` (HTTPS) reste utilisé pour metadata OTA dans tous les cas.
 
-[`platformio.ini`](platformio.ini) : nouvel environnement `[env:wroom-prod-https]` hérité de `wroom-prod` avec `-DUSE_HTTPS_ENDPOINTS`. Permet de valider HTTPS sur 1-2 appareils pilotes avant la bascule par défaut en v13.90.
+[`platformio.ini`](platformio.ini) : nouvel environnement `[env:wroom-prod-https]` hérité de `wroom-prod` avec `-DUSE_HTTPS_ENDPOINTS`. En v13.81, cet environnement est conservé comme profil préparatoire mais bloqué à la compilation pour éviter un firmware muet tant que TLS n'est pas disponible dans `WebClient`.
 
 ### HMAC-SHA256 (mode dual avec api_key legacy)
 
@@ -83,7 +83,7 @@ Avant de flasher un appareil en `wroom-prod-https`, vérifier côté `serveur/sr
 1. Les routes acceptent les en-têtes `X-Sig-Timestamp`, `X-Sig-Nonce`, `X-Sig-Hmac`.
 2. Le `SignatureValidator` valide en priorité HMAC s'il est présent, sinon fallback `api_key` (mode dual).
 3. `.env API_SIG_SECRET` est configuré côté serveur avec la même valeur que `Secrets::API_SIG_SECRET` firmware.
-4. Le certificat HTTPS de `iot.olution.info` est valide (Let's Encrypt typiquement) ; le firmware utilise désormais `esp_crt_bundle_attach` avec `skip_cert_common_name_check = false` depuis v13.60.
+4. Le certificat HTTPS de `iot.olution.info` est valide (Let's Encrypt typiquement) ; côté firmware, le flux OTA utilise déjà `esp_crt_bundle_attach`, mais les flux métier POST/GET/heartbeat nécessitent encore un transport TLS dédié (garde-fou v13.81).
 
 ### Plan de bascule v13.90
 
