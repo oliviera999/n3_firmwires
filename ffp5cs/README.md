@@ -109,8 +109,13 @@ ffp5cs/
 
 ### 🔄 Améliorations Récentes (audit général 2026-05)
 
+**v13.81 — garde-fou HTTPS métier**
+- [x] `USE_HTTPS_ENDPOINTS` bloque la compilation tant que `WebClient` POST/GET/heartbeat n'a pas
+  de transport TLS validé (évite de flasher un profil `wroom-prod-https` incapable de communiquer)
+- [x] HMAC `X-Sig-*` reste disponible en mode dual sur les profils HTTP legacy
+
 **v13.80 — migration contrat firmware↔serveur (mode dual rétrocompatible)**
-- [x] Flag `USE_HTTPS_ENDPOINTS` + env `wroom-prod-https` (pilote opt-in)
+- [x] Flag `USE_HTTPS_ENDPOINTS` + env `wroom-prod-https` préparés (bloqués en v13.81 jusqu'au TLS métier)
 - [x] Module `hmac_sign.cpp/h` : HMAC-SHA256 (mbedtls) avec nonce HW RNG
 - [x] En-têtes `X-Sig-Timestamp/Nonce/Hmac` ajoutés aux POST/GET (en complément `api_key`)
 - [x] `secrets_config.h.example` : sections `API_SIG_SECRET` et `OTA_PUBLIC_KEY_HEX` documentées
@@ -222,6 +227,7 @@ pio run -e wroom-test -t uploadfs
 L'historique complet est tenu dans **[VERSION.md](VERSION.md)** (source unique).
 
 Versions récentes :
+- **v13.81** (2026-05) — Correctif critique : garde-fou de compilation sur `USE_HTTPS_ENDPOINTS` tant que le transport TLS métier de `WebClient` n'est pas implémenté.
 - **v13.80** (2026-05) — Audit général : migration contrat firmware↔serveur (mode dual). HTTPS opt-in via `USE_HTTPS_ENDPOINTS`, HMAC-SHA256 en complément d'api_key, doc MIGRATION_HMAC_HTTPS.md.
 - **v13.70** (2026-05) — Audit général : robustesse mémoire/réseau (NVS isKey, heartbeat counter, MIN_HEAP_SMTP/HTTPS aliases) + tests Unity (sensor_validation, gpio_mapping) + inventaire DRAM actualisé.
 - **v13.65** (2026-05) — Audit général : refactor architecture ciblé (mailer cache, Automatism::getCachedReadings). Découpages app_tasks.cpp / web_server.cpp reportés à v13.66+.

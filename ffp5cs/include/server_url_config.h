@@ -8,10 +8,15 @@
 #endif
 
 namespace ServerUrlConfig {
+  #if defined(USE_HTTPS_ENDPOINTS) && !defined(FFP5CS_WEBCLIENT_TLS_READY)
+    #error "USE_HTTPS_ENDPOINTS est bloque: WebClient POST/GET/heartbeat utilise encore WiFiClient non TLS. Implementer un transport TLS valide avant de flasher wroom-prod-https."
+  #endif
+
   // v13.80 (audit) : flag `USE_HTTPS_ENDPOINTS` permet de basculer BASE_URL vers
   // l'URL sécurisée pour POST/GET/heartbeat. Avant v13.80, ces flux étaient en
   // HTTP clair même si BASE_URL_SECURE existait (utilisée uniquement OTA).
-  // Le flag est opt-in via build_flag `-DUSE_HTTPS_ENDPOINTS` (env wroom-prod-https).
+  // v13.81 : garde-fou de compilation tant que WebClient ne possède pas de
+  // transport TLS validé pour ces flux.
   #if defined(USE_LOCAL_SERVER_ENDPOINTS) && defined(LOCAL_SERVER_BASE_URL)
     inline constexpr const char* BASE_URL = LOCAL_SERVER_BASE_URL;
   #elif defined(USE_LOCAL_SERVER_ENDPOINTS) && defined(LOCAL_SERVER_BASE_URL_OVERRIDE)

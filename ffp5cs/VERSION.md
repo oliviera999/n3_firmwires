@@ -12,6 +12,25 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.81 - 2026-05-21
+
+### Correctif critique — blocage du profil HTTPS métier non TLS
+
+[`include/server_url_config.h`](include/server_url_config.h) bloque désormais la compilation si
+`USE_HTTPS_ENDPOINTS` est activé sans transport TLS explicitement validé (`FFP5CS_WEBCLIENT_TLS_READY`).
+
+Impact corrigé : le profil pilote `wroom-prod-https` de la v13.80 basculait les URLs POST / GET /
+heartbeat vers `https://iot.olution.info`, mais `WebClient` continuait à appeler `HTTPClient` avec
+un `WiFiClient` TCP non TLS. Un appareil flashé avec ce profil pouvait donc échouer
+systématiquement ses POST, heartbeat et lectures `outputs/state` (télémétrie absente, commandes
+distantes non rafraîchies).
+
+La correction choisit un garde-fou sûr plutôt qu'un TLS incomplet : tant qu'un vrai transport TLS
+pour `WebClient` n'est pas implémenté et testé, le firmware HTTPS métier ne peut plus être produit
+par erreur. Les environnements par défaut restent inchangés (HTTP legacy + `api_key`, offline-first).
+
+---
+
 ## Version 13.80 - 2026-05-20
 
 ### Audit général 2026-05 — migration contrat firmware-serveur (mode dual rétrocompatible, Incrément 6/7)
