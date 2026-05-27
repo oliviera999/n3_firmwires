@@ -15,7 +15,7 @@ if (-not $pioCmd) {
 Write-Host "Verification de l'environnement..." -ForegroundColor Yellow
 
 # Executer chaque suite explicitement (plus fiable que l'execution agregee native).
-$testSuites = @("test_config", "test_nvs", "test_server_url")
+$testSuites = @("test_config", "test_nvs", "test_server_url", "test_sensor_validation")
 $allOutputs = @()
 $exitCode = 0
 

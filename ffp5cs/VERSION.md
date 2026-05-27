@@ -12,6 +12,22 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.82 - 2026-05-30
+
+### Correctif critique timeout capteurs — niveaux d'eau sûrs
+
+Correction d'un chemin de timeout dans `SystemSensors::read()` : si le timeout global était atteint après la lecture potager mais avant la lecture aquarium, `SensorReadings` pouvait être retourné avec `wlAqua = 0` (initialisation par défaut). L'automate interprète alors ce zéro comme une distance très faible, donc comme un aquarium trop plein, et verrouille la pompe réservoir via la sécurité anti-débordement.
+
+Correctif :
+
+- ajout de `SensorReadingFallback::waterLevel()` pour conserver la mesure déjà lue, sinon la dernière valeur valide, sinon le défaut sûr ;
+- `finalizeOnTimeout()` applique désormais ce fallback aux trois niveaux (`wlPota`, `wlAqua`, `wlTank`) avant tout retour anticipé ;
+- la suite `test_sensor_validation` couvre l'invariant de fallback des niveaux d'eau et est exécutée par `scripts/test_unit_all.ps1`.
+
+Fichiers : `include/sensor_reading_fallback.h`, `src/system_sensors.cpp`, `test/test_sensor_validation/test_sensor_validation.cpp`, `platformio-native.ini`, `scripts/test_unit_all.ps1`, documentation.
+
+---
+
 ## Version 13.81 - 2026-05-25
 
 ### Marées min/max distance — contrat inflexion + rendu serveur
