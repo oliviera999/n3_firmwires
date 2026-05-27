@@ -111,7 +111,7 @@
 | Fichier | Type | Rôle |
 |---------|------|------|
 | **scripts/run_ci_checks.ps1** | PS1 | Verifications CI : build (env defaut ou multi-env avec `-AllEnvs`) + analyse log serie. |
-| **scripts/test_unit_all.ps1** | PS1 | Tests unitaires natifs Unity (suites `test_config`, `test_nvs`, `test_server_url`) executes sequentiellement. |
+| **scripts/test_unit_all.ps1** | PS1 | Tests unitaires natifs Unity (suites `test_config`, `test_nvs`, `test_server_url`, `test_sensor_validation`) executes sequentiellement. |
 | **scripts/build_all_envs.ps1** | PS1 | Build multi-env : compile les 4 envs critiques (wroom-prod, wroom-test, wroom-s3-test, wroom-s3-prod) avec nettoyage auto au basculement WROOM/S3. Options : `-Clean`, `-StopOnError`, `-Verbose`, `-Envs`, `-IncludeBetaLocal`. |
 | **build_upload_monitor_wroom_beta_local_com4.ps1** | PS1 | Build + upload + monitor en `wroom-beta-local` sur COM4 (raccourci local). |
 | **scripts/test_wroom_beta_local_serial.ps1** | PS1 | Option 3 : upload `wroom-beta-local`, capture serie et assertions regex (`post-data-test`, `heartbeat-test`, statut HTTP). |

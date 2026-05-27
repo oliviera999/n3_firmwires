@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-13.80-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.81-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -123,7 +123,7 @@ ffp5cs/
 - [x] `MIN_HEAP_FOR_SMTP` / `MIN_HEAP_FOR_HTTPS` aliases (différenciation future v13.80+)
 - [x] Inventaire DRAM `config.h` actualisé (~60-65 KB BSS app vs ~50 KB annoncé)
 - [x] `task_monitor` étendu : postSender + ota (display retiré, task supprimée v13.65+)
-- [x] Tests Unity : `test_sensor_validation` (12 cas), `test_gpio_mapping` (9 cas)
+- [x] Tests Unity : `test_sensor_validation` (15 cas), `test_gpio_mapping` (9 cas)
 
 **v13.65 — refactor architecture ciblé (gros découpages reportés à v13.66+)**
 - [x] Mailer : footer mail utilise le cache capteurs (au lieu de `sensors.read()` bloquant 1-7s)

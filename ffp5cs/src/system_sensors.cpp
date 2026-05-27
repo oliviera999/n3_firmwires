@@ -5,6 +5,7 @@
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
 #include "n3_analog_sensors.h"
+#include "sensor_reading_fallback.h"
 
 SystemSensors::SystemSensors() {}
 
@@ -33,6 +34,18 @@ SensorReadings SystemSensors::read() {
     return false;
   };
   auto finalizeOnTimeout = [&]() {
+    r.wlPota = SensorReadingFallback::waterLevel(
+      r.wlPota,
+      _lastValidWlPota,
+      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f));
+    r.wlAqua = SensorReadingFallback::waterLevel(
+      r.wlAqua,
+      _lastValidWlAqua,
+      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f));
+    r.wlTank = SensorReadingFallback::waterLevel(
+      r.wlTank,
+      _lastValidWlTank,
+      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f));
     r.tempWater = NAN;
     r.tempAir = NAN;
     r.humidity = NAN;

@@ -7,9 +7,11 @@
 //   - isValidHumidity (DHT plage 10-100, NaN rejeté)
 //   - isValidDistance (HC-SR04 plage 20-4000 mm)
 //   - sanitize* (fallback aux defaults sûrs si invalide)
+//   - waterLevel timeout fallback (dernière valeur valide puis défaut sûr)
 
 #include <unity.h>
 #include <cmath>
+#include "sensor_reading_fallback.h"
 
 // Stubs minimalistes pour ne pas inclure tout config.h en native (qui pull Arduino, etc.)
 namespace SensorConfig {
@@ -17,6 +19,7 @@ namespace WaterTemp {
     constexpr float MIN_VALID = 5.0f;
     constexpr float MAX_VALID = 60.0f;
 }
+
 namespace AirSensor {
     constexpr float TEMP_MIN = 3.0f;
     constexpr float TEMP_MAX = 50.0f;
@@ -139,6 +142,19 @@ void test_sanitize_humidity_invalid_uses_default() {
                              SensorValidation::sanitizeHumidity(NAN));
 }
 
+// --- waterLevel timeout fallback (audit 2026-05) ---
+void test_water_level_fallback_preserves_current_reading() {
+    TEST_ASSERT_EQUAL_UINT16(123, SensorReadingFallback::waterLevel(123, 222, 333));
+}
+
+void test_water_level_fallback_uses_last_valid_when_current_missing() {
+    TEST_ASSERT_EQUAL_UINT16(222, SensorReadingFallback::waterLevel(0, 222, 333));
+}
+
+void test_water_level_fallback_uses_safe_default_when_no_history() {
+    TEST_ASSERT_EQUAL_UINT16(333, SensorReadingFallback::waterLevel(0, 0, 333));
+}
+
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
     UNITY_BEGIN();
@@ -154,5 +170,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_sanitize_water_valid_preserves_value);
     RUN_TEST(test_sanitize_air_invalid_uses_default);
     RUN_TEST(test_sanitize_humidity_invalid_uses_default);
+    RUN_TEST(test_water_level_fallback_preserves_current_reading);
+    RUN_TEST(test_water_level_fallback_uses_last_valid_when_current_missing);
+    RUN_TEST(test_water_level_fallback_uses_safe_default_when_no_history);
     return UNITY_END();
 }
