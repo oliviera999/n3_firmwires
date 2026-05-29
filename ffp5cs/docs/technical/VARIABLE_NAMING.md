@@ -73,6 +73,11 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 | Niveau aquarium | `EauAquarium` | - | `wlAqua` | `wlAqua` | - |
 | Niveau reservoir | `EauReserve` | - | `wlTank` | `wlTank` | - |
 | Difference maree | `diffMaree` | - | `diffMaree` | - | - |
+| Evenement inflexion maree | `tideEvent` (`none/peak/trough`) | - | `tideEvent` (AutomatismSync) | - | - |
+| Tendance maree | `tideTrend` (`-1/0/1`) | - | `_trendDir` | - | - |
+| Hysteresis inflexion (mm) | `tideNoiseMm` | - | `INFLECTION_NOISE_MM` | - | - |
+| Fenetre diffMaree (ms) | `tideWindowMs` | - | `_tideWindowMs` | - | - |
+| Dernier extreme confirme (mm) | `tideExtremeMm` | - | `_lastInflectionWlAqua` | - | - |
 | Luminosite | `Luminosite` | - | `luminosite` | `luminosite` | - |
 
 ### Harmonisation effectuee (2026-01-31)

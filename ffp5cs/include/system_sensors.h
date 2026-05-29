@@ -52,7 +52,7 @@ class SystemSensors {
   uint32_t _lastWlAquaInvalidLogMs{0};
   bool _lastWlAquaWasValid{false};
   
-  // Historique wlAqua pour calcul du diff ~10s
+  // Historique wlAqua pour calcul du diff sur fenêtre temporelle
   static constexpr uint8_t AQUA_HIST_SIZE = 16;
   uint16_t _aquaHist[AQUA_HIST_SIZE]{};
   uint32_t _aquaHistTime[AQUA_HIST_SIZE]{};
@@ -62,5 +62,5 @@ class SystemSensors {
   SensorReadings _lastCachedReadings{};
   bool _lastCachedReadingsValid{false};
   void pushAquaHist(uint16_t value, uint32_t nowMs);
-  int diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const;
+  int diffMareeWindow(uint16_t currentAqua, uint32_t nowMs) const;
 }; 

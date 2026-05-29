@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.80";
+    inline constexpr const char* VERSION = "13.81";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -488,28 +488,35 @@ namespace BufferConfig {
         // PROFILE_TEST aligné wroom-prod (1024) pour éviter IncompleteInput / sorties précoces
         // GET /api/outputs/state: ~28 clés (numériques + symboliques), typ. < 900 bytes (logs: "28 clés")
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 1024;
-        // GET /dbvars: réponse plus grande (mail, mailNotif, ~20 clés) pour éviter troncature
-        inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 2048;
         // metadata.json ~1129 bytes, structure channels — parsing OTA (1024 insuffisant)
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
-        // Buffer réception body GET metadata (≥ 12.25). Avant : 2048 → troncature si metadata > 2KB → IncompleteInput. Voir docs/technical/OTA_PUBLISH.md.
-        inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 3072;
-        // GET outputs/state: buffer lecture body plus grand pour éviter IncompleteInput (réponse > 1024)
-        inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 2048;
         // POST_PAYLOAD_MAX_SIZE réduit 896 sur WROOM pour éviter overflow DRAM (~3,7 KB). Payload sync typ. < 800 bytes.
         inline constexpr uint32_t POST_PAYLOAD_MAX_SIZE = 896;
-        inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 2000;  // Réduit de 3000 (emails typiquement < 2000 bytes)
-        inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;  // Réduit de 2500
+#if !defined(PROFILE_TEST)
+        inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 2000;
+        inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1500;
+#endif
         inline constexpr uint32_t LOW_MEMORY_THRESHOLD_BYTES = 8000;
         inline constexpr uint32_t CRITICAL_MEMORY_THRESHOLD_BYTES = 15000;
-        // Route /api/sd-history : réduit en wroom-test pour éviter overflow DRAM (~3,7 KB)
+        // Route /api/sd-history : réduit en wroom-test pour éviter overflow DRAM
 #if defined(PROFILE_TEST)
-        inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 1024;
+        inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 512;
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 1536;
+        inline constexpr uint32_t REMOTE_JSON_CACHE_SIZE = 1024;
+        inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 2048;
+        inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 1536;
+        inline constexpr uint32_t EMAIL_MAX_SIZE_BYTES = 1500;
+        inline constexpr uint32_t EMAIL_DIGEST_MAX_SIZE_BYTES = 1000;
 #else
         inline constexpr uint32_t STATUS_HISTORY_BUFFER_SIZE = 4096;
-#endif
-        // REMOTE_JSON_CACHE / DEFERRED_JSON : réduit 1536 sur WROOM (overflow DRAM). GET outputs/state typ. < 900 bytes.
         inline constexpr uint32_t REMOTE_JSON_CACHE_SIZE = 1536;
+#endif
+        // GET /dbvars (wroom-prod) : réponse plus grande ; wroom-test : 1536 (DRAM)
+#if !defined(PROFILE_TEST)
+        inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 2048;
+        inline constexpr uint32_t OTA_METADATA_PAYLOAD_BUFFER_SIZE = 3072;
+        inline constexpr uint32_t OUTPUTS_STATE_READ_BUFFER_SIZE = 2048;
+#endif
     #endif
 }
 

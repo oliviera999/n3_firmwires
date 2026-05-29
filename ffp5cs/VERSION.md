@@ -12,6 +12,41 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.81 - 2026-05-25
+
+### Marées min/max distance — contrat inflexion + rendu serveur
+
+Cet incrément met en place le flux complet min/max demandé sur `wlAqua` (distance capteur -> surface), sans basculer vers une logique de hauteur d'eau.
+
+### Firmware (FFP5CS)
+
+- `AutomatismSync` ajoute des métadonnées de marée dans le payload `post-data` :
+  - `tideEvent` (`none|peak|trough`)
+  - `tideTrend` (`-1|0|1`)
+  - `tideNoiseMm`
+  - `tideWindowMs`
+  - `tideExtremeMm`
+- Détection d'inflexion recalibrée pour un rendu plus réactif sans sur-lissage :
+  - `INFLECTION_NOISE_MM` : `20`
+  - `MIN_INFLECTION_INTERVAL_MS` : `10000`
+- Cohérence clarifiée sur `diffMaree` : calcul conservé en **distance** `(passé - actuel)` sur la fenêtre `_tideWindowMs` (commentaires alignés).
+- Build WROOM rétabli avec `AsyncTCP@3.4.10` (compat `ESPAsyncWebServer@3.7.6`).
+
+### Contrat serveur
+
+- DTO + ingestion FFP3 étendus (rétrocompatibles) pour accepter les nouveaux champs `tide*` si les colonnes existent en BDD.
+- `TideCycleDetector` expose désormais une série d'extrema horodatés (`peaks`/`troughs`) exploitable par l'UI.
+
+### UI aquaponie
+
+- Ajout des marqueurs min/max sur la courbe `EauAquarium` (`/aquaponie` et `/aquaponie-alt`) via deux séries scatter :
+  - `Pics marée (distance)`
+  - `Creux marée (distance)`
+- Factorisation des marqueurs dans `public/assets/js/aquaponie-tide-markers.js`.
+- Série brute conservée (pas de lissage supplémentaire) ; moyennes mobiles restent secondaires/optionnelles.
+
+---
+
 ## Version 13.80 - 2026-05-20
 
 ### Audit général 2026-05 — migration contrat firmware-serveur (mode dual rétrocompatible, Incrément 6/7)

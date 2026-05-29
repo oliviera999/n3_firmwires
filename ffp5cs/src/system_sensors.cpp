@@ -306,9 +306,9 @@ SensorReadings SystemSensors::read() {
 }
 
 int SystemSensors::diffMaree(uint16_t currentAqua) {
-  // Nouveau calcul: différence par rapport à la valeur ~15s avant
+  // Différence cohérente: (passé - actuel) sur la fenêtre configurée (_tideWindowMs)
   uint32_t nowMs = millis();
-  int diff10s = diffMaree10s(currentAqua, nowMs);
+  int diff10s = diffMareeWindow(currentAqua, nowMs);
   
   // Log détaillé du calcul de marée (15s)
   SENSOR_LOG_PRINTF("[Maree] Calcul15s: actuel=%u, diff15s=%d mm\n", currentAqua, diff10s);
@@ -322,7 +322,7 @@ void SystemSensors::pushAquaHist(uint16_t value, uint32_t nowMs) {
   if (_aquaHistCount < AQUA_HIST_SIZE) _aquaHistCount++;
 }
 
-int SystemSensors::diffMaree10s(uint16_t currentAqua, uint32_t nowMs) const {
+int SystemSensors::diffMareeWindow(uint16_t currentAqua, uint32_t nowMs) const {
   if (_aquaHistCount == 0) return 0;
   // Cherche l'échantillon le plus proche de now-15s
   const uint32_t target = nowMs - _tideWindowMs;

@@ -80,6 +80,7 @@ class Automatism {
     bouffeGros[sizeof(bouffeGros) - 1] = '\0';
   }
   int computeDiffMaree(uint16_t currentAqua);
+  uint32_t getTideWindowMs() const { return _sensors.getTideWindowMs(); }
   bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
   uint32_t getCountdownEndMs() const { return _countdownEnd; }
   uint16_t getFreqWakeSec() const { return _network.getFreqWakeSec(); }

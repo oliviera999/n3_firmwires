@@ -118,11 +118,14 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
                 Serial.printf("[Sync] Déclenchement envoi mesures (dernier POST il y a %lu ms ; résultat HTTP dans [postSender]/[HTTP])\n",
                               static_cast<unsigned long>(timeSinceLastSend));
                 sendFullUpdate(readings, acts, core);
-            } else if (checkInflectionPoint(readings.wlAqua, now)) {
-                Serial.printf("[Sync] 📈 POST inflexion marée (wlAqua=%u, trend=%d)\n",
-                              readings.wlAqua, _trendDir);
-                if (sendFullUpdate(readings, acts, core)) {
+            } else {
+                TideEventType tideEvent = checkInflectionPoint(readings.wlAqua, now);
+                if (tideEvent != TideEventType::None) {
+                    Serial.printf("[Sync] 📈 POST inflexion marée (event=%s, extreme=%u, wlAqua=%u, trend=%d)\n",
+                                  toTideEventString(tideEvent), _lastInflectionWlAqua, readings.wlAqua, _trendDir);
+                    if (sendFullUpdate(readings, acts, core, nullptr, AppTasks::PostCategory::EventAck, tideEvent)) {
                     _lastSend = now;
+                    }
                 }
             }
         }
@@ -259,7 +262,8 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
                                     SystemActuators& acts,
                                     Automatism& core,
                                     const char* extraPairs,
-                                    AppTasks::PostCategory category) {
+                                    AppTasks::PostCategory category,
+                                    TideEventType tideEvent) {
     uint32_t attemptStartMs = millis();
     if (!canAttemptSend(attemptStartMs)) {
         return false;
@@ -310,6 +314,24 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
     if (strstr(payloadBuffer, "resetMode=") == nullptr) {
         strncat(payloadBuffer, "&resetMode=0", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+    }
+
+    // Métadonnées marée/inflexion (distance capteur-surface uniquement, en mm)
+    {
+        char tideMeta[128];
+        int tideMetaLen = snprintf(
+            tideMeta,
+            sizeof(tideMeta),
+            "&tideEvent=%s&tideTrend=%d&tideNoiseMm=%u&tideWindowMs=%lu&tideExtremeMm=%u",
+            toTideEventString(tideEvent),
+            static_cast<int>(_trendDir),
+            static_cast<unsigned>(INFLECTION_NOISE_MM),
+            static_cast<unsigned long>(core.getTideWindowMs()),
+            static_cast<unsigned>(_lastInflectionWlAqua)
+        );
+        if (tideMetaLen > 0 && tideMetaLen < static_cast<int>(sizeof(tideMeta))) {
+            strncat(payloadBuffer, tideMeta, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+        }
     }
     
     // v11.168: Ajouter configSynced pour indiquer si la config ESP est fiable
@@ -510,13 +532,13 @@ bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t cu
     return fetchRemoteState(doc);
 }
 
-bool AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
-    if (wlAqua == 0) return false;
+AutomatismSync::TideEventType AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
+    if (wlAqua == 0) return TideEventType::None;
 
     if (_trendDir == 0) {
         if (_extremeWlAqua == 0) {
             _extremeWlAqua = wlAqua;
-            return false;
+            return TideEventType::None;
         }
         int16_t diff = (int16_t)wlAqua - (int16_t)_extremeWlAqua;
         if (diff >= (int16_t)INFLECTION_NOISE_MM) {
@@ -526,34 +548,50 @@ bool AutomatismSync::checkInflectionPoint(uint16_t wlAqua, uint32_t nowMs) {
             _trendDir = -1;
             _extremeWlAqua = wlAqua;
         }
-        return false;
+        return TideEventType::None;
     }
 
     if (_trendDir == 1) {
         if (wlAqua >= _extremeWlAqua) {
             _extremeWlAqua = wlAqua;
         } else if ((_extremeWlAqua - wlAqua) >= INFLECTION_NOISE_MM) {
+            uint16_t confirmedPeak = _extremeWlAqua;
             _trendDir = -1;
             _extremeWlAqua = wlAqua;
             if ((nowMs - _lastInflectionPostMs) >= MIN_INFLECTION_INTERVAL_MS) {
                 _lastInflectionPostMs = nowMs;
-                return true;
+                _lastInflectionWlAqua = confirmedPeak;
+                return TideEventType::Peak;
             }
         }
     } else {
         if (wlAqua <= _extremeWlAqua) {
             _extremeWlAqua = wlAqua;
         } else if ((wlAqua - _extremeWlAqua) >= INFLECTION_NOISE_MM) {
+            uint16_t confirmedTrough = _extremeWlAqua;
             _trendDir = 1;
             _extremeWlAqua = wlAqua;
             if ((nowMs - _lastInflectionPostMs) >= MIN_INFLECTION_INTERVAL_MS) {
                 _lastInflectionPostMs = nowMs;
-                return true;
+                _lastInflectionWlAqua = confirmedTrough;
+                return TideEventType::Trough;
             }
         }
     }
 
-    return false;
+    return TideEventType::None;
+}
+
+const char* AutomatismSync::toTideEventString(TideEventType eventType) {
+    switch (eventType) {
+        case TideEventType::Peak:
+            return "peak";
+        case TideEventType::Trough:
+            return "trough";
+        case TideEventType::None:
+        default:
+            return "none";
+    }
 }
 
 // Helpers simplifiés (backoff supprimé - géré par web_client retry)
