@@ -1,4 +1,6 @@
-# Rapport d’analyse – Dossier firmwires
+# Rapport d’analyse – Dossier firmwires (ARCHIVE)
+
+> **Document archivé — état mars 2026.** Une bonne partie des constats (secrets en clair dans `main.cpp`, partition msp manquante, `pas de Git`, COM3 en dur, etc.) **ne reflète plus la réalité** : les credentials sont externalisés (`firmwires/credentials.h`), les firmwares utilisent `min_spiffs.csv` partagé, le dépôt est sous Git submodule, et `monitor_port` n'est plus en dur. Voir [`README.md`](README.md), [`RECOMMANDATIONS_IOT.md`](../RECOMMANDATIONS_IOT.md) racine et l'audit firmwires 2026-05 (`CHANGELOG.md` racine).
 
 **Date :** 5 mars 2026 (mise à jour doc : mars 2026)  
 **Périmètre :** `c:\IOT_n3\firmwires`

@@ -6,7 +6,11 @@
 #include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "2.41"
+#ifndef API_SIG_SECRET
+#define API_SIG_SECRET ""
+#endif
+
+#define FIRMWARE_VERSION "2.43"
 
 // --- Pins ---
 #define RELAIS 13
@@ -53,13 +57,9 @@ const long intervalDatas = N3_DATA_INTERVAL_MS;
 #define SCREEN_HEIGHT N3_OLED_HEIGHT
 
 // --- URLs serveur ---
-#ifdef TEST_MODE
-#define MSP_URL_POST_DATA "http://iot.olution.info/msp1-test/msp1datas/post-msp1-data.php"
-#define MSP_URL_OUTPUT "http://iot.olution.info/msp1-test/msp1control/msp1-outputs-action.php?action=outputs_state&board=2"
-#else
-#define MSP_URL_POST_DATA "http://iot.olution.info/msp1/msp1datas/post-msp1-data.php"
-#define MSP_URL_OUTPUT "http://iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2"
-#endif
+// Source de verite unique : les variables serverNamePostData / serverNameOutput
+// (definies dans main.cpp avec #ifdef TEST_MODE). Les macros MSP_URL_* du fichier
+// pre-2.42 etaient inutilisees et creaient un doublon a maintenir.
 
 // --- NTP ---
 #define MSP_NTP_SERVER N3_NTP_SERVER

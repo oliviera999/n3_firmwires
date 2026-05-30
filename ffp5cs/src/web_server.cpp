@@ -23,6 +23,7 @@
 #include <esp_random.h>  // v13.52: esp_fill_random pour entropie token session web
 #ifndef DISABLE_ASYNC_WEBSERVER
 #include <ESPAsyncWebServer.h>
+#include <AsyncJson.h>
 #endif
 #include "web_routes_status.h"
 #include "web_routes_ui.h"
@@ -517,7 +518,7 @@ bool WebServerManager::begin() {
     }
   });
 
-  _server->on(AsyncURIMatcher::exact("/api/login"), HTTP_POST, [](AsyncWebServerRequest* req, JsonVariant& json) {
+  _server->addHandler(new AsyncCallbackJsonWebHandler("/api/login", [](AsyncWebServerRequest* req, JsonVariant& json) {
     const char* user = json["user"].as<const char*>();
     const char* pass = json["pass"].as<const char*>();
     if (!user) user = "";
@@ -542,9 +543,9 @@ bool WebServerManager::begin() {
              s_webAuthToken);
     response->addHeader("Set-Cookie", cookieVal);
     req->send(response);
-  });
+  }));
 
-  _server->on(AsyncURIMatcher::exact("/api/logout"), HTTP_POST, [](AsyncWebServerRequest* req) {
+  _server->on("/api/logout", HTTP_POST, [](AsyncWebServerRequest* req) {
     // v13.52: invalider le token côté firmware ET demander suppression du cookie.
     s_webAuthToken[0] = '\0';
     s_webAuthTokenExpiresAt = 0;

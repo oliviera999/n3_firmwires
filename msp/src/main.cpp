@@ -14,7 +14,6 @@
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <ESPmDNS.h>
 #include <Wire.h>
 #include <esp_sleep.h>
 #include <cstring>
@@ -62,8 +61,7 @@ float humidAirExt;
 
 // --- Deep sleep ---
 bool WakeUp = 0;
-int FreqWakeUp = 3;
-//bool ArrosageManu = 0;
+int FreqWakeUp = N3_DEFAULT_FREQ_WAKE_UP_S;  // Defaut deep sleep (s), surchargeable par GPIO 107.
 
 // --- Batterie / pont diviseur ---
 int PontDiv;
@@ -89,7 +87,6 @@ unsigned long previousMillisDatas = 0;
 
 // --- Email ---
 bool emailHumidSent = 0;
-//bool emailPontDivSent = 0;
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
 RTC_DATA_ATTR String enableEmailChecked = "checked";
@@ -127,7 +124,6 @@ const char* password3 = WIFI_PASS3;
 String Wifiactif;
 
 AsyncWebServer server(80);
-WiFiUDP wifiUdp;
 String outputsState;
 
 // Reset distant: edge detection with first-sample seeding to avoid reboot loops
@@ -323,6 +319,12 @@ void setup() {
 
   servogd.attach(SERVOGD);
   servohb.attach(SERVOHB);
+  // Position de repli sure (milieu de plage) en attendant la config distante
+  // ou le scan auto, pour eviter qu'un servo demarre dans une position aleatoire.
+  AngleServoGD = (minAngleServoGD + maxAngleServoGD) / 2;
+  AngleServoHB = (minAngleServoHB + maxAngleServoHB) / 2;
+  servogd.write(AngleServoGD);
+  servohb.write(AngleServoHB);
 
   pinMode(DHTPININT, INPUT);
   pinMode(DHTPINEXT, INPUT);
@@ -363,27 +365,32 @@ void setup() {
 }
 
 void loop() {
-  // Mise à jour du temps NTP
-  //printLocalTime();
-  digitalWrite(RELAIS, 1);  // Activer le relais
+  static bool ntpConfigured = false;
 
-  // Initialisation du serveur Web
-  server.begin();
+  digitalWrite(RELAIS, 1);
 
-  if (WiFi.status() != WL_CONNECTED) {  // Vérification de la connexion WiFi
+  // Pas de server.begin() ici : aucune route locale n'est enregistree, donc
+  // pas besoin de relancer le serveur asynchrone a chaque cycle (cf. audit 2.42).
+
+  if (WiFi.status() != WL_CONNECTED) {
     Wificonnect();
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("[WIFI] Connecte");
+    } else {
+      Serial.println("[WIFI][WARN] Non connecte, cycle en mode degrade");
+    }
   }
 
-  // Reconnexion si nécessaire
-  if (WiFi.status() == WL_CONNECTED) {
+  // configTime n'est utile qu'une fois par reveil WiFi.
+  if (WiFi.status() == WL_CONNECTED && !ntpConfigured) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    ntpConfigured = true;
+    Serial.println("[TIME] configTime appele (1x/reveil)");
   }
 
-  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
+  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
 
-  //printLocalTime();
-
-  variablestoesp();  // Mise à jour des variables depuis la BDD
+  variablestoesp();  // Mise a jour des variables depuis la BDD
 
   // Reset mode distant (GPIO 110): OTA first if available, then restart fallback.
   bool resetRequested = (resetMode == 1);
@@ -408,12 +415,11 @@ void loop() {
 
   affichageOLED();
 
-  Light_val();  // Suivi de la lumière
+  Light_val();  // Suivi de la lumiere et tracker solaire
 
-  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
-  sommeil();
-
-  // Envoi régulier des données mesurées
+  // Envoi periodique des donnees AVANT le deep sleep (sinon ce bloc n'etait
+  // jamais atteint, cf. audit 2.42) : sommeil() peut declencher n3SleepStart()
+  // qui ne rend jamais la main.
   unsigned long currentMillisDatas = millis();
   if (currentMillisDatas - previousMillisDatas >= intervalDatas) {
     previousMillisDatas = currentMillisDatas;
@@ -421,7 +427,13 @@ void loop() {
     EnregistrementHeureFlash();
   }
 
+  // Comptabilise le temps de sommeil a venir pour l'OTA periodique.
+  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
+  sommeil();
+
+  // Reset des accumulateurs servo apres le sommeil (utile seulement si WakeUp=1).
   photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
   posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
-  delay(100);  // Pause entre chaque balayage
+  // Pas de delay(100) ici : le timing est gere par sommeil() / Light_val() ;
+  // l'ancienne pause faisait juste consommer du CPU si WakeUp=1.
 }

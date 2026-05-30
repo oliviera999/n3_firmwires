@@ -1,14 +1,188 @@
 #include "n3_ota.h"
+#include "n3_ota_pubkey.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
 #include <ArduinoJson.h>
 #include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <strings.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/md.h>
+#include <mbedtls/pk.h>
 
 static uint8_t s_lastLoggedOtaPercent = 255;
 static void (*s_progressCallback)(int, int, uint8_t, void*) = nullptr;
 static void* s_progressUserData = nullptr;
+
+static void appendHexByte(char* out, size_t idx, uint8_t value) {
+    static const char* kHex = "0123456789abcdef";
+    out[idx] = kHex[(value >> 4) & 0x0F];
+    out[idx + 1] = kHex[value & 0x0F];
+}
+
+static bool computeRemoteFirmwareSha256(const char* firmwareUrl, char* outSha256Hex, size_t outSize, char* details, size_t detailsSize) {
+    if (!firmwareUrl || !outSha256Hex || outSize < 65) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "Parametres invalides verification sha256.");
+        }
+        return false;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    http.begin(client, firmwareUrl);
+    http.setTimeout(15000);
+    int code = http.GET();
+    if (code != 200) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "SHA256: HTTP %d sur firmware URL.", code);
+        }
+        http.end();
+        return false;
+    }
+
+    mbedtls_md_context_t mdCtx;
+    mbedtls_md_init(&mdCtx);
+    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (mdInfo == nullptr || mbedtls_md_setup(&mdCtx, mdInfo, 0) != 0 || mbedtls_md_starts(&mdCtx) != 0) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "SHA256: init mbedtls a echoue.");
+        }
+        mbedtls_md_free(&mdCtx);
+        http.end();
+        return false;
+    }
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buffer[1024];
+    int remaining = http.getSize();
+    while (http.connected() && (remaining > 0 || remaining == -1)) {
+        size_t availableBytes = stream->available();
+        if (availableBytes == 0) {
+            delay(1);
+            continue;
+        }
+        if (availableBytes > sizeof(buffer)) availableBytes = sizeof(buffer);
+        int readLen = stream->readBytes(buffer, availableBytes);
+        if (readLen <= 0) break;
+        if (mbedtls_md_update(&mdCtx, buffer, static_cast<size_t>(readLen)) != 0) {
+            if (details && detailsSize > 0) {
+                snprintf(details, detailsSize, "SHA256: update mbedtls a echoue.");
+            }
+            mbedtls_md_free(&mdCtx);
+            http.end();
+            return false;
+        }
+        if (remaining > 0) remaining -= readLen;
+    }
+
+    uint8_t digest[32];
+    if (mbedtls_md_finish(&mdCtx, digest) != 0) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "SHA256: finish mbedtls a echoue.");
+        }
+        mbedtls_md_free(&mdCtx);
+        http.end();
+        return false;
+    }
+    mbedtls_md_free(&mdCtx);
+    http.end();
+
+    for (size_t i = 0; i < sizeof(digest); ++i) {
+        appendHexByte(outSha256Hex, i * 2, digest[i]);
+    }
+    outSha256Hex[64] = '\0';
+    return true;
+}
+
+static bool verifyFirmwareSignature(const char* sha256Hex, const char* signatureB64, char* details, size_t detailsSize) {
+    if (!sha256Hex || !signatureB64 || signatureB64[0] == '\0') return true;
+
+    uint8_t hash[32];
+    for (size_t i = 0; i < 32; ++i) {
+        unsigned int byteVal = 0;
+        if (sscanf(&sha256Hex[i * 2], "%2x", &byteVal) != 1) {
+            if (details && detailsSize > 0) snprintf(details, detailsSize, "Signature: sha256 invalide.");
+            return false;
+        }
+        hash[i] = static_cast<uint8_t>(byteVal);
+    }
+
+    size_t sigMax = strlen(signatureB64);
+    uint8_t* sig = static_cast<uint8_t*>(malloc(sigMax));
+    if (!sig) {
+        if (details && detailsSize > 0) snprintf(details, detailsSize, "Signature: memoire insuffisante.");
+        return false;
+    }
+
+    size_t sigLen = 0;
+    int b64Ret = mbedtls_base64_decode(sig, sigMax, &sigLen, reinterpret_cast<const unsigned char*>(signatureB64), strlen(signatureB64));
+    if (b64Ret != 0) {
+        if (details && detailsSize > 0) snprintf(details, detailsSize, "Signature: base64 invalide (%d).", b64Ret);
+        free(sig);
+        return false;
+    }
+
+    mbedtls_pk_context pk;
+    mbedtls_pk_init(&pk);
+    int pkRet = mbedtls_pk_parse_public_key(
+        &pk,
+        reinterpret_cast<const unsigned char*>(OTA_SIGNING_PUBLIC_KEY_PEM),
+        strlen(OTA_SIGNING_PUBLIC_KEY_PEM) + 1);
+    if (pkRet != 0) {
+        if (details && detailsSize > 0) snprintf(details, detailsSize, "Signature: cle publique invalide (%d).", pkRet);
+        mbedtls_pk_free(&pk);
+        free(sig);
+        return false;
+    }
+
+    int verifyRet = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, sigLen);
+    mbedtls_pk_free(&pk);
+    free(sig);
+    if (verifyRet != 0) {
+        if (details && detailsSize > 0) snprintf(details, detailsSize, "Signature OTA invalide (%d).", verifyRet);
+        return false;
+    }
+
+    return true;
+}
+
+static bool verifyRemoteFirmwareIntegrity(const char* firmwareUrl, const char* expectedSha256, const char* signatureB64, char* details, size_t detailsSize) {
+    if (!expectedSha256 || strlen(expectedSha256) != 64) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "Metadata OTA invalide: champ sha256 manquant/incorrect.");
+        }
+        return false;
+    }
+
+    char computedSha256[65];
+    if (!computeRemoteFirmwareSha256(firmwareUrl, computedSha256, sizeof(computedSha256), details, detailsSize)) {
+        return false;
+    }
+    Serial.printf("[OTA] sha256 metadata=%s\n", expectedSha256);
+    Serial.printf("[OTA] sha256 calcule =%s\n", computedSha256);
+
+    if (strcasecmp(expectedSha256, computedSha256) != 0) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "SHA256 OTA mismatch (metadata != calcule).");
+        }
+        return false;
+    }
+
+    if (signatureB64 && signatureB64[0] != '\0') {
+        if (!verifyFirmwareSignature(computedSha256, signatureB64, details, detailsSize)) {
+            return false;
+        }
+        Serial.println("[OTA] signature ECDSA valide.");
+    } else {
+        Serial.println("[OTA] signature absente, verification sha256 uniquement.");
+    }
+
+    return true;
+}
 
 static void logOtaProgress(int current, int total) {
     if (total <= 0 || current < 0) return;
@@ -109,6 +283,8 @@ bool n3OtaCheck(const N3OtaConfig& config) {
 
     const char* remoteVersion = entry["version"].as<const char*>();
     const char* firmwareUrl = entry["url"].as<const char*>();
+    const char* expectedSha256 = entry["sha256"].as<const char*>();
+    const char* signatureB64 = entry["signature"].as<const char*>();
     if (!remoteVersion || !firmwareUrl) {
         Serial.println("[OTA] JSON invalide ou champs version/url manquants");
         if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: champs version/url manquants.", config.userData);
@@ -128,6 +304,16 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     if (config.onUpdateStart) {
         config.onUpdateStart(config.currentVersion, remoteVersion, firmwareUrl, config.userData);
     }
+
+    char integrityDetails[192];
+    if (!verifyRemoteFirmwareIntegrity(firmwareUrl, expectedSha256, signatureB64, integrityDetails, sizeof(integrityDetails))) {
+        Serial.printf("[OTA] Echec verification integrite: %s\n", integrityDetails);
+        if (config.onUpdateEnd) {
+            config.onUpdateEnd(false, integrityDetails, config.userData);
+        }
+        return false;
+    }
+    Serial.println("[OTA] Integrite firmware verifiee (sha256/signature).");
 
     if (config.ledPin >= 0) {
         httpUpdate.setLedPin(config.ledPin, LOW);

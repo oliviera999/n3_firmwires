@@ -1,6 +1,9 @@
 # wroom-test / wroom-prod : timeout Task WDT 30 s (évite reset pendant HTTP/async_tcp)
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
 
+# FFP5CS n'utilise pas le Bluetooth classique/BLE : libère ~56 Ko DRAM (BTDM_RESERVE_DRAM)
+# CONFIG_BT_ENABLED is not set
+
 # --- Correctif boot WROOM : panic "Cache error" dans memset → esp_flash_read_chip_id (esp_flash_init) ---
 # Le sdkconfig.defaults embarqué mélange un export tiers (Tasmota) incohérent :
 #   - CONFIG_ESP32_DEFAULT_CPU_FREQ_240=y mais CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ=160
@@ -20,7 +23,10 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
 # CONFIG_ESP_COREDUMP_ENABLE_TO_UART is not set
 # Bundle de certificats (requis pour esp_crt_bundle_attach dans OTA TLS)
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=200
+# CMN (~200 Ko flash) au lieu de FULL : libère plusieurs Ko de DRAM .bss (wroom-test + web async tient le lien)
+# CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL is not set
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=150
 # Stack loopTask (évite stack overflow / stack canary) — wroom-prod, wroom-test, wroom-beta
-CONFIG_ARDUINO_LOOP_STACK_SIZE=24576
+# v13.81 build local WROOM : 22528 au lieu de 24576 (libère ~2 Ko DRAM .bss, lien wroom-test + web async)
+CONFIG_ARDUINO_LOOP_STACK_SIZE=22528

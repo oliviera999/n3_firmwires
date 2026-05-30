@@ -7,95 +7,15 @@
 #include "msp_globals.h"
 #include <WiFi.h>
 #include <Arduino_JSON.h>
-#include <stdlib.h>
 #include "n3_wifi.h"
 #include "n3_data.h"
+#include "n3_outputs_json.h"
 
-static int readIntByKey(JSONVar& obj, const char* key, int defaultValue) {
-  if (!obj.hasOwnProperty(key)) {
-    return defaultValue;
-  }
-  JSONVar val = obj[key];
-  String valueType = JSON.typeof(val);
-  if (valueType == "undefined" || valueType == "null") {
-    return defaultValue;
-  }
-
-  if (valueType == "number" || valueType == "boolean") {
-    return (int)val;
-  }
-
-  if (valueType == "string") {
-    const char* raw = (const char*)val;
-    if (raw == nullptr || raw[0] == '\0') {
-      return defaultValue;
-    }
-    return atoi(raw);
-  }
-
-  return defaultValue;
-}
-
-static bool tryReadIntByKey(JSONVar& obj, const char* key, int* outValue) {
-  if (outValue == nullptr) return false;
-  if (!obj.hasOwnProperty(key)) {
-    return false;
-  }
-  JSONVar val = obj[key];
-  String valueType = JSON.typeof(val);
-  if (valueType == "undefined" || valueType == "null") {
-    return false;
-  }
-
-  if (valueType == "number" || valueType == "boolean") {
-    *outValue = (int)val;
-    return true;
-  }
-
-  if (valueType == "string") {
-    const char* raw = (const char*)val;
-    if (raw == nullptr) {
-      return false;
-    }
-    char* endPtr = nullptr;
-    long parsed = strtol(raw, &endPtr, 10);
-    if (endPtr == raw) {
-      return false;
-    }
-    while (endPtr != nullptr && (*endPtr == ' ' || *endPtr == '\t' || *endPtr == '\r' || *endPtr == '\n')) {
-      ++endPtr;
-    }
-    if (endPtr != nullptr && *endPtr != '\0') {
-      return false;
-    }
-    *outValue = (int)parsed;
-    return true;
-  }
-
-  return false;
-}
-
-static String readStringByKey(JSONVar& obj, const char* key, const String& defaultValue) {
-  if (!obj.hasOwnProperty(key)) {
-    return defaultValue;
-  }
-  JSONVar val = obj[key];
-  String valueType = JSON.typeof(val);
-  if (valueType == "undefined" || valueType == "null") {
-    return defaultValue;
-  }
-
-  if (valueType == "string") {
-    const char* raw = (const char*)val;
-    if (raw == nullptr) {
-      return defaultValue;
-    }
-    return String(raw);
-  }
-
-  // Fallback: stringify for numeric/boolean values returned by the server.
-  return JSON.stringify(val);
-}
+// Helpers de parsing : depuis v2.43 factorises dans shared/n3_common/n3_outputs_json
+// (autrefois dupliques entre n3pp_network.cpp et msp_network.cpp).
+using N3Outputs::readIntByKey;
+using N3Outputs::tryReadIntByKey;
+using N3Outputs::readStringByKey;
 
 void datatobdd() {
   if (displayOk) { display.drawCircle(5, 5, 5, WHITE); display.display(); }
@@ -135,6 +55,10 @@ void datatobdd() {
   cfg.apiKey = API_KEY;
   cfg.fields = fields;
   cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  // Auth HMAC FFP3 si API_SIG_SECRET est defini ET RTC sync (epoch > 1577836800 = 2020-01-01).
+  cfg.sigSecret = (API_SIG_SECRET[0] != '\0') ? API_SIG_SECRET : nullptr;
+  const unsigned long epochNow = (unsigned long)rtc.getEpoch();
+  cfg.currentEpochSeconds = (epochNow > 1577836800UL) ? epochNow : 0UL;
   String postPreview =
       "api_key=<masque>&sensor=" + sensorName +
       "&version=" + version +
@@ -179,6 +103,9 @@ void datatobdd() {
   posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
 }
 
+// Compteur d'echecs consecutifs pour le polling /outputs_state cote msp.
+static unsigned int s_outputsGetFailureCount = 0;
+
 void variablestoesp() {
   static bool s_servoModeKnown = false;
   static bool s_prevServoModeAuto = true;
@@ -187,18 +114,38 @@ void variablestoesp() {
   static int s_prevTargetHb = 0;
 
   if (displayOk) { display.drawCircle(115, 5, 5, WHITE); display.display(); }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[SERVER][GET] Lecture config distante depuis %s\n", serverNameOutput);
-    outputsState = n3DataGet(serverNameOutput, &httpResponseCode);
-    delay(200);
-    if (httpResponseCode > 0) {
-      Serial.printf("[SERVER][GET] HTTP=%u\n", httpResponseCode);
-      Serial.println("[SERVER][GET][BODY] " + outputsState);
-      JSONVar myObject = JSON.parse(outputsState);
-      if (JSON.typeof(myObject) == "undefined") {
-        Serial.println("[SERVER][GET][WARN] JSON invalide, config distante ignoree");
-        return;
-      }
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[SERVER][GET][SKIP] WiFi non connecte, config distante non rafraichie");
+    return;
+  }
+
+  Serial.printf("[SERVER][GET] Lecture config distante depuis %s\n", serverNameOutput);
+  outputsState = n3DataGet(serverNameOutput, &httpResponseCode);
+  delay(200);
+  Serial.printf("[SERVER][GET] HTTP=%u\n", httpResponseCode);
+  Serial.println("[SERVER][GET][BODY] " + outputsState);
+
+  if (httpResponseCode != 200) {
+    ++s_outputsGetFailureCount;
+    Serial.printf("[SERVER][GET][OFFLINE] Echec consecutif #%u (HTTP=%u), config locale conservee\n",
+                  s_outputsGetFailureCount, httpResponseCode);
+    if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
+    return;
+  }
+
+  JSONVar myObject = JSON.parse(outputsState);
+  if (JSON.typeof(myObject) == "undefined") {
+    ++s_outputsGetFailureCount;
+    Serial.printf("[SERVER][GET][OFFLINE] JSON invalide (#%u), config locale conservee\n",
+                  s_outputsGetFailureCount);
+    if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
+    return;
+  }
+  if (s_outputsGetFailureCount > 0) {
+    Serial.printf("[SERVER][GET] Reprise apres %u echec(s)\n", s_outputsGetFailureCount);
+    s_outputsGetFailureCount = 0;
+  }
+  {
       // Mapping robuste: lecture directe par GPIO explicite (contrat serveur).
       int parsedResetMode = resetMode ? 1 : 0;
       int parsedWakeUp = WakeUp ? 1 : 0;
@@ -270,11 +217,8 @@ void variablestoesp() {
       Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
                      " wakeUp=" + String(WakeUp ? 1 : 0) + " sleep=" + String(FreqWakeUp) +
                      " servoModeAuto=" + String(servoModeAuto ? 1 : 0));
-    } else {
-      Serial.printf("[SERVER][GET][WARN] Requete echouee, HTTP=%u\n", httpResponseCode);
-    }
-    if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
   }
+  if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }
 
 void Wificonnect() {

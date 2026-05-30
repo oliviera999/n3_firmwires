@@ -10,6 +10,11 @@ secrets_config.h
 ffp5cs/include/local_server_overrides.h
 ffp5cs/scripts/.beta-local-test.env
 
+# Cles privees OTA (publiques OK dans n3_ota_pubkey.h, privees jamais)
+*.key
+*.pem
+scripts/ota_keys/
+
 # Backups / temporaire
 ffp5cs_backup/
 

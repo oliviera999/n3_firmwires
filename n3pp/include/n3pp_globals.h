@@ -47,14 +47,14 @@ extern const long intervalDatas;
 // Indicateur : email d'alerte déjà envoyé ou non (évite spam)
 extern bool emailHumidSent;
 extern bool emailPontDivSent;
-extern RTC_DATA_ATTR bool arrosageFait;
+extern bool arrosageFait;
 
 //wakeUp touch
-extern RTC_DATA_ATTR int bootCount;
+extern int bootCount;
 extern bool WakeUpButton;
 
-extern RTC_DATA_ATTR String inputMessageMailAd;
-extern RTC_DATA_ATTR String enableEmailChecked;
+extern String inputMessageMailAd;
+extern String enableEmailChecked;
 
 extern String emailMessage;
 

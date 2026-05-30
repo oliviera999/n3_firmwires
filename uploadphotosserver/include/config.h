@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.37"
+#define FIRMWARE_VERSION "2.39"
 #define SERVER_NAME     "iot.olution.info"
 #define SERVER_PORT     80
 
@@ -63,6 +63,8 @@
 #define UPLOAD_CHUNK_SIZE 4096
 /* Monitoring local */
 #define MONITORING_HEAP_WARN_BYTES 60000
+#define N3_LOG_DEBUG              0
+#define N3_LOG_VERBOSE            1
 
 /* Controle distant camera */
 #define REMOTE_SLEEP_MIN_SECONDS 10
@@ -85,9 +87,8 @@
 #  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/msp1gallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      15
+#  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
-#  define EEPROM_SIZE        4
 
 #elif defined(TARGET_N3PP)
 #  define SERVER_PATH        "/n3ppgallery/upload.php"
@@ -96,9 +97,8 @@
 #  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/n3ppgallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      15
+#  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
-#  define EEPROM_SIZE        4
 
 #elif defined(TARGET_FFP3)
 #  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
@@ -107,9 +107,8 @@
 #  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/ffp3/ffp3gallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
-#  define TIME_TO_SLEEP      15
+#  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
-#  define EEPROM_SIZE        4
 
 #else
 #  error "Un des TARGET_MSP1, TARGET_N3PP ou TARGET_FFP3 doit être défini (build_flags)."

@@ -43,27 +43,6 @@ void EnregistrementHeureFlash() {
   preferences.end();
 }
 
-/*
- * Fonction (commentée) : afficher le touchpad qui a réveillé l'ESP32 du deep sleep.
- void print_wakeup_touchpad(){
-  touchPin = esp_sleep_get_touchpad_wakeup_status();
-
-  switch(touchPin)
-  {
-    case 0  : Serial.println("Touch detecte sur GPIO 4"); break;
-    case 1  : Serial.println("Touch detecte sur GPIO 0"); break;
-    case 2  : Serial.println("Touch detecte sur GPIO 2"); break;
-    case 3  : Serial.println("Touch detecte sur GPIO 15"); break;
-    case 4  : Serial.println("Touch detecte sur GPIO 13"); break;
-    case 5  : Serial.println("Touch detecte sur GPIO 12"); break;
-    case 6  : Serial.println("Touch detecte sur GPIO 14"); break;
-    case 7  : Serial.println("Touch detecte sur GPIO 27"); break;
-    case 8  : Serial.println("Touch detecte sur GPIO 33"); break;
-    case 9  : Serial.println("Touch detecte sur GPIO 32"); break;
-    default : Serial.println("Reveil non cause par touchpad"); break;
-  }
-}*/
-
 // Configuration et envoi d'un email d'alerte (SMTP)
 void sendEmailNotification() {
   /* Paramètres de session SMTP (serveur, port, identifiants) */
@@ -117,13 +96,56 @@ void sendEmailNotification() {
   smtp.sendingResult.clear();
 }
 
+// Borne maximale de securite pour la duree d'un arrosage (secondes) : empeche
+// qu'une valeur distante 105 farfelue ne bloque la pompe trop longtemps et ne
+// fasse expirer le WDT (configure a 30 s, voir platformio.ini).
+static const int ARROSAGE_MAX_SECONDS = 20;
+
+// Cooldown minimal entre deux arrosages automatiques (millisecondes RTC).
+// Empeche l'arrosage permanent quand le sol reste sec a chaque reveil (3 s).
+static const unsigned long ARROSAGE_COOLDOWN_MS = 5UL * 60UL * 1000UL;
+RTC_DATA_ATTR static unsigned long s_lastArrosageMillisFromBoot = 0;
+RTC_DATA_ATTR static uint32_t s_arrosageCooldownAccumulatorMs = ARROSAGE_COOLDOWN_MS;
+
 void arrosage() {
+  int tempsArrosageSecSafe = tempsArrosageSec;
+  if (tempsArrosageSecSafe < 1) tempsArrosageSecSafe = 1;
+  if (tempsArrosageSecSafe > ARROSAGE_MAX_SECONDS) {
+    Serial.printf("[ARROSAGE][WARN] tempsArrosageSec=%d clamp a %d s\n",
+                  tempsArrosageSecSafe, ARROSAGE_MAX_SECONDS);
+    tempsArrosageSecSafe = ARROSAGE_MAX_SECONDS;
+  }
+  const unsigned long tempsArrosageMs = (unsigned long)tempsArrosageSecSafe * 1000UL;
+
   digitalWrite(POMPE, 1);
-  Serial.println("arrosage en cours");
-  delay(tempsArrosage);
+  Serial.printf("[ARROSAGE] en cours (%d s)\n", tempsArrosageSecSafe);
+  // Decoupe le delay en morceaux d'1 s pour pouvoir alimenter le WDT si besoin.
+  for (int i = 0; i < tempsArrosageSecSafe; ++i) {
+    delay(1000);
+  }
   digitalWrite(POMPE, 0);
-  Serial.println("arrosage terminé");
-  delay(1000);
+  Serial.println("[ARROSAGE] termine");
+  s_arrosageCooldownAccumulatorMs = 0;
+  s_lastArrosageMillisFromBoot = millis();
+  delay(500);
+}
+
+// Indique si un nouvel arrosage automatique declenche par "sol sec" est autorise.
+bool arrosageAutoCooldownExpired() {
+  return s_arrosageCooldownAccumulatorMs >= ARROSAGE_COOLDOWN_MS;
+}
+
+// Ajoute le temps de sommeil (sleepSeconds) au compteur de cooldown pour
+// pouvoir l'utiliser malgre le reset RAM (RTC_DATA_ATTR conserve la valeur).
+void arrosageAutoAccumulateCooldown(int sleepSeconds) {
+  if (sleepSeconds <= 0) return;
+  if (s_arrosageCooldownAccumulatorMs >= ARROSAGE_COOLDOWN_MS) return;
+  const uint32_t add = (uint32_t)sleepSeconds * 1000U;
+  if (add > ARROSAGE_COOLDOWN_MS - s_arrosageCooldownAccumulatorMs) {
+    s_arrosageCooldownAccumulatorMs = ARROSAGE_COOLDOWN_MS;
+  } else {
+    s_arrosageCooldownAccumulatorMs += add;
+  }
 }
 
 void automatismes() {
@@ -143,43 +165,46 @@ void automatismes() {
 
   // mail si le niveau est revenu à la normale
   if ((HumidMoy > SeuilSec) && enableEmailChecked == "checked" && emailHumidSent) {
-    String emailMessage = String("L'humidité est remonté. La moyenne est maintenant de ") + String(HumidMoy);
+    emailMessage = String("L'humidite est remontee. La moyenne est maintenant de ") + String(HumidMoy);
+    Serial.println(emailMessage);
     sendEmailNotification();
-      Serial.println(emailMessage);
-      // SerialBT.println(emailMessage);
-      emailHumidSent = false;
-    //variablestoesp();
+    emailHumidSent = false;
     datatobdd();
   }
-
 
   Serial.print("seuilsec3 : ");
   Serial.println(SeuilSec);
   Serial.print("tempsArrosage3: ");
   Serial.println(tempsArrosage);
-  //mail si tension trop basse
 
+  // mail si tension trop basse (batterie)
   if ((PontDiv < SeuilPontDiv)) {
     if (enableEmailChecked == "checked" && !emailPontDivSent) {
-      String emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
-    sendEmailNotification();
+      emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       Serial.println(emailMessage);
-      // SerialBT.println(emailMessage);
-        emailPontDivSent = true;
-      }
+      sendEmailNotification();
+      emailPontDivSent = true;
+    }
     n3SleepStart();
   }
 
-  //arrosage en cas de sécheresse
-  if ((HumidMoy < SeuilSec)) {
-    arrosage();
-    if (enableEmailChecked == "checked") {
-      String emailMessage = String("arrosage auto effectué ");
-      Serial.println("arrosage auto");
-      sendEmailNotification();
+  // Arrosage en cas de secheresse : protege par cooldown pour eviter
+  // un arrosage repete a chaque reveil deep sleep si le sol reste sec.
+  if (HumidMoy < SeuilSec) {
+    if (arrosageAutoCooldownExpired()) {
+      arrosage();
+      if (enableEmailChecked == "checked") {
+        emailMessage = String("Arrosage auto effectue (sol sec, humidite=") +
+                       String(HumidMoy) + String(")");
+        Serial.println("[ARROSAGE] auto");
+        sendEmailNotification();
+      }
+      datatobdd();
+    } else {
+      Serial.printf("[ARROSAGE][SKIP] cooldown actif (%lu/%lu ms cumules)\n",
+                    (unsigned long)s_arrosageCooldownAccumulatorMs,
+                    (unsigned long)ARROSAGE_COOLDOWN_MS);
     }
-    //variablestoesp();
-    datatobdd();
   }
 
   rtc.getTime("%H:%M:%S %d/%m/%Y");
@@ -197,33 +222,30 @@ void automatismes() {
   if ((HeureArrosage == heure) && arrosageFait == 0) {
     arrosage();
     arrosageFait = 1;
-    Serial.println("arrosage heure auto effectué");
-    Serial.print("bouffe soir 2 :");
+    Serial.println("[ARROSAGE] heure programmee effectue");
+    Serial.print("arrosageFait=");
     Serial.println(arrosageFait);
     if (enableEmailChecked == "checked") {
-      String emailMessage = String("arrosage heure auto effectué ");
-      //bouffeSoirTemoin = 1;
+      emailMessage = String("Arrosage heure programmee effectue (") +
+                     String(heure) + String("h)");
       sendEmailNotification();
     }
-    //variablestoesp();
     etatPompe = 1;
     datatobdd();
     etatPompe = 0;
   }
 
-  //bouffe manuelle
+  // Arrosage manuel demande depuis l'interface
   if (ArrosageManu == 1) {
     datatobdd();
+    Serial.print("[ARROSAGE] manuel demande, ArrosageManu=");
     Serial.println(ArrosageManu);
     arrosage();
     ArrosageManu = 0;
-    //arrosageFait = 0;
     if (enableEmailChecked == "checked") {
-      String emailMessage = String("arrosage manu effectué ");
-      //bouffeSoirTemoin = 1;
+      emailMessage = String("Arrosage manuel effectue");
       sendEmailNotification();
     }
-    //variablestoesp();
     etatPompe = 1;
     datatobdd();
     etatPompe = 0;

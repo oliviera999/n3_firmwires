@@ -2,6 +2,7 @@
  * Serre / aquaponie — salle aeree n3
  * Credentials externalises dans credentials.h
  * OTA HTTP distant via n3_common
+ * Globals : n3pp_globals.cpp (extraits depuis main.cpp en v4.38)
  */
 
 #include "n3pp_globals.h"
@@ -18,129 +19,11 @@
 #include "n3_display.h"
 #include "n3_sleep.h"
 
-//variable et témoin issues et pour la bdd
-int HeureArrosage = 6;
-int SeuilSec = 5000;
-//int SeuilPontDiv = 1100;
-bool WakeUp = 0;
-int FreqWakeUp = 3;  // Durée du sommeil en secondes (valeur par défaut 3 s)
-bool ArrosageManu = 0;
-bool resetMode = 0;
+// ============================================================
+// OTA periodique (toutes les 2 h, cumul RTC du deep sleep)
+// + reset distant : front montant sur GPIO 110, OTA prioritaire.
+// ============================================================
 
-float temperatureAir;
-float h;
-
-int HumidMoy;
-int photocellReading;
-/*float Rsensor;
-#define VIN 3.3 // V power voltage
-#define R 10000 //ohm resistance value
-int lux; //Lux value*/
-bool etatPompe = 0;
-bool etatRelais = 0;
-
-int tempsArrosageMill = 1000;
-int tempsArrosageSec = 4;
-int tempsArrosage = tempsArrosageSec * tempsArrosageMill;
-
-int Humid1;
-int Humid2;
-int Humid3;
-int Humid4;
-
- // int PontDiv; 
-
-// Intervalle entre deux lectures capteurs (en ms)
-unsigned long previousMillisDatas = 0;
-extern const long intervalDatas = N3_DATA_INTERVAL_MS;
-
-// Indicateur : email d'alerte déjà envoyé ou non (évite spam)
-bool emailHumidSent = 0;
-bool emailPontDivSent = 0;
-RTC_DATA_ATTR bool arrosageFait = 1;
-
-//wakeUp touch
-RTC_DATA_ATTR int bootCount = 0;
-//touch_pad_t touchPin;
-bool WakeUpButton = 0;
-
-RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
-RTC_DATA_ATTR String enableEmailChecked = "checked";
-
-String emailMessage;
-
-/* Session SMTP globale pour l'envoi des emails (ESP Mail Client) */
-SMTPSession smtp;
-
-int PontDiv;        //valeur
-int avgPontDiv;
-float batt;
-float measuredVoltage;
-float batteryVoltage;
-int SeuilPontDiv = 1700;  // Seuil pour considérer la batterie faible
-extern const float ADC_MAX_VALUE = 4095.0;
-extern const float V_REF = N3_BATTERY_VREF;
-extern const float calibration = 0.06;
-// Tableau pour stocker les échantillons
-int samples[NUM_SAMPLES];
-int sampleIndex = 0;
-int sampleTotal = 0;
-
-// Définition des URLs serveur (base de données olution / iot.olution.info)
-#ifdef TEST_MODE
-const char* serverNamePostData = "http://iot.olution.info/n3pp-test/n3ppdatas/post-n3pp-data.php";
-const char* serverNameOutput = "http://iot.olution.info/n3pp-test/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
-#else
-const char* serverNamePostData = "http://iot.olution.info/n3pp/n3ppdatas/post-n3pp-data.php";
-const char* serverNameOutput = "http://iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
-#endif
-
-String version = FIRMWARE_VERSION;
-
-String apiKeyValue = API_KEY;
-String sensorName = "n3pp";
-String sensorLocation = "T06";
-
-// Affichage SSD1306 connecté en I2C (broches SDA, SCL)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-bool displayOk = false;  // false si OLED absente ou I2C en erreur
-
-const char* ssid = WIFI_SSID1;
-const char* password = WIFI_PASS1;
-const char* ssid2 = WIFI_SSID2;
-const char* password2 = WIFI_PASS2;
-const char* ssid3 = WIFI_SSID3;
-const char* password3 = WIFI_PASS3;
-
-String Wifiactif;
-
-// Serveur web asynchrone sur le port 80 (interface locale)
-AsyncWebServer server(80);
-
-//temps NTP
-WiFiUDP wifiUdp;
-// NTP : ajuster offset/fuseau dans gmtOffset_sec et daylightOffset_sec selon la localisation
-
-String outputsState;  // Variable pour gérer l'état des sorties à distance
-
-//variables en lien avec le temps rtc et ntp
-const char* ntpServer = N3_NTP_SERVER;
-extern const long gmtOffset_sec = N3_GMT_OFFSET;
-extern const int daylightOffset_sec = N3_DAYLIGHT_OFFSET;
-ESP32Time rtc;                           //initialisation du contrôle RTC via la bibliothèque ESP32time
-Preferences preferences;                 //initialisation du stockage dse l'heure dans la mémoire flash
-int seconde;
-int minute;
-int heure;
-int jour;
-int mois;
-int annee;
-
-// Code de réponse HTTP (requêtes GET/POST)
-unsigned int httpResponseCode;
-
-// Reset distant: edge detection with first-sample seeding to avoid reboot loops
-// if server state is already "110=1" at boot.
 static bool s_resetEdgeInitialized = false;
 static bool s_lastResetModeState = false;
 static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
@@ -273,46 +156,16 @@ static void accumulateOtaPeriodicElapsedFromSleep(int sleepSeconds) {
   s_otaElapsedSinceLastCheckSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
 }
 
-DHT dht(DHTPIN, DHTTYPE);
-
-/*
-//fonction temps NTP
-void printLocalTime() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    Serial.println("Impossible d'obtenir l'heure NTP");
-    return;
-  }
-  Serial.print("temps NTP ");
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-
-  heure = timeinfo.tm_hour;
-  minute = timeinfo.tm_min;
-  seconde = timeinfo.tm_sec;
-  jour = timeinfo.tm_mday;
-  mois = timeinfo.tm_mon + 1;
-  annee = timeinfo.tm_year + 1900;
-
-  Serial.print("Heure locale ");
-  Serial.print(heure);
-  Serial.print(":");
-  Serial.print(minute);
-  Serial.print(":");
-  Serial.print(seconde);
-  Serial.print("  ");
-  Serial.print(jour);
-  Serial.print("-");
-  Serial.print(mois);
-  Serial.print("-");
-  Serial.println(annee);
-}*/
+// ============================================================
+// setup() / loop()
+// ============================================================
 
 void setup() {
-  // Démarrage minimal : brown-out, pins critiques, série, OTA partition, WiFi
+  // Brown-out detector desactive (boost demarrage), pins critiques, serie.
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
-  pinMode(POMPE, OUTPUT);   //lumière
-  pinMode(RELAIS, OUTPUT);  //lumière
+  pinMode(POMPE, OUTPUT);
+  pinMode(RELAIS, OUTPUT);
   digitalWrite(RELAIS, 1);
 
   Serial.begin(115200);
@@ -336,11 +189,10 @@ void setup() {
     display.display();
   }
 
-  // OTA périodique : vérification au boot seulement si la cadence 2h est atteinte
+  // OTA periodique : verification au boot uniquement si la cadence 2h est atteinte.
   Wificonnect();
   maybeRunPeriodicOtaCheck("boot");
 
-  // Après OTA : affichage, capteurs, NTP, etc.
   print_wakeup_reason();
 
   pinMode(humidite1, INPUT);
@@ -353,40 +205,15 @@ void setup() {
   dht.begin();
   Serial.println("[DHT] Initialisation OK");
 
-  /* //init and get the time
-  if(WiFi.status()== WL_CONNECTED ){ 
-    Serial.println("start NTP");
-    timeClient.begin();                                       //
-    timeClient.update();                                      //
-    //timeClient.forceUpdate();                                 //
-    Serial.println(timeClient.getFormattedTime()); // hh mm ss
-    Serial.println(timeClient.getFormattedDate()); // dd mm yyyy*/
-  /*    if ( rtc.lostPower() ){
-      Serial.println("RTC lost power, let's set the time!");
-      adjustRTC();
-    }
-      // Set RTC time to NTP time
-  //rtc.adjust(DateTime(timeClient.getEpochTime()));
-  RTCdate();
-  rtcmodule();
-  RTCdate();
-  printLocalTime();
-  }*/
-  //init and get the time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  //printLocalTime();
 
   variablestoesp();
   etatPompe = 0;
   etatRelais = 1;
   Serial.printf("[REMOTE] resetMode(setup apres sync)=%d\n", resetMode ? 1 : 0);
-  //datatobdd();
 
-  //Increment boot number and print it every reboot
   ++bootCount;
   Serial.println("[BOOT] Compteur demarrages: " + String(bootCount));
-
-
 
   N3SleepConfig sleepCfg = { N3_WAKEUP_GPIO, HIGH, (unsigned long)FreqWakeUp };
   n3SleepConfigure(sleepCfg);
@@ -394,36 +221,28 @@ void setup() {
 
 void loop() {
   static bool firstLoop = true;
+  static bool ntpConfigured = false;
 
-  // Update NTP time
-  //printLocalTime();
-
-  //print_wakeup_reason();
   digitalWrite(RELAIS, 1);
 
-  //démarrage du serveur autohébergé
-  server.begin();
-
-  // Connexion à un des réseaux WiFi configurés (n3_wifi)
   if (WiFi.status() != WL_CONNECTED) {
     Wificonnect();
   }
 
-  // Si WiFi connecté : initialisation et récupération de l'heure NTP
-  if (WiFi.status() == WL_CONNECTED) {
+  // configTime n'est utile qu'une fois par reveil WiFi.
+  if (WiFi.status() == WL_CONNECTED && !ntpConfigured) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    ntpConfigured = true;
+    Serial.println("[TIME] configTime appele (1x/reveil)");
   }
-  Serial.println("[TIME] Synchronisation cycle");
-  //printLocalTime();
 
-  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
+  Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
 
   etatRelais = 1;
-  //récupération des infos de la bdd
   Serial.println("[SERVER][GET] Poll configuration distante");
   variablestoesp();
 
-  // Reset mode distant (GPIO 110): OTA first if available, then restart fallback.
+  // Reset mode distant (GPIO 110) : front montant, OTA prioritaire.
   bool resetRequested = (resetMode == 1);
   if (!s_resetEdgeInitialized) {
     s_lastResetModeState = resetRequested;
@@ -440,23 +259,21 @@ void loop() {
   }
   s_lastResetModeState = resetRequested;
 
-  //contrôle de l'état actif de la pompe ou pas
+  // Alerte si la pompe est active (etat envoye au serveur).
   if (digitalRead(POMPE) == 1) {
     etatPompe = 1;
     Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
     datatobdd();
     if (enableEmailChecked == "checked") {
-      String emailMessage = String("ATTENTION, arrosage continu en cours !!!");
-      //bouffeSoirTemoin = 1;
+      emailMessage = String("ATTENTION, arrosage continu en cours !");
       sendEmailNotification();
     }
   }
 
   lectureCapteurs();
-
   batterie();
 
-  // Premier tour : envoi POST de diagnostic pour voir immédiatement le code HTTP (200/401/500)
+  // Premier tour : POST de diagnostic pour observer le code HTTP retour.
   if (firstLoop) {
     firstLoop = false;
     Serial.println("[SERVER][POST] Envoi diagnostic premier tour");
@@ -464,15 +281,11 @@ void loop() {
   }
 
   affichageOLED();
-
   automatismes();
 
   etatRelais = 1;
 
-  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
-  sommeil();
-
-  //envoi régulier des datas mesurées sur iot.olution.info
+  // Envoi periodique AVANT le deep sleep (sommeil() peut ne pas rendre la main).
   unsigned long currentMillisDatas = millis();
   if (currentMillisDatas - previousMillisDatas >= intervalDatas) {
     previousMillisDatas = currentMillisDatas;
@@ -490,8 +303,11 @@ void loop() {
       }
       delay(1000);
     }
-
-    Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));  // Affichage heure RTC au format indiqué
-
+    Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
   }
+
+  // Comptabilise le temps de sommeil a venir pour le cooldown arrosage et l'OTA periodique.
+  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
+  arrosageAutoAccumulateCooldown(FreqWakeUp);
+  sommeil();
 }

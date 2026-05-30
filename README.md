@@ -10,11 +10,10 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 |--------|---------|-------|-------------|
 | **N3PhasmesProto (n3pp)** | `n3pp/` | ESP32 dev | Contrôle serre / aquaponie : température/humidité air, 4 capteurs humidité sol, pompe, luminosité, mails d’alerte, serveur web, NTP, OLED, deep sleep. |
 | **MeteoStationPrototype (msp)** | `msp/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
-| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.37`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload et contrôle distant au réveil avec `X-Api-Key` (GET état outputs + POST version firmware, aligné serveur ≥ 5.0.306), retries de connexion, vérification du code HTTP retour. Tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
-| **Upload Photos MSP1** (legacy) | `uploadphotosserver_msp1/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env msp1. |
-| **Upload Photos N3PP** (legacy) | `uploadphotosserver_n3pp_1_6_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env n3pp. |
-| **Upload Photos FFP3** (legacy) | `uploadphotosserver_ffp3_1_5_deppsleep/` | ESP32-CAM | Référence ; préférer `uploadphotosserver` env ffp3. |
+| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.38`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload et contrôle distant au réveil avec `X-Api-Key` (GET état outputs + POST version firmware, aligné serveur ≥ 5.0.306), retries de connexion, vérification du code HTTP retour. Tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
+| **Upload Photos legacy** | `archive/uploadphotosserver_legacy/` | ESP32-CAM | Historique (`uploadphotosserver_*`) conservé en archive ; utiliser uniquement `uploadphotosserver/`. |
 | **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3, réseau offline-first. |
+| **Poissonglouton (recyclage)** | `poissonglouton/` | ESP32-S3 | Compteur de bouteilles pour poubelle ludique : détection IR + ultrason (simple ou tandem), feedback audio DFPlayer, mode écran tactile ou headless, upload batch vers `/pgl/post-data`, deep sleep solaire. |
 | **LVGL_Widgets** | `LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. |
 | **Ratata (ZYC0108-EN)** | `ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. |
 
@@ -46,6 +45,12 @@ pio run -e msp1
 pio run -e msp1 -t upload
 pio device monitor -e msp1
 # Ou : -e n3pp, -e ffp3 selon la galerie cible.
+
+# Poissonglouton (ESP32-S3)
+cd poissonglouton
+pio run -e pgl-s3-headless
+pio run -e pgl-s3-display
+pio run -e pgl-s3-headless -t upload
 
 # Ratata – compiler un environnement (ex. 1_auto_move ou 6_1_esp32_car)
 cd ratata
@@ -102,7 +107,8 @@ Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs
 
 ### Scripts racine firmwires (multi-projets)
 
-Des scripts **multi-projets** (`monitor_Nmin.ps1`, `erase_flash_monitor.ps1`, `firmwires/scripts/analyze_log_generic.ps1`) sont décrits dans les règles Cursor / conventions du projet comme cible d’unification ; **ils ne sont pas encore présents dans ce dépôt**. En attendant, utiliser les scripts **ffp5cs** ci-dessus pour le workflow erase / flash / monitor / analyse, ou lancer `pio device monitor` / `pio run -t upload` depuis chaque dossier de firmware.
+- `firmwires/scripts/analyze_log_generic.ps1` est **versionné** (Phase 5 audit 2026-05) : utilisable pour n3pp, msp, uploadphotosserver. Il prend `-LogFile <chemin>` et produit un rapport texte synthétique (crashes, WDT, heap, réseau).
+- Les wrappers `firmwires/monitor_Nmin.ps1` et `firmwires/erase_flash_monitor.ps1` ne sont pas encore présents : utiliser `pio device monitor` / `pio run -t upload` depuis chaque dossier de firmware, ou s'inspirer du workflow ffp5cs.
 
 | Emplacement | Rôle |
 |-------------|------|
@@ -120,14 +126,15 @@ Des scripts **multi-projets** (`monitor_Nmin.ps1`, `erase_flash_monitor.ps1`, `f
 
 ### Uploadphotosserver — build multi-env
 
-Le firmware caméra unifié ne dispose pas (dans ce dépôt) d'un script `build_all_envs.ps1` versionné.
-Utiliser les commandes PlatformIO directes depuis `uploadphotosserver/` :
+Le firmware caméra unifié dispose d'un script de build multi-env : `uploadphotosserver/scripts/build_all_envs.ps1`.
+Commandes directes possibles depuis `uploadphotosserver/` :
 
 - `pio run -e msp1`
 - `pio run -e n3pp`
 - `pio run -e ffp3`
 - **ESP32-CAM avec PSRAM (photos haute résolution, stack historique)** : `pio run -e msp1-cam` / `-e n3pp-cam` / `-e ffp3-cam` — **platformio/espressif32@6.13.0** + **`board = esp32cam`** (Arduino 2.x) ; pas de `gcc_atomic_compat.c`. Les envs sans suffixe **`-cam`** restent en **pioarduino** + **esp32dev** + `dio_qspi` (alignement autres firmwares WROOM).
 - **Monitoring 1–2 min** (série fiable sous Windows : DTR/RTS désactivés) : depuis `uploadphotosserver/`, `python tools/monitor_serial_cam.py COM5 -s 120` — fermer tout autre moniteur / outil sur le même COM ; dépendance : `pip install pyserial`.
+- **Erase + flash + monitor** (camera) : `uploadphotosserver/scripts/erase_flash_monitor.ps1 -Environment msp1 -Port COM5 -DurationSeconds 300`.
 
 ## Stack ESP-IDF et plateforme
 
@@ -178,19 +185,24 @@ Le firmware **uploadphotosserver** (unifié) et les projets **uploadphotosserver
 - **MSP1** : en cas de déconnexion, tentative de reconnexion périodique (toutes les 60 s) dans `loop()`.
 - **N3PP** : deep sleep à chaque cycle ; au réveil, `Wificonnect()` est rappelé dans `setup()`.
 
-## Bibliothèques partagées (n3pp, msp)
+## Bibliothèques partagées (n3pp, msp, ffp5cs)
 
-Les firmwares **n3pp** et **msp** utilisent des libs communes dans `shared/` (WiFi multi-réseaux, HTTP, mail SMTP, batterie, RTC/flash, OTA HTTP distant). Chaque lib est un module PlatformIO (dossier avec `library.json` + `src/`). Les secrets sont dans `credentials.h` à la racine de `firmwires/` (copier `credentials.h.example`).
+Les firmwares **n3pp** et **msp** (et `ffp5cs` pour certaines libs) utilisent des libs communes dans `shared/`. Chaque lib est un module PlatformIO (dossier avec `library.json` + `src/`). Les secrets sont dans `credentials.h` à la racine de `firmwires/` (copier `credentials.h.example`).
 
 | Lib | Rôle |
 |-----|------|
 | `n3_analog_sensors` | Lecture ADC filtrée (luminosité, pont diviseur, humidité sol) : multi-échantillons, médiane/moyenne, rejet outliers. Utilisée par ffp5cs, n3pp, msp. |
 | `n3_battery` | Lecture batterie pont diviseur (délègue à `n3_analog_sensors`). Compatible API n3pp/msp. |
 | `n3_wifi` | Connexion WiFi multi-réseaux (timeout, callbacks affichage/échec) |
-| `n3_http` | GET / POST HTTP |
-| `n3_mail` | Envoi email SMTP (ESP Mail Client) |
-| `n3_time` | Sauvegarde/restauration heure en flash, raison de réveil |
-| `n3_common` | Noyau partagé (OTA, constantes communes, helpers de base) |
+| `n3_http` | GET / POST HTTP minimal — **déprécié** depuis 1.1 (préférer `n3_data`). |
+| `n3_data` | POST `application/x-www-form-urlencoded` avec timeout 5 s, signature HMAC body (`X-Signature`) et HMAC FFP3 (timestamp + signature dans le body si `sigSecret` fourni). |
+| `n3_hmac` | HMAC-SHA256 (helper `n3HmacSha256` + intégration HTTPClient). |
+| `n3_mail` | Envoi email SMTP (ESP Mail Client). |
+| `n3_time` | Sauvegarde/restauration heure en flash, raison de réveil. |
+| `n3_common` | Noyau partagé : OTA (`n3_ota` avec vérif sha256 + ECDSA P-256 depuis 1.3), constantes (`n3_defaults.h`), parsing JSON outputs (`n3_outputs_json` depuis 1.4). |
+| `n3_sleep` | Configuration et démarrage du deep sleep ESP32. |
+| `n3_display` | Initialisation OLED SSD1306 (helper commun). |
+| `libn3_iot` | Drivers capteurs génériques (DHT, analogique filtré via `n3_analog_sensors`, DS18B20). Conservé pour compat ; pour nouveau code préférer les libs ciblées. |
 
 ## Structure
 
@@ -239,6 +251,11 @@ firmwires/
 │   ├── platformio.ini
 │   ├── src/main.cpp
 │   └── README.md
+├── poissonglouton/              # ESP32-S3 recyclage (display + headless)
+│   ├── platformio.ini
+│   ├── include/config.h
+│   ├── src/main.cpp
+│   └── VERSION.md
 ├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires)
 ├── LVGL_Widgets/              # ESP32-S3 + écran LVGL (pas de serveur dédié)
 └── ratata/                     # Kit ZYC0108-EN (UNO + ESP32-CAM)

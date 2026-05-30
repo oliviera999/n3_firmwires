@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.41** (définie dans `include/msp_config.h`).
+Version actuelle : **2.43** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **2.41** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.43 | 2026-05 | Build : `ArduinoJson` explicite pour `n3_ota`, fallback `API_SIG_SECRET`, constantes OLED `N3_OLED_*` |
+| 2.42 | 2026-05 | Phase 1 audit : remplacement de `analogRead(27)` codé en dur par la macro `PLUIE` (capteur pluie configurable), DS18B20 avec test `DEVICE_DISCONNECTED_C` + plage -20…70 °C + retry + fallback 20 °C, suppression du `server.begin()` dans `loop()` (aucune route enregistrée), bloc périodique `intervalDatas` repositionné AVANT `sommeil()` (était mort en deep sleep), `configTime` appelé 1× par réveil, suppression du `delay(100)` final, retrait des includes inutiles (`ESPmDNS.h`) et de la variable `WiFiUDP wifiUdp`, retrait de la dépendance `ArduinoJson v7` dupliquée (déjà transitive via n3_common), suppression du doublon `MSP_URL_*` dans `msp_config.h`, suppression du prototype mort `httpGETRequest()`, `FreqWakeUp` par défaut aligné sur `N3_DEFAULT_FREQ_WAKE_UP_S = 300 s`, init des servos à une position de repli (milieu de plage) au boot, réduction des boucles OLED (3×6 → 3 pages) pour limiter le risque WDT en cumul avec le scan tracker |
 | 2.41 | 2026-04 | Luminosité : lecture systématique des 4 photorésistances + moyenne avant la logique servo (mode manuel et seuil de scan), pour éviter l'envoi de zéros au serveur quand le balayage tracker est désactivé |
 | 2.40 | 2026-03 | Ajout de traces deep sleep `[SLEEP][TRACE]` (entrée, branche emergency/regular, timer appliqué, cas `WakeUp=1` sans sommeil) pour diagnostiquer l'application des paramètres distants (`106/107`) |
 | 2.39 | 2026-03 | Logs GET `outputs_state` : concaténation `String` au lieu de `Serial.printf` multi-`%s` (affichage fiable sur ESP32) ; lecture JSON `hasOwnProperty` avant `operator[]` pour éviter l'injection de clés nulles (Arduino_JSON) |
@@ -30,10 +32,11 @@ Version actuelle : **2.41** (définie dans `include/msp_config.h`).
 | 2.15 | 2026-03 | Renommage projet msp2_5 → msp |
 | 2.14 | 2026-03 | Audit échanges firmware-serveur (incrément cohérence) |
 | 2.13 | 2026-03 | Migration vers libn3_iot (drivers capteurs génériques, DS18B20) |
-| 2.11 | — | Version actuelle (inventaire appareils) |
+| 2.11 | — | Ancienne référence inventaire appareils |
 
 ---
 
 ## Références
 
+- Configuration : `include/msp_config.h` → `FIRMWARE_VERSION`
 - Inventaire : `docs/inventaire_appareils.md`

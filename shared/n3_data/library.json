@@ -4,5 +4,8 @@
   "description": "POST/GET HTTP generiques pour firmwares n3 IoT (body URL-encoded, HMAC optionnel)",
   "keywords": ["http", "post", "get", "hmac", "esp32", "n3"],
   "frameworks": "arduino",
-  "platforms": "espressif32"
+  "platforms": "espressif32",
+  "dependencies": {
+    "n3_hmac": "*"
+  }
 }

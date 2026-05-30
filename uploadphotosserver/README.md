@@ -4,13 +4,13 @@ Un seul code source pour trois cibles (galeries iot.olution.info) :
 
 | Env   | Galerie           | Comportement              |
 |-------|-------------------|---------------------------|
-| `msp1`| msp1gallery       | Deep sleep 15 s (temporaire), SD_MMC |
-| `n3pp`| n3ppgallery       | Deep sleep 15 s (temporaire), SD_MMC |
-| `ffp3`| ffp3/ffp3gallery  | Deep sleep 15 s (temporaire), SD_MMC |
+| `msp1`| msp1gallery       | Deep sleep 600 s, SD_MMC |
+| `n3pp`| n3ppgallery       | Deep sleep 600 s, SD_MMC |
+| `ffp3`| ffp3/ffp3gallery  | Deep sleep 600 s, SD_MMC |
 
 ## Compilation
 
-1. **Credentials** : copier `include/credentials.h.example` vers `include/credentials.h` et remplir `WIFI_LIST[]`. Ne pas versionner `credentials.h`.
+1. **Credentials** : copier `firmwires/credentials.h.example` vers `firmwires/credentials.h` et remplir `WIFI_LIST[]`. Ne pas versionner `credentials.h`.
 2. Compiler : `pio run -e msp1` | `pio run -e n3pp` | `pio run -e ffp3`
 3. Upload : `pio run -e <env> -t upload`
 4. Monitor : `pio device monitor -e <env>`
@@ -19,7 +19,7 @@ Un seul code source pour trois cibles (galeries iot.olution.info) :
 
 - `include/config.h` : constantes communes et par cible (SERVER_PATH, deep sleep, SD, NTP, créneau 6h–22h).
 - Les build flags `-DTARGET_MSP1`, `-DTARGET_N3PP`, `-DTARGET_FFP3` sont définis par l’env PlatformIO.
-- `FIRMWARE_VERSION` actuelle : `2.27`.
+- `FIRMWARE_VERSION` actuelle : `2.38`.
 
 ## Contrôle distant (GET + POST version)
 
@@ -39,5 +39,14 @@ Endpoints legacy par env (compatibilité) :
 - `msp1` : `/msp1gallery/uploadphotoserver-outputs-action.php` et `/msp1gallery/post-uploadphotoserver-version.php` (board 6 / `UploadPhoto2Outputs`)
 - `n3pp` : `/n3ppgallery/uploadphotoserver-outputs-action.php` et `/n3ppgallery/post-uploadphotoserver-version.php` (board 7 / `UploadPhoto3Outputs`)
 - `ffp3` : `/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php` et `/ffp3/ffp3gallery/post-uploadphotoserver-version.php` (board 5 / `UploadPhoto1Outputs`)
+- Le serveur valide `board` et `sensor` sur le POST version (HTTP 400 si mismatch), et valide `board` sur le GET state quand fourni.
 
 Carte : ESP32-CAM AI Thinker (OV2640).
+
+## OTA
+
+- Metadata : `http://iot.olution.info/ota/cam/metadata.json`
+- Chaque cible (`msp1`, `n3pp`, `ffp3`) expose `version`, `url`, `sha256` et `signature` (optionnelle).
+- Le firmware vérifie la version distante, puis **valide sha256** du binaire avant flash.
+- Si `signature` est présente, une vérification ECDSA (clé publique embarquée) est aussi effectuée.
+- Vérification OTA périodique : toutes les 2h cumulées de cycles deep sleep.

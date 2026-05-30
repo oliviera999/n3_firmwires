@@ -1,4 +1,6 @@
-# Analyse du dépôt firmwires – Recommandations
+# Analyse du dépôt firmwires – Recommandations (ARCHIVE)
+
+> **Document archivé — état mars 2025.** Plusieurs recommandations (`git init`, secrets dans `main.cpp`, scripts manquants) ne sont plus d'actualité : credentials externalisés (`firmwires/credentials.h`), Git submodule actif, `analyze_log_generic.ps1` versionné, doc API serveur dédiée (`serveur/docs/API_MSP1_N3PP.md`). Référence canonique : [`RECOMMANDATIONS_IOT.md`](../RECOMMANDATIONS_IOT.md) racine.
 
 *Dernière mise à jour : mars 2025. Voir aussi [RECOMMANDATIONS_IOT.md](../RECOMMANDATIONS_IOT.md) à la racine.*
 

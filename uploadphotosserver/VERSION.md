@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.36** (définie dans `include/config.h`).
+Version actuelle : **2.39** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **2.36** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.39 | 2026-05-30 | Refactor modules (`camera_setup`, `camera_upload`, `camera_sleep`, `camera_mail_events`), dépendance `Arduino_JSON`, build fix `getLocalTime` |
+| 2.38 | 2026-05-19 | Sécurité/robustesse : vérification OTA `sha256` + signature ECDSA optionnelle, correction bug `WiFi.SSID().c_str()` (pointeur temporaire), deep sleep par défaut rétabli à 600 s, upload HTTP refactorisé (`HTTPClient` + retries), validation serveur `board/sensor`, code HTTP 202 pour photo en corbeille auto |
 | 2.36 | 2026-03-31 | Build : `-I` corrigé (`$PROJECT_DIR/..` = racine **firmwires**) pour que `credentials.h` charge bien `firmwires/credentials.h` (SMTP, etc.) ; suppression du doublon `include/credentials.h` qui masquait les macros SMTP |
 | 2.35 | 2026-03-31 | Publication OTA test : version > distante ; binaire déployé = env **`msp1-cam`** (même stack que flash USB validé), pas `msp1` (pioarduino) |
 | 2.34 | 2026-03-30 | Environnements PlatformIO **`*-cam`** : `platformio/espressif32@6.13.0` + `board = esp32cam` (SPIRAM / `psramFound()` comme stack historique) en parallèle des envs pioarduino |

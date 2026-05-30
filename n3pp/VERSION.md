@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.37** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.39** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **4.37** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.39 | 2026-05 | Build : `n3pp_globals.cpp`, fallback `API_SIG_SECRET`, constantes OLED `N3_OLED_*` dans `n3_defaults.h` |
+| 4.38 | 2026-05 | Phase 1 audit : extraction de `n3pp_globals.cpp` (main.cpp passe sous 300 lignes), correction `String emailMessage` locale qui masquait la globale (alertes batterie/sécheresse/arrosage envoyaient un message vide), retrait de `server.begin()` du `loop()` (aucune route enregistrée), bloc périodique `intervalDatas` repositionné AVANT `sommeil()` (était mort en deep sleep), cooldown 5 min sur l'arrosage auto pour éviter la pompe en boucle quand le sol reste sec, clamp `tempsArrosageSec ≤ 20 s`, suppression de la double mesure `PontDiv` dans `batterie()` (analogRead brut écrasait la valeur filtrée), `FreqWakeUp` par défaut aligné sur `N3_DEFAULT_FREQ_WAKE_UP_S = 300 s`, suppression du prototype mort `httpGETRequest()` et du bloc commenté touchpad, `configTime` appelé 1× par réveil au lieu de chaque `loop()` |
 | 4.37 | 2026-03 | Durcissement logs/parsing config distante (`outputs_state`) : concaténation `String` pour éviter les artefacts `printf` multi-`%s` ; vérification `hasOwnProperty` avant accès JSON ; ajout de traces deep sleep `[SLEEP][TRACE]` (entrée, branche, timer appliqué, skip `WakeUp=1`) |
 | 4.36 | 2026-03 | Affichage OTA sur OLED : écran d'état avec version courante/cible et progression (%) pendant le téléchargement OTA (check périodique + OTA avant reset distant) |
 | 4.35 | 2026-03 | Ajout des logs de progression OTA en pourcentage (`[OTA][PROGRESS]`) via la lib partagée pour suivre l'avancement du téléchargement dans le moniteur série |
@@ -27,7 +29,7 @@ Version actuelle : **4.37** (définie dans `include/n3pp_config.h`).
 | 4.14 | 2026-03 | Incrémentation pour OTA (audit échanges) |
 | 4.13 | 2026-03 | Migration vers libn3_iot (drivers capteurs génériques) |
 | 4.12 | 2026-03 | Fallback DHT harmonise (20°C / 50 % si isnan) |
-| 4.11 | — | Version actuelle (inventaire appareils) |
+| 4.11 | — | Ancienne reference inventaire appareils |
 
 ---
 

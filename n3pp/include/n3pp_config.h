@@ -3,7 +3,11 @@
 #include "credentials.h"
 #include "n3_defaults.h"
 
-#define FIRMWARE_VERSION "4.37"
+#ifndef API_SIG_SECRET
+#define API_SIG_SECRET ""
+#endif
+
+#define FIRMWARE_VERSION "4.39"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13

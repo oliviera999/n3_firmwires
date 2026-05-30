@@ -14,12 +14,16 @@
 #include "time.h"
 #include <cstring>
 #include <cstdio>
-#include "n3_http.h"
+#include <HTTPClient.h>
 #include "n3_time.h"
 #include "n3_wifi.h"
 #include "n3_ota.h"
 #include "n3_mail.h"
 #include "camera_remote.h"
+#include "camera_setup.h"
+#include "camera_upload.h"
+#include "camera_sleep.h"
+#include "camera_mail_events.h"
 #include <esp_sleep.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
@@ -27,7 +31,6 @@
 #include <esp_chip_info.h>
 
 #if USE_SD
-#include <EEPROM.h>
 #include "FS.h"
 #include "SD_MMC.h"
 #endif
@@ -43,72 +46,8 @@ static const int daylightOffset_sec = DAYLIGHT_OFFSET_SEC;
 
 String serverName = SERVER_NAME;
 String serverPath = SERVER_PATH;
-const int serverPort = SERVER_PORT;
 
-WiFiClient client;
 String Wifiactif;
-
-/* SPIRAM : board esp32dev → psramFound() souvent faux malgré tas IDF. Il faut assez de SPIRAM
- * libre et un bloc contigu suffisant (sinon cam_hal: frame buffer malloc failed en SXGA). */
-static bool n3CameraSpiramLooksViableForSxga() {
-  const size_t largest =
-      heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  const size_t total = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-  return (largest >= CAM_SPIRAM_MIN_LARGEST_BLOCK && total >= CAM_SPIRAM_MIN_FREE_BYTES);
-}
-
-static bool n3CameraUseHighResBuffers() {
-  if (psramFound()) {
-    return n3CameraSpiramLooksViableForSxga();
-  }
-  return n3CameraSpiramLooksViableForSxga();
-}
-
-/* Diagnostic serie : interpreter PSRAM / flash / puce (connectique, variante module, sdkconfig). */
-static void n3LogHardwareDiagnostics() {
-  esp_chip_info_t ci = {};
-  esp_chip_info(&ci);
-  const uint32_t flashSz = ESP.getFlashChipSize();
-  const size_t spiramTotal = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
-  const size_t spiramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-  const size_t spiramLargest =
-      heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  const uint32_t intTotal = heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  const uint32_t intFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-
-  Serial.println("[DIAG] --- materiel (uploadphotosserver) ---");
-  Serial.printf("[DIAG] chip_model=%s cores=%d revision=%d features=0x%08lx\n",
-                ESP.getChipModel(),
-                ci.cores,
-                ci.revision,
-                static_cast<unsigned long>(ci.features));
-  Serial.printf("[DIAG] flash_chip_size=%lu bytes\n", static_cast<unsigned long>(flashSz));
-  Serial.printf("[DIAG] ram_internal total=%lu free=%lu min_free_heap=%lu\n",
-                static_cast<unsigned long>(intTotal),
-                static_cast<unsigned long>(intFree),
-                static_cast<unsigned long>(ESP.getMinFreeHeap()));
-  Serial.printf("[DIAG] spiram_heap total=%lu free=%lu largest_block=%lu bytes\n",
-                static_cast<unsigned long>(spiramTotal),
-                static_cast<unsigned long>(spiramFree),
-                static_cast<unsigned long>(spiramLargest));
-  Serial.printf("[DIAG] psramFound()=%s  SXGA_seuils total>=%u largest>=%u\n",
-                psramFound() ? "true" : "false",
-                static_cast<unsigned>(CAM_SPIRAM_MIN_FREE_BYTES),
-                static_cast<unsigned>(CAM_SPIRAM_MIN_LARGEST_BLOCK));
-  if (spiramTotal == 0) {
-    Serial.println("[DIAG][WARN] SPIRAM tas=0 : variante sans puce PSRAM, soudure, alim, ou profil "
-                   "build sans SPIRAM (verifier memory_type dio_qspi).");
-  } else if (spiramLargest < CAM_SPIRAM_MIN_LARGEST_BLOCK) {
-    Serial.println("[DIAG][WARN] Plus grand bloc SPIRAM < seuil SXGA : fragmentation, PSRAM "
-                   "partielle, ou charge memoire avant camera.");
-  } else if (spiramFree < CAM_SPIRAM_MIN_FREE_BYTES) {
-    Serial.println("[DIAG][WARN] SPIRAM libre < seuil total SXGA.");
-  } else {
-    Serial.println("[DIAG] Criteres quantitatifs SPIRAM OK pour tenter SXGA (init peut encore "
-                   "echouer : nappe OV2640, alim, timing).");
-  }
-  Serial.println("[DIAG] --------------------------------------");
-}
 
 #if USE_DEEP_SLEEP
 static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
@@ -129,7 +68,6 @@ static bool forceWakeupActiveThisBoot = false;
 static bool resetModeActiveThisBoot = false;
 
 #if USE_SD
-int pictureNumber = 0;
 bool sdAvailable = false;  /* true seulement si SD montée au boot */
 #endif
 
@@ -141,12 +79,6 @@ ESP32Time rtc;
 bool Wificonnect();
 String sendPhoto();
 void ledBlink(int onMs, int offMs, int count);
-static int parseHttpStatusCode(const String& statusLine);
-static const char* currentTargetName();
-static const char* wakeupCauseText(esp_sleep_wakeup_cause_t cause);
-static const char* resetReasonText(esp_reset_reason_t reason);
-static void n3LogHardwareDiagnostics();
-static bool getLocalTimeString(char* out, size_t outSize);
 static void logMonitoringSnapshot(const char* stage);
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs);
 static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo);
@@ -157,11 +89,8 @@ static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds);
 #if USE_DEEP_SLEEP
 static void trySendFirstBootMail(bool wifiOk);
 #endif
-
-#if USE_DEEP_SLEEP
-void warmupCamera();
-void adjustExposure();
-void initializeCamera();
+#if USE_SD
+static uint32_t getNextSdPictureNumber();
 #endif
 
 /* ----- LED ----- */
@@ -188,63 +117,6 @@ bool Wificonnect() {
   cfg.scanMax = WIFI_SCAN_MAX;
   cfg.onSuccess = [](const char*) { ledBlink(500, 500, 1); };
   return n3WifiConnect(cfg, &Wifiactif);
-}
-
-static int parseHttpStatusCode(const String& statusLine) {
-  int code = 0;
-  if (sscanf(statusLine.c_str(), "HTTP/%*d.%*d %d", &code) == 1) return code;
-  return 0;
-}
-
-static const char* currentTargetName() {
-#if defined(TARGET_MSP1)
-  return "msp1";
-#elif defined(TARGET_N3PP)
-  return "n3pp";
-#elif defined(TARGET_FFP3)
-  return "ffp3";
-#else
-  return "unknown";
-#endif
-}
-
-static const char* wakeupCauseText(esp_sleep_wakeup_cause_t cause) {
-  switch (cause) {
-    case ESP_SLEEP_WAKEUP_EXT0: return "ext0";
-    case ESP_SLEEP_WAKEUP_EXT1: return "ext1";
-    case ESP_SLEEP_WAKEUP_TIMER: return "timer";
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: return "touchpad";
-    case ESP_SLEEP_WAKEUP_ULP: return "ulp";
-    default: return "non_deep_sleep";
-  }
-}
-
-static const char* resetReasonText(esp_reset_reason_t reason) {
-  switch (reason) {
-    case ESP_RST_UNKNOWN: return "unknown";
-    case ESP_RST_POWERON: return "poweron";
-    case ESP_RST_EXT: return "ext";
-    case ESP_RST_SW: return "software";
-    case ESP_RST_PANIC: return "panic";
-    case ESP_RST_INT_WDT: return "int_wdt";
-    case ESP_RST_TASK_WDT: return "task_wdt";
-    case ESP_RST_WDT: return "wdt";
-    case ESP_RST_DEEPSLEEP: return "deepsleep";
-    case ESP_RST_BROWNOUT: return "brownout";
-    case ESP_RST_SDIO: return "sdio";
-    default: return "other";
-  }
-}
-
-static bool getLocalTimeString(char* out, size_t outSize) {
-  if (!out || outSize == 0) return false;
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    snprintf(out, outSize, "NTP indisponible");
-    return false;
-  }
-  strftime(out, outSize, "%Y-%m-%d %H:%M:%S", &timeinfo);
-  return true;
 }
 
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs) {
@@ -319,8 +191,16 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   snprintf(subject, sizeof(subject), "[uploadphotosserver][%s] %s", currentTargetName(), subjectEvent);
 
   char localTime[32];
-  getLocalTimeString(localTime, sizeof(localTime));
+  cameraGetLocalTimeString(localTime, sizeof(localTime));
   String ipStr = WiFi.localIP().toString();
+  char ssidBuf[33];
+  ssidBuf[0] = '\0';
+  if (WiFi.status() == WL_CONNECTED) {
+    String wifiSsid = WiFi.SSID();
+    snprintf(ssidBuf, sizeof(ssidBuf), "%s", wifiSsid.c_str());
+  } else {
+    snprintf(ssidBuf, sizeof(ssidBuf), "%s", "(deconnecte)");
+  }
   int wifiRssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
 
   N3MailDebugInfo dbgInfo = {};
@@ -331,7 +211,7 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   dbgInfo.localTime = localTime;
   dbgInfo.wakeupReason = wakeupCauseText(esp_sleep_get_wakeup_cause());
   dbgInfo.resetReason = resetReasonText(esp_reset_reason());
-  dbgInfo.wifiSsid = (WiFi.status() == WL_CONNECTED) ? WiFi.SSID().c_str() : "(deconnecte)";
+  dbgInfo.wifiSsid = ssidBuf;
   dbgInfo.wifiIp = ipStr.c_str();
   dbgInfo.wifiRssi = wifiRssi;
   dbgInfo.uptimeSeconds = millis() / 1000UL;
@@ -500,50 +380,25 @@ static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds) {
 #endif
 }
 
-#if USE_DEEP_SLEEP
-void adjustExposure() {
-  sensor_t* s = esp_camera_sensor_get();
-  camera_fb_t* fb = esp_camera_fb_get();
-  if (fb && s) {
-    long brightness = 0;
-    for (size_t i = 0; i < fb->len; i++) brightness += fb->buf[i];
-    brightness /= (fb->len ? (long)fb->len : 1);
-    if (brightness > 200)
-      s->set_aec_value(s, s->status.aec_value - 50);
-    else if (brightness < 50)
-      s->set_aec_value(s, s->status.aec_value + 50);
-    esp_camera_fb_return(fb);
+#if USE_SD
+static uint32_t getNextSdPictureNumber() {
+  Preferences counterPrefs;
+  uint32_t next = 1;
+  if (!counterPrefs.begin("upcam", false)) {
+    return next;
   }
-}
-
-void warmupCamera() {
-  for (int i = 0; i < 3; i++) {
-    camera_fb_t* fb = esp_camera_fb_get();
-    if (fb) esp_camera_fb_return(fb);
-    delay(1000);
-  }
-}
-
-void initializeCamera() {
-  sensor_t* s = esp_camera_sensor_get();
-  if (s) {
-    s->set_exposure_ctrl(s, 0);
-    s->set_aec_value(s, 300);
-    s->set_gain_ctrl(s, 0);
-    s->set_agc_gain(s, 0);
-    delay(1000);
-    s->set_exposure_ctrl(s, 1);
-    s->set_gain_ctrl(s, 1);
-    s->set_awb_gain(s, 1);
-    delay(10000);
-  }
+  const uint32_t current = counterPrefs.getUInt("pic_count", 0);
+  next = current + 1;
+  counterPrefs.putUInt("pic_count", next);
+  counterPrefs.end();
+  return next;
 }
 #endif
 
 /* ----- sendPhoto : capture, optionnel SD, envoi HTTP, puis esp_camera_fb_return ----- */
 String sendPhoto() {
   const uint32_t sendPhotoStartMs = millis();
-  String getAll, getBody;
+  String getBody;
   logMonitoringSnapshot("sendPhoto:start");
 
 #if USE_DEEP_SLEEP
@@ -564,11 +419,7 @@ String sendPhoto() {
 #if USE_SD
   const uint32_t sdWriteStartMs = millis();
   if (sdAvailable) {
-    EEPROM.begin(EEPROM_SIZE);
-    uint32_t persistedCount = 0;
-    EEPROM.get(0, persistedCount);
-    persistedCount++;
-    pictureNumber = static_cast<int>(persistedCount);
+    const uint32_t pictureNumber = getNextSdPictureNumber();
     String path = "/picture" + String(pictureNumber) + ".jpg";
     fs::FS& fs = SD_MMC;
     File file = fs.open(path.c_str(), FILE_WRITE);
@@ -576,8 +427,7 @@ String sendPhoto() {
       size_t written = file.write(fb->buf, fb->len);
       file.close();
       if (written == fb->len) {
-        EEPROM.put(0, persistedCount);
-        EEPROM.commit();
+        Serial.printf("[SD] Sauvegarde locale %s (%u bytes)\n", path.c_str(), static_cast<unsigned int>(written));
       } else {
         Serial.println("[SD][WARN] Ecriture incomplete, desactivation SD");
         sdAvailable = false;
@@ -588,120 +438,82 @@ String sendPhoto() {
     }
   }
   logStepDuration("ecriture_sd", millis() - sdWriteStartMs, 1500);
-  /* Ne pas appeler esp_camera_fb_return(fb) ici : on envoie encore HTTP avec fb->buf */
 #endif
 
-  bool connected = false;
-  const uint32_t connectStartMs = millis();
-  for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES; attempt++) {
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[WIFI][WARN] Deconnecte, tentative de reconnexion");
-      Wificonnect();
-    }
-    Serial.printf("[SERVER][CONNECT] Tentative %d/%d host=%s:%d\n",
-                  attempt,
-                  UPLOAD_CONNECT_RETRIES,
-                  serverName.c_str(),
-                  serverPort);
-    if (client.connect(serverName.c_str(), serverPort)) {
-      connected = true;
-      break;
-    }
-    delay(UPLOAD_RETRY_DELAY_MS);
-  }
-  if (!connected) {
-    logStepDuration("connexion_http", millis() - connectStartMs, 4000);
-    getBody = "[SERVER][CONNECT][ERROR] Connexion a " + serverName + " echouee apres retries.";
-    Serial.println(getBody);
-    esp_camera_fb_return(fb);
-    logMonitoringSnapshot("sendPhoto:connect_ko");
-    logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
-    return getBody;
-  }
-  logStepDuration("connexion_http", millis() - connectStartMs, 4000);
-
-  Serial.println("[SERVER][CONNECT] Connexion serveur OK");
   String photoFilename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
   String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"" + photoFilename + "\"\r\nContent-Type: image/jpeg\r\n\r\n";
   String tail = "\r\n--RandomNerdTutorials--\r\n";
   uint32_t imageLen = fb->len;
-  uint32_t extraLen = head.length() + tail.length();
-  uint32_t totalLen = imageLen + extraLen;
-
-  client.println("POST " + serverPath + " HTTP/1.1");
-  client.println("Host: " + serverName);
-  client.println("Content-Length: " + String(totalLen));
-  client.println("Content-Type: multipart/form-data; boundary=RandomNerdTutorials");
-  client.println("X-Api-Key: " + String(API_KEY));
-  Serial.printf("[SERVER][POST] %s payload=%u bytes\n",
-                serverPath.c_str(),
-                static_cast<unsigned int>(imageLen));
-  client.println();
-  client.print(head);
-
-  const size_t chunk = UPLOAD_CHUNK_SIZE;
+  const uint32_t totalLen = imageLen + head.length() + tail.length();
+  int httpCode = -1;
+  bool sentOk = false;
   const uint32_t uploadStartMs = millis();
-  size_t sent = 0;
-  while (sent < fb->len) {
-    size_t toSend = (fb->len - sent) > chunk ? chunk : (fb->len - sent);
-    client.write(fb->buf + sent, toSend);
-    sent += toSend;
+
+  for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES && !sentOk; ++attempt) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[WIFI][WARN] Deconnecte, tentative de reconnexion");
+      Wificonnect();
+    }
+
+    WiFiClient uploadClient;
+    HTTPClient http;
+    const String uploadUrl = String("http://") + serverName + serverPath;
+    Serial.printf("[SERVER][POST] Tentative %d/%d url=%s payload=%u bytes\n",
+                  attempt,
+                  UPLOAD_CONNECT_RETRIES,
+                  uploadUrl.c_str(),
+                  static_cast<unsigned int>(imageLen));
+    if (!http.begin(uploadClient, uploadUrl)) {
+      Serial.println("[SERVER][ERROR] HTTP begin a echoue");
+      delay(UPLOAD_RETRY_DELAY_MS);
+      continue;
+    }
+    uploadClient.setTimeout(HTTP_RESPONSE_TIMEOUT_MS);
+    http.setTimeout(HTTP_RESPONSE_TIMEOUT_MS);
+    http.addHeader("Content-Type", "multipart/form-data; boundary=RandomNerdTutorials");
+    http.addHeader("X-Api-Key", API_KEY);
+    MultipartCameraStream multipart(head, fb->buf, fb->len, tail);
+    httpCode = http.sendRequest("POST", &multipart, totalLen);
+    if (httpCode > 0) {
+      getBody = http.getString();
+      sentOk = true;
+    } else {
+      Serial.printf("[SERVER][ERROR] Echec sendRequest HTTP=%d (%s)\n", httpCode, http.errorToString(httpCode).c_str());
+      delay(UPLOAD_RETRY_DELAY_MS);
+    }
+    http.end();
   }
-  client.print(tail);
   logStepDuration("upload_http", millis() - uploadStartMs, 5000);
-  Serial.printf("[MON] upload envoye=%u bytes payload=%u bytes\n",
-                static_cast<unsigned int>(sent),
-                static_cast<unsigned int>(imageLen));
 
   /* Libérer le framebuffer après envoi complet (évite use-after-free) */
   esp_camera_fb_return(fb);
 
-  int timeoutTimer = HTTP_RESPONSE_TIMEOUT_MS;
-  uint32_t startTimer = millis();
-  const uint32_t responseStartMs = startTimer;
-  boolean state = false;
-  String statusLine;
-  while ((startTimer + timeoutTimer) > millis()) {
-    Serial.print(".");
-    delay(100);
-    while (client.available()) {
-      char c = client.read();
-      if (c == '\n') {
-        if (getAll.length() > 0 && statusLine.length() == 0) statusLine = getAll;
-        if (getAll.length() == 0) state = true;
-        getAll = "";
-      } else if (c != '\r') getAll += String(c);
-      if (state) getBody += String(c);
-      startTimer = millis();
-    }
-    if (getBody.length() > 0) break;
+  if (!sentOk) {
+    getBody = "[SERVER][ERROR] Upload non confirme apres retries.";
+    Serial.println(getBody);
+    logMonitoringSnapshot("sendPhoto:upload_ko");
+    logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
+    return getBody;
   }
-  logStepDuration("attente_reponse_http", millis() - responseStartMs, HTTP_RESPONSE_TIMEOUT_MS);
-  Serial.println();
-  client.stop();
-  if (statusLine.length() > 0) {
-    Serial.println("[SERVER][RESP] " + statusLine);
-    int statusCode = parseHttpStatusCode(statusLine);
-    if (statusCode != 200) {
-      Serial.printf("[SERVER][RESP][WARN] Upload non confirme, HTTP=%d\n", statusCode);
-    }
+
+  Serial.printf("[SERVER][RESP] HTTP=%d\n", httpCode);
+  if (httpCode == 202) {
+    Serial.println("[SERVER][RESP][WARN] Upload accepte mais photo en corbeille auto.");
+  } else if (httpCode != 200) {
+    Serial.printf("[SERVER][RESP][WARN] Upload non confirme, HTTP=%d\n", httpCode);
   }
+#if N3_LOG_VERBOSE
   Serial.println("[SERVER][BODY] " + getBody);
-  Serial.printf("[MON] reponse_len=%u chars\n", static_cast<unsigned int>(getBody.length()));
+#else
+  Serial.printf("[SERVER][BODY] len=%u chars\n", static_cast<unsigned int>(getBody.length()));
+#endif
+  Serial.printf("[MON] upload total_envoye=%u bytes payload=%u bytes\n",
+                static_cast<unsigned int>(totalLen),
+                static_cast<unsigned int>(imageLen));
   ledBlink(1500, 1500, 2);
   logMonitoringSnapshot("sendPhoto:end");
   logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
   return getBody;
-}
-
-/* ----- Créneau horaire 6h–22h ----- */
-static bool inPhotoWindow() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) return true; /* Échec NTP : autoriser la photo par défaut (comportement fail-open) */
-  char hourBuf[3];
-  strftime(hourBuf, sizeof(hourBuf), "%H", &timeinfo);
-  int h = atoi(hourBuf);
-  return (h >= HOUR_START && h < HOUR_END);
 }
 
 void setup() {
@@ -712,7 +524,7 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   /* Broches explicites UART0 AI Thinker / programmateur 6 broches (évite ambiguïtés framework). */
   Serial.begin(115200, SERIAL_8N1, 3, 1);
-  Serial.setDebugOutput(true);
+  Serial.setDebugOutput(N3_LOG_DEBUG ? true : false);
   delay(200);
 #if SERIAL_BOOT_PAUSE_MS > 0
   Serial.printf("[BOOT] SERIAL_BOOT_PAUSE_MS=%u — ouvrez le moniteur maintenant\r\n",

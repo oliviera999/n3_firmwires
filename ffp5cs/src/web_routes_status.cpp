@@ -132,8 +132,8 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
     g_realtimeWebSocket.broadcastNow();
   });
 
-  // POST /api/wakeup: AsyncCallbackJsonWebHandler collecte le body JSON (server.on ne le fait pas)
-  server.on(AsyncURIMatcher::exact("/api/wakeup"), HTTP_POST, [&ctx](AsyncWebServerRequest* req, JsonVariant& json) {
+  // POST /api/wakeup: body JSON via AsyncCallbackJsonWebHandler (server.on ne parse pas le JSON)
+  server.addHandler(new AsyncCallbackJsonWebHandler("/api/wakeup", [&ctx](AsyncWebServerRequest* req, JsonVariant& json) {
     Serial.println("[Web] 🔔 Réveil par API POST");
 
     const char* action = json["action"].as<const char*>();
@@ -218,7 +218,7 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
     }
 
     g_realtimeWebSocket.broadcastNow();
-  });
+  }));
 }
 
 void registerWifiStatus(AsyncWebServer& server, AppContext& ctx) {

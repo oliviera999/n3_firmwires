@@ -49,66 +49,96 @@ static const N3Analog::AnalogConfig cfgHumidSol = {
   .minValid = 0, .maxValid = 4095, .fallback = 1, .emaAlpha = 0.0f
 };
 
+// Plage physique acceptable pour la DS18B20 (sol exterieur Casablanca).
+static const float MSP_TEMP_MIN = -20.0f;
+static const float MSP_TEMP_MAX = 70.0f;
+static const float MSP_TEMP_FALLBACK = 20.0f;
+
+// Bornes physiques DHT11/DHT22.
+static const float MSP_DHT_TEMP_MIN = -40.0f;
+static const float MSP_DHT_TEMP_MAX = 80.0f;
+static const float MSP_DHT_HUM_MIN = 0.0f;
+static const float MSP_DHT_HUM_MAX = 100.0f;
+static const float MSP_DHT_TEMP_FALLBACK = 20.0f;
+static const float MSP_DHT_HUM_FALLBACK = 50.0f;
+
+// Sentinelles ADC pour capteur pluie debranche (saturation rail/masse).
+// Le capteur Funduino retourne ~4095 sec, ~0 mouille ; on differencie une lecture
+// flottante (broche non cablee) d'une vraie absence d'eau via la valeur sentinelle 1.
+static const int MSP_PLUIE_DISCONNECT = 1;
+
 void LectureCapteurs() {
-  // Lire l'humidité du sol (ADC filtré)
+  // Humidite du sol (ADC filtre)
   N3Analog::AnalogResult rHum = N3Analog::readFilteredAnalog(cfgHumidSol);
   HumidSol = rHum.valid ? rHum.value : 1;
   if (HumidSol == 0) HumidSol = 1;
   Serial.printf("[SENSOR] HumidSol=%d\n", HumidSol);
 
-
-  // Lire la détection de pluie
-  Pluie = analogRead(27);
-  if (Pluie == 0) {
-    Pluie = 1;
+  // Detection pluie (analogique). PLUIE est defini dans msp_config.h (GPIO 27).
+  // Avant v2.42 : analogRead(27) en dur (non testable si la broche change).
+  // Distinction sec vs debranche :
+  //   * 0..3 = ligne flottante / capteur deconnecte  -> sentinelle 1
+  //   * sinon valeur capteur (4095 = sec, 0..4094 = humide selon mouillage)
+  int pluieRaw = analogRead(PLUIE);
+  if (pluieRaw <= 3) {
+    Serial.printf("[PLUIE][WARN] Lecture suspecte (raw=%d, capteur deconnecte?), sentinelle=%d\n",
+                  pluieRaw, MSP_PLUIE_DISCONNECT);
+    Pluie = MSP_PLUIE_DISCONNECT;
+  } else {
+    Pluie = pluieRaw;
   }
   delay(100);
   Serial.printf("[SENSOR] Pluie=%d\n", Pluie);
 
-
-  /*
-  // Agrégation des valeurs du diviseur de tension
-  int sumPontDiv = 0;
-  int PontDiv;
-  for (int i = 0; i < numReadings; i++) {
-    sumPontDiv += analogRead(pontdiv);
-    delay(30);
-  }
-  PontDiv = sumPontDiv / numReadings;
-  delay(100);*/
-
-  // Lire la température et l'humidité de l'air intérieur
+  // DHT interieur : isnan + bornes physiques (-40..80 C, 0..100 %).
   tempAirInt = dhtint.readTemperature();
   delay(100);
   humidAirInt = dhtint.readHumidity();
   delay(100);
-  if (isnan(humidAirInt) || isnan(tempAirInt)) {
-    Serial.println("[DHT][WARN] Lecture interieur invalide, fallback 20C / 50%");
-    tempAirInt = 20.0f;
-    humidAirInt = 50.0f;
+  if (isnan(tempAirInt) || tempAirInt < MSP_DHT_TEMP_MIN || tempAirInt > MSP_DHT_TEMP_MAX) {
+    Serial.printf("[DHT][INT][WARN] Temperature invalide (%.1fC), fallback %.1fC\n",
+                  tempAirInt, MSP_DHT_TEMP_FALLBACK);
+    tempAirInt = MSP_DHT_TEMP_FALLBACK;
+  }
+  if (isnan(humidAirInt) || humidAirInt < MSP_DHT_HUM_MIN || humidAirInt > MSP_DHT_HUM_MAX) {
+    Serial.printf("[DHT][INT][WARN] Humidite invalide (%.1f%%), fallback %.1f%%\n",
+                  humidAirInt, MSP_DHT_HUM_FALLBACK);
+    humidAirInt = MSP_DHT_HUM_FALLBACK;
   }
 
-  // Lire la température et l'humidité de l'air extérieur
+  // DHT exterieur : meme validation.
   tempAirExt = dhtext.readTemperature();
   delay(100);
   humidAirExt = dhtext.readHumidity();
   delay(100);
-  if (isnan(humidAirExt) || isnan(tempAirExt)) {
-    Serial.println("[DHT][WARN] Lecture exterieur invalide, fallback 20C / 50%");
-    tempAirExt = 20.0f;
-    humidAirExt = 50.0f;
+  if (isnan(tempAirExt) || tempAirExt < MSP_DHT_TEMP_MIN || tempAirExt > MSP_DHT_TEMP_MAX) {
+    Serial.printf("[DHT][EXT][WARN] Temperature invalide (%.1fC), fallback %.1fC\n",
+                  tempAirExt, MSP_DHT_TEMP_FALLBACK);
+    tempAirExt = MSP_DHT_TEMP_FALLBACK;
+  }
+  if (isnan(humidAirExt) || humidAirExt < MSP_DHT_HUM_MIN || humidAirExt > MSP_DHT_HUM_MAX) {
+    Serial.printf("[DHT][EXT][WARN] Humidite invalide (%.1f%%), fallback %.1f%%\n",
+                  humidAirExt, MSP_DHT_HUM_FALLBACK);
+    humidAirExt = MSP_DHT_HUM_FALLBACK;
   }
 
-  // Obtenir la température du sol
+  // Temperature sol (DS18B20). Avant v2.42 : magique 25.00 traite comme erreur.
+  // Maintenant : test explicite DEVICE_DISCONNECTED_C, retry une fois, fallback 20C.
   sensors.requestTemperatures();
   temperatureSol = sensors.getTempCByIndex(0);
-  if (temperatureSol == -127.00) {
-    temperatureSol = sensors.getTempCByIndex(0);
+  if (temperatureSol == DEVICE_DISCONNECTED_C || isnan(temperatureSol)) {
+    Serial.println("[DS18B20][WARN] Lecture invalide, retry...");
     delay(200);
+    sensors.requestTemperatures();
+    temperatureSol = sensors.getTempCByIndex(0);
   }
-  if (temperatureSol == 25.00) {
-    temperatureSol = sensors.getTempCByIndex(0);
-    delay(200);
+  if (temperatureSol == DEVICE_DISCONNECTED_C || isnan(temperatureSol) ||
+      temperatureSol < MSP_TEMP_MIN || temperatureSol > MSP_TEMP_MAX) {
+    Serial.printf("[DS18B20][WARN] Temperature sol invalide (%.2fC), fallback %.1fC\n",
+                  temperatureSol, MSP_TEMP_FALLBACK);
+    temperatureSol = MSP_TEMP_FALLBACK;
+  } else {
+    Serial.printf("[DS18B20] TempEau=%.2fC\n", temperatureSol);
   }
 }
 

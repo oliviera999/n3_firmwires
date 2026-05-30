@@ -6,6 +6,21 @@
 static const uint16_t DHT_READ_DELAY_MS = 150;
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
 
+// Bornes physiques DHT11/DHT22 (specs constructeur).
+// Valeurs hors plage = capteur deconnecte / faux contact, on remet le fallback.
+static const float N3PP_DHT_TEMP_MIN = -40.0f;
+static const float N3PP_DHT_TEMP_MAX = 80.0f;
+static const float N3PP_DHT_HUM_MIN = 0.0f;
+static const float N3PP_DHT_HUM_MAX = 100.0f;
+static const float N3PP_DHT_TEMP_FALLBACK = 20.0f;
+static const float N3PP_DHT_HUM_FALLBACK = 50.0f;
+
+// Valeurs ADC sentinelle pour detecter un capteur d'humidite sol/luminosite debranche.
+// 0 = ligne tiree a la masse, 4080+ = ligne flottante a Vcc.
+static const uint16_t N3PP_ANALOG_DISCONNECT_LOW = 5;
+static const uint16_t N3PP_ANALOG_DISCONNECT_HIGH = 4080;
+static const uint16_t N3PP_ANALOG_FALLBACK = 1;
+
 static const N3BatteryConfig batteryConfig = {
   pontdiv, (uint32_t)N3_BATTERY_R1, (uint32_t)N3_BATTERY_R2, N3_BATTERY_VREF, NUM_SAMPLES
 };
@@ -23,33 +38,38 @@ static const N3Analog::AnalogConfig cfgLumi = {
   .minValid = 0, .maxValid = 4095, .fallback = 1, .emaAlpha = 0.0f
 };
 
-void lectureCapteurs() {
+// Lit un capteur d'humidite sol et detecte le cas "debranche" (lecture
+// tres basse ou saturee a la masse / au rail).
+static int readSoilSensor(uint8_t pin, const char* label) {
   N3Analog::AnalogConfig c = cfgHumid;
-  c.pin = humidite1;
-  N3Analog::AnalogResult r1 = N3Analog::readFilteredAnalog(c);
-  Humid1 = r1.valid ? r1.value : 1;
-  if (Humid1 == 0) Humid1 = 1;
+  c.pin = pin;
+  N3Analog::AnalogResult r = N3Analog::readFilteredAnalog(c);
+  if (!r.valid) {
+    Serial.printf("[SOIL][WARN] %s lecture invalide, fallback=%u\n", label, N3PP_ANALOG_FALLBACK);
+    return N3PP_ANALOG_FALLBACK;
+  }
+  if (r.value <= N3PP_ANALOG_DISCONNECT_LOW || r.value >= N3PP_ANALOG_DISCONNECT_HIGH) {
+    Serial.printf("[SOIL][WARN] %s probable debranchement (raw=%u), fallback=%u\n",
+                  label, r.value, N3PP_ANALOG_FALLBACK);
+    return N3PP_ANALOG_FALLBACK;
+  }
+  return r.value;
+}
+
+void lectureCapteurs() {
+  Humid1 = readSoilSensor(humidite1, "humidite1");
   Serial.print("Capteur humidite 1 : ");
   Serial.println(Humid1);
 
-  c.pin = humidite2;
-  N3Analog::AnalogResult r2 = N3Analog::readFilteredAnalog(c);
-  Humid2 = r2.valid ? r2.value : 1;
-  if (Humid2 == 0) Humid2 = 1;
+  Humid2 = readSoilSensor(humidite2, "humidite2");
   Serial.print("Capteur humidite 2 : ");
   Serial.println(Humid2);
 
-  c.pin = humidite3;
-  N3Analog::AnalogResult r3 = N3Analog::readFilteredAnalog(c);
-  Humid3 = r3.valid ? r3.value : 1;
-  if (Humid3 == 0) Humid3 = 1;
+  Humid3 = readSoilSensor(humidite3, "humidite3");
   Serial.print("Capteur humidite 3 : ");
   Serial.println(Humid3);
 
-  c.pin = humidite4;
-  N3Analog::AnalogResult r4 = N3Analog::readFilteredAnalog(c);
-  Humid4 = r4.valid ? r4.value : 1;
-  if (Humid4 == 0) Humid4 = 1;
+  Humid4 = readSoilSensor(humidite4, "humidite4");
   Serial.print("Capteur humidite 4 : ");
   Serial.println(Humid4);
 
@@ -71,28 +91,40 @@ void lectureCapteurs() {
   Serial.println(tempsArrosage);
 
   temperatureAir = dht.readTemperature();
-  Serial.println(temperatureAir);
   delay(DHT_READ_DELAY_MS);
   h = dht.readHumidity();
   delay(DHT_READ_DELAY_MS);
-  Serial.println(h);
-  if (isnan(h) || isnan(temperatureAir)) {
-    Serial.println("Echec de lecture du DHT, fallback 20C / 50%");
-    if (isnan(temperatureAir)) temperatureAir = 20.0f;
-    if (isnan(h)) h = 50.0f;
+  Serial.printf("[DHT] raw t=%.1fC h=%.1f%%\n", temperatureAir, h);
+
+  // Validation isnan + bornes physiques (-40..80 C, 0..100 %).
+  // Toute valeur hors plage = capteur deconnecte / faux contact => fallback sur.
+  if (isnan(temperatureAir) || temperatureAir < N3PP_DHT_TEMP_MIN || temperatureAir > N3PP_DHT_TEMP_MAX) {
+    Serial.printf("[DHT][WARN] Temperature invalide (%.1fC), fallback %.1fC\n",
+                  temperatureAir, N3PP_DHT_TEMP_FALLBACK);
+    temperatureAir = N3PP_DHT_TEMP_FALLBACK;
+  }
+  if (isnan(h) || h < N3PP_DHT_HUM_MIN || h > N3PP_DHT_HUM_MAX) {
+    Serial.printf("[DHT][WARN] Humidite invalide (%.1f%%), fallback %.1f%%\n", h, N3PP_DHT_HUM_FALLBACK);
+    h = N3PP_DHT_HUM_FALLBACK;
   }
 
+  // Luminosite avec meme detection debranchement que les capteurs sol.
   N3Analog::AnalogConfig cLum = cfgLumi;
   cLum.pin = LUMINOSITE;
   N3Analog::AnalogResult rLum = N3Analog::readFilteredAnalog(cLum);
-  photocellReading = rLum.valid ? rLum.value : 1;
-  if (photocellReading == 0) photocellReading = 1;
+  if (!rLum.valid || rLum.value <= N3PP_ANALOG_DISCONNECT_LOW || rLum.value >= N3PP_ANALOG_DISCONNECT_HIGH) {
+    Serial.printf("[LUM][WARN] Luminosite invalide (raw=%u), fallback=%u\n",
+                  rLum.value, N3PP_ANALOG_FALLBACK);
+    photocellReading = N3PP_ANALOG_FALLBACK;
+  } else {
+    photocellReading = rLum.value;
+  }
 }
 
 void batterie() {
-  PontDiv = analogRead(pontdiv);
-  Serial.println(PontDiv);
-
+  // PontDiv est deja calcule (filtre median + moyenne) dans lectureCapteurs(),
+  // ne pas l'ecraser ici avec une lecture brute analogRead() (cause de l'audit
+  // 4.38 : valeur differente du POST envoye au serveur).
   N3BatteryResult res = n3BatteryRead(batteryConfig, (void*)samples, (void*)&sampleIndex, (void*)&sampleTotal);
   avgPontDiv = res.rawAvg;
   measuredVoltage = res.measuredVoltage;

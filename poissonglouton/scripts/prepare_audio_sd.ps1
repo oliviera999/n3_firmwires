@@ -1,0 +1,5 @@
+Write-Host "Preparation carte SD DFPlayer (poissonglouton)"
+Write-Host "1) Formater en FAT32"
+Write-Host "2) Creer dossier \mp3"
+Write-Host "3) Copier les fichiers 001.mp3 a 010.mp3"
+Write-Host "4) Inserer la carte SD dans DFPlayer Mini"

@@ -1,8 +1,11 @@
 {
   "name": "n3_battery",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lecture batterie pont diviseur (délègue à n3_analog_sensors). Compatible n3pp, msp.",
   "keywords": "esp32, battery, adc, divider",
   "frameworks": "arduino",
-  "platforms": "espressif32"
+  "platforms": "espressif32",
+  "dependencies": {
+    "n3_analog_sensors": "^1.0.0"
+  }
 }
