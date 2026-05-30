@@ -50,3 +50,24 @@ if root:
         print("N3: WARN impossible de creer BUILD_DIR %s: %s" % (new_build_dir, e))
     env.Replace(BUILD_DIR=new_build_dir)
     print("N3: BUILD_DIR -> %s" % new_build_dir)
+
+    # PlatformIO checkprogsize lit encore $PROJECT_DIR/.pio/build/$PIOENV — jonction Windows.
+    default_build = project_dir / ".pio" / "build" / pioenv
+    if os.name == "nt":
+        try:
+            default_build.parent.mkdir(parents=True, exist_ok=True)
+            if default_build.exists():
+                is_junction = getattr(default_build, "is_junction", lambda: False)()
+                if default_build.is_symlink() or is_junction:
+                    default_build.unlink()
+                elif default_build.is_dir():
+                    import shutil
+                    shutil.rmtree(default_build, ignore_errors=True)
+            import subprocess
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(default_build), new_build_dir],
+                check=False,
+                capture_output=True,
+            )
+        except OSError as e:
+            print("N3: WARN jonction .pio/build -> BUILD_DIR: %s" % e)
