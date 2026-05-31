@@ -20,6 +20,7 @@ ffp5cs_backup/
 
 # Rapports locaux d'audit PlatformIO (scripts/Invoke-PioBuildAudit.ps1)
 build-audit-*.txt
+build_out.txt
 
 # Sauvegardes d'edition (*.orig)
 *.orig
