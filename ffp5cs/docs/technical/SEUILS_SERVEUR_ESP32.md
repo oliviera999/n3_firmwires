@@ -61,13 +61,13 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
 | **ESP32** | 2 cm | 400 cm | `include/config.h` SensorConfig::Ultrasonic (lignes 386-387) |
-| **Serveur PHP** | 4.0 cm | 70.0 cm | `ffp3/src/Service/SensorDataService.php` ligne 46-47 |
+| **Serveur PHP** | 40 mm | 700 mm | `serveur/src/Service/SensorDataService.php` |
 
 **Justification** :
 - **ESP32 (2-400 cm)** : Plage technique du capteur ultrason HC-SR04.
-- **Serveur (4-70 cm)** : Plage réaliste pour un aquarium. Valeurs < 4 cm ou > 70 cm sont considérées comme aberrantes pour le nettoyage.
+- **Serveur (40-700 mm)** : plage réaliste pour un aquarium (4-70 cm). Valeurs < 40 mm ou > 700 mm sont considérées comme aberrantes pour le nettoyage.
 
-**Impact** : Le serveur rejette des valeurs que l'ESP32 accepte (ex: 3 cm, 100 cm). C'est intentionnel pour le nettoyage de données.
+**Impact** : Le serveur rejette des valeurs que l'ESP32 accepte (ex: 30 mm, 800 mm). C'est intentionnel pour le nettoyage de données.
 
 ---
 
