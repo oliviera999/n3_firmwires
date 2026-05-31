@@ -73,16 +73,20 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 
 ### Eau Réserve (EauReserve)
 
+**Unité en BDD** : millimètres (mm). L'interface web affiche des centimètres (÷ 10).
+
 | Source | Min | Max | Fichier |
 |--------|-----|-----|---------|
-| **ESP32** | 2 cm | 400 cm | `include/config.h` SensorConfig::Ultrasonic (lignes 386-387) |
-| **Serveur PHP** | 10.0 cm | 90.0 cm | `ffp3/src/Service/SensorDataService.php` ligne 50-51 |
+| **ESP32 (métier réservoir)** | 15 mm | 1000 mm | `include/config.h` `SensorConfig::Ultrasonic::Tank` (v13.84+) |
+| **ESP32 (capteur HC-SR04)** | 20 mm | 4000 mm | `include/config.h` `SensorConfig::Ultrasonic` |
+| **Serveur PHP (nettoyage)** | 15 mm | 1000 mm | `serveur/src/Service/SensorDataService.php` |
 
 **Justification** :
-- **ESP32 (2-400 cm)** : Plage technique du capteur ultrason HC-SR04.
-- **Serveur (10-90 cm)** : Plage réaliste pour un réservoir. Valeurs < 10 cm ou > 90 cm sont considérées comme aberrantes.
+- **ESP32 Tank (15-1000 mm)** : plage opérationnelle du réservoir (`readAdvancedFiltered`), filtrage anti-aberrations (min 3 lectures, sauts symétriques).
+- **ESP32 HC-SR04 (20-4000 mm)** : plage technique datasheet.
+- **Serveur (15-1000 mm)** : aligné sur la plage métier firmware pour le nettoyage batch (`CronOrchestrator` via `run-cron.php`).
 
-**Impact** : Le serveur rejette des valeurs que l'ESP32 accepte. C'est intentionnel pour le nettoyage de données.
+**Impact** : les valeurs hors 15-1000 mm sont rejetées côté firmware (fallback) et mises à NULL côté serveur lors du nettoyage.
 
 ---
 
