@@ -168,14 +168,15 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   if (READINGS_COUNT > 1) {
     vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
   }
-  
-  // CORRECTION : Seuil de lectures valides réduit pour plus de tolérance
-  if (validReadings < 1) { // Réduit de MIN_VALID_READINGS (2) à 1
-    Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/1), retourne 0\n", validReadings);
+
+  const uint8_t minValid = SensorConfig::Ultrasonic::Tank::ADVANCED_MIN_VALID_READINGS;
+  if (validReadings < minValid) {
+    Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/%d), retourne fallback\n",
+                  validReadings, minValid);
     _failureManager.recordFailure();
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
-  
+
   // Trie les lectures pour calculer la médiane
   for (uint8_t i = 0; i < validReadings - 1; ++i) {
     for (uint8_t j = i + 1; j < validReadings; ++j) {
@@ -186,9 +187,9 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       }
     }
   }
-  
+
   uint16_t medianDistance = readings[validReadings / 2];
-  
+
   // Rejet d'outliers intra-batch (surface agitée : crête/creux, écho parasite)
   uint16_t keptReadings[READINGS_COUNT];
   uint8_t keptCount = 0;
@@ -209,12 +210,27 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     }
     medianDistance = keptReadings[keptCount / 2];
   }
-  
-  // v11.35: NOUVELLE LOGIQUE - Médiane glissante avec consensus pour éviter valeurs figées
-  // Calcul de la médiane de l'historique (valeur de référence robuste)
+
+  if (keptCount < minValid) {
+    Serial.printf("[Ultrasonic] Lot faible après rejet outliers (%d/%d), retourne fallback\n",
+                  keptCount, minValid);
+    _failureManager.recordFailure();
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+  }
+
+  if (medianDistance < SensorConfig::Ultrasonic::Tank::MIN_OPERATIONAL_MM ||
+      medianDistance > SensorConfig::Ultrasonic::Tank::MAX_OPERATIONAL_MM) {
+    Serial.printf("[Ultrasonic] Médiane hors plage réservoir: %u mm (attendu %u-%u), fallback\n",
+                  medianDistance,
+                  SensorConfig::Ultrasonic::Tank::MIN_OPERATIONAL_MM,
+                  SensorConfig::Ultrasonic::Tank::MAX_OPERATIONAL_MM);
+    _failureManager.recordFailure();
+    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+  }
+
+  // Médiane glissante avec consensus symétrique (sauts haut et bas)
   uint16_t historyMedian = 0;
   if (_historyCount >= 3) {
-    // Copie l'historique pour calcul médiane sans modifier l'original
     uint16_t histTemp[HISTORY_SIZE];
     uint8_t validCount = 0;
     for (uint8_t i = 0; i < HISTORY_SIZE; ++i) {
@@ -222,8 +238,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
         histTemp[validCount++] = _history[i];
       }
     }
-    
-    // Tri pour médiane
+
     if (validCount > 0) {
       for (uint8_t i = 0; i < validCount - 1; ++i) {
         for (uint8_t j = i + 1; j < validCount; ++j) {
@@ -237,53 +252,50 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       historyMedian = histTemp[validCount / 2];
     }
   }
-  
-  // Utiliser médiane historique si disponible, sinon dernière valeur
+
   uint16_t referenceValue = (historyMedian > 0) ? historyMedian : _lastValidDistance;
-  
-  // Détection de saut par rapport à la référence robuste
-  if (referenceValue > 0 && abs((int)medianDistance - (int)referenceValue) > MAX_DISTANCE_DELTA) {
-    Serial.printf("[Ultrasonic] Saut détecté: %u mm -> %u mm (écart: %d mm, ref: médiane historique)\n", 
-                  referenceValue, medianDistance, abs((int)medianDistance - (int)referenceValue));
-    
-    // v11.35: Si saut vers le bas, accepter (niveau qui baisse)
-    if (medianDistance < referenceValue) {
-      Serial.printf("[Ultrasonic] Saut vers le bas accepté (niveau qui baisse)\n");
-    } 
-    // v11.35: Si saut vers le haut, vérifier CONSENSUS sur 3 dernières lectures
-    else {
-      // Compter combien de lectures récentes concordent avec la nouvelle valeur
-      uint8_t consensusCount = 0;
-      for (uint8_t i = 0; i < HISTORY_SIZE && i < 3; ++i) {
-        uint8_t idx = (_historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
-        if (_history[idx] > 0 && abs((int)_history[idx] - (int)medianDistance) <= MAX_DISTANCE_DELTA / 2) {
-          consensusCount++;
-        }
-      }
-      
-      // Si consensus de 2+ lectures récentes, accepter la nouvelle valeur (reset référence)
-      if (consensusCount >= 2) {
-        Serial.printf("[Ultrasonic] Consensus détecté (%d/3 lectures), accepte nouvelle référence\n", consensusCount);
-      } else {
-        Serial.printf("[Ultrasonic] Pas de consensus (%d/3), utilise médiane historique par sécurité\n", consensusCount);
-        return referenceValue;
+
+  if (referenceValue > 0 &&
+      abs((int)medianDistance - (int)referenceValue) > (int)SensorConfig::Ultrasonic::MAX_DELTA_MM) {
+    Serial.printf("[Ultrasonic] Saut détecté: %u mm -> %u mm (écart: %d mm, ref: médiane historique)\n",
+                  referenceValue, medianDistance,
+                  abs((int)medianDistance - (int)referenceValue));
+
+    const bool strongBatch =
+        keptCount >= SensorConfig::Ultrasonic::Tank::STRONG_BATCH_MIN_READINGS;
+
+    uint8_t consensusCount = 0;
+    for (uint8_t i = 0; i < HISTORY_SIZE && i < 3; ++i) {
+      uint8_t idx = (_historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
+      if (_history[idx] > 0 &&
+          abs((int)_history[idx] - (int)medianDistance) <= (int)SensorConfig::Ultrasonic::MAX_DELTA_MM / 2) {
+        consensusCount++;
       }
     }
+    const bool historyConsensus = consensusCount >= 2;
+
+    if (strongBatch) {
+      Serial.printf("[Ultrasonic] Batch fort (%d lectures), accepte nouvelle valeur\n", keptCount);
+    } else if (historyConsensus) {
+      Serial.printf("[Ultrasonic] Consensus historique (%d/3), accepte nouvelle valeur\n", consensusCount);
+    } else {
+      Serial.printf("[Ultrasonic] Saut rejeté (batch=%d, consensus=%d/3), médiane historique\n",
+                    keptCount, consensusCount);
+      return referenceValue;
+    }
   }
-  
+
   // Succès - enregistrer et mettre à jour
   _failureManager.recordSuccess();
-  
-  // Met à jour l'historique
+
   _history[_historyIndex] = medianDistance;
   _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
   if (_historyCount < HISTORY_SIZE) _historyCount++;
-  
-  // Met à jour la dernière valeur valide
+
   _lastValidDistance = medianDistance;
-  
-  Serial.printf("[Ultrasonic] Distance médiane: %u mm (%d lectures valides)\n", 
-                medianDistance, validReadings);
+
+  Serial.printf("[Ultrasonic] Distance médiane: %u mm (%d lectures valides, %d conservées)\n",
+                medianDistance, validReadings, keptCount);
   return medianDistance;
 }
 

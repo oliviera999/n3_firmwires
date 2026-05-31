@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.83";
+    inline constexpr const char* VERSION = "13.84";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -683,6 +683,18 @@ namespace SensorConfig {
         inline constexpr uint32_t MIN_DELAY_MS = 60;
         inline constexpr uint16_t US_TO_CM_FACTOR = 58;
         inline constexpr uint8_t FILTERED_READINGS_COUNT = 3;
+
+        // Plage métier réservoir (readAdvancedFiltered / wlTank uniquement)
+        namespace Tank {
+            inline constexpr uint16_t MIN_OPERATIONAL_MM = 15;
+            inline constexpr uint16_t MAX_OPERATIONAL_MM = 1000;
+            inline constexpr uint8_t ADVANCED_MIN_VALID_READINGS = 3;
+            inline constexpr uint8_t STRONG_BATCH_MIN_READINGS = 4;
+
+            inline constexpr bool isOperationalMm(uint16_t mm) {
+                return mm >= MIN_OPERATIONAL_MM && mm <= MAX_OPERATIONAL_MM;
+            }
+        }
 
         inline constexpr uint16_t cmToMm(uint16_t cm) { return static_cast<uint16_t>(cm * 10U); }
         inline constexpr uint16_t mmToCmRounded(uint16_t mm) { return static_cast<uint16_t>((mm + 5U) / 10U); }

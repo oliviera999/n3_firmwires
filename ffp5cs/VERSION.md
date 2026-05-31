@@ -12,6 +12,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.84 - 2026-05-30
+
+### Filtrage ultrason réservoir (anti-aberrations)
+
+- **`readAdvancedFiltered()`** : minimum 3 lectures valides, rejet si lot faible après outliers, plage métier 15–1000 mm.
+- **Sauts symétriques** : plus d’acceptation automatique des sauts vers le bas ; batch fort (4 lectures) ou consensus historique 2/3 requis si écart > 300 mm.
+- **`SystemSensors`** : recovery via 2e `readAdvancedFiltered()` (plus de moyenne naïve `readFiltered(3)`).
+- **Constantes** : `SensorConfig::Ultrasonic::Tank` dans `config.h`.
+- **Serveur** : seuils nettoyage `EauReserve` alignés 15–1000 mm (`SensorDataService`).
+
+---
+
 ## Version 13.83 - 2026-05-30
 
 ### Correctifs PR — file SD et profil HTTPS

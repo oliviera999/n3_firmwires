@@ -42,6 +42,8 @@ class UltrasonicManager {
   // Configuration du filtrage - renforcé pour surface agitée (prod)
   static const uint16_t MAX_DISTANCE_DELTA = 300; // Seuil saut pour consensus (30 cm)
   static const uint16_t OUTLIER_SPREAD_MM = 150; // Rejet intra-batch si écart > 150 mm de la médiane
+  // Mode réactif (potager/aquarium) : 1 lecture valide suffit.
+  // Mode advanced (réservoir) : SensorConfig::Ultrasonic::Tank::ADVANCED_MIN_VALID_READINGS.
   static const uint8_t MIN_VALID_READINGS = 1;
   static const uint8_t READINGS_COUNT = 5; // 5 lectures + médiane pour eau agitée
   static const uint8_t REACTIVE_READINGS_COUNT = 5; // Idem mode réactif

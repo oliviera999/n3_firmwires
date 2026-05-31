@@ -157,7 +157,10 @@ SensorReadings SystemSensors::read() {
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
+    auto isTankOperational = [](uint16_t v) {
+      return v > 0 && SensorConfig::Ultrasonic::Tank::isOperationalMm(v);
+    };
+    bool valid = isTankOperational(val);
     if (!valid) {
       uint32_t nowMs = millis();
       bool shouldLog = _lastWlTankWasValid || (nowMs - _lastWlTankInvalidLogMs >= 30000);
@@ -165,9 +168,9 @@ SensorReadings SystemSensors::read() {
         SENSOR_LOG_PRINTF("[SystemSensors] Niveau réservoir invalide: %u mm\n", val);
         _lastWlTankInvalidLogMs = nowMs;
       }
-      // Essai de récupération simple
-      val = _usTank.readFiltered(3);
-      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
+      // 2e passe avec le même filtrage avancé (pas de moyenne naïve)
+      val = _usTank.readAdvancedFiltered();
+      valid = isTankOperational(val);
       if (valid) {
         if (shouldLog) {
           SENSOR_LOG_PRINTF("[SystemSensors] Récupération réservoir réussie: %u mm\n", val);
@@ -180,7 +183,6 @@ SensorReadings SystemSensors::read() {
         }
         r.wlTank = _lastValidWlTank;
       } else {
-        // Aucune valeur valide connue : utiliser valeur par défaut sûre (cohérente API /json)
         r.wlTank = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f);
         if (shouldLog) {
           SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, réservoir=defaut %u mm\n", r.wlTank);
