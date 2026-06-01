@@ -14,9 +14,11 @@
  * - Clé NVS: "heatThr"
  * 
  * Synchronisé avec:
- * - ffp3/src/Controller/OutputController.php (GPIO GET)
- * - ffp3/src/Controller/PostDataController.php (POST names)
+ * - serveur/src/Controller/Ffp3/OutputController.php (GPIO GET)
+ * - serveur/src/Controller/Ffp3/PostDataController.php (POST names)
+ * - serveur/src/Repository/OutputRepository.php (mapping paramètres page contrôle)
  * - docs/technical/VARIABLE_NAMING.md (documentation)
+ * GPIO 117 (forçage pompe aquarium ON) : serveur uniquement (page contrôle), absent de ALL_MAPPINGS.
  * 
  * Version: 11.172
  */

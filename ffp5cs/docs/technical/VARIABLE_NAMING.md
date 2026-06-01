@@ -14,9 +14,10 @@ Pour eviter les redondances et les desynchronisations, chaque cote du contrat do
 |------|-------------------|--------|
 | **Firmware** | `include/gpio_mapping.h` | GPIOMap (GPIO, serverPostName, internalName, nvsKey), SensorMap (capteurs), GPIODefaults |
 | **Firmware** | `include/nvs_keys.h` | Cles NVS (namespaces Config, System, Diag, Automatism, Sync, WebClient) |
-| **Serveur (ffp3)** | `src/Controller/OutputController.php` | `$parameterGpioMap` (GPIO pour page controle) |
-| **Serveur (ffp3)** | `src/Repository/OutputRepository.php` | Mapping GPIO vers proprietes SensorData dans `syncStatesFromSensorData()` |
-| **Serveur (ffp3)** | `src/Controller/PostDataController.php` + `src/Domain/SensorData.php` | Cles POST et parametres du DTO |
+| **Serveur** | `serveur/src/Repository/OutputRepository.php` | `PARAMETER_GPIO_MAP` / `getParameterGpioMap()` (page controle) |
+| **Serveur** | `serveur/src/Service/OutputSyncService.php` | Mapping GPIO ↔ proprietes SensorData (sync POST, témoins Data) |
+| **Serveur** | `serveur/src/Controller/Ffp3/PostDataController.php` + `SensorData` | Cles POST et parametres du DTO |
+| **Serveur (extension)** | GPIO **117** | Forçage pompe aquarium ON — page controle + BDD uniquement (absent de `GPIOMap::ALL_MAPPINGS` firmware) |
 
 **Documentation API locale (serveur embarqué)** : liste des routes HTTP (port 80) et WebSocket (port 81, path `/ws`) dans `docs/technical/api-endpoints.yaml`.
 
