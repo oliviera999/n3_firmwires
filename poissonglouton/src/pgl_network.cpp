@@ -81,6 +81,54 @@ bool PglNetwork::uploadBatch(const PglStoredEvent* events, size_t count, uint32_
   return (code >= 200 && code < 300);
 }
 
+bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
+#if !PGL_ENABLE_SERVER_HEARTBEAT
+  (void)bootCount;
+  return false;
+#else
+  ensureWifi();
+  if (WiFi.status() != WL_CONNECTED) {
+    PGL_LOG("Heartbeat: WiFi non connecte");
+    return false;
+  }
+
+  static uint32_t minHeap = UINT32_MAX;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < minHeap) {
+    minHeap = freeHeap;
+  }
+
+  const uint32_t uptimeSec = millis() / 1000UL;
+  const int rssi = WiFi.RSSI();
+
+  N3DataField fields[] = {
+      {"api_key", String(PGL_API_KEY)},
+      {"sensor", String(PGL_SENSOR_NAME)},
+      {"version", String(PGL_FIRMWARE_VERSION)},
+      {"uptime", String(uptimeSec)},
+      {"free", String(freeHeap)},
+      {"min", String(minHeap == UINT32_MAX ? freeHeap : minHeap)},
+      {"reboots", String(bootCount)},
+      {"rssi", String(rssi)},
+  };
+
+  N3PostConfig cfg = {
+      PGL_SERVER_HEARTBEAT_URL,
+      PGL_API_KEY,
+      fields,
+      sizeof(fields) / sizeof(fields[0]),
+      nullptr,
+      nullptr,
+  };
+  const int code = n3DataPost(cfg);
+  PGL_LOG("Heartbeat POST %s → HTTP %d (uptime=%lu reboots=%lu)",
+          PGL_SERVER_HEARTBEAT_URL, code,
+          static_cast<unsigned long>(uptimeSec),
+          static_cast<unsigned long>(bootCount));
+  return (code >= 200 && code < 300);
+#endif
+}
+
 bool PglNetwork::isWifiConnected() const {
   return WiFi.status() == WL_CONNECTED;
 }

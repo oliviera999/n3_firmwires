@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 // Version firmware
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.1.1";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.1.2";
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 
@@ -43,6 +43,10 @@ static constexpr uint32_t PGL_BACKLIGHT_TIMEOUT_MS = 20000;
 
 // URL serveur
 static constexpr const char* PGL_SERVER_POST_URL = "http://iot.olution.info/pgl/post-data";
+static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "http://iot.olution.info/pgl/heartbeat";
 
-// Secret URL stats (généré serveur, valeur de démonstration)
-static constexpr const char* PGL_STATS_SECRET_PLACEHOLDER = "replace_on_server";
+// Heartbeat serveur (supervision en ligne) — 0 pour désactiver
+#ifndef PGL_ENABLE_SERVER_HEARTBEAT
+#define PGL_ENABLE_SERVER_HEARTBEAT 1
+#endif
+static constexpr uint32_t PGL_HEARTBEAT_INTERVAL_MS = 120000;

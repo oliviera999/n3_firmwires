@@ -12,8 +12,8 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 | **MeteoStationPrototype (msp)** | `msp/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
 | **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.38`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload et contrôle distant au réveil avec `X-Api-Key` (GET état outputs + POST version firmware, aligné serveur ≥ 5.0.306), retries de connexion, vérification du code HTTP retour. Tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
 | **Upload Photos legacy** | `archive/uploadphotosserver_legacy/` | ESP32-CAM | Historique (`uploadphotosserver_*`) conservé en archive ; utiliser uniquement `uploadphotosserver/`. |
-| **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3, réseau offline-first. |
-| **Poissonglouton (recyclage)** | `poissonglouton/` | ESP32-S3 | Compteur de bouteilles pour poubelle ludique : détection IR + ultrason (simple ou tandem), feedback audio DFPlayer, mode écran tactile ou headless, upload batch vers `/pgl/post-data`, deep sleep solaire. |
+| **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3, réseau offline-first. Build WROOM plus complexe que n3pp/msp (pioarduino 2 passes) — voir [ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md). |
+| **Poissonglouton (recyclage)** | `poissonglouton/` | ESP32-S3 | Compteur de bouteilles pour poubelle ludique : détection IR + ultrason (simple ou tandem), feedback audio DFPlayer, mode écran tactile ou headless, upload batch vers `/pgl/post-data`, heartbeat `/pgl/heartbeat` (flag `PGL_ENABLE_SERVER_HEARTBEAT`), deep sleep solaire. |
 | **LVGL_Widgets** | `LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. |
 | **Ratata (ZYC0108-EN)** | `ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. |
 
@@ -67,7 +67,8 @@ Adapter `upload_port` et `monitor_port` dans chaque `platformio.ini` (ex. `COM3`
 - **Désactiver la redirection** : `N3_PIO_BUILD_REDIRECT=0` (PowerShell : `$env:N3_PIO_BUILD_REDIRECT='0'`). **Autre racine** : `N3_PIO_BUILD_ROOT=D:\mes-builds`.
 - **Chemins côté scripts** : `firmwires/scripts/Get-PioBuildHelpers.ps1` (fonctions `Get-N3PioFirmwareBin`, etc.) — utilisé par `IOT_n3/scripts/publish_ota.ps1` pour trouver `firmware.bin` / `littlefs.bin` que le build soit sous `C:\pio-builds` ou dans `.pio/build`.
 - **Audit build (taille, duree, anomalies)** : `firmwires/scripts/Invoke-PioBuildAudit.ps1` pour mesurer les deltas avant/apres compilation (`BUILD_DIR`, `.pio/libdeps/<env>`, artefacts `firmware.bin`/`firmware.elf`), signaler les anomalies (taille, temps, chemins longs, espace disque) et ecrire un rapport texte.
-- **Nettoyage global** : depuis la racine **IOT_n3**, `.\scripts\clean-firmware-builds.ps1` (ajouter `-WhatIf` pour simulation). Options : `-IncludePioBuildsRoot` pour purger les sous-dossiers `C:\pio-builds\<slug>` des projets listés, `-IncludeLegacyFfp5Mirror` pour supprimer l’ancien miroir `C:\ffp5cs_build`.
+- **Nettoyage global** : depuis la racine **IOT_n3**, `.\scripts\clean-firmware-builds.ps1` (ajouter `-WhatIf` pour simulation). Options : `-SyncPioBuilds` (purge aussi `C:\pio-builds\<slug>`), `-IncludeLegacyFfp5Mirror` pour `C:\ffp5cs_build`. **Alternance n3pp/ffp5cs** : ne pas nettoyer entre chaque build — utiliser `.\firmwires\scripts\Invoke-PioBuildFast.ps1`.
+- **Cache compilation ffp5cs** : `build_cache_dir = C:/pio-builds/.pio-cache/ffp5cs` dans `ffp5cs/platformio.ini`.
 - **S3 + espaces dans le chemin** : `ffp5cs/run_s3_build_from_safe_path.bat` (miroir sous `C:\pio-builds\ffp5cs-space-mirror` par défaut) ou `run_s3_fix_via_subst.bat` (lecteur `P:`).
 - **Toolchain GCC 14 (Xtensa) + Arduino-ESP32 3.3.x** : erreur de link `undefined reference to __atomic_fetch_add_4` (libstdc++ / `shared_ptr` dans Network, FS, SD) — fichier `src/gcc_atomic_compat.c` dans **n3pp**, **msp** et **uploadphotosserver**. **ESP Mail Client** sur partition SPIFFS uniquement : script `firmwires/scripts/pio_patch_esp_mail_fs_spiffs.py` (référencé par **n3pp**, **msp** et **uploadphotosserver**), qui patche une fois `ESP_Mail_FS.h` dans `.pio/libdeps` (idempotent).
 
@@ -98,8 +99,10 @@ Le projet **ffp5cs** définit le workflow de validation de référence, aligné 
 Pour tout travail sur **ffp5cs**, utiliser ces scripts depuis le dossier `ffp5cs/`. Voir aussi `ffp5cs/.cursor/rules/` et `ffp5cs/docs/INVENTAIRE_SCRIPTS_FFP5CS.md` pour l'inventaire des scripts.
 
 - **Compilation de tous les envs** (évite les builds WROOM pioarduino en parallèle, qui peuvent corrompre le cache) : `ffp5cs/scripts/build_all_envs.ps1`.
+- **Guide compilation FFP5CS WROOM** (pioarduino phase 2, secours `wroom-prod-pio6`, flash cohérent, vs n3pp/msp) : [ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md).
+- **wroom-beta-local** (build, flash CP210x, tests Docker) : [ffp5cs/docs/technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md](ffp5cs/docs/technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md).
 - **Compilation de tous les envs + beta-local** : `ffp5cs/scripts/build_all_envs.ps1 -IncludeBetaLocal`.
-- **Build + upload + monitor beta-local (COM4)** : `ffp5cs/build_upload_monitor_wroom_beta_local_com4.ps1`.
+- **Build + upload + monitor beta-local** : `ffp5cs/build_upload_monitor_wroom_beta_local.ps1 -Port COM5` (raccourci COM4 : `build_upload_monitor_wroom_beta_local_com4.ps1`). Guide : [WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md](ffp5cs/docs/technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md).
 - **Tests unitaires natifs (Unity)** : `pio test -c platformio-native.ini -e native` depuis `ffp5cs/`, ou `ffp5cs/scripts/test_unit_all.ps1` (suites `test_config`, `test_nvs`, `test_server_url`).
 - **Tests beta-local sur cible** : `ffp5cs/scripts/test_wroom_beta_local_serial.ps1` (upload + monitor + assertions logs).
 - **Tests integration locale Docker + appareil** : `ffp5cs/scripts/test_wroom_beta_local_docker_integration.ps1` (stack docker, override URL LAN local, verification BDD).
@@ -142,6 +145,7 @@ Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est :
 
 **Versions arduino-ESP32 par type d'env :**
 - **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp, uploadphotosserver) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt.
+- **FFP5CS prod secours** : env **`wroom-prod-pio6`** = `espressif32@6.13.0` + Arduino **2.0.17** (build **1 passe**, sans pioarduino) si la phase 2 de `wroom-prod` échoue — détails et tutoriel : [COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md).
 - **uploadphotosserver** (ESP32-CAM matériel) : **deux familles d’env** dans `uploadphotosserver/platformio.ini` — (1) **`msp1` / `n3pp` / `ffp3`** : **pioarduino** + **`esp32dev`** + **`dio_qspi`** (même toolchain que les autres WROOM ; liens `esp_psram_*` problématiques avec **`esp32cam`** sous pioarduino). (2) **`msp1-cam` / `n3pp-cam` / `ffp3-cam`** : **platformio/espressif32@6.13.0** + **`esp32cam`** pour retrouver **`psramFound()`** et résolutions type SXGA sur module avec PSRAM. Broches dans `uploadphotosserver/include/config.h`.
 - **S3** (ffp5cs wroom-s3-*) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
 - **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
@@ -216,6 +220,8 @@ firmwires/
 ├── scripts/
 │   ├── Get-PioBuildHelpers.ps1         # Résolution des artefacts (.pio/build ou C:\pio-builds)
 │   ├── pio_redirect_build_dir.py       # Redirection build Windows vers C:\pio-builds
+│   ├── pio_repair_build_junction.py    # Repare jonction .pio/build apres clean
+│   ├── Invoke-PioBuildFast.ps1         # Build sans clean (alternance projets)
 │   └── pio_patch_esp_mail_fs_spiffs.py # Patch ESP Mail pour firmwares WROOM/cam
 ├── shared/                     # Bibliothèques partagées n3 (n3pp, msp, ffp5cs)
 │   ├── n3_analog_sensors/      # ADC filtré (luminosité, pont, humidité sol)

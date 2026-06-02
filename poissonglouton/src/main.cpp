@@ -31,7 +31,10 @@ uint32_t gLastUploadMs = 0;
 uint32_t gLastActivityMs = 0;
 uint32_t gLastUiIdleMs = 0;
 uint32_t gLastHeartbeatMs = 0;
+uint32_t gLastServerHeartbeatMs = 0;
 uint32_t gLastIdleWarnMs = 0;
+
+RTC_DATA_ATTR uint32_t gBootCount = 0;
 }
 
 static uint32_t getCurrentEpochSafe() {
@@ -74,6 +77,10 @@ static void tryUploadBatch() {
   if (gNetwork.uploadBatch(batch, batchCount, gCounter.getTotalCount(), gCounter.getTodayCount())) {
     PGL_LOG("Upload: OK, %u evenement(s) acquittes", static_cast<unsigned int>(batchCount));
     gCounter.popBatch(batchCount);
+#if PGL_ENABLE_SERVER_HEARTBEAT
+    gNetwork.sendHeartbeat(gBootCount);
+    gLastServerHeartbeatMs = millis();
+#endif
   } else {
     PGL_LOG("Upload: ECHEC, evenements conserves (pending=%u)", gCounter.getPendingCount());
   }
@@ -91,6 +98,9 @@ void setup() {
   pglLogBootBanner();
   pglLogWakeupCause();
   pglLogMemory();
+
+  ++gBootCount;
+  PGL_LOG("Boot count: %lu", static_cast<unsigned long>(gBootCount));
 
   PGL_LOG("Init reseau...");
   WiFi.mode(WIFI_STA);
@@ -122,6 +132,7 @@ void setup() {
   gLastActivityMs = millis();
   gLastUiIdleMs = millis();
   gLastHeartbeatMs = millis();
+  gLastServerHeartbeatMs = 0;
   PGL_LOG("Setup termine, entree loop");
   pglLogMemory();
 }
@@ -171,6 +182,14 @@ void loop() {
             static_cast<unsigned long>(idleMs));
     gLastHeartbeatMs = millis();
   }
+
+#if PGL_ENABLE_SERVER_HEARTBEAT
+  if ((millis() - gLastServerHeartbeatMs) >= PGL_HEARTBEAT_INTERVAL_MS) {
+    if (gNetwork.sendHeartbeat(gBootCount)) {
+      gLastServerHeartbeatMs = millis();
+    }
+  }
+#endif
 
   if ((millis() - gLastActivityMs) > PGL_IDLE_SLEEP_MS) {
 #if PGL_DEBUG_NO_SLEEP
