@@ -154,6 +154,7 @@ SensorReadings SystemSensors::read() {
   }
   
   {
+    _usTank.setExpectTankDrain(_tankPumpActive);
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);

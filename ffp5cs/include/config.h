@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.92";
+    inline constexpr const char* VERSION = "13.94";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -685,14 +685,27 @@ namespace SensorConfig {
         inline constexpr uint8_t FILTERED_READINGS_COUNT = 3;
 
         // Plage métier réservoir (readAdvancedFiltered / wlTank uniquement)
+        // Cuve étroite : échos multipath donnent des distances trop courtes (faux « plein »).
+        // L'algo privilégie le cluster haut en cas de bimodalité et assouplit les sauts
+        // vers le haut (vidage) par rapport aux sauts vers le bas (remplissage).
         namespace Tank {
             inline constexpr uint16_t MIN_OPERATIONAL_MM = 15;
             inline constexpr uint16_t MAX_OPERATIONAL_MM = 1000;
+            inline constexpr uint16_t MIN_RAW_MM = 15;  // cuve pleine : sous la spec HC-SR04 (20 mm)
+            inline constexpr uint8_t SAMPLES_COUNT = 7;
             inline constexpr uint8_t ADVANCED_MIN_VALID_READINGS = 3;
             inline constexpr uint8_t STRONG_BATCH_MIN_READINGS = 4;
+            inline constexpr uint16_t OUTLIER_SPREAD_MM = 50;
+            inline constexpr uint16_t TIGHT_BATCH_SPREAD_MM = 40;
+            inline constexpr uint16_t BIMODAL_GAP_MM = 80;
+            inline constexpr uint16_t DRAIN_MAX_DELTA_MM = 400;
+            inline constexpr uint16_t REFILL_MAX_DELTA_MM = 100;
 
             inline constexpr bool isOperationalMm(uint16_t mm) {
                 return mm >= MIN_OPERATIONAL_MM && mm <= MAX_OPERATIONAL_MM;
+            }
+            inline constexpr bool isRawReadingMm(uint16_t mm) {
+                return mm >= MIN_RAW_MM && mm < MAX_DISTANCE_MM;
             }
         }
 

@@ -12,6 +12,30 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.94 - 2026-06-03
+
+### Filtrage ultrason réservoir — bimodalité et biais sécurité
+
+Correctif de l'algorithme `readAdvancedFiltered()` (cuve étroite, échos multipath) :
+
+- **7 lectures** par cycle (au lieu de 5) ; plage brute dès **15 mm** (cuve pleine).
+- **Détection bimodale** : si deux clusters (échos courts vs surface réelle), choix du cluster **haut** (distance élevée = moins d'eau = sécurité anti-vidage).
+- **Sauts asymétriques** : vidage (distance ↑) assoupli jusqu'à 400 mm ; remplissage (distance ↓) strict (100 mm + batch fort).
+- **Contexte pompe** : `setTankPumpActive()` transmis depuis `sensorTask` pour accepter le vidage cohérent pendant le remplissage auto/manuel.
+- Constantes regroupées dans `SensorConfig::Ultrasonic::Tank` (`config.h`).
+
+---
+
+## Version 13.93 - 2026-06-03
+
+### Déploiement OTA canal beta (wroom-beta)
+
+- Incrément pour publication OTA distante : `ffp5-wroom-beta` → canal `test` (`esp32-wroom-beta/firmware.bin`, metadata `channels.test.esp32-wroom`).
+- Inclut le mode OTA exclusif v13.91 (verrou à la détection, réseau suspendu pendant téléchargement).
+- **Fichiers** : `include/config.h`, `VERSION.md`.
+
+---
+
 ## Version 13.92 - 2026-06-03
 
 ### Nourrissage distant — créneaux partagés (PR #9 IOT_n3)

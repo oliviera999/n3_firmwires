@@ -918,6 +918,8 @@ void sensorTask(void* pv) {
 
     esp_task_wdt_reset();
 
+    g_ctx->sensors.setTankPumpActive(g_ctx->actuators.isTankPumpRunning());
+
     uint32_t sensorStartTime = millis();
     const uint32_t MAX_SENSOR_TIME_MS = 30000;
     readings = g_ctx->sensors.read();

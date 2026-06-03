@@ -18,6 +18,8 @@ class SystemSensors {
   SystemSensors();
   void begin();
   SensorReadings read();
+  // Contexte pompe réservoir (vidage attendu → assouplit le filtrage ultrason)
+  void setTankPumpActive(bool active) { _tankPumpActive = active; }
   // Cache mis à jour par automationTask (évite _sensors.read() bloquant dans handlers web)
   void setLastCachedReadings(const SensorReadings& r);
   bool getLastCachedReadings(SensorReadings& out) const;
@@ -51,6 +53,7 @@ class SystemSensors {
   // v13.53: throttle logs aquarium invalide (audit - évite spam si capteur HS)
   uint32_t _lastWlAquaInvalidLogMs{0};
   bool _lastWlAquaWasValid{false};
+  bool _tankPumpActive{false};
   
   // Historique wlAqua pour calcul du diff sur fenêtre temporelle
   static constexpr uint8_t AQUA_HIST_SIZE = 16;
