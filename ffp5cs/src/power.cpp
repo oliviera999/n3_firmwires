@@ -210,8 +210,6 @@ void PowerManager::initTime() {
 }
 
 void PowerManager::syncTimeFromNTP() {
-  _ntpTrusted = false;
-
   if (WiFi.status() != WL_CONNECTED) {
     LOG_NTP(LogConfig::LOG_WARN, "Pas de WiFi - synchronisation NTP impossible");
     return;
@@ -337,6 +335,7 @@ void PowerManager::syncTimeFromNTP() {
 
     _lastNtpSync = syncMillis;
   } else {
+    _ntpTrusted = false;
     LOG_NTP(LogConfig::LOG_ERROR,
             "Échec de synchronisation NTP après %lu ms (polls=%d, SNTP=%d, gotLocal=%d)",
             syncDuration, pollCount, static_cast<int>(sntp_get_sync_status()),

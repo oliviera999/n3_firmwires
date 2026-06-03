@@ -18,7 +18,8 @@ class DisplayView;
 
 class OTAManager {
 private:
-    bool m_isUpdating;
+    // Verrou exclusif OTA : levé dès détection nouvelle version, baissé seulement si échec (succès = reboot).
+    bool m_otaLock;
     unsigned long m_lastCheck;
     unsigned long m_checkInterval;
     char m_currentVersion[32];
@@ -89,6 +90,9 @@ public:
     // Vérification et mise à jour
     bool checkForUpdate();
     bool performUpdate();
+    /** Verrou OTA actif (détection → reboot ou échec). Bloque le réseau hors OTA. */
+    bool isOtaExclusive() const;
+    /** Alias historique de isOtaExclusive(). */
     bool isUpdating() const;
     
     // Statistiques

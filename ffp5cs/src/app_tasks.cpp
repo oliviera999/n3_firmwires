@@ -461,6 +461,18 @@ static void postSenderTask(void* pv) {
     esp_task_wdt_reset();
     if (got != pdTRUE) continue;
     if (!g_ctx) continue;
+    if (g_ctx->otaManager.isOtaExclusive()) {
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.println(F("[postSender] OTA exclusif — POST reporté"));
+      }
+      if (xQueueSendToFront(g_postSenderQueue, &msg, 0) != pdTRUE) {
+        if (msg.type == PostSenderType::PostData && msg.payload[0] != '\0') {
+          (void)g_ctx->webClient.queueFailedPost(msg.payload);
+        }
+      }
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      continue;
+    }
     if (msg.type == PostSenderType::PostData) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
       ets_printf("[postSender] post-data start\n");
@@ -506,6 +518,77 @@ static void postSenderTask(void* pv) {
 }
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+// Libère la réserve mail interne pour maximiser le bloc contigu heap avant OTA.
+static bool prepareOtaExclusiveHeap() {
+  bool freed = false;
+#if FEATURE_MAIL
+  if (s_mailReserve && !s_mailReserveFromPSRAM) {
+    free(s_mailReserve);
+    s_mailReserve = nullptr;
+    freed = true;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    Serial.printf("[otaTask] Réserve mail libérée pour OTA: free=%u blk=%u\n",
+                  (unsigned)ESP.getFreeHeap(),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  }
+#endif
+  return freed;
+}
+
+// Vérification OTA (boot ou périodique) : prio absolue, attente fin OTA_Update si nouvelle version.
+static void runOtaCheckCycle(uint32_t minContiguousBlock, const char* phaseLabel) {
+  if (!g_ctx || g_ctx->otaManager.isOtaExclusive()) return;
+
+  bool mailReserveFreed = prepareOtaExclusiveHeap();
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+
+  Serial.printf("[otaTask] %s heap: free=%u blk=%u (min OTA=%u, min blk=%u)\n",
+                phaseLabel,
+                (unsigned)freeHeap, (unsigned)largestBlock,
+                (unsigned)HeapConfig::MIN_HEAP_OTA, (unsigned)minContiguousBlock);
+
+  if (freeHeap < HeapConfig::MIN_HEAP_OTA || largestBlock < minContiguousBlock) {
+    Serial.printf("[otaTask] OTA reportée (%s): heap=%u blk=%u\n",
+                  phaseLabel, (unsigned)freeHeap, (unsigned)largestBlock);
+#if FEATURE_MAIL
+    if (mailReserveFreed && !g_ctx->otaManager.isOtaExclusive()) {
+      allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
+    }
+#endif
+    return;
+  }
+
+  esp_task_wdt_reset();
+  g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
+  if (g_otaTaskHandle) {
+    vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
+  }
+
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+  ets_printf("[otaTask] %s check\n", phaseLabel);
+#else
+  Serial.printf("[otaTask] %s: vérification OTA (priorité absolue)\n", phaseLabel);
+#endif
+
+  if (g_ctx->otaManager.checkForUpdate()) {
+    g_ctx->otaManager.performUpdate();
+    while (g_ctx && g_ctx->otaManager.isOtaExclusive()) {
+      esp_task_wdt_reset();
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+  }
+
+  if (g_otaTaskHandle && g_ctx && !g_ctx->otaManager.isOtaExclusive()) {
+    vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
+  }
+#if FEATURE_MAIL
+  if (mailReserveFreed && g_ctx && !g_ctx->otaManager.isOtaExclusive()) {
+    allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
+  }
+#endif
+}
+
 // Tâche OTA dédiée : priorité supérieure à netTask, stack dédiée (évite stack overflow TLS/Update).
 // Exécute OTA au boot puis boucle périodique (2h) ou sur trigger (queue). Seul propriétaire des appels OTAManager.
 static void otaTask(void* pv) {
@@ -544,53 +627,7 @@ static void otaTask(void* pv) {
     vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
 #endif
-    {
-      uint32_t freeHeap = ESP.getFreeHeap();
-      uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-      // Libérer la réserve mail (31 KB) pour maximiser le bloc contigu disponible pour TLS OTA
-      bool mailReserveFreed = false;
-      if (s_mailReserve && !s_mailReserveFromPSRAM) {
-        free(s_mailReserve);
-        s_mailReserve = nullptr;
-        mailReserveFreed = true;
-        vTaskDelay(pdMS_TO_TICKS(100));
-        freeHeap = ESP.getFreeHeap();
-        largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-        Serial.printf("[otaTask] Réserve mail libérée pour TLS OTA: free=%u blk=%u\n",
-                      (unsigned)freeHeap, (unsigned)largestBlock);
-      }
-      // Seuil TLS aligné sur MIN_HEAP_BLOCK_FOR_MAIL_TLS (mail TLS fonctionne avec ce bloc)
-      const uint32_t otaTlsMinBlock = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
-      Serial.printf("[otaTask] Boot heap: free=%u blk=%u (min OTA=%u, min TLS blk=%u)\n",
-                    (unsigned)freeHeap, (unsigned)largestBlock,
-                    (unsigned)HeapConfig::MIN_HEAP_OTA, (unsigned)otaTlsMinBlock);
-      if (freeHeap >= HeapConfig::MIN_HEAP_OTA
-          && largestBlock >= otaTlsMinBlock
-          && !g_ctx->otaManager.isUpdating()) {
-        esp_task_wdt_reset();
-        g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-        if (g_otaTaskHandle) {
-          vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
-        }
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-        ets_printf("[otaTask] Boot OTA check\n");
-#else
-        Serial.println(F("[otaTask] Boot: vérification OTA (priorité absolue)"));
-#endif
-        if (g_ctx->otaManager.checkForUpdate()) {
-          g_ctx->otaManager.performUpdate();
-        }
-        if (g_otaTaskHandle) {
-          vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
-        }
-      } else {
-        Serial.printf("[otaTask] Boot OTA reportée: heap=%u blk=%u (insuffisant pour TLS)\n",
-                      (unsigned)freeHeap, (unsigned)largestBlock);
-      }
-      if (mailReserveFreed) {
-        allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
-      }
-    }
+    runOtaCheckCycle(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS, "Boot");
 #endif
   }
 
@@ -605,7 +642,7 @@ static void otaTask(void* pv) {
       continue;
     }
     lastOtaCheckMs = millis();
-    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isUpdating()) {
+    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isOtaExclusive()) {
       continue;
     }
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {
@@ -624,16 +661,7 @@ static void otaTask(void* pv) {
                     (unsigned)OTA_MIN_BLOCK_PERIODIC);
       continue;
     }
-    g_ctx->otaManager.setCurrentVersion(ProjectConfig::VERSION);
-    if (g_otaTaskHandle) {
-      vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
-    }
-    if (g_ctx->otaManager.checkForUpdate()) {
-      g_ctx->otaManager.performUpdate();
-    }
-    if (g_otaTaskHandle) {
-      vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY);
-    }
+    runOtaCheckCycle(OTA_MIN_BLOCK_PERIODIC, "Periodic");
     esp_task_wdt_reset();
   }
 }
@@ -681,6 +709,7 @@ static void netTask(void* pv) {
 #else
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
 #endif
+    if (!g_ctx->otaManager.isOtaExclusive()) {
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
     bootServerReachable = (r >= 1);
     // r==1: HTTP OK — fetchRemoteState remplit s_lastFetchedJson, pas tmp ; copier avant apply
@@ -727,6 +756,13 @@ static void netTask(void* pv) {
       Serial.println(F("[netTask] ⚠️ Serveur injoignable - fallback NVS/DEFAUT"));
 #endif
     }
+    } else {
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+      ets_printf("[netTask] Boot fetch skip OTA exclusif\n");
+#else
+      Serial.println(F("[netTask] Boot: fetchRemoteState ignoré (OTA exclusif)"));
+#endif
+    }
   } else if (!g_ctx) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     ets_printf("[netTask] Boot g_ctx NULL skip\n");
@@ -743,6 +779,19 @@ static void netTask(void* pv) {
 
   for (;;) {
     esp_task_wdt_reset();  // Reset watchdog dans boucle principale
+
+    if (g_ctx && g_ctx->otaManager.isOtaExclusive()) {
+      NetRequest* drainReq = nullptr;
+      while (xQueueReceive(g_netQueue, &drainReq, 0) == pdTRUE) {
+        if (!drainReq) continue;
+        drainReq->cancelled = true;
+        netNotifyDone(drainReq);
+        netRequestFree(drainReq);
+      }
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
+    }
+
     NetRequest* req = nullptr;
     const uint32_t queueTimeoutMs = 500;
     if (xQueueReceive(g_netQueue, &req, pdMS_TO_TICKS(queueTimeoutMs)) != pdTRUE) {
@@ -1241,7 +1290,7 @@ void automationTask(void* pv) {
 #endif
       }
       // Throttle GET fallback : même intervalle que branche data (6s) pour ne pas saturer netTask
-      if (WiFi.status() == WL_CONNECTED) {
+      if (WiFi.status() == WL_CONNECTED && !g_ctx->otaManager.isOtaExclusive()) {
         static unsigned long s_lastFallbackFetchMs = 0;
         unsigned long nowMs = millis();
         if (nowMs - s_lastFallbackFetchMs >= NetworkConfig::REMOTE_FETCH_FALLBACK_INTERVAL_MS) {
@@ -1563,6 +1612,7 @@ static NetRpcResult netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
 }
 
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
+  if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return false;
   NetRequest* req = netRequestAllocForFetch();
   if (!req) return false;
   req->type = NetReqType::FetchRemoteState;
@@ -1584,6 +1634,10 @@ bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, boo
 
 bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, NetPostFailureReason* outFailure, uint32_t sdSeqNum) {
   if (!payload) return false;
+  if (g_ctx && g_ctx->otaManager.isOtaExclusive()) {
+    if (outFailure) *outFailure = NetPostFailureReason::None;
+    return false;
+  }
   if (outFailure) *outFailure = NetPostFailureReason::None;
   if (!g_netQueue) return false;
   NetRequest* req = netRequestAllocForPostCategory(category);
@@ -1622,6 +1676,7 @@ static uint32_t s_heartbeatDroppedCount = 0;
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
   (void)timeoutMs;
   if (!g_ctx || !g_postSenderQueue) return false;
+  if (g_ctx->otaManager.isOtaExclusive()) return false;
   PostSenderMsg msg;
   msg.type = PostSenderType::Heartbeat;
   char buf[320];
@@ -1649,6 +1704,7 @@ uint32_t netHeartbeatDroppedCount() {
 
 void netRequestOtaCheck() {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return;
   if (g_otaTriggerQueue) {
     uint8_t t = 1;
     if (xQueueSend(g_otaTriggerQueue, &t, 0) != pdTRUE) {

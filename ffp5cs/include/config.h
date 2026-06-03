@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.88";
+    inline constexpr const char* VERSION = "13.91";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -1052,7 +1052,7 @@ namespace TaskConfig {
     inline constexpr uint32_t OTA_TASK_STACK_SIZE = 12288;  // 12 KB WROOM prod/beta (TLS OTA)
 #endif
     inline constexpr UBaseType_t OTA_TASK_PRIORITY = 3;     // Supérieure à NET_TASK_PRIORITY (2)
-    // Priorité absolue pendant checkForUpdate/performUpdate (évite préemption par netTask/postSender, réduit TWDT/stack)
+    // Priorité absolue pendant verrou OTA exclusif (otaTask + OTA_Update pendant check/perform/download)
     inline constexpr UBaseType_t OTA_TASK_PRIORITY_WHILE_RUNNING = 10;
     inline constexpr BaseType_t OTA_TASK_CORE_ID = 0;
     
@@ -1066,7 +1066,7 @@ namespace TaskConfig {
 #elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14160;  // v13.87 : -32 octets link dram0 (GCC 14, rebuild touch config)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14032;  // v13.90 : -128 octets link dram0 (ffp3_post_body)
 #elif defined(BOARD_WROOM) && defined(PROFILE_PROD)
     // v13.36: netTaskStack[] en BSS — réduction vs 14376 pour link dram0_0_seg (GCC 14 / IDF 5.5 ; marge TLS)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 12800;  // −1576 mots vs 14376 (link avril 2026)

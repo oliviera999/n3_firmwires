@@ -44,7 +44,7 @@ void downgradeToHttp(char* url, size_t bufSize) {
 } // namespace
 
 OTAManager::OTAManager() 
-    : m_isUpdating(false)
+    : m_otaLock(false)
     , m_lastCheck(0)
     , m_checkInterval(TimingConfig::OTA_CHECK_INTERVAL_MS) // 2 heures par défaut
     , m_firmwareSize(0)
@@ -1278,7 +1278,7 @@ void OTAManager::updateTask(void* parameter) {
         extern Diagnostics diag;
         diag.recordOtaResult(false, "download/update failed");
         ota->log("❌ Échec mise à jour OTA");
-        ota->m_isUpdating = false;
+        ota->m_otaLock = false;
         TaskMonitor::Snapshot failureSnapshot = TaskMonitor::collectSnapshot();
         TaskMonitor::logSnapshot(failureSnapshot, "ota-task-failure");
         TaskMonitor::logDiff(baselineSnapshot, failureSnapshot, "ota-task");
@@ -1785,8 +1785,8 @@ bool OTAManager::checkForUpdate() {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
         esp_task_wdt_reset();  // Feed WDT avant opérations longues (évite TWDT si TLS/metadata lent)
     }
-    if (m_isUpdating) {
-        log("⚠️ Mise à jour déjà en cours");
+    if (m_otaLock) {
+        log("⚠️ Mode OTA exclusif déjà actif");
         return false;
     }
     
@@ -1935,6 +1935,8 @@ bool OTAManager::checkForUpdate() {
     snprintf(logMsgSpace, sizeof(logMsgSpace), "✅ Espace suffisant: %s >= %s", freeSpaceBuf, firmwareSizeBuf2);
     log(logMsgSpace);
     
+    m_otaLock = true;
+    log("🔒 Mode OTA exclusif activé (nouvelle version détectée)");
     m_lastCheck = millis();
     return true;
 }
@@ -1942,11 +1944,12 @@ bool OTAManager::checkForUpdate() {
 bool OTAManager::performUpdate() {
     if (strlen(m_firmwareUrl) == 0) {
         logError("Aucune URL de firmware disponible");
+        m_otaLock = false;
         return false;
     }
     
-    if (m_isUpdating) {
-        logError("Mise à jour déjà en cours");
+    if (m_updateTaskHandle != nullptr) {
+        logError("Tâche OTA_Update déjà en cours");
         return false;
     }
     
@@ -1971,10 +1974,11 @@ bool OTAManager::performUpdate() {
                  heapBuf,
                  TLS_MIN_HEAP_BYTES);
         logError(logMsg);
+        m_otaLock = false;
         return false;
     }
 
-    m_isUpdating = true;
+    // m_otaLock déjà levé par checkForUpdate() à la détection
     
     // Créer une tâche dédiée pour l'OTA
     BaseType_t result = xTaskCreatePinnedToCore(
@@ -1982,14 +1986,14 @@ bool OTAManager::performUpdate() {
         "OTA_Update",         // Nom de la tâche
         TaskConfig::OTA_TASK_STACK_SIZE,                // Taille de la stack (augmentée pour stabilité)
         this,                 // Paramètre passé à la tâche
-        5,                    // Priorité élevée pour favoriser le téléchargement
+        TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING,    // Priorité absolue (otaTask + OTA_Update)
         &m_updateTaskHandle,  // Handle de la tâche
         1                     // Core 1 (WiFi tourne surtout sur core 0)
     );
     
     if (result != pdPASS) {
         logError("Échec création tâche OTA");
-        m_isUpdating = false;
+        m_otaLock = false;
         return false;
     }
     
@@ -1997,8 +2001,12 @@ bool OTAManager::performUpdate() {
     return true;
 }
 
+bool OTAManager::isOtaExclusive() const {
+    return m_otaLock;
+}
+
 bool OTAManager::isUpdating() const {
-    return m_isUpdating;
+    return m_otaLock;
 }
 
 unsigned long OTAManager::getLastCheck() const {

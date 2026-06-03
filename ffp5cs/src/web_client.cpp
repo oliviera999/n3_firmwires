@@ -156,11 +156,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   // Désactiver le modem sleep pendant le transfert
   WIFI_APPLY_MODEM_SLEEP(false);
 
-  const int MAX_ATTEMPTS = 2;
+  const int MAX_ATTEMPTS = 3;
   int code = -1;
   response[0] = '\0';
   bool success = false;
   uint32_t connectMs = 0;  // DNS + TCP jusqu'à begin() réussi (pour diagnostic latence)
+  bool skipHmacHeaders = false;
+  bool hmac401FallbackDone = false;
 
   for (int attempt = 0; attempt < MAX_ATTEMPTS && !success; attempt++) {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -196,7 +198,10 @@ bool WebClient::httpRequest(const char* url, const char* payload,
 
     // v13.80 (audit): mode dual HMAC - ajoute X-Sig-* en complément d'api_key.
     // v13.88 : pas d'en-têtes X-Sig si NTP non fiable (évite 401 sans fallback api_key).
-    if (HmacSign::isEnabled() && power.hasTrustedNtpTime()) {
+    // v13.90 : après 401 HMAC, une tentative sans X-Sig (api_key seul, si serveur non strict).
+    const bool sendHmac =
+        HmacSign::isEnabled() && power.hasTrustedNtpTime() && !skipHmacHeaders;
+    if (sendHmac) {
       char ts[16];
       snprintf(ts, sizeof(ts), "%lu", (unsigned long)time(nullptr));
       char nonce[HmacSign::NONCE_HEX_BUFFER_SIZE];
@@ -340,7 +345,18 @@ bool WebClient::httpRequest(const char* url, const char* payload,
       break;
     }
 
-    // Erreur client 4xx : pas de retry
+    // v13.90 : 401 avec X-Sig → retry unique sans en-têtes HMAC (fallback api_key)
+    if (code == 401 && sendHmac && !hmac401FallbackDone) {
+      hmac401FallbackDone = true;
+      skipHmacHeaders = true;
+      LOG(LOG_WARN, "[HTTP] 401 HMAC → retry api_key (sans X-Sig)");
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.println(F("[HTTP] 401 HMAC → retry api_key (sans X-Sig)"));
+      }
+      continue;
+    }
+
+    // Erreur client 4xx : pas de retry (sauf 401 HMAC ci-dessus)
     if (code >= 400 && code < 500) {
       LOG(LOG_WARN, "[HTTP] Erreur client %d, pas de retry", code);
       if (LogConfig::SERIAL_ENABLED) {
@@ -393,6 +409,17 @@ bool WebClient::httpRequest(const char* url, const char* payload,
                                                 : "non classée";
     Serial.printf("[HTTP] Verdict: %s | code_HTTP=%d | durée_totale=%lu ms | latence_connect≈%lu ms | RSSI=%d dBm\n",
                   verdict, finalCode, totalDurationMs, (unsigned long)connectMs, rssi);
+    if (finalCode == 401 && payload != nullptr) {
+      Serial.printf("[HTTP] 401 diagnostic: corps signé len=%u octets",
+                    (unsigned)strlen(payload));
+      if (HmacSign::isEnabled() && power.hasTrustedNtpTime() && !skipHmacHeaders && !hmac401FallbackDone) {
+        Serial.println(F(", X-Sig envoyés"));
+      } else if (hmac401FallbackDone) {
+        Serial.println(F(", retry api_key sans X-Sig"));
+      } else {
+        Serial.println();
+      }
+    }
   }
 
   _lastRequestMs = millis();

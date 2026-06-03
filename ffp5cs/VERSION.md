@@ -12,6 +12,39 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.91 - 2026-06-03
+
+### OTA priorité absolue — mode exclusif à la détection
+
+- **Verrou OTA** (`m_otaLock`) : levé dès qu'une nouvelle version est détectée (`checkForUpdate`), maintenu jusqu'au reboot (succès) ou échec explicite ; API `isOtaExclusive()`.
+- **otaTask** : helper `runOtaCheckCycle()` (boot + périodique) — libération réserve mail, attente fin `OTA_Update`, restauration prio seulement si échec.
+- **OTA_Update** : priorité `OTA_TASK_PRIORITY_WHILE_RUNNING` (10).
+- **Réseau suspendu** pendant OTA : `netTask` draine la queue, `netFetchRemoteState` / `netPostRaw` / `netSendHeartbeat` / fetch fallback automation retournent immédiatement ; `postSender` reporte les POST.
+- **Automatismes locaux** conservés (pompes, sécurité) — pas de sync réseau pendant OTA.
+- **Fichiers** : `include/ota_manager.h`, `src/ota_manager.cpp`, `src/app_tasks.cpp`, `include/config.h`, `VERSION.md`.
+
+---
+
+## Version 13.90 - 2026-06-03
+
+### POST 401 HMAC — corps canonique et robustesse
+
+- **`ffp3_post_body`** : sérialisation full-update alignée sur `Ffp3HmacPostBody` (ordre fixe, extras triés, sans clés dupliquées) ; `extraPairs` écrase les champs connus au lieu de `strncat`.
+- **`postSenderTask`** : report des POST pendant `otaManager.isUpdating()` (file NVS si file pleine).
+- **`web_client`** : retry unique **401 HMAC → api_key** sans en-têtes `X-Sig-*`.
+- **`syncTimeFromNTP`** : `_ntpTrusted` conservé pendant resync (invalidé seulement en cas d’échec).
+- **Link WROOM** : `NET_TASK_STACK_SIZE` 14032 (−128 octets dram0) pour tenir avec `ffp3_post_body`.
+
+---
+
+## Version 13.89 - 2026-06-03
+
+### Test OTA canal beta (wroom-beta)
+
+- Incrément mineur pour validation OTA distante : publication `ffp5-wroom-beta` → `channels.test.esp32-wroom` sur https://iot.olution.info/ota/esp32-wroom-beta/firmware.bin.
+
+---
+
 ## Version 13.88 - 2026-06-03
 
 ### NTP fiable et HMAC POST (wroom-beta)

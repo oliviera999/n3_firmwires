@@ -1,6 +1,7 @@
 #include "automatism/automatism_sync.h"
 #include "automatism.h"
 #include "config.h"
+#include "ffp3_post_body.h"
 #include "gpio_parser.h"
 #include "esp_task_wdt.h"
 #include <WiFi.h>
@@ -296,83 +297,71 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     }
 
     char payloadBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
-    // Construction du payload (logique migrée de AutomatismNetwork)
-    // Nécessite des accesseurs sur Automatism (core)
+    Ffp3PostBody::FullUpdateValues body{};
     int diffMaree = core.computeDiffMaree(readings.wlAqua);
     float pressureForPost = isnan(readings.pressureHpa) ? 0.0f : readings.pressureHpa;
-    int len = snprintf(payloadBuffer, sizeof(payloadBuffer),
-        "api_key=%s&sensor=%s&version=%s&TempAir=%.1f&Humidite=%.1f&Pression=%.1f&TempEau=%.1f&"
-        "EauPotager=%u&EauAquarium=%u&EauReserve=%u&diffMaree=%d&Luminosite=%u&"
-        "etatPompeAqua=%d&etatPompeTank=%d&etatHeat=%d&etatUV=%d&"
-        "bouffeMatin=%u&bouffeMidi=%u&bouffeSoir=%u&tempsGros=%u&tempsPetits=%u&"
-        "aqThreshold=%u&tankThreshold=%u&chauffageThreshold=%.1f&"
-        "tempsRemplissageSec=%u&limFlood=%u&WakeUp=%d&FreqWakeUp=%u&"
-        "bouffePetits=%s&bouffeGros=%s&mail=%s&mailNotif=%s",
-        ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION,
-        readings.tempAir, readings.humidity, pressureForPost, readings.tempWater,
-        readings.wlPota, readings.wlAqua, readings.wlTank, diffMaree, readings.luminosite,
-        acts.isAquaPumpRunning(), acts.isTankPumpRunning(), acts.isHeaterOn(), acts.isLightOn(),
-        core.getBouffeMatin(), core.getBouffeMidi(), core.getBouffeSoir(),
-        core.getTempsGros(), core.getTempsPetits(),
-        _aqThresholdCm, _tankThresholdCm, _heaterThresholdC,
-        core.getRefillDurationSec(), _limFlood,
-        core.getForceWakeUp() ? 1 : 0, _freqWakeSec,
-        core.getBouffePetitsFlag(), core.getBouffeGrosFlag(),
-        _emailAddress, _emailEnabled ? "checked" : "");
 
-    if (len < 0 || len >= (int)sizeof(payloadBuffer)) {
-        Serial.println(F("[Sync] Erreur formatage payload"));
-        return false;
-    }
+    snprintf(body.apiKey, sizeof(body.apiKey), "%s", ApiConfig::API_KEY);
+    snprintf(body.sensor, sizeof(body.sensor), "%s", ProjectConfig::BOARD_TYPE);
+    snprintf(body.version, sizeof(body.version), "%s", ProjectConfig::VERSION);
+    snprintf(body.tempAir, sizeof(body.tempAir), "%.1f", readings.tempAir);
+    snprintf(body.humidite, sizeof(body.humidite), "%.1f", readings.humidity);
+    snprintf(body.pression, sizeof(body.pression), "%.1f", pressureForPost);
+    snprintf(body.tempEau, sizeof(body.tempEau), "%.1f", readings.tempWater);
+    snprintf(body.eauPotager, sizeof(body.eauPotager), "%u", readings.wlPota);
+    snprintf(body.eauAquarium, sizeof(body.eauAquarium), "%u", readings.wlAqua);
+    snprintf(body.eauReserve, sizeof(body.eauReserve), "%u", readings.wlTank);
+    snprintf(body.diffMaree, sizeof(body.diffMaree), "%d", diffMaree);
+    snprintf(body.luminosite, sizeof(body.luminosite), "%u", readings.luminosite);
+    snprintf(body.etatPompeAqua, sizeof(body.etatPompeAqua), "%d", acts.isAquaPumpRunning() ? 1 : 0);
+    snprintf(body.etatPompeTank, sizeof(body.etatPompeTank), "%d", acts.isTankPumpRunning() ? 1 : 0);
+    snprintf(body.etatHeat, sizeof(body.etatHeat), "%d", acts.isHeaterOn() ? 1 : 0);
+    snprintf(body.etatUV, sizeof(body.etatUV), "%d", acts.isLightOn() ? 1 : 0);
+    snprintf(body.bouffeMatin, sizeof(body.bouffeMatin), "%u", core.getBouffeMatin());
+    snprintf(body.bouffeMidi, sizeof(body.bouffeMidi), "%u", core.getBouffeMidi());
+    snprintf(body.bouffeSoir, sizeof(body.bouffeSoir), "%u", core.getBouffeSoir());
+    snprintf(body.tempsGros, sizeof(body.tempsGros), "%u", core.getTempsGros());
+    snprintf(body.tempsPetits, sizeof(body.tempsPetits), "%u", core.getTempsPetits());
+    snprintf(body.aqThreshold, sizeof(body.aqThreshold), "%u", _aqThresholdCm);
+    snprintf(body.tankThreshold, sizeof(body.tankThreshold), "%u", _tankThresholdCm);
+    snprintf(body.chauffageThreshold, sizeof(body.chauffageThreshold), "%.1f", _heaterThresholdC);
+    snprintf(body.tempsRemplissageSec, sizeof(body.tempsRemplissageSec), "%u", core.getRefillDurationSec());
+    snprintf(body.limFlood, sizeof(body.limFlood), "%u", _limFlood);
+    snprintf(body.wakeUp, sizeof(body.wakeUp), "%d", core.getForceWakeUp() ? 1 : 0);
+    snprintf(body.freqWakeUp, sizeof(body.freqWakeUp), "%u", _freqWakeSec);
+    snprintf(body.bouffePetits, sizeof(body.bouffePetits), "%s", core.getBouffePetitsFlag());
+    snprintf(body.bouffeGros, sizeof(body.bouffeGros), "%s", core.getBouffeGrosFlag());
+    snprintf(body.mail, sizeof(body.mail), "%s", _emailAddress);
+    snprintf(body.mailNotif, sizeof(body.mailNotif), "%s", _emailEnabled ? "checked" : "");
+    snprintf(body.resetMode, sizeof(body.resetMode), "0");
+    snprintf(body.tideEvent, sizeof(body.tideEvent), "%s", toTideEventString(tideEvent));
+    snprintf(body.tideTrend, sizeof(body.tideTrend), "%d", static_cast<int>(_trendDir));
+    snprintf(body.tideNoiseMm, sizeof(body.tideNoiseMm), "%u", static_cast<unsigned>(INFLECTION_NOISE_MM));
+    snprintf(body.tideWindowMs, sizeof(body.tideWindowMs), "%lu",
+             static_cast<unsigned long>(core.getTideWindowMs()));
+    snprintf(body.tideExtremeMm, sizeof(body.tideExtremeMm), "%u",
+             static_cast<unsigned>(_lastInflectionWlAqua));
+    snprintf(body.configSynced, sizeof(body.configSynced), "%d", _configSyncedOnce ? 1 : 0);
 
-    if (extraPairs && extraPairs[0] != '\0') {
-        strncat(payloadBuffer, "&", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
-        strncat(payloadBuffer, extraPairs, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
-    }
-
-    if (strstr(payloadBuffer, "resetMode=") == nullptr) {
-        strncat(payloadBuffer, "&resetMode=0", sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
-    }
-
-    // Métadonnées marée/inflexion (distance capteur-surface uniquement, en mm)
-    {
-        char tideMeta[128];
-        int tideMetaLen = snprintf(
-            tideMeta,
-            sizeof(tideMeta),
-            "&tideEvent=%s&tideTrend=%d&tideNoiseMm=%u&tideWindowMs=%lu&tideExtremeMm=%u",
-            toTideEventString(tideEvent),
-            static_cast<int>(_trendDir),
-            static_cast<unsigned>(INFLECTION_NOISE_MM),
-            static_cast<unsigned long>(core.getTideWindowMs()),
-            static_cast<unsigned>(_lastInflectionWlAqua)
-        );
-        if (tideMetaLen > 0 && tideMetaLen < static_cast<int>(sizeof(tideMeta))) {
-            strncat(payloadBuffer, tideMeta, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
-        }
-    }
-    
-    // v11.168: Ajouter configSynced pour indiquer si la config ESP est fiable
-    // Si configSynced=0, le serveur distant doit IGNORER les variables de config
-    // pour éviter l'écrasement par des valeurs par défaut
-    char configSyncedStr[16];
-    snprintf(configSyncedStr, sizeof(configSyncedStr), "&configSynced=%d", _configSyncedOnce ? 1 : 0);
-    strncat(payloadBuffer, configSyncedStr, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
-    
     if (!_configSyncedOnce) {
         Serial.println(F("[Sync] ⚠️ configSynced=0 - variables config ignorées par serveur"));
     }
 
-    // post_id unique pour idempotence (BOARD_TYPE-epoch-seq)
     time_t nowEpoch;
     time(&nowEpoch);
     uint32_t epochSec = (nowEpoch > 1700000000) ? (uint32_t)nowEpoch : (uint32_t)(millis() / 1000);
     {
-        char postIdStr[64];
         static uint32_t s_postSeq = 0;
-        snprintf(postIdStr, sizeof(postIdStr), "&post_id=%s-%lu-%lu",
+        snprintf(body.postId, sizeof(body.postId), "%s-%lu-%lu",
                  ProjectConfig::BOARD_TYPE, (unsigned long)epochSec, (unsigned long)(++s_postSeq));
-        strncat(payloadBuffer, postIdStr, sizeof(payloadBuffer) - strlen(payloadBuffer) - 1);
+    }
+
+    Ffp3PostBody::applyExtraPairs(body, extraPairs);
+
+    int len = Ffp3PostBody::buildFullUpdateBody(payloadBuffer, sizeof(payloadBuffer), body);
+    if (len < 0 || len >= (int)sizeof(payloadBuffer)) {
+        Serial.println(F("[Sync] Erreur formatage payload canonique"));
+        return false;
     }
 
 #if defined(BOARD_S3)
