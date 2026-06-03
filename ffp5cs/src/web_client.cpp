@@ -1217,3 +1217,13 @@ void WebClient::releaseHttpTransportLockIfHeld() {
     xSemaphoreGive(s_httpMutex);
   }
 }
+
+bool WebClient::isHttpTransportBusy() {
+  if (s_httpTransportLockHeldForSleep.load()) {
+    return true;
+  }
+  if (s_httpMutex == nullptr) {
+    return false;
+  }
+  return xSemaphoreGetMutexHolder(s_httpMutex) != nullptr;
+}

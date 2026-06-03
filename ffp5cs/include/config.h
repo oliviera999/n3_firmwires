@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.94";
+    inline constexpr const char* VERSION = "13.95";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -297,10 +297,10 @@ namespace NetworkConfig {
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 2;
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
-    // GET outputs/state : timeout plus long (net task uniquement). 8 s pour rester < FETCH_REMOTE_STATE_RPC_TIMEOUT_MS.
-    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s (évite abandon caller avant fin GET)
-    // RPC FetchRemoteState : timeout = HTTP + marge queue ; 12 s (v12.33: libérer slots plus tôt serveur hors ligne)
-    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 12000;  // 12 s
+    // GET outputs/state : timeout HTTP côté netTask (mutex partagé avec postSender).
+    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s
+    // RPC FetchRemoteState : POST (~19 s observé 4G) + GET + marge file netTask.
+    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 28000;  // 28 s (v13.95)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
     // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
@@ -310,7 +310,7 @@ namespace NetworkConfig {
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 17000;  // 17 s
 #else
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 22000;  // 22 s (v12.20: libérer slots plus tôt)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 25000;  // 25 s (v13.95: marge POST ~20 s observé)
 #endif
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
     inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;

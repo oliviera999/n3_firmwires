@@ -556,6 +556,9 @@ bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t cu
     if (WiFi.status() != WL_CONNECTED) {
         return false;
     }
+    if (AppTasks::shouldDeferRemoteStateFetch()) {
+        return false;
+    }
     return fetchRemoteState(doc);
 }
 

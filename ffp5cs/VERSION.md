@@ -12,6 +12,19 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.95 - 2026-06-03
+
+### netRPC GET — timeout aligné POST + différé si transport occupé
+
+Correctif des timeouts `[netRPC] Timeout (12000 ms)` observés quand un GET `outputs/state` attendait la fin d'un POST (~19 s) sur le mutex HTTP partagé :
+
+- **`FETCH_REMOTE_STATE_RPC_TIMEOUT_MS`** : 12 s → **28 s** (POST 18 s + GET 8 s + marge).
+- **`HTTP_POST_RPC_TIMEOUT_MS` (WROOM)** : 22 s → **25 s** (marge POST ~20 s observé en 4G).
+- **`shouldDeferRemoteStateFetch()`** : diffère le poll GET si mutex transport pris ou file `postSender` non vide (retry au cycle suivant, sans faux « GET échoué »).
+- **`WebClient::isHttpTransportBusy()`** : sonde non bloquante du mutex partagé GET/POST.
+
+---
+
 ## Version 13.94 - 2026-06-03
 
 ### Filtrage ultrason réservoir — bimodalité et biais sécurité

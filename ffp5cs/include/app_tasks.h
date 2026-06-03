@@ -51,6 +51,8 @@ QueueHandle_t getSensorQueue();
 // v11.178: Defaults 5s (règle offline-first). POST: dérogation 8s (HTTP_POST_TIMEOUT_MS).
 // outFromNVSFallback: si non null, reçoit true quand la config vient du cache NVS (v11.193: ne pas appeler processFetchedRemoteConfig dans ce cas)
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000, bool* outFromNVSFallback = nullptr);
+/** Différer GET outputs/state si POST en cours ou en file (évite netRPC timeout 12 s). */
+bool shouldDeferRemoteStateFetch();
 
 /** Raison d'échec de netPostRaw (pour logs différenciés). */
 enum class NetPostFailureReason { None, PoolFull, TimeoutRpc, HttpError };

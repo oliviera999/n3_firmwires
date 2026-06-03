@@ -1613,8 +1613,27 @@ static NetRpcResult netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   return req->success ? NetRpcResult::CompletedSuccess : NetRpcResult::CompletedFailure;
 }
 
+bool shouldDeferRemoteStateFetch() {
+  if (WebClient::isHttpTransportBusy()) {
+    return true;
+  }
+  if (g_postSenderQueue != nullptr && uxQueueMessagesWaiting(g_postSenderQueue) > 0) {
+    return true;
+  }
+  return false;
+}
+
 bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
   if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return false;
+  if (shouldDeferRemoteStateFetch()) {
+    static unsigned long s_lastDeferLogMs = 0;
+    const unsigned long nowMs = millis();
+    if (nowMs - s_lastDeferLogMs >= 60000) {
+      Serial.println(F("[netRPC] GET différé: transport HTTP occupé (POST en cours ou en file)"));
+      s_lastDeferLogMs = nowMs;
+    }
+    return false;
+  }
   NetRequest* req = netRequestAllocForFetch();
   if (!req) return false;
   req->type = NetReqType::FetchRemoteState;
