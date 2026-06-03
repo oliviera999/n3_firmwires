@@ -464,6 +464,7 @@ void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
   char timeBuf[64];
   ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
   BOOT_LOG("[Time] Heure apres sync NTP: %s\n", timeBuf);
+  BOOT_LOG("[Time] NTP fiable: %s\n", ctx.power.hasTrustedNtpTime() ? "oui" : "non");
 
 #if FEATURE_MAIL
   ctx.mailer.begin();

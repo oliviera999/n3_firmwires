@@ -219,6 +219,24 @@ static float parseFloatFromVariant(ArduinoJson::JsonVariantConst v) {
     return v.as<float>();
 }
 
+// Charge le cache NVS remote_vars dans doc (fallback offline quand GET HTTP indisponible).
+static bool loadRemoteVarsIntoDoc(ConfigManager& cfg, ArduinoJson::JsonDocument& doc) {
+    char cachedJson[BufferConfig::REMOTE_JSON_CACHE_SIZE];
+    if (!cfg.loadRemoteVars(cachedJson, sizeof(cachedJson)) || cachedJson[0] == '\0') {
+        return false;
+    }
+    doc.clear();
+    DeserializationError err = deserializeJson(doc, cachedJson);
+    if (err || doc.size() == 0) {
+        if (LogConfig::SERIAL_ENABLED) {
+            Serial.printf("[Sync] NVS remote_vars invalide (%s)\n", err ? err.c_str() : "vide");
+        }
+        return false;
+    }
+    Serial.printf("[Sync] Config NVS chargée (%u clés) pour application RAM\n", (unsigned)doc.size());
+    return true;
+}
+
 // Applique seuils + email + FreqWakeUp (clés 100-104, 116). Autres clés dans Automatism::applyConfigFromJson.
 // Référence: GPIOMap::ALL_MAPPINGS (include/gpio_mapping.h).
 void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
@@ -508,18 +526,37 @@ bool AutomatismSync::fetchRemoteState(ArduinoJson::JsonDocument& doc) {
     bool fromNVSFallback = false;
     // v11.195: RPC timeout plus long que HTTP (queue wait + GET) — évite "Timeout abandon" avant fin GET
     bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS, &fromNVSFallback);
-    // v11.193: Données HTTP → copier dans doc depuis le caller (évite LoadProhibited en écrivant doc depuis netTask)
+    bool hasConfig = false;
+
     if (ok && !fromNVSFallback) {
         bool copied = _web.copyLastFetchedTo(doc);
         if (copied && doc.size() > 0) {
             processFetchedRemoteConfig(doc);
+            hasConfig = true;
+        } else {
+            Serial.println(F("[Sync] GET OK mais JSON vide — tentative cache NVS"));
+            hasConfig = loadRemoteVarsIntoDoc(_config, doc);
         }
-    } else if (!ok) {
+    } else if (ok && fromNVSFallback) {
+        hasConfig = loadRemoteVarsIntoDoc(_config, doc);
+        if (hasConfig) {
+            Serial.println(F("[Sync] Fallback NVS (GET HTTP indisponible)"));
+        }
+    } else {
         _serverOk = false;
         _recvState = -1;
+        hasConfig = loadRemoteVarsIntoDoc(_config, doc);
+        if (hasConfig) {
+            Serial.println(F("[Sync] GET échoué — config RAM depuis cache NVS"));
+        }
     }
+
     _lastRemoteFetch = millis();
-    return ok;
+    if (hasConfig) {
+        _serverOk = true;
+        _recvState = 1;
+    }
+    return hasConfig;
 }
 
 bool AutomatismSync::pollRemoteState(ArduinoJson::JsonDocument& doc, uint32_t currentMillis) {

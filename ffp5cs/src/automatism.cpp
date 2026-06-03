@@ -115,28 +115,31 @@ void Automatism::updateFeedingAndDisplay(const SensorReadings& r, uint32_t nowMs
     finalizeFeedingIfNeeded(nowMs);
 }
 
+void Automatism::applyRemoteGpioConfig(const ArduinoJson::JsonDocument& doc) {
+    if (doc.size() == 0) {
+        Serial.println(F("[Auto] applyRemoteGpioConfig: doc vide, ignoré"));
+        return;
+    }
+    _network.seedInitialStateIfFirstPoll(doc);
+    GPIOParser::parseAndApply(doc, *this);
+    invalidateDbvarsCache();
+    Serial.printf(
+        "[Sync] Config RAM appliquée: bouffeMatin=%u bouffeMidi=%u bouffeSoir=%u "
+        "aqThr=%u tankThr=%u FreqWake=%u\n",
+        getBouffeMatin(), getBouffeMidi(), getBouffeSoir(),
+        getAqThresholdCm(), getTankThresholdCm(), getFreqWakeSec());
+}
+
 void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     // 4. Gestion réseau (polling commandes)
     StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
     bool pollResult = _network.pollRemoteState(doc, nowMs);
 
-    if (pollResult) {
-        size_t docSize = doc.size();
-        // #region agent log
-        Serial.printf("[DBG] updateNetworkSync pollResult=1 docSize=%u hypothesis=H6\n", (unsigned)docSize);
-        // #endregion
-        // Ne pas appliquer ni invalider le cache si la réponse est vide (ex. serveur renvoie {"outputs":{}})
-        if (doc.size() > 0) {
-            // 4.0 Initialiser l'état edge detection au 1er poll (reset 110, pas nourrissage)
-            _network.seedInitialStateIfFirstPoll(doc);
-            // 4.1 Parser et appliquer tous les GPIO (actionneurs, configs, nourrissage distant)
-            GPIOParser::parseAndApply(doc, *this);
-            invalidateDbvarsCache();
-        } else {
-            // #region agent log
-            Serial.printf("[DBG] updateNetworkSync skip parseAndApply docSize=0 hypothesis=H4,H6\n");
-            // #endregion
-        }
+    if (pollResult && doc.size() > 0) {
+        Serial.printf("[DBG] updateNetworkSync poll OK docSize=%u\n", (unsigned)doc.size());
+        applyRemoteGpioConfig(doc);
+    } else if (pollResult) {
+        Serial.println(F("[DBG] updateNetworkSync poll OK mais doc vide — pas d'application"));
     }
     
     // 4.3 Envoi périodique des données capteurs (toutes les 2 minutes)

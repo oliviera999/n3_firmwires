@@ -528,11 +528,13 @@ bool OTAManager::downloadFirmwareModern(const char* url, size_t expectedSize) {
     // un serveur dont le certificat appartient à un autre domaine. iot.olution.info est servi
     // par un certificat valide pour ce domaine, donc le check doit passer normalement.
     config.skip_cert_common_name_check = false;
-    // Vérification serveur (requis ESP-IDF 5.x). WROOM (pioarduino) : esp_crt_bundle_attach ; S3 (platformio/espressif32) : arduino_esp_crt_bundle_attach.
+    // Bundle TLS : S3 et Arduino-ESP32 2.x → arduino_esp_crt_bundle_attach ; WROOM Arduino 3.x (pioarduino) → esp_crt_bundle_attach.
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
     config.crt_bundle_attach = arduino_esp_crt_bundle_attach;
-#else
+#elif defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
     config.crt_bundle_attach = esp_crt_bundle_attach;
+#else
+    config.crt_bundle_attach = arduino_esp_crt_bundle_attach;
 #endif
     config.disable_auto_redirect = false; // Autoriser les redirections
     config.max_redirection_count = 3; // Max 3 redirections

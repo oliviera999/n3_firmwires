@@ -65,23 +65,13 @@ def add_littlefs_include_for_wroom():
     if framework_dir:
         littlefs_include = os.path.join(framework_dir, "libraries", "LittleFS", "src")
         fs_include = os.path.join(framework_dir, "libraries", "FS", "src")
+
         if os.path.isdir(littlefs_include):
             env.Prepend(CPPPATH=[littlefs_include])
-            env.Prepend(CPPFLAGS=["-I" + littlefs_include])
-            # Propager aux libs (pioarduino/CMake n'utilise pas toujours CPPPATH pour les libs)
-            try:
-                env.Append(BUILD_FLAGS=["-I" + littlefs_include])
-            except Exception:
-                pass
             msg_suffix = " (S3)" if pioenv.startswith("wroom-s3") else ""
             print("[pre-script] FFP5CS: LittleFS include ajouté%s:" % msg_suffix, littlefs_include)
             if os.path.isdir(fs_include):
                 env.Prepend(CPPPATH=[fs_include])
-                env.Prepend(CPPFLAGS=["-I" + fs_include])
-                try:
-                    env.Append(BUILD_FLAGS=["-I" + fs_include])
-                except Exception:
-                    pass
             # S3 uniquement : esp_littlefs.h, core Arduino et BuildSources LittleFS (WROOM utilise SPIFFS, pas de link LittleFS).
             # Ne pas ajouter de chemins esp32s3 ni BuildSources pour wroom-test / wroom-prod / wroom-beta.
             if pioenv.startswith("wroom-s3"):
@@ -98,7 +88,6 @@ def add_littlefs_include_for_wroom():
                         break
                 if esp_littlefs_inc:
                     env.Prepend(CPPPATH=[esp_littlefs_inc])
-                    env.Prepend(CPPFLAGS=["-I" + esp_littlefs_inc])
                     print("[pre-script] FFP5CS S3: esp_littlefs.h include ajouté:", esp_littlefs_inc)
                 # BuildSources n'hérite pas toujours des includes framework : ajouter le core Arduino (Arduino.h)
                 try:
@@ -110,7 +99,6 @@ def add_littlefs_include_for_wroom():
                     for core_dir in core_candidates:
                         if os.path.isdir(core_dir):
                             env.Prepend(CPPPATH=[core_dir])
-                            env.Prepend(CPPFLAGS=["-I" + core_dir])
                             print("[pre-script] FFP5CS S3: core Arduino include ajouté (Arduino.h):", core_dir)
                             break
                     build_subdir = os.path.join(env.subst("$BUILD_DIR"), "LittleFS_fw")

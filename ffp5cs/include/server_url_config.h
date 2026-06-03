@@ -40,28 +40,30 @@ namespace ServerUrlConfig {
     inline constexpr const char* BASE_URL_SECURE = "https://iot.olution.info";
   #endif
 
+  // v13.87 : chemins canoniques sans préfixe /ffp3/ (routes Slim racine).
+  // Les URLs /ffp3/* provoquent une 301 sur GET (Apache) ; le HTTPClient ESP32 ne suit pas la redirection.
   #if defined(USE_TEST3_ENDPOINTS)
-    inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3-test";
-    inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3-test/state";
-    inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3-test";
+    inline constexpr const char* POST_DATA_ENDPOINT = "/post-data3-test";
+    inline constexpr const char* OUTPUT_ENDPOINT = "/api/outputs3-test/state";
+    inline constexpr const char* HEARTBEAT_ENDPOINT = "/heartbeat3-test";
   /* ESP32-S3 + profils test/dev : tables/env s3test (pas ffp3Data2 WROOM). */
   #elif defined(BOARD_S3) && (defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS))
-    inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-s3-test";
-    inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-s3-test/state";
-    inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-s3-test";
+    inline constexpr const char* POST_DATA_ENDPOINT = "/post-data-s3-test";
+    inline constexpr const char* OUTPUT_ENDPOINT = "/api/outputs-s3-test/state";
+    inline constexpr const char* HEARTBEAT_ENDPOINT = "/heartbeat-s3-test";
   /* ESP32-S3 (prod, bêta, ou défaut matériel) : env s3 / tables post-data3 */
   #elif defined(BOARD_S3)
-    inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data3";
-    inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs3/state";
-    inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat3";
+    inline constexpr const char* POST_DATA_ENDPOINT = "/post-data3";
+    inline constexpr const char* OUTPUT_ENDPOINT = "/api/outputs3/state";
+    inline constexpr const char* HEARTBEAT_ENDPOINT = "/heartbeat3";
   #elif defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
-    inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data-test";
-    inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs-test/state";
-    inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat-test";
+    inline constexpr const char* POST_DATA_ENDPOINT = "/post-data-test";
+    inline constexpr const char* OUTPUT_ENDPOINT = "/api/outputs-test/state";
+    inline constexpr const char* HEARTBEAT_ENDPOINT = "/heartbeat-test";
   #else
-    inline constexpr const char* POST_DATA_ENDPOINT = "/ffp3/post-data";
-    inline constexpr const char* OUTPUT_ENDPOINT = "/ffp3/api/outputs/state";
-    inline constexpr const char* HEARTBEAT_ENDPOINT = "/ffp3/heartbeat";
+    inline constexpr const char* POST_DATA_ENDPOINT = "/post-data";
+    inline constexpr const char* OUTPUT_ENDPOINT = "/api/outputs/state";
+    inline constexpr const char* HEARTBEAT_ENDPOINT = "/heartbeat";
   #endif
 
   inline constexpr const char* OTA_BASE_PATH = "/ota/";

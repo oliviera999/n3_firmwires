@@ -1,10 +1,9 @@
+// Phase 1 pioarduino : stubs pour lier l'ELF IDF (phase 2 compile src/).
+
 #include "Arduino.h"
 
-void setup() {
-  Serial.begin(115200);
-}
+void setup() {}
 
-void loop() {
-  Serial.println("Hello World!");
-  delay(1000);
-}
+void loop() {}
+
+

@@ -684,19 +684,34 @@ static void netTask(void* pv) {
     int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
     bootServerReachable = (r >= 1);
     // r==1: HTTP OK — fetchRemoteState remplit s_lastFetchedJson, pas tmp ; copier avant apply
-    // r==2: NVS fallback (ne pas appeler processFetchedRemoteConfig sur doc NVS)
+    // r==2: NVS fallback (GET HTTP indisponible)
     if (r == 1 && g_ctx->webClient.copyLastFetchedTo(tmp)) {
-      if (g_ctx->automatism.processFetchedRemoteConfig(tmp)) {
+      g_ctx->automatism.processFetchedRemoteConfig(tmp);
+      if (tmp.size() > 0) {
+        g_ctx->automatism.applyRemoteGpioConfig(tmp);
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-        ets_printf("[netTask] SOURCE SERVEUR applied\n");
+        ets_printf("[netTask] SOURCE SERVEUR RAM boot\n");
 #else
-        Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config distante récupérée et appliquée)"));
+        Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config BDD appliquée RAM au boot)"));
 #endif
+      }
+    } else if (r == 2) {
+      char cachedJson[BufferConfig::REMOTE_JSON_CACHE_SIZE];
+      if (g_ctx->config.loadRemoteVars(cachedJson, sizeof(cachedJson)) && cachedJson[0] != '\0') {
+        tmp.clear();
+        if (!deserializeJson(tmp, cachedJson) && tmp.size() > 0) {
+          g_ctx->automatism.applyRemoteGpioConfig(tmp);
+#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
+          ets_printf("[netTask] SOURCE NVS RAM boot\n");
+#else
+          Serial.println(F("[netTask] ✅ SOURCE: NVS (config appliquée RAM au boot)"));
+#endif
+        }
       } else {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-        ets_printf("[netTask] SOURCE SERVEUR partial\n");
+        ets_printf("[netTask] NVS empty boot\n");
 #else
-        Serial.println(F("[netTask] ✅ SOURCE: SERVEUR (config récupérée, application partielle)"));
+        Serial.println(F("[netTask] ⚠️ GET NVS fallback — cache remote_vars vide"));
 #endif
       }
     } else if (r >= 1) {
@@ -1239,32 +1254,13 @@ void automationTask(void* pv) {
 #endif
           // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
           g_remoteFallbackDoc.clear();
-          bool fromNVSFallback = false;
-          bool ok = AppTasks::netFetchRemoteState(g_remoteFallbackDoc,
-                                                  NetworkConfig::FETCH_REMOTE_STATE_RPC_TIMEOUT_MS,
-                                                  &fromNVSFallback);
-          if (ok && !fromNVSFallback && g_ctx->webClient.copyLastFetchedTo(g_remoteFallbackDoc)) {
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-            ets_printf("[Auto] Fetch fallback OK keys=%u\n", static_cast<unsigned>(g_remoteFallbackDoc.size()));
-#else
+          if (g_ctx->automatism.fetchRemoteState(g_remoteFallbackDoc) &&
+              g_remoteFallbackDoc.size() > 0) {
             Serial.printf("[Auto] Fetch distant fallback: OK, keys=%u\n",
                          static_cast<unsigned>(g_remoteFallbackDoc.size()));
-#endif
-            if (g_remoteFallbackDoc.size() > 0) {
-              g_ctx->automatism.processFetchedRemoteConfig(g_remoteFallbackDoc);
-            }
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-            ets_printf("[Auto] GPIO fallback applied\n");
-#else
-            Serial.println(F("[Auto] ▶️ Application immédiate des GPIO (fallback)"));
-#endif
-            GPIOParser::parseAndApply(g_remoteFallbackDoc, g_ctx->automatism);
+            g_ctx->automatism.applyRemoteGpioConfig(g_remoteFallbackDoc);
           } else {
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-            ets_printf("[Auto] Fetch fallback %s\n", ok ? "OK (NVS)" : "KO");
-#else
-            Serial.printf("[Auto] Fetch distant fallback: %s\n", ok ? "OK (NVS)" : "KO");
-#endif
+            Serial.println(F("[Auto] Fetch distant fallback: KO ou doc vide"));
           }
         }
       }

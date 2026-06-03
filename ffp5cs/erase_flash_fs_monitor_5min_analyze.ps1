@@ -15,9 +15,10 @@
 #
 # -NoPrompt : ne pas attendre Entrée avant erase/flash (pour exécution non interactive, ex. Cursor/CI).
 # -SkipBuild : sauter l'étape build (erase + flash + monitor + analyse uniquement).
-# -SkipClean : ne pas lancer "pio run -t clean" avant le build (si le clean reste bloqué, utiliser ce flag).
+# -FullClean : lancer "pio run -t clean" avant le build (recovery ; par défaut le clean est ignoré).
+# -SkipClean : alias legacy de l'absence de clean (défaut implicite sans -FullClean).
 #
-# Quand -SkipBuild n'est pas utilisé, un clean est exécuté avant le build pour éviter les erreurs
+# Quand -FullClean est utilisé, un clean est exécuté avant le build pour éviter les erreurs
 # "No such file or directory" (.d / .sconsign) après libération du port COM (processus moniteur arrêtés).
 #
 # Sous Windows, le build utilise -j 1 (séquentiel) pour éviter les erreurs "No such file or directory"
@@ -32,6 +33,7 @@ param(
     [int]$DurationMinutes = 5,
     [switch]$NoPrompt = $false,
     [switch]$SkipBuild = $false,
+    [switch]$FullClean = $false,
     [switch]$SkipClean = $false
 )
 
@@ -40,6 +42,8 @@ $projectRoot = $PSScriptRoot
 Set-Location $projectRoot
 
 . (Join-Path $PSScriptRoot "scripts\Release-ComPort.ps1")
+$helpersPath = Join-Path $PSScriptRoot "..\scripts\Get-PioBuildHelpers.ps1"
+if (Test-Path -LiteralPath $helpersPath) { . $helpersPath }
 
 function Get-PioCliCommand {
     $pioCmd = Get-Command "pio" -ErrorAction SilentlyContinue
@@ -109,20 +113,49 @@ Write-Host ""
 # 0. Build (tous environnements, comme wroom-test) — sauf si -SkipBuild
 if (-not $SkipBuild) {
     Write-Host "0. Build $Environment..." -ForegroundColor Cyan
-    if (-not $SkipClean) {
-        Write-Host "   Clean..." -ForegroundColor Gray
+    $doClean = $FullClean -and -not $SkipClean
+    if ($doClean) {
+        Write-Host "   Clean (-FullClean)..." -ForegroundColor Gray
         & $pioCli run -e $Environment -t clean
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if (Get-Command Repair-N3PioBuildJunction -ErrorAction SilentlyContinue) {
+            $null = Repair-N3PioBuildJunction -ProjectRoot $projectRoot -Environment $Environment
+        }
     } else {
-        Write-Host "   Clean ignoré (-SkipClean)" -ForegroundColor Gray
+        Write-Host "   Clean ignoré (défaut ; utiliser -FullClean pour recovery)" -ForegroundColor Gray
     }
     # Sous Windows, build séquentiel (-j 1) pour éviter erreurs "No such file or directory" (fichiers .d/.o/tmp et chemins longs).
     $buildJobs = if ($env:OS -eq "Windows_NT") { "-j", "1" } else { @() }
     Write-Host "   Build en cours (plusieurs minutes avec -j 1)..." -ForegroundColor Gray
     & $pioCli run -e $Environment @buildJobs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if ($Environment -match '^wroom-' -and $Environment -ne 'wroom-tls-test') {
+        $verifyScript = Join-Path $projectRoot "tools\verify_wroom_sdkconfig.ps1"
+        if (Test-Path -LiteralPath $verifyScript) {
+            Write-Host "   Verification sdkconfig / taille firmware..." -ForegroundColor Gray
+            & $verifyScript -Environment $Environment
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+        $bundleScript = Join-Path $projectRoot "tools\verify_flash_bundle.ps1"
+        if (Test-Path -LiteralPath $bundleScript) {
+            & $bundleScript -Environment $Environment
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "   AVERTISSEMENT: bundle flash incomplet (bootloader/partitions) ; upload PIO peut encore reussir." -ForegroundColor Yellow
+            }
+        }
+    }
     Write-Host "   OK" -ForegroundColor Green
     Write-Host ""
+}
+
+# Verification pre-flash si build saute (evite flash d'un vieux firmware.bin trop petit)
+if ($SkipBuild -and $Environment -match '^wroom-' -and $Environment -ne 'wroom-tls-test') {
+    $verifyScript = Join-Path $projectRoot "tools\verify_wroom_sdkconfig.ps1"
+    if (Test-Path -LiteralPath $verifyScript) {
+        Write-Host "0b. Verification build existant avant flash..." -ForegroundColor Cyan
+        & $verifyScript -Environment $Environment
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
 }
 
 # 1. Erase (retry si port occupé)

@@ -2,6 +2,8 @@
 
 **Matériel de référence S3** : ESP32-S3 (QFN56) révision v0.2, 16 Mo flash, 8 Mo PSRAM (N16R8). Env sans PSRAM : `wroom-s3-base` / `wroom-s3-test` / `wroom-s3-prod`. Env avec PSRAM pour ce matériel : `wroom-s3-test-psram`. Détails : [ESP32S3_HARDWARE_REFERENCE.md](ESP32S3_HARDWARE_REFERENCE.md).
 
+**Build WROOM (pioarduino, phase 2, `wroom-prod-pio6`)** : voir [COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md).
+
 ## Enchaînement (sans -SkipBuild)
 
 1. **Script erase_flash_fs_monitor_5min_analyze.ps1 (étape 0)**

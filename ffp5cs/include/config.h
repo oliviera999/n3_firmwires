@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.84";
+    inline constexpr const char* VERSION = "13.88";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -936,9 +936,13 @@ namespace SleepConfig {
     // Constantes PowerManager manquantes
     inline constexpr bool AUTO_RECONNECT_WIFI_AFTER_SLEEP = true;
     inline constexpr bool SAVE_TIME_BEFORE_SLEEP = true;
-    // À réviser en release majeure : fallback si NVS vide ET sync NTP échoue.
-    inline constexpr time_t EPOCH_COMPILE_TIME = 1769904000; // 2026-02-01 00:00:00 UTC (vérifié)
-    inline constexpr time_t EPOCH_DEFAULT_FALLBACK = 1769904000; // 2026-02-01 00:00:00 UTC (vérifié)
+    // Fallback si NVS vide ET sync NTP échoue. EPOCH_COMPILE_TIME = date de build (pio_build_epoch.py).
+#if defined(FIRMWARE_BUILD_EPOCH)
+    inline constexpr time_t EPOCH_COMPILE_TIME = static_cast<time_t>(FIRMWARE_BUILD_EPOCH);
+#else
+    inline constexpr time_t EPOCH_COMPILE_TIME = 1780444800; // 2026-06-03 00:00:00 UTC (secours hors PIO)
+#endif
+    inline constexpr time_t EPOCH_DEFAULT_FALLBACK = 1769904000; // 2026-02-01 00:00:00 UTC (dernier recours)
     inline constexpr bool ENABLE_DRIFT_CORRECTION = true;
     inline constexpr uint32_t DRIFT_CORRECTION_INTERVAL_MS = 3600000;
     inline constexpr float DRIFT_CORRECTION_THRESHOLD_PPM = 100.0f;
@@ -1062,7 +1066,7 @@ namespace TaskConfig {
 #elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14224;  // wroom-beta : -32 pour ENABLE_SERIAL_MONITOR=1
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14160;  // v13.87 : -32 octets link dram0 (GCC 14, rebuild touch config)
 #elif defined(BOARD_WROOM) && defined(PROFILE_PROD)
     // v13.36: netTaskStack[] en BSS — réduction vs 14376 pour link dram0_0_seg (GCC 14 / IDF 5.5 ; marge TLS)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 12800;  // −1576 mots vs 14376 (link avril 2026)

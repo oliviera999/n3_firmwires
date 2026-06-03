@@ -57,6 +57,9 @@ struct HttpTransportMutexGuard {
 }  // namespace
 
 #include "hmac_sign.h"  // v13.80 (audit) - HMAC-SHA256 sur POST/GET en mode dual
+#include "power.h"
+
+extern PowerManager power;  // défini dans app.cpp
 
 // Buffer pour dernier GET outputs/state : rempli par fetchRemoteState (netTask), lu par copyLastFetchedTo (caller) — évite LoadProhibited (écrire doc depuis netTask)
 static char s_lastFetchedJson[BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE + 1];
@@ -192,9 +195,8 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     // v13.80 (audit): mode dual HMAC - ajoute X-Sig-* en complément d'api_key.
-    // Le serveur (App\Security\SignatureValidator) accepte les deux modes pendant
-    // la transition v13.80 → v13.90 (où HMAC devient obligatoire).
-    if (HmacSign::isEnabled()) {
+    // v13.88 : pas d'en-têtes X-Sig si NTP non fiable (évite 401 sans fallback api_key).
+    if (HmacSign::isEnabled() && power.hasTrustedNtpTime()) {
       char ts[16];
       snprintf(ts, sizeof(ts), "%lu", (unsigned long)time(nullptr));
       char nonce[HmacSign::NONCE_HEX_BUFFER_SIZE];

@@ -48,6 +48,8 @@ class Automatism {
   bool fetchRemoteState(ArduinoJson::JsonDocument& doc);
   // Traite un doc déjà récupéré (normalise, enqueue sauvegarde NVS). Utilisé par netTask au boot.
   bool processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc);
+  /// Applique un JSON outputs/state en RAM (seed edge, GPIO, invalidation cache /dbvars).
+  void applyRemoteGpioConfig(const ArduinoJson::JsonDocument& doc);
   /// Draine la file de sauvegarde NVS différée (à appeler depuis automation task uniquement).
   void processDeferredRemoteVarsSave();
   /// Met à jour l’état de bord nourrissage distant depuis un doc (chemin fallback = même état que chemin principal).

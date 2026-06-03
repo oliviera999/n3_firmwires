@@ -12,6 +12,55 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.88 - 2026-06-03
+
+### NTP fiable et HMAC POST (wroom-beta)
+
+- **`syncTimeFromNTP()`** : `waitForNetworkReady()` avant SNTP, attente `SNTP_SYNC_STATUS_COMPLETED` (20 s max), validation epoch (delta ≥ 60 s ou proche date de compilation), flag `_ntpTrusted`.
+- **`hasTrustedNtpTime()`** : les en-têtes `X-Sig-*` ne sont envoyés que si NTP est fiable (`web_client.cpp`) — sinon fallback `api_key` côté serveur (évite **HTTP 401** avec timestamp fallback fév. 2026).
+- **`pio_build_epoch.py`** : injecte `FIRMWARE_BUILD_EPOCH` à la compilation pour `EPOCH_COMPILE_TIME`.
+- Correction affichage epoch (`PRIu64`) dans les logs `power.cpp`.
+
+---
+
+## Version 13.87 - 2026-06-02
+
+### Connectivité serveur test (wroom-beta)
+
+- **`server_url_config.h`** : endpoints POST/GET/heartbeat sans préfixe `/ffp3/` (chemins Slim canoniques). Corrige les échecs GET **HTTP 301** : Apache redirige les GET `/ffp3/*` alors que le HTTPClient ESP32 ne suit pas la redirection.
+- **`secrets_config.h`** (local, non versionné) : `API_KEY` et `API_SIG_SECRET` alignés sur `serveur/.env` pour éviter **HTTP 401** lorsque le firmware envoie les en-têtes `X-Sig-*` avec des secrets « local_* ».
+- **`NET_TASK_STACK_SIZE`** (PROFILE_BETA) : 14192 → 14160 (−32 octets, link `dram0_0_seg` après rebuild complet).
+
+---
+
+## Version 13.86 - 2026-06-02
+
+### Boot loop WROOM — garde-fous build/flash et builds rapides
+
+- **Link wroom-beta** : `NET_TASK_STACK_SIZE` 14224 → 14192 (débordement dram0_0_seg de 32 octets après rebuild phase 2).
+- **Diagnostic** : boot loop « Cache error » sur wroom-beta causé par `firmware.bin` ~811 Ko (build incomplet phase 1) flashé ; sdkconfig SPIRAM actif non détecté dans le build analysé.
+- **`tools/verify_wroom_sdkconfig.ps1`** + **`tools/pio_verify_wroom_sdkconfig.py`** : refus si firmware &lt; 1,2 Mo ou SPIRAM/cache workaround activés.
+- **`tools/verify_flash_bundle.ps1`** : cohérence bootloader/partitions/firmware.
+- **Jonction Windows** : `pio_repair_build_junction.py`, `Repair-N3PioBuildJunction`, échec mklink strict sur env WROOM.
+- **Workflow** : `erase_flash_fs_monitor_5min_analyze.ps1` sans clean par défaut (`-FullClean`), vérif sdkconfig avant flash.
+- **Build rapide** : `firmwires/scripts/Invoke-PioBuildFast.ps1`, `build_cache_dir` sous `C:/pio-builds/.pio-cache/ffp5cs`.
+- **`clean-firmware-builds.ps1`** : option `-SyncPioBuilds`.
+
+---
+
+## Version 13.85 - 2026-06-01
+
+### Config BDD serveur — application RAM immédiate (GET outputs/state)
+
+Correctifs alignés sur le diagnostic config serveur ↔ firmware :
+
+- **`Automatism::applyRemoteGpioConfig()`** : factorise seed edge + `GPIOParser::parseAndApply` + invalidation cache `/dbvars`, avec log des paramètres clés appliqués.
+- **Boot `netTask`** : après GET serveur réussi, `parseAndApply` en RAM (plus seulement mise en file NVS) ; fallback NVS (`r==2`) appliqué en RAM si cache présent.
+- **`AutomatismSync::fetchRemoteState()`** : retourne `true` seulement si le doc contient une config utilisable ; charge le cache NVS si GET HTTP vide ou en échec (offline-first).
+- **Poll / fallback capteurs** : utilise `fetchRemoteState` + `applyRemoteGpioConfig` (plus de `pollResult=true` avec doc vide).
+
+---
+
 ## Version 13.84 - 2026-05-30
 
 ### Filtrage ultrason réservoir (anti-aberrations)

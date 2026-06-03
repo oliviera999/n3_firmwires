@@ -161,3 +161,41 @@ function Assert-N3PioProjectRoot {
         throw "platformio.ini introuvable sous : $ProjectRoot"
     }
 }
+
+function Repair-N3PioBuildJunction {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$Environment
+    )
+    $redirect = Get-N3PioRedirectRoot
+    if (-not $redirect) {
+        Write-Host "N3: pas de redirection BUILD_DIR (jonction inutile)." -ForegroundColor Gray
+        return $true
+    }
+    $proj = [System.IO.Path]::GetFullPath($ProjectRoot)
+    $slug = Get-N3PioProjectSlug -ProjectRoot $proj
+    $target = [System.IO.Path]::Combine($redirect, $slug, $Environment)
+    $link = [System.IO.Path]::Combine($proj, ".pio", "build", $Environment)
+    New-Item -ItemType Directory -Path $target -Force | Out-Null
+    $parent = Split-Path -Parent $link
+    if (-not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    if (Test-Path -LiteralPath $link) {
+        $item = Get-Item -LiteralPath $link -Force
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            cmd /c "rmdir `"$link`"" 2>$null | Out-Null
+        } else {
+            Remove-Item -LiteralPath $link -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $out = cmd /c "mklink /J `"$link`" `"$target`"" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "N3: echec mklink /J : $out" -ForegroundColor Red
+        return $false
+    }
+    Write-Host "N3: jonction $link -> $target" -ForegroundColor Green
+    return $true
+}

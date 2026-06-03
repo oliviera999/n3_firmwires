@@ -15,6 +15,9 @@ Documentation technique du projet ESP32 Aquaponie Controller.
 docs/
 ├── README.md           # Ce fichier
 ├── technical/          # Références techniques
+│   ├── COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md  # Build WROOM, pioarduino 2 passes, vs n3pp/msp, flash
+│   ├── WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md     # wroom-beta-local : build, flash COMx, tests Docker
+│   ├── BUILD_S3_PROCESS_ANALYSE.md              # Build S3 multi-phases, bascule WROOM↔S3
 │   ├── VARIABLE_NAMING.md        # Contrat nommage (NVS, API, serveur, firmware)
 │   └── SEUILS_SERVEUR_ESP32.md   # Seuils ESP32 vs serveur PHP
 ├── reports/            # Rapports et analyses
@@ -26,6 +29,8 @@ docs/
 
 ### Liens utiles
 
+- **[Compilation WROOM / pioarduino / envs](technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md)** — tutoriel, comparaison avec n3pp/msp/cam, `wroom-prod-pio6`, erreurs fréquentes, flash cohérent
+- **[wroom-beta-local — build, flash, tests](technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md)** — warmup n3pp, CP210x, Docker LAN, suites de tests
 - **[Convention nommage / contrat](technical/VARIABLE_NAMING.md)** — NVS, API locale, serveur distant, firmware (source : `include/gpio_mapping.h`, `include/nvs_keys.h`)
 - **[Seuils ESP32 / serveur](technical/SEUILS_SERVEUR_ESP32.md)** — Différences volontaires (température, humidité, etc.)
 - **[Référence matériel ESP32-S3](technical/ESP32S3_HARDWARE_REFERENCE.md)** — Modèle N16R8, envs S3, boot PSRAM (TG1WDT), **comportement firmware S3 PSRAM** (Serial/CDC, priorités tâches, OLED, recommandations)
@@ -49,6 +54,7 @@ Les **4 environnements critiques** (qui doivent compiler sans erreur avant chaqu
 | Env | Board | Plateforme | Profil | Capteur air | Endpoints serveur | Partition | Notes |
 |-----|-------|-----------|--------|-------------|-------------------|-----------|-------|
 | **wroom-prod** * | esp32dev | pioarduino 55.03.37 | prod | DHT22 | /ffp3/post-data | wroom_ota_fs_mail | Serveur web désactivé, serial off |
+| **wroom-prod-pio6** | esp32dev | espressif32 6.13.0 | prod | DHT22 | /ffp3/post-data | wroom_ota_fs_mail | Secours build 1 passe (Arduino 2.x) — voir [guide compilation](technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md) |
 | **wroom-test** * | esp32dev | pioarduino 55.03.37 | test | DHT11 | /ffp3/post-data-test | wroom_test | OLED diag, endpoints dangereux |
 | **wroom-s3-test** * | esp32-s3-devkitc-1 | espressif32 6.13.0 | test | BME280/DHT auto | /ffp3/post-data3-test | s3_test | RTC DS3231, OLED diag |
 | **wroom-s3-prod** * | esp32-s3-devkitc-1 | espressif32 6.13.0 | prod | BME280/DHT auto | /ffp3/post-data3 | s3_test | Serveur web désactivé, serial off |
@@ -76,8 +82,11 @@ Les **4 environnements critiques** (qui doivent compiler sans erreur avant chaqu
 # Environnement test
 pio run -e wroom-test
 
-# Environnement production
+# Environnement production (pioarduino, 2 passes — peut prendre 10–15 min au 1er build)
 pio run -e wroom-prod
+
+# Secours si phase 2 pioarduino échoue (build classique ~1–2 min)
+pio run -e wroom-prod-pio6
 
 # Flash
 pio run -e wroom-test -t upload
@@ -86,18 +95,22 @@ pio run -e wroom-test -t upload
 pio device monitor
 ```
 
-### Override local pour `wroom-beta-local`
+**Guide détaillé** (éviter les échecs, tailles de `firmware.bin`, flash homogène, comparaison n3pp/msp) : **[technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md)**.
 
-La base URL locale n'est plus versionnee en dur.
+### `wroom-beta-local` (build, flash, tests Docker)
 
-1. Copier `include/local_server_overrides.h.example` en `include/local_server_overrides.h` (fichier ignore par Git).
-2. Adapter `LOCAL_SERVER_BASE_URL_OVERRIDE` a l'IP LAN de la machine Docker (ex. `http://192.168.1.42:8082`).
+Guide pas à pas : **[technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md](technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md)**.
 
-Alternative ponctuelle via CLI:
+Résumé :
 
-```bash
-pio run -e wroom-beta-local --project-option "build_flags=-DLOCAL_SERVER_BASE_URL=\"http://192.168.1.42:8082\""
-```
+1. `include/secrets.h` + `include/local_server_overrides.h` (IP LAN Docker, ex. `http://192.168.0.158:8082`).
+2. Warmup pioarduino si besoin : `cd firmwires\n3pp` → `pio run -e esp32dev`, puis `pio run -e wroom-beta-local`.
+3. Valider `.pio\build\wroom-beta-local\firmware.bin` (~1,55–1,65 Mo) et `version.txt`.
+4. Flash : `pio run -e wroom-beta-local -t upload --upload-port COM5` ou esptool (CP210x : BOOT+RST, voir guide §3.3).
+5. Stack : `serveur\tools\local-docker.ps1 up` puis `.\scripts\run_wroom_beta_local_test_suite.ps1 -Port COM5 -Campaign quick -Auth both`.
+6. **Panneau ↔ ESP (bidirectionnel)** : `.\scripts\test_bidirectional_control_panel_local.ps1 -Port COM5` — rapport dans `logs/bidirectional_control_*.md`.
+
+Script rapide : `.\build_upload_monitor_wroom_beta_local.ps1 -Port COM5` (raccourci COM4 : `build_upload_monitor_wroom_beta_local_com4.ps1`).
 
 ## Workflow de validation recommandé
 
@@ -119,7 +132,7 @@ pio run -e wroom-beta-local --project-option "build_flags=-DLOCAL_SERVER_BASE_UR
 - Secrets locaux batterie :
   - copier `scripts/.beta-local-test.env.example` vers `scripts/.beta-local-test.env` (fichier ignore par Git).
 
-**Basculement WROOM ↔ S3** : après un build d’une autre famille d’env (ex. wroom-test puis wroom-s3-test), il est recommandé de lancer `pio run -e <env_cible> -t clean` avant de compiler. Le script `build_all_envs.ps1` fait ce nettoyage automatiquement lors du basculement de famille. **wroom-beta** : si le build échoue (FRAMEWORK_DIR None), lancer d’abord `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Détails : [BUILD_S3_PROCESS_ANALYSE.md](technical/BUILD_S3_PROCESS_ANALYSE.md) (sections « Basculement WROOM ↔ S3 » et « wroom-beta et FRAMEWORK_DIR »).
+**Basculement WROOM ↔ S3** : après un build d’une autre famille d’env (ex. wroom-test puis wroom-s3-test), il est recommandé de lancer `pio run -e <env_cible> -t clean` avant de compiler. Le script `build_all_envs.ps1` fait ce nettoyage automatiquement lors du basculement de famille. **wroom-beta** : si le build échoue (FRAMEWORK_DIR None), lancer d’abord `pio run -e wroom-prod` avec succès, puis `pio run -e wroom-beta`. Détails WROOM : [COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md) ; détails S3 : [BUILD_S3_PROCESS_ANALYSE.md](technical/BUILD_S3_PROCESS_ANALYSE.md).
 
 ## Principes de développement
 

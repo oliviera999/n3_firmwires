@@ -56,6 +56,9 @@ class PowerManager {
   /** Applique l'heure du RTC externe DS3231 si présent (à appeler après I2CBus::init()). */
   void applyExternalRTCIfPresent();
 
+  /** v13.88 : true si la dernière sync NTP a validé SNTP_COMPLETED et un epoch plausible. */
+  bool hasTrustedNtpTime() const { return _ntpTrusted; }
+
  private:
   // Paramètres NTP
   int _gmtOffsetSec;
@@ -64,6 +67,7 @@ class PowerManager {
 
   // Suivi synchronisation temps (intervalle : TimingConfig::NTP_SYNC_INTERVAL_MS)
   unsigned long _lastNtpSync;
+  bool _ntpTrusted;
 
   // Identifiants WiFi sauvegardés pour light sleep
   char _lastSSID[33];  // SSID max 32 chars + null terminator

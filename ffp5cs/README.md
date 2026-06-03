@@ -87,7 +87,8 @@ ffp5cs/
 ```
 
 ### 🔧 Environnements de build (extrait — voir `platformio.ini` pour la liste complète)
-- **`wroom-prod`** — Production ESP32-WROOM (LTO désactivé, sans web async, optimisé flash)
+- **`wroom-prod`** — Production ESP32-WROOM (pioarduino / Arduino 3.3.7, sans web async, optimisé flash)
+- **`wroom-prod-pio6`** — **Secours** production WROOM (build **1 passe**, `espressif32@6.13.0`) si la phase 2 pioarduino échoue — voir [guide compilation](docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md)
 - **`wroom-test`** — Test ESP32-WROOM (debug activé, logs série, web async)
 - **`wroom-beta`** — Bêta ESP32-WROOM (canal OTA test, endpoints `*-test`)
 - **`wroom-beta-local`** — Bêta contre serveur Docker local (`USE_LOCAL_SERVER_ENDPOINTS`)
@@ -202,12 +203,25 @@ pio run -e wroom-test -t uploadfs
 
 ### 📚 Documentation
 - **[Documentation](docs/README.md)** — structure, compilation, principes
+- **[Compilation WROOM / pioarduino / envs](docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md)** — tutoriel, comparaison n3pp/msp, phase 2, secours `wroom-prod-pio6`, flash cohérent
+- **[wroom-beta-local — build, flash, tests](docs/technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md)** — Docker LAN, warmup n3pp, flash CP210x (COMx), suites de tests
+- **[Build S3](docs/technical/BUILD_S3_PROCESS_ANALYSE.md)** — process multi-phases S3, bascule WROOM↔S3
 - **[Seuils ESP32 / serveur](docs/technical/SEUILS_SERVEUR_ESP32.md)** — différences volontaires
 - **[Rapports](docs/reports/)** — conformité, NVS, corrections, origine problèmes
 
 ---
 
 ## 🐛 Résolution de problèmes
+
+### 🔨 Compilation et flash (WROOM)
+Voir **[COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md)** :
+- build **pioarduino** en 2 phases vs **n3pp/msp** en 1 passe ;
+- `firmware.bin` ~800 Ko ou « Hello World » → **ne pas flasher** ;
+- secours **`pio run -e wroom-prod-pio6`** ;
+- flash **jeu cohérent** (bootloader + partitions + firmware du même build) pour éviter le panic **Cache error** ;
+- **CP210x** : `Wrong boot mode 0x13` → BOOT+RST + esptool (détail dans le guide beta-local).
+
+**Tests serveur Docker local** : **[WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md](docs/technical/WROOM_BETA_LOCAL_BUILD_FLASH_TEST.md)** (`wroom-beta-local`, `local_server_overrides.h`, `run_wroom_beta_local_test_suite.ps1`).
 
 ### 🔍 Diagnostics courants
 1. **Problème WiFi** → Logs série 115200 baud, vérifier RSSI et reconnexion
@@ -289,4 +303,4 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 
 ---
 
-*Dernière mise à jour: 2026-05-20 - Version 13.52*
+*Dernière mise à jour: 2026-06 — doc compilation WROOM ; version firmware : voir `include/config.h` / [VERSION.md](VERSION.md)*

@@ -15,6 +15,8 @@
 #include "config.h"
 #include "log.h"
 #include "esp_task_wdt.h"  // waitForNetworkReady : DNS peut bloquer > TWDT 30 s (otaTask)
+#include <esp_sntp.h>
+#include <inttypes.h>
 #include "realtime_websocket.h"
 #if defined(USE_RTC_DS3231)
 #include "rtc_ds3231.h"
@@ -29,9 +31,19 @@
 
 // Fonction tcpip_safe_call supprimée - appels directs utilisés à la place
 
+namespace {
+constexpr uint32_t NTP_SNTP_WAIT_MS = 20000;
+constexpr time_t NTP_MIN_EPOCH_DELTA_SEC = 60;
+constexpr time_t NTP_COMPILE_TOLERANCE_SEC = 7 * 86400;
+
+time_t epochAbsDiff(time_t a, time_t b) {
+  return (a > b) ? (a - b) : (b - a);
+}
+}  // namespace
+
 PowerManager::PowerManager()
     : _gmtOffsetSec(SystemConfig::NTP_GMT_OFFSET_SEC), _daylightOffsetSec(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC), _ntpServer(SystemConfig::NTP_SERVER),
-      _lastNtpSync(0), _hasSavedCredentials(false),
+      _lastNtpSync(0), _ntpTrusted(false), _hasSavedCredentials(false),
       _lastTimeSave(0), _lastSavedEpoch(0), _lastDriftCorrection(0), _currentDriftPPM(0.0f),
       _lastDriftSeconds(0.0f), _driftAccumulator(0.0f), _sleepRemainderUs(0) {
   _lastSSID[0] = '\0';
@@ -198,105 +210,104 @@ void PowerManager::initTime() {
 }
 
 void PowerManager::syncTimeFromNTP() {
+  _ntpTrusted = false;
+
   if (WiFi.status() != WL_CONNECTED) {
     LOG_NTP(LogConfig::LOG_WARN, "Pas de WiFi - synchronisation NTP impossible");
     return;
   }
-  
+
   LOG_NTP(LogConfig::LOG_INFO, "Début de synchronisation NTP avec serveur: %s", _ntpServer);
-  
-  // Sauvegarder l'heure locale avant sync pour calcul de dérive
+
+  waitForNetworkReady();
+
   time_t localBeforeEpoch = time(nullptr);
   unsigned long localBeforeMillis = millis();
-  
-  // Configuration NTP avec offset configuré
+
   configTime(_gmtOffsetSec, _daylightOffsetSec, _ntpServer);
 
-  // Tentative rapide de synchronisation (approche hybride)
-  struct tm timeinfo;
-  bool syncSuccess = false;
+  bool sntpCompleted = false;
   unsigned long startTime = millis();
-  int attempts = 0;
-  
-  // Tentative immédiate
-  if (getLocalTime(&timeinfo)) {
-    syncSuccess = true;
-  } else {
-    // Retry rapide après 500ms
-    vTaskDelay(pdMS_TO_TICKS(500));
-    if (getLocalTime(&timeinfo)) {
-      syncSuccess = true;
-      attempts = 1;
+  int pollCount = 0;
+
+  while ((millis() - startTime) < NTP_SNTP_WAIT_MS) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+      sntpCompleted = true;
+      break;
+    }
+    pollCount++;
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  unsigned long syncDuration = millis() - startTime;
+
+  struct tm timeinfo;
+  time_t ntpEpoch = time(nullptr);
+  const bool gotLocal = getLocalTime(&timeinfo, 1000);
+  bool syncSuccess = sntpCompleted || gotLocal;
+
+  if (syncSuccess) {
+    ntpEpoch = time(nullptr);
+    if (!gotLocal && !getLocalTime(&timeinfo, 1000)) {
+      LOG_NTP(LogConfig::LOG_WARN, "Sync temps: getLocalTime a échoué");
+      syncSuccess = false;
+    } else if (timeinfo.tm_year + 1900 < 2024) {
+      LOG_NTP(LogConfig::LOG_WARN, "Année invalide %d après sync", timeinfo.tm_year + 1900);
+      syncSuccess = false;
+    } else if (!isValidEpoch(ntpEpoch)) {
+      LOG_NTP(LogConfig::LOG_WARN, "Epoch invalide après SNTP: %" PRIu64,
+              static_cast<uint64_t>(static_cast<unsigned long long>(ntpEpoch)));
+      syncSuccess = false;
     } else {
-      // Fallback: boucle avec timeout de 10 secondes max (feed WDT pour tâche surveillée)
-      while ((millis() - startTime) < 10000) {
-        if (esp_task_wdt_status(NULL) == ESP_OK) {
-          esp_task_wdt_reset();
-        }
-        if (getLocalTime(&timeinfo)) {
-          syncSuccess = true;
-          break;
-        }
-        attempts++;
-        vTaskDelay(pdMS_TO_TICKS(100));
+      const bool epochChangedEnough =
+          epochAbsDiff(ntpEpoch, localBeforeEpoch) >= NTP_MIN_EPOCH_DELTA_SEC;
+      const bool nearCompile =
+          epochAbsDiff(ntpEpoch, SleepConfig::EPOCH_COMPILE_TIME) < NTP_COMPILE_TOLERANCE_SEC;
+      if (!epochChangedEnough && !nearCompile) {
+        LOG_NTP(LogConfig::LOG_WARN,
+                "Heure inchangée ou non plausible (delta=%" PRIu64 " s, compile_tol=%" PRIu64 ")",
+                static_cast<uint64_t>(static_cast<unsigned long long>(
+                    epochAbsDiff(ntpEpoch, localBeforeEpoch))),
+                static_cast<uint64_t>(static_cast<unsigned long long>(NTP_COMPILE_TOLERANCE_SEC)));
+        syncSuccess = false;
       }
     }
   }
-  
-  unsigned long syncDuration = millis() - startTime;
-  
+
   if (syncSuccess) {
-    // Vérification que l'année est raisonnable (après 2024)
-    if (timeinfo.tm_year + 1900 < 2024) {
-      LOG_NTP(LogConfig::LOG_WARN, "Année invalide %d après sync", timeinfo.tm_year + 1900);
-      syncSuccess = false;
-    }
-  }
-  
-  if (syncSuccess) {
-    // Sauvegarde de l'heure synchronisée
     smartSaveTime();
 
 #if defined(USE_RTC_DS3231)
     if (RtcDS3231::isPresent()) {
-      time_t ntpEpochForRtc = mktime(&timeinfo);
-      if (RtcDS3231::write(ntpEpochForRtc)) {
-        // #region agent log
-        Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:syncTimeFromNTP\",\"message\":\"rtc_ntp_write_ok\",\"data\":{\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H3\"}\n",
-                      (unsigned long)ntpEpochForRtc, (unsigned long)millis());
-        // #endregion
+      if (RtcDS3231::write(ntpEpoch)) {
         LOG_RTC(LogConfig::LOG_INFO, "DS3231 mis à jour après sync NTP");
       } else {
-        // #region agent log
-        Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:syncTimeFromNTP\",\"message\":\"rtc_ntp_write_fail\",\"data\":{\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H3\"}\n",
-                      (unsigned long)ntpEpochForRtc, (unsigned long)millis());
-        // #endregion
         LOG_RTC(LogConfig::LOG_WARN, "Échec écriture DS3231 après NTP");
       }
     }
 #endif
 
     unsigned long syncMillis = millis();
-    time_t ntpEpoch = mktime(&timeinfo);
-    
-    // Calcul de la dérive si on avait une heure locale valide (seuil = EPOCH_MIN_VALID)
+
     if (localBeforeEpoch > SleepConfig::EPOCH_MIN_VALID && syncMillis > localBeforeMillis) {
       time_t timeDiff = ntpEpoch - localBeforeEpoch;
       unsigned long millisDiff = syncMillis - localBeforeMillis;
-      
-      // Calcul de la dérive en PPM (parties par million)
+
       if (millisDiff > 0) {
         float expectedSeconds = millisDiff / 1000.0f;
         float actualSeconds = static_cast<float>(timeDiff);
         float driftSeconds = actualSeconds - expectedSeconds;
-        
-        // Éviter division par zéro et calculer PPM
+
         if (expectedSeconds > 0.0f) {
           _currentDriftPPM = (driftSeconds / expectedSeconds) * 1000000.0f;
-          _currentDriftPPM = std::fmax(-SleepConfig::DRIFT_PPM_MAX, std::fmin(SleepConfig::DRIFT_PPM_MAX, _currentDriftPPM));
+          _currentDriftPPM = std::fmax(-SleepConfig::DRIFT_PPM_MAX,
+                                       std::fmin(SleepConfig::DRIFT_PPM_MAX, _currentDriftPPM));
           _lastDriftSeconds = driftSeconds;
-          
-          LOG_DRIFT(LogConfig::LOG_INFO, "Dérive mesurée: %.2f PPM (%.2f s sur %.2f s)", 
+
+          LOG_DRIFT(LogConfig::LOG_INFO, "Dérive mesurée: %.2f PPM (%.2f s sur %.2f s)",
                     _currentDriftPPM, driftSeconds, expectedSeconds);
         } else {
           _currentDriftPPM = 0.0f;
@@ -307,31 +318,34 @@ void PowerManager::syncTimeFromNTP() {
         _lastDriftSeconds = 0.0f;
       }
     } else {
-      // Réinitialiser la dérive si pas de mesure valide
       _currentDriftPPM = 0.0f;
       _lastDriftSeconds = 0.0f;
     }
-    
-    // Réinitialiser l'accumulateur de dérive après sync réussie
+
     _driftAccumulator = 0.0f;
     _lastDriftCorrection = syncMillis;
+    _ntpTrusted = true;
 
-    LOG_NTP(LogConfig::LOG_INFO, "Synchronisation NTP réussie en %lu ms (%d tentatives)", 
-            syncDuration, attempts);
+    LOG_NTP(LogConfig::LOG_INFO,
+            "Synchronisation NTP réussie en %lu ms (SNTP=%s, polls=%d)",
+            syncDuration, sntpCompleted ? "oui" : "getLocalTime", pollCount);
     char timeBuf[64];
     getCurrentTimeString(timeBuf, sizeof(timeBuf));
-    LOG_NTP(LogConfig::LOG_INFO, "Heure NTP: %s (epoch: %lu)", 
-            timeBuf, ntpEpoch);
+    LOG_NTP(LogConfig::LOG_INFO, "Heure NTP: %s (epoch: %" PRIu64 ")",
+            timeBuf,
+            static_cast<uint64_t>(static_cast<unsigned long long>(ntpEpoch)));
 
     _lastNtpSync = syncMillis;
   } else {
-    LOG_NTP(LogConfig::LOG_ERROR, "Échec de synchronisation NTP après %lu ms (%d tentatives)", 
-            syncDuration, attempts);
-    // Restaurer l'heure valide précédente pour éviter régression (configTime peut corrompre le RTC)
+    LOG_NTP(LogConfig::LOG_ERROR,
+            "Échec de synchronisation NTP après %lu ms (polls=%d, SNTP=%d, gotLocal=%d)",
+            syncDuration, pollCount, static_cast<int>(sntp_get_sync_status()),
+            gotLocal ? 1 : 0);
     if (isValidEpoch(localBeforeEpoch)) {
       timeval tv = {localBeforeEpoch, 0};
       settimeofday(&tv, nullptr);
-      LOG_NTP(LogConfig::LOG_WARN, "Heure restaurée (epoch: %lu)", (unsigned long)localBeforeEpoch);
+      LOG_NTP(LogConfig::LOG_WARN, "Heure restaurée (epoch: %" PRIu64 ")",
+              static_cast<uint64_t>(static_cast<unsigned long long>(localBeforeEpoch)));
     }
   }
 }
@@ -633,7 +647,8 @@ time_t PowerManager::loadTimeWithFallback() {
   for (size_t i = 0; i < sizeof(fallbacks) / sizeof(fallbacks[0]); i++) {
     const Fallback& fb = fallbacks[i];
     if (isValidEpoch(fb.epoch)) {
-      Serial.printf("[Power] Utilisation epoch %s: %lu\n", fb.name, fb.epoch);
+      Serial.printf("[Power] Utilisation epoch %s: %" PRIu64 "\n", fb.name,
+                    static_cast<uint64_t>(static_cast<unsigned long long>(fb.epoch)));
       timeval tv = {fb.epoch, 0};
       settimeofday(&tv, nullptr);
       return fb.epoch;
@@ -760,8 +775,9 @@ void PowerManager::smartSaveTime() {
   _lastSavedEpoch = currentEpoch;
   char timeBuf[64];
   getCurrentTimeString(timeBuf, sizeof(timeBuf));
-  Serial.printf("[Power] Heure sauvegardée: %s (epoch: %lu)\n", 
-                timeBuf, currentEpoch);
+  Serial.printf("[Power] Heure sauvegardée: %s (epoch: %" PRIu64 ")\n",
+                timeBuf,
+                static_cast<uint64_t>(static_cast<unsigned long long>(currentEpoch)));
 }
 
 uint32_t PowerManager::getSleptTime(uint64_t startUs) {
