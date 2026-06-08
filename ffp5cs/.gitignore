@@ -1,5 +1,6 @@
 # PlatformIO
 .pio/
+.pio_artifacts/
 .vscode/
 .clang_complete
 .gcc-flags.json
