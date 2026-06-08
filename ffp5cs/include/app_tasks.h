@@ -50,7 +50,8 @@ QueueHandle_t getSensorQueue();
 // (sinon risque de corruption si le caller retourne avant fin TLS).
 // v11.178: Defaults 5s (règle offline-first). POST: dérogation 8s (HTTP_POST_TIMEOUT_MS).
 // outFromNVSFallback: si non null, reçoit true quand la config vient du cache NVS (v11.193: ne pas appeler processFetchedRemoteConfig dans ce cas)
-bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000, bool* outFromNVSFallback = nullptr);
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs = 5000, bool* outFromNVSFallback = nullptr,
+                         bool* outDeferred = nullptr);
 /** Différer GET outputs/state si POST en cours ou en file (évite netRPC timeout 12 s). */
 bool shouldDeferRemoteStateFetch();
 
@@ -90,6 +91,11 @@ bool waitForBootConfigFetch(uint32_t timeoutMs = TimingConfig::BOOT_CONFIG_FETCH
 
 /** Attend que les files net/postSender soient vides (POST réveil terminé avant OTA). */
 bool waitForNetworkQueuesDrain(uint32_t timeoutMs = NetworkConfig::WAKEUP_POST_DRAIN_TIMEOUT_MS);
+
+/** v14.01 : début fenêtre post-réveil (sérialisation HTTP / garde WiFi). */
+void markWakeProtectionStart();
+/** v14.01 : true pendant TimingConfig::WAKEUP_PROTECTION_DURATION_MS après markWakeProtectionStart(). */
+bool isInWakeProtectionWindow();
 
 }  // namespace AppTasks
 

@@ -426,22 +426,51 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
         Serial.println(F("[Auto] Attente stabilisation réseau après réveil..."));
         vTaskDelay(pdMS_TO_TICKS(NetworkConfig::WAKEUP_NETWORK_STABILIZATION_DELAY_MS));
         esp_task_wdt_reset();
-        
-        // Phase 3: Fetch config avec retries (critique pour commandes programmées)
+
+        AppTasks::markWakeProtectionStart();
+
+        // Phase 3 (v14.01): vider files résiduelles pre-veille puis POST réveil prioritaire
+        if (!AppTasks::waitForNetworkQueuesDrain(NetworkConfig::WAKEUP_POST_DRAIN_TIMEOUT_MS)) {
+            Serial.println(F("[Auto] Files réseau non vides avant POST réveil (timeout drain)"));
+        }
+
+        if (core.isRemoteSendEnabled() && WiFi.status() == WL_CONNECTED) {
+            Serial.println(F("[Auto] 📤 Envoi données après réveil (prioritaire)..."));
+            core.sendFullUpdate(r, nullptr);
+            if (!AppTasks::waitForNetworkQueuesDrain(NetworkConfig::WAKEUP_POST_DRAIN_TIMEOUT_MS)) {
+                Serial.println(F("[Auto] POST réveil peut encore être en cours (timeout drain)"));
+            }
+        } else if (!core.isRemoteSendEnabled()) {
+            Serial.println(F("[Auto] Envoi distant désactivé — POST réveil ignoré"));
+        } else {
+            Serial.println(F("[Auto] ⚠️ WiFi déconnecté — POST réveil annulé"));
+        }
+
+        // Phase 4: Fetch config après POST (évite concurrence HTTP au réveil)
         ArduinoJson::StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
         bool fetchSuccess = false;
         bool fromNVSFallback = false;
-        
-        for (int attempt = 1; attempt <= NetworkConfig::WAKEUP_FETCH_MAX_RETRIES && !fetchSuccess; attempt++) {
-            // Vérifier que WiFi est toujours connecté avant chaque tentative
+        int fetchAttempts = 0;
+
+        for (int attempt = 1; attempt <= NetworkConfig::WAKEUP_FETCH_MAX_RETRIES && !fetchSuccess; ++attempt) {
             if (WiFi.status() != WL_CONNECTED) {
                 Serial.printf("[Auto] ⚠️ WiFi déconnecté avant tentative fetch %d/%d\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
                 break;
             }
-            
+
             Serial.printf("[Auto] 🔄 Tentative fetch config %d/%d après réveil...\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
-            bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::WAKEUP_FETCH_TIMEOUT_MS, &fromNVSFallback);
-            
+            bool deferred = false;
+            bool ok = AppTasks::netFetchRemoteState(doc, NetworkConfig::WAKEUP_FETCH_TIMEOUT_MS, &fromNVSFallback, &deferred);
+
+            if (deferred) {
+                Serial.printf("[Auto] Fetch config différé (tentative %d/%d) — retry\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
+                vTaskDelay(pdMS_TO_TICKS(NetworkConfig::WAKEUP_FETCH_RETRY_DELAY_MS));
+                esp_task_wdt_reset();
+                --attempt;
+                continue;
+            }
+
+            fetchAttempts++;
             if (ok && !fromNVSFallback && doc.size() > 0) {
                 fetchSuccess = true;
                 Serial.printf("[Auto] ✅ Fetch config réussi (tentative %d/%d)\n", attempt, NetworkConfig::WAKEUP_FETCH_MAX_RETRIES);
@@ -456,25 +485,9 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
                 }
             }
         }
-        
-        if (!fetchSuccess) {
-            Serial.println(F("[Auto] ⚠️ Fetch config échoué après tous les retries - envoi différé"));
-            // Optionnel: différer l'envoi si fetch critique échoue
-            // Pour l'instant, on continue avec l'envoi pour garantir les données
-        }
-        
-        // Phase 4: Envoi données (garanti si WiFi connecté et envoi activé)
-        if (core.isRemoteSendEnabled()) {
-            if (WiFi.status() == WL_CONNECTED) {
-                Serial.println(F("[Auto] 📤 Envoi données après réveil..."));
-                core.sendFullUpdate(r, nullptr);
-                // v14.00 : laisser le POST se terminer avant mail réveil / OTA (évite concurrence netTask)
-                if (!AppTasks::waitForNetworkQueuesDrain(NetworkConfig::WAKEUP_POST_DRAIN_TIMEOUT_MS)) {
-                    Serial.println(F("[Auto] POST réveil peut encore être en cours (timeout drain)"));
-                }
-            } else {
-                Serial.println(F("[Auto] ⚠️ WiFi déconnecté - envoi annulé"));
-            }
+
+        if (!fetchSuccess && fetchAttempts > 0) {
+            Serial.println(F("[Auto] ⚠️ Fetch config échoué après tous les retries"));
         }
     }
 

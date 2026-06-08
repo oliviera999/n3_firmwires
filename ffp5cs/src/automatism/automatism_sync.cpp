@@ -91,6 +91,9 @@ void AutomatismSync::update(const SensorReadings& readings, SystemActuators& act
     bool intervalReached = (timeSinceLastSend > SEND_INTERVAL_MS);
     
     if (wifiConnected && sendEnabled) {
+        if (AppTasks::isInWakeProtectionWindow()) {
+            return;
+        }
         // v12.33: Garde heap — différer POST si heap < 20 KB (évite allocation HTTP en état critique)
         constexpr uint32_t MIN_HEAP_FOR_POST = 20000;
         if (ESP.getFreeHeap() < MIN_HEAP_FOR_POST) {

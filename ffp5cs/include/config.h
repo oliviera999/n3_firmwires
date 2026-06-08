@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "14.00";
+    inline constexpr const char* VERSION = "14.01";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -313,8 +313,8 @@ namespace NetworkConfig {
     // RPC >= HTTP + 2 s marge (évite abandon caller avant fin POST — v12.35)
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 17000;  // 17 s
 #else
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 22000;  // 22 s (monitoring 2026-06 : max 20213 ms)
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 25000;  // 25 s (v13.95: marge POST ~20 s observé)
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 28000;  // 28 s (monitoring 2026-06-07 : ~23 s + retry 401 HMAC)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 30000;  // 30 s (aligné POST 28 s + marge file)
 #endif
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
     inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;
@@ -323,7 +323,7 @@ namespace NetworkConfig {
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
     // Fetch au réveil : timeout plus long (dérogation acceptable car critique pour commandes programmées)
-    inline constexpr uint32_t WAKEUP_FETCH_TIMEOUT_MS = 15000;  // 15s par tentative
+    inline constexpr uint32_t WAKEUP_FETCH_TIMEOUT_MS = 28000;  // 28 s (aligné FETCH_REMOTE_STATE_RPC_TIMEOUT_MS)
     inline constexpr int WAKEUP_FETCH_MAX_RETRIES = 3;
     inline constexpr uint32_t WAKEUP_FETCH_RETRY_DELAY_MS = 2000;  // 2s entre retries
     inline constexpr uint32_t WAKEUP_NETWORK_STABILIZATION_DELAY_MS = 1000;  // 1s après waitForNetworkReady
@@ -333,7 +333,7 @@ namespace NetworkConfig {
 #if defined(BOARD_S3)
     inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 32000;  // POST 15s + GET 8s + marge
 #else
-    inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 36000;  // POST 18s + GET 8s + marge
+    inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 40000;  // POST 28s + GET 8s + marge
 #endif
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
     // que requêtes HTTP standard

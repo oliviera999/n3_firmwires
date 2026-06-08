@@ -19,9 +19,18 @@
 #include <esp_sntp.h>
 #include <inttypes.h>
 #include "realtime_websocket.h"
+#include <atomic>
 #if defined(USE_RTC_DS3231)
 #include "rtc_ds3231.h"
 #endif
+
+namespace {
+std::atomic<bool> s_staReconnectInProgress{false};
+}  // namespace
+
+bool PowerManager::isStaReconnectInProgress() {
+  return s_staReconnectInProgress.load(std::memory_order_acquire);
+}
 
 // #region agent log
 #if defined(USE_RTC_DS3231)
@@ -512,6 +521,19 @@ bool PowerManager::reconnectWithSavedCredentials() {
     Serial.println(F("[Power] Aucun identifiant WiFi sauvegardé"));
     return false;
   }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    return true;
+  }
+
+  if (s_staReconnectInProgress.exchange(true, std::memory_order_acq_rel)) {
+    Serial.println(F("[Power] Reconnexion WiFi déjà en cours — skip"));
+    return false;
+  }
+
+  struct StaReconnectGuard {
+    ~StaReconnectGuard() { s_staReconnectInProgress.store(false, std::memory_order_release); }
+  } reconnectGuard;
   
   Serial.printf("[Power] Tentative de reconnexion WiFi avec SSID: %s\n", _lastSSID);
   

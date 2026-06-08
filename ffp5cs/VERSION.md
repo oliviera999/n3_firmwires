@@ -12,6 +12,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.01 - 2026-06-08
+
+### Correctifs réseau P1/P2/P3 (monitoring v14.00, 2026-06-07)
+
+- **P1 HMAC/timeout** : réinitialisation du budget timeout au retry `401 HMAC` (`web_client.cpp`) ; `HTTP_POST_TIMEOUT_MS` WROOM 22 s → **28 s** ; RPC 30 s ; logs `elapsed_first` / `ntp_trusted`.
+- **P2 réveil** : séquence post-réveil `drain → POST → drain → fetch config` ; fenêtre `WAKEUP_PROTECTION` (30 s) ; fetch différé (`outDeferred`) non compté comme échec ; OTA/sync POST reportés pendant la fenêtre.
+- **P3 WiFi** : mutex `isStaReconnectInProgress()` partagé power/wifi_manager ; garde `checkConnectionStability` et `loop()` pendant veille/réveil.
+- **Serveur** : `Ffp3HmacPostBody` ignore champs vides (alignement Eau* omis) ; log `auth_ms` + `body_hash` sur 401 ; PDO `MYSQL_ATTR_CONNECT_TIMEOUT` 5 s ; cache colonnes BDD persistant.
+- **Fichiers** : `include/config.h`, `src/web_client.cpp`, `src/power.cpp`, `include/power.h`, `src/wifi_manager.cpp`, `src/app_tasks.cpp`, `include/app_tasks.h`, `src/automatism/automatism_sleep.cpp`, `src/automatism/automatism_sync.cpp`, `serveur/src/Security/Ffp3HmacPostBody.php`, `serveur/src/Controller/AbstractPostDataController.php`, `serveur/src/Controller/Ffp3/PostDataController.php`, `serveur/src/Config/Database.php`, `serveur/src/Repository/SensorRepository.php`, tests HMAC, `serveur/docs/ENDPOINTS_ESP32_SERVEUR.md`.
+
+---
+
 ## Version 14.00 - 2026-06-07
 
 ### Boot / veille / réveil — renforcement séquence réseau (audit boot-veille)

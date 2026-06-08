@@ -50,6 +50,9 @@ class PowerManager {
   bool reconnectWithSavedCredentials();
   void waitForNetworkReady();
 
+  /** v14.01 : true pendant reconnectWithSavedCredentials() (évite course WiFi loop/power). */
+  static bool isStaReconnectInProgress();
+
   // Sauvegarde forcée
   void forceSaveTimeToFlash();
 

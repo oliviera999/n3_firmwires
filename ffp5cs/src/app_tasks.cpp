@@ -649,7 +649,8 @@ static void otaTask(void* pv) {
       continue;
     }
     lastOtaCheckMs = millis();
-    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isOtaExclusive()) {
+    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isOtaExclusive()
+        || AppTasks::isInWakeProtectionWindow()) {
       continue;
     }
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {
@@ -1622,7 +1623,23 @@ static NetRpcResult netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   return req->success ? NetRpcResult::CompletedSuccess : NetRpcResult::CompletedFailure;
 }
 
+static unsigned long s_wakeProtectionStartMs = 0;
+
+void markWakeProtectionStart() {
+  s_wakeProtectionStartMs = millis();
+}
+
+bool isInWakeProtectionWindow() {
+  if (s_wakeProtectionStartMs == 0) {
+    return false;
+  }
+  return (millis() - s_wakeProtectionStartMs) < TimingConfig::WAKEUP_PROTECTION_DURATION_MS;
+}
+
 bool shouldDeferRemoteStateFetch() {
+  if (isInWakeProtectionWindow()) {
+    return true;
+  }
   if (WebClient::isHttpTransportBusy()) {
     return true;
   }
@@ -1632,9 +1649,16 @@ bool shouldDeferRemoteStateFetch() {
   return false;
 }
 
-bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback,
+                         bool* outDeferred) {
+  if (outDeferred) {
+    *outDeferred = false;
+  }
   if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return false;
   if (shouldDeferRemoteStateFetch()) {
+    if (outDeferred) {
+      *outDeferred = true;
+    }
     static unsigned long s_lastDeferLogMs = 0;
     const unsigned long nowMs = millis();
     if (nowMs - s_lastDeferLogMs >= 60000) {
@@ -1734,6 +1758,7 @@ uint32_t netHeartbeatDroppedCount() {
 
 void netRequestOtaCheck() {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  if (isInWakeProtectionWindow()) return;
   if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return;
   if (g_otaTriggerQueue) {
     uint8_t t = 1;

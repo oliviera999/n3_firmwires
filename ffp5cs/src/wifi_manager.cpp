@@ -1,4 +1,6 @@
 #include "wifi_manager.h"
+#include "app_tasks.h"
+#include "tls_mutex.h"
 #include "display_view.h"
 #include "power.h"
 #include "config.h"
@@ -684,6 +686,9 @@ void WifiManager::loop(DisplayView* disp){
     return;
   }
   if (_connecting) return; // éviter les conflits
+  if (g_enteringLightSleep) return;
+  if (PowerManager::isStaReconnectInProgress()) return;
+  if (AppTasks::isInWakeProtectionWindow()) return;
   if(now - _lastAttemptMs < _retryIntervalMs) return;
 
 #if defined(BOARD_S3)
@@ -791,6 +796,10 @@ void WifiManager::checkConnectionStability() {
     Serial.printf("[WiFi] Vérification stabilité - RSSI: %d dBm (%s)\n", rssi, quality);
     
     if (shouldReconnect()) {
+      if (g_enteringLightSleep || PowerManager::isStaReconnectInProgress()
+          || AppTasks::isInWakeProtectionWindow()) {
+        return;
+      }
       Serial.println("[WiFi] Reconnexion intelligente déclenchée");
       Serial.printf("[Event] WiFi smart reconnect triggered RSSI=%d\n", rssi);
       
