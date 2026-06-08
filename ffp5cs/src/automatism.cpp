@@ -517,9 +517,7 @@ void Automatism::startTankPumpManual() {
     _countdownEnd = nowMs + refillDurationMs;
     _pumpStartMs = nowMs;
     // v11.165: Validation niveau eau avant assignation (audit robustesse)
-    _levelAtPumpStart = (cur.wlAqua >= SensorConfig::Ultrasonic::MIN_DISTANCE_MM &&
-                         cur.wlAqua <= SensorConfig::Ultrasonic::MAX_DISTANCE_MM)
-                        ? cur.wlAqua : 0;
+    _levelAtPumpStart = SensorValidation::isWaterLevelKnown(cur.wlAqua) ? cur.wlAqua : 0;
 }
 
 void Automatism::stopTankPumpManual() {
@@ -667,6 +665,9 @@ void Automatism::markCurrentFeedingSlotAsDone() {
 
 // Sous-fonction: Sécurité aquarium trop plein
 void Automatism::handleRefillAquariumOverfillSecurity(const SensorReadings& r) {
+    if (!SensorValidation::isWaterLevelKnown(r.wlAqua)) {
+        return;
+    }
     if (r.wlAqua < cmToMm(_network.getLimFlood())) {
         if (!tankPumpLocked || _tankPumpLockReason != TankPumpLockReason::AQUARIUM_OVERFILL) {
             tankPumpLocked = true;
@@ -706,6 +707,9 @@ void Automatism::handleRefillManualModeCheck() {
 
 // Sous-fonction: Démarrage automatique (retourne true si bloqué par réserve basse)
 bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
+    if (!SensorValidation::isWaterLevelKnown(r.wlAqua)) {
+        return false;
+    }
     if (r.wlAqua > cmToMm(_network.getAqThresholdCm()) && !tankPumpLocked &&
         tankPumpRetries < MAX_PUMP_RETRIES && !_manualTankOverride) {
         if (!_acts.isTankPumpRunning()) {
@@ -778,7 +782,10 @@ void Automatism::handleRefillManualCycleEnd(const SensorReadings& r) {
             }
 
             if (_network.isEmailEnabled() && !emailTankStopSent) {
-                int levelImprovement = _levelAtPumpStart - r.wlAqua;
+                int levelImprovement = 0;
+                if (SensorValidation::isWaterLevelKnown(r.wlAqua) && _levelAtPumpStart > 0) {
+                    levelImprovement = _levelAtPumpStart - r.wlAqua;
+                }
                 char msg[256];
                 snprintf(msg, sizeof(msg),
                          "Remplissage MANUEL terminé\nAmélioration: %d mm, Aqua: %d mm",
@@ -826,8 +833,17 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
         sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
     }
 
-    int levelImprovement = _levelAtPumpStart - r.wlAqua;
+    int levelImprovement = 0;
+    if (SensorValidation::isWaterLevelKnown(r.wlAqua) && _levelAtPumpStart > 0) {
+        levelImprovement = _levelAtPumpStart - r.wlAqua;
+    }
     Serial.printf("[CRITIQUE] Amélioration niveau: %d mm\n", levelImprovement);
+
+    if (!SensorValidation::isWaterLevelKnown(r.wlAqua)) {
+        Serial.println(F("[CRITIQUE] Niveau aquarium inconnu — fin remplissage sans évaluation d'efficacité"));
+        Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE ==="));
+        return;
+    }
 
     if (levelImprovement < 1) {
         ++tankPumpRetries;
@@ -974,6 +990,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         return;  // Pas d'alertes pendant la période de grâce
     }
 
+    if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
     if (readings.wlAqua > cmToMm(_network.getAqThresholdCm()) && !_lowAquaSent && mailEnabled) {
         char msgBuffer[128];
         formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (> ", cmToMm(_network.getAqThresholdCm()));
@@ -1029,6 +1046,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         } else {
             aboveResetSinceEpoch = 0;
         }
+    }
     }
 
     if (readings.wlTank > cmToMm(_network.getTankThresholdCm()) && !_lowTankSent && mailEnabled) {

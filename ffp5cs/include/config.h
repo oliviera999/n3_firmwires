@@ -64,7 +64,7 @@ static_assert(!SecretsValidation::strEq(Secrets::API_KEY, "CHANGEZ_MOI"),
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.95";
+    inline constexpr const char* VERSION = "14.00";
     
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -168,7 +168,7 @@ namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
     // Reconnexion après réveil : dérogation pour réseaux lents/faibles (DHCP, association jusqu'à 8s)
-    inline constexpr uint32_t WIFI_RECONNECT_AFTER_WAKE_MS = 8000;
+    inline constexpr uint32_t WIFI_RECONNECT_AFTER_WAKE_MS = 12000;
     // 15 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP) — permet liens faibles au boot et manuel
     // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
@@ -180,6 +180,8 @@ namespace TimingConfig {
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
     // où on peut récupérer la config distante de manière fiable
     inline constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 8000;
+    // Attente fin fetch config netTask avant POST boot (GET 8s + délai TLS + marge)
+    inline constexpr uint32_t BOOT_CONFIG_FETCH_WAIT_MS = 25000;
     inline constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
     // Délai après disconnect avant scan (stabilisation chip WiFi)
@@ -203,6 +205,8 @@ namespace TimingConfig {
     inline constexpr uint32_t OTA_CHECK_INTERVAL_MS = 7200000; // 2h
     // Pas d'attente otaTask : ne jamais bloquer plus longtemps sans reset WDT (TWDT 30s/60s)
     inline constexpr uint32_t OTA_WDT_FEED_INTERVAL_MS = 10000; // 10s
+    // Délai après mail réveil avant demande OTA (stabilisation TCP/IP / heap post-TLS)
+    inline constexpr uint32_t OTA_CHECK_DELAY_AFTER_WAKE_MS = 3000;
     inline constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
@@ -303,13 +307,13 @@ namespace NetworkConfig {
     inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 28000;  // 28 s (v13.95)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
-    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
+    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~20,2 s (4G, monitoring 2026-06) ; 22 s marge WROOM.
 #if defined(BOARD_S3)
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 15000;  // 15 s (S3: rester sous TWDT 30s, monitoring 2026-03)
     // RPC >= HTTP + 2 s marge (évite abandon caller avant fin POST — v12.35)
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 17000;  // 17 s
 #else
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 22000;  // 22 s (monitoring 2026-06 : max 20213 ms)
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 25000;  // 25 s (v13.95: marge POST ~20 s observé)
 #endif
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
@@ -323,6 +327,8 @@ namespace NetworkConfig {
     inline constexpr int WAKEUP_FETCH_MAX_RETRIES = 3;
     inline constexpr uint32_t WAKEUP_FETCH_RETRY_DELAY_MS = 2000;  // 2s entre retries
     inline constexpr uint32_t WAKEUP_NETWORK_STABILIZATION_DELAY_MS = 1000;  // 1s après waitForNetworkReady
+    // Attente vidage files net/postSender après POST réveil, avant OTA ou mail TLS
+    inline constexpr uint32_t WAKEUP_POST_DRAIN_TIMEOUT_MS = 25000;
     // Attente files net/postSender vides + mutex transport avant WiFi.disconnect (veille légère)
 #if defined(BOARD_S3)
     inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 32000;  // POST 15s + GET 8s + marge
@@ -628,6 +634,13 @@ namespace SensorConfig {
         inline constexpr uint16_t LUMINOSITY = 450;
     }
 
+    // Politique fallback ultrason (compile-time). false = wl*=0, champ POST omis, NULL BDD.
+    namespace WaterLevelFallbackPolicy {
+        inline constexpr bool USE_FALLBACK_AQUA = false;
+        inline constexpr bool USE_FALLBACK_TANK = true;
+        inline constexpr bool USE_FALLBACK_POTA = true;
+    }
+
     namespace WaterTemp {
         inline constexpr float MIN_VALID = 5.0f;
         inline constexpr float MAX_VALID = 60.0f;
@@ -773,6 +786,11 @@ namespace SensorValidation {
     inline bool isValidDistance(uint16_t distance) {
         return distance >= SensorConfig::Ultrasonic::MIN_DISTANCE_MM && 
                distance <= SensorConfig::Ultrasonic::MAX_DISTANCE_MM;
+    }
+
+    // Niveau d'eau connu (lecture ultrason valide pour l'automatisme / POST)
+    inline bool isWaterLevelKnown(uint16_t wl) {
+        return wl > 0 && wl <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM;
     }
     
     // Applique une valeur par défaut si la température d'eau est invalide
@@ -1079,10 +1097,10 @@ namespace TaskConfig {
 #elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14032;  // v13.90 : -128 octets link dram0 (ffp3_post_body)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14000;  // v14.00 : −32 octets link dram0 (+16 B débordement)
 #elif defined(BOARD_WROOM) && defined(PROFILE_PROD)
-    // v13.36: netTaskStack[] en BSS — réduction vs 14376 pour link dram0_0_seg (GCC 14 / IDF 5.5 ; marge TLS)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12800;  // −1576 mots vs 14376 (link avril 2026)
+    // v13.36/v13.96: netTaskStack[] en BSS — réduction vs 14376 pour link dram0_0_seg (GCC 14 / IDF 5.5)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 12624;  // v13.98 : −32 mots (link dram0 +8 B, juin 2026)
 #else
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 14376;   // WROOM (fallback)
 #endif

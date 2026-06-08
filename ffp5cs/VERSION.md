@@ -12,6 +12,83 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.00 - 2026-06-07
+
+### Boot / veille / réveil — renforcement séquence réseau (audit boot-veille)
+
+Suite à l'analyse boot/veille/réseau :
+
+- **Boot** : `postConfiguration()` attend la fin du fetch config `netTask` (`waitForBootConfigFetch`, 25 s max) avant le POST initial — évite `configSynced=0` et GPIO non appliqués au premier POST.
+- **Réveil** : si `goToLightSleep()` a déjà reconnecté le WiFi, suppression des attentes WiFi/DNS redondantes (~8 s + 5 s économisés).
+- **DNS** : `waitForNetworkReady()` teste la résolution du hostname serveur (`ServerUrlConfig::getServerHostname`) au lieu de `pool.ntp.org`.
+- **POST réveil** : `waitForNetworkQueuesDrain()` avant mail réveil et OTA — le check OTA ne concurrence plus le POST post-réveil.
+- **Fichiers** : `include/server_url_config.h`, `include/config.h`, `include/app_tasks.h`, `src/app_tasks.cpp`, `src/system_boot.cpp`, `src/power.cpp`, `src/automatism/automatism_sleep.cpp`, `VERSION.md`.
+
+---
+
+## Version 14.00 - 2026-06-07
+
+### Réseau et timeouts POST (monitoring 2 h 2026-06-07)
+
+Correctifs ciblés après run 2 h en v13.94 (scans WiFi vides post-veille, POST timeout à 18 s alors que latence ~19–20 s) :
+
+- **WiFi fast reconnect** : `WifiManager::loop()` tente `PowerManager::reconnectWithSavedCredentials()` avant le scan complet `connect()` (injection `setPowerManager`).
+- **Scan retry** : jusqu'à 3 tentatives de scan dans `connect()` avec `WIFI_PRE_SCAN_DELAY_MS` entre échecs.
+- **`WIFI_RECONNECT_AFTER_WAKE_MS`** : 8 s → **12 s** (association DHCP après light sleep).
+- **`HTTP_POST_TIMEOUT_MS` (WROOM)** : 18 s → **22 s** (max observé 20 213 ms + marge). S3 inchangé (15 s / TWDT).
+- **Déploiement effectif** des correctifs v13.95 déjà en tree (`FETCH_REMOTE_STATE_RPC_TIMEOUT_MS` 28 s, `shouldDeferRemoteStateFetch`).
+- **Link wroom-beta** : `NET_TASK_STACK_SIZE` 14032 → **14000** (−32 octets BSS, débordement dram0 +16 B).
+- **Fichiers** : `include/config.h`, `include/wifi_manager.h`, `src/wifi_manager.cpp`, `src/app.cpp`, `VERSION.md`.
+
+---
+
+## Version 13.99 - 2026-06-06
+
+### Correctif stack canary otaTask (monitoring 6 h)
+
+- **`downloadMetadata()`** : suppression du double buffer stack (`tempPayload[4096]`) ; lecture HTTP directe dans le buffer `payload` appelant (`OTA_METADATA_PAYLOAD_BUFFER_SIZE`).
+- **Réveil veille** : délai `OTA_CHECK_DELAY_AFTER_WAKE_MS` (3 s) après mail réveil avant `netRequestOtaCheck()` pour laisser le réseau se stabiliser post-TLS.
+- **Contexte** : 5 panics `Stack canary watchpoint triggered (otaTask)` lors du GET metadata après réveil (run 6 h du 06/06/2026, wroom-beta v13.94).
+- **Fichiers** : `src/ota_manager.cpp`, `src/automatism/automatism_sleep.cpp`, `include/config.h`, `VERSION.md`.
+
+### Niveaux d'eau ultrason — absence de mesure (fallback configurable)
+
+- **`SensorConfig::WaterLevelFallbackPolicy`** : trois flags compile-time (`USE_FALLBACK_AQUA` / `TANK` / `POTA`). Par défaut : aquarium **sans** fallback, réserve et potager conservent l'ancien comportement.
+- **`SensorReadingFallback::resolveWaterLevel()`** : si fallback désactivé, lecture invalide → `wl*=0` (pas de lastValid ni valeur par défaut 152 mm).
+- **POST serveur** : champs `Eau*` omis quand `wl*=0` (`formatWaterLevelPost`, `appendKV` ignore les valeurs vides). BDD : `NULL`.
+- **Automatisme** : décisions remplissage / inondation / alertes aquarium ignorées si `SensorValidation::isWaterLevelKnown()` est faux (évite fausse alerte sur `wlAqua=0`).
+- **UI serveur** : affichage « — » si dernière mesure absente ; temps réel ne force plus 0 cm.
+
+---
+
+## Version 13.98 - 2026-06-05
+
+### Link wroom-prod — débordement dram0 (+8 octets)
+
+- **`NET_TASK_STACK_SIZE` (PROFILE_PROD)** : 12656 → **12624** (−128 octets BSS) pour corriger `dram0_0_seg overflowed by 8 bytes` au link.
+- **`pio_save_boot_artifacts.py`** : skip phase 2 sur `checkprogsize` (évite verrou fichier Windows) ; retries sur copies.
+- **`pio_wroom_upload_bundle.py`** : résolution correcte de `esptool` (`$UPLOADER` / package `tool-esptoolpy`).
+
+---
+
+## Version 13.97 - 2026-06-05
+
+### Flash WROOM pioarduino — bundle cohérent (bootloader + partitions + firmware)
+
+- **`pio_restore_build_config.py`** : suppression du `SystemExit(0)` quand `CMakeCache.txt` est présent (bloquait build/upload en ~15 s).
+- **`pio_save_boot_artifacts.py`** : détection `partition-table.bin` / `boot_app0.bin` ; sync artifacts → `BUILD_DIR` après phase 2.
+- **`pio_wroom_upload_bundle.py`** : `pio run -t upload` flashe le jeu complet (évite panic « Cache error » après erase).
+
+---
+
+## Version 13.96 - 2026-06-04
+
+### Link wroom-prod — débordement dram0 (+152 octets)
+
+- **`NET_TASK_STACK_SIZE` (PROFILE_PROD)** : 12800 → **12672** (−512 octets BSS) pour corriger `region dram0_0_seg overflowed` au link (pioarduino 55.03.37 / GCC 14).
+
+---
+
 ## Version 13.95 - 2026-06-03
 
 ### netRPC GET — timeout aligné POST + différé si transport occupé

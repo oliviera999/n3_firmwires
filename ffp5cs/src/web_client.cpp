@@ -470,6 +470,9 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   bool truncated = false;
   
   auto appendKV = [&](const char* key, const char* value) {
+    if (!value || value[0] == '\0') {
+      return;
+    }
     if (truncated || offset >= sizeof(payload) - 1) {
       truncated = true;
       return;

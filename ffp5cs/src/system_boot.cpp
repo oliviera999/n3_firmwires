@@ -17,6 +17,7 @@
 #include "pins.h"
 #include "i2c_bus.h"
 #include "boot_log.h"  // BOOT_LOG : ets_printf (S3 PSRAM) ou Serial.printf (autres)
+#include "app_tasks.h"
 #include "sd_card.h"
 #include "sd_logger.h"
 #include <Wire.h>
@@ -494,6 +495,11 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
   }
 
   BOOT_LOG("[App] Chargement variables distantes: gere par netTask (deport TLS)\n");
+
+  // v14.00 : attendre fin fetch config avant POST boot (évite configSynced=0 / GPIO non appliqués)
+  if (!AppTasks::waitForBootConfigFetch(TimingConfig::BOOT_CONFIG_FETCH_WAIT_MS)) {
+    BOOT_LOG("[App] POST boot sans gate fetch (timeout netTask)\n");
+  }
 
   BOOT_LOG("[App] Verification des flags OTA...\n");
   BOOT_LOG("[App] state.justUpdated: %s\n", state.justUpdated ? "true" : "false");

@@ -14,6 +14,7 @@
 #include <freertos/task.h>
 #include "config.h"
 #include "log.h"
+#include "server_url_config.h"
 #include "esp_task_wdt.h"  // waitForNetworkReady : DNS peut bloquer > TWDT 30 s (otaTask)
 #include <esp_sntp.h>
 #include <inttypes.h>
@@ -583,18 +584,25 @@ void PowerManager::waitForNetworkReady() {
   esp_task_wdt_reset();
 
   // Phase 2: Vérifier que l'IP est toujours valide
+  char dnsHost[64];
+  ServerUrlConfig::getServerHostname(dnsHost, sizeof(dnsHost));
+  if (dnsHost[0] == '\0') {
+    strncpy(dnsHost, "pool.ntp.org", sizeof(dnsHost) - 1);
+    dnsHost[sizeof(dnsHost) - 1] = '\0';
+  }
+
   while ((millis() - startMs) < MAX_WAIT_MS) {
     esp_task_wdt_reset();
     if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
-      // Test DNS rapide pour vérifier que le réseau est vraiment opérationnel
+      // Test DNS sur le host serveur applicatif (fallback pool.ntp.org si hostname vide)
       IPAddress dnsResult;
       esp_task_wdt_reset();
-      if (WiFi.hostByName("pool.ntp.org", dnsResult)) {
+      if (WiFi.hostByName(dnsHost, dnsResult)) {
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-        Serial.printf("[Power] ✅ Réseau prêt (%s, DNS OK, %lu ms)\n", 
-                      ipBuf, millis() - startMs);
+        Serial.printf("[Power] ✅ Réseau prêt (%s, DNS %s OK, %lu ms)\n",
+                      ipBuf, dnsHost, millis() - startMs);
         esp_task_wdt_reset();
         return;
       }

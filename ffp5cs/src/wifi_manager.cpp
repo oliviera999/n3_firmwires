@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "display_view.h"
+#include "power.h"
 #include "config.h"
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
 #include "esp_mac.h"   // Pour esp_base_mac_addr_set (override MAC avant WiFi init)
@@ -208,16 +209,26 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[BOOT] wifi scan start\n");
 #endif
-  // v11.176: Watchdog reset avant scan bloquant (2-5s) - audit robustesse
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
-  }
   static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
   uint16_t num = 0;
-  int n = scanNetworksEspIdf(s_apRecords, NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num, true);
-  // v11.176: Watchdog reset après scan bloquant
-  if (esp_task_wdt_status(NULL) == ESP_OK) {
-    esp_task_wdt_reset();
+  int n = -1;
+  constexpr int kMaxScanAttempts = 3;
+  for (int attempt = 1; attempt <= kMaxScanAttempts; ++attempt) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    n = scanNetworksEspIdf(s_apRecords, NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num, true);
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    if (n > 0 && num > 0) {
+      break;
+    }
+    if (attempt < kMaxScanAttempts) {
+      Serial.printf("[WiFi] Scan vide/erreur (tentative %d/%d), retry...\n",
+                    attempt, kMaxScanAttempts);
+      vTaskDelay(pdMS_TO_TICKS(TimingConfig::WIFI_PRE_SCAN_DELAY_MS));
+    }
   }
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[BOOT] wifi scan done n=%d\n", n);
@@ -684,9 +695,14 @@ void WifiManager::loop(DisplayView* disp){
   // Mémorise le moment pour éviter les rafales d’essais
   _lastAttemptMs = now;
 
-  // Sinon on essaye à nouveau de se connecter.
   Serial.println(F("[WiFi] Tentative périodique de reconnexion"));
-  bool ok = connect(disp);
+  bool ok = false;
+  if (_power && _power->reconnectWithSavedCredentials()) {
+    Serial.println(F("[WiFi] Fast reconnect (credentials sauvegardés) OK"));
+    ok = true;
+  } else {
+    ok = connect(disp);
+  }
   if (!ok && WiFi.status() != WL_CONNECTED) {
     // Backoff long en mode AP pour éviter AUTH_EXPIRE et TWDT (scans répétés)
     _retryIntervalMs = TimingConfig::WIFI_AP_FALLBACK_RETRY_INTERVAL_MS;

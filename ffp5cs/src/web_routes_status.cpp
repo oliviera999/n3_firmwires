@@ -460,13 +460,23 @@ void registerJsonEndpoint(AsyncWebServer& server, AppContext& ctx) {
       r.tempWater = r.tempAir = r.humidity = NAN;
       r.wlAqua = r.wlTank = r.wlPota = r.luminosite = 0;
     }
-    // Utiliser les constantes centralisées pour les valeurs fallback
+    // Utiliser les constantes centralisées pour les valeurs fallback (selon politique par capteur)
     doc["tempWater"] = isnan(r.tempWater) ? SensorConfig::Fallback::TEMP_WATER : r.tempWater;
     doc["tempAir"] = isnan(r.tempAir) ? SensorConfig::Fallback::TEMP_AIR : r.tempAir;
     doc["humidity"] = isnan(r.humidity) ? SensorConfig::Fallback::HUMIDITY : r.humidity;
-    doc["wlAqua"] = r.wlAqua == 0 ? SensorConfig::Fallback::WATER_LEVEL_AQUA : r.wlAqua;
-    doc["wlTank"] = r.wlTank == 0 ? SensorConfig::Fallback::WATER_LEVEL_TANK : r.wlTank;
-    doc["wlPota"] = r.wlPota == 0 ? SensorConfig::Fallback::WATER_LEVEL_POTA : r.wlPota;
+    auto emitWlJson = [&](const char* key, uint16_t wl, bool useFallback, float fallbackMm) {
+      if (wl > 0) {
+        doc[key] = wl;
+      } else if (useFallback) {
+        doc[key] = fallbackMm;
+      }
+    };
+    emitWlJson("wlAqua", r.wlAqua, SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_AQUA,
+               SensorConfig::Fallback::WATER_LEVEL_AQUA);
+    emitWlJson("wlTank", r.wlTank, SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_TANK,
+               SensorConfig::Fallback::WATER_LEVEL_TANK);
+    emitWlJson("wlPota", r.wlPota, SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_POTA,
+               SensorConfig::Fallback::WATER_LEVEL_POTA);
     doc["luminosite"] = r.luminosite == 0 ? SensorConfig::Fallback::LUMINOSITY : r.luminosite;
     doc["pumpAqua"] = ctx.actuators.isAquaPumpRunning();
     doc["pumpTank"] = ctx.actuators.isTankPumpRunning();

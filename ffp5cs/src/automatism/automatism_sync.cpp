@@ -2,6 +2,7 @@
 #include "automatism.h"
 #include "config.h"
 #include "ffp3_post_body.h"
+#include "sensor_reading_fallback.h"
 #include "gpio_parser.h"
 #include "esp_task_wdt.h"
 #include <WiFi.h>
@@ -298,7 +299,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
     char payloadBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
     Ffp3PostBody::FullUpdateValues body{};
-    int diffMaree = core.computeDiffMaree(readings.wlAqua);
+    int diffMaree = SensorValidation::isWaterLevelKnown(readings.wlAqua)
+                      ? core.computeDiffMaree(readings.wlAqua)
+                      : 0;
     float pressureForPost = isnan(readings.pressureHpa) ? 0.0f : readings.pressureHpa;
 
     snprintf(body.apiKey, sizeof(body.apiKey), "%s", ApiConfig::API_KEY);
@@ -308,9 +311,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     snprintf(body.humidite, sizeof(body.humidite), "%.1f", readings.humidity);
     snprintf(body.pression, sizeof(body.pression), "%.1f", pressureForPost);
     snprintf(body.tempEau, sizeof(body.tempEau), "%.1f", readings.tempWater);
-    snprintf(body.eauPotager, sizeof(body.eauPotager), "%u", readings.wlPota);
-    snprintf(body.eauAquarium, sizeof(body.eauAquarium), "%u", readings.wlAqua);
-    snprintf(body.eauReserve, sizeof(body.eauReserve), "%u", readings.wlTank);
+    SensorReadingFallback::formatWaterLevelPost(body.eauPotager, sizeof(body.eauPotager), readings.wlPota);
+    SensorReadingFallback::formatWaterLevelPost(body.eauAquarium, sizeof(body.eauAquarium), readings.wlAqua);
+    SensorReadingFallback::formatWaterLevelPost(body.eauReserve, sizeof(body.eauReserve), readings.wlTank);
     snprintf(body.diffMaree, sizeof(body.diffMaree), "%d", diffMaree);
     snprintf(body.luminosite, sizeof(body.luminosite), "%u", readings.luminosite);
     snprintf(body.etatPompeAqua, sizeof(body.etatPompeAqua), "%d", acts.isAquaPumpRunning() ? 1 : 0);

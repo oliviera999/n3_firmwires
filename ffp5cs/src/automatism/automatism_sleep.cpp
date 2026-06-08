@@ -404,20 +404,26 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     // Sinon sendFullUpdate post-réveil envoyait etatPompeAqua=0 puis le poll réappliquait OFF.
     core.restoreActuatorsAfterWake(acts);
 
-    // Réveil: attente WiFi, stabilisation réseau, fetch config avec retries, puis envoi
-    unsigned long wakeStartMs = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - wakeStartMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
-        esp_task_wdt_reset();
-        vTaskDelay(pdMS_TO_TICKS(200));
+    // Réveil réseau : goToLightSleep() a déjà reconnecté + waitForNetworkReady si succès
+    const bool wifiAlreadyUp = (WiFi.status() == WL_CONNECTED);
+
+    if (!wifiAlreadyUp) {
+        unsigned long wakeStartMs = millis();
+        while (WiFi.status() != WL_CONNECTED && (millis() - wakeStartMs) < TimingConfig::WIFI_BOOT_TIMEOUT_MS) {
+            esp_task_wdt_reset();
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
     }
-    
+
     if (WiFi.status() == WL_CONNECTED) {
-        // Phase 1: Stabilisation réseau (déjà fait par waitForNetworkReady)
-        core.waitForNetworkReady();
-        
-        // Phase 2: Délai supplémentaire pour garantir stabilisation complète TCP/IP
-        // Après light sleep, le stack réseau peut nécessiter un délai supplémentaire
-        Serial.println(F("[Auto] Attente stabilisation complète réseau après réveil..."));
+        if (!wifiAlreadyUp) {
+            core.waitForNetworkReady();
+        } else {
+            Serial.println(F("[Auto] WiFi déjà reconnecté par goToLightSleep — skip attente redondante"));
+        }
+
+        // Délai TCP/IP post-réveil (stack peut nécessiter un court buffer)
+        Serial.println(F("[Auto] Attente stabilisation réseau après réveil..."));
         vTaskDelay(pdMS_TO_TICKS(NetworkConfig::WAKEUP_NETWORK_STABILIZATION_DELAY_MS));
         esp_task_wdt_reset();
         
@@ -462,6 +468,10 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
             if (WiFi.status() == WL_CONNECTED) {
                 Serial.println(F("[Auto] 📤 Envoi données après réveil..."));
                 core.sendFullUpdate(r, nullptr);
+                // v14.00 : laisser le POST se terminer avant mail réveil / OTA (évite concurrence netTask)
+                if (!AppTasks::waitForNetworkQueuesDrain(NetworkConfig::WAKEUP_POST_DRAIN_TIMEOUT_MS)) {
+                    Serial.println(F("[Auto] POST réveil peut encore être en cours (timeout drain)"));
+                }
             } else {
                 Serial.println(F("[Auto] ⚠️ WiFi déconnecté - envoi annulé"));
             }
@@ -473,7 +483,7 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
 
     Serial.printf("[Auto] Réveil après %u secondes de veille\n", actualSleptSec);
     
-    // Envoi du mail de réveil (si notifications activées)
+    // Envoi du mail de réveil (si notifications activées) — après POST drain
     if (core.isEmailEnabled()) {
         esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
         const char* wakeReason = (cause == ESP_SLEEP_WAKEUP_TIMER) ? "Timer" : "Autre";
@@ -481,7 +491,11 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     }
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
-    Serial.println(F("[Auto] Demande vérification OTA après réveil"));
+    Serial.printf("[Auto] Délai OTA post-réveil (%u s)\n",
+                  (unsigned)(TimingConfig::OTA_CHECK_DELAY_AFTER_WAKE_MS / 1000));
+    vTaskDelay(pdMS_TO_TICKS(TimingConfig::OTA_CHECK_DELAY_AFTER_WAKE_MS));
+    esp_task_wdt_reset();
+    Serial.println(F("[Auto] Demande vérification OTA après réveil (post POST)"));
     AppTasks::netRequestOtaCheck();
 #endif
 

@@ -110,6 +110,13 @@ struct PostSenderMsg {
   bool hasSdQueueEntry;
 };
 static QueueHandle_t g_postSenderQueue = nullptr;
+
+// v14.00 : synchronisation boot — postConfiguration attend la fin du fetch netTask
+static volatile bool s_bootConfigFetchDone = false;
+
+void markBootConfigFetchDone() {
+  s_bootConfigFetchDone = true;
+}
 static constexpr size_t kPostSenderQueueLen = 4;
 
 // Pool statique NetRequest : évite malloc/free à chaque requête réseau → moins de fragmentation (piste E).
@@ -776,6 +783,8 @@ static void netTask(void* pv) {
     Serial.println(F("[netTask] Boot: WiFi non connecté, fetchRemoteState skip"));
 #endif
   }
+
+  markBootConfigFetchDone();
 
   for (;;) {
     esp_task_wdt_reset();  // Reset watchdog dans boucle principale
@@ -1802,6 +1811,44 @@ bool quiesceHttpBeforeLightSleep(uint32_t timeoutMs) {
 
 void releaseHttpAfterLightSleep() {
   WebClient::releaseHttpTransportLockIfHeld();
+}
+
+bool waitForBootConfigFetch(uint32_t timeoutMs) {
+  if (s_bootConfigFetchDone) {
+    return true;
+  }
+  const unsigned long startMs = millis();
+  while (!s_bootConfigFetchDone && (millis() - startMs) < timeoutMs) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  if (!s_bootConfigFetchDone) {
+    Serial.println(F("[Boot] Timeout attente fetch config netTask — POST boot sans gate"));
+    return false;
+  }
+  Serial.println(F("[Boot] Fetch config netTask terminé — POST boot autorisé"));
+  return true;
+}
+
+bool waitForNetworkQueuesDrain(uint32_t timeoutMs) {
+  const unsigned long startMs = millis();
+  while ((millis() - startMs) < timeoutMs) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    const UBaseType_t postWaiting =
+        (g_postSenderQueue != nullptr) ? uxQueueMessagesWaiting(g_postSenderQueue) : 0;
+    const UBaseType_t netWaiting =
+        (g_netQueue != nullptr) ? uxQueueMessagesWaiting(g_netQueue) : 0;
+    if (postWaiting == 0 && netWaiting == 0) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  Serial.println(F("[Auto] Timeout attente vidage files réseau"));
+  return false;
 }
 
 }  // namespace AppTasks

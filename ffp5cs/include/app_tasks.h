@@ -85,6 +85,12 @@ bool quiesceHttpBeforeLightSleep(uint32_t timeoutMs = NetworkConfig::LIGHT_SLEEP
 /** Relâche le mutex acquis par quiesceHttpBeforeLightSleep (appeler juste après goToLightSleep). */
 void releaseHttpAfterLightSleep();
 
+/** Attend la fin du fetch config boot de netTask (avant POST initial dans postConfiguration). */
+bool waitForBootConfigFetch(uint32_t timeoutMs = TimingConfig::BOOT_CONFIG_FETCH_WAIT_MS);
+
+/** Attend que les files net/postSender soient vides (POST réveil terminé avant OTA). */
+bool waitForNetworkQueuesDrain(uint32_t timeoutMs = NetworkConfig::WAKEUP_POST_DRAIN_TIMEOUT_MS);
+
 }  // namespace AppTasks
 
 

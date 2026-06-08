@@ -468,42 +468,37 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
         return false;
     }
 
-    // Lecture du payload dans un buffer statique
-    const size_t MAX_PAYLOAD_SIZE = 4096;
-    char tempPayload[MAX_PAYLOAD_SIZE];
+    // Lecture directe dans le buffer appelant (évite double buffer ~4 Ko sur stack otaTask)
+    if (payloadSize < 2) {
+        http.end();
+        logError("Buffer metadata trop petit");
+        return false;
+    }
     WiFiClient* stream = http.getStreamPtr();
     size_t payloadLen = 0;
     if (stream) {
       // v11.178: Ajout timeout pour éviter blocage infini (audit bugs-high)
       unsigned long streamStart = millis();
       const unsigned long STREAM_TIMEOUT_MS = 5000;
-      while (stream->available() && payloadLen < MAX_PAYLOAD_SIZE - 1 
+      while (stream->available() && payloadLen < payloadSize - 1
              && (millis() - streamStart) < STREAM_TIMEOUT_MS) {
         if (esp_task_wdt_status(NULL) == ESP_OK) {
           esp_task_wdt_reset();
         }
-        size_t bytesRead = stream->readBytes(tempPayload + payloadLen, MAX_PAYLOAD_SIZE - payloadLen - 1);
+        size_t bytesRead = stream->readBytes(payload + payloadLen, payloadSize - payloadLen - 1);
         payloadLen += bytesRead;
       }
-      tempPayload[payloadLen] = '\0';
-      // Détection troncation : buffer plein et données restantes
-      if (payloadLen >= MAX_PAYLOAD_SIZE - 1 && stream->available() > 0) {
-          log("⚠️ Payload metadata tronqué (taille max dépassée), JSON peut être invalide");
+      payload[payloadLen] = '\0';
+      if (payloadLen >= payloadSize - 1 && stream->available() > 0) {
+          log("⚠️ Payload metadata tronqué (buffer sortie insuffisant), JSON peut être invalide");
       }
     } else {
       // v11.180: Suppression getString() - cause crashes LoadProhibited dans destructeur String
       log("⚠️ Pas de stream HTTP disponible");
-      tempPayload[0] = '\0';
+      payload[0] = '\0';
       payloadLen = 0;
     }
     http.end();
-    
-    if (payloadLen >= payloadSize) {
-        payloadLen = payloadSize - 1;
-        log("⚠️ Payload metadata tronqué (buffer sortie insuffisant)");
-    }
-    strncpy(payload, tempPayload, payloadLen);
-    payload[payloadLen] = '\0';
     
     snprintf(logMsg, sizeof(logMsg), "📄 Taille payload: %zu bytes", payloadLen);
     log(logMsg);
@@ -1807,8 +1802,7 @@ bool OTAManager::checkForUpdate() {
         return false;
     }
     
-    // Téléchargement des métadonnées
-    // Note: buffer sur la stack - tâche OTA 8KB stack, payload 3KB + doc 1.5KB + overhead
+    // Téléchargement des métadonnées (lecture directe dans payload, pas de buffer intermédiaire stack)
     // Taille alignée sur metadata.json servi (~2.7KB) pour éviter troncature → IncompleteInput
     char payload[BufferConfig::OTA_METADATA_PAYLOAD_BUFFER_SIZE];
     if (!downloadMetadata(payload, sizeof(payload))) {
