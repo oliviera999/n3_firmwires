@@ -16,7 +16,7 @@ Chaque dossier contient :
 | [`n3_battery`](n3_battery/) | 1.0.1 | Pont diviseur (délègue à `n3_analog_sensors`). | `n3_analog_sensors ^1.0.0` |
 | [`n3_wifi`](n3_wifi/) | 1.1.0 | Connexion WiFi multi-réseaux avec scan+RSSI+BSSID, callbacks. | — |
 | [`n3_http`](n3_http/) | 1.1.0 | **Déprécié** : GET/POST minimal HTTPClient avec timeout (`N3_HTTP_TIMEOUT_MS`). Préférer `n3_data`. | `n3_common ^1.3.0` |
-| [`n3_data`](n3_data/) | 1.0.0 | POST `application/x-www-form-urlencoded` avec HMAC body (`X-Signature`) et HMAC FFP3 (timestamp+signature dans le body). Timeout 5 s. | `n3_hmac`, `n3_common` |
+| [`n3_data`](n3_data/) | 1.1.0 | POST `application/x-www-form-urlencoded` avec HMAC body (`X-Signature`) et HMAC FFP3 (timestamp+signature dans le body). Timeout 5 s. Log `[SERVER][POST] Verdict` avec `duree_totale` (ms). | `n3_hmac`, `n3_common` |
 | [`n3_hmac`](n3_hmac/) | 1.0.0 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. | — |
 | [`n3_mail`](n3_mail/) | 1.0.0 | Envoi email SMTP via ESP Mail Client (helper debug body). | `mobizt/ESP Mail Client` |
 | [`n3_time`](n3_time/) | 1.0.0 | Sauvegarde/restauration heure RTC en flash NVS, raison de réveil. | `fbiego/ESP32Time` |

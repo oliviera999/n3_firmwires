@@ -71,8 +71,28 @@ int n3DataPost(const N3PostConfig& config) {
 
   if (config.onSending) config.onSending();
 
+  const unsigned long postStartMs = millis();
   int code = http.POST(body);
+  const unsigned long durationMs = millis() - postStartMs;
   http.end();
+
+  const int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+  const char* verdict = (code >= 200 && code < 400)
+                            ? "acceptee par le serveur (code 2xx/3xx)"
+                            : (code >= 400 && code < 500)
+                                  ? "rejet client 4xx"
+                                  : (code >= 500)
+                                        ? "erreur serveur 5xx"
+                                        : (code <= 0)
+                                              ? "echec reseau ou timeout (code <= 0)"
+                                              : "non classee";
+  Serial.printf(
+      "[SERVER][POST] Verdict: %s | code_HTTP=%d | duree_totale=%lu ms | timeout=%d ms | RSSI=%d dBm\n",
+      verdict, code, durationMs, N3_HTTP_TIMEOUT_MS, rssi);
+  if (durationMs >= (unsigned long)N3_HTTP_TIMEOUT_MS - 500UL) {
+    Serial.printf("[SERVER][POST][WARN] POST proche ou au-dela du timeout (%lu ms / %d ms)\n",
+                  durationMs, N3_HTTP_TIMEOUT_MS);
+  }
 
   if (config.onResult) config.onResult(code);
   return code;
