@@ -94,6 +94,8 @@ int n3DataPost(const N3PostConfig& config) {
                   durationMs, N3_HTTP_TIMEOUT_MS);
   }
 
+  n3NetStatsRecordPost(code, durationMs, rssi);
+
   if (config.onResult) config.onResult(code);
   return code;
 }
@@ -110,9 +112,27 @@ String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceA
   if (deviceApiKey != nullptr && deviceApiKey[0] != '\0') {
     http.addHeader("X-Api-Key", deviceApiKey);
   }
+  const unsigned long getStartMs = millis();
   int code = http.GET();
+  const unsigned long durationMs = millis() - getStartMs;
   String payload = (code > 0) ? http.getString() : String("{}");
   http.end();
+
+  const int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+  const char* verdict = (code >= 200 && code < 400)
+                            ? "acceptee (code 2xx/3xx)"
+                            : (code >= 400 && code < 500)
+                                  ? "rejet client 4xx"
+                                  : (code >= 500)
+                                        ? "erreur serveur 5xx"
+                                        : (code <= 0)
+                                              ? "echec reseau ou timeout"
+                                              : "non classee";
+  Serial.printf(
+      "[SERVER][GET] Verdict: %s | code_HTTP=%d | duree_totale=%lu ms | timeout=%d ms | RSSI=%d dBm\n",
+      verdict, code, durationMs, N3_HTTP_TIMEOUT_MS, rssi);
+  n3NetStatsRecordGet(code, durationMs, rssi);
+
   if (outHttpCode) *outHttpCode = (unsigned int)code;
   return payload;
 }

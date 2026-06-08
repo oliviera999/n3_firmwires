@@ -37,6 +37,11 @@
 #define N3_DEFAULT_FREQ_WAKE_UP_S 300
 #endif
 
+// Intervalle entre deux rapports mail reseau/communication (secondes, cumul RTC deep sleep).
+#ifndef N3_NETWORK_REPORT_INTERVAL_S
+#define N3_NETWORK_REPORT_INTERVAL_S (6UL * 60UL * 60UL)
+#endif
+
 #ifndef N3_WAKEUP_GPIO
 #define N3_WAKEUP_GPIO GPIO_NUM_4
 #endif

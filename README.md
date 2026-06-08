@@ -199,7 +199,8 @@ Les firmwares **n3pp** et **msp** (et `ffp5cs` pour certaines libs) utilisent de
 | `n3_battery` | Lecture batterie pont diviseur (délègue à `n3_analog_sensors`). Compatible API n3pp/msp. |
 | `n3_wifi` | Connexion WiFi multi-réseaux (timeout, callbacks affichage/échec) |
 | `n3_http` | GET / POST HTTP minimal — **déprécié** depuis 1.1 (préférer `n3_data`). |
-| `n3_data` | POST `application/x-www-form-urlencoded` avec timeout 5 s, signature HMAC body (`X-Signature`) et HMAC FFP3 (timestamp + signature dans le body si `sigSecret` fourni). Log série `duree_totale` (ms) sur chaque POST (v1.1.0). |
+| `n3_data` | POST/GET URL-encoded, timeout 5 s, HMAC, logs Verdict + stats reseau (`N3NetStatsSnapshot`, v1.2.0). |
+| `n3_mail` | SMTP + rapport mail reseau periodique (`n3MailBuildNetReportBody`, v1.1.0). |
 | `n3_hmac` | HMAC-SHA256 (helper `n3HmacSha256` + intégration HTTPClient). |
 | `n3_mail` | Envoi email SMTP (ESP Mail Client). |
 | `n3_time` | Sauvegarde/restauration heure en flash, raison de réveil. |

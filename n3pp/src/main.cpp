@@ -306,8 +306,10 @@ void loop() {
     Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
   }
 
-  // Comptabilise le temps de sommeil a venir pour le cooldown arrosage et l'OTA periodique.
+  // Comptabilise le temps de sommeil a venir pour le cooldown arrosage, l'OTA et le rapport reseau.
   accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
+  n3ppAccumulateNetReportElapsedFromSleep(FreqWakeUp);
+  n3ppMaybeSendNetworkReportEmail();
   arrosageAutoAccumulateCooldown(FreqWakeUp);
   sommeil();
 }
