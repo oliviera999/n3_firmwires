@@ -15,13 +15,13 @@ Chaque dossier contient :
 | [`n3_analog_sensors`](n3_analog_sensors/) | 1.0.0 | Lecture ADC filtrée (médiane + outliers + EMA). Utilisée par n3pp, msp, ffp5cs. | — |
 | [`n3_battery`](n3_battery/) | 1.0.1 | Pont diviseur (délègue à `n3_analog_sensors`). | `n3_analog_sensors ^1.0.0` |
 | [`n3_wifi`](n3_wifi/) | 1.1.0 | Connexion WiFi multi-réseaux avec scan+RSSI+BSSID, callbacks. | — |
-| [`n3_data`](n3_data/) | 1.0.0 | POST `application/x-www-form-urlencoded` avec HMAC body (`X-Signature`) et HMAC FFP3 (timestamp+signature dans le body). Timeout 5 s. | `n3_hmac`, `n3_common` |
-| [`n3_hmac`](n3_hmac/) | 1.0.0 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. | — |
+| [`n3_data`](n3_data/) | 1.0.1 | POST `application/x-www-form-urlencoded` avec HMAC body (`X-Signature`) et HMAC FFP3 (timestamp+signature dans le body). Timeout 5 s. | `n3_hmac`, `n3_common` |
+| [`n3_hmac`](n3_hmac/) | 1.0.1 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. | — |
 | [`n3_mail`](n3_mail/) | 1.0.0 | Envoi email SMTP via ESP Mail Client (helper debug body). | `mobizt/ESP Mail Client` |
 | [`n3_time`](n3_time/) | 1.0.0 | Sauvegarde/restauration heure RTC en flash NVS, raison de réveil. | `fbiego/ESP32Time` |
-| [`n3_common`](n3_common/) | 1.4.0 | OTA HTTP distant avec vérif sha256 + ECDSA P-256 (`n3_ota`), constantes `n3_defaults.h`, parsing JSON outputs `n3_outputs_json` (factorisation 2026-05). | `bblanchon/ArduinoJson ^7.4.3`, `arduino-libraries/Arduino_JSON ^0.2.0` |
+| [`n3_common`](n3_common/) | 1.4.1 | OTA HTTP distant avec vérif sha256 + ECDSA P-256 (`n3_ota`), constantes `n3_defaults.h`, parsing JSON outputs `n3_outputs_json` (factorisation 2026-05). | `bblanchon/ArduinoJson ^7.4.3`, `arduino-libraries/Arduino_JSON ^0.2.0` |
 | [`n3_sleep`](n3_sleep/) | 1.0.0 | Configuration et démarrage du deep sleep ESP32 (timer + GPIO ext0). | — |
-| [`n3_display`](n3_display/) | 1.0.0 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/SSD1306` |
+| [`n3_display`](n3_display/) | 1.0.1 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/Adafruit SSD1306` |
 
 ## Intégration
 
