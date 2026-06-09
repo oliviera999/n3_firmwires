@@ -8,8 +8,10 @@
 // d'initialisation et valeurs inchangés) ; seules les déclarations extern et
 // les prototypes de tâches déplacées vivent ici.
 //
+#include "config.h"   // FEATURE_OTA / FEATURE_HTTP_OTA
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/task.h>
 
 struct AppContext;
 
@@ -19,6 +21,16 @@ extern AppContext* g_ctx;
 // File capteurs : producteur sensorTask, consommateur automationTask.
 extern QueueHandle_t g_sensorQueue;
 
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+// File + handle OTA : créés par AppTasks::start(), produits par netTask /
+// triggerOtaCheck, consommés par otaTask (app_tasks_ota.cpp).
+extern QueueHandle_t g_otaTriggerQueue;
+extern TaskHandle_t g_otaTaskHandle;
+#endif
+
 // --- Corps de tâches déplacés hors d'app_tasks.cpp ---
 void webTask(void* pv);    // app_tasks_web.cpp
 void sensorTask(void* pv); // app_tasks_sensor.cpp
+#if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+void otaTask(void* pv);    // app_tasks_ota.cpp
+#endif
