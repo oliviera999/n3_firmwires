@@ -150,7 +150,10 @@ Dérive de versions (les libs `shared/` sont compilées dans **tous** les projet
 
 Ces chantiers à fort gain (effort > 1 semaine, risque élevé sans validation sur cible) ont été **amorcés de façon incrémentale et validée par build**, mais pas terminés — pour ne pas livrer de changements massifs non testés sur du matériel de prod (pompe, nourrissage poisson, tracker) :
 
-1. **Découpe des god files ffp5cs** — ✅ **bien avancé** : `web_server.cpp` **2084 → 898 lignes (−57 %)** — 3 groupes extraits via le pattern `WebRoutes::register*Routes` : **WiFi** (`web_routes_wifi.cpp`), **NVS** (`web_routes_nvs.cpp`), **système/OTA** (`web_routes_system.cpp`). **Reste** : découpe d'`app_tasks.cpp` (8 tâches FreeRTOS — **plus risqué**, code de boot/scheduler) et `ota_manager.cpp`. *Chaque extraction validée par build `wroom-test`.*
+1. **Découpe des god files ffp5cs** — ✅ **bien avancé** :
+   - `web_server.cpp` **2084 → 898 lignes (−57 %)** — 3 groupes extraits via `WebRoutes::register*Routes` : **WiFi** (`web_routes_wifi.cpp`), **NVS** (`web_routes_nvs.cpp`), **système/OTA** (`web_routes_system.cpp`).
+   - `app_tasks.cpp` **1788 → 1614 lignes** — **pool `NetRequest`** extrait en module isolé `net_request_pool.h/.cpp` (encapsulé, testable).
+   - **Reste** : les 8 tâches FreeRTOS d'`app_tasks` (interdépendantes via queues → refonte d'interface dédiée, non un simple déplacement) et `ota_manager.cpp`. *Chaque extraction validée par build `wroom-test`.*
 2. **`BoardTraits` / réduction des `#ifdef`** — ✅ **amorcé** : `board_traits.h` existait déjà (v13.60) mais **sous-utilisé** ; adoption étendue aux `#ifdef BOARD_S3` de **sélection de valeurs** (`config.h`). **Constat architectural** : la majorité des 175 `#ifdef` gardent des **APIs spécifiques S3** (WDT `wdt_hal`, PSRAM, variantes IDF) et **ne sont pas convertibles** en `if constexpr` (qui exige que les deux branches compilent sur toutes les cibles). Le gain réaliste de `BoardTraits` se limite donc aux sélections de valeurs/booléens, pas au remplacement intégral des `#ifdef`.
 
 ## 7. CI
