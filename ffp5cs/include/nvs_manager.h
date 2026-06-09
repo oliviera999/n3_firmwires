@@ -184,3 +184,24 @@ public:
 
 // Instance globale
 extern NVSManager g_nvsManager;
+
+// RAII : verrou NVS auto. Défini ici (après NVSManager) pour être partagé par
+// nvs_manager.cpp et nvs_manager_typed.cpp (les accesseurs typés l'utilisent).
+class NVSLockGuard {
+public:
+    explicit NVSLockGuard(NVSManager& manager, TickType_t timeout = pdMS_TO_TICKS(100))
+        : _manager(manager)
+        , _locked(manager.lock(timeout)) {}
+
+    ~NVSLockGuard() {
+        if (_locked) {
+            _manager.unlock();
+        }
+    }
+
+    bool locked() const { return _locked; }
+
+private:
+    NVSManager& _manager;
+    bool _locked;
+};
