@@ -45,5 +45,8 @@ namespace SystemBoot {
     void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state);
     void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state);
 
+    /// Mail de démarrage (diagnostic) — extrait de setup() (cibles non-S3+PSRAM).
+    void sendStartupTestMail(AppContext& ctx);
+
 } // namespace SystemBoot
 

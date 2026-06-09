@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 13.93 - 2026-06-09
+
+### Audit optimisation — allègement des god-files (sans changement fonctionnel)
+
+- `nvsTypeToStr()` / `nvsStrToType()` (`src/web_server.cpp`) : remplacés par une **table unique** `kNvsTypeTable` (source de vérité partagée par les deux sens ; ajouter un type NVS se fait désormais en un seul endroit au lieu de 2 chaînes `switch`/`if-strcmp`).
+- Mail de démarrage extrait de `setup()` (`src/app.cpp`, ~57 lignes) vers `SystemBoot::sendStartupTestMail()` (`src/system_boot.cpp`) — comportement identique, `setup()` allégé.
+- **Fichiers** : `src/web_server.cpp`, `src/app.cpp`, `src/system_boot.cpp`, `include/system_boot.h`. Validé par build `wroom-test`.
+
+---
+
 ## Version 13.92 - 2026-06-03
 
 ### Nourrissage distant — créneaux partagés (PR #9 IOT_n3)

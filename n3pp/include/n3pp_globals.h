@@ -58,8 +58,7 @@ extern String enableEmailChecked;
 
 extern String emailMessage;
 
-/* Session SMTP globale pour l'envoi des emails (ESP Mail Client) */
-extern SMTPSession smtp;
+/* Session SMTP désormais locale à n3_mail (plus de global). */
 
 extern int PontDiv;
 extern int avgPontDiv;

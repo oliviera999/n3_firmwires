@@ -35,7 +35,6 @@
 | `n3_analog_sensors` | Lecture ADC filtrée (médiane + rejet outliers + EMA) — luminosité, pont diviseur, humidité sol |
 | `n3_battery` | Mesure tension batterie via pont diviseur (délègue à `n3_analog_sensors`) |
 | `n3_wifi` | Connexion WiFi avec scan RSSI, tri par signal, retry BSSID |
-| `n3_http` | GET/POST HTTP minimal — **déprécié** (préférer `n3_data`) |
 | `n3_data` | POST `application/x-www-form-urlencoded` avec HMAC body (`X-Signature`) + HMAC FFP3 |
 | `n3_hmac` | Signature HMAC-SHA256 via mbedTLS (header `X-Signature`) |
 | `n3_mail` | Envoi email SMTP (ESP Mail Client) |
@@ -43,7 +42,6 @@
 | `n3_common` | OTA `n3_ota` (sha256 + ECDSA P-256), constantes `n3_defaults.h`, parsing `n3_outputs_json` |
 | `n3_sleep` | Deep sleep mutualisé (timer + GPIO ext0) |
 | `n3_display` | Abstraction affichage OLED SSD1306 |
-| `libn3_iot` | Drivers capteurs génériques (DHT, DS18B20, analogique) — conservé pour compat |
 
 **Point positif :** La factorisation en bibliothèques partagées est bien réalisée. Les firmwares `n3pp`, `msp` et `uploadphotosserver` utilisent tous `shared/` via `lib_extra_dirs = ../shared` dans PlatformIO (et `ffp5cs` pour certaines libs). Détail à jour : voir [`shared/README.md`](shared/README.md).
 
@@ -192,7 +190,7 @@ Les `platformio.ini` de `n3pp` et `msp` ne contiennent plus de `upload_port = CO
 
 | Priorité | Action | Firmware | État |
 |----------|--------|----------|------|
-| 🟠 Moyenne | Remplacer `sprintf` par `snprintf` dans `n3_hmac.cpp:29` | `shared/n3_hmac` | **À faire** |
+| ✅ Fait | Remplacer `sprintf` par `snprintf` dans `n3_hmac.cpp:29` | `shared/n3_hmac` | **Fait (2026-06)** |
 | 🟡 Basse | Migrer serveur HTTP → HTTPS pour les envois de données | `n3pp`, `msp`, `uploadphotosserver` | Préparé sur ffp5cs (`USE_HTTPS_ENDPOINTS`) |
 | ✅ Fait | Credentials externalisés (`credentials.h`) | `à voir/LVGL_Widgets` | Fait (2026-06) |
 | ✅ Fait | Fallback secrets durci (placeholder + static_assert PROD) | `ffp5cs` | Fait (2026-06) |

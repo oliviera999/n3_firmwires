@@ -7,7 +7,7 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "4.39"
+#define FIRMWARE_VERSION "4.40"
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13

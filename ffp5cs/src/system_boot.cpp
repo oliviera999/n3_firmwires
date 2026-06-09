@@ -604,4 +604,64 @@ void postConfiguration(AppContext& ctx, const char* hostname, OtaState& state) {
   ctx.automatism.sendFullUpdate(rs, "resetMode=0");
 }
 
+// v13.93 (audit) : extrait du setup() (app.cpp) pour alléger le god-file.
+// Notification mail de démarrage (diagnostic). Cibles non-S3+PSRAM uniquement.
+void sendStartupTestMail(AppContext& ctx) {
+  if (ctx.wifi.isConnected()) {
+    LOG_INFO("=== TEST MAIL AU DÉMARRAGE ===");
+
+    // Buffers statiques pour éviter fragmentation mémoire
+    static char targetEmail[EmailConfig::MAX_EMAIL_LENGTH];
+    static char bootMsg[BufferConfig::EMAIL_MAX_SIZE_BYTES];
+    static char emailSubject[128];
+
+    // Adresse configurée ou défaut (boot avant 1er sync → NVS vide)
+    const char* emailFromConfig = ctx.automatism.getEmailAddress();
+    if (!emailFromConfig || strlen(emailFromConfig) == 0) {
+      LOG_INFO("Email non configuré (boot avant sync), utilisation adresse par défaut");
+      strncpy(targetEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(targetEmail) - 1);
+      targetEmail[sizeof(targetEmail) - 1] = '\0';
+    } else {
+      strncpy(targetEmail, emailFromConfig, sizeof(targetEmail) - 1);
+      targetEmail[sizeof(targetEmail) - 1] = '\0';
+    }
+
+    LOG_INFO("Cible: %s", targetEmail);
+
+    IPAddress ip = WiFi.localIP();
+    char ssid[64];
+    ctx.wifi.currentSSID(ssid, sizeof(ssid));
+    int written = snprintf(bootMsg, sizeof(bootMsg),
+                          "Système démarré avec succès (v%s).\n"
+                          "IP: %d.%d.%d.%d\n"
+                          "SSID: %s\n"
+                          "Raison: Test forcé au boot",
+                          ProjectConfig::VERSION,
+                          ip[0], ip[1], ip[2], ip[3],
+                          ssid);
+    if (written < 0 || (size_t)written >= sizeof(bootMsg)) {
+      bootMsg[sizeof(bootMsg) - 1] = '\0';
+    }
+
+    snprintf(emailSubject, sizeof(emailSubject), "Démarrage système v%s", ProjectConfig::VERSION);
+
+    // Reset watchdog avant envoi bloquant
+    ctx.power.resetWatchdog();
+    // sendAlert(..., true) = alerte diagnostic (rapport temporel détaillé)
+    bool queued = ctx.mailer.sendAlert(emailSubject, bootMsg, targetEmail, true);
+
+    if (queued) {
+      LOG_INFO("✅ Mail de démarrage ajouté à la queue (envoi différé)");
+    } else {
+      LOG_ERROR("❌ Échec ajout à la queue mail de démarrage");
+    }
+    ctx.power.resetWatchdog();
+  } else {
+    LOG_ERROR("❌ Impossible d'envoyer mail: WiFi non connecté au boot");
+  }
+
+  LOG_INFO("Initialisation terminée");
+  Serial.println("[Event] Init done");
+}
+
 }  // namespace SystemBoot
