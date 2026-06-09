@@ -6,7 +6,20 @@ Chaque dossier contient :
 
 - `library.json` : nom, version, dépendances PlatformIO.
 - `src/` : sources C++ Arduino (`.h` + `.cpp`).
-- Pas de tests natifs PlatformIO pour l'instant (cf. plan d'audit 2026-05 — Phase 4 tests).
+
+## Tests natifs
+
+Tests unitaires hôte (Unity) pour la logique pure, sous [`tests_native/`](tests_native/) :
+
+```bash
+cd shared/tests_native
+pio test -c platformio-native.ini -e native
+```
+
+Chaque test inclut directement le `.cpp` testé avec un mock Arduino minimal
+(`mocks/Arduino.h`, `analogRead` injectable) — aucune dépendance matérielle.
+Couverture actuelle : `n3_analog_sensors` (médiane, rejet d'outliers, moyenne,
+EMA, fallback, tensions batterie). À étendre aux autres libs à logique pure.
 
 ## Inventaire
 
