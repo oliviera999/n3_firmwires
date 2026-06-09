@@ -38,6 +38,8 @@ QueueHandle_t g_sensorQueue = nullptr;
 QueueHandle_t g_otaTriggerQueue = nullptr;
 TaskHandle_t g_otaTaskHandle = nullptr;
 #endif
+// g_postSenderQueue : linkage externe (consommateur postSenderTask -> app_tasks_post.cpp).
+QueueHandle_t g_postSenderQueue = nullptr;
 
 namespace {
 
@@ -78,15 +80,8 @@ static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> g_remoteFallbackDoc;
 QueueHandle_t g_netQueue = nullptr;
 TaskHandle_t g_netTaskHandle = nullptr;
 
-// Fire-and-forget POST : tâche dédiée (post-data + heartbeat), netTask libère le slot immédiatement
-enum class PostSenderType : uint8_t { PostData = 0, Heartbeat = 1 };
-struct PostSenderMsg {
-  PostSenderType type;
-  char payload[BufferConfig::POST_PAYLOAD_MAX_SIZE];
-  uint32_t sdSeqNum;
-  bool hasSdQueueEntry;
-};
-static QueueHandle_t g_postSenderQueue = nullptr;
+// Fire-and-forget POST : PostSenderType/PostSenderMsg déplacés dans app_tasks_internal.h ;
+// g_postSenderQueue défini en global (linkage externe pour app_tasks_post.cpp).
 static constexpr size_t kPostSenderQueueLen = 4;
 
 
@@ -154,76 +149,6 @@ static void netNotifyDone(NetRequest* req) {
 }
 
 // Tâche dédiée POST (fire-and-forget) : post-data et heartbeat, netTask libère le slot immédiatement
-static void postSenderTask(void* pv) {
-  (void)pv;
-  static bool wdtRegistered = false;
-  if (!wdtRegistered) {
-    esp_task_wdt_add(nullptr);
-    wdtRegistered = true;
-  }
-  PostSenderMsg msg;
-  const TickType_t queueReceiveTicks = pdMS_TO_TICKS(15000);  // 15s max sans feed WDT (TWDT 30s/60s)
-  for (;;) {
-    BaseType_t got = xQueueReceive(g_postSenderQueue, &msg, queueReceiveTicks);
-    esp_task_wdt_reset();
-    if (got != pdTRUE) continue;
-    if (!g_ctx) continue;
-    if (g_ctx->otaManager.isOtaExclusive()) {
-      if (LogConfig::SERIAL_ENABLED) {
-        Serial.println(F("[postSender] OTA exclusif — POST reporté"));
-      }
-      if (xQueueSendToFront(g_postSenderQueue, &msg, 0) != pdTRUE) {
-        if (msg.type == PostSenderType::PostData && msg.payload[0] != '\0') {
-          (void)g_ctx->webClient.queueFailedPost(msg.payload);
-        }
-      }
-      vTaskDelay(pdMS_TO_TICKS(2000));
-      continue;
-    }
-    if (msg.type == PostSenderType::PostData) {
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[postSender] post-data start\n");
-#else
-      if (LogConfig::SERIAL_ENABLED) {
-        Serial.println(F("[postSender] Exécution POST mesures (post-data) — le verdict HTTP suit sous [HTTP]"));
-      }
-#endif
-      bool postOk = g_ctx->webClient.tryPushStatusToServer(msg.payload);
-      if (postOk && msg.hasSdQueueEntry) {
-        SdLogger::markSent(msg.sdSeqNum);
-      }
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[postSender] post-data end ok=%d\n", postOk ? 1 : 0);
-#else
-      if (LogConfig::SERIAL_ENABLED) {
-        Serial.printf("[postSender] Fin POST mesures: %s\n",
-                      postOk ? "succès (2xx/3xx) ou accepté"
-                             : "échec — voir [HTTP] Verdict ; payload peut être en file NVS");
-      }
-#endif
-    } else if (msg.type == PostSenderType::Heartbeat) {
-      char heartbeatUrl[256];
-      ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[postSender] heartbeat start\n");
-#else
-      if (LogConfig::SERIAL_ENABLED) {
-        Serial.println(F("[postSender] Exécution POST heartbeat"));
-      }
-#endif
-      bool hbOk = g_ctx->webClient.postToUrl(heartbeatUrl, msg.payload, NetworkConfig::HTTP_POST_TIMEOUT_MS);
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-      ets_printf("[postSender] heartbeat end ok=%d\n", hbOk ? 1 : 0);
-#else
-      if (LogConfig::SERIAL_ENABLED) {
-        Serial.printf("[postSender] Fin heartbeat: %s\n", hbOk ? "OK" : "échec — voir [HTTP] Verdict");
-      }
-#endif
-    }
-    esp_task_wdt_reset();
-  }
-}
-
 
 static void netTask(void* pv) {
   (void)pv;

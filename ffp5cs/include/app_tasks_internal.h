@@ -21,6 +21,16 @@ extern AppContext* g_ctx;
 // File capteurs : producteur sensorTask, consommateur automationTask.
 extern QueueHandle_t g_sensorQueue;
 
+// Fire-and-forget POST : message + file (producteur netTask, consommateur postSenderTask).
+enum class PostSenderType : uint8_t { PostData = 0, Heartbeat = 1 };
+struct PostSenderMsg {
+  PostSenderType type;
+  char payload[BufferConfig::POST_PAYLOAD_MAX_SIZE];
+  uint32_t sdSeqNum;
+  bool hasSdQueueEntry;
+};
+extern QueueHandle_t g_postSenderQueue;
+
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 // File + handle OTA : créés par AppTasks::start(), produits par netTask /
 // triggerOtaCheck, consommés par otaTask (app_tasks_ota.cpp).
@@ -29,8 +39,9 @@ extern TaskHandle_t g_otaTaskHandle;
 #endif
 
 // --- Corps de tâches déplacés hors d'app_tasks.cpp ---
-void webTask(void* pv);    // app_tasks_web.cpp
-void sensorTask(void* pv); // app_tasks_sensor.cpp
+void webTask(void* pv);        // app_tasks_web.cpp
+void sensorTask(void* pv);     // app_tasks_sensor.cpp
+void postSenderTask(void* pv); // app_tasks_post.cpp
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 void otaTask(void* pv);    // app_tasks_ota.cpp
 #endif
