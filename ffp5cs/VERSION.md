@@ -27,7 +27,8 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
   - **tâche OTA isolée** : `prepareOtaExclusiveHeap`/`runOtaCheckCycle`/`otaTask` → `app_tasks_ota.cpp` (`g_otaTriggerQueue`/`g_otaTaskHandle` exposés via le header interne).
   - **tâche postSender isolée** : `postSenderTask` → `app_tasks_post.cpp` (`PostSenderType`/`PostSenderMsg` déplacés dans le header interne, `g_postSenderQueue` exposé).
   - **tâche automation isolée** : `automationTask` + helpers `logBouffeAndPumpStats`/`g_remoteFallbackDoc` (automation-only) → `app_tasks_automation.cpp` (aucune nouvelle exposition).
-  - Cumul : `app_tasks.cpp` **1788 → 780 lignes (−56 %)**, 7 unités extraites. Reste `netTask` (propriétaire TLS/WebClient + pool).
+  - **tâche net isolée** : `netTask` (propriétaire WebClient/TLS, RPC pool) + `netNotifyDone` → `app_tasks_net.cpp` (`g_netQueue` + 4 handles de tâches exposés via le header interne).
+  - **Refonte complète** : `app_tasks.cpp` **1788 → 540 lignes (−70 %)** — ne reste que l'API publique `AppTasks` + `start()`. 8 unités extraites (pool, mail, 6 tâches), build `wroom-test` OK à chaque étape.
   - Build `wroom-test` OK à chaque étape.
 - Décomposition `ota_manager.cpp` (2074 → 429 lignes) : les définitions des méthodes membres de `OTAManager` réparties sur plusieurs TU — **validation** (métadonnées/tailles/espace/sélection) → `ota_manager_validate.cpp` (343 l.) ; **téléchargement/flash** (metadata, firmware modern/fallback/ultra, filesystem, updateTask) → `ota_manager_download.cpp` (1362 l.). Classe et comportement inchangés (déplacement verbatim). Build `wroom-test` OK.
 - Adoption de `board_traits.h` (existant mais sous-utilisé depuis v13.60) : conversion des `#ifdef BOARD_S3` de **sélection de valeurs** dans `config.h` (`BOARD_TYPE`, `getProfileName`, `WIFI_CONNECT_ATTEMPT_TIMEOUT_MS`) en `BoardTraits::isS3()/hasPsram()`. Les `#ifdef` gardant des APIs S3 (WDT/PSRAM) restent en l'état (contrainte `if constexpr`).

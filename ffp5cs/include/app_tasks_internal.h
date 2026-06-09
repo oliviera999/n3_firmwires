@@ -31,6 +31,14 @@ struct PostSenderMsg {
 };
 extern QueueHandle_t g_postSenderQueue;
 
+// File RPC réseau + handles des tâches (pour netNotifyDone) : consommés/lus par
+// netTask (app_tasks_net.cpp), créés/écrits par AppTasks::start().
+extern QueueHandle_t g_netQueue;
+extern TaskHandle_t g_sensorTaskHandle;
+extern TaskHandle_t g_webTaskHandle;
+extern TaskHandle_t g_autoTaskHandle;
+extern TaskHandle_t g_displayTaskHandle;
+
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 // File + handle OTA : créés par AppTasks::start(), produits par netTask /
 // triggerOtaCheck, consommés par otaTask (app_tasks_ota.cpp).
@@ -43,6 +51,7 @@ void webTask(void* pv);          // app_tasks_web.cpp
 void sensorTask(void* pv);       // app_tasks_sensor.cpp
 void postSenderTask(void* pv);   // app_tasks_post.cpp
 void automationTask(void* pv);   // app_tasks_automation.cpp
+void netTask(void* pv);          // app_tasks_net.cpp
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 void otaTask(void* pv);    // app_tasks_ota.cpp
 #endif
