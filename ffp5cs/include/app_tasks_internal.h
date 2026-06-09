@@ -39,9 +39,10 @@ extern TaskHandle_t g_otaTaskHandle;
 #endif
 
 // --- Corps de tâches déplacés hors d'app_tasks.cpp ---
-void webTask(void* pv);        // app_tasks_web.cpp
-void sensorTask(void* pv);     // app_tasks_sensor.cpp
-void postSenderTask(void* pv); // app_tasks_post.cpp
+void webTask(void* pv);          // app_tasks_web.cpp
+void sensorTask(void* pv);       // app_tasks_sensor.cpp
+void postSenderTask(void* pv);   // app_tasks_post.cpp
+void automationTask(void* pv);   // app_tasks_automation.cpp
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 void otaTask(void* pv);    // app_tasks_ota.cpp
 #endif
