@@ -19,6 +19,7 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 - `nvsTypeToStr()` / `nvsStrToType()` (`src/web_server.cpp`) : remplacés par une **table unique** `kNvsTypeTable` (source de vérité partagée par les deux sens ; ajouter un type NVS se fait désormais en un seul endroit au lieu de 2 chaînes `switch`/`if-strcmp`).
 - Mail de démarrage extrait de `setup()` (`src/app.cpp`, ~57 lignes) vers `SystemBoot::sendStartupTestMail()` (`src/system_boot.cpp`) — comportement identique, `setup()` allégé.
 - Test `test_server_url` réaligné sur le comportement v13.87 (endpoints sans préfixe `/ffp3/`) — il était resté sur l'ancien format et n'était pas détecté faute de CI lançant les tests natifs.
+- Décomposition `web_server.cpp` (2084 → 1601 lignes) : groupe d'endpoints WiFi (`/wifi/scan|saved|connect|remove`, ~483 lignes) extrait vers `web_routes_wifi.cpp` (pattern `WebRoutes::registerWifiRoutes`, comme status/ui). `getWebParam()` rendu public (partagé). Comportement identique, build `wroom-test` OK.
 - **Fichiers** : `src/web_server.cpp`, `src/app.cpp`, `src/system_boot.cpp`, `include/system_boot.h`, `test/test_server_url/`. Validé par build `wroom-test` + tests natifs (47 verts).
 
 ---
