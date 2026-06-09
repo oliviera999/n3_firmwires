@@ -290,64 +290,8 @@ void setup() {
   BOOT_LOG("[BOOT] init done\n");
   wifi.startDelayedModeInitTask();
 #else
-  // Notification de démarrage par mail (Diagnostic "fix mail")
-  if (g_appContext.wifi.isConnected()) {
-    LOG_INFO("=== TEST MAIL AU DÉMARRAGE ===");
-    
-    // Buffers statiques pour éviter fragmentation mémoire
-    static char targetEmail[EmailConfig::MAX_EMAIL_LENGTH];
-    static char bootMsg[BufferConfig::EMAIL_MAX_SIZE_BYTES];
-    static char emailSubject[128];
-    
-    // Récupérer l'adresse configurée ou utiliser la constante par défaut (boot avant 1er sync → NVS vide)
-    const char* emailFromConfig = g_appContext.automatism.getEmailAddress();
-    if (!emailFromConfig || strlen(emailFromConfig) == 0) {
-      LOG_INFO("Email non configuré (boot avant sync), utilisation adresse par défaut");
-      strncpy(targetEmail, EmailConfig::DEFAULT_RECIPIENT, sizeof(targetEmail) - 1);
-      targetEmail[sizeof(targetEmail) - 1] = '\0';
-    } else {
-      strncpy(targetEmail, emailFromConfig, sizeof(targetEmail) - 1);
-      targetEmail[sizeof(targetEmail) - 1] = '\0';
-    }
-    
-    LOG_INFO("Cible: %s", targetEmail);
-    
-    // Construire le message avec snprintf pour éviter allocations
-    IPAddress ip = WiFi.localIP();
-    char ssid[64];
-    g_appContext.wifi.currentSSID(ssid, sizeof(ssid));
-    int written = snprintf(bootMsg, sizeof(bootMsg),
-                          "Système démarré avec succès (v%s).\n"
-                          "IP: %d.%d.%d.%d\n"
-                          "SSID: %s\n"
-                          "Raison: Test forcé au boot",
-                          ProjectConfig::VERSION,
-                          ip[0], ip[1], ip[2], ip[3],
-                          ssid);
-    if (written < 0 || (size_t)written >= sizeof(bootMsg)) {
-      bootMsg[sizeof(bootMsg) - 1] = '\0';
-    }
-    
-    // Construire le sujet
-    snprintf(emailSubject, sizeof(emailSubject), "Démarrage système v%s", ProjectConfig::VERSION);
-    
-    // Reset watchdog avant envoi bloquant
-    g_appContext.power.resetWatchdog();
-    // sendAlert(..., true) = alerte diagnostic (rapport temporel détaillé)
-    bool queued = g_appContext.mailer.sendAlert(emailSubject, bootMsg, targetEmail, true);
-    
-    if (queued) {
-      LOG_INFO("✅ Mail de démarrage ajouté à la queue (envoi différé)");
-    } else {
-      LOG_ERROR("❌ Échec ajout à la queue mail de démarrage");
-    }
-    g_appContext.power.resetWatchdog();
-  } else {
-    LOG_ERROR("❌ Impossible d'envoyer mail: WiFi non connecté au boot");
-  }
-
-  LOG_INFO("Initialisation terminée");
-  Serial.println("[Event] Init done");
+  // Notification de démarrage par mail (extrait dans SystemBoot — v13.93, allège le god-file)
+  SystemBoot::sendStartupTestMail(g_appContext);
   #endif  // !BOARD_S3 || !BOARD_HAS_PSRAM
 }
 

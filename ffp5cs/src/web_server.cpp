@@ -154,33 +154,32 @@ static bool getWebParam(AsyncWebServerRequest* req, const char* name, char* buf,
   return false;
 }
 
+// Table unique type NVS <-> libellé : source de vérité partagée par
+// nvsTypeToStr() et nvsStrToType(). Ajouter un type ici suffit pour les deux sens.
+static const struct { nvs_type_t type; const char* label; } kNvsTypeTable[] = {
+  { NVS_TYPE_U8,   "U8"   },
+  { NVS_TYPE_I8,   "I8"   },
+  { NVS_TYPE_U16,  "U16"  },
+  { NVS_TYPE_I16,  "I16"  },
+  { NVS_TYPE_U32,  "U32"  },
+  { NVS_TYPE_I32,  "I32"  },
+  { NVS_TYPE_U64,  "U64"  },
+  { NVS_TYPE_I64,  "I64"  },
+  { NVS_TYPE_STR,  "STR"  },
+  { NVS_TYPE_BLOB, "BLOB" },
+};
+
 static const char* nvsTypeToStr(nvs_type_t t) {
-  switch (t) {
-    case NVS_TYPE_U8:  return "U8";
-    case NVS_TYPE_I8:  return "I8";
-    case NVS_TYPE_U16: return "U16";
-    case NVS_TYPE_I16: return "I16";
-    case NVS_TYPE_U32: return "U32";
-    case NVS_TYPE_I32: return "I32";
-    case NVS_TYPE_U64: return "U64";
-    case NVS_TYPE_I64: return "I64";
-    case NVS_TYPE_STR: return "STR";
-    case NVS_TYPE_BLOB: return "BLOB";
-    default: return "UNKNOWN";
+  for (const auto& e : kNvsTypeTable) {
+    if (e.type == t) return e.label;
   }
+  return "UNKNOWN";
 }
 
 static nvs_type_t nvsStrToType(const char* s) {
-  if (strcmp(s, "U8") == 0) return NVS_TYPE_U8;
-  if (strcmp(s, "I8") == 0) return NVS_TYPE_I8;
-  if (strcmp(s, "U16") == 0) return NVS_TYPE_U16;
-  if (strcmp(s, "I16") == 0) return NVS_TYPE_I16;
-  if (strcmp(s, "U32") == 0) return NVS_TYPE_U32;
-  if (strcmp(s, "I32") == 0) return NVS_TYPE_I32;
-  if (strcmp(s, "U64") == 0) return NVS_TYPE_U64;
-  if (strcmp(s, "I64") == 0) return NVS_TYPE_I64;
-  if (strcmp(s, "STR") == 0) return NVS_TYPE_STR;
-  if (strcmp(s, "BLOB") == 0) return NVS_TYPE_BLOB;
+  for (const auto& e : kNvsTypeTable) {
+    if (strcmp(s, e.label) == 0) return e.type;
+  }
   return NVS_TYPE_ANY;
 }
 
