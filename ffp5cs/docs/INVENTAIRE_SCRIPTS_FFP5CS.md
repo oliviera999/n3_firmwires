@@ -1,6 +1,6 @@
 # Inventaire des scripts monitoring, flash et autres – FFP5CS
 
-**Date :** 2026-03-08  
+**Date :** 2026-03-08 (revu 2026-06-09)  
 **Périmètre :** Dossier `ffp5cs` (racine, `scripts/`, `tools/`). Exclus : `managed_components/`.
 
 ---
@@ -116,6 +116,7 @@
 | **build_upload_monitor_wroom_beta_local_com4.ps1** | PS1 | Build + upload + monitor en `wroom-beta-local` sur COM4 (raccourci local). |
 | **scripts/test_wroom_beta_local_serial.ps1** | PS1 | Option 3 : upload `wroom-beta-local`, capture serie et assertions regex (`post-data-test`, `heartbeat-test`, statut HTTP). |
 | **scripts/test_wroom_beta_local_docker_integration.ps1** | PS1 | Option 5 : orchestration Docker local + override URL LAN + auth token/session + smoke `local-smoke-test` + test serie + verification insertion DB (`ffp3Data2`, `ffp3Heartbeat2`). |
+| **scripts/test_bidirectional_control_panel_local.ps1** | PS1 | Test bidirectionnel panneau de controle ↔ ESP32 (env test / wroom-beta-local) : GET state, POST toggle web auth admin, persistance BDD (`lastModifiedBy=web`), assertions serie (`applyRemote`/`fetchRemoteState`), non-ecrasement web vs post-data. |
 | **scripts/run_wroom_beta_local_test_suite.ps1** | PS1 | Batterie quick/full : unites natives + scenarios JSON (`wroom_beta_local_test_scenarios.json`) + integration Docker selon campagne/auth. |
 | **scripts/wroom_beta_local_test_scenarios.json** | JSON | Definition des scenarios pour `run_wroom_beta_local_test_suite.ps1`. |
 | **scripts/.beta-local-test.env.example** | ENV (modele) | Variables locales de la batterie (`N3_TEST_ADMIN_TOKEN`, `N3_TEST_ADMIN_PASSWORD`, `N3_TEST_API_KEY`, etc.). Copier vers `.beta-local-test.env` (ignore par Git). |
