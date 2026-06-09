@@ -48,8 +48,9 @@ Effort : XS < 1 h · S ½ j · M 1-3 j · L > 1 semaine.
 | 🟠 Moy. | Maint. | `sprintf` `n3_hmac.cpp:29` | `snprintf` (conformité) | XS | ✅ |
 | 🟠 Moy. | Ext. | 5 conventions de `FIRMWARE_VERSION` | `n3_version.h` partagé | S | ✅ |
 | 🟠 Moy. | Maint. | `library.json` : deps cachées (n3_display→SSD1306, n3_data→n3_common) | Déclarer | XS | ✅ |
-| 🟠 Moy. | Maint. | shared/ : 0 test | Tests natifs `n3_hmac`, `n3_analog_sensors`, `n3_outputs_json` | M | ✅ |
-| 🟠 Moy. | Maint. | God file `app.cpp` : bloc mail inline (293-350) + dispatch strcmp | Extraire / tabuler | M | ✅ |
+| 🟠 Moy. | Maint. | shared/ : 0 test | Harnais natif + tests `n3_analog_sensors` (7, verts) | M | ✅ |
+| 🟠 Moy. | Maint. | God file `app.cpp` : bloc mail inline (293-350) + dispatch strcmp | Extraire / tabuler (ffp5cs v13.93) | M | ✅ |
+| ⚪ Non retenu | Ext. | 5 conventions de `FIRMWARE_VERSION` | Statu quo justifié (cf. §3.5) | — | ⚪ |
 | 🟡 Basse | Ext. | 175 `#ifdef BOARD_S3` / 25 fichiers | `BoardTraits` + `if constexpr` | L | 📋 différé (cf. §6) |
 | 🟡 Basse | Maint. | God files ffp5cs (web_server, app_tasks, ota_manager) | Découpe par responsabilité | L | 📋 différé (cf. §6) |
 | 🟡 Basse | Sécu. | HTTP→HTTPS n3pp/msp | TLS WebClient d'abord | L | 📋 différé (cf. §5.2) |
@@ -66,7 +67,13 @@ Le mainteneur a laissé l'initiative. Décisions documentées :
 
 3. **`à voir/` (LVGL_Widgets, ratata)** — **conservé en l'état** (prototypes documentés « non maintenus », hors build de prod). Suppression non justifiée (le mainteneur peut vouloir y revenir) ; pas de gain de maintenance car déjà hors périmètre actif.
 
-4. **Versions de dépendances** — homogénéisation **sur la version la plus récente déjà validée dans le dépôt**, sauf `ffp5cs` dont les versions sont explicitement validées contre sa toolchain (arduino-esp32 3.3.7) ; sa divergence est **intentionnelle** et documentée.
+4. **Versions de dépendances** — homogénéisation **sur la version la plus récente déjà validée dans le dépôt**, sauf `ffp5cs` dont les versions sont explicitement validées contre sa toolchain (arduino-esp32 3.3.7) ; sa divergence est **intentionnelle** et documentée. `lvgl` reste **8.4.0** (la 9.x est un changement d'API cassant).
+
+5. **Convention `FIRMWARE_VERSION` (n3_version.h)** — **non retenu.** n3pp/msp/upload partagent déjà `#define FIRMWARE_VERSION`. poissonglouton (`PGL_FIRMWARE_VERSION`) et ffp5cs (`ProjectConfig::VERSION`) utilisent un `constexpr` (meilleure pratique que la macro). Chaque firmware a une **valeur** propre : un header partagé ne peut pas les unifier, et forcer une convention unique imposerait de toucher 100+ usages de `ProjectConfig::VERSION` dans ffp5cs — churn et risque sans gain. La cohérence actuelle (par groupe) est acceptable.
+
+### Validation
+
+Tous les firmwares modifiés ont été **compilés sur Linux** (PlatformIO, même chaîne que la CI) : `n3pp` (esp32dev), `msp` (esp32dev), `ffp5cs` (wroom-test) — builds verts. Tests natifs `shared/n3_analog_sensors` : 7/7 verts. ⚠️ Les changements à comportement runtime (envoi SMTP réel, restauration heure NVS) restent à **valider sur cible** via le workflow erase/flash/monitor — la compilation ne couvre pas le comportement.
 
 ---
 
