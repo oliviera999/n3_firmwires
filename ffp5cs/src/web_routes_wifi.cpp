@@ -9,6 +9,8 @@
 #include <AsyncJson.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <nvs.h>                 // API C NVS (nvs_open/get_blob/set_blob/commit/close)
+#include <nvs_flash.h>
 #include "wifi_manager.h"        // WiFiHelpers
 #include "esp_wifi.h"            // esp_wifi_scan_get_ap_records
 #include <esp_heap_caps.h>
