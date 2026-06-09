@@ -3,6 +3,11 @@
 .pioenvs/
 .piolibdeps/
 
+# Artefact de build_cache_dir Windows (C:/...) créé littéralement lors d'un build Linux/CI
+# (ffp5cs/platformio.ini : build_cache_dir = C:/pio-builds/.pio-cache/ffp5cs)
+C:/
+**/C:/
+
 # Secrets — ne jamais versionner
 credentials.h
 secrets.h
