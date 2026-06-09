@@ -147,7 +147,11 @@ void netRequestFree(NetRequest* req) {
   }
 }
 
-// Accesseurs pool (déclarés dans app_tasks.h, appelés par automatism_sync/diagnostics).
+// Accesseurs pool : déclarés dans namespace AppTasks (app_tasks.h), appelés par
+// automatism_sync/app_tasks::start. À définir dans le MÊME namespace (sinon
+// symboles globaux -> undefined reference au link).
+namespace AppTasks {
+
 size_t netRequestPoolUsedCount() {
   size_t n = 0;
   for (size_t i = 0; i < kNetRequestPoolSize; ++i) {
@@ -163,3 +167,5 @@ size_t netRequestPoolSize() {
 size_t netRequestPoolPostSlotsFullThreshold() {
   return kNetRequestNormalMaxSlot + 1;  // Tous les slots POST (réservé + partagés) occupés
 }
+
+}  // namespace AppTasks
