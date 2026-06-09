@@ -8,7 +8,7 @@
 
 | Firmware | Fichier | Contenu |
 |----------|---------|---------|
-| n3pp4_2, msp2_5, uploadphotosserver | `firmwires/credentials.h` | WiFi (WIFI_LIST), SMTP, API_KEY. Copier `credentials.h.example`. |
+| n3pp, msp, uploadphotosserver | `firmwires/credentials.h` | WiFi (WIFI_LIST), SMTP, API_KEY. Copier `credentials.h.example`. |
 | ffp5cs | `ffp5cs/include/secrets.h` | WiFi (WIFI_LIST), SMTP. Copier `secrets.h.example`. |
 | ffp5cs | `ffp5cs/include/secrets_config.h` | API_KEY, DEFAULT_RECIPIENT. Copier `secrets_config.h.example`. |
 
@@ -49,11 +49,14 @@ Constantes : `WIFI_CONNECT_TIMEOUT_MS = 5000` alignée partout.
 **Structure metadata.json** (n3pp, msp) :
 ```json
 {
-  "version": "4.10",
+  "version": "4.39",
   "url": "http://iot.olution.info/ota/n3pp/firmware.bin",
-  "md5": "..."
+  "sha256": "...",
+  "signature": "..."
 }
 ```
+
+`n3_ota` (lib `n3_common`) vérifie le `sha256` du binaire téléchargé avant flash, puis la `signature` ECDSA P-256 si elle est présente (clé publique embarquée).
 
 ### Cibles caméra (msp1, n3pp, ffp3)
 
@@ -66,9 +69,9 @@ Constantes : `WIFI_CONNECT_TIMEOUT_MS = 5000` alignée partout.
 **Structure metadata.json** (cam) :
 ```json
 {
-  "msp1": { "version": "2.6", "url": "http://.../ota/cam/msp1/firmware.bin", "md5": "..." },
-  "n3pp": { "version": "2.6", "url": "http://.../ota/cam/n3pp/firmware.bin", "md5": "..." },
-  "ffp3": { "version": "2.6", "url": "http://.../ota/cam/ffp3/firmware.bin", "md5": "..." }
+  "msp1": { "version": "2.39", "url": "http://.../ota/cam/msp1/firmware.bin", "sha256": "...", "signature": "..." },
+  "n3pp": { "version": "2.39", "url": "http://.../ota/cam/n3pp/firmware.bin", "sha256": "...", "signature": "..." },
+  "ffp3": { "version": "2.39", "url": "http://.../ota/cam/ffp3/firmware.bin", "sha256": "...", "signature": "..." }
 }
 ```
 
