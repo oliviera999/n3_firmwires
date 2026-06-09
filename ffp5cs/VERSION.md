@@ -16,6 +16,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ### Audit optimisation — allègement des god-files (sans changement fonctionnel)
 
+- **Découpe des god-files restants** (méthodes membres réparties par TU / code mort, comportement identique, chaque étape validée par **vrai build `wroom-test`**) :
+  | Fichier | Avant | Après | Extrait vers |
+  |---|---|---|---|
+  | `mailer.cpp` | 1653 | 1058 | (code mort `buildSystemInfoFooter` supprimé) |
+  | `sensors.cpp` | 1690 | 544 | `sensor_ultrasonic.cpp`, `sensor_air.cpp` (3 classes → 1/fichier) |
+  | `automatism.cpp` | 1519 | 1224 | `automatism/automatism_refill.cpp` (famille `handleRefill*`) |
+  | `nvs_manager.cpp` | 1179 | 714 | `nvs_manager_typed.cpp` (accesseurs typés) ; `NVSLockGuard` → header |
+  | `display_view.cpp` | 1279 | 1010 | `display_view_render.cpp` (format + `render*`) |
+  | `web_client.cpp` | 1219 | 1068 | `web_client_queue.cpp` (file NVS de retry POST) |
+
+  Décompositions **incrémentales** (un groupe cohésif par fichier) ; plusieurs gardent encore une classe « cœur » > 1000 l. (découpe poursuivable). Bugs réels exposés+corrigés par le vrai build : garde `DISABLE_ASYNC_WEBSERVER` (web_routes), type incomplet `NVSLockGuard`, helper `cmToMm`, double-définition `oled_logo`, externs `config`/`g_*`.
+- **Volet `String`** : investigué → **ffp5cs déjà `String`-free** (les ~28 occurrences sont commentaires/JS/logs ; `web_client` migré ; `n3_http` supprimé). Le « ~463 » du rapport était gonflé. Reste mineur dans `shared/` (intrinsèque `Arduino_JSON`). Aucune action critique.
 - **CRITIQUE — build CI réellement opérant** : `scripts/pio_repair_build_junction.py` faisait `sys.exit(0)` sur les plateformes sans redirection (Linux/CI) → `pio run` se terminait en « SUCCESS » **avant la compilation**. Le build ffp5cs (et la CI ajoutée) étaient donc **vacants** : la décomposition n'avait jamais été compilée. Corrigé (motif `if root:` comme `pio_redirect_build_dir.py` ; Windows inchangé). Le **vrai build a alors exposé** des includes/externs manquants dans les fichiers extraits (`task_mail.h`/`tls_mutex.h`/`app_tasks.h`/`nvs.h`, externs `config`/`power`/`wifi`/`g_netTaskHandle`, accesseurs pool dans `namespace AppTasks`) — tous corrigés. **Build `wroom-test` vert pour de vrai** (compile + link + image ESP32, Flash 51,1 %).
 - **Nettoyage code mort `mailer.cpp`** (1653 → 1058 lignes, −595) : `buildSystemInfoFooter()` (493 l.) + ses helpers `appendTimeInfo/NetworkInfo/MemoryInfo` + le buffer `g_systemInfoFooterBuffer[1024]` étaient **sans aucun appelant** (vérifié `grep` dépôt entier). Suppression source. ⚠️ **Aucun gain binaire/DRAM** : `-ffunction-sections/-fdata-sections/--gc-sections` éliminait déjà ce code mort du binaire (wroom-prod déborde toujours de 152 o). Gain = **lisibilité** uniquement (code vivant intact, build wroom-test OK).
 - **Garde-fou budget flash** (`tools/pio_check_flash_budget.py`, post-build) : échoue si l'image dépasse `custom_flash_budget_pct` de la partition app (seuils par env : wroom-test 70 %, wroom-prod 85 %, wroom-s3-test 50 %). Mesures réelles : `wroom-test` flash 51 %, `wroom-s3-test` 28 %, `wroom-prod` **78,7 %** (et non ~96 % comme estimé). **Constat** : la vraie tension de `wroom-prod` est la **DRAM interne (~99,9 %, ~108 o libres)**, pas le flash — gérée par le linker (`dram0_0_seg`). La décomposition est neutre en `.bss` (vérifié `nm` : pas de duplication), donc non responsable de cette marge.
