@@ -75,7 +75,13 @@ jobs:
           path: ~/.platformio
           key: pio-${{ hashFiles('**/platformio.ini') }}
           restore-keys: pio-
-      - name: Provision credentials (placeholders CI)
-        run: cp credentials.h.example credentials.h
+      - name: Provision credentials/secrets (placeholders CI)
+        run: |
+          cp credentials.h.example credentials.h
+          # ffp5cs : secrets_config.h est gitignoré ; le fournir depuis l'exemple
+          # (sinon include/config.h échoue : API_KEY auto-référence + secrets_config.h absent).
+          if [ -f ffp5cs/include/secrets_config.h.example ]; then
+            cp ffp5cs/include/secrets_config.h.example ffp5cs/include/secrets_config.h
+          fi
       - name: Build ${{ matrix.name }} (${{ matrix.env }})
         run: cd ${{ matrix.dir }} && pio run -e ${{ matrix.env }}

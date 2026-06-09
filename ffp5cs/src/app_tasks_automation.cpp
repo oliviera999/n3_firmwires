@@ -12,6 +12,7 @@
 #include "config.h"
 #include "automatism.h"
 #include "system_sensors.h"      // SensorReadings (file capteurs)
+#include "sd_logger.h"           // SdLogger:: (replay file SD, branche BOARD_S3)
 #include <Arduino.h>
 #include <ArduinoJson.h>         // StaticJsonDocument (g_remoteFallbackDoc)
 #include <esp_task_wdt.h>
