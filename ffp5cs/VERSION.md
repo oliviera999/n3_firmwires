@@ -20,6 +20,7 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 - Mail de démarrage extrait de `setup()` (`src/app.cpp`, ~57 lignes) vers `SystemBoot::sendStartupTestMail()` (`src/system_boot.cpp`) — comportement identique, `setup()` allégé.
 - Test `test_server_url` réaligné sur le comportement v13.87 (endpoints sans préfixe `/ffp3/`) — il était resté sur l'ancien format et n'était pas détecté faute de CI lançant les tests natifs.
 - Décomposition `web_server.cpp` (2084 → 1601 lignes) : groupe d'endpoints WiFi (`/wifi/scan|saved|connect|remove`, ~483 lignes) extrait vers `web_routes_wifi.cpp` (pattern `WebRoutes::registerWifiRoutes`, comme status/ui). `getWebParam()` rendu public (partagé). Comportement identique, build `wroom-test` OK.
+- Adoption de `board_traits.h` (existant mais sous-utilisé depuis v13.60) : conversion des `#ifdef BOARD_S3` de **sélection de valeurs** dans `config.h` (`BOARD_TYPE`, `getProfileName`, `WIFI_CONNECT_ATTEMPT_TIMEOUT_MS`) en `BoardTraits::isS3()/hasPsram()`. Les `#ifdef` gardant des APIs S3 (WDT/PSRAM) restent en l'état (contrainte `if constexpr`).
 - **Fichiers** : `src/web_server.cpp`, `src/app.cpp`, `src/system_boot.cpp`, `include/system_boot.h`, `test/test_server_url/`. Validé par build `wroom-test` + tests natifs (47 verts).
 
 ---
