@@ -2,6 +2,8 @@
 // Extrait de web_server.cpp (audit optimisation v13.93) pour alléger le god-file.
 // Routes gardées par FFP_ENABLE_DANGEROUS_ENDPOINTS ; comportement identique.
 #include "web_routes_nvs.h"
+
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include "web_routes_status.h"  // webAuth*, sendJsonResponse, sendErrorResponse, ensureHeapForRoute, getWebParam
 #include "dbvars_cache.h"       // invalidateDbvarsCache
 
@@ -594,3 +596,10 @@ void registerNvsRoutes(AsyncWebServer& server, AppContext& ctx) {
 }
 
 }  // namespace WebRoutes
+
+#else
+// Stub si DISABLE_ASYNC_WEBSERVER est défini (ex. wroom-prod) — ESPAsyncWebServer ignoré.
+namespace WebRoutes {
+void registerNvsRoutes(AsyncWebServer& server, AppContext& ctx) { (void)server; (void)ctx; }
+}  // namespace WebRoutes
+#endif

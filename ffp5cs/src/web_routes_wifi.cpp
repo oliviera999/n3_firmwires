@@ -3,6 +3,8 @@
 // Routes : /wifi/scan, /wifi/saved, /wifi/connect, /wifi/remove. Comportement
 // identique ; helpers d'auth/réponse partagés via web_routes_status.h.
 #include "web_routes_wifi.h"
+
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include "web_routes_status.h"  // webAuth*, sendJsonResponse, sendErrorResponse, ensureHeapForRoute, getWebParam
 
 #include <ESPAsyncWebServer.h>
@@ -529,3 +531,10 @@ void registerWifiRoutes(AsyncWebServer& server, AppContext& ctx) {
 }
 
 }  // namespace WebRoutes
+
+#else
+// Stub si DISABLE_ASYNC_WEBSERVER est défini (ex. wroom-prod) — ESPAsyncWebServer ignoré.
+namespace WebRoutes {
+void registerWifiRoutes(AsyncWebServer& server, AppContext& ctx) { (void)server; (void)ctx; }
+}  // namespace WebRoutes
+#endif

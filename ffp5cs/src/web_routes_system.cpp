@@ -1,6 +1,8 @@
 // web_routes_system.cpp — Endpoints système / maintenance (info MAJ, OTA, mailtest,
 // format FS, test OTA). Extrait de web_server.cpp (audit optimisation v13.93).
 #include "web_routes_system.h"
+
+#ifndef DISABLE_ASYNC_WEBSERVER
 #include "web_routes_status.h"  // webAuth*, sendJsonResponse, ensureHeapForRoute, getWebParam
 
 #include <ESPAsyncWebServer.h>
@@ -171,3 +173,10 @@ void registerSystemRoutes(AsyncWebServer& server, AppContext& ctx) {
 }
 
 }  // namespace WebRoutes
+
+#else
+// Stub si DISABLE_ASYNC_WEBSERVER est défini (ex. wroom-prod) — ESPAsyncWebServer ignoré.
+namespace WebRoutes {
+void registerSystemRoutes(AsyncWebServer& server, AppContext& ctx) { (void)server; (void)ctx; }
+}  // namespace WebRoutes
+#endif
