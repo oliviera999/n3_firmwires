@@ -148,10 +148,14 @@ Dérive de versions (les libs `shared/` sont compilées dans **tous** les projet
 
 ## 6. Refactors différés (justification)
 
-Deux chantiers à fort gain mais **effort > 1 semaine et risque élevé sans validation sur cible** sont documentés mais non réalisés ici, pour ne pas livrer de changements massifs non testés sur du matériel de prod (pompe, nourrissage poisson, tracker) :
+Ces chantiers à fort gain (effort > 1 semaine, risque élevé sans validation sur cible) ont été **amorcés de façon incrémentale et validée par build**, mais pas terminés — pour ne pas livrer de changements massifs non testés sur du matériel de prod (pompe, nourrissage poisson, tracker) :
 
-1. **Découpe des god files ffp5cs** — extraire `web_server.cpp` vers les `web_routes_*.cpp` déjà amorcés ; un fichier par tâche dans `app_tasks`. *Prérequis : campagne de tests sur cible (workflow erase/flash/monitor existant).*
-2. **`BoardTraits`/HAL** pour remplacer les 175 `#ifdef` — migration progressive fichier par fichier sur du code de boot critique (WDT/PSRAM).
+1. **Découpe des god files ffp5cs** — ✅ **amorcé** : groupe d'endpoints WiFi extrait de `web_server.cpp` (2084 → 1601 lignes, −23 %) vers `web_routes_wifi.cpp` (pattern `WebRoutes::registerWifiRoutes`). **Reste** : groupe NVS (~450 l.), découpe d'`app_tasks.cpp` (8 tâches), `ota_manager.cpp`. *Chaque extraction validée par build `wroom-test`.*
+2. **`BoardTraits` / réduction des `#ifdef`** — ✅ **amorcé** : `board_traits.h` existait déjà (v13.60) mais **sous-utilisé** ; adoption étendue aux `#ifdef BOARD_S3` de **sélection de valeurs** (`config.h`). **Constat architectural** : la majorité des 175 `#ifdef` gardent des **APIs spécifiques S3** (WDT `wdt_hal`, PSRAM, variantes IDF) et **ne sont pas convertibles** en `if constexpr` (qui exige que les deux branches compilent sur toutes les cibles). Le gain réaliste de `BoardTraits` se limite donc aux sélections de valeurs/booléens, pas au remplacement intégral des `#ifdef`.
+
+## 7. CI
+
+`.github/workflows/firmware-ci.yml` (ajoutée) compile **6 environnements** (n3pp, msp, ffp5cs wroom-test, poissonglouton headless+display, uploadphotosserver msp1) et lance les **tests natifs** (shared + ffp5cs, 5 suites) à chaque push/PR. ⚠️ **GitHub Actions doit être activé** sur le dépôt (Settings → Actions) — aucune CI n'était active jusqu'ici (les workflows `ffp5cs/.github/` sont hors racine).
 
 ---
 
