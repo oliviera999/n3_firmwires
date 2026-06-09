@@ -60,6 +60,10 @@ struct StatusBarParams {
   uint8_t otaPercent;
 };
 
+// Utilitaire texte partagé (défini dans display_view.cpp ; utilisé aussi par
+// display_view_show.cpp). Convertit UTF-8 → CP437 dans un buffer borné.
+size_t utf8ToCp437(const char* input, char* output, size_t outputSize);
+
 class DisplayView {
  public:
   explicit DisplayView(uint8_t addr = 0x3C, uint8_t w = 128, uint8_t h = 64);
