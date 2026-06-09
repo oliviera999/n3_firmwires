@@ -198,7 +198,6 @@ Les firmwares **n3pp** et **msp** (et `ffp5cs` pour certaines libs) utilisent de
 | `n3_analog_sensors` | Lecture ADC filtrée (luminosité, pont diviseur, humidité sol) : multi-échantillons, médiane/moyenne, rejet outliers. Utilisée par ffp5cs, n3pp, msp. |
 | `n3_battery` | Lecture batterie pont diviseur (délègue à `n3_analog_sensors`). Compatible API n3pp/msp. |
 | `n3_wifi` | Connexion WiFi multi-réseaux (timeout, callbacks affichage/échec) |
-| `n3_http` | GET / POST HTTP minimal — **déprécié** depuis 1.1 (préférer `n3_data`). |
 | `n3_data` | POST `application/x-www-form-urlencoded` avec timeout 5 s, signature HMAC body (`X-Signature`) et HMAC FFP3 (timestamp + signature dans le body si `sigSecret` fourni). |
 | `n3_hmac` | HMAC-SHA256 (helper `n3HmacSha256` + intégration HTTPClient). |
 | `n3_mail` | Envoi email SMTP (ESP Mail Client). |
@@ -206,7 +205,6 @@ Les firmwares **n3pp** et **msp** (et `ffp5cs` pour certaines libs) utilisent de
 | `n3_common` | Noyau partagé : OTA (`n3_ota` avec vérif sha256 + ECDSA P-256 depuis 1.3), constantes (`n3_defaults.h`), parsing JSON outputs (`n3_outputs_json` depuis 1.4). |
 | `n3_sleep` | Configuration et démarrage du deep sleep ESP32. |
 | `n3_display` | Initialisation OLED SSD1306 (helper commun). |
-| `libn3_iot` | Drivers capteurs génériques (DHT, analogique filtré via `n3_analog_sensors`, DS18B20). Conservé pour compat ; pour nouveau code préférer les libs ciblées. |
 
 ## Structure
 
@@ -232,15 +230,13 @@ firmwires/
 │   ├── n3_analog_sensors/      # ADC filtré (luminosité, pont, humidité sol)
 │   ├── n3_battery/             # Batterie pont diviseur (délègue à n3_analog_sensors)
 │   ├── n3_wifi/                # WiFi multi-réseaux (scan RSSI + BSSID)
-│   ├── n3_http/                # GET/POST minimal (déprécié → n3_data)
 │   ├── n3_data/                # POST x-www-form-urlencoded + HMAC body
 │   ├── n3_hmac/                # HMAC-SHA256 (X-Signature)
 │   ├── n3_mail/                # Email SMTP (ESP Mail Client)
 │   ├── n3_time/                # Heure NVS + raison de réveil
 │   ├── n3_sleep/              # Deep sleep (timer + GPIO ext0)
 │   ├── n3_display/           # OLED SSD1306
-│   ├── n3_common/             # OTA (sha256+ECDSA), n3_defaults.h, n3_outputs_json
-│   └── libn3_iot/             # Drivers capteurs génériques (compat)
+│   └── n3_common/             # OTA (sha256+ECDSA), n3_defaults.h, n3_outputs_json
 ├── n3pp/                    # N3PhasmesProto (ESP32)
 │   ├── platformio.ini
 │   ├── include/n3pp_config.h   # FIRMWARE_VERSION
