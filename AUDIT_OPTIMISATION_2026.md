@@ -73,7 +73,9 @@ Le mainteneur a laissé l'initiative. Décisions documentées :
 
 ### Validation
 
-Tous les firmwares modifiés ont été **compilés sur Linux** (PlatformIO, même chaîne que la CI) : `n3pp` (esp32dev), `msp` (esp32dev), `ffp5cs` (wroom-test) — builds verts. Tests natifs `shared/n3_analog_sensors` : 7/7 verts. ⚠️ Les changements à comportement runtime (envoi SMTP réel, restauration heure NVS) restent à **valider sur cible** via le workflow erase/flash/monitor — la compilation ne couvre pas le comportement.
+Tous les firmwares modifiés ont été **compilés sur Linux** (PlatformIO, même chaîne que la CI) : `n3pp` (esp32dev), `msp` (esp32dev), `ffp5cs` (wroom-test), `poissonglouton` (headless + display), `uploadphotosserver` (msp1) — builds verts. Tests natifs : `shared/n3_analog_sensors` 7/7 + `ffp5cs` 47/47 (5 suites). ⚠️ Les changements à comportement runtime (envoi SMTP réel, restauration heure NVS) restent à **valider sur cible** via le workflow erase/flash/monitor — la compilation ne couvre pas le comportement.
+
+**CI racine ajoutée** (`.github/workflows/firmware-ci.yml`) : il n'existait **aucune CI active** (les workflows sous `ffp5cs/.github/` sont hors racine, donc ignorés par GitHub). La nouvelle CI compile les 6 environnements ci-dessus et lance les tests natifs à chaque push/PR. En l'activant, un **test périmé** a été découvert et corrigé : `test_server_url` attendait encore le préfixe `/ffp3/` retiré en v13.87 — non détecté justement parce qu'aucune CI ne lançait les tests natifs.
 
 ---
 
