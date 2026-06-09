@@ -253,26 +253,17 @@ firmwires/
 │   ├── src/main.cpp
 │   ├── tools/pio_ensure_credentials.py
 │   └── logs/ (creé automatiquement par monitor_Nmin.ps1)
-├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 (legacy)
-│   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── README.md
-├── uploadphotosserver_n3pp_1_6_deppsleep/  # ESP32-CAM → n3pp, deep sleep
-│   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── README.md
-├── uploadphotosserver_ffp3_1_5_deppsleep/   # ESP32-CAM → ffp3, deep sleep
-│   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── README.md
 ├── poissonglouton/              # ESP32-S3 recyclage (display + headless)
 │   ├── platformio.ini
 │   ├── include/config.h
 │   ├── src/main.cpp
 │   └── VERSION.md
 ├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires ; submodule ffp5cs/ffp3)
-├── archive/
-│   └── uploadphotosserver_legacy/   # Historique caméra (ne plus utiliser)
+├── archive/                    # Code historique — ne plus utiliser (utiliser uploadphotosserver/ unifié)
+│   ├── uploadphotosserver_legacy/          # Historique caméra
+│   ├── uploadphotosserver_msp1/            # ESP32-CAM → msp1 (legacy, archivé 2026-06)
+│   ├── uploadphotosserver_n3pp_1_6_deppsleep/  # ESP32-CAM → n3pp deep sleep (archivé 2026-06)
+│   └── uploadphotosserver_ffp3_1_5_deppsleep/  # ESP32-CAM → ffp3 deep sleep (archivé 2026-06)
 └── à voir/                     # Prototypes / projets annexes non maintenus en production
     ├── LVGL_Widgets/           # ESP32-S3 + écran LVGL (pas de serveur dédié)
     └── ratata/                 # Kit ZYC0108-EN (UNO + ESP32-CAM)
