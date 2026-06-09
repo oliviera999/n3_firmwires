@@ -152,9 +152,9 @@ Ces chantiers à fort gain (effort > 1 semaine, risque élevé sans validation s
 
 1. **Découpe des god files ffp5cs** — ✅ **bien avancé** :
    - `web_server.cpp` **2084 → 898 lignes (−57 %)** — 3 groupes extraits via `WebRoutes::register*Routes` : **WiFi** (`web_routes_wifi.cpp`), **NVS** (`web_routes_nvs.cpp`), **système/OTA** (`web_routes_system.cpp`).
-   - `app_tasks.cpp` **1788 → 1614 lignes** — **pool `NetRequest`** extrait en module isolé `net_request_pool.h/.cpp` (encapsulé, testable).
    - `ota_manager.cpp` **2074 → 429 lignes** — méthodes membres `OTAManager` réparties sur plusieurs TU : `ota_manager_validate.cpp` (validation) + `ota_manager_download.cpp` (téléchargement/flash).
-   - **Reste** : les 8 tâches FreeRTOS d'`app_tasks` (interdépendantes via queues → refonte d'interface dédiée, non un simple déplacement). *Chaque extraction validée par build `wroom-test`.*
+   - `app_tasks.cpp` **1788 → 1458 lignes** — **pool `NetRequest`** extrait (`net_request_pool.h/.cpp`) ; **refonte des tâches amorcée** via `app_tasks_internal.h` (interface interne partagée) : `webTask` et `sensorTask` sortis dans leurs propres `.cpp`.
+   - **Reste** : tâches `app_tasks` les plus couplées (net/automation/ota/postSender) à sortir sur le même pattern. *Chaque extraction validée par build `wroom-test`.*
 2. **`BoardTraits` / réduction des `#ifdef`** — ✅ **amorcé** : `board_traits.h` existait déjà (v13.60) mais **sous-utilisé** ; adoption étendue aux `#ifdef BOARD_S3` de **sélection de valeurs** (`config.h`). **Constat architectural** : la majorité des 175 `#ifdef` gardent des **APIs spécifiques S3** (WDT `wdt_hal`, PSRAM, variantes IDF) et **ne sont pas convertibles** en `if constexpr` (qui exige que les deux branches compilent sur toutes les cibles). Le gain réaliste de `BoardTraits` se limite donc aux sélections de valeurs/booléens, pas au remplacement intégral des `#ifdef`.
 
 ## 7. CI
