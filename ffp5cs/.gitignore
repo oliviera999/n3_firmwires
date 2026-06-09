@@ -84,3 +84,4 @@ scripts/.beta-local-test.env
 # Nested submodules in unused directories
 unused/**/ffp3datas/
 unused/**/ffp3distant/
+.pio_artifacts/

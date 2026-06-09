@@ -17,9 +17,12 @@ pio test -c platformio-native.ini -e native
 ```
 
 Chaque test inclut directement le `.cpp` testé avec un mock Arduino minimal
-(`mocks/Arduino.h`, `analogRead` injectable) — aucune dépendance matérielle.
-Couverture actuelle : `n3_analog_sensors` (médiane, rejet d'outliers, moyenne,
-EMA, fallback, tensions batterie). À étendre aux autres libs à logique pure.
+(`mocks/Arduino.h`, `analogRead` injectable) ou des stubs (`stubs/` : mbedtls,
+HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
+- `n3_analog_sensors` (`test_analog`) : médiane, rejet d'outliers, moyenne, EMA, fallback, tensions batterie.
+- `n3_hmac` (`test_hmac`) : contrat du wrapper (formatage hex 64 car., garde-fou de taille, header `X-Signature`). La justesse crypto reste validée sur cible (vrai mbedtls).
+
+Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 
 ## Inventaire
 

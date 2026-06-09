@@ -73,7 +73,9 @@ Le mainteneur a laissé l'initiative. Décisions documentées :
 
 ### Validation
 
-Tous les firmwares modifiés ont été **compilés sur Linux** (PlatformIO, même chaîne que la CI) : `n3pp` (esp32dev), `msp` (esp32dev), `ffp5cs` (wroom-test) — builds verts. Tests natifs `shared/n3_analog_sensors` : 7/7 verts. ⚠️ Les changements à comportement runtime (envoi SMTP réel, restauration heure NVS) restent à **valider sur cible** via le workflow erase/flash/monitor — la compilation ne couvre pas le comportement.
+Tous les firmwares modifiés ont été **compilés sur Linux** (PlatformIO, même chaîne que la CI) : `n3pp` (esp32dev), `msp` (esp32dev), `ffp5cs` (wroom-test), `poissonglouton` (headless + display), `uploadphotosserver` (msp1) — builds verts. Tests natifs : `shared/n3_analog_sensors` 7/7 + `ffp5cs` 47/47 (5 suites). ⚠️ Les changements à comportement runtime (envoi SMTP réel, restauration heure NVS) restent à **valider sur cible** via le workflow erase/flash/monitor — la compilation ne couvre pas le comportement.
+
+**CI racine ajoutée** (`.github/workflows/firmware-ci.yml`) : il n'existait **aucune CI active** (les workflows sous `ffp5cs/.github/` sont hors racine, donc ignorés par GitHub). La nouvelle CI compile les 6 environnements ci-dessus et lance les tests natifs à chaque push/PR. En l'activant, un **test périmé** a été découvert et corrigé : `test_server_url` attendait encore le préfixe `/ffp3/` retiré en v13.87 — non détecté justement parce qu'aucune CI ne lançait les tests natifs.
 
 ---
 
@@ -146,10 +148,19 @@ Dérive de versions (les libs `shared/` sont compilées dans **tous** les projet
 
 ## 6. Refactors différés (justification)
 
-Deux chantiers à fort gain mais **effort > 1 semaine et risque élevé sans validation sur cible** sont documentés mais non réalisés ici, pour ne pas livrer de changements massifs non testés sur du matériel de prod (pompe, nourrissage poisson, tracker) :
+Ces chantiers à fort gain (effort > 1 semaine, risque élevé sans validation sur cible) ont été **amorcés de façon incrémentale et validée par build**, mais pas terminés — pour ne pas livrer de changements massifs non testés sur du matériel de prod (pompe, nourrissage poisson, tracker) :
 
-1. **Découpe des god files ffp5cs** — extraire `web_server.cpp` vers les `web_routes_*.cpp` déjà amorcés ; un fichier par tâche dans `app_tasks`. *Prérequis : campagne de tests sur cible (workflow erase/flash/monitor existant).*
-2. **`BoardTraits`/HAL** pour remplacer les 175 `#ifdef` — migration progressive fichier par fichier sur du code de boot critique (WDT/PSRAM).
+1. **Découpe des god files ffp5cs** — ✅ **bien avancé** :
+   - `web_server.cpp` **2084 → 898 lignes (−57 %)** — 3 groupes extraits via `WebRoutes::register*Routes` : **WiFi** (`web_routes_wifi.cpp`), **NVS** (`web_routes_nvs.cpp`), **système/OTA** (`web_routes_system.cpp`).
+   - `ota_manager.cpp` **2074 → 429 lignes** — méthodes membres `OTAManager` réparties sur plusieurs TU : `ota_manager_validate.cpp` (validation) + `ota_manager_download.cpp` (téléchargement/flash).
+   - `app_tasks.cpp` **1788 → 540 lignes (−70 %)** — **refonte complète** via `app_tasks_internal.h` (interface interne partagée : `g_ctx`, files, handles en `extern`, définitions inchangées dans `app_tasks.cpp`). **8 unités extraites** : `net_request_pool` (pool `NetRequest`), `task_mail` (réserve SMTP + file mails), et les 6 tâches FreeRTOS (`webTask`/`sensorTask`/`otaTask`/`postSenderTask`/`automationTask`/`netTask` → `app_tasks_{web,sensor,ota,post,automation,net}.cpp`). `app_tasks.cpp` ne conserve que l'API publique `AppTasks` + `start()`. *Chaque extraction validée par build `wroom-test` + CI ; déplacement verbatim.*
+2. **`BoardTraits` / réduction des `#ifdef`** — ✅ **amorcé** : `board_traits.h` existait déjà (v13.60) mais **sous-utilisé** ; adoption étendue aux `#ifdef BOARD_S3` de **sélection de valeurs** (`config.h`). **Constat architectural** : la majorité des 175 `#ifdef` gardent des **APIs spécifiques S3** (WDT `wdt_hal`, PSRAM, variantes IDF) et **ne sont pas convertibles** en `if constexpr` (qui exige que les deux branches compilent sur toutes les cibles). Le gain réaliste de `BoardTraits` se limite donc aux sélections de valeurs/booléens, pas au remplacement intégral des `#ifdef`.
+
+## 7. CI
+
+`.github/workflows/firmware-ci.yml` (ajoutée) compile **6 environnements** (n3pp, msp, ffp5cs wroom-test, poissonglouton headless+display, uploadphotosserver msp1) et lance les **tests natifs** (shared + ffp5cs, 5 suites) à chaque push/PR. ⚠️ **GitHub Actions doit être activé** sur le dépôt (Settings → Actions) — aucune CI n'était active jusqu'ici (les workflows `ffp5cs/.github/` sont hors racine).
+
+> **⚠️ Correctif critique (build ffp5cs vacant)** : `scripts/pio_repair_build_junction.py` faisait `sys.exit(0)` sur Linux/CI (pas de redirection `C:\pio-builds`), terminant `pio run` **avant la phase de compilation** → le build ffp5cs « réussissait » sans rien compiler, en local **et en CI**. La décomposition n'était donc pas réellement validée (faux positif vert). Corrigé (`if root:`, comme `pio_redirect_build_dir.py`) ; le vrai build a ensuite révélé des includes/externs manquants dans les fichiers extraits, tous corrigés → **build `wroom-test` vert (compile+link+image, Flash 51,1 %)**. Un **garde-fou taille binaire** (`tools/pio_check_flash_budget.py`) a aussi été ajouté. *Les autres firmwares (n3pp/msp/poissonglouton/upload) n'utilisent pas ce script → leurs builds CI étaient bien réels.*
 
 ---
 
