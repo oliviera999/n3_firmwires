@@ -160,6 +160,8 @@ Ces chantiers à fort gain (effort > 1 semaine, risque élevé sans validation s
 
 `.github/workflows/firmware-ci.yml` (ajoutée) compile **6 environnements** (n3pp, msp, ffp5cs wroom-test, poissonglouton headless+display, uploadphotosserver msp1) et lance les **tests natifs** (shared + ffp5cs, 5 suites) à chaque push/PR. ⚠️ **GitHub Actions doit être activé** sur le dépôt (Settings → Actions) — aucune CI n'était active jusqu'ici (les workflows `ffp5cs/.github/` sont hors racine).
 
+> **⚠️ Correctif critique (build ffp5cs vacant)** : `scripts/pio_repair_build_junction.py` faisait `sys.exit(0)` sur Linux/CI (pas de redirection `C:\pio-builds`), terminant `pio run` **avant la phase de compilation** → le build ffp5cs « réussissait » sans rien compiler, en local **et en CI**. La décomposition n'était donc pas réellement validée (faux positif vert). Corrigé (`if root:`, comme `pio_redirect_build_dir.py`) ; le vrai build a ensuite révélé des includes/externs manquants dans les fichiers extraits, tous corrigés → **build `wroom-test` vert (compile+link+image, Flash 51,1 %)**. Un **garde-fou taille binaire** (`tools/pio_check_flash_budget.py`) a aussi été ajouté. *Les autres firmwares (n3pp/msp/poissonglouton/upload) n'utilisent pas ce script → leurs builds CI étaient bien réels.*
+
 ---
 
 *Rapport généré le 2026-06-09. Plan de traitement appliqué sur la branche `claude/magical-knuth-3rpj6j`.*
