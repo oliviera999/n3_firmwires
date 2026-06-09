@@ -59,6 +59,7 @@ jobs:
           - { name: n3pp, dir: n3pp, env: esp32dev }
           - { name: msp, dir: msp, env: esp32dev }
           - { name: ffp5cs-wroom-test, dir: ffp5cs, env: wroom-test }
+          - { name: ffp5cs-wroom-s3-test, dir: ffp5cs, env: wroom-s3-test }
           - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: uploadphotosserver-msp1, dir: uploadphotosserver, env: msp1 }
@@ -68,7 +69,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install PlatformIO
-        run: pip install --upgrade platformio
+        run: pip install --upgrade platformio intelhex  # intelhex requis par le build S3 (espressif32@6.13.0)
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
