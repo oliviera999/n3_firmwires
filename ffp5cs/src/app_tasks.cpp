@@ -40,8 +40,10 @@ TaskHandle_t g_otaTaskHandle = nullptr;
 #endif
 // g_postSenderQueue : linkage externe (consommateur postSenderTask -> app_tasks_post.cpp).
 QueueHandle_t g_postSenderQueue = nullptr;
-// g_netQueue + handles des tâches : linkage externe (netTask/netNotifyDone -> app_tasks_net.cpp).
+// g_netQueue + handles des tâches : linkage externe (netTask/netNotifyDone -> app_tasks_net.cpp,
+// g_netTaskHandle lu aussi par automationTask pour le HWM monitoring).
 QueueHandle_t g_netQueue = nullptr;
+TaskHandle_t g_netTaskHandle = nullptr;
 TaskHandle_t g_sensorTaskHandle = nullptr;
 TaskHandle_t g_webTaskHandle = nullptr;
 TaskHandle_t g_autoTaskHandle = nullptr;
@@ -73,8 +75,7 @@ TaskHandle_t g_postSenderTaskHandle = nullptr;
 // ============================================================================
 // Point 2: netTask (unique propriétaire de WebClient/TLS)
 // ============================================================================
-// g_netQueue + handles des tâches déplacés en global (linkage externe app_tasks_net.cpp).
-TaskHandle_t g_netTaskHandle = nullptr;
+// g_netQueue + handles des tâches (dont g_netTaskHandle) définis en global (linkage externe).
 
 // Fire-and-forget POST : PostSenderType/PostSenderMsg déplacés dans app_tasks_internal.h ;
 // g_postSenderQueue défini en global (linkage externe pour app_tasks_post.cpp).

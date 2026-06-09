@@ -15,10 +15,15 @@
 #include <cerrno>
 
 #include "config.h"
+#include "config_manager.h"   // ConfigManager (global config)
+#include "power.h"            // PowerManager (global power)
+#include "nvs_keys.h"         // NVSKeys
 #include "automatism.h"
 #include "app_context.h"
 
 extern Automatism g_autoCtrl;
+extern ConfigManager config;
+extern PowerManager power;
 
 #ifdef FFP_ENABLE_DANGEROUS_ENDPOINTS
 // Table unique type NVS <-> libellé : source de vérité partagée par

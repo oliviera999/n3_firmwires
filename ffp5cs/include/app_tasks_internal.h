@@ -34,6 +34,7 @@ extern QueueHandle_t g_postSenderQueue;
 // File RPC réseau + handles des tâches (pour netNotifyDone) : consommés/lus par
 // netTask (app_tasks_net.cpp), créés/écrits par AppTasks::start().
 extern QueueHandle_t g_netQueue;
+extern TaskHandle_t g_netTaskHandle;
 extern TaskHandle_t g_sensorTaskHandle;
 extern TaskHandle_t g_webTaskHandle;
 extern TaskHandle_t g_autoTaskHandle;

@@ -4,8 +4,10 @@
 // god-file, audit v13.93) ; déplacement verbatim. État partagé via
 // app_tasks_internal.h ; helpers (g_remoteFallbackDoc, logBouffeAndPumpStats)
 // déplacés ici car propres à cette tâche.
-#include "app_tasks_internal.h"  // g_ctx, g_sensorQueue, automationTask
+#include "app_tasks_internal.h"  // g_ctx, g_sensorQueue, g_netTaskHandle, automationTask
 #include "app_tasks.h"           // AppTasks:: API
+#include "task_mail.h"           // allocMailReserveIfNeeded, processMailQueueIfReady
+#include "tls_mutex.h"           // TLS_MIN_HEAP_BYTES
 #include "app_context.h"
 #include "config.h"
 #include "automatism.h"

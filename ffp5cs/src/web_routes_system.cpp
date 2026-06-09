@@ -13,6 +13,7 @@
 #include "automatism.h"
 #include "mailer.h"
 #include "config_manager.h"
+#include "app_tasks.h"          // AppTasks::netRequestOtaCheck()
 #include "app_context.h"
 
 extern Automatism g_autoCtrl;

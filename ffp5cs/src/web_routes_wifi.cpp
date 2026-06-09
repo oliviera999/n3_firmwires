@@ -21,9 +21,14 @@
 #include "automatism.h"
 #include "realtime_websocket.h"  // g_realtimeWebSocket
 #include "config.h"
+#include "config_manager.h"      // ConfigManager (global config)
+#include "power.h"               // PowerManager (global power)
 #include "app_context.h"
 
 extern Automatism g_autoCtrl;
+extern ConfigManager config;
+extern PowerManager power;
+extern WifiManager wifi;
 
 // Helpers déplacés depuis web_server.cpp (usage exclusif WiFi).
 static bool canCreateAsyncTask() {
