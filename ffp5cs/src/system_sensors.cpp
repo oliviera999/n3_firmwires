@@ -34,18 +34,21 @@ SensorReadings SystemSensors::read() {
     return false;
   };
   auto finalizeOnTimeout = [&]() {
-    r.wlPota = SensorReadingFallback::waterLevel(
+    r.wlPota = SensorReadingFallback::resolveWaterLevel(
       r.wlPota,
       _lastValidWlPota,
-      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f));
-    r.wlAqua = SensorReadingFallback::waterLevel(
+      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f),
+      SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_POTA);
+    r.wlAqua = SensorReadingFallback::resolveWaterLevel(
       r.wlAqua,
       _lastValidWlAqua,
-      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f));
-    r.wlTank = SensorReadingFallback::waterLevel(
+      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f),
+      SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_AQUA);
+    r.wlTank = SensorReadingFallback::resolveWaterLevel(
       r.wlTank,
       _lastValidWlTank,
-      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f));
+      static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f),
+      SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_TANK);
     r.tempWater = NAN;
     r.tempAir = NAN;
     r.humidity = NAN;
@@ -55,14 +58,12 @@ SensorReadings SystemSensors::read() {
   // --- Mesures sécurisées avec timeout strict ---
   // Ultrasons en premier (niveaux critiques, lecture rapide ; DHT peut timeout 7+ s)
   
-  // v11.41: Niveaux d'eau avec validation - Mode réactif pour détecter rapidement les changements
-  // v13.53 (audit): plus jamais de fallback à 0 (interprété comme "niveau très haut" = inondation
-  // par certains automatismes) ; on retombe sur _lastValidWlPota puis sur Fallback::WATER_LEVEL_POTA.
+  // v11.41: Niveaux d'eau — politique fallback configurable par capteur (WaterLevelFallbackPolicy).
   {
     phaseStart = millis();
     uint16_t val = _usPota.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau potager: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
+    bool valid = SensorValidation::isWaterLevelKnown(val);
     if (!valid) {
       uint32_t nowMs = millis();
       bool shouldLog = _lastWlPotaWasValid || (nowMs - _lastWlPotaInvalidLogMs >= 30000);
@@ -70,16 +71,15 @@ SensorReadings SystemSensors::read() {
         SENSOR_LOG_PRINTF("[SystemSensors] Niveau potager invalide: %u mm\n", val);
         _lastWlPotaInvalidLogMs = nowMs;
       }
-      if (_lastValidWlPota > 0) {
-        if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide potager: %u mm\n", _lastValidWlPota);
-        }
-        r.wlPota = _lastValidWlPota;
-      } else {
-        r.wlPota = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f);
-        if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Aucune valeur valide connue, potager=defaut %u mm\n", r.wlPota);
-        }
+      r.wlPota = SensorReadingFallback::resolveWaterLevel(
+        0,
+        _lastValidWlPota,
+        static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f),
+        SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_POTA);
+      if (shouldLog && r.wlPota > 0) {
+        SENSOR_LOG_PRINTF("[SystemSensors] Potager: fallback %u mm\n", r.wlPota);
+      } else if (shouldLog) {
+        SENSOR_LOG_PRINTF("[SystemSensors] Potager: mesure absente (pas de fallback)\n");
       }
     } else {
       r.wlPota = val;
@@ -96,14 +96,12 @@ SensorReadings SystemSensors::read() {
     return r;
   }
   
-  // v13.53 (audit): wlAqua = 0 sur invalide est interprété par automatism.cpp:663 comme
-  // "niveau très haut" (`wlAqua < limFlood` 80mm) → fausse alerte inondation et verrouillage
-  // pompe réservoir. On retombe sur _lastValidWlAqua puis Fallback::WATER_LEVEL_AQUA.
+  // Aquarium : retry puis politique fallback (USE_FALLBACK_AQUA=false → wlAqua=0 si invalide).
   {
     phaseStart = millis();
     uint16_t val = _usAqua.readReactiveFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau aquarium: %u ms\n", millis() - phaseStart);
-    bool valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
+    bool valid = SensorValidation::isWaterLevelKnown(val);
     if (!valid) {
       uint32_t nowMs = millis();
       bool shouldLog = _lastWlAquaWasValid || (nowMs - _lastWlAquaInvalidLogMs >= 30000);
@@ -111,25 +109,26 @@ SensorReadings SystemSensors::read() {
         SENSOR_LOG_PRINTF("[SystemSensors] Niveau aquarium invalide (%u), tentative de récupération...\n", val);
         _lastWlAquaInvalidLogMs = nowMs;
       }
-      // Tentative de récupération avec méthode simple
       val = _usAqua.readFiltered(3);
-      valid = (val > 0 && val <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM);
+      valid = SensorValidation::isWaterLevelKnown(val);
       if (valid) {
         if (shouldLog) {
           SENSOR_LOG_PRINTF("[SystemSensors] Récupération réussie: %u mm\n", val);
         }
         r.wlAqua = val;
         _lastValidWlAqua = val;
-      } else if (_lastValidWlAqua > 0) {
-        if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide aquarium: %u mm\n", _lastValidWlAqua);
-        }
-        r.wlAqua = _lastValidWlAqua;
       } else {
-        // v13.53: défaut sûr (pas 0 - éviterait fausse alerte inondation).
-        r.wlAqua = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f);
+        r.wlAqua = SensorReadingFallback::resolveWaterLevel(
+          0,
+          _lastValidWlAqua,
+          static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f),
+          SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_AQUA);
         if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, aucune valeur valide connue – fallback %u mm\n", r.wlAqua);
+          if (r.wlAqua > 0) {
+            SENSOR_LOG_PRINTF("[SystemSensors] Aquarium: fallback %u mm\n", r.wlAqua);
+          } else {
+            SENSOR_LOG_PRINTF("[SystemSensors] Aquarium: mesure absente (pas de fallback)\n");
+          }
         }
       }
     } else {
@@ -147,13 +146,16 @@ SensorReadings SystemSensors::read() {
     return r;
   }
   
-  // Met à jour l'historique wlAqua pour calcul ~15s
+  // Met à jour l'historique wlAqua pour calcul ~15s (mesures valides uniquement)
   {
     uint32_t nowMs = millis();
-    pushAquaHist(r.wlAqua, nowMs);
+    if (SensorValidation::isWaterLevelKnown(r.wlAqua)) {
+      pushAquaHist(r.wlAqua, nowMs);
+    }
   }
   
   {
+    _usTank.setExpectTankDrain(_tankPumpActive);
     phaseStart = millis();
     uint16_t val = _usTank.readAdvancedFiltered();
     SENSOR_LOG_PRINTF("[SystemSensors] ⏱️ Niveau réservoir: %u ms\n", millis() - phaseStart);
@@ -177,15 +179,18 @@ SensorReadings SystemSensors::read() {
         }
         r.wlTank = val;
         _lastValidWlTank = val;
-      } else if (_lastValidWlTank > 0) {
-        if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Fallback sur dernière valeur valide réservoir: %u mm\n", _lastValidWlTank);
-        }
-        r.wlTank = _lastValidWlTank;
       } else {
-        r.wlTank = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f);
+        r.wlTank = SensorReadingFallback::resolveWaterLevel(
+          0,
+          _lastValidWlTank,
+          static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f),
+          SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_TANK);
         if (shouldLog) {
-          SENSOR_LOG_PRINTF("[SystemSensors] Récupération échouée, réservoir=defaut %u mm\n", r.wlTank);
+          if (r.wlTank > 0) {
+            SENSOR_LOG_PRINTF("[SystemSensors] Réservoir: fallback %u mm\n", r.wlTank);
+          } else {
+            SENSOR_LOG_PRINTF("[SystemSensors] Réservoir: mesure absente (pas de fallback)\n");
+          }
         }
       }
     } else {
@@ -300,9 +305,9 @@ SensorReadings SystemSensors::read() {
     r.pressureHpa = (isnan(val) || val <= 0.0f || val > 1200.0f) ? NAN : val;
   }
 
-  // marée diff
+  // marée diff (max valide uniquement)
   uint16_t oldAquaMax = _aquaMax;
-  if (r.wlAqua > _aquaMax) {
+  if (SensorValidation::isWaterLevelKnown(r.wlAqua) && r.wlAqua > _aquaMax) {
     _aquaMax = r.wlAqua;
     SENSOR_LOG_PRINTF("[Maree] Nouveau max: %u mm (précédent: %u mm)\n", _aquaMax, oldAquaMax);
   }

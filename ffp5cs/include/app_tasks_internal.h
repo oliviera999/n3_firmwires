@@ -56,3 +56,9 @@ void netTask(void* pv);          // app_tasks_net.cpp
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 void otaTask(void* pv);    // app_tasks_ota.cpp
 #endif
+
+namespace AppTasks {
+// v14.00 : signalé par netTask (app_tasks_net.cpp) à la fin du fetch config boot ;
+// attendu par AppTasks::waitForBootConfigFetch() (défini dans app_tasks.cpp).
+void markBootConfigFetchDone();
+}  // namespace AppTasks

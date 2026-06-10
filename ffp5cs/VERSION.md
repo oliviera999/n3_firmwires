@@ -12,6 +12,129 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.01 - 2026-06-08
+
+### Correctifs réseau P1/P2/P3 (monitoring v14.00, 2026-06-07)
+
+- **P1 HMAC/timeout** : réinitialisation du budget timeout au retry `401 HMAC` (`web_client.cpp`) ; `HTTP_POST_TIMEOUT_MS` WROOM 22 s → **28 s** ; RPC 30 s ; logs `elapsed_first` / `ntp_trusted`.
+- **P2 réveil** : séquence post-réveil `drain → POST → drain → fetch config` ; fenêtre `WAKEUP_PROTECTION` (30 s) ; fetch différé (`outDeferred`) non compté comme échec ; OTA/sync POST reportés pendant la fenêtre.
+- **P3 WiFi** : mutex `isStaReconnectInProgress()` partagé power/wifi_manager ; garde `checkConnectionStability` et `loop()` pendant veille/réveil.
+- **Serveur** : `Ffp3HmacPostBody` ignore champs vides (alignement Eau* omis) ; log `auth_ms` + `body_hash` sur 401 ; PDO `MYSQL_ATTR_CONNECT_TIMEOUT` 5 s ; cache colonnes BDD persistant.
+- **Fichiers** : `include/config.h`, `src/web_client.cpp`, `src/power.cpp`, `include/power.h`, `src/wifi_manager.cpp`, `src/app_tasks.cpp`, `include/app_tasks.h`, `src/automatism/automatism_sleep.cpp`, `src/automatism/automatism_sync.cpp`, `serveur/src/Security/Ffp3HmacPostBody.php`, `serveur/src/Controller/AbstractPostDataController.php`, `serveur/src/Controller/Ffp3/PostDataController.php`, `serveur/src/Config/Database.php`, `serveur/src/Repository/SensorRepository.php`, tests HMAC, `serveur/docs/ENDPOINTS_ESP32_SERVEUR.md`.
+
+---
+
+## Version 14.00 - 2026-06-07
+
+### Boot / veille / réveil — renforcement séquence réseau (audit boot-veille)
+
+Suite à l'analyse boot/veille/réseau :
+
+- **Boot** : `postConfiguration()` attend la fin du fetch config `netTask` (`waitForBootConfigFetch`, 25 s max) avant le POST initial — évite `configSynced=0` et GPIO non appliqués au premier POST.
+- **Réveil** : si `goToLightSleep()` a déjà reconnecté le WiFi, suppression des attentes WiFi/DNS redondantes (~8 s + 5 s économisés).
+- **DNS** : `waitForNetworkReady()` teste la résolution du hostname serveur (`ServerUrlConfig::getServerHostname`) au lieu de `pool.ntp.org`.
+- **POST réveil** : `waitForNetworkQueuesDrain()` avant mail réveil et OTA — le check OTA ne concurrence plus le POST post-réveil.
+- **Fichiers** : `include/server_url_config.h`, `include/config.h`, `include/app_tasks.h`, `src/app_tasks.cpp`, `src/system_boot.cpp`, `src/power.cpp`, `src/automatism/automatism_sleep.cpp`, `VERSION.md`.
+
+---
+
+## Version 14.00 - 2026-06-07
+
+### Réseau et timeouts POST (monitoring 2 h 2026-06-07)
+
+Correctifs ciblés après run 2 h en v13.94 (scans WiFi vides post-veille, POST timeout à 18 s alors que latence ~19–20 s) :
+
+- **WiFi fast reconnect** : `WifiManager::loop()` tente `PowerManager::reconnectWithSavedCredentials()` avant le scan complet `connect()` (injection `setPowerManager`).
+- **Scan retry** : jusqu'à 3 tentatives de scan dans `connect()` avec `WIFI_PRE_SCAN_DELAY_MS` entre échecs.
+- **`WIFI_RECONNECT_AFTER_WAKE_MS`** : 8 s → **12 s** (association DHCP après light sleep).
+- **`HTTP_POST_TIMEOUT_MS` (WROOM)** : 18 s → **22 s** (max observé 20 213 ms + marge). S3 inchangé (15 s / TWDT).
+- **Déploiement effectif** des correctifs v13.95 déjà en tree (`FETCH_REMOTE_STATE_RPC_TIMEOUT_MS` 28 s, `shouldDeferRemoteStateFetch`).
+- **Link wroom-beta** : `NET_TASK_STACK_SIZE` 14032 → **14000** (−32 octets BSS, débordement dram0 +16 B).
+- **Fichiers** : `include/config.h`, `include/wifi_manager.h`, `src/wifi_manager.cpp`, `src/app.cpp`, `VERSION.md`.
+
+---
+
+## Version 13.99 - 2026-06-06
+
+### Correctif stack canary otaTask (monitoring 6 h)
+
+- **`downloadMetadata()`** : suppression du double buffer stack (`tempPayload[4096]`) ; lecture HTTP directe dans le buffer `payload` appelant (`OTA_METADATA_PAYLOAD_BUFFER_SIZE`).
+- **Réveil veille** : délai `OTA_CHECK_DELAY_AFTER_WAKE_MS` (3 s) après mail réveil avant `netRequestOtaCheck()` pour laisser le réseau se stabiliser post-TLS.
+- **Contexte** : 5 panics `Stack canary watchpoint triggered (otaTask)` lors du GET metadata après réveil (run 6 h du 06/06/2026, wroom-beta v13.94).
+- **Fichiers** : `src/ota_manager.cpp`, `src/automatism/automatism_sleep.cpp`, `include/config.h`, `VERSION.md`.
+
+### Niveaux d'eau ultrason — absence de mesure (fallback configurable)
+
+- **`SensorConfig::WaterLevelFallbackPolicy`** : trois flags compile-time (`USE_FALLBACK_AQUA` / `TANK` / `POTA`). Par défaut : aquarium **sans** fallback, réserve et potager conservent l'ancien comportement.
+- **`SensorReadingFallback::resolveWaterLevel()`** : si fallback désactivé, lecture invalide → `wl*=0` (pas de lastValid ni valeur par défaut 152 mm).
+- **POST serveur** : champs `Eau*` omis quand `wl*=0` (`formatWaterLevelPost`, `appendKV` ignore les valeurs vides). BDD : `NULL`.
+- **Automatisme** : décisions remplissage / inondation / alertes aquarium ignorées si `SensorValidation::isWaterLevelKnown()` est faux (évite fausse alerte sur `wlAqua=0`).
+- **UI serveur** : affichage « — » si dernière mesure absente ; temps réel ne force plus 0 cm.
+
+---
+
+## Version 13.98 - 2026-06-05
+
+### Link wroom-prod — débordement dram0 (+8 octets)
+
+- **`NET_TASK_STACK_SIZE` (PROFILE_PROD)** : 12656 → **12624** (−128 octets BSS) pour corriger `dram0_0_seg overflowed by 8 bytes` au link.
+- **`pio_save_boot_artifacts.py`** : skip phase 2 sur `checkprogsize` (évite verrou fichier Windows) ; retries sur copies.
+- **`pio_wroom_upload_bundle.py`** : résolution correcte de `esptool` (`$UPLOADER` / package `tool-esptoolpy`).
+
+---
+
+## Version 13.97 - 2026-06-05
+
+### Flash WROOM pioarduino — bundle cohérent (bootloader + partitions + firmware)
+
+- **`pio_restore_build_config.py`** : suppression du `SystemExit(0)` quand `CMakeCache.txt` est présent (bloquait build/upload en ~15 s).
+- **`pio_save_boot_artifacts.py`** : détection `partition-table.bin` / `boot_app0.bin` ; sync artifacts → `BUILD_DIR` après phase 2.
+- **`pio_wroom_upload_bundle.py`** : `pio run -t upload` flashe le jeu complet (évite panic « Cache error » après erase).
+
+---
+
+## Version 13.96 - 2026-06-04
+
+### Link wroom-prod — débordement dram0 (+152 octets)
+
+- **`NET_TASK_STACK_SIZE` (PROFILE_PROD)** : 12800 → **12672** (−512 octets BSS) pour corriger `region dram0_0_seg overflowed` au link (pioarduino 55.03.37 / GCC 14).
+
+---
+
+## Version 13.95 - 2026-06-03
+
+### netRPC GET — timeout aligné POST + différé si transport occupé
+
+Correctif des timeouts `[netRPC] Timeout (12000 ms)` observés quand un GET `outputs/state` attendait la fin d'un POST (~19 s) sur le mutex HTTP partagé :
+
+- **`FETCH_REMOTE_STATE_RPC_TIMEOUT_MS`** : 12 s → **28 s** (POST 18 s + GET 8 s + marge).
+- **`HTTP_POST_RPC_TIMEOUT_MS` (WROOM)** : 22 s → **25 s** (marge POST ~20 s observé en 4G).
+- **`shouldDeferRemoteStateFetch()`** : diffère le poll GET si mutex transport pris ou file `postSender` non vide (retry au cycle suivant, sans faux « GET échoué »).
+- **`WebClient::isHttpTransportBusy()`** : sonde non bloquante du mutex partagé GET/POST.
+
+---
+
+## Version 13.94 - 2026-06-03
+
+### Filtrage ultrason réservoir — bimodalité et biais sécurité
+
+Correctif de l'algorithme `readAdvancedFiltered()` (cuve étroite, échos multipath) :
+
+- **7 lectures** par cycle (au lieu de 5) ; plage brute dès **15 mm** (cuve pleine).
+- **Détection bimodale** : si deux clusters (échos courts vs surface réelle), choix du cluster **haut** (distance élevée = moins d'eau = sécurité anti-vidage).
+- **Sauts asymétriques** : vidage (distance ↑) assoupli jusqu'à 400 mm ; remplissage (distance ↓) strict (100 mm + batch fort).
+- **Contexte pompe** : `setTankPumpActive()` transmis depuis `sensorTask` pour accepter le vidage cohérent pendant le remplissage auto/manuel.
+- Constantes regroupées dans `SensorConfig::Ultrasonic::Tank` (`config.h`).
+
+---
+
+## Version 13.93 - 2026-06-03
+
+### Déploiement OTA canal beta (wroom-beta)
+
+- Incrément pour publication OTA distante : `ffp5-wroom-beta` → canal `test` (`esp32-wroom-beta/firmware.bin`, metadata `channels.test.esp32-wroom`).
+- Inclut le mode OTA exclusif v13.91 (verrou à la détection, réseau suspendu pendant téléchargement).
+- **Fichiers** : `include/config.h`, `VERSION.md`.
 ## Version 13.93 - 2026-06-09
 
 ### Audit optimisation — allègement des god-files (sans changement fonctionnel)

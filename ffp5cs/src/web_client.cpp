@@ -346,12 +346,17 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     }
 
     // v13.90 : 401 avec X-Sig → retry unique sans en-têtes HMAC (fallback api_key)
+    // v14.01 : réinitialiser le budget timeout — le 1er essai HMAC peut consommer ~23 s (4G)
     if (code == 401 && sendHmac && !hmac401FallbackDone) {
+      const uint32_t elapsedFirstAttempt = millis() - requestStartMs;
       hmac401FallbackDone = true;
       skipHmacHeaders = true;
-      LOG(LOG_WARN, "[HTTP] 401 HMAC → retry api_key (sans X-Sig)");
+      requestStartMs = millis();
+      LOG(LOG_WARN, "[HTTP] 401 HMAC → retry api_key (sans X-Sig), elapsed_first=%u ms ntp_trusted=%d",
+          elapsedFirstAttempt, power.hasTrustedNtpTime() ? 1 : 0);
       if (LogConfig::SERIAL_ENABLED) {
-        Serial.println(F("[HTTP] 401 HMAC → retry api_key (sans X-Sig)"));
+        Serial.printf("[HTTP] 401 HMAC → retry api_key (sans X-Sig) | 1er essai=%u ms | ntp_trusted=%d\n",
+                      elapsedFirstAttempt, power.hasTrustedNtpTime() ? 1 : 0);
       }
       continue;
     }
@@ -470,6 +475,9 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   bool truncated = false;
   
   auto appendKV = [&](const char* key, const char* value) {
+    if (!value || value[0] == '\0') {
+      return;
+    }
     if (truncated || offset >= sizeof(payload) - 1) {
       truncated = true;
       return;
@@ -1216,4 +1224,14 @@ void WebClient::releaseHttpTransportLockIfHeld() {
   if (s_httpMutex != nullptr) {
     xSemaphoreGive(s_httpMutex);
   }
+}
+
+bool WebClient::isHttpTransportBusy() {
+  if (s_httpTransportLockHeldForSleep.load()) {
+    return true;
+  }
+  if (s_httpMutex == nullptr) {
+    return false;
+  }
+  return xSemaphoreGetMutexHolder(s_httpMutex) != nullptr;
 }

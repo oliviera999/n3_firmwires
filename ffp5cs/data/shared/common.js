@@ -972,9 +972,9 @@ window.updateSensorDisplay = function updateSensorDisplay(data) {
     updateElement('tWater', data.tempWater);
     updateElement('tAir', data.tempAir);
     updateElement('humid', data.humidity);
-    updateElement('wlAqua', data.wlAqua, 0);
-    updateElement('wlTank', data.wlTank, 0);
-    updateElement('wlPota', data.wlPota, 0);
+    updateElement('wlAqua', data.wlAqua === undefined ? null : data.wlAqua, 0);
+    updateElement('wlTank', data.wlTank === undefined ? null : data.wlTank, 0);
+    updateElement('wlPota', data.wlPota === undefined ? null : data.wlPota, 0);
     updateElement('lumi', data.luminosite, 0);
     
     // États des actionneurs : affichage direct dans les boutons (comme Notifications)

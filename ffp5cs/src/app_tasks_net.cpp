@@ -145,6 +145,9 @@ void netTask(void* pv) {
 #endif
   }
 
+  // v14.00 : le fetch config boot est terminé → débloque le POST initial (postConfiguration).
+  AppTasks::markBootConfigFetchDone();
+
   for (;;) {
     esp_task_wdt_reset();  // Reset watchdog dans boucle principale
 

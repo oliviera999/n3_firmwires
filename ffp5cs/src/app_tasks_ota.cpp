@@ -4,6 +4,7 @@
 // déplacement verbatim. État partagé via app_tasks_internal.h ; réserve mail
 // via task_mail.h.
 #include "app_tasks_internal.h"  // g_ctx, g_otaTaskHandle, g_otaTriggerQueue, otaTask
+#include "app_tasks.h"           // AppTasks::isInWakeProtectionWindow (garde post-réveil v14.01)
 #include "task_mail.h"           // allocMailReserveIfNeeded, mailReserveReleaseIfInternal
 #include "app_context.h"         // AppContext (g_ctx->otaManager)
 #include "config.h"              // TaskConfig, HeapConfig, TimingConfig
@@ -139,7 +140,8 @@ void otaTask(void* pv) {
       continue;
     }
     lastOtaCheckMs = millis();
-    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isOtaExclusive()) {
+    if (!g_ctx || WiFi.status() != WL_CONNECTED || g_ctx->otaManager.isOtaExclusive()
+        || AppTasks::isInWakeProtectionWindow()) {
       continue;
     }
     if (ESP.getFreeHeap() < HeapConfig::MIN_HEAP_OTA) {

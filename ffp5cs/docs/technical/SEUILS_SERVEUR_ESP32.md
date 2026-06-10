@@ -82,7 +82,7 @@ Ce document décrit les différences intentionnelles entre les seuils de validat
 | **Serveur PHP (nettoyage)** | 15 mm | 1000 mm | `serveur/src/Service/SensorDataService.php` |
 
 **Justification** :
-- **ESP32 Tank (15-1000 mm)** : plage opérationnelle du réservoir (`readAdvancedFiltered`), filtrage anti-aberrations (min 3 lectures, sauts symétriques).
+- **ESP32 Tank (15-1000 mm)** : plage opérationnelle du réservoir (`readAdvancedFiltered`), filtrage anti-aberrations v13.94+ (7 lectures, détection bimodale cluster haut, sauts asymétriques vidage/remplissage, contexte pompe).
 - **ESP32 HC-SR04 (20-4000 mm)** : plage technique datasheet.
 - **Serveur (15-1000 mm)** : aligné sur la plage métier firmware pour le nettoyage batch (`CronOrchestrator` via `run-cron.php`).
 

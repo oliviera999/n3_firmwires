@@ -42,3 +42,28 @@ int n3DataPost(const N3PostConfig& config);
  * deviceApiKey : si non NULL, envoie le header X-Api-Key (auth serveur galerie / device).
  */
 String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceApiKey = nullptr);
+
+/** Statistiques reseau HTTP (POST/GET) pour rapports mail et comparaison ffp5cs. */
+struct N3NetStatsSnapshot {
+  uint32_t postCount;
+  uint32_t postOkCount;
+  uint32_t postFailCount;
+  uint32_t postLastDurationMs;
+  uint32_t postMaxDurationMs;
+  uint32_t postAvgDurationMs;
+  uint32_t postNearTimeoutCount;
+  int postLastCode;
+  int postLastRssi;
+  uint32_t getCount;
+  uint32_t getOkCount;
+  uint32_t getFailCount;
+  uint32_t getLastDurationMs;
+  uint32_t getMaxDurationMs;
+  int getLastCode;
+  int getLastRssi;
+};
+
+void n3NetStatsRecordPost(int httpCode, unsigned long durationMs, int rssi);
+void n3NetStatsRecordGet(int httpCode, unsigned long durationMs, int rssi);
+void n3NetStatsGetSnapshot(N3NetStatsSnapshot& out);
+void n3NetStatsResetPeriod();

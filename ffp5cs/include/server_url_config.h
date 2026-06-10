@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 
 #if defined(USE_LOCAL_SERVER_ENDPOINTS) && !defined(LOCAL_SERVER_BASE_URL) && __has_include("local_server_overrides.h")
 #include "local_server_overrides.h"
@@ -82,5 +83,23 @@ namespace ServerUrlConfig {
 
   inline void getOtaBaseUrl(char* buffer, size_t bufferSize) {
     snprintf(buffer, bufferSize, "%s%s", BASE_URL_SECURE, OTA_BASE_PATH);
+  }
+
+  /** Hostname extrait de BASE_URL (sans schéma ni port) — pour test DNS waitForNetworkReady. */
+  inline void getServerHostname(char* buffer, size_t bufferSize) {
+    if (!buffer || bufferSize == 0) return;
+    buffer[0] = '\0';
+    const char* url = BASE_URL;
+    if (strncmp(url, "https://", 8) == 0) {
+      url += 8;
+    } else if (strncmp(url, "http://", 7) == 0) {
+      url += 7;
+    }
+    size_t i = 0;
+    while (url[i] != '\0' && url[i] != ':' && url[i] != '/' && i + 1 < bufferSize) {
+      buffer[i] = url[i];
+      ++i;
+    }
+    buffer[i] = '\0';
   }
 }

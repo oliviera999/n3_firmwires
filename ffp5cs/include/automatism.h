@@ -149,13 +149,16 @@ class Automatism {
   SensorReadings getCachedReadings() const {
     SensorReadings r{};
     if (!_sensors.getLastCachedReadings(r)) {
-      // Pas de cache encore disponible : valeurs fallback sûres (cohérent avec /json).
+      // Pas de cache encore disponible : temp/humidité fallback ; niveaux selon politique.
       r.tempWater = SensorConfig::Fallback::TEMP_WATER;
       r.tempAir = SensorConfig::Fallback::TEMP_AIR;
       r.humidity = SensorConfig::Fallback::HUMIDITY;
-      r.wlAqua = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f);
-      r.wlTank = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f);
-      r.wlPota = static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f);
+      r.wlAqua = SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_AQUA
+        ? static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_AQUA + 0.5f) : 0;
+      r.wlTank = SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_TANK
+        ? static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_TANK + 0.5f) : 0;
+      r.wlPota = SensorConfig::WaterLevelFallbackPolicy::USE_FALLBACK_POTA
+        ? static_cast<uint16_t>(SensorConfig::Fallback::WATER_LEVEL_POTA + 0.5f) : 0;
       r.luminosite = SensorConfig::Fallback::LUMINOSITY;
     }
     return r;

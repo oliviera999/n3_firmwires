@@ -12,6 +12,7 @@
 #include <DNSServer.h>
 #endif
 class DisplayView;
+class PowerManager;
 
 class WifiManager {
  public:
@@ -59,7 +60,11 @@ class WifiManager {
   bool disconnect();
   bool reconnect(class DisplayView* disp = nullptr);
 
+  /** Fast reconnect post-veille (reconnectWithSavedCredentials) avant scan complet dans loop(). */
+  void setPowerManager(PowerManager* power) { _power = power; }
+
  private:
+  PowerManager* _power = nullptr;
   const Credential* _list;
   size_t _count;
   uint32_t _timeoutMs;
