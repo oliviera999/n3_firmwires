@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <cmath>  // Pour isnan() dans SensorValidation
+#include "board_traits.h"  // BoardTraits:: (capacités carte compile-time, remplace des #ifdef de valeurs)
 #include "gpio_mapping.h"  // Pour GPIODefaults (source de vérité des valeurs par défaut)
 #include "server_url_config.h"
 
@@ -65,7 +66,7 @@ namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
     inline constexpr const char* VERSION = "14.01";
-    
+
     // Type d'environnement
     #if defined(PROFILE_DEV)
         inline constexpr const char* PROFILE_TYPE = "dev";
@@ -79,12 +80,8 @@ namespace ProjectConfig {
         inline constexpr const char* PROFILE_TYPE = "unknown";
     #endif
     
-    // Identification matérielle
-    #if defined(BOARD_S3)
-        inline constexpr const char* BOARD_TYPE = "esp32-s3";
-    #else
-        inline constexpr const char* BOARD_TYPE = "esp32-wroom";
-    #endif
+    // Identification matérielle (via BoardTraits, ex-#ifdef BOARD_S3)
+    inline constexpr const char* BOARD_TYPE = BoardTraits::isS3() ? "esp32-s3" : "esp32-wroom";
 }
 
 namespace Utils {
@@ -94,11 +91,7 @@ namespace Utils {
         #elif defined(PROFILE_BETA)
             return "BETA";
         #elif defined(PROFILE_TEST)
-            #if defined(BOARD_S3)
-                return "S3-TEST";
-            #else
-                return "TEST";
-            #endif
+            return BoardTraits::isS3() ? "S3-TEST" : "TEST";
         #elif defined(PROFILE_DEV)
             return "DEVELOPMENT";
         #else
@@ -171,11 +164,10 @@ namespace TimingConfig {
     inline constexpr uint32_t WIFI_RECONNECT_AFTER_WAKE_MS = 12000;
     // 15 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP) — permet liens faibles au boot et manuel
     // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 4000;
-#else
-    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS = 15000;
-#endif
+    // S3 PSRAM : 4 s (limite le blocage boot/splash) ; autres cibles : 15 s.
+    // Ex-#ifdef converti via BoardTraits (sélection de valeur, comportement identique).
+    inline constexpr uint32_t WIFI_CONNECT_ATTEMPT_TIMEOUT_MS =
+        (BoardTraits::isS3() && BoardTraits::hasPsram()) ? 4000U : 15000U;
     // v11.168: Timeout boot plus long pour laisser le temps de récupérer config serveur
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
     // où on peut récupérer la config distante de manière fiable

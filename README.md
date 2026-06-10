@@ -10,12 +10,12 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 |--------|---------|-------|-------------|
 | **N3PhasmesProto (n3pp)** | `n3pp/` | ESP32 dev | Contrôle serre / aquaponie : température/humidité air, 4 capteurs humidité sol, pompe, luminosité, mails d’alerte, serveur web, NTP, OLED, deep sleep. |
 | **MeteoStationPrototype (msp)** | `msp/` | ESP32 dev | Station météo + tracker solaire : 2× DHT, humidité sol, pluie, DS18B20, 4 LDR, 2 servos, relais, mail, serveur web, NTP, OLED. |
-| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.38`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload et contrôle distant au réveil avec `X-Api-Key` (GET état outputs + POST version firmware, aligné serveur ≥ 5.0.306), retries de connexion, vérification du code HTTP retour. Tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
+| **Upload Photos (unifié)** | `uploadphotosserver/` | ESP32-CAM | Un seul code, trois envs : **msp1** (msp1gallery, OTA distant HTTP, deep sleep 600 s, version courante `2.39`), **n3pp** (n3ppgallery, deep sleep 600 s, SD), **ffp3** (ffp3gallery, deep sleep 600 s). Upload et contrôle distant au réveil avec `X-Api-Key` (GET état outputs + POST version firmware, aligné serveur ≥ 5.0.306), retries de connexion, vérification du code HTTP retour. Tables `UploadPhoto*Outputs` (boards 5/6/7). Notifications mail SMTP (credentials partagés) : **une fois** au premier démarrage réel (hors réveil deep sleep, flag NVS `upcam/fb_mail`), démarrage/fin OTA, transitions matin/soir du créneau photo. `pio run -e msp1` / `-e n3pp` / `-e ffp3`. |
 | **Upload Photos legacy** | `archive/uploadphotosserver_legacy/` | ESP32-CAM | Historique (`uploadphotosserver_*`) conservé en archive ; utiliser uniquement `uploadphotosserver/`. |
 | **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3, réseau offline-first. Build WROOM plus complexe que n3pp/msp (pioarduino 2 passes) — voir [ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md). |
 | **Poissonglouton (recyclage)** | `poissonglouton/` | ESP32-S3 | Compteur de bouteilles pour poubelle ludique : détection IR + ultrason (simple ou tandem), feedback audio DFPlayer, mode écran tactile ou headless, upload batch vers `/pgl/post-data`, heartbeat `/pgl/heartbeat` (flag `PGL_ENABLE_SERVER_HEARTBEAT`), deep sleep solaire. |
-| **LVGL_Widgets** | `LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. |
-| **Ratata (ZYC0108-EN)** | `ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. |
+| **LVGL_Widgets** | `à voir/LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. Dossier `à voir/` (prototype non maintenu en production). |
+| **Ratata (ZYC0108-EN)** | `à voir/ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. Dossier `à voir/`. |
 
 ## Prérequis
 
@@ -207,7 +207,6 @@ Les firmwares **n3pp** et **msp** (et `ffp5cs` pour certaines libs) utilisent de
 | `n3_common` | Noyau partagé : OTA (`n3_ota` avec vérif sha256 + ECDSA P-256 depuis 1.3), constantes (`n3_defaults.h`), parsing JSON outputs (`n3_outputs_json` depuis 1.4). |
 | `n3_sleep` | Configuration et démarrage du deep sleep ESP32. |
 | `n3_display` | Initialisation OLED SSD1306 (helper commun). |
-| `libn3_iot` | Drivers capteurs génériques (DHT, analogique filtré via `n3_analog_sensors`, DS18B20). Conservé pour compat ; pour nouveau code préférer les libs ciblées. |
 
 ## Structure
 
@@ -223,55 +222,57 @@ firmwires/
 │   ├── pio_redirect_build_dir.py       # Redirection build Windows vers C:\pio-builds
 │   ├── pio_repair_build_junction.py    # Repare jonction .pio/build apres clean
 │   ├── Invoke-PioBuildFast.ps1         # Build sans clean (alternance projets)
+│   ├── Invoke-PioBuildAudit.ps1        # Audit build (taille, durée, anomalies)
+│   ├── analyze_log_generic.ps1         # Analyse log générique (n3pp/msp/cam)
+│   ├── clean-pio-builds-all.ps1        # Nettoyage des builds C:\pio-builds
+│   ├── Release-ComPort.ps1             # Libération du port COM
+│   ├── upload_esp32_otadata_reset.py   # Reset otadata avant flash USB
 │   └── pio_patch_esp_mail_fs_spiffs.py # Patch ESP Mail pour firmwares WROOM/cam
 ├── shared/                     # Bibliothèques partagées n3 (n3pp, msp, ffp5cs)
 │   ├── n3_analog_sensors/      # ADC filtré (luminosité, pont, humidité sol)
 │   ├── n3_battery/             # Batterie pont diviseur (délègue à n3_analog_sensors)
-│   ├── n3_wifi/
-│   ├── n3_http/
-│   ├── n3_mail/
-│   ├── n3_time/
-│   └── n3_common/
+│   ├── n3_wifi/                # WiFi multi-réseaux (scan RSSI + BSSID)
+│   ├── n3_data/                # POST x-www-form-urlencoded + HMAC body
+│   ├── n3_hmac/                # HMAC-SHA256 (X-Signature)
+│   ├── n3_mail/                # Email SMTP (ESP Mail Client)
+│   ├── n3_time/                # Heure NVS + raison de réveil
+│   ├── n3_sleep/              # Deep sleep (timer + GPIO ext0)
+│   ├── n3_display/           # OLED SSD1306
+│   └── n3_common/             # OTA (sha256+ECDSA), n3_defaults.h, n3_outputs_json
 ├── n3pp/                    # N3PhasmesProto (ESP32)
 │   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── n3pp.ino
+│   ├── include/n3pp_config.h   # FIRMWARE_VERSION
+│   ├── src/main.cpp + modules (n3pp_globals/automation/display/network/sensors.cpp)
+│   └── VERSION.md
 ├── msp/                     # MeteoStationPrototype (ESP32)
 │   ├── platformio.ini
-│   ├── src/main.cpp
-│   ├── lib/, include/, test/
+│   ├── include/msp_config.h    # FIRMWARE_VERSION
+│   ├── src/main.cpp + modules (msp_automation/display/network/sensors.cpp)
+│   └── VERSION.md
 ├── uploadphotosserver/         # ESP32-CAM unifié (envs msp1, n3pp, ffp3)
 │   ├── platformio.ini
 │   ├── include/config.h
 │   ├── src/main.cpp
 │   ├── tools/pio_ensure_credentials.py
 │   └── logs/ (creé automatiquement par monitor_Nmin.ps1)
-├── uploadphotosserver_msp1/    # ESP32-CAM → msp1 (legacy)
-│   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── README.md
-├── uploadphotosserver_n3pp_1_6_deppsleep/  # ESP32-CAM → n3pp, deep sleep
-│   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── README.md
-├── uploadphotosserver_ffp3_1_5_deppsleep/   # ESP32-CAM → ffp3, deep sleep
-│   ├── platformio.ini
-│   ├── src/main.cpp
-│   └── README.md
 ├── poissonglouton/              # ESP32-S3 recyclage (display + headless)
 │   ├── platformio.ini
 │   ├── include/config.h
 │   ├── src/main.cpp
 │   └── VERSION.md
-├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires)
-├── LVGL_Widgets/              # ESP32-S3 + écran LVGL (pas de serveur dédié)
-└── ratata/                     # Kit ZYC0108-EN (UNO + ESP32-CAM)
-    ├── platformio.ini          # 8 environnements
-    ├── README.md
-    ├── src/
-    │   ├── 1_Auto_move/, 2_servo_Angle/, … , 6_1_ESP32_Car/, 6_2_Arduino_UNO/, test/
-    │   └── (chaque sous-dossier contient main.cpp)
-    └── ZYC0108-EN/             # Sources d’origine du kit
+├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires ; submodule ffp5cs/ffp3)
+├── archive/                    # Code historique — ne plus utiliser (utiliser uploadphotosserver/ unifié)
+│   ├── uploadphotosserver_legacy/          # Historique caméra
+│   ├── uploadphotosserver_msp1/            # ESP32-CAM → msp1 (legacy, archivé 2026-06)
+│   ├── uploadphotosserver_n3pp_1_6_deppsleep/  # ESP32-CAM → n3pp deep sleep (archivé 2026-06)
+│   └── uploadphotosserver_ffp3_1_5_deppsleep/  # ESP32-CAM → ffp3 deep sleep (archivé 2026-06)
+└── à voir/                     # Prototypes / projets annexes non maintenus en production
+    ├── LVGL_Widgets/           # ESP32-S3 + écran LVGL (pas de serveur dédié)
+    └── ratata/                 # Kit ZYC0108-EN (UNO + ESP32-CAM)
+        ├── platformio.ini      # 8 environnements
+        ├── README.md
+        └── src/
+            └── 1_Auto_move/, 2_servo_Angle/, … , 6_1_ESP32_Car/, 6_2_Arduino_UNO/, test/  (chaque sous-dossier : main.cpp)
 ```
 
 Les firmwares sont indépendants ; un partage de code commun pourra être ajouté plus tard si besoin. **ffp5cs** est un dossier ordinaire dans firmwires (voir [RECOMMANDATIONS_IOT.md](../RECOMMANDATIONS_IOT.md)).

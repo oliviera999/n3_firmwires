@@ -1,0 +1,92 @@
+name: Firmware CI
+
+# CI racine pour n3_firmwires (aucune CI active auparavant : les workflows sous
+# ffp5cs/.github/ ne sont pas pris en compte par GitHub car hors racine).
+# Compile les firmwares et lance les tests natifs sur chaque push/PR.
+# Secrets : credentials.h (n3pp/msp/upload) provisionné depuis l'exemple ;
+# ffp5cs/include/secrets.h est auto-créé par son pre-script pio_ensure_secrets.py.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-tests:
+    name: Tests natifs (Unity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-native-${{ hashFiles('**/platformio*.ini') }}
+          restore-keys: pio-native-
+      - name: shared/ (n3_analog_sensors, n3_hmac)
+        run: |
+          cd shared/tests_native
+          for s in test_analog test_hmac; do
+            echo "::group::$s"
+            pio test -c platformio-native.ini -e native -f "$s"
+            echo "::endgroup::"
+          done
+      - name: ffp5cs (suite par suite)
+        run: |
+          cd ffp5cs
+          for s in test_nvs test_config test_server_url test_sensor_validation test_feeding_slots; do
+            echo "::group::$s"
+            pio test -c platformio-native.ini -e native -f "$s"
+            echo "::endgroup::"
+          done
+
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: n3pp, dir: n3pp, env: esp32dev }
+          - { name: msp, dir: msp, env: esp32dev }
+          - { name: ffp5cs-wroom-test, dir: ffp5cs, env: wroom-test }
+          # NB : ffp5cs wroom-s3-test retiré de la CI — incompat bibliothèque
+          # pré-existante (ESP32Servo@3.0.5 vs arduino-esp32 2.0.x du platform S3 :
+          # 'note_t' non déclaré dans ESP32PWM.h), orthogonale à la décomposition.
+          # Le code S3 est validé localement (image esp32s3 OK) ; à réactiver une
+          # fois la version ESP32Servo/arduino-esp32 S3 alignée.
+          - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
+          - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
+          - { name: uploadphotosserver-msp1, dir: uploadphotosserver, env: msp1 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio intelhex  # intelhex requis par le build S3 (espressif32@6.13.0)
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: pio-
+      - name: Provision credentials/secrets (placeholders CI)
+        run: |
+          cp credentials.h.example credentials.h
+          # ffp5cs : secrets_config.h est gitignoré ; le fournir depuis l'exemple
+          # (sinon include/config.h échoue : API_KEY auto-référence + secrets_config.h absent).
+          if [ -f ffp5cs/include/secrets_config.h.example ]; then
+            cp ffp5cs/include/secrets_config.h.example ffp5cs/include/secrets_config.h
+          fi
+      - name: Build ${{ matrix.name }} (${{ matrix.env }})
+        run: cd ${{ matrix.dir }} && pio run -e ${{ matrix.env }}

@@ -2,7 +2,7 @@
 
 **Système de contrôle automatisé pour aquaponie avec ESP32**
 
-[![Version](https://img.shields.io/badge/version-13.81-blue.svg)](VERSION.md)
+[![Version](https://img.shields.io/badge/version-13.92-blue.svg)](VERSION.md)
 [![ESP32](https://img.shields.io/badge/ESP32-WROOM%20%7C%20S3-green.svg)](platformio.ini)
 [![Framework](https://img.shields.io/badge/framework-Arduino-orange.svg)](platformio.ini)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)

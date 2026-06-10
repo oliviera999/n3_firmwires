@@ -51,8 +51,8 @@ RTC_DATA_ATTR String enableEmailChecked = "checked";
 
 String emailMessage;
 
-// Session SMTP globale (ESP Mail Client).
-SMTPSession smtp;
+// (Session SMTP globale retirée : envoi mail factorisé dans n3_mail,
+//  qui crée une SMTPSession locale le temps de l'envoi.)
 
 // ============================================================
 // Batterie et pont diviseur

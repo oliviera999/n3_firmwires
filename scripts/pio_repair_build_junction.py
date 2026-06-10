@@ -64,13 +64,15 @@ def repair_junction(project_dir, pioenv, new_build_dir, strict=False):
     return True
 
 
+# NB : `sys.exit(0)` ici terminait TOUT le process `pio run` (pas seulement ce
+# script) sur les plateformes sans redirection (Linux/CI) -> le build « réussissait »
+# sans rien compiler. On garde le même motif `if root:` que pio_redirect_build_dir.py :
+# Windows fait la jonction, Linux/CI poursuit normalement le build.
 root = _should_redirect_root()
-if not root:
-    sys.exit(0)
-
-project_dir = Path(env.subst("$PROJECT_DIR")).resolve()
-pioenv = env["PIOENV"]
-new_build_dir = (root / _project_slug(str(project_dir)) / pioenv).resolve()
-strict = pioenv.startswith("wroom-") and pioenv not in ("wroom-tls-test",)
-if not repair_junction(project_dir, pioenv, new_build_dir, strict=strict):
-    env.Exit(1)
+if root:
+    project_dir = Path(env.subst("$PROJECT_DIR")).resolve()
+    pioenv = env["PIOENV"]
+    new_build_dir = (root / _project_slug(str(project_dir)) / pioenv).resolve()
+    strict = pioenv.startswith("wroom-") and pioenv not in ("wroom-tls-test",)
+    if not repair_junction(project_dir, pioenv, new_build_dir, strict=strict):
+        env.Exit(1)

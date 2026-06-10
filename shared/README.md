@@ -6,7 +6,23 @@ Chaque dossier contient :
 
 - `library.json` : nom, version, dépendances PlatformIO.
 - `src/` : sources C++ Arduino (`.h` + `.cpp`).
-- Pas de tests natifs PlatformIO pour l'instant (cf. plan d'audit 2026-05 — Phase 4 tests).
+
+## Tests natifs
+
+Tests unitaires hôte (Unity) pour la logique pure, sous [`tests_native/`](tests_native/) :
+
+```bash
+cd shared/tests_native
+pio test -c platformio-native.ini -e native
+```
+
+Chaque test inclut directement le `.cpp` testé avec un mock Arduino minimal
+(`mocks/Arduino.h`, `analogRead` injectable) ou des stubs (`stubs/` : mbedtls,
+HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
+- `n3_analog_sensors` (`test_analog`) : médiane, rejet d'outliers, moyenne, EMA, fallback, tensions batterie.
+- `n3_hmac` (`test_hmac`) : contrat du wrapper (formatage hex 64 car., garde-fou de taille, header `X-Signature`). La justesse crypto reste validée sur cible (vrai mbedtls).
+
+Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 
 ## Inventaire
 
@@ -20,10 +36,9 @@ Chaque dossier contient :
 | [`n3_hmac`](n3_hmac/) | 1.0.0 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. | — |
 | [`n3_mail`](n3_mail/) | 1.1.0 | Envoi SMTP, debug body et rapport reseau periodique (`n3MailBuildNetReportBody`). | `n3_data`, `mobizt/ESP Mail Client` |
 | [`n3_time`](n3_time/) | 1.0.0 | Sauvegarde/restauration heure RTC en flash NVS, raison de réveil. | `fbiego/ESP32Time` |
-| [`n3_common`](n3_common/) | 1.4.0 | OTA HTTP distant avec vérif sha256 + ECDSA P-256 (`n3_ota`), constantes `n3_defaults.h`, parsing JSON outputs `n3_outputs_json` (factorisation 2026-05). | `bblanchon/ArduinoJson ^7.4.3`, `arduino-libraries/Arduino_JSON ^0.2.0` |
+| [`n3_common`](n3_common/) | 1.4.1 | OTA HTTP distant avec vérif sha256 + ECDSA P-256 (`n3_ota`), constantes `n3_defaults.h`, parsing JSON outputs `n3_outputs_json` (factorisation 2026-05). | `bblanchon/ArduinoJson ^7.4.3`, `arduino-libraries/Arduino_JSON ^0.2.0` |
 | [`n3_sleep`](n3_sleep/) | 1.0.0 | Configuration et démarrage du deep sleep ESP32 (timer + GPIO ext0). | — |
-| [`n3_display`](n3_display/) | 1.0.0 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/SSD1306` |
-| [`libn3_iot`](libn3_iot/) | 1.1.0 | Drivers capteurs génériques (DHT, analogique filtré via `n3_analog_sensors`, DS18B20). Conservé pour compat ; nouveau code → libs ciblées. | `adafruit/DHT sensor library`, `n3_analog_sensors` |
+| [`n3_display`](n3_display/) | 1.0.1 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/Adafruit SSD1306` |
 
 ## Intégration
 

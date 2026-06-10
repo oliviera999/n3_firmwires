@@ -92,8 +92,7 @@ RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
 RTC_DATA_ATTR String enableEmailChecked = "checked";
 String emailMessage;
 
-/* Session SMTP globale pour l'envoi des emails (ESP Mail Client) */
-SMTPSession smtp;
+/* Session SMTP désormais locale à n3_mail (plus de global). */
 
 // --- Réseau ---
 #ifdef TEST_MODE

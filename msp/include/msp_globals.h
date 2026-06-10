@@ -80,7 +80,7 @@ extern int bootCount;
 extern String inputMessageMailAd;
 extern String enableEmailChecked;
 extern String emailMessage;
-extern SMTPSession smtp;
+/* Session SMTP désormais locale à n3_mail (plus de global). */
 
 // --- Réseau ---
 extern unsigned int httpResponseCode;

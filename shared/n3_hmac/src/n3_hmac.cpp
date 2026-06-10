@@ -26,7 +26,8 @@ bool n3HmacSha256(const char* key, const char* message, char* hexOutput, size_t 
   if (ret != 0) return false;
 
   for (int i = 0; i < 32; i++) {
-    sprintf(hexOutput + (i * 2), "%02x", hmacResult[i]);
+    // snprintf borné (conformité) : hexOutputSize >= 65 garanti ligne 6, i*2 <= 62.
+    snprintf(hexOutput + (i * 2), hexOutputSize - (size_t)(i * 2), "%02x", hmacResult[i]);
   }
   hexOutput[64] = '\0';
   return true;
