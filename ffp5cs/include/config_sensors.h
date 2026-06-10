@@ -34,6 +34,13 @@ namespace SensorConfig {
         inline constexpr uint16_t LUMINOSITY = 450;
     }
 
+    // Politique fallback ultrason (compile-time). false = wl*=0, champ POST omis, NULL BDD.
+    namespace WaterLevelFallbackPolicy {
+        inline constexpr bool USE_FALLBACK_AQUA = false;
+        inline constexpr bool USE_FALLBACK_TANK = true;
+        inline constexpr bool USE_FALLBACK_POTA = true;
+    }
+
     namespace WaterTemp {
         inline constexpr float MIN_VALID = 5.0f;
         inline constexpr float MAX_VALID = 60.0f;
@@ -91,14 +98,27 @@ namespace SensorConfig {
         inline constexpr uint8_t FILTERED_READINGS_COUNT = 3;
 
         // Plage métier réservoir (readAdvancedFiltered / wlTank uniquement)
+        // Cuve étroite : échos multipath donnent des distances trop courtes (faux « plein »).
+        // L'algo privilégie le cluster haut en cas de bimodalité et assouplit les sauts
+        // vers le haut (vidage) par rapport aux sauts vers le bas (remplissage).
         namespace Tank {
             inline constexpr uint16_t MIN_OPERATIONAL_MM = 15;
             inline constexpr uint16_t MAX_OPERATIONAL_MM = 1000;
+            inline constexpr uint16_t MIN_RAW_MM = 15;  // cuve pleine : sous la spec HC-SR04 (20 mm)
+            inline constexpr uint8_t SAMPLES_COUNT = 7;
             inline constexpr uint8_t ADVANCED_MIN_VALID_READINGS = 3;
             inline constexpr uint8_t STRONG_BATCH_MIN_READINGS = 4;
+            inline constexpr uint16_t OUTLIER_SPREAD_MM = 50;
+            inline constexpr uint16_t TIGHT_BATCH_SPREAD_MM = 40;
+            inline constexpr uint16_t BIMODAL_GAP_MM = 80;
+            inline constexpr uint16_t DRAIN_MAX_DELTA_MM = 400;
+            inline constexpr uint16_t REFILL_MAX_DELTA_MM = 100;
 
             inline constexpr bool isOperationalMm(uint16_t mm) {
                 return mm >= MIN_OPERATIONAL_MM && mm <= MAX_OPERATIONAL_MM;
+            }
+            inline constexpr bool isRawReadingMm(uint16_t mm) {
+                return mm >= MIN_RAW_MM && mm < MAX_DISTANCE_MM;
             }
         }
 
@@ -166,6 +186,11 @@ namespace SensorValidation {
     inline bool isValidDistance(uint16_t distance) {
         return distance >= SensorConfig::Ultrasonic::MIN_DISTANCE_MM && 
                distance <= SensorConfig::Ultrasonic::MAX_DISTANCE_MM;
+    }
+
+    // Niveau d'eau connu (lecture ultrason valide pour l'automatisme / POST)
+    inline bool isWaterLevelKnown(uint16_t wl) {
+        return wl > 0 && wl <= SensorConfig::Ultrasonic::MAX_VALID_LEVEL_MM;
     }
     
     // Applique une valeur par défaut si la température d'eau est invalide

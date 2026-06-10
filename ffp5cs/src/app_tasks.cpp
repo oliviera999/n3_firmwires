@@ -379,8 +379,24 @@ static NetRpcResult netRpcAlloc(NetRequest* req, uint32_t timeoutMs) {
   return req->success ? NetRpcResult::CompletedSuccess : NetRpcResult::CompletedFailure;
 }
 
-bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback) {
+bool netFetchRemoteState(ArduinoJson::JsonDocument& doc, uint32_t timeoutMs, bool* outFromNVSFallback,
+                         bool* outDeferred) {
+  if (outDeferred) {
+    *outDeferred = false;
+  }
   if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return false;
+  if (shouldDeferRemoteStateFetch()) {
+    if (outDeferred) {
+      *outDeferred = true;
+    }
+    static unsigned long s_lastDeferLogMs = 0;
+    const unsigned long nowMs = millis();
+    if (nowMs - s_lastDeferLogMs >= 60000) {
+      Serial.println(F("[netRPC] GET différé: transport HTTP occupé (POST en cours ou en file)"));
+      s_lastDeferLogMs = nowMs;
+    }
+    return false;
+  }
   NetRequest* req = netRequestAllocForFetch();
   if (!req) return false;
   req->type = NetReqType::FetchRemoteState;
@@ -472,6 +488,7 @@ uint32_t netHeartbeatDroppedCount() {
 
 void netRequestOtaCheck() {
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
+  if (isInWakeProtectionWindow()) return;
   if (g_ctx && g_ctx->otaManager.isOtaExclusive()) return;
   if (g_otaTriggerQueue) {
     uint8_t t = 1;
@@ -534,6 +551,78 @@ bool quiesceHttpBeforeLightSleep(uint32_t timeoutMs) {
 
 void releaseHttpAfterLightSleep() {
   WebClient::releaseHttpTransportLockIfHeld();
+}
+
+// --- v14.00/v14.01 : synchro fetch config boot + fenêtre post-réveil + report GET ---
+// (réintégrés ici après la découpe v13.93 ; appelés par netTask/otaTask via les en-têtes).
+static volatile bool s_bootConfigFetchDone = false;
+
+void markBootConfigFetchDone() {
+  s_bootConfigFetchDone = true;
+}
+
+bool waitForBootConfigFetch(uint32_t timeoutMs) {
+  if (s_bootConfigFetchDone) {
+    return true;
+  }
+  const unsigned long startMs = millis();
+  while (!s_bootConfigFetchDone && (millis() - startMs) < timeoutMs) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  if (!s_bootConfigFetchDone) {
+    Serial.println(F("[Boot] Timeout attente fetch config netTask — POST boot sans gate"));
+    return false;
+  }
+  Serial.println(F("[Boot] Fetch config netTask terminé — POST boot autorisé"));
+  return true;
+}
+
+bool waitForNetworkQueuesDrain(uint32_t timeoutMs) {
+  const unsigned long startMs = millis();
+  while ((millis() - startMs) < timeoutMs) {
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+      esp_task_wdt_reset();
+    }
+    const UBaseType_t postWaiting =
+        (g_postSenderQueue != nullptr) ? uxQueueMessagesWaiting(g_postSenderQueue) : 0;
+    const UBaseType_t netWaiting =
+        (g_netQueue != nullptr) ? uxQueueMessagesWaiting(g_netQueue) : 0;
+    if (postWaiting == 0 && netWaiting == 0) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  Serial.println(F("[Auto] Timeout attente vidage files réseau"));
+  return false;
+}
+
+static unsigned long s_wakeProtectionStartMs = 0;
+
+void markWakeProtectionStart() {
+  s_wakeProtectionStartMs = millis();
+}
+
+bool isInWakeProtectionWindow() {
+  if (s_wakeProtectionStartMs == 0) {
+    return false;
+  }
+  return (millis() - s_wakeProtectionStartMs) < TimingConfig::WAKEUP_PROTECTION_DURATION_MS;
+}
+
+bool shouldDeferRemoteStateFetch() {
+  if (isInWakeProtectionWindow()) {
+    return true;
+  }
+  if (WebClient::isHttpTransportBusy()) {
+    return true;
+  }
+  if (g_postSenderQueue != nullptr && uxQueueMessagesWaiting(g_postSenderQueue) > 0) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace AppTasks

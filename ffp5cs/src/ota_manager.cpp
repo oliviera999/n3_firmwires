@@ -162,8 +162,7 @@ bool OTAManager::checkForUpdate() {
         return false;
     }
     
-    // Téléchargement des métadonnées
-    // Note: buffer sur la stack - tâche OTA 8KB stack, payload 3KB + doc 1.5KB + overhead
+    // Téléchargement des métadonnées (lecture directe dans payload, pas de buffer intermédiaire stack)
     // Taille alignée sur metadata.json servi (~2.7KB) pour éviter troncature → IncompleteInput
     char payload[BufferConfig::OTA_METADATA_PAYLOAD_BUFFER_SIZE];
     if (!downloadMetadata(payload, sizeof(payload))) {

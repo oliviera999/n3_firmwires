@@ -17,20 +17,20 @@ namespace NetworkConfig {
     inline constexpr uint8_t WEB_SERVER_MAX_CONNECTIONS = 2;
     // Timeout HTTP unifié (v11.190: 5s, règle projet "timeouts réseau courts ≤ 5s")
     inline constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
-    // GET outputs/state : timeout plus long (net task uniquement). 8 s pour rester < FETCH_REMOTE_STATE_RPC_TIMEOUT_MS.
-    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s (évite abandon caller avant fin GET)
-    // RPC FetchRemoteState : timeout = HTTP + marge queue ; 12 s (v12.33: libérer slots plus tôt serveur hors ligne)
-    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 12000;  // 12 s
+    // GET outputs/state : timeout HTTP côté netTask (mutex partagé avec postSender).
+    inline constexpr uint32_t OUTPUTS_STATE_HTTP_TIMEOUT_MS = 8000;  // 8 s
+    // RPC FetchRemoteState : POST (~19 s observé 4G) + GET + marge file netTask.
+    inline constexpr uint32_t FETCH_REMOTE_STATE_RPC_TIMEOUT_MS = 28000;  // 28 s (v13.95)
     // Intervalle min entre deux GET en branche timeout (fallback sans capteurs) — évite saturation netTask
     inline constexpr uint32_t REMOTE_FETCH_FALLBACK_INTERVAL_MS = 6000;   // 6 s (aligné poll data branch)
-    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~15,5 s (4G, iot.olution.info) ; 18 s marge.
+    // POST post-data / ack : dérogation (latence serveur). Observé jusqu'à ~20,2 s (4G, monitoring 2026-06) ; 22 s marge WROOM.
 #if defined(BOARD_S3)
     inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 15000;  // 15 s (S3: rester sous TWDT 30s, monitoring 2026-03)
     // RPC >= HTTP + 2 s marge (évite abandon caller avant fin POST — v12.35)
     inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 17000;  // 17 s
 #else
-    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 18000;  // 18 s (session 2026-02-14 : max 15568 ms)
-    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 22000;  // 22 s (v12.20: libérer slots plus tôt)
+    inline constexpr uint32_t HTTP_POST_TIMEOUT_MS = 28000;  // 28 s (monitoring 2026-06-07 : ~23 s + retry 401 HMAC)
+    inline constexpr uint32_t HTTP_POST_RPC_TIMEOUT_MS = 30000;  // 30 s (aligné POST 28 s + marge file)
 #endif
     // Scan WiFi: nombre max d'APs retournés (wifi_manager, web_server)
     inline constexpr uint16_t WIFI_SCAN_MAX_RECORDS = 16;
@@ -39,15 +39,17 @@ namespace NetworkConfig {
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
     // Fetch au réveil : timeout plus long (dérogation acceptable car critique pour commandes programmées)
-    inline constexpr uint32_t WAKEUP_FETCH_TIMEOUT_MS = 15000;  // 15s par tentative
+    inline constexpr uint32_t WAKEUP_FETCH_TIMEOUT_MS = 28000;  // 28 s (aligné FETCH_REMOTE_STATE_RPC_TIMEOUT_MS)
     inline constexpr int WAKEUP_FETCH_MAX_RETRIES = 3;
     inline constexpr uint32_t WAKEUP_FETCH_RETRY_DELAY_MS = 2000;  // 2s entre retries
     inline constexpr uint32_t WAKEUP_NETWORK_STABILIZATION_DELAY_MS = 1000;  // 1s après waitForNetworkReady
+    // Attente vidage files net/postSender après POST réveil, avant OTA ou mail TLS
+    inline constexpr uint32_t WAKEUP_POST_DRAIN_TIMEOUT_MS = 25000;
     // Attente files net/postSender vides + mutex transport avant WiFi.disconnect (veille légère)
 #if defined(BOARD_S3)
     inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 32000;  // POST 15s + GET 8s + marge
 #else
-    inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 36000;  // POST 18s + GET 8s + marge
+    inline constexpr uint32_t LIGHT_SLEEP_HTTP_QUIESCE_TIMEOUT_MS = 40000;  // POST 28s + GET 8s + marge
 #endif
     // Timeout OTA séparé : téléchargement firmware nécessite plus de temps
     // que requêtes HTTP standard

@@ -22,8 +22,9 @@ class UltrasonicManager {
   UltrasonicManager(int pinTrigEcho, const char* sensorName = "Ultrasonic");
   // Renvoie la distance (mm), 0 si invalide
   uint16_t readFiltered(uint8_t samples = 5);
-  uint16_t readAdvancedFiltered(); // Nouvelle méthode avec filtrage avancé
+  uint16_t readAdvancedFiltered(); // Réservoir : filtrage bimodal + biais sécurité
   uint16_t readReactiveFiltered(); // Lecture réactive avec lissage minimal
+  void setExpectTankDrain(bool active) { _expectTankDrain = active; }
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorDisabled() const; // Vérifier si le capteur est désactivé
  private:
@@ -38,10 +39,11 @@ class UltrasonicManager {
   uint8_t _historyIndex;
   uint8_t _historyCount;
   uint16_t _lastValidDistance;
+  bool _expectTankDrain{false};
   
   // Configuration du filtrage - renforcé pour surface agitée (prod)
   static const uint16_t MAX_DISTANCE_DELTA = 300; // Seuil saut pour consensus (30 cm)
-  static const uint16_t OUTLIER_SPREAD_MM = 150; // Rejet intra-batch si écart > 150 mm de la médiane
+  static const uint16_t OUTLIER_SPREAD_MM = 150; // Mode réactif / legacy (réservoir : config Tank)
   // Mode réactif (potager/aquarium) : 1 lecture valide suffit.
   // Mode advanced (réservoir) : SensorConfig::Ultrasonic::Tank::ADVANCED_MIN_VALID_READINGS.
   static const uint8_t MIN_VALID_READINGS = 1;

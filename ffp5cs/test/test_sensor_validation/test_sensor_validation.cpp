@@ -155,6 +155,18 @@ void test_water_level_fallback_uses_safe_default_when_no_history() {
     TEST_ASSERT_EQUAL_UINT16(333, SensorReadingFallback::waterLevel(0, 0, 333));
 }
 
+void test_resolve_water_level_no_fallback_returns_zero_when_invalid() {
+    TEST_ASSERT_EQUAL_UINT16(0, SensorReadingFallback::resolveWaterLevel(0, 222, 333, false));
+}
+
+void test_resolve_water_level_no_fallback_preserves_valid_current() {
+    TEST_ASSERT_EQUAL_UINT16(123, SensorReadingFallback::resolveWaterLevel(123, 0, 333, false));
+}
+
+void test_resolve_water_level_with_fallback_uses_last_valid() {
+    TEST_ASSERT_EQUAL_UINT16(222, SensorReadingFallback::resolveWaterLevel(0, 222, 333, true));
+}
+
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
     UNITY_BEGIN();
@@ -173,5 +185,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_water_level_fallback_preserves_current_reading);
     RUN_TEST(test_water_level_fallback_uses_last_valid_when_current_missing);
     RUN_TEST(test_water_level_fallback_uses_safe_default_when_no_history);
+    RUN_TEST(test_resolve_water_level_no_fallback_returns_zero_when_invalid);
+    RUN_TEST(test_resolve_water_level_no_fallback_preserves_valid_current);
+    RUN_TEST(test_resolve_water_level_with_fallback_uses_last_valid);
     return UNITY_END();
 }

@@ -30,6 +30,7 @@ static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm
 }  // namespace
 
 
+// Fusionné depuis AutomatismAlertController::process()
 void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     const SensorReadings& readings = ctx.readings;
     const bool mailEnabled = _network.isEmailEnabled();
@@ -43,6 +44,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         return;  // Pas d'alertes pendant la période de grâce
     }
 
+    if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
     if (readings.wlAqua > cmToMm(_network.getAqThresholdCm()) && !_lowAquaSent && mailEnabled) {
         char msgBuffer[128];
         formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (> ", cmToMm(_network.getAqThresholdCm()));
@@ -98,6 +100,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         } else {
             aboveResetSinceEpoch = 0;
         }
+    }
     }
 
     if (readings.wlTank > cmToMm(_network.getTankThresholdCm()) && !_lowTankSent && mailEnabled) {
@@ -389,200 +392,4 @@ void Automatism::prepareActuatorsForSleep(SystemActuators& acts) {
     acts.stopLight();
     Serial.printf("[Auto] Snapshot avant veille: aqua=%s heater=%s light=%s - actionneurs coupés\n",
                   aquaOn ? "ON" : "OFF", heaterOn ? "ON" : "OFF", lightOn ? "ON" : "OFF");
-}
-
-void Automatism::restoreActuatorsAfterWake(SystemActuators& acts) {
-    bool restoreAqua, restoreHeater, restoreLight;
-    if (!loadActuatorSnapshotFromNVS(restoreAqua, restoreHeater, restoreLight)) {
-        return;
-    }
-    if (restoreAqua) acts.startAquaPump();
-    if (restoreHeater) acts.startHeater();
-    if (restoreLight) acts.startLight();
-    clearActuatorSnapshotInNVS();
-    Serial.printf("[Auto] État restauré au réveil: aqua=%s heater=%s light=%s\n",
-                  restoreAqua ? "ON" : "OFF", restoreHeater ? "ON" : "OFF", restoreLight ? "ON" : "OFF");
-}
-
-// États actuels persistants (méthodes statiques pour compatibilité avec web_server.cpp)
-// v11.178: Utilisation des clés NVS centralisées pour state_lastLocal (audit nvs-keys)
-void Automatism::saveCurrentActuatorState(const char* actuator, bool state) {
-    char key[32];
-    snprintf(key, sizeof(key), "state_%s", actuator);  // Dynamique basé sur nom actionneur
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, key, state);
-    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, NVSKeys::Automatism::STATE_LAST_LOCAL, millis());
-    Serial.printf("[Auto] État %s=%s sauvegardé en NVS (priorité locale)\n",
-                   actuator, state ? "ON" : "OFF");
-}
-
-bool Automatism::loadCurrentActuatorState(const char* actuator, bool defaultValue) {
-    char key[32];
-    snprintf(key, sizeof(key), "state_%s", actuator);  // Dynamique basé sur nom actionneur
-    bool state;
-    g_nvsManager.loadBool(NVS_NAMESPACES::STATE, key, state, defaultValue);
-    return state;
-}
-
-uint32_t Automatism::getLastLocalActionTime() {
-    unsigned long timestamp;
-    g_nvsManager.loadULong(NVS_NAMESPACES::STATE, NVSKeys::Automatism::STATE_LAST_LOCAL, timestamp, 0);
-    return timestamp;
-}
-
-bool Automatism::hasRecentLocalAction(uint32_t timeoutMs) {
-    uint32_t lastAction = getLastLocalActionTime();
-    if (lastAction == 0) return false;
-    uint32_t elapsed = millis() - lastAction;
-    return elapsed < timeoutMs;
-}
-
-// Pending sync
-// v11.178: Utilisation des clés NVS centralisées (audit nvs-keys)
-void Automatism::markPendingSync(const char* actuator, bool state) {
-    char key_state[32];
-    snprintf(key_state, sizeof(key_state), "sync_%s", actuator);
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, key_state, state);
-    
-    int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
-    
-    bool alreadyPending = false;
-    for (int i = 0; i < count; i++) {
-        char key_item[24];
-        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
-        char item[64];
-        g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, sizeof(item), "");
-        if (strcmp(item, actuator) == 0) {
-            alreadyPending = true;
-            break;
-        }
-    }
-    
-    if (!alreadyPending) {
-        char key_item[24];
-        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, count);
-        g_nvsManager.saveString(NVS_NAMESPACES::STATE, key_item, actuator);
-        count++;
-        g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count);
-    }
-    
-    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, NVSKeys::Sync::LAST_SYNC, millis());
-    Serial.printf("[Auto] ⏳ Pending sync marqué: %s=%s (total: %u)\n",
-                   actuator, state ? "ON" : "OFF", count);
-}
-
-void Automatism::markConfigPendingSync() {
-    g_nvsManager.saveBool(NVS_NAMESPACES::STATE, NVSKeys::Sync::CONFIG, true);
-    
-    int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
-    
-    bool alreadyPending = false;
-    for (int i = 0; i < count; i++) {
-        char key_item[24];
-        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
-        char item[64];
-        g_nvsManager.loadString(NVS_NAMESPACES::STATE, key_item, item, sizeof(item), "");
-        if (strcmp(item, "config") == 0) {
-            alreadyPending = true;
-            break;
-        }
-    }
-    
-    if (!alreadyPending) {
-        char key_item[24];
-        snprintf(key_item, sizeof(key_item), "%s%d", NVSKeys::Sync::ITEM_PREFIX, count);
-        g_nvsManager.saveString(NVS_NAMESPACES::STATE, key_item, "config");
-        count++;
-        g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count);
-    }
-    
-    g_nvsManager.saveULong(NVS_NAMESPACES::STATE, NVSKeys::Sync::LAST_SYNC, millis());
-    Serial.printf("[Auto] ⏳ Config pending sync marquée (total: %u)\n", count);
-}
-
-void Automatism::clearPendingSync(const char* actuator) {
-    char key_state[32];
-    snprintf(key_state, sizeof(key_state), "sync_%s", actuator);
-    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key_state);
-    
-    int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
-    
-    int newCount = 0;
-    for (int i = 0; i < count; i++) {
-        char oldKey[24];
-        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
-        char item[64];
-        g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, sizeof(item), "");
-        
-        if (strcmp(item, actuator) != 0 && strlen(item) > 0) {
-            if (newCount != i) {
-                char newKey[24];
-                snprintf(newKey, sizeof(newKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, newCount);
-                g_nvsManager.saveString(NVS_NAMESPACES::STATE, newKey, item);
-            }
-            newCount++;
-        }
-    }
-    
-    for (int i = newCount; i < count; i++) {
-        char oldKey[24];
-        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
-        g_nvsManager.removeKey(NVS_NAMESPACES::STATE, oldKey);
-    }
-    
-    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, newCount);
-    Serial.printf("[Auto] ✅ Pending sync effacé: %s (reste: %u)\n", actuator, newCount);
-}
-
-void Automatism::clearConfigPendingSync() {
-    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, NVSKeys::Sync::CONFIG);
-    
-    int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
-    
-    int newCount = 0;
-    for (int i = 0; i < count; i++) {
-        char oldKey[24];
-        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
-        char item[64];
-        g_nvsManager.loadString(NVS_NAMESPACES::STATE, oldKey, item, sizeof(item), "");
-        
-        if (strcmp(item, "config") != 0 && strlen(item) > 0) {
-            if (newCount != i) {
-                char newKey[24];
-                snprintf(newKey, sizeof(newKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, newCount);
-                g_nvsManager.saveString(NVS_NAMESPACES::STATE, newKey, item);
-            }
-            newCount++;
-        }
-    }
-    
-    for (int i = newCount; i < count; i++) {
-        char oldKey[24];
-        snprintf(oldKey, sizeof(oldKey), "%s%d", NVSKeys::Sync::ITEM_PREFIX, i);
-        g_nvsManager.removeKey(NVS_NAMESPACES::STATE, oldKey);
-    }
-    
-    g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, newCount);
-    Serial.printf("[Auto] ✅ Config pending sync effacée (reste: %u)\n", newCount);
-}
-
-bool Automatism::hasPendingSync() {
-    int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
-    return count > 0;
-}
-
-uint8_t Automatism::getPendingSyncCount() {
-    int count;
-    g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::Sync::COUNT, count, 0);
-    return (uint8_t)count;
-}
-
-uint32_t Automatism::getLastPendingSyncTime() {
-    unsigned long timestamp;
-    g_nvsManager.loadULong(NVS_NAMESPACES::STATE, NVSKeys::Sync::LAST_SYNC, timestamp, 0);
-    return timestamp;
 }

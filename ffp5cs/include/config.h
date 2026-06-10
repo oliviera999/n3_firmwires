@@ -9,11 +9,11 @@
 // =============================================================================
 // CONFIGURATION UNIFIÉE DU PROJET FFP5CS
 // =============================================================================
-// v13.93 (audit — découpe du god-header) : le contenu (≈25 namespaces) est
-// désormais réparti physiquement en sous-headers cohésifs, ré-inclus ci-dessous
-// DANS L'ORDRE D'ORIGINE. Cet ordre n'est pas arbitraire : il satisfait les
-// dépendances inter-sections — Secrets → réseau (ApiConfig/WebAuth/Email),
-// SystemConfig → SleepConfig (alias EPOCH_*), BufferConfig → NVSConfig.
+// Le contenu (≈25 namespaces) est réparti physiquement en sous-headers cohésifs,
+// ré-inclus ci-dessous DANS L'ORDRE D'ORIGINE. Cet ordre n'est pas arbitraire :
+// il satisfait les dépendances inter-sections — Secrets → réseau (ApiConfig/
+// WebAuth/Email), SystemConfig → SleepConfig (alias EPOCH_*), BufferConfig →
+// NVSConfig.
 //
 // `#include "config.h"` reste l'INTERFACE UNIQUE : aucun .cpp n'a besoin de
 // changer (les sous-headers peuvent aussi être inclus seuls, ils sont

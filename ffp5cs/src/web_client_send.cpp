@@ -9,6 +9,7 @@
 
 extern ConfigManager config;   // défini dans app.cpp
 
+
 bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   // Validation des mesures
   float tempWater = m.tempWater;
@@ -46,6 +47,9 @@ bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
   bool truncated = false;
   
   auto appendKV = [&](const char* key, const char* value) {
+    if (!value || value[0] == '\0') {
+      return;
+    }
     if (truncated || offset >= sizeof(payload) - 1) {
       truncated = true;
       return;
@@ -140,3 +144,4 @@ bool WebClient::tryPushStatusToServer(const char* payload) {
   if (payload == nullptr) return false;
   return postRaw(payload);
 }
+

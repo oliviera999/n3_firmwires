@@ -3,10 +3,13 @@
 #include <Arduino_JSON.h>
 #include "n3_wifi.h"
 #include "n3_data.h"
+#include "n3_mail.h"
+#include "n3_defaults.h"
 #include "n3_outputs_json.h"
-#include "n3pp_automation.h"
 
 static const uint16_t OUTPUTS_FETCH_DELAY_MS = 250;
+
+void HeureSansWifi();
 
 // Helpers de parsing (anciennement dupliques dans n3pp_network.cpp et
 // msp_network.cpp). Depuis v4.39 : factorise dans shared/n3_common/n3_outputs_json.
@@ -230,4 +233,94 @@ void Wificonnect() {
   Serial.println(Wifiactif);
   Serial.print("Adresse IP : ");
   Serial.println(WiFi.localIP());
+}
+
+// Rapport mail reseau periodique (cumul RTC deep sleep, cf. OTA 2h).
+RTC_DATA_ATTR static uint32_t s_netReportElapsedSeconds = 0;
+
+void n3ppAccumulateNetReportElapsedFromSleep(int sleepSeconds) {
+  if (sleepSeconds <= 0) return;
+  if (s_netReportElapsedSeconds >= N3_NETWORK_REPORT_INTERVAL_S) return;
+  const uint32_t sleepSec = static_cast<uint32_t>(sleepSeconds);
+  const uint32_t remaining = N3_NETWORK_REPORT_INTERVAL_S - s_netReportElapsedSeconds;
+  s_netReportElapsedSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
+}
+
+unsigned int n3ppGetOutputsGetFailureCount() {
+  return s_outputsGetFailureCount;
+}
+
+void n3ppMaybeSendNetworkReportEmail() {
+  if (s_netReportElapsedSeconds < N3_NETWORK_REPORT_INTERVAL_S) {
+    const uint32_t remaining = N3_NETWORK_REPORT_INTERVAL_S - s_netReportElapsedSeconds;
+    Serial.printf("[MAIL][NET] rapport ignore, restant=%lu s\n",
+                  static_cast<unsigned long>(remaining));
+    return;
+  }
+
+  if (enableEmailChecked != "checked") {
+    Serial.println("[MAIL][NET] notifications desactivees (GPIO 101), timer reinitialise");
+    s_netReportElapsedSeconds = 0;
+    n3NetStatsResetPeriod();
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[MAIL][NET] WiFi indisponible, rapport reporte");
+    return;
+  }
+
+  char localTime[32];
+  snprintf(localTime, sizeof(localTime), "%s", rtc.getTime("%d/%m/%Y %H:%M:%S").c_str());
+
+  char ssidBuf[33];
+  snprintf(ssidBuf, sizeof(ssidBuf), "%s", WiFi.SSID().c_str());
+  String ipStr = WiFi.localIP().toString();
+
+  N3NetStatsSnapshot stats = {};
+  n3NetStatsGetSnapshot(stats);
+
+  N3MailNetReportInfo report = {};
+  report.projectName = "n3pp";
+  report.sensorName = sensorName.c_str();
+  report.firmwareVersion = version.c_str();
+  report.localTime = localTime;
+  report.wifiSsid = ssidBuf;
+  report.wifiIp = ipStr.c_str();
+  report.wifiRssiNow = WiFi.RSSI();
+  report.bootCount = static_cast<uint32_t>(bootCount);
+  report.uptimeSeconds = millis() / 1000UL;
+  report.freeHeap = ESP.getFreeHeap();
+  report.minFreeHeap = ESP.getMinFreeHeap();
+  report.reportPeriodSeconds = N3_NETWORK_REPORT_INTERVAL_S;
+  report.httpTimeoutMs = N3_HTTP_TIMEOUT_MS;
+  report.outputsGetFailureStreak = static_cast<uint32_t>(s_outputsGetFailureCount);
+  report.stats = stats;
+
+  char body[2048];
+  if (!n3MailBuildNetReportBody(report, body, sizeof(body))) {
+    Serial.println("[MAIL][NET] Echec generation corps rapport");
+    return;
+  }
+
+  N3MailSmtpConfig smtpCfg = {};
+  smtpCfg.smtpHost = SMTP_HOST;
+  smtpCfg.smtpPort = SMTP_PORT;
+  smtpCfg.authorEmail = AUTHOR_EMAIL;
+  smtpCfg.authorPassword = AUTHOR_PASSWORD;
+  smtpCfg.senderName = "N3PP IoT";
+  smtpCfg.recipientName = "N3";
+  smtpCfg.recipientEmail = inputMessageMailAd.c_str();
+
+  char subject[96];
+  snprintf(subject, sizeof(subject), "[n3pp][reseau] rapport v%s", FIRMWARE_VERSION);
+
+  String smtpError;
+  if (n3MailSendText(smtpCfg, subject, body, &smtpError)) {
+    Serial.println("[MAIL][NET] Rapport reseau envoye");
+    s_netReportElapsedSeconds = 0;
+    n3NetStatsResetPeriod();
+  } else {
+    Serial.printf("[MAIL][NET] Echec envoi: %s\n", smtpError.c_str());
+  }
 }

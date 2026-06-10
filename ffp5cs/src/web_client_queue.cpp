@@ -20,6 +20,7 @@
 // Global défini dans app.cpp (idem web_client.cpp).
 extern ConfigManager config;
 
+
 bool WebClient::queueFailedPost(const char* payload) {
   if (payload == nullptr || strlen(payload) == 0) {
     return false;

@@ -71,8 +71,30 @@ int n3DataPost(const N3PostConfig& config) {
 
   if (config.onSending) config.onSending();
 
+  const unsigned long postStartMs = millis();
   int code = http.POST(body);
+  const unsigned long durationMs = millis() - postStartMs;
   http.end();
+
+  const int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+  const char* verdict = (code >= 200 && code < 400)
+                            ? "acceptee par le serveur (code 2xx/3xx)"
+                            : (code >= 400 && code < 500)
+                                  ? "rejet client 4xx"
+                                  : (code >= 500)
+                                        ? "erreur serveur 5xx"
+                                        : (code <= 0)
+                                              ? "echec reseau ou timeout (code <= 0)"
+                                              : "non classee";
+  Serial.printf(
+      "[SERVER][POST] Verdict: %s | code_HTTP=%d | duree_totale=%lu ms | timeout=%d ms | RSSI=%d dBm\n",
+      verdict, code, durationMs, N3_HTTP_TIMEOUT_MS, rssi);
+  if (durationMs >= (unsigned long)N3_HTTP_TIMEOUT_MS - 500UL) {
+    Serial.printf("[SERVER][POST][WARN] POST proche ou au-dela du timeout (%lu ms / %d ms)\n",
+                  durationMs, N3_HTTP_TIMEOUT_MS);
+  }
+
+  n3NetStatsRecordPost(code, durationMs, rssi);
 
   if (config.onResult) config.onResult(code);
   return code;
@@ -90,9 +112,27 @@ String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceA
   if (deviceApiKey != nullptr && deviceApiKey[0] != '\0') {
     http.addHeader("X-Api-Key", deviceApiKey);
   }
+  const unsigned long getStartMs = millis();
   int code = http.GET();
+  const unsigned long durationMs = millis() - getStartMs;
   String payload = (code > 0) ? http.getString() : String("{}");
   http.end();
+
+  const int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
+  const char* verdict = (code >= 200 && code < 400)
+                            ? "acceptee (code 2xx/3xx)"
+                            : (code >= 400 && code < 500)
+                                  ? "rejet client 4xx"
+                                  : (code >= 500)
+                                        ? "erreur serveur 5xx"
+                                        : (code <= 0)
+                                              ? "echec reseau ou timeout"
+                                              : "non classee";
+  Serial.printf(
+      "[SERVER][GET] Verdict: %s | code_HTTP=%d | duree_totale=%lu ms | timeout=%d ms | RSSI=%d dBm\n",
+      verdict, code, durationMs, N3_HTTP_TIMEOUT_MS, rssi);
+  n3NetStatsRecordGet(code, durationMs, rssi);
+
   if (outHttpCode) *outHttpCode = (unsigned int)code;
   return payload;
 }

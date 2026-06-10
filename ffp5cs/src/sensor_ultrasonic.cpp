@@ -12,6 +12,99 @@
 #include <Wire.h>
 #endif
 
+namespace {
+
+namespace TankCfg = SensorConfig::Ultrasonic::Tank;
+
+void sortU16(uint16_t* arr, uint8_t n) {
+  for (uint8_t i = 0; i + 1 < n; ++i) {
+    for (uint8_t j = i + 1; j < n; ++j) {
+      if (arr[i] > arr[j]) {
+        uint16_t t = arr[i];
+        arr[i] = arr[j];
+        arr[j] = t;
+      }
+    }
+  }
+}
+
+// Cuve étroite : en cas de deux clusters (échos courts vs surface réelle),
+// retourne la médiane du cluster le plus haut (distance = moins d'eau = sécurité).
+uint16_t pickTankDistanceFromBatch(uint16_t* readings, uint8_t count) {
+  if (count == 0) return 0;
+  if (count == 1) return readings[0];
+
+  sortU16(readings, count);
+
+  uint8_t splitAt = 0;
+  uint16_t maxGap = 0;
+  for (uint8_t i = 0; i + 1 < count; ++i) {
+    const uint16_t gap = readings[i + 1] - readings[i];
+    if (gap > maxGap) {
+      maxGap = gap;
+      splitAt = i + 1;
+    }
+  }
+
+  uint8_t start = 0;
+  uint8_t clusterCount = count;
+  if (maxGap >= TankCfg::BIMODAL_GAP_MM) {
+    const uint8_t lowCount = splitAt;
+    const uint8_t highCount = count - splitAt;
+    const uint16_t lowMedian = readings[lowCount / 2];
+    const uint16_t highMedian = readings[splitAt + highCount / 2];
+    if (highMedian >= lowMedian) {
+      start = splitAt;
+      clusterCount = highCount;
+    } else {
+      clusterCount = lowCount;
+    }
+    Serial.printf("[Ultrasonic] Bimodal gap=%u mm, cluster haut start=%u n=%u\n",
+                  maxGap, start, clusterCount);
+  }
+
+  uint16_t refined[TankCfg::SAMPLES_COUNT];
+  uint8_t refinedCount = 0;
+  const uint16_t clusterMedian = readings[start + clusterCount / 2];
+  for (uint8_t i = start; i < start + clusterCount; ++i) {
+    if (abs((int)readings[i] - (int)clusterMedian) <= (int)TankCfg::OUTLIER_SPREAD_MM) {
+      refined[refinedCount++] = readings[i];
+    }
+  }
+  if (refinedCount == 0) {
+    return clusterMedian;
+  }
+  sortU16(refined, refinedCount);
+  return refined[refinedCount / 2];
+}
+
+bool acceptTankJump(uint16_t candidate, uint16_t reference, uint8_t keptCount,
+                    uint16_t batchSpread, bool expectDrain) {
+  if (reference == 0) return true;
+
+  const int delta = abs((int)candidate - (int)reference);
+  const bool drainDirection = candidate > reference;
+  const bool tightBatch = batchSpread <= TankCfg::TIGHT_BATCH_SPREAD_MM;
+  const bool strongBatch = keptCount >= TankCfg::STRONG_BATCH_MIN_READINGS;
+
+  if (drainDirection) {
+    if (delta <= (int)TankCfg::DRAIN_MAX_DELTA_MM) return true;
+    if (expectDrain && tightBatch && keptCount >= TankCfg::ADVANCED_MIN_VALID_READINGS) {
+      return true;
+    }
+    if (strongBatch && tightBatch) return true;
+    return false;
+  }
+
+  // Remplissage ou écho court : plus strict (évite faux « plein »)
+  if (delta <= (int)TankCfg::REFILL_MAX_DELTA_MM && strongBatch && tightBatch) {
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
 // -------- UltrasonicManager ---------
 UltrasonicManager::UltrasonicManager(int pinTrigEcho, const char* sensorName) 
   : _pinTrigEcho(pinTrigEcho),
@@ -119,17 +212,14 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
   
-  // Capteur actif, lecture normale
-  // 1. Filtrage statistique avancé avec médiane
-  uint16_t readings[READINGS_COUNT];
+  // Capteur actif — réservoir : lot étendu + détection bimodalité
+  const uint8_t sampleCount = TankCfg::SAMPLES_COUNT;
+  uint16_t readings[TankCfg::SAMPLES_COUNT];
   uint8_t validReadings = 0;
-  
-  // CORRECTION : Timeout augmenté pour la production
-  const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US; // 30ms par config
-  
-  // Effectue plusieurs lectures avec délai
-  for (uint8_t i = 0; i < READINGS_COUNT; ++i) {
-    // Déclenchement
+
+  const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
+
+  for (uint8_t i = 0; i < sampleCount; ++i) {
     pinMode(_pinTrigEcho, OUTPUT);
     digitalWrite(_pinTrigEcho, LOW);
     delayMicroseconds(2);
@@ -137,41 +227,37 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     delayMicroseconds(10);
     digitalWrite(_pinTrigEcho, LOW);
 
-    // Lecture de l'écho (pin en entrée)
-    // Pas de délai nécessaire selon datasheet HC-SR04 - le capteur envoie l'écho immédiatement
     pinMode(_pinTrigEcho, INPUT);
     unsigned long duration = readEchoPulseUs(TIMEOUT_US);
 
     if (duration > 0) {
       uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
-                                          SensorConfig::Ultrasonic::US_TO_CM_FACTOR); // Conversion µs -> mm
-      
-      // CORRECTION : Plage de validation assouplie pour l'aquarium
-      if (mm >= MIN_DISTANCE && mm < MAX_DISTANCE) { // >= au lieu de >
+                                          SensorConfig::Ultrasonic::US_TO_CM_FACTOR);
+
+      if (TankCfg::isRawReadingMm(mm)) {
         readings[validReadings++] = mm;
-        Serial.printf("[Ultrasonic] Lecture %d: %u mm\n", i+1, mm);
+        Serial.printf("[Ultrasonic] Lecture %d: %u mm\n", i + 1, mm);
       } else {
-        Serial.printf("[Ultrasonic] Lecture %d rejetée: %u mm (hors plage %u-%u)\n", i+1, mm, MIN_DISTANCE, MAX_DISTANCE-1);
+        Serial.printf("[Ultrasonic] Lecture %d rejetée: %u mm (hors plage réservoir %u-%u)\n",
+                      i + 1, mm, TankCfg::MIN_RAW_MM, SensorConfig::Ultrasonic::MAX_DISTANCE_MM - 1);
       }
     } else {
-      // v11.173: Rate-limiting des logs timeout (log les 3 premiers, puis tous les N)
       _timeoutCount++;
       if (_timeoutCount <= 3 || _timeoutCount % TIMEOUT_LOG_INTERVAL == 0) {
-        Serial.printf("[Ultrasonic] Lecture %d timeout (total: %u)\n", i+1, _timeoutCount);
+        Serial.printf("[Ultrasonic] Lecture %d timeout (total: %u)\n", i + 1, _timeoutCount);
       }
     }
-    
-    // Délai entre mesures conforme datasheet HC-SR04 (cycle > 60 ms)
-    if (i < READINGS_COUNT - 1) {
+
+    if (i < sampleCount - 1) {
       vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
     }
   }
-  
-  if (READINGS_COUNT > 1) {
+
+  if (sampleCount > 1) {
     vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
   }
 
-  const uint8_t minValid = SensorConfig::Ultrasonic::Tank::ADVANCED_MIN_VALID_READINGS;
+  const uint8_t minValid = TankCfg::ADVANCED_MIN_VALID_READINGS;
   if (validReadings < minValid) {
     Serial.printf("[Ultrasonic] Pas assez de lectures valides (%d/%d), retourne fallback\n",
                   validReadings, minValid);
@@ -179,58 +265,22 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
 
-  // Trie les lectures pour calculer la médiane
-  for (uint8_t i = 0; i < validReadings - 1; ++i) {
-    for (uint8_t j = i + 1; j < validReadings; ++j) {
-      if (readings[i] > readings[j]) {
-        uint16_t temp = readings[i];
-        readings[i] = readings[j];
-        readings[j] = temp;
-      }
-    }
-  }
-
-  uint16_t medianDistance = readings[validReadings / 2];
-
-  // Rejet d'outliers intra-batch (surface agitée : crête/creux, écho parasite)
-  uint16_t keptReadings[READINGS_COUNT];
-  uint8_t keptCount = 0;
+  uint16_t batchCopy[TankCfg::SAMPLES_COUNT];
   for (uint8_t i = 0; i < validReadings; ++i) {
-    if (abs((int)readings[i] - (int)medianDistance) <= (int)OUTLIER_SPREAD_MM) {
-      keptReadings[keptCount++] = readings[i];
-    }
+    batchCopy[i] = readings[i];
   }
-  if (keptCount >= 2) {
-    for (uint8_t i = 0; i < keptCount - 1; ++i) {
-      for (uint8_t j = i + 1; j < keptCount; ++j) {
-        if (keptReadings[i] > keptReadings[j]) {
-          uint16_t t = keptReadings[i];
-          keptReadings[i] = keptReadings[j];
-          keptReadings[j] = t;
-        }
-      }
-    }
-    medianDistance = keptReadings[keptCount / 2];
-  }
+  const uint16_t candidateDistance = pickTankDistanceFromBatch(batchCopy, validReadings);
 
-  if (keptCount < minValid) {
-    Serial.printf("[Ultrasonic] Lot faible après rejet outliers (%d/%d), retourne fallback\n",
-                  keptCount, minValid);
+  sortU16(readings, validReadings);
+  const uint16_t batchSpread = readings[validReadings - 1] - readings[0];
+
+  if (!TankCfg::isOperationalMm(candidateDistance)) {
+    Serial.printf("[Ultrasonic] Distance hors plage métier: %u mm (attendu %u-%u), fallback\n",
+                  candidateDistance, TankCfg::MIN_OPERATIONAL_MM, TankCfg::MAX_OPERATIONAL_MM);
     _failureManager.recordFailure();
     return _lastValidDistance > 0 ? _lastValidDistance : 0;
   }
 
-  if (medianDistance < SensorConfig::Ultrasonic::Tank::MIN_OPERATIONAL_MM ||
-      medianDistance > SensorConfig::Ultrasonic::Tank::MAX_OPERATIONAL_MM) {
-    Serial.printf("[Ultrasonic] Médiane hors plage réservoir: %u mm (attendu %u-%u), fallback\n",
-                  medianDistance,
-                  SensorConfig::Ultrasonic::Tank::MIN_OPERATIONAL_MM,
-                  SensorConfig::Ultrasonic::Tank::MAX_OPERATIONAL_MM);
-    _failureManager.recordFailure();
-    return _lastValidDistance > 0 ? _lastValidDistance : 0;
-  }
-
-  // Médiane glissante avec consensus symétrique (sauts haut et bas)
   uint16_t historyMedian = 0;
   if (_historyCount >= 3) {
     uint16_t histTemp[HISTORY_SIZE];
@@ -240,65 +290,51 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
         histTemp[validCount++] = _history[i];
       }
     }
-
     if (validCount > 0) {
-      for (uint8_t i = 0; i < validCount - 1; ++i) {
-        for (uint8_t j = i + 1; j < validCount; ++j) {
-          if (histTemp[i] > histTemp[j]) {
-            uint16_t temp = histTemp[i];
-            histTemp[i] = histTemp[j];
-            histTemp[j] = temp;
-          }
-        }
-      }
+      sortU16(histTemp, validCount);
       historyMedian = histTemp[validCount / 2];
     }
   }
 
-  uint16_t referenceValue = (historyMedian > 0) ? historyMedian : _lastValidDistance;
+  const uint16_t referenceValue = (historyMedian > 0) ? historyMedian : _lastValidDistance;
 
   if (referenceValue > 0 &&
-      abs((int)medianDistance - (int)referenceValue) > (int)SensorConfig::Ultrasonic::MAX_DELTA_MM) {
-    Serial.printf("[Ultrasonic] Saut détecté: %u mm -> %u mm (écart: %d mm, ref: médiane historique)\n",
-                  referenceValue, medianDistance,
-                  abs((int)medianDistance - (int)referenceValue));
+      abs((int)candidateDistance - (int)referenceValue) > (int)SensorConfig::Ultrasonic::MAX_DELTA_MM) {
+    Serial.printf("[Ultrasonic] Saut détecté: %u mm -> %u mm (écart: %d mm, drain=%d)\n",
+                  referenceValue, candidateDistance,
+                  abs((int)candidateDistance - (int)referenceValue),
+                  _expectTankDrain ? 1 : 0);
 
-    const bool strongBatch =
-        keptCount >= SensorConfig::Ultrasonic::Tank::STRONG_BATCH_MIN_READINGS;
-
-    uint8_t consensusCount = 0;
-    for (uint8_t i = 0; i < HISTORY_SIZE && i < 3; ++i) {
-      uint8_t idx = (_historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
-      if (_history[idx] > 0 &&
-          abs((int)_history[idx] - (int)medianDistance) <= (int)SensorConfig::Ultrasonic::MAX_DELTA_MM / 2) {
-        consensusCount++;
+    if (!acceptTankJump(candidateDistance, referenceValue, validReadings, batchSpread, _expectTankDrain)) {
+      uint8_t consensusCount = 0;
+      for (uint8_t i = 0; i < HISTORY_SIZE && i < 3; ++i) {
+        uint8_t idx = (_historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
+        if (_history[idx] > 0 &&
+            abs((int)_history[idx] - (int)candidateDistance) <= (int)TankCfg::OUTLIER_SPREAD_MM) {
+          consensusCount++;
+        }
       }
-    }
-    const bool historyConsensus = consensusCount >= 2;
-
-    if (strongBatch) {
-      Serial.printf("[Ultrasonic] Batch fort (%d lectures), accepte nouvelle valeur\n", keptCount);
-    } else if (historyConsensus) {
-      Serial.printf("[Ultrasonic] Consensus historique (%d/3), accepte nouvelle valeur\n", consensusCount);
-    } else {
-      Serial.printf("[Ultrasonic] Saut rejeté (batch=%d, consensus=%d/3), médiane historique\n",
-                    keptCount, consensusCount);
-      return referenceValue;
+      if (consensusCount >= 2) {
+        Serial.printf("[Ultrasonic] Consensus historique (%d/3), accepte nouvelle valeur\n", consensusCount);
+      } else {
+        Serial.printf("[Ultrasonic] Saut rejeté (spread=%u mm, n=%d), conserve référence\n",
+                      batchSpread, validReadings);
+        return referenceValue;
+      }
     }
   }
 
-  // Succès - enregistrer et mettre à jour
   _failureManager.recordSuccess();
 
-  _history[_historyIndex] = medianDistance;
+  _history[_historyIndex] = candidateDistance;
   _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
   if (_historyCount < HISTORY_SIZE) _historyCount++;
 
-  _lastValidDistance = medianDistance;
+  _lastValidDistance = candidateDistance;
 
-  Serial.printf("[Ultrasonic] Distance médiane: %u mm (%d lectures valides, %d conservées)\n",
-                medianDistance, validReadings, keptCount);
-  return medianDistance;
+  Serial.printf("[Ultrasonic] Distance réservoir: %u mm (%d lectures, spread=%u mm, drain=%d)\n",
+                candidateDistance, validReadings, batchSpread, _expectTankDrain ? 1 : 0);
+  return candidateDistance;
 }
 
 uint16_t UltrasonicManager::readReactiveFiltered() {
@@ -482,5 +518,3 @@ uint32_t UltrasonicManager::readEchoPulseUs(uint32_t timeoutUs) {
   return pulseIn(_pinTrigEcho, HIGH, timeoutUs);
 #endif
 }
-
-// -------- WaterTempSensor ------------

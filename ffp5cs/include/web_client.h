@@ -55,6 +55,8 @@ class WebClient {
   static bool acquireHttpTransportLock(uint32_t timeoutMs);
   /** Relâche le mutex si acquis par acquireHttpTransportLock (sans effet sinon). Après retour de goToLightSleep. */
   static void releaseHttpTransportLockIfHeld();
+  /** true si postSender ou netTask détient le mutex transport (GET à différer). */
+  static bool isHttpTransportBusy();
 
  private:
   char _apiKey[65];  // API key max 64 chars + null terminator

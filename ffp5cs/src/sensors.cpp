@@ -10,6 +10,8 @@
 #include <Wire.h>
 #endif
 
+
+// -------- WaterTempSensor ------------
 WaterTempSensor::WaterTempSensor() : _historyIndex(0), _historyCount(0), _lastValidTemp(NAN),
                                      _failureManager("WaterTemp", 10, 60000, 3) {
   // Initialise l'historique avec des valeurs NaN

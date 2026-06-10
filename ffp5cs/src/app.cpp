@@ -230,6 +230,7 @@ void setup() {
   
   SystemBoot::initializeTimekeeping(g_appContext);
   g_appContext.mailer.setPowerManager(&g_appContext.power);
+  g_appContext.wifi.setPowerManager(&g_appContext.power);
 
   time_t bootTime = g_appContext.power.getCurrentEpochSafe();
   struct tm bootTimeInfo;

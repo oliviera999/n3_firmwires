@@ -10,8 +10,8 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "13.93";
-    
+    inline constexpr const char* VERSION = "14.01";
+
     // Type d'environnement
     #if defined(PROFILE_DEV)
         inline constexpr const char* PROFILE_TYPE = "dev";
@@ -106,7 +106,7 @@ namespace TimingConfig {
     // WiFi - 5 s pour timeouts génériques (HTTP, etc.)
     inline constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
     // Reconnexion après réveil : dérogation pour réseaux lents/faibles (DHCP, association jusqu'à 8s)
-    inline constexpr uint32_t WIFI_RECONNECT_AFTER_WAKE_MS = 8000;
+    inline constexpr uint32_t WIFI_RECONNECT_AFTER_WAKE_MS = 12000;
     // 15 s par tentative d'association WiFi (box 4G / routeurs lents, DHCP) — permet liens faibles au boot et manuel
     // S3 PSRAM test: 4 s pour limiter blocage boot (splash) quand WiFi absent/faible
     // S3 PSRAM : 4 s (limite le blocage boot/splash) ; autres cibles : 15 s.
@@ -117,6 +117,8 @@ namespace TimingConfig {
     // Au boot uniquement, on peut attendre un peu plus car c'est le seul moment
     // où on peut récupérer la config distante de manière fiable
     inline constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 8000;
+    // Attente fin fetch config netTask avant POST boot (GET 8s + délai TLS + marge)
+    inline constexpr uint32_t BOOT_CONFIG_FETCH_WAIT_MS = 25000;
     inline constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
     inline constexpr uint32_t WIFI_WATCHDOG_TIMEOUT_MS = 30000;
     // Délai après disconnect avant scan (stabilisation chip WiFi)
@@ -140,6 +142,8 @@ namespace TimingConfig {
     inline constexpr uint32_t OTA_CHECK_INTERVAL_MS = 7200000; // 2h
     // Pas d'attente otaTask : ne jamais bloquer plus longtemps sans reset WDT (TWDT 30s/60s)
     inline constexpr uint32_t OTA_WDT_FEED_INTERVAL_MS = 10000; // 10s
+    // Délai après mail réveil avant demande OTA (stabilisation TCP/IP / heap post-TLS)
+    inline constexpr uint32_t OTA_CHECK_DELAY_AFTER_WAKE_MS = 3000;
     inline constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
