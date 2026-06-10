@@ -688,7 +688,6 @@ void WifiManager::loop(DisplayView* disp){
   if (_connecting) return; // éviter les conflits
   if (g_enteringLightSleep) return;
   if (PowerManager::isStaReconnectInProgress()) return;
-  if (AppTasks::isInWakeProtectionWindow()) return;
   if(now - _lastAttemptMs < _retryIntervalMs) return;
 
 #if defined(BOARD_S3)

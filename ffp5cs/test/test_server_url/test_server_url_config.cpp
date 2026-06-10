@@ -13,13 +13,13 @@ void tearDown(void) {}
 void test_local_base_url_is_used_for_post_data(void) {
   char buffer[160] = {0};
   ServerUrlConfig::getPostDataUrl(buffer, sizeof(buffer));
-  TEST_ASSERT_EQUAL_STRING("http://127.0.0.1:8082/ffp3/post-data-test", buffer);
+  TEST_ASSERT_EQUAL_STRING("http://127.0.0.1:8082/post-data-test", buffer);
 }
 
 void test_local_base_url_is_used_for_heartbeat(void) {
   char buffer[160] = {0};
   ServerUrlConfig::getHeartbeatUrl(buffer, sizeof(buffer));
-  TEST_ASSERT_EQUAL_STRING("http://127.0.0.1:8082/ffp3/heartbeat-test", buffer);
+  TEST_ASSERT_EQUAL_STRING("http://127.0.0.1:8082/heartbeat-test", buffer);
 }
 
 void test_local_base_url_is_used_for_ota_base(void) {

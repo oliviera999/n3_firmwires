@@ -794,6 +794,11 @@ static void netTask(void* pv) {
       NetRequest* drainReq = nullptr;
       while (xQueueReceive(g_netQueue, &drainReq, 0) == pdTRUE) {
         if (!drainReq) continue;
+        if (drainReq->type == NetReqType::PostRaw
+            && !drainReq->hasSdQueueEntry
+            && drainReq->payload[0] != '\0') {
+          (void)g_ctx->webClient.queueFailedPost(drainReq->payload);
+        }
         drainReq->cancelled = true;
         netNotifyDone(drainReq);
         netRequestFree(drainReq);

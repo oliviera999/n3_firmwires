@@ -12,6 +12,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.02 - 2026-06-10
+
+### Correctifs critiques veille / OTA / réveil WiFi
+
+- **Veille marée** : `automatism_sleep.cpp` ne calcule plus `computeDiffMaree()` si `wlAqua` est inconnu (`0`) ; évite une fausse marée montante et une veille longue lorsque le capteur aquarium est en défaut.
+- **OTA exclusif** : `netTask` sauvegarde en file NVS les POST `PostRaw` annulés par un verrou OTA, sauf replay déjà suivi par la file SD ; évite une perte définitive de mesures entre enqueue réseau et traitement HTTP.
+- **Réveil WiFi** : `WifiManager::loop()` peut relancer une reconnexion périodique même pendant `WAKEUP_PROTECTION` si le statut WiFi est déjà déconnecté ; le smart reconnect reste bloqué pendant cette fenêtre pour ne pas couper un POST connecté.
+- **Tests** : attentes `test_server_url` réalignées sur les routes canoniques sans préfixe `/ffp3` documentées depuis v13.87.
+- **Fichiers** : `include/config.h`, `src/automatism/automatism_sleep.cpp`, `src/app_tasks.cpp`, `src/wifi_manager.cpp`, `test/test_server_url/test_server_url_config.cpp`, `VERSION.md`.
+
+---
+
 ## Version 14.01 - 2026-06-08
 
 ### Correctifs réseau P1/P2/P3 (monitoring v14.00, 2026-06-07)

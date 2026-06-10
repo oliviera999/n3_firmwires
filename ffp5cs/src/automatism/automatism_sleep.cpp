@@ -291,7 +291,8 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
     
     bool feedingInProgress = core.isFeedingInProgress();
     uint32_t countdownEnd = core.getCountdownEndMs();
-    int diffMaree10s = core.computeDiffMaree(r.wlAqua);
+    const bool aquaLevelKnown = SensorValidation::isWaterLevelKnown(r.wlAqua);
+    int diffMaree10s = aquaLevelKnown ? core.computeDiffMaree(r.wlAqua) : 0;
     int16_t tideTriggerCm = core.getTideTriggerCm();
     
     // Récupération du nombre de clients WebSocket
@@ -354,13 +355,14 @@ bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& 
         _lastDecisionLogMs = nowMs;
         _lastCanSleep = canSleep;
         _lastShouldSleep = shouldSleep;
-        Serial.printf("[Auto] Sleep decision: can=%d should=%d delay=%d tide=%d diff_mm=%d trig_mm=%d ws=%u feed=%d pump=%d cd=%lu wake=%lu s sleep=%u s\n",
+        Serial.printf("[Auto] Sleep decision: can=%d should=%d delay=%d tide=%d diff_mm=%d trig_mm=%d aquaKnown=%d ws=%u feed=%d pump=%d cd=%lu wake=%lu s sleep=%u s\n",
                       canSleep ? 1 : 0,
                       shouldSleep ? 1 : 0,
                       delayReached ? 1 : 0,
                       tideAscending ? 1 : 0,
                       diffMaree10s,
                       tideTriggerMm,
+                      aquaLevelKnown ? 1 : 0,
                       wsClients,
                       feedingInProgress ? 1 : 0,
                       tankPumpRunning ? 1 : 0,
