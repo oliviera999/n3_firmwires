@@ -694,12 +694,24 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
                            const char* toEmail) {
   const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
-  static char sleepSubject[64];
+  char sleepSubject[64];
   snprintf(sleepSubject, sizeof(sleepSubject), "FFP5CS - Mise en veille");
-  
-  static char sleepMessage[1024];
+
+  // v14.02 (audit DRAM) : buffer transitoire sur heap, libéré sur tous les chemins
+  // de sortie (RAII), au lieu d'un static résident 1 KB en .bss — usage rare
+  // (transition veille uniquement). Pas en pile : autoTask est déjà ~95 % utilisée.
+  constexpr size_t kSleepMsgSize = 1024;
+  struct MsgBuf {
+    char* p{static_cast<char*>(malloc(kSleepMsgSize))};
+    ~MsgBuf() { free(p); }
+  } msgBuf;
+  if (!msgBuf.p) {
+    Serial.println(F("[Mail] ⚠️ Alloc message veille échouée — mail sauté"));
+    return false;
+  }
+  char* const sleepMessage = msgBuf.p;
   size_t offset = 0;
-  size_t remaining = sizeof(sleepMessage);
+  size_t remaining = kSleepMsgSize;
   int written = 0;
   
   // Construire le message avec snprintf()
@@ -711,7 +723,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
     "Timestamp: ",
     reason ? reason : "N/A", sleepDurationSeconds);
   if (written < 0 || (size_t)written >= remaining) {
-    sleepMessage[sizeof(sleepMessage) - 1] = '\0';
+    sleepMessage[kSleepMsgSize - 1] = '\0';
     return false;
   }
   offset += written;
@@ -728,7 +740,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
     written = snprintf(sleepMessage + offset, remaining, "Erreur heure\n");
   }
   if (written < 0 || (size_t)written >= remaining) {
-    sleepMessage[sizeof(sleepMessage) - 1] = '\0';
+    sleepMessage[kSleepMsgSize - 1] = '\0';
     return false;
   }
   offset += written;
@@ -756,7 +768,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
     acts.isHeaterOn() ? "ON" : "OFF",
     acts.isLightOn() ? "ON" : "OFF");
   if (written < 0 || (size_t)written >= remaining) {
-    sleepMessage[sizeof(sleepMessage) - 1] = '\0';
+    sleepMessage[kSleepMsgSize - 1] = '\0';
   }
   
   Serial.println(F("[Mail] ===== ENVOI MAIL VEILLE ====="));
@@ -771,12 +783,23 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
                          const char* toEmail) {
   const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
-  static char wakeSubject[64];
+  char wakeSubject[64];
   snprintf(wakeSubject, sizeof(wakeSubject), "FFP5CS - Réveil du système");
-  
-  static char wakeMessage[1024];
+
+  // v14.02 (audit DRAM) : heap transitoire (RAII) au lieu d'un static 1 KB résident
+  // en .bss — usage rare (réveil uniquement). Cf. sendSleepMail.
+  constexpr size_t kWakeMsgSize = 1024;
+  struct MsgBuf {
+    char* p{static_cast<char*>(malloc(kWakeMsgSize))};
+    ~MsgBuf() { free(p); }
+  } msgBuf;
+  if (!msgBuf.p) {
+    Serial.println(F("[Mail] ⚠️ Alloc message réveil échouée — mail sauté"));
+    return false;
+  }
+  char* const wakeMessage = msgBuf.p;
   size_t offset = 0;
-  size_t remaining = sizeof(wakeMessage);
+  size_t remaining = kWakeMsgSize;
   int written = 0;
   
   // Construire le message avec snprintf()
@@ -788,7 +811,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
     "Timestamp: ",
     reason ? reason : "N/A", actualSleepSeconds);
   if (written < 0 || (size_t)written >= remaining) {
-    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    wakeMessage[kWakeMsgSize - 1] = '\0';
     return false;
   }
   offset += written;
@@ -805,7 +828,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
     written = snprintf(wakeMessage + offset, remaining, "Erreur heure\n");
   }
   if (written < 0 || (size_t)written >= remaining) {
-    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    wakeMessage[kWakeMsgSize - 1] = '\0';
     return false;
   }
   offset += written;
@@ -834,7 +857,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
     acts.isHeaterOn() ? "ON" : "OFF",
     acts.isLightOn() ? "ON" : "OFF");
   if (written < 0 || (size_t)written >= remaining) {
-    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    wakeMessage[kWakeMsgSize - 1] = '\0';
     return false;
   }
   offset += written;
@@ -856,7 +879,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
     written = snprintf(wakeMessage + offset, remaining, "- WiFi: Déconnecté\n");
   }
   if (written < 0 || (size_t)written >= remaining) {
-    wakeMessage[sizeof(wakeMessage) - 1] = '\0';
+    wakeMessage[kWakeMsgSize - 1] = '\0';
   }
   
   Serial.println(F("[Mail] ===== ENVOI MAIL RÉVEIL ====="));

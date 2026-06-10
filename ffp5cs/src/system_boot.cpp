@@ -616,10 +616,14 @@ void sendStartupTestMail(AppContext& ctx) {
   if (ctx.wifi.isConnected()) {
     LOG_INFO("=== TEST MAIL AU DÉMARRAGE ===");
 
-    // Buffers statiques pour éviter fragmentation mémoire
-    static char targetEmail[EmailConfig::MAX_EMAIL_LENGTH];
-    static char bootMsg[BufferConfig::EMAIL_MAX_SIZE_BYTES];
-    static char emailSubject[128];
+    // v14.02 (audit DRAM) : locaux de pile au lieu de statics résidents (.bss).
+    // Appelé une seule fois au boot depuis setup() (stack main confortable) ;
+    // les ex-statics gaspillaient ~2,2 KB de dram0 pour tout l'uptime.
+    // bootMsg : 512 suffit — sendAlert() tronque de toute façon à
+    // MailQueueItem::message[512] en file (l'ancien 2000 était illusoire).
+    char targetEmail[EmailConfig::MAX_EMAIL_LENGTH];
+    char bootMsg[512];
+    char emailSubject[128];
 
     // Adresse configurée ou défaut (boot avant 1er sync → NVS vide)
     const char* emailFromConfig = ctx.automatism.getEmailAddress();

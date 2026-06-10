@@ -12,6 +12,25 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.02 - 2026-06-10
+
+### Audit DRAM wroom-prod — marge link dram0_0_seg : 8 octets → ~7,3 KB
+
+**Constat mesuré** (build wroom-prod, `firmware.map`/`nm`) : le segment statique `dram0_0_seg` (124 580 o) était plein à 124 568 (.data 26 368 + .bss 98 200) → **8 octets de marge au link**. Cause des réductions de stacks à répétition (v13.29/13.36/13.90/13.98/14.00) : chaque +12 o de `.bss` cassait le link prod.
+
+**Correctif** : 5 buffers statiques **à usage rare** convertis en allocation au point d'usage (dérogation ciblée à la règle « buffers statiques » — justifiée car résidents à vie pour ≤ quelques usages par uptime, avec repli sûr si alloc échoue) :
+- `SystemBoot::sendStartupTestMail` : `bootMsg[2000]`/`targetEmail`/`emailSubject` statics → **locaux de pile** (appel unique au boot depuis `setup()`). `bootMsg` redimensionné **512** : `sendAlert()` tronque de toute façon à `MailQueueItem::message[512]` (l'ancien 2000 était illusoire). −2,2 KB.
+- `Mailer::sendSleepMail` / `sendWakeMail` : `sleepMessage[1024]`/`wakeMessage[1024]` statics → **heap transitoire RAII** (libéré sur tous les chemins ; pas en pile : autoTask ~95 % utilisée). Si alloc échoue : mail sauté + log. −2 KB.
+- `WifiManager::connect` : `s_apRecords[16]` + `s_rescanRecords[16]` statics → **un bloc heap RAII** (2×16 `wifi_ap_record_t`), libéré sur tous les `return` de `connect()`. Si alloc échoue : connexion reportée (même dégradation que le garde `MIN_HEAP_AP_SCAN`). −2,9 KB. Vérifié : aucune lecture des tampons sans scan réussi (gardes `num`/`n2 > 0`), donc pas de dépendance au zéro-init `.bss` ni à la persistance inter-appels.
+
+**Mesures après** : `.bss` 98 200 → **90 856** (−7 344) ; marge link **7 356 o**. wroom-test : RAM statique 37,9 % → 35,8 %. Builds `wroom-test` + `wroom-prod` verts (Flash prod 78,7 % inchangé).
+
+**Gisements restants identifiés (non traités)** : `g_autoCtrl` (objet `Automatism`, 5,8 KB — refactor profond), stacks statiques 38,2 KB (à garder : les passer en heap déplacerait la pression vers le heap runtime TLS), pool `NetRequest` 7,4 KB et caches JSON 5,6 KB (by design offline-first).
+
+- **Fichiers** : `src/system_boot.cpp`, `src/mailer.cpp`, `src/wifi_manager.cpp`, `include/config_system.h` (VERSION), `VERSION.md`.
+
+---
+
 ## Version 14.01 - 2026-06-08
 
 ### Correctifs réseau P1/P2/P3 (monitoring v14.00, 2026-06-07)

@@ -211,7 +211,21 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[BOOT] wifi scan start\n");
 #endif
-  static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+  // v14.02 (audit DRAM) : tampons de scan transitoires sur heap (1 bloc pour scan +
+  // rescan AP caché), libérés sur TOUS les chemins de sortie de connect() (RAII),
+  // au lieu de 2 statics résidents ~2,9 KB en .bss. Si l'alloc échoue (heap très
+  // bas), on renonce à ce cycle de connexion — même dégradation que le garde
+  // MIN_HEAP_AP_SCAN (retry au prochain cycle).
+  struct ScanBufs {
+    wifi_ap_record_t* p{static_cast<wifi_ap_record_t*>(
+        malloc(2 * NetworkConfig::WIFI_SCAN_MAX_RECORDS * sizeof(wifi_ap_record_t)))};
+    ~ScanBufs() { free(p); }
+  } scanBufs;
+  if (!scanBufs.p) {
+    Serial.println(F("[WiFi] ⚠️ Alloc tampons scan échouée — connexion reportée"));
+    return false;
+  }
+  wifi_ap_record_t* const s_apRecords = scanBufs.p;
   uint16_t num = 0;
   int n = -1;
   constexpr int kMaxScanAttempts = 3;
@@ -342,7 +356,8 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan (S3 PSRAM: skip, bloque)
       int n2 = -1;
       bool foundInRescan = false;
-      static wifi_ap_record_t s_rescanRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+      // v14.02 (audit DRAM) : seconde moitié du bloc heap scanBufs (cf. plus haut).
+      wifi_ap_record_t* const s_rescanRecords = scanBufs.p + NetworkConfig::WIFI_SCAN_MAX_RECORDS;
       uint16_t num2 = 0;
 #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
