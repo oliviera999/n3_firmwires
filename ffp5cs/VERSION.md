@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.02 - 2026-06-11
+
+### Publication OTA wroom-prod
+
+- **Validation** : session monitoring 30 min wroom-beta v14.01 stable (boot, POST/GET, veille légère) avant bascule prod.
+- **OTA** : publication `ffp5-wroom-prod` → `serveur/ota/esp32-wroom/` (canal prod, metadata.json).
+- **Note build** : bundle flash cohérent (bootloader + partitions phase 1 + firmware phase 2 même session) — voir `docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md` §7.
+
+---
+
 ## Version 14.01 - 2026-06-08
 
 ### Correctifs réseau P1/P2/P3 (monitoring v14.00, 2026-06-07)
