@@ -19,10 +19,15 @@ class PglCounter {
 
   void resetDailyIfNeeded(uint32_t nowEpoch);
 
+  // Persistance lazy : addEvent() ne fait plus d'écriture NVS systématique
+  // (usure flash + 50-200 ms de blocage en boucle chaude). flush() écrit si
+  // besoin ; flushIfDue() applique les seuils N événements / T ms.
+  void flush();
+  void flushIfDue();
+
  private:
   void load();
-  void persist() const;
-  void persistQueue() const;
+  void persist();
   uint16_t dayKeyFromEpoch(uint32_t epoch) const;
 
   Preferences prefs_;
@@ -33,4 +38,8 @@ class PglCounter {
   PglStoredEvent queue_[MAX_EVENTS] = {};
   uint16_t head_ = 0;
   uint16_t size_ = 0;
+
+  bool dirty_ = false;
+  uint8_t eventsSincePersist_ = 0;
+  uint32_t firstDirtyMs_ = 0;
 };

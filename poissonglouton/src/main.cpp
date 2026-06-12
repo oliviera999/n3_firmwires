@@ -57,6 +57,35 @@ static int16_t readBatteryMilliVolt() {
   return static_cast<int16_t>(res.batteryVoltage * 1000.0f);
 }
 
+// Timer de réveil adaptatif : la nuit (23h-6h, heure NTP valide uniquement)
+// et sur batterie faible, on espace les réveils timer. L'EXT0 (IR) continue
+// de réveiller instantanément sur détection.
+static uint32_t computeSleepTimerS() {
+  uint32_t timerS = PGL_TIMER_WAKEUP_S;
+
+  const int16_t battMv = readBatteryMilliVolt();
+  if (battMv > 500 && battMv < PGL_LOWBATT_MILLIVOLT) {
+    timerS = PGL_TIMER_WAKEUP_LOWBATT_S;
+    PGL_LOG("Sleep adaptatif: batterie faible (%d mV) -> timer %lus",
+            battMv, static_cast<unsigned long>(timerS));
+  }
+
+  const time_t now = time(nullptr);
+  if (now >= 1700000000) {  // heure NTP valide
+    struct tm tmNow = {};
+    if (localtime_r(&now, &tmNow)) {
+      const int h = tmNow.tm_hour;
+      const bool night = (h >= PGL_NIGHT_START_HOUR) || (h < PGL_NIGHT_END_HOUR);
+      if (night && timerS < PGL_TIMER_WAKEUP_NIGHT_S) {
+        timerS = PGL_TIMER_WAKEUP_NIGHT_S;
+        PGL_LOG("Sleep adaptatif: nuit (%dh) -> timer %lus",
+                h, static_cast<unsigned long>(timerS));
+      }
+    }
+  }
+  return timerS;
+}
+
 static bool shouldUploadNow() {
   if (gCounter.getPendingCount() >= PGL_FORCE_UPLOAD_QUEUE_SIZE) return true;
   return (millis() - gLastUploadMs) >= PGL_UPLOAD_EVERY_MS;
@@ -169,6 +198,7 @@ void loop() {
   }
 
   tryUploadBatch();
+  gCounter.flushIfDue();
 
   if ((millis() - gLastHeartbeatMs) > 5000) {
     const uint32_t idleMs = millis() - gLastActivityMs;
@@ -204,12 +234,14 @@ void loop() {
             static_cast<unsigned long>(millis() - gLastActivityMs),
             static_cast<unsigned int>(PGL_IDLE_SLEEP_MS));
     tryUploadBatch();
+    gCounter.flush();  // la RAM est perdue en deep sleep : persister la file
     gDisplay.sleepBacklight();
     PGL_LOG("Backlight OFF");
     const bool useIrWakeup = gDetection.hasIr();
-    gSleep.configure(useIrWakeup, PGL_TIMER_WAKEUP_S);
-    PGL_LOG("Veille: IR_wakeup=%d timer=%us", useIrWakeup ? 1 : 0,
-            static_cast<unsigned int>(PGL_TIMER_WAKEUP_S));
+    const uint32_t timerS = computeSleepTimerS();
+    gSleep.configure(useIrWakeup, timerS);
+    PGL_LOG("Veille: IR_wakeup=%d timer=%lus", useIrWakeup ? 1 : 0,
+            static_cast<unsigned long>(timerS));
     gSleep.start();
 #endif
   }

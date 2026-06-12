@@ -74,7 +74,16 @@ PglDetectionEvent PglDetection::poll() {
 
   if (usPresent_) {
     const uint16_t distanceCm = readUltrasonCm();
+    // Filtre temporel : il faut PGL_US_CONSECUTIVE_POLLS lectures consécutives
+    // sous le seuil pour valider (rejette les échos parasites isolés), et le
+    // déclenchement se fait sur front (l'objet doit sortir du champ avant de
+    // pouvoir compter à nouveau) — comme l'IR.
     if (distanceCm > 0 && distanceCm <= PGL_ULTRASON_TRIGGER_CM) {
+      if (usBelowCount_ < 255) usBelowCount_++;
+    } else {
+      usBelowCount_ = 0;
+    }
+    if (usBelowCount_ == PGL_US_CONSECUTIVE_POLLS) {
       usTriggered = true;
       lastUsEdgeMs_ = now;
     }
