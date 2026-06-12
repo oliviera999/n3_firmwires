@@ -34,6 +34,15 @@ public:
     /** Délai (secondes) entre nourrissage gros et petits poissons (aligné feedSequential). */
     static constexpr uint16_t FEEDING_DELAY_BETWEEN_SEC = 2;
 
+    /** Plafond par distribution (s). La durée ne calibre pas une quantité en grammes :
+     *  ce plafond borne le pire cas mécanique en cas de config aberrante. */
+    static constexpr uint16_t FEEDING_MAX_DURATION_SEC = 60;
+
+    /** Plafond cumulé journalier (s, gros + petits confondus) — anti-surdosage si
+     *  l'horloge saute ou si les flags sont corrompus (3 repas max à durée max).
+     *  Compteur en RAM : remis à zéro au changement de jour et perdu au reboot. */
+    static constexpr uint32_t FEEDING_MAX_DAILY_SEC = 3 * 2 * FEEDING_MAX_DURATION_SEC;
+
     /**
      * Vérifie et déclenche le nourrissage automatique selon l'heure
      * @param hour Heure actuelle (0-23)
@@ -83,16 +92,30 @@ private:
     Mailer& _mailer;
     PowerManager& _power;
     
+    // Compteur cumulé journalier (s) — RAM uniquement, reset au changement de jour
+    uint32_t _dailyFeedSec = 0;
+
+    // Dernière config invalide signalée (évite le spam de warnings dans la boucle)
+    uint32_t _lastWarnedConfig = 0xFFFFFFFF;
+
     // Helpers privés
     bool shouldFeedNow(int hour, int minute, uint8_t scheduleHour) const;
     bool shouldCatchUpFeed(int hour, uint8_t scheduleHour) const;
-    void performFeeding(uint16_t bigDuration, uint16_t smallDuration,
+    void warnIfScheduleConfigInvalid(uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour);
+    /// Détecte les créneaux dont la fenêtre + rattrapage sont passés sans nourrissage,
+    /// les marque faits (l'heure est passée, ne pas nourrir en décalé) et alerte par email.
+    void handleMissedSlots(int hour, uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
+                           const char* emailAddr, bool mailNotif);
+    /// Retourne true si la séquence a démarré (false = refusée, ne pas marquer le créneau)
+    bool performFeeding(uint16_t bigDuration, uint16_t smallDuration,
                        const char* emailAddr, bool mailNotif,
                        std::function<void()> mailBlinkCallback,
                        std::function<void(const char*)> feedingStartCallback = nullptr,
                        std::function<void()> feedingCompleteCallback = nullptr);
     void sendFeedingEmail(const char* type, uint16_t bigDur, uint16_t smallDur,
                          const char* emailAddr, bool mailNotif);
+    void sendAlertEmail(const char* subject, const char* body,
+                        const char* emailAddr, bool mailNotif);
 
     /// Marque « fait » tous les créneaux dont l’heure programmée == scheduleHour (évite 3 repas si 105/106/107 identiques).
     void markSlotsDoneForScheduleHour(uint8_t scheduleHour,
