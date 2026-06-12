@@ -32,6 +32,7 @@ int Humid1;
 int Humid2;
 int Humid3;
 int Humid4;
+int soilValidCount = 0;
 
 // Intervalle entre deux lectures capteurs (en ms).
 unsigned long previousMillisDatas = 0;

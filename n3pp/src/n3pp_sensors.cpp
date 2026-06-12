@@ -73,9 +73,25 @@ void lectureCapteurs() {
   Serial.print("Capteur humidite 4 : ");
   Serial.println(Humid4);
 
-  HumidMoy = (Humid1 + Humid2 + Humid3 + Humid4) / 4;
+  // Moyenne sur les capteurs valides uniquement : un capteur debranche
+  // (fallback=1, lu comme "tres sec") tirait la moyenne vers le bas et
+  // pouvait declencher un arrosage intempestif.
+  {
+    const int soilVals[4] = { Humid1, Humid2, Humid3, Humid4 };
+    long validSum = 0;
+    soilValidCount = 0;
+    for (int i = 0; i < 4; ++i) {
+      if (soilVals[i] != N3PP_ANALOG_FALLBACK) {
+        validSum += soilVals[i];
+        soilValidCount++;
+      }
+    }
+    HumidMoy = (soilValidCount > 0) ? (int)(validSum / soilValidCount)
+                                    : N3PP_ANALOG_FALLBACK;
+  }
   Serial.print("Capteur humidite moyenne : ");
-  Serial.println(HumidMoy);
+  Serial.print(HumidMoy);
+  Serial.printf(" (capteurs valides: %d/4)\n", soilValidCount);
 
   N3Analog::AnalogConfig cPont = cfgHumid;
   cPont.pin = pontdiv;
