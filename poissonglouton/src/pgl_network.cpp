@@ -142,7 +142,7 @@ void PglNetwork::ensureWifi() {
       sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]),
       PGL_WIFI_TIMEOUT_MS,
       250,
-      300,
+      100,
       8,
       nullptr,
       nullptr,

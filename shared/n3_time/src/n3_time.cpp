@@ -3,24 +3,22 @@
 #include <esp_sleep.h>
 
 void n3TimeSaveToFlash(ESP32Time& rtc, Preferences& prefs) {
-  int seconde = rtc.getTime("%S").toInt();
-  int minute = rtc.getTime("%M").toInt();
-  int heure = rtc.getTime("%H").toInt();
-  int jour = rtc.getTime("%d").toInt();
-  int mois = rtc.getTime("%m").toInt();
-  int annee = rtc.getTime("%Y").toInt();
+  // Une seule clé epoch (1 écriture NVS au lieu de 6 : usure flash -83 %,
+  // pas de String temporaires getTime()/toInt()).
   prefs.begin("rtc", false);
-  prefs.putInt("heure", heure);
-  prefs.putInt("minute", minute);
-  prefs.putInt("seconde", seconde);
-  prefs.putInt("jour", jour);
-  prefs.putInt("mois", mois);
-  prefs.putInt("annee", annee);
+  prefs.putULong("epoch", rtc.getEpoch());
   prefs.end();
 }
 
 void n3TimeLoadFromFlash(Preferences& prefs, ESP32Time& rtc) {
   prefs.begin("rtc", true);
+  unsigned long epoch = prefs.getULong("epoch", 0);
+  if (epoch != 0) {
+    prefs.end();
+    rtc.setTime(epoch);
+    return;
+  }
+  // Migration : anciennes sauvegardes en 6 clés (heure/minute/...) si présentes.
   int heure = prefs.getInt("heure", 12);
   int minute = prefs.getInt("minute", 0);
   int seconde = prefs.getInt("seconde", 0);

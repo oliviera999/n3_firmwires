@@ -230,7 +230,7 @@ void Wificonnect() {
   cfg.networkCount = 3;
   cfg.timeoutMs = N3_WIFI_TIMEOUT_MS;
   cfg.delayBetweenMs = 250;
-  cfg.preScanDelayMs = 300;
+  cfg.preScanDelayMs = 100;  // 300 ms était conservateur ; la radio se stabilise en ~100 ms
   cfg.scanMax = 10;
   cfg.onConnecting = []() {
     if (displayOk) {

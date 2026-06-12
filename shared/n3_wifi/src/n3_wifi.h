@@ -19,6 +19,9 @@ struct N3WifiConfig {
   void (*onConnecting)();
   void (*onFailure)();
   void (*onSuccess)(const char* ssid);
+  // Champ ajouté en fin de struct : les init agrégées existantes le laissent à
+  // false (reconnexion rapide active par défaut).
+  bool disableFastReconnect;
 };
 
 /** Connexion WiFi : scan, tri par RSSI, essai avec BSSID/canal puis retry sans BSSID. */
