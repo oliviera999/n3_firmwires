@@ -70,6 +70,9 @@ class WebClient {
   bool loadFromNVSFallback(ArduinoJson::JsonDocument& doc);  // v11.165: Fallback NVS
   
   // v11.171: Constantes queue persistante
-  static constexpr uint8_t MAX_QUEUED_POSTS = 3;   // Max 3 POSTs en queue (préserve flash)
+  // 3 -> 8 (audit algo 2026-06) : meilleure résilience hors-ligne. 8 × 512 o
+  // = 4 Ko au pire dans la partition NVS de 20 Ko (0x5000) — 20 ne tiendrait
+  // pas sans risquer la saturation NVS (config + état y résident aussi).
+  static constexpr uint8_t MAX_QUEUED_POSTS = 8;
   static constexpr size_t MAX_POST_SIZE = 512;     // Taille max payload
 }; 
