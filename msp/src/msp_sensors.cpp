@@ -12,6 +12,15 @@
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
 static const int LIGHT_SCAN_MIN_THRESHOLD = 50;
 static const bool MSP_VERBOSE_LIGHT_SCAN = false;
+// Délais du scan servo (réduits — audit algo 2026-06). Les anciens 30/50 ms
+// cumulaient ~23 s par balayage ; un servo avance de 1° en ~10-15 ms et l'ADC
+// se stabilise en quelques ms. ⚠ Réductions à valider sur cible (qualité du
+// suivi) : revenir à 30/50 si le tracker devient erratique.
+static const int SCAN_SERVO_SETTLE_MS = 15;   // était 30
+static const int SCAN_LDR_SETTLE_MS = 5;      // était 50
+// L'OLED (clearDisplay+display ≈ 25-30 ms I2C) n'est rafraîchie qu'une
+// position sur N pendant le balayage.
+static const int SCAN_DISPLAY_EVERY = 8;
 static bool s_lastServoModeAutoLogKnown = false;
 static bool s_lastServoModeAutoLogged = true;
 
@@ -245,7 +254,7 @@ void Light_val() {
     // Balayage du premier servomoteur
     for (int pos = minAngleServoGD; pos <= maxAngleServoGD; pos++) {
       servogd.write(pos);
-      delay(30);  // Attendre que le servomoteur se positionne
+      delay(SCAN_SERVO_SETTLE_MS);  // Attendre que le servomoteur se positionne
 
       // Lecture et filtrage pour les capteurs associés au premier servomoteur
       int currentReading1 = analogRead(LUMINOSITEa);
@@ -261,7 +270,7 @@ void Light_val() {
       average2 = total2 / numReadings;
       readIndex = (readIndex + 1) % numReadings;
 
-      if (displayOk) {
+      if (displayOk && (pos % SCAN_DISPLAY_EVERY) == 0) {
         display.clearDisplay();
         display.setTextSize(2);
         display.setCursor(0, 0);
@@ -271,7 +280,7 @@ void Light_val() {
         display.println(average2);
         display.display();
       }
-      delay(50);
+      delay(SCAN_LDR_SETTLE_MS);
 
       // Enregistrement de la valeur maximale pour les capteurs 1 et 2
       if (average1 > photocellReadingA) {
@@ -309,7 +318,7 @@ void Light_val() {
     readIndex = 0;
     for (int pos = minAngleServoHB; pos <= maxAngleServoHB; pos++) {
       servohb.write(pos);
-      delay(30);  // Attendre que le servomoteur se positionne
+      delay(SCAN_SERVO_SETTLE_MS);  // Attendre que le servomoteur se positionne
 
       // Lecture et filtrage pour les capteurs associés au second servomoteur
       int currentReading3 = analogRead(LUMINOSITEc);
@@ -325,7 +334,7 @@ void Light_val() {
       average4 = total4 / numReadings;
       readIndex = (readIndex + 1) % numReadings;
 
-      if (displayOk) {
+      if (displayOk && (pos % SCAN_DISPLAY_EVERY) == 0) {
         display.clearDisplay();
         display.setTextSize(2);
         display.setCursor(0, 0);
@@ -335,7 +344,7 @@ void Light_val() {
         display.println(average4);
         display.display();
       }
-      delay(50);
+      delay(SCAN_LDR_SETTLE_MS);
 
       // Enregistrement de la valeur maximale pour les capteurs 3 et 4
       if (average3 > photocellReadingC) {
