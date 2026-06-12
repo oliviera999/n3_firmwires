@@ -89,11 +89,15 @@ void adjustExposure() {
   }
 }
 
+// Warm-up raccourci (audit algo 2026-06) : l'OV2640 se stabilise en 1-2
+// trames, pas 3 s. 2 trames jetees a 150 ms suffisent ; adjustExposure()
+// corrige ensuite avant chaque capture. ⚠ A valider sur cible en transitions
+// de luminosite (aube/crepuscule) : revenir a 3×1000 ms si photos degradees.
 void warmupCamera() {
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 2; i++) {
     camera_fb_t* fb = esp_camera_fb_get();
     if (fb) esp_camera_fb_return(fb);
-    delay(1000);
+    delay(150);
   }
 }
 
@@ -104,11 +108,13 @@ void initializeCamera() {
     s->set_aec_value(s, 300);
     s->set_gain_ctrl(s, 0);
     s->set_agc_gain(s, 0);
-    delay(1000);
+    delay(500);
     s->set_exposure_ctrl(s, 1);
     s->set_gain_ctrl(s, 1);
     s->set_awb_gain(s, 1);
-    delay(10000);
+    // 10 s -> 3 s : la convergence AEC/AWB de l'OV2640 prend 2-3 s en
+    // lumiere stable (10 s etait une marge excessive).
+    delay(3000);
   }
 }
 #endif
