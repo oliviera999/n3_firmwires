@@ -204,7 +204,7 @@ void Wificonnect() {
   cfg.networkCount = 3;
   cfg.timeoutMs = 5000;
   cfg.delayBetweenMs = 250;
-  cfg.preScanDelayMs = 300;
+  cfg.preScanDelayMs = 100;  // 300 ms était conservateur ; la radio se stabilise en ~100 ms
   cfg.scanMax = 10;
   cfg.onConnecting = []() {
     if (displayOk) {

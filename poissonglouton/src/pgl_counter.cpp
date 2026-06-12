@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <time.h>
 
+#include "config.h"
 #include "pgl_log.h"
 
 void PglCounter::begin() {
@@ -22,7 +23,18 @@ void PglCounter::addEvent(const PglStoredEvent& event) {
     head_ = (head_ + 1) % MAX_EVENTS;
   }
 
-  persist();
+  // Persistance lazy : on marque "sale" et on n'écrit que tous les
+  // PGL_PERSIST_EVERY_EVENTS événements (ou file pleine). flushIfDue()
+  // assure l'écriture au plus tard PGL_PERSIST_MAX_DELAY_MS après le
+  // premier événement non persisté, et flush() est appelé avant le sleep.
+  if (!dirty_) {
+    dirty_ = true;
+    firstDirtyMs_ = millis();
+  }
+  eventsSincePersist_++;
+  if (eventsSincePersist_ >= PGL_PERSIST_EVERY_EVENTS || size_ >= MAX_EVENTS) {
+    persist();
+  }
 }
 
 size_t PglCounter::peekBatch(PglStoredEvent* out, size_t maxItems) const {
@@ -45,6 +57,17 @@ void PglCounter::popBatch(size_t count) {
 uint32_t PglCounter::getTotalCount() const { return totalCount_; }
 uint32_t PglCounter::getTodayCount() const { return todayCount_; }
 uint16_t PglCounter::getPendingCount() const { return size_; }
+
+void PglCounter::flush() {
+  if (dirty_) persist();
+}
+
+void PglCounter::flushIfDue() {
+  if (!dirty_) return;
+  if ((millis() - firstDirtyMs_) >= PGL_PERSIST_MAX_DELAY_MS) {
+    persist();
+  }
+}
 
 void PglCounter::resetDailyIfNeeded(uint32_t nowEpoch) {
   const uint16_t nowKey = dayKeyFromEpoch(nowEpoch);
@@ -92,7 +115,7 @@ void PglCounter::load() {
   }
 }
 
-void PglCounter::persist() const {
+void PglCounter::persist() {
   Preferences p;
   p.begin("pglcnt", false);
   p.putULong("total", totalCount_);
@@ -102,6 +125,8 @@ void PglCounter::persist() const {
   p.putUShort("size", size_);
   p.putBytes("queue", queue_, sizeof(queue_));
   p.end();
+  dirty_ = false;
+  eventsSincePersist_ = 0;
 }
 
 uint16_t PglCounter::dayKeyFromEpoch(uint32_t epoch) const {

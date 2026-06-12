@@ -41,29 +41,45 @@ bool Mailer::processOneMailSync() {
   if (!_mailQueue) {
     return false; // Queue non initialisée
   }
-  
+
+  // Backoff après échec : ne pas re-bloquer automationTask avec une nouvelle
+  // session SMTP tant que la fenêtre de backoff court (serveur lent/down).
+  if (_nextMailRetryMs != 0 && millis() < _nextMailRetryMs) {
+    return false;
+  }
+
   MailQueueItem item;
-  
+
   // Lire un mail de la queue (non-bloquant)
   if (xQueueReceive(_mailQueue, &item, 0) != pdTRUE) {
     return false; // Aucun mail en attente
   }
-  
+
   Serial.printf("[Mail] 📬 Traitement mail séquentiel: '%s'\n", item.subject);
   Serial.println(F("[Mail] >>> ENVOI SMTP DÉBUT <<<"));  // Témoin début envoi effectif
 
+  const unsigned long smtpStartMs = millis();
   bool success;
   if (item.isAlert) {
     success = sendAlertSync(item.subject, item.message, item.toEmail, item.includeDetailedReport);
   } else {
     success = sendSync(item.subject, item.message, "User", item.toEmail);
   }
-  
+  const unsigned long smtpDurationMs = millis() - smtpStartMs;
+  if (smtpDurationMs > 10000) {
+    Serial.printf("[Mail] ⚠️ Session SMTP longue: %lu ms (automationTask bloquée pendant ce temps)\n",
+                  smtpDurationMs);
+  }
+
   if (success) {
+    _nextMailRetryMs = 0;
     _mailsSent++;
     Serial.printf("[Mail] ✅ Mail SMTP envoyé avec succès (%u total)\n", _mailsSent);
     Serial.println(F("[Mail] ENVOI SMTP EFFECTIF: OK"));  // Témoin pour analyse log / scripts
   } else {
+    _nextMailRetryMs = millis() + MAIL_RETRY_BACKOFF_MS;
+    Serial.printf("[Mail] ⏸️ Backoff SMTP %lu ms avant prochain essai (durée échec: %lu ms)\n",
+                  (unsigned long)MAIL_RETRY_BACKOFF_MS, smtpDurationMs);
     // Re-queue une fois pour retry (échec transitoire WiFi/TLS), max 2 tentatives au total
     if (item.retryCount < 2) {
       item.retryCount++;

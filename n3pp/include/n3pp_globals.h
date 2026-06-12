@@ -39,6 +39,9 @@ extern int Humid1;
 extern int Humid2;
 extern int Humid3;
 extern int Humid4;
+// Nombre de capteurs d'humidite sol valides (non debranches) lors de la
+// derniere lecture : 0 = aucune mesure fiable, l'arrosage auto est bloque.
+extern int soilValidCount;
 
 // Intervalle entre deux lectures capteurs (en ms)
 extern unsigned long previousMillisDatas;

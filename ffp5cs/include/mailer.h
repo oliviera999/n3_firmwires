@@ -71,6 +71,13 @@ class Mailer {
   // Queue mail (traitée séquentiellement depuis automationTask)
   QueueHandle_t _mailQueue{nullptr};
 
+  // Backoff après échec SMTP : un envoi raté (serveur lent/injoignable) peut
+  // bloquer automationTask plusieurs secondes ; sans délai, le retry du cycle
+  // suivant re-bloque immédiatement. On suspend le traitement de la queue
+  // pendant MAIL_RETRY_BACKOFF_MS après un échec.
+  static constexpr uint32_t MAIL_RETRY_BACKOFF_MS = 60000;
+  unsigned long _nextMailRetryMs{0};
+
   // Epoch: délégation vers PowerManager (évite duplication logique NVS/fallback)
   PowerManager* _power{nullptr};
 

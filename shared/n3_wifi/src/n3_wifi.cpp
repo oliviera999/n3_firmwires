@@ -2,6 +2,32 @@
 #include <cstring>
 
 #define N3_WIFI_CAND_MAX 10
+#define N3_WIFI_LASTGOOD_MAGIC 0x4E335747UL
+
+// Dernier AP connecté avec succès, en mémoire RTC : survit au deep sleep,
+// permet une reconnexion directe (BSSID+canal) sans scan (~3-5 s économisées).
+struct N3WifiLastGood {
+  uint32_t magic;
+  uint8_t bssid[6];
+  uint8_t chan;
+  char ssid[33];
+};
+static RTC_DATA_ATTR N3WifiLastGood s_lastGood;
+
+static void rememberLastGood() {
+  const uint8_t* b = WiFi.BSSID();
+  int32_t ch = WiFi.channel();
+  String ssid = WiFi.SSID();
+  if (!b || ch <= 0 || ssid.isEmpty()) {
+    s_lastGood.magic = 0;
+    return;
+  }
+  memcpy(s_lastGood.bssid, b, 6);
+  s_lastGood.chan = (uint8_t)ch;
+  strncpy(s_lastGood.ssid, ssid.c_str(), 32);
+  s_lastGood.ssid[32] = '\0';
+  s_lastGood.magic = N3_WIFI_LASTGOOD_MAGIC;
+}
 
 static void wifiBeginSafe(const char* ssid, const char* pass, int32_t chan, const uint8_t* bssid) {
   if (pass && strlen(pass) > 0) {
@@ -33,7 +59,36 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
-  delay(config.preScanDelayMs > 0 ? config.preScanDelayMs : 300);
+
+  unsigned long timeoutMs = config.timeoutMs > 0 ? config.timeoutMs : 5000;
+
+  // Reconnexion rapide : essai direct sur le dernier AP réussi avant tout scan.
+  // En cas d'échec (AP changé/disparu), on invalide le cache et on retombe sur
+  // le scan complet ci-dessous.
+  if (!config.disableFastReconnect && s_lastGood.magic == N3_WIFI_LASTGOOD_MAGIC) {
+    for (size_t i = 0; i < config.networkCount; i++) {
+      if (strcmp(s_lastGood.ssid, config.networks[i].ssid) != 0) continue;
+      unsigned long fastTimeout = timeoutMs / 2;
+      if (fastTimeout < 2000) fastTimeout = (timeoutMs < 2000) ? timeoutMs : 2000;
+      Serial.printf("[WiFi] Reconnexion rapide %s ch=%d\n", s_lastGood.ssid, s_lastGood.chan);
+      wifiBeginSafe(config.networks[i].ssid, config.networks[i].pass,
+                    s_lastGood.chan, s_lastGood.bssid);
+      if (waitConnected(fastTimeout)) {
+        rememberLastGood();
+        if (outWifiactif) *outWifiactif = String(config.networks[i].ssid);
+        if (config.onSuccess) config.onSuccess(config.networks[i].ssid);
+        Serial.printf("[WiFi] OK(rapide) %s %s RSSI=%d\n", config.networks[i].ssid,
+                      WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        return true;
+      }
+      s_lastGood.magic = 0;
+      WiFi.disconnect(false, true);
+      delay(100);
+      break;
+    }
+  }
+
+  delay(config.preScanDelayMs > 0 ? config.preScanDelayMs : 100);
 
   int n = WiFi.scanNetworks(false, true);
   int scanMax = (config.scanMax > 0 && config.scanMax <= N3_WIFI_CAND_MAX) ? config.scanMax : N3_WIFI_CAND_MAX;
@@ -83,7 +138,6 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
     if (!cand[i].present) order[orderCount++] = i;
   }
 
-  unsigned long timeoutMs = config.timeoutMs > 0 ? config.timeoutMs : 5000;
   unsigned long delayBetweenMs = config.delayBetweenMs;
 
   for (size_t idx = 0; idx < orderCount; idx++) {
@@ -100,6 +154,7 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
     }
 
     if (waitConnected(timeoutMs)) {
+      rememberLastGood();
       if (outWifiactif) *outWifiactif = String(ssid);
       if (config.onSuccess) config.onSuccess(ssid);
       Serial.printf("[WiFi] OK %s %s RSSI=%d\n", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
@@ -112,6 +167,7 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
       Serial.printf("[WiFi] Retry sans BSSID %s\n", ssid);
       WiFi.begin(ssid, pass);
       if (waitConnected(timeoutMs)) {
+        rememberLastGood();
         if (outWifiactif) *outWifiactif = String(ssid);
         if (config.onSuccess) config.onSuccess(ssid);
         Serial.printf("[WiFi] OK(2e) %s %s\n", ssid, WiFi.localIP().toString().c_str());

@@ -100,23 +100,30 @@ void arrosageAutoAccumulateCooldown(int sleepSeconds) {
   }
 }
 
+// Hysteresis autour de SeuilSec : le retour "a la normale" exige de depasser
+// SeuilSec + 5 % — evite les paires de mails et arrosages en rafale quand la
+// mesure oscille autour du seuil entre deux reveils.
+static int seuilRetourNormal() {
+  return SeuilSec + (SeuilSec / 20);
+}
+
 void automatismes() {
   //remplissage de l'aquarium cas si l'aquarium est trop bas et la réserve assez remplie
 
-  //mail si sécheresse trop forte
-  if ((HumidMoy < SeuilSec) && enableEmailChecked == "checked" && !emailHumidSent) {
+  //mail si sécheresse trop forte (uniquement si au moins un capteur sol valide)
+  if ((soilValidCount > 0) && (HumidMoy < SeuilSec) && enableEmailChecked == "checked" && !emailHumidSent) {
     emailMessage = String("Le sol est sec. L'humidité moyenne est de ") + String(HumidMoy);
     sendEmailNotification();
       Serial.println(emailMessage);
       // SerialBT.println(emailMessage);
       emailHumidSent = true;
-    
+
     //variablestoesp();
     datatobdd();
   }
 
-  // mail si le niveau est revenu à la normale
-  if ((HumidMoy > SeuilSec) && enableEmailChecked == "checked" && emailHumidSent) {
+  // mail si le niveau est revenu à la normale (hysteresis : SeuilSec + 5 %)
+  if ((soilValidCount > 0) && (HumidMoy > seuilRetourNormal()) && enableEmailChecked == "checked" && emailHumidSent) {
     emailMessage = String("L'humidite est remontee. La moyenne est maintenant de ") + String(HumidMoy);
     Serial.println(emailMessage);
     sendEmailNotification();
@@ -142,7 +149,10 @@ void automatismes() {
 
   // Arrosage en cas de secheresse : protege par cooldown pour eviter
   // un arrosage repete a chaque reveil deep sleep si le sol reste sec.
-  if (HumidMoy < SeuilSec) {
+  // Bloque si aucun capteur sol valide (capteurs debranches lus "tres sec").
+  if (soilValidCount == 0) {
+    Serial.println("[ARROSAGE][SKIP] aucun capteur sol valide, arrosage auto bloque");
+  } else if (HumidMoy < SeuilSec) {
     if (arrosageAutoCooldownExpired()) {
       arrosage();
       if (enableEmailChecked == "checked") {
@@ -273,15 +283,14 @@ void print_wakeup_reason() {
     case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
     default:
       Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
-      preferences.begin("rtc", true);           // Ouverture session NVS (lecture seule)
-      heure = preferences.getInt("heure", 12);  // Récupération heure sauvegardée (défaut 12h)
-      minute = preferences.getInt("minute", 0);
-      seconde = preferences.getInt("seconde", 0);
-      jour = preferences.getInt("jour", 1);
-      mois = preferences.getInt("mois", 1);
-      annee = preferences.getInt("annee", 2023);
-      preferences.end();                                       // Fermeture de la session NVS
-      rtc.setTime(seconde, minute, heure, jour, mois, annee);  // Définition RTC sans synchro NTP
+      // Restauration via n3_time (clé epoch unique, avec migration anciennes clés).
+      n3TimeLoadFromFlash(preferences, rtc);
+      heure = rtc.getTime("%H").toInt();
+      minute = rtc.getTime("%M").toInt();
+      seconde = rtc.getTime("%S").toInt();
+      jour = rtc.getTime("%d").toInt();
+      mois = rtc.getTime("%m").toInt();
+      annee = rtc.getTime("%Y").toInt();
       break;
   }
 }

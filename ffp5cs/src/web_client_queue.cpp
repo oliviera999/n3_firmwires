@@ -104,11 +104,15 @@ bool WebClient::processQueuedPosts() {
       g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key);
     } else {
       failed++;
-      // Arrêter si échec (réseau peut être parti)
+      // Arrêt au premier échec : si l'entrée i a échoué (timeout, 5xx...),
+      // les suivantes vers le même serveur échoueront aussi — inutile de
+      // marteler. Le prochain passage (5 min) fait office de backoff.
       if (WiFi.status() != WL_CONNECTED) {
         LOG(LOG_WARN, "[HTTP] WiFi perdu, arrêt traitement queue");
-        break;
+      } else {
+        LOG(LOG_WARN, "[HTTP] Échec envoi entrée %d, arrêt traitement queue (retry au prochain passage)", i);
       }
+      break;
     }
     
     // Délai entre requêtes
