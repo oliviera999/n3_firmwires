@@ -105,3 +105,13 @@ workflow_*.txt
 
 # Sauvegardes d'édition
 *.orig
+
+# Rapports d'audit / debug transitoires (datés, jetables) — garder README,
+# VERSION, GUIDE_DEBUG_MODE, DOCUMENTATION_*, ANALYSE_SCRIPTS_PS1_RACINE.
+AUDIT_*.md
+SYNTHESE_*.md
+VERIFICATION_*.md
+BILAN_*.md
+PLAN_*.md
+MODIFICATIONS_*.md
+RAPPORT_AUDIT_*.txt
