@@ -43,7 +43,9 @@ class UltrasonicManager {
   
   // Configuration du filtrage - renforcé pour surface agitée (prod)
   static const uint16_t MAX_DISTANCE_DELTA = 300; // Seuil saut pour consensus (30 cm)
-  static const uint16_t OUTLIER_SPREAD_MM = 150; // Mode réactif / legacy (réservoir : config Tank)
+  // NB: le seuil d'aberration réellement appliqué est TankCfg::OUTLIER_SPREAD_MM (= 50,
+  //     défini dans config_sensors.h). L'ancien membre OUTLIER_SPREAD_MM=150 n'était plus
+  //     référencé (audit 2026-06) et a été retiré pour éviter toute confusion.
   // Mode réactif (potager/aquarium) : 1 lecture valide suffit.
   // Mode advanced (réservoir) : SensorConfig::Ultrasonic::Tank::ADVANCED_MIN_VALID_READINGS.
   static const uint8_t MIN_VALID_READINGS = 1;

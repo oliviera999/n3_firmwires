@@ -344,7 +344,7 @@ float AirSensor::robustTemperatureC() {
       esp_task_wdt_reset();
     }
 
-    if (!isnan(temp) && temp >= SensorConfig::AirSensor::TEMP_MIN && temp <= SensorConfig::AirSensor::TEMP_MAX) {
+    if (SensorValidation::isValidAirTemp(temp)) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f°C\n", temp);
       _consecutiveTempFailures = 0;
       return temp;
@@ -406,7 +406,7 @@ float AirSensor::temperatureC() {
 #else
   val = _dht.readTemperature();
 #endif
-  if (isnan(val) || val < SensorConfig::AirSensor::TEMP_MIN || val > SensorConfig::AirSensor::TEMP_MAX) {
+  if (!SensorValidation::isValidAirTemp(val)) {
     return SensorConfig::DefaultValues::TEMP_AIR_DEFAULT;
   }
   return val;
@@ -468,7 +468,7 @@ float AirSensor::filteredTemperatureC() {
 #else
   temp = _dht.readTemperature();
 #endif
-  if (isnan(temp) || temp < SensorConfig::AirSensor::TEMP_MIN || temp > SensorConfig::AirSensor::TEMP_MAX) {
+  if (!SensorValidation::isValidAirTemp(temp)) {
     return _emaInit ? _emaTemp : NAN;
   }
   if (!_emaInit) {
@@ -518,7 +518,7 @@ float AirSensor::filteredHumidity() {
 #else
   h = _dht.readHumidity();
 #endif
-  if (isnan(h) || h < SensorConfig::AirSensor::HUMIDITY_MIN || h > SensorConfig::AirSensor::HUMIDITY_MAX) {
+  if (!SensorValidation::isValidHumidity(h)) {
     return _emaInit ? _emaHumidity : NAN;
   }
   if (!_emaInit) {
@@ -599,7 +599,7 @@ float AirSensor::robustHumidity() {
       esp_task_wdt_reset();
     }
 
-    if (!isnan(humidity) && humidity >= SensorConfig::AirSensor::HUMIDITY_MIN && humidity <= SensorConfig::AirSensor::HUMIDITY_MAX) {
+    if (SensorValidation::isValidHumidity(humidity)) {
       SENSOR_LOG_PRINTF("[AirSensor] Récupération réussie: %.1f%%\n", humidity);
       _consecutiveHumidityFailures = 0;
       return humidity;
