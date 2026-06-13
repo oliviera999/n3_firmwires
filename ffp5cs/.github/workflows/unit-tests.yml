@@ -1,0 +1,48 @@
+name: Unit tests (native)
+
+# Exécute la suite de tests unitaires hôte (Unity) sur le runner, sans
+# matériel ESP32. Jusqu'ici aucun workflow ne lançait `pio test`, donc les
+# tests verts n'offraient aucune protection anti-régression (un test obsolète
+# ou cassé passait inaperçu — cf. commentaire dans test_server_url).
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+defaults:
+  run:
+    working-directory: ffp5cs
+
+jobs:
+  native-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-pio-native-${{ hashFiles('ffp5cs/platformio-native.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-native-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio
+
+      - name: Run native unit tests
+        run: pio test -c platformio-native.ini -e native -v
