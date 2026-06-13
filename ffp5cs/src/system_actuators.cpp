@@ -149,6 +149,9 @@ bool SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDura
   return true;
 }
 
+// true tant que le timer des petits poissons est armé (séquence gros->petits en cours).
+bool SystemActuators::isSequentialFeedInProgress() const { return g_smallFeedInstance != nullptr; }
+
 // Getters pour l'état
 bool SystemActuators::isTankPumpRunning() const { return pumpTank.state(); }
 bool SystemActuators::isAquaPumpRunning() const { return pumpAqua.state(); }

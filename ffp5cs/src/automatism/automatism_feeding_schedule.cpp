@@ -28,12 +28,19 @@ void AutomatismFeedingSchedule::checkNewDay(int currentDay) {
 }
 
 void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear, uint32_t uptimeMs,
-                                             uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
-                                             uint16_t bigDuration, uint16_t smallDuration,
+                                             const FeedingParams& params,
                                              const char* emailAddr, bool mailNotif,
                                              std::function<void()> mailBlinkCallback,
                                              std::function<void(const char*)> feedingStartCallback,
                                              std::function<void()> feedingCompleteCallback) {
+    // Alias locaux : le corps reste inchangé, seule la frontière d'appel est typée.
+    // bigDuration/smallDuration restent modifiables (plafonnées plus bas).
+    const uint8_t morningHour = params.morningHour;
+    const uint8_t noonHour = params.noonHour;
+    const uint8_t eveningHour = params.eveningHour;
+    uint16_t bigDuration = params.bigDuration;
+    uint16_t smallDuration = params.smallDuration;
+
     // Vérifier changement de jour
     checkNewDay(dayOfYear);
 

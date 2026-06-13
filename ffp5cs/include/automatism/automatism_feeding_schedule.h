@@ -45,16 +45,26 @@ public:
     static constexpr uint32_t FEEDING_MAX_DAILY_SEC = 3 * 2 * FEEDING_MAX_DURATION_SEC;
 
     /**
+     * Configuration du planning de nourrissage (heures des créneaux + durées).
+     * Regroupée dans une struct pour éviter les inversions d'arguments positionnels
+     * sur le chemin chaud : au site d'appel, utiliser les designated initializers
+     * (`.morningHour = ...`) rend les permutations silencieuses impossibles.
+     */
+    struct FeedingParams {
+        uint8_t morningHour;     ///< Heure du créneau matin (0-23)
+        uint8_t noonHour;        ///< Heure du créneau midi (0-23)
+        uint8_t eveningHour;     ///< Heure du créneau soir (0-23)
+        uint16_t bigDuration;    ///< Durée nourrissage gros poissons (s)
+        uint16_t smallDuration;  ///< Durée nourrissage petits poissons (s)
+    };
+
+    /**
      * Vérifie et déclenche le nourrissage automatique selon l'heure
      * @param hour Heure actuelle (0-23)
      * @param minute Minute actuelle (0-59)
      * @param dayOfYear Jour de l'année (0-365)
      * @param uptimeMs Uptime en ms (pour désactiver le rattrapage au boot)
-     * @param morningHour Heure du nourrissage matin
-     * @param noonHour Heure du nourrissage midi
-     * @param eveningHour Heure du nourrissage soir
-     * @param bigDuration Durée nourrissage gros poissons (secondes)
-     * @param smallDuration Durée nourrissage petits poissons (secondes)
+     * @param params Heures des créneaux et durées de distribution
      * @param emailAddr Adresse email pour notifications
      * @param mailNotif Email activé ou non
      * @param mailBlinkCallback Callback pour clignotement icône mail OLED
@@ -62,8 +72,7 @@ public:
      * @param feedingCompleteCallback Callback appelé après nourrissage pour sync serveur
      */
     void checkAndFeed(int hour, int minute, int dayOfYear, uint32_t uptimeMs,
-                     uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
-                     uint16_t bigDuration, uint16_t smallDuration,
+                     const FeedingParams& params,
                      const char* emailAddr, bool mailNotif,
                      std::function<void()> mailBlinkCallback,
                      std::function<void(const char*)> feedingStartCallback = nullptr,
