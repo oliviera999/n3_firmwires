@@ -12,27 +12,28 @@ static bool s_remoteJsonCacheValid = false;
 }  // namespace
 
 ConfigManager::ConfigManager() 
-    : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false), 
-      _lastJourBouf(-1), _pompeAquaLocked(false), _otaUpdateFlag(false),
+    : _bouffeMatinOk(false), _bouffeMidiOk(false), _bouffeSoirOk(false),
+      _lastJourBouf(-1), _dailyFeedSec(0), _pompeAquaLocked(false), _otaUpdateFlag(false),
       _remoteSendEnabled(true), _remoteRecvEnabled(true),
       _cachedBouffeMatinOk(false), _cachedBouffeMidiOk(false), _cachedBouffeSoirOk(false),
-      _cachedLastJourBouf(-1), _cachedPompeAquaLocked(false),
+      _cachedLastJourBouf(-1), _cachedDailyFeedSec(0), _cachedPompeAquaLocked(false),
       _cachedOtaUpdateFlag(false), _flagsChanged(false),
       _cachedRemoteSendEnabled(true), _cachedRemoteRecvEnabled(true) {
 }
 
 void ConfigManager::loadBouffeFlags() {
-  // #region agent log
-  Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"loadBouffeFlags\",\"message\":\"load_called\",\"data\":{},\"timestamp\":%lu,\"hypothesisId\":\"H5\"}\n", (unsigned long)millis());
-  // #endregion
   // v11.80: Utilisation du gestionnaire NVS centralisé
   Serial.println(F("[Config] 📥 Chargement flags depuis NVS centralisé"));
-  
+
   // Chargement des flags de bouffe depuis le namespace CONFIG
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MATIN, _bouffeMatinOk, false);
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, _bouffeMidiOk, false);
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, _bouffeSoirOk, false);
   g_nvsManager.loadInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, _lastJourBouf, -1);
+  // Cumul journalier (anti-surdosage) : survit aux reboots, reset au changement de jour
+  unsigned long dailyFeed = 0;
+  g_nvsManager.loadULong(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_DAILY, dailyFeed, 0);
+  _dailyFeedSec = static_cast<uint32_t>(dailyFeed);
   g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked, false);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
@@ -44,11 +45,12 @@ void ConfigManager::loadBouffeFlags() {
   _flagsChanged = false;
   
   Serial.println(F("[Config] ✅ Flags de bouffe chargés depuis NVS centralisé"));
-  Serial.printf("[Config] Matin: %s, Midi: %s, Soir: %s, Jour: %d, Pompe lock: %s\n",
-                _bouffeMatinOk ? "OK" : "KO", 
-                _bouffeMidiOk ? "OK" : "KO", 
-                _bouffeSoirOk ? "OK" : "KO", 
+  Serial.printf("[Config] Matin: %s, Midi: %s, Soir: %s, Jour: %d, Cumul: %lus, Pompe lock: %s\n",
+                _bouffeMatinOk ? "OK" : "KO",
+                _bouffeMidiOk ? "OK" : "KO",
+                _bouffeSoirOk ? "OK" : "KO",
                 _lastJourBouf,
+                (unsigned long)_dailyFeedSec,
                 _pompeAquaLocked ? "OUI" : "NON");
   Serial.printf("[Config] Flag OTA update: %s\n", _otaUpdateFlag ? "true" : "false");
 }
@@ -95,22 +97,20 @@ void ConfigManager::loadNetworkFlags() {
 
 void ConfigManager::saveBouffeFlags() {
   // Sauvegarde seulement si des changements ont été détectés
-  // #region agent log
-  Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"saveBouffeFlags\",\"message\":\"save_attempt\",\"data\":{\"flagsChanged\":%d,\"matinOk\":%d,\"midiOk\":%d,\"soirOk\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H2\"}\n", _flagsChanged ? 1 : 0, _bouffeMatinOk ? 1 : 0, _bouffeMidiOk ? 1 : 0, _bouffeSoirOk ? 1 : 0, (unsigned long)millis());
-  // #endregion
   if (!_flagsChanged) {
     Serial.println(F("[Config] Aucun changement détecté - pas de sauvegarde NVS"));
     return;
   }
-  
+
   // v11.80: Utilisation du gestionnaire NVS centralisé
   Serial.println(F("[Config] 💾 Sauvegarde flags vers NVS centralisé"));
-  
+
   // Sauvegarde des flags de bouffe dans le namespace CONFIG
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MATIN, _bouffeMatinOk);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, _bouffeMidiOk);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, _bouffeSoirOk);
   g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, _lastJourBouf);
+  g_nvsManager.saveULong(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_DAILY, _dailyFeedSec);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
   
@@ -130,12 +130,13 @@ void ConfigManager::forceSaveBouffeFlags() {
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_MIDI, _bouffeMidiOk);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_SOIR, _bouffeSoirOk);
   g_nvsManager.saveInt(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_JOUR, _lastJourBouf);
+  g_nvsManager.saveULong(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BOUFFE_DAILY, _dailyFeedSec);
   g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::BF_PMP_LOCK, _pompeAquaLocked);
   // NOTE: forceWakeUp est géré par Automatism (SYSTEM::forceWakeUp)
-  
+
   updateCache();
   _flagsChanged = false;
-  
+
   Serial.println(F("[Config] ✅ Flags de bouffe sauvegardés de force dans NVS centralisé"));
 }
 
@@ -143,14 +144,34 @@ void ConfigManager::resetBouffeFlags() {
   _bouffeMatinOk = false;
   _bouffeMidiOk = false;
   _bouffeSoirOk = false;
+  _dailyFeedSec = 0;  // Nouveau jour : remise à zéro du cumul anti-surdosage
   // Ne pas reset _lastJourBouf ici, il sera mis à jour par la logique de bouffe
   // Ne pas reset _pompeAquaLocked non plus
   // forceWakeUp est géré par Automatism
-  
+
   _flagsChanged = true; // Marquer comme changé pour forcer la sauvegarde
-  
+
   Serial.println(F("[Config] Flags de bouffe réinitialisés"));
-} 
+}
+
+void ConfigManager::addDailyFeedSec(uint32_t seconds) {
+  if (seconds == 0) {
+    return;
+  }
+  _dailyFeedSec += seconds;
+  _flagsChanged = true;
+  Serial.printf("[Config] Cumul nourrissage journalier: %lus (+%lus)\n",
+                (unsigned long)_dailyFeedSec, (unsigned long)seconds);
+}
+
+void ConfigManager::resetDailyFeedSec() {
+  if (_dailyFeedSec == 0) {
+    return;
+  }
+  _dailyFeedSec = 0;
+  _flagsChanged = true;
+  Serial.println(F("[Config] Cumul nourrissage journalier remis à zéro"));
+}
 
 void ConfigManager::saveRemoteVars(const char* json) {
   // Point d'entrée central pour écriture config "serveur" en NVS (plan simplification).
@@ -300,6 +321,7 @@ bool ConfigManager::hasChanges() const {
          _bouffeMidiOk != _cachedBouffeMidiOk ||
          _bouffeSoirOk != _cachedBouffeSoirOk ||
          _lastJourBouf != _cachedLastJourBouf ||
+         _dailyFeedSec != _cachedDailyFeedSec ||
          _pompeAquaLocked != _cachedPompeAquaLocked;
 }
 
@@ -308,6 +330,7 @@ void ConfigManager::updateCache() {
   _cachedBouffeMidiOk = _bouffeMidiOk;
   _cachedBouffeSoirOk = _bouffeSoirOk;
   _cachedLastJourBouf = _lastJourBouf;
+  _cachedDailyFeedSec = _dailyFeedSec;
   _cachedPompeAquaLocked = _pompeAquaLocked;
   _cachedOtaUpdateFlag = _otaUpdateFlag;
   _cachedRemoteSendEnabled = _remoteSendEnabled;

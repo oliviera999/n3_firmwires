@@ -16,10 +16,10 @@ void AutomatismFeedingSchedule::checkNewDay(int currentDay) {
     if (lastDay != currentDay && lastDay != -1) {
         // Nouveau jour détecté - réinitialiser les flags
         Serial.println(F("[FeedingSchedule] Nouveau jour détecté - réinitialisation flags"));
+        // resetBouffeFlags() remet aussi le cumul anti-surdosage à zéro
         _config.resetBouffeFlags();
         _config.setLastJourBouf(currentDay);
         _config.saveBouffeFlags();
-        _dailyFeedSec = 0;
     } else if (lastDay == -1) {
         // Première initialisation
         _config.setLastJourBouf(currentDay);
@@ -82,16 +82,18 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
 
     // Plafond cumulé journalier anti-surdosage (horloge qui saute, flags corrompus...)
     const uint32_t feedTotalSec = static_cast<uint32_t>(bigDuration) + smallDuration;
-    if (_dailyFeedSec + feedTotalSec > FEEDING_MAX_DAILY_SEC) {
+    // Cumul lu depuis NVS (persiste aux reboots, reset au changement de jour)
+    const uint32_t dailyFedSoFar = _config.getDailyFeedSec();
+    if (dailyFedSoFar + feedTotalSec > FEEDING_MAX_DAILY_SEC) {
         Serial.printf("[FeedingSchedule] 🛑 Plafond journalier atteint (%lu s + %lu s > %lu s) - %s annulé\n",
-                      (unsigned long)_dailyFeedSec, (unsigned long)feedTotalSec,
+                      (unsigned long)dailyFedSoFar, (unsigned long)feedTotalSec,
                       (unsigned long)FEEDING_MAX_DAILY_SEC, slotLabel);
         // Marquer le créneau pour ne pas retenter en boucle, et alerter
         markSlotsDoneForScheduleHour(slotHour, morningHour, noonHour, eveningHour);
         char body[160];
         snprintf(body, sizeof(body),
                  "%s annulé : plafond anti-surdosage journalier atteint (%lu s déjà distribuées, max %lu s).",
-                 slotLabel, (unsigned long)_dailyFeedSec, (unsigned long)FEEDING_MAX_DAILY_SEC);
+                 slotLabel, (unsigned long)dailyFedSoFar, (unsigned long)FEEDING_MAX_DAILY_SEC);
         sendAlertEmail("FFP5CS - 🛑 Plafond nourrissage atteint", body, emailAddr, mailNotif);
         return;
     }
@@ -103,7 +105,8 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
         Serial.println(F("[FeedingSchedule] ⚠️ Séquence refusée (déjà en cours) - créneau non marqué"));
         return;
     }
-    _dailyFeedSec += feedTotalSec;
+    // Incrémenter le cumul AVANT markSlots : les deux sont persistés par le même saveBouffeFlags()
+    _config.addDailyFeedSec(feedTotalSec);
     markSlotsDoneForScheduleHour(slotHour, morningHour, noonHour, eveningHour);
     sendFeedingEmail(slotLabel, bigDuration, smallDuration, emailAddr, mailNotif);
 }

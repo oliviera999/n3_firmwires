@@ -40,7 +40,8 @@ public:
 
     /** Plafond cumulé journalier (s, gros + petits confondus) — anti-surdosage si
      *  l'horloge saute ou si les flags sont corrompus (3 repas max à durée max).
-     *  Compteur en RAM : remis à zéro au changement de jour et perdu au reboot. */
+     *  Le cumul est persisté en NVS (ConfigManager) : il survit aux reboots et est
+     *  remis à zéro au changement de jour. */
     static constexpr uint32_t FEEDING_MAX_DAILY_SEC = 3 * 2 * FEEDING_MAX_DURATION_SEC;
 
     /**
@@ -92,9 +93,6 @@ private:
     Mailer& _mailer;
     PowerManager& _power;
     
-    // Compteur cumulé journalier (s) — RAM uniquement, reset au changement de jour
-    uint32_t _dailyFeedSec = 0;
-
     // Dernière config invalide signalée (évite le spam de warnings dans la boucle)
     uint32_t _lastWarnedConfig = 0xFFFFFFFF;
 
