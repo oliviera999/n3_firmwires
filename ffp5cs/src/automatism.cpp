@@ -586,7 +586,18 @@ void Automatism::handleFeeding() {
     if (isFeedingInProgress()) {
         return;
     }
-    time_t now = _power.getCurrentEpochSafe();
+    // Garde de plausibilité : ne jamais nourrir sur une heure invraisemblable
+    // (RTC désynchronisée, pas de NTP). getCurrentEpochSafe() retournerait un fallback
+    // figé qui décalerait tous les créneaux (double ou zéro nourrissage).
+    time_t now = time(nullptr);
+    if (!_power.isValidEpoch(now)) {
+        static uint32_t lastWarnMs = 0;
+        if (lastWarnMs == 0 || millis() - lastWarnMs > 60000UL) {
+            lastWarnMs = millis();
+            Serial.println(F("[Auto] ⚠️ Heure non plausible (RTC/NTP) - nourrissage auto suspendu"));
+        }
+        return;
+    }
     struct tm timeinfo;
     if (!localtime_r(&now, &timeinfo)) {
         Serial.println(F("[Auto] ❌ Erreur récupération heure pour nourrissage"));
