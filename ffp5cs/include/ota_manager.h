@@ -12,6 +12,7 @@ typedef struct esp_http_client * esp_http_client_handle_t;
 #endif
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <atomic>
 #include "ota_config.h"
 
 class DisplayView;
@@ -19,7 +20,9 @@ class DisplayView;
 class OTAManager {
 private:
     // Verrou exclusif OTA : levé dès détection nouvelle version, baissé seulement si échec (succès = reboot).
-    bool m_otaLock;
+    // atomic<bool> : écrit par otaTask, lu par netTask/autoTask (multi-cœur) — évite la course /
+    // lecture déchirée du flag (cause probable de reboots intermittents, audit 2026-06).
+    std::atomic<bool> m_otaLock;
     unsigned long m_lastCheck;
     unsigned long m_checkInterval;
     char m_currentVersion[32];

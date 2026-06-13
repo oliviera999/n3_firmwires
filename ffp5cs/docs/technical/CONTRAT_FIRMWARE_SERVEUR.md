@@ -177,7 +177,7 @@ Non appliqué ici : refactor OTA = banc réel + build + validation des 2 cartes 
 
 | Prio | Élément | Écrit / Lu | Course ? | Correctif | Fichiers |
 |---|---|---|---|---|---|
-| 🔴 1 | `m_otaLock` (**bool nu**) | écrit otaTask (`ota_manager.cpp:292,301,331,350`) / lu netTask (`app_tasks_net.cpp:154`) | **OUI** inter-cœur | `std::atomic<bool>` (`#include <atomic>`, taille inchangée) | `ota_manager.h:22` |
+| ✅ 1 | `m_otaLock` (**bool nu**) | écrit otaTask (`ota_manager.cpp:292,301,331,350`) / lu netTask (`app_tasks_net.cpp:154`) | **OUI** inter-cœur | **FAIT** : passé en `std::atomic<bool>` (`ota_manager.h`). Compile validée par CI ; observation banc encore recommandée pour confirmer la disparition des reboots. | `ota_manager.h:22` |
 | 🔴 2 | `s_lastFetchedJson` | écrit netTask (`web_client.cpp:742-744`) / lu autoTask via `deserializeJson` (`:758`) | **OUI** — `LoadProhibited` **noté dans le code** (`:306,721,801`) | double-buffer ping-pong + swap atomique, **ou** mutex autour write+read, **ou** copie locale en netTask | `web_client.cpp:65-66` |
 | 🟠 3 | mutex HTTP `portMAX_DELAY` | `web_client.cpp:116` | inversion de priorité possible si POST 18 s | borner l'attente (`pdMS_TO_TICKS(timeout+5000)`) + échec gracieux | `web_client.cpp:116` |
 | 🟠 4 | file `_mailQueue` re-enqueue | `mailer_queue.cpp:86` | rare (retry) | copier `item` sur la pile + valider non-vide avant `xQueueSendToFront` | `mailer_queue.cpp` |
@@ -206,6 +206,10 @@ en-têtes déjà inclus via `config.h`) :
 2. **`src/sensors.cpp`** (227, 267, 313) — `!isnan && range` → `SensorValidation::isValidWaterTemp()`.
 3. **`src/sensor_air.cpp`** (347, 409, 471, 521, 602) — idem vers `isValidAirTemp()` / `isValidHumidity()`.
    Les formes négatives (`isnan || <min || >max`) sont remplacées par `!isValid…()` (De Morgan exact).
+4. **`include/ota_manager.h`** — `m_otaLock` : `bool` → `std::atomic<bool>` (race inter-cœur
+   sur le verrou OTA, cause probable des reboots). Sites de lecture/écriture inchangés
+   (opérateurs transparents). Compile validée par la CI firmware ; **observation banc**
+   recommandée pour confirmer la disparition des reboots intermittents.
 
 > ⚠️ **Build PlatformIO non disponible dans cette session.** La CI firmware (`pio run`) fait foi
 > sur la PR. Aucun `sdkconfig`/partition/CI modifié.
