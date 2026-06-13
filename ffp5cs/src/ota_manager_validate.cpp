@@ -11,6 +11,7 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
+#include "ota_artifact_select.h"  // logique pure extraite (testée nativement, audit §3.8)
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 #include <esp_http_client.h>
@@ -139,101 +140,22 @@ bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, char* outVe
     snprintf(logMsg, sizeof(logMsg), "🔎 Sélection OTA: env=%s, model=%s", envName, modelName);
     log(logMsg);
 
-    auto tryFillFrom = [&](JsonVariantConst v) -> bool {
-        if (v.isNull()) return false;
-
-        const char* urlStr = v["bin_url"].as<const char*>();
-        const char* verStr = v["version"].as<const char*>();
-        int size = v["size"].is<int>() ? v["size"].as<int>() : 0;
-        const char* md5Str = v["md5"].as<const char*>();
-
-        // Fallbacks depuis top-level si certains champs manquent
-        if (!urlStr || strlen(urlStr) == 0) urlStr = doc["bin_url"].as<const char*>();
-        if (!verStr || strlen(verStr) == 0) verStr = doc["version"].as<const char*>();
-        if (size <= 0) size = doc["size"].is<int>() ? doc["size"].as<int>() : 0;
-        if (!md5Str || strlen(md5Str) == 0) md5Str = doc["md5"].as<const char*>();
-
-        // Nécessaire au minimum: une URL
-        if (urlStr && strlen(urlStr) > 0) {
-            strncpy(outUrl, urlStr, urlSize - 1);
-            outUrl[urlSize - 1] = '\0';
-            if (verStr) {
-                strncpy(outVersion, verStr, versionSize - 1);
-                outVersion[versionSize - 1] = '\0';
-            } else {
-                outVersion[0] = '\0';
-            }
-            outSize = size;
-            if (md5Str) {
-                strncpy(outMD5, md5Str, md5Size - 1);
-                outMD5[md5Size - 1] = '\0';
-            } else {
-                outMD5[0] = '\0';
-            }
-            return true;
-        }
-        return false;
-    };
-
-    // 1) channels[env][model]
-    if (!doc["channels"].isNull()) {
-        JsonVariantConst v1 = doc["channels"][envName][modelName];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[%s][%s]: %s", envName, modelName, v1.isNull() ? "absent" : "ok");
+    // v14.x (audit §3.8) : logique de cascade extraite en fonction pure
+    // OtaArtifactSelect::selectArtifact (ota_artifact_select.h), testée nativement
+    // (test/test_ota_select). Comportement de sélection inchangé ; seuls les logs
+    // de debug par-branche sont consolidés en un résumé succès/échec.
+    bool ok = OtaArtifactSelect::selectArtifact(doc, envName, modelName,
+                                                outVersion, versionSize,
+                                                outUrl, urlSize,
+                                                outSize,
+                                                outMD5, md5Size);
+    if (ok) {
+        snprintf(logMsg, sizeof(logMsg), "✅ Artefact OTA sélectionné: %s", outUrl);
         log(logMsg);
-        if (tryFillFrom(v1)) { 
-            snprintf(logMsg, sizeof(logMsg), "✅ Sélection via channels[%s][%s]", envName, modelName);
-            log(logMsg);
-            return true;
-        }
-        // 2) channels[env][default]
-        JsonVariantConst v2 = doc["channels"][envName]["default"];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[%s][default]: %s", envName, v2.isNull() ? "absent" : "ok");
-        log(logMsg);
-        if (tryFillFrom(v2)) { 
-            snprintf(logMsg, sizeof(logMsg), "✅ Sélection via channels[%s][default]", envName);
-            log(logMsg);
-            return true;
-        }
-        // 3) channels[prod][model]
-        JsonVariantConst v3 = doc["channels"]["prod"][modelName];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[prod][%s]: %s", modelName, v3.isNull() ? "absent" : "ok");
-        log(logMsg);
-        if (tryFillFrom(v3)) { 
-            snprintf(logMsg, sizeof(logMsg), "✅ Sélection via channels[prod][%s]", modelName);
-            log(logMsg);
-            return true;
-        }
-        // 4) channels[prod][default]
-        JsonVariantConst v4 = doc["channels"]["prod"]["default"];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test channels[prod][default]: %s", v4.isNull() ? "absent" : "ok");
-        log(logMsg);
-        if (tryFillFrom(v4)) { 
-            log("✅ Sélection via channels[prod][default]");
-            return true;
-        }
+    } else {
+        log("❌ Aucun artefact OTA trouvé dans le manifeste");
     }
-
-    // 5) Fallback legacy top-level (direct)
-    log("🔎 Test fallback top-level");
-    const char* urlStr = doc["bin_url"].as<const char*>();
-    const char* verStr = doc["version"].as<const char*>();
-    int size = doc["size"].is<int>() ? doc["size"].as<int>() : 0;
-    const char* md5Str = doc["md5"].as<const char*>();
-    if (urlStr && strlen(urlStr) > 0 && verStr && strlen(verStr) > 0) {
-        strncpy(outUrl, urlStr, urlSize - 1);
-        outUrl[urlSize - 1] = '\0';
-        strncpy(outVersion, verStr, versionSize - 1);
-        outVersion[versionSize - 1] = '\0';
-        outSize = size;
-        if (md5Str) {
-            strncpy(outMD5, md5Str, md5Size - 1);
-            outMD5[md5Size - 1] = '\0';
-        } else {
-            outMD5[0] = '\0';
-        }
-        return true;
-    }
-    return false;
+    return ok;
 }
 
 bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
