@@ -177,89 +177,16 @@ bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, char* out
     snprintf(logMsg, sizeof(logMsg), "🔎 Sélection Filesystem OTA: env=%s, model=%s", envName, modelName);
     log(logMsg);
 
-    auto tryFillFrom = [&](JsonVariantConst v) -> bool {
-        if (v.isNull()) return false;
-
-        const char* urlStr = v["filesystem_url"].as<const char*>();
-        int size = v["filesystem_size"].is<int>() ? v["filesystem_size"].as<int>() : 0;
-        const char* md5Str = v["filesystem_md5"].as<const char*>();
-
-        // Fallbacks depuis top-level si certains champs manquent
-        if (!urlStr || strlen(urlStr) == 0) urlStr = doc["filesystem_url"].as<const char*>();
-        if (size <= 0) size = doc["filesystem_size"].is<int>() ? doc["filesystem_size"].as<int>() : 0;
-        if (!md5Str || strlen(md5Str) == 0) md5Str = doc["filesystem_md5"].as<const char*>();
-
-        // Nécessaire au minimum: une URL
-        if (urlStr && strlen(urlStr) > 0) {
-            strncpy(outUrl, urlStr, urlSize - 1);
-            outUrl[urlSize - 1] = '\0';
-            outSize = size;
-            if (md5Str) {
-                strncpy(outMD5, md5Str, md5Size - 1);
-                outMD5[md5Size - 1] = '\0';
-            } else {
-                outMD5[0] = '\0';
-            }
-            return true;
-        }
-        return false;
-    };
-
-    // 1) channels[env][model]
-    if (!doc["channels"].isNull()) {
-        JsonVariantConst v1 = doc["channels"][envName][modelName];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[%s][%s]: %s", envName, modelName, v1.isNull() ? "absent" : "ok");
+    // v14.x (audit §3.8) : cascade extraite en fonction pure OtaArtifactSelect::selectFilesystem
+    // (ota_artifact_select.h), testée nativement. Sélection inchangée ; logs consolidés.
+    bool ok = OtaArtifactSelect::selectFilesystem(doc, envName, modelName,
+                                                  outUrl, urlSize, outSize, outMD5, md5Size);
+    if (ok) {
+        snprintf(logMsg, sizeof(logMsg), "✅ Image filesystem sélectionnée: %s", outUrl);
         log(logMsg);
-        if (tryFillFrom(v1)) { 
-            snprintf(logMsg, sizeof(logMsg), "✅ Sélection filesystem via channels[%s][%s]", envName, modelName);
-            log(logMsg);
-            return true;
-        }
-        // 2) channels[env][default]
-        JsonVariantConst v2 = doc["channels"][envName]["default"];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[%s][default]: %s", envName, v2.isNull() ? "absent" : "ok");
-        log(logMsg);
-        if (tryFillFrom(v2)) { 
-            snprintf(logMsg, sizeof(logMsg), "✅ Sélection filesystem via channels[%s][default]", envName);
-            log(logMsg);
-            return true;
-        }
-        // 3) channels[prod][model]
-        JsonVariantConst v3 = doc["channels"]["prod"][modelName];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[prod][%s]: %s", modelName, v3.isNull() ? "absent" : "ok");
-        log(logMsg);
-        if (tryFillFrom(v3)) { 
-            snprintf(logMsg, sizeof(logMsg), "✅ Sélection filesystem via channels[prod][%s]", modelName);
-            log(logMsg);
-            return true;
-        }
-        // 4) channels[prod][default]
-        JsonVariantConst v4 = doc["channels"]["prod"]["default"];
-        snprintf(logMsg, sizeof(logMsg), "🔎 Test filesystem channels[prod][default]: %s", v4.isNull() ? "absent" : "ok");
-        log(logMsg);
-        if (tryFillFrom(v4)) { 
-            log("✅ Sélection filesystem via channels[prod][default]");
-            return true;
-        }
+    } else {
+        log("ℹ️ Aucune image filesystem dans le manifeste (optionnel)");
     }
-
-    // 5) Fallback legacy top-level (direct)
-    log("🔎 Test fallback filesystem top-level");
-    const char* urlStr = doc["filesystem_url"].as<const char*>();
-    int size = doc["filesystem_size"].is<int>() ? doc["filesystem_size"].as<int>() : 0;
-    const char* md5Str = doc["filesystem_md5"].as<const char*>();
-    if (urlStr && strlen(urlStr) > 0) {
-        strncpy(outUrl, urlStr, urlSize - 1);
-        outUrl[urlSize - 1] = '\0';
-        outSize = size;
-        if (md5Str) {
-            strncpy(outMD5, md5Str, md5Size - 1);
-            outMD5[md5Size - 1] = '\0';
-        } else {
-            outMD5[0] = '\0';
-        }
-        return true;
-    }
-    return false;
+    return ok;
 }
 

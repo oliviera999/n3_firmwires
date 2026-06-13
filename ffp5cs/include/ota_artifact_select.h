@@ -106,4 +106,74 @@ inline bool selectArtifact(const JsonDocument& doc,
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Image filesystem (LittleFS/SPIFFS) : même cascade, champs filesystem_url /
+// filesystem_size / filesystem_md5, SANS version. Le fallback top-level exige
+// seulement une URL. Extrait de OTAManager::selectFilesystemFromMetadata.
+// ---------------------------------------------------------------------------
+
+inline bool tryFillFsFrom(JsonVariantConst v, const JsonDocument& doc,
+                          char* outUrl, size_t urlSize,
+                          int& outSize,
+                          char* outMD5, size_t md5Size) {
+  if (v.isNull()) return false;
+
+  const char* urlStr = v["filesystem_url"].as<const char*>();
+  int size = v["filesystem_size"].is<int>() ? v["filesystem_size"].as<int>() : 0;
+  const char* md5Str = v["filesystem_md5"].as<const char*>();
+
+  if (!urlStr || strlen(urlStr) == 0) urlStr = doc["filesystem_url"].as<const char*>();
+  if (size <= 0) size = doc["filesystem_size"].is<int>() ? doc["filesystem_size"].as<int>() : 0;
+  if (!md5Str || strlen(md5Str) == 0) md5Str = doc["filesystem_md5"].as<const char*>();
+
+  if (urlStr && strlen(urlStr) > 0) {
+    strncpy(outUrl, urlStr, urlSize - 1);
+    outUrl[urlSize - 1] = '\0';
+    outSize = size;
+    if (md5Str) {
+      strncpy(outMD5, md5Str, md5Size - 1);
+      outMD5[md5Size - 1] = '\0';
+    } else {
+      outMD5[0] = '\0';
+    }
+    return true;
+  }
+  return false;
+}
+
+inline bool selectFilesystem(const JsonDocument& doc,
+                             const char* envName, const char* modelName,
+                             char* outUrl, size_t urlSize,
+                             int& outSize,
+                             char* outMD5, size_t md5Size) {
+  if (!doc["channels"].isNull()) {
+    if (tryFillFsFrom(doc["channels"][envName][modelName], doc,
+                      outUrl, urlSize, outSize, outMD5, md5Size)) return true;
+    if (tryFillFsFrom(doc["channels"][envName]["default"], doc,
+                      outUrl, urlSize, outSize, outMD5, md5Size)) return true;
+    if (tryFillFsFrom(doc["channels"]["prod"][modelName], doc,
+                      outUrl, urlSize, outSize, outMD5, md5Size)) return true;
+    if (tryFillFsFrom(doc["channels"]["prod"]["default"], doc,
+                      outUrl, urlSize, outSize, outMD5, md5Size)) return true;
+  }
+
+  // Fallback legacy top-level (exige seulement une URL ; pas de version pour le FS).
+  const char* urlStr = doc["filesystem_url"].as<const char*>();
+  int size = doc["filesystem_size"].is<int>() ? doc["filesystem_size"].as<int>() : 0;
+  const char* md5Str = doc["filesystem_md5"].as<const char*>();
+  if (urlStr && strlen(urlStr) > 0) {
+    strncpy(outUrl, urlStr, urlSize - 1);
+    outUrl[urlSize - 1] = '\0';
+    outSize = size;
+    if (md5Str) {
+      strncpy(outMD5, md5Str, md5Size - 1);
+      outMD5[md5Size - 1] = '\0';
+    } else {
+      outMD5[0] = '\0';
+    }
+    return true;
+  }
+  return false;
+}
+
 }  // namespace OtaArtifactSelect

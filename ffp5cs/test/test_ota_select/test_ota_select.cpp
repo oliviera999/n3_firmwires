@@ -35,6 +35,17 @@ bool select(const char* json, const char* env, const char* model, Out& o) {
                         o.ver, sizeof(o.ver), o.url, sizeof(o.url),
                         o.size, o.md5, sizeof(o.md5));
 }
+
+// Idem pour l'image filesystem (champs filesystem_*, pas de version).
+bool selectFs(const char* json, const char* env, const char* model, Out& o) {
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, json);
+  TEST_ASSERT_EQUAL_MESSAGE(DeserializationError::Ok, err.code(), "JSON de test invalide");
+  o.ver[0] = o.url[0] = o.md5[0] = '\0';
+  o.size = 0;
+  return selectFilesystem(doc, env, model,
+                          o.url, sizeof(o.url), o.size, o.md5, sizeof(o.md5));
+}
 }  // namespace
 
 void setUp(void) {}
@@ -124,6 +135,54 @@ void test_channels_present_but_unusable(void) {
   TEST_ASSERT_FALSE(r);
 }
 
+// --- Image filesystem (champs filesystem_*, pas de version) ---
+
+// FS : sélection directe channels[env][model].
+void test_fs_channel_env_model_direct(void) {
+  Out o;
+  bool r = selectFs(R"({"channels":{"test":{"esp32-wroom":{"filesystem_url":"f1","filesystem_size":7,"filesystem_md5":"x1"}}}})",
+                    "test", "esp32-wroom", o);
+  TEST_ASSERT_TRUE(r);
+  TEST_ASSERT_EQUAL_STRING("f1", o.url);
+  TEST_ASSERT_EQUAL_INT(7, o.size);
+  TEST_ASSERT_EQUAL_STRING("x1", o.md5);
+}
+
+// FS : repli channels[prod][default], taille absente → 0.
+void test_fs_fallback_prod_default(void) {
+  Out o;
+  bool r = selectFs(R"({"channels":{"prod":{"default":{"filesystem_url":"f4"}}}})",
+                    "test", "esp32-wroom", o);
+  TEST_ASSERT_TRUE(r);
+  TEST_ASSERT_EQUAL_STRING("f4", o.url);
+  TEST_ASSERT_EQUAL_INT(0, o.size);
+}
+
+// FS : fallback legacy top-level — exige seulement une URL (pas de version).
+void test_fs_legacy_top_level_url_only(void) {
+  Out o;
+  bool r = selectFs(R"({"filesystem_url":"ftop","filesystem_size":12})", "test", "esp32-wroom", o);
+  TEST_ASSERT_TRUE(r);
+  TEST_ASSERT_EQUAL_STRING("ftop", o.url);
+  TEST_ASSERT_EQUAL_INT(12, o.size);
+}
+
+// FS : manifeste avec firmware mais sans image filesystem → false (FS optionnel).
+void test_fs_absent_returns_false(void) {
+  Out o;
+  TEST_ASSERT_FALSE(selectFs(R"({"bin_url":"u","version":"1"})", "test", "esp32-wroom", o));
+}
+
+// FS : nœud channel sans URL → complète l'URL depuis le top-level, garde la taille du nœud.
+void test_fs_node_fills_from_top_level(void) {
+  Out o;
+  bool r = selectFs(R"({"filesystem_url":"ftop","channels":{"test":{"esp32-wroom":{"filesystem_size":3}}}})",
+                    "test", "esp32-wroom", o);
+  TEST_ASSERT_TRUE(r);
+  TEST_ASSERT_EQUAL_STRING("ftop", o.url);
+  TEST_ASSERT_EQUAL_INT(3, o.size);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_channel_env_model_direct);
@@ -135,5 +194,10 @@ int main(void) {
   RUN_TEST(test_channel_node_fills_from_top_level);
   RUN_TEST(test_empty_doc_returns_false);
   RUN_TEST(test_channels_present_but_unusable);
+  RUN_TEST(test_fs_channel_env_model_direct);
+  RUN_TEST(test_fs_fallback_prod_default);
+  RUN_TEST(test_fs_legacy_top_level_url_only);
+  RUN_TEST(test_fs_absent_returns_false);
+  RUN_TEST(test_fs_node_fills_from_top_level);
   return UNITY_END();
 }
