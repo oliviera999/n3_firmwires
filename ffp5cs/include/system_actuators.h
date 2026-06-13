@@ -40,8 +40,11 @@ struct SystemActuators {
   void feedBigFish(uint16_t durationSec = 10);
   void feedSmallFish(uint16_t durationSec = 10);
   
-  // Nourrissage séquentiel pour éviter les conflits de puissance
-  void feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10, uint16_t delayBetweenSec = 2);
+  // Nourrissage séquentiel pour éviter les conflits de puissance.
+  // Retourne false uniquement si AUCUNE distribution n'a eu lieu (séquence déjà en cours).
+  // Un échec de planification de la phase 2 renvoie true : les gros poissons ont déjà été
+  // nourris, re-déclencher provoquerait un surdosage.
+  bool feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10, uint16_t delayBetweenSec = 2);
 
   // Getters pour l'état
   bool isTankPumpRunning() const;

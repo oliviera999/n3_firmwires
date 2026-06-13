@@ -86,3 +86,32 @@ scripts/.beta-local-test.env
 unused/**/ffp3datas/
 unused/**/ffp3distant/
 .pio_artifacts/
+
+# ============================================================================
+# Artefacts régénérés / parasites (ajout audit nettoyage 2026-06)
+# ============================================================================
+# Composants ESP-IDF récupérés par le component manager — JAMAIS versionnés
+# (build réel = framework Arduino via PlatformIO ; non référencés par src/).
+managed_components/
+dependencies.lock
+
+# Base de compilation IDE/clangd (régénérée à chaque build)
+compile_commands.json
+
+# Logs de build / workflow capturés (souvent volumineux)
+build_*.txt
+workflow_*.txt
+*.log.errors
+
+# Sauvegardes d'édition
+*.orig
+
+# Rapports d'audit / debug transitoires (datés, jetables) — garder README,
+# VERSION, GUIDE_DEBUG_MODE, DOCUMENTATION_*, ANALYSE_SCRIPTS_PS1_RACINE.
+AUDIT_*.md
+SYNTHESE_*.md
+VERIFICATION_*.md
+BILAN_*.md
+PLAN_*.md
+MODIFICATIONS_*.md
+RAPPORT_AUDIT_*.txt

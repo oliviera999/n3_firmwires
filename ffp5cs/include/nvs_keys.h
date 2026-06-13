@@ -18,6 +18,7 @@ namespace NVSKeys {
         constexpr const char* BOUFFE_MIDI = "bouffe_midi";
         constexpr const char* BOUFFE_SOIR = "bouffe_soir";
         constexpr const char* BOUFFE_JOUR = "bouffe_jour";
+        constexpr const char* BOUFFE_DAILY = "bouffe_daily";  // cumul s du jour (anti-surdosage)
         constexpr const char* BF_PMP_LOCK = "bf_pmp_lock";
         constexpr const char* REMOTE_JSON = "remote_json";
         constexpr const char* EMAIL = "email";

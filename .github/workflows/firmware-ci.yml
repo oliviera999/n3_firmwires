@@ -43,7 +43,7 @@ jobs:
       - name: ffp5cs (suite par suite)
         run: |
           cd ffp5cs
-          for s in test_nvs test_config test_server_url test_sensor_validation test_feeding_slots test_post_body test_ota_select test_gpio_lookup; do
+          for s in test_nvs test_config test_server_url test_sensor_validation test_feeding_slots test_post_body test_gpio_mapping test_sensor_fallback test_ota_select test_gpio_lookup; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
