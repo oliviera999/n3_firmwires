@@ -224,7 +224,7 @@ float WaterTempSensor::getTemperatureWithFallback() {
     _lastRequestMs = millis();
     _pipelineReady = true;
     
-    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+    if (SensorValidation::isValidWaterTemp(temp)) {
       // Succès
       _failureManager.recordSuccess();
       _lastValidTemp = temp;
@@ -264,7 +264,7 @@ float WaterTempSensor::temperatureC() {
     _sensors.requestTemperatures();
     _lastRequestMs = now;
     _pipelineReady = true;
-    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+    if (SensorValidation::isValidWaterTemp(temp)) {
       return temp;
     }
     return NAN;
@@ -310,7 +310,7 @@ float WaterTempSensor::filteredTemperatureC() {
     _pipelineReady = true;
     
     // Validation renforcée avec vérification de cohérence et plage d'eau
-    if (!isnan(temp) && temp >= SensorConfig::WaterTemp::MIN_VALID && temp <= SensorConfig::WaterTemp::MAX_VALID) {
+    if (SensorValidation::isValidWaterTemp(temp)) {
       // Vérification de cohérence avec les lectures précédentes
       bool isCoherent = true;
       if (validReadings > 0) {
