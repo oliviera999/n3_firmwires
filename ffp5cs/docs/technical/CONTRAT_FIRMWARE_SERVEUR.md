@@ -210,6 +210,12 @@ en-têtes déjà inclus via `config.h`) :
    sur le verrou OTA, cause probable des reboots). Sites de lecture/écriture inchangés
    (opérateurs transparents). Compile validée par la CI firmware ; **observation banc**
    recommandée pour confirmer la disparition des reboots intermittents.
+5. **`test/test_post_body/`** — nouvelle suite Unity native verrouillant le **contrat de corps
+   POST HMAC** (`Ffp3PostBody::buildFullUpdateBody` ⇄ serveur `Ffp3HmacPostBody`) : ordre
+   canonique des champs, tri alphabétique des extras, omission des vides, gestion buffer trop
+   petit. Empêche toute dérive d'ordre/format qui provoquerait des 401 HMAC. Enregistrée dans
+   `platformio-native.ini` et la CI (`firmware-ci.yml`). Couvre une des fonctions pures
+   prioritaires de l'audit §3.8.
 
 > ⚠️ **Build PlatformIO non disponible dans cette session.** La CI firmware (`pio run`) fait foi
 > sur la PR. Aucun `sdkconfig`/partition/CI modifié.
