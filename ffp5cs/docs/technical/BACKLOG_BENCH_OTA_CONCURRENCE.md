@@ -79,3 +79,36 @@ avec plan de rollback (revert = ré-activer la cascade). **Ne pas merger sans ba
 - Réduction de profondeur de pile `autoTask`/`netTask` (déporter gros `JsonDocument` locaux en statique/BSS).
 - God-class `automatism` : extraire état + interface `IActuators`.
 - Bornage du `portMAX_DELAY` du mutex HTTP (`web_client.cpp:116`) — comportement timeout à valider.
+
+---
+
+## 4. Mise à jour 2026-06-14 (analyse multi-agents)
+
+### Appliqué (concurrence, atomic — strictement plus sûr, compile-validé CI)
+- **`net_request_pool.cpp`** : `s_netRequestPoolUsed[]` (bool) → `std::atomic<bool>` + `compare_exchange_strong`
+  dans `netRequestAllocTrySlot`. Corrige une **vraie course alloc inter-tâches** (check-then-set ; l'accès
+  parallèle netTask/auto/web est déjà documenté dans le code, cf. `app_tasks.cpp:370`) → évitait deux tâches
+  prenant le même slot.
+- **`app_tasks.cpp`** : `s_heartbeatDroppedCount` (uint32_t) → `std::atomic<uint32_t>` (compteur diag multi-tâches).
+
+### Investigué mais NON appliqué — pièges identifiés
+- **Bornage mutex HTTP** : déjà borné (tous les `xSemaphoreTake` de `web_client.cpp` utilisent
+  `pdMS_TO_TICKS(...)`, aucun `portMAX_DELAY`). **Rien à faire.**
+- **Compteur HTTP `diagnostics.cpp`** : passer les membres `httpSuccessCount/FailCount` en `atomic` casserait
+  la copiabilité de `DiagnosticStats` (struct copiée en de nombreux endroits) → **trop risqué pour un compteur
+  diag, écarté**.
+- **Profondeur de pile (static-conversion)** : ⚠️ les plus gros candidats sont **multi-tâches** — les rendre
+  `static` introduirait une **NOUVELLE course** (pire que la pile économisée) :
+  - `AutomatismSync::processFetchedRemoteConfig` (3× `JsonDocument` ≈ 6 Ko) — appelé par netTask
+    (`app_tasks_net.cpp:86`) **ET** autoTask (`automatism.cpp:269`, `automatism_sleep.cpp:477`).
+  - `WebClient::copyLastFetchedTo` (`tmp` ≈ 1 Ko) — appelé par netTask-boot (`app_tasks_net.cpp:85`) **ET**
+    autoTask (`automatism_sync.cpp:527`).
+  → La vraie solution reste de **réduire la profondeur d'appel** (refactor), validée sur banc. Ne PAS
+    static-iser ces buffers sans verrou.
+
+### OTA résumable — impl complète rédigée, BENCH-REQUISE
+Une implémentation complète `downloadFirmwareAdaptiveResumable` (esp_http_client + Range 206 + backoff) a été
+produite. **Point dur non résolu sans banc** : le contexte MD5 d'`Update` sur reprise — si le serveur renvoie
+206 partiel, le hash du flux N..EOF doit correspondre au MD5 du fichier complet, ce qui **n'est pas garanti** et
+DOIT être validé sur matériel (sinon flash corrompu). Stratégie hybride retenue (206→continuer, 200→redémarrer
+propre, 416→fatal) mais **à prouver sur banc avant tout merge**.

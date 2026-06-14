@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <cstring>
 #include <cstdlib>
+#include <atomic>  // course alloc inter-tâches sur le pool (audit concurrence)
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
 #endif
@@ -43,12 +44,15 @@ static constexpr size_t kNetRequestPostCat2Slot = kNetRequestPoolSize - 4;   // 
 static constexpr size_t kNetRequestPostCat1Slot = kNetRequestPoolSize - 5;   // POST données périodiques
 static constexpr size_t kNetRequestNormalMaxSlot = kNetRequestPoolSize - 6;  // Partagés: 0..NormalMax (WROOM: 0..2, S3: 0..10)
 static NetRequest s_netRequestPool[kNetRequestPoolSize];
-static bool s_netRequestPoolUsed[kNetRequestPoolSize] = {false};
+static std::atomic<bool> s_netRequestPoolUsed[kNetRequestPoolSize];  // zero-init (false) en BSS
 
 /** Marque le slot i comme utilisé et retourne le NetRequest, ou nullptr si déjà pris. */
 static NetRequest* netRequestAllocTrySlot(size_t i) {
-  if (s_netRequestPoolUsed[i]) return nullptr;
-  s_netRequestPoolUsed[i] = true;
+  // CAS atomique : évite que deux tâches (auto/web/net) prennent le même slot (check-then-set).
+  bool expected = false;
+  if (!s_netRequestPoolUsed[i].compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    return nullptr;
+  }
   memset(&s_netRequestPool[i], 0, sizeof(NetRequest));
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[NETDBG] hypothesis=H2 netRequestAlloc ok slot=%u\n", (unsigned)i);
@@ -75,7 +79,7 @@ NetRequest* netRequestAlloc(bool forOta) {
     }
   }
   size_t used = 0;
-  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i].load(std::memory_order_acquire)) used++;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[netRPC] Pool plein, netRequestAlloc échoue\n");
   ets_printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
@@ -101,7 +105,7 @@ NetRequest* netRequestAllocForPostCategory(AppTasks::PostCategory cat) {
     if (r) return r;
   }
   size_t used = 0;
-  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i].load(std::memory_order_acquire)) used++;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[netRPC] Pool plein, netRequestAllocForPostCategory échoue\n");
   ets_printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
@@ -121,7 +125,7 @@ NetRequest* netRequestAllocForFetch() {
     if (r) return r;
   }
   size_t used = 0;
-  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i]) used++;
+  for (size_t i = 0; i < kNetRequestPoolSize; ++i) if (s_netRequestPoolUsed[i].load(std::memory_order_acquire)) used++;
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[netRPC] Pool plein, netRequestAlloc échoue\n");
   ets_printf("[NETDBG] hypothesis=H1,H2 used=%u poolSize=%u\n", (unsigned)used, (unsigned)kNetRequestPoolSize);
@@ -136,7 +140,7 @@ void netRequestFree(NetRequest* req) {
   if (!req) return;
   if (req >= s_netRequestPool && req < s_netRequestPool + kNetRequestPoolSize) {
     size_t idx = (size_t)(req - s_netRequestPool);
-    s_netRequestPoolUsed[idx] = false;
+    s_netRequestPoolUsed[idx].store(false, std::memory_order_release);
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     ets_printf("[NETDBG] hypothesis=H4 netRequestFree slot=%u\n", (unsigned)idx);
 #else
@@ -155,7 +159,7 @@ namespace AppTasks {
 size_t netRequestPoolUsedCount() {
   size_t n = 0;
   for (size_t i = 0; i < kNetRequestPoolSize; ++i) {
-    if (s_netRequestPoolUsed[i]) ++n;
+    if (s_netRequestPoolUsed[i].load(std::memory_order_acquire)) ++n;
   }
   return n;
 }
