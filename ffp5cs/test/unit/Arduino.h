@@ -13,6 +13,11 @@
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <cmath>   // isnan() — l'API Arduino l'expose globalement (non qualifié)
+
+// config_sensors.h (via config.h) utilise isnan() sans préfixe std::, comme sur
+// cible Arduino. On le rend disponible au scope global pour les tests natifs.
+using std::isnan;
 
 #ifdef UNIT_TEST
 #include "test_mocks.h"
