@@ -23,6 +23,9 @@
 static SemaphoreHandle_t s_httpMutex = nullptr;
 // Mutex acquis explicitement avant veille légère (autoTask) — évite double Give
 static std::atomic<bool> s_httpTransportLockHeldForSleep{false};
+// Mutex dédié au buffer s_lastFetchedJson : écrit par netTask (fetchRemoteState),
+// lu par autoTask (copyLastFetchedTo). Distinct de s_httpMutex (autre ressource).
+static SemaphoreHandle_t s_lastFetchedJsonMutex = nullptr;
 
 namespace {
 
@@ -737,11 +740,20 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   // Stocker le JSON brut pour que le caller (même tâche que doc) fasse copyLastFetchedTo(doc)
+  // Écriture sous s_lastFetchedJsonMutex (lu par autoTask) — évite la course / lecture déchirée.
   size_t jsonLen = strlen(payloadBuffer);
   if (jsonLen >= sizeof(s_lastFetchedJson)) jsonLen = sizeof(s_lastFetchedJson) - 1;
+  if (s_lastFetchedJsonMutex == nullptr) {
+    s_lastFetchedJsonMutex = xSemaphoreCreateMutex();
+  }
+  bool jsonLockHeld = (s_lastFetchedJsonMutex != nullptr) &&
+      (xSemaphoreTake(s_lastFetchedJsonMutex, pdMS_TO_TICKS(1000)) == pdTRUE);
   memcpy(s_lastFetchedJson, payloadBuffer, jsonLen);
   s_lastFetchedJson[jsonLen] = '\0';
   s_lastFetchedSize = jsonLen;
+  if (jsonLockHeld) {
+    xSemaphoreGive(s_lastFetchedJsonMutex);
+  }
 
   Serial.printf("[HTTP] GET outputs/state: body=%u octets, copie interne OK (prochaine étape: parse côté tâche auto)\n",
                 (unsigned)totalRead);
@@ -755,7 +767,19 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
     }
     return false;
   }
-  DeserializationError err = deserializeJson(doc, s_lastFetchedJson);
+  // Désérialisation sous s_lastFetchedJsonMutex (écrit par netTask). IMPORTANT : cast en
+  // (const char*) pour forcer le mode COPIE d'ArduinoJson — sinon le mode zero-copy laisse
+  // `doc` pointer vers s_lastFetchedJson après le retour (référence pendante = LoadProhibited).
+  // Avec la copie, `doc` est indépendant du buffer : on relâche le mutex juste après.
+  if (s_lastFetchedJsonMutex == nullptr) {
+    s_lastFetchedJsonMutex = xSemaphoreCreateMutex();
+  }
+  bool jsonLockHeld = (s_lastFetchedJsonMutex != nullptr) &&
+      (xSemaphoreTake(s_lastFetchedJsonMutex, pdMS_TO_TICKS(1000)) == pdTRUE);
+  DeserializationError err = deserializeJson(doc, (const char*) s_lastFetchedJson);
+  if (jsonLockHeld) {
+    xSemaphoreGive(s_lastFetchedJsonMutex);
+  }
   if (err) {
     if (LogConfig::SERIAL_ENABLED) {
       Serial.printf("[HTTP] copyLastFetchedTo: JSON invalide (%s)\n", err.c_str());

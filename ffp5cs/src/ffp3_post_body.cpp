@@ -186,6 +186,9 @@ int buildFullUpdateBody(char* out, size_t outSize, const FullUpdateValues& v) {
   }
 
   for (uint8_t i = 0; i < v.extras.count; ++i) {
+    // Extras à valeur vide omis (aligné sur le serveur Ffp3HmacPostBody : trim==''->skip).
+    // Évite une divergence de corps signé -> 401 HMAC si un extra vide transite.
+    if (v.extras.pairs[i].value[0] == '\0') continue;
     if (!emit(v.extras.pairs[i].key, v.extras.pairs[i].value)) return -1;
   }
 
