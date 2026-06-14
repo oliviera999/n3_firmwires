@@ -1,4 +1,5 @@
 #include "power.h"
+#include "epoch_util.h"   // isValidEpoch/epochAbsDiff (extraits, testés nativement)
 #include "nvs_manager.h"  // v11.107
 #include "nvs_keys.h"     // NVSKeys::System::RTC_EPOCH
 #include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep
@@ -46,9 +47,8 @@ constexpr uint32_t NTP_SNTP_WAIT_MS = 20000;
 constexpr time_t NTP_MIN_EPOCH_DELTA_SEC = 60;
 constexpr time_t NTP_COMPILE_TOLERANCE_SEC = 7 * 86400;
 
-time_t epochAbsDiff(time_t a, time_t b) {
-  return (a > b) ? (a - b) : (b - a);
-}
+// epochAbsDiff extrait dans epoch_util.h (testé nativement, audit §3.8).
+using EpochUtil::epochAbsDiff;
 }  // namespace
 
 PowerManager::PowerManager()
@@ -647,11 +647,8 @@ void PowerManager::waitForNetworkReady() {
 // ========================================
 
   bool PowerManager::isValidEpoch(time_t epoch) const {
-  // Comparaison en unsigned pour éviter overflow 32-bit (EPOCH_MAX_VALID > INT32_MAX)
-  unsigned long uepoch = (unsigned long)epoch;
-  unsigned long umin = (unsigned long)SleepConfig::EPOCH_MIN_VALID;
-  unsigned long umax = (unsigned long)SleepConfig::EPOCH_MAX_VALID;
-  return epoch != 0 && uepoch >= umin && uepoch <= umax;
+  // Logique extraite dans epoch_util.h (testée nativement, audit §3.8).
+  return EpochUtil::isValidEpoch(epoch, SleepConfig::EPOCH_MIN_VALID, SleepConfig::EPOCH_MAX_VALID);
 }
 
 time_t PowerManager::loadTimeWithFallback() {
