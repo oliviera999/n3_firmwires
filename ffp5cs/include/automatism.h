@@ -83,7 +83,12 @@ class Automatism {
   }
   int computeDiffMaree(uint16_t currentAqua);
   uint32_t getTideWindowMs() const { return _sensors.getTideWindowMs(); }
-  bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
+  // En cours si la phase logique (temps) OU la séquence matérielle (timer FreeRTOS des
+  // petits poissons) est active. Unifie les deux sources de vérité : même si la phase
+  // logique se termine trop tôt, on ne re-déclenche pas tant que le matériel distribue.
+  bool isFeedingInProgress() const {
+    return _currentFeedingPhase != FeedingPhase::NONE || _acts.isSequentialFeedInProgress();
+  }
   uint32_t getCountdownEndMs() const { return _countdownEnd; }
   uint16_t getFreqWakeSec() const { return _network.getFreqWakeSec(); }
   int16_t getTideTriggerCm() const { return tideTriggerCm; }

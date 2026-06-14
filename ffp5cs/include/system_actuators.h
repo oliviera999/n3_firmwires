@@ -46,6 +46,10 @@ struct SystemActuators {
   // nourris, re-déclencher provoquerait un surdosage.
   bool feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10, uint16_t delayBetweenSec = 2);
 
+  // true tant qu'une séquence gros->petits est planifiée (timer FreeRTOS des petits armé).
+  // Source de vérité matérielle de l'anti-double-nourrissage (cf. feedSequential).
+  bool isSequentialFeedInProgress() const;
+
   // Getters pour l'état
   bool isTankPumpRunning() const;
   bool isAquaPumpRunning() const;

@@ -608,9 +608,15 @@ void Automatism::handleFeeding() {
     int hour = timeinfo.tm_hour;
     int minute = timeinfo.tm_min;
 
+    const AutomatismFeedingSchedule::FeedingParams feedParams{
+        .morningHour = bouffeMatin,
+        .noonHour = bouffeMidi,
+        .eveningHour = bouffeSoir,
+        .bigDuration = tempsGros,
+        .smallDuration = tempsPetits,
+    };
     _feedingSchedule.checkAndFeed(hour, minute, dayOfYear, millis(),
-                                   bouffeMatin, bouffeMidi, bouffeSoir,
-                                   tempsGros, tempsPetits,
+                                   feedParams,
                                    _network.getEmailAddress(), _network.isEmailEnabled(),
                                    [this]() { armMailBlink(); },
                                    [this](const char* type) {
