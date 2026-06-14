@@ -7,6 +7,7 @@
 #include <math.h> // Pour fabs()
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset()
 #include "config.h"
+#include "ultrasonic_filter.h"  // helpers de filtrage purs (testés nativement, audit §3.8)
 #include "sensor_failure_manager.h"
 #if defined(USE_AIR_SENSOR_AUTO) || defined(USE_AIR_SENSOR_BME280)
 #include <Wire.h>
@@ -16,92 +17,11 @@ namespace {
 
 namespace TankCfg = SensorConfig::Ultrasonic::Tank;
 
-void sortU16(uint16_t* arr, uint8_t n) {
-  for (uint8_t i = 0; i + 1 < n; ++i) {
-    for (uint8_t j = i + 1; j < n; ++j) {
-      if (arr[i] > arr[j]) {
-        uint16_t t = arr[i];
-        arr[i] = arr[j];
-        arr[j] = t;
-      }
-    }
-  }
-}
-
-// Cuve étroite : en cas de deux clusters (échos courts vs surface réelle),
-// retourne la médiane du cluster le plus haut (distance = moins d'eau = sécurité).
-uint16_t pickTankDistanceFromBatch(uint16_t* readings, uint8_t count) {
-  if (count == 0) return 0;
-  if (count == 1) return readings[0];
-
-  sortU16(readings, count);
-
-  uint8_t splitAt = 0;
-  uint16_t maxGap = 0;
-  for (uint8_t i = 0; i + 1 < count; ++i) {
-    const uint16_t gap = readings[i + 1] - readings[i];
-    if (gap > maxGap) {
-      maxGap = gap;
-      splitAt = i + 1;
-    }
-  }
-
-  uint8_t start = 0;
-  uint8_t clusterCount = count;
-  if (maxGap >= TankCfg::BIMODAL_GAP_MM) {
-    const uint8_t lowCount = splitAt;
-    const uint8_t highCount = count - splitAt;
-    const uint16_t lowMedian = readings[lowCount / 2];
-    const uint16_t highMedian = readings[splitAt + highCount / 2];
-    if (highMedian >= lowMedian) {
-      start = splitAt;
-      clusterCount = highCount;
-    } else {
-      clusterCount = lowCount;
-    }
-    Serial.printf("[Ultrasonic] Bimodal gap=%u mm, cluster haut start=%u n=%u\n",
-                  maxGap, start, clusterCount);
-  }
-
-  uint16_t refined[TankCfg::SAMPLES_COUNT];
-  uint8_t refinedCount = 0;
-  const uint16_t clusterMedian = readings[start + clusterCount / 2];
-  for (uint8_t i = start; i < start + clusterCount; ++i) {
-    if (abs((int)readings[i] - (int)clusterMedian) <= (int)TankCfg::OUTLIER_SPREAD_MM) {
-      refined[refinedCount++] = readings[i];
-    }
-  }
-  if (refinedCount == 0) {
-    return clusterMedian;
-  }
-  sortU16(refined, refinedCount);
-  return refined[refinedCount / 2];
-}
-
-bool acceptTankJump(uint16_t candidate, uint16_t reference, uint8_t keptCount,
-                    uint16_t batchSpread, bool expectDrain) {
-  if (reference == 0) return true;
-
-  const int delta = abs((int)candidate - (int)reference);
-  const bool drainDirection = candidate > reference;
-  const bool tightBatch = batchSpread <= TankCfg::TIGHT_BATCH_SPREAD_MM;
-  const bool strongBatch = keptCount >= TankCfg::STRONG_BATCH_MIN_READINGS;
-
-  if (drainDirection) {
-    if (delta <= (int)TankCfg::DRAIN_MAX_DELTA_MM) return true;
-    if (expectDrain && tightBatch && keptCount >= TankCfg::ADVANCED_MIN_VALID_READINGS) {
-      return true;
-    }
-    if (strongBatch && tightBatch) return true;
-    return false;
-  }
-
-  // Remplissage ou écho court : plus strict (évite faux « plein »)
-  if (delta <= (int)TankCfg::REFILL_MAX_DELTA_MM && strongBatch && tightBatch) {
-    return true;
-  }
-  return false;
-}
+// Helpers de filtrage extraits dans ultrasonic_filter.h (testés nativement,
+// audit §3.8). Réimportés ici pour conserver les sites d'appel inchangés.
+using UltrasonicFilter::sortU16;
+using UltrasonicFilter::pickTankDistanceFromBatch;
+using UltrasonicFilter::acceptTankJump;
 
 }  // namespace
 
