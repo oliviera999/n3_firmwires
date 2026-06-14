@@ -163,22 +163,33 @@ void test_apply_skips_empty_segments(void) {
   TEST_ASSERT_EQUAL_STRING("y", v.extras.pairs[1].key);
 }
 
-// CARACTÉRISATION (divergence potentielle à confirmer côté serveur — S1/S2) :
-// les champs PRINCIPAUX vides sont omis (cf. test_canonical_order_and_skip_empty),
-// MAIS un extra à valeur vide ("foo=") est ÉMIS tel quel ("foo="). Le contrat
-// serveur documente « valeurs vides omises » : cette asymétrie main/extras peut
-// provoquer un 401 HMAC si un extra vide transite. Ce test fige le comportement
-// ACTUEL ; à réévaluer avec le dépôt serveur (Ffp3HmacPostBody.php).
-void test_empty_extra_value_is_emitted_current_behavior(void) {
+// Un extra à valeur vide ("foo=") est désormais OMIS, comme les champs principaux
+// vides et comme le serveur (Ffp3HmacPostBody : trim==''->skip). Supprime l'asymétrie
+// main/extras qui pouvait provoquer un 401 HMAC si un extra vide transitait.
+void test_empty_extra_value_is_omitted(void) {
   FullUpdateValues v{};
   snprintf(v.apiKey, sizeof(v.apiKey), "%s", "K");
   applyExtraPairs(v, "foo=");
-  TEST_ASSERT_EQUAL_UINT8(1, v.extras.count);
+  TEST_ASSERT_EQUAL_UINT8(1, v.extras.count);          // parsé dans le store
   TEST_ASSERT_EQUAL_STRING("", v.extras.pairs[0].value);
 
   char out[64] = {0};
   buildFullUpdateBody(out, sizeof(out), v);
-  TEST_ASSERT_EQUAL_STRING("api_key=K&foo=", out);
+  TEST_ASSERT_EQUAL_STRING("api_key=K", out);          // mais omis du corps
+}
+
+// Mélange extras vides / non vides : seuls les non vides sont émis (tri conservé).
+void test_empty_and_nonempty_extras_mixed(void) {
+  FullUpdateValues v{};
+  snprintf(v.apiKey, sizeof(v.apiKey), "%s", "K");
+  applyExtraPairs(v, "foo=&bar=value&baz=");
+  TEST_ASSERT_EQUAL_UINT8(3, v.extras.count);          // 3 parsés
+
+  char out[256] = {0};
+  buildFullUpdateBody(out, sizeof(out), v);
+  TEST_ASSERT_EQUAL_STRING("api_key=K&bar=value", out);
+  TEST_ASSERT_NULL(strstr(out, "foo="));               // vide -> omis
+  TEST_ASSERT_NULL(strstr(out, "baz="));               // vide -> omis
 }
 
 int main(void) {
@@ -195,6 +206,7 @@ int main(void) {
   RUN_TEST(test_apply_segment_without_equals_ignored);
   RUN_TEST(test_apply_empty_key_ignored);
   RUN_TEST(test_apply_skips_empty_segments);
-  RUN_TEST(test_empty_extra_value_is_emitted_current_behavior);
+  RUN_TEST(test_empty_extra_value_is_omitted);
+  RUN_TEST(test_empty_and_nonempty_extras_mixed);
   return UNITY_END();
 }
