@@ -1,4 +1,5 @@
 #include "ota_manager.h"
+#include "ota_url.h"  // downgradeToHttp (extrait, testé nativement)
 #include "nvs_manager.h" // v11.109
 #include "nvs_keys.h"
 #include <WiFi.h>
@@ -31,15 +32,8 @@ bool hasOtaPartition() {
 }
 
 #if defined(BOARD_WROOM) || defined(BOARD_S3)
-// WROOM/S3: convertit "https://..." en "http://..." (supprime le 's' de https).
-// OTA homogénéisée en HTTP; intégrité du binaire assurée par MD5 avant flash.
-void downgradeToHttp(char* url, size_t bufSize) {
-    if (!url || bufSize < 8) return;
-    if (strncmp(url, "https://", 8) == 0) {
-        memmove(url + 4, url + 5, strlen(url + 5) + 1);
-        Serial.printf("[OTA] URL downgrade HTTPS→HTTP: %s\n", url);
-    }
-}
+// downgradeToHttp extrait dans ota_url.h (testé nativement, audit §3.8).
+using OtaUrl::downgradeToHttp;
 #endif
 } // namespace
 
