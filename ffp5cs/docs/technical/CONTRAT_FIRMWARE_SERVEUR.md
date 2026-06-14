@@ -216,9 +216,22 @@ en-têtes déjà inclus via `config.h`) :
    petit. Empêche toute dérive d'ordre/format qui provoquerait des 401 HMAC. Enregistrée dans
    `platformio-native.ini` et la CI (`firmware-ci.yml`). Couvre une des fonctions pures
    prioritaires de l'audit §3.8.
+6. **`include/ota_artifact_select.h` + `test/test_ota_select/`** — extraction des **deux** cascades
+   de sélection OTA en fonctions pures : `OtaArtifactSelect::selectArtifact` (firmware, champs
+   `bin_url`/`version`/`size`/`md5`) et `selectFilesystem` (image FS, champs `filesystem_*`, sans
+   version), env/modèle injectés, sans dépendance réseau/mbedtls. Les deux membres
+   (`selectArtifactFromMetadata`, `selectFilesystemFromMetadata`) délèguent désormais à ces
+   fonctions (sélection **inchangée** ; logs de debug par-branche consolidés). Suite native (14
+   cas) couvrant les 5 branches de chaque cascade : `channels[env][model]` → `[env][default]` →
+   `[prod][model]` → `[prod][default]` → fallback legacy top-level, plus fallbacks de champs
+   (version optionnelle en mode channel vs requise en top-level firmware ; URL seule suffisante
+   pour le FS). Verrouille le contrat OTA (S3), jusqu'ici sans aucun test. ArduinoJson
+   (header-only) ajouté aux `lib_deps` natifs. Valeurs attendues vérifiées par `g++` local + CI.
+   > ⚠️ Touche le chemin de sélection OTA : extraction verbatim validée compile par CI + test
+   > natif des 5 branches, mais un flash OTA réel sur banc reste recommandé avant prod.
 
 > ⚠️ **Build PlatformIO non disponible dans cette session.** La CI firmware (`pio run`) fait foi
-> sur la PR. Aucun `sdkconfig`/partition/CI modifié.
+> sur la PR. Aucun `sdkconfig`/partition modifié (seul l'ajout des suites de test à la CI).
 
 ---
 
