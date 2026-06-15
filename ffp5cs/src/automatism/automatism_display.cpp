@@ -5,6 +5,7 @@
 #include "automatism/flood_alert.h"  // C4: machine d'état anti-spam trop-plein (pure, testée)
 #include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
 #include "automatism/heater_orchestrator.h"  // C4: orchestrateur chauffage (effets de bord, testable)
+#include "automatism/level_alert_orchestrator.h"  // C4: orchestrateur alertes niveau (effets de bord, testable)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
@@ -55,15 +56,13 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     // Effets de bord (email, blink, flag) ici. Le reset reste inconditionnel (silencieux).
     const uint16_t aqAlert = cmToMm(_network.getAqThresholdCm());
     const uint16_t aqClear = cmToMm(ThresholdUtil::subSat(_network.getAqThresholdCm(), 5));
-    if (LevelAlert::evaluate(readings.wlAqua, aqAlert, aqClear, _lowAquaSent) == LevelAlert::Decision::Raise
-        && mailEnabled) {
-        char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (> ", aqAlert);
-        _mailer.sendAlert("Alerte - Niveau aquarium BAS", msgBuffer, _network.getEmailAddress());
-        _lowAquaSent = true;
+    // Raise délégué à l'orchestrateur (clearSubject=nullptr : pas de mail de fin pour l'aquarium).
+    if (LevelAlertOrchestrator::run(_mailer, _lowAquaSent, readings.wlAqua, aqAlert, aqClear,
+                                    mailEnabled, _network.getEmailAddress(),
+                                    "Alerte - Niveau aquarium BAS", nullptr)) {
         armMailBlink();
     }
-
+    // Reset silencieux inconditionnel du flag (comportement historique aquarium).
     if (readings.wlAqua <= aqClear) {
         _lowAquaSent = false;
     }
@@ -118,18 +117,10 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     // Ici le reset envoie un mail « Réserve OK » (contrairement à l'aquarium).
     const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
     const uint16_t tkClear = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 5));
-    const LevelAlert::Decision tkDec = LevelAlert::evaluate(readings.wlTank, tkAlert, tkClear, _lowTankSent);
-    if (tkDec == LevelAlert::Decision::Raise && mailEnabled) {
-        char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (> ", tkAlert);
-        _mailer.sendAlert("Alerte - Réserve BASSE", msgBuffer, _network.getEmailAddress());
-        _lowTankSent = true;
-        armMailBlink();
-    } else if (tkDec == LevelAlert::Decision::Clear && mailEnabled) {
-        char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (<= ", tkClear);
-        _mailer.sendAlert("Info - Réserve OK", msgBuffer, _network.getEmailAddress());
-        _lowTankSent = false;
+    // Raise « Réserve BASSE » + Clear « Réserve OK » délégués à l'orchestrateur.
+    if (LevelAlertOrchestrator::run(_mailer, _lowTankSent, readings.wlTank, tkAlert, tkClear,
+                                    mailEnabled, _network.getEmailAddress(),
+                                    "Alerte - Réserve BASSE", "Info - Réserve OK")) {
         armMailBlink();
     }
 
