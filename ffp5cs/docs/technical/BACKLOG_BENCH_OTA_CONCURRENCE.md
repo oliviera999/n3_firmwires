@@ -160,3 +160,21 @@ avant/après (DoD : marge autoTask/netTask > 20 %), 0 stack-overflow, et impact 
 - Rollout progressif beta→canary→prod, plan de rollback = revert de la PR (ré-active la cascade).
 - NB : on pourrait renforcer en parsant `Content-Range` (offset renvoyé == offset demandé) via un
   handler d'en-tête — non fait ici (le garde-fou MD5 final couvre déjà la corruption). À évaluer au banc.
+---
+
+## 7. Mise à jour 2026-06-15 — C4 découpe god-class (PR draft, CI-verte)
+
+### C4 — Casser la god-class `automatism` (1re étape sous filet de tests, CI-verte)
+Première extraction (petite étape, comportement strictement identique, validée nativement) :
+- Nouveau module **pur** `include/automatism/flood_alert.h` (`FloodAlert::evaluate` + `markEmailSent`) :
+  machine d'état anti-spam « aquarium trop plein » (debounce + cooldown + hystérésis de sortie). Aucune
+  dépendance Arduino/config → testable en `g++`.
+- `Automatism::handleAlerts` (`automatism_display.cpp`) délègue la **décision** à `FloodAlert::evaluate` ;
+  les **effets de bord** (email, NVS, blink OLED, flag `_highAquaSent`) restent dans l'appelant.
+- Suite de tests native `test/test_flood_alert/` (10 cas : debounce, cooldown, 1er email, mail désactivé,
+  sortie d'hystérésis, zone morte, reset compteurs) ajoutée à `firmware-ci.yml` **et** `platformio-native.ini`.
+
+DoD partielle atteinte : logique extraite + testée, **aucune régression de comportement** (parité ligne à ligne
+avec l'ancien bloc inline ; vérifiée en local `-Wall -Wextra`). Reste bench-gated pour les chemins matériels
+non touchés ici (nourrissage/pompe/chauffage). Étapes suivantes proposées : extraire l'interface `IActuators`
+et les contrôleurs refill/display restants — **par petites étapes**, chacune CI-verte.

@@ -2,6 +2,7 @@
 // d'Automatism (handleAlerts, updateDisplayInternal, saveActuatorSnapshotToNVS).
 // Extrait de automatism.cpp (audit : découpe). Méthodes membres, comportement identique.
 #include "automatism.h"
+#include "automatism/flood_alert.h"  // C4: machine d'état anti-spam trop-plein (pure, testée)
 #include "config.h"
 #include "config_manager.h"
 #include "mailer.h"
@@ -57,49 +58,49 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         _lowAquaSent = false;
     }
 
-    time_t nowEpoch = _power.getCurrentEpochSafe();
-    if (readings.wlAqua < cmToMm(_network.getLimFlood())) {
-        if (floodEnterSinceEpoch == 0) {
-            floodEnterSinceEpoch = nowEpoch;
+    // C4: décision anti-spam trop-plein déléguée à la machine d'état pure FloodAlert.
+    // Les effets de bord (email, NVS, blink, _highAquaSent) restent ici.
+    const uint32_t nowEpoch = (uint32_t) _power.getCurrentEpochSafe();
+    FloodAlert::State floodSt;
+    floodSt.inFlood = inFlood;
+    floodSt.floodEnterSinceEpoch = floodEnterSinceEpoch;
+    floodSt.aboveResetSinceEpoch = aboveResetSinceEpoch;
+    floodSt.lastFloodEmailEpoch = lastFloodEmailEpoch;
+    FloodAlert::Params floodP;
+    floodP.limFloodMm = cmToMm(_network.getLimFlood());
+    floodP.resetThresholdMm = cmToMm(_network.getLimFlood() + floodHystCm);
+    floodP.debounceSec = floodDebounceMin * 60UL;
+    floodP.cooldownSec = floodCooldownMin * 60UL;
+    floodP.resetStableSec = floodResetStableMin * 60UL;
+
+    FloodAlert::Decision floodDecision =
+        FloodAlert::evaluate(floodSt, readings.wlAqua, nowEpoch, floodP, mailEnabled);
+    // Recopier l'état mis à jour (horodatages, et inFlood en cas de sortie).
+    inFlood = floodSt.inFlood;
+    floodEnterSinceEpoch = floodSt.floodEnterSinceEpoch;
+    aboveResetSinceEpoch = floodSt.aboveResetSinceEpoch;
+    lastFloodEmailEpoch = floodSt.lastFloodEmailEpoch;
+
+    if (floodDecision == FloodAlert::Decision::SendFloodEmail) {
+        char msgBuffer[128];
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (< ", cmToMm(_network.getLimFlood()));
+        if (tankPumpLocked || _config.getPompeAquaLocked()) {
+            strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
         }
-        aboveResetSinceEpoch = 0;
-        if (!inFlood && mailEnabled) {
-            uint32_t elapsedUnder = (nowEpoch >= floodEnterSinceEpoch) ? (nowEpoch - floodEnterSinceEpoch) : 0;
-            bool debounceOk = elapsedUnder >= (floodDebounceMin * 60UL);
-            bool cooldownOk = (lastFloodEmailEpoch == 0) || ((nowEpoch - lastFloodEmailEpoch) >= (floodCooldownMin * 60UL));
-            if (debounceOk && cooldownOk) {
-                char msgBuffer[128];
-                formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (< ", cmToMm(_network.getLimFlood()));
-                if (tankPumpLocked || _config.getPompeAquaLocked()) {
-                    strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
-                }
-                bool sent = _mailer.sendAlert("Alerte - Aquarium TROP PLEIN", msgBuffer, _network.getEmailAddress());
-                if (sent) {
-                    inFlood = true;
-                    _highAquaSent = true;
-                    armMailBlink();
-                    lastFloodEmailEpoch = nowEpoch;
-                    g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
-                    Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
-                } else {
-                    Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
-                }
-            }
-        }
-    } else {
-        floodEnterSinceEpoch = 0;
-        if (readings.wlAqua >= cmToMm(_network.getLimFlood() + floodHystCm)) {
-            if (aboveResetSinceEpoch == 0) {
-                aboveResetSinceEpoch = nowEpoch;
-            }
-            uint32_t elapsedAbove = (nowEpoch >= aboveResetSinceEpoch) ? (nowEpoch - aboveResetSinceEpoch) : 0;
-            if (elapsedAbove >= (floodResetStableMin * 60UL)) {
-                inFlood = false;
-                _highAquaSent = false;
-            }
+        bool sent = _mailer.sendAlert("Alerte - Aquarium TROP PLEIN", msgBuffer, _network.getEmailAddress());
+        if (sent) {
+            FloodAlert::markEmailSent(floodSt, nowEpoch);
+            inFlood = floodSt.inFlood;
+            lastFloodEmailEpoch = floodSt.lastFloodEmailEpoch;
+            _highAquaSent = true;
+            armMailBlink();
+            g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
+            Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
         } else {
-            aboveResetSinceEpoch = 0;
+            Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
         }
+    } else if (floodDecision == FloodAlert::Decision::ExitFlood) {
+        _highAquaSent = false;
     }
     }
 
