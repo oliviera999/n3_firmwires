@@ -26,7 +26,7 @@ public:
      * @param power Référence PowerManager (pour temps)
      */
     AutomatismFeedingSchedule(IActuators& acts, ConfigManager& cfg,
-                              Mailer& mail, PowerManager& power);
+                              IMailer& mail, PowerManager& power);
     
     /** Délai après boot pendant lequel le rattrapage (catch-up) est désactivé. */
     static constexpr uint32_t FEEDING_BOOT_GRACE_MS = 120000;  // 2 min
@@ -99,7 +99,7 @@ public:
 private:
     IActuators& _acts;
     ConfigManager& _config;
-    Mailer& _mailer;
+    IMailer& _mailer;
     PowerManager& _power;
     
     // Dernière config invalide signalée (évite le spam de warnings dans la boucle)

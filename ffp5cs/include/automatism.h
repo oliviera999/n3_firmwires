@@ -29,7 +29,7 @@ class Automatism {
  public:
   Automatism(SystemSensors& sensors, IActuators& acts,
              WebClient& web, DisplayView& disp,
-             PowerManager& power, Mailer& mail, ConfigManager& config);
+             PowerManager& power, IMailer& mail, ConfigManager& config);
   void begin();
   void update();               // collecte interne des capteurs
   void update(const SensorReadings& r); // usage dans tâche dédiée
@@ -239,7 +239,7 @@ class Automatism {
   WebClient& _web;
   DisplayView& _disp;
   PowerManager& _power;
-  Mailer& _mailer;
+  IMailer& _mailer;
   ConfigManager& _config;
   
   // === MODULES (Composition) ===

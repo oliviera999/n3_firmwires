@@ -5,7 +5,7 @@
 #include <cstring>
 
 AutomatismFeedingSchedule::AutomatismFeedingSchedule(IActuators& acts, ConfigManager& cfg,
-                                                     Mailer& mail, PowerManager& power)
+                                                     IMailer& mail, PowerManager& power)
     : _acts(acts), _config(cfg), _mailer(mail), _power(power) {
     // Charger les flags depuis NVS au démarrage
     _config.loadBouffeFlags();
