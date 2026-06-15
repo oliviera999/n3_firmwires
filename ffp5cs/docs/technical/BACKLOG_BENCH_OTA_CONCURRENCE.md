@@ -270,3 +270,18 @@ Démonstration concrète de l'apport de l'interface : la logique d'actionneur de
 
 ⚠️ **Banc requis** : chemin veille/réveil réel (NVS + actionneurs) à confirmer au banc ; seule la logique
 d'orchestration est CI-testée.
+
+#### C4 — Contrôleur refill : décision de démarrage `RefillStart` (gating + blocage réserve basse)
+Extraction du gating de `handleRefillAutomaticStart` en décision pure testée :
+- Nouveau module `include/automatism/refill_start.h` (`RefillStart::evaluate`) : retourne `Start` /
+  `BlockReserveLow` / `None` selon niveau aquarium/réserve, verrou, essais, mode manuel, pompe active.
+  Aucune dépendance Arduino → testable `g++`.
+- `handleRefillAutomaticStart` délègue la **décision** ; les **effets de bord** (startTankPump, verrou,
+  email, `sendFullUpdate`, timers/countdown, logs) restent dans l'appelant (parité ligne à ligne).
+- Suite native `test/test_refill_start/` (10 cas : start, blocage réserve basse, niveau inconnu, seuils
+  stricts, verrou, essais épuisés, mode manuel, pompe déjà active). Enregistrée CI + ini. Local 10/10.
+- **Chemin de sécurité couvert par des tests** : évite un démarrage pompe à sec (réserve basse) ou un
+  remplissage refusé à tort — auparavant non testé.
+
+⚠️ **Banc requis** : l'intégration touche le **démarrage réel de la pompe** ; à valider au banc (la décision
+est CI-testée, mais le déclenchement matériel + email + sync ne le sont pas).
