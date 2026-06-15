@@ -7,6 +7,7 @@
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
+#include "automatism/threshold_util.h"  // C4: soustraction saturée seuil-marge (pure, testée)
 #include "config.h"
 #include "config_manager.h"
 #include "mailer.h"
@@ -53,7 +54,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     // C4: décision alerte « aquarium bas » déléguée à la machine pure LevelAlert.
     // Effets de bord (email, blink, flag) ici. Le reset reste inconditionnel (silencieux).
     const uint16_t aqAlert = cmToMm(_network.getAqThresholdCm());
-    const uint16_t aqClear = cmToMm((_network.getAqThresholdCm() > 5) ? (_network.getAqThresholdCm() - 5) : 0);
+    const uint16_t aqClear = cmToMm(ThresholdUtil::subSat(_network.getAqThresholdCm(), 5));
     if (LevelAlert::evaluate(readings.wlAqua, aqAlert, aqClear, _lowAquaSent) == LevelAlert::Decision::Raise
         && mailEnabled) {
         char msgBuffer[128];
@@ -116,7 +117,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     // C4: décision alerte « réserve basse » déléguée à la machine pure LevelAlert.
     // Ici le reset envoie un mail « Réserve OK » (contrairement à l'aquarium).
     const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
-    const uint16_t tkClear = cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0);
+    const uint16_t tkClear = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 5));
     const LevelAlert::Decision tkDec = LevelAlert::evaluate(readings.wlTank, tkAlert, tkClear, _lowTankSent);
     if (tkDec == LevelAlert::Decision::Raise && mailEnabled) {
         char msgBuffer[128];
