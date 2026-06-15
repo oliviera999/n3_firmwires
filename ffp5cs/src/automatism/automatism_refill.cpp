@@ -233,47 +233,43 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
 void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
     if (_manualTankOverride) return;
 
-    static uint8_t aboveCount = 0;
-    static uint8_t belowCount = 0;
-    
-    if (r.wlTank > cmToMm(_network.getTankThresholdCm())) {
-        aboveCount = min<uint8_t>(aboveCount + 1, 3);
-        belowCount = 0;
-        if (!tankPumpLocked && aboveCount >= 2) {
-            Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
-            Serial.printf("[CRITIQUE] Réserve basse (distance %d mm > seuil %d mm) - pompe verrouillée\n",
-                          r.wlTank, cmToMm(_network.getTankThresholdCm()));
-            tankPumpLocked = true;
-            _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
-            _acts.stopTankPump(_pumpStartMs);
-            _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
-            _countdownEnd = 0;
-            const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
-            if (_network.isEmailEnabled() && !emailTankSent && !startupGrace) {
-                char msg[256];
-                snprintf(msg, sizeof(msg),
-                         "Pompe VERROUILLÉE (réserve basse)\nRéserve: %d mm (seuil: %d mm)",
-                         r.wlTank, cmToMm(_network.getTankThresholdCm()));
-                _mailer.sendAlert("Pompe verrouillée (réserve basse)", msg, _network.getEmailAddress());
-                emailTankSent = true;
-            }
-            // En période de grâce on n'envoie pas et on ne marque pas emailTankSent :
-            // après 30s on enverra le mail si la condition est toujours vraie.
+    // C4: décision (debounce + hystérésis) déléguée à la machine d'état pure
+    // ReservoirLowSecurity. L'état persistant vit dans _reservoirLowState (membre,
+    // remplace les anciens static locaux). Les effets de bord restent ici.
+    const uint16_t thrCm  = _network.getTankThresholdCm();
+    const uint16_t lowThr = cmToMm(thrCm);
+    const uint16_t okThr  = cmToMm((thrCm > 5) ? (thrCm - 5) : 0);
+
+    const ReservoirLowSecurity::Decision d =
+        ReservoirLowSecurity::evaluate(_reservoirLowState, r.wlTank, lowThr, okThr, tankPumpLocked);
+
+    if (d == ReservoirLowSecurity::Decision::Lock) {
+        Serial.println(F("[CRITIQUE] === SÉCURITÉ RÉSERVE BASSE ==="));
+        Serial.printf("[CRITIQUE] Réserve basse (distance %d mm > seuil %d mm) - pompe verrouillée\n",
+                      r.wlTank, lowThr);
+        tankPumpLocked = true;
+        _tankPumpLockReason = TankPumpLockReason::RESERVOIR_LOW;
+        _acts.stopTankPump(_pumpStartMs);
+        _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
+        _countdownEnd = 0;
+        const bool startupGrace = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
+        if (_network.isEmailEnabled() && !emailTankSent && !startupGrace) {
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                     "Pompe VERROUILLÉE (réserve basse)\nRéserve: %d mm (seuil: %d mm)",
+                     r.wlTank, lowThr);
+            _mailer.sendAlert("Pompe verrouillée (réserve basse)", msg, _network.getEmailAddress());
+            emailTankSent = true;
         }
-    } else if (r.wlTank < cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0)) {
-        belowCount = min<uint8_t>(belowCount + 1, 3);
-        aboveCount = 0;
-        if (tankPumpLocked && belowCount >= 3) {
-            tankPumpLocked = false;
-            _tankPumpLockReason = TankPumpLockReason::NONE;
-            emailTankSent = false;
-            emailTankStartSent = false;
-            emailTankStopSent = false;
-            Serial.printf("[Auto] Pompe déverrouillée (réserve: %d mm)\n", r.wlTank);
-        }
-    } else {
-        aboveCount = min<uint8_t>(aboveCount, 2);
-        belowCount = min<uint8_t>(belowCount, 2);
+        // En période de grâce on n'envoie pas et on ne marque pas emailTankSent :
+        // après 30s on enverra le mail si la condition est toujours vraie.
+    } else if (d == ReservoirLowSecurity::Decision::Unlock) {
+        tankPumpLocked = false;
+        _tankPumpLockReason = TankPumpLockReason::NONE;
+        emailTankSent = false;
+        emailTankStartSent = false;
+        emailTankStopSent = false;
+        Serial.printf("[Auto] Pompe déverrouillée (réserve: %d mm)\n", r.wlTank);
     }
 }
 

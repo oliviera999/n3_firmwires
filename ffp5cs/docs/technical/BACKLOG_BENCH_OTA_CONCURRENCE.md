@@ -160,3 +160,38 @@ avant/après (DoD : marge autoTask/netTask > 20 %), 0 stack-overflow, et impact 
 - Rollout progressif beta→canary→prod, plan de rollback = revert de la PR (ré-active la cascade).
 - NB : on pourrait renforcer en parsant `Content-Range` (offset renvoyé == offset demandé) via un
   handler d'en-tête — non fait ici (le garde-fou MD5 final couvre déjà la corruption). À évaluer au banc.
+---
+
+## 7. Mise à jour 2026-06-15 — C4 découpe god-class (PR draft, CI-verte)
+
+### C4 — Casser la god-class `automatism` (1re étape sous filet de tests, CI-verte)
+Première extraction (petite étape, comportement strictement identique, validée nativement) :
+- Nouveau module **pur** `include/automatism/flood_alert.h` (`FloodAlert::evaluate` + `markEmailSent`) :
+  machine d'état anti-spam « aquarium trop plein » (debounce + cooldown + hystérésis de sortie). Aucune
+  dépendance Arduino/config → testable en `g++`.
+- `Automatism::handleAlerts` (`automatism_display.cpp`) délègue la **décision** à `FloodAlert::evaluate` ;
+  les **effets de bord** (email, NVS, blink OLED, flag `_highAquaSent`) restent dans l'appelant.
+- Suite de tests native `test/test_flood_alert/` (10 cas : debounce, cooldown, 1er email, mail désactivé,
+  sortie d'hystérésis, zone morte, reset compteurs) ajoutée à `firmware-ci.yml` **et** `platformio-native.ini`.
+
+DoD partielle atteinte : logique extraite + testée, **aucune régression de comportement** (parité ligne à ligne
+avec l'ancien bloc inline ; vérifiée en local `-Wall -Wextra`). Reste bench-gated pour les chemins matériels
+non touchés ici (nourrissage/pompe/chauffage). Étapes suivantes proposées : extraire l'interface `IActuators`
+et les contrôleurs refill/display restants — **par petites étapes**, chacune CI-verte.
+
+#### C4 — 2e étape : extraction `ReservoirLowSecurity` (debounce + hystérésis « réserve basse »)
+Deuxième petite extraction, même patron que `FloodAlert`, **comportement strictement identique** :
+- Nouveau module **pur** `include/automatism/reservoir_low_security.h` (`ReservoirLowSecurity::evaluate`) :
+  machine de debounce (2 mesures pour verrouiller, 3 pour déverrouiller) + hystérésis + zone morte.
+  Aucune dépendance Arduino/config → testable en `g++`.
+- `Automatism::handleRefillReservoirLowSecurity` (`automatism_refill.cpp`) délègue la **décision** au module ;
+  les **effets de bord** (arrêt pompe, email, flags `_emailTank*`, logs, motif de verrou) restent dans l'appelant.
+- **Smell god-class supprimé** : les 2 `static` locaux cachés (`aboveCount`/`belowCount`, état global masqué)
+  deviennent un membre explicite `_reservoirLowState` (mono-tâche autoTask, pas d'atomic requis).
+- Suite native `test/test_reservoir_low_security/` (11 cas : debounce verrou/déverrou, re-verrou bloqué,
+  zone morte + bornage, plafond compteur, resets croisés, cycle complet) ajoutée à `firmware-ci.yml` **et**
+  `platformio-native.ini`. Parité vérifiée en local (`g++ -Wall -Wextra`, 20/20 checks).
+
+⚠️ **Banc requis pour le chemin pompe** : la *décision* est CI-testée, mais l'intégration touche
+`handleRefill` (arrêt pompe réservoir) — à valider sur banc avant rollout (verrou/déverrou réels,
+non-régression réserve basse → pompe à sec évitée).
