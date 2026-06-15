@@ -12,6 +12,7 @@
 #include "automatism/automatism_feeding_schedule.h"
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
+#include "automatism/reservoir_low_security.h"  // C4: machine d'état réserve basse (pure, testée)
 #include "task_monitor.h"
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
@@ -245,6 +246,10 @@ class Automatism {
   AutomatismFeedingSchedule _feedingSchedule;
   AutomatismSync _network;
   AutomatismSleep _sleep;
+
+  // C4: état debounce de la sécurité réserve basse (remplace 2 static locaux dans
+  // handleRefillReservoirLowSecurity). Mono-tâche (autoTask), pas de besoin atomic.
+  ReservoirLowSecurity::State _reservoirLowState;
 
   // state flags - v11.176: Atomic pour accès multi-tâches (audit race conditions)
   std::atomic<bool> tankPumpLocked{false};
