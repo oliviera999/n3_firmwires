@@ -6,6 +6,6 @@
   "frameworks": "arduino",
   "platforms": "espressif32",
   "dependencies": {
-    "adafruit/Adafruit SSD1306": "*"
+    "adafruit/Adafruit SSD1306": "^2.5.0"
   }
 }
