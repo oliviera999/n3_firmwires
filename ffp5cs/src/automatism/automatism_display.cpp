@@ -6,6 +6,7 @@
 #include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
+#include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
 #include "config.h"
 #include "config_manager.h"
 #include "mailer.h"
@@ -275,10 +276,10 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
         if (_currentFeedingType != nullptr) {
             fishType = _currentFeedingType;
         } else if (!_manualFeedingActive) {
-            const uint32_t bigCycleMs = (tempsGros + (tempsGros / 2U)) * 1000UL;
+            const uint32_t bigCycleMs = FeedingTiming::cycleDurationMs(tempsGros);
             const uint32_t delayMs = 2 * 1000UL;
             const uint32_t bigPhaseTotalMs = bigCycleMs + delayMs;
-            const uint32_t smallCycleMs = (tempsPetits + (tempsPetits / 2U)) * 1000UL;
+            const uint32_t smallCycleMs = FeedingTiming::cycleDurationMs(tempsPetits);
             const uint32_t totalFeedingMs = bigPhaseTotalMs + smallCycleMs;
             
             uint32_t elapsedMs = (_feedingPhaseEnd > currentMillis) ? 
