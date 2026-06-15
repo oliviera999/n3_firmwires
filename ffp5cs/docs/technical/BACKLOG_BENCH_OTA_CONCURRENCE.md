@@ -210,3 +210,15 @@ Troisième petite extraction, même patron, **comportement strictement identique
 
 ⚠️ **Banc requis pour le chemin chauffage** : la *décision* est CI-testée, mais l'intégration touche le
 relais de chauffage — à valider sur banc avant rollout (allumage/extinction réels, pas de battement relais).
+
+#### C4 — 4e étape : extraction `LevelAlert` (alerte niveau seuil+hystérésis, factorisée aqua+réserve)
+Quatrième petite extraction + **déduplication** (deux blocs d'alerte quasi-identiques) :
+- Nouveau module **pur** `include/automatism/level_alert.h` (`LevelAlert::evaluate`) : décision Raise/Clear
+  d'une alerte « niveau bas » par seuil + hystérésis. **Sans état** (flag `_lowAquaSent`/`_lowTankSent`
+  reste dans l'appelant). Aucune dépendance Arduino/config → testable `g++`.
+- `Automatism::handleAlerts` (`automatism_display.cpp`) utilise le module pour **les deux** alertes
+  (aquarium bas et réserve basse). Effets de bord conservés et **distincts** : l'aquarium reset en silence,
+  la réserve envoie un mail « Réserve OK » — gérés dans l'appelant.
+- Suite native `test/test_level_alert/` (9 cas : Raise/None/Clear, bande morte, bornes strictes, cycle)
+  ajoutée à `firmware-ci.yml` **et** `platformio-native.ini`. Parité vérifiée en local (`g++ -Wall -Wextra`,
+  10/10 checks). Aucun effet de bord matériel touché (email/blink uniquement) → **pas de banc requis**.
