@@ -195,3 +195,18 @@ Deuxième petite extraction, même patron que `FloodAlert`, **comportement stric
 ⚠️ **Banc requis pour le chemin pompe** : la *décision* est CI-testée, mais l'intégration touche
 `handleRefill` (arrêt pompe réservoir) — à valider sur banc avant rollout (verrou/déverrou réels,
 non-régression réserve basse → pompe à sec évitée).
+
+#### C4 — 3e étape : extraction `HeaterControl` (régulation chauffage par hystérésis)
+Troisième petite extraction, même patron, **comportement strictement identique** :
+- Nouveau module **pur** `include/automatism/heater_hysteresis.h` (`HeaterControl::evaluate`) :
+  décision ON/OFF du chauffage (ON si temp < seuil ; OFF si temp > seuil + 2 °C ; bande morte sinon).
+  **Sans état** (heaterPrevState reste dans l'appelant). Aucune dépendance Arduino/config → testable `g++`.
+- `Automatism::handleAlerts` (`automatism_display.cpp`) délègue la **décision** au module ;
+  les **effets de bord** (relais `startHeater`/`stopHeater`, email ON/OFF, blink, flag `heaterPrevState`)
+  restent dans l'appelant.
+- Suite native `test/test_heater_hysteresis/` (9 cas : ON sous seuil, pas de re-déclenchement, OFF au-dessus
+  de seuil+hyst, bornes strictes, bande morte montante/descendante, cycle complet) ajoutée à `firmware-ci.yml`
+  **et** `platformio-native.ini`. Parité vérifiée en local (`g++ -Wall -Wextra`, 10/10 checks).
+
+⚠️ **Banc requis pour le chemin chauffage** : la *décision* est CI-testée, mais l'intégration touche le
+relais de chauffage — à valider sur banc avant rollout (allumage/extinction réels, pas de battement relais).
