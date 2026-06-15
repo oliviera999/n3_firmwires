@@ -297,3 +297,19 @@ Extraction de la décision de timing de `handleRefillMaxDurationStop` :
   anomalie, bornes strictes, seuil custom). Enregistrée CI + ini. Local 9/9.
 
 ⚠️ **Banc requis** : l'intégration coupe la pompe réellement ; seule la décision de timing est CI-testée.
+
+#### C4 — Contrôleur refill : décision d'efficacité `RefillEfficiency` (retry / verrou)
+Dernière décision de `handleRefillMaxDurationStop` extraite :
+- Nouveau module `include/automatism/refill_efficiency.h` (`RefillEfficiency::evaluate`) : `NoEval`
+  (niveau inconnu) / `Effective` (amélioration ≥ 1 mm → reset essais) / `Inefficient` (pas d'amélioration,
+  essais restants) / `InefficientLock` (essais+1 atteint le max → verrou). Pure → `g++`.
+- `handleRefillMaxDurationStop` délègue ; incrément/reset du compteur, verrou, email, sync restent dans
+  l'appelant (parité ligne à ligne ; le verrou se déclenche au même incrément que l'ancien code).
+- Suite native `test/test_refill_efficiency/` (NoEval, Effective, Inefficient, InefficientLock, bornes).
+  Parité exhaustive vs ancien code en local (181/181). Enregistrée CI + ini.
+
+⚠️ **Banc requis** : l'intégration verrouille/notifie la pompe réellement ; seule la décision est CI-testée.
+
+➡️ **Bilan refill** : les 3 décisions clés de la pompe de remplissage sont désormais extraites et testées
+nativement — démarrage (`RefillStart`), durée/anomalie (`RefillDuration`), efficacité/retry
+(`RefillEfficiency`) — en plus de la sécurité réserve-basse (`ReservoirLowSecurity`) déjà sur master.

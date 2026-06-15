@@ -5,6 +5,7 @@
 #include "automatism/threshold_util.h"  // C4: soustraction saturée seuil-marge (pure, testée)
 #include "automatism/refill_start.h"  // C4: décision démarrage remplissage (pure, testée)
 #include "automatism/refill_duration.h"  // C4: décision timing remplissage (pure, testée)
+#include "automatism/refill_efficiency.h"  // C4: décision efficacité/retry remplissage (pure, testée)
 #include "config.h"
 #include "mailer.h"
 #include <Arduino.h>
@@ -197,16 +198,23 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
     }
     Serial.printf("[CRITIQUE] Amélioration niveau: %d mm\n", levelImprovement);
 
-    if (!SensorValidation::isWaterLevelKnown(r.wlAqua)) {
+    // C4: décision d'efficacité (retry / lock / effective / sans-éval) déléguée à
+    // RefillEfficiency (pure, testée). Les effets de bord (compteur, verrou, email, sync) ici.
+    const RefillEfficiency::Decision effDec = RefillEfficiency::evaluate(
+        SensorValidation::isWaterLevelKnown(r.wlAqua), levelImprovement,
+        tankPumpRetries, MAX_PUMP_RETRIES);
+
+    if (effDec == RefillEfficiency::Decision::NoEval) {
         Serial.println(F("[CRITIQUE] Niveau aquarium inconnu — fin remplissage sans évaluation d'efficacité"));
         Serial.println(F("[CRITIQUE] === FIN REMPLISSAGE ==="));
         return;
     }
 
-    if (levelImprovement < 1) {
+    if (effDec == RefillEfficiency::Decision::Inefficient ||
+        effDec == RefillEfficiency::Decision::InefficientLock) {
         ++tankPumpRetries;
         Serial.printf("[CRITIQUE] Pompe inefficace (%u/%u)\n", tankPumpRetries, MAX_PUMP_RETRIES);
-        if (tankPumpRetries >= MAX_PUMP_RETRIES) {
+        if (effDec == RefillEfficiency::Decision::InefficientLock) {
             tankPumpLocked = true;
             _tankPumpLockReason = TankPumpLockReason::INEFFICIENT;
             Serial.println(F("[CRITIQUE] Pompe BLOQUÉE - max tentatives"));
@@ -220,7 +228,7 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
                 emailTankSent = true;
             }
         }
-    } else {
+    } else {  // Effective
         tankPumpRetries = 0;
         Serial.printf("[CRITIQUE] Remplissage OK: +%d mm\n", levelImprovement);
         if (_network.isEmailEnabled() && !emailTankStopSent) {
