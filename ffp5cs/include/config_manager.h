@@ -11,6 +11,7 @@ private:
     bool _bouffeMidiOk;
     bool _bouffeSoirOk;
     int _lastJourBouf;
+    uint32_t _dailyFeedSec;  // cumul des durées distribuées le jour courant (anti-surdosage)
     bool _pompeAquaLocked;
     // NOTE: forceWakeUp géré exclusivement par Automatism (SYSTEM::forceWakeUp)
     bool _otaUpdateFlag;
@@ -23,6 +24,7 @@ private:
     bool _cachedBouffeMidiOk;
     bool _cachedBouffeSoirOk;
     int _cachedLastJourBouf;
+    uint32_t _cachedDailyFeedSec;
     bool _cachedPompeAquaLocked;
     bool _cachedOtaUpdateFlag;
     bool _flagsChanged;
@@ -76,6 +78,10 @@ public:
     void setBouffeMidiOk(bool value);
     void setBouffeSoirOk(bool value);
     void setLastJourBouf(int value);
+    /// Ajoute une durée (s) au cumul journalier persistant (anti-surdosage). Marque le flag à sauver.
+    void addDailyFeedSec(uint32_t seconds);
+    /// Remet à zéro le cumul journalier (appelé au changement de jour via resetBouffeFlags).
+    void resetDailyFeedSec();
     void setPompeAquaLocked(bool value);
     // NOTE: forceWakeUp géré exclusivement par Automatism::toggleForceWakeup()
     
@@ -84,6 +90,7 @@ public:
     bool getBouffeMidiOk() const { return _bouffeMidiOk; }
     bool getBouffeSoirOk() const { return _bouffeSoirOk; }
     int getLastJourBouf() const { return _lastJourBouf; }
+    uint32_t getDailyFeedSec() const { return _dailyFeedSec; }
     bool getPompeAquaLocked() const { return _pompeAquaLocked; }
     // NOTE: Utiliser g_autoCtrl.getForceWakeUp() à la place
 };

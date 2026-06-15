@@ -13,6 +13,7 @@ struct Session_Config {};
 #endif
 #include "secrets.h"
 #include "system_sensors.h"
+#include "imailer.h"  // C4: interface de messagerie (inversion de dépendance)
 
 class PowerManager;
 
@@ -28,22 +29,22 @@ struct MailQueueItem {
 };
 // Taille totale: ~660 bytes (vs 1729 avant) - économie ~5 KB avec 2 slots
 
-class Mailer {
+class Mailer : public IMailer {
  public:
   bool begin();
   
   // Méthodes synchrones (utilisées en interne par mailTask)
   bool sendSync(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
   bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
-                     const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+                     const char* toEmail = EmailConfig::DEFAULT_RECIPIENT) override;
   bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
-                    const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+                    const char* toEmail = EmailConfig::DEFAULT_RECIPIENT) override;
   
   // Méthodes asynchrones (non-bloquantes) - v11.142
   // Ces méthodes ajoutent le mail à une queue et retournent immédiatement
   // includeDetailedReport: true = boot/OTA/panic (rapport temporel détaillé), false = alertes opérationnelles (niveaux, chauffage, etc.)
-  bool sendAlert(const char* subject, const char* message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, bool includeDetailedReport = false);
-  bool send(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+  bool sendAlert(const char* subject, const char* message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, bool includeDetailedReport = false) override;
+  bool send(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT) override;
   
   // Initialisation de la queue mail (appelé au boot, sans tâche dédiée)
   bool initMailQueue();
@@ -70,6 +71,13 @@ class Mailer {
   
   // Queue mail (traitée séquentiellement depuis automationTask)
   QueueHandle_t _mailQueue{nullptr};
+
+  // Backoff après échec SMTP : un envoi raté (serveur lent/injoignable) peut
+  // bloquer automationTask plusieurs secondes ; sans délai, le retry du cycle
+  // suivant re-bloque immédiatement. On suspend le traitement de la queue
+  // pendant MAIL_RETRY_BACKOFF_MS après un échec.
+  static constexpr uint32_t MAIL_RETRY_BACKOFF_MS = 60000;
+  unsigned long _nextMailRetryMs{0};
 
   // Epoch: délégation vers PowerManager (évite duplication logique NVS/fallback)
   PowerManager* _power{nullptr};

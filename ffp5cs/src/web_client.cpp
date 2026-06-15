@@ -18,11 +18,15 @@
 #include <freertos/semphr.h>
 #include <cstring>
 #include <atomic>
+#include <memory>  // C3: unique_ptr pour buffer d'unwrap en heap (réduction pile)
 
 // Mutex pour sérialiser HTTP (netTask GET et postSenderTask POST)
 static SemaphoreHandle_t s_httpMutex = nullptr;
 // Mutex acquis explicitement avant veille légère (autoTask) — évite double Give
 static std::atomic<bool> s_httpTransportLockHeldForSleep{false};
+// Mutex dédié au buffer s_lastFetchedJson : écrit par netTask (fetchRemoteState),
+// lu par autoTask (copyLastFetchedTo). Distinct de s_httpMutex (autre ressource).
+static SemaphoreHandle_t s_lastFetchedJsonMutex = nullptr;
 
 namespace {
 
@@ -438,141 +442,6 @@ bool WebClient::httpRequest(const char* url, const char* payload,
   return finalSuccess;
 }
 
-bool WebClient::sendMeasurements(const Measurements& m, bool includeReset) {
-  // Validation des mesures
-  float tempWater = m.tempWater;
-  float tempAir = m.tempAir;
-  float humidity = m.humidity;
-
-  if (isnan(tempWater) || tempWater <= 0.0f || tempWater >= 60.0f) {
-    tempWater = NAN;
-  }
-  if (isnan(tempAir) || tempAir <= SensorConfig::AirSensor::TEMP_MIN || tempAir >= SensorConfig::AirSensor::TEMP_MAX) {
-    tempAir = NAN;
-  }
-  if (isnan(humidity) || humidity < SensorConfig::AirSensor::HUMIDITY_MIN || humidity > SensorConfig::AirSensor::HUMIDITY_MAX) {
-    humidity = NAN;
-  }
-
-  auto fmtFloat = [](float v, char* buf, size_t bufSize) {
-    if (isnan(v)) {
-      buf[0] = '\0';
-    } else {
-      snprintf(buf, bufSize, "%.1f", v);
-    }
-  };
-  auto fmtUltrasonic = [](uint16_t v, char* buf, size_t bufSize) {
-    if (v == 0) {
-      buf[0] = '\0';
-    } else {
-      snprintf(buf, bufSize, "%u", (unsigned)v);
-    }
-  };
-
-  char payload[512];
-  payload[0] = '\0';
-  size_t offset = 0;
-  bool truncated = false;
-  
-  auto appendKV = [&](const char* key, const char* value) {
-    if (!value || value[0] == '\0') {
-      return;
-    }
-    if (truncated || offset >= sizeof(payload) - 1) {
-      truncated = true;
-      return;
-    }
-    size_t remaining = sizeof(payload) - offset;
-    int written = 0;
-    if (offset > 0) {
-      written = snprintf(payload + offset, remaining, "&");
-      if (written < 0 || static_cast<size_t>(written) >= remaining) {
-        truncated = true;
-        return;
-      }
-      offset += static_cast<size_t>(written);
-      remaining = sizeof(payload) - offset;
-    }
-    written = snprintf(payload + offset, remaining, "%s=%s", key, value);
-    if (written < 0 || static_cast<size_t>(written) >= remaining) {
-      truncated = true;
-      return;
-    }
-    offset += static_cast<size_t>(written);
-  };
-  
-  char buf_tempAir[16], buf_humid[16], buf_tempWater[16];
-  char buf_wlPota[8], buf_wlAqua[8], buf_wlTank[8];
-  char buf_diffMaree[16], buf_lum[16];
-  char buf_pumpAqua[2], buf_pumpTank[2], buf_heat[2], buf_uv[2];
-  
-  fmtFloat(tempAir, buf_tempAir, sizeof(buf_tempAir));
-  fmtFloat(humidity, buf_humid, sizeof(buf_humid));
-  fmtFloat(tempWater, buf_tempWater, sizeof(buf_tempWater));
-  fmtUltrasonic(m.wlPota, buf_wlPota, sizeof(buf_wlPota));
-  fmtUltrasonic(m.wlAqua, buf_wlAqua, sizeof(buf_wlAqua));
-  fmtUltrasonic(m.wlTank, buf_wlTank, sizeof(buf_wlTank));
-  snprintf(buf_diffMaree, sizeof(buf_diffMaree), "%d", m.diffMaree);
-  snprintf(buf_lum, sizeof(buf_lum), "%u", m.luminosite);
-  snprintf(buf_pumpAqua, sizeof(buf_pumpAqua), "%d", m.pumpAqua ? 1 : 0);
-  snprintf(buf_pumpTank, sizeof(buf_pumpTank), "%d", m.pumpTank ? 1 : 0);
-  snprintf(buf_heat, sizeof(buf_heat), "%d", m.heater ? 1 : 0);
-  snprintf(buf_uv, sizeof(buf_uv), "%d", m.light ? 1 : 0);
-
-  // Noms POST centralisés: SensorMap (capteurs), GPIOMap (actionneurs)
-  appendKV("version", ProjectConfig::VERSION);
-  appendKV(SensorMap::TEMP_AIR.serverPostName, buf_tempAir);
-  appendKV(SensorMap::HUMIDITY.serverPostName, buf_humid);
-  appendKV(SensorMap::TEMP_WATER.serverPostName, buf_tempWater);
-  appendKV(SensorMap::WL_POTA.serverPostName, buf_wlPota);
-  appendKV(SensorMap::WL_AQUA.serverPostName, buf_wlAqua);
-  appendKV(SensorMap::WL_TANK.serverPostName, buf_wlTank);
-  appendKV(SensorMap::DIFF_MAREE.serverPostName, buf_diffMaree);
-  appendKV(SensorMap::LUMINOSITY.serverPostName, buf_lum);
-  appendKV(GPIOMap::PUMP_AQUA.serverPostName, buf_pumpAqua);
-  appendKV(GPIOMap::PUMP_TANK.serverPostName, buf_pumpTank);
-  appendKV(GPIOMap::HEATER.serverPostName, buf_heat);
-  appendKV(GPIOMap::LIGHT.serverPostName, buf_uv);
-
-  if (includeReset) {
-    appendKV(GPIOMap::RESET_CMD.serverPostName, "0");
-  }
-
-  if (truncated) {
-    return false;
-  }
-  
-  return postRaw(payload);
-}
-
-int WebClient::tryFetchConfigFromServer(JsonDocument& doc) {
-  if (WiFi.status() != WL_CONNECTED) return 0;
-  bool recvEn = config.isRemoteRecvEnabled();
-  if (LogConfig::SERIAL_ENABLED) {
-    Serial.printf("[HTTP] tryFetchConfig: réception distante %s\n",
-                  recvEn ? "activée → GET outputs/state" : "désactivée (skip)");
-  }
-  if (!recvEn) return 0;
-  return fetchRemoteState(doc);
-}
-
-bool WebClient::tryPushStatusToServer(const char* payload) {
-  if (WiFi.status() != WL_CONNECTED) {
-    if (LogConfig::SERIAL_ENABLED) {
-      Serial.println(F("[HTTP] tryPushStatusToServer: WiFi déconnecté — envoi annulé"));
-    }
-    return false;
-  }
-  if (!config.isRemoteSendEnabled()) {
-    if (LogConfig::SERIAL_ENABLED) {
-      Serial.println(F("[HTTP] tryPushStatusToServer: envoi distant désactivé (config) — annulé"));
-    }
-    return false;
-  }
-  if (payload == nullptr) return false;
-  return postRaw(payload);
-}
-
 // v11.193: Retourne 0=échec, 1=OK HTTP, 2=OK NVS fallback (caller ne doit pas itérer sur doc si 2)
 int WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!config.isRemoteRecvEnabled()) {
@@ -872,11 +741,20 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   // Stocker le JSON brut pour que le caller (même tâche que doc) fasse copyLastFetchedTo(doc)
+  // Écriture sous s_lastFetchedJsonMutex (lu par autoTask) — évite la course / lecture déchirée.
   size_t jsonLen = strlen(payloadBuffer);
   if (jsonLen >= sizeof(s_lastFetchedJson)) jsonLen = sizeof(s_lastFetchedJson) - 1;
+  if (s_lastFetchedJsonMutex == nullptr) {
+    s_lastFetchedJsonMutex = xSemaphoreCreateMutex();
+  }
+  bool jsonLockHeld = (s_lastFetchedJsonMutex != nullptr) &&
+      (xSemaphoreTake(s_lastFetchedJsonMutex, pdMS_TO_TICKS(1000)) == pdTRUE);
   memcpy(s_lastFetchedJson, payloadBuffer, jsonLen);
   s_lastFetchedJson[jsonLen] = '\0';
   s_lastFetchedSize = jsonLen;
+  if (jsonLockHeld) {
+    xSemaphoreGive(s_lastFetchedJsonMutex);
+  }
 
   Serial.printf("[HTTP] GET outputs/state: body=%u octets, copie interne OK (prochaine étape: parse côté tâche auto)\n",
                 (unsigned)totalRead);
@@ -890,7 +768,19 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
     }
     return false;
   }
-  DeserializationError err = deserializeJson(doc, s_lastFetchedJson);
+  // Désérialisation sous s_lastFetchedJsonMutex (écrit par netTask). IMPORTANT : cast en
+  // (const char*) pour forcer le mode COPIE d'ArduinoJson — sinon le mode zero-copy laisse
+  // `doc` pointer vers s_lastFetchedJson après le retour (référence pendante = LoadProhibited).
+  // Avec la copie, `doc` est indépendant du buffer : on relâche le mutex juste après.
+  if (s_lastFetchedJsonMutex == nullptr) {
+    s_lastFetchedJsonMutex = xSemaphoreCreateMutex();
+  }
+  bool jsonLockHeld = (s_lastFetchedJsonMutex != nullptr) &&
+      (xSemaphoreTake(s_lastFetchedJsonMutex, pdMS_TO_TICKS(1000)) == pdTRUE);
+  DeserializationError err = deserializeJson(doc, (const char*) s_lastFetchedJson);
+  if (jsonLockHeld) {
+    xSemaphoreGive(s_lastFetchedJsonMutex);
+  }
   if (err) {
     if (LogConfig::SERIAL_ENABLED) {
       Serial.printf("[HTTP] copyLastFetchedTo: JSON invalide (%s)\n", err.c_str());
@@ -908,15 +798,25 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
     didUnwrap = true;
   }
   if (didUnwrap && !inner.isNull()) {
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+    // C3 (profondeur de pile) : ce JsonDocument d'unwrap (jusqu'à 4 Ko sur S3) était sur la pile
+    // d'autoTask (HWM ~95%). Déplacé en HEAP local. PAS en static : copyLastFetchedTo est
+    // multi-tâches (netTask-boot + autoTask) → un buffer partagé créerait une course (BACKLOG §4).
+    std::unique_ptr<StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE>> tmp(
+        new (std::nothrow) StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE>());
+    if (!tmp) {
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.println(F("[HTTP] copyLastFetchedTo: heap insuffisant pour unwrap"));
+      }
+      return false;
+    }
     char keyBuf[64];
     for (JsonPair p : inner) {
       strncpy(keyBuf, p.key().c_str(), sizeof(keyBuf) - 1);
       keyBuf[sizeof(keyBuf) - 1] = '\0';
-      tmp[keyBuf] = p.value();
+      (*tmp)[keyBuf] = p.value();
     }
     doc.clear();
-    for (JsonPair p : tmp.as<JsonObject>()) {
+    for (JsonPair p : tmp->as<JsonObject>()) {
       strncpy(keyBuf, p.key().c_str(), sizeof(keyBuf) - 1);
       keyBuf[sizeof(keyBuf) - 1] = '\0';
       doc[keyBuf] = p.value();
@@ -1046,162 +946,6 @@ bool WebClient::postRaw(const char* payload) {
   return success;
 }
 
-// =============================================================================
-// v11.171: Queue persistante pour POSTs échoués (offline-first)
-// Stocke jusqu'à MAX_QUEUED_POSTS payloads dans NVS pour ré-envoi ultérieur
-// =============================================================================
-
-bool WebClient::queueFailedPost(const char* payload) {
-  if (payload == nullptr || strlen(payload) == 0) {
-    return false;
-  }
-  
-  size_t payloadLen = strlen(payload);
-  if (payloadLen >= MAX_POST_SIZE) {
-    LOG(LOG_WARN, "[HTTP] Payload trop long pour queue: %u bytes", payloadLen);
-    return false;
-  }
-  
-  // v11.178: Utilisation des clés NVS centralisées (audit nvs-keys)
-  int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
-  
-  // Queue pleine: supprimer le plus ancien (FIFO)
-  if (count >= MAX_QUEUED_POSTS) {
-    // Décaler tous les éléments
-    for (int i = 0; i < count - 1; i++) {
-      char srcKey[16], dstKey[16];
-      snprintf(srcKey, sizeof(srcKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i + 1);
-      snprintf(dstKey, sizeof(dstKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
-      
-      char tempPayload[MAX_POST_SIZE];
-      g_nvsManager.loadString(NVS_NAMESPACES::STATE, srcKey, tempPayload, sizeof(tempPayload), "");
-      if (strlen(tempPayload) > 0) {
-        g_nvsManager.saveString(NVS_NAMESPACES::STATE, dstKey, tempPayload);
-      }
-    }
-    count = MAX_QUEUED_POSTS - 1;
-  }
-  
-  // Ajouter le nouveau payload
-  char key[16];
-  snprintf(key, sizeof(key), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, count);
-  g_nvsManager.saveString(NVS_NAMESPACES::STATE, key, payload);
-  count++;
-  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count);
-  
-  LOG(LOG_INFO, "[HTTP] POST mis en queue (total: %d)", count);
-  return true;
-}
-
-bool WebClient::processQueuedPosts() {
-  if (WiFi.status() != WL_CONNECTED) {
-    return false;
-  }
-  
-  if (!config.isRemoteSendEnabled()) {
-    return false;
-  }
-  
-  int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
-  
-  if (count == 0) {
-    return true;  // Rien à traiter
-  }
-  
-  LOG(LOG_INFO, "[HTTP] Traitement queue: %d POSTs en attente", count);
-  
-  int processed = 0;
-  int failed = 0;
-  
-  for (int i = 0; i < count && i < MAX_QUEUED_POSTS; i++) {
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
-    
-    char payload[MAX_POST_SIZE];
-    g_nvsManager.loadString(NVS_NAMESPACES::STATE, key, payload, sizeof(payload), "");
-    
-    if (strlen(payload) == 0) {
-      continue;
-    }
-    
-    char resp[1024];
-
-    if (postDataHttpRequest(payload, resp, sizeof(resp))) {
-      processed++;
-      // Marquer comme traité (effacer)
-      g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key);
-    } else {
-      failed++;
-      // Arrêter si échec (réseau peut être parti)
-      if (WiFi.status() != WL_CONNECTED) {
-        LOG(LOG_WARN, "[HTTP] WiFi perdu, arrêt traitement queue");
-        break;
-      }
-    }
-    
-    // Délai entre requêtes
-    vTaskDelay(pdMS_TO_TICKS(500));
-    if (esp_task_wdt_status(NULL) == ESP_OK) {
-      esp_task_wdt_reset();
-    }
-  }
-  
-  // Mettre à jour le compteur
-  int remaining = count - processed;
-  if (remaining < 0) remaining = 0;
-  
-  // Compacter la queue si nécessaire
-  if (processed > 0 && remaining > 0) {
-    int newIdx = 0;
-    for (int i = 0; i < count; i++) {
-      char srcKey[16];
-      snprintf(srcKey, sizeof(srcKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
-      
-      char payload[MAX_POST_SIZE];
-      g_nvsManager.loadString(NVS_NAMESPACES::STATE, srcKey, payload, sizeof(payload), "");
-      
-      if (strlen(payload) > 0) {
-        if (newIdx != i) {
-          char dstKey[16];
-          snprintf(dstKey, sizeof(dstKey), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, newIdx);
-          g_nvsManager.saveString(NVS_NAMESPACES::STATE, dstKey, payload);
-          g_nvsManager.removeKey(NVS_NAMESPACES::STATE, srcKey);
-        }
-        newIdx++;
-      }
-    }
-    remaining = newIdx;
-  }
-  
-  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, remaining);
-  
-  LOG(LOG_INFO, "[HTTP] Queue traitée: %d envoyés, %d échoués, %d restants", 
-      processed, failed, remaining);
-  
-  return (failed == 0);
-}
-
-uint8_t WebClient::getQueuedPostsCount() {
-  int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
-  return (uint8_t)count;
-}
-
-void WebClient::clearQueuedPosts() {
-  int count = 0;
-  g_nvsManager.loadInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, count, 0);
-  
-  for (int i = 0; i < count && i < MAX_QUEUED_POSTS; i++) {
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", NVSKeys::WebClient::POST_Q_PREFIX, i);
-    g_nvsManager.removeKey(NVS_NAMESPACES::STATE, key);
-  }
-  
-  g_nvsManager.saveInt(NVS_NAMESPACES::STATE, NVSKeys::WebClient::POST_Q_COUNT, 0);
-  LOG(LOG_INFO, "[HTTP] Queue vidée (%d entrées supprimées)", count);
-}
 
 bool WebClient::acquireHttpTransportLock(uint32_t timeoutMs) {
   if (s_httpMutex == nullptr) {

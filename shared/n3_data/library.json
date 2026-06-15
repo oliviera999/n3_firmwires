@@ -6,7 +6,7 @@
   "frameworks": "arduino",
   "platforms": "espressif32",
   "dependencies": {
-    "n3_hmac": "*",
-    "n3_common": "*"
+    "n3_hmac": "^1.0.0",
+    "n3_common": "^1.4.0"
   }
 }

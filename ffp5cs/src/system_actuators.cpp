@@ -89,12 +89,12 @@ void SystemActuators::feedBigFish(uint16_t durationSec)   { LOG(LOG_INFO, "[Even
 void SystemActuators::feedSmallFish(uint16_t durationSec) { LOG(LOG_INFO, "[Event] Feed small fish %u s", durationSec); feederSmall.dispenseWithIntermediate(140, 45, durationSec); }
 
 // Nourrissage séquentiel pour éviter les conflits de puissance
-void SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDurationSec, uint16_t delayBetweenSec) {
+bool SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDurationSec, uint16_t delayBetweenSec) {
   // v11.179: Protection contre les appels multiples (race condition)
   if (g_smallFeedInstance != nullptr) {
     LOG(LOG_WARN, "Nourrissage séquentiel déjà en cours, ignoré");
     Serial.println("[Event] Sequential feed already in progress, ignored");
-    return;
+    return false;
   }
   
   LOG(LOG_INFO, "=== NOURRISSAGE SÉQUENTIEL ===");
@@ -127,7 +127,8 @@ void SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDura
       Serial.println("[Event] Feed phase 2 scheduling failed");
       g_smallFeedInstance = nullptr;
       g_smallFeedDurationSec = 0;
-      return;
+      // Gros poissons déjà nourris : true pour ne pas re-déclencher la séquence
+      return true;
     }
   } else {
     xTimerStop(g_smallFeedTimer, 0);
@@ -139,12 +140,17 @@ void SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDura
     LOG(LOG_WARN, "Feed phase 2 scheduling failed");
     g_smallFeedInstance = nullptr;
     g_smallFeedDurationSec = 0;
-    return;
+    // Gros poissons déjà nourris : true pour ne pas re-déclencher la séquence
+    return true;
   }
 
   LOG(LOG_INFO, "=== FIN PLANIFICATION NOURRISSAGE SÉQUENTIEL ===");
   Serial.println("[Event] Sequential feed scheduled");
+  return true;
 }
+
+// true tant que le timer des petits poissons est armé (séquence gros->petits en cours).
+bool SystemActuators::isSequentialFeedInProgress() const { return g_smallFeedInstance != nullptr; }
 
 // Getters pour l'état
 bool SystemActuators::isTankPumpRunning() const { return pumpTank.state(); }

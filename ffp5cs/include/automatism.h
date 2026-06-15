@@ -9,9 +9,11 @@
 #include "mailer.h"
 #include "config.h"
 #include "config_manager.h"
+#include "istatus_publisher.h"  // C4: interface de publication d'état (sendFullUpdate)
 #include "automatism/automatism_feeding_schedule.h"
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
+#include "automatism/reservoir_low_security.h"  // C4: machine d'état réserve basse (pure, testée)
 #include "task_monitor.h"
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
@@ -26,9 +28,9 @@ struct AutomatismRuntimeContext {
 
 class Automatism {
  public:
-  Automatism(SystemSensors& sensors, SystemActuators& acts, 
-             WebClient& web, DisplayView& disp, 
-             PowerManager& power, Mailer& mail, ConfigManager& config);
+  Automatism(SystemSensors& sensors, IActuators& acts,
+             WebClient& web, DisplayView& disp,
+             PowerManager& power, IMailer& mail, ConfigManager& config);
   void begin();
   void update();               // collecte interne des capteurs
   void update(const SensorReadings& r); // usage dans tâche dédiée
@@ -83,7 +85,12 @@ class Automatism {
   }
   int computeDiffMaree(uint16_t currentAqua);
   uint32_t getTideWindowMs() const { return _sensors.getTideWindowMs(); }
-  bool isFeedingInProgress() const { return _currentFeedingPhase != FeedingPhase::NONE; }
+  // En cours si la phase logique (temps) OU la séquence matérielle (timer FreeRTOS des
+  // petits poissons) est active. Unifie les deux sources de vérité : même si la phase
+  // logique se termine trop tôt, on ne re-déclenche pas tant que le matériel distribue.
+  bool isFeedingInProgress() const {
+    return _currentFeedingPhase != FeedingPhase::NONE || _acts.isSequentialFeedInProgress();
+  }
   uint32_t getCountdownEndMs() const { return _countdownEnd; }
   uint16_t getFreqWakeSec() const { return _network.getFreqWakeSec(); }
   int16_t getTideTriggerCm() const { return tideTriggerCm; }
@@ -114,8 +121,8 @@ class Automatism {
   void waitForNetworkReady();
 
   // Veille légère : couper aqua/chauffage/lumière avant sleep, restaurer au réveil (snapshot NVS)
-  void prepareActuatorsForSleep(SystemActuators& acts);
-  void restoreActuatorsAfterWake(SystemActuators& acts);
+  void prepareActuatorsForSleep(IActuators& acts);
+  void restoreActuatorsAfterWake(IActuators& acts);
 
   // Observabilité sync POST (exposé dans /api/status)
   uint32_t getSyncPostOkCount() const { return _network.getPostOkCount(); }
@@ -229,17 +236,35 @@ class Automatism {
   void updateBusinessLogic(const SensorReadings& r, uint32_t nowMs);
 
   SystemSensors& _sensors;
-  SystemActuators& _acts;
+  IActuators& _acts;
   WebClient& _web;
   DisplayView& _disp;
   PowerManager& _power;
-  Mailer& _mailer;
+  IMailer& _mailer;
   ConfigManager& _config;
   
   // === MODULES (Composition) ===
   AutomatismFeedingSchedule _feedingSchedule;
   AutomatismSync _network;
   AutomatismSleep _sleep;
+
+  // C4: adaptateur IStatusPublisher -> sendFullUpdate. Permet d'injecter les
+  // orchestrateurs qui publient un instantané d'état (ex. FeedingFinalizeOrchestrator)
+  // sans les coupler au concret. Mince forward vers sendFullUpdate(...) (catégorie
+  // POST par défaut = Periodic, parité avec les appels historiques). Testé via un
+  // FakeStatusPublisher côté natif.
+  struct StatusPublisherAdapter : public IStatusPublisher {
+    Automatism& owner;
+    explicit StatusPublisherAdapter(Automatism& o) : owner(o) {}
+    bool publish(const SensorReadings& r, const char* extraPairs) override {
+      return owner.sendFullUpdate(r, extraPairs);
+    }
+  };
+  StatusPublisherAdapter _statusPublisher{*this};
+
+  // C4: état debounce de la sécurité réserve basse (remplace 2 static locaux dans
+  // handleRefillReservoirLowSecurity). Mono-tâche (autoTask), pas de besoin atomic.
+  ReservoirLowSecurity::State _reservoirLowState;
 
   // state flags - v11.176: Atomic pour accès multi-tâches (audit race conditions)
   std::atomic<bool> tankPumpLocked{false};
@@ -251,6 +276,7 @@ class Automatism {
   // Gestion blocage pompe réservoir
   uint8_t tankPumpRetries = 0;            // essais consécutifs
   static constexpr uint8_t MAX_PUMP_RETRIES = 5; // après 5 essais on abandonne (augmenté de 3 à 5)
+  uint32_t _lastRecoveryAttemptMs = 0;    // C4: dernière tentative de récupération auto (remplace un static)
   uint16_t _levelAtPumpStart = 0;         // niveau aquarium au démarrage de la pompe
   bool emailTankSent = false;
   bool emailTankStartSent = false;  // Pour éviter les mails de démarrage en double

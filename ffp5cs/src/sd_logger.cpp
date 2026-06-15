@@ -4,6 +4,7 @@
  */
 
 #include "sd_logger.h"
+#include "sd_queue_path.h"  // QUEUE_DIR + helpers purs (testés nativement, audit §3.8)
 #include "sd_card.h"
 #include "boot_log.h"
 
@@ -24,8 +25,14 @@ namespace {
 // Chemins relatifs au point de montage (SD.begin utilise "/sdcard") :
 // ne pas préfixer par /sdcard sinon la lib produit /sdcard/sdcard/...
 constexpr const char* LOG_DIR   = "/log";
-constexpr const char* QUEUE_DIR = "/queue";
 constexpr const char* META_FILE = "/meta.txt";
+
+// QUEUE_DIR + helpers de chemin/date extraits dans sd_queue_path.h (logique pure,
+// testée nativement, audit §3.8). Réimportés ici pour garder les sites inchangés.
+using SdQueuePath::QUEUE_DIR;
+using SdQueuePath::dateStr;
+using SdQueuePath::seqToPath;
+using SdQueuePath::seqFromEntryName;
 
 static uint32_t s_nextSeq = 1;
 static bool s_ready = false;
@@ -59,24 +66,6 @@ static bool saveMeta() {
   f.print(buf);
   f.close();
   return true;
-}
-
-static void dateStr(uint32_t epoch, char* out, size_t outSize) {
-  time_t t = (time_t)epoch;
-  struct tm ti;
-  gmtime_r(&t, &ti);
-  snprintf(out, outSize, "%04d%02d%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday);
-}
-
-static void seqToPath(uint32_t seq, char* out, size_t outSize) {
-  snprintf(out, outSize, "%s/%06lu.dat", QUEUE_DIR, (unsigned long)seq);
-}
-
-static uint32_t seqFromEntryName(const char* name) {
-  if (!name) return 0;
-  const char* base = strrchr(name, '/');
-  base = base ? base + 1 : name;
-  return (uint32_t)strtoul(base, nullptr, 10);
 }
 
 }  // namespace

@@ -1,10 +1,11 @@
 #include "automatism/automatism_feeding_schedule.h"
+#include "automatism/feeding_slot_matcher.h"
 #include "config.h"
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <cstring>
 
-AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, ConfigManager& cfg,
-                                                     Mailer& mail, PowerManager& power)
+AutomatismFeedingSchedule::AutomatismFeedingSchedule(IActuators& acts, ConfigManager& cfg,
+                                                     IMailer& mail, PowerManager& power)
     : _acts(acts), _config(cfg), _mailer(mail), _power(power) {
     // Charger les flags depuis NVS au démarrage
     _config.loadBouffeFlags();
@@ -12,13 +13,10 @@ AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, Conf
 
 void AutomatismFeedingSchedule::checkNewDay(int currentDay) {
     int lastDay = _config.getLastJourBouf();
-    // #region agent log
-    const int didReset = (lastDay != currentDay && lastDay != -1) ? 1 : 0;
-    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"checkNewDay\",\"message\":\"day_check\",\"data\":{\"lastDay\":%d,\"currentDay\":%d,\"reset\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H1\"}\n", lastDay, currentDay, didReset, (unsigned long)millis());
-    // #endregion
     if (lastDay != currentDay && lastDay != -1) {
         // Nouveau jour détecté - réinitialiser les flags
         Serial.println(F("[FeedingSchedule] Nouveau jour détecté - réinitialisation flags"));
+        // resetBouffeFlags() remet aussi le cumul anti-surdosage à zéro
         _config.resetBouffeFlags();
         _config.setLastJourBouf(currentDay);
         _config.saveBouffeFlags();
@@ -30,17 +28,32 @@ void AutomatismFeedingSchedule::checkNewDay(int currentDay) {
 }
 
 void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear, uint32_t uptimeMs,
-                                             uint8_t morningHour, uint8_t noonHour, uint8_t eveningHour,
-                                             uint16_t bigDuration, uint16_t smallDuration,
+                                             const FeedingParams& params,
                                              const char* emailAddr, bool mailNotif,
                                              std::function<void()> mailBlinkCallback,
                                              std::function<void(const char*)> feedingStartCallback,
                                              std::function<void()> feedingCompleteCallback) {
+    // Alias locaux : le corps reste inchangé, seule la frontière d'appel est typée.
+    // bigDuration/smallDuration restent modifiables (plafonnées plus bas).
+    const uint8_t morningHour = params.morningHour;
+    const uint8_t noonHour = params.noonHour;
+    const uint8_t eveningHour = params.eveningHour;
+    uint16_t bigDuration = params.bigDuration;
+    uint16_t smallDuration = params.smallDuration;
+
     // Vérifier changement de jour
     checkNewDay(dayOfYear);
-    
+
+    warnIfScheduleConfigInvalid(morningHour, noonHour, eveningHour);
+
     // Désactiver le rattrapage pendant la période de boot (évite nourrissage au démarrage)
     const bool catchUpAllowed = (uptimeMs >= FEEDING_BOOT_GRACE_MS);
+
+    // Repas définitivement manqués (réveil après H+1) : marquer + alerter.
+    // Après la période de grâce uniquement, le temps que config et heure se stabilisent au boot.
+    if (catchUpAllowed) {
+        handleMissedSlots(hour, morningHour, noonHour, eveningHour, emailAddr, mailNotif);
+    }
 
     // Vérifier chaque horaire (fenêtre heure + rattrapage limité si réveil après le créneau)
     const bool matinOk = _config.getBouffeMatinOk();
@@ -49,25 +62,116 @@ void AutomatismFeedingSchedule::checkAndFeed(int hour, int minute, int dayOfYear
     bool shouldFeedMorning = (shouldFeedNow(hour, minute, morningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, morningHour))) && !matinOk;
     bool shouldFeedNoon = (shouldFeedNow(hour, minute, noonHour) || (catchUpAllowed && shouldCatchUpFeed(hour, noonHour))) && !midiOk;
     bool shouldFeedEvening = (shouldFeedNow(hour, minute, eveningHour) || (catchUpAllowed && shouldCatchUpFeed(hour, eveningHour))) && !soirOk;
-    // #region agent log
-    const int triggering = (shouldFeedMorning || shouldFeedNoon || shouldFeedEvening) ? 1 : 0;
-    Serial.printf("{\"sessionId\":\"9f8a7c\",\"location\":\"checkAndFeed\",\"message\":\"feed_eval\",\"data\":{\"hour\":%d,\"min\":%d,\"dayOfYear\":%d,\"matinOk\":%d,\"midiOk\":%d,\"soirOk\":%d,\"shouldM\":%d,\"shouldMi\":%d,\"shouldS\":%d,\"triggering\":%d},\"timestamp\":%lu,\"hypothesisId\":\"H2,H3,H4\"}\n", hour, minute, dayOfYear, matinOk ? 1 : 0, midiOk ? 1 : 0, soirOk ? 1 : 0, shouldFeedMorning ? 1 : 0, shouldFeedNoon ? 1 : 0, shouldFeedEvening ? 1 : 0, triggering, (unsigned long)millis());
-    // #endregion
+
+    const char* slotLabel = nullptr;
+    uint8_t slotHour = 0;
     if (shouldFeedMorning) {
-        Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MATIN (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
-        markSlotsDoneForScheduleHour(morningHour, morningHour, noonHour, eveningHour);
-        sendFeedingEmail("Bouffe matin", bigDuration, smallDuration, emailAddr, mailNotif);
+        slotLabel = "Bouffe matin";
+        slotHour = morningHour;
     } else if (shouldFeedNoon) {
-        Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique MIDI (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
-        markSlotsDoneForScheduleHour(noonHour, morningHour, noonHour, eveningHour);
-        sendFeedingEmail("Bouffe midi", bigDuration, smallDuration, emailAddr, mailNotif);
+        slotLabel = "Bouffe midi";
+        slotHour = noonHour;
     } else if (shouldFeedEvening) {
-        Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique SOIR (%02d:%02d)\n", hour, minute);
-        performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback);
-        markSlotsDoneForScheduleHour(eveningHour, morningHour, noonHour, eveningHour);
-        sendFeedingEmail("Bouffe soir", bigDuration, smallDuration, emailAddr, mailNotif);
+        slotLabel = "Bouffe soir";
+        slotHour = eveningHour;
+    }
+    if (!slotLabel) {
+        return;
+    }
+
+    // Plafond par distribution (la durée ne calibre pas une quantité : borner le pire cas)
+    if (bigDuration > FEEDING_MAX_DURATION_SEC || smallDuration > FEEDING_MAX_DURATION_SEC) {
+        Serial.printf("[FeedingSchedule] ⚠️ Durées plafonnées à %u s (gros=%u, petits=%u)\n",
+                      FEEDING_MAX_DURATION_SEC, bigDuration, smallDuration);
+        if (bigDuration > FEEDING_MAX_DURATION_SEC) bigDuration = FEEDING_MAX_DURATION_SEC;
+        if (smallDuration > FEEDING_MAX_DURATION_SEC) smallDuration = FEEDING_MAX_DURATION_SEC;
+    }
+
+    // Plafond cumulé journalier anti-surdosage (horloge qui saute, flags corrompus...)
+    const uint32_t feedTotalSec = static_cast<uint32_t>(bigDuration) + smallDuration;
+    // Cumul lu depuis NVS (persiste aux reboots, reset au changement de jour)
+    const uint32_t dailyFedSoFar = _config.getDailyFeedSec();
+    if (dailyFedSoFar + feedTotalSec > FEEDING_MAX_DAILY_SEC) {
+        Serial.printf("[FeedingSchedule] 🛑 Plafond journalier atteint (%lu s + %lu s > %lu s) - %s annulé\n",
+                      (unsigned long)dailyFedSoFar, (unsigned long)feedTotalSec,
+                      (unsigned long)FEEDING_MAX_DAILY_SEC, slotLabel);
+        // Marquer le créneau pour ne pas retenter en boucle, et alerter
+        markSlotsDoneForScheduleHour(slotHour, morningHour, noonHour, eveningHour);
+        char body[160];
+        snprintf(body, sizeof(body),
+                 "%s annulé : plafond anti-surdosage journalier atteint (%lu s déjà distribuées, max %lu s).",
+                 slotLabel, (unsigned long)dailyFedSoFar, (unsigned long)FEEDING_MAX_DAILY_SEC);
+        sendAlertEmail("FFP5CS - 🛑 Plafond nourrissage atteint", body, emailAddr, mailNotif);
+        return;
+    }
+
+    Serial.printf("[FeedingSchedule] 🍽️ Nourrissage automatique %s (%02d:%02d)\n", slotLabel, hour, minute);
+    if (!performFeeding(bigDuration, smallDuration, emailAddr, mailNotif, mailBlinkCallback, feedingStartCallback, feedingCompleteCallback)) {
+        // Séquence refusée (déjà en cours) : ne PAS marquer le créneau ni envoyer l'email
+        // de confirmation (évite les faux positifs). Nouvelle tentative au prochain passage.
+        Serial.println(F("[FeedingSchedule] ⚠️ Séquence refusée (déjà en cours) - créneau non marqué"));
+        return;
+    }
+    // Incrémenter le cumul AVANT markSlots : les deux sont persistés par le même saveBouffeFlags()
+    _config.addDailyFeedSec(feedTotalSec);
+    markSlotsDoneForScheduleHour(slotHour, morningHour, noonHour, eveningHour);
+    sendFeedingEmail(slotLabel, bigDuration, smallDuration, emailAddr, mailNotif);
+}
+
+void AutomatismFeedingSchedule::warnIfScheduleConfigInvalid(uint8_t morningHour, uint8_t noonHour,
+                                                            uint8_t eveningHour) {
+    if (FeedingSlotMatcher::isScheduleConfigValid(morningHour, noonHour, eveningHour)) {
+        _lastWarnedConfig = 0xFFFFFFFF;
+        return;
+    }
+    const uint32_t configKey = (static_cast<uint32_t>(morningHour) << 16) |
+                               (static_cast<uint32_t>(noonHour) << 8) | eveningHour;
+    if (configKey == _lastWarnedConfig) {
+        return;  // Déjà signalé pour cette config (évite le spam dans la boucle)
+    }
+    _lastWarnedConfig = configKey;
+    Serial.printf("[FeedingSchedule] ⚠️ Config horaires invalide (matin=%u midi=%u soir=%u) : "
+                  "heures attendues distinctes, croissantes, dans [0..23]. "
+                  "Un repas marquera tous les créneaux partageant la même heure.\n",
+                  morningHour, noonHour, eveningHour);
+}
+
+void AutomatismFeedingSchedule::handleMissedSlots(int hour, uint8_t morningHour, uint8_t noonHour,
+                                                  uint8_t eveningHour,
+                                                  const char* emailAddr, bool mailNotif) {
+    struct MissedSlot {
+        const char* name;
+        uint8_t schedHour;
+    };
+    // Les flags sont relus à chaque itération : un créneau partageant l'heure d'un créneau
+    // déjà traité a été marqué par markSlotsDoneForScheduleHour au tour précédent.
+    const MissedSlot slots[3] = {
+        {"matin", morningHour},
+        {"midi", noonHour},
+        {"soir", eveningHour},
+    };
+    for (const MissedSlot& slot : slots) {
+        const bool done = (slot.schedHour == morningHour && _config.getBouffeMatinOk()) ||
+                          (slot.schedHour == noonHour && _config.getBouffeMidiOk()) ||
+                          (slot.schedHour == eveningHour && _config.getBouffeSoirOk());
+        if (done || !FeedingSlotMatcher::isSlotMissed(hour, slot.schedHour)) {
+            continue;
+        }
+        Serial.printf("[FeedingSchedule] ⚠️ Repas %s MANQUÉ (créneau %02u h, il est %02d h) - non rattrapé\n",
+                      slot.name, slot.schedHour, hour);
+        // Marquer le créneau : l'heure est passée, nourrir en décalé décalerait le rythme,
+        // et cela évite de répéter l'alerte à chaque passage
+        markSlotsDoneForScheduleHour(slot.schedHour, morningHour, noonHour, eveningHour);
+        char subject[64];
+        snprintf(subject, sizeof(subject), "FFP5CS - ⚠️ Repas %s manqué", slot.name);
+        char body[192];
+        snprintf(body, sizeof(body),
+                 "Le repas du %s (créneau %02u h) n'a pas été distribué : l'appareil était "
+                 "probablement endormi ou éteint pendant la fenêtre %02u h - %02u h. "
+                 "Aucun rattrapage ne sera effectué.",
+                 slot.name, slot.schedHour, slot.schedHour,
+                 (slot.schedHour + 1) % 24);
+        sendAlertEmail(subject, body, emailAddr, mailNotif);
     }
 }
 
@@ -97,31 +201,34 @@ bool AutomatismFeedingSchedule::shouldCatchUpFeed(int hour, uint8_t scheduleHour
     return (hour == nextHour);
 }
 
-void AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t smallDuration,
+bool AutomatismFeedingSchedule::performFeeding(uint16_t bigDuration, uint16_t smallDuration,
                                               const char* emailAddr, bool mailNotif,
                                               std::function<void()> mailBlinkCallback,
                                               std::function<void(const char*)> feedingStartCallback,
                                               std::function<void()> feedingCompleteCallback) {
+    // Démarrer la séquence AVANT toute notification : si elle est refusée
+    // (déjà en cours), rien ne doit être marqué ni notifié (évite les faux positifs)
+    if (!_acts.feedSequential(bigDuration, smallDuration, FEEDING_DELAY_BETWEEN_SEC)) {
+        return false;
+    }
+
     // Déclencher le clignotement mail si callback fourni
     if (mailBlinkCallback) {
         mailBlinkCallback();
     }
-    
+
     // Notifier le début du nourrissage (phase "Gros")
     if (feedingStartCallback) {
         feedingStartCallback("Gros");
     }
-    
-    // Nourrissage séquentiel (gros puis petits avec délai de 2 secondes)
-    const uint16_t delayBetweenSec = 2;
-    _acts.feedSequential(bigDuration, smallDuration, delayBetweenSec);
-    
+
     Serial.println(F("[FeedingSchedule] Automatic feeding triggered"));
-    
+
     // Notifier la fin du nourrissage pour synchroniser avec le serveur
     if (feedingCompleteCallback) {
         feedingCompleteCallback();
     }
+    return true;
 }
 
 void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigDur, uint16_t smallDur,
@@ -189,6 +296,22 @@ void AutomatismFeedingSchedule::sendFeedingEmail(const char* type, uint16_t bigD
             Serial.printf("[FeedingSchedule] ❌ Échec ajout à la queue email: %s\n", type);
         }
     }
+}
+
+void AutomatismFeedingSchedule::sendAlertEmail(const char* subject, const char* body,
+                                               const char* emailAddr, bool mailNotif) {
+    if (!mailNotif || !emailAddr || strlen(emailAddr) == 0) {
+        return;
+    }
+
+    char timeStr[64];
+    _power.getCurrentTimeStringForMail(timeStr, sizeof(timeStr));
+
+    char message[320];
+    snprintf(message, sizeof(message), "%s\n\nHeure: %s\n", body, timeStr);
+
+    bool queued = _mailer.send(subject, message, "System", emailAddr);
+    Serial.printf("[FeedingSchedule] %s Alerte email: %s\n", queued ? "✅" : "❌", subject);
 }
 
 AutomatismFeedingSchedule::Status AutomatismFeedingSchedule::getStatus() const {

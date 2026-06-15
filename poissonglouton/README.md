@@ -20,10 +20,20 @@ Firmware de comptage de bouteilles pour poubelle de recyclage ludique.
 
 ## Secrets
 
-Copier `include/secrets.h.example` en `include/secrets.h` puis renseigner :
+Poissonglouton utilise ses **propres** secrets locaux (macros prefixees `PGL_`),
+et **n'utilise pas** le `credentials.h` racine partage par n3pp / msp /
+uploadphotosserver.
 
-- SSID / mot de passe Wi-Fi.
+Copier `include/secrets.h.example` en `include/secrets.h` (non versionne, voir
+`.gitignore`) puis renseigner :
+
+- SSID / mot de passe Wi-Fi (`PGL_WIFI_SSID_1/2`, `PGL_WIFI_PASS_1/2`).
 - `PGL_API_KEY` (meme valeur que cote serveur).
+
+Inclusion (`src/pgl_network.cpp`) : `secrets.h` si present, sinon repli sur
+`secrets.h.example` (valeurs factices, pour que la compilation passe), sinon
+erreur de build. Les deux fichiers sont resolus via `-Iinclude`
+(`platformio.ini`).
 
 ## Build
 

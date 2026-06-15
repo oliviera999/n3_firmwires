@@ -26,6 +26,7 @@
 
 #include "app_tasks_internal.h"
 #include "task_mail.h"  // réserve mail + processMailQueueIfReady (extrait v13.93)
+#include <atomic>  // compteur heartbeat perdu (accès multi-tâches)
 
 // g_ctx : linkage externe (corps de tâches déplacés, ex. webTask -> app_tasks_web.cpp),
 // fixé par AppTasks::start(). Déclaré dans app_tasks_internal.h.
@@ -455,7 +456,7 @@ bool netPostRaw(const char* payload, uint32_t timeoutMs, PostCategory category, 
 // v13.70 (audit): compteur diagnostique pour les heartbeats perdus quand postSender est saturé.
 // Permet de remonter une métrique observable côté serveur ou logs si la file POST est régulièrement
 // pleine (signal d'investigation : POST périodiques trop fréquents ou serveur HS).
-static uint32_t s_heartbeatDroppedCount = 0;
+static std::atomic<uint32_t> s_heartbeatDroppedCount{0};
 
 bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
   (void)timeoutMs;

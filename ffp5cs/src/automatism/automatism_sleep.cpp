@@ -1,4 +1,6 @@
 #include "automatism/automatism_sleep.h"
+#include "sleep_decision.h"  // décisions de sommeil pures (testées nativement, audit §3.8)
+#include "automatism/sleep_blocking.h"  // C4: décision de blocage de la veille (pure, testée)
 #include "automatism.h"  // Pour accès aux méthodes de Automatism
 #include "app_tasks.h"
 #include "config.h"
@@ -76,46 +78,28 @@ void AutomatismSleep::notifyLocalWebActivity() {
 // ============================================================================
 
 uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
-    if (!_sleepConfig.adaptiveSleep) {
-        return _sleepConfig.normalSleepTime;
-    }
-    
-    uint32_t baseDelay = _sleepConfig.normalSleepTime;
-    
-    // Réduire si erreurs récentes
-    if (hasRecentErrors()) {
-        baseDelay = _sleepConfig.errorSleepTime;
-    }
-    
-    // Réduire la nuit (économie énergie)
-    if (isNightTime()) {
-        baseDelay = _sleepConfig.nightSleepTime;
-    }
-    
-    // Ajuster selon échecs réveil
-    if (_consecutiveWakeupFailures > 0) {
-        baseDelay = std::min(baseDelay * 2, _sleepConfig.maxSleepTime);
+    // Décision pure extraite dans sleep_decision.h (testée nativement, audit §3.8).
+    uint32_t delay = SleepDecision::adaptiveSleepDelay(
+        _sleepConfig.adaptiveSleep,
+        _sleepConfig.normalSleepTime, _sleepConfig.errorSleepTime,
+        _sleepConfig.nightSleepTime, _sleepConfig.minSleepTime, _sleepConfig.maxSleepTime,
+        hasRecentErrors(), isNightTime(), _consecutiveWakeupFailures);
+    if (_sleepConfig.adaptiveSleep && _consecutiveWakeupFailures > 0) {
         Serial.printf("[Sleep] Délai ajusté (échecs: %d)\n", _consecutiveWakeupFailures);
     }
-    
-    // Limiter aux bornes
-    baseDelay = std::max(baseDelay, _sleepConfig.minSleepTime);
-    baseDelay = std::min(baseDelay, _sleepConfig.maxSleepTime);
-    
-    return baseDelay;
+    return delay;
 }
 
 bool AutomatismSleep::isNightTime() {
     time_t currentTime = _power.getCurrentEpochSafe();
     struct tm timeinfo;
-    
+
     // v11.179: Utiliser localtime_r() thread-safe au lieu de localtime()
     if (localtime_r(&currentTime, &timeinfo) != nullptr) {
-        int hour = timeinfo.tm_hour;
-        // Nuit: 19h-6h
-        return (hour >= 19 || hour < 6);
+        // Fenêtre nuit extraite dans sleep_decision.h (testée nativement).
+        return SleepDecision::isNightHour(timeinfo.tm_hour);
     }
-    
+
     return false;  // Fallback sûr si conversion échoue
 }
 
@@ -187,7 +171,7 @@ bool AutomatismSleep::shouldEnterSleepEarly(const SensorReadings& r,
     return false;
 }
 
-bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
+bool AutomatismSleep::handleBlockingConditions(IActuators& acts,
                                                bool& forceWakeUp,
                                                bool& forceWakeFromWeb,
                                                unsigned long& lastWebActivityMs,
@@ -196,87 +180,84 @@ bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
                                                bool feedingInProgress,
                                                bool tankPumpRunning,
                                                uint8_t wsClients) {
-    unsigned long now = millis();
+    (void)acts;  // non utilisé (déjà le cas dans l'ancien corps) — signature conservée pour l'appelant
+    const unsigned long now = millis();
 
-    // 1. VÉRIFICATION CLIENTS WEBSOCKET
-    if (wsClients > 0) {
-        if (_wsBlockStartMs == 0) {
-            _wsBlockStartMs = now;
-        }
+    // C4: la DÉCISION (faut-il bloquer la veille et pourquoi) est extraite dans
+    // SleepBlocking::decide (pure, testée nativement). Le membre _wsBlockStartMs (seul
+    // état influençant la décision) est passé via State ; les logs Serial, l'anti-spam
+    // (throttle) et les mutations de membres/params restent ici, pilotés par le Result
+    // (parité ligne à ligne avec l'ancien corps).
+    SleepBlocking::State st;
+    st.wsBlockStartMs = static_cast<uint32_t>(_wsBlockStartMs);
 
-        const uint32_t WS_BLOCK_TIMEOUT_MS = 300000; // 5 minutes
-        if (now - _wsBlockStartMs > WS_BLOCK_TIMEOUT_MS) {
-            Serial.printf("[Auto] ⚠️ TIMEOUT WebSocket atteint (%u ms) - Forcer sleep malgré %u clients\n",
-                          WS_BLOCK_TIMEOUT_MS, wsClients);
-            _wsBlockStartMs = 0;
-        } else {
-            if (now - _lastWsLogMs > 30000) {
-                _lastWsLogMs = now;
-                uint32_t elapsed = now - _wsBlockStartMs;
-                Serial.printf("[Auto] Auto-sleep bloqué (%u clients WebSocket, %u ms écoulées)\n",
-                              wsClients, elapsed);
-            }
-            return false;
-        }
-    } else {
-        _wsBlockStartMs = 0;
+    SleepBlocking::Inputs in;
+    in.wsClients = wsClients;
+    in.forceWakeFromWeb = forceWakeFromWeb;
+    in.lastWebActivityMs = static_cast<uint32_t>(lastWebActivityMs);
+    in.forceWakeUp = forceWakeUp;
+    in.tankPumpRunning = tankPumpRunning;
+    in.feedingInProgress = feedingInProgress;
+    in.countdownEnd = countdownEnd;
+    in.nowMs = static_cast<uint32_t>(now);
+    in.webActivityTimeoutMs = TimingConfig::WEB_ACTIVITY_TIMEOUT_MS;
+
+    const SleepBlocking::Result res = SleepBlocking::decide(st, in);
+    _wsBlockStartMs = st.wsBlockStartMs;  // appliquer l'état mis à jour (cycle de vie blocage WS)
+
+    // Transitions « fall-through » non-throttlées (ordre historique préservé).
+    if (res.wsTimedOut) {
+        Serial.printf("[Auto] ⚠️ TIMEOUT WebSocket atteint (%u ms) - Forcer sleep malgré %u clients\n",
+                      SleepBlocking::WS_BLOCK_TIMEOUT_MS, wsClients);
+    }
+    if (res.webExpired) {
+        forceWakeFromWeb = false;
+        Serial.println(F("[Auto] Activité web expirée - sleep autorisé à nouveau"));
+    }
+    if (res.refreshLastWake) {
+        lastWakeMs = now;
     }
 
-    // 2. ACTIVITÉ WEB TEMPORAIRE
-    if (forceWakeFromWeb) {
-        if (lastWebActivityMs > 0 && (now - lastWebActivityMs > TimingConfig::WEB_ACTIVITY_TIMEOUT_MS)) {
-            forceWakeFromWeb = false;
-            Serial.println(F("[Auto] Activité web expirée - sleep autorisé à nouveau"));
-        } else {
-            if (now - _lastWebLogMs > 30000) {
+    // Logs terminaux + throttle (anti-spam) géré ici, comme avant l'extraction.
+    switch (res.reason) {
+        case SleepBlocking::Reason::WsClients:
+            if (now - _lastWsLogMs > SleepBlocking::LOG_THROTTLE_MS) {
+                _lastWsLogMs = now;
+                Serial.printf("[Auto] Auto-sleep bloqué (%u clients WebSocket, %u ms écoulées)\n",
+                              wsClients, res.wsElapsedMs);
+            }
+            return false;
+        case SleepBlocking::Reason::WebActivity:
+            if (now - _lastWebLogMs > SleepBlocking::LOG_THROTTLE_MS) {
                 _lastWebLogMs = now;
                 Serial.println(F("[Auto] Auto-sleep bloqué temporairement (activité web récente)"));
             }
             return false;
-        }
-    }
-
-    // 3. FORCEWAKEUP PERSISTANT
-    if (forceWakeUp) {
-        if (now - _lastForceWakeLogMs > 30000) {
-            _lastForceWakeLogMs = now;
-            Serial.println(F("[Auto] Auto-sleep désactivé (forceWakeUp GPIO 115 = true)"));
-        }
-        return false;
-    }
-
-    // 4. POMPE DE REMPLISSAGE
-    if (tankPumpRunning) {
-        lastWakeMs = now;
-        Serial.println(F("[Auto] Auto-sleep différé - pompe de remplissage active"));
-        return false;
-    }
-
-    // 5. NOURRISSAGE EN COURS
-    if (feedingInProgress) {
-        lastWakeMs = now;
-        Serial.println(F("[Auto] Auto-sleep différé - nourrissage en cours"));
-        return false;
-    }
-
-    // 6. DÉCOMPTE EN COURS
-    if (isStillPending(countdownEnd, now)) {
-        uint32_t remainingCountdownMs = static_cast<uint32_t>(countdownEnd - now);
-        uint32_t remainingCountdownSec = remainingCountdownMs / 1000UL;
-
-        if (remainingCountdownSec > 300) {
-            lastWakeMs = now;
+        case SleepBlocking::Reason::ForceWakeUp:
+            if (now - _lastForceWakeLogMs > SleepBlocking::LOG_THROTTLE_MS) {
+                _lastForceWakeLogMs = now;
+                Serial.println(F("[Auto] Auto-sleep désactivé (forceWakeUp GPIO 115 = true)"));
+            }
+            return false;
+        case SleepBlocking::Reason::TankPump:
+            Serial.println(F("[Auto] Auto-sleep différé - pompe de remplissage active"));
+            return false;
+        case SleepBlocking::Reason::Feeding:
+            Serial.println(F("[Auto] Auto-sleep différé - nourrissage en cours"));
+            return false;
+        case SleepBlocking::Reason::CountdownLong:
             Serial.printf("[Auto] Auto-sleep différé - décompte long en cours (%u s restants)\n",
-                          remainingCountdownSec);
-        } else {
+                          res.remainingCountdownSec);
+            return false;
+        case SleepBlocking::Reason::CountdownShort:
             Serial.printf("[Auto] Décompte court en cours (%u s restants) - chronomètre préservé\n",
-                          remainingCountdownSec);
-        }
-        return false;
+                          res.remainingCountdownSec);
+            return false;
+        case SleepBlocking::Reason::Allow:
+            break;
     }
 
     // v11.178: Bloc hasSignificantActivity() supprimé (toujours false - audit dead-code)
-
     return true;
 }
 
@@ -284,7 +265,7 @@ bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
 // MÉTHODE PRINCIPALE : handleAutoSleep
 // ============================================================================
 
-bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
+bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, IActuators& acts, Automatism& core) {
     // Récupération des informations via accesseurs publics
     bool forceWakeUp = core.getForceWakeUp();
     bool tankPumpRunning = core.isTankPumpRunning();

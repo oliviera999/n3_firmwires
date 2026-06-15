@@ -21,4 +21,6 @@ class PglDetection {
   uint32_t lastIrEdgeMs_ = 0;
   uint32_t lastUsEdgeMs_ = 0;
   bool irPrevState_ = true;
+  // Polls US consécutifs sous le seuil (filtre anti-écho + front).
+  uint8_t usBelowCount_ = 0;
 };
