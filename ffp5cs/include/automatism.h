@@ -261,6 +261,7 @@ class Automatism {
   // Gestion blocage pompe réservoir
   uint8_t tankPumpRetries = 0;            // essais consécutifs
   static constexpr uint8_t MAX_PUMP_RETRIES = 5; // après 5 essais on abandonne (augmenté de 3 à 5)
+  uint32_t _lastRecoveryAttemptMs = 0;    // C4: dernière tentative de récupération auto (remplace un static)
   uint16_t _levelAtPumpStart = 0;         // niveau aquarium au démarrage de la pompe
   bool emailTankSent = false;
   bool emailTankStartSent = false;  // Pour éviter les mails de démarrage en double

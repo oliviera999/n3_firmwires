@@ -7,6 +7,7 @@
 #include "automatism/refill_duration.h"  // C4: décision timing remplissage (pure, testée)
 #include "automatism/refill_efficiency.h"  // C4: décision efficacité/retry remplissage (pure, testée)
 #include "automatism/refill_overfill.h"  // C4: décision sécurité trop-plein (pure, testée)
+#include "automatism/refill_recovery.h"  // C4: décision récupération auto après verrou (pure, testée)
 #include "config.h"
 #include "mailer.h"
 #include <Arduino.h>
@@ -292,23 +293,23 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
 
 // Sous-fonction: Récupération automatique après blocage
 void Automatism::handleRefillAutomaticRecovery(const SensorReadings& r) {
-    static unsigned long lastRecoveryAttempt = 0;
-    if (tankPumpLocked && tankPumpRetries >= MAX_PUMP_RETRIES) {
-        unsigned long currentMillisLocal = millis();
-        if (currentMillisLocal - lastRecoveryAttempt > 30 * 1000UL) {
-            if (r.wlTank < cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 10))) {
-                Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTO ==="));
-                Serial.printf("[CRITIQUE] Réservoir: %d mm (OK)\n", r.wlTank);
-                tankPumpLocked = false;
-                tankPumpRetries = 0;
-                emailTankSent = false;
-                emailTankStartSent = false;
-                emailTankStopSent = false;
-                _tankPumpLockReason = TankPumpLockReason::NONE;
-                lastRecoveryAttempt = currentMillisLocal;
-                Serial.println(F("[CRITIQUE] Pompe débloquée"));
-            }
-        }
+    // C4: décision de récupération auto déléguée à RefillRecovery (pure, testée).
+    // L'horodatage de la dernière tentative est un membre (_lastRecoveryAttemptMs), plus un static.
+    const uint32_t nowMs = millis();
+    const uint16_t okThr = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 10));
+    if (RefillRecovery::shouldRecover(tankPumpLocked, tankPumpRetries, MAX_PUMP_RETRIES,
+                                      nowMs, _lastRecoveryAttemptMs, 30UL * 1000UL,
+                                      r.wlTank, okThr)) {
+        Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTO ==="));
+        Serial.printf("[CRITIQUE] Réservoir: %d mm (OK)\n", r.wlTank);
+        tankPumpLocked = false;
+        tankPumpRetries = 0;
+        emailTankSent = false;
+        emailTankStartSent = false;
+        emailTankStopSent = false;
+        _tankPumpLockReason = TankPumpLockReason::NONE;
+        _lastRecoveryAttemptMs = nowMs;
+        Serial.println(F("[CRITIQUE] Pompe débloquée"));
     }
 }
 

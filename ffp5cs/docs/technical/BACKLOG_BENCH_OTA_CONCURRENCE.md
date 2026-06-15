@@ -321,7 +321,19 @@ Dernière décision de `handleRefillMaxDurationStop` extraite :
 
 ⚠️ **Banc requis** : l'intégration arrête/verrouille la pompe réellement ; seule la décision est CI-testée.
 
-➡️ **Bilan refill** : **les 5 décisions** de la pompe de remplissage sont désormais extraites et testées
-nativement — démarrage (`RefillStart`), durée/anomalie (`RefillDuration`), efficacité/retry
-(`RefillEfficiency`), sécurité trop-plein (`RefillOverfill`) + réserve-basse (`ReservoirLowSecurity`,
-déjà sur master). `handleRefill*` ne contient plus que l'orchestration et les effets de bord.
+#### C4 — Contrôleur refill : récupération auto `RefillRecovery` (déblocage après inefficacité)
+- Nouveau module `include/automatism/refill_recovery.h` (`RefillRecovery::shouldRecover`) : retente le
+  déverrouillage si verrouillé + essais épuisés + debounce 30 s écoulé + réserve franchement OK
+  (distance < seuil − marge). Pure → `g++`. Arithmétique non signée (gère wrap millis()).
+- `handleRefillAutomaticRecovery` délègue la décision ; déverrouillage + reset essais/flags email + logs
+  restent dans l'appelant. **Smell supprimé** : le `static lastRecoveryAttempt` devient un membre
+  `_lastRecoveryAttemptMs` (comme `ReservoirLowSecurity`).
+- Suite native `test/test_refill_recovery/`. Parité exhaustive vs ancien code en local (286/286). CI + ini.
+
+⚠️ **Banc requis** : l'intégration déverrouille la pompe réellement ; seule la décision est CI-testée.
+
+➡️ **Bilan refill (complet)** : **les 6 décisions** de la pompe de remplissage sont extraites et testées
+nativement — réserve-basse (`ReservoirLowSecurity`), démarrage (`RefillStart`), durée/anomalie
+(`RefillDuration`), efficacité/retry (`RefillEfficiency`), sécurité trop-plein (`RefillOverfill`),
+récupération auto (`RefillRecovery`). `handleRefill*` ne contient plus que l'orchestration et les E/S
+(pompe/email/sync), toute la logique de décision étant sortie et couverte par des tests purs.
