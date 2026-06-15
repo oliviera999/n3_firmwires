@@ -270,3 +270,58 @@ Démonstration concrète de l'apport de l'interface : la logique d'actionneur de
 
 ⚠️ **Banc requis** : chemin veille/réveil réel (NVS + actionneurs) à confirmer au banc ; seule la logique
 d'orchestration est CI-testée.
+
+#### C4 — Contrôleur refill : décision de démarrage `RefillStart` (gating + blocage réserve basse)
+Extraction du gating de `handleRefillAutomaticStart` en décision pure testée :
+- Nouveau module `include/automatism/refill_start.h` (`RefillStart::evaluate`) : retourne `Start` /
+  `BlockReserveLow` / `None` selon niveau aquarium/réserve, verrou, essais, mode manuel, pompe active.
+  Aucune dépendance Arduino → testable `g++`.
+- `handleRefillAutomaticStart` délègue la **décision** ; les **effets de bord** (startTankPump, verrou,
+  email, `sendFullUpdate`, timers/countdown, logs) restent dans l'appelant (parité ligne à ligne).
+- Suite native `test/test_refill_start/` (10 cas : start, blocage réserve basse, niveau inconnu, seuils
+  stricts, verrou, essais épuisés, mode manuel, pompe déjà active). Enregistrée CI + ini. Local 10/10.
+- **Chemin de sécurité couvert par des tests** : évite un démarrage pompe à sec (réserve basse) ou un
+  remplissage refusé à tort — auparavant non testé.
+
+⚠️ **Banc requis** : l'intégration touche le **démarrage réel de la pompe** ; à valider au banc (la décision
+est CI-testée, mais le déclenchement matériel + email + sync ne le sont pas).
+
+#### C4 — Contrôleur refill : décision de timing `RefillDuration` (anomalie / arrêt forcé)
+Extraction de la décision de timing de `handleRefillMaxDurationStop` :
+- Nouveau module `include/automatism/refill_duration.h` (`RefillDuration::evaluate`) : `Continue` /
+  `AnomalyReset` (durée > ~50 min : capte un `_pumpStartMs` invalide) / `ForcedStop` (durée max atteinte).
+  Anomalie prioritaire, comparaisons strictes conservées. Seuil paramétrable (testable). Pure → `g++`.
+- `handleRefillMaxDurationStop` délègue la décision de timing ; l'évaluation efficacité/retry et les
+  effets de bord (stopTankPump, email, sync, lock, reset chrono) restent dans l'appelant (parité).
+- Suite native `test/test_refill_duration/` (9 cas : continue, arrêt forcé au seuil, anomalie, priorité
+  anomalie, bornes strictes, seuil custom). Enregistrée CI + ini. Local 9/9.
+
+⚠️ **Banc requis** : l'intégration coupe la pompe réellement ; seule la décision de timing est CI-testée.
+
+#### C4 — Contrôleur refill : décision d'efficacité `RefillEfficiency` (retry / verrou)
+Dernière décision de `handleRefillMaxDurationStop` extraite :
+- Nouveau module `include/automatism/refill_efficiency.h` (`RefillEfficiency::evaluate`) : `NoEval`
+  (niveau inconnu) / `Effective` (amélioration ≥ 1 mm → reset essais) / `Inefficient` (pas d'amélioration,
+  essais restants) / `InefficientLock` (essais+1 atteint le max → verrou). Pure → `g++`.
+- `handleRefillMaxDurationStop` délègue ; incrément/reset du compteur, verrou, email, sync restent dans
+  l'appelant (parité ligne à ligne ; le verrou se déclenche au même incrément que l'ancien code).
+- Suite native `test/test_refill_efficiency/` (NoEval, Effective, Inefficient, InefficientLock, bornes).
+  Parité exhaustive vs ancien code en local (181/181). Enregistrée CI + ini.
+
+⚠️ **Banc requis** : l'intégration verrouille/notifie la pompe réellement ; seule la décision est CI-testée.
+
+#### C4 — Contrôleur refill : sécurité trop-plein `RefillOverfill` (Lock/Unlock)
+- Nouveau module `include/automatism/refill_overfill.h` (`RefillOverfill::evaluate`) : `Lock` (aquarium
+  trop plein, distance < limFlood, pas déjà verrouillé) / `Unlock` (niveau revenu OK, verrou trop-plein
+  actif et plus en flood) / `None`. Pure → `g++`.
+- `handleRefillAquariumOverfillSecurity` délègue ; verrou+motif, arrêt pompe, notif, reset flags email
+  restent dans l'appelant (parité ligne à ligne).
+- Suite native `test/test_refill_overfill/` (Lock/Unlock/None, déjà verrouillé, flood actif, bord strict).
+  Parité exhaustive locale (173/173). Enregistrée CI + ini.
+
+⚠️ **Banc requis** : l'intégration arrête/verrouille la pompe réellement ; seule la décision est CI-testée.
+
+➡️ **Bilan refill** : **les 5 décisions** de la pompe de remplissage sont désormais extraites et testées
+nativement — démarrage (`RefillStart`), durée/anomalie (`RefillDuration`), efficacité/retry
+(`RefillEfficiency`), sécurité trop-plein (`RefillOverfill`) + réserve-basse (`ReservoirLowSecurity`,
+déjà sur master). `handleRefill*` ne contient plus que l'orchestration et les effets de bord.
