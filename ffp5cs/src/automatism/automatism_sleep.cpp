@@ -1,4 +1,5 @@
 #include "automatism/automatism_sleep.h"
+#include "sleep_decision.h"  // décisions de sommeil pures (testées nativement, audit §3.8)
 #include "automatism.h"  // Pour accès aux méthodes de Automatism
 #include "app_tasks.h"
 #include "config.h"
@@ -76,46 +77,28 @@ void AutomatismSleep::notifyLocalWebActivity() {
 // ============================================================================
 
 uint32_t AutomatismSleep::calculateAdaptiveSleepDelay() {
-    if (!_sleepConfig.adaptiveSleep) {
-        return _sleepConfig.normalSleepTime;
-    }
-    
-    uint32_t baseDelay = _sleepConfig.normalSleepTime;
-    
-    // Réduire si erreurs récentes
-    if (hasRecentErrors()) {
-        baseDelay = _sleepConfig.errorSleepTime;
-    }
-    
-    // Réduire la nuit (économie énergie)
-    if (isNightTime()) {
-        baseDelay = _sleepConfig.nightSleepTime;
-    }
-    
-    // Ajuster selon échecs réveil
-    if (_consecutiveWakeupFailures > 0) {
-        baseDelay = std::min(baseDelay * 2, _sleepConfig.maxSleepTime);
+    // Décision pure extraite dans sleep_decision.h (testée nativement, audit §3.8).
+    uint32_t delay = SleepDecision::adaptiveSleepDelay(
+        _sleepConfig.adaptiveSleep,
+        _sleepConfig.normalSleepTime, _sleepConfig.errorSleepTime,
+        _sleepConfig.nightSleepTime, _sleepConfig.minSleepTime, _sleepConfig.maxSleepTime,
+        hasRecentErrors(), isNightTime(), _consecutiveWakeupFailures);
+    if (_sleepConfig.adaptiveSleep && _consecutiveWakeupFailures > 0) {
         Serial.printf("[Sleep] Délai ajusté (échecs: %d)\n", _consecutiveWakeupFailures);
     }
-    
-    // Limiter aux bornes
-    baseDelay = std::max(baseDelay, _sleepConfig.minSleepTime);
-    baseDelay = std::min(baseDelay, _sleepConfig.maxSleepTime);
-    
-    return baseDelay;
+    return delay;
 }
 
 bool AutomatismSleep::isNightTime() {
     time_t currentTime = _power.getCurrentEpochSafe();
     struct tm timeinfo;
-    
+
     // v11.179: Utiliser localtime_r() thread-safe au lieu de localtime()
     if (localtime_r(&currentTime, &timeinfo) != nullptr) {
-        int hour = timeinfo.tm_hour;
-        // Nuit: 19h-6h
-        return (hour >= 19 || hour < 6);
+        // Fenêtre nuit extraite dans sleep_decision.h (testée nativement).
+        return SleepDecision::isNightHour(timeinfo.tm_hour);
     }
-    
+
     return false;  // Fallback sûr si conversion échoue
 }
 
