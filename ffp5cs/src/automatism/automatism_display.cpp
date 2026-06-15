@@ -4,6 +4,7 @@
 #include "automatism.h"
 #include "automatism/flood_alert.h"  // C4: machine d'état anti-spam trop-plein (pure, testée)
 #include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
+#include "automatism/heater_orchestrator.h"  // C4: orchestrateur chauffage (effets de bord, testable)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
@@ -29,9 +30,8 @@ static void formatDistanceAlert(char* buffer, size_t bufferSize, const char* pre
                                 float distance, const char* suffix, float threshold) {
   snprintf(buffer, bufferSize, "%s%.1f mm (%s%.1f)", prefix, distance, suffix, threshold);
 }
-static void formatTemperatureAlert(char* buffer, size_t bufferSize, const char* prefix, float temp) {
-  snprintf(buffer, bufferSize, "%s%.1f°C", prefix, temp);
-}
+// (formatTemperatureAlert retiré : le formatage du mail chauffage vit désormais dans
+//  HeaterOrchestrator — plus d'usage local.)
 static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm); }
 }  // namespace
 
@@ -133,29 +133,13 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         armMailBlink();
     }
 
-    // C4: décision de régulation chauffage déléguée à la machine pure HeaterControl
-    // (hystérésis 2 °C). Les effets de bord (relais, email, blink, heaterPrevState)
-    // restent ici.
-    const HeaterControl::Decision heaterDecision = HeaterControl::evaluate(
-        readings.tempWater, _network.getHeaterThresholdC(), /*hysteresisC=*/2.0f, heaterPrevState);
-    if (heaterDecision == HeaterControl::Decision::TurnOn) {
-        _acts.startHeater();
-        heaterPrevState = true;
-        if (mailEnabled) {
-            char msgBuffer[64];
-            formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", readings.tempWater);
-            _mailer.sendAlert("Chauffage ON", msgBuffer, _network.getEmailAddress());
-            armMailBlink();
-        }
-    } else if (heaterDecision == HeaterControl::Decision::TurnOff) {
-        _acts.stopHeater();
-        heaterPrevState = false;
-        if (mailEnabled) {
-            char msgBuffer[64];
-            formatTemperatureAlert(msgBuffer, sizeof(msgBuffer), "Temp eau: ", readings.tempWater);
-            _mailer.sendAlert("Chauffage OFF", msgBuffer, _network.getEmailAddress());
-            armMailBlink();
-        }
+    // C4: régulation chauffage déléguée à l'orchestrateur HeaterOrchestrator (testable
+    // nativement via IActuators/IMailer). La décision reste dans HeaterControl (pur).
+    // run() renvoie true si un mail a été envoyé -> on déclenche alors le blink OLED.
+    if (HeaterOrchestrator::run(_acts, _mailer, heaterPrevState,
+                                readings.tempWater, _network.getHeaterThresholdC(),
+                                /*hysteresisC=*/2.0f, mailEnabled, _network.getEmailAddress())) {
+        armMailBlink();
     }
 
     if (esp_task_wdt_status(NULL) == ESP_OK) {
