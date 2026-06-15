@@ -285,3 +285,15 @@ Extraction du gating de `handleRefillAutomaticStart` en décision pure testée :
 
 ⚠️ **Banc requis** : l'intégration touche le **démarrage réel de la pompe** ; à valider au banc (la décision
 est CI-testée, mais le déclenchement matériel + email + sync ne le sont pas).
+
+#### C4 — Contrôleur refill : décision de timing `RefillDuration` (anomalie / arrêt forcé)
+Extraction de la décision de timing de `handleRefillMaxDurationStop` :
+- Nouveau module `include/automatism/refill_duration.h` (`RefillDuration::evaluate`) : `Continue` /
+  `AnomalyReset` (durée > ~50 min : capte un `_pumpStartMs` invalide) / `ForcedStop` (durée max atteinte).
+  Anomalie prioritaire, comparaisons strictes conservées. Seuil paramétrable (testable). Pure → `g++`.
+- `handleRefillMaxDurationStop` délègue la décision de timing ; l'évaluation efficacité/retry et les
+  effets de bord (stopTankPump, email, sync, lock, reset chrono) restent dans l'appelant (parité).
+- Suite native `test/test_refill_duration/` (9 cas : continue, arrêt forcé au seuil, anomalie, priorité
+  anomalie, bornes strictes, seuil custom). Enregistrée CI + ini. Local 9/9.
+
+⚠️ **Banc requis** : l'intégration coupe la pompe réellement ; seule la décision de timing est CI-testée.

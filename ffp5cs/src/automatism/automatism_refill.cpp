@@ -4,6 +4,7 @@
 #include "automatism.h"
 #include "automatism/threshold_util.h"  // C4: soustraction saturée seuil-marge (pure, testée)
 #include "automatism/refill_start.h"  // C4: décision démarrage remplissage (pure, testée)
+#include "automatism/refill_duration.h"  // C4: décision timing remplissage (pure, testée)
 #include "config.h"
 #include "mailer.h"
 #include <Arduino.h>
@@ -164,15 +165,16 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
     const uint32_t elapsedMs = nowMs - _pumpStartMs;
     const uint32_t maxMs = refillDurationMs;
     
-    // Détection anomalie timing (>50 min = 3000000ms)
-    // Cela détecte aussi les cas où _pumpStartMs était invalide
-    if (elapsedMs > 3000000UL) {
+    // C4: décision de timing (anomalie / continuer / arrêt forcé) déléguée à RefillDuration (pure, testée).
+    const RefillDuration::Decision durDec = RefillDuration::evaluate(elapsedMs, maxMs);
+    if (durDec == RefillDuration::Decision::AnomalyReset) {
+        // Anomalie timing (>50 min) ; détecte aussi un _pumpStartMs invalide.
         Serial.printf("[CRITIQUE] Anomalie timing: elapsed=%u ms, reset\n", (unsigned)elapsedMs);
         _pumpStartMs = nowMs;
         return;
     }
-    
-    if (elapsedMs < maxMs) return;
+    if (durDec == RefillDuration::Decision::Continue) return;
+    // ForcedStop -> on poursuit l'arrêt forcé ci-dessous.
 
     // Arrêt forcé
     Serial.println(F("[CRITIQUE] === ARRÊT FORCÉ REMPLISSAGE ==="));
