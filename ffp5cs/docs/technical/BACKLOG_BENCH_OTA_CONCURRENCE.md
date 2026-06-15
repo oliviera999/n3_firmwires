@@ -368,3 +368,17 @@ compilation. Aucun changement de logique — seulement le mécanisme d'appel. À
 ### Étape suivante (proposée)
 Avec `IActuators` + `IMailer` (+ un futur `IClock`/`INetSender`), extraire l'**orchestration** restante
 (`handleAlerts`, `finalizeFeedingIfNeeded`, blocage sleep) en contrôleurs testables nativement.
+
+#### C4 — 1er ORCHESTRATEUR à effets de bord testé : `HeaterOrchestrator`
+Concrétisation du chantier `IActuators`+`IMailer` : la régulation chauffage de `handleAlerts` (relais +
+mail + blink) est extraite en orchestrateur **testable nativement** (≠ simple décision pure).
+- Nouveau `include/automatism/heater_orchestrator.h` (`HeaterOrchestrator::run`) : décide via
+  `HeaterControl` (pur) puis exécute via `IActuators`/`IMailer`. Met à jour `heaterPrevState` ; renvoie
+  true si un mail a été envoyé → l'appelant déclenche le blink (seul effet non interfacé).
+- `handleAlerts` délègue tout le bloc chauffage à `run()`. Dead code retiré (`formatTemperatureAlert`).
+- Suite native `test/test_heater_orchestrator/` avec `FakeActuators` + `FakeMailer` : vérifie le **câblage
+  complet** (bon relais + bon sujet de mail + blink suit le mail + bande morte/no-retrigger). Local 20/20.
+- **C'est le premier bout d'orchestration (effets de bord) couvert par des tests** — la valeur cible du
+  chantier. Patron réutilisable pour `finalizeFeedingIfNeeded`, alertes niveau, etc.
+
+⚠️ **Banc requis** : l'intégration commute le relais chauffage réel ; seul le câblage logique est CI-testé.
