@@ -382,3 +382,18 @@ mail + blink) est extraite en orchestrateur **testable nativement** (≠ simple 
   chantier. Patron réutilisable pour `finalizeFeedingIfNeeded`, alertes niveau, etc.
 
 ⚠️ **Banc requis** : l'intégration commute le relais chauffage réel ; seul le câblage logique est CI-testé.
+
+#### C4 — Orchestrateurs alertes : `LevelAlertOrchestrator` + `FloodOrchestrator`
+Sur le patron de `HeaterOrchestrator`, les alertes de `handleAlerts` sont extraites en orchestrateurs
+testables nativement :
+- `level_alert_orchestrator.h` (`run`) : alertes niveau aquarium/réserve (Raise/Clear via `IMailer`),
+  générique (clearSubject=nullptr pour l'aquarium). Test `test_level_alert_orchestrator/` (16/16 local).
+- `flood_orchestrator.h` (`run`) : trop-plein. Décision `FloodAlert` (pure) + envoi `IMailer` + markEmailSent ;
+  renvoie un `Outcome` (EmailQueued/EmailFailed/ExitedFlood/None) → l'appelant applique NVS/blink/flag/logs.
+  epoch + pompe-verrouillée passés en paramètres (pas besoin d'`IClock`). Message reproduit à l'identique
+  (format historique + « / Pompe verrouillée »). Test `test_flood_orchestrator/` (6 cas, 16/16 local).
+- `handleAlerts` ne contient plus de logique d'alerte inline : tout est délégué (niveau, flood, chauffage)
+  à des orchestrateurs CI-testés. Dead code retiré (`formatDistanceAlert`, `formatTemperatureAlert`).
+
+⚠️ **Banc requis** : ces orchestrateurs envoient des mails / commutent des relais réels ; seul le câblage
+logique est CI-testé. **`handleAlerts` est désormais entièrement décomposé en unités testables.**

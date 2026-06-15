@@ -6,6 +6,7 @@
 #include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
 #include "automatism/heater_orchestrator.h"  // C4: orchestrateur chauffage (effets de bord, testable)
 #include "automatism/level_alert_orchestrator.h"  // C4: orchestrateur alertes niveau (effets de bord, testable)
+#include "automatism/flood_orchestrator.h"  // C4: orchestrateur trop-plein (effets de bord, testable)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
@@ -27,12 +28,8 @@
 extern ConfigManager config;  // global (idem automatism.cpp via headers)
 
 namespace {
-static void formatDistanceAlert(char* buffer, size_t bufferSize, const char* prefix,
-                                float distance, const char* suffix, float threshold) {
-  snprintf(buffer, bufferSize, "%s%.1f mm (%s%.1f)", prefix, distance, suffix, threshold);
-}
-// (formatTemperatureAlert retiré : le formatage du mail chauffage vit désormais dans
-//  HeaterOrchestrator — plus d'usage local.)
+// (formatDistanceAlert / formatTemperatureAlert retirés : le formatage des mails d'alerte
+//  vit désormais dans les orchestrateurs Level/Flood/Heater — plus d'usage local.)
 static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm); }
 }  // namespace
 
@@ -82,33 +79,25 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     floodP.cooldownSec = floodCooldownMin * 60UL;
     floodP.resetStableSec = floodResetStableMin * 60UL;
 
-    FloodAlert::Decision floodDecision =
-        FloodAlert::evaluate(floodSt, readings.wlAqua, nowEpoch, floodP, mailEnabled);
-    // Recopier l'état mis à jour (horodatages, et inFlood en cas de sortie).
+    // Orchestrateur flood (testable via IMailer) : evaluate + envoi + markEmailSent.
+    // Effets non interfacés (NVS/blink/flag/logs) appliqués ici selon l'Outcome.
+    const FloodOrchestrator::Outcome floodOutcome = FloodOrchestrator::run(
+        _mailer, floodSt, floodP, readings.wlAqua, nowEpoch, mailEnabled,
+        _network.getEmailAddress(), (tankPumpLocked || _config.getPompeAquaLocked()));
+    // Recopier l'état mis à jour (horodatages + inFlood/lastFloodEmailEpoch post-markEmailSent).
     inFlood = floodSt.inFlood;
     floodEnterSinceEpoch = floodSt.floodEnterSinceEpoch;
     aboveResetSinceEpoch = floodSt.aboveResetSinceEpoch;
     lastFloodEmailEpoch = floodSt.lastFloodEmailEpoch;
 
-    if (floodDecision == FloodAlert::Decision::SendFloodEmail) {
-        char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (< ", cmToMm(_network.getLimFlood()));
-        if (tankPumpLocked || _config.getPompeAquaLocked()) {
-            strncat(msgBuffer, " / Pompe verrouillée", sizeof(msgBuffer) - strlen(msgBuffer) - 1);
-        }
-        bool sent = _mailer.sendAlert("Alerte - Aquarium TROP PLEIN", msgBuffer, _network.getEmailAddress());
-        if (sent) {
-            FloodAlert::markEmailSent(floodSt, nowEpoch);
-            inFlood = floodSt.inFlood;
-            lastFloodEmailEpoch = floodSt.lastFloodEmailEpoch;
-            _highAquaSent = true;
-            armMailBlink();
-            g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
-            Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
-        } else {
-            Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
-        }
-    } else if (floodDecision == FloodAlert::Decision::ExitFlood) {
+    if (floodOutcome == FloodOrchestrator::Outcome::EmailQueued) {
+        _highAquaSent = true;
+        armMailBlink();
+        g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
+        Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
+    } else if (floodOutcome == FloodOrchestrator::Outcome::EmailFailed) {
+        Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
+    } else if (floodOutcome == FloodOrchestrator::Outcome::ExitedFlood) {
         _highAquaSent = false;
     }
     }
