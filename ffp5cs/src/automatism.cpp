@@ -20,7 +20,7 @@
 // ============================================================================
 
 Automatism::Automatism(SystemSensors& sensors, IActuators& acts, WebClient& web,
-                       DisplayView& disp, PowerManager& power, Mailer& mail, ConfigManager& config)
+                       DisplayView& disp, PowerManager& power, IMailer& mail, ConfigManager& config)
     : _sensors(sensors)
     , _acts(acts)
     , _web(web)

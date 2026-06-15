@@ -337,3 +337,34 @@ nativement — réserve-basse (`ReservoirLowSecurity`), démarrage (`RefillStart
 (`RefillDuration`), efficacité/retry (`RefillEfficiency`), sécurité trop-plein (`RefillOverfill`),
 récupération auto (`RefillRecovery`). `handleRefill*` ne contient plus que l'orchestration et les E/S
 (pompe/email/sync), toute la logique de décision étant sortie et couverte par des tests purs.
+
+---
+
+## 9. Mise à jour 2026-06-15 — C4 inversion de dépendance `IMailer` (PR draft)
+
+Étape **structurante** suivante du découpage : abstraire la **messagerie** derrière une interface, pour
+pouvoir tester l'**orchestration** qui envoie des mails (alertes, fin de nourrissage, veille/réveil) sans
+ESP_Mail_Client / réseau. Même patron que `IActuators`.
+
+### Implémenté (CI-validable, behavior-preserving)
+- Nouvelle interface **`include/imailer.h`** : surface MINIMALE (4 méthodes : `send`, `sendAlert`,
+  `sendSleepMail`, `sendWakeMail`) consommée par le module `automatism` (vérifié par grep exhaustif).
+  En-tête **léger** : `SensorReadings` en déclaration anticipée, aucun `config.h`/`ESP_Mail_Client` ;
+  seul argument par défaut = littéral (`includeDetailedReport=false`) — tous les autres args sont fournis
+  explicitement par les appelants (vérifié, y compris les wrappers `sendSleepMail`/`sendWakeMail`).
+- `Mailer` **implémente** `IMailer` (héritage + `override`). Strictement additif : les autres consommateurs
+  (`web_server`, `app_context`, OTA, global `mailer`) gardent le concret. Global `Mailer mailer;` (pas
+  d'agrégation-init) → vptr sans risque.
+- `Automatism::_mailer` (membre + ctor) et `AutomatismFeedingSchedule` (ctor + membre) retypés
+  `Mailer&` → `IMailer&`. Conversion dérivée→base implicite à la construction (global `mailer`).
+  Comportement inchangé (dispatch virtuel sur le même objet).
+- **Test double `FakeMailer`** + suite native `test/test_imailer/` (dispatch polymorphe, arg par défaut,
+  sleep/wake, destruction virtuelle). Validé local (`g++ -Wall -Wextra`, 7/7). Enregistrée CI + ini.
+
+### ⚠️ Banc requis (chemins matériels)
+Le **dispatch virtuel** sur ESP32 pour les envois mail (chemins alertes/veille) n'est pas prouvé par la
+compilation. Aucun changement de logique — seulement le mécanisme d'appel. À confirmer au banc.
+
+### Étape suivante (proposée)
+Avec `IActuators` + `IMailer` (+ un futur `IClock`/`INetSender`), extraire l'**orchestration** restante
+(`handleAlerts`, `finalizeFeedingIfNeeded`, blocage sleep) en contrôleurs testables nativement.
