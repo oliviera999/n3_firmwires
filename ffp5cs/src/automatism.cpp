@@ -11,6 +11,7 @@
 #include "automatism/feeding_slot_matcher.h"
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
+#include "automatism/feeding_finalize_orchestrator.h"  // C4: sync fin de cycle nourrissage (testable)
 #include <cstring>
 #include <cstdio>
 
@@ -393,25 +394,38 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
     _feedingPhaseEnd = 0;
     _currentFeedingType = nullptr;
 
-    // Tentative de sync distante (non bloquante, avec timeout court)
-    if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-        SensorReadings curReadings = readSensors();
-        bool syncOk = false;
-        if (wasAutomatic) {
-            // Enregistrer l'événement nourrissage auto (gros+petits) pour le graphique serveur
-            syncOk = sendFullUpdate(curReadings, "bouffePetits=1&108=1&bouffeGros=1&109=1");
+    // Tentative de sync distante (non bloquante, avec timeout court).
+    // C4: la décision « quoi publier (auto/manuel) et quel résultat » est extraite dans
+    // FeedingFinalizeOrchestrator (testable nativement via FakeStatusPublisher). WiFi/temps
+    // restent ici (non abstraits) ; readSensors() n'est appelé qu'en ligne ; GPIOParser et
+    // les logs Serial restent dans l'appelant, pilotés par l'Outcome (parité ligne à ligne).
+    const bool connected = WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled();
+    SensorReadings curReadings{};  // valeur-init : seulement lue/publiée si connected
+    if (connected) {
+        curReadings = readSensors();
+    }
+    const FeedingFinalizeOrchestrator::Outcome outcome =
+        FeedingFinalizeOrchestrator::run(connected, wasAutomatic, curReadings, _statusPublisher);
+
+    switch (outcome) {
+        case FeedingFinalizeOrchestrator::Outcome::AutoSynced:
+        case FeedingFinalizeOrchestrator::Outcome::AutoSyncFailed:
             // Évite un faux front 0→1 au poll GET suivant (108/109 repassent à 1 côté BDD)
             GPIOParser::syncFeedEdgeStateAfterLocalPost(true, true);
-            Serial.println(syncOk ? F("[Auto] ✅ Nourrissage auto enregistré (sync distant)") :
-                                     F("[Auto] ⚠️ Nourrissage auto - sync distant échoué"));
-        } else {
-            syncOk = sendFullUpdate(curReadings, "bouffePetits=0&108=0&bouffeGros=0&109=0");
+            Serial.println(outcome == FeedingFinalizeOrchestrator::Outcome::AutoSynced ?
+                               F("[Auto] ✅ Nourrissage auto enregistré (sync distant)") :
+                               F("[Auto] ⚠️ Nourrissage auto - sync distant échoué"));
+            break;
+        case FeedingFinalizeOrchestrator::Outcome::ManualSynced:
+        case FeedingFinalizeOrchestrator::Outcome::ManualSyncFailed:
             GPIOParser::syncFeedEdgeStateAfterLocalPost(false, false);
-            Serial.println(syncOk ? F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)") :
-                                     F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
-        }
-    } else {
-        Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales uniquement - offline)"));
+            Serial.println(outcome == FeedingFinalizeOrchestrator::Outcome::ManualSynced ?
+                               F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)") :
+                               F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
+            break;
+        case FeedingFinalizeOrchestrator::Outcome::Offline:
+            Serial.println(F("[Auto] ✅ Variables nourrissage réinitialisées (locales uniquement - offline)"));
+            break;
     }
 }
 

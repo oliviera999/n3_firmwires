@@ -9,6 +9,7 @@
 #include "mailer.h"
 #include "config.h"
 #include "config_manager.h"
+#include "istatus_publisher.h"  // C4: interface de publication d'état (sendFullUpdate)
 #include "automatism/automatism_feeding_schedule.h"
 #include "automatism/automatism_sync.h"
 #include "automatism/automatism_sleep.h"
@@ -246,6 +247,20 @@ class Automatism {
   AutomatismFeedingSchedule _feedingSchedule;
   AutomatismSync _network;
   AutomatismSleep _sleep;
+
+  // C4: adaptateur IStatusPublisher -> sendFullUpdate. Permet d'injecter les
+  // orchestrateurs qui publient un instantané d'état (ex. FeedingFinalizeOrchestrator)
+  // sans les coupler au concret. Mince forward vers sendFullUpdate(...) (catégorie
+  // POST par défaut = Periodic, parité avec les appels historiques). Testé via un
+  // FakeStatusPublisher côté natif.
+  struct StatusPublisherAdapter : public IStatusPublisher {
+    Automatism& owner;
+    explicit StatusPublisherAdapter(Automatism& o) : owner(o) {}
+    bool publish(const SensorReadings& r, const char* extraPairs) override {
+      return owner.sendFullUpdate(r, extraPairs);
+    }
+  };
+  StatusPublisherAdapter _statusPublisher{*this};
 
   // C4: état debounce de la sécurité réserve basse (remplace 2 static locaux dans
   // handleRefillReservoirLowSecurity). Mono-tâche (autoTask), pas de besoin atomic.

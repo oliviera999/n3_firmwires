@@ -397,3 +397,45 @@ testables nativement :
 
 ⚠️ **Banc requis** : ces orchestrateurs envoient des mails / commutent des relais réels ; seul le câblage
 logique est CI-testé. **`handleAlerts` est désormais entièrement décomposé en unités testables.**
+
+---
+
+## 10. Mise à jour 2026-06-15 — C4 orchestrateur fin de nourrissage `FeedingFinalizeOrchestrator` (PR draft, **BENCH-REQUISE**)
+
+Avant-dernière orchestration couplée matériel rendue testable nativement (cf. cible « 2 dernières
+orchestrations »). `Automatism::finalizeFeedingIfNeeded(nowMs)` poussait, à la vraie fin d'un cycle de
+nourrissage, une **sync distante** (`sendFullUpdate`) avec des paires `extraPairs` différentes selon le
+mode (auto vs manuel) puis appelait `GPIOParser::syncFeedEdgeStateAfterLocalPost(...)` + des logs. Couplages :
+`WiFi.status()`, `readSensors()`, `sendFullUpdate`, `GPIOParser`, `Serial`.
+
+### Approche SCOPÉE & PEU INVASIVE (1 seule petite interface + params + Outcome)
+- **Nouvelle interface MINIMALE `include/istatus_publisher.h`** (1 méthode) :
+  `bool publish(const SensorReadings&, const char* extraPairs)`. En-tête LÉGER (`SensorReadings` en
+  forward-decl, pas de config.h/Arduino). `Automatism` l'implémente via un **mince adaptateur** nested
+  (`StatusPublisherAdapter{*this}`) qui forwarde vers son `sendFullUpdate(...)` existant (catégorie POST
+  par défaut = `Periodic`, parité avec l'appel historique). Strictement additif (aucun autre consommateur
+  touché).
+- **`WiFi.status()` non abstrait** : l'appelant calcule `connected = WiFi.status()==WL_CONNECTED &&
+  _config.isRemoteSendEnabled()` et le passe en **paramètre** ; `readSensors()` n'est appelé **que** si
+  `connected` (parité : aucune lecture capteur hors-ligne).
+- **`GPIOParser` non abstrait** : l'orchestrateur renvoie un `Outcome`
+  (`Offline`/`AutoSynced`/`AutoSyncFailed`/`ManualSynced`/`ManualSyncFailed`) ; l'appelant appelle
+  `syncFeedEdgeStateAfterLocalPost(true,true)` (auto) ou `(false,false)` (manuel) et imprime le **message
+  Serial historique** selon l'Outcome (parité ligne à ligne, chaînes reproduites à l'identique).
+- **Gate + reset des membres d'état** (flags `_manualFeedingActive`, `_currentFeedingPhase`,
+  `_feedingPhaseEnd`, `_currentFeedingType`) restent dans l'appelant (offline-first inchangé).
+
+### Tests natifs (`test/test_feeding_finalize/`, 7 cas — local 7/7, `-Wall -Wextra`)
+`FakeStatusPublisher` (enregistre les `extraPairs` reçus) : hors-ligne auto/manuel (aucune publication),
+en-ligne auto/manuel × sync OK/échec (Outcome + **parité exacte** des paires
+`bouffePetits=1&108=1&bouffeGros=1&109=1` / `…=0`), + assertion des constantes. Enregistrée CI + ini.
+
+### ⚠️ Banc requis (chemin nourrissage / sync réseau)
+L'intégration pousse un **POST réel** (évènement nourrissage côté BDD serveur) + appelle GPIOParser sur le
+matériel ; seul le câblage logique (quelles paires partent, dans quel cas) est CI-testé. À valider sur banc :
+enregistrement correct du nourrissage auto vs manuel, absence de faux front 0→1 au poll GET suivant.
+
+### Reste (dernière cible)
+`AutomatismSleep::handleBlockingConditions(...)` — machine à état veille (timestamps membres). Extraction de
+la **décision de blocage** à évaluer prudemment (chemin veille = risque batterie/réveil) ; documenter et
+s'arrêter si le couplage reste trop fort pour une parité sûre.
