@@ -2,6 +2,7 @@
 // (sécurités trop-plein/niveau-bas, démarrage/arrêt auto, durée max, récupération).
 // Extrait de automatism.cpp (audit : découpe par responsabilité). Comportement identique.
 #include "automatism.h"
+#include "automatism/threshold_util.h"  // C4: soustraction saturée seuil-marge (pure, testée)
 #include "config.h"
 #include "mailer.h"
 #include <Arduino.h>
@@ -238,7 +239,7 @@ void Automatism::handleRefillReservoirLowSecurity(const SensorReadings& r) {
     // remplace les anciens static locaux). Les effets de bord restent ici.
     const uint16_t thrCm  = _network.getTankThresholdCm();
     const uint16_t lowThr = cmToMm(thrCm);
-    const uint16_t okThr  = cmToMm((thrCm > 5) ? (thrCm - 5) : 0);
+    const uint16_t okThr  = cmToMm(ThresholdUtil::subSat(thrCm, 5));
 
     const ReservoirLowSecurity::Decision d =
         ReservoirLowSecurity::evaluate(_reservoirLowState, r.wlTank, lowThr, okThr, tankPumpLocked);
@@ -279,7 +280,7 @@ void Automatism::handleRefillAutomaticRecovery(const SensorReadings& r) {
     if (tankPumpLocked && tankPumpRetries >= MAX_PUMP_RETRIES) {
         unsigned long currentMillisLocal = millis();
         if (currentMillisLocal - lastRecoveryAttempt > 30 * 1000UL) {
-            if (r.wlTank < cmToMm((_network.getTankThresholdCm() > 10) ? (_network.getTankThresholdCm() - 10) : 0)) {
+            if (r.wlTank < cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 10))) {
                 Serial.println(F("[CRITIQUE] === RÉCUPÉRATION AUTO ==="));
                 Serial.printf("[CRITIQUE] Réservoir: %d mm (OK)\n", r.wlTank);
                 tankPumpLocked = false;
