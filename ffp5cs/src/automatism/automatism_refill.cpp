@@ -6,6 +6,7 @@
 #include "automatism/refill_start.h"  // C4: décision démarrage remplissage (pure, testée)
 #include "automatism/refill_duration.h"  // C4: décision timing remplissage (pure, testée)
 #include "automatism/refill_efficiency.h"  // C4: décision efficacité/retry remplissage (pure, testée)
+#include "automatism/refill_overfill.h"  // C4: décision sécurité trop-plein (pure, testée)
 #include "config.h"
 #include "mailer.h"
 #include <Arduino.h>
@@ -20,33 +21,34 @@ static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm
 
 
 void Automatism::handleRefillAquariumOverfillSecurity(const SensorReadings& r) {
-    if (!SensorValidation::isWaterLevelKnown(r.wlAqua)) {
-        return;
-    }
-    if (r.wlAqua < cmToMm(_network.getLimFlood())) {
-        if (!tankPumpLocked || _tankPumpLockReason != TankPumpLockReason::AQUARIUM_OVERFILL) {
-            tankPumpLocked = true;
-            _tankPumpLockReason = TankPumpLockReason::AQUARIUM_OVERFILL;
-            if (_acts.isTankPumpRunning()) {
-                _acts.stopTankPump(_pumpStartMs);
-                _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
-                _countdownEnd = 0;
-                if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
-                    sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
-                    Serial.println(F("[Auto] Arrêt sécurité notifié - pump_tank=0"));
-                }
+    // C4: décision de sécurité trop-plein déléguée à RefillOverfill (pure, testée).
+    // Les effets de bord (verrou + motif, arrêt pompe, notif, reset flags email) restent ici.
+    const bool lockedForOverfill =
+        tankPumpLocked && _tankPumpLockReason == TankPumpLockReason::AQUARIUM_OVERFILL;
+    const RefillOverfill::Decision d = RefillOverfill::evaluate(
+        SensorValidation::isWaterLevelKnown(r.wlAqua), r.wlAqua,
+        cmToMm(_network.getLimFlood()), lockedForOverfill, inFlood);
+
+    if (d == RefillOverfill::Decision::Lock) {
+        tankPumpLocked = true;
+        _tankPumpLockReason = TankPumpLockReason::AQUARIUM_OVERFILL;
+        if (_acts.isTankPumpRunning()) {
+            _acts.stopTankPump(_pumpStartMs);
+            _lastTankStopReason = TankPumpStopReason::OVERFLOW_SECURITY;
+            _countdownEnd = 0;
+            if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled()) {
+                sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
+                Serial.println(F("[Auto] Arrêt sécurité notifié - pump_tank=0"));
             }
-            Serial.println(F("[CRITIQUE] Aquarium trop plein - pompe verrouillée"));
         }
-    } else {
-        if (tankPumpLocked && _tankPumpLockReason == TankPumpLockReason::AQUARIUM_OVERFILL && !inFlood) {
-            tankPumpLocked = false;
-            _tankPumpLockReason = TankPumpLockReason::NONE;
-            emailTankSent = false;
-            emailTankStartSent = false;
-            emailTankStopSent = false;
-            Serial.println(F("[Auto] Pompe déverrouillée (aquarium OK)"));
-        }
+        Serial.println(F("[CRITIQUE] Aquarium trop plein - pompe verrouillée"));
+    } else if (d == RefillOverfill::Decision::Unlock) {
+        tankPumpLocked = false;
+        _tankPumpLockReason = TankPumpLockReason::NONE;
+        emailTankSent = false;
+        emailTankStartSent = false;
+        emailTankStopSent = false;
+        Serial.println(F("[Auto] Pompe déverrouillée (aquarium OK)"));
     }
 }
 

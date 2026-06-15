@@ -310,6 +310,18 @@ Dernière décision de `handleRefillMaxDurationStop` extraite :
 
 ⚠️ **Banc requis** : l'intégration verrouille/notifie la pompe réellement ; seule la décision est CI-testée.
 
-➡️ **Bilan refill** : les 3 décisions clés de la pompe de remplissage sont désormais extraites et testées
+#### C4 — Contrôleur refill : sécurité trop-plein `RefillOverfill` (Lock/Unlock)
+- Nouveau module `include/automatism/refill_overfill.h` (`RefillOverfill::evaluate`) : `Lock` (aquarium
+  trop plein, distance < limFlood, pas déjà verrouillé) / `Unlock` (niveau revenu OK, verrou trop-plein
+  actif et plus en flood) / `None`. Pure → `g++`.
+- `handleRefillAquariumOverfillSecurity` délègue ; verrou+motif, arrêt pompe, notif, reset flags email
+  restent dans l'appelant (parité ligne à ligne).
+- Suite native `test/test_refill_overfill/` (Lock/Unlock/None, déjà verrouillé, flood actif, bord strict).
+  Parité exhaustive locale (173/173). Enregistrée CI + ini.
+
+⚠️ **Banc requis** : l'intégration arrête/verrouille la pompe réellement ; seule la décision est CI-testée.
+
+➡️ **Bilan refill** : **les 5 décisions** de la pompe de remplissage sont désormais extraites et testées
 nativement — démarrage (`RefillStart`), durée/anomalie (`RefillDuration`), efficacité/retry
-(`RefillEfficiency`) — en plus de la sécurité réserve-basse (`ReservoirLowSecurity`) déjà sur master.
+(`RefillEfficiency`), sécurité trop-plein (`RefillOverfill`) + réserve-basse (`ReservoirLowSecurity`,
+déjà sur master). `handleRefill*` ne contient plus que l'orchestration et les effets de bord.
