@@ -27,8 +27,8 @@ struct AutomatismRuntimeContext {
 
 class Automatism {
  public:
-  Automatism(SystemSensors& sensors, SystemActuators& acts, 
-             WebClient& web, DisplayView& disp, 
+  Automatism(SystemSensors& sensors, IActuators& acts,
+             WebClient& web, DisplayView& disp,
              PowerManager& power, Mailer& mail, ConfigManager& config);
   void begin();
   void update();               // collecte interne des capteurs
@@ -120,8 +120,8 @@ class Automatism {
   void waitForNetworkReady();
 
   // Veille légère : couper aqua/chauffage/lumière avant sleep, restaurer au réveil (snapshot NVS)
-  void prepareActuatorsForSleep(SystemActuators& acts);
-  void restoreActuatorsAfterWake(SystemActuators& acts);
+  void prepareActuatorsForSleep(IActuators& acts);
+  void restoreActuatorsAfterWake(IActuators& acts);
 
   // Observabilité sync POST (exposé dans /api/status)
   uint32_t getSyncPostOkCount() const { return _network.getPostOkCount(); }
@@ -235,7 +235,7 @@ class Automatism {
   void updateBusinessLogic(const SensorReadings& r, uint32_t nowMs);
 
   SystemSensors& _sensors;
-  SystemActuators& _acts;
+  IActuators& _acts;
   WebClient& _web;
   DisplayView& _disp;
   PowerManager& _power;

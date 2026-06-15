@@ -17,7 +17,7 @@
 // Responsabilité: Coordonner les modules spécialisés
 // ============================================================================
 
-Automatism::Automatism(SystemSensors& sensors, SystemActuators& acts, WebClient& web, 
+Automatism::Automatism(SystemSensors& sensors, IActuators& acts, WebClient& web,
                        DisplayView& disp, PowerManager& power, Mailer& mail, ConfigManager& config)
     : _sensors(sensors)
     , _acts(acts)
@@ -665,7 +665,7 @@ void Automatism::markCurrentFeedingSlotAsDone() {
 
 // Sous-fonction: Sécurité aquarium trop plein
 
-void Automatism::restoreActuatorsAfterWake(SystemActuators& acts) {
+void Automatism::restoreActuatorsAfterWake(IActuators& acts) {
     bool restoreAqua, restoreHeater, restoreLight;
     if (!loadActuatorSnapshotFromNVS(restoreAqua, restoreHeater, restoreLight)) {
         return;

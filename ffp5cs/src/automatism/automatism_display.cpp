@@ -399,7 +399,7 @@ void Automatism::clearActuatorSnapshotInNVS() {
     Serial.println("[Auto] Snapshot actionneurs effacé");
 }
 
-void Automatism::prepareActuatorsForSleep(SystemActuators& acts) {
+void Automatism::prepareActuatorsForSleep(IActuators& acts) {
     bool aquaOn = acts.isAquaPumpRunning();
     bool heaterOn = acts.isHeaterOn();
     bool lightOn = acts.isLightOn();
