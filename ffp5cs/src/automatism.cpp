@@ -10,6 +10,7 @@
 #include "dbvars_cache.h"
 #include "automatism/feeding_slot_matcher.h"
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
+#include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
 #include <cstring>
 #include <cstdio>
 
@@ -187,7 +188,7 @@ void Automatism::manualFeedSmall() {
     _acts.feedSmallFish(tempsPetits);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-    const uint32_t cycleMs = (tempsPetits + (tempsPetits / 2U)) * 1000UL;
+    const uint32_t cycleMs = FeedingTiming::cycleDurationMs(tempsPetits);
     _feedingPhaseEnd = millis() + cycleMs;
     _currentFeedingType = "Petits";
 }
@@ -198,7 +199,7 @@ void Automatism::manualFeedBig() {
     _acts.feedBigFish(tempsGros);
     _manualFeedingActive = true;
     _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
-    const uint32_t cycleMs = (tempsGros + (tempsGros / 2U)) * 1000UL;
+    const uint32_t cycleMs = FeedingTiming::cycleDurationMs(tempsGros);
     _feedingPhaseEnd = millis() + cycleMs;
     _currentFeedingType = "Gros";
 }
@@ -624,9 +625,9 @@ void Automatism::handleFeeding() {
                                        _currentFeedingType = type;
                                        _manualFeedingActive = false;
                                        // Durée totale = gros + délai + petits (aligné avec feedSequential)
-                                       const uint32_t bigCycleMs = (tempsGros + (tempsGros / 2U)) * 1000UL;
+                                       const uint32_t bigCycleMs = FeedingTiming::cycleDurationMs(tempsGros);
                                        const uint32_t delayMs = static_cast<uint32_t>(AutomatismFeedingSchedule::FEEDING_DELAY_BETWEEN_SEC) * 1000UL;
-                                       const uint32_t smallCycleMs = (tempsPetits + (tempsPetits / 2U)) * 1000UL;
+                                       const uint32_t smallCycleMs = FeedingTiming::cycleDurationMs(tempsPetits);
                                        _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
                                        _feedingPhaseEnd = millis() + bigCycleMs + delayMs + smallCycleMs;
                                    },
