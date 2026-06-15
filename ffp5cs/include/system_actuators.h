@@ -1,8 +1,9 @@
 #pragma once
 #include "actuators.h"
+#include "iactuators.h"  // C4: interface d'actionneurs (inversion de dépendance)
 #include "log.h" // Ajout pour permettre l'utilisation du macro LOG
 
-struct SystemActuators {
+struct SystemActuators : public IActuators {
   PumpController pumpAqua{Pins::POMPE_AQUA};
   PumpController pumpTank{Pins::POMPE_RESERV};
   HeaterController heater{Pins::RADIATEURS};
@@ -17,44 +18,45 @@ struct SystemActuators {
   uint32_t tankPumpTotalStops = 0;
 
   void begin();
-  
+
   // Méthodes pour la gestion des pompes avec logs détaillés
-  void startTankPump();
-  
-  void stopTankPump(uint32_t startTime = 0);
-  
-  void startAquaPump();
-  void stopAquaPump();
-  
+  // (override IActuators — voir iactuators.h pour le contrat)
+  void startTankPump() override;
+
+  void stopTankPump(uint32_t startTime = 0) override;
+
+  void startAquaPump() override;
+  void stopAquaPump() override;
+
   // Méthodes pour le chauffage
-  void startHeater();
-  void stopHeater();
-  
+  void startHeater() override;
+  void stopHeater() override;
+
   // Méthodes pour la lumière
-  void startLight();
-  void stopLight();
-  
+  void startLight() override;
+  void stopLight() override;
+
   // Méthodes pour la nourriture
   // durationSec : durée pendant laquelle le servo reste dans la position de distribution.
   // Valeur par défaut : 10 s pour conserver la compatibilité avec les appels existants.
-  void feedBigFish(uint16_t durationSec = 10);
-  void feedSmallFish(uint16_t durationSec = 10);
-  
+  void feedBigFish(uint16_t durationSec = 10) override;
+  void feedSmallFish(uint16_t durationSec = 10) override;
+
   // Nourrissage séquentiel pour éviter les conflits de puissance.
   // Retourne false uniquement si AUCUNE distribution n'a eu lieu (séquence déjà en cours).
   // Un échec de planification de la phase 2 renvoie true : les gros poissons ont déjà été
   // nourris, re-déclencher provoquerait un surdosage.
-  bool feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10, uint16_t delayBetweenSec = 2);
+  bool feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10, uint16_t delayBetweenSec = 2) override;
 
   // true tant qu'une séquence gros->petits est planifiée (timer FreeRTOS des petits armé).
   // Source de vérité matérielle de l'anti-double-nourrissage (cf. feedSequential).
-  bool isSequentialFeedInProgress() const;
+  bool isSequentialFeedInProgress() const override;
 
   // Getters pour l'état
-  bool isTankPumpRunning() const;
-  bool isAquaPumpRunning() const;
-  bool isHeaterOn() const;
-  bool isLightOn() const;
+  bool isTankPumpRunning() const override;
+  bool isAquaPumpRunning() const override;
+  bool isHeaterOn() const override;
+  bool isLightOn() const override;
   
   // Méthodes pour obtenir les statistiques de la pompe de réserve
   unsigned long getTankPumpCurrentRuntime() const;

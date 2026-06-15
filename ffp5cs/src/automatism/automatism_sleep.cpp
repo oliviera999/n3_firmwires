@@ -170,7 +170,7 @@ bool AutomatismSleep::shouldEnterSleepEarly(const SensorReadings& r,
     return false;
 }
 
-bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
+bool AutomatismSleep::handleBlockingConditions(IActuators& acts,
                                                bool& forceWakeUp,
                                                bool& forceWakeFromWeb,
                                                unsigned long& lastWebActivityMs,
@@ -267,7 +267,7 @@ bool AutomatismSleep::handleBlockingConditions(SystemActuators& acts,
 // MÉTHODE PRINCIPALE : handleAutoSleep
 // ============================================================================
 
-bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core) {
+bool AutomatismSleep::handleAutoSleep(const SensorReadings& r, IActuators& acts, Automatism& core) {
     // Récupération des informations via accesseurs publics
     bool forceWakeUp = core.getForceWakeUp();
     bool tankPumpRunning = core.isTankPumpRunning();

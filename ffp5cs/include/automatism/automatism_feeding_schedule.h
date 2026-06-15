@@ -20,12 +20,12 @@ class AutomatismFeedingSchedule {
 public:
     /**
      * Constructeur
-     * @param acts Référence SystemActuators
+     * @param acts Référence IActuators (interface — cf. iactuators.h)
      * @param cfg Référence ConfigManager (pour persistance)
      * @param mail Référence Mailer (pour notifications)
      * @param power Référence PowerManager (pour temps)
      */
-    AutomatismFeedingSchedule(SystemActuators& acts, ConfigManager& cfg, 
+    AutomatismFeedingSchedule(IActuators& acts, ConfigManager& cfg,
                               Mailer& mail, PowerManager& power);
     
     /** Délai après boot pendant lequel le rattrapage (catch-up) est désactivé. */
@@ -97,7 +97,7 @@ public:
     Status getStatus() const;
     
 private:
-    SystemActuators& _acts;
+    IActuators& _acts;
     ConfigManager& _config;
     Mailer& _mailer;
     PowerManager& _power;

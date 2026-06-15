@@ -82,7 +82,7 @@ void AutomatismSync::setEmailAddress(const char* address) {
     _emailAddress[sizeof(_emailAddress) - 1] = '\0';
 }
 
-void AutomatismSync::update(const SensorReadings& readings, SystemActuators& acts, Automatism& core) {
+void AutomatismSync::update(const SensorReadings& readings, IActuators& acts, Automatism& core) {
     // Synchronisation périodique
     uint32_t now = millis();
     bool wifiConnected = (WiFi.status() == WL_CONNECTED);
@@ -283,7 +283,7 @@ void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
 }
 
 bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
-                                    SystemActuators& acts,
+                                    IActuators& acts,
                                     Automatism& core,
                                     const char* extraPairs,
                                     AppTasks::PostCategory category,

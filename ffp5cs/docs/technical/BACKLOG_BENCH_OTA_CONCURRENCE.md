@@ -222,3 +222,51 @@ Quatrième petite extraction + **déduplication** (deux blocs d'alerte quasi-ide
 - Suite native `test/test_level_alert/` (9 cas : Raise/None/Clear, bande morte, bornes strictes, cycle)
   ajoutée à `firmware-ci.yml` **et** `platformio-native.ini`. Parité vérifiée en local (`g++ -Wall -Wextra`,
   10/10 checks). Aucun effet de bord matériel touché (email/blink uniquement) → **pas de banc requis**.
+
+---
+
+## 8. Mise à jour 2026-06-15 — C4 inversion de dépendance `IActuators` (PR draft)
+
+Étape **structurante** du découpage god-class (réf. §3 « extraire état + interface `IActuators` ») : on casse
+le couplage direct `Automatism` → matériel concret `SystemActuators`.
+
+### Implémenté (CI-validable, behavior-preserving)
+- Nouvelle interface **`include/iactuators.h`** : surface MINIMALE (16 méthodes) effectivement consommée par le
+  module `automatism` (vérifié par grep exhaustif des `_acts.`/`acts.`). Les stats pompe (`getTankPump*`),
+  non consommées par Automatism, restent hors interface sur le concret.
+- `SystemActuators` **implémente** `IActuators` (héritage + `override`). Strictement additif : tous les autres
+  consommateurs (`web_server`, `app_context`, `realtime_websocket`, global `acts`) continuent d'utiliser le
+  concret. Aucune agrégation-init / POD cassée (vérifié).
+- **Tous** les passages d'actionneur du module `automatism` retypés `SystemActuators&` → `IActuators&` :
+  `Automatism::_acts` (membre + ctor), `prepareActuatorsForSleep`/`restoreActuatorsAfterWake`,
+  `AutomatismSync::update`/`sendFullUpdate`, `AutomatismSleep::handleAutoSleep`/`handleBlockingConditions`,
+  `AutomatismFeedingSchedule` (ctor + membre). La conversion dérivée→base est implicite au site de construction
+  (`app.cpp` passe le `SystemActuators` global). Comportement inchangé (dispatch virtuel sur le même objet).
+- **Test double `FakeActuators`** + suite native `test/test_iactuators/` (5 cas : dispatch polymorphe,
+  arguments par défaut via interface, bascule de chaque actionneur, `feedSequential`, destruction virtuelle).
+  Enregistrée dans `firmware-ci.yml` **et** `platformio-native.ini`. Validé en local (`g++ -Wall -Wextra`, 18/18).
+  → Débloque le **test natif de la logique extraite** des prochaines étapes (injection d'un faux acteur).
+
+### ⚠️ Banc requis (chemins matériels)
+La justesse runtime du **dispatch virtuel sur ESP32** (vtable, surcoût négligeable mais à confirmer) sur les
+chemins nourrissage/pompe/chauffage/lumière n'est pas prouvée par la compilation. À valider sur banc avant
+rollout. Aucun changement de logique — seulement le mécanisme d'appel.
+
+### Étapes suivantes (proposées)
+Extraire des contrôleurs (refill/feeding) en fonctions/objets prenant `IActuators&`, désormais **testables
+nativement** avec `FakeActuators`, une petite étape CI-verte à la fois.
+
+#### C4 — 1er contrôleur testé via `IActuators` : `ActuatorSnapshot` (veille/réveil)
+Démonstration concrète de l'apport de l'interface : la logique d'actionneur de
+`prepareActuatorsForSleep` / `restoreActuatorsAfterWake` est extraite en module **testable nativement**.
+- Nouveau module `include/automatism/actuator_snapshot.h` : `capture()` (lit aqua/chauffage/lumière),
+  `stopAll()` (coupe les 3 avant veille), `apply()` (restaure ceux actifs au réveil). Ne touche QUE
+  `IActuators` ; la **persistance NVS** et les logs restent dans l'appelant.
+- `prepareActuatorsForSleep`/`restoreActuatorsAfterWake` délèguent à ce module (parité ligne à ligne).
+- Suite native `test/test_actuator_snapshot/` (6 cas : capture, lecture seule, stopAll ne touche pas la
+  pompe réservoir, restauration sélective, snapshot vide no-op, cycle veille→réveil) avec un `FakeActuators`.
+  Enregistrée CI + ini. Validé local (`g++ -Wall -Wextra`, 10/10). **C'est le premier morceau de logique
+  d'actionneur couvert par des tests** — impossible avant l'interface.
+
+⚠️ **Banc requis** : chemin veille/réveil réel (NVS + actionneurs) à confirmer au banc ; seule la logique
+d'orchestration est CI-testée.

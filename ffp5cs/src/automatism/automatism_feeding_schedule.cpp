@@ -4,7 +4,7 @@
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <cstring>
 
-AutomatismFeedingSchedule::AutomatismFeedingSchedule(SystemActuators& acts, ConfigManager& cfg,
+AutomatismFeedingSchedule::AutomatismFeedingSchedule(IActuators& acts, ConfigManager& cfg,
                                                      Mailer& mail, PowerManager& power)
     : _acts(acts), _config(cfg), _mailer(mail), _power(power) {
     // Charger les flags depuis NVS au démarrage

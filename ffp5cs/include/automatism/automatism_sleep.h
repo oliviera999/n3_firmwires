@@ -16,7 +16,7 @@ public:
 
     // Gestion du sleep
     // Renvoie true si le système est entré en veille
-    bool handleAutoSleep(const SensorReadings& r, SystemActuators& acts, Automatism& core);
+    bool handleAutoSleep(const SensorReadings& r, IActuators& acts, Automatism& core);
     bool shouldEnterSleepEarly(const SensorReadings& r,
                                bool forceWakeUp,
                                bool forceWakeFromWeb,
@@ -81,7 +81,7 @@ private:
     } _sleepConfig;
 
     // Helpers internes
-    bool handleBlockingConditions(SystemActuators& acts,
+    bool handleBlockingConditions(IActuators& acts,
                                   bool& forceWakeUp,
                                   bool& forceWakeFromWeb,
                                   unsigned long& lastWebActivityMs,
