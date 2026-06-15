@@ -131,3 +131,32 @@ Comportement inchangé ; dégradation gracieuse sous OOM (`new(std::nothrow)`→
 cycle suivant) au lieu d'un débordement de pile. **À valider sur banc** : `uxTaskGetStackHighWaterMark`
 avant/après (DoD : marge autoTask/netTask > 20 %), 0 stack-overflow, et impact heap des allocations transitoires
 (~8 Ko) sous polling soutenu + faible heap. CI : builds wroom + S3 valident la compilation.
+
+---
+
+## 6. Mise à jour 2026-06-15 — C2 unification OTA (PR draft, **BENCH-REQUISE**)
+
+### Implémenté (CI-validable, NON mergeable sans banc)
+- Cascade `downloadFirmwareModern → downloadFirmware → downloadFirmwareUltraRevolutionary` **supprimée**.
+  Remplacée par **un seul chemin** `OTAManager::downloadFirmwareAdaptiveResumable` (esp_http_client),
+  + helper `openFirmwareConnection(url, rangeStart, &status)` qui pose l'en-tête `Range` si reprise.
+- `updateTask` n'appelle plus que ce chemin unique (rollback = revert de la PR → ré-active la cascade).
+- `downloadFirmwareUltraRevolutionary` (micro-chunks) **retiré** de `ota_manager_download_alt.cpp`
+  (seul `downloadFilesystem` y reste).
+- Stratégie reprise : **206**→poursuivre la MÊME session `Update` (offset = octets écrits) ;
+  **200**→`Update.abort()`+`begin()` puis ré-écriture depuis 0 ; **416**→fatal. Backoff exponentiel
+  plafonné (`OTA_RESUME_*` dans `config_network.h`), timeout global 5 min, feed TWDT dans la boucle.
+- **Garde-fou MD5** : la partition boot n'est marquée (`esp_ota_set_boot_partition`) **que** si
+  `Update.end()` (qui vérifie taille + MD5 du flux complet) réussit. Donc même si la logique de reprise
+  était subtilement fausse, un flash corrompu ne sera **jamais** booté.
+- **Bug latent corrigé** : l'ancien `downloadFirmwareModern` comparait le retour de
+  `esp_http_client_fetch_headers()` (= content-length) au code 200 ; le nouveau code lit le code via
+  `esp_http_client_get_status_code()`.
+
+### À VALIDER SUR BANC (bloquant avant merge) — WROOM **et** S3
+- Continuité réelle du contexte MD5 d'`Update` entre fragments 206 contigus (point dur §2/§4).
+- Reprise à 10/50/90 %, coupures multiples, serveur renvoyant 200 au lieu de 206, 416, réseau lent
+  (watchdog), MD5 corrompu → **échec propre sans flash partiel booté**.
+- Rollout progressif beta→canary→prod, plan de rollback = revert de la PR (ré-active la cascade).
+- NB : on pourrait renforcer en parsant `Content-Range` (offset renvoyé == offset demandé) via un
+  handler d'en-tête — non fait ici (le garde-fou MD5 final couvre déjà la corruption). À évaluer au banc.

@@ -61,12 +61,12 @@ private:
     bool selectArtifactFromMetadata(const JsonDocument& doc, char* outVersion, size_t versionSize, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size);
     bool selectFilesystemFromMetadata(const JsonDocument& doc, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size);
     
-    // Téléchargement (méthodes multiples pour la robustesse)
+    // Téléchargement firmware — C2 : UN SEUL chemin résumable (HTTP Range).
+    // (Ancienne cascade Modern/Classic/Ultra supprimée ; rollback = revert de la PR C2.)
     bool downloadMetadata(char* payload, size_t payloadSize);
-    bool downloadFirmware(const char* url, size_t expectedSize);
-    bool downloadFirmwareModern(const char* url, size_t expectedSize);
-    // Ancienne variante supprimée dans l'implémentation. Conserver uniquement les modes modern et ultra.
-    bool downloadFirmwareUltraRevolutionary(const char* url, size_t expectedSize);
+    bool downloadFirmwareAdaptiveResumable(const char* url, size_t expectedSize);
+    // Helper : ouvre la connexion HTTP(S) firmware avec reprise optionnelle via Range.
+    esp_http_client_handle_t openFirmwareConnection(const char* url, size_t rangeStart, int& outStatus);
     
     // Téléchargement des fichiers filesystem
     bool downloadFilesystem(const char* url, size_t expectedSize, const char* expectedMD5);
