@@ -439,3 +439,46 @@ enregistrement correct du nourrissage auto vs manuel, absence de faux front 0→
 `AutomatismSleep::handleBlockingConditions(...)` — machine à état veille (timestamps membres). Extraction de
 la **décision de blocage** à évaluer prudemment (chemin veille = risque batterie/réveil) ; documenter et
 s'arrêter si le couplage reste trop fort pour une parité sûre.
+
+---
+
+## 11. Mise à jour 2026-06-15 — C4 décision de blocage veille `SleepBlocking::decide` (PR draft, **BENCH-REQUISE**)
+
+DERNIÈRE des « 2 dernières orchestrations couplées matériel » : la décision de blocage de la veille de
+`AutomatismSleep::handleBlockingConditions(...)`. Chemin VEILLE critique (un mauvais blocage = batterie
+vidée ou réveils manqués), traité avec prudence : on N'extrait QUE la **décision pure** (« faut-il bloquer
+la veille, et pour quelle raison »), en laissant logs/throttle/mutations à l'appelant. **Couplage jugé
+extractible proprement** (≠ « s'arrêter ») car le seul état influençant la décision est `_wsBlockStartMs`.
+
+### Approche PURE & peu invasive (aucune nouvelle interface — décision pure)
+- **Nouveau module pur `include/automatism/sleep_blocking.h`** (`SleepBlocking::decide`) : prend l'état
+  explicite (`State{wsBlockStartMs}`) + les entrées (`Inputs` : wsClients, forceWakeFromWeb, lastWebActivityMs,
+  forceWakeUp, tankPumpRunning, feedingInProgress, countdownEnd, **nowMs** et **webActivityTimeoutMs** injectés)
+  et renvoie un `Result` : la `Reason` terminale (Allow / WsClients / WebActivity / ForceWakeUp / TankPump /
+  Feeding / CountdownLong / CountdownShort) + les transitions « fall-through » (`wsTimedOut`, `webExpired`) +
+  les effets à appliquer (`refreshLastWake`, `wsElapsedMs`, `remainingCountdownSec`). Aucune dépendance
+  Arduino/config → `g++`. `uint32_t` partout → wrap-around millis() **32 bits identique** ESP32 / natif.
+- **Temps non abstrait** : `nowMs = millis()` passé en paramètre (pas d'`IClock`). `WiFi`/capteurs : néant ici.
+- **Signature de `handleBlockingConditions` inchangée** (appelant `handleAutoSleep` non touché) : seul le
+  **corps** délègue à `decide`, puis applique `_wsBlockStartMs`, les **logs Serial** (chaînes historiques
+  reproduites à l'identique), l'**anti-spam/throttle** (`_lastWsLogMs`/`_lastWebLogMs`/`_lastForceWakeLogMs`,
+  cosmétique, jamais décisionnel → laissé à l'appelant) et les mutations `forceWakeFromWeb`/`lastWakeMs`.
+- Smell retiré : `(void)acts` (param inutilisé, déjà le cas avant).
+
+### Tests natifs (`test/test_sleep_blocking/`, 23 cas — local 23/23, `-Wall -Wextra`)
+Chaque raison, l'**ordre de priorité** des 6 conditions, les **bornes strictes** (timeout WS 300 s, seuil
+décompte 300 s, expiration web), les transitions (WS timeout / web expiré), et le **wrap-around millis()**.
+Enregistré CI + `platformio-native.ini`. **Parité prouvée par harnais brute-force** : ancien corps inline vs
+`decide`+appelant refactoré sur **2 211 840 combinaisons → 0 divergence** (retour, logs séquencés, 4 timestamps
+de throttle, mutations `lastWakeMs`/`forceWakeFromWeb`, cas wrap inclus).
+
+### ⚠️ VALIDATION BANC REQUISE (chemin veille/réveil)
+La *décision* est CI-testée + prouvée à parité, mais l'intégration veille réelle (entrée/sortie de sleep,
+timing batterie, réveil) n'est pas prouvée par compilation. À valider sur banc : blocage WS (clients réels +
+timeout 5 min), activité web, forceWakeUp GPIO, pompe/nourrissage, décomptes long/court, et **non-régression
+de l'autonomie** (pas de veille manquée ni de batterie vidée).
+
+➡️ **Bilan C4** : les **2 dernières orchestrations couplées matériel** (`finalizeFeedingIfNeeded` §10,
+`handleBlockingConditions` §11) sont désormais déléguées à des unités testées nativement. `handleAlerts`,
+`handleRefill*`, veille/réveil (snapshot + blocage), fin de nourrissage : la logique de décision de la
+god-class `Automatism` est sortie et couverte par des tests purs (effets matériels restant bench-gated).
