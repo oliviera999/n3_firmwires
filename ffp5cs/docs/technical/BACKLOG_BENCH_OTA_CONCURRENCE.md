@@ -112,3 +112,22 @@ produite. **Point dur non résolu sans banc** : le contexte MD5 d'`Update` sur r
 206 partiel, le hash du flux N..EOF doit correspondre au MD5 du fichier complet, ce qui **n'est pas garanti** et
 DOIT être validé sur matériel (sinon flash corrompu). Stratégie hybride retenue (206→continuer, 200→redémarrer
 propre, 416→fatal) mais **à prouver sur banc avant tout merge**.
+
+---
+
+## 5. Mise à jour 2026-06-15 (chantiers C2/C3/C4 — PR draft bench-gated)
+
+### C3 — Réduction profondeur de pile (PR draft, CI-validable, **HWM banc-requise**)
+Appliqué : déplacement des gros buffers de travail **de la pile vers le heap local** (alloués/libérés à
+chaque appel via `std::unique_ptr` + `new(std::nothrow)`), **sans** static-isation (la course était le piège
+identifié au §4). Fonctions multi-tâches concernées :
+- `AutomatismSync::processFetchedRemoteConfig` (`automatism_sync.cpp`) : `docJson[2048]` + `inputCopy`
+  (`StaticJsonDocument<2048>`) + `normalizedDoc` (`StaticJsonDocument<2048>`) + `jsonStr[REMOTE_JSON_CACHE_SIZE]`
+  ≈ 6-8 Ko regroupés dans une struct `ProcessBuffers` allouée en heap. Dominant de la pile autoTask (HWM ~95%).
+- `WebClient::copyLastFetchedTo` (`web_client.cpp`) : `tmp` (`StaticJsonDocument<JSON_DOCUMENT_SIZE>`, jusqu'à
+  4 Ko sur S3) déplacé en heap dans la branche unwrap.
+
+Comportement inchangé ; dégradation gracieuse sous OOM (`new(std::nothrow)`→nullptr→`return false`, retry au
+cycle suivant) au lieu d'un débordement de pile. **À valider sur banc** : `uxTaskGetStackHighWaterMark`
+avant/après (DoD : marge autoTask/netTask > 20 %), 0 stack-overflow, et impact heap des allocations transitoires
+(~8 Ko) sous polling soutenu + faible heap. CI : builds wroom + S3 valident la compilation.

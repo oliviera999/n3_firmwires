@@ -18,6 +18,7 @@
 #include <freertos/semphr.h>
 #include <cstring>
 #include <atomic>
+#include <memory>  // C3: unique_ptr pour buffer d'unwrap en heap (réduction pile)
 
 // Mutex pour sérialiser HTTP (netTask GET et postSenderTask POST)
 static SemaphoreHandle_t s_httpMutex = nullptr;
@@ -797,15 +798,25 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
     didUnwrap = true;
   }
   if (didUnwrap && !inner.isNull()) {
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+    // C3 (profondeur de pile) : ce JsonDocument d'unwrap (jusqu'à 4 Ko sur S3) était sur la pile
+    // d'autoTask (HWM ~95%). Déplacé en HEAP local. PAS en static : copyLastFetchedTo est
+    // multi-tâches (netTask-boot + autoTask) → un buffer partagé créerait une course (BACKLOG §4).
+    std::unique_ptr<StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE>> tmp(
+        new (std::nothrow) StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE>());
+    if (!tmp) {
+      if (LogConfig::SERIAL_ENABLED) {
+        Serial.println(F("[HTTP] copyLastFetchedTo: heap insuffisant pour unwrap"));
+      }
+      return false;
+    }
     char keyBuf[64];
     for (JsonPair p : inner) {
       strncpy(keyBuf, p.key().c_str(), sizeof(keyBuf) - 1);
       keyBuf[sizeof(keyBuf) - 1] = '\0';
-      tmp[keyBuf] = p.value();
+      (*tmp)[keyBuf] = p.value();
     }
     doc.clear();
-    for (JsonPair p : tmp.as<JsonObject>()) {
+    for (JsonPair p : tmp->as<JsonObject>()) {
       strncpy(keyBuf, p.key().c_str(), sizeof(keyBuf) - 1);
       keyBuf[sizeof(keyBuf) - 1] = '\0';
       doc[keyBuf] = p.value();

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>  // v11.183: atoi/atof pour valeurs serveur en string
+#include <memory>   // C3: unique_ptr pour buffers de travail en heap (réduction pile)
 #include <time.h>
 
 namespace {
@@ -415,21 +416,36 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) {
     if (doc.size() == 0) return false;
 
+    // C3 (profondeur de pile) : ces buffers de travail (~6 Ko : docJson + 2 JsonDocument +
+    // jsonStr) étaient sur la pile, ce qui poussait autoTask près du débordement (HWM ~95%).
+    // On les déplace en HEAP local, alloués/libérés à chaque appel. PAS en static : la fonction
+    // est multi-tâches (netTask via app_tasks_net.cpp + autoTask via fetchRemoteState) donc un
+    // buffer partagé créerait une course (pire que la pile économisée — cf. BACKLOG §3/§4).
+    // unique_ptr garantit la libération sur tous les chemins de retour.
+    struct ProcessBuffers {
+        char docJson[2048];
+        StaticJsonDocument<2048> inputCopy;
+        StaticJsonDocument<2048> normalizedDoc;
+        char jsonStr[BufferConfig::REMOTE_JSON_CACHE_SIZE];
+    };
+    std::unique_ptr<ProcessBuffers> buf(new (std::nothrow) ProcessBuffers());
+    if (!buf) {
+        Serial.println(F("[Sync] processFetchedRemoteConfig: heap insuffisant pour buffers"));
+        return false;
+    }
+
     // v11.192: Ne pas itérer directement sur doc — quand il provient de loadFromNVSFallback,
     // l'état interne peut provoquer LoadProhibited (EXCVADDR 0x4). On sérialise puis désérialise
     // dans une copie pour itérer sur un document sain.
-    char docJson[2048];
-    size_t len = serializeJson(doc, docJson, sizeof(docJson));
-    if (len == 0 || len >= sizeof(docJson)) return false;
-    StaticJsonDocument<2048> inputCopy;
-    DeserializationError err = deserializeJson(inputCopy, docJson);
+    size_t len = serializeJson(doc, buf->docJson, sizeof(buf->docJson));
+    if (len == 0 || len >= sizeof(buf->docJson)) return false;
+    DeserializationError err = deserializeJson(buf->inputCopy, buf->docJson);
     if (err) return false;
 
     // Harmonisation config: normaliser les clés (canoniques serveur distant) avant sauvegarde NVS
-    StaticJsonDocument<2048> normalizedDoc;
-    JsonObject out = normalizedDoc.to<JsonObject>();
+    JsonObject out = buf->normalizedDoc.to<JsonObject>();
     // v11.177: Normalisation complète de toutes les clés GPIO numériques vers clés canoniques
-    for (ArduinoJson::JsonPair p : inputCopy.as<ArduinoJson::JsonObject>()) {
+    for (ArduinoJson::JsonPair p : buf->inputCopy.as<ArduinoJson::JsonObject>()) {
         const char* k = p.key().c_str();
         // GPIO 100-104: Email et seuils
         if (strcmp(k, "100") == 0) {
@@ -475,13 +491,12 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
             out[k] = p.value();
         }
     }
-    char jsonStr[BufferConfig::REMOTE_JSON_CACHE_SIZE];
-    serializeJson(normalizedDoc, jsonStr, sizeof(jsonStr));
+    serializeJson(buf->normalizedDoc, buf->jsonStr, sizeof(buf->jsonStr));
     // v11.192: Différer la sauvegarde NVS vers automation task pour éviter assert
     // xTaskPriorityDisinherit (mutex/priorité) quand NVS est écrit depuis net task ou juste après notify.
     if (s_deferredSaveMutex && s_deferredSaveQueue &&
         xSemaphoreTake(s_deferredSaveMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        strncpy(s_deferredRemoteJson, jsonStr, BufferConfig::REMOTE_JSON_CACHE_SIZE - 1);
+        strncpy(s_deferredRemoteJson, buf->jsonStr, BufferConfig::REMOTE_JSON_CACHE_SIZE - 1);
         s_deferredRemoteJson[BufferConfig::REMOTE_JSON_CACHE_SIZE - 1] = '\0';
         xSemaphoreGive(s_deferredSaveMutex);
         uint8_t one = 1;
@@ -492,7 +507,7 @@ bool AutomatismSync::processFetchedRemoteConfig(ArduinoJson::JsonDocument& doc) 
     // peut crasher (LoadProhibited) quand doc provient de loadFromNVSFallback. La config est déjà
     // en file pour sauvegarde NVS ; le caller n'a pas besoin que doc soit mis à jour.
     if (!_configSyncedOnce) {
-        Serial.printf("[Sync] Données normalisées en file pour NVS (%u clés)\n", normalizedDoc.size());
+        Serial.printf("[Sync] Données normalisées en file pour NVS (%u clés)\n", buf->normalizedDoc.size());
     }
 
     _serverOk = true;
