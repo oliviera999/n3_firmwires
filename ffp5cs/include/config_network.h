@@ -60,6 +60,11 @@ namespace NetworkConfig {
     // Timeout phase connexion esp_http_client (méthode moderne) : 10s pour rester sous TWDT, éviter reboot si TLS/réseau échoue
     inline constexpr uint32_t OTA_CONNECT_TIMEOUT_MS = 10000;
     inline constexpr uint32_t OTA_DOWNLOAD_TIMEOUT_MS = 300000; // 5 min
+    // C2 (téléchargement OTA résumable) : nb max de (re)connexions sur coupure réseau avant abandon,
+    // et base du backoff exponentiel entre tentatives de reprise (1s, 2s, 4s, … plafonné).
+    inline constexpr int      OTA_RESUME_MAX_ATTEMPTS = 6;
+    inline constexpr uint32_t OTA_RESUME_BACKOFF_BASE_MS = 1000;
+    inline constexpr uint32_t OTA_RESUME_BACKOFF_MAX_MS = 16000;
     inline constexpr uint32_t MIN_DELAY_BETWEEN_REQUESTS_MS = 1000;
     inline constexpr uint32_t BACKOFF_BASE_MS = 1000;
     
@@ -68,6 +73,8 @@ namespace NetworkConfig {
     // v11.178: Codes HTTP centralisés (audit http-codes)
     inline constexpr int HTTP_OK = 200;
     inline constexpr int HTTP_NO_CONTENT = 204;
+    inline constexpr int HTTP_PARTIAL_CONTENT = 206;        // C2: reprise OTA via Range (serveur OtaFileController)
+    inline constexpr int HTTP_RANGE_NOT_SATISFIABLE = 416;  // C2: offset Range invalide → fatal
     inline constexpr int HTTP_BAD_REQUEST = 400;
     inline constexpr int HTTP_UNAUTHORIZED = 401;
     inline constexpr int HTTP_NOT_FOUND = 404;
