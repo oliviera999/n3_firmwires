@@ -255,3 +255,18 @@ rollout. Aucun changement de logique — seulement le mécanisme d'appel.
 ### Étapes suivantes (proposées)
 Extraire des contrôleurs (refill/feeding) en fonctions/objets prenant `IActuators&`, désormais **testables
 nativement** avec `FakeActuators`, une petite étape CI-verte à la fois.
+
+#### C4 — 1er contrôleur testé via `IActuators` : `ActuatorSnapshot` (veille/réveil)
+Démonstration concrète de l'apport de l'interface : la logique d'actionneur de
+`prepareActuatorsForSleep` / `restoreActuatorsAfterWake` est extraite en module **testable nativement**.
+- Nouveau module `include/automatism/actuator_snapshot.h` : `capture()` (lit aqua/chauffage/lumière),
+  `stopAll()` (coupe les 3 avant veille), `apply()` (restaure ceux actifs au réveil). Ne touche QUE
+  `IActuators` ; la **persistance NVS** et les logs restent dans l'appelant.
+- `prepareActuatorsForSleep`/`restoreActuatorsAfterWake` délèguent à ce module (parité ligne à ligne).
+- Suite native `test/test_actuator_snapshot/` (6 cas : capture, lecture seule, stopAll ne touche pas la
+  pompe réservoir, restauration sélective, snapshot vide no-op, cycle veille→réveil) avec un `FakeActuators`.
+  Enregistrée CI + ini. Validé local (`g++ -Wall -Wextra`, 10/10). **C'est le premier morceau de logique
+  d'actionneur couvert par des tests** — impossible avant l'interface.
+
+⚠️ **Banc requis** : chemin veille/réveil réel (NVS + actionneurs) à confirmer au banc ; seule la logique
+d'orchestration est CI-testée.

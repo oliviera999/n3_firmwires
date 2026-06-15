@@ -9,6 +9,7 @@
 #include "nvs_keys.h"  // v11.176: Constantes NVS centralisées
 #include "dbvars_cache.h"
 #include "automatism/feeding_slot_matcher.h"
+#include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include <cstring>
 #include <cstdio>
 
@@ -666,16 +667,14 @@ void Automatism::markCurrentFeedingSlotAsDone() {
 // Sous-fonction: Sécurité aquarium trop plein
 
 void Automatism::restoreActuatorsAfterWake(IActuators& acts) {
-    bool restoreAqua, restoreHeater, restoreLight;
-    if (!loadActuatorSnapshotFromNVS(restoreAqua, restoreHeater, restoreLight)) {
+    ActuatorSnapshot::State snap;
+    if (!loadActuatorSnapshotFromNVS(snap.aqua, snap.heater, snap.light)) {
         return;
     }
-    if (restoreAqua) acts.startAquaPump();
-    if (restoreHeater) acts.startHeater();
-    if (restoreLight) acts.startLight();
+    ActuatorSnapshot::apply(acts, snap);
     clearActuatorSnapshotInNVS();
     Serial.printf("[Auto] État restauré au réveil: aqua=%s heater=%s light=%s\n",
-                  restoreAqua ? "ON" : "OFF", restoreHeater ? "ON" : "OFF", restoreLight ? "ON" : "OFF");
+                  snap.aqua ? "ON" : "OFF", snap.heater ? "ON" : "OFF", snap.light ? "ON" : "OFF");
 }
 
 // États actuels persistants (méthodes statiques pour compatibilité avec web_server.cpp)

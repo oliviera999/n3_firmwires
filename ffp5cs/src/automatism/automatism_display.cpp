@@ -5,6 +5,7 @@
 #include "automatism/flood_alert.h"  // C4: machine d'état anti-spam trop-plein (pure, testée)
 #include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
+#include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "config.h"
 #include "config_manager.h"
 #include "mailer.h"
@@ -400,13 +401,9 @@ void Automatism::clearActuatorSnapshotInNVS() {
 }
 
 void Automatism::prepareActuatorsForSleep(IActuators& acts) {
-    bool aquaOn = acts.isAquaPumpRunning();
-    bool heaterOn = acts.isHeaterOn();
-    bool lightOn = acts.isLightOn();
-    saveActuatorSnapshotToNVS(aquaOn, heaterOn, lightOn);
-    acts.stopAquaPump();
-    acts.stopHeater();
-    acts.stopLight();
+    const ActuatorSnapshot::State snap = ActuatorSnapshot::capture(acts);
+    saveActuatorSnapshotToNVS(snap.aqua, snap.heater, snap.light);
+    ActuatorSnapshot::stopAll(acts);
     Serial.printf("[Auto] Snapshot avant veille: aqua=%s heater=%s light=%s - actionneurs coupés\n",
-                  aquaOn ? "ON" : "OFF", heaterOn ? "ON" : "OFF", lightOn ? "ON" : "OFF");
+                  snap.aqua ? "ON" : "OFF", snap.heater ? "ON" : "OFF", snap.light ? "ON" : "OFF");
 }
