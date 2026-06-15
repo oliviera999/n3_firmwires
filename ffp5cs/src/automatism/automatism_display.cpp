@@ -4,6 +4,7 @@
 #include "automatism.h"
 #include "automatism/flood_alert.h"  // C4: machine d'état anti-spam trop-plein (pure, testée)
 #include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
+#include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
 #include "config.h"
 #include "config_manager.h"
 #include "mailer.h"
@@ -47,15 +48,20 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     }
 
     if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
-    if (readings.wlAqua > cmToMm(_network.getAqThresholdCm()) && !_lowAquaSent && mailEnabled) {
+    // C4: décision alerte « aquarium bas » déléguée à la machine pure LevelAlert.
+    // Effets de bord (email, blink, flag) ici. Le reset reste inconditionnel (silencieux).
+    const uint16_t aqAlert = cmToMm(_network.getAqThresholdCm());
+    const uint16_t aqClear = cmToMm((_network.getAqThresholdCm() > 5) ? (_network.getAqThresholdCm() - 5) : 0);
+    if (LevelAlert::evaluate(readings.wlAqua, aqAlert, aqClear, _lowAquaSent) == LevelAlert::Decision::Raise
+        && mailEnabled) {
         char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (> ", cmToMm(_network.getAqThresholdCm()));
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlAqua, " mm (> ", aqAlert);
         _mailer.sendAlert("Alerte - Niveau aquarium BAS", msgBuffer, _network.getEmailAddress());
         _lowAquaSent = true;
         armMailBlink();
     }
 
-    if (readings.wlAqua <= cmToMm((_network.getAqThresholdCm() > 5) ? (_network.getAqThresholdCm() - 5) : 0)) {
+    if (readings.wlAqua <= aqClear) {
         _lowAquaSent = false;
     }
 
@@ -105,16 +111,20 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     }
     }
 
-    if (readings.wlTank > cmToMm(_network.getTankThresholdCm()) && !_lowTankSent && mailEnabled) {
+    // C4: décision alerte « réserve basse » déléguée à la machine pure LevelAlert.
+    // Ici le reset envoie un mail « Réserve OK » (contrairement à l'aquarium).
+    const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
+    const uint16_t tkClear = cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0);
+    const LevelAlert::Decision tkDec = LevelAlert::evaluate(readings.wlTank, tkAlert, tkClear, _lowTankSent);
+    if (tkDec == LevelAlert::Decision::Raise && mailEnabled) {
         char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (> ", cmToMm(_network.getTankThresholdCm()));
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (> ", tkAlert);
         _mailer.sendAlert("Alerte - Réserve BASSE", msgBuffer, _network.getEmailAddress());
         _lowTankSent = true;
         armMailBlink();
-    } else if (_lowTankSent && readings.wlTank <= cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0) && mailEnabled) {
+    } else if (tkDec == LevelAlert::Decision::Clear && mailEnabled) {
         char msgBuffer[128];
-        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (<= ",
-                            cmToMm((_network.getTankThresholdCm() > 5) ? (_network.getTankThresholdCm() - 5) : 0));
+        formatDistanceAlert(msgBuffer, sizeof(msgBuffer), "Distance: ", readings.wlTank, " mm (<= ", tkClear);
         _mailer.sendAlert("Info - Réserve OK", msgBuffer, _network.getEmailAddress());
         _lowTankSent = false;
         armMailBlink();
