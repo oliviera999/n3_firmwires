@@ -3,6 +3,7 @@
 // Extrait de automatism.cpp (audit : découpe). Méthodes membres, comportement identique.
 #include "automatism.h"
 #include "automatism/flood_alert.h"  // C4: machine d'état anti-spam trop-plein (pure, testée)
+#include "automatism/heater_hysteresis.h"  // C4: régulation chauffage par hystérésis (pure, testée)
 #include "config.h"
 #include "config_manager.h"
 #include "mailer.h"
@@ -119,7 +120,12 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         armMailBlink();
     }
 
-    if (readings.tempWater < _network.getHeaterThresholdC() && !heaterPrevState) {
+    // C4: décision de régulation chauffage déléguée à la machine pure HeaterControl
+    // (hystérésis 2 °C). Les effets de bord (relais, email, blink, heaterPrevState)
+    // restent ici.
+    const HeaterControl::Decision heaterDecision = HeaterControl::evaluate(
+        readings.tempWater, _network.getHeaterThresholdC(), /*hysteresisC=*/2.0f, heaterPrevState);
+    if (heaterDecision == HeaterControl::Decision::TurnOn) {
         _acts.startHeater();
         heaterPrevState = true;
         if (mailEnabled) {
@@ -128,7 +134,7 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
             _mailer.sendAlert("Chauffage ON", msgBuffer, _network.getEmailAddress());
             armMailBlink();
         }
-    } else if (readings.tempWater > _network.getHeaterThresholdC() + 2 && heaterPrevState) {
+    } else if (heaterDecision == HeaterControl::Decision::TurnOff) {
         _acts.stopHeater();
         heaterPrevState = false;
         if (mailEnabled) {
