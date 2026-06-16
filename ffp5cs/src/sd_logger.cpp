@@ -11,6 +11,7 @@
 #if defined(BOARD_S3)
 
 #include <SD.h>
+#include <atomic>  // s_nextSeq : RMW (seq++) atomique, écrit depuis autoTask + webTask (audit concurrence)
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,7 +35,9 @@ using SdQueuePath::dateStr;
 using SdQueuePath::seqToPath;
 using SdQueuePath::seqFromEntryName;
 
-static uint32_t s_nextSeq = 1;
+// std::atomic : s_nextSeq++ est un read-modify-write atteint depuis autoTask et webTask
+// (sendFullUpdate -> logAndQueue, sans mutex) — rend l'incrément de séquence atomique (audit concurrence).
+static std::atomic<uint32_t> s_nextSeq{1};
 static bool s_ready = false;
 
 static void ensureDir(const char* path) {
@@ -46,15 +49,15 @@ static void ensureDir(const char* path) {
 static bool loadMeta() {
   File f = SD.open(META_FILE, FILE_READ);
   if (!f) {
-    s_nextSeq = 1;
+    s_nextSeq.store(1);
     return false;
   }
   char buf[16];
   size_t n = f.readBytes(buf, sizeof(buf) - 1);
   buf[n] = '\0';
   f.close();
-  s_nextSeq = (uint32_t)atol(buf);
-  if (s_nextSeq == 0) s_nextSeq = 1;
+  s_nextSeq.store((uint32_t)atol(buf));
+  if (s_nextSeq.load() == 0) s_nextSeq.store(1);
   return true;
 }
 
@@ -62,7 +65,7 @@ static bool saveMeta() {
   File f = SD.open(META_FILE, FILE_WRITE);
   if (!f) return false;
   char buf[16];
-  snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_nextSeq);
+  snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_nextSeq.load());
   f.print(buf);
   f.close();
   return true;
@@ -78,7 +81,7 @@ bool begin() {
   ensureDir(QUEUE_DIR);
   loadMeta();
   s_ready = true;
-  BOOT_LOG("[SdLog] Prêt (seq=%lu)\n", (unsigned long)s_nextSeq);
+  BOOT_LOG("[SdLog] Prêt (seq=%lu)\n", (unsigned long)s_nextSeq.load());
   return true;
 }
 

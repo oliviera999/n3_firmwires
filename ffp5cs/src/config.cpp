@@ -2,6 +2,7 @@
 #include "config_manager.h"
 #include "nvs_keys.h"
 #include <ArduinoJson.h>
+#include <freertos/semphr.h>  // Mutex dédié au cache RAM s_remoteJsonCache (concurrence multi-tâches)
 #include <cstring>
 #include <cctype>
 
@@ -9,6 +10,17 @@ namespace {
 constexpr size_t REMOTE_JSON_CACHE_SIZE = 2048;
 static char s_remoteJsonCache[REMOTE_JSON_CACHE_SIZE];
 static bool s_remoteJsonCacheValid = false;
+// Mutex dédié au cache RAM remote_vars. Écrit par autoTask (processDeferredRemoteVarsSave) et
+// async_tcp (handler /dbvars/update, toggleEmailNotifications) ; lu par netTask (loadFromNVSFallback
+// + boot), autoTask (fetchRemoteState/restore) et async_tcp (/dbvars). Ces accès sont concurrents
+// et n'étaient protégés par aucun verrou (course write-vs-read inter-tâches, même classe que
+// s_lastFetchedJson — cf. BACKLOG §1). Distinct de s_httpMutex / s_lastFetchedJsonMutex
+// (web_client.cpp). Verrou FEUILLE : jamais pris en tenant un autre verrou, ne prend aucun autre
+// verrou (les sections critiques ne couvrent QUE le cache RAM, pas les appels NVS). Création
+// paresseuse au premier usage (même motif que s_httpMutex / s_lastFetchedJsonMutex).
+static SemaphoreHandle_t s_remoteJsonCacheMutex = nullptr;
+// Timeout d'acquisition aligné sur le motif s_lastFetchedJsonMutex (web_client.cpp:751/779).
+constexpr uint32_t REMOTE_JSON_CACHE_MUTEX_TIMEOUT_MS = 1000;
 }  // namespace
 
 ConfigManager::ConfigManager() 
@@ -178,18 +190,34 @@ void ConfigManager::saveRemoteVars(const char* json) {
   // Ne jamais invoquer de logique réseau ici.
   Serial.println(F("[Config] 💾 Sauvegarde variables distantes vers NVS centralisé"));
 
-  // Vérifier si le JSON a changé avant de sauvegarder (réduire écritures flash)
+  // Vérifier si le JSON a changé avant de sauvegarder (réduire écritures flash).
+  // Section critique COURTE : lecture du cache (flag + strcmp) sous le mutex feuille.
   static uint32_t s_skipSaveCount = 0;
-  if (s_remoteJsonCacheValid && json && strcmp(s_remoteJsonCache, json) == 0) {
+  if (s_remoteJsonCacheMutex == nullptr) {
+    s_remoteJsonCacheMutex = xSemaphoreCreateMutex();
+  }
+  bool cacheLockHeld = (s_remoteJsonCacheMutex != nullptr) &&
+      (xSemaphoreTake(s_remoteJsonCacheMutex, pdMS_TO_TICKS(REMOTE_JSON_CACHE_MUTEX_TIMEOUT_MS)) == pdTRUE);
+  bool unchanged = (s_remoteJsonCacheValid && json && strcmp(s_remoteJsonCache, json) == 0);
+  if (cacheLockHeld) {
+    xSemaphoreGive(s_remoteJsonCacheMutex);
+  }
+  if (unchanged) {
     if ((++s_skipSaveCount % 20) == 1) {
       Serial.printf("[Config] Variables distantes inchangées - pas de sauvegarde NVS (skip #%u)\n", s_skipSaveCount);
     }
     return;
   }
   s_skipSaveCount = 0;
-  // Sauvegarde dans le namespace CONFIG
+  // Sauvegarde dans le namespace CONFIG (HORS mutex feuille : le NVS a son propre verrou — on ne
+  // tient jamais notre mutex en appelant le NVS, ce qui garantit l'absence d'inversion d'ordre).
   g_nvsManager.saveString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json ? json : "");
-  // Mettre à jour le cache RAM pour éviter re-lecture NVS
+  // Mettre à jour le cache RAM pour éviter re-lecture NVS — section critique COURTE.
+  if (s_remoteJsonCacheMutex == nullptr) {
+    s_remoteJsonCacheMutex = xSemaphoreCreateMutex();
+  }
+  cacheLockHeld = (s_remoteJsonCacheMutex != nullptr) &&
+      (xSemaphoreTake(s_remoteJsonCacheMutex, pdMS_TO_TICKS(REMOTE_JSON_CACHE_MUTEX_TIMEOUT_MS)) == pdTRUE);
   if (json) {
     strncpy(s_remoteJsonCache, json, REMOTE_JSON_CACHE_SIZE - 1);
     s_remoteJsonCache[REMOTE_JSON_CACHE_SIZE - 1] = '\0';
@@ -197,6 +225,9 @@ void ConfigManager::saveRemoteVars(const char* json) {
     s_remoteJsonCache[0] = '\0';
   }
   s_remoteJsonCacheValid = true;
+  if (cacheLockHeld) {
+    xSemaphoreGive(s_remoteJsonCacheMutex);
+  }
   Serial.println(F("[Config] ✅ Variables distantes sauvegardées dans NVS centralisé"));
 }
 
@@ -204,29 +235,54 @@ bool ConfigManager::loadRemoteVars(char* json, size_t jsonSize) {
   if (json == nullptr || jsonSize == 0) {
     return false;
   }
-  // Servir depuis le cache RAM si valide (réduit lectures NVS et verbosité logs)
-  if (s_remoteJsonCacheValid) {
-    size_t copyLen = jsonSize - 1;
-    if (copyLen > 0) {
-      strncpy(json, s_remoteJsonCache, copyLen);
-      json[copyLen] = '\0';
-    } else {
-      json[0] = '\0';
-    }
-    return strlen(json) > 0;
+  // Servir depuis le cache RAM si valide (réduit lectures NVS et verbosité logs).
+  // Section critique COURTE : copie hors du cache sous le mutex feuille (évite une lecture
+  // déchirée pendant qu'une autre tâche réécrit le cache). En cas de timeout d'acquisition
+  // (quasi impossible — sections de quelques µs), dégradation gracieuse : on saute le cache et
+  // on retombe sur la lecture NVS ci-dessous (source durable, mêmes données).
+  if (s_remoteJsonCacheMutex == nullptr) {
+    s_remoteJsonCacheMutex = xSemaphoreCreateMutex();
   }
-  // Lecture NVS (premier accès ou cache invalidé)
+  if (s_remoteJsonCacheMutex != nullptr &&
+      xSemaphoreTake(s_remoteJsonCacheMutex, pdMS_TO_TICKS(REMOTE_JSON_CACHE_MUTEX_TIMEOUT_MS)) == pdTRUE) {
+    if (s_remoteJsonCacheValid) {
+      size_t copyLen = jsonSize - 1;
+      if (copyLen > 0) {
+        strncpy(json, s_remoteJsonCache, copyLen);
+        json[copyLen] = '\0';
+      } else {
+        json[0] = '\0';
+      }
+      xSemaphoreGive(s_remoteJsonCacheMutex);
+      return strlen(json) > 0;
+    }
+    xSemaphoreGive(s_remoteJsonCacheMutex);
+  }
+  // Lecture NVS (premier accès, cache invalidé, ou timeout mutex). HORS mutex feuille : le NVS a
+  // son propre verrou — on ne tient jamais notre mutex en appelant le NVS (pas d'inversion).
   Serial.println(F("[Config] 📥 Chargement variables distantes depuis NVS centralisé"));
   g_nvsManager.loadString(NVS_NAMESPACES::CONFIG, NVSKeys::Config::REMOTE_JSON, json, jsonSize, "");
+  // Mise à jour du cache RAM — section critique COURTE.
+  if (s_remoteJsonCacheMutex == nullptr) {
+    s_remoteJsonCacheMutex = xSemaphoreCreateMutex();
+  }
+  bool cacheLockHeld = (s_remoteJsonCacheMutex != nullptr) &&
+      (xSemaphoreTake(s_remoteJsonCacheMutex, pdMS_TO_TICKS(REMOTE_JSON_CACHE_MUTEX_TIMEOUT_MS)) == pdTRUE);
   if (strlen(json) > 0) {
     strncpy(s_remoteJsonCache, json, REMOTE_JSON_CACHE_SIZE - 1);
     s_remoteJsonCache[REMOTE_JSON_CACHE_SIZE - 1] = '\0';
     s_remoteJsonCacheValid = true;
+    if (cacheLockHeld) {
+      xSemaphoreGive(s_remoteJsonCacheMutex);
+    }
     Serial.println(F("[Config] ✅ Variables distantes chargées depuis NVS centralisé"));
     return true;
   }
   s_remoteJsonCache[0] = '\0';
   s_remoteJsonCacheValid = true;  // Éviter de re-lire NVS en boucle si vide
+  if (cacheLockHeld) {
+    xSemaphoreGive(s_remoteJsonCacheMutex);
+  }
   Serial.println(F("[Config] ⚠️ Aucune variable distante trouvée"));
   return false;
 }

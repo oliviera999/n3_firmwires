@@ -4,7 +4,20 @@
 /* ========== Commun ========== */
 #define FIRMWARE_VERSION "2.39"
 #define SERVER_NAME     "iot.olution.info"
-#define SERVER_PORT     80
+
+/* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
+ * Avec le flag de build USE_HTTPS_ENDPOINTS, bascule en https:// (TLS).
+ * ATTENTION ESP32-CAM : RAM tres tendue, WiFiClientSecure coute ~40 KB/handshake
+ * en plus de l'upload photo (framebuffer). Faisabilite a valider SUR CIBLE avant
+ * tout deploiement (cf. docs/HTTPS_MIGRATION.md). N'est PAS dans la matrice CI.
+ */
+#if defined(USE_HTTPS_ENDPOINTS)
+#  define SERVER_SCHEME  "https://"
+#  define SERVER_PORT    443
+#else
+#  define SERVER_SCHEME  "http://"
+#  define SERVER_PORT    80
+#endif
 
 /* NTP */
 #define NTP_SERVER         "pool.ntp.org"
@@ -83,8 +96,8 @@
 #if defined(TARGET_MSP1)
 #  define SERVER_PATH        "/msp1gallery/upload.php"
 #  define REMOTE_BOARD_ID    6
-#  define REMOTE_OUTPUTS_STATE_URL "http://iot.olution.info/msp1gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=6"
-#  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/msp1gallery/post-uploadphotoserver-version.php"
+#  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/msp1gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=6"
+#  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/msp1gallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
@@ -93,8 +106,8 @@
 #elif defined(TARGET_N3PP)
 #  define SERVER_PATH        "/n3ppgallery/upload.php"
 #  define REMOTE_BOARD_ID    7
-#  define REMOTE_OUTPUTS_STATE_URL "http://iot.olution.info/n3ppgallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=7"
-#  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/n3ppgallery/post-uploadphotoserver-version.php"
+#  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/n3ppgallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=7"
+#  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/n3ppgallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
@@ -103,8 +116,8 @@
 #elif defined(TARGET_FFP3)
 #  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
 #  define REMOTE_BOARD_ID    5
-#  define REMOTE_OUTPUTS_STATE_URL "http://iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=5"
-#  define REMOTE_VERSION_POST_URL  "http://iot.olution.info/ffp3/ffp3gallery/post-uploadphotoserver-version.php"
+#  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=5"
+#  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/post-uploadphotoserver-version.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600

@@ -482,3 +482,85 @@ de l'autonomie** (pas de veille manquée ni de batterie vidée).
 `handleBlockingConditions` §11) sont désormais déléguées à des unités testées nativement. `handleAlerts`,
 `handleRefill*`, veille/réveil (snapshot + blocage), fin de nourrissage : la logique de décision de la
 god-class `Automatism` est sortie et couverte par des tests purs (effets matériels restant bench-gated).
+
+---
+
+## 12. Mise à jour 2026-06-16 — 3 chantiers parallèles (décision horloge + durcissement concurrence)
+
+Trois PR draft indépendantes (fichiers disjoints → merge sans conflit), développées en parallèle.
+**Toutes BENCH-REQUISES** pour la preuve runtime (CI = compilation + tests natifs uniquement).
+
+### 12.a — `ClockDecision` : validation NTP + dérive RTC (extraction pure, testée) — PR `claude/ffp5cs-c4-clock-decision`
+Suite directe du chantier C4 (hors `Automatism`, dans `power.cpp`). Extraction de la logique numérique de
+`syncTimeFromNTP` en module **pur** `include/clock_decision.h` (namespace `ClockDecision`, deps `<cmath>`/
+`<ctime>` + `epoch_util.h` ; **réutilise** `EpochUtil::epochAbsDiff`) :
+- `isPlausibleYear` (≥ 2024), `isNtpEpochPlausible` (`epochChangedEnough || nearCompile`),
+  `computeDriftPpm` (formule PPM + bornage `fmax/fmin`), `computeDriftSeconds`.
+- `power.cpp` délègue la **décision** ; tout l'I/O (RTC/NVS/`settimeofday`/`getLocalTime`/Serial) + les
+  messages `LOG_*` verbatim restent dans l'appelant. `applyDriftCorrection`/`getSleptTime` laissés intacts
+  (intriqués I/O — pas une petite étape propre).
+- Test natif `test/test_clock_decision/` (18 cas) + **2 boucles brute-force** (~250k combos PPM, ~3500 NTP)
+  vs transcription de l'inline d'origine → 0 divergence. Enregistré CI + ini. ⚠️ Banc : sync NTP réelle
+  (accepte/loggue même PPM/rejette stale ; pas de divergence float ESP32 vs hôte).
+
+### 12.b — Concurrence : états partagés multi-tâches → `std::atomic` — PR `claude/ffp5cs-concurrency-atomics`
+Suite du §4 (atomics anti-course). 3 variables **vérifiées réellement multi-tâches** (chaînes d'appel
+tracées) converties, strictement préservateur de comportement :
+- `s_bootConfigFetchDone` (`app_tasks.cpp`) : netTask écrit / loopTask lit (`volatile bool`→`atomic<bool>`).
+- `s_wakeProtectionStartMs` (`app_tasks.cpp`) : autoTask écrit / otaTask+loopTask lisent ; `isInWakeProtectionWindow`
+  lit désormais **un seul snapshot** (corrige aussi un TOCTOU test/soustraction).
+- `s_nextSeq` (`sd_logger.cpp`, BOARD_S3) : RMW `seq++` atteint d'autoTask **et** async_tcp/web → `atomic<uint32_t>`.
+- Style calqué sur l'existant (`s_heartbeatDroppedCount`). `diagnostics.h` non touché (BACKLOG §4 : casse la
+  copiabilité de `DiagnosticStats`). ⚠️ Banc : preuve runtime sur chemins réels boot/réveil/SD.
+
+### 12.c — Concurrence : mutex dédié `s_remoteJsonCache` — PR `claude/ffp5cs-concurrency-remote-cache-mutex`
+**Vraie course** confirmée (chaînes tracées) sur le cache RAM `remote_vars` (`config.cpp`, 2048 o + flag),
+non documentée auparavant — même classe que `s_lastFetchedJson` (§1) :
+- WRITE : async_tcp (`/dbvars/update`, `toggleEmailNotifications`) **et** autoTask (`processDeferredRemoteVarsSave`).
+- READ : netTask (`loadFromNVSFallback`/boot), autoTask (`fetchRemoteState`/restore), async_tcp (`/dbvars`).
+- Aucune sérialisation préexistante (le web server est **ESPAsyncWebServer** → handlers sur tâche async_tcp,
+  pas webTask). `strncpy`/`strcmp` déchirables → JSON malformé → parse KO/OOB.
+- Correctif : `s_remoteJsonCacheMutex` (lazy-init, motif `s_lastFetchedJsonMutex`, timeout 1000 ms). Verrou
+  **FEUILLE** : sections critiques = cache RAM uniquement ; **appels NVS hors mutex** (pas d'inversion).
+  Dégradation gracieuse au timeout : lecture → retombe sur NVS (source durable). Diff `config.cpp` seul.
+  ⚠️ Banc (bloquant) : toggle WiFi + polling + trafic `/dbvars` concurrent → 0 LoadProhibited, 0 stalls.
+
+---
+
+## 13. Mise à jour 2026-06-16 — Lot « sans banc » (100% prouvable en CI, agents parallèles)
+
+Série de chantiers délibérément **NON bench-gated** : logique plateforme-indépendante (parsing chaîne/entier,
+décisions booléennes) à **parité exacte** (⇒ comportement identique ⇒ aucune validation matérielle requise),
++ tests purs (zéro changement de prod) + suppression de code mort (compile-validée). Développé par 4 agents en
+parallèle (worktrees isolés, branches disjointes). Listes de tests + ce BACKLOG centralisés (anti-conflit).
+
+### 13.a — Extraction `DiagnosticsDecision` (pur, diagnostique) — inclus PR « no-bench-pure »
+`include/diagnostics_decision.h` (`<cstdint>/<cstring>/<cstddef>` seuls). Extrait de `diagnostics.cpp` :
+- `parseIdlePercent(taskStats)` : parse la sortie FreeRTOS `vTaskGetRunTimeStats` → moyenne des lignes IDLE
+  (0..100, 255 = inconnu). `atoiSimple` + test `'0'..'9'` (évite `<cctype>` + UB char signé), documenté.
+- `decideMinHeapSave(...)` : décision pure (1er-save / intervalle+delta / perte critique >10 Ko, garde
+  UINT32_MAX) renvoyant un enum ; logs/NVS/mutations restent dans l'appelant (parité). **Diagnostique** →
+  zéro impact sécurité/autonomie. Tests `test_diagnostics_decision` (28 cas + boucles de parité brute-force).
+
+### 13.b — Extraction `GpioBoolParse` (pur, parité exacte) — inclus PR « no-bench-pure »
+`include/gpio_bool_parse.h` (`<cstring>` seul, sans ArduinoJson). Extrait le cœur de `parseBoolFromDoc`
+(`gpio_parser.cpp`) : `fromToken` (`"1"/"true"/"on"` insensible à la casse → true ; `"0"/"false"` → false ;
+inconnu → non reconnu) + `fromInt` (strictement `==1`). Le **dispatch de type ArduinoJson** reste dans
+`gpio_parser.cpp` ; **edge-seeding nourrissage non touché**. Parité octet-pour-octet (parse commandes serveur).
+Tests `test_gpio_bool_parse` (13 cas + 2 boucles de parité ancien↔nouveau).
+
+### 13.c — Couverture native de modules purs non testés — inclus PR « no-bench-pure »
+Tests seulement (zéro changement de prod). Trous réels comblés : `test_board_traits_default` +
+`test_board_traits_s3beta` (header `board_traits.h` — sélection board/profil/endpoint, 2×6 cas, les 2 branches
+des 13 prédicats) et `test_tank_level_gate` (gates niveau réservoir `config_sensors.h` — **sécurité** :
+un mauvais seuil → fausse détection plein/vide → mauvais pilotage pompe/débordement ; 10 cas, bornes).
+
+### 13.d — Suppression code mort confirmé — PR `claude/ffp5cs-deadcode` (séparée, disjointe)
+16 retraits prouvés zéro-référence (grep dépôt entier) : `OTAManager::validateFirmwareSize()` (def+décl) +
+15 déclarations orphelines dans `automatism.h` (jamais définies ni appelées ; même motif que v11.178/179).
+Skippés (prudence) : hooks `extern "C"` faibles (`earlyInitVariant`, `ffp5cs_diag_*` — atteints sous certains
+env de build), et noms en collision avec des méthodes de classes sœurs. Diff `automatism.h`/`ota_manager.h`/
+`ota_manager_validate.cpp` seuls. Preuve finale = build firmware CI.
+
+➡️ **Pas de banc requis** : parité exacte (parsing) / diagnostique (heap) / tests purs / code inatteignable.
+Le seul filet est la **CI** (tests natifs + builds firmware). Reste éventuel : `n3_serveur` (PHP, jamais de banc).

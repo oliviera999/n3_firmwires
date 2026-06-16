@@ -55,7 +55,7 @@ private:
     
     // Validation
     bool validateMetadata(const JsonDocument& doc);
-    bool validateFirmwareSize(size_t expected, size_t actual);
+    // v11.198: validateFirmwareSize() supprimé (jamais appelé - audit code mort)
     bool validateFilesystemSize(size_t expected, size_t actual);
     bool validateSpace(size_t required);
     bool selectArtifactFromMetadata(const JsonDocument& doc, char* outVersion, size_t versionSize, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size);
