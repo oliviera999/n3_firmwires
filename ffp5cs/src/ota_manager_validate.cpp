@@ -44,19 +44,7 @@ bool OTAManager::validateMetadata(const JsonDocument& doc) {
     return true;
 }
 
-bool OTAManager::validateFirmwareSize(size_t expected, size_t actual) {
-    if (actual <= 0) {
-        logError("Taille du firmware invalide");
-        return false;
-    }
-    
-    if (expected > 0 && actual != expected) {
-        logError("Taille du firmware ne correspond pas à celle attendue");
-        return false;
-    }
-    
-    return true;
-}
+// v11.198: validateFirmwareSize() supprimé (jamais appelé - audit code mort)
 
 bool OTAManager::validateFilesystemSize(size_t expected, size_t actual) {
     if (actual <= 0) {
