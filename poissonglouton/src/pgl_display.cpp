@@ -2,70 +2,92 @@
 
 #include "config.h"
 #include "pgl_log.h"
+#include "pgl_ui.h"
 
 #if !PGL_HEADLESS
+
+#include "pgl_display_board.h"
 
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 #include <cstdio>
 #include <cstring>
 
-namespace {
-constexpr int GFX_BL = 1;
-constexpr uint16_t kScreenW = 480;
-constexpr uint16_t kScreenH = 272;
-constexpr uint32_t kLvglBufLines = 40;
-constexpr int kPadX = 8;
-constexpr int kColW = 228;
-constexpr int kLeftX = kPadX;
-constexpr int kRightX = kScreenW / 2 + 4;
-constexpr int kHeaderH = 40;
-constexpr int kBodyY = kHeaderH + 4;
-constexpr int kRowH = 20;
+#if PGL_TOUCH_AXS15231B
+#include "touch_axs15231b.h"
+#endif
 
-Arduino_DataBus* bus = new Arduino_ESP32QSPI(45, 47, 21, 48, 40, 39);
+namespace {
+constexpr int GFX_BL = PGL_GFX_BL;
+constexpr uint16_t kScreenW = PGL_SCREEN_W;
+constexpr uint16_t kScreenH = PGL_SCREEN_H;
+constexpr uint32_t kLvglBufLines = 40;
+constexpr uint8_t kQueueBarMaxEvents = 20;
+
+Arduino_DataBus* bus = new Arduino_ESP32QSPI(
+    PGL_QSPI_CS, PGL_QSPI_SCK, PGL_QSPI_D0, PGL_QSPI_D1, PGL_QSPI_D2, PGL_QSPI_D3);
+
+#if PGL_PANEL_DRIVER_AXS15231B
+#if defined(PGL_AX15231B_INIT_TYPE2) && PGL_AX15231B_INIT_TYPE2
+Arduino_GFX* panel = new Arduino_AXS15231B(
+    bus, GFX_NOT_DEFINED, 0, false, kScreenW, kScreenH, 0, 0, 0, 0,
+    axs15231b_320480_type2_init_operations, sizeof(axs15231b_320480_type2_init_operations));
+#else
+Arduino_GFX* panel = new Arduino_AXS15231B(
+    bus, GFX_NOT_DEFINED, 0, false, kScreenW, kScreenH, 0, 0, 0, 0,
+    axs15231b_320480_type1_init_operations, sizeof(axs15231b_320480_type1_init_operations));
+#endif
+Arduino_GFX* gfx = new Arduino_Canvas(kScreenW, kScreenH, panel, 0, 0, 0);
+#else
 Arduino_GFX* panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, true);
 Arduino_GFX* gfx = new Arduino_Canvas(kScreenW, kScreenH, panel);
+#endif
 
 lv_disp_draw_buf_t drawBuf;
 lv_color_t* drawBuffer = nullptr;
-lv_obj_t* labelTitle = nullptr;
-lv_obj_t* labelHw = nullptr;
-lv_obj_t* labelSmiley = nullptr;
-lv_obj_t* labelTotal = nullptr;
-lv_obj_t* labelToday = nullptr;
-lv_obj_t* labelUs = nullptr;
-lv_obj_t* labelServer = nullptr;
-lv_obj_t* labelWifi = nullptr;
-lv_obj_t* labelAudio = nullptr;
+PglUiHandles ui;
 bool adminUnlockedState = false;
 uint32_t lastUiUpdateMs = 0;
+int lastWifiRssi_ = -100;
+bool wifiConnected_ = false;
 
-void styleLabelLight(lv_obj_t* obj, const lv_font_t* font) {
-  lv_obj_set_style_text_color(obj, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
-  if (font) {
-    lv_obj_set_style_text_font(obj, font, LV_PART_MAIN);
-  }
+int mapRssiToBar(int rssi) {
+  if (rssi <= -90) return 0;
+  if (rssi >= -30) return 100;
+  return (rssi + 90) * 100 / 60;
 }
 
-/** Colonne 0 = gauche (compteurs), 1 = droite (capteurs / réseau). */
-void placeGridLabel(lv_obj_t* obj, uint8_t col, uint8_t row, const lv_font_t* font) {
-  const int rowH = (col == 0) ? 22 : 28;
-  const int x = (col == 0) ? kLeftX : kRightX;
-  const int y = kBodyY + static_cast<int>(row) * rowH;
-  styleLabelLight(obj, font);
-  lv_obj_set_pos(obj, x, y);
-  lv_obj_set_width(obj, kColW);
-  lv_label_set_long_mode(obj, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+int mapQueueToBar(uint16_t pendingEvents) {
+  if (pendingEvents >= kQueueBarMaxEvents) return 100;
+  return (static_cast<int>(pendingEvents) * 100) / kQueueBarMaxEvents;
 }
 
 void displayFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP) {
   const uint32_t w = area->x2 - area->x1 + 1;
   const uint32_t h = area->y2 - area->y1 + 1;
+#if PGL_LV_FLUSH_USE_BERGB
+  gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
+#else
   gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
+#endif
   lv_disp_flush_ready(disp);
 }
+
+#if PGL_TOUCH_AXS15231B
+void touchpadRead(lv_indev_drv_t* /*indev*/, lv_indev_data_t* data) {
+  if (touch_axs_has_signal()) {
+    if (touch_axs_touched()) {
+      data->state = LV_INDEV_STATE_PR;
+      data->point.x = touch_axs_last_x;
+      data->point.y = touch_axs_last_y;
+    } else if (touch_axs_released()) {
+      data->state = LV_INDEV_STATE_REL;
+    }
+  } else {
+    data->state = LV_INDEV_STATE_REL;
+  }
+}
+#endif
 
 void flushUi() {
   lv_timer_handler();
@@ -74,18 +96,34 @@ void flushUi() {
 }  // namespace
 
 void PglDisplay::refreshLabels() {
-  lv_label_set_text(labelHw, hwLine_);
-  lv_label_set_text_fmt(labelTotal, "Total: %lu", static_cast<unsigned long>(totalCount_));
-  lv_label_set_text_fmt(labelToday, "Auj.: %lu", static_cast<unsigned long>(todayCount_));
-  lv_label_set_text(labelUs, usLine_);
-  lv_label_set_text(labelServer, serverLine_);
-  lv_label_set_text(labelWifi, wifiLine_);
-  lv_label_set_text(labelAudio, audioLine_);
+  if (ui.labelTodayValue) {
+    lv_label_set_text_fmt(ui.labelTodayValue, "%lu", static_cast<unsigned long>(todayCount_));
+  }
+  if (ui.labelTotal) {
+    lv_label_set_text_fmt(ui.labelTotal, "Total: %lu", static_cast<unsigned long>(totalCount_));
+  }
+  if (ui.labelUs) {
+    lv_label_set_text(ui.labelUs, usLine_);
+  }
+  if (ui.labelServer) {
+    lv_label_set_text(ui.labelServer, serverLine_);
+  }
+  if (ui.labelWifi) {
+    lv_label_set_text(ui.labelWifi, wifiLine_);
+  }
+  if (ui.labelAudio) {
+    lv_label_set_text(ui.labelAudio, audioLine_);
+  }
 }
 
 void PglDisplay::begin() {
-  PGL_LOG("Display: init NV3041A %ux%u QSPI (CS45 SCK47 D0-3:21,48,40,39) BL=%d",
-          kScreenW, kScreenH, GFX_BL);
+#if PGL_PANEL_DRIVER_AXS15231B
+  PGL_LOG("Display: init AXS15231B %ux%u (%s) QSPI BL=%d",
+          kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME, GFX_BL);
+#else
+  PGL_LOG("Display: init NV3041A %ux%u (%s) QSPI BL=%d",
+          kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME, GFX_BL);
+#endif
 
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
@@ -93,9 +131,9 @@ void PglDisplay::begin() {
 
   gfxOk_ = gfx->begin();
   if (!gfxOk_) {
-    PGL_LOG("Display: ERREUR gfx->begin() — panneau NV3041A non repondu");
+    PGL_LOG("Display: ERREUR gfx->begin() — panneau non repondu");
   } else {
-    PGL_LOG("Display: gfx->begin() OK (NV3041A %ux%u)", kScreenW, kScreenH);
+    PGL_LOG("Display: gfx->begin() OK (%ux%u)", kScreenW, kScreenH);
   }
   gfx->fillScreen(0x0000);
 
@@ -115,6 +153,7 @@ void PglDisplay::begin() {
   lvglOk_ = true;
   PGL_LOG_V("Display: buffer LVGL %u octets (%u lignes)", static_cast<unsigned int>(sizeof(lv_color_t) * bufPixels),
             kLvglBufLines);
+  PGL_LOG_V("Display: heap libre %u octets", static_cast<unsigned int>(ESP.getFreeHeap()));
 
   lv_disp_draw_buf_init(&drawBuf, drawBuffer, nullptr, bufPixels);
 
@@ -126,41 +165,18 @@ void PglDisplay::begin() {
   dispDrv.draw_buf = &drawBuf;
   lv_disp_drv_register(&dispDrv);
 
-  lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x0E1A22), LV_PART_MAIN);
+#if PGL_TOUCH_AXS15231B
+  touch_axs_init(static_cast<int16_t>(kScreenW), static_cast<int16_t>(kScreenH), gfx->getRotation());
+  static lv_indev_drv_t indevDrv;
+  lv_indev_drv_init(&indevDrv);
+  indevDrv.type = LV_INDEV_TYPE_POINTER;
+  indevDrv.read_cb = touchpadRead;
+  lv_indev_drv_register(&indevDrv);
+  PGL_LOG_V("Display: tactile AXS15231B I2C init (SDA=%d SCL=%d)", PGL_TOUCH_AXS_SDA, PGL_TOUCH_AXS_SCL);
+#endif
 
-  labelTitle = lv_label_create(lv_scr_act());
-  lv_label_set_text(labelTitle, "Poisson Glouton");
-  styleLabelLight(labelTitle, &lv_font_montserrat_16);
-  lv_obj_align(labelTitle, LV_ALIGN_TOP_MID, 0, 4);
-
-  labelHw = lv_label_create(lv_scr_act());
-  styleLabelLight(labelHw, &lv_font_montserrat_12);
-  lv_obj_set_width(labelHw, kScreenW - 16);
-  lv_label_set_long_mode(labelHw, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_align(labelHw, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_obj_align(labelHw, LV_ALIGN_TOP_MID, 0, 22);
-
-  labelSmiley = lv_label_create(lv_scr_act());
-  lv_label_set_text(labelSmiley, ":-)");
-  placeGridLabel(labelSmiley, 0, 0, &lv_font_montserrat_20);
-
-  labelTotal = lv_label_create(lv_scr_act());
-  placeGridLabel(labelTotal, 0, 1, &lv_font_montserrat_16);
-
-  labelToday = lv_label_create(lv_scr_act());
-  placeGridLabel(labelToday, 0, 2, &lv_font_montserrat_14);
-
-  labelUs = lv_label_create(lv_scr_act());
-  placeGridLabel(labelUs, 1, 0, &lv_font_montserrat_14);
-
-  labelServer = lv_label_create(lv_scr_act());
-  placeGridLabel(labelServer, 1, 1, &lv_font_montserrat_12);
-
-  labelWifi = lv_label_create(lv_scr_act());
-  placeGridLabel(labelWifi, 1, 2, &lv_font_montserrat_12);
-
-  labelAudio = lv_label_create(lv_scr_act());
-  placeGridLabel(labelAudio, 1, 3, &lv_font_montserrat_12);
+  pglUiInitTheme();
+  ui = pglUiBuildDashboard(lv_scr_act());
 
   snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: initialisation...");
   snprintf(audioLine_, sizeof(audioLine_), "Son: —");
@@ -175,7 +191,8 @@ void PglDisplay::begin() {
     delay(5);
   }
   if (ready_) {
-    PGL_LOG("Display: FONCTIONNEL — tableau de bord actif (%ux%u)", kScreenW, kScreenH);
+    PGL_LOG("Display: FONCTIONNEL — dashboard LVGL actif (%ux%u %s)", kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME);
+    PGL_LOG_V("Display: heap libre apres UI %u octets", static_cast<unsigned int>(ESP.getFreeHeap()));
   } else {
     PGL_LOG("Display: NON FONCTIONNEL (gfx=%s lvgl=%s)",
             gfxOk_ ? "OK" : "ECHEC",
@@ -199,34 +216,71 @@ void PglDisplay::onBottleCount(uint32_t totalCount, uint32_t todayCount) {
   totalCount_ = totalCount;
   todayCount_ = todayCount;
   lastCountAnimMs_ = millis();
-  lv_label_set_text(labelSmiley, "^_^");
+  if (ui.labelSmiley) {
+    lv_label_set_text(ui.labelSmiley, "^_^");
+  }
   refreshLabels();
   PGL_LOG_V("Display: +1 total=%lu today=%lu", static_cast<unsigned long>(totalCount),
             static_cast<unsigned long>(todayCount));
 }
 
 void PglDisplay::setWifiInfo(const char* ssid, wl_status_t status, int rssi) {
-  if (status == WL_CONNECTED && ssid && ssid[0] != '\0') {
+  wifiConnected_ = (status == WL_CONNECTED && ssid && ssid[0] != '\0');
+  if (wifiConnected_) {
+    lastWifiRssi_ = rssi;
     snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: %s (%d dBm)", ssid, rssi);
+    pglUiSetLed(ui.ledWifi, PglUiLedState::Ok);
+    if (ui.barWifi) {
+      lv_bar_set_value(ui.barWifi, mapRssiToBar(rssi), LV_ANIM_OFF);
+      lv_obj_set_style_bg_color(ui.barWifi, lv_color_hex(0x7CFC00), LV_PART_INDICATOR);
+    }
   } else {
     snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: deconnecte");
+    pglUiSetLed(ui.ledWifi, PglUiLedState::Error);
+    if (ui.barWifi) {
+      lv_bar_set_value(ui.barWifi, 0, LV_ANIM_OFF);
+    }
   }
-  lv_label_set_text(labelWifi, wifiLine_);
+  if (ui.labelWifi) {
+    lv_label_set_text(ui.labelWifi, wifiLine_);
+  }
 }
 
 void PglDisplay::setUltrasonDistance(uint16_t distanceCm, bool sensorPresent) {
   if (!sensorPresent && distanceCm == 0) {
     snprintf(usLine_, sizeof(usLine_), "US: capteur absent");
+    if (ui.arcUs) {
+      lv_arc_set_value(ui.arcUs, 0);
+      lv_obj_set_style_arc_color(ui.arcUs, lv_color_hex(0xFFB347), LV_PART_INDICATOR);
+    }
   } else if (distanceCm == 0) {
     snprintf(usLine_, sizeof(usLine_), "US: hors portee (> %ucm)", PGL_ULTRASON_MAX_VALID_CM);
+    if (ui.arcUs) {
+      lv_arc_set_value(ui.arcUs, 0);
+      lv_obj_set_style_arc_color(ui.arcUs, lv_palette_main(LV_PALETTE_TEAL), LV_PART_INDICATOR);
+    }
   } else if (distanceCm <= PGL_ULTRASON_TRIGGER_CM) {
     snprintf(usLine_, sizeof(usLine_), "US: %u cm  [ZONE]", distanceCm);
-    lv_obj_set_style_text_color(labelUs, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+    if (ui.arcUs) {
+      lv_arc_set_value(ui.arcUs, distanceCm);
+      lv_obj_set_style_arc_color(ui.arcUs, lv_color_hex(0x7CFC00), LV_PART_INDICATOR);
+    }
+    if (ui.labelUs) {
+      lv_obj_set_style_text_color(ui.labelUs, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+    }
   } else {
     snprintf(usLine_, sizeof(usLine_), "US: %u cm", distanceCm);
-    lv_obj_set_style_text_color(labelUs, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+    if (ui.arcUs) {
+      lv_arc_set_value(ui.arcUs, distanceCm);
+      lv_obj_set_style_arc_color(ui.arcUs, lv_palette_main(LV_PALETTE_TEAL), LV_PART_INDICATOR);
+    }
+    if (ui.labelUs) {
+      lv_obj_set_style_text_color(ui.labelUs, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+    }
   }
-  lv_label_set_text(labelUs, usLine_);
+  if (ui.labelUs) {
+    lv_label_set_text(ui.labelUs, usLine_);
+  }
 }
 
 void PglDisplay::setServerStatus(const PglServerCommStatus& status, uint16_t pendingEvents) {
@@ -251,13 +305,37 @@ void PglDisplay::setServerStatus(const PglServerCommStatus& status, uint16_t pen
            postBuf,
            hbBuf,
            static_cast<unsigned int>(pendingEvents));
-  lv_label_set_text(labelServer, serverLine_);
+
+  if (ui.barQueue) {
+    lv_bar_set_value(ui.barQueue, mapQueueToBar(pendingEvents), LV_ANIM_OFF);
+    if (pendingEvents > 0) {
+      lv_obj_set_style_bg_color(ui.barQueue, lv_color_hex(0xFFB347), LV_PART_INDICATOR);
+    } else if (status.lastPostHttp >= 200 && status.lastPostHttp < 300) {
+      lv_obj_set_style_bg_color(ui.barQueue, lv_color_hex(0x7CFC00), LV_PART_INDICATOR);
+    } else {
+      lv_obj_set_style_bg_color(ui.barQueue, lv_palette_main(LV_PALETTE_TEAL), LV_PART_INDICATOR);
+    }
+  }
+
   if (status.lastPostHttp >= 200 && status.lastPostHttp < 300) {
-    lv_obj_set_style_text_color(labelServer, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+    pglUiSetLed(ui.ledSrv, PglUiLedState::Ok);
+    if (ui.labelServer) {
+      lv_obj_set_style_text_color(ui.labelServer, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+    }
   } else if (status.lastPostHttp > 0 || status.lastHeartbeatHttp > 0) {
-    lv_obj_set_style_text_color(labelServer, lv_color_hex(0xFFB347), LV_PART_MAIN);
+    pglUiSetLed(ui.ledSrv, PglUiLedState::Warn);
+    if (ui.labelServer) {
+      lv_obj_set_style_text_color(ui.labelServer, lv_color_hex(0xFFB347), LV_PART_MAIN);
+    }
   } else {
-    lv_obj_set_style_text_color(labelServer, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+    pglUiSetLed(ui.ledSrv, PglUiLedState::Off);
+    if (ui.labelServer) {
+      lv_obj_set_style_text_color(ui.labelServer, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+    }
+  }
+
+  if (ui.labelServer) {
+    lv_label_set_text(ui.labelServer, serverLine_);
   }
 }
 
@@ -274,18 +352,24 @@ void PglDisplay::showAudioPlaying(const char* reason, const char* mp3Path) {
   } else {
     snprintf(audioLine_, sizeof(audioLine_), "Son: %s", file);
   }
-  lv_label_set_text(labelAudio, audioLine_);
+  if (ui.labelAudio) {
+    lv_label_set_text(ui.labelAudio, audioLine_);
+  }
 }
 
 void PglDisplay::showAudioIdle() {
   snprintf(audioLine_, sizeof(audioLine_), "Son: —");
-  lv_label_set_text(labelAudio, audioLine_);
+  if (ui.labelAudio) {
+    lv_label_set_text(ui.labelAudio, audioLine_);
+  }
 }
 
 void PglDisplay::tickSmileyIdle() {
   if (lastCountAnimMs_ == 0) return;
   if ((millis() - lastCountAnimMs_) > 3000) {
-    lv_label_set_text(labelSmiley, ":-)");
+    if (ui.labelSmiley) {
+      lv_label_set_text(ui.labelSmiley, ":-)");
+    }
     lastCountAnimMs_ = 0;
   }
 }
@@ -318,17 +402,29 @@ void PglDisplay::setHardwareStatus(bool displayOk, bool irPresent, bool irObstac
     ir = "libre";
   }
   snprintf(hwLine_, sizeof(hwLine_), "Ecran: %s | IR: %s", disp, ir);
-  if (!labelHw) {
-    return;
+
+  if (ui.labelIr) {
+    lv_label_set_text_fmt(ui.labelIr, "IR: %s", ir);
+    if (!irPresent) {
+      lv_obj_set_style_text_color(ui.labelIr, lv_color_hex(0xFFB347), LV_PART_MAIN);
+      pglUiSetLed(ui.ledIr, PglUiLedState::Warn);
+    } else if (irObstacle) {
+      lv_obj_set_style_text_color(ui.labelIr, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+      pglUiSetLed(ui.ledIr, PglUiLedState::Ok);
+    } else {
+      lv_obj_set_style_text_color(ui.labelIr, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+      pglUiSetLed(ui.ledIr, PglUiLedState::Ok);
+    }
   }
-  lv_label_set_text(labelHw, hwLine_);
-  if (displayOk && irPresent) {
-    lv_obj_set_style_text_color(labelHw, lv_color_hex(0x7CFC00), LV_PART_MAIN);
-  } else if (!displayOk || !irPresent) {
-    lv_obj_set_style_text_color(labelHw, lv_color_hex(0xFFB347), LV_PART_MAIN);
-  } else {
-    lv_obj_set_style_text_color(labelHw, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+
+  if (ui.labelTitle) {
+    if (!displayOk) {
+      lv_obj_set_style_text_color(ui.labelTitle, lv_color_hex(0xFFB347), LV_PART_MAIN);
+    } else {
+      lv_obj_set_style_text_color(ui.labelTitle, lv_palette_main(LV_PALETTE_TEAL), LV_PART_MAIN);
+    }
   }
+  (void)disp;
 }
 
 #else

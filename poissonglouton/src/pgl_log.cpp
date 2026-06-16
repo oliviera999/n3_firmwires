@@ -14,8 +14,12 @@ void pglLogBootBanner() {
   PGL_LOG("Poisson Glouton v%s (%s)", PGL_FIRMWARE_VERSION, PGL_SENSOR_LOCATION);
 #if PGL_HEADLESS
   PGL_LOG("Build: headless");
-#else
+#elif defined(PGL_BOARD_JC3248W535) && PGL_BOARD_JC3248W535
+  PGL_LOG("Build: display JC3248W535");
+#elif defined(PGL_BOARD_JC4827W543) && PGL_BOARD_JC4827W543
   PGL_LOG("Build: display JC4827W543");
+#else
+  PGL_LOG("Build: display (board non identifie)");
 #endif
 #if PGL_DEBUG_NO_SLEEP
   PGL_LOG("Mode test: veille DESACTIVEE (PGL_DEBUG_NO_SLEEP)");

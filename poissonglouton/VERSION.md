@@ -1,5 +1,15 @@
 # Poissonglouton - Historique versions
 
+## 0.1.21 - 2026-06-16
+
+- Ecran : refonte UI LVGL haute qualité en cartes (LED d’état, jauge ultrason, barre file serveur, compteurs et smiley).
+
+## 0.1.20 - 2026-06-16
+
+- Nouvel environnement `pgl-s3-jc3248` : module Guition JC3248W535 (320x480, AXS15231B, tactile I2C integre, flash 16 Mo).
+- Affichage multi-board : `pgl_display_board.h`, UI portrait adaptee, flush BeRGB pour AXS15231B.
+- `PGL_IR_PIN` surchargeable via build flag ; doc `docs/JC3248W535_REFERENCE.md`.
+
 ## 0.1.19 - 2026-06-16
 
 - Reseau : logs HTTP enrichis (corps reponse serveur, verdicts 401/400/500 explicites) pour diagnostic post-data / heartbeat.

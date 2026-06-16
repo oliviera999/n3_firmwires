@@ -33,9 +33,24 @@
 
 #define LV_USE_LABEL 1
 #define LV_USE_BTN 1
+#define LV_USE_ARC 1
+#define LV_USE_BAR 1
+#define LV_USE_LED 1
 #define LV_USE_FLEX 1
 #define LV_USE_GRID 1
 #define LV_DRAW_COMPLEX 1
+
+/* La démo widgets LVGL n’est pas intégrée : désactiver les widgets dépendants
+   des images pour éviter LV_USE_IMG=0 -> erreur lv_animimg. */
+#define LV_USE_ANIMIMG 0
+
+#define LV_USE_THEME_DEFAULT 1
+#if LV_USE_THEME_DEFAULT
+#define LV_THEME_DEFAULT_DARK 1
+#define LV_THEME_DEFAULT_GROW 0
+#endif
+
+#define LV_USE_IMG 1
 
 #define LV_USE_DEMO_WIDGETS 0
 #define LV_BUILD_EXAMPLES 0

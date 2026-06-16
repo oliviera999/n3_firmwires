@@ -8,8 +8,11 @@ Firmware de comptage de bouteilles pour poubelle de recyclage ludique.
 
 ## Environnements
 
-- **`pgl-s3-display`** (defaut) : Guition JC4827W543 — ecran LVGL, tactile, audio I2S.
+- **`pgl-s3-display`** (defaut) : Guition JC4827W543 — ecran LVGL 480x272, tactile GT911, audio I2S.
+- **`pgl-s3-jc3248`** : Guition JC3248W535 — ecran LVGL 320x480 portrait, tactile AXS15231B, flash 16 Mo.
 - **`pgl-s3-headless`** (secondaire) : ESP32-S3 DevKit sans ecran — bench / tests capteurs (audio desactive).
+
+Reference materielle JC3248 : `docs/JC3248W535_REFERENCE.md` (depot parent IOT_n3).
 
 
 
@@ -33,23 +36,30 @@ Firmware de comptage de bouteilles pour poubelle de recyclage ludique.
 
 - Deep sleep avec reveil IR (ext0) ou timer fallback.
 
+## Interface LVGL
+
+- Tableau de bord en **cartes** (compteurs, capteurs, système) en LVGL 8.4.
+- Pastilles LED d’état (IR, WiFi, serveur), jauge ultrason (arc), et barre de file d’attente upload.
 
 
-## Câblage JC4827W543 (display)
 
-
+## Câblage JC4827W543 (`pgl-s3-display`)
 
 | Element | Broche / connecteur |
-
 |---------|---------------------|
-
 | Haut-parleur | Connecteur **speak** (JST 1,25 mm, 8 Ω 0,5–3 W) |
-
 | Carte SD | Fente micro-SD du module (pas de DFPlayer externe) |
-
 | Capteur IR | **GPIO 7** (RTC/ext0 ; libre du bus tactile GT911 GPIO 4/8/38) |
-
 | Ultrason HC-SR04 | GPIO 6 (broche partagee trig/echo) |
+
+## Câblage JC3248W535 (`pgl-s3-jc3248`)
+
+| Element | Broche / connecteur |
+|---------|---------------------|
+| Ecran / tactile | Integres (AXS15231B QSPI + I2C SDA=4 SCL=8) |
+| Capteur IR externe | **GPIO 7** (eviter GPIO4 = SDA tactile) |
+| Ultrason HC-SR04 | GPIO 6 |
+| Audio / SD | Broches JC4827 par defaut (SD/I2S) — a valider sur le module 3,5" au flash |
 
 
 
@@ -96,11 +106,9 @@ Depuis `firmwires/poissonglouton/` :
 
 
 ```bash
-
 pio run -e pgl-s3-headless
-
 pio run -e pgl-s3-display
-
+pio run -e pgl-s3-jc3248
 ```
 
 

@@ -8,7 +8,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.1.19";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.1.21";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -24,8 +24,10 @@ static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 
 
 
-// Broches capteurs — IR GPIO7 (RTC/ext0, libre display + headless ; tactile GT911 = GPIO4/8/38)
-static constexpr int PGL_IR_PIN = 7;
+// Broches capteurs — IR par defaut GPIO7 (RTC/ext0) ; surcharge via -DPGL_IR_PIN=N
+#ifndef PGL_IR_PIN
+#define PGL_IR_PIN 7
+#endif
 static constexpr int PGL_US_PIN = 6;   // HC-SR04 trig/echo sur une seule broche
 
 
