@@ -23,3 +23,11 @@ struct PglStoredEvent {
   int16_t batteryMilliVolt;
   int16_t rssi;
 };
+
+/** Dernier etat des echanges HTTP avec iot.olution.info (post-data / heartbeat). */
+struct PglServerCommStatus {
+  int lastPostHttp = 0;
+  int lastHeartbeatHttp = 0;
+  uint32_t lastPostMs = 0;
+  uint32_t lastHeartbeatMs = 0;
+};

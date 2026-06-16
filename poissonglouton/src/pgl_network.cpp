@@ -19,24 +19,141 @@ namespace {
 N3WifiNetwork kWifiNetworks[] = {
     {PGL_WIFI_SSID_1, PGL_WIFI_PASS_1},
     {PGL_WIFI_SSID_2, PGL_WIFI_PASS_2},
+#if defined(PGL_WIFI_SSID_3) && defined(PGL_WIFI_PASS_3)
+    {PGL_WIFI_SSID_3, PGL_WIFI_PASS_3},
+#endif
 };
+
+void onWifiConnecting() {
+  PGL_LOG_V("WiFi: tentative en cours...");
+}
+
+void onWifiSuccess(const char* ssid) {
+  PGL_LOG_V("WiFi: callback succes ssid=%s", ssid);
+}
+
+void onWifiFailure() {
+  PGL_LOG("WiFi: echec — aucun reseau disponible");
+}
+
+void logWifiScanListPgl() {
+  delay(200);
+  const int n = WiFi.scanNetworks(false, true);
+  PGL_LOG("WiFi scan: %d reseau(x) visible(s)", n);
+  if (n < 0) {
+    PGL_LOG("WiFi scan: erreur %d", n);
+    return;
+  }
+  const size_t netCount = sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]);
+  const int showMax = 25;
+  const int show = (n > showMax) ? showMax : n;
+  for (int j = 0; j < show; j++) {
+    const char* ssid = WiFi.SSID(j).c_str();
+    bool configured = false;
+    for (size_t i = 0; i < netCount; i++) {
+      if (kWifiNetworks[i].ssid && strcmp(ssid, kWifiNetworks[i].ssid) == 0) {
+        configured = true;
+        break;
+      }
+    }
+    PGL_LOG("  [%d] \"%s\" RSSI=%d ch=%d%s",
+            j + 1,
+            ssid,
+            WiFi.RSSI(j),
+            WiFi.channel(j),
+            configured ? " (configure)" : "");
+  }
+  if (n > showMax) {
+    PGL_LOG("  ... %d autre(s) non affiche(s)", n - showMax);
+  }
+  if (n == 0) {
+    PGL_LOG("  (aucun AP detecte — ESP32 = 2,4 GHz uniquement)");
+  }
+}
+
+void logWifiStatusDetail(const char* prefix) {
+  if (WiFi.status() != WL_CONNECTED) {
+    PGL_LOG_V("%s: deconnecte (status=%s)", prefix, pglWifiStatusName(WiFi.status()));
+    return;
+  }
+  PGL_LOG_V("%s: ssid=%s ip=%s gw=%s mask=%s dns=%s rssi=%d ch=%d mac=%s",
+            prefix,
+            WiFi.SSID().c_str(),
+            WiFi.localIP().toString().c_str(),
+            WiFi.gatewayIP().toString().c_str(),
+            WiFi.subnetMask().toString().c_str(),
+            WiFi.dnsIP().toString().c_str(),
+            WiFi.RSSI(),
+            WiFi.channel(),
+            WiFi.macAddress().c_str());
+}
+
+const char* httpVerdict(int code) {
+  if (code >= 200 && code < 300) return "OK";
+  if (code >= 300 && code < 400) return "redirection";
+  if (code == 401) return "cle API invalide (verifier PGL_API_KEY secrets.h)";
+  if (code == 400) return "payload rejete (events manquant ou invalide)";
+  if (code >= 400 && code < 500) return "erreur client";
+  if (code == 500) return "erreur serveur (table BDD manquante ?)";
+  if (code >= 500) return "erreur serveur";
+  if (code == -1) return "WiFi deconnecte";
+  if (code <= 0) return "echec reseau/timeout";
+  return "inconnu";
+}
+}  // namespace
+
+const PglServerCommStatus& PglNetwork::getServerStatus() const {
+  return serverStatus_;
+}
+
+void PglNetwork::recordPostResult(int httpCode) {
+  serverStatus_.lastPostHttp = httpCode;
+  serverStatus_.lastPostMs = millis();
+}
+
+void PglNetwork::recordHeartbeatResult(int httpCode) {
+  serverStatus_.lastHeartbeatHttp = httpCode;
+  serverStatus_.lastHeartbeatMs = millis();
 }
 
 void PglNetwork::begin() {
   WiFi.mode(WIFI_MODE_STA);
-  PGL_LOG_V("WiFi: %u reseau(x) configures, timeout=%ums",
-            static_cast<unsigned int>(sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0])),
-            PGL_WIFI_TIMEOUT_MS);
+  const size_t netCount = sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]);
+  PGL_LOG("WiFi: %u reseau(x) configure(s), timeout=%ums",
+          static_cast<unsigned int>(netCount), PGL_WIFI_TIMEOUT_MS);
+  for (size_t i = 0; i < netCount; ++i) {
+    const bool hasPass = kWifiNetworks[i].pass && kWifiNetworks[i].pass[0] != '\0';
+    PGL_LOG_V("WiFi: [%u] ssid=\"%s\" mot_de_passe=%s",
+              static_cast<unsigned int>(i + 1),
+              kWifiNetworks[i].ssid ? kWifiNetworks[i].ssid : "(null)",
+              hasPass ? "oui" : "non");
+  }
+}
+
+void PglNetwork::connectWifi() {
+  PGL_LOG("WiFi: liste des reseaux disponibles...");
+  logWifiScanListPgl();
+  ensureWifi();
 }
 
 bool PglNetwork::uploadBatch(const PglStoredEvent* events, size_t count, uint32_t totalCount, uint32_t todayCount) {
   if (!events || count == 0) return true;
   ensureWifi();
   if (WiFi.status() != WL_CONNECTED) {
-    PGL_LOG("Upload: WiFi non connecte (%s)", pglWifiStatusName(WiFi.status()));
+    PGL_LOG("Serveur POST: annule — WiFi %s", pglWifiStatusName(WiFi.status()));
+    recordPostResult(-1);
     return false;
   }
-  PGL_LOG_V("Upload: WiFi OK ssid=%s rssi=%d", WiFi.SSID().c_str(), WiFi.RSSI());
+  logWifiStatusDetail("Serveur POST");
+
+  PGL_LOG("Serveur POST: envoi vers %s", PGL_SERVER_POST_URL);
+  PGL_LOG("Serveur POST: lot=%u evt | total=%lu today=%lu | sensor=%s location=%s v=%s",
+          static_cast<unsigned int>(count),
+          static_cast<unsigned long>(totalCount),
+          static_cast<unsigned long>(todayCount),
+          PGL_SENSOR_NAME,
+          PGL_SENSOR_LOCATION,
+          PGL_FIRMWARE_VERSION);
 
   String eventsPayload;
   eventsPayload.reserve(count * 24);
@@ -54,6 +171,8 @@ bool PglNetwork::uploadBatch(const PglStoredEvent* events, size_t count, uint32_
     eventsPayload += ':';
     eventsPayload += String(events[i].rssi);
   }
+
+  PGL_LOG_V("Serveur POST: payload events=%s", eventsPayload.c_str());
 
   N3DataField fields[] = {
       {"api_key", String(PGL_API_KEY)},
@@ -75,10 +194,14 @@ bool PglNetwork::uploadBatch(const PglStoredEvent* events, size_t count, uint32_
       nullptr,
   };
   const int code = n3DataPost(cfg);
-  PGL_LOG("POST %s → HTTP %d (lot=%u, total=%lu)",
-          PGL_SERVER_POST_URL, code, static_cast<unsigned int>(count),
+  recordPostResult(code);
+  const bool ok = (code >= 200 && code < 300);
+  PGL_LOG("Serveur POST: HTTP %d — %s (lot=%u evt, total=%lu)",
+          code,
+          httpVerdict(code),
+          static_cast<unsigned int>(count),
           static_cast<unsigned long>(totalCount));
-  return (code >= 200 && code < 300);
+  return ok;
 }
 
 bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
@@ -88,9 +211,11 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
 #else
   ensureWifi();
   if (WiFi.status() != WL_CONNECTED) {
-    PGL_LOG("Heartbeat: WiFi non connecte");
+    PGL_LOG("Serveur HB: annule — WiFi %s", pglWifiStatusName(WiFi.status()));
+    recordHeartbeatResult(-1);
     return false;
   }
+  logWifiStatusDetail("Serveur HB");
 
   static uint32_t minHeap = UINT32_MAX;
   const uint32_t freeHeap = ESP.getFreeHeap();
@@ -100,6 +225,14 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
 
   const uint32_t uptimeSec = millis() / 1000UL;
   const int rssi = WiFi.RSSI();
+
+  PGL_LOG("Serveur HB: envoi vers %s", PGL_SERVER_HEARTBEAT_URL);
+  PGL_LOG_V("Serveur HB: uptime=%lus free=%lu min=%lu reboots=%lu rssi=%d",
+            static_cast<unsigned long>(uptimeSec),
+            static_cast<unsigned long>(freeHeap),
+            static_cast<unsigned long>(minHeap == UINT32_MAX ? freeHeap : minHeap),
+            static_cast<unsigned long>(bootCount),
+            rssi);
 
   N3DataField fields[] = {
       {"api_key", String(PGL_API_KEY)},
@@ -121,11 +254,14 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
       nullptr,
   };
   const int code = n3DataPost(cfg);
-  PGL_LOG("Heartbeat POST %s → HTTP %d (uptime=%lu reboots=%lu)",
-          PGL_SERVER_HEARTBEAT_URL, code,
+  recordHeartbeatResult(code);
+  const bool ok = (code >= 200 && code < 300);
+  PGL_LOG("Serveur HB: HTTP %d — %s (uptime=%lus reboots=%lu)",
+          code,
+          httpVerdict(code),
           static_cast<unsigned long>(uptimeSec),
           static_cast<unsigned long>(bootCount));
-  return (code >= 200 && code < 300);
+  return ok;
 #endif
 }
 
@@ -134,24 +270,29 @@ bool PglNetwork::isWifiConnected() const {
 }
 
 void PglNetwork::ensureWifi() {
-  if (WiFi.status() == WL_CONNECTED) return;
+  if (WiFi.status() == WL_CONNECTED) {
+    PGL_LOG_V("WiFi: deja connecte ssid=%s rssi=%d", WiFi.SSID().c_str(), WiFi.RSSI());
+    return;
+  }
   PGL_LOG("WiFi: connexion en cours...");
   String connectedSsid;
   N3WifiConfig cfg = {
       kWifiNetworks,
       sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]),
       PGL_WIFI_TIMEOUT_MS,
-      250,
-      100,
+      300,
+      800,
       8,
-      nullptr,
-      nullptr,
-      nullptr,
+      onWifiConnecting,
+      onWifiFailure,
+      onWifiSuccess,
   };
   const bool ok = n3WifiConnect(cfg, &connectedSsid);
   if (ok) {
-    PGL_LOG("WiFi: connecte ssid=%s ip=%s rssi=%d",
-            connectedSsid.c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    PGL_LOG("WiFi: connecte ssid=%s ip=%s rssi=%d ch=%d",
+            connectedSsid.c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI(),
+            WiFi.channel());
+    logWifiStatusDetail("WiFi");
   } else {
     PGL_LOG("WiFi: echec connexion (status=%s)", pglWifiStatusName(WiFi.status()));
   }

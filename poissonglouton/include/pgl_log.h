@@ -1,5 +1,7 @@
 #pragma once
 
+#include "config.h"
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_sleep.h>
@@ -23,7 +25,7 @@ inline void pglLogWakeupCause() {
       PGL_LOG("Reveil: reset / premier demarrage");
       break;
     case ESP_SLEEP_WAKEUP_EXT0:
-      PGL_LOG("Reveil: EXT0 (GPIO IR, pin 4)");
+      PGL_LOG("Reveil: EXT0 (GPIO IR, pin %d)", PGL_IR_PIN);
       break;
     case ESP_SLEEP_WAKEUP_EXT1:
       PGL_LOG("Reveil: EXT1");

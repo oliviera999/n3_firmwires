@@ -93,6 +93,13 @@ int n3DataPost(const N3PostConfig& config) {
   const unsigned long postStartMs = millis();
   int code = http.POST(body);
   const unsigned long durationMs = millis() - postStartMs;
+  String responseBody;
+  if (code < 200 || code >= 300) {
+    responseBody = http.getString();
+    if (responseBody.length() > 200) {
+      responseBody = responseBody.substring(0, 200) + "...";
+    }
+  }
   http.end();
 
   const int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
@@ -111,6 +118,9 @@ int n3DataPost(const N3PostConfig& config) {
   if (durationMs >= (unsigned long)N3_HTTP_TIMEOUT_MS - 500UL) {
     Serial.printf("[SERVER][POST][WARN] POST proche ou au-dela du timeout (%lu ms / %d ms)\n",
                   durationMs, N3_HTTP_TIMEOUT_MS);
+  }
+  if (responseBody.length() > 0) {
+    Serial.printf("[SERVER][POST] Corps reponse: %s\n", responseBody.c_str());
   }
 
   n3NetStatsRecordPost(code, durationMs, rssi);

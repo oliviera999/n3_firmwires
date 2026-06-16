@@ -46,6 +46,46 @@ static bool waitConnected(uint32_t timeoutMs) {
   return WiFi.status() == WL_CONNECTED;
 }
 
+static bool isConfiguredSsid(const char* scanSsid, const N3WifiConfig& config) {
+  if (!scanSsid) {
+    return false;
+  }
+  for (size_t i = 0; i < config.networkCount; i++) {
+    if (config.networks[i].ssid && strcmp(scanSsid, config.networks[i].ssid) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void logScanResults(int n, const char* label, const N3WifiConfig& config) {
+  if (n < 0) {
+    Serial.printf("[WiFi] %s: erreur scan (%d)\n", label, n);
+    return;
+  }
+  Serial.printf("[WiFi] %s: %d reseau(x) visible(s)\n", label, n);
+  const int showMax = 25;
+  const int show = (n > showMax) ? showMax : n;
+  for (int j = 0; j < show; j++) {
+    char scanSsid[33];
+    strncpy(scanSsid, WiFi.SSID(j).c_str(), 32);
+    scanSsid[32] = '\0';
+    const bool configured = isConfiguredSsid(scanSsid, config);
+    Serial.printf("[WiFi]   %2d. \"%s\" RSSI=%4d ch=%2d%s\n",
+                  j + 1,
+                  scanSsid,
+                  WiFi.RSSI(j),
+                  WiFi.channel(j),
+                  configured ? " *" : "");
+  }
+  if (n > showMax) {
+    Serial.printf("[WiFi]   ... %d autre(s) non affiche(s)\n", n - showMax);
+  }
+  if (n == 0) {
+    Serial.println("[WiFi]   (aucun AP detecte — verifier 2,4 GHz et portee)");
+  }
+}
+
 bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
   if (outWifiactif) outWifiactif->clear();
 
@@ -84,6 +124,7 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
       s_lastGood.magic = 0;
       WiFi.disconnect(false, true);
       delay(100);
+      Serial.println("[WiFi] Reconnexion rapide echouee — scan complet");
       break;
     }
   }
@@ -91,6 +132,7 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
   delay(config.preScanDelayMs > 0 ? config.preScanDelayMs : 100);
 
   int n = WiFi.scanNetworks(false, true);
+  logScanResults(n, "scan", config);
   int scanMax = (config.scanMax > 0 && config.scanMax <= N3_WIFI_CAND_MAX) ? config.scanMax : N3_WIFI_CAND_MAX;
   if (n > scanMax) n = scanMax;
 
@@ -149,11 +191,40 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
       Serial.printf("[WiFi] Try %s RSSI=%d ch=%d\n", ssid, cand[i].rssi, cand[i].chan);
       wifiBeginSafe(ssid, pass, cand[i].chan, cand[i].bssid);
     } else {
-      Serial.printf("[WiFi] Try (invisible) %s\n", ssid);
-      WiFi.begin(ssid, pass);
+      Serial.printf("[WiFi] Try (invisible) %s — rescan...\n", ssid);
+      delay(300);
+      const int n2 = WiFi.scanNetworks(false, true);
+      logScanResults(n2, "rescan", config);
+      bool found = false;
+      int8_t rssi2 = -128;
+      uint8_t bssid2[6] = {};
+      uint8_t chan2 = 0;
+      for (int j = 0; j < n2; j++) {
+        if (strcmp(WiFi.SSID(j).c_str(), ssid) != 0) {
+          continue;
+        }
+        const int8_t r = (int8_t)WiFi.RSSI(j);
+        if (r > rssi2) {
+          rssi2 = r;
+          chan2 = (uint8_t)WiFi.channel(j);
+          const uint8_t* b = WiFi.BSSID(j);
+          if (b) {
+            memcpy(bssid2, b, 6);
+          }
+          found = true;
+        }
+      }
+      if (found) {
+        Serial.printf("[WiFi] Rescan: %s visible RSSI=%d ch=%d\n", ssid, rssi2, chan2);
+        wifiBeginSafe(ssid, pass, chan2, bssid2);
+      } else {
+        Serial.printf("[WiFi] Rescan: %s toujours invisible (%d APs)\n", ssid, n2);
+        WiFi.begin(ssid, pass);
+      }
     }
 
-    if (waitConnected(timeoutMs)) {
+    const unsigned long tryTimeout = cand[i].present ? timeoutMs : (timeoutMs * 2);
+    if (waitConnected(tryTimeout)) {
       rememberLastGood();
       if (outWifiactif) *outWifiactif = String(ssid);
       if (config.onSuccess) config.onSuccess(ssid);
@@ -166,7 +237,7 @@ bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {
       delay(250);
       Serial.printf("[WiFi] Retry sans BSSID %s\n", ssid);
       WiFi.begin(ssid, pass);
-      if (waitConnected(timeoutMs)) {
+      if (waitConnected(timeoutMs * 2)) {
         rememberLastGood();
         if (outWifiactif) *outWifiactif = String(ssid);
         if (config.onSuccess) config.onSuccess(ssid);
