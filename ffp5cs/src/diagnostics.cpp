@@ -1,5 +1,6 @@
 #include "diagnostics.h"
 #include "reset_reason.h"  // resetReasonToString/isCrash (extraits, testés nativement)
+#include "diagnostics_decision.h"  // parseIdlePercent + decideMinHeapSave (purs, testés nativement)
 #include "nvs_manager.h" // v11.106
 #include "nvs_keys.h"
 #include "app_tasks.h" // Pour les TaskHandle_t en mode debug
@@ -187,60 +188,9 @@ void Diagnostics::update() {
   
   // Estimation Idle%: parse simple de taskStats (lignes "IDLE" et/ou "IDLE1/IDLE0")
   // v11.156: Utilisation de char[] au lieu de String pour éviter fragmentation mémoire
-  uint8_t idlePct = 255;
-  const size_t taskStatsLen = strlen(_stats.taskStats);
-  if (taskStatsLen > 0) {
-    const char* taskStatsPtr = _stats.taskStats;
-    // Cherche la dernière colonne en % sur les lignes contenant "IDLE"
-    uint16_t sumIdle = 0;
-    uint8_t cnt = 0;
-    const char* searchPtr = taskStatsPtr;
-    while ((searchPtr = strstr(searchPtr, "IDLE")) != nullptr) {
-      int idx = searchPtr - taskStatsPtr;
-      const char* lineEndPtr = strchr(searchPtr, '\n');
-      int lineEnd = (lineEndPtr != nullptr) ? (lineEndPtr - taskStatsPtr) : taskStatsLen;
-      
-      // Buffer fixe au lieu de String::substring() pour éviter allocations
-      int lineLen = lineEnd - idx;
-      if (lineLen > 0 && lineLen < 120) {  // Limite raisonnable pour une ligne
-        char line[120];
-        strncpy(line, taskStatsPtr + idx, lineLen);
-        line[lineLen] = '\0';
-        
-        // Chercher le '%' depuis la fin de la ligne
-        int pctPos = -1;
-        for (int i = lineLen - 1; i >= 0; i--) {
-          if (line[i] == '%') {
-            pctPos = i;
-            break;
-          }
-        }
-        
-        if (pctPos > 0) {
-          // Remonter pour trouver le début du nombre
-          int start = pctPos - 1;
-          while (start >= 0 && isdigit(line[start])) start--;
-          start++;
-          int len = pctPos - start;
-          if (len > 0 && len <= 3) {
-            // Extraire le nombre avec atoi() au lieu de substring().toInt()
-            char numStr[4];
-            strncpy(numStr, line + start, len);
-            numStr[len] = '\0';
-            uint16_t val = (uint16_t) atoi(numStr);
-            sumIdle += val;
-            cnt++;
-          }
-        }
-      }
-      searchPtr = (lineEndPtr != nullptr) ? lineEndPtr + 1 : taskStatsPtr + taskStatsLen;
-    }
-    if (cnt > 0) {
-      uint16_t avg = sumIdle / cnt;
-      idlePct = (avg > 100) ? 100 : (uint8_t)avg;
-    }
-  }
-  _stats.idlePercent = idlePct;
+  // Logique pure extraite dans diagnostics_decision.h (parité ligne-à-ligne, testée
+  // nativement). La capture de taskStats (vTaskGetRunTimeStats) reste ci-dessus.
+  _stats.idlePercent = DiagnosticsDecision::parseIdlePercent(_stats.taskStats);
   
   // En mode debug: sauvegarder périodiquement uptime et heap pour diagnostic reboot
   #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
@@ -255,33 +205,31 @@ void Diagnostics::update() {
   // Optimisation NVS : sauvegarder le minHeap seulement si nécessaire
   if (_stats.freeHeap < _stats.minFreeHeap) {
     _stats.minFreeHeap = _stats.freeHeap;
-    
-    // Vérifier si une sauvegarde est nécessaire
-    bool shouldSave = false;
-    
+
+    // Décision pure extraite dans diagnostics_decision.h (parité ligne-à-ligne,
+    // testée nativement). L'écriture NVS (saveULong) et le logging restent ici.
+    // Le seuil de perte critique (10240) est passé explicitement.
+    DiagnosticsDecision::MinHeapSaveReason saveReason =
+        DiagnosticsDecision::decideMinHeapSave(
+            _stats.minFreeHeap, _lastSavedMinHeap, now, _lastHeapSave,
+            MIN_HEAP_SAVE_INTERVAL, MIN_HEAP_DIFF_FOR_SAVE, 10240);
+    bool shouldSave = (saveReason != DiagnosticsDecision::MinHeapSaveReason::NO_SAVE);
+
     // 1. Première sauvegarde
-    if (_lastHeapSave == 0) {
-      shouldSave = true;
+    if (saveReason == DiagnosticsDecision::MinHeapSaveReason::FIRST_SAVE) {
       Serial.println(F("[Diagnostics] 💾 Première sauvegarde minHeap"));
     }
     // 2. Sauvegarde si intervalle minimum écoulé ET différence significative
-    // v11.174: Ajout vérification _lastSavedMinHeap != UINT32_MAX pour éviter overflow au premier boot
-    else if (_lastSavedMinHeap != UINT32_MAX &&
-             (now - _lastHeapSave > MIN_HEAP_SAVE_INTERVAL) && 
-             (_lastSavedMinHeap - _stats.minFreeHeap > MIN_HEAP_DIFF_FOR_SAVE)) {
-      shouldSave = true;
-      Serial.printf("[Diagnostics] 💾 Sauvegarde minHeap (diff: %u bytes, interval: %lu ms)\n", 
+    else if (saveReason == DiagnosticsDecision::MinHeapSaveReason::INTERVAL_DELTA) {
+      Serial.printf("[Diagnostics] 💾 Sauvegarde minHeap (diff: %u bytes, interval: %lu ms)\n",
                     _lastSavedMinHeap - _stats.minFreeHeap, now - _lastHeapSave);
     }
     // 3. Sauvegarde si perte très importante (plus de 10KB)
-    // v11.173: Garde pour éviter calcul aberrant si _lastSavedMinHeap == UINT32_MAX (premier boot)
-    else if (_lastSavedMinHeap != UINT32_MAX && 
-             _lastSavedMinHeap - _stats.minFreeHeap > 10240) {
-      shouldSave = true;
-      Serial.printf("[Diagnostics] ⚠️ Sauvegarde minHeap forcée (perte importante: %u bytes)\n", 
+    else if (saveReason == DiagnosticsDecision::MinHeapSaveReason::CRITICAL_LOSS) {
+      Serial.printf("[Diagnostics] ⚠️ Sauvegarde minHeap forcée (perte importante: %u bytes)\n",
                     _lastSavedMinHeap - _stats.minFreeHeap);
     }
-    
+
     if (shouldSave) {
       // Correction: utiliser saveULong pour uint32_t (minFreeHeap)
       g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, _stats.minFreeHeap);
