@@ -4,6 +4,7 @@
 #include "app_tasks.h"   // netRequestOtaCheck (déclenchement OTA depuis serveur distant)
 #include "app_context.h"
 #include "config.h"
+#include "gpio_bool_parse.h"  // cœur pur (token/int -> bool) extrait de parseBoolFromDoc
 #include <WiFi.h>
 #include <cstring>
 #include <cmath>   // v11.164: fabsf pour comparaison float
@@ -53,12 +54,12 @@ void GPIOParser::resetEdgeDetectionState() {
 }
 
 static bool parseBoolFromDoc(JsonVariantConst v) {
+    // Dispatch de type via ArduinoJson ; conversion pure déléguée à GpioBoolParse.
     if (v.is<bool>()) return v.as<bool>();
-    if (v.is<int>()) return v.as<int>() == 1;
+    if (v.is<int>()) return GpioBoolParse::fromInt(v.as<int>());
     if (v.is<const char*>()) {
-        const char* s = v.as<const char*>();
-        if (s && (strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0 || strcasecmp(s, "on") == 0)) return true;
-        if (s && (strcasecmp(s, "0") == 0 || strcasecmp(s, "false") == 0)) return false;
+        bool out = false;
+        if (GpioBoolParse::fromToken(v.as<const char*>(), out)) return out;
     }
     return false;
 }
