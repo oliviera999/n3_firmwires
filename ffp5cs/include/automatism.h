@@ -222,14 +222,13 @@ class Automatism {
   
  private:
 
-  void initializeNetworkModule();
-  void attachFeedingCallbacks();
   void restorePersistentForceWakeup();
-  void initializeRuntimeState();
   // v11.178: restoreActuatorState() supprimé (code mort - audit dead-code)
+  // v11.198: initializeNetworkModule/attachFeedingCallbacks/initializeRuntimeState/
+  //          syncForceWakeupWithServer supprimés (déclarations orphelines, jamais
+  //          définies ni appelées - audit code mort)
   bool restoreRemoteConfigFromCache();
-  void syncForceWakeupWithServer();
-  
+
   // v11.158: Méthodes privées pour refactoriser update()
   void updateFeedingAndDisplay(const SensorReadings& r, uint32_t nowMs);
   void updateNetworkSync(const SensorReadings& r, uint32_t nowMs);
@@ -463,12 +462,10 @@ class Automatism {
   // handleAlerts/handleRefill(SensorReadings&) → signatures incorrectes, voir lignes 429/440
   void handleFeeding();
   void finalizeFeedingIfNeeded(uint32_t nowMs);
-  void handleRemoteState();
   void checkNewDay();
-  void checkCriticalChanges();
-  void saveFeedingState();
-  void traceFeedingEvent();
-  void traceFeedingEventSelective(bool feedSmall, bool feedBig);
+  // v11.198: handleRemoteState/checkCriticalChanges/saveFeedingState/traceFeedingEvent/
+  //          traceFeedingEventSelective supprimés (déclarations orphelines, jamais
+  //          définies ni appelées - audit code mort)
 
   // Nouvelles méthodes pour la détection d'activité fine
   // v11.178: hasSignificantActivity() supprimé (toujours false - audit dead-code)
@@ -479,24 +476,12 @@ class Automatism {
   bool hasRecentErrors();
   void logActivity(const char* activity);
   
-  // Méthodes de vérification post-réveil
-  bool verifySystemStateAfterWakeup();
-  void detectSleepAnomalies();
-  bool validateSystemStateBeforeSleep();
+  // v11.198: verifySystemStateAfterWakeup/detectSleepAnomalies/
+  //          validateSystemStateBeforeSleep supprimés (déclarations orphelines,
+  //          jamais définies ni appelées - audit code mort)
 
-  void logSleepTransitionStart(const char* reason,
-                               uint32_t scheduledSeconds,
-                               unsigned long awakeSec,
-                               bool tideAscending,
-                               int diff10s,
-                               uint32_t heapAfterCleanup,
-                               const TaskMonitor::Snapshot& tasks);
-
-  void logSleepTransitionEnd(uint32_t scheduledSeconds,
-                             uint32_t actualSeconds,
-                             esp_sleep_wakeup_cause_t wakeCause,
-                             const TaskMonitor::Snapshot& tasksBefore,
-                             const TaskMonitor::Snapshot& tasksAfter);
+  // v11.198: logSleepTransitionStart/logSleepTransitionEnd supprimés (déclarations
+  //          orphelines, jamais définies ni appelées - audit code mort)
 
   // Méthodes pour remplissage (anciennement dans AutomatismRefillController)
   void handleRefill(const AutomatismRuntimeContext& ctx);
@@ -520,5 +505,6 @@ class Automatism {
   bool loadActuatorSnapshotFromNVS(bool& pumpAquaWasOn, bool& heaterWasOn, bool& lightWasOn);
   void clearActuatorSnapshotInNVS();
 
-  void storeEmailAddress(const char* address);
-}; 
+  // v11.198: storeEmailAddress() supprimé (déclaration orpheline, jamais définie
+  //          ni appelée - audit code mort)
+};
