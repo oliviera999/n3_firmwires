@@ -1,5 +1,6 @@
 #include "power.h"
 #include "epoch_util.h"   // isValidEpoch/epochAbsDiff (extraits, testés nativement)
+#include "clock_decision.h"  // ClockDecision : plausibilité NTP + dérive PPM (purs, testés)
 #include "nvs_manager.h"  // v11.107
 #include "nvs_keys.h"     // NVSKeys::System::RTC_EPOCH
 #include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep
@@ -262,7 +263,7 @@ void PowerManager::syncTimeFromNTP() {
     if (!gotLocal && !getLocalTime(&timeinfo, 1000)) {
       LOG_NTP(LogConfig::LOG_WARN, "Sync temps: getLocalTime a échoué");
       syncSuccess = false;
-    } else if (timeinfo.tm_year + 1900 < 2024) {
+    } else if (!ClockDecision::isPlausibleYear(timeinfo.tm_year)) {
       LOG_NTP(LogConfig::LOG_WARN, "Année invalide %d après sync", timeinfo.tm_year + 1900);
       syncSuccess = false;
     } else if (!isValidEpoch(ntpEpoch)) {
@@ -270,11 +271,12 @@ void PowerManager::syncTimeFromNTP() {
               static_cast<uint64_t>(static_cast<unsigned long long>(ntpEpoch)));
       syncSuccess = false;
     } else {
-      const bool epochChangedEnough =
-          epochAbsDiff(ntpEpoch, localBeforeEpoch) >= NTP_MIN_EPOCH_DELTA_SEC;
-      const bool nearCompile =
-          epochAbsDiff(ntpEpoch, SleepConfig::EPOCH_COMPILE_TIME) < NTP_COMPILE_TOLERANCE_SEC;
-      if (!epochChangedEnough && !nearCompile) {
+      // Décision pure extraite (clock_decision.h, testée nativement) : équivaut à
+      // (epochChangedEnough || nearCompile). Le log conserve les composantes brutes.
+      if (!ClockDecision::isNtpEpochPlausible(ntpEpoch, localBeforeEpoch,
+                                              SleepConfig::EPOCH_COMPILE_TIME,
+                                              NTP_MIN_EPOCH_DELTA_SEC,
+                                              NTP_COMPILE_TOLERANCE_SEC)) {
         LOG_NTP(LogConfig::LOG_WARN,
                 "Heure inchangée ou non plausible (delta=%" PRIu64 " s, compile_tol=%" PRIu64 ")",
                 static_cast<uint64_t>(static_cast<unsigned long long>(
@@ -305,18 +307,17 @@ void PowerManager::syncTimeFromNTP() {
       unsigned long millisDiff = syncMillis - localBeforeMillis;
 
       if (millisDiff > 0) {
+        // expectedSeconds reste local : utilisé par le garde-fou et le log ci-dessous.
         float expectedSeconds = millisDiff / 1000.0f;
-        float actualSeconds = static_cast<float>(timeDiff);
-        float driftSeconds = actualSeconds - expectedSeconds;
 
         if (expectedSeconds > 0.0f) {
-          _currentDriftPPM = (driftSeconds / expectedSeconds) * 1000000.0f;
-          _currentDriftPPM = std::fmax(-SleepConfig::DRIFT_PPM_MAX,
-                                       std::fmin(SleepConfig::DRIFT_PPM_MAX, _currentDriftPPM));
-          _lastDriftSeconds = driftSeconds;
+          // Formule + bornage extraits (clock_decision.h, testés nativement).
+          _currentDriftPPM = ClockDecision::computeDriftPpm(timeDiff, millisDiff,
+                                                            SleepConfig::DRIFT_PPM_MAX);
+          _lastDriftSeconds = ClockDecision::computeDriftSeconds(timeDiff, millisDiff);
 
           LOG_DRIFT(LogConfig::LOG_INFO, "Dérive mesurée: %.2f PPM (%.2f s sur %.2f s)",
-                    _currentDriftPPM, driftSeconds, expectedSeconds);
+                    _currentDriftPPM, _lastDriftSeconds, expectedSeconds);
         } else {
           _currentDriftPPM = 0.0f;
           _lastDriftSeconds = 0.0f;
