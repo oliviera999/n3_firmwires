@@ -188,7 +188,7 @@ namespace TaskConfig {
 #elif defined(BOARD_WROOM) && defined(PROFILE_TEST)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 9216;   // wroom-test (dram0 vs AsyncWeb)
 #elif defined(BOARD_WROOM) && defined(PROFILE_BETA)
-    inline constexpr uint32_t NET_TASK_STACK_SIZE = 14000;  // v14.00 : −32 octets link dram0 (+16 B débordement)
+    inline constexpr uint32_t NET_TASK_STACK_SIZE = 13968;  // v14.06 : −32 octets link dram0 (merge master)
 #elif defined(BOARD_WROOM) && defined(PROFILE_PROD)
     // v13.36/v13.96: netTaskStack[] en BSS — réduction vs 14376 pour link dram0_0_seg (GCC 14 / IDF 5.5)
     inline constexpr uint32_t NET_TASK_STACK_SIZE = 12624;  // v13.98 : −32 mots (link dram0 +8 B, juin 2026)

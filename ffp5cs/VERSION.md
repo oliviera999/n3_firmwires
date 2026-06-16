@@ -16,7 +16,8 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ### Déploiement OTA canal beta (wroom-beta)
 
-- **OTA** : publication `ffp5-wroom-beta` → `serveur/ota/esp32-wroom-beta/` (canal test, `channels.test.esp32-wroom` dans metadata.json).
+- **Link** : `NET_TASK_STACK_SIZE` (PROFILE_BETA) 14000 → **13968** (−32 octets BSS, `dram0_0_seg` après merge master).
+- **OTA** : publication `ffp5-wroom-beta` → `serveur/ota/esp32-wroom-beta/` (canal test).
 - **Build** : `pio run -e wroom-beta`.
 
 ---
