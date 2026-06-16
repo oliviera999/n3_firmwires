@@ -95,12 +95,21 @@ String emailMessage;
 /* Session SMTP désormais locale à n3_mail (plus de global). */
 
 // --- Réseau ---
-#ifdef TEST_MODE
-const char* serverNamePostData = "http://iot.olution.info/msp1-test/msp1datas/post-msp1-data.php";
-const char* serverNameOutput = "http://iot.olution.info/msp1-test/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+// Schema serveur : HTTP par defaut (comportement historique inchange).
+// Avec le flag de build USE_HTTPS_ENDPOINTS, bascule en https:// (TLS).
+// Voir docs/HTTPS_MIGRATION.md (activation, rollback, validation cible).
+#if defined(USE_HTTPS_ENDPOINTS)
+#  define MSP_SERVER_SCHEME "https://"
 #else
-const char* serverNamePostData = "http://iot.olution.info/msp1/msp1datas/post-msp1-data.php";
-const char* serverNameOutput = "http://iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+#  define MSP_SERVER_SCHEME "http://"
+#endif
+
+#ifdef TEST_MODE
+const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/msp1datas/post-msp1-data.php";
+const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+#else
+const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1/msp1datas/post-msp1-data.php";
+const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
 #endif
 
 unsigned int httpResponseCode;

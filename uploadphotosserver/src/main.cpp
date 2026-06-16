@@ -15,6 +15,12 @@
 #include <cstring>
 #include <cstdio>
 #include <HTTPClient.h>
+#if defined(USE_HTTPS_ENDPOINTS)
+// Upload photo en TLS (opt-in flag de build). Inclus uniquement sous le flag :
+// le build par defaut (HTTP) reste inchange. ATTENTION RAM ESP32-CAM, cf.
+// docs/HTTPS_MIGRATION.md (validation cible obligatoire avant prod).
+#include <WiFiClientSecure.h>
+#endif
 #include "n3_time.h"
 #include "n3_wifi.h"
 #include "n3_ota.h"
@@ -455,9 +461,14 @@ String sendPhoto() {
       Wificonnect();
     }
 
+#if defined(USE_HTTPS_ENDPOINTS)
+    WiFiClientSecure uploadClient;
+    uploadClient.setInsecure();  // chiffrement sans epinglage CA (suivi documente)
+#else
     WiFiClient uploadClient;
+#endif
     HTTPClient http;
-    const String uploadUrl = String("http://") + serverName + serverPath;
+    const String uploadUrl = String(SERVER_SCHEME) + serverName + serverPath;
     Serial.printf("[SERVER][POST] Tentative %d/%d url=%s payload=%u bytes\n",
                   attempt,
                   UPLOAD_CONNECT_RETRIES,
