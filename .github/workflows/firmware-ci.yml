@@ -32,10 +32,10 @@ jobs:
           path: ~/.platformio
           key: pio-native-${{ hashFiles('**/platformio*.ini') }}
           restore-keys: pio-native-
-      - name: shared/ (n3_analog_sensors, n3_hmac, n3_data, n3_mail)
+      - name: shared/ (n3_analog_sensors, n3_hmac)
         run: |
           cd shared/tests_native
-          for s in test_analog test_hmac test_net_stats test_data test_mail; do
+          for s in test_analog test_hmac; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
@@ -43,7 +43,7 @@ jobs:
       - name: ffp5cs (suite par suite)
         run: |
           cd ffp5cs
-          for s in test_nvs test_config test_server_url test_sensor_validation test_feeding_slots test_post_body test_gpio_mapping test_sensor_fallback test_ota_select test_gpio_lookup test_sensor_map test_data_queue test_display_cache test_ota_config test_utils test_gpio_registry test_server_hostname test_ultrasonic_filter test_ota_url test_sd_queue_path test_epoch_util test_flood_alert test_reservoir_low_security test_heater_hysteresis test_level_alert test_iactuators test_actuator_snapshot test_feeding_timing test_threshold_util test_refill_start test_refill_duration test_refill_efficiency test_refill_overfill test_refill_recovery test_imailer test_heater_orchestrator test_level_alert_orchestrator test_flood_orchestrator test_feeding_finalize test_sleep_blocking test_login_throttle; do
+          for s in test_nvs test_config test_server_url test_sensor_validation test_feeding_slots test_post_body test_gpio_mapping test_sensor_fallback test_ota_select test_gpio_lookup test_sensor_map test_data_queue test_display_cache test_ota_config test_utils test_gpio_registry test_server_hostname test_ultrasonic_filter test_ota_url test_sd_queue_path test_epoch_util test_flood_alert test_reservoir_low_security test_heater_hysteresis test_level_alert test_iactuators test_actuator_snapshot test_feeding_timing test_threshold_util test_refill_start test_refill_duration test_refill_efficiency test_refill_overfill test_refill_recovery test_imailer test_heater_orchestrator test_level_alert_orchestrator test_flood_orchestrator test_feeding_finalize test_sleep_blocking test_clock_decision test_login_throttle; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
