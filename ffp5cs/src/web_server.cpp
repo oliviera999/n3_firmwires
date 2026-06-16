@@ -34,6 +34,7 @@
 #include "app_tasks.h"
 #include "realtime_websocket.h"
 #include "asset_bundler.h"
+#include "login_throttle.h"  // anti-brute-force POST /api/login (logique pure testable)
 
  
 extern Automatism g_autoCtrl;
@@ -88,6 +89,11 @@ static bool tryStartOtaBeforeReset(const char* sourceTag) {
 static char s_webAuthToken[WebAuthConfig::WEB_AUTH_TOKEN_HEX_LEN + 1] = {0};
 static unsigned long s_webAuthTokenExpiresAt = 0;  // 0 = pas de session active
 static constexpr unsigned long WEB_AUTH_TOKEN_TTL_MS = 24UL * 60UL * 60UL * 1000UL;  // 24 h
+
+// Anti-brute-force POST /api/login (audit sécurité 2026-06) : machine d'état pure
+// FAIL-SAFE (login_throttle.h). RAM seule (réinitialisée au reboot, comme le token).
+// Politique par défaut : 5 échecs dans une fenêtre de 30 s -> verrou de 60 s.
+static LoginThrottle::Throttle<> s_loginThrottle;
 
 static bool isAuthenticated(AsyncWebServerRequest* req) {
   if (s_webAuthToken[0] == '\0') return false;
@@ -402,14 +408,31 @@ bool WebServerManager::begin() {
   });
 
   _server->addHandler(new AsyncCallbackJsonWebHandler("/api/login", [](AsyncWebServerRequest* req, JsonVariant& json) {
+    // Anti-brute-force (audit sécurité 2026-06) : si trop d'échecs récents rapprochés,
+    // refuser 429 SANS comparer les identifiants (ralentit le brute-force LAN).
+    if (s_loginThrottle.isLockedOut(millis())) {
+      AsyncWebServerResponse* resp = req->beginResponse(429, "application/json",
+                                                        "{\"ok\":false,\"error\":\"locked\"}");
+      // Retry-After (secondes, arrondi au supérieur) : indication standard au client.
+      char retryAfter[8];
+      uint32_t remMs = s_loginThrottle.remainingLockoutMs(millis());
+      snprintf(retryAfter, sizeof(retryAfter), "%lu", (unsigned long)((remMs + 999UL) / 1000UL));
+      resp->addHeader("Retry-After", retryAfter);
+      req->send(resp);
+      return;
+    }
     const char* user = json["user"].as<const char*>();
     const char* pass = json["pass"].as<const char*>();
     if (!user) user = "";
     if (!pass) pass = "";
     if (strcmp(user, WebAuthConfig::WEB_AUTH_USER) != 0 || strcmp(pass, WebAuthConfig::WEB_AUTH_PASS) != 0) {
+      // Échec d'identifiants : enregistrer pour le throttle (peut armer le verrou).
+      s_loginThrottle.registerFailure(millis());
       req->send(NetworkConfig::HTTP_UNAUTHORIZED, "application/json", "{\"ok\":false,\"error\":\"invalid\"}");
       return;
     }
+    // Succès : remettre le throttle à zéro (l'utilisateur légitime repart à neuf).
+    s_loginThrottle.registerSuccess();
     // v13.52: rotation systématique du token à chaque login (limite vol par session ancien token).
     generateWebAuthToken();
     // v13.52: le token est aussi renvoyé dans le body JSON pour usage côté WebSocket
