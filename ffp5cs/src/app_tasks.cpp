@@ -556,24 +556,26 @@ void releaseHttpAfterLightSleep() {
 
 // --- v14.00/v14.01 : synchro fetch config boot + fenêtre post-réveil + report GET ---
 // (réintégrés ici après la découpe v13.93 ; appelés par netTask/otaTask via les en-têtes).
-static volatile bool s_bootConfigFetchDone = false;
+// std::atomic : écrit par netTask (markBootConfigFetchDone), lu par le loopTask/setup
+// (waitForBootConfigFetch via SystemBoot::postConfiguration) — anti-course (audit concurrence).
+static std::atomic<bool> s_bootConfigFetchDone{false};
 
 void markBootConfigFetchDone() {
-  s_bootConfigFetchDone = true;
+  s_bootConfigFetchDone.store(true);
 }
 
 bool waitForBootConfigFetch(uint32_t timeoutMs) {
-  if (s_bootConfigFetchDone) {
+  if (s_bootConfigFetchDone.load()) {
     return true;
   }
   const unsigned long startMs = millis();
-  while (!s_bootConfigFetchDone && (millis() - startMs) < timeoutMs) {
+  while (!s_bootConfigFetchDone.load() && (millis() - startMs) < timeoutMs) {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
     vTaskDelay(pdMS_TO_TICKS(50));
   }
-  if (!s_bootConfigFetchDone) {
+  if (!s_bootConfigFetchDone.load()) {
     Serial.println(F("[Boot] Timeout attente fetch config netTask — POST boot sans gate"));
     return false;
   }
@@ -600,17 +602,20 @@ bool waitForNetworkQueuesDrain(uint32_t timeoutMs) {
   return false;
 }
 
-static unsigned long s_wakeProtectionStartMs = 0;
+// std::atomic : écrit par autoTask (markWakeProtectionStart via handleAutoSleep), lu par
+// otaTask / loopTask (wifi.loop) / autoTask (isInWakeProtectionWindow) — anti-course (audit concurrence).
+static std::atomic<unsigned long> s_wakeProtectionStartMs{0};
 
 void markWakeProtectionStart() {
-  s_wakeProtectionStartMs = millis();
+  s_wakeProtectionStartMs.store(millis());
 }
 
 bool isInWakeProtectionWindow() {
-  if (s_wakeProtectionStartMs == 0) {
+  const unsigned long startMs = s_wakeProtectionStartMs.load();
+  if (startMs == 0) {
     return false;
   }
-  return (millis() - s_wakeProtectionStartMs) < TimingConfig::WAKEUP_PROTECTION_DURATION_MS;
+  return (millis() - startMs) < TimingConfig::WAKEUP_PROTECTION_DURATION_MS;
 }
 
 bool shouldDeferRemoteStateFetch() {
