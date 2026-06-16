@@ -2,7 +2,25 @@
 #include "n3_defaults.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#if defined(USE_HTTPS_ENDPOINTS)
+// Chemin TLS opt-in (flag de build USE_HTTPS_ENDPOINTS). Inclus UNIQUEMENT sous
+// le flag pour ne rien changer au build par defaut (HTTP) ni aux tests natifs,
+// qui ne fournissent pas de stub WiFiClientSecure.h.
+#include <WiFiClientSecure.h>
+#endif
 #include "n3_hmac.h"
+
+// Selectionne le type de client TCP selon le flag de build.
+//  - USE_HTTPS_ENDPOINTS non defini (DEFAUT) : WiFiClient (HTTP clair, inchange).
+//  - USE_HTTPS_ENDPOINTS defini : WiFiClientSecure + setInsecure() (TLS chiffre,
+//    sans epinglage de certificat — cf. docs/HTTPS_MIGRATION.md, suivi CA documente).
+#if defined(USE_HTTPS_ENDPOINTS)
+  #define N3_DATA_TCP_CLIENT_TYPE WiFiClientSecure
+  #define N3_DATA_TCP_CLIENT_PREPARE(clientVar) do { (clientVar).setInsecure(); } while (0)
+#else
+  #define N3_DATA_TCP_CLIENT_TYPE WiFiClient
+  #define N3_DATA_TCP_CLIENT_PREPARE(clientVar) do { } while (0)
+#endif
 
 static String n3UrlEncode(const String& input) {
   String encoded;
@@ -54,7 +72,8 @@ int n3DataPost(const N3PostConfig& config) {
     }
   }
 
-  WiFiClient client;
+  N3_DATA_TCP_CLIENT_TYPE client;
+  N3_DATA_TCP_CLIENT_PREPARE(client);
   HTTPClient http;
   http.begin(client, config.url);
   http.setTimeout(N3_HTTP_TIMEOUT_MS);
@@ -105,7 +124,8 @@ String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceA
     if (outHttpCode) *outHttpCode = 0;
     return String("{}");
   }
-  WiFiClient client;
+  N3_DATA_TCP_CLIENT_TYPE client;
+  N3_DATA_TCP_CLIENT_PREPARE(client);
   HTTPClient http;
   http.begin(client, url);
   http.setTimeout(N3_HTTP_TIMEOUT_MS);
