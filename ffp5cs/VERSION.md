@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.08 - 2026-06-16
+
+### Déploiement OTA canal beta (wroom-beta)
+
+- **Correctif flash** : diagnostic boot loop « Cache error » — bundle incohérent (bootloader PIO cache du 11/06 + firmware neuf) ; purge `C:\pio-builds\.pio-cache\ffp5cs` + rebuild phase 1+2 avant flash.
+- **OTA** : publication `ffp5-wroom-beta` → `serveur/ota/esp32-wroom-beta/` (canal test).
+- **Build** : `pio run -e wroom-beta`.
+
+---
+
 ## Version 14.07 - 2026-06-16
 
 ### Déploiement OTA canal beta (wroom-beta)
