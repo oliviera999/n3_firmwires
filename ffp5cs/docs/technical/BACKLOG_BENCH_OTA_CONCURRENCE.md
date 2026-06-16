@@ -482,3 +482,45 @@ de l'autonomie** (pas de veille manquée ni de batterie vidée).
 `handleBlockingConditions` §11) sont désormais déléguées à des unités testées nativement. `handleAlerts`,
 `handleRefill*`, veille/réveil (snapshot + blocage), fin de nourrissage : la logique de décision de la
 god-class `Automatism` est sortie et couverte par des tests purs (effets matériels restant bench-gated).
+
+---
+
+## 12. Mise à jour 2026-06-16 — 3 chantiers parallèles (décision horloge + durcissement concurrence)
+
+Trois PR draft indépendantes (fichiers disjoints → merge sans conflit), développées en parallèle.
+**Toutes BENCH-REQUISES** pour la preuve runtime (CI = compilation + tests natifs uniquement).
+
+### 12.a — `ClockDecision` : validation NTP + dérive RTC (extraction pure, testée) — PR `claude/ffp5cs-c4-clock-decision`
+Suite directe du chantier C4 (hors `Automatism`, dans `power.cpp`). Extraction de la logique numérique de
+`syncTimeFromNTP` en module **pur** `include/clock_decision.h` (namespace `ClockDecision`, deps `<cmath>`/
+`<ctime>` + `epoch_util.h` ; **réutilise** `EpochUtil::epochAbsDiff`) :
+- `isPlausibleYear` (≥ 2024), `isNtpEpochPlausible` (`epochChangedEnough || nearCompile`),
+  `computeDriftPpm` (formule PPM + bornage `fmax/fmin`), `computeDriftSeconds`.
+- `power.cpp` délègue la **décision** ; tout l'I/O (RTC/NVS/`settimeofday`/`getLocalTime`/Serial) + les
+  messages `LOG_*` verbatim restent dans l'appelant. `applyDriftCorrection`/`getSleptTime` laissés intacts
+  (intriqués I/O — pas une petite étape propre).
+- Test natif `test/test_clock_decision/` (18 cas) + **2 boucles brute-force** (~250k combos PPM, ~3500 NTP)
+  vs transcription de l'inline d'origine → 0 divergence. Enregistré CI + ini. ⚠️ Banc : sync NTP réelle
+  (accepte/loggue même PPM/rejette stale ; pas de divergence float ESP32 vs hôte).
+
+### 12.b — Concurrence : états partagés multi-tâches → `std::atomic` — PR `claude/ffp5cs-concurrency-atomics`
+Suite du §4 (atomics anti-course). 3 variables **vérifiées réellement multi-tâches** (chaînes d'appel
+tracées) converties, strictement préservateur de comportement :
+- `s_bootConfigFetchDone` (`app_tasks.cpp`) : netTask écrit / loopTask lit (`volatile bool`→`atomic<bool>`).
+- `s_wakeProtectionStartMs` (`app_tasks.cpp`) : autoTask écrit / otaTask+loopTask lisent ; `isInWakeProtectionWindow`
+  lit désormais **un seul snapshot** (corrige aussi un TOCTOU test/soustraction).
+- `s_nextSeq` (`sd_logger.cpp`, BOARD_S3) : RMW `seq++` atteint d'autoTask **et** async_tcp/web → `atomic<uint32_t>`.
+- Style calqué sur l'existant (`s_heartbeatDroppedCount`). `diagnostics.h` non touché (BACKLOG §4 : casse la
+  copiabilité de `DiagnosticStats`). ⚠️ Banc : preuve runtime sur chemins réels boot/réveil/SD.
+
+### 12.c — Concurrence : mutex dédié `s_remoteJsonCache` — PR `claude/ffp5cs-concurrency-remote-cache-mutex`
+**Vraie course** confirmée (chaînes tracées) sur le cache RAM `remote_vars` (`config.cpp`, 2048 o + flag),
+non documentée auparavant — même classe que `s_lastFetchedJson` (§1) :
+- WRITE : async_tcp (`/dbvars/update`, `toggleEmailNotifications`) **et** autoTask (`processDeferredRemoteVarsSave`).
+- READ : netTask (`loadFromNVSFallback`/boot), autoTask (`fetchRemoteState`/restore), async_tcp (`/dbvars`).
+- Aucune sérialisation préexistante (le web server est **ESPAsyncWebServer** → handlers sur tâche async_tcp,
+  pas webTask). `strncpy`/`strcmp` déchirables → JSON malformé → parse KO/OOB.
+- Correctif : `s_remoteJsonCacheMutex` (lazy-init, motif `s_lastFetchedJsonMutex`, timeout 1000 ms). Verrou
+  **FEUILLE** : sections critiques = cache RAM uniquement ; **appels NVS hors mutex** (pas d'inversion).
+  Dégradation gracieuse au timeout : lecture → retombe sur NVS (source durable). Diff `config.cpp` seul.
+  ⚠️ Banc (bloquant) : toggle WiFi + polling + trafic `/dbvars` concurrent → 0 LoadProhibited, 0 stalls.
