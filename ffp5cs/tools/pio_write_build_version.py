@@ -1,8 +1,9 @@
 """
-Post-build FFP5CS : écrit la version firmware (include/config.h) dans BUILD_DIR/version.txt.
+Post-build FFP5CS : écrit la version firmware dans BUILD_DIR/version.txt.
 
 Permet au script publish_ota.ps1 de publier le numéro de version correspondant à chaque
 firmware compilé (chaque env peut avoir été compilé à un moment différent).
+Source : include/config_system.h (ou config.h en repli).
 """
 
 import os
@@ -14,14 +15,17 @@ Import("env")
 def post_build_write_version(source, target, env):
     project_dir = env.subst("$PROJECT_DIR")
     build_dir = env.subst("$BUILD_DIR")
-    config_path = os.path.join(project_dir, "include", "config.h")
     version = None
-    if os.path.isfile(config_path):
+    for header_name in ("config_system.h", "config.h"):
+        config_path = os.path.join(project_dir, "include", header_name)
+        if not os.path.isfile(config_path):
+            continue
         with open(config_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         m = re.search(r'VERSION\s*=\s*"([^"]+)"', content)
         if m:
             version = m.group(1)
+            break
     if version is None:
         version = "0.0.0"
     version_file = os.path.join(build_dir, "version.txt")
