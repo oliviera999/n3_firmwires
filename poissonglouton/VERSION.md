@@ -1,5 +1,9 @@
 # Poissonglouton - Historique versions
 
+## 0.1.22 - 2026-06-16
+
+- Ecran : lisibilite UI — pastilles header en flex (plus de chevauchement), textes donnees en opacite pleine 14 pt, colonne capteurs elargie.
+
 ## 0.1.21 - 2026-06-16
 
 - Ecran : refonte UI LVGL haute qualité en cartes (LED d’état, jauge ultrason, barre file serveur, compteurs et smiley).

@@ -15,7 +15,9 @@ constexpr uint32_t kColorError = 0xFF6B6B;
 
 lv_style_t styleCard;
 lv_style_t styleTitle;
-lv_style_t styleMuted;
+lv_style_t styleSection;
+lv_style_t styleData;
+lv_style_t styleChip;
 lv_style_t styleBullet;
 lv_style_t styleValueHero;
 bool stylesReady = false;
@@ -56,12 +58,22 @@ void initStyles() {
 
   lv_style_init(&styleTitle);
   lv_style_set_text_font(&styleTitle, fontLarge());
-  lv_style_set_text_color(&styleTitle, lv_palette_main(LV_PALETTE_TEAL));
+  lv_style_set_text_color(&styleTitle, lv_color_hex(kColorText));
 
-  lv_style_init(&styleMuted);
-  lv_style_set_text_font(&styleMuted, fontSmall());
-  lv_style_set_text_opa(&styleMuted, LV_OPA_60);
-  lv_style_set_text_color(&styleMuted, lv_color_hex(kColorText));
+  lv_style_init(&styleSection);
+  lv_style_set_text_font(&styleSection, fontSmall());
+  lv_style_set_text_opa(&styleSection, LV_OPA_70);
+  lv_style_set_text_color(&styleSection, lv_palette_lighten(LV_PALETTE_TEAL, 1));
+
+  lv_style_init(&styleData);
+  lv_style_set_text_font(&styleData, fontNormal());
+  lv_style_set_text_opa(&styleData, LV_OPA_COVER);
+  lv_style_set_text_color(&styleData, lv_color_hex(kColorText));
+
+  lv_style_init(&styleChip);
+  lv_style_set_text_font(&styleChip, fontSmall());
+  lv_style_set_text_opa(&styleChip, LV_OPA_COVER);
+  lv_style_set_text_color(&styleChip, lv_color_hex(kColorText));
 
   lv_style_init(&styleBullet);
   lv_style_set_radius(&styleBullet, LV_RADIUS_CIRCLE);
@@ -84,17 +96,24 @@ lv_obj_t* createCard(lv_obj_t* parent, lv_coord_t w, lv_coord_t h) {
   return card;
 }
 
-lv_obj_t* createLedWithCaption(lv_obj_t* parent, const char* caption, lv_coord_t x, lv_coord_t y) {
-  lv_obj_t* led = lv_led_create(parent);
+lv_obj_t* createStatusChip(lv_obj_t* parent, const char* caption) {
+  lv_obj_t* chip = lv_obj_create(parent);
+  lv_obj_remove_style_all(chip);
+  lv_obj_set_size(chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(chip, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(chip, 4, 0);
+  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* led = lv_led_create(chip);
   lv_led_set_color(led, lv_color_hex(kColorText));
   lv_led_off(led);
   lv_obj_set_size(led, 10, 10);
-  lv_obj_set_pos(led, x, y);
 
-  lv_obj_t* lbl = lv_label_create(parent);
+  lv_obj_t* lbl = lv_label_create(chip);
   lv_label_set_text(lbl, caption);
-  lv_obj_add_style(lbl, &styleMuted, 0);
-  lv_obj_set_pos(lbl, x + 14, y - 2);
+  lv_obj_add_style(lbl, &styleChip, 0);
+
   return led;
 }
 
@@ -109,7 +128,7 @@ StatusRow createStatusRow(lv_obj_t* parent, const char* title, bool withBar) {
   lv_obj_t* cont = lv_obj_create(parent);
   lv_obj_remove_style_all(cont);
   lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_height(cont, withBar ? 36 : 22);
+  lv_obj_set_height(cont, withBar ? 38 : 24);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
   row.bullet = lv_obj_create(cont);
@@ -117,21 +136,21 @@ StatusRow createStatusRow(lv_obj_t* parent, const char* title, bool withBar) {
   lv_obj_add_style(row.bullet, &styleBullet, 0);
   lv_obj_set_size(row.bullet, 8, 8);
   lv_obj_set_style_bg_color(row.bullet, lv_palette_main(LV_PALETTE_TEAL), 0);
-  lv_obj_align(row.bullet, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_align(row.bullet, LV_ALIGN_LEFT_MID, 0, withBar ? -6 : 0);
 
   row.label = lv_label_create(cont);
   lv_label_set_text(row.label, title);
-  lv_obj_add_style(row.label, &styleMuted, 0);
-  lv_obj_set_width(row.label, LV_PCT(85));
-  lv_label_set_long_mode(row.label, LV_LABEL_LONG_DOT);
-  lv_obj_align(row.label, LV_ALIGN_LEFT_MID, 14, withBar ? -8 : 0);
+  lv_obj_add_style(row.label, &styleData, 0);
+  lv_obj_set_width(row.label, LV_PCT(92));
+  lv_label_set_long_mode(row.label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_align(row.label, LV_ALIGN_LEFT_MID, 12, withBar ? -8 : 0);
 
   if (withBar) {
     row.bar = lv_bar_create(cont);
     lv_bar_set_range(row.bar, 0, 100);
     lv_bar_set_value(row.bar, 0, LV_ANIM_OFF);
-    lv_obj_set_size(row.bar, LV_PCT(85), 6);
-    lv_obj_align(row.bar, LV_ALIGN_BOTTOM_LEFT, 14, 0);
+    lv_obj_set_size(row.bar, LV_PCT(92), 6);
+    lv_obj_align(row.bar, LV_ALIGN_BOTTOM_LEFT, 12, 0);
     lv_obj_set_style_bg_color(row.bar, lv_color_hex(kColorBorder), LV_PART_MAIN);
     lv_obj_set_style_bg_color(row.bar, lv_palette_main(LV_PALETTE_TEAL), LV_PART_INDICATOR);
     lv_obj_set_style_radius(row.bar, 3, LV_PART_MAIN);
@@ -167,14 +186,20 @@ void buildHeader(lv_obj_t* parent, PglUiHandles& h) {
   lv_label_set_text(h.labelTitle, "Poisson Glouton");
   lv_obj_add_style(h.labelTitle, &styleTitle, 0);
   lv_obj_align(h.labelTitle, LV_ALIGN_LEFT_MID, PGL_UI_PAD_X, 0);
+  lv_obj_set_width(h.labelTitle, PGL_SCREEN_W / 2);
 
-  const lv_coord_t ledY = (PGL_UI_HEADER_H - 10) / 2;
-  lv_coord_t ledX = PGL_SCREEN_W - PGL_UI_PAD_X - 90;
-  h.ledIr = createLedWithCaption(header, "IR", ledX, ledY);
-  ledX += 30;
-  h.ledWifi = createLedWithCaption(header, "WiFi", ledX, ledY);
-  ledX += 36;
-  h.ledSrv = createLedWithCaption(header, "Srv", ledX, ledY);
+  lv_obj_t* ledRow = lv_obj_create(header);
+  lv_obj_remove_style_all(ledRow);
+  lv_obj_set_size(ledRow, LV_SIZE_CONTENT, LV_PCT(100));
+  lv_obj_set_flex_flow(ledRow, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(ledRow, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(ledRow, PGL_UI_HEADER_LED_GAP, 0);
+  lv_obj_clear_flag(ledRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_align(ledRow, LV_ALIGN_RIGHT_MID, -PGL_UI_PAD_X, 0);
+
+  h.ledIr = createStatusChip(ledRow, "IR");
+  h.ledWifi = createStatusChip(ledRow, "WiFi");
+  h.ledSrv = createStatusChip(ledRow, "Srv");
 }
 
 void buildCounterCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
@@ -183,7 +208,7 @@ void buildCounterCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w
 
   lv_obj_t* title = lv_label_create(card);
   lv_label_set_text(title, "Compteurs");
-  lv_obj_add_style(title, &styleMuted, 0);
+  lv_obj_add_style(title, &styleSection, 0);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
 
   handles.labelSmiley = lv_label_create(card);
@@ -193,7 +218,7 @@ void buildCounterCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w
 
   handles.labelTodayCaption = lv_label_create(card);
   lv_label_set_text(handles.labelTodayCaption, "AUJOURD'HUI");
-  lv_obj_add_style(handles.labelTodayCaption, &styleMuted, 0);
+  lv_obj_add_style(handles.labelTodayCaption, &styleSection, 0);
   lv_obj_align(handles.labelTodayCaption, LV_ALIGN_TOP_LEFT, 0, 22);
 
   handles.labelTodayValue = lv_label_create(card);
@@ -203,8 +228,7 @@ void buildCounterCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w
 
   handles.labelTotal = lv_label_create(card);
   lv_label_set_text(handles.labelTotal, "Total: 0");
-  lv_obj_set_style_text_font(handles.labelTotal, fontNormal(), 0);
-  lv_obj_set_style_text_color(handles.labelTotal, lv_color_hex(kColorText), 0);
+  lv_obj_add_style(handles.labelTotal, &styleData, 0);
   lv_obj_align(handles.labelTotal, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
 
@@ -214,21 +238,33 @@ void buildSensorCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
 
   lv_obj_t* title = lv_label_create(card);
   lv_label_set_text(title, "Capteurs");
-  lv_obj_add_style(title, &styleMuted, 0);
+  lv_obj_add_style(title, &styleSection, 0);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
 
   handles.arcUs = createUsArc(card, PGL_UI_ARC_SIZE);
-  lv_obj_align(handles.arcUs, LV_ALIGN_LEFT_MID, 0, 6);
+  lv_obj_align(handles.arcUs, LV_ALIGN_LEFT_MID, 0, 8);
 
-  handles.labelUs = lv_label_create(card);
+  lv_obj_t* rightCol = lv_obj_create(card);
+  lv_obj_remove_style_all(rightCol);
+  lv_obj_set_width(rightCol, w - PGL_UI_ARC_SIZE - PGL_UI_CARD_PAD - 4);
+  lv_obj_set_height(rightCol, h - PGL_UI_CARD_PAD * 2 - 14);
+  lv_obj_align(rightCol, LV_ALIGN_RIGHT_MID, 0, 6);
+  lv_obj_set_flex_flow(rightCol, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(rightCol, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(rightCol, 6, 0);
+  lv_obj_clear_flag(rightCol, LV_OBJ_FLAG_SCROLLABLE);
+
+  handles.labelUs = lv_label_create(rightCol);
   lv_label_set_text(handles.labelUs, "US: —");
-  lv_obj_add_style(handles.labelUs, &styleMuted, 0);
-  lv_obj_align(handles.labelUs, LV_ALIGN_TOP_RIGHT, 0, 18);
+  lv_obj_add_style(handles.labelUs, &styleData, 0);
+  lv_obj_set_width(handles.labelUs, LV_PCT(100));
+  lv_label_set_long_mode(handles.labelUs, LV_LABEL_LONG_WRAP);
 
-  handles.labelIr = lv_label_create(card);
+  handles.labelIr = lv_label_create(rightCol);
   lv_label_set_text(handles.labelIr, "IR: ...");
-  lv_obj_add_style(handles.labelIr, &styleMuted, 0);
-  lv_obj_align(handles.labelIr, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+  lv_obj_add_style(handles.labelIr, &styleData, 0);
+  lv_obj_set_width(handles.labelIr, LV_PCT(100));
+  lv_label_set_long_mode(handles.labelIr, LV_LABEL_LONG_WRAP);
 }
 
 void buildSystemCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
@@ -240,7 +276,7 @@ void buildSystemCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
 
   lv_obj_t* title = lv_label_create(card);
   lv_label_set_text(title, "Systeme");
-  lv_obj_add_style(title, &styleMuted, 0);
+  lv_obj_add_style(title, &styleSection, 0);
 
   StatusRow wifiRow = createStatusRow(card, "WiFi: ...", true);
   handles.labelWifi = wifiRow.label;
