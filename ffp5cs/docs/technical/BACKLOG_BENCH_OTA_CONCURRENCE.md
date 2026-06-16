@@ -524,3 +524,43 @@ non documentée auparavant — même classe que `s_lastFetchedJson` (§1) :
   **FEUILLE** : sections critiques = cache RAM uniquement ; **appels NVS hors mutex** (pas d'inversion).
   Dégradation gracieuse au timeout : lecture → retombe sur NVS (source durable). Diff `config.cpp` seul.
   ⚠️ Banc (bloquant) : toggle WiFi + polling + trafic `/dbvars` concurrent → 0 LoadProhibited, 0 stalls.
+
+---
+
+## 13. Mise à jour 2026-06-16 — Lot « sans banc » (100% prouvable en CI, agents parallèles)
+
+Série de chantiers délibérément **NON bench-gated** : logique plateforme-indépendante (parsing chaîne/entier,
+décisions booléennes) à **parité exacte** (⇒ comportement identique ⇒ aucune validation matérielle requise),
++ tests purs (zéro changement de prod) + suppression de code mort (compile-validée). Développé par 4 agents en
+parallèle (worktrees isolés, branches disjointes). Listes de tests + ce BACKLOG centralisés (anti-conflit).
+
+### 13.a — Extraction `DiagnosticsDecision` (pur, diagnostique) — inclus PR « no-bench-pure »
+`include/diagnostics_decision.h` (`<cstdint>/<cstring>/<cstddef>` seuls). Extrait de `diagnostics.cpp` :
+- `parseIdlePercent(taskStats)` : parse la sortie FreeRTOS `vTaskGetRunTimeStats` → moyenne des lignes IDLE
+  (0..100, 255 = inconnu). `atoiSimple` + test `'0'..'9'` (évite `<cctype>` + UB char signé), documenté.
+- `decideMinHeapSave(...)` : décision pure (1er-save / intervalle+delta / perte critique >10 Ko, garde
+  UINT32_MAX) renvoyant un enum ; logs/NVS/mutations restent dans l'appelant (parité). **Diagnostique** →
+  zéro impact sécurité/autonomie. Tests `test_diagnostics_decision` (28 cas + boucles de parité brute-force).
+
+### 13.b — Extraction `GpioBoolParse` (pur, parité exacte) — inclus PR « no-bench-pure »
+`include/gpio_bool_parse.h` (`<cstring>` seul, sans ArduinoJson). Extrait le cœur de `parseBoolFromDoc`
+(`gpio_parser.cpp`) : `fromToken` (`"1"/"true"/"on"` insensible à la casse → true ; `"0"/"false"` → false ;
+inconnu → non reconnu) + `fromInt` (strictement `==1`). Le **dispatch de type ArduinoJson** reste dans
+`gpio_parser.cpp` ; **edge-seeding nourrissage non touché**. Parité octet-pour-octet (parse commandes serveur).
+Tests `test_gpio_bool_parse` (13 cas + 2 boucles de parité ancien↔nouveau).
+
+### 13.c — Couverture native de modules purs non testés — inclus PR « no-bench-pure »
+Tests seulement (zéro changement de prod). Trous réels comblés : `test_board_traits_default` +
+`test_board_traits_s3beta` (header `board_traits.h` — sélection board/profil/endpoint, 2×6 cas, les 2 branches
+des 13 prédicats) et `test_tank_level_gate` (gates niveau réservoir `config_sensors.h` — **sécurité** :
+un mauvais seuil → fausse détection plein/vide → mauvais pilotage pompe/débordement ; 10 cas, bornes).
+
+### 13.d — Suppression code mort confirmé — PR `claude/ffp5cs-deadcode` (séparée, disjointe)
+16 retraits prouvés zéro-référence (grep dépôt entier) : `OTAManager::validateFirmwareSize()` (def+décl) +
+15 déclarations orphelines dans `automatism.h` (jamais définies ni appelées ; même motif que v11.178/179).
+Skippés (prudence) : hooks `extern "C"` faibles (`earlyInitVariant`, `ffp5cs_diag_*` — atteints sous certains
+env de build), et noms en collision avec des méthodes de classes sœurs. Diff `automatism.h`/`ota_manager.h`/
+`ota_manager_validate.cpp` seuls. Preuve finale = build firmware CI.
+
+➡️ **Pas de banc requis** : parité exacte (parsing) / diagnostique (heap) / tests purs / code inatteignable.
+Le seul filet est la **CI** (tests natifs + builds firmware). Reste éventuel : `n3_serveur` (PHP, jamais de banc).
