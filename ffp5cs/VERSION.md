@@ -12,6 +12,15 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.09 - 2026-06-16
+
+### Déploiement OTA canal beta (wroom-beta)
+
+- **OTA** : publication `ffp5-wroom-beta` → `serveur/ota/esp32-wroom-beta/` (canal test) — validation OTA distante v14.08 → v14.09.
+- **Build** : `pio run -e wroom-beta`.
+
+---
+
 ## Version 14.08 - 2026-06-16
 
 ### Déploiement OTA canal beta (wroom-beta)
