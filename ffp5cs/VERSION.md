@@ -12,6 +12,26 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.12 - 2026-06-18
+
+### Déploiement OTA canal prod (wroom-prod)
+
+- **OTA** : publication `ffp5-wroom-prod` → `serveur/ota/esp32-wroom/` (canal prod).
+- **Inclus depuis 14.11** : mail OTA fin synchrone avant reboot ; link `NET_TASK_STACK_SIZE` prod 12560.
+- **Build** : `pio run -e wroom-prod`.
+
+---
+
+## Version 14.11 - 2026-06-17
+
+### OTA — mail de fin avant reboot
+
+- **Symptôme** : mail « OTA fin - Serveur distant » ajouté à la queue async puis perdu au `ESP.restart()` immédiat.
+- **Correctif** : `sendAlertSync()` dans `ota_manager_download.cpp` (envoi SMTP bloquant avant les 3 s de délai et reboot).
+- **Link wroom-prod** : `NET_TASK_STACK_SIZE` 12624 → 12560 (−64 octets `dram0_0_seg` après clean rebuild).
+
+---
+
 ## Version 14.10 - 2026-06-17
 
 ### Déploiement OTA canal beta (wroom-beta)

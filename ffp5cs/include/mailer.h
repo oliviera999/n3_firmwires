@@ -33,8 +33,9 @@ class Mailer : public IMailer {
  public:
   bool begin();
   
-  // Méthodes synchrones (utilisées en interne par mailTask)
+  // Méthodes synchrones (utilisées en interne par mailTask ou avant reboot OTA)
   bool sendSync(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+  bool sendAlertSync(const char* subject, const char* message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, bool includeDetailedReport = false);
   bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
                      const char* toEmail = EmailConfig::DEFAULT_RECIPIENT) override;
   bool sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
@@ -85,7 +86,4 @@ class Mailer : public IMailer {
   // Statistiques
   uint32_t _mailsSent{0};
   uint32_t _mailsFailed{0};
-  
-  // Implémentation interne de sendAlert (synchrone)
-  bool sendAlertSync(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport = false);
 }; 

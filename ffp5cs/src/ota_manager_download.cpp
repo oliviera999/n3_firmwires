@@ -540,7 +540,7 @@ void OTAManager::updateTask(void* parameter) {
             ota->m_display->showOtaProgressEx(100, fromLbl, toLbl, "Terminé", curV, newV, "OTA");
         }
 
-        // Email de fin d'OTA (succès) avant reboot
+        // Email de fin d'OTA (succès) — synchrone avant reboot (sendAlert async perdait le mail au restart)
         {
             extern Mailer mailer;
             extern Automatism g_autoCtrl;
@@ -552,7 +552,11 @@ void OTAManager::updateTask(void* parameter) {
             snprintf(body, sizeof(body),
                      "OTA distant terminé\n\nAncienne version: %s\nNouvelle version: %s\nEnvironnement: %s\nTaille firmware: %s",
                      ota->getCurrentVersion(), ota->getRemoteVersion(), Utils::getProfileName(), firmwareSizeBuf);
-            mailer.sendAlert("OTA fin - Serveur distant", body, toEmail, true);
+            esp_task_wdt_reset();
+            const bool mailOk = mailer.sendAlertSync("OTA fin - Serveur distant", body, toEmail, true);
+            if (!mailOk) {
+                ota->log("⚠️ Échec envoi mail OTA fin (reboot quand même)");
+            }
         }
         
         // Nettoyer le flag inProgress avant reboot
