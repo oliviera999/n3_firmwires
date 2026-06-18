@@ -30,12 +30,12 @@
 // -----------------------------------------------------------------------------
 // Clé publique ECDSA P-256 (format SPKI/PEM)
 // Vérification : mbedtls_pk_parse_public_key + mbedtls_pk_verify
+// Chaîne concaténée (pas de littéral brut dans une macro : GCC 8 / env *-cam).
 // -----------------------------------------------------------------------------
-#define OTA_SIGNING_PUBLIC_KEY_PEM R"OTAKEY(
------BEGIN PUBLIC KEY-----
-MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQA3w/Kj4IU2YWY9bd3OAc7/hEZLSPq
-G9Jm+zMdeCzksIiwbsQC/lL9gw9tUrNmC4PW5x3g8gZFyzjLpkpsvBArqawB20Fk
-i/2X5gJ8b7zSHdao+lcvoMCiT7N+GyB1M47ExRsRLOgeK7ScR70NwzNOIol45wpV
-EMEe4sZr4ipzen9R9t0=
------END PUBLIC KEY-----
-)OTAKEY"
+static const char OTA_SIGNING_PUBLIC_KEY_PEM[] =
+    "-----BEGIN PUBLIC KEY-----\n"
+    "MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQA3w/Kj4IU2YWY9bd3OAc7/hEZLSPq\n"
+    "G9Jm+zMdeCzksIiwbsQC/lL9gw9tUrNmC4PW5x3g8gZFyzjLpkpsvBArqawB20Fk\n"
+    "i/2X5gJ8b7zSHdao+lcvoMCiT7N+GyB1M47ExRsRLOgeK7ScR70NwzNOIol45wpV\n"
+    "EMEe4sZr4ipzen9R9t0=\n"
+    "-----END PUBLIC KEY-----\n";

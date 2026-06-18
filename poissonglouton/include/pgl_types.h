@@ -22,6 +22,7 @@ struct PglStoredEvent {
   uint8_t tandemValidated;
   int16_t batteryMilliVolt;
   int16_t rssi;
+  uint32_t eventId;  // identifiant monotone unique (0 = non assigné)
 };
 
 /** Dernier etat des echanges HTTP avec iot.olution.info (post-data / heartbeat). */

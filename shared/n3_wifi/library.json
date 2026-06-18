@@ -1,6 +1,6 @@
 {
   "name": "n3_wifi",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Connexion WiFi scan+RSSI+BSSID pour projet n3 IoT (ESP32, ESP32-CAM)",
   "keywords": ["wifi", "esp32", "n3", "scan", "rssi"],
   "frameworks": "arduino",

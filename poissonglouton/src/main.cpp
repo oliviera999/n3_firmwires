@@ -8,8 +8,10 @@
 #include "pgl_counter.h"
 #include "pgl_detection.h"
 #include "pgl_display.h"
+#include "pgl_event_journal.h"
 #include "pgl_log.h"
 #include "pgl_network.h"
+#include "pgl_sd_storage.h"
 #include "pgl_sleep.h"
 #include "pgl_types.h"
 #include "n3_battery.h"
@@ -20,6 +22,7 @@
 
 namespace {
 PglDetection gDetection;
+PglEventJournal gJournal;
 PglCounter gCounter;
 PglAudio gAudio;
 PglDisplay gDisplay;
@@ -34,6 +37,7 @@ uint32_t gLastServerHeartbeatMs = 0;
 uint32_t gLastIdleWarnMs = 0;
 
 RTC_DATA_ATTR uint32_t gBootCount = 0;
+bool gEpochBackfillDone = false;
 
 void onAudioDisplayNotify(const char* reason, const char* mp3Path, bool started, void* userData) {
   auto* display = static_cast<PglDisplay*>(userData);
@@ -45,11 +49,15 @@ void onAudioDisplayNotify(const char* reason, const char* mp3Path, bool started,
   }
 }
 
-void refreshDisplayWifi(PglDisplay& display) {
-  if (WiFi.status() == WL_CONNECTED) {
+void refreshDisplayWifi(PglDisplay& display, PglNetwork& network) {
+  if (network.isWifiConnected()) {
     display.setWifiInfo(WiFi.SSID().c_str(), WL_CONNECTED, WiFi.RSSI());
+  } else if (network.isWifiConnecting()) {
+    display.setWifiConnecting();
+  } else if (network.isWifiOffline()) {
+    display.setWifiOffline();
   } else {
-    display.setWifiInfo(nullptr, WiFi.status(), -127);
+    display.setWifiSearching();
   }
 }
 
@@ -59,6 +67,10 @@ void refreshDisplayUltrason(PglDisplay& display, PglDetection& detection) {
 
 void refreshDisplayServer(PglDisplay& display, PglNetwork& network, PglCounter& counter) {
   display.setServerStatus(network.getServerStatus(), counter.getPendingCount());
+  PGL_LOG_V("Display srv: pending=%u journal=%lu nvs=%u",
+            counter.getPendingCount(),
+            static_cast<unsigned long>(counter.getJournalPendingCount()),
+            counter.getNvsPendingCount());
 }
 
 void logIrStatus(const PglDetection& detection) {
@@ -80,10 +92,14 @@ void refreshHardwareStatus(PglDisplay& display, PglDetection& detection) {
 }
 }
 
+static bool isNtpReady() {
+  return time(nullptr) >= 1700000000;
+}
+
 static uint32_t getCurrentEpochSafe() {
   time_t now = time(nullptr);
   if (now < 1700000000) {
-    return static_cast<uint32_t>(millis() / 1000UL);
+    return 0;
   }
   return static_cast<uint32_t>(now);
 }
@@ -146,26 +162,93 @@ static void tryUploadBatch() {
     gLastUploadMs = millis();
     return;
   }
+  if (!isNtpReady()) {
+    PGL_LOG_V("Upload: differe — NTP non synchronise");
+    return;
+  }
 
-  PGL_LOG("Upload: tentative lot (pending=%u)", gCounter.getPendingCount());
-  PglStoredEvent batch[PGL_BATCH_SIZE] = {};
-  const size_t batchCount = gCounter.peekBatch(batch, PGL_BATCH_SIZE);
-  if (batchCount == 0) return;
+  PGL_LOG("Upload: pending=%u journal=%lu nvs=%u",
+          gCounter.getPendingCount(),
+          static_cast<unsigned long>(gCounter.getJournalPendingCount()),
+          gCounter.getNvsPendingCount());
 
-  const bool uploaded = gNetwork.uploadBatch(batch, batchCount, gCounter.getTotalCount(), gCounter.getTodayCount());
-  refreshDisplayServer(gDisplay, gNetwork, gCounter);
-  if (uploaded) {
-    PGL_LOG("Upload: OK, %u evenement(s) acquittes", static_cast<unsigned int>(batchCount));
-    gCounter.popBatch(batchCount);
+  const uint32_t budgetStart = millis();
+  bool anySuccess = false;
+
+  if (gCounter.hasJournalPending()) {
+    while (gCounter.getJournalPendingCount() > 0) {
+      if ((millis() - budgetStart) >= PGL_CATCHUP_BUDGET_MS) {
+        PGL_LOG("Upload SD: budget temps epuise (%u ms), reprise au prochain cycle",
+                static_cast<unsigned int>(PGL_CATCHUP_BUDGET_MS));
+        break;
+      }
+
+      PglStoredEvent batch[PGL_JOURNAL_BATCH_SIZE] = {};
+      uint32_t firstId = 0;
+      uint32_t lastId = 0;
+      const size_t batchCount = gCounter.peekJournalBatch(
+          batch, PGL_JOURNAL_BATCH_SIZE, firstId, lastId);
+      if (batchCount == 0) break;
+
+      PGL_LOG("Upload SD: lot=%u evt | firstId=%lu lastId=%lu",
+              static_cast<unsigned int>(batchCount),
+              static_cast<unsigned long>(firstId),
+              static_cast<unsigned long>(lastId));
+
+      const PglUploadResult res = gNetwork.uploadBatch(
+          batch, batchCount, gCounter.getTotalCount(), gCounter.getTodayCount());
+      refreshDisplayServer(gDisplay, gNetwork, gCounter);
+
+      if (res.ok) {
+        anySuccess = true;
+        const uint32_t ackId = (res.lastAckedEventId != 0) ? res.lastAckedEventId : lastId;
+        PGL_LOG("Upload SD: OK — ack id=%lu", static_cast<unsigned long>(ackId));
+        gCounter.commitJournalAck(ackId, batch, batchCount);
+        gDisplay.setCounter(gCounter.getTotalCount(), gCounter.getTodayCount());
+      } else {
+        PGL_LOG("Upload SD: ECHEC — conservation des evenements (pending=%u)",
+                gCounter.getPendingCount());
+        break;
+      }
+    }
+  }
+
+  if (gCounter.getNvsPendingCount() > 0) {
+    PglStoredEvent batch[PGL_BATCH_SIZE] = {};
+    const size_t batchCount = gCounter.peekBatch(batch, PGL_BATCH_SIZE);
+    if (batchCount > 0) {
+      const PglUploadResult res = gNetwork.uploadBatch(
+          batch, batchCount, gCounter.getTotalCount(), gCounter.getTodayCount());
+      refreshDisplayServer(gDisplay, gNetwork, gCounter);
+      if (res.ok) {
+        anySuccess = true;
+        if (res.lastAckedEventId != 0) {
+          gCounter.popBatchByAckId(res.lastAckedEventId, batch, batchCount);
+          PGL_LOG("Upload NVS: OK — ack id=%lu",
+                  static_cast<unsigned long>(res.lastAckedEventId));
+        } else {
+          gCounter.popBatch(batchCount);
+          PGL_LOG("Upload NVS: OK, %u evenement(s) acquittes",
+                  static_cast<unsigned int>(batchCount));
+        }
+      } else {
+        PGL_LOG("Upload NVS: ECHEC, evenements conserves (pending=%u)",
+                gCounter.getPendingCount());
+      }
+    }
+  }
+
 #if PGL_ENABLE_SERVER_HEARTBEAT
+  if (anySuccess) {
     if (gNetwork.sendHeartbeat(gBootCount)) {
       gLastServerHeartbeatMs = millis();
     }
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
-#endif
-  } else {
-    PGL_LOG("Upload: ECHEC, evenements conserves (pending=%u)", gCounter.getPendingCount());
   }
+#else
+  (void)anySuccess;
+#endif
+
   gLastUploadMs = millis();
 }
 
@@ -187,15 +270,25 @@ void setup() {
   PGL_LOG("Init reseau...");
   WiFi.mode(WIFI_STA);
   gNetwork.begin();
+  gNetwork.startBackgroundWifi();
   PGL_LOG_V("WiFi mode STA, status=%s", pglWifiStatusName(WiFi.status()));
 
+  PGL_LOG("Init carte SD...");
+#if !PGL_HEADLESS
+  pglSdStorageBegin();
+#endif
+
+  PGL_LOG("Init journal SD offline...");
+  gJournal.begin();
+
   PGL_LOG("Init compteur NVS...");
-  gCounter.begin();
+  gCounter.begin(&gJournal);
 
   PGL_LOG("Init affichage...");
   gDisplay.begin();
   gDisplay.setCounter(gCounter.getTotalCount(), gCounter.getTodayCount());
 #if !PGL_HEADLESS
+  gDisplay.setWifiSearching();
   PGL_LOG("Display: etat apres init — %s", gDisplay.isReady() ? "FONCTIONNEL" : "ECHEC");
 #endif
 
@@ -220,8 +313,10 @@ void setup() {
   PGL_LOG("Batterie: ADC desactive (GPIO2 = I2S_LRCK sur JC4827W543)");
 #endif
 
-  configTime(3600, 0, "pool.ntp.org");
-  PGL_LOG("NTP: pool.ntp.org (offset +3600s)");
+  setenv("TZ", "Africa/Casablanca", 1);
+  tzset();
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  PGL_LOG("NTP: pool.ntp.org TZ=Africa/Casablanca");
 
   gLastActivityMs = millis();
   gLastUiIdleMs = millis();
@@ -229,16 +324,6 @@ void setup() {
   gLastServerHeartbeatMs = 0;
   PGL_LOG("Setup termine, entree loop");
   pglLogMemory();
-
-#if !PGL_HEADLESS
-  PGL_LOG("WiFi: connexion pour affichage reseau...");
-  gNetwork.connectWifi();
-  refreshDisplayWifi(gDisplay);
-  refreshDisplayServer(gDisplay, gNetwork, gCounter);
-#elif PGL_VERBOSE_LOG
-  PGL_LOG("WiFi: test connexion apres init (scan plus fiable)...");
-  gNetwork.connectWifi();
-#endif
 }
 
 void loop() {
@@ -275,12 +360,21 @@ void loop() {
     gLastUiIdleMs = millis();
   }
 
+  if (gNetwork.pollWifi(PGL_WIFI_LOOP_BUDGET_MS)) {
+    refreshDisplayWifi(gDisplay, gNetwork);
+  }
+
+  if (isNtpReady() && !gEpochBackfillDone) {
+    gCounter.fixInvalidEpochs(getCurrentEpochSafe());
+    gEpochBackfillDone = true;
+  }
+
   tryUploadBatch();
   gCounter.flushIfDue();
 
   if ((millis() - gLastHeartbeatMs) > 5000) {
     const uint32_t idleMs = millis() - gLastActivityMs;
-    refreshDisplayWifi(gDisplay);
+    refreshDisplayWifi(gDisplay, gNetwork);
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
     logIrStatus(gDetection);
 #if !PGL_HEADLESS

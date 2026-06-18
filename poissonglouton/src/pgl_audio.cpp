@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "pgl_log.h"
+#include "pgl_sd_storage.h"
 
 namespace {
 void formatMp3Path(uint16_t track, char* out, size_t outLen) {
@@ -16,10 +17,8 @@ void formatMp3Path(uint16_t track, char* out, size_t outLen) {
 
 #include "Audio.h"
 #include <SD.h>
-#include <SPI.h>
 
 namespace {
-SPIClass spiSD(HSPI);
 Audio audio;
 }  // namespace
 
@@ -72,16 +71,15 @@ void PglAudio::begin() {
   available_ = false;
   return;
 #else
-  PGL_LOG_V("Audio: init I2S (BCLK=%d LRCK=%d DOUT=%d) + SD (CS=%d)...",
-            PGL_I2S_BCLK, PGL_I2S_LRCK, PGL_I2S_DOUT, PGL_SD_CS);
+  PGL_LOG_V("Audio: init I2S (BCLK=%d LRCK=%d DOUT=%d)...",
+            PGL_I2S_BCLK, PGL_I2S_LRCK, PGL_I2S_DOUT);
 
-  spiSD.begin(PGL_SD_SCK, PGL_SD_MISO, PGL_SD_MOSI, PGL_SD_CS);
-  if (!SD.begin(PGL_SD_CS, spiSD, 10000000)) {
+  if (!pglSdStorageBegin()) {
     PGL_LOG("Audio: montage SD echoue — mode silencieux");
     available_ = false;
     return;
   }
-  PGL_LOG_V("Audio: carte SD montee");
+  PGL_LOG_V("Audio: carte SD disponible");
 
   audio.setPinout(PGL_I2S_BCLK, PGL_I2S_LRCK, PGL_I2S_DOUT);
   audio.setVolume(PGL_I2S_VOLUME);

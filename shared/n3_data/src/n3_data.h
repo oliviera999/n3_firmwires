@@ -20,6 +20,8 @@ struct N3PostConfig {
   // Cote serveur, valide par SignatureValidator (FFP3 / Msp / N3pp).
   const char* sigSecret;         // partage avec l'env serveur API_SIG_SECRET (NULL = pas de HMAC FFP3)
   unsigned long currentEpochSeconds; // 0 = pas d'horodatage dispo (firmware sans NTP)
+  // Optionnel : si non-NULL, le body de la reponse HTTP (succes ou erreur) y est copie.
+  String* responseBodyOut;       // NULL = comportement legacy (pas de capture)
 };
 
 /**

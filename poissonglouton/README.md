@@ -11,6 +11,7 @@ Firmware de comptage de bouteilles pour poubelle de recyclage ludique.
 - **`pgl-s3-display`** (defaut) : Guition JC4827W543 — ecran LVGL 480x272, tactile GT911, audio I2S.
 - **`pgl-s3-jc3248`** : Guition JC3248W535 — ecran LVGL 320x480 portrait, tactile AXS15231B, flash 16 Mo.
 - **`pgl-s3-headless`** (secondaire) : ESP32-S3 DevKit sans ecran — bench / tests capteurs (audio desactive).
+- **`pgl-s3-debug`** : comme display mais veille desactivee et logs verbeux (`PGL_DEBUG_NO_SLEEP=1`).
 
 Reference materielle JC3248 : `docs/JC3248W535_REFERENCE.md` (depot parent IOT_n3).
 
@@ -32,7 +33,11 @@ Reference materielle JC3248 : `docs/JC3248W535_REFERENCE.md` (depot parent IOT_n
 
 - Messages audio via ampli I2S integre JC4827W543 (sortie **speak**, fallback silencieux si SD absente).
 
-- Buffer FIFO offline (NVS) et envoi par lot vers le serveur.
+- Buffer FIFO offline (NVS) et journal append-only sur carte SD (`pgl_event_journal`) avec sync idempotente (`device_event_id` / `last_acked_event_id`).
+
+- Envoi par lot vers le serveur (HTTPS `POST /pgl/post-data`).
+
+- **Offline-first** : le comptage, l'audio et l'ecran sont operationnels des le boot ; le WiFi se connecte en arriere-plan si un reseau configure est disponible (retry toutes les 60 s en cas d'echec).
 
 - Deep sleep avec reveil IR (ext0) ou timer fallback.
 

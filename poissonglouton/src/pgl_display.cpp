@@ -2,10 +2,10 @@
 
 #include "config.h"
 #include "pgl_log.h"
-#include "pgl_ui.h"
 
 #if !PGL_HEADLESS
 
+#include "pgl_ui.h"
 #include "pgl_display_board.h"
 
 #include <Arduino_GFX_Library.h>
@@ -65,7 +65,8 @@ int mapQueueToBar(uint16_t pendingEvents) {
 void displayFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP) {
   const uint32_t w = area->x2 - area->x1 + 1;
   const uint32_t h = area->y2 - area->y1 + 1;
-#if PGL_LV_FLUSH_USE_BERGB
+  // Aligné LVGL_Widgets : LV_COLOR_16_SWAP=1 => draw16bitBeRGBBitmap (QSPI NV3041A)
+#if LV_COLOR_16_SWAP
   gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
 #else
   gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
@@ -178,9 +179,9 @@ void PglDisplay::begin() {
   pglUiInitTheme();
   ui = pglUiBuildDashboard(lv_scr_act());
 
-  snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: initialisation...");
-  snprintf(audioLine_, sizeof(audioLine_), "Son: —");
-  snprintf(usLine_, sizeof(usLine_), "US: —");
+  snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: recherche...");
+  snprintf(audioLine_, sizeof(audioLine_), "En attente");
+  snprintf(usLine_, sizeof(usLine_), "US: -");
   snprintf(serverLine_, sizeof(serverLine_), "Srv: en attente");
   snprintf(hwLine_, sizeof(hwLine_), "Ecran: init | IR: ...");
   ready_ = gfxOk_ && lvglOk_;
@@ -235,11 +236,44 @@ void PglDisplay::setWifiInfo(const char* ssid, wl_status_t status, int rssi) {
       lv_obj_set_style_bg_color(ui.barWifi, lv_color_hex(0x7CFC00), LV_PART_INDICATOR);
     }
   } else {
-    snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: deconnecte");
-    pglUiSetLed(ui.ledWifi, PglUiLedState::Error);
-    if (ui.barWifi) {
-      lv_bar_set_value(ui.barWifi, 0, LV_ANIM_OFF);
-    }
+    setWifiOffline();
+    return;
+  }
+  if (ui.labelWifi) {
+    lv_label_set_text(ui.labelWifi, wifiLine_);
+  }
+}
+
+void PglDisplay::setWifiSearching() {
+  wifiConnected_ = false;
+  snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: recherche...");
+  pglUiSetLed(ui.ledWifi, PglUiLedState::Warn);
+  if (ui.barWifi) {
+    lv_bar_set_value(ui.barWifi, 0, LV_ANIM_OFF);
+  }
+  if (ui.labelWifi) {
+    lv_label_set_text(ui.labelWifi, wifiLine_);
+  }
+}
+
+void PglDisplay::setWifiConnecting() {
+  wifiConnected_ = false;
+  snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: connexion...");
+  pglUiSetLed(ui.ledWifi, PglUiLedState::Warn);
+  if (ui.barWifi) {
+    lv_bar_set_value(ui.barWifi, 0, LV_ANIM_OFF);
+  }
+  if (ui.labelWifi) {
+    lv_label_set_text(ui.labelWifi, wifiLine_);
+  }
+}
+
+void PglDisplay::setWifiOffline() {
+  wifiConnected_ = false;
+  snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: hors ligne");
+  pglUiSetLed(ui.ledWifi, PglUiLedState::Error);
+  if (ui.barWifi) {
+    lv_bar_set_value(ui.barWifi, 0, LV_ANIM_OFF);
   }
   if (ui.labelWifi) {
     lv_label_set_text(ui.labelWifi, wifiLine_);
@@ -287,14 +321,14 @@ void PglDisplay::setServerStatus(const PglServerCommStatus& status, uint16_t pen
   char postBuf[12];
   char hbBuf[12];
   if (status.lastPostHttp == 0) {
-    snprintf(postBuf, sizeof(postBuf), "—");
+    snprintf(postBuf, sizeof(postBuf), "-");
   } else if (status.lastPostHttp == -1) {
     snprintf(postBuf, sizeof(postBuf), "WiFi");
   } else {
     snprintf(postBuf, sizeof(postBuf), "%d", status.lastPostHttp);
   }
   if (status.lastHeartbeatHttp == 0) {
-    snprintf(hbBuf, sizeof(hbBuf), "—");
+    snprintf(hbBuf, sizeof(hbBuf), "-");
   } else if (status.lastHeartbeatHttp == -1) {
     snprintf(hbBuf, sizeof(hbBuf), "WiFi");
   } else {
@@ -348,19 +382,29 @@ void PglDisplay::showAudioPlaying(const char* reason, const char* mp3Path) {
     }
   }
   if (!file || file[0] == '\0') {
-    snprintf(audioLine_, sizeof(audioLine_), "Son: [%s]", reason ? reason : "?");
+    snprintf(audioLine_, sizeof(audioLine_), "[%s]", reason ? reason : "?");
   } else {
-    snprintf(audioLine_, sizeof(audioLine_), "Son: %s", file);
+    snprintf(audioLine_, sizeof(audioLine_), "%s", file);
   }
   if (ui.labelAudio) {
     lv_label_set_text(ui.labelAudio, audioLine_);
+    lv_obj_set_style_text_color(ui.labelAudio, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+  }
+  if (ui.cardAudio) {
+    lv_obj_set_style_border_color(ui.cardAudio, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+    lv_obj_set_style_border_width(ui.cardAudio, 2, LV_PART_MAIN);
   }
 }
 
 void PglDisplay::showAudioIdle() {
-  snprintf(audioLine_, sizeof(audioLine_), "Son: —");
+  snprintf(audioLine_, sizeof(audioLine_), "En attente");
   if (ui.labelAudio) {
     lv_label_set_text(ui.labelAudio, audioLine_);
+    lv_obj_set_style_text_color(ui.labelAudio, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+  }
+  if (ui.cardAudio) {
+    lv_obj_set_style_border_color(ui.cardAudio, lv_color_hex(0x2A4050), LV_PART_MAIN);
+    lv_obj_set_style_border_width(ui.cardAudio, 1, LV_PART_MAIN);
   }
 }
 
@@ -436,6 +480,9 @@ void PglDisplay::update() {}
 void PglDisplay::onBottleCount(uint32_t, uint32_t) {}
 void PglDisplay::setCounter(uint32_t, uint32_t) {}
 void PglDisplay::setWifiInfo(const char*, wl_status_t, int) {}
+void PglDisplay::setWifiSearching() {}
+void PglDisplay::setWifiConnecting() {}
+void PglDisplay::setWifiOffline() {}
 void PglDisplay::setUltrasonDistance(uint16_t, bool) {}
 void PglDisplay::setServerStatus(const PglServerCommStatus&, uint16_t) {}
 void PglDisplay::showAudioPlaying(const char*, const char*) {}

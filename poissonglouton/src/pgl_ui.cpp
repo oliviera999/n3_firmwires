@@ -205,31 +205,38 @@ void buildHeader(lv_obj_t* parent, PglUiHandles& h) {
 void buildCounterCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
   lv_obj_t* card = createCard(parent, w, h);
   lv_obj_set_pos(card, x, y);
+  lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(card, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(card, 4, 0);
 
-  lv_obj_t* title = lv_label_create(card);
+  // Ligne titre + smiley
+  lv_obj_t* topRow = lv_obj_create(card);
+  lv_obj_remove_style_all(topRow);
+  lv_obj_set_width(topRow, LV_PCT(100));
+  lv_obj_set_height(topRow, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(topRow, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(topRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(topRow, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* title = lv_label_create(topRow);
   lv_label_set_text(title, "Compteurs");
   lv_obj_add_style(title, &styleSection, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
 
-  handles.labelSmiley = lv_label_create(card);
+  handles.labelSmiley = lv_label_create(topRow);
   lv_label_set_text(handles.labelSmiley, ":-)");
   lv_obj_add_style(handles.labelSmiley, &styleValueHero, 0);
-  lv_obj_align(handles.labelSmiley, LV_ALIGN_TOP_RIGHT, 0, 0);
 
   handles.labelTodayCaption = lv_label_create(card);
   lv_label_set_text(handles.labelTodayCaption, "AUJOURD'HUI");
   lv_obj_add_style(handles.labelTodayCaption, &styleSection, 0);
-  lv_obj_align(handles.labelTodayCaption, LV_ALIGN_TOP_LEFT, 0, 22);
 
   handles.labelTodayValue = lv_label_create(card);
   lv_label_set_text(handles.labelTodayValue, "0");
   lv_obj_add_style(handles.labelTodayValue, &styleValueHero, 0);
-  lv_obj_align(handles.labelTodayValue, LV_ALIGN_LEFT_MID, 0, 8);
 
   handles.labelTotal = lv_label_create(card);
   lv_label_set_text(handles.labelTotal, "Total: 0");
   lv_obj_add_style(handles.labelTotal, &styleData, 0);
-  lv_obj_align(handles.labelTotal, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
 
 void buildSensorCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
@@ -255,7 +262,7 @@ void buildSensorCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
   lv_obj_clear_flag(rightCol, LV_OBJ_FLAG_SCROLLABLE);
 
   handles.labelUs = lv_label_create(rightCol);
-  lv_label_set_text(handles.labelUs, "US: —");
+  lv_label_set_text(handles.labelUs, "US: -");
   lv_obj_add_style(handles.labelUs, &styleData, 0);
   lv_obj_set_width(handles.labelUs, LV_PCT(100));
   lv_label_set_long_mode(handles.labelUs, LV_LABEL_LONG_WRAP);
@@ -265,6 +272,25 @@ void buildSensorCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
   lv_obj_add_style(handles.labelIr, &styleData, 0);
   lv_obj_set_width(handles.labelIr, LV_PCT(100));
   lv_label_set_long_mode(handles.labelIr, LV_LABEL_LONG_WRAP);
+}
+
+void buildAudioCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
+  lv_obj_t* card = createCard(parent, w, h);
+  lv_obj_set_pos(card, x, y);
+  handles.cardAudio = card;
+  lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(card, 2, 0);
+
+  lv_obj_t* title = lv_label_create(card);
+  lv_label_set_text(title, "Lecture");
+  lv_obj_add_style(title, &styleSection, 0);
+
+  handles.labelAudio = lv_label_create(card);
+  lv_label_set_text(handles.labelAudio, "En attente");
+  lv_obj_add_style(handles.labelAudio, &styleData, 0);
+  lv_obj_set_width(handles.labelAudio, LV_PCT(100));
+  lv_label_set_long_mode(handles.labelAudio, LV_LABEL_LONG_SCROLL_CIRCULAR);
 }
 
 void buildSystemCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
@@ -282,12 +308,9 @@ void buildSystemCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
   handles.labelWifi = wifiRow.label;
   handles.barWifi = wifiRow.bar;
 
-  StatusRow srvRow = createStatusRow(card, "Srv: —", true);
+  StatusRow srvRow = createStatusRow(card, "Srv: -", true);
   handles.labelServer = srvRow.label;
   handles.barQueue = srvRow.bar;
-
-  StatusRow audioRow = createStatusRow(card, "Son: —", false);
-  handles.labelAudio = audioRow.label;
 }
 
 #if !PGL_UI_PORTRAIT
@@ -299,10 +322,13 @@ void layoutLandscape(PglUiHandles& h) {
   const lv_coord_t rightW = contentW - leftW - PGL_UI_CARD_GAP;
   const lv_coord_t leftX = PGL_UI_PAD_X;
   const lv_coord_t rightX = leftX + leftW + PGL_UI_CARD_GAP;
-  const lv_coord_t sensorH = (bodyH * 55) / 100;
+  const lv_coord_t counterH = (bodyH * PGL_UI_COUNTER_H_PCT) / 100;
+  const lv_coord_t audioH = bodyH - counterH - PGL_UI_CARD_GAP;
+  const lv_coord_t sensorH = (bodyH * PGL_UI_SENSOR_H_PCT) / 100;
   const lv_coord_t systemH = bodyH - sensorH - PGL_UI_CARD_GAP;
 
-  buildCounterCard(lv_scr_act(), leftX, bodyY, leftW, bodyH, h);
+  buildCounterCard(lv_scr_act(), leftX, bodyY, leftW, counterH, h);
+  buildAudioCard(lv_scr_act(), leftX, bodyY + counterH + PGL_UI_CARD_GAP, leftW, audioH, h);
   buildSensorCard(lv_scr_act(), rightX, bodyY, rightW, sensorH, h);
   buildSystemCard(lv_scr_act(), rightX, bodyY + sensorH + PGL_UI_CARD_GAP, rightW, systemH, h);
 }
@@ -320,6 +346,9 @@ void layoutPortrait(PglUiHandles& h) {
 
   buildSensorCard(lv_scr_act(), x, y, cardW, PGL_UI_SENSOR_CARD_H, h);
   y += PGL_UI_SENSOR_CARD_H + PGL_UI_CARD_GAP;
+
+  buildAudioCard(lv_scr_act(), x, y, cardW, PGL_UI_AUDIO_CARD_H, h);
+  y += PGL_UI_AUDIO_CARD_H + PGL_UI_CARD_GAP;
 
   const lv_coord_t systemH = PGL_SCREEN_H - y - PGL_UI_PAD_Y;
   buildSystemCard(lv_scr_act(), x, y, cardW, systemH, h);
@@ -363,6 +392,8 @@ PglUiHandles pglUiBuildDashboard(lv_obj_t* parent) {
   lv_obj_set_style_bg_color(parent, lv_color_hex(kColorBg), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(parent, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_pad_all(parent, 0, LV_PART_MAIN);
+  /* Police par defaut sur l'ecran racine (pattern lv_demo_widgets) */
+  lv_obj_set_style_text_font(parent, fontNormal(), LV_PART_MAIN);
 
   PglUiHandles handles;
   buildHeader(parent, handles);

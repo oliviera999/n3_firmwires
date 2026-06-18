@@ -94,10 +94,14 @@ int n3DataPost(const N3PostConfig& config) {
   int code = http.POST(body);
   const unsigned long durationMs = millis() - postStartMs;
   String responseBody;
-  if (code < 200 || code >= 300) {
+  // Lire le body : toujours si l'appelant veut le récupérer, sinon seulement sur erreur
+  if (config.responseBodyOut != nullptr || code < 200 || code >= 300) {
     responseBody = http.getString();
     if (responseBody.length() > 200) {
       responseBody = responseBody.substring(0, 200) + "...";
+    }
+    if (config.responseBodyOut != nullptr) {
+      *config.responseBodyOut = responseBody;
     }
   }
   http.end();

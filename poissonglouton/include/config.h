@@ -8,7 +8,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.1.22";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.3";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -125,6 +125,12 @@ static constexpr size_t PGL_FORCE_UPLOAD_QUEUE_SIZE = 24;
 
 static constexpr uint32_t PGL_WIFI_TIMEOUT_MS = 10000;
 
+static constexpr uint32_t PGL_WIFI_LOOP_BUDGET_MS = 40;
+
+static constexpr uint32_t PGL_WIFI_UPLOAD_BUDGET_MS = 2000;
+
+static constexpr uint32_t PGL_WIFI_RETRY_INTERVAL_MS = 60000;
+
 
 
 // Énergie
@@ -145,11 +151,24 @@ static constexpr uint32_t PGL_BACKLIGHT_TIMEOUT_MS = 20000;
 
 
 
+// Journal SD (offline sync)
+// Fichier de journal sur la carte SD (append-only, records binaires + CRC16)
+static constexpr const char* PGL_JOURNAL_PATH = "/pgl_journal.bin";
+// Fichier temporaire utilisé lors de la compaction du journal
+static constexpr const char* PGL_JOURNAL_COMPACT_TMP = "/pgl_journal_tmp.bin";
+static constexpr const char* PGL_JOURNAL_BACKUP_PATH = "/pgl_journal.bak";
+// Taille d'un lot maximal envoyé pendant le rattrapage offline
+static constexpr size_t PGL_JOURNAL_BATCH_SIZE = 20;
+// Budget temps max (ms) pour la phase de rattrapage lors d'un cycle d'upload
+static constexpr uint32_t PGL_CATCHUP_BUDGET_MS = 8000;
+// Seuil d'octets acquittés avant de déclencher une compaction (1 Mo)
+static constexpr uint32_t PGL_JOURNAL_COMPACT_THRESHOLD = 1024UL * 1024UL;
+
 // URL serveur
 
-static constexpr const char* PGL_SERVER_POST_URL = "http://iot.olution.info/pgl/post-data";
+static constexpr const char* PGL_SERVER_POST_URL = "https://iot.olution.info/pgl/post-data";
 
-static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "http://iot.olution.info/pgl/heartbeat";
+static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "https://iot.olution.info/pgl/heartbeat";
 
 
 

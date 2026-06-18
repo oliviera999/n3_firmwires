@@ -20,6 +20,7 @@ struct PglUiHandles {
   lv_obj_t* labelServer = nullptr;
   lv_obj_t* barQueue = nullptr;
   lv_obj_t* labelAudio = nullptr;
+  lv_obj_t* cardAudio = nullptr;
 };
 
 enum class PglUiLedState : uint8_t {

@@ -1,5 +1,39 @@
 # Poissonglouton - Historique versions
 
+## 0.2.3 - 2026-06-16
+
+- Production : deep sleep reactivee (`PGL_DEBUG_NO_SLEEP=0` par defaut) ; env `pgl-s3-debug` pour bench.
+- Sync : mode NVS aligne sur `last_acked_event_id` ; `commitJournalAck` ne somme que les evenements acquittes.
+- Journal SD : reprise upload apres panne d'ecriture (`canRead` vs `isSdOk`) ; pending = journal + NVS ; compaction atomique avec backup.
+- Reseau : HTTPS ; parse JSON ArduinoJson pour l'ack serveur.
+- Temps : NTP obligatoire avant upload ; timezone `Africa/Casablanca` ; epoch 0 si NTP absent.
+- NVS : persistance lazy de `nextEventId` ; log ecrasement FIFO pleine.
+
+## 0.2.2 - 2026-06-16
+
+- Sync compteurs : montage SD avant le journal offline (le journal etait inactif si la SD n'etait pas encore montee).
+- Persistance immediate des totaux NVS a chaque detection (plus de decalage total affiche vs evenements journalises).
+- Reconciliation au boot et apres ack : `total = sync_acquitte + pending_journal` ; migration automatique des evenements deja ack sur SD.
+
+## 0.2.1 - 2026-06-16
+
+- WiFi non bloquant : boot immédiat offline-first, connexion en arrière-plan depuis `loop()` (budget 40 ms/tour).
+- Affichage : états WiFi distincts (recherche, connexion, hors ligne, connecté).
+- Upload : essai court (2 s) avant POST ; événements conservés en file si pas de réseau.
+- Lib partagée `n3_wifi` : API session `n3WifiSessionBegin` / `n3WifiSessionPoll` (scan async).
+
+## 0.2.0 - 2026-06-16
+
+- Offline-first : journal d'événements append-only sur carte SD (`pgl_event_journal`) avec CRC16 par record et compaction automatique (seuil 1 Mo acquitté).
+- Identifiant monotone `event_id` par événement (persisté en NVS) pour garantir l'idempotence côté serveur.
+- Sync par rattrapage : boucle de lots dans un budget temps (8 s) au retour du WiFi ; ack `last_acked_event_id` renvoyé par le serveur.
+- Mode dégradé (SD absente) : retour automatique à la NVS FIFO existante avec indicateur dans les logs.
+- Serveur : champ `device_event_id` + contrainte `UNIQUE(board, device_event_id)` + `INSERT IGNORE` idempotent ; réponse JSON enrichie `last_acked_event_id`.
+
+## 0.1.23 - 2026-06-16
+
+- Ecran : correction rendu texte LVGL (flush BeRGB aligne LVGL_Widgets quand LV_COLOR_16_SWAP=1) — suppression pixels blancs dans les glyphes anti-aliasés.
+
 ## 0.1.22 - 2026-06-16
 
 - Ecran : lisibilite UI — pastilles header en flex (plus de chevauchement), textes donnees en opacite pleine 14 pt, colonne capteurs elargie.
