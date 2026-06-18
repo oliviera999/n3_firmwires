@@ -7,15 +7,13 @@
 #include "app_tasks.h"           // AppTasks::isInWakeProtectionWindow (garde post-réveil v14.01)
 #include "task_mail.h"           // allocMailReserveIfNeeded, mailReserveReleaseIfInternal
 #include "app_context.h"         // AppContext (g_ctx->otaManager)
+#include "boot_log.h"            // OTA_LOG (ets_printf sur wroom-prod)
 #include "config.h"              // TaskConfig, HeapConfig, TimingConfig
 #include <Arduino.h>
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-#include "rom/ets_sys.h"
-#endif
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 // Libère la réserve mail interne pour maximiser le bloc contigu heap avant OTA.
@@ -25,36 +23,36 @@ static bool prepareOtaExclusiveHeap() {
   if (mailReserveReleaseIfInternal()) {
     freed = true;
     vTaskDelay(pdMS_TO_TICKS(100));
-    Serial.printf("[otaTask] Réserve mail libérée pour OTA: free=%u blk=%u\n",
-                  (unsigned)ESP.getFreeHeap(),
-                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    OTA_LOG("reserve mail liberee: free=%u blk=%u",
+            (unsigned)ESP.getFreeHeap(),
+            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
   }
 #endif
   return freed;
 }
 
 // Vérification OTA (boot ou périodique) : prio absolue, attente fin OTA_Update si nouvelle version.
-static void runOtaCheckCycle(uint32_t minContiguousBlock, const char* phaseLabel) {
-  if (!g_ctx || g_ctx->otaManager.isOtaExclusive()) return;
+// Retourne true si le gate heap est passé et checkForUpdate a été appelé ; false si reporté (heap).
+static bool runOtaCheckCycle(uint32_t minContiguousBlock, const char* phaseLabel) {
+  if (!g_ctx || g_ctx->otaManager.isOtaExclusive()) return true;
 
   bool mailReserveFreed = prepareOtaExclusiveHeap();
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
 
-  Serial.printf("[otaTask] %s heap: free=%u blk=%u (min OTA=%u, min blk=%u)\n",
-                phaseLabel,
-                (unsigned)freeHeap, (unsigned)largestBlock,
-                (unsigned)HeapConfig::MIN_HEAP_OTA, (unsigned)minContiguousBlock);
+  OTA_LOG("%s heap: free=%u blk=%u (min OTA=%u, min blk=%u)",
+          phaseLabel,
+          (unsigned)freeHeap, (unsigned)largestBlock,
+          (unsigned)HeapConfig::MIN_HEAP_OTA, (unsigned)minContiguousBlock);
 
   if (freeHeap < HeapConfig::MIN_HEAP_OTA || largestBlock < minContiguousBlock) {
-    Serial.printf("[otaTask] OTA reportée (%s): heap=%u blk=%u\n",
-                  phaseLabel, (unsigned)freeHeap, (unsigned)largestBlock);
+    OTA_LOG("reportee (%s): heap=%u blk=%u", phaseLabel, (unsigned)freeHeap, (unsigned)largestBlock);
 #if FEATURE_MAIL
     if (mailReserveFreed && !g_ctx->otaManager.isOtaExclusive()) {
       allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
     }
 #endif
-    return;
+    return false;
   }
 
   esp_task_wdt_reset();
@@ -63,11 +61,7 @@ static void runOtaCheckCycle(uint32_t minContiguousBlock, const char* phaseLabel
     vTaskPrioritySet(g_otaTaskHandle, TaskConfig::OTA_TASK_PRIORITY_WHILE_RUNNING);
   }
 
-#if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
-  ets_printf("[otaTask] %s check\n", phaseLabel);
-#else
-  Serial.printf("[otaTask] %s: vérification OTA (priorité absolue)\n", phaseLabel);
-#endif
+  OTA_LOG("%s: verification OTA (priorite absolue)", phaseLabel);
 
   if (g_ctx->otaManager.checkForUpdate()) {
     g_ctx->otaManager.performUpdate();
@@ -85,6 +79,22 @@ static void runOtaCheckCycle(uint32_t minContiguousBlock, const char* phaseLabel
     allocMailReserveIfNeeded(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS);
   }
 #endif
+  return true;
+}
+
+// Attente jusqu'à targetMs en nourrissant le WDT et en traitant les triggers OTA distants.
+static void waitUntilMs(unsigned long targetMs) {
+  while (static_cast<long>(targetMs - millis()) > 0) {
+    uint8_t trigger = 0;
+    unsigned long remaining = targetMs - millis();
+    TickType_t waitTicks = pdMS_TO_TICKS(remaining > 500UL ? 500UL : remaining);
+    if (g_otaTriggerQueue) {
+      xQueueReceive(g_otaTriggerQueue, &trigger, waitTicks);
+    } else {
+      vTaskDelay(waitTicks);
+    }
+    esp_task_wdt_reset();
+  }
 }
 
 // Tâche OTA dédiée : priorité supérieure à netTask, stack dédiée (évite stack overflow TLS/Update).
@@ -109,23 +119,42 @@ void otaTask(void* pv) {
     g_ctx->power.waitForNetworkReady();
     esp_task_wdt_reset();
 #if defined(BOARD_WROOM)
-    // Attente longue au boot : laisser netTask/mailTask finir leurs premières allocations
-    // pour que le heap se défragmente avant la connexion TLS OTA (~45 KB contigus requis)
+    // WROOM : metadata/firmware OTA en HTTP (pas TLS) — seuil aligné sur le cycle périodique (28 KB).
     constexpr unsigned long OTA_BOOT_SETTLE_MS = 8000;
-    constexpr uint32_t OTA_MIN_CONTIGUOUS_BLOCK = 45000;
+    constexpr uint32_t OTA_BOOT_MIN_BLOCK = 28000;
     for (unsigned long waited = 0; waited < OTA_BOOT_SETTLE_MS; waited += 1000) {
       vTaskDelay(pdMS_TO_TICKS(1000));
       esp_task_wdt_reset();
-      uint32_t blk = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-      if (blk >= OTA_MIN_CONTIGUOUS_BLOCK) break;
     }
     esp_task_wdt_reset();
 #elif defined(BOARD_S3) && !defined(BOARD_HAS_PSRAM)
+    constexpr uint32_t OTA_BOOT_MIN_BLOCK = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
     const unsigned long S3_FIRST_TLS_DELAY_MS = 3000;
     vTaskDelay(pdMS_TO_TICKS(S3_FIRST_TLS_DELAY_MS));
     esp_task_wdt_reset();
+#else
+    constexpr uint32_t OTA_BOOT_MIN_BLOCK = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
 #endif
-    runOtaCheckCycle(HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS, "Boot");
+
+    const unsigned long bootPhaseStart = millis();
+    static const unsigned long kBootRetryOffsets[] = {
+      0,
+      TimingConfig::OTA_BOOT_RETRY_1_MS,
+      TimingConfig::OTA_BOOT_RETRY_2_MS,
+      TimingConfig::OTA_BOOT_RETRY_3_MS,
+    };
+    for (size_t attempt = 0; attempt < sizeof(kBootRetryOffsets) / sizeof(kBootRetryOffsets[0]); ++attempt) {
+      if (attempt > 0) {
+        waitUntilMs(bootPhaseStart + kBootRetryOffsets[attempt]);
+      }
+      if (WiFi.status() != WL_CONNECTED || !g_ctx || g_ctx->otaManager.isOtaExclusive()) {
+        break;
+      }
+      const char* label = (attempt == 0) ? "Boot" : "BootRetry";
+      if (runOtaCheckCycle(OTA_BOOT_MIN_BLOCK, label)) {
+        break;  // gate heap passé : checkForUpdate exécuté (MAJ ou « déjà à jour »)
+      }
+    }
 #endif
   }
 
@@ -155,12 +184,12 @@ void otaTask(void* pv) {
     constexpr uint32_t OTA_MIN_BLOCK_PERIODIC = HeapConfig::MIN_HEAP_BLOCK_FOR_MAIL_TLS;
 #endif
     if (heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) < OTA_MIN_BLOCK_PERIODIC) {
-      Serial.printf("[otaTask] OTA reportée: bloc contigu insuffisant (%u < %u)\n",
-                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
-                    (unsigned)OTA_MIN_BLOCK_PERIODIC);
+      OTA_LOG("reportee periodique: bloc contigu %u < %u",
+              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
+              (unsigned)OTA_MIN_BLOCK_PERIODIC);
       continue;
     }
-    runOtaCheckCycle(OTA_MIN_BLOCK_PERIODIC, "Periodic");
+    runOtaCheckCycle(OTA_MIN_BLOCK_PERIODIC, received == pdTRUE ? "Trigger" : "Periodic");
     esp_task_wdt_reset();
   }
 }

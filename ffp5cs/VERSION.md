@@ -12,6 +12,30 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.13 - 2026-06-18
+
+### Correctif OTA prod — boot reporté silencieusement (14.11 → 14.12)
+
+**Contexte** : appareil wroom-prod en 14.11, canal prod 14.12 publié et vérifié (metadata + firmware.bin MD5 OK), reboot sans mise à jour alors que beta OTA fonctionne.
+
+**Cause** :
+- Au boot WROOM, seuil bloc contigu **45 KB** + gate **31 KB** (réservé TLS/mail) alors que le cycle périodique/trigger n'exige que **28 KB** — metadata/firmware OTA sont en **HTTP** sur WROOM.
+- `Serial` désactivé en prod (`NullSerial`) : échec/report OTA **invisible** sur USB.
+- Un seul essai au boot ; prochain cycle automatique dans **2 h** si reporté.
+
+**Correctifs** :
+- Seuil boot WROOM aligné sur périodique (**28 KB**), suppression de la cible 45 KB.
+- **Retries boot** à +1 min, +3 min, +10 min si le 1er essai est reporté (heap).
+- **`OTA_LOG` / `BOOT_LOG`** via `ets_printf` sur wroom-prod (UART visible sans `Serial.begin`).
+- `performUpdate` WROOM : seuil heap **MIN_HEAP_OTA** (35 KB) au lieu de **TLS_MIN_HEAP** (téléchargement HTTP).
+
+**Validation OTA prod** :
+1. `.\scripts\publish_ota.ps1 -Targets ffp5-wroom-prod -Build` (depuis racine IOT_n3).
+2. Reboot appareil prod ou bouton **Vérifier OTA** sur [page contrôle aquaponie](https://iot.olution.info/aquaponie-control) (`POST /api/outputs/trigger-ota-check`).
+3. Vérifier version **14.13** sur page aquaponie ; logs UART `[OTA] Boot heap:` / `perform start`.
+
+---
+
 ## Version 14.12 - 2026-06-18
 
 ### Déploiement OTA canal prod (wroom-prod)

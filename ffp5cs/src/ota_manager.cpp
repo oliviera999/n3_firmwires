@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstring>
 #include "config.h"
+#include "boot_log.h"
 #include "mailer.h"
 #include "automatism.h"
 #include "diagnostics.h"
@@ -67,16 +68,14 @@ OTAManager::~OTAManager() {
 }
 
 void OTAManager::log(const char* message) {
-    Serial.printf("[OTA] %s\n", message);
-    Serial.printf("[Event] OTA: %s\n", message);
+    OTA_LOG("%s", message ? message : "(null)");
     if (m_statusCallback) {
         m_statusCallback(message);
     }
 }
 
 void OTAManager::logError(const char* error) {
-    Serial.printf("[OTA] ❌ %s\n", error);
-    Serial.printf("[Event] OTA ERROR: %s\n", error);
+    OTA_LOG("ERR %s", error ? error : "(null)");
     if (m_errorCallback) {
         m_errorCallback(error);
     }
@@ -304,23 +303,24 @@ bool OTAManager::performUpdate() {
   TaskMonitor::Snapshot prepareSnapshot = TaskMonitor::collectSnapshot();
   TaskMonitor::logSnapshot(prepareSnapshot, "ota-perform");
   TaskMonitor::detectAnomalies(prepareSnapshot, "ota-perform");
-  Serial.printf("[Event] OTA perform start remote=%s url=%s size=%d\n",
-                 m_remoteVersion,
-                 m_firmwareUrl,
-                 m_firmwareSize);
+  OTA_LOG("perform start remote=%s url=%s size=%d",
+          m_remoteVersion, m_firmwareUrl, m_firmwareSize);
 
-    // Vérifier qu'il reste suffisamment de heap avant de lancer une tâche OTA dédiée.
-    // Cela évite des échecs de création de tâche difficiles à diagnostiquer
-    // quand le heap est très fragmenté après un long uptime.
+    // WROOM : téléchargement firmware OTA en HTTP (pas mbedTLS) — seuil heap OTA, pas TLS.
+#if defined(BOARD_WROOM)
+    constexpr uint32_t kMinHeapForOtaTask = HeapConfig::MIN_HEAP_OTA;
+#else
+    constexpr uint32_t kMinHeapForOtaTask = TLS_MIN_HEAP_BYTES;
+#endif
     uint32_t freeHeap = ESP.getFreeHeap();
-    if (freeHeap < TLS_MIN_HEAP_BYTES) {
+    if (freeHeap < kMinHeapForOtaTask) {
         char heapBuf[16];
         formatBytes(freeHeap, heapBuf, sizeof(heapBuf));
         char logMsg[96];
         snprintf(logMsg, sizeof(logMsg),
                  "Heap insuffisant pour créer la tâche OTA: %s (< %u bytes requis)",
                  heapBuf,
-                 TLS_MIN_HEAP_BYTES);
+                 (unsigned)kMinHeapForOtaTask);
         logError(logMsg);
         m_otaLock = false;
         return false;

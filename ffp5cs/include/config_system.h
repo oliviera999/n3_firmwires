@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "14.12";
+    inline constexpr const char* VERSION = "14.13";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -144,6 +144,10 @@ namespace TimingConfig {
     inline constexpr uint32_t OTA_WDT_FEED_INTERVAL_MS = 10000; // 10s
     // Délai après mail réveil avant demande OTA (stabilisation TCP/IP / heap post-TLS)
     inline constexpr uint32_t OTA_CHECK_DELAY_AFTER_WAKE_MS = 3000;
+    // Retries post-boot WROOM prod : si le 1er essai OTA est reporté (heap fragmenté au démarrage).
+    inline constexpr uint32_t OTA_BOOT_RETRY_1_MS = 60000;    // 1 min
+    inline constexpr uint32_t OTA_BOOT_RETRY_2_MS = 180000;   // 3 min
+    inline constexpr uint32_t OTA_BOOT_RETRY_3_MS = 600000;   // 10 min
     inline constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
