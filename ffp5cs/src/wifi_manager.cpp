@@ -4,6 +4,7 @@
 #include "display_view.h"
 #include "power.h"
 #include "config.h"
+#include "wifi_disconnect_reason.h"  // libellé pur des raisons de déconnexion (testable natif)
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
 #include "esp_mac.h"   // Pour esp_base_mac_addr_set (override MAC avant WiFi init)
 #include <WiFiGeneric.h>
@@ -23,25 +24,11 @@ static void onStaDisconnected(arduino_event_id_t event, arduino_event_info_t inf
   s_lastStaDisconnectReason = (int)info.wifi_sta_disconnected.reason;
 }
 
-// Renvoie une chaîne explicite pour les raisons de déconnexion courantes (diagnostic WiFi)
+// Renvoie une chaîne explicite pour les raisons de déconnexion courantes (diagnostic WiFi).
+// Délègue à la logique pure WifiDisconnectReason::toString (wifi_disconnect_reason.h),
+// testée en natif ; comportement identique (mêmes cases, nullptr par défaut).
 static const char* wifiDisconnectReasonStr(int reason) {
-  switch (reason) {
-    case 1:  return "UNSPECIFIED";
-    case 2:  return "AUTH_EXPIRE";
-    case 3:  return "AUTH_LEAVE";
-    case 4:  return "ASSOC_EXPIRE";
-    case 5:  return "ASSOC_TOOMANY";
-    case 6:  return "NOT_AUTHED";
-    case 7:  return "NOT_ASSOCED";
-    case 8:  return "ASSOC_LEAVE";
-    case 9:  return "ASSOC_NOT_AUTHED";
-    case 15: return "4WAY_HANDSHAKE_TIMEOUT";
-    case 201: return "NO_AP_FOUND";
-    case 202: return "AUTH_FAIL";
-    case 204: return "HANDSHAKE_TIMEOUT";
-    case 205: return "CONNECTION_FAIL";
-    default: return nullptr;
-  }
+  return WifiDisconnectReason::toString(reason);
 }
 
 // DNS personnalisé : l'API Arduino-ESP32 n'expose pas setDNS() ; garder DHCP.
