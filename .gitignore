@@ -35,6 +35,9 @@ build_out.txt
 *.log.err
 monitor_*.log
 monitor_*.log.err
+uploadphotosserver/logs/
+uploadphotosserver/__pycache__/
+uploadphotosserver_ffp3_1_5_deppsleep/
 
 # IDE / OS
 .vscode/
