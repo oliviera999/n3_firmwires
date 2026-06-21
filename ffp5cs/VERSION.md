@@ -12,6 +12,28 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Refactor interne - 2026-06-21 (sans changement fonctionnel, pas de bump OTA)
+
+### Extraction de logique pure : formatage d'uptime
+
+- **Refactor** : extraction de la logique pure `formatUptime` (conversion d'une durée
+  en millisecondes vers `"Jd HH:MM:SS"`) de `src/mailer.cpp` vers le module header-only
+  `include/uptime_format.h` (`UptimeFormat::formatUptime`). Transcription ligne-à-ligne
+  (mêmes divisions entières, mêmes troncatures `unsigned int`, même format snprintf) :
+  **aucun changement de comportement**. Le buffer statique `g_uptimeBuffer` et l'appel
+  `millis()` restent côté `mailer.cpp` (le module reste pur, sans matériel ni état global).
+- **Test** : nouvelle suite Unity native `test/test_uptime_format/` (cas nominaux, jours
+  multi-chiffres, garde-fous buffer nul / taille 0 / troncature, et parité brute-force
+  avec une transcription du code d'origine). Enregistrée dans `platformio-native.ini` et
+  dans la liste de la CI (`.github/workflows/firmware-ci.yml`).
+- **Versionnage** : refactor interne sans impact fonctionnel → **pas de bump de la version
+  OTA publiée** (`ProjectConfig::VERSION` inchangé), conformément à `CLAUDE.md`.
+- **Fichiers** : `include/uptime_format.h` (nouveau), `src/mailer.cpp`,
+  `test/test_uptime_format/test_uptime_format.cpp` (nouveau), `platformio-native.ini`,
+  `.github/workflows/firmware-ci.yml`, `VERSION.md`.
+
+---
+
 ## Version 14.01 - 2026-06-08
 
 ### Correctifs réseau P1/P2/P3 (monitoring v14.00, 2026-06-07)
