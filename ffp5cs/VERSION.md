@@ -14,6 +14,32 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ## Refactor interne - 2026-06-21 (sans changement fonctionnel, pas de bump OTA)
 
+### Extraction de logique pure : libellé des raisons de déconnexion WiFi
+
+- **Refactor** : extraction de la logique pure `wifiDisconnectReasonStr` (mapping d'un
+  code de raison de déconnexion STA ESP-IDF vers un libellé lisible, `nullptr` si inconnu)
+  de `src/wifi_manager.cpp` vers le module header-only `include/wifi_disconnect_reason.h`
+  (`WifiDisconnectReason::toString`). Transcription ligne-à-ligne du switch d'origine
+  (mêmes `case`, mêmes littéraux, même `default: return nullptr`) : **aucun changement de
+  comportement**. La capture de l'évènement de déconnexion (`s_lastStaDisconnectReason`)
+  et le `Serial.printf` de diagnostic restent côté `wifi_manager.cpp` (le module reste pur,
+  sans matériel ni état global). Le call site `wifiDisconnectReasonStr(...)` est conservé
+  (fin wrapper délégant au module).
+- **Test** : nouvelle suite Unity native `test/test_wifi_disconnect_reason/` (chaque code
+  connu → libellé exact, codes inconnus/voisins → `nullptr`, codes négatifs sûrs, et parité
+  brute-force avec une transcription du switch d'origine sur la plage [-300, 300]).
+  Enregistrée dans `platformio-native.ini` (`test_filter` + `build_flags -I`) et dans la
+  liste de la CI (`.github/workflows/firmware-ci.yml`).
+- **Versionnage** : refactor interne sans impact fonctionnel → **pas de bump de la version
+  OTA publiée** (`ProjectConfig::VERSION` inchangé), conformément à `CLAUDE.md`.
+- **Fichiers** : `include/wifi_disconnect_reason.h` (nouveau), `src/wifi_manager.cpp`,
+  `test/test_wifi_disconnect_reason/test_wifi_disconnect_reason.cpp` (nouveau),
+  `platformio-native.ini`, `.github/workflows/firmware-ci.yml`, `VERSION.md`.
+
+---
+
+## Refactor interne - 2026-06-21 (sans changement fonctionnel, pas de bump OTA)
+
 ### Extraction de logique pure : formatage d'uptime
 
 - **Refactor** : extraction de la logique pure `formatUptime` (conversion d'une durée
