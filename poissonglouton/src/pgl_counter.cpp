@@ -163,10 +163,8 @@ void PglCounter::addEvent(const PglStoredEvent& eventIn) {
     } else {
       totalsDirty_ = true;
       eventsSincePersist_++;
-      if (eventsSincePersist_ >= PGL_PERSIST_EVERY_EVENTS) {
-        persistTotals();
-        eventsSincePersist_ = 0;
-      }
+      persistTotals();
+      eventsSincePersist_ = 0;
       return;
     }
   }

@@ -1,5 +1,10 @@
 # Poissonglouton - Historique versions
 
+## 0.2.4 - 2026-06-21
+
+- Reseau : activation du client TLS (`USE_HTTPS_ENDPOINTS`) pour les URLs serveur en `https://`.
+- Journal SD : persistance immediate de `nextEventId` apres chaque append reussi pour eviter une reutilisation d'`event_id` apres reset/brownout.
+
 ## 0.2.3 - 2026-06-16
 
 - Production : deep sleep reactivee (`PGL_DEBUG_NO_SLEEP=0` par defaut) ; env `pgl-s3-debug` pour bench.

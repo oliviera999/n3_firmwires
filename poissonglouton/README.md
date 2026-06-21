@@ -35,7 +35,7 @@ Reference materielle JC3248 : `docs/JC3248W535_REFERENCE.md` (depot parent IOT_n
 
 - Buffer FIFO offline (NVS) et journal append-only sur carte SD (`pgl_event_journal`) avec sync idempotente (`device_event_id` / `last_acked_event_id`).
 
-- Envoi par lot vers le serveur (HTTPS `POST /pgl/post-data`).
+- Envoi par lot vers le serveur (HTTPS `POST /pgl/post-data`, client TLS active via `USE_HTTPS_ENDPOINTS`).
 
 - **Offline-first** : le comptage, l'audio et l'ecran sont operationnels des le boot ; le WiFi se connecte en arriere-plan si un reseau configure est disponible (retry toutes les 60 s en cas d'echec).
 

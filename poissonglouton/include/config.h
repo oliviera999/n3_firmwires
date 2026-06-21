@@ -8,7 +8,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.3";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.4";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -107,7 +107,7 @@ static constexpr uint32_t PGL_IDLE_SLEEP_MS = 12000;
 
 
 
-// Persistance NVS de la file d'événements (lazy)
+// Persistance NVS de la file d'événements (lazy hors journal SD)
 
 static constexpr uint8_t PGL_PERSIST_EVERY_EVENTS = 4;
 
