@@ -84,26 +84,6 @@
         { "name": "pgl-s3-headless", "versionDefine": null },
         { "name": "pgl-s3-display", "versionDefine": null }
       ]
-    },
-    {
-      "id": "ratata",
-      "path": "à voir/ratata",
-      "board": "uno/esp32cam",
-      "serveurFolder": null,
-      "otaTarget": null,
-      "submodule": false,
-      "versionSource": null,
-      "pioEnvs": []
-    },
-    {
-      "id": "LVGL_Widgets",
-      "path": "à voir/LVGL_Widgets",
-      "board": "esp32-s3",
-      "serveurFolder": null,
-      "otaTarget": null,
-      "submodule": false,
-      "versionSource": null,
-      "pioEnvs": []
     }
   ]
 }
