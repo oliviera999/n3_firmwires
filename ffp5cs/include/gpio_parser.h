@@ -28,6 +28,11 @@ public:
     /// Après POST local (sync auto/manuel), aligner l’état edge 108/109 pour éviter un faux 0→1 au poll suivant.
     static void syncFeedEdgeStateAfterLocalPost(bool smallLevel, bool bigLevel);
 
+    /// Aligne UN canal edge (108 ou 109) à 1 au déclenchement d'un nourrissage local
+    /// (web), pour que l'écho serveur (10X=1) ne redéclenche pas un nourrissage distant.
+    /// L'autre canal n'est pas touché. Le retour à 0 se fait naturellement au front descendant.
+    static void noteLocalFeedTriggered(bool isBig);
+
 private:
     // Applique un GPIO selon son type
     static void applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& autoCtrl, 

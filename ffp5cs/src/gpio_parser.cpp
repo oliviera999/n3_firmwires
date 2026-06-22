@@ -5,6 +5,7 @@
 #include "app_context.h"
 #include "config.h"
 #include "gpio_bool_parse.h"  // cœur pur (token/int -> bool) extrait de parseBoolFromDoc
+#include "automatism/feeding_command_resolver.h"  // résolveur pur des commandes 108/109 (simultanéité)
 #include <WiFi.h>
 #include <cstring>
 #include <cmath>   // v11.164: fabsf pour comparaison float
@@ -71,6 +72,82 @@ void GPIOParser::syncFeedEdgeStateAfterLocalPost(bool smallLevel, bool bigLevel)
                   smallLevel ? 1 : 0, bigLevel ? 1 : 0);
 }
 
+void GPIOParser::noteLocalFeedTriggered(bool isBig) {
+    if (isBig) {
+        s_lastFeedBigState = true;
+    } else {
+        s_lastFeedSmallState = true;
+    }
+    Serial.printf("[GPIOParser] Edge local %s aligné=1 (anti re-trigger écho serveur)\n",
+                  isBig ? "gros" : "petits");
+}
+
+// Pré-passage UNIQUE des commandes de nourrissage 108/109 (avant la boucle GPIO).
+// Résout petits/gros via FeedingCommandResolver (gère le cas SIMULTANÉ -> cycle
+// séquentiel, et ne perd pas une commande non exécutable). Les cas FEED_SMALL/
+// FEED_BIG de applyGPIO sont neutralisés (no-op) pour éviter tout double traitement.
+static void resolveFeedCommands(const JsonDocument& doc, Automatism& autoCtrl) {
+    auto readChannel = [&](const GPIOMapping& m, bool& present) -> bool {
+        char keyNum[16];
+        snprintf(keyNum, sizeof(keyNum), "%d", m.gpio);
+        const char* key = nullptr;
+        if (doc.containsKey(keyNum)) {
+            key = keyNum;
+        } else if (m.serverPostName && doc.containsKey(m.serverPostName)) {
+            key = m.serverPostName;
+        }
+        present = (key != nullptr);
+        return present ? parseBoolFromDoc(doc[key]) : false;
+    };
+
+    FeedingCommandResolver::Inputs in;
+    in.smallLevel = readChannel(GPIOMap::FEED_SMALL, in.smallPresent);
+    in.bigLevel   = readChannel(GPIOMap::FEED_BIG, in.bigPresent);
+    if (!in.smallPresent && !in.bigPresent) {
+        return;  // aucune clé nourrissage dans ce poll
+    }
+    in.prevSmall = s_lastFeedSmallState;
+    in.prevBig = s_lastFeedBigState;
+    in.feedingInProgress = autoCtrl.isFeedingInProgress();
+
+    const FeedingCommandResolver::Decision d = FeedingCommandResolver::resolve(in);
+    s_lastFeedSmallState = d.newPrevSmall;
+    s_lastFeedBigState = d.newPrevBig;
+
+    Serial.printf("[DBG] resolveFeedCommands small(p=%d,l=%d) big(p=%d,l=%d) prev(s=%d,b=%d) "
+                  "inProg=%d -> action=%d new(s=%d,b=%d)\n",
+                  (int)in.smallPresent, (int)in.smallLevel, (int)in.bigPresent, (int)in.bigLevel,
+                  (int)in.prevSmall, (int)in.prevBig, (int)in.feedingInProgress,
+                  static_cast<int>(d.action), (int)d.newPrevSmall, (int)d.newPrevBig);
+
+    switch (d.action) {
+        case FeedingCommandResolver::Action::Both:
+            Serial.println(F("[GPIOParser] Nourrissage GROS+PETITS simultané -> cycle séquentiel"));
+            autoCtrl.manualFeedBoth();
+            autoCtrl.notifyRemoteFeedBothExecuted();
+            // Repas complet (gros + petits) -> marquer le créneau pour éviter un repas auto en doublon.
+            autoCtrl.markCurrentFeedingSlotAsDone();
+            break;
+        case FeedingCommandResolver::Action::Big:
+            Serial.println(F("Nourrissage gros (rising edge)"));
+            autoCtrl.manualFeedBig();
+            autoCtrl.notifyRemoteFeedExecuted(false);
+            // Repas PARTIEL : ne pas marquer le créneau (l'auto complétera gros+petits).
+            break;
+        case FeedingCommandResolver::Action::Small:
+            Serial.println(F("Nourrissage petits (rising edge)"));
+            autoCtrl.manualFeedSmall();
+            autoCtrl.notifyRemoteFeedExecuted(true);
+            break;
+        case FeedingCommandResolver::Action::None:
+            if (in.feedingInProgress &&
+                ((in.smallPresent && in.smallLevel) || (in.bigPresent && in.bigLevel))) {
+                Serial.println(F("[GPIOParser] Nourrissage ignoré (cycle en cours) - commande gardée en attente"));
+            }
+            break;
+    }
+}
+
 void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
     // Reset (110): seed pour ne pas redémarrer si le sync envoie 110:1 comme état courant.
     if (doc.containsKey("110")) {
@@ -99,6 +176,10 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         AppTasks::netRequestOtaCheck();
         Serial.println(F("[GPIOParser] triggerOtaCheck reçu: demande vérification OTA"));
     }
+    // Pré-passage nourrissage (108/109) AVANT la boucle GPIO : traite petits/gros
+    // ensemble pour gérer le cas simultané (cycle séquentiel) et ne perdre aucune
+    // commande. La boucle ci-dessous neutralise FEED_SMALL/FEED_BIG dans applyGPIO.
+    resolveFeedCommands(doc, autoCtrl);
   size_t presentKeys = 0;
     // v11.189: Seed reset (110) géré uniquement par seedFeedStateFromDoc au 1er poll
     // v11.192: Réactiver reset via serveur distant - edge detection dans applyGPIO
@@ -251,42 +332,11 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         state ? autoCtrl.startLightManualLocal() : autoCtrl.stopLightManualLocal();
         Serial.printf("Lumière %s\n", state ? "ON" : "OFF");
     }
-    // Nourrissage
-    else if (gpio == GPIOMap::FEED_SMALL.gpio) {
-        // Déclenchement sur front montant uniquement (one-shot)
-        // v11.179: Utilise variable module-level pour reset au boot
-        bool state = parseBool(value);
-        int triggered = (state && !s_lastFeedSmallState) ? 1 : 0;
-        Serial.printf("[DBG] FEED_SMALL state=%d last=%d triggered=%d hypothesis=D\n", state ? 1 : 0, s_lastFeedSmallState ? 1 : 0, triggered);
-        if (state && !s_lastFeedSmallState) {
-            if (autoCtrl.isFeedingInProgress()) {
-                Serial.println(F("[GPIOParser] Nourrissage petits ignoré - cycle en cours"));
-            } else {
-                autoCtrl.manualFeedSmall();
-                autoCtrl.notifyRemoteFeedExecuted(true);
-                autoCtrl.markCurrentFeedingSlotAsDone();
-                Serial.println("Nourrissage petits (rising edge)");
-            }
-        }
-        s_lastFeedSmallState = state;
-    }
-    else if (gpio == GPIOMap::FEED_BIG.gpio) {
-        // Déclenchement sur front montant uniquement (one-shot)
-        // v11.179: Utilise variable module-level pour reset au boot
-        bool state = parseBool(value);
-        int triggered = (state && !s_lastFeedBigState) ? 1 : 0;
-        Serial.printf("[DBG] FEED_BIG state=%d last=%d triggered=%d hypothesis=D\n", state ? 1 : 0, s_lastFeedBigState ? 1 : 0, triggered);
-        if (state && !s_lastFeedBigState) {
-            if (autoCtrl.isFeedingInProgress()) {
-                Serial.println(F("[GPIOParser] Nourrissage gros ignoré - cycle en cours"));
-            } else {
-                autoCtrl.manualFeedBig();
-                autoCtrl.notifyRemoteFeedExecuted(false);
-                autoCtrl.markCurrentFeedingSlotAsDone();
-                Serial.println("Nourrissage gros (rising edge)");
-            }
-        }
-        s_lastFeedBigState = state;
+    // Nourrissage 108/109 : traité en amont par resolveFeedCommands (pré-passage,
+    // gère le cas petits+gros SIMULTANÉS et la non-perte des commandes). No-op ici
+    // pour éviter tout double déclenchement et préserver l'état edge déjà résolu.
+    else if (gpio == GPIOMap::FEED_SMALL.gpio || gpio == GPIOMap::FEED_BIG.gpio) {
+        (void)value;
     }
     // Reset (GPIO 110): front montant uniquement - serveur distant ou seed 1er poll évite reboot en boucle
     else if (gpio == GPIOMap::RESET_CMD.gpio) {

@@ -12,6 +12,67 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## v14.02 - 2026-06-22 — Fiabilité du nourrissage manuel (distant + local)
+
+Audit du nourrissage manuel : correction du déclenchement distant simultané, unification
+des entrées locales, et durcissements de robustesse. **Pas de changement de contrat serveur**
+(mêmes clés POST 108/109/bouffePetits/bouffeGros) → migration transparente côté n3_serveur.
+
+### 🐛 Bug majeur corrigé — petits + gros déclenchés en même temps (distant)
+- **Symptôme** : quand le serveur lève `108` (petits) ET `109` (gros) dans le **même poll**,
+  une seule des deux distributions partait ; l'autre était **perdue durablement** (son front
+  était mémorisé comme « consommé » alors qu'elle avait été rejetée par la garde
+  `isFeedingInProgress()`), bloquée jusqu'à un reset serveur du flag.
+- **Cause** : `108` et `109` étaient traités séparément dans la boucle GPIO ; le premier posait
+  la phase de nourrissage, le second tombait sur la garde « cycle en cours » et était ignoré
+  tout en avançant son état edge.
+- **Correctif** : nouveau **résolveur pur** `automatism/feeding_command_resolver.h` + **pré-passage
+  unique** `resolveFeedCommands()` dans `GPIOParser::parseAndApply` :
+  - deux fronts montants simultanés ⇒ **un seul cycle SÉQUENTIEL** gros→petits (`manualFeedBoth()`,
+    via `feedSequential`, qui évite de faire tourner les deux servos en même temps / conflit de
+    puissance) ;
+  - une commande non exécutable (cycle déjà en cours) **n'est plus perdue** : son front est gardé
+    « en attente » et re-tenté au poll suivant ;
+  - `108/109` neutralisés dans `applyGPIO` (traités uniquement par le pré-passage).
+- **Test** : suite native `test/test_feeding_command_resolver/` (10 cas : simultané, mono-canal,
+  états stables, front descendant, mise en attente pendant un cycle, reprise au poll suivant).
+
+### ♻️ Cohérence des entrées locales (audit point 2 — M1/M2/M5)
+- Les **3 endpoints** web (`GET /action?cmd=feed*`, `POST /api/feed`, `POST /api/status action=feed`)
+  passent désormais par **un point d'entrée unique** `Automatism::triggerLocalManualFeed()` :
+  même garde anti-cycle, même trace serveur (POST `10X=1`), **même email** (si activé) et même
+  format. Avant : `/api/feed` ne synchronisait rien et n'envoyait pas d'email ; seul `/action`
+  notifiait. Suppression du helper redondant `sendManualActionEmail`.
+
+### 🔁 Cohérence manuel/auto (audit point 3 — M3/M4)
+- **M3** : un nourrissage distant **partiel** (petits seuls **ou** gros seuls) ne marque plus le
+  créneau matin/midi/soir comme « nourri » → l'auto peut compléter le repas (plus de gros
+  poissons sautés). Seul un repas **complet** simultané (gros+petits) marque le créneau.
+- **M4** : l'état edge `108/109` est aligné **au déclenchement** (`noteLocalFeedTriggered`) ; la
+  finalisation ne force plus l'edge à 0. Si le POST de reset est perdu (offline-first), l'edge
+  reste cohérent et **aucun re-déclenchement** parasite ne se produit au poll suivant.
+
+### 🔧 Robustesse (audit point 4 — m1/m2/m4)
+- **m1** : `_manualFeedingActive` passe en `std::atomic<bool>` (accès webTask/automationTask).
+- **m2** : compte à rebours OLED protégé contre un underflow si les durées changent en plein cycle.
+- **m4** : `Feeder::dispenseWithIntermediate` borne une durée 0 s à 1 s (valeur NVS corrompue /
+  setter sans validation) — évite des timers à 0 µs.
+- *Connus non traités ici* : `FeedingPhase::FEEDING_BACKWARD` reste inutilisé (libellé OLED
+  « Avant » constant) ; le servo peut rester attaché ~400 ms à l'endormissement (négligeable en
+  deep sleep). L'anti-surdosage du manuel (point 1 / C1-C2) est **hors périmètre** de cette version.
+
+### Fichiers
+- Nouveaux : `include/automatism/feeding_command_resolver.h`,
+  `test/test_feeding_command_resolver/test_feeding_command_resolver.cpp`.
+- Modifiés : `src/gpio_parser.cpp`, `include/gpio_parser.h`, `src/automatism.cpp`,
+  `include/automatism.h`, `src/automatism/automatism_sync.cpp`,
+  `include/automatism/automatism_sync.h`, `src/actuators.cpp`,
+  `src/automatism/automatism_display.cpp`, `src/web_server.cpp`, `src/web_routes_status.cpp`,
+  `include/config_system.h` (VERSION 14.02), `platformio-native.ini`,
+  `.github/workflows/firmware-ci.yml`, `VERSION.md`.
+
+---
+
 ## Refactor interne - 2026-06-21 (sans changement fonctionnel, pas de bump OTA)
 
 ### Extraction de logique pure : libellé des raisons de déconnexion WiFi

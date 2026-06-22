@@ -205,6 +205,33 @@ void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
     core.armMailBlink();
 }
 
+void AutomatismSync::onRemoteFeedBothExecuted(Automatism& core) {
+    // Effets de bord après exécution nourrissage distant SIMULTANÉ gros+petits.
+    const uint32_t nowMs = millis();
+    Serial.println(F("[Sync] 🐟🐠 Commande nourrissage PETITS+GROS exécutée (fronts simultanés)"));
+    sendCommandAck("bouffePetits", "executed");
+    sendCommandAck("bouffeGros", "executed");
+    logRemoteCommandExecution("fd_small", true);
+    logRemoteCommandExecution("fd_large", true);
+    if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
+        (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
+        _lastRemoteFeedResetMs = nowMs;
+        SensorReadings readings = core.readSensors();
+        bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0&bouffeGros=0&109=0",
+                                           AppTasks::PostCategory::EventAck);
+        Serial.printf("[Sync] 🔁 Reset flags nourrissage (gros+petits) %s\n", resetOk ? "envoyé" : "en attente");
+    }
+    if (_emailEnabled) {
+        char messageBuffer[256];
+        core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
+            "Bouffe manuelle - Petits + Gros poissons",
+            core.getFeedBigDur(), core.getFeedSmallDur());
+        core.sendEmail("Nourrissage manuel - Petits + Gros poissons", messageBuffer,
+            "System", core.getEmailAddress());
+    }
+    core.armMailBlink();
+}
+
 // v11.183: Helper pour lire int depuis JSON (serveur envoie parfois string "200")
 static int parseIntFromVariant(ArduinoJson::JsonVariantConst v) {
     if (v.is<int>()) return v.as<int>();

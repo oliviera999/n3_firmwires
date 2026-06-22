@@ -77,6 +77,9 @@ public:
 
     /// Appelé par GPIOParser après exécution nourrissage distant (ack, reset flags, email)
     void onRemoteFeedExecuted(bool isSmall, Automatism& core);
+    /// Idem pour un nourrissage distant SIMULTANÉ gros+petits (ack des deux canaux,
+    /// reset 108/109 en un seul POST, un seul email récapitulatif).
+    void onRemoteFeedBothExecuted(Automatism& core);
     /// Initialise l'état edge detection depuis le doc (1er poll) sans déclencher
     void seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument& doc);
     void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);

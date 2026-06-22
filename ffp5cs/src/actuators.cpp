@@ -34,6 +34,10 @@ void Feeder::dispense(int angle, uint16_t durationSec) {
 }
 
 void Feeder::dispenseWithIntermediate(int feedAngle, int intermediateAngle, uint16_t durationSec) {
+  // v14.02 (m4): durée 0 -> au moins 1 s. Une consigne 0 (valeur NVS corrompue ou
+  // setter sans validation) armerait des esp_timer à 0 µs (comportement indéfini) et
+  // finaliserait le cycle immédiatement. On borne au minimum distribuable.
+  if (durationSec == 0) durationSec = 1;
   if (!_isAttached) begin();
   _intermediateAngle = intermediateAngle; // stockage de l'angle intermédiaire
   _servo.write(feedAngle); // position de nourrissage
