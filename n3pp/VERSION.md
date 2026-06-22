@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.42** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.43** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.42** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.43 | 2026-06 | Publication OTA : incrément version pour déploiement distant |
 | 4.42 | 2026-06 | Publication OTA : incrément version pour déploiement distant |
 | 4.41 | 2026-06 | Rapport mail reseau periodique (6 h) : stats POST/GET via `n3_data` 1.2 + `n3MailBuildNetReportBody` ; comparaison explicite avec logs ffp5cs |
 | 4.40 | 2026-06 | Lib partagée `n3_data` 1.1.0 : log `[SERVER][POST] Verdict` avec `duree_totale` (ms), RSSI et alerte si proche du timeout 5 s (diagnostic latence POST, aligné ffp5cs) |
