@@ -54,11 +54,35 @@ def http_get(url: str, timeout: int = 30) -> bytes:
         return resp.read()
 
 
-def verify_once(metadata_url: str, key: str | None, pub_pem_path: Path) -> tuple[bool, str]:
+def verify_ffp5(doc: dict, channel: str, model: str) -> tuple[bool, str]:
+    """Schema ffp5cs : channels[channel][model], integrite md5 (pas de signature)."""
+    entry = (doc.get("channels", {}).get(channel, {}) or {}).get(model)
+    if not isinstance(entry, dict):
+        return False, f"channels[{channel}][{model}] absent"
+    url, expected_md5 = entry.get("bin_url"), entry.get("md5")
+    if not url or not expected_md5:
+        return False, "champs bin_url/md5 manquants"
+    try:
+        blob = http_get(url)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"firmware injoignable ({url}): {exc}"
+    actual_md5 = hashlib.md5(blob).hexdigest()
+    if actual_md5.lower() != expected_md5.lower():
+        return False, f"md5 mismatch: metadata={expected_md5} reel={actual_md5}"
+    return True, f"OK version={entry.get('version')} md5 verifie"
+
+
+def verify_once(metadata_url: str, key: str | None, pub_pem_path: Path,
+                channel: str | None = None, model: str | None = None) -> tuple[bool, str]:
     try:
         doc = json.loads(http_get(metadata_url).decode("utf-8"))
     except Exception as exc:  # noqa: BLE001 - on retente
         return False, f"metadata injoignable: {exc}"
+
+    # Schema ffp5cs : presence d'un nœud "channels" + --channel/--model fournis.
+    if "channels" in doc and channel and model:
+        return verify_ffp5(doc, channel, model)
+
     entry = doc.get(key) if key else doc
     if not isinstance(entry, dict):
         return False, f"cle metadata '{key}' absente"
@@ -97,6 +121,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--metadata-url", required=True, help="URL publique du metadata.json")
     p.add_argument("--key", help="Cle metadata (cam: msp1/n3pp/ffp3)")
+    p.add_argument("--channel", help="Canal channels[...] (schema ffp5cs)")
+    p.add_argument("--model", help="Modele channels[chan][...] (ffp5cs: esp32-wroom)")
     p.add_argument("--pubkey-header", type=Path, default=PUBKEY_HEADER,
                    help="Header contenant la cle publique embarquee")
     p.add_argument("--retries", type=int, default=6, help="Tentatives (delai serveur)")
@@ -110,7 +136,7 @@ def main() -> int:
 
     last = ""
     for attempt in range(1, args.retries + 1):
-        ok, msg = verify_once(args.metadata_url, args.key, pub_path)
+        ok, msg = verify_once(args.metadata_url, args.key, pub_path, args.channel, args.model)
         if ok:
             print(f"[VERIFY] {msg}")
             return 0
