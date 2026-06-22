@@ -170,7 +170,11 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
       if (!feedType) feedType = "small";
       const bool isBig = (strcmp(feedType, "big") == 0);
 
-      if (ctx.automatism.isFeedingInProgress()) {
+      SensorReadings readings{};
+      ctx.sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
+      // v14.02: politique unique via triggerLocalManualFeed (garde anti-cycle, edge
+      // anti-écho, trace serveur, email) — alignée sur /action et /api/feed.
+      if (ctx.automatism.triggerLocalManualFeed(isBig, readings) == Automatism::ManualFeedResult::Busy) {
         Serial.println("[Web] ⚠️ Nourrissage refusé (API) - cycle en cours");
         StaticJsonDocument<128> errDoc;
         errDoc["status"] = "feed_busy";
@@ -178,24 +182,6 @@ void registerWakeRoutes(AsyncWebServer& server, AppContext& ctx) {
         sendJsonResponse(req, errDoc);
       } else {
         Serial.printf("[Web] 🍽️ Nourrissage à distance: %s\n", isBig ? "gros" : "petits");
-
-        if (isBig) {
-          ctx.automatism.setBouffeGrosFlag("1");
-          ctx.automatism.manualFeedBig();
-        } else {
-          ctx.automatism.setBouffePetitsFlag("1");
-          ctx.automatism.manualFeedSmall();
-        }
-
-        SensorReadings readings{};
-        ctx.sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
-        ctx.automatism.sendFullUpdate(readings, nullptr);
-
-        if (isBig) {
-          ctx.automatism.setBouffeGrosFlag("0");
-        } else {
-          ctx.automatism.setBouffePetitsFlag("0");
-        }
 
         StaticJsonDocument<128> feedDoc;
         feedDoc["status"] = "feeding_triggered";

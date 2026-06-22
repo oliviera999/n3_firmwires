@@ -137,8 +137,22 @@ class Automatism {
                       AppTasks::PostCategory category = AppTasks::PostCategory::Periodic);
   void manualFeedSmall();
   void manualFeedBig();
+  /// Nourrissage manuel GROS + PETITS en un seul cycle SÉQUENTIEL (gros puis petits).
+  /// Utilisé quand le serveur distant lève 108 et 109 dans le même poll (évite de
+  /// faire tourner les deux servos en même temps et de perdre une des deux commandes).
+  void manualFeedBoth();
+
+  /// Résultat d'un déclenchement manuel local (web).
+  enum class ManualFeedResult { Started, Busy };
+  /// Point d'entrée UNIQUE des nourrissages manuels locaux (web) : garde anti-cycle,
+  /// démarrage, alignement edge anti-écho, trace serveur et email — politique identique
+  /// pour les 3 endpoints (/action, /api/feed, /api/status). `readings` = cache (webTask,
+  /// pas de lecture capteur bloquante). Retourne Busy si un cycle est déjà en cours.
+  ManualFeedResult triggerLocalManualFeed(bool isBig, const SensorReadings& readings);
   /// Notifie le sync après nourrissage distant déclenché par GPIOParser (ack, reset, email)
   void notifyRemoteFeedExecuted(bool isSmall) { _network.onRemoteFeedExecuted(isSmall, *this); }
+  /// Idem pour un nourrissage distant SIMULTANÉ gros+petits (ack des deux, reset 108/109, 1 email)
+  void notifyRemoteFeedBothExecuted() { _network.onRemoteFeedBothExecuted(*this); }
   /// Marque le créneau horaire courant (matin/midi/soir) comme déjà nourri (évite auto après feed distant).
   void markCurrentFeedingSlotAsDone();
   size_t createFeedingMessage(char* buffer,
@@ -332,7 +346,8 @@ class Automatism {
   char bouffeGros[8] = "0";
   int  lastFeedDay = -1;
   // Indique si le cycle de nourrissage en cours a été déclenché manuellement
-  bool _manualFeedingActive{false};
+  // v14.02: Atomic pour accès multi-tâches (webTask déclenche, automationTask classe/finalise)
+  std::atomic<bool> _manualFeedingActive{false};
 
   unsigned long lastSend{0};
   const unsigned long sendInterval = 120000;

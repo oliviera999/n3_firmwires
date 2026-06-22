@@ -273,31 +273,8 @@ static void fillDbVarsJson(JsonObject& out) {
 }
 #endif
 
-// Helper pour envoyer un email lors d'une action manuelle
-static void sendManualActionEmail(const char* subject, const char* actionType, const char* eventCode) {
-  if (!g_autoCtrl.isEmailEnabled()) {
-    return;
-  }
-  const char* emailAddr = g_autoCtrl.getEmailAddress();
-  if (emailAddr && strlen(emailAddr) > 0) {
-    char timeStr[24] = "(heure N/A)";
-    time_t now = time(nullptr);
-    if (now > 100000) {
-      struct tm tmInfo;
-      if (localtime_r(&now, &tmInfo)) {
-        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M", &tmInfo);
-      }
-    }
-    char message[256];
-    snprintf(message, sizeof(message),
-             "Action manuelle: %s\nÉvénement: %s\nHeure: %s",
-             actionType, eventCode, timeStr);
-    (void)mailer.sendAlert(subject, message, emailAddr, false);
-    Serial.printf("[Web] 📧 Email action manuelle ajouté à la queue: %s\n", subject);
-  } else {
-    Serial.println("[Web] ⚠️ Email non configuré - action manuelle non notifiée");
-  }
-}
+// v14.02: sendManualActionEmail supprimé. L'email de nourrissage manuel est désormais
+// géré par Automatism::triggerLocalManualFeed (politique/format unifiés avec le distant).
 
 // canCreateAsyncTask() et s_lastWifiConnectAt déplacés dans web_routes_wifi.cpp (audit v13.93).
 
@@ -491,23 +468,19 @@ bool WebServerManager::begin() {
       return;
     }
     
-    if (g_autoCtrl.isFeedingInProgress()) {
+    // v14.02: politique unique via Automatism::triggerLocalManualFeed (garde, edge,
+    // trace serveur, email) — identique pour /action, /api/feed et /api/status.
+    const bool isBig = (strcmp(typeBuf, "big") == 0);
+    SensorReadings readings{};
+    _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
+    if (g_autoCtrl.triggerLocalManualFeed(isBig, readings) == Automatism::ManualFeedResult::Busy) {
       req->send(409, "application/json", "{\"success\":false,\"error\":\"FEED_BUSY\",\"message\":\"Nourrissage en cours\"}");
       return;
     }
-    if (strcmp(typeBuf, "big") == 0) {
-      g_autoCtrl.manualFeedBig();
-      g_autoCtrl.setBouffeGrosFlag("1");
-      req->send(NetworkConfig::HTTP_OK, "application/json", "{\"success\":true,\"action\":\"feedBig\"}");
-    } else {
-      g_autoCtrl.manualFeedSmall();
-      g_autoCtrl.setBouffePetitsFlag("1");
-      req->send(NetworkConfig::HTTP_OK, "application/json", "{\"success\":true,\"action\":\"feedSmall\"}");
-    }
+    req->send(NetworkConfig::HTTP_OK, "application/json",
+              isBig ? "{\"success\":true,\"action\":\"feedBig\"}"
+                    : "{\"success\":true,\"action\":\"feedSmall\"}");
     g_realtimeWebSocket.broadcastNow();
-    // Remise à 0 pour cohérence avec GET /action et POST /api/wakeup (observabilité /json)
-    g_autoCtrl.setBouffePetitsFlag("0");
-    g_autoCtrl.setBouffeGrosFlag("0");
   });
 
   // /action endpoint for remote controls - OPTIMISÉ POUR RÉACTIVITÉ
@@ -536,46 +509,20 @@ bool WebServerManager::begin() {
           Serial.printf("[Web] 🎯 Command: %s\n", c);
           #endif
           
-          if (strcmp(c, "feedSmall") == 0) {
-              if (g_autoCtrl.isFeedingInProgress()) {
+          if (strcmp(c, "feedSmall") == 0 || strcmp(c, "feedBig") == 0) {
+              // v14.02: politique unique via Automatism::triggerLocalManualFeed
+              // (garde anti-cycle, edge anti-écho, trace serveur, email).
+              const bool isBig = (strcmp(c, "feedBig") == 0);
+              SensorReadings readings{};
+              _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
+              if (g_autoCtrl.triggerLocalManualFeed(isBig, readings) == Automatism::ManualFeedResult::Busy) {
                   resp = "FEED_BUSY";
-                  Serial.println("[Web] ⚠️ Nourrissage petits refusé - cycle en cours");
+                  Serial.println(isBig ? "[Web] ⚠️ Nourrissage gros refusé - cycle en cours"
+                                       : "[Web] ⚠️ Nourrissage petits refusé - cycle en cours");
               } else {
-                  Serial.println("[Web] 🐟 Starting manual feed small...");
-                  g_autoCtrl.manualFeedSmall();
-                  g_autoCtrl.setBouffePetitsFlag("1");
                   g_realtimeWebSocket.broadcastNow();
-                  resp = "FEED_SMALL OK";
-                  esp_task_wdt_reset();
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  sendManualActionEmail(
-                    "Bouffe manuelle - Petits poissons", "Bouffe manuelle", "NOURRISSAGE_PETITS");
-                  SensorReadings readings{};
-                  _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
-                  (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
-                  g_autoCtrl.setBouffePetitsFlag("0");
-                  Serial.println("[Web] ✅ Small feed completed");
-              }
-          }
-          else if (strcmp(c, "feedBig") == 0) {
-              if (g_autoCtrl.isFeedingInProgress()) {
-                  resp = "FEED_BUSY";
-                  Serial.println("[Web] ⚠️ Nourrissage gros refusé - cycle en cours");
-              } else {
-                  Serial.println("[Web] 🐠 Starting manual feed big...");
-                  g_autoCtrl.manualFeedBig();
-                  g_autoCtrl.setBouffeGrosFlag("1");
-                  g_realtimeWebSocket.broadcastNow();
-                  resp = "FEED_BIG OK";
-                  esp_task_wdt_reset();
-                  vTaskDelay(pdMS_TO_TICKS(100));
-                  sendManualActionEmail(
-                    "Bouffe manuelle - Gros poissons", "Bouffe manuelle", "NOURRISSAGE_GROS");
-                  SensorReadings readings{};
-                  _sensors.getLastCachedReadings(readings);  // Pas de read() bloquant dans webTask
-                  (void)g_autoCtrl.sendFullUpdate(readings, nullptr);
-                  g_autoCtrl.setBouffeGrosFlag("0");
-                  Serial.println("[Web] ✅ Big feed completed");
+                  resp = isBig ? "FEED_BIG OK" : "FEED_SMALL OK";
+                  Serial.println(isBig ? "[Web] ✅ Big feed triggered" : "[Web] ✅ Small feed triggered");
               }
           }
           else if (strcmp(c, "toggleEmail") == 0) {

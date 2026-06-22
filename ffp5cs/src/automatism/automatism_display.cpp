@@ -247,9 +247,17 @@ void Automatism::updateDisplayInternal(const AutomatismRuntimeContext& ctx) {
             const uint32_t smallCycleMs = FeedingTiming::cycleDurationMs(tempsPetits);
             const uint32_t totalFeedingMs = bigPhaseTotalMs + smallCycleMs;
             
-            uint32_t elapsedMs = (_feedingPhaseEnd > currentMillis) ? 
-                                 (totalFeedingMs - ((_feedingPhaseEnd - currentMillis))) : totalFeedingMs;
-            
+            // v14.02 (m2): clamp anti-underflow. Si tempsGros/Petits changent en plein
+            // cycle (config distante), (_feedingPhaseEnd - now) peut dépasser le total
+            // recalculé -> soustraction unsigned négative. On borne à [0, totalFeedingMs].
+            uint32_t elapsedMs;
+            if (_feedingPhaseEnd > currentMillis) {
+                const uint32_t remainingMs = _feedingPhaseEnd - currentMillis;
+                elapsedMs = (remainingMs <= totalFeedingMs) ? (totalFeedingMs - remainingMs) : 0;
+            } else {
+                elapsedMs = totalFeedingMs;
+            }
+
             if (elapsedMs < bigPhaseTotalMs) {
                 fishType = "Gros";
             } else {

@@ -160,6 +160,14 @@ void AutomatismSync::seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument
     Serial.println(F("[Sync] État edge detection initialisé (1er poll)"));
 }
 
+// Destinataire des mails de confirmation nourrissage : adresse configurée, ou repli
+// EmailConfig::DEFAULT_RECIPIENT si vide (même politique que les mails veille/réveil).
+// Évite un envoi à un destinataire vide quand mailNotif est ON sans adresse configurée.
+static const char* feedMailRecipient(Automatism& core) {
+    const char* to = core.getEmailAddress();
+    return (to && strlen(to) > 0) ? to : EmailConfig::DEFAULT_RECIPIENT;
+}
+
 void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
     // Effets de bord après exécution nourrissage distant (appelé par GPIOParser)
     const uint32_t nowMs = millis();
@@ -180,7 +188,7 @@ void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
                 "Bouffe manuelle - Petits poissons",
                 core.getFeedBigDur(), core.getFeedSmallDur());
             core.sendEmail("Nourrissage manuel - Petits poissons", messageBuffer,
-                "System", core.getEmailAddress());
+                "System", feedMailRecipient(core));
         }
     } else {
         Serial.println(F("[Sync] 🐠 Commande nourrissage GROS exécutée (front montant)"));
@@ -199,8 +207,35 @@ void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
                 "Bouffe manuelle - Gros poissons",
                 core.getFeedBigDur(), core.getFeedSmallDur());
             core.sendEmail("Nourrissage manuel - Gros poissons", messageBuffer,
-                "System", core.getEmailAddress());
+                "System", feedMailRecipient(core));
         }
+    }
+    core.armMailBlink();
+}
+
+void AutomatismSync::onRemoteFeedBothExecuted(Automatism& core) {
+    // Effets de bord après exécution nourrissage distant SIMULTANÉ gros+petits.
+    const uint32_t nowMs = millis();
+    Serial.println(F("[Sync] 🐟🐠 Commande nourrissage PETITS+GROS exécutée (fronts simultanés)"));
+    sendCommandAck("bouffePetits", "executed");
+    sendCommandAck("bouffeGros", "executed");
+    logRemoteCommandExecution("fd_small", true);
+    logRemoteCommandExecution("fd_large", true);
+    if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
+        (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
+        _lastRemoteFeedResetMs = nowMs;
+        SensorReadings readings = core.readSensors();
+        bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0&bouffeGros=0&109=0",
+                                           AppTasks::PostCategory::EventAck);
+        Serial.printf("[Sync] 🔁 Reset flags nourrissage (gros+petits) %s\n", resetOk ? "envoyé" : "en attente");
+    }
+    if (_emailEnabled) {
+        char messageBuffer[256];
+        core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
+            "Bouffe manuelle - Petits + Gros poissons",
+            core.getFeedBigDur(), core.getFeedSmallDur());
+        core.sendEmail("Nourrissage manuel - Petits + Gros poissons", messageBuffer,
+            "System", feedMailRecipient(core));
     }
     core.armMailBlink();
 }

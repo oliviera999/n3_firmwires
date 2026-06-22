@@ -205,6 +205,67 @@ void Automatism::manualFeedBig() {
     _currentFeedingType = "Gros";
 }
 
+void Automatism::manualFeedBoth() {
+    Serial.println(F("[Auto] Nourrissage manuel GROS+PETITS (séquentiel) déclenché"));
+    Serial.printf("[Auto] Durées: gros=%u s, petits=%u s\n", tempsGros, tempsPetits);
+    // feedSequential refuse (false) si une séquence est déjà en cours : on n'arme alors
+    // pas l'état logique (pas de double comptage / phase fantôme).
+    if (!_acts.feedSequential(tempsGros, tempsPetits, AutomatismFeedingSchedule::FEEDING_DELAY_BETWEEN_SEC)) {
+        Serial.println(F("[Auto] ⚠️ Séquence déjà en cours - nourrissage gros+petits ignoré"));
+        return;
+    }
+    _manualFeedingActive = true;
+    _currentFeedingType = "Gros";  // affichage cohérent avec le nourrissage auto (gros puis petits)
+    _currentFeedingPhase = FeedingPhase::FEEDING_FORWARD;
+    // Durée totale = gros + délai + petits (aligné avec feedSequential / nourrissage auto)
+    const uint32_t bigCycleMs = FeedingTiming::cycleDurationMs(tempsGros);
+    const uint32_t delayMs = static_cast<uint32_t>(AutomatismFeedingSchedule::FEEDING_DELAY_BETWEEN_SEC) * 1000UL;
+    const uint32_t smallCycleMs = FeedingTiming::cycleDurationMs(tempsPetits);
+    _feedingPhaseEnd = millis() + bigCycleMs + delayMs + smallCycleMs;
+}
+
+Automatism::ManualFeedResult Automatism::triggerLocalManualFeed(bool isBig, const SensorReadings& readings) {
+    // Garde anti-cycle centralisée (politique unique pour les 3 endpoints web locaux).
+    if (isFeedingInProgress()) {
+        return ManualFeedResult::Busy;
+    }
+    if (isBig) {
+        manualFeedBig();
+        setBouffeGrosFlag("1");
+    } else {
+        manualFeedSmall();
+        setBouffePetitsFlag("1");
+    }
+    // M4: aligne l'edge local à 1 pour que l'écho serveur (10X=1) ne redéclenche pas
+    // un nourrissage distant au prochain GET. Le retour à 0 est réconcilié naturellement
+    // (front descendant) quand le serveur renvoie 10X=0, sans re-trigger.
+    GPIOParser::noteLocalFeedTriggered(isBig);
+    // Trace serveur (enregistre l'évènement, 10X=1) — désormais identique pour les 3 endpoints.
+    (void)sendFullUpdate(readings, nullptr);
+    // Le flag local "1" n'a servi qu'au POST ci-dessus : on le remet à 0 (cohérence /json).
+    if (isBig) {
+        setBouffeGrosFlag("0");
+    } else {
+        setBouffePetitsFlag("0");
+    }
+    // Email (si activé) — même politique et même format que le chemin distant.
+    if (_network.isEmailEnabled()) {
+        char messageBuffer[256];
+        const char* title = isBig ? "Bouffe manuelle - Gros poissons"
+                                  : "Bouffe manuelle - Petits poissons";
+        const char* subject = isBig ? "Nourrissage manuel - Gros poissons"
+                                    : "Nourrissage manuel - Petits poissons";
+        createFeedingMessage(messageBuffer, sizeof(messageBuffer), title, tempsGros, tempsPetits);
+        // Repli DEFAULT_RECIPIENT si l'adresse est vide (même politique que veille/réveil
+        // et que le chemin distant) : évite un envoi à un destinataire vide.
+        const char* to = _network.getEmailAddress();
+        sendEmail(subject, messageBuffer, "System",
+                  (to && strlen(to) > 0) ? to : EmailConfig::DEFAULT_RECIPIENT);
+    }
+    armMailBlink();
+    return ManualFeedResult::Started;
+}
+
 void Automatism::toggleEmailNotifications() {
     // v11.172: Source de vérité = _network
     bool current = _network.isEmailEnabled();
@@ -418,7 +479,12 @@ void Automatism::finalizeFeedingIfNeeded(uint32_t nowMs) {
             break;
         case FeedingFinalizeOrchestrator::Outcome::ManualSynced:
         case FeedingFinalizeOrchestrator::Outcome::ManualSyncFailed:
-            GPIOParser::syncFeedEdgeStateAfterLocalPost(false, false);
+            // v14.02 (M4): NE PLUS forcer l'edge 108/109 à 0 ici. L'état edge a déjà été
+            // posé à 1 au déclenchement (local: noteLocalFeedTriggered ; distant:
+            // resolveFeedCommands), et le reset (10X=0) part dans le POST ci-dessus. Le
+            // retour à 0 est réconcilié naturellement quand le serveur renvoie 10X=0
+            // (front descendant, sans action). Si ce POST de reset est perdu (offline-first),
+            // l'edge reste à 1 et n'engendre donc PAS de re-déclenchement au poll suivant.
             Serial.println(outcome == FeedingFinalizeOrchestrator::Outcome::ManualSynced ?
                                F("[Auto] ✅ Variables nourrissage réinitialisées (locales + distantes)") :
                                F("[Auto] ⚠️ Variables nourrissage réinitialisées (locales), sync distant échoué"));
