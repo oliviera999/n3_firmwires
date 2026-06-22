@@ -12,6 +12,7 @@
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <time.h>
 #include "ffp5cs_fs.h"
+#include "uptime_format.h"  // Logique pure de formatage d'uptime (extraite, testée nativement)
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
 #include <esp_heap_caps.h>
 #include <cstring>
@@ -22,16 +23,10 @@
 static char g_uptimeBuffer[48];
 
 // Construit un bloc d'informations système (réseau, version, mémoire, uptime)
+// Délègue la logique pure à UptimeFormat::formatUptime (uptime_format.h, testé
+// nativement) ; conserve le buffer statique g_uptimeBuffer (parité .cursorrules).
 static const char* formatUptime(unsigned long ms) {
-  unsigned long totalSec = ms / 1000UL;
-  unsigned int days = totalSec / 86400UL;
-  totalSec %= 86400UL;
-  unsigned int hours = totalSec / 3600UL;
-  totalSec %= 3600UL;
-  unsigned int mins = totalSec / 60UL;
-  unsigned int secs = totalSec % 60UL;
-  snprintf(g_uptimeBuffer, sizeof(g_uptimeBuffer), "%ud %02u:%02u:%02u", days, hours, mins, secs);
-  return g_uptimeBuffer;
+  return UptimeFormat::formatUptime(ms, g_uptimeBuffer, sizeof(g_uptimeBuffer));
 }
 
 // Buffers statiques pour éviter fragmentation mémoire (conforme .cursorrules)

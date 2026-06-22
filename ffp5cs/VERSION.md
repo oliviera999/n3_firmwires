@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.16 - 2026-06-22
+
+### Merge master → pio-build — nourrissage manuel, refactors et CI (base OTA 14.15)
+
+Intégration des correctifs **master** (nourrissage distant simultané, unification endpoints locaux,
+refactors `uptime_format` / `wifi_disconnect_reason`, 3 suites de tests natifs en CI) tout en
+conservant la série OTA prod **14.11–14.15** (`sendAlertSync` public, heap boot, retries, `ets_printf`).
+
+---
+
 ## Version 14.15 - 2026-06-18
 
 ### Déploiement OTA canal prod (wroom-prod)
@@ -138,6 +148,125 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 - **Validation** : session monitoring 30 min wroom-beta v14.01 stable (boot, POST/GET, veille légère) avant bascule prod.
 - **OTA** : publication `ffp5-wroom-prod` → `serveur/ota/esp32-wroom/` (canal prod, metadata.json).
 - **Note build** : bundle flash cohérent (bootloader + partitions phase 1 + firmware phase 2 même session) — voir `docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md` §7.
+
+---
+
+## v14.16 — Fiabilité du nourrissage manuel (distant + local) — intégré depuis master
+
+Audit du nourrissage manuel : correction du déclenchement distant simultané, unification
+des entrées locales, et durcissements de robustesse. **Pas de changement de contrat serveur**
+(mêmes clés POST 108/109/bouffePetits/bouffeGros) → migration transparente côté n3_serveur.
+
+### 🐛 Bug majeur corrigé — petits + gros déclenchés en même temps (distant)
+- **Symptôme** : quand le serveur lève `108` (petits) ET `109` (gros) dans le **même poll**,
+  une seule des deux distributions partait ; l'autre était **perdue durablement** (son front
+  était mémorisé comme « consommé » alors qu'elle avait été rejetée par la garde
+  `isFeedingInProgress()`), bloquée jusqu'à un reset serveur du flag.
+- **Cause** : `108` et `109` étaient traités séparément dans la boucle GPIO ; le premier posait
+  la phase de nourrissage, le second tombait sur la garde « cycle en cours » et était ignoré
+  tout en avançant son état edge.
+- **Correctif** : nouveau **résolveur pur** `automatism/feeding_command_resolver.h` + **pré-passage
+  unique** `resolveFeedCommands()` dans `GPIOParser::parseAndApply` :
+  - deux fronts montants simultanés ⇒ **un seul cycle SÉQUENTIEL** gros→petits (`manualFeedBoth()`,
+    via `feedSequential`, qui évite de faire tourner les deux servos en même temps / conflit de
+    puissance) ;
+  - une commande non exécutable (cycle déjà en cours) **n'est plus perdue** : son front est gardé
+    « en attente » et re-tenté au poll suivant ;
+  - `108/109` neutralisés dans `applyGPIO` (traités uniquement par le pré-passage).
+- **Test** : suite native `test/test_feeding_command_resolver/` (10 cas : simultané, mono-canal,
+  états stables, front descendant, mise en attente pendant un cycle, reprise au poll suivant).
+
+### ♻️ Cohérence des entrées locales (audit point 2 — M1/M2/M5)
+- Les **3 endpoints** web (`GET /action?cmd=feed*`, `POST /api/feed`, `POST /api/status action=feed`)
+  passent désormais par **un point d'entrée unique** `Automatism::triggerLocalManualFeed()` :
+  même garde anti-cycle, même trace serveur (POST `10X=1`), **même email** (si activé) et même
+  format. Avant : `/api/feed` ne synchronisait rien et n'envoyait pas d'email ; seul `/action`
+  notifiait. Suppression du helper redondant `sendManualActionEmail`.
+
+### 🔁 Cohérence manuel/auto (audit point 3 — M3/M4)
+- **M3** : un nourrissage distant **partiel** (petits seuls **ou** gros seuls) ne marque plus le
+  créneau matin/midi/soir comme « nourri » → l'auto peut compléter le repas (plus de gros
+  poissons sautés). Seul un repas **complet** simultané (gros+petits) marque le créneau.
+- **M4** : l'état edge `108/109` est aligné **au déclenchement** (`noteLocalFeedTriggered`) ; la
+  finalisation ne force plus l'edge à 0. Si le POST de reset est perdu (offline-first), l'edge
+  reste cohérent et **aucun re-déclenchement** parasite ne se produit au poll suivant.
+
+### 📧 Mails de confirmation
+- **Unifiés** : tout nourrissage manuel (local 3 endpoints + distant simple + distant simultané)
+  envoie un mail de confirmation au format unique (`createFeedingMessage`, « Mode: Manuel »),
+  **si `mailNotif` est activé**. Avant : seul `GET /action` notifiait en local ; `/api/feed` et
+  `/api/status` n'envoyaient rien. Le cas simultané gros+petits envoie désormais **un seul** mail
+  « Petits + Gros » (avant : la commande perdue ne notifiait pas).
+- **Repli destinataire** : si `mailNotif` est ON mais l'adresse vide, repli sur
+  `EmailConfig::DEFAULT_RECIPIENT` (même politique que les mails veille/réveil) au lieu d'un envoi
+  à un destinataire vide — appliqué aux chemins local **et** distant (`feedMailRecipient`).
+
+### 🔧 Robustesse (audit point 4 — m1/m2/m4)
+- **m1** : `_manualFeedingActive` passe en `std::atomic<bool>` (accès webTask/automationTask).
+- **m2** : compte à rebours OLED protégé contre un underflow si les durées changent en plein cycle.
+- **m4** : `Feeder::dispenseWithIntermediate` borne une durée 0 s à 1 s (valeur NVS corrompue /
+  setter sans validation) — évite des timers à 0 µs.
+- *Connus non traités ici* : `FeedingPhase::FEEDING_BACKWARD` reste inutilisé (libellé OLED
+  « Avant » constant) ; le servo peut rester attaché ~400 ms à l'endormissement (négligeable en
+  deep sleep). L'anti-surdosage du manuel (point 1 / C1-C2) est **hors périmètre** de cette version.
+
+### Fichiers
+- Nouveaux : `include/automatism/feeding_command_resolver.h`,
+  `test/test_feeding_command_resolver/test_feeding_command_resolver.cpp`.
+- Modifiés : `src/gpio_parser.cpp`, `include/gpio_parser.h`, `src/automatism.cpp`,
+  `include/automatism.h`, `src/automatism/automatism_sync.cpp`,
+  `include/automatism/automatism_sync.h`, `src/actuators.cpp`,
+  `src/automatism/automatism_display.cpp`, `src/web_server.cpp`, `src/web_routes_status.cpp`,
+  `include/config_system.h`, `platformio-native.ini`,
+  `.github/workflows/firmware-ci.yml`, `VERSION.md`.
+
+---
+
+## Refactor interne - 2026-06-21 (sans changement fonctionnel, pas de bump OTA)
+
+### Extraction de logique pure : libellé des raisons de déconnexion WiFi
+
+- **Refactor** : extraction de la logique pure `wifiDisconnectReasonStr` (mapping d'un
+  code de raison de déconnexion STA ESP-IDF vers un libellé lisible, `nullptr` si inconnu)
+  de `src/wifi_manager.cpp` vers le module header-only `include/wifi_disconnect_reason.h`
+  (`WifiDisconnectReason::toString`). Transcription ligne-à-ligne du switch d'origine
+  (mêmes `case`, mêmes littéraux, même `default: return nullptr`) : **aucun changement de
+  comportement**. La capture de l'évènement de déconnexion (`s_lastStaDisconnectReason`)
+  et le `Serial.printf` de diagnostic restent côté `wifi_manager.cpp` (le module reste pur,
+  sans matériel ni état global). Le call site `wifiDisconnectReasonStr(...)` est conservé
+  (fin wrapper délégant au module).
+- **Test** : nouvelle suite Unity native `test/test_wifi_disconnect_reason/` (chaque code
+  connu → libellé exact, codes inconnus/voisins → `nullptr`, codes négatifs sûrs, et parité
+  brute-force avec une transcription du switch d'origine sur la plage [-300, 300]).
+  Enregistrée dans `platformio-native.ini` (`test_filter` + `build_flags -I`) et dans la
+  liste de la CI (`.github/workflows/firmware-ci.yml`).
+- **Versionnage** : refactor interne sans impact fonctionnel → **pas de bump de la version
+  OTA publiée** (`ProjectConfig::VERSION` inchangé), conformément à `CLAUDE.md`.
+- **Fichiers** : `include/wifi_disconnect_reason.h` (nouveau), `src/wifi_manager.cpp`,
+  `test/test_wifi_disconnect_reason/test_wifi_disconnect_reason.cpp` (nouveau),
+  `platformio-native.ini`, `.github/workflows/firmware-ci.yml`, `VERSION.md`.
+
+---
+
+## Refactor interne - 2026-06-21 (sans changement fonctionnel, pas de bump OTA)
+
+### Extraction de logique pure : formatage d'uptime
+
+- **Refactor** : extraction de la logique pure `formatUptime` (conversion d'une durée
+  en millisecondes vers `"Jd HH:MM:SS"`) de `src/mailer.cpp` vers le module header-only
+  `include/uptime_format.h` (`UptimeFormat::formatUptime`). Transcription ligne-à-ligne
+  (mêmes divisions entières, mêmes troncatures `unsigned int`, même format snprintf) :
+  **aucun changement de comportement**. Le buffer statique `g_uptimeBuffer` et l'appel
+  `millis()` restent côté `mailer.cpp` (le module reste pur, sans matériel ni état global).
+- **Test** : nouvelle suite Unity native `test/test_uptime_format/` (cas nominaux, jours
+  multi-chiffres, garde-fous buffer nul / taille 0 / troncature, et parité brute-force
+  avec une transcription du code d'origine). Enregistrée dans `platformio-native.ini` et
+  dans la liste de la CI (`.github/workflows/firmware-ci.yml`).
+- **Versionnage** : refactor interne sans impact fonctionnel → **pas de bump de la version
+  OTA publiée** (`ProjectConfig::VERSION` inchangé), conformément à `CLAUDE.md`.
+- **Fichiers** : `include/uptime_format.h` (nouveau), `src/mailer.cpp`,
+  `test/test_uptime_format/test_uptime_format.cpp` (nouveau), `platformio-native.ini`,
+  `.github/workflows/firmware-ci.yml`, `VERSION.md`.
 
 ---
 
