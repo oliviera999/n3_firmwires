@@ -52,6 +52,16 @@ des entrées locales, et durcissements de robustesse. **Pas de changement de con
   finalisation ne force plus l'edge à 0. Si le POST de reset est perdu (offline-first), l'edge
   reste cohérent et **aucun re-déclenchement** parasite ne se produit au poll suivant.
 
+### 📧 Mails de confirmation
+- **Unifiés** : tout nourrissage manuel (local 3 endpoints + distant simple + distant simultané)
+  envoie un mail de confirmation au format unique (`createFeedingMessage`, « Mode: Manuel »),
+  **si `mailNotif` est activé**. Avant : seul `GET /action` notifiait en local ; `/api/feed` et
+  `/api/status` n'envoyaient rien. Le cas simultané gros+petits envoie désormais **un seul** mail
+  « Petits + Gros » (avant : la commande perdue ne notifiait pas).
+- **Repli destinataire** : si `mailNotif` est ON mais l'adresse vide, repli sur
+  `EmailConfig::DEFAULT_RECIPIENT` (même politique que les mails veille/réveil) au lieu d'un envoi
+  à un destinataire vide — appliqué aux chemins local **et** distant (`feedMailRecipient`).
+
 ### 🔧 Robustesse (audit point 4 — m1/m2/m4)
 - **m1** : `_manualFeedingActive` passe en `std::atomic<bool>` (accès webTask/automationTask).
 - **m2** : compte à rebours OLED protégé contre un underflow si les durées changent en plein cycle.

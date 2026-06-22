@@ -256,7 +256,11 @@ Automatism::ManualFeedResult Automatism::triggerLocalManualFeed(bool isBig, cons
         const char* subject = isBig ? "Nourrissage manuel - Gros poissons"
                                     : "Nourrissage manuel - Petits poissons";
         createFeedingMessage(messageBuffer, sizeof(messageBuffer), title, tempsGros, tempsPetits);
-        sendEmail(subject, messageBuffer, "System", _network.getEmailAddress());
+        // Repli DEFAULT_RECIPIENT si l'adresse est vide (même politique que veille/réveil
+        // et que le chemin distant) : évite un envoi à un destinataire vide.
+        const char* to = _network.getEmailAddress();
+        sendEmail(subject, messageBuffer, "System",
+                  (to && strlen(to) > 0) ? to : EmailConfig::DEFAULT_RECIPIENT);
     }
     armMailBlink();
     return ManualFeedResult::Started;
