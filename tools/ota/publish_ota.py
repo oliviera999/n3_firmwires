@@ -1,38 +1,28 @@
 #!/usr/bin/env python3
-"""Signe et publie un firmware OTA pour l'ecosysteme n3 (cibles n3_ota).
+"""Signe/publie un firmware OTA pour l'ecosysteme n3.
 
-Reproduit, de facon portable (Linux/CI), la logique du `publish_ota.ps1`
-Windows : calcul du sha256, signature ECDSA P-256 sur le digest, ecriture du
-`metadata.json` au format attendu par `shared/n3_common/n3_ota`.
+Deux schemas de metadata coexistent :
 
-Le firmware verifie embarque (`n3_ota.cpp`) :
-  - sha256  = hex minuscule des octets du .bin
-  - signature = base64 d'une signature ECDSA **DER** sur le digest sha256
-    (compatible `openssl dgst -sha256 -sign cle.pem firmware.bin`)
+  - "n3ota" (n3pp / msp / cam) : verif sha256 + signature ECDSA P-256
+    (`shared/n3_common/n3_ota`). metadata = objet {version,url,sha256,signature},
+    multi-cles pour cam. HTTP.
+        sha256    = hex des octets du .bin
+        signature = base64(ECDSA-DER sur sha256)  (openssl dgst -sha256 -sign)
 
-Cibles supportees (meme format {version,url,sha256,signature}) :
-  - n3pp / msp            -> metadata.json objet unique
-  - cam (uploadphotosserver) -> metadata.json multi-cles (msp1/n3pp/ffp3)
-
-ffp5cs n'est PAS gere ici (schema distinct : channels + md5, HTTPS) ; il
-conserve son propre `ffp5cs/scripts/publish_ota.ps1`.
+  - "ffp5" (ffp5cs WROOM) : verif md5 (`ffp5cs/ota_manager`, OtaArtifactSelect).
+    metadata = { "channels": { <prod|test>: { <model>: {version,bin_url,size,md5} } } }
+    (fusion non destructive). HTTPS. Pas de signature ECDSA.
+    Perimetre : WROOM firmware seul (modele esp32-wroom). S3 + image filesystem
+    LittleFS = suivi separe (cf. docs/OTA_GITHUB_DEPLOY.md).
 
 Modes :
-  --print-version   Affiche seulement la version (lue dans le manifest) et sort.
-  (defaut)          Signe le .bin et ecrit firmware.bin + metadata.json.
+  --print-version   Affiche la version (lue dans firmwares.manifest.json) et sort.
+  (defaut)          Calcule l'integrite et ecrit firmware.bin + metadata.json.
 
-Garde-fou (--guard, actif par defaut) : avant publication, recupere le
-metadata.json en ligne et ECHOUE si la version a publier n'est pas strictement
-superieure a celle deja servie (evite un deploiement no-op silencieusement
-rejete par les appareils, cf. compareVersions de n3_ota.cpp).
-
-Usage :
-  python tools/ota/publish_ota.py --firmware n3pp --print-version
-  python tools/ota/publish_ota.py \
-      --firmware n3pp --channel prod \
-      --bin n3pp/.pio/build/esp32dev/firmware.bin \
-      --key /tmp/ota_signing_key.pem \
-      --ota-root <repo_n3_serveur>/serveur/ota
+Garde-fou (--guard, actif par defaut) : recupere le metadata en ligne et ECHOUE
+si la version a publier n'est pas strictement superieure a celle deja servie
+(evite un deploiement no-op rejete par les appareils). --no-guard pour forcer
+(ex. rollback vers une version anterieure).
 """
 from __future__ import annotations
 
@@ -50,15 +40,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = REPO_ROOT / "firmwares.manifest.json"
 
-# Mapping selection -> (firmware_id manifest, sous-dossier OTA, cle metadata).
-# Pour cam, la cle metadata distingue les galeries dans un metadata.json unique.
+# Mapping selection workflow -> details de publication.
+#   scheme "n3ota" : subdir (+ subdir_test pour le canal test), key (cam).
+#   scheme "ffp5"  : model + bindir par canal (le canal = cle channels prod/test).
 TARGETS = {
-    "n3pp":      {"id": "n3pp", "subdir": "n3pp",      "subdir_test": "n3pp-test", "key": None},
-    "msp":       {"id": "msp",  "subdir": "msp",       "subdir_test": "msp-test",  "key": None},
-    "cam-msp1":  {"id": "uploadphotosserver", "subdir": "cam", "key": "msp1"},
-    "cam-n3pp":  {"id": "uploadphotosserver", "subdir": "cam", "key": "n3pp"},
-    "cam-ffp3":  {"id": "uploadphotosserver", "subdir": "cam", "key": "ffp3"},
+    "n3pp":      {"id": "n3pp", "scheme": "n3ota", "subdir": "n3pp", "subdir_test": "n3pp-test", "key": None},
+    "msp":       {"id": "msp",  "scheme": "n3ota", "subdir": "msp",  "subdir_test": "msp-test",  "key": None},
+    "cam-msp1":  {"id": "uploadphotosserver", "scheme": "n3ota", "subdir": "cam", "key": "msp1"},
+    "cam-n3pp":  {"id": "uploadphotosserver", "scheme": "n3ota", "subdir": "cam", "key": "n3pp"},
+    "cam-ffp3":  {"id": "uploadphotosserver", "scheme": "n3ota", "subdir": "cam", "key": "ffp3"},
+    "ffp5-wroom": {"id": "ffp5cs", "scheme": "ffp5", "model": "esp32-wroom",
+                   "bindir": {"prod": "esp32-wroom", "test": "esp32-wroom-beta"}},
 }
+
+DEFAULT_BASE = {"n3ota": "http://iot.olution.info/ota", "ffp5": "https://iot.olution.info/ota"}
 
 
 def read_version(firmware_id: str) -> str:
@@ -81,17 +76,18 @@ def read_version(firmware_id: str) -> str:
 def compare_versions(a: str, b: str) -> int:
     """Compare maj.min.patch comme n3_ota.cpp (composants manquants = 0)."""
     def parts(v):
-        nums = re.findall(r"\d+", v or "")
-        nums = (nums + ["0", "0", "0"])[:3]
+        nums = (re.findall(r"\d+", v or "") + ["0", "0", "0"])[:3]
         return [int(n) for n in nums]
     pa, pb = parts(a), parts(b)
     return (pa > pb) - (pa < pb)
 
 
 def sha256_hex(path: Path) -> str:
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def md5_hex(path: Path) -> str:
+    return hashlib.md5(path.read_bytes()).hexdigest()
 
 
 def sign_b64(bin_path: Path, key_path: Path) -> str:
@@ -103,102 +99,130 @@ def sign_b64(bin_path: Path, key_path: Path) -> str:
     return base64.b64encode(der).decode("ascii")
 
 
-def fetch_remote_version(metadata_url: str, key: str | None) -> str | None:
-    """Version actuellement servie en ligne, ou None si absente/injoignable."""
+def fetch_json(url: str):
     try:
-        with urllib.request.urlopen(metadata_url, timeout=15) as resp:
-            doc = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
-        print(f"[OTA] Garde-fou: metadata en ligne indisponible ({exc}); pas de comparaison.")
+        print(f"[OTA] metadata en ligne indisponible ({exc}); pas de comparaison.")
         return None
-    entry = doc.get(key) if key else doc
-    if not isinstance(entry, dict):
-        return None
-    return entry.get("version")
+
+
+def guard_version(scheme, metadata_url, new_version, *, key=None, channel=None, model=None):
+    """Echoue si new_version <= version en ligne (si une version est servie)."""
+    doc = fetch_json(metadata_url)
+    if doc is None:
+        return
+    if scheme == "ffp5":
+        entry = (doc.get("channels", {}).get(channel, {}) or {}).get(model)
+    else:
+        entry = doc.get(key) if key else doc
+    remote = entry.get("version") if isinstance(entry, dict) else None
+    if remote is None:
+        return
+    if compare_versions(new_version, remote) <= 0:
+        raise SystemExit(
+            f"[OTA] Garde-fou: version a publier {new_version} <= version en ligne {remote}. "
+            f"Bumper le firmware ou utiliser --no-guard (rollback).")
+    print(f"[OTA] Garde-fou OK: {new_version} > {remote} (en ligne).")
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--firmware", required=True, choices=sorted(TARGETS), help="Cible OTA")
     p.add_argument("--bin", type=Path, help="Chemin du firmware.bin compile")
-    p.add_argument("--key", type=Path, help="Cle privee ECDSA P-256 (PEM)")
+    p.add_argument("--key", type=Path, help="Cle privee ECDSA (PEM) — schema n3ota uniquement")
     p.add_argument("--ota-root", type=Path, help="Racine OTA dans n3_serveur (ex: serveur/ota)")
-    p.add_argument("--channel", choices=["prod", "test"], default="prod", help="Canal (n3pp/msp uniquement)")
-    p.add_argument("--base-url", default="http://iot.olution.info/ota", help="Prefixe URL public")
+    p.add_argument("--channel", choices=["prod", "test"], default="prod", help="Canal de deploiement")
+    p.add_argument("--base-url", help="Prefixe URL public (defaut selon schema)")
     p.add_argument("--version", help="Force la version (sinon lue depuis le manifest)")
     p.add_argument("--print-version", action="store_true", help="Affiche la version et sort")
     p.add_argument("--guard", action=argparse.BooleanOptionalAction, default=True,
-                   help="Echoue si la version n'est pas > a celle deja en ligne (defaut: oui)")
+                   help="Echoue si version <= celle en ligne (defaut: oui)")
     p.add_argument("--dry-run", action="store_true", help="N'ecrit rien, affiche le metadata")
     args = p.parse_args()
 
     target = TARGETS[args.firmware]
+    scheme = target["scheme"]
     version = args.version or read_version(target["id"])
 
     if args.print_version:
         print(version)
         return 0
 
-    for name, val in (("--bin", args.bin), ("--key", args.key), ("--ota-root", args.ota_root)):
+    for name, val in (("--bin", args.bin), ("--ota-root", args.ota_root)):
         if val is None:
             raise SystemExit(f"{name} requis hors mode --print-version")
     if not args.bin.is_file():
         raise SystemExit(f"Binaire introuvable : {args.bin}")
-    if not args.key.is_file():
-        raise SystemExit(f"Cle privee introuvable : {args.key}")
+    if scheme == "n3ota":
+        if args.key is None or not args.key.is_file():
+            raise SystemExit("--key (cle privee ECDSA) requis pour le schema n3ota")
 
-    # Sous-dossier OTA (canal test reserve a n3pp/msp).
+    base_url = (args.base_url or DEFAULT_BASE[scheme]).rstrip("/")
+
+    if scheme == "ffp5":
+        rc = publish_ffp5(args, target, version, base_url)
+    else:
+        rc = publish_n3ota(args, target, version, base_url)
+    return rc
+
+
+def publish_n3ota(args, target, version, base_url) -> int:
     subdir = target["subdir"]
     if args.channel == "test":
         if "subdir_test" not in target:
             raise SystemExit(f"Pas de canal test pour {args.firmware}")
         subdir = target["subdir_test"]
 
-    base_url = args.base_url.rstrip("/")
     metadata_url = f"{base_url}/{subdir}/metadata.json"
-
-    # Garde-fou version : refuse une version <= a celle deja servie.
     if args.guard:
-        remote = fetch_remote_version(metadata_url, target["key"])
-        if remote is not None:
-            if compare_versions(version, remote) <= 0:
-                raise SystemExit(
-                    f"[OTA] Garde-fou: version a publier {version} <= version en ligne {remote}. "
-                    f"Bumper le firmware (skill bump-firmware-version) ou utiliser --no-guard.")
-            print(f"[OTA] Garde-fou OK: {version} > {remote} (en ligne).")
+        guard_version("n3ota", metadata_url, version, key=target["key"])
 
     sha = sha256_hex(args.bin)
     sig = sign_b64(args.bin, args.key)
-
-    if target["key"]:  # cam : metadata multi-cles, bin sous cam/<key>/firmware.bin
-        bin_rel = f"{subdir}/{target['key']}/firmware.bin"
-    else:
-        bin_rel = f"{subdir}/firmware.bin"
-
-    entry = {
-        "version": version,
-        "url": f"{base_url}/{bin_rel}",
-        "sha256": sha,
-        "signature": sig,
-    }
+    bin_rel = f"{subdir}/{target['key']}/firmware.bin" if target["key"] else f"{subdir}/firmware.bin"
+    entry = {"version": version, "url": f"{base_url}/{bin_rel}", "sha256": sha, "signature": sig}
 
     meta_path = args.ota_root / subdir / "metadata.json"
     bin_dst = args.ota_root / bin_rel
 
     if target["key"]:
-        # Fusion : preserve les autres galeries du metadata.json existant.
-        existing = {}
-        if meta_path.is_file():
-            existing = json.loads(meta_path.read_text(encoding="utf-8"))
+        existing = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
         existing[target["key"]] = entry
         meta_obj = existing
     else:
         meta_obj = entry
 
-    meta_json = json.dumps(meta_obj, separators=(",", ":"), ensure_ascii=False)
+    return write_out(args, version, sha, bin_dst, meta_path, meta_obj)
 
+
+def publish_ffp5(args, target, version, base_url) -> int:
+    model = target["model"]
+    channel = args.channel  # prod/test == cle channels
+    bindir = target["bindir"][channel]
+    metadata_url = f"{base_url}/metadata.json"
+    if args.guard:
+        guard_version("ffp5", metadata_url, version, channel=channel, model=model)
+
+    md5 = md5_hex(args.bin)
+    size = args.bin.stat().st_size
+    bin_rel = f"{bindir}/firmware.bin"
+    entry = {"version": version, "bin_url": f"{base_url}/{bin_rel}", "size": size, "md5": md5}
+
+    meta_path = args.ota_root / "metadata.json"
+    bin_dst = args.ota_root / bin_rel
+
+    doc = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
+    doc.setdefault("channels", {}).setdefault(channel, {})[model] = entry
+
+    return write_out(args, version, md5, bin_dst, meta_path, doc, integrity_label="md5")
+
+
+def write_out(args, version, integrity, bin_dst, meta_path, meta_obj, integrity_label="sha256") -> int:
+    meta_json = json.dumps(meta_obj, separators=(",", ":"), ensure_ascii=False)
     print(f"[OTA] firmware={args.firmware} version={version} canal={args.channel}")
-    print(f"[OTA] sha256={sha}")
+    print(f"[OTA] {integrity_label}={integrity}")
     print(f"[OTA] bin  -> {bin_dst}")
     print(f"[OTA] meta -> {meta_path}")
     print(f"[OTA] metadata.json:\n{meta_json}")

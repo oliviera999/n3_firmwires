@@ -60,7 +60,7 @@
       "otaTarget": "ffp3",
       "submodule": false,
       "versionSource": {
-        "file": "include/config.h",
+        "file": "include/config_system.h",
         "pattern": "VERSION\\s*=\\s*\"([^\"]+)\"",
         "or": { "file": "VERSION.md" }
       },
