@@ -44,3 +44,4 @@ uploadphotosserver_ffp3_1_5_deppsleep/
 desktop.ini
 .DS_Store
 Thumbs.db
+tools/ota/__pycache__/
