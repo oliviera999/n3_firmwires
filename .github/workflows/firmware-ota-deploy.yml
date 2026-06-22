@@ -1,0 +1,169 @@
+name: Firmware OTA Deploy
+
+# Compile un firmware avec ses VRAIS secrets, signe le binaire (sha256 + ECDSA
+# P-256) et publie firmware.bin + metadata.json dans le depot n3_serveur
+# (servi par https://iot.olution.info/ota/...). Les appareils recuperent la MAJ
+# au prochain n3OtaCheck (cf. shared/n3_common/n3_ota).
+#
+# Declenchement MANUEL uniquement (Actions > Firmware OTA Deploy > Run workflow)
+# pour eviter un deploiement OTA involontaire sur des appareils physiques.
+#
+# Secrets requis (Settings > Secrets and variables > Actions) :
+#   OTA_SIGNING_KEY          Cle privee ECDSA P-256 (PEM) — signe les binaires.
+#                            Clé publique correspondante : shared/n3_common/src/n3_ota_pubkey.h
+#   CREDENTIALS_H            Contenu complet du credentials.h de prod (WiFi/SMTP/API_KEY).
+#                            Sans lui, le build retombe sur les placeholders => appareil hors-ligne.
+#   N3_SERVEUR_DEPLOY_TOKEN  PAT avec droit push sur le depot n3_serveur.
+# Variables (optionnelles, valeurs par defaut ci-dessous) :
+#   N3_SERVEUR_REPO          Depot OTA (defaut: oliviera999/n3_serveur).
+#   N3_SERVEUR_OTA_ROOT      Racine OTA dans ce depot (defaut: serveur/ota).
+
+on:
+  workflow_dispatch:
+    inputs:
+      firmware:
+        description: Firmware a deployer en OTA
+        required: true
+        type: choice
+        options:
+          - n3pp
+          - msp
+          - cam-msp1
+          - cam-n3pp
+          - cam-ffp3
+      channel:
+        description: Canal (prod/test) — n3pp et msp uniquement
+        required: true
+        default: test
+        type: choice
+        options:
+          - test
+          - prod
+      dry_run:
+        description: "Dry-run : compile et signe mais ne pousse rien vers n3_serveur"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ota-deploy-${{ inputs.firmware }}-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: OTA ${{ inputs.firmware }} (${{ inputs.channel }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resoudre la cible (dossier + env PlatformIO)
+        id: map
+        run: |
+          case "${{ inputs.firmware }}" in
+            n3pp)
+              dir=n3pp
+              [ "${{ inputs.channel }}" = "prod" ] && env=esp32dev || env=esp32dev_test ;;
+            msp)
+              dir=msp
+              [ "${{ inputs.channel }}" = "prod" ] && env=esp32dev || env=esp32dev_test ;;
+            cam-msp1) dir=uploadphotosserver; env=msp1 ;;
+            cam-n3pp) dir=uploadphotosserver; env=n3pp ;;
+            cam-ffp3) dir=uploadphotosserver; env=ffp3 ;;
+            *) echo "Firmware inconnu" >&2; exit 1 ;;
+          esac
+          echo "dir=$dir"  >> "$GITHUB_OUTPUT"
+          echo "env=$env"  >> "$GITHUB_OUTPUT"
+          echo "Cible: dir=$dir env=$env canal=${{ inputs.channel }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio intelhex
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: pio-
+
+      - name: Provision credentials de PROD
+        env:
+          CREDENTIALS_H: ${{ secrets.CREDENTIALS_H }}
+        run: |
+          if [ -n "$CREDENTIALS_H" ]; then
+            printf '%s' "$CREDENTIALS_H" > credentials.h
+            echo "credentials.h provisionne depuis le secret (build de prod)."
+          else
+            echo "::error::Secret CREDENTIALS_H absent — un binaire OTA sans vrais identifiants WiFi serait inutilisable."
+            exit 1
+          fi
+
+      - name: Build ${{ inputs.firmware }} (${{ steps.map.outputs.env }})
+        run: cd ${{ steps.map.outputs.dir }} && pio run -e ${{ steps.map.outputs.env }}
+
+      - name: Ecrire la cle de signature
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          if [ -z "$OTA_SIGNING_KEY" ]; then
+            echo "::error::Secret OTA_SIGNING_KEY absent."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$OTA_SIGNING_KEY" > /tmp/ota_signing_key.pem
+
+      - name: Checkout n3_serveur
+        if: ${{ inputs.dry_run == false }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.N3_SERVEUR_REPO || 'oliviera999/n3_serveur' }}
+          token: ${{ secrets.N3_SERVEUR_DEPLOY_TOKEN }}
+          path: n3_serveur
+
+      - name: Signer + ecrire metadata (dry-run)
+        if: ${{ inputs.dry_run }}
+        run: |
+          python tools/ota/publish_ota.py \
+            --firmware ${{ inputs.firmware }} \
+            --channel ${{ inputs.channel }} \
+            --bin ${{ steps.map.outputs.dir }}/.pio/build/${{ steps.map.outputs.env }}/firmware.bin \
+            --key /tmp/ota_signing_key.pem \
+            --ota-root /tmp/ota \
+            --dry-run
+
+      - name: Signer + publier dans n3_serveur
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'serveur/ota' }}"
+          out=$(python tools/ota/publish_ota.py \
+            --firmware ${{ inputs.firmware }} \
+            --channel ${{ inputs.channel }} \
+            --bin ${{ steps.map.outputs.dir }}/.pio/build/${{ steps.map.outputs.env }}/firmware.bin \
+            --key /tmp/ota_signing_key.pem \
+            --ota-root "$OTA_ROOT")
+          echo "$out"
+          ver=$(printf '%s\n' "$out" | sed -n 's/.*version=\([^ ]*\).*/\1/p' | head -1)
+          echo "OTA_VERSION=$ver" >> "$GITHUB_ENV"
+
+      - name: Commit + push n3_serveur
+        if: ${{ inputs.dry_run == false }}
+        working-directory: n3_serveur
+        run: |
+          git config user.name  "n3-ota-bot"
+          git config user.email "ota-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Aucun changement OTA a publier."
+            exit 0
+          fi
+          git commit -m "OTA ${{ inputs.firmware }} ${{ inputs.channel }} v${OTA_VERSION}"
+          for i in 1 2 3 4; do
+            git push && break || { echo "push echoue, retry dans $((2**i))s"; sleep $((2**i)); }
+          done
+
+      - name: Nettoyer la cle
+        if: always()
+        run: rm -f /tmp/ota_signing_key.pem
