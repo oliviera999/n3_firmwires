@@ -8,14 +8,33 @@ le **publier** vers le serveur OTA, sans passer par la machine Windows et `publi
 ## Vue d'ensemble
 
 ```
-workflow_dispatch ─▶ build PlatformIO (secrets de prod) ─▶ signature sha256+ECDSA
-                                                              │
-                          firmware.bin + metadata.json ◀──────┘
+workflow_dispatch
+  └─▶ job build  : PlatformIO (secrets de prod) ─▶ artefact firmware.bin + version
+        │
+  job deploy (gate prod = GitHub Environment "prod")
+        ├─ garde-fou version (refuse une version ≤ celle en ligne)
+        ├─ signature sha256 + ECDSA  ─▶ commit/push n3_serveur (serveur/ota/…)
+        ├─ GitHub Release de traçabilité (bin signé attaché)
+        └─ vérification post-déploiement (re-télécharge l'URL publique,
+           re-vérifie sha256 + signature avec la clé publique embarquée)
                                      │
-                       commit/push ──▶ n3_serveur (serveur/ota/…)
-                                     │
-                       https://iot.olution.info/ota/… ─▶ n3OtaCheck() sur l'appareil
+                 https://iot.olution.info/ota/… ─▶ n3OtaCheck() sur l'appareil
 ```
+
+**Durcissements opérationnels** (par rapport à un simple build+push) :
+- **Build-once** : le binaire testé est passé en artefact au job de déploiement
+  (pas de recompilation ⇒ on signe/publie exactement ce qui a été produit), et
+  conservé 90 j + attaché à une **GitHub Release** par version.
+- **Garde-fou version** : `publish_ota.py --guard` lit le `metadata.json` en
+  ligne et **échoue** si la version à publier n'est pas strictement supérieure
+  (sinon les appareils rejettent silencieusement la MAJ). `--no-guard` pour forcer.
+- **Approbation prod** : le job `deploy` n'utilise l'environnement `prod` que
+  pour un déploiement **prod réel** (ni dry-run, ni test). Configurer un
+  *Required reviewer* sur cet environnement ⇒ pause jusqu'à approbation manuelle.
+- **Vérif post-déploiement** : `verify_published.py` rejoue le parcours d'un
+  appareil (télécharge le bin publié, compare le sha256, vérifie la signature
+  avec la clé extraite de `n3_ota_pubkey.h`). Plusieurs tentatives pour absorber
+  un délai de déploiement serveur ; désactivable via l'input `verify_published`.
 
 Le workflow : `.github/workflows/firmware-ota-deploy.yml`.
 La signature/écriture du metadata : `tools/ota/publish_ota.py` (portable, remplace
@@ -59,6 +78,12 @@ Dans **Settings ▸ Secrets and variables ▸ Actions** du dépôt :
 |-----|--------|------|
 | `N3_SERVEUR_REPO` | `oliviera999/n3_serveur` | Dépôt servant `iot.olution.info`. |
 | `N3_SERVEUR_OTA_ROOT` | `serveur/ota` | Racine OTA dans ce dépôt. |
+| `OTA_BASE_URL` | `http://iot.olution.info/ota` | Préfixe public (garde-fou + vérif). |
+
+**Environnement (pour l'approbation prod) :** créer un environnement **`prod`**
+(*Settings ▸ Environments*) avec un **Required reviewer**. Le job `deploy` s'y
+rattache uniquement pour un déploiement prod réel et se met alors en pause
+jusqu'à approbation. (Les déploiements `test` et les dry-run ne sont pas gatés.)
 
 > ⚠️ Vérifier `N3_SERVEUR_OTA_ROOT` : le chemin réel dépend de l'arborescence de `n3_serveur`
 > (le firmware sert `/ota/…`, mais l'emplacement des fichiers dans le repo peut différer).

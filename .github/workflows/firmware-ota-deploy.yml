@@ -1,22 +1,26 @@
 name: Firmware OTA Deploy
 
-# Compile un firmware avec ses VRAIS secrets, signe le binaire (sha256 + ECDSA
-# P-256) et publie firmware.bin + metadata.json dans le depot n3_serveur
-# (servi par https://iot.olution.info/ota/...). Les appareils recuperent la MAJ
-# au prochain n3OtaCheck (cf. shared/n3_common/n3_ota).
+# Pipeline OTA durci : build UNIQUE (artefact reutilise), garde-fou de version,
+# approbation manuelle pour la prod (GitHub Environments), publication signee dans
+# n3_serveur, GitHub Release de tracabilite, puis verification bout-en-bout.
 #
-# Declenchement MANUEL uniquement (Actions > Firmware OTA Deploy > Run workflow)
-# pour eviter un deploiement OTA involontaire sur des appareils physiques.
+#   build (secrets de prod) --> artefact firmware.bin
+#        |                          |
+#        +-- version (output)       +-- deploy: guard -> sign -> push n3_serveur
+#                                                 -> Release -> verify (URL publique)
+#
+# Declenchement MANUEL (eviter un OTA involontaire sur des appareils physiques).
 #
 # Secrets requis (Settings > Secrets and variables > Actions) :
-#   OTA_SIGNING_KEY          Cle privee ECDSA P-256 (PEM) — signe les binaires.
-#                            Clé publique correspondante : shared/n3_common/src/n3_ota_pubkey.h
-#   CREDENTIALS_H            Contenu complet du credentials.h de prod (WiFi/SMTP/API_KEY).
-#                            Sans lui, le build retombe sur les placeholders => appareil hors-ligne.
-#   N3_SERVEUR_DEPLOY_TOKEN  PAT avec droit push sur le depot n3_serveur.
-# Variables (optionnelles, valeurs par defaut ci-dessous) :
+#   OTA_SIGNING_KEY          Cle privee ECDSA (PEM) — signe les binaires.
+#                            Publique correspondante : shared/n3_common/src/n3_ota_pubkey.h
+#   CREDENTIALS_H            credentials.h de prod complet (WiFi/SMTP/API_KEY).
+#   N3_SERVEUR_DEPLOY_TOKEN  PAT avec push sur n3_serveur.
+# Variables (optionnelles) :
 #   N3_SERVEUR_REPO          Depot OTA (defaut: oliviera999/n3_serveur).
 #   N3_SERVEUR_OTA_ROOT      Racine OTA dans ce depot (defaut: serveur/ota).
+# Environment a creer pour l'approbation prod :
+#   "prod" (Settings > Environments) avec Required reviewers — gate les deploiements prod.
 
 on:
   workflow_dispatch:
@@ -25,22 +29,20 @@ on:
         description: Firmware a deployer en OTA
         required: true
         type: choice
-        options:
-          - n3pp
-          - msp
-          - cam-msp1
-          - cam-n3pp
-          - cam-ffp3
+        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3]
       channel:
         description: Canal (prod/test) — n3pp et msp uniquement
         required: true
         default: test
         type: choice
-        options:
-          - test
-          - prod
+        options: [test, prod]
       dry_run:
-        description: "Dry-run : compile et signe mais ne pousse rien vers n3_serveur"
+        description: "Dry-run : compile, garde-fou et signe mais ne pousse rien"
+        required: false
+        default: true
+        type: boolean
+      verify_published:
+        description: "Verifier le binaire publie (re-telecharge + sha256/signature)"
         required: false
         default: true
         type: boolean
@@ -50,9 +52,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: OTA ${{ inputs.firmware }} (${{ inputs.channel }})
+  build:
+    name: Build ${{ inputs.firmware }} (${{ inputs.channel }})
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      dir: ${{ steps.map.outputs.dir }}
+      env: ${{ steps.map.outputs.env }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,19 +66,15 @@ jobs:
         id: map
         run: |
           case "${{ inputs.firmware }}" in
-            n3pp)
-              dir=n3pp
-              [ "${{ inputs.channel }}" = "prod" ] && env=esp32dev || env=esp32dev_test ;;
-            msp)
-              dir=msp
-              [ "${{ inputs.channel }}" = "prod" ] && env=esp32dev || env=esp32dev_test ;;
+            n3pp) dir=n3pp; [ "${{ inputs.channel }}" = "prod" ] && env=esp32dev || env=esp32dev_test ;;
+            msp)  dir=msp;  [ "${{ inputs.channel }}" = "prod" ] && env=esp32dev || env=esp32dev_test ;;
             cam-msp1) dir=uploadphotosserver; env=msp1 ;;
             cam-n3pp) dir=uploadphotosserver; env=n3pp ;;
             cam-ffp3) dir=uploadphotosserver; env=ffp3 ;;
             *) echo "Firmware inconnu" >&2; exit 1 ;;
           esac
-          echo "dir=$dir"  >> "$GITHUB_OUTPUT"
-          echo "env=$env"  >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "env=$env" >> "$GITHUB_OUTPUT"
           echo "Cible: dir=$dir env=$env canal=${{ inputs.channel }}"
 
       - uses: actions/setup-python@v5
@@ -89,6 +91,10 @@ jobs:
           key: pio-${{ hashFiles('**/platformio.ini') }}
           restore-keys: pio-
 
+      - name: Lire la version
+        id: ver
+        run: echo "version=$(python tools/ota/publish_ota.py --firmware ${{ inputs.firmware }} --print-version)" >> "$GITHUB_OUTPUT"
+
       - name: Provision credentials de PROD
         env:
           CREDENTIALS_H: ${{ secrets.CREDENTIALS_H }}
@@ -104,16 +110,46 @@ jobs:
       - name: Build ${{ inputs.firmware }} (${{ steps.map.outputs.env }})
         run: cd ${{ steps.map.outputs.dir }} && pio run -e ${{ steps.map.outputs.env }}
 
+      - name: Upload artefact firmware.bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ inputs.firmware }}-${{ inputs.channel }}-v${{ steps.ver.outputs.version }}
+          path: ${{ steps.map.outputs.dir }}/.pio/build/${{ steps.map.outputs.env }}/firmware.bin
+          if-no-files-found: error
+          retention-days: 90
+
+  deploy:
+    name: Deploy ${{ inputs.firmware }} (${{ inputs.channel }})
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # GitHub Release de tracabilite
+    # Gate d'approbation manuelle pour la prod reelle (environnement "prod").
+    environment: ${{ (inputs.dry_run == false && inputs.channel == 'prod') && 'prod' || '' }}
+    steps:
+      - uses: actions/checkout@v4   # tools/ + cle publique embarquee
+
+      - name: Recuperer l'artefact teste (build-once)
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-${{ inputs.firmware }}-${{ inputs.channel }}-v${{ needs.build.outputs.version }}
+          path: artifact
+
       - name: Ecrire la cle de signature
         env:
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
         run: |
-          if [ -z "$OTA_SIGNING_KEY" ]; then
-            echo "::error::Secret OTA_SIGNING_KEY absent."
-            exit 1
-          fi
+          if [ -z "$OTA_SIGNING_KEY" ]; then echo "::error::Secret OTA_SIGNING_KEY absent."; exit 1; fi
           umask 077
           printf '%s' "$OTA_SIGNING_KEY" > /tmp/ota_signing_key.pem
+
+      - name: Garde-fou + signature (dry-run)
+        if: ${{ inputs.dry_run }}
+        run: |
+          python tools/ota/publish_ota.py \
+            --firmware ${{ inputs.firmware }} --channel ${{ inputs.channel }} \
+            --bin artifact/firmware.bin --key /tmp/ota_signing_key.pem \
+            --ota-root /tmp/ota --dry-run
 
       - name: Checkout n3_serveur
         if: ${{ inputs.dry_run == false }}
@@ -123,30 +159,14 @@ jobs:
           token: ${{ secrets.N3_SERVEUR_DEPLOY_TOKEN }}
           path: n3_serveur
 
-      - name: Signer + ecrire metadata (dry-run)
-        if: ${{ inputs.dry_run }}
-        run: |
-          python tools/ota/publish_ota.py \
-            --firmware ${{ inputs.firmware }} \
-            --channel ${{ inputs.channel }} \
-            --bin ${{ steps.map.outputs.dir }}/.pio/build/${{ steps.map.outputs.env }}/firmware.bin \
-            --key /tmp/ota_signing_key.pem \
-            --ota-root /tmp/ota \
-            --dry-run
-
-      - name: Signer + publier dans n3_serveur
+      - name: Garde-fou + signature + publication
         if: ${{ inputs.dry_run == false }}
         run: |
           OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'serveur/ota' }}"
-          out=$(python tools/ota/publish_ota.py \
-            --firmware ${{ inputs.firmware }} \
-            --channel ${{ inputs.channel }} \
-            --bin ${{ steps.map.outputs.dir }}/.pio/build/${{ steps.map.outputs.env }}/firmware.bin \
-            --key /tmp/ota_signing_key.pem \
-            --ota-root "$OTA_ROOT")
-          echo "$out"
-          ver=$(printf '%s\n' "$out" | sed -n 's/.*version=\([^ ]*\).*/\1/p' | head -1)
-          echo "OTA_VERSION=$ver" >> "$GITHUB_ENV"
+          python tools/ota/publish_ota.py \
+            --firmware ${{ inputs.firmware }} --channel ${{ inputs.channel }} \
+            --bin artifact/firmware.bin --key /tmp/ota_signing_key.pem \
+            --ota-root "$OTA_ROOT"
 
       - name: Commit + push n3_serveur
         if: ${{ inputs.dry_run == false }}
@@ -155,14 +175,37 @@ jobs:
           git config user.name  "n3-ota-bot"
           git config user.email "ota-bot@users.noreply.github.com"
           git add -A
-          if git diff --cached --quiet; then
-            echo "Aucun changement OTA a publier."
-            exit 0
-          fi
-          git commit -m "OTA ${{ inputs.firmware }} ${{ inputs.channel }} v${OTA_VERSION}"
+          if git diff --cached --quiet; then echo "Aucun changement OTA a publier."; exit 0; fi
+          git commit -m "OTA ${{ inputs.firmware }} ${{ inputs.channel }} v${{ needs.build.outputs.version }}"
           for i in 1 2 3 4; do
             git push && break || { echo "push echoue, retry dans $((2**i))s"; sleep $((2**i)); }
           done
+
+      - name: GitHub Release (tracabilite)
+        if: ${{ inputs.dry_run == false }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ota-${{ inputs.firmware }}-${{ inputs.channel }}-v${{ needs.build.outputs.version }}
+          name: OTA ${{ inputs.firmware }} ${{ inputs.channel }} v${{ needs.build.outputs.version }}
+          body: |
+            Binaire OTA signe deploye via `firmware-ota-deploy`.
+            - firmware: `${{ inputs.firmware }}` / canal: `${{ inputs.channel }}`
+            - version: `${{ needs.build.outputs.version }}`
+            - commit source: `${{ github.sha }}`
+          files: artifact/firmware.bin
+
+      - name: Verification post-deploiement (URL publique)
+        if: ${{ inputs.dry_run == false && inputs.verify_published }}
+        run: |
+          BASE="${{ vars.OTA_BASE_URL || 'http://iot.olution.info/ota' }}"
+          case "${{ inputs.firmware }}" in
+            n3pp) sub=n3pp; [ "${{ inputs.channel }}" = "test" ] && sub=n3pp-test; key="" ;;
+            msp)  sub=msp;  [ "${{ inputs.channel }}" = "test" ] && sub=msp-test;  key="" ;;
+            cam-msp1) sub=cam; key="--key msp1" ;;
+            cam-n3pp) sub=cam; key="--key n3pp" ;;
+            cam-ffp3) sub=cam; key="--key ffp3" ;;
+          esac
+          python tools/ota/verify_published.py --metadata-url "$BASE/$sub/metadata.json" $key
 
       - name: Nettoyer la cle
         if: always()
