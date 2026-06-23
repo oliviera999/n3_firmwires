@@ -1,21 +1,27 @@
 """Sauvegarde bootloader/partitions/config avant idf_lib_copy (rmtree du BUILD_DIR)."""
 
+import sys
 import shutil
 import time
 from pathlib import Path
 
 Import("env")
 
-# Noms produits par CMake IDF (phase 1 pioarduino) → noms canoniques du bundle flash.
-_FLASH_BIN_ALIASES = {
-    "bootloader.bin": ("bootloader.bin",),
-    "partitions.bin": ("partitions.bin", "partition-table.bin"),
-    "ota_data_initial.bin": ("ota_data_initial.bin", "boot_app0.bin"),
-}
+_tools = Path(env.subst("$PROJECT_DIR")) / "tools"
+if str(_tools) not in sys.path:
+    sys.path.insert(0, str(_tools))
+
+from pio_flash_bundle import (  # noqa: E402
+    FLASH_BIN_ALIASES,
+    MAX_FIRMWARE_LEAD_SEC,
+    copy2_retry,
+    refresh_bundle_in_build_dir,
+    write_bundle_manifest,
+)
 
 
 def _find_in_build(build_dir, canonical_name):
-    for name in _FLASH_BIN_ALIASES.get(canonical_name, (canonical_name,)):
+    for name in FLASH_BIN_ALIASES.get(canonical_name, (canonical_name,)):
         direct = build_dir / name
         if direct.is_file():
             return direct
@@ -23,19 +29,6 @@ def _find_in_build(build_dir, canonical_name):
         if found and found.is_file():
             return found
     return None
-
-
-def _copy2_retry(src, dest, retries=8, delay=0.3):
-    last_err = None
-    for attempt in range(retries):
-        try:
-            shutil.copy2(src, dest)
-            return
-        except OSError as err:
-            last_err = err
-            if attempt + 1 < retries:
-                time.sleep(delay)
-    raise last_err
 
 
 def _copytree_retry(src, dest, retries=5, delay=0.5):
@@ -59,7 +52,6 @@ def save_idf_boot_artifacts(source, target, env):
         return
 
     build_dir = Path(env.subst("$BUILD_DIR"))
-    # Phase 2 Arduino : artifacts déjà sauvegardés en phase 1 (évite verrous Windows ici).
     if not (build_dir / "CMakeCache.txt").is_file():
         return
 
@@ -67,12 +59,12 @@ def save_idf_boot_artifacts(source, target, env):
     artifacts.mkdir(parents=True, exist_ok=True)
 
     try:
-        for canonical in _FLASH_BIN_ALIASES:
+        for canonical in FLASH_BIN_ALIASES:
             src = _find_in_build(build_dir, canonical)
             if not src or not src.is_file():
                 continue
-            _copy2_retry(src, artifacts / canonical)
-            _copy2_retry(src, build_dir / canonical)
+            copy2_retry(src, artifacts / canonical)
+            copy2_retry(src, build_dir / canonical)
             print("[post-script] FFP5CS: sauvegarde", canonical)
 
         config_src = build_dir / "config"
@@ -95,20 +87,29 @@ def sync_artifacts_to_build(source, target, env):
         return
 
     artifacts = Path(env.subst("$PROJECT_DIR")) / ".pio_artifacts" / pioenv
-    if not artifacts.is_dir():
-        return
+    art_dir = artifacts if artifacts.is_dir() else None
 
     try:
-        for canonical in _FLASH_BIN_ALIASES:
-            src = artifacts / canonical
-            if src.is_file():
-                _copy2_retry(src, build_dir / canonical)
+        fw_mtime = firmware.stat().st_mtime
+        if art_dir is not None:
+            for canonical in FLASH_BIN_ALIASES:
+                src = artifacts / canonical
+                if not src.is_file():
+                    continue
+                if src.stat().st_mtime < fw_mtime - MAX_FIRMWARE_LEAD_SEC:
+                    print(
+                        "[post-script] FFP5CS: skip sync artifact obsolete:",
+                        canonical,
+                    )
+                    continue
+                copy2_retry(src, build_dir / canonical)
                 print("[post-script] FFP5CS: sync artifact -> build:", canonical)
+        refresh_bundle_in_build_dir(build_dir, art_dir, pioenv)
+        write_bundle_manifest(build_dir, pioenv)
     except OSError as err:
         print("[post-script] FFP5CS: WARN sync artifacts -> build:", err)
 
 
-# Avant checkprogsize → avant la post-action idf_lib_copy qui rmtree le BUILD_DIR.
 env.AddPreAction("checkprogsize", save_idf_boot_artifacts)
 
 for _alias in ("buildprog", "buildelf", "build"):

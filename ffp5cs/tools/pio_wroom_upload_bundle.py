@@ -1,18 +1,21 @@
 """
 Upload WROOM (ESP32 classique) : flash jeu cohérent bootloader + partitions + otadata + firmware.
 
-Évite le panic « Cache error » après erase quand PIO n'écrivait que firmware.bin (phase 2).
+Évite le panic « Cache error » après erase quand bootloader/partitions obsolètes restent dans
+BUILD_DIR alors que firmware.bin vient d'une phase 2 Arduino récente.
 """
+import sys
 from pathlib import Path
 
 Import("env")
 
+_tools = Path(env.subst("$PROJECT_DIR")) / "tools"
+if str(_tools) not in sys.path:
+    sys.path.insert(0, str(_tools))
+
+from pio_flash_bundle import resolve_bundle_paths, write_bundle_manifest  # noqa: E402
+
 _MIN_FIRMWARE_BYTES = 1_200_000
-_FLASH_BIN_ALIASES = {
-    "bootloader.bin": ("bootloader.bin",),
-    "partitions.bin": ("partitions.bin", "partition-table.bin"),
-    "ota_data_initial.bin": ("ota_data_initial.bin", "boot_app0.bin"),
-}
 
 
 def _wroom_classic_env(pioenv):
@@ -23,33 +26,12 @@ def _wroom_classic_env(pioenv):
     return True
 
 
-def _project_dir():
-    return Path(env.subst("$PROJECT_DIR"))
-
-
 def _build_dir():
     return Path(env.subst("$BUILD_DIR"))
 
 
 def _artifacts_dir(pioenv):
-    return _project_dir() / ".pio_artifacts" / pioenv
-
-
-def _resolve_bin(pioenv, canonical):
-    names = _FLASH_BIN_ALIASES.get(canonical, (canonical,))
-    for base in (_build_dir(), _artifacts_dir(pioenv)):
-        if not base.is_dir():
-            continue
-        for name in names:
-            direct = base / name
-            if direct.is_file():
-                return direct
-        if base == _build_dir():
-            for name in names:
-                found = next(_build_dir().rglob(name), None)
-                if found and found.is_file():
-                    return found
-    return None
+    return Path(env.subst("$PROJECT_DIR")) / ".pio_artifacts" / pioenv
 
 
 def _quote(path):
@@ -78,9 +60,11 @@ def before_upload(source, target, env):
     if not _wroom_classic_env(pioenv):
         return
 
-    firmware = _build_dir() / "firmware.bin"
-    if not firmware.is_file():
-        raise RuntimeError("FFP5CS upload: firmware.bin introuvable dans BUILD_DIR")
+    build_dir = _build_dir()
+    artifacts = _artifacts_dir(pioenv)
+    bootloader, partitions, ota, firmware = resolve_bundle_paths(
+        build_dir, pioenv, artifacts if artifacts.is_dir() else None
+    )
 
     fw_size = firmware.stat().st_size
     if fw_size < _MIN_FIRMWARE_BYTES:
@@ -89,15 +73,7 @@ def before_upload(source, target, env):
             % fw_size
         )
 
-    bootloader = _resolve_bin(pioenv, "bootloader.bin")
-    partitions = _resolve_bin(pioenv, "partitions.bin")
-    ota = _resolve_bin(pioenv, "ota_data_initial.bin")
-
-    if bootloader is None or partitions is None:
-        raise RuntimeError(
-            "FFP5CS upload: bootloader.bin ou partitions.bin manquant — "
-            "lancer un build complet (pio run -e %s) avant flash" % pioenv
-        )
+    write_bundle_manifest(build_dir, pioenv)
 
     pairs = [
         ("0x1000", bootloader),
@@ -112,7 +88,6 @@ def before_upload(source, target, env):
     upload_port = env.subst("$UPLOAD_PORT")
     speed = env.get("UPLOAD_SPEED", 921600)
 
-    # esptool.exe (v5) : invocation directe ; esptool.py : via python.
     if esptool.lower().endswith(".py"):
         launcher = [_quote(pythonexe), _quote(esptool)]
     else:
