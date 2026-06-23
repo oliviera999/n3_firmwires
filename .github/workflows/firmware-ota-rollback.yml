@@ -1,0 +1,129 @@
+name: Firmware OTA Rollback
+
+# Revient a une version OTA anterieure SANS recompiler : recupere le binaire
+# signe attache a la GitHub Release "ota-<fw>-<chan>-v<version>" (creee par
+# firmware-ota-deploy) et le republie comme version courante (--no-guard, car on
+# redescend en version). Idempotent : meme binaire => meme integrite.
+#
+# Pre-requis : la version cible doit avoir ete deployee une fois (donc avoir sa
+# Release/asset). Secrets/variables identiques a firmware-ota-deploy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      firmware:
+        description: Firmware a restaurer
+        required: true
+        type: choice
+        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, ffp5-wroom]
+      channel:
+        description: Canal (prod/test). cam = prod uniquement.
+        required: true
+        default: test
+        type: choice
+        options: [test, prod]
+      version:
+        description: Version cible a restaurer (ex. 4.41) — doit avoir une Release
+        required: true
+        type: string
+      dry_run:
+        description: "Dry-run : recupere et signe mais ne pousse rien"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ota-deploy-rollback-${{ inputs.firmware }}-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Rollback ${{ inputs.firmware }} -> v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # lecture de la Release/asset
+    environment: ${{ (inputs.dry_run == false && inputs.channel == 'prod') && 'prod' || '' }}
+    env:
+      FW: ${{ inputs.firmware }}
+      CHAN: ${{ inputs.channel }}
+      VER: ${{ inputs.version }}
+      DRY: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Resoudre scheme/model + forcer canal cam
+        id: r
+        run: |
+          set -e
+          case "$FW" in
+            n3pp|msp) scheme=n3ota; model="" ;;
+            cam-msp1|cam-n3pp|cam-ffp3) scheme=n3ota; model=""; echo "CHAN=prod" >> "$GITHUB_ENV" ;;
+            ffp5-wroom) scheme=ffp5; model=esp32-wroom ;;
+            *) echo "::error::Firmware inconnu '$FW'"; exit 1 ;;
+          esac
+          echo "scheme=$scheme" >> "$GITHUB_OUTPUT"
+          echo "model=$model" >> "$GITHUB_OUTPUT"
+
+      - name: Telecharger le binaire de la Release cible
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          mkdir -p artifact
+          TAG="ota-${FW}-${CHAN}-v${VER}"
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          REL=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                "$API/releases/tags/$TAG") || { echo "::error::Release $TAG introuvable."; exit 1; }
+          AID=$(echo "$REL" | jq -r '.assets[] | select(.name=="firmware.bin") | .id')
+          [ -n "$AID" ] && [ "$AID" != "null" ] || { echo "::error::Asset firmware.bin absent de $TAG."; exit 1; }
+          curl -sfL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+               "$API/releases/assets/$AID" -o artifact/firmware.bin
+          echo "Recupere $TAG (asset $AID), $(stat -c%s artifact/firmware.bin) octets."
+
+      - name: Ecrire la cle de signature (schema n3ota)
+        if: ${{ steps.r.outputs.scheme == 'n3ota' }}
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          [ -n "$OTA_SIGNING_KEY" ] || { echo "::error::Secret OTA_SIGNING_KEY absent."; exit 1; }
+          umask 077; printf '%s' "$OTA_SIGNING_KEY" > /tmp/ota_signing_key.pem
+
+      - name: Checkout n3_serveur
+        if: ${{ env.DRY == 'false' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.N3_SERVEUR_REPO || 'oliviera999/n3_serveur' }}
+          token: ${{ secrets.N3_SERVEUR_DEPLOY_TOKEN }}
+          path: n3_serveur
+
+      - name: Republier la version cible (--no-guard)
+        run: |
+          set -e
+          KEY=""; [ "${{ steps.r.outputs.scheme }}" = "n3ota" ] && KEY="--key /tmp/ota_signing_key.pem"
+          if [ "$DRY" = "false" ]; then
+            OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'serveur/ota' }}"
+          else
+            OTA_ROOT="/tmp/ota"
+          fi
+          python tools/ota/publish_ota.py --firmware "$FW" --channel "$CHAN" --version "$VER" \
+            --no-guard --bin artifact/firmware.bin $KEY --ota-root "$OTA_ROOT" \
+            ${{ env.DRY == 'true' && '--dry-run' || '' }}
+
+      - name: Commit + push n3_serveur
+        if: ${{ env.DRY == 'false' }}
+        working-directory: n3_serveur
+        run: |
+          git config user.name  "n3-ota-bot"
+          git config user.email "ota-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Aucun changement (deja sur v$VER)."; exit 0; fi
+          git commit -m "OTA ROLLBACK $FW $CHAN -> v$VER"
+          for i in 1 2 3 4; do
+            git push && break || { echo "push echoue, retry dans $((2**i))s"; sleep $((2**i)); }
+          done
+
+      - name: Nettoyer la cle
+        if: always()
+        run: rm -f /tmp/ota_signing_key.pem
