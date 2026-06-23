@@ -103,7 +103,7 @@ jobs:
           set -e
           KEY=""; [ "${{ steps.r.outputs.scheme }}" = "n3ota" ] && KEY="--key /tmp/ota_signing_key.pem"
           if [ "$DRY" = "false" ]; then
-            OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'serveur/ota' }}"
+            OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'ota' }}"
           else
             OTA_ROOT="/tmp/ota"
           fi

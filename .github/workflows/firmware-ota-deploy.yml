@@ -22,7 +22,7 @@ name: Firmware OTA Deploy
 #   FFP5CS_SECRETS_H         ffp5cs/include/secrets.h de prod (schema ffp5).
 #   FFP5CS_SECRETS_CONFIG_H  ffp5cs/include/secrets_config.h de prod (schema ffp5).
 #   N3_SERVEUR_DEPLOY_TOKEN  PAT push sur n3_serveur.
-# Variables : N3_SERVEUR_REPO (def. oliviera999/n3_serveur), N3_SERVEUR_OTA_ROOT (def. serveur/ota).
+# Variables : N3_SERVEUR_REPO (def. oliviera999/n3_serveur), N3_SERVEUR_OTA_ROOT (def. ota).
 # Environnement "prod" (Settings > Environments) avec Required reviewers = gate des deploiements prod.
 
 on:
@@ -193,7 +193,7 @@ jobs:
           set -e
           KEY=""; [ "$SCHEME" = "n3ota" ] && KEY="--key /tmp/ota_signing_key.pem"
           if [ "$DRY" = "false" ]; then
-            OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'serveur/ota' }}"
+            OTA_ROOT="n3_serveur/${{ vars.N3_SERVEUR_OTA_ROOT || 'ota' }}"
           else
             OTA_ROOT="/tmp/ota"
           fi

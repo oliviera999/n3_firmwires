@@ -13,7 +13,7 @@ workflow_dispatch  OU  tag git "ota-deploy/<fw>/<canal>"
         │
   job deploy (gate prod = GitHub Environment "prod")
         ├─ garde-fou version (refuse une version ≤ celle en ligne)
-        ├─ intégrité  n3ota: sha256+ECDSA  |  ffp5: md5  ─▶ commit/push n3_serveur (serveur/ota/…)
+        ├─ intégrité  n3ota: sha256+ECDSA  |  ffp5: md5  ─▶ commit/push n3_serveur (ota/…)
         ├─ GitHub Release de traçabilité (bin attaché — réutilisé par le rollback)
         └─ vérification post-déploiement (re-télécharge l'URL publique, re-vérifie l'intégrité)
                                      │
@@ -92,7 +92,7 @@ Dans **Settings ▸ Secrets and variables ▸ Actions** du dépôt :
 | Nom | Défaut | Rôle |
 |-----|--------|------|
 | `N3_SERVEUR_REPO` | `oliviera999/n3_serveur` | Dépôt servant `iot.olution.info`. |
-| `N3_SERVEUR_OTA_ROOT` | `serveur/ota` | Racine OTA dans ce dépôt. |
+| `N3_SERVEUR_OTA_ROOT` | `ota` | Racine OTA dans le dépôt `n3_serveur`. |
 | `OTA_BASE_URL` | `http://iot.olution.info/ota` | Préfixe public n3ota (garde-fou + vérif). |
 | `OTA_BASE_URL_HTTPS` | `https://iot.olution.info/ota` | Préfixe public ffp5 (HTTPS). |
 
@@ -101,8 +101,8 @@ Dans **Settings ▸ Secrets and variables ▸ Actions** du dépôt :
 rattache uniquement pour un déploiement prod réel et se met alors en pause
 jusqu'à approbation. (Les déploiements `test` et les dry-run ne sont pas gatés.)
 
-> ⚠️ Vérifier `N3_SERVEUR_OTA_ROOT` : le chemin réel dépend de l'arborescence de `n3_serveur`
-> (le firmware sert `/ota/…`, mais l'emplacement des fichiers dans le repo peut différer).
+> ⚠️ Vérifier `N3_SERVEUR_OTA_ROOT` si l'arborescence de `n3_serveur` change :
+> le dépôt actuel sert `/ota/…` depuis le dossier racine `ota/`.
 
 ## Utilisation
 

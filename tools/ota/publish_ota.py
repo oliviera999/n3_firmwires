@@ -132,7 +132,7 @@ def main() -> int:
     p.add_argument("--firmware", required=True, choices=sorted(TARGETS), help="Cible OTA")
     p.add_argument("--bin", type=Path, help="Chemin du firmware.bin compile")
     p.add_argument("--key", type=Path, help="Cle privee ECDSA (PEM) — schema n3ota uniquement")
-    p.add_argument("--ota-root", type=Path, help="Racine OTA dans n3_serveur (ex: serveur/ota)")
+    p.add_argument("--ota-root", type=Path, help="Racine OTA dans n3_serveur (ex: ota)")
     p.add_argument("--channel", choices=["prod", "test"], default="prod", help="Canal de deploiement")
     p.add_argument("--base-url", help="Prefixe URL public (defaut selon schema)")
     p.add_argument("--version", help="Force la version (sinon lue depuis le manifest)")
