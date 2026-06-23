@@ -12,6 +12,52 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.20 - 2026-06-23
+
+### Publication OTA canal test (wroom-beta) — validation hardware v14.19
+
+- Bump version pour déploiement OTA **ffp5-wroom-beta** (`esp32-wroom-beta/`, canal `test`).
+- Validation hardware préalable (erase + flash + monitor 5 min, COM7) : boot v14.19 stable,
+  WiFi/NTP OK, POST `post-data-test` HTTP 200, 0 crash/WDT, heap ~79 Ko libre en fin de run.
+- Correctif DRAM v14.19 (buffers sleep/wake partagés dans `mailer.cpp`) confirmé en lien et runtime.
+
+---
+
+## Version 14.19 - 2026-06-23
+
+### Correctif DRAM : link `wroom-beta` (overflow `dram0_0_seg`) + audit mémoire
+
+- **Cause** : `wroom-beta` hérite de `wroom-prod` (DRAM interne ~99,9 %) et ajoute
+  `ENABLE_SERIAL_MONITOR=1` + `CORE_DEBUG_LEVEL=1`, provoquant un dépassement de 16 octets
+  du segment `dram0_0_seg` au link (`region dram0_0_seg overflowed by 16 bytes`).
+- **Correctif intelligent** (`src/mailer.cpp`) : mutualisation des buffers `static` de
+  `sendSleepMail`/`sendWakeMail`. Mise en veille et réveil ne surviennent jamais
+  simultanément → un seul `g_sleepWakeMessage[1024]` + `g_sleepWakeSubject[64]` partagés
+  (via référence de tableau `char (&)[N]`, `sizeof` préservé, aucun autre changement de code).
+  **Économie ~1088 octets de DRAM interne** (≈68× l'overflow), marge confortable pour
+  prod **et** beta. `sendSync` copie le message dans `s_mailMessageBuffer` (buffers distincts,
+  pas d'aliasing).
+- **Audit mémoire général** (lecture seule, RAS) :
+  - Allocations dynamiques propres : `free` sur tous les chemins (OTA `buf`/`sig`), RAII
+    `unique_ptr` (`automatism_sync`), pool statique `net_request_pool` (chemins chauds),
+    ré-entrée OTA gardée par `m_otaLock` + `clearIntegrityFields()` (pas de fuite sha256/ECDSA).
+  - `String` confiné aux chemins froids/init (routes web, wifi, ota) — absent des boucles
+    chaudes (`app_tasks_*`, `automatism*`, `sensors`), conforme aux règles cœur.
+  - Stacks de tâches statiques (DRAM) déjà ajustées via HWM ; seuils heap (`HeapConfig`)
+    et buffers (`BufferConfig`) déjà profilés WROOM/S3.
+- **Outil** : `tools/analyze_dram_map.py` (analyse des plus gros contributeurs `.dram0.bss/.data`).
+
+---
+
+## Version 14.18 - 2026-06-23
+
+### Publication OTA canal test (wroom-beta)
+
+- Bump version pour déploiement OTA **ffp5-wroom-beta** (`esp32-wroom-beta/`, canal `test` dans `metadata.json`).
+- Validation hardware préalable : erase + flash + monitor 5 min sur COM7 (WiFi, NTP, POST `post-data-test` OK).
+
+---
+
 ## Version 14.17 - 2026-06-23
 
 ### Sécurité OTA : vérification au boot (anti-rollback réel) + authenticité sha256/ECDSA
