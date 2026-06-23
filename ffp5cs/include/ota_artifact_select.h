@@ -176,4 +176,52 @@ inline bool selectFilesystem(const JsonDocument& doc,
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// v14.17 — Lecture des champs d'intégrité ÉTENDUE (sha256 / signature) du nœud
+// d'artefact sélectionné. Suit EXACTEMENT la même cascade que selectArtifact()
+// (channels[env][model] → [env][default] → [prod][model] → [prod][default] →
+// legacy top-level) afin de lire ces deux champs OPTIONNELS sur le même nœud que
+// bin_url/md5. Champs absents => out vides (rétro-compatible : fallback MD5 seul).
+// Fonction additive : ne modifie pas selectArtifact() ni ses tests natifs.
+// ---------------------------------------------------------------------------
+inline void readIntegrityFields(const JsonDocument& doc,
+                                const char* envName, const char* modelName,
+                                char* outSha256, size_t sha256Size,
+                                char* outSignature, size_t signatureSize) {
+  if (outSha256 && sha256Size) outSha256[0] = '\0';
+  if (outSignature && signatureSize) outSignature[0] = '\0';
+
+  JsonVariantConst node;
+  bool found = false;
+  if (!doc["channels"].isNull()) {
+    const char* envs[2] = { envName, "prod" };
+    const char* models[2] = { modelName, "default" };
+    for (int e = 0; e < 2 && !found; ++e) {
+      for (int m = 0; m < 2 && !found; ++m) {
+        JsonVariantConst n = doc["channels"][envs[e]][models[m]];
+        const char* url = n["bin_url"].as<const char*>();
+        if (!n.isNull() && url && strlen(url) > 0) {
+          node = n;
+          found = true;
+        }
+      }
+    }
+  }
+
+  // Champ du nœud, puis fallback top-level (comme md5).
+  const char* sha = found ? node["sha256"].as<const char*>() : nullptr;
+  if (!sha || strlen(sha) == 0) sha = doc["sha256"].as<const char*>();
+  const char* sig = found ? node["signature"].as<const char*>() : nullptr;
+  if (!sig || strlen(sig) == 0) sig = doc["signature"].as<const char*>();
+
+  if (sha && outSha256 && sha256Size) {
+    strncpy(outSha256, sha, sha256Size - 1);
+    outSha256[sha256Size - 1] = '\0';
+  }
+  if (sig && outSignature && signatureSize) {
+    strncpy(outSignature, sig, signatureSize - 1);
+    outSignature[signatureSize - 1] = '\0';
+  }
+}
+
 }  // namespace OtaArtifactSelect

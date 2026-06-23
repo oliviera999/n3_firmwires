@@ -299,6 +299,11 @@ void setup() {
 void loop() {
   power.updateTime();
   unsigned long now = millis();
+
+  // v14.17 — Filet anti-rollback : confirme l'image OTA en probation une fois l'uptime
+  // stable atteint (no-op hors fenêtre post-OTA). Toujours exécuté, indépendant du réseau
+  // et de FEATURE_OTA, donc une bonne image hors-ligne finit toujours par se valider.
+  SystemBoot::tickOtaValidation();
   
   // S3 PSRAM : init WiFi.mode() après 3 s (évite blocage au boot) ; sans effet sur les autres envs
   wifi.tryDelayedModeInit();

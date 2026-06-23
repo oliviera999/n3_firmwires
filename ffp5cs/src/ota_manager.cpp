@@ -1,5 +1,6 @@
 #include "ota_manager.h"
 #include "ota_url.h"  // downgradeToHttp (extrait, testé nativement)
+#include "ota_artifact_select.h"  // readIntegrityFields (sha256/signature, v14.17)
 #include "nvs_manager.h" // v11.109
 #include "nvs_keys.h"
 #include <WiFi.h>
@@ -17,6 +18,7 @@
 #include <freertos/task.h>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include "config.h"
 #include "boot_log.h"
 #include "mailer.h"
@@ -50,8 +52,17 @@ OTAManager::OTAManager()
     m_remoteVersion[0] = '\0';
     m_firmwareUrl[0] = '\0';
     m_firmwareMD5[0] = '\0';
+    m_firmwareSha256 = nullptr;
+    m_firmwareSignature = nullptr;
     m_filesystemUrl[0] = '\0';
     m_filesystemMD5[0] = '\0';
+}
+
+void OTAManager::clearIntegrityFields() {
+    free(m_firmwareSha256);     // free(nullptr) est sûr
+    m_firmwareSha256 = nullptr;
+    free(m_firmwareSignature);
+    m_firmwareSignature = nullptr;
 }
 
 OTAManager::~OTAManager() {
@@ -65,6 +76,8 @@ OTAManager::~OTAManager() {
         vTaskDelete(m_updateTaskHandle);
         m_updateTaskHandle = nullptr;
     }
+
+    clearIntegrityFields();
 }
 
 void OTAManager::log(const char* message) {
@@ -144,6 +157,10 @@ bool OTAManager::checkForUpdate() {
     }
     
     log("✅ WiFi connecté");
+
+    // v14.17 — chaque vérification repart d'un état d'authenticité propre (libère un éventuel
+    // reliquat heap d'un cycle précédent qui n'aurait pas abouti à un reboot).
+    clearIntegrityFields();
 
     if (!hasOtaPartition()) {
         log("ℹ️ OTA désactivée: aucune partition OTA disponible");
@@ -281,7 +298,39 @@ bool OTAManager::checkForUpdate() {
     char logMsgSpace[128];
     snprintf(logMsgSpace, sizeof(logMsgSpace), "✅ Espace suffisant: %s >= %s", freeSpaceBuf, firmwareSizeBuf2);
     log(logMsgSpace);
-    
+
+    // v14.17 — MAJ confirmée : lire (sur le heap) les champs d'authenticité optionnels
+    // (sha256 + signature ECDSA) depuis le même nœud que l'artefact. Absents => MD5 seul.
+    {
+        const char* envNameSig = "prod";
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
+            envNameSig = "test";
+        #endif
+        const char* modelNameSig = "esp32-wroom";
+        #if defined(BOARD_S3)
+            modelNameSig = "esp32-s3";
+        #endif
+        m_firmwareSha256 = static_cast<char*>(malloc(65));
+        m_firmwareSignature = static_cast<char*>(malloc(256));
+        if (m_firmwareSha256 && m_firmwareSignature) {
+            OtaArtifactSelect::readIntegrityFields(doc, envNameSig, modelNameSig,
+                                                   m_firmwareSha256, 65,
+                                                   m_firmwareSignature, 256);
+            if (strlen(m_firmwareSha256) == 0) { free(m_firmwareSha256); m_firmwareSha256 = nullptr; }
+            if (strlen(m_firmwareSignature) == 0) { free(m_firmwareSignature); m_firmwareSignature = nullptr; }
+            if (m_firmwareSha256) {
+                char logSha[96];
+                snprintf(logSha, sizeof(logSha), "🔐 sha256 metadata: '%s'", m_firmwareSha256);
+                log(logSha);
+            }
+            log(m_firmwareSignature ? "🔐 Signature ECDSA présente dans metadata"
+                                    : "ℹ️ Pas de signature ECDSA (vérif MD5 seule)");
+        } else {
+            clearIntegrityFields();  // alloc improbable échouée : fallback MD5, ne pas bloquer l'OTA
+            log("⚠️ Alloc champs authenticité échouée → MD5 seul");
+        }
+    }
+
     m_otaLock = true;
     log("🔒 Mode OTA exclusif activé (nouvelle version détectée)");
     m_lastCheck = millis();

@@ -169,14 +169,38 @@ void initializeSdCard() {
 #endif
 }
 
-void cancelRollbackIfPending() {
+// v14.17 — État de probation anti-rollback. Une image OTA fraîchement flashée démarre en
+// ESP_OTA_IMG_PENDING_VERIFY ; on ne la confirme valide qu'après un critère de santé
+// (uptime stable) au lieu d'un mark_valid inconditionnel au boot. Light sleep ne reset pas
+// le CPU => aucun rollback accidentel au réveil ; seul un vrai crash/watchdog/reboot avant
+// confirmation rollbacke vers l'ancienne partition.
+static bool s_otaPendingValidation = false;
+static unsigned long s_otaProbationStartMs = 0;
+
+bool isOtaPendingValidation() {
+  return s_otaPendingValidation;
+}
+
+void confirmOtaValidation(const char* reason) {
+  if (!s_otaPendingValidation) return;
+  s_otaPendingValidation = false;  // idempotent : ne retenter qu'une fois
   const esp_partition_t* running = esp_ota_get_running_partition();
-  if (!running) return;
   esp_ota_img_states_t otaState;
-  if (esp_ota_get_state_partition(running, &otaState) != ESP_OK) return;
-  if (otaState == ESP_OTA_IMG_PENDING_VERIFY) {
-    esp_ota_mark_app_valid_cancel_rollback();
-    BOOT_LOG("[OTA] Image validee (rollback annule) au debut du boot\n");
+  if (running && esp_ota_get_state_partition(running, &otaState) == ESP_OK
+      && otaState == ESP_OTA_IMG_PENDING_VERIFY) {
+    esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+    BOOT_LOG("[OTA] Image validee, rollback annule — motif: %s (err=%s)\n",
+             reason ? reason : "?", esp_err_to_name(err));
+  } else {
+    BOOT_LOG("[OTA] confirmOtaValidation (%s): image deja validee ou non en attente\n",
+             reason ? reason : "?");
+  }
+}
+
+void tickOtaValidation() {
+  if (!s_otaPendingValidation) return;
+  if (millis() - s_otaProbationStartMs >= TimingConfig::OTA_VALIDATION_GRACE_MS) {
+    confirmOtaValidation("uptime stable (grace)");
   }
 }
 
@@ -203,9 +227,15 @@ void validatePendingOta(OtaState& state) {
         BOOT_LOG("[OTA] Etat: NOUVELLE IMAGE (jamais demarree)\n");
         break;
       case ESP_OTA_IMG_PENDING_VERIFY:
-        BOOT_LOG("[OTA] Etat: IMAGE EN ATTENTE DE VALIDATION\n");
-        esp_ota_mark_app_valid_cancel_rollback();
-        BOOT_LOG("[OTA] Image validee et rollback annule\n");
+        BOOT_LOG("[OTA] Etat: IMAGE EN ATTENTE DE VALIDATION (probation anti-rollback)\n");
+        // v14.17 : NE PAS valider ici. La confirmation est conditionnée à un critère de
+        // santé (uptime stable via tickOtaValidation, ou reboot délibéré via
+        // confirmOtaValidation). Si l'image crashe avant confirmation, le bootloader
+        // restaure automatiquement l'ancienne partition (rollback réellement utile).
+        s_otaPendingValidation = true;
+        s_otaProbationStartMs = millis();
+        BOOT_LOG("[OTA] Probation armee: validation dans %lu ms d'uptime stable\n",
+                 (unsigned long)TimingConfig::OTA_VALIDATION_GRACE_MS);
         state.justUpdated = true;
         {
           char tempBuf[64];

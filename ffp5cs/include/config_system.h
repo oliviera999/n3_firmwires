@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "14.16";
+    inline constexpr const char* VERSION = "14.17";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -149,6 +149,12 @@ namespace TimingConfig {
     inline constexpr uint32_t OTA_BOOT_RETRY_2_MS = 180000;   // 3 min
     inline constexpr uint32_t OTA_BOOT_RETRY_3_MS = 600000;   // 10 min
     inline constexpr uint32_t OTA_PROGRESS_UPDATE_INTERVAL_MS = 1000; // 1s
+    // v14.17 — Fenêtre de grâce anti-rollback : après une OTA, l'image démarre en
+    // ESP_OTA_IMG_PENDING_VERIFY. Elle n'est confirmée valide (rollback annulé) qu'après
+    // cet uptime stable (SystemBoot::tickOtaValidation, appelé depuis loop()), ou avant un
+    // reboot délibéré. Un crash/watchdog avant ce délai => rollback automatique vers
+    // l'ancienne image. Le light sleep (pas de reset CPU) ne déclenche pas de rollback.
+    inline constexpr uint32_t OTA_VALIDATION_GRACE_MS = 120000; // 2 min
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
     inline constexpr uint32_t STATS_REPORT_INTERVAL_MS = 300000; // 5 min

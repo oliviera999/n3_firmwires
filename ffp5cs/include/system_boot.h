@@ -22,9 +22,25 @@ namespace SystemBoot {
         char previousVersion[32];
         unsigned long lastCheck;
     };
-    /// Appelé au tout début du boot (avant LittleFS/NVS) pour annuler le rollback si image PENDING_VERIFY (évite rollback si crash avant validatePendingOta).
-    void cancelRollbackIfPending();
+    /// Au boot, détecte une image OTA en attente de validation (ESP_OTA_IMG_PENDING_VERIFY).
+    /// v14.17 : ne marque PLUS l'image valide inconditionnellement — arme une probation
+    /// anti-rollback (cf. confirmOtaValidation / tickOtaValidation). Renseigne
+    /// state.justUpdated et state.previousVersion pour la notification post-OTA.
     void validatePendingOta(OtaState& state);
+
+    /// true tant qu'une image OTA est en probation (flashée mais pas encore confirmée saine).
+    bool isOtaPendingValidation();
+
+    /// Confirme la validité de l'image OTA en probation (annule le rollback) si une image
+    /// est effectivement en attente. Idempotent. `reason` documente le déclencheur (log).
+    /// À appeler sur un critère de santé OU avant un reboot délibéré (évite de rollbacker
+    /// une bonne image fraîchement flashée sur un reboot manuel/distant).
+    void confirmOtaValidation(const char* reason);
+
+    /// À appeler périodiquement depuis loop() : confirme l'image en probation une fois
+    /// l'uptime stable atteint (TimingConfig::OTA_VALIDATION_GRACE_MS). Filet anti-rollback
+    /// indépendant du réseau (toujours exécuté, même build sans FEATURE_OTA).
+    void tickOtaValidation();
 
     // Services Initialization
     void initializeTimekeeping(AppContext& ctx);
