@@ -52,7 +52,9 @@
 
 | Fichier | Type | Rôle |
 |---------|------|------|
-| **erase_flash_fs_monitor_5min_analyze.ps1** | PS1 | Workflow complet : erase → flash (firmware + FS sauf wroom-prod) → monitor N min → analyse. Tous les logs et rapports sont écrits dans **logs/**. Référence recommandée. S'applique aussi à l'ESP32-S3 avec `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod`. Option **-NoPrompt** : exécution non interactive (pas d'attente Entrée avant erase/flash). |
+| **erase_flash_fs_monitor_5min_analyze.ps1** | PS1 | Workflow complet : erase → **vérif bundle flash WROOM (étape 1b)** → flash (firmware + FS sauf wroom-prod) → monitor N min → analyse. Tous les logs et rapports sont écrits dans **logs/**. Référence recommandée. S'applique aussi à l'ESP32-S3 avec `-Environment wroom-s3-test` ou `-Environment wroom-s3-prod`. Option **-NoPrompt** : exécution non interactive (pas d'attente Entrée avant erase/flash). |
+| **tools/Ensure-WroomFlashBundle.ps1** | PS1 | Vérifie bootloader/partitions/firmware cohérents ; recovery auto `clean` + rebuild si obsolètes (anti panic Cache error). |
+| **tools/verify_flash_bundle.ps1** | PS1 | Bloque le flash si `bootloader.bin`/`partitions.bin` plus anciens que `firmware.bin` (> 180 s). |
 | **run_wroom_s3_prod_workflow.ps1** | PS1 | Workflow wroom-s3-prod : erase + flash + LittleFS + monitor 2 min + analyse. |
 | **run_s3_validation.ps1** | PS1 | Build wroom-s3-test puis erase + flash + monitor 1 min. |
 | **run_s3_psram_validation.ps1** | PS1 | Validation S3 PSRAM (build + workflow). |
@@ -101,6 +103,8 @@
 | **scripts/build_production.ps1** | PS1 | Build production (minify assets, compile, optionnel upload firmware/FS). |
 | **scripts/verify_version.ps1** | PS1 | Vérification de la version (config.h, etc.). |
 | **tools/pio_write_build_version.py** | Python | Écrit la version de build (hook post-build PlatformIO). |
+| **tools/pio_flash_bundle.py** | Python | Cohérence jeu flash WROOM (refresh, manifest, blocage bundle stale). |
+| **tools/pio_wroom_upload_bundle.py** | Python | Pre-upload : flash homogène bootloader+partitions+firmware via esptool. |
 | **tools/calculate_md5.py** | Python | Calcul MD5 (firmware/binaries). |
 | **tools/run_build_s3_capture.py** | Python | Build S3 + capture. |
 

@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include "ffp5cs_fs.h"
 #include "config.h"
+#include "gpio_mapping.h"
 #include "mailer.h"
 #include "automatism.h"
 #include "nvs_manager.h"
@@ -230,6 +231,12 @@ static void fillDbVarsJson(JsonObject& out) {
   out["tempsPetits"] = ok && s_dbvarsCachedSrc.containsKey("tempsPetits")
                        ? s_dbvarsCachedSrc["tempsPetits"].as<int>()
                        : (int)g_autoCtrl.getTempsPetits();
+  out["angleReposGros"] = getIntCanonical("angleReposGros", nullptr, GPIODefaults::SERVO_REST_ANGLE);
+  out["angleDistribGros"] = getIntCanonical("angleDistribGros", nullptr, GPIODefaults::SERVO_FEED_ANGLE);
+  out["angleInterGros"] = getIntCanonical("angleInterGros", nullptr, GPIODefaults::SERVO_INTER_ANGLE);
+  out["angleReposPetits"] = getIntCanonical("angleReposPetits", nullptr, GPIODefaults::SERVO_REST_ANGLE);
+  out["angleDistribPetits"] = getIntCanonical("angleDistribPetits", nullptr, GPIODefaults::SERVO_FEED_ANGLE);
+  out["angleInterPetits"] = getIntCanonical("angleInterPetits", nullptr, GPIODefaults::SERVO_INTER_ANGLE);
   out["aqThreshold"] = ok && s_dbvarsCachedSrc.containsKey("aqThreshold")
                        ? s_dbvarsCachedSrc["aqThreshold"].as<int>()
                        : (int)g_autoCtrl.getAqThresholdCm();
@@ -772,6 +779,12 @@ bool WebServerManager::begin() {
     if (getWebParam(req, "bouffeSoir", paramBuf, sizeof(paramBuf))) appendPair("bouffeSoir", paramBuf);
     if (getWebParam(req, "tempsGros", paramBuf, sizeof(paramBuf))) appendPair("tempsGros", paramBuf);
     if (getWebParam(req, "tempsPetits", paramBuf, sizeof(paramBuf))) appendPair("tempsPetits", paramBuf);
+    if (getWebParam(req, "angleReposGros", paramBuf, sizeof(paramBuf))) appendPair("angleReposGros", paramBuf);
+    if (getWebParam(req, "angleDistribGros", paramBuf, sizeof(paramBuf))) appendPair("angleDistribGros", paramBuf);
+    if (getWebParam(req, "angleInterGros", paramBuf, sizeof(paramBuf))) appendPair("angleInterGros", paramBuf);
+    if (getWebParam(req, "angleReposPetits", paramBuf, sizeof(paramBuf))) appendPair("angleReposPetits", paramBuf);
+    if (getWebParam(req, "angleDistribPetits", paramBuf, sizeof(paramBuf))) appendPair("angleDistribPetits", paramBuf);
+    if (getWebParam(req, "angleInterPetits", paramBuf, sizeof(paramBuf))) appendPair("angleInterPetits", paramBuf);
     if (getWebParam(req, "aqThreshold", paramBuf, sizeof(paramBuf))) appendPair("aqThreshold", paramBuf);
     if (getWebParam(req, "tankThreshold", paramBuf, sizeof(paramBuf))) appendPair("tankThreshold", paramBuf);
     if (getWebParam(req, "chauffageThreshold", paramBuf, sizeof(paramBuf))) appendPair("chauffageThreshold", paramBuf);

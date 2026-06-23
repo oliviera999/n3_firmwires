@@ -35,6 +35,12 @@ static char g_detailedTimeReportBuffer[512];  // Réduit de 2048
 static char g_lightFooterBuffer[256];         // Footer allégé
 // Piste 4 rapport mémoire: un seul buffer pour sendSync et sendAlertSync (évite ~2.5 KB)
 static char s_mailMessageBuffer[BufferConfig::EMAIL_MAX_SIZE_BYTES + 512];
+// Mise en veille et réveil ne surviennent jamais simultanément (on s'endort puis
+// on se réveille) : un seul buffer partagé suffit pour le sujet et le corps des
+// deux mails. Économie ~1 KB de DRAM interne, ressource critique sur ESP32-WROOM
+// (segment dram0_0_seg quasi saturé en profil prod/beta).
+static char g_sleepWakeSubject[64];
+static char g_sleepWakeMessage[1024];
 // v11.178: kLittleFsLabel supprimé (non utilisé - audit dead-code)
 
 // ======================
@@ -689,10 +695,11 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
                            const char* toEmail) {
   const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
-  static char sleepSubject[64];
+  // Buffers partagés sleep/wake (référence tableau : sizeof conservé). Voir g_sleepWake* en tête de fichier.
+  char (&sleepSubject)[64] = g_sleepWakeSubject;
   snprintf(sleepSubject, sizeof(sleepSubject), "FFP5CS - Mise en veille");
   
-  static char sleepMessage[1024];
+  char (&sleepMessage)[1024] = g_sleepWakeMessage;
   size_t offset = 0;
   size_t remaining = sizeof(sleepMessage);
   int written = 0;
@@ -766,10 +773,11 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
                          const char* toEmail) {
   const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
-  static char wakeSubject[64];
+  // Buffers partagés sleep/wake (référence tableau : sizeof conservé). Voir g_sleepWake* en tête de fichier.
+  char (&wakeSubject)[64] = g_sleepWakeSubject;
   snprintf(wakeSubject, sizeof(wakeSubject), "FFP5CS - Réveil du système");
   
-  static char wakeMessage[1024];
+  char (&wakeMessage)[1024] = g_sleepWakeMessage;
   size_t offset = 0;
   size_t remaining = sizeof(wakeMessage);
   int written = 0;

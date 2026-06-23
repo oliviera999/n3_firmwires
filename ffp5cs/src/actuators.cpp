@@ -16,6 +16,15 @@ static void servoDetachTimerCallback(void* arg) {
   if (feeder) feeder->detach();
 }
 
+void Feeder::setRestAngle(int angle) {
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
+  _rest = angle;
+  if (_isAttached) {
+    _servo.write(_rest);
+  }
+}
+
 void Feeder::dispense(int angle, uint16_t durationSec) {
   if (!_isAttached) begin();
   _servo.write(angle); // mouvement aller

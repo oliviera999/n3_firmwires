@@ -12,6 +12,97 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.23 - 2026-06-23
+
+### Angles servo nourrissage configurables (contrat GPIO 118-123)
+
+- Six paramètres distants et locaux : repos / distribution / intermédiaire pour chaque moteur (gros et petits).
+- Persistance NVS via `remote_json` ; application dans `SystemActuators` et séquence `dispenseWithIntermediate`.
+- UI locale `/controles` et page serveur `aquaponie-control` alignées sur le contrat firmware-serveur.
+
+---
+
+## Version 14.22 - 2026-06-23
+
+### Publication OTA production (wroom-prod) — correctif bundle flash validé
+
+- Affinements recovery bundle : tolérance 3600 s (écart phase 1/2 pioarduino), refus sync
+  artifacts obsolètes, purge + repair jonction Windows dans `Ensure-WroomFlashBundle.ps1`.
+- Validation hardware : erase + flash homogène + boot **v14.21** sur COM7 (`wroom-prod`), 0 Cache error.
+- Publication OTA **ffp5-wroom-prod** (`esp32-wroom/`, canal `prod`).
+
+---
+
+## Version 14.21 - 2026-06-23
+
+### Correctif flash WROOM : bundle incohérent → panic « Cache error » au boot
+
+- **Incident** (2026-06-23, `wroom-prod`, COM7, workflow erase/flash/monitor) : boucle
+  `Guru Meditation Error: Core 0 panic'ed (Cache error)` dans `esp_flash_read_chip_id` /
+  `__memset_aux` — **439 reboots** en 5 min, jamais de `BOOT FFP5CS`.
+- **Cause racine** : `firmware.bin` frais (23/06) flashé avec `bootloader.bin` et
+  `partitions.bin` **obsolètes** (18/06) laissés à la racine de `C:\pio-builds\ffp5cs\wroom-prod\`
+  après une phase 2 pioarduino sans resynchronisation phase 1 (`.pio_artifacts` vide).
+- **Backtrace décodée** : `memset` → `read_id_core` → `esp_flash_read_chip_id` →
+  `esp_flash_init_main` → `__esp_system_init_fn_init_flash` (avant tout code applicatif).
+- **Correctifs** :
+  - `tools/pio_flash_bundle.py` : détection bundle stale, refresh, blocage upload.
+  - `tools/pio_wroom_upload_bundle.py` : refuse un flash si bootloader/partitions plus
+    anciens que `firmware.bin` (> 3600 s, écart phase 1/2 pioarduino).
+  - `tools/verify_flash_bundle.ps1` : vérif temporelle obligatoire (plus seulement tailles).
+  - `tools/Ensure-WroomFlashBundle.ps1` : recovery auto `clean` + rebuild avant flash.
+  - `erase_flash_fs_monitor_5min_analyze.ps1` : étape 1b bundle + `--upload-port` explicite.
+  - `pio_save_boot_artifacts.py` : sync + manifest `flash_bundle_manifest.json` post-build.
+- **Doc** : `docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md` §7 enrichi.
+
+---
+
+## Version 14.20 - 2026-06-23
+
+### Publication OTA canal test (wroom-beta) — validation hardware v14.19
+
+- Bump version pour déploiement OTA **ffp5-wroom-beta** (`esp32-wroom-beta/`, canal `test`).
+- Validation hardware préalable (erase + flash + monitor 5 min, COM7) : boot v14.19 stable,
+  WiFi/NTP OK, POST `post-data-test` HTTP 200, 0 crash/WDT, heap ~79 Ko libre en fin de run.
+- Correctif DRAM v14.19 (buffers sleep/wake partagés dans `mailer.cpp`) confirmé en lien et runtime.
+
+---
+
+## Version 14.19 - 2026-06-23
+
+### Correctif DRAM : link `wroom-beta` (overflow `dram0_0_seg`) + audit mémoire
+
+- **Cause** : `wroom-beta` hérite de `wroom-prod` (DRAM interne ~99,9 %) et ajoute
+  `ENABLE_SERIAL_MONITOR=1` + `CORE_DEBUG_LEVEL=1`, provoquant un dépassement de 16 octets
+  du segment `dram0_0_seg` au link (`region dram0_0_seg overflowed by 16 bytes`).
+- **Correctif intelligent** (`src/mailer.cpp`) : mutualisation des buffers `static` de
+  `sendSleepMail`/`sendWakeMail`. Mise en veille et réveil ne surviennent jamais
+  simultanément → un seul `g_sleepWakeMessage[1024]` + `g_sleepWakeSubject[64]` partagés
+  (via référence de tableau `char (&)[N]`, `sizeof` préservé, aucun autre changement de code).
+  **Économie ~1088 octets de DRAM interne** (≈68× l'overflow), marge confortable pour
+  prod **et** beta. `sendSync` copie le message dans `s_mailMessageBuffer` (buffers distincts,
+  pas d'aliasing).
+- **Audit mémoire général** (lecture seule, RAS) :
+  - Allocations dynamiques propres : `free` sur tous les chemins (OTA `buf`/`sig`), RAII
+    `unique_ptr` (`automatism_sync`), pool statique `net_request_pool` (chemins chauds),
+    ré-entrée OTA gardée par `m_otaLock` + `clearIntegrityFields()` (pas de fuite sha256/ECDSA).
+  - `String` confiné aux chemins froids/init (routes web, wifi, ota) — absent des boucles
+    chaudes (`app_tasks_*`, `automatism*`, `sensors`), conforme aux règles cœur.
+  - Stacks de tâches statiques (DRAM) déjà ajustées via HWM ; seuils heap (`HeapConfig`)
+    et buffers (`BufferConfig`) déjà profilés WROOM/S3.
+- **Outil** : `tools/analyze_dram_map.py` (analyse des plus gros contributeurs `.dram0.bss/.data`).
+
+---
+
+## Version 14.18 - 2026-06-23
+
+### Publication OTA canal test (wroom-beta)
+
+- Bump version pour déploiement OTA **ffp5-wroom-beta** (`esp32-wroom-beta/`, canal `test` dans `metadata.json`).
+- Validation hardware préalable : erase + flash + monitor 5 min sur COM7 (WiFi, NTP, POST `post-data-test` OK).
+
+---
+
 ## Version 14.17 - 2026-06-23
 
 ### Sécurité OTA : vérification au boot (anti-rollback réel) + authenticité sha256/ECDSA

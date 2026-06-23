@@ -187,6 +187,40 @@ Mélanger un `firmware.bin` OTA (autre sdkconfig) avec un bootloader d’un autr
 
 **Cause fréquente (2026-06)** : `firmware.bin` **&lt; 1,2 Mo** (~800 Ko) = build pioarduino **incomplet** (phase 1) flashé par erreur → boot loop immédiat. Garde-fous : `tools/pio_verify_wroom_sdkconfig.py` (post-build), `tools/verify_wroom_sdkconfig.ps1`, `tools/verify_flash_bundle.ps1`.
 
+### Incident documenté (2026-06-23, wroom-prod)
+
+Symptôme après **erase + workflow** : boucle `Cache error` / `Cache disabled but cached memory region accessed`, backtrace dans `esp_flash_read_chip_id` → **aucun** `BOOT FFP5CS`.
+
+| Fichier | Date observée | Taille |
+|---------|---------------|--------|
+| `firmware.bin` | 23/06 (build récent) | ~1,56 Mo |
+| `bootloader.bin` | **18/06** (obsolète) | 23 Ko |
+| `partitions.bin` | **18/06** (obsolète) | 3 Ko |
+
+La phase 2 Arduino régénère `firmware.bin` sans réécrire bootloader/partitions ; si `.pio_artifacts/<env>/` est vide, les vieux binaires racine restent et `pio run -t upload` les combinait au nouveau firmware.
+
+**Prévention (v14.21+)** :
+
+| Outil | Rôle |
+|-------|------|
+| `tools/pio_flash_bundle.py` | Cohérence temporelle, refresh, manifest |
+| `tools/pio_wroom_upload_bundle.py` | Bloque l’upload si bundle stale |
+| `tools/verify_flash_bundle.ps1` | Échoue si écart bootloader/firmware &gt; 180 s |
+| `tools/Ensure-WroomFlashBundle.ps1` | Recovery : `pio run -t clean` + rebuild |
+| `erase_flash_fs_monitor_5min_analyze.ps1` | Étape **1b** avant flash + port explicite |
+
+Décodage backtrace : `.\decode_backtrace.ps1 -LogFile logs\monitor_*.log -Elf C:\pio-builds\ffp5cs\wroom-prod\firmware.elf`
+
+**Recovery manuelle** :
+
+```powershell
+cd firmwires\ffp5cs
+pio run -e wroom-prod -t clean
+pio run -e wroom-prod
+.\tools\verify_flash_bundle.ps1 -Environment wroom-prod
+pio run -e wroom-prod -t upload --upload-port COM7
+```
+
 **Jonction Windows** : après `pio run -t clean`, réparer via `pio_repair_build_junction.py` ou `Repair-N3PioBuildJunction` ; le workflow erase n’utilise plus clean par défaut (`-FullClean` pour recovery).
 
 ### sdkconfig WROOM (`sdkconfig_wroom_wdt.txt`)

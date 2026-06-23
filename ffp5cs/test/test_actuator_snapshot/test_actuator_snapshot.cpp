@@ -23,6 +23,12 @@ struct FakeActuators : public IActuators {
   void feedBigFish(uint16_t = 10) override {}
   void feedSmallFish(uint16_t = 10) override {}
   bool feedSequential(uint16_t = 10, uint16_t = 10, uint16_t = 2) override { return true; }
+  void setServoGrosRest(int) override {}
+  void setServoGrosFeed(int) override {}
+  void setServoGrosInter(int) override {}
+  void setServoPetitsRest(int) override {}
+  void setServoPetitsFeed(int) override {}
+  void setServoPetitsInter(int) override {}
   bool isSequentialFeedInProgress() const override { return seqFeed; }
   bool isTankPumpRunning() const override { return tankPump; }
   bool isAquaPumpRunning() const override { return aquaPump; }

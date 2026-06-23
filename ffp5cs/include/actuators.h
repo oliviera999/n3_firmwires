@@ -42,6 +42,8 @@ class Feeder {
  public:
   Feeder(int gpio, int restAngle = 88) : _gpio(gpio), _rest(restAngle) {}
   void begin();
+  void setRestAngle(int angle);
+  int getRestAngle() const { return _rest; }
   void dispense(int angle, uint16_t durationSec);
   void dispenseWithIntermediate(int feedAngle, int intermediateAngle, uint16_t durationSec);
   void returnToRest();

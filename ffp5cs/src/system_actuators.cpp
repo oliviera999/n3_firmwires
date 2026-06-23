@@ -21,6 +21,7 @@ void smallFeedTimerCallback(TimerHandle_t timer) {
 }  // namespace
 
 void SystemActuators::begin() {
+  applyServoConfigToFeeders();
   feederBig.begin();
   feederSmall.begin();
   // Pompe aquarium ON par défaut
@@ -83,10 +84,51 @@ void SystemActuators::startLight() { light.on(); LOG(LOG_INFO, "[Event] Light ON
 void SystemActuators::stopLight()  { light.off(); LOG(LOG_INFO, "[Event] Light OFF"); }
 
 // Méthodes pour la nourriture
-// durationSec : durée pendant laquelle le servo reste dans la position de distribution.
-// Valeur par défaut : 10 s pour conserver la compatibilité avec les appels existants.
-void SystemActuators::feedBigFish(uint16_t durationSec)   { LOG(LOG_INFO, "[Event] Feed big fish %u s", durationSec); feederBig.dispenseWithIntermediate(140, 45, durationSec); }
-void SystemActuators::feedSmallFish(uint16_t durationSec) { LOG(LOG_INFO, "[Event] Feed small fish %u s", durationSec); feederSmall.dispenseWithIntermediate(140, 45, durationSec); }
+void SystemActuators::applyServoConfigToFeeders() {
+  feederBig.setRestAngle(_servoGrosRest);
+  feederSmall.setRestAngle(_servoPetitsRest);
+}
+
+void SystemActuators::setServoAngles(bool big, int rest, int feed, int inter) {
+  rest = clampServoAngle(rest);
+  feed = clampServoAngle(feed);
+  inter = clampServoAngle(inter);
+  if (big) {
+    _servoGrosRest = rest;
+    _servoGrosFeed = feed;
+    _servoGrosInter = inter;
+    feederBig.setRestAngle(_servoGrosRest);
+  } else {
+    _servoPetitsRest = rest;
+    _servoPetitsFeed = feed;
+    _servoPetitsInter = inter;
+    feederSmall.setRestAngle(_servoPetitsRest);
+  }
+}
+
+void SystemActuators::setServoGrosRest(int angle) {
+  _servoGrosRest = clampServoAngle(angle);
+  feederBig.setRestAngle(_servoGrosRest);
+}
+void SystemActuators::setServoGrosFeed(int angle) { _servoGrosFeed = clampServoAngle(angle); }
+void SystemActuators::setServoGrosInter(int angle) { _servoGrosInter = clampServoAngle(angle); }
+void SystemActuators::setServoPetitsRest(int angle) {
+  _servoPetitsRest = clampServoAngle(angle);
+  feederSmall.setRestAngle(_servoPetitsRest);
+}
+void SystemActuators::setServoPetitsFeed(int angle) { _servoPetitsFeed = clampServoAngle(angle); }
+void SystemActuators::setServoPetitsInter(int angle) { _servoPetitsInter = clampServoAngle(angle); }
+
+void SystemActuators::feedBigFish(uint16_t durationSec) {
+  LOG(LOG_INFO, "[Event] Feed big fish %u s (angles %d/%d/%d)", durationSec,
+      _servoGrosRest, _servoGrosFeed, _servoGrosInter);
+  feederBig.dispenseWithIntermediate(_servoGrosFeed, _servoGrosInter, durationSec);
+}
+void SystemActuators::feedSmallFish(uint16_t durationSec) {
+  LOG(LOG_INFO, "[Event] Feed small fish %u s (angles %d/%d/%d)", durationSec,
+      _servoPetitsRest, _servoPetitsFeed, _servoPetitsInter);
+  feederSmall.dispenseWithIntermediate(_servoPetitsFeed, _servoPetitsInter, durationSec);
+}
 
 // Nourrissage séquentiel pour éviter les conflits de puissance
 bool SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDurationSec, uint16_t delayBetweenSec) {
@@ -103,7 +145,7 @@ bool SystemActuators::feedSequential(uint16_t bigDurationSec, uint16_t smallDura
 
   LOG(LOG_INFO, "Phase 1: Nourrissage gros poissons");
   Serial.println("[Event] Feed phase 1: big fish");
-  feederBig.dispenseWithIntermediate(140, 45, bigDurationSec);
+  feederBig.dispenseWithIntermediate(_servoGrosFeed, _servoGrosInter, bigDurationSec);
 
   const uint32_t totalBigTimeMs = static_cast<uint32_t>(bigDurationSec + (bigDurationSec / 2U)) * 1000UL;
   const uint32_t delayMs = static_cast<uint32_t>(delayBetweenSec) * 1000UL;

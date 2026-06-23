@@ -35,6 +35,9 @@ namespace GPIODefaults {
     constexpr float HEAT_THRESHOLD_C = 18.0f; // Seuil chauffage (°C)
     constexpr int FEED_BIG_DURATION_SEC = 3;  // Durée nourrissage gros (s)
     constexpr int FEED_SMALL_DURATION_SEC = 2;// Durée nourrissage petits (s)
+    constexpr int SERVO_REST_ANGLE = 88;      // Angle repos servo nourrissage (°)
+    constexpr int SERVO_FEED_ANGLE = 140;     // Angle distribution (°)
+    constexpr int SERVO_INTER_ANGLE = 45;     // Angle intermédiaire retour (°)
 }
 
 // Type de variable pour validation et sérialisation
@@ -106,6 +109,12 @@ namespace GPIOMap {
     constexpr GPIOMapping LIM_FLOOD     = {114, GPIOType::CONFIG_INT, "limFlood", "limFlood", "limFlood", "Limite inondation", 8};
     constexpr GPIOMapping WAKEUP        = {115, GPIOType::CONFIG_BOOL, "wakeup", "WakeUp", "forceWakeUp", "Forcer réveil", false};
     constexpr GPIOMapping FREQ_WAKEUP   = {116, GPIOType::CONFIG_INT, "freqWake", "FreqWakeUp", "freqWakeSec", "Fréq réveil", 600};
+    constexpr GPIOMapping SERVO_GROS_REST   = {118, GPIOType::CONFIG_INT, "srvGrRest", "angleReposGros", "servoGrosRest", "Angle repos gros", GPIODefaults::SERVO_REST_ANGLE};
+    constexpr GPIOMapping SERVO_GROS_FEED   = {119, GPIOType::CONFIG_INT, "srvGrFeed", "angleDistribGros", "servoGrosFeed", "Angle distrib gros", GPIODefaults::SERVO_FEED_ANGLE};
+    constexpr GPIOMapping SERVO_GROS_INTER  = {120, GPIOType::CONFIG_INT, "srvGrInter", "angleInterGros", "servoGrosInter", "Angle inter gros", GPIODefaults::SERVO_INTER_ANGLE};
+    constexpr GPIOMapping SERVO_PETITS_REST = {121, GPIOType::CONFIG_INT, "srvPtRest", "angleReposPetits", "servoPetitsRest", "Angle repos petits", GPIODefaults::SERVO_REST_ANGLE};
+    constexpr GPIOMapping SERVO_PETITS_FEED = {122, GPIOType::CONFIG_INT, "srvPtFeed", "angleDistribPetits", "servoPetitsFeed", "Angle distrib petits", GPIODefaults::SERVO_FEED_ANGLE};
+    constexpr GPIOMapping SERVO_PETITS_INTER= {123, GPIOType::CONFIG_INT, "srvPtInter", "angleInterPetits", "servoPetitsInter", "Angle inter petits", GPIODefaults::SERVO_INTER_ANGLE};
     
     // Array pour itération
     constexpr GPIOMapping ALL_MAPPINGS[] = {
@@ -114,7 +123,9 @@ namespace GPIOMap {
         EMAIL_ADDR, EMAIL_EN, AQ_THRESHOLD, TANK_THRESHOLD, HEAT_THRESHOLD,
         FEED_MORNING, FEED_NOON, FEED_EVENING,
         RESET_CMD, FEED_BIG_DUR, FEED_SMALL_DUR, REFILL_DUR, LIM_FLOOD,
-        WAKEUP, FREQ_WAKEUP
+        WAKEUP, FREQ_WAKEUP,
+        SERVO_GROS_REST, SERVO_GROS_FEED, SERVO_GROS_INTER,
+        SERVO_PETITS_REST, SERVO_PETITS_FEED, SERVO_PETITS_INTER
     };
     constexpr size_t MAPPING_COUNT = sizeof(ALL_MAPPINGS) / sizeof(GPIOMapping);
     

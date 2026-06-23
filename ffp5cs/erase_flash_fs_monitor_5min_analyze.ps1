@@ -42,6 +42,8 @@ $projectRoot = $PSScriptRoot
 Set-Location $projectRoot
 
 . (Join-Path $PSScriptRoot "scripts\Release-ComPort.ps1")
+$ensureBundlePath = Join-Path $PSScriptRoot "tools\Ensure-WroomFlashBundle.ps1"
+if (Test-Path -LiteralPath $ensureBundlePath) { . $ensureBundlePath }
 $helpersPath = Join-Path $PSScriptRoot "..\scripts\Get-PioBuildHelpers.ps1"
 if (Test-Path -LiteralPath $helpersPath) { . $helpersPath }
 
@@ -112,6 +114,11 @@ Write-Host ""
 
 # 0. Build (tous environnements, comme wroom-test) — sauf si -SkipBuild
 if (-not $SkipBuild) {
+    if ($Environment -match '^wroom-' -and $Environment -ne 'wroom-tls-test') {
+        if (Get-Command Repair-N3PioBuildJunction -ErrorAction SilentlyContinue) {
+            $null = Repair-N3PioBuildJunction -ProjectRoot $projectRoot -Environment $Environment
+        }
+    }
     Write-Host "0. Build $Environment..." -ForegroundColor Cyan
     $doClean = $FullClean -and -not $SkipClean
     if ($doClean) {
@@ -136,11 +143,14 @@ if (-not $SkipBuild) {
             & $verifyScript -Environment $Environment
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }
-        $bundleScript = Join-Path $projectRoot "tools\verify_flash_bundle.ps1"
-        if (Test-Path -LiteralPath $bundleScript) {
-            & $bundleScript -Environment $Environment
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "   AVERTISSEMENT: bundle flash incomplet (bootloader/partitions) ; upload PIO peut encore reussir." -ForegroundColor Yellow
+        if (Get-Command Ensure-WroomFlashBundle -ErrorAction SilentlyContinue) {
+            Ensure-WroomFlashBundle -Environment $Environment -ProjectRoot $projectRoot -PioCli $pioCli
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        } else {
+            $bundleScript = Join-Path $projectRoot "tools\verify_flash_bundle.ps1"
+            if (Test-Path -LiteralPath $bundleScript) {
+                & $bundleScript -Environment $Environment
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             }
         }
     }
@@ -154,6 +164,10 @@ if ($SkipBuild -and $Environment -match '^wroom-' -and $Environment -ne 'wroom-t
     if (Test-Path -LiteralPath $verifyScript) {
         Write-Host "0b. Verification build existant avant flash..." -ForegroundColor Cyan
         & $verifyScript -Environment $Environment
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    if (Get-Command Ensure-WroomFlashBundle -ErrorAction SilentlyContinue) {
+        Ensure-WroomFlashBundle -Environment $Environment -ProjectRoot $projectRoot -PioCli $pioCli -NoRecover
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 }
@@ -184,9 +198,21 @@ if (-not $eraseOk) {
 Write-Host "   OK" -ForegroundColor Green
 Start-Sleep -Seconds 2
 
+# 1b. Jeu flash coherent (bootloader/partitions/firmware) — evite panic Cache error apres erase
+if ($Environment -match '^wroom-' -and $Environment -ne 'wroom-tls-test') {
+    if (Get-Command Ensure-WroomFlashBundle -ErrorAction SilentlyContinue) {
+        Write-Host "1b. Verification / recovery bundle flash WROOM..." -ForegroundColor Cyan
+        Ensure-WroomFlashBundle -Environment $Environment -ProjectRoot $projectRoot -PioCli $pioCli
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Write-Host "   OK" -ForegroundColor Green
+    }
+}
+
 # 2. Upload firmware
 Write-Host "2. Flash firmware ($Environment)..." -ForegroundColor Cyan
-& $pioCli run -e $Environment --target upload
+$uploadArgs = @("run", "-e", $Environment, "--target", "upload")
+if ($Port) { $uploadArgs += @("--upload-port", $Port) }
+& $pioCli @uploadArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "   OK" -ForegroundColor Green
 Start-Sleep -Seconds 3

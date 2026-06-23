@@ -45,6 +45,14 @@ struct IActuators {
   virtual bool feedSequential(uint16_t bigDurationSec = 10, uint16_t smallDurationSec = 10,
                               uint16_t delayBetweenSec = 2) = 0;
 
+  // Angles servo nourrissage (GPIO 118-123)
+  virtual void setServoGrosRest(int angle) = 0;
+  virtual void setServoGrosFeed(int angle) = 0;
+  virtual void setServoGrosInter(int angle) = 0;
+  virtual void setServoPetitsRest(int angle) = 0;
+  virtual void setServoPetitsFeed(int angle) = 0;
+  virtual void setServoPetitsInter(int angle) = 0;
+
   // États (lecture seule)
   virtual bool isSequentialFeedInProgress() const = 0;
   virtual bool isTankPumpRunning() const = 0;
