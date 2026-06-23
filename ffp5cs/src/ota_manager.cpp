@@ -1,5 +1,6 @@
 #include "ota_manager.h"
 #include "ota_url.h"  // downgradeToHttp (extrait, testé nativement)
+#include "ota_artifact_select.h"  // readIntegrityFields (sha256/signature, v14.17)
 #include "nvs_manager.h" // v11.109
 #include "nvs_keys.h"
 #include <WiFi.h>
@@ -50,6 +51,8 @@ OTAManager::OTAManager()
     m_remoteVersion[0] = '\0';
     m_firmwareUrl[0] = '\0';
     m_firmwareMD5[0] = '\0';
+    m_firmwareSha256[0] = '\0';
+    m_firmwareSignature[0] = '\0';
     m_filesystemUrl[0] = '\0';
     m_filesystemMD5[0] = '\0';
 }
@@ -195,6 +198,30 @@ bool OTAManager::checkForUpdate() {
     m_firmwareSize = selSize;
     strncpy(m_firmwareMD5, selMD5, sizeof(m_firmwareMD5) - 1);
     m_firmwareMD5[sizeof(m_firmwareMD5) - 1] = '\0';
+
+    // v14.17 — Champs d'authenticité optionnels (sha256 + signature ECDSA), même cascade
+    // que la sélection d'artefact. Absents => vides => fallback MD5 seul (rétro-compatible).
+    {
+        const char* envNameSig = "prod";
+        #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
+            envNameSig = "test";
+        #endif
+        const char* modelNameSig = "esp32-wroom";
+        #if defined(BOARD_S3)
+            modelNameSig = "esp32-s3";
+        #endif
+        OtaArtifactSelect::readIntegrityFields(doc, envNameSig, modelNameSig,
+                                               m_firmwareSha256, sizeof(m_firmwareSha256),
+                                               m_firmwareSignature, sizeof(m_firmwareSignature));
+        if (strlen(m_firmwareSha256) > 0) {
+            char logSha[96];
+            snprintf(logSha, sizeof(logSha), "🔐 sha256 metadata: '%s'", m_firmwareSha256);
+            log(logSha);
+        }
+        log(strlen(m_firmwareSignature) > 0
+                ? "🔐 Signature ECDSA présente dans metadata"
+                : "ℹ️ Pas de signature ECDSA dans metadata (vérif MD5 seule)");
+    }
 
 #if defined(BOARD_WROOM) || defined(BOARD_S3)
     // OTA WROOM/S3 en HTTP: convertir les URLs HTTPS → HTTP.

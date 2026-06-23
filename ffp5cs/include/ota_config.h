@@ -37,6 +37,14 @@ namespace OTAConfig {
     constexpr size_t OTA_APP_PARTITION_SIZE = 1744896;  // 0x1A0000
 #endif
 
+    // v14.17 — Authenticité OTA (sha256 + signature ECDSA, clé publique ota_signing_pubkey.h).
+    // Le binaire OTA transite en HTTP : le MD5 ne protège que de la corruption, pas d'une
+    // substitution (MITM). La signature ECDSA du sha256 garantit l'authenticité.
+    //  - false : signature vérifiée UNIQUEMENT si présente dans metadata.json (phase de
+    //            transition rétro-compatible MD5 — cf. docs/MIGRATION_HMAC_HTTPS.md v13.80).
+    //  - true  : OTA REFUSÉE si signature absente ou invalide (cible v13.90 / prod durci).
+    constexpr bool OTA_REQUIRE_SIGNATURE = false;
+
     // Mode DANGEREUX: forcer l'OTA avec taille flexible (taille/MD5 partiellement assouplis).
     // À false : le serveur doit envoyer Content-Length correct pour firmware.bin et littlefs.bin.
     // - true : UPDATE_SIZE_UNKNOWN, ignore écarts de taille, Update.end(true).
