@@ -107,6 +107,12 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 | Heure soir | `bouffeSoir` | `"107"`, `bouffeSoir` | `bouffeSoir` | `bouffeSoir` | dans `remote_json` |
 | Duree gros | `tempsGros` | `"111"`, `tempsGros` | `tempsGros` | `tempsGros` | dans `remote_json` |
 | Duree petits | `tempsPetits` | `"112"`, `tempsPetits` | `tempsPetits` | `tempsPetits` | dans `remote_json` |
+| Angle repos gros | `angleReposGros` | `"118"`, `angleReposGros` | `servoGrosRest` | `angleReposGros` | dans `remote_json` |
+| Angle distrib gros | `angleDistribGros` | `"119"`, `angleDistribGros` | `servoGrosFeed` | `angleDistribGros` | dans `remote_json` |
+| Angle inter gros | `angleInterGros` | `"120"`, `angleInterGros` | `servoGrosInter` | `angleInterGros` | dans `remote_json` |
+| Angle repos petits | `angleReposPetits` | `"121"`, `angleReposPetits` | `servoPetitsRest` | `angleReposPetits` | dans `remote_json` |
+| Angle distrib petits | `angleDistribPetits` | `"122"`, `angleDistribPetits` | `servoPetitsFeed` | `angleDistribPetits` | dans `remote_json` |
+| Angle inter petits | `angleInterPetits` | `"123"`, `angleInterPetits` | `servoPetitsInter` | `angleInterPetits` | dans `remote_json` |
 | Flag petits | `bouffePetits` | `"108"`, `bouffePetits` | `bouffePetits` | `bouffePetits` | dans `remote_json` |
 | Flag gros | `bouffeGros` | `"109"`, `bouffeGros` | `bouffeGros` | `bouffeGros` | dans `remote_json` |
 
@@ -320,6 +326,12 @@ Ces cles numeriques sont utilisees en BDD et doivent etre conservees indefinimen
 | `"114"` | Limite flood | `limFlood` |
 | `"115"` | Wake up | `WakeUp` |
 | `"116"` | Frequence wakeup | `FreqWakeUp` |
+| `"118"` | Angle repos gros | `angleReposGros` |
+| `"119"` | Angle distrib gros | `angleDistribGros` |
+| `"120"` | Angle inter gros | `angleInterGros` |
+| `"121"` | Angle repos petits | `angleReposPetits` |
+| `"122"` | Angle distrib petits | `angleDistribPetits` |
+| `"123"` | Angle inter petits | `angleInterPetits` |
 
 ---
 

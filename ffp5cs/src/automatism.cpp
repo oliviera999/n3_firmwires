@@ -384,6 +384,38 @@ void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
             tempsPetits = static_cast<uint16_t>(value);
         }
     }
+
+    auto parseServoAngle = [&parseIntValue](ArduinoJson::JsonVariantConst value) -> int {
+        int a = parseIntValue(value);
+        if (a < 0) a = 0;
+        if (a > 180) a = 180;
+        return a;
+    };
+
+    if (doc.containsKey("angleReposGros") || doc.containsKey("118")) {
+        auto v = doc.containsKey("angleReposGros") ? doc["angleReposGros"] : doc["118"];
+        _acts.setServoGrosRest(parseServoAngle(v));
+    }
+    if (doc.containsKey("angleDistribGros") || doc.containsKey("119")) {
+        auto v = doc.containsKey("angleDistribGros") ? doc["angleDistribGros"] : doc["119"];
+        _acts.setServoGrosFeed(parseServoAngle(v));
+    }
+    if (doc.containsKey("angleInterGros") || doc.containsKey("120")) {
+        auto v = doc.containsKey("angleInterGros") ? doc["angleInterGros"] : doc["120"];
+        _acts.setServoGrosInter(parseServoAngle(v));
+    }
+    if (doc.containsKey("angleReposPetits") || doc.containsKey("121")) {
+        auto v = doc.containsKey("angleReposPetits") ? doc["angleReposPetits"] : doc["121"];
+        _acts.setServoPetitsRest(parseServoAngle(v));
+    }
+    if (doc.containsKey("angleDistribPetits") || doc.containsKey("122")) {
+        auto v = doc.containsKey("angleDistribPetits") ? doc["angleDistribPetits"] : doc["122"];
+        _acts.setServoPetitsFeed(parseServoAngle(v));
+    }
+    if (doc.containsKey("angleInterPetits") || doc.containsKey("123")) {
+        auto v = doc.containsKey("angleInterPetits") ? doc["angleInterPetits"] : doc["123"];
+        _acts.setServoPetitsInter(parseServoAngle(v));
+    }
     
     // 105: Heure nourrissage matin
     if (doc.containsKey("bouffeMatin") || doc.containsKey("bm") || doc.containsKey("105")) {

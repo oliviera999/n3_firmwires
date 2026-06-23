@@ -12,6 +12,16 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.23 - 2026-06-23
+
+### Angles servo nourrissage configurables (contrat GPIO 118-123)
+
+- Six paramètres distants et locaux : repos / distribution / intermédiaire pour chaque moteur (gros et petits).
+- Persistance NVS via `remote_json` ; application dans `SystemActuators` et séquence `dispenseWithIntermediate`.
+- UI locale `/controles` et page serveur `aquaponie-control` alignées sur le contrat firmware-serveur.
+
+---
+
 ## Version 14.22 - 2026-06-23
 
 ### Publication OTA production (wroom-prod) — correctif bundle flash validé

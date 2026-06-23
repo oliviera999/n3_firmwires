@@ -1,5 +1,6 @@
 #pragma once
 #include "actuators.h"
+#include "gpio_mapping.h"
 #include "iactuators.h"  // C4: interface d'actionneurs (inversion de dépendance)
 #include "log.h" // Ajout pour permettre l'utilisation du macro LOG
 
@@ -38,9 +39,16 @@ struct SystemActuators : public IActuators {
 
   // Méthodes pour la nourriture
   // durationSec : durée pendant laquelle le servo reste dans la position de distribution.
-  // Valeur par défaut : 10 s pour conserver la compatibilité avec les appels existants.
   void feedBigFish(uint16_t durationSec = 10) override;
   void feedSmallFish(uint16_t durationSec = 10) override;
+
+  void setServoAngles(bool big, int rest, int feed, int inter);
+  void setServoGrosRest(int angle) override;
+  void setServoGrosFeed(int angle) override;
+  void setServoGrosInter(int angle) override;
+  void setServoPetitsRest(int angle) override;
+  void setServoPetitsFeed(int angle) override;
+  void setServoPetitsInter(int angle) override;
 
   // Nourrissage séquentiel pour éviter les conflits de puissance.
   // Retourne false uniquement si AUCUNE distribution n'a eu lieu (séquence déjà en cours).
@@ -63,4 +71,20 @@ struct SystemActuators : public IActuators {
   unsigned long getTankPumpTotalRuntime() const;
   unsigned long getTankPumpTotalStops() const;
   unsigned long getTankPumpLastStopTime() const;
+  
+ private:
+  static int clampServoAngle(int angle) {
+    if (angle < 0) return 0;
+    if (angle > 180) return 180;
+    return angle;
+  }
+
+  void applyServoConfigToFeeders();
+
+  int _servoGrosRest{GPIODefaults::SERVO_REST_ANGLE};
+  int _servoGrosFeed{GPIODefaults::SERVO_FEED_ANGLE};
+  int _servoGrosInter{GPIODefaults::SERVO_INTER_ANGLE};
+  int _servoPetitsRest{GPIODefaults::SERVO_REST_ANGLE};
+  int _servoPetitsFeed{GPIODefaults::SERVO_FEED_ANGLE};
+  int _servoPetitsInter{GPIODefaults::SERVO_INTER_ANGLE};
 };

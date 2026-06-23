@@ -261,8 +261,8 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
             if (!alreadyProcessed) {
                 // Ajouter à configDoc pour application
                 JsonVariantConst value = doc[textKey];
-                // v11.176: Limites augmentées (20 clés, 950 bytes) pour config complète serveur distant
-                if (configDoc.size() < 20 && configDoc.memoryUsage() < 950) {
+                // Limites config serveur distant (GPIO virtuels + clés textuelles)
+                if (configDoc.size() < 28 && configDoc.memoryUsage() < 1200) {
                     configDoc[textKey] = value;
                     hasVirtualConfig = true;
                     Serial.printf("[GPIOParser] Clé textuelle '%s' ajoutée au document de config\n", textKey);
@@ -277,8 +277,8 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         Serial.printf("[GPIOParser] Document JSON: %u éléments, taille: %u bytes\n", 
                      configDoc.size(), configDoc.memoryUsage());
         
-        // v11.176: Limites augmentées (25 clés, 1000 bytes) pour config complète serveur distant
-        if (configDoc.size() > 0 && configDoc.size() < 25 && configDoc.memoryUsage() < 1000) {
+        // Limites config complète serveur distant (incl. angles servo GPIO 118-123)
+        if (configDoc.size() > 0 && configDoc.size() < 30 && configDoc.memoryUsage() < 1300) {
             // Vérification supplémentaire de la mémoire disponible
             size_t freeHeap = ESP.getFreeHeap();
             if (freeHeap > 40000) { // Minimum 40KB de heap libre (réduit de 50KB)
@@ -373,7 +373,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
             if (configKey && strlen(configKey) > 0) {
                 // v11.176: Limites augmentées (20 clés, 950 bytes) pour config complète serveur distant
                 // Vérifier que le document n'est pas plein avant d'ajouter
-                if (configDoc.size() < 20 && configDoc.memoryUsage() < 950) {
+                if (configDoc.size() < 28 && configDoc.memoryUsage() < 1200) {
                     // Utiliser directement la clé const char*
                     const char* keyStr = configKey;
                     
@@ -388,12 +388,20 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
                             ? atoi(value.as<const char*>())
                             : value.as<int>();
                         
-                        // Validation spécifique pour les heures de nourrissage (GPIO 105, 106, 107)
+                        // Validation heures nourrissage (GPIO 105, 106, 107)
                         if (gpio == 105 || gpio == 106 || gpio == 107) {
                             if (intVal < 0 || intVal > 23) {
                                 Serial.printf("[GPIOParser] ⚠️ Heure invalide GPIO %d: %d (doit être 0-23), ignorée\n", 
                                              gpio, intVal);
                                 return; // Ignorer la valeur invalide
+                            }
+                        }
+                        // Validation angles servo nourrissage (GPIO 118-123)
+                        if (gpio >= 118 && gpio <= 123) {
+                            if (intVal < 0 || intVal > 180) {
+                                Serial.printf("[GPIOParser] ⚠️ Angle servo invalide GPIO %d: %d (doit être 0-180), ignorée\n",
+                                             gpio, intVal);
+                                return;
                             }
                         }
                         
@@ -510,6 +518,18 @@ const char* GPIOParser::mapGPIOToConfigKey(uint8_t gpio, JsonVariantConst value)
             return "forceWakeUp";
         case 116: // FREQ_WAKEUP
             return "FreqWakeUp";
+        case 118:
+            return "angleReposGros";
+        case 119:
+            return "angleDistribGros";
+        case 120:
+            return "angleInterGros";
+        case 121:
+            return "angleReposPetits";
+        case 122:
+            return "angleDistribPetits";
+        case 123:
+            return "angleInterPetits";
         default:
             return nullptr;
     }

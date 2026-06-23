@@ -447,6 +447,12 @@ function displayDbVars(db) {
       bouffeSoir: 19,
       tempsGros: 10,
       tempsPetits: 10,
+      angleReposGros: 88,
+      angleDistribGros: 140,
+      angleInterGros: 45,
+      angleReposPetits: 88,
+      angleDistribPetits: 140,
+      angleInterPetits: 45,
       aqThreshold: 15,
       tankThreshold: 8,
       chauffageThreshold: 25.0,
@@ -467,6 +473,12 @@ function displayDbVars(db) {
     updateDbElement('dbFeedEvening', dataOk && db.bouffeSoir !== undefined && db.bouffeSoir !== null ? db.bouffeSoir : defaultValues.bouffeSoir);
     updateDbElement('dbFeedBigDur', dataOk && db.tempsGros !== undefined && db.tempsGros !== null ? db.tempsGros : defaultValues.tempsGros);
     updateDbElement('dbFeedSmallDur', dataOk && db.tempsPetits !== undefined && db.tempsPetits !== null ? db.tempsPetits : defaultValues.tempsPetits);
+    updateDbElement('dbServoGrosRest', dataOk && db.angleReposGros != null ? db.angleReposGros : defaultValues.angleReposGros);
+    updateDbElement('dbServoGrosFeed', dataOk && db.angleDistribGros != null ? db.angleDistribGros : defaultValues.angleDistribGros);
+    updateDbElement('dbServoGrosInter', dataOk && db.angleInterGros != null ? db.angleInterGros : defaultValues.angleInterGros);
+    updateDbElement('dbServoPetitsRest', dataOk && db.angleReposPetits != null ? db.angleReposPetits : defaultValues.angleReposPetits);
+    updateDbElement('dbServoPetitsFeed', dataOk && db.angleDistribPetits != null ? db.angleDistribPetits : defaultValues.angleDistribPetits);
+    updateDbElement('dbServoPetitsInter', dataOk && db.angleInterPetits != null ? db.angleInterPetits : defaultValues.angleInterPetits);
     updateDbElement('dbAqThreshold', dataOk && db.aqThreshold !== undefined && db.aqThreshold !== null ? db.aqThreshold : defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', dataOk && db.tankThreshold !== undefined && db.tankThreshold !== null ? db.tankThreshold : defaultValues.tankThreshold);
     updateDbElement('dbHeaterThreshold', dataOk && (heaterVal !== undefined && heaterVal !== null) ? parseFloat(heaterVal).toFixed(1) : defaultValues.chauffageThreshold.toFixed(1));
@@ -618,6 +630,12 @@ window.loadDbVars = async function loadDbVars() {
       bouffeSoir: 19,
       tempsGros: 10,
       tempsPetits: 10,
+      angleReposGros: 88,
+      angleDistribGros: 140,
+      angleInterGros: 45,
+      angleReposPetits: 88,
+      angleDistribPetits: 140,
+      angleInterPetits: 45,
       aqThreshold: 15,
       tankThreshold: 8,
       chauffageThreshold: 25.0,
@@ -639,6 +657,12 @@ window.loadDbVars = async function loadDbVars() {
     updateDbElement('dbFeedEvening', defaultValues.bouffeSoir);
     updateDbElement('dbFeedBigDur', defaultValues.tempsGros);
     updateDbElement('dbFeedSmallDur', defaultValues.tempsPetits);
+    updateDbElement('dbServoGrosRest', defaultValues.angleReposGros);
+    updateDbElement('dbServoGrosFeed', defaultValues.angleDistribGros);
+    updateDbElement('dbServoGrosInter', defaultValues.angleInterGros);
+    updateDbElement('dbServoPetitsRest', defaultValues.angleReposPetits);
+    updateDbElement('dbServoPetitsFeed', defaultValues.angleDistribPetits);
+    updateDbElement('dbServoPetitsInter', defaultValues.angleInterPetits);
     updateDbElement('dbAqThreshold', defaultValues.aqThreshold);
     updateDbElement('dbTankThreshold', defaultValues.tankThreshold);
     updateDbElement('dbHeaterThreshold', defaultValues.chauffageThreshold.toFixed(1));

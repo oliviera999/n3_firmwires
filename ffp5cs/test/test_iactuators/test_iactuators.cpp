@@ -31,6 +31,12 @@ struct FakeActuators : public IActuators {
     ++feedSeqCalls; lastBigDur = bigDurationSec; lastSmallDur = smallDurationSec;
     seqFeed = true; return true;
   }
+  void setServoGrosRest(int) override {}
+  void setServoGrosFeed(int) override {}
+  void setServoGrosInter(int) override {}
+  void setServoPetitsRest(int) override {}
+  void setServoPetitsFeed(int) override {}
+  void setServoPetitsInter(int) override {}
   bool isSequentialFeedInProgress() const override { return seqFeed; }
   bool isTankPumpRunning() const override { return tankPump; }
   bool isAquaPumpRunning() const override { return aquaPump; }
