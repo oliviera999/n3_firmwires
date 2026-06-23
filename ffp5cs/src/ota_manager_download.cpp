@@ -214,8 +214,8 @@ esp_http_client_handle_t OTAManager::openFirmwareConnection(const char* url, siz
 // authentifié n'est jamais marqué bootable. Memory-light : un seul buffer heap de 1 Ko +
 // contextes mbedtls transitoires (libérés sur tous les chemins).
 bool OTAManager::verifyFlashedFirmware(const esp_partition_t* partition, size_t firmwareSize) {
-    const bool haveSha = (strlen(m_firmwareSha256) == 64);
-    const bool haveSig = (strlen(m_firmwareSignature) > 0);
+    const bool haveSha = (m_firmwareSha256 && strlen(m_firmwareSha256) == 64);
+    const bool haveSig = (m_firmwareSignature && strlen(m_firmwareSignature) > 0);
 
     // Aucun champ d'authenticité : phase de transition (MD5 déjà vérifié par Update.end()).
     if (!haveSha && !haveSig) {

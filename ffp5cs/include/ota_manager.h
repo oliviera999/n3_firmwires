@@ -31,9 +31,11 @@ private:
     int m_firmwareSize;
     char m_firmwareMD5[33];
     // v14.17 — Authenticité OTA (optionnelle tant que le serveur ne les publie pas) :
-    // sha256 hex (64+NUL) et signature ECDSA base64 du firmware, lus depuis metadata.json.
-    char m_firmwareSha256[65];
-    char m_firmwareSignature[256];
+    // sha256 hex (64+NUL) et signature ECDSA base64. Heap-alloués UNIQUEMENT quand une MAJ
+    // signée est détectée (sinon nullptr), pour ne pas immobiliser ~320 o de DRAM résidente
+    // dans l'objet global g_appContext.otaManager (budget DRAM wroom-test très serré).
+    char* m_firmwareSha256;
+    char* m_firmwareSignature;
     
     // Variables pour les fichiers filesystem
     char m_filesystemUrl[256];
@@ -82,6 +84,9 @@ private:
     // invalide, ou signature absente quand OTAConfig::OTA_REQUIRE_SIGNATURE. Si ni sha256 ni
     // signature ne sont fournis et que la signature n'est pas obligatoire : true (MD5 seul).
     bool verifyFlashedFirmware(const esp_partition_t* partition, size_t firmwareSize);
+
+    // v14.17 — Libère les buffers heap d'authenticité (sha256/signature) et les remet à nullptr.
+    void clearIntegrityFields();
     
     // Tâche dédiée pour l'OTA
     static void updateTask(void* parameter);
