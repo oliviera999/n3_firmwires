@@ -30,6 +30,10 @@ private:
     char m_firmwareUrl[256];
     int m_firmwareSize;
     char m_firmwareMD5[33];
+    // v14.17 — Authenticité OTA (optionnelle tant que le serveur ne les publie pas) :
+    // sha256 hex (64+NUL) et signature ECDSA base64 du firmware, lus depuis metadata.json.
+    char m_firmwareSha256[65];
+    char m_firmwareSignature[256];
     
     // Variables pour les fichiers filesystem
     char m_filesystemUrl[256];
@@ -70,6 +74,14 @@ private:
     
     // Téléchargement des fichiers filesystem
     bool downloadFilesystem(const char* url, size_t expectedSize, const char* expectedMD5);
+
+    // v14.17 — Vérifie l'intégrité ÉTENDUE (sha256 + signature ECDSA) de l'image flashée
+    // en la relisant depuis la partition cible, AVANT esp_ota_set_boot_partition. Lecture
+    // depuis le flash (pas le réseau) : memory-light (buffer heap 1 Ko + contextes mbedtls
+    // transitoires). Retourne false (=> pas de marquage boot) sur mismatch sha256, signature
+    // invalide, ou signature absente quand OTAConfig::OTA_REQUIRE_SIGNATURE. Si ni sha256 ni
+    // signature ne sont fournis et que la signature n'est pas obligatoire : true (MD5 seul).
+    bool verifyFlashedFirmware(const esp_partition_t* partition, size_t firmwareSize);
     
     // Tâche dédiée pour l'OTA
     static void updateTask(void* parameter);

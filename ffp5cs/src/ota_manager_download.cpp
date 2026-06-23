@@ -12,6 +12,7 @@
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_task_wdt.h>
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
@@ -20,6 +21,12 @@
 #include <freertos/task.h>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
+#include <strings.h>
+#include <mbedtls/md.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/pk.h>
+#include "ota_signing_pubkey.h"  // OTA_SIGNING_PUBLIC_KEY_PEM (v14.17)
 #include "config.h"
 #include "mailer.h"
 #include "automatism.h"
@@ -198,6 +205,149 @@ esp_http_client_handle_t OTAManager::openFirmwareConnection(const char* url, siz
     esp_http_client_fetch_headers(client);
     outStatus = esp_http_client_get_status_code(client);
     return client;
+}
+
+// v14.17 — Vérification d'authenticité du binaire flashé (sha256 + signature ECDSA).
+// Relit la partition cible (pas le réseau) pour hacher EXACTEMENT ce qui est en flash,
+// puis compare le sha256 au champ metadata et vérifie la signature ECDSA. Appelée APRÈS
+// Update.end() (MD5/taille OK) et AVANT esp_ota_set_boot_partition : un binaire non
+// authentifié n'est jamais marqué bootable. Memory-light : un seul buffer heap de 1 Ko +
+// contextes mbedtls transitoires (libérés sur tous les chemins).
+bool OTAManager::verifyFlashedFirmware(const esp_partition_t* partition, size_t firmwareSize) {
+    const bool haveSha = (strlen(m_firmwareSha256) == 64);
+    const bool haveSig = (strlen(m_firmwareSignature) > 0);
+
+    // Aucun champ d'authenticité : phase de transition (MD5 déjà vérifié par Update.end()).
+    if (!haveSha && !haveSig) {
+        if (OTAConfig::OTA_REQUIRE_SIGNATURE) {
+            logError("Signature OTA obligatoire mais absente des metadata → refus");
+            return false;
+        }
+        log("⚠️ Intégrité étendue absente (sha256/signature) → MD5 seul (déjà validé)");
+        return true;
+    }
+
+    if (!partition || firmwareSize == 0) {
+        logError("Partition/taille invalide pour vérification sha256");
+        return false;
+    }
+
+    // --- sha256 du binaire flashé (relecture flash par blocs de 1 Ko) ---
+    uint8_t* buf = static_cast<uint8_t*>(malloc(1024));
+    if (!buf) { logError("OOM buffer vérification sha256"); return false; }
+
+    mbedtls_md_context_t mdCtx;
+    mbedtls_md_init(&mdCtx);
+    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (!mdInfo || mbedtls_md_setup(&mdCtx, mdInfo, 0) != 0 || mbedtls_md_starts(&mdCtx) != 0) {
+        logError("Init mbedtls sha256 échouée");
+        mbedtls_md_free(&mdCtx);
+        free(buf);
+        return false;
+    }
+
+    bool ok = true;
+    size_t offset = 0;
+    while (offset < firmwareSize) {
+        size_t chunk = firmwareSize - offset;
+        if (chunk > 1024) chunk = 1024;
+        esp_err_t rerr = esp_partition_read(partition, offset, buf, chunk);
+        if (rerr != ESP_OK) {
+            char m[96];
+            snprintf(m, sizeof(m), "Lecture partition échouée @%u: %s",
+                     (unsigned)offset, esp_err_to_name(rerr));
+            logError(m);
+            ok = false;
+            break;
+        }
+        if (mbedtls_md_update(&mdCtx, buf, chunk) != 0) {
+            logError("mbedtls_md_update sha256 échec");
+            ok = false;
+            break;
+        }
+        offset += chunk;
+        if ((offset & 0x3FFFF) == 0 && esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();  // feed WDT tous les 256 Ko lus
+        }
+    }
+    free(buf);
+
+    uint8_t digest[32];
+    if (ok && mbedtls_md_finish(&mdCtx, digest) != 0) {
+        logError("mbedtls_md_finish sha256 échec");
+        ok = false;
+    }
+    mbedtls_md_free(&mdCtx);
+    if (!ok) return false;
+
+    char computedHex[65];
+    static const char* kHex = "0123456789abcdef";
+    for (size_t i = 0; i < 32; ++i) {
+        computedHex[i * 2]     = kHex[(digest[i] >> 4) & 0x0F];
+        computedHex[i * 2 + 1] = kHex[digest[i] & 0x0F];
+    }
+    computedHex[64] = '\0';
+
+    // --- Comparaison sha256 (si fourni dans metadata) ---
+    if (haveSha) {
+        if (strcasecmp(m_firmwareSha256, computedHex) != 0) {
+            char m[160];
+            snprintf(m, sizeof(m), "sha256 MISMATCH: metadata=%s calculé=%s",
+                     m_firmwareSha256, computedHex);
+            logError(m);
+            return false;
+        }
+        log("✅ sha256 du binaire flashé conforme aux metadata");
+    }
+
+    // --- Vérification signature ECDSA (si fournie) ---
+    if (haveSig) {
+        size_t sigMax = strlen(m_firmwareSignature);
+        uint8_t* sig = static_cast<uint8_t*>(malloc(sigMax));
+        if (!sig) { logError("OOM buffer signature"); return false; }
+
+        size_t sigLen = 0;
+        int b64 = mbedtls_base64_decode(sig, sigMax, &sigLen,
+                                        reinterpret_cast<const unsigned char*>(m_firmwareSignature), sigMax);
+        if (b64 != 0) {
+            char m[64];
+            snprintf(m, sizeof(m), "Signature base64 invalide (%d)", b64);
+            logError(m);
+            free(sig);
+            return false;
+        }
+
+        mbedtls_pk_context pk;
+        mbedtls_pk_init(&pk);
+        int pr = mbedtls_pk_parse_public_key(
+            &pk,
+            reinterpret_cast<const unsigned char*>(OTA_SIGNING_PUBLIC_KEY_PEM),
+            strlen(OTA_SIGNING_PUBLIC_KEY_PEM) + 1);
+        if (pr != 0) {
+            char m[64];
+            snprintf(m, sizeof(m), "Clé publique OTA invalide (%d)", pr);
+            logError(m);
+            mbedtls_pk_free(&pk);
+            free(sig);
+            return false;
+        }
+
+        int vr = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, digest, sizeof(digest), sig, sigLen);
+        mbedtls_pk_free(&pk);
+        free(sig);
+        if (vr != 0) {
+            char m[64];
+            snprintf(m, sizeof(m), "Signature OTA INVALIDE (%d) → refus", vr);
+            logError(m);
+            return false;
+        }
+        log("✅ Signature ECDSA du firmware VALIDE (authenticité confirmée)");
+    } else if (OTAConfig::OTA_REQUIRE_SIGNATURE) {
+        logError("Signature OTA obligatoire mais absente → refus");
+        return false;
+    }
+
+    return true;
 }
 
 bool OTAManager::downloadFirmwareAdaptiveResumable(const char* url, size_t expectedSize) {
@@ -408,7 +558,14 @@ bool OTAManager::downloadFirmwareAdaptiveResumable(const char* url, size_t expec
         return false;
     }
 
-    // MD5 validé : marquer la partition cible comme partition de boot.
+    // v14.17 — Authenticité (sha256 + signature ECDSA) AVANT tout marquage boot. Un binaire
+    // corrompu ou substitué (MITM HTTP) ne sera jamais rendu bootable, même si le MD5 passe.
+    if (!verifyFlashedFirmware(target_partition, totalWritten)) {
+        logError("Authenticité OTA non vérifiée → partition de boot NON modifiée");
+        return false;
+    }
+
+    // MD5 + sha256/signature validés : marquer la partition cible comme partition de boot.
     esp_err_t err = esp_ota_set_boot_partition(target_partition);
     if (err != ESP_OK) {
         snprintf(logMsg, sizeof(logMsg), "set_boot_partition échec: %s", esp_err_to_name(err));

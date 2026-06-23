@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "diagnostics.h"
+#include "system_boot.h"  // SystemBoot::confirmOtaValidation (v14.17)
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <ArduinoJson.h>
 #include "ffp5cs_fs.h"
@@ -646,6 +647,10 @@ bool WebServerManager::begin() {
       if (s_pendingRestart) {
         s_pendingRestart = false;
         Serial.println("[Web] 🔄 Redémarrage ESP dans 1s...");
+        // v14.17 : reboot délibéré → valider une éventuelle image OTA en probation pour
+        // ne pas rollbacker une bonne image fraîchement flashée (le reboot manuel ne doit
+        // pas être interprété comme un échec de l'image).
+        SystemBoot::confirmOtaValidation("reboot manuel (web)");
         vTaskDelay(pdMS_TO_TICKS(1000));
         ESP.restart();
       }

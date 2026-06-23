@@ -12,6 +12,38 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.17 - 2026-06-23
+
+### Sécurité OTA : vérification au boot (anti-rollback réel) + authenticité sha256/ECDSA
+
+> ⚠️ **Validation banc REQUISE avant merge/déploiement** (WROOM **et** S3). Modifie le chemin
+> OTA critique et la logique de rollback. Build/tests natifs non rejoués dans l'environnement
+> de dev (PlatformIO indisponible). Voir `docs/reports/AUDIT_OTA_2026-06.md`.
+
+- **Anti-rollback réellement actif (point 2)** : `validatePendingOta()` ne marque **plus**
+  l'image valide inconditionnellement au boot. Une image fraîchement flashée démarre en
+  probation (`ESP_OTA_IMG_PENDING_VERIFY`) ; elle n'est confirmée valide qu'après un **uptime
+  stable** (`TimingConfig::OTA_VALIDATION_GRACE_MS`, 2 min) via `SystemBoot::tickOtaValidation()`
+  appelé depuis `loop()`. Un crash/watchdog avant ce délai ⇒ rollback automatique vers l'ancienne
+  image. Le **light sleep** (pas de reset CPU) ne déclenche pas de rollback.
+- **Reboots délibérés protégés** : `web_server` (reboot manuel) et `gpio_parser` (reboot distant
+  GPIO 110) appellent `SystemBoot::confirmOtaValidation()` avant `ESP.restart()` pour ne pas
+  rollbacker une bonne image fraîchement flashée.
+- **Code mort supprimé (point 1)** : `cancelRollbackIfPending()` (jamais appelé) retiré ; sa
+  philosophie « valider au plus tôt inconditionnellement » est remplacée par la validation
+  conditionnée ci-dessus.
+- **Authenticité du binaire (point 3)** : après `Update.end()` (MD5/taille OK) et **avant**
+  `esp_ota_set_boot_partition()`, `OTAManager::verifyFlashedFirmware()` relit la partition flashée,
+  calcule le **sha256** (comparé au champ `metadata.json`) et vérifie la **signature ECDSA**
+  (clé publique `include/ota_signing_pubkey.h`, alignée sur `shared/n3_common/n3_ota_pubkey.h`).
+  Rétro-compatible : si `sha256`/`signature` absents des metadata ⇒ fallback MD5 seul (phase
+  transition, cf. `OTAConfig::OTA_REQUIRE_SIGNATURE=false`). Memory-light : lecture flash par
+  blocs de 1 Ko + contextes mbedtls transitoires (pas de 2ᵉ téléchargement réseau).
+- **Audit** : `docs/reports/AUDIT_OTA_2026-06.md` — état du système OTA, mémoire, et le fait que
+  l'OTA boot retombe en pratique sur le cycle 2h (gate heap 28 Ko jamais franchi au boot).
+
+---
+
 ## Version 14.16 - 2026-06-22
 
 ### Merge master → pio-build — nourrissage manuel, refactors et CI (base OTA 14.15)

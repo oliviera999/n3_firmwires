@@ -3,6 +3,7 @@
 #include "nvs_manager.h"  // v11.108
 #include "app_tasks.h"   // netRequestOtaCheck (déclenchement OTA depuis serveur distant)
 #include "app_context.h"
+#include "system_boot.h"  // SystemBoot::confirmOtaValidation (v14.17)
 #include "config.h"
 #include "gpio_bool_parse.h"  // cœur pur (token/int -> bool) extrait de parseBoolFromDoc
 #include "automatism/feeding_command_resolver.h"  // résolveur pur des commandes 108/109 (simultanéité)
@@ -346,6 +347,9 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
             Serial.println(F("Reset demandé"));
             Serial.println(F("[Sync] Reboot distant exécuté (GPIO 110=1)"));
             if (!tryStartOtaBeforeResetFromRemote()) {
+                // v14.17 : reboot délibéré → valider l'image OTA en probation (évite un
+                // rollback d'une bonne image sur un reboot distant volontaire).
+                SystemBoot::confirmOtaValidation("reboot distant (GPIO 110)");
                 ESP.restart();
             }
         } else if (!state) {
