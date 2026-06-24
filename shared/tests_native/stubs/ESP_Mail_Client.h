@@ -37,8 +37,13 @@ struct SMTP_Message {
   ESPMailSenderField sender;
   ESPMailTextField text;
   const char* subject = nullptr;
-  int priority = 0;
-  void addRecipient(const char* /*name*/, const char* /*email*/) {}
+  int priority = -1;  // -1 = jamais positionne (permet de tester l'opt-in priorite)
+  const char* lastRecipientName = nullptr;
+  const char* lastRecipientEmail = nullptr;
+  void addRecipient(const char* name, const char* email) {
+    lastRecipientName = name;
+    lastRecipientEmail = email;
+  }
 };
 
 struct ESPMailSendingResult {
@@ -49,11 +54,22 @@ class SMTPSession {
  public:
   ESPMailSendingResult sendingResult;
   bool connect(Session_Config* /*cfg*/) { return false; }
-  String errorReason() { return String(""); }
+  String errorReason() { return String("(stub) erreur SMTP simulee"); }
 };
 
+// Client stub : par defaut sendMail echoue (comportement historique du stub, ne
+// casse aucun test existant qui n'envoie pas). Les tests qui veulent exercer le
+// chemin succes/echec du builder de message peuvent regler `nextSendResult` et
+// inspecter `lastMessage` (capture du dernier SMTP_Message envoye).
 class ESPMailClient {
  public:
-  bool sendMail(SMTPSession* /*smtp*/, SMTP_Message* /*msg*/) { return false; }
+  bool nextSendResult = false;
+  const SMTP_Message* lastMessage = nullptr;
+  int sendMailCallCount = 0;
+  bool sendMail(SMTPSession* /*smtp*/, SMTP_Message* msg) {
+    lastMessage = msg;
+    ++sendMailCallCount;
+    return nextSendResult;
+  }
 };
 inline ESPMailClient MailClient;

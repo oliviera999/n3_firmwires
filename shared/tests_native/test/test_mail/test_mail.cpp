@@ -134,6 +134,92 @@ void test_net_report_body_garde_fou_null_et_taille_zero() {
   TEST_ASSERT_FALSE(n3MailBuildNetReportBody(info, body, 0));
 }
 
+// ---------- n3MailSendMessageWithSession (session possedee par l'appelant) ----------
+// On exerce la construction du SMTP_Message + le passage a MailClient.sendMail via
+// le stub ESP_Mail_Client (cf. stubs/ESP_Mail_Client.h) : champs requis, replis de
+// noms, opt-in des drapeaux charSet/encoding/priorite, et passthrough du verdict.
+
+static N3MailMessageSpec makeValidSpec() {
+  N3MailMessageSpec spec{};
+  spec.senderEmail = "from@example.com";
+  spec.recipientEmail = "to@example.com";
+  spec.subject = "Sujet";
+  spec.body = "Corps";
+  return spec;
+}
+
+void test_send_with_session_rejette_champs_manquants() {
+  SMTPSession smtp;
+  String err;
+  N3MailMessageSpec spec = makeValidSpec();
+
+  spec.senderEmail = nullptr;
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, spec, &err));
+  spec = makeValidSpec(); spec.recipientEmail = nullptr;
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, spec, &err));
+  spec = makeValidSpec(); spec.subject = nullptr;
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, spec, &err));
+  spec = makeValidSpec(); spec.body = nullptr;
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, spec, &err));
+}
+
+void test_send_with_session_succes_passe_le_message() {
+  SMTPSession smtp;
+  String err;
+  N3MailMessageSpec spec = makeValidSpec();  // drapeaux par defaut a false
+  MailClient.nextSendResult = true;          // simule un envoi OK
+  MailClient.lastMessage = nullptr;
+  MailClient.sendMailCallCount = 0;
+
+  bool ok = n3MailSendMessageWithSession(smtp, spec, &err);
+  TEST_ASSERT_TRUE(ok);
+  TEST_ASSERT_EQUAL_INT(1, MailClient.sendMailCallCount);
+  TEST_ASSERT_NOT_NULL(MailClient.lastMessage);
+  TEST_ASSERT_EQUAL_STRING("Sujet", MailClient.lastMessage->subject);
+  TEST_ASSERT_EQUAL_STRING("Corps", MailClient.lastMessage->text.content);
+  TEST_ASSERT_EQUAL_STRING("from@example.com", MailClient.lastMessage->sender.email);
+  // Repli des noms : senderName NULL -> "n3 IoT", recipientName NULL -> "Destinataire"
+  TEST_ASSERT_EQUAL_STRING("n3 IoT", MailClient.lastMessage->sender.name);
+  TEST_ASSERT_EQUAL_STRING("Destinataire", MailClient.lastMessage->lastRecipientName);
+  TEST_ASSERT_EQUAL_STRING("to@example.com", MailClient.lastMessage->lastRecipientEmail);
+  // Drapeaux non actives -> champs laisses a l'etat initial du stub.
+  TEST_ASSERT_NULL(MailClient.lastMessage->text.charSet);
+  TEST_ASSERT_EQUAL_INT(-1, MailClient.lastMessage->priority);
+}
+
+void test_send_with_session_optin_drapeaux_et_noms() {
+  SMTPSession smtp;
+  N3MailMessageSpec spec = makeValidSpec();
+  spec.senderName = "FFP5CS";
+  spec.recipientName = "User";
+  spec.setCharsetUtf8 = true;
+  spec.set7bitEncoding = true;
+  spec.setLowPriority = true;
+  MailClient.nextSendResult = true;
+  MailClient.lastMessage = nullptr;
+
+  TEST_ASSERT_TRUE(n3MailSendMessageWithSession(smtp, spec, nullptr));
+  TEST_ASSERT_NOT_NULL(MailClient.lastMessage);
+  TEST_ASSERT_EQUAL_STRING("FFP5CS", MailClient.lastMessage->sender.name);
+  TEST_ASSERT_EQUAL_STRING("User", MailClient.lastMessage->lastRecipientName);
+  TEST_ASSERT_EQUAL_STRING("utf-8", MailClient.lastMessage->text.charSet);
+  TEST_ASSERT_EQUAL_INT((int)Content_Transfer_Encoding::enc_7bit,
+                        (int)MailClient.lastMessage->text.transfer_encoding);
+  TEST_ASSERT_EQUAL_INT((int)esp_mail_smtp_priority::esp_mail_smtp_priority_low,
+                        MailClient.lastMessage->priority);
+}
+
+void test_send_with_session_echec_renseigne_erreur() {
+  SMTPSession smtp;
+  String err;
+  N3MailMessageSpec spec = makeValidSpec();
+  MailClient.nextSendResult = false;  // simule un echec d'envoi
+  MailClient.lastMessage = nullptr;
+
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, spec, &err));
+  TEST_ASSERT_TRUE(contains(err.c_str(), "SMTP envoi echec"));
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -147,5 +233,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_net_report_body_replis_par_defaut);
   RUN_TEST(test_net_report_body_buffer_trop_petit_retourne_false);
   RUN_TEST(test_net_report_body_garde_fou_null_et_taille_zero);
+  RUN_TEST(test_send_with_session_rejette_champs_manquants);
+  RUN_TEST(test_send_with_session_succes_passe_le_message);
+  RUN_TEST(test_send_with_session_optin_drapeaux_et_noms);
+  RUN_TEST(test_send_with_session_echec_renseigne_erreur);
   return UNITY_END();
 }

@@ -12,6 +12,32 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.24 - 2026-06-24
+
+### Mutualisation Phase 1 — envoi SMTP factorisé via `shared/n3_mail`
+
+- `Mailer::sendSync` (ffp5cs) délègue désormais la construction du `SMTP_Message` +
+  l'appel `MailClient.sendMail` à la lib partagée **`shared/n3_mail`**
+  (`n3MailSendMessageWithSession`), au lieu de dupliquer la plomberie
+  `ESP_Mail_Client`. Mutualise le code commun à n3pp / msp / ffp5cs.
+- **Comportement strictement identique** : la session SMTP persistante `_smtp`, le
+  mutex TLS (sérialisation SMTP/HTTPS), les feeds watchdog, la garde heap, l'ouverture/
+  fermeture de session, le préfixe d'expéditeur/sujet par environnement, le footer
+  allégé et la file d'attente restent dans `ffp5cs` (la lib partagée ne touche pas à
+  la connexion). Mêmes destinataires, sujets et secrets `SMTP_*`.
+- `shared/n3_mail` v1.2.0 : nouvelle fonction rétro-compatible
+  `n3MailSendMessageWithSession(SMTPSession&, N3MailMessageSpec, ...)` (session
+  possédée par l'appelant ; drapeaux charSet/encoding/priorité opt-in pour parité
+  bit-à-bit). `n3MailSendText` (n3pp/msp) réécrit par-dessus, comportement inchangé.
+  Couverture par tests natifs Unity (`shared/tests_native` → `test_mail`, 13 cas).
+- Suite (Phase 2, non incluse ici, voir note) : extraire les garde-fous communs
+  (mutex TLS, feeds WDT, garde heap, file d'attente) dans une lib partagée afin de
+  mutualiser aussi le chemin de connexion ; chantier à part car la pile SMTP ffp5cs
+  est fortement couplée au runtime (PowerManager, Diagnostics, `Custom_ESP_Mail_FS`,
+  réserve heap 32 Ko PSRAM-aware).
+
+---
+
 ## Version 14.23 - 2026-06-23
 
 ### Angles servo nourrissage configurables (contrat GPIO 118-123)
