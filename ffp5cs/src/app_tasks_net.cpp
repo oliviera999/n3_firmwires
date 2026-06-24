@@ -19,6 +19,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#include <memory>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
 #endif
@@ -71,21 +72,24 @@ void netTask(void* pv) {
     esp_task_wdt_reset();
 #endif
 
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmp;
+    std::unique_ptr<StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>> tmp(
+        new (std::nothrow) StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>());
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
     ets_printf("[netTask] Boot tryFetchConfig\n");
 #else
     Serial.println(F("[netTask] Boot: tryFetchConfigFromServer()"));
 #endif
-    if (!g_ctx->otaManager.isOtaExclusive()) {
-    int r = g_ctx->webClient.tryFetchConfigFromServer(tmp);
+    if (!tmp) {
+      Serial.println(F("[netTask] Boot: heap insuffisant pour JSON outputs/state"));
+    } else if (!g_ctx->otaManager.isOtaExclusive()) {
+    int r = g_ctx->webClient.tryFetchConfigFromServer(*tmp);
     bootServerReachable = (r >= 1);
     // r==1: HTTP OK — fetchRemoteState remplit s_lastFetchedJson, pas tmp ; copier avant apply
     // r==2: NVS fallback (GET HTTP indisponible)
-    if (r == 1 && g_ctx->webClient.copyLastFetchedTo(tmp)) {
-      g_ctx->automatism.processFetchedRemoteConfig(tmp);
-      if (tmp.size() > 0) {
-        g_ctx->automatism.applyRemoteGpioConfig(tmp);
+    if (r == 1 && g_ctx->webClient.copyLastFetchedTo(*tmp)) {
+      g_ctx->automatism.processFetchedRemoteConfig(*tmp);
+      if (tmp->size() > 0) {
+        g_ctx->automatism.applyRemoteGpioConfig(*tmp);
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
         ets_printf("[netTask] SOURCE SERVEUR RAM boot\n");
 #else
@@ -95,9 +99,9 @@ void netTask(void* pv) {
     } else if (r == 2) {
       char cachedJson[BufferConfig::REMOTE_JSON_CACHE_SIZE];
       if (g_ctx->config.loadRemoteVars(cachedJson, sizeof(cachedJson)) && cachedJson[0] != '\0') {
-        tmp.clear();
-        if (!deserializeJson(tmp, cachedJson) && tmp.size() > 0) {
-          g_ctx->automatism.applyRemoteGpioConfig(tmp);
+        tmp->clear();
+        if (!deserializeJson(*tmp, cachedJson) && tmp->size() > 0) {
+          g_ctx->automatism.applyRemoteGpioConfig(*tmp);
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
           ets_printf("[netTask] SOURCE NVS RAM boot\n");
 #else

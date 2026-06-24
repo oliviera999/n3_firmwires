@@ -14,6 +14,7 @@
 #include "automatism/feeding_finalize_orchestrator.h"  // C4: sync fin de cycle nourrissage (testable)
 #include <cstring>
 #include <cstdio>
+#include <memory>
 
 // ============================================================================
 // Automatism: Chef d'orchestre
@@ -119,12 +120,18 @@ void Automatism::applyRemoteGpioConfig(const ArduinoJson::JsonDocument& doc) {
 
 void Automatism::updateNetworkSync(const SensorReadings& r, uint32_t nowMs) {
     // 4. Gestion réseau (polling commandes)
-    StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> doc;
-    bool pollResult = _network.pollRemoteState(doc, nowMs);
+    std::unique_ptr<StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>> doc(
+        new (std::nothrow) StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>());
+    bool pollResult = false;
+    if (doc) {
+        pollResult = _network.pollRemoteState(*doc, nowMs);
+    } else {
+        Serial.println(F("[Sync] Poll distant ignoré: heap insuffisante pour JSON outputs/state"));
+    }
 
-    if (pollResult && doc.size() > 0) {
-        Serial.printf("[DBG] updateNetworkSync poll OK docSize=%u\n", (unsigned)doc.size());
-        applyRemoteGpioConfig(doc);
+    if (pollResult && doc && doc->size() > 0) {
+        Serial.printf("[DBG] updateNetworkSync poll OK docSize=%u\n", (unsigned)doc->size());
+        applyRemoteGpioConfig(*doc);
     } else if (pollResult) {
         Serial.println(F("[DBG] updateNetworkSync poll OK mais doc vide — pas d'application"));
     }

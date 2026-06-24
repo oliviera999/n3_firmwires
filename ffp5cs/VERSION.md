@@ -12,7 +12,7 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
-## Version 14.24 - 2026-06-24
+## Version 14.25 - 2026-06-24
 
 ### Mutualisation Phase 1 — envoi SMTP factorisé via `shared/n3_mail`
 
@@ -35,6 +35,19 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
   mutualiser aussi le chemin de connexion ; chantier à part car la pile SMTP ffp5cs
   est fortement couplée au runtime (PowerManager, Diagnostics, `Custom_ESP_Mail_FS`,
   réserve heap 32 Ko PSRAM-aware).
+
+---
+
+## Version 14.24 - 2026-06-24
+
+### Correctif sync distante WROOM après GPIO 118-123
+
+- **Bug corrigé** : le payload `GET /api/outputs/state` peut dépasser le document JSON 1024 o
+  sur ESP32-WROOM depuis l'ajout des six angles servo et de leurs alias symboliques.
+- **Impact évité** : échec `deserializeJson(NoMemory)` puis fallback NVS, ce qui empêchait
+  les commandes serveur (nourrissage 108/109, reset, angles servo) d'être appliquées.
+- **Correctif** : document dédié `OUTPUTS_STATE_JSON_DOCUMENT_SIZE = 2048` pour la sync
+  distante, alloué sur heap dans les chemins boot / poll / fallback afin de ne pas gonfler la BSS.
 
 ---
 
