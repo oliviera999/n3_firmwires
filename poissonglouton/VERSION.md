@@ -1,5 +1,32 @@
 # Poissonglouton - Historique versions
 
+## 0.2.6 - 2026-06-24
+
+- Veille : re-calibrage du couple timer/idle pour la rendre réellement efficace
+  le jour où elle sera réactivée (`-DPGL_ENABLE_SLEEP=1`). La veille reste
+  **désactivée par défaut** (`PGL_ENABLE_SLEEP=0`) pour l'alpha.
+  - Distinction du timer de réveil selon le mode de détection :
+    - **IR présent (EXT0)** : nouvelle constante `PGL_TIMER_WAKEUP_IR_S = 300 s`.
+      L'IR réveille instantanément à la détection ; le timer ne sert plus qu'au
+      housekeeping (vidage de la file, heartbeat), d'où une base longue alignée
+      sur `PGL_UPLOAD_EVERY_MS`/`PGL_HEARTBEAT_INTERVAL_MS`.
+    - **Pas d'IR (US seul / aucun capteur)** : base `PGL_TIMER_WAKEUP_S` passée
+      de 2 s à 30 s. La détection ultrason en deep sleep est intrinsèquement par
+      échantillonnage donc **lossy** (un passage plus court que l'intervalle peut
+      être manqué) — documenté dans `config.h`. 2 s rendait l'appareil éveillé
+      ~86 % du temps (boot + ≥12 s d'idle par cycle) : deep sleep inutile.
+  - `computeSleepTimerS()` devient `computeSleepTimerS(bool irPresent)` et choisit
+    la base selon l'IR (valeur déjà calculée `useIrWakeup`, plus de double
+    interrogation de `gDetection`).
+  - Surcharges **nuit** (1800 s) et **batterie faible** (`PGL_TIMER_WAKEUP_LOWBATT_S`
+    porté à 600 s) désormais appliquées uniquement si elles **allongent** le timer
+    courant, pour ne pas raccourcir une base IR déjà longue.
+  - `PGL_IDLE_SLEEP_MS` conservé à 12 s : avec un timer IR de 300 s, le duty-cycle
+    reste largement dominé par le sommeil (~4 %), et 12 s laisse le temps de finir
+    un upload/heartbeat avant de dormir (commenté dans `config.h`).
+- Validation : builds `pgl-s3-headless` (veille off, défaut) et `pgl-s3-headless`
+  avec `-DPGL_ENABLE_SLEEP=1` (chemin veille) compilés avec succès.
+
 ## 0.2.5 - 2026-06-24
 
 - Journal SD : backfill des horodatages invalides. Les événements captés avant la synchro

@@ -8,7 +8,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.5";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.6";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -115,6 +115,11 @@ static constexpr uint32_t PGL_TANDEM_WINDOW_MS = 300;
 
 static constexpr uint8_t PGL_US_CONSECUTIVE_POLLS = 2;
 
+// Inactivite avant de declencher la veille. Avec un timer de reveil long en
+// mode IR (cf. PGL_TIMER_WAKEUP_IR_S), 12 s d'eveil par cycle de housekeeping
+// donne un duty-cycle largement domine par le sommeil (~12 s eveille / 300 s
+// dormant ≈ 4 %). On garde donc 12 s : c'est confortable pour finir un upload /
+// heartbeat avant de dormir, sans peser sur la conso une fois la veille active.
 static constexpr uint32_t PGL_IDLE_SLEEP_MS = 12000;
 
 
@@ -153,9 +158,31 @@ static constexpr uint32_t PGL_WIFI_RETRY_INTERVAL_MS = 60000;
 
 // Énergie
 
-static constexpr uint32_t PGL_TIMER_WAKEUP_S = 2;
+// Timer de reveil quand le capteur IR (EXT0) est present : l'IR reveille
+// INSTANTANEMENT a la detection, donc le timer ne sert qu'a la maintenance
+// periodique (vidage de la file en attente, heartbeat). On le veut LONG pour
+// maximiser le sommeil. 300 s = aligne sur l'ordre de grandeur du housekeeping
+// (PGL_UPLOAD_EVERY_MS=20 s / PGL_HEARTBEAT_INTERVAL_MS=120 s) : un reveil
+// toutes les 5 min suffit a evacuer la file et battre le coeur sans rien rater
+// d'une detection (celle-ci passe par EXT0, pas par le timer).
+static constexpr uint32_t PGL_TIMER_WAKEUP_IR_S = 300;
 
-static constexpr uint32_t PGL_TIMER_WAKEUP_LOWBATT_S = 10;
+// Timer de reveil quand il n'y a PAS d'IR (ultrason seul, ou aucun capteur) :
+// la detection ne peut se faire qu'en etant eveille, donc le timer sert a
+// echantillonner l'environnement. ATTENTION : la detection ultrason en deep
+// sleep est intrinsequement par ECHANTILLONNAGE et donc LOSSY — une bouteille
+// dont le passage est plus court que cet intervalle peut etre manquee. 2 s
+// etait trop agressif (boot complet + >=12 s d'eveil a chaque cycle => ~86 %
+// du temps eveille, deep sleep inutile). 30 s est un compromis raisonnable
+// entre conso et probabilite de capter un passage ; a re-evaluer si l'on
+// observe des manques sur un noeud US-only.
+static constexpr uint32_t PGL_TIMER_WAKEUP_S = 30;
+
+// Sur batterie faible, on espace les reveils pour preserver l'energie. La
+// valeur n'est appliquee que si elle ALLONGE le timer courant (cf.
+// computeSleepTimerS) : en mode IR la base de 300 s est deja plus longue, donc
+// l'effet ne joue que pour la base US courte (30 s -> 600 s).
+static constexpr uint32_t PGL_TIMER_WAKEUP_LOWBATT_S = 600;
 
 static constexpr uint32_t PGL_TIMER_WAKEUP_NIGHT_S = 1800;
 

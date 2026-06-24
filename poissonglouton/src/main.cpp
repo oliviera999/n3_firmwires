@@ -121,15 +121,21 @@ static int16_t readBatteryMilliVolt() {
 }
 
 #if PGL_ENABLE_SLEEP && !PGL_DEBUG_NO_SLEEP
-// Timer de réveil adaptatif : la nuit (23h-6h, heure NTP valide uniquement)
-// et sur batterie faible, on espace les réveils timer. L'EXT0 (IR) continue
-// de réveiller instantanément sur détection.
-static uint32_t computeSleepTimerS() {
-  uint32_t timerS = PGL_TIMER_WAKEUP_S;
+// Timer de réveil adaptatif. La base depend du mode de detection :
+//  - IR present (EXT0) : l'IR reveille instantanement a la detection, le timer
+//    ne sert qu'au housekeeping -> base LONGUE (PGL_TIMER_WAKEUP_IR_S, 300 s).
+//  - pas d'IR (US seul / aucun capteur) : la detection se fait par
+//    echantillonnage en etant eveille -> base courte (PGL_TIMER_WAKEUP_S, 30 s).
+// Surcharges (nuit 23h-6h, batterie faible) : appliquees uniquement si elles
+// ALLONGENT le timer courant, pour ne jamais raccourcir une base deja longue
+// (ex. la base IR de 300 s ne doit pas retomber a 10 s sur batterie faible).
+static uint32_t computeSleepTimerS(bool irPresent) {
+  uint32_t timerS = irPresent ? PGL_TIMER_WAKEUP_IR_S : PGL_TIMER_WAKEUP_S;
 
   const int16_t battMv = readBatteryMilliVolt();
 #if PGL_BATTERY_ADC_ENABLED
-  if (battMv > 500 && battMv < PGL_LOWBATT_MILLIVOLT) {
+  if (battMv > 500 && battMv < PGL_LOWBATT_MILLIVOLT &&
+      timerS < PGL_TIMER_WAKEUP_LOWBATT_S) {
     timerS = PGL_TIMER_WAKEUP_LOWBATT_S;
     PGL_LOG("Sleep adaptatif: batterie faible (%d mV) -> timer %lus",
             battMv, static_cast<unsigned long>(timerS));
@@ -439,7 +445,7 @@ void loop() {
     gDisplay.sleepBacklight();
     PGL_LOG("Backlight OFF");
     const bool useIrWakeup = gDetection.hasIr();
-    const uint32_t timerS = computeSleepTimerS();
+    const uint32_t timerS = computeSleepTimerS(useIrWakeup);
     gSleep.configure(useIrWakeup, timerS);
     PGL_LOG("Veille: IR_wakeup=%d timer=%lus", useIrWakeup ? 1 : 0,
             static_cast<unsigned long>(timerS));
