@@ -55,6 +55,14 @@ class PglEventJournal {
   uint32_t sumDeltasInRange(uint32_t fromOffset, uint32_t toOffset,
                             uint16_t dayKey = 0) const;
 
+  /**
+   * Corrige les epochs invalides (< 1700000000) des records non encore
+   * acquittes [ackOffset_, writeOffset_) en les remplacant par nowEpoch,
+   * reecrits en place (struct + CRC recalcule). A appeler une seule fois
+   * quand NTP devient valide. Retourne le nombre de records corriges.
+   */
+  uint32_t fixInvalidEpochs(uint32_t nowEpoch);
+
   uint32_t getWriteOffset() const { return writeOffset_; }
   uint32_t getAckOffset() const { return ackOffset_; }
 

@@ -8,7 +8,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.4";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.5";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -24,9 +24,10 @@ static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 
 
 
-// Veille profonde (deep sleep). Desactivee par defaut pour l'instant :
-// le couple timer/idle actuel rend le deep sleep peu rentable et perturbe
-// l'ecran + le son a chaque reveil. Reactiver via -DPGL_ENABLE_SLEEP=1.
+// Veille profonde (deep sleep). Desactivee par defaut POUR L'INSTANT (version
+// alpha) : le couple timer/idle actuel rend le deep sleep peu rentable et
+// perturbe l'ecran + le son a chaque reveil. A reactiver (PGL_ENABLE_SLEEP=1)
+// une fois le couple timer/idle re-calibre pour les noeuds batterie/headless.
 #ifndef PGL_ENABLE_SLEEP
 
 #define PGL_ENABLE_SLEEP 0

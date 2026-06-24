@@ -315,20 +315,28 @@ void PglCounter::flushIfDue() {
 }
 
 void PglCounter::fixInvalidEpochs(uint32_t nowEpoch) {
-  if (nowEpoch < 1700000000 || size_ == 0) return;
+  if (nowEpoch < 1700000000) return;
 
-  bool changed = false;
-  for (uint16_t i = 0; i < size_; ++i) {
-    PglStoredEvent& ev = queue_[(head_ + i) % MAX_EVENTS];
-    if (ev.epoch < 1700000000) {
-      ev.epoch = nowEpoch;
-      changed = true;
+  // 1) FIFO NVS de secours.
+  if (size_ > 0) {
+    bool changed = false;
+    for (uint16_t i = 0; i < size_; ++i) {
+      PglStoredEvent& ev = queue_[(head_ + i) % MAX_EVENTS];
+      if (ev.epoch < 1700000000) {
+        ev.epoch = nowEpoch;
+        changed = true;
+      }
+    }
+    if (changed) {
+      PGL_LOG("Compteur: horodatage NVS corrige (%u evt) apres sync NTP", size_);
+      dirty_ = true;
+      persist();
     }
   }
-  if (changed) {
-    PGL_LOG("Compteur: horodatage NVS corrige (%u evt) apres sync NTP", size_);
-    dirty_ = true;
-    persist();
+
+  // 2) Journal SD : records pending ecrits avant la synchro NTP.
+  if (journal_) {
+    journal_->fixInvalidEpochs(nowEpoch);
   }
 }
 

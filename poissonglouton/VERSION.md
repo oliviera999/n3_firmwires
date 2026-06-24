@@ -1,5 +1,16 @@
 # Poissonglouton - Historique versions
 
+## 0.2.5 - 2026-06-24
+
+- Journal SD : backfill des horodatages invalides. Les événements captés avant la synchro
+  NTP étaient écrits dans le journal SD avec `epoch=0` (ou `< 1700000000`) et envoyés tels
+  quels au serveur. `PglEventJournal::fixInvalidEpochs(nowEpoch)` corrige désormais en place
+  les records non encore acquittés `[ackOffset_, writeOffset_)` : ouverture unique du fichier
+  en `r+`, réécriture des 20 octets (struct entière + CRC16 recalculé) pour chaque epoch
+  invalide, records corrompus sautés sans casser l'alignement. Déclenché une seule fois via
+  `PglCounter::fixInvalidEpochs` (qui corrige la FIFO NVS puis délègue au journal), appelée
+  depuis `main.cpp` lorsque NTP devient valide (flag `gEpochBackfillDone`).
+
 ## 0.2.4 - 2026-06-24
 
 - Audit firmware : corrections de cohérence, performance et nettoyage des dépendances.
