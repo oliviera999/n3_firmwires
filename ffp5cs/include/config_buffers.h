@@ -12,6 +12,7 @@ namespace BufferConfig {
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 4096;
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 4096;
+        inline constexpr uint32_t OUTPUTS_STATE_JSON_DOCUMENT_SIZE = 4096;
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_DBVARS = 4096;
         // metadata.json ~1129 bytes, structure channels — parsing OTA
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
@@ -37,8 +38,10 @@ namespace BufferConfig {
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 1024;  // Réduit de 2048 (requêtes typiquement < 1024 bytes)
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 1024;  // Réduit de 2048
         // PROFILE_TEST aligné wroom-prod (1024) pour éviter IncompleteInput / sorties précoces
-        // GET /api/outputs/state: ~28 clés (numériques + symboliques), typ. < 900 bytes (logs: "28 clés")
+        // Routes locales compactes. Le GET distant outputs/state a son propre document plus grand
+        // depuis v14.24 (GPIO 118-123 + aliases symboliques dépassent 1024 sur WROOM).
         inline constexpr uint32_t JSON_DOCUMENT_SIZE = 1024;
+        inline constexpr uint32_t OUTPUTS_STATE_JSON_DOCUMENT_SIZE = 2048;
         // metadata.json ~1129 bytes, structure channels — parsing OTA (1024 insuffisant)
         inline constexpr uint32_t JSON_DOCUMENT_SIZE_OTA_METADATA = 1536;
         // POST_PAYLOAD_MAX_SIZE réduit 896 sur WROOM pour éviter overflow DRAM (~3,7 KB). Payload sync typ. < 800 bytes.

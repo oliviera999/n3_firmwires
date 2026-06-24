@@ -2,8 +2,7 @@
 // contrôle (consomme la file capteurs, applique l'automatisme, affichage,
 // poll config distante, logs périodiques). Extrait d'app_tasks.cpp (refonte
 // god-file, audit v13.93) ; déplacement verbatim. État partagé via
-// app_tasks_internal.h ; helpers (g_remoteFallbackDoc, logBouffeAndPumpStats)
-// déplacés ici car propres à cette tâche.
+// app_tasks_internal.h ; helpers propres à cette tâche.
 #include "app_tasks_internal.h"  // g_ctx, g_sensorQueue, g_netTaskHandle, automationTask
 #include "app_tasks.h"           // AppTasks:: API
 #include "task_mail.h"           // allocMailReserveIfNeeded, processMailQueueIfReady
@@ -14,17 +13,15 @@
 #include "system_sensors.h"      // SensorReadings (file capteurs)
 #include "sd_logger.h"           // SdLogger:: (replay file SD, branche BOARD_S3)
 #include <Arduino.h>
-#include <ArduinoJson.h>         // StaticJsonDocument (g_remoteFallbackDoc)
+#include <ArduinoJson.h>         // StaticJsonDocument (documents outputs/state sur heap)
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#include <memory>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
 #endif
-
-// Document JSON de fallback réseau (alloué statiquement, propre à automationTask).
-static StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> g_remoteFallbackDoc;
 
 static void logBouffeAndPumpStats(AppContext* ctx, unsigned long now,
                                   unsigned long* lastBouffeDisplay, unsigned long* lastPumpStatsDisplay) {
@@ -321,13 +318,18 @@ void automationTask(void* pv) {
 #else
           Serial.println(F("[Auto] ▶️ Poll distant (fallback sans capteurs)"));
 #endif
-          // v11.160: Utilise un document JSON statique pour éviter un gros objet sur la stack
-          g_remoteFallbackDoc.clear();
-          if (g_ctx->automatism.fetchRemoteState(g_remoteFallbackDoc) &&
-              g_remoteFallbackDoc.size() > 0) {
+          // Document dédié GET outputs/state sur heap : payload v14.24 > 1024 o sur WROOM.
+          std::unique_ptr<StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>> remoteDoc(
+              new (std::nothrow) StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>());
+          if (!remoteDoc) {
+            Serial.println(F("[Auto] Fetch distant fallback: heap insuffisante pour JSON"));
+            continue;
+          }
+          if (g_ctx->automatism.fetchRemoteState(*remoteDoc) &&
+              remoteDoc->size() > 0) {
             Serial.printf("[Auto] Fetch distant fallback: OK, keys=%u\n",
-                         static_cast<unsigned>(g_remoteFallbackDoc.size()));
-            g_ctx->automatism.applyRemoteGpioConfig(g_remoteFallbackDoc);
+                         static_cast<unsigned>(remoteDoc->size()));
+            g_ctx->automatism.applyRemoteGpioConfig(*remoteDoc);
           } else {
             Serial.println(F("[Auto] Fetch distant fallback: KO ou doc vide"));
           }

@@ -723,7 +723,7 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   }
 
   // Parser dans un document LOCAL (stack netTask) — ne jamais écrire dans doc depuis netTask (LoadProhibited)
-  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> parseDoc;
+  StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE> parseDoc;
   DeserializationError err = deserializeJson(parseDoc, payloadBuffer);
   if (err) {
     static std::atomic<uint32_t> jsonErrorCount{0};
@@ -801,8 +801,8 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
     // C3 (profondeur de pile) : ce JsonDocument d'unwrap (jusqu'à 4 Ko sur S3) était sur la pile
     // d'autoTask (HWM ~95%). Déplacé en HEAP local. PAS en static : copyLastFetchedTo est
     // multi-tâches (netTask-boot + autoTask) → un buffer partagé créerait une course (BACKLOG §4).
-    std::unique_ptr<StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE>> tmp(
-        new (std::nothrow) StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE>());
+    std::unique_ptr<StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>> tmp(
+        new (std::nothrow) StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE>());
     if (!tmp) {
       if (LogConfig::SERIAL_ENABLED) {
         Serial.println(F("[HTTP] copyLastFetchedTo: heap insuffisant pour unwrap"));
@@ -838,12 +838,12 @@ bool WebClient::copyLastFetchedTo(ArduinoJson::JsonDocument& doc) {
 // fromNVSFallback, donc on valide seulement la présence du cache NVS et on retourne true.
 bool WebClient::loadFromNVSFallback(JsonDocument& doc) {
   (void)doc;
-  char cachedJson[1024];
+  char cachedJson[BufferConfig::REMOTE_JSON_CACHE_SIZE];
   if (!config.loadRemoteVars(cachedJson, sizeof(cachedJson))) {
     return false;
   }
   // Valider que le JSON est parsable (évite retourner true avec cache corrompu)
-  StaticJsonDocument<BufferConfig::JSON_DOCUMENT_SIZE> tmpDoc;
+  StaticJsonDocument<BufferConfig::OUTPUTS_STATE_JSON_DOCUMENT_SIZE> tmpDoc;
   DeserializationError err = deserializeJson(tmpDoc, cachedJson);
   if (err) {
     return false;

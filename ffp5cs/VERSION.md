@@ -12,6 +12,19 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.24 - 2026-06-24
+
+### Correctif sync distante WROOM après GPIO 118-123
+
+- **Bug corrigé** : le payload `GET /api/outputs/state` peut dépasser le document JSON 1024 o
+  sur ESP32-WROOM depuis l'ajout des six angles servo et de leurs alias symboliques.
+- **Impact évité** : échec `deserializeJson(NoMemory)` puis fallback NVS, ce qui empêchait
+  les commandes serveur (nourrissage 108/109, reset, angles servo) d'être appliquées.
+- **Correctif** : document dédié `OUTPUTS_STATE_JSON_DOCUMENT_SIZE = 2048` pour la sync
+  distante, alloué sur heap dans les chemins boot / poll / fallback afin de ne pas gonfler la BSS.
+
+---
+
 ## Version 14.23 - 2026-06-23
 
 ### Angles servo nourrissage configurables (contrat GPIO 118-123)

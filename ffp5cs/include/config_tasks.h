@@ -101,7 +101,7 @@ namespace SleepConfig {
 //   - Pools / caches statiques :
 //       NetRequest pool (8 × ~928 o, payload 896) : ~7,4 KB
 //       s_remoteJsonCache, s_lastFetchedJson, s_deferredRemoteJson : ~1,5 + 2 + 1,5 ≈ 5 KB
-//       g_remoteFallbackDoc, s_dbvarsCachedSrc : ~2,5 KB
+//       s_dbvarsCachedSrc : ~1 KB ; documents outputs/state 2048 o alloués sur heap au poll.
 //   - Buffers applicatifs (mailer s_mailMessageBuffer ~4,3 KB, web_server, app) : ~10-12 KB
 //   - Globaux (PowerManager, WebClient, Mailer, Diagnostics, NVSManager) : ~3 KB
 //
