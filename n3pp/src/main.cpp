@@ -264,10 +264,8 @@ void loop() {
     etatPompe = 1;
     Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
     datatobdd();
-    if (enableEmailChecked == "checked") {
-      emailMessage = String("ATTENTION, arrosage continu en cours !");
-      sendEmailNotification();
-    }
+    emailMessage = String("ATTENTION, arrosage continu en cours !");
+    sendEmailNotification(N3Severity::Critical);
   }
 
   lectureCapteurs();

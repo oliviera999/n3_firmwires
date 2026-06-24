@@ -16,8 +16,32 @@
 #define AUTHOR_EMAIL SMTP_EMAIL
 #define AUTHOR_PASSWORD SMTP_PASSWORD
 
-// Configuration et envoi d'un email d'alerte (SMTP) — délègue à n3_mail (factorisé)
-void sendEmailNotification() {
+// Anti-spam batterie inter-cycles : RTC_DATA_ATTR pour survivre au deep sleep
+// (sinon un mail batterie repart a chaque reveil tant que la tension reste basse).
+RTC_DATA_ATTR static bool s_mspBatteryMailSent = false;
+
+// Mode de notification courant, derive de la config distante enableEmailChecked
+// (retro-compatible : "checked" -> Full, "unchecked" -> None).
+N3NotifMode mspNotifMode() {
+  return n3NotifModeFromString(enableEmailChecked.c_str());
+}
+
+static bool emailEnabled() {
+  return mspNotifMode() != N3NotifMode::None;
+}
+
+// Configuration et envoi d'un email d'alerte (SMTP) — delegue a n3_mail.
+// La severite est filtree par le mode courant ; le sujet est prefixe "[MSP1][Pn]".
+void sendEmailNotification(N3Severity severity) {
+  if (!n3NotifModeAllows(mspNotifMode(), severity)) {
+    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification\n",
+                  n3SeverityCode(severity));
+    return;
+  }
+
+  char subjectBuf[96];
+  n3MailFormatSubject(subjectBuf, sizeof(subjectBuf), "MSP1", severity, emailSubject);
+
   N3MailSmtpConfig cfg{};
   cfg.smtpHost = SMTP_HOST;
   cfg.smtpPort = SMTP_PORT;
@@ -28,7 +52,7 @@ void sendEmailNotification() {
   cfg.recipientEmail = inputMessageMailAd.c_str();
 
   String err;
-  if (!n3MailSendText(cfg, emailSubject, emailMessage.c_str(), &err)) {
+  if (!n3MailSendText(cfg, subjectBuf, emailMessage.c_str(), &err)) {
     Serial.print("[MAIL] echec envoi: ");
     Serial.println(err);
   }
@@ -72,11 +96,17 @@ void sommeil() {
                  " SeuilPontDiv=" + String(SeuilPontDiv));
 
   if (WakeUp == 0) {
-    if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "checked") {
+    if (PontDiv >= SeuilPontDiv) {
+      s_mspBatteryMailSent = false;  // batterie revenue au-dessus du seuil : re-arme l'alerte
+    }
+    if ((PontDiv < SeuilPontDiv) && emailEnabled()) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
-      emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
-      sendEmailNotification();
+      if (!s_mspBatteryMailSent) {
+        emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
+        sendEmailNotification(N3Severity::Critical);
+        s_mspBatteryMailSent = true;
+      }
       datatobdd();
       if (displayOk) display.clearDisplay();
       photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;

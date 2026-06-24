@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.43** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.44** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.43** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.44 | 2026-06 | Notifications par sévérité (P1–P4) + mode de verbosité télécommandable (GPIO 101 étendu : `none`/`important`/`partial`/`full`, rétro-compatible `checked`/`unchecked`) via lib partagée `n3_notify`. Anti-spam deep-sleep corrigé (`emailHumidSent`/`emailPontDivSent` en `RTC_DATA_ATTR`), dédup batterie + re-armement au retour à la normale, sujets `[N3PP][Pn]`, rapport réseau = P4 (diagnostic) |
 | 4.43 | 2026-06 | Publication OTA : incrément version pour déploiement distant |
 | 4.42 | 2026-06 | Publication OTA : incrément version pour déploiement distant |
 | 4.41 | 2026-06 | Rapport mail reseau periodique (6 h) : stats POST/GET via `n3_data` 1.2 + `n3MailBuildNetReportBody` ; comparaison explicite avec logs ffp5cs |

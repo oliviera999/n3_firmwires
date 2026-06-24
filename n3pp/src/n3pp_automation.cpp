@@ -30,8 +30,31 @@ void EnregistrementHeureFlash() {
   n3TimeSaveToFlash(rtc, preferences);  // NVS "rtc" (mêmes clés qu'avant)
 }
 
-// Configuration et envoi d'un email d'alerte (SMTP) — délègue à n3_mail (factorisé)
-void sendEmailNotification() {
+// Mode de notification courant, derive de la config distante enableEmailChecked
+// (retro-compatible : "checked" -> Full, "unchecked" -> None).
+N3NotifMode n3ppNotifMode() {
+  return n3NotifModeFromString(enableEmailChecked.c_str());
+}
+
+// Raccourci : au moins un envoi est possible (mode != None). Remplace l'ancien
+// test "enableEmailChecked == \"checked\"" sur les sites d'alerte (la severite
+// fine est filtree dans sendEmailNotification()).
+static bool emailEnabled() {
+  return n3ppNotifMode() != N3NotifMode::None;
+}
+
+// Configuration et envoi d'un email d'alerte (SMTP) — delegue a n3_mail.
+// La severite est filtree par le mode courant ; le sujet est prefixe "[N3PP][Pn]".
+void sendEmailNotification(N3Severity severity) {
+  if (!n3NotifModeAllows(n3ppNotifMode(), severity)) {
+    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification\n",
+                  n3SeverityCode(severity));
+    return;
+  }
+
+  char subjectBuf[96];
+  n3MailFormatSubject(subjectBuf, sizeof(subjectBuf), "N3PP", severity, emailSubject);
+
   N3MailSmtpConfig cfg{};
   cfg.smtpHost = SMTP_HOST;
   cfg.smtpPort = SMTP_PORT;
@@ -42,7 +65,7 @@ void sendEmailNotification() {
   cfg.recipientEmail = inputMessageMailAd.c_str();
 
   String err;
-  if (!n3MailSendText(cfg, emailSubject, emailMessage.c_str(), &err)) {
+  if (!n3MailSendText(cfg, subjectBuf, emailMessage.c_str(), &err)) {
     Serial.print("[MAIL] echec envoi: ");
     Serial.println(err);
   }
@@ -111,9 +134,9 @@ void automatismes() {
   //remplissage de l'aquarium cas si l'aquarium est trop bas et la réserve assez remplie
 
   //mail si sécheresse trop forte (uniquement si au moins un capteur sol valide)
-  if ((soilValidCount > 0) && (HumidMoy < SeuilSec) && enableEmailChecked == "checked" && !emailHumidSent) {
+  if ((soilValidCount > 0) && (HumidMoy < SeuilSec) && emailEnabled() && !emailHumidSent) {
     emailMessage = String("Le sol est sec. L'humidité moyenne est de ") + String(HumidMoy);
-    sendEmailNotification();
+    sendEmailNotification(N3Severity::Alert);
       Serial.println(emailMessage);
       // SerialBT.println(emailMessage);
       emailHumidSent = true;
@@ -123,10 +146,10 @@ void automatismes() {
   }
 
   // mail si le niveau est revenu à la normale (hysteresis : SeuilSec + 5 %)
-  if ((soilValidCount > 0) && (HumidMoy > seuilRetourNormal()) && enableEmailChecked == "checked" && emailHumidSent) {
+  if ((soilValidCount > 0) && (HumidMoy > seuilRetourNormal()) && emailEnabled() && emailHumidSent) {
     emailMessage = String("L'humidite est remontee. La moyenne est maintenant de ") + String(HumidMoy);
     Serial.println(emailMessage);
-    sendEmailNotification();
+    sendEmailNotification(N3Severity::Info);
     emailHumidSent = false;
     datatobdd();
   }
@@ -138,13 +161,16 @@ void automatismes() {
 
   // mail si tension trop basse (batterie)
   if ((PontDiv < SeuilPontDiv)) {
-    if (enableEmailChecked == "checked" && !emailPontDivSent) {
+    if (emailEnabled() && !emailPontDivSent) {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       Serial.println(emailMessage);
-      sendEmailNotification();
+      sendEmailNotification(N3Severity::Critical);
       emailPontDivSent = true;
     }
     n3SleepStart();
+  } else {
+    // Batterie revenue au-dessus du seuil : re-arme l'alerte (anti-spam a etat).
+    emailPontDivSent = false;
   }
 
   // Arrosage en cas de secheresse : protege par cooldown pour eviter
@@ -155,11 +181,11 @@ void automatismes() {
   } else if (HumidMoy < SeuilSec) {
     if (arrosageAutoCooldownExpired()) {
       arrosage();
-      if (enableEmailChecked == "checked") {
+      if (emailEnabled()) {
         emailMessage = String("Arrosage auto effectue (sol sec, humidite=") +
                        String(HumidMoy) + String(")");
         Serial.println("[ARROSAGE] auto");
-        sendEmailNotification();
+        sendEmailNotification(N3Severity::Info);
       }
       datatobdd();
     } else {
@@ -187,10 +213,10 @@ void automatismes() {
     Serial.println("[ARROSAGE] heure programmee effectue");
     Serial.print("arrosageFait=");
     Serial.println(arrosageFait);
-    if (enableEmailChecked == "checked") {
+    if (emailEnabled()) {
       emailMessage = String("Arrosage heure programmee effectue (") +
                      String(heure) + String("h)");
-      sendEmailNotification();
+      sendEmailNotification(N3Severity::Info);
     }
     etatPompe = 1;
     datatobdd();
@@ -204,9 +230,9 @@ void automatismes() {
     Serial.println(ArrosageManu);
     arrosage();
     ArrosageManu = 0;
-    if (enableEmailChecked == "checked") {
+    if (emailEnabled()) {
       emailMessage = String("Arrosage manuel effectue");
-      sendEmailNotification();
+      sendEmailNotification(N3Severity::Info);
     }
     etatPompe = 1;
     datatobdd();
@@ -222,11 +248,14 @@ void sommeil() {
                  " SeuilPontDiv=" + String(SeuilPontDiv));
   if (WakeUp == 0) {
 
-    if ((PontDiv < SeuilPontDiv) && enableEmailChecked == "checked") {
+    if ((PontDiv < SeuilPontDiv) && emailEnabled()) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
-      emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
-      sendEmailNotification();
+      if (!emailPontDivSent) {
+        emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
+        sendEmailNotification(N3Severity::Critical);
+        emailPontDivSent = true;
+      }
       datatobdd();
       if (displayOk) {
         display.clearDisplay();

@@ -38,9 +38,10 @@ int soilValidCount = 0;
 unsigned long previousMillisDatas = 0;
 extern const long intervalDatas = N3_DATA_INTERVAL_MS;
 
-// Indicateurs : email d'alerte deja envoye (anti-spam).
-bool emailHumidSent = 0;
-bool emailPontDivSent = 0;
+// Indicateurs : email d'alerte deja envoye (anti-spam). RTC_DATA_ATTR pour
+// survivre au deep sleep (sinon re-spam a chaque reveil tant que la condition dure).
+RTC_DATA_ATTR bool emailHumidSent = 0;
+RTC_DATA_ATTR bool emailPontDivSent = 0;
 RTC_DATA_ATTR bool arrosageFait = 1;
 
 // Compteur de demarrages (RTC RAM).

@@ -32,10 +32,10 @@ jobs:
           path: ~/.platformio
           key: pio-native-${{ hashFiles('**/platformio*.ini') }}
           restore-keys: pio-native-
-      - name: shared/ (n3_analog_sensors, n3_hmac)
+      - name: shared/ (n3_analog_sensors, n3_hmac, n3_notify)
         run: |
           cd shared/tests_native
-          for s in test_analog test_hmac; do
+          for s in test_analog test_hmac test_notify; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
