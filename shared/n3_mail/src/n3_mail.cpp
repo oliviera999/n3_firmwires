@@ -154,22 +154,52 @@ bool n3MailSendText(const N3MailSmtpConfig& smtpConfig,
   sessionConfig.login.email = smtpConfig.authorEmail;
   sessionConfig.login.password = smtpConfig.authorPassword;
 
-  SMTP_Message message;
-  message.sender.name = n3SafeStr(smtpConfig.senderName, "n3 IoT");
-  message.sender.email = smtpConfig.authorEmail;
-  message.subject = subject;
-  message.addRecipient(n3SafeStr(smtpConfig.recipientName, "Destinataire"), smtpConfig.recipientEmail);
-  message.text.content = body;
-  message.text.charSet = "utf-8";
-  message.text.transfer_encoding = Content_Transfer_Encoding::enc_7bit;
-  message.priority = esp_mail_smtp_priority::esp_mail_smtp_priority_low;
-
   if (!smtp.connect(&sessionConfig)) {
     if (outError) {
       *outError = "SMTP connect echec: ";
       *outError += smtp.errorReason().c_str();
     }
     return false;
+  }
+
+  // Construction + envoi du message mutualises (parite comportement historique :
+  // utf-8 / 7bit / priorite basse tous actives).
+  N3MailMessageSpec spec{};
+  spec.senderName = smtpConfig.senderName;
+  spec.senderEmail = smtpConfig.authorEmail;
+  spec.recipientName = smtpConfig.recipientName;
+  spec.recipientEmail = smtpConfig.recipientEmail;
+  spec.subject = subject;
+  spec.body = body;
+  spec.setCharsetUtf8 = true;
+  spec.set7bitEncoding = true;
+  spec.setLowPriority = true;
+
+  return n3MailSendMessageWithSession(smtp, spec, outError);
+}
+
+bool n3MailSendMessageWithSession(SMTPSession& smtp,
+                                  const N3MailMessageSpec& spec,
+                                  String* outError) {
+  if (!spec.senderEmail || !spec.recipientEmail || !spec.subject || !spec.body) {
+    if (outError) *outError = "Specification de message mail invalide.";
+    return false;
+  }
+
+  SMTP_Message message;
+  message.sender.name = n3SafeStr(spec.senderName, "n3 IoT");
+  message.sender.email = spec.senderEmail;
+  message.subject = spec.subject;
+  message.addRecipient(n3SafeStr(spec.recipientName, "Destinataire"), spec.recipientEmail);
+  message.text.content = spec.body;
+  if (spec.setCharsetUtf8) {
+    message.text.charSet = "utf-8";
+  }
+  if (spec.set7bitEncoding) {
+    message.text.transfer_encoding = Content_Transfer_Encoding::enc_7bit;
+  }
+  if (spec.setLowPriority) {
+    message.priority = esp_mail_smtp_priority::esp_mail_smtp_priority_low;
   }
 
   bool sendOk = MailClient.sendMail(&smtp, &message);

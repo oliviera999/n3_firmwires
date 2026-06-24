@@ -4,6 +4,7 @@
 #include "n3_wifi.h"
 #include "n3_data.h"
 #include "n3_mail.h"
+#include "n3_notify.h"
 #include "n3_defaults.h"
 #include "n3_outputs_json.h"
 
@@ -258,8 +259,10 @@ void n3ppMaybeSendNetworkReportEmail() {
     return;
   }
 
-  if (enableEmailChecked != "checked") {
-    Serial.println("[MAIL][NET] notifications desactivees (GPIO 101), timer reinitialise");
+  // Rapport reseau = diagnostic (P4) : envoye seulement si le mode l'autorise
+  // (mode Full / legacy "checked"). Mode none/important/partial -> filtre.
+  if (!n3NotifModeAllows(n3NotifModeFromString(enableEmailChecked.c_str()), N3Severity::Diagnostic)) {
+    Serial.println("[MAIL][NET] rapport diagnostic (P4) filtre par le mode de notification, timer reinitialise");
     s_netReportElapsedSeconds = 0;
     n3NetStatsResetPeriod();
     return;
@@ -313,7 +316,7 @@ void n3ppMaybeSendNetworkReportEmail() {
   smtpCfg.recipientEmail = inputMessageMailAd.c_str();
 
   char subject[96];
-  snprintf(subject, sizeof(subject), "[n3pp][reseau] rapport v%s", FIRMWARE_VERSION);
+  snprintf(subject, sizeof(subject), "[N3PP][P4] rapport reseau v%s", FIRMWARE_VERSION);
 
   String smtpError;
   if (n3MailSendText(smtpCfg, subject, body, &smtpError)) {

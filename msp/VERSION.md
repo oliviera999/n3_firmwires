@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.44** (définie dans `include/msp_config.h`).
+Version actuelle : **2.45** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.44** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.45 | 2026-06 | Notifications par sévérité (P1–P4) + mode de verbosité télécommandable (GPIO 101 étendu : `none`/`important`/`partial`/`full`, rétro-compatible `checked`/`unchecked`) via lib partagée `n3_notify`. Alerte batterie : sévérité P1, anti-spam inter-cycles (`RTC_DATA_ATTR` + re-armement au retour à la normale), sujet `[MSP1][Pn]` |
 | 2.44 | 2026-06 | Audit optimisation : migration SMTP → `n3_mail` et RTC → `n3_time` (≈120 lignes dédupliquées avec n3pp, logs FR préservés) ; retrait du global `SMTPSession smtp` inutilisé ; `n3_http`/`libn3_iot` supprimées (code mort) ; `ArduinoJson` épinglé (retrait du caret) |
 | 2.43 | 2026-05 | Build : `ArduinoJson` explicite pour `n3_ota`, fallback `API_SIG_SECRET`, constantes OLED `N3_OLED_*` |
 | 2.42 | 2026-05 | Phase 1 audit : remplacement de `analogRead(27)` codé en dur par la macro `PLUIE` (capteur pluie configurable), DS18B20 avec test `DEVICE_DISCONNECTED_C` + plage -20…70 °C + retry + fallback 20 °C, suppression du `server.begin()` dans `loop()` (aucune route enregistrée), bloc périodique `intervalDatas` repositionné AVANT `sommeil()` (était mort en deep sleep), `configTime` appelé 1× par réveil, suppression du `delay(100)` final, retrait des includes inutiles (`ESPmDNS.h`) et de la variable `WiFiUDP wifiUdp`, retrait de la dépendance `ArduinoJson v7` dupliquée (déjà transitive via n3_common), suppression du doublon `MSP_URL_*` dans `msp_config.h`, suppression du prototype mort `httpGETRequest()`, `FreqWakeUp` par défaut aligné sur `N3_DEFAULT_FREQ_WAKE_UP_S = 300 s`, init des servos à une position de repli (milieu de plage) au boot, réduction des boucles OLED (3×6 → 3 pages) pour limiter le risque WDT en cumul avec le scan tracker |

@@ -89,8 +89,10 @@ void test_unknown_and_null_inputs(void) {
 }
 
 // --- Taille de la table figée (détecte ajout/suppression non intentionnel) ---
+// 27 = 21 + 6 angles servo nourrissage (GPIO 118-123), ajoutés intentionnellement
+// pour s'aligner sur le serveur (cf. n3_serveur GPIO 118-123 / OutputSyncService).
 void test_mapping_count_is_stable(void) {
-  TEST_ASSERT_EQUAL_UINT(21, (unsigned)GPIOMap::MAPPING_COUNT);
+  TEST_ASSERT_EQUAL_UINT(27, (unsigned)GPIOMap::MAPPING_COUNT);
 }
 
 int main(void) {

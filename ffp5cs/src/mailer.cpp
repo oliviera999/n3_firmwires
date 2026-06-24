@@ -19,6 +19,14 @@
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 
+// Mutualisation Phase 1 : construction du SMTP_Message + MailClient.sendMail
+// factorisee dans la lib partagee shared/n3_mail (n3MailSendMessageWithSession).
+// On conserve ici la session persistante _smtp, le mutex TLS, les feeds watchdog,
+// la garde heap et la fermeture de session ; seule la plomberie ESP_Mail_Client du
+// message est deleguee. mailer.h a deja inclus <ESP_Mail_Client.h> (FEATURE_MAIL),
+// donc le type SMTPSession est complet ici (n3_mail.h ne fait qu'une forward-decl).
+#include "n3_mail.h"
+
 // Buffer statique pour formatUptime (conforme .cursorrules)
 static char g_uptimeBuffer[48];
 
@@ -499,14 +507,19 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   
   Serial.println(F("[Mail] Trace 4: Message built"));
 
-  // Configuration du message SMTP
-  SMTP_Message msg;
-  msg.sender.name  = fromNameBuf;
-  msg.sender.email = Secrets::AUTHOR_EMAIL;
-  msg.subject      = subjectBuf;
-  msg.addRecipient(toName, toEmail);
-  msg.text.content = s_mailMessageBuffer;
-  
+  // Configuration du message SMTP — mutualisee via shared/n3_mail.
+  // Parite stricte avec l'ancien code : on ne renseigne QUE sender/subject/
+  // destinataire/contenu (drapeaux charSet/encoding/priorite laisses a false,
+  // comme avant). La session persistante _smtp, deja connectee ci-dessus, reste
+  // possedee par ce Mailer ; n3MailSendMessageWithSession ne touche pas la connexion.
+  N3MailMessageSpec mailSpec{};
+  mailSpec.senderName = fromNameBuf;
+  mailSpec.senderEmail = Secrets::AUTHOR_EMAIL;
+  mailSpec.recipientName = toName;
+  mailSpec.recipientEmail = toEmail;
+  mailSpec.subject = subjectBuf;
+  mailSpec.body = s_mailMessageBuffer;
+
   Serial.println(F("[Mail] Trace 5: Msg struct configured"));
 
   // Affichage des détails du mail avant envoi avec informations temporelles
@@ -515,13 +528,13 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   localtime_r(&mailTime, &mailTimeInfo);
   char mailTimeBuf[32];
   strftime(mailTimeBuf, sizeof(mailTimeBuf), "%Y-%m-%d %H:%M:%S", &mailTimeInfo);
-  
+
   Serial.println(F("[Mail] ===== DÉTAILS DU MAIL ====="));
   Serial.printf("[Mail] Heure d'envoi: %s (epoch: %lu)\n", mailTimeBuf, mailTime);
   Serial.print(F("[Mail] De: "));
-  logSafeStr(msg.sender.name.c_str(), 60);
+  logSafeStr(fromNameBuf, 60);
   Serial.print(F(" <"));
-  logSafeStr(msg.sender.email.c_str(), 60);
+  logSafeStr(Secrets::AUTHOR_EMAIL, 60);
   Serial.println(F(">"));
   Serial.print(F("[Mail] À: "));
   logSafeStr(toName, 40);
@@ -529,7 +542,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   logSafeStr(toEmail, 60);
   Serial.println(F(">"));
   Serial.print(F("[Mail] Objet: "));
-  logSafeStr(msg.subject.c_str(), 80);
+  logSafeStr(subjectBuf, 80);
   Serial.println();
   Serial.println(F("[Mail] Contenu (aperçu):"));
   // Afficher un aperçu du message (max 200 caractères)
@@ -540,11 +553,11 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   preview[previewLen] = '\0';
   Serial.println(preview);
   Serial.println(F("[Mail] ==========================="));
-  
+
   Serial.println(F("[Mail] Trace 6: Calling sendMail..."));
   // v13.53 (audit): feed TWDT avant et après MailClient.sendMail (peut bloquer 5-30s sur SMTP lent).
   if (esp_task_wdt_status(NULL) == ESP_OK) { esp_task_wdt_reset(); }
-  bool ok = MailClient.sendMail(&_smtp, &msg);
+  bool ok = n3MailSendMessageWithSession(_smtp, mailSpec, nullptr);
   if (esp_task_wdt_status(NULL) == ESP_OK) { esp_task_wdt_reset(); }
   Serial.printf("[Mail] Trace 7: sendMail returned %s\n", ok ? "TRUE" : "FALSE");
 
