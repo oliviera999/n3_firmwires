@@ -12,6 +12,21 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.26 - 2026-06-24
+
+### Correctif build WROOM — `Arduino_JSON` manquant dans `lib_deps` ffp5cs
+
+- La mutualisation SMTP 14.25 (ffp5cs adopte `shared/n3_mail`) tire **transitivement**
+  `n3_common` (`n3_mail` → `n3_data` → `n3_common`), dont `n3_outputs_json` inclut
+  `<Arduino_JSON.h>`. Le `lib_deps` de ffp5cs ne déclarait pas cette lib (contrairement à
+  n3pp / msp / uploadphotosserver) → `fatal error: Arduino_JSON.h: No such file or directory`
+  au build `wroom-test` (révélé en CI ; ce build n'est pas compilable localement).
+- **Correctif** : ajout de `arduino-libraries/Arduino_JSON@0.2.0` au `lib_deps` de `[env]`
+  (hérité par tous les envs WROOM/S3), aligné sur les firmwares frères et sur la dépendance
+  déclarée par `shared/n3_common/library.json`.
+
+---
+
 ## Version 14.25 - 2026-06-24
 
 ### Mutualisation Phase 1 — envoi SMTP factorisé via `shared/n3_mail`
