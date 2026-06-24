@@ -12,6 +12,21 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.27 - 2026-06-24
+
+### Nourrissage manuel indépendant du planning auto
+
+- **Changement** : le nourrissage manuel (distant 108/109, local UI) **ne marque plus**
+  les créneaux horaires NVS (`bouffeMatinOk` / `MidiOk` / `SoirOk`). Suppression de
+  `markCurrentFeedingSlotAsDone()` appelée sur un feed distant gros+petits simultané.
+- **Effet** : un repas manuel complet (108+109) n'empêche plus le repas auto au créneau
+  programmé ; enchaîner autant de nourrissages manuels que souhaité (gros, petits ou les
+  deux) reste limité uniquement par la garde anti-cycle matérielle (`isFeedingInProgress`).
+- **Contrat serveur** : inchangé (GPIO 108/109, ack, reset). Pas de migration serveur.
+- **Build OTA beta** : `custom_flash_budget_pct = 86` pour `wroom-beta` (debug serial actif, ~85,6 % flash).
+
+---
+
 ## Version 14.26 - 2026-06-24
 
 ### Correctif build WROOM — `Arduino_JSON` manquant dans `lib_deps` ffp5cs

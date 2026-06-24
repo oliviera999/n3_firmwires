@@ -153,8 +153,6 @@ class Automatism {
   void notifyRemoteFeedExecuted(bool isSmall) { _network.onRemoteFeedExecuted(isSmall, *this); }
   /// Idem pour un nourrissage distant SIMULTANÉ gros+petits (ack des deux, reset 108/109, 1 email)
   void notifyRemoteFeedBothExecuted() { _network.onRemoteFeedBothExecuted(*this); }
-  /// Marque le créneau horaire courant (matin/midi/soir) comme déjà nourri (évite auto après feed distant).
-  void markCurrentFeedingSlotAsDone();
   size_t createFeedingMessage(char* buffer,
                               size_t bufferSize,
                               const char* type,

@@ -126,14 +126,11 @@ static void resolveFeedCommands(const JsonDocument& doc, Automatism& autoCtrl) {
             Serial.println(F("[GPIOParser] Nourrissage GROS+PETITS simultané -> cycle séquentiel"));
             autoCtrl.manualFeedBoth();
             autoCtrl.notifyRemoteFeedBothExecuted();
-            // Repas complet (gros + petits) -> marquer le créneau pour éviter un repas auto en doublon.
-            autoCtrl.markCurrentFeedingSlotAsDone();
             break;
         case FeedingCommandResolver::Action::Big:
             Serial.println(F("Nourrissage gros (rising edge)"));
             autoCtrl.manualFeedBig();
             autoCtrl.notifyRemoteFeedExecuted(false);
-            // Repas PARTIEL : ne pas marquer le créneau (l'auto complétera gros+petits).
             break;
         case FeedingCommandResolver::Action::Small:
             Serial.println(F("Nourrissage petits (rising edge)"));

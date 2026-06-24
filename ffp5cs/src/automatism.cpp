@@ -8,7 +8,6 @@
 #include "nvs_manager.h"
 #include "nvs_keys.h"  // v11.176: Constantes NVS centralisées
 #include "dbvars_cache.h"
-#include "automatism/feeding_slot_matcher.h"
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
 #include "automatism/feeding_finalize_orchestrator.h"  // C4: sync fin de cycle nourrissage (testable)
@@ -751,33 +750,6 @@ void Automatism::handleFeeding() {
                                        _feedingPhaseEnd = millis() + bigCycleMs + delayMs + smallCycleMs;
                                    },
                                    nullptr);  // Sync déplacée dans finalizeFeedingIfNeeded (à la vraie fin du cycle)
-}
-
-void Automatism::markCurrentFeedingSlotAsDone() {
-    time_t now = _power.getCurrentEpochSafe();
-    struct tm timeinfo;
-    if (!localtime_r(&now, &timeinfo)) {
-        return;
-    }
-    int hour = timeinfo.tm_hour;
-    // Aligner sur la logique du planning : créneau à l'heure H ou rattrapage H+1
-    const FeedingSlotMatcher::SlotMatches matches =
-        FeedingSlotMatcher::slotsForCurrentWindow(hour, bouffeMatin, bouffeMidi, bouffeSoir);
-    if (matches.morning) {
-        _config.setBouffeMatinOk(true);
-        Serial.println(F("[Auto] Créneau matin marqué nourri (feed distant)"));
-    }
-    if (matches.noon) {
-        _config.setBouffeMidiOk(true);
-        Serial.println(F("[Auto] Créneau midi marqué nourri (feed distant)"));
-    }
-    if (matches.evening) {
-        _config.setBouffeSoirOk(true);
-        Serial.println(F("[Auto] Créneau soir marqué nourri (feed distant)"));
-    }
-    if (matches.any()) {
-        _config.saveBouffeFlags();
-    }
 }
 
 // ============================================================================
