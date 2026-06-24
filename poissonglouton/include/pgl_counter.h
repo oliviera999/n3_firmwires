@@ -151,6 +151,8 @@ class PglCounter {
 
   uint32_t firstDirtyMs_ = 0;
 
+  uint32_t lastReconcileMs_ = 0;  // throttle des reconciliations qui scannent la SD
+
 
 
   PglEventJournal* journal_ = nullptr;

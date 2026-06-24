@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include <ESP32Time.h>
 #include <WiFi.h>
+#include <esp_sleep.h>
 #include <time.h>
 
 #include "config.h"
@@ -27,7 +27,7 @@ PglCounter gCounter;
 PglAudio gAudio;
 PglDisplay gDisplay;
 PglNetwork gNetwork;
-PglSleep gSleep;
+[[maybe_unused]] PglSleep gSleep;
 
 uint32_t gLastUploadMs = 0;
 uint32_t gLastActivityMs = 0;
@@ -120,6 +120,7 @@ static int16_t readBatteryMilliVolt() {
 #endif
 }
 
+#if PGL_ENABLE_SLEEP && !PGL_DEBUG_NO_SLEEP
 // Timer de réveil adaptatif : la nuit (23h-6h, heure NTP valide uniquement)
 // et sur batterie faible, on espace les réveils timer. L'EXT0 (IR) continue
 // de réveiller instantanément sur détection.
@@ -150,6 +151,7 @@ static uint32_t computeSleepTimerS() {
   }
   return timerS;
 }
+#endif  // PGL_ENABLE_SLEEP && !PGL_DEBUG_NO_SLEEP
 
 static bool shouldUploadNow() {
   if (gCounter.getPendingCount() >= PGL_FORCE_UPLOAD_QUEUE_SIZE) return true;
@@ -267,8 +269,10 @@ void setup() {
   ++gBootCount;
   PGL_LOG("Boot count: %lu", static_cast<unsigned long>(gBootCount));
 
+  // Reveil par EXT0/timer = sortie de deep sleep ; UNDEFINED = vrai power-on.
+  const bool coldBoot = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED);
+
   PGL_LOG("Init reseau...");
-  WiFi.mode(WIFI_STA);
   gNetwork.begin();
   gNetwork.startBackgroundWifi();
   PGL_LOG_V("WiFi mode STA, status=%s", pglWifiStatusName(WiFi.status()));
@@ -304,7 +308,13 @@ void setup() {
   PGL_LOG("Init audio I2S (JC4827W543 speak)...");
   gAudio.setNotifyCallback(onAudioDisplayNotify, &gDisplay);
   gAudio.begin();
-  gAudio.playStartup();
+  // Jingle de demarrage uniquement au vrai power-on : sinon il serait rejoue
+  // a chaque sortie de deep sleep (timer/IR).
+  if (coldBoot) {
+    gAudio.playStartup();
+  } else {
+    PGL_LOG_V("Audio: reveil deep sleep — jingle de demarrage ignore");
+  }
 
   const int16_t battMv = readBatteryMilliVolt();
 #if PGL_BATTERY_ADC_ENABLED
@@ -412,10 +422,11 @@ void loop() {
 #endif
 
   if ((millis() - gLastActivityMs) > PGL_IDLE_SLEEP_MS) {
-#if PGL_DEBUG_NO_SLEEP
+#if !PGL_ENABLE_SLEEP || PGL_DEBUG_NO_SLEEP
     if ((millis() - gLastIdleWarnMs) > 10000) {
-      PGL_LOG("[TEST] Inactivite %lums — veille ignoree (PGL_DEBUG_NO_SLEEP)",
-              static_cast<unsigned long>(millis() - gLastActivityMs));
+      PGL_LOG("Inactivite %lums — veille desactivee (PGL_ENABLE_SLEEP=%d, PGL_DEBUG_NO_SLEEP=%d)",
+              static_cast<unsigned long>(millis() - gLastActivityMs),
+              PGL_ENABLE_SLEEP, PGL_DEBUG_NO_SLEEP);
       gLastIdleWarnMs = millis();
     }
     gLastActivityMs = millis();

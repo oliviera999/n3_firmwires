@@ -347,7 +347,17 @@ void PglCounter::resetDailyIfNeeded(uint32_t nowEpoch) {
     lastDayKey_ = nowKey;
     reconcileTotals(nowEpoch);
     persistTotals();
+    lastReconcileMs_ = millis();
     return;
+  }
+  // Meme jour : la reconciliation lit tout le journal SD (cher). On la limite
+  // a PGL_RECONCILE_INTERVAL_MS quand des evenements sont en attente sur SD,
+  // au lieu de scanner a chaque tour de loop(). En mode NVS-seul, le scan est
+  // bon marche (pas d'I/O SD), on laisse passer a chaque fois.
+  if (journal_ && journal_->canRead()) {
+    const uint32_t now = millis();
+    if ((now - lastReconcileMs_) < PGL_RECONCILE_INTERVAL_MS) return;
+    lastReconcileMs_ = now;
   }
   reconcileTotals(nowEpoch);
 }

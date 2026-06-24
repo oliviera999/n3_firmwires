@@ -8,7 +8,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.3";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.2.4";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -19,6 +19,17 @@ static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 #ifndef PGL_HEADLESS
 
 #define PGL_HEADLESS 0
+
+#endif
+
+
+
+// Veille profonde (deep sleep). Desactivee par defaut pour l'instant :
+// le couple timer/idle actuel rend le deep sleep peu rentable et perturbe
+// l'ecran + le son a chaque reveil. Reactiver via -DPGL_ENABLE_SLEEP=1.
+#ifndef PGL_ENABLE_SLEEP
+
+#define PGL_ENABLE_SLEEP 0
 
 #endif
 
@@ -112,6 +123,12 @@ static constexpr uint32_t PGL_IDLE_SLEEP_MS = 12000;
 static constexpr uint8_t PGL_PERSIST_EVERY_EVENTS = 4;
 
 static constexpr uint32_t PGL_PERSIST_MAX_DELAY_MS = 30000;
+
+// Intervalle min entre deux reconciliations totaux qui scannent le journal SD.
+// Evite de relire tout le journal a chaque tour de loop() quand des evenements
+// sont en attente (mode offline). La detection de changement de jour reste, elle,
+// verifiee a chaque tour.
+static constexpr uint32_t PGL_RECONCILE_INTERVAL_MS = 30000;
 
 
 

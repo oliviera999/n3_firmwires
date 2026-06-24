@@ -48,6 +48,9 @@ lv_color_t* drawBuffer = nullptr;
 PglUiHandles ui;
 bool adminUnlockedState = false;
 uint32_t lastUiUpdateMs = 0;
+// Vrai dès que LVGL a redessiné dans le canvas depuis le dernier push panneau.
+// Évite un transfert QSPI plein écran à chaque tour quand rien ne change.
+bool canvasDirty = false;
 int lastWifiRssi_ = -100;
 bool wifiConnected_ = false;
 
@@ -71,6 +74,7 @@ void displayFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP
 #else
   gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
 #endif
+  canvasDirty = true;
   lv_disp_flush_ready(disp);
 }
 
@@ -92,7 +96,12 @@ void touchpadRead(lv_indev_drv_t* /*indev*/, lv_indev_data_t* data) {
 
 void flushUi() {
   lv_timer_handler();
-  gfx->flush();
+  // Ne pousser le canvas vers le panneau QSPI que si LVGL a redessiné
+  // quelque chose (canvasDirty positionné dans displayFlush).
+  if (canvasDirty) {
+    gfx->flush();
+    canvasDirty = false;
+  }
 }
 }  // namespace
 

@@ -1,5 +1,27 @@
 # Poissonglouton - Historique versions
 
+## 0.2.4 - 2026-06-24
+
+- Audit firmware : corrections de cohérence, performance et nettoyage des dépendances.
+- Veille : deep sleep désactivée par défaut via flag `PGL_ENABLE_SLEEP` (0). Le couple
+  `PGL_TIMER_WAKEUP_S=2` / `PGL_IDLE_SLEEP_MS=12000` rendait la veille peu rentable et
+  perturbait écran + son à chaque réveil. Réactiver via `-DPGL_ENABLE_SLEEP=1`.
+- Audio : le jingle de démarrage n'est joué qu'au vrai power-on
+  (`esp_sleep_get_wakeup_cause() == UNDEFINED`), plus à chaque sortie de deep sleep.
+- Compteur : la réconciliation des totaux qui scanne le journal SD est limitée à
+  `PGL_RECONCILE_INTERVAL_MS` (30 s) au lieu d'être exécutée à chaque tour de `loop()`
+  quand des événements sont en attente (gros gain CPU/SD en mode offline).
+- Journal SD : lectures séquentielles (`readPending`, `findAckOffset`, `sumDeltasInRange`)
+  ouvrent désormais le fichier une seule fois au lieu d'une ouverture par record.
+- Affichage : push QSPI du framebuffer uniquement lorsque LVGL a réellement redessiné
+  (flush conditionnel) au lieu d'un transfert plein écran à chaque tour.
+- Nettoyage : suppression de la dépendance `ESP32Time` (incluse dans `main.cpp` mais jamais
+  utilisée — `n3_time` n'est pas compilé pour ce firmware) et des build flags morts
+  `PGL_ENABLE_IR` / `PGL_ENABLE_ULTRASON` / `PGL_ENABLE_HMAC`. `WiFi.mode(STA)` n'est plus
+  appelé deux fois au boot. (`Arduino_JSON` est conservé : requis par la lib partagée
+  `n3_common/n3_outputs_json`.)
+- Validation : builds `pgl-s3-headless` et `pgl-s3-display` compilés avec succès.
+
 ## 0.2.3 - 2026-06-16
 
 - Production : deep sleep reactivee (`PGL_DEBUG_NO_SLEEP=0` par defaut) ; env `pgl-s3-debug` pour bench.
