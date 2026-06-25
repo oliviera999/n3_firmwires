@@ -1,6 +1,8 @@
 #include <Arduino.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <esp_sleep.h>
+#include <sys/time.h>
 #include <time.h>
 
 #include "config.h"
@@ -38,6 +40,16 @@ uint32_t gLastIdleWarnMs = 0;
 
 RTC_DATA_ATTR uint32_t gBootCount = 0;
 bool gEpochBackfillDone = false;
+
+// Horloge: dernier epoch NTP valide persiste en NVS, pour amorcer une horloge
+// provisoire au power-on a froid (avant la 1ere synchro NTP) et eviter les
+// epoch=0. Namespace dedie "pgltime", cle "lastEpoch".
+constexpr const char* kTimeNvsNamespace = "pgltime";
+constexpr const char* kTimeNvsKey = "lastEpoch";
+// Cadence d'ecriture NVS du lastKnownEpoch (usure flash) : au plus une ecriture
+// toutes les 5 minutes tant que l'horloge est valide.
+constexpr uint32_t kLastEpochSaveIntervalMs = 5UL * 60UL * 1000UL;
+uint32_t gLastEpochSaveMs = 0;
 
 void onAudioDisplayNotify(const char* reason, const char* mp3Path, bool started, void* userData) {
   auto* display = static_cast<PglDisplay*>(userData);
@@ -102,6 +114,50 @@ static uint32_t getCurrentEpochSafe() {
     return 0;
   }
   return static_cast<uint32_t>(now);
+}
+
+// Lit le dernier epoch NTP valide persiste en NVS (0 si absent/invalide).
+static uint32_t loadLastKnownEpoch() {
+  Preferences p;
+  if (!p.begin(kTimeNvsNamespace, true)) {
+    return 0;
+  }
+  const uint32_t epoch = p.getUInt(kTimeNvsKey, 0);
+  p.end();
+  return epoch >= 1700000000 ? epoch : 0;
+}
+
+// Persiste l'epoch courant en NVS (seulement s'il avance, pour limiter l'usure).
+static void saveLastKnownEpoch(uint32_t epoch) {
+  if (epoch < 1700000000) return;
+  Preferences p;
+  if (!p.begin(kTimeNvsNamespace, false)) return;
+  const uint32_t prev = p.getUInt(kTimeNvsKey, 0);
+  if (epoch > prev) {
+    p.putUInt(kTimeNvsKey, epoch);
+  }
+  p.end();
+}
+
+// Amorce l'horloge systeme avec le dernier epoch NVS si l'horloge est invalide.
+// A appeler au boot apres configTime, avant tout horodatage d'evenement.
+// L'horloge RTC interne persiste a travers le deep sleep : ce cas ne survient
+// donc qu'au power-on a froid. NTP corrigera ensuite vers le haut.
+static void seedClockFromNvs() {
+  if (time(nullptr) >= 1700000000) {
+    return;  // horloge deja valide (RTC conservee en deep sleep)
+  }
+  const uint32_t lastEpoch = loadLastKnownEpoch();
+  if (lastEpoch == 0) {
+    PGL_LOG("Horloge: aucun epoch NVS, demarrage sans amorcage (NTP en attente)");
+    return;
+  }
+  struct timeval tv = {};
+  tv.tv_sec = static_cast<time_t>(lastEpoch);
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+  PGL_LOG("Horloge: amorcage provisoire epoch=%lu (NVS, NTP en attente)",
+          static_cast<unsigned long>(lastEpoch));
 }
 
 static int16_t readBatteryMilliVolt() {
@@ -334,6 +390,10 @@ void setup() {
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   PGL_LOG("NTP: pool.ntp.org TZ=Africa/Casablanca");
 
+  // Amorcage horloge provisoire depuis NVS (cas power-on a froid avant NTP) :
+  // donne un epoch plausible a getCurrentEpochSafe() / dayKey des le boot.
+  seedClockFromNvs();
+
   gLastActivityMs = millis();
   gLastUiIdleMs = millis();
   gLastHeartbeatMs = millis();
@@ -413,6 +473,15 @@ void loop() {
                 WiFi.gatewayIP().toString().c_str());
     }
 #endif
+    // Persistance parcimonieuse du dernier epoch NTP valide (horloge provisoire
+    // au prochain power-on a froid). Throttle a kLastEpochSaveIntervalMs.
+    if (isNtpReady() &&
+        (gLastEpochSaveMs == 0 ||
+         (millis() - gLastEpochSaveMs) >= kLastEpochSaveIntervalMs)) {
+      saveLastKnownEpoch(getCurrentEpochSafe());
+      gLastEpochSaveMs = millis();
+    }
+
     gLastHeartbeatMs = millis();
   }
 
@@ -442,6 +511,7 @@ void loop() {
             static_cast<unsigned int>(PGL_IDLE_SLEEP_MS));
     tryUploadBatch();
     gCounter.flush();  // la RAM est perdue en deep sleep : persister la file
+    saveLastKnownEpoch(getCurrentEpochSafe());  // borne basse pour le prochain power-on
     gDisplay.sleepBacklight();
     PGL_LOG("Backlight OFF");
     const bool useIrWakeup = gDetection.hasIr();
