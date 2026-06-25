@@ -1,10 +1,6 @@
 #pragma once
 
-
-
 #include <Arduino.h>
-
-
 
 // Version firmware
 
@@ -14,15 +10,11 @@ static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
 static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 
-
-
 #ifndef PGL_HEADLESS
 
 #define PGL_HEADLESS 0
 
 #endif
-
-
 
 // Veille profonde (deep sleep). Desactivee par defaut POUR L'INSTANT (version
 // alpha) : le couple timer/idle actuel rend le deep sleep peu rentable et
@@ -34,15 +26,11 @@ static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 
 #endif
 
-
-
 // Broches capteurs — IR par defaut GPIO7 (RTC/ext0) ; surcharge via -DPGL_IR_PIN=N
 #ifndef PGL_IR_PIN
 #define PGL_IR_PIN 7
 #endif
 static constexpr int PGL_US_PIN = 6;   // HC-SR04 trig/echo sur une seule broche
-
-
 
 // Volume audio (0…21, ESP32-audioI2S) — display ; inutilise en headless
 static constexpr uint8_t PGL_AUDIO_VOLUME = 15;
@@ -69,13 +57,9 @@ static constexpr uint8_t PGL_I2S_VOLUME = PGL_AUDIO_VOLUME;
 
 #endif
 
-
-
 // Nombre max de pistes dans mp3/ (001.mp3, 002.mp3, …) pour le scan au boot
 
 static constexpr uint16_t PGL_AUDIO_MAX_TRACKS = 99;
-
-
 
 // Batterie (pont diviseur) — display : GPIO2 = I2S_LRCK, ADC désactivé
 
@@ -101,8 +85,6 @@ static constexpr float PGL_BATTERY_VREF = 3.30f;
 
 static constexpr uint8_t PGL_BATTERY_SAMPLES = 8;
 
-
-
 // Détection
 
 static constexpr uint16_t PGL_ULTRASON_TRIGGER_CM = 25;
@@ -122,8 +104,6 @@ static constexpr uint8_t PGL_US_CONSECUTIVE_POLLS = 2;
 // heartbeat avant de dormir, sans peser sur la conso une fois la veille active.
 static constexpr uint32_t PGL_IDLE_SLEEP_MS = 12000;
 
-
-
 // Persistance NVS de la file d'événements (lazy)
 
 static constexpr uint8_t PGL_PERSIST_EVERY_EVENTS = 4;
@@ -135,8 +115,6 @@ static constexpr uint32_t PGL_PERSIST_MAX_DELAY_MS = 30000;
 // sont en attente (mode offline). La detection de changement de jour reste, elle,
 // verifiee a chaque tour.
 static constexpr uint32_t PGL_RECONCILE_INTERVAL_MS = 30000;
-
-
 
 // Réseau / synchro
 
@@ -153,8 +131,6 @@ static constexpr uint32_t PGL_WIFI_LOOP_BUDGET_MS = 40;
 static constexpr uint32_t PGL_WIFI_UPLOAD_BUDGET_MS = 2000;
 
 static constexpr uint32_t PGL_WIFI_RETRY_INTERVAL_MS = 60000;
-
-
 
 // Énergie
 
@@ -194,8 +170,6 @@ static constexpr int16_t PGL_LOWBATT_MILLIVOLT = 3500;
 
 static constexpr uint32_t PGL_BACKLIGHT_TIMEOUT_MS = 20000;
 
-
-
 // Journal SD (offline sync)
 // Fichier de journal sur la carte SD (append-only, records binaires + CRC16)
 static constexpr const char* PGL_JOURNAL_PATH = "/pgl_journal.bin";
@@ -224,8 +198,6 @@ static constexpr const char* PGL_SERVER_POST_URL = "https://iot.olution.info/pgl
 
 static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "https://iot.olution.info/pgl/heartbeat";
 
-
-
 #ifndef PGL_ENABLE_SERVER_HEARTBEAT
 
 #define PGL_ENABLE_SERVER_HEARTBEAT 1
@@ -233,8 +205,6 @@ static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "https://iot.olution.inf
 #endif
 
 static constexpr uint32_t PGL_HEARTBEAT_INTERVAL_MS = 120000;
-
-
 
 // Mise a jour OTA (calque msp/n3pp : lib partagee n3_common/n3_ota, verif
 // sha256 + signature ECDSA P-256, cle publique embarquee n3_ota_pubkey.h).
@@ -252,5 +222,4 @@ static constexpr const char* PGL_OTA_METADATA_URL =
 // (OTA_PERIODIC_INTERVAL_SECONDS = 2 h). Independant du heartbeat applicatif
 // (PGL_HEARTBEAT_INTERVAL_MS) pour ne pas marteler le serveur OTA.
 static constexpr uint32_t PGL_OTA_CHECK_INTERVAL_MS = 2UL * 60UL * 60UL * 1000UL;
-
 
