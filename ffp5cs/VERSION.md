@@ -12,6 +12,37 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.0 - 2026-06-25
+
+### Nourrissage manuel — protocole COMPTEUR MONOTONE (remplace la détection de front)
+
+- **Breaking (MAJOR)** : le serveur (`/api/outputs*/state`) renvoie désormais pour
+  `108`/`bouffePetits` (petits) et `109`/`bouffeGros` (gros) un **entier monotone croissant**
+  = nombre total de commandes de nourrissage jamais émises pour ce canal (jamais remis à zéro),
+  et non plus un niveau 0/1. Contrat aligné avec le serveur **6.0.0**.
+- **Firmware** : `FeedingCommandResolver` réécrit en résolveur de compteur pur (header-only,
+  testable g++). Par poll et par canal : `pending = serverCounter - executed`. Le firmware
+  persiste en NVS un compteur **exécuté** par canal (`feedExecP`/`feedExecG`) + un flag
+  d'amorçage one-shot (`feedSeed`).
+  - **Amorçage** au 1er poll après flash neuf : `executed = serverCounter`, **aucune**
+    distribution (évite les nourrissages parasites si le compteur serveur est déjà élevé).
+  - **Sécurité poissons (CRITIQUE)** : cap de rattrapage `MAX_FEED_CATCHUP = 5`. Si
+    `pending > 5`, on saute `executed = serverCounter - 5` (l'excédent est jeté) — une longue
+    coupure ne peut JAMAIS sur-nourrir.
+  - **Cycle en cours** (`isFeedingInProgress`) : on n'avance pas `executed`, re-tenté au poll suivant.
+  - **Un repas par poll** et `executed += 1` ; si les deux canaux sont en attente, un seul cycle
+    SÉQUENTIEL (gros puis petits) avec les deux compteurs +1.
+  - **Recul du compteur** (reset BDD) : resync `executed = serverCounter`, sans distribution.
+- **Simplification** : suppression de tout l'ancien « ballet edge » — plus de POST d'ack-reset
+  (`bouffePetits=0&108=0`, `bouffeGros=0&109=0`), plus de `sendCommandAck("bouffe…")`, plus
+  d'envoi des niveaux 108/109 dans le POST périodique (champs forcés à `"0"`, ignorés par le
+  serveur). `notifyRemoteFeedExecuted`/`notifyRemoteFeedBothExecuted` retirés. Les artefacts edge
+  `syncFeedEdgeStateAfterLocalPost`/`noteLocalFeedTriggered` deviennent des no-ops inoffensifs.
+- **Local (UI web physique)** : le nourrissage manuel local reste fonctionnel et ne touche PAS
+  les compteurs serveur.
+
+---
+
 ## Version 14.27 - 2026-06-24
 
 ### Nourrissage manuel indépendant du planning auto

@@ -149,10 +149,8 @@ class Automatism {
   /// pour les 3 endpoints (/action, /api/feed, /api/status). `readings` = cache (webTask,
   /// pas de lecture capteur bloquante). Retourne Busy si un cycle est déjà en cours.
   ManualFeedResult triggerLocalManualFeed(bool isBig, const SensorReadings& readings);
-  /// Notifie le sync après nourrissage distant déclenché par GPIOParser (ack, reset, email)
-  void notifyRemoteFeedExecuted(bool isSmall) { _network.onRemoteFeedExecuted(isSmall, *this); }
-  /// Idem pour un nourrissage distant SIMULTANÉ gros+petits (ack des deux, reset 108/109, 1 email)
-  void notifyRemoteFeedBothExecuted() { _network.onRemoteFeedBothExecuted(*this); }
+  // v15.0: notifyRemoteFeedExecuted/notifyRemoteFeedBothExecuted supprimés — le
+  // protocole compteur monotone n'émet plus d'ack/reset vers le serveur.
   size_t createFeedingMessage(char* buffer,
                               size_t bufferSize,
                               const char* type,
