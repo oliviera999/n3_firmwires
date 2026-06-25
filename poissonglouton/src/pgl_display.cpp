@@ -46,8 +46,10 @@ Arduino_GFX* gfx = new Arduino_Canvas(kScreenW, kScreenH, panel);
 lv_disp_draw_buf_t drawBuf;
 lv_color_t* drawBuffer = nullptr;
 PglUiHandles ui;
-bool adminUnlockedState = false;
 uint32_t lastUiUpdateMs = 0;
+// Vrai dès que LVGL a redessiné dans le canvas depuis le dernier push panneau.
+// Évite un transfert QSPI plein écran à chaque tour quand rien ne change.
+bool canvasDirty = false;
 int lastWifiRssi_ = -100;
 bool wifiConnected_ = false;
 
@@ -71,6 +73,7 @@ void displayFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP
 #else
   gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
 #endif
+  canvasDirty = true;
   lv_disp_flush_ready(disp);
 }
 
@@ -92,7 +95,12 @@ void touchpadRead(lv_indev_drv_t* /*indev*/, lv_indev_data_t* data) {
 
 void flushUi() {
   lv_timer_handler();
-  gfx->flush();
+  // Ne pousser le canvas vers le panneau QSPI que si LVGL a redessiné
+  // quelque chose (canvasDirty positionné dans displayFlush).
+  if (canvasDirty) {
+    gfx->flush();
+    canvasDirty = false;
+  }
 }
 }  // namespace
 
@@ -423,12 +431,19 @@ void PglDisplay::showIdle() {
 }
 
 void PglDisplay::sleepBacklight() {
+  // Garde anti-redondance : ne pilote le GPIO que sur transition ON->OFF.
+  if (!backlightOn_) return;
   digitalWrite(GFX_BL, LOW);
+  backlightOn_ = false;
   PGL_LOG_V("Display: backlight GPIO%d=LOW", GFX_BL);
 }
 
-bool PglDisplay::adminUnlocked() const {
-  return adminUnlockedState;
+void PglDisplay::wakeBacklight() {
+  // Methode symetrique de sleepBacklight() : ne rallume que sur transition OFF->ON.
+  if (backlightOn_) return;
+  digitalWrite(GFX_BL, HIGH);
+  backlightOn_ = true;
+  PGL_LOG_V("Display: backlight GPIO%d=HIGH", GFX_BL);
 }
 
 bool PglDisplay::isReady() const {
@@ -490,7 +505,7 @@ void PglDisplay::showAudioIdle() {}
 void PglDisplay::tickSmileyIdle() {}
 void PglDisplay::showIdle() {}
 void PglDisplay::sleepBacklight() {}
-bool PglDisplay::adminUnlocked() const { return false; }
+void PglDisplay::wakeBacklight() {}
 bool PglDisplay::isReady() const { return false; }
 void PglDisplay::setHardwareStatus(bool, bool, bool) {}
 

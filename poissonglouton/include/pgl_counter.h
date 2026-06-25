@@ -1,24 +1,16 @@
 #pragma once
 
-
-
 #include <Preferences.h>
-
-
 
 #include "pgl_event_journal.h"
 
 #include "pgl_types.h"
-
-
 
 class PglCounter {
 
  public:
 
   static constexpr size_t MAX_EVENTS = 128;
-
-
 
   /**
 
@@ -36,8 +28,6 @@ class PglCounter {
 
   void addEvent(const PglStoredEvent& event);
 
-
-
   // --- Lecture batch (mode SD ou mode NVS selon disponibilité) ---
 
   size_t peekBatch(PglStoredEvent* out, size_t maxItems) const;
@@ -45,8 +35,6 @@ class PglCounter {
   void popBatch(size_t count);
 
   void popBatchByAckId(uint32_t lastAckedId, const PglStoredEvent* batch, size_t batchCount);
-
-
 
   // --- Batch journal SD : lecture directe (contourne la NVS FIFO) ---
 
@@ -57,8 +45,6 @@ class PglCounter {
   void commitJournalAck(uint32_t lastAckedId, const PglStoredEvent* ackedEvents,
 
                         size_t ackedCount);
-
-
 
   uint32_t getTotalCount() const;
 
@@ -72,17 +58,11 @@ class PglCounter {
 
   bool hasJournalPending() const;
 
-
-
   /** true si le journal accepte de nouvelles écritures SD. */
 
   bool isSdMode() const;
 
-
-
   void resetDailyIfNeeded(uint32_t nowEpoch);
-
-
 
   // Persistance lazy NVS (stats agrégées + FIFO de secours)
 
@@ -94,6 +74,13 @@ class PglCounter {
   void fixInvalidEpochs(uint32_t nowEpoch);
 
  private:
+
+  // Acces aux helpers prives (dayKeyFromEpoch, countAckedInBatch, sumEventDeltas,
+  // sumTodayDeltas) pour les tests natifs Unity. Defini uniquement sous
+  // UNIT_TEST (cf. test/test_counter) ; aucun impact sur le firmware embarque.
+#ifdef UNIT_TEST
+  friend struct PglCounterTestAccess;
+#endif
 
   void load();
 
@@ -117,8 +104,6 @@ class PglCounter {
 
                            size_t batchCount) const;
 
-
-
   uint32_t totalCount_ = 0;
 
   uint32_t todayCount_ = 0;
@@ -131,8 +116,6 @@ class PglCounter {
 
   uint32_t nextEventId_ = 1;  // compteur monotone persisté en NVS
 
-
-
   // FIFO NVS (mode dégradé / SD absente)
 
   PglStoredEvent queue_[MAX_EVENTS] = {};
@@ -140,8 +123,6 @@ class PglCounter {
   uint16_t head_ = 0;
 
   uint16_t size_ = 0;
-
-
 
   bool dirty_ = false;
 
@@ -151,10 +132,9 @@ class PglCounter {
 
   uint32_t firstDirtyMs_ = 0;
 
-
+  uint32_t lastReconcileMs_ = 0;  // throttle des reconciliations qui scannent la SD
 
   PglEventJournal* journal_ = nullptr;
 
 };
-
 

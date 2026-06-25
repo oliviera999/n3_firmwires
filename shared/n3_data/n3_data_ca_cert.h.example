@@ -1,0 +1,53 @@
+// =============================================================================
+//  n3_data_ca_cert.h.example — TEMPLATE pour l'epinglage de certificat (TLS pinning)
+// =============================================================================
+//
+//  But : permettre a un firmware utilisant la lib partagee `n3_data` (n3pp, msp,
+//  ffp5cs, uploadphotosserver, poissonglouton…) de VALIDER le certificat du
+//  serveur lors des requetes HTTPS, au lieu de l'actuel `setInsecure()` (TLS
+//  chiffre mais SANS validation -> vulnerable au MITM).
+//
+//  --- Etat par defaut : DESACTIVE -----------------------------------------
+//  Tant que ce fichier n'existe PAS sous le nom `n3_data_ca_cert.h` dans le
+//  include path d'un firmware, le pinning est INACTIF et `n3_data` se comporte
+//  exactement comme avant (setInsecure() quand USE_HTTPS_ENDPOINTS est defini).
+//  Ce fichier `.example` ne fait donc RIEN : c'est uniquement un modele a copier.
+//
+//  --- Comment ACTIVER le pinning sur un firmware --------------------------
+//  1. Recuperer le certificat ROOT CA (PAS le certificat feuille du serveur) de
+//     l'autorite qui signe le certificat du serveur. Exemples :
+//       - Si le serveur utilise Let's Encrypt -> root CA "ISRG Root X1".
+//         (https://letsencrypt.org/certs/isrgrootx1.pem)
+//       - Sinon, recuperer la chaine et garder le certificat racine :
+//         openssl s_client -connect iot.olution.info:443 -showcerts </dev/null
+//     IMPORTANT : epingler le ROOT CA (longue duree de vie) et non le certificat
+//     feuille, qui change a chaque renouvellement (~tous les 90 j chez LE).
+//
+//  2. Copier ce fichier vers le include path du firmware cible, p. ex. :
+//         cp shared/n3_data/n3_data_ca_cert.h.example \
+//            poissonglouton/include/n3_data_ca_cert.h
+//
+//  3. Coller le PEM complet du root CA dans N3_DATA_CA_CERT_PEM ci-dessous
+//     (remplacer le PLACEHOLDER). Conserver les lignes -----BEGIN/END CERTIFICATE-----.
+//
+//  4. Rebuilder le firmware AVEC le chemin HTTPS actif (USE_HTTPS_ENDPOINTS).
+//     `n3_data.cpp` detecte automatiquement ce fichier via __has_include et
+//     bascule de setInsecure() vers setCACert(N3_DATA_CA_CERT_PEM).
+//
+//  --- Securite / versionnage ----------------------------------------------
+//  - Le vrai `n3_data_ca_cert.h` est GITIGNORE (cf. .gitignore racine) : ne JAMAIS
+//    committer un CA reel (decision de flotte + traçabilite).
+//  - L'horloge du firmware doit etre a l'heure (NTP) : la validation TLS verifie
+//    les dates de validite du certificat.
+//
+// =============================================================================
+#pragma once
+
+// REMPLACER ce PLACEHOLDER par le PEM du root CA reel (voir etapes ci-dessus).
+// Le bloc ci-dessous N'EST PAS un certificat valide : il sert uniquement de
+// gabarit pour montrer le format attendu.
+static const char N3_DATA_CA_CERT_PEM[] = R"EOF(
+-----BEGIN CERTIFICATE-----
+COLLER_ICI_LE_ROOT_CA_PEM_REEL_DU_SERVEUR_NE_PAS_LAISSER_CE_PLACEHOLDER
+-----END CERTIFICATE-----
+)EOF";

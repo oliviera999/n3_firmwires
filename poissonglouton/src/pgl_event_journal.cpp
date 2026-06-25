@@ -163,24 +163,44 @@ bool PglEventJournal::append(const PglStoredEvent& event) {
   return true;
 }
 
+bool PglEventJournal::decodeRecord(const uint8_t* buf, JournalRecord& out) {
+  const uint16_t expected = crc16(buf, sizeof(JournalRecord));
+  const uint16_t stored =
+      (static_cast<uint16_t>(buf[sizeof(JournalRecord)]) << 8) |
+      buf[sizeof(JournalRecord) + 1];
+  if (expected != stored) return false;
+  memcpy(&out, buf, sizeof(JournalRecord));
+  return true;
+}
+
 size_t PglEventJournal::readPending(PglStoredEvent* out, size_t maxItems,
                                     uint32_t& outFirstId,
                                     uint32_t& outLastId) const {
   if (!canRead() || !out || maxItems == 0) return 0;
+
+  File f = SD.open(PGL_JOURNAL_PATH, FILE_READ);
+  if (!f || !f.seek(ackOffset_)) {
+    if (f) f.close();
+    return 0;
+  }
 
   size_t count = 0;
   uint32_t offset = ackOffset_;
   uint8_t corruptStreak = 0;
 
   while (count < maxItems && offset < writeOffset_) {
+    uint8_t buf[RECORD_SIZE];
+    const size_t rd = f.read(buf, RECORD_SIZE);
+    if (rd != RECORD_SIZE) break;  // EOF/troncature
+    offset += RECORD_SIZE;
+
     JournalRecord rec{};
-    if (!readRecord(offset, rec)) {
+    if (!decodeRecord(buf, rec)) {
       if (++corruptStreak >= 5) {
         PGL_LOG("Journal SD: ALERTE %u records corrompus consecutifs a offset=%lu",
                 corruptStreak,
-                static_cast<unsigned long>(offset));
+                static_cast<unsigned long>(offset - RECORD_SIZE));
       }
-      offset += RECORD_SIZE;
       continue;
     }
     corruptStreak = 0;
@@ -198,33 +218,48 @@ size_t PglEventJournal::readPending(PglStoredEvent* out, size_t maxItems,
     outLastId = rec.eventId;
 
     count++;
-    offset += RECORD_SIZE;
   }
 
+  f.close();
   return count;
 }
 
 uint32_t PglEventJournal::findAckOffset(uint32_t lastAckedId) const {
   if (!canRead()) return ackOffset_;
 
+  File f = SD.open(PGL_JOURNAL_PATH, FILE_READ);
+  if (!f || !f.seek(ackOffset_)) {
+    if (f) f.close();
+    return ackOffset_;
+  }
+
   uint32_t offset = ackOffset_;
   uint8_t corruptStreak = 0;
+  uint32_t found = ackOffset_;
   while (offset < writeOffset_) {
+    uint8_t buf[RECORD_SIZE];
+    const size_t rd = f.read(buf, RECORD_SIZE);
+    if (rd != RECORD_SIZE) break;
+    offset += RECORD_SIZE;
+
     JournalRecord rec{};
-    if (!readRecord(offset, rec)) {
+    if (!decodeRecord(buf, rec)) {
       if (++corruptStreak >= 5) {
         PGL_LOG("Journal SD: findAckOffset bloque — %u corruptions consecutives",
                 corruptStreak);
+        f.close();
         return ackOffset_;
       }
-      offset += RECORD_SIZE;
       continue;
     }
     corruptStreak = 0;
-    offset += RECORD_SIZE;
-    if (rec.eventId == lastAckedId) return offset;
+    if (rec.eventId == lastAckedId) {
+      found = offset;
+      break;
+    }
   }
-  return ackOffset_;
+  f.close();
+  return found;
 }
 
 bool PglEventJournal::commitAck(uint32_t lastAckedId) {
@@ -338,35 +373,110 @@ uint32_t PglEventJournal::sumDeltasInRange(uint32_t fromOffset, uint32_t toOffse
                                            uint16_t dayKey) const {
   if (!pglSdStorageIsMounted() || fromOffset >= toOffset) return 0;
 
+  File f = SD.open(PGL_JOURNAL_PATH, FILE_READ);
+  if (!f || !f.seek(fromOffset)) {
+    if (f) f.close();
+    return 0;
+  }
+
   uint32_t sum = 0;
   uint32_t offset = fromOffset;
   while (offset < toOffset && offset < writeOffset_) {
+    uint8_t recBuf[RECORD_SIZE];
+    const size_t rd = f.read(recBuf, RECORD_SIZE);
+    if (rd != RECORD_SIZE) break;
+    offset += RECORD_SIZE;
+
     JournalRecord rec{};
-    if (!readRecord(offset, rec)) {
-      offset += RECORD_SIZE;
+    if (!decodeRecord(recBuf, rec)) {
       continue;
     }
     if (dayKey != 0) {
       if (rec.epoch < 1700000000) {
-        offset += RECORD_SIZE;
         continue;
       }
       time_t t = static_cast<time_t>(rec.epoch);
       struct tm tmNow = {};
       if (!localtime_r(&t, &tmNow)) {
-        offset += RECORD_SIZE;
         continue;
       }
       const uint16_t y = static_cast<uint16_t>((tmNow.tm_year + 1900) % 100);
       const uint16_t d = static_cast<uint16_t>(tmNow.tm_yday + 1);
       const uint16_t recKey = static_cast<uint16_t>((y * 400) + d);
       if (recKey != dayKey) {
-        offset += RECORD_SIZE;
         continue;
       }
     }
     sum += rec.countDelta;
+  }
+  f.close();
+  return sum;
+}
+
+uint32_t PglEventJournal::fixInvalidEpochs(uint32_t nowEpoch) {
+  // Backfill unique : NTP doit etre valide, la lecture possible et les
+  // ecritures autorisees (il faut pouvoir reecrire en place sur la SD).
+  if (nowEpoch < 1700000000 || !canRead() || !sdOk_) return 0;
+
+  // Ouverture unique en lecture+ecriture. arduino-esp32 expose le mode
+  // POSIX "r+" via le VFS (lecture + ecriture sans troncature).
+  File f = SD.open(PGL_JOURNAL_PATH, "r+");
+  if (!f) {
+    PGL_LOG("Journal SD: fixInvalidEpochs — ouverture r+ impossible");
+    return 0;
+  }
+  if (!f.seek(ackOffset_)) {
+    f.close();
+    return 0;
+  }
+
+  uint32_t fixedCount = 0;
+  uint32_t offset = ackOffset_;
+
+  while (offset < writeOffset_) {
+    uint8_t buf[RECORD_SIZE];
+    const size_t rd = f.read(buf, RECORD_SIZE);
+    if (rd != RECORD_SIZE) break;  // EOF/troncature
+
+    JournalRecord rec{};
+    if (!decodeRecord(buf, rec)) {
+      // Record corrompu : on saute en preservant l'alignement.
+      offset += RECORD_SIZE;
+      continue;
+    }
+
+    if (rec.epoch < 1700000000) {
+      rec.epoch = nowEpoch;
+
+      // Re-encodage complet : recopie de la struct entiere (reserved inclus)
+      // puis CRC16 sur les 18 octets, 2 octets de CRC big-endian.
+      uint8_t out[RECORD_SIZE];
+      memcpy(out, &rec, sizeof(JournalRecord));
+      const uint16_t crc = crc16(out, sizeof(JournalRecord));
+      out[sizeof(JournalRecord)] = static_cast<uint8_t>(crc >> 8);
+      out[sizeof(JournalRecord) + 1] = static_cast<uint8_t>(crc & 0xFF);
+
+      if (!f.seek(offset)) break;  // repositionne sur le record courant
+      const size_t w = f.write(out, RECORD_SIZE);
+      if (w != RECORD_SIZE) {
+        PGL_LOG("Journal SD: fixInvalidEpochs — reecriture incomplete offset=%lu",
+                static_cast<unsigned long>(offset));
+        break;
+      }
+      // Apres seek+write, repositionne le curseur sur le record suivant.
+      if (!f.seek(offset + RECORD_SIZE)) break;
+      fixedCount++;
+    }
+
     offset += RECORD_SIZE;
   }
-  return sum;
+
+  f.flush();
+  f.close();
+
+  if (fixedCount > 0) {
+    PGL_LOG("Journal SD: %lu epoch(s) corrige(s) apres sync NTP",
+            static_cast<unsigned long>(fixedCount));
+  }
+  return fixedCount;
 }

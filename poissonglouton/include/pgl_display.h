@@ -22,7 +22,7 @@ class PglDisplay {
   void tickSmileyIdle();
   void showIdle();
   void sleepBacklight();
-  bool adminUnlocked() const;
+  void wakeBacklight();
   bool isReady() const;
   void setHardwareStatus(bool displayOk, bool irPresent, bool irObstacle);
 
@@ -41,5 +41,8 @@ class PglDisplay {
   bool gfxOk_ = false;
   bool lvglOk_ = false;
   bool ready_ = false;
+  // Etat courant du retroeclairage : begin() l'allume (HIGH). On ne touche au
+  // GPIO BL que sur transition pour eviter des digitalWrite redondants a chaque tour.
+  bool backlightOn_ = true;
 #endif
 };

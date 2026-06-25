@@ -1,5 +1,91 @@
 # Poissonglouton - Historique versions
 
+## 0.3.0 - 2026-06-25
+
+Lot d'améliorations (robustesse, sécurité, observabilité, énergie, tests) :
+
+- **Tests natifs Unity** : nouvelle suite (`test/`, `platformio-native.ini`) — 31 tests
+  verrouillant la logique compteur/journal offline (CRC, décodage record, dayKey,
+  comptage d'ack, rollover de jour, réconciliation, persistance NVS). Lancés par la CI.
+- **Horloge provisoire** : amorçage au power-on à froid depuis un `lastKnownEpoch`
+  persisté en NVS (throttlé), pour supprimer les `epoch=0` avant la 1ʳᵉ synchro NTP.
+- **OTA** : câblage de la mise à jour OTA (lib partagée `n3_common/n3_ota`, vérif
+  sha256 + ECDSA P-256, clé publique partagée), check périodique 2 h calqué sur msp/n3pp.
+- **Énergie** : WiFi fast-reconnect (BSSID/canal mémorisés en RTC + fallback scan) ;
+  timeout `pulseIn` ultrason ramené de ~25 ms à ~8 ms (dérivé de la portée max).
+- **Affichage** : extinction automatique du rétroéclairage après inactivité
+  (`PGL_BACKLIGHT_TIMEOUT_MS`, jusqu'ici inutilisée) + rallumage à la détection.
+- **Télémétrie** : heartbeat enrichi (file pending/journal/nvs, santé SD, batterie,
+  mode capteur) — rétro-compatible ; exploitation côté serveur à faire séparément.
+- **Sécurité TLS** : épinglage du root CA en **opt-in** dans `n3_data` (via
+  `n3_data_ca_cert.h`), **inerte par défaut** (comportement `setInsecure()` inchangé
+  pour toute la flotte tant qu'aucun CA n'est fourni).
+- **Nettoyage** : suppression du code mort `adminUnlocked` ; normalisation cosmétique
+  des interlignes de `config.h` / `pgl_counter.h`.
+
+Validation : `pgl-s3-headless` + 31 tests natifs verts à chaque étape ; env `pgl-s3-display`
+validé par la CI. La veille profonde reste désactivée par défaut (alpha).
+
+## 0.2.6 - 2026-06-24
+
+- Veille : re-calibrage du couple timer/idle pour la rendre réellement efficace
+  le jour où elle sera réactivée (`-DPGL_ENABLE_SLEEP=1`). La veille reste
+  **désactivée par défaut** (`PGL_ENABLE_SLEEP=0`) pour l'alpha.
+  - Distinction du timer de réveil selon le mode de détection :
+    - **IR présent (EXT0)** : nouvelle constante `PGL_TIMER_WAKEUP_IR_S = 300 s`.
+      L'IR réveille instantanément à la détection ; le timer ne sert plus qu'au
+      housekeeping (vidage de la file, heartbeat), d'où une base longue alignée
+      sur `PGL_UPLOAD_EVERY_MS`/`PGL_HEARTBEAT_INTERVAL_MS`.
+    - **Pas d'IR (US seul / aucun capteur)** : base `PGL_TIMER_WAKEUP_S` passée
+      de 2 s à 30 s. La détection ultrason en deep sleep est intrinsèquement par
+      échantillonnage donc **lossy** (un passage plus court que l'intervalle peut
+      être manqué) — documenté dans `config.h`. 2 s rendait l'appareil éveillé
+      ~86 % du temps (boot + ≥12 s d'idle par cycle) : deep sleep inutile.
+  - `computeSleepTimerS()` devient `computeSleepTimerS(bool irPresent)` et choisit
+    la base selon l'IR (valeur déjà calculée `useIrWakeup`, plus de double
+    interrogation de `gDetection`).
+  - Surcharges **nuit** (1800 s) et **batterie faible** (`PGL_TIMER_WAKEUP_LOWBATT_S`
+    porté à 600 s) désormais appliquées uniquement si elles **allongent** le timer
+    courant, pour ne pas raccourcir une base IR déjà longue.
+  - `PGL_IDLE_SLEEP_MS` conservé à 12 s : avec un timer IR de 300 s, le duty-cycle
+    reste largement dominé par le sommeil (~4 %), et 12 s laisse le temps de finir
+    un upload/heartbeat avant de dormir (commenté dans `config.h`).
+- Validation : builds `pgl-s3-headless` (veille off, défaut) et `pgl-s3-headless`
+  avec `-DPGL_ENABLE_SLEEP=1` (chemin veille) compilés avec succès.
+
+## 0.2.5 - 2026-06-24
+
+- Journal SD : backfill des horodatages invalides. Les événements captés avant la synchro
+  NTP étaient écrits dans le journal SD avec `epoch=0` (ou `< 1700000000`) et envoyés tels
+  quels au serveur. `PglEventJournal::fixInvalidEpochs(nowEpoch)` corrige désormais en place
+  les records non encore acquittés `[ackOffset_, writeOffset_)` : ouverture unique du fichier
+  en `r+`, réécriture des 20 octets (struct entière + CRC16 recalculé) pour chaque epoch
+  invalide, records corrompus sautés sans casser l'alignement. Déclenché une seule fois via
+  `PglCounter::fixInvalidEpochs` (qui corrige la FIFO NVS puis délègue au journal), appelée
+  depuis `main.cpp` lorsque NTP devient valide (flag `gEpochBackfillDone`).
+
+## 0.2.4 - 2026-06-24
+
+- Audit firmware : corrections de cohérence, performance et nettoyage des dépendances.
+- Veille : deep sleep désactivée par défaut via flag `PGL_ENABLE_SLEEP` (0). Le couple
+  `PGL_TIMER_WAKEUP_S=2` / `PGL_IDLE_SLEEP_MS=12000` rendait la veille peu rentable et
+  perturbait écran + son à chaque réveil. Réactiver via `-DPGL_ENABLE_SLEEP=1`.
+- Audio : le jingle de démarrage n'est joué qu'au vrai power-on
+  (`esp_sleep_get_wakeup_cause() == UNDEFINED`), plus à chaque sortie de deep sleep.
+- Compteur : la réconciliation des totaux qui scanne le journal SD est limitée à
+  `PGL_RECONCILE_INTERVAL_MS` (30 s) au lieu d'être exécutée à chaque tour de `loop()`
+  quand des événements sont en attente (gros gain CPU/SD en mode offline).
+- Journal SD : lectures séquentielles (`readPending`, `findAckOffset`, `sumDeltasInRange`)
+  ouvrent désormais le fichier une seule fois au lieu d'une ouverture par record.
+- Affichage : push QSPI du framebuffer uniquement lorsque LVGL a réellement redessiné
+  (flush conditionnel) au lieu d'un transfert plein écran à chaque tour.
+- Nettoyage : suppression de la dépendance `ESP32Time` (incluse dans `main.cpp` mais jamais
+  utilisée — `n3_time` n'est pas compilé pour ce firmware) et des build flags morts
+  `PGL_ENABLE_IR` / `PGL_ENABLE_ULTRASON` / `PGL_ENABLE_HMAC`. `WiFi.mode(STA)` n'est plus
+  appelé deux fois au boot. (`Arduino_JSON` est conservé : requis par la lib partagée
+  `n3_common/n3_outputs_json`.)
+- Validation : builds `pgl-s3-headless` et `pgl-s3-display` compilés avec succès.
+
 ## 0.2.3 - 2026-06-16
 
 - Production : deep sleep reactivee (`PGL_DEBUG_NO_SLEEP=0` par defaut) ; env `pgl-s3-debug` pour bench.

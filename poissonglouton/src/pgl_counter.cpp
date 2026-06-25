@@ -315,20 +315,28 @@ void PglCounter::flushIfDue() {
 }
 
 void PglCounter::fixInvalidEpochs(uint32_t nowEpoch) {
-  if (nowEpoch < 1700000000 || size_ == 0) return;
+  if (nowEpoch < 1700000000) return;
 
-  bool changed = false;
-  for (uint16_t i = 0; i < size_; ++i) {
-    PglStoredEvent& ev = queue_[(head_ + i) % MAX_EVENTS];
-    if (ev.epoch < 1700000000) {
-      ev.epoch = nowEpoch;
-      changed = true;
+  // 1) FIFO NVS de secours.
+  if (size_ > 0) {
+    bool changed = false;
+    for (uint16_t i = 0; i < size_; ++i) {
+      PglStoredEvent& ev = queue_[(head_ + i) % MAX_EVENTS];
+      if (ev.epoch < 1700000000) {
+        ev.epoch = nowEpoch;
+        changed = true;
+      }
+    }
+    if (changed) {
+      PGL_LOG("Compteur: horodatage NVS corrige (%u evt) apres sync NTP", size_);
+      dirty_ = true;
+      persist();
     }
   }
-  if (changed) {
-    PGL_LOG("Compteur: horodatage NVS corrige (%u evt) apres sync NTP", size_);
-    dirty_ = true;
-    persist();
+
+  // 2) Journal SD : records pending ecrits avant la synchro NTP.
+  if (journal_) {
+    journal_->fixInvalidEpochs(nowEpoch);
   }
 }
 
@@ -347,7 +355,17 @@ void PglCounter::resetDailyIfNeeded(uint32_t nowEpoch) {
     lastDayKey_ = nowKey;
     reconcileTotals(nowEpoch);
     persistTotals();
+    lastReconcileMs_ = millis();
     return;
+  }
+  // Meme jour : la reconciliation lit tout le journal SD (cher). On la limite
+  // a PGL_RECONCILE_INTERVAL_MS quand des evenements sont en attente sur SD,
+  // au lieu de scanner a chaque tour de loop(). En mode NVS-seul, le scan est
+  // bon marche (pas d'I/O SD), on laisse passer a chaque fois.
+  if (journal_ && journal_->canRead()) {
+    const uint32_t now = millis();
+    if ((now - lastReconcileMs_) < PGL_RECONCILE_INTERVAL_MS) return;
+    lastReconcileMs_ = now;
   }
   reconcileTotals(nowEpoch);
 }

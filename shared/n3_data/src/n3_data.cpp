@@ -16,7 +16,33 @@
 //    sans epinglage de certificat — cf. docs/HTTPS_MIGRATION.md, suivi CA documente).
 #if defined(USE_HTTPS_ENDPOINTS)
   #define N3_DATA_TCP_CLIENT_TYPE WiFiClientSecure
-  #define N3_DATA_TCP_CLIENT_PREPARE(clientVar) do { (clientVar).setInsecure(); } while (0)
+
+  // Epinglage de certificat (pinning du root CA) — OPT-IN, INERTE PAR DEFAUT.
+  // Mecanisme strictement additif : on ne change RIEN au comportement existant
+  // tant qu'aucun CA n'est explicitement fourni par le firmware.
+  //
+  // Activation : poser un en-tete "n3_data_ca_cert.h" dans le include path du
+  // firmware (ex. poissonglouton/include/n3_data_ca_cert.h, cf. le template
+  // shared/n3_data/n3_data_ca_cert.h.example). Cet en-tete doit definir :
+  //     static const char N3_DATA_CA_CERT_PEM[] = R"EOF(... PEM ...)EOF";
+  // Detecte ici via __has_include : si le fichier est present, on valide le
+  // certificat serveur avec setCACert(N3_DATA_CA_CERT_PEM) (protection MITM).
+  // Si le fichier est ABSENT (cas de toute la flotte aujourd'hui), on retombe
+  // EXACTEMENT sur l'ancien comportement : setInsecure() (TLS sans validation).
+  #if defined(__has_include)
+  #  if __has_include("n3_data_ca_cert.h")
+  #    include "n3_data_ca_cert.h"   // doit definir N3_DATA_CA_CERT_PEM (PEM)
+  #    define N3_DATA_HAS_CA_CERT 1
+  #  endif
+  #endif
+
+  #if defined(N3_DATA_HAS_CA_CERT)
+    // CA fourni : on epingle le root CA -> le certificat serveur est valide.
+    #define N3_DATA_TCP_CLIENT_PREPARE(clientVar) do { (clientVar).setCACert(N3_DATA_CA_CERT_PEM); } while (0)
+  #else
+    // Aucun CA fourni (DEFAUT, inchange) : TLS chiffre mais sans validation.
+    #define N3_DATA_TCP_CLIENT_PREPARE(clientVar) do { (clientVar).setInsecure(); } while (0)
+  #endif
 #else
   #define N3_DATA_TCP_CLIENT_TYPE WiFiClient
   #define N3_DATA_TCP_CLIENT_PREPARE(clientVar) do { } while (0)

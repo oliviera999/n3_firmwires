@@ -216,7 +216,16 @@ uint16_t PglDetection::readUltrasonCm() {
   digitalWrite(PGL_US_PIN, LOW);
 
   pinMode(PGL_US_PIN, INPUT);
-  const unsigned long duration = pulseIn(PGL_US_PIN, HIGH, 25000UL);
+  // Timeout pulseIn derive de la portee utile : au-dela de
+  // PGL_ULTRASON_MAX_VALID_CM la mesure est de toute facon rejetee plus bas, donc
+  // inutile de bloquer 25 ms a attendre un echo lointain/absent. Temps aller-retour
+  // = 2 * distance / vitesse_son. A 343 m/s (0.0343 cm/us) : 2 * 120 cm / 0.0343
+  // ≈ 7000 us. On ajoute ~15 % de marge (temperature/diffusion) -> ~8000 us, ce
+  // qui ramene le pire cas de blocage de 25 ms a ~8 ms sans toucher la logique de
+  // detection (seuils, debounce, tandem, filtrage inchanges).
+  constexpr unsigned long kEchoTimeoutUs =
+      static_cast<unsigned long>((2.0f * PGL_ULTRASON_MAX_VALID_CM / 0.0343f) * 1.15f);
+  const unsigned long duration = pulseIn(PGL_US_PIN, HIGH, kEchoTimeoutUs);
   if (duration == 0) return 0;
   const uint16_t distanceCm = static_cast<uint16_t>((duration * 0.0343f) / 2.0f);
   if (distanceCm > PGL_ULTRASON_MAX_VALID_CM) return 0;
