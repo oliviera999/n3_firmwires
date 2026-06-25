@@ -15,6 +15,10 @@ secrets_config.h
 ffp5cs/include/local_server_overrides.h
 ffp5cs/scripts/.beta-local-test.env
 
+# Certificat root CA pour l'epinglage TLS de n3_data (pinning opt-in) — le vrai
+# CA ne doit jamais etre committe ; seul le template .h.example est versionne.
+n3_data_ca_cert.h
+
 # Cles privees OTA (publiques OK dans n3_ota_pubkey.h, privees jamais)
 *.key
 *.pem

@@ -210,6 +210,15 @@ static constexpr uint32_t PGL_CATCHUP_BUDGET_MS = 8000;
 static constexpr uint32_t PGL_JOURNAL_COMPACT_THRESHOLD = 1024UL * 1024UL;
 
 // URL serveur
+//
+// Securite TLS : les requetes HTTPS de la lib partagee n3_data utilisent par
+// defaut setInsecure() (chiffre mais SANS validation du certificat serveur).
+// L'epinglage du root CA (pinning, protection MITM) est disponible en OPT-IN :
+// poser le fichier poissonglouton/include/n3_data_ca_cert.h (cf. le template
+// shared/n3_data/n3_data_ca_cert.h.example) definissant N3_DATA_CA_CERT_PEM.
+// Detecte via __has_include dans n3_data.cpp ; DESACTIVE par defaut (aucun
+// changement de comportement tant que ce fichier n'est pas pose). Le vrai CA
+// est gitignore et ne doit jamais etre committe.
 
 static constexpr const char* PGL_SERVER_POST_URL = "https://iot.olution.info/pgl/post-data";
 
