@@ -17,6 +17,9 @@
 #include "pgl_sleep.h"
 #include "pgl_types.h"
 #include "n3_battery.h"
+#if PGL_ENABLE_OTA
+#include "n3_ota.h"
+#endif
 
 #ifndef PGL_DEBUG_NO_SLEEP
 #define PGL_DEBUG_NO_SLEEP 0
@@ -41,6 +44,17 @@ uint32_t gLastIdleWarnMs = 0;
 RTC_DATA_ATTR uint32_t gBootCount = 0;
 bool gEpochBackfillDone = false;
 
+#if PGL_ENABLE_OTA
+// Etat de lecture audio, alimente par le callback de notification : sert a
+// differer une verification OTA (qui bloque la loop pendant le telechargement)
+// tant qu'une piste joue, pour ne pas couper un remerciement en cours.
+bool gAudioPlaying = false;
+// Horodatage du dernier check OTA (millis). Initialise a 0 ; le 1er check est
+// donc autorise des que WiFi + NTP sont prets (calque "check au boot" de
+// msp/n3pp, mais sans deep sleep ici : noeud allume en continu).
+uint32_t gLastOtaCheckMs = 0;
+#endif
+
 // Horloge: dernier epoch NTP valide persiste en NVS, pour amorcer une horloge
 // provisoire au power-on a froid (avant la 1ere synchro NTP) et eviter les
 // epoch=0. Namespace dedie "pgltime", cle "lastEpoch".
@@ -52,6 +66,9 @@ constexpr uint32_t kLastEpochSaveIntervalMs = 5UL * 60UL * 1000UL;
 uint32_t gLastEpochSaveMs = 0;
 
 void onAudioDisplayNotify(const char* reason, const char* mp3Path, bool started, void* userData) {
+#if PGL_ENABLE_OTA
+  gAudioPlaying = started;
+#endif
   auto* display = static_cast<PglDisplay*>(userData);
   if (!display) return;
   if (started) {
@@ -115,6 +132,66 @@ static uint32_t getCurrentEpochSafe() {
   }
   return static_cast<uint32_t>(now);
 }
+
+#if PGL_ENABLE_OTA
+// Callbacks OTA (logs uniquement, calque msp/n3pp). Le telechargement, la verif
+// sha256/signature et le redemarrage sur succes sont geres par n3OtaCheck().
+static void otaOnUpdateStart(const char* currentVersion, const char* remoteVersion,
+                             const char* firmwareUrl, void* userData) {
+  (void)userData;
+  PGL_LOG("OTA: MAJ disponible %s -> %s, telechargement depuis %s",
+          currentVersion ? currentVersion : PGL_FIRMWARE_VERSION,
+          remoteVersion ? remoteVersion : "?",
+          firmwareUrl ? firmwareUrl : "?");
+}
+
+static void otaOnUpdateEnd(bool success, const char* details, void* userData) {
+  (void)userData;
+  if (success) {
+    PGL_LOG("OTA: verifiee et flashee, redemarrage imminent");
+  } else {
+    PGL_LOG("OTA: pas de MAJ appliquee — %s", details ? details : "raison inconnue");
+  }
+}
+
+// Verification OTA periodique (cadence PGL_OTA_CHECK_INTERVAL_MS, 2 h comme
+// msp/n3pp). Conditions de securite : WiFi connecte, horloge NTP prete, et
+// aucune lecture audio en cours (le telechargement bloque la loop). Sur succes,
+// n3OtaCheck() redemarre la carte ; sinon le firmware reprend normalement.
+static void maybeRunPeriodicOtaCheck() {
+  if (gLastOtaCheckMs != 0 &&
+      (millis() - gLastOtaCheckMs) < PGL_OTA_CHECK_INTERVAL_MS) {
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    return;  // pas de log spam : ressaye au prochain tour quand le WiFi revient
+  }
+  if (!isNtpReady()) {
+    PGL_LOG_V("OTA: differee — NTP non synchronise");
+    return;
+  }
+  if (gAudioPlaying) {
+    PGL_LOG_V("OTA: differee — lecture audio en cours");
+    return;
+  }
+
+  static const N3OtaConfig otaConfig = {
+      PGL_OTA_METADATA_URL,
+      PGL_FIRMWARE_VERSION,
+      -1,        // pas de LED de feedback dediee
+      nullptr,   // objet metadata unique {version,url,sha256,signature}
+      otaOnUpdateStart,
+      otaOnUpdateEnd,
+      nullptr,
+      nullptr,   // pas de callback de progression (logs n3_ota suffisent)
+  };
+
+  PGL_LOG("OTA: verification periodique (locale %s, %s)",
+          PGL_FIRMWARE_VERSION, PGL_OTA_METADATA_URL);
+  n3OtaCheck(otaConfig);  // redemarre si une MAJ verifiee est appliquee
+  gLastOtaCheckMs = millis();
+}
+#endif  // PGL_ENABLE_OTA
 
 // Lit le dernier epoch NTP valide persiste en NVS (0 si absent/invalide).
 static uint32_t loadLastKnownEpoch() {
@@ -334,6 +411,12 @@ void setup() {
   // Reveil par EXT0/timer = sortie de deep sleep ; UNDEFINED = vrai power-on.
   const bool coldBoot = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED);
 
+#if PGL_ENABLE_OTA
+  // Aligne la partition de boot sur la partition courante (evite que flash USB
+  // et OTA ne se trompent de partition). A faire tot, comme msp/n3pp.
+  n3OtaSyncBootPartition();
+#endif
+
   PGL_LOG("Init reseau...");
   gNetwork.begin();
   gNetwork.startBackgroundWifi();
@@ -494,6 +577,12 @@ void loop() {
     }
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
   }
+#endif
+
+#if PGL_ENABLE_OTA
+  // Verification OTA periodique (2 h) : telechargement + verif sha256/signature
+  // ECDSA + redemarrage geres par n3OtaCheck() (lib partagee n3_common).
+  maybeRunPeriodicOtaCheck();
 #endif
 
   if ((millis() - gLastActivityMs) > PGL_IDLE_SLEEP_MS) {

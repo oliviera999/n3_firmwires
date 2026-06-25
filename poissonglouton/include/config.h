@@ -226,3 +226,22 @@ static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "https://iot.olution.inf
 static constexpr uint32_t PGL_HEARTBEAT_INTERVAL_MS = 120000;
 
 
+
+// Mise a jour OTA (calque msp/n3pp : lib partagee n3_common/n3_ota, verif
+// sha256 + signature ECDSA P-256, cle publique embarquee n3_ota_pubkey.h).
+// L'URL des metadonnees suit le schema OTA unifie /ota/<cible>/metadata.json
+// (cf. docs/WIFI_OTA_REFERENCE.md) ; la cible serveur de poissonglouton est
+// "pgl" (cf. firmwares.manifest.json, serveurFolder "pgl").
+#ifndef PGL_ENABLE_OTA
+#define PGL_ENABLE_OTA 1
+#endif
+
+static constexpr const char* PGL_OTA_METADATA_URL =
+    "http://iot.olution.info/ota/pgl/metadata.json";
+
+// Cadence de verification OTA : 2 h, alignee sur msp/n3pp
+// (OTA_PERIODIC_INTERVAL_SECONDS = 2 h). Independant du heartbeat applicatif
+// (PGL_HEARTBEAT_INTERVAL_MS) pour ne pas marteler le serveur OTA.
+static constexpr uint32_t PGL_OTA_CHECK_INTERVAL_MS = 2UL * 60UL * 60UL * 1000UL;
+
+
