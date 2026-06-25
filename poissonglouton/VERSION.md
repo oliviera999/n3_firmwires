@@ -1,5 +1,31 @@
 # Poissonglouton - Historique versions
 
+## 0.3.0 - 2026-06-25
+
+Lot d'améliorations (robustesse, sécurité, observabilité, énergie, tests) :
+
+- **Tests natifs Unity** : nouvelle suite (`test/`, `platformio-native.ini`) — 31 tests
+  verrouillant la logique compteur/journal offline (CRC, décodage record, dayKey,
+  comptage d'ack, rollover de jour, réconciliation, persistance NVS). Lancés par la CI.
+- **Horloge provisoire** : amorçage au power-on à froid depuis un `lastKnownEpoch`
+  persisté en NVS (throttlé), pour supprimer les `epoch=0` avant la 1ʳᵉ synchro NTP.
+- **OTA** : câblage de la mise à jour OTA (lib partagée `n3_common/n3_ota`, vérif
+  sha256 + ECDSA P-256, clé publique partagée), check périodique 2 h calqué sur msp/n3pp.
+- **Énergie** : WiFi fast-reconnect (BSSID/canal mémorisés en RTC + fallback scan) ;
+  timeout `pulseIn` ultrason ramené de ~25 ms à ~8 ms (dérivé de la portée max).
+- **Affichage** : extinction automatique du rétroéclairage après inactivité
+  (`PGL_BACKLIGHT_TIMEOUT_MS`, jusqu'ici inutilisée) + rallumage à la détection.
+- **Télémétrie** : heartbeat enrichi (file pending/journal/nvs, santé SD, batterie,
+  mode capteur) — rétro-compatible ; exploitation côté serveur à faire séparément.
+- **Sécurité TLS** : épinglage du root CA en **opt-in** dans `n3_data` (via
+  `n3_data_ca_cert.h`), **inerte par défaut** (comportement `setInsecure()` inchangé
+  pour toute la flotte tant qu'aucun CA n'est fourni).
+- **Nettoyage** : suppression du code mort `adminUnlocked` ; normalisation cosmétique
+  des interlignes de `config.h` / `pgl_counter.h`.
+
+Validation : `pgl-s3-headless` + 31 tests natifs verts à chaque étape ; env `pgl-s3-display`
+validé par la CI. La veille profonde reste désactivée par défaut (alpha).
+
 ## 0.2.6 - 2026-06-24
 
 - Veille : re-calibrage du couple timer/idle pour la rendre réellement efficace
