@@ -35,12 +35,18 @@ class PglNetwork {
   void tryConnectBeforeUpload();
   void recordPostResult(int httpCode);
   void recordHeartbeatResult(int httpCode);
+  // Fast-reconnect : tente une connexion ciblee (BSSID+canal memorises en RTC)
+  // avant de retomber sur la session de scan multi-reseaux n3_wifi.
+  bool tryFastReconnect();
+  void rememberLastGoodAp();
 
   PglServerCommStatus serverStatus_{};
   N3WifiSession wifiSession_{};
   bool wifiSessionActive_ = false;
   bool wifiConnecting_ = false;
   bool wifiBackoff_ = false;
+  bool wifiDirectAttempt_ = false;   // tentative ciblee BSSID/canal en cours
+  uint32_t wifiDirectDeadlineMs_ = 0;  // borne temps de la tentative ciblee
   uint32_t wifiRetryAfterMs_ = 0;
   wl_status_t lastWifiStatus_ = WL_IDLE_STATUS;
 };

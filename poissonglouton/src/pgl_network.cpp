@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <cstring>
 
 #include "config.h"
 #if __has_include("secrets.h")
@@ -24,6 +25,35 @@ N3WifiNetwork kWifiNetworks[] = {
     {PGL_WIFI_SSID_3, PGL_WIFI_PASS_3},
 #endif
 };
+
+// --- Fast-reconnect WiFi -----------------------------------------------------
+// Memorise le dernier AP connecte (SSID + BSSID + canal) en memoire RTC : ces
+// donnees survivent au deep sleep (RTC_DATA_ATTR). Au reveil / a la reconnexion
+// on tente d'abord une connexion CIBLEE (WiFi.begin avec canal + BSSID connus),
+// ce qui evite le scan multi-canaux couteux. En cas d'echec/timeout court on
+// retombe sur la session de scan n3_wifi habituelle (qui garantit la connexion
+// meme si l'AP a change de canal/BSSID). Au power-on a froid, magic vaut 0 :
+// pas de tentative ciblee, comportement actuel (scan direct).
+constexpr uint32_t kLastApMagic = 0x50474C57UL;  // "PGLW"
+struct PglLastGoodAp {
+  uint32_t magic;
+  uint8_t bssid[6];
+  uint8_t chan;
+  char ssid[33];
+};
+RTC_DATA_ATTR PglLastGoodAp gLastGoodAp;
+
+// Cherche le mot de passe configure pour un SSID donne (nullptr si introuvable).
+const char* findPassForSsid(const char* ssid) {
+  if (!ssid) return nullptr;
+  const size_t netCount = sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]);
+  for (size_t i = 0; i < netCount; ++i) {
+    if (kWifiNetworks[i].ssid && strcmp(ssid, kWifiNetworks[i].ssid) == 0) {
+      return kWifiNetworks[i].pass;
+    }
+  }
+  return nullptr;
+}
 
 void onWifiConnecting() {
   PGL_LOG_V("WiFi: tentative en cours...");
@@ -112,11 +142,66 @@ void PglNetwork::buildWifiConfig(N3WifiConfig& cfg) const {
   };
 }
 
+// Tente une connexion ciblee sur le dernier AP connu (BSSID + canal memorises
+// en RTC). Retourne true si une tentative directe a ete lancee : dans ce cas on
+// n'ouvre PAS encore la session de scan, on attend l'issue dans pollWifi() avant
+// d'eventuellement retomber sur le scan. Retourne false si aucun AP memorise
+// (power-on a froid, ou AP precedent absent de la config) -> scan habituel.
+bool PglNetwork::tryFastReconnect() {
+  if (gLastGoodAp.magic != kLastApMagic || gLastGoodAp.chan == 0) {
+    return false;
+  }
+  const char* pass = findPassForSsid(gLastGoodAp.ssid);
+  if (!pass) {
+    // SSID memorise plus dans la config : on invalide et on passe au scan.
+    gLastGoodAp.magic = 0;
+    return false;
+  }
+  PGL_LOG("WiFi: reconnexion rapide ssid=%s ch=%u (BSSID memorise)",
+          gLastGoodAp.ssid, static_cast<unsigned int>(gLastGoodAp.chan));
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(gLastGoodAp.ssid, pass, gLastGoodAp.chan, gLastGoodAp.bssid);
+  wifiDirectAttempt_ = true;
+  // Borne courte de la tentative ciblee (<= budget upload) : au-dela on retombe
+  // sur le scan, qui garantit la connexion meme si l'AP a change de canal/BSSID.
+  wifiDirectDeadlineMs_ = millis() + PGL_WIFI_UPLOAD_BUDGET_MS;
+  return true;
+}
+
+// Memorise l'AP courant (SSID + BSSID + canal) en RTC apres une connexion
+// reussie, pour permettre la reconnexion rapide au prochain reveil.
+void PglNetwork::rememberLastGoodAp() {
+  const uint8_t* b = WiFi.BSSID();
+  const int32_t ch = WiFi.channel();
+  const String ssid = WiFi.SSID();
+  if (!b || ch <= 0 || ssid.isEmpty()) {
+    gLastGoodAp.magic = 0;
+    return;
+  }
+  memcpy(gLastGoodAp.bssid, b, 6);
+  gLastGoodAp.chan = static_cast<uint8_t>(ch);
+  strncpy(gLastGoodAp.ssid, ssid.c_str(), 32);
+  gLastGoodAp.ssid[32] = '\0';
+  gLastGoodAp.magic = kLastApMagic;
+}
+
 void PglNetwork::startBackgroundWifi() {
   if (WiFi.status() == WL_CONNECTED) {
     wifiSessionActive_ = false;
     wifiConnecting_ = false;
     wifiBackoff_ = false;
+    wifiDirectAttempt_ = false;
+    return;
+  }
+  // Fast-reconnect : si un AP est memorise, on tente d'abord une connexion
+  // ciblee (canal + BSSID) avant d'engager le scan multi-reseaux n3_wifi.
+  if (tryFastReconnect()) {
+    wifiSessionActive_ = false;
+    wifiConnecting_ = true;
+    wifiBackoff_ = false;
+    wifiRetryAfterMs_ = 0;
     return;
   }
   N3WifiConfig cfg;
@@ -125,6 +210,7 @@ void PglNetwork::startBackgroundWifi() {
   wifiSessionActive_ = true;
   wifiConnecting_ = true;
   wifiBackoff_ = false;
+  wifiDirectAttempt_ = false;
   wifiRetryAfterMs_ = 0;
   PGL_LOG("WiFi: connexion en arriere-plan demarree");
 }
@@ -134,10 +220,13 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
   bool stateChanged = (prevStatus != lastWifiStatus_);
 
   if (WiFi.status() == WL_CONNECTED) {
-    if (wifiConnecting_ || wifiSessionActive_) {
+    if (wifiConnecting_ || wifiSessionActive_ || wifiDirectAttempt_) {
       wifiConnecting_ = false;
       wifiSessionActive_ = false;
       wifiBackoff_ = false;
+      wifiDirectAttempt_ = false;
+      // Memorise SSID+BSSID+canal pour la reconnexion rapide au prochain reveil.
+      rememberLastGoodAp();
       stateChanged = true;
       PGL_LOG("WiFi: connecte ssid=%s ip=%s rssi=%d ch=%d",
               WiFi.SSID().c_str(),
@@ -148,6 +237,26 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
     }
     lastWifiStatus_ = WiFi.status();
     return stateChanged;
+  }
+
+  // Tentative ciblee (fast-reconnect) en cours : on attend l'issue sans engager
+  // le scan. Au-dela de la borne de temps, on invalide l'AP memorise et on
+  // bascule sur la session de scan n3_wifi (qui garantit la connexion).
+  if (wifiDirectAttempt_) {
+    if (millis() < wifiDirectDeadlineMs_) {
+      lastWifiStatus_ = WiFi.status();
+      return stateChanged;
+    }
+    PGL_LOG("WiFi: reconnexion rapide echouee — bascule sur scan complet");
+    gLastGoodAp.magic = 0;
+    WiFi.disconnect(false, true);
+    wifiDirectAttempt_ = false;
+    N3WifiConfig cfg;
+    buildWifiConfig(cfg);
+    n3WifiSessionBegin(wifiSession_, cfg);
+    wifiSessionActive_ = true;
+    wifiConnecting_ = true;
+    stateChanged = true;
   }
 
   if (wifiBackoff_) {
@@ -171,6 +280,9 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
     wifiConnecting_ = false;
     wifiSessionActive_ = false;
     wifiBackoff_ = false;
+    wifiDirectAttempt_ = false;
+    // Memorise l'AP pour la reconnexion rapide au prochain reveil.
+    rememberLastGoodAp();
     stateChanged = true;
     PGL_LOG("WiFi: connecte ssid=%s ip=%s rssi=%d ch=%d",
             connectedSsid.c_str(),
@@ -214,7 +326,9 @@ void PglNetwork::tryConnectBeforeUpload() {
   if (WiFi.status() == WL_CONNECTED) {
     return;
   }
-  if (!wifiSessionActive_ && !wifiBackoff_) {
+  // Ne pas relancer une connexion si une tentative ciblee (fast-reconnect) ou
+  // une session de scan est deja en cours.
+  if (!wifiSessionActive_ && !wifiBackoff_ && !wifiDirectAttempt_) {
     startBackgroundWifi();
   }
   pollWifi(PGL_WIFI_UPLOAD_BUDGET_MS);
