@@ -6,7 +6,8 @@
 #include "system_boot.h"  // SystemBoot::confirmOtaValidation (v14.17)
 #include "config.h"
 #include "gpio_bool_parse.h"  // cœur pur (token/int -> bool) extrait de parseBoolFromDoc
-#include "automatism/feeding_command_resolver.h"  // résolveur pur des commandes 108/109 (simultanéité)
+#include "automatism/feeding_command_resolver.h"  // résolveur pur compteur monotone 108/109
+#include "nvs_keys.h"  // v15.0: clés compteurs nourrissage (feedExecP/feedExecG/feedSeed)
 #include <WiFi.h>
 #include <cstring>
 #include <cmath>   // v11.164: fabsf pour comparaison float
@@ -14,10 +15,30 @@
 
 // v11.179: Variables d'état de détection de front (module-level pour reset au boot)
 static bool s_lastTankState = false;
-static bool s_lastFeedSmallState = false;
-static bool s_lastFeedBigState = false;
 // v11.189: Reset ESP32 sur front montant uniquement (évite reboot en boucle si sync envoie 110:1)
 static bool s_lastResetState = false;
+// v15.0: les compteurs nourrissage 108/109 sont désormais persistés en NVS
+// (feedExecP/feedExecG + flag feedSeed), plus de variables d'état edge module-level.
+
+// --- NVS helpers compteur nourrissage (namespace CONFIG) ---------------------
+namespace {
+uint32_t loadFeedExec(const char* key) {
+    unsigned long v = 0;
+    g_nvsManager.loadULong(NVS_NAMESPACES::CONFIG, key, v, 0);
+    return static_cast<uint32_t>(v);
+}
+void saveFeedExec(const char* key, uint32_t value) {
+    g_nvsManager.saveULong(NVS_NAMESPACES::CONFIG, key, static_cast<unsigned long>(value));
+}
+bool loadFeedSeeded() {
+    bool v = false;
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::FEED_SEEDED, v, false);
+    return v;
+}
+void saveFeedSeeded(bool value) {
+    g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, NVSKeys::Config::FEED_SEEDED, value);
+}
+}  // namespace
 
 static bool tryStartOtaBeforeResetFromRemote() {
     extern AppContext g_appContext;
@@ -49,8 +70,6 @@ static bool tryStartOtaBeforeResetFromRemote() {
 
 void GPIOParser::resetEdgeDetectionState() {
     s_lastTankState = false;
-    s_lastFeedSmallState = false;
-    s_lastFeedBigState = false;
     s_lastResetState = false;
     Serial.println(F("[GPIOParser] État détection de front réinitialisé"));
 }
@@ -66,29 +85,40 @@ static bool parseBoolFromDoc(JsonVariantConst v) {
     return false;
 }
 
+// v15.0: lecture d'un entier non signé depuis le doc serveur (le serveur envoie
+// parfois des strings, ex. "42"). Valeurs négatives ramenées à 0.
+static uint32_t parseUintFromDoc(JsonVariantConst v) {
+    long val = 0;
+    if (v.is<int>()) {
+        val = v.as<int>();
+    } else if (v.is<const char*>()) {
+        const char* s = v.as<const char*>();
+        val = s ? atol(s) : 0;
+    } else {
+        val = v.as<long>();
+    }
+    return (val < 0) ? 0u : static_cast<uint32_t>(val);
+}
+
+// v15.0: artefacts de l'ère « détection de front », conservés en no-op inoffensif
+// (appelants dans automatism.cpp / feeding_finalize_orchestrator). Le protocole
+// compteur monotone n'a plus d'état edge à aligner.
 void GPIOParser::syncFeedEdgeStateAfterLocalPost(bool smallLevel, bool bigLevel) {
-    s_lastFeedSmallState = smallLevel;
-    s_lastFeedBigState = bigLevel;
-    Serial.printf("[GPIOParser] Edge 108/109 aligné après POST local: small=%d big=%d\n",
-                  smallLevel ? 1 : 0, bigLevel ? 1 : 0);
+    (void)smallLevel;
+    (void)bigLevel;
 }
 
 void GPIOParser::noteLocalFeedTriggered(bool isBig) {
-    if (isBig) {
-        s_lastFeedBigState = true;
-    } else {
-        s_lastFeedSmallState = true;
-    }
-    Serial.printf("[GPIOParser] Edge local %s aligné=1 (anti re-trigger écho serveur)\n",
-                  isBig ? "gros" : "petits");
+    (void)isBig;
 }
 
 // Pré-passage UNIQUE des commandes de nourrissage 108/109 (avant la boucle GPIO).
-// Résout petits/gros via FeedingCommandResolver (gère le cas SIMULTANÉ -> cycle
-// séquentiel, et ne perd pas une commande non exécutable). Les cas FEED_SMALL/
-// FEED_BIG de applyGPIO sont neutralisés (no-op) pour éviter tout double traitement.
+// v15.0: protocole COMPTEUR MONOTONE. 108/109 sont des entiers = total de commandes
+// jamais émises pour le canal. On compare au compteur exécuté persisté (NVS) et on
+// distribue au plus un repas par poll et par canal (cap MAX_FEED_CATCHUP). Les cas
+// FEED_SMALL/FEED_BIG de applyGPIO sont neutralisés (no-op).
 static void resolveFeedCommands(const JsonDocument& doc, Automatism& autoCtrl) {
-    auto readChannel = [&](const GPIOMapping& m, bool& present) -> bool {
+    auto readChannel = [&](const GPIOMapping& m, bool& present) -> uint32_t {
         char keyNum[16];
         snprintf(keyNum, sizeof(keyNum), "%d", m.gpio);
         const char* key = nullptr;
@@ -98,51 +128,63 @@ static void resolveFeedCommands(const JsonDocument& doc, Automatism& autoCtrl) {
             key = m.serverPostName;
         }
         present = (key != nullptr);
-        return present ? parseBoolFromDoc(doc[key]) : false;
+        return present ? parseUintFromDoc(doc[key]) : 0u;
     };
 
     FeedingCommandResolver::Inputs in;
-    in.smallLevel = readChannel(GPIOMap::FEED_SMALL, in.smallPresent);
-    in.bigLevel   = readChannel(GPIOMap::FEED_BIG, in.bigPresent);
+    in.smallCounter = readChannel(GPIOMap::FEED_SMALL, in.smallPresent);
+    in.bigCounter   = readChannel(GPIOMap::FEED_BIG, in.bigPresent);
     if (!in.smallPresent && !in.bigPresent) {
         return;  // aucune clé nourrissage dans ce poll
     }
-    in.prevSmall = s_lastFeedSmallState;
-    in.prevBig = s_lastFeedBigState;
+    in.execSmall = loadFeedExec(NVSKeys::Config::FEED_EXEC_SMALL);
+    in.execBig   = loadFeedExec(NVSKeys::Config::FEED_EXEC_BIG);
+    in.seeded    = loadFeedSeeded();
     in.feedingInProgress = autoCtrl.isFeedingInProgress();
 
     const FeedingCommandResolver::Decision d = FeedingCommandResolver::resolve(in);
-    s_lastFeedSmallState = d.newPrevSmall;
-    s_lastFeedBigState = d.newPrevBig;
 
-    Serial.printf("[DBG] resolveFeedCommands small(p=%d,l=%d) big(p=%d,l=%d) prev(s=%d,b=%d) "
-                  "inProg=%d -> action=%d new(s=%d,b=%d)\n",
-                  (int)in.smallPresent, (int)in.smallLevel, (int)in.bigPresent, (int)in.bigLevel,
-                  (int)in.prevSmall, (int)in.prevBig, (int)in.feedingInProgress,
-                  static_cast<int>(d.action), (int)d.newPrevSmall, (int)d.newPrevBig);
+    Serial.printf("[DBG] resolveFeedCommands small(p=%d,c=%lu) big(p=%d,c=%lu) "
+                  "exec(s=%lu,b=%lu) seeded=%d inProg=%d -> action=%d newExec(s=%lu,b=%lu) persist=%d\n",
+                  (int)in.smallPresent, (unsigned long)in.smallCounter,
+                  (int)in.bigPresent, (unsigned long)in.bigCounter,
+                  (unsigned long)in.execSmall, (unsigned long)in.execBig,
+                  (int)in.seeded, (int)in.feedingInProgress, static_cast<int>(d.action),
+                  (unsigned long)d.newExecSmall, (unsigned long)d.newExecBig, (int)d.persist);
 
     switch (d.action) {
         case FeedingCommandResolver::Action::Both:
-            Serial.println(F("[GPIOParser] Nourrissage GROS+PETITS simultané -> cycle séquentiel"));
+            Serial.println(F("[GPIOParser] Nourrissage GROS+PETITS (compteur) -> cycle séquentiel"));
             autoCtrl.manualFeedBoth();
-            autoCtrl.notifyRemoteFeedBothExecuted();
             break;
         case FeedingCommandResolver::Action::Big:
-            Serial.println(F("Nourrissage gros (rising edge)"));
+            Serial.println(F("Nourrissage gros (compteur monotone)"));
             autoCtrl.manualFeedBig();
-            autoCtrl.notifyRemoteFeedExecuted(false);
             break;
         case FeedingCommandResolver::Action::Small:
-            Serial.println(F("Nourrissage petits (rising edge)"));
+            Serial.println(F("Nourrissage petits (compteur monotone)"));
             autoCtrl.manualFeedSmall();
-            autoCtrl.notifyRemoteFeedExecuted(true);
             break;
         case FeedingCommandResolver::Action::None:
             if (in.feedingInProgress &&
-                ((in.smallPresent && in.smallLevel) || (in.bigPresent && in.bigLevel))) {
-                Serial.println(F("[GPIOParser] Nourrissage ignoré (cycle en cours) - commande gardée en attente"));
+                ((in.smallPresent && in.smallCounter > in.execSmall) ||
+                 (in.bigPresent && in.bigCounter > in.execBig))) {
+                Serial.println(F("[GPIOParser] Nourrissage différé (cycle en cours) - re-tenté au prochain poll"));
             }
             break;
+    }
+
+    // Persister les nouveaux compteurs exécutés + flag amorçage (NVS write-if-changed).
+    if (d.persist) {
+        if (d.newExecSmall != in.execSmall) {
+            saveFeedExec(NVSKeys::Config::FEED_EXEC_SMALL, d.newExecSmall);
+        }
+        if (d.newExecBig != in.execBig) {
+            saveFeedExec(NVSKeys::Config::FEED_EXEC_BIG, d.newExecBig);
+        }
+        if (d.newSeeded != in.seeded) {
+            saveFeedSeeded(d.newSeeded);
+        }
     }
 }
 
@@ -151,20 +193,41 @@ void GPIOParser::seedFeedStateFromDoc(const JsonDocument& doc) {
     if (doc.containsKey("110")) {
         s_lastResetState = parseBoolFromDoc(doc["110"]);
     }
-    // Nourrissage 108/109: seed au 1er poll pour éviter faux front si le serveur envoie
-    // 108:1 ou 109:1 comme état courant (ex. BDD ou cache). Seul un vrai changement 0→1
-    // après ce seed déclenchera un nourrissage.
-    if (doc.containsKey("108")) {
-        s_lastFeedSmallState = parseBoolFromDoc(doc["108"]);
+    // v15.0: amorçage compteur nourrissage 108/109 au 1er poll. Si le flag feedSeed
+    // est encore false (flash neuf), on adopte les compteurs serveur comme « exécutés »
+    // SANS distribuer, puis on pose feedSeed=true. Les polls suivants ne déclencheront
+    // que sur un vrai incrément serverCounter > executed.
+    if (!loadFeedSeeded()) {
+        bool smallPresent = false, bigPresent = false;
+        uint32_t smallCounter = 0, bigCounter = 0;
+        {
+            char keyNum[16];
+            snprintf(keyNum, sizeof(keyNum), "%d", GPIOMap::FEED_SMALL.gpio);
+            const char* k = doc.containsKey(keyNum) ? keyNum
+                            : (GPIOMap::FEED_SMALL.serverPostName &&
+                               doc.containsKey(GPIOMap::FEED_SMALL.serverPostName)
+                                   ? GPIOMap::FEED_SMALL.serverPostName : nullptr);
+            if (k) { smallPresent = true; smallCounter = parseUintFromDoc(doc[k]); }
+        }
+        {
+            char keyNum[16];
+            snprintf(keyNum, sizeof(keyNum), "%d", GPIOMap::FEED_BIG.gpio);
+            const char* k = doc.containsKey(keyNum) ? keyNum
+                            : (GPIOMap::FEED_BIG.serverPostName &&
+                               doc.containsKey(GPIOMap::FEED_BIG.serverPostName)
+                                   ? GPIOMap::FEED_BIG.serverPostName : nullptr);
+            if (k) { bigPresent = true; bigCounter = parseUintFromDoc(doc[k]); }
+        }
+        if (smallPresent || bigPresent) {
+            if (smallPresent) saveFeedExec(NVSKeys::Config::FEED_EXEC_SMALL, smallCounter);
+            if (bigPresent)   saveFeedExec(NVSKeys::Config::FEED_EXEC_BIG, bigCounter);
+            saveFeedSeeded(true);
+            Serial.printf("[GPIOParser] Amorçage compteur nourrissage: execSmall=%lu execBig=%lu (seeded)\n",
+                          (unsigned long)smallCounter, (unsigned long)bigCounter);
+        }
     }
-    if (doc.containsKey("109")) {
-        s_lastFeedBigState = parseBoolFromDoc(doc["109"]);
-    }
-    Serial.printf("[GPIOParser] État edge initialisé: reset=%d feedSmall=%d feedBig=%d\n",
-                  s_lastResetState ? 1 : 0, s_lastFeedSmallState ? 1 : 0, s_lastFeedBigState ? 1 : 0);
-    Serial.printf("[DBG] seedFeedStateFromDoc 108=%d 109=%d lastSmall=%d lastBig=%d hypothesis=D\n",
-                  doc.containsKey("108") ? 1 : 0, doc.containsKey("109") ? 1 : 0,
-                  s_lastFeedSmallState ? 1 : 0, s_lastFeedBigState ? 1 : 0);
+    Serial.printf("[GPIOParser] État seed initialisé: reset=%d feedSeeded=%d\n",
+                  s_lastResetState ? 1 : 0, loadFeedSeeded() ? 1 : 0);
 }
 
 void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {

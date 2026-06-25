@@ -36,7 +36,6 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _recvState(0)
     , _lastSend(0)
     , _lastRemoteFetch(0)
-    , _lastRemoteFeedResetMs(0)
     // v11.168: Flag configSynced - false tant qu'aucun poll serveur réussi
     , _configSyncedOnce(false)
     // v11.172: AutomatismSync est la source de vérité pour toutes les variables de config
@@ -157,88 +156,13 @@ void AutomatismSync::seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument
     if (_firstPollAfterBootDone) return;
     GPIOParser::seedFeedStateFromDoc(doc);
     _firstPollAfterBootDone = true;
-    Serial.println(F("[Sync] État edge detection initialisé (1er poll)"));
+    Serial.println(F("[Sync] Amorçage compteur nourrissage initialisé (1er poll)"));
 }
 
-// Destinataire des mails de confirmation nourrissage : adresse configurée, ou repli
-// EmailConfig::DEFAULT_RECIPIENT si vide (même politique que les mails veille/réveil).
-// Évite un envoi à un destinataire vide quand mailNotif est ON sans adresse configurée.
-static const char* feedMailRecipient(Automatism& core) {
-    const char* to = core.getEmailAddress();
-    return (to && strlen(to) > 0) ? to : EmailConfig::DEFAULT_RECIPIENT;
-}
-
-void AutomatismSync::onRemoteFeedExecuted(bool isSmall, Automatism& core) {
-    // Effets de bord après exécution nourrissage distant (appelé par GPIOParser)
-    const uint32_t nowMs = millis();
-    if (isSmall) {
-        Serial.println(F("[Sync] 🐟 Commande nourrissage PETITS exécutée (front montant)"));
-        sendCommandAck("bouffePetits", "executed");
-        logRemoteCommandExecution("fd_small", true);
-        if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
-            (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
-            _lastRemoteFeedResetMs = nowMs;
-            SensorReadings readings = core.readSensors();
-            bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0", AppTasks::PostCategory::EventAck);
-            Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
-        }
-        if (_emailEnabled) {
-            char messageBuffer[256];
-            core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
-                "Bouffe manuelle - Petits poissons",
-                core.getFeedBigDur(), core.getFeedSmallDur());
-            core.sendEmail("Nourrissage manuel - Petits poissons", messageBuffer,
-                "System", feedMailRecipient(core));
-        }
-    } else {
-        Serial.println(F("[Sync] 🐠 Commande nourrissage GROS exécutée (front montant)"));
-        sendCommandAck("bouffeGros", "executed");
-        logRemoteCommandExecution("fd_large", true);
-        if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
-            (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
-            _lastRemoteFeedResetMs = nowMs;
-            SensorReadings readings = core.readSensors();
-            bool resetOk = core.sendFullUpdate(readings, "bouffeGros=0&109=0", AppTasks::PostCategory::EventAck);
-            Serial.printf("[Sync] 🔁 Reset flags nourrissage %s\n", resetOk ? "envoyé" : "en attente");
-        }
-        if (_emailEnabled) {
-            char messageBuffer[256];
-            core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
-                "Bouffe manuelle - Gros poissons",
-                core.getFeedBigDur(), core.getFeedSmallDur());
-            core.sendEmail("Nourrissage manuel - Gros poissons", messageBuffer,
-                "System", feedMailRecipient(core));
-        }
-    }
-    core.armMailBlink();
-}
-
-void AutomatismSync::onRemoteFeedBothExecuted(Automatism& core) {
-    // Effets de bord après exécution nourrissage distant SIMULTANÉ gros+petits.
-    const uint32_t nowMs = millis();
-    Serial.println(F("[Sync] 🐟🐠 Commande nourrissage PETITS+GROS exécutée (fronts simultanés)"));
-    sendCommandAck("bouffePetits", "executed");
-    sendCommandAck("bouffeGros", "executed");
-    logRemoteCommandExecution("fd_small", true);
-    logRemoteCommandExecution("fd_large", true);
-    if (WiFi.status() == WL_CONNECTED && _config.isRemoteSendEnabled() &&
-        (nowMs - _lastRemoteFeedResetMs) >= REMOTE_FEED_RESET_COOLDOWN_MS) {
-        _lastRemoteFeedResetMs = nowMs;
-        SensorReadings readings = core.readSensors();
-        bool resetOk = core.sendFullUpdate(readings, "bouffePetits=0&108=0&bouffeGros=0&109=0",
-                                           AppTasks::PostCategory::EventAck);
-        Serial.printf("[Sync] 🔁 Reset flags nourrissage (gros+petits) %s\n", resetOk ? "envoyé" : "en attente");
-    }
-    if (_emailEnabled) {
-        char messageBuffer[256];
-        core.createFeedingMessage(messageBuffer, sizeof(messageBuffer),
-            "Bouffe manuelle - Petits + Gros poissons",
-            core.getFeedBigDur(), core.getFeedSmallDur());
-        core.sendEmail("Nourrissage manuel - Petits + Gros poissons", messageBuffer,
-            "System", feedMailRecipient(core));
-    }
-    core.armMailBlink();
-}
+// v15.0: onRemoteFeedExecuted/onRemoteFeedBothExecuted supprimés. Le protocole
+// compteur monotone ne renvoie plus 108/109 au serveur (ni ack, ni reset de flags).
+// L'email de confirmation reste géré par le chemin local (triggerLocalManualFeed) ;
+// pour un feed déclenché par le serveur (compteur incrémenté), pas d'email distant.
 
 // v11.183: Helper pour lire int depuis JSON (serveur envoie parfois string "200")
 static int parseIntFromVariant(ArduinoJson::JsonVariantConst v) {
@@ -371,8 +295,10 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     snprintf(body.limFlood, sizeof(body.limFlood), "%u", _limFlood);
     snprintf(body.wakeUp, sizeof(body.wakeUp), "%d", core.getForceWakeUp() ? 1 : 0);
     snprintf(body.freqWakeUp, sizeof(body.freqWakeUp), "%u", _freqWakeSec);
-    snprintf(body.bouffePetits, sizeof(body.bouffePetits), "%s", core.getBouffePetitsFlag());
-    snprintf(body.bouffeGros, sizeof(body.bouffeGros), "%s", core.getBouffeGrosFlag());
+    // v15.0: ne plus renvoyer les niveaux 108/109 au serveur — le serveur ne lit plus
+    // ces champs (compteur monotone côté serveur, jamais piloté par le firmware).
+    snprintf(body.bouffePetits, sizeof(body.bouffePetits), "0");
+    snprintf(body.bouffeGros, sizeof(body.bouffeGros), "0");
     snprintf(body.mail, sizeof(body.mail), "%s", _emailAddress);
     snprintf(body.mailNotif, sizeof(body.mailNotif), "%s", _emailEnabled ? "checked" : "");
     snprintf(body.resetMode, sizeof(body.resetMode), "0");

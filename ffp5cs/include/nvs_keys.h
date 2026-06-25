@@ -22,6 +22,10 @@ namespace NVSKeys {
         constexpr const char* BF_PMP_LOCK = "bf_pmp_lock";
         constexpr const char* REMOTE_JSON = "remote_json";
         constexpr const char* EMAIL = "email";
+        // v15.0 — protocole compteur monotone nourrissage manuel (≤15 car.)
+        constexpr const char* FEED_EXEC_SMALL = "feedExecP";  // compteur exécuté petits (108)
+        constexpr const char* FEED_EXEC_BIG = "feedExecG";    // compteur exécuté gros (109)
+        constexpr const char* FEED_SEEDED = "feedSeed";       // flag amorçage one-shot
     }
     
     // Clés système (noms ≤15 car. pour limite NVS ESP-IDF)

@@ -75,12 +75,9 @@ public:
     void setEmailEnabled(bool v) { _emailEnabled = v; }
     void setFreqWakeSec(uint16_t v) { _freqWakeSec = v; }
 
-    /// Appelé par GPIOParser après exécution nourrissage distant (ack, reset flags, email)
-    void onRemoteFeedExecuted(bool isSmall, Automatism& core);
-    /// Idem pour un nourrissage distant SIMULTANÉ gros+petits (ack des deux canaux,
-    /// reset 108/109 en un seul POST, un seul email récapitulatif).
-    void onRemoteFeedBothExecuted(Automatism& core);
-    /// Initialise l'état edge detection depuis le doc (1er poll) sans déclencher
+    // v15.0: onRemoteFeedExecuted/onRemoteFeedBothExecuted supprimés — le protocole
+    // compteur monotone n'émet plus d'ack/reset de flags 108/109 vers le serveur.
+    /// Initialise l'état nourrissage (amorçage compteur) depuis le doc (1er poll) sans déclencher
     void seedInitialStateIfFirstPoll(const ArduinoJson::JsonDocument& doc);
     void applyConfigFromJson(const ArduinoJson::JsonDocument& doc);
 
@@ -111,8 +108,7 @@ private:
     int8_t _recvState;
     unsigned long _lastSend;
     unsigned long _lastRemoteFetch;
-    unsigned long _lastRemoteFeedResetMs;
-    
+
     // v11.168: Flag pour éviter l'écrasement des variables de config sur le serveur distant
     // Si false, le payload contient configSynced=0 et le serveur ignore les variables de config
     bool _configSyncedOnce;
@@ -154,7 +150,6 @@ private:
     // Garder SEND_INTERVAL_MS >= 2 * REMOTE_FETCH_INTERVAL_MS pour qu'au moins un GET voie la valeur avant écrasement.
     static constexpr unsigned long SEND_INTERVAL_MS = 30000;   // 30 s
     static constexpr unsigned long REMOTE_FETCH_INTERVAL_MS = 6000;   // 6 s (poll serveur distant)
-    static constexpr unsigned long REMOTE_FEED_RESET_COOLDOWN_MS = 2000;
     static constexpr uint8_t INFLECTION_NOISE_MM = 20;            // Hystérésis renversement (réactif sans sur-lissage)
     static constexpr uint32_t MIN_INFLECTION_INTERVAL_MS = 10000; // Min 10s entre POSTs d'inflexion
 
