@@ -23,7 +23,6 @@ class PglDisplay {
   void showIdle();
   void sleepBacklight();
   void wakeBacklight();
-  bool adminUnlocked() const;
   bool isReady() const;
   void setHardwareStatus(bool displayOk, bool irPresent, bool irObstacle);
 

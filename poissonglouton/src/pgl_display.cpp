@@ -46,7 +46,6 @@ Arduino_GFX* gfx = new Arduino_Canvas(kScreenW, kScreenH, panel);
 lv_disp_draw_buf_t drawBuf;
 lv_color_t* drawBuffer = nullptr;
 PglUiHandles ui;
-bool adminUnlockedState = false;
 uint32_t lastUiUpdateMs = 0;
 // Vrai dès que LVGL a redessiné dans le canvas depuis le dernier push panneau.
 // Évite un transfert QSPI plein écran à chaque tour quand rien ne change.
@@ -447,10 +446,6 @@ void PglDisplay::wakeBacklight() {
   PGL_LOG_V("Display: backlight GPIO%d=HIGH", GFX_BL);
 }
 
-bool PglDisplay::adminUnlocked() const {
-  return adminUnlockedState;
-}
-
 bool PglDisplay::isReady() const {
   return ready_;
 }
@@ -511,7 +506,6 @@ void PglDisplay::tickSmileyIdle() {}
 void PglDisplay::showIdle() {}
 void PglDisplay::sleepBacklight() {}
 void PglDisplay::wakeBacklight() {}
-bool PglDisplay::adminUnlocked() const { return false; }
 bool PglDisplay::isReady() const { return false; }
 void PglDisplay::setHardwareStatus(bool, bool, bool) {}
 
