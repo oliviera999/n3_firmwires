@@ -429,9 +429,10 @@ PglUploadResult PglNetwork::uploadBatch(const PglStoredEvent* events, size_t cou
   return result;
 }
 
-bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
+bool PglNetwork::sendHeartbeat(uint32_t bootCount, const PglHeartbeatTelemetry& telemetry) {
 #if !PGL_ENABLE_SERVER_HEARTBEAT
   (void)bootCount;
+  (void)telemetry;
   return false;
 #else
   tryConnectBeforeUpload();
@@ -458,6 +459,13 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
             static_cast<unsigned long>(minHeap == UINT32_MAX ? freeHeap : minHeap),
             static_cast<unsigned long>(bootCount),
             rssi);
+  PGL_LOG_V("Serveur HB: pending=%u journal=%lu nvs=%u sd=%d batt=%dmV mode=%u",
+            static_cast<unsigned int>(telemetry.pending),
+            static_cast<unsigned long>(telemetry.journalPending),
+            static_cast<unsigned int>(telemetry.nvsPending),
+            telemetry.sdOk ? 1 : 0,
+            telemetry.batteryMilliVolt,
+            static_cast<unsigned int>(telemetry.sensorMode));
 
   N3DataField fields[] = {
       {"api_key", String(PGL_API_KEY)},
@@ -468,6 +476,12 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount) {
       {"min", String(minHeap == UINT32_MAX ? freeHeap : minHeap)},
       {"reboots", String(bootCount)},
       {"rssi", String(rssi)},
+      {"pending", String(telemetry.pending)},
+      {"journal_pending", String(telemetry.journalPending)},
+      {"nvs_pending", String(telemetry.nvsPending)},
+      {"sd_ok", String(telemetry.sdOk ? 1 : 0)},
+      {"battery_mv", String(telemetry.batteryMilliVolt)},
+      {"sensor_mode", String(static_cast<unsigned int>(telemetry.sensorMode))},
   };
 
   N3PostConfig cfg = {

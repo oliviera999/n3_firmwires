@@ -27,7 +27,12 @@ class PglNetwork {
   PglUploadResult uploadBatch(const PglStoredEvent* events, size_t count,
                               uint32_t totalCount, uint32_t todayCount);
 
-  bool sendHeartbeat(uint32_t bootCount);
+  /**
+   * Envoie un heartbeat de supervision au serveur. La telemetrie additionnelle
+   * (files d'attente, batterie, mode de detection...) est collectee par
+   * l'appelant et passee ici pour rester decouplee du compteur/detection.
+   */
+  bool sendHeartbeat(uint32_t bootCount, const PglHeartbeatTelemetry& telemetry);
   const PglServerCommStatus& getServerStatus() const;
 
  private:

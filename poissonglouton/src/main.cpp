@@ -256,6 +256,20 @@ static int16_t readBatteryMilliVolt() {
 #endif
 }
 
+// Collecte la telemetrie instantanee jointe au heartbeat serveur. Toutes les
+// valeurs proviennent de getters deja existants (aucun nouvel etat persistant) :
+// elle decouple le module reseau du compteur et de la detection.
+static PglHeartbeatTelemetry collectHeartbeatTelemetry() {
+  PglHeartbeatTelemetry t;
+  t.pending = gCounter.getPendingCount();
+  t.journalPending = gCounter.getJournalPendingCount();
+  t.nvsPending = gCounter.getNvsPendingCount();
+  t.sdOk = gCounter.isSdMode();
+  t.batteryMilliVolt = readBatteryMilliVolt();
+  t.sensorMode = static_cast<uint8_t>(gDetection.getActiveMode());
+  return t;
+}
+
 #if PGL_ENABLE_SLEEP && !PGL_DEBUG_NO_SLEEP
 // Timer de réveil adaptatif. La base depend du mode de detection :
 //  - IR present (EXT0) : l'IR reveille instantanement a la detection, le timer
@@ -384,7 +398,7 @@ static void tryUploadBatch() {
 
 #if PGL_ENABLE_SERVER_HEARTBEAT
   if (anySuccess) {
-    if (gNetwork.sendHeartbeat(gBootCount)) {
+    if (gNetwork.sendHeartbeat(gBootCount, collectHeartbeatTelemetry())) {
       gLastServerHeartbeatMs = millis();
     }
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
@@ -582,7 +596,7 @@ void loop() {
 
 #if PGL_ENABLE_SERVER_HEARTBEAT
   if ((millis() - gLastServerHeartbeatMs) >= PGL_HEARTBEAT_INTERVAL_MS) {
-    if (gNetwork.sendHeartbeat(gBootCount)) {
+    if (gNetwork.sendHeartbeat(gBootCount, collectHeartbeatTelemetry())) {
       gLastServerHeartbeatMs = millis();
     }
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
