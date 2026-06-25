@@ -76,6 +76,13 @@ class PglEventJournal {
   bool tryRecoverWrite();
 
  private:
+  // Acces en lecture seule aux internes (crc16/decodeRecord/JournalRecord) pour
+  // les tests natifs Unity. Defini uniquement sous UNIT_TEST (cf.
+  // test/test_journal_logic) ; aucun impact sur le firmware embarque.
+#ifdef UNIT_TEST
+  friend struct PglJournalTestAccess;
+#endif
+
   struct JournalRecord {
     uint32_t eventId;
     uint32_t epoch;

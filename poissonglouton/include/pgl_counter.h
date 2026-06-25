@@ -95,6 +95,13 @@ class PglCounter {
 
  private:
 
+  // Acces aux helpers prives (dayKeyFromEpoch, countAckedInBatch, sumEventDeltas,
+  // sumTodayDeltas) pour les tests natifs Unity. Defini uniquement sous
+  // UNIT_TEST (cf. test/test_counter) ; aucun impact sur le firmware embarque.
+#ifdef UNIT_TEST
+  friend struct PglCounterTestAccess;
+#endif
+
   void load();
 
   void persist();

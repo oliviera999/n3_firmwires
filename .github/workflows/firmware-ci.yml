@@ -48,6 +48,14 @@ jobs:
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
           done
+      - name: poissonglouton (suite par suite)
+        run: |
+          cd poissonglouton
+          for s in test_journal_logic test_counter; do
+            echo "::group::$s"
+            pio test -c platformio-native.ini -e native -f "$s"
+            echo "::endgroup::"
+          done
 
   build:
     name: Build ${{ matrix.name }}
