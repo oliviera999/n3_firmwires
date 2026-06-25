@@ -40,6 +40,9 @@ uint32_t gLastUiIdleMs = 0;
 uint32_t gLastHeartbeatMs = 0;
 uint32_t gLastServerHeartbeatMs = 0;
 uint32_t gLastIdleWarnMs = 0;
+// Etat de l'extinction du retroeclairage par inactivite (independant du deep sleep).
+// Evite de redeclencher la transition a chaque tour de loop().
+bool gBacklightDimmed = false;
 
 RTC_DATA_ATTR uint32_t gBootCount = 0;
 bool gEpochBackfillDone = false;
@@ -507,6 +510,13 @@ void loop() {
     gAudio.playThanks();
     gLastActivityMs = millis();
     gLastUiIdleMs = millis();
+    // Detection = activite : rallumer le retroeclairage s'il avait ete eteint
+    // par inactivite (no-op en headless ou si deja allume).
+    if (gBacklightDimmed) {
+      gDisplay.wakeBacklight();
+      gBacklightDimmed = false;
+      PGL_LOG_V("Backlight ON (detection apres inactivite)");
+    }
     PGL_LOG("DETECTION +1 total=%lu today=%lu pending=%u mode=%u tandem=%u batt=%dmV",
             static_cast<unsigned long>(gCounter.getTotalCount()),
             static_cast<unsigned long>(gCounter.getTodayCount()),
@@ -585,6 +595,23 @@ void loop() {
   maybeRunPeriodicOtaCheck();
 #endif
 
+  // Extinction du retroeclairage par inactivite, independante du deep sleep.
+  // Utile surtout quand la veille est desactivee (PGL_ENABLE_SLEEP=0, cas alpha) :
+  // la borne reste allumee en continu, donc on coupe la dalle apres
+  // PGL_BACKLIGHT_TIMEOUT_MS (20 s) d'inactivite pour limiter conso et usure.
+  // Quand la veille est active, le chemin de veille ci-dessous coupe deja le
+  // retroeclairage avant de dormir a PGL_IDLE_SLEEP_MS (12 s), donc ce seuil de
+  // 20 s n'est en pratique jamais atteint avant le sommeil : pas de conflit.
+  // On reutilise gLastActivityMs (reinitialise a chaque detection) sans timer
+  // divergent, et gBacklightDimmed garantit une seule transition.
+  if (!gBacklightDimmed && (millis() - gLastActivityMs) > PGL_BACKLIGHT_TIMEOUT_MS) {
+    gDisplay.sleepBacklight();
+    gBacklightDimmed = true;
+    PGL_LOG_V("Backlight OFF (inactivite %lums >= %u)",
+              static_cast<unsigned long>(millis() - gLastActivityMs),
+              static_cast<unsigned int>(PGL_BACKLIGHT_TIMEOUT_MS));
+  }
+
   if ((millis() - gLastActivityMs) > PGL_IDLE_SLEEP_MS) {
 #if !PGL_ENABLE_SLEEP || PGL_DEBUG_NO_SLEEP
     if ((millis() - gLastIdleWarnMs) > 10000) {
@@ -593,7 +620,10 @@ void loop() {
               PGL_ENABLE_SLEEP, PGL_DEBUG_NO_SLEEP);
       gLastIdleWarnMs = millis();
     }
-    gLastActivityMs = millis();
+    // NB : on ne reinitialise plus gLastActivityMs ici. Le throttle du log
+    // d'inactivite repose sur gLastIdleWarnMs ; laisser l'inactivite continuer
+    // a s'accumuler est necessaire pour atteindre le seuil d'extinction du
+    // retroeclairage (PGL_BACKLIGHT_TIMEOUT_MS) quand la veille est desactivee.
 #else
     PGL_LOG("Inactivite %lums >= %u — preparation veille",
             static_cast<unsigned long>(millis() - gLastActivityMs),

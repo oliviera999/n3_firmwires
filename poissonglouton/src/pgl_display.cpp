@@ -432,8 +432,19 @@ void PglDisplay::showIdle() {
 }
 
 void PglDisplay::sleepBacklight() {
+  // Garde anti-redondance : ne pilote le GPIO que sur transition ON->OFF.
+  if (!backlightOn_) return;
   digitalWrite(GFX_BL, LOW);
+  backlightOn_ = false;
   PGL_LOG_V("Display: backlight GPIO%d=LOW", GFX_BL);
+}
+
+void PglDisplay::wakeBacklight() {
+  // Methode symetrique de sleepBacklight() : ne rallume que sur transition OFF->ON.
+  if (backlightOn_) return;
+  digitalWrite(GFX_BL, HIGH);
+  backlightOn_ = true;
+  PGL_LOG_V("Display: backlight GPIO%d=HIGH", GFX_BL);
 }
 
 bool PglDisplay::adminUnlocked() const {
@@ -499,6 +510,7 @@ void PglDisplay::showAudioIdle() {}
 void PglDisplay::tickSmileyIdle() {}
 void PglDisplay::showIdle() {}
 void PglDisplay::sleepBacklight() {}
+void PglDisplay::wakeBacklight() {}
 bool PglDisplay::adminUnlocked() const { return false; }
 bool PglDisplay::isReady() const { return false; }
 void PglDisplay::setHardwareStatus(bool, bool, bool) {}
