@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "pgl_log.h"
+#include "pgl_sensor_fusion.h"
 
 void PglDetection::begin() {
   pinMode(PGL_IR_PIN, INPUT_PULLUP);
@@ -12,11 +13,21 @@ void PglDetection::begin() {
   usPresent_ = detectUltrasonAtBoot();
   irPrevState_ = digitalRead(PGL_IR_PIN);
 
-  PGL_LOG("Capteurs: IR=%s (GPIO%d) US=%s (GPIO%d)",
+  // Presence PIR par flag : l'autodetection PIR n'est pas fiable (repos = LOW,
+  // identique a une absence de module). Le module PIR pilote sa sortie en INPUT.
+  pirPresent_ = (PGL_ENABLE_PIR != 0);
+  if (pirPresent_) {
+    pinMode(PGL_PIR_PIN, INPUT);
+    pirPrevState_ = digitalRead(PGL_PIR_PIN);
+  }
+
+  PGL_LOG("Capteurs: IR=%s (GPIO%d) US=%s (GPIO%d) PIR=%s (GPIO%d)",
           irPresent_ ? "OK" : "absent", PGL_IR_PIN,
-          usPresent_ ? "OK" : "absent", PGL_US_PIN);
-  PGL_LOG_V("Seuils: US<=%ucm debounce=%lums tandem=%lums",
-            PGL_ULTRASON_TRIGGER_CM, PGL_DEBOUNCE_MS, PGL_TANDEM_WINDOW_MS);
+          usPresent_ ? "OK" : "absent", PGL_US_PIN,
+          pirPresent_ ? "OK" : "absent", PGL_PIR_PIN);
+  PGL_LOG_V("Seuils: US<=%ucm debounce=%lums corroboration=%lums",
+            PGL_ULTRASON_TRIGGER_CM, PGL_DEBOUNCE_MS,
+            PGL_SENSOR_CORROBORATION_WINDOW_MS);
   if (irPresent_) {
     PGL_LOG_V("IR etat initial GPIO%d=%d (1=libre 0=obstacle)", PGL_IR_PIN, irPrevState_ ? 1 : 0);
   }
@@ -24,17 +35,23 @@ void PglDetection::begin() {
     const uint16_t d0 = readUltrasonCm();
     PGL_LOG_V("US distance initiale: %u cm", d0);
   }
+  if (pirPresent_) {
+    PGL_LOG_V("PIR etat initial GPIO%d=%d (0=repos 1=mouvement) presence_win=%lums",
+              PGL_PIR_PIN, pirPrevState_ ? 1 : 0, PGL_PIR_PRESENCE_WINDOW_MS);
+  }
 }
 
-PglSensorMode PglDetection::getActiveMode() const {
-  if (irPresent_ && usPresent_) return PglSensorMode::TANDEM;
-  if (irPresent_) return PglSensorMode::IR;
-  if (usPresent_) return PglSensorMode::ULTRASON;
-  return PglSensorMode::NONE;
+uint8_t PglDetection::getActiveSensorsMask() const {
+  uint8_t mask = 0;
+  if (irPresent_) mask |= PGL_SENS_IR;
+  if (usPresent_) mask |= PGL_SENS_US;
+  if (pirPresent_) mask |= PGL_SENS_PIR;
+  return mask;
 }
 
 bool PglDetection::hasIr() const { return irPresent_; }
 bool PglDetection::hasUltrason() const { return usPresent_; }
+bool PglDetection::hasPir() const { return pirPresent_; }
 
 uint16_t PglDetection::getUltrasonDistanceCm() {
   const uint32_t now = millis();
@@ -54,7 +71,7 @@ bool PglDetection::readIrObstacle() const {
 
 PglDetectionEvent PglDetection::poll() {
   const uint32_t now = millis();
-  PglDetectionEvent event = {false, getActiveMode(), false};
+  PglDetectionEvent event = {false, 0, false};
   const uint16_t usDistance = getUltrasonDistanceCm();
 
   // US absent au boot mais mesures valides en runtime → activer le capteur.
@@ -98,6 +115,7 @@ PglDetectionEvent PglDetection::poll() {
 
   bool irTriggered = false;
   bool usTriggered = false;
+  bool pirTriggered = false;
 
   if (irPresent_) {
     const bool irState = digitalRead(PGL_IR_PIN);
@@ -126,33 +144,50 @@ PglDetectionEvent PglDetection::poll() {
     }
   }
 
-  if (irPresent_ && usPresent_) {
-    // Tandem : compter si l'un OU l'autre déclenche ; tandemValidated si les deux
-    // ont vu l'objet dans la fenêtre (évite le blocage US seul quand IR est câblé).
-    if (irTriggered || usTriggered) {
-      event.detected = true;
-      event.mode = PglSensorMode::TANDEM;
-      if (irTriggered && usTriggered) {
-        event.tandemValidated = true;
-      } else if (lastIrEdgeMs_ > 0 && lastUsEdgeMs_ > 0) {
-        const uint32_t dt = (lastIrEdgeMs_ > lastUsEdgeMs_)
-                                ? (lastIrEdgeMs_ - lastUsEdgeMs_)
-                                : (lastUsEdgeMs_ - lastIrEdgeMs_);
-        event.tandemValidated = (dt <= PGL_TANDEM_WINDOW_MS);
-      }
+  if (pirPresent_) {
+    // Front LOW->HIGH (sortie PIR active-HAUT) avec garde anti re-trigger :
+    // un nouveau front est ignore tant que PGL_PIR_DEBOUNCE_MS ne s'est pas
+    // ecoule depuis le dernier (le PIR reste HIGH plusieurs secondes par nature).
+    const bool pirState = digitalRead(PGL_PIR_PIN);
+    const bool guardElapsed =
+        (lastPirEdgeMs_ == 0) || ((now - lastPirEdgeMs_) >= PGL_PIR_DEBOUNCE_MS);
+    if (!pirPrevState_ && pirState && guardElapsed) {
+      pirTriggered = true;
+      lastPirEdgeMs_ = now;
+      pirEdgeGuard_ = 1;
+      PGL_LOG("PIR GPIO%d: front mouvement detecte", PGL_PIR_PIN);
     }
-  } else if (irTriggered || usTriggered) {
-    event.detected = true;
-    event.mode = irTriggered ? PglSensorMode::IR : PglSensorMode::ULTRASON;
-    event.tandemValidated = false;
+    pirPrevState_ = pirState;
   }
+
+  // Decision de comptage deleguee a la fonction pure de fusion : elle decide
+  // a partir des triggers DEJA debounce de chaque capteur. presentMask la rend
+  // robuste a tout sous-ensemble de {IR, US, PIR}.
+  PglFusionInput in;
+  in.presentMask = getActiveSensorsMask();
+  in.irTriggered = irTriggered;
+  in.usTriggered = usTriggered;
+  in.pirTriggered = pirTriggered;
+  in.lastIrEdgeMs = lastIrEdgeMs_;
+  in.lastUsEdgeMs = lastUsEdgeMs_;
+  in.lastPirEdgeMs = lastPirEdgeMs_;
+  in.nowMs = now;
+  in.corroborationWindowMs = PGL_SENSOR_CORROBORATION_WINDOW_MS;
+  in.pirPresenceWindowMs = PGL_PIR_PRESENCE_WINDOW_MS;
+  in.pirGatesCount = (PGL_PIR_GATES_COUNT != 0);
+  in.pirCountsWhenAlone = (PGL_PIR_COUNTS_WHEN_ALONE != 0);
+
+  const PglFusionResult fusion = pglFuseDetection(in);
+  event.detected = fusion.detected;
+  event.sensorsMask = fusion.sensorsMask;
+  event.corroborated = fusion.corroborated;
 
   if (event.detected) {
     lastDetectionMs_ = now;
-    PGL_LOG_V("Declenchement brut: IR=%d US=%d mode=%u tandem_ok=%d",
-              irTriggered ? 1 : 0, usTriggered ? 1 : 0,
-              static_cast<unsigned int>(event.mode),
-              event.tandemValidated ? 1 : 0);
+    PGL_LOG_V("Declenchement brut: IR=%d US=%d PIR=%d mask=%u corrobore=%d",
+              irTriggered ? 1 : 0, usTriggered ? 1 : 0, pirTriggered ? 1 : 0,
+              static_cast<unsigned int>(event.sensorsMask),
+              event.corroborated ? 1 : 0);
   }
   return event;
 }

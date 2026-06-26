@@ -2,6 +2,16 @@
 
 #include <Arduino.h>
 
+// Bitmask des capteurs ayant contribue a un comptage (champ PglStoredEvent.sensorMode
+// et PglDetectionEvent.sensorsMask). Retro-compatible avec l'ancien enum
+// PglSensorMode : IR=1, US=2, IR+US=3 (= ancien TANDEM). PIR=4 est nouveau.
+static constexpr uint8_t PGL_SENS_IR = 0x01;   // bit0 — capteur de comptage IR
+static constexpr uint8_t PGL_SENS_US = 0x02;   // bit1 — capteur de comptage ultrason
+static constexpr uint8_t PGL_SENS_PIR = 0x04;  // bit2 — capteur de presence PIR
+
+// Enum legacy conserve pour compatibilite (valeurs alignees sur les bits IR/US).
+// NB : le champ sensorMode de PglStoredEvent est desormais un BITMASK (PGL_SENS_*)
+// et non plus une valeur de cet enum ; cet enum n'est garde que pour reference.
 enum class PglSensorMode : uint8_t {
   NONE = 0,
   IR = 1,
@@ -11,8 +21,8 @@ enum class PglSensorMode : uint8_t {
 
 struct PglDetectionEvent {
   bool detected;
-  PglSensorMode mode;
-  bool tandemValidated;
+  uint8_t sensorsMask;  // bitmask PGL_SENS_* des capteurs ayant contribue
+  bool corroborated;    // true si >=2 capteurs concordants (corroboration)
 };
 
 struct PglStoredEvent {

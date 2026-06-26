@@ -1,5 +1,44 @@
 # Poissonglouton - Historique versions
 
+## 0.4.0 - 2026-06-26
+
+Ajout d'un 3ᵉ capteur **PIR** (détecteur de mouvement, sortie numérique active-HAUT)
+aux deux existants (IR obstacle GPIO7, US ultrason GPIO6) + **stratégie de fusion**
+robuste et testable.
+
+- **Rôles capteurs** : IR et US = capteurs de **comptage** (précis, créneau bouteille) ;
+  PIR = capteur de **présence** (quelqu'un à la machine), pas un compteur direct par défaut.
+- **Anti-double-comptage** : l'anti-rebond global unique (`PGL_DEBOUNCE_MS`) reste appliqué
+  en amont dans `poll()`, avant toute décision — un passage de bouteille = un seul comptage
+  même si plusieurs capteurs voient le même objet.
+- **Fonction de fusion pure** (`pgl_sensor_fusion.{h,cpp}`, sans dépendance Arduino, testable
+  en natif) : décide du comptage à partir des triggers **déjà débouncés** de chaque capteur.
+  Corroboration (`corroborated`) = ≥2 capteurs concordants (IR+US dans la fenêtre
+  `PGL_SENSOR_CORROBORATION_WINDOW_MS`, ou présence PIR confirmant un comptage IR/US dans
+  `PGL_PIR_PRESENCE_WINDOW_MS`).
+- **Robustesse sous-ensemble** : la logique fonctionne pour tout sous-ensemble de
+  {IR, US, PIR} (1, 2 ou 3 capteurs). Un capteur absent ne perturbe rien ; aucun capteur
+  de comptage présent ⇒ pas de comptage (sauf option PIR-seul dégradée).
+- **Modèle de données rétro-compatible** : `PglStoredEvent.sensorMode` devient un **bitmask**
+  `PGL_SENS_IR=1 / PGL_SENS_US=2 / PGL_SENS_PIR=4` (IR+US=3 = ancien TANDEM, identique) ;
+  `PglDetectionEvent` expose `sensorsMask` + `corroborated`. Taille de `PglStoredEvent` et
+  format du record journal SD (20 octets) **inchangés** (`sensorMode`/`tandemValidated`
+  restent des `uint8_t`).
+- **Flags de board** : `PGL_ENABLE_PIR` (0 par défaut — la présence PIR est pilotée par flag,
+  l'autodétection PIR n'étant pas fiable : repos = LOW), `PGL_PIR_PIN` (GPIO5 par défaut,
+  **à adapter par board**), `PGL_PIR_GATES_COUNT` (0 = le PIR ne bloque jamais un comptage,
+  pas de faux négatif), `PGL_PIR_COUNTS_WHEN_ALONE` (1 = PIR seul compte ses fronts, dégradé).
+- **Veille** (toujours off par défaut, `PGL_ENABLE_SLEEP=0`) : réveil EXT0 = IR si présent,
+  sinon PIR (niveau HAUT), sinon timer seul. Le réveil multi-broches (ext1 IR+PIR) reste une
+  amélioration future.
+- **Tests** : nouvelle suite native `test_detection_fusion` (15 cas couvrant la matrice
+  1/2/3 capteurs, corroboration, gate, PIR-seul) ajoutée à `platformio-native.ini` et à la CI.
+- **Suivi** : l'UI `PglDisplay` n'expose pas encore l'état PIR (env display non compilable
+  ici — couvert par la CI) ; à ajouter dans une passe ultérieure.
+
+Validation : `pgl-s3-headless` (défaut + `-DPGL_ENABLE_PIR=1`) compilés ; suites natives
+`test_detection_fusion` (15) + `test_counter` + `test_journal_logic` vertes.
+
 ## 0.3.0 - 2026-06-25
 
 Lot d'améliorations (robustesse, sécurité, observabilité, énergie, tests) :
