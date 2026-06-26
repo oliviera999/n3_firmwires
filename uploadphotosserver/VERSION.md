@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.39** (définie dans `include/config.h`).
+Version actuelle : **2.40** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.39** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.40 | 2026-06-26 | **Synchronisation hors-ligne du backlog photo** : la carte SD sert de file d'attente locale, les photos non encore reçues par le serveur sont (re)poussées dès le retour du WiFi. Nouveaux modules `camera_uploader` (upload réutilisable mémoire/SD, en-tête `X-Sync-Session`) et `camera_sync` (curseur NVS `up_cursor`, drain hybride incrémental/complet, sessions `sync/start`+`sync/finish`). `sendPhoto()` → `capturePhoto()` (capture + stockage SD, upload direct si pas de SD). Contrat serveur n3_serveur ≥ 6.1.0 (jauge de transfert + mail récap). |
 | 2.39 | 2026-05-30 | Refactor modules (`camera_setup`, `camera_upload`, `camera_sleep`, `camera_mail_events`), dépendance `Arduino_JSON`, build fix `getLocalTime` |
 | 2.38 | 2026-05-19 | Sécurité/robustesse : vérification OTA `sha256` + signature ECDSA optionnelle, correction bug `WiFi.SSID().c_str()` (pointeur temporaire), deep sleep par défaut rétabli à 600 s, upload HTTP refactorisé (`HTTPClient` + retries), validation serveur `board/sensor`, code HTTP 202 pour photo en corbeille auto |
 | 2.36 | 2026-03-31 | Build : `-I` corrigé (`$PROJECT_DIR/..` = racine **firmwires**) pour que `credentials.h` charge bien `firmwires/credentials.h` (SMTP, etc.) ; suppression du doublon `include/credentials.h` qui masquait les macros SMTP |

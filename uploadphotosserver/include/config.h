@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.39"
+#define FIRMWARE_VERSION "2.40"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
@@ -88,6 +88,10 @@
 #define UPLOAD_CONNECT_RETRIES   2
 #define UPLOAD_RETRY_DELAY_MS    1000
 
+/* Synchronisation hors-ligne du backlog SD (stratégie hybride, cf. camera_sync) */
+#define SYNC_MAX_UPLOADS_PER_WAKE 10   /* drain incrémental : photos max envoyées par réveil */
+#define SYNC_FULL_DRAIN_THRESHOLD 25   /* backlog au-delà duquel on vide tout ce réveil (rattrapage) */
+
 /* Série UART0 : si le moniteur PC « ne reçoit rien », mettre 3000–5000 (ms) pour laisser le temps
    d’ouvrir le port après réveil deep sleep ; en prod laisser 0. Voir README firmwires (ESP32-CAM). */
 #define SERIAL_BOOT_PAUSE_MS 4000
@@ -98,6 +102,8 @@
 #  define REMOTE_BOARD_ID    6
 #  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/msp1gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=6"
 #  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/msp1gallery/post-uploadphotoserver-version.php"
+#  define SYNC_START_URL    SERVER_SCHEME "iot.olution.info/msp1gallery/uploadphotoserver-sync-start.php"
+#  define SYNC_FINISH_URL   SERVER_SCHEME "iot.olution.info/msp1gallery/uploadphotoserver-sync-finish.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
@@ -108,6 +114,8 @@
 #  define REMOTE_BOARD_ID    7
 #  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/n3ppgallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=7"
 #  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/n3ppgallery/post-uploadphotoserver-version.php"
+#  define SYNC_START_URL    SERVER_SCHEME "iot.olution.info/n3ppgallery/uploadphotoserver-sync-start.php"
+#  define SYNC_FINISH_URL   SERVER_SCHEME "iot.olution.info/n3ppgallery/uploadphotoserver-sync-finish.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
@@ -118,6 +126,8 @@
 #  define REMOTE_BOARD_ID    5
 #  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=5"
 #  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/post-uploadphotoserver-version.php"
+#  define SYNC_START_URL    SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-sync-start.php"
+#  define SYNC_FINISH_URL   SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-sync-finish.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
