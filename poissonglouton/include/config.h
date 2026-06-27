@@ -4,7 +4,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.3.0";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.4.0";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -31,6 +31,25 @@ static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 #define PGL_IR_PIN 7
 #endif
 static constexpr int PGL_US_PIN = 6;   // HC-SR04 trig/echo sur une seule broche
+
+// --- Capteur PIR (detecteur de mouvement, sortie numerique active-HAUT) ------
+// Strategie 3 capteurs {IR, US, PIR} : IR et US = capteurs de COMPTAGE (precis,
+// creneau bouteille). PIR = capteur de PRESENCE (quelqu'un a la machine), pas un
+// compteur direct par defaut. La decision de comptage est deleguee a une fonction
+// pure (pgl_sensor_fusion) alimentee par les triggers DEJA debounce de chaque
+// capteur ; l'anti-rebond global unique (PGL_DEBOUNCE_MS) en amont garantit qu'un
+// passage de bouteille = un seul comptage meme vu par plusieurs capteurs. La
+// logique est robuste a tout sous-ensemble de {IR, US, PIR} (1, 2 ou 3 capteurs)
+// et un capteur absent ne perturbe rien. La presence PIR est pilotee par flag
+// (PGL_ENABLE_PIR) car l'autodetection PIR n'est pas fiable (repos = LOW).
+#ifndef PGL_ENABLE_PIR
+#define PGL_ENABLE_PIR 0          // PIR desactive par defaut (activer par board)
+#endif
+#ifndef PGL_PIR_PIN
+#define PGL_PIR_PIN 5             // GPIO libre RTC-capable ; A ADAPTER par board
+#endif
+static constexpr uint32_t PGL_PIR_DEBOUNCE_MS = 1000;            // garde anti re-trigger PIR
+static constexpr uint32_t PGL_PIR_PRESENCE_WINDOW_MS = 4000;     // PIR confirme un comptage IR/US
 
 // Volume audio (0…21, ESP32-audioI2S) — display ; inutilise en headless
 static constexpr uint8_t PGL_AUDIO_VOLUME = 15;
@@ -96,6 +115,17 @@ static constexpr uint32_t PGL_DEBOUNCE_MS = 600;
 static constexpr uint32_t PGL_TANDEM_WINDOW_MS = 300;
 
 static constexpr uint8_t PGL_US_CONSECUTIVE_POLLS = 2;
+
+// Fenetre de concordance IR<->US pour la corroboration (un capteur a declenche ce
+// poll, l'autre recemment). Alignee sur l'ancienne fenetre tandem (300 ms).
+static constexpr uint32_t PGL_SENSOR_CORROBORATION_WINDOW_MS = PGL_TANDEM_WINDOW_MS; // 300 ms
+// Politique PIR (cf. commentaire strategie au-dessus de PGL_ENABLE_PIR) :
+#ifndef PGL_PIR_GATES_COUNT
+#define PGL_PIR_GATES_COUNT 0     // 0 = PIR ne bloque PAS un comptage (pas de faux negatif)
+#endif
+#ifndef PGL_PIR_COUNTS_WHEN_ALONE
+#define PGL_PIR_COUNTS_WHEN_ALONE 1  // PIR seul compte ses fronts (degrade, faible confiance)
+#endif
 
 // Inactivite avant de declencher la veille. Avec un timer de reveil long en
 // mode IR (cf. PGL_TIMER_WAKEUP_IR_S), 12 s d'eveil par cycle de housekeeping

@@ -51,7 +51,7 @@ jobs:
       - name: poissonglouton (suite par suite)
         run: |
           cd poissonglouton
-          for s in test_journal_logic test_counter; do
+          for s in test_journal_logic test_counter test_detection_fusion; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"

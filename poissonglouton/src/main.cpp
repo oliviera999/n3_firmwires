@@ -117,6 +117,15 @@ void logIrStatus(const PglDetection& detection) {
   }
 }
 
+void logPirStatus(const PglDetection& detection) {
+  if (detection.hasPir()) {
+    PGL_LOG("PIR GPIO%d: capteur PRESENT (capteur de presence, active par flag)",
+            PGL_PIR_PIN);
+  } else {
+    PGL_LOG("PIR GPIO%d: capteur ABSENT (PGL_ENABLE_PIR=0)", PGL_PIR_PIN);
+  }
+}
+
 void refreshHardwareStatus(PglDisplay& display, PglDetection& detection) {
 #if !PGL_HEADLESS
   display.setHardwareStatus(display.isReady(), detection.hasIr(), detection.readIrObstacle());
@@ -266,7 +275,7 @@ static PglHeartbeatTelemetry collectHeartbeatTelemetry() {
   t.nvsPending = gCounter.getNvsPendingCount();
   t.sdOk = gCounter.isSdMode();
   t.batteryMilliVolt = readBatteryMilliVolt();
-  t.sensorMode = static_cast<uint8_t>(gDetection.getActiveMode());
+  t.sensorMode = gDetection.getActiveSensorsMask();
   return t;
 }
 
@@ -461,11 +470,12 @@ void setup() {
   PGL_LOG("Init detection capteurs...");
   gDetection.begin();
   logIrStatus(gDetection);
+  logPirStatus(gDetection);
   refreshHardwareStatus(gDisplay, gDetection);
   PGL_LOG("Affichage pret");
 
-  PGL_LOG("Mode capteur actif: %u (0=aucun 1=IR 2=US 3=tandem)",
-          static_cast<unsigned int>(gDetection.getActiveMode()));
+  PGL_LOG("Mode capteur actif: %u (bitmask IR=1 US=2 PIR=4)",
+          static_cast<unsigned int>(gDetection.getActiveSensorsMask()));
 
   PGL_LOG("Init audio I2S (JC4827W543 speak)...");
   gAudio.setNotifyCallback(onAudioDisplayNotify, &gDisplay);
@@ -513,8 +523,8 @@ void loop() {
     PglStoredEvent stored = {};
     stored.epoch = getCurrentEpochSafe();
     stored.countDelta = 1;
-    stored.sensorMode = static_cast<uint8_t>(event.mode);
-    stored.tandemValidated = event.tandemValidated ? 1 : 0;
+    stored.sensorMode = event.sensorsMask;  // bitmask PGL_SENS_* des capteurs contributeurs
+    stored.tandemValidated = event.corroborated ? 1 : 0;
     stored.batteryMilliVolt = readBatteryMilliVolt();
     stored.rssi = static_cast<int16_t>(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -127);
 
@@ -531,7 +541,7 @@ void loop() {
       gBacklightDimmed = false;
       PGL_LOG_V("Backlight ON (detection apres inactivite)");
     }
-    PGL_LOG("DETECTION +1 total=%lu today=%lu pending=%u mode=%u tandem=%u batt=%dmV",
+    PGL_LOG("DETECTION +1 total=%lu today=%lu pending=%u mask=%u corrobore=%u batt=%dmV",
             static_cast<unsigned long>(gCounter.getTotalCount()),
             static_cast<unsigned long>(gCounter.getTodayCount()),
             gCounter.getPendingCount(),
@@ -647,10 +657,19 @@ void loop() {
     saveLastKnownEpoch(getCurrentEpochSafe());  // borne basse pour le prochain power-on
     gDisplay.sleepBacklight();
     PGL_LOG("Backlight OFF");
+    // Reveil EXT0 = une seule broche : IR si present, sinon PIR si present,
+    // sinon timer seul. (Le reveil multi-broches ext1 — IR ET PIR simultanes —
+    // est une amelioration future.) La base de timer suit la presence d'un
+    // capteur de reveil instantane (IR ou PIR) pour maximiser le sommeil.
     const bool useIrWakeup = gDetection.hasIr();
-    const uint32_t timerS = computeSleepTimerS(useIrWakeup);
-    gSleep.configure(useIrWakeup, timerS);
-    PGL_LOG("Veille: IR_wakeup=%d timer=%lus", useIrWakeup ? 1 : 0,
+    const bool usePirWakeup = !useIrWakeup && gDetection.hasPir();
+    const bool useEdgeWakeup = useIrWakeup || usePirWakeup;
+    const uint32_t timerS = computeSleepTimerS(useEdgeWakeup);
+    // configureWakeup choisit la broche/niveau EXT0 : IR (GPIO bas) ou PIR
+    // (GPIO haut, actif-HAUT) ; timer seul si aucun capteur de reveil.
+    gSleep.configureWakeup(useIrWakeup, usePirWakeup, timerS);
+    PGL_LOG("Veille: IR_wakeup=%d PIR_wakeup=%d timer=%lus",
+            useIrWakeup ? 1 : 0, usePirWakeup ? 1 : 0,
             static_cast<unsigned long>(timerS));
     gSleep.start();
 #endif
