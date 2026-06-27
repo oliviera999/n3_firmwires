@@ -14,6 +14,8 @@ class PglDetection {
   uint16_t getUltrasonDistanceCm();
   /** true si obstacle détecté (pin LOW avec pull-up). */
   bool readIrObstacle() const;
+  /** true si mouvement PIR courant (sortie active-HAUT). false si PIR absent. */
+  bool readPirMotion() const;
   PglDetectionEvent poll();
 
  private:

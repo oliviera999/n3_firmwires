@@ -69,6 +69,13 @@ bool PglDetection::readIrObstacle() const {
   return !digitalRead(PGL_IR_PIN);
 }
 
+bool PglDetection::readPirMotion() const {
+  if (!pirPresent_) {
+    return false;
+  }
+  return digitalRead(PGL_PIR_PIN);  // actif-HAUT : HIGH = mouvement
+}
+
 PglDetectionEvent PglDetection::poll() {
   const uint32_t now = millis();
   PglDetectionEvent event = {false, 0, false};

@@ -129,6 +129,7 @@ void logPirStatus(const PglDetection& detection) {
 void refreshHardwareStatus(PglDisplay& display, PglDetection& detection) {
 #if !PGL_HEADLESS
   display.setHardwareStatus(display.isReady(), detection.hasIr(), detection.readIrObstacle());
+  display.setPirStatus(detection.hasPir(), detection.readPirMotion());
 #endif
 }
 }

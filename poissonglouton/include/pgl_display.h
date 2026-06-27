@@ -25,6 +25,8 @@ class PglDisplay {
   void wakeBacklight();
   bool isReady() const;
   void setHardwareStatus(bool displayOk, bool irPresent, bool irObstacle);
+  /** Etat du capteur PIR sur l'ecran (no-op si PIR desactive / headless). */
+  void setPirStatus(bool pirPresent, bool pirMotion);
 
  private:
   void refreshLabels();

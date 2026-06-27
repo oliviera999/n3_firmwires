@@ -486,6 +486,33 @@ void PglDisplay::setHardwareStatus(bool displayOk, bool irPresent, bool irObstac
   (void)disp;
 }
 
+void PglDisplay::setPirStatus(bool pirPresent, bool pirMotion) {
+  // ui.labelPir / ui.ledPir ne sont crees que si PGL_ENABLE_PIR (cf. pgl_ui) :
+  // les gardes nullptr rendent cette methode inerte quand le PIR est desactive.
+  const char* pir;
+  if (!pirPresent) {
+    pir = "absent";
+  } else if (pirMotion) {
+    pir = "mouvement";
+  } else {
+    pir = "libre";
+  }
+
+  if (ui.labelPir) {
+    lv_label_set_text_fmt(ui.labelPir, "PIR: %s", pir);
+    if (!pirPresent) {
+      lv_obj_set_style_text_color(ui.labelPir, lv_color_hex(0xFFB347), LV_PART_MAIN);
+      pglUiSetLed(ui.ledPir, PglUiLedState::Warn);
+    } else if (pirMotion) {
+      lv_obj_set_style_text_color(ui.labelPir, lv_color_hex(0x7CFC00), LV_PART_MAIN);
+      pglUiSetLed(ui.ledPir, PglUiLedState::Ok);
+    } else {
+      lv_obj_set_style_text_color(ui.labelPir, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
+      pglUiSetLed(ui.ledPir, PglUiLedState::Ok);
+    }
+  }
+}
+
 #else
 
 void PglDisplay::begin() {
@@ -508,5 +535,6 @@ void PglDisplay::sleepBacklight() {}
 void PglDisplay::wakeBacklight() {}
 bool PglDisplay::isReady() const { return false; }
 void PglDisplay::setHardwareStatus(bool, bool, bool) {}
+void PglDisplay::setPirStatus(bool, bool) {}
 
 #endif
