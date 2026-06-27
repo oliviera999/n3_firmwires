@@ -50,6 +50,13 @@ uint32_t cameraSyncWrittenCount();
 /** Réserve et retourne le prochain numéro de photo (incrémente le compteur NVS). */
 uint32_t cameraSyncNextPictureNumber();
 
+/**
+ * Construit le chemin SD d'une photo : "/<N sur 10 chiffres>_<stamp>.jpg".
+ * N en tête => classement robuste. stamp = heure de capture "Y-m-d_H-i-s" (ou nullptr/""/"0" si
+ * horloge inconnue, auquel cas le segment vaut "0"). Voir aussi le parsing dans cameraSyncDrain.
+ */
+String cameraSyncBuildSdPath(uint32_t n, const char* stamp);
+
 /** Nombre de photos en attente d'upload (écrites − déjà confirmées). */
 uint32_t cameraSyncPendingCount();
 

@@ -3,6 +3,12 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <algorithm>
+#include <vector>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include "config.h"
 #include "camera_uploader.h"
@@ -19,6 +25,46 @@ namespace {
 constexpr const char* kNvsNamespace = "upcam";
 constexpr const char* kKeyCount = "pic_count";   // numéro de la dernière photo écrite (partagé avec capturePhoto)
 constexpr const char* kKeyCursor = "up_cursor";  // numéro de la dernière photo confirmée côté serveur
+
+/* Une entrée du backlog SD : numéro, horodatage de capture, chemin réel sur la carte. */
+struct SyncEntry {
+  uint32_t n;
+  char stamp[24];  // "Y-m-d_H-i-s" ou "" si inconnu
+  char path[48];   // chemin SD réel (tel qu'énuméré)
+};
+
+/* Parse un nom de fichier SD vers une SyncEntry.
+ * Reconnaît le format N-first "<chiffres>_<stamp>.jpg" et le legacy "picture<N>.jpg" (stamp vide).
+ * Retourne false si le nom ne correspond à aucune photo de la file. */
+bool parseEntry(const char* rawName, SyncEntry& out) {
+  if (!rawName || rawName[0] == '\0') return false;
+  const char* name = (rawName[0] == '/') ? rawName + 1 : rawName;
+  snprintf(out.path, sizeof(out.path), "/%s", name);
+  out.stamp[0] = '\0';
+
+  // Legacy : picture<N>.jpg (cartes déjà en service avant le format horodaté).
+  unsigned long legacyN = 0;
+  if (sscanf(name, "picture%lu.jpg", &legacyN) == 1) {
+    out.n = static_cast<uint32_t>(legacyN);
+    return true;
+  }
+
+  // N-first : <chiffres>_<stamp>.jpg
+  const char* us = strchr(name, '_');
+  if (!us || us == name) return false;
+  for (const char* p = name; p < us; ++p) {
+    if (!isdigit(static_cast<unsigned char>(*p))) return false;
+  }
+  const char* dot = strstr(us + 1, ".jpg");
+  if (!dot) return false;
+  out.n = static_cast<uint32_t>(strtoul(name, nullptr, 10));
+  size_t len = static_cast<size_t>(dot - (us + 1));
+  if (len >= sizeof(out.stamp)) len = sizeof(out.stamp) - 1;
+  memcpy(out.stamp, us + 1, len);
+  out.stamp[len] = '\0';
+  if (strcmp(out.stamp, "0") == 0) out.stamp[0] = '\0';  // sentinelle "horloge inconnue"
+  return true;
+}
 
 uint32_t nvsGet(const char* key) {
   Preferences prefs;
@@ -113,16 +159,65 @@ uint32_t cameraSyncPendingCount() {
   return (count > cursor) ? (count - cursor) : 0;
 }
 
+String cameraSyncBuildSdPath(uint32_t n, const char* stamp) {
+  char num[16];
+  snprintf(num, sizeof(num), "%010lu", static_cast<unsigned long>(n));
+  String path = "/";
+  path += num;
+  path += "_";
+  path += (stamp && stamp[0] != '\0') ? stamp : "0";
+  path += ".jpg";
+  return path;
+}
+
 CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   CameraSyncResult r = {};
 #if USE_SD
   const uint32_t count = nvsGet(kKeyCount);
   const uint32_t cursor = nvsGet(kKeyCursor);
-  const uint32_t pending = (count > cursor) ? (count - cursor) : 0;
-  r.pending = pending;
-  if (pending == 0) {
+  if (count <= cursor) {
     Serial.println("[SYNC] Aucun backlog a transferer.");
     return r;  // ran = false
+  }
+
+  /* Énumération du répertoire SD : on collecte les photos de numéro > curseur, bornées aux plus
+     anciennes (SYNC_MAX_BACKLOG_SCAN) et triées par numéro croissant. Gère le format N-first
+     "<N>_<stamp>.jpg" ET le legacy "picture<N>.jpg" (cartes déjà en service). */
+  std::vector<SyncEntry> entries;
+  {
+    fs::FS& fs = SD_MMC;
+    File root = fs.open("/");
+    if (root) {
+      for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+        if (f.isDirectory()) {
+          f.close();
+          continue;
+        }
+        SyncEntry e = {};
+        const bool ok = parseEntry(f.name(), e);
+        f.close();
+        if (!ok || e.n <= cursor) {
+          continue;
+        }
+        // Insertion triée bornée : on conserve les SYNC_MAX_BACKLOG_SCAN plus petits numéros.
+        auto it = std::lower_bound(entries.begin(), entries.end(), e,
+                                   [](const SyncEntry& a, const SyncEntry& b) { return a.n < b.n; });
+        entries.insert(it, e);
+        if (entries.size() > static_cast<size_t>(SYNC_MAX_BACKLOG_SCAN)) {
+          entries.pop_back();
+        }
+      }
+      root.close();
+    }
+  }
+
+  const uint32_t pending = static_cast<uint32_t>(entries.size());
+  r.pending = pending;
+  if (pending == 0) {
+    /* NVS annonce un backlog mais aucun fichier présent (carte changée/effacée) : on recale. */
+    nvsSet(kKeyCursor, count);
+    Serial.println("[SYNC] Backlog NVS mais aucun fichier present; curseur recale.");
+    return r;
   }
 
   /* Stratégie hybride : vidage complet si le backlog dépasse le seuil, sinon drain incrémental. */
@@ -152,40 +247,31 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   }
 
   const String sessionStr = String(sessionId);
-  CameraUploadParams up = {};
-  up.url = cfg.uploadUrl;
-  up.apiKey = cfg.apiKey;
-  up.syncSession = sessionStr.c_str();
-  up.reconnect = cfg.reconnect;
+  for (uint32_t i = 0; i < planned && i < entries.size(); ++i) {
+    const SyncEntry& e = entries[i];
+    const String seqStr = String(e.n);
+    CameraUploadParams up = {};
+    up.url = cfg.uploadUrl;
+    up.apiKey = cfg.apiKey;
+    up.syncSession = sessionStr.c_str();
+    up.capturedAt = (e.stamp[0] != '\0') ? e.stamp : "";
+    up.captureSeq = seqStr.c_str();
+    up.reconnect = cfg.reconnect;
 
-  fs::FS& fs = SD_MMC;
-  uint32_t processed = 0;
-  uint32_t n = cursor;
-  while (processed < planned && n < count) {
-    n++;
-    const String path = "/picture" + String(n) + ".jpg";
-    if (!fs.exists(path.c_str())) {
-      /* Trou (fichier supprimé / carte changée) : on avance le curseur, rien à envoyer. */
-      Serial.printf("[SYNC] picture%u absente, curseur avance.\n", static_cast<unsigned int>(n));
-      nvsSet(kKeyCursor, n);
-      continue;
-    }
-
-    const String filename = "esp32-cam-" + String(cfg.targetName ? cfg.targetName : "cam") + "-" + String(n) + ".jpg";
+    const String filename = "esp32-cam-" + String(cfg.targetName ? cfg.targetName : "cam") + "-" + seqStr + ".jpg";
     size_t bytes = 0;
-    const int code = cameraUploadJpegFile(up, path, filename, &bytes);
-    processed++;
+    const int code = cameraUploadJpegFile(up, String(e.path), filename, &bytes);
     if (code == 200 || code == 202) {
       r.sent++;
       r.bytes += bytes;
-      nvsSet(kKeyCursor, n);  // confirmé côté serveur
-      Serial.printf("[SYNC] picture%u envoyee HTTP=%d (%u bytes)\n",
-                    static_cast<unsigned int>(n), code, static_cast<unsigned int>(bytes));
+      nvsSet(kKeyCursor, e.n);  // confirmé (couvre aussi les éventuels trous < e.n)
+      Serial.printf("[SYNC] #%u (%s) envoyee HTTP=%d (%u bytes)\n",
+                    static_cast<unsigned int>(e.n), e.path, code, static_cast<unsigned int>(bytes));
     } else {
       r.failed++;
-      Serial.printf("[SYNC][WARN] picture%u echec HTTP=%d : arret du drain (reseau ?)\n",
-                    static_cast<unsigned int>(n), code);
-      break;  // réseau probablement perdu : on s'arrête, reprise au prochain réveil
+      Serial.printf("[SYNC][WARN] #%u echec HTTP=%d : arret du drain (reseau ?)\n",
+                    static_cast<unsigned int>(e.n), code);
+      break;  // réseau probablement perdu : reprise au prochain réveil
     }
   }
 
