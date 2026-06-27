@@ -28,6 +28,8 @@
 #include "camera_remote.h"
 #include "camera_setup.h"
 #include "camera_upload.h"
+#include "camera_uploader.h"
+#include "camera_sync.h"
 #include "camera_sleep.h"
 #include "camera_mail_events.h"
 #include <esp_sleep.h>
@@ -83,7 +85,7 @@ ESP32Time rtc;
 #endif
 
 bool Wificonnect();
-String sendPhoto();
+void capturePhoto(bool wifiOk);
 void ledBlink(int onMs, int offMs, int count);
 static void logMonitoringSnapshot(const char* stage);
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs);
@@ -94,9 +96,6 @@ static void handlePhotoWindowTransitionMails(bool wifiOk);
 static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds);
 #if USE_DEEP_SLEEP
 static void trySendFirstBootMail(bool wifiOk);
-#endif
-#if USE_SD
-static uint32_t getNextSdPictureNumber();
 #endif
 
 /* ----- LED ----- */
@@ -386,26 +385,16 @@ static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds) {
 #endif
 }
 
-#if USE_SD
-static uint32_t getNextSdPictureNumber() {
-  Preferences counterPrefs;
-  uint32_t next = 1;
-  if (!counterPrefs.begin("upcam", false)) {
-    return next;
-  }
-  const uint32_t current = counterPrefs.getUInt("pic_count", 0);
-  next = current + 1;
-  counterPrefs.putUInt("pic_count", next);
-  counterPrefs.end();
-  return next;
-}
-#endif
-
-/* ----- sendPhoto : capture, optionnel SD, envoi HTTP, puis esp_camera_fb_return ----- */
-String sendPhoto() {
-  const uint32_t sendPhotoStartMs = millis();
-  String getBody;
-  logMonitoringSnapshot("sendPhoto:start");
+/* ----- capturePhoto : capture, stockage SD (file d'attente), upload direct si pas de SD -----
+ *
+ * Renforcement offline : la photo est d'abord PERSISTÉE sur la carte SD (numérotée). L'envoi
+ * réseau n'a plus lieu ici quand la SD est disponible — c'est cameraSyncDrain() qui pousse le
+ * backlog (cette photo incluse) au serveur. Si la SD est indisponible mais le WiFi présent, on
+ * réalise un upload direct en mémoire (pas de file d'attente possible). Sans WiFi ni SD, l'appelant
+ * n'invoque pas cette fonction. */
+void capturePhoto(bool wifiOk) {
+  const uint32_t capturePhotoStartMs = millis();
+  logMonitoringSnapshot("capturePhoto:start");
 
 #if USE_DEEP_SLEEP
   adjustExposure();
@@ -415,7 +404,7 @@ String sendPhoto() {
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
     Serial.println("[CAM][ERROR] Echec capture camera");
-    logMonitoringSnapshot("sendPhoto:capture_ko");
+    logMonitoringSnapshot("capturePhoto:capture_ko");
     delay(1000);
     ESP.restart();
   }
@@ -425,7 +414,7 @@ String sendPhoto() {
 #if USE_SD
   const uint32_t sdWriteStartMs = millis();
   if (sdAvailable) {
-    const uint32_t pictureNumber = getNextSdPictureNumber();
+    const uint32_t pictureNumber = cameraSyncNextPictureNumber();
     String path = "/picture" + String(pictureNumber) + ".jpg";
     fs::FS& fs = SD_MMC;
     File file = fs.open(path.c_str(), FILE_WRITE);
@@ -433,7 +422,8 @@ String sendPhoto() {
       size_t written = file.write(fb->buf, fb->len);
       file.close();
       if (written == fb->len) {
-        Serial.printf("[SD] Sauvegarde locale %s (%u bytes)\n", path.c_str(), static_cast<unsigned int>(written));
+        Serial.printf("[SD] Sauvegarde locale %s (%u bytes) — en file d'attente\n",
+                      path.c_str(), static_cast<unsigned int>(written));
       } else {
         Serial.println("[SD][WARN] Ecriture incomplete, desactivation SD");
         sdAvailable = false;
@@ -446,85 +436,29 @@ String sendPhoto() {
   logStepDuration("ecriture_sd", millis() - sdWriteStartMs, 1500);
 #endif
 
-  String photoFilename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
-  String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"" + photoFilename + "\"\r\nContent-Type: image/jpeg\r\n\r\n";
-  String tail = "\r\n--RandomNerdTutorials--\r\n";
-  uint32_t imageLen = fb->len;
-  const uint32_t totalLen = imageLen + head.length() + tail.length();
-  int httpCode = -1;
-  bool sentOk = false;
-  const uint32_t uploadStartMs = millis();
-
-  for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES && !sentOk; ++attempt) {
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[WIFI][WARN] Deconnecte, tentative de reconnexion");
-      Wificonnect();
-    }
-
-#if defined(USE_HTTPS_ENDPOINTS)
-    WiFiClientSecure uploadClient;
-    uploadClient.setInsecure();  // chiffrement sans epinglage CA (suivi documente)
-#else
-    WiFiClient uploadClient;
-#endif
-    HTTPClient http;
+  /* Sans carte SD, pas de file d'attente : upload direct si le WiFi est là (sinon photo perdue). */
+  if (!sdAvailable && wifiOk) {
+    const uint32_t uploadStartMs = millis();
+    const String filename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
     const String uploadUrl = String(SERVER_SCHEME) + serverName + serverPath;
-    Serial.printf("[SERVER][POST] Tentative %d/%d url=%s payload=%u bytes\n",
-                  attempt,
-                  UPLOAD_CONNECT_RETRIES,
-                  uploadUrl.c_str(),
-                  static_cast<unsigned int>(imageLen));
-    if (!http.begin(uploadClient, uploadUrl)) {
-      Serial.println("[SERVER][ERROR] HTTP begin a echoue");
-      delay(UPLOAD_RETRY_DELAY_MS);
-      continue;
+    CameraUploadParams up = {};
+    up.url = uploadUrl.c_str();
+    up.apiKey = API_KEY;
+    up.syncSession = "";
+    up.reconnect = Wificonnect;
+    const int code = cameraUploadJpegBuffer(up, fb->buf, fb->len, filename);
+    logStepDuration("upload_http", millis() - uploadStartMs, 5000);
+    Serial.printf("[CAPTURE] Upload direct (sans SD) HTTP=%d\n", code);
+    if (code == 200 || code == 202) {
+      ledBlink(1500, 1500, 2);
     }
-    uploadClient.setTimeout(HTTP_RESPONSE_TIMEOUT_MS);
-    http.setTimeout(HTTP_RESPONSE_TIMEOUT_MS);
-    http.addHeader("Content-Type", "multipart/form-data; boundary=RandomNerdTutorials");
-    http.addHeader("X-Api-Key", API_KEY);
-    MultipartCameraStream multipart(head, fb->buf, fb->len, tail);
-    httpCode = http.sendRequest("POST", &multipart, totalLen);
-    if (httpCode > 0) {
-      getBody = http.getString();
-      sentOk = true;
-    } else {
-      Serial.printf("[SERVER][ERROR] Echec sendRequest HTTP=%d (%s)\n", httpCode, http.errorToString(httpCode).c_str());
-      delay(UPLOAD_RETRY_DELAY_MS);
-    }
-    http.end();
   }
-  logStepDuration("upload_http", millis() - uploadStartMs, 5000);
 
-  /* Libérer le framebuffer après envoi complet (évite use-after-free) */
+  /* Libérer le framebuffer après usage (évite use-after-free) */
   esp_camera_fb_return(fb);
 
-  if (!sentOk) {
-    getBody = "[SERVER][ERROR] Upload non confirme apres retries.";
-    Serial.println(getBody);
-    logMonitoringSnapshot("sendPhoto:upload_ko");
-    logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
-    return getBody;
-  }
-
-  Serial.printf("[SERVER][RESP] HTTP=%d\n", httpCode);
-  if (httpCode == 202) {
-    Serial.println("[SERVER][RESP][WARN] Upload accepte mais photo en corbeille auto.");
-  } else if (httpCode != 200) {
-    Serial.printf("[SERVER][RESP][WARN] Upload non confirme, HTTP=%d\n", httpCode);
-  }
-#if N3_LOG_VERBOSE
-  Serial.println("[SERVER][BODY] " + getBody);
-#else
-  Serial.printf("[SERVER][BODY] len=%u chars\n", static_cast<unsigned int>(getBody.length()));
-#endif
-  Serial.printf("[MON] upload total_envoye=%u bytes payload=%u bytes\n",
-                static_cast<unsigned int>(totalLen),
-                static_cast<unsigned int>(imageLen));
-  ledBlink(1500, 1500, 2);
-  logMonitoringSnapshot("sendPhoto:end");
-  logStepDuration("sendPhoto_total", millis() - sendPhotoStartMs, 12000);
-  return getBody;
+  logMonitoringSnapshot("capturePhoto:end");
+  logStepDuration("capturePhoto_total", millis() - capturePhotoStartMs, 12000);
 }
 
 void setup() {
@@ -769,11 +703,36 @@ void setup() {
   if (shouldCapture) {
     if (!wifiOk && !sdAvailable) {
       Serial.println("[CAPTURE][WARN] Photo ignoree: pas de WiFi et pas de SD disponible");
-    } else if (!wifiOk) {
-      Serial.println("[CAPTURE][WARN] WiFi indisponible: sauvegarde SD locale + upload si reconnexion");
-      sendPhoto();
     } else {
-    sendPhoto();
+      if (!wifiOk) {
+        Serial.println("[CAPTURE] WiFi indisponible: sauvegarde SD locale, upload differe au prochain reveil connecte.");
+      }
+      capturePhoto(wifiOk);
+
+#if USE_SD
+      /* WiFi present + SD : on draine le backlog (photo du jour incluse) vers le serveur
+         selon la strategie hybride (cf. camera_sync). */
+      if (wifiOk && sdAvailable) {
+        CameraSyncConfig sc = {};
+        const String syncUploadUrl = String(SERVER_SCHEME) + serverName + serverPath;
+        sc.uploadUrl = syncUploadUrl.c_str();
+        sc.startUrl = SYNC_START_URL;
+        sc.finishUrl = SYNC_FINISH_URL;
+        sc.apiKey = API_KEY;
+        sc.board = REMOTE_BOARD_ID;
+        sc.targetName = currentTargetName();
+        sc.firmwareVersion = FIRMWARE_VERSION;
+        sc.maxUploadsPerWake = SYNC_MAX_UPLOADS_PER_WAKE;
+        sc.fullDrainThreshold = SYNC_FULL_DRAIN_THRESHOLD;
+        sc.reconnect = Wificonnect;
+        const CameraSyncResult sr = cameraSyncDrain(sc);
+        if (sr.ran) {
+          Serial.printf("[SYNC] Bilan reveil: envoyees=%u echecs=%u backlog_initial=%u restant=%u\n",
+                        static_cast<unsigned int>(sr.sent), static_cast<unsigned int>(sr.failed),
+                        static_cast<unsigned int>(sr.pending), static_cast<unsigned int>(cameraSyncPendingCount()));
+        }
+      }
+#endif
     }
   } else {
     Serial.println("[MON] en dehors du creneau photo, upload saute.");
