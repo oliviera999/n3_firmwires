@@ -16,6 +16,8 @@ struct CameraUploadParams {
   const char* url;          // URL complète d'upload (SERVER_SCHEME + host + upload.php)
   const char* apiKey;       // clé API device (en-tête X-Api-Key) ; nullptr = pas d'auth
   const char* syncSession;  // identifiant de session de sync (en-tête X-Sync-Session) ; nullptr/"" = hors session
+  const char* capturedAt;   // heure de capture "Y-m-d_H-i-s" (en-tête X-Captured-At) ; nullptr/"" = absente
+  const char* captureSeq;   // compteur de capture (en-tête X-Capture-Seq) ; nullptr/"" = absent
   bool (*reconnect)();      // callback de reconnexion WiFi entre 2 tentatives ; nullptr = aucun
 };
 

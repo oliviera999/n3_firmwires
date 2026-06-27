@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.40"
+#define FIRMWARE_VERSION "2.41"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
@@ -91,6 +91,7 @@
 /* Synchronisation hors-ligne du backlog SD (stratégie hybride, cf. camera_sync) */
 #define SYNC_MAX_UPLOADS_PER_WAKE 10   /* drain incrémental : photos max envoyées par réveil */
 #define SYNC_FULL_DRAIN_THRESHOLD 25   /* backlog au-delà duquel on vide tout ce réveil (rattrapage) */
+#define SYNC_MAX_BACKLOG_SCAN     256  /* borne mémoire : nb max d'entrées chargées/réveil (les + anciennes) */
 
 /* Série UART0 : si le moniteur PC « ne reçoit rien », mettre 3000–5000 (ms) pour laisser le temps
    d’ouvrir le port après réveil deep sleep ; en prod laisser 0. Voir README firmwires (ESP32-CAM). */

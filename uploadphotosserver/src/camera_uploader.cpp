@@ -58,6 +58,12 @@ static int doMultipartPost(const CameraUploadParams& params, const uint8_t* imag
     if (params.syncSession && params.syncSession[0] != '\0') {
       http.addHeader("X-Sync-Session", params.syncSession);
     }
+    if (params.capturedAt && params.capturedAt[0] != '\0') {
+      http.addHeader("X-Captured-At", params.capturedAt);
+    }
+    if (params.captureSeq && params.captureSeq[0] != '\0') {
+      http.addHeader("X-Capture-Seq", params.captureSeq);
+    }
 
     MultipartCameraStream multipart(head, image, imageLen, tail);
     httpCode = http.sendRequest("POST", &multipart, totalLen);

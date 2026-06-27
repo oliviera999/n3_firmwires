@@ -385,6 +385,21 @@ static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds) {
 #endif
 }
 
+/* Horodatage de capture local "Y-m-d_H-i-s". Retourne false (et out vide) si l'horloge n'est pas
+ * fiable (jamais synchronisée NTP / restaurée flash, année < 2020). Non bloquant : lit l'heure
+ * système courante (entretenue par la RTC à travers le deep sleep + persistance NVS). */
+static bool captureStampNow(char* out, size_t outSize) {
+  if (!out || outSize == 0) return false;
+  out[0] = '\0';
+  const time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  if (timeinfo.tm_year + 1900 < 2020) {
+    return false;
+  }
+  return strftime(out, outSize, "%Y-%m-%d_%H-%M-%S", &timeinfo) > 0;
+}
+
 /* ----- capturePhoto : capture, stockage SD (file d'attente), upload direct si pas de SD -----
  *
  * Renforcement offline : la photo est d'abord PERSISTÉE sur la carte SD (numérotée). L'envoi
@@ -411,11 +426,15 @@ void capturePhoto(bool wifiOk) {
   logStepDuration("capture_camera", millis() - captureStartMs, 1200);
   Serial.printf("[MON] capture taille=%u bytes\n", static_cast<unsigned int>(fb->len));
 
+  /* Horodatage de capture (porté par la file SD puis envoyé au serveur). "" si horloge inconnue. */
+  char stamp[24];
+  const bool stampOk = captureStampNow(stamp, sizeof(stamp));
+
 #if USE_SD
   const uint32_t sdWriteStartMs = millis();
   if (sdAvailable) {
     const uint32_t pictureNumber = cameraSyncNextPictureNumber();
-    String path = "/picture" + String(pictureNumber) + ".jpg";
+    String path = cameraSyncBuildSdPath(pictureNumber, stampOk ? stamp : nullptr);
     fs::FS& fs = SD_MMC;
     File file = fs.open(path.c_str(), FILE_WRITE);
     if (file) {
@@ -439,12 +458,16 @@ void capturePhoto(bool wifiOk) {
   /* Sans carte SD, pas de file d'attente : upload direct si le WiFi est là (sinon photo perdue). */
   if (!sdAvailable && wifiOk) {
     const uint32_t uploadStartMs = millis();
+    const uint32_t directSeq = cameraSyncNextPictureNumber();
+    const String seqStr = String(directSeq);
     const String filename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
     const String uploadUrl = String(SERVER_SCHEME) + serverName + serverPath;
     CameraUploadParams up = {};
     up.url = uploadUrl.c_str();
     up.apiKey = API_KEY;
     up.syncSession = "";
+    up.capturedAt = stampOk ? stamp : "";
+    up.captureSeq = seqStr.c_str();
     up.reconnect = Wificonnect;
     const int code = cameraUploadJpegBuffer(up, fb->buf, fb->len, filename);
     logStepDuration("upload_http", millis() - uploadStartMs, 5000);
@@ -648,6 +671,12 @@ void setup() {
     if (getLocalTime(&timeinfo)) {
       rtc.setTime(timeinfo.tm_sec, timeinfo.tm_min, timeinfo.tm_hour,
                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+    }
+    /* Horloge entretenue : la RTC avance pendant le deep sleep ; on persiste l'epoch courant
+       (corrigé par NTP ce réveil ou simplement maintenu) en NVS À CHAQUE RÉVEIL quand il est
+       plausible, pour qu'un cold-boot (coupure d'alim) reparte d'une heure récente plutôt que
+       d'un epoch obsolète. Pas d'incrément manuel : éviterait un double comptage avec la RTC. */
+    if (rtc.getEpoch() > 1577836800UL) {  // > 2020-01-01 : horloge fiable
       n3TimeSaveToFlash(rtc, preferences);
     }
   }
