@@ -1,5 +1,17 @@
 # Poissonglouton - Historique versions
 
+## 0.4.1 - 2026-06-26
+
+- **Affichage de l'état PIR** sur l'écran LVGL, en miroir de l'indicateur IR :
+  une pastille `PIR` dans le header et une ligne `PIR: absent/libre/mouvement`
+  (couleur : orange si absent, vert si mouvement, neutre au repos) dans la carte
+  « Capteurs ». Nouvelle méthode `PglDisplay::setPirStatus(pirPresent, pirMotion)`,
+  alimentée chaque tour via `PglDetection::readPirMotion()` (lecture du niveau PIR
+  actif-HAUT). Les widgets PIR ne sont créés **que si `PGL_ENABLE_PIR`** (guards
+  dans `pgl_ui`) : aucun changement d'UI sur les boards sans PIR.
+- Validation : `pgl-s3-headless` (défaut + `-DPGL_ENABLE_PIR=1`) compilés ; suites
+  natives inchangées (vertes). Le rendu LVGL `pgl-s3-display` est couvert par la CI.
+
 ## 0.4.0 - 2026-06-26
 
 Ajout d'un 3ᵉ capteur **PIR** (détecteur de mouvement, sortie numérique active-HAUT)

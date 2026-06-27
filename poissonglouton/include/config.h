@@ -4,7 +4,7 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.4.0";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.4.1";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 

@@ -6,6 +6,7 @@
 struct PglUiHandles {
   lv_obj_t* labelTitle = nullptr;
   lv_obj_t* ledIr = nullptr;
+  lv_obj_t* ledPir = nullptr;  // pastille header PIR (cree seulement si PGL_ENABLE_PIR)
   lv_obj_t* ledWifi = nullptr;
   lv_obj_t* ledSrv = nullptr;
   lv_obj_t* labelSmiley = nullptr;
@@ -15,6 +16,7 @@ struct PglUiHandles {
   lv_obj_t* arcUs = nullptr;
   lv_obj_t* labelUs = nullptr;
   lv_obj_t* labelIr = nullptr;
+  lv_obj_t* labelPir = nullptr;  // ligne carte Capteurs PIR (cree seulement si PGL_ENABLE_PIR)
   lv_obj_t* labelWifi = nullptr;
   lv_obj_t* barWifi = nullptr;
   lv_obj_t* labelServer = nullptr;

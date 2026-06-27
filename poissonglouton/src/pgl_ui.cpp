@@ -198,6 +198,9 @@ void buildHeader(lv_obj_t* parent, PglUiHandles& h) {
   lv_obj_align(ledRow, LV_ALIGN_RIGHT_MID, -PGL_UI_PAD_X, 0);
 
   h.ledIr = createStatusChip(ledRow, "IR");
+#if PGL_ENABLE_PIR
+  h.ledPir = createStatusChip(ledRow, "PIR");
+#endif
   h.ledWifi = createStatusChip(ledRow, "WiFi");
   h.ledSrv = createStatusChip(ledRow, "Srv");
 }
@@ -272,6 +275,14 @@ void buildSensorCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
   lv_obj_add_style(handles.labelIr, &styleData, 0);
   lv_obj_set_width(handles.labelIr, LV_PCT(100));
   lv_label_set_long_mode(handles.labelIr, LV_LABEL_LONG_WRAP);
+
+#if PGL_ENABLE_PIR
+  handles.labelPir = lv_label_create(rightCol);
+  lv_label_set_text(handles.labelPir, "PIR: ...");
+  lv_obj_add_style(handles.labelPir, &styleData, 0);
+  lv_obj_set_width(handles.labelPir, LV_PCT(100));
+  lv_label_set_long_mode(handles.labelPir, LV_LABEL_LONG_WRAP);
+#endif
 }
 
 void buildAudioCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, PglUiHandles& handles) {
