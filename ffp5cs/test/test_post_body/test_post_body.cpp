@@ -192,6 +192,23 @@ void test_empty_and_nonempty_extras_mixed(void) {
   TEST_ASSERT_NULL(strstr(out, "baz="));               // vide -> omis
 }
 
+// diffMaree vide represente une mesure inconnue : il doit etre omis pour que
+// le serveur conserve NULL, tandis que "0" reste une valeur valide (maree stable).
+void test_empty_diff_maree_is_omitted_but_zero_is_emitted(void) {
+  FullUpdateValues v{};
+  snprintf(v.apiKey, sizeof(v.apiKey), "%s", "K");
+  v.diffMaree[0] = '\0';
+
+  char out[128] = {0};
+  buildFullUpdateBody(out, sizeof(out), v);
+  TEST_ASSERT_EQUAL_STRING("api_key=K", out);
+  TEST_ASSERT_NULL(strstr(out, "diffMaree="));
+
+  snprintf(v.diffMaree, sizeof(v.diffMaree), "%s", "0");
+  buildFullUpdateBody(out, sizeof(out), v);
+  TEST_ASSERT_EQUAL_STRING("api_key=K&diffMaree=0", out);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_canonical_order_and_skip_empty);
@@ -208,5 +225,6 @@ int main(void) {
   RUN_TEST(test_apply_skips_empty_segments);
   RUN_TEST(test_empty_extra_value_is_omitted);
   RUN_TEST(test_empty_and_nonempty_extras_mixed);
+  RUN_TEST(test_empty_diff_maree_is_omitted_but_zero_is_emitted);
   return UNITY_END();
 }

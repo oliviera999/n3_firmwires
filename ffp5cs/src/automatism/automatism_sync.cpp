@@ -338,9 +338,8 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
 
     char payloadBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
     Ffp3PostBody::FullUpdateValues body{};
-    int diffMaree = SensorValidation::isWaterLevelKnown(readings.wlAqua)
-                      ? core.computeDiffMaree(readings.wlAqua)
-                      : 0;
+    const bool diffMareeKnown = SensorValidation::isWaterLevelKnown(readings.wlAqua);
+    int diffMaree = diffMareeKnown ? core.computeDiffMaree(readings.wlAqua) : 0;
     float pressureForPost = isnan(readings.pressureHpa) ? 0.0f : readings.pressureHpa;
 
     snprintf(body.apiKey, sizeof(body.apiKey), "%s", ApiConfig::API_KEY);
@@ -353,7 +352,12 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     SensorReadingFallback::formatWaterLevelPost(body.eauPotager, sizeof(body.eauPotager), readings.wlPota);
     SensorReadingFallback::formatWaterLevelPost(body.eauAquarium, sizeof(body.eauAquarium), readings.wlAqua);
     SensorReadingFallback::formatWaterLevelPost(body.eauReserve, sizeof(body.eauReserve), readings.wlTank);
-    snprintf(body.diffMaree, sizeof(body.diffMaree), "%d", diffMaree);
+    if (diffMareeKnown) {
+        snprintf(body.diffMaree, sizeof(body.diffMaree), "%d", diffMaree);
+    } else {
+        // Niveau aquarium inconnu : la cle est omise du POST pour que le serveur stocke NULL.
+        body.diffMaree[0] = '\0';
+    }
     snprintf(body.luminosite, sizeof(body.luminosite), "%u", readings.luminosite);
     snprintf(body.etatPompeAqua, sizeof(body.etatPompeAqua), "%d", acts.isAquaPumpRunning() ? 1 : 0);
     snprintf(body.etatPompeTank, sizeof(body.etatPompeTank), "%d", acts.isTankPumpRunning() ? 1 : 0);

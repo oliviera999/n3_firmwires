@@ -12,6 +12,22 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 14.28 - 2026-06-29
+
+### Correctif marée inconnue dans les POST FFP3
+
+- **Bug corrigé** : quand le niveau aquarium est inconnu ou invalide, le firmware
+  n'envoie plus `diffMaree=0` dans le POST `post-data`.
+- **Impact évité** : le serveur stocke désormais `NULL` pour une marée non mesurable
+  au lieu d'un faux `0` interprété comme une marée stable, ce qui évite de fausser
+  les séries et statistiques de marée.
+- **Contrat serveur** : inchangé ; les champs vides sont déjà omis du corps POST
+  canonique et l'absence de `diffMaree` est traitée comme une valeur inconnue.
+- **Test** : ajout d'un test natif `test_post_body` garantissant que `diffMaree`
+  vide est omis tandis que la valeur valide `0` reste émise.
+
+---
+
 ## Version 14.27 - 2026-06-24
 
 ### Nourrissage manuel indépendant du planning auto
