@@ -38,6 +38,9 @@ PglFusionInput makeInput(uint8_t presentMask) {
 }
 }  // namespace
 
+void setUp(void) {}
+void tearDown(void) {}
+
 // 1. IR seul, IR trigger -> detected, mask=IR, corroborated=false.
 void test_ir_seul_trigger(void) {
   PglFusionInput in = makeInput(PGL_SENS_IR);
@@ -211,6 +214,42 @@ void test_us_pir_pir_recent(void) {
   TEST_ASSERT_TRUE(r.corroborated);
 }
 
+// 16. IR+US, US trigger, edge IR recent (symetrique du test 4).
+void test_us_ir_ir_recent(void) {
+  PglFusionInput in = makeInput(PGL_SENS_IR | PGL_SENS_US);
+  in.usTriggered = true;
+  in.lastUsEdgeMs = kNow;
+  in.lastIrEdgeMs = kNow - 200;  // recent (<= 300 ms)
+  PglFusionResult r = pglFuseDetection(in);
+  TEST_ASSERT_TRUE(r.detected);
+  TEST_ASSERT_EQUAL_UINT8(PGL_SENS_US, r.sensorsMask);
+  TEST_ASSERT_TRUE(r.corroborated);
+}
+
+// 17. PIR seul, trigger meme poll (pas seulement edge recent).
+void test_pir_seul_trigger_same_poll(void) {
+  PglFusionInput in = makeInput(PGL_SENS_PIR);
+  in.pirTriggered = true;
+  in.lastPirEdgeMs = kNow;
+  PglFusionResult r = pglFuseDetection(in);
+  TEST_ASSERT_TRUE(r.detected);
+  TEST_ASSERT_EQUAL_UINT8(PGL_SENS_PIR, r.sensorsMask);
+  TEST_ASSERT_FALSE(r.corroborated);
+}
+
+// 18. IR+US, IR trigger, PIR trigger meme poll -> corroboration triple.
+void test_ir_us_pir_both_triggers_same_poll(void) {
+  PglFusionInput in = makeInput(PGL_SENS_IR | PGL_SENS_US | PGL_SENS_PIR);
+  in.irTriggered = true;
+  in.pirTriggered = true;
+  in.lastIrEdgeMs = kNow;
+  in.lastPirEdgeMs = kNow;
+  PglFusionResult r = pglFuseDetection(in);
+  TEST_ASSERT_TRUE(r.detected);
+  TEST_ASSERT_EQUAL_UINT8(PGL_SENS_IR | PGL_SENS_PIR, r.sensorsMask);
+  TEST_ASSERT_TRUE(r.corroborated);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_ir_seul_trigger);
@@ -228,5 +267,8 @@ int main(int, char**) {
   RUN_TEST(test_trois_capteurs);
   RUN_TEST(test_aucun_capteur);
   RUN_TEST(test_us_pir_pir_recent);
+  RUN_TEST(test_us_ir_ir_recent);
+  RUN_TEST(test_pir_seul_trigger_same_poll);
+  RUN_TEST(test_ir_us_pir_both_triggers_same_poll);
   return UNITY_END();
 }

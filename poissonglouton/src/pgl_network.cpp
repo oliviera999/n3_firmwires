@@ -16,11 +16,14 @@
 #include "n3_data.h"
 #include "n3_wifi.h"
 #include <ArduinoJson.h>
+#include <sys/time.h>
+#include <time.h>
 
 namespace {
+// Ordre de tentative : inwi (SSID_2) en premier sur site production ; Techno/Android en secours.
 N3WifiNetwork kWifiNetworks[] = {
-    {PGL_WIFI_SSID_1, PGL_WIFI_PASS_1},
     {PGL_WIFI_SSID_2, PGL_WIFI_PASS_2},
+    {PGL_WIFI_SSID_1, PGL_WIFI_PASS_1},
 #if defined(PGL_WIFI_SSID_3) && defined(PGL_WIFI_PASS_3)
     {PGL_WIFI_SSID_3, PGL_WIFI_PASS_3},
 #endif
@@ -42,6 +45,13 @@ struct PglLastGoodAp {
   char ssid[33];
 };
 RTC_DATA_ATTR PglLastGoodAp gLastGoodAp;
+uint8_t gLastStaDisconnectReason = 0;
+const N3WifiSession* gWifiCallbackSession = nullptr;
+
+void onWifiStaDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
+  (void)event;
+  gLastStaDisconnectReason = info.wifi_sta_disconnected.reason;
+}
 
 // Cherche le mot de passe configure pour un SSID donne (nullptr si introuvable).
 const char* findPassForSsid(const char* ssid) {
@@ -56,15 +66,24 @@ const char* findPassForSsid(const char* ssid) {
 }
 
 void onWifiConnecting() {
-  PGL_LOG_V("WiFi: tentative en cours...");
+  PGL_LOG("WiFi: tentative connexion (scan / association)...");
 }
 
 void onWifiSuccess(const char* ssid) {
-  PGL_LOG_V("WiFi: callback succes ssid=%s", ssid);
+  PGL_LOG("WiFi: callback succes ssid=%s", ssid ? ssid : "?");
 }
 
 void onWifiFailure() {
-  PGL_LOG("WiFi: echec — aucun reseau disponible");
+  const uint8_t sessionCause =
+      gWifiCallbackSession ? gWifiCallbackSession->failureReason : N3_WIFI_FAIL_NONE;
+  PGL_LOG("WiFi: echec session — %s | stat=%s deauth=%u/%s",
+          n3WifiSessionFailureReasonName(sessionCause),
+          pglWifiStatusName(WiFi.status()),
+          static_cast<unsigned int>(gLastStaDisconnectReason),
+          pglWifiDisconnectReasonName(gLastStaDisconnectReason));
+  if (gLastStaDisconnectReason == 15) {
+    PGL_LOG("WiFi: echec 4WAY_HANDSHAKE — verifier mot de passe dans secrets.h (SSID courant)");
+  }
 }
 
 void logWifiStatusDetail(const char* prefix) {
@@ -72,9 +91,12 @@ void logWifiStatusDetail(const char* prefix) {
     PGL_LOG_V("%s: deconnecte (status=%s)", prefix, pglWifiStatusName(WiFi.status()));
     return;
   }
+  char ssidBuf[33];
+  strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+  ssidBuf[sizeof(ssidBuf) - 1] = '\0';
   PGL_LOG_V("%s: ssid=%s ip=%s gw=%s mask=%s dns=%s rssi=%d ch=%d mac=%s",
             prefix,
-            WiFi.SSID().c_str(),
+            ssidBuf,
             WiFi.localIP().toString().c_str(),
             WiFi.gatewayIP().toString().c_str(),
             WiFi.subnetMask().toString().c_str(),
@@ -92,10 +114,19 @@ const char* httpVerdict(int code) {
   if (code >= 400 && code < 500) return "erreur client";
   if (code == 500) return "erreur serveur (table BDD manquante ?)";
   if (code >= 500) return "erreur serveur";
-  if (code == -1) return "WiFi deconnecte";
+  if (code == -1) return "timeout ou reseau (WiFi peut etre connecte)";
   if (code <= 0) return "echec reseau/timeout";
   return "inconnu";
 }
+const char* pglOptionalSigSecret() {
+#if defined(PGL_API_SIG_SECRET)
+  if (PGL_API_SIG_SECRET[0] != '\0') {
+    return PGL_API_SIG_SECRET;
+  }
+#endif
+  return nullptr;
+}
+
 }  // namespace
 
 const PglServerCommStatus& PglNetwork::getServerStatus() const {
@@ -114,16 +145,19 @@ void PglNetwork::recordHeartbeatResult(int httpCode) {
 
 void PglNetwork::begin() {
   WiFi.mode(WIFI_MODE_STA);
+  WiFi.setSleep(WIFI_PS_NONE);
+  WiFi.onEvent(onWifiStaDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   const size_t netCount = sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]);
   PGL_LOG("WiFi: %u reseau(x) configure(s), timeout=%ums (arriere-plan)",
           static_cast<unsigned int>(netCount), PGL_WIFI_TIMEOUT_MS);
   for (size_t i = 0; i < netCount; ++i) {
     const bool hasPass = kWifiNetworks[i].pass && kWifiNetworks[i].pass[0] != '\0';
-    PGL_LOG_V("WiFi: [%u] ssid=\"%s\" mot_de_passe=%s",
-              static_cast<unsigned int>(i + 1),
-              kWifiNetworks[i].ssid ? kWifiNetworks[i].ssid : "(null)",
-              hasPass ? "oui" : "non");
+    PGL_LOG("WiFi: [%u] ssid=\"%s\" mot_de_passe=%s",
+            static_cast<unsigned int>(i + 1),
+            kWifiNetworks[i].ssid ? kWifiNetworks[i].ssid : "(null)",
+            hasPass ? "oui" : "NON");
   }
+  refreshWifiDiag();
   lastWifiStatus_ = WiFi.status();
 }
 
@@ -133,12 +167,12 @@ void PglNetwork::buildWifiConfig(N3WifiConfig& cfg) const {
       sizeof(kWifiNetworks) / sizeof(kWifiNetworks[0]),
       PGL_WIFI_TIMEOUT_MS,
       300,
-      800,
+      PGL_WIFI_PRESCAN_DELAY_MS,
       8,
       onWifiConnecting,
       onWifiFailure,
       onWifiSuccess,
-      false,
+      true,  // PGL gere deja le fast-reconnect RTC (gLastGoodAp)
   };
 }
 
@@ -164,9 +198,9 @@ bool PglNetwork::tryFastReconnect() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(gLastGoodAp.ssid, pass, gLastGoodAp.chan, gLastGoodAp.bssid);
   wifiDirectAttempt_ = true;
-  // Borne courte de la tentative ciblee (<= budget upload) : au-dela on retombe
-  // sur le scan, qui garantit la connexion meme si l'AP a change de canal/BSSID.
-  wifiDirectDeadlineMs_ = millis() + PGL_WIFI_UPLOAD_BUDGET_MS;
+  // Borne de la tentative ciblee : moitie du timeout WiFi (min 2 s).
+  const uint32_t fastMs = PGL_WIFI_TIMEOUT_MS / 2;
+  wifiDirectDeadlineMs_ = millis() + (fastMs < 2000 ? 2000 : fastMs);
   return true;
 }
 
@@ -202,17 +236,18 @@ void PglNetwork::startBackgroundWifi() {
     wifiConnecting_ = true;
     wifiBackoff_ = false;
     wifiRetryAfterMs_ = 0;
+    refreshWifiDiag();
     return;
   }
-  N3WifiConfig cfg;
-  buildWifiConfig(cfg);
-  n3WifiSessionBegin(wifiSession_, cfg);
+  buildWifiConfig(wifiConfig_);
+  n3WifiSessionBegin(wifiSession_, wifiConfig_);
   wifiSessionActive_ = true;
   wifiConnecting_ = true;
   wifiBackoff_ = false;
   wifiDirectAttempt_ = false;
   wifiRetryAfterMs_ = 0;
   PGL_LOG("WiFi: connexion en arriere-plan demarree");
+  refreshWifiDiag();
 }
 
 bool PglNetwork::pollWifi(uint32_t budgetMs) {
@@ -228,15 +263,29 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
       // Memorise SSID+BSSID+canal pour la reconnexion rapide au prochain reveil.
       rememberLastGoodAp();
       stateChanged = true;
+      char ssidBuf[33];
+      strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+      ssidBuf[sizeof(ssidBuf) - 1] = '\0';
       PGL_LOG("WiFi: connecte ssid=%s ip=%s rssi=%d ch=%d",
-              WiFi.SSID().c_str(),
+              ssidBuf,
               WiFi.localIP().toString().c_str(),
               WiFi.RSSI(),
               WiFi.channel());
       logWifiStatusDetail("WiFi");
     }
     lastWifiStatus_ = WiFi.status();
+    refreshWifiDiag();
+    logWifiDiagPeriodic();
     return stateChanged;
+  }
+
+  // Perte de lien inattendue : relancer la connexion (sauf backoff actif).
+  if (prevStatus == WL_CONNECTED && !wifiBackoff_) {
+    wifiConnecting_ = false;
+    wifiSessionActive_ = false;
+    wifiDirectAttempt_ = false;
+    startBackgroundWifi();
+    stateChanged = true;
   }
 
   // Tentative ciblee (fast-reconnect) en cours : on attend l'issue sans engager
@@ -245,6 +294,8 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
   if (wifiDirectAttempt_) {
     if (millis() < wifiDirectDeadlineMs_) {
       lastWifiStatus_ = WiFi.status();
+      refreshWifiDiag();
+      logWifiDiagPeriodic();
       return stateChanged;
     }
     PGL_LOG("WiFi: reconnexion rapide echouee — bascule sur scan complet");
@@ -262,6 +313,8 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
   if (wifiBackoff_) {
     if (millis() < wifiRetryAfterMs_) {
       lastWifiStatus_ = WiFi.status();
+      refreshWifiDiag();
+      logWifiDiagPeriodic();
       return stateChanged;
     }
     wifiBackoff_ = false;
@@ -271,11 +324,15 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
 
   if (!wifiSessionActive_) {
     lastWifiStatus_ = WiFi.status();
+    refreshWifiDiag();
+    logWifiDiagPeriodic();
     return stateChanged;
   }
 
   String connectedSsid;
+  gWifiCallbackSession = &wifiSession_;
   const N3WifiPollResult result = n3WifiSessionPoll(wifiSession_, budgetMs, &connectedSsid);
+  gWifiCallbackSession = nullptr;
   if (result == N3WifiPollResult::Connected) {
     wifiConnecting_ = false;
     wifiSessionActive_ = false;
@@ -307,7 +364,137 @@ bool PglNetwork::pollWifi(uint32_t budgetMs) {
     stateChanged = true;
   }
   lastWifiStatus_ = WiFi.status();
+  refreshWifiDiag();
+  logWifiDiagPeriodic();
   return stateChanged;
+}
+
+void PglNetwork::refreshWifiDiag() {
+  wifiDiag_.wlStatus = static_cast<uint8_t>(WiFi.status());
+  wifiDiag_.connected = (WiFi.status() == WL_CONNECTED);
+  wifiDiag_.disconnectReason = gLastStaDisconnectReason;
+  wifiDiag_.retryInSec = 0;
+  wifiDiag_.targetSsid[0] = '\0';
+
+  if (wifiDiag_.connected) {
+    strncpy(wifiDiag_.phase, "ok", sizeof(wifiDiag_.phase) - 1);
+    wifiDiag_.phase[sizeof(wifiDiag_.phase) - 1] = '\0';
+    char ssidBuf[33];
+    strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    strncpy(wifiDiag_.targetSsid, ssidBuf, sizeof(wifiDiag_.targetSsid) - 1);
+    wifiDiag_.targetSsid[sizeof(wifiDiag_.targetSsid) - 1] = '\0';
+    snprintf(wifiDiag_.line, sizeof(wifiDiag_.line), "WiFi: %s (%d dBm)",
+             ssidBuf[0] ? ssidBuf : "?", WiFi.RSSI());
+    wifiDiag_.connecting = false;
+    return;
+  }
+
+  wifiDiag_.connecting =
+      wifiConnecting_ || wifiSessionActive_ || wifiDirectAttempt_ || wifiBackoff_;
+
+  if (wifiBackoff_) {
+    if (millis() < wifiRetryAfterMs_) {
+      wifiDiag_.retryInSec =
+          static_cast<uint16_t>((wifiRetryAfterMs_ - millis() + 999) / 1000);
+    }
+    strncpy(wifiDiag_.phase, "attente", sizeof(wifiDiag_.phase) - 1);
+    wifiDiag_.phase[sizeof(wifiDiag_.phase) - 1] = '\0';
+    snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
+             "WiFi: pause %us\nstat=%s raison=%s",
+             static_cast<unsigned int>(wifiDiag_.retryInSec),
+             pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
+             pglWifiDisconnectReasonName(wifiDiag_.disconnectReason));
+    return;
+  }
+
+  if (wifiDirectAttempt_) {
+    strncpy(wifiDiag_.phase, "rapide", sizeof(wifiDiag_.phase) - 1);
+    wifiDiag_.phase[sizeof(wifiDiag_.phase) - 1] = '\0';
+    strncpy(wifiDiag_.targetSsid, gLastGoodAp.ssid, sizeof(wifiDiag_.targetSsid) - 1);
+    wifiDiag_.targetSsid[sizeof(wifiDiag_.targetSsid) - 1] = '\0';
+    const uint32_t leftMs = (millis() < wifiDirectDeadlineMs_)
+                                ? (wifiDirectDeadlineMs_ - millis())
+                                : 0;
+    snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
+             "WiFi: rapide «%s» ch%u\nstat=%s ~%lus",
+             wifiDiag_.targetSsid[0] ? wifiDiag_.targetSsid : "?",
+             static_cast<unsigned int>(gLastGoodAp.chan),
+             pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
+             static_cast<unsigned long>((leftMs + 999) / 1000));
+    return;
+  }
+
+  if (wifiSessionActive_) {
+    const char* phase = n3WifiSessionPhaseName(wifiSession_.phase);
+    strncpy(wifiDiag_.phase, phase, sizeof(wifiDiag_.phase) - 1);
+    wifiDiag_.phase[sizeof(wifiDiag_.phase) - 1] = '\0';
+    if (wifiSession_.currentSsid[0] != '\0') {
+      strncpy(wifiDiag_.targetSsid, wifiSession_.currentSsid, sizeof(wifiDiag_.targetSsid) - 1);
+      wifiDiag_.targetSsid[sizeof(wifiDiag_.targetSsid) - 1] = '\0';
+    }
+    if (wifiDiag_.targetSsid[0] != '\0') {
+      snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
+               "WiFi: %s «%.32s»\nstat=%s idx=%u/%u",
+               phase,
+               wifiDiag_.targetSsid,
+               pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
+               wifiSession_.orderCount > 0
+                   ? static_cast<unsigned int>(wifiSession_.orderIdx + 1)
+                   : 0U,
+               static_cast<unsigned int>(wifiSession_.orderCount));
+    } else {
+      snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
+               "WiFi: %s\nstat=%s idx=%u/%u",
+               phase,
+               pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
+               wifiSession_.orderCount > 0
+                   ? static_cast<unsigned int>(wifiSession_.orderIdx + 1)
+                   : 0U,
+               static_cast<unsigned int>(wifiSession_.orderCount));
+    }
+    return;
+  }
+
+  if (wifiConnecting_) {
+    strncpy(wifiDiag_.phase, "demarrage", sizeof(wifiDiag_.phase) - 1);
+    wifiDiag_.phase[sizeof(wifiDiag_.phase) - 1] = '\0';
+    snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
+             "WiFi: demarrage...\nstat=%s",
+             pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)));
+    return;
+  }
+
+  strncpy(wifiDiag_.phase, "offline", sizeof(wifiDiag_.phase) - 1);
+  wifiDiag_.phase[sizeof(wifiDiag_.phase) - 1] = '\0';
+  snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
+           "WiFi: hors ligne\nstat=%s raison=%s",
+           pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
+           pglWifiDisconnectReasonName(wifiDiag_.disconnectReason));
+  wifiDiag_.connecting = false;
+}
+
+void PglNetwork::logWifiDiagPeriodic() {
+  if (wifiDiag_.connected) {
+    return;
+  }
+  const uint32_t now = millis();
+  if (wifiLastDiagLogMs_ != 0 && (now - wifiLastDiagLogMs_) < 5000) {
+    return;
+  }
+  wifiLastDiagLogMs_ = now;
+  PGL_LOG("WiFi diag: phase=%s stat=%s ssid=\"%s\" retry=%us reason=%u/%s | %s",
+          wifiDiag_.phase,
+          pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
+          wifiDiag_.targetSsid[0] ? wifiDiag_.targetSsid : "-",
+          static_cast<unsigned int>(wifiDiag_.retryInSec),
+          static_cast<unsigned int>(wifiDiag_.disconnectReason),
+          pglWifiDisconnectReasonName(wifiDiag_.disconnectReason),
+          wifiDiag_.line);
+}
+
+const PglWifiDiag& PglNetwork::getWifiDiag() const {
+  return wifiDiag_;
 }
 
 bool PglNetwork::isWifiConnected() const {
@@ -319,7 +506,10 @@ bool PglNetwork::isWifiOffline() const {
 }
 
 bool PglNetwork::isWifiConnecting() const {
-  return (wifiConnecting_ || wifiSessionActive_) && WiFi.status() != WL_CONNECTED;
+  if (WiFi.status() == WL_CONNECTED) {
+    return false;
+  }
+  return wifiConnecting_ || wifiSessionActive_ || wifiDirectAttempt_ || wifiBackoff_;
 }
 
 void PglNetwork::tryConnectBeforeUpload() {
@@ -359,26 +549,31 @@ PglUploadResult PglNetwork::uploadBatch(const PglStoredEvent* events, size_t cou
           PGL_SENSOR_LOCATION,
           PGL_FIRMWARE_VERSION);
 
-  String eventsPayload;
-  eventsPayload.reserve(count * 32);
+  char eventsPayload[2048];
+  size_t off = 0;
   for (size_t i = 0; i < count; ++i) {
-    if (i > 0) eventsPayload += ',';
-    eventsPayload += String(events[i].epoch);
-    eventsPayload += ':';
-    eventsPayload += String(events[i].countDelta);
-    eventsPayload += ':';
-    eventsPayload += String(events[i].sensorMode);
-    eventsPayload += ':';
-    eventsPayload += String(events[i].tandemValidated);
-    eventsPayload += ':';
-    eventsPayload += String(events[i].batteryMilliVolt);
-    eventsPayload += ':';
-    eventsPayload += String(events[i].rssi);
-    eventsPayload += ':';
-    eventsPayload += String(events[i].eventId);
+    if (i > 0 && off + 1 < sizeof(eventsPayload)) {
+      eventsPayload[off++] = ',';
+    }
+    const int written = snprintf(
+        eventsPayload + off, sizeof(eventsPayload) - off, "%lu:%u:%u:%u:%d:%d:%lu",
+        static_cast<unsigned long>(events[i].epoch),
+        static_cast<unsigned int>(events[i].countDelta),
+        static_cast<unsigned int>(events[i].sensorMode),
+        static_cast<unsigned int>(events[i].tandemValidated),
+        static_cast<int>(events[i].batteryMilliVolt),
+        static_cast<int>(events[i].rssi),
+        static_cast<unsigned long>(events[i].eventId));
+    if (written <= 0 || static_cast<size_t>(written) >= sizeof(eventsPayload) - off) {
+      PGL_LOG("Serveur POST: payload events trop long (lot=%u)", static_cast<unsigned int>(count));
+      recordPostResult(-2);
+      return result;
+    }
+    off += static_cast<size_t>(written);
   }
+  eventsPayload[off] = '\0';
 
-  PGL_LOG_V("Serveur POST: payload events=%s", eventsPayload.c_str());
+  PGL_LOG_V("Serveur POST: payload events=%s", eventsPayload);
 
   String responseBody;
 
@@ -390,8 +585,13 @@ PglUploadResult PglNetwork::uploadBatch(const PglStoredEvent* events, size_t cou
       {"total_count", String(totalCount)},
       {"today_count", String(todayCount)},
       {"batch_count", String(static_cast<unsigned int>(count))},
-      {"events", eventsPayload},
+      {"events", String(eventsPayload)},
   };
+
+  const time_t epochNow = time(nullptr);
+  const unsigned long epochSec =
+      (epochNow > 1577836800L) ? static_cast<unsigned long>(epochNow) : 0UL;
+  const char* sigSecret = pglOptionalSigSecret();
 
   N3PostConfig cfg = {
       PGL_SERVER_POST_URL,
@@ -400,8 +600,8 @@ PglUploadResult PglNetwork::uploadBatch(const PglStoredEvent* events, size_t cou
       sizeof(fields) / sizeof(fields[0]),
       nullptr,
       nullptr,
-      nullptr,
-      0,
+      sigSecret,
+      epochSec,
       &responseBody,
   };
   const int code = n3DataPost(cfg);
@@ -459,13 +659,13 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount, const PglHeartbeatTelemetry& 
             static_cast<unsigned long>(minHeap == UINT32_MAX ? freeHeap : minHeap),
             static_cast<unsigned long>(bootCount),
             rssi);
-  PGL_LOG_V("Serveur HB: pending=%u journal=%lu nvs=%u sd=%d batt=%dmV mode=%u",
+  PGL_LOG_V("Serveur HB: pending=%u journal=%lu nvs=%u sd=%d batt=%dmV sensors_present=%u",
             static_cast<unsigned int>(telemetry.pending),
             static_cast<unsigned long>(telemetry.journalPending),
             static_cast<unsigned int>(telemetry.nvsPending),
             telemetry.sdOk ? 1 : 0,
             telemetry.batteryMilliVolt,
-            static_cast<unsigned int>(telemetry.sensorMode));
+            static_cast<unsigned int>(telemetry.sensorsPresent));
 
   N3DataField fields[] = {
       {"api_key", String(PGL_API_KEY)},
@@ -481,8 +681,13 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount, const PglHeartbeatTelemetry& 
       {"nvs_pending", String(telemetry.nvsPending)},
       {"sd_ok", String(telemetry.sdOk ? 1 : 0)},
       {"battery_mv", String(telemetry.batteryMilliVolt)},
-      {"sensor_mode", String(static_cast<unsigned int>(telemetry.sensorMode))},
+      {"sensors_present", String(static_cast<unsigned int>(telemetry.sensorsPresent))},
   };
+
+  const char* sigSecret = pglOptionalSigSecret();
+  const time_t epochNow = time(nullptr);
+  const unsigned long epochSec =
+      (epochNow > 1577836800L) ? static_cast<unsigned long>(epochNow) : 0UL;
 
   N3PostConfig cfg = {
       PGL_SERVER_HEARTBEAT_URL,
@@ -491,8 +696,8 @@ bool PglNetwork::sendHeartbeat(uint32_t bootCount, const PglHeartbeatTelemetry& 
       sizeof(fields) / sizeof(fields[0]),
       nullptr,
       nullptr,
-      nullptr,
-      0,
+      sigSecret,
+      epochSec,
       nullptr,
   };
   const int code = n3DataPost(cfg);

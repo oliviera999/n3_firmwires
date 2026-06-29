@@ -30,6 +30,17 @@ enum class N3WifiPollResult : uint8_t {
   Failed,
 };
 
+/** Cause d'echec de session (n3WifiSessionPoll -> Failed). */
+enum N3WifiFailureReason : uint8_t {
+  N3_WIFI_FAIL_NONE = 0,
+  N3_WIFI_FAIL_SCAN_START = 1,
+  N3_WIFI_FAIL_SCAN = 2,
+  N3_WIFI_FAIL_NO_AP = 3,
+  N3_WIFI_FAIL_ALL_NETS = 4,
+  N3_WIFI_FAIL_RESCAN = 5,
+  N3_WIFI_FAIL_TIMEOUT = 6,
+};
+
 #define N3_WIFI_SESSION_CAND_MAX 10
 
 struct N3WifiCand {
@@ -45,6 +56,7 @@ struct N3WifiSession {
   uint8_t phase = 0;
   unsigned long phaseDeadline = 0;
   unsigned long connectDeadline = 0;
+  unsigned long connectStartedMs = 0;
   unsigned long timeoutMs = 5000;
   size_t orderCount = 0;
   size_t orderIdx = 0;
@@ -52,11 +64,13 @@ struct N3WifiSession {
   N3WifiCand cand[N3_WIFI_SESSION_CAND_MAX];
   size_t netCount = 0;
   bool retryNoBssid = false;
+  bool pendingNoBssidRetry = false;
   bool onConnectingCalled = false;
   bool fastReconnectTried = false;
   char currentSsid[33] = {};
   char connectedSsid[33] = {};
   char invisibleRescanSsid[33] = {};
+  uint8_t failureReason = 0;
 };
 
 /** Démarre ou redémarre une session de connexion. */
@@ -70,6 +84,12 @@ void n3WifiSessionReset(N3WifiSession& session);
  * outSsid est renseigné en cas de Connected.
  */
 N3WifiPollResult n3WifiSessionPoll(N3WifiSession& session, uint32_t budgetMs, String* outSsid);
+
+/** Libelle court de la phase interne n3_wifi (session.phase). */
+const char* n3WifiSessionPhaseName(uint8_t phase);
+
+/** Libelle court de la cause d'echec session (session.failureReason). */
+const char* n3WifiSessionFailureReasonName(uint8_t reason);
 
 /** Connexion WiFi bloquante : scan, tri par RSSI, essai avec BSSID/canal puis retry sans BSSID. */
 bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif);

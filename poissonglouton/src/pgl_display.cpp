@@ -12,6 +12,7 @@
 #include <lvgl.h>
 #include <cstdio>
 #include <cstring>
+#include <esp_heap_caps.h>
 
 #if PGL_TOUCH_AXS15231B
 #include "touch_axs15231b.h"
@@ -23,6 +24,26 @@ constexpr uint16_t kScreenW = PGL_SCREEN_W;
 constexpr uint16_t kScreenH = PGL_SCREEN_H;
 constexpr uint32_t kLvglBufLines = 40;
 constexpr uint8_t kQueueBarMaxEvents = 20;
+
+#if PGL_PANEL_DRIVER_AXS15231B
+// AXS15231B : transfert QSPI plein ecran ~50 ms — limiter pour eviter scintillement.
+constexpr uint32_t kUiTickMs = 50;
+constexpr uint32_t kPanelPushMinMs = 100;
+#else
+constexpr uint32_t kUiTickMs = 5;
+constexpr uint32_t kPanelPushMinMs = 0;
+#endif
+
+bool gPanelPushPending = false;
+uint32_t gLastPanelPushMs = 0;
+
+#if PGL_DISPLAY_DEBUG
+uint32_t gDispFlushCalls = 0;
+uint32_t gDispFlushLast = 0;
+uint32_t gDispPanelPush = 0;
+uint32_t gDispPanelPushSkipped = 0;
+uint32_t gDispLastStatsMs = 0;
+#endif
 
 Arduino_DataBus* bus = new Arduino_ESP32QSPI(
     PGL_QSPI_CS, PGL_QSPI_SCK, PGL_QSPI_D0, PGL_QSPI_D1, PGL_QSPI_D2, PGL_QSPI_D3);
@@ -47,9 +68,6 @@ lv_disp_draw_buf_t drawBuf;
 lv_color_t* drawBuffer = nullptr;
 PglUiHandles ui;
 uint32_t lastUiUpdateMs = 0;
-// Vrai dès que LVGL a redessiné dans le canvas depuis le dernier push panneau.
-// Évite un transfert QSPI plein écran à chaque tour quand rien ne change.
-bool canvasDirty = false;
 int lastWifiRssi_ = -100;
 bool wifiConnected_ = false;
 
@@ -64,16 +82,128 @@ int mapQueueToBar(uint16_t pendingEvents) {
   return (static_cast<int>(pendingEvents) * 100) / kQueueBarMaxEvents;
 }
 
+void blitLvglAreaToCanvas(int16_t x, int16_t y, uint16_t* colorP, int16_t w, int16_t h) {
+#if LV_COLOR_16_SWAP
+  gfx->draw16bitBeRGBBitmap(x, y, colorP, w, h);
+#else
+  gfx->draw16bitRGBBitmap(x, y, colorP, w, h);
+#endif
+}
+
+void pushCanvasToPanel() {
+  gfx->flush();
+}
+
+void tryPushCanvasToPanel(bool force = false) {
+  if (!gPanelPushPending && !force) {
+    return;
+  }
+  const uint32_t now = millis();
+  if (!force && kPanelPushMinMs > 0 && (now - gLastPanelPushMs) < kPanelPushMinMs) {
+#if PGL_DISPLAY_DEBUG
+    ++gDispPanelPushSkipped;
+#endif
+    return;
+  }
+  gPanelPushPending = false;
+  gLastPanelPushMs = now;
+#if PGL_DISPLAY_DEBUG
+  const uint32_t t0 = now;
+  ++gDispPanelPush;
+#endif
+  pushCanvasToPanel();
+#if PGL_DISPLAY_DEBUG
+  if (gDispPanelPush <= 12 || (gDispPanelPush % 30 == 0)) {
+    PGL_LOG_DISP("panel push #%lu %lums (skipped=%lu)",
+                 static_cast<unsigned long>(gDispPanelPush),
+                 static_cast<unsigned long>(millis() - t0),
+                 static_cast<unsigned long>(gDispPanelPushSkipped));
+  }
+#endif
+}
+
+#if PGL_DISPLAY_DEBUG
+void logFramebufferSample(const char* tag) {
+  auto* canvas = static_cast<Arduino_Canvas*>(gfx);
+  uint16_t* fb = canvas ? canvas->getFramebuffer() : nullptr;
+  if (!fb) {
+    PGL_LOG_DISP("%s: framebuffer NULL", tag);
+    return;
+  }
+  const size_t pixels = static_cast<size_t>(kScreenW) * kScreenH;
+  const bool inPsram = esp_ptr_external_ram(fb);
+  PGL_LOG_DISP("%s: fb=%p psram=%d px=%u [0]=%04x mid=%04x end=%04x",
+               tag,
+               static_cast<void*>(fb),
+               inPsram ? 1 : 0,
+               static_cast<unsigned>(pixels),
+               fb[0],
+               fb[pixels / 2],
+               fb[pixels - 1]);
+}
+
+void runDisplaySelfTest() {
+  PGL_LOG_DISP("Self-test: bandes R/V/B/blanc (%ux%u) avant LVGL", kScreenW, kScreenH);
+  const int16_t bandH = static_cast<int16_t>(kScreenH / 4);
+  gfx->fillScreen(0x0000);
+  gfx->fillRect(0, 0, kScreenW, bandH, 0xF800);
+  gfx->fillRect(0, bandH, kScreenW, bandH, 0x07E0);
+  gfx->fillRect(0, bandH * 2, kScreenW, bandH, 0x001F);
+  gfx->fillRect(0, bandH * 3, kScreenW, kScreenH - bandH * 3, 0xFFFF);
+  const uint32_t t0 = millis();
+  pushCanvasToPanel();
+  PGL_LOG_DISP("Self-test: panel push %lums", static_cast<unsigned long>(millis() - t0));
+  logFramebufferSample("Self-test");
+  delay(2500);
+}
+
+void maybeLogDisplayStats() {
+  const uint32_t now = millis();
+  if (now - gDispLastStatsMs < 30000) {
+    return;
+  }
+  gDispLastStatsMs = now;
+  PGL_LOG_DISP("Stats 30s: flush=%lu last=%lu push=%lu skip=%lu heap=%lu psram=%lu",
+               static_cast<unsigned long>(gDispFlushCalls),
+               static_cast<unsigned long>(gDispFlushLast),
+               static_cast<unsigned long>(gDispPanelPush),
+               static_cast<unsigned long>(gDispPanelPushSkipped),
+               static_cast<unsigned long>(ESP.getFreeHeap()),
+               static_cast<unsigned long>(ESP.getFreePsram()));
+}
+#endif
+
 void displayFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP) {
   const uint32_t w = area->x2 - area->x1 + 1;
   const uint32_t h = area->y2 - area->y1 + 1;
-  // Aligné LVGL_Widgets : LV_COLOR_16_SWAP=1 => draw16bitBeRGBBitmap (QSPI NV3041A)
-#if LV_COLOR_16_SWAP
-  gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
-#else
-  gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t*)&colorP->full, w, h);
+  blitLvglAreaToCanvas(area->x1, area->y1, reinterpret_cast<uint16_t*>(&colorP->full),
+                       static_cast<int16_t>(w), static_cast<int16_t>(h));
+
+  const bool isLast = lv_disp_flush_is_last(disp);
+#if PGL_DISPLAY_DEBUG
+  ++gDispFlushCalls;
+  if (gDispFlushCalls <= 24 || (gDispFlushCalls % 60 == 0)) {
+    PGL_LOG_DISP("flush #%lu area (%ld,%ld)-(%ld,%ld) %lux%lu last=%d",
+                 static_cast<unsigned long>(gDispFlushCalls),
+                 static_cast<long>(area->x1),
+                 static_cast<long>(area->y1),
+                 static_cast<long>(area->x2),
+                 static_cast<long>(area->y2),
+                 static_cast<unsigned long>(w),
+                 static_cast<unsigned long>(h),
+                 isLast ? 1 : 0);
+  }
 #endif
-  canvasDirty = true;
+
+  if (isLast) {
+#if PGL_DISPLAY_DEBUG
+    ++gDispFlushLast;
+#endif
+    gPanelPushPending = true;
+#if !PGL_PANEL_DRIVER_AXS15231B
+    tryPushCanvasToPanel(true);
+#endif
+  }
   lv_disp_flush_ready(disp);
 }
 
@@ -95,12 +225,17 @@ void touchpadRead(lv_indev_drv_t* /*indev*/, lv_indev_data_t* data) {
 
 void flushUi() {
   lv_timer_handler();
-  // Ne pousser le canvas vers le panneau QSPI que si LVGL a redessiné
-  // quelque chose (canvasDirty positionné dans displayFlush).
-  if (canvasDirty) {
-    gfx->flush();
-    canvasDirty = false;
+  tryPushCanvasToPanel(false);
+#if PGL_PANEL_DRIVER_AXS15231B
+  // Pousser la derniere frame en attente si le throttle a retarde le push.
+  if (gPanelPushPending &&
+      (millis() - gLastPanelPushMs) >= (kPanelPushMinMs * 3)) {
+    tryPushCanvasToPanel(true);
   }
+#endif
+#if PGL_DISPLAY_DEBUG
+  maybeLogDisplayStats();
+#endif
 }
 }  // namespace
 
@@ -127,8 +262,15 @@ void PglDisplay::refreshLabels() {
 
 void PglDisplay::begin() {
 #if PGL_PANEL_DRIVER_AXS15231B
-  PGL_LOG("Display: init AXS15231B %ux%u (%s) QSPI BL=%d",
+#if defined(PGL_AX15231B_INIT_TYPE2) && PGL_AX15231B_INIT_TYPE2
+  PGL_LOG("Display: init AXS15231B %ux%u (%s) init=type2 QSPI BL=%d",
           kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME, GFX_BL);
+#else
+  PGL_LOG("Display: init AXS15231B %ux%u (%s) init=type1 QSPI BL=%d",
+          kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME, GFX_BL);
+#endif
+  PGL_LOG_DISP("LVGL buf=%u lignes push_throttle=%ums ui_tick=%ums",
+               kLvglBufLines, kPanelPushMinMs, kUiTickMs);
 #else
   PGL_LOG("Display: init NV3041A %ux%u (%s) QSPI BL=%d",
           kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME, GFX_BL);
@@ -146,6 +288,10 @@ void PglDisplay::begin() {
   }
   gfx->fillScreen(0x0000);
 
+#if PGL_DISPLAY_DEBUG
+  runDisplaySelfTest();
+#endif
+
   lv_init();
   const size_t bufPixels = static_cast<size_t>(kScreenW) * kLvglBufLines;
   drawBuffer = static_cast<lv_color_t*>(heap_caps_malloc(sizeof(lv_color_t) * bufPixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -156,7 +302,6 @@ void PglDisplay::begin() {
     PGL_LOG("Display: ERREUR allocation buffer LVGL");
     lvglOk_ = false;
     ready_ = false;
-    snprintf(hwLine_, sizeof(hwLine_), "Ecran: ECHEC | IR: ...");
     return;
   }
   lvglOk_ = true;
@@ -191,7 +336,6 @@ void PglDisplay::begin() {
   snprintf(audioLine_, sizeof(audioLine_), "En attente");
   snprintf(usLine_, sizeof(usLine_), "US: -");
   snprintf(serverLine_, sizeof(serverLine_), "Srv: en attente");
-  snprintf(hwLine_, sizeof(hwLine_), "Ecran: init | IR: ...");
   ready_ = gfxOk_ && lvglOk_;
   refreshLabels();
 
@@ -199,6 +343,7 @@ void PglDisplay::begin() {
     flushUi();
     delay(5);
   }
+  tryPushCanvasToPanel(true);
   if (ready_) {
     PGL_LOG("Display: FONCTIONNEL — dashboard LVGL actif (%ux%u %s)", kScreenW, kScreenH, PGL_DISPLAY_BOARD_NAME);
     PGL_LOG_V("Display: heap libre apres UI %u octets", static_cast<unsigned int>(ESP.getFreeHeap()));
@@ -210,8 +355,13 @@ void PglDisplay::begin() {
 }
 
 void PglDisplay::update() {
-  if (millis() - lastUiUpdateMs < 5) return;
+  if (millis() - lastUiUpdateMs < kUiTickMs) return;
   lastUiUpdateMs = millis();
+#if PGL_TOUCH_AXS15231B
+  if (touch_axs_has_signal()) {
+    wakeBacklight();
+  }
+#endif
   flushUi();
 }
 
@@ -222,13 +372,11 @@ void PglDisplay::setCounter(uint32_t totalCount, uint32_t todayCount) {
 }
 
 void PglDisplay::onBottleCount(uint32_t totalCount, uint32_t todayCount) {
-  totalCount_ = totalCount;
-  todayCount_ = todayCount;
+  setCounter(totalCount, todayCount);
   lastCountAnimMs_ = millis();
   if (ui.labelSmiley) {
     lv_label_set_text(ui.labelSmiley, "^_^");
   }
-  refreshLabels();
   PGL_LOG_V("Display: +1 total=%lu today=%lu", static_cast<unsigned long>(totalCount),
             static_cast<unsigned long>(todayCount));
 }
@@ -264,6 +412,21 @@ void PglDisplay::setWifiSearching() {
   }
 }
 
+void PglDisplay::setWifiProgress(const PglWifiDiag& diag) {
+  wifiConnected_ = false;
+  strncpy(wifiLine_, diag.line, sizeof(wifiLine_) - 1);
+  wifiLine_[sizeof(wifiLine_) - 1] = '\0';
+  const PglUiLedState led =
+      diag.connecting ? PglUiLedState::Warn : PglUiLedState::Error;
+  pglUiSetLed(ui.ledWifi, led);
+  if (ui.barWifi) {
+    lv_bar_set_value(ui.barWifi, 0, LV_ANIM_OFF);
+  }
+  if (ui.labelWifi) {
+    lv_label_set_text(ui.labelWifi, wifiLine_);
+  }
+}
+
 void PglDisplay::setWifiConnecting() {
   wifiConnected_ = false;
   snprintf(wifiLine_, sizeof(wifiLine_), "WiFi: connexion...");
@@ -289,20 +452,21 @@ void PglDisplay::setWifiOffline() {
 }
 
 void PglDisplay::setUltrasonDistance(uint16_t distanceCm, bool sensorPresent) {
+  char newLine[48];
   if (!sensorPresent && distanceCm == 0) {
-    snprintf(usLine_, sizeof(usLine_), "US: capteur absent");
+    snprintf(newLine, sizeof(newLine), "US: pas d'echo");
     if (ui.arcUs) {
       lv_arc_set_value(ui.arcUs, 0);
       lv_obj_set_style_arc_color(ui.arcUs, lv_color_hex(0xFFB347), LV_PART_INDICATOR);
     }
   } else if (distanceCm == 0) {
-    snprintf(usLine_, sizeof(usLine_), "US: hors portee (> %ucm)", PGL_ULTRASON_MAX_VALID_CM);
+    snprintf(newLine, sizeof(newLine), "US: hors portee (> %ucm)", PGL_ULTRASON_MAX_VALID_CM);
     if (ui.arcUs) {
       lv_arc_set_value(ui.arcUs, 0);
       lv_obj_set_style_arc_color(ui.arcUs, lv_palette_main(LV_PALETTE_TEAL), LV_PART_INDICATOR);
     }
   } else if (distanceCm <= PGL_ULTRASON_TRIGGER_CM) {
-    snprintf(usLine_, sizeof(usLine_), "US: %u cm  [ZONE]", distanceCm);
+    snprintf(newLine, sizeof(newLine), "US: %u cm  [ZONE]", distanceCm);
     if (ui.arcUs) {
       lv_arc_set_value(ui.arcUs, distanceCm);
       lv_obj_set_style_arc_color(ui.arcUs, lv_color_hex(0x7CFC00), LV_PART_INDICATOR);
@@ -311,7 +475,7 @@ void PglDisplay::setUltrasonDistance(uint16_t distanceCm, bool sensorPresent) {
       lv_obj_set_style_text_color(ui.labelUs, lv_color_hex(0x7CFC00), LV_PART_MAIN);
     }
   } else {
-    snprintf(usLine_, sizeof(usLine_), "US: %u cm", distanceCm);
+    snprintf(newLine, sizeof(newLine), "US: %u cm", distanceCm);
     if (ui.arcUs) {
       lv_arc_set_value(ui.arcUs, distanceCm);
       lv_obj_set_style_arc_color(ui.arcUs, lv_palette_main(LV_PALETTE_TEAL), LV_PART_INDICATOR);
@@ -320,6 +484,11 @@ void PglDisplay::setUltrasonDistance(uint16_t distanceCm, bool sensorPresent) {
       lv_obj_set_style_text_color(ui.labelUs, lv_color_hex(0xE8F4F8), LV_PART_MAIN);
     }
   }
+  if (strcmp(usLine_, newLine) == 0) {
+    return;
+  }
+  strncpy(usLine_, newLine, sizeof(usLine_) - 1);
+  usLine_[sizeof(usLine_) - 1] = '\0';
   if (ui.labelUs) {
     lv_label_set_text(ui.labelUs, usLine_);
   }
@@ -451,7 +620,6 @@ bool PglDisplay::isReady() const {
 }
 
 void PglDisplay::setHardwareStatus(bool displayOk, bool irPresent, bool irObstacle) {
-  const char* disp = displayOk ? "OK" : "ECHEC";
   const char* ir;
   if (!irPresent) {
     ir = "absent";
@@ -460,7 +628,6 @@ void PglDisplay::setHardwareStatus(bool displayOk, bool irPresent, bool irObstac
   } else {
     ir = "libre";
   }
-  snprintf(hwLine_, sizeof(hwLine_), "Ecran: %s | IR: %s", disp, ir);
 
   if (ui.labelIr) {
     lv_label_set_text_fmt(ui.labelIr, "IR: %s", ir);
@@ -483,7 +650,6 @@ void PglDisplay::setHardwareStatus(bool displayOk, bool irPresent, bool irObstac
       lv_obj_set_style_text_color(ui.labelTitle, lv_palette_main(LV_PALETTE_TEAL), LV_PART_MAIN);
     }
   }
-  (void)disp;
 }
 
 void PglDisplay::setPirStatus(bool pirPresent, bool pirMotion) {
@@ -522,6 +688,7 @@ void PglDisplay::update() {}
 void PglDisplay::onBottleCount(uint32_t, uint32_t) {}
 void PglDisplay::setCounter(uint32_t, uint32_t) {}
 void PglDisplay::setWifiInfo(const char*, wl_status_t, int) {}
+void PglDisplay::setWifiProgress(const PglWifiDiag&) {}
 void PglDisplay::setWifiSearching() {}
 void PglDisplay::setWifiConnecting() {}
 void PglDisplay::setWifiOffline() {}

@@ -6,10 +6,47 @@
 #include "pgl_log.h"
 #include "pgl_sensor_fusion.h"
 
+namespace {
+
+// pulseIn() est peu fiable sur ESP32-S3 (Arduino 3.x) ; lecture active de l'echo
+// comme ffp5cs/sensor_ultrasonic.cpp.
+unsigned long readEchoPulseUs(int pin, unsigned long timeoutUs) {
+#if CONFIG_IDF_TARGET_ESP32S3
+  const unsigned long deadline = micros() + timeoutUs;
+  while (digitalRead(pin) == LOW) {
+    if (static_cast<long>(micros() - deadline) >= 0) {
+      return 0;
+    }
+    delayMicroseconds(2);
+  }
+  const unsigned long highStart = micros();
+  while (digitalRead(pin) == HIGH) {
+    if (static_cast<long>(micros() - deadline) >= 0) {
+      return 0;
+    }
+    delayMicroseconds(2);
+  }
+  const unsigned long highEnd = micros();
+  return (highEnd >= highStart) ? (highEnd - highStart) : 0;
+#else
+  return pulseIn(pin, HIGH, timeoutUs);
+#endif
+}
+
+}  // namespace
+
 void PglDetection::begin() {
   pinMode(PGL_IR_PIN, INPUT_PULLUP);
 
+#if PGL_IR_PRESENT == 1
+  irPresent_ = true;
+  PGL_LOG("IR: force present (PGL_IR_PRESENT=1) GPIO%d", PGL_IR_PIN);
+#elif PGL_IR_PRESENT == 0
+  irPresent_ = false;
+  PGL_LOG("IR: force absent (PGL_IR_PRESENT=0) GPIO%d", PGL_IR_PIN);
+#else
   irPresent_ = detectIrAtBoot();
+#endif
   usPresent_ = detectUltrasonAtBoot();
   irPrevState_ = digitalRead(PGL_IR_PIN);
 
@@ -82,14 +119,12 @@ PglDetectionEvent PglDetection::poll() {
   const uint16_t usDistance = getUltrasonDistanceCm();
 
   // US absent au boot mais mesures valides en runtime → activer le capteur.
-  if (!usPresent_ && usDistance > 0) {
-    if (usRuntimeValidCount_ < 255) usRuntimeValidCount_++;
-    if (usRuntimeValidCount_ >= 3) {
-      usPresent_ = true;
-      PGL_LOG("US: active en runtime (mesures valides sur GPIO%d)", PGL_US_PIN);
-    }
-  } else if (usDistance == 0) {
-    usRuntimeValidCount_ = 0;
+  const bool wasUsPresent = usPresent_;
+  pglDetectionUpdateUsRuntimePresence(
+      usPresent_, usRuntimeValidCount_, usRuntimeInvalidCount_, usDistance,
+      PGL_US_RUNTIME_PROMOTE_COUNT, PGL_US_RUNTIME_DEMOTE_COUNT);
+  if (!wasUsPresent && usPresent_) {
+    PGL_LOG("US: active en runtime (mesures valides sur GPIO%d)", PGL_US_PIN);
   }
 
 #if PGL_VERBOSE_LOG
@@ -116,17 +151,13 @@ PglDetectionEvent PglDetection::poll() {
   }
 #endif
 
-  if ((now - lastDetectionMs_) < PGL_DEBOUNCE_MS) {
-    return event;
-  }
-
   bool irTriggered = false;
   bool usTriggered = false;
   bool pirTriggered = false;
 
   if (irPresent_) {
     const bool irState = digitalRead(PGL_IR_PIN);
-    if (irPrevState_ && !irState) {
+    if (pglDetectionCheckIrTrigger(irPrevState_, irState)) {
       irTriggered = true;
       lastIrEdgeMs_ = now;
       PGL_LOG("IR GPIO%d: front obstacle detecte", PGL_IR_PIN);
@@ -135,36 +166,37 @@ PglDetectionEvent PglDetection::poll() {
   }
 
   if (usPresent_) {
-    // Filtre temporel : PGL_US_CONSECUTIVE_POLLS lectures consécutives sous le seuil.
-    // Front : après déclenchement, l'objet doit sortir du champ pour recompter.
-    if (usDistance > 0 && usDistance <= PGL_ULTRASON_TRIGGER_CM) {
-      if (usBelowCount_ < 255) usBelowCount_++;
-    } else {
-      usBelowCount_ = 0;
-    }
-    if (usBelowCount_ == PGL_US_CONSECUTIVE_POLLS) {
+    if (!usArmed_) {
+      if (pglDetectionUsZoneClear(usDistance, PGL_ULTRASON_TRIGGER_CM)) {
+        usArmed_ = true;
+        usBelowCount_ = 0;
+        PGL_LOG_V("US GPIO%d: zone liberee — rearmement", PGL_US_PIN);
+      }
+    } else if (pglDetectionCheckUsTrigger(usBelowCount_, usDistance, PGL_ULTRASON_TRIGGER_CM,
+                                           PGL_US_CONSECUTIVE_POLLS)) {
       usTriggered = true;
+      usArmed_ = false;
       lastUsEdgeMs_ = now;
-      usBelowCount_ = 0;
       PGL_LOG("US GPIO%d: declenchement distance=%u cm (seuil %u)",
               PGL_US_PIN, usDistance, PGL_ULTRASON_TRIGGER_CM);
     }
   }
 
   if (pirPresent_) {
-    // Front LOW->HIGH (sortie PIR active-HAUT) avec garde anti re-trigger :
-    // un nouveau front est ignore tant que PGL_PIR_DEBOUNCE_MS ne s'est pas
-    // ecoule depuis le dernier (le PIR reste HIGH plusieurs secondes par nature).
     const bool pirState = digitalRead(PGL_PIR_PIN);
-    const bool guardElapsed =
-        (lastPirEdgeMs_ == 0) || ((now - lastPirEdgeMs_) >= PGL_PIR_DEBOUNCE_MS);
-    if (!pirPrevState_ && pirState && guardElapsed) {
+    if (pglDetectionCheckPirTrigger(pirPrevState_, pirState, lastPirEdgeMs_, now,
+                                    PGL_PIR_DEBOUNCE_MS)) {
       pirTriggered = true;
       lastPirEdgeMs_ = now;
-      pirEdgeGuard_ = 1;
       PGL_LOG("PIR GPIO%d: front mouvement detecte", PGL_PIR_PIN);
     }
     pirPrevState_ = pirState;
+  }
+
+  // Debounce global : bloque uniquement la decision de comptage, pas la MAJ d'etat
+  // capteur (irPrevState_, usBelowCount_, pirPrevState_ restent a jour).
+  if (!pglDetectionDebounceAllowsCount(now, lastDetectionMs_, PGL_DEBOUNCE_MS)) {
+    return event;
   }
 
   // Decision de comptage deleguee a la fonction pure de fusion : elle decide
@@ -200,7 +232,7 @@ PglDetectionEvent PglDetection::poll() {
 }
 
 bool PglDetection::detectIrAtBoot() {
-  PGL_LOG("IR: test GPIO%d (pull-up, 1=libre 0=obstacle)", PGL_IR_PIN);
+  PGL_LOG("IR: autodetect GPIO%d (pull-up) — preferer -DPGL_IR_PRESENT=1 en prod", PGL_IR_PIN);
   uint8_t highCount = 0;
   uint8_t lowCount = 0;
   for (uint8_t i = 0; i < 20; ++i) {
@@ -219,12 +251,15 @@ bool PglDetection::detectIrAtBoot() {
     }
     delay(5);
   }
-  const bool ok = (highCount > 0 || lowCount > 0);
-  PGL_LOG("IR: %s (%u HIGH, %u LOW) — etat=%s",
-          ok ? "DETECTE" : "ABSENT",
+  // Heuristique : au moins un LOW = module actif (open-collector). Tout HIGH = incertain
+  // (module sans obstacle OU broche flottante) → absent par prudence.
+  const bool ok = (lowCount > 0);
+  PGL_LOG("IR: %s (%u HIGH, %u LOW) — etat=%s%s",
+          ok ? "DETECTE" : "ABSENT (tout HIGH — forcer PGL_IR_PRESENT=1 si branche)",
           highCount,
           lowCount,
-          digitalRead(PGL_IR_PIN) ? "libre" : "obstacle");
+          digitalRead(PGL_IR_PIN) ? "libre" : "obstacle",
+          ok ? "" : "");
   return ok;
 }
 
@@ -267,7 +302,7 @@ uint16_t PglDetection::readUltrasonCm() {
   // detection (seuils, debounce, tandem, filtrage inchanges).
   constexpr unsigned long kEchoTimeoutUs =
       static_cast<unsigned long>((2.0f * PGL_ULTRASON_MAX_VALID_CM / 0.0343f) * 1.15f);
-  const unsigned long duration = pulseIn(PGL_US_PIN, HIGH, kEchoTimeoutUs);
+  const unsigned long duration = readEchoPulseUs(PGL_US_PIN, kEchoTimeoutUs);
   if (duration == 0) return 0;
   const uint16_t distanceCm = static_cast<uint16_t>((duration * 0.0343f) / 2.0f);
   if (distanceCm > PGL_ULTRASON_MAX_VALID_CM) return 0;

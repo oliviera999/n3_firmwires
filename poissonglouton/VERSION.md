@@ -1,5 +1,133 @@
 # Poissonglouton - Historique versions
 
+## 0.5.15 - 2026-06-29
+
+- **JC3248 anti-scintillement** : throttle push QSPI (max ~10 fps), buffer LVGL 40 lignes (sans full_refresh), init type1, retroeclairage toujours ON sur JC3248 (`PGL_BACKLIGHT_TIMEOUT_MS=0`).
+- **JC3248** : touch rallume le backlight ; labels US mis a jour seulement si le texte change.
+
+## 0.5.14 - 2026-06-29
+
+- **JC3248 debug** : env `pgl-s3-jc3248-debug` (`PGL_DISPLAY_DEBUG`), logs `[PGL][DISP]`, self-test bandes R/V/B au boot, stats flush/push toutes les 30 s.
+- **JC3248 rendu** : buffer LVGL plein ecran + `full_refresh`, blit BeRGB vers canvas (meme chemin LVGL que JC4827).
+
+## 0.5.13 - 2026-06-29
+
+- **JC3248 / AXS15231B** : flush canvas uniquement sur `lv_disp_flush_is_last` — le panneau ne gère pas les mises à jour partielles (CASET/RASET ignorés) ; un push QSPI prématuré provoquait un affichage tronqué ou corrompu.
+
+## 0.5.12 - 2026-06-26
+
+- **n3_wifi 1.2.4** : retry sans BSSID apres pause 500 ms + `disconnect(true)` (handshake inwi).
+
+## 0.5.11 - 2026-06-26
+
+- **WiFi boot** : scan demarre tot (comme v0.5.8) — le differe post-display voyait 0 AP.
+- **WiFi fiabilite** : `WiFi.setSleep(WIFI_PS_NONE)` pour handshake sur AP faible (inwi -96 dBm).
+
+## 0.5.10 - 2026-06-26
+
+- **WiFi inwi prioritaire** : ordre de scan AP-Techno/inwi/Android → **inwi d'abord** (SSID_2).
+- **WiFi boot** : scan demarre apres init display ; pre-scan 1,5 s ; timeout association 15 s.
+- **Upload** : uniquement si WiFi connecte (plus de POST annule en NO_SSID).
+- **Diag** : log explicite sur echec 4WAY_HANDSHAKE (mot de passe secrets.h).
+
+## 0.5.9 - 2026-06-26
+
+- **WiFi diag ecran** : correction `snprintf` (argument `»` en trop → idx/stat corrompus).
+- **Heartbeat serveur** : intervalle 2 min respecte meme en cas d'echec HTTP (plus de rafale toutes les 5 s).
+- **HTTP** : timeout POST porte a 12 s (`N3_HTTP_TIMEOUT_MS`).
+
+## 0.5.8 - 2026-06-26
+
+- **Fix reboot WiFi (critique)** : `N3WifiConfig` persiste dans `PglNetwork` — l'ancien pointeur vers une variable stack provoquait un crash `LoadProhibited` dans `beginTryCurrentNetwork` apres le scan.
+- **n3_wifi** : garde SSID null dans `beginTryCurrentNetwork`.
+- **Horloge** : creation namespace NVS `pgltime` au premier boot (plus de log E NOT_FOUND).
+
+## 0.5.7 - 2026-06-26
+
+- **Fix reboot WiFi (critique)** : moteur I2S lazy (`new Audio` sur detection, `delete` apres lecture) — plus de tache decodeur PSRAM au boot pendant le scan WiFi.
+- **Boot** : WiFi demarre avant init audio/display ; scan sans conflit I2S.
+
+## 0.5.6 - 2026-06-26
+
+- **Audio demarrage** : `PGL_ENABLE_STARTUP_JINGLE=0` par defaut — pas de MP3 au boot ; son uniquement sur detection (`playThanks`). WiFi demarre immediatement au cold boot.
+
+## 0.5.5 - 2026-06-26
+
+- **Fix son en boucle** : ultrason re-arme apres sortie de zone (<25 cm) ; pas de nouveau comptage/MP3 tant que l'objet reste devant.
+- **Audio** : `audio.loop()` maintenu tant que `isRunning()` ; ignore une nouvelle lecture si une piste joue deja.
+
+## 0.5.4 - 2026-06-26
+
+- **Fix reboot WiFi** : `audio.loop()` uniquement pendant une lecture ; drain + veille decodeur avant scan WiFi.
+- **WiFi** : 12 s de stabilisation apres fin du jingle avant `pollWifi`.
+
+## 0.5.3 - 2026-06-26
+
+- **Fix reboot audio** : suppression des callbacks AudioLib (Serial non thread-safe depuis la tache decodeur).
+- **WiFi** : demarrage differe apres le jingle de boot ; pas de `pollWifi` pendant une lecture I2S.
+- **WiFi (suite)** : demarrage reporte en loop apres fin audio + 3 s de stabilisation decodeur.
+- **Audio** : retour pipeline v0.1.x (sans validation MP3 erronnee, sans `setAudioTaskCore`/`forceMono`/`pumpDecoder`).
+
+## 0.5.2 - 2026-06-26
+
+- **Audio** : validation entete MP3 Layer III avant lecture (evite crash decodeur sur fichiers invalides).
+- **Fix** : champ layer MPEG corrige (Layer III = 2, pas 1).
+- **WiFi/audio** : jingle de demarrage differe tant que le scan WiFi est actif.
+- **I2S** : tache decodeur sur coeur 1, `forceMono(true)` pour ampli NS4168 mono.
+
+## 0.5.1 - 2026-06-26
+
+- **Audio** : init I2S avant le display QSPI ; jingle de demarrage differe en debut de `loop()`.
+- **Decodeur** : `pumpDecoder()` apres `connecttoFS` ; verification retour + `SD.exists`.
+- **Diagnostic** : callback `audio_info_callback` (logs AudioLib, bitrate, EOF) ; rescan SD si pistes absentes au boot.
+
+## 0.5.0 - 2026-06-26
+
+Lot P2/P3 audit : capteurs, reseau, serveur, config, qualite.
+
+- **IR** : flag build `PGL_IR_PRESENT` (-1 autodetect, 0/1 force) ; autodetect exige au moins un LOW.
+- **US runtime** : promotion/demotion avec compteurs consecutifs (plus de reset sur un seul timeout).
+- **Tests natifs** : helpers poll (US 2 polls, garde PIR, promotion US, front IR) dans `test_detection_poll`.
+- **WiFi** : causes d'echec session n3_wifi (`scan`, `no_ap`, `all_nets`…) + logs PGL enrichis.
+- **Upload** : backoff HTTP exponentiel (streak, plafond 5 min) ; payload events en buffer fixe.
+- **HMAC** : support optionnel `PGL_API_SIG_SECRET` (defaut auth `api_key` seule, documente).
+- **Serveur** : `sensors_present` stocke en `pglHeartbeat` ; POST `mode` = bitmask PGL_SENS_*.
+- **Envs** : `pgl-s3-display-pir`, `pgl-s3-headless-sleep` ; `PGL_IR_PRESENT=1` sur display prod.
+- **Qualite** : `popBatch` sans buffer stack 2 Ko ; dedup display ; rename `computeSleepTimerS`.
+
+## 0.4.4 - 2026-06-26
+
+- **WiFi diagnostic** : phase de connexion (scan, try, connect, rapide, pause…), SSID cible,
+  statut `wl_status`, raison de deconnexion et compte a rebours affiches a l'ecran (wrap LVGL).
+- **Moniteur serie** : logs periodiques `WiFi diag:` + SSID configures au boot en `PGL_LOG`.
+- **Fix UI** : `isWifiConnecting()` inclut fast-reconnect et backoff (evite « connexion... » fige).
+
+## 0.4.3 - 2026-06-26
+
+- **UI** : version firmware (`vX.Y.Z`) affichee dans le header LVGL sous le titre.
+- **Ultrason ESP32-S3** : remplacement de `pulseIn()` par une lecture active de l'echo
+  (aligne ffp5cs) — `pulseIn` etait peu fiable sur S3 et bloquait l'affichage/distances US.
+- **Affichage US** : distance montree des qu'un echo est recu (meme si absent au boot) ;
+  libelle « pas d'echo » au lieu de « capteur absent » quand aucune mesure.
+
+## 0.4.2 - 2026-06-26
+
+Correctifs suite audit firmware (WiFi, HTTPS, detection, contrat serveur).
+
+- **HTTPS/TLS** : URLs serveur en **HTTP par defaut** (`PGL_SERVER_SCHEME`), aligne n3pp/msp.
+  Envs `pgl-s3-display-https`, `pgl-s3-headless-https`, `pgl-s3-jc3248-https` avec
+  `-DUSE_HTTPS_ENDPOINTS` (compile-check CI).
+- **Detection** : debounce global (`PGL_DEBOUNCE_MS`) n'fige plus la MAJ d'etat capteur
+  (`irPrevState_`, `usBelowCount_`, `pirPrevState_`) — seule la decision de comptage est
+  bloquee. Helper testable `pglDetectionDebounceAllowsCount()` + suite `test_detection_poll`.
+- **WiFi** : reconnexion proactive apres perte de lien ; fast-reconnect PGL dedie
+  (`disableFastReconnect=true` cote n3_wifi) ; deadline fast-reconnect = `timeout/2`.
+  Copie SSID en buffer avant affichage/logs (evite dangling `String::c_str()`).
+- **Heartbeat** : champ `sensors_present` (bitmask capteurs presents) remplace
+  `sensor_mode` ambigu ; doc serveur `ENDPOINTS_ESP32_SERVEUR.md` mise a jour.
+- **Nettoyage** : suppression `PglSleep::configure()`, `pirEdgeGuard_`, `hwLine_` mort,
+  branche UI `setWifiSearching()` inaccessible ; +3 tests fusion.
+
 ## 0.4.1 - 2026-06-26
 
 - **Affichage de l'état PIR** sur l'écran LVGL, en miroir de l'indicateur IR :

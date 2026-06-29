@@ -4,7 +4,11 @@
 
 // Version firmware
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.4.1";
+#ifndef N3_HTTP_TIMEOUT_MS
+#define N3_HTTP_TIMEOUT_MS 12000
+#endif
+
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.5.15";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
@@ -30,6 +34,11 @@ static constexpr const char* PGL_SENSOR_LOCATION = "n3-recyclage";
 #ifndef PGL_IR_PIN
 #define PGL_IR_PIN 7
 #endif
+// Presence IR : -1 = autodetect au boot (heuristique), 0 = absent, 1 = present.
+// En production, preferer -DPGL_IR_PRESENT=1 sur les boards equipees (comme PGL_ENABLE_PIR).
+#ifndef PGL_IR_PRESENT
+#define PGL_IR_PRESENT (-1)
+#endif
 static constexpr int PGL_US_PIN = 6;   // HC-SR04 trig/echo sur une seule broche
 
 // --- Capteur PIR (detecteur de mouvement, sortie numerique active-HAUT) ------
@@ -46,13 +55,19 @@ static constexpr int PGL_US_PIN = 6;   // HC-SR04 trig/echo sur une seule broche
 #define PGL_ENABLE_PIR 0          // PIR desactive par defaut (activer par board)
 #endif
 #ifndef PGL_PIR_PIN
-#define PGL_PIR_PIN 5             // GPIO libre RTC-capable ; A ADAPTER par board
+#define PGL_PIR_PIN 5             // JC4827 : GPIO5 libre (eviter conflit bus display)
 #endif
 static constexpr uint32_t PGL_PIR_DEBOUNCE_MS = 1000;            // garde anti re-trigger PIR
 static constexpr uint32_t PGL_PIR_PRESENCE_WINDOW_MS = 4000;     // PIR confirme un comptage IR/US
 
 // Volume audio (0…21, ESP32-audioI2S) — display ; inutilise en headless
 static constexpr uint8_t PGL_AUDIO_VOLUME = 15;
+
+// Jingle MP3 au power-on (cold boot). 0 = desactive (defaut prod) : son uniquement
+// sur detection (playThanks). 1 = lecture aleatoire /mp3/ au demarrage.
+#ifndef PGL_ENABLE_STARTUP_JINGLE
+#define PGL_ENABLE_STARTUP_JINGLE 0
+#endif
 
 // Audio I2S JC4827W543 (ampli NS4168, sortie speak) — display uniquement
 
@@ -115,6 +130,10 @@ static constexpr uint32_t PGL_DEBOUNCE_MS = 600;
 static constexpr uint32_t PGL_TANDEM_WINDOW_MS = 300;
 
 static constexpr uint8_t PGL_US_CONSECUTIVE_POLLS = 2;
+// Promotion US runtime (absent au boot) : N mesures valides consecutives.
+static constexpr uint8_t PGL_US_RUNTIME_PROMOTE_COUNT = 3;
+// Demotion du compteur runtime : N echecs consecutifs avant reset (evite oscillation).
+static constexpr uint8_t PGL_US_RUNTIME_DEMOTE_COUNT = 5;
 
 // Fenetre de concordance IR<->US pour la corroboration (un capteur a declenche ce
 // poll, l'autre recemment). Alignee sur l'ancienne fenetre tandem (300 ms).
@@ -149,12 +168,17 @@ static constexpr uint32_t PGL_RECONCILE_INTERVAL_MS = 30000;
 // Réseau / synchro
 
 static constexpr uint32_t PGL_UPLOAD_EVERY_MS = 20000;
+// Backoff apres echecs HTTP consecutifs (5xx, timeout, reseau) : base * 2^min(streak,4), plafond 5 min.
+static constexpr uint32_t PGL_UPLOAD_BACKOFF_MAX_MS = 300000;
+static constexpr uint8_t PGL_UPLOAD_BACKOFF_STREAK_MAX = 4;
 
 static constexpr size_t PGL_BATCH_SIZE = 12;
 
 static constexpr size_t PGL_FORCE_UPLOAD_QUEUE_SIZE = 24;
 
-static constexpr uint32_t PGL_WIFI_TIMEOUT_MS = 10000;
+static constexpr uint32_t PGL_WIFI_TIMEOUT_MS = 15000;
+
+static constexpr uint32_t PGL_WIFI_PRESCAN_DELAY_MS = 1500;
 
 static constexpr uint32_t PGL_WIFI_LOOP_BUDGET_MS = 40;
 
@@ -198,7 +222,11 @@ static constexpr uint8_t PGL_NIGHT_END_HOUR = 6;
 
 static constexpr int16_t PGL_LOWBATT_MILLIVOLT = 3500;
 
-static constexpr uint32_t PGL_BACKLIGHT_TIMEOUT_MS = 20000;
+#ifndef PGL_BACKLIGHT_TIMEOUT_MS
+#define PGL_BACKLIGHT_TIMEOUT_MS 20000
+#endif
+
+static constexpr uint32_t PGL_BACKLIGHT_TIMEOUT_MS_CFG = PGL_BACKLIGHT_TIMEOUT_MS;
 
 // Journal SD (offline sync)
 // Fichier de journal sur la carte SD (append-only, records binaires + CRC16)
@@ -224,9 +252,19 @@ static constexpr uint32_t PGL_JOURNAL_COMPACT_THRESHOLD = 1024UL * 1024UL;
 // changement de comportement tant que ce fichier n'est pas pose). Le vrai CA
 // est gitignore et ne doit jamais etre committe.
 
-static constexpr const char* PGL_SERVER_POST_URL = "https://iot.olution.info/pgl/post-data";
+// Schema serveur : HTTP par defaut (aligne n3pp/msp). Flag USE_HTTPS_ENDPOINTS
+// (env pgl-*-https) bascule en https:// — voir docs/HTTPS_MIGRATION.md.
+#if defined(USE_HTTPS_ENDPOINTS)
+#define PGL_SERVER_SCHEME "https://"
+#else
+#define PGL_SERVER_SCHEME "http://"
+#endif
 
-static constexpr const char* PGL_SERVER_HEARTBEAT_URL = "https://iot.olution.info/pgl/heartbeat";
+static constexpr const char* PGL_SERVER_POST_URL =
+    PGL_SERVER_SCHEME "iot.olution.info/pgl/post-data";
+
+static constexpr const char* PGL_SERVER_HEARTBEAT_URL =
+    PGL_SERVER_SCHEME "iot.olution.info/pgl/heartbeat";
 
 #ifndef PGL_ENABLE_SERVER_HEARTBEAT
 

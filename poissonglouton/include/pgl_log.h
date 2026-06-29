@@ -18,6 +18,16 @@
 #define PGL_LOG_V(fmt, ...) ((void)0)
 #endif
 
+#ifndef PGL_DISPLAY_DEBUG
+#define PGL_DISPLAY_DEBUG 0
+#endif
+
+#if PGL_DISPLAY_DEBUG
+#define PGL_LOG_DISP(fmt, ...) Serial.printf("[PGL][DISP] " fmt "\n", ##__VA_ARGS__)
+#else
+#define PGL_LOG_DISP(fmt, ...) ((void)0)
+#endif
+
 inline void pglLogWakeupCause() {
   const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   switch (cause) {
@@ -73,5 +83,21 @@ inline const char* pglWifiStatusName(wl_status_t status) {
     case WL_CONNECTION_LOST: return "LOST";
     case WL_DISCONNECTED: return "DISCONNECTED";
     default: return "UNKNOWN";
+  }
+}
+
+/** Libelle court pour WiFi.reason() (ESP-IDF wifi_err_reason_t). */
+inline const char* pglWifiDisconnectReasonName(uint8_t reason) {
+  switch (reason) {
+    case 0: return "-";
+    case 1: return "UNSPEC";
+    case 2: return "AUTH_EXPIRE";
+    case 15: return "4WAY_HANDSHAKE";
+    case 17: return "HANDSHAKE_TO";
+    case 201: return "NO_AP_FOUND";
+    case 202: return "AUTH_FAIL";
+    case 203: return "ASSOC_FAIL";
+    case 204: return "HANDSHAKE_FAIL";
+    default: return "REASON";
   }
 }

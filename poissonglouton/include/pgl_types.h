@@ -38,9 +38,9 @@ struct PglStoredEvent {
 /**
  * Telemetrie instantanee jointe au heartbeat serveur (monitoring de flotte).
  * Toutes ces valeurs proviennent de getters deja existants (aucun nouvel etat
- * persistant) : files d'attente d'evenements, mode de stockage, batterie, mode
- * de detection actif. Le module reseau ne depend ainsi ni du compteur ni de la
- * detection : main.cpp collecte ces valeurs simples et les passe au heartbeat.
+ * persistant) : files d'attente d'evenements, stockage, batterie, capteurs
+ * presents (bitmask PGL_SENS_*). Le module reseau ne depend ainsi ni du compteur
+ * ni de la detection : main.cpp collecte ces valeurs simples et les passe au heartbeat.
  */
 struct PglHeartbeatTelemetry {
   uint16_t pending = 0;          // evenements en attente (RAM/NVS courant)
@@ -48,7 +48,8 @@ struct PglHeartbeatTelemetry {
   uint16_t nvsPending = 0;       // evenements persistes en NVS non acquittes
   bool sdOk = false;             // true si stockage en mode journal SD
   int16_t batteryMilliVolt = 0;  // tension batterie instantanee (mV)
-  uint8_t sensorMode = 0;        // mode de detection actif (PglSensorMode)
+  /** Bitmask PGL_SENS_* des capteurs PRESENTS (IR/US/PIR detectes au boot ou runtime). */
+  uint8_t sensorsPresent = 0;
 };
 
 /** Dernier etat des echanges HTTP avec iot.olution.info (post-data / heartbeat). */
@@ -57,4 +58,22 @@ struct PglServerCommStatus {
   int lastHeartbeatHttp = 0;
   uint32_t lastPostMs = 0;
   uint32_t lastHeartbeatMs = 0;
+};
+
+/** Diagnostic WiFi pour affichage ecran et logs serie. */
+struct PglWifiDiag {
+  /** Valeur wl_status_t (uint8_t pour eviter #include WiFi.h ici). */
+  uint8_t wlStatus = 0;
+  bool connected = false;
+  bool connecting = false;
+  /** Phase lisible : fast, scan, connect, attente, etc. */
+  char phase[20] = "init";
+  /** SSID cible ou memorise (vide si inconnu). */
+  char targetSsid[33] = "";
+  /** Ligne compacte pour l'ecran (wrap LVGL). */
+  char line[96] = "WiFi: ...";
+  /** Secondes avant prochain essai (0 si actif). */
+  uint16_t retryInSec = 0;
+  /** Derniere raison de deconnexion ESP-IDF (0 si N/A). */
+  uint8_t disconnectReason = 0;
 };

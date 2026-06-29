@@ -121,9 +121,10 @@ void finishConnected(N3WifiSession& session, const char* ssid) {
   Serial.printf("[WiFi] OK %s %s RSSI=%d\n", ssid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
 }
 
-void finishFailed(N3WifiSession& session) {
+void finishFailed(N3WifiSession& session, uint8_t reason) {
   session.phase = kFailed;
-  Serial.println("[WiFi] Echec connexion - aucun reseau disponible");
+  session.failureReason = reason;
+  Serial.printf("[WiFi] Echec connexion — %s\n", n3WifiSessionFailureReasonName(reason));
   if (session.config && session.config->onFailure) {
     session.config->onFailure();
   }
@@ -208,6 +209,7 @@ void startFastReconnect(N3WifiSession& session) {
     strncpy(session.currentSsid, config.networks[i].ssid, 32);
     session.currentSsid[32] = '\0';
     session.connectDeadline = millis() + fastTimeout;
+    session.connectStartedMs = millis();
     session.retryNoBssid = false;
     session.phase = kFastReconnect;
     return;
@@ -219,7 +221,7 @@ void startFastReconnect(N3WifiSession& session) {
 void startScanAsync(N3WifiSession& session) {
   const int rc = WiFi.scanNetworks(true, true);
   if (rc == WIFI_SCAN_FAILED) {
-    finishFailed(session);
+    finishFailed(session, N3_WIFI_FAIL_SCAN_START);
     return;
   }
   session.phase = kScanAsync;
@@ -227,7 +229,7 @@ void startScanAsync(N3WifiSession& session) {
 
 void beginTryCurrentNetwork(N3WifiSession& session) {
   if (session.orderIdx >= session.orderCount) {
-    finishFailed(session);
+    finishFailed(session, N3_WIFI_FAIL_ALL_NETS);
     return;
   }
 
@@ -235,6 +237,15 @@ void beginTryCurrentNetwork(N3WifiSession& session) {
   const N3WifiConfig& config = *session.config;
   const char* ssid = config.networks[i].ssid;
   const char* pass = config.networks[i].pass;
+  if (!ssid || ssid[0] == '\0') {
+    session.orderIdx++;
+    if (session.orderIdx >= session.orderCount) {
+      finishFailed(session, N3_WIFI_FAIL_ALL_NETS);
+      return;
+    }
+    beginTryCurrentNetwork(session);
+    return;
+  }
   strncpy(session.currentSsid, ssid, 32);
   session.currentSsid[32] = '\0';
   session.retryNoBssid = false;
@@ -243,6 +254,7 @@ void beginTryCurrentNetwork(N3WifiSession& session) {
     Serial.printf("[WiFi] Try %s RSSI=%d ch=%d\n", ssid, session.cand[i].rssi, session.cand[i].chan);
     wifiBeginSafe(ssid, pass, session.cand[i].chan, session.cand[i].bssid);
     session.connectDeadline = millis() + session.timeoutMs;
+    session.connectStartedMs = millis();
     session.phase = kWaitConnect;
     return;
   }
@@ -257,20 +269,21 @@ void beginTryCurrentNetwork(N3WifiSession& session) {
 void advanceAfterConnectFailure(N3WifiSession& session) {
   const size_t i = session.order[session.orderIdx];
   if (session.cand[i].present && !session.retryNoBssid) {
-    WiFi.disconnect(false, true);
-    Serial.printf("[WiFi] Retry sans BSSID %s\n", session.currentSsid);
-    const char* pass = session.config->networks[i].pass;
-    WiFi.begin(session.currentSsid, pass);
+    WiFi.disconnect(true, true);
     session.retryNoBssid = true;
-    session.connectDeadline = millis() + session.timeoutMs * 2;
-    session.phase = kWaitRetryConnect;
+    session.pendingNoBssidRetry = true;
+    session.phase = kDelayBetween;
+    session.phaseDeadline = millis() + 500;
+    Serial.printf("[WiFi] Retry sans BSSID %s (pause 500ms)\n", session.currentSsid);
     return;
   }
 
   Serial.printf("[WiFi] Echec %s\n", session.currentSsid);
+  session.retryNoBssid = false;
+  session.pendingNoBssidRetry = false;
   session.orderIdx++;
   if (session.orderIdx >= session.orderCount) {
-    finishFailed(session);
+    finishFailed(session, N3_WIFI_FAIL_ALL_NETS);
     return;
   }
   const unsigned long delayBetweenMs =
@@ -316,6 +329,7 @@ bool processInvisibleRescanResults(N3WifiSession& session, int n2) {
     wifiBeginSafe(session.invisibleRescanSsid, pass, chan2, bssid2);
     session.cand[i].present = true;
     session.connectDeadline = millis() + session.timeoutMs;
+    session.connectStartedMs = millis();
     session.phase = kWaitConnect;
     return true;
   }
@@ -323,6 +337,7 @@ bool processInvisibleRescanResults(N3WifiSession& session, int n2) {
   Serial.printf("[WiFi] Rescan: %s toujours invisible (%d APs)\n", session.invisibleRescanSsid, n2);
   WiFi.begin(session.invisibleRescanSsid, pass);
   session.connectDeadline = millis() + session.timeoutMs * 2;
+  session.connectStartedMs = millis();
   session.phase = kWaitConnect;
   return true;
 }
@@ -362,13 +377,13 @@ bool pollPhase(N3WifiSession& session) {
         return false;
       }
       if (n == WIFI_SCAN_FAILED) {
-        finishFailed(session);
+        finishFailed(session, N3_WIFI_FAIL_SCAN);
         return true;
       }
       logScanResults(n, "scan", *session.config);
       buildOrderFromScan(session, n);
       if (session.orderCount == 0) {
-        finishFailed(session);
+        finishFailed(session, N3_WIFI_FAIL_NO_AP);
         return true;
       }
       beginTryCurrentNetwork(session);
@@ -378,11 +393,17 @@ bool pollPhase(N3WifiSession& session) {
     case kWaitConnect:
       if (millis() >= session.connectDeadline) {
         advanceAfterConnectFailure(session);
+      } else if (WiFi.status() == WL_CONNECT_FAILED &&
+                 (millis() - session.connectStartedMs) > 2000) {
+        advanceAfterConnectFailure(session);
       }
       return false;
 
     case kWaitRetryConnect:
       if (millis() >= session.connectDeadline) {
+        advanceAfterConnectFailure(session);
+      } else if (WiFi.status() == WL_CONNECT_FAILED &&
+                 (millis() - session.connectStartedMs) > 2000) {
         advanceAfterConnectFailure(session);
       }
       return false;
@@ -391,7 +412,7 @@ bool pollPhase(N3WifiSession& session) {
       if (millis() >= session.phaseDeadline) {
         const int rc = WiFi.scanNetworks(true, true);
         if (rc == WIFI_SCAN_FAILED) {
-          finishFailed(session);
+          finishFailed(session, N3_WIFI_FAIL_RESCAN);
           return true;
         }
         session.phase = kInvisibleRescan;
@@ -404,7 +425,7 @@ bool pollPhase(N3WifiSession& session) {
         return false;
       }
       if (n2 == WIFI_SCAN_FAILED) {
-        finishFailed(session);
+        finishFailed(session, N3_WIFI_FAIL_RESCAN);
         return true;
       }
       processInvisibleRescanResults(session, n2);
@@ -413,7 +434,17 @@ bool pollPhase(N3WifiSession& session) {
 
     case kDelayBetween:
       if (millis() >= session.phaseDeadline) {
-        beginTryCurrentNetwork(session);
+        if (session.pendingNoBssidRetry) {
+          session.pendingNoBssidRetry = false;
+          const size_t idx = session.order[session.orderIdx];
+          const char* pass = session.config->networks[idx].pass;
+          WiFi.begin(session.currentSsid, pass);
+          session.connectDeadline = millis() + session.timeoutMs * 2;
+          session.connectStartedMs = millis();
+          session.phase = kWaitRetryConnect;
+        } else {
+          beginTryCurrentNetwork(session);
+        }
       }
       return false;
 
@@ -422,7 +453,7 @@ bool pollPhase(N3WifiSession& session) {
       return true;
 
     default:
-      finishFailed(session);
+      finishFailed(session, N3_WIFI_FAIL_TIMEOUT);
       return true;
   }
 }
@@ -434,6 +465,7 @@ void n3WifiSessionReset(N3WifiSession& session) {
   session.phase = kIdle;
   session.phaseDeadline = 0;
   session.connectDeadline = 0;
+  session.connectStartedMs = 0;
   session.timeoutMs = 5000;
   session.orderCount = 0;
   session.orderIdx = 0;
@@ -441,11 +473,13 @@ void n3WifiSessionReset(N3WifiSession& session) {
   memset(session.cand, 0, sizeof(session.cand));
   session.netCount = 0;
   session.retryNoBssid = false;
+  session.pendingNoBssidRetry = false;
   session.onConnectingCalled = false;
   session.fastReconnectTried = false;
   session.currentSsid[0] = '\0';
   session.connectedSsid[0] = '\0';
   session.invisibleRescanSsid[0] = '\0';
+  session.failureReason = N3_WIFI_FAIL_NONE;
 }
 
 void n3WifiSessionBegin(N3WifiSession& session, const N3WifiConfig& config) {
@@ -521,6 +555,39 @@ N3WifiPollResult n3WifiSessionPoll(N3WifiSession& session, uint32_t budgetMs, St
   }
 
   return N3WifiPollResult::InProgress;
+}
+
+const char* n3WifiSessionPhaseName(uint8_t phase) {
+  // Valeurs alignees sur N3WifiPhase (n3_wifi.cpp, namespace interne).
+  switch (phase) {
+    case 0: return "idle";
+    case 1: return "fast";
+    case 2: return "pre-scan";
+    case 3: return "scan";
+    case 4: return "try";
+    case 5: return "connect";
+    case 6: return "retry";
+    case 7: return "wait-retry";
+    case 8: return "rescan-w";
+    case 9: return "rescan";
+    case 10: return "pause";
+    case 11: return "ok";
+    case 12: return "fail";
+    default: return "?";
+  }
+}
+
+const char* n3WifiSessionFailureReasonName(uint8_t reason) {
+  switch (reason) {
+    case N3_WIFI_FAIL_NONE: return "none";
+    case N3_WIFI_FAIL_SCAN_START: return "scan_start";
+    case N3_WIFI_FAIL_SCAN: return "scan";
+    case N3_WIFI_FAIL_NO_AP: return "no_ap";
+    case N3_WIFI_FAIL_ALL_NETS: return "all_nets";
+    case N3_WIFI_FAIL_RESCAN: return "rescan";
+    case N3_WIFI_FAIL_TIMEOUT: return "timeout";
+    default: return "?";
+  }
 }
 
 bool n3WifiConnect(const N3WifiConfig& config, String* outWifiactif) {

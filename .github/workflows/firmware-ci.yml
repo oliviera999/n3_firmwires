@@ -51,7 +51,7 @@ jobs:
       - name: poissonglouton (suite par suite)
         run: |
           cd poissonglouton
-          for s in test_journal_logic test_counter test_detection_fusion; do
+          for s in test_journal_logic test_counter test_detection_fusion test_detection_poll; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
@@ -80,6 +80,8 @@ jobs:
           # fois la version ESP32Servo/arduino-esp32 S3 alignée.
           - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
+          - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
+          - { name: poissonglouton-headless-https, dir: poissonglouton, env: pgl-s3-headless-https }
           - { name: uploadphotosserver-msp1, dir: uploadphotosserver, env: msp1 }
     steps:
       - uses: actions/checkout@v4

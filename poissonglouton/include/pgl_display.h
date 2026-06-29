@@ -12,6 +12,7 @@ class PglDisplay {
   void onBottleCount(uint32_t totalCount, uint32_t todayCount);
   void setCounter(uint32_t totalCount, uint32_t todayCount);
   void setWifiInfo(const char* ssid, wl_status_t status, int rssi);
+  void setWifiProgress(const PglWifiDiag& diag);
   void setWifiSearching();
   void setWifiConnecting();
   void setWifiOffline();
@@ -35,11 +36,10 @@ class PglDisplay {
   uint32_t totalCount_ = 0;
   uint32_t todayCount_ = 0;
   uint32_t lastCountAnimMs_ = 0;
-  char wifiLine_[56] = "WiFi: ...";
+  char wifiLine_[96] = "WiFi: ...";
   char audioLine_[56] = "En attente";
   char usLine_[48] = "US: -";
   char serverLine_[64] = "Srv: -";
-  char hwLine_[56] = "Ecran: ... | IR: ...";
   bool gfxOk_ = false;
   bool lvglOk_ = false;
   bool ready_ = false;

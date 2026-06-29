@@ -208,10 +208,17 @@ void PglCounter::popBatch(size_t count) {
   if (count == 0 || size_ == 0) return;
   const size_t n = (count > size_) ? size_ : count;
 
-  PglStoredEvent batch[MAX_EVENTS] = {};
-  const size_t peeked = peekBatch(batch, n);
-  syncedLifetimeTotal_ += sumEventDeltas(batch, peeked);
-  syncedTodayTotal_ += sumTodayDeltas(batch, peeked, lastDayKey_);
+  uint32_t lifetimeSum = 0;
+  uint32_t todaySum = 0;
+  for (size_t i = 0; i < n; ++i) {
+    const PglStoredEvent& ev = queue_[(head_ + i) % MAX_EVENTS];
+    lifetimeSum += ev.countDelta;
+    if (lastDayKey_ != 0 && dayKeyFromEpoch(ev.epoch) == lastDayKey_) {
+      todaySum += ev.countDelta;
+    }
+  }
+  syncedLifetimeTotal_ += lifetimeSum;
+  syncedTodayTotal_ += todaySum;
 
   head_ = static_cast<uint16_t>((head_ + n) % MAX_EVENTS);
   size_ = static_cast<uint16_t>(size_ - n);

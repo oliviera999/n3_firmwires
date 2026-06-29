@@ -5,6 +5,7 @@
 // Poignees widgets du tableau de bord LVGL (module pgl_ui).
 struct PglUiHandles {
   lv_obj_t* labelTitle = nullptr;
+  lv_obj_t* labelVersion = nullptr;
   lv_obj_t* ledIr = nullptr;
   lv_obj_t* ledPir = nullptr;  // pastille header PIR (cree seulement si PGL_ENABLE_PIR)
   lv_obj_t* ledWifi = nullptr;

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <cstring>
 #include <esp_sleep.h>
 #include <sys/time.h>
 #include <time.h>
@@ -39,10 +40,15 @@ uint32_t gLastActivityMs = 0;
 uint32_t gLastUiIdleMs = 0;
 uint32_t gLastHeartbeatMs = 0;
 uint32_t gLastServerHeartbeatMs = 0;
+uint32_t gLastWifiUiMs = 0;
 uint32_t gLastIdleWarnMs = 0;
+uint8_t gUploadFailStreak = 0;
 // Etat de l'extinction du retroeclairage par inactivite (independant du deep sleep).
 // Evite de redeclencher la transition a chaque tour de loop().
 bool gBacklightDimmed = false;
+// Cold boot : WiFi differe jusqu'a fin d'une lecture I2S (jingle optionnel).
+static uint32_t gWifiDeferUntilMs = 0;
+static constexpr uint32_t kWifiDeferPending = UINT32_MAX;
 
 RTC_DATA_ATTR uint32_t gBootCount = 0;
 bool gEpochBackfillDone = false;
@@ -82,19 +88,20 @@ void onAudioDisplayNotify(const char* reason, const char* mp3Path, bool started,
 }
 
 void refreshDisplayWifi(PglDisplay& display, PglNetwork& network) {
-  if (network.isWifiConnected()) {
-    display.setWifiInfo(WiFi.SSID().c_str(), WL_CONNECTED, WiFi.RSSI());
-  } else if (network.isWifiConnecting()) {
-    display.setWifiConnecting();
-  } else if (network.isWifiOffline()) {
-    display.setWifiOffline();
+  const PglWifiDiag& diag = network.getWifiDiag();
+  if (diag.connected) {
+    display.setWifiInfo(diag.targetSsid[0] ? diag.targetSsid : "?",
+                        WL_CONNECTED, WiFi.RSSI());
   } else {
-    display.setWifiSearching();
+    display.setWifiProgress(diag);
   }
 }
 
 void refreshDisplayUltrason(PglDisplay& display, PglDetection& detection) {
-  display.setUltrasonDistance(detection.getUltrasonDistanceCm(), detection.hasUltrason());
+  const uint16_t cm = detection.getUltrasonDistanceCm();
+  // Afficher la distance des qu'un echo est recu, meme si l'US etait "absent" au boot.
+  const bool usActive = detection.hasUltrason() || cm > 0;
+  display.setUltrasonDistance(cm, usActive);
 }
 
 void refreshDisplayServer(PglDisplay& display, PglNetwork& network, PglCounter& counter) {
@@ -210,6 +217,10 @@ static void maybeRunPeriodicOtaCheck() {
 static uint32_t loadLastKnownEpoch() {
   Preferences p;
   if (!p.begin(kTimeNvsNamespace, true)) {
+    // Premier boot : creer le namespace vide pour eviter le spam E NOT_FOUND au prochain boot.
+    if (p.begin(kTimeNvsNamespace, false)) {
+      p.end();
+    }
     return 0;
   }
   const uint32_t epoch = p.getUInt(kTimeNvsKey, 0);
@@ -276,7 +287,7 @@ static PglHeartbeatTelemetry collectHeartbeatTelemetry() {
   t.nvsPending = gCounter.getNvsPendingCount();
   t.sdOk = gCounter.isSdMode();
   t.batteryMilliVolt = readBatteryMilliVolt();
-  t.sensorMode = gDetection.getActiveSensorsMask();
+  t.sensorsPresent = gDetection.getActiveSensorsMask();
   return t;
 }
 
@@ -289,8 +300,8 @@ static PglHeartbeatTelemetry collectHeartbeatTelemetry() {
 // Surcharges (nuit 23h-6h, batterie faible) : appliquees uniquement si elles
 // ALLONGENT le timer courant, pour ne jamais raccourcir une base deja longue
 // (ex. la base IR de 300 s ne doit pas retomber a 10 s sur batterie faible).
-static uint32_t computeSleepTimerS(bool irPresent) {
-  uint32_t timerS = irPresent ? PGL_TIMER_WAKEUP_IR_S : PGL_TIMER_WAKEUP_S;
+static uint32_t computeSleepTimerS(bool edgeWakeupPresent) {
+  uint32_t timerS = edgeWakeupPresent ? PGL_TIMER_WAKEUP_IR_S : PGL_TIMER_WAKEUP_S;
 
   const int16_t battMv = readBatteryMilliVolt();
 #if PGL_BATTERY_ADC_ENABLED
@@ -319,13 +330,58 @@ static uint32_t computeSleepTimerS(bool irPresent) {
 }
 #endif  // PGL_ENABLE_SLEEP && !PGL_DEBUG_NO_SLEEP
 
+static uint32_t uploadRetryIntervalMs() {
+  if (gUploadFailStreak == 0) {
+    return PGL_UPLOAD_EVERY_MS;
+  }
+  const uint8_t exp = (gUploadFailStreak > PGL_UPLOAD_BACKOFF_STREAK_MAX)
+                          ? PGL_UPLOAD_BACKOFF_STREAK_MAX
+                          : gUploadFailStreak;
+  uint32_t delay = PGL_UPLOAD_EVERY_MS;
+  for (uint8_t i = 0; i < exp; ++i) {
+    if (delay >= PGL_UPLOAD_BACKOFF_MAX_MS / 2) {
+      return PGL_UPLOAD_BACKOFF_MAX_MS;
+    }
+    delay *= 2;
+  }
+  return delay;
+}
+
+static bool wifiPollAllowed() {
+  if (gAudio.isBusyForWifi()) {
+    return false;
+  }
+  if (gWifiDeferUntilMs == kWifiDeferPending) {
+    return false;
+  }
+  return millis() >= gWifiDeferUntilMs;
+}
+
+static void maybeStartDeferredWifi() {
+  if (gWifiDeferUntilMs != kWifiDeferPending) {
+    return;
+  }
+  if (gAudio.isBusyForWifi()) {
+    return;
+  }
+  for (int i = 0; i < 50; ++i) {
+    gAudio.poll();
+    delay(10);
+  }
+  gNetwork.startBackgroundWifi();
+  gWifiDeferUntilMs = millis() + 12000;
+  PGL_LOG_V("WiFi: demarrage differe apres lecture audio");
+}
+
 static bool shouldUploadNow() {
   if (gCounter.getPendingCount() >= PGL_FORCE_UPLOAD_QUEUE_SIZE) return true;
-  return (millis() - gLastUploadMs) >= PGL_UPLOAD_EVERY_MS;
+  return (millis() - gLastUploadMs) >= uploadRetryIntervalMs();
 }
 
 static void tryUploadBatch() {
   if (!shouldUploadNow()) return;
+  if (!wifiPollAllowed()) return;
+  if (!gNetwork.isWifiConnected()) return;
   if (gCounter.getPendingCount() == 0) {
     gLastUploadMs = millis();
     return;
@@ -342,6 +398,7 @@ static void tryUploadBatch() {
 
   const uint32_t budgetStart = millis();
   bool anySuccess = false;
+  bool uploadFailed = false;
 
   if (gCounter.hasJournalPending()) {
     while (gCounter.getJournalPendingCount() > 0) {
@@ -374,6 +431,7 @@ static void tryUploadBatch() {
         gCounter.commitJournalAck(ackId, batch, batchCount);
         gDisplay.setCounter(gCounter.getTotalCount(), gCounter.getTodayCount());
       } else {
+        uploadFailed = true;
         PGL_LOG("Upload SD: ECHEC — conservation des evenements (pending=%u)",
                 gCounter.getPendingCount());
         break;
@@ -400,6 +458,7 @@ static void tryUploadBatch() {
                   static_cast<unsigned int>(batchCount));
         }
       } else {
+        uploadFailed = true;
         PGL_LOG("Upload NVS: ECHEC, evenements conserves (pending=%u)",
                 gCounter.getPendingCount());
       }
@@ -416,6 +475,17 @@ static void tryUploadBatch() {
 #else
   (void)anySuccess;
 #endif
+
+  if (uploadFailed) {
+    if (gUploadFailStreak < 255) {
+      gUploadFailStreak++;
+    }
+    PGL_LOG("Upload: echec HTTP consecutif #%u — prochain essai dans %lums",
+            static_cast<unsigned int>(gUploadFailStreak),
+            static_cast<unsigned long>(uploadRetryIntervalMs()));
+  } else if (anySuccess) {
+    gUploadFailStreak = 0;
+  }
 
   gLastUploadMs = millis();
 }
@@ -444,10 +514,11 @@ void setup() {
   n3OtaSyncBootPartition();
 #endif
 
+  // WiFi des le boot (scan en parallele de l'init SD/display — validé v0.5.8 sur inwi).
   PGL_LOG("Init reseau...");
   gNetwork.begin();
-  gNetwork.startBackgroundWifi();
   PGL_LOG_V("WiFi mode STA, status=%s", pglWifiStatusName(WiFi.status()));
+  gNetwork.startBackgroundWifi();
 
   PGL_LOG("Init carte SD...");
 #if !PGL_HEADLESS
@@ -460,11 +531,18 @@ void setup() {
   PGL_LOG("Init compteur NVS...");
   gCounter.begin(&gJournal);
 
+  // Scan SD + pistes MP3 ; moteur I2S lazy (instancie sur detection).
+  PGL_LOG("Init audio (SD + pistes MP3)...");
+  gAudio.begin();
+
   PGL_LOG("Init affichage...");
   gDisplay.begin();
   gDisplay.setCounter(gCounter.getTotalCount(), gCounter.getTodayCount());
 #if !PGL_HEADLESS
-  gDisplay.setWifiSearching();
+  if (!coldBoot) {
+    gNetwork.pollWifi(PGL_WIFI_LOOP_BUDGET_MS);
+  }
+  refreshDisplayWifi(gDisplay, gNetwork);
   PGL_LOG("Display: etat apres init — %s", gDisplay.isReady() ? "FONCTIONNEL" : "ECHEC");
 #endif
 
@@ -473,21 +551,31 @@ void setup() {
   logIrStatus(gDetection);
   logPirStatus(gDetection);
   refreshHardwareStatus(gDisplay, gDetection);
+  refreshDisplayUltrason(gDisplay, gDetection);
   PGL_LOG("Affichage pret");
 
   PGL_LOG("Mode capteur actif: %u (bitmask IR=1 US=2 PIR=4)",
           static_cast<unsigned int>(gDetection.getActiveSensorsMask()));
 
-  PGL_LOG("Init audio I2S (JC4827W543 speak)...");
   gAudio.setNotifyCallback(onAudioDisplayNotify, &gDisplay);
-  gAudio.begin();
-  // Jingle de demarrage uniquement au vrai power-on : sinon il serait rejoue
-  // a chaque sortie de deep sleep (timer/IR).
+#if PGL_ENABLE_STARTUP_JINGLE
   if (coldBoot) {
     gAudio.playStartup();
-  } else {
-    PGL_LOG_V("Audio: reveil deep sleep — jingle de demarrage ignore");
+#if !PGL_HEADLESS
+    for (int i = 0; i < 100; ++i) {
+      gAudio.poll();
+      delay(5);
+    }
+#endif
+    gWifiDeferUntilMs = kWifiDeferPending;
   }
+#else
+  if (coldBoot) {
+    PGL_LOG_V("Audio: jingle demarrage desactive (PGL_ENABLE_STARTUP_JINGLE=0)");
+  } else {
+    PGL_LOG_V("Audio: reveil deep sleep — pas de jingle");
+  }
+#endif
 
   const int16_t battMv = readBatteryMilliVolt();
 #if PGL_BATTERY_ADC_ENABLED
@@ -514,6 +602,8 @@ void setup() {
 }
 
 void loop() {
+  maybeStartDeferredWifi();
+  gAudio.poll();
   gDisplay.update();
   gCounter.resetDailyIfNeeded(getCurrentEpochSafe());
 
@@ -533,6 +623,7 @@ void loop() {
     gDisplay.onBottleCount(gCounter.getTotalCount(), gCounter.getTodayCount());
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
     gAudio.playThanks();
+    gAudio.poll();
     gLastActivityMs = millis();
     gLastUiIdleMs = millis();
     // Detection = activite : rallumer le retroeclairage s'il avait ete eteint
@@ -554,8 +645,15 @@ void loop() {
     gLastUiIdleMs = millis();
   }
 
-  if (gNetwork.pollWifi(PGL_WIFI_LOOP_BUDGET_MS)) {
-    refreshDisplayWifi(gDisplay, gNetwork);
+  if (wifiPollAllowed()) {
+    if (gNetwork.pollWifi(PGL_WIFI_LOOP_BUDGET_MS)) {
+      refreshDisplayWifi(gDisplay, gNetwork);
+      gLastWifiUiMs = millis();
+    } else if (!gNetwork.isWifiConnected() &&
+               (millis() - gLastWifiUiMs) >= 500) {
+      refreshDisplayWifi(gDisplay, gNetwork);
+      gLastWifiUiMs = millis();
+    }
   }
 
   if (isNtpReady() && !gEpochBackfillDone) {
@@ -570,7 +668,6 @@ void loop() {
     const uint32_t idleMs = millis() - gLastActivityMs;
     refreshDisplayWifi(gDisplay, gNetwork);
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
-    logIrStatus(gDetection);
 #if !PGL_HEADLESS
     PGL_LOG("Display: %s", gDisplay.isReady() ? "fonctionnel" : "ECHEC");
 #endif
@@ -584,8 +681,11 @@ void loop() {
             static_cast<unsigned long>(idleMs));
 #if PGL_VERBOSE_LOG
     if (WiFi.status() == WL_CONNECTED) {
+      char ssidBuf[33];
+      strncpy(ssidBuf, WiFi.SSID().c_str(), sizeof(ssidBuf) - 1);
+      ssidBuf[sizeof(ssidBuf) - 1] = '\0';
       PGL_LOG_V("heartbeat wifi: ssid=%s ip=%s ch=%d gw=%s",
-                WiFi.SSID().c_str(),
+                ssidBuf,
                 WiFi.localIP().toString().c_str(),
                 WiFi.channel(),
                 WiFi.gatewayIP().toString().c_str());
@@ -607,9 +707,8 @@ void loop() {
 
 #if PGL_ENABLE_SERVER_HEARTBEAT
   if ((millis() - gLastServerHeartbeatMs) >= PGL_HEARTBEAT_INTERVAL_MS) {
-    if (gNetwork.sendHeartbeat(gBootCount, collectHeartbeatTelemetry())) {
-      gLastServerHeartbeatMs = millis();
-    }
+    gNetwork.sendHeartbeat(gBootCount, collectHeartbeatTelemetry());
+    gLastServerHeartbeatMs = millis();
     refreshDisplayServer(gDisplay, gNetwork, gCounter);
   }
 #endif
@@ -629,12 +728,13 @@ void loop() {
   // 20 s n'est en pratique jamais atteint avant le sommeil : pas de conflit.
   // On reutilise gLastActivityMs (reinitialise a chaque detection) sans timer
   // divergent, et gBacklightDimmed garantit une seule transition.
-  if (!gBacklightDimmed && (millis() - gLastActivityMs) > PGL_BACKLIGHT_TIMEOUT_MS) {
+  if (!gBacklightDimmed && PGL_BACKLIGHT_TIMEOUT_MS_CFG > 0 &&
+      (millis() - gLastActivityMs) > PGL_BACKLIGHT_TIMEOUT_MS_CFG) {
     gDisplay.sleepBacklight();
     gBacklightDimmed = true;
     PGL_LOG_V("Backlight OFF (inactivite %lums >= %u)",
               static_cast<unsigned long>(millis() - gLastActivityMs),
-              static_cast<unsigned int>(PGL_BACKLIGHT_TIMEOUT_MS));
+              static_cast<unsigned int>(PGL_BACKLIGHT_TIMEOUT_MS_CFG));
   }
 
   if ((millis() - gLastActivityMs) > PGL_IDLE_SLEEP_MS) {

@@ -185,8 +185,13 @@ void buildHeader(lv_obj_t* parent, PglUiHandles& h) {
   h.labelTitle = lv_label_create(header);
   lv_label_set_text(h.labelTitle, "Poisson Glouton");
   lv_obj_add_style(h.labelTitle, &styleTitle, 0);
-  lv_obj_align(h.labelTitle, LV_ALIGN_LEFT_MID, PGL_UI_PAD_X, 0);
+  lv_obj_align(h.labelTitle, LV_ALIGN_LEFT_MID, PGL_UI_PAD_X, -6);
   lv_obj_set_width(h.labelTitle, PGL_SCREEN_W / 2);
+
+  h.labelVersion = lv_label_create(header);
+  lv_label_set_text_fmt(h.labelVersion, "v%s", PGL_FIRMWARE_VERSION);
+  lv_obj_add_style(h.labelVersion, &styleSection, 0);
+  lv_obj_align(h.labelVersion, LV_ALIGN_LEFT_MID, PGL_UI_PAD_X, 10);
 
   lv_obj_t* ledRow = lv_obj_create(header);
   lv_obj_remove_style_all(ledRow);
@@ -318,6 +323,8 @@ void buildSystemCard(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
   StatusRow wifiRow = createStatusRow(card, "WiFi: ...", true);
   handles.labelWifi = wifiRow.label;
   handles.barWifi = wifiRow.bar;
+  lv_label_set_long_mode(wifiRow.label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_height(lv_obj_get_parent(wifiRow.label), 48);
 
   StatusRow srvRow = createStatusRow(card, "Srv: -", true);
   handles.labelServer = srvRow.label;

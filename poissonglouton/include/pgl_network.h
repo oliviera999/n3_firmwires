@@ -19,6 +19,7 @@ class PglNetwork {
   bool isWifiConnected() const;
   bool isWifiConnecting() const;
   bool isWifiOffline() const;
+  const PglWifiDiag& getWifiDiag() const;
 
   /**
    * Envoie un lot d'événements vers le serveur.
@@ -44,9 +45,14 @@ class PglNetwork {
   // avant de retomber sur la session de scan multi-reseaux n3_wifi.
   bool tryFastReconnect();
   void rememberLastGoodAp();
+  void refreshWifiDiag();
+  void logWifiDiagPeriodic();
 
   PglServerCommStatus serverStatus_{};
+  PglWifiDiag wifiDiag_{};
+  uint32_t wifiLastDiagLogMs_ = 0;
   N3WifiSession wifiSession_{};
+  N3WifiConfig wifiConfig_{};
   bool wifiSessionActive_ = false;
   bool wifiConnecting_ = false;
   bool wifiBackoff_ = false;
