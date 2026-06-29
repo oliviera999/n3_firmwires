@@ -179,9 +179,11 @@ String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceA
   http.end();
 
   const int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127;
-  const char* verdict = (code >= 200 && code < 400)
-                            ? "acceptee (code 2xx/3xx)"
-                            : (code >= 400 && code < 500)
+  const char* verdict = (code >= 200 && code < 300)
+                            ? "acceptee (code 2xx)"
+                            : (code >= 300 && code < 400)
+                                  ? "redirection 3xx (suivre URL ou utiliser chemin canonique)"
+                                  : (code >= 400 && code < 500)
                                   ? "rejet client 4xx"
                                   : (code >= 500)
                                         ? "erreur serveur 5xx"

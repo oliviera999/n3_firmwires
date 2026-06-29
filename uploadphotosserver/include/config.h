@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.41"
+#define FIRMWARE_VERSION "2.43"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
@@ -123,12 +123,15 @@
 #  define CAM_XCLK_HZ        5000000
 
 #elif defined(TARGET_FFP3)
-#  define SERVER_PATH        "/ffp3/ffp3gallery/upload.php"
+/* Chemins canoniques sans prefixe /ffp3/ : les GET /ffp3/* declenchent un 301 Apache
+   (.htaccess o2switch) alors que les POST sont rewrites en interne — le firmware
+   GET outputs_state exige HTTP 200 + JSON (cf. serveur/.htaccess). */
+#  define SERVER_PATH        "/ffp3gallery/upload.php"
 #  define REMOTE_BOARD_ID    5
-#  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=5"
-#  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/post-uploadphotoserver-version.php"
-#  define SYNC_START_URL    SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-sync-start.php"
-#  define SYNC_FINISH_URL   SERVER_SCHEME "iot.olution.info/ffp3/ffp3gallery/uploadphotoserver-sync-finish.php"
+#  define REMOTE_OUTPUTS_STATE_URL SERVER_SCHEME "iot.olution.info/ffp3gallery/uploadphotoserver-outputs-action.php?action=outputs_state&board=5"
+#  define REMOTE_VERSION_POST_URL  SERVER_SCHEME "iot.olution.info/ffp3gallery/post-uploadphotoserver-version.php"
+#  define SYNC_START_URL    SERVER_SCHEME "iot.olution.info/ffp3gallery/uploadphotoserver-sync-start.php"
+#  define SYNC_FINISH_URL   SERVER_SCHEME "iot.olution.info/ffp3gallery/uploadphotoserver-sync-finish.php"
 #  define USE_DEEP_SLEEP     1
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600

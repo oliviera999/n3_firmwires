@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.41** (définie dans `include/config.h`).
+Version actuelle : **2.43** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **2.41** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.43 | 2026-06-29 | **FFP3 URLs canoniques** : chemins `/ffp3gallery/...` sans prefixe `/ffp3/` (GET `outputs_state` recevait HTTP 301 Apache sur `/ffp3/*` alors que le POST version passait en rewrite interne). |
+| 2.42 | 2026-06-29 | **PSRAM / init caméra** : `fb_location` explicite (PSRAM ou DRAM, aligné exemple Arduino) ; cascade SXGA→CIF→SVGA/DRAM→QQVGA ; diagnostics `[DIAG]` enrichis (`CONFIG_SPIRAM`, `esp_psram_get_size`) pour distinguer build vs matériel ; échec caméra → deep sleep au lieu de `ESP.restart()` (fini la boucle reboot ~13 s). |
 | 2.41 | 2026-06-27 | **Horodatage de capture + classement N-first** : le nom SD devient `/<N sur 10>_<Y-m-d_H-i-s>.jpg` (N en tête → tri robuste même si l'heure est fausse ; `0` si horloge inconnue). Le drain énumère désormais le répertoire SD (parse N+horodatage, rétro-compat `picture<N>.jpg`) et envoie l'heure/compteur de capture au serveur via en-têtes `X-Captured-At` / `X-Capture-Seq` (`camera_uploader`). Horloge entretenue : persistance NVS de l'epoch **à chaque réveil** (la RTC avance pendant le deep sleep ; cold-boot repart d'une heure récente). Helper `cameraSyncBuildSdPath`, `SYNC_MAX_BACKLOG_SCAN`. Contrat serveur n3_serveur ≥ 6.2.0. |
 | 2.40 | 2026-06-26 | **Synchronisation hors-ligne du backlog photo** : la carte SD sert de file d'attente locale, les photos non encore reçues par le serveur sont (re)poussées dès le retour du WiFi. Nouveaux modules `camera_uploader` (upload réutilisable mémoire/SD, en-tête `X-Sync-Session`) et `camera_sync` (curseur NVS `up_cursor`, drain hybride incrémental/complet, sessions `sync/start`+`sync/finish`). `sendPhoto()` → `capturePhoto()` (capture + stockage SD, upload direct si pas de SD). Contrat serveur n3_serveur ≥ 6.1.0 (jauge de transfert + mail récap). |
 | 2.39 | 2026-05-30 | Refactor modules (`camera_setup`, `camera_upload`, `camera_sleep`, `camera_mail_events`), dépendance `Arduino_JSON`, build fix `getLocalTime` |

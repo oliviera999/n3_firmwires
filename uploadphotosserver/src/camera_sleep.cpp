@@ -50,3 +50,13 @@ bool inPhotoWindow() {
   const int h = timeinfo.tm_hour;
   return (h >= HOUR_START && h < HOUR_END);
 }
+
+#if USE_DEEP_SLEEP
+void n3EnterDeepSleepSeconds(uint32_t seconds) {
+  Serial.printf("[SLEEP] Entree en deep sleep (%u s)\n", static_cast<unsigned int>(seconds));
+  delay(200);
+  Serial.flush();
+  esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(seconds) * uS_TO_S_FACTOR);
+  esp_deep_sleep_start();
+}
+#endif

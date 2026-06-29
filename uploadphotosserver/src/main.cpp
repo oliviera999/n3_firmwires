@@ -611,46 +611,23 @@ void setup() {
   config.xclk_freq_hz = CAM_XCLK_HZ;
   config.pixel_format = PIXFORMAT_JPEG;
 
-  /* Qualité caméra : SXGA si SPIRAM viable ; sinon CIF. Repli CIF si init SXGA échoue. */
-  const bool wantHighRes = n3CameraUseHighResBuffers();
-  if (wantHighRes) {
-    config.frame_size = FRAMESIZE_SXGA;
-    config.jpeg_quality = 4;
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_CIF;
-    config.jpeg_quality = 4;
-    config.fb_count = 1;
-  }
-
   const uint32_t camInitStartMs = millis();
-  Serial.printf("[CAM] init tentative: %s fb_count=%d (SPIRAM largest=%lu total=%lu)\n",
-                wantHighRes ? "SXGA" : "CIF",
-                wantHighRes ? 2 : 1,
-                static_cast<unsigned long>(
-                    heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)),
-                static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK && wantHighRes) {
-    Serial.printf("[CAM][WARN] Init SXGA echouee (0x%x), repli CIF fb_count=1\n",
-                  static_cast<unsigned>(err));
-    esp_camera_deinit();
-    config.frame_size = FRAMESIZE_CIF;
-    config.jpeg_quality = 4;
-    config.fb_count = 1;
-    err = esp_camera_init(&config);
-  }
+  char camModeLabel[24] = {};
+  esp_err_t err = n3CameraInitWithFallback(&config, camModeLabel, sizeof camModeLabel);
   if (err != ESP_OK) {
-    Serial.printf("[CAM][ERROR] Init camera echouee, err=0x%x\n", static_cast<unsigned>(err));
+    Serial.printf("[CAM][ERROR] Init camera impossible apres repli DRAM/PSRAM (0x%x)\n",
+                  static_cast<unsigned>(err));
+#if USE_DEEP_SLEEP
+    Serial.printf("[CAM] Deep sleep %u s (pas de reboot en boucle)\n",
+                  static_cast<unsigned int>(TIME_TO_SLEEP));
+    delay(500);
+    n3EnterDeepSleepSeconds(TIME_TO_SLEEP);
+#else
     delay(1000);
     ESP.restart();
+#endif
   }
-  if (!wantHighRes || config.frame_size == FRAMESIZE_CIF) {
-    Serial.println("[CAM] mode actif: CIF fb_count=1");
-  } else {
-    Serial.println("[CAM] mode actif: SXGA fb_count=2");
-  }
+  Serial.printf("[CAM] mode actif: %s\n", camModeLabel);
   logStepDuration("init_camera", millis() - camInitStartMs, 2500);
   logMonitoringSnapshot("setup:post_camera_init");
 

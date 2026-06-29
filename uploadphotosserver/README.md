@@ -6,7 +6,7 @@ Un seul code source pour trois cibles (galeries iot.olution.info) :
 |-------|-------------------|---------------------------|
 | `msp1`| msp1gallery       | Deep sleep 600 s, SD_MMC |
 | `n3pp`| n3ppgallery       | Deep sleep 600 s, SD_MMC |
-| `ffp3`| ffp3/ffp3gallery  | Deep sleep 600 s, SD_MMC |
+| `ffp3`| ffp3gallery       | Deep sleep 600 s, SD_MMC |
 
 ## Compilation
 
@@ -19,7 +19,7 @@ Un seul code source pour trois cibles (galeries iot.olution.info) :
 
 - `include/config.h` : constantes communes et par cible (SERVER_PATH, deep sleep, SD, NTP, créneau 6h–22h).
 - Les build flags `-DTARGET_MSP1`, `-DTARGET_N3PP`, `-DTARGET_FFP3` sont définis par l’env PlatformIO.
-- `FIRMWARE_VERSION` actuelle : `2.39` (voir `VERSION.md`). Code modularisé (`camera_setup`, `camera_upload`, `camera_sleep`, `camera_mail_events`, `camera_remote`).
+- `FIRMWARE_VERSION` actuelle : voir `include/config.h` et `VERSION.md`. Code modularisé (`camera_setup`, `camera_upload`, `camera_sleep`, `camera_mail_events`, `camera_remote`).
 
 ## Contrôle distant (GET + POST version)
 
@@ -38,7 +38,7 @@ Endpoints legacy par env (compatibilité) :
 
 - `msp1` : `/msp1gallery/uploadphotoserver-outputs-action.php` et `/msp1gallery/post-uploadphotoserver-version.php` (board 6 / `UploadPhoto2Outputs`)
 - `n3pp` : `/n3ppgallery/uploadphotoserver-outputs-action.php` et `/n3ppgallery/post-uploadphotoserver-version.php` (board 7 / `UploadPhoto3Outputs`)
-- `ffp3` : `/ffp3/ffp3gallery/uploadphotoserver-outputs-action.php` et `/ffp3/ffp3gallery/post-uploadphotoserver-version.php` (board 5 / `UploadPhoto1Outputs`)
+- `ffp3` : `/ffp3gallery/uploadphotoserver-outputs-action.php` et `/ffp3gallery/post-uploadphotoserver-version.php` (board 5 / `UploadPhoto1Outputs`). Ne pas prefixer par `/ffp3/` sur les GET (301 Apache) ; les anciens chemins `/ffp3/ffp3gallery/...` restent valides en POST via rewrite interne.
 - Le serveur valide `board` et `sensor` sur le POST version (HTTP 400 si mismatch), et valide `board` sur le GET state quand fourni.
 
 Carte : ESP32-CAM AI Thinker (OV2640).

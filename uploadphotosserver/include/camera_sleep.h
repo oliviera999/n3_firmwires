@@ -3,10 +3,14 @@
 
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <stdint.h>
 
 const char* currentTargetName();
 const char* wakeupCauseText(esp_sleep_wakeup_cause_t cause);
 const char* resetReasonText(esp_reset_reason_t reason);
 bool inPhotoWindow();
+#if USE_DEEP_SLEEP
+void n3EnterDeepSleepSeconds(uint32_t seconds);
+#endif
 
 #endif
