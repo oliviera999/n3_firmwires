@@ -21,6 +21,11 @@ Un seul code source pour trois cibles (galeries iot.olution.info) :
 - Les build flags `-DTARGET_MSP1`, `-DTARGET_N3PP`, `-DTARGET_FFP3` sont définis par l’env PlatformIO.
 - `FIRMWARE_VERSION` actuelle : voir `include/config.h` et `VERSION.md`. Code modularisé (`camera_setup`, `camera_upload`, `camera_sleep`, `camera_mail_events`, `camera_remote`).
 
+## File SD et synchronisation offline
+
+- Chaque photo enregistrée sur SD reçoit un numéro NVS (`pic_count`) et reste en attente tant que le serveur ne l'a pas confirmée.
+- Le curseur d'upload (`up_cursor`) n'avance qu'après un upload HTTP accepté (`200`/`202`). Si le compteur NVS annonce un backlog mais que l'énumération SD ne retourne aucune photo, le curseur est conservé pour éviter d'effacer logiquement des photos encore récupérables après une erreur SD transitoire.
+
 ## Contrôle distant (GET + POST version)
 
 À chaque réveil, après connexion WiFi, le firmware :

@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.43** (définie dans `include/config.h`).
+Version actuelle : **2.44** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.43** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.44 | 2026-06-30 | **Protection backlog SD** : `cameraSyncDrain()` ne recale plus `up_cursor` quand le compteur NVS annonce des photos mais que l'enumeration SD ne retourne aucune entree. Le curseur n'avance qu'apres ACK serveur afin d'eviter une perte silencieuse de photos lors d'une erreur SD transitoire. |
 | 2.43 | 2026-06-29 | **FFP3 URLs canoniques** : chemins `/ffp3gallery/...` sans prefixe `/ffp3/` (GET `outputs_state` recevait HTTP 301 Apache sur `/ffp3/*` alors que le POST version passait en rewrite interne). |
 | 2.42 | 2026-06-29 | **PSRAM / init caméra** : `fb_location` explicite (PSRAM ou DRAM, aligné exemple Arduino) ; cascade SXGA→CIF→SVGA/DRAM→QQVGA ; diagnostics `[DIAG]` enrichis (`CONFIG_SPIRAM`, `esp_psram_get_size`) pour distinguer build vs matériel ; échec caméra → deep sleep au lieu de `ESP.restart()` (fini la boucle reboot ~13 s). |
 | 2.41 | 2026-06-27 | **Horodatage de capture + classement N-first** : le nom SD devient `/<N sur 10>_<Y-m-d_H-i-s>.jpg` (N en tête → tri robuste même si l'heure est fausse ; `0` si horloge inconnue). Le drain énumère désormais le répertoire SD (parse N+horodatage, rétro-compat `picture<N>.jpg`) et envoie l'heure/compteur de capture au serveur via en-têtes `X-Captured-At` / `X-Capture-Seq` (`camera_uploader`). Horloge entretenue : persistance NVS de l'epoch **à chaque réveil** (la RTC avance pendant le deep sleep ; cold-boot repart d'une heure récente). Helper `cameraSyncBuildSdPath`, `SYNC_MAX_BACKLOG_SCAN`. Contrat serveur n3_serveur ≥ 6.2.0. |

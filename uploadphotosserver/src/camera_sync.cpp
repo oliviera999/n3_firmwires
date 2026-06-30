@@ -214,9 +214,10 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   const uint32_t pending = static_cast<uint32_t>(entries.size());
   r.pending = pending;
   if (pending == 0) {
-    /* NVS annonce un backlog mais aucun fichier présent (carte changée/effacée) : on recale. */
-    nvsSet(kKeyCursor, count);
-    Serial.println("[SYNC] Backlog NVS mais aucun fichier present; curseur recale.");
+    /* Ne jamais avancer le curseur sans ACK serveur : une erreur SD transitoire peut rendre
+       l'enumeration vide alors que les photos sont toujours recuperables au prochain reveil. */
+    Serial.printf("[SYNC][WARN] Backlog NVS (%u photo(s)) mais aucune entree SD enumerable; curseur conserve a %u.\n",
+                  static_cast<unsigned int>(count - cursor), static_cast<unsigned int>(cursor));
     return r;
   }
 
