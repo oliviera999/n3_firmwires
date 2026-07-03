@@ -60,7 +60,7 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
     return false;
   }
 
-  StaticJsonDocument<1024> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[REMOTE] JSON invalide: %s\n", err.c_str());

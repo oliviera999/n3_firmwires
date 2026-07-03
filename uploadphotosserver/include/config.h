@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.43"
+#define FIRMWARE_VERSION "2.50"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
@@ -19,10 +19,12 @@
 #  define SERVER_PORT    80
 #endif
 
-/* NTP */
-#define NTP_SERVER         "pool.ntp.org"
-#define GMT_OFFSET_SEC     0
-#define DAYLIGHT_OFFSET_SEC 3600
+/* NTP — heure locale Casablanca (creneau HOUR_START/HOUR_END interprete en Africa/Casablanca) */
+#define NTP_SERVER           "pool.ntp.org"
+#define GMT_OFFSET_SEC       0
+#define DAYLIGHT_OFFSET_SEC  0
+#define NTP_TZ_STRING        "Africa/Casablanca"
+#define NTP_SYNC_TIMEOUT_MS  5000
 
 /* Créneau horaire (photos entre 6h et 22h) */
 #define HOUR_START  6
@@ -53,6 +55,16 @@
    si l’init haute résolution échoue quand même, repli automatique CIF (voir main.cpp). */
 #define CAM_SPIRAM_MIN_FREE_BYTES    (1536 * 1024)
 #define CAM_SPIRAM_MIN_LARGEST_BLOCK (1024 * 1024)
+
+/* Séquence matérielle OV2640 avant SCCB / esp_camera_init (nappe lente, alim faible). */
+#define CAM_PWDN_POWERDOWN_MS   10
+#define CAM_PWDN_WAKEUP_MS     120
+#define CAM_XCLK_SETTLE_MS     150
+#define CAM_DEINIT_SETTLE_MS   150
+#define CAM_SCCB_RETRY_COUNT     4
+#define CAM_SCCB_RETRY_BASE_MS  50
+#define CAM_SCCB_CLOCK_HZ   100000
+#define CAM_SCCB_CLOCK_SLOW_HZ 50000
 
 /* OTA distant (metadata.json) — toutes cibles : vérif périodique toutes les 2h */
 #define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
@@ -95,7 +107,7 @@
 
 /* Série UART0 : si le moniteur PC « ne reçoit rien », mettre 3000–5000 (ms) pour laisser le temps
    d’ouvrir le port après réveil deep sleep ; en prod laisser 0. Voir README firmwires (ESP32-CAM). */
-#define SERIAL_BOOT_PAUSE_MS 4000
+#define SERIAL_BOOT_PAUSE_MS 0
 
 /* ========== Par cible ========== */
 #if defined(TARGET_MSP1)

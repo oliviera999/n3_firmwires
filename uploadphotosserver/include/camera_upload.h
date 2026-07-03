@@ -2,6 +2,7 @@
 #define CAMERA_UPLOAD_H
 
 #include <Arduino.h>
+#include <FS.h>
 
 class MultipartCameraStream : public Stream {
  public:
@@ -20,6 +21,29 @@ class MultipartCameraStream : public Stream {
   String head_;
   const uint8_t* image_;
   size_t imageLen_;
+  String tail_;
+  size_t position_;
+};
+
+/** Multipart POST body stream : head + fichier SD par chunks + tail (sans charger le JPEG en RAM). */
+class MultipartFileStream : public Stream {
+ public:
+  MultipartFileStream(const String& head, File& file, size_t fileLen, const String& tail);
+
+  int available() override;
+  int read() override;
+  int peek() override;
+  void flush() override;
+  size_t write(uint8_t) override;
+  size_t write(const uint8_t*, size_t) override;
+  size_t readBytes(char* buffer, size_t length) override;
+
+  size_t totalSize() const;
+
+ private:
+  String head_;
+  File& file_;
+  size_t fileLen_;
   String tail_;
   size_t position_;
 };

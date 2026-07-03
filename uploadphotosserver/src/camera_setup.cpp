@@ -9,6 +9,7 @@
 #include <esp_psram.h>
 #endif
 #include <cstring>
+#include <Wire.h>
 
 static bool n3PsramDriverInitialized(void) {
 #if ESP_IDF_VERSION_MAJOR >= 5
@@ -51,6 +52,37 @@ struct CameraInitPlan {
   const char* label;
 };
 
+/* Cycle PWDN (+ RESET si câblé) : réveille l'OV2640 après deep sleep ou init partielle. */
+static void n3CameraHardwareReset(bool withXclk) {
+  if (RESET_GPIO_NUM >= 0) {
+    pinMode(RESET_GPIO_NUM, OUTPUT);
+    digitalWrite(RESET_GPIO_NUM, LOW);
+    delay(10);
+    digitalWrite(RESET_GPIO_NUM, HIGH);
+    delay(10);
+  }
+
+  if (PWDN_GPIO_NUM >= 0) {
+    pinMode(PWDN_GPIO_NUM, OUTPUT);
+    digitalWrite(PWDN_GPIO_NUM, HIGH);
+    delay(CAM_PWDN_POWERDOWN_MS);
+    digitalWrite(PWDN_GPIO_NUM, LOW);
+    delay(CAM_PWDN_WAKEUP_MS);
+  }
+
+  if (withXclk && XCLK_GPIO_NUM >= 0) {
+    ledcAttach(XCLK_GPIO_NUM, CAM_XCLK_HZ, 1);
+    delay(CAM_XCLK_SETTLE_MS);
+  }
+}
+
+static void n3CameraReleaseProbeBus(void) {
+  Wire.end();
+  if (XCLK_GPIO_NUM >= 0) {
+    ledcDetach(XCLK_GPIO_NUM);
+  }
+}
+
 static esp_err_t n3TryCameraInit(camera_config_t& config, const CameraInitPlan& plan) {
   config.frame_size = plan.frame_size;
   config.fb_count = plan.fb_count;
@@ -91,13 +123,16 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
 
   size_t startIdx = 0;
   if (!n3CameraSpiramHeapPresent()) {
-    startIdx = 2;
-    Serial.println("[CAM][WARN] Tas SPIRAM=0 : saut des profils PSRAM, repli DRAM "
+    /* SVGA/DRAM exige un bloc DMA 32 Ko contigu — rare sans PSRAM après WiFi/SD. */
+    startIdx = 3;
+    Serial.println("[CAM][WARN] Tas SPIRAM=0 : saut PSRAM + SVGA/DRAM, repli CIF/DRAM "
                    "(cf. [DIAG] build vs materiel).");
   } else if (!n3CameraSpiramLooksViableForSxga()) {
     startIdx = 1;
     Serial.println("[CAM][WARN] SPIRAM insuffisante pour SXGA : saut direct CIF/psram.");
   }
+
+  n3CameraHardwareReset(false);
 
   for (size_t i = startIdx; i < (sizeof(kPlans) / sizeof(kPlans[0])); ++i) {
     const esp_err_t err = n3TryCameraInit(*config, kPlans[i]);
@@ -107,6 +142,8 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
     }
     Serial.printf("[CAM][WARN] Echec %s (0x%x)\n", kPlans[i].label, static_cast<unsigned>(err));
     esp_camera_deinit();
+    delay(CAM_DEINIT_SETTLE_MS);
+    n3CameraHardwareReset(false);
   }
   return ESP_FAIL;
 }
@@ -174,6 +211,152 @@ void n3LogHardwareDiagnostics() {
                    "echouer : nappe OV2640, alim, timing).");
   }
   Serial.println("[DIAG] --------------------------------------");
+}
+
+static int sccbEndTransmission(uint8_t addr7) {
+  Wire.beginTransmission(addr7);
+  return Wire.endTransmission();
+}
+
+static bool sccbReadReg8(uint8_t addr7, uint8_t reg, uint8_t* out) {
+  Wire.beginTransmission(addr7);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+  if (Wire.requestFrom(addr7, static_cast<uint8_t>(1)) != 1) {
+    return false;
+  }
+  *out = Wire.read();
+  return true;
+}
+
+static const char* sccbNackHint(int err) {
+  switch (err) {
+    case 0:
+      return "ACK";
+    case 1:
+      return "buffer trop long";
+    case 2:
+      return "NACK adresse (peripherique absent ou bus coupe)";
+    case 3:
+      return "NACK donnees";
+    case 4:
+      return "autre erreur";
+    case 5:
+      return "timeout";
+    default:
+      return "inconnu";
+  }
+}
+
+static int n3SccbPingWithRetries(uint8_t addr7, bool* usedSlowClock) {
+  if (usedSlowClock) {
+    *usedSlowClock = false;
+  }
+
+  int lastErr = 2;
+  for (int attempt = 0; attempt < CAM_SCCB_RETRY_COUNT; ++attempt) {
+    const uint32_t clockHz =
+        (attempt == CAM_SCCB_RETRY_COUNT - 1) ? CAM_SCCB_CLOCK_SLOW_HZ : CAM_SCCB_CLOCK_HZ;
+    if (attempt == CAM_SCCB_RETRY_COUNT - 1 && usedSlowClock) {
+      *usedSlowClock = true;
+    }
+    Wire.setClock(clockHz);
+    delay(CAM_SCCB_RETRY_BASE_MS * static_cast<uint32_t>(attempt + 1));
+    lastErr = sccbEndTransmission(addr7);
+    if (lastErr == 0) {
+      if (attempt == 0) {
+        Serial.printf("[DIAG][SCCB] ping 0x%02X (OV2640 AI-Thinker) -> ACK (1/%d)\n",
+                      addr7,
+                      CAM_SCCB_RETRY_COUNT);
+      } else {
+        Serial.printf("[DIAG][SCCB] ping 0x%02X OK a la tentative %d/%d (%lu Hz)\n",
+                      addr7,
+                      attempt + 1,
+                      CAM_SCCB_RETRY_COUNT,
+                      static_cast<unsigned long>(clockHz));
+      }
+      return 0;
+    }
+    Serial.printf("[DIAG][SCCB] ping 0x%02X tentative %d/%d -> %s (%d)\n",
+                  addr7,
+                  attempt + 1,
+                  CAM_SCCB_RETRY_COUNT,
+                  sccbNackHint(lastErr),
+                  lastErr);
+  }
+  return lastErr;
+}
+
+void n3LogCameraSccbDiagnostics(void) {
+  static constexpr uint8_t kOv2640Addr = 0x30;
+  static constexpr uint8_t kRegPidHigh = 0x0A;
+  static constexpr uint8_t kRegPidLow = 0x0B;
+
+  Serial.println("[DIAG][SCCB] --- sonde bus camera (avant esp_camera_init) ---");
+  Serial.printf("[DIAG][SCCB] broches SDA=%d SCL=%d PWDN=%d XCLK=%d RESET=%d\n",
+                SIOD_GPIO_NUM,
+                SIOC_GPIO_NUM,
+                PWDN_GPIO_NUM,
+                XCLK_GPIO_NUM,
+                RESET_GPIO_NUM);
+
+  n3CameraHardwareReset(true);
+  if (XCLK_GPIO_NUM >= 0) {
+    Serial.printf("[DIAG][SCCB] horloge pixel XCLK=%lu Hz active sur GPIO%d (settle=%u ms)\n",
+                  static_cast<unsigned long>(CAM_XCLK_HZ),
+                  XCLK_GPIO_NUM,
+                  static_cast<unsigned>(CAM_XCLK_SETTLE_MS));
+  }
+
+  Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM);
+  Wire.setClock(CAM_SCCB_CLOCK_HZ);
+  delay(10);
+
+  bool slowClockUsed = false;
+  const int ping = n3SccbPingWithRetries(kOv2640Addr, &slowClockUsed);
+
+  if (ping == 0) {
+    uint8_t pidHigh = 0;
+    uint8_t pidLow = 0;
+    const bool gotHigh = sccbReadReg8(kOv2640Addr, kRegPidHigh, &pidHigh);
+    const bool gotLow = sccbReadReg8(kOv2640Addr, kRegPidLow, &pidLow);
+    if (gotHigh && gotLow) {
+      Serial.printf("[DIAG][SCCB] PID lu: 0x%02X%02X", pidHigh, pidLow);
+      if (pidHigh == 0x26 && pidLow == 0x42) {
+        Serial.println(" -> OV2640 confirme");
+      } else if (pidHigh == 0x56 && pidLow == 0x40) {
+        Serial.println(" -> capteur OV5640 (pas OV2640)");
+      } else if (pidHigh == 0x21 && pidLow == 0x45) {
+        Serial.println(" -> capteur GC2145 (pas OV2640)");
+      } else {
+        Serial.println(" -> identifiant inconnu");
+      }
+    } else {
+      Serial.println("[DIAG][SCCB][WARN] ACK adresse mais lecture PID impossible "
+                     "(nappe, alim ou timing)");
+    }
+  } else {
+    Serial.println("[DIAG][SCCB][WARN] Pas de reponse a 0x30 : verifier nappe FFC, "
+                   "alim 5V, contacts vers la carte");
+  }
+
+  Serial.print("[DIAG][SCCB] peripheriques detectes:");
+  int found = 0;
+  for (uint8_t addr = 0x08; addr < 0x78; ++addr) {
+    if (sccbEndTransmission(addr) == 0) {
+      Serial.printf(" 0x%02X", addr);
+      ++found;
+    }
+  }
+  if (found == 0) {
+    Serial.print(" aucun");
+  }
+  Serial.println();
+
+  n3CameraReleaseProbeBus();
+  Serial.println("[DIAG][SCCB] ---------------------------------------------");
 }
 
 #if USE_DEEP_SLEEP

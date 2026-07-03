@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.43** (définie dans `include/config.h`).
+Version actuelle : **2.50** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,13 @@ Version actuelle : **2.43** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.50 | 2026-07-03 | **Qualité** : `JsonDocument` (ArduinoJson 7) dans `camera_remote` ; README enrichi (NTP, `*-cam`, sync nocturne, moniteur série) ; CI matrice `n3pp` + `ffp3`. |
+| 2.49 | 2026-07-03 | **Upload SD streaming** : `MultipartFileStream` — drain backlog sans `malloc` JPEG complet (chunks `UPLOAD_CHUNK_SIZE`) ; refactor `camera_uploader` (retry avec stream neuf). |
+| 2.48 | 2026-07-03 | **Cycle de vie réveil** : init SD tôt ; sync backlog hors créneau photo (WiFi+SD, sans caméra) ; skip init caméra si ni WiFi ni SD ; helpers `initSdIfEnabled`, `initCameraPipeline`, `runSyncDrainIfNeeded` ; `SERIAL_BOOT_PAUSE_MS=0` (prod). |
+| 2.47 | 2026-07-03 | **NTP offline-first** : restauration NVS + `settimeofday` au réveil, sync NTP TZ `Africa/Casablanca`, logs `[TIME]` ; créneau photo fail-closed si horloge non fiable ; `setup()` réordonné (WiFi → remote → NTP → OTA → caméra si créneau) ; deep sleep d'erreur via `runtimeSleepSeconds` (config distante). Lib `n3_time` : helpers partagés + load NVS sur réveil timer. |
+| 2.46 | 2026-07-03 | **Renfort init caméra** : cycle PWDN complet + settle XCLK 150 ms ; ping SCCB avec retries (4×, I2C 50 kHz au dernier essai) ; sans PSRAM saut direct CIF/DRAM (plus SVGA/DRAM) ; reset matériel entre tentatives `esp_camera_init` ; échec capture → deep sleep au lieu de `ESP.restart()`. |
+| 2.45 | 2026-06-29 | **Diagnostic SCCB pré-init** : sonde I2C GPIO26/27 avant `esp_camera_init` (ping 0x30, lecture PID OV2640 0x2642, scan bus, XCLK/PWDN) pour distinguer panne nappe/alim d'un echec driver. |
+| 2.44 | 2026-06-29 | **Mail premier démarrage reporté** : envoi SMTP après la 1re capture réussie (framebuffer libéré), plus avant OTA/capture — réduit le pic heap sur modules sans PSRAM. |
 | 2.43 | 2026-06-29 | **FFP3 URLs canoniques** : chemins `/ffp3gallery/...` sans prefixe `/ffp3/` (GET `outputs_state` recevait HTTP 301 Apache sur `/ffp3/*` alors que le POST version passait en rewrite interne). |
 | 2.42 | 2026-06-29 | **PSRAM / init caméra** : `fb_location` explicite (PSRAM ou DRAM, aligné exemple Arduino) ; cascade SXGA→CIF→SVGA/DRAM→QQVGA ; diagnostics `[DIAG]` enrichis (`CONFIG_SPIRAM`, `esp_psram_get_size`) pour distinguer build vs matériel ; échec caméra → deep sleep au lieu de `ESP.restart()` (fini la boucle reboot ~13 s). |
 | 2.41 | 2026-06-27 | **Horodatage de capture + classement N-first** : le nom SD devient `/<N sur 10>_<Y-m-d_H-i-s>.jpg` (N en tête → tri robuste même si l'heure est fausse ; `0` si horloge inconnue). Le drain énumère désormais le répertoire SD (parse N+horodatage, rétro-compat `picture<N>.jpg`) et envoie l'heure/compteur de capture au serveur via en-têtes `X-Captured-At` / `X-Capture-Seq` (`camera_uploader`). Horloge entretenue : persistance NVS de l'epoch **à chaque réveil** (la RTC avance pendant le deep sleep ; cold-boot repart d'une heure récente). Helper `cameraSyncBuildSdPath`, `SYNC_MAX_BACKLOG_SCAN`. Contrat serveur n3_serveur ≥ 6.2.0. |

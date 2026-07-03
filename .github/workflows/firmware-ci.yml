@@ -83,6 +83,8 @@ jobs:
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
           - { name: poissonglouton-headless-https, dir: poissonglouton, env: pgl-s3-headless-https }
           - { name: uploadphotosserver-msp1, dir: uploadphotosserver, env: msp1 }
+          - { name: uploadphotosserver-n3pp, dir: uploadphotosserver, env: n3pp }
+          - { name: uploadphotosserver-ffp3, dir: uploadphotosserver, env: ffp3 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -14,7 +14,7 @@
 #endif
 
 #ifndef N3_DAYLIGHT_OFFSET
-#define N3_DAYLIGHT_OFFSET 3600
+#define N3_DAYLIGHT_OFFSET 0
 #endif
 
 #ifndef N3_WIFI_TIMEOUT_MS

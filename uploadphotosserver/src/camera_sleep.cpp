@@ -2,7 +2,8 @@
 
 #include <Arduino.h>
 #include "config.h"
-#include "time.h"
+#include "n3_time.h"
+#include <time.h>
 
 const char* currentTargetName() {
 #if defined(TARGET_MSP1)
@@ -45,8 +46,15 @@ const char* resetReasonText(esp_reset_reason_t reason) {
 }
 
 bool inPhotoWindow() {
+  if (!n3TimeHasPlausibleEpoch()) {
+    Serial.println("[TIME][WARN] creneau ignore, horloge non fiable");
+    return false;
+  }
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) return true; /* Échec NTP : fail-open */
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("[TIME][WARN] creneau ignore, getLocalTime indisponible");
+    return false;
+  }
   const int h = timeinfo.tm_hour;
   return (h >= HOUR_START && h < HOUR_END);
 }
