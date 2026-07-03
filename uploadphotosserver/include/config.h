@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.50"
+#define FIRMWARE_VERSION "2.52"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).

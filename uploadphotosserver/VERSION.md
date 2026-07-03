@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.50** (définie dans `include/config.h`).
+Version actuelle : **2.52** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **2.50** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.52 | 2026-07-03 | Republish OTA test : validation déploiement pipeline cam (msp1/n3pp/ffp3) après correctif stack OTA v2.51. |
+| 2.51 | 2026-07-03 | **Correctif OTA ESP32-CAM** : suppression mail SMTP au demarrage OTA (stack overflow loopTask) ; pile loopTask 32 Ko (`CONFIG_ARDUINO_LOOP_STACK_SIZE`) ; mail fin uniquement en cas d'echec OTA. |
 | 2.50 | 2026-07-03 | **Qualité** : `JsonDocument` (ArduinoJson 7) dans `camera_remote` ; README enrichi (NTP, `*-cam`, sync nocturne, moniteur série) ; CI matrice `n3pp` + `ffp3`. |
 | 2.49 | 2026-07-03 | **Upload SD streaming** : `MultipartFileStream` — drain backlog sans `malloc` JPEG complet (chunks `UPLOAD_CHUNK_SIZE`) ; refactor `camera_uploader` (retry avec stream neuf). |
 | 2.48 | 2026-07-03 | **Cycle de vie réveil** : init SD tôt ; sync backlog hors créneau photo (WiFi+SD, sans caméra) ; skip init caméra si ni WiFi ni SD ; helpers `initSdIfEnabled`, `initCameraPipeline`, `runSyncDrainIfNeeded` ; `SERIAL_BOOT_PAUSE_MS=0` (prod). |

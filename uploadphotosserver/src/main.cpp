@@ -268,24 +268,31 @@ static void otaMailStartCallback(const char* currentVersion,
   snprintf(otaRemoteVersion, sizeof(otaRemoteVersion), "%s", remoteVersion ? remoteVersion : "inconnue");
   snprintf(otaFirmwareUrl, sizeof(otaFirmwareUrl), "%s", firmwareUrl ? firmwareUrl : "inconnue");
 
-  char extra[MAIL_EXTRA_MAX_LEN];
-  snprintf(extra, sizeof(extra),
-           "OTA demarrage avant telechargement.\nVersion locale: %s\nVersion distante: %s\nURL firmware: %s\nMetadata: %s",
-           currentVersion ? currentVersion : FIRMWARE_VERSION, otaRemoteVersion, otaFirmwareUrl, OTA_METADATA_URL);
-  sendDebugEventMail("OTA demarrage", "ota-start", extra);
+  /* Pas de SMTP ici : TLS (ESP Mail Client) + verification sha256 OTA sur la meme
+   * pile loopTask (~8 Ko par defaut) provoquent stack canary panic sur ESP32-CAM sans PSRAM. */
+  Serial.printf("[OTA][MAIL] demarrage %s -> %s (notification SMTP reportee, heap=%u)\n",
+                currentVersion ? currentVersion : FIRMWARE_VERSION,
+                otaRemoteVersion,
+                static_cast<unsigned int>(ESP.getFreeHeap()));
 }
 
 static void otaMailEndCallback(bool success, const char* details, void* userData) {
   (void)userData;
   if (!otaUpdateStartedThisBoot) return;
 
-  char extra[MAIL_EXTRA_MAX_LEN];
-  snprintf(extra, sizeof(extra),
-           "OTA fin de sequence.\nResultat: %s\nVersion distante: %s\nURL firmware: %s\nDetails: %s",
-           success ? "succes" : "echec", otaRemoteVersion, otaFirmwareUrl, details ? details : "n/a");
-  sendDebugEventMail(success ? "OTA terminee (succes)" : "OTA terminee (echec)",
-                     success ? "ota-end-success" : "ota-end-failed",
-                     extra);
+  Serial.printf("[OTA][MAIL] fin success=%d version_distante=%s details=%s heap=%u\n",
+                success ? 1 : 0,
+                otaRemoteVersion,
+                details ? details : "n/a",
+                static_cast<unsigned int>(ESP.getFreeHeap()));
+  /* Succes : reboot imminent via httpUpdate. Echec : log serie uniquement (evite 2e TLS). */
+  if (!success && remoteMailNotifEnabled) {
+    char extra[MAIL_EXTRA_MAX_LEN];
+    snprintf(extra, sizeof(extra),
+             "OTA echec (mail fin uniquement).\nVersion distante: %s\nURL: %s\nDetails: %s",
+             otaRemoteVersion, otaFirmwareUrl, details ? details : "n/a");
+    sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", extra);
+  }
 }
 
 static void handlePhotoWindowTransitionMails(bool wifiOk) {
