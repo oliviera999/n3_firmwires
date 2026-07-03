@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.44** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.46** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **4.44** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.46 | 2026-07-03 | Publication OTA prod : incrément version pour déploiement distant (canal `n3pp`) |
+| 4.45 | 2026-07-03 | Publication OTA test : incrément version pour déploiement distant (canal `n3pp-test`) |
 | — | 2026-07-03 | **Lib partagée** `n3_defaults.h` : `N3_DAYLIGHT_OFFSET` 3600→0 (UTC+1 Casablanca permanent, sans double décalage `isDST()` Arduino). Rebuild n3pp recommandé au prochain flash. |
 | 4.44 | 2026-06 | Notifications par sévérité (P1–P4) + mode de verbosité télécommandable (GPIO 101 étendu : `none`/`important`/`partial`/`full`, rétro-compatible `checked`/`unchecked`) via lib partagée `n3_notify`. Anti-spam deep-sleep corrigé (`emailHumidSent`/`emailPontDivSent` en `RTC_DATA_ATTR`), dédup batterie + re-armement au retour à la normale, sujets `[N3PP][Pn]`, rapport réseau = P4 (diagnostic) |
 | 4.43 | 2026-06 | Publication OTA : incrément version pour déploiement distant |
