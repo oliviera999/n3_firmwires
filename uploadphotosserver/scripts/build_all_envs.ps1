@@ -4,9 +4,8 @@
 
 .DESCRIPTION
   Sequence recommandee sous Windows:
-  1) Build de warmup sur un firmware WROOM stable (n3pp/esp32dev)
-  2) Build msp1, n3pp, ffp3
-  Cette sequence evite les erreurs intermittentes de cache pioarduino.
+  1) Build de warmup optionnel sur un firmware WROOM stable (n3pp/esp32dev)
+  2) Build msp1, n3pp, ffp3 (stack esp32cam + HTTPS)
 
 .PARAMETER WarmupProject
   Firmware de warmup a compiler d'abord (par defaut: n3pp).

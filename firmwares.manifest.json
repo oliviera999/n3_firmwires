@@ -46,10 +46,7 @@
       "pioEnvs": [
         { "name": "msp1", "versionDefine": null },
         { "name": "n3pp", "versionDefine": null },
-        { "name": "ffp3", "versionDefine": null },
-        { "name": "msp1-cam", "versionDefine": null },
-        { "name": "n3pp-cam", "versionDefine": null },
-        { "name": "ffp3-cam", "versionDefine": null }
+        { "name": "ffp3", "versionDefine": null }
       ]
     },
     {

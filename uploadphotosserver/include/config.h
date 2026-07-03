@@ -2,14 +2,12 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.53"
+#define FIRMWARE_VERSION "2.54"
 #define SERVER_NAME     "iot.olution.info"
 
-/* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
- * Avec le flag de build USE_HTTPS_ENDPOINTS, bascule en https:// (TLS).
- * ATTENTION ESP32-CAM : RAM tres tendue, WiFiClientSecure coute ~40 KB/handshake
- * en plus de l'upload photo (framebuffer). Faisabilite a valider SUR CIBLE avant
- * tout deploiement (cf. docs/HTTPS_MIGRATION.md). N'est PAS dans la matrice CI.
+/* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
+ * WiFiClientSecure + setInsecure() ; OTA reste HTTP (/ota/cam/...). Rollback HTTP :
+ * retirer -DUSE_HTTPS_ENDPOINTS de cam-base dans platformio.ini. Cf. docs/HTTPS_MIGRATION.md.
  */
 #if defined(USE_HTTPS_ENDPOINTS)
 #  define SERVER_SCHEME  "https://"

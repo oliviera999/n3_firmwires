@@ -56,12 +56,16 @@ cd n3pp && pio run -e n3pp-https
 # msp
 cd msp && pio run -e msp-https
 
-# uploadphotosserver (ESP32-CAM) — EXPERIMENTAL, voir caveat RAM ci-dessous
-cd uploadphotosserver && pio run -e msp1-https
+# uploadphotosserver (ESP32-CAM) — HTTPS par défaut depuis v2.54
+cd uploadphotosserver && pio run -e msp1
 ```
 
-Chaque env `-https` herite de l'env de production correspondant et ajoute
-seulement `-DUSE_HTTPS_ENDPOINTS` (les envs par defaut HTTP sont inchanges).
+Chaque env `-https` ajoute `-DUSE_HTTPS_ENDPOINTS` :
+
+- **n3pp-https** / **msp-https** : heritent de l'env de production HTTP (`esp32dev`).
+- **uploadphotosserver** : tous les envs (`msp1` / `n3pp` / `ffp3`) héritent de
+  `cam-base` : **espressif32@6.13** + **`board = esp32cam`** (PSRAM) +
+  `-DUSE_HTTPS_ENDPOINTS`. Plus d'envs `*-cam` ni `msp1-https` (v2.54).
 
 ---
 
@@ -72,7 +76,9 @@ Rebuild + reflash avec l'environnement **par defaut** (sans le flag) :
 ```bash
 cd n3pp && pio run -e esp32dev
 cd msp  && pio run -e esp32dev
-cd uploadphotosserver && pio run -e msp1
+cd uploadphotosserver
+# Retirer -DUSE_HTTPS_ENDPOINTS de [env:cam-base] dans platformio.ini, puis :
+pio run -e msp1
 ```
 
 Le rollback est purement **logiciel cote build** : aucun etat appareil a defaire.
@@ -90,9 +96,9 @@ detecter toute erreur de compilation du chemin TLS :
 - `n3pp-https` (env `n3pp-https`)
 - `msp-https` (env `msp-https`)
 
-Les builds HTTP par defaut (`n3pp` / `msp` / `uploadphotosserver-msp1`) restent
-inchanges dans la matrice. **Aucun** env HTTPS ESP32-CAM n'est ajoute a la CI
-(voir caveat RAM).
+Les builds HTTP par defaut (`n3pp` / `msp` `esp32dev`) restent inchanges.
+**uploadphotosserver** (`msp1` / `n3pp` / `ffp3`) compile en **HTTPS + esp32cam**
+dans la matrice CI (meme stack que la prod depuis v2.54).
 
 > La CI ne fait que **compiler**. Elle ne valide **pas** le handshake TLS reel ni
 > la reception des donnees (pas de materiel ni de serveur en CI).
@@ -119,12 +125,11 @@ deja contraints.
 
 - **n3pp / msp** (ESP32 WROOM) : marge a priori suffisante — **a confirmer sur
   cible** (heap libre au moment de l'envoi).
-- **uploadphotosserver** (ESP32-CAM AI Thinker) : **RAM tres tendue**. Les ~40 KB
-  TLS s'ajoutent au framebuffer photo : le handshake peut **echouer faute de
-  RAM**. C'est pourquoi l'env `msp1-https` est marque **EXPERIMENTAL** et **exclu
-  de la CI**. Ne l'activer que pour une validation sur cible dediee, avec preuve
-  d'un upload TLS reussi (heap surveille). En cas d'echec, garder l'upload photo
-  en HTTP et n'activer HTTPS que sur n3pp/msp.
+- **uploadphotosserver** (ESP32-CAM AI Thinker) : stack **esp32cam + PSRAM** par
+  defaut (v2.54). Sur module **avec PSRAM** (~4 Mo), un cycle complet TLS a ete
+  valide en terrain (voir ci-dessous, heap min ~106 Ko). Sur module **sans PSRAM**
+  ou clone sans puce, le handshake TLS et la capture SXGA peuvent **echouer** ;
+  rollback : retirer `-DUSE_HTTPS_ENDPOINTS` de `cam-base` dans `platformio.ini`.
 
 ### 3. Validation SUR CIBLE — OBLIGATOIRE avant prod
 
@@ -142,3 +147,61 @@ Avant tout deploiement prod d'un firmware avec `USE_HTTPS_ENDPOINTS`, valider
    cycles.
 
 Tant que cette validation n'est pas faite, **rester en HTTP (defaut)**.
+
+---
+
+## Validation terrain uploadphotosserver (`msp1`, HTTPS par défaut)
+
+**Date** : 2026-07-03 — **firmware** : uploadphotosserver 2.52+ (tests initiaux
+sous env `msp1-https`, unifié en `msp1` depuis **2.54**) — **carte** : ESP32-CAM
+AI-Thinker, MAC `08:3a:f2:aa:42:74`, port COM7.
+
+### PSRAM (preuve matérielle)
+
+Logs `[DIAG]` au boot :
+
+```
+CONFIG_SPIRAM=y
+spiram_heap total=4194303 free=4192123 largest_block=4128756
+esp_psram_is_initialized=true chip_size=4194303
+psramFound()=true
+Criteres quantitatifs SPIRAM OK pour tenter SXGA
+[CAM] mode actif: SXGA/psram
+```
+
+Comparaison historique (avant v2.54) : l'ancien env `msp1` pioarduino affichait
+`CONFIG_SPIRAM=n`, `spiram_heap total=0`, capture **CIF** ~13 Ko — le build sans
+`esp32cam` ne permettait pas d'attester la PSRAM.
+
+### HTTPS (TLS)
+
+| Flux | URL / comportement | Resultat |
+|------|-------------------|----------|
+| GET `outputs_state` | `https://iot.olution.info/msp1gallery/uploadphotoserver-outputs-action.php?...` | HTTP **200**, ~1,5 s |
+| POST version | `https://iot.olution.info/msp1gallery/post-uploadphotoserver-version.php` | HTTP **200**, ~1,4 s |
+| Upload photo (sync SD) | multipart via `WiFiClientSecure` | HTTP **200**, ~183 Ko JPEG |
+| OTA metadata | `http://iot.olution.info/ota/cam/metadata.json` | **HTTP** (hors flag, attendu) |
+
+`setInsecure()` : chiffrement sans verification certificat (cf. caveat §1).
+
+### Heap et cycle
+
+- `min_heap` pendant le cycle : **~106 Ko** (SXGA + TLS + sync SD).
+- WiFi RSSI observe : -63 a -71 dBm.
+- Deep sleep : 300 s (config distante).
+
+### Notes SCCB
+
+La sonde `[DIAG][SCCB]` peut afficher **NACK** sur 0x30 alors que `esp_camera_init`
+reussit en **SXGA/psram** : ne pas conclure a une panne OV2640 sur ce seul log.
+
+### Reproductibilite
+
+```powershell
+cd firmwires/uploadphotosserver
+pio run -e msp1 -t upload --upload-port COMx
+python tools/monitor_serial_cam.py COMx -s 120
+```
+
+**Non valide** pour : autres modules (ex. carte sans PSRAM ou bus SCCB mort),
+déploiement prod généralisé sans re-test sur chaque carte.

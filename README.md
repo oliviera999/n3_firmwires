@@ -136,7 +136,7 @@ Commandes directes possibles depuis `uploadphotosserver/` :
 - `pio run -e msp1`
 - `pio run -e n3pp`
 - `pio run -e ffp3`
-- **ESP32-CAM avec PSRAM (photos haute résolution, stack historique)** : `pio run -e msp1-cam` / `-e n3pp-cam` / `-e ffp3-cam` — **platformio/espressif32@6.13.0** + **`board = esp32cam`** (Arduino 2.x) ; pas de `gcc_atomic_compat.c`. Les envs sans suffixe **`-cam`** restent en **pioarduino** + **esp32dev** + `dio_qspi` (alignement autres firmwares WROOM).
+- **ESP32-CAM (uploadphotosserver)** : `pio run -e msp1` / `-e n3pp` / `-e ffp3` — **platformio/espressif32@6.13.0** + **`board = esp32cam`** (PSRAM + **HTTPS** par défaut depuis v2.54). Broches dans `uploadphotosserver/include/config.h`.
 - **Monitoring 1–2 min** (série fiable sous Windows : DTR/RTS désactivés) : depuis `uploadphotosserver/`, `python tools/monitor_serial_cam.py COM5 -s 120` — fermer tout autre moniteur / outil sur le même COM ; dépendance : `pip install pyserial`.
 - **Erase + flash + monitor** (camera) : `uploadphotosserver/scripts/erase_flash_monitor.ps1 -Environment msp1 -Port COM5 -DurationSeconds 300`.
 
@@ -147,7 +147,7 @@ Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est :
 **Versions arduino-ESP32 par type d'env :**
 - **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp, uploadphotosserver) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt.
 - **FFP5CS prod secours** : env **`wroom-prod-pio6`** = `espressif32@6.13.0` + Arduino **2.0.17** (build **1 passe**, sans pioarduino) si la phase 2 de `wroom-prod` échoue — détails et tutoriel : [COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md).
-- **uploadphotosserver** (ESP32-CAM matériel) : **deux familles d’env** dans `uploadphotosserver/platformio.ini` — (1) **`msp1` / `n3pp` / `ffp3`** : **pioarduino** + **`esp32dev`** + **`dio_qspi`** (même toolchain que les autres WROOM ; liens `esp_psram_*` problématiques avec **`esp32cam`** sous pioarduino). (2) **`msp1-cam` / `n3pp-cam` / `ffp3-cam`** : **platformio/espressif32@6.13.0** + **`esp32cam`** pour retrouver **`psramFound()`** et résolutions type SXGA sur module avec PSRAM. Broches dans `uploadphotosserver/include/config.h`.
+- **uploadphotosserver** (ESP32-CAM) : envs **`msp1` / `n3pp` / `ffp3`** uniquement — **espressif32@6.13** + **`esp32cam`** + **HTTPS** (`USE_HTTPS_ENDPOINTS`) + diagnostic PSRAM au boot. Anciens envs `*-cam` et `msp1-https` supprimés (v2.54). Voir `uploadphotosserver/README.md` et `docs/HTTPS_MIGRATION.md`.
 - **S3** (ffp5cs wroom-s3-*) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
 - **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
 

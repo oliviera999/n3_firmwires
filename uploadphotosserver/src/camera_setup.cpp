@@ -11,6 +11,31 @@
 #include <cstring>
 #include <Wire.h>
 
+static constexpr int kCamXclkLedcChannel = 0;
+
+static void n3CamXclkOn(void) {
+  if (XCLK_GPIO_NUM < 0) {
+    return;
+  }
+#if ESP_IDF_VERSION_MAJOR >= 5
+  ledcAttach(XCLK_GPIO_NUM, CAM_XCLK_HZ, 1);
+#else
+  ledcSetup(kCamXclkLedcChannel, CAM_XCLK_HZ, 1);
+  ledcAttachPin(XCLK_GPIO_NUM, kCamXclkLedcChannel);
+#endif
+}
+
+static void n3CamXclkOff(void) {
+  if (XCLK_GPIO_NUM < 0) {
+    return;
+  }
+#if ESP_IDF_VERSION_MAJOR >= 5
+  ledcDetach(XCLK_GPIO_NUM);
+#else
+  ledcDetachPin(XCLK_GPIO_NUM);
+#endif
+}
+
 static bool n3PsramDriverInitialized(void) {
 #if ESP_IDF_VERSION_MAJOR >= 5
   return esp_psram_is_initialized();
@@ -71,16 +96,14 @@ static void n3CameraHardwareReset(bool withXclk) {
   }
 
   if (withXclk && XCLK_GPIO_NUM >= 0) {
-    ledcAttach(XCLK_GPIO_NUM, CAM_XCLK_HZ, 1);
+    n3CamXclkOn();
     delay(CAM_XCLK_SETTLE_MS);
   }
 }
 
 static void n3CameraReleaseProbeBus(void) {
   Wire.end();
-  if (XCLK_GPIO_NUM >= 0) {
-    ledcDetach(XCLK_GPIO_NUM);
-  }
+  n3CamXclkOff();
 }
 
 static esp_err_t n3TryCameraInit(camera_config_t& config, const CameraInitPlan& plan) {
@@ -178,7 +201,7 @@ void n3LogHardwareDiagnostics() {
 #if defined(CONFIG_SPIRAM) && CONFIG_SPIRAM
   Serial.println("[DIAG] build sdkconfig: CONFIG_SPIRAM=y");
 #else
-  Serial.println("[DIAG] build sdkconfig: CONFIG_SPIRAM=n (preferez env *-cam sur module AI-Thinker)");
+  Serial.println("[DIAG] build sdkconfig: CONFIG_SPIRAM=n (puce absente ou non detectee sur ce module)");
 #endif
   const bool psramDriverInit = n3PsramDriverInitialized();
   const size_t psramChipBytes = n3PsramChipSizeBytes();
@@ -199,7 +222,7 @@ void n3LogHardwareDiagnostics() {
                      "(init heap ou fragmentation anormale).");
     }
 #else
-    Serial.println("[DIAG][WARN] SPIRAM tas=0 : profil build sans SPIRAM ou module sans PSRAM.");
+    Serial.println("[DIAG][WARN] SPIRAM tas=0 : module sans PSRAM ou puce non detectee.");
 #endif
   } else if (spiramLargest < CAM_SPIRAM_MIN_LARGEST_BLOCK) {
     Serial.println("[DIAG][WARN] Plus grand bloc SPIRAM < seuil SXGA : fragmentation, PSRAM "

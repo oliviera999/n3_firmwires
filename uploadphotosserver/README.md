@@ -1,24 +1,23 @@
 # Upload Photos — firmware ESP32-CAM unifié
 
-Un seul code source pour trois cibles (galeries iot.olution.info) :
+Un seul code source pour trois cibles (galeries iot.olution.info). **Stack unique** pour tous les envs :
 
-| Env        | Galerie     | Stack PlatformIO              | Comportement              |
-|------------|-------------|-------------------------------|---------------------------|
-| `msp1`     | msp1gallery | pioarduino + `esp32dev`       | Deep sleep 600 s, SD_MMC  |
-| `n3pp`     | n3ppgallery | pioarduino + `esp32dev`       | Deep sleep 600 s, SD_MMC  |
-| `ffp3`     | ffp3gallery | pioarduino + `esp32dev`       | Deep sleep 600 s, SD_MMC  |
-| `msp1-cam` | msp1gallery | espressif32@6.13 + `esp32cam` | **Recommandé** si PSRAM réelle (AI-Thinker) |
-| `n3pp-cam` | n3ppgallery | idem                          | SXGA typique si PSRAM OK  |
-| `ffp3-cam` | ffp3gallery | idem                          | idem                      |
+| Env    | Galerie     | Stack PlatformIO              | HTTPS | PSRAM |
+|--------|-------------|-------------------------------|-------|-------|
+| `msp1` | msp1gallery | espressif32@6.13 + `esp32cam` | oui   | oui (diagnostic `[DIAG]`) |
+| `n3pp` | n3ppgallery | idem                          | oui   | oui |
+| `ffp3` | ffp3gallery | idem                          | oui   | oui |
 
-Les envs `*-cam` activent `psramFound()` et la résolution SXGA lorsque la carte dispose de PSRAM QSPI. Les envs sans suffixe restent alignés sur la toolchain WROOM du dépôt (CIF/DRAM si pas de PSRAM détectée).
+- **PSRAM** : `board = esp32cam` → `CONFIG_SPIRAM=y`, `psramFound()`, résolution **SXGA** si la puce répond (~4 Mo).
+- **HTTPS** : `-DUSE_HTTPS_ENDPOINTS` dans `cam-base` → URLs `https://`, `WiFiClientSecure` (galerie, upload, sync). **OTA** reste en **HTTP** (`/ota/cam/metadata.json`).
+- Anciens envs `*-cam` et `msp1-https` supprimés (redondants depuis v2.54).
 
 ## Compilation
 
 1. **Credentials** : copier `firmwires/credentials.h.example` vers `firmwires/credentials.h` et remplir `WIFI_LIST[]`. Ne pas versionner `credentials.h`.
-2. Compiler : `pio run -e msp1` | `pio run -e n3pp` | `pio run -e ffp3` (ou `*-cam` sur matériel AI-Thinker)
-3. Upload : `pio run -e <env> -t upload`
-4. Monitor : `pio device monitor -e <env>` (115200 bauds, DTR/RTS désactivés dans `platformio.ini`)
+2. Compiler : `pio run -e msp1` | `pio run -e n3pp` | `pio run -e ffp3`
+3. Upload : `pio run -e <env> -t upload --upload-port COMx`
+4. Monitor : `python tools/monitor_serial_cam.py COMx -s 120` (recommandé) ou `pio device monitor` (DTR/RTS désactivés dans `platformio.ini`)
 
 ### Moniteur série après deep sleep
 
@@ -37,11 +36,11 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
 
 | Module | Rôle |
 |--------|------|
-| `camera_setup` | Init OV2640, warmup, exposition |
+| `camera_setup` | Init OV2640, warmup, exposition, diagnostics `[DIAG]` PSRAM et `[DIAG][SCCB]` |
 | `camera_time` | NTP offline-first, TZ `Africa/Casablanca` |
 | `camera_sleep` | Créneau photo 6h–22h (fail-closed si horloge non fiable) |
 | `camera_remote` | Config distante GET + POST version |
-| `camera_uploader` / `camera_upload` | Upload multipart HTTP (RAM ou streaming SD) |
+| `camera_uploader` / `camera_upload` | Upload multipart HTTPS (RAM ou streaming SD) |
 | `camera_sync` | Backlog SD, drain hybride, sessions sync serveur |
 | `camera_mail_events` | Mails transitions jour/nuit, OTA |
 
@@ -57,37 +56,52 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
 - **Stratégie hybride** : max 10 photos/réveil par défaut ; vidage complet si backlog > 25.
 - **v2.48** : drain possible **hors créneau photo** (nuit) si WiFi + SD OK — sans initialiser la caméra.
 - **v2.49** : upload backlog par **streaming** depuis la SD (chunks 4096 o), sans charger le JPEG entier en RAM.
+- **v2.53+** : pause entre uploads backlog (rate-limit serveur), retry HTTP 429.
 
 ## Contrôle distant (GET + POST version)
 
 À chaque réveil, après connexion WiFi, le firmware :
 
-1. récupère les paramètres distants via `n3_data` (`GET`),
-2. poste sa version firmware (`POST`) dans la table de contrôle,
-3. applique les paramètres runtime :
-   - mail (`gpio 102`),
-   - notifications mail (`gpio 103`, `checked/false`),
-   - `forceWakeUp` one-shot (`gpio 104`),
-   - `sleepTime` en secondes (`gpio 105`),
-   - `resetMode` (`gpio 106`) — consomme un cycle complet puis redémarre.
+1. récupère les paramètres distants via `n3_data` (`GET` HTTPS),
+2. poste sa version firmware (`POST` HTTPS) dans la table de contrôle,
+3. applique les paramètres runtime (mail, notifications, `forceWakeUp`, `sleepTime`, `resetMode`).
 
-Endpoints legacy par env (compatibilité) :
+Endpoints par env (board / sensor) :
 
-- `msp1` : `/msp1gallery/uploadphotoserver-outputs-action.php` et `/msp1gallery/post-uploadphotoserver-version.php` (board 6 / `UploadPhoto2Outputs`)
-- `n3pp` : `/n3ppgallery/uploadphotoserver-outputs-action.php` et `/n3ppgallery/post-uploadphotoserver-version.php` (board 7 / `UploadPhoto3Outputs`)
-- `ffp3` : `/ffp3gallery/uploadphotoserver-outputs-action.php` et `/ffp3gallery/post-uploadphotoserver-version.php` (board 5 / `UploadPhoto1Outputs`). Ne pas prefixer par `/ffp3/` sur les GET (301 Apache) ; les anciens chemins `/ffp3/ffp3gallery/...` restent valides en POST via rewrite interne.
-- Le serveur valide `board` et `sensor` sur le POST version (HTTP 400 si mismatch), et valide `board` sur le GET state quand fourni.
+- `msp1` : `/msp1gallery/...` (board 6)
+- `n3pp` : `/n3ppgallery/...` (board 7)
+- `ffp3` : `/ffp3gallery/...` (board 5) — GET sans préfixe `/ffp3/` (301 Apache)
 
 Carte : ESP32-CAM AI Thinker (OV2640).
 
+## Diagnostic PSRAM (boot `[DIAG]`)
+
+| Log | Signification |
+|-----|----------------|
+| `CONFIG_SPIRAM=y` + `chip_size≈4194304` + `spiram_heap total>0` | PSRAM **présente et utilisable** |
+| `CONFIG_SPIRAM=y` + `chip_size=0` | Build OK mais **puce absente** ou non détectée (clone sans PSRAM) |
+| `psramFound()=true` + critères SXGA OK | Tentative **SXGA** au prochain `esp_camera_init` |
+
+## Diagnostic SCCB (`[DIAG][SCCB]`)
+
+Sonde I2C (GPIO 26/27) avant `esp_camera_init` : ping **0x30**, PID **0x2642**, scan bus.
+
+- **NACK** + échec caméra → nappe FFC, alim 5 V.
+- **NACK** mais **SXGA/psram OK** → faux négatif possible (sonde `Wire` vs `esp_camera`).
+
 ## OTA
 
-- Metadata : `http://iot.olution.info/ota/cam/metadata.json`
-- Chaque cible (`msp1`, `n3pp`, `ffp3`) expose `version`, `url`, `sha256` et `signature` (optionnelle).
-- Le firmware vérifie la version distante, puis **valide sha256** du binaire avant flash.
-- Si `signature` est présente, une vérification ECDSA (clé publique embarquée) est aussi effectuée.
-- Vérification OTA périodique : toutes les 2h cumulées de cycles deep sleep.
+- Metadata : `http://iot.olution.info/ota/cam/metadata.json` (HTTP, hors flag TLS)
+- Vérification sha256 + signature ECDSA optionnelle ; périodique toutes les 2 h (cycles deep sleep).
 
-## HTTPS (expérimental)
+## HTTPS
 
-Env `msp1-https` : TLS opt-in, ~40 Ko RAM supplémentaires. Validation sur cible obligatoire avant prod. Voir `docs/HTTPS_MIGRATION.md`.
+TLS activé par défaut sur tous les envs (`USE_HTTPS_ENDPOINTS` dans `platformio.ini`). `setInsecure()` : chiffrement sans épinglement certificat.
+
+### Validation terrain (2026-07-03, env `msp1`, firmware 2.52+)
+
+Module AI-Thinker (MAC `08:3a:f2:aa:42:74`) : PSRAM ~4 Mo, SXGA, GET/POST/upload **HTTPS 200**, heap min ~106 Ko. Détails : `docs/HTTPS_MIGRATION.md`.
+
+### Rollback HTTP
+
+Retirer `-DUSE_HTTPS_ENDPOINTS` de `[env:cam-base]` dans `platformio.ini`, recompiler et flasher.

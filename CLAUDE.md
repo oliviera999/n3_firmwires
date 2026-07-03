@@ -14,7 +14,7 @@ Guide pour Claude Code (et tout agent) travaillant sur **n3_firmwires** — mono
 |----------|---------|-------|-----------------|----------------------|
 | **n3pp** (serre/aquaponie) | `n3pp/` | ESP32 | `esp32dev`, `esp32dev_test`, `n3pp-https` | `include/n3pp_config.h` (`FIRMWARE_VERSION`) |
 | **msp** (station météo) | `msp/` | ESP32 | `esp32dev`, `esp32dev_test`, `msp-https` | `include/msp_config.h` (`FIRMWARE_VERSION`) |
-| **uploadphotosserver** (CAM unifié) | `uploadphotosserver/` | ESP32-CAM | `msp1`, `n3pp`, `ffp3` (+ `*-cam` PSRAM) | `include/config.h` (`FIRMWARE_VERSION`) |
+| **uploadphotosserver** (CAM unifié) | `uploadphotosserver/` | ESP32-CAM | `msp1`, `n3pp`, `ffp3` (esp32cam + HTTPS) | `include/config.h` (`FIRMWARE_VERSION`) |
 | **ffp5cs** (aquaponie) | `ffp5cs/` | ESP32 WROOM / S3 | `wroom-prod`, `wroom-test`, `wroom-s3-*`… | `include/config.h` / `VERSION.md` |
 | **poissonglouton** (recyclage) | `poissonglouton/` | ESP32-S3 | `pgl-s3-headless`, `pgl-s3-display` | `include/config.h` (`PGL_FIRMWARE_VERSION`) |
 

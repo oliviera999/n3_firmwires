@@ -27,7 +27,7 @@ pio run -e <env>
 Envs principaux :
 - **n3pp** : `esp32dev` (défaut), `esp32dev_test`, `n3pp-https`
 - **msp** : `esp32dev`, `esp32dev_test`, `msp-https`
-- **uploadphotosserver** : `msp1` / `n3pp` / `ffp3` (WROOM) ; `msp1-cam` / `n3pp-cam` / `ffp3-cam` (PSRAM)
+- **uploadphotosserver** : `msp1` / `n3pp` / `ffp3` — **esp32cam** + PSRAM + **HTTPS** par défaut (v2.54)
 - **poissonglouton** : `pgl-s3-headless`, `pgl-s3-display`
 - **ffp5cs** : `wroom-prod`, `wroom-test`, `wroom-s3-test`…
 

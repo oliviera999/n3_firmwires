@@ -68,8 +68,8 @@ jobs:
           - { name: msp, dir: msp, env: esp32dev }
           # Compile-check de la variante HTTPS (TLS) opt-in (flag USE_HTTPS_ENDPOINTS).
           # Detecte les erreurs de compilation du chemin WiFiClientSecure sans
-          # toucher aux builds HTTP par defaut ci-dessus. Pas d'equivalent ESP32-CAM
-          # (uploadphotosserver) : RAM trop tendue pour TLS, cf. docs/HTTPS_MIGRATION.md.
+          # toucher aux builds HTTP par defaut ci-dessus. uploadphotosserver (msp1/n3pp/ffp3)
+          # compile aussi en HTTPS + esp32cam (PSRAM) — cf. docs/HTTPS_MIGRATION.md.
           - { name: n3pp-https, dir: n3pp, env: n3pp-https }
           - { name: msp-https, dir: msp, env: msp-https }
           - { name: ffp5cs-wroom-test, dir: ffp5cs, env: wroom-test }
