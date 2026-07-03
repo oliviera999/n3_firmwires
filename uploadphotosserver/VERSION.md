@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.52** (définie dans `include/config.h`).
+Version actuelle : **2.53** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.52** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.53 | 2026-07-03 | **Sync SD / rate-limit** : pause 11 s entre uploads backlog (`GALLERY_UPLOAD_RATE_LIMIT_SECONDS=10` serveur) ; retry HTTP 429 ; budget sync 3 min/réveil pour éviter boucles 429 et réveils trop longs. **Doc** : `msp1-https` hérite de `msp1-cam` (PSRAM + TLS) ; validation terrain 2026-07-03 (README, `docs/HTTPS_MIGRATION.md`). |
 | 2.52 | 2026-07-03 | Republish OTA test : validation déploiement pipeline cam (msp1/n3pp/ffp3) après correctif stack OTA v2.51. |
 | 2.51 | 2026-07-03 | **Correctif OTA ESP32-CAM** : suppression mail SMTP au demarrage OTA (stack overflow loopTask) ; pile loopTask 32 Ko (`CONFIG_ARDUINO_LOOP_STACK_SIZE`) ; mail fin uniquement en cas d'echec OTA. |
 | 2.50 | 2026-07-03 | **Qualité** : `JsonDocument` (ArduinoJson 7) dans `camera_remote` ; README enrichi (NTP, `*-cam`, sync nocturne, moniteur série) ; CI matrice `n3pp` + `ffp3`. |

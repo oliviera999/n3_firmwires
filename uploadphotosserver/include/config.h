@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.52"
+#define FIRMWARE_VERSION "2.53"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal d'envoi de donnees : HTTP par defaut (comportement historique inchange).
@@ -104,6 +104,10 @@
 #define SYNC_MAX_UPLOADS_PER_WAKE 10   /* drain incrémental : photos max envoyées par réveil */
 #define SYNC_FULL_DRAIN_THRESHOLD 25   /* backlog au-delà duquel on vide tout ce réveil (rattrapage) */
 #define SYNC_MAX_BACKLOG_SCAN     256  /* borne mémoire : nb max d'entrées chargées/réveil (les + anciennes) */
+/* Intervalle min entre deux POST upload.php : aligné sur GALLERY_UPLOAD_RATE_LIMIT_SECONDS (10 s/IP) serveur. */
+#define SYNC_UPLOAD_MIN_INTERVAL_MS 11000
+#define SYNC_RATE_LIMIT_RETRIES     2    /* tentatives supplementaires apres HTTP 429 */
+#define SYNC_DRAIN_MAX_DURATION_MS  180000  /* budget temps sync par reveil (3 min) */
 
 /* Série UART0 : si le moniteur PC « ne reçoit rien », mettre 3000–5000 (ms) pour laisser le temps
    d’ouvrir le port après réveil deep sleep ; en prod laisser 0. Voir README firmwires (ESP32-CAM). */

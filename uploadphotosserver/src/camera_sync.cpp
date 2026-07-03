@@ -136,6 +136,24 @@ int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uin
   return n3DataPost(pc);
 }
 
+/* Respecte l'intervalle minimal entre uploads galerie (rate-limit serveur par IP). */
+void syncUploadRateLimitPause(uint32_t lastUploadMs) {
+  if (lastUploadMs == 0) {
+    return;
+  }
+  const uint32_t elapsed = millis() - lastUploadMs;
+  if (elapsed >= SYNC_UPLOAD_MIN_INTERVAL_MS) {
+    return;
+  }
+  const uint32_t waitMs = SYNC_UPLOAD_MIN_INTERVAL_MS - elapsed;
+  Serial.printf("[SYNC] pause rate-limit %u ms\n", static_cast<unsigned int>(waitMs));
+  delay(waitMs);
+}
+
+bool syncUploadIsSuccess(int httpCode) {
+  return httpCode == 200 || httpCode == 202;
+}
+
 }  // namespace
 
 uint32_t cameraSyncWrittenCount() {
@@ -247,8 +265,18 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   }
 
   const String sessionStr = String(sessionId);
+  const uint32_t drainStartMs = millis();
+  uint32_t lastUploadMs = 0;
   for (uint32_t i = 0; i < planned && i < entries.size(); ++i) {
+    if (i > 0 && (millis() - drainStartMs) >= SYNC_DRAIN_MAX_DURATION_MS) {
+      Serial.printf("[SYNC] budget temps %u ms atteint, reprise au prochain reveil.\n",
+                    static_cast<unsigned int>(SYNC_DRAIN_MAX_DURATION_MS));
+      break;
+    }
+
     const SyncEntry& e = entries[i];
+    syncUploadRateLimitPause(lastUploadMs);
+
     const String seqStr = String(e.n);
     CameraUploadParams up = {};
     up.url = cfg.uploadUrl;
@@ -260,8 +288,20 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
 
     const String filename = "esp32-cam-" + String(cfg.targetName ? cfg.targetName : "cam") + "-" + seqStr + ".jpg";
     size_t bytes = 0;
-    const int code = cameraUploadJpegFile(up, String(e.path), filename, &bytes);
-    if (code == 200 || code == 202) {
+    int code = cameraUploadJpegFile(up, String(e.path), filename, &bytes);
+
+    for (int retry = 0; !syncUploadIsSuccess(code) && code == 429 && retry < SYNC_RATE_LIMIT_RETRIES; ++retry) {
+      Serial.printf("[SYNC][WARN] #%u HTTP=429 rate-limit, attente %u ms (retry %d/%d)\n",
+                    static_cast<unsigned int>(e.n),
+                    static_cast<unsigned int>(SYNC_UPLOAD_MIN_INTERVAL_MS),
+                    retry + 1, SYNC_RATE_LIMIT_RETRIES);
+      delay(SYNC_UPLOAD_MIN_INTERVAL_MS);
+      code = cameraUploadJpegFile(up, String(e.path), filename, &bytes);
+    }
+
+    lastUploadMs = millis();
+
+    if (syncUploadIsSuccess(code)) {
       r.sent++;
       r.bytes += bytes;
       nvsSet(kKeyCursor, e.n);  // confirmé (couvre aussi les éventuels trous < e.n)
