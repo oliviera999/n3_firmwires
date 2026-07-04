@@ -135,9 +135,11 @@ AsyncWebServer server(80);
 String outputsState;
 
 // Reset distant: edge detection with first-sample seeding to avoid reboot loops
-// if server state is already "110=1" at boot.
-static bool s_resetEdgeInitialized = false;
-static bool s_lastResetModeState = false;
+// if server state is already "110=1" at boot. RTC_DATA_ATTR : en deep sleep,
+// loop() ne tourne qu'une fois par reveil ; sans persistance a travers le sommeil
+// le front montant du reset distant n'etait jamais observe (juste re-amorce).
+RTC_DATA_ATTR static bool s_resetEdgeInitialized = false;
+RTC_DATA_ATTR static bool s_lastResetModeState = false;
 static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
 RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
 static char s_otaCurrentVersion[16] = "";
@@ -355,6 +357,21 @@ void setup() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   Serial.println("[NTP] Configuration terminee");
 
+  // Attente bornee de la synchro SNTP avant le premier POST. Sans cela, un cold
+  // boot pouvait dater/signer le POST avec une heure NVS perimee (hors fenetre
+  // serveur SIG_VALID_WINDOW) -> rejet 401 et mesure perdue. Sur un reveil timer,
+  // l'heure est deja restauree (epoch > seuil) et la boucle sort immediatement.
+  if (WiFi.status() == WL_CONNECTED) {
+    const unsigned long ntpWaitStart = millis();
+    while ((unsigned long)rtc.getEpoch() < 1577836800UL &&
+           (millis() - ntpWaitStart) < 5000UL) {
+      delay(100);
+    }
+    Serial.printf("[NTP] epoch=%lu (attente %lums)\n",
+                  (unsigned long)rtc.getEpoch(),
+                  (unsigned long)(millis() - ntpWaitStart));
+  }
+
   //printLocalTime();
 
   // Mettre à jour les informations depuis ESP (définitions)
@@ -435,8 +452,23 @@ void loop() {
     EnregistrementHeureFlash();
   }
 
-  // Comptabilise le temps de sommeil a venir pour l'OTA periodique.
-  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
+  // Comptabilise le temps ECOULE pour l'OTA periodique. En deep sleep (WakeUp==0),
+  // loop() tourne une fois par reveil puis dort FreqWakeUp s -> on compte FreqWakeUp.
+  // En mode eveille (WakeUp==1), sommeil() ne dort pas et loop() re-tourne vite :
+  // ajouter FreqWakeUp a chaque tour declenchait le check OTA en rafale. On mesure
+  // alors l'ecoule reel via millis().
+  static unsigned long s_lastOtaTimerMillis = 0;
+  const unsigned long nowOtaTimerMs = millis();
+  int elapsedForOta;
+  if (WakeUp == 0) {
+    elapsedForOta = FreqWakeUp;
+  } else {
+    elapsedForOta = (s_lastOtaTimerMillis == 0)
+                        ? 0
+                        : (int)((nowOtaTimerMs - s_lastOtaTimerMillis) / 1000UL);
+  }
+  s_lastOtaTimerMillis = nowOtaTimerMs;
+  accumulateOtaPeriodicElapsedFromSleep(elapsedForOta);
   sommeil();
 
   // Reset des accumulateurs servo apres le sommeil (utile seulement si WakeUp=1).

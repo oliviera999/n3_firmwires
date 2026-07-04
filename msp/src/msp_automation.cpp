@@ -99,10 +99,14 @@ void sommeil() {
     if (PontDiv >= SeuilPontDiv) {
       s_mspBatteryMailSent = false;  // batterie revenue au-dessus du seuil : re-arme l'alerte
     }
-    if ((PontDiv < SeuilPontDiv) && emailEnabled()) {
+    // Protection batterie faible DECORELE de l'email : le sommeil protecteur
+    // "GPIO uniquement" (grace au fix n3_sleep sur sleepSeconds==0) s'applique
+    // meme si les notifications sont sur "none". Seul l'envoi du mail reste
+    // conditionne par emailEnabled().
+    if (PontDiv < SeuilPontDiv) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
-      if (!s_mspBatteryMailSent) {
+      if (emailEnabled() && !s_mspBatteryMailSent) {
         emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
         sendEmailNotification(N3Severity::Critical);
         s_mspBatteryMailSent = true;

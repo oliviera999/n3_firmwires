@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.46** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.47** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.46** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.47 | 2026-07-04 | **Audit n3pp/msp1.** Corrige `SeuilSec` (défaut 5000 hors plage ADC 12 bits → 1500, borné 0..4095 à la clé 102, persistant en RTC comme `FreqWakeUp`/`SeuilPontDiv`/`HeureArrosage`/`tempsArrosageSec`) ; comptage du temps écoulé mesuré (millis) en mode éveillé `WakeUp=1` au lieu d'ajouter `FreqWakeUp` par itération (évitait OTA/rapport en rafale + cooldown arrosage neutralisé) ; latch anti-spam `emailPompeSent` (alerte pompe active) ; protection batterie faible = sommeil GPIO-only décorrélé de l'email (via fix `n3_sleep` sur `sleepSeconds==0`) ; détection de front du reset distant (110) persistée en RTC ; retrait des `RTC_DATA_ATTR String` (motif UAF/inefficace) ; brown-out détecteur réactivé après le boot ; attente SNTP bornée avant le 1er POST ; bornage affichage batterie. Lib partagée `n3_sleep` : `sleepSeconds==0` désactive la source timer (réveil GPIO uniquement). |
 | 4.46 | 2026-07-03 | Publication OTA prod : incrément version pour déploiement distant (canal `n3pp`) |
 | 4.45 | 2026-07-03 | Publication OTA test : incrément version pour déploiement distant (canal `n3pp-test`) |
 | — | 2026-07-03 | **Lib partagée** `n3_defaults.h` : `N3_DAYLIGHT_OFFSET` 3600→0 (UTC+1 Casablanca permanent, sans double décalage `isDST()` Arduino). Rebuild n3pp recommandé au prochain flash. |

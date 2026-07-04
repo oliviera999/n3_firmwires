@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.45** (définie dans `include/msp_config.h`).
+Version actuelle : **2.46** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.45** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.46 | 2026-07-04 | **Audit n3pp/msp1.** Protection batterie faible = sommeil GPIO-only décorrélée de l'email (via fix lib `n3_sleep` : `sleepSeconds==0` désactive la source timer au lieu d'un réveil immédiat qui vidait la batterie) ; comptage du temps écoulé mesuré (millis) en mode éveillé `WakeUp=1` (évitait le check OTA en rafale) ; détection de front du reset distant (110) persistée en RTC ; attente SNTP bornée avant le 1er POST (évite le rejet HMAC hors fenêtre) ; bornage de l'angle servo GD après scan ; affichage batterie borné 0..100 % + tension en float. |
 | — | 2026-07-03 | **Lib partagée** `n3_defaults.h` : `N3_DAYLIGHT_OFFSET` 3600→0 (UTC+1 Casablanca permanent, sans double décalage `isDST()` Arduino). Rebuild msp recommandé au prochain flash. |
 | 2.45 | 2026-06 | Notifications par sévérité (P1–P4) + mode de verbosité télécommandable (GPIO 101 étendu : `none`/`important`/`partial`/`full`, rétro-compatible `checked`/`unchecked`) via lib partagée `n3_notify`. Alerte batterie : sévérité P1, anti-spam inter-cycles (`RTC_DATA_ATTR` + re-armement au retour à la normale), sujet `[MSP1][Pn]` |
 | 2.44 | 2026-06 | Audit optimisation : migration SMTP → `n3_mail` et RTC → `n3_time` (≈120 lignes dédupliquées avec n3pp, logs FR préservés) ; retrait du global `SMTPSession smtp` inutilisé ; `n3_http`/`libn3_iot` supprimées (code mort) ; `ArduinoJson` épinglé (retrait du caret) |

@@ -183,7 +183,17 @@ void variablestoesp() {
   }
   inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
   enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
-  SeuilSec = readIntByKey(myObject, "102", SeuilSec);
+  // SeuilSec est compare a HumidMoy (moyenne ADC brute 0..4095) : on borne la
+  // valeur serveur dans cette plage pour eviter un seuil inatteignable (ex. 5000
+  // -> sol toujours "sec"). Hors plage -> valeur precedente conservee.
+  {
+    int parsedSeuilSec = SeuilSec;
+    if (tryReadIntByKey(myObject, "102", &parsedSeuilSec)) {
+      if (parsedSeuilSec < 0) parsedSeuilSec = 0;
+      if (parsedSeuilSec > 4095) parsedSeuilSec = 4095;
+      SeuilSec = parsedSeuilSec;
+    }
+  }
   SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
   HeureArrosage = readIntByKey(myObject, "104", HeureArrosage);
   tempsArrosageSec = readIntByKey(myObject, "105", tempsArrosageSec);
