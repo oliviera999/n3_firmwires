@@ -162,8 +162,12 @@ void batterie() {
 
   Serial.printf("[BATT] ADC=%d tension_brute=%.2f V\n", avgPontDiv, measuredVoltage);
 
-  int battPercent = 100 - ((2100 - avgPontDiv) * 0.2);
-  int batteryVoltage2 = avgPontDiv * 4.2 / 2100;
+  // Affichage OLED uniquement. Bornage 0..100 % et tension en float (l'ancien
+  // int batteryVoltage2 tronquait la tension a un entier 0-4 V, valeur inutile).
+  int battPercent = (int)(100 - ((2100 - avgPontDiv) * 0.2));
+  if (battPercent < 0) battPercent = 0;
+  if (battPercent > 100) battPercent = 100;
+  float batteryVoltage2 = avgPontDiv * 4.2f / 2100.0f;
 
   if (displayOk) {
     display.clearDisplay();
@@ -300,6 +304,13 @@ void Light_val() {
     }
 
     AngleServoGD = (posLumMax1 + posLumMax2) / 2;
+    // Bornage a la plage servo (comme pour AngleServoHB) : si le scan n'a rien
+    // detecte (pics restes a 0), evite un servogd.write() sous minAngleServoGD.
+    if (AngleServoGD > maxAngleServoGD) {
+      AngleServoGD = maxAngleServoGD;
+    } else if (AngleServoGD < minAngleServoGD) {
+      AngleServoGD = minAngleServoGD;
+    }
     servogd.write(AngleServoGD);
     if (displayOk) {
       display.clearDisplay();

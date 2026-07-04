@@ -114,6 +114,29 @@ int n3DataPost(const N3PostConfig& config) {
   }
   (void)hmacFffp3Active;
 
+  // Body-signing ADDITIF (couvre TOUT le corps, contrairement a la signature
+  // legacy qui ne signe que le timestamp). En-tetes X-Sig-* signant
+  //   HMAC-SHA256(timestamp + "\n" + nonce + "\n" + body, sigSecret).
+  // Retro-compatible : un serveur a jour valide via isValidForBody (integrite du
+  // corps + fenetre temps) ; un serveur ancien ignore ces en-tetes et retombe sur
+  // le timestamp/signature deja presents dans le body. Le nonce (unique/requete)
+  // prepare une future deduplication anti-rejeu cote serveur.
+  if (config.sigSecret != nullptr && config.sigSecret[0] != '\0' && config.currentEpochSeconds > 0) {
+    static uint32_t s_bodySigCounter = 0;
+    char tsBuf2[16];
+    snprintf(tsBuf2, sizeof(tsBuf2), "%lu", config.currentEpochSeconds);
+    char nonceBuf[32];
+    snprintf(nonceBuf, sizeof(nonceBuf), "%lu-%lu",
+             config.currentEpochSeconds, (unsigned long)(++s_bodySigCounter));
+    String signedMsg = String(tsBuf2) + "\n" + nonceBuf + "\n" + body;
+    char bodySigHex[65];
+    if (n3HmacSha256(config.sigSecret, signedMsg.c_str(), bodySigHex, sizeof(bodySigHex))) {
+      http.addHeader("X-Sig-Timestamp", tsBuf2);
+      http.addHeader("X-Sig-Nonce", nonceBuf);
+      http.addHeader("X-Sig-Hmac", bodySigHex);
+    }
+  }
+
   if (config.onSending) config.onSending();
 
   const unsigned long postStartMs = millis();

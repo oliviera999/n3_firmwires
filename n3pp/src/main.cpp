@@ -24,8 +24,11 @@
 // + reset distant : front montant sur GPIO 110, OTA prioritaire.
 // ============================================================
 
-static bool s_resetEdgeInitialized = false;
-static bool s_lastResetModeState = false;
+// RTC_DATA_ATTR : en mode deep sleep loop() ne tourne qu'une fois par reveil.
+// Sans persistance a travers le sommeil, le 1er poll ne faisait que re-amorcer
+// l'etat et un front montant du reset distant (110) n'etait JAMAIS observe.
+RTC_DATA_ATTR static bool s_resetEdgeInitialized = false;
+RTC_DATA_ATTR static bool s_lastResetModeState = false;
 static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
 RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
 static char s_otaCurrentVersion[16] = "";
@@ -161,7 +164,13 @@ static void accumulateOtaPeriodicElapsedFromSleep(int sleepSeconds) {
 // ============================================================
 
 void setup() {
-  // Brown-out detector desactive (boost demarrage), pins critiques, serie.
+  // Brown-out detector desactive pendant le boot (pic de courant a l'init WiFi),
+  // puis RE-ACTIVE en fin de setup() : sur un noeud sur batterie, le laisser
+  // desactive en fonctionnement exposait les ecritures flash/NVS/OTA a une tension
+  // basse (risque de corruption). On sauvegarde la valeur d'origine pour la restaurer.
+  // NB: a valider sur cible ; si des resets brown-out apparaissent au demarrage
+  // WiFi, retirer la restauration en fin de setup().
+  const uint32_t savedBrownOutReg = READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   pinMode(POMPE, OUTPUT);
@@ -207,6 +216,21 @@ void setup() {
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
+  // Attente bornee de la synchro SNTP avant le premier POST : sans cela un cold
+  // boot pouvait dater/signer le POST avec une heure NVS perimee (hors fenetre
+  // serveur SIG_VALID_WINDOW) -> rejet et mesure perdue. Sur reveil timer l'heure
+  // est deja restauree (epoch > seuil) : la boucle sort immediatement.
+  if (WiFi.status() == WL_CONNECTED) {
+    const unsigned long ntpWaitStart = millis();
+    while ((unsigned long)rtc.getEpoch() < 1577836800UL &&
+           (millis() - ntpWaitStart) < 5000UL) {
+      delay(100);
+    }
+    Serial.printf("[NTP] epoch=%lu (attente %lums)\n",
+                  (unsigned long)rtc.getEpoch(),
+                  (unsigned long)(millis() - ntpWaitStart));
+  }
+
   variablestoesp();
   etatPompe = 0;
   etatRelais = 1;
@@ -217,6 +241,10 @@ void setup() {
 
   N3SleepConfig sleepCfg = { N3_WAKEUP_GPIO, HIGH, (unsigned long)FreqWakeUp };
   n3SleepConfigure(sleepCfg);
+
+  // Re-active le brown-out detector pour proteger les ecritures flash/NVS/OTA
+  // pendant le fonctionnement (voir note en debut de setup()).
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, savedBrownOutReg);
 }
 
 void loop() {
@@ -259,13 +287,20 @@ void loop() {
   }
   s_lastResetModeState = resetRequested;
 
-  // Alerte si la pompe est active (etat envoye au serveur).
+  // Alerte si la pompe est active (etat envoye au serveur). Latch emailPompeSent :
+  // un seul mail Critical + POST sur la transition vers "pompe active" ; sinon,
+  // pompe maintenue ON par le serveur -> flood de mails/POST a chaque reveil.
   if (digitalRead(POMPE) == 1) {
     etatPompe = 1;
-    Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
-    datatobdd();
-    emailMessage = String("ATTENTION, arrosage continu en cours !");
-    sendEmailNotification(N3Severity::Critical);
+    if (!emailPompeSent) {
+      Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
+      datatobdd();
+      emailMessage = String("ATTENTION, arrosage continu en cours !");
+      sendEmailNotification(N3Severity::Critical);
+      emailPompeSent = true;
+    }
+  } else {
+    emailPompeSent = false;  // pompe relachee : re-arme l'alerte
   }
 
   lectureCapteurs();
@@ -304,10 +339,26 @@ void loop() {
     Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
   }
 
-  // Comptabilise le temps de sommeil a venir pour le cooldown arrosage, l'OTA et le rapport reseau.
-  accumulateOtaPeriodicElapsedFromSleep(FreqWakeUp);
-  n3ppAccumulateNetReportElapsedFromSleep(FreqWakeUp);
+  // Comptabilise le temps ECOULE pour le cooldown arrosage, l'OTA et le rapport reseau.
+  // En mode deep sleep (WakeUp==0), loop() ne tourne qu'une fois par reveil puis dort
+  // FreqWakeUp secondes : on comptabilise donc FreqWakeUp. En mode eveille (WakeUp==1),
+  // sommeil() ne dort pas et loop() re-tourne toutes les quelques secondes : ajouter
+  // FreqWakeUp a chaque tour faisait exploser les compteurs (OTA/rapport en rafale,
+  // cooldown arrosage neutralise). On mesure alors l'ecoule reel via millis().
+  static unsigned long s_lastTimerMillis = 0;
+  const unsigned long nowTimerMs = millis();
+  int elapsedForTimers;
+  if (WakeUp == 0) {
+    elapsedForTimers = FreqWakeUp;  // deep sleep imminent de FreqWakeUp s
+  } else {
+    elapsedForTimers = (s_lastTimerMillis == 0)
+                           ? 0
+                           : (int)((nowTimerMs - s_lastTimerMillis) / 1000UL);
+  }
+  s_lastTimerMillis = nowTimerMs;
+  accumulateOtaPeriodicElapsedFromSleep(elapsedForTimers);
+  n3ppAccumulateNetReportElapsedFromSleep(elapsedForTimers);
   n3ppMaybeSendNetworkReportEmail();
-  arrosageAutoAccumulateCooldown(FreqWakeUp);
+  arrosageAutoAccumulateCooldown(elapsedForTimers);
   sommeil();
 }

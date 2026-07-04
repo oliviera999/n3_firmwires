@@ -152,8 +152,12 @@ void batterie() {
   Serial.print(measuredVoltage);
   Serial.println(" V");
 
-  int battPercent = 100 - ((2100 - avgPontDiv) * 0.2);
-  int batteryVoltage2 = avgPontDiv * 4.2 / 2100;
+  // Affichage OLED uniquement. Bornage 0..100 % (la formule peut sortir de la
+  // plage selon l'ADC) et tension en float (l'ancien int tronquait a 0-4 V).
+  int battPercent = (int)(100 - ((2100 - avgPontDiv) * 0.2));
+  if (battPercent < 0) battPercent = 0;
+  if (battPercent > 100) battPercent = 100;
+  float batteryVoltage2 = avgPontDiv * 4.2f / 2100.0f;
 
   if (displayOk) {
     display.clearDisplay();

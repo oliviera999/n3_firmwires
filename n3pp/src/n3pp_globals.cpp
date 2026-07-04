@@ -9,10 +9,17 @@
 // Variables d'etat issues et pour la BDD
 // ============================================================
 
-int HeureArrosage = 6;
-int SeuilSec = 5000;
+// Config surchargeable par le serveur : RTC_DATA_ATTR pour conserver la derniere
+// valeur appliquee (cles 102/103/104/105/107) a travers le deep sleep quand le
+// serveur est injoignable. Sinon chaque reveil hors-ligne repartait du defaut.
+RTC_DATA_ATTR int HeureArrosage = 6;
+// Defaut "sol sec" : 1500 est dans la plage ADC 12 bits (HumidMoy = moyenne
+// brute 0..4095). L'ancien defaut 5000 etait inatteignable -> HumidMoy < SeuilSec
+// toujours vrai (sol "sec" en permanence) et l'hysteresis SeuilSec+5% jamais
+// atteignable. Clamp applique a l'ecriture de la cle 102 (voir n3pp_network.cpp).
+RTC_DATA_ATTR int SeuilSec = 1500;
 bool WakeUp = 0;
-int FreqWakeUp = N3_DEFAULT_FREQ_WAKE_UP_S;  // Defaut deep sleep (s), surchargeable par GPIO 107.
+RTC_DATA_ATTR int FreqWakeUp = N3_DEFAULT_FREQ_WAKE_UP_S;  // Defaut deep sleep (s), surchargeable par GPIO 107.
 bool ArrosageManu = 0;
 bool resetMode = 0;
 
@@ -25,7 +32,7 @@ bool etatPompe = 0;
 bool etatRelais = 0;
 
 int tempsArrosageMill = 1000;
-int tempsArrosageSec = 4;
+RTC_DATA_ATTR int tempsArrosageSec = 4;  // surchargeable par le serveur (cle 105), conserve en RTC.
 int tempsArrosage = tempsArrosageSec * tempsArrosageMill;
 
 int Humid1;
@@ -42,14 +49,22 @@ extern const long intervalDatas = N3_DATA_INTERVAL_MS;
 // survivre au deep sleep (sinon re-spam a chaque reveil tant que la condition dure).
 RTC_DATA_ATTR bool emailHumidSent = 0;
 RTC_DATA_ATTR bool emailPontDivSent = 0;
+// Anti-spam alerte "pompe active" : evite un mail Critical + POST a chaque
+// reveil/iteration tant que le serveur maintient la pompe ON (latch a etat).
+RTC_DATA_ATTR bool emailPompeSent = 0;
 RTC_DATA_ATTR bool arrosageFait = 1;
 
 // Compteur de demarrages (RTC RAM).
 RTC_DATA_ATTR int bootCount = 0;
 bool WakeUpButton = 0;
 
-RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
-RTC_DATA_ATTR String enableEmailChecked = "checked";
+// NB : PAS de RTC_DATA_ATTR ici. Un String detient un pointeur vers le heap ;
+// la RTC RAM ne peut pas preserver le heap, et le constructeur global se
+// re-execute a chaque boot -> l'attribut n'apportait rien (valeur remise au
+// defaut a chaque reveil) tout en etant un motif use-after-free latent. Ces
+// deux valeurs sont de toute facon rafraichies depuis le serveur (cles 100/101).
+String inputMessageMailAd = SMTP_DEST;
+String enableEmailChecked = "checked";
 
 String emailMessage;
 
@@ -65,7 +80,7 @@ int avgPontDiv;
 float batt;
 float measuredVoltage;
 float batteryVoltage;
-int SeuilPontDiv = 1700;  // Seuil pour batterie faible (override possible via GPIO 103).
+RTC_DATA_ATTR int SeuilPontDiv = 1700;  // Seuil batterie faible (override GPIO 103), conserve en RTC.
 extern const float ADC_MAX_VALUE = 4095.0;
 extern const float V_REF = N3_BATTERY_VREF;
 extern const float calibration = 0.06;

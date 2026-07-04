@@ -159,7 +159,10 @@ void automatismes() {
   Serial.print("tempsArrosage3: ");
   Serial.println(tempsArrosage);
 
-  // mail si tension trop basse (batterie)
+  // Protection batterie faible : sommeil protecteur "GPIO uniquement" (aucun
+  // reveil timer) pour cesser de vider la batterie au lieu de se reveiller toutes
+  // les FreqWakeUp secondes. DECORELE de l'email : la protection s'applique meme
+  // si les notifications sont sur "none" (seul l'envoi du mail reste conditionnel).
   if ((PontDiv < SeuilPontDiv)) {
     if (emailEnabled() && !emailPontDivSent) {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
@@ -167,6 +170,10 @@ void automatismes() {
       sendEmailNotification(N3Severity::Critical);
       emailPontDivSent = true;
     }
+    EnregistrementHeureFlash();
+    N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
+    n3SleepConfigure(emergencySleep);
+    Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
     n3SleepStart();
   } else {
     // Batterie revenue au-dessus du seuil : re-arme l'alerte (anti-spam a etat).
@@ -248,10 +255,10 @@ void sommeil() {
                  " SeuilPontDiv=" + String(SeuilPontDiv));
   if (WakeUp == 0) {
 
-    if ((PontDiv < SeuilPontDiv) && emailEnabled()) {
+    if (PontDiv < SeuilPontDiv) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
-      if (!emailPontDivSent) {
+      if (emailEnabled() && !emailPontDivSent) {
         emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
         sendEmailNotification(N3Severity::Critical);
         emailPontDivSent = true;

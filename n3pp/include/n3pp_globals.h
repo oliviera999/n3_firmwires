@@ -50,6 +50,7 @@ extern const long intervalDatas;
 // Indicateur : email d'alerte déjà envoyé ou non (évite spam)
 extern bool emailHumidSent;
 extern bool emailPontDivSent;
+extern bool emailPompeSent;
 extern bool arrosageFait;
 
 //wakeUp touch

@@ -120,7 +120,10 @@ void variablestoesp() {
   }
 
   Serial.printf("[SERVER][GET] Lecture config distante depuis %s\n", serverNameOutput);
-  outputsState = n3DataGet(serverNameOutput, &httpResponseCode);
+  // X-Api-Key envoye aussi sur le GET d'etat : sans effet sur un serveur ancien
+  // (en-tete ignore), mais permet a un serveur a jour d'exiger la cle sur ce GET
+  // (flag FIRMWARE_STATE_REQUIRE_KEY) au lieu de le laisser totalement public.
+  outputsState = n3DataGet(serverNameOutput, &httpResponseCode, API_KEY);
   delay(200);
   Serial.printf("[SERVER][GET] HTTP=%u\n", httpResponseCode);
   Serial.println("[SERVER][GET][BODY] " + outputsState);

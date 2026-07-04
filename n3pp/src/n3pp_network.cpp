@@ -111,7 +111,10 @@ void variablestoesp() {
   }
 
   Serial.printf("[SERVER][GET] Lecture config distante depuis %s\n", serverNameOutput);
-  outputsState = n3DataGet(serverNameOutput, &httpResponseCode);
+  // X-Api-Key envoye aussi sur le GET d'etat : sans effet sur un serveur ancien
+  // (en-tete ignore), mais permet a un serveur a jour d'exiger la cle sur ce GET
+  // (flag FIRMWARE_STATE_REQUIRE_KEY) au lieu de le laisser totalement public.
+  outputsState = n3DataGet(serverNameOutput, &httpResponseCode, API_KEY);
   delay(OUTPUTS_FETCH_DELAY_MS);
   Serial.printf("[SERVER][GET] HTTP=%u\n", httpResponseCode);
   Serial.println("[SERVER][GET][BODY] " + outputsState);
@@ -183,7 +186,17 @@ void variablestoesp() {
   }
   inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
   enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
-  SeuilSec = readIntByKey(myObject, "102", SeuilSec);
+  // SeuilSec est compare a HumidMoy (moyenne ADC brute 0..4095) : on borne la
+  // valeur serveur dans cette plage pour eviter un seuil inatteignable (ex. 5000
+  // -> sol toujours "sec"). Hors plage -> valeur precedente conservee.
+  {
+    int parsedSeuilSec = SeuilSec;
+    if (tryReadIntByKey(myObject, "102", &parsedSeuilSec)) {
+      if (parsedSeuilSec < 0) parsedSeuilSec = 0;
+      if (parsedSeuilSec > 4095) parsedSeuilSec = 4095;
+      SeuilSec = parsedSeuilSec;
+    }
+  }
   SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
   HeureArrosage = readIntByKey(myObject, "104", HeureArrosage);
   tempsArrosageSec = readIntByKey(myObject, "105", tempsArrosageSec);

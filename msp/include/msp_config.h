@@ -10,7 +10,7 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "2.45"
+#define FIRMWARE_VERSION "2.47"
 
 // --- Pins ---
 #define RELAIS 13
