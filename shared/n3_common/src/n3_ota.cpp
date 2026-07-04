@@ -178,7 +178,20 @@ static bool verifyRemoteFirmwareIntegrity(const char* firmwareUrl, const char* e
         }
         Serial.println("[OTA] signature ECDSA valide.");
     } else {
+#if defined(N3_OTA_REQUIRE_SIGNATURE)
+        // Fail-closed (opt-in) : refuser un binaire sans signature ECDSA. Le
+        // sha256 provient de la meme metadata (HTTP) ; sans signature, un MITM du
+        // canal OTA peut servir un binaire malveillant avec un sha256 concordant.
+        // A activer une fois que tous les canaux OTA publient une signature.
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize,
+                     "Signature OTA requise (N3_OTA_REQUIRE_SIGNATURE) mais absente de la metadata.");
+        }
+        Serial.println("[OTA][SECURITE] signature absente et requise -> mise a jour refusee.");
+        return false;
+#else
         Serial.println("[OTA] signature absente, verification sha256 uniquement.");
+#endif
     }
 
     return true;
