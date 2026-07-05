@@ -22,10 +22,14 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
   ne compile pas sur S3 (`note_t` non déclaré dans `ESP32PWM.h`). Périmètre WROOM inchangé.
 - `.github/workflows/firmware-ci.yml` : ajout des envs ffp5cs compilables avec les secrets
   placeholder de CI — `wroom-s3-test`, `wroom-s3-test-psram`, `-psram-v2`, `-devkit`, `-usb`,
-  `wroom-tls-test`, `wroom-beta`, `wroom-beta-local`.
-- Restent hors CI par design les envs `PROFILE_PROD` (`wroom-prod`, `wroom-prod-https`,
-  `wroom-prod-pio6`, `wroom-s3-prod`) : un `static_assert` refuse la compilation tant que
-  `WEB_AUTH_PASS` reste le placeholder `"CHANGEZ_MOI"` (secrets réels requis).
+  `wroom-tls-test`.
+- Restent hors CI par des contraintes pré-existantes (orthogonales au S3) :
+  - `PROFILE_PROD` (`wroom-prod`, `wroom-prod-https`, `wroom-prod-pio6`, `wroom-s3-prod`) :
+    un `static_assert` refuse la compilation tant que `WEB_AUTH_PASS` reste le placeholder
+    `"CHANGEZ_MOI"` (secrets réels requis).
+  - `PROFILE_BETA` (`wroom-beta`, `wroom-beta-local`) : héritent de `wroom-prod`
+    (`lib_ignore ESPAsyncWebServer` + `-DDISABLE_ASYNC_WEBSERVER`) mais un chemin de code
+    non gardé inclut malgré tout `<ESPAsyncWebServer.h>` → build échoue (à corriger côté env).
 - Build `wroom-s3-test` validé en CI GitHub (image esp32s3 OK, RAM 50,4 %, Flash 27,9 %).
 
 ## Version 15.01 - 2026-07-05

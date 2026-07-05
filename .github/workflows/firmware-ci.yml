@@ -86,14 +86,14 @@ jobs:
           - { name: ffp5cs-wroom-s3-test-usb, dir: ffp5cs, env: wroom-s3-test-usb }
           # Diagnostic TLS minimal (compile tls_minimal_test.cpp seul).
           - { name: ffp5cs-wroom-tls-test, dir: ffp5cs, env: wroom-tls-test }
-          # Canaux OTA BETA (WROOM pioarduino, PROFILE_BETA) : mêmes sources/toolchain
-          # que wroom-test, hors garde-fou PROFILE_PROD (secrets réels non requis).
-          - { name: ffp5cs-wroom-beta, dir: ffp5cs, env: wroom-beta }
-          - { name: ffp5cs-wroom-beta-local, dir: ffp5cs, env: wroom-beta-local }
-          # NB : envs PROFILE_PROD (wroom-prod, wroom-prod-https, wroom-prod-pio6,
-          # wroom-s3-prod) volontairement hors CI : un static_assert (config_network.h)
-          # refuse de compiler tant que WEB_AUTH_PASS vaut le placeholder "CHANGEZ_MOI",
-          # or la CI ne provisionne que des secrets placeholder.
+          # NB : hors CI par des contraintes pré-existantes, orthogonales au S3 :
+          #  - PROFILE_PROD (wroom-prod, wroom-prod-https, wroom-prod-pio6, wroom-s3-prod) :
+          #    un static_assert (config_network.h) refuse de compiler tant que WEB_AUTH_PASS
+          #    vaut le placeholder "CHANGEZ_MOI" — or la CI ne provisionne que des placeholders.
+          #  - PROFILE_BETA (wroom-beta, wroom-beta-local) : héritent de wroom-prod
+          #    (lib_ignore ESPAsyncWebServer + -DDISABLE_ASYNC_WEBSERVER) mais un chemin
+          #    de code non gardé inclut malgré tout <ESPAsyncWebServer.h> -> échec de build
+          #    (incohérence de config à corriger côté env beta, indépendamment de la CI).
           - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
