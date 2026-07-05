@@ -18,16 +18,20 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 - `platformio.ini` : `wroom-beta-local` réactive le web async (`-UDISABLE_ASYNC_WEBSERVER`)
   mais héritait le `lib_ignore` de `wroom-prod` (ESPAsyncWebServer/WebSockets ignorés) →
-  build cassé. Correction : `lib_ignore = LittleFS` (comme `wroom-test`) pour fournir les
-  libs web. `wroom-beta` (async off, hérité) était déjà cohérent.
+  erreur de compilation. Correction : `lib_ignore = LittleFS` (comme `wroom-test`) pour
+  fournir les libs web. `wroom-beta` (async off, hérité) était déjà cohérent.
 - `.github/workflows/firmware-ci.yml` :
   - provisioning CI : ajout d'un `WEB_AUTH_PASS` factice (valeur jetable, jamais un vrai
     secret) dans `secrets_config.h` pour lever le `static_assert` `PROFILE_PROD` et
     compile-checker les envs prod en CI.
-  - matrice : ajout de `wroom-beta`, `wroom-beta-local`, `wroom-prod`, `wroom-prod-pio6`,
-    `wroom-s3-prod`.
-- Reste hors CI : `wroom-prod-https` — un `#error` volontaire (`server_url_config.h`) bloque
-  `USE_HTTPS_ENDPOINTS` tant que le transport TLS du WebClient n'est pas implémenté.
+  - matrice : ajout de `wroom-beta`, `wroom-prod`, `wroom-prod-pio6`, `wroom-s3-prod`
+    (tous verts en CI).
+- Restent hors CI (contraintes pré-existantes propres à l'env) :
+  - `wroom-prod-https` — `#error` volontaire (`server_url_config.h`) bloquant
+    `USE_HTTPS_ENDPOINTS` sans transport TLS du WebClient.
+  - `wroom-beta-local` — le fix `lib_ignore` lève l'erreur de compilation, mais le
+    binaire async-web résultant (~2,0 Mo) déborde sa partition app `medium` (1,66 Mo).
+    À traiter par re-partitionnement / réduction du binaire (hors périmètre CI).
 - Builds validés localement (plateforme registre) : `wroom-s3-prod` (Flash 19,9 %) et
   `wroom-prod-pio6` (Flash 75,7 % / budget 85 %) avec le WEB_AUTH factice.
 
