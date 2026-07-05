@@ -10,7 +10,16 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "2.48"
+#define FIRMWARE_VERSION "2.49"
+
+// Schema serveur : HTTPS par defaut (Vague 1 audit 2026-07).
+// Rollback HTTP : definir USE_HTTP_ENDPOINTS au build (-DUSE_HTTP_ENDPOINTS).
+// Transport TLS : USE_HTTPS_ENDPOINTS (aligne WiFiClientSecure sur l'URL https://).
+#if defined(USE_HTTP_ENDPOINTS)
+#define MSP_SERVER_SCHEME "http://"
+#else
+#define MSP_SERVER_SCHEME "https://"
+#endif
 
 // --- Pins ---
 #define RELAIS 13
@@ -57,9 +66,8 @@ const long intervalDatas = N3_DATA_INTERVAL_MS;
 #define SCREEN_HEIGHT N3_OLED_HEIGHT
 
 // --- URLs serveur ---
-// Source de verite unique : les variables serverNamePostData / serverNameOutput
-// (definies dans main.cpp avec #ifdef TEST_MODE). Les macros MSP_URL_* du fichier
-// pre-2.42 etaient inutilisees et creaient un doublon a maintenir.
+// Source de verite unique : serverNamePostData / serverNameOutput / serverNameHeartbeat
+// (definies dans main.cpp avec MSP_SERVER_SCHEME de msp_config.h).
 
 // --- NTP ---
 #define MSP_NTP_SERVER N3_NTP_SERVER

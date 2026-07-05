@@ -92,21 +92,14 @@ int sampleTotal = 0;
 // URLs serveur (production / test)
 // ============================================================
 
-// Schema serveur : HTTP par defaut (comportement historique inchange).
-// Avec le flag de build USE_HTTPS_ENDPOINTS, bascule en https:// (TLS).
-// Voir docs/HTTPS_MIGRATION.md (activation, rollback, validation cible).
-#if defined(USE_HTTPS_ENDPOINTS)
-  #define N3PP_SERVER_SCHEME "https://"
-#else
-  #define N3PP_SERVER_SCHEME "http://"
-#endif
-
 #ifdef TEST_MODE
-const char* serverNamePostData = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/n3ppdatas/post-n3pp-data.php";
-const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
+const char* serverNamePostData = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/post-data";
+const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/api/outputs/state?board=3";
+const char* serverNameHeartbeat = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/heartbeat";
 #else
-const char* serverNamePostData = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/n3ppdatas/post-n3pp-data.php";
-const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/n3ppcontrol/n3pp-outputs-action.php?action=outputs_state&board=3";
+const char* serverNamePostData = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/post-data";
+const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/api/outputs/state?board=3";
+const char* serverNameHeartbeat = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/heartbeat";
 #endif
 
 String version = FIRMWARE_VERSION;

@@ -8,3 +8,4 @@
 void datatobdd();
 void variablestoesp();
 void Wificonnect();
+void sendHeartbeat();

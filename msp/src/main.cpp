@@ -95,21 +95,14 @@ String emailMessage;
 /* Session SMTP désormais locale à n3_mail (plus de global). */
 
 // --- Réseau ---
-// Schema serveur : HTTP par defaut (comportement historique inchange).
-// Avec le flag de build USE_HTTPS_ENDPOINTS, bascule en https:// (TLS).
-// Voir docs/HTTPS_MIGRATION.md (activation, rollback, validation cible).
-#if defined(USE_HTTPS_ENDPOINTS)
-#  define MSP_SERVER_SCHEME "https://"
-#else
-#  define MSP_SERVER_SCHEME "http://"
-#endif
-
 #ifdef TEST_MODE
-const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/msp1datas/post-msp1-data.php";
-const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/post-data";
+const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/api/outputs/state?board=2";
+const char* serverNameHeartbeat = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/heartbeat";
 #else
-const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1/msp1datas/post-msp1-data.php";
-const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1/msp1control/msp1-outputs-action.php?action=outputs_state&board=2";
+const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1/post-data";
+const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1/api/outputs/state?board=2";
+const char* serverNameHeartbeat = MSP_SERVER_SCHEME "iot.olution.info/msp1/heartbeat";
 #endif
 
 unsigned int httpResponseCode;
@@ -469,6 +462,7 @@ void loop() {
   }
   s_lastOtaTimerMillis = nowOtaTimerMs;
   accumulateOtaPeriodicElapsedFromSleep(elapsedForOta);
+  sendHeartbeat();
   sommeil();
 
   // Reset des accumulateurs servo apres le sommeil (utile seulement si WakeUp=1).

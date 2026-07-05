@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.48** (définie dans `include/msp_config.h`).
+Version actuelle : **2.49** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.48** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.49 | 2026-07-05 | **Vague 1 audit serveur.** URLs canoniques Slim (`/msp1/post-data`, `/msp1/api/outputs/state`, `/msp1/heartbeat` ; préfixe `/msp1-test/` en TEST_MODE) ; heartbeat POST par cycle de réveil (`sendHeartbeat` via `n3_data`) ; `MSP_SERVER_SCHEME` HTTPS par défaut dans `msp_config.h` ; transport TLS activé sur l'env par défaut (`USE_HTTPS_ENDPOINTS`). |
 | 2.48 | 2026-07-05 | Publication OTA prod : déploiement distant canal `msp` (alignement code audit + serveur v6.6.x) |
 | 2.47 | 2026-07-04 | **Audit n3pp/msp1 (2/2) — durcissement communication (additif, rétro-compatible).** Via lib `n3_data` : signature HMAC **couvrant tout le corps** (en-têtes `X-Sig-*`, un serveur ancien retombe sur le contrat existant) ; GET d'état envoie `X-Api-Key` (exigible côté serveur via flag). Via lib `n3_ota` : flag opt-in `N3_OTA_REQUIRE_SIGNATURE`. |
 | 2.46 | 2026-07-04 | **Audit n3pp/msp1.** Protection batterie faible = sommeil GPIO-only décorrélée de l'email (via fix lib `n3_sleep` : `sleepSeconds==0` désactive la source timer au lieu d'un réveil immédiat qui vidait la batterie) ; comptage du temps écoulé mesuré (millis) en mode éveillé `WakeUp=1` (évitait le check OTA en rafale) ; détection de front du reset distant (110) persistée en RTC ; attente SNTP bornée avant le 1er POST (évite le rejet HMAC hors fenêtre) ; bornage de l'angle servo GD après scan ; affichage batterie borné 0..100 % + tension en float. |

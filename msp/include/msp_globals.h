@@ -90,6 +90,7 @@ extern String sensorName;
 extern String sensorLocation;
 extern const char* serverNamePostData;
 extern const char* serverNameOutput;
+extern const char* serverNameHeartbeat;
 extern String Wifiactif;
 extern String outputsState;
 

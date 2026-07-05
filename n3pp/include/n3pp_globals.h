@@ -82,6 +82,7 @@ extern int sampleTotal;
 // Définition des URLs serveur (base de données olution / iot.olution.info)
 extern const char* serverNamePostData;
 extern const char* serverNameOutput;
+extern const char* serverNameHeartbeat;
 
 extern String version;
 extern String apiKeyValue;

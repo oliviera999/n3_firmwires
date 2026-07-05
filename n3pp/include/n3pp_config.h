@@ -7,7 +7,16 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "4.49"
+#define FIRMWARE_VERSION "4.50"
+
+// Schema serveur : HTTPS par defaut (Vague 1 audit 2026-07).
+// Rollback HTTP : definir USE_HTTP_ENDPOINTS au build (-DUSE_HTTP_ENDPOINTS).
+// Transport TLS : USE_HTTPS_ENDPOINTS (aligne WiFiClientSecure sur l'URL https://).
+#if defined(USE_HTTP_ENDPOINTS)
+#define N3PP_SERVER_SCHEME "http://"
+#else
+#define N3PP_SERVER_SCHEME "https://"
+#endif
 
 //définitions des pins pour les actionneurs
 #define RELAIS 13

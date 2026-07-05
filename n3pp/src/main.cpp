@@ -360,5 +360,6 @@ void loop() {
   n3ppAccumulateNetReportElapsedFromSleep(elapsedForTimers);
   n3ppMaybeSendNetworkReportEmail();
   arrosageAutoAccumulateCooldown(elapsedForTimers);
+  sendHeartbeat();
   sommeil();
 }

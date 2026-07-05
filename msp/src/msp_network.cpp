@@ -103,6 +103,53 @@ void datatobdd() {
   posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
 }
 
+void sendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[SERVER][HB][SKIP] WiFi non connecte");
+    return;
+  }
+
+  static uint32_t minHeap = UINT32_MAX;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < minHeap) {
+    minHeap = freeHeap;
+  }
+
+  const uint32_t uptimeSec = millis() / 1000UL;
+  const int rssi = WiFi.RSSI();
+
+  N3DataField fields[] = {
+    {"api_key",  apiKeyValue},
+    {"sensor",   sensorName},
+    {"version",  version},
+    {"uptime",   String(uptimeSec)},
+    {"free",     String(freeHeap)},
+    {"min",      String(minHeap == UINT32_MAX ? freeHeap : minHeap)},
+    {"reboots",  String(bootCount)},
+    {"rssi",     String(rssi)},
+  };
+
+  N3PostConfig cfg = {};
+  cfg.url = serverNameHeartbeat;
+  cfg.apiKey = API_KEY;
+  cfg.fields = fields;
+  cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  cfg.sigSecret = (API_SIG_SECRET[0] != '\0') ? API_SIG_SECRET : nullptr;
+  const unsigned long epochNow = (unsigned long)rtc.getEpoch();
+  cfg.currentEpochSeconds = (epochNow > 1577836800UL) ? epochNow : 0UL;
+  cfg.onResult = [](int code) {
+    if (code == 200) {
+      Serial.println("[SERVER][HB] OK");
+    } else {
+      Serial.printf("[SERVER][HB] erreur HTTP %d\n", code);
+    }
+  };
+
+  Serial.printf("[SERVER][HB] Envoi vers %s\n", serverNameHeartbeat);
+  (void)n3DataPost(cfg);
+  delay(200);
+}
+
 // Compteur d'echecs consecutifs pour le polling /outputs_state cote msp.
 static unsigned int s_outputsGetFailureCount = 0;
 
