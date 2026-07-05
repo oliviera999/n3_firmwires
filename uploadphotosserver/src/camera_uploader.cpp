@@ -2,17 +2,69 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <time.h>
 #if defined(USE_HTTPS_ENDPOINTS)
 #include <WiFiClientSecure.h>
 #endif
 
 #include "config.h"
 #include "camera_upload.h"
+#include "n3_hmac.h"
 
 #if USE_SD
 #include "FS.h"
 #include "SD_MMC.h"
 #endif
+
+// A5 (audit 2026-07-05) — épinglage CA opt-in pour l'upload TLS, INERTE PAR DÉFAUT.
+// Même mécanisme et même en-tête (`n3_data_ca_cert.h`) que la lib n3_data : si le firmware fournit
+// cet en-tête (définissant N3_DATA_CA_CERT_PEM) dans l'include path, on valide le certificat serveur
+// via setCACert() (protection MITM). Absent (cas actuel) : on retombe EXACTEMENT sur setInsecure().
+#if defined(USE_HTTPS_ENDPOINTS)
+#  if defined(__has_include)
+#    if __has_include("n3_data_ca_cert.h")
+#      include "n3_data_ca_cert.h"
+#      define CAMERA_UPLOAD_HAS_CA_CERT 1
+#    endif
+#  endif
+static void cameraUploadPrepareTlsClient(WiFiClientSecure& client) {
+#  if defined(CAMERA_UPLOAD_HAS_CA_CERT)
+  client.setCACert(N3_DATA_CA_CERT_PEM);
+#  else
+  client.setInsecure();
+#  endif
+}
+#endif
+
+// A4 — signature HMAC additive du POST multipart. Le corps (JPEG volumineux) n'est pas signable en
+// streaming : on signe un condensé STABLE `timestamp\n nonce\n api_key` transporté en en-têtes
+// X-Sig-Timestamp / X-Sig-Nonce / X-Sig-Hmac (mêmes en-têtes que shared/n3_data, validés côté serveur
+// par SignatureValidator::isValidForBody). Rétro-compatible : si API_SIG_SECRET est vide ou l'horloge
+// non fiable, aucun en-tête n'est ajouté et l'auth retombe sur la seule clé API.
+static void cameraUploadAddSignatureHeaders(HTTPClient& http, const CameraUploadParams& params) {
+  if (params.sigSecret == nullptr || params.sigSecret[0] == '\0') {
+    return;
+  }
+  const time_t nowTs = time(nullptr);
+  if (static_cast<unsigned long>(nowTs) < 1600000000UL) {  // horloge non synchronisée : on n'ajoute rien
+    return;
+  }
+  char tsBuf[16];
+  snprintf(tsBuf, sizeof(tsBuf), "%lu", static_cast<unsigned long>(nowTs));
+  static uint32_t s_camSigCounter = 0;
+  char nonceBuf[32];
+  snprintf(nonceBuf, sizeof(nonceBuf), "%lu-%lu",
+           static_cast<unsigned long>(nowTs), static_cast<unsigned long>(++s_camSigCounter));
+  char signedMsg[128];
+  snprintf(signedMsg, sizeof(signedMsg), "%s\n%s\n%s",
+           tsBuf, nonceBuf, params.apiKey ? params.apiKey : "");
+  char sigHex[65];
+  if (n3HmacSha256(params.sigSecret, signedMsg, sigHex, sizeof(sigHex))) {
+    http.addHeader("X-Sig-Timestamp", tsBuf);
+    http.addHeader("X-Sig-Nonce", nonceBuf);
+    http.addHeader("X-Sig-Hmac", sigHex);
+  }
+}
 
 static String buildMultipartHead(const String& filename) {
   return "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"" +
@@ -36,8 +88,12 @@ static int doMultipartPostOnce(const CameraUploadParams& params, Stream& body, u
   }
 
 #if defined(USE_HTTPS_ENDPOINTS)
+  // M3 (audit 2026-07-05) : le handshake TLS réserve ~16-45 Ko de DRAM. On loge la heap libre juste
+  // avant, pour diagnostiquer la pression mémoire sur module sans PSRAM (repli framebuffer CIF/DRAM).
+  Serial.printf("[UPLOAD][TLS] heap libre avant handshake=%lu bytes\n",
+                static_cast<unsigned long>(ESP.getFreeHeap()));
   WiFiClientSecure client;
-  client.setInsecure();
+  cameraUploadPrepareTlsClient(client);
 #else
   WiFiClient client;
 #endif
@@ -52,6 +108,7 @@ static int doMultipartPostOnce(const CameraUploadParams& params, Stream& body, u
   if (params.apiKey) {
     http.addHeader("X-Api-Key", params.apiKey);
   }
+  cameraUploadAddSignatureHeaders(http, params);
   if (params.syncSession && params.syncSession[0] != '\0') {
     http.addHeader("X-Sync-Session", params.syncSession);
   }

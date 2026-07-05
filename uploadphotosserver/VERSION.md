@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.55** (définie dans `include/config.h`).
+Version actuelle : **2.56** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.55** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.56 | 2026-07-05 | **Audit 2026-07-05 (tous findings)**. **A1** : `planned` plafonné au drainable réel (~16/réveil) → plus d'`aborted`/mail d'alerte à chaque réveil pour un gros backlog. **A2** : le firmware annonce le VRAI backlog comme `total` + drapeau `final=1` quand le backlog est vidé (récap serveur une seule fois). **A3** : fuseau POSIX `"<+01>-1"` (UTC+1 Maroc) appliqué inconditionnellement — corrige le décalage 1 h (créneau + horodatages). **A4** : signature HMAC-SHA256 additive (en-têtes `X-Sig-*`) sur upload multipart + sync + version, si `API_SIG_SECRET` défini (rétro-compatible clé API). **A5** : épinglage TLS opt-in (`n3_data_ca_cert.h`) sur l'upload + OTA metadata en HTTPS (rollback `-DOTA_METADATA_HTTP_ROLLBACK`). **A6/A7** : numéro de séquence réservé/committé une seule fois (peek/commit) — plus de numéro fantôme ni de `pending` qui gonfle en upload direct. **A8** : durées warm-up/AEC exposées dans `config.h`. **A9** : config morte retirée (`SERVER_PORT`, `WIFI_RECONNECT_INTERVAL_MS`), `static_assert` sur le cast `WIFI_LIST`, cadence OTA tenant compte du temps éveillé. **M1/B1** : `adjustExposure` (mesure JPEG inopérante + fuite framebuffer) supprimé — AEC matériel OV2640. **M2** : scan backlog `reserve()` + cap 256→64. **M3** : log heap avant handshake TLS. **M4** : temporaires `String` remplacés par buffers pile en chemins chauds. |
 | 2.55 | 2026-07-03 | Republication OTA après validation flash USB **ffp3** v2.54 (COM7, MAC `08:3a:f2:6d:4f:e4`, auto-reset DTR/RTS). |
 | 2.54 | 2026-07-03 | **Unification envs** : `msp1` / `n3pp` / `ffp3` = seule stack **espressif32@6.13** + **`esp32cam`** (PSRAM, diagnostic `[DIAG]`) + **HTTPS** (`USE_HTTPS_ENDPOINTS` dans `cam-base`). Suppression des envs `*-cam`, `msp1-https` et de l'ancienne stack pioarduino `esp32dev`. Rollback HTTP : retirer le flag dans `platformio.ini`. |
 | 2.53 | 2026-07-03 | **Sync SD / rate-limit** : pause 11 s entre uploads backlog (`GALLERY_UPLOAD_RATE_LIMIT_SECONDS=10` serveur) ; retry HTTP 429 ; budget sync 3 min/réveil pour éviter boucles 429 et réveils trop longs. **Doc** : `msp1-https` hérite de `msp1-cam` (PSRAM + TLS) ; validation terrain 2026-07-03 (README, `docs/HTTPS_MIGRATION.md`). |

@@ -383,36 +383,16 @@ void n3LogCameraSccbDiagnostics(void) {
 }
 
 #if USE_DEEP_SLEEP
-void adjustExposure() {
-  sensor_t* s = esp_camera_sensor_get();
-  camera_fb_t* fb = esp_camera_fb_get();
-  if (fb && s) {
-    long brightness = 0;
-    for (size_t i = 0; i < fb->len; i++) brightness += fb->buf[i];
-    brightness /= (fb->len ? (long)fb->len : 1);
-    const int currentAec = s->status.aec_value;
-    if (brightness > 200) {
-      int nextAec = currentAec - 50;
-      if (nextAec < 0) nextAec = 0;
-      s->set_aec_value(s, nextAec);
-    } else if (brightness < 50) {
-      int nextAec = currentAec + 50;
-      if (nextAec > 1200) nextAec = 1200;
-      s->set_aec_value(s, nextAec);
-    }
-    esp_camera_fb_return(fb);
-  }
-}
-
-// Warm-up raccourci (audit algo 2026-06) : l'OV2640 se stabilise en 1-2
-// trames, pas 3 s. 2 trames jetees a 150 ms suffisent ; adjustExposure()
-// corrige ensuite avant chaque capture. ⚠ A valider sur cible en transitions
-// de luminosite (aube/crepuscule) : revenir a 3×1000 ms si photos degradees.
+// Warm-up raccourci (A8, audit 2026-06/2026-07) : l'OV2640 se stabilise en 1-2 trames, pas 3 s.
+// On jette CAM_WARMUP_FRAME_COUNT trames espacées de CAM_WARMUP_FRAME_DELAY_MS ; l'AEC MATÉRIEL de
+// l'OV2640 (réactivé dans initializeCamera) gère l'exposition — pas de mesure de luminosité logicielle
+// (l'ancien adjustExposure moyennait des octets JPEG compressés, mesure inopérante : B1).
+// ⚠ Durées ajustables via config.h (revenir à 3×1000 ms si dégradation en aube/crépuscule).
 void warmupCamera() {
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < CAM_WARMUP_FRAME_COUNT; i++) {
     camera_fb_t* fb = esp_camera_fb_get();
-    if (fb) esp_camera_fb_return(fb);
-    delay(150);
+    if (fb) esp_camera_fb_return(fb);  // libération inconditionnelle (pas de fuite framebuffer, cf. M1)
+    delay(CAM_WARMUP_FRAME_DELAY_MS);
   }
 }
 
@@ -423,13 +403,13 @@ void initializeCamera() {
     s->set_aec_value(s, 300);
     s->set_gain_ctrl(s, 0);
     s->set_agc_gain(s, 0);
-    delay(500);
+    delay(CAM_AEC_PRELOCK_MS);
+    // Réactivation de l'AEC/AGC/AWB MATÉRIEL : c'est lui (et non un réglage logiciel) qui pilote
+    // l'exposition à chaque capture. Convergence en lumière stable ≈ CAM_AEC_SETTLE_MS.
     s->set_exposure_ctrl(s, 1);
     s->set_gain_ctrl(s, 1);
     s->set_awb_gain(s, 1);
-    // 10 s -> 3 s : la convergence AEC/AWB de l'OV2640 prend 2-3 s en
-    // lumiere stable (10 s etait une marge excessive).
-    delay(3000);
+    delay(CAM_AEC_SETTLE_MS);
   }
 }
 #endif

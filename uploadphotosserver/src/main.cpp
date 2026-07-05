@@ -14,6 +14,7 @@
 #include "time.h"
 #include <cstring>
 #include <cstdio>
+#include <cstddef>
 #include <HTTPClient.h>
 #if defined(USE_HTTPS_ENDPOINTS)
 // Upload photo en TLS (opt-in flag de build). Inclus uniquement sous le flag :
@@ -122,8 +123,19 @@ void ledBlink(int onMs, int offMs, int count) {
 }
 
 /* ----- WiFi (scan + RSSI + BSSID via n3_wifi) ----- */
+/* A9 : le reinterpret_cast WIFI_LIST (WifiCredential) -> N3WifiNetwork suppose un layout identique.
+ * On le sécurise à la compilation : toute divergence future de l'une des deux structs échoue le build
+ * au lieu de corrompre silencieusement la liste WiFi. */
+static_assert(sizeof(WifiCredential) == sizeof(N3WifiNetwork),
+              "WifiCredential et N3WifiNetwork doivent avoir la meme taille (cast WIFI_LIST)");
+static_assert(offsetof(WifiCredential, ssid) == offsetof(N3WifiNetwork, ssid),
+              "Offset ssid incompatible entre WifiCredential et N3WifiNetwork");
+static_assert(offsetof(WifiCredential, password) == offsetof(N3WifiNetwork, pass),
+              "Offset password/pass incompatible entre WifiCredential et N3WifiNetwork");
+
 bool Wificonnect() {
-  /* WIFI_LIST est WifiCredential { ssid, password } ; même layout que N3WifiNetwork { ssid, pass }. */
+  /* WIFI_LIST est WifiCredential { ssid, password } ; même layout que N3WifiNetwork { ssid, pass }
+     (garanti par les static_assert ci-dessus). */
   const N3WifiNetwork* nets = reinterpret_cast<const N3WifiNetwork*>(WIFI_LIST);
   N3WifiConfig cfg = {};
   cfg.networks = nets;
@@ -433,9 +445,8 @@ void capturePhoto(bool wifiOk) {
   const uint32_t capturePhotoStartMs = millis();
   logMonitoringSnapshot("capturePhoto:start");
 
-#if USE_DEEP_SLEEP
-  adjustExposure();
-#endif
+  /* Exposition : pilotée par l'AEC MATÉRIEL de l'OV2640 (réactivé dans initializeCamera + warm-up).
+   * Plus d'adjustExposure logiciel (mesure JPEG inopérante + fuite framebuffer : M1/B1, audit 2026-07-05). */
 
   const uint32_t captureStartMs = millis();
   camera_fb_t* fb = esp_camera_fb_get();
@@ -459,7 +470,9 @@ void capturePhoto(bool wifiOk) {
 #if USE_SD
   const uint32_t sdWriteStartMs = millis();
   if (sdAvailable) {
-    const uint32_t pictureNumber = cameraSyncNextPictureNumber();
+    /* A6 : on réserve le numéro sans l'engager ; pic_count n'est committé qu'après écriture SD
+       confirmée (un échec ne brûle plus de numéro fantôme). */
+    const uint32_t pictureNumber = cameraSyncPeekNextPictureNumber();
     String path = cameraSyncBuildSdPath(pictureNumber, stampOk ? stamp : nullptr);
     fs::FS& fs = SD_MMC;
     File file = fs.open(path.c_str(), FILE_WRITE);
@@ -467,14 +480,15 @@ void capturePhoto(bool wifiOk) {
       size_t written = file.write(fb->buf, fb->len);
       file.close();
       if (written == fb->len) {
+        cameraSyncCommitWrittenCount(pictureNumber);  // persistance confirmée -> on engage le numéro
         Serial.printf("[SD] Sauvegarde locale %s (%u bytes) — en file d'attente\n",
                       path.c_str(), static_cast<unsigned int>(written));
       } else {
-        Serial.println("[SD][WARN] Ecriture incomplete, desactivation SD");
+        Serial.println("[SD][WARN] Ecriture incomplete, desactivation SD (numero non engage)");
         sdAvailable = false;
       }
     } else {
-      Serial.println("[SD][WARN] Ouverture fichier impossible, desactivation SD");
+      Serial.println("[SD][WARN] Ouverture fichier impossible, desactivation SD (numero non engage)");
       sdAvailable = false;
     }
   }
@@ -484,21 +498,29 @@ void capturePhoto(bool wifiOk) {
   /* Sans carte SD, pas de file d'attente : upload direct si le WiFi est là (sinon photo perdue). */
   if (!sdAvailable && wifiOk) {
     const uint32_t uploadStartMs = millis();
-    const uint32_t directSeq = cameraSyncNextPictureNumber();
-    const String seqStr = String(directSeq);
-    const String filename = "esp32-cam-" + String(currentTargetName()) + "-v" + String(FIRMWARE_VERSION) + ".jpg";
-    const String uploadUrl = String(SERVER_SCHEME) + serverName + serverPath;
+    /* A6/A7 : numéro réservé sans engagement ; confirmé (pic_count + curseur) uniquement si l'upload
+       réussit, sinon aucun numéro brûlé et `pending` ne gonfle pas. */
+    const uint32_t directSeq = cameraSyncPeekNextPictureNumber();
+    char seqStr[12];
+    snprintf(seqStr, sizeof(seqStr), "%lu", static_cast<unsigned long>(directSeq));
+    char filename[64];
+    snprintf(filename, sizeof(filename), "esp32-cam-%s-v%s.jpg", currentTargetName(), FIRMWARE_VERSION);
+    char uploadUrl[128];
+    snprintf(uploadUrl, sizeof(uploadUrl), "%s%s%s", SERVER_SCHEME, serverName.c_str(), serverPath.c_str());
     CameraUploadParams up = {};
-    up.url = uploadUrl.c_str();
+    up.url = uploadUrl;
     up.apiKey = API_KEY;
+    up.sigSecret = API_SIG_SECRET;
     up.syncSession = "";
     up.capturedAt = stampOk ? stamp : "";
-    up.captureSeq = seqStr.c_str();
+    up.captureSeq = seqStr;
     up.reconnect = Wificonnect;
-    const int code = cameraUploadJpegBuffer(up, fb->buf, fb->len, filename);
+    const int code = cameraUploadJpegBuffer(up, fb->buf, fb->len, String(filename));
     logStepDuration("upload_http", millis() - uploadStartMs, 5000);
-    Serial.printf("[CAPTURE] Upload direct (sans SD) HTTP=%d\n", code);
+    Serial.printf("[CAPTURE] Upload direct (sans SD) HTTP=%d seq=%lu\n",
+                  code, static_cast<unsigned long>(directSeq));
     if (code == 200 || code == 202) {
+      cameraSyncMarkDirectUploadConfirmed(directSeq);  // A7 : avance pic_count + curseur ensemble
       ledBlink(1500, 1500, 2);
     }
   }
@@ -541,6 +563,7 @@ static void runSyncDrainIfNeeded(bool wifiOk) {
   sc.startUrl = SYNC_START_URL;
   sc.finishUrl = SYNC_FINISH_URL;
   sc.apiKey = API_KEY;
+  sc.sigSecret = API_SIG_SECRET;
   sc.board = REMOTE_BOARD_ID;
   sc.targetName = currentTargetName();
   sc.firmwareVersion = FIRMWARE_VERSION;
@@ -784,7 +807,10 @@ void loop() {
 #if USE_DEEP_SLEEP
   Serial.printf("[LOOP] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
   logMonitoringSnapshot("loop:before_sleep");
-  accumulateOtaPeriodicElapsedFromSleep(runtimeSleepSeconds);
+  /* A9 : la cadence OTA 2h tient compte du temps ÉVEILLÉ de ce réveil (millis()) EN PLUS du sommeil
+     à venir, pour éliminer la légère dérive (chaque réveil ajoute ~10-30 s auparavant non comptés). */
+  const uint32_t awakeSeconds = static_cast<uint32_t>(millis() / 1000UL);
+  accumulateOtaPeriodicElapsedFromSleep(awakeSeconds + runtimeSleepSeconds);
   Serial.printf("[OTA] cumul avant reveil: %lu/%lu s\n",
                 static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
                 static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS));
