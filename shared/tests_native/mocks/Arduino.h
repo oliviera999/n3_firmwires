@@ -57,6 +57,15 @@ class String {
 
   char operator[](size_t i) const { return _s[i]; }
 
+  // Sous-ensemble Arduino String::substring (indices bornés, endIndex exclusif).
+  String substring(size_t beginIndex) const { return substring(beginIndex, _s.size()); }
+  String substring(size_t beginIndex, size_t endIndex) const {
+    if (beginIndex > _s.size()) beginIndex = _s.size();
+    if (endIndex > _s.size()) endIndex = _s.size();
+    if (beginIndex >= endIndex) return String();
+    return String(_s.substr(beginIndex, endIndex - beginIndex));
+  }
+
   String& operator+=(const String& o) { _s += o._s; return *this; }
   String& operator+=(const char* o) { if (o) _s += o; return *this; }
   String& operator+=(char c) { _s += c; return *this; }
