@@ -14,14 +14,19 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ## Version 15.02 - 2026-07-05
 
-### CI : réintégration du build S3 (wroom-s3-test)
+### CI : réintégration du build S3 + extension de la matrice ffp5cs
 
-- Le build ESP32-S3 est réactivé dans la CI GitHub (`.github/workflows/firmware-ci.yml`).
 - `platformio.ini` : extraction des dépendances communes dans une section `[common]` et
   rétrogradation d'`ESP32Servo` en `1.2.1` pour le seul périmètre S3 (arduino-esp32 2.0.x
   du platform `espressif32@6.13.0`) — la `3.0.5` (arduino-esp32 3.x, WROOM/pioarduino)
   ne compile pas sur S3 (`note_t` non déclaré dans `ESP32PWM.h`). Périmètre WROOM inchangé.
-- Build `wroom-s3-test` validé : image esp32s3 OK (RAM 50,4 %, Flash 27,9 %).
+- `.github/workflows/firmware-ci.yml` : ajout des envs ffp5cs compilables avec les secrets
+  placeholder de CI — `wroom-s3-test`, `wroom-s3-test-psram`, `-psram-v2`, `-devkit`, `-usb`,
+  `wroom-tls-test`, `wroom-beta`, `wroom-beta-local`.
+- Restent hors CI par design les envs `PROFILE_PROD` (`wroom-prod`, `wroom-prod-https`,
+  `wroom-prod-pio6`, `wroom-s3-prod`) : un `static_assert` refuse la compilation tant que
+  `WEB_AUTH_PASS` reste le placeholder `"CHANGEZ_MOI"` (secrets réels requis).
+- Build `wroom-s3-test` validé en CI GitHub (image esp32s3 OK, RAM 50,4 %, Flash 27,9 %).
 
 ## Version 15.01 - 2026-07-05
 
