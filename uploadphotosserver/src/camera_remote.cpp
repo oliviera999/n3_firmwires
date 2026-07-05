@@ -1,6 +1,7 @@
 #include "camera_remote.h"
 
 #include <ArduinoJson.h>
+#include <ctime>
 
 #include "config.h"
 #include "credentials.h"
@@ -102,6 +103,13 @@ int cameraRemotePostFirmwareVersion(const char* targetName) {
   cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
   cfg.onSending = nullptr;
   cfg.onResult = nullptr;
+  /* A4 : signature HMAC additive (X-Sig-*) si API_SIG_SECRET défini + horloge fiable ; sinon 0 =>
+     retombe sur l'auth clé API (rétro-compatible). */
+  cfg.sigSecret = API_SIG_SECRET;
+  {
+    const unsigned long epoch = static_cast<unsigned long>(time(nullptr));
+    cfg.currentEpochSeconds = (epoch >= 1600000000UL) ? epoch : 0UL;
+  }
   String postPreview =
       "api_key=<masque>&version=" + String(FIRMWARE_VERSION) +
       "&board=" + String(REMOTE_BOARD_ID) +

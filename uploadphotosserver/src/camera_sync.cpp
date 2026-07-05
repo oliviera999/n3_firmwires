@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 #include "config.h"
 #include "camera_uploader.h"
@@ -84,6 +85,13 @@ void nvsSet(const char* key, uint32_t value) {
   }
 }
 
+/* Epoch pour la signature HMAC (A4) : 0 si l'horloge n'est pas fiable, ce qui désactive proprement
+ * la signature (n3DataPost retombe alors sur l'auth clé API — rétro-compatible). */
+unsigned long syncSignatureEpoch() {
+  const unsigned long epoch = static_cast<unsigned long>(time(nullptr));
+  return (epoch >= 1600000000UL) ? epoch : 0UL;
+}
+
 /* Ouvre la session côté serveur. Retourne le code HTTP ; *outSession reçoit l'id si succès. */
 int sessionStart(const CameraSyncConfig& cfg, const String& deviceSession, uint32_t total, int* outSession) {
   *outSession = 0;
@@ -103,6 +111,8 @@ int sessionStart(const CameraSyncConfig& cfg, const String& deviceSession, uint3
   pc.apiKey = cfg.apiKey;
   pc.fields = fields;
   pc.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  pc.sigSecret = cfg.sigSecret;                 // A4 : signature HMAC additive (X-Sig-*) si secret défini
+  pc.currentEpochSeconds = syncSignatureEpoch();
   pc.responseBodyOut = &responseBody;
 
   const int code = n3DataPost(pc);
@@ -115,8 +125,11 @@ int sessionStart(const CameraSyncConfig& cfg, const String& deviceSession, uint3
   return code;
 }
 
-/* Clôture la session côté serveur (déclenche le mail récap). Retourne le code HTTP. */
-int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uint32_t failed, uint32_t bytes, bool complete) {
+/* Clôture la session côté serveur. Retourne le code HTTP.
+ * `final` (A2) : true seulement quand le backlog est réellement vidé après ce drain. Le serveur
+ * n'envoie le mail récapitulatif que sur une clôture finale (ou received>=total), ce qui supprime
+ * le spam d'un récap par réveil pour un gros backlog drainé en plusieurs passes. */
+int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uint32_t failed, uint32_t bytes, bool complete, bool final) {
   N3DataField fields[] = {
     {"api_key", cfg.apiKey ? cfg.apiKey : ""},
     {"board", String(cfg.board)},
@@ -125,6 +138,7 @@ int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uin
     {"failed", String(failed)},
     {"bytes", String(bytes)},
     {"status", String(complete ? "completed" : "aborted")},
+    {"final", String(final ? 1 : 0)},
   };
 
   N3PostConfig pc = {};
@@ -132,6 +146,8 @@ int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uin
   pc.apiKey = cfg.apiKey;
   pc.fields = fields;
   pc.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  pc.sigSecret = cfg.sigSecret;                 // A4 : signature HMAC additive (X-Sig-*)
+  pc.currentEpochSeconds = syncSignatureEpoch();
 
   return n3DataPost(pc);
 }
@@ -171,6 +187,33 @@ uint32_t cameraSyncNextPictureNumber() {
   return next;
 }
 
+uint32_t cameraSyncPeekNextPictureNumber() {
+  // Réserve « logiquement » le prochain numéro SANS incrémenter le compteur NVS. Le numéro n'est
+  // committé (cameraSyncCommitWrittenCount) qu'après persistance/upload confirmé (A6/A7, audit
+  // 2026-07-05) : un échec d'écriture SD ou d'upload direct ne brûle plus de numéro fantôme.
+  return nvsGet(kKeyCount) + 1;
+}
+
+void cameraSyncCommitWrittenCount(uint32_t n) {
+  // Avance pic_count à n (photo écrite sur SD, en file d'attente). GREATEST implicite : ne recule
+  // jamais si un numéro plus grand a déjà été committé entre-temps.
+  if (n > nvsGet(kKeyCount)) {
+    nvsSet(kKeyCount, n);
+  }
+}
+
+void cameraSyncMarkDirectUploadConfirmed(uint32_t n) {
+  // Upload direct (sans SD) confirmé côté serveur : la photo n'entre PAS dans la file SD, donc on
+  // avance pic_count ET le curseur ensemble pour garder pending = pic_count − cursor cohérent
+  // (A7 : évite que pending gonfle indéfiniment sur l'upload direct).
+  if (n > nvsGet(kKeyCount)) {
+    nvsSet(kKeyCount, n);
+  }
+  if (n > nvsGet(kKeyCursor)) {
+    nvsSet(kKeyCursor, n);
+  }
+}
+
 uint32_t cameraSyncPendingCount() {
   const uint32_t count = nvsGet(kKeyCount);
   const uint32_t cursor = nvsGet(kKeyCursor);
@@ -201,7 +244,12 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   /* Énumération du répertoire SD : on collecte les photos de numéro > curseur, bornées aux plus
      anciennes (SYNC_MAX_BACKLOG_SCAN) et triées par numéro croissant. Gère le format N-first
      "<N>_<stamp>.jpg" ET le legacy "picture<N>.jpg" (cartes déjà en service). */
+  /* Vrai backlog (NVS) au démarrage du drain : annoncé comme `total` au serveur (A2), indépendant
+     du plafond de scan SD (SYNC_MAX_BACKLOG_SCAN). */
+  const uint32_t realBacklog = count - cursor;
+
   std::vector<SyncEntry> entries;
+  entries.reserve(SYNC_MAX_BACKLOG_SCAN);  // M2 : évite les réallocations/copies de l'insertion triée
   {
     fs::FS& fs = SD_MMC;
     File root = fs.open("/");
@@ -238,27 +286,36 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
     return r;
   }
 
-  /* Stratégie hybride : vidage complet si le backlog dépasse le seuil, sinon drain incrémental. */
+  /* Stratégie hybride : vidage complet si le backlog dépasse le seuil, sinon drain incrémental.
+     A1 : `planned` est plafonné au réel drainable par réveil (budget temps / intervalle mini ≈16)
+     pour que « vidage complet » reste ATTEIGNABLE — sinon `complete` était toujours faux et le
+     serveur recevait `aborted` (mail d'alerte) à chaque réveil pour tout backlog > ~16. */
   uint32_t planned;
   if (pending > cfg.fullDrainThreshold) {
     planned = pending;
-    Serial.printf("[SYNC] Backlog %u > seuil %u : vidage complet.\n",
+    Serial.printf("[SYNC] Backlog %u > seuil %u : rattrapage (vidage complet).\n",
                   static_cast<unsigned int>(pending), static_cast<unsigned int>(cfg.fullDrainThreshold));
   } else {
     planned = (pending < cfg.maxUploadsPerWake) ? pending : cfg.maxUploadsPerWake;
-    Serial.printf("[SYNC] Drain incremental : %u/%u photo(s) ce reveil.\n",
-                  static_cast<unsigned int>(planned), static_cast<unsigned int>(pending));
   }
+  if (planned > SYNC_DRAIN_MAX_UPLOADS_PER_WAKE) {
+    planned = SYNC_DRAIN_MAX_UPLOADS_PER_WAKE;  // plafond réel (budget temps)
+  }
+  Serial.printf("[SYNC] Drain : %u/%u photo(s) ce reveil (backlog reel=%u).\n",
+                static_cast<unsigned int>(planned), static_cast<unsigned int>(pending),
+                static_cast<unsigned int>(realBacklog));
   r.planned = planned;
 
   /* Identité de session = cible + numéro le plus haut écrit (stable sur retry du même backlog). */
   const String deviceSession = String(cfg.targetName ? cfg.targetName : "cam") + "-" + String(count);
   int sessionId = 0;
-  const int startCode = sessionStart(cfg, deviceSession, planned, &sessionId);
+  /* A2 : on annonce le VRAI backlog (realBacklog) comme `total`, pas le lot du réveil. La jauge X/Y
+     reflète le restant réel et le serveur ne clôt le récap qu'une fois le backlog vidé (final=1). */
+  const int startCode = sessionStart(cfg, deviceSession, realBacklog, &sessionId);
   r.ran = true;
   r.sessionId = sessionId;
-  Serial.printf("[SYNC] start HTTP=%d session=%d pending=%u planned=%u\n",
-                startCode, sessionId, static_cast<unsigned int>(pending), static_cast<unsigned int>(planned));
+  Serial.printf("[SYNC] start HTTP=%d session=%d backlog=%u planned=%u\n",
+                startCode, sessionId, static_cast<unsigned int>(realBacklog), static_cast<unsigned int>(planned));
   if (startCode != 200 || sessionId <= 0) {
     Serial.println("[SYNC][WARN] Ouverture de session echouee, drain annule.");
     return r;
@@ -277,18 +334,24 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
     const SyncEntry& e = entries[i];
     syncUploadRateLimitPause(lastUploadMs);
 
-    const String seqStr = String(e.n);
+    /* M4 : buffers pile plutôt que temporaires String concaténés (alloc/frag DRAM en chemin chaud). */
+    char seqStr[12];
+    snprintf(seqStr, sizeof(seqStr), "%lu", static_cast<unsigned long>(e.n));
+    char filename[64];
+    snprintf(filename, sizeof(filename), "esp32-cam-%s-%s.jpg",
+             cfg.targetName ? cfg.targetName : "cam", seqStr);
+
     CameraUploadParams up = {};
     up.url = cfg.uploadUrl;
     up.apiKey = cfg.apiKey;
+    up.sigSecret = cfg.sigSecret;
     up.syncSession = sessionStr.c_str();
     up.capturedAt = (e.stamp[0] != '\0') ? e.stamp : "";
-    up.captureSeq = seqStr.c_str();
+    up.captureSeq = seqStr;
     up.reconnect = cfg.reconnect;
 
-    const String filename = "esp32-cam-" + String(cfg.targetName ? cfg.targetName : "cam") + "-" + seqStr + ".jpg";
     size_t bytes = 0;
-    int code = cameraUploadJpegFile(up, String(e.path), filename, &bytes);
+    int code = cameraUploadJpegFile(up, String(e.path), String(filename), &bytes);
 
     for (int retry = 0; !syncUploadIsSuccess(code) && code == 429 && retry < SYNC_RATE_LIMIT_RETRIES; ++retry) {
       Serial.printf("[SYNC][WARN] #%u HTTP=429 rate-limit, attente %u ms (retry %d/%d)\n",
@@ -315,12 +378,18 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
     }
   }
 
-  r.complete = (r.failed == 0 && r.sent == planned);
-  const int finishCode = sessionFinish(cfg, sessionId, r.sent, r.failed, r.bytes, r.complete);
-  Serial.printf("[SYNC] finish HTTP=%d sent=%u failed=%u bytes=%u complete=%d restant=%u\n",
+  /* A1 : `complete` = « aucun upload en échec ce réveil » (et non « backlog vidé »). On ne remonte
+     donc `aborted` que sur une vraie perte réseau en cours de drain, pas sur un report normal au
+     réveil suivant ni sur l'atteinte du budget temps. */
+  r.complete = (r.failed == 0);
+  /* A2 : `final` = backlog réellement vidé après ce drain -> le serveur peut clore le récap. */
+  const uint32_t remaining = cameraSyncPendingCount();
+  const bool final = (remaining == 0);
+  const int finishCode = sessionFinish(cfg, sessionId, r.sent, r.failed, r.bytes, r.complete, final);
+  Serial.printf("[SYNC] finish HTTP=%d sent=%u failed=%u bytes=%u complete=%d final=%d restant=%u\n",
                 finishCode, static_cast<unsigned int>(r.sent), static_cast<unsigned int>(r.failed),
-                static_cast<unsigned int>(r.bytes), r.complete ? 1 : 0,
-                static_cast<unsigned int>(cameraSyncPendingCount()));
+                static_cast<unsigned int>(r.bytes), r.complete ? 1 : 0, final ? 1 : 0,
+                static_cast<unsigned int>(remaining));
 #else
   (void)cfg;
 #endif

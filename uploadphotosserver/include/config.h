@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.55"
+#define FIRMWARE_VERSION "2.56"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -11,17 +11,23 @@
  */
 #if defined(USE_HTTPS_ENDPOINTS)
 #  define SERVER_SCHEME  "https://"
-#  define SERVER_PORT    443
 #else
 #  define SERVER_SCHEME  "http://"
-#  define SERVER_PORT    80
 #endif
 
-/* NTP — heure locale Casablanca (creneau HOUR_START/HOUR_END interprete en Africa/Casablanca) */
+/* NTP — heure locale Maroc (UTC+1). Le creneau HOUR_START/HOUR_END et les horodatages
+ * X-Captured-At sont interpretes en heure murale marocaine.
+ *
+ * ⚠ La newlib de l'ESP32 n'embarque PAS la base IANA : un nom comme "Africa/Casablanca" est
+ * interprete comme un fuseau a offset nul (=> horloge UTC, decalage 1 h). On utilise donc :
+ *   - GMT_OFFSET_SEC = 3600 (UTC+1) pour la synchro NTP ;
+ *   - NTP_TZ_STRING au format POSIX "<+01>-1" (offset 1 h a l'est, sans DST) applique a localtime.
+ * Le Maroc reste a UTC+1 la majeure partie de l'annee (l'exception Ramadan n'est pas exprimable en
+ * POSIX et est ignoree volontairement). Cf. camera_time.cpp (A3, audit 2026-07-05). */
 #define NTP_SERVER           "pool.ntp.org"
-#define GMT_OFFSET_SEC       0
+#define GMT_OFFSET_SEC       3600
 #define DAYLIGHT_OFFSET_SEC  0
-#define NTP_TZ_STRING        "Africa/Casablanca"
+#define NTP_TZ_STRING        "<+01>-1"
 #define NTP_SYNC_TIMEOUT_MS  5000
 
 /* Créneau horaire (photos entre 6h et 22h) */
@@ -49,6 +55,15 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+/* Warm-up / convergence AEC caméra (A8, audit 2026-06/2026-07). Valeurs raccourcies validées en
+ * lumière stable. ⚠ En cas de dégradation d'exposition en transition (aube/crépuscule), revenir
+ * aux marges historiques : CAM_WARMUP_FRAME_COUNT=3, CAM_WARMUP_FRAME_DELAY_MS=1000 (3×1000 ms) et
+ * CAM_AEC_SETTLE_MS=10000. Ces durées sont ici pour ajustement terrain sans toucher au code. */
+#define CAM_WARMUP_FRAME_COUNT   2      /* trames jetées après init (historique : 3) */
+#define CAM_WARMUP_FRAME_DELAY_MS 150   /* pause entre trames de warm-up (historique : 1000) */
+#define CAM_AEC_PRELOCK_MS       500    /* fenêtre AEC/AGC figés avant réactivation auto */
+#define CAM_AEC_SETTLE_MS        3000   /* convergence AEC/AWB en lumière stable (historique : 10000) */
+
 /* Caméra : seuils SPIRAM pour tenter SXGA + 2 buffers JPEG. Sinon CIF + 1 buffer d’emblée ;
    si l’init haute résolution échoue quand même, repli automatique CIF (voir main.cpp). */
 #define CAM_SPIRAM_MIN_FREE_BYTES    (1536 * 1024)
@@ -64,8 +79,15 @@
 #define CAM_SCCB_CLOCK_HZ   100000
 #define CAM_SCCB_CLOCK_SLOW_HZ 50000
 
-/* OTA distant (metadata.json) — toutes cibles : vérif périodique toutes les 2h */
-#define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
+/* OTA distant (metadata.json) — toutes cibles : vérif périodique toutes les 2h.
+ * HTTPS par défaut (A5, audit 2026-07-05) : ferme la fenêtre de downgrade MITM sur les métadonnées
+ * (le binaire reste vérifié sha256 + ECDSA P-256 côté n3_ota). Rollback HTTP documenté : définir
+ * -DOTA_METADATA_HTTP_ROLLBACK dans platformio.ini pour repasser en http:// clair. */
+#if defined(OTA_METADATA_HTTP_ROLLBACK)
+#  define OTA_METADATA_URL         "http://iot.olution.info/ota/cam/metadata.json"
+#else
+#  define OTA_METADATA_URL         "https://iot.olution.info/ota/cam/metadata.json"
+#endif
 
 /* Notifications mail */
 #define MAIL_NOTIFICATIONS_ENABLED 1
@@ -80,7 +102,6 @@
 #define WIFI_DELAY_BETWEEN_MS    250
 #define WIFI_PRE_SCAN_DELAY_MS   100
 #define WIFI_SCAN_MAX            10
-#define WIFI_RECONNECT_INTERVAL_MS 60000
 
 /* HTTP upload — chunks */
 #define UPLOAD_CHUNK_SIZE 4096
@@ -101,11 +122,18 @@
 /* Synchronisation hors-ligne du backlog SD (stratégie hybride, cf. camera_sync) */
 #define SYNC_MAX_UPLOADS_PER_WAKE 10   /* drain incrémental : photos max envoyées par réveil */
 #define SYNC_FULL_DRAIN_THRESHOLD 25   /* backlog au-delà duquel on vide tout ce réveil (rattrapage) */
-#define SYNC_MAX_BACKLOG_SCAN     256  /* borne mémoire : nb max d'entrées chargées/réveil (les + anciennes) */
+/* Borne mémoire du scan backlog (A1/M2, audit 2026-07-05) : chaque SyncEntry ≈ 76 octets. On charge
+   au plus SYNC_MAX_BACKLOG_SCAN entrées (les plus anciennes) sur le tas interne. Abaissé de 256 à 64
+   (≈4,8 Ko au lieu de ~19,5 Ko) : bien au-dessus du réel drainable ~16/réveil (cf. plafond ci-dessous),
+   limite la pression/fragmentation DRAM pendant WiFi+TLS. */
+#define SYNC_MAX_BACKLOG_SCAN     64
 /* Intervalle min entre deux POST upload.php : aligné sur GALLERY_UPLOAD_RATE_LIMIT_SECONDS (10 s/IP) serveur. */
 #define SYNC_UPLOAD_MIN_INTERVAL_MS 11000
 #define SYNC_RATE_LIMIT_RETRIES     2    /* tentatives supplementaires apres HTTP 429 */
 #define SYNC_DRAIN_MAX_DURATION_MS  180000  /* budget temps sync par reveil (3 min) */
+/* Plafond réel de photos envoyables par réveil : budget temps / intervalle mini (≈16). `planned` y est
+   borné (A1) pour que « vidage complet » reste atteignable et ne remonte plus `aborted` à chaque réveil. */
+#define SYNC_DRAIN_MAX_UPLOADS_PER_WAKE (SYNC_DRAIN_MAX_DURATION_MS / SYNC_UPLOAD_MIN_INTERVAL_MS)
 
 /* Série UART0 : si le moniteur PC « ne reçoit rien », mettre 3000–5000 (ms) pour laisser le temps
    d’ouvrir le port après réveil deep sleep ; en prod laisser 0. Voir README firmwires (ESP32-CAM). */

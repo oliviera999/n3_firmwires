@@ -36,6 +36,7 @@ struct CameraSyncConfig {
   const char* startUrl;         // URL .../sync/start
   const char* finishUrl;        // URL .../sync/finish
   const char* apiKey;           // clé API device
+  const char* sigSecret;        // secret HMAC (API_SIG_SECRET) ; nullptr/"" = pas de signature (A4)
   int board;                    // identifiant board attendu côté serveur
   const char* targetName;       // msp1 / n3pp / ffp3
   const char* firmwareVersion;  // version firmware (rapportée au serveur)
@@ -49,6 +50,22 @@ uint32_t cameraSyncWrittenCount();
 
 /** Réserve et retourne le prochain numéro de photo (incrémente le compteur NVS). */
 uint32_t cameraSyncNextPictureNumber();
+
+/**
+ * Retourne le prochain numéro de photo SANS l'engager (pic_count inchangé). À committer via
+ * cameraSyncCommitWrittenCount / cameraSyncMarkDirectUploadConfirmed après persistance/upload
+ * confirmé, pour ne pas brûler de numéro sur échec (A6/A7).
+ */
+uint32_t cameraSyncPeekNextPictureNumber();
+
+/** Engage pic_count = max(pic_count, n) après écriture SD confirmée (photo mise en file d'attente). */
+void cameraSyncCommitWrittenCount(uint32_t n);
+
+/**
+ * Upload direct sans SD confirmé : avance pic_count ET le curseur ensemble (la photo n'entre pas
+ * dans la file SD) pour garder `pending` cohérent (A7).
+ */
+void cameraSyncMarkDirectUploadConfirmed(uint32_t n);
 
 /**
  * Construit le chemin SD d'une photo : "/<N sur 10 chiffres>_<stamp>.jpg".
