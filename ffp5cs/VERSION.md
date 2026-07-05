@@ -12,6 +12,25 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.03 - 2026-07-05
+
+### CI : envs PROD (compile-check) + correction wroom-beta-local
+
+- `platformio.ini` : `wroom-beta-local` réactive le web async (`-UDISABLE_ASYNC_WEBSERVER`)
+  mais héritait le `lib_ignore` de `wroom-prod` (ESPAsyncWebServer/WebSockets ignorés) →
+  build cassé. Correction : `lib_ignore = LittleFS` (comme `wroom-test`) pour fournir les
+  libs web. `wroom-beta` (async off, hérité) était déjà cohérent.
+- `.github/workflows/firmware-ci.yml` :
+  - provisioning CI : ajout d'un `WEB_AUTH_PASS` factice (valeur jetable, jamais un vrai
+    secret) dans `secrets_config.h` pour lever le `static_assert` `PROFILE_PROD` et
+    compile-checker les envs prod en CI.
+  - matrice : ajout de `wroom-beta`, `wroom-beta-local`, `wroom-prod`, `wroom-prod-pio6`,
+    `wroom-s3-prod`.
+- Reste hors CI : `wroom-prod-https` — un `#error` volontaire (`server_url_config.h`) bloque
+  `USE_HTTPS_ENDPOINTS` tant que le transport TLS du WebClient n'est pas implémenté.
+- Builds validés localement (plateforme registre) : `wroom-s3-prod` (Flash 19,9 %) et
+  `wroom-prod-pio6` (Flash 75,7 % / budget 85 %) avec le WEB_AUTH factice.
+
 ## Version 15.02 - 2026-07-05
 
 ### CI : réintégration du build S3 + extension de la matrice ffp5cs

@@ -86,14 +86,19 @@ jobs:
           - { name: ffp5cs-wroom-s3-test-usb, dir: ffp5cs, env: wroom-s3-test-usb }
           # Diagnostic TLS minimal (compile tls_minimal_test.cpp seul).
           - { name: ffp5cs-wroom-tls-test, dir: ffp5cs, env: wroom-tls-test }
-          # NB : hors CI par des contraintes pré-existantes, orthogonales au S3 :
-          #  - PROFILE_PROD (wroom-prod, wroom-prod-https, wroom-prod-pio6, wroom-s3-prod) :
-          #    un static_assert (config_network.h) refuse de compiler tant que WEB_AUTH_PASS
-          #    vaut le placeholder "CHANGEZ_MOI" — or la CI ne provisionne que des placeholders.
-          #  - PROFILE_BETA (wroom-beta, wroom-beta-local) : héritent de wroom-prod
-          #    (lib_ignore ESPAsyncWebServer + -DDISABLE_ASYNC_WEBSERVER) mais un chemin
-          #    de code non gardé inclut malgré tout <ESPAsyncWebServer.h> -> échec de build
-          #    (incohérence de config à corriger côté env beta, indépendamment de la CI).
+          # Canaux OTA BETA (WROOM pioarduino, PROFILE_BETA). wroom-beta hérite l'async
+          # désactivé de wroom-prod ; wroom-beta-local réactive l'async + web (fix
+          # lib_ignore=LittleFS dans platformio.ini pour fournir ESPAsyncWebServer/WebSockets).
+          - { name: ffp5cs-wroom-beta, dir: ffp5cs, env: wroom-beta }
+          - { name: ffp5cs-wroom-beta-local, dir: ffp5cs, env: wroom-beta-local }
+          # Envs PROFILE_PROD : compile-check activé via le WEB_AUTH factice provisionné
+          # ci-dessous (lève le static_assert). wroom-prod = pioarduino ; pio6/s3-prod = registre.
+          - { name: ffp5cs-wroom-prod, dir: ffp5cs, env: wroom-prod }
+          - { name: ffp5cs-wroom-prod-pio6, dir: ffp5cs, env: wroom-prod-pio6 }
+          - { name: ffp5cs-wroom-s3-prod, dir: ffp5cs, env: wroom-s3-prod }
+          # NB : wroom-prod-https reste hors CI — un #error volontaire (server_url_config.h)
+          # bloque USE_HTTPS_ENDPOINTS tant que le transport TLS du WebClient n'est pas
+          # implémenté ; l'ajouter en CI produirait un échec par design.
           - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
@@ -121,6 +126,18 @@ jobs:
           # (sinon include/config.h échoue : API_KEY auto-référence + secrets_config.h absent).
           if [ -f ffp5cs/include/secrets_config.h.example ]; then
             cp ffp5cs/include/secrets_config.h.example ffp5cs/include/secrets_config.h
+            # WEB_AUTH_PASS non-placeholder (valeur CI jetable, jamais un vrai secret) :
+            # lève le static_assert PROFILE_PROD (config_network.h) pour compile-checker
+            # les envs prod. Contourne le garde-fou UNIQUEMENT en CI.
+            cat >> ffp5cs/include/secrets_config.h <<'EOF'
+
+          // [CI] WEB_AUTH factice pour lever le static_assert PROFILE_PROD (compile-check).
+          namespace Secrets {
+          constexpr const char* WEB_AUTH_USER = "ci";
+          constexpr const char* WEB_AUTH_PASS = "ci_dummy_web_auth_not_a_secret";
+          }
+          #define SECRETS_INCLUDE_WEB_AUTH 1
+          EOF
           fi
       - name: Build ${{ matrix.name }} (${{ matrix.env }})
         run: cd ${{ matrix.dir }} && pio run -e ${{ matrix.env }}
