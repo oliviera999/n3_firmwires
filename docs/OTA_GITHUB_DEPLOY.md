@@ -58,7 +58,14 @@ Deux **schémas** de metadata coexistent :
 | `cam-msp1` | n3ota | `uploadphotosserver` | `msp1` | `ota/cam/msp1/` | clé `msp1` (fusion) |
 | `cam-n3pp` | n3ota | `uploadphotosserver` | `n3pp` | `ota/cam/n3pp/` | clé `n3pp` (fusion) |
 | `cam-ffp3` | n3ota | `uploadphotosserver` | `ffp3` | `ota/cam/ffp3/` | clé `ffp3` (fusion) |
+| `pgl` (prod uniquement) | n3ota | `poissonglouton` | `pgl-s3-display` | `ota/pgl/` | objet unique |
 | `ffp5-wroom` (prod/test) | ffp5 | `ffp5cs` | `wroom-prod` / `wroom-test` | `ota/esp32-wroom[-beta]/` | `channels[prod\|test][esp32-wroom]` (fusion) |
+
+> **poissonglouton — périmètre.** Cible **prod uniquement** (le firmware n'interroge que
+> `http://iot.olution.info/ota/pgl/metadata.json`, `config.h:287`). Binaire construit depuis
+> l'env **de production** `pgl-s3-display` (JC4827W543 ; `default_envs`). Les variantes matérielles
+> `pgl-s3-jc3248` (autre écran) et `pgl-s3-headless` (bench) ont un binaire distinct **non couvert**
+> par cette cible OTA unique — à traiter séparément si elles sont déployées en flotte.
 
 > **ffp5cs — périmètre.** Seul **WROOM (firmware seul)** est géré (conforme à
 > `ffp5cs/docs/technical/OTA_PUBLISH.md` : pas d'image filesystem pour WROOM).

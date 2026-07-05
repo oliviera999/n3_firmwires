@@ -73,7 +73,7 @@
       "path": "poissonglouton",
       "board": "esp32-s3",
       "serveurFolder": "pgl",
-      "otaTarget": null,
+      "otaTarget": "pgl",
       "submodule": false,
       "versionSource": {
         "file": "include/config.h",

@@ -49,6 +49,7 @@ TARGETS = {
     "cam-msp1":  {"id": "uploadphotosserver", "scheme": "n3ota", "subdir": "cam", "key": "msp1"},
     "cam-n3pp":  {"id": "uploadphotosserver", "scheme": "n3ota", "subdir": "cam", "key": "n3pp"},
     "cam-ffp3":  {"id": "uploadphotosserver", "scheme": "n3ota", "subdir": "cam", "key": "ffp3"},
+    "pgl":       {"id": "poissonglouton", "scheme": "n3ota", "subdir": "pgl", "key": None},
     "ffp5-wroom": {"id": "ffp5cs", "scheme": "ffp5", "model": "esp32-wroom",
                    "bindir": {"prod": "esp32-wroom", "test": "esp32-wroom-beta"}},
 }

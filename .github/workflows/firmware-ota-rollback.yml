@@ -15,9 +15,9 @@ on:
         description: Firmware a restaurer
         required: true
         type: choice
-        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, ffp5-wroom]
+        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, pgl, ffp5-wroom]
       channel:
-        description: Canal (prod/test). cam = prod uniquement.
+        description: Canal (prod/test). cam et pgl = prod uniquement.
         required: true
         default: test
         type: choice
@@ -60,6 +60,7 @@ jobs:
           case "$FW" in
             n3pp|msp) scheme=n3ota; model="" ;;
             cam-msp1|cam-n3pp|cam-ffp3) scheme=n3ota; model=""; echo "CHAN=prod" >> "$GITHUB_ENV" ;;
+            pgl) scheme=n3ota; model=""; echo "CHAN=prod" >> "$GITHUB_ENV" ;;
             ffp5-wroom) scheme=ffp5; model=esp32-wroom ;;
             *) echo "::error::Firmware inconnu '$FW'"; exit 1 ;;
           esac
