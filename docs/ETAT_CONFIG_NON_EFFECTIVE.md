@@ -18,6 +18,8 @@ Légende : ✅ actif · ⚠️ implémenté mais conditionné · ❌ implément�
 | Mails debug/événement CAM | `uploadphotosserver/src/main.cpp`, `include/config.h` | ⚠️ `MAIL_NOTIFICATIONS_ENABLED=1` mais double garde `#if defined(SMTP_*)` + runtime `remoteMailNotifEnabled`. | SMTP réel + flag distant activé. |
 | Mail « démarrage OTA » CAM | `uploadphotosserver/src/main.cpp` (`otaMailStartCallback`) | ❌ Volontairement neutralisé (ne fait que logguer) : TLS + sha256 OTA sur la loopTask = stack canary panic sur ESP32-CAM sans PSRAM. | Non trivial (contrainte mémoire) — laisser tel quel sauf refonte tâche dédiée. |
 | Mailer ffp5cs | `ffp5cs/src/mailer.cpp` (`-DFEATURE_MAIL=1`) | ✅ Actif, dépend de `ffp5cs/include/secrets.h` (non versionné). | Fournir `secrets.h` de prod. |
+| HMAC n3pp / msp (`API_SIG_SECRET`) | `firmwires/credentials.h` + lib `n3_hmac` | ⚠️ Supporté si la macro est définie dans `credentials.h` (voir `.example`) **et** alignée sur `API_SIG_SECRET` du `.env` serveur. Souvent absent en prod → POST en `api_key` legacy. | Ajouter `API_SIG_SECRET` dans `credentials.h`, reflasher. |
+| HMAC poissonglouton (`PGL_API_SIG_SECRET`) | `poissonglouton/src/pgl_network.cpp` | ❌ Option firmware ; le serveur PGL ne valide que `api_key` (`PGL_API_KEY`). | Ne pas activer tant que le serveur n'implémente pas la validation. |
 
 ## CI / builds / tests
 

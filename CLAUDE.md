@@ -50,9 +50,10 @@ pio device monitor -e esp32dev          # 115200 bauds
 La compilation **échoue** sans le fichier de secrets correspondant (jamais versionné) :
 
 - **n3pp, msp, uploadphotosserver** : un seul fichier partagé `credentials.h` à la racine du dépôt
-  → copier depuis `credentials.h.example` (WiFi + SMTP `SMTP_*`).
-- **ffp5cs** : son propre `include/secrets.h` (copier `include/secrets.h.example`) et
-  `include/secrets_config.h` (copier l'exemple).
+  → copier depuis `credentials.h.example` (WiFi, SMTP `SMTP_*`, `API_KEY`, optionnel `API_SIG_SECRET`).
+- **ffp5cs** : `include/secrets.h` (WiFi/SMTP, copier l'exemple) et
+  `include/secrets_config.h` (`API_KEY`, destinataire, HMAC — copier l'exemple).
+- **poissonglouton** : `include/secrets.h` (`PGL_WIFI_*`, `PGL_API_KEY` — copier l'exemple).
 
 En CI, ces fichiers sont provisionnés depuis les `.example` (placeholders).
 

@@ -39,8 +39,10 @@ Reference materielle JC3248 : `docs/JC3248W535_REFERENCE.md` (depot parent IOT_n
 
 - Envoi par lot vers le serveur (`POST /pgl/post-data`, HTTP par defaut ; env `*-https` pour TLS).
 
-- **Auth serveur** : `api_key` seule par defaut (pas de HMAC FFP3). HMAC optionnel via
-  `PGL_API_SIG_SECRET` dans `secrets.h` si NTP synchronise (aligne n3pp/msp).
+- **Auth serveur** : `api_key` seule par défaut (pas de HMAC côté serveur pour PGL à ce jour).
+  Le firmware peut définir `PGL_API_SIG_SECRET` (préparation future) ; le serveur
+  (`PglPostDataController`, `PglHeartbeatController`) ne valide pour l'instant que `api_key`
+  contre `PGL_API_KEY` (fallback `API_KEY`).
 
 - **OTA** : metadata `http://iot.olution.info/ota/pgl/metadata.json` (HTTP volontaire,
   independant du schema POST). Verification sha256 + ECDSA P-256 (`n3_common/n3_ota`).
@@ -101,7 +103,8 @@ Copier `include/secrets.h.example` en `include/secrets.h` (non versionne, voir
 
 - `PGL_API_KEY` (meme valeur que cote serveur).
 
-- Optionnel : `PGL_API_SIG_SECRET` pour HMAC FFP3 (voir commentaire dans l'exemple).
+- Optionnel (firmware uniquement, **non validé côté serveur** à ce jour) :
+  `PGL_API_SIG_SECRET` pour préparer une auth HMAC — voir commentaire dans l'exemple.
 
 
 
