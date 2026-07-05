@@ -1,8 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "credentials.h"
+#ifndef API_SIG_SECRET
+#define API_SIG_SECRET ""
+#endif
+
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.56"
+#define FIRMWARE_VERSION "2.57"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).

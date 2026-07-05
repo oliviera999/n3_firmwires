@@ -12,6 +12,12 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.01 - 2026-07-05
+
+### Publication OTA prod WROOM
+
+- Incrément version pour déploiement distant canal `esp32-wroom` (alignement refs submodules + stack serveur v6.6.x).
+
 ## Version 15.0 - 2026-06-25
 
 ### Nourrissage manuel — protocole COMPTEUR MONOTONE (remplace la détection de front)
