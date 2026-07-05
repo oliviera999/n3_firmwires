@@ -33,7 +33,7 @@ Légende : ✅ actif · ⚠️ implémenté mais conditionné · ❌ implément�
 |---|---|---|---|
 | Lib `n3_ota` (sha256 + ECDSA P-256) + clé publique embarquée | `shared/n3_common/n3_ota/` | ✅ Présente ; branchée sur n3pp / msp / cam / ffp5cs. | — |
 | `OTA_CA_CERT` (validation du certif serveur) | `shared/n3_common/.../n3_ota_pubkey.h` | ❌ Non défini → mode `setInsecure()` : TLS chiffré mais **certificat non vérifié** (Phase 2 non activée). Authenticité assurée par la signature ECDSA. | Récupérer le CA de `iot.olution.info` et définir `OTA_CA_CERT`. |
-| **OTA poissonglouton** | `poissonglouton/` (`PGL_ENABLE_OTA=1`, interroge `/ota/pgl/`), `firmwares.manifest.json` (`otaTarget:null`), `tools/ota/publish_ota.py`, `.github/workflows/firmware-ota-deploy.yml` | ❌ La carte fait un `n3OtaCheck` vers `/ota/pgl/metadata.json`, mais **aucune cible n'est publiée** (absente du manifest, de `publish_ota.py`, du workflow deploy et de la doc serveur) → OTA dangling. | **Décision requise** : soit câbler toute la chaîne (`otaTarget:"pgl"` + `publish_ota.py` + option workflow + dossier serveur `/ota/pgl/`), soit désactiver `PGL_ENABLE_OTA`. |
+| **OTA poissonglouton** | `poissonglouton/` (`PGL_ENABLE_OTA=1`, interroge `/ota/pgl/`), `firmwares.manifest.json`, `tools/ota/publish_ota.py`, `.github/workflows/firmware-ota-{deploy,rollback}.yml` | ✅ **Câblé** : `otaTarget:"pgl"`, cible `pgl` (schéma n3ota, prod-only) ajoutée à `publish_ota.py` + aux workflows deploy/rollback + doc `OTA_GITHUB_DEPLOY.md`. Binaire construit depuis `pgl-s3-display` (env de prod). Validé localement (metadata généré, canal test rejeté). Le dossier serveur `/ota/pgl/` est créé au 1er déploiement (mkdir automatique). | Déclencher un déploiement : `Actions ▸ Firmware OTA Deploy ▸ firmware=pgl` (ou tag `ota-deploy/pgl/prod`). ⚠️ Une seule cible OTA pour pgl : couvre **`pgl-s3-display` (JC4827W543)** ; les variantes `pgl-s3-jc3248` / `pgl-s3-headless` ont un binaire distinct non couvert. |
 | Pipeline `firmware-ota-deploy.yml` (+ rollback) | `.github/workflows/` | ⚠️ Complet, mais dépend de secrets GitHub (`OTA_SIGNING_KEY`, `CREDENTIALS_H`, `FFP5CS_SECRETS_H`, `FFP5CS_SECRETS_CONFIG_H`, `N3_SERVEUR_DEPLOY_TOKEN`) + environnement `prod` (required reviewers). Déclenchement manuel/par tag, jamais sur push. | Provisionner les secrets et l'environnement dans Settings › Secrets. |
 
 ## Versionnage & catalogue
@@ -47,6 +47,6 @@ Légende : ✅ actif · ⚠️ implémenté mais conditionné · ❌ implément�
 
 - **Secrets `credentials.h` / `secrets.h`** : hors dépôt → mails firmware inopérants sans eux.
 - **Secrets GitHub OTA-deploy + environnement `prod`** : à provisionner côté repo.
-- **OTA poissonglouton** : décision de câbler la chaîne de publication ou de la désactiver.
+- ~~**OTA poissonglouton** : décision de câbler la chaîne de publication ou de la désactiver.~~ ✅ Chaîne câblée (prod, `pgl-s3-display`) ; reste à lancer un déploiement quand une version est prête. Si la flotte mélange plusieurs cartes (JC4827 / JC3248 / headless), décider comment couvrir les binaires distincts.
 - **`OTA_CA_CERT`** : nécessite le CA du serveur (Phase 2 TLS).
 - **Réactivation des envs ffp5cs S3 / https** : dépend d'un alignement de versions de libs.

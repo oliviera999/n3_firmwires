@@ -32,9 +32,9 @@ on:
         description: Firmware a deployer en OTA
         required: true
         type: choice
-        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, ffp5-wroom]
+        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, pgl, ffp5-wroom]
       channel:
-        description: Canal (prod/test). cam = prod uniquement.
+        description: Canal (prod/test). cam et pgl = prod uniquement.
         required: true
         default: test
         type: choice
@@ -91,6 +91,7 @@ jobs:
             cam-msp1) scheme=n3ota; dir=uploadphotosserver; env=msp1; model=""; chan=prod ;;
             cam-n3pp) scheme=n3ota; dir=uploadphotosserver; env=n3pp; model=""; chan=prod ;;
             cam-ffp3) scheme=n3ota; dir=uploadphotosserver; env=ffp3; model=""; chan=prod ;;
+            pgl) scheme=n3ota; dir=poissonglouton; env=pgl-s3-display; model=""; chan=prod ;;
             ffp5-wroom) scheme=ffp5; dir=ffp5cs; model=esp32-wroom; [ "$chan" = prod ] && env=wroom-prod || env=wroom-test ;;
             *) echo "::error::Firmware inconnu '$fw'"; exit 1 ;;
           esac
@@ -243,6 +244,7 @@ jobs:
               cam-msp1) sub=cam; key="--key msp1" ;;
               cam-n3pp) sub=cam; key="--key n3pp" ;;
               cam-ffp3) sub=cam; key="--key ffp3" ;;
+              pgl) sub=pgl ;;
             esac
             python tools/ota/verify_published.py --metadata-url "$BASE/$sub/metadata.json" ${key:-}
           fi
