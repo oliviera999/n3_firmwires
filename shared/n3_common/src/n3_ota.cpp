@@ -1,6 +1,7 @@
 #include "n3_ota.h"
 #include "n3_ota_pubkey.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
@@ -12,6 +13,31 @@
 #include <mbedtls/base64.h>
 #include <mbedtls/md.h>
 #include <mbedtls/pk.h>
+
+// A5 (audit 2026-07-05) : OTA metadata et/ou binaire peuvent etre servis en HTTPS pour fermer la
+// fenetre de downgrade MITM (le binaire reste verifie sha256 + ECDSA P-256). Detection ADDITIVE du
+// schema : une URL http:// utilise WiFiClient (comportement historique INCHANGE) ; une URL https://
+// utilise WiFiClientSecure. Epinglage CA opt-in via n3_ota_ca_cert.h (meme mecanisme que n3_data) ;
+// sinon setInsecure() (TLS chiffre sans validation de certificat). Aucun impact sur les firmwares
+// qui restent en http://.
+#if defined(__has_include)
+#  if __has_include("n3_ota_ca_cert.h")
+#    include "n3_ota_ca_cert.h"   // doit definir N3_OTA_CA_CERT_PEM (PEM du root CA serveur)
+#    define N3_OTA_HAS_CA_CERT 1
+#  endif
+#endif
+
+static bool n3OtaUrlIsHttps(const char* url) {
+    return url != nullptr && strncasecmp(url, "https://", 8) == 0;
+}
+
+static void n3OtaPrepareSecureClient(WiFiClientSecure& client) {
+#if defined(N3_OTA_HAS_CA_CERT)
+    client.setCACert(N3_OTA_CA_CERT_PEM);
+#else
+    client.setInsecure();
+#endif
+}
 
 static uint8_t s_lastLoggedOtaPercent = 255;
 static void (*s_progressCallback)(int, int, uint8_t, void*) = nullptr;
@@ -31,9 +57,17 @@ static bool computeRemoteFirmwareSha256(const char* firmwareUrl, char* outSha256
         return false;
     }
 
-    WiFiClient client;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    WiFiClient* client;
+    if (n3OtaUrlIsHttps(firmwareUrl)) {
+        n3OtaPrepareSecureClient(secureClient);
+        client = &secureClient;
+    } else {
+        client = &plainClient;
+    }
     HTTPClient http;
-    http.begin(client, firmwareUrl);
+    http.begin(*client, firmwareUrl);
     http.setTimeout(15000);
     int code = http.GET();
     if (code != 200) {
@@ -249,9 +283,17 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     Serial.printf("[OTA] Verification MAJ : %s (locale: %s)\n",
                   config.metadataUrl, config.currentVersion);
 
-    WiFiClient client;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    WiFiClient* client;
+    if (n3OtaUrlIsHttps(config.metadataUrl)) {
+        n3OtaPrepareSecureClient(secureClient);
+        client = &secureClient;
+    } else {
+        client = &plainClient;
+    }
     HTTPClient http;
-    http.begin(client, config.metadataUrl);
+    http.begin(*client, config.metadataUrl);
     http.setTimeout(10000);
     int code = http.GET();
 
@@ -338,8 +380,16 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     httpUpdate.onProgress(logOtaProgress);
     httpUpdate.rebootOnUpdate(true);
 
-    WiFiClient updateClient;
-    t_httpUpdate_return ret = httpUpdate.update(updateClient, firmwareUrl);
+    WiFiClient updatePlainClient;
+    WiFiClientSecure updateSecureClient;
+    WiFiClient* updateClient;
+    if (n3OtaUrlIsHttps(firmwareUrl)) {
+        n3OtaPrepareSecureClient(updateSecureClient);
+        updateClient = &updateSecureClient;
+    } else {
+        updateClient = &updatePlainClient;
+    }
+    t_httpUpdate_return ret = httpUpdate.update(*updateClient, firmwareUrl);
 
     switch (ret) {
         case HTTP_UPDATE_OK:
