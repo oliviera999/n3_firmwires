@@ -12,6 +12,17 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.02 - 2026-07-05
+
+### CI : réintégration du build S3 (wroom-s3-test)
+
+- Le build ESP32-S3 est réactivé dans la CI GitHub (`.github/workflows/firmware-ci.yml`).
+- `platformio.ini` : extraction des dépendances communes dans une section `[common]` et
+  rétrogradation d'`ESP32Servo` en `1.2.1` pour le seul périmètre S3 (arduino-esp32 2.0.x
+  du platform `espressif32@6.13.0`) — la `3.0.5` (arduino-esp32 3.x, WROOM/pioarduino)
+  ne compile pas sur S3 (`note_t` non déclaré dans `ESP32PWM.h`). Périmètre WROOM inchangé.
+- Build `wroom-s3-test` validé : image esp32s3 OK (RAM 50,4 %, Flash 27,9 %).
+
 ## Version 15.01 - 2026-07-05
 
 ### Publication OTA prod WROOM

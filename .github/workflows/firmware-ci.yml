@@ -73,11 +73,11 @@ jobs:
           - { name: n3pp-https, dir: n3pp, env: n3pp-https }
           - { name: msp-https, dir: msp, env: msp-https }
           - { name: ffp5cs-wroom-test, dir: ffp5cs, env: wroom-test }
-          # NB : ffp5cs wroom-s3-test retiré de la CI — incompat bibliothèque
-          # pré-existante (ESP32Servo@3.0.5 vs arduino-esp32 2.0.x du platform S3 :
-          # 'note_t' non déclaré dans ESP32PWM.h), orthogonale à la décomposition.
-          # Le code S3 est validé localement (image esp32s3 OK) ; à réactiver une
-          # fois la version ESP32Servo/arduino-esp32 S3 alignée.
+          # ffp5cs S3 réactivé : l'incompat ESP32Servo@3.0.5 (arduino-esp32 3.x)
+          # vs le platform S3 espressif32@6.13.0 (arduino-esp32 2.0.x, 'note_t' non
+          # déclaré dans ESP32PWM.h) est levée en rétrogradant la lib servo à 1.2.1
+          # pour le seul périmètre S3 (cf. [env:wroom-s3-base] dans ffp5cs/platformio.ini).
+          - { name: ffp5cs-wroom-s3-test, dir: ffp5cs, env: wroom-s3-test }
           - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
