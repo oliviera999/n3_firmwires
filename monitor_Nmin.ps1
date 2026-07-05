@@ -107,7 +107,7 @@ if ($usePython -and $Port) {
     }
 } else {
     $pioArgs = @("run", "--target", "monitor", "--environment", $Environment)
-    if ($Port) { $pioArgs += @("--port", $Port) }
+    if ($Port) { $pioArgs += @("--monitor-port", $Port) }
     $monitorProcess = Start-Process -FilePath "pio" -ArgumentList $pioArgs -NoNewWindow -PassThru -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.errors"
 
     $endTime = (Get-Date).AddSeconds($DurationSeconds)
