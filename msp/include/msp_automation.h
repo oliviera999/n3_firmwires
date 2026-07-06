@@ -12,6 +12,10 @@ void sendEmailNotification(N3Severity severity);
 // Mode de notification courant (none/important/partial/full) issu de la config
 // distante enableEmailChecked (rétro-compatible "checked"/"unchecked").
 N3NotifMode mspNotifMode();
+// Rapport reseau periodique (P4/Diagnostic) : cumul du temps ecoule a travers le
+// deep sleep puis envoi tous les N3_NETWORK_REPORT_INTERVAL_S (filtre par le mode).
+void mspAccumulateNetReportElapsedFromSleep(int sleepSeconds);
+void mspMaybeSendNetworkReportEmail();
 void sommeil();
 void EnregistrementHeureFlash();
 void print_wakeup_reason();
