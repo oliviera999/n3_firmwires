@@ -21,6 +21,14 @@ void smallFeedTimerCallback(TimerHandle_t timer) {
 }  // namespace
 
 void SystemActuators::begin() {
+  // v15.08 (point 1): réserver explicitement les 4 timers LEDC pour ESP32Servo AVANT tout
+  // attach. Chaque cycle de nourrissage détache puis ré-attache le servo (auto-détachement
+  // 400 ms après le retour au repos) ; l'allocation implicite de timer au ré-attach est
+  // fragile et pouvait faire perdre le premier ordre de position (angle de distribution).
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
   applyServoConfigToFeeders();
   feederBig.begin();
   feederSmall.begin();
