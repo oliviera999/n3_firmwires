@@ -133,6 +133,17 @@ static_assert(offsetof(WifiCredential, ssid) == offsetof(N3WifiNetwork, ssid),
 static_assert(offsetof(WifiCredential, password) == offsetof(N3WifiNetwork, pass),
               "Offset password/pass incompatible entre WifiCredential et N3WifiNetwork");
 
+/** Réinitialise la radio WiFi après deep sleep / reconnexion rapide RTC (évite WIFI_SCAN_FAILED). */
+static void wifiRadioResetForWake() {
+  Serial.println("[WiFi] Reset radio (disconnect/scanDelete/WIFI_OFF)");
+  WiFi.disconnect(true, true);
+  WiFi.scanDelete();
+  WiFi.mode(WIFI_OFF);
+  delay(200);
+  WiFi.mode(WIFI_STA);
+  delay(100);
+}
+
 bool Wificonnect() {
   /* WIFI_LIST est WifiCredential { ssid, password } ; même layout que N3WifiNetwork { ssid, pass }
      (garanti par les static_assert ci-dessus). */
@@ -144,6 +155,7 @@ bool Wificonnect() {
   cfg.delayBetweenMs = WIFI_DELAY_BETWEEN_MS;
   cfg.preScanDelayMs = WIFI_PRE_SCAN_DELAY_MS;
   cfg.scanMax = WIFI_SCAN_MAX;
+  cfg.disableFastReconnect = true;  /* CAM : evite BSSID RTC obsolete apres deep sleep */
   cfg.onSuccess = [](const char*) { ledBlink(500, 500, 1); };
   return n3WifiConnect(cfg, &Wifiactif);
 }
@@ -662,7 +674,7 @@ void setup() {
 #endif
 
   const uint32_t wifiStartMs = millis();
-  WiFi.mode(WIFI_STA);
+  wifiRadioResetForWake();
   bool wifiOk = Wificonnect();
   #ifdef SMTP_DEST
   remoteMailRecipient = SMTP_DEST;

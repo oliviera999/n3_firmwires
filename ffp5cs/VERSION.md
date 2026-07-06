@@ -12,6 +12,12 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.06 - 2026-07-06
+
+### Test OTA prod
+
+- Publication distante canal **ffp5-wroom-prod** (`esp32-wroom`) pour validation du pipeline OTA.
+
 ## Version 15.05 - 2026-07-06
 
 ### Capteur air WROOM prod — DHT11 par défaut

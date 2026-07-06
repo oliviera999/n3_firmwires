@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.50** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.51** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.50** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.51 | 2026-07-06 | **Test OTA** : publication distante canal `n3pp` (validation pipeline OTA prod). |
 | 4.50 | 2026-07-05 | **Vague 1 audit serveur.** URLs canoniques Slim (`/n3pp/post-data`, `/n3pp/api/outputs/state`, `/n3pp/heartbeat` ; préfixe `/n3pp-test/` en TEST_MODE) ; heartbeat POST par cycle de réveil (`sendHeartbeat` via `n3_data`) ; `N3PP_SERVER_SCHEME` HTTPS par défaut dans `n3pp_config.h` ; transport TLS activé sur l'env par défaut (`USE_HTTPS_ENDPOINTS`). |
 | 4.49 | 2026-07-05 | Publication OTA prod : déploiement distant canal `n3pp` (alignement code audit + serveur v6.6.x) |
 | 4.48 | 2026-07-04 | **Audit n3pp/msp1 (2/2) — durcissement communication (additif, rétro-compatible).** Lib `n3_data` : signature HMAC **couvrant tout le corps** via en-têtes `X-Sig-Timestamp`/`X-Sig-Nonce`/`X-Sig-Hmac` = `HMAC(ts\nnonce\nbody)` (un serveur ancien ignore ces en-têtes et retombe sur le timestamp/signature du body). GET d'état : envoi de `X-Api-Key` (exigible côté serveur via flag). Lib `n3_ota` : flag opt-in `N3_OTA_REQUIRE_SIGNATURE` (refuse un binaire sans signature ECDSA). |

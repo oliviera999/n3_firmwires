@@ -7,7 +7,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.57"
+#define FIRMWARE_VERSION "2.60"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -105,7 +105,7 @@
 /* WiFi */
 #define WIFI_CONNECT_TIMEOUT_MS  5000
 #define WIFI_DELAY_BETWEEN_MS    250
-#define WIFI_PRE_SCAN_DELAY_MS   100
+#define WIFI_PRE_SCAN_DELAY_MS   500
 #define WIFI_SCAN_MAX            10
 
 /* HTTP upload — chunks */

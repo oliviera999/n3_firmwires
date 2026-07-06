@@ -218,9 +218,35 @@ void startFastReconnect(N3WifiSession& session) {
   session.phaseDeadline = millis() + (config.preScanDelayMs > 0 ? config.preScanDelayMs : 100);
 }
 
+void beginTryCurrentNetwork(N3WifiSession& session);
+
+/** Repli bloquant si le scan async echoue (ESP32-CAM / deep sleep). Retourne true si etat session mis a jour. */
+bool trySyncScanFallback(N3WifiSession& session) {
+  Serial.println("[WiFi] Repli scan synchrone...");
+  WiFi.scanDelete();
+  delay(150);
+  const int n = WiFi.scanNetworks(false, true);
+  if (n == WIFI_SCAN_FAILED) {
+    Serial.println("[WiFi][WARN] scan synchrone echoue");
+    return false;
+  }
+  logScanResults(n, "scan-sync", *session.config);
+  buildOrderFromScan(session, n);
+  if (session.orderCount == 0) {
+    finishFailed(session, N3_WIFI_FAIL_NO_AP);
+    return true;
+  }
+  beginTryCurrentNetwork(session);
+  return true;
+}
+
 void startScanAsync(N3WifiSession& session) {
   const int rc = WiFi.scanNetworks(true, true);
   if (rc == WIFI_SCAN_FAILED) {
+    Serial.println("[WiFi][WARN] demarrage scan async echoue");
+    if (trySyncScanFallback(session)) {
+      return;
+    }
     finishFailed(session, N3_WIFI_FAIL_SCAN_START);
     return;
   }
@@ -377,6 +403,10 @@ bool pollPhase(N3WifiSession& session) {
         return false;
       }
       if (n == WIFI_SCAN_FAILED) {
+        Serial.println("[WiFi][WARN] scan async echoue");
+        if (trySyncScanFallback(session)) {
+          return false;
+        }
         finishFailed(session, N3_WIFI_FAIL_SCAN);
         return true;
       }
