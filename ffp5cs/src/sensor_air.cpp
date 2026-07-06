@@ -35,9 +35,9 @@ AirSensor::AirSensor()
 #else
   : _dht(Pins::DHT_PIN,
 #if defined(USE_DHT22)
-         DHT22  // wroom-prod uniquement
+         DHT22  // -DUSE_DHT22 dans build_flags
 #else
-         DHT11  // tous les autres envs (wroom-test, wroom-beta, wroom-s3-*)
+         DHT11  // défaut (wroom-prod, wroom-test, wroom-beta, wroom-s3-*)
 #endif
         ),
     _tempHistoryIndex(0), _tempHistoryCount(0), _lastValidTemp(NAN),

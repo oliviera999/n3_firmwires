@@ -59,7 +59,7 @@ namespace SensorConfig {
     }
 
     namespace DHT {
-        // Type: DHT22 uniquement en wroom-prod (USE_DHT22), DHT11 pour tous les autres envs (sensors.cpp).
+        // Type: DHT11 par défaut ; DHT22 si -DUSE_DHT22 dans build_flags (sensor_air.cpp).
         // Délai minimum entre lectures: 2500ms (compromis entre 2000ms datasheet et stabilité)
         // DHT11: 1s min, DHT22: 2s min (datasheet). On utilise 2.5s pour les deux.
         inline constexpr uint32_t MIN_READ_INTERVAL_MS = 2500;

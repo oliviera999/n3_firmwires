@@ -12,6 +12,14 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.05 - 2026-07-06
+
+### Capteur air WROOM prod — DHT11 par défaut
+
+- **wroom-prod** : retrait de `-DUSE_DHT22` ; DHT11 comme les autres envs WROOM.
+- Le flag compile-time `USE_DHT22` reste disponible dans `platformio.ini` pour une carte équipée DHT22.
+- **wroom-beta** : suppression de `-UUSE_DHT22` (devenu inutile).
+
 ## Version 15.04 - 2026-07-06
 
 **Harmonisation notifications par degré d'importance (P1-P4) — flotte n3.**

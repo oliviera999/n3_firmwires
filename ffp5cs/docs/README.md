@@ -53,8 +53,8 @@ Les **4 environnements critiques** (qui doivent compiler sans erreur avant chaqu
 
 | Env | Board | Plateforme | Profil | Capteur air | Endpoints serveur | Partition | Notes |
 |-----|-------|-----------|--------|-------------|-------------------|-----------|-------|
-| **wroom-prod** * | esp32dev | pioarduino 55.03.37 | prod | DHT22 | /ffp3/post-data | wroom_ota_fs_mail | Serveur web désactivé, serial off |
-| **wroom-prod-pio6** | esp32dev | espressif32 6.13.0 | prod | DHT22 | /ffp3/post-data | wroom_ota_fs_mail | Secours build 1 passe (Arduino 2.x) — voir [guide compilation](technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md) |
+| **wroom-prod** * | esp32dev | pioarduino 55.03.37 | prod | DHT11 | /ffp3/post-data | wroom_ota_fs_mail | Serveur web désactivé, serial off ; `-DUSE_DHT22` optionnel |
+| **wroom-prod-pio6** | esp32dev | espressif32 6.13.0 | prod | DHT11 | /ffp3/post-data | wroom_ota_fs_mail | Secours build 1 passe (Arduino 2.x) — voir [guide compilation](technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md) |
 | **wroom-test** * | esp32dev | pioarduino 55.03.37 | test | DHT11 | /ffp3/post-data-test | wroom_test | OLED diag, endpoints dangereux |
 | **wroom-s3-test** * | esp32-s3-devkitc-1 | espressif32 6.13.0 | test | BME280/DHT auto | /ffp3/post-data3-test | s3_test | RTC DS3231, OLED diag |
 | **wroom-s3-prod** * | esp32-s3-devkitc-1 | espressif32 6.13.0 | prod | BME280/DHT auto | /ffp3/post-data3 | s3_test | Serveur web désactivé, serial off |

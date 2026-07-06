@@ -27,7 +27,7 @@ Les firmwares **legacy simples** (un `main.cpp`, peu de libs, pas de `custom_sdk
 
 | Env | Plateforme | Usage | Livraison terrain |
 |-----|------------|-------|-------------------|
-| **wroom-prod** | pioarduino 55.03.37 | Production WROOM, DHT22, serial off | **Oui** (cible normale) |
+| **wroom-prod** | pioarduino 55.03.37 | Production WROOM, DHT11 (USE_DHT22 optionnel), serial off | **Oui** (cible normale) |
 | **wroom-prod-pio6** | espressif32 **6.13.0** | Secours build **1 passe** (Arduino 2.x) | Oui si binaire validé (même profil prod, TLS : voir §6) |
 | **wroom-prod-https** | comme prod | Préparé ; **bloqué** en compile si TLS métier absent | Non (v13.81+) |
 | **wroom-test** | pioarduino | Dev, logs, web async | Non |
