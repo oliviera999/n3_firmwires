@@ -12,6 +12,12 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.07 - 2026-07-06
+
+### Re-flash banc wroom-beta
+
+- Bump pour aligner les sources sur le binaire USB flashé (constat v14.20 au boot avant reflash).
+
 ## Version 15.06 - 2026-07-06
 
 ### Test OTA prod
