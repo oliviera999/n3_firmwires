@@ -9,6 +9,7 @@
 #include "data_queue.h"
 #include "config.h"
 #include "post_category.h"
+#include "n3_notify.h"  // N3NotifMode : mode de notification gradué (lib partagée n3_mail)
 
 // Forward declaration
 class Automatism;
@@ -72,7 +73,10 @@ public:
     void setTankThresholdCm(uint16_t val) { _tankThresholdCm = val; }
     void setHeaterThresholdC(float val) { _heaterThresholdC = val; }
     void setEmailAddress(const char* addr);
-    void setEmailEnabled(bool v) { _emailEnabled = v; }
+    // Rétro-compat : un booléen mappe on/off sur les modes extrêmes (Full/None).
+    void setEmailEnabled(bool v) { _notifMode = v ? N3NotifMode::Full : N3NotifMode::None; }
+    // Mode gradué (none/important/partial/full) : plafond de sévérité des mails.
+    void setNotifMode(N3NotifMode m) { _notifMode = m; }
     void setFreqWakeSec(uint16_t v) { _freqWakeSec = v; }
 
     // v15.0: onRemoteFeedExecuted/onRemoteFeedBothExecuted supprimés — le protocole
@@ -87,7 +91,8 @@ public:
     uint16_t getTankThresholdCm() const { return _tankThresholdCm; }
     float getHeaterThresholdC() const { return _heaterThresholdC; }
     const char* getEmailAddress() const { return _emailAddress; }
-    bool isEmailEnabled() const { return _emailEnabled; }
+    bool isEmailEnabled() const { return _notifMode != N3NotifMode::None; }
+    N3NotifMode notifMode() const { return _notifMode; }
     uint16_t getFreqWakeSec() const { return _freqWakeSec; }
 
     // Rejeu des données en queue
@@ -119,7 +124,7 @@ private:
     uint16_t _tankThresholdCm;
     float _heaterThresholdC;
     char _emailAddress[96]; // MAX_EMAIL_LENGTH
-    bool _emailEnabled;
+    N3NotifMode _notifMode;  // plafond de sévérité (remplace l'ancien bool _emailEnabled)
     uint16_t _freqWakeSec;
 
     // Gestion backoff (simplifié - backoff supprimé, retries gérés par web_client)

@@ -277,6 +277,8 @@ void Automatism::toggleEmailNotifications() {
     bool current = _network.isEmailEnabled();
     _network.setEmailEnabled(!current);
     bool enabled = _network.isEmailEnabled();
+    // Le bouton local est un simple on/off (Full/None) ; propager au mailer.
+    _mailer.setNotifMode(_network.notifMode());
 
     // Persistance NVS (remote vars JSON) pour survie au reboot et cohérence /dbvars
     char cached[2048];
@@ -354,6 +356,9 @@ void Automatism::waitForNetworkReady() {
 // Référence: GPIOMap::ALL_MAPPINGS (include/gpio_mapping.h).
 void Automatism::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
     _network.applyConfigFromJson(doc);
+    // Propager le mode de notification gradué (source de vérité = _network) au mailer,
+    // qui filtre chaque mail par sévérité P1-P4. Point unique couvrant tous les applies.
+    _mailer.setNotifMode(_network.notifMode());
     // Appliquer les autres variables directement depuis le JSON
     auto parseIntValue = [](ArduinoJson::JsonVariantConst value) -> int {
         if (value.is<int>()) return value.as<int>();

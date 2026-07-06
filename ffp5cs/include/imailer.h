@@ -19,12 +19,18 @@
 // =============================================================================
 
 #include <cstdint>
+#include "n3_notify.h"  // N3NotifMode (taxonomie sévérité/mode partagée, sans Arduino)
 
 struct SensorReadings;  // déclaration anticipée (méthodes prennent const SensorReadings&)
 
 class IMailer {
  public:
   virtual ~IMailer() = default;
+
+  // Mode de notification gradué (none/important/partial/full) poussé par le
+  // serveur ; le mailer filtre chaque mail par sévérité P1-P4. Impl par défaut
+  // no-op : les faux mailers des tests natifs n'ont pas à la surcharger.
+  virtual void setNotifMode(N3NotifMode mode) { (void)mode; }
 
   // Envoi simple (file d'attente). Tous les arguments fournis par les appelants.
   virtual bool send(const char* subject, const char* message,

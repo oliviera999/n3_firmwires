@@ -14,6 +14,7 @@ struct Session_Config {};
 #include "secrets.h"
 #include "system_sensors.h"
 #include "imailer.h"  // C4: interface de messagerie (inversion de dépendance)
+#include "n3_notify.h"  // taxonomie sévérité P1-P4 + mode (lib partagée n3_mail)
 
 class PowerManager;
 
@@ -33,8 +34,14 @@ class Mailer : public IMailer {
  public:
   bool begin();
   
+  // Mode de notification gradué (filtrage sévérité P1-P4). Poussé par la couche
+  // de config (AutomatismSync) via Automatism après chaque applyConfigFromJson.
+  void setNotifMode(N3NotifMode mode) override { _notifMode = mode; }
+  N3NotifMode notifMode() const { return _notifMode; }
+
   // Méthodes synchrones (utilisées en interne par mailTask ou avant reboot OTA)
-  bool sendSync(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT);
+  // `severity` : filtrée par le mode courant + préfixe sujet "[FFP5][Pn]".
+  bool sendSync(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, N3Severity severity = N3Severity::Alert);
   bool sendAlertSync(const char* subject, const char* message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, bool includeDetailedReport = false);
   bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
                      const char* toEmail = EmailConfig::DEFAULT_RECIPIENT) override;
@@ -82,6 +89,10 @@ class Mailer : public IMailer {
 
   // Epoch: délégation vers PowerManager (évite duplication logique NVS/fallback)
   PowerManager* _power{nullptr};
+
+  // Mode de notification courant (plafond de sévérité). Défaut Full = tout envoyé
+  // (comportement legacy inchangé tant que le serveur/l'utilisateur ne restreint pas).
+  N3NotifMode _notifMode{N3NotifMode::Full};
 
   // Statistiques
   uint32_t _mailsSent{0};
