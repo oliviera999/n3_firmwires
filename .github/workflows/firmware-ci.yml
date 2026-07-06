@@ -73,11 +73,35 @@ jobs:
           - { name: n3pp-https, dir: n3pp, env: n3pp-https }
           - { name: msp-https, dir: msp, env: msp-https }
           - { name: ffp5cs-wroom-test, dir: ffp5cs, env: wroom-test }
-          # NB : ffp5cs wroom-s3-test retiré de la CI — incompat bibliothèque
-          # pré-existante (ESP32Servo@3.0.5 vs arduino-esp32 2.0.x du platform S3 :
-          # 'note_t' non déclaré dans ESP32PWM.h), orthogonale à la décomposition.
-          # Le code S3 est validé localement (image esp32s3 OK) ; à réactiver une
-          # fois la version ESP32Servo/arduino-esp32 S3 alignée.
+          # ffp5cs S3 réactivé : l'incompat ESP32Servo@3.0.5 (arduino-esp32 3.x)
+          # vs le platform S3 espressif32@6.13.0 (arduino-esp32 2.0.x, 'note_t' non
+          # déclaré dans ESP32PWM.h) est levée en rétrogradant la lib servo à 1.2.1
+          # pour le seul périmètre S3 (cf. [env:wroom-s3-base] dans ffp5cs/platformio.ini).
+          - { name: ffp5cs-wroom-s3-test, dir: ffp5cs, env: wroom-s3-test }
+          # Variantes S3 (PROFILE_TEST) : PSRAM (+ patch IWDT), sans patch, DevKit 8 Mo,
+          # USB-JTAG. Toutes bénéficient de la rétrogradation servo 1.2.1 (wroom-s3-base).
+          - { name: ffp5cs-wroom-s3-test-psram, dir: ffp5cs, env: wroom-s3-test-psram }
+          - { name: ffp5cs-wroom-s3-test-psram-v2, dir: ffp5cs, env: wroom-s3-test-psram-v2 }
+          - { name: ffp5cs-wroom-s3-test-devkit, dir: ffp5cs, env: wroom-s3-test-devkit }
+          - { name: ffp5cs-wroom-s3-test-usb, dir: ffp5cs, env: wroom-s3-test-usb }
+          # Diagnostic TLS minimal (compile tls_minimal_test.cpp seul).
+          - { name: ffp5cs-wroom-tls-test, dir: ffp5cs, env: wroom-tls-test }
+          # Canal OTA BETA (WROOM pioarduino, PROFILE_BETA) : web async désactivé (hérité
+          # de wroom-prod), donc taille proche de prod. wroom-beta-local n'est PAS en CI
+          # (voir NB ci-dessous : débordement de partition).
+          - { name: ffp5cs-wroom-beta, dir: ffp5cs, env: wroom-beta }
+          # Envs PROFILE_PROD : compile-check activé via le WEB_AUTH factice provisionné
+          # ci-dessous (lève le static_assert). wroom-prod = pioarduino ; pio6/s3-prod = registre.
+          - { name: ffp5cs-wroom-prod, dir: ffp5cs, env: wroom-prod }
+          - { name: ffp5cs-wroom-prod-pio6, dir: ffp5cs, env: wroom-prod-pio6 }
+          - { name: ffp5cs-wroom-s3-prod, dir: ffp5cs, env: wroom-s3-prod }
+          # NB : restent hors CI par des contraintes pré-existantes propres à l'env :
+          #  - wroom-prod-https : #error volontaire (server_url_config.h) bloquant
+          #    USE_HTTPS_ENDPOINTS tant que le transport TLS du WebClient n'est pas implémenté.
+          #  - wroom-beta-local : réactive le web async ; le fix lib_ignore=LittleFS
+          #    (platformio.ini) lève l'erreur de compilation, mais le binaire résultant
+          #    (~2,0 Mo) déborde sa partition app 'medium' (1,66 Mo) — nécessite un
+          #    re-partitionnement ou une réduction du binaire, hors périmètre CI.
           - { name: poissonglouton-headless, dir: poissonglouton, env: pgl-s3-headless }
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
@@ -105,6 +129,18 @@ jobs:
           # (sinon include/config.h échoue : API_KEY auto-référence + secrets_config.h absent).
           if [ -f ffp5cs/include/secrets_config.h.example ]; then
             cp ffp5cs/include/secrets_config.h.example ffp5cs/include/secrets_config.h
+            # WEB_AUTH_PASS non-placeholder (valeur CI jetable, jamais un vrai secret) :
+            # lève le static_assert PROFILE_PROD (config_network.h) pour compile-checker
+            # les envs prod. Contourne le garde-fou UNIQUEMENT en CI.
+            cat >> ffp5cs/include/secrets_config.h <<'EOF'
+
+          // [CI] WEB_AUTH factice pour lever le static_assert PROFILE_PROD (compile-check).
+          namespace Secrets {
+          constexpr const char* WEB_AUTH_USER = "ci";
+          constexpr const char* WEB_AUTH_PASS = "ci_dummy_web_auth_not_a_secret";
+          }
+          #define SECRETS_INCLUDE_WEB_AUTH 1
+          EOF
           fi
       - name: Build ${{ matrix.name }} (${{ matrix.env }})
         run: cd ${{ matrix.dir }} && pio run -e ${{ matrix.env }}
