@@ -370,7 +370,16 @@ static bool waitForNetworkReadyForSMTP() {
   return false;
 }
 
-bool Mailer::sendSync(const char* subject, const char* message, const char* toName, const char* toEmail) {
+bool Mailer::sendSync(const char* subject, const char* message, const char* toName, const char* toEmail, N3Severity severity) {
+  // Filtrage par degré d'importance : tout mail dont la sévérité dépasse le
+  // plafond du mode courant est ignoré (retourne true = "traité", pas de retry).
+  // En mode Full (défaut/legacy) rien n'est filtré -> comportement inchangé.
+  if (!n3NotifModeAllows(_notifMode, severity)) {
+    Serial.printf("[Mail][SKIP] severite %s filtree par le mode de notification\n",
+                  n3SeverityCode(severity));
+    return true;
+  }
+
   Serial.println(F("[Mail] Trace 1: Start sendSync"));
   Serial.println(F("[Mail] ===== DIAGNOSTIC SEND ====="));
   Serial.printf("[Mail] _ready: %s\n", _ready ? "TRUE" : "FALSE");
@@ -454,8 +463,9 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // Construction du nom d'expéditeur dans un buffer statique
   snprintf(fromNameBuf, sizeof(fromNameBuf), "FFP5CS [%s]", envName ? envName : "");
   
-  // Construction du sujet dans un buffer statique
-  snprintf(subjectBuf, sizeof(subjectBuf), "[%s] %s", envName ? envName : "", subject ? subject : "");
+  // Construction du sujet : "[FFP5][Pn] objet" (préfixe sévérité harmonisé flotte,
+  // cf. n3pp/msp). L'environnement reste visible dans le nom d'expéditeur ci-dessus.
+  n3MailFormatSubject(subjectBuf, sizeof(subjectBuf), "FFP5", severity, subject ? subject : "");
   
   // Copier le message dans le buffer partagé seulement si différent (sendAlertSync passe déjà s_mailMessageBuffer)
   size_t msgLen = message ? strlen(message) : 0;
@@ -584,7 +594,7 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
 #else
 void Mailer::setPowerManager(PowerManager*) {}
 bool Mailer::begin() { Serial.println("[Mail] Désactivé (FEATURE_MAIL=0)"); return true; }
-bool Mailer::sendSync(const char*, const char*, const char*, const char*) { return false; }
+bool Mailer::sendSync(const char*, const char*, const char*, const char*, N3Severity) { return false; }
 bool Mailer::send(const char*, const char*, const char*, const char*) { return false; }
 bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
   (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport; return false;
@@ -633,9 +643,10 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
     targetEmail = EmailConfig::DEFAULT_RECIPIENT;
   }
   
-  // Buffer statique pour le sujet
+  // Sujet transmis brut à sendSync qui applique le préfixe "[FFP5][Pn]".
+  // (Ne plus préfixer "FFP5CS - " ici pour éviter un double habillage.)
   static char alertSubject[128];
-  snprintf(alertSubject, sizeof(alertSubject), "FFP5CS - %s", subject);
+  snprintf(alertSubject, sizeof(alertSubject), "%s", subject);
   Serial.printf("[Mail] alertSubject créer: '%s'\n", alertSubject);
   
   // Piste 4: utiliser le buffer partagé s_mailMessageBuffer (sendSync ne recopie pas si même pointeur)
@@ -693,7 +704,12 @@ bool Mailer::sendAlertSync(const char* subject, const char* message, const char*
     }
   }
   
-  bool result = sendSync(alertSubject, s_mailMessageBuffer, "User", targetEmail);
+  // Sévérité : panic/crash = P1 Critical ; boot/OTA (rapport détaillé) = P4
+  // Diagnostic ; alerte opérationnelle = P2 Alert. Filtrée par le mode dans sendSync.
+  N3Severity alertSeverity = isCritical
+                                 ? N3Severity::Critical
+                                 : (includeDetailedReport ? N3Severity::Diagnostic : N3Severity::Alert);
+  bool result = sendSync(alertSubject, s_mailMessageBuffer, "User", targetEmail, alertSeverity);
   Serial.printf("[Mail] ===== RÉSULTAT SENDALERTSYNC: %s =====\n", result ? "SUCCESS" : "FAILED");
   
   if (result && tempDiag.hasPanicInfo()) {
@@ -710,7 +726,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
   // Buffers partagés sleep/wake (référence tableau : sizeof conservé). Voir g_sleepWake* en tête de fichier.
   char (&sleepSubject)[64] = g_sleepWakeSubject;
-  snprintf(sleepSubject, sizeof(sleepSubject), "FFP5CS - Mise en veille");
+  snprintf(sleepSubject, sizeof(sleepSubject), "Mise en veille");
   
   char (&sleepMessage)[1024] = g_sleepWakeMessage;
   size_t offset = 0;
@@ -780,7 +796,7 @@ bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, co
   Serial.println(F("[Mail] ⚡ Utilisation des dernières lectures (pas de nouvelle lecture capteurs)"));
   Serial.println(F("[Mail] =============================="));
   
-  return sendSync(sleepSubject, sleepMessage, "User", dest);
+  return sendSync(sleepSubject, sleepMessage, "User", dest, N3Severity::Diagnostic);
 }
 
 bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const SensorReadings& readings,
@@ -788,7 +804,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   const char* dest = (toEmail && strlen(toEmail) > 0) ? toEmail : EmailConfig::DEFAULT_RECIPIENT;
   // Buffers partagés sleep/wake (référence tableau : sizeof conservé). Voir g_sleepWake* en tête de fichier.
   char (&wakeSubject)[64] = g_sleepWakeSubject;
-  snprintf(wakeSubject, sizeof(wakeSubject), "FFP5CS - Réveil du système");
+  snprintf(wakeSubject, sizeof(wakeSubject), "Réveil du système");
   
   char (&wakeMessage)[1024] = g_sleepWakeMessage;
   size_t offset = 0;
@@ -880,7 +896,7 @@ bool Mailer::sendWakeMail(const char* reason, uint32_t actualSleepSeconds, const
   Serial.printf("[Mail] Durée veille: %u s\n", actualSleepSeconds);
   Serial.println(F("[Mail] =============================="));
   
-  return sendSync(wakeSubject, wakeMessage, "User", dest);
+  return sendSync(wakeSubject, wakeMessage, "User", dest, N3Severity::Diagnostic);
 }
 
 #endif

@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.49** (définie dans `include/msp_config.h`).
+Version actuelle : **2.50** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.49** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.50 | 2026-07-06 | **Rapport réseau périodique (P4/Diagnostic) — harmonisation avec n3pp.** Nouveau mail de diagnostic réseau envoyé tous les `N3_NETWORK_REPORT_INTERVAL_S` (6 h) : `mspAccumulateNetReportElapsedFromSleep()` cumule le temps écoulé à travers le deep sleep (`RTC_DATA_ATTR`) et `mspMaybeSendNetworkReportEmail()` envoie le rapport (stats POST/GET via `n3_data`, heap, RSSI, uptime, bootCount) avec sujet `[MSP1][P4]`. Filtré par le mode de notification (envoyé seulement en mode `full`/legacy `checked`), corps via `n3MailBuildNetReportBody` (lib `n3_mail`). msp exploitait la sévérité P1 (batterie) uniquement ; il couvre désormais aussi le diagnostic P4 comme n3pp. |
 | 2.49 | 2026-07-05 | **Vague 1 audit serveur.** URLs canoniques Slim (`/msp1/post-data`, `/msp1/api/outputs/state`, `/msp1/heartbeat` ; préfixe `/msp1-test/` en TEST_MODE) ; heartbeat POST par cycle de réveil (`sendHeartbeat` via `n3_data`) ; `MSP_SERVER_SCHEME` HTTPS par défaut dans `msp_config.h` ; transport TLS activé sur l'env par défaut (`USE_HTTPS_ENDPOINTS`). |
 | 2.48 | 2026-07-05 | Publication OTA prod : déploiement distant canal `msp` (alignement code audit + serveur v6.6.x) |
 | 2.47 | 2026-07-04 | **Audit n3pp/msp1 (2/2) — durcissement communication (additif, rétro-compatible).** Via lib `n3_data` : signature HMAC **couvrant tout le corps** (en-têtes `X-Sig-*`, un serveur ancien retombe sur le contrat existant) ; GET d'état envoie `X-Api-Key` (exigible côté serveur via flag). Via lib `n3_ota` : flag opt-in `N3_OTA_REQUIRE_SIGNATURE`. |

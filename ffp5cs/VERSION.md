@@ -12,6 +12,34 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.04 - 2026-07-06
+
+**Harmonisation notifications par degré d'importance (P1-P4) — flotte n3.**
+
+ffp5cs n'exploitait la notification que via un booléen on/off (`mailNotif`). Il adopte
+désormais la taxonomie de sévérité partagée (`shared/n3_mail/n3_notify`), comme n3pp/msp :
+
+- **État = mode gradué** : `AutomatismSync` stocke un `N3NotifMode` (`none`/`important`/
+  `partial`/`full`) au lieu du `bool _emailEnabled`. `applyConfigFromJson` parse `mailNotif`
+  via `n3NotifModeFromString` (rétro-compatible : `checked`/`1`/`true` → Full, `unchecked`/
+  `0`/`""` → None). `isEmailEnabled()` = `mode != None` (tous les appelants existants
+  inchangés). Le mode est propagé au `Mailer` en un point unique (`Automatism::applyConfigFromJson`).
+- **Filtrage central par sévérité** : chaque mail traverse `Mailer::sendSync`, qui ignore
+  les mails dépassant le plafond du mode (`n3NotifModeAllows`) et préfixe le sujet `[FFP5][Pn]`.
+  Sévérités : pompe réservoir bloquée = **P1** (panic/crash aussi) ; réserve basse / plafond
+  nourrissage / repas manqué = **P2** ; nourrissage effectué / remplissage = **P3** ;
+  veille / réveil / boot / OTA = **P4**. **Propriété de sûreté** : en mode `full` (défaut/legacy)
+  rien n'est filtré (comportement identique) ; les alertes P1/P2 ne sont jamais filtrées sauf
+  mode `none` — les alarmes critiques (pompe, débordement) restent toujours délivrées.
+- **Interface** : `IMailer` gagne `setNotifMode()` (virtuel non-pur, no-op par défaut → faux
+  mailers des tests natifs inchangés). Chemin d'include `shared/n3_mail/src` ajouté à
+  `platformio-native.ini`.
+- **Serveur (coordonné, dépôt n3_serveur)** : la famille FFP3 pousse désormais le mode gradué
+  sur le GPIO 101 (au lieu du booléen `'1'/'0'`). ⚠️ **Déploiement : mettre à jour ce firmware
+  (OTA) AVANT le serveur** — un ffp5cs ≤ 15.03 lit `important`/`partial`/`full` comme "faux"
+  et couperait ses alertes.
+- Tests natifs `test_imailer` : OK (4/4).
+
 ## Version 15.03 - 2026-07-05
 
 ### CI : envs PROD (compile-check) + correction wroom-beta-local

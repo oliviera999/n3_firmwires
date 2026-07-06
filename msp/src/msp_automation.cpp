@@ -9,7 +9,9 @@
 #include "n3_sleep.h"
 #include "n3_time.h"   // sauvegarde/restauration heure NVS (factorisé)
 #include "n3_mail.h"   // envoi SMTP factorisé
+#include "n3_data.h"   // statistiques reseau (n3NetStats*) pour le rapport periodique
 #include "credentials.h"
+#include <WiFi.h>
 
 #define SMTP_HOST SMTP_HOST_ADDR
 #define SMTP_PORT esp_mail_smtp_port_465
@@ -55,6 +57,96 @@ void sendEmailNotification(N3Severity severity) {
   if (!n3MailSendText(cfg, subjectBuf, emailMessage.c_str(), &err)) {
     Serial.print("[MAIL] echec envoi: ");
     Serial.println(err);
+  }
+}
+
+// Rapport mail reseau periodique (P4 / Diagnostic) — meme motif que n3pp.
+// Le compteur survit au deep sleep (RTC_DATA_ATTR) : on cumule le temps ecoule
+// a chaque cycle et on envoie un rapport tous les N3_NETWORK_REPORT_INTERVAL_S.
+RTC_DATA_ATTR static uint32_t s_mspNetReportElapsedSeconds = 0;
+
+void mspAccumulateNetReportElapsedFromSleep(int sleepSeconds) {
+  if (sleepSeconds <= 0) return;
+  if (s_mspNetReportElapsedSeconds >= N3_NETWORK_REPORT_INTERVAL_S) return;
+  const uint32_t sleepSec = static_cast<uint32_t>(sleepSeconds);
+  const uint32_t remaining = N3_NETWORK_REPORT_INTERVAL_S - s_mspNetReportElapsedSeconds;
+  s_mspNetReportElapsedSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
+}
+
+void mspMaybeSendNetworkReportEmail() {
+  if (s_mspNetReportElapsedSeconds < N3_NETWORK_REPORT_INTERVAL_S) {
+    const uint32_t remaining = N3_NETWORK_REPORT_INTERVAL_S - s_mspNetReportElapsedSeconds;
+    Serial.printf("[MAIL][NET] rapport ignore, restant=%lu s\n",
+                  static_cast<unsigned long>(remaining));
+    return;
+  }
+
+  // Rapport reseau = diagnostic (P4) : envoye seulement si le mode l'autorise
+  // (mode Full / legacy "checked"). Mode none/important/partial -> filtre.
+  if (!n3NotifModeAllows(mspNotifMode(), N3Severity::Diagnostic)) {
+    Serial.println("[MAIL][NET] rapport diagnostic (P4) filtre par le mode de notification, timer reinitialise");
+    s_mspNetReportElapsedSeconds = 0;
+    n3NetStatsResetPeriod();
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[MAIL][NET] WiFi indisponible, rapport reporte");
+    return;
+  }
+
+  char localTime[32];
+  snprintf(localTime, sizeof(localTime), "%s", rtc.getTime("%d/%m/%Y %H:%M:%S").c_str());
+
+  char ssidBuf[33];
+  snprintf(ssidBuf, sizeof(ssidBuf), "%s", WiFi.SSID().c_str());
+  String ipStr = WiFi.localIP().toString();
+
+  N3NetStatsSnapshot stats = {};
+  n3NetStatsGetSnapshot(stats);
+
+  N3MailNetReportInfo report = {};
+  report.projectName = "msp1";
+  report.sensorName = sensorName.c_str();
+  report.firmwareVersion = version.c_str();
+  report.localTime = localTime;
+  report.wifiSsid = ssidBuf;
+  report.wifiIp = ipStr.c_str();
+  report.wifiRssiNow = WiFi.RSSI();
+  report.bootCount = static_cast<uint32_t>(bootCount);
+  report.uptimeSeconds = millis() / 1000UL;
+  report.freeHeap = ESP.getFreeHeap();
+  report.minFreeHeap = ESP.getMinFreeHeap();
+  report.reportPeriodSeconds = N3_NETWORK_REPORT_INTERVAL_S;
+  report.httpTimeoutMs = N3_HTTP_TIMEOUT_MS;
+  report.outputsGetFailureStreak = 0;  // msp ne suit pas ce compteur (specifique n3pp)
+  report.stats = stats;
+
+  char body[2048];
+  if (!n3MailBuildNetReportBody(report, body, sizeof(body))) {
+    Serial.println("[MAIL][NET] Echec generation corps rapport");
+    return;
+  }
+
+  N3MailSmtpConfig smtpCfg = {};
+  smtpCfg.smtpHost = SMTP_HOST;
+  smtpCfg.smtpPort = SMTP_PORT;
+  smtpCfg.authorEmail = AUTHOR_EMAIL;
+  smtpCfg.authorPassword = AUTHOR_PASSWORD;
+  smtpCfg.senderName = "MSP1 IoT";
+  smtpCfg.recipientName = "OAL";
+  smtpCfg.recipientEmail = inputMessageMailAd.c_str();
+
+  char subject[96];
+  snprintf(subject, sizeof(subject), "[MSP1][P4] rapport reseau v%s", FIRMWARE_VERSION);
+
+  String smtpError;
+  if (n3MailSendText(smtpCfg, subject, body, &smtpError)) {
+    Serial.println("[MAIL][NET] Rapport reseau envoye");
+    s_mspNetReportElapsedSeconds = 0;
+    n3NetStatsResetPeriod();
+  } else {
+    Serial.printf("[MAIL][NET] Echec envoi: %s\n", smtpError.c_str());
   }
 }
 

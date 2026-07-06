@@ -43,7 +43,7 @@ AutomatismSync::AutomatismSync(WebClient& web, ConfigManager& cfg)
     , _aqThresholdCm(ActuatorConfig::Default::AQUA_LEVEL_CM)
     , _tankThresholdCm(ActuatorConfig::Default::TANK_LEVEL_CM)
     , _heaterThresholdC(ActuatorConfig::Default::HEATER_THRESHOLD_C)
-    , _emailEnabled(true)  // v11.172: true par défaut (harmonisé avec ancien mailNotif)
+    , _notifMode(N3NotifMode::Full)  // défaut Full = tout envoyé (harmonisé ancien mailNotif "on")
     #if defined(PROFILE_TEST)
     , _freqWakeSec(6)  // 6s par défaut pour wroom-test
     #else
@@ -210,7 +210,14 @@ void AutomatismSync::applyConfigFromJson(const ArduinoJson::JsonDocument& doc) {
     }
 
     if (doc.containsKey("mailNotif")) {
-        setEmailEnabled(doc["mailNotif"].as<bool>() || doc["mailNotif"].as<int>() == 1);
+        // Mode gradué poussé par le serveur (none/important/partial/full), parsé via
+        // la lib partagée n3_notify. Rétro-compatible : "checked"/"1"/"true" -> Full,
+        // "unchecked"/"0"/"" -> None (une valeur numérique legacy est gérée en repli).
+        if (doc["mailNotif"].is<const char*>()) {
+            setNotifMode(n3NotifModeFromString(doc["mailNotif"].as<const char*>()));
+        } else {
+            setEmailEnabled(doc["mailNotif"].as<bool>() || doc["mailNotif"].as<int>() == 1);
+        }
     }
 
     if (doc.containsKey("FreqWakeUp")) {
@@ -300,7 +307,8 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     snprintf(body.bouffePetits, sizeof(body.bouffePetits), "0");
     snprintf(body.bouffeGros, sizeof(body.bouffeGros), "0");
     snprintf(body.mail, sizeof(body.mail), "%s", _emailAddress);
-    snprintf(body.mailNotif, sizeof(body.mailNotif), "%s", _emailEnabled ? "checked" : "");
+    // Écho d'état (colonne data, non autoritatif) : on/off dérivé du mode courant.
+    snprintf(body.mailNotif, sizeof(body.mailNotif), "%s", isEmailEnabled() ? "checked" : "");
     snprintf(body.resetMode, sizeof(body.resetMode), "0");
     snprintf(body.tideEvent, sizeof(body.tideEvent), "%s", toTideEventString(tideEvent));
     snprintf(body.tideTrend, sizeof(body.tideTrend), "%d", static_cast<int>(_trendDir));

@@ -63,7 +63,8 @@ bool Mailer::processOneMailSync() {
   if (item.isAlert) {
     success = sendAlertSync(item.subject, item.message, item.toEmail, item.includeDetailedReport);
   } else {
-    success = sendSync(item.subject, item.message, "User", item.toEmail);
+    // Mails simples (nourrissage effectué, remplissage) = confirmation P3 Info.
+    success = sendSync(item.subject, item.message, "User", item.toEmail, N3Severity::Info);
   }
   const unsigned long smtpDurationMs = millis() - smtpStartMs;
   if (smtpDurationMs > 10000) {
@@ -112,12 +113,12 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
   
   if (!_mailQueue) {
     Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
-    return sendSync(subject, message, toName, toEmail);
+    return sendSync(subject, message, toName, toEmail, N3Severity::Info);
   }
-  
+
   MailQueueItem item;
   memset(&item, 0, sizeof(item));
-  
+
   // Copie sécurisée des données (null-termination explicite après strncpy)
   if (subject) {
     strncpy(item.subject, subject, sizeof(item.subject) - 1);

@@ -462,6 +462,8 @@ void loop() {
   }
   s_lastOtaTimerMillis = nowOtaTimerMs;
   accumulateOtaPeriodicElapsedFromSleep(elapsedForOta);
+  mspAccumulateNetReportElapsedFromSleep(elapsedForOta);
+  mspMaybeSendNetworkReportEmail();
   sendHeartbeat();
   sommeil();
 
