@@ -12,6 +12,30 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.08 - 2026-07-06
+
+### Fiabilisation du nourrissage (manuel & auto) — servo de distribution
+
+Renforcement de la séquence `Feeder::dispenseWithIntermediate` (partagée par le nourrissage
+manuel et automatique) pour garantir l'exécution de l'angle de **distribution**, jusqu'ici
+parfois « sauté » au profit du seul angle intermédiaire.
+
+- **Point 1 — attach LEDC fiabilisé** :
+  - `SystemActuators::begin()` réserve désormais explicitement les 4 timers LEDC
+    (`ESP32PWM::allocateTimer(0..3)`) avant tout attach. L'allocation implicite au ré-attach
+    (chaque cycle détache le servo 400 ms après le retour repos) était fragile.
+  - `Feeder::begin()` ne marque plus `_isAttached = true` inconditionnellement : la valeur
+    provient de `_servo.attached()`. Un attach échoué est loggué et n'émet plus un premier
+    `write` (distribution) silencieusement perdu.
+  - Court délai d'établissement PWM (20 ms) après l'attach avant le premier ordre de position.
+- **Point 2 — observabilité** : logs ajoutés à chaque transition servo (distribution,
+  intermédiaire, repos) pour lever l'ambiguïté « ordre non émis » vs « non exécuté ».
+- **Point 3 — fail-safe timers** : `dispenseWithIntermediate` vérifie le code retour des deux
+  `esp_timer_start_once`. En cas d'échec d'armement, le servo est immédiatement ramené au
+  repos au lieu de rester bloqué en position de distribution (trappe ouverte).
+
+---
+
 ## Version 15.07 - 2026-07-06
 
 ### Re-flash banc wroom-beta
@@ -23,6 +47,8 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 ### Test OTA prod
 
 - Publication distante canal **ffp5-wroom-prod** (`esp32-wroom`) pour validation du pipeline OTA.
+
+---
 
 ## Version 15.05 - 2026-07-06
 

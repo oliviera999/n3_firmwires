@@ -50,6 +50,9 @@ void Feeder::dispenseWithIntermediate(int feedAngle, int intermediateAngle, uint
   if (!_isAttached) begin();
   _intermediateAngle = intermediateAngle; // stockage de l'angle intermédiaire
   _servo.write(feedAngle); // position de nourrissage
+  // v15.08 (point 2): tracer l'ordre de distribution pour lever l'ambiguïté « ordre non
+  // émis » vs « ordre émis mais non exécuté » lors du diagnostic servo.
+  LOG(LOG_INFO, "Servo GPIO%d -> distribution %d° (maintien %us)", _gpio, feedAngle, durationSec);
 
   // (re)création des timers si nécessaire
   if (_timer == nullptr) {
@@ -75,19 +78,35 @@ void Feeder::dispenseWithIntermediate(int feedAngle, int intermediateAngle, uint
   esp_timer_stop(_intermediateTimer);
   
   // Timer pour la position intermédiaire (après durationSec)
-  esp_timer_start_once(_intermediateTimer, static_cast<uint64_t>(durationSec) * 1000000ULL);
-  
+  esp_err_t interErr = esp_timer_start_once(_intermediateTimer,
+                                            static_cast<uint64_t>(durationSec) * 1000000ULL);
+
   // Timer pour le retour au repos (après durationSec + durationSec/2)
   uint64_t totalDuration = static_cast<uint64_t>(durationSec + durationSec/2) * 1000000ULL;
-  esp_timer_start_once(_timer, totalDuration);
+  esp_err_t restErr = esp_timer_start_once(_timer, totalDuration);
+
+  // v15.08 (point 3): fail-safe. Sans ces timers, le servo resterait bloqué en position de
+  // distribution (trappe ouverte) indéfiniment. Si l'un des deux ne s'arme pas, on annule
+  // et on ramène immédiatement au repos plutôt que de laisser la trappe ouverte.
+  if (interErr != ESP_OK || restErr != ESP_OK) {
+    LOG(LOG_ERROR, "Servo GPIO%d : échec armement timers (inter=%d rest=%d) -> retour repos",
+        _gpio, static_cast<int>(interErr), static_cast<int>(restErr));
+    esp_timer_stop(_intermediateTimer);
+    esp_timer_stop(_timer);
+    returnToRest();
+  }
 }
 
 void Feeder::goToIntermediate() {
   _servo.write(_intermediateAngle);
+  // v15.08 (point 2): tracer la transition vers l'intermédiaire.
+  LOG(LOG_INFO, "Servo GPIO%d -> intermédiaire %d°", _gpio, _intermediateAngle);
 }
 
 void Feeder::returnToRest() {
   _servo.write(_rest);
+  // v15.08 (point 2): tracer le retour au repos (fin de cycle de distribution).
+  LOG(LOG_INFO, "Servo GPIO%d -> repos %d°", _gpio, _rest);
   // Planifie un détachement après 400ms pour réduire jitter/consommation
   if (_detachTimer == nullptr) {
     esp_timer_create_args_t args = {
@@ -115,8 +134,19 @@ void Feeder::begin() {
     _servo.detach();
     vTaskDelay(pdMS_TO_TICKS(50));
     _servo.attach(_gpio, 500, 2500);  // Min/Max pulse width optimisés
-    _isAttached = true;
+    // v15.08 (point 1): ne marquer « attaché » que si le driver LEDC a réellement pris la
+    // main. Auparavant _isAttached passait à true inconditionnellement : sur un attach
+    // échoué (LEDC indisponible), le premier write — l'angle de distribution — était perdu
+    // silencieusement, ne laissant voir que l'ordre intermédiaire émis plus tard.
+    _isAttached = _servo.attached();
+    if (!_isAttached) {
+      LOG(LOG_ERROR, "Servo GPIO%d : échec attach (LEDC indisponible)", _gpio);
+      return;
+    }
     LOG(LOG_INFO, "Servo GPIO%d attaché (500-2500μs)", _gpio);
+    // Laisse quelques trames PWM s'établir après l'attach avant le premier ordre de
+    // position, pour que la position commandée (distribution) soit effectivement prise.
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
   _servo.write(_rest);
 }
