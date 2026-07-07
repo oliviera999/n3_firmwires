@@ -95,7 +95,13 @@ void datatobdd() {
   };
 
   int code = n3DataPost(cfg);
-  (void)code;
+  // Phase 3 arbitrage mails : capture LOCALE du succes du POST de ce reveil.
+  // 200 = le serveur a nos donnees -> il est l'emetteur PRIMAIRE des alertes
+  // partagees (sol sec, batterie) et l'ESP se tait dessus. Sinon, failover.
+  postOkThisWake = (code == 200);
+  if (postOkThisWake) {
+    failoverMailsSent = 0;  // retour en ligne : re-arme le budget failover
+  }
   delay(500);
 }
 
@@ -330,6 +336,14 @@ void n3ppMaybeSendNetworkReportEmail() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[MAIL][NET] WiFi indisponible, rapport reporte");
+    return;
+  }
+
+  // Phase 3 arbitrage : en FAILOVER (POST de ce reveil echoue), les diagnostics
+  // P4 ne valent pas le cout d'une session TLS (§3.4-2). Reporte sans toucher au
+  // timer : le rapport partira au premier reveil revenu en ligne.
+  if (!postOkThisWake) {
+    Serial.println("[MAIL][NET] failover (POST echoue), rapport P4 reporte");
     return;
   }
 

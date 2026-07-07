@@ -56,6 +56,17 @@ RTC_DATA_ATTR bool arrosageFait = 1;
 
 // Compteur de demarrages (RTC RAM).
 RTC_DATA_ATTR int bootCount = 0;
+
+// Phase 3 arbitrage mails : succes du POST de donnees de CE reveil (code HTTP 200).
+// true  -> le serveur a nos donnees, il est l'emetteur PRIMAIRE des alertes
+//          partagees (sol sec, batterie) : l'ESP se tait dessus ;
+// false -> FAILOVER : l'ESP emet, borne par l'anti-congestion (P1/P2 only,
+//          WiFi requis, budget). Recalcule a chaque reveil (deep sleep) ; en RTC
+//          pour rester coherent dans tout le cycle (automatismes puis sommeil).
+RTC_DATA_ATTR bool postOkThisWake = false;
+// Budget de mails failover par episode hors-ligne (anti-congestion §3.4-3) :
+// re-arme des qu'un POST repasse OK. RTC pour persister a travers les reveils.
+RTC_DATA_ATTR uint8_t failoverMailsSent = 0;
 bool WakeUpButton = 0;
 
 // NB : PAS de RTC_DATA_ATTR ici. Un String detient un pointeur vers le heap ;

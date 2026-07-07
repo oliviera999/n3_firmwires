@@ -32,17 +32,41 @@ static bool emailEnabled() {
   return mspNotifMode() != N3NotifMode::None;
 }
 
+// Budget de mails en failover par episode hors-ligne (anti-congestion §3.4-3) :
+// re-arme des qu'un POST repasse OK (voir datatobdd). Evite le martelement TLS.
+static const uint8_t FAILOVER_MAIL_BUDGET = 8;
+
 // Configuration et envoi d'un email d'alerte (SMTP) — delegue a n3_mail.
 // La severite est filtree par le mode courant ; le sujet est prefixe "[MSP1][Pn]".
 // Phase 0 (arbitrage mails) : retourne true si livraison SMTP confirmee OU si le
 // mail est volontairement filtre par le mode (silence choisi = traite) ; false si
 // l'envoi a echoue. L'appelant ne latche son flag anti-spam que sur true, sinon
 // l'alerte serait consideree "envoyee" et perdue hors ligne.
+// Phase 3 (arbitrage mails) : en FAILOVER (POST de ce reveil echoue), anti-
+// congestion §3.4 — severite plafonnee a P1/P2, SMTP tente seulement si WiFi
+// connecte (sinon l'alerte serveur "appareil silencieux" couvre), budget borne.
 bool sendEmailNotification(N3Severity severity) {
-  if (!n3NotifModeAllows(mspNotifMode(), severity)) {
-    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification\n",
-                  n3SeverityCode(severity));
+  const bool failover = !postOkThisWake;
+  N3NotifMode mode = mspNotifMode();
+  if (failover) {
+    mode = n3NotifModeCapFailover(mode);
+  }
+  if (!n3NotifModeAllows(mode, severity)) {
+    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification%s\n",
+                  n3SeverityCode(severity), failover ? " (failover P1/P2)" : "");
     return true;  // silence volontaire : traite selon la politique, pas une perte
+  }
+  if (failover) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[MAIL][FAILOVER] WiFi absent, envoi non tente (retente au prochain reveil)");
+      return false;  // pas de latch : l'alerte sera retentee
+    }
+    if (failoverMailsSent >= FAILOVER_MAIL_BUDGET) {
+      Serial.printf("[MAIL][FAILOVER] budget epuise (%u), envoi non tente\n",
+                    (unsigned)FAILOVER_MAIL_BUDGET);
+      return false;
+    }
+    ++failoverMailsSent;
   }
 
   char subjectBuf[96];
@@ -98,6 +122,14 @@ void mspMaybeSendNetworkReportEmail() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[MAIL][NET] WiFi indisponible, rapport reporte");
+    return;
+  }
+
+  // Phase 3 arbitrage : en FAILOVER (POST de ce reveil echoue), les diagnostics
+  // P4 ne valent pas le cout d'une session TLS (§3.4-2). Reporte sans toucher au
+  // timer : le rapport partira au premier reveil revenu en ligne.
+  if (!postOkThisWake) {
+    Serial.println("[MAIL][NET] failover (POST echoue), rapport P4 reporte");
     return;
   }
 
@@ -204,7 +236,10 @@ void sommeil() {
     if (PontDiv < SeuilPontDiv) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
-      if (emailEnabled() && !s_mspBatteryMailSent) {
+      // Phase 3 arbitrage : batterie calculee par le SERVEUR (PontDiv/SeuilPontDiv
+      // au POST, n3_serveur 6.16.0). POST de ce reveil OK -> l'ESP se tait ;
+      // sinon failover (P1). La protection sommeil reste INCONDITIONNELLE.
+      if (!postOkThisWake && emailEnabled() && !s_mspBatteryMailSent) {
         emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
         // Phase 0 (arbitrage mails) : latch uniquement sur livraison SMTP confirmee —
         // un envoi echoue hors ligne n'est plus considere "fait" (alerte retentee).

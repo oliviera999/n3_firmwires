@@ -6,6 +6,7 @@
 // fournissent déjà ces méthodes ; on ne compile pas les vraies implémentations ici.
 #include "mailer.h"  // Mailer, MailQueueItem, config.h (TaskConfig/EmailConfig), FreeRTOS queue
 #include <cstring>   // memset/strncpy (send())
+#include <WiFi.h>    // Phase 3: en failover, enqueue seulement si WiFi connecté (§3.4-1)
 
 #if FEATURE_MAIL && FEATURE_MAIL != 0
 
@@ -119,7 +120,15 @@ bool Mailer::hasPendingMails() const {
 // Méthode send() asynchrone - ajoute à la queue et retourne immédiatement
 bool Mailer::send(const char* subject, const char* message, const char* toName, const char* toEmail) {
   (void)toName; // Non utilisé dans la version asynchrone
-  
+
+  // Phase 3 anti-congestion : send() = confirmations P3 (nourrissage, remplissage).
+  // En failover (serveur sans nos données), ne pas dépenser une session TLS pour
+  // du P3 (§3.4-2). Retour true = traité selon la politique (pas un échec à retenter).
+  if (_failoverActive) {
+    Serial.printf("[Mail][FAILOVER] P3 supprimé hors ligne: '%s'\n", subject ? subject : "");
+    return true;
+  }
+
   if (!_mailQueue) {
     Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
     return sendSync(subject, message, toName, toEmail, N3Severity::Info);
@@ -176,6 +185,24 @@ bool Mailer::sendAlertAcked(const char* subject, const char* message, const char
 bool Mailer::enqueueAlert(const char* subject, const char* message, const char* toEmail,
                           bool includeDetailedReport, bool* ackFlag, bool ackFailValue) {
   Serial.println(F("[Mail] ===== SENDALERT ASYNC (v11.142) ====="));
+
+  // Phase 3 anti-congestion en failover (§3.4) :
+  //  1. WiFi requis — sans réseau, aucun SMTP ne passera : ne rien tenter (pas de
+  //     martèlement TLS), l'alerte « appareil silencieux » du serveur couvre.
+  //     Retour false = non traité -> le flag anti-spam de l'appelant n'est pas
+  //     latché et l'alerte sera retentée au retour du réseau (Phase 0).
+  //  2. Budget borné par épisode hors-ligne (au-dessus du cap de queue).
+  if (_failoverActive) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.printf("[Mail][FAILOVER] WiFi absent, alerte non tentée: '%s'\n", subject ? subject : "");
+      return false;
+    }
+    if (_failoverMailsSent >= FAILOVER_MAIL_BUDGET) {
+      Serial.printf("[Mail][FAILOVER] Budget épuisé (%u), alerte non tentée: '%s'\n",
+                    static_cast<unsigned>(FAILOVER_MAIL_BUDGET), subject ? subject : "");
+      return false;
+    }
+  }
 
   if (!_mailQueue) {
     Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
@@ -235,7 +262,11 @@ bool Mailer::enqueueAlert(const char* subject, const char* message, const char* 
     }
   }
   
-  Serial.printf("[Mail] 📥 Alerte ajoutée à la queue (%u en attente): '%s'\n", 
+  if (_failoverActive) {
+    ++_failoverMailsSent;  // budget consommé à l'enqueue (coût TLS à venir)
+  }
+
+  Serial.printf("[Mail] 📥 Alerte ajoutée à la queue (%u en attente): '%s'\n",
                 getQueuedMails(), subject);
   Serial.println(F("[Mail] ✅ Retour immédiat (non-bloquant)"));
   return true;

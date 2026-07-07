@@ -48,6 +48,8 @@ extern unsigned long previousMillisDatas;
 extern const long intervalDatas;
 
 // Indicateur : email d'alerte déjà envoyé ou non (évite spam)
+extern bool postOkThisWake;   // Phase 3 : POST de ce reveil OK -> serveur primaire
+extern uint8_t failoverMailsSent;  // Phase 3 : budget mails failover (episode hors-ligne)
 extern bool emailHumidSent;
 extern bool emailPontDivSent;
 extern bool emailPompeSent;

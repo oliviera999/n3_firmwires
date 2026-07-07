@@ -97,7 +97,14 @@ void datatobdd() {
     }
   };
 
-  n3DataPost(cfg);
+  const int postCode = n3DataPost(cfg);
+  // Phase 3 arbitrage mails : capture LOCALE du succes du POST de ce reveil
+  // (resultat auparavant ignore). 200 = le serveur a nos donnees -> il est
+  // l'emetteur PRIMAIRE de l'alerte batterie ; sinon failover local.
+  postOkThisWake = (postCode == 200);
+  if (postOkThisWake) {
+    failoverMailsSent = 0;  // retour en ligne : re-arme le budget failover
+  }
   delay(500);
   photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
   posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;

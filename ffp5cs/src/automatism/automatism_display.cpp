@@ -8,6 +8,7 @@
 #include "automatism/level_alert_orchestrator.h"  // C4: orchestrateur alertes niveau (effets de bord, testable)
 #include "automatism/flood_orchestrator.h"  // C4: orchestrateur trop-plein (effets de bord, testable)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
+#include "automatism/shared_alert_gate.h"  // Phase 3: arbitrage serveur primaire / ESP relais
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
 #include "automatism/threshold_util.h"  // C4: soustraction saturée seuil-marge (pure, testée)
@@ -46,6 +47,24 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         // Pendant la période de grâce, on n'envoie pas mais on ne marque pas comme déjà envoyé :
         // après 30s la première évaluation enverra l'alerte si la condition est toujours vraie.
         return;  // Pas d'alertes pendant la période de grâce
+    }
+
+    // Phase 3 arbitrage mails : le serveur (CRON 1 min + alertes dérivées du POST,
+    // n3_serveur 6.16.0) est l'émetteur PRIMAIRE des alertes partagées de ce bloc
+    // (aquarium bas, trop-plein, réserve basse, chauffage ON/OFF). Si l'échange
+    // serveur est sain (GET config OK + POST frais), l'ESP se tait (fin des
+    // doublons) ; sinon FAILOVER : évaluation locale comme avant, bornée par
+    // l'anti-congestion du Mailer (P1/P2 only, WiFi requis, budget).
+    // Le kill-switch GPIO 101 (mailEnabled/notifMode) reste appliqué en aval.
+    // Nourrissage/remplissage : non couverts serveur -> gérés ailleurs, non gatés.
+    const bool serverCovers = SharedAlertGate::serverCovers(
+        _network.isServerOk(), millis(), _network.getLastSendMs());
+    _mailer.setFailoverActive(!serverCovers);
+    if (serverCovers) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+        }
+        return;  // Serveur primaire : aucune alerte partagée émise par l'ESP
     }
 
     if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
