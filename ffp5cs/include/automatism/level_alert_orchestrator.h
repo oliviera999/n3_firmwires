@@ -15,6 +15,14 @@
 // et le message reproduit EXACTEMENT l'ancien `formatDistanceAlert` (format identique,
 // y compris le « mm ( » redondant historique).
 // Dépend de imailer.h / level_alert.h + <cstdio> -> testable g++.
+//
+// Phase 0 (arbitrage mails) — latching sur livraison confirmée :
+//   - le flag n'est plus latché que si l'enqueue a RÉUSSI (mail refusé/queue pleine
+//     -> flag inchangé -> l'alerte est retentée au prochain cycle) ;
+//   - `alreadyAlerted` référence un stockage durable (membre d'Automatism) : son
+//     adresse sert d'accusé de livraison différé (sendAlertAcked). Si la livraison
+//     SMTP échoue définitivement (retries épuisés), le mailer restaure le flag à
+//     sa valeur d'avant latch et l'alerte est ré-émise au lieu d'être perdue.
 // =============================================================================
 
 #include <cstdio>
@@ -38,14 +46,20 @@ inline bool run(IMailer& mailer, bool& alreadyAlerted, uint16_t valueMm,
   if (d == LevelAlert::Decision::Raise && mailEnabled) {
     char msg[128];
     formatDistance(msg, sizeof(msg), valueMm, " mm (> ", alertThrMm);
-    mailer.sendAlert(raiseSubject, msg, email);
+    // Accusé différé : échec définitif de livraison -> flag restauré à false (ré-armé).
+    if (!mailer.sendAlertAcked(raiseSubject, msg, email, false, &alreadyAlerted, false)) {
+      return false;  // mail refusé (queue pleine…) : pas de latch, retenté au prochain cycle
+    }
     alreadyAlerted = true;
     return true;
   }
   if (clearSubject != nullptr && d == LevelAlert::Decision::Clear && mailEnabled) {
     char msg[128];
     formatDistance(msg, sizeof(msg), valueMm, " mm (<= ", clearThrMm);
-    mailer.sendAlert(clearSubject, msg, email);
+    // Accusé différé : échec définitif -> flag restauré à true (le mail de fin sera retenté).
+    if (!mailer.sendAlertAcked(clearSubject, msg, email, false, &alreadyAlerted, true)) {
+      return false;
+    }
     alreadyAlerted = false;
     return true;
   }

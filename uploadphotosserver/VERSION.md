@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.60** (définie dans `include/config.h`).
+Version actuelle : **2.61** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.60** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.61 | 2026-07-07 | **Phase 0 arbitrage mails — alerte « OTA échec » non perdue** (cf. `n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md`). Si l'envoi SMTP du mail « OTA terminée (échec) » échoue dans `otaMailEndCallback`, l'alerte est mémorisée en RTC (`pendingOtaFailMail` + corps) et retentée aux réveils suivants quand le WiFi est disponible (budget borné à 5 essais, abandon loggué) — avant, un échec d'envoi perdait définitivement l'alerte au deep sleep. Aucun changement d'arbitrage. |
 | 2.60 | 2026-07-06 | **Test OTA** : publication distante `msp1` + `ffp3` (validation pipeline cam OTA). Inclut correctifs WiFi v2.58–2.59 (`n3_wifi` 1.2.5). |
 | 2.59 | 2026-07-06 | **WiFi** : `disableFastReconnect` sur CAM ; `WIFI_PRE_SCAN_DELAY_MS` 500 ms ; lib `n3_wifi` 1.2.5 — repli **scan synchrone** si scan async échoue (`WIFI_SCAN_FAILED`). |
 | 2.58 | 2026-07-06 | **WiFi** : reset radio (`disconnect`, `scanDelete`, `WIFI_OFF` → `STA`) avant connexion au réveil — corrige `Echec connexion — scan` (WIFI_SCAN_FAILED) après deep sleep ou reconnexion rapide RTC. |

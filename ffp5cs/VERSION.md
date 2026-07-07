@@ -12,6 +12,33 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.09 - 2026-07-07
+
+### Phase 0 arbitrage mails — fiabilité : latch anti-spam sur livraison SMTP confirmée
+
+Correctif de pertes d'alertes hors ligne (cf. `n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md`,
+Phase 0). Aucun changement d'arbitrage : uniquement la fiabilité des envois.
+
+- **Accusé de livraison différé dans la queue mail** : `MailQueueItem` porte un couple
+  optionnel `ackFlag`/`ackFailValue` ; si la livraison SMTP échoue **définitivement**
+  (2 retries épuisés ou re-queue impossible), `processOneMailSync()` restaure le flag
+  anti-spam de l'appelant (`*ackFlag = ackFailValue`) — l'alerte est retentée au cycle
+  suivant au lieu d'être « considérée envoyée » et perdue. Nouvelle méthode
+  `IMailer::sendAlertAcked()` (défaut : délègue à `sendAlert`, faux mailers inchangés).
+- **`LevelAlertOrchestrator`** (aquarium bas / réserve basse) : le flag `alreadyAlerted`
+  n'est plus latché que si l'enqueue a réussi (avant : latch inconditionnel, mail refusé
+  = alerte perdue), et l'adresse du flag sert d'accusé de livraison différé.
+- **`FloodOrchestrator`** (trop-plein) : nouveau paramètre `persistentInFlood` (pointeur
+  vers le flag durable d'`Automatism`) transmis comme accusé — un échec SMTP définitif
+  ré-arme la machine `FloodAlert` (ré-émission au rythme du cooldown).
+- **Cooldown trop-plein relu au boot** : `ALERT_FLOOD_LAST` (NVS) était écrit à chaque
+  envoi mais jamais relu ; `Automatism::begin()` restaure désormais
+  `lastFloodEmailEpoch` (plus de re-spam immédiat après reboot).
+- Tests natifs : cas « enqueue refusé → pas de latch » + plomberie de l'accusé
+  (level + flood).
+
+---
+
 ## Version 15.08 - 2026-07-06
 
 ### Fiabilisation du nourrissage (manuel & auto) — servo de distribution

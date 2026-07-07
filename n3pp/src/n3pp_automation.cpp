@@ -45,11 +45,15 @@ static bool emailEnabled() {
 
 // Configuration et envoi d'un email d'alerte (SMTP) — delegue a n3_mail.
 // La severite est filtree par le mode courant ; le sujet est prefixe "[N3PP][Pn]".
-void sendEmailNotification(N3Severity severity) {
+// Phase 0 (arbitrage mails) : retourne true si livraison SMTP confirmee OU si le
+// mail est volontairement filtre par le mode (silence choisi = traite) ; false si
+// l'envoi a echoue. L'appelant ne latche son flag anti-spam que sur true, sinon
+// l'alerte serait consideree "envoyee" et perdue hors ligne.
+bool sendEmailNotification(N3Severity severity) {
   if (!n3NotifModeAllows(n3ppNotifMode(), severity)) {
     Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification\n",
                   n3SeverityCode(severity));
-    return;
+    return true;  // silence volontaire : traite selon la politique, pas une perte
   }
 
   char subjectBuf[96];
@@ -68,7 +72,9 @@ void sendEmailNotification(N3Severity severity) {
   if (!n3MailSendText(cfg, subjectBuf, emailMessage.c_str(), &err)) {
     Serial.print("[MAIL] echec envoi: ");
     Serial.println(err);
+    return false;
   }
+  return true;
 }
 
 // Borne maximale de securite pour la duree d'un arrosage (secondes) : empeche
@@ -136,10 +142,12 @@ void automatismes() {
   //mail si sécheresse trop forte (uniquement si au moins un capteur sol valide)
   if ((soilValidCount > 0) && (HumidMoy < SeuilSec) && emailEnabled() && !emailHumidSent) {
     emailMessage = String("Le sol est sec. L'humidité moyenne est de ") + String(HumidMoy);
-    sendEmailNotification(N3Severity::Alert);
-      Serial.println(emailMessage);
-      // SerialBT.println(emailMessage);
+    // Phase 0 : latch uniquement sur livraison confirmee (sinon retente au prochain reveil).
+    if (sendEmailNotification(N3Severity::Alert)) {
       emailHumidSent = true;
+    }
+    Serial.println(emailMessage);
+    // SerialBT.println(emailMessage);
 
     //variablestoesp();
     datatobdd();
@@ -149,8 +157,10 @@ void automatismes() {
   if ((soilValidCount > 0) && (HumidMoy > seuilRetourNormal()) && emailEnabled() && emailHumidSent) {
     emailMessage = String("L'humidite est remontee. La moyenne est maintenant de ") + String(HumidMoy);
     Serial.println(emailMessage);
-    sendEmailNotification(N3Severity::Info);
-    emailHumidSent = false;
+    // Phase 0 : ne de-latcher qu'apres livraison confirmee du mail de fin.
+    if (sendEmailNotification(N3Severity::Info)) {
+      emailHumidSent = false;
+    }
     datatobdd();
   }
 
@@ -167,8 +177,10 @@ void automatismes() {
     if (emailEnabled() && !emailPontDivSent) {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       Serial.println(emailMessage);
-      sendEmailNotification(N3Severity::Critical);
-      emailPontDivSent = true;
+      // Phase 0 : latch uniquement sur livraison confirmee.
+      if (sendEmailNotification(N3Severity::Critical)) {
+        emailPontDivSent = true;
+      }
     }
     EnregistrementHeureFlash();
     N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
@@ -260,8 +272,10 @@ void sommeil() {
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
       if (emailEnabled() && !emailPontDivSent) {
         emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
-        sendEmailNotification(N3Severity::Critical);
-        emailPontDivSent = true;
+        // Phase 0 : latch uniquement sur livraison confirmee.
+        if (sendEmailNotification(N3Severity::Critical)) {
+          emailPontDivSent = true;
+        }
       }
       datatobdd();
       if (displayOk) {

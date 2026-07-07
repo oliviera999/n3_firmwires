@@ -7,7 +7,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.60"
+#define FIRMWARE_VERSION "2.61"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
