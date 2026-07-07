@@ -77,6 +77,8 @@ extern int Pluie;
 // --- Email ---
 extern bool emailHumidSent;
 extern int bootCount;
+extern bool postOkThisWake;       // Phase 3 : POST de ce reveil OK -> serveur primaire
+extern uint8_t failoverMailsSent; // Phase 3 : budget mails failover (episode hors-ligne)
 extern String inputMessageMailAd;
 extern String enableEmailChecked;
 extern String emailMessage;

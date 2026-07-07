@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.52** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.54** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **4.52** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.54 | 2026-07-07 | **Phase 3 (suite) — arrosages et « arrosage continu » arbitrés.** Le serveur (n3_serveur 6.18.0) dérive désormais « Arrosage effectué » (transition `etatPompe` au POST) et « Arrosage continu » (`etatPompe=1` sur ≥ 2 lignes). Les trois confirmations d'arrosage (auto sol sec, heure programmée, manuel) sont gatées par `postOkThisWake` (émises seulement en failover, où le P3 est filtré). Alerte « pompe continue » (main.cpp) : le POST immédiat `etatPompe=1` est conservé (c'est la donnée dont le serveur dérive l'alerte) ; s'il réussit → latch sans mail local, sinon failover P1 comme avant. |
+| 4.53 | 2026-07-07 | **Phase 3 arbitrage mails — ESP en relais.** Nouveau flag RTC `postOkThisWake` capturant le succès HTTP du POST de chaque réveil (résultat auparavant ignoré). POST OK → le serveur (n3_serveur 6.16.0) est l'émetteur primaire des alertes partagées : l'ESP se tait sur **sol sec** (raise/clear, latch ré-armé en silence) et **batterie** (mail seulement ; la protection sommeil reste inconditionnelle). POST échoué → failover anti-congestion (§3.4) : sévérité plafonnée P1/P2 (`n3NotifModeCapFailover`), SMTP tenté seulement si WiFi connecté, budget RTC de 8 mails par épisode hors-ligne (ré-armé au POST OK), rapport réseau P4 reporté. Kill-switch GPIO 101 inchangé. Non gatés : pompe continue, arrosages (pas de couverture serveur). |
 | 4.52 | 2026-07-07 | **Phase 0 arbitrage mails — latch anti-spam sur livraison SMTP confirmée** (cf. `n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md`). `sendEmailNotification()` retourne désormais un booléen de succès (true = livré SMTP ou volontairement filtré par le mode ; false = échec d'envoi) et les flags anti-spam (`emailHumidSent`, `emailPontDivSent`, `emailPompeSent`) ne sont latchés que sur succès — un envoi échoué hors ligne est retenté au réveil suivant au lieu d'être perdu. Aucun changement d'arbitrage. |
 | 4.51 | 2026-07-06 | **Test OTA** : publication distante canal `n3pp` (validation pipeline OTA prod). |
 | 4.50 | 2026-07-05 | **Vague 1 audit serveur.** URLs canoniques Slim (`/n3pp/post-data`, `/n3pp/api/outputs/state`, `/n3pp/heartbeat` ; préfixe `/n3pp-test/` en TEST_MODE) ; heartbeat POST par cycle de réveil (`sendHeartbeat` via `n3_data`) ; `N3PP_SERVER_SCHEME` HTTPS par défaut dans `n3pp_config.h` ; transport TLS activé sur l'env par défaut (`USE_HTTPS_ENDPOINTS`). |

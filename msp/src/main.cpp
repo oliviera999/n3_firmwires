@@ -88,6 +88,14 @@ unsigned long previousMillisDatas = 0;
 // --- Email ---
 bool emailHumidSent = 0;
 RTC_DATA_ATTR int bootCount = 0;
+// Phase 3 arbitrage mails : succes du POST de donnees de CE reveil (HTTP 200).
+// true  -> le serveur a nos donnees, il est l'emetteur PRIMAIRE de l'alerte
+//          batterie (seule alerte partagee msp) : l'ESP se tait dessus ;
+// false -> FAILOVER : l'ESP emet, borne par l'anti-congestion (P1/P2 only,
+//          WiFi requis, budget). RTC pour rester coherent sur tout le cycle.
+RTC_DATA_ATTR bool postOkThisWake = false;
+// Budget de mails failover par episode hors-ligne (§3.4-3), re-arme au POST OK.
+RTC_DATA_ATTR uint8_t failoverMailsSent = 0;
 RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
 RTC_DATA_ATTR String enableEmailChecked = "checked";
 String emailMessage;

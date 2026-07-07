@@ -12,6 +12,44 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.11 - 2026-07-07
+
+### Phase 3 (suite) — confirmations de remplissage arbitrées
+
+Le serveur (n3_serveur 6.18.0) dérive désormais « Remplissage démarré/terminé » de la
+transition `etatPompeTank` au POST. Les trois mails de confirmation du module refill
+(`automatism_refill.cpp`) sont gatés par `Automatism::serverCoversSharedAlerts()`
+(nouveau helper, même gate que `handleAlerts`) : émis uniquement en failover — où ils
+sont de toute façon filtrés (P3), conformément à l'anti-congestion §3.4-2.
+
+---
+
+## Version 15.10 - 2026-07-07
+
+### Phase 3 arbitrage mails — ESP en relais : gate serveur + anti-congestion
+
+Le serveur (n3_serveur 6.16.0, CRON 1 min + alertes dérivées du POST) est désormais
+l'émetteur PRIMAIRE des alertes partagées. L'ESP ne les émet plus qu'en **failover**
+(décision locale — cf. `ARCHITECTURE_MAILS_ARBITRAGE.md` §3.3/§3.4).
+
+- **Gate d'arbitrage** (`automatism/shared_alert_gate.h`, pur + testé) :
+  `isServerOk()` (GET config OK) **et** dernier POST réussi < 90 s (3 cycles).
+  Couvert → `handleAlerts` saute les alertes partagées (aquarium bas, trop-plein,
+  réserve basse, chauffage ON/OFF) ; sinon évaluation locale comme avant.
+- **Anti-congestion failover dans le Mailer** (`setFailoverActive`, poussé à chaque
+  cycle) : sévérité plafonnée à P1/P2 (`n3NotifModeCapFailover`, lib n3_mail 1.3.0 —
+  veille/réveil P4 et confirmations P3 supprimées hors ligne), enqueue d'alerte
+  refusé sans WiFi (pas de martèlement TLS ; l'alerte « appareil silencieux » du
+  serveur couvre), budget borné à 6 mails par épisode hors-ligne (ré-armé au retour).
+  Kill-switch GPIO 101 inchangé (les plafonds se combinent).
+- **Non gatés** (pas de couverture serveur) : nourrissage/remplissage (contrat
+  « compteur monotone » sans signal au POST), batterie ffp5cs (pas de champ au
+  POST — ESP critique-only, décision Phase 4), crash/boot/OTA.
+- Tests natifs : `test_shared_alert_gate` (6 cas, wrap millis inclus) +
+  `test_notify` (plafond failover).
+
+---
+
 ## Version 15.09 - 2026-07-07
 
 ### Phase 0 arbitrage mails — fiabilité : latch anti-spam sur livraison SMTP confirmée

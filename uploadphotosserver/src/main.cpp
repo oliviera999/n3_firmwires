@@ -26,6 +26,7 @@
 #include "n3_wifi.h"
 #include "n3_ota.h"
 #include "n3_mail.h"
+#include "n3_notify.h"  /* Phase 3 : taxonomie N3Severity/N3NotifMode */
 #include "camera_remote.h"
 #include "camera_setup.h"
 #include "camera_upload.h"
@@ -77,6 +78,14 @@ RTC_DATA_ATTR static bool pendingOtaFailMail = false;
 RTC_DATA_ATTR static uint8_t pendingOtaFailMailTries = 0;
 RTC_DATA_ATTR static char pendingOtaFailMailExtra[192] = "";
 static bool remoteMailNotifEnabled = MAIL_NOTIFICATIONS_ENABLED;
+/* Phase 3 arbitrage : mode de notification gradue (cle 103, retro-compatible bool).
+ * remoteMailNotifEnabled reste le raccourci booleen (mode != None). */
+static N3NotifMode remoteNotifMode = MAIL_NOTIFICATIONS_ENABLED ? N3NotifMode::Full : N3NotifMode::None;
+/* Phase 3 arbitrage : proxy « serveur OK » de ce reveil = GET config 200 + POST
+ * version 2xx. false -> FAILOVER : mails plafonnes a P1/P2 (critique-only). Le
+ * serveur ne couvre pas encore les diagnostics CAM (boot/jour-nuit/OTA), donc
+ * AUCUNE suppression quand le serveur est OK — regle d'ordonnancement du plan. */
+static bool serverExchangeOk = false;
 static String remoteMailRecipient = "";
 static uint32_t runtimeSleepSeconds = TIME_TO_SLEEP;
 static bool forceWakeupActiveThisBoot = false;
@@ -106,7 +115,7 @@ void capturePhoto(bool wifiOk);
 void ledBlink(int onMs, int offMs, int count);
 static void logMonitoringSnapshot(const char* stage);
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs);
-static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo);
+static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo, N3Severity severity);
 static void otaMailStartCallback(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
 static void otaMailEndCallback(bool success, const char* details, void* userData);
 static void trySendPendingOtaFailMail(bool wifiOk);
@@ -218,10 +227,17 @@ static void logMonitoringSnapshot(const char* stage) {
   }
 }
 
-static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo) {
+static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo, N3Severity severity) {
 #if MAIL_NOTIFICATIONS_ENABLED && defined(SMTP_HOST_ADDR) && defined(SMTP_PORT_NUM) && defined(SMTP_EMAIL) && defined(SMTP_PASSWORD) && defined(SMTP_DEST)
-  if (!remoteMailNotifEnabled) {
-    Serial.println("[MAIL] Notifications desactivees par configuration distante.");
+  /* Phase 3 arbitrage : filtrage par severite (taxonomie n3_notify, cle 103
+   * graduee). En FAILOVER (echange serveur KO), plafond P1/P2 : les diagnostics
+   * P3/P4 ne valent pas le cout TLS hors ligne — retour false = non envoye,
+   * les appelants a etat (pending masks, first-boot) retenteront. */
+  const N3NotifMode effectiveMode =
+      serverExchangeOk ? remoteNotifMode : n3NotifModeCapFailover(remoteNotifMode);
+  if (!n3NotifModeAllows(effectiveMode, severity)) {
+    Serial.printf("[MAIL] severite %s filtree (mode%s)\n",
+                  n3SeverityCode(severity), serverExchangeOk ? "" : " failover");
     return false;
   }
   if (WiFi.status() != WL_CONNECTED) {
@@ -239,7 +255,8 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   smtpCfg.recipientEmail = (remoteMailRecipient.length() > 0) ? remoteMailRecipient.c_str() : SMTP_DEST;
 
   char subject[MAIL_SUBJECT_MAX_LEN];
-  snprintf(subject, sizeof(subject), "[uploadphotosserver][%s] %s", currentTargetName(), subjectEvent);
+  snprintf(subject, sizeof(subject), "[uploadphotosserver][%s][%s] %s",
+           currentTargetName(), n3SeverityCode(severity), subjectEvent);
 
   char localTime[32];
   cameraGetLocalTimeString(localTime, sizeof(localTime));
@@ -288,6 +305,7 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   (void)subjectEvent;
   (void)eventName;
   (void)extraInfo;
+  (void)severity;
   Serial.println("[MAIL] SMTP non configure dans credentials.h, notification ignoree.");
   return false;
 #endif
@@ -325,7 +343,7 @@ static void otaMailEndCallback(bool success, const char* details, void* userData
     snprintf(extra, sizeof(extra),
              "OTA echec (mail fin uniquement).\nVersion distante: %s\nURL: %s\nDetails: %s",
              otaRemoteVersion, otaFirmwareUrl, details ? details : "n/a");
-    if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", extra)) {
+    if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", extra, N3Severity::Alert)) {
       pendingOtaFailMail = false;  /* livre : purge un eventuel pending anterieur */
     } else {
       /* Phase 0 : livraison NON confirmee -> memoriser en RTC pour retenter au
@@ -360,7 +378,7 @@ static void trySendPendingOtaFailMail(bool wifiOk) {
     return;
   }
   ++pendingOtaFailMailTries;
-  if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", pendingOtaFailMailExtra)) {
+  if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", pendingOtaFailMailExtra, N3Severity::Alert)) {
     Serial.println("[OTA][MAIL] Alerte OTA en attente livree.");
     pendingOtaFailMail = false;
   } else {
@@ -407,7 +425,7 @@ static void handlePhotoWindowTransitionMails(bool wifiOk) {
     snprintf(extra, sizeof(extra),
              "Passage en mode nuit detecte: les photos sont suspendues entre %02d:00 et %02d:00.",
              HOUR_END, HOUR_START);
-    if (sendDebugEventMail("Mode nuit active", "photo-window-night", extra)) {
+    if (sendDebugEventMail("Mode nuit active", "photo-window-night", extra, N3Severity::Diagnostic)) {
       pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_EVENING);
     }
   }
@@ -417,7 +435,7 @@ static void handlePhotoWindowTransitionMails(bool wifiOk) {
     snprintf(extra, sizeof(extra),
              "Passage en mode jour detecte: la prise de photos reprend (creneau %02d:00-%02d:00).",
              HOUR_START, HOUR_END);
-    if (sendDebugEventMail("Mode jour actif", "photo-window-day", extra)) {
+    if (sendDebugEventMail("Mode jour actif", "photo-window-day", extra, N3Severity::Diagnostic)) {
       pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_MORNING);
     }
   }
@@ -457,7 +475,7 @@ static void trySendFirstBootMail(bool wifiOk) {
            "(NVS %s/%s).",
            resetReasonText(esp_reset_reason()), kFirstBootPrefNs, kFirstBootMailKey);
 
-  if (sendDebugEventMail("Premier demarrage", "first-boot", extra)) {
+  if (sendDebugEventMail("Premier demarrage", "first-boot", extra, N3Severity::Info)) {
     if (preferences.begin(kFirstBootPrefNs, false)) {
       preferences.putBool(kFirstBootMailKey, true);
       preferences.end();
@@ -745,6 +763,7 @@ void setup() {
         remoteMailRecipient = remoteCfg.mail;
       }
       remoteMailNotifEnabled = remoteCfg.mailNotif;
+      remoteNotifMode = remoteCfg.notifMode;  /* Phase 3 : mode gradue (cle 103) */
       runtimeSleepSeconds = remoteCfg.sleepTimeSeconds;
 
 #if USE_DEEP_SLEEP
@@ -779,6 +798,11 @@ void setup() {
 
     int versionPostCode = cameraRemotePostFirmwareVersion(currentTargetName());
     Serial.printf("[REMOTE] post version HTTP=%d\n", versionPostCode);
+    /* Phase 3 arbitrage : proxy « serveur OK » = GET config OK + POST version 2xx. */
+    serverExchangeOk = (remoteHttpCode == 200) && versionPostCode >= 200 && versionPostCode < 300;
+    Serial.printf("[REMOTE] echange serveur %s (failover mails %s)\n",
+                  serverExchangeOk ? "OK" : "KO",
+                  serverExchangeOk ? "inactif" : "actif: P1/P2 only");
   }
   logStepDuration("connexion_wifi", millis() - wifiStartMs, WIFI_CONNECT_TIMEOUT_MS + 1500);
   logMonitoringSnapshot("setup:post_wifi");

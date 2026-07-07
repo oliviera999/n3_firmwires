@@ -90,10 +90,25 @@ void test_subject_guard_null_and_zero() {
   TEST_ASSERT_EQUAL_STRING("", n3MailFormatSubject(b, 0, "N3PP", N3Severity::Info, "x"));
 }
 
+// Phase 3 arbitrage : le plafond failover ramene Partial/Full a Important (P1/P2)
+// et preserve None (kill-switch) et Important.
+void test_failover_cap() {
+  TEST_ASSERT_EQUAL_INT((int)N3NotifMode::None, (int)n3NotifModeCapFailover(N3NotifMode::None));
+  TEST_ASSERT_EQUAL_INT((int)N3NotifMode::Important, (int)n3NotifModeCapFailover(N3NotifMode::Important));
+  TEST_ASSERT_EQUAL_INT((int)N3NotifMode::Important, (int)n3NotifModeCapFailover(N3NotifMode::Partial));
+  TEST_ASSERT_EQUAL_INT((int)N3NotifMode::Important, (int)n3NotifModeCapFailover(N3NotifMode::Full));
+  // Combine au filtrage : en failover Full, P3/P4 bloques, P1/P2 passent.
+  TEST_ASSERT_TRUE(n3NotifModeAllows(n3NotifModeCapFailover(N3NotifMode::Full), N3Severity::Critical));
+  TEST_ASSERT_TRUE(n3NotifModeAllows(n3NotifModeCapFailover(N3NotifMode::Full), N3Severity::Alert));
+  TEST_ASSERT_FALSE(n3NotifModeAllows(n3NotifModeCapFailover(N3NotifMode::Full), N3Severity::Info));
+  TEST_ASSERT_FALSE(n3NotifModeAllows(n3NotifModeCapFailover(N3NotifMode::Full), N3Severity::Diagnostic));
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
+  RUN_TEST(test_failover_cap);
   RUN_TEST(test_severity_codes);
   RUN_TEST(test_severity_priority_ordered);
   RUN_TEST(test_mode_none_blocks_everything);

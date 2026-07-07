@@ -47,6 +47,17 @@ class Mailer : public IMailer {
   void setNotifMode(N3NotifMode mode) override { _notifMode = mode; }
   N3NotifMode notifMode() const { return _notifMode; }
 
+  // Phase 3 arbitrage : mode failover (anti-congestion §3.4). En failover :
+  // sévérité plafonnée à P2 (n3NotifModeCapFailover), enqueue refusé sans WiFi,
+  // budget borné par épisode hors-ligne (reset à la sortie du failover).
+  void setFailoverActive(bool active) override {
+    if (_failoverActive && !active) {
+      _failoverMailsSent = 0;  // sortie du failover : ré-arme le budget
+    }
+    _failoverActive = active;
+  }
+  bool isFailoverActive() const { return _failoverActive; }
+
   // Méthodes synchrones (utilisées en interne par mailTask ou avant reboot OTA)
   // `severity` : filtrée par le mode courant + préfixe sujet "[FFP5][Pn]".
   bool sendSync(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, N3Severity severity = N3Severity::Alert);
@@ -108,6 +119,12 @@ class Mailer : public IMailer {
   // Mode de notification courant (plafond de sévérité). Défaut Full = tout envoyé
   // (comportement legacy inchangé tant que le serveur/l'utilisateur ne restreint pas).
   N3NotifMode _notifMode{N3NotifMode::Full};
+
+  // Phase 3 arbitrage : failover actif (serveur sans nos données) + budget de
+  // mails par épisode hors-ligne (anti-congestion §3.4-3, au-dessus du cap queue).
+  static constexpr uint8_t FAILOVER_MAIL_BUDGET = 6;
+  bool _failoverActive{false};
+  uint8_t _failoverMailsSent{0};
 
   // Statistiques
   uint32_t _mailsSent{0};
