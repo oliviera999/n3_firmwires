@@ -13,8 +13,7 @@
       },
       "pioEnvs": [
         { "name": "esp32dev", "versionDefine": null },
-        { "name": "esp32dev_test", "versionDefine": null },
-        { "name": "n3pp-https", "versionDefine": null }
+        { "name": "esp32dev_test", "versionDefine": null }
       ]
     },
     {
@@ -30,8 +29,7 @@
       },
       "pioEnvs": [
         { "name": "esp32dev", "versionDefine": null },
-        { "name": "esp32dev_test", "versionDefine": null },
-        { "name": "msp-https", "versionDefine": null }
+        { "name": "esp32dev_test", "versionDefine": null }
       ]
     },
     {

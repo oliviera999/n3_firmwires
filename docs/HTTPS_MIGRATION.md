@@ -1,11 +1,13 @@
 # Migration HTTPS (TLS) — canal d'envoi de donnees `n3pp` / `msp` / `uploadphotosserver`
 
-Capacite HTTPS (TLS) **opt-in** pour le canal d'envoi de donnees, derriere un
-**flag de compilation**. **HTTP reste le defaut** : tant que le flag n'est pas
-active, le comportement des appareils est **strictement identique** a l'existant.
+Capacite HTTPS (TLS) pour le canal d'envoi de donnees, derriere un **flag de
+compilation** (`USE_HTTPS_ENDPOINTS`).
 
-Ce livrable est **REVERSIBLE** : rebuild sans le flag = retour HTTP, aucune
-modification cote appareil.
+**Etat actuel (audit 2026-07)** : `n3pp` et `msp` activent HTTPS sur l'env par
+defaut `esp32dev` (`-DUSE_HTTPS_ENDPOINTS` + `https://` dans les config headers).
+`uploadphotosserver` est HTTPS depuis v2.54.
+
+Rollback HTTP possible au build avec `-DUSE_HTTP_ENDPOINTS` (voir ci-dessous).
 
 ---
 
@@ -45,24 +47,21 @@ stub `WiFiClientSecure.h`) restent inchanges.
 
 ---
 
-## Activer (build HTTPS)
+## Build HTTPS (defaut n3pp / msp / cam)
 
 PlatformIO (depuis le dossier du firmware) :
 
 ```bash
-# n3pp
-cd n3pp && pio run -e n3pp-https
-
-# msp
-cd msp && pio run -e msp-https
+# n3pp / msp — HTTPS inclus dans esp32dev
+cd n3pp && pio run -e esp32dev
+cd msp  && pio run -e esp32dev
 
 # uploadphotosserver (ESP32-CAM) — HTTPS par défaut depuis v2.54
 cd uploadphotosserver && pio run -e msp1
 ```
 
-Chaque env `-https` ajoute `-DUSE_HTTPS_ENDPOINTS` :
-
-- **n3pp-https** / **msp-https** : heritent de l'env de production HTTP (`esp32dev`).
+- **n3pp** / **msp** : `esp32dev` et `esp32dev_test` portent `-DUSE_HTTPS_ENDPOINTS`
+  dans `platformio.ini` (plus d'env `*-https` separe : supprime comme redondant).
 - **uploadphotosserver** : tous les envs (`msp1` / `n3pp` / `ffp3`) héritent de
   `cam-base` : **espressif32@6.13** + **`board = esp32cam`** (PSRAM) +
   `-DUSE_HTTPS_ENDPOINTS`. Plus d'envs `*-cam` ni `msp1-https` (v2.54).
@@ -71,32 +70,28 @@ Chaque env `-https` ajoute `-DUSE_HTTPS_ENDPOINTS` :
 
 ## Rollback (retour HTTP)
 
-Rebuild + reflash avec l'environnement **par defaut** (sans le flag) :
+Rebuild + reflash avec le flag de rollback HTTP :
 
 ```bash
-cd n3pp && pio run -e esp32dev
-cd msp  && pio run -e esp32dev
+# n3pp / msp : retirer USE_HTTPS_ENDPOINTS et ajouter USE_HTTP_ENDPOINTS
+# (ex. build_flags dans platformio.ini, ou -DUSE_HTTP_ENDPOINTS en ligne de commande)
+cd n3pp && pio run -e esp32dev --build-flag "-DUSE_HTTP_ENDPOINTS"
+cd msp  && pio run -e esp32dev --build-flag "-DUSE_HTTP_ENDPOINTS"
+
 cd uploadphotosserver
 # Retirer -DUSE_HTTPS_ENDPOINTS de [env:cam-base] dans platformio.ini, puis :
 pio run -e msp1
 ```
 
 Le rollback est purement **logiciel cote build** : aucun etat appareil a defaire.
-Le chemin par defaut de `shared/n3_data` n'ayant jamais bouge, les firmwares
-construits sans le flag (y compris `poissonglouton` et `ffp5cs`) sont
-**bit-pour-bit equivalents** a avant cette migration.
 
 ---
 
 ## CI
 
-`.github/workflows/firmware-ci.yml` compile en plus les variantes HTTPS pour
-detecter toute erreur de compilation du chemin TLS :
+`.github/workflows/firmware-ci.yml` compile `n3pp` / `msp` sur `esp32dev`
+(chemin TLS inclus via `USE_HTTPS_ENDPOINTS`).
 
-- `n3pp-https` (env `n3pp-https`)
-- `msp-https` (env `msp-https`)
-
-Les builds HTTP par defaut (`n3pp` / `msp` `esp32dev`) restent inchanges.
 **uploadphotosserver** (`msp1` / `n3pp` / `ffp3`) compile en **HTTPS + esp32cam**
 dans la matrice CI (meme stack que la prod depuis v2.54).
 
