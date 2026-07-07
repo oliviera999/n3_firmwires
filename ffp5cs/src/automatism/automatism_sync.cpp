@@ -275,7 +275,8 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
     float pressureForPost = isnan(readings.pressureHpa) ? 0.0f : readings.pressureHpa;
 
     snprintf(body.apiKey, sizeof(body.apiKey), "%s", ApiConfig::API_KEY);
-    snprintf(body.sensor, sizeof(body.sensor), "%s", ProjectConfig::BOARD_TYPE);
+    // `sensor` = identité système côté serveur (« ffp3 »), pas le type de carte.
+    snprintf(body.sensor, sizeof(body.sensor), "%s", ProjectConfig::SYSTEM_ID);
     snprintf(body.version, sizeof(body.version), "%s", ProjectConfig::VERSION);
     snprintf(body.tempAir, sizeof(body.tempAir), "%.1f", readings.tempAir);
     snprintf(body.humidite, sizeof(body.humidite), "%.1f", readings.humidity);
@@ -656,7 +657,7 @@ bool AutomatismSync::sendCommandAck(const char* command, const char* status) {
     char ackPayload[256];
     snprintf(ackPayload, sizeof(ackPayload),
              "api_key=%s&sensor=%s&version=%s&ack_command=%s&ack_status=%s&ack_timestamp=%lu",
-             ApiConfig::API_KEY, ProjectConfig::BOARD_TYPE, ProjectConfig::VERSION, command, status, millis());
+             ApiConfig::API_KEY, ProjectConfig::SYSTEM_ID, ProjectConfig::VERSION, command, status, millis());
     return AppTasks::netPostRaw(ackPayload, NetworkConfig::HTTP_POST_RPC_TIMEOUT_MS, AppTasks::PostCategory::EventAck);
 }
 

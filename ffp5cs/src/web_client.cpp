@@ -901,14 +901,14 @@ bool WebClient::postRaw(const char* payload) {
   // Buffer sur la stack
   char postBuffer[BufferConfig::POST_PAYLOAD_MAX_SIZE];
   size_t payloadLen = strlen(payload);
-  size_t estimatedSize = payloadLen + strlen(_apiKey) + strlen(ProjectConfig::BOARD_TYPE) + 32;
+  size_t estimatedSize = payloadLen + strlen(_apiKey) + strlen(ProjectConfig::SYSTEM_ID) + 32;
   if (estimatedSize > sizeof(postBuffer)) {
     return false;
   }
 
   bool hasApi = (strncmp(payload, "api_key=", 8) == 0);
   if (!hasApi) {
-    snprintf(postBuffer, sizeof(postBuffer), "api_key=%s&sensor=%s", _apiKey, ProjectConfig::BOARD_TYPE);
+    snprintf(postBuffer, sizeof(postBuffer), "api_key=%s&sensor=%s", _apiKey, ProjectConfig::SYSTEM_ID);
     if (payloadLen > 0) {
       size_t currentLen = strlen(postBuffer);
       if (currentLen + 1 < sizeof(postBuffer)) {

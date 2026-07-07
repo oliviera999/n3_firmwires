@@ -21,6 +21,13 @@ Guide pour Claude Code (et tout agent) travaillant sur **n3_firmwires** — mono
 Le catalogue machine de tous les firmwares (chemins, cartes, cibles OTA, source de version,
 envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/déplace un firmware.
 
+> 🏷️ **Nomenclature `ffp3` / `ffp5cs`** : le firmware aquaponie s'appelle **`ffp5cs`**, mais le
+> système supervisé **côté serveur** (tables `ffp3Data*`, routes `/post-data*`, cible OTA) s'appelle
+> **`ffp3`** ; le firmware s'y identifie via le champ POST `sensor="ffp3"` (`ProjectConfig::SYSTEM_ID`),
+> distinct de `BOARD_TYPE` (`esp32-wroom`/`esp32-s3`, clé OTA + `post_id`). Le mot « ffp3 » recouvre
+> aussi la galerie caméra (`uploadphotosserver -e ffp3`), le sous-module serveur `ffp5cs/ffp3`, et le
+> contrat HMAC générique de `shared/n3_data`. Détails et chantiers différés : **`docs/NOMENCLATURE_FFP3.md`**.
+
 > ⚠️ **Ne pas utiliser** `archive/` (code legacy, ex. anciennes caméras → remplacées par
 > `uploadphotosserver/` unifié) ni `à voir/` (prototypes non maintenus : `LVGL_Widgets`, `ratata`).
 

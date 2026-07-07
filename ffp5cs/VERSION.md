@@ -12,6 +12,31 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.12 - 2026-07-07
+
+### Sémantique `sensor` : identité système « ffp3 » (au lieu du type de carte)
+
+Clarification de la nomenclature `ffp3` / `ffp5cs` (le firmware s'appelle **ffp5cs**, le système
+supervisé côté serveur s'appelle **ffp3**). Le champ POST `sensor` porte désormais l'**identité
+système** et non plus le type de carte.
+
+- **Nouvelle constante** `ProjectConfig::SYSTEM_ID = "ffp3"` (`include/config_system.h`), distincte
+  de `BOARD_TYPE` (`esp32-wroom` / `esp32-s3`). Un commentaire explicite le rôle de chacune :
+  `BOARD_TYPE` = clé de canal OTA + préfixe `post_id` (dedup) ; `SYSTEM_ID` = champ `sensor`.
+- **Champ `sensor` = `SYSTEM_ID`** dans les trois chemins d'envoi : full-update
+  (`automatism_sync.cpp`), ACK de commande (`sendCommandAck`) et préfixe générique
+  (`web_client.cpp`). Auparavant `sensor` valait `BOARD_TYPE` (`esp32-wroom`/`esp32-s3`), ce qui
+  ne correspondait ni au test firmware (`test_post_body` envoyait déjà `ffp3`) ni aux tests serveur.
+- **Sans impact runtime / HMAC** : le serveur journalise `sensor` sans le valider ni router dessus
+  (l'environnement/table vient de la route). Le corps signé reste auto-cohérent (les deux côtés
+  signent la valeur transmise). Le type de carte reste distingué par la route (`post-data` vs
+  `post-data3`) et par le canal OTA (`BOARD_TYPE` inchangé).
+- **Doc** : commentaires `platformio.ini` corrigés (`/post-data` sans préfixe `/ffp3/`, retiré en
+  v13.87) ; nouveau glossaire `NOMENCLATURE_FFP3.md` (dans `docs/` à la racine du dépôt : les 4
+  sens de « ffp3 », correspondance firmware↔serveur, chantiers différés).
+
+---
+
 ## Version 15.11 - 2026-07-07
 
 ### Phase 3 (suite) — confirmations de remplissage arbitrées
@@ -74,7 +99,6 @@ Phase 0). Aucun changement d'arbitrage : uniquement la fiabilité des envois.
   `lastFloodEmailEpoch` (plus de re-spam immédiat après reboot).
 - Tests natifs : cas « enqueue refusé → pas de latch » + plomberie de l'accusé
   (level + flood).
-
 ---
 
 ## Version 15.08 - 2026-07-06
