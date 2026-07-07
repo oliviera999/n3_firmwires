@@ -59,6 +59,9 @@ class Automatism {
   // --- Accesseurs exposés pour le serveur Web local ---
   // v11.172: Source de vérité = AutomatismSync (_network)
   bool isEmailEnabled() const { return _network.isEmailEnabled(); }
+  // Phase 3 arbitrage : vrai si le serveur couvre les alertes/confirmations
+  // partagées (GET config OK + POST frais) — défini dans automatism_display.cpp.
+  bool serverCoversSharedAlerts() const;
   void toggleEmailNotifications();
   const char* getEmailAddress() const { return _network.getEmailAddress(); }
   uint16_t getFeedBigDur() const { return tempsGros; }

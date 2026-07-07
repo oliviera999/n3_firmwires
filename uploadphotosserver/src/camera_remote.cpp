@@ -78,7 +78,31 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
     }
   }
 
-  outConfig.mailNotif = readBoolValue(doc["103"], false);
+  // Phase 3 arbitrage : la cle 103 devient un mode gradue (taxonomie n3_notify),
+  // retro-compatible avec l'ancien booleen (bool/1/checked -> Full ; 0 -> None).
+  {
+    JsonVariantConst notifVal = doc["103"];
+    if (notifVal.isNull()) {
+      outConfig.notifMode = N3NotifMode::None;
+    } else if (notifVal.is<bool>()) {
+      outConfig.notifMode = notifVal.as<bool>() ? N3NotifMode::Full : N3NotifMode::None;
+    } else if (notifVal.is<int>()) {
+      outConfig.notifMode = (notifVal.as<int>() == 1) ? N3NotifMode::Full : N3NotifMode::None;
+    } else if (notifVal.is<const char*>()) {
+      const char* raw = notifVal.as<const char*>();
+      // "1"/"true"/"on"/"oui" legacy -> Full ; sinon parse none/important/partial/full
+      // (n3NotifModeFromString gere deja checked/unchecked/none/0 ; fallback None
+      // pour rester conservateur sur une valeur inconnue, comme l'ancien bool).
+      if (raw && readBoolValue(notifVal, false)) {
+        outConfig.notifMode = n3NotifModeFromString(raw, N3NotifMode::Full);
+      } else {
+        outConfig.notifMode = n3NotifModeFromString(raw, N3NotifMode::None);
+      }
+    } else {
+      outConfig.notifMode = N3NotifMode::None;
+    }
+  }
+  outConfig.mailNotif = (outConfig.notifMode != N3NotifMode::None);
   outConfig.forceWakeUp = readBoolValue(doc["104"], false);
   outConfig.sleepTimeSeconds = readU32Value(doc["105"], TIME_TO_SLEEP);
   if (outConfig.sleepTimeSeconds < REMOTE_SLEEP_MIN_SECONDS) outConfig.sleepTimeSeconds = REMOTE_SLEEP_MIN_SECONDS;

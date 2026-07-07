@@ -1,6 +1,6 @@
 {
   "name": "n3_mail",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Envoi SMTP, formatage debug et rapport reseau pour firmwares n3 IoT",
   "keywords": ["mail", "smtp", "esp32", "n3"],
   "frameworks": "arduino",

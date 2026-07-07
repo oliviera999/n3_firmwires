@@ -4,6 +4,7 @@
 #include "n3_sleep.h"
 #include "n3_time.h"   // sauvegarde/restauration heure NVS (factorisé)
 #include "n3_mail.h"   // envoi SMTP factorisé
+#include <WiFi.h>      // Phase 3 : en failover, SMTP seulement si WiFi connecte (§3.4-1)
 
 void HeureSansWifi() {
   n3TimeLoadFromFlash(preferences, rtc);  // NVS "rtc" -> rtc (mêmes clés/défauts qu'avant)
@@ -43,17 +44,42 @@ static bool emailEnabled() {
   return n3ppNotifMode() != N3NotifMode::None;
 }
 
+// Budget de mails en failover par episode hors-ligne (anti-congestion §3.4-3) :
+// re-arme des qu'un POST repasse OK (voir datatobdd). Evite le martelement TLS
+// d'un appareil isole qui accumulerait des alertes a chaque reveil.
+static const uint8_t FAILOVER_MAIL_BUDGET = 8;
+
 // Configuration et envoi d'un email d'alerte (SMTP) — delegue a n3_mail.
 // La severite est filtree par le mode courant ; le sujet est prefixe "[N3PP][Pn]".
 // Phase 0 (arbitrage mails) : retourne true si livraison SMTP confirmee OU si le
 // mail est volontairement filtre par le mode (silence choisi = traite) ; false si
 // l'envoi a echoue. L'appelant ne latche son flag anti-spam que sur true, sinon
 // l'alerte serait consideree "envoyee" et perdue hors ligne.
+// Phase 3 (arbitrage mails) : en FAILOVER (POST de ce reveil echoue), anti-
+// congestion §3.4 — severite plafonnee a P1/P2, SMTP tente seulement si WiFi
+// connecte (sinon l'alerte serveur "appareil silencieux" couvre), budget borne.
 bool sendEmailNotification(N3Severity severity) {
-  if (!n3NotifModeAllows(n3ppNotifMode(), severity)) {
-    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification\n",
-                  n3SeverityCode(severity));
+  const bool failover = !postOkThisWake;
+  N3NotifMode mode = n3ppNotifMode();
+  if (failover) {
+    mode = n3NotifModeCapFailover(mode);
+  }
+  if (!n3NotifModeAllows(mode, severity)) {
+    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification%s\n",
+                  n3SeverityCode(severity), failover ? " (failover P1/P2)" : "");
     return true;  // silence volontaire : traite selon la politique, pas une perte
+  }
+  if (failover) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[MAIL][FAILOVER] WiFi absent, envoi non tente (retente au prochain reveil)");
+      return false;  // pas de latch : l'alerte sera retentee
+    }
+    if (failoverMailsSent >= FAILOVER_MAIL_BUDGET) {
+      Serial.printf("[MAIL][FAILOVER] budget epuise (%u), envoi non tente\n",
+                    (unsigned)FAILOVER_MAIL_BUDGET);
+      return false;
+    }
+    ++failoverMailsSent;
   }
 
   char subjectBuf[96];
@@ -140,7 +166,10 @@ void automatismes() {
   //remplissage de l'aquarium cas si l'aquarium est trop bas et la réserve assez remplie
 
   //mail si sécheresse trop forte (uniquement si au moins un capteur sol valide)
-  if ((soilValidCount > 0) && (HumidMoy < SeuilSec) && emailEnabled() && !emailHumidSent) {
+  // Phase 3 arbitrage : "sol sec" est desormais calcule par le SERVEUR sur les
+  // donnees du POST (HumidMoy/SeuilSec, n3_serveur 6.16.0). Si le POST de ce
+  // reveil a reussi, l'ESP se tait (fin des doublons) ; sinon failover local.
+  if (!postOkThisWake && (soilValidCount > 0) && (HumidMoy < SeuilSec) && emailEnabled() && !emailHumidSent) {
     emailMessage = String("Le sol est sec. L'humidité moyenne est de ") + String(HumidMoy);
     // Phase 0 : latch uniquement sur livraison confirmee (sinon retente au prochain reveil).
     if (sendEmailNotification(N3Severity::Alert)) {
@@ -155,13 +184,21 @@ void automatismes() {
 
   // mail si le niveau est revenu à la normale (hysteresis : SeuilSec + 5 %)
   if ((soilValidCount > 0) && (HumidMoy > seuilRetourNormal()) && emailEnabled() && emailHumidSent) {
-    emailMessage = String("L'humidite est remontee. La moyenne est maintenant de ") + String(HumidMoy);
-    Serial.println(emailMessage);
-    // Phase 0 : ne de-latcher qu'apres livraison confirmee du mail de fin.
-    if (sendEmailNotification(N3Severity::Info)) {
+    if (postOkThisWake) {
+      // Serveur primaire : il notifie lui-meme le retour a la normale. On re-arme
+      // le latch failover en silence pour ne pas bloquer un futur episode hors ligne.
       emailHumidSent = false;
+    } else {
+      emailMessage = String("L'humidite est remontee. La moyenne est maintenant de ") + String(HumidMoy);
+      Serial.println(emailMessage);
+      // Phase 0 : ne de-latcher qu'apres livraison confirmee du mail de fin.
+      // (En failover, l'Info P3 est filtree -> sendEmailNotification renvoie true
+      // = traite selon la politique, le latch est re-arme sans mail.)
+      if (sendEmailNotification(N3Severity::Info)) {
+        emailHumidSent = false;
+      }
+      datatobdd();
     }
-    datatobdd();
   }
 
   Serial.print("seuilsec3 : ");
@@ -174,7 +211,10 @@ void automatismes() {
   // les FreqWakeUp secondes. DECORELE de l'email : la protection s'applique meme
   // si les notifications sont sur "none" (seul l'envoi du mail reste conditionnel).
   if ((PontDiv < SeuilPontDiv)) {
-    if (emailEnabled() && !emailPontDivSent) {
+    // Phase 3 arbitrage : batterie calculee par le SERVEUR (PontDiv/SeuilPontDiv
+    // au POST). POST de ce reveil OK -> l'ESP se tait ; sinon failover (P1).
+    // La protection sommeil ci-dessous reste INCONDITIONNELLE (decorelee du mail).
+    if (!postOkThisWake && emailEnabled() && !emailPontDivSent) {
       emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
       Serial.println(emailMessage);
       // Phase 0 : latch uniquement sur livraison confirmee.
@@ -200,7 +240,9 @@ void automatismes() {
   } else if (HumidMoy < SeuilSec) {
     if (arrosageAutoCooldownExpired()) {
       arrosage();
-      if (emailEnabled()) {
+      // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe
+      // au POST) quand l'echange est sain ; en failover l'Info P3 est filtree.
+      if (!postOkThisWake && emailEnabled()) {
         emailMessage = String("Arrosage auto effectue (sol sec, humidite=") +
                        String(HumidMoy) + String(")");
         Serial.println("[ARROSAGE] auto");
@@ -232,7 +274,8 @@ void automatismes() {
     Serial.println("[ARROSAGE] heure programmee effectue");
     Serial.print("arrosageFait=");
     Serial.println(arrosageFait);
-    if (emailEnabled()) {
+    // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe).
+    if (!postOkThisWake && emailEnabled()) {
       emailMessage = String("Arrosage heure programmee effectue (") +
                      String(heure) + String("h)");
       sendEmailNotification(N3Severity::Info);
@@ -249,7 +292,8 @@ void automatismes() {
     Serial.println(ArrosageManu);
     arrosage();
     ArrosageManu = 0;
-    if (emailEnabled()) {
+    // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe).
+    if (!postOkThisWake && emailEnabled()) {
       emailMessage = String("Arrosage manuel effectue");
       sendEmailNotification(N3Severity::Info);
     }
@@ -270,7 +314,8 @@ void sommeil() {
     if (PontDiv < SeuilPontDiv) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
-      if (emailEnabled() && !emailPontDivSent) {
+      // Phase 3 arbitrage : mail batterie seulement en failover (sinon serveur primaire).
+      if (!postOkThisWake && emailEnabled() && !emailPontDivSent) {
         emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
         // Phase 0 : latch uniquement sur livraison confirmee.
         if (sendEmailNotification(N3Severity::Critical)) {

@@ -374,9 +374,13 @@ bool Mailer::sendSync(const char* subject, const char* message, const char* toNa
   // Filtrage par degré d'importance : tout mail dont la sévérité dépasse le
   // plafond du mode courant est ignoré (retourne true = "traité", pas de retry).
   // En mode Full (défaut/legacy) rien n'est filtré -> comportement inchangé.
-  if (!n3NotifModeAllows(_notifMode, severity)) {
-    Serial.printf("[Mail][SKIP] severite %s filtree par le mode de notification\n",
-                  n3SeverityCode(severity));
+  // Phase 3 : en FAILOVER le plafond est ramené à P1/P2 (anti-congestion §3.4-2)
+  // — les P3/P4 (veille/réveil, diagnostics) ne valent pas le coût TLS hors ligne.
+  const N3NotifMode effectiveMode =
+      _failoverActive ? n3NotifModeCapFailover(_notifMode) : _notifMode;
+  if (!n3NotifModeAllows(effectiveMode, severity)) {
+    Serial.printf("[Mail][SKIP] severite %s filtree (mode%s)\n",
+                  n3SeverityCode(severity), _failoverActive ? " failover" : "");
     return true;
   }
 

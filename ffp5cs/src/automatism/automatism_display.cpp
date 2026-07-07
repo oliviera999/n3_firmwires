@@ -8,6 +8,7 @@
 #include "automatism/level_alert_orchestrator.h"  // C4: orchestrateur alertes niveau (effets de bord, testable)
 #include "automatism/flood_orchestrator.h"  // C4: orchestrateur trop-plein (effets de bord, testable)
 #include "automatism/level_alert.h"  // C4: alerte niveau d'eau seuil+hystérésis (pure, testée)
+#include "automatism/shared_alert_gate.h"  // Phase 3: arbitrage serveur primaire / ESP relais
 #include "automatism/actuator_snapshot.h"  // C4: capture/restore actionneurs (testable via IActuators)
 #include "automatism/feeding_timing.h"  // C4: durée de cycle nourrissage (pure, testée, dédup ×6)
 #include "automatism/threshold_util.h"  // C4: soustraction saturée seuil-marge (pure, testée)
@@ -34,6 +35,15 @@ static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm
 }  // namespace
 
 
+// Phase 3 arbitrage : le serveur couvre les alertes/confirmations partagées si
+// l'échange est sain (GET config OK + dernier POST réussi < 90 s). Utilisé par
+// handleAlerts (alertes niveau/flood/chauffage) et par le module refill
+// (confirmations remplissage, désormais dérivées côté serveur via etatPompeTank).
+bool Automatism::serverCoversSharedAlerts() const {
+    return SharedAlertGate::serverCovers(
+        _network.isServerOk(), millis(), _network.getLastSendMs());
+}
+
 // Fusionné depuis AutomatismAlertController::process()
 void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     const SensorReadings& readings = ctx.readings;
@@ -46,6 +56,25 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
         // Pendant la période de grâce, on n'envoie pas mais on ne marque pas comme déjà envoyé :
         // après 30s la première évaluation enverra l'alerte si la condition est toujours vraie.
         return;  // Pas d'alertes pendant la période de grâce
+    }
+
+    // Phase 3 arbitrage mails : le serveur (CRON 1 min + alertes dérivées du POST,
+    // n3_serveur 6.16.0) est l'émetteur PRIMAIRE des alertes partagées de ce bloc
+    // (aquarium bas, trop-plein, réserve basse, chauffage ON/OFF). Si l'échange
+    // serveur est sain (GET config OK + POST frais), l'ESP se tait (fin des
+    // doublons) ; sinon FAILOVER : évaluation locale comme avant, bornée par
+    // l'anti-congestion du Mailer (P1/P2 only, WiFi requis, budget).
+    // Le kill-switch GPIO 101 (mailEnabled/notifMode) reste appliqué en aval.
+    // Remplissage : couvert serveur (6.18.0, transition etatPompeTank) -> gaté dans
+    // automatism_refill.cpp via serverCoversSharedAlerts(). Nourrissage : non
+    // dérivable du POST -> ESP primaire, non gaté.
+    const bool serverCovers = serverCoversSharedAlerts();
+    _mailer.setFailoverActive(!serverCovers);
+    if (serverCovers) {
+        if (esp_task_wdt_status(NULL) == ESP_OK) {
+            esp_task_wdt_reset();
+        }
+        return;  // Serveur primaire : aucune alerte partagée émise par l'ESP
     }
 
     if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {

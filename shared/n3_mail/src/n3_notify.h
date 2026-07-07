@@ -57,6 +57,17 @@ inline bool n3NotifModeAllows(N3NotifMode mode, N3Severity sev) {
   return n3SeverityPriority(sev) <= n3NotifModeMaxPriority(mode);
 }
 
+// Phase 3 arbitrage mails : en FAILOVER (le serveur n'a pas recu nos donnees),
+// l'ESP relais n'emet que le strict necessaire (P1/P2) — les confirmations et
+// diagnostics (P3/P4) ne valent pas le cout d'une session TLS hors ligne
+// (cf. n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md §3.4-2). Ce plafond se
+// COMBINE au mode configure (min des deux) : None reste None (kill-switch 101).
+inline N3NotifMode n3NotifModeCapFailover(N3NotifMode mode) {
+  return (n3NotifModeMaxPriority(mode) > n3NotifModeMaxPriority(N3NotifMode::Important))
+             ? N3NotifMode::Important
+             : mode;
+}
+
 // Parse une valeur de config distante en mode (insensible a la casse, espaces ignores).
 //  - retro-compat : "checked" -> Full ; "unchecked" -> None
 //  - nouvelles    : "none"/"0" -> None ; "important" ; "partial" ; "full"

@@ -32,6 +32,12 @@ class IMailer {
   // no-op : les faux mailers des tests natifs n'ont pas à la surcharger.
   virtual void setNotifMode(N3NotifMode mode) { (void)mode; }
 
+  // Phase 3 arbitrage mails : mode FAILOVER (le serveur n'a pas nos données).
+  // Poussé par Automatism à chaque évaluation d'alertes. En failover, le mailer
+  // applique l'anti-congestion (§3.4) : P1/P2 uniquement, WiFi requis, budget
+  // borné. Impl par défaut no-op (faux mailers de tests inchangés).
+  virtual void setFailoverActive(bool active) { (void)active; }
+
   // Envoi simple (file d'attente). Tous les arguments fournis par les appelants.
   virtual bool send(const char* subject, const char* message,
                     const char* toName, const char* toEmail) = 0;
