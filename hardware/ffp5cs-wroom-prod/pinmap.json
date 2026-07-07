@@ -1,0 +1,43 @@
+{
+  "firmware": "ffp5cs",
+  "env": "wroom-prod",
+  "boardDefine": "BOARD_WROOM",
+  "module": "ESP32 DevKit V1 (30 broches, board PlatformIO esp32dev)",
+  "pinsSource": "ffp5cs/include/pins.h (section #else // ESP32-WROOM)",
+  "pins": {
+    "ULTRASON_AQUA": 4,
+    "ULTRASON_TANK": 19,
+    "ULTRASON_POTA": 33,
+    "LUMINOSITE": 34,
+    "POMPE_AQUA": 16,
+    "POMPE_RESERV": 18,
+    "RADIATEURS": 2,
+    "LUMIERE": 15,
+    "SERVO_GROS": 12,
+    "SERVO_PETITS": 13,
+    "DHT_PIN": 27,
+    "ONE_WIRE_BUS": 26,
+    "I2C_SDA": 21,
+    "I2C_SCL": 22
+  },
+  "netByPin": {
+    "ULTRASON_AQUA": "US_AQUA_GPIO4",
+    "ULTRASON_TANK": "US_TANK_GPIO19",
+    "ULTRASON_POTA": "US_POTA_GPIO33",
+    "LUMINOSITE": "LDR_GPIO34",
+    "POMPE_AQUA": "PUMP_AQUA_GPIO16",
+    "POMPE_RESERV": "PUMP_TANK_GPIO18",
+    "RADIATEURS": "HEATER_GPIO2",
+    "LUMIERE": "LIGHT_GPIO15",
+    "SERVO_GROS": "SERVO_GROS_GPIO12",
+    "SERVO_PETITS": "SERVO_PETITS_GPIO13",
+    "DHT_PIN": "DHT_GPIO27",
+    "ONE_WIRE_BUS": "ONEWIRE_GPIO26",
+    "I2C_SDA": "I2C_SDA_GPIO21",
+    "I2C_SCL": "I2C_SCL_GPIO22"
+  },
+  "notes": {
+    "OLED_ADDR": "0x3C (SSD1306 128x64 sur I2C, FEATURE_OLED=1)",
+    "excluded": "DS3231 et carte SD : BOARD_S3 / USE_RTC_DS3231 uniquement, absents de wroom-prod (header I2C d'extension prévu)"
+  }
+}

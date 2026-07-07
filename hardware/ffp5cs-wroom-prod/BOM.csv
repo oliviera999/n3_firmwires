@@ -1,0 +1,45 @@
+Refs;Qte;Valeur;Empreinte;Description
+A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15
+C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + HC-SR04)
+C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos
+C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs
+C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 I2C
+D1 D2 D3 D4;4;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine
+D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché)
+H1 H2 H3 H4;4;M3;MountingHole_3.2mm_M3;Trou de fixation M3
+J1;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée 5V alternative (bornier, 1=+5V 2=GND)
+J10;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT11/DHT22 (1=3V3 2=DATA 3=GND)
+J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)
+J12;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;LDR déportée entre 3V3 et l'ADC (1=3V3 2=ADC)
+J13;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA)
+J14;1;Support I2C ext;PinSocket_1x04_P2.54mm_Vertical;Extension I2C — ex. module DS3231 (1=GND 2=VCC 3=SCL 4=SDA)
+J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=+5V 3=GND)
+J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=GND)
+J17;1;Header GPIO libres;PinHeader_1x10_P2.54mm_Vertical;GPIO libres (1=3V3 2=GND 3=EN 4=IO5 5=IO14 6=IO17 7=IO23 8=IO25 9=IO32 10=IO35)
+J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +)
+J3 J4 J5 J6;4;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge (1=NO 2=COM 3=NC)
+J7;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)
+J8;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND)
+J9;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 POTA (1=5V 2=TRIG 3=ECHO 4=GND)
+K1 K2 K3 K4;4;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT 10A (Songle/Sanyou SRD)
+LED1 LED2 LED3 LED4;4;rouge;LED_D5.0mm;LED témoin relais ON
+LED5;1;verte;LED_D5.0mm;LED présence 5V
+Q1 Q2 Q3 Q4;4;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E)
+R1 R2 R3 R4;4;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor
+R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED présence 5V
+R14;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 AQUA
+R15;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 TANK
+R16;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 POTA
+R17;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho AQUA (5V->3V3)
+R18;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho TANK (5V->3V3)
+R19;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho POTA (5V->3V3)
+R20;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo gros
+R21;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo petits
+R22;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down GPIO12 (strapping MTDI : doit être bas au boot)
+R23;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up data DHT11
+R24;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up bus 1-Wire DS18B20
+R25;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SDA
+R26;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SCL
+R27;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont diviseur LDR (GPIO34 = entrée seule ADC)
+R5 R6 R7 R8;4;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot)
+R10 R11 R12 R9;4;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
