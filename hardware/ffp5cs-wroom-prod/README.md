@@ -9,9 +9,13 @@ adaptation de niveau des HC-SR04, pull-ups, borniers.
 pinmap.json                  Source de vérité (broches ← ffp5cs/include/pins.h, section WROOM)
 kicad/ffp5cs-wroom-prod.kicad_pro / .kicad_sch / .kicad_pcb   Projet KiCad (format v8, ouvrable KiCad 8/9/10)
 BOM.csv                      Nomenclature (séparateur ;)
-generator/generate.py        Régénère schéma + PCB + BOM depuis pinmap.json
+exports/gerbers-*.zip        Fichiers de fabrication (Gerbers + perçages Excellon)
+exports/schema.pdf, pcb-*.svg   Rendus pour revue sans KiCad
+fritzing/*.fzz               Vue breadboard du câblage (Fritzing >= 1.0)
+generator/generate.py        Régénère schéma + PCB (non routé) + BOM depuis pinmap.json
+generator/generate_fritzing.py  Régénère le .fzz de câblage
 generator/footprints/        Empreintes officielles KiCad 8.0.9 vendorées (+ empreinte DevKit maison)
-tools/check_pinmap_vs_firmware.py   Garde anti-dérive code ↔ plan (voir CI ci-dessous)
+tools/check_pinmap_vs_firmware.py   Garde anti-dérive code ↔ plan
 ```
 
 ## Ce que couvre la carte (extrait du firmware)
@@ -63,15 +67,29 @@ HC-SR04, servos et relais sur le rail 5 V.
 1. **Entraxe du DevKit** : l'empreinte suppose un DevKit V1 **30 broches, rangées
    espacées de 25,4 mm** (2 × supports 1×15). Mesurer votre exemplaire ; les variantes
    38 broches (DevKitC) ont un autre brochage → adapter `generate.py` (table `DEVKIT_A/B`).
-2. **Routage** : le PCB est livré **placé et « ratsnesté » (chevelu), non routé**, avec
-   deux plans de masse (F.Cu/B.Cu, à refondre dans KiCad : `B` puis clic droit → *Fill all
-   zones*). Router les pistes 230 V/charge des relais en 2 mm mini avec isolation ≥ 3 mm
-   si vous commutez du secteur (recommandé : rester en 12/24 V).
+2. **Routage** : le PCB est **routé (autorouteur freerouting 1.9, 442 segments, DRC
+   KiCad 8 : 0 violation, 0 non-connecté)** et les Gerbers/perçages sont dans
+   `exports/`. C'est un routage d'autorouteur : correct électriquement, mais **relire
+   les pistes des contacts relais** avant de commuter des charges — les élargir
+   (≥ 2 mm) et garantir ≥ 3 mm d'isolement si vous commutez du secteur (recommandé :
+   rester en 12/24 V). NB : `generate.py` régénère un PCB **non routé** — ne pas
+   régénérer par-dessus `kicad/` sans vouloir perdre le routage.
 3. **Relais NO/NC** : mapping issu du couple symbole/empreinte officiel KiCad
    (SANYOU SRD Form C : bobine 2-5, COM 1, NO 3, NC 4). Contrôler à l'ohmmètre au
    premier montage avant de brancher une charge.
 4. **ERC/DRC** : les étiquettes locales alimentent les nets (pas de power-flags) ; l'ERC
    émet des avertissements « input power pin not driven », sans conséquence.
+
+## Vue Fritzing (câblage de prototype)
+
+`fritzing/ffp5cs-wroom-prod-cablage.fzz` (Fritzing ≥ 1.0) montre le **câblage
+breadboard** périphériques ↔ DevKit : HC-SR04 + ponts 1k/2k, DS18B20, LDR, servos,
+pull-ups, avec le code couleur rouge = 5 V, orange = 3V3, noir = GND. Le DevKit, le
+DHT11, l'OLED et les sorties relais sont figurés par des **headers génériques
+étiquetés** (pas de pièce core fidèle dans Fritzing) — survoler une pièce affiche son
+titre avec l'ordre des broches. Fichier vérifié à l'ouverture (« Routing completed »,
+aucune pièce manquante) ; les positions se réarrangent librement, les connexions
+suivent. Le projet KiCad reste la référence pour la fabrication.
 
 ## Régénérer / vérifier
 
