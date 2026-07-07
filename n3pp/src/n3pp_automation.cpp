@@ -240,7 +240,9 @@ void automatismes() {
   } else if (HumidMoy < SeuilSec) {
     if (arrosageAutoCooldownExpired()) {
       arrosage();
-      if (emailEnabled()) {
+      // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe
+      // au POST) quand l'echange est sain ; en failover l'Info P3 est filtree.
+      if (!postOkThisWake && emailEnabled()) {
         emailMessage = String("Arrosage auto effectue (sol sec, humidite=") +
                        String(HumidMoy) + String(")");
         Serial.println("[ARROSAGE] auto");
@@ -272,7 +274,8 @@ void automatismes() {
     Serial.println("[ARROSAGE] heure programmee effectue");
     Serial.print("arrosageFait=");
     Serial.println(arrosageFait);
-    if (emailEnabled()) {
+    // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe).
+    if (!postOkThisWake && emailEnabled()) {
       emailMessage = String("Arrosage heure programmee effectue (") +
                      String(heure) + String("h)");
       sendEmailNotification(N3Severity::Info);
@@ -289,7 +292,8 @@ void automatismes() {
     Serial.println(ArrosageManu);
     arrosage();
     ArrosageManu = 0;
-    if (emailEnabled()) {
+    // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe).
+    if (!postOkThisWake && emailEnabled()) {
       emailMessage = String("Arrosage manuel effectue");
       sendEmailNotification(N3Severity::Info);
     }

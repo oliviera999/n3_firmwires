@@ -294,11 +294,19 @@ void loop() {
     etatPompe = 1;
     if (!emailPompeSent) {
       Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
+      // POST immediat conserve : c'est la donnee (etatPompe=1) dont le serveur
+      // derive lui-meme l'alerte « arrosage continu » (n3_serveur 6.18.0).
       datatobdd();
-      emailMessage = String("ATTENTION, arrosage continu en cours !");
-      // Phase 0 : latch uniquement sur livraison confirmee (retente au tour suivant sinon).
-      if (sendEmailNotification(N3Severity::Critical)) {
+      // Phase 3 arbitrage : si ce POST a reussi, le serveur est l'emetteur
+      // primaire de l'alerte -> latch sans mail local ; sinon failover P1.
+      if (postOkThisWake) {
         emailPompeSent = true;
+      } else {
+        emailMessage = String("ATTENTION, arrosage continu en cours !");
+        // Phase 0 : latch uniquement sur livraison confirmee (retente sinon).
+        if (sendEmailNotification(N3Severity::Critical)) {
+          emailPompeSent = true;
+        }
       }
     }
   } else {

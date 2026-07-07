@@ -12,6 +12,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.11 - 2026-07-07
+
+### Phase 3 (suite) — confirmations de remplissage arbitrées
+
+Le serveur (n3_serveur 6.18.0) dérive désormais « Remplissage démarré/terminé » de la
+transition `etatPompeTank` au POST. Les trois mails de confirmation du module refill
+(`automatism_refill.cpp`) sont gatés par `Automatism::serverCoversSharedAlerts()`
+(nouveau helper, même gate que `handleAlerts`) : émis uniquement en failover — où ils
+sont de toute façon filtrés (P3), conformément à l'anti-congestion §3.4-2.
+
+---
+
 ## Version 15.10 - 2026-07-07
 
 ### Phase 3 arbitrage mails — ESP en relais : gate serveur + anti-congestion

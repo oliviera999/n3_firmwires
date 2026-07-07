@@ -114,7 +114,8 @@ bool Automatism::handleRefillAutomaticStart(const SensorReadings& r) {
             sendFullUpdate(r, "etatPompeTank=1");
         }
 
-        if (_network.isEmailEnabled() && !emailTankStartSent) {
+        // Phase 3 arbitrage : confirmation dérivée côté serveur (transition etatPompeTank).
+        if (!serverCoversSharedAlerts() && _network.isEmailEnabled() && !emailTankStartSent) {
             char msg[256];
             snprintf(msg, sizeof(msg),
                      "Remplissage AUTO démarré\nAqua: %d mm, Réserve: %d mm, Durée: %lu s",
@@ -142,7 +143,8 @@ void Automatism::handleRefillManualCycleEnd(const SensorReadings& r) {
                 sendFullUpdate(r, "etatPompeTank=0&pump_tank=0&pump_tankCmd=0");
             }
 
-            if (_network.isEmailEnabled() && !emailTankStopSent) {
+            // Phase 3 arbitrage : confirmation dérivée côté serveur (transition etatPompeTank).
+        if (!serverCoversSharedAlerts() && _network.isEmailEnabled() && !emailTankStopSent) {
                 int levelImprovement = 0;
                 if (SensorValidation::isWaterLevelKnown(r.wlAqua) && _levelAtPumpStart > 0) {
                     levelImprovement = _levelAtPumpStart - r.wlAqua;
@@ -234,7 +236,8 @@ void Automatism::handleRefillMaxDurationStop(const SensorReadings& r) {
     } else {  // Effective
         tankPumpRetries = 0;
         Serial.printf("[CRITIQUE] Remplissage OK: +%d mm\n", levelImprovement);
-        if (_network.isEmailEnabled() && !emailTankStopSent) {
+        // Phase 3 arbitrage : confirmation dérivée côté serveur (transition etatPompeTank).
+        if (!serverCoversSharedAlerts() && _network.isEmailEnabled() && !emailTankStopSent) {
             char msg[256];
             snprintf(msg, sizeof(msg),
                      "Remplissage TERMINÉ\nDurée: %u s, Amélioration: %d mm, Aqua: %d mm",

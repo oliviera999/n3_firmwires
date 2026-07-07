@@ -35,6 +35,15 @@ static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm
 }  // namespace
 
 
+// Phase 3 arbitrage : le serveur couvre les alertes/confirmations partagées si
+// l'échange est sain (GET config OK + dernier POST réussi < 90 s). Utilisé par
+// handleAlerts (alertes niveau/flood/chauffage) et par le module refill
+// (confirmations remplissage, désormais dérivées côté serveur via etatPompeTank).
+bool Automatism::serverCoversSharedAlerts() const {
+    return SharedAlertGate::serverCovers(
+        _network.isServerOk(), millis(), _network.getLastSendMs());
+}
+
 // Fusionné depuis AutomatismAlertController::process()
 void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     const SensorReadings& readings = ctx.readings;
@@ -56,9 +65,10 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     // doublons) ; sinon FAILOVER : évaluation locale comme avant, bornée par
     // l'anti-congestion du Mailer (P1/P2 only, WiFi requis, budget).
     // Le kill-switch GPIO 101 (mailEnabled/notifMode) reste appliqué en aval.
-    // Nourrissage/remplissage : non couverts serveur -> gérés ailleurs, non gatés.
-    const bool serverCovers = SharedAlertGate::serverCovers(
-        _network.isServerOk(), millis(), _network.getLastSendMs());
+    // Remplissage : couvert serveur (6.18.0, transition etatPompeTank) -> gaté dans
+    // automatism_refill.cpp via serverCoversSharedAlerts(). Nourrissage : non
+    // dérivable du POST -> ESP primaire, non gaté.
+    const bool serverCovers = serverCoversSharedAlerts();
     _mailer.setFailoverActive(!serverCovers);
     if (serverCovers) {
         if (esp_task_wdt_status(NULL) == ESP_OK) {
