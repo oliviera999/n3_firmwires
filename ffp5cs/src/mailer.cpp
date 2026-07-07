@@ -602,6 +602,16 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
 bool Mailer::sendAlertSync(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
   (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport; return false;
 }
+bool Mailer::sendAlertAcked(const char* subject, const char* message, const char* toEmail,
+                            bool includeDetailedReport, bool* ackFlag, bool ackFailValue) {
+  (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport;
+  (void)ackFlag; (void)ackFailValue; return false;
+}
+bool Mailer::enqueueAlert(const char* subject, const char* message, const char* toEmail,
+                          bool includeDetailedReport, bool* ackFlag, bool ackFailValue) {
+  (void)subject; (void)message; (void)toEmail; (void)includeDetailedReport;
+  (void)ackFlag; (void)ackFailValue; return false;
+}
 bool Mailer::sendSleepMail(const char* reason, uint32_t sleepDurationSeconds, const SensorReadings& readings,
                            const char* toEmail) {
   (void)reason; (void)sleepDurationSeconds; (void)readings; (void)toEmail; return false;

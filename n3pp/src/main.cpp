@@ -296,8 +296,10 @@ void loop() {
       Serial.println("[SERVER][POST] Envoi immediat (pompe active)");
       datatobdd();
       emailMessage = String("ATTENTION, arrosage continu en cours !");
-      sendEmailNotification(N3Severity::Critical);
-      emailPompeSent = true;
+      // Phase 0 : latch uniquement sur livraison confirmee (retente au tour suivant sinon).
+      if (sendEmailNotification(N3Severity::Critical)) {
+        emailPompeSent = true;
+      }
     }
   } else {
     emailPompeSent = false;  // pompe relachee : re-arme l'alerte

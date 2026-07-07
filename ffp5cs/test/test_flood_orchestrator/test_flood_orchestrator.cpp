@@ -15,12 +15,21 @@ struct FakeMailer : public IMailer {
   bool failNext = false;  // pour simuler un envoi refusé
   char lastSubject[40] = {0};
   char lastMsg[128] = {0};
+  // Capture de la plomberie d'accusé de livraison différé (Phase 0).
+  bool* lastAckFlag = nullptr;
+  bool lastAckFailValue = true;
   bool send(const char*, const char*, const char*, const char*) override { return true; }
   bool sendAlert(const char* subject, const char* message, const char*, bool = false) override {
     ++alertCount;
     strncpy(lastSubject, subject, sizeof(lastSubject) - 1);
     strncpy(lastMsg, message, sizeof(lastMsg) - 1);
     return !failNext;
+  }
+  bool sendAlertAcked(const char* subject, const char* message, const char* toEmail,
+                      bool includeDetailedReport, bool* ackFlag, bool ackFailValue) override {
+    lastAckFlag = ackFlag;
+    lastAckFailValue = ackFailValue;
+    return sendAlert(subject, message, toEmail, includeDetailedReport);
   }
   bool sendSleepMail(const char*, uint32_t, const SensorReadings&, const char*) override { return true; }
   bool sendWakeMail(const char*, uint32_t, const SensorReadings&, const char*) override { return true; }
@@ -96,6 +105,18 @@ void test_none_when_mail_disabled(void) {
   TEST_ASSERT_EQUAL_INT(0, m.alertCount);
 }
 
+// Phase 0 : le flag durable `inFlood` de l'appelant est transmis comme accusé de
+// livraison différé (restauré à false si la livraison SMTP échoue définitivement).
+void test_ack_plumbing_persistent_inflood(void) {
+  FakeMailer m; FloodAlert::Params p = makeParams();
+  FloodAlert::State st; st.inFlood = false; st.floodEnterSinceEpoch = 1000; st.lastFloodEmailEpoch = 0;
+  bool persistentInFlood = false;
+  auto out = FloodOrchestrator::run(m, st, p, 50, 1120, true, "e", false, &persistentInFlood);
+  TEST_ASSERT_EQUAL(FloodOrchestrator::Outcome::EmailQueued, out);
+  TEST_ASSERT_EQUAL_PTR(&persistentInFlood, m.lastAckFlag);
+  TEST_ASSERT_FALSE(m.lastAckFailValue);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_email_queued);
@@ -104,5 +125,6 @@ int main(void) {
   RUN_TEST(test_exited_flood);
   RUN_TEST(test_none_before_debounce);
   RUN_TEST(test_none_when_mail_disabled);
+  RUN_TEST(test_ack_plumbing_persistent_inflood);
   return UNITY_END();
 }

@@ -58,6 +58,19 @@ void Automatism::begin() {
   restorePersistentForceWakeup();
   // v11.178: restoreActuatorState() supprimé (code mort - audit dead-code)
     restoreRemoteConfigFromCache();
+
+    // Phase 0 (arbitrage mails) : relire le cooldown anti-spam trop-plein persisté.
+    // ALERT_FLOOD_LAST était écrit à chaque envoi mais jamais relu -> après un
+    // reboot, le cooldown repartait de zéro (risque de re-spam immédiat).
+    {
+        unsigned long lastFloodTs = 0;
+        g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodTs, 0);
+        lastFloodEmailEpoch = static_cast<uint32_t>(lastFloodTs);
+        if (lastFloodEmailEpoch != 0) {
+            Serial.printf("[Auto] Cooldown trop-plein restauré depuis NVS (dernier mail epoch=%lu)\n",
+                          static_cast<unsigned long>(lastFloodEmailEpoch));
+        }
+    }
     
     Serial.println(F("[Auto] Initialisation terminée"));
 }

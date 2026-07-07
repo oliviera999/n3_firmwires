@@ -34,11 +34,15 @@ static bool emailEnabled() {
 
 // Configuration et envoi d'un email d'alerte (SMTP) — delegue a n3_mail.
 // La severite est filtree par le mode courant ; le sujet est prefixe "[MSP1][Pn]".
-void sendEmailNotification(N3Severity severity) {
+// Phase 0 (arbitrage mails) : retourne true si livraison SMTP confirmee OU si le
+// mail est volontairement filtre par le mode (silence choisi = traite) ; false si
+// l'envoi a echoue. L'appelant ne latche son flag anti-spam que sur true, sinon
+// l'alerte serait consideree "envoyee" et perdue hors ligne.
+bool sendEmailNotification(N3Severity severity) {
   if (!n3NotifModeAllows(mspNotifMode(), severity)) {
     Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification\n",
                   n3SeverityCode(severity));
-    return;
+    return true;  // silence volontaire : traite selon la politique, pas une perte
   }
 
   char subjectBuf[96];
@@ -57,7 +61,9 @@ void sendEmailNotification(N3Severity severity) {
   if (!n3MailSendText(cfg, subjectBuf, emailMessage.c_str(), &err)) {
     Serial.print("[MAIL] echec envoi: ");
     Serial.println(err);
+    return false;
   }
+  return true;
 }
 
 // Rapport mail reseau periodique (P4 / Diagnostic) — meme motif que n3pp.
@@ -200,8 +206,11 @@ void sommeil() {
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
       if (emailEnabled() && !s_mspBatteryMailSent) {
         emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
-        sendEmailNotification(N3Severity::Critical);
-        s_mspBatteryMailSent = true;
+        // Phase 0 (arbitrage mails) : latch uniquement sur livraison SMTP confirmee —
+        // un envoi echoue hors ligne n'est plus considere "fait" (alerte retentee).
+        if (sendEmailNotification(N3Severity::Critical)) {
+          s_mspBatteryMailSent = true;
+        }
       }
       datatobdd();
       if (displayOk) display.clearDisplay();

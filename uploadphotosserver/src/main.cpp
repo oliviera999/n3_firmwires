@@ -67,6 +67,15 @@ RTC_DATA_ATTR static int lastRemoteResetModeState = 0;
 static bool otaUpdateStartedThisBoot = false;
 static char otaRemoteVersion[16] = "";
 static char otaFirmwareUrl[160] = "";
+
+/* Phase 0 (arbitrage mails) — alerte « OTA échec » non livrée : avant, un échec
+ * d'envoi SMTP dans otaMailEndCallback perdait définitivement l'alerte (le deep
+ * sleep efface tout). On mémorise désormais l'alerte en RTC et on la retente aux
+ * réveils suivants (WiFi OK), avec un budget borné pour ne pas marteler le TLS. */
+static constexpr uint8_t OTA_FAIL_MAIL_MAX_TRIES = 5;
+RTC_DATA_ATTR static bool pendingOtaFailMail = false;
+RTC_DATA_ATTR static uint8_t pendingOtaFailMailTries = 0;
+RTC_DATA_ATTR static char pendingOtaFailMailExtra[192] = "";
 static bool remoteMailNotifEnabled = MAIL_NOTIFICATIONS_ENABLED;
 static String remoteMailRecipient = "";
 static uint32_t runtimeSleepSeconds = TIME_TO_SLEEP;
@@ -100,6 +109,7 @@ static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warn
 static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo);
 static void otaMailStartCallback(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
 static void otaMailEndCallback(bool success, const char* details, void* userData);
+static void trySendPendingOtaFailMail(bool wifiOk);
 static void handlePhotoWindowTransitionMails(bool wifiOk);
 static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds);
 #if USE_DEEP_SLEEP
@@ -315,7 +325,48 @@ static void otaMailEndCallback(bool success, const char* details, void* userData
     snprintf(extra, sizeof(extra),
              "OTA echec (mail fin uniquement).\nVersion distante: %s\nURL: %s\nDetails: %s",
              otaRemoteVersion, otaFirmwareUrl, details ? details : "n/a");
-    sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", extra);
+    if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", extra)) {
+      pendingOtaFailMail = false;  /* livre : purge un eventuel pending anterieur */
+    } else {
+      /* Phase 0 : livraison NON confirmee -> memoriser en RTC pour retenter au
+       * prochain reveil au lieu de considerer l'alerte comme envoyee. */
+      snprintf(pendingOtaFailMailExtra, sizeof(pendingOtaFailMailExtra), "%s", extra);
+      pendingOtaFailMail = true;
+      pendingOtaFailMailTries = 0;
+      Serial.println("[OTA][MAIL] Echec envoi: alerte memorisee (RTC), retentee au prochain reveil.");
+    }
+  }
+}
+
+/* Phase 0 (arbitrage mails) : retente l'alerte « OTA échec » mémorisée en RTC.
+ * Appelé à chaque réveil après la récupération de la config distante (destinataire
+ * et mailNotif à jour). Budget borné : au-delà de OTA_FAIL_MAIL_MAX_TRIES essais
+ * avec WiFi, on abandonne explicitement (log) pour ne pas marteler le TLS. */
+static void trySendPendingOtaFailMail(bool wifiOk) {
+  if (!pendingOtaFailMail) return;
+  if (!remoteMailNotifEnabled) {
+    Serial.println("[OTA][MAIL] Alerte OTA en attente abandonnee: notifications desactivees.");
+    pendingOtaFailMail = false;
+    return;
+  }
+  if (!wifiOk) {
+    Serial.println("[OTA][MAIL] Alerte OTA en attente: WiFi indisponible, report au prochain reveil.");
+    return;
+  }
+  if (pendingOtaFailMailTries >= OTA_FAIL_MAIL_MAX_TRIES) {
+    Serial.printf("[OTA][MAIL] Alerte OTA en attente abandonnee apres %u essais.\n",
+                  static_cast<unsigned int>(pendingOtaFailMailTries));
+    pendingOtaFailMail = false;
+    return;
+  }
+  ++pendingOtaFailMailTries;
+  if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", pendingOtaFailMailExtra)) {
+    Serial.println("[OTA][MAIL] Alerte OTA en attente livree.");
+    pendingOtaFailMail = false;
+  } else {
+    Serial.printf("[OTA][MAIL] Alerte OTA en attente: nouvel echec (%u/%u).\n",
+                  static_cast<unsigned int>(pendingOtaFailMailTries),
+                  static_cast<unsigned int>(OTA_FAIL_MAIL_MAX_TRIES));
   }
 }
 
@@ -774,6 +825,7 @@ void setup() {
 #endif
 
   handlePhotoWindowTransitionMails(wifiOk);
+  trySendPendingOtaFailMail(wifiOk);
   logMonitoringSnapshot("setup:post_window_mail");
 
   const bool inWindow = inPhotoWindow() || forceWakeupActiveThisBoot;

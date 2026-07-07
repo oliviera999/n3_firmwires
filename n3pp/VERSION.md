@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.51** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.52** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.51** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.52 | 2026-07-07 | **Phase 0 arbitrage mails — latch anti-spam sur livraison SMTP confirmée** (cf. `n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md`). `sendEmailNotification()` retourne désormais un booléen de succès (true = livré SMTP ou volontairement filtré par le mode ; false = échec d'envoi) et les flags anti-spam (`emailHumidSent`, `emailPontDivSent`, `emailPompeSent`) ne sont latchés que sur succès — un envoi échoué hors ligne est retenté au réveil suivant au lieu d'être perdu. Aucun changement d'arbitrage. |
 | 4.51 | 2026-07-06 | **Test OTA** : publication distante canal `n3pp` (validation pipeline OTA prod). |
 | 4.50 | 2026-07-05 | **Vague 1 audit serveur.** URLs canoniques Slim (`/n3pp/post-data`, `/n3pp/api/outputs/state`, `/n3pp/heartbeat` ; préfixe `/n3pp-test/` en TEST_MODE) ; heartbeat POST par cycle de réveil (`sendHeartbeat` via `n3_data`) ; `N3PP_SERVER_SCHEME` HTTPS par défaut dans `n3pp_config.h` ; transport TLS activé sur l'env par défaut (`USE_HTTPS_ENDPOINTS`). |
 | 4.49 | 2026-07-05 | Publication OTA prod : déploiement distant canal `n3pp` (alignement code audit + serveur v6.6.x) |

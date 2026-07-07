@@ -12,14 +12,24 @@ struct SensorReadings {};  // stub (IMailer ne fait qu'une fwd-decl)
 namespace {
 struct FakeMailer : public IMailer {
   int alertCount = 0;
+  bool failNext = false;  // simule un enqueue refusé (queue pleine)
   char lastSubject[40] = {0};
   char lastMsg[128] = {0};
+  // Capture de la plomberie d'accusé de livraison différé (Phase 0).
+  bool* lastAckFlag = nullptr;
+  bool lastAckFailValue = false;
   bool send(const char*, const char*, const char*, const char*) override { return true; }
   bool sendAlert(const char* subject, const char* message, const char*, bool = false) override {
     ++alertCount;
     strncpy(lastSubject, subject, sizeof(lastSubject) - 1);
     strncpy(lastMsg, message, sizeof(lastMsg) - 1);
-    return true;
+    return !failNext;
+  }
+  bool sendAlertAcked(const char* subject, const char* message, const char* toEmail,
+                      bool includeDetailedReport, bool* ackFlag, bool ackFailValue) override {
+    lastAckFlag = ackFlag;
+    lastAckFailValue = ackFailValue;
+    return sendAlert(subject, message, toEmail, includeDetailedReport);
   }
   bool sendSleepMail(const char*, uint32_t, const SensorReadings&, const char*) override { return true; }
   bool sendWakeMail(const char*, uint32_t, const SensorReadings&, const char*) override { return true; }
@@ -89,6 +99,39 @@ void test_message_format_parity(void) {
   TEST_ASSERT_EQUAL_STRING("Distance: 350.0 mm ( mm (> 300.0)", m.lastMsg);
 }
 
+// Phase 0 : mail refusé (queue pleine) -> flag NON latché, pas de blink -> retenté au cycle suivant.
+void test_raise_failed_does_not_latch(void) {
+  FakeMailer m; m.failNext = true; bool sent = false;
+  bool blink = LevelAlertOrchestrator::run(m, sent, 350, ALERT, CLEAR, true, "e",
+                                           "Alerte - Réserve BASSE", "Info - Réserve OK");
+  TEST_ASSERT_FALSE(blink);
+  TEST_ASSERT_FALSE(sent);  // pas de latch sur échec : l'alerte n'est pas perdue
+  TEST_ASSERT_EQUAL_INT(1, m.alertCount);  // l'envoi a bien été tenté
+}
+
+// Phase 0 : mail de fin refusé -> flag reste true, le Clear sera retenté.
+void test_clear_failed_keeps_flag(void) {
+  FakeMailer m; m.failNext = true; bool sent = true;
+  bool blink = LevelAlertOrchestrator::run(m, sent, 200, ALERT, CLEAR, true, "e",
+                                           "Alerte - Réserve BASSE", "Info - Réserve OK");
+  TEST_ASSERT_FALSE(blink);
+  TEST_ASSERT_TRUE(sent);
+}
+
+// Phase 0 : l'accusé de livraison différé pointe le flag de l'appelant, avec la
+// valeur de restauration inverse du latch (Raise -> false, Clear -> true).
+void test_ack_plumbing(void) {
+  FakeMailer m; bool sent = false;
+  LevelAlertOrchestrator::run(m, sent, 350, ALERT, CLEAR, true, "e", "S", "C");
+  TEST_ASSERT_EQUAL_PTR(&sent, m.lastAckFlag);
+  TEST_ASSERT_FALSE(m.lastAckFailValue);
+
+  bool sent2 = true;
+  LevelAlertOrchestrator::run(m, sent2, 200, ALERT, CLEAR, true, "e", "S", "C");
+  TEST_ASSERT_EQUAL_PTR(&sent2, m.lastAckFlag);
+  TEST_ASSERT_TRUE(m.lastAckFailValue);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_reserve_raise);
@@ -97,5 +140,8 @@ int main(void) {
   RUN_TEST(test_aquarium_no_clear_mail);
   RUN_TEST(test_no_retrigger_when_already_alerted);
   RUN_TEST(test_message_format_parity);
+  RUN_TEST(test_raise_failed_does_not_latch);
+  RUN_TEST(test_clear_failed_keeps_flag);
+  RUN_TEST(test_ack_plumbing);
   return UNITY_END();
 }

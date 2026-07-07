@@ -82,19 +82,28 @@ bool Mailer::processOneMailSync() {
     Serial.printf("[Mail] ⏸️ Backoff SMTP %lu ms avant prochain essai (durée échec: %lu ms)\n",
                   (unsigned long)MAIL_RETRY_BACKOFF_MS, smtpDurationMs);
     // Re-queue une fois pour retry (échec transitoire WiFi/TLS), max 2 tentatives au total
+    bool droppedForGood = false;
     if (item.retryCount < 2) {
       item.retryCount++;
       if (xQueueSendToFront(_mailQueue, &item, 0) == pdTRUE) {
         Serial.printf("[Mail] 🔄 Mail remis en queue (retry %u/2): '%s'\n", item.retryCount, item.subject);
       } else {
-        _mailsFailed++;
-        Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
-        Serial.println(F("[Mail] ENVOI SMTP EFFECTIF: KO"));
+        droppedForGood = true;
       }
     } else {
+      droppedForGood = true;
+    }
+    if (droppedForGood) {
       _mailsFailed++;
       Serial.printf("[Mail] ❌ Échec envoi mail (%u échecs)\n", _mailsFailed);
       Serial.println(F("[Mail] ENVOI SMTP EFFECTIF: KO"));  // Témoin pour analyse log / scripts
+      // Accusé de livraison (Phase 0 arbitrage mails) : échec DÉFINITIF -> on ré-arme
+      // le flag anti-spam de l'appelant, sinon l'alerte serait considérée « envoyée »
+      // et perdue jusqu'au prochain passage d'hystérésis.
+      if (item.ackFlag) {
+        *item.ackFlag = item.ackFailValue;
+        Serial.printf("[Mail] ♻️ Anti-spam ré-armé après échec définitif: '%s'\n", item.subject);
+      }
     }
   }
   
@@ -154,10 +163,24 @@ bool Mailer::send(const char* subject, const char* message, const char* toName, 
 
 // Méthode sendAlert() asynchrone - ajoute à la queue et retourne immédiatement
 bool Mailer::sendAlert(const char* subject, const char* message, const char* toEmail, bool includeDetailedReport) {
+  return enqueueAlert(subject, message, toEmail, includeDetailedReport, nullptr, false);
+}
+
+// Variante avec accusé de livraison différé (voir IMailer::sendAlertAcked / MailQueueItem).
+bool Mailer::sendAlertAcked(const char* subject, const char* message, const char* toEmail,
+                            bool includeDetailedReport, bool* ackFlag, bool ackFailValue) {
+  return enqueueAlert(subject, message, toEmail, includeDetailedReport, ackFlag, ackFailValue);
+}
+
+// Enqueue commun des alertes (asynchrone, non-bloquant).
+bool Mailer::enqueueAlert(const char* subject, const char* message, const char* toEmail,
+                          bool includeDetailedReport, bool* ackFlag, bool ackFailValue) {
   Serial.println(F("[Mail] ===== SENDALERT ASYNC (v11.142) ====="));
-  
+
   if (!_mailQueue) {
     Serial.println(F("[Mail] ⚠️ Queue non initialisée, envoi synchrone..."));
+    // Envoi synchrone : le résultat est immédiat, l'appelant latche sur le retour
+    // (aucun accusé différé nécessaire).
     return sendAlertSync(subject, message, toEmail, includeDetailedReport);
   }
   
@@ -200,7 +223,9 @@ bool Mailer::sendAlert(const char* subject, const char* message, const char* toE
   item.isAlert = true;
   item.includeDetailedReport = includeDetailedReport;
   item.retryCount = 0;
-  
+  item.ackFlag = ackFlag;
+  item.ackFailValue = ackFailValue;
+
   // Ajoute à la queue (timeout 100ms), retry une fois après 200ms si pleine (robustesse)
   if (xQueueSend(_mailQueue, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
     vTaskDelay(pdMS_TO_TICKS(200));

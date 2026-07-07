@@ -27,6 +27,14 @@ struct MailQueueItem {
   bool isAlert;        // true = sendAlert, false = send simple
   bool includeDetailedReport;  // true = boot/OTA/panic (rapport temporel), false = alertes opérationnelles
   uint8_t retryCount;  // Nombre de tentatives déjà effectuées (re-queue sur échec SMTP, max 2)
+  // Accusé de livraison différé (Phase 0 arbitrage mails) : si la livraison SMTP
+  // échoue définitivement (retries épuisés), *ackFlag est repositionné à
+  // ackFailValue pour ré-armer l'anti-spam de l'appelant (alerte retentée au
+  // prochain cycle au lieu d'être perdue). nullptr = pas d'accusé. Le pointeur
+  // vise un membre long-vivant (Automatism) et la queue est traitée dans la même
+  // tâche que les orchestrateurs (aucune concurrence).
+  bool* ackFlag;
+  bool ackFailValue;
 };
 // Taille totale: ~660 bytes (vs 1729 avant) - économie ~5 KB avec 2 slots
 
@@ -52,6 +60,9 @@ class Mailer : public IMailer {
   // Ces méthodes ajoutent le mail à une queue et retournent immédiatement
   // includeDetailedReport: true = boot/OTA/panic (rapport temporel détaillé), false = alertes opérationnelles (niveaux, chauffage, etc.)
   bool sendAlert(const char* subject, const char* message, const char* toEmail = EmailConfig::DEFAULT_RECIPIENT, bool includeDetailedReport = false) override;
+  // Variante avec accusé de livraison différé : voir IMailer::sendAlertAcked.
+  bool sendAlertAcked(const char* subject, const char* message, const char* toEmail,
+                      bool includeDetailedReport, bool* ackFlag, bool ackFailValue) override;
   bool send(const char* subject, const char* message, const char* toName = "User", const char* toEmail = EmailConfig::DEFAULT_RECIPIENT) override;
   
   // Initialisation de la queue mail (appelé au boot, sans tâche dédiée)
@@ -73,6 +84,10 @@ class Mailer : public IMailer {
   uint32_t getQueuedMails() const;
   
  private:
+  // Enqueue commun de sendAlert / sendAlertAcked (porte les champs d'accusé de livraison).
+  bool enqueueAlert(const char* subject, const char* message, const char* toEmail,
+                    bool includeDetailedReport, bool* ackFlag, bool ackFailValue);
+
   SMTPSession _smtp;
   Session_Config _cfg;
   bool _ready{false};

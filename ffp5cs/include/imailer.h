@@ -40,6 +40,22 @@ class IMailer {
   virtual bool sendAlert(const char* subject, const char* message,
                          const char* toEmail, bool includeDetailedReport = false) = 0;
 
+  // Alerte avec accusé de livraison différé (Phase 0 arbitrage mails) : le mailer
+  // asynchrone (queue + retries) repositionne `*ackFlag = ackFailValue` si la
+  // livraison SMTP échoue DÉFINITIVEMENT (retries épuisés), pour ré-armer le flag
+  // anti-spam de l'appelant au lieu de « perdre » l'alerte. `ackFlag` doit pointer
+  // vers un stockage durable (membre d'un objet long-vivant), et la queue est
+  // traitée dans la MÊME tâche que les orchestrateurs (pas de course).
+  // Impl par défaut : délègue à sendAlert() — pour un mailer synchrone (ou un faux
+  // mailer de test), le retour immédiat suffit : un échec n'a rien latché, donc
+  // il n'y a rien à restaurer.
+  virtual bool sendAlertAcked(const char* subject, const char* message,
+                              const char* toEmail, bool includeDetailedReport,
+                              bool* ackFlag, bool ackFailValue) {
+    (void)ackFlag; (void)ackFailValue;
+    return sendAlert(subject, message, toEmail, includeDetailedReport);
+  }
+
   // Mails de veille / réveil (incluent un instantané capteurs).
   virtual bool sendSleepMail(const char* reason, uint32_t sleepDurationSeconds,
                              const SensorReadings& readings, const char* toEmail) = 0;

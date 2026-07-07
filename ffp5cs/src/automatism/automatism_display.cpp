@@ -81,9 +81,12 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
 
     // Orchestrateur flood (testable via IMailer) : evaluate + envoi + markEmailSent.
     // Effets non interfacés (NVS/blink/flag/logs) appliqués ici selon l'Outcome.
+    // `&inFlood` (membre durable) = accusé de livraison différé : un échec SMTP
+    // définitif ré-arme la machine FloodAlert (voir flood_orchestrator.h, Phase 0).
     const FloodOrchestrator::Outcome floodOutcome = FloodOrchestrator::run(
         _mailer, floodSt, floodP, readings.wlAqua, nowEpoch, mailEnabled,
-        _network.getEmailAddress(), (tankPumpLocked || _config.getPompeAquaLocked()));
+        _network.getEmailAddress(), (tankPumpLocked || _config.getPompeAquaLocked()),
+        &inFlood);
     // Recopier l'état mis à jour (horodatages + inFlood/lastFloodEmailEpoch post-markEmailSent).
     inFlood = floodSt.inFlood;
     floodEnterSinceEpoch = floodSt.floodEnterSinceEpoch;
