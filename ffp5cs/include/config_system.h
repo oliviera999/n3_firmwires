@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "15.11";
+    inline constexpr const char* VERSION = "15.12";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -25,8 +25,18 @@ namespace ProjectConfig {
         inline constexpr const char* PROFILE_TYPE = "unknown";
     #endif
     
-    // Identification matérielle (via BoardTraits, ex-#ifdef BOARD_S3)
+    // Identification matérielle (via BoardTraits, ex-#ifdef BOARD_S3).
+    // NB : sert de clé de canal OTA (metadata.json → channels.<env>.<BOARD_TYPE>) et de
+    // préfixe de post_id (déduplication) — NE PAS confondre avec l'identité système SYSTEM_ID.
     inline constexpr const char* BOARD_TYPE = BoardTraits::isS3() ? "esp32-s3" : "esp32-wroom";
+
+    // Identité du SYSTÈME côté serveur, envoyée dans le champ POST `sensor`.
+    // Le firmware s'appelle « ffp5cs », mais le système supervisé côté serveur (tables
+    // ffp3Data*, routes /post-data*, dossier Ffp3/) s'appelle « ffp3 » : c'est cette
+    // identité-là que porte `sensor`. Le type de carte (WROOM vs S3) reste implicite via
+    // la route/env (post-data vs post-data3), pas via ce champ.
+    // Voir NOMENCLATURE_FFP3.md (docs/ à la racine du dépôt firmware).
+    inline constexpr const char* SYSTEM_ID = "ffp3";
 }
 
 namespace Utils {
