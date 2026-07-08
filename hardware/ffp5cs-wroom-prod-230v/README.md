@@ -56,6 +56,8 @@ tools/check_pinmap_vs_firmware.py  Garde anti-dérive code <-> plan
   (IO35/36/39 = entrées seules ; RX0/TX0 : les laisser libres pendant un flash USB).
 - **Distribution d'alim supplémentaire** : bornier 5 V/GND (J18), bornier 3V3/GND (J19),
   et rail header 6 points J20 (2×5V, 2×GND, 2×3V3) pour brancher des modules en Dupont.
+- **3 ports I2C libres** (J14, J21, J22 — brochage GND/VCC/SCL/SDA) en plus de
+  l'OLED : 3-4 modules simultanés avec les pull-ups 4,7 k (bus < ~50 cm).
 
 ## Vue Fritzing (câblage de prototype)
 
@@ -89,6 +91,7 @@ Le routage livré dans `kicad/` est déjà fait et validé.
 | Règle DRC 3 mm mains↔logique | — | **oui (.kicad_dru + contrôle python)** |
 | GPIO libres en header | 10 broches | **14 broches (tout, dont RX0/TX0/36/39)** |
 | Distribution 5V/3V3/GND | — | **2 borniers + rail 6 points** |
+| Ports I2C libres | 3 (J14/J18/J19) | 3 (J14/J21/J22) |
 | Taille | 150×100 mm | 166×110 mm |
 
 Empreintes : bibliothèque officielle KiCad 8.0.9 (CC-BY-SA 4.0 + exception d'usage),

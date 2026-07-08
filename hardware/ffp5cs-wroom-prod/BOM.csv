@@ -16,6 +16,8 @@ J14;1;Support I2C ext;PinSocket_1x04_P2.54mm_Vertical;Extension I2C — ex. modu
 J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=+5V 3=GND)
 J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=GND)
 J17;1;Header GPIO libres;PinHeader_1x10_P2.54mm_Vertical;GPIO libres (1=3V3 2=GND 3=EN 4=IO5 5=IO14 6=IO17 7=IO23 8=IO25 9=IO32 10=IO35)
+J18;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)
+J19;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)
 J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +)
 J3 J4 J5 J6;4;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge (1=NO 2=COM 3=NC)
 J7;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)

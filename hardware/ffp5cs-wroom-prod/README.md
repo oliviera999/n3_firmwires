@@ -33,7 +33,7 @@ tools/check_pinmap_vs_firmware.py   Garde anti-dérive code ↔ plan
 | `Pins::ONE_WIRE_BUS` (DS18B20) | 26 | Bornier J11 + pull-up 4,7k |
 | `Pins::LUMINOSITE` (ADC1, entrée seule) | 34 | Bornier J12 pour LDR déportée + 10k vers GND |
 | `Pins::I2C_SDA/SCL` — OLED SSD1306 0x3C (`FEATURE_OLED=1`) | 21 / 22 | Support J13 (GND/VCC/SCL/SDA) + pull-ups 4,7k |
-| Extension I2C (DS3231 = S3 uniquement, prévu quand même) | 21 / 22 | Support J14 |
+| Extension I2C : **3 ports libres** (DS3231, capteurs…) | 21 / 22 | Supports J14, J18, J19 (même brochage GND/VCC/SCL/SDA) |
 | GPIO libres (5, 14, 17, 23, 25, 32, 35) + EN | — | Header J17 |
 
 Alimentation : **5 V / 3 A** (jack 5,5/2,1 centre + OU bornier), condensateur réservoir
@@ -61,13 +61,17 @@ HC-SR04, servos et relais sur le rail 5 V.
 - **GPIO34 entrée seule, sans pull-up interne** : pont diviseur LDR obligatoire sur la
   carte (LDR déportée entre 3V3 et l'entrée, 10k vers GND).
 - **RX0/TX0 laissés libres** (non routés) : réservés à l'USB-UART du module.
+- **3 ports I2C libres** (J14/J18/J19) en plus de l'OLED : avec les pull-ups 4,7 k
+  déjà en place, 3-4 modules simultanés sont confortables (adresses différentes,
+  bus total < ~50 cm) — au-delà, réduire les pull-ups à 2,2 k.
 
 ## À vérifier avant fabrication (limites connues)
 
 1. **Entraxe du DevKit** : l'empreinte suppose un DevKit V1 **30 broches, rangées
    espacées de 25,4 mm** (2 × supports 1×15). Mesurer votre exemplaire ; les variantes
    38 broches (DevKitC) ont un autre brochage → adapter `generate.py` (table `DEVKIT_A/B`).
-2. **Routage (rev 0.3, dimensionné 12/24 V)** : PCB routé par freerouting avec des
+2. **Routage (rev 0.4, dimensionné 12/24 V)** : PCB routé par `generator/route_lv.py`
+   (freerouting + vias de couture GND + reliefs thermiques) avec des
    **classes de nets** — contacts relais NO/COM/NC en **2 mm** (≈ 5-6 A continus en
    cuivre 1 oz, marge correcte jusqu'à ~8 A en pointe), rails +5V/VIN/GND en
    **1,2 mm**, signaux 0,4 mm. DRC KiCad 8 : 0 violation, 0 non-connecté ; Gerbers
@@ -97,7 +101,8 @@ suivent. Le projet KiCad reste la référence pour la fabrication.
 
 ```bash
 cd hardware/ffp5cs-wroom-prod
-python3 generator/generate.py                 # schéma + PCB + BOM depuis pinmap.json
+python3 generator/generate.py                 # schéma + PCB placé (NON routé) + BOM
+python3 generator/route_lv.py                 # routage complet + vérifications
 python3 tools/check_pinmap_vs_firmware.py     # cohérence pins.h (WROOM) ↔ pinmap ↔ schéma ↔ PCB
 ```
 
