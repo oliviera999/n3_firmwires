@@ -10,6 +10,37 @@ int clampAngle(int angle, int minAngle, int maxAngle) {
   return angle;
 }
 
+int applyGainPermille(int raw, int gainPermille, int maxValue) {
+  if (raw < 0) raw = 0;
+  if (gainPermille < 0) gainPermille = 0;
+  long scaled = (long)raw * gainPermille / 1000L;
+  if (scaled > maxValue) scaled = maxValue;
+  return (int)scaled;
+}
+
+bool computeEqualizationGains(const int* refs, int count, int minRef,
+                              int minGainPermille, int maxGainPermille,
+                              int* gainsOut) {
+  int maxRef = 0;
+  for (int i = 0; i < count; ++i) {
+    if (refs[i] > maxRef) maxRef = refs[i];
+  }
+
+  bool allValid = true;
+  for (int i = 0; i < count; ++i) {
+    if (maxRef <= 0 || refs[i] < minRef || refs[i] <= 0) {
+      gainsOut[i] = kGainNeutralPermille;
+      allValid = false;
+      continue;
+    }
+    long gain = 1000L * maxRef / refs[i];
+    if (gain < minGainPermille) gain = minGainPermille;
+    if (gain > maxGainPermille) gain = maxGainPermille;
+    gainsOut[i] = (int)gain;
+  }
+  return allValid;
+}
+
 void PeakTracker::reset() {
   bestPos = -1;
   bestVal = -1;

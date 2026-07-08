@@ -60,9 +60,81 @@ static void applyManualServoTargets() {
   Serial.printf("[SERVO][APPLY] mode=MANUEL angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
 }
 
+// --- Calibration LDR (egalisation des sensibilites, cle serveur 113) ---
+// Les LDR et leurs ponts diviseurs ont des tolerances : a eclairement egal,
+// deux capteurs d'un meme axe ne lisent pas pareil, ce qui biaise l'equilibre
+// du differentiel et la fusion des pics. La calibration mesure les pics des 4
+// LDR sur un balayage complet plein soleil (chaque capteur voit alors le meme
+// eclairement maximal) et calcule des gains d'egalisation (n3_tracker),
+// persistes en NVS et appliques a toutes les lectures.
+static const int LDR_GAIN_MIN_PERMILLE = 500;    // borne de securite (x0.5)
+static const int LDR_GAIN_MAX_PERMILLE = 2000;   // x2 : au-dela, capteur suspect
+static const char* TRACKER_PREFS_NAMESPACE = "n3tracker";
+static const char* TRACKER_PREFS_KEYS[4] = {"gainA", "gainB", "gainC", "gainD"};
+static int s_ldrGainPermille[4] = {
+  N3Tracker::kGainNeutralPermille, N3Tracker::kGainNeutralPermille,
+  N3Tracker::kGainNeutralPermille, N3Tracker::kGainNeutralPermille
+};
+
+static int ldrIndexForPin(uint8_t pin) {
+  switch (pin) {
+    case LUMINOSITEa: return 0;
+    case LUMINOSITEb: return 1;
+    case LUMINOSITEc: return 2;
+    case LUMINOSITEd: return 3;
+    default: return -1;
+  }
+}
+
+static void logLdrGains(const char* context) {
+  Serial.printf("[SERVO][CALIB] gains(%s) A=%d B=%d C=%d D=%d (pour-mille)\n", context,
+                s_ldrGainPermille[0], s_ldrGainPermille[1],
+                s_ldrGainPermille[2], s_ldrGainPermille[3]);
+}
+
+static void saveLdrGains() {
+  Preferences prefs;
+  if (!prefs.begin(TRACKER_PREFS_NAMESPACE, false)) {
+    Serial.println("[SERVO][CALIB][WARN] NVS inaccessible, gains non persistes");
+    return;
+  }
+  for (int i = 0; i < 4; ++i) {
+    prefs.putUShort(TRACKER_PREFS_KEYS[i], (uint16_t)s_ldrGainPermille[i]);
+  }
+  prefs.end();
+}
+
+void mspTrackerLoadCalibration() {
+  Preferences prefs;
+  // begin() en lecture seule echoue si le namespace n'existe pas encore
+  // (jamais calibre) : on reste en gains neutres.
+  if (!prefs.begin(TRACKER_PREFS_NAMESPACE, true)) {
+    logLdrGains("neutres, jamais calibre");
+    return;
+  }
+  for (int i = 0; i < 4; ++i) {
+    const int gain = prefs.getUShort(TRACKER_PREFS_KEYS[i],
+                                     (uint16_t)N3Tracker::kGainNeutralPermille);
+    s_ldrGainPermille[i] = (gain >= LDR_GAIN_MIN_PERMILLE && gain <= LDR_GAIN_MAX_PERMILLE)
+                               ? gain
+                               : N3Tracker::kGainNeutralPermille;
+  }
+  prefs.end();
+  logLdrGains("nvs");
+}
+
+void mspTrackerResetCalibration() {
+  for (int i = 0; i < 4; ++i) {
+    s_ldrGainPermille[i] = N3Tracker::kGainNeutralPermille;
+  }
+  saveLdrGains();
+  logLdrGains("reset");
+}
+
 // Lecture LDR filtree par position (mediane puis moyenne, 5 echantillons) —
 // remplace la moyenne glissante inter-positions du balayage historique qui
 // decalait le pic de ~+5° et diluait les premieres positions (constat C3).
+// Le gain d'egalisation du capteur est applique a la valeur filtree.
 static int readLdrFiltered(uint8_t pin) {
   N3Analog::AnalogConfig cfg = {};
   cfg.pin = pin;
@@ -75,7 +147,10 @@ static int readLdrFiltered(uint8_t pin) {
   cfg.fallback = 0;
   cfg.emaAlpha = 0.0f;
   N3Analog::AnalogResult r = N3Analog::readFilteredAnalog(cfg);
-  return r.valid ? r.value : 0;
+  const int raw = r.valid ? r.value : 0;
+  const int idx = ldrIndexForPin(pin);
+  if (idx < 0) return raw;
+  return N3Tracker::applyGainPermille(raw, s_ldrGainPermille[idx], 4095);
 }
 
 // Telemetrie : valeurs instantanees des 4 LDR + moyenne. Appelee avant ET
@@ -185,6 +260,61 @@ static int diffTrackAxis(Servo& servo, uint8_t pinA, uint8_t pinB,
   Serial.printf("[SERVO][DIFF][WARN] axe=%s budget de pas epuise (%d), angle=%d\n",
                 axisName, DIFF_MAX_STEPS, angle);
   return angle;
+}
+
+// Calibration : balayage complet des deux axes en gains NEUTRES pour mesurer
+// le pic brut de chaque LDR (meme eclairement maximal pour tous en plein
+// soleil), puis egalisation via n3_tracker et persistance NVS.
+// Retourne false si la lumiere est insuffisante (demande conservee, retentee
+// au prochain reveil). Des references inexploitables (LDR ombragee/HS)
+// consomment la demande : gains precedents conserves, [WARN] au log.
+bool mspTrackerCalibrate() {
+  readLdrTelemetry();
+  if (photocellReadingMoy <= LIGHT_SCAN_MIN_THRESHOLD) {
+    Serial.printf("[SERVO][CALIB] report: lum=%d<=seuil=%d (retente au prochain reveil)\n",
+                  photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
+    return false;
+  }
+
+  Serial.println("[SERVO][CALIB] debut: balayage de reference en gains neutres");
+  int previousGains[4];
+  for (int i = 0; i < 4; ++i) {
+    previousGains[i] = s_ldrGainPermille[i];
+    s_ldrGainPermille[i] = N3Tracker::kGainNeutralPermille;
+  }
+
+  N3Tracker::PeakTracker peakA, peakB, peakC, peakD;
+  AngleServoGD = sweepAxis(servogd, LUMINOSITEa, LUMINOSITEb,
+                           minAngleServoGD, maxAngleServoGD, AngleServoGD,
+                           peakA, peakB, "GD");
+  AngleServoHB = sweepAxis(servohb, LUMINOSITEc, LUMINOSITEd,
+                           minAngleServoHB, maxAngleServoHB, AngleServoHB,
+                           peakC, peakD, "HB");
+  rtcAngleServoGD = AngleServoGD;
+  rtcAngleServoHB = AngleServoHB;
+
+  const int refs[4] = {peakA.bestVal, peakB.bestVal, peakC.bestVal, peakD.bestVal};
+  int gains[4];
+  const bool complete = N3Tracker::computeEqualizationGains(
+      refs, 4, SCAN_PEAK_MIN_VALUE, LDR_GAIN_MIN_PERMILLE, LDR_GAIN_MAX_PERMILLE, gains);
+  Serial.printf("[SERVO][CALIB] references A=%d B=%d C=%d D=%d\n",
+                refs[0], refs[1], refs[2], refs[3]);
+
+  if (!complete) {
+    for (int i = 0; i < 4; ++i) {
+      s_ldrGainPermille[i] = previousGains[i];
+    }
+    Serial.println("[SERVO][CALIB][WARN] reference(s) inexploitable(s) (LDR ombragee/HS ?), "
+                   "gains precedents conserves — relancer par temps clair (cle 113: 0 puis 1)");
+    return true;  // demande consommee : pas de re-essai en boucle sur un capteur mort
+  }
+
+  for (int i = 0; i < 4; ++i) {
+    s_ldrGainPermille[i] = gains[i];
+  }
+  saveLdrGains();
+  logLdrGains("calibration OK");
+  return true;
 }
 
 static const N3BatteryConfig batteryConfig = {

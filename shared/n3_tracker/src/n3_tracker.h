@@ -21,6 +21,29 @@ namespace N3Tracker {
 /** Borne un angle a [minAngle, maxAngle]. */
 int clampAngle(int angle, int minAngle, int maxAngle);
 
+// --- Calibration / egalisation des LDR ---
+
+/** Gain neutre (aucune correction) en pour-mille. */
+constexpr int kGainNeutralPermille = 1000;
+
+/** Applique un gain en pour-mille a une lecture brute, borne a [0, maxValue]. */
+int applyGainPermille(int raw, int gainPermille, int maxValue);
+
+/**
+ * Gains d'egalisation d'un groupe de LDR a partir de references mesurees sous
+ * un meme eclairement (ex. pics d'un balayage complet en plein soleil, ou
+ * lecture sous lumiere diffuse uniforme) :
+ *   gain_i = 1000 * max(refs) / refs_i, borne [minGain, maxGain] pour-mille.
+ * Le capteur le plus sensible sert d'etalon (gain 1000) ; les autres sont
+ * amplifies pour rapporter pareil sous le meme eclairement. Une reference
+ * < minRef (capteur ombrage/HS pendant la mesure) recoit le gain neutre.
+ * Retourne true si TOUTES les references etaient exploitables (calibration
+ * complete), false sinon.
+ */
+bool computeEqualizationGains(const int* refs, int count, int minRef,
+                              int minGainPermille, int maxGainPermille,
+                              int* gainsOut);
+
 /**
  * Suivi du pic d'un capteur pendant un balayage. feed() est appele a chaque
  * position avec la lecture filtree ; a amplitude egale la premiere position

@@ -91,6 +91,56 @@ void test_fuse_resultat_borne() {
   TEST_ASSERT_EQUAL_INT(40, fusePeaks(a, b, 200, 92, 40, 145));
 }
 
+// --- applyGainPermille / computeEqualizationGains (calibration LDR) ---
+
+void test_gain_neutre_passthrough() {
+  TEST_ASSERT_EQUAL_INT(1234, applyGainPermille(1234, kGainNeutralPermille, 4095));
+}
+
+void test_gain_amplifie_et_borne() {
+  TEST_ASSERT_EQUAL_INT(1500, applyGainPermille(1000, 1500, 4095));
+  TEST_ASSERT_EQUAL_INT(4095, applyGainPermille(4000, 1500, 4095));  // clamp haut
+  TEST_ASSERT_EQUAL_INT(0, applyGainPermille(-50, 1500, 4095));      // brut negatif
+}
+
+void test_equalization_nominal() {
+  // Pics d'un balayage plein soleil : B et C moins sensibles que A/D.
+  const int refs[4] = {4000, 3200, 3600, 4000};
+  int gains[4];
+  TEST_ASSERT_TRUE(computeEqualizationGains(refs, 4, 100, 500, 2000, gains));
+  TEST_ASSERT_EQUAL_INT(1000, gains[0]);
+  TEST_ASSERT_EQUAL_INT(1250, gains[1]);  // 1000*4000/3200
+  TEST_ASSERT_EQUAL_INT(1111, gains[2]);  // 1000*4000/3600
+  TEST_ASSERT_EQUAL_INT(1000, gains[3]);
+}
+
+void test_equalization_ref_invalide_gain_neutre() {
+  // LDR C ombragee/HS pendant la mesure : gain neutre pour elle, calibration
+  // signalee incomplete, les autres restent calibrees.
+  const int refs[4] = {4000, 3200, 40, 4000};
+  int gains[4];
+  TEST_ASSERT_FALSE(computeEqualizationGains(refs, 4, 100, 500, 2000, gains));
+  TEST_ASSERT_EQUAL_INT(1250, gains[1]);
+  TEST_ASSERT_EQUAL_INT(kGainNeutralPermille, gains[2]);
+}
+
+void test_equalization_gain_borne() {
+  // Ecart de sensibilite extreme : le gain est borne (capteur suspect).
+  const int refs[2] = {4000, 1200};
+  int gains[2];
+  TEST_ASSERT_TRUE(computeEqualizationGains(refs, 2, 100, 500, 2000, gains));
+  TEST_ASSERT_EQUAL_INT(2000, gains[1]);  // 3333 -> clamp 2000
+}
+
+void test_equalization_tout_invalide() {
+  const int refs[4] = {0, 10, 20, 30};
+  int gains[4];
+  TEST_ASSERT_FALSE(computeEqualizationGains(refs, 4, 100, 500, 2000, gains));
+  for (int i = 0; i < 4; ++i) {
+    TEST_ASSERT_EQUAL_INT(kGainNeutralPermille, gains[i]);
+  }
+}
+
 // --- fineWindow ---
 
 void test_fineWindow_centre() {
@@ -222,6 +272,12 @@ int main(int argc, char** argv) {
   RUN_TEST(test_fuse_un_seul_pic_valide_pas_de_division_par_deux);
   RUN_TEST(test_fuse_aucun_pic_retourne_fallback);
   RUN_TEST(test_fuse_resultat_borne);
+  RUN_TEST(test_gain_neutre_passthrough);
+  RUN_TEST(test_gain_amplifie_et_borne);
+  RUN_TEST(test_equalization_nominal);
+  RUN_TEST(test_equalization_ref_invalide_gain_neutre);
+  RUN_TEST(test_equalization_gain_borne);
+  RUN_TEST(test_equalization_tout_invalide);
   RUN_TEST(test_fineWindow_centre);
   RUN_TEST(test_fineWindow_bornee_aux_limites);
   RUN_TEST(test_diff_zone_morte_immobile);

@@ -21,7 +21,7 @@ Chaque test inclut directement le `.cpp` testé avec un mock Arduino minimal
 HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
 - `n3_analog_sensors` (`test_analog`) : médiane, rejet d'outliers, moyenne, EMA, fallback, tensions batterie.
 - `n3_hmac` (`test_hmac`) : contrat du wrapper (formatage hex 64 car., garde-fou de taille, header `X-Signature`). La justesse crypto reste validée sur cible (vrai mbedtls).
-- `n3_tracker` (`test_tracker`) : suivi de pics de balayage, fusion pondérée avec validation, fenêtre fine, asservissement différentiel (zone morte, anti-oscillation, butée, divergence).
+- `n3_tracker` (`test_tracker`) : suivi de pics de balayage, fusion pondérée avec validation, fenêtre fine, asservissement différentiel (zone morte, anti-oscillation, butée, divergence), gains d'égalisation LDR (calibration).
 
 Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 

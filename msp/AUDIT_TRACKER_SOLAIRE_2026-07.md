@@ -4,6 +4,7 @@
 > asservissement différentiel par défaut, balayage optimisé (grossier+fin, fusion pondérée C2) sélectionnable
 > via la clé serveur `112`, logique extraite dans `shared/n3_tracker` (E5, tests `test_tracker`).
 > Restent ouverts : C7/E4 (seuil configurable + hystérésis), C8 (parking nuit/pluie), E2 (hybride astronomique).
+> **v2.54** : calibration des photorésistances (égalisation des sensibilités, clé serveur `113`, gains NVS).
 
 **Date** : 2026-07-08 · **Firmware audité** : `msp` v2.52 · **Périmètre** : logique servo/luminosité
 (`src/msp_sensors.cpp` — `Light_val()`, `src/msp_network.cpp` — clés 104/105/111,
