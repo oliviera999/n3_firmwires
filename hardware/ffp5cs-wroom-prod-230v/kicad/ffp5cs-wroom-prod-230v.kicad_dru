@@ -1,0 +1,4 @@
+(version 1)
+(rule "mains_vs_logic"
+  (condition "A.NetClass == 'Mains' && B.NetClass != 'Mains'")
+  (constraint clearance (min 3.0mm)))
