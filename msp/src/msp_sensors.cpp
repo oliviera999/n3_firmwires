@@ -8,33 +8,45 @@
 #include <Arduino.h>
 #include "n3_battery.h"
 #include "n3_analog_sensors.h"
+#include "n3_tracker.h"
 
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
 static const int LIGHT_SCAN_MIN_THRESHOLD = 50;
-static const bool MSP_VERBOSE_LIGHT_SCAN = false;
-// Délais du scan servo (réduits — audit algo 2026-06). Les anciens 30/50 ms
-// cumulaient ~23 s par balayage ; un servo avance de 1° en ~10-15 ms et l'ADC
-// se stabilise en quelques ms. ⚠ Réductions à valider sur cible (qualité du
-// suivi) : revenir à 30/50 si le tracker devient erratique.
-static const int SCAN_SERVO_SETTLE_MS = 15;   // était 30
-static const int SCAN_LDR_SETTLE_MS = 5;      // était 50
+
+// --- Tracker solaire (refonte v2.53, audit tracker 2026-07) ---
+// Deux algorithmes, selectionnes par la cle serveur 112 (page de controle) :
+//   112=0 (defaut) : asservissement DIFFERENTIEL — equilibrer les deux LDR de
+//                    chaque axe par petits pas (zone morte, anti-oscillation).
+//                    Quelques pas par reveil au lieu d'un balayage complet.
+//   112=1          : BALAYAGE classique optimise — passe grossiere (3°) puis
+//                    fine (1°) autour du pic, filtrage par position, fusion
+//                    des pics ponderee par l'amplitude (une LDR ombragee ne
+//                    divise plus l'angle par deux).
+// La logique pure est dans shared/n3_tracker (tests natifs test_tracker).
+static const int SCAN_SERVO_SETTLE_MS = 15;
+static const int SCAN_REPOSITION_MS = 200;      // grand deplacement (debut de passe)
+static const int SCAN_COARSE_STEP_DEG = 3;
+static const int SCAN_FINE_HALFWIDTH_DEG = 6;
+static const int SCAN_PEAK_MIN_VALUE = 100;     // pic exploitable (raw ADC)
 // L'OLED (clearDisplay+display ≈ 25-30 ms I2C) n'est rafraîchie qu'une
 // position sur N pendant le balayage.
 static const int SCAN_DISPLAY_EVERY = 8;
+static const int DIFF_DEADBAND = 80;            // |A-B| tolere (raw ADC, ~2 %)
+static const int DIFF_STEP_DEG = 2;
+static const int DIFF_MAX_STEPS = 120;          // borne le pire cas (traversee complete)
+static const int DIFF_SETTLE_MS = 20;
+// Sens de montage : lumA > lumB doit pousser vers +angle. A valider sur cible :
+// si le panneau fuit le soleil (logs [SERVO][DIFF][WARN] divergence), inverser.
+static const bool DIFF_INVERT_GD = false;
+static const bool DIFF_INVERT_HB = false;
 static bool s_lastServoModeAutoLogKnown = false;
 static bool s_lastServoModeAutoLogged = true;
-
-static int clampServoAngle(int value, int minAngle, int maxAngle) {
-  if (value < minAngle) return minAngle;
-  if (value > maxAngle) return maxAngle;
-  return value;
-}
 
 static void applyManualServoTargets() {
   const int requestedGd = AngleServoGD;
   const int requestedHb = AngleServoHB;
-  const int clampedGd = clampServoAngle(requestedGd, minAngleServoGD, maxAngleServoGD);
-  const int clampedHb = clampServoAngle(requestedHb, minAngleServoHB, maxAngleServoHB);
+  const int clampedGd = N3Tracker::clampAngle(requestedGd, minAngleServoGD, maxAngleServoGD);
+  const int clampedHb = N3Tracker::clampAngle(requestedHb, minAngleServoHB, maxAngleServoHB);
 
   if (clampedGd != requestedGd || clampedHb != requestedHb) {
     Serial.printf("[SERVO][MANUAL][WARN] clamp GD:%d->%d HB:%d->%d\n",
@@ -46,6 +58,133 @@ static void applyManualServoTargets() {
   servogd.write(AngleServoGD);
   servohb.write(AngleServoHB);
   Serial.printf("[SERVO][APPLY] mode=MANUEL angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
+}
+
+// Lecture LDR filtree par position (mediane puis moyenne, 5 echantillons) —
+// remplace la moyenne glissante inter-positions du balayage historique qui
+// decalait le pic de ~+5° et diluait les premieres positions (constat C3).
+static int readLdrFiltered(uint8_t pin) {
+  N3Analog::AnalogConfig cfg = {};
+  cfg.pin = pin;
+  cfg.numSamples = 5;
+  cfg.delayMs = 1;
+  cfg.filterMode = N3Analog::MEDIANE_PUIS_MOYENNE;
+  cfg.outlierMax = 200;
+  cfg.minValid = 0;
+  cfg.maxValid = 4095;
+  cfg.fallback = 0;
+  cfg.emaAlpha = 0.0f;
+  N3Analog::AnalogResult r = N3Analog::readFilteredAnalog(cfg);
+  return r.valid ? r.value : 0;
+}
+
+// Telemetrie : valeurs instantanees des 4 LDR + moyenne. Appelee avant ET
+// apres le positionnement pour que la BDD recoive toujours la meme grandeur
+// (lecture instantanee), plus jamais les pics de balayage (constat C4).
+static void readLdrTelemetry() {
+  photocellReadingA = readLdrFiltered(LUMINOSITEa);
+  photocellReadingB = readLdrFiltered(LUMINOSITEb);
+  photocellReadingC = readLdrFiltered(LUMINOSITEc);
+  photocellReadingD = readLdrFiltered(LUMINOSITEd);
+  photocellReadingMoy =
+      (photocellReadingA + photocellReadingB + photocellReadingC + photocellReadingD) / 4;
+}
+
+// Balayage optimise d'un axe : passe grossiere sur toute la plage puis passe
+// fine autour du pic fusionne (les pics des deux passes se cumulent). Retourne
+// l'angle final (fallbackAngle si aucun pic exploitable : on ne bouge pas).
+static int sweepAxis(Servo& servo, uint8_t pin1, uint8_t pin2,
+                     int minAngle, int maxAngle, int fallbackAngle,
+                     N3Tracker::PeakTracker& peak1, N3Tracker::PeakTracker& peak2,
+                     const char* axisName) {
+  peak1.reset();
+  peak2.reset();
+
+  servo.write(minAngle);
+  delay(SCAN_REPOSITION_MS);
+  int iteration = 0;
+  for (int pos = minAngle; pos <= maxAngle; pos += SCAN_COARSE_STEP_DEG) {
+    servo.write(pos);
+    delay(SCAN_SERVO_SETTLE_MS);
+    const int v1 = readLdrFiltered(pin1);
+    const int v2 = readLdrFiltered(pin2);
+    peak1.feed(pos, v1);
+    peak2.feed(pos, v2);
+    if (displayOk && (++iteration % SCAN_DISPLAY_EVERY) == 0) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.print(axisName);
+      display.print(" ");
+      display.println(pos);
+      display.println(v1);
+      display.println(v2);
+      display.display();
+    }
+  }
+
+  const int coarseAngle = N3Tracker::fusePeaks(peak1, peak2, SCAN_PEAK_MIN_VALUE,
+                                               fallbackAngle, minAngle, maxAngle);
+  const N3Tracker::ScanWindow w =
+      N3Tracker::fineWindow(coarseAngle, SCAN_FINE_HALFWIDTH_DEG, minAngle, maxAngle);
+  servo.write(w.from);
+  delay(SCAN_REPOSITION_MS);
+  for (int pos = w.from; pos <= w.to; ++pos) {
+    servo.write(pos);
+    delay(SCAN_SERVO_SETTLE_MS);
+    peak1.feed(pos, readLdrFiltered(pin1));
+    peak2.feed(pos, readLdrFiltered(pin2));
+  }
+
+  const int finalAngle = N3Tracker::fusePeaks(peak1, peak2, SCAN_PEAK_MIN_VALUE,
+                                              fallbackAngle, minAngle, maxAngle);
+  servo.write(finalAngle);
+  delay(SCAN_SERVO_SETTLE_MS);
+
+  const bool valid1 = peak1.valid(SCAN_PEAK_MIN_VALUE);
+  const bool valid2 = peak2.valid(SCAN_PEAK_MIN_VALUE);
+  Serial.printf("[SERVO][SCAN] axe=%s pic1=%d@%d pic2=%d@%d angle=%d\n", axisName,
+                peak1.bestVal, peak1.bestPos, peak2.bestVal, peak2.bestPos, finalAngle);
+  if (!valid1 || !valid2) {
+    Serial.printf("[SERVO][SCAN][WARN] axe=%s pic(s) invalide(s) (min=%d) : LDR ombragee/HS ?%s\n",
+                  axisName, SCAN_PEAK_MIN_VALUE,
+                  (!valid1 && !valid2) ? " aucun pic -> position conservee" : "");
+  }
+  return finalAngle;
+}
+
+// Asservissement differentiel d'un axe : equilibre les deux LDR par petits pas
+// depuis la position courante. La decision par pas (zone morte, renversement,
+// butee, divergence) est dans shared/n3_tracker.
+static int diffTrackAxis(Servo& servo, uint8_t pinA, uint8_t pinB,
+                         const N3Tracker::DiffAxisConfig& cfg, int startAngle,
+                         const char* axisName) {
+  N3Tracker::DiffAxis controller(cfg);
+  int angle = startAngle;
+  int stepsDone = 0;
+  for (; stepsDone < DIFF_MAX_STEPS; ++stepsDone) {
+    const int lumA = readLdrFiltered(pinA);
+    const int lumB = readLdrFiltered(pinB);
+    const N3Tracker::DiffStep s = controller.step(angle, lumA, lumB);
+    if (s.nextAngle != angle) {
+      angle = s.nextAngle;
+      servo.write(angle);
+      delay(DIFF_SETTLE_MS);
+    }
+    if (s.finished) {
+      if (s.diverged) {
+        Serial.printf("[SERVO][DIFF][WARN] axe=%s divergence (sens inverse ? cf. DIFF_INVERT_%s) "
+                      "angle=%d A=%d B=%d\n", axisName, axisName, angle, lumA, lumB);
+      } else {
+        Serial.printf("[SERVO][DIFF] axe=%s %s angle=%d pas=%d A=%d B=%d\n", axisName,
+                      s.balanced ? "equilibre" : "stop", angle, stepsDone, lumA, lumB);
+      }
+      return angle;
+    }
+  }
+  Serial.printf("[SERVO][DIFF][WARN] axe=%s budget de pas epuise (%d), angle=%d\n",
+                axisName, DIFF_MAX_STEPS, angle);
+  return angle;
 }
 
 static const N3BatteryConfig batteryConfig = {
@@ -210,215 +349,24 @@ void Light_val() {
     s_lastServoModeAutoLogKnown = true;
   }
 
-  // Télémétrie : toujours remplir LuminositeA–D et LuminositeMoy pour le POST serveur.
-  // Avant v2.41 : en mode servo manuel on retournait sans lecture → zéros côté BDD.
-  // Sous le seuil de scan, le balayage était ignoré et A–D n'étaient pas mises à jour (souvent 0).
-  photocellReadingA = analogRead(LUMINOSITEa);
-  photocellReadingB = analogRead(LUMINOSITEb);
-  photocellReadingC = analogRead(LUMINOSITEc);
-  photocellReadingD = analogRead(LUMINOSITEd);
-  photocellReadingMoy = (photocellReadingA + photocellReadingB + photocellReadingC + photocellReadingD) / 4;
+  // Télémétrie : toujours remplir LuminositeA–D et LuminositeMoy pour le POST
+  // serveur (v2.41), en lecture filtrée par position depuis v2.53.
+  readLdrTelemetry();
 
   if (!servoModeAuto) {
     Serial.println("[SERVO][AUTO] scan=OFF raison=mode_manuel");
     applyManualServoTargets();
+    rtcAngleServoGD = AngleServoGD;
+    rtcAngleServoHB = AngleServoHB;
     return;
   }
 
-  if (photocellReadingMoy > LIGHT_SCAN_MIN_THRESHOLD) {
-    Serial.printf("[SERVO][AUTO] scan=ON lum=%d seuil=%d\n", photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
-    if (displayOk) {
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.println("Scan");
-      display.print("LumMoy = ");
-      display.println(photocellReadingMoy);
-      display.display();
-    }
-    delay(750);
-    // Initialisation des tableaux de lectures
-    for (int i = 0; i < numReadings; i++) {
-      readings1[i] = 0;
-      readings2[i] = 0;
-      readings3[i] = 0;
-      readings4[i] = 0;
-    }
-
-    // Initialisation des variables
-    photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
-    posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
-    total1 = total2 = total3 = total4 = 0;
-    average1 = average2 = average3 = average4 = 0;
-    readIndex = 0;
-
-
-    // Balayage des positions et mesure de la luminosité pour les quatre capteurs
-
-    // Balayage du premier servomoteur
-    for (int pos = minAngleServoGD; pos <= maxAngleServoGD; pos++) {
-      servogd.write(pos);
-      delay(SCAN_SERVO_SETTLE_MS);  // Attendre que le servomoteur se positionne
-
-      // Lecture et filtrage pour les capteurs associés au premier servomoteur
-      int currentReading1 = analogRead(LUMINOSITEa);
-      total1 = total1 - readings1[readIndex];
-      readings1[readIndex] = currentReading1;
-      total1 = total1 + readings1[readIndex];
-      average1 = total1 / numReadings;
-
-      int currentReading2 = analogRead(LUMINOSITEb);
-      total2 = total2 - readings2[readIndex];
-      readings2[readIndex] = currentReading2;
-      total2 = total2 + readings2[readIndex];
-      average2 = total2 / numReadings;
-      readIndex = (readIndex + 1) % numReadings;
-
-      if (displayOk && (pos % SCAN_DISPLAY_EVERY) == 0) {
-        display.clearDisplay();
-        display.setTextSize(2);
-        display.setCursor(0, 0);
-        display.print("Moy 1 ");
-        display.println(average1);
-        display.print("Moy 2 ");
-        display.println(average2);
-        display.display();
-      }
-      delay(SCAN_LDR_SETTLE_MS);
-
-      // Enregistrement de la valeur maximale pour les capteurs 1 et 2
-      if (average1 > photocellReadingA) {
-        photocellReadingA = average1;
-        posLumMax1 = pos;
-        if (MSP_VERBOSE_LIGHT_SCAN) {
-          Serial.printf("[SERVO][SCAN] nouveau max A pos=%d lum=%d\n", posLumMax1, photocellReadingA);
-        }
-      }
-      if (average2 > photocellReadingB) {
-        photocellReadingB = average2;
-        posLumMax2 = pos;
-        if (MSP_VERBOSE_LIGHT_SCAN) {
-          Serial.printf("[SERVO][SCAN] nouveau max B pos=%d lum=%d\n", posLumMax2, photocellReadingB);
-        }
-      }
-    }
-
-    AngleServoGD = (posLumMax1 + posLumMax2) / 2;
-    // Bornage a la plage servo (comme pour AngleServoHB) : si le scan n'a rien
-    // detecte (pics restes a 0), evite un servogd.write() sous minAngleServoGD.
-    if (AngleServoGD > maxAngleServoGD) {
-      AngleServoGD = maxAngleServoGD;
-    } else if (AngleServoGD < minAngleServoGD) {
-      AngleServoGD = minAngleServoGD;
-    }
-    servogd.write(AngleServoGD);
-    if (displayOk) {
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.print(posLumMax1);
-      display.print(" ");
-      display.print(posLumMax2);
-      display.print("AngleM = ");
-      display.println(AngleServoGD);
-      display.display();
-    }
-    delay(750);
-
-    // Balayage du second servomoteur
-    readIndex = 0;
-    for (int pos = minAngleServoHB; pos <= maxAngleServoHB; pos++) {
-      servohb.write(pos);
-      delay(SCAN_SERVO_SETTLE_MS);  // Attendre que le servomoteur se positionne
-
-      // Lecture et filtrage pour les capteurs associés au second servomoteur
-      int currentReading3 = analogRead(LUMINOSITEc);
-      total3 = total3 - readings3[readIndex];
-      readings3[readIndex] = currentReading3;
-      total3 = total3 + readings3[readIndex];
-      average3 = total3 / numReadings;
-
-      int currentReading4 = analogRead(LUMINOSITEd);
-      total4 = total4 - readings4[readIndex];
-      readings4[readIndex] = currentReading4;
-      total4 = total4 + readings4[readIndex];
-      average4 = total4 / numReadings;
-      readIndex = (readIndex + 1) % numReadings;
-
-      if (displayOk && (pos % SCAN_DISPLAY_EVERY) == 0) {
-        display.clearDisplay();
-        display.setTextSize(2);
-        display.setCursor(0, 0);
-        display.print("Moy 3 ");
-        display.println(average3);
-        display.print("Moy 4 ");
-        display.println(average4);
-        display.display();
-      }
-      delay(SCAN_LDR_SETTLE_MS);
-
-      // Enregistrement de la valeur maximale pour les capteurs 3 et 4
-      if (average3 > photocellReadingC) {
-        photocellReadingC = average3;
-        posLumMax3 = pos;
-        if (MSP_VERBOSE_LIGHT_SCAN) {
-          Serial.printf("[SERVO][SCAN] nouveau max C pos=%d lum=%d\n", posLumMax3, photocellReadingC);
-        }
-      }
-      if (average4 > photocellReadingD) {
-        photocellReadingD = average4;
-        posLumMax4 = pos;
-        if (MSP_VERBOSE_LIGHT_SCAN) {
-          Serial.printf("[SERVO][SCAN] nouveau max D pos=%d lum=%d\n", posLumMax4, photocellReadingD);
-        }
-      }
-    }
-
-    AngleServoHB = (posLumMax3 + posLumMax4) / 2;  // Calcul des positions finales pour servomoteur haut bas
-    if (AngleServoHB > maxAngleServoHB) {
-      AngleServoHB = maxAngleServoHB;
-    } else if (AngleServoHB < minAngleServoHB) {
-      AngleServoHB = minAngleServoHB;
-    }
-    servohb.write(AngleServoHB);
-    if (displayOk) {
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.print(posLumMax3);
-      display.print(" ");
-      display.println(posLumMax4);
-      display.print("AngleM = ");
-      display.println(AngleServoHB);
-      display.display();
-    }
-    delay(750);
-
-    // Affichage des positions finales
-    Serial.printf("[SERVO][SCAN] A=%d@%d B=%d@%d C=%d@%d D=%d@%d\n",
-                  photocellReadingA, posLumMax1,
-                  photocellReadingB, posLumMax2,
-                  photocellReadingC, posLumMax3,
-                  photocellReadingD, posLumMax4);
-    Serial.printf("[SERVO] angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
-
-    photocellReadingMoy = (photocellReadingA + photocellReadingB + photocellReadingC + photocellReadingD) / 4;
-    Serial.printf("[SENSOR] LuminositeMoy=%d\n", photocellReadingMoy);
-    if (displayOk) {
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 0);
-      display.print("LumMoy = ");
-      display.println(photocellReadingMoy);
-      display.print("AngleGD = ");
-      display.println(AngleServoGD);
-      display.print("AngleHB = ");
-      display.println(AngleServoHB);
-      display.display();
-    }
-    delay(750);
-  } else {
-    Serial.printf("[SERVO][AUTO] scan=SKIP lum=%d<=seuil=%d\n", photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
+  if (photocellReadingMoy <= LIGHT_SCAN_MIN_THRESHOLD) {
+    Serial.printf("[SERVO][AUTO] scan=SKIP lum=%d<=seuil=%d\n",
+                  photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
+    // Pas de mouvement : AngleServoGD/HB restent la position physique courante
+    // (restauree du RTC au boot) — c'est elle qui part en telemetrie, plus les
+    // consignes serveur jamais appliquees (constat C1).
     if (displayOk) {
       display.clearDisplay();
       display.setTextSize(2);
@@ -427,7 +375,70 @@ void Light_val() {
       display.println("LumMoy = ");
       display.println(photocellReadingMoy);
       display.display();
+      delay(750);
     }
+    return;
+  }
+
+  if (trackerModeSweep) {
+    // === Balayage classique optimise (cle serveur 112=1) ===
+    Serial.printf("[SERVO][AUTO] scan=ON algo=BALAYAGE lum=%d seuil=%d\n",
+                  photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+      display.println("Scan");
+      display.print("LumMoy = ");
+      display.println(photocellReadingMoy);
+      display.display();
+      delay(750);
+    }
+
+    N3Tracker::PeakTracker peakA, peakB, peakC, peakD;
+    AngleServoGD = sweepAxis(servogd, LUMINOSITEa, LUMINOSITEb,
+                             minAngleServoGD, maxAngleServoGD, AngleServoGD,
+                             peakA, peakB, "GD");
+    posLumMax1 = peakA.bestPos;
+    posLumMax2 = peakB.bestPos;
+    AngleServoHB = sweepAxis(servohb, LUMINOSITEc, LUMINOSITEd,
+                             minAngleServoHB, maxAngleServoHB, AngleServoHB,
+                             peakC, peakD, "HB");
+    posLumMax3 = peakC.bestPos;
+    posLumMax4 = peakD.bestPos;
+  } else {
+    // === Asservissement differentiel (defaut, cle serveur 112=0/absente) ===
+    Serial.printf("[SERVO][AUTO] scan=ON algo=DIFFERENTIEL lum=%d seuil=%d\n",
+                  photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
+    const N3Tracker::DiffAxisConfig cfgGd = {
+      minAngleServoGD, maxAngleServoGD, DIFF_DEADBAND, DIFF_STEP_DEG, DIFF_INVERT_GD
+    };
+    AngleServoGD = diffTrackAxis(servogd, LUMINOSITEa, LUMINOSITEb, cfgGd, AngleServoGD, "GD");
+    const N3Tracker::DiffAxisConfig cfgHb = {
+      minAngleServoHB, maxAngleServoHB, DIFF_DEADBAND, DIFF_STEP_DEG, DIFF_INVERT_HB
+    };
+    AngleServoHB = diffTrackAxis(servohb, LUMINOSITEc, LUMINOSITEd, cfgHb, AngleServoHB, "HB");
+  }
+
+  Serial.printf("[SERVO] angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
+  rtcAngleServoGD = AngleServoGD;
+  rtcAngleServoHB = AngleServoHB;
+
+  // Télémétrie post-positionnement : lecture instantanee a la position finale
+  // (avant v2.53 le POST envoyait les pics du balayage — constat C4).
+  readLdrTelemetry();
+  Serial.printf("[SENSOR] LuminositeMoy=%d\n", photocellReadingMoy);
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.print("LumMoy = ");
+    display.println(photocellReadingMoy);
+    display.print("AngleGD = ");
+    display.println(AngleServoGD);
+    display.print("AngleHB = ");
+    display.println(AngleServoHB);
+    display.display();
     delay(750);
   }
 }

@@ -31,14 +31,7 @@ OneWire oneWire(oneWireBus);
 DallasTemperature sensors(&oneWire);
 float temperatureSol;
 
-// --- Luminosité (filtrage moyenne mobile) ---
-int readings1[numReadings];
-int readings2[numReadings];
-int readings3[numReadings];
-int readings4[numReadings];
-int readIndex = 0;
-int total1 = 0, total2 = 0, total3 = 0, total4 = 0;
-int average1 = 0, average2 = 0, average3 = 0, average4 = 0;
+// --- Luminosité ---
 int photocellReadingA = 0, photocellReadingB = 0, photocellReadingC = 0, photocellReadingD = 0;
 int photocellReadingMoy = 0;
 
@@ -49,6 +42,13 @@ int posLumMax1 = 0, posLumMax2 = 0, posLumMax3 = 0, posLumMax4 = 0;
 int AngleServoGD;
 int AngleServoHB;
 bool servoModeAuto = true;
+bool trackerModeSweep = false;  // défaut : asservissement différentiel (audit tracker 2026-07)
+// Derniere position appliquee, persistee en RTC RAM : au reveil deep sleep on
+// repart de la position physique reelle au lieu du milieu de plage (-1 = cold
+// boot, invalide). Evite l'aller-retour inutile et rend l'asservissement
+// differentiel quasi instantane quand le soleil a peu bouge.
+RTC_DATA_ATTR int rtcAngleServoGD = -1;
+RTC_DATA_ATTR int rtcAngleServoHB = -1;
 
 // --- DHT intérieur / extérieur ---
 DHT dhtint(DHTPININT, DHTTYPEINT);
@@ -330,12 +330,19 @@ void setup() {
 
   servogd.attach(SERVOGD);
   servohb.attach(SERVOHB);
-  // Position de repli sure (milieu de plage) en attendant la config distante
-  // ou le scan auto, pour eviter qu'un servo demarre dans une position aleatoire.
-  AngleServoGD = (minAngleServoGD + maxAngleServoGD) / 2;
-  AngleServoHB = (minAngleServoHB + maxAngleServoHB) / 2;
+  // Reprise de la derniere position (RTC RAM) apres un reveil deep sleep ;
+  // repli sur le milieu de plage en cold boot (valeur RTC invalide), pour
+  // eviter qu'un servo demarre dans une position aleatoire.
+  AngleServoGD = (rtcAngleServoGD >= minAngleServoGD && rtcAngleServoGD <= maxAngleServoGD)
+                     ? rtcAngleServoGD
+                     : (minAngleServoGD + maxAngleServoGD) / 2;
+  AngleServoHB = (rtcAngleServoHB >= minAngleServoHB && rtcAngleServoHB <= maxAngleServoHB)
+                     ? rtcAngleServoHB
+                     : (minAngleServoHB + maxAngleServoHB) / 2;
   servogd.write(AngleServoGD);
   servohb.write(AngleServoHB);
+  Serial.printf("[SERVO][INIT] angleGD=%d angleHB=%d (source=%s)\n", AngleServoGD, AngleServoHB,
+                (AngleServoGD == rtcAngleServoGD && AngleServoHB == rtcAngleServoHB) ? "rtc" : "repli_milieu");
 
   pinMode(DHTPININT, INPUT);
   pinMode(DHTPINEXT, INPUT);

@@ -69,7 +69,8 @@ En CI, ces fichiers sont provisionnés depuis les `.example` (placeholders).
 Code commun à n3pp / msp / ffp5cs, sous forme de modules PlatformIO (`library.json` + `src/`).
 **Réutiliser ces libs plutôt que dupliquer** : `n3_wifi` (scan RSSI multi-réseaux), `n3_data`
 (POST URL-encoded + HMAC, remplace `n3_http` déprécié), `n3_hmac` (HMAC-SHA256), `n3_mail` (SMTP),
-`n3_time`, `n3_sleep` (deep sleep), `n3_display` (OLED), `n3_analog_sensors`, `n3_battery`, et
+`n3_time`, `n3_sleep` (deep sleep), `n3_display` (OLED), `n3_analog_sensors`, `n3_battery`,
+`n3_tracker` (logique pure du tracker solaire msp, testée en natif), et
 `n3_common` (**OTA** `n3_ota` avec vérif **sha256 + ECDSA P-256**, `n3_defaults.h`, `n3_outputs_json`).
 
 ## Versionnage firmware — à faire à chaque modification

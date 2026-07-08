@@ -208,14 +208,17 @@ void variablestoesp() {
       int parsedWakeUp = WakeUp ? 1 : 0;
       int parsedFreqWakeUp = FreqWakeUp;
       int parsedServoModeAuto = servoModeAuto ? 1 : 0;
+      int parsedTrackerSweep = trackerModeSweep ? 1 : 0;
       bool hasResetMode = tryReadIntByKey(myObject, "110", &parsedResetMode);
       bool hasWakeUp = tryReadIntByKey(myObject, "106", &parsedWakeUp);
       bool hasFreqWakeUp = tryReadIntByKey(myObject, "107", &parsedFreqWakeUp);
       bool hasServoModeAuto = tryReadIntByKey(myObject, "111", &parsedServoModeAuto);
+      bool hasTrackerSweep = tryReadIntByKey(myObject, "112", &parsedTrackerSweep);
       String raw110 = readStringByKey(myObject, "110", "<absent>");
       String raw106 = readStringByKey(myObject, "106", "<absent>");
       String raw107 = readStringByKey(myObject, "107", "<absent>");
       String raw111 = readStringByKey(myObject, "111", "<absent>");
+      String raw112 = readStringByKey(myObject, "112", "<absent>");
 
       if (!hasResetMode) {
         Serial.println(String("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=") + raw110 +
@@ -248,29 +251,59 @@ void variablestoesp() {
         servoModeAuto = (parsedServoModeAuto != 0);
       }
 
+      if (!hasTrackerSweep) {
+        // Cle optionnelle (nouvelle page de controle) : log une seule fois
+        // pour ne pas spammer les serveurs pas encore a jour.
+        static bool s_warnedTrackerKeyAbsent = false;
+        if (!s_warnedTrackerKeyAbsent) {
+          Serial.println(String("[SERVER][GET][WARN] Cle 112 absente/invalide (raw=") + raw112 +
+                         "), conservation=" + String(trackerModeSweep ? 1 : 0));
+          s_warnedTrackerKeyAbsent = true;
+        }
+      } else {
+        trackerModeSweep = (parsedTrackerSweep != 0);
+      }
+
       inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
       enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
       SeuilSec = readIntByKey(myObject, "102", SeuilSec);
       SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
-      AngleServoHB = readIntByKey(myObject, "104", AngleServoHB);
-      AngleServoGD = readIntByKey(myObject, "105", AngleServoGD);
+      // Consignes manuelles 104/105 : appliquees UNIQUEMENT en mode MANUEL.
+      // Avant v2.53 elles ecrasaient AngleServoGD/HB meme en AUTO : la nuit
+      // (scan=SKIP, servos immobiles) la BDD enregistrait des angles jamais
+      // appliques (constat C1 de l'audit tracker 2026-07).
+      const int serverTargetHb = readIntByKey(myObject, "104", AngleServoHB);
+      const int serverTargetGd = readIntByKey(myObject, "105", AngleServoGD);
+      if (!servoModeAuto) {
+        AngleServoHB = serverTargetHb;
+        AngleServoGD = serverTargetGd;
+      }
       if (!s_servoModeKnown || s_prevServoModeAuto != servoModeAuto) {
         Serial.println(String("[SERVO][MODE] source=server mode=") +
                        (servoModeAuto ? "AUTO" : "MANUEL") + " (raw111=" + raw111 + ")");
         s_prevServoModeAuto = servoModeAuto;
         s_servoModeKnown = true;
       }
-      if (!s_servoTargetsKnown || s_prevTargetGd != AngleServoGD || s_prevTargetHb != AngleServoHB) {
-        Serial.println(String("[SERVO][TARGET] source=server mode=") +
-                       (servoModeAuto ? "AUTO" : "MANUEL") + " GD=" + String(AngleServoGD) +
-                       " HB=" + String(AngleServoHB));
-        s_prevTargetGd = AngleServoGD;
-        s_prevTargetHb = AngleServoHB;
+      static bool s_trackerAlgoKnown = false;
+      static bool s_prevTrackerSweep = false;
+      if (!s_trackerAlgoKnown || s_prevTrackerSweep != trackerModeSweep) {
+        Serial.println(String("[SERVO][ALGO] source=server algo=") +
+                       (trackerModeSweep ? "BALAYAGE" : "DIFFERENTIEL") + " (raw112=" + raw112 + ")");
+        s_prevTrackerSweep = trackerModeSweep;
+        s_trackerAlgoKnown = true;
+      }
+      if (!s_servoTargetsKnown || s_prevTargetGd != serverTargetGd || s_prevTargetHb != serverTargetHb) {
+        Serial.println(String("[SERVO][TARGET] source=server GD=") + String(serverTargetGd) +
+                       " HB=" + String(serverTargetHb) +
+                       (servoModeAuto ? " (ignore: mode AUTO)" : " (applique: mode MANUEL)"));
+        s_prevTargetGd = serverTargetGd;
+        s_prevTargetHb = serverTargetHb;
         s_servoTargetsKnown = true;
       }
       Serial.println(String("[SERVER][GET][APPLY] 110:") + raw110 + "=>" + String(resetMode ? 1 : 0) +
                      " 106:" + raw106 + "=>" + String(WakeUp ? 1 : 0) + " 107:" + raw107 + "=>" +
-                     String(FreqWakeUp) + " 111:" + raw111 + "=>" + String(servoModeAuto ? 1 : 0));
+                     String(FreqWakeUp) + " 111:" + raw111 + "=>" + String(servoModeAuto ? 1 : 0) +
+                     " 112:" + raw112 + "=>" + String(trackerModeSweep ? 1 : 0));
       Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
                      " wakeUp=" + String(WakeUp ? 1 : 0) + " sleep=" + String(FreqWakeUp) +
                      " servoModeAuto=" + String(servoModeAuto ? 1 : 0));
