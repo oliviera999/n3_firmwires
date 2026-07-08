@@ -57,6 +57,15 @@ tools/check_pinmap_vs_firmware.py  Garde anti-dérive code <-> plan
 - **Distribution d'alim supplémentaire** : bornier 5 V/GND (J18), bornier 3V3/GND (J19),
   et rail header 6 points J20 (2×5V, 2×GND, 2×3V3) pour brancher des modules en Dupont.
 
+## Vue Fritzing (câblage de prototype)
+
+`fritzing/ffp5cs-wroom-prod-230v-cablage.fzz` (Fritzing ≥ 1.0, généré par
+`generator/generate_fritzing.py`) : câblage breadboard périphériques ↔ DevKit
+(capteurs, servos, OLED, pull-ups), plus les headers breakout GPIO (J17, 14 pts)
+et rail d'alim (J20). ⚠️ Les charges **230 V n'y figurent pas** : elles se câblent
+exclusivement sur les borniers NC/COM/NO de la zone secteur de la carte, jamais
+en Dupont. Ouverture vérifiée dans Fritzing (« Routing completed »).
+
 ## Régénérer / rerouter / vérifier
 
 ```bash
