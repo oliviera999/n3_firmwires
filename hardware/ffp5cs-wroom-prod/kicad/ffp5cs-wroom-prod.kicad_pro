@@ -238,9 +238,43 @@
         "name": "Default",
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.3,
+        "track_width": 0.4,
         "via_diameter": 0.7,
         "via_drill": 0.35,
+        "wire_width": 6
+      },
+      {
+        "bus_width": 12,
+        "clearance": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.2,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "Alim",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 1.2,
+        "via_diameter": 1.0,
+        "via_drill": 0.5,
+        "wire_width": 6
+      },
+      {
+        "bus_width": 12,
+        "clearance": 0.5,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.2,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "Relais",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 2.0,
+        "via_diameter": 1.6,
+        "via_drill": 0.8,
         "wire_width": 6
       }
     ],
@@ -249,7 +283,68 @@
     },
     "net_colors": null,
     "netclass_assignments": null,
-    "netclass_patterns": []
+    "netclass_patterns": [
+      {
+        "netclass": "Relais",
+        "pattern": "REL1_COM"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL1_NO"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL1_NC"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL2_COM"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL2_NO"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL2_NC"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL3_COM"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL3_NO"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL3_NC"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL4_COM"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL4_NO"
+      },
+      {
+        "netclass": "Relais",
+        "pattern": "REL4_NC"
+      },
+      {
+        "netclass": "Alim",
+        "pattern": "+5V"
+      },
+      {
+        "netclass": "Alim",
+        "pattern": "VIN_5V"
+      },
+      {
+        "netclass": "Alim",
+        "pattern": "GND"
+      }
+    ]
   },
   "pcbnew": {
     "last_paths": {
