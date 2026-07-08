@@ -67,13 +67,15 @@ HC-SR04, servos et relais sur le rail 5 V.
 1. **Entraxe du DevKit** : l'empreinte suppose un DevKit V1 **30 broches, rangées
    espacées de 25,4 mm** (2 × supports 1×15). Mesurer votre exemplaire ; les variantes
    38 broches (DevKitC) ont un autre brochage → adapter `generate.py` (table `DEVKIT_A/B`).
-2. **Routage** : le PCB est **routé (autorouteur freerouting 1.9, 442 segments, DRC
-   KiCad 8 : 0 violation, 0 non-connecté)** et les Gerbers/perçages sont dans
-   `exports/`. C'est un routage d'autorouteur : correct électriquement, mais **relire
-   les pistes des contacts relais** avant de commuter des charges — les élargir
-   (≥ 2 mm) et garantir ≥ 3 mm d'isolement si vous commutez du secteur (recommandé :
-   rester en 12/24 V). NB : `generate.py` régénère un PCB **non routé** — ne pas
-   régénérer par-dessus `kicad/` sans vouloir perdre le routage.
+2. **Routage (rev 0.3, dimensionné 12/24 V)** : PCB routé par freerouting avec des
+   **classes de nets** — contacts relais NO/COM/NC en **2 mm** (≈ 5-6 A continus en
+   cuivre 1 oz, marge correcte jusqu'à ~8 A en pointe), rails +5V/VIN/GND en
+   **1,2 mm**, signaux 0,4 mm. DRC KiCad 8 : 0 violation, 0 non-connecté ; Gerbers
+   dans `exports/`. **Le 230 V reste interdit sur cette carte** (isolement non prévu :
+   plans de masse proches des contacts, pas de fentes ni de zone secteur dédiée) —
+   la sérigraphie le rappelle près des borniers. Pour du secteur, piloter des modules
+   relais/contacteurs 230 V déportés. NB : `generate.py` régénère un PCB **non
+   routé** — ne pas régénérer par-dessus `kicad/` sans vouloir perdre le routage.
 3. **Relais NO/NC** : mapping issu du couple symbole/empreinte officiel KiCad
    (SANYOU SRD Form C : bobine 2-5, COM 1, NO 3, NC 4). Contrôler à l'ohmmètre au
    premier montage avant de brancher une charge.

@@ -221,7 +221,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "ffp5cs-wroom-prod.kicad_pro",
+    "filename": "ffp5cs-wroom-prod-230v.kicad_pro",
     "version": 1
   },
   "net_settings": {
@@ -269,10 +269,10 @@
         "line_style": 0,
         "microvia_diameter": 0.3,
         "microvia_drill": 0.1,
-        "name": "Relais",
+        "name": "Mains",
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 2.0,
+        "track_width": 2.5,
         "via_diameter": 1.6,
         "via_drill": 0.8,
         "wire_width": 6
@@ -285,51 +285,51 @@
     "netclass_assignments": null,
     "netclass_patterns": [
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL1_COM"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL1_NO"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL1_NC"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL2_COM"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL2_NO"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL2_NC"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL3_COM"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL3_NO"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL3_NC"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL4_COM"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL4_NO"
       },
       {
-        "netclass": "Relais",
+        "netclass": "Mains",
         "pattern": "REL4_NC"
       },
       {
@@ -366,7 +366,7 @@
   },
   "sheets": [
     [
-      "8cd84e2d-c95e-5adb-846f-a905f327881a",
+      "bdc3ceab-d5f3-5c3a-89af-564c4cb456f7",
       "Racine"
     ]
   ],
