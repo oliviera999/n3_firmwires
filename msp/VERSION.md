@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.52** (définie dans `include/msp_config.h`).
+Version actuelle : **2.53** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.52** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.53 | 2026-07-08 | **Veille infinie sous seuil batterie télécommandable (identique n3pp).** Nouvel interrupteur serveur (GPIO virtuel **112**, `VeilleInfinie`, défaut `1` = comportement historique) lu dans `variablestoesp()` : quand il vaut `0`, l'ESP **n'entre plus** en veille infinie (sommeil GPIO-only `sleepSeconds=0`) sous `SeuilPontDiv` et retombe sur le sommeil timer normal (`FreqWakeUp`) dans `sommeil()`. L'alerte batterie faible reste émise (arbitrée serveur/failover, découplée de l'interrupteur). Valeur echo-back au POST (`VeilleInfinie`). Défaut fail-safe : si le serveur est injoignable, la protection reste active. Piloté depuis l'interface de contrôle station météo (n3_serveur, section « Énergie »). |
 | 2.52 | 2026-07-07 | **Phase 3 arbitrage mails — ESP en relais (identique n3pp).** Flag RTC `postOkThisWake` sur le résultat de `n3DataPost` (auparavant ignoré, `msp_network.cpp`). POST OK → le serveur est l'émetteur primaire de l'alerte **batterie** (seule alerte partagée msp) : l'ESP se tait (la protection sommeil reste inconditionnelle). POST échoué → failover anti-congestion : plafond P1/P2, SMTP seulement si WiFi connecté, budget RTC 8 mails/épisode, rapport réseau P4 reporté. Kill-switch GPIO 101 inchangé. |
 | 2.51 | 2026-07-07 | **Phase 0 arbitrage mails — latch anti-spam sur livraison SMTP confirmée** (cf. `n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md`). `sendEmailNotification()` retourne un booléen de succès (true = livré SMTP ou volontairement filtré par le mode ; false = échec d'envoi) ; le flag batterie `s_mspBatteryMailSent` n'est latché que sur succès — un envoi échoué hors ligne est retenté au réveil suivant au lieu d'être perdu (`msp_automation.cpp`, ex-latch inconditionnel lignes 203-204). Aucun changement d'arbitrage. |
 | 2.50 | 2026-07-06 | **Rapport réseau périodique (P4/Diagnostic) — harmonisation avec n3pp.** Nouveau mail de diagnostic réseau envoyé tous les `N3_NETWORK_REPORT_INTERVAL_S` (6 h) : `mspAccumulateNetReportElapsedFromSleep()` cumule le temps écoulé à travers le deep sleep (`RTC_DATA_ATTR`) et `mspMaybeSendNetworkReportEmail()` envoie le rapport (stats POST/GET via `n3_data`, heap, RSSI, uptime, bootCount) avec sujet `[MSP1][P4]`. Filtré par le mode de notification (envoyé seulement en mode `full`/legacy `checked`), corps via `n3MailBuildNetReportBody` (lib `n3_mail`). msp exploitait la sévérité P1 (batterie) uniquement ; il couvre désormais aussi le diagnostic P4 comme n3pp. |

@@ -222,11 +222,19 @@ void automatismes() {
         emailPontDivSent = true;
       }
     }
-    EnregistrementHeureFlash();
-    N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
-    n3SleepConfigure(emergencySleep);
-    Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
-    n3SleepStart();
+    // Interrupteur serveur (cle 112) : la mise en veille infinie sous le seuil
+    // peut etre desactivee depuis l'interface de controle. Desactivee -> on ne
+    // s'endort PAS en mode urgence ici ; le sommeil timer normal (sommeil())
+    // reprend la main en fin de cycle. L'alerte batterie ci-dessus reste active.
+    if (VeilleInfinie) {
+      EnregistrementHeureFlash();
+      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
+      n3SleepConfigure(emergencySleep);
+      Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
+      n3SleepStart();
+    } else {
+      Serial.println("[SLEEP][TRACE] veille infinie DESACTIVEE (cle 112=0), batterie basse -> sommeil timer normal");
+    }
   } else {
     // Batterie revenue au-dessus du seuil : re-arme l'alerte (anti-spam a etat).
     emailPontDivSent = false;
@@ -311,7 +319,11 @@ void sommeil() {
                  " SeuilPontDiv=" + String(SeuilPontDiv));
   if (WakeUp == 0) {
 
-    if (PontDiv < SeuilPontDiv) {
+    if (PontDiv < SeuilPontDiv && !VeilleInfinie) {
+      Serial.println(String("[SLEEP][TRACE] veille infinie DESACTIVEE (cle 112=0) PontDiv=") + String(PontDiv) +
+                     " < SeuilPontDiv=" + String(SeuilPontDiv) + " -> sommeil timer normal");
+    }
+    if (PontDiv < SeuilPontDiv && VeilleInfinie) {
       Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv));
       // Phase 3 arbitrage : mail batterie seulement en failover (sinon serveur primaire).
