@@ -62,6 +62,10 @@ float humidAirExt;
 // --- Deep sleep ---
 bool WakeUp = 0;
 int FreqWakeUp = N3_DEFAULT_FREQ_WAKE_UP_S;  // Defaut deep sleep (s), surchargeable par GPIO 107.
+// Interrupteur veille infinie sous seuil batterie (override GPIO 112). Defaut 1
+// = comportement historique ; si le serveur est injoignable la protection reste
+// active (fail-safe batterie).
+bool VeilleInfinie = 1;
 
 // --- Batterie / pont diviseur ---
 int PontDiv;

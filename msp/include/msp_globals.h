@@ -52,6 +52,10 @@ extern float humidAirExt;
 // --- Deep sleep ---
 extern bool WakeUp;
 extern int FreqWakeUp;
+// Interrupteur serveur (GPIO virtuel 112) : autorise ou non la mise en veille
+// infinie (sommeil GPIO-only) quand la batterie passe sous SeuilPontDiv.
+// 1 = veille infinie active (comportement historique), 0 = desactivee.
+extern bool VeilleInfinie;
 
 // --- Batterie / pont diviseur ---
 extern int PontDiv;

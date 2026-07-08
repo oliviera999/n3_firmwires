@@ -41,6 +41,7 @@ void datatobdd() {
     {"TempEau",       String(temperatureSol)},
     {"PontDiv",       String(PontDiv)},
     {"WakeUp",        String(WakeUp)},
+    {"VeilleInfinie", String(VeilleInfinie)},
     {"SeuilSec",      String(SeuilSec)},
     {"FreqWakeUp",    String(FreqWakeUp)},
     {"SeuilPontDiv",  String(SeuilPontDiv)},
@@ -78,6 +79,7 @@ void datatobdd() {
       "&TempEau=" + String(temperatureSol) +
       "&PontDiv=" + String(PontDiv) +
       "&WakeUp=" + String(WakeUp) +
+      "&VeilleInfinie=" + String(VeilleInfinie) +
       "&SeuilSec=" + String(SeuilSec) +
       "&FreqWakeUp=" + String(FreqWakeUp) +
       "&SeuilPontDiv=" + String(SeuilPontDiv) +
@@ -208,14 +210,17 @@ void variablestoesp() {
       int parsedWakeUp = WakeUp ? 1 : 0;
       int parsedFreqWakeUp = FreqWakeUp;
       int parsedServoModeAuto = servoModeAuto ? 1 : 0;
+      int parsedVeilleInfinie = VeilleInfinie ? 1 : 0;
       bool hasResetMode = tryReadIntByKey(myObject, "110", &parsedResetMode);
       bool hasWakeUp = tryReadIntByKey(myObject, "106", &parsedWakeUp);
       bool hasFreqWakeUp = tryReadIntByKey(myObject, "107", &parsedFreqWakeUp);
       bool hasServoModeAuto = tryReadIntByKey(myObject, "111", &parsedServoModeAuto);
+      bool hasVeilleInfinie = tryReadIntByKey(myObject, "112", &parsedVeilleInfinie);
       String raw110 = readStringByKey(myObject, "110", "<absent>");
       String raw106 = readStringByKey(myObject, "106", "<absent>");
       String raw107 = readStringByKey(myObject, "107", "<absent>");
       String raw111 = readStringByKey(myObject, "111", "<absent>");
+      String raw112 = readStringByKey(myObject, "112", "<absent>");
 
       if (!hasResetMode) {
         Serial.println(String("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=") + raw110 +
@@ -248,6 +253,13 @@ void variablestoesp() {
         servoModeAuto = (parsedServoModeAuto != 0);
       }
 
+      if (!hasVeilleInfinie) {
+        Serial.println(String("[SERVER][GET][WARN] Cle 112 absente/invalide (raw=") + raw112 +
+                       "), conservation=" + String(VeilleInfinie ? 1 : 0));
+      } else {
+        VeilleInfinie = (parsedVeilleInfinie != 0);
+      }
+
       inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
       enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
       SeuilSec = readIntByKey(myObject, "102", SeuilSec);
@@ -270,10 +282,12 @@ void variablestoesp() {
       }
       Serial.println(String("[SERVER][GET][APPLY] 110:") + raw110 + "=>" + String(resetMode ? 1 : 0) +
                      " 106:" + raw106 + "=>" + String(WakeUp ? 1 : 0) + " 107:" + raw107 + "=>" +
-                     String(FreqWakeUp) + " 111:" + raw111 + "=>" + String(servoModeAuto ? 1 : 0));
+                     String(FreqWakeUp) + " 111:" + raw111 + "=>" + String(servoModeAuto ? 1 : 0) +
+                     " 112:" + raw112 + "=>" + String(VeilleInfinie ? 1 : 0));
       Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
                      " wakeUp=" + String(WakeUp ? 1 : 0) + " sleep=" + String(FreqWakeUp) +
-                     " servoModeAuto=" + String(servoModeAuto ? 1 : 0));
+                     " servoModeAuto=" + String(servoModeAuto ? 1 : 0) +
+                     " veilleInfinie=" + String(VeilleInfinie ? 1 : 0));
   }
   if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }

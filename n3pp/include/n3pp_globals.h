@@ -22,6 +22,10 @@ extern bool WakeUp;
 extern int FreqWakeUp;
 extern bool ArrosageManu;
 extern bool resetMode;
+// Interrupteur serveur (GPIO virtuel 112) : autorise ou non la mise en veille
+// infinie (sommeil GPIO-only) quand la batterie passe sous SeuilPontDiv.
+// 1 = veille infinie active (comportement historique), 0 = desactivee.
+extern bool VeilleInfinie;
 
 extern float temperatureAir;
 extern float h;
