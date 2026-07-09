@@ -53,6 +53,13 @@ Ces pièges commandent le découpage des lots.
 | **`N3NetStats` non thread-safe** | `s_stats` statique sans mutex (`n3_net_stats.cpp:26`) | Brancher `n3NetStatsRecordPost()` depuis les tâches async ffp5cs = **data race** (RMW `++` non atomiques) | Enregistrer **sous** `s_httpMutex` (déjà partagé POST/GET) **ou** ajouter un lock interne à `n3_net_stats` |
 | **`String` dans le chemin chaud** | helper HMAC : `n3_data.cpp:131` utilise `String` ; ffp5cs (`hmac_sign.cpp:69-79`) l'évite (DRAM ~99,9 %) | Remonter la variante `String` régresserait la DRAM ffp5cs | Le helper partagé **doit** être la version mbedtls incrémentale **sans `String`** |
 
+> **Mise à jour (uploadphotosserver)** : l'assemblage HMAC canonique
+> `timestamp\n nonce\n body` existe en fait en **3 implémentations indépendantes** —
+> `shared/n3_data.cpp:124-138`, `ffp5cs/hmac_sign.cpp:45-91`, et
+> `uploadphotosserver/camera_uploader.cpp:44-67` (`cameraUploadAddSignatureHeaders`,
+> qui signe en plus un **digest d'`api_key`** car le corps multipart streamé n'est
+> pas signable). Le futur `computeHmacHex` doit couvrir ce cas « digest d'api_key ».
+
 **Correction factuelle** : `n3_hmac` n'est **pas** une lib « pure » au niveau unité
 de traduction — `n3_hmac.h` inclut `<Arduino.h>` et `n3_hmac.cpp` inclut
 `<HTTPClient.h>`. Seule la fonction `n3HmacSha256` est pure. Pour que ffp5cs
@@ -70,12 +77,35 @@ dans shared (à compléter du helper `n3TimeSyncBrokenDown`), pas une création.
 |---|---|---|
 | **n3pp** | mono-boucle → deep sleep | Large : `n3_wifi`, `n3_data`, `n3_mail`/`n3_notify`, `n3_outputs_json`, `n3_battery`, `n3_analog_sensors`, `n3_time`, `n3_sleep`, `n3_display`, `n3_ota` |
 | **msp** | mono-boucle → deep sleep | Idem n3pp (quasi-jumeau) |
-| **ffp5cs** | FreeRTOS multi-tâches, light sleep | **Très partiel** : seulement `n3_notify` (taxonomie sévérité), `n3_mail` (session SMTP), `n3_analog_sensors` (luminosité). Tout le reste réimplémenté. |
+| **uploadphotosserver** | mono-boucle → deep sleep (réveil timer, CAM) | **Le plus large et le plus discipliné** : `n3_wifi`, `n3_data`, `n3_hmac`, `n3_time`, `n3_ota` (**multi-cible déjà consommé**), `n3_mail`/`n3_notify`. **En avance** sur n3pp/msp : adopte déjà `n3PrintWakeupReason`. |
+| **ffp5cs** | FreeRTOS multi-tâches, light sleep | **Très partiel** : seulement `n3_notify` (taxonomie sévérité), `n3_mail` (session SMTP), `n3_analog_sensors` (luminosité). Tout le reste réimplémenté (par choix d'archi async). |
 
-**Observation clé** : msp/n3pp sont en **retrait**, pas en avance. Ils sont les
-**consommateurs** naturels des briques que ffp5cs a déjà mûries (défaillance
-capteur, OTA multi-cible, throttle, anti-rejeu). Il n'y a quasiment rien à
-remonter *depuis* msp/n3pp — leur problème est la **duplication mutuelle**.
+**Deux cohortes, pas un continuum.** La famille se scinde par **modèle
+d'exécution**, ce qui commande ce qui est mutualisable :
+
+- **Cohorte deep-sleep** — n3pp, msp, **uploadphotosserver**, poissonglouton :
+  squelette de cycle **identique** (`réveil → wifi → temps → config distante →
+  capteurs/capture → POST → OTA → mail → deep sleep`), état en `RTC_DATA_ATTR`,
+  harnais OTA périodique **triplé** (n3pp/msp/upload), sondage de commandes
+  distantes. **C'est le vrai terrain du framework `n3_app`.**
+- **Cohorte FreeRTOS** — ffp5cs seul : async, mutex TLS, files SD/NVS, light
+  sleep. Il **contribue vers le haut** (logique pure, primitives, robustesse) mais
+  **ne rejoint pas** `n3_app` (paradigme incompatible).
+
+**Observation clé, révisée.** Le « meilleur » n'est pas monopolisé par ffp5cs :
+- ffp5cs domine la **logique pure**, la **robustesse capteur**, l'**OTA
+  multi-artefacts**, la **sécurité** (throttle, anti-rejeu).
+- **uploadphotosserver** domine l'**offline-first deep-sleep** : upload multipart
+  **en streaming** (zéro malloc du corps), **file SD/NVS peek-commit** (aucune
+  donnée perdue), **batching/pacing de drain** (429-aware), **retry mail persisté
+  RTC**, **TZ POSIX inconditionnel**. Briques **absentes de shared**.
+- n3pp est le meilleur *modèle de référence* du cycle deep-sleep classique (capteur
+  + batterie + OLED), msp en est le jumeau à harmoniser.
+
+Le core de famille se construit donc en **prenant le meilleur de chaque** :
+primitives & pur ← ffp5cs ; offline-first & upload ← uploadphotosserver ; squelette
+deep-sleep ← n3pp. Voir la **Partie II** pour la matrice « meilleur-de-la-famille »
+et le plan révisé.
 
 ---
 
@@ -422,3 +452,144 @@ où chaque firmware ne fournit que ses callbacks (`readSensors`, `buildPayload`,
 3. **Couche 2** (robustesse capteurs) — élève msp/n3pp/pgl au niveau ffp5cs.
 4. **Couche 3** (mail notify, OTA UI, OTA multi-cible) — orchestration paramétrée.
 5. *(Ensuite seulement)* `n3_log`, puis — après harmonisation des divergences — l'étoile polaire `n3_app`.
+
+---
+
+# Partie II — Plan consolidé de famille (révisé, 4 firmwares + veille externe)
+
+Cette partie **révise et supersède** la feuille de route ci-dessus après
+intégration de `uploadphotosserver` et d'une **veille des pratiques éprouvées**
+(ESPHome, Tasmota, docs Espressif/ESP-IDF, ArduinoJson). Principe : **prendre le
+meilleur de chaque firmware** pour un socle sain, fonctionnel, robuste.
+
+## II.1 — Inspirations externes (valident le socle, révèlent 2 manques)
+
+La veille **valide** les libs existantes (`n3_wifi` scan RSSI, `n3_hmac` mbedTLS,
+`n3_ota` sha256+ECDSA, `n3_sleep`, `n3_data`) et confirme les principes déjà
+appliqués (zéro `String` en chemin chaud, ArduinoJson local/filtré, état RTC).
+Elle apporte des patterns actionnables et pointe **deux manques du core** :
+
+| Source | Pratique retenue | Impact sur le core |
+|---|---|---|
+| ESPHome (`Component`/`PollingComponent`, `setup()`→`update()` cadencé, `setup_priority`, `loop()` non bloquant) | Contrat de cycle de vie à callbacks pour `n3_app` | Structure `n3_app` (voir II.4) |
+| Tasmota (`Xsns<ID>(callback_id)` : 1 callback + enum d'étape) | Dispatch capteurs léger sans vtable | Modèle d'itération capteurs de `n3_app` |
+| arduino-esp32 `WiFi.onEvent()` | Reconnexion **événementielle** (pas de polling `WiFi.status()`) | Option future `n3_wifi` (cohorte FreeRTOS surtout) |
+| Backoff exponentiel **borné + jitter** (AWS/ClearBlade) | `min(base·2^n + rand, plafond)`, reset au succès | `n3_data` / file offline / reconnexion |
+| ESP-IDF OTA rollback (`esp_ota_mark_app_valid_cancel_rollback`, `IMG_PENDING_VERIFY`) | **Validation au 1er boot + rollback auto** | **MANQUE 1** → enrichir `n3_ota` |
+| store-and-forward MQTT / EMS-ESP32 | File offline plafonnée + drop-oldest + watchdog offline | **MANQUE 2** → nouvelle lib `n3_store_forward` |
+| ESP-IDF `esp_log` / `CORE_DEBUG_LEVEL` | Niveaux + tag/module, coût réglé au build | Cible de `n3_log` (mapper sur `esp_log`, pas réinventer) |
+| Deep sleep : `RTC_NOINIT_ATTR` + **magic-number** | Valider l'état RTC avant de s'y fier | Durcir tous les états `RTC_DATA_ATTR` de la cohorte |
+| Espressif brownout / inrush | Condensateur, `WiFi.setTxPower`, sérialiser radio↔capteurs | Doc `n3_app` (déjà vécu par uploadphoto) |
+
+> **Les deux manques (file offline + rollback OTA) sont précisément ce que la
+> famille a déjà partiellement résolu en interne** : uploadphotosserver a la file
+> offline (SD/NVS peek-commit), et le rollback est le seul angle mort OTA commun.
+> La veille ne demande donc pas d'importer du code externe, mais de **remonter
+> l'existant maison** + ajouter le rollback.
+
+## II.2 — Matrice « meilleur de la famille » par préoccupation
+
+Pour chaque préoccupation du core : qui a la **meilleure** implémentation
+aujourd'hui (la référence à promouvoir), et le sens du mouvement.
+
+| Préoccupation | Meilleur actuel | Pourquoi | Mouvement vers le core |
+|---|---|---|---|
+| **Logique pure** (epoch, drift, sleep-calc, reset, uptime, throttle) | **ffp5cs** (headers purs testés) | Déjà extraits, 0 dépendance | Remonter → `n3_common`/`n3_time` (Couche 0) |
+| **WiFi scan/RSSI** | **shared `n3_wifi`** (+ superset AP/captive ffp5cs gardé) | Déjà mutualisé ; upload ajoute `wifiRadioResetForWake` (spécifique CAM) | Tous **consomment** `n3_wifi` ; garder les surcouches |
+| **HMAC canonique** | **ffp5cs** (`hmac_sign`, mbedtls sans `String`) | Sans heap ; nonce aléatoire (anti-rejeu) | Promouvoir → lib dédiée sans HTTPClient ; **3** sites la consomment (+ variante digest api_key d'upload) |
+| **POST données URL-encoded** | **shared `n3_data`** | Déjà commun (+ HMAC + stats) | Consommé par n3pp/msp/upload |
+| **Upload gros binaire (multipart streaming)** | **uploadphotosserver** (`MultipartCameraStream/FileStream`) | Poste `head+JPEG+tail` **sans malloc du corps**, chunké SD | Promouvoir → **nouvelle brique `n3_upload`** |
+| **File offline / store-and-forward** | **uploadphotosserver** (SD/NVS peek-commit) + ffp5cs (`web_client_queue` NVS) | Aucune donnée perdue, deep-sleep-native, **numéro non brûlé** sur échec | Promouvoir → **nouvelle lib `n3_store_forward`** (comble MANQUE 2) |
+| **Robustesse capteur (état inter-lecture)** | **ffp5cs** (`sensor_failure_manager`, `reading_fallback`) | Machine d'état désactivation/réactivation | Remonter → `n3_analog_sensors` (Couche 2) |
+| **Mail : cœur SMTP** | **shared `n3_mail`** | Session + `n3MailBuild*Body` + `n3Notif*` | Déjà commun |
+| **Mail : orchestration failover** | **uploadphotosserver** (retry persisté **RTC** + cap piloté par `serverExchangeOk`) | Ne perd pas une alerte à travers le deep sleep | Modèle de référence pour `n3MailNotify` (Couche 3, enrichi) |
+| **Temps / NTP / RTC** | **shared `n3_time`** + **TZ POSIX inconditionnel d'upload** + drift ffp5cs | Corrige le piège newlib/IANA même hors WiFi | `n3_time` + adopter le pattern TZ + `clock_decision` |
+| **OTA vérif (sha256+ECDSA)** | **shared `n3_ota`** | Déjà commun et aligné ESP-IDF | Base |
+| **OTA multi-artefacts (`env×modèle`)** | **ffp5cs** (`ota_artifact_select`) | Cascade de fallback | Remonter → `n3_ota` |
+| **OTA rollback / 1er boot** | **personne** | Angle mort commun | **Ajouter** (veille, MANQUE 1) → `n3_ota` |
+| **Harnais OTA périodique (timer 2 h RTC + UI)** | **n3pp** (référence) = msp = upload (**triplé**) | Verbatim sur 3 firmwares deep-sleep | Promouvoir → `n3_ota_ui` (Couche 3) |
+| **Deep sleep** | **shared `n3_sleep`** (à étendre timer-only) | upload/n3pp/msp réimplémentent le cœur timer | Étendre `n3_sleep` (mode timer sans GPIO) + magic-number |
+| **Wakeup reason** | **shared `n3_time:104`** (upload le consomme déjà !) | upload **en avance** ; n3pp/msp en retard | n3pp/msp **adoptent** l'existant (A2) |
+| **Stats réseau** | **shared `n3_net_stats`** | Riche (durée, RSSI, near-timeout) | Brancher partout — **y compris la voie upload photo** (angle mort) ; thread-safe pour ffp5cs |
+| **Logging** | **ffp5cs** (`log.h` à niveaux) | n3pp/msp/upload = `Serial.print` bruts | Promouvoir → `n3_log` mappé `esp_log` |
+| **Config : parseur de clés serveur** | **chacun le sien** | **Collisions** (n3pp 104/105 ↔ msp servo ; upload 102-106 propres) | **NE PAS mutualiser** le parseur ; seules les clés communes 100/101/103/106/107/110/112 (hors upload) |
+| **Cycle de vie applicatif** | **n3pp** (le plus complet de la cohorte) | Squelette deep-sleep de référence | Étoile polaire `n3_app` (cohorte deep-sleep) |
+
+## II.3 — Le core cible en 2 anneaux
+
+```
+        ┌──────────────────────────────────────────────────────┐
+        │   ANNEAU 1 — Primitives universelles (les 4 + pgl)    │
+        │   pur : epoch/clock/sleep-calc/reset/uptime/throttle  │
+        │   sécu : n3_hmac (canonique sans String)              │
+        │   data : n3_data + n3_net_stats + n3_upload           │
+        │   robustesse : n3_store_forward · sensor_failure_mgr  │
+        │   plateforme : n3_wifi · n3_time · n3_sleep · n3_ota  │
+        │                n3_mail/n3_notify · n3_display · n3_log │
+        └──────────────────────────────────────────────────────┘
+                              ▲ consommé par
+        ┌─────────────────────┴───────────┐   ┌──────────────────┐
+        │  ANNEAU 2 — n3_app (deep-sleep) │   │  ffp5cs (FreeRTOS)│
+        │  n3pp · msp · upload · pgl       │   │  garde son archi  │
+        │  cycle réveil→…→sleep à callbacks│   │  consomme Anneau 1│
+        └──────────────────────────────────┘   └──────────────────┘
+```
+
+**Anneau 1** = tout le monde (y compris ffp5cs) consomme. **Anneau 2** = le
+framework applicatif `n3_app`, réservé à la **cohorte deep-sleep** ; ffp5cs reste
+sur son ordonnancement FreeRTOS et ne consomme que l'Anneau 1.
+
+## II.4 — Nouvelles briques core (issues de la famille)
+
+1. **`n3_upload`** (source : uploadphotosserver) — POST multipart d'un binaire via
+   une classe `Stream` (head+corps+tail sans malloc du corps), lecture chunkée,
+   retry/backoff, conscience 429. Utile à tout envoi de gros blob (photo, log SD).
+2. **`n3_store_forward`** (sources : upload SD/NVS peek-commit + ffp5cs
+   `web_client_queue`) — file offline **durable** avec curseur, sémantique
+   **peek → commit** (aucun élément brûlé sur échec), plafond + drop-oldest,
+   pacing/budget-temps de drain. Comble le MANQUE 2 de la veille. Backend de
+   stockage **abstrait** (SD ou NVS) pour servir les deux cohortes.
+3. **`n3_ota` enrichi** — ajouter (a) `ota_artifact_select` multi-cible (ffp5cs),
+   (b) **rollback + validation au 1er boot** (veille, MANQUE 1 :
+   `esp_ota_mark_app_valid_cancel_rollback` après auto-test WiFi+serveur).
+4. **`n3_app`** (source : n3pp) — orchestrateur de cycle deep-sleep à callbacks,
+   façon ESPHome adapté au réveil-unique : le firmware fournit
+   `{onWake, readSensorsOrCapture, buildPayload, applyRemoteConfig, onSleep}` ; le
+   framework gère wifi/temps/POST/stats/OTA-périodique/mail/sleep. **Dépend** de
+   l'harmonisation préalable des divergences RISQUÉ (A6/A7/A8/A10).
+
+## II.5 — Plan révisé par lots (ordre = risque croissant)
+
+Chaque lot indique la **cohorte bénéficiaire** et le **niveau de risque** (repris
+de la vérification adversariale). Les lots 1-4 sont **sans risque de
+fonctionnement** ; les suivants exigent des préalables explicites.
+
+| Lot | Contenu | Source→Cible | Cohorte | Risque |
+|---|---|---|---|---|
+| **L1 — Socle pur** | epoch_util, clock_decision, sleep_decision, reset_reason, uptime_format, login_throttle | ffp5cs → `n3_common`/`n3_time` | Toutes | **Nul** |
+| **L2 — Primitives** | `computeHmacHex` (sans String, +digest api_key, nonce aléatoire) ; `n3DataSendHeartbeat` ; `n3TimeSyncBrokenDown` ; adoption `n3PrintWakeupReason` par n3pp/msp | ffp5cs+n3pp/msp → `n3_hmac`(dédiée)/`n3_data`/`n3_time` | Toutes | **Faible** |
+| **L3 — Robustesse capteurs** | sensor_failure_manager (retirer config.h), sensor_reading_fallback (renommer) | ffp5cs → `n3_analog_sensors` | Deep-sleep + ffp5cs | **Faible** |
+| **L4 — Offline-first & stats** | `n3_upload` (multipart streaming) ; `n3_store_forward` (peek-commit) ; brancher `n3_net_stats` **y compris voie upload** ; brancher ffp5cs **sous `s_httpMutex`** | upload+ffp5cs → nouvelles libs / `n3_data` | Toutes | **Faible** (ffp5cs : garde mutex) |
+| **L5 — Orchestration** | `n3MailNotify` (enrichi du retry-RTC d'upload) ; `n3_ota_ui` (harnais triplé) ; `ota_artifact_select` multi-cible ; **rollback OTA 1er boot** | famille → `n3_mail`/`n3_ota` | Deep-sleep surtout | **Faible/Modéré** (parité ArduinoJson v6/v7/toolchains) |
+| **L6 — Logging** | `n3_log` mappé `esp_log`, découplé de `config.h` ; migrer `Serial.print` firmware par firmware | ffp5cs → `n3_log` | Toutes | **Faible sémantique, gros volume** |
+| **L7 — Framework** | `n3_app` (cycle deep-sleep à callbacks) | n3pp → `n3_app` | Deep-sleep | **Élevé** — **préalable : harmoniser A6/A7/A8/A10** |
+
+**Hors périmètre (confirmé)** : `web_client`/`net_request_pool`/`ffp3_post_body`,
+`ota_manager` (téléchargement resumable), `power` (light sleep), `nvs_manager`,
+`wifi_manager` (surcouche AP/S3) de ffp5cs ; **parseurs de clés serveur** (collisions).
+
+## II.6 — Précautions ajoutées par cette révision
+
+- **Trois toolchains, pas deux** : WROOM pioarduino 3.3.x (n3pp/msp/ffp5cs-WROOM),
+  S3 espressif32 6.13.0 (ffp5cs-S3), **et esp32cam espressif32 6.13.0 2.0.x**
+  (uploadphoto). Toute brique de l'Anneau 1 doit compiler sous les **trois**
+  (piège `ESP32Servo`/ArduinoJson v6/v7).
+- **PSRAM** : ne jamais se fier à `psramFound()` (faux sur esp32cam) — utiliser
+  `heap_caps_get_total_size(MALLOC_CAP_SPIRAM)`. Toute lib supposant `psramFound()`
+  casserait la CAM.
+- **Budgets pile/DRAM hétérogènes** : ffp5cs WROOM ~99,9 % DRAM ; uploadphoto exige
+  `CONFIG_ARDUINO_LOOP_STACK_SIZE=32768` (OTA sha256 + TLS SMTP + framebuffer). Une
+  brique Anneau 1 doit rester frugale en pile **et** en heap (zéro `String` chaud).
+- **N3NetStats — angle mort upload** : la voie d'upload photo court-circuite
+  `n3DataPost` et **échappe aux stats** ; brancher `n3_upload` sur `n3_net_stats`
+  en même temps (L4).
