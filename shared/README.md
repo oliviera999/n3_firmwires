@@ -21,6 +21,7 @@ Chaque test inclut directement le `.cpp` testé avec un mock Arduino minimal
 HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
 - `n3_analog_sensors` (`test_analog`) : médiane, rejet d'outliers, moyenne, EMA, fallback, tensions batterie.
 - `n3_hmac` (`test_hmac`) : contrat du wrapper (formatage hex 64 car., garde-fou de taille, header `X-Signature`). La justesse crypto reste validée sur cible (vrai mbedtls).
+- `n3_tracker` (`test_tracker`) : suivi de pics de balayage, fusion pondérée avec validation, fenêtre fine, asservissement différentiel (zone morte, anti-oscillation, butée, divergence), gains d'égalisation LDR (calibration).
 
 Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 
@@ -39,6 +40,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 | [`n3_common`](n3_common/) | 1.4.1 | OTA HTTP distant avec vérif sha256 + ECDSA P-256 (`n3_ota`), constantes `n3_defaults.h`, parsing JSON outputs `n3_outputs_json` (factorisation 2026-05). | `bblanchon/ArduinoJson ^7.4.3`, `arduino-libraries/Arduino_JSON ^0.2.0` |
 | [`n3_sleep`](n3_sleep/) | 1.0.0 | Configuration et démarrage du deep sleep ESP32 (timer + GPIO ext0). | — |
 | [`n3_display`](n3_display/) | 1.0.1 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/Adafruit SSD1306` |
+| [`n3_tracker`](n3_tracker/) | 1.0.0 | Logique pure du tracker solaire msp (asservissement différentiel 2 LDR/axe, pics de balayage, fusion pondérée). Sans dépendance Arduino, testée en natif (`test_tracker`). | — |
 
 ## Intégration
 

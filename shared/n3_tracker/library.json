@@ -1,0 +1,14 @@
+{
+  "name": "n3_tracker",
+  "version": "1.0.0",
+  "description": "Logique pure du tracker solaire (msp) : asservissement différentiel 2 LDR/axe avec zone morte et anti-oscillation, suivi de pics de balayage, fusion pondérée des pics, fenêtre de balayage fin. Sans dépendance Arduino — testable en natif.",
+  "keywords": "esp32, solar, tracker, servo, ldr, differential",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "authors": [{ "name": "n3 IoT" }],
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*"
+}

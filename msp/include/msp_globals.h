@@ -22,14 +22,7 @@ extern OneWire oneWire;
 extern DallasTemperature sensors;
 extern float temperatureSol;
 
-// --- Luminosité (filtrage moyenne mobile) ---
-extern int readings1[numReadings];
-extern int readings2[numReadings];
-extern int readings3[numReadings];
-extern int readings4[numReadings];
-extern int readIndex;
-extern int total1, total2, total3, total4;
-extern int average1, average2, average3, average4;
+// --- Luminosité ---
 extern int photocellReadingA, photocellReadingB, photocellReadingC, photocellReadingD;
 extern int photocellReadingMoy;
 
@@ -40,6 +33,10 @@ extern int posLumMax1, posLumMax2, posLumMax3, posLumMax4;
 extern int AngleServoGD;
 extern int AngleServoHB;
 extern bool servoModeAuto;
+extern bool trackerModeSweep;   // clé serveur 113 : 1 = balayage classique, 0 = différentiel (défaut)
+extern int ldrCalibCommand;     // clé serveur 114 : 1 = calibrer les LDR, 2 = gains neutres (front)
+extern int rtcAngleServoGD;     // dernière position appliquée, persistée en RTC RAM (deep sleep)
+extern int rtcAngleServoHB;
 
 // --- DHT intérieur / extérieur ---
 extern DHT dhtint;
