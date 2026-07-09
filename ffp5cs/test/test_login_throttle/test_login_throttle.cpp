@@ -7,7 +7,7 @@
 // La logique est PURE et FAIL-SAFE : le temps est injecté (nowMs), aucune dépendance
 // matériel. On valide : pas de lockout sous le seuil, lockout après N échecs
 // rapprochés, expiration du lockout, reset sur succès, fenêtre glissante.
-#include "../../include/login_throttle.h"
+#include "n3_login_throttle.h"
 
 // Politique de test à petits nombres pour des bornes faciles à asserter :
 //   3 échecs dans une fenêtre de 1000 ms -> verrou de 5000 ms.

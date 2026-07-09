@@ -4,7 +4,7 @@
 // Tests de ResetReason (reset_reason.h), extrait de diagnostics.cpp (audit §3.8).
 // isCrash() pilote le logging de crash / alerting : la liste des causes « crash »
 // doit rester exacte. L'enum esp_reset_reason_t vient du mock test/unit/esp_system.h.
-#include "../../include/reset_reason.h"
+#include "n3_reset_reason.h"
 
 using namespace ResetReason;
 

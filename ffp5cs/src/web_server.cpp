@@ -36,7 +36,7 @@
 #include "app_tasks.h"
 #include "realtime_websocket.h"
 #include "asset_bundler.h"
-#include "login_throttle.h"  // anti-brute-force POST /api/login (logique pure testable)
+#include "n3_login_throttle.h"  // anti-brute-force POST /api/login (mutualisé shared/n3_common)
 
  
 extern Automatism g_autoCtrl;

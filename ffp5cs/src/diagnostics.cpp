@@ -1,5 +1,5 @@
 #include "diagnostics.h"
-#include "reset_reason.h"  // resetReasonToString/isCrash (extraits, testés nativement)
+#include "n3_reset_reason.h"  // resetReasonToString/isCrash (mutualisé shared/n3_common)
 #include "diagnostics_decision.h"  // parseIdlePercent + decideMinHeapSave (purs, testés nativement)
 #include "nvs_manager.h" // v11.106
 #include "nvs_keys.h"

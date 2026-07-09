@@ -1,6 +1,6 @@
 #include "power.h"
-#include "epoch_util.h"   // isValidEpoch/epochAbsDiff (extraits, testés nativement)
-#include "clock_decision.h"  // ClockDecision : plausibilité NTP + dérive PPM (purs, testés)
+#include "n3_epoch_util.h"   // isValidEpoch/epochAbsDiff (mutualisé shared/n3_time)
+#include "n3_clock_decision.h"  // ClockDecision : plausibilité NTP + dérive PPM (shared/n3_time)
 #include "nvs_manager.h"  // v11.107
 #include "nvs_keys.h"     // NVSKeys::System::RTC_EPOCH
 #include "tls_mutex.h"   // v11.149: Flag g_enteringLightSleep

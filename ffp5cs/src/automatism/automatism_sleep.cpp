@@ -1,5 +1,5 @@
 #include "automatism/automatism_sleep.h"
-#include "sleep_decision.h"  // décisions de sommeil pures (testées nativement, audit §3.8)
+#include "n3_sleep_decision.h"  // décisions de sommeil pures (mutualisé shared/n3_common)
 #include "automatism/sleep_blocking.h"  // C4: décision de blocage de la veille (pure, testée)
 #include "automatism.h"  // Pour accès aux méthodes de Automatism
 #include "app_tasks.h"

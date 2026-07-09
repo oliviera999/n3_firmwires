@@ -6,7 +6,7 @@
 // conversion d'une durée en millisecondes vers "Jd HH:MM:SS".
 // On vérifie aussi la PARITÉ avec une transcription du code inline d'origine
 // (brute-force sur de nombreuses durées).
-#include "../../include/uptime_format.h"
+#include "n3_uptime_format.h"
 
 #include <cstdio>
 #include <cstring>

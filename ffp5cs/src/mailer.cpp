@@ -12,7 +12,7 @@
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <time.h>
 #include "ffp5cs_fs.h"
-#include "uptime_format.h"  // Logique pure de formatage d'uptime (extraite, testée nativement)
+#include "n3_uptime_format.h"  // Logique pure de formatage d'uptime (mutualisé shared/n3_time)
 #include <esp_task_wdt.h> // Pour esp_task_wdt_reset() dans mailTask
 #include <esp_heap_caps.h>
 #include <cstring>

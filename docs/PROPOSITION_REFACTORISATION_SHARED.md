@@ -398,9 +398,18 @@ concurrence, zéro régression possible.
 > `ClockDecision`, `SleepDecision`, `ResetReason`, `UptimeFormat`, `LoginThrottle`)
 > pour que la migration ffp5cs ne soit qu'un changement de ligne `#include`. Les 6
 > suites Unity d'origine sont portées dans `shared/tests_native/test/` et branchées
-> en CI. **Aucun firmware ne les consomme encore** → zéro changement de
-> comportement ; la CI valide les copies shared. Migration des consommateurs
-> (ffp5cs dédup + adoption n3pp/msp/upload) = tranches suivantes, vérifiées une à une.
+> en CI. Migration des consommateurs (ffp5cs dédup + adoption n3pp/msp/upload) =
+> tranches suivantes, vérifiées une à une.
+>
+> **✅ L1b livré (ffp5cs dédupliqué)** : ffp5cs consomme désormais les 6 headers
+> shared et ses 6 copies locales (`ffp5cs/include/*.h`) sont **supprimées**.
+> Includes repointés dans `power.cpp`, `mailer.cpp`, `diagnostics.cpp`,
+> `automatism/automatism_sleep.cpp`, `web_server.cpp` ; les 6 tests natifs ffp5cs
+> repointés + `-I ../shared/n3_time/src` / `-I ../shared/n3_common/src` ajoutés à
+> `ffp5cs/platformio-native.ini`. Logique octet-identique (garde-fou : les suites
+> natives ffp5cs, inchangées, sont le test de non-régression en CI ; `--gc-sections`
+> élimine le `n3_time.cpp` non référencé nouvellement tiré). ffp5cs 15.12 → 15.13.
+> Reste : adoption par n3pp/msp/upload (L1c) là où c'est un gain.
 
 ## Couche 1 — Primitives data / sécurité / temps (risque **faible**)
 

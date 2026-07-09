@@ -3,7 +3,7 @@
 // Tests de SleepDecision (sleep_decision.h), extrait de automatism_sleep.cpp
 // (audit §3.8). Le délai de sommeil adaptatif pilote autonomie ET disponibilité :
 // un mauvais délai = batterie vidée ou réveils manqués.
-#include "../../include/sleep_decision.h"
+#include "n3_sleep_decision.h"
 
 using namespace SleepDecision;
 

@@ -5,7 +5,7 @@
 // POINT CRITIQUE : la validation se fait en comparaison NON SIGNÉE car
 // EPOCH_MAX_VALID (2050) > INT32_MAX. On vérifie les bornes ET les valeurs
 // au-delà de INT32_MAX (le bug que l'unsigned évite sur time_t 32-bit).
-#include "../../include/epoch_util.h"
+#include "n3_epoch_util.h"
 
 using namespace EpochUtil;
 

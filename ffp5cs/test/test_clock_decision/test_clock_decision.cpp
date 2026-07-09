@@ -9,7 +9,7 @@
 //   - plausibilité d'une heure NTP (année + saut d'epoch / proximité compile) ;
 //   - mesure de dérive RTC en PPM avec bornage.
 // Un bug ici fige une horloge fausse ou applique une correction excessive.
-#include "../../include/clock_decision.h"
+#include "n3_clock_decision.h"
 
 using namespace ClockDecision;
 

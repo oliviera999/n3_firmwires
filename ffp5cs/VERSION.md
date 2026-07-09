@@ -12,6 +12,31 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.13 - 2026-07-09
+
+### Mutualisation `shared/` : consommation des 6 briques de logique pure (L1b)
+
+Les 6 modules de logique pure extraits en headers autonomes (audit §3.8) sont désormais
+**mutualisés dans `shared/`** et consommés depuis là au lieu des copies locales. Logique
+**octet-identique** (seuls les commentaires d'en-tête diffèrent), namespaces conservés
+(`EpochUtil`, `ClockDecision`, `UptimeFormat`, `SleepDecision`, `ResetReason`, `LoginThrottle`) —
+aucun changement de comportement runtime.
+
+- **Includes repointés** : `power.cpp` (`n3_epoch_util.h`, `n3_clock_decision.h`), `mailer.cpp`
+  (`n3_uptime_format.h`), `diagnostics.cpp` (`n3_reset_reason.h`), `automatism/automatism_sleep.cpp`
+  (`n3_sleep_decision.h`), `web_server.cpp` (`n3_login_throttle.h`).
+- **Copies locales supprimées** : `include/{epoch_util,clock_decision,uptime_format,sleep_decision,reset_reason,login_throttle}.h`.
+  Ces headers vivent désormais dans `shared/n3_time/src/` (epoch/clock/uptime) et
+  `shared/n3_common/src/` (sleep/reset/login), tirés par le LDF via `lib_extra_dirs = ../shared`.
+- **Tests natifs** : les 6 suites (`test_epoch_util`, `test_clock_decision`, `test_uptime_format`,
+  `test_sleep_decision`, `test_reset_reason`, `test_login_throttle`) pointent vers les headers
+  shared (`platformio-native.ini` : ajout de `-I../shared/n3_time/src` et `-I../shared/n3_common/src`).
+  Double filet : `shared/tests_native/` possède des suites jumelles sur les mêmes copies.
+- **Sans impact runtime / flash notable** : `--gc-sections` élimine le code `n3_time.cpp` non
+  référencé nouvellement tiré. Refacto de mutualisation, pas de changement fonctionnel.
+
+---
+
 ## Version 15.12 - 2026-07-07
 
 ### Sémantique `sensor` : identité système « ffp3 » (au lieu du type de carte)
