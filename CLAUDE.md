@@ -110,6 +110,8 @@ lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware
 
 ## Inspiration — bonnes pratiques externes (encouragé, avec citation)
 
+Voir le skill [`external-inspiration`](.claude/skills/external-inspiration/SKILL.md).
+
 Tu es **libre de t'inspirer d'excellentes pratiques** décrites dans des dépôts GitHub connus et
 accessibles ou des bibliothèques éprouvées (ex. patterns arduino-esp32/ESP-IDF, libs Arduino
 reconnues, projets OTA/HMAC de référence…). C'est une source d'inspiration précieuse pour la
