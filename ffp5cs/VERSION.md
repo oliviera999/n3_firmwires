@@ -12,6 +12,18 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.15 - 2026-07-09
+
+### Env `wroom-beta-https` : pilote HTTPS banc (endpoints test + logs)
+
+Nouvel environnement PlatformIO pour valider le transport TLS métier **sans risque prod** :
+
+- Hérite de `wroom-beta` (`PROFILE_BETA`, `USE_TEST_ENDPOINTS`, série activée).
+- Ajoute `USE_HTTPS_ENDPOINTS` + `FFP5CS_WEBCLIENT_TLS_READY` (même `WebClient` que `wroom-prod-https`).
+- URLs : `https://iot.olution.info/post-data-test`, `/heartbeat-test`, `/api/outputs-test/state`.
+- `LOG_LEVEL=5` + `ENABLE_SENSOR_LOGS` pour diagnostic banc (monitor 5 min).
+- CI : compile-check `wroom-beta-https`.
+
 ## Version 15.14 - 2026-07-09
 
 ### `wroom-prod-https` : transport TLS WebClient (pilote isolé)
