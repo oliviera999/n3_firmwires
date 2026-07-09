@@ -106,3 +106,31 @@ lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware
 - ✅ Mutualiser le code dans `shared/` ; mettre à jour `firmwares.manifest.json` si la topologie change.
 - ✅ Bumper la version du firmware touché (+ `VERSION.md`).
 - ✅ Le sous-module `ffp5cs/ffp3` est géré à part (`git submodule update --init` au besoin).
+
+## Cohérence inter-PR — anti-conflit de merge (OBLIGATOIRE)
+
+> Le bump de version d'un firmware touche **toujours les mêmes lignes** (`FIRMWARE_VERSION` /
+> `PGL_FIRMWARE_VERSION` dans `include/*config.h`, ou `VERSION.md`, + parfois `firmwares.manifest.json`).
+> Deux PR ouvertes qui modifient **le même firmware** bumpent la même ligne → **conflit de merge garanti**.
+> Cette règle l'évite en imposant une vérification croisée à **chaque publication ou mise à jour d'une PR**.
+
+**À chaque fois que tu ouvres, mets à jour (push) ou réactualises une PR de ce dépôt :**
+
+1. **Lister les autres PR ouvertes** du dépôt (`mcp__github__list_pull_requests`, state `open`) et
+   repérer celles qui touchent les **sources de version** (voir `versionSource` de
+   `firmwares.manifest.json`) — surtout si elles concernent **le même firmware** que ta PR :
+   - `n3pp/include/n3pp_config.h`, `msp/include/msp_config.h`, `uploadphotosserver/include/config.h`,
+     `poissonglouton/include/config.h` (`FIRMWARE_VERSION` / `PGL_FIRMWARE_VERSION`)
+   - `ffp5cs/VERSION.md` et les `VERSION.md` des autres firmwares
+   - `firmwares.manifest.json` (topologie / cibles OTA)
+2. **Détecter les collisions** : même firmware bumpé vers le même numéro, même ligne de `VERSION.md`,
+   ou même clé modifiée dans `firmwares.manifest.json`.
+3. **Résoudre AVANT de (re)pousser** :
+   - Rebaser la branche sur le dernier `master` (`git fetch origin master && git rebase origin/master`).
+   - Prendre le **numéro de version suivant encore libre** pour ce firmware (pas celui d'une autre PR
+     ouverte) et re-bumper via le skill [`bump-firmware-version`](.claude/skills/bump-firmware-version/SKILL.md).
+   - Ajouter l'entrée `VERSION.md` en **nouvelle ligne d'historique** (ne pas écraser celle d'une autre PR).
+4. **Ne fusionner qu'une PR versionnante par firmware à la fois** ; après un merge, rebaser/rebumper les autres.
+
+> 💡 Bumper la version **le plus tard possible** dans la vie d'une PR (juste avant merge) réduit
+> la fenêtre de conflit. Deux PR touchant des firmwares **différents** ne se marchent pas dessus.
