@@ -106,6 +106,25 @@ lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware
 - ✅ Mutualiser le code dans `shared/` ; mettre à jour `firmwares.manifest.json` si la topologie change.
 - ✅ Bumper la version du firmware touché (+ `VERSION.md`).
 - ✅ Le sous-module `ffp5cs/ffp3` est géré à part (`git submodule update --init` au besoin).
+- ✅ Libre de s'inspirer de dépôts GitHub connus / bibliothèques éprouvées — **en citant la source** (voir ci-dessous).
+
+## Inspiration — bonnes pratiques externes (encouragé, avec citation)
+
+Tu es **libre de t'inspirer d'excellentes pratiques** décrites dans des dépôts GitHub connus et
+accessibles ou des bibliothèques éprouvées (ex. patterns arduino-esp32/ESP-IDF, libs Arduino
+reconnues, projets OTA/HMAC de référence…). C'est une source d'inspiration précieuse pour la
+qualité, la robustesse et la sécurité du code embarqué.
+
+**Conditions obligatoires :**
+
+1. **Citer la source** dès que tu t'inspires d'un projet ou reprends une approche/du code : nom du
+   projet ou de la bibliothèque **+ lien** (et version/commit si pertinent). La citation va dans le
+   **message de commit / la description de PR**, et — si l'emprunt est localisé — en **commentaire de
+   code** au-dessus du passage concerné.
+2. **Respecter les licences** : ne pas copier-coller du code sous licence incompatible ; adapter/réécrire,
+   et mentionner licence + origine. En cas de doute sur la compatibilité, demander avant d'intégrer.
+3. **Adapter, ne pas plaquer** : rester cohérent avec les conventions du dépôt (libs `shared/`,
+   toolchain, style) plutôt que dupliquer un pattern externe tel quel.
 
 ## Cohérence inter-PR — anti-conflit de merge (OBLIGATOIRE)
 
