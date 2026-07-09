@@ -33,7 +33,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 | [`n3_battery`](n3_battery/) | 1.0.1 | Pont diviseur (délègue à `n3_analog_sensors`). | `n3_analog_sensors ^1.0.0` |
 | [`n3_wifi`](n3_wifi/) | 1.1.0 | Connexion WiFi multi-réseaux avec scan+RSSI+BSSID, callbacks. | — |
 | [`n3_http`](n3_http/) | 1.1.0 | **Déprécié** : GET/POST minimal HTTPClient avec timeout (`N3_HTTP_TIMEOUT_MS`). Préférer `n3_data`. | `n3_common ^1.3.0` |
-| [`n3_data`](n3_data/) | 1.2.0 | POST/GET URL-encoded, HMAC, timeout 5 s. Logs `[SERVER][POST/GET] Verdict` + stats `N3NetStatsSnapshot` pour rapports mail. | `n3_hmac`, `n3_common` |
+| [`n3_data`](n3_data/) | 1.2.2 | POST/GET URL-encoded, HMAC (X-Sig-* via `n3_hmac_canonical`, sans String), timeout 5 s. Logs `[SERVER][POST/GET] Verdict` + stats `N3NetStatsSnapshot` pour rapports mail. | `n3_hmac`, `n3_common` |
 | [`n3_hmac`](n3_hmac/) | 1.1.0 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. `n3_hmac_canonical` (mutualisé ffp5cs) : HMAC canonique `ts+"\n"+nonce+"\n"+body` **sans `String`** (chemin chaud) + `generateNonce`, pour les en-têtes `X-Sig-*`. | — |
 | [`n3_mail`](n3_mail/) | 1.1.0 | Envoi SMTP, debug body et rapport reseau periodique (`n3MailBuildNetReportBody`). | `n3_data`, `mobizt/ESP Mail Client` |
 | [`n3_time`](n3_time/) | 1.1.0 | Sauvegarde/restauration heure RTC en flash NVS, raison de réveil. Logique pure mutualisée (depuis ffp5cs) : `n3_epoch_util` (validation epoch anti-overflow 32-bit), `n3_clock_decision` (plausibilité NTP + dérive PPM), `n3_uptime_format`. | `fbiego/ESP32Time` |

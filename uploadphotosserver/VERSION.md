@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.62** (définie dans `include/config.h`).
+Version actuelle : **2.63** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.62** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.63 | 2026-07-09 | **Mutualisation HMAC (L2).** La signature du POST photo (`cameraUploadAddSignatureHeaders`) délègue désormais le calcul à la brique partagée `n3hmac::computeHmacHex` (`shared/n3_hmac/n3_hmac_canonical`, `n3_hmac` 1.1.0) au lieu de construire le message localement puis d'appeler `n3HmacSha256`. **Sans changement observable** : même condensé `HMAC(timestamp\n nonce\n api_key)`, mêmes en-têtes `X-Sig-*`, même nonce (epoch-compteur) — dé-duplication du calcul crypto uniquement. |
 | 2.62 | 2026-07-07 | **Phase 3 arbitrage mails — taxonomie graduée + failover critique-only.** La clé distante 103 devient un **mode gradué** `none/important/partial/full` (taxonomie `N3Severity`/`N3NotifMode` de `n3_mail` 1.3.0), rétro-compatible avec l'ancien booléen (`1`/`checked` → full ; `0`/`unchecked` → none). Chaque mail CAM porte une sévérité (sujet `[P n]`) : OTA-échec = P2, premier démarrage = P3, bascule jour/nuit = P4. Proxy « serveur OK » = GET config 200 + POST version 2xx ; en **failover** les mails sont plafonnés à P1/P2 (les P3/P4 restent en attente via leurs mécanismes d'état et repartent au retour en ligne). Pas de suppression quand le serveur est OK : les diagnostics CAM ne sont pas encore couverts côté serveur (règle d'ordonnancement du plan). |
 | 2.61 | 2026-07-07 | **Phase 0 arbitrage mails — alerte « OTA échec » non perdue** (cf. `n3_serveur/docs/ARCHITECTURE_MAILS_ARBITRAGE.md`). Si l'envoi SMTP du mail « OTA terminée (échec) » échoue dans `otaMailEndCallback`, l'alerte est mémorisée en RTC (`pendingOtaFailMail` + corps) et retentée aux réveils suivants quand le WiFi est disponible (budget borné à 5 essais, abandon loggué) — avant, un échec d'envoi perdait définitivement l'alerte au deep sleep. Aucun changement d'arbitrage. |
 | 2.60 | 2026-07-06 | **Test OTA** : publication distante `msp1` + `ffp3` (validation pipeline cam OTA). Inclut correctifs WiFi v2.58–2.59 (`n3_wifi` 1.2.5). |

@@ -10,6 +10,7 @@
 #include "config.h"
 #include "camera_upload.h"
 #include "n3_hmac.h"
+#include "n3_hmac_canonical.h"  // HMAC canonique mutualisé (ts+nonce+body, sans String)
 
 #if USE_SD
 #include "FS.h"
@@ -55,11 +56,11 @@ static void cameraUploadAddSignatureHeaders(HTTPClient& http, const CameraUpload
   char nonceBuf[32];
   snprintf(nonceBuf, sizeof(nonceBuf), "%lu-%lu",
            static_cast<unsigned long>(nowTs), static_cast<unsigned long>(++s_camSigCounter));
-  char signedMsg[128];
-  snprintf(signedMsg, sizeof(signedMsg), "%s\n%s\n%s",
-           tsBuf, nonceBuf, params.apiKey ? params.apiKey : "");
+  // Signe le condensé `timestamp\n nonce\n api_key` (corps multipart non signable
+  // en streaming). Même calcul que la lib partagée, sans construire de message.
   char sigHex[65];
-  if (n3HmacSha256(params.sigSecret, signedMsg, sigHex, sizeof(sigHex))) {
+  if (n3hmac::computeHmacHex(params.sigSecret, tsBuf, nonceBuf,
+                             params.apiKey ? params.apiKey : "", sigHex, sizeof(sigHex))) {
     http.addHeader("X-Sig-Timestamp", tsBuf);
     http.addHeader("X-Sig-Nonce", nonceBuf);
     http.addHeader("X-Sig-Hmac", sigHex);

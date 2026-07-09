@@ -16,6 +16,7 @@
 #include <unity.h>
 #include "n3_data.cpp"        // impl (WiFi.h / HTTPClient.h résolus via -I stubs)
 #include "n3_hmac.cpp"        // fournit n3HmacSha256/n3HmacSignRequest référencés par n3_data.cpp
+#include "n3_hmac_canonical.cpp"  // fournit n3hmac::computeHmacHex référencé par n3_data.cpp
 #include "n3_net_stats.cpp"   // fournit n3NetStatsRecordPost/Get référencés par n3_data.cpp
 
 void setUp() {}

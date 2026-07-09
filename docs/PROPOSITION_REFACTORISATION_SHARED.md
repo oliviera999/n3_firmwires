@@ -146,6 +146,15 @@ sont quasi identiques caractère pour caractère ; seule variabilité : titre OL
 URL OTA, `FIRMWARE_VERSION`, handle `display`. Les callbacks d'affichage OTA sont
 **verbatim**. ~130 lignes × 2 factorisables.
 
+> **✅ L2 (HMAC) livré** : brique partagée `shared/n3_hmac/n3_hmac_canonical.{h,cpp}`
+> (`namespace n3hmac`, `computeHmacHex` sans `String` + `generateNonce`) + test natif
+> `test_hmac_canonical` + stub `esp_random.h`. Les **3 implémentations indépendantes
+> sont dédupliquées** vers cette brique, **sans changement observable** (chaque
+> appelant garde son nonce) : `n3_data.cpp` (supprime la `String signedMsg` du chemin
+> chaud POST), `ffp5cs/hmac_sign.cpp` (délègue, `web_client.cpp` inchangé),
+> `uploadphotosserver/camera_uploader.cpp` (variante `body = api_key`). Bumps :
+> `n3_hmac 1.1.0`, `n3_data 1.2.2`, ffp5cs 15.13, upload 2.62 → 2.63.
+
 **A2 + `n3_time`.** Le bloc « resync des 6 globals `seconde…annee` depuis le RTC »
 est dupliqué **3 fois** (les deux `print_wakeup_reason` + `HeureSansWifi`).
 → candidat `n3TimeSyncBrokenDown(rtc, &s, &mi, &h, &j, &mo, &a)`.
@@ -588,7 +597,7 @@ fonctionnement** ; les suivants exigent des préalables explicites.
 | Lot | Contenu | Source→Cible | Cohorte | Risque |
 |---|---|---|---|---|
 | **L1 — Socle pur** ✅ *en cours* | epoch_util, clock_decision, sleep_decision, reset_reason, uptime_format, login_throttle | ffp5cs → `n3_common`/`n3_time` | Toutes | **Nul** |
-| **L2 — Primitives** | `computeHmacHex` (sans String, +digest api_key, nonce aléatoire) ; `n3DataSendHeartbeat` ; `n3TimeSyncBrokenDown` ; adoption `n3PrintWakeupReason` par n3pp/msp | ffp5cs+n3pp/msp → `n3_hmac`(dédiée)/`n3_data`/`n3_time` | Toutes | **Faible** |
+| **L2 — Primitives** — ✅ *HMAC fait* | ~~`computeHmacHex` (sans String, digest api_key)~~ ✅ ; `n3DataSendHeartbeat` ; `n3TimeSyncBrokenDown` ; adoption `n3PrintWakeupReason` par n3pp/msp | ffp5cs+n3pp/msp → `n3_hmac`(dédiée)/`n3_data`/`n3_time` | Toutes | **Faible** |
 | **L3 — Robustesse capteurs** | sensor_failure_manager (retirer config.h), sensor_reading_fallback (renommer) | ffp5cs → `n3_analog_sensors` | Deep-sleep + ffp5cs | **Faible** |
 | **L4 — Offline-first & stats** | `n3_upload` (multipart streaming) ; `n3_store_forward` (peek-commit) ; brancher `n3_net_stats` **y compris voie upload** ; brancher ffp5cs **sous `s_httpMutex`** | upload+ffp5cs → nouvelles libs / `n3_data` | Toutes | **Faible** (ffp5cs : garde mutex) |
 | **L5 — Orchestration** | `n3MailNotify` (enrichi du retry-RTC d'upload) ; `n3_ota_ui` (harnais triplé) ; `ota_artifact_select` multi-cible ; **rollback OTA 1er boot** | famille → `n3_mail`/`n3_ota` | Deep-sleep surtout | **Faible/Modéré** (parité ArduinoJson v6/v7/toolchains) |

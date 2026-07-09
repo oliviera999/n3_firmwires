@@ -35,6 +35,15 @@ aucun changement de comportement runtime.
 - **Sans impact runtime / flash notable** : `--gc-sections` élimine le code `n3_time.cpp` non
   référencé nouvellement tiré. Refacto de mutualisation, pas de changement fonctionnel.
 
+### Mutualisation HMAC (L2) : `hmac_sign` délègue à `shared/n3_hmac`
+
+`HmacSign::computeHmacHex` et `HmacSign::generateNonce` (`src/hmac_sign.cpp`) **délèguent** désormais
+à la brique canonique partagée `n3hmac::` (`shared/n3_hmac/n3_hmac_canonical`, `n3_hmac` 1.1.0) —
+même algorithme (`ts + "\n" + nonce + "\n" + body`, mbedtls incrémental sans String), constantes
+buffers alignées (64/65/16/17). `getSecret()`/`isEnabled()` restent locaux (couplage
+`Secrets::API_SIG_SECRET`). `web_client.cpp` inchangé. **Sans changement observable** : dé-duplication
+de l'implémentation crypto (auparavant l'une des 3 copies indépendantes du dépôt).
+
 ---
 
 ## Version 15.12 - 2026-07-07

@@ -9,6 +9,7 @@
 #include <WiFiClientSecure.h>
 #endif
 #include "n3_hmac.h"
+#include "n3_hmac_canonical.h"  // HMAC canonique sans String (chemin chaud POST)
 
 // Selectionne le type de client TCP selon le flag de build.
 //  - USE_HTTPS_ENDPOINTS non defini (DEFAUT) : WiFiClient (HTTP clair, inchange).
@@ -128,9 +129,11 @@ int n3DataPost(const N3PostConfig& config) {
     char nonceBuf[32];
     snprintf(nonceBuf, sizeof(nonceBuf), "%lu-%lu",
              config.currentEpochSeconds, (unsigned long)(++s_bodySigCounter));
-    String signedMsg = String(tsBuf2) + "\n" + nonceBuf + "\n" + body;
+    // HMAC canonique ts+"\n"+nonce+"\n"+body via la brique partagée (sans String,
+    // mbedtls incrémental) — supprime l'allocation heap du chemin chaud POST.
     char bodySigHex[65];
-    if (n3HmacSha256(config.sigSecret, signedMsg.c_str(), bodySigHex, sizeof(bodySigHex))) {
+    if (n3hmac::computeHmacHex(config.sigSecret, tsBuf2, nonceBuf, body.c_str(),
+                               bodySigHex, sizeof(bodySigHex))) {
       http.addHeader("X-Sig-Timestamp", tsBuf2);
       http.addHeader("X-Sig-Nonce", nonceBuf);
       http.addHeader("X-Sig-Hmac", bodySigHex);
