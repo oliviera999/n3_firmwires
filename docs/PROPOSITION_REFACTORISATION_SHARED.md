@@ -304,3 +304,121 @@ anti-spam batterie n3pp/msp. *Pas de mutualisation encore, juste l'alignement.*
   introduirait des `String`/allocations dans les chemins chauds de ffp5cs.
 - **Incrémental** : chaque lot est autonome et livrable seul ; commencer par le
   Lot 1 (gain immédiat, risque quasi nul) valide la démarche.
+
+---
+
+# Core architectural partagé — feuille de route **sûre**
+
+Objectif ciblé : bâtir un **socle commun** que tous les firmwares consomment, en
+**faisant remonter le meilleur de ffp5cs** (le plus mûr), puis de n3pp (2ᵉ plus
+mûr), pour **élever** msp / poissonglouton au même niveau. Cette section isole
+**strictement le sous-ensemble sans risque** : que des briques *pures* ou
+*verbatim*, à état non partagé, sans piège de fonctionnement.
+
+> Elle **exclut délibérément** tout ce qui a été classé RISQUÉ/Haut dans la passe
+> de vérification (A6 `HeureSansWifi`, A7 `PontDiv`, A8 `sommeil`, A10 clés
+> 104/105, B2 non gardé) et tout ce qui est « ne pas toucher » (web_client,
+> net_request_pool, ota_manager, power light-sleep, nvs_manager, wifi_manager).
+
+## Vue en couches du core
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Couche 3 — Orchestration (helpers paramétrés)               │  risque faible/modéré
+│  n3MailNotify · n3_ota_ui (harnais OTA+OLED) · ota multi-cible│
+├─────────────────────────────────────────────────────────────┤
+│  Couche 2 — Robustesse capteurs                              │  risque faible
+│  sensor_failure_manager · sensor_reading_fallback            │
+├─────────────────────────────────────────────────────────────┤
+│  Couche 1 — Primitives (data / sécurité / temps)            │  risque faible
+│  HMAC canonique (sans String) · n3DataSendHeartbeat ·        │
+│  n3TimeSyncBrokenDown · (n3PrintWakeupReason déjà présent)   │
+├─────────────────────────────────────────────────────────────┤
+│  Couche 0 — Logique pure (header-only, testable natif)      │  risque NUL
+│  epoch_util · clock_decision · sleep_decision · reset_reason │
+│  uptime_format · login_throttle                              │
+└─────────────────────────────────────────────────────────────┘
+   Transversal : n3_log (couche de log unifiée, cible à terme)
+```
+
+## Couche 0 — Logique pure (risque **nul**, à faire en premier)
+
+Toutes ces briques viennent de **ffp5cs**, sont **header-only**, sans dépendance
+Arduino/FreeRTOS/config, et **déjà extraites pour test natif** — la frontière
+propre est tracée par ffp5cs lui-même. Aucun état partagé → zéro risque de
+concurrence, zéro régression possible.
+
+| Brique (source ffp5cs) | Destination shared | Ce que gagnent n3pp/msp/pgl | Vérifié |
+|---|---|---|---|
+| `epoch_util.h` (`isValidEpoch` unsigned, `epochAbsDiff`) | `n3_time` | Validation epoch anti-overflow 32-bit avec **borne haute** (aujourd'hui `n3TimeHasPlausibleEpoch` n'a qu'une borne basse) | Pur `<ctime>` |
+| `clock_decision.h` (`isNtpEpochPlausible`, `computeDriftPpm`, `computeDriftSeconds`) | `n3_time` (avec `epoch_util`) | Détection de dérive d'horloge / plausibilité NTP | Pur `<cmath>/<ctime>` |
+| `sleep_decision.h` (`adaptiveSleepDelay`) | `n3_common` | Délai de sommeil adaptatif (nuit/erreurs/backoff, borné) | Pur `<algorithm>/<cstdint>` |
+| `reset_reason.h` (`resetReasonToString`, `isCrash`) | `n3_common` | Libellé + classification crash pour l'alerting mail | Pur (`esp_system.h`, mocké en natif) |
+| `uptime_format.h` (`formatUptime` "Jd HH:MM:SS") | `n3_time` / `n3_mail` | Uptime lisible dans les rapports mail | Pur `<cstdio>` |
+| `login_throttle.h` (`Throttle<Policy>`) | `n3_common` | Anti-brute-force fail-safe pour tout portail web | Template pur `<cstdint>` |
+
+**Action** : copier les headers, ajouter une suite Unity par brique dans
+`shared/tests_native/`, référencer depuis les firmwares. Rien à réécrire.
+
+## Couche 1 — Primitives data / sécurité / temps (risque **faible**)
+
+| Brique | Source | Destination | Contrainte de sécurité vérifiée |
+|---|---|---|---|
+| **HMAC canonique** `computeHmacHex(secret, ts, nonce, body)` + `generateNonce` | ffp5cs `hmac_sign` | **unité dédiée sans `HTTPClient`** (pas `n3_hmac` tel quel) | Variante **mbedtls sans `String`** ; nonce **aléatoire** ffp5cs ; dédoublonne aussi `n3_data.cpp:131` |
+| **`n3DataSendHeartbeat(...)`** | n3pp/msp (verbatim) | `n3_data` | Corps **octet-pour-octet identique** n3pp↔msp ; état 100 % en paramètres |
+| **`n3TimeSyncBrokenDown(rtc, &s,&mi,&h,&j,&mo,&a)`** | n3pp/msp | `n3_time` | Resync des 6 globals (dupliqué 3×) ; helper pur |
+| Adopter **`n3PrintWakeupReason`** (déjà dans `n3_time:104`) | shared existant | — | n3pp/msp cessent de réimplémenter `print_wakeup_reason` (langue de log en paramètre) |
+
+## Couche 2 — Robustesse capteurs (risque **faible**, fort apport)
+
+`n3_analog_sensors` fait aujourd'hui du filtrage *intra-lecture* mais n'a **aucune
+mémoire inter-lectures**. ffp5cs apporte l'état manquant :
+
+| Brique (source ffp5cs) | Destination | Apport | Réserve d'implémentation vérifiée |
+|---|---|---|---|
+| `sensor_failure_manager.h/.cpp` | `n3_analog_sensors` | Machine d'état : désactive un capteur mort, tente une réactivation espacée | **Retirer `config.h`** (sert juste à la macro de log) ; classe déjà 100 % paramétrée par constructeur |
+| `sensor_reading_fallback.h` | `n3_analog_sensors` | Cascade `current → dernier bon → fallback` | **Renommer** l'API `waterLevel` en neutre |
+
+Bénéfice direct : msp/n3pp remplacent leur fallback ad hoc **inférieur**
+(`msp_sensors.cpp:108-146` : simple log + constante) par une vraie gestion d'état.
+
+## Couche 3 — Orchestration paramétrée (risque **faible/modéré**)
+
+Ces helpers encapsulent une orchestration **verbatim** entre n3pp/msp ; le seul
+travail est de rendre paramétrable ce qui varie (préfixe projet, titre/URL OTA).
+
+| Brique | Source | Destination | Variabilité à paramétrer |
+|---|---|---|---|
+| **`n3MailNotify(project, severity, subject, msg, cfg, postOk, &budget)`** (A3) | n3pp/msp (verbatim sauf préfixe) | `n3_mail` | Préfixe projet uniquement |
+| **`n3_ota_ui`** — harnais OTA + OLED + timer 2 h, `N3OtaPeriodicConfig{title,prodUrl,testUrl,display,version}` (A4) | n3pp/msp (~130 lignes verbatim ×2) | `n3_common` | Titre OLED, URLs, version, handle display ; **encapsuler les buffers module-static dans un contexte** |
+| **OTA multi-artefacts** `ota_artifact_select.h` (cascade `env×modèle` + sha256/signature) | ffp5cs | `n3_ota` | Rétro-compatible (fallback legacy) ; **valider la parité ArduinoJson v6/v7** entre toolchains |
+
+## Couche transversale — Logging unifié (`n3_log`)
+
+ffp5cs a une **couche de log mûre** (`log.h` : niveaux `ERROR→VERBOSE`, timestamp,
+gating par `LOG_LEVEL`/`SERIAL_ENABLED`). n3pp/msp utilisent ~150 `Serial.print`
+bruts, non filtrables. Un `n3_log` (extrait de ffp5cs, **découplé de `config.h`** —
+niveau injecté par macro de build) donnerait à tous les firmwares un logging
+homogène et coupable en production.
+
+> **Statut** : cible de core légitime mais **chantier mécanique volumineux**
+> (migration des ~150 sites `Serial.print`) — faible risque *sémantique*, gros
+> volume. À planifier **après** les couches 0-2, firmware par firmware.
+
+## Étoile polaire — squelette applicatif (`n3_app`)
+
+n3pp et msp partagent un **squelette de cycle de vie identique** :
+`setup → wifi → time → sensors → POST → poll config → automation → mail → OTA →
+sleep`. À terme, ce squelette pourrait devenir un **framework applicatif partagé**
+où chaque firmware ne fournit que ses callbacks (`readSensors`, `buildPayload`,
+`applyConfig`). C'est la forme aboutie du « core architectural », mais elle
+**dépend de la résolution préalable** des divergences RISQUÉ (A6/A7/A8/A10) — donc
+**pas maintenant**. Les couches 0-2 sont les fondations qui y mènent sans risque.
+
+## Ordre d'exécution recommandé (100 % sûr d'abord)
+
+1. **Couche 0** (6 briques pures) — risque nul, bénéfice immédiat, valide le socle + les tests natifs.
+2. **Couche 1** (HMAC sans String, heartbeat, time helpers) — dédoublonnage sécurité/temps.
+3. **Couche 2** (robustesse capteurs) — élève msp/n3pp/pgl au niveau ffp5cs.
+4. **Couche 3** (mail notify, OTA UI, OTA multi-cible) — orchestration paramétrée.
+5. *(Ensuite seulement)* `n3_log`, puis — après harmonisation des divergences — l'étoile polaire `n3_app`.
