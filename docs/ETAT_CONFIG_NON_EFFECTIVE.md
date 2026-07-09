@@ -43,7 +43,7 @@ Légende : ✅ actif · ⚠️ implémenté mais conditionné · ❌ implément�
 | Élément | Statut | Note |
 |---|---|---|
 | Bump de version firmware | ⚠️ 100 % manuel (skill `bump-firmware-version`). `publish_ota.py` a un garde-fou (refuse une version ≤ déployée) mais **n'incrémente pas**. | Aucune Action de bump/tag automatique. |
-| `firmwares.manifest.json` (`pioEnvs`) | ⚠️ Reflète un sous-ensemble curé, pas tous les envs de `platformio.ini`. | ✅ **Corrigé partiellement** : ajout de `n3pp-https` / `msp-https` (envs canoniques listés dans `CLAUDE.md`). Les variantes expérimentales (S3, jc3248, pir, sleep, beta, tls) restent volontairement hors catalogue. |
+| `firmwares.manifest.json` (`pioEnvs`) | ⚠️ Reflète un sous-ensemble curé, pas tous les envs de `platformio.ini`. | Envs canoniques n3pp/msp : `esp32dev` / `esp32dev_test` (HTTPS inclus dans `esp32dev` depuis audit 2026-07). Les variantes expérimentales (S3, jc3248, pir, sleep, beta, tls) restent volontairement hors catalogue. |
 
 ## Ce qui ne peut PAS être activé sans intervention manuelle / décision
 
