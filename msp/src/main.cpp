@@ -31,14 +31,7 @@ OneWire oneWire(oneWireBus);
 DallasTemperature sensors(&oneWire);
 float temperatureSol;
 
-// --- Luminosité (filtrage moyenne mobile) ---
-int readings1[numReadings];
-int readings2[numReadings];
-int readings3[numReadings];
-int readings4[numReadings];
-int readIndex = 0;
-int total1 = 0, total2 = 0, total3 = 0, total4 = 0;
-int average1 = 0, average2 = 0, average3 = 0, average4 = 0;
+// --- Luminosité ---
 int photocellReadingA = 0, photocellReadingB = 0, photocellReadingC = 0, photocellReadingD = 0;
 int photocellReadingMoy = 0;
 
@@ -49,6 +42,14 @@ int posLumMax1 = 0, posLumMax2 = 0, posLumMax3 = 0, posLumMax4 = 0;
 int AngleServoGD;
 int AngleServoHB;
 bool servoModeAuto = true;
+bool trackerModeSweep = false;  // défaut : asservissement différentiel (audit tracker 2026-07)
+int ldrCalibCommand = 0;        // clé serveur 114 (calibration LDR), 0 = repos
+// Derniere position appliquee, persistee en RTC RAM : au reveil deep sleep on
+// repart de la position physique reelle au lieu du milieu de plage (-1 = cold
+// boot, invalide). Evite l'aller-retour inutile et rend l'asservissement
+// differentiel quasi instantane quand le soleil a peu bouge.
+RTC_DATA_ATTR int rtcAngleServoGD = -1;
+RTC_DATA_ATTR int rtcAngleServoHB = -1;
 
 // --- DHT intérieur / extérieur ---
 DHT dhtint(DHTPININT, DHTTYPEINT);
@@ -145,6 +146,13 @@ String outputsState;
 // le front montant du reset distant n'etait jamais observe (juste re-amorce).
 RTC_DATA_ATTR static bool s_resetEdgeInitialized = false;
 RTC_DATA_ATTR static bool s_lastResetModeState = false;
+// Calibration LDR distante (cle 114) : detection de front sur changement de
+// valeur, persistee en RTC (meme mecanique que le reset 110). La demande de
+// calibration (114=1) reste armee jusqu'a une execution reussie — il faut de
+// la lumiere, une demande recue de nuit est retentee au reveil suivant.
+RTC_DATA_ATTR static bool s_calibEdgeInitialized = false;
+RTC_DATA_ATTR static int s_lastCalibCommand = 0;
+RTC_DATA_ATTR static bool s_calibPending = false;
 static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
 RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
 static char s_otaCurrentVersion[16] = "";
@@ -334,12 +342,20 @@ void setup() {
 
   servogd.attach(SERVOGD);
   servohb.attach(SERVOHB);
-  // Position de repli sure (milieu de plage) en attendant la config distante
-  // ou le scan auto, pour eviter qu'un servo demarre dans une position aleatoire.
-  AngleServoGD = (minAngleServoGD + maxAngleServoGD) / 2;
-  AngleServoHB = (minAngleServoHB + maxAngleServoHB) / 2;
+  // Reprise de la derniere position (RTC RAM) apres un reveil deep sleep ;
+  // repli sur le milieu de plage en cold boot (valeur RTC invalide), pour
+  // eviter qu'un servo demarre dans une position aleatoire.
+  AngleServoGD = (rtcAngleServoGD >= minAngleServoGD && rtcAngleServoGD <= maxAngleServoGD)
+                     ? rtcAngleServoGD
+                     : (minAngleServoGD + maxAngleServoGD) / 2;
+  AngleServoHB = (rtcAngleServoHB >= minAngleServoHB && rtcAngleServoHB <= maxAngleServoHB)
+                     ? rtcAngleServoHB
+                     : (minAngleServoHB + maxAngleServoHB) / 2;
   servogd.write(AngleServoGD);
   servohb.write(AngleServoHB);
+  Serial.printf("[SERVO][INIT] angleGD=%d angleHB=%d (source=%s)\n", AngleServoGD, AngleServoHB,
+                (AngleServoGD == rtcAngleServoGD && AngleServoHB == rtcAngleServoHB) ? "rtc" : "repli_milieu");
+  mspTrackerLoadCalibration();
 
   pinMode(DHTPININT, INPUT);
   pinMode(DHTPINEXT, INPUT);
@@ -438,6 +454,29 @@ void loop() {
     }
   }
   s_lastResetModeState = resetRequested;
+
+  // Calibration LDR distante (cle 114) : 1 = calibrer (front), 2 = gains
+  // neutres (front). Le front est detecte sur changement de valeur ; pour
+  // relancer une calibration, repasser la cle a 0 puis a 1.
+  if (!s_calibEdgeInitialized) {
+    s_lastCalibCommand = ldrCalibCommand;
+    s_calibEdgeInitialized = true;
+    if (ldrCalibCommand != 0) {
+      Serial.printf("[SERVO][CALIB] seed cle 114=%d au premier poll (pas d'action)\n", ldrCalibCommand);
+    }
+  } else if (ldrCalibCommand != s_lastCalibCommand) {
+    if (ldrCalibCommand == 1) {
+      s_calibPending = true;
+      Serial.println("[SERVO][CALIB] demande de calibration recue (cle 114=1)");
+    } else if (ldrCalibCommand == 2) {
+      mspTrackerResetCalibration();
+      s_calibPending = false;
+    }
+    s_lastCalibCommand = ldrCalibCommand;
+  }
+  if (s_calibPending && mspTrackerCalibrate()) {
+    s_calibPending = false;
+  }
 
   LectureCapteurs();
 

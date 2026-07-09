@@ -6,3 +6,8 @@
 void LectureCapteurs();
 void batterie();
 void Light_val();
+
+// Calibration LDR (égalisation des sensibilités, clé serveur 114)
+void mspTrackerLoadCalibration();   // charge les gains NVS au boot
+bool mspTrackerCalibrate();         // balayage de référence + calcul des gains (false = à retenter)
+void mspTrackerResetCalibration();  // gains neutres + effacement NVS

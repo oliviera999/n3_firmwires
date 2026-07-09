@@ -69,7 +69,8 @@ En CI, ces fichiers sont provisionnés depuis les `.example` (placeholders).
 Code commun à n3pp / msp / ffp5cs, sous forme de modules PlatformIO (`library.json` + `src/`).
 **Réutiliser ces libs plutôt que dupliquer** : `n3_wifi` (scan RSSI multi-réseaux), `n3_data`
 (POST URL-encoded + HMAC, remplace `n3_http` déprécié), `n3_hmac` (HMAC-SHA256), `n3_mail` (SMTP),
-`n3_time`, `n3_sleep` (deep sleep), `n3_display` (OLED), `n3_analog_sensors`, `n3_battery`, et
+`n3_time`, `n3_sleep` (deep sleep), `n3_display` (OLED), `n3_analog_sensors`, `n3_battery`,
+`n3_tracker` (logique pure du tracker solaire msp, testée en natif), et
 `n3_common` (**OTA** `n3_ota` avec vérif **sha256 + ECDSA P-256**, `n3_defaults.h`, `n3_outputs_json`).
 
 ## Versionnage firmware — à faire à chaque modification
@@ -105,3 +106,52 @@ lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware
 - ✅ Mutualiser le code dans `shared/` ; mettre à jour `firmwares.manifest.json` si la topologie change.
 - ✅ Bumper la version du firmware touché (+ `VERSION.md`).
 - ✅ Le sous-module `ffp5cs/ffp3` est géré à part (`git submodule update --init` au besoin).
+- ✅ Libre de s'inspirer de dépôts GitHub connus / bibliothèques éprouvées — **en citant la source** (voir ci-dessous).
+
+## Inspiration — bonnes pratiques externes (encouragé, avec citation)
+
+Voir le skill [`external-inspiration`](.claude/skills/external-inspiration/SKILL.md).
+
+Tu es **libre de t'inspirer d'excellentes pratiques** décrites dans des dépôts GitHub connus et
+accessibles ou des bibliothèques éprouvées (ex. patterns arduino-esp32/ESP-IDF, libs Arduino
+reconnues, projets OTA/HMAC de référence…). C'est une source d'inspiration précieuse pour la
+qualité, la robustesse et la sécurité du code embarqué.
+
+**Conditions obligatoires :**
+
+1. **Citer la source** dès que tu t'inspires d'un projet ou reprends une approche/du code : nom du
+   projet ou de la bibliothèque **+ lien** (et version/commit si pertinent). La citation va dans le
+   **message de commit / la description de PR**, et — si l'emprunt est localisé — en **commentaire de
+   code** au-dessus du passage concerné.
+2. **Respecter les licences** : ne pas copier-coller du code sous licence incompatible ; adapter/réécrire,
+   et mentionner licence + origine. En cas de doute sur la compatibilité, demander avant d'intégrer.
+3. **Adapter, ne pas plaquer** : rester cohérent avec les conventions du dépôt (libs `shared/`,
+   toolchain, style) plutôt que dupliquer un pattern externe tel quel.
+
+## Cohérence inter-PR — anti-conflit de merge (OBLIGATOIRE)
+
+> Le bump de version d'un firmware touche **toujours les mêmes lignes** (`FIRMWARE_VERSION` /
+> `PGL_FIRMWARE_VERSION` dans `include/*config.h`, ou `VERSION.md`, + parfois `firmwares.manifest.json`).
+> Deux PR ouvertes qui modifient **le même firmware** bumpent la même ligne → **conflit de merge garanti**.
+> Cette règle l'évite en imposant une vérification croisée à **chaque publication ou mise à jour d'une PR**.
+
+**À chaque fois que tu ouvres, mets à jour (push) ou réactualises une PR de ce dépôt :**
+
+1. **Lister les autres PR ouvertes** du dépôt (`mcp__github__list_pull_requests`, state `open`) et
+   repérer celles qui touchent les **sources de version** (voir `versionSource` de
+   `firmwares.manifest.json`) — surtout si elles concernent **le même firmware** que ta PR :
+   - `n3pp/include/n3pp_config.h`, `msp/include/msp_config.h`, `uploadphotosserver/include/config.h`,
+     `poissonglouton/include/config.h` (`FIRMWARE_VERSION` / `PGL_FIRMWARE_VERSION`)
+   - `ffp5cs/VERSION.md` et les `VERSION.md` des autres firmwares
+   - `firmwares.manifest.json` (topologie / cibles OTA)
+2. **Détecter les collisions** : même firmware bumpé vers le même numéro, même ligne de `VERSION.md`,
+   ou même clé modifiée dans `firmwares.manifest.json`.
+3. **Résoudre AVANT de (re)pousser** :
+   - Rebaser la branche sur le dernier `master` (`git fetch origin master && git rebase origin/master`).
+   - Prendre le **numéro de version suivant encore libre** pour ce firmware (pas celui d'une autre PR
+     ouverte) et re-bumper via le skill [`bump-firmware-version`](.claude/skills/bump-firmware-version/SKILL.md).
+   - Ajouter l'entrée `VERSION.md` en **nouvelle ligne d'historique** (ne pas écraser celle d'une autre PR).
+4. **Ne fusionner qu'une PR versionnante par firmware à la fois** ; après un merge, rebaser/rebumper les autres.
+
+> 💡 Bumper la version **le plus tard possible** dans la vie d'une PR (juste avant merge) réduit
+> la fenêtre de conflit. Deux PR touchant des firmwares **différents** ne se marchent pas dessus.

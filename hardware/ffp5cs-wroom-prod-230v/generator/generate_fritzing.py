@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Génère un fichier Fritzing (.fzz) du câblage ffp5cs wroom-prod (vue breadboard).
+"""Génère un fichier Fritzing (.fzz) du câblage ffp5cs wroom-prod-230v (vue breadboard).
+
+Vue du câblage PÉRIPHÉRIQUES <-> DevKit de la carte porteuse 230V. Les charges
+230V ne figurent PAS ici : elles se câblent uniquement sur les borniers NC/COM/NO
+de la zone secteur isolée de la carte (voir README).
 
 Représente le câblage périphériques <-> ESP32 DevKit V1 (utile pour un montage
 au banc ou sur protoboard) avec les pièces de la bibliothèque core Fritzing :
@@ -141,6 +145,8 @@ CATALOG = {
     "hdr4": dict(moduleId=HDR.format(n=4), pins=header_pins(4)),
     "hdr3": dict(moduleId=HDR.format(n=3), pins=header_pins(3)),
     "hdr2": dict(moduleId=HDR.format(n=2), pins=header_pins(2)),
+    "hdr6": dict(moduleId=HDR.format(n=6), pins=header_pins(6)),
+    "hdr14": dict(moduleId=HDR.format(n=14), pins=header_pins(14)),
 }
 
 # --- instances : (nom, type, titre, x, y, propriétés) ------------------------
@@ -175,7 +181,9 @@ INSTANCES = [
     ("r_srv1", "res", "220 signal gros", 560, 300, {"resistance": "220"}),
     ("r_srv2", "res", "220 signal petits", 560, 380, {"resistance": "220"}),
     ("r_pd12", "res", "10k pull-down D12 (strapping)", 560, 340, {"resistance": "10k"}),
-    ("rel", "hdr4", "Vers relais actif-HAUT : D16 D18 D2 D15", 640, 470, {}),
+    ("rel", "hdr4", "Commandes relais INTERNES carte 230V : D16 D18 D2 D15 (charges sur borniers NC/COM/NO)", 640, 470, {}),
+    ("gpio", "hdr14", "Breakout J17 tous GPIO libres : 3V3 GND EN RX0 TX0 D5 D14 D17 D23 D25 D32 D35 D36 D39", 40, 640, {}),
+    ("alim", "hdr6", "Rail alim J20 : 5V 5V GND GND 3V3 3V3", 640, 540, {}),
 ]
 
 AIDX = {n: i for i, n in enumerate(DEVKIT_A)}
@@ -359,9 +367,9 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     fz = build()
     ET.fromstring(fz)  # auto-validation XML
-    out = OUT_DIR / "ffp5cs-wroom-prod-cablage.fzz"
+    out = OUT_DIR / "ffp5cs-wroom-prod-230v-cablage.fzz"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("ffp5cs-wroom-prod-cablage.fz", fz)
+        z.writestr("ffp5cs-wroom-prod-230v-cablage.fz", fz)
     print(f"OK: {out} ({len(INSTANCES)} pièces, {len(WIRES)} fils)")
 
 

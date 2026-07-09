@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Routage de la variante 230 V — pipeline reproductible.
+"""Routage de la carte 12/24 V — pipeline reproductible (dérivé de route_230v.py).
+
+Pas de zone secteur ici : freerouting route tout (GND compris, zones retirées
+du DSN), puis vias de couture, suppression d'îlots, reliefs thermiques, DRC.
 
 Étapes :
  1. Copie temporaire de la carte : nets secteur (REL*_COM/NO/NC) retirés des pads
@@ -14,7 +17,7 @@
     + contrôle géométrique indépendant en Python (distance min cuivre secteur
     <-> cuivre logique >= 3 mm).
 
-Usage : python3 route_230v.py [--jar /chemin/freerouting.jar]
+Usage : python3 route_lv.py [--jar /chemin/freerouting.jar]
 Prérequis : kicad-cli + module python pcbnew (KiCad 8), java, xvfb-run.
 """
 
@@ -32,13 +35,9 @@ import pcbnew
 
 HERE = Path(__file__).resolve().parent
 KICAD = HERE.parent / "kicad"
-BOARD_PATH = KICAD / "ffp5cs-wroom-prod-230v.kicad_pcb"
+BOARD_PATH = KICAD / "ffp5cs-wroom-prod.kicad_pcb"
 
-CHANNELS = [(1, 58.0), (2, 92.0), (3, 126.0), (4, 160.0)]  # (n, x centre relais)
-MAINS_NETS = {f"REL{n}_{c}" for n in range(1, 5) for c in ("COM", "NO", "NC")}
-# nets pré-routés à la main (retirés du DSN comme les nets secteur)
-HAND_NETS = MAINS_NETS
-MAINS_WIDTH_MM = 2.5
+HAND_NETS: set[str] = set()
 MIN_GAP_MM = 3.0
 
 FMM = pcbnew.FromMM
@@ -76,22 +75,13 @@ def export_logic_dsn(dsn_path: Path):
                 if pad.GetNetname() in HAND_NETS:
                     pad.SetNetCode(0)
                     n_removed += 1
-        # bande secteur + boîtes autour du pad/piste COM de chaque canal
-        mk_rule_area(b, 44, 40, 178, 74)
-        for _n, x in CHANNELS:
-            mk_rule_area(b, x - 4.6, 74, x + 4.6, 84)
         # bandes le long des bords : l'autorouteur doit respecter
         # l'edge clearance de 0.5 mm (le DSN ne la transmet pas)
-        bx0, by0, bx1, by1 = 40, 40, 206, 150
+        bx0, by0, bx1, by1 = 40, 45, 190, 145
         mk_rule_area(b, bx0, by0, bx1, by0 + 0.7)
         mk_rule_area(b, bx0, by1 - 0.7, bx1, by1)
         mk_rule_area(b, bx0, by0, bx0 + 0.7, by1)
         mk_rule_area(b, bx1 - 0.7, by0, bx1, by1)
-        # keepouts sur les fentes d'isolement (le DSN n'exporte pas les
-        # découpes internes : sans ça l'autorouteur les traverse/frôle)
-        import generate as g
-        for sx0, sy0, sx1, sy1 in g.SLOTS:
-            mk_rule_area(b, sx0 - 0.8, sy0 - 0.8, sx1 + 0.8, sy1 + 0.8)
         # retire les zones GND de la copie : freerouting doit router GND en
         # pistes réelles (sinon il se repose sur un plan idéal et le
         # remplissage réel laisse des pads GND dans des poches isolées)
@@ -111,34 +101,6 @@ def run_freerouting(jar: Path, dsn: Path, ses: Path):
     print(tail)
     if not ses.exists():
         sys.exit("freerouting n'a pas produit de .ses")
-
-
-def add_mains_tracks(b):
-    """Pistes secteur rectilignes. Bornier (pads y=50) : 1=NC 2=COM 3=NO.
-    Relais rot 90 en (x, 78) : COM (x,78), NO (x+6.05,63.85), NC (x-6,63.8)."""
-    nets = b.GetNetsByName()
-
-    def seg(x0, y0, x1, y1, netname):
-        t = pcbnew.PCB_TRACK(b)
-        t.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
-        t.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
-        t.SetWidth(FMM(MAINS_WIDTH_MM))
-        t.SetLayer(pcbnew.F_Cu)
-        t.SetNet(nets[netname])
-        b.Add(t)
-
-    for n, x in CHANNELS:
-        # COM : tout droit entre les broches bobine puis entre NO/NC
-        seg(x, 78, x, 50, f"REL{n}_COM")
-        # NO : contact haut-droit -> borne 3 (x+5.08)
-        seg(x + 6.05, 63.85, x + 6.05, 58, f"REL{n}_NO")
-        seg(x + 6.05, 58, x + 5.08, 54, f"REL{n}_NO")
-        seg(x + 5.08, 54, x + 5.08, 50, f"REL{n}_NO")
-        # NC : contact haut-gauche -> borne 1 (x-5.08)
-        seg(x - 6.0, 63.8, x - 6.0, 58, f"REL{n}_NC")
-        seg(x - 6.0, 58, x - 5.08, 54, f"REL{n}_NC")
-        seg(x - 5.08, 54, x - 5.08, 50, f"REL{n}_NC")
-    print("pistes secteur ajoutées :", 7 * len(CHANNELS))
 
 
 
@@ -198,29 +160,6 @@ def seg_dist(a, b_):
                pt_seg(bx0, by0, *a), pt_seg(bx1, by1, *a))
 
 
-def check_mains_gap(b) -> int:
-    items = copper_items(b)
-    mains = [i for i in items if i[0] in MAINS_NETS]
-    logic = [i for i in items if i[0] not in MAINS_NETS]
-    worst = []
-    for mn, mx0, my0, mx1, my1, mr in mains:
-        for ln, lx0, ly0, lx1, ly1, lr in logic:
-            # filtre grossier
-            if (min(lx0, lx1) - lr > max(mx0, mx1) + mr + MIN_GAP_MM or
-                    max(lx0, lx1) + lr < min(mx0, mx1) - mr - MIN_GAP_MM or
-                    min(ly0, ly1) - lr > max(my0, my1) + mr + MIN_GAP_MM or
-                    max(ly0, ly1) + lr < min(my0, my1) - mr - MIN_GAP_MM):
-                continue
-            d = seg_dist((mx0, my0, mx1, my1), (lx0, ly0, lx1, ly1)) - mr - lr
-            if d < MIN_GAP_MM:
-                worst.append((round(d, 2), mn, ln,
-                              round((mx0 + mx1) / 2, 1), round((my0 + my1) / 2, 1)))
-    worst.sort()
-    for d, mn, ln, x, y in worst[:20]:
-        print(f"  ECART {d} mm < {MIN_GAP_MM} : {mn} <-> {ln} vers ({x},{y})")
-    return len(worst)
-
-
 def add_stitching_vias(b):
     """Grille de vias GND : lie les deux plans de masse et résorbe les îlots
     créés par les faisceaux de pistes. Placement seulement là où c'est légal
@@ -229,11 +168,7 @@ def add_stitching_vias(b):
              in copper_items(b) if n != "GND"]
     nets = b.GetNetsByName()
     slots_margin = []
-    import generate as g
-    for sx0, sy0, sx1, sy1 in g.SLOTS:
-        slots_margin.append((sx0 - 1.2, sy0 - 1.2, sx1 + 1.2, sy1 + 1.2))
-    spots = [(x, y) for x in range(48, 175, 12) for y in range(90, 147, 10)]
-    spots += [(x, y) for x in (186, 198) for y in range(46, 147, 10)]
+    spots = [(x, y) for x in range(46, 187, 12) for y in range(50, 141, 10)]
     added = 0
     for x, y in spots:
         if any(sx0 <= x <= sx1 and sy0 <= y <= sy1 for sx0, sy0, sx1, sy1 in slots_margin):
@@ -322,8 +257,7 @@ def main():
 
     b = pcbnew.LoadBoard(str(BOARD_PATH))
     ok = pcbnew.ImportSpecctraSES(b, str(ses))
-    print("SES importé :", ok, "-", len(b.GetTracks()), "segments logiques")
-    add_mains_tracks(b)
+    print("SES importé :", ok, "-", len(b.GetTracks()), "segments")
     pcbnew.ZONE_FILLER(b).Fill(b.Zones())
     pcbnew.SaveBoard(str(BOARD_PATH), b)
 
@@ -338,11 +272,7 @@ def main():
 
     fix_starved_thermals()
 
-    print("--- contrôle indépendant écart secteur/logique ---")
-    b2 = pcbnew.LoadBoard(str(BOARD_PATH))
-    bad = check_mains_gap(b2)
-    print("violations 3 mm :", bad)
-    sys.exit(1 if bad else 0)
+    print("pipeline 12/24V terminé")
 
 
 if __name__ == "__main__":
