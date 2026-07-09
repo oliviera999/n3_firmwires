@@ -1,8 +1,8 @@
 {
   "name": "n3_common",
-  "version": "1.4.1",
-  "description": "OTA HTTP distant (sha256+signature ECDSA), constantes partagees, parsing JSON outputs_state pour firmwares n3 IoT",
-  "keywords": ["esp32", "ota", "n3", "defaults", "outputs"],
+  "version": "1.5.0",
+  "description": "OTA HTTP distant (sha256+signature ECDSA), constantes partagees, parsing JSON outputs_state, logique pure mutualisee (sleep adaptatif, cause de reset, throttle login) pour firmwares n3 IoT",
+  "keywords": ["esp32", "ota", "n3", "defaults", "outputs", "throttle"],
   "frameworks": "arduino",
   "platforms": "espressif32",
   "dependencies": {

@@ -390,6 +390,18 @@ concurrence, zéro régression possible.
 **Action** : copier les headers, ajouter une suite Unity par brique dans
 `shared/tests_native/`, référencer depuis les firmwares. Rien à réécrire.
 
+> **✅ Livré (tranche additive, non-régressive par construction)** : les 6 briques
+> sont mutualisées dans `shared/n3_time/src/` (`n3_epoch_util.h`,
+> `n3_clock_decision.h`, `n3_uptime_format.h`) et `shared/n3_common/src/`
+> (`n3_sleep_decision.h`, `n3_reset_reason.h`, `n3_login_throttle.h`), logique
+> **octet-identique** aux originaux ffp5cs, **namespaces conservés** (`EpochUtil`,
+> `ClockDecision`, `SleepDecision`, `ResetReason`, `UptimeFormat`, `LoginThrottle`)
+> pour que la migration ffp5cs ne soit qu'un changement de ligne `#include`. Les 6
+> suites Unity d'origine sont portées dans `shared/tests_native/test/` et branchées
+> en CI. **Aucun firmware ne les consomme encore** → zéro changement de
+> comportement ; la CI valide les copies shared. Migration des consommateurs
+> (ffp5cs dédup + adoption n3pp/msp/upload) = tranches suivantes, vérifiées une à une.
+
 ## Couche 1 — Primitives data / sécurité / temps (risque **faible**)
 
 | Brique | Source | Destination | Contrainte de sécurité vérifiée |
@@ -566,7 +578,7 @@ fonctionnement** ; les suivants exigent des préalables explicites.
 
 | Lot | Contenu | Source→Cible | Cohorte | Risque |
 |---|---|---|---|---|
-| **L1 — Socle pur** | epoch_util, clock_decision, sleep_decision, reset_reason, uptime_format, login_throttle | ffp5cs → `n3_common`/`n3_time` | Toutes | **Nul** |
+| **L1 — Socle pur** ✅ *en cours* | epoch_util, clock_decision, sleep_decision, reset_reason, uptime_format, login_throttle | ffp5cs → `n3_common`/`n3_time` | Toutes | **Nul** |
 | **L2 — Primitives** | `computeHmacHex` (sans String, +digest api_key, nonce aléatoire) ; `n3DataSendHeartbeat` ; `n3TimeSyncBrokenDown` ; adoption `n3PrintWakeupReason` par n3pp/msp | ffp5cs+n3pp/msp → `n3_hmac`(dédiée)/`n3_data`/`n3_time` | Toutes | **Faible** |
 | **L3 — Robustesse capteurs** | sensor_failure_manager (retirer config.h), sensor_reading_fallback (renommer) | ffp5cs → `n3_analog_sensors` | Deep-sleep + ffp5cs | **Faible** |
 | **L4 — Offline-first & stats** | `n3_upload` (multipart streaming) ; `n3_store_forward` (peek-commit) ; brancher `n3_net_stats` **y compris voie upload** ; brancher ffp5cs **sous `s_httpMutex`** | upload+ffp5cs → nouvelles libs / `n3_data` | Toutes | **Faible** (ffp5cs : garde mutex) |
