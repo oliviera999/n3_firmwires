@@ -34,6 +34,36 @@ Le principe directeur, surtout pour ffp5cs : **remonter la primitive pure vers
 délibérément abandonné (FreeRTOS multi-tâches, mutex TLS, file SD/NVS, light
 sleep).
 
+## ⚠️ Vérification adversariale — pièges de fonctionnement à ne pas rater
+
+Une passe de vérification (lecture croisée du code réel, n° de ligne) a confirmé
+la solidité globale des propositions **mais** a mis au jour des **divergences
+subtiles et fonctionnellement critiques** entre firmwares jumeaux : une
+mutualisation *naïve* (copier le corps commun) **régresserait** un firmware.
+Ces pièges commandent le découpage des lots.
+
+| Piège | Où | Conséquence d'une fusion naïve | Parade |
+|---|---|---|---|
+| **`HeureSansWifi` asymétrique** | `n3pp_network.cpp:301` (onFailure) — **absent de msp** | n3pp perd la récupération d'horloge NVS hors-ligne quand tout le WiFi échoue | Garder les callbacks `onFailure/onSuccess` **injectés par firmware** (le design `n3WifiConnect` le permet déjà) |
+| **`PontDiv = analogRead` brut** | `msp_sensors.cpp:155` ; n3pp le **refuse** (`n3pp_sensors.cpp:141-143`, « audit 4.38 ») | Réintroduit une valeur bruitée non filtrée dans n3pp → **fausses veilles d'urgence** (PontDiv pilote la protection batterie / veille infinie) | L'**acquisition** de `PontDiv` reste **hors** du code mutualisé ; ne partager que le rendu OLED + les formules |
+| **Clés serveur 104/105 à sens opposé** | n3pp `104=HeureArrosage,105=tempsArrosage` ; msp `104=AngleServoHB,105=AngleServoGD` (`*_network.cpp:266-268`) | Un parseur partagé **indexé par numéro croiserait les câblages** (arrosage ↔ servo) | **Exclure** 104/105 du parseur commun ; ne mutualiser que 100/101/103/106/107/110/112 |
+| **Clamp clé 102 (SeuilSec)** | n3pp clampe `0..4095` (`n3pp_network.cpp:257-264`) ; msp **ne clampe pas** (`:265`) | Comportement divergent conservé/introduit selon le sens de la fusion | Harmoniser le clamp **avant** de partager la clé 102 |
+| **Flag anti-spam batterie divergent** | n3pp global `emailPontDivSent` (`n3pp_globals.cpp:51`) ré-armé dans `automatismes()` ; msp static `s_mspBatteryMailSent` ré-armé en tête de `sommeil()`. **Les deux sont `RTC_DATA_ATTR`** (survivent au deep sleep) | Double gestion d'alerte n3pp (`automatismes()` **et** `sommeil()`) vs mono-site msp → logique d'alerte cassée | Unifier contrat + lieu de reset + supprimer le double-site n3pp **avant** A8 |
+| **`outputsGetFailureStreak`** | n3pp passe le vrai compteur (`n3pp_network.cpp:387`) ; msp force `0` (`msp_automation.cpp:160`) **alors qu'il l'incrémente** | Le rapport réseau msp changerait de contenu | Exposer le champ **en paramètre** de l'API mutualisée (valeur réelle ou 0 au choix du firmware) |
+| **`N3NetStats` non thread-safe** | `s_stats` statique sans mutex (`n3_net_stats.cpp:26`) | Brancher `n3NetStatsRecordPost()` depuis les tâches async ffp5cs = **data race** (RMW `++` non atomiques) | Enregistrer **sous** `s_httpMutex` (déjà partagé POST/GET) **ou** ajouter un lock interne à `n3_net_stats` |
+| **`String` dans le chemin chaud** | helper HMAC : `n3_data.cpp:131` utilise `String` ; ffp5cs (`hmac_sign.cpp:69-79`) l'évite (DRAM ~99,9 %) | Remonter la variante `String` régresserait la DRAM ffp5cs | Le helper partagé **doit** être la version mbedtls incrémentale **sans `String`** |
+
+**Correction factuelle** : `n3_hmac` n'est **pas** une lib « pure » au niveau unité
+de traduction — `n3_hmac.h` inclut `<Arduino.h>` et `n3_hmac.cpp` inclut
+`<HTTPClient.h>`. Seule la fonction `n3HmacSha256` est pure. Pour que ffp5cs
+(ESP-IDF, sans HTTPClient, budget DRAM) linke le futur `computeHmacHex`, l'isoler
+dans une **unité de traduction / lib dédiée sans HTTPClient** (pas `n3_hmac` tel quel).
+
+**Correction factuelle** : `n3PrintWakeupReason(prefs, rtc)` **existe déjà** dans
+`n3_time` (`n3_time.cpp:104`) mais n3pp/msp ne l'utilisent pas et réimplémentent
+`print_wakeup_reason`. A2 est donc une dé-duplication vers du code **déjà présent**
+dans shared (à compléter du helper `n3TimeSyncBrokenDown`), pas une création.
+
 ## État des lieux — qui utilise quoi
 
 | Firmware | Modèle d'exécution | Usage de `shared/` |
@@ -62,11 +92,11 @@ croissant.
 | A3 | **Notif SMTP d'alerte** | `sendEmailNotification` (`n3pp_automation.cpp:61` / `msp_automation.cpp:48`) | Cœur `n3MailSendText`/`n3Notif*` oui, failover non | **Extraire** `n3MailNotify(project, severity, …)` | **Faible** — verbatim sauf préfixe projet |
 | A4 | **Harnais OTA + OLED + timer 2 h** | `renderOtaScreen`, `otaDisplay*Callback`, `tryOtaBeforeReset…`, `maybeRunPeriodicOtaCheck`, `accumulate…` (`main.cpp` n3pp 30-160 / msp 146-276) | Cœur `n3OtaCheck` oui, harnais non | **Extraire** `n3_ota_ui` / extension `n3_common` avec `N3OtaPeriodicConfig{title,prodUrl,testUrl,display,version}` | Moyen — ~130 lignes verbatim ×2 |
 | A5 | **Rapport réseau mail (P4)** | `…MaybeSendNetworkReportEmail` + `…Accumulate…` (`n3pp_network.cpp:318` / `msp_automation.cpp:96`) | Builder `n3MailBuildNetReportBody` oui, orchestration non | **Extraire** l'orchestration (timer RTC + gardes) | Moyen |
-| A6 | **Connexion WiFi (wrapper OLED)** | `Wificonnect` (`n3pp_network.cpp:278` / `msp_network.cpp:295`) | Cœur `n3WifiConnect` oui, callbacks OLED non | **Extraire** un wrapper avec callbacks OLED partagés | Faible/Moyen |
-| A7 | **Batterie (affichage)** | `batterie` (`n3pp_sensors.cpp:140` / `msp_sensors.cpp:154`) | Cœur `n3BatteryRead` oui, rendu OLED non | Descendre le rendu OLED paramétré dans `n3_battery` | Moyen |
-| A8 | **Sommeil / deep sleep** | `sommeil` (`n3pp_automation.cpp:314` / `msp_automation.cpp:221`) | Cœur `n3Sleep*` oui, séquence non | Mutualiser **après** harmonisation | Moyen/Haut — flags divergents (voir ci-dessous) |
-| A9 | **POST données** | `datatobdd` (`n3pp_network.cpp:21` / `msp_network.cpp:20`) | Cœur `n3DataPost` oui | Partiel : squelette commun, champs spécifiques | Moyen |
-| A10 | **Poll config serveur** | `variablestoesp` (`n3pp_network.cpp:161` / `msp_network.cpp:165`) | Helpers `n3_outputs_json` oui | Partiel : clés 106/107/110/112/100/101 communes, queue divergente | Haut |
+| A6 | **Connexion WiFi (wrapper OLED)** | `Wificonnect` (`n3pp_network.cpp:278` / `msp_network.cpp:295`) | Cœur `n3WifiConnect` oui, callbacks OLED non | Callbacks **injectés par firmware** (garder `HeureSansWifi` n3pp) ; ne pas fusionner le corps | **RISQUÉ** — asymétrie `HeureSansWifi` |
+| A7 | **Batterie (affichage)** | `batterie` (`n3pp_sensors.cpp:140` / `msp_sensors.cpp:154`) | Cœur `n3BatteryRead` oui, rendu OLED non | Rendu OLED + formules seulement ; **exclure** l'acquisition `PontDiv` | **RISQUÉ** — `analogRead` brut msp (régression audit 4.38) |
+| A8 | **Sommeil / deep sleep** | `sommeil` (`n3pp_automation.cpp:314` / `msp_automation.cpp:221`) | Cœur `n3Sleep*` oui, séquence non | Mutualiser **après** harmonisation | **Haut** — flag anti-spam + double-site n3pp + reset servo msp |
+| A9 | **POST données** | `datatobdd` (`n3pp_network.cpp:21` / `msp_network.cpp:20`) | Cœur `n3DataPost` oui | Partiel : ~15 lignes de squelette HMAC/epoch ; champs spécifiques | Faible — ROI faible, rien au-delà du squelette |
+| A10 | **Poll config serveur** | `variablestoesp` (`n3pp_network.cpp:161` / `msp_network.cpp:165`) | Helpers `n3_outputs_json` oui | Partiel : mutualiser **seulement** 100/101/103/106/107/110/112 ; **exclure 104/105** (collision) | **Haut** — collision 104/105, clamp 102 |
 
 ### Détail des candidats forts
 
@@ -109,8 +139,8 @@ de la **pure redondance** à corriger.
 
 | Module ffp5cs | Équivalent shared | Verdict | Justification |
 |---|---|---|---|
-| `hmac_sign.cpp/.h` | `n3_hmac` | **Remonter** | Primitive mbedtls pure, dupliquée **3×** (voir B1) |
-| Compteurs HTTP (`diagnostics._stats`, `automatism_sync._postOkCount`) | `n3_net_stats` (`N3NetStatsSnapshot`) | **Remplacer / brancher** | Snapshot shared plus riche, conçu *pour* ffp5cs mais non branché |
+| `hmac_sign.cpp/.h` | `n3_hmac` (unité dédiée **sans HTTPClient**) | **Remonter** | Message canonique dupliqué **2×** indépendamment (ffp5cs + n3_data) ; voir B1. Cible : la variante mbedtls **sans `String`** |
+| Compteurs HTTP (`diagnostics._stats`, `automatism_sync._postOkCount`) | `n3_net_stats` (`N3NetStatsSnapshot`) | **Brancher (RISQUÉ)** | Snapshot shared plus riche, conçu *pour* ffp5cs mais non branché — **`s_stats` non thread-safe** : n'enregistrer que sous `s_httpMutex` |
 | `sleep_decision.h`, `clock_decision.h` | (aucune — logique pure) | **Remonter** vers `n3_common` | Déjà pures/testées, zéro couplage |
 | `mailer.cpp` builders de corps | `n3MailBuild*Body` | **Compléter** | Session SMTP déjà mutualisée ; corps encore locaux |
 | `rtc_ds3231.cpp/.h` | (aucune) | **Remonter** (optionnel) vers `n3_time` | Driver DS3231 réutilisable (poissonglouton) |
@@ -123,23 +153,36 @@ de la **pure redondance** à corriger.
 
 ### Détail
 
-**B1 — HMAC canonique dupliqué 3×.** `ffp5cs/hmac_sign.cpp:45-91` calcule
-`HMAC-SHA256(timestamp + "\n" + nonce + "\n" + body)` en **mbedtls direct** (vérifié :
-n'inclut pas `n3_hmac`). `shared/n3_data/src/n3_data.cpp:118-138` reconstruit le
-**même** schéma `X-Sig-Timestamp/Nonce/Hmac` inline. `shared/n3_hmac` ne fournit
-qu'un HMAC plat (`X-Signature`), sans timestamp ni nonce. → **Remonter**
-`computeHmacHex` + `generateNonce` dans `n3_hmac` (pur, testable — la suite
-`shared/tests_native/test/test_hmac` existe déjà), puis faire consommer cette API
-par `n3_data.cpp` **et** `ffp5cs/hmac_sign.cpp`. Le `getSecret/isEnabled`
-(couplé `Secrets::API_SIG_SECRET`) reste côté ffp5cs.
+**B1 — HMAC canonique dupliqué 2× (vérifié).** `ffp5cs/hmac_sign.cpp:45-91`
+calcule `HMAC-SHA256(timestamp + "\n" + nonce + "\n" + body)` en **mbedtls
+incrémental, sans `String`** (n'inclut pas `n3_hmac`). `shared/n3_data/src/n3_data.cpp:124-138`
+reconstruit le **même message canonique** mais via `String signedMsg = …`
+(`:131`, allocation heap) + `n3HmacSha256`. `ffp5cs/web_client.cpp:214` n'est
+**pas** une 3ᵉ implémentation : il *délègue* à `HmacSign::computeHmacHex`.
+`shared/n3_hmac` ne fournit qu'un HMAC plat (`X-Signature`), sans timestamp ni nonce.
+→ **Remonter** `computeHmacHex` + `generateNonce` dans une **unité de traduction
+dédiée sans `HTTPClient`** (car `n3_hmac.cpp` inclut aujourd'hui `<HTTPClient.h>` et
+`n3_hmac.h` `<Arduino.h>` — incompatible avec le lien ESP-IDF de ffp5cs), en
+adoptant la **variante mbedtls sans `String`** (celle de ffp5cs). Bénéfice net :
+supprime aussi la `String` heap de `n3_data.cpp:131`. Faire consommer cette API par
+`n3_data.cpp` **et** `ffp5cs/hmac_sign.cpp`. Le `getSecret/isEnabled`
+(couplé `Secrets::API_SIG_SECRET`) reste côté ffp5cs. **Nonce** : conserver le
+format **aléatoire** ffp5cs (`esp_fill_random`), supérieur pour l'anti-rejeu au
+`epoch-compteur` de n3_data (compteur remis à 0 au reboot → collision possible).
+Le format du nonce est **opaque au contrat serveur** (réinjecté dans `X-Sig-Nonce`),
+donc unifier ne casse pas la validation.
 
 **B2 — Stats réseau.** `N3NetStatsSnapshot` (`n3_data.h:49-71`) est alimenté
 automatiquement à chaque `n3DataPost` et consommé par `n3MailBuildNetReportBody`.
 Le commentaire shared indique un alignement « logs ffp5cs » : **shared a été pensé
 pour ffp5cs, mais ffp5cs ne l'a pas branché** et maintient des compteurs plus
 pauvres (`diagnostics.cpp:555`, `automatism_sync.cpp:631`). ffp5cs n'utilisant pas
-`n3DataPost`, il faudrait appeler `n3NetStatsRecordPost()` depuis `web_client.cpp`
-(comptage dans le pool async — difficulté moyenne).
+`n3DataPost`, il faudrait appeler `n3NetStatsRecordPost()` depuis `web_client.cpp`.
+**Risque vérifié** : `s_stats` (`n3_net_stats.cpp:26`) est un statique **sans
+mutex** ; ffp5cs sérialise POST (`postSenderTask`) et GET (`netTask`) via **un
+même** `s_httpMutex` (`web_client.cpp:23-24`). L'appel `n3NetStatsRecord*` doit donc
+se faire **à l'intérieur** de cette section critique, sinon course de données sur
+les `++`/`+=` non atomiques. À traiter comme **RISQUÉ**, pas « moyen ».
 
 **B3 — Logiques pures.** `sleep_decision.h:24` (`adaptiveSleepDelay`) et
 `clock_decision.h:38` (`isNtpEpochPlausible`, `computeDriftPpm`) sont **plus
@@ -168,6 +211,23 @@ ce qui en fait les meilleurs candidats à la mutualisation *montante*.
 | `ultrasonic_filter.h` | `n3_analog_sensors` | Détection bimodale d'échos + rejet de saut directionnel | Moyenne (extraire les seuils en config) |
 | `web_client_queue.cpp` | future `n3_data_queue` | Retry POST persistant NVS (non-perte hors-ligne) | Moyenne (abstraire le backend de stockage) |
 | `nvs_manager_typed.cpp` | future `n3_nvs` | NVS typé avec **skip-write si inchangé** (épargne le flash) | Moyenne |
+
+### Réserves d'implémentation (vérifiées) pour l'Axe C
+
+Les frontières « pur vs couplé » ci-dessus sont exactes, mais chaque remontée
+porte une contrainte concrète confirmée par lecture du code :
+
+- `sensor_failure_manager.h/.cpp` : la classe est **entièrement paramétrée par
+  constructeur** (aucun symbole `SensorConfig` utilisé) ; `config.h` n'y sert que
+  pour la macro `SENSOR_LOG_PRINTF`. → retirer `config.h`, injecter la macro de log.
+- `sensor_reading_fallback.h` : pur, mais API nommée `waterLevel`/`resolveWaterLevel`
+  → **renommer** en neutre avant remontée.
+- `ota_artifact_select.h` : dépend d'ArduinoJson **v7** (`.is<int>()`, `JsonVariantConst`).
+  Valider la **parité v6/v7** entre toolchains WROOM 3.3.x / S3 2.0.x (même piège que `ESP32Servo`).
+- `data_queue.h` : stockage fixe **5×1024 = 5 KB DRAM/instance** ; sa « thread-safety »
+  est **par hypothèse mono-tâche**, pas intrinsèque → templatiser la taille, ne pas
+  la présenter comme thread-safe multi-tâches.
+- `clock_decision.h` inclut `epoch_util.h` → les **remonter ensemble**.
 
 ### Ce que shared gagne concrètement
 
@@ -208,7 +268,8 @@ anti-spam batterie n3pp/msp. *Pas de mutualisation encore, juste l'alignement.*
 - A1 `n3DataSendHeartbeat` → `n3_data`
 - A2 `print_wakeup_reason` + `n3TimeSyncBrokenDown` → `n3_time`
 - C `epoch_util` / `uptime_format` / `reset_reason` → `n3_time` / `n3_common`
-- B1 remonter le HMAC canonique (nonce) → `n3_hmac`, dédoublonner les 3 copies
+- B1 remonter le HMAC canonique (variante sans `String`, unité sans HTTPClient),
+  dédoublonner les 2 implémentations ; garder le nonce aléatoire ffp5cs
 
 **Lot 2 — Orchestration mail & OTA (Axe A, volumétrie forte).**
 - A3 `n3MailNotify(...)` → `n3_mail`
@@ -222,7 +283,7 @@ anti-spam batterie n3pp/msp. *Pas de mutualisation encore, juste l'alignement.*
 **Lot 4 — OTA multi-cible & sécurité (Axe C).**
 - `ota_artifact_select` → `n3_ota` (rétro-compatible)
 - `login_throttle` → `n3_common`
-- B2 brancher `N3NetStatsSnapshot` dans ffp5cs
+- B2 brancher `N3NetStatsSnapshot` dans ffp5cs (**sous `s_httpMutex`** — voir risque)
 
 **Lot 5 — Files & NVS (nouvelles libs, plus lourd).**
 - `data_queue` → `n3_queue` ; `web_client_queue` → `n3_data_queue`
