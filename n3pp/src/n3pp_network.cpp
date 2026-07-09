@@ -36,6 +36,7 @@ void datatobdd() {
     {"HumidMoy",      String(HumidMoy)},
     {"PontDiv",       String(PontDiv)},
     {"WakeUp",        String(WakeUp)},
+    {"VeilleInfinie", String(VeilleInfinie)},
     {"ArrosageManu",  String(ArrosageManu)},
     {"SeuilSec",      String(SeuilSec)},
     {"FreqWakeUp",    String(FreqWakeUp)},
@@ -71,6 +72,7 @@ void datatobdd() {
       "&HumidMoy=" + String(HumidMoy) +
       "&PontDiv=" + String(PontDiv) +
       "&WakeUp=" + String(WakeUp) +
+      "&VeilleInfinie=" + String(VeilleInfinie) +
       "&ArrosageManu=" + String(ArrosageManu) +
       "&SeuilSec=" + String(SeuilSec) +
       "&FreqWakeUp=" + String(FreqWakeUp) +
@@ -207,12 +209,15 @@ void variablestoesp() {
   int parsedResetMode = resetMode ? 1 : 0;
   int parsedWakeUp = WakeUp ? 1 : 0;
   int parsedFreqWakeUp = FreqWakeUp;
+  int parsedVeilleInfinie = VeilleInfinie ? 1 : 0;
   bool hasResetMode = tryReadIntByKey(myObject, "110", &parsedResetMode);
   bool hasWakeUp = tryReadIntByKey(myObject, "106", &parsedWakeUp);
   bool hasFreqWakeUp = tryReadIntByKey(myObject, "107", &parsedFreqWakeUp);
+  bool hasVeilleInfinie = tryReadIntByKey(myObject, "112", &parsedVeilleInfinie);
   String raw110 = readStringByKey(myObject, "110", "<absent>");
   String raw106 = readStringByKey(myObject, "106", "<absent>");
   String raw107 = readStringByKey(myObject, "107", "<absent>");
+  String raw112 = readStringByKey(myObject, "112", "<absent>");
 
   if (!hasResetMode) {
     Serial.println(String("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=") + raw110 +
@@ -226,6 +231,13 @@ void variablestoesp() {
                    "), conservation=" + String(WakeUp ? 1 : 0));
   } else {
     WakeUp = (parsedWakeUp != 0);
+  }
+
+  if (!hasVeilleInfinie) {
+    Serial.println(String("[SERVER][GET][WARN] Cle 112 absente/invalide (raw=") + raw112 +
+                   "), conservation=" + String(VeilleInfinie ? 1 : 0));
+  } else {
+    VeilleInfinie = (parsedVeilleInfinie != 0);
   }
 
   if (!hasFreqWakeUp) {
@@ -258,7 +270,8 @@ void variablestoesp() {
                  " 107:" + raw107 + "=>" + String(FreqWakeUp));
   Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
                  " wakeUp=" + String(WakeUp ? 1 : 0) +
-                 " sleep=" + String(FreqWakeUp));
+                 " sleep=" + String(FreqWakeUp) +
+                 " veilleInfinie=" + String(VeilleInfinie ? 1 : 0));
   if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }
 

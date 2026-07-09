@@ -247,24 +247,32 @@ void sommeil() {
           s_mspBatteryMailSent = true;
         }
       }
-      datatobdd();
-      if (displayOk) display.clearDisplay();
-      photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
-      posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
-      delay(100);
-      if (displayOk) {
-        display.setTextSize(1);
-        display.setCursor(0, 0);
-        display.println(" ");
-        display.println("   DODO");
-        display.display();
+      // Interrupteur serveur (cle 112) : la mise en veille infinie sous le seuil
+      // peut etre desactivee depuis l'interface de controle. Desactivee -> on ne
+      // s'endort PAS en mode urgence ; on retombe sur le sommeil timer normal
+      // ci-dessous. L'alerte batterie ci-dessus reste emise dans tous les cas.
+      if (VeilleInfinie) {
+        datatobdd();
+        if (displayOk) display.clearDisplay();
+        photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
+        posLumMax1 = posLumMax2 = posLumMax3 = posLumMax4 = 0;
+        delay(100);
+        if (displayOk) {
+          display.setTextSize(1);
+          display.setCursor(0, 0);
+          display.println(" ");
+          display.println("   DODO");
+          display.display();
+        }
+        delay(1000);
+        EnregistrementHeureFlash();
+        N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
+        n3SleepConfigure(emergencySleep);
+        Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
+        n3SleepStart();
+      } else {
+        Serial.println("[SLEEP][TRACE] veille infinie DESACTIVEE (cle 112=0), batterie basse -> sommeil timer normal");
       }
-      delay(1000);
-      EnregistrementHeureFlash();
-      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
-      n3SleepConfigure(emergencySleep);
-      Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
-      n3SleepStart();
     }
 
     Serial.println(String("[SLEEP][TRACE] branche=regular WakeUp=0 timer=") + String(FreqWakeUp) + "s");

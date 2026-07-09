@@ -1,10 +1,10 @@
 # Audit — Tracker solaire msp1 (gestion des angles du panneau selon la luminosité)
 
-> ✅ **Mise en œuvre (v2.53, 2026-07-08)** : C1, C3, C4, C5 (pauses OLED), C6 et E1 corrigés/implémentés —
+> ✅ **Mise en œuvre (v2.54, 2026-07-08)** : C1, C3, C4, C5 (pauses OLED), C6 et E1 corrigés/implémentés —
 > asservissement différentiel par défaut, balayage optimisé (grossier+fin, fusion pondérée C2) sélectionnable
-> via la clé serveur `112`, logique extraite dans `shared/n3_tracker` (E5, tests `test_tracker`).
+> via la clé serveur `113` (112 = veille infinie depuis la v2.53), logique extraite dans `shared/n3_tracker` (E5, tests `test_tracker`).
 > Restent ouverts : C7/E4 (seuil configurable + hystérésis), C8 (parking nuit/pluie), E2 (hybride astronomique).
-> **v2.54** : calibration des photorésistances (égalisation des sensibilités, clé serveur `113`, gains NVS).
+> **v2.55** : calibration des photorésistances (égalisation des sensibilités, clé serveur `114`, gains NVS).
 
 **Date** : 2026-07-08 · **Firmware audité** : `msp` v2.52 · **Périmètre** : logique servo/luminosité
 (`src/msp_sensors.cpp` — `Light_val()`, `src/msp_network.cpp` — clés 104/105/111,

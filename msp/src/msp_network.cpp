@@ -41,6 +41,7 @@ void datatobdd() {
     {"TempEau",       String(temperatureSol)},
     {"PontDiv",       String(PontDiv)},
     {"WakeUp",        String(WakeUp)},
+    {"VeilleInfinie", String(VeilleInfinie)},
     {"SeuilSec",      String(SeuilSec)},
     {"FreqWakeUp",    String(FreqWakeUp)},
     {"SeuilPontDiv",  String(SeuilPontDiv)},
@@ -78,6 +79,7 @@ void datatobdd() {
       "&TempEau=" + String(temperatureSol) +
       "&PontDiv=" + String(PontDiv) +
       "&WakeUp=" + String(WakeUp) +
+      "&VeilleInfinie=" + String(VeilleInfinie) +
       "&SeuilSec=" + String(SeuilSec) +
       "&FreqWakeUp=" + String(FreqWakeUp) +
       "&SeuilPontDiv=" + String(SeuilPontDiv) +
@@ -208,20 +210,24 @@ void variablestoesp() {
       int parsedWakeUp = WakeUp ? 1 : 0;
       int parsedFreqWakeUp = FreqWakeUp;
       int parsedServoModeAuto = servoModeAuto ? 1 : 0;
+      int parsedVeilleInfinie = VeilleInfinie ? 1 : 0;
       int parsedTrackerSweep = trackerModeSweep ? 1 : 0;
       bool hasResetMode = tryReadIntByKey(myObject, "110", &parsedResetMode);
       bool hasWakeUp = tryReadIntByKey(myObject, "106", &parsedWakeUp);
       bool hasFreqWakeUp = tryReadIntByKey(myObject, "107", &parsedFreqWakeUp);
       bool hasServoModeAuto = tryReadIntByKey(myObject, "111", &parsedServoModeAuto);
-      bool hasTrackerSweep = tryReadIntByKey(myObject, "112", &parsedTrackerSweep);
+      bool hasVeilleInfinie = tryReadIntByKey(myObject, "112", &parsedVeilleInfinie);
+      // 113/114 (tracker) : 112 etant pris par la veille infinie (v2.53).
+      bool hasTrackerSweep = tryReadIntByKey(myObject, "113", &parsedTrackerSweep);
       int parsedLdrCalib = ldrCalibCommand;
-      bool hasLdrCalib = tryReadIntByKey(myObject, "113", &parsedLdrCalib);
+      bool hasLdrCalib = tryReadIntByKey(myObject, "114", &parsedLdrCalib);
       String raw110 = readStringByKey(myObject, "110", "<absent>");
       String raw106 = readStringByKey(myObject, "106", "<absent>");
       String raw107 = readStringByKey(myObject, "107", "<absent>");
       String raw111 = readStringByKey(myObject, "111", "<absent>");
       String raw112 = readStringByKey(myObject, "112", "<absent>");
       String raw113 = readStringByKey(myObject, "113", "<absent>");
+      String raw114 = readStringByKey(myObject, "114", "<absent>");
 
       if (!hasResetMode) {
         Serial.println(String("[SERVER][GET][WARN] Cle 110 absente/invalide (raw=") + raw110 +
@@ -254,12 +260,19 @@ void variablestoesp() {
         servoModeAuto = (parsedServoModeAuto != 0);
       }
 
+      if (!hasVeilleInfinie) {
+        Serial.println(String("[SERVER][GET][WARN] Cle 112 absente/invalide (raw=") + raw112 +
+                       "), conservation=" + String(VeilleInfinie ? 1 : 0));
+      } else {
+        VeilleInfinie = (parsedVeilleInfinie != 0);
+      }
+
       if (!hasTrackerSweep) {
         // Cle optionnelle (nouvelle page de controle) : log une seule fois
         // pour ne pas spammer les serveurs pas encore a jour.
         static bool s_warnedTrackerKeyAbsent = false;
         if (!s_warnedTrackerKeyAbsent) {
-          Serial.println(String("[SERVER][GET][WARN] Cle 112 absente/invalide (raw=") + raw112 +
+          Serial.println(String("[SERVER][GET][WARN] Cle 113 absente/invalide (raw=") + raw113 +
                          "), conservation=" + String(trackerModeSweep ? 1 : 0));
           s_warnedTrackerKeyAbsent = true;
         }
@@ -271,12 +284,12 @@ void variablestoesp() {
         // Cle optionnelle (calibration LDR) : log une seule fois.
         static bool s_warnedCalibKeyAbsent = false;
         if (!s_warnedCalibKeyAbsent) {
-          Serial.println(String("[SERVER][GET][WARN] Cle 113 absente/invalide (raw=") + raw113 +
+          Serial.println(String("[SERVER][GET][WARN] Cle 114 absente/invalide (raw=") + raw114 +
                          "), conservation=" + String(ldrCalibCommand));
           s_warnedCalibKeyAbsent = true;
         }
       } else if (parsedLdrCalib < 0 || parsedLdrCalib > 2) {
-        Serial.println(String("[SERVER][GET][WARN] Cle 113 hors plage (raw=") + raw113 +
+        Serial.println(String("[SERVER][GET][WARN] Cle 114 hors plage (raw=") + raw114 +
                        "), conservation=" + String(ldrCalibCommand));
       } else {
         ldrCalibCommand = parsedLdrCalib;
@@ -287,7 +300,7 @@ void variablestoesp() {
       SeuilSec = readIntByKey(myObject, "102", SeuilSec);
       SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
       // Consignes manuelles 104/105 : appliquees UNIQUEMENT en mode MANUEL.
-      // Avant v2.53 elles ecrasaient AngleServoGD/HB meme en AUTO : la nuit
+      // Avant v2.54 elles ecrasaient AngleServoGD/HB meme en AUTO : la nuit
       // (scan=SKIP, servos immobiles) la BDD enregistrait des angles jamais
       // appliques (constat C1 de l'audit tracker 2026-07).
       const int serverTargetHb = readIntByKey(myObject, "104", AngleServoHB);
@@ -306,7 +319,7 @@ void variablestoesp() {
       static bool s_prevTrackerSweep = false;
       if (!s_trackerAlgoKnown || s_prevTrackerSweep != trackerModeSweep) {
         Serial.println(String("[SERVO][ALGO] source=server algo=") +
-                       (trackerModeSweep ? "BALAYAGE" : "DIFFERENTIEL") + " (raw112=" + raw112 + ")");
+                       (trackerModeSweep ? "BALAYAGE" : "DIFFERENTIEL") + " (raw113=" + raw113 + ")");
         s_prevTrackerSweep = trackerModeSweep;
         s_trackerAlgoKnown = true;
       }
@@ -321,11 +334,13 @@ void variablestoesp() {
       Serial.println(String("[SERVER][GET][APPLY] 110:") + raw110 + "=>" + String(resetMode ? 1 : 0) +
                      " 106:" + raw106 + "=>" + String(WakeUp ? 1 : 0) + " 107:" + raw107 + "=>" +
                      String(FreqWakeUp) + " 111:" + raw111 + "=>" + String(servoModeAuto ? 1 : 0) +
-                     " 112:" + raw112 + "=>" + String(trackerModeSweep ? 1 : 0) +
-                     " 113:" + raw113 + "=>" + String(ldrCalibCommand));
+                     " 112:" + raw112 + "=>" + String(VeilleInfinie ? 1 : 0) +
+                     " 113:" + raw113 + "=>" + String(trackerModeSweep ? 1 : 0) +
+                     " 114:" + raw114 + "=>" + String(ldrCalibCommand));
       Serial.println(String("[SERVER][GET] resetMode=") + String(resetMode ? 1 : 0) +
                      " wakeUp=" + String(WakeUp ? 1 : 0) + " sleep=" + String(FreqWakeUp) +
-                     " servoModeAuto=" + String(servoModeAuto ? 1 : 0));
+                     " servoModeAuto=" + String(servoModeAuto ? 1 : 0) +
+                     " veilleInfinie=" + String(VeilleInfinie ? 1 : 0));
   }
   if (displayOk) { display.fillCircle(115, 5, 5, WHITE); display.display(); }
 }

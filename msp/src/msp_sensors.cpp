@@ -13,12 +13,12 @@
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
 static const int LIGHT_SCAN_MIN_THRESHOLD = 50;
 
-// --- Tracker solaire (refonte v2.53, audit tracker 2026-07) ---
-// Deux algorithmes, selectionnes par la cle serveur 112 (page de controle) :
-//   112=0 (defaut) : asservissement DIFFERENTIEL — equilibrer les deux LDR de
+// --- Tracker solaire (refonte v2.54, audit tracker 2026-07) ---
+// Deux algorithmes, selectionnes par la cle serveur 113 (page de controle) :
+//   113=0 (defaut) : asservissement DIFFERENTIEL — equilibrer les deux LDR de
 //                    chaque axe par petits pas (zone morte, anti-oscillation).
 //                    Quelques pas par reveil au lieu d'un balayage complet.
-//   112=1          : BALAYAGE classique optimise — passe grossiere (3°) puis
+//   113=1          : BALAYAGE classique optimise — passe grossiere (3°) puis
 //                    fine (1°) autour du pic, filtrage par position, fusion
 //                    des pics ponderee par l'amplitude (une LDR ombragee ne
 //                    divise plus l'angle par deux).
@@ -60,7 +60,7 @@ static void applyManualServoTargets() {
   Serial.printf("[SERVO][APPLY] mode=MANUEL angleGD=%d angleHB=%d\n", AngleServoGD, AngleServoHB);
 }
 
-// --- Calibration LDR (egalisation des sensibilites, cle serveur 113) ---
+// --- Calibration LDR (egalisation des sensibilites, cle serveur 114) ---
 // Les LDR et leurs ponts diviseurs ont des tolerances : a eclairement egal,
 // deux capteurs d'un meme axe ne lisent pas pareil, ce qui biaise l'equilibre
 // du differentiel et la fusion des pics. La calibration mesure les pics des 4
@@ -305,7 +305,7 @@ bool mspTrackerCalibrate() {
       s_ldrGainPermille[i] = previousGains[i];
     }
     Serial.println("[SERVO][CALIB][WARN] reference(s) inexploitable(s) (LDR ombragee/HS ?), "
-                   "gains precedents conserves — relancer par temps clair (cle 113: 0 puis 1)");
+                   "gains precedents conserves — relancer par temps clair (cle 114: 0 puis 1)");
     return true;  // demande consommee : pas de re-essai en boucle sur un capteur mort
   }
 
@@ -480,7 +480,7 @@ void Light_val() {
   }
 
   // Télémétrie : toujours remplir LuminositeA–D et LuminositeMoy pour le POST
-  // serveur (v2.41), en lecture filtrée par position depuis v2.53.
+  // serveur (v2.41), en lecture filtrée par position depuis v2.54.
   readLdrTelemetry();
 
   if (!servoModeAuto) {
@@ -511,7 +511,7 @@ void Light_val() {
   }
 
   if (trackerModeSweep) {
-    // === Balayage classique optimise (cle serveur 112=1) ===
+    // === Balayage classique optimise (cle serveur 113=1) ===
     Serial.printf("[SERVO][AUTO] scan=ON algo=BALAYAGE lum=%d seuil=%d\n",
                   photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
     if (displayOk) {
@@ -537,7 +537,7 @@ void Light_val() {
     posLumMax3 = peakC.bestPos;
     posLumMax4 = peakD.bestPos;
   } else {
-    // === Asservissement differentiel (defaut, cle serveur 112=0/absente) ===
+    // === Asservissement differentiel (defaut, cle serveur 113=0/absente) ===
     Serial.printf("[SERVO][AUTO] scan=ON algo=DIFFERENTIEL lum=%d seuil=%d\n",
                   photocellReadingMoy, LIGHT_SCAN_MIN_THRESHOLD);
     const N3Tracker::DiffAxisConfig cfgGd = {
@@ -555,7 +555,7 @@ void Light_val() {
   rtcAngleServoHB = AngleServoHB;
 
   // Télémétrie post-positionnement : lecture instantanee a la position finale
-  // (avant v2.53 le POST envoyait les pics du balayage — constat C4).
+  // (avant v2.54 le POST envoyait les pics du balayage — constat C4).
   readLdrTelemetry();
   Serial.printf("[SENSOR] LuminositeMoy=%d\n", photocellReadingMoy);
   if (displayOk) {

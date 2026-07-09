@@ -33,8 +33,8 @@ extern int posLumMax1, posLumMax2, posLumMax3, posLumMax4;
 extern int AngleServoGD;
 extern int AngleServoHB;
 extern bool servoModeAuto;
-extern bool trackerModeSweep;   // clé serveur 112 : 1 = balayage classique, 0 = différentiel (défaut)
-extern int ldrCalibCommand;     // clé serveur 113 : 1 = calibrer les LDR, 2 = gains neutres (front)
+extern bool trackerModeSweep;   // clé serveur 113 : 1 = balayage classique, 0 = différentiel (défaut)
+extern int ldrCalibCommand;     // clé serveur 114 : 1 = calibrer les LDR, 2 = gains neutres (front)
 extern int rtcAngleServoGD;     // dernière position appliquée, persistée en RTC RAM (deep sleep)
 extern int rtcAngleServoHB;
 
@@ -49,6 +49,10 @@ extern float humidAirExt;
 // --- Deep sleep ---
 extern bool WakeUp;
 extern int FreqWakeUp;
+// Interrupteur serveur (GPIO virtuel 112) : autorise ou non la mise en veille
+// infinie (sommeil GPIO-only) quand la batterie passe sous SeuilPontDiv.
+// 1 = veille infinie active (comportement historique), 0 = desactivee.
+extern bool VeilleInfinie;
 
 // --- Batterie / pont diviseur ---
 extern int PontDiv;

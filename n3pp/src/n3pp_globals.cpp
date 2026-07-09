@@ -92,6 +92,10 @@ float batt;
 float measuredVoltage;
 float batteryVoltage;
 RTC_DATA_ATTR int SeuilPontDiv = 1700;  // Seuil batterie faible (override GPIO 103), conserve en RTC.
+// Interrupteur veille infinie sous seuil batterie (override GPIO 112), conserve
+// en RTC comme SeuilPontDiv : la derniere valeur serveur survit au deep sleep
+// meme si le serveur devient injoignable. Defaut 1 = comportement historique.
+RTC_DATA_ATTR bool VeilleInfinie = 1;
 extern const float ADC_MAX_VALUE = 4095.0;
 extern const float V_REF = N3_BATTERY_VREF;
 extern const float calibration = 0.06;
