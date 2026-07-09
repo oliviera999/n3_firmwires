@@ -3,7 +3,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <HTTPUpdate.h>
+#include <Update.h>
 #include <esp_ota_ops.h>
 #include <ArduinoJson.h>
 #include <cstdio>
@@ -49,88 +49,7 @@ static void appendHexByte(char* out, size_t idx, uint8_t value) {
     out[idx + 1] = kHex[value & 0x0F];
 }
 
-static bool computeRemoteFirmwareSha256(const char* firmwareUrl, char* outSha256Hex, size_t outSize, char* details, size_t detailsSize) {
-    if (!firmwareUrl || !outSha256Hex || outSize < 65) {
-        if (details && detailsSize > 0) {
-            snprintf(details, detailsSize, "Parametres invalides verification sha256.");
-        }
-        return false;
-    }
-
-    WiFiClient plainClient;
-    WiFiClientSecure secureClient;
-    WiFiClient* client;
-    if (n3OtaUrlIsHttps(firmwareUrl)) {
-        n3OtaPrepareSecureClient(secureClient);
-        client = &secureClient;
-    } else {
-        client = &plainClient;
-    }
-    HTTPClient http;
-    http.begin(*client, firmwareUrl);
-    http.setTimeout(15000);
-    int code = http.GET();
-    if (code != 200) {
-        if (details && detailsSize > 0) {
-            snprintf(details, detailsSize, "SHA256: HTTP %d sur firmware URL.", code);
-        }
-        http.end();
-        return false;
-    }
-
-    mbedtls_md_context_t mdCtx;
-    mbedtls_md_init(&mdCtx);
-    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    if (mdInfo == nullptr || mbedtls_md_setup(&mdCtx, mdInfo, 0) != 0 || mbedtls_md_starts(&mdCtx) != 0) {
-        if (details && detailsSize > 0) {
-            snprintf(details, detailsSize, "SHA256: init mbedtls a echoue.");
-        }
-        mbedtls_md_free(&mdCtx);
-        http.end();
-        return false;
-    }
-
-    WiFiClient* stream = http.getStreamPtr();
-    uint8_t buffer[1024];
-    int remaining = http.getSize();
-    while (http.connected() && (remaining > 0 || remaining == -1)) {
-        size_t availableBytes = stream->available();
-        if (availableBytes == 0) {
-            delay(1);
-            continue;
-        }
-        if (availableBytes > sizeof(buffer)) availableBytes = sizeof(buffer);
-        int readLen = stream->readBytes(buffer, availableBytes);
-        if (readLen <= 0) break;
-        if (mbedtls_md_update(&mdCtx, buffer, static_cast<size_t>(readLen)) != 0) {
-            if (details && detailsSize > 0) {
-                snprintf(details, detailsSize, "SHA256: update mbedtls a echoue.");
-            }
-            mbedtls_md_free(&mdCtx);
-            http.end();
-            return false;
-        }
-        if (remaining > 0) remaining -= readLen;
-    }
-
-    uint8_t digest[32];
-    if (mbedtls_md_finish(&mdCtx, digest) != 0) {
-        if (details && detailsSize > 0) {
-            snprintf(details, detailsSize, "SHA256: finish mbedtls a echoue.");
-        }
-        mbedtls_md_free(&mdCtx);
-        http.end();
-        return false;
-    }
-    mbedtls_md_free(&mdCtx);
-    http.end();
-
-    for (size_t i = 0; i < sizeof(digest); ++i) {
-        appendHexByte(outSha256Hex, i * 2, digest[i]);
-    }
-    outSha256Hex[64] = '\0';
-    return true;
-}
+static void logOtaProgress(int current, int total);
 
 static bool verifyFirmwareSignature(const char* sha256Hex, const char* signatureB64, char* details, size_t detailsSize) {
     if (!sha256Hex || !signatureB64 || signatureB64[0] == '\0') return true;
@@ -184,18 +103,204 @@ static bool verifyFirmwareSignature(const char* sha256Hex, const char* signature
     return true;
 }
 
-static bool verifyRemoteFirmwareIntegrity(const char* firmwareUrl, const char* expectedSha256, const char* signatureB64, char* details, size_t detailsSize) {
-    if (!expectedSha256 || strlen(expectedSha256) != 64) {
+static void logOtaPartitionDiagnostics() {
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+    const esp_partition_t* boot = esp_ota_get_boot_partition();
+    if (running) {
+        Serial.printf("[OTA] partition courante: %s @0x%x taille=%u\n",
+                      running->label,
+                      static_cast<unsigned>(running->address),
+                      static_cast<unsigned>(running->size));
+    }
+    if (next) {
+        Serial.printf("[OTA] partition OTA cible: %s @0x%x taille=%u\n",
+                      next->label,
+                      static_cast<unsigned>(next->address),
+                      static_cast<unsigned>(next->size));
+    }
+    if (boot && running && boot->address != running->address) {
+        Serial.printf("[OTA][WARN] partition boot (%s) != courante (%s)\n",
+                      boot->label, running->label);
+    }
+}
+
+/** Telecharge une seule fois, verifie sha256/signature et flashe via Update (evite le 2e GET httpUpdate). */
+static bool downloadAndFlashFirmware(const char* firmwareUrl,
+                                     const char* expectedSha256,
+                                     const char* signatureB64,
+                                     char* details,
+                                     size_t detailsSize) {
+    if (!firmwareUrl || !expectedSha256 || strlen(expectedSha256) != 64) {
         if (details && detailsSize > 0) {
             snprintf(details, detailsSize, "Metadata OTA invalide: champ sha256 manquant/incorrect.");
         }
         return false;
     }
 
-    char computedSha256[65];
-    if (!computeRemoteFirmwareSha256(firmwareUrl, computedSha256, sizeof(computedSha256), details, detailsSize)) {
+    n3OtaSyncBootPartition();
+    logOtaPartitionDiagnostics();
+
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    WiFiClient* client;
+    if (n3OtaUrlIsHttps(firmwareUrl)) {
+        n3OtaPrepareSecureClient(secureClient);
+        client = &secureClient;
+    } else {
+        client = &plainClient;
+    }
+
+    HTTPClient http;
+    http.begin(*client, firmwareUrl);
+    http.setTimeout(30000);
+    int code = http.GET();
+    if (code != 200) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "OTA firmware: HTTP %d.", code);
+        }
+        http.end();
         return false;
     }
+
+    const int contentLen = http.getSize();
+    if (contentLen <= 0) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "OTA firmware: taille inconnue (Content-Length absent).");
+        }
+        http.end();
+        return false;
+    }
+
+    const esp_partition_t* updatePart = esp_ota_get_next_update_partition(nullptr);
+    if (updatePart && static_cast<size_t>(contentLen) > updatePart->size) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize,
+                     "OTA firmware %d octets > partition %s (%u). Re-flasher USB (min_spiffs).",
+                     contentLen,
+                     updatePart->label,
+                     static_cast<unsigned>(updatePart->size));
+        }
+        http.end();
+        return false;
+    }
+
+    if (!Update.begin(static_cast<size_t>(contentLen), U_FLASH)) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "OTA begin: %s", Update.errorString());
+        }
+        Update.abort();
+        http.end();
+        return false;
+    }
+
+    mbedtls_md_context_t mdCtx;
+    mbedtls_md_init(&mdCtx);
+    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (mdInfo == nullptr || mbedtls_md_setup(&mdCtx, mdInfo, 0) != 0 || mbedtls_md_starts(&mdCtx) != 0) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "SHA256: init mbedtls a echoue.");
+        }
+        mbedtls_md_free(&mdCtx);
+        Update.abort();
+        http.end();
+        return false;
+    }
+
+    s_lastLoggedOtaPercent = 255;
+    Serial.println("[OTA][PROGRESS] debut telechargement");
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buffer[1024];
+    int remaining = contentLen;
+    int writtenTotal = 0;
+    bool magicChecked = false;
+
+    while (http.connected() && remaining > 0) {
+        size_t availableBytes = stream->available();
+        if (availableBytes == 0) {
+            delay(1);
+            continue;
+        }
+        if (availableBytes > sizeof(buffer)) {
+            availableBytes = sizeof(buffer);
+        }
+        if (static_cast<int>(availableBytes) > remaining) {
+            availableBytes = static_cast<size_t>(remaining);
+        }
+        const int readLen = stream->readBytes(buffer, availableBytes);
+        if (readLen <= 0) {
+            break;
+        }
+
+        if (!magicChecked) {
+            if (buffer[0] != 0xE9) {
+                if (details && detailsSize > 0) {
+                    snprintf(details, detailsSize,
+                             "OTA firmware: magic 0x%02x (attendu 0xE9) — binaire ou reponse HTTP invalide.",
+                             buffer[0]);
+                }
+                mbedtls_md_free(&mdCtx);
+                Update.abort();
+                http.end();
+                return false;
+            }
+            magicChecked = true;
+        }
+
+        if (Update.write(buffer, static_cast<size_t>(readLen)) != static_cast<size_t>(readLen)) {
+            if (details && detailsSize > 0) {
+                snprintf(details, detailsSize, "OTA write: %s", Update.errorString());
+            }
+            mbedtls_md_free(&mdCtx);
+            Update.abort();
+            http.end();
+            return false;
+        }
+
+        if (mbedtls_md_update(&mdCtx, buffer, static_cast<size_t>(readLen)) != 0) {
+            if (details && detailsSize > 0) {
+                snprintf(details, detailsSize, "SHA256: update mbedtls a echoue.");
+            }
+            mbedtls_md_free(&mdCtx);
+            Update.abort();
+            http.end();
+            return false;
+        }
+
+        writtenTotal += readLen;
+        remaining -= readLen;
+        logOtaProgress(writtenTotal, contentLen);
+    }
+    http.end();
+
+    if (writtenTotal != contentLen) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize,
+                     "OTA firmware: telechargement incomplet (%d/%d octets).",
+                     writtenTotal, contentLen);
+        }
+        mbedtls_md_free(&mdCtx);
+        Update.abort();
+        return false;
+    }
+
+    uint8_t digest[32];
+    if (mbedtls_md_finish(&mdCtx, digest) != 0) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "SHA256: finish mbedtls a echoue.");
+        }
+        mbedtls_md_free(&mdCtx);
+        Update.abort();
+        return false;
+    }
+    mbedtls_md_free(&mdCtx);
+
+    char computedSha256[65];
+    for (size_t i = 0; i < sizeof(digest); ++i) {
+        appendHexByte(computedSha256, i * 2, digest[i]);
+    }
+    computedSha256[64] = '\0';
     Serial.printf("[OTA] sha256 metadata=%s\n", expectedSha256);
     Serial.printf("[OTA] sha256 calcule =%s\n", computedSha256);
 
@@ -203,31 +308,41 @@ static bool verifyRemoteFirmwareIntegrity(const char* firmwareUrl, const char* e
         if (details && detailsSize > 0) {
             snprintf(details, detailsSize, "SHA256 OTA mismatch (metadata != calcule).");
         }
+        Update.abort();
         return false;
     }
 
     if (signatureB64 && signatureB64[0] != '\0') {
         if (!verifyFirmwareSignature(computedSha256, signatureB64, details, detailsSize)) {
+            Update.abort();
             return false;
         }
         Serial.println("[OTA] signature ECDSA valide.");
     } else {
 #if defined(N3_OTA_REQUIRE_SIGNATURE)
-        // Fail-closed (opt-in) : refuser un binaire sans signature ECDSA. Le
-        // sha256 provient de la meme metadata (HTTP) ; sans signature, un MITM du
-        // canal OTA peut servir un binaire malveillant avec un sha256 concordant.
-        // A activer une fois que tous les canaux OTA publient une signature.
         if (details && detailsSize > 0) {
             snprintf(details, detailsSize,
                      "Signature OTA requise (N3_OTA_REQUIRE_SIGNATURE) mais absente de la metadata.");
         }
         Serial.println("[OTA][SECURITE] signature absente et requise -> mise a jour refusee.");
+        Update.abort();
         return false;
 #else
         Serial.println("[OTA] signature absente, verification sha256 uniquement.");
 #endif
     }
 
+    if (!Update.end(true)) {
+        if (details && detailsSize > 0) {
+            snprintf(details, detailsSize, "OTA end: %s", Update.errorString());
+        }
+        Update.abort();
+        return false;
+    }
+
+    Serial.println("[OTA] MAJ reussie, redemarrage...");
+    delay(100);
+    ESP.restart();
     return true;
 }
 
@@ -279,6 +394,8 @@ bool n3OtaCheck(const N3OtaConfig& config) {
         if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: WiFi indisponible.", config.userData);
         return false;
     }
+
+    n3OtaSyncBootPartition();
 
     Serial.printf("[OTA] Verification MAJ : %s (locale: %s)\n",
                   config.metadataUrl, config.currentVersion);
@@ -361,60 +478,23 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     }
 
     char integrityDetails[192];
-    if (!verifyRemoteFirmwareIntegrity(firmwareUrl, expectedSha256, signatureB64, integrityDetails, sizeof(integrityDetails))) {
-        Serial.printf("[OTA] Echec verification integrite: %s\n", integrityDetails);
+    s_progressCallback = config.onUpdateProgress;
+    s_progressUserData = config.userData;
+    if (!downloadAndFlashFirmware(firmwareUrl, expectedSha256, signatureB64,
+                                  integrityDetails, sizeof(integrityDetails))) {
+        Serial.printf("[OTA] Echec MAJ: %s\n", integrityDetails);
+        s_progressCallback = nullptr;
+        s_progressUserData = nullptr;
         if (config.onUpdateEnd) {
             config.onUpdateEnd(false, integrityDetails, config.userData);
         }
         return false;
     }
-    Serial.println("[OTA] Integrite firmware verifiee (sha256/signature).");
 
-    if (config.ledPin >= 0) {
-        httpUpdate.setLedPin(config.ledPin, LOW);
+    s_progressCallback = nullptr;
+    s_progressUserData = nullptr;
+    if (config.onUpdateEnd) {
+        config.onUpdateEnd(true, "OTA terminee avec succes. Redemarrage imminent.", config.userData);
     }
-    s_lastLoggedOtaPercent = 255;
-    s_progressCallback = config.onUpdateProgress;
-    s_progressUserData = config.userData;
-    Serial.println("[OTA][PROGRESS] debut telechargement");
-    httpUpdate.onProgress(logOtaProgress);
-    httpUpdate.rebootOnUpdate(true);
-
-    WiFiClient updatePlainClient;
-    WiFiClientSecure updateSecureClient;
-    WiFiClient* updateClient;
-    if (n3OtaUrlIsHttps(firmwareUrl)) {
-        n3OtaPrepareSecureClient(updateSecureClient);
-        updateClient = &updateSecureClient;
-    } else {
-        updateClient = &updatePlainClient;
-    }
-    t_httpUpdate_return ret = httpUpdate.update(*updateClient, firmwareUrl);
-
-    switch (ret) {
-        case HTTP_UPDATE_OK:
-            s_progressCallback = nullptr;
-            s_progressUserData = nullptr;
-            Serial.println("[OTA] MAJ reussie, redemarrage...");
-            if (config.onUpdateEnd) config.onUpdateEnd(true, "OTA terminee avec succes. Redemarrage imminent.", config.userData);
-            return true;
-        case HTTP_UPDATE_FAILED:
-            s_progressCallback = nullptr;
-            s_progressUserData = nullptr;
-            Serial.printf("[OTA] Echec MAJ: %s\n",
-                          httpUpdate.getLastErrorString().c_str());
-            if (config.onUpdateEnd) {
-                char details[192];
-                snprintf(details, sizeof(details), "OTA echec: %s", httpUpdate.getLastErrorString().c_str());
-                config.onUpdateEnd(false, details, config.userData);
-            }
-            break;
-        case HTTP_UPDATE_NO_UPDATES:
-            s_progressCallback = nullptr;
-            s_progressUserData = nullptr;
-            Serial.println("[OTA] Pas de MAJ");
-            if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: pas de mise a jour.", config.userData);
-            break;
-    }
-    return false;
+    return true;
 }

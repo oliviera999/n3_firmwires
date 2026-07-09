@@ -337,22 +337,16 @@ static void otaMailEndCallback(bool success, const char* details, void* userData
                 otaRemoteVersion,
                 details ? details : "n/a",
                 static_cast<unsigned int>(ESP.getFreeHeap()));
-  /* Succes : reboot imminent via httpUpdate. Echec : log serie uniquement (evite 2e TLS). */
+  /* Echec OTA : ne jamais appeler SMTP ici (TLS + mbedtls OTA sur loopTask ~32 Ko
+   * provoquent stack canary panic — cf. v2.51). Memorisation RTC ; envoi differe
+   * via trySendPendingOtaFailMail() apres la pile OTA degonflee. */
   if (!success && remoteMailNotifEnabled) {
-    char extra[MAIL_EXTRA_MAX_LEN];
-    snprintf(extra, sizeof(extra),
-             "OTA echec (mail fin uniquement).\nVersion distante: %s\nURL: %s\nDetails: %s",
+    snprintf(pendingOtaFailMailExtra, sizeof(pendingOtaFailMailExtra),
+             "OTA echec (mail differe).\nVersion distante: %s\nURL: %s\nDetails: %s",
              otaRemoteVersion, otaFirmwareUrl, details ? details : "n/a");
-    if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", extra, N3Severity::Alert)) {
-      pendingOtaFailMail = false;  /* livre : purge un eventuel pending anterieur */
-    } else {
-      /* Phase 0 : livraison NON confirmee -> memoriser en RTC pour retenter au
-       * prochain reveil au lieu de considerer l'alerte comme envoyee. */
-      snprintf(pendingOtaFailMailExtra, sizeof(pendingOtaFailMailExtra), "%s", extra);
-      pendingOtaFailMail = true;
-      pendingOtaFailMailTries = 0;
-      Serial.println("[OTA][MAIL] Echec envoi: alerte memorisee (RTC), retentee au prochain reveil.");
-    }
+    pendingOtaFailMail = true;
+    pendingOtaFailMailTries = 0;
+    Serial.println("[OTA][MAIL] Alerte memorisee (SMTP differe, evite stack overflow loopTask).");
   }
 }
 
@@ -734,6 +728,9 @@ void setup() {
                 wakeupCauseText(esp_sleep_get_wakeup_cause()));
   n3LogHardwareDiagnostics();
   logMonitoringSnapshot("setup:start");
+  /* Aligne otadata sur la partition en cours (comme n3pp/msp) — evite OTA « Verify Bin Header Failed »
+   * apres flash USB sur un slot different du slot de boot. */
+  n3OtaSyncBootPartition();
   pinMode(LED_GPIO, OUTPUT);
   digitalWrite(LED_GPIO, LOW);
   ledBlink(100, 100, 2);
@@ -754,6 +751,17 @@ void setup() {
   runtimeSleepSeconds = TIME_TO_SLEEP;
   forceWakeupActiveThisBoot = false;
   resetModeActiveThisBoot = false;
+
+#if USE_DEEP_SLEEP
+  /* Horloge fiable AVANT POST version / HMAC (cle 103, X-Sig-*). Sans NTP, l'epoch NVS
+   * peut etre hors fenetre SIG_VALID_WINDOW (300 s) -> HTTP 401 « Signature invalide ». */
+  {
+    const uint32_t ntpStartMs = millis();
+    n3CamSyncClock(preferences, rtc, wifiOk);
+    logStepDuration("sync_ntp", millis() - ntpStartMs, NTP_SYNC_TIMEOUT_MS + 500);
+    logMonitoringSnapshot("setup:post_ntp");
+  }
+#endif
 
   if (wifiOk && WiFi.status() == WL_CONNECTED) {
     CameraRemoteConfig remoteCfg = {};
@@ -807,13 +815,6 @@ void setup() {
   logStepDuration("connexion_wifi", millis() - wifiStartMs, WIFI_CONNECT_TIMEOUT_MS + 1500);
   logMonitoringSnapshot("setup:post_wifi");
   ledBlink(100, 100, 1);
-
-#if USE_DEEP_SLEEP
-  const uint32_t ntpStartMs = millis();
-  n3CamSyncClock(preferences, rtc, wifiOk);
-  logStepDuration("sync_ntp", millis() - ntpStartMs, NTP_SYNC_TIMEOUT_MS + 500);
-  logMonitoringSnapshot("setup:post_ntp");
-#endif
 
   /* OTA distant : logs explicites + verification toutes les 2 heures de cycles */
 #if USE_DEEP_SLEEP
