@@ -35,6 +35,9 @@ envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/dépl
 
 - **Branche de travail unique** : `master` — ne pas créer ni utiliser la branche `pio-build` (supprimée,
   contenu intégré dans `master`). Pas de développement parallèle durable hors `master`.
+- **Si `pio-build` existe encore** (locale ou `origin/pio-build`) : fusionner **systématiquement** dans
+  `master` (`git checkout master && git pull && git merge pio-build && git push origin master`), puis
+  supprimer `pio-build` en local et sur `origin`. Ne jamais laisser de travail uniquement sur `pio-build`.
 - **Ne pas confondre** : `C:\pio-builds\` sur Windows = **répertoire d'artefacts** PlatformIO (redirection
   build), **pas** une branche Git (voir `README.md`, section build Windows).
 - Branches éphémères `claude/…` ou PR : rebaser sur `origin/master` avant merge ; une fois fusionné, supprimer

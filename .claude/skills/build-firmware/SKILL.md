@@ -21,6 +21,8 @@ suffisent — c'est ce que fait la CI.
 
 - Travailler sur **`master`** uniquement (`git checkout master` dans `firmwires/`).
 - **Interdit** : branche `pio-build` (supprimée — ne pas recréer).
+- **Si `pio-build` existe** (locale ou `origin/pio-build`) : merger dans `master`, pousser, puis supprimer
+  la branche (local + distant). Voir `git-et-versionnement.mdc` (racine IOT_n3).
 - `C:\pio-builds\` = dossier artefacts Windows PlatformIO, **pas** une branche Git.
 
 ## 1. Build
