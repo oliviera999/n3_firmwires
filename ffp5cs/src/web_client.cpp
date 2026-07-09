@@ -1,5 +1,5 @@
-// v11.162: WebClient simplifié - HTTP par défaut (plus de TLS pour requêtes courantes)
-// Réduit fragmentation mémoire en éliminant le besoin de ~32KB contigu pour TLS
+// v11.162: WebClient — HTTP par défaut (wroom-prod). TLS opt-in wroom-prod-https
+// (USE_HTTPS_ENDPOINTS + FFP5CS_WEBCLIENT_TLS_READY), sérialisé via TLSMutex.
 // v11.172: Les noms de variables POST sont définis dans gpio_mapping.h (VariableRegistry)
 // Source de vérité: GPIOMap::XXX.serverPostName (ex: "chauffageThreshold")
 // v11.171: Queue persistante POSTs échoués (offline-first)
@@ -19,6 +19,11 @@
 #include <cstring>
 #include <atomic>
 #include <memory>  // C3: unique_ptr pour buffer d'unwrap en heap (réduction pile)
+#include "hmac_sign.h"  // v13.80 (audit) - HMAC-SHA256 sur POST/GET en mode dual
+#include "power.h"
+#include "tls_mutex.h"
+
+extern PowerManager power;  // défini dans app.cpp
 
 // Mutex pour sérialiser HTTP (netTask GET et postSenderTask POST)
 static SemaphoreHandle_t s_httpMutex = nullptr;
@@ -58,12 +63,32 @@ struct HttpTransportMutexGuard {
   explicit operator bool() const { return held; }
 };
 
+#if defined(USE_HTTPS_ENDPOINTS) && defined(FFP5CS_WEBCLIENT_TLS_READY)
+// Sérialise HTTPS métier vs SMTP (TLSMutex) — pattern tls_minimal_test.cpp (setInsecure pilote).
+struct WebClientTlsSessionGuard {
+  bool held{false};
+  WiFiClientSecure& client;
+  explicit WebClientTlsSessionGuard(WiFiClientSecure& c, uint32_t mutexTimeoutMs)
+      : client(c) {
+    if (!TLSMutex::acquire(mutexTimeoutMs)) {
+      return;
+    }
+    held = true;
+    client.setInsecure();
+    client.setHandshakeTimeout(NetworkConfig::HTTP_TLS_HANDSHAKE_TIMEOUT_MS);
+  }
+  ~WebClientTlsSessionGuard() {
+    if (held) {
+      TLSMutex::release();
+    }
+  }
+  explicit operator bool() const { return held; }
+  WebClientTlsSessionGuard(const WebClientTlsSessionGuard&) = delete;
+  WebClientTlsSessionGuard& operator=(const WebClientTlsSessionGuard&) = delete;
+};
+#endif
+
 }  // namespace
-
-#include "hmac_sign.h"  // v13.80 (audit) - HMAC-SHA256 sur POST/GET en mode dual
-#include "power.h"
-
-extern PowerManager power;  // défini dans app.cpp
 
 // Buffer pour dernier GET outputs/state : rempli par fetchRemoteState (netTask), lu par copyLastFetchedTo (caller) — évite LoadProhibited (écrire doc depuis netTask)
 static char s_lastFetchedJson[BufferConfig::OUTPUTS_STATE_READ_BUFFER_SIZE + 1];
@@ -89,7 +114,7 @@ WebClient::WebClient(const char* apiKey) {
   } else {
     _apiKey[0] = '\0';
   }
-  // v11.162: Configuration HTTP simple (plus de TLS)
+  // Configuration HTTP (TLS opt-in via wroom-prod-https uniquement).
   _http.setReuse(false);  // Désactive keep-alive pour éviter blocages
   _http.setTimeout(NetworkConfig::HTTP_TIMEOUT_MS);
 }
@@ -122,6 +147,15 @@ bool WebClient::httpRequest(const char* url, const char* payload,
                   (unsigned long)(timeoutMs + 5000UL));
     return false;
   }
+
+#if defined(USE_HTTPS_ENDPOINTS) && defined(FFP5CS_WEBCLIENT_TLS_READY)
+  WebClientTlsSessionGuard tlsGuard(_client, NetworkConfig::TLS_MUTEX_TIMEOUT_MS);
+  if (!tlsGuard) {
+    LOG(LOG_WARN, "[HTTP] TLS: mutex/heap indisponible, abandon requête HTTPS");
+    if (s_httpMutex != nullptr) xSemaphoreGive(s_httpMutex);
+    return false;
+  }
+#endif
 
   // v11.XXX: Nettoyage systématique du client avant réutilisation (fiabilité WiFi capricieux)
   // Fermer connexion précédente si encore ouverte pour éviter états incohérents
@@ -457,6 +491,13 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   if (!transportGuard) {
     return loadFromNVSFallback(doc) ? 2 : 0;
   }
+
+#if defined(USE_HTTPS_ENDPOINTS) && defined(FFP5CS_WEBCLIENT_TLS_READY)
+  WebClientTlsSessionGuard tlsGuard(_client, NetworkConfig::TLS_MUTEX_TIMEOUT_MS);
+  if (!tlsGuard) {
+    return loadFromNVSFallback(doc) ? 2 : 0;
+  }
+#endif
 
   // v11.XXX: Nettoyage systématique du client avant réutilisation (fiabilité WiFi capricieux)
   if (_client.connected()) {

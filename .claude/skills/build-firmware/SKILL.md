@@ -17,6 +17,12 @@ La compilation échoue sans le fichier de secrets (jamais versionné) :
 Pour un simple build de vérification (sans vrais identifiants), les placeholders de l'`.example`
 suffisent — c'est ce que fait la CI.
 
+## Branche Git
+
+- Travailler sur **`master`** uniquement (`git checkout master` dans `firmwires/`).
+- **Interdit** : branche `pio-build` (supprimée — ne pas recréer).
+- `C:\pio-builds\` = dossier artefacts Windows PlatformIO, **pas** une branche Git.
+
 ## 1. Build
 
 ```bash

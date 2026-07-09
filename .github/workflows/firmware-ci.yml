@@ -89,11 +89,10 @@ jobs:
           # Envs PROFILE_PROD : compile-check activé via le WEB_AUTH factice provisionné
           # ci-dessous (lève le static_assert). wroom-prod = pioarduino ; pio6/s3-prod = registre.
           - { name: ffp5cs-wroom-prod, dir: ffp5cs, env: wroom-prod }
+          - { name: ffp5cs-wroom-prod-https, dir: ffp5cs, env: wroom-prod-https }
           - { name: ffp5cs-wroom-prod-pio6, dir: ffp5cs, env: wroom-prod-pio6 }
           - { name: ffp5cs-wroom-s3-prod, dir: ffp5cs, env: wroom-s3-prod }
           # NB : restent hors CI par des contraintes pré-existantes propres à l'env :
-          #  - wroom-prod-https : #error volontaire (server_url_config.h) bloquant
-          #    USE_HTTPS_ENDPOINTS tant que le transport TLS du WebClient n'est pas implémenté.
           #  - wroom-beta-local : réactive le web async ; le fix lib_ignore=LittleFS
           #    (platformio.ini) lève l'erreur de compilation, mais le binaire résultant
           #    (~2,0 Mo) déborde sa partition app 'medium' (1,66 Mo) — nécessite un

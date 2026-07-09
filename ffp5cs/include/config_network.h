@@ -38,6 +38,8 @@ namespace NetworkConfig {
     inline constexpr uint8_t OUTPUTS_STATE_MAX_EMPTY_READS = 40;
     // Timeout mutex TLS pour serialization SMTP/HTTPS (aligné 5s)
     inline constexpr uint32_t TLS_MUTEX_TIMEOUT_MS = 5000;
+    // Handshake TLS WebClient métier (wroom-prod-https) — rester sous TWDT WROOM 30s
+    inline constexpr uint32_t HTTP_TLS_HANDSHAKE_TIMEOUT_MS = 5000;
     // Fetch au réveil : timeout plus long (dérogation acceptable car critique pour commandes programmées)
     inline constexpr uint32_t WAKEUP_FETCH_TIMEOUT_MS = 28000;  // 28 s (aligné FETCH_REMOTE_STATE_RPC_TIMEOUT_MS)
     inline constexpr int WAKEUP_FETCH_MAX_RETRIES = 3;

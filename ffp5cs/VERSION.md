@@ -12,6 +12,20 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.14 - 2026-07-09
+
+### `wroom-prod-https` : transport TLS WebClient (pilote isolé)
+
+Activation du profil HTTPS métier **sans impact sur `wroom-prod`** (HTTP inchangé) :
+
+- **`WebClient`** : `WiFiClientSecure` + `TLSMutex` uniquement si `USE_HTTPS_ENDPOINTS` **et**
+  `FFP5CS_WEBCLIENT_TLS_READY` (flag ajouté à l'env `wroom-prod-https` seulement).
+- **`server_url_config.h`** : garde-fou levé pour cet env ; `BASE_URL` → `https://iot.olution.info`.
+- **Handshake** : `setInsecure()` (pilote, cf. `tls_minimal_test.cpp`) ; CA embarquée = chantier ultérieur.
+- **Fallback** : heap ou mutex TLS indisponible → échec POST / fallback NVS sur GET (offline-first).
+
+**Validation terrain requise** avant remplacement de `wroom-prod` : monitor 5 min, heap stable, pas de collision SMTP.
+
 ## Version 15.13 - 2026-07-09
 
 ### Mutualisation `shared/` : consommation des 6 briques de logique pure (L1b)

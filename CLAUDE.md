@@ -31,6 +31,15 @@ envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/dépl
 > ⚠️ **Ne pas utiliser** `archive/` (code legacy, ex. anciennes caméras → remplacées par
 > `uploadphotosserver/` unifié) ni `à voir/` (prototypes non maintenus : `LVGL_Widgets`, `ratata`).
 
+## Branches Git
+
+- **Branche de travail unique** : `master` — ne pas créer ni utiliser la branche `pio-build` (supprimée,
+  contenu intégré dans `master`). Pas de développement parallèle durable hors `master`.
+- **Ne pas confondre** : `C:\pio-builds\` sur Windows = **répertoire d'artefacts** PlatformIO (redirection
+  build), **pas** une branche Git (voir `README.md`, section build Windows).
+- Branches éphémères `claude/…` ou PR : rebaser sur `origin/master` avant merge ; une fois fusionné, supprimer
+  la branche locale.
+
 ## Compiler / flasher / monitorer
 
 Chaque firmware se construit **depuis son propre dossier** :

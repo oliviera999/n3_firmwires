@@ -4,6 +4,9 @@
 #include <ArduinoJson.h>
 #include "config.h"
 #include <WiFi.h>
+#if defined(USE_HTTPS_ENDPOINTS) && defined(FFP5CS_WEBCLIENT_TLS_READY)
+#include <WiFiClientSecure.h>
+#endif
 
 struct Measurements {
   float tempAir{0};
@@ -20,8 +23,8 @@ struct Measurements {
   bool light{false};
 };
 
-// v11.162: WebClient simplifié - HTTP par défaut (plus de TLS pour requêtes courantes)
-// Réduit fragmentation mémoire en éliminant le besoin de ~32KB contigu pour TLS
+// v11.162: HTTP par défaut (wroom-prod). TLS opt-in via USE_HTTPS_ENDPOINTS +
+// FFP5CS_WEBCLIENT_TLS_READY (env wroom-prod-https uniquement).
 class WebClient {
  public:
   explicit WebClient(const char* apiKey = ApiConfig::API_KEY);
@@ -60,7 +63,11 @@ class WebClient {
 
  private:
   char _apiKey[65];  // API key max 64 chars + null terminator
-  WiFiClient _client;  // v11.162: Client HTTP simple (plus de TLS)
+#if defined(USE_HTTPS_ENDPOINTS) && defined(FFP5CS_WEBCLIENT_TLS_READY)
+  WiFiClientSecure _client;
+#else
+  WiFiClient _client;
+#endif
   HTTPClient _http;
   unsigned long _lastRequestMs{0};  // Fix v11.29: timestamp dernière requête HTTP
   /** POST vers l'URL post-data courante avec timeout aligné envoi principal / queue NVS. */
