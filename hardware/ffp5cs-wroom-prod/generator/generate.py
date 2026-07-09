@@ -27,7 +27,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "ffp5cs-wroom-prod"
-REV = "0.1"
+REV = "0.4"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -346,7 +346,7 @@ def build_components():
              desc="DHT11/DHT22 (1=3V3 2=DATA 3=GND)", sch=(104, 52), pcb=(174, 122, 0),
              nets={"1": "+3V3", "2": NET["DHT_PIN"], "3": "GND"}),
         dict(ref="C3", sym="C", value="100n", fp="C_Disc_D5.0mm_W2.5mm_P5.00mm",
-             desc="Découplage 3V3 capteurs", sch=(92, 56), pcb=(164, 106, 0),
+             desc="Découplage 3V3 capteurs", sch=(92, 56), pcb=(74, 106, 0),
              nets={"1": "+3V3", "2": "GND"}),
         dict(ref="R24", sym="R", value="4.7k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
@@ -391,6 +391,16 @@ def build_components():
         dict(ref="C4", sym="C", value="100n", fp="C_Disc_D5.0mm_W2.5mm_P5.00mm",
              desc="Découplage 3V3 I2C", sch=(92, 96), pcb=(44, 60, 90),
              nets={"1": "+3V3", "2": "GND"}),
+        dict(ref="J18", sym="CONN_04", value="Support I2C libre",
+             fp="PinSocket_1x04_P2.54mm_Vertical",
+             desc="Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)",
+             sch=(104, 100), pcb=(171, 100, 0),
+             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}),
+        dict(ref="J19", sym="CONN_04", value="Support I2C libre",
+             fp="PinSocket_1x04_P2.54mm_Vertical",
+             desc="Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)",
+             sch=(104, 108), pcb=(158, 100, 0),
+             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}),
     ]
     # --- GPIO libres + EN -----------------------------------------------------
     comps.append(dict(
@@ -442,7 +452,7 @@ PCB_TEXTS = [
     (82, 141.5, "DS18B20", 1.0),
     (82, 119.5, "LDR", 1.0),
     (94, 120, "OLED", 1.0),
-    (48, 56.5, "I2C EXT", 1.0),
+    (48, 56.5, "I2C EXT", 1.0), (164, 97, "I2C EXT x2", 1.0),
     (183, 58, "SRV GROS", 0.8),
     (183, 70, "SRV PETITS", 0.8),
     (184, 93, "GPIO", 0.8),
@@ -702,6 +712,14 @@ def gen_pcb() -> str:
 '''
 
 
+_NC = {"clearance": 0.2, "track_width": 0.3, "via_diameter": 0.7,
+       "via_drill": 0.35, "bus_width": 12, "diff_pair_gap": 0.25,
+       "diff_pair_via_gap": 0.25, "diff_pair_width": 0.2, "line_style": 0,
+       "microvia_diameter": 0.3, "microvia_drill": 0.1,
+       "pcb_color": "rgba(0, 0, 0, 0.000)",
+       "schematic_color": "rgba(0, 0, 0, 0.000)", "wire_width": 6}
+
+
 def gen_project() -> str:
     return json.dumps({
         "board": {"3dviewports": [], "design_settings": {"defaults": {},
@@ -710,14 +728,18 @@ def gen_project() -> str:
         "boards": [], "cvpcb": {"equivalence_files": []}, "libraries":
         {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
         "meta": {"filename": f"{PROJECT}.kicad_pro", "version": 1},
-        "net_settings": {"classes": [{"name": "Default", "clearance": 0.2,
-                         "track_width": 0.3, "via_diameter": 0.7,
-                         "via_drill": 0.35, "bus_width": 12, "diff_pair_gap": 0.25,
-                         "diff_pair_via_gap": 0.25, "diff_pair_width": 0.2,
-                         "line_style": 0, "microvia_diameter": 0.3,
-                         "microvia_drill": 0.1, "pcb_color": "rgba(0, 0, 0, 0.000)",
-                         "schematic_color": "rgba(0, 0, 0, 0.000)",
-                         "wire_width": 6}], "meta": {"version": 3}},
+        "net_settings": {"classes": [
+            dict(_NC, name="Default", track_width=0.4, clearance=0.2),
+            dict(_NC, name="Relais", track_width=2.0, clearance=0.5,
+                 via_diameter=1.6, via_drill=0.8),
+            dict(_NC, name="Alim", track_width=1.2, clearance=0.2,
+                 via_diameter=1.0, via_drill=0.5),
+        ], "meta": {"version": 3},
+            "netclass_patterns": (
+                [{"netclass": "Relais", "pattern": f"REL{i}_{c}"}
+                 for i in range(1, 5) for c in ("COM", "NO", "NC")]
+                + [{"netclass": "Alim", "pattern": n}
+                   for n in ("+5V", "VIN_5V", "GND")])},
         "pcbnew": {"page_layout_descr_file": ""},
         "schematic": {"legacy_lib_dir": "", "legacy_lib_list": []},
         "sheets": [[ROOT_UUID, "Racine"]],

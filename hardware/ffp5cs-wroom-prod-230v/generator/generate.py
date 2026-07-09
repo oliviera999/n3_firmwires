@@ -30,7 +30,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "ffp5cs-wroom-prod-230v"
-REV = "0.1"
+REV = "0.2"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -403,6 +403,16 @@ def build_components():
         dict(ref="C4", sym="C", value="100n", fp="C_Disc_D5.0mm_W2.5mm_P5.00mm",
              desc="Découplage 3V3 I2C", sch=(92, 96), pcb=(43, 70, 270),
              nets={"1": "+3V3", "2": "GND"}),
+        dict(ref="J21", sym="CONN_04", value="Support I2C libre",
+             fp="PinSocket_1x04_P2.54mm_Vertical",
+             desc="Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)",
+             sch=(104, 100), pcb=(43, 80, 0),
+             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}),
+        dict(ref="J22", sym="CONN_04", value="Support I2C libre",
+             fp="PinSocket_1x04_P2.54mm_Vertical",
+             desc="Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)",
+             sch=(104, 108), pcb=(47, 90, 0),
+             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}),
     ]
     # --- GPIO libres + EN -----------------------------------------------------
     comps.append(dict(
@@ -476,7 +486,7 @@ PCB_TEXTS = [
     (82, 146.5, "DS18B20", 1.0),
     (82, 119.5, "LDR", 1.0),
     (94, 125.5, "OLED", 1.0),
-    (43, 52, "I2C EXT", 1.0),
+    (43, 52, "I2C EXT x3", 1.0),
     (198, 55, "SRV GROS", 0.8),
     (198, 67, "SRV PETITS", 0.8),
     (186, 81.5, "GPIO", 0.8),
