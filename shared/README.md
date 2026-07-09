@@ -20,7 +20,7 @@ Chaque test inclut directement le `.cpp` testé avec un mock Arduino minimal
 (`mocks/Arduino.h`, `analogRead` injectable) ou des stubs (`stubs/` : mbedtls,
 HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
 - `n3_analog_sensors` (`test_analog`) : médiane, rejet d'outliers, moyenne, EMA, fallback, tensions batterie.
-- `n3_hmac` (`test_hmac`) : contrat du wrapper (formatage hex 64 car., garde-fou de taille, header `X-Signature`). La justesse crypto reste validée sur cible (vrai mbedtls).
+- `n3_hmac` (`test_hmac`) : contrat du wrapper plat (formatage hex 64 car., garde-fou de taille, header `X-Signature`). `test_hmac_canonical` : contrat de `n3_hmac_canonical` (format hex, garde-fous de paramètres, format du nonce). La justesse crypto et l'entropie du nonce restent validées sur cible (vrai mbedtls + HW RNG).
 - Logique pure mutualisée depuis ffp5cs (mêmes assertions que les suites ffp5cs d'origine, parité octet-identique) : `test_epoch_util`, `test_clock_decision`, `test_uptime_format` (lib `n3_time`) ; `test_sleep_decision`, `test_reset_reason`, `test_login_throttle` (lib `n3_common`).
 
 Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
@@ -34,7 +34,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 | [`n3_wifi`](n3_wifi/) | 1.1.0 | Connexion WiFi multi-réseaux avec scan+RSSI+BSSID, callbacks. | — |
 | [`n3_http`](n3_http/) | 1.1.0 | **Déprécié** : GET/POST minimal HTTPClient avec timeout (`N3_HTTP_TIMEOUT_MS`). Préférer `n3_data`. | `n3_common ^1.3.0` |
 | [`n3_data`](n3_data/) | 1.2.0 | POST/GET URL-encoded, HMAC, timeout 5 s. Logs `[SERVER][POST/GET] Verdict` + stats `N3NetStatsSnapshot` pour rapports mail. | `n3_hmac`, `n3_common` |
-| [`n3_hmac`](n3_hmac/) | 1.0.0 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. | — |
+| [`n3_hmac`](n3_hmac/) | 1.1.0 | HMAC-SHA256 via mbedtls + helper d'attache du header `X-Signature`. `n3_hmac_canonical` (mutualisé ffp5cs) : HMAC canonique `ts+"\n"+nonce+"\n"+body` **sans `String`** (chemin chaud) + `generateNonce`, pour les en-têtes `X-Sig-*`. | — |
 | [`n3_mail`](n3_mail/) | 1.1.0 | Envoi SMTP, debug body et rapport reseau periodique (`n3MailBuildNetReportBody`). | `n3_data`, `mobizt/ESP Mail Client` |
 | [`n3_time`](n3_time/) | 1.1.0 | Sauvegarde/restauration heure RTC en flash NVS, raison de réveil. Logique pure mutualisée (depuis ffp5cs) : `n3_epoch_util` (validation epoch anti-overflow 32-bit), `n3_clock_decision` (plausibilité NTP + dérive PPM), `n3_uptime_format`. | `fbiego/ESP32Time` |
 | [`n3_common`](n3_common/) | 1.5.0 | OTA HTTP distant avec vérif sha256 + ECDSA P-256 (`n3_ota`), constantes `n3_defaults.h`, parsing JSON outputs `n3_outputs_json` (factorisation 2026-05). Logique pure mutualisée (depuis ffp5cs) : `n3_sleep_decision` (délai de sommeil adaptatif), `n3_reset_reason` (libellé + classification crash), `n3_login_throttle` (anti-brute-force). | `bblanchon/ArduinoJson ^7.4.3`, `arduino-libraries/Arduino_JSON ^0.2.0` |
