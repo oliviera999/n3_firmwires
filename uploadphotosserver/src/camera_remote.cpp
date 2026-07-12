@@ -127,9 +127,9 @@ int cameraRemotePostFirmwareVersion(const char* targetName) {
   cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
   cfg.onSending = nullptr;
   cfg.onResult = nullptr;
-  /* A4 : signature HMAC additive (X-Sig-*) si API_SIG_SECRET défini + horloge fiable ; sinon 0 =>
-     retombe sur l'auth clé API (rétro-compatible). */
-  cfg.sigSecret = API_SIG_SECRET;
+  /* A4 : signature HMAC additive (X-Sig-*) si CAM_DEVICE_HMAC=1 + API_SIG_SECRET + horloge fiable ;
+     sinon 0 => auth clé API seule (rétro-compatible). */
+  cfg.sigSecret = CAM_DEVICE_SIG_SECRET;
   {
     const unsigned long epoch = static_cast<unsigned long>(time(nullptr));
     cfg.currentEpochSeconds = (epoch >= 1600000000UL) ? epoch : 0UL;

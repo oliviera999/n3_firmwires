@@ -6,8 +6,20 @@
 #define API_SIG_SECRET ""
 #endif
 
+/* HMAC device (en-têtes X-Sig-*) : désactivé par défaut — auth = API_KEY seule.
+ * Opt-in : #define CAM_DEVICE_HMAC 1 (et API_SIG_SECRET non vide dans credentials.h).
+ * Côté serveur : fallback api_key si HMAC absent/invalide (sauf GALLERY_HMAC_STRICT). */
+#ifndef CAM_DEVICE_HMAC
+#define CAM_DEVICE_HMAC 0
+#endif
+#if CAM_DEVICE_HMAC
+#  define CAM_DEVICE_SIG_SECRET API_SIG_SECRET
+#else
+#  define CAM_DEVICE_SIG_SECRET ""
+#endif
+
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.64"
+#define FIRMWARE_VERSION "2.65"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).

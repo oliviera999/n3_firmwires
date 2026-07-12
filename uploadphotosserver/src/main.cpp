@@ -585,7 +585,7 @@ void capturePhoto(bool wifiOk) {
     CameraUploadParams up = {};
     up.url = uploadUrl;
     up.apiKey = API_KEY;
-    up.sigSecret = API_SIG_SECRET;
+    up.sigSecret = CAM_DEVICE_SIG_SECRET;
     up.syncSession = "";
     up.capturedAt = stampOk ? stamp : "";
     up.captureSeq = seqStr;
@@ -638,7 +638,7 @@ static void runSyncDrainIfNeeded(bool wifiOk) {
   sc.startUrl = SYNC_START_URL;
   sc.finishUrl = SYNC_FINISH_URL;
   sc.apiKey = API_KEY;
-  sc.sigSecret = API_SIG_SECRET;
+  sc.sigSecret = CAM_DEVICE_SIG_SECRET;
   sc.board = REMOTE_BOARD_ID;
   sc.targetName = currentTargetName();
   sc.firmwareVersion = FIRMWARE_VERSION;

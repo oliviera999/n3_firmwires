@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.64** (définie dans `include/config.h`).
+Version actuelle : **2.65** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.64** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.65 | 2026-07-12 | **HMAC device optionnel**. `CAM_DEVICE_HMAC` défaut **0** : plus d'en-têtes `X-Sig-*` (auth = `API_KEY`). Opt-in `#define CAM_DEVICE_HMAC 1` + `API_SIG_SECRET`. Aligné serveur ≥ 6.22.2 (`GALLERY_HMAC_STRICT`, fallback api_key si HMAC invalide). |
 | 2.64 | 2026-07-09 | **Correctifs terrain ffp3 (log COM7)**. **OTA** : `n3OtaSyncBootPartition()` au boot (comme n3pp/msp) ; flash OTA en **un seul téléchargement** via `Update` (`n3_common` 1.5.1) — évite l'échec « Verify Bin Header Failed » après sha256 OK sur le 1er GET. **HMAC POST version** : sync NTP **avant** le POST `post-uploadphotoserver-version` (epoch hors fenêtre 300 s → HTTP 401). **Stack** : alerte mail OTA échec toujours différée (plus de SMTP dans `otaMailEndCallback` après mbedtls OTA). |
 | 2.63 | 2026-07-09 | **Mutualisation HMAC (L2).** La signature du POST photo (`cameraUploadAddSignatureHeaders`) délègue désormais le calcul à la brique partagée `n3hmac::computeHmacHex` (`shared/n3_hmac/n3_hmac_canonical`, `n3_hmac` 1.1.0) au lieu de construire le message localement puis d'appeler `n3HmacSha256`. **Sans changement observable** : même condensé `HMAC(timestamp\n nonce\n api_key)`, mêmes en-têtes `X-Sig-*`, même nonce (epoch-compteur) — dé-duplication du calcul crypto uniquement. |
 | 2.62 | 2026-07-07 | **Phase 3 arbitrage mails — taxonomie graduée + failover critique-only.** La clé distante 103 devient un **mode gradué** `none/important/partial/full` (taxonomie `N3Severity`/`N3NotifMode` de `n3_mail` 1.3.0), rétro-compatible avec l'ancien booléen (`1`/`checked` → full ; `0`/`unchecked` → none). Chaque mail CAM porte une sévérité (sujet `[P n]`) : OTA-échec = P2, premier démarrage = P3, bascule jour/nuit = P4. Proxy « serveur OK » = GET config 200 + POST version 2xx ; en **failover** les mails sont plafonnés à P1/P2 (les P3/P4 restent en attente via leurs mécanismes d'état et repartent au retour en ligne). Pas de suppression quand le serveur est OK : les diagnostics CAM ne sont pas encore couverts côté serveur (règle d'ordonnancement du plan). |
