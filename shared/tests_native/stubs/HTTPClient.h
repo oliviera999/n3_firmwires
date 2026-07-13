@@ -11,6 +11,17 @@
 // WiFiClient est passé à http.begin(client, url) par n3_data.
 class WiFiClient {};
 
+// Captures globales pour assertions (n3DataPost instancie son HTTPClient en
+// local : seul un état partagé permet au test d'inspecter l'appel).
+inline std::string& n3StubLastPostBody() {
+  static std::string body;
+  return body;
+}
+inline std::string& n3StubLastBeginUrl() {
+  static std::string url;
+  return url;
+}
+
 class HTTPClient {
  public:
   std::string lastHeaderName;
@@ -21,10 +32,16 @@ class HTTPClient {
     lastHeaderValue = value ? value : "";
   }
 
-  // No-ops suffisants pour compiler n3_data (non exercés par les tests).
-  void begin(WiFiClient& /*client*/, const char* /*url*/) {}
+  // No-ops suffisants pour compiler n3_data ; POST/begin capturent leurs
+  // arguments pour les tests de contrat (body url-encodé, URL cible).
+  void begin(WiFiClient& /*client*/, const char* url) {
+    n3StubLastBeginUrl() = url ? url : "";
+  }
   void setTimeout(int /*ms*/) {}
-  int POST(const String& /*body*/) { return 0; }
+  int POST(const String& body) {
+    n3StubLastPostBody() = body.c_str();
+    return 0;
+  }
   int GET() { return 0; }
   String getString() { return String(""); }
   void end() {}

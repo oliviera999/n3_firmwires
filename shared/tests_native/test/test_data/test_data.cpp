@@ -55,6 +55,47 @@ void test_octet_haut_encode() {
   TEST_ASSERT_EQUAL_STRING("%E9", n3UrlEncode(String(raw)).c_str());
 }
 
+// ---------------------------------------------------------------------------
+// n3DataSendHeartbeat — contrat du body (mutualisé n3pp/msp).
+// Le stub WiFi renvoie WL_CONNECTED / RSSI -50, le mock ESP.getFreeHeap()
+// renvoie 123456, millis() renvoie 0 : le body attendu est donc déterministe.
+// Le stub HTTPClient capture body/url (n3StubLastPostBody/n3StubLastBeginUrl).
+// ---------------------------------------------------------------------------
+void test_heartbeat_body_et_url() {
+  n3StubLastPostBody().clear();
+  n3StubLastBeginUrl().clear();
+
+  N3HeartbeatConfig cfg = {};
+  cfg.url = "http://example.test/hb.php";
+  cfg.apiKeyHeader = "HDRKEY";
+  cfg.apiKeyField = "k";
+  cfg.sensor = "n3pp";
+  cfg.version = "9.99";
+  cfg.bootCount = 7;
+  cfg.sigSecret = nullptr;   // pas de HMAC : body = les 8 champs seuls
+  cfg.currentEpochSeconds = 0;
+
+  (void)n3DataSendHeartbeat(cfg);
+
+  TEST_ASSERT_EQUAL_STRING("http://example.test/hb.php", n3StubLastBeginUrl().c_str());
+  // Ordre et contenu exacts des 8 champs (parité avec les firmwares d'origine).
+  // uptime = millis()/1000 = 0 ; free = min = 123456 (mock) ; rssi = -50 (stub).
+  TEST_ASSERT_EQUAL_STRING(
+      "api_key=k&sensor=n3pp&version=9.99&uptime=0&free=123456&min=123456&reboots=7&rssi=-50",
+      n3StubLastPostBody().c_str());
+}
+
+void test_heartbeat_champs_nuls_toleres() {
+  n3StubLastPostBody().clear();
+  N3HeartbeatConfig cfg = {};
+  cfg.url = "http://example.test/hb.php";
+  // apiKeyField/sensor/version nuls -> champs vides, pas de crash.
+  (void)n3DataSendHeartbeat(cfg);
+  TEST_ASSERT_EQUAL_STRING(
+      "api_key=&sensor=&version=&uptime=0&free=123456&min=123456&reboots=0&rssi=-50",
+      n3StubLastPostBody().c_str());
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -65,5 +106,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_hexa_majuscule);
   RUN_TEST(test_chaine_vide);
   RUN_TEST(test_octet_haut_encode);
+  RUN_TEST(test_heartbeat_body_et_url);
+  RUN_TEST(test_heartbeat_champs_nuls_toleres);
   return UNITY_END();
 }

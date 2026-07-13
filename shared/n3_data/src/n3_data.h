@@ -45,6 +45,29 @@ int n3DataPost(const N3PostConfig& config);
  */
 String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceApiKey = nullptr);
 
+// ---------------------------------------------------------------------------
+// Heartbeat generique (mutualise depuis n3pp/msp, corps verbatim identique).
+// Envoie un POST url-encode {api_key, sensor, version, uptime, free, min,
+// reboots, rssi} vers l'endpoint heartbeat. Conserve la semantique d'origine :
+//  - garde WiFi (skip + log si non connecte, retour -1) ;
+//  - plancher de heap `min` en static de fonction (reinitialise a chaque
+//    reveil deep-sleep, comme dans les firmwares d'origine) ;
+//  - delay(200) apres le POST.
+// ---------------------------------------------------------------------------
+struct N3HeartbeatConfig {
+  const char* url;                    // endpoint heartbeat (serverNameHeartbeat)
+  const char* apiKeyHeader;           // header X-Api-Key + signature legacy (API_KEY). NULL = aucun
+  const char* apiKeyField;            // champ body "api_key" (apiKeyValue)
+  const char* sensor;                 // champ body "sensor" (sensorName)
+  const char* version;                // champ body "version" (FIRMWARE_VERSION)
+  int bootCount;                      // champ body "reboots"
+  const char* sigSecret;              // HMAC FFP3/X-Sig (API_SIG_SECRET). NULL = off
+  unsigned long currentEpochSeconds;  // 0 = horloge non fiable (pas de timestamp signe)
+};
+
+/** Retourne le code HTTP du POST, ou -1 si WiFi non connecte. */
+int n3DataSendHeartbeat(const N3HeartbeatConfig& config);
+
 /** Statistiques reseau HTTP (POST/GET) pour rapports mail et comparaison ffp5cs. */
 struct N3NetStatsSnapshot {
   uint32_t postCount;
