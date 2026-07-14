@@ -11,7 +11,7 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
-#include "ota_artifact_select.h"  // logique pure extraite (testée nativement, audit §3.8)
+#include "n3_ota_artifact_select.h"  // logique pure mutualisée shared/n3_common (T4.3), testée nativement
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 #include <esp_http_client.h>

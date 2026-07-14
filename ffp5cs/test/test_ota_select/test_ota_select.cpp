@@ -12,7 +12,7 @@
 //
 // ArduinoJson est header-only et compatible hôte (ajouté aux lib_deps natifs).
 #include <ArduinoJson.h>
-#include "../../include/ota_artifact_select.h"
+#include "n3_ota_artifact_select.h"
 
 using namespace OtaArtifactSelect;
 
