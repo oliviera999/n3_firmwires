@@ -20,6 +20,7 @@
 #endif
 
 #include "n3_data.h"
+#include "n3_store_forward.h"  // n3SfDrain (boucle de drain mutualisee, v2.66)
 
 namespace {
 
@@ -152,22 +153,102 @@ int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uin
   return n3DataPost(pc);
 }
 
-/* Respecte l'intervalle minimal entre uploads galerie (rate-limit serveur par IP). */
-void syncUploadRateLimitPause(uint32_t lastUploadMs) {
-  if (lastUploadMs == 0) {
-    return;
-  }
-  const uint32_t elapsed = millis() - lastUploadMs;
-  if (elapsed >= SYNC_UPLOAD_MIN_INTERVAL_MS) {
-    return;
-  }
-  const uint32_t waitMs = SYNC_UPLOAD_MIN_INTERVAL_MS - elapsed;
-  Serial.printf("[SYNC] pause rate-limit %u ms\n", static_cast<unsigned int>(waitMs));
-  delay(waitMs);
-}
-
 bool syncUploadIsSuccess(int httpCode) {
   return httpCode == 200 || httpCode == 202;
+}
+
+// ---------------------------------------------------------------------------
+// v2.66 (mutualisation T3b) : la boucle de drain (pacing rate-limit, budget
+// temps, retries 429, commit-sur-succès, arrêt-sur-échec-réseau) vit désormais
+// dans shared/n3_store_forward (n3SfDrain — transposition fidèle de l'ancienne
+// boucle, invariants verrouillés par test_store_forward). Restent ici : le
+// backend SD+curseur NVS, l'envoi métier (nommage, session, logs par photo)
+// et les wrappers temps.
+// ---------------------------------------------------------------------------
+
+/* Backend n3_store_forward : énumération = `entries` (scan SD trié), commit =
+ * avance du curseur NVS (couvre aussi les trous < n, parité historique). */
+class SdCursorBackend : public N3SfBackend {
+ public:
+  explicit SdCursorBackend(const std::vector<SyncEntry>& entries) : _entries(entries) {}
+  uint32_t count() override { return static_cast<uint32_t>(_entries.size()); }
+  bool peek(uint32_t index, N3SfItem& out) override {
+    if (index >= _entries.size()) return false;
+    out = {};
+    out.handle = _entries[index].n;
+    out.ref = _entries[index].path;
+    return true;
+  }
+  void commit(const N3SfItem& item) override { nvsSet(kKeyCursor, item.handle); }
+
+ private:
+  const std::vector<SyncEntry>& _entries;
+};
+
+struct DrainSendCtx {
+  const CameraSyncConfig* cfg;
+  const std::vector<SyncEntry>* entries;
+  const char* sessionStr;
+  uint32_t bytes;
+};
+
+const SyncEntry* findEntryByN(const std::vector<SyncEntry>& entries, uint32_t n) {
+  for (const SyncEntry& e : entries) {
+    if (e.n == n) return &e;
+  }
+  return nullptr;
+}
+
+/* Envoi d'UNE photo du backlog (métier upload) -> verdict pour n3SfDrain. */
+N3SfSend drainSendOne(const N3SfItem& item, void* rawCtx) {
+  DrainSendCtx& ctx = *static_cast<DrainSendCtx*>(rawCtx);
+  const SyncEntry* e = findEntryByN(*ctx.entries, item.handle);
+  if (!e) {
+    return N3SfSend::HardFail;  // entrée introuvable : sauter, ne pas bloquer la file
+  }
+
+  /* M4 : buffers pile plutôt que temporaires String concaténés (chemin chaud). */
+  char seqStr[12];
+  snprintf(seqStr, sizeof(seqStr), "%lu", static_cast<unsigned long>(e->n));
+  char filename[64];
+  snprintf(filename, sizeof(filename), "esp32-cam-%s-%s.jpg",
+           ctx.cfg->targetName ? ctx.cfg->targetName : "cam", seqStr);
+
+  CameraUploadParams up = {};
+  up.url = ctx.cfg->uploadUrl;
+  up.apiKey = ctx.cfg->apiKey;
+  up.sigSecret = ctx.cfg->sigSecret;
+  up.syncSession = ctx.sessionStr;
+  up.capturedAt = (e->stamp[0] != '\0') ? e->stamp : "";
+  up.captureSeq = seqStr;
+  up.reconnect = ctx.cfg->reconnect;
+
+  size_t bytes = 0;
+  const int code = cameraUploadJpegFile(up, String(e->path), String(filename), &bytes);
+
+  if (syncUploadIsSuccess(code)) {
+    ctx.bytes += bytes;
+    Serial.printf("[SYNC] #%u (%s) envoyee HTTP=%d (%u bytes)\n",
+                  static_cast<unsigned int>(e->n), e->path, code,
+                  static_cast<unsigned int>(bytes));
+    return N3SfSend::Ok;
+  }
+  if (code == 429) {
+    Serial.printf("[SYNC][WARN] #%u HTTP=429 rate-limit\n", static_cast<unsigned int>(e->n));
+    return N3SfSend::RateLimited;  // pause + retries bornés gérés par n3SfDrain
+  }
+  Serial.printf("[SYNC][WARN] #%u echec HTTP=%d : arret du drain (reseau ?)\n",
+                static_cast<unsigned int>(e->n), code);
+  return N3SfSend::NetworkError;   // arrêt du drain, reprise au prochain réveil
+}
+
+uint32_t syncNowMs() { return static_cast<uint32_t>(millis()); }
+
+/* Attente injectée dans n3SfDrain : pacing rate-limit ET pauses 429 (le log
+ * "pause rate-limit" couvre désormais les deux, contenu identique). */
+void syncSleepMs(uint32_t ms) {
+  Serial.printf("[SYNC] pause rate-limit %u ms\n", static_cast<unsigned int>(ms));
+  delay(ms);
 }
 
 }  // namespace
@@ -286,26 +367,6 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
     return r;
   }
 
-  /* Stratégie hybride : vidage complet si le backlog dépasse le seuil, sinon drain incrémental.
-     A1 : `planned` est plafonné au réel drainable par réveil (budget temps / intervalle mini ≈16)
-     pour que « vidage complet » reste ATTEIGNABLE — sinon `complete` était toujours faux et le
-     serveur recevait `aborted` (mail d'alerte) à chaque réveil pour tout backlog > ~16. */
-  uint32_t planned;
-  if (pending > cfg.fullDrainThreshold) {
-    planned = pending;
-    Serial.printf("[SYNC] Backlog %u > seuil %u : rattrapage (vidage complet).\n",
-                  static_cast<unsigned int>(pending), static_cast<unsigned int>(cfg.fullDrainThreshold));
-  } else {
-    planned = (pending < cfg.maxUploadsPerWake) ? pending : cfg.maxUploadsPerWake;
-  }
-  if (planned > SYNC_DRAIN_MAX_UPLOADS_PER_WAKE) {
-    planned = SYNC_DRAIN_MAX_UPLOADS_PER_WAKE;  // plafond réel (budget temps)
-  }
-  Serial.printf("[SYNC] Drain : %u/%u photo(s) ce reveil (backlog reel=%u).\n",
-                static_cast<unsigned int>(planned), static_cast<unsigned int>(pending),
-                static_cast<unsigned int>(realBacklog));
-  r.planned = planned;
-
   /* Identité de session = cible + numéro le plus haut écrit (stable sur retry du même backlog). */
   const String deviceSession = String(cfg.targetName ? cfg.targetName : "cam") + "-" + String(count);
   int sessionId = 0;
@@ -314,74 +375,54 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   const int startCode = sessionStart(cfg, deviceSession, realBacklog, &sessionId);
   r.ran = true;
   r.sessionId = sessionId;
-  Serial.printf("[SYNC] start HTTP=%d session=%d backlog=%u planned=%u\n",
-                startCode, sessionId, static_cast<unsigned int>(realBacklog), static_cast<unsigned int>(planned));
+  Serial.printf("[SYNC] start HTTP=%d session=%d backlog=%u pending=%u\n",
+                startCode, sessionId, static_cast<unsigned int>(realBacklog),
+                static_cast<unsigned int>(pending));
   if (startCode != 200 || sessionId <= 0) {
     Serial.println("[SYNC][WARN] Ouverture de session echouee, drain annule.");
     return r;
   }
 
   const String sessionStr = String(sessionId);
-  const uint32_t drainStartMs = millis();
-  uint32_t lastUploadMs = 0;
-  for (uint32_t i = 0; i < planned && i < entries.size(); ++i) {
-    if (i > 0 && (millis() - drainStartMs) >= SYNC_DRAIN_MAX_DURATION_MS) {
-      Serial.printf("[SYNC] budget temps %u ms atteint, reprise au prochain reveil.\n",
-                    static_cast<unsigned int>(SYNC_DRAIN_MAX_DURATION_MS));
-      break;
-    }
 
-    const SyncEntry& e = entries[i];
-    syncUploadRateLimitPause(lastUploadMs);
+  /* v2.66 (T3b) : boucle de drain mutualisée (n3SfDrain, shared/n3_store_forward).
+     Mêmes règles qu'avant, transposées : stratégie hybride A1 (vidage complet
+     au-delà de fullDrainThreshold, sinon incrémental maxUploadsPerWake, plafonné
+     SYNC_DRAIN_MAX_UPLOADS_PER_WAKE), pacing SYNC_UPLOAD_MIN_INTERVAL_MS au
+     complément, budget temps SYNC_DRAIN_MAX_DURATION_MS (report ≠ échec),
+     retries 429 bornés, curseur NVS avancé APRÈS acquittement uniquement.
+     NB : le log « Drain : X/Y » est désormais émis après le drain (planned est
+     calculé par la lib) — contenu identique, données serveur inchangées. */
+  SdCursorBackend backend(entries);
+  DrainSendCtx sendCtx = {};
+  sendCtx.cfg = &cfg;
+  sendCtx.entries = &entries;
+  sendCtx.sessionStr = sessionStr.c_str();
+  sendCtx.bytes = 0;
 
-    /* M4 : buffers pile plutôt que temporaires String concaténés (alloc/frag DRAM en chemin chaud). */
-    char seqStr[12];
-    snprintf(seqStr, sizeof(seqStr), "%lu", static_cast<unsigned long>(e.n));
-    char filename[64];
-    snprintf(filename, sizeof(filename), "esp32-cam-%s-%s.jpg",
-             cfg.targetName ? cfg.targetName : "cam", seqStr);
+  N3SfDrainConfig sf = {};
+  sf.maxItemsPerWake = cfg.maxUploadsPerWake;
+  sf.fullDrainThreshold = cfg.fullDrainThreshold;
+  sf.hardCapPerWake = SYNC_DRAIN_MAX_UPLOADS_PER_WAKE;
+  sf.minIntervalMs = SYNC_UPLOAD_MIN_INTERVAL_MS;
+  sf.maxDurationMs = SYNC_DRAIN_MAX_DURATION_MS;
+  sf.rateLimitRetries = SYNC_RATE_LIMIT_RETRIES;
+  sf.nowMs = &syncNowMs;
+  sf.sleepMs = &syncSleepMs;
 
-    CameraUploadParams up = {};
-    up.url = cfg.uploadUrl;
-    up.apiKey = cfg.apiKey;
-    up.sigSecret = cfg.sigSecret;
-    up.syncSession = sessionStr.c_str();
-    up.capturedAt = (e.stamp[0] != '\0') ? e.stamp : "";
-    up.captureSeq = seqStr;
-    up.reconnect = cfg.reconnect;
-
-    size_t bytes = 0;
-    int code = cameraUploadJpegFile(up, String(e.path), String(filename), &bytes);
-
-    for (int retry = 0; !syncUploadIsSuccess(code) && code == 429 && retry < SYNC_RATE_LIMIT_RETRIES; ++retry) {
-      Serial.printf("[SYNC][WARN] #%u HTTP=429 rate-limit, attente %u ms (retry %d/%d)\n",
-                    static_cast<unsigned int>(e.n),
-                    static_cast<unsigned int>(SYNC_UPLOAD_MIN_INTERVAL_MS),
-                    retry + 1, SYNC_RATE_LIMIT_RETRIES);
-      delay(SYNC_UPLOAD_MIN_INTERVAL_MS);
-      code = cameraUploadJpegFile(up, String(e.path), filename, &bytes);
-    }
-
-    lastUploadMs = millis();
-
-    if (syncUploadIsSuccess(code)) {
-      r.sent++;
-      r.bytes += bytes;
-      nvsSet(kKeyCursor, e.n);  // confirmé (couvre aussi les éventuels trous < e.n)
-      Serial.printf("[SYNC] #%u (%s) envoyee HTTP=%d (%u bytes)\n",
-                    static_cast<unsigned int>(e.n), e.path, code, static_cast<unsigned int>(bytes));
-    } else {
-      r.failed++;
-      Serial.printf("[SYNC][WARN] #%u echec HTTP=%d : arret du drain (reseau ?)\n",
-                    static_cast<unsigned int>(e.n), code);
-      break;  // réseau probablement perdu : reprise au prochain réveil
-    }
-  }
+  const N3SfDrainResult dr = n3SfDrain(backend, sf, &drainSendOne, &sendCtx);
+  r.planned = dr.planned;
+  r.sent = dr.sent;
+  r.failed = dr.failed;
+  r.bytes = sendCtx.bytes;
+  Serial.printf("[SYNC] Drain : %u/%u photo(s) ce reveil (backlog reel=%u).\n",
+                static_cast<unsigned int>(dr.planned), static_cast<unsigned int>(pending),
+                static_cast<unsigned int>(realBacklog));
 
   /* A1 : `complete` = « aucun upload en échec ce réveil » (et non « backlog vidé »). On ne remonte
      donc `aborted` que sur une vraie perte réseau en cours de drain, pas sur un report normal au
      réveil suivant ni sur l'atteinte du budget temps. */
-  r.complete = (r.failed == 0);
+  r.complete = dr.complete;
   /* A2 : `final` = backlog réellement vidé après ce drain -> le serveur peut clore le récap. */
   const uint32_t remaining = cameraSyncPendingCount();
   const bool final = (remaining == 0);

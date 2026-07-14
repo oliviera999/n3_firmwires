@@ -3,39 +3,24 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <time.h>
-#if defined(USE_HTTPS_ENDPOINTS)
-#include <WiFiClientSecure.h>
-#endif
 
 #include "config.h"
-#include "camera_upload.h"
-#include "n3_hmac.h"
+#include "n3_data.h"            // n3NetStatsRecordPost (stats réseau des uploads)
 #include "n3_hmac_canonical.h"  // HMAC canonique mutualisé (ts+nonce+body, sans String)
+#include "n3_upload.h"          // POST multipart streamé mutualisé (v2.66, T3b)
+#include "n3_upload_source.h"
 
 #if USE_SD
 #include "FS.h"
 #include "SD_MMC.h"
 #endif
 
-// A5 (audit 2026-07-05) — épinglage CA opt-in pour l'upload TLS, INERTE PAR DÉFAUT.
-// Même mécanisme et même en-tête (`n3_data_ca_cert.h`) que la lib n3_data : si le firmware fournit
-// cet en-tête (définissant N3_DATA_CA_CERT_PEM) dans l'include path, on valide le certificat serveur
-// via setCACert() (protection MITM). Absent (cas actuel) : on retombe EXACTEMENT sur setInsecure().
-#if defined(USE_HTTPS_ENDPOINTS)
-#  if defined(__has_include)
-#    if __has_include("n3_data_ca_cert.h")
-#      include "n3_data_ca_cert.h"
-#      define CAMERA_UPLOAD_HAS_CA_CERT 1
-#    endif
-#  endif
-static void cameraUploadPrepareTlsClient(WiFiClientSecure& client) {
-#  if defined(CAMERA_UPLOAD_HAS_CA_CERT)
-  client.setCACert(N3_DATA_CA_CERT_PEM);
-#  else
-  client.setInsecure();
-#  endif
-}
-#endif
+// v2.66 (mutualisation T3b) : le POST multipart (TLS opt-in, retries, streaming
+// head+corps+tail sans malloc du JPEG) vit désormais dans shared/n3_upload
+// (transposition fidèle de l'ancien doMultipartPostOnce + Multipart*Stream).
+// Ce fichier ne garde que le MÉTIER caméra : contrat form-data historique
+// (boundary RandomNerdTutorials, champ imageFile), en-têtes X-Sync-Session /
+// X-Captured-At / X-Capture-Seq, signature HMAC par tentative, lecture SD.
 
 // A4 — signature HMAC additive du POST multipart. Le corps (JPEG volumineux) n'est pas signable en
 // streaming : on signe un condensé STABLE `timestamp\n nonce\n api_key` transporté en en-têtes
@@ -67,48 +52,11 @@ static void cameraUploadAddSignatureHeaders(HTTPClient& http, const CameraUpload
   }
 }
 
-static String buildMultipartHead(const String& filename) {
-  return "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"" +
-         filename + "\"\r\nContent-Type: image/jpeg\r\n\r\n";
-}
-
-static String buildMultipartTail() {
-  return "\r\n--RandomNerdTutorials--\r\n";
-}
-
-/* Une tentative POST multipart ; le Stream doit etre neuf (position 0) par retry. */
-static int doMultipartPostOnce(const CameraUploadParams& params, Stream& body, uint32_t totalLen) {
-  if (WiFi.status() != WL_CONNECTED) {
-    if (params.reconnect) {
-      Serial.println("[UPLOAD][WIFI][WARN] Deconnecte, tentative de reconnexion");
-      params.reconnect();
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-      return -1;
-    }
-  }
-
-#if defined(USE_HTTPS_ENDPOINTS)
-  // M3 (audit 2026-07-05) : le handshake TLS réserve ~16-45 Ko de DRAM. On loge la heap libre juste
-  // avant, pour diagnostiquer la pression mémoire sur module sans PSRAM (repli framebuffer CIF/DRAM).
-  Serial.printf("[UPLOAD][TLS] heap libre avant handshake=%lu bytes\n",
-                static_cast<unsigned long>(ESP.getFreeHeap()));
-  WiFiClientSecure client;
-  cameraUploadPrepareTlsClient(client);
-#else
-  WiFiClient client;
-#endif
-  HTTPClient http;
-  if (!http.begin(client, params.url)) {
-    Serial.println("[UPLOAD][ERROR] HTTP begin a echoue");
-    return -1;
-  }
-  client.setTimeout(HTTP_RESPONSE_TIMEOUT_MS);
-  http.setTimeout(HTTP_RESPONSE_TIMEOUT_MS);
-  http.addHeader("Content-Type", "multipart/form-data; boundary=RandomNerdTutorials");
-  if (params.apiKey) {
-    http.addHeader("X-Api-Key", params.apiKey);
-  }
+// En-têtes dynamiques posés à CHAQUE tentative (parité avec l'ancien
+// doMultipartPostOnce qui recalculait la signature par tentative) : signature
+// HMAC fraîche + en-têtes de session/horodatage/séquence.
+static void cameraUploadBeforeSend(HTTPClient& http, void* ctx) {
+  const CameraUploadParams& params = *static_cast<const CameraUploadParams*>(ctx);
   cameraUploadAddSignatureHeaders(http, params);
   if (params.syncSession && params.syncSession[0] != '\0') {
     http.addHeader("X-Sync-Session", params.syncSession);
@@ -119,33 +67,63 @@ static int doMultipartPostOnce(const CameraUploadParams& params, Stream& body, u
   if (params.captureSeq && params.captureSeq[0] != '\0') {
     http.addHeader("X-Capture-Seq", params.captureSeq);
   }
+}
 
-  const int httpCode = http.sendRequest("POST", &body, totalLen);
-  if (httpCode <= 0) {
-    Serial.printf("[UPLOAD][ERROR] sendRequest HTTP=%d (%s)\n", httpCode, http.errorToString(httpCode).c_str());
-  }
-  http.end();
-  return httpCode;
+static N3UploadConfig buildUploadConfig(const CameraUploadParams& params) {
+  N3UploadConfig cfg = {};
+  cfg.url = params.url;
+  cfg.apiKey = params.apiKey;
+  cfg.onBeforeSend = &cameraUploadBeforeSend;
+  cfg.onBeforeSendCtx = const_cast<CameraUploadParams*>(&params);
+  cfg.connectRetries = UPLOAD_CONNECT_RETRIES;
+  cfg.retryDelayMs = UPLOAD_RETRY_DELAY_MS;
+  cfg.responseTimeoutMs = HTTP_RESPONSE_TIMEOUT_MS;
+  cfg.reconnect = params.reconnect;
+  cfg.onStats = &n3NetStatsRecordPost;  // les uploads photo entrent enfin dans les stats réseau
+  return cfg;
+}
+
+static N3UploadMultipartPart buildPart(const char* filename) {
+  N3UploadMultipartPart part = {};
+  part.boundary = "RandomNerdTutorials";
+  part.fieldName = "imageFile";
+  part.filename = filename;
+  part.contentType = "image/jpeg";
+  return part;
 }
 
 int cameraUploadJpegBuffer(const CameraUploadParams& params, const uint8_t* image, size_t imageLen, const String& filename) {
   if (!image || imageLen == 0) {
     return -1;
   }
-  const String head = buildMultipartHead(filename);
-  const String tail = buildMultipartTail();
-  const uint32_t totalLen = static_cast<uint32_t>(imageLen + head.length() + tail.length());
-
-  int httpCode = -1;
-  for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES && httpCode <= 0; ++attempt) {
-    MultipartCameraStream multipart(head, image, imageLen, tail);
-    httpCode = doMultipartPostOnce(params, multipart, totalLen);
-    if (httpCode <= 0) {
-      delay(UPLOAD_RETRY_DELAY_MS);
-    }
-  }
-  return httpCode;
+  const N3UploadConfig cfg = buildUploadConfig(params);
+  const N3UploadMultipartPart part = buildPart(filename.c_str());
+  N3UploadBufferSource source(image, imageLen);
+  return n3UploadMultipart(cfg, part, source);
 }
+
+#if USE_SD
+namespace {
+// Source n3_upload sur fichier SD : lecture chunkée (UPLOAD_CHUNK_SIZE), rewind
+// par seek(0) — équivalent de l'ancien MultipartFileStream + file.seek(0) par retry.
+class SdFileSource : public N3UploadSource {
+ public:
+  SdFileSource(File& file, size_t len) : _file(file), _len(len) {}
+  size_t size() const override { return _len; }
+  void rewind() override { _file.seek(0); }
+  size_t readChunk(uint8_t* dst, size_t maxLen) override {
+    if (!dst || maxLen == 0) return 0;
+    size_t chunk = maxLen;
+    if (chunk > static_cast<size_t>(UPLOAD_CHUNK_SIZE)) chunk = UPLOAD_CHUNK_SIZE;
+    return _file.read(dst, chunk);
+  }
+
+ private:
+  File& _file;
+  size_t _len;
+};
+}  // namespace
+#endif
 
 int cameraUploadJpegFile(const CameraUploadParams& params, const String& sdPath, const String& filename, size_t* outBytes) {
   if (outBytes) {
@@ -171,19 +149,10 @@ int cameraUploadJpegFile(const CameraUploadParams& params, const String& sdPath,
     Serial.println("[UPLOAD][SD][INFO] upload streaming (pas de malloc JPEG complet)");
   }
 
-  const String head = buildMultipartHead(filename);
-  const String tail = buildMultipartTail();
-  const uint32_t totalLen = static_cast<uint32_t>(len + head.length() + tail.length());
-
-  int httpCode = -1;
-  for (int attempt = 1; attempt <= UPLOAD_CONNECT_RETRIES && httpCode <= 0; ++attempt) {
-    file.seek(0);
-    MultipartFileStream multipart(head, file, len, tail);
-    httpCode = doMultipartPostOnce(params, multipart, totalLen);
-    if (httpCode <= 0) {
-      delay(UPLOAD_RETRY_DELAY_MS);
-    }
-  }
+  const N3UploadConfig cfg = buildUploadConfig(params);
+  const N3UploadMultipartPart part = buildPart(filename.c_str());
+  SdFileSource source(file, len);
+  const int httpCode = n3UploadMultipart(cfg, part, source);
   file.close();
   if (httpCode > 0 && outBytes) {
     *outBytes = len;

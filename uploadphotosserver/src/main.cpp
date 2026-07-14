@@ -29,7 +29,6 @@
 #include "n3_notify.h"  /* Phase 3 : taxonomie N3Severity/N3NotifMode */
 #include "camera_remote.h"
 #include "camera_setup.h"
-#include "camera_upload.h"
 #include "camera_uploader.h"
 #include "camera_sync.h"
 #include "camera_sleep.h"

@@ -178,7 +178,7 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
    `waterLevel`/`resolveWaterLevel` en termes neutres ; côté ffp5cs, garder un alias ou
    adapter les appels. Porter `test_sensor_fallback`.
 
-### T3 — L4 : offline-first & stats (nouvelles libs, risque faible si additive) — ✅ T3a LIVRÉ (libs additives + tests ; T3b câblage upload, T3c stats ffp5cs et POST réseau restent à faire)
+### T3 — L4 : offline-first & stats (nouvelles libs, risque faible si additive) — ✅ T3a + T3b LIVRÉS (libs + POST réseau `n3UploadMultipart` + câblage uploadphotosserver 2.66 : uploader délégué, drain via `n3SfDrain`, stats uploads branchées ; reste T3c : brancher `N3NetStats` dans ffp5cs sous `s_httpMutex`)
 
 1. **`n3_upload`** (nouvelle lib `shared/n3_upload/`) — généralise l'upload multipart
    streaming d'uploadphotosserver (`camera_upload.cpp`, `camera_uploader.cpp`).
