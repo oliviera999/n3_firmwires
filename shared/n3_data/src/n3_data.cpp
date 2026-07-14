@@ -224,3 +224,57 @@ String n3DataGet(const char* url, unsigned int* outHttpCode, const char* deviceA
   if (outHttpCode) *outHttpCode = (unsigned int)code;
   return payload;
 }
+
+// ---------------------------------------------------------------------------
+// Heartbeat generique — mutualise depuis n3pp/msp (corps verbatim identique
+// entre les deux firmwares, verifie par diff avant extraction). Toute la
+// variabilite passe par N3HeartbeatConfig ; l'etat local (plancher heap `min`)
+// reste un static de fonction, reinitialise a chaque reveil deep-sleep comme
+// dans les firmwares d'origine.
+// ---------------------------------------------------------------------------
+int n3DataSendHeartbeat(const N3HeartbeatConfig& config) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[SERVER][HB][SKIP] WiFi non connecte");
+    return -1;
+  }
+
+  static uint32_t minHeap = UINT32_MAX;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < minHeap) {
+    minHeap = freeHeap;
+  }
+
+  const uint32_t uptimeSec = millis() / 1000UL;
+  const int rssi = WiFi.RSSI();
+
+  N3DataField fields[] = {
+    {"api_key",  String(config.apiKeyField ? config.apiKeyField : "")},
+    {"sensor",   String(config.sensor ? config.sensor : "")},
+    {"version",  String(config.version ? config.version : "")},
+    {"uptime",   String(uptimeSec)},
+    {"free",     String(freeHeap)},
+    {"min",      String(minHeap == UINT32_MAX ? freeHeap : minHeap)},
+    {"reboots",  String(config.bootCount)},
+    {"rssi",     String(rssi)},
+  };
+
+  N3PostConfig cfg = {};
+  cfg.url = config.url;
+  cfg.apiKey = config.apiKeyHeader;
+  cfg.fields = fields;
+  cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  cfg.sigSecret = config.sigSecret;
+  cfg.currentEpochSeconds = config.currentEpochSeconds;
+  cfg.onResult = [](int code) {
+    if (code == 200) {
+      Serial.println("[SERVER][HB] OK");
+    } else {
+      Serial.printf("[SERVER][HB] erreur HTTP %d\n", code);
+    }
+  };
+
+  Serial.printf("[SERVER][HB] Envoi vers %s\n", config.url);
+  const int code = n3DataPost(cfg);
+  delay(200);
+  return code;
+}

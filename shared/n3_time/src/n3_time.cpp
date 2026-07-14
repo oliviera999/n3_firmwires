@@ -126,3 +126,16 @@ void n3PrintWakeupReason(Preferences& prefs, ESP32Time& rtc) {
       break;
   }
 }
+
+// Resync des composantes calendaires du firmware depuis le RTC — mutualisé
+// depuis n3pp/msp (bloc identique dupliqué 3× : print_wakeup_reason des deux
+// firmwares + HeureSansWifi n3pp). Mêmes conversions que l'original.
+void n3TimeSyncBrokenDown(ESP32Time& rtc, int& seconde, int& minute, int& heure,
+                          int& jour, int& mois, int& annee) {
+  seconde = rtc.getTime("%S").toInt();
+  minute = rtc.getTime("%M").toInt();
+  heure = rtc.getTime("%H").toInt();
+  jour = rtc.getTime("%d").toInt();
+  mois = rtc.getTime("%m").toInt();
+  annee = rtc.getTime("%Y").toInt();
+}

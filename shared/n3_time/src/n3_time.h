@@ -28,4 +28,12 @@ bool n3TimeSyncNtp(ESP32Time& rtc,
 /** Horloge système plausible (epoch > seuil 2020). */
 bool n3TimeHasPlausibleEpoch(void);
 
+/**
+ * Resynchronise les 6 composantes calendaires d'un firmware depuis le RTC.
+ * Mutualisé n3pp/msp : ce bloc était dupliqué 3× (print_wakeup_reason n3pp/msp
+ * + HeureSansWifi n3pp). annee est sur 4 chiffres (%Y).
+ */
+void n3TimeSyncBrokenDown(ESP32Time& rtc, int& seconde, int& minute, int& heure,
+                          int& jour, int& mois, int& annee);
+
 #endif

@@ -91,3 +91,10 @@ struct MockSerial {
   void print(const char* /*s*/ = "") {}
 };
 inline MockSerial Serial;
+
+// --- ESP mock minimal (n3_data heartbeat lit ESP.getFreeHeap()) ---
+// Valeur fixe déterministe pour des assertions stables en natif.
+struct MockEsp {
+  uint32_t getFreeHeap() { return 123456; }
+};
+inline MockEsp ESP;
