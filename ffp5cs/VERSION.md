@@ -12,6 +12,48 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.17 - 2026-07-14
+
+### Mutualisation T3c : statistiques réseau branchées sur `N3NetStats` (shared)
+
+Les compteurs partagés `N3NetStatsSnapshot` (`shared/n3_data/n3_net_stats` — durées,
+RSSI, near-timeout, consommés par `n3MailBuildNetReportBody`) sont désormais alimentés
+par ffp5cs, qui y échappait totalement (compteurs maison plus pauvres dans
+`diagnostics`/`automatism_sync`, inchangés par ailleurs) :
+
+- `web_client.cpp` : `n3NetStatsRecordPost` après chaque `_http.POST` (durée mesurée,
+  RSSI) et `n3NetStatsRecordGet` après chaque `_http.GET` d'`outputs/state` (première
+  tentative ET retry -11, chacune étant une requête réelle).
+- **Thread-safety respectée** : tous les appels sont DANS les sections protégées par
+  `s_httpMutex` (POST `postSenderTask` et GET `netTask` sérialisés par ce même mutex ;
+  `s_stats` de la lib n'est pas thread-safe — risque identifié par la vérification
+  adversariale du chantier et traité comme prescrit).
+- Additif pur : aucun comportement réseau modifié, aucun log retiré.
+
+## Version 15.16 - 2026-07-14
+
+### Mutualisation T2 : robustesse capteurs déléguée à `shared/n3_analog_sensors`
+
+La machine d'état de défaillance capteur et la cascade de repli des lectures vivent
+désormais dans `shared/n3_analog_sensors` 1.1.0 (chantier core partagé, tranche T2) —
+**logique identique, sans changement de comportement** :
+
+- `include/sensor_failure_manager.h` devient un **wrapper** : mappe
+  `N3_SENSOR_LOG_PRINTF` sur le `SENSOR_LOG_PRINTF` du projet (gate par profil) puis
+  inclut `n3_sensor_failure_manager.h` (classe `SensorFailureManager` identique,
+  header-only). `src/sensor_failure_manager.cpp` supprimé. Consommateurs inchangés
+  (`sensors.h`, `sensor_air/ultrasonic/sensors.cpp`).
+- `include/sensor_reading_fallback.h` devient un **wrapper de compat** : forwards
+  inline `waterLevel`/`resolveWaterLevel`/`formatWaterLevelPost` vers l'API neutre
+  `N3SensorFallback::resolve`/`resolveOrZero`/`formatPostValue`. Le contrat POST
+  (« 0 → champ omis du body signé ») est inchangé ; la suite native
+  `test_sensor_fallback` (14 tests) passe telle quelle via le wrapper.
+- `platformio-native.ini` : ajout `-I../shared/n3_analog_sensors/src`.
+- Côté shared : +11 tests natifs NOUVEAUX sur la machine d'état
+  (`test_sensor_failure` : seuils, cadence de réactivation, wraparound millis).
+
+---
+
 ## Version 15.15 - 2026-07-09
 
 ### Env `wroom-beta-https` : pilote HTTPS banc (endpoints test + logs)

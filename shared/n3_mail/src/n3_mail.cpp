@@ -1,5 +1,7 @@
 #include "n3_mail.h"
 
+#include <WiFi.h>  // garde WiFi de n3MailNotify (stub en natif)
+
 #include <ESP_Mail_Client.h>
 #include <cstdio>
 
@@ -209,4 +211,49 @@ bool n3MailSendMessageWithSession(SMTPSession& smtp,
   }
   smtp.sendingResult.clear();
   return sendOk;
+}
+
+// ---------------------------------------------------------------------------
+// Notification graduee avec failover — mutualisee depuis n3pp/msp
+// (sendEmailNotification, corps verbatim identique verifie par diff ; seule
+// variabilite : le tag projet et le mode, passes en parametres).
+// ---------------------------------------------------------------------------
+bool n3MailNotify(const N3MailNotifyParams& params, N3Severity severity) {
+  const bool failover = !params.postOkThisWake;
+  N3NotifMode mode = params.mode;
+  if (failover) {
+    mode = n3NotifModeCapFailover(mode);
+  }
+  if (!n3NotifModeAllows(mode, severity)) {
+    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification%s\n",
+                  n3SeverityCode(severity), failover ? " (failover P1/P2)" : "");
+    return true;  // silence volontaire : traite selon la politique, pas une perte
+  }
+  if (failover) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[MAIL][FAILOVER] WiFi absent, envoi non tente (retente au prochain reveil)");
+      return false;  // pas de latch : l'alerte sera retentee
+    }
+    if (params.failoverMailsSent != nullptr &&
+        *params.failoverMailsSent >= params.failoverMailBudget) {
+      Serial.printf("[MAIL][FAILOVER] budget epuise (%u), envoi non tente\n",
+                    (unsigned)params.failoverMailBudget);
+      return false;
+    }
+    if (params.failoverMailsSent != nullptr) {
+      ++(*params.failoverMailsSent);
+    }
+  }
+
+  char subjectBuf[96];
+  n3MailFormatSubject(subjectBuf, sizeof(subjectBuf), params.projectTag, severity,
+                      params.subject);
+
+  String err;
+  if (!n3MailSendText(params.smtp, subjectBuf, params.message, &err)) {
+    Serial.print("[MAIL] echec envoi: ");
+    Serial.println(err.c_str());
+    return false;
+  }
+  return true;
 }

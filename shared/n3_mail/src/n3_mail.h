@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <stddef.h>
 #include "n3_data.h"
+#include "n3_notify.h"  // N3Severity/N3NotifMode (n3MailNotify)
 
 struct N3MailSmtpConfig {
   const char* smtpHost;
@@ -106,5 +107,27 @@ class SMTPSession;
 bool n3MailSendMessageWithSession(SMTPSession& smtp,
                                   const N3MailMessageSpec& spec,
                                   String* outError);
+
+// ---------------------------------------------------------------------------
+// Notification graduee avec failover (mutualisee depuis n3pp/msp — corps
+// verbatim identique entre les deux, seule variabilite : le tag projet).
+// Politique (Phase 3 arbitrage mails) : hors-ligne (postOkThisWake=false), le
+// mode est plafonne a P1/P2 (n3NotifModeCapFailover), l'envoi exige le WiFi et
+// consomme un budget borne (*failoverMailsSent, re-arme par le firmware au
+// retour en ligne). Retour : true = livre OU silence volontaire (severite
+// filtree par le mode) ; false = non livre (a retenter au prochain reveil).
+// ---------------------------------------------------------------------------
+struct N3MailNotifyParams {
+  const char* projectTag;      // prefixe sujet, ex. "N3PP" / "MSP1"
+  N3NotifMode mode;            // mode de notification courant du firmware
+  bool postOkThisWake;         // false => episode failover
+  uint8_t* failoverMailsSent;  // compteur budget failover (RTC, cote firmware)
+  uint8_t failoverMailBudget;  // ex. 8
+  N3MailSmtpConfig smtp;       // configuration SMTP complete
+  const char* subject;         // sujet de base (avant prefixe [TAG][Pn])
+  const char* message;         // corps du mail
+};
+
+bool n3MailNotify(const N3MailNotifyParams& params, N3Severity severity);
 
 #endif

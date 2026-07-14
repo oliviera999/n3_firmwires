@@ -1,0 +1,8 @@
+{
+  "name": "n3_upload",
+  "version": "1.0.0",
+  "description": "Upload de gros binaires pour firmwares n3 IoT : POST HTTP multipart streame (head+corps+tail sans malloc du corps, TLS opt-in + pinning CA, retries, en-tetes dynamiques par tentative, hook stats reseau) sur source de corps abstraite (buffer/flux).",
+  "keywords": ["upload", "multipart", "stream", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

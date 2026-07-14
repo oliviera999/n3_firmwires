@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.65** (définie dans `include/config.h`).
+Version actuelle : **2.66** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.65** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.66 | 2026-07-14 | **Mutualisation T3b (chantier shared).** L'upload multipart et la boucle de drain délèguent aux nouvelles libs partagées — contrat serveur inchangé (mêmes octets multipart, mêmes en-têtes, mêmes règles de pacing/budget/429/curseur). **`camera_uploader`** : POST streamé délégué à `n3UploadMultipart` (`n3_upload` 1.0.0 — transposition fidèle de `doMultipartPostOnce`+retries ; TLS opt-in/pinning identiques) ; les en-têtes dynamiques (signature HMAC fraîche par tentative, X-Sync/X-Captured/X-Capture) passent par `onBeforeSend` ; `camera_upload.{h,cpp}` (Multipart*Stream) supprimés au profit de `N3MultipartReader`+sources ; **les uploads photo alimentent enfin `N3NetStats`** (hook `onStats` → `n3NetStatsRecordPost`, ex-angle mort). **`camera_sync`** : boucle de drain déléguée à `n3SfDrain` (`n3_store_forward` 1.0.0 — hybride A1, pacing au complément, budget temps, retries 429, curseur NVS avancé après acquittement seulement ; invariants testés en natif). Changements de LOGS uniquement : « Drain : X/Y » émis après le drain, log 429 simplifié (la pause est logguée par le wrapper « pause rate-limit »), plus de `delay` inutile après la dernière tentative d'upload. |
 | 2.65 | 2026-07-12 | **HMAC device optionnel**. `CAM_DEVICE_HMAC` défaut **0** : plus d'en-têtes `X-Sig-*` (auth = `API_KEY`). Opt-in `#define CAM_DEVICE_HMAC 1` + `API_SIG_SECRET`. Aligné serveur ≥ 6.22.2 (`GALLERY_HMAC_STRICT`, fallback api_key si HMAC invalide). |
 | 2.64 | 2026-07-09 | **Correctifs terrain ffp3 (log COM7)**. **OTA** : `n3OtaSyncBootPartition()` au boot (comme n3pp/msp) ; flash OTA en **un seul téléchargement** via `Update` (`n3_common` 1.5.1) — évite l'échec « Verify Bin Header Failed » après sha256 OK sur le 1er GET. **HMAC POST version** : sync NTP **avant** le POST `post-uploadphotoserver-version` (epoch hors fenêtre 300 s → HTTP 401). **Stack** : alerte mail OTA échec toujours différée (plus de SMTP dans `otaMailEndCallback` après mbedtls OTA). |
 | 2.63 | 2026-07-09 | **Mutualisation HMAC (L2).** La signature du POST photo (`cameraUploadAddSignatureHeaders`) délègue désormais le calcul à la brique partagée `n3hmac::computeHmacHex` (`shared/n3_hmac/n3_hmac_canonical`, `n3_hmac` 1.1.0) au lieu de construire le message localement puis d'appeler `n3HmacSha256`. **Sans changement observable** : même condensé `HMAC(timestamp\n nonce\n api_key)`, mêmes en-têtes `X-Sig-*`, même nonce (epoch-compteur) — dé-duplication du calcul crypto uniquement. |

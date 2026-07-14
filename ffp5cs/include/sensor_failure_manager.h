@@ -1,94 +1,16 @@
 #pragma once
-#include <Arduino.h>
-#include "config.h"
+// =============================================================================
+// FFP5CS — Gestionnaire de défaillances capteurs : wrapper vers shared/
+// =============================================================================
+// v15.16 (mutualisation T2) : la logique vit désormais dans
+// shared/n3_analog_sensors/src/n3_sensor_failure_manager.h (classe
+// SensorFailureManager identique, header-only). Ce wrapper est l'UNIQUE point
+// d'inclusion côté ffp5cs : il mappe la macro de log de la lib sur le
+// SENSOR_LOG_PRINTF du projet (gated par profil, cf. config_logging.h) AVANT
+// l'include — même macro dans toutes les TU du binaire (pas d'ODR divergent).
+// =============================================================================
 
-/**
- * Gestionnaire générique de défaillances de capteurs
- * 
- * Encapsule la logique de désactivation/réactivation automatique pour tous les capteurs.
- * Permet d'éviter les tentatives de lecture inutiles sur des capteurs absents ou défaillants.
- */
-class SensorFailureManager {
-public:
-  /**
-   * Constructeur
-   * @param sensorName Nom du capteur pour le logging (ex: "WaterTemp", "Ultrasonic-Aqua")
-   * @param maxFailures Nombre maximum d'échecs consécutifs avant désactivation (défaut: 10)
-   * @param reactivationIntervalMs Intervalle entre tests de réactivation en ms
-   *                               (défaut: 60000 = 60s)
-   * @param reactivationSuccessThreshold Nombre de succès consécutifs requis
-   *                                     (défaut: 3)
-   */
-  SensorFailureManager(const char* sensorName,
-                       uint8_t maxFailures = 10,
-                       uint32_t reactivationIntervalMs = 60000,
-                       uint8_t reactivationSuccessThreshold = 3);
-  
-  /**
-   * Vérifier si le capteur est actuellement désactivé
-   */
-  bool isDisabled() const { return _disabled; }
-  
-  /**
-   * Enregistrer un succès de lecture
-   * Réinitialise le compteur d'échecs consécutifs
-   */
-  void recordSuccess();
-  
-  /**
-   * Enregistrer un échec de lecture
-   * Incrémente le compteur d'échecs et désactive le capteur si le seuil est atteint
-   */
-  void recordFailure();
-  
-  /**
-   * Vérifier si un test de réactivation doit être effectué maintenant
-   * @return true si le capteur est désactivé et qu'un test doit être effectué
-   */
-  bool shouldTestReactivation() const;
-  
-  /**
-   * Enregistrer un succès de test de réactivation
-   * @return true si le capteur doit être réactivé (seuil de succès atteint)
-   */
-  bool recordReactivationTestSuccess();
-  
-  /**
-   * Enregistrer un échec de test de réactivation
-   * Réinitialise le compteur de succès de réactivation
-   */
-  void recordReactivationTestFailure();
-  
-  /**
-   * Réactiver le capteur manuellement
-   * Réinitialise tous les compteurs et l'état
-   */
-  void reactivate();
-  
-  /**
-   * Réinitialiser l'état (après reset matériel ou réactivation)
-   */
-  void reset();
-  
-  /**
-   * Obtenir le nombre d'échecs consécutifs actuels
-   */
-  uint8_t getConsecutiveFailures() const { return _consecutiveFailures; }
-  
-  /**
-   * Obtenir le nombre de succès de réactivation consécutifs
-   */
-  uint8_t getReactivationSuccesses() const { return _consecutiveReactivationSuccesses; }
+#include "config.h"  // SENSOR_LOG_PRINTF (gate par profil via config_logging.h)
 
-private:
-  const char* _sensorName;
-  uint8_t _maxFailures;
-  uint32_t _reactivationIntervalMs;
-  uint8_t _reactivationSuccessThreshold;
-  
-  bool _disabled{false};
-  bool _disableLogged{false};
-  uint8_t _consecutiveFailures{0};
-  uint32_t _lastReactivationTestMs{0};
-  uint8_t _consecutiveReactivationSuccesses{0};
-};
+#define N3_SENSOR_LOG_PRINTF SENSOR_LOG_PRINTF
+#include "n3_sensor_failure_manager.h"
