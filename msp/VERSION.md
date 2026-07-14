@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.57** (définie dans `include/msp_config.h`).
+Version actuelle : **2.58** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.57** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.58 | 2026-07-14 | **Mutualisation T4.2 (chantier shared).** Harnais OTA périodique + écran OLED délégué à la nouvelle lib `n3_ota_ui` 1.0.0 — corps déplacé verbatim (identique à n3pp hors titre `MSP OTA` et URLs `ota/msp*`), buffers module-static encapsulés dans `N3OtaUiContext`, cadence via `OtaPeriodic` (`n3_common` 1.6.0). Le compteur cumulé reste local en `RTC_DATA_ATTR`. **Sans changement observable** (mêmes écrans, mêmes logs `[OTA] check 2h …`, même cadence 2 h). |
 | 2.57 | 2026-07-14 | **Mutualisation T4 (chantier shared).** `sendEmailNotification()` délègue à `n3MailNotify` (`n3_mail` 1.4.0) — politique failover déplacée verbatim (cap P1/P2 hors-ligne, garde WiFi, budget borné, format sujet `[MSP1][Pn]`, mêmes logs). **Sans changement observable.** |
 | 2.56 | 2026-07-14 | **Mutualisation T1 (chantier shared).** `sendHeartbeat()` délègue au nouveau `n3DataSendHeartbeat` (`n3_data` 1.3.0) — corps déplacé verbatim (garde WiFi, plancher heap `min`, 8 champs, logs `[SERVER][HB]`, `delay(200)` identiques), seule la construction de la config reste locale. Resync calendaire (6 globals depuis RTC) délégué à `n3TimeSyncBrokenDown` (`n3_time` 1.2.0) dans `print_wakeup_reason()`. **Sans changement observable** (refacto de dé-duplication, mêmes octets envoyés, mêmes logs). |
 | 2.55 | 2026-07-08 | **Calibration des photorésistances (égalisation des sensibilités).** Nouvelle clé serveur **`114`** (page de contrôle, front sur changement de valeur) : `1` = calibration automatique — balayage complet des deux axes en gains neutres, le pic brut de chaque LDR sert de référence (même éclairement maximal en plein soleil) et `n3_tracker::computeEqualizationGains` calcule des gains pour-mille (bornés ×0.5–×2, capteur le plus sensible = étalon) ; `2` = retour aux gains neutres. Gains persistés en **NVS** (`n3tracker`), chargés au boot, appliqués à toutes les lectures LDR (différentiel, balayage, télémétrie `LuminositeA–D`). Demande de nuit conservée (RTC) et retentée au réveil suivant ; référence inexploitable (LDR ombragée/HS) → gains précédents conservés + `[SERVO][CALIB][WARN]`. Corrige le biais d'équilibre du mode différentiel et de la fusion des pics dû aux tolérances LDR/ponts diviseurs. +6 tests natifs `test_tracker` (25 au total). |

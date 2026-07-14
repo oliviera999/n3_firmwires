@@ -18,7 +18,7 @@
 #include <esp_sleep.h>
 #include <cstring>
 #include "credentials.h"
-#include "n3_ota.h"
+#include "n3_ota_ui.h"
 #include "n3_display.h"
 #include "n3_sleep.h"
 
@@ -153,134 +153,30 @@ RTC_DATA_ATTR static bool s_lastResetModeState = false;
 RTC_DATA_ATTR static bool s_calibEdgeInitialized = false;
 RTC_DATA_ATTR static int s_lastCalibCommand = 0;
 RTC_DATA_ATTR static bool s_calibPending = false;
-static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
-RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
-static char s_otaCurrentVersion[16] = "";
-static char s_otaRemoteVersion[16] = "";
-static uint8_t s_otaDisplayedPercent = 255;
+// Harnais OTA periodique + ecran OLED delegue a shared/n3_ota_ui (T4.2).
+// Le compteur cumule reste possede ici (RTC_DATA_ATTR, survit au deep sleep) ;
+// la lib le manipule via le pointeur de la config. Initialise A l'intervalle
+// pour declencher un check au tout premier boot.
+RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OtaPeriodic::kDefaultIntervalSeconds;
+static N3OtaUiContext s_otaUiContext;
 
-static void renderOtaScreen(const char* statusLine, uint8_t percent) {
-  if (!displayOk) return;
-
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("MSP OTA");
-  display.setCursor(0, 10);
-  display.println(statusLine ? statusLine : "En cours");
-
-  display.setCursor(0, 20);
-  display.print(s_otaCurrentVersion[0] ? s_otaCurrentVersion : FIRMWARE_VERSION);
-  display.print(" -> ");
-  display.println(s_otaRemoteVersion[0] ? s_otaRemoteVersion : "?");
-
-  display.drawRect(0, 36, SCREEN_WIDTH, 10, WHITE);
-  const int fillWidth = (percent >= 100) ? (SCREEN_WIDTH - 2) : ((percent * (SCREEN_WIDTH - 2)) / 100);
-  if (fillWidth > 0) {
-    display.fillRect(1, 37, fillWidth, 8, WHITE);
-  }
-
-  display.setCursor(0, 50);
-  display.print("Progression: ");
-  display.print(percent);
-  display.println("%");
-  display.display();
-}
-
-static void otaDisplayStartCallback(const char* currentVersion,
-                                    const char* remoteVersion,
-                                    const char* firmwareUrl,
-                                    void* userData) {
-  (void)firmwareUrl;
-  (void)userData;
-  snprintf(s_otaCurrentVersion, sizeof(s_otaCurrentVersion), "%s",
-           currentVersion ? currentVersion : FIRMWARE_VERSION);
-  snprintf(s_otaRemoteVersion, sizeof(s_otaRemoteVersion), "%s",
-           remoteVersion ? remoteVersion : "?");
-  s_otaDisplayedPercent = 255;
-  renderOtaScreen("MAJ disponible", 0);
-}
-
-static void otaDisplayEndCallback(bool success, const char* details, void* userData) {
-  (void)userData;
-  if (success) {
-    renderOtaScreen("Succes - reboot", 100);
-    return;
-  }
-
-  const bool upToDate = (details != nullptr) &&
-                        (strstr(details, "deja a jour") != nullptr ||
-                         strstr(details, "pas de mise a jour") != nullptr);
-  renderOtaScreen(upToDate ? "Deja a jour" : "Echec OTA",
-                  upToDate ? 100 : (s_otaDisplayedPercent == 255 ? 0 : s_otaDisplayedPercent));
-}
-
-static void otaDisplayProgressCallback(int current, int total, uint8_t percent, void* userData) {
-  (void)current;
-  (void)total;
-  (void)userData;
-  if (percent == s_otaDisplayedPercent) return;
-  s_otaDisplayedPercent = percent;
-  renderOtaScreen("Telechargement", percent);
-}
-
-static bool tryOtaBeforeResetForRemoteCommand() {
-#ifdef TEST_MODE
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp-test/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
-#else
-  static const N3OtaConfig otaConfig = {
+static void initOtaUi() {
+  const N3OtaUiConfig otaUiConfig = {
+      "MSP OTA",
       "http://iot.olution.info/ota/msp/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
-#endif
-  return n3OtaCheck(otaConfig);
-}
-
-static void maybeRunPeriodicOtaCheck(const char* reason) {
-  if (s_otaElapsedSinceLastCheckSeconds < OTA_PERIODIC_INTERVAL_SECONDS) {
-    const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
-    Serial.printf("[OTA] check 2h ignore (%s), restant=%lu s\n",
-                  reason ? reason : "n/a",
-                  static_cast<unsigned long>(remaining));
-    return;
-  }
-
-#ifdef TEST_MODE
-  static const N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/msp-test/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
+#ifdef TEST_MODE
+      true,
 #else
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
+      false,
 #endif
-
-  Serial.printf("[OTA] check 2h declenche (%s)\n", reason ? reason : "n/a");
-  n3OtaCheck(otaConfig);
-  s_otaElapsedSinceLastCheckSeconds = 0;
-}
-
-static void accumulateOtaPeriodicElapsedFromSleep(int sleepSeconds) {
-  if (sleepSeconds <= 0) return;
-  if (s_otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS) return;
-
-  const uint32_t sleepSec = static_cast<uint32_t>(sleepSeconds);
-  const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
-  s_otaElapsedSinceLastCheckSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
+      FIRMWARE_VERSION,
+      &display,
+      &displayOk,
+      OtaPeriodic::kDefaultIntervalSeconds,
+      &s_otaElapsedSinceLastCheckSeconds
+  };
+  n3OtaUiInit(s_otaUiContext, otaUiConfig);
 }
 
 // --- Temps RTC / NTP ---
@@ -326,9 +222,10 @@ void setup() {
   }
 
   // OTA périodique : vérification au boot seulement si la cadence 2h est atteinte
+  initOtaUi();
   Wificonnect();
   Serial.println("[WIFI] Connexion initiale OK");
-  maybeRunPeriodicOtaCheck("boot");
+  n3OtaUiMaybePeriodicCheck(s_otaUiContext, "boot");
 
   pinMode(HumiditeSol, INPUT);
   pinMode(27, INPUT);
@@ -448,7 +345,7 @@ void loop() {
     }
   } else if (resetRequested && !s_lastResetModeState) {
     Serial.println("[REMOTE] Reset distant demande (front montant)");
-    if (!tryOtaBeforeResetForRemoteCommand()) {
+    if (!n3OtaUiCheckNow(s_otaUiContext)) {
       Serial.println("[REMOTE][OTA] Aucune MAJ OTA dispo, reset direct");
       ESP.restart();
     }
@@ -512,7 +409,7 @@ void loop() {
                         : (int)((nowOtaTimerMs - s_lastOtaTimerMillis) / 1000UL);
   }
   s_lastOtaTimerMillis = nowOtaTimerMs;
-  accumulateOtaPeriodicElapsedFromSleep(elapsedForOta);
+  n3OtaUiAccumulateElapsed(s_otaUiContext, elapsedForOta);
   mspAccumulateNetReportElapsedFromSleep(elapsedForOta);
   mspMaybeSendNetworkReportEmail();
   sendHeartbeat();

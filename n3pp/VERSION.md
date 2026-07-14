@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.57** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.58** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.57** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.58 | 2026-07-14 | **Mutualisation T4.2 (chantier shared).** Harnais OTA périodique + écran OLED délégué à la nouvelle lib `n3_ota_ui` 1.0.0 (`renderOtaScreen`, callbacks d'affichage, check immédiat avant reset distant, check périodique, cumul) — corps déplacé verbatim, buffers module-static encapsulés dans `N3OtaUiContext`, cadence via `OtaPeriodic` (`n3_common` 1.6.0). Le compteur cumulé reste local en `RTC_DATA_ATTR` (pointeur passé à la lib). **Sans changement observable** (mêmes écrans, mêmes logs `[OTA] check 2h …`, même cadence 2 h, même sélection prod/test par `TEST_MODE`). |
 | 4.57 | 2026-07-14 | **Mutualisation T4 (chantier shared).** `sendEmailNotification()` délègue à `n3MailNotify` (`n3_mail` 1.4.0) — politique failover déplacée verbatim (cap P1/P2 hors-ligne, garde WiFi, budget `FAILOVER_MAIL_BUDGET` borné, format sujet `[N3PP][Pn]`, mêmes logs). Seule la construction des paramètres (tag, mode, SMTP) reste locale. **Sans changement observable.** |
 | 4.56 | 2026-07-14 | **Mutualisation T1 (chantier shared).** `sendHeartbeat()` délègue au nouveau `n3DataSendHeartbeat` (`n3_data` 1.3.0) — corps déplacé verbatim (garde WiFi, plancher heap `min`, 8 champs, logs `[SERVER][HB]`, `delay(200)` identiques), seule la construction de la config reste locale. Resync calendaire (6 globals depuis RTC) délégué à `n3TimeSyncBrokenDown` (`n3_time` 1.2.0) dans `HeureSansWifi()` et `print_wakeup_reason()` (bloc dupliqué 3× dans la famille). **Sans changement observable** (refacto de dé-duplication, mêmes octets envoyés, mêmes logs). |
 | 4.55 | 2026-07-08 | **Veille infinie sous seuil batterie télécommandable.** Nouvel interrupteur serveur (GPIO virtuel **112**, `VeilleInfinie`, défaut `1` = comportement historique) lu dans `variablestoesp()` et conservé en RTC (comme `SeuilPontDiv`) : quand il vaut `0`, l'ESP **n'entre plus** en veille infinie (sommeil GPIO-only `sleepSeconds=0`) sous `SeuilPontDiv` et retombe sur le sommeil timer normal (`FreqWakeUp`). Gate appliquée aux deux sites de déclenchement (`automatismes()` et `sommeil()`) ; l'alerte batterie faible reste émise (arbitrée serveur/failover, découplée de l'interrupteur). Valeur echo-back au POST (`VeilleInfinie`). Piloté depuis l'interface de contrôle serre/élevage (n3_serveur, section « Énergie »). |
