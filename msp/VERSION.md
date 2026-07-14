@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.59** (définie dans `include/msp_config.h`).
+Version actuelle : **2.61** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,8 @@ Version actuelle : **2.59** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.61 | 2026-07-14 | **Harmonisation A10 (lot 0 T6, chantier shared) : clamp de la clé serveur 102.** `SeuilSec` reçu du serveur est désormais borné dans la plage ADC 0..4095 (même garde que n3pp 4.38) au lieu d'être appliqué tel quel — prérequis à la mutualisation du parseur de clés communes. Amélioration assumée (une valeur serveur hors plage est bornée au lieu d'être stockée/échoée telle quelle) ; le défaut local 5000 est conservé (aucun automatisme msp ne consomme `SeuilSec`, affichage/écho seulement). |
+| 2.60 | 2026-07-14 | **Harmonisation A7 (lot 0 T6, chantier shared) : fin de l'écrasement de `PontDiv` par un `analogRead` brut.** `batterie()` alimente désormais `PontDiv` avec la **moyenne filtrée** `avgPontDiv` (issue de `n3BatteryRead`, comme la tension), aligné sur n3pp (audit 4.38). `PontDiv` pilote la protection batterie (`sommeil()`, veille d'urgence) et l'alerte serveur (POST) : un pic ADC isolé ne peut plus déclencher une veille infinie ni une fausse alerte. **Amélioration comportementale assumée** (valeur plus stable, mêmes logs `[BATT] PontDiv=…`). |
 | 2.59 | 2026-07-14 | **Préalable T6 lot 0 (chantier shared) : extraction `msp_globals.cpp`.** Les définitions des variables globales (capteurs, servos/tracker, deep sleep, batterie, mails, réseau, OLED, RTC/calendrier — toutes déjà déclarées `extern` dans `msp_globals.h`) sont déplacées **verbatim** de `main.cpp` vers le nouveau `src/msp_globals.cpp`, même découpe que n3pp 4.38. `main.cpp` ne garde que l'état module-local (`previousMillisDatas`, `server(80)`, constantes NTP, statics fronts reset/calibration et contexte OTA). **Sans changement observable** (mêmes valeurs initiales, mêmes attributs `RTC_DATA_ATTR`). |
 | 2.58 | 2026-07-14 | **Mutualisation T4.2 (chantier shared).** Harnais OTA périodique + écran OLED délégué à la nouvelle lib `n3_ota_ui` 1.0.0 — corps déplacé verbatim (identique à n3pp hors titre `MSP OTA` et URLs `ota/msp*`), buffers module-static encapsulés dans `N3OtaUiContext`, cadence via `OtaPeriodic` (`n3_common` 1.6.0). Le compteur cumulé reste local en `RTC_DATA_ATTR`. **Sans changement observable** (mêmes écrans, mêmes logs `[OTA] check 2h …`, même cadence 2 h). |
 | 2.57 | 2026-07-14 | **Mutualisation T4 (chantier shared).** `sendEmailNotification()` délègue à `n3MailNotify` (`n3_mail` 1.4.0) — politique failover déplacée verbatim (cap P1/P2 hors-ligne, garde WiFi, budget borné, format sujet `[MSP1][Pn]`, mêmes logs). **Sans changement observable.** |
