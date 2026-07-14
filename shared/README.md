@@ -45,7 +45,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 | [`n3_sleep`](n3_sleep/) | 1.0.0 | Configuration et démarrage du deep sleep ESP32 (timer + GPIO ext0). | — |
 | [`n3_display`](n3_display/) | 1.0.1 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/Adafruit SSD1306` |
 | [`n3_store_forward`](n3_store_forward/) | 1.0.0 | File offline durable (store-and-forward) : orchestrateur de drain **pur** (`n3SfDrain` — peek→commit jamais burn, stratégie hybride, pacing, budget temps, retries 429) sur backend abstrait (SD/NVS fournis par le firmware). Généralisé depuis uploadphotosserver (`camera_sync`) et ffp5cs (`web_client_queue`). Testé en natif (`test_store_forward`). | — |
-| [`n3_upload`](n3_upload/) | 0.1.0 | Upload de gros binaires — briques pures : `N3UploadSource` (source de corps abstraite, buffer fourni) + `N3MultipartReader` (head+corps+tail streamé **sans malloc du corps**, transposé de `camera_upload`). Le POST HTTP multipart arrive avec le câblage uploadphotosserver (T3b). Testé en natif (`test_upload_multipart`). | — |
+| [`n3_upload`](n3_upload/) | 1.0.0 | Upload de gros binaires : `n3UploadMultipart` — POST HTTP multipart **streamé sans malloc du corps** (TLS opt-in + pinning CA comme `n3_data`, retries, en-têtes dynamiques par tentative via `onBeforeSend`, hook `onStats` → `n3NetStatsRecordPost`) sur `N3UploadSource` abstraite + `N3MultipartReader`. Mutualisé depuis uploadphotosserver. Logique pure testée en natif (`test_upload_multipart`). | — |
 | [`n3_tracker`](n3_tracker/) | 1.0.0 | Logique pure du tracker solaire msp (asservissement différentiel 2 LDR/axe, pics de balayage, fusion pondérée). Sans dépendance Arduino, testée en natif (`test_tracker`). | — |
 
 ## Intégration
