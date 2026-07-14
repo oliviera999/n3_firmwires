@@ -22,4 +22,5 @@ void mspAccumulateNetReportElapsedFromSleep(int sleepSeconds);
 void mspMaybeSendNetworkReportEmail();
 void sommeil();
 void EnregistrementHeureFlash();
+void HeureSansWifi();  // A6 : recharge l'horloge NVS en échec WiFi (aligné n3pp)
 void print_wakeup_reason();

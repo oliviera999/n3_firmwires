@@ -169,6 +169,26 @@ void EnregistrementHeureFlash() {
   n3TimeSaveToFlash(rtc, preferences);  // NVS "rtc" (mêmes clés qu'avant)
 }
 
+// Harmonisation A6 (lot 0 T6, chantier shared) : recuperation d'horloge en
+// echec WiFi, alignee sur n3pp (corps identique). msp sauvait l'heure en NVS
+// (EnregistrementHeureFlash) mais ne la RECHARGEAIT jamais : apres un cold
+// boot hors-ligne, l'horloge restait fausse (POST dates epoch~0, heures
+// calendaires fausses). Appelee par le onFailure de Wificonnect().
+void HeureSansWifi() {
+  n3TimeLoadFromFlash(preferences, rtc);  // NVS "rtc" -> rtc (mêmes clés/défauts que n3pp)
+  // Resync des globals firmware depuis le RTC chargé (tracker/affichage les lisent)
+  n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
+  if (displayOk) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("Heure depuis flash");
+    display.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
+    display.display();
+  }
+  delay(500);
+}
+
 // Fonction pour obtenir la raison du réveil de l'ESP32
 void print_wakeup_reason() {
   esp_sleep_wakeup_cause_t wakeup_reason;

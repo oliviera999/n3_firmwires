@@ -5,6 +5,7 @@
 #include "msp_network.h"
 #include "msp_config.h"
 #include "msp_globals.h"
+#include "msp_automation.h"  // HeureSansWifi (A6)
 #include <WiFi.h>
 #include <Arduino_JSON.h>
 #include "n3_wifi.h"
@@ -350,6 +351,9 @@ void Wificonnect() {
   };
   cfg.onFailure = []() {
     Serial.println("[WIFI][WARN] Echec: tous les reseaux configures ont echoue");
+    // Harmonisation A6 (lot 0 T6) : recharge l'horloge depuis la NVS comme
+    // n3pp — sans cela, apres un cold boot hors-ligne l'horloge restait fausse.
+    HeureSansWifi();
     if (displayOk) { display.println("ECHEC"); display.display(); }
   };
   cfg.onSuccess = [](const char*) {

@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.61** (définie dans `include/msp_config.h`).
+Version actuelle : **2.62** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.61** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.62 | 2026-07-14 | **Harmonisation A6 (lot 0 T6, chantier shared — décision utilisateur) : récupération d'horloge en échec WiFi.** Nouvelle fonction `HeureSansWifi()` (corps identique à n3pp : `n3TimeLoadFromFlash` + `n3TimeSyncBrokenDown` + écran « Heure depuis flash »), appelée par le `onFailure` de `Wificonnect()`. msp sauvait l'heure en NVS mais ne la **rechargeait** jamais : après un cold boot hors-ligne, l'horloge restait fausse (POST datés epoch≈0 rejetés par la fenêtre HMAC, heures calendaires fausses). **Amélioration assumée** — le lot 0 de T6 est complet. |
 | 2.61 | 2026-07-14 | **Harmonisation A10 (lot 0 T6, chantier shared) : clamp de la clé serveur 102.** `SeuilSec` reçu du serveur est désormais borné dans la plage ADC 0..4095 (même garde que n3pp 4.38) au lieu d'être appliqué tel quel — prérequis à la mutualisation du parseur de clés communes. Amélioration assumée (une valeur serveur hors plage est bornée au lieu d'être stockée/échoée telle quelle) ; le défaut local 5000 est conservé (aucun automatisme msp ne consomme `SeuilSec`, affichage/écho seulement). |
 | 2.60 | 2026-07-14 | **Harmonisation A7 (lot 0 T6, chantier shared) : fin de l'écrasement de `PontDiv` par un `analogRead` brut.** `batterie()` alimente désormais `PontDiv` avec la **moyenne filtrée** `avgPontDiv` (issue de `n3BatteryRead`, comme la tension), aligné sur n3pp (audit 4.38). `PontDiv` pilote la protection batterie (`sommeil()`, veille d'urgence) et l'alerte serveur (POST) : un pic ADC isolé ne peut plus déclencher une veille infinie ni une fausse alerte. **Amélioration comportementale assumée** (valeur plus stable, mêmes logs `[BATT] PontDiv=…`). |
 | 2.59 | 2026-07-14 | **Préalable T6 lot 0 (chantier shared) : extraction `msp_globals.cpp`.** Les définitions des variables globales (capteurs, servos/tracker, deep sleep, batterie, mails, réseau, OLED, RTC/calendrier — toutes déjà déclarées `extern` dans `msp_globals.h`) sont déplacées **verbatim** de `main.cpp` vers le nouveau `src/msp_globals.cpp`, même découpe que n3pp 4.38. `main.cpp` ne garde que l'état module-local (`previousMillisDatas`, `server(80)`, constantes NTP, statics fronts reset/calibration et contexte OTA). **Sans changement observable** (mêmes valeurs initiales, mêmes attributs `RTC_DATA_ATTR`). |
