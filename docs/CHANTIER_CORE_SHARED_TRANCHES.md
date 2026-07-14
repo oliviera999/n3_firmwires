@@ -162,7 +162,7 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
    harmoniser côté firmwares après validation terrain. Le resync des 6 globals est
    déjà couvert par `n3TimeSyncBrokenDown` (livré).
 
-### T2 — L3 : robustesse capteurs (risque faible, fort apport)
+### T2 — L3 : robustesse capteurs (risque faible, fort apport) — ✅ LIVRÉ (shared + câblage ffp5cs ; adoption n3pp/msp = tranche ultérieure dédiée)
 
 1. **`sensor_failure_manager`** (ffp5cs `include/sensor_failure_manager.h` + `src/…cpp`)
    → `shared/n3_analog_sensors` (ou module dédié dans la lib).

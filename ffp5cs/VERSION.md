@@ -12,6 +12,30 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.16 - 2026-07-14
+
+### Mutualisation T2 : robustesse capteurs déléguée à `shared/n3_analog_sensors`
+
+La machine d'état de défaillance capteur et la cascade de repli des lectures vivent
+désormais dans `shared/n3_analog_sensors` 1.1.0 (chantier core partagé, tranche T2) —
+**logique identique, sans changement de comportement** :
+
+- `include/sensor_failure_manager.h` devient un **wrapper** : mappe
+  `N3_SENSOR_LOG_PRINTF` sur le `SENSOR_LOG_PRINTF` du projet (gate par profil) puis
+  inclut `n3_sensor_failure_manager.h` (classe `SensorFailureManager` identique,
+  header-only). `src/sensor_failure_manager.cpp` supprimé. Consommateurs inchangés
+  (`sensors.h`, `sensor_air/ultrasonic/sensors.cpp`).
+- `include/sensor_reading_fallback.h` devient un **wrapper de compat** : forwards
+  inline `waterLevel`/`resolveWaterLevel`/`formatWaterLevelPost` vers l'API neutre
+  `N3SensorFallback::resolve`/`resolveOrZero`/`formatPostValue`. Le contrat POST
+  (« 0 → champ omis du body signé ») est inchangé ; la suite native
+  `test_sensor_fallback` (14 tests) passe telle quelle via le wrapper.
+- `platformio-native.ini` : ajout `-I../shared/n3_analog_sensors/src`.
+- Côté shared : +11 tests natifs NOUVEAUX sur la machine d'état
+  (`test_sensor_failure` : seuils, cadence de réactivation, wraparound millis).
+
+---
+
 ## Version 15.15 - 2026-07-09
 
 ### Env `wroom-beta-https` : pilote HTTPS banc (endpoints test + logs)
