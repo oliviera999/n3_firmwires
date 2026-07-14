@@ -35,7 +35,7 @@ jobs:
       - name: shared/ (analog, hmac, notify, mail, data, net_stats, tracker + logique pure mutualisée)
         run: |
           cd shared/tests_native
-          for s in test_analog test_hmac test_hmac_canonical test_notify test_mail test_data test_net_stats test_tracker test_epoch_util test_uptime_format test_sleep_decision test_reset_reason test_login_throttle test_clock_decision test_sensor_fallback test_sensor_failure test_store_forward test_upload_multipart; do
+          for s in test_analog test_hmac test_hmac_canonical test_notify test_mail test_data test_net_stats test_tracker test_epoch_util test_uptime_format test_sleep_decision test_reset_reason test_login_throttle test_clock_decision test_sensor_fallback test_sensor_failure test_store_forward test_upload_multipart test_ota_ui; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
