@@ -198,6 +198,22 @@ void automatismes() {
     // s'endort PAS en mode urgence ici ; le sommeil timer normal (sommeil())
     // reprend la main en fin de cycle. L'alerte batterie ci-dessus reste active.
     if (VeilleInfinie) {
+      // Harmonisation A8 (lot 0 T6, chantier shared) : POST final + ecran avant
+      // la veille infinie — comportement repris du bloc emergency de sommeil()
+      // (supprime : code mort, ce bloc-ci s'endort toujours en premier) et
+      // aligne sur msp qui POSTe avant la veille d'urgence. Le serveur recoit
+      // ainsi l'etat batterie (PontDiv bas) qui justifie la veille.
+      datatobdd();
+      if (displayOk) {
+        display.clearDisplay();
+        delay(100);
+        display.setTextSize(1);
+        display.setCursor(0, 0);
+        display.println(" ");
+        display.println("   DODO");
+        display.display();
+      }
+      delay(1000);
       EnregistrementHeureFlash();
       N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
       n3SleepConfigure(emergencySleep);
@@ -294,34 +310,12 @@ void sommeil() {
       Serial.println(String("[SLEEP][TRACE] veille infinie DESACTIVEE (cle 112=0) PontDiv=") + String(PontDiv) +
                      " < SeuilPontDiv=" + String(SeuilPontDiv) + " -> sommeil timer normal");
     }
-    if (PontDiv < SeuilPontDiv && VeilleInfinie) {
-      Serial.println(String("[SLEEP][TRACE] branche=emergency_batterie PontDiv=") + String(PontDiv) +
-                     " < SeuilPontDiv=" + String(SeuilPontDiv));
-      // Phase 3 arbitrage : mail batterie seulement en failover (sinon serveur primaire).
-      if (!postOkThisWake && emailEnabled() && !emailPontDivSent) {
-        emailMessage = String("La batterie est faible. Son niveau est de ") + String(PontDiv);
-        // Phase 0 : latch uniquement sur livraison confirmee.
-        if (sendEmailNotification(N3Severity::Critical)) {
-          emailPontDivSent = true;
-        }
-      }
-      datatobdd();
-      if (displayOk) {
-        display.clearDisplay();
-        delay(100);
-        display.setTextSize(1);
-        display.setCursor(0, 0);
-        display.println(" ");
-        display.println("   DODO");
-        display.display();
-      }
-      delay(1000);
-      EnregistrementHeureFlash();
-      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
-      n3SleepConfigure(emergencySleep);
-      Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
-      n3SleepStart();
-    }
+    // Harmonisation A8 (lot 0 T6) : le bloc "emergency_batterie" duplique ici
+    // etait du CODE MORT — automatismes() (appele avant dans le meme reveil,
+    // memes PontDiv/SeuilPontDiv/VeilleInfinie, aucune sortie anticipee) part
+    // deja en veille infinie sous la meme condition. Son contenu utile (POST
+    // final + ecran DODO) a ete rapatrie dans automatismes(). Site unique
+    // d'evaluation batterie = automatismes(), comme le re-armement du latch.
 
     Serial.println(String("[SLEEP][TRACE] branche=regular WakeUp=0 timer=") + String(FreqWakeUp) + "s");
     if (displayOk) display.clearDisplay();

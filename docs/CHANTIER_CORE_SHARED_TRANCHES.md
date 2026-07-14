@@ -248,7 +248,10 @@ applyRemoteConfig, onSleep`), inspiré ESPHome/Tasmota. **Préalables obligatoir
 (lot 0) : ~~extraire `msp_globals.cpp`~~ ✅ (msp 2.59, extraction verbatim) ;
 harmoniser A6 (décider `HeureSansWifi` pour msp — **décision utilisateur requise**),
 ~~A7 (retirer l'`analogRead` brut msp)~~ ✅ (msp 2.60 : `PontDiv` = moyenne filtrée),
-A8 (flag anti-spam + lieu de reset + double-site n3pp — analyse de flux dédiée),
+~~A8 (flag anti-spam + lieu de reset + double-site n3pp)~~ ✅ (n3pp 4.59 : bloc
+emergency de `sommeil()` = code mort supprimé, POST final + écran rapatriés dans
+`automatismes()` ; site unique évaluation + ré-armement par firmware — le lieu
+commun définitif se décidera à la conception de `n3_app`),
 ~~A10 (clamp 102)~~ ✅ (msp 2.61 : clé 102 bornée 0..4095 comme n3pp). Chaque
 harmonisation = changement de comportement assumé → tranche dédiée + VERSION.md.
 
