@@ -135,7 +135,7 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
 
 ## 5. Tranches suivantes (cahier des charges détaillé)
 
-### T1 — Reste de L2 : primitives data/temps (risque faible)
+### T1 — Reste de L2 : primitives data/temps (risque faible) — ✅ LIVRÉ (points 1-2 ; point 3 reporté)
 
 1. **`n3DataSendHeartbeat`** → `shared/n3_data`.
    - Source : `n3pp/src/n3pp_network.cpp` (`sendHeartbeat`, ~l.110-155) et
@@ -153,12 +153,14 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
    - Dédoublonne le resync des 6 globals dupliqué 3× : `print_wakeup_reason` n3pp
      (`n3pp_automation.cpp:~381-403`), msp (`msp_automation.cpp:~197-219`),
      `HeureSansWifi` n3pp (`n3pp_automation.cpp:~12-17`).
-3. **Adoption `n3PrintWakeupReason`** (existe DÉJÀ dans `n3_time.cpp:~104`) par
-   n3pp/msp : supprimer leurs `print_wakeup_reason` locaux. Point de décision : la
-   langue des logs diffère (n3pp EN / msp FR / shared EN) → soit accepter l'unification
-   EN (changement de log **cosmétique**, à noter dans VERSION.md), soit paramétrer.
-   Attention : les versions locales font AUSSI le resync des 6 globals → combiner avec
-   `n3TimeSyncBrokenDown` pour ne rien perdre.
+3. **Adoption `n3PrintWakeupReason`** — **REPORTÉE (décision de contrat requise)** :
+   au-delà de la langue des logs, la version shared charge l'heure NVS **aussi au
+   réveil TIMER** (besoin uploadphotosserver, horloge perdue au deep sleep), alors que
+   n3pp/msp ne le font qu'en `default` (leur horloge RTC survit). Adoption naïve =
+   risque d'écraser une horloge correcte par un epoch NVS stale à chaque réveil timer.
+   Options : paramétrer le comportement TIMER (`bool loadNvsOnTimerWake`), ou
+   harmoniser côté firmwares après validation terrain. Le resync des 6 globals est
+   déjà couvert par `n3TimeSyncBrokenDown` (livré).
 
 ### T2 — L3 : robustesse capteurs (risque faible, fort apport)
 

@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.55** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.56** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.55** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.56 | 2026-07-14 | **Mutualisation T1 (chantier shared).** `sendHeartbeat()` délègue au nouveau `n3DataSendHeartbeat` (`n3_data` 1.3.0) — corps déplacé verbatim (garde WiFi, plancher heap `min`, 8 champs, logs `[SERVER][HB]`, `delay(200)` identiques), seule la construction de la config reste locale. Resync calendaire (6 globals depuis RTC) délégué à `n3TimeSyncBrokenDown` (`n3_time` 1.2.0) dans `HeureSansWifi()` et `print_wakeup_reason()` (bloc dupliqué 3× dans la famille). **Sans changement observable** (refacto de dé-duplication, mêmes octets envoyés, mêmes logs). |
 | 4.55 | 2026-07-08 | **Veille infinie sous seuil batterie télécommandable.** Nouvel interrupteur serveur (GPIO virtuel **112**, `VeilleInfinie`, défaut `1` = comportement historique) lu dans `variablestoesp()` et conservé en RTC (comme `SeuilPontDiv`) : quand il vaut `0`, l'ESP **n'entre plus** en veille infinie (sommeil GPIO-only `sleepSeconds=0`) sous `SeuilPontDiv` et retombe sur le sommeil timer normal (`FreqWakeUp`). Gate appliquée aux deux sites de déclenchement (`automatismes()` et `sommeil()`) ; l'alerte batterie faible reste émise (arbitrée serveur/failover, découplée de l'interrupteur). Valeur echo-back au POST (`VeilleInfinie`). Piloté depuis l'interface de contrôle serre/élevage (n3_serveur, section « Énergie »). |
 | 4.54 | 2026-07-07 | **Phase 3 (suite) — arrosages et « arrosage continu » arbitrés.** Le serveur (n3_serveur 6.18.0) dérive désormais « Arrosage effectué » (transition `etatPompe` au POST) et « Arrosage continu » (`etatPompe=1` sur ≥ 2 lignes). Les trois confirmations d'arrosage (auto sol sec, heure programmée, manuel) sont gatées par `postOkThisWake` (émises seulement en failover, où le P3 est filtré). Alerte « pompe continue » (main.cpp) : le POST immédiat `etatPompe=1` est conservé (c'est la donnée dont le serveur dérive l'alerte) ; s'il réussit → latch sans mail local, sinon failover P1 comme avant. |
 | 4.53 | 2026-07-07 | **Phase 3 arbitrage mails — ESP en relais.** Nouveau flag RTC `postOkThisWake` capturant le succès HTTP du POST de chaque réveil (résultat auparavant ignoré). POST OK → le serveur (n3_serveur 6.16.0) est l'émetteur primaire des alertes partagées : l'ESP se tait sur **sol sec** (raise/clear, latch ré-armé en silence) et **batterie** (mail seulement ; la protection sommeil reste inconditionnelle). POST échoué → failover anti-congestion (§3.4) : sévérité plafonnée P1/P2 (`n3NotifModeCapFailover`), SMTP tenté seulement si WiFi connecté, budget RTC de 8 mails par épisode hors-ligne (ré-armé au POST OK), rapport réseau P4 reporté. Kill-switch GPIO 101 inchangé. Non gatés : pompe continue, arrosages (pas de couverture serveur). |

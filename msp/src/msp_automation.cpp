@@ -207,13 +207,8 @@ void print_wakeup_reason() {
     default:
       Serial.printf("Reveil non cause par deep sleep : %d\n", wakeup_reason);
       n3TimeLoadFromFlash(preferences, rtc);  // NVS "rtc" -> rtc (mêmes clés/défauts qu'avant)
-      // Resync des globals firmware depuis le RTC chargé
-      seconde = rtc.getTime("%S").toInt();
-      minute = rtc.getTime("%M").toInt();
-      heure = rtc.getTime("%H").toInt();
-      jour = rtc.getTime("%d").toInt();
-      mois = rtc.getTime("%m").toInt();
-      annee = rtc.getTime("%Y").toInt();
+      // Resync des globals firmware depuis le RTC chargé (mutualisé n3_time)
+      n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
       break;
   }
 }

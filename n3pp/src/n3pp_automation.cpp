@@ -9,12 +9,7 @@
 void HeureSansWifi() {
   n3TimeLoadFromFlash(preferences, rtc);  // NVS "rtc" -> rtc (mêmes clés/défauts qu'avant)
   // Resync des globals firmware depuis le RTC chargé (arrosage/affichage les lisent)
-  seconde = rtc.getTime("%S").toInt();
-  minute = rtc.getTime("%M").toInt();
-  heure = rtc.getTime("%H").toInt();
-  jour = rtc.getTime("%d").toInt();
-  mois = rtc.getTime("%m").toInt();
-  annee = rtc.getTime("%Y").toInt();
+  n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
   if (displayOk) {
     display.clearDisplay();
     display.setTextSize(2);
@@ -392,12 +387,7 @@ void print_wakeup_reason() {
       Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
       // Restauration via n3_time (clé epoch unique, avec migration anciennes clés).
       n3TimeLoadFromFlash(preferences, rtc);
-      heure = rtc.getTime("%H").toInt();
-      minute = rtc.getTime("%M").toInt();
-      seconde = rtc.getTime("%S").toInt();
-      jour = rtc.getTime("%d").toInt();
-      mois = rtc.getTime("%m").toInt();
-      annee = rtc.getTime("%Y").toInt();
+      n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
       break;
   }
 }
