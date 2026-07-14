@@ -29,6 +29,7 @@ HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
 - Harnais OTA périodique (`test_ota_ui`) : cadence 2 h persistée RTC (`OtaPeriodic`, lib `n3_common` — due/restant/cumul saturant sans débordement) + logique d'écran (`n3_ota_ui_logic.h`, lib `n3_ota_ui` : détection « déjà à jour », pourcentage de fin, barre de progression) — logique auparavant non testée.
 - Sélection d'artefact OTA (`test_ota_select`, lib `n3_common`) : cascade `channels[env][model] → [env][default] → [prod][model] → [prod][default] → legacy top-level`, image filesystem, champs d'intégrité sha256/signature — assertions à parité avec la suite ffp5cs d'origine (+ tests `readIntegrityFields`).
 - Rollback OTA 1er boot (`test_ota_rollback`, lib `n3_common`, capacité opt-in) : décision pure `OtaRollback::decide` — image non pending inerte, auto-test OK valide même après la fenêtre, échec persistant à expiration = rollback.
+- Logs unifiés (`test_log`, lib `n3_log`) : échelle des niveaux 0..5 alignée sur `CORE_DEBUG_LEVEL` et sur ffp5cs `LogConfig::LogLevel`, libellés historiques (`ERROR`/`WARN`/…/`VERB`), repli `NONE`, sémantique du seuil d'émission.
 
 Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 
@@ -50,6 +51,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 | [`n3_display`](n3_display/) | 1.0.1 | Init OLED SSD1306 (sondage I2C + retry). | `adafruit/Adafruit SSD1306` |
 | [`n3_store_forward`](n3_store_forward/) | 1.0.0 | File offline durable (store-and-forward) : orchestrateur de drain **pur** (`n3SfDrain` — peek→commit jamais burn, stratégie hybride, pacing, budget temps, retries 429) sur backend abstrait (SD/NVS fournis par le firmware). Généralisé depuis uploadphotosserver (`camera_sync`) et ffp5cs (`web_client_queue`). Testé en natif (`test_store_forward`). | — |
 | [`n3_upload`](n3_upload/) | 1.0.0 | Upload de gros binaires : `n3UploadMultipart` — POST HTTP multipart **streamé sans malloc du corps** (TLS opt-in + pinning CA comme `n3_data`, retries, en-têtes dynamiques par tentative via `onBeforeSend`, hook `onStats` → `n3NetStatsRecordPost`) sur `N3UploadSource` abstraite + `N3MultipartReader`. Mutualisé depuis uploadphotosserver. Logique pure testée en natif (`test_upload_multipart`). | — |
+| [`n3_log`](n3_log/) | 1.0.0 | Logs série unifiés (mutualisé ffp5cs `log.h`) : macros `N3_LOG*` timestampées `[HH:MM:SS][NIVEAU][TAG]` (repli uptime sans horloge), niveaux 0..5 alignés sur `CORE_DEBUG_LEVEL`, gates compile-time `N3_LOG_LEVEL`/`N3_LOG_ENABLED` — découplé de toute config firmware. Cœur pur testé en natif (`test_log`). | — |
 | [`n3_tracker`](n3_tracker/) | 1.0.0 | Logique pure du tracker solaire msp (asservissement différentiel 2 LDR/axe, pics de balayage, fusion pondérée). Sans dépendance Arduino, testée en natif (`test_tracker`). | — |
 
 ## Intégration
