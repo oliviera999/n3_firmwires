@@ -54,48 +54,24 @@ static const uint8_t FAILOVER_MAIL_BUDGET = 8;
 // congestion §3.4 — severite plafonnee a P1/P2, SMTP tente seulement si WiFi
 // connecte (sinon l'alerte serveur "appareil silencieux" couvre), budget borne.
 bool sendEmailNotification(N3Severity severity) {
-  const bool failover = !postOkThisWake;
-  N3NotifMode mode = n3ppNotifMode();
-  if (failover) {
-    mode = n3NotifModeCapFailover(mode);
-  }
-  if (!n3NotifModeAllows(mode, severity)) {
-    Serial.printf("[MAIL][SKIP] severite %s filtree par le mode de notification%s\n",
-                  n3SeverityCode(severity), failover ? " (failover P1/P2)" : "");
-    return true;  // silence volontaire : traite selon la politique, pas une perte
-  }
-  if (failover) {
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[MAIL][FAILOVER] WiFi absent, envoi non tente (retente au prochain reveil)");
-      return false;  // pas de latch : l'alerte sera retentee
-    }
-    if (failoverMailsSent >= FAILOVER_MAIL_BUDGET) {
-      Serial.printf("[MAIL][FAILOVER] budget epuise (%u), envoi non tente\n",
-                    (unsigned)FAILOVER_MAIL_BUDGET);
-      return false;
-    }
-    ++failoverMailsSent;
-  }
-
-  char subjectBuf[96];
-  n3MailFormatSubject(subjectBuf, sizeof(subjectBuf), "N3PP", severity, emailSubject);
-
-  N3MailSmtpConfig cfg{};
-  cfg.smtpHost = SMTP_HOST;
-  cfg.smtpPort = SMTP_PORT;
-  cfg.authorEmail = AUTHOR_EMAIL;
-  cfg.authorPassword = AUTHOR_PASSWORD;
-  cfg.senderName = "OAL";
-  cfg.recipientName = "OAL";
-  cfg.recipientEmail = inputMessageMailAd.c_str();
-
-  String err;
-  if (!n3MailSendText(cfg, subjectBuf, emailMessage.c_str(), &err)) {
-    Serial.print("[MAIL] echec envoi: ");
-    Serial.println(err);
-    return false;
-  }
-  return true;
+  // Mutualisé (T4) : politique failover/budget/format déplacée verbatim dans
+  // shared/n3_mail (n3MailNotify). Seule la construction des paramètres reste ici.
+  N3MailNotifyParams p{};
+  p.projectTag = "N3PP";
+  p.mode = n3ppNotifMode();
+  p.postOkThisWake = postOkThisWake;
+  p.failoverMailsSent = &failoverMailsSent;
+  p.failoverMailBudget = FAILOVER_MAIL_BUDGET;
+  p.smtp.smtpHost = SMTP_HOST;
+  p.smtp.smtpPort = SMTP_PORT;
+  p.smtp.authorEmail = AUTHOR_EMAIL;
+  p.smtp.authorPassword = AUTHOR_PASSWORD;
+  p.smtp.senderName = "OAL";
+  p.smtp.recipientName = "OAL";
+  p.smtp.recipientEmail = inputMessageMailAd.c_str();
+  p.subject = emailSubject;
+  p.message = emailMessage.c_str();
+  return n3MailNotify(p, severity);
 }
 
 // Borne maximale de securite pour la duree d'un arrosage (secondes) : empeche

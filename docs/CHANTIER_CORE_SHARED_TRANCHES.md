@@ -210,7 +210,7 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
 3. **Brancher `N3NetStats` dans ffp5cs** — appels `n3NetStatsRecord*` depuis
    `web_client.cpp` **impérativement sous `s_httpMutex`** (statique non thread-safe).
 
-### T4 — L5 : orchestration (risque faible/modéré)
+### T4 — L5 : orchestration (risque faible/modéré) — ⏳ PARTIEL (T4.1 `n3MailNotify` livré ; restent T4.2 harnais OTA `n3_ota_ui`, T4.3 `ota_artifact_select`, T4.4 rollback OTA opt-in)
 
 1. **`n3MailNotify(project, severity, subject, msg, …)`** → `n3_mail` : extrait
    `sendEmailNotification` (verbatim n3pp/msp sauf préfixe projet, budget
