@@ -22,7 +22,8 @@ HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
 - `n3_analog_sensors` (`test_analog`) : médiane, rejet d'outliers, moyenne, EMA, fallback, tensions batterie.
 - `n3_hmac` (`test_hmac`) : contrat du wrapper plat (formatage hex 64 car., garde-fou de taille, header `X-Signature`). `test_hmac_canonical` : contrat de `n3_hmac_canonical` (format hex, garde-fous de paramètres, format du nonce). La justesse crypto et l'entropie du nonce restent validées sur cible (vrai mbedtls + HW RNG).
 - `n3_tracker` (`test_tracker`) : suivi de pics de balayage, fusion pondérée avec validation, fenêtre fine, asservissement différentiel (zone morte, anti-oscillation, butée, divergence), gains d'égalisation LDR (calibration).
-- Logique pure mutualisée depuis ffp5cs (mêmes assertions que les suites ffp5cs d'origine, parité octet-identique) : `test_epoch_util`, `test_clock_decision`, `test_uptime_format` (lib `n3_time`) ; `test_sleep_decision`, `test_reset_reason`, `test_login_throttle` (lib `n3_common`).
+- Logique pure mutualisée depuis ffp5cs (mêmes assertions que les suites ffp5cs d'origine, parité octet-identique) : `test_epoch_util`, `test_clock_decision`, `test_uptime_format` (lib `n3_time`) ; `test_sleep_decision`, `test_reset_reason`, `test_login_throttle` (lib `n3_common`) ; `test_sensor_fallback` (lib `n3_analog_sensors`, API renommée neutre).
+- `n3_sensor_failure_manager` (`test_sensor_failure`) : machine d'état de défaillance capteur (désactivation après N échecs, cadence de réactivation via `millis()` injectable, réactivation après M succès) — logique auparavant non testée.
 
 Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 
@@ -30,7 +31,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 
 | Lib | Version | Description courte | Dépendances |
 |-----|---------|--------------------|-------------|
-| [`n3_analog_sensors`](n3_analog_sensors/) | 1.0.0 | Lecture ADC filtrée (médiane + outliers + EMA). Utilisée par n3pp, msp, ffp5cs. | — |
+| [`n3_analog_sensors`](n3_analog_sensors/) | 1.1.0 | Lecture ADC filtrée (médiane + outliers + EMA). Robustesse inter-lectures mutualisée depuis ffp5cs : `n3_sensor_failure_manager` (désactivation/réactivation auto d'un capteur défaillant, macro de log injectable `N3_SENSOR_LOG_PRINTF`), `n3_sensor_fallback` (cascade `current → dernier bon → défaut`, format POST). Utilisée par n3pp, msp, ffp5cs. | — |
 | [`n3_battery`](n3_battery/) | 1.0.1 | Pont diviseur (délègue à `n3_analog_sensors`). | `n3_analog_sensors ^1.0.0` |
 | [`n3_wifi`](n3_wifi/) | 1.1.0 | Connexion WiFi multi-réseaux avec scan+RSSI+BSSID, callbacks. | — |
 | [`n3_http`](n3_http/) | 1.1.0 | **Déprécié** : GET/POST minimal HTTPClient avec timeout (`N3_HTTP_TIMEOUT_MS`). Préférer `n3_data`. | `n3_common ^1.3.0` |

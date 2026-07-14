@@ -30,7 +30,15 @@ inline int analogRead(uint8_t /*pin*/) {
 }
 inline void delay(unsigned long /*ms*/) {}
 inline void delayMicroseconds(unsigned int /*us*/) {}
-inline unsigned long millis() { return 0; }
+
+// millis() injectable (défaut 0, comme historiquement) : les tests de logique
+// temporelle (ex. SensorFailureManager) posent la valeur via n3MockMillisSet.
+inline unsigned long& n3MockMillisValue() {
+  static unsigned long v = 0;
+  return v;
+}
+inline void n3MockMillisSet(unsigned long v) { n3MockMillisValue() = v; }
+inline unsigned long millis() { return n3MockMillisValue(); }
 
 #ifndef F
 #define F(x) (x)
