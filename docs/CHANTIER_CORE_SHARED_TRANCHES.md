@@ -228,12 +228,18 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
    `esp_ota_mark_app_valid_cancel_rollback()` ; sinon rollback. Nouvelle capacité →
    opt-in par flag de build, doc dédiée, test sur cible obligatoire avant généralisation.
 
-### T5 — L6 : logging unifié `n3_log`
+### T5 — L6 : logging unifié `n3_log` — ✅ LIB LIVRÉE + câblage ffp5cs (migrations `Serial.print` restantes = une PR par firmware)
 
 Extraire de ffp5cs `log.h` une lib `n3_log` **découplée de `config.h`** (niveau via
 macro de build), idéalement mappée sur `esp_log`/`CORE_DEBUG_LEVEL`. Migration des
 `Serial.print` firmware par firmware (gros volume, faible risque sémantique) — une PR
 par firmware, en commençant par uploadphotosserver (plus petit).
+
+> ✅ Livré : `shared/n3_log` 1.0.0 (`n3_log_core.h` pur + `N3_LOG_TAGGED`, échelle
+> 0..5 = `CORE_DEBUG_LEVEL`, gates `N3_LOG_LEVEL`/`N3_LOG_ENABLED`, testé natif
+> `test_log`) ; ffp5cs 15.19 : `log.h` délègue `_LOG_IMPL` sans changement
+> observable. ⏳ Restent les migrations `Serial.print` de n3pp/msp/upload/pgl —
+> une PR dédiée par firmware, commencer par uploadphotosserver.
 
 ### T6 — L7 : framework `n3_app` (dernier)
 

@@ -12,6 +12,24 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.19 - 2026-07-14
+
+### Mutualisation T5 : formatage des logs délégué à `shared/n3_log`
+
+Le formatage timestampé de `include/log.h` (`_LOG_IMPL` : préfixe
+`[HH:MM:SS][NIVEAU][TAG]`, repli uptime sans horloge) vit désormais dans la
+nouvelle lib partagée `shared/n3_log` (`N3_LOG_TAGGED`, extraction verbatim) :
+
+- `log.h` : `_LOG_IMPL` délègue à `N3_LOG_TAGGED` ; niveau (`LOG_LEVEL`) et
+  coupure série (`LogConfig::SERIAL_ENABLED`) injectés via `N3_LOG_LEVEL` /
+  `N3_LOG_ENABLED` avant l'include — l'échelle 0..5 et les libellés sont
+  identiques (contrat verrouillé par le test natif shared `test_log`).
+  `logLevelStr()` délègue au cœur pur (`n3LogLevelStr`).
+- Le stub `NullSerial` de prod reste effectif (Serial résolu au point
+  d'expansion des macros) ; `config_logging.h` inchangé.
+- **Sans changement observable** : mêmes octets de log, mêmes gates
+  compile-time, aucun appelant modifié.
+
 ## Version 15.18 - 2026-07-14
 
 ### Mutualisation T4.3 : sélection d'artefact OTA consommée depuis `shared/n3_common`

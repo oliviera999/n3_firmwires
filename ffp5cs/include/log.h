@@ -3,7 +3,12 @@
 // =============================================================================
 // SYSTÈME DE LOGS UNIFIÉ
 // =============================================================================
-// Utilise la configuration centralisée de config.h
+// Câblage T5 (chantier core shared) : le formatage timestampé historique
+// (_LOG_IMPL) est mutualisé dans `shared/n3_log` (macro N3_LOG_TAGGED,
+// extraite verbatim d'ici) — même échelle de niveaux 0..5, mêmes libellés,
+// mêmes octets émis. Le niveau (LOG_LEVEL) et la coupure série
+// (LogConfig::SERIAL_ENABLED, incl. NullSerial en prod) restent pilotés par
+// la configuration centralisée de config.h.
 // =============================================================================
 
 #include "config.h"
@@ -23,38 +28,26 @@ constexpr LogLevel LOG_VERBOSE = LogConfig::LOG_VERBOSE;
     #define LOG_LEVEL LogConfig::DEFAULT_LEVEL
 #endif
 
-// Helper pour obtenir le nom du niveau de log
+// Délégation à shared/n3_log : niveau et coupure série injectés depuis la
+// config locale AVANT l'include (n3_log ne fixe ces macros que par défaut).
+// Serial est résolu au point d'expansion des macros -> le stub NullSerial
+// de config_logging.h reste effectif en prod.
+#define N3_LOG_LEVEL LOG_LEVEL
+#define N3_LOG_ENABLED (LogConfig::SERIAL_ENABLED)
+#include "n3_log.h"
+
+// Helper pour obtenir le nom du niveau de log (délègue au cœur pur partagé —
+// mêmes libellés, même repli "NONE").
 inline const char* logLevelStr(LogLevel level) {
-    switch(level) {
-        case LOG_ERROR: return "ERROR";
-        case LOG_WARN:  return "WARN";
-        case LOG_INFO:  return "INFO";
-        case LOG_DEBUG: return "DEBUG";
-        case LOG_VERBOSE: return "VERB";
-        default: return "NONE";
-    }
+    return n3LogLevelStr(static_cast<N3LogLevel>(level));
 }
 
 // =============================================================================
-// MACRO INTERNE - IMPLÉMENTATION UNIQUE DU FORMATAGE TIMESTAMP
+// MACRO INTERNE — délègue le formatage timestamp à shared/n3_log
 // =============================================================================
-// Cette macro factorise le code de formatage pour éviter la duplication.
 // Le paramètre 'tag' permet d'ajouter un suffixe optionnel (ex: "[TIME]", "[NTP]").
 // =============================================================================
-#define _LOG_IMPL(tag, level, fmt, ...) do { \
-    if((level) <= LOG_LEVEL && LogConfig::SERIAL_ENABLED) { \
-        time_t now = time(nullptr); \
-        struct tm timeinfo; \
-        if (localtime_r(&now, &timeinfo)) { \
-            Serial.printf("[%02d:%02d:%02d][%s]" tag " " fmt "\n", \
-                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } else { \
-            Serial.printf("[%lu][%s]" tag " " fmt "\n", millis()/1000, \
-                logLevelStr((LogLevel)(level)), ##__VA_ARGS__); \
-        } \
-    } \
-} while(0)
+#define _LOG_IMPL(tag, level, fmt, ...) N3_LOG_TAGGED(tag, level, fmt, ##__VA_ARGS__)
 
 // =============================================================================
 // MACROS DE LOG PUBLIQUES
