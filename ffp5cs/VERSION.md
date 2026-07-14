@@ -12,6 +12,24 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.17 - 2026-07-14
+
+### Mutualisation T3c : statistiques réseau branchées sur `N3NetStats` (shared)
+
+Les compteurs partagés `N3NetStatsSnapshot` (`shared/n3_data/n3_net_stats` — durées,
+RSSI, near-timeout, consommés par `n3MailBuildNetReportBody`) sont désormais alimentés
+par ffp5cs, qui y échappait totalement (compteurs maison plus pauvres dans
+`diagnostics`/`automatism_sync`, inchangés par ailleurs) :
+
+- `web_client.cpp` : `n3NetStatsRecordPost` après chaque `_http.POST` (durée mesurée,
+  RSSI) et `n3NetStatsRecordGet` après chaque `_http.GET` d'`outputs/state` (première
+  tentative ET retry -11, chacune étant une requête réelle).
+- **Thread-safety respectée** : tous les appels sont DANS les sections protégées par
+  `s_httpMutex` (POST `postSenderTask` et GET `netTask` sérialisés par ce même mutex ;
+  `s_stats` de la lib n'est pas thread-safe — risque identifié par la vérification
+  adversariale du chantier et traité comme prescrit).
+- Additif pur : aucun comportement réseau modifié, aucun log retiré.
+
 ## Version 15.16 - 2026-07-14
 
 ### Mutualisation T2 : robustesse capteurs déléguée à `shared/n3_analog_sensors`

@@ -20,6 +20,7 @@
 #include <atomic>
 #include <memory>  // C3: unique_ptr pour buffer d'unwrap en heap (réduction pile)
 #include "hmac_sign.h"  // v13.80 (audit) - HMAC-SHA256 sur POST/GET en mode dual
+#include "n3_data.h"    // v15.17 (T3c) : n3NetStatsRecordPost/Get — stats reseau partagees
 #include "power.h"
 #include "tls_mutex.h"
 
@@ -259,6 +260,11 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     unsigned long postStartMs = millis();
     code = _http.POST(payload ? payload : "");
     unsigned long postDurationMs = millis() - postStartMs;
+    // v15.17 (T3c) : alimente le snapshot partagé N3NetStats (rapports mail).
+    // Appel DANS la section s_httpMutex (s_stats n'est pas thread-safe) —
+    // POST (postSenderTask) et GET (netTask) sont sérialisés par ce mutex.
+    n3NetStatsRecordPost(code, postDurationMs,
+                         (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127);
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
@@ -538,7 +544,12 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
   if (LogConfig::SERIAL_ENABLED) {
     Serial.println(F("[HTTP] GET outputs/state: envoi requête (lecture JSON config peut prendre plusieurs secondes)"));
   }
+  const unsigned long getStartMs = millis();
   int code = _http.GET();
+  // v15.17 (T3c) : stats réseau partagées — sous s_httpMutex (fetchRemoteState
+  // est sérialisé avec httpRequest par le même mutex, s_stats non thread-safe).
+  n3NetStatsRecordGet(code, millis() - getStartMs,
+                      (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127);
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
@@ -561,7 +572,10 @@ int WebClient::fetchRemoteState(JsonDocument& doc) {
     }
     if (_http.begin(_client, url)) {
       _http.setTimeout(NetworkConfig::OUTPUTS_STATE_HTTP_TIMEOUT_MS);
+      const unsigned long retryStartMs = millis();
       code = _http.GET();
+      n3NetStatsRecordGet(code, millis() - retryStartMs,
+                          (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127);  // v15.17 (T3c)
     } else {
       // Échec begin() lors du retry
       _http.end();
