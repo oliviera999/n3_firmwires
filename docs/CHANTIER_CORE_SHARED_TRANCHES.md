@@ -245,7 +245,7 @@ par firmware, en commençant par uploadphotosserver (plus petit).
 
 Squelette de cycle deep-sleep à callbacks (`onWake, readSensorsOrCapture, buildPayload,
 applyRemoteConfig, onSleep`), inspiré ESPHome/Tasmota. **Préalables obligatoires**
-(lot 0) : extraire `msp_globals.cpp` (globals inline dans `msp/main.cpp:~29-289`) ;
+(lot 0) : ~~extraire `msp_globals.cpp`~~ ✅ (msp 2.59, extraction verbatim) ;
 harmoniser A6 (décider `HeureSansWifi` pour msp), A7 (retirer l'`analogRead` brut msp),
 A8 (flag anti-spam + lieu de reset + double-site n3pp), A10 (clamp 102). Chaque
 harmonisation = changement de comportement assumé → tranche dédiée + VERSION.md.

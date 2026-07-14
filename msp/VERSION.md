@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.58** (définie dans `include/msp_config.h`).
+Version actuelle : **2.59** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.58** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.59 | 2026-07-14 | **Préalable T6 lot 0 (chantier shared) : extraction `msp_globals.cpp`.** Les définitions des variables globales (capteurs, servos/tracker, deep sleep, batterie, mails, réseau, OLED, RTC/calendrier — toutes déjà déclarées `extern` dans `msp_globals.h`) sont déplacées **verbatim** de `main.cpp` vers le nouveau `src/msp_globals.cpp`, même découpe que n3pp 4.38. `main.cpp` ne garde que l'état module-local (`previousMillisDatas`, `server(80)`, constantes NTP, statics fronts reset/calibration et contexte OTA). **Sans changement observable** (mêmes valeurs initiales, mêmes attributs `RTC_DATA_ATTR`). |
 | 2.58 | 2026-07-14 | **Mutualisation T4.2 (chantier shared).** Harnais OTA périodique + écran OLED délégué à la nouvelle lib `n3_ota_ui` 1.0.0 — corps déplacé verbatim (identique à n3pp hors titre `MSP OTA` et URLs `ota/msp*`), buffers module-static encapsulés dans `N3OtaUiContext`, cadence via `OtaPeriodic` (`n3_common` 1.6.0). Le compteur cumulé reste local en `RTC_DATA_ATTR`. **Sans changement observable** (mêmes écrans, mêmes logs `[OTA] check 2h …`, même cadence 2 h). |
 | 2.57 | 2026-07-14 | **Mutualisation T4 (chantier shared).** `sendEmailNotification()` délègue à `n3MailNotify` (`n3_mail` 1.4.0) — politique failover déplacée verbatim (cap P1/P2 hors-ligne, garde WiFi, budget borné, format sujet `[MSP1][Pn]`, mêmes logs). **Sans changement observable.** |
 | 2.56 | 2026-07-14 | **Mutualisation T1 (chantier shared).** `sendHeartbeat()` délègue au nouveau `n3DataSendHeartbeat` (`n3_data` 1.3.0) — corps déplacé verbatim (garde WiFi, plancher heap `min`, 8 champs, logs `[SERVER][HB]`, `delay(200)` identiques), seule la construction de la config reste locale. Resync calendaire (6 globals depuis RTC) délégué à `n3TimeSyncBrokenDown` (`n3_time` 1.2.0) dans `print_wakeup_reason()`. **Sans changement observable** (refacto de dé-duplication, mêmes octets envoyés, mêmes logs). |
