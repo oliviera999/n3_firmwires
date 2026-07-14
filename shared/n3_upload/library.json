@@ -1,0 +1,8 @@
+{
+  "name": "n3_upload",
+  "version": "0.1.0",
+  "description": "Upload de gros binaires pour firmwares n3 IoT — briques pures : source de corps abstraite (buffer/flux) et lecteur multipart streame (head+corps+tail sans malloc du corps). Le POST HTTP multipart arrive avec le cablage uploadphotosserver (T3b).",
+  "keywords": ["upload", "multipart", "stream", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

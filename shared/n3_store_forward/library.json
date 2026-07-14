@@ -1,0 +1,8 @@
+{
+  "name": "n3_store_forward",
+  "version": "1.0.0",
+  "description": "File offline durable (store-and-forward) pour firmwares n3 IoT : orchestrateur de drain pur (peek->commit jamais burn, pacing, budget temps, retries 429) sur backend de stockage abstrait (SD, NVS)",
+  "keywords": ["queue", "offline", "store-and-forward", "esp32", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}
