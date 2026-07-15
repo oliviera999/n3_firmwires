@@ -739,7 +739,9 @@ void setup() {
   ledBlink(100, 100, 2);
 
 #if USE_DEEP_SLEEP
-  n3PrintWakeupReason(preferences, rtc);
+  // Réveil timer CAM = horloge perdue au deep sleep -> recharger l'epoch NVS
+  // (contrat T1.3 : loadNvsOnTimerWake=true, comportement historique iso).
+  n3PrintWakeupReason(preferences, rtc, /*loadNvsOnTimerWake=*/true);
 #endif
 
   const uint32_t wifiStartMs = millis();
