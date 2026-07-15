@@ -444,10 +444,10 @@ float AirSensor::filteredTemperatureC() {
 #else
   const uint32_t minInterval = SensorConfig::DHT::MIN_READ_INTERVAL_MS;
 #endif
-  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < minInterval) {
-    return _emaInit ? _emaTemp : NAN;
+  if (_lastTempReadMs != 0 && (now - _lastTempReadMs) < minInterval) {
+    return _emaInitTemp ? _emaTemp : NAN;
   }
-  _lastDhtReadMs = now;
+  _lastTempReadMs = now;
 
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -469,11 +469,11 @@ float AirSensor::filteredTemperatureC() {
   temp = _dht.readTemperature();
 #endif
   if (!SensorValidation::isValidAirTemp(temp)) {
-    return _emaInit ? _emaTemp : NAN;
+    return _emaInitTemp ? _emaTemp : NAN;
   }
-  if (!_emaInit) {
+  if (!_emaInitTemp) {
     _emaTemp = temp;
-    _emaInit = true;
+    _emaInitTemp = true;
   } else {
     _emaTemp = 0.3f * temp + (1.0f - 0.3f) * _emaTemp;
   }
@@ -494,10 +494,10 @@ float AirSensor::filteredHumidity() {
 #else
   const uint32_t minInterval = SensorConfig::DHT::MIN_READ_INTERVAL_MS;
 #endif
-  if (_lastDhtReadMs != 0 && (now - _lastDhtReadMs) < minInterval) {
-    return _emaInit ? _emaHumidity : NAN;
+  if (_lastHumReadMs != 0 && (now - _lastHumReadMs) < minInterval) {
+    return _emaInitHum ? _emaHumidity : NAN;
   }
-  _lastDhtReadMs = now;
+  _lastHumReadMs = now;
 
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -519,11 +519,11 @@ float AirSensor::filteredHumidity() {
   h = _dht.readHumidity();
 #endif
   if (!SensorValidation::isValidHumidity(h)) {
-    return _emaInit ? _emaHumidity : NAN;
+    return _emaInitHum ? _emaHumidity : NAN;
   }
-  if (!_emaInit) {
+  if (!_emaInitHum) {
     _emaHumidity = h;
-    _emaInit = true;
+    _emaInitHum = true;
   } else {
     _emaHumidity = 0.3f * h + (1.0f - 0.3f) * _emaHumidity;
   }

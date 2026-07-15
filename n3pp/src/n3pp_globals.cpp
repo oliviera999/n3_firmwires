@@ -67,7 +67,6 @@ RTC_DATA_ATTR bool postOkThisWake = false;
 // Budget de mails failover par episode hors-ligne (anti-congestion §3.4-3) :
 // re-arme des qu'un POST repasse OK. RTC pour persister a travers les reveils.
 RTC_DATA_ATTR uint8_t failoverMailsSent = 0;
-bool WakeUpButton = 0;
 
 // NB : PAS de RTC_DATA_ATTR ici. Un String detient un pointeur vers le heap ;
 // la RTC RAM ne peut pas preserver le heap, et le constructeur global se
@@ -88,7 +87,6 @@ String emailMessage;
 
 int PontDiv;
 int avgPontDiv;
-float batt;
 float measuredVoltage;
 float batteryVoltage;
 RTC_DATA_ATTR int SeuilPontDiv = 1700;  // Seuil batterie faible (override GPIO 103), conserve en RTC.
@@ -121,7 +119,6 @@ String version = FIRMWARE_VERSION;
 
 String apiKeyValue = API_KEY;
 String sensorName = "n3pp";
-String sensorLocation = "T06";
 
 // ============================================================
 // Affichage OLED et WiFi
@@ -138,10 +135,6 @@ const char* ssid3 = WIFI_SSID3;
 const char* password3 = WIFI_PASS3;
 
 String Wifiactif;
-
-AsyncWebServer server(80);
-
-WiFiUDP wifiUdp;  // Reserve pour usage NTP / debug ; pas de routes locales actives.
 
 String outputsState;
 

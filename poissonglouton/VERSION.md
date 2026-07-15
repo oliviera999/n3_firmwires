@@ -1,5 +1,13 @@
 # Poissonglouton - Historique versions
 
+## 0.5.16 - 2026-07-15
+
+- **Fix comptage reveil EXT0 (P1)** : a la sortie du deep sleep sur obstacle IR, la broche est deja LOW ; `begin()` echantillonnait `irPrevState_=LOW` et `poll()` ne voyait jamais le front HIGH->LOW → la bouteille declencheuse n'etait jamais comptee. Comptage unique differe arme sur reveil EXT0 (attribue a l'IR), consomme au 1er `poll()`, sans double-comptage si l'obstacle persiste (`pgl_detection`).
+- **Fix debounce US defait par le cache (P2)** : `getUltrasonDistanceCm()` met une mesure en cache ~100 ms alors que `poll()` tourne ~10 ms ; `usBelowCount_` avancait ~10x par ping et `PGL_US_CONSECUTIVE_POLLS=2` etait satisfait par une seule mesure physique. Sequence de mesure (`usMeasureSeq_`) : le compteur "sous seuil" n'avance que sur une NOUVELLE mesure (N polls = N pings distincts).
+- **Fix boucle d'upload SD sans progression (P4)** : si un ack renvoie un `last_acked_event_id` hors lot / en-deca du curseur, `commitJournalAck()` n'avancait rien et la boucle de drain re-uploadait le meme lot jusqu'a epuisement du budget 8 s. Detection du non-avancement (pending inchange) → arret du drain pour ce cycle (`main.cpp`).
+- **Attenuation OTA synchrone (P3)** : `n3OtaCheck()` bloque `poll()` pendant le telechargement (bouteilles manquees = limitation connue, fix async hors scope). `gCounter.flush()` avant le check pour ne perdre aucun etat de comptage en attente si l'OTA redemarre la carte.
+- **Nettoyage** : suppression du stub vide `pgl_display_stub.cpp` ; reformatage single-spacing de `pgl_audio.cpp` et `pgl_counter.h` (blank lines uniquement, logique inchangee).
+
 ## 0.5.15 - 2026-06-29
 
 - **JC3248 anti-scintillement** : throttle push QSPI (max ~10 fps), buffer LVGL 40 lignes (sans full_refresh), init type1, retroeclairage toujours ON sur JC3248 (`PGL_BACKLIGHT_TIMEOUT_MS=0`).

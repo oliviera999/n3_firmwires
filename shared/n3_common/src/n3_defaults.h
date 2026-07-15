@@ -25,7 +25,7 @@
 #define N3_DATA_INTERVAL_MS 120000
 #endif
 
-// Timeout HTTP par defaut (POST/GET) pour les libs partagees n3_data, n3_http, n3_ota.
+// Timeout HTTP par defaut (POST/GET) pour les libs partagees n3_data, n3_ota.
 // Aligne sur la regle "5 s max" (conventions-firmwares.mdc).
 #ifndef N3_HTTP_TIMEOUT_MS
 #define N3_HTTP_TIMEOUT_MS 5000

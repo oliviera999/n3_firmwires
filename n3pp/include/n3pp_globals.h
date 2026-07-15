@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 #include <Wire.h>
@@ -61,7 +59,6 @@ extern bool arrosageFait;
 
 //wakeUp touch
 extern int bootCount;
-extern bool WakeUpButton;
 
 extern String inputMessageMailAd;
 extern String enableEmailChecked;
@@ -72,7 +69,6 @@ extern String emailMessage;
 
 extern int PontDiv;
 extern int avgPontDiv;
-extern float batt;
 extern float measuredVoltage;
 extern float batteryVoltage;
 extern int SeuilPontDiv;
@@ -93,7 +89,6 @@ extern const char* serverNameHeartbeat;
 extern String version;
 extern String apiKeyValue;
 extern String sensorName;
-extern String sensorLocation;
 
 // Affichage SSD1306 connecté en I2C (broches SDA, SCL)
 extern Adafruit_SSD1306 display;
@@ -108,11 +103,6 @@ extern const char* password3;
 
 extern String Wifiactif;
 
-// Serveur web asynchrone sur le port 80 (interface locale)
-extern AsyncWebServer server;
-
-//temps NTP
-extern WiFiUDP wifiUdp;
 // NTP : ajuster offset/fuseau dans gmtOffset_sec et daylightOffset_sec selon la localisation
 
 extern String outputsState;

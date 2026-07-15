@@ -63,7 +63,18 @@
       },
       "pioEnvs": [
         { "name": "wroom-prod", "versionDefine": null },
-        { "name": "wroom-test", "versionDefine": null }
+        { "name": "wroom-prod-https", "versionDefine": null },
+        { "name": "wroom-prod-pio6", "versionDefine": null },
+        { "name": "wroom-test", "versionDefine": null },
+        { "name": "wroom-beta", "versionDefine": null },
+        { "name": "wroom-beta-https", "versionDefine": null },
+        { "name": "wroom-tls-test", "versionDefine": null },
+        { "name": "wroom-s3-prod", "versionDefine": null },
+        { "name": "wroom-s3-test", "versionDefine": null },
+        { "name": "wroom-s3-test-psram", "versionDefine": null },
+        { "name": "wroom-s3-test-psram-v2", "versionDefine": null },
+        { "name": "wroom-s3-test-devkit", "versionDefine": null },
+        { "name": "wroom-s3-test-usb", "versionDefine": null }
       ]
     },
     {

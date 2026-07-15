@@ -145,7 +145,6 @@ void setup() {
 }
 
 void loop() {
-  static bool firstLoop = true;
   static bool ntpConfigured = false;
 
   digitalWrite(RELAIS, 1);
@@ -212,13 +211,6 @@ void loop() {
 
   lectureCapteurs();
   batterie();
-
-  // Premier tour : POST de diagnostic pour observer le code HTTP retour.
-  if (firstLoop) {
-    firstLoop = false;
-    Serial.println("[SERVER][POST] Envoi diagnostic premier tour");
-    datatobdd();
-  }
 
   affichageOLED();
   automatismes();

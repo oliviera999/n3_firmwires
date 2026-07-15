@@ -44,9 +44,9 @@ void affichageOLED() {
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print("HS:");
-  display.println(analogRead(HumiditeSol));
+  display.println(HumidSol);  // globale filtree (LectureCapteurs), coherente avec le POST
   display.print("P:");
-  display.println(analogRead(PLUIE));  // v2.42 : utilise la macro PLUIE au lieu de 27 en dur
+  display.println(Pluie);  // globale filtree + sentinelle deconnexion, coherente avec le POST
   display.print("TS:");
   display.print(temperatureSol, 1);
   display.cp437(true);

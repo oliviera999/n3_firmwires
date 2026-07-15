@@ -8,6 +8,27 @@
 
 ---
 
+## ✅ Statut d'implémentation (ce PR)
+
+**Corrigés dans ce PR** (bugs de correction + dette sûre) :
+- **ffp5cs** (v15.20) : F1 (config web copiée, plus de corruption), F2 (cookie auth `strlen`), F3 (handle OTA remis à `nullptr`), F4 (EMA temp/hum découplées, plus de NAN), F5 (année RTC en `int`), F8 (`loadBool` défaut `!newVal`), F10 (garde null avant déréférencement), F13 (OTA-FS chunked), S3 (auth + anti path-traversal sur `/api/history` & `/api/sd-status`), F14 (instrumentation debug `faa4e5` retirée).
+- **n3pp** (v4.60) : N1 (double POST supprimé), N2 (anti-inondation : 1 arrosage/cycle), N3 (serveur web mort retiré), variables mortes.
+- **msp** (v2.63) : M1 (serveur web mort retiré), M2 (OLED affiche les valeurs filtrées), M4 (défaut `SeuilSec`), variables mortes.
+- **poissonglouton** (v0.5.16) : P1 (comptage du réveil EXT0), P2 (débounce ultrason sur mesure fraîche), P4 (anti re-upload en boucle), `pgl_display_stub.cpp` supprimé, `pgl_audio.cpp`/`pgl_counter.h` reformatés.
+- **uploadphotosserver** (v2.68) : U2 (code mort retiré), U1 (commentaire heap).
+- **shared** : S5 (fail-closed sur signature absente — no-op runtime, ferme le footgun), S6 (commentaire replay body), commentaire `n3_http`, `n3_wifi` case dupliqué.
+- **build/CI** : B1 (BME280 épinglé), B4/B5 (2 suites de tests câblées en CI), B6 (manifest ffp5cs), B7 (`_test` envs héritent des flags), B9 (bandeau), B10 (audits archivés sous `docs/archive/`).
+
+**Volontairement NON traités** (décision utilisateur / coordination requise — voir §7) :
+- **S1** (enforcement OTA `N3_OTA_REQUIRE_SIGNATURE`) et **B2** (`DallasTemperature` 3.11.0 vs 4.0.5) : **laissés en l'état** par décision explicite (risque de brique OTA / de régression capteur).
+- **S2** (pinning CA TLS) : nécessite les bundles CA + coordination serveur.
+- **F6/F7/F11** (races SD/WebSocket/light-sleep ffp5cs) : nécessitent une revue mutex ciblée (risque de deadlock) — différés.
+- **P3** (OTA bloquant le comptage pgl), **B3** (versions libs ffp5cs) : différés (refacto / risque de déstabiliser le gros firmware).
+
+> Le détail complet de chaque finding reste ci-dessous. Les items serveur (S1/S2/S6) sont repris en §7 avec un prompt d'analyse bout-en-bout pour **n3_serveur**.
+
+---
+
 ## 0. État général du projet
 
 Le dépôt est **globalement sain et en nette progression**. La stratégie de mutualisation `shared/` (OTA, SMTP, WiFi, temps, deep-sleep, ADC, tracker) — chantier ouvert par les audits précédents — est **largement aboutie** : n3pp/msp délèguent désormais à `n3_ota_ui`, `n3_mail`, `n3_time`, `n3_sleep`, `n3_wifi`, `n3_analog_sensors`. Les points forts vérifiés : gestion framebuffer caméra propre (pas de fuite), journal d'événements pgl robuste (CRC16 + ack serveur), HMAC/canonicalisation corrects, tests natifs Unity présents sur `shared/` + ffp5cs.
@@ -156,3 +177,62 @@ Les problèmes restants se concentrent sur : **(a)** une posture de sécurité O
 10. UI OLED (indicateur POST OK/ERR), % batterie cohérent.
 
 > Chaque fix touchant un firmware doit **bumper sa version** (`include/*config.h` / `config_system.h` / `VERSION.md`) et suivre la règle anti-conflit inter-PR du `CLAUDE.md`.
+
+---
+
+## 7. Suite côté serveur (`n3_serveur`) — bout-en-bout
+
+Plusieurs findings ne se referment **que côté serveur** ou exigent une vérification bout-en-bout. À traiter dans le dépôt **n3_serveur** (le firmware est ici, le serveur reçoit/vérifie/déploie) :
+
+1. **Contrat de signature OTA (S1)** — avant d'activer `N3_OTA_REQUIRE_SIGNATURE` sur la flotte, **garantir que le serveur signe TOUTE métadonnée OTA** (champ `signature` ECDSA P-256 présent pour chaque cible : n3pp, msp, cam-*, pgl, ffp5-wroom). Séquence sûre : (a) serveur signe systématiquement → (b) vérifier sur banc qu'un device valide bien la signature → (c) **alors seulement** activer le flag firmware. Activer avant (a) **brique l'OTA**.
+2. **TLS / pinning CA (S2)** — fournir les bundles `n3_ota_ca_cert.h` / `n3_data_ca_cert.h` (chaîne du domaine `iot.olution.info`) et retirer `setInsecure()` en prod. Vérifier que le certificat serveur est stable / que la rotation est documentée.
+3. **HMAC anti-rejeu (S6)** — côté serveur : **cesser d'accepter** la paire legacy `timestamp=&signature=` (qui ne signe que l'epoch, rejouable) une fois que tous les firmwares émettent `X-Sig-*` (corps complet). Vérifier la fenêtre de tolérance temporelle et la dédup par nonce.
+4. **Path-traversal / auth (S3)** — le fix firmware bloque `date` malformé côté ESP, mais vérifier que le **serveur** ne construit pas non plus de chemins à partir d'entrées client sans validation (défense en profondeur).
+5. **Cohérence des versions** — après ce PR, les cibles OTA côté serveur doivent référencer les nouvelles versions (n3pp 4.60, msp 2.63, upload 2.68, pgl 0.5.16, ffp5cs 15.20).
+
+### 📋 Prompt prêt à l'emploi — analyse serveur bout-en-bout
+
+> À coller dans une session Claude Code ouverte sur le dépôt **n3_serveur** (après y avoir donné accès). Il vérifie que la chaîne firmware → serveur est cohérente de bout en bout.
+
+```
+Audit bout-en-bout du contrat firmware ↔ serveur pour l'écosystème n3 IoT.
+Contexte : les firmwares vivent dans le dépôt n3_firmwires ; ce dépôt (n3_serveur)
+reçoit les POST de données, sert la config distante, et distribue les OTA. Un audit
+firmware récent (docs/AUDIT_GENERAL_2026-07.md côté n3_firmwires) a relevé des points
+de sécurité qui ne se referment que côté serveur. Analyse le code serveur et réponds,
+preuve à l'appui (fichier:ligne), à CHAQUE point :
+
+1. OTA — SIGNATURE : le serveur génère-t-il et inclut-il TOUJOURS un champ `signature`
+   (ECDSA P-256 sur le sha256 du binaire) dans la métadonnée OTA de CHAQUE cible
+   (n3pp, msp, cam, pgl, ffp3/ffp5-wroom) ? Où est signée la métadonnée ? La clé privée
+   correspond-elle à la clé publique embarquée côté firmware (n3_common/n3_ota) ?
+   → Objectif : pouvoir activer `N3_OTA_REQUIRE_SIGNATURE` sur la flotte sans casser l'OTA.
+
+2. OTA — INTÉGRITÉ : le sha256 servi dans la métadonnée est-il calculé sur le binaire
+   réellement distribué ? Le endpoint OTA est-il servi en HTTPS avec un certificat valide
+   et stable (pour permettre le pinning CA côté firmware) ?
+
+3. POST DONNÉES — HMAC : le serveur vérifie-t-il l'en-tête `X-Signature` / `X-Sig-*`
+   (HMAC-SHA256 du CORPS complet) ? Accepte-t-il ENCORE la paire legacy
+   `timestamp=&signature=` (qui ne signe que l'epoch, donc rejouable avec un corps
+   arbitraire) ? Quelle est la fenêtre de tolérance temporelle et la dédup anti-rejeu
+   (par nonce) ? → Objectif : retirer le chemin legacy en toute sécurité.
+
+4. CONFIG DISTANTE (GET) : la config renvoyée aux firmwares (clés 100..112 côté n3pp/msp,
+   remoteVars côté ffp5cs) est-elle signée/authentifiée, ou un MITM peut-il la réécrire ?
+   Les plages de valeurs sont-elles validées côté serveur aussi ?
+
+5. CONTRAT DE CHAMPS : compare les champs POST attendus par le serveur avec ceux émis par
+   les firmwares (sensor=, BOARD_TYPE, post_id, etc. — cf. NOMENCLATURE_FFP3). Y a-t-il des
+   champs orphelins (émis mais ignorés) ou requis mais non émis ?
+
+6. VERSIONS OTA : les cibles OTA référencent-elles bien les dernières versions firmware
+   (n3pp 4.60, msp 2.63, upload 2.68, pgl 0.5.16, ffp5cs 15.20) ?
+
+7. PATH TRAVERSAL / injection : le serveur construit-il des chemins fichiers ou des requêtes
+   SQL à partir d'entrées client (date, sensor, id…) sans validation ?
+
+Livrable : un rapport priorisé (CRITICAL→LOW) avec, pour chaque écart firmware↔serveur,
+le fichier:ligne serveur concerné et le correctif proposé. Termine par la séquence de
+déploiement SÛRE pour activer l'enforcement de signature OTA sans briquer la flotte.
+```

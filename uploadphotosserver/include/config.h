@@ -19,12 +19,19 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.67"
+#define FIRMWARE_VERSION "2.68"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
  * WiFiClientSecure + setInsecure() ; OTA reste HTTP (/ota/cam/...). Rollback HTTP :
  * retirer -DUSE_HTTPS_ENDPOINTS de cam-base dans platformio.ini. Cf. docs/HTTPS_MIGRATION.md.
+ *
+ * ⚠ Caveat heap (U1, à valider on-device) : le handshake TLS + les buffers
+ * WiFiClientSecure consomment plusieurs dizaines de Ko de RAM. Sur un module
+ * ESP32-CAM SANS PSRAM, garder HTTPS activé par défaut peut réduire la marge de
+ * heap pendant la capture/upload d'une image et provoquer des échecs d'alloc
+ * intermittents. On NE change PAS le défaut ici, mais un noeud non-PSAM doit être
+ * validé en conditions réelles (et rollback HTTP si la marge est trop juste).
  */
 #if defined(USE_HTTPS_ENDPOINTS)
 #  define SERVER_SCHEME  "https://"
