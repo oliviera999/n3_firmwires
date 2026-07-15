@@ -343,21 +343,23 @@ void sommeil() {
 }
 
 // Fonction pour obtenir la raison du réveil de l'ESP32
+// T1.3 (chantier shared) : logs + chargement NVS délégués à la fonction
+// partagée n3PrintWakeupReason (n3_time). loadNvsOnTimerWake=false : au réveil
+// TIMER on NE recharge PAS la NVS (comme avant) — l'horloge RTC déjà valide ne
+// doit pas être écrasée par un epoch NVS potentiellement périmé (dérive
+// régressive). Libellés EN strictement identiques à l'ancien corps local.
 void print_wakeup_reason() {
-  esp_sleep_wakeup_cause_t wakeup_reason;
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-
-  switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Wakeup caused by external signal using RTC_IO"); break;
-    case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER: Serial.println("Wakeup caused by timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
-    default:
-      Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
-      // Restauration via n3_time (clé epoch unique, avec migration anciennes clés).
-      n3TimeLoadFromFlash(preferences, rtc);
-      n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
-      break;
+  const esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  n3PrintWakeupReason(preferences, rtc, /*loadNvsOnTimerWake=*/false);
+  // L'ancien corps ne resynchronisait les 6 globals (depuis le RTC chargé) qu'au
+  // cas `default` (boot hors deep sleep), après le chargement NVS. La fonction
+  // partagée ne fait pas ce resync : on le reproduit ici, au même cas et dans le
+  // même ordre, pour une parité stricte (aucun changement observable).
+  if (wakeup_reason != ESP_SLEEP_WAKEUP_EXT0 &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_EXT1 &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_TIMER &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_TOUCHPAD &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_ULP) {
+    n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
   }
 }
