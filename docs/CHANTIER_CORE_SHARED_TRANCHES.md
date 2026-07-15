@@ -256,6 +256,10 @@ commun définitif se décidera à la conception de `n3_app`),
 ~~A10 (clamp 102)~~ ✅ (msp 2.61 : clé 102 bornée 0..4095 comme n3pp). Chaque
 harmonisation = changement de comportement assumé → tranche dédiée + VERSION.md.
 
+> ✅ **T6.0 (additive) livrée** : `n3_app_seq.h` (`N3AppContext` + `n3AppNextStep`
+> pur, `stdint`-only, sans consommateur ni include Arduino/ESP) + `test_app` + CI.
+> Suite = wrapper on-target `n3AppRun` (T6.1) puis adoption uploadphotosserver (T6.2).
+
 ## 6. Definition of done (par tranche)
 
 - [ ] CI verte (natifs + TOUS les builds matriciels) sur la PR.

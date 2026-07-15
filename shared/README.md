@@ -30,6 +30,7 @@ HTTPClient) — aucune dépendance matérielle. Couverture actuelle :
 - Sélection d'artefact OTA (`test_ota_select`, lib `n3_common`) : cascade `channels[env][model] → [env][default] → [prod][model] → [prod][default] → legacy top-level`, image filesystem, champs d'intégrité sha256/signature — assertions à parité avec la suite ffp5cs d'origine (+ tests `readIntegrityFields`).
 - Rollback OTA 1er boot (`test_ota_rollback`, lib `n3_common`, capacité opt-in) : décision pure `OtaRollback::decide` — image non pending inerte, auto-test OK valide même après la fenêtre, échec persistant à expiration = rollback.
 - Logs unifiés (`test_log`, lib `n3_log`) : échelle des niveaux 0..5 alignée sur `CORE_DEBUG_LEVEL` et sur ffp5cs `LogConfig::LogLevel`, libellés historiques (`ERROR`/`WARN`/…/`VERB`), repli `NONE`, sémantique du seuil d'émission.
+- Séquenceur de cycle deep-sleep (`test_app`, lib `n3_app`) : contrat d'enchaînement pur `n3AppNextStep` (`n3_app_seq.h`) — ordre nominal complet WAKE→…→SLEEP→DONE, saut de l'étape OTA quand non due (REMOTE_CFG→SENSE), sorties anticipées `requestRestart`/`requestSleepNow` → SLEEP, idempotence de DONE et non-bouclage à SLEEP/DONE.
 
 Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suites de PlatformIO échoue à enchaîner plusieurs binaires de test (voir la CI `.github/workflows/firmware-ci.yml`). À étendre aux autres libs à logique pure.
 
@@ -53,6 +54,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 | [`n3_upload`](n3_upload/) | 1.0.0 | Upload de gros binaires : `n3UploadMultipart` — POST HTTP multipart **streamé sans malloc du corps** (TLS opt-in + pinning CA comme `n3_data`, retries, en-têtes dynamiques par tentative via `onBeforeSend`, hook `onStats` → `n3NetStatsRecordPost`) sur `N3UploadSource` abstraite + `N3MultipartReader`. Mutualisé depuis uploadphotosserver. Logique pure testée en natif (`test_upload_multipart`). | — |
 | [`n3_log`](n3_log/) | 1.0.0 | Logs série unifiés (mutualisé ffp5cs `log.h`) : macros `N3_LOG*` timestampées `[HH:MM:SS][NIVEAU][TAG]` (repli uptime sans horloge), niveaux 0..5 alignés sur `CORE_DEBUG_LEVEL`, gates compile-time `N3_LOG_LEVEL`/`N3_LOG_ENABLED` — découplé de toute config firmware. Cœur pur testé en natif (`test_log`). | — |
 | [`n3_tracker`](n3_tracker/) | 1.0.0 | Logique pure du tracker solaire msp (asservissement différentiel 2 LDR/axe, pics de balayage, fusion pondérée). Sans dépendance Arduino, testée en natif (`test_tracker`). | — |
+| [`n3_app`](n3_app/) | 1.0.0 | Contrat de cycle deep-sleep de la cohorte n3pp/msp/uploadphotosserver (**T6.0 additive, sans consommateur**) : séquenceur PUR `n3_app_seq.h` (`N3AppContext` + `n3AppNextStep`) décidant l'ordre canonique des étapes de réveil (WAKE→WIFI→CLOCK→REMOTE_CFG→OTA→SENSE→PAYLOAD→AUTOMATION→REPORTS→SLEEP→DONE), saut OTA non due, sorties anticipées restart/sleep. `stdint`-only, aucune dépendance Arduino/ESP, testé en natif (`test_app`). Le wrapper on-target `n3AppRun` (callbacks) viendra en T6.1. | — |
 
 ## Intégration
 
