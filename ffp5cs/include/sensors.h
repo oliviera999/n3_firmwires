@@ -118,9 +118,13 @@ class AirSensor {
   // Délai optimisé après reset matériel (réduit de 2000ms à 1000ms)
   static const uint16_t SENSOR_RESET_DELAY_MS = 1000;
   
-  // Min interval + EMA
-  unsigned long _lastDhtReadMs{0};
-  bool _emaInit{false};
+  // Min interval + EMA — température et humidité suivent des cadences/états SÉPARÉS :
+  // partager un seul flag/horodatage privait la 2e grandeur lue (EMA jamais initialisée
+  // -> NAN permanent, et court-circuit du min-interval).
+  unsigned long _lastTempReadMs{0};
+  unsigned long _lastHumReadMs{0};
+  bool _emaInitTemp{false};
+  bool _emaInitHum{false};
   float _emaTemp{NAN};
   float _emaHumidity{NAN};
   

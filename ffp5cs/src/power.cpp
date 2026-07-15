@@ -34,13 +34,6 @@ bool PowerManager::isStaReconnectInProgress() {
   return s_staReconnectInProgress.load(std::memory_order_acquire);
 }
 
-// #region agent log
-#if defined(USE_RTC_DS3231)
-#define _PWR_DS3231_LOG(loc, msg, dataInner, hypId) \
-  Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"%s\",\"message\":\"%s\",\"data\":{%s},\"timestamp\":%lu,\"hypothesisId\":\"%s\"}\n", (loc), (msg), (dataInner), (unsigned long)millis(), (hypId))
-#endif
-// #endregion
-
 // Fonction tcpip_safe_call supprimée - appels directs utilisés à la place
 
 namespace {
@@ -382,25 +375,15 @@ void PowerManager::applyExternalRTCIfPresent() {
 #endif
 #if defined(USE_RTC_DS3231)
   if (!RtcDS3231::isPresent()) {
-    // #region agent log
-    _PWR_DS3231_LOG("power.cpp:applyExternalRTC", "rtc_boot_absent", "\"branch\":\"absent\"", "H1");
-    // #endregion
     LOG_RTC(LogConfig::LOG_INFO, "DS3231 absent (optionnel)");
     return;
   }
   time_t rtcEpoch = 0;
   if (!RtcDS3231::read(&rtcEpoch)) {
-    // #region agent log
-    _PWR_DS3231_LOG("power.cpp:applyExternalRTC", "rtc_boot_read_fail", "\"branch\":\"read_invalid\"", "H2");
-    // #endregion
     LOG_RTC(LogConfig::LOG_WARN, "DS3231 présent mais lecture heure invalide");
     return;
   }
   if (!isValidEpoch(rtcEpoch)) {
-    // #region agent log
-    Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:applyExternalRTC\",\"message\":\"rtc_boot_epoch_invalid\",\"data\":{\"branch\":\"epoch_invalid\",\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H4\"}\n",
-                  (unsigned long)rtcEpoch, (unsigned long)millis());
-    // #endregion
     LOG_RTC(LogConfig::LOG_WARN, "DS3231 epoch hors plage valide: %lu", (unsigned long)rtcEpoch);
     return;
   }
@@ -409,10 +392,6 @@ void PowerManager::applyExternalRTCIfPresent() {
   smartSaveTime();
   char timeBuf[64];
   getCurrentTimeString(timeBuf, sizeof(timeBuf));
-  // #region agent log
-  Serial.printf("{\"sessionId\":\"faa4e5\",\"location\":\"power.cpp:applyExternalRTC\",\"message\":\"rtc_boot_applied\",\"data\":{\"branch\":\"applied\",\"epoch\":%lu},\"timestamp\":%lu,\"hypothesisId\":\"H4\"}\n",
-                (unsigned long)rtcEpoch, (unsigned long)millis());
-  // #endregion
   LOG_RTC(LogConfig::LOG_INFO, "Heure appliquée depuis DS3231: %s", timeBuf);
 #endif
 }

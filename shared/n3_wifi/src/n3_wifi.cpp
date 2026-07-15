@@ -420,15 +420,8 @@ bool pollPhase(N3WifiSession& session) {
       return false;
     }
 
+    // kWaitConnect et kWaitRetryConnect partagent la meme logique d'attente.
     case kWaitConnect:
-      if (millis() >= session.connectDeadline) {
-        advanceAfterConnectFailure(session);
-      } else if (WiFi.status() == WL_CONNECT_FAILED &&
-                 (millis() - session.connectStartedMs) > 2000) {
-        advanceAfterConnectFailure(session);
-      }
-      return false;
-
     case kWaitRetryConnect:
       if (millis() >= session.connectDeadline) {
         advanceAfterConnectFailure(session);

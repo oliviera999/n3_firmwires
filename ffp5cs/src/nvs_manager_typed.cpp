@@ -64,6 +64,12 @@ NVSError NVSManager::saveString(const char* ns, const char* key, const char* val
 }
 
 NVSError NVSManager::loadString(const char* ns, const char* key, char* value, size_t valueSize, const char* defaultValue) {
+    // Valider le buffer AVANT tout déréférencement (le chemin !guard.locked() écrivait
+    // dans `value` sans avoir vérifié value/valueSize).
+    if (value == nullptr || valueSize == 0) {
+        return NVSError::INVALID_VALUE;
+    }
+
     NVSLockGuard guard(*this);
     if (!guard.locked()) {
         if (defaultValue) {
@@ -73,10 +79,6 @@ NVSError NVSManager::loadString(const char* ns, const char* key, char* value, si
             value[0] = '\0';
         }
         return NVSError::READ_FAILED;
-    }
-
-    if (value == nullptr || valueSize == 0) {
-        return NVSError::INVALID_VALUE;
     }
 
     NVSError keyError = validateKey(key);

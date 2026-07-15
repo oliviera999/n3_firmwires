@@ -227,6 +227,17 @@ void automatismes() {
     emailPontDivSent = false;
   }
 
+  // Anti-inondation : au plus UN arrosage par cycle automatismes(). Les trois
+  // branches ci-dessous (sol sec auto, heure programmee, manuel) n'avaient aucune
+  // exclusion mutuelle -> a l'heure programmee avec sol sec + cooldown expire, la
+  // branche "sol sec" arrosait (et remettait le cooldown a 0), puis l'heure
+  // programmee arrosait de nouveau : double dose + POST en double. Precedence =
+  // ordre du code : sol sec auto > heure programmee > manuel. Quand une branche
+  // ulterieure est bloquee, son etat (arrosageFait=0, ArrosageManu=1) n'est PAS
+  // consomme -> son intention est reportee au cycle suivant (le cooldown empeche
+  // alors la re-declenchement de la branche "sol sec").
+  bool arrosageEffectueCeCycle = false;
+
   // Arrosage en cas de secheresse : protege par cooldown pour eviter
   // un arrosage repete a chaque reveil deep sleep si le sol reste sec.
   // Bloque si aucun capteur sol valide (capteurs debranches lus "tres sec").
@@ -235,6 +246,7 @@ void automatismes() {
   } else if (HumidMoy < SeuilSec) {
     if (arrosageAutoCooldownExpired()) {
       arrosage();
+      arrosageEffectueCeCycle = true;
       // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe
       // au POST) quand l'echange est sain ; en failover l'Info P3 est filtree.
       if (!postOkThisWake && emailEnabled()) {
@@ -263,8 +275,9 @@ void automatismes() {
     Serial.println("arrosage pas à l'heure");
   }
 
-  if ((HeureArrosage == heure) && arrosageFait == 0) {
+  if ((HeureArrosage == heure) && arrosageFait == 0 && !arrosageEffectueCeCycle) {
     arrosage();
+    arrosageEffectueCeCycle = true;
     arrosageFait = 1;
     Serial.println("[ARROSAGE] heure programmee effectue");
     Serial.print("arrosageFait=");
@@ -281,11 +294,12 @@ void automatismes() {
   }
 
   // Arrosage manuel demande depuis l'interface
-  if (ArrosageManu == 1) {
+  if (ArrosageManu == 1 && !arrosageEffectueCeCycle) {
     datatobdd();
     Serial.print("[ARROSAGE] manuel demande, ArrosageManu=");
     Serial.println(ArrosageManu);
     arrosage();
+    arrosageEffectueCeCycle = true;
     ArrosageManu = 0;
     // Phase 3 arbitrage : confirmation derivee cote serveur (transition etatPompe).
     if (!postOkThisWake && emailEnabled()) {

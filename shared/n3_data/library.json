@@ -1,6 +1,6 @@
 {
   "name": "n3_data",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "POST/GET HTTP generiques pour firmwares n3 IoT (body URL-encoded, HMAC optionnel)",
   "keywords": ["http", "post", "get", "hmac", "esp32", "n3"],
   "frameworks": "arduino",

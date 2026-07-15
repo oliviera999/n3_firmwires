@@ -592,6 +592,7 @@ void registerOptimizationStats(AsyncWebServer& server, AppContext& ctx) {
 void registerSdHistory(AsyncWebServer& server, AppContext& ctx) {
   (void)ctx;
   server.on("/api/history", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
     if (!SdCard::isPresent()) {
       sendErrorResponse(req, 503, "SD card not available");
       return;
@@ -603,6 +604,15 @@ void registerSdHistory(AsyncWebServer& server, AppContext& ctx) {
 
     if (req->hasParam("date")) {
       strncpy(date, req->getParam("date")->value().c_str(), sizeof(date) - 1);
+      // Anti path-traversal : `date` alimente "%s/%s.csv" dans readHistory. N'autoriser
+      // que [0-9-] (rejette '/', '..', tout caractère de chemin). Refus si vide.
+      if (date[0] == '\0') { sendErrorResponse(req, 400, "Invalid date"); return; }
+      for (const char* c = date; *c; ++c) {
+        if (!((*c >= '0' && *c <= '9') || *c == '-')) {
+          sendErrorResponse(req, 400, "Invalid date");
+          return;
+        }
+      }
     } else {
       time_t now;
       time(&now);
@@ -631,6 +641,7 @@ void registerSdHistory(AsyncWebServer& server, AppContext& ctx) {
   });
 
   server.on("/api/sd-status", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!webAuthIsAuthenticated(req)) { webAuthSendRequired(req); return; }
     char buf[96];
     snprintf(buf, sizeof(buf), "{\"present\":%s,\"pending\":%u}",
              SdCard::isPresent() ? "true" : "false",

@@ -216,8 +216,7 @@ firmwires/
 ├── .gitignore
 ├── README.md
 ├── credentials.h.example       # Template (copier en credentials.h, ne pas versionner)
-├── RECOMMANDATIONS.md
-├── RAPPORT_ANALYSE.md
+├── docs/archive/               # Rapports d'audit archivés (RECOMMANDATIONS, RAPPORT_ANALYSE, AUDIT_*)
 ├── scripts/
 │   ├── Get-PioBuildHelpers.ps1         # Résolution des artefacts (.pio/build ou C:\pio-builds)
 │   ├── pio_redirect_build_dir.py       # Redirection build Windows vers C:\pio-builds

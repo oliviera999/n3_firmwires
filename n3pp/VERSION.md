@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.59** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.60** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.59** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.60 | 2026-07-15 | **Corrections de bugs (deep sleep single-shot).** (1) **Double POST TLS par réveil supprimé** : le bloc « diagnostic premier tour » (`firstLoop`, `.bss` remis à `true` à chaque réveil deep sleep) postait en plus du POST périodique/`sommeil()` — retiré ; en deep sleep `sommeil()` POST toujours (WakeUp=0), en mode éveillé le gate périodique couvre. (2) **Anti-inondation arrosage** : ajout d'un garde local unique (`arrosageEffectueCeCycle`) → au plus **un** arrosage par cycle `automatismes()` ; précédence = ordre du code (sol sec auto > heure programmée > manuel), l'état des branches bloquées (`arrosageFait`, `ArrosageManu`) n'est pas consommé (intention reportée au cycle suivant). (3) **Nettoyage** : suppression des objets morts `AsyncWebServer server(80)` / `WiFiUDP wifiUdp` (jamais `begin()`/routes) + includes `<AsyncTCP.h>`/`<ESPAsyncWebServer.h>` (les deps PlatformIO `AsyncTCP`/`ESPAsyncWebServer` peuvent maintenant être retirées) et des variables inutilisées `WakeUpButton`, `batt`, `sensorLocation`. |
 | 4.59 | 2026-07-14 | **Harmonisation A8 (lot 0 T6, chantier shared) : site unique d'alerte/veille batterie.** Le bloc « emergency_batterie » de `sommeil()` était du **code mort** : `automatismes()` — appelé avant dans le même réveil, mêmes `PontDiv`/`SeuilPontDiv`/`VeilleInfinie`, aucune sortie anticipée — part déjà en veille infinie sous la même condition. Son contenu utile est rapatrié dans `automatismes()` : **POST final (`datatobdd`) + écran DODO avant la veille infinie** (aligné msp, le serveur reçoit l'état batterie qui justifie la veille — c'était perdu jusqu'ici puisque le bloc porteur du POST était mort). Site unique d'évaluation batterie + ré-armement du latch `emailPontDivSent` = `automatismes()`. Prérequis à la mutualisation de `sommeil()` (T6 `n3_app`). |
 | 4.58 | 2026-07-14 | **Mutualisation T4.2 (chantier shared).** Harnais OTA périodique + écran OLED délégué à la nouvelle lib `n3_ota_ui` 1.0.0 (`renderOtaScreen`, callbacks d'affichage, check immédiat avant reset distant, check périodique, cumul) — corps déplacé verbatim, buffers module-static encapsulés dans `N3OtaUiContext`, cadence via `OtaPeriodic` (`n3_common` 1.6.0). Le compteur cumulé reste local en `RTC_DATA_ATTR` (pointeur passé à la lib). **Sans changement observable** (mêmes écrans, mêmes logs `[OTA] check 2h …`, même cadence 2 h, même sélection prod/test par `TEST_MODE`). |
 | 4.57 | 2026-07-14 | **Mutualisation T4 (chantier shared).** `sendEmailNotification()` délègue à `n3MailNotify` (`n3_mail` 1.4.0) — politique failover déplacée verbatim (cap P1/P2 hors-ligne, garde WiFi, budget `FAILOVER_MAIL_BUDGET` borné, format sujet `[N3PP][Pn]`, mêmes logs). Seule la construction des paramètres (tag, mode, SMTP) reste locale. **Sans changement observable.** |

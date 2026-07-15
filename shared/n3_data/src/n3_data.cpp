@@ -82,8 +82,16 @@ int n3DataPost(const N3PostConfig& config) {
     body += n3UrlEncode(config.fields[i].value);
   }
 
-  // Contrat FFP3 moderne : ajouter timestamp + signature(HMAC(timestamp, sigSecret))
+  // Contrat FFP3 (legacy) : ajouter timestamp + signature(HMAC(timestamp, sigSecret))
   // au body si sigSecret est fourni et que le firmware a une heure valide.
+  //
+  // ⚠️ SECURITE (finding S6) : cette signature legacy ne HMAC que `tsBuf` (l'epoch),
+  // PAS le corps de la requete. Elle N'AUTHENTIFIE DONC PAS le body : une paire
+  // capturee `timestamp=&signature=` est rejouable avec un corps arbitraire tant
+  // que l'horodatage reste dans la fenetre acceptee. On la conserve UNIQUEMENT pour
+  // la retro-compatibilite avec le serveur qui l'attend encore. Les en-tetes
+  // X-Sig-* ci-dessous (couvrant tout le corps) sont la vraie protection ; ce champ
+  // legacy doit etre retire une fois que le serveur impose X-Sig-*.
   bool hmacFffp3Active = false;
   if (config.sigSecret != nullptr && config.sigSecret[0] != '\0' && config.currentEpochSeconds > 0) {
     char tsBuf[16];

@@ -58,7 +58,6 @@ extern bool VeilleInfinie;
 // --- Batterie / pont diviseur ---
 extern int PontDiv;
 extern int avgPontDiv;
-extern float batt;
 extern float measuredVoltage;
 extern float batteryVoltage;
 extern int SeuilPontDiv;
@@ -70,14 +69,12 @@ extern int sampleTotal;
 extern int SeuilSec;
 extern bool resetMode;
 extern bool etatRelais;
-extern int Oled;
 
 // --- Capteurs analogiques ---
 extern int HumidSol;
 extern int Pluie;
 
 // --- Email ---
-extern bool emailHumidSent;
 extern int bootCount;
 extern bool postOkThisWake;       // Phase 3 : POST de ce reveil OK -> serveur primaire
 extern uint8_t failoverMailsSent; // Phase 3 : budget mails failover (episode hors-ligne)
@@ -91,7 +88,6 @@ extern unsigned int httpResponseCode;
 extern String version;
 extern String apiKeyValue;
 extern String sensorName;
-extern String sensorLocation;
 extern const char* serverNamePostData;
 extern const char* serverNameOutput;
 extern const char* serverNameHeartbeat;

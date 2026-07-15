@@ -283,9 +283,6 @@ void GPIOParser::parseAndApply(const JsonDocument& doc, Automatism& autoCtrl) {
         applyGPIO(mapping.gpio, value, autoCtrl, configDoc, hasVirtualConfig);
         saveToNVS(mapping, value);
     }
-    // #region agent log
-    Serial.printf("[DBG] parseAndApply presentKeys=%u hypothesis=H6\n", (unsigned)presentKeys);
-    // #endregion
 
     // v11.98: Traiter aussi les clés textuelles (compatibilité avec /dbvars/update et autres sources)
     // Mapping des clés textuelles vers les clés de configuration
@@ -616,7 +613,9 @@ void GPIOParser::saveToNVS(const GPIOMapping& mapping, JsonVariantConst value) {
     // v11.172: Seulement les actionneurs (bool) sont sauvegardés ici
     bool newVal = parseBool(value);
     bool currentVal = false;
-    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, key, currentVal, newVal);
+    // Défaut = !newVal : si la clé est absente, currentVal != newVal -> la 1re écriture
+    // persiste (sinon défaut==newVal masquait le tout premier enregistrement).
+    g_nvsManager.loadBool(NVS_NAMESPACES::CONFIG, key, currentVal, !newVal);
     if (currentVal != newVal) {
         g_nvsManager.saveBool(NVS_NAMESPACES::CONFIG, key, newVal);
         Serial.printf("[NVS] ✏️ Actuateur %s = %s\n", key, newVal ? "ON" : "OFF");

@@ -52,7 +52,16 @@ static void appendHexByte(char* out, size_t idx, uint8_t value) {
 static void logOtaProgress(int current, int total);
 
 static bool verifyFirmwareSignature(const char* sha256Hex, const char* signatureB64, char* details, size_t detailsSize) {
-    if (!sha256Hex || !signatureB64 || signatureB64[0] == '\0') return true;
+    // Fail-safe (audit 2026-07, S5) : « impossible de verifier » n'est PAS
+    // « valide ». Une signature absente/nulle (ou un hash nul) renvoie false, pour
+    // eviter tout fail-open si un futur appelant oublie de garder ce cas.
+    // IMPORTANT : ceci ne change RIEN au comportement actuel — l'unique appelant
+    // (voir ~l.320) n'invoque cette fonction QUE lorsqu'une signature est presente,
+    // et la POLITIQUE « signature absente » (accepter en sha256-only vs refuser)
+    // reste decidee cote appelant via #if defined(N3_OTA_REQUIRE_SIGNATURE), non
+    // active a ce jour (cf. docs/AUDIT_GENERAL_2026-07.md, decision : enforcement
+    // OTA laisse OFF tant que le serveur ne signe pas systematiquement).
+    if (!sha256Hex || !signatureB64 || signatureB64[0] == '\0') return false;
 
     uint8_t hash[32];
     for (size_t i = 0; i < 32; ++i) {

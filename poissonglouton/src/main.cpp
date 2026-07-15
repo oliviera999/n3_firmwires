@@ -206,6 +206,15 @@ static void maybeRunPeriodicOtaCheck() {
       nullptr,   // pas de callback de progression (logs n3_ota suffisent)
   };
 
+  // P3 (attenuation) : n3OtaCheck() est SYNCHRONE et bloque la loop (donc
+  // gDetection.poll) plusieurs secondes pendant le telechargement ; les bouteilles
+  // qui passent pendant ce temps sont manquees (limitation connue — un fix async
+  // serait un gros refactor, hors scope). On persiste au moins l'etat de comptage
+  // en attente avant le check : si l'OTA reussit, n3OtaCheck() redemarre la carte,
+  // et un flush ici garantit qu'aucun evenement encore en RAM (FIFO NVS / totaux
+  // sales) n'est perdu au reboot. Le journal SD est deja ecrit a chaque addEvent.
+  gCounter.flush();
+
   PGL_LOG("OTA: verification periodique (locale %s, %s)",
           PGL_FIRMWARE_VERSION, PGL_OTA_METADATA_URL);
   n3OtaCheck(otaConfig);  // redemarre si une MAJ verifiee est appliquee
@@ -427,9 +436,21 @@ static void tryUploadBatch() {
       if (res.ok) {
         anySuccess = true;
         const uint32_t ackId = (res.lastAckedEventId != 0) ? res.lastAckedEventId : lastId;
+        const uint32_t pendingBefore = gCounter.getJournalPendingCount();
         PGL_LOG("Upload SD: OK — ack id=%lu", static_cast<unsigned long>(ackId));
         gCounter.commitJournalAck(ackId, batch, batchCount);
         gDisplay.setCounter(gCounter.getTotalCount(), gCounter.getTodayCount());
+        // Anti-boucle : si l'ack ne fait avancer AUCUN evenement (id hors lot ou
+        // en-deca du curseur -> commitJournalAck n'avance rien), re-boucler
+        // re-peek et re-upload le MEME lot jusqu'a epuisement du budget 8 s, en
+        // martelant le serveur. On stoppe le drain pour ce cycle ; les donnees
+        // non acquittees restent intactes et seront reprises au cycle suivant.
+        if (gCounter.getJournalPendingCount() >= pendingBefore) {
+          PGL_LOG("Upload SD: ack id=%lu sans progression (pending=%lu) — arret du drain ce cycle",
+                  static_cast<unsigned long>(ackId),
+                  static_cast<unsigned long>(gCounter.getJournalPendingCount()));
+          break;
+        }
       } else {
         uploadFailed = true;
         PGL_LOG("Upload SD: ECHEC — conservation des evenements (pending=%u)",
