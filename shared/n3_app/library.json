@@ -1,7 +1,7 @@
 {
   "name": "n3_app",
-  "version": "1.0.0",
-  "description": "Squelette de cycle deep-sleep a callbacks pour la cohorte deep-sleep (n3pp/msp/uploadphotosserver) : sequenceur pur d'enchainement des etapes de reveil (N3AppContext + n3AppNextStep), sans dependance Arduino/ESP, teste en natif",
+  "version": "1.1.0",
+  "description": "Squelette de cycle deep-sleep a callbacks pour la cohorte deep-sleep (n3pp/msp/uploadphotosserver) : sequenceur pur d'enchainement des etapes de reveil (N3AppContext + n3AppNextStep) + orchestrateur n3AppRun (dispatch pur des callbacks, sans dependance Arduino/ESP), teste en natif",
   "keywords": ["esp32", "n3", "deep-sleep", "lifecycle", "sequencer"],
   "frameworks": "arduino",
   "platforms": "espressif32"
