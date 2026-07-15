@@ -49,3 +49,6 @@ desktop.ini
 .DS_Store
 Thumbs.db
 tools/ota/__pycache__/
+
+# Claude Code worktrees agents (ephemeres, ne pas suivre)
+.claude/worktrees/
