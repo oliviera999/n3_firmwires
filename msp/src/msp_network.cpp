@@ -5,6 +5,7 @@
 #include "msp_network.h"
 #include "msp_config.h"
 #include "msp_globals.h"
+#include "msp_automation.h"  // HeureSansWifi (A6)
 #include <WiFi.h>
 #include <Arduino_JSON.h>
 #include "n3_wifi.h"
@@ -267,7 +268,19 @@ void variablestoesp() {
 
       inputMessageMailAd = readStringByKey(myObject, "100", inputMessageMailAd);
       enableEmailChecked = readStringByKey(myObject, "101", enableEmailChecked);
-      SeuilSec = readIntByKey(myObject, "102", SeuilSec);
+      // Harmonisation A10 (lot 0 T6, chantier shared) : meme clamp que n3pp sur
+      // la cle 102 — SeuilSec est un seuil sur une grandeur ADC brute (0..4095),
+      // on borne la valeur serveur dans cette plage (hors plage -> bornee), au
+      // lieu de l'appliquer telle quelle. Prerequis a la mutualisation du
+      // parseur de cles communes (100/101/102/103/106/107/110/112).
+      {
+        int parsedSeuilSec = SeuilSec;
+        if (tryReadIntByKey(myObject, "102", &parsedSeuilSec)) {
+          if (parsedSeuilSec < 0) parsedSeuilSec = 0;
+          if (parsedSeuilSec > 4095) parsedSeuilSec = 4095;
+          SeuilSec = parsedSeuilSec;
+        }
+      }
       SeuilPontDiv = readIntByKey(myObject, "103", SeuilPontDiv);
       // Consignes manuelles 104/105 : appliquees UNIQUEMENT en mode MANUEL.
       // Avant v2.54 elles ecrasaient AngleServoGD/HB meme en AUTO : la nuit
@@ -338,6 +351,9 @@ void Wificonnect() {
   };
   cfg.onFailure = []() {
     Serial.println("[WIFI][WARN] Echec: tous les reseaux configures ont echoue");
+    // Harmonisation A6 (lot 0 T6) : recharge l'horloge depuis la NVS comme
+    // n3pp — sans cela, apres un cold boot hors-ligne l'horloge restait fausse.
+    HeureSansWifi();
     if (displayOk) { display.println("ECHEC"); display.display(); }
   };
   cfg.onSuccess = [](const char*) {

@@ -12,6 +12,43 @@ La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’
 
 ---
 
+## Version 15.19 - 2026-07-14
+
+### Mutualisation T5 : formatage des logs délégué à `shared/n3_log`
+
+Le formatage timestampé de `include/log.h` (`_LOG_IMPL` : préfixe
+`[HH:MM:SS][NIVEAU][TAG]`, repli uptime sans horloge) vit désormais dans la
+nouvelle lib partagée `shared/n3_log` (`N3_LOG_TAGGED`, extraction verbatim) :
+
+- `log.h` : `_LOG_IMPL` délègue à `N3_LOG_TAGGED` ; niveau (`LOG_LEVEL`) et
+  coupure série (`LogConfig::SERIAL_ENABLED`) injectés via `N3_LOG_LEVEL` /
+  `N3_LOG_ENABLED` avant l'include — l'échelle 0..5 et les libellés sont
+  identiques (contrat verrouillé par le test natif shared `test_log`).
+  `logLevelStr()` délègue au cœur pur (`n3LogLevelStr`).
+- Le stub `NullSerial` de prod reste effectif (Serial résolu au point
+  d'expansion des macros) ; `config_logging.h` inchangé.
+- **Sans changement observable** : mêmes octets de log, mêmes gates
+  compile-time, aucun appelant modifié.
+
+## Version 15.18 - 2026-07-14
+
+### Mutualisation T4.3 : sélection d'artefact OTA consommée depuis `shared/n3_common`
+
+La logique pure de sélection d'artefact OTA (cascade `channels[env][model] →
+[env][default] → [prod][model] → [prod][default] → legacy top-level`, image
+filesystem, champs d'intégrité sha256/signature) vit désormais dans
+`shared/n3_common/n3_ota_artifact_select.h` (copie octet-identique, namespace
+`OtaArtifactSelect` conservé) :
+
+- `ota_manager.cpp` / `ota_manager_validate.cpp` : include repointé vers le header
+  partagé ; `include/ota_artifact_select.h` supprimé (dé-duplication).
+- `test/test_ota_select` : suite native repointée (assertions inchangées) ; la
+  copie shared est en outre couverte par `shared/tests_native/test_ota_select`
+  (mêmes assertions + tests `readIntegrityFields`).
+- **Sans changement observable** : même cascade, mêmes octets — le module
+  `ota_manager` lui-même n'est pas touché (liste « ne pas toucher » respectée,
+  seul l'emplacement du header pur change).
+
 ## Version 15.17 - 2026-07-14
 
 ### Mutualisation T3c : statistiques réseau branchées sur `N3NetStats` (shared)

@@ -421,13 +421,18 @@ void LectureCapteurs() {
 }
 
 void batterie() {
-  PontDiv = analogRead(pontdiv);
-  Serial.printf("[BATT] PontDiv=%d\n", PontDiv);
-
   N3BatteryResult res = n3BatteryRead(batteryConfig, (void*)samples, (void*)&sampleIndex, (void*)&sampleTotal);
   avgPontDiv = res.rawAvg;
   measuredVoltage = res.measuredVoltage;
   batteryVoltage = res.batteryVoltage;
+
+  // Harmonisation A7 (lot 0 T6, chantier shared) : PontDiv porte desormais la
+  // valeur FILTREE (moyenne n3BatteryRead) et non plus un analogRead brut
+  // une-passe — aligne sur n3pp (audit 4.38) : PontDiv pilote la protection
+  // batterie (sommeil() + alerte serveur via POST), un pic ADC isole ne doit
+  // pas declencher la veille d'urgence ni une fausse alerte.
+  PontDiv = avgPontDiv;
+  Serial.printf("[BATT] PontDiv=%d\n", PontDiv);
 
   Serial.printf("[BATT] ADC=%d tension_brute=%.2f V\n", avgPontDiv, measuredVoltage);
 

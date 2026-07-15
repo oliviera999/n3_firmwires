@@ -18,127 +18,18 @@
 #include <esp_sleep.h>
 #include <cstring>
 #include "credentials.h"
-#include "n3_ota.h"
+#include "n3_ota_ui.h"
 #include "n3_display.h"
 #include "n3_sleep.h"
 
 // ============================================================
-// Définitions des variables globales
+// Variables globales : definitions extraites dans msp_globals.cpp
+// (preal. T6 lot 0 — main.cpp ne garde que l'etat module-local).
 // ============================================================
 
-// --- Capteurs température sol (DS18B20) ---
-OneWire oneWire(oneWireBus);
-DallasTemperature sensors(&oneWire);
-float temperatureSol;
-
-// --- Luminosité ---
-int photocellReadingA = 0, photocellReadingB = 0, photocellReadingC = 0, photocellReadingD = 0;
-int photocellReadingMoy = 0;
-
-// --- Servos (tracker solaire) ---
-Servo servogd;
-Servo servohb;
-int posLumMax1 = 0, posLumMax2 = 0, posLumMax3 = 0, posLumMax4 = 0;
-int AngleServoGD;
-int AngleServoHB;
-bool servoModeAuto = true;
-bool trackerModeSweep = false;  // défaut : asservissement différentiel (audit tracker 2026-07)
-int ldrCalibCommand = 0;        // clé serveur 114 (calibration LDR), 0 = repos
-// Derniere position appliquee, persistee en RTC RAM : au reveil deep sleep on
-// repart de la position physique reelle au lieu du milieu de plage (-1 = cold
-// boot, invalide). Evite l'aller-retour inutile et rend l'asservissement
-// differentiel quasi instantane quand le soleil a peu bouge.
-RTC_DATA_ATTR int rtcAngleServoGD = -1;
-RTC_DATA_ATTR int rtcAngleServoHB = -1;
-
-// --- DHT intérieur / extérieur ---
-DHT dhtint(DHTPININT, DHTTYPEINT);
-DHT dhtext(DHTPINEXT, DHTTYPEEXT);
-//variables T et H pour les DHT
-float tempAirInt;
-float humidAirInt;
-float tempAirExt;
-float humidAirExt;
-
-// --- Deep sleep ---
-bool WakeUp = 0;
-int FreqWakeUp = N3_DEFAULT_FREQ_WAKE_UP_S;  // Defaut deep sleep (s), surchargeable par GPIO 107.
-// Interrupteur veille infinie sous seuil batterie (override GPIO 112). Defaut 1
-// = comportement historique ; si le serveur est injoignable la protection reste
-// active (fail-safe batterie).
-bool VeilleInfinie = 1;
-
-// --- Batterie / pont diviseur ---
-int PontDiv;
-int avgPontDiv;
-float batt;
-float measuredVoltage;
-float batteryVoltage;
-int SeuilPontDiv = 1700;
-int samples[NUM_SAMPLES];
-int sampleIndex = 0;
-int sampleTotal = 0;
-
-// --- Seuils / états ---
-int SeuilSec = 5000;
-bool resetMode = 0;
-bool etatRelais = 0;
-int Oled = 0;
-
-// --- Capteurs analogiques ---
-int HumidSol;
-int Pluie;
 unsigned long previousMillisDatas = 0;
 
-// --- Email ---
-bool emailHumidSent = 0;
-RTC_DATA_ATTR int bootCount = 0;
-// Phase 3 arbitrage mails : succes du POST de donnees de CE reveil (HTTP 200).
-// true  -> le serveur a nos donnees, il est l'emetteur PRIMAIRE de l'alerte
-//          batterie (seule alerte partagee msp) : l'ESP se tait dessus ;
-// false -> FAILOVER : l'ESP emet, borne par l'anti-congestion (P1/P2 only,
-//          WiFi requis, budget). RTC pour rester coherent sur tout le cycle.
-RTC_DATA_ATTR bool postOkThisWake = false;
-// Budget de mails failover par episode hors-ligne (§3.4-3), re-arme au POST OK.
-RTC_DATA_ATTR uint8_t failoverMailsSent = 0;
-RTC_DATA_ATTR String inputMessageMailAd = SMTP_DEST;
-RTC_DATA_ATTR String enableEmailChecked = "checked";
-String emailMessage;
-
-/* Session SMTP désormais locale à n3_mail (plus de global). */
-
-// --- Réseau ---
-#ifdef TEST_MODE
-const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/post-data";
-const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/api/outputs/state?board=2";
-const char* serverNameHeartbeat = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/heartbeat";
-#else
-const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1/post-data";
-const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1/api/outputs/state?board=2";
-const char* serverNameHeartbeat = MSP_SERVER_SCHEME "iot.olution.info/msp1/heartbeat";
-#endif
-
-unsigned int httpResponseCode;
-String version = FIRMWARE_VERSION;
-String apiKeyValue = API_KEY;
-String sensorName = "msp1";
-String sensorLocation = "T06";
-
-// --- Affichage OLED ---
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-bool displayOk = false;
-
-// --- WiFi ---
-const char* ssid = WIFI_SSID1;
-const char* password = WIFI_PASS1;
-const char* ssid2 = WIFI_SSID2;
-const char* password2 = WIFI_PASS2;
-const char* ssid3 = WIFI_SSID3;
-const char* password3 = WIFI_PASS3;
-String Wifiactif;
-
 AsyncWebServer server(80);
-String outputsState;
 
 // Reset distant: edge detection with first-sample seeding to avoid reboot loops
 // if server state is already "110=1" at boot. RTC_DATA_ATTR : en deep sleep,
@@ -153,148 +44,37 @@ RTC_DATA_ATTR static bool s_lastResetModeState = false;
 RTC_DATA_ATTR static bool s_calibEdgeInitialized = false;
 RTC_DATA_ATTR static int s_lastCalibCommand = 0;
 RTC_DATA_ATTR static bool s_calibPending = false;
-static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
-RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
-static char s_otaCurrentVersion[16] = "";
-static char s_otaRemoteVersion[16] = "";
-static uint8_t s_otaDisplayedPercent = 255;
+// Harnais OTA periodique + ecran OLED delegue a shared/n3_ota_ui (T4.2).
+// Le compteur cumule reste possede ici (RTC_DATA_ATTR, survit au deep sleep) ;
+// la lib le manipule via le pointeur de la config. Initialise A l'intervalle
+// pour declencher un check au tout premier boot.
+RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OtaPeriodic::kDefaultIntervalSeconds;
+static N3OtaUiContext s_otaUiContext;
 
-static void renderOtaScreen(const char* statusLine, uint8_t percent) {
-  if (!displayOk) return;
-
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("MSP OTA");
-  display.setCursor(0, 10);
-  display.println(statusLine ? statusLine : "En cours");
-
-  display.setCursor(0, 20);
-  display.print(s_otaCurrentVersion[0] ? s_otaCurrentVersion : FIRMWARE_VERSION);
-  display.print(" -> ");
-  display.println(s_otaRemoteVersion[0] ? s_otaRemoteVersion : "?");
-
-  display.drawRect(0, 36, SCREEN_WIDTH, 10, WHITE);
-  const int fillWidth = (percent >= 100) ? (SCREEN_WIDTH - 2) : ((percent * (SCREEN_WIDTH - 2)) / 100);
-  if (fillWidth > 0) {
-    display.fillRect(1, 37, fillWidth, 8, WHITE);
-  }
-
-  display.setCursor(0, 50);
-  display.print("Progression: ");
-  display.print(percent);
-  display.println("%");
-  display.display();
-}
-
-static void otaDisplayStartCallback(const char* currentVersion,
-                                    const char* remoteVersion,
-                                    const char* firmwareUrl,
-                                    void* userData) {
-  (void)firmwareUrl;
-  (void)userData;
-  snprintf(s_otaCurrentVersion, sizeof(s_otaCurrentVersion), "%s",
-           currentVersion ? currentVersion : FIRMWARE_VERSION);
-  snprintf(s_otaRemoteVersion, sizeof(s_otaRemoteVersion), "%s",
-           remoteVersion ? remoteVersion : "?");
-  s_otaDisplayedPercent = 255;
-  renderOtaScreen("MAJ disponible", 0);
-}
-
-static void otaDisplayEndCallback(bool success, const char* details, void* userData) {
-  (void)userData;
-  if (success) {
-    renderOtaScreen("Succes - reboot", 100);
-    return;
-  }
-
-  const bool upToDate = (details != nullptr) &&
-                        (strstr(details, "deja a jour") != nullptr ||
-                         strstr(details, "pas de mise a jour") != nullptr);
-  renderOtaScreen(upToDate ? "Deja a jour" : "Echec OTA",
-                  upToDate ? 100 : (s_otaDisplayedPercent == 255 ? 0 : s_otaDisplayedPercent));
-}
-
-static void otaDisplayProgressCallback(int current, int total, uint8_t percent, void* userData) {
-  (void)current;
-  (void)total;
-  (void)userData;
-  if (percent == s_otaDisplayedPercent) return;
-  s_otaDisplayedPercent = percent;
-  renderOtaScreen("Telechargement", percent);
-}
-
-static bool tryOtaBeforeResetForRemoteCommand() {
-#ifdef TEST_MODE
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp-test/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
-#else
-  static const N3OtaConfig otaConfig = {
+static void initOtaUi() {
+  const N3OtaUiConfig otaUiConfig = {
+      "MSP OTA",
       "http://iot.olution.info/ota/msp/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
-#endif
-  return n3OtaCheck(otaConfig);
-}
-
-static void maybeRunPeriodicOtaCheck(const char* reason) {
-  if (s_otaElapsedSinceLastCheckSeconds < OTA_PERIODIC_INTERVAL_SECONDS) {
-    const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
-    Serial.printf("[OTA] check 2h ignore (%s), restant=%lu s\n",
-                  reason ? reason : "n/a",
-                  static_cast<unsigned long>(remaining));
-    return;
-  }
-
-#ifdef TEST_MODE
-  static const N3OtaConfig otaConfig = {
       "http://iot.olution.info/ota/msp-test/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
+#ifdef TEST_MODE
+      true,
 #else
-  static const N3OtaConfig otaConfig = {
-      "http://iot.olution.info/ota/msp/metadata.json",
-      FIRMWARE_VERSION, -1, nullptr,
-      otaDisplayStartCallback, otaDisplayEndCallback,
-      nullptr, otaDisplayProgressCallback
-  };
+      false,
 #endif
-
-  Serial.printf("[OTA] check 2h declenche (%s)\n", reason ? reason : "n/a");
-  n3OtaCheck(otaConfig);
-  s_otaElapsedSinceLastCheckSeconds = 0;
+      FIRMWARE_VERSION,
+      &display,
+      &displayOk,
+      OtaPeriodic::kDefaultIntervalSeconds,
+      &s_otaElapsedSinceLastCheckSeconds
+  };
+  n3OtaUiInit(s_otaUiContext, otaUiConfig);
 }
 
-static void accumulateOtaPeriodicElapsedFromSleep(int sleepSeconds) {
-  if (sleepSeconds <= 0) return;
-  if (s_otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS) return;
-
-  const uint32_t sleepSec = static_cast<uint32_t>(sleepSeconds);
-  const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - s_otaElapsedSinceLastCheckSeconds;
-  s_otaElapsedSinceLastCheckSeconds += (sleepSec >= remaining) ? remaining : sleepSec;
-}
-
-// --- Temps RTC / NTP ---
+// --- Temps NTP (constantes locales a main.cpp ; rtc/preferences/calendrier
+// dans msp_globals.cpp) ---
 const char* ntpServer = MSP_NTP_SERVER;
 const long gmtOffset_sec = MSP_GMT_OFFSET_SEC;
 const int daylightOffset_sec = MSP_DAYLIGHT_OFFSET_SEC;
-ESP32Time rtc;
-Preferences preferences;
-int seconde;
-int minute;
-int heure;
-int jour;
-int mois;
-int annee;
 
 // ============================================================
 // setup() et loop()
@@ -326,9 +106,10 @@ void setup() {
   }
 
   // OTA périodique : vérification au boot seulement si la cadence 2h est atteinte
+  initOtaUi();
   Wificonnect();
   Serial.println("[WIFI] Connexion initiale OK");
-  maybeRunPeriodicOtaCheck("boot");
+  n3OtaUiMaybePeriodicCheck(s_otaUiContext, "boot");
 
   pinMode(HumiditeSol, INPUT);
   pinMode(27, INPUT);
@@ -448,7 +229,7 @@ void loop() {
     }
   } else if (resetRequested && !s_lastResetModeState) {
     Serial.println("[REMOTE] Reset distant demande (front montant)");
-    if (!tryOtaBeforeResetForRemoteCommand()) {
+    if (!n3OtaUiCheckNow(s_otaUiContext)) {
       Serial.println("[REMOTE][OTA] Aucune MAJ OTA dispo, reset direct");
       ESP.restart();
     }
@@ -512,7 +293,7 @@ void loop() {
                         : (int)((nowOtaTimerMs - s_lastOtaTimerMillis) / 1000UL);
   }
   s_lastOtaTimerMillis = nowOtaTimerMs;
-  accumulateOtaPeriodicElapsedFromSleep(elapsedForOta);
+  n3OtaUiAccumulateElapsed(s_otaUiContext, elapsedForOta);
   mspAccumulateNetReportElapsedFromSleep(elapsedForOta);
   mspMaybeSendNetworkReportEmail();
   sendHeartbeat();

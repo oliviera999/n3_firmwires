@@ -1,0 +1,8 @@
+{
+  "name": "n3_log",
+  "version": "1.0.0",
+  "description": "Logs serie unifies avec timestamp horloge (fallback uptime), niveaux ERROR..VERBOSE mappes sur l'echelle CORE_DEBUG_LEVEL, tag optionnel et desactivation compile-time — decouples de toute config firmware, pour firmwares n3 IoT",
+  "keywords": ["esp32", "log", "logging", "serial", "n3"],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

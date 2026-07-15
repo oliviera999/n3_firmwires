@@ -7,8 +7,9 @@
 //   → channels[prod][default] → fallback legacy top-level.
 // Le schéma du manifeste est figé côté serveur (n3_serveur ota/metadata.json).
 // Cette logique pure est extraite de OTAManager::selectArtifactFromMetadata
-// (ota_manager_validate.cpp) dans ota_artifact_select.h pour être testable sans
-// matériel ni réseau. Jusqu'ici NON testée.
+// (ota_manager_validate.cpp), mutualisée dans shared/n3_common (T4.3) sous
+// n3_ota_artifact_select.h. Assertions à parité avec la suite ffp5cs d'origine,
+// plus les tests readIntegrityFields (sha256/signature, non couverts avant).
 //
 // ArduinoJson est header-only et compatible hôte (ajouté aux lib_deps natifs).
 #include <ArduinoJson.h>
@@ -183,6 +184,38 @@ void test_fs_node_fills_from_top_level(void) {
   TEST_ASSERT_EQUAL_INT(3, o.size);
 }
 
+// --- Champs d'intégrité étendue sha256/signature (readIntegrityFields) ---
+
+// Intégrité : lus sur le MÊME nœud que celui retenu par la cascade (bin_url présent).
+void test_integrity_from_selected_node(void) {
+  JsonDocument doc;
+  deserializeJson(doc, R"({"channels":{"test":{"esp32-wroom":{"bin_url":"u1","sha256":"aa","signature":"sig1"}}}})");
+  char sha[72], sig[128];
+  readIntegrityFields(doc, "test", "esp32-wroom", sha, sizeof(sha), sig, sizeof(sig));
+  TEST_ASSERT_EQUAL_STRING("aa", sha);
+  TEST_ASSERT_EQUAL_STRING("sig1", sig);
+}
+
+// Intégrité : champs absents du nœud → fallback top-level (comme md5).
+void test_integrity_fallback_top_level(void) {
+  JsonDocument doc;
+  deserializeJson(doc, R"({"sha256":"topsha","channels":{"prod":{"default":{"bin_url":"u4"}}}})");
+  char sha[72], sig[128];
+  readIntegrityFields(doc, "test", "esp32-wroom", sha, sizeof(sha), sig, sizeof(sig));
+  TEST_ASSERT_EQUAL_STRING("topsha", sha);
+  TEST_ASSERT_EQUAL_STRING("", sig);  // absent partout -> vide (retro-compatible MD5 seul)
+}
+
+// Intégrité : manifeste sans aucun champ -> sorties vides, pas de crash.
+void test_integrity_absent_everywhere(void) {
+  JsonDocument doc;
+  deserializeJson(doc, R"({"bin_url":"u5","version":"5.0"})");
+  char sha[72], sig[128];
+  readIntegrityFields(doc, "test", "esp32-wroom", sha, sizeof(sha), sig, sizeof(sig));
+  TEST_ASSERT_EQUAL_STRING("", sha);
+  TEST_ASSERT_EQUAL_STRING("", sig);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_channel_env_model_direct);
@@ -199,5 +232,8 @@ int main(void) {
   RUN_TEST(test_fs_legacy_top_level_url_only);
   RUN_TEST(test_fs_absent_returns_false);
   RUN_TEST(test_fs_node_fills_from_top_level);
+  RUN_TEST(test_integrity_from_selected_node);
+  RUN_TEST(test_integrity_fallback_top_level);
+  RUN_TEST(test_integrity_absent_everywhere);
   return UNITY_END();
 }

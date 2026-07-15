@@ -210,7 +210,7 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
 3. **Brancher `N3NetStats` dans ffp5cs** — appels `n3NetStatsRecord*` depuis
    `web_client.cpp` **impérativement sous `s_httpMutex`** (statique non thread-safe).
 
-### T4 — L5 : orchestration (risque faible/modéré) — ⏳ PARTIEL (T4.1 `n3MailNotify` livré ; restent T4.2 harnais OTA `n3_ota_ui`, T4.3 `ota_artifact_select`, T4.4 rollback OTA opt-in)
+### T4 — L5 : orchestration (risque faible/modéré) — ✅ LIVRÉ (T4.1 `n3MailNotify`, T4.2 `n3_ota_ui`, T4.3 `ota_artifact_select`, T4.4 rollback OTA **opt-in inactif** — activation conditionnée à une validation sur cible, cf. `docs/OTA_ROLLBACK_OPT_IN.md`)
 
 1. **`n3MailNotify(project, severity, subject, msg, …)`** → `n3_mail` : extrait
    `sendEmailNotification` (verbatim n3pp/msp sauf préfixe projet, budget
@@ -228,20 +228,32 @@ PROPOSITION ; toute tranche qui les touche doit les traiter explicitement) :
    `esp_ota_mark_app_valid_cancel_rollback()` ; sinon rollback. Nouvelle capacité →
    opt-in par flag de build, doc dédiée, test sur cible obligatoire avant généralisation.
 
-### T5 — L6 : logging unifié `n3_log`
+### T5 — L6 : logging unifié `n3_log` — ✅ LIB LIVRÉE + câblage ffp5cs (migrations `Serial.print` restantes = une PR par firmware)
 
 Extraire de ffp5cs `log.h` une lib `n3_log` **découplée de `config.h`** (niveau via
 macro de build), idéalement mappée sur `esp_log`/`CORE_DEBUG_LEVEL`. Migration des
 `Serial.print` firmware par firmware (gros volume, faible risque sémantique) — une PR
 par firmware, en commençant par uploadphotosserver (plus petit).
 
+> ✅ Livré : `shared/n3_log` 1.0.0 (`n3_log_core.h` pur + `N3_LOG_TAGGED`, échelle
+> 0..5 = `CORE_DEBUG_LEVEL`, gates `N3_LOG_LEVEL`/`N3_LOG_ENABLED`, testé natif
+> `test_log`) ; ffp5cs 15.19 : `log.h` délègue `_LOG_IMPL` sans changement
+> observable. ⏳ Restent les migrations `Serial.print` de n3pp/msp/upload/pgl —
+> une PR dédiée par firmware, commencer par uploadphotosserver.
+
 ### T6 — L7 : framework `n3_app` (dernier)
 
 Squelette de cycle deep-sleep à callbacks (`onWake, readSensorsOrCapture, buildPayload,
 applyRemoteConfig, onSleep`), inspiré ESPHome/Tasmota. **Préalables obligatoires**
-(lot 0) : extraire `msp_globals.cpp` (globals inline dans `msp/main.cpp:~29-289`) ;
-harmoniser A6 (décider `HeureSansWifi` pour msp), A7 (retirer l'`analogRead` brut msp),
-A8 (flag anti-spam + lieu de reset + double-site n3pp), A10 (clamp 102). Chaque
+(lot 0) : ~~extraire `msp_globals.cpp`~~ ✅ (msp 2.59, extraction verbatim) ;
+~~harmoniser A6 (décider `HeureSansWifi` pour msp)~~ ✅ (décision utilisateur 2026-07-14 :
+aligner sur n3pp — msp 2.62, `HeureSansWifi()` appelée en échec WiFi),
+~~A7 (retirer l'`analogRead` brut msp)~~ ✅ (msp 2.60 : `PontDiv` = moyenne filtrée),
+~~A8 (flag anti-spam + lieu de reset + double-site n3pp)~~ ✅ (n3pp 4.59 : bloc
+emergency de `sommeil()` = code mort supprimé, POST final + écran rapatriés dans
+`automatismes()` ; site unique évaluation + ré-armement par firmware — le lieu
+commun définitif se décidera à la conception de `n3_app`),
+~~A10 (clamp 102)~~ ✅ (msp 2.61 : clé 102 bornée 0..4095 comme n3pp). Chaque
 harmonisation = changement de comportement assumé → tranche dédiée + VERSION.md.
 
 ## 6. Definition of done (par tranche)

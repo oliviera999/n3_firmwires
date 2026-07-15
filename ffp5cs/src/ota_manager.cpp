@@ -1,6 +1,6 @@
 #include "ota_manager.h"
 #include "ota_url.h"  // downgradeToHttp (extrait, testé nativement)
-#include "ota_artifact_select.h"  // readIntegrityFields (sha256/signature, v14.17)
+#include "n3_ota_artifact_select.h"  // readIntegrityFields (sha256/signature, v14.17) — shared/n3_common (T4.3)
 #include "nvs_manager.h" // v11.109
 #include "nvs_keys.h"
 #include <WiFi.h>

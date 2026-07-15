@@ -25,6 +25,7 @@
 #include "n3_time.h"
 #include "n3_wifi.h"
 #include "n3_ota.h"
+#include "n3_ota_periodic.h"
 #include "n3_mail.h"
 #include "n3_notify.h"  /* Phase 3 : taxonomie N3Severity/N3NotifMode */
 #include "camera_remote.h"
@@ -56,7 +57,8 @@ String serverPath = SERVER_PATH;
 String Wifiactif;
 
 #if USE_DEEP_SLEEP
-static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = 2UL * 60UL * 60UL;
+/* Cadence deleguee a shared/n3_common/n3_ota_periodic (T4.2) — meme 2 h. */
+static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = OtaPeriodic::kDefaultIntervalSeconds;
 RTC_DATA_ATTR static uint32_t otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
 RTC_DATA_ATTR static int lastPhotoWindowState = -1;  /* -1: inconnu, 0: nuit, 1: jour */
 RTC_DATA_ATTR static uint8_t pendingWindowMailMask = 0;
@@ -482,11 +484,9 @@ static void trySendFirstBootMail(bool wifiOk) {
 
 static void accumulateOtaPeriodicElapsedFromSleep(uint32_t sleepSeconds) {
 #if USE_DEEP_SLEEP
-  if (sleepSeconds == 0) return;
-  if (otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS) return;
-
-  const uint32_t remaining = OTA_PERIODIC_INTERVAL_SECONDS - otaElapsedSinceLastCheckSeconds;
-  otaElapsedSinceLastCheckSeconds += (sleepSeconds >= remaining) ? remaining : sleepSeconds;
+  /* Cumul saturant delegue a la logique pure partagee (T4.2, semantique inchangee). */
+  otaElapsedSinceLastCheckSeconds = OtaPeriodic::accumulate(
+      otaElapsedSinceLastCheckSeconds, OTA_PERIODIC_INTERVAL_SECONDS, sleepSeconds);
 #else
   (void)sleepSeconds;
 #endif
@@ -818,10 +818,8 @@ void setup() {
   /* OTA distant : logs explicites + verification toutes les 2 heures de cycles */
 #if USE_DEEP_SLEEP
   otaUpdateStartedThisBoot = false;
-  const uint32_t remainingBeforeCheck =
-      (otaElapsedSinceLastCheckSeconds >= OTA_PERIODIC_INTERVAL_SECONDS)
-          ? 0
-          : (OTA_PERIODIC_INTERVAL_SECONDS - otaElapsedSinceLastCheckSeconds);
+  const uint32_t remainingBeforeCheck = OtaPeriodic::remainingSeconds(
+      otaElapsedSinceLastCheckSeconds, OTA_PERIODIC_INTERVAL_SECONDS);
   Serial.printf("[OTA] cible=%s version_local=%s elapsed=%lu/%lu s metadata=%s\n",
                 currentTargetName(),
                 FIRMWARE_VERSION,

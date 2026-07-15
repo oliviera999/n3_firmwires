@@ -1,17 +1,21 @@
 #pragma once
 // =============================================================================
-// FFP5CS — Sélection pure d'un artefact OTA depuis le manifeste JSON
+// Sélection pure d'un artefact OTA depuis le manifeste JSON (metadata.json)
 // =============================================================================
-// Extrait de OTAManager::selectArtifactFromMetadata (ota_manager_validate.cpp)
+// Mutualisé depuis ffp5cs `include/ota_artifact_select.h` (tranche T4.3 du
+// chantier core shared) — logique verbatim, namespace conservé. Origine :
+// extrait de OTAManager::selectArtifactFromMetadata (ota_manager_validate.cpp)
 // pour testabilité native (audit §3.8 : tester les fonctions pures).
 //
 // Aucune dépendance Arduino/réseau/mbedtls : uniquement la logique de choix de
 // l'artefact selon la cascade channels[env][model] → [env][default] →
 // [prod][model] → [prod][default] → fallback legacy top-level.
 //
-// CONTRAT (S3) : le schéma du manifeste (channels/bin_url/version/size/md5) est
-// figé côté serveur (n3_serveur ota/metadata.json). Toute dérive de cette
-// cascade casserait la sélection du firmware à flasher.
+// CONTRAT : le schéma du manifeste (channels/bin_url/version/size/md5, champs
+// d'intégrité sha256/signature, image filesystem_*) est figé côté serveur
+// (n3_serveur ota/metadata.json). Toute dérive de cette cascade casserait la
+// sélection du firmware à flasher. Testé en natif (test_ota_select, assertions
+// à parité avec la suite ffp5cs d'origine + tests readIntegrityFields).
 // =============================================================================
 
 #include <ArduinoJson.h>

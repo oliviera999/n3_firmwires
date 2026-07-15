@@ -1,6 +1,7 @@
 /* MeteoStationPrototype (msp1) — Variables globales
  * Déclarations extern de toutes les variables partagées entre modules.
- * Les définitions sont dans main.cpp.
+ * Les définitions sont dans src/msp_globals.cpp (extraites de main.cpp,
+ * préalable T6 lot 0 du chantier core shared — même découpe que n3pp 4.38).
  */
 #pragma once
 
