@@ -38,7 +38,7 @@ Note : `pio test` est lancé **par suite** (`-f`) car le runner natif multi-suit
 
 | Lib | Version | Description courte | Dépendances |
 |-----|---------|--------------------|-------------|
-| [`n3_analog_sensors`](n3_analog_sensors/) | 1.1.0 | Lecture ADC filtrée (médiane + outliers + EMA). Robustesse inter-lectures mutualisée depuis ffp5cs : `n3_sensor_failure_manager` (désactivation/réactivation auto d'un capteur défaillant, macro de log injectable `N3_SENSOR_LOG_PRINTF`), `n3_sensor_fallback` (cascade `current → dernier bon → défaut`, format POST). Utilisée par n3pp, msp, ffp5cs. | — |
+| [`n3_analog_sensors`](n3_analog_sensors/) | 1.2.0 | Lecture ADC filtrée (médiane + outliers + EMA). Robustesse inter-lectures mutualisée depuis ffp5cs : `n3_sensor_failure_manager` (désactivation/réactivation auto d'un capteur défaillant, macro de log injectable `N3_SENSOR_LOG_PRINTF`, **persistance deep-sleep additive** : POD `SensorFailureState` + `serializeState`/`restoreState` pour `RTC_DATA_ATTR`, cadence de réactivation **par cycles de réveil** `shouldTestReactivationCyclic`/`noteWakeCycle` — ffp5cs inchangé), `n3_sensor_fallback` (cascade `current → dernier bon → défaut`, format POST). Utilisée par n3pp, msp, ffp5cs. | — |
 | [`n3_battery`](n3_battery/) | 1.0.1 | Pont diviseur (délègue à `n3_analog_sensors`). | `n3_analog_sensors ^1.0.0` |
 | [`n3_wifi`](n3_wifi/) | 1.1.0 | Connexion WiFi multi-réseaux avec scan+RSSI+BSSID, callbacks. | — |
 | [`n3_http`](n3_http/) | 1.1.0 | **Déprécié** : GET/POST minimal HTTPClient avec timeout (`N3_HTTP_TIMEOUT_MS`). Préférer `n3_data`. | `n3_common ^1.3.0` |
