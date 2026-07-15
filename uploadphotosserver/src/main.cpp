@@ -714,7 +714,7 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   /* Broches explicites UART0 AI Thinker / programmateur 6 broches (évite ambiguïtés framework). */
   Serial.begin(115200, SERIAL_8N1, 3, 1);
-  Serial.setDebugOutput(N3_LOG_DEBUG ? true : false);
+  Serial.setDebugOutput(CAM_DIAG_DEBUG ? true : false);
   delay(200);
 #if SERIAL_BOOT_PAUSE_MS > 0
   Serial.printf("[BOOT] SERIAL_BOOT_PAUSE_MS=%u — ouvrez le moniteur maintenant\r\n",

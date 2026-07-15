@@ -49,7 +49,7 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
   if (outHttpCode) {
     Serial.printf("[REMOTE][GET] HTTP=%u\n", *outHttpCode);
   }
-#if N3_LOG_VERBOSE
+#if CAM_DIAG_VERBOSE
   Serial.println("[REMOTE][GET][BODY] " + payload);
 #else
   Serial.printf("[REMOTE][GET][BODY] len=%u\n", static_cast<unsigned int>(payload.length()));
