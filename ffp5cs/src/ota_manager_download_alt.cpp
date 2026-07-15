@@ -92,8 +92,10 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
     snprintf(logMsgPart, sizeof(logMsgPart), "📍 Partition spiffs trouvée: %s (0x%x, %s)", spiffs_partition->label, spiffs_partition->address, sizeBufPart);
     log(logMsgPart);
 
-    // Vérifier que le nouveau filesystem tient dans la partition
-    if (contentLength > spiffs_partition->size) {
+    // Vérifier que le nouveau filesystem tient dans la partition.
+    // contentLength <= 0 => réponse chunked / taille inconnue : ne pas déclencher un faux
+    // "trop grand" (un int -1 promu en unsigned devient ~4 Go). Cast explicite après le garde.
+    if (contentLength > 0 && (size_t)contentLength > spiffs_partition->size) {
         char sizeBufFs1[16], sizeBufFs2[16];
         formatBytes(contentLength, sizeBufFs1, sizeof(sizeBufFs1));
         formatBytes(spiffs_partition->size, sizeBufFs2, sizeof(sizeBufFs2));
@@ -141,7 +143,9 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         return false;
     }
     
-    while (totalWritten < contentLength && (bytesRead = stream->readBytes(buffer, sizeof(buffer))) > 0
+    // contentLength <= 0 (chunked) : pas de limite connue, on lit jusqu'à fin de flux / timeout.
+    while ((contentLength <= 0 || totalWritten < (size_t)contentLength)
+           && (bytesRead = stream->readBytes(buffer, sizeof(buffer))) > 0
            && (millis() - startTime) < FS_DOWNLOAD_TIMEOUT_MS) {
         // Reset watchdog pour éviter les timeouts
         if (esp_task_wdt_status(NULL) == ESP_OK) {
@@ -165,7 +169,7 @@ bool OTAManager::downloadFilesystem(const char* url, size_t expectedSize, const 
         // Affichage de progression toutes les 2 secondes
         unsigned long currentTime = millis();
         if (currentTime - lastProgressTime >= TimingConfig::OTA_PROGRESS_UPDATE_INTERVAL_MS) {
-            int progress = (totalWritten * 100) / contentLength;
+            int progress = (contentLength > 0) ? (int)((totalWritten * 100) / (size_t)contentLength) : -1;
             unsigned long elapsed = (currentTime - startTime) / 1000;
             float speed = (totalWritten / 1024.0) / elapsed; // KB/s
             

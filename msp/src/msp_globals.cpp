@@ -57,7 +57,6 @@ bool VeilleInfinie = 1;
 // --- Batterie / pont diviseur ---
 int PontDiv;
 int avgPontDiv;
-float batt;
 float measuredVoltage;
 float batteryVoltage;
 int SeuilPontDiv = 1700;
@@ -66,17 +65,18 @@ int sampleIndex = 0;
 int sampleTotal = 0;
 
 // --- Seuils / états ---
-int SeuilSec = 5000;
+// Defaut dans la plage ADC 0..4095 (la cle serveur 102 est deja bornee a cette
+// plage dans msp_network.cpp) ; aligne sur la valeur corrigee de n3pp (1500).
+// msp n'a pas d'action locale sur le sol : SeuilSec est seulement POSTe/affiche.
+int SeuilSec = 1500;
 bool resetMode = 0;
 bool etatRelais = 0;
-int Oled = 0;
 
 // --- Capteurs analogiques ---
 int HumidSol;
 int Pluie;
 
 // --- Email ---
-bool emailHumidSent = 0;
 RTC_DATA_ATTR int bootCount = 0;
 // Phase 3 arbitrage mails : succes du POST de donnees de CE reveil (HTTP 200).
 // true  -> le serveur a nos donnees, il est l'emetteur PRIMAIRE de l'alerte
@@ -107,7 +107,6 @@ unsigned int httpResponseCode;
 String version = FIRMWARE_VERSION;
 String apiKeyValue = API_KEY;
 String sensorName = "msp1";
-String sensorLocation = "T06";
 
 // --- Affichage OLED ---
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);

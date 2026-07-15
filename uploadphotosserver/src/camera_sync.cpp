@@ -254,21 +254,6 @@ void syncSleepMs(uint32_t ms) {
 
 }  // namespace
 
-uint32_t cameraSyncWrittenCount() {
-  return nvsGet(kKeyCount);
-}
-
-uint32_t cameraSyncNextPictureNumber() {
-  Preferences prefs;
-  uint32_t next = 1;
-  if (prefs.begin(kNvsNamespace, false)) {
-    next = prefs.getUInt(kKeyCount, 0) + 1;
-    prefs.putUInt(kKeyCount, next);
-    prefs.end();
-  }
-  return next;
-}
-
 uint32_t cameraSyncPeekNextPictureNumber() {
   // Réserve « logiquement » le prochain numéro SANS incrémenter le compteur NVS. Le numéro n'est
   // committé (cameraSyncCommitWrittenCount) qu'après persistance/upload confirmé (A6/A7, audit

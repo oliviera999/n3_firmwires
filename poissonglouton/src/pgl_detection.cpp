@@ -1,6 +1,7 @@
 #include "pgl_detection.h"
 
 #include <Arduino.h>
+#include <esp_sleep.h>
 
 #include "config.h"
 #include "pgl_log.h"
@@ -50,6 +51,22 @@ void PglDetection::begin() {
   usPresent_ = detectUltrasonAtBoot();
   irPrevState_ = digitalRead(PGL_IR_PIN);
 
+#if PGL_ENABLE_SLEEP
+  // Reveil par EXT0 (obstacle IR) : a la sortie du deep sleep, la broche IR est
+  // deja LOW (l'obstacle qui a provoque le reveil). irPrevState_ vient d'etre
+  // echantillonne a LOW, donc poll() ne verrait jamais le front HIGH->LOW et la
+  // bouteille declencheuse ne serait jamais comptee. On arme un comptage unique
+  // consomme au 1er poll(). irPrevState_ reste a la valeur lue (LOW) pour que la
+  // detection de front normale NE double-compte PAS cet obstacle persistant ;
+  // quand la zone se libere (LOW->HIGH) puis qu'une nouvelle bouteille passe
+  // (HIGH->LOW), le comptage reprend normalement. EXT0 est attribue a l'IR
+  // uniquement si l'IR est present (sinon EXT0 = reveil PIR, cf. pgl_sleep).
+  if (irPresent_ && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+    wakeCountPending_ = true;
+    PGL_LOG("IR: reveil EXT0 — comptage differe de la bouteille declencheuse");
+  }
+#endif
+
   // Presence PIR par flag : l'autodetection PIR n'est pas fiable (repos = LOW,
   // identique a une absence de module). Le module PIR pilote sa sortie en INPUT.
   pirPresent_ = (PGL_ENABLE_PIR != 0);
@@ -95,6 +112,7 @@ uint16_t PglDetection::getUltrasonDistanceCm() {
   if ((now - lastUltrasonReadMs_) >= 100) {
     lastUltrasonReadMs_ = now;
     lastUltrasonCm_ = readUltrasonCm();
+    usMeasureSeq_++;  // nouvelle mesure physique (debounce US anti-cache, cf. poll)
   }
   return lastUltrasonCm_;
 }
@@ -163,23 +181,44 @@ PglDetectionEvent PglDetection::poll() {
       PGL_LOG("IR GPIO%d: front obstacle detecte", PGL_IR_PIN);
     }
     irPrevState_ = irState;
+    // Comptage differe du reveil EXT0 (cf. begin()) : force un unique trigger IR
+    // au 1er poll apres un reveil sur obstacle, meme sans front observable. La
+    // consommation du flag garantit un seul comptage (pas de double-comptage si
+    // l'obstacle persiste : irPrevState_ vaut deja LOW donc aucun front ensuite).
+    if (wakeCountPending_) {
+      wakeCountPending_ = false;
+      if (!irTriggered) {
+        irTriggered = true;
+        lastIrEdgeMs_ = now;
+        PGL_LOG("IR GPIO%d: comptage du reveil EXT0 (bouteille declencheuse)", PGL_IR_PIN);
+      }
+    }
   }
 
   if (usPresent_) {
+    // N'avancer le compteur "sous seuil" que sur une NOUVELLE mesure physique :
+    // getUltrasonDistanceCm() met une mesure en cache ~100 ms alors que poll()
+    // tourne ~10 ms. Sans ce garde, un seul ping incrementerait usBelowCount_
+    // ~10x et PGL_US_CONSECUTIVE_POLLS serait satisfait par une unique mesure
+    // (aucun rejet de bruit reel). Le rearmement zone-libre reste evalue a chaque
+    // poll (idempotent).
+    const bool usFreshSample = (usMeasureSeq_ != lastUsMeasureSeq_);
     if (!usArmed_) {
       if (pglDetectionUsZoneClear(usDistance, PGL_ULTRASON_TRIGGER_CM)) {
         usArmed_ = true;
         usBelowCount_ = 0;
         PGL_LOG_V("US GPIO%d: zone liberee — rearmement", PGL_US_PIN);
       }
-    } else if (pglDetectionCheckUsTrigger(usBelowCount_, usDistance, PGL_ULTRASON_TRIGGER_CM,
-                                           PGL_US_CONSECUTIVE_POLLS)) {
+    } else if (usFreshSample &&
+               pglDetectionCheckUsTrigger(usBelowCount_, usDistance, PGL_ULTRASON_TRIGGER_CM,
+                                          PGL_US_CONSECUTIVE_POLLS)) {
       usTriggered = true;
       usArmed_ = false;
       lastUsEdgeMs_ = now;
       PGL_LOG("US GPIO%d: declenchement distance=%u cm (seuil %u)",
               PGL_US_PIN, usDistance, PGL_ULTRASON_TRIGGER_CM);
     }
+    lastUsMeasureSeq_ = usMeasureSeq_;
   }
 
   if (pirPresent_) {

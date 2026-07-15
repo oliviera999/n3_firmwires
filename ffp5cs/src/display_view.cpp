@@ -339,11 +339,6 @@ bool DisplayView::begin() {
 #endif
 
   I2CBusGuard guard;
-#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
-  // #region agent log
-  Serial.printf("[OLED-DBG] begin guard=%s\n", guard ? "ok" : "FAIL");
-  // #endregion
-#endif
   if (!guard) {
     _present = false;
     return false;
@@ -507,11 +502,6 @@ void DisplayView::flush() {
   if (!_present) return;
 
   I2CBusGuard guard;
-#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
-  // #region agent log
-  if (!guard) Serial.println(F("[OLED-DBG] flush guard FAIL"));
-  // #endregion
-#endif
   if (!guard) return;
   
   // Vérifier la santé I2C avant d'écrire

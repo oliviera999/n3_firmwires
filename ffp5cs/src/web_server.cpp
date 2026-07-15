@@ -109,7 +109,7 @@ static bool isAuthenticated(AsyncWebServerRequest* req) {
   if (!h || !h->value().length()) return false;
   const char* cookie = h->value().c_str();
   const char* prefix = "ffp5cs_auth=";
-  const size_t prefixLen = 11;
+  const size_t prefixLen = strlen(prefix);
   const char* p = strstr(cookie, prefix);
   if (!p) return false;
   p += prefixLen;
@@ -768,8 +768,10 @@ bool WebServerManager::begin() {
       if (written > 0) {
         p += written;
         any = true;
-        // MàJ du cache NVS pour persistance locale immédiate
-        nvsDoc[key] = value;
+        // MàJ du cache NVS pour persistance locale immédiate.
+        // ArduinoJson stocke un `const char*` PAR RÉFÉRENCE : `value` pointe sur `paramBuf`
+        // réutilisé à chaque paire -> forcer une COPIE (String) pour figer la valeur.
+        nvsDoc[key] = String(value);
       }
     };
 

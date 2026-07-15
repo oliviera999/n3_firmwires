@@ -25,11 +25,6 @@ void I2CBus::init() {
   Wire.setClock(static_cast<uint32_t>(SensorConfig::I2CBusConfig::I2C_CLOCK_HZ));
   delay(SensorConfig::I2C_STABILIZATION_DELAY_MS);
   _mutex = xSemaphoreCreateMutex();
-#if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
-  // #region agent log
-  Serial.printf("[I2C-DBG] init done mutex=%s\n", _mutex != nullptr ? "ok" : "null");
-  // #endregion
-#endif
   if (_mutex == nullptr) {
 #if (defined(ENABLE_SERIAL_MONITOR) && (ENABLE_SERIAL_MONITOR == 1)) || !defined(PROFILE_PROD)
     Serial.println(F("[I2C] ERREUR: impossible de créer le mutex I2C"));

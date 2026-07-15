@@ -108,7 +108,17 @@ class PglDetection {
   uint8_t usBelowCount_ = 0;
   uint16_t lastUltrasonCm_ = 0;
   uint32_t lastUltrasonReadMs_ = 0;
+  // Sequence de mesure physique US : incrementee uniquement quand
+  // getUltrasonDistanceCm() prend une NOUVELLE mesure (pas sur un cache hit).
+  // poll() ne fait avancer usBelowCount_ que sur une sequence inedite, pour que
+  // PGL_US_CONSECUTIVE_POLLS = N pings distincts (et non N polls sur le meme).
+  uint32_t usMeasureSeq_ = 0;
+  uint32_t lastUsMeasureSeq_ = 0;
   uint8_t usRuntimeValidCount_ = 0;
   uint8_t usRuntimeInvalidCount_ = 0;
   bool usArmed_ = true;
+  // Reveil deep sleep EXT0 attribuable a l'IR : la broche est deja LOW (obstacle
+  // declencheur) au boot, donc aucun front HIGH->LOW ne sera observe. On arme un
+  // comptage unique consomme au 1er poll() (cf. begin()/poll()).
+  bool wakeCountPending_ = false;
 };

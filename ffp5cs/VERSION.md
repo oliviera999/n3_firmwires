@@ -8,7 +8,47 @@ Le format de version suit le schéma **MAJOR.MINOR** (ex. 12.15, deux chiffres p
 - **MAJOR** : Nouvelles fonctionnalités majeures, refactoring important, changements d'API (incrémenter le premier nombre).
 - **MINOR** : Corrections de bugs, optimisations mineures, ajustements (incrémenter les décimales, ex. 12.14 → 12.15).
 
-La version est définie dans `include/config.h` (`ProjectConfig::VERSION`). L’historique est tenu dans ce fichier `VERSION.md`.
+La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`). L’historique est tenu dans ce fichier `VERSION.md`.
+
+---
+
+## Version 15.20 - 2026-07-15
+
+### Corrections de bugs (audit qualité/sécurité)
+
+- **web_server.cpp** : `/set-config` forçait ArduinoJson à stocker le `const char*`
+  du buffer réutilisé `paramBuf` par référence → toutes les clés pointaient sur la
+  dernière valeur (config NVS corrompue). Copie explicite via `String(value)`.
+- **web_server.cpp** : préfixe cookie d'auth `"ffp5cs_auth="` comparé avec
+  `prefixLen = 11` au lieu de 12 → comparaison du token décalée d'un octet, auth
+  toujours en échec. Corrigé en `strlen(prefix)`.
+- **ota_manager_download.cpp** : `updateTask()` s'auto-supprimait
+  (`vTaskDelete(NULL)`) sur échec sans remettre `m_updateTaskHandle` à `nullptr` →
+  tout OTA ultérieur refusé ("déjà en cours"). Handle libéré avant suppression.
+- **sensor_air.cpp / sensors.h** : température et humidité partageaient un seul
+  flag d'init EMA et un seul horodatage min-interval → la 2e grandeur lue restait
+  NAN en permanence. Séparation `_emaInitTemp`/`_emaInitHum` et
+  `_lastTempReadMs`/`_lastHumReadMs` (la lib DHT met déjà en cache : pas de double
+  lecture physique).
+- **rtc_ds3231.cpp** : `uint8_t year = tm_year + 1900` tronquait 2026→234 →
+  écriture DS3231 invalide. Passage en `int year`.
+- **gpio_parser.cpp** : `loadBool(..., newVal)` utilisait `newVal` comme défaut →
+  première écriture d'un actionneur jamais persistée (défaut passé à `!newVal`).
+- **nvs_manager_typed.cpp** : `loadString` déréférençait `value` (strncpy) sur le
+  chemin `!guard.locked()` avant le contrôle `value==nullptr`. Contrôle déplacé en
+  tête de fonction.
+- **ota_manager_download_alt.cpp** : `contentLength` (-1 en chunked) comparé à un
+  `size_t` devenait ~4 Go (faux "trop grand") et faussait la boucle d'écriture.
+  Cas `contentLength <= 0` géré explicitement.
+- **web_routes_status.cpp / sd_logger.cpp** : `/api/history` et `/api/sd-status`
+  sans contrôle d'auth ; `date` non validé alimentait `"%s/%s.csv"`
+  (path-traversal). Ajout de `webAuthIsAuthenticated` + validation stricte de
+  `date` (`[0-9-]` uniquement).
+- **Nettoyage** : suppression des blocs de log de debug résiduels
+  (`#region agent log` / `sessionId:faa4e5`) dans `rtc_ds3231.cpp`, `power.cpp`,
+  `i2c_bus.cpp`, `display_view.cpp`, `gpio_parser.cpp`.
+- **VERSION.md** : correction de la source de version (était `include/config.h`,
+  réellement `include/config_system.h`).
 
 ---
 

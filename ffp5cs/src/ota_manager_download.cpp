@@ -756,7 +756,11 @@ void OTAManager::updateTask(void* parameter) {
             ota->m_display->hideOtaProgressOverlay();
         }
     }
-    
+
+    // Libérer le handle AVANT l'auto-suppression : sinon performUpdate() voit
+    // m_updateTaskHandle != nullptr et refuse tout OTA ultérieur ("déjà en cours")
+    // après un premier échec. (Le chemin succès reboote via ESP.restart() plus haut.)
+    ota->m_updateTaskHandle = nullptr;
     vTaskDelete(NULL);
 }
 

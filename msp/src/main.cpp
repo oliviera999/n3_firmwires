@@ -12,8 +12,6 @@
 #include "msp_automation.h"
 
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
 #include <Wire.h>
 #include <esp_sleep.h>
 #include <cstring>
@@ -29,8 +27,6 @@
 // ============================================================
 
 unsigned long previousMillisDatas = 0;
-
-AsyncWebServer server(80);
 
 // Reset distant: edge detection with first-sample seeding to avoid reboot loops
 // if server state is already "110=1" at boot. RTC_DATA_ATTR : en deep sleep,
@@ -229,8 +225,8 @@ void setup() {
 static void mspCbConnectWifi(N3AppContext&) {
   digitalWrite(RELAIS, 1);
 
-  // Pas de server.begin() ici : aucune route locale n'est enregistree, donc
-  // pas besoin de relancer le serveur asynchrone a chaque cycle (cf. audit 2.42).
+  // Aucun serveur web local : msp ne sert aucune route (objet AsyncWebServer
+  // mort supprime en 2.63) ; toute la config vient du serveur distant (variablestoesp()).
 
   if (WiFi.status() != WL_CONNECTED) {
     Wificonnect();

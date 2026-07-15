@@ -45,12 +45,6 @@ struct CameraSyncConfig {
   bool (*reconnect)();          // callback reconnexion WiFi (optionnel)
 };
 
-/** Numéro de la dernière photo écrite sur SD (compteur NVS). */
-uint32_t cameraSyncWrittenCount();
-
-/** Réserve et retourne le prochain numéro de photo (incrémente le compteur NVS). */
-uint32_t cameraSyncNextPictureNumber();
-
 /**
  * Retourne le prochain numéro de photo SANS l'engager (pic_count inchangé). À committer via
  * cameraSyncCommitWrittenCount / cameraSyncMarkDirectUploadConfirmed après persistance/upload

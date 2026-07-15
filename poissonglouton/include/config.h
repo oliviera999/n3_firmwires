@@ -8,7 +8,7 @@
 #define N3_HTTP_TIMEOUT_MS 12000
 #endif
 
-static constexpr const char* PGL_FIRMWARE_VERSION = "0.5.15";
+static constexpr const char* PGL_FIRMWARE_VERSION = "0.5.16";
 
 static constexpr const char* PGL_SENSOR_NAME = "poissonglouton";
 
