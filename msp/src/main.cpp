@@ -21,6 +21,7 @@
 #include "n3_ota_ui.h"
 #include "n3_display.h"
 #include "n3_sleep.h"
+#include "n3_app.h"   // T6.2 : squelette de cycle deep-sleep a callbacks (n3AppRun)
 
 // ============================================================
 // Variables globales : definitions extraites dans msp_globals.cpp
@@ -191,9 +192,41 @@ void setup() {
   print_wakeup_reason();
 }
 
-void loop() {
-  static bool ntpConfigured = false;
+// ============================================================
+// T6.2 (chantier shared) : adoption du squelette n3_app (n3AppRun).
+//
+// Le cycle de reveil, jusqu'ici lineaire dans loop(), est exprime comme des
+// callbacks (N3AppConfig), executes par n3AppRun() dans l'ordre canonique
+// WAKE -> WIFI -> CLOCK -> REMOTE_CFG -> OTA -> SENSE -> PAYLOAD -> AUTOMATION
+// -> REPORTS -> SLEEP. Chaque callback est une FINE ENVELOPPE du code EXISTANT,
+// deplace VERBATIM et appele au meme instant relatif : aucun changement
+// observable (memes octets POST, memes logs, meme timing, memes conditions).
+//
+// Mapping msp -> slots (le cycle msp POSTe APRES le tracker : le tracker
+// Light_val est donc rassemble dans le callback SENSE et le slot AUTOMATION
+// reste vide, pour que datatobdd() reste bien apres Light_val() sans reordonner) :
+//   onWake              = nullptr
+//   connectWifi (WIFI)  = digitalWrite(RELAIS) + reconnexion WiFi
+//   syncClock (CLOCK)   = configTime (1x/reveil) + affichage heure
+//   applyRemoteConfig   = variablestoesp() + detection front reset distant (110)
+//   isOtaDue/otaCheck   = nullptr (aucun check OTA periodique dans le cycle loop ;
+//                         n3OtaUiMaybePeriodicCheck reste dans setup(), inchange)
+//   readSensors (SENSE) = calibration LDR (114) + LectureCapteurs/batterie/
+//                         affichageOLED + Light_val (tracker)
+//   buildAndSendPayload = envoi periodique datatobdd() + EnregistrementHeureFlash
+//   runAutomation       = nullptr (tracker deja dans SENSE)
+//   sendReports (REPORTS)= comptage temps ecoule + OTA/rapport reseau + heartbeat
+//   enterSleep (SLEEP)  = restart (si reset distant) sinon sommeil()
+//
+// Reset distant : l'ancien ESP.restart() inline devient une sortie anticipee
+// (ctx.requestRestart) honoree par enterSleep. Le `return` apres l'avoir pose
+// reproduit EXACTEMENT l'abandon du reste de la fonction par ESP.restart()
+// (notamment la MAJ RTC de s_lastResetModeState, qui restait a false sur reboot).
+// Veille d'urgence batterie : entierement geree DANS sommeil() (= enterSleep),
+// donc aucune sortie anticipee mid-cycle (requestSleepNow) n'est necessaire.
+// ============================================================
 
+static void mspCbConnectWifi(N3AppContext&) {
   digitalWrite(RELAIS, 1);
 
   // Pas de server.begin() ici : aucune route locale n'est enregistree, donc
@@ -207,6 +240,10 @@ void loop() {
       Serial.println("[WIFI][WARN] Non connecte, cycle en mode degrade");
     }
   }
+}
+
+static void mspCbSyncClock(N3AppContext&) {
+  static bool ntpConfigured = false;
 
   // configTime n'est utile qu'une fois par reveil WiFi.
   if (WiFi.status() == WL_CONNECTED && !ntpConfigured) {
@@ -216,7 +253,9 @@ void loop() {
   }
 
   Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
+}
 
+static void mspCbApplyRemoteConfig(N3AppContext& ctx) {
   variablestoesp();  // Mise a jour des variables depuis la BDD
 
   // Reset mode distant (GPIO 110): OTA first if available, then restart fallback.
@@ -231,11 +270,18 @@ void loop() {
     Serial.println("[REMOTE] Reset distant demande (front montant)");
     if (!n3OtaUiCheckNow(s_otaUiContext)) {
       Serial.println("[REMOTE][OTA] Aucune MAJ OTA dispo, reset direct");
-      ESP.restart();
+      // T6.2 : ex-ESP.restart() inline -> sortie anticipee (enterSleep restart).
+      // Le `return` reproduit l'abandon du reste de la fonction par ESP.restart() :
+      // s_lastResetModeState (RTC) n'est PAS mis a jour sur le chemin restart,
+      // exactement comme avant (le reboot sautait la ligne ci-dessous).
+      ctx.requestRestart = true;
+      return;
     }
   }
   s_lastResetModeState = resetRequested;
+}
 
+static void mspCbReadSensors(N3AppContext&) {
   // Calibration LDR distante (cle 114) : 1 = calibrer (front), 2 = gains
   // neutres (front). Le front est detecte sur changement de valeur ; pour
   // relancer une calibration, repasser la cle a 0 puis a 1.
@@ -266,7 +312,9 @@ void loop() {
   affichageOLED();
 
   Light_val();  // Suivi de la lumiere et tracker solaire
+}
 
+static void mspCbBuildAndSendPayload(N3AppContext&) {
   // Envoi periodique des donnees AVANT le deep sleep (sinon ce bloc n'etait
   // jamais atteint, cf. audit 2.42) : sommeil() peut declencher n3SleepStart()
   // qui ne rend jamais la main.
@@ -276,7 +324,9 @@ void loop() {
     datatobdd();
     EnregistrementHeureFlash();
   }
+}
 
+static void mspCbSendReports(N3AppContext&) {
   // Comptabilise le temps ECOULE pour l'OTA periodique. En deep sleep (WakeUp==0),
   // loop() tourne une fois par reveil puis dort FreqWakeUp s -> on compte FreqWakeUp.
   // En mode eveille (WakeUp==1), sommeil() ne dort pas et loop() re-tourne vite :
@@ -297,7 +347,37 @@ void loop() {
   mspAccumulateNetReportElapsedFromSleep(elapsedForOta);
   mspMaybeSendNetworkReportEmail();
   sendHeartbeat();
+}
+
+static void mspCbEnterSleep(N3AppContext& ctx) {
+  // Reset distant (sortie anticipee) : restart ici, sans passer par sommeil()
+  // (aucun log [SLEEP][TRACE]), comme l'ancien ESP.restart() inline. Sinon,
+  // sommeil() gere seul le sommeil timer normal ET la veille d'urgence batterie.
+  if (ctx.requestRestart) {
+    ESP.restart();
+    return;
+  }
   sommeil();
+}
+
+// Un callback (fine enveloppe) par etape du cycle ; nullptr = etape inerte.
+static const N3AppConfig kMspAppConfig = {
+    nullptr,                    // onWake
+    mspCbConnectWifi,           // connectWifi (WIFI)
+    mspCbSyncClock,             // syncClock (CLOCK)
+    mspCbApplyRemoteConfig,     // applyRemoteConfig (REMOTE_CFG)
+    nullptr,                    // isOtaDue (aucun check OTA periodique dans loop)
+    nullptr,                    // otaCheck (OTA)
+    mspCbReadSensors,           // readSensorsOrCapture (SENSE)
+    mspCbBuildAndSendPayload,   // buildAndSendPayload (PAYLOAD)
+    nullptr,                    // runAutomation (tracker deja dans SENSE)
+    mspCbSendReports,           // sendReports (REPORTS)
+    mspCbEnterSleep             // enterSleep (SLEEP)
+};
+
+void loop() {
+  N3AppContext ctx = {};
+  n3AppRun(kMspAppConfig, ctx);
 
   // Reset des accumulateurs servo apres le sommeil (utile seulement si WakeUp=1).
   photocellReadingA = photocellReadingB = photocellReadingC = photocellReadingD = 0;
