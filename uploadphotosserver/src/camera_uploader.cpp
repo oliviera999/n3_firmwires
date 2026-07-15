@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "n3_log.h"
 #include "n3_data.h"            // n3NetStatsRecordPost (stats réseau des uploads)
 #include "n3_hmac_canonical.h"  // HMAC canonique mutualisé (ts+nonce+body, sans String)
 #include "n3_upload.h"          // POST multipart streamé mutualisé (v2.66, T3b)
@@ -133,7 +134,7 @@ int cameraUploadJpegFile(const CameraUploadParams& params, const String& sdPath,
   fs::FS& fs = SD_MMC;
   File file = fs.open(sdPath.c_str(), FILE_READ);
   if (!file) {
-    Serial.printf("[UPLOAD][SD][ERROR] Ouverture %s impossible\n", sdPath.c_str());
+    N3_LOGE("[UPLOAD][SD] Ouverture %s impossible", sdPath.c_str());
     return -1;
   }
   const size_t len = file.size();
@@ -143,10 +144,10 @@ int cameraUploadJpegFile(const CameraUploadParams& params, const String& sdPath,
   }
 
   const uint32_t heapFree = ESP.getFreeHeap();
-  Serial.printf("[UPLOAD][SD] fichier=%u bytes heap_libre=%u\n",
-                static_cast<unsigned int>(len), static_cast<unsigned int>(heapFree));
+  N3_LOGI("[UPLOAD][SD] fichier=%u bytes heap_libre=%u",
+          static_cast<unsigned int>(len), static_cast<unsigned int>(heapFree));
   if (len > heapFree) {
-    Serial.println("[UPLOAD][SD][INFO] upload streaming (pas de malloc JPEG complet)");
+    N3_LOGI("[UPLOAD][SD] upload streaming (pas de malloc JPEG complet)");
   }
 
   const N3UploadConfig cfg = buildUploadConfig(params);

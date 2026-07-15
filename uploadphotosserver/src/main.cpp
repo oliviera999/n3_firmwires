@@ -22,6 +22,7 @@
 // docs/HTTPS_MIGRATION.md (validation cible obligatoire avant prod).
 #include <WiFiClientSecure.h>
 #endif
+#include "n3_log.h"
 #include "n3_time.h"
 #include "n3_wifi.h"
 #include "n3_ota.h"
@@ -94,9 +95,9 @@ static bool resetModeActiveThisBoot = false;
 
 #if USE_DEEP_SLEEP
 static void n3EnterRuntimeDeepSleep(const char* reason) {
-  Serial.printf("[SLEEP] %s (runtime=%u s)\n",
-                reason ? reason : "deep sleep",
-                static_cast<unsigned int>(runtimeSleepSeconds));
+  N3_LOGI("[SLEEP] %s (runtime=%u s)",
+          reason ? reason : "deep sleep",
+          static_cast<unsigned int>(runtimeSleepSeconds));
   delay(500);
   n3EnterDeepSleepSeconds(runtimeSleepSeconds);
 }
@@ -155,7 +156,7 @@ static_assert(offsetof(WifiCredential, password) == offsetof(N3WifiNetwork, pass
 
 /** Réinitialise la radio WiFi après deep sleep / reconnexion rapide RTC (évite WIFI_SCAN_FAILED). */
 static void wifiRadioResetForWake() {
-  Serial.println("[WiFi] Reset radio (disconnect/scanDelete/WIFI_OFF)");
+  N3_LOGI("[WiFi] Reset radio (disconnect/scanDelete/WIFI_OFF)");
   WiFi.disconnect(true, true);
   WiFi.scanDelete();
   WiFi.mode(WIFI_OFF);
@@ -181,12 +182,12 @@ bool Wificonnect() {
 }
 
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs) {
-  Serial.printf("[MON] %s duree=%lu ms\n", step ? step : "step", static_cast<unsigned long>(durationMs));
+  N3_LOGI("[MON] %s duree=%lu ms", step ? step : "step", static_cast<unsigned long>(durationMs));
   if (warnMs > 0 && durationMs > warnMs) {
-    Serial.printf("[MON][WARN] %s lent (%lu ms > %lu ms)\n",
-                  step ? step : "step",
-                  static_cast<unsigned long>(durationMs),
-                  static_cast<unsigned long>(warnMs));
+    N3_LOGW("[MON] %s lent (%lu ms > %lu ms)",
+            step ? step : "step",
+            static_cast<unsigned long>(durationMs),
+            static_cast<unsigned long>(warnMs));
   }
 }
 
@@ -199,32 +200,32 @@ static void logMonitoringSnapshot(const char* stage) {
   const uint32_t minHeap = ESP.getMinFreeHeap();
 #if USE_SD
   const char* sdState = sdAvailable ? "ok" : "off";
-  Serial.printf("[MON] stage=%s up=%lu s wifi=%s rssi=%d ip=%s heap=%lu min_heap=%lu sd=%s\n",
-                stage ? stage : "unknown",
-                static_cast<unsigned long>(millis() / 1000UL),
-                wifiState,
-                wifiRssi,
-                ipStr.c_str(),
-                static_cast<unsigned long>(freeHeap),
-                static_cast<unsigned long>(minHeap),
-                sdState);
+  N3_LOGI("[MON] stage=%s up=%lu s wifi=%s rssi=%d ip=%s heap=%lu min_heap=%lu sd=%s",
+          stage ? stage : "unknown",
+          static_cast<unsigned long>(millis() / 1000UL),
+          wifiState,
+          wifiRssi,
+          ipStr.c_str(),
+          static_cast<unsigned long>(freeHeap),
+          static_cast<unsigned long>(minHeap),
+          sdState);
 #else
-  Serial.printf("[MON] stage=%s up=%lu s wifi=%s rssi=%d ip=%s heap=%lu min_heap=%lu\n",
-                stage ? stage : "unknown",
-                static_cast<unsigned long>(millis() / 1000UL),
-                wifiState,
-                wifiRssi,
-                ipStr.c_str(),
-                static_cast<unsigned long>(freeHeap),
-                static_cast<unsigned long>(minHeap));
+  N3_LOGI("[MON] stage=%s up=%lu s wifi=%s rssi=%d ip=%s heap=%lu min_heap=%lu",
+          stage ? stage : "unknown",
+          static_cast<unsigned long>(millis() / 1000UL),
+          wifiState,
+          wifiRssi,
+          ipStr.c_str(),
+          static_cast<unsigned long>(freeHeap),
+          static_cast<unsigned long>(minHeap));
 #endif
   if (freeHeap < MONITORING_HEAP_WARN_BYTES) {
-    Serial.printf("[MON][WARN] heap faible: %lu < %u bytes\n",
-                  static_cast<unsigned long>(freeHeap),
-                  static_cast<unsigned int>(MONITORING_HEAP_WARN_BYTES));
+    N3_LOGW("[MON] heap faible: %lu < %u bytes",
+            static_cast<unsigned long>(freeHeap),
+            static_cast<unsigned int>(MONITORING_HEAP_WARN_BYTES));
   }
   if (wifiConnected && wifiRssi < -80) {
-    Serial.printf("[MON][WARN] signal WiFi faible: RSSI=%d dBm\n", wifiRssi);
+    N3_LOGW("[MON] signal WiFi faible: RSSI=%d dBm", wifiRssi);
   }
 }
 
@@ -237,12 +238,12 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   const N3NotifMode effectiveMode =
       serverExchangeOk ? remoteNotifMode : n3NotifModeCapFailover(remoteNotifMode);
   if (!n3NotifModeAllows(effectiveMode, severity)) {
-    Serial.printf("[MAIL] severite %s filtree (mode%s)\n",
-                  n3SeverityCode(severity), serverExchangeOk ? "" : " failover");
+    N3_LOGI("[MAIL] severite %s filtree (mode%s)",
+            n3SeverityCode(severity), serverExchangeOk ? "" : " failover");
     return false;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[MAIL] Envoi annule: WiFi indisponible.");
+    N3_LOGI("[MAIL] Envoi annule: WiFi indisponible.");
     return false;
   }
 
@@ -290,16 +291,16 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
 
   char body[MAIL_BODY_MAX_LEN];
   if (!n3MailBuildDebugBody(dbgInfo, body, sizeof(body))) {
-    Serial.println("[MAIL] Echec generation corps mail.");
+    N3_LOGW("[MAIL] Echec generation corps mail.");
     return false;
   }
 
   String smtpError;
   bool ok = n3MailSendText(smtpCfg, subject, body, &smtpError);
   if (!ok) {
-    Serial.printf("[MAIL] Echec envoi: %s\n", smtpError.c_str());
+    N3_LOGW("[MAIL] Echec envoi: %s", smtpError.c_str());
   } else {
-    Serial.printf("[MAIL] Mail envoye: %s\n", subject);
+    N3_LOGI("[MAIL] Mail envoye: %s", subject);
   }
   return ok;
 #else
@@ -307,7 +308,7 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
   (void)eventName;
   (void)extraInfo;
   (void)severity;
-  Serial.println("[MAIL] SMTP non configure dans credentials.h, notification ignoree.");
+  N3_LOGI("[MAIL] SMTP non configure dans credentials.h, notification ignoree.");
   return false;
 #endif
 }
@@ -323,21 +324,21 @@ static void otaMailStartCallback(const char* currentVersion,
 
   /* Pas de SMTP ici : TLS (ESP Mail Client) + verification sha256 OTA sur la meme
    * pile loopTask (~8 Ko par defaut) provoquent stack canary panic sur ESP32-CAM sans PSRAM. */
-  Serial.printf("[OTA][MAIL] demarrage %s -> %s (notification SMTP reportee, heap=%u)\n",
-                currentVersion ? currentVersion : FIRMWARE_VERSION,
-                otaRemoteVersion,
-                static_cast<unsigned int>(ESP.getFreeHeap()));
+  N3_LOGI("[OTA][MAIL] demarrage %s -> %s (notification SMTP reportee, heap=%u)",
+          currentVersion ? currentVersion : FIRMWARE_VERSION,
+          otaRemoteVersion,
+          static_cast<unsigned int>(ESP.getFreeHeap()));
 }
 
 static void otaMailEndCallback(bool success, const char* details, void* userData) {
   (void)userData;
   if (!otaUpdateStartedThisBoot) return;
 
-  Serial.printf("[OTA][MAIL] fin success=%d version_distante=%s details=%s heap=%u\n",
-                success ? 1 : 0,
-                otaRemoteVersion,
-                details ? details : "n/a",
-                static_cast<unsigned int>(ESP.getFreeHeap()));
+  N3_LOGI("[OTA][MAIL] fin success=%d version_distante=%s details=%s heap=%u",
+          success ? 1 : 0,
+          otaRemoteVersion,
+          details ? details : "n/a",
+          static_cast<unsigned int>(ESP.getFreeHeap()));
   /* Echec OTA : ne jamais appeler SMTP ici (TLS + mbedtls OTA sur loopTask ~32 Ko
    * provoquent stack canary panic — cf. v2.51). Memorisation RTC ; envoi differe
    * via trySendPendingOtaFailMail() apres la pile OTA degonflee. */
@@ -347,7 +348,7 @@ static void otaMailEndCallback(bool success, const char* details, void* userData
              otaRemoteVersion, otaFirmwareUrl, details ? details : "n/a");
     pendingOtaFailMail = true;
     pendingOtaFailMailTries = 0;
-    Serial.println("[OTA][MAIL] Alerte memorisee (SMTP differe, evite stack overflow loopTask).");
+    N3_LOGI("[OTA][MAIL] Alerte memorisee (SMTP differe, evite stack overflow loopTask).");
   }
 }
 
@@ -358,28 +359,28 @@ static void otaMailEndCallback(bool success, const char* details, void* userData
 static void trySendPendingOtaFailMail(bool wifiOk) {
   if (!pendingOtaFailMail) return;
   if (!remoteMailNotifEnabled) {
-    Serial.println("[OTA][MAIL] Alerte OTA en attente abandonnee: notifications desactivees.");
+    N3_LOGI("[OTA][MAIL] Alerte OTA en attente abandonnee: notifications desactivees.");
     pendingOtaFailMail = false;
     return;
   }
   if (!wifiOk) {
-    Serial.println("[OTA][MAIL] Alerte OTA en attente: WiFi indisponible, report au prochain reveil.");
+    N3_LOGI("[OTA][MAIL] Alerte OTA en attente: WiFi indisponible, report au prochain reveil.");
     return;
   }
   if (pendingOtaFailMailTries >= OTA_FAIL_MAIL_MAX_TRIES) {
-    Serial.printf("[OTA][MAIL] Alerte OTA en attente abandonnee apres %u essais.\n",
-                  static_cast<unsigned int>(pendingOtaFailMailTries));
+    N3_LOGW("[OTA][MAIL] Alerte OTA en attente abandonnee apres %u essais.",
+            static_cast<unsigned int>(pendingOtaFailMailTries));
     pendingOtaFailMail = false;
     return;
   }
   ++pendingOtaFailMailTries;
   if (sendDebugEventMail("OTA terminee (echec)", "ota-end-failed", pendingOtaFailMailExtra, N3Severity::Alert)) {
-    Serial.println("[OTA][MAIL] Alerte OTA en attente livree.");
+    N3_LOGI("[OTA][MAIL] Alerte OTA en attente livree.");
     pendingOtaFailMail = false;
   } else {
-    Serial.printf("[OTA][MAIL] Alerte OTA en attente: nouvel echec (%u/%u).\n",
-                  static_cast<unsigned int>(pendingOtaFailMailTries),
-                  static_cast<unsigned int>(OTA_FAIL_MAIL_MAX_TRIES));
+    N3_LOGW("[OTA][MAIL] Alerte OTA en attente: nouvel echec (%u/%u).",
+            static_cast<unsigned int>(pendingOtaFailMailTries),
+            static_cast<unsigned int>(OTA_FAIL_MAIL_MAX_TRIES));
   }
 }
 
@@ -387,7 +388,7 @@ static void handlePhotoWindowTransitionMails(bool wifiOk) {
 #if MAIL_NOTIFICATIONS_ENABLED && USE_DEEP_SLEEP
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    Serial.println("[MAIL] Transition jour/nuit ignoree: heure NTP indisponible.");
+    N3_LOGI("[MAIL] Transition jour/nuit ignoree: heure NTP indisponible.");
     return;
   }
 
@@ -396,22 +397,22 @@ static void handlePhotoWindowTransitionMails(bool wifiOk) {
 
   if (lastPhotoWindowState < 0) {
     lastPhotoWindowState = currentState;
-    Serial.printf("[MAIL] Etat jour/nuit initialise: %s\n", inWindow ? "jour" : "nuit");
+    N3_LOGI("[MAIL] Etat jour/nuit initialise: %s", inWindow ? "jour" : "nuit");
   } else if (currentState != lastPhotoWindowState) {
     if (inWindow) {
       pendingWindowMailMask |= MAIL_PENDING_MORNING;
       pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_EVENING);
-      Serial.println("[MAIL] Transition detectee: reprise photos (matin).");
+      N3_LOGI("[MAIL] Transition detectee: reprise photos (matin).");
     } else {
       pendingWindowMailMask |= MAIL_PENDING_EVENING;
       pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_MORNING);
-      Serial.println("[MAIL] Transition detectee: pause photos (soir).");
+      N3_LOGI("[MAIL] Transition detectee: pause photos (soir).");
     }
     lastPhotoWindowState = currentState;
   }
 
   if (!wifiOk || WiFi.status() != WL_CONNECTED) {
-    Serial.println("[MAIL] Transition en attente: WiFi indisponible.");
+    N3_LOGI("[MAIL] Transition en attente: WiFi indisponible.");
     return;
   }
 
@@ -447,16 +448,16 @@ static constexpr const char* kFirstBootMailKey = "fb_mail";
 
 static void trySendFirstBootMail(bool wifiOk) {
   if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
-    Serial.println("[MAIL] Premier demarrage: ignore (reveil deep sleep).");
+    N3_LOGI("[MAIL] Premier demarrage: ignore (reveil deep sleep).");
     return;
   }
   if (!wifiOk || WiFi.status() != WL_CONNECTED) {
-    Serial.println("[MAIL] Premier demarrage: reporte (WiFi indisponible).");
+    N3_LOGI("[MAIL] Premier demarrage: reporte (WiFi indisponible).");
     return;
   }
 
   if (!preferences.begin(kFirstBootPrefNs, false)) {
-    Serial.println("[MAIL] Premier demarrage: Preferences begin a echoue.");
+    N3_LOGW("[MAIL] Premier demarrage: Preferences begin a echoue.");
     return;
   }
   const bool alreadySent = preferences.getBool(kFirstBootMailKey, false);
@@ -474,10 +475,10 @@ static void trySendFirstBootMail(bool wifiOk) {
     if (preferences.begin(kFirstBootPrefNs, false)) {
       preferences.putBool(kFirstBootMailKey, true);
       preferences.end();
-      Serial.println("[MAIL] Premier demarrage: envoye, flag NVS enregistre.");
+      N3_LOGI("[MAIL] Premier demarrage: envoye, flag NVS enregistre.");
     }
   } else {
-    Serial.println("[MAIL] Premier demarrage: echec — nouvel essai si prochain boot n'est pas un reveil deep sleep.");
+    N3_LOGW("[MAIL] Premier demarrage: echec — nouvel essai si prochain boot n'est pas un reveil deep sleep.");
   }
 }
 #endif
@@ -502,7 +503,7 @@ static bool captureStampNow(char* out, size_t outSize) {
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
   if (timeinfo.tm_year + 1900 < 2020) {
-    Serial.println("[TIME][WARN] horodatage capture refuse (horloge non fiable)");
+    N3_LOGW("[TIME] horodatage capture refuse (horloge non fiable)");
     return false;
   }
   return strftime(out, outSize, "%Y-%m-%d_%H-%M-%S", &timeinfo) > 0;
@@ -525,7 +526,7 @@ void capturePhoto(bool wifiOk) {
   const uint32_t captureStartMs = millis();
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("[CAM][ERROR] Echec capture camera");
+    N3_LOGE("[CAM] Echec capture camera");
     logMonitoringSnapshot("capturePhoto:capture_ko");
 #if USE_DEEP_SLEEP
     n3EnterRuntimeDeepSleep("Echec capture camera");
@@ -535,7 +536,7 @@ void capturePhoto(bool wifiOk) {
 #endif
   }
   logStepDuration("capture_camera", millis() - captureStartMs, 1200);
-  Serial.printf("[MON] capture taille=%u bytes\n", static_cast<unsigned int>(fb->len));
+  N3_LOGI("[MON] capture taille=%u bytes", static_cast<unsigned int>(fb->len));
 
   /* Horodatage de capture (porté par la file SD puis envoyé au serveur). "" si horloge inconnue. */
   char stamp[24];
@@ -555,14 +556,14 @@ void capturePhoto(bool wifiOk) {
       file.close();
       if (written == fb->len) {
         cameraSyncCommitWrittenCount(pictureNumber);  // persistance confirmée -> on engage le numéro
-        Serial.printf("[SD] Sauvegarde locale %s (%u bytes) — en file d'attente\n",
-                      path.c_str(), static_cast<unsigned int>(written));
+        N3_LOGI("[SD] Sauvegarde locale %s (%u bytes) — en file d'attente",
+                path.c_str(), static_cast<unsigned int>(written));
       } else {
-        Serial.println("[SD][WARN] Ecriture incomplete, desactivation SD (numero non engage)");
+        N3_LOGW("[SD] Ecriture incomplete, desactivation SD (numero non engage)");
         sdAvailable = false;
       }
     } else {
-      Serial.println("[SD][WARN] Ouverture fichier impossible, desactivation SD (numero non engage)");
+      N3_LOGW("[SD] Ouverture fichier impossible, desactivation SD (numero non engage)");
       sdAvailable = false;
     }
   }
@@ -591,8 +592,8 @@ void capturePhoto(bool wifiOk) {
     up.reconnect = Wificonnect;
     const int code = cameraUploadJpegBuffer(up, fb->buf, fb->len, String(filename));
     logStepDuration("upload_http", millis() - uploadStartMs, 5000);
-    Serial.printf("[CAPTURE] Upload direct (sans SD) HTTP=%d seq=%lu\n",
-                  code, static_cast<unsigned long>(directSeq));
+    N3_LOGI("[CAPTURE] Upload direct (sans SD) HTTP=%d seq=%lu",
+            code, static_cast<unsigned long>(directSeq));
     if (code == 200 || code == 202) {
       cameraSyncMarkDirectUploadConfirmed(directSeq);  // A7 : avance pic_count + curseur ensemble
       ledBlink(1500, 1500, 2);
@@ -614,14 +615,14 @@ void capturePhoto(bool wifiOk) {
 static void initSdIfEnabled() {
   const uint32_t sdInitStartMs = millis();
   if (!SD_MMC.begin()) {
-    Serial.println("[SD][WARN] Montage echoue, continuation sans SD");
+    N3_LOGW("[SD] Montage echoue, continuation sans SD");
     sdAvailable = false;
   } else if (SD_MMC.cardType() == CARD_NONE) {
-    Serial.println("[SD][WARN] Aucune carte detectee, continuation sans SD");
+    N3_LOGW("[SD] Aucune carte detectee, continuation sans SD");
     sdAvailable = false;
   } else {
     sdAvailable = true;
-    Serial.println("[SD] Carte SD OK");
+    N3_LOGI("[SD] Carte SD OK");
   }
   logStepDuration("init_sd", millis() - sdInitStartMs, 1000);
   logMonitoringSnapshot("setup:post_sd");
@@ -646,9 +647,9 @@ static void runSyncDrainIfNeeded(bool wifiOk) {
   sc.reconnect = Wificonnect;
   const CameraSyncResult sr = cameraSyncDrain(sc);
   if (sr.ran) {
-    Serial.printf("[SYNC] Bilan reveil: envoyees=%u echecs=%u backlog_initial=%u restant=%u\n",
-                  static_cast<unsigned int>(sr.sent), static_cast<unsigned int>(sr.failed),
-                  static_cast<unsigned int>(sr.pending), static_cast<unsigned int>(cameraSyncPendingCount()));
+    N3_LOGI("[SYNC] Bilan reveil: envoyees=%u echecs=%u backlog_initial=%u restant=%u",
+            static_cast<unsigned int>(sr.sent), static_cast<unsigned int>(sr.failed),
+            static_cast<unsigned int>(sr.pending), static_cast<unsigned int>(cameraSyncPendingCount()));
   }
 }
 #endif
@@ -682,8 +683,8 @@ static bool initCameraPipeline() {
   char camModeLabel[24] = {};
   const esp_err_t err = n3CameraInitWithFallback(&config, camModeLabel, sizeof camModeLabel);
   if (err != ESP_OK) {
-    Serial.printf("[CAM][ERROR] Init camera impossible apres repli DRAM/PSRAM (0x%x)\n",
-                  static_cast<unsigned>(err));
+    N3_LOGE("[CAM] Init camera impossible apres repli DRAM/PSRAM (0x%x)",
+            static_cast<unsigned>(err));
 #if USE_DEEP_SLEEP
     n3EnterRuntimeDeepSleep("Init camera impossible");
 #else
@@ -692,7 +693,7 @@ static bool initCameraPipeline() {
 #endif
     return false;
   }
-  Serial.printf("[CAM] mode actif: %s\n", camModeLabel);
+  N3_LOGI("[CAM] mode actif: %s", camModeLabel);
   logStepDuration("init_camera", millis() - camInitStartMs, 2500);
   logMonitoringSnapshot("setup:post_camera_init");
 
@@ -717,14 +718,17 @@ void setup() {
   Serial.setDebugOutput(CAM_DIAG_DEBUG ? true : false);
   delay(200);
 #if SERIAL_BOOT_PAUSE_MS > 0
+  /* Volontairement NON migre vers n3_log : notice d'amorce en CRLF explicite, emise
+     avant que le moniteur PC ne soit ouvert (le prefixe horodate/uptime et le \n seul
+     de n3_log casseraient ce message d'attente brut). */
   Serial.printf("[BOOT] SERIAL_BOOT_PAUSE_MS=%u — ouvrez le moniteur maintenant\r\n",
                 static_cast<unsigned>(SERIAL_BOOT_PAUSE_MS));
   delay(SERIAL_BOOT_PAUSE_MS);
 #endif
-  Serial.printf("[BOOT] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
-  Serial.printf("[BOOT] reset=%s wakeup=%s\n",
-                resetReasonText(esp_reset_reason()),
-                wakeupCauseText(esp_sleep_get_wakeup_cause()));
+  N3_LOGI("[BOOT] uploadphotosserver env=%s version=%s", currentTargetName(), FIRMWARE_VERSION);
+  N3_LOGI("[BOOT] reset=%s wakeup=%s",
+          resetReasonText(esp_reset_reason()),
+          wakeupCauseText(esp_sleep_get_wakeup_cause()));
   n3LogHardwareDiagnostics();
   logMonitoringSnapshot("setup:start");
   /* Aligne otadata sur la partition en cours (comme n3pp/msp) — evite OTA « Verify Bin Header Failed »
@@ -794,22 +798,22 @@ void setup() {
       resetModeActiveThisBoot = remoteCfg.resetMode;
 #endif
 
-      Serial.printf("[REMOTE] cfg ok mailNotif=%d forceWake=%d sleep=%lu resetMode=%d\n",
-                    remoteMailNotifEnabled ? 1 : 0,
-                    forceWakeupActiveThisBoot ? 1 : 0,
-                    static_cast<unsigned long>(runtimeSleepSeconds),
-                    resetModeActiveThisBoot ? 1 : 0);
+      N3_LOGI("[REMOTE] cfg ok mailNotif=%d forceWake=%d sleep=%lu resetMode=%d",
+              remoteMailNotifEnabled ? 1 : 0,
+              forceWakeupActiveThisBoot ? 1 : 0,
+              static_cast<unsigned long>(runtimeSleepSeconds),
+              resetModeActiveThisBoot ? 1 : 0);
     } else {
-      Serial.printf("[REMOTE] cfg indisponible (HTTP=%u), valeurs locales conservees.\n", remoteHttpCode);
+      N3_LOGI("[REMOTE] cfg indisponible (HTTP=%u), valeurs locales conservees.", remoteHttpCode);
     }
 
     int versionPostCode = cameraRemotePostFirmwareVersion(currentTargetName());
-    Serial.printf("[REMOTE] post version HTTP=%d\n", versionPostCode);
+    N3_LOGI("[REMOTE] post version HTTP=%d", versionPostCode);
     /* Phase 3 arbitrage : proxy « serveur OK » = GET config OK + POST version 2xx. */
     serverExchangeOk = (remoteHttpCode == 200) && versionPostCode >= 200 && versionPostCode < 300;
-    Serial.printf("[REMOTE] echange serveur %s (failover mails %s)\n",
-                  serverExchangeOk ? "OK" : "KO",
-                  serverExchangeOk ? "inactif" : "actif: P1/P2 only");
+    N3_LOGI("[REMOTE] echange serveur %s (failover mails %s)",
+            serverExchangeOk ? "OK" : "KO",
+            serverExchangeOk ? "inactif" : "actif: P1/P2 only");
   }
   logStepDuration("connexion_wifi", millis() - wifiStartMs, WIFI_CONNECT_TIMEOUT_MS + 1500);
   logMonitoringSnapshot("setup:post_wifi");
@@ -820,14 +824,14 @@ void setup() {
   otaUpdateStartedThisBoot = false;
   const uint32_t remainingBeforeCheck = OtaPeriodic::remainingSeconds(
       otaElapsedSinceLastCheckSeconds, OTA_PERIODIC_INTERVAL_SECONDS);
-  Serial.printf("[OTA] cible=%s version_local=%s elapsed=%lu/%lu s metadata=%s\n",
-                currentTargetName(),
-                FIRMWARE_VERSION,
-                static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
-                static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS),
-                OTA_METADATA_URL);
+  N3_LOGI("[OTA] cible=%s version_local=%s elapsed=%lu/%lu s metadata=%s",
+          currentTargetName(),
+          FIRMWARE_VERSION,
+          static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
+          static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS),
+          OTA_METADATA_URL);
   if (remainingBeforeCheck == 0) {
-    Serial.println("[OTA] verification 2h declenchee");
+    N3_LOGI("[OTA] verification 2h declenchee");
     N3OtaConfig otaCfg = {
       OTA_METADATA_URL,
       FIRMWARE_VERSION,
@@ -839,10 +843,10 @@ void setup() {
     };
     n3OtaCheck(otaCfg);
     otaElapsedSinceLastCheckSeconds = 0;
-    Serial.println("[OTA] verification 2h terminee");
+    N3_LOGI("[OTA] verification 2h terminee");
   } else {
-    Serial.printf("[OTA] verification 2h sautee, restante=%lu s\n",
-                  static_cast<unsigned long>(remainingBeforeCheck));
+    N3_LOGI("[OTA] verification 2h sautee, restante=%lu s",
+            static_cast<unsigned long>(remainingBeforeCheck));
   }
 #endif
 
@@ -852,7 +856,7 @@ void setup() {
 
   const bool inWindow = inPhotoWindow() || forceWakeupActiveThisBoot;
   if (forceWakeupActiveThisBoot) {
-    Serial.println("[REMOTE] forceWakeUp actif: capture autorisee hors creneau.");
+    N3_LOGI("[REMOTE] forceWakeUp actif: capture autorisee hors creneau.");
   }
 
 #if USE_SD
@@ -865,13 +869,13 @@ void setup() {
   if (needsCapture) {
     initCameraPipeline();
     if (!wifiOk) {
-      Serial.println("[CAPTURE] WiFi indisponible: sauvegarde SD locale, upload differe au prochain reveil connecte.");
+      N3_LOGI("[CAPTURE] WiFi indisponible: sauvegarde SD locale, upload differe au prochain reveil connecte.");
     }
     capturePhoto(wifiOk);
   } else if (inWindow && !canPersist) {
-    Serial.println("[CAPTURE][WARN] Photo ignoree: pas de WiFi et pas de SD disponible");
+    N3_LOGW("[CAPTURE] Photo ignoree: pas de WiFi et pas de SD disponible");
   } else if (!inWindow) {
-    Serial.println("[MON] hors creneau photo, camera non initialisee");
+    N3_LOGI("[MON] hors creneau photo, camera non initialisee");
   }
 
 #if USE_SD
@@ -879,7 +883,7 @@ void setup() {
 #endif
 
   if (resetModeActiveThisBoot) {
-    Serial.println("[REMOTE] resetMode actif: redemarrage immediat.");
+    N3_LOGI("[REMOTE] resetMode actif: redemarrage immediat.");
     delay(200);
     ESP.restart();
   }
@@ -891,16 +895,16 @@ void setup() {
 
 void loop() {
 #if USE_DEEP_SLEEP
-  Serial.printf("[LOOP] uploadphotosserver env=%s version=%s\n", currentTargetName(), FIRMWARE_VERSION);
+  N3_LOGI("[LOOP] uploadphotosserver env=%s version=%s", currentTargetName(), FIRMWARE_VERSION);
   logMonitoringSnapshot("loop:before_sleep");
   /* A9 : la cadence OTA 2h tient compte du temps ÉVEILLÉ de ce réveil (millis()) EN PLUS du sommeil
      à venir, pour éliminer la légère dérive (chaque réveil ajoute ~10-30 s auparavant non comptés). */
   const uint32_t awakeSeconds = static_cast<uint32_t>(millis() / 1000UL);
   accumulateOtaPeriodicElapsedFromSleep(awakeSeconds + runtimeSleepSeconds);
-  Serial.printf("[OTA] cumul avant reveil: %lu/%lu s\n",
-                static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
-                static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS));
-  Serial.printf("[SLEEP] Entree en deep sleep (%u s)\n", static_cast<unsigned int>(runtimeSleepSeconds));
+  N3_LOGI("[OTA] cumul avant reveil: %lu/%lu s",
+          static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
+          static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS));
+  N3_LOGI("[SLEEP] Entree en deep sleep (%u s)", static_cast<unsigned int>(runtimeSleepSeconds));
   delay(1000);
   Serial.flush();
   esp_sleep_enable_timer_wakeup((uint64_t)runtimeSleepSeconds * uS_TO_S_FACTOR);

@@ -11,6 +11,8 @@
 #include <cstring>
 #include <Wire.h>
 
+#include "n3_log.h"
+
 static constexpr int kCamXclkLedcChannel = 0;
 
 static void n3CamXclkOn(void) {
@@ -118,14 +120,14 @@ static esp_err_t n3TryCameraInit(camera_config_t& config, const CameraInitPlan& 
       heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   const size_t intFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
-  Serial.printf("[CAM] init tentative: %s fb_count=%d loc=%s "
-                "(spiram_free=%lu largest=%lu dram_free=%lu)\n",
-                plan.label,
-                plan.fb_count,
-                plan.fb_location == CAMERA_FB_IN_PSRAM ? "PSRAM" : "DRAM",
-                static_cast<unsigned long>(spiramTotal),
-                static_cast<unsigned long>(spiramLargest),
-                static_cast<unsigned long>(intFree));
+  N3_LOGI("[CAM] init tentative: %s fb_count=%d loc=%s "
+          "(spiram_free=%lu largest=%lu dram_free=%lu)",
+          plan.label,
+          plan.fb_count,
+          plan.fb_location == CAMERA_FB_IN_PSRAM ? "PSRAM" : "DRAM",
+          static_cast<unsigned long>(spiramTotal),
+          static_cast<unsigned long>(spiramLargest),
+          static_cast<unsigned long>(intFree));
   return esp_camera_init(&config);
 }
 
@@ -148,11 +150,11 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
   if (!n3CameraSpiramHeapPresent()) {
     /* SVGA/DRAM exige un bloc DMA 32 Ko contigu — rare sans PSRAM après WiFi/SD. */
     startIdx = 3;
-    Serial.println("[CAM][WARN] Tas SPIRAM=0 : saut PSRAM + SVGA/DRAM, repli CIF/DRAM "
-                   "(cf. [DIAG] build vs materiel).");
+    N3_LOGW("[CAM] Tas SPIRAM=0 : saut PSRAM + SVGA/DRAM, repli CIF/DRAM "
+            "(cf. [DIAG] build vs materiel).");
   } else if (!n3CameraSpiramLooksViableForSxga()) {
     startIdx = 1;
-    Serial.println("[CAM][WARN] SPIRAM insuffisante pour SXGA : saut direct CIF/psram.");
+    N3_LOGW("[CAM] SPIRAM insuffisante pour SXGA : saut direct CIF/psram.");
   }
 
   n3CameraHardwareReset(false);
@@ -163,7 +165,7 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
       snprintf(activeModeLabel, activeModeLabelLen, "%s", kPlans[i].label);
       return ESP_OK;
     }
-    Serial.printf("[CAM][WARN] Echec %s (0x%x)\n", kPlans[i].label, static_cast<unsigned>(err));
+    N3_LOGW("[CAM] Echec %s (0x%x)", kPlans[i].label, static_cast<unsigned>(err));
     esp_camera_deinit();
     delay(CAM_DEINIT_SETTLE_MS);
     n3CameraHardwareReset(false);
@@ -183,57 +185,57 @@ void n3LogHardwareDiagnostics() {
   const uint32_t intTotal = heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const uint32_t intFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
-  Serial.println("[DIAG] --- materiel (uploadphotosserver) ---");
-  Serial.printf("[DIAG] chip_model=%s cores=%d revision=%d features=0x%08lx\n",
-                ESP.getChipModel(),
-                ci.cores,
-                ci.revision,
-                static_cast<unsigned long>(ci.features));
-  Serial.printf("[DIAG] flash_chip_size=%lu bytes\n", static_cast<unsigned long>(flashSz));
-  Serial.printf("[DIAG] ram_internal total=%lu free=%lu min_free_heap=%lu\n",
-                static_cast<unsigned long>(intTotal),
-                static_cast<unsigned long>(intFree),
-                static_cast<unsigned long>(ESP.getMinFreeHeap()));
-  Serial.printf("[DIAG] spiram_heap total=%lu free=%lu largest_block=%lu bytes\n",
-                static_cast<unsigned long>(spiramTotal),
-                static_cast<unsigned long>(spiramFree),
-                static_cast<unsigned long>(spiramLargest));
+  N3_LOGD("[DIAG] --- materiel (uploadphotosserver) ---");
+  N3_LOGD("[DIAG] chip_model=%s cores=%d revision=%d features=0x%08lx",
+          ESP.getChipModel(),
+          ci.cores,
+          ci.revision,
+          static_cast<unsigned long>(ci.features));
+  N3_LOGD("[DIAG] flash_chip_size=%lu bytes", static_cast<unsigned long>(flashSz));
+  N3_LOGD("[DIAG] ram_internal total=%lu free=%lu min_free_heap=%lu",
+          static_cast<unsigned long>(intTotal),
+          static_cast<unsigned long>(intFree),
+          static_cast<unsigned long>(ESP.getMinFreeHeap()));
+  N3_LOGD("[DIAG] spiram_heap total=%lu free=%lu largest_block=%lu bytes",
+          static_cast<unsigned long>(spiramTotal),
+          static_cast<unsigned long>(spiramFree),
+          static_cast<unsigned long>(spiramLargest));
 #if defined(CONFIG_SPIRAM) && CONFIG_SPIRAM
-  Serial.println("[DIAG] build sdkconfig: CONFIG_SPIRAM=y");
+  N3_LOGD("[DIAG] build sdkconfig: CONFIG_SPIRAM=y");
 #else
-  Serial.println("[DIAG] build sdkconfig: CONFIG_SPIRAM=n (puce absente ou non detectee sur ce module)");
+  N3_LOGD("[DIAG] build sdkconfig: CONFIG_SPIRAM=n (puce absente ou non detectee sur ce module)");
 #endif
   const bool psramDriverInit = n3PsramDriverInitialized();
   const size_t psramChipBytes = n3PsramChipSizeBytes();
-  Serial.printf("[DIAG] esp_psram_is_initialized=%s chip_size=%lu bytes\n",
-                psramDriverInit ? "true" : "false",
-                static_cast<unsigned long>(psramChipBytes));
-  Serial.printf("[DIAG] psramFound()=%s  SXGA_seuils total>=%u largest>=%u\n",
-                psramFound() ? "true" : "false",
-                static_cast<unsigned>(CAM_SPIRAM_MIN_FREE_BYTES),
-                static_cast<unsigned>(CAM_SPIRAM_MIN_LARGEST_BLOCK));
+  N3_LOGD("[DIAG] esp_psram_is_initialized=%s chip_size=%lu bytes",
+          psramDriverInit ? "true" : "false",
+          static_cast<unsigned long>(psramChipBytes));
+  N3_LOGD("[DIAG] psramFound()=%s  SXGA_seuils total>=%u largest>=%u",
+          psramFound() ? "true" : "false",
+          static_cast<unsigned>(CAM_SPIRAM_MIN_FREE_BYTES),
+          static_cast<unsigned>(CAM_SPIRAM_MIN_LARGEST_BLOCK));
   if (spiramTotal == 0) {
 #if defined(CONFIG_SPIRAM) && CONFIG_SPIRAM
     if (psramChipBytes == 0) {
-      Serial.println("[DIAG][WARN] Build SPIRAM active mais puce absente ou non detectee "
-                     "(module clone sans PSRAM, soudure, alim) — mode DRAM prevu.");
+      N3_LOGW("[DIAG] Build SPIRAM active mais puce absente ou non detectee "
+              "(module clone sans PSRAM, soudure, alim) — mode DRAM prevu.");
     } else {
-      Serial.println("[DIAG][WARN] Puce PSRAM detectee mais tas heap SPIRAM=0 "
-                     "(init heap ou fragmentation anormale).");
+      N3_LOGW("[DIAG] Puce PSRAM detectee mais tas heap SPIRAM=0 "
+              "(init heap ou fragmentation anormale).");
     }
 #else
-    Serial.println("[DIAG][WARN] SPIRAM tas=0 : module sans PSRAM ou puce non detectee.");
+    N3_LOGW("[DIAG] SPIRAM tas=0 : module sans PSRAM ou puce non detectee.");
 #endif
   } else if (spiramLargest < CAM_SPIRAM_MIN_LARGEST_BLOCK) {
-    Serial.println("[DIAG][WARN] Plus grand bloc SPIRAM < seuil SXGA : fragmentation, PSRAM "
-                   "partielle, ou charge memoire avant camera.");
+    N3_LOGW("[DIAG] Plus grand bloc SPIRAM < seuil SXGA : fragmentation, PSRAM "
+            "partielle, ou charge memoire avant camera.");
   } else if (spiramFree < CAM_SPIRAM_MIN_FREE_BYTES) {
-    Serial.println("[DIAG][WARN] SPIRAM libre < seuil total SXGA.");
+    N3_LOGW("[DIAG] SPIRAM libre < seuil total SXGA.");
   } else {
-    Serial.println("[DIAG] Criteres quantitatifs SPIRAM OK pour tenter SXGA (init peut encore "
-                   "echouer : nappe OV2640, alim, timing).");
+    N3_LOGD("[DIAG] Criteres quantitatifs SPIRAM OK pour tenter SXGA (init peut encore "
+            "echouer : nappe OV2640, alim, timing).");
   }
-  Serial.println("[DIAG] --------------------------------------");
+  N3_LOGD("[DIAG] --------------------------------------");
 }
 
 static int sccbEndTransmission(uint8_t addr7) {
@@ -290,24 +292,24 @@ static int n3SccbPingWithRetries(uint8_t addr7, bool* usedSlowClock) {
     lastErr = sccbEndTransmission(addr7);
     if (lastErr == 0) {
       if (attempt == 0) {
-        Serial.printf("[DIAG][SCCB] ping 0x%02X (OV2640 AI-Thinker) -> ACK (1/%d)\n",
-                      addr7,
-                      CAM_SCCB_RETRY_COUNT);
+        N3_LOGD("[DIAG][SCCB] ping 0x%02X (OV2640 AI-Thinker) -> ACK (1/%d)",
+                addr7,
+                CAM_SCCB_RETRY_COUNT);
       } else {
-        Serial.printf("[DIAG][SCCB] ping 0x%02X OK a la tentative %d/%d (%lu Hz)\n",
-                      addr7,
-                      attempt + 1,
-                      CAM_SCCB_RETRY_COUNT,
-                      static_cast<unsigned long>(clockHz));
+        N3_LOGD("[DIAG][SCCB] ping 0x%02X OK a la tentative %d/%d (%lu Hz)",
+                addr7,
+                attempt + 1,
+                CAM_SCCB_RETRY_COUNT,
+                static_cast<unsigned long>(clockHz));
       }
       return 0;
     }
-    Serial.printf("[DIAG][SCCB] ping 0x%02X tentative %d/%d -> %s (%d)\n",
-                  addr7,
-                  attempt + 1,
-                  CAM_SCCB_RETRY_COUNT,
-                  sccbNackHint(lastErr),
-                  lastErr);
+    N3_LOGD("[DIAG][SCCB] ping 0x%02X tentative %d/%d -> %s (%d)",
+            addr7,
+            attempt + 1,
+            CAM_SCCB_RETRY_COUNT,
+            sccbNackHint(lastErr),
+            lastErr);
   }
   return lastErr;
 }
@@ -317,20 +319,20 @@ void n3LogCameraSccbDiagnostics(void) {
   static constexpr uint8_t kRegPidHigh = 0x0A;
   static constexpr uint8_t kRegPidLow = 0x0B;
 
-  Serial.println("[DIAG][SCCB] --- sonde bus camera (avant esp_camera_init) ---");
-  Serial.printf("[DIAG][SCCB] broches SDA=%d SCL=%d PWDN=%d XCLK=%d RESET=%d\n",
-                SIOD_GPIO_NUM,
-                SIOC_GPIO_NUM,
-                PWDN_GPIO_NUM,
-                XCLK_GPIO_NUM,
-                RESET_GPIO_NUM);
+  N3_LOGD("[DIAG][SCCB] --- sonde bus camera (avant esp_camera_init) ---");
+  N3_LOGD("[DIAG][SCCB] broches SDA=%d SCL=%d PWDN=%d XCLK=%d RESET=%d",
+          SIOD_GPIO_NUM,
+          SIOC_GPIO_NUM,
+          PWDN_GPIO_NUM,
+          XCLK_GPIO_NUM,
+          RESET_GPIO_NUM);
 
   n3CameraHardwareReset(true);
   if (XCLK_GPIO_NUM >= 0) {
-    Serial.printf("[DIAG][SCCB] horloge pixel XCLK=%lu Hz active sur GPIO%d (settle=%u ms)\n",
-                  static_cast<unsigned long>(CAM_XCLK_HZ),
-                  XCLK_GPIO_NUM,
-                  static_cast<unsigned>(CAM_XCLK_SETTLE_MS));
+    N3_LOGD("[DIAG][SCCB] horloge pixel XCLK=%lu Hz active sur GPIO%d (settle=%u ms)",
+            static_cast<unsigned long>(CAM_XCLK_HZ),
+            XCLK_GPIO_NUM,
+            static_cast<unsigned>(CAM_XCLK_SETTLE_MS));
   }
 
   Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM);
@@ -346,40 +348,53 @@ void n3LogCameraSccbDiagnostics(void) {
     const bool gotHigh = sccbReadReg8(kOv2640Addr, kRegPidHigh, &pidHigh);
     const bool gotLow = sccbReadReg8(kOv2640Addr, kRegPidLow, &pidLow);
     if (gotHigh && gotLow) {
-      Serial.printf("[DIAG][SCCB] PID lu: 0x%02X%02X", pidHigh, pidLow);
+      /* Ligne d'origine construite en plusieurs appels (printf sans \n + println du
+         suffixe) : chaque macro n3_log ajoute prefixe + \n, donc on fusionne le PID
+         et son interpretation en UN SEUL N3_LOGD (le suffixe passe en argument %s). */
+      const char* pidHint;
       if (pidHigh == 0x26 && pidLow == 0x42) {
-        Serial.println(" -> OV2640 confirme");
+        pidHint = " -> OV2640 confirme";
       } else if (pidHigh == 0x56 && pidLow == 0x40) {
-        Serial.println(" -> capteur OV5640 (pas OV2640)");
+        pidHint = " -> capteur OV5640 (pas OV2640)";
       } else if (pidHigh == 0x21 && pidLow == 0x45) {
-        Serial.println(" -> capteur GC2145 (pas OV2640)");
+        pidHint = " -> capteur GC2145 (pas OV2640)";
       } else {
-        Serial.println(" -> identifiant inconnu");
+        pidHint = " -> identifiant inconnu";
       }
+      N3_LOGD("[DIAG][SCCB] PID lu: 0x%02X%02X%s", pidHigh, pidLow, pidHint);
     } else {
-      Serial.println("[DIAG][SCCB][WARN] ACK adresse mais lecture PID impossible "
-                     "(nappe, alim ou timing)");
+      N3_LOGW("[DIAG][SCCB] ACK adresse mais lecture PID impossible "
+              "(nappe, alim ou timing)");
     }
   } else {
-    Serial.println("[DIAG][SCCB][WARN] Pas de reponse a 0x30 : verifier nappe FFC, "
-                   "alim 5V, contacts vers la carte");
+    N3_LOGW("[DIAG][SCCB] Pas de reponse a 0x30 : verifier nappe FFC, "
+            "alim 5V, contacts vers la carte");
   }
 
-  Serial.print("[DIAG][SCCB] peripheriques detectes:");
+  /* Ligne d'origine construite en plusieurs appels (print du prefixe + printf par
+     adresse detectee + println final) : bufferisee dans scanMsg puis emise en UN
+     SEUL N3_LOGD (une macro n3_log = un prefixe + \n, incompatible avec la
+     construction morceau par morceau). */
+  char scanMsg[256];
+  int off = snprintf(scanMsg, sizeof(scanMsg), "[DIAG][SCCB] peripheriques detectes:");
   int found = 0;
   for (uint8_t addr = 0x08; addr < 0x78; ++addr) {
     if (sccbEndTransmission(addr) == 0) {
-      Serial.printf(" 0x%02X", addr);
+      if (off >= 0 && static_cast<size_t>(off) < sizeof(scanMsg)) {
+        off += snprintf(scanMsg + off, sizeof(scanMsg) - static_cast<size_t>(off), " 0x%02X", addr);
+      }
       ++found;
     }
   }
   if (found == 0) {
-    Serial.print(" aucun");
+    if (off >= 0 && static_cast<size_t>(off) < sizeof(scanMsg)) {
+      snprintf(scanMsg + off, sizeof(scanMsg) - static_cast<size_t>(off), " aucun");
+    }
   }
-  Serial.println();
+  N3_LOGD("%s", scanMsg);
 
   n3CameraReleaseProbeBus();
-  Serial.println("[DIAG][SCCB] ---------------------------------------------");
+  N3_LOGD("[DIAG][SCCB] ---------------------------------------------");
 }
 
 #if USE_DEEP_SLEEP

@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "n3_log.h"
 #include "n3_time.h"
 #include <time.h>
 
@@ -47,12 +48,12 @@ const char* resetReasonText(esp_reset_reason_t reason) {
 
 bool inPhotoWindow() {
   if (!n3TimeHasPlausibleEpoch()) {
-    Serial.println("[TIME][WARN] creneau ignore, horloge non fiable");
+    N3_LOGW("[TIME] creneau ignore, horloge non fiable");
     return false;
   }
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    Serial.println("[TIME][WARN] creneau ignore, getLocalTime indisponible");
+    N3_LOGW("[TIME] creneau ignore, getLocalTime indisponible");
     return false;
   }
   const int h = timeinfo.tm_hour;
@@ -61,7 +62,7 @@ bool inPhotoWindow() {
 
 #if USE_DEEP_SLEEP
 void n3EnterDeepSleepSeconds(uint32_t seconds) {
-  Serial.printf("[SLEEP] Entree en deep sleep (%u s)\n", static_cast<unsigned int>(seconds));
+  N3_LOGI("[SLEEP] Entree en deep sleep (%u s)", static_cast<unsigned int>(seconds));
   delay(200);
   Serial.flush();
   esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(seconds) * uS_TO_S_FACTOR);
