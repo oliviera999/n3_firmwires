@@ -133,7 +133,14 @@ static int seuilRetourNormal() {
   return SeuilSec + (SeuilSec / 20);
 }
 
+// T6.2 : drapeau de demande de veille infinie (batterie basse). Pose par
+// automatismes(), lu par le callback SENSE (-> ctx.requestSleepNow) et le
+// callback SLEEP (bloc emergency). Non-RTC : remis a false a chaque reveil et
+// reinitialise en tete d'automatismes() (voir n3pp_automation.h).
+bool n3ppVeilleInfinieRequested = false;
+
 void automatismes() {
+  n3ppVeilleInfinieRequested = false;  // reevalue a chaque cycle
   //remplissage de l'aquarium cas si l'aquarium est trop bas et la réserve assez remplie
 
   //mail si sécheresse trop forte (uniquement si au moins un capteur sol valide)
@@ -198,27 +205,22 @@ void automatismes() {
     // s'endort PAS en mode urgence ici ; le sommeil timer normal (sommeil())
     // reprend la main en fin de cycle. L'alerte batterie ci-dessus reste active.
     if (VeilleInfinie) {
-      // Harmonisation A8 (lot 0 T6, chantier shared) : POST final + ecran avant
-      // la veille infinie — comportement repris du bloc emergency de sommeil()
-      // (supprime : code mort, ce bloc-ci s'endort toujours en premier) et
-      // aligne sur msp qui POSTe avant la veille d'urgence. Le serveur recoit
-      // ainsi l'etat batterie (PontDiv bas) qui justifie la veille.
-      datatobdd();
-      if (displayOk) {
-        display.clearDisplay();
-        delay(100);
-        display.setTextSize(1);
-        display.setCursor(0, 0);
-        display.println(" ");
-        display.println("   DODO");
-        display.display();
-      }
-      delay(1000);
-      EnregistrementHeureFlash();
-      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
-      n3SleepConfigure(emergencySleep);
-      Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
-      n3SleepStart();
+      // Harmonisation A8 (lot 0 T6) : POST final + ecran avant la veille infinie
+      // — aligne sur msp qui POSTe avant la veille d'urgence (le serveur recoit
+      // l'etat batterie PontDiv bas qui justifie la veille).
+      //
+      // T6.2 (adoption n3_app) : la veille infinie devient une SORTIE ANTICIPEE
+      // du cycle a callbacks. On ne fait plus le bloc « POST + ecran DODO +
+      // veille GPIO » inline ici : on pose le drapeau et on rend la main. Le
+      // callback SENSE le traduit en ctx.requestSleepNow (le sequenceur saute
+      // directement a SLEEP) et le callback enterSleep execute le bloc emergency
+      // a l'identique. Le `return` reproduit EXACTEMENT l'abandon du reste
+      // d'automatismes() par l'ancien n3SleepStart() (qui ne rendait jamais la
+      // main) : les branches d'arrosage ci-dessous ne s'executaient pas et ne
+      // s'executent toujours pas. Aucun changement observable (memes operations,
+      // meme ordre : rien ne s'intercale entre ce point et enterSleep).
+      n3ppVeilleInfinieRequested = true;
+      return;
     } else {
       Serial.println("[SLEEP][TRACE] veille infinie DESACTIVEE (cle 112=0), batterie basse -> sommeil timer normal");
     }
