@@ -1,6 +1,7 @@
 #include "camera_time.h"
 
 #include "config.h"
+#include "n3_log.h"
 #include "n3_time.h"
 
 #include <ESP32Time.h>
@@ -22,10 +23,10 @@ void n3CamSyncClock(Preferences& prefs, ESP32Time& rtc, bool wifiOk) {
 
   if (!wifiOk) {
     if (nvsOk) {
-      Serial.printf("[TIME] WiFi KO, horloge NVS epoch=%lu\n",
-                    static_cast<unsigned long>(rtc.getEpoch()));
+      N3_LOGI("[TIME] WiFi KO, horloge NVS epoch=%lu",
+              static_cast<unsigned long>(rtc.getEpoch()));
     } else {
-      Serial.println("[TIME][WARN] WiFi KO et pas d'horloge NVS fiable");
+      N3_LOGW("[TIME] WiFi KO et pas d'horloge NVS fiable");
     }
     return;
   }
@@ -48,9 +49,9 @@ void n3CamSyncClock(Preferences& prefs, ESP32Time& rtc, bool wifiOk) {
   }
 
   if (nvsOk) {
-    Serial.printf("[TIME][WARN] NTP KO, horloge NVS conservee epoch=%lu\n",
-                  static_cast<unsigned long>(rtc.getEpoch()));
+    N3_LOGW("[TIME] NTP KO, horloge NVS conservee epoch=%lu",
+            static_cast<unsigned long>(rtc.getEpoch()));
   } else {
-    Serial.println("[TIME][WARN] NTP KO et pas d'horloge NVS fiable");
+    N3_LOGW("[TIME] NTP KO et pas d'horloge NVS fiable");
   }
 }

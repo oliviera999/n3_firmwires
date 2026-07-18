@@ -133,7 +133,14 @@ static int seuilRetourNormal() {
   return SeuilSec + (SeuilSec / 20);
 }
 
+// T6.2 : drapeau de demande de veille infinie (batterie basse). Pose par
+// automatismes(), lu par le callback SENSE (-> ctx.requestSleepNow) et le
+// callback SLEEP (bloc emergency). Non-RTC : remis a false a chaque reveil et
+// reinitialise en tete d'automatismes() (voir n3pp_automation.h).
+bool n3ppVeilleInfinieRequested = false;
+
 void automatismes() {
+  n3ppVeilleInfinieRequested = false;  // reevalue a chaque cycle
   //remplissage de l'aquarium cas si l'aquarium est trop bas et la réserve assez remplie
 
   //mail si sécheresse trop forte (uniquement si au moins un capteur sol valide)
@@ -198,27 +205,22 @@ void automatismes() {
     // s'endort PAS en mode urgence ici ; le sommeil timer normal (sommeil())
     // reprend la main en fin de cycle. L'alerte batterie ci-dessus reste active.
     if (VeilleInfinie) {
-      // Harmonisation A8 (lot 0 T6, chantier shared) : POST final + ecran avant
-      // la veille infinie — comportement repris du bloc emergency de sommeil()
-      // (supprime : code mort, ce bloc-ci s'endort toujours en premier) et
-      // aligne sur msp qui POSTe avant la veille d'urgence. Le serveur recoit
-      // ainsi l'etat batterie (PontDiv bas) qui justifie la veille.
-      datatobdd();
-      if (displayOk) {
-        display.clearDisplay();
-        delay(100);
-        display.setTextSize(1);
-        display.setCursor(0, 0);
-        display.println(" ");
-        display.println("   DODO");
-        display.display();
-      }
-      delay(1000);
-      EnregistrementHeureFlash();
-      N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
-      n3SleepConfigure(emergencySleep);
-      Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
-      n3SleepStart();
+      // Harmonisation A8 (lot 0 T6) : POST final + ecran avant la veille infinie
+      // — aligne sur msp qui POSTe avant la veille d'urgence (le serveur recoit
+      // l'etat batterie PontDiv bas qui justifie la veille).
+      //
+      // T6.2 (adoption n3_app) : la veille infinie devient une SORTIE ANTICIPEE
+      // du cycle a callbacks. On ne fait plus le bloc « POST + ecran DODO +
+      // veille GPIO » inline ici : on pose le drapeau et on rend la main. Le
+      // callback SENSE le traduit en ctx.requestSleepNow (le sequenceur saute
+      // directement a SLEEP) et le callback enterSleep execute le bloc emergency
+      // a l'identique. Le `return` reproduit EXACTEMENT l'abandon du reste
+      // d'automatismes() par l'ancien n3SleepStart() (qui ne rendait jamais la
+      // main) : les branches d'arrosage ci-dessous ne s'executaient pas et ne
+      // s'executent toujours pas. Aucun changement observable (memes operations,
+      // meme ordre : rien ne s'intercale entre ce point et enterSleep).
+      n3ppVeilleInfinieRequested = true;
+      return;
     } else {
       Serial.println("[SLEEP][TRACE] veille infinie DESACTIVEE (cle 112=0), batterie basse -> sommeil timer normal");
     }
@@ -357,21 +359,23 @@ void sommeil() {
 }
 
 // Fonction pour obtenir la raison du réveil de l'ESP32
+// T1.3 (chantier shared) : logs + chargement NVS délégués à la fonction
+// partagée n3PrintWakeupReason (n3_time). loadNvsOnTimerWake=false : au réveil
+// TIMER on NE recharge PAS la NVS (comme avant) — l'horloge RTC déjà valide ne
+// doit pas être écrasée par un epoch NVS potentiellement périmé (dérive
+// régressive). Libellés EN strictement identiques à l'ancien corps local.
 void print_wakeup_reason() {
-  esp_sleep_wakeup_cause_t wakeup_reason;
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-
-  switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Wakeup caused by external signal using RTC_IO"); break;
-    case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER: Serial.println("Wakeup caused by timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
-    default:
-      Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
-      // Restauration via n3_time (clé epoch unique, avec migration anciennes clés).
-      n3TimeLoadFromFlash(preferences, rtc);
-      n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
-      break;
+  const esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  n3PrintWakeupReason(preferences, rtc, /*loadNvsOnTimerWake=*/false);
+  // L'ancien corps ne resynchronisait les 6 globals (depuis le RTC chargé) qu'au
+  // cas `default` (boot hors deep sleep), après le chargement NVS. La fonction
+  // partagée ne fait pas ce resync : on le reproduit ici, au même cas et dans le
+  // même ordre, pour une parité stricte (aucun changement observable).
+  if (wakeup_reason != ESP_SLEEP_WAKEUP_EXT0 &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_EXT1 &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_TIMER &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_TOUCHPAD &&
+      wakeup_reason != ESP_SLEEP_WAKEUP_ULP) {
+    n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
   }
 }

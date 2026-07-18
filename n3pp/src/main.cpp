@@ -18,6 +18,7 @@
 #include "n3_ota_ui.h"
 #include "n3_display.h"
 #include "n3_sleep.h"
+#include "n3_app.h"   // T6.2 : squelette de cycle deep-sleep a callbacks (n3AppRun)
 
 // ============================================================
 // OTA periodique (toutes les 2 h, cumul RTC du deep sleep)
@@ -144,14 +145,58 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, savedBrownOutReg);
 }
 
-void loop() {
-  static bool ntpConfigured = false;
+// ============================================================
+// T6.2 (chantier shared) : adoption du squelette n3_app (n3AppRun).
+//
+// Le cycle de reveil, jusqu'ici lineaire dans loop(), est exprime comme des
+// callbacks (N3AppConfig), executes par n3AppRun() dans l'ordre canonique
+// WAKE -> WIFI -> CLOCK -> REMOTE_CFG -> OTA -> SENSE -> PAYLOAD -> AUTOMATION
+// -> REPORTS -> SLEEP. Chaque callback est une FINE ENVELOPPE du code EXISTANT,
+// deplace VERBATIM et appele au meme instant relatif : aucun changement
+// observable (memes octets POST, memes logs, meme timing, memes conditions).
+//
+// Mapping n3pp -> slots. Comme msp POSTe APRES son actionneur (le tracker), n3pp
+// POSTe (bloc periodique) APRES automatismes() : on rassemble donc automatismes()
+// dans le callback SENSE (comme msp met Light_val dans SENSE) et on laisse le
+// slot AUTOMATION vide, pour que le POST periodique (PAYLOAD) reste bien apres
+// automatismes() sans reordonner.
+//   onWake              = nullptr
+//   connectWifi (WIFI)  = digitalWrite(RELAIS) + reconnexion WiFi
+//                         (HeureSansWifi en echec = dans Wificonnect, piege A6)
+//   syncClock (CLOCK)   = configTime (1x/reveil) + affichage heure
+//   applyRemoteConfig   = etatRelais=1 + variablestoesp() + front reset (110)
+//   isOtaDue/otaCheck   = nullptr (aucun check OTA periodique dans loop() ;
+//                         n3OtaUiMaybePeriodicCheck reste dans setup(), inchange)
+//   readSensors (SENSE) = alerte pompe (POST latche) + lectureCapteurs/batterie/
+//                         affichageOLED + automatismes (arrosage + alertes)
+//   buildAndSendPayload = etatRelais=1 + POST periodique + EnregistrementHeureFlash
+//   runAutomation       = nullptr (automatismes deja dans SENSE)
+//   sendReports (REPORTS)= comptage temps ecoule + OTA/rapport reseau + cooldown
+//                         arrosage + heartbeat
+//   enterSleep (SLEEP)  = restart (reset distant) / veille infinie batterie /
+//                         sommeil() normal
+//
+// Reset distant : l'ancien ESP.restart() inline devient une sortie anticipee
+// (ctx.requestRestart) honoree par enterSleep ; le `return` apres l'avoir pose
+// reproduit EXACTEMENT l'abandon du reste par ESP.restart() (s_lastResetModeState
+// RTC non mis a jour sur le chemin restart, comme avant).
+// Veille batterie mid-cycle : automatismes() (dans SENSE) pose
+// n3ppVeilleInfinieRequested ; le callback SENSE le traduit en ctx.requestSleepNow
+// (le sequenceur saute a SLEEP, sautant PAYLOAD/AUTOMATION/REPORTS comme avant),
+// et enterSleep execute le bloc emergency (POST + ecran DODO + veille GPIO) a
+// l'identique.
+// ============================================================
 
+static void n3ppCbConnectWifi(N3AppContext&) {
   digitalWrite(RELAIS, 1);
 
   if (WiFi.status() != WL_CONNECTED) {
     Wificonnect();
   }
+}
+
+static void n3ppCbSyncClock(N3AppContext&) {
+  static bool ntpConfigured = false;
 
   // configTime n'est utile qu'une fois par reveil WiFi.
   if (WiFi.status() == WL_CONNECTED && !ntpConfigured) {
@@ -161,7 +206,9 @@ void loop() {
   }
 
   Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
+}
 
+static void n3ppCbApplyRemoteConfig(N3AppContext& ctx) {
   etatRelais = 1;
   Serial.println("[SERVER][GET] Poll configuration distante");
   variablestoesp();
@@ -178,11 +225,18 @@ void loop() {
     Serial.println("[REMOTE] Reset distant demande (front montant)");
     if (!n3OtaUiCheckNow(s_otaUiContext)) {
       Serial.println("[REMOTE][OTA] Aucune MAJ OTA dispo, reset direct");
-      ESP.restart();
+      // T6.2 : ex-ESP.restart() inline -> sortie anticipee (enterSleep restart).
+      // Le `return` reproduit l'abandon du reste par ESP.restart() :
+      // s_lastResetModeState (RTC) n'est PAS mis a jour sur le chemin restart,
+      // exactement comme avant (le reboot sautait la ligne ci-dessous).
+      ctx.requestRestart = true;
+      return;
     }
   }
   s_lastResetModeState = resetRequested;
+}
 
+static void n3ppCbReadSensors(N3AppContext& ctx) {
   // Alerte si la pompe est active (etat envoye au serveur). Latch emailPompeSent :
   // un seul mail Critical + POST sur la transition vers "pompe active" ; sinon,
   // pompe maintenue ON par le serveur -> flood de mails/POST a chaque reveil.
@@ -215,6 +269,16 @@ void loop() {
   affichageOLED();
   automatismes();
 
+  // Veille infinie batterie (mid-cycle) : sortie anticipee -> enterSleep.
+  // automatismes() a pose le drapeau et abandonne la suite (branches arrosage) :
+  // on saute directement a SLEEP (PAYLOAD/AUTOMATION/REPORTS non executes), comme
+  // l'ancien n3SleepStart() inline le faisait.
+  if (n3ppVeilleInfinieRequested) {
+    ctx.requestSleepNow = true;
+  }
+}
+
+static void n3ppCbBuildAndSendPayload(N3AppContext&) {
   etatRelais = 1;
 
   // Envoi periodique AVANT le deep sleep (sommeil() peut ne pas rendre la main).
@@ -237,7 +301,9 @@ void loop() {
     }
     Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));
   }
+}
 
+static void n3ppCbSendReports(N3AppContext&) {
   // Comptabilise le temps ECOULE pour le cooldown arrosage, l'OTA et le rapport reseau.
   // En mode deep sleep (WakeUp==0), loop() ne tourne qu'une fois par reveil puis dort
   // FreqWakeUp secondes : on comptabilise donc FreqWakeUp. En mode eveille (WakeUp==1),
@@ -260,5 +326,63 @@ void loop() {
   n3ppMaybeSendNetworkReportEmail();
   arrosageAutoAccumulateCooldown(elapsedForTimers);
   sendHeartbeat();
+}
+
+static void n3ppCbEnterSleep(N3AppContext& ctx) {
+  // Reset distant (sortie anticipee) : restart ici, sans passer par sommeil()
+  // (aucun log [SLEEP][TRACE]), comme l'ancien ESP.restart() inline.
+  if (ctx.requestRestart) {
+    ESP.restart();
+    return;
+  }
+
+  // Veille infinie batterie (sortie anticipee posee dans automatismes()) : bloc
+  // emergency rapatrie VERBATIM depuis automatismes() — memes operations, meme
+  // ordre (POST final latche + ecran DODO + veille GPIO uniquement). Rien ne
+  // s'intercale entre le point de detection (automatismes) et ici (le sequenceur
+  // saute droit a SLEEP), donc datatobdd() envoie les memes octets.
+  if (n3ppVeilleInfinieRequested) {
+    // Harmonisation A8 : POST final + ecran avant la veille infinie (aligne msp,
+    // le serveur recoit l'etat batterie PontDiv bas qui justifie la veille).
+    datatobdd();
+    if (displayOk) {
+      display.clearDisplay();
+      delay(100);
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println(" ");
+      display.println("   DODO");
+      display.display();
+    }
+    delay(1000);
+    EnregistrementHeureFlash();
+    N3SleepConfig emergencySleep = { N3_WAKEUP_GPIO, HIGH, 0 };
+    n3SleepConfigure(emergencySleep);
+    Serial.println("[SLEEP][TRACE] start deep sleep mode=emergency timer=0s (wake GPIO uniquement)");
+    n3SleepStart();
+    return;
+  }
+
+  // Sommeil timer normal (gere seul le cas WakeUp=1 = pas de deep sleep).
   sommeil();
+}
+
+// Un callback (fine enveloppe) par etape du cycle ; nullptr = etape inerte.
+static const N3AppConfig kN3ppAppConfig = {
+    nullptr,                       // onWake
+    n3ppCbConnectWifi,             // connectWifi (WIFI)
+    n3ppCbSyncClock,               // syncClock (CLOCK)
+    n3ppCbApplyRemoteConfig,       // applyRemoteConfig (REMOTE_CFG)
+    nullptr,                       // isOtaDue (aucun check OTA periodique dans loop)
+    nullptr,                       // otaCheck (OTA)
+    n3ppCbReadSensors,             // readSensorsOrCapture (SENSE)
+    n3ppCbBuildAndSendPayload,     // buildAndSendPayload (PAYLOAD)
+    nullptr,                       // runAutomation (automatismes deja dans SENSE)
+    n3ppCbSendReports,             // sendReports (REPORTS)
+    n3ppCbEnterSleep               // enterSleep (SLEEP)
+};
+
+void loop() {
+  N3AppContext ctx = {};
+  n3AppRun(kN3ppAppConfig, ctx);
 }

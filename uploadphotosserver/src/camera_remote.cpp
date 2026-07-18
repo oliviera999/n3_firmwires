@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "credentials.h"
+#include "n3_log.h"
 #include "n3_data.h"
 
 static bool readBoolValue(JsonVariantConst value, bool defaultValue) {
@@ -44,15 +45,15 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
   outConfig.sleepTimeSeconds = TIME_TO_SLEEP;
   outConfig.resetMode = false;
 
-  Serial.printf("[REMOTE][GET] URL=%s\n", REMOTE_OUTPUTS_STATE_URL);
+  N3_LOGI("[REMOTE][GET] URL=%s", REMOTE_OUTPUTS_STATE_URL);
   String payload = n3DataGet(REMOTE_OUTPUTS_STATE_URL, outHttpCode, API_KEY);
   if (outHttpCode) {
-    Serial.printf("[REMOTE][GET] HTTP=%u\n", *outHttpCode);
+    N3_LOGI("[REMOTE][GET] HTTP=%u", *outHttpCode);
   }
-#if N3_LOG_VERBOSE
-  Serial.println("[REMOTE][GET][BODY] " + payload);
+#if CAM_DIAG_VERBOSE
+  N3_LOGD("[REMOTE][GET][BODY] %s", payload.c_str());
 #else
-  Serial.printf("[REMOTE][GET][BODY] len=%u\n", static_cast<unsigned int>(payload.length()));
+  N3_LOGD("[REMOTE][GET][BODY] len=%u", static_cast<unsigned int>(payload.length()));
 #endif
   if (outHttpCode && *outHttpCode != 200U) {
     return false;
@@ -64,7 +65,7 @@ bool cameraRemoteFetchConfig(CameraRemoteConfig& outConfig, unsigned int* outHtt
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
-    Serial.printf("[REMOTE] JSON invalide: %s\n", err.c_str());
+    N3_LOGW("[REMOTE] JSON invalide: %s", err.c_str());
     return false;
   }
 
@@ -138,11 +139,11 @@ int cameraRemotePostFirmwareVersion(const char* targetName) {
       "api_key=<masque>&version=" + String(FIRMWARE_VERSION) +
       "&board=" + String(REMOTE_BOARD_ID) +
       "&sensor=" + String(targetName ? targetName : "cam");
-  Serial.printf("[REMOTE][POST] URL=%s\n", REMOTE_VERSION_POST_URL);
-  Serial.println("[REMOTE][POST][PAYLOAD] " + postPreview);
+  N3_LOGI("[REMOTE][POST] URL=%s", REMOTE_VERSION_POST_URL);
+  N3_LOGD("[REMOTE][POST][PAYLOAD] %s", postPreview.c_str());
 
   int code = n3DataPost(cfg);
-  Serial.printf("[REMOTE][POST] HTTP=%d\n", code);
+  N3_LOGI("[REMOTE][POST] HTTP=%d", code);
   return code;
 }
 

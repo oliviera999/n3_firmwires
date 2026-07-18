@@ -256,6 +256,16 @@ commun définitif se décidera à la conception de `n3_app`),
 ~~A10 (clamp 102)~~ ✅ (msp 2.61 : clé 102 bornée 0..4095 comme n3pp). Chaque
 harmonisation = changement de comportement assumé → tranche dédiée + VERSION.md.
 
+> ✅ **T6.0 (additive) livrée** : `n3_app_seq.h` (`N3AppContext` + `n3AppNextStep`
+> pur, `stdint`-only, sans consommateur ni include Arduino/ESP) + `test_app` + CI.
+> ✅ **T6.1 (additive) livrée** : `n3_app.h` — orchestrateur `n3AppRun(cfg, ctx)`
+> (dispatch pur des callbacks `N3AppConfig`, un par étape, `nullptr` toléré ;
+> restart/sommeil délégués au callback `enterSleep` → **aucune** dépendance
+> Arduino/ESP, testé en natif avec le reste de `test_app`). Toujours sans
+> consommateur. Suite = **T6.2** adoption firmware par firmware (commencer par
+> uploadphotosserver : cycle le plus linéaire, pas d'automation ni de sommeil
+> mid-cycle, déjà gros consommateur de `shared/`).
+
 ## 6. Definition of done (par tranche)
 
 - [ ] CI verte (natifs + TOUS les builds matriciels) sur la PR.

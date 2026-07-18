@@ -101,7 +101,8 @@ bool n3TimeHasPlausibleEpoch(void) {
   return static_cast<unsigned long>(time(nullptr)) > N3_TIME_MIN_VALID_EPOCH;
 }
 
-void n3PrintWakeupReason(Preferences& prefs, ESP32Time& rtc) {
+void n3PrintWakeupReason(Preferences& prefs, ESP32Time& rtc,
+                         bool loadNvsOnTimerWake) {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   switch (cause) {
     case ESP_SLEEP_WAKEUP_EXT0:
@@ -112,7 +113,12 @@ void n3PrintWakeupReason(Preferences& prefs, ESP32Time& rtc) {
       break;
     case ESP_SLEEP_WAKEUP_TIMER:
       Serial.println("Wakeup caused by timer");
-      n3TimeLoadFromFlash(prefs, rtc);
+      // Ne recharger l'epoch NVS au réveil TIMER que si l'appelant l'exige :
+      // pour n3pp/msp (loadNvsOnTimerWake=false) l'horloge RTC déjà valide ne
+      // doit pas être écrasée par un epoch potentiellement périmé (T1.3).
+      if (loadNvsOnTimerWake) {
+        n3TimeLoadFromFlash(prefs, rtc);
+      }
       break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD:
       Serial.println("Wakeup caused by touchpad");

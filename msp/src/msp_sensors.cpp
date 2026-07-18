@@ -9,6 +9,7 @@
 #include "n3_battery.h"
 #include "n3_analog_sensors.h"
 #include "n3_tracker.h"
+#include "sensor_failure_manager.h"  // machine d'état de détection de panne (T2)
 
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
 static const int LIGHT_SCAN_MIN_THRESHOLD = 50;
@@ -345,7 +346,74 @@ static const float MSP_DHT_HUM_FALLBACK = 50.0f;
 // flottante (broche non cablee) d'une vraie absence d'eau via la valeur sentinelle 1.
 static const int MSP_PLUIE_DISCONNECT = 1;
 
+// --- Détection de panne DURABLE du DS18B20 sol (adoption T2, chantier shared) --
+// AMELIORATION (changement de comportement assume, decision utilisateur) : au lieu
+// d'un repli constant a chaque lecture invalide (25C historique -> 20C v2.42), on
+// adopte la machine d'état SensorFailureManager (shared/n3_analog_sensors) qui
+// DESACTIVE le capteur apres N echecs consecutifs (= debranchement durable) et le
+// re-teste periodiquement. Le repli VALEUR reste la logique float existante
+// (isnan + bornes + derniere valeur valide) : N3SensorFallback (uint16, 0=invalide)
+// ne convient PAS a une temperature (negatifs/0 legitimes).
+//
+// PIEGE DEEP SLEEP : msp deep-sleepe entre chaque cycle -> setup() recree le
+// manager et les compteurs RAM repartent a 0 ; sans persistance la desactivation
+// ne se declencherait JAMAIS. On persiste donc l'état du manager en RTC_DATA_ATTR
+// (POD SensorFailureState) — restauré au reveil, sauvegardé en fin de lecture — et
+// on cadence la reactivation PAR CYCLES DE REVEIL (shouldTestReactivationCyclic),
+// pas par millis() qui repart a 0 a chaque reveil. Un test de reactivation est donc
+// tente a chaque reveil tant que le capteur est desactive (les reveils sont deja
+// espaces par FreqWakeUp), et 3 succes consecutifs le reactivent.
+//
+// Le firmware POSSEDE le stockage RTC (la lib reste sans état statique). Le magic
+// protege contre un cold boot (RTC non initialise) et un changement de layout du
+// POD apres une OTA : en cas d'incoherence, on repart d'un état neutre.
+static const uint8_t  MSP_DS18B20_MAX_FAILURES = 10;  // ~10 reveils d'echec = debranche
+static const uint8_t  MSP_DS18B20_REACT_SUCCESSES = 3;
+static const uint16_t MSP_FAIL_PERSIST_MAGIC = 0x5301;  // 'S3' + version layout
+
+struct MspFailurePersist {
+  uint16_t magic;
+  SensorFailureState ds18b20Sol;
+  float lastValidTempSol;  // dernier bon relevé (repli VALEUR quand désactivé)
+};
+RTC_DATA_ATTR static MspFailurePersist s_failurePersist;
+
+// Cadence par cycles : 0 => intervalle millis() inutilise (voie cyclique).
+static SensorFailureManager s_ds18b20SolFailure("DS18B20sol", MSP_DS18B20_MAX_FAILURES, 0,
+                                                MSP_DS18B20_REACT_SUCCESSES);
+
+// Restaure l'état des managers depuis le RTC au reveil (une fois par cycle),
+// avance le compteur de cycles de reveil, et gere le cold boot / OTA via le magic.
+static void mspRestoreFailureState() {
+  if (s_failurePersist.magic != MSP_FAIL_PERSIST_MAGIC) {
+    s_failurePersist.magic = MSP_FAIL_PERSIST_MAGIC;
+    s_failurePersist.ds18b20Sol = SensorFailureState{};
+    s_failurePersist.lastValidTempSol = NAN;
+  }
+  s_ds18b20SolFailure.restoreState(s_failurePersist.ds18b20Sol);
+  // Un reveil de plus ecoule depuis une eventuelle desactivation (no-op si actif).
+  s_ds18b20SolFailure.noteWakeCycle();
+}
+
+// Sauvegarde l'état des managers en RTC avant le sommeil. Appelee en fin de
+// lecture : robuste aux multiples points de sortie de sommeil() (urgence/normal).
+static void mspSaveFailureState() {
+  s_failurePersist.ds18b20Sol = s_ds18b20SolFailure.serializeState();
+}
+
+// Repli VALEUR pour le DS18B20 sol : derniere valeur valide (RTC) sinon defaut.
+static float mspTempSolFallback() {
+  const float last = s_failurePersist.lastValidTempSol;
+  if (!isnan(last) && last >= MSP_TEMP_MIN && last <= MSP_TEMP_MAX) {
+    return last;
+  }
+  return MSP_TEMP_FALLBACK;
+}
+
 void LectureCapteurs() {
+  // Restaure la machine d'état de détection de panne depuis le RTC (deep sleep).
+  mspRestoreFailureState();
+
   // Humidite du sol (ADC filtre)
   N3Analog::AnalogResult rHum = N3Analog::readFilteredAnalog(cfgHumidSol);
   HumidSol = rHum.valid ? rHum.value : 1;
@@ -400,24 +468,60 @@ void LectureCapteurs() {
     humidAirExt = MSP_DHT_HUM_FALLBACK;
   }
 
-  // Temperature sol (DS18B20). Avant v2.42 : magique 25.00 traite comme erreur.
-  // Maintenant : test explicite DEVICE_DISCONNECTED_C, retry une fois, fallback 20C.
-  sensors.requestTemperatures();
-  temperatureSol = sensors.getTempCByIndex(0);
-  if (temperatureSol == DEVICE_DISCONNECTED_C || isnan(temperatureSol)) {
-    Serial.println("[DS18B20][WARN] Lecture invalide, retry...");
-    delay(200);
+  // Temperature sol (DS18B20) — machine d'état de détection de panne (T2).
+  // Avant v2.42 : magique 25.00 traite comme erreur. v2.42 : test explicite
+  // DEVICE_DISCONNECTED_C, retry une fois, fallback constant. v2.64 : la
+  // detection de panne DURABLE est deleguee au SensorFailureManager persiste RTC.
+  if (s_ds18b20SolFailure.isDisabled()) {
+    // Capteur juge debranche : on saute la lecture normale et on teste la
+    // reactivation a chaque reveil (cadence par cycles, pas millis).
+    bool reactivated = false;
+    if (s_ds18b20SolFailure.shouldTestReactivationCyclic()) {
+      sensors.requestTemperatures();
+      float testTemp = sensors.getTempCByIndex(0);
+      if (testTemp != DEVICE_DISCONNECTED_C && !isnan(testTemp) &&
+          testTemp >= MSP_TEMP_MIN && testTemp <= MSP_TEMP_MAX) {
+        if (s_ds18b20SolFailure.recordReactivationTestSuccess()) {
+          temperatureSol = testTemp;
+          s_failurePersist.lastValidTempSol = testTemp;
+          Serial.printf("[DS18B20] TempSol=%.2fC (capteur reactive)\n", temperatureSol);
+          reactivated = true;
+        }
+      } else {
+        s_ds18b20SolFailure.recordReactivationTestFailure();
+      }
+    }
+    if (!reactivated) {
+      temperatureSol = mspTempSolFallback();
+      Serial.printf("[DS18B20][WARN] capteur desactive (debranche?), fallback %.1fC\n",
+                    temperatureSol);
+    }
+  } else {
     sensors.requestTemperatures();
     temperatureSol = sensors.getTempCByIndex(0);
+    if (temperatureSol == DEVICE_DISCONNECTED_C || isnan(temperatureSol)) {
+      Serial.println("[DS18B20][WARN] Lecture invalide, retry...");
+      delay(200);
+      sensors.requestTemperatures();
+      temperatureSol = sensors.getTempCByIndex(0);
+    }
+    if (temperatureSol == DEVICE_DISCONNECTED_C || isnan(temperatureSol) ||
+        temperatureSol < MSP_TEMP_MIN || temperatureSol > MSP_TEMP_MAX) {
+      // Echec de ce reveil : le manager comptabilise (desactive apres N reveils).
+      s_ds18b20SolFailure.recordFailure();
+      temperatureSol = mspTempSolFallback();
+      Serial.printf("[DS18B20][WARN] Temperature sol invalide, fallback %.1fC\n",
+                    temperatureSol);
+    } else {
+      s_ds18b20SolFailure.recordSuccess();
+      s_failurePersist.lastValidTempSol = temperatureSol;
+      Serial.printf("[DS18B20] TempSol=%.2fC\n", temperatureSol);
+    }
   }
-  if (temperatureSol == DEVICE_DISCONNECTED_C || isnan(temperatureSol) ||
-      temperatureSol < MSP_TEMP_MIN || temperatureSol > MSP_TEMP_MAX) {
-    Serial.printf("[DS18B20][WARN] Temperature sol invalide (%.2fC), fallback %.1fC\n",
-                  temperatureSol, MSP_TEMP_FALLBACK);
-    temperatureSol = MSP_TEMP_FALLBACK;
-  } else {
-    Serial.printf("[DS18B20] TempEau=%.2fC\n", temperatureSol);
-  }
+
+  // Persiste l'état de détection de panne en RTC avant le sommeil (robuste aux
+  // multiples points de sortie de sommeil() : urgence batterie / normal).
+  mspSaveFailureState();
 }
 
 void batterie() {

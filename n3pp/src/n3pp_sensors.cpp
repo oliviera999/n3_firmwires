@@ -2,6 +2,7 @@
 #include "n3pp_globals.h"
 #include "n3_battery.h"
 #include "n3_analog_sensors.h"
+#include "sensor_failure_manager.h"  // machine d'état de détection de panne (T2)
 
 static const uint16_t DHT_READ_DELAY_MS = 150;
 static const uint16_t BATTERY_OLED_DELAY_MS = 500;
@@ -38,38 +39,115 @@ static const N3Analog::AnalogConfig cfgLumi = {
   .minValid = 0, .maxValid = 4095, .fallback = 1, .emaAlpha = 0.0f
 };
 
-// Lit un capteur d'humidite sol et detecte le cas "debranche" (lecture
-// tres basse ou saturee a la masse / au rail).
-static int readSoilSensor(uint8_t pin, const char* label) {
+// --- Détection de panne DURABLE des capteurs d'humidité sol (adoption T2) ------
+// AMELIORATION (changement de comportement assume, decision utilisateur) : la
+// detection per-lecture "debranche" (sentinelle basse/haute) est conservee, mais
+// on ajoute la machine d'état SensorFailureManager (shared/n3_analog_sensors) qui
+// DESACTIVE durablement un capteur sol apres N echecs consecutifs (debranchement
+// avere) et le re-teste periodiquement. Un capteur desactive renvoie toujours le
+// fallback=1 (exclu de HumidMoy comme aujourd'hui -> ARROSAGE INCHANGE), mais on
+// evite le spam de logs et on obtient un vrai état de panne. Les LDR/luminosite et
+// la batterie (PontDiv) sont volontairement EXCLUS (piege A7 + faux positifs).
+//
+// PIEGE DEEP SLEEP : n3pp deep-sleepe entre chaque cycle -> setup() recree les
+// managers et la RAM repart a 0 ; sans persistance la desactivation ne se
+// declencherait JAMAIS. On persiste donc l'état des 4 managers en RTC_DATA_ATTR
+// (POD SensorFailureState) et on cadence la reactivation PAR CYCLES DE REVEIL
+// (shouldTestReactivationCyclic), pas par millis() qui repart a 0 a chaque reveil.
+// Le firmware POSSEDE le stockage RTC ; le magic protege le cold boot / OTA.
+static const uint8_t  N3PP_SOIL_MAX_FAILURES = 10;  // ~10 reveils d'echec = debranche
+static const uint8_t  N3PP_SOIL_REACT_SUCCESSES = 3;
+static const uint16_t N3PP_FAIL_PERSIST_MAGIC = 0x4E01;  // 'N' + version layout
+
+struct N3ppFailurePersist {
+  uint16_t magic;
+  SensorFailureState soil[4];
+};
+RTC_DATA_ATTR static N3ppFailurePersist s_failurePersist;
+
+// Cadence par cycles : 0 => intervalle millis() inutilise (voie cyclique).
+static SensorFailureManager s_soilFailure[4] = {
+  SensorFailureManager("soil1", N3PP_SOIL_MAX_FAILURES, 0, N3PP_SOIL_REACT_SUCCESSES),
+  SensorFailureManager("soil2", N3PP_SOIL_MAX_FAILURES, 0, N3PP_SOIL_REACT_SUCCESSES),
+  SensorFailureManager("soil3", N3PP_SOIL_MAX_FAILURES, 0, N3PP_SOIL_REACT_SUCCESSES),
+  SensorFailureManager("soil4", N3PP_SOIL_MAX_FAILURES, 0, N3PP_SOIL_REACT_SUCCESSES),
+};
+
+static void n3ppRestoreFailureState() {
+  if (s_failurePersist.magic != N3PP_FAIL_PERSIST_MAGIC) {
+    s_failurePersist.magic = N3PP_FAIL_PERSIST_MAGIC;
+    for (int i = 0; i < 4; ++i) s_failurePersist.soil[i] = SensorFailureState{};
+  }
+  for (int i = 0; i < 4; ++i) {
+    s_soilFailure[i].restoreState(s_failurePersist.soil[i]);
+    s_soilFailure[i].noteWakeCycle();  // un reveil de plus (no-op si actif)
+  }
+}
+
+static void n3ppSaveFailureState() {
+  for (int i = 0; i < 4; ++i) {
+    s_failurePersist.soil[i] = s_soilFailure[i].serializeState();
+  }
+}
+
+// Teste si une lecture ADC sol est exploitable (ni ligne masse ni rail flottant).
+static inline bool n3ppSoilReadingValid(const N3Analog::AnalogResult& r) {
+  return r.valid && r.value > N3PP_ANALOG_DISCONNECT_LOW &&
+         r.value < N3PP_ANALOG_DISCONNECT_HIGH;
+}
+
+// Lit un capteur d'humidite sol avec detection de panne durable (T2). Un capteur
+// desactive renvoie le fallback sans lecture, sauf lors d'un test de reactivation
+// cadence par cycles de reveil.
+static int readSoilSensor(uint8_t pin, const char* label, SensorFailureManager& mgr) {
   N3Analog::AnalogConfig c = cfgHumid;
   c.pin = pin;
-  N3Analog::AnalogResult r = N3Analog::readFilteredAnalog(c);
-  if (!r.valid) {
-    Serial.printf("[SOIL][WARN] %s lecture invalide, fallback=%u\n", label, N3PP_ANALOG_FALLBACK);
+
+  if (mgr.isDisabled()) {
+    if (mgr.shouldTestReactivationCyclic()) {
+      N3Analog::AnalogResult r = N3Analog::readFilteredAnalog(c);
+      if (n3ppSoilReadingValid(r)) {
+        if (mgr.recordReactivationTestSuccess()) {
+          Serial.printf("[SOIL] %s reactive (raw=%u)\n", label, r.value);
+          return r.value;
+        }
+      } else {
+        mgr.recordReactivationTestFailure();
+      }
+    }
+    Serial.printf("[SOIL][WARN] %s desactive (debranche?), fallback=%u\n",
+                  label, N3PP_ANALOG_FALLBACK);
     return N3PP_ANALOG_FALLBACK;
   }
-  if (r.value <= N3PP_ANALOG_DISCONNECT_LOW || r.value >= N3PP_ANALOG_DISCONNECT_HIGH) {
-    Serial.printf("[SOIL][WARN] %s probable debranchement (raw=%u), fallback=%u\n",
+
+  N3Analog::AnalogResult r = N3Analog::readFilteredAnalog(c);
+  if (!n3ppSoilReadingValid(r)) {
+    mgr.recordFailure();
+    Serial.printf("[SOIL][WARN] %s lecture invalide/debranchement (raw=%u), fallback=%u\n",
                   label, r.value, N3PP_ANALOG_FALLBACK);
     return N3PP_ANALOG_FALLBACK;
   }
+  mgr.recordSuccess();
   return r.value;
 }
 
 void lectureCapteurs() {
-  Humid1 = readSoilSensor(humidite1, "humidite1");
+  // Restaure la machine d'état de détection de panne depuis le RTC (deep sleep).
+  n3ppRestoreFailureState();
+
+  Humid1 = readSoilSensor(humidite1, "humidite1", s_soilFailure[0]);
   Serial.print("Capteur humidite 1 : ");
   Serial.println(Humid1);
 
-  Humid2 = readSoilSensor(humidite2, "humidite2");
+  Humid2 = readSoilSensor(humidite2, "humidite2", s_soilFailure[1]);
   Serial.print("Capteur humidite 2 : ");
   Serial.println(Humid2);
 
-  Humid3 = readSoilSensor(humidite3, "humidite3");
+  Humid3 = readSoilSensor(humidite3, "humidite3", s_soilFailure[2]);
   Serial.print("Capteur humidite 3 : ");
   Serial.println(Humid3);
 
-  Humid4 = readSoilSensor(humidite4, "humidite4");
+  Humid4 = readSoilSensor(humidite4, "humidite4", s_soilFailure[3]);
   Serial.print("Capteur humidite 4 : ");
   Serial.println(Humid4);
 
@@ -135,6 +213,10 @@ void lectureCapteurs() {
   } else {
     photocellReading = rLum.value;
   }
+
+  // Persiste l'état de détection de panne des capteurs sol en RTC avant le
+  // sommeil (robuste aux multiples points de sortie de sommeil()).
+  n3ppSaveFailureState();
 }
 
 void batterie() {

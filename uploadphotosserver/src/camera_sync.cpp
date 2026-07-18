@@ -20,6 +20,7 @@
 #endif
 
 #include "n3_data.h"
+#include "n3_log.h"
 #include "n3_store_forward.h"  // n3SfDrain (boucle de drain mutualisee, v2.66)
 
 namespace {
@@ -228,17 +229,17 @@ N3SfSend drainSendOne(const N3SfItem& item, void* rawCtx) {
 
   if (syncUploadIsSuccess(code)) {
     ctx.bytes += bytes;
-    Serial.printf("[SYNC] #%u (%s) envoyee HTTP=%d (%u bytes)\n",
-                  static_cast<unsigned int>(e->n), e->path, code,
-                  static_cast<unsigned int>(bytes));
+    N3_LOGI("[SYNC] #%u (%s) envoyee HTTP=%d (%u bytes)",
+            static_cast<unsigned int>(e->n), e->path, code,
+            static_cast<unsigned int>(bytes));
     return N3SfSend::Ok;
   }
   if (code == 429) {
-    Serial.printf("[SYNC][WARN] #%u HTTP=429 rate-limit\n", static_cast<unsigned int>(e->n));
+    N3_LOGW("[SYNC] #%u HTTP=429 rate-limit", static_cast<unsigned int>(e->n));
     return N3SfSend::RateLimited;  // pause + retries bornés gérés par n3SfDrain
   }
-  Serial.printf("[SYNC][WARN] #%u echec HTTP=%d : arret du drain (reseau ?)\n",
-                static_cast<unsigned int>(e->n), code);
+  N3_LOGW("[SYNC] #%u echec HTTP=%d : arret du drain (reseau ?)",
+          static_cast<unsigned int>(e->n), code);
   return N3SfSend::NetworkError;   // arrêt du drain, reprise au prochain réveil
 }
 
@@ -247,7 +248,7 @@ uint32_t syncNowMs() { return static_cast<uint32_t>(millis()); }
 /* Attente injectée dans n3SfDrain : pacing rate-limit ET pauses 429 (le log
  * "pause rate-limit" couvre désormais les deux, contenu identique). */
 void syncSleepMs(uint32_t ms) {
-  Serial.printf("[SYNC] pause rate-limit %u ms\n", static_cast<unsigned int>(ms));
+  N3_LOGI("[SYNC] pause rate-limit %u ms", static_cast<unsigned int>(ms));
   delay(ms);
 }
 
@@ -303,7 +304,7 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   const uint32_t count = nvsGet(kKeyCount);
   const uint32_t cursor = nvsGet(kKeyCursor);
   if (count <= cursor) {
-    Serial.println("[SYNC] Aucun backlog a transferer.");
+    N3_LOGI("[SYNC] Aucun backlog a transferer.");
     return r;  // ran = false
   }
 
@@ -348,7 +349,7 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   if (pending == 0) {
     /* NVS annonce un backlog mais aucun fichier présent (carte changée/effacée) : on recale. */
     nvsSet(kKeyCursor, count);
-    Serial.println("[SYNC] Backlog NVS mais aucun fichier present; curseur recale.");
+    N3_LOGI("[SYNC] Backlog NVS mais aucun fichier present; curseur recale.");
     return r;
   }
 
@@ -360,11 +361,11 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   const int startCode = sessionStart(cfg, deviceSession, realBacklog, &sessionId);
   r.ran = true;
   r.sessionId = sessionId;
-  Serial.printf("[SYNC] start HTTP=%d session=%d backlog=%u pending=%u\n",
-                startCode, sessionId, static_cast<unsigned int>(realBacklog),
-                static_cast<unsigned int>(pending));
+  N3_LOGI("[SYNC] start HTTP=%d session=%d backlog=%u pending=%u",
+          startCode, sessionId, static_cast<unsigned int>(realBacklog),
+          static_cast<unsigned int>(pending));
   if (startCode != 200 || sessionId <= 0) {
-    Serial.println("[SYNC][WARN] Ouverture de session echouee, drain annule.");
+    N3_LOGW("[SYNC] Ouverture de session echouee, drain annule.");
     return r;
   }
 
@@ -400,9 +401,9 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   r.sent = dr.sent;
   r.failed = dr.failed;
   r.bytes = sendCtx.bytes;
-  Serial.printf("[SYNC] Drain : %u/%u photo(s) ce reveil (backlog reel=%u).\n",
-                static_cast<unsigned int>(dr.planned), static_cast<unsigned int>(pending),
-                static_cast<unsigned int>(realBacklog));
+  N3_LOGI("[SYNC] Drain : %u/%u photo(s) ce reveil (backlog reel=%u).",
+          static_cast<unsigned int>(dr.planned), static_cast<unsigned int>(pending),
+          static_cast<unsigned int>(realBacklog));
 
   /* A1 : `complete` = « aucun upload en échec ce réveil » (et non « backlog vidé »). On ne remonte
      donc `aborted` que sur une vraie perte réseau en cours de drain, pas sur un report normal au
@@ -412,10 +413,10 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   const uint32_t remaining = cameraSyncPendingCount();
   const bool final = (remaining == 0);
   const int finishCode = sessionFinish(cfg, sessionId, r.sent, r.failed, r.bytes, r.complete, final);
-  Serial.printf("[SYNC] finish HTTP=%d sent=%u failed=%u bytes=%u complete=%d final=%d restant=%u\n",
-                finishCode, static_cast<unsigned int>(r.sent), static_cast<unsigned int>(r.failed),
-                static_cast<unsigned int>(r.bytes), r.complete ? 1 : 0, final ? 1 : 0,
-                static_cast<unsigned int>(remaining));
+  N3_LOGI("[SYNC] finish HTTP=%d sent=%u failed=%u bytes=%u complete=%d final=%d restant=%u",
+          finishCode, static_cast<unsigned int>(r.sent), static_cast<unsigned int>(r.failed),
+          static_cast<unsigned int>(r.bytes), r.complete ? 1 : 0, final ? 1 : 0,
+          static_cast<unsigned int>(remaining));
 #else
   (void)cfg;
 #endif

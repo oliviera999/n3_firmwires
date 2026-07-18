@@ -15,13 +15,48 @@
 //
 // Dépendance : Arduino.h (millis(), Serial par défaut). Testable nativement
 // avec le mock Arduino (millis injectable).
+//
+// Persistance deep sleep (additif v1.2.0) : la cohorte n3pp/msp deep-sleepe
+// entre chaque lecture ; setup() recrée les objets et la RAM repart à 0, si
+// bien que les compteurs d'échecs ne franchissent jamais le seuil. Deux briques
+// additives (sans impact pour ffp5cs, qui ne les utilise pas) :
+//   * `SensorFailureState` (POD) + `serializeState()`/`restoreState()` : export/
+//     import de l'ÉTAT mutable uniquement, à stocker par le firmware en
+//     `RTC_DATA_ATTR` (la lib reste sans stockage statique).
+//   * cadence de réactivation PAR CYCLES DE RÉVEIL (`shouldTestReactivationCyclic`
+//     + `noteWakeCycle`) : `millis()` repart à 0 à chaque réveil et ne peut pas
+//     mesurer un intervalle à travers le sommeil ; les réveils étant déjà espacés
+//     par la durée de sommeil, on compte les réveils, pas les millisecondes. La
+//     voie `millis()` historique (`shouldTestReactivation`) reste INCHANGÉE pour
+//     ffp5cs (FreeRTOS, pas de deep sleep).
 // =============================================================================
 
 #include <Arduino.h>
+#include <stdint.h>
 
 #ifndef N3_SENSOR_LOG_PRINTF
 #define N3_SENSOR_LOG_PRINTF(fmt, ...) Serial.printf(fmt, ##__VA_ARGS__)
 #endif
+
+/**
+ * État mutable sérialisable d'un SensorFailureManager (POD trivialement copiable).
+ *
+ * Ne contient QUE l'état inter-lectures qui doit survivre à un reset de la RAM
+ * (deep sleep) — jamais la configuration (nom, seuils), fournie au constructeur.
+ * Le firmware qui a besoin de persistance possède le stockage (ex. un membre
+ * `RTC_DATA_ATTR` de type `SensorFailureState`) : la lib n'impose aucun mécanisme
+ * de persistance et ne détient aucun état statique. ffp5cs n'utilise pas ce POD.
+ *
+ * `cyclesSinceReactivationTest` compte les RÉVEILS écoulés depuis le dernier test
+ * de réactivation — utilisable à travers le deep sleep (contrairement à millis()).
+ */
+struct SensorFailureState {
+  uint8_t  consecutiveFailures = 0;
+  uint8_t  reactivationSuccesses = 0;
+  uint8_t  disabled = 0;                    // 0/1
+  uint8_t  disableLogged = 0;               // 0/1
+  uint16_t cyclesSinceReactivationTest = 0; // réveils depuis le dernier test
+};
 
 /**
  * Gestionnaire générique de défaillances de capteurs.
@@ -96,9 +131,41 @@ public:
     return (now - _lastReactivationTestMs) >= _reactivationIntervalMs;
   }
 
+  /**
+   * Cadence de réactivation PAR CYCLES DE RÉVEIL (indépendante de millis()).
+   *
+   * À utiliser par la cohorte deep-sleep : `millis()` repart à 0 à chaque réveil
+   * donc `shouldTestReactivation()` est inexploitable à travers le sommeil. Les
+   * réveils étant déjà espacés par la durée de sommeil, on teste la réactivation
+   * tous les `everyNWakes` réveils (défaut 1 = à chaque réveil tant que désactivé ;
+   * le seuil de succès consécutifs espace ensuite la réactivation effective).
+   * @param everyNWakes intervalle en nombre de réveils entre deux tests.
+   */
+  bool shouldTestReactivationCyclic(uint16_t everyNWakes = 1) const {
+    if (!_disabled) {
+      return false;
+    }
+    if (everyNWakes == 0) {
+      everyNWakes = 1;
+    }
+    return _cyclesSinceReactivationTest >= everyNWakes;
+  }
+
+  /**
+   * Signaler qu'un réveil s'est écoulé (à appeler une fois par réveil au réveil,
+   * après restoreState). N'a d'effet que si le capteur est désactivé : avance le
+   * compteur de cycles utilisé par `shouldTestReactivationCyclic()`. Saturant.
+   */
+  void noteWakeCycle() {
+    if (_disabled && _cyclesSinceReactivationTest < 0xFFFF) {
+      _cyclesSinceReactivationTest++;
+    }
+  }
+
   /** Succès d'un test de réactivation. @return true si le capteur est réactivé. */
   bool recordReactivationTestSuccess() {
     _lastReactivationTestMs = millis();
+    _cyclesSinceReactivationTest = 0;  // cadence par cycles : test consommé
     _consecutiveReactivationSuccesses++;
 
     N3_SENSOR_LOG_PRINTF("[%s] Test réactivation: succès %d/%d\n",
@@ -118,6 +185,7 @@ public:
   /** Échec d'un test de réactivation (réinitialise le compteur de succès). */
   void recordReactivationTestFailure() {
     _lastReactivationTestMs = millis();
+    _cyclesSinceReactivationTest = 0;  // cadence par cycles : test consommé
     if (_consecutiveReactivationSuccesses > 0) {
       N3_SENSOR_LOG_PRINTF("[%s] Test réactivation échoué - reset compteur (était: %d)\n",
                            _sensorName, _consecutiveReactivationSuccesses);
@@ -131,6 +199,7 @@ public:
     _disableLogged = false;
     _consecutiveFailures = 0;
     _consecutiveReactivationSuccesses = 0;
+    _cyclesSinceReactivationTest = 0;
     N3_SENSOR_LOG_PRINTF("[%s] ✅ Capteur réactivé automatiquement\n", _sensorName);
   }
 
@@ -141,6 +210,7 @@ public:
     _consecutiveFailures = 0;
     _consecutiveReactivationSuccesses = 0;
     _lastReactivationTestMs = 0;
+    _cyclesSinceReactivationTest = 0;
   }
 
   /** Échecs consécutifs actuels. */
@@ -148,6 +218,37 @@ public:
 
   /** Succès de réactivation consécutifs. */
   uint8_t getReactivationSuccesses() const { return _consecutiveReactivationSuccesses; }
+
+  /** Réveils écoulés depuis le dernier test de réactivation (cadence par cycles). */
+  uint16_t getCyclesSinceReactivationTest() const { return _cyclesSinceReactivationTest; }
+
+  /**
+   * Exporter l'état mutable courant (POD) pour persistance (ex. RTC_DATA_ATTR).
+   * La configuration (nom, seuils) N'est PAS incluse : elle vient du constructeur.
+   */
+  SensorFailureState serializeState() const {
+    SensorFailureState s;
+    s.consecutiveFailures = _consecutiveFailures;
+    s.reactivationSuccesses = _consecutiveReactivationSuccesses;
+    s.disabled = _disabled ? 1 : 0;
+    s.disableLogged = _disableLogged ? 1 : 0;
+    s.cyclesSinceReactivationTest = _cyclesSinceReactivationTest;
+    return s;
+  }
+
+  /**
+   * Restaurer l'état mutable depuis un POD (ex. au réveil, depuis RTC_DATA_ATTR).
+   * `_lastReactivationTestMs` est remis à 0 (millis() non pertinent à travers le
+   * sommeil : la cohorte deep-sleep utilise la cadence par cycles).
+   */
+  void restoreState(const SensorFailureState& s) {
+    _consecutiveFailures = s.consecutiveFailures;
+    _consecutiveReactivationSuccesses = s.reactivationSuccesses;
+    _disabled = (s.disabled != 0);
+    _disableLogged = (s.disableLogged != 0);
+    _cyclesSinceReactivationTest = s.cyclesSinceReactivationTest;
+    _lastReactivationTestMs = 0;
+  }
 
 private:
   const char* _sensorName;
@@ -160,4 +261,5 @@ private:
   uint8_t _consecutiveFailures{0};
   uint32_t _lastReactivationTestMs{0};
   uint8_t _consecutiveReactivationSuccesses{0};
+  uint16_t _cyclesSinceReactivationTest{0};  // cadence de réactivation par cycles (deep sleep)
 };

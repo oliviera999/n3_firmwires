@@ -139,6 +139,131 @@ void test_reset_remet_tout_a_zero(void) {
   TEST_ASSERT_TRUE(m.shouldTestReactivation());
 }
 
+// =============================================================================
+// Persistance deep-sleep (T2 adoption n3pp/msp, lib v1.2.0)
+// -----------------------------------------------------------------------------
+// La cohorte n3pp/msp deep-sleepe entre chaque lecture : setup() recrée le
+// manager, la RAM repart à 0, et sans persistance les échecs ne s'accumulent
+// jamais. On verrouille ici la sérialisation POD round-trip, la désactivation
+// à travers des cycles simulés, et la cadence de réactivation par cycles de
+// réveil (millis() inutilisable à travers le sommeil).
+// =============================================================================
+
+// Simule un réveil deep-sleep : le manager est recréé (RAM à 0) puis restauré
+// depuis le POD RTC. millis() est aussi remis à 0 (reset RAM du timer).
+static SensorFailureManager makeWokenManager(const SensorFailureState& persisted) {
+  n3MockMillisSet(0);
+  SensorFailureManager m("T", 3, 60000, 2);
+  m.restoreState(persisted);
+  return m;
+}
+
+void test_serialize_restore_roundtrip(void) {
+  SensorFailureManager m("T", 3, 1000, 2);
+  m.recordFailure();
+  m.recordFailure();  // 2 échecs, encore actif
+  SensorFailureState s = m.serializeState();
+  TEST_ASSERT_EQUAL_UINT8(2, s.consecutiveFailures);
+  TEST_ASSERT_EQUAL_UINT8(0, s.disabled);
+
+  // Nouveau manager (RAM neuve) restauré depuis le POD : état identique.
+  SensorFailureManager m2("T", 3, 1000, 2);
+  m2.restoreState(s);
+  TEST_ASSERT_EQUAL_UINT8(2, m2.getConsecutiveFailures());
+  TEST_ASSERT_FALSE(m2.isDisabled());
+}
+
+void test_disable_a_travers_cycles_deep_sleep(void) {
+  // 3 échecs répartis sur 3 réveils distincts (manager recréé à chaque cycle) :
+  // sans persistance, chaque cycle repartirait de 0 et ne désactiverait jamais.
+  SensorFailureState st;  // cold boot = tout à 0
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    SensorFailureManager m = makeWokenManager(st);
+    m.noteWakeCycle();      // un réveil de plus (no-op tant qu'actif)
+    TEST_ASSERT_FALSE(m.isDisabled());
+    m.recordFailure();      // un échec par réveil
+    st = m.serializeState();  // persistance avant "sommeil"
+  }
+  // Après 3 réveils en échec (seuil=3), l'état persisté est désactivé.
+  TEST_ASSERT_EQUAL_UINT8(1, st.disabled);
+  SensorFailureManager mFinal = makeWokenManager(st);
+  TEST_ASSERT_TRUE(mFinal.isDisabled());
+}
+
+void test_reactivation_cyclique_pas_de_test_si_actif(void) {
+  SensorFailureManager m("T", 3, 1000, 2);
+  TEST_ASSERT_FALSE(m.shouldTestReactivationCyclic());
+  m.noteWakeCycle();  // no-op : capteur actif
+  TEST_ASSERT_FALSE(m.shouldTestReactivationCyclic());
+}
+
+void test_reactivation_cyclique_teste_chaque_reveil(void) {
+  // Désactivé, cadence par défaut (everyNWakes=1) : testable dès le réveil
+  // suivant (un noteWakeCycle écoulé), sans dépendre de millis().
+  SensorFailureManager m("T", 3, 1000, 2);
+  m.recordFailure(); m.recordFailure(); m.recordFailure();  // désactivé
+  TEST_ASSERT_TRUE(m.isDisabled());
+  // Fraîchement désactivé, 0 cycle écoulé -> pas encore dû.
+  TEST_ASSERT_FALSE(m.shouldTestReactivationCyclic());
+  m.noteWakeCycle();  // 1 réveil écoulé
+  TEST_ASSERT_TRUE(m.shouldTestReactivationCyclic());
+}
+
+void test_reactivation_cyclique_intervalle_n_reveils(void) {
+  SensorFailureManager m("T", 3, 1000, 2);
+  m.recordFailure(); m.recordFailure(); m.recordFailure();
+  // Cadence tous les 3 réveils.
+  m.noteWakeCycle();
+  TEST_ASSERT_FALSE(m.shouldTestReactivationCyclic(3));  // 1 < 3
+  m.noteWakeCycle();
+  TEST_ASSERT_FALSE(m.shouldTestReactivationCyclic(3));  // 2 < 3
+  m.noteWakeCycle();
+  TEST_ASSERT_TRUE(m.shouldTestReactivationCyclic(3));   // 3 >= 3
+  // Un test consommé remet le compteur de cycles à 0.
+  m.recordReactivationTestFailure();
+  TEST_ASSERT_EQUAL_UINT16(0, m.getCyclesSinceReactivationTest());
+  TEST_ASSERT_FALSE(m.shouldTestReactivationCyclic(3));
+}
+
+void test_reactivation_cyclique_a_travers_cycles(void) {
+  // Réactivation complète simulée à travers le deep sleep : capteur désactivé,
+  // puis K=2 succès de test sur des réveils successifs -> réactivé, persisté.
+  SensorFailureState st;
+  {
+    SensorFailureManager m = makeWokenManager(st);
+    m.recordFailure(); m.recordFailure(); m.recordFailure();  // désactivé
+    st = m.serializeState();
+  }
+  TEST_ASSERT_EQUAL_UINT8(1, st.disabled);
+
+  bool reactivated = false;
+  for (int cycle = 0; cycle < 2 && !reactivated; ++cycle) {
+    SensorFailureManager m = makeWokenManager(st);
+    m.noteWakeCycle();
+    TEST_ASSERT_TRUE(m.shouldTestReactivationCyclic());
+    reactivated = m.recordReactivationTestSuccess();  // test OK ce réveil
+    st = m.serializeState();
+  }
+  TEST_ASSERT_TRUE(reactivated);
+  TEST_ASSERT_EQUAL_UINT8(0, st.disabled);
+  SensorFailureManager mFinal = makeWokenManager(st);
+  TEST_ASSERT_FALSE(mFinal.isDisabled());
+}
+
+void test_restore_remet_le_millis_a_zero(void) {
+  // restoreState ne doit pas hériter d'un _lastReactivationTestMs stale.
+  SensorFailureManager m("T", 3, 1000, 2);
+  m.recordFailure(); m.recordFailure(); m.recordFailure();
+  n3MockMillisSet(50000);
+  m.recordReactivationTestFailure();  // horodate à 50000
+  SensorFailureState s = m.serializeState();
+
+  SensorFailureManager m2 = makeWokenManager(s);  // millis remis à 0
+  // Voie cyclique désormais indépendante de millis : reste utilisable.
+  m2.noteWakeCycle();
+  TEST_ASSERT_TRUE(m2.shouldTestReactivationCyclic());
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_active_par_defaut);
@@ -152,5 +277,13 @@ int main(void) {
   RUN_TEST(test_echec_reactivation_reset_succes);
   RUN_TEST(test_redisable_apres_reactivation);
   RUN_TEST(test_reset_remet_tout_a_zero);
+  // Persistance deep-sleep + réactivation par cycles (v1.2.0)
+  RUN_TEST(test_serialize_restore_roundtrip);
+  RUN_TEST(test_disable_a_travers_cycles_deep_sleep);
+  RUN_TEST(test_reactivation_cyclique_pas_de_test_si_actif);
+  RUN_TEST(test_reactivation_cyclique_teste_chaque_reveil);
+  RUN_TEST(test_reactivation_cyclique_intervalle_n_reveils);
+  RUN_TEST(test_reactivation_cyclique_a_travers_cycles);
+  RUN_TEST(test_restore_remet_le_millis_a_zero);
   return UNITY_END();
 }

@@ -19,7 +19,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.68"
+#define FIRMWARE_VERSION "2.70"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -131,8 +131,12 @@
 #define UPLOAD_CHUNK_SIZE 4096
 /* Monitoring local */
 #define MONITORING_HEAP_WARN_BYTES 60000
-#define N3_LOG_DEBUG              0
-#define N3_LOG_VERBOSE            1
+/* Drapeaux de diagnostic série (0/1) — PAS des niveaux de log. Renommés CAM_DIAG_*
+ * pour lever la collision de noms avec les macros/niveaux de shared/n3_log
+ * (N3_LOGx, N3_LOG_LEVEL, N3LOG_*). CAM_DIAG_DEBUG pilote Serial.setDebugOutput ;
+ * CAM_DIAG_VERBOSE active le dump complet du corps HTTP distant. */
+#define CAM_DIAG_DEBUG           0
+#define CAM_DIAG_VERBOSE         1
 
 /* Controle distant camera */
 #define REMOTE_SLEEP_MIN_SECONDS 10
