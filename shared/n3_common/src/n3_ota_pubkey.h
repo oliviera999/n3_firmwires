@@ -1,8 +1,15 @@
 #pragma once
 
 // =============================================================================
-// Clé publique ECDSA P-256 pour vérification de signature OTA
+// Clé publique ECDSA P-521 (secp521r1) pour vérification de signature OTA
 // Certificat CA pour validation TLS HTTPS
+//
+// ⚠️ CORRECTION AUDIT 2026-07 (D1) : la clé ci-dessous est en réalité **secp521r1
+// / NIST P-521** (vérifié : `openssl pkey -pubin -text` → « NIST CURVE: P-521 »),
+// et les signatures serveur sont des ECDSA P-521. mbedtls_pk_verify vérifie contre
+// la courbe de la clé parsée, donc tout fonctionne — mais NE PAS régénérer la paire
+// en P-256 : cela casserait la vérification sur toute la flotte. Voir
+// n3_serveur/docs/AUDIT_CONTRAT_FIRMWARE_SERVEUR_2026-07.md.
 //
 // Généré le : 2026-03-15
 // Source    : scripts/generate_ota_keys.ps1
@@ -28,7 +35,7 @@
 // OTA_CA_CERT non défini → setInsecure() (transitoire)
 
 // -----------------------------------------------------------------------------
-// Clé publique ECDSA P-256 (format SPKI/PEM)
+// Clé publique ECDSA P-521 / secp521r1 (format SPKI/PEM)
 // Vérification : mbedtls_pk_parse_public_key + mbedtls_pk_verify
 // Chaîne concaténée (pas de littéral brut dans une macro : GCC 8 / env *-cam).
 // -----------------------------------------------------------------------------

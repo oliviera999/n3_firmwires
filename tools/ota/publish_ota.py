@@ -3,9 +3,9 @@
 
 Deux schemas de metadata coexistent :
 
-  - "n3ota" (n3pp / msp / cam) : verif sha256 + signature ECDSA P-256
-    (`shared/n3_common/n3_ota`). metadata = objet {version,url,sha256,signature},
-    multi-cles pour cam. HTTP.
+  - "n3ota" (n3pp / msp / cam) : verif sha256 + signature ECDSA P-521
+    (`shared/n3_common/n3_ota` ; la cle embarquee est secp521r1 — cf. D1). metadata =
+    objet {version,url,sha256,signature}, multi-cles pour cam. HTTPS.
         sha256    = hex des octets du .bin
         signature = base64(ECDSA-DER sur sha256)  (openssl dgst -sha256 -sign)
 
@@ -31,6 +31,7 @@ import base64
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -54,7 +55,11 @@ TARGETS = {
                    "bindir": {"prod": "esp32-wroom", "test": "esp32-wroom-beta"}},
 }
 
-DEFAULT_BASE = {"n3ota": "http://iot.olution.info/ota", "ffp5": "https://iot.olution.info/ota"}
+# Audit 2026-07 (O3) : HTTPS aussi pour le schema n3ota (n3pp/msp/cam). Le firmware
+# choisit WiFiClient vs WiFiClientSecure selon le scheme de l'URL servie
+# (n3_ota.cpp:n3OtaUrlIsHttps) ; passer les cibles signees en https retire la
+# fenetre MITM du telechargement. Prend effet a la prochaine publication.
+DEFAULT_BASE = {"n3ota": "https://iot.olution.info/ota", "ffp5": "https://iot.olution.info/ota"}
 
 
 def read_version(firmware_id: str) -> str:
@@ -220,6 +225,42 @@ def publish_ffp5(args, target, version, base_url) -> int:
     return write_out(args, version, md5, bin_dst, meta_path, doc, integrity_label="md5")
 
 
+def _served_version(meta_path: Path):
+    """Version actuellement servie (best-effort) pour etiqueter l'archive."""
+    try:
+        doc = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(doc, dict):
+        if isinstance(doc.get("version"), str):
+            return doc["version"]
+        for val in doc.values():  # cam {key:{version}} / ffp5 {channels:{...}}
+            if isinstance(val, dict) and isinstance(val.get("version"), str):
+                return val["version"]
+    return None
+
+
+def archive_previous(meta_path: Path, bin_dst: Path) -> None:
+    """Archive l'etat servi (metadata + binaire ecrase) sous history/<version>/
+    AVANT ecrasement, pour alimenter le rollback (cf. n3_serveur bin/ota-rollback.php
+    et docs/OTA_ROLLBACK.md). Best-effort : ne bloque jamais une publication."""
+    if not meta_path.is_file():
+        return
+    label = _served_version(meta_path) or "previous"
+    label = re.sub(r"[^A-Za-z0-9._-]", "_", label)
+    try:
+        hist = meta_path.parent / "history" / label
+        hist.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(meta_path, hist / "metadata.json")
+        if bin_dst.is_file():
+            rel = bin_dst.relative_to(meta_path.parent)
+            (hist / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bin_dst, hist / rel)
+        print(f"[OTA] archive rollback -> {hist}")
+    except (OSError, ValueError) as exc:
+        print(f"[OTA] archive rollback ignoree ({exc}).")
+
+
 def write_out(args, version, integrity, bin_dst, meta_path, meta_obj, integrity_label="sha256") -> int:
     meta_json = json.dumps(meta_obj, separators=(",", ":"), ensure_ascii=False)
     print(f"[OTA] firmware={args.firmware} version={version} canal={args.channel}")
@@ -232,6 +273,7 @@ def write_out(args, version, integrity, bin_dst, meta_path, meta_obj, integrity_
         print("[OTA] --dry-run : aucune ecriture.")
         return 0
 
+    archive_previous(meta_path, bin_dst)
     bin_dst.parent.mkdir(parents=True, exist_ok=True)
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     bin_dst.write_bytes(args.bin.read_bytes())

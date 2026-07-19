@@ -15,7 +15,7 @@
 #include <mbedtls/pk.h>
 
 // A5 (audit 2026-07-05) : OTA metadata et/ou binaire peuvent etre servis en HTTPS pour fermer la
-// fenetre de downgrade MITM (le binaire reste verifie sha256 + ECDSA P-256). Detection ADDITIVE du
+// fenetre de downgrade MITM (le binaire reste verifie sha256 + ECDSA P-521). Detection ADDITIVE du
 // schema : une URL http:// utilise WiFiClient (comportement historique INCHANGE) ; une URL https://
 // utilise WiFiClientSecure. Epinglage CA opt-in via n3_ota_ca_cert.h (meme mecanisme que n3_data) ;
 // sinon setInsecure() (TLS chiffre sans validation de certificat). Aucun impact sur les firmwares

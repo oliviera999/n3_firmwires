@@ -83,7 +83,7 @@ Code commun à n3pp / msp / ffp5cs, sous forme de modules PlatformIO (`library.j
 (POST URL-encoded + HMAC, remplace `n3_http` déprécié), `n3_hmac` (HMAC-SHA256), `n3_mail` (SMTP),
 `n3_time`, `n3_sleep` (deep sleep), `n3_display` (OLED), `n3_analog_sensors`, `n3_battery`,
 `n3_tracker` (logique pure du tracker solaire msp, testée en natif), et
-`n3_common` (**OTA** `n3_ota` avec vérif **sha256 + ECDSA P-256**, `n3_defaults.h`, `n3_outputs_json`).
+`n3_common` (**OTA** `n3_ota` avec vérif **sha256 + ECDSA P-521** (secp521r1), `n3_defaults.h`, `n3_outputs_json`).
 
 ## Versionnage firmware — à faire à chaque modification
 
@@ -97,7 +97,7 @@ firmware modifié :
 ## OTA & toolchain
 
 - **OTA** : cible par firmware (`otaTarget` dans `firmwares.manifest.json`), via le serveur n3_serveur ;
-  binaire vérifié sha256 + ECDSA P-256 (`n3_common/n3_ota`). Réf : `docs/WIFI_OTA_REFERENCE.md`.
+  binaire vérifié sha256 + ECDSA P-521 (`n3_common/n3_ota`). Réf : `docs/WIFI_OTA_REFERENCE.md`.
 - **Toolchain** : framework Arduino. WROOM (n3pp/msp/ffp5cs/upload) = **pioarduino** arduino-esp32 3.3.x
   (ESP-IDF 5.x) ; S3 et `*-cam` = `espressif32@6.13.0` (arduino-esp32 2.0.x). Détails et pièges
   Windows (chemins longs `C:\pio-builds`, recovery PlatformIO) dans le `README.md`.
