@@ -1,0 +1,14 @@
+{
+  "name": "n3_wifi_select",
+  "version": "0.1.0",
+  "description": "Noyau pur de selection WiFi (scan -> meilleure candidate RSSI/BSSID/canal par credential -> ordre d'essai). Extrait la logique dupliquee entre shared/n3_wifi et ffp5cs. Sans dependance Arduino/WiFi — testable en natif (Unity).",
+  "keywords": "esp32, wifi, scan, rssi, bssid, select, pure",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "authors": [{ "name": "n3 IoT" }],
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*"
+}
