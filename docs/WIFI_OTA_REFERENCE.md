@@ -56,7 +56,7 @@ Constantes : `WIFI_CONNECT_TIMEOUT_MS = 5000` alignée partout.
 }
 ```
 
-`n3_ota` (lib `n3_common`) vérifie le `sha256` du binaire téléchargé avant flash, puis la `signature` ECDSA P-256 si elle est présente (clé publique embarquée).
+`n3_ota` (lib `n3_common`) vérifie le `sha256` du binaire téléchargé avant flash, puis la `signature` ECDSA **P-521** (secp521r1 — la clé embarquée est en réalité P-521, cf. audit D1) si elle est présente (clé publique embarquée).
 
 ### Cibles caméra (msp1, n3pp, ffp3)
 

@@ -182,6 +182,19 @@ Les problèmes restants se concentrent sur : **(a)** une posture de sécurité O
 
 ## 7. Suite côté serveur (`n3_serveur`) — bout-en-bout
 
+> ✅ **MàJ 2026-07-19 — audit bout-en-bout réalisé.** Rapport complet + séquence de
+> déploiement sûre : `n3_serveur/docs/AUDIT_CONTRAT_FIRMWARE_SERVEUR_2026-07.md`.
+> Plan d'enforcement firmware par étapes : [`OTA_SIGNATURE_ENFORCEMENT_PLAN.md`](OTA_SIGNATURE_ENFORCEMENT_PLAN.md).
+> **Phase 1 (non bloquante) livrée** : système de rollback OTA serveur
+> (`n3_serveur/bin/ota-rollback.php`), durcissement `realpath()` de l'endpoint OTA,
+> `publish_ota.py` en https + archive-de-rollback, correction du mislabel **P-256 → P-521**
+> (la clé embarquée est en réalité secp521r1 ; NE PAS régénérer en P-256). Rien de bloquant
+> activé (pas d'enforcement, pas de retrait legacy) — flotte non re-flashable.
+> Précisions issues de la vérification serveur : la signature est produite **hors-ligne**
+> par `tools/ota/publish_ota.py` (le serveur ne signe pas lui-même) ; **ffp5cs** est en
+> **md5 seul** et **pgl n'a aucune cible OTA** publiée ; en plus des points ci-dessous, la
+> config distante n3pp/msp est **silencieusement inopérante** (endpoint nested vs clés plates).
+
 Plusieurs findings ne se referment **que côté serveur** ou exigent une vérification bout-en-bout. À traiter dans le dépôt **n3_serveur** (le firmware est ici, le serveur reçoit/vérifie/déploie) :
 
 1. **Contrat de signature OTA (S1)** — avant d'activer `N3_OTA_REQUIRE_SIGNATURE` sur la flotte, **garantir que le serveur signe TOUTE métadonnée OTA** (champ `signature` ECDSA P-256 présent pour chaque cible : n3pp, msp, cam-*, pgl, ffp5-wroom). Séquence sûre : (a) serveur signe systématiquement → (b) vérifier sur banc qu'un device valide bien la signature → (c) **alors seulement** activer le flag firmware. Activer avant (a) **brique l'OTA**.
