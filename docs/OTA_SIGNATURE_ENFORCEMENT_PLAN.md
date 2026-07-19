@@ -51,14 +51,21 @@ Publier d'abord la cible pgl signée (`publish_ota.py --firmware pgl --key …` 
 sans cible publiée = plus aucune MAJ possible.
 
 ### Train C — ffp5cs (le plus lourd)
-`ffp5cs` a sa **propre** pile OTA (md5, `OTA_REQUIRE_SIGNATURE=false`). Pour l'enforcer :
-1. Faire émettre **sha256 + signature** au schéma `ffp5` de `publish_ota.py`
-   (aujourd'hui md5 seul) **ou** migrer ffp5cs sur `shared/n3_ota` (réduit la dette :
-   une seule pile durcie).
-2. Faire vérifier l'ECDSA par sa pile (ou celle de `shared`).
-3. Publier + banc.
-4. Passer `OTA_REQUIRE_SIGNATURE=true`.
-> **Tant que 1–3 ne sont pas faits : ne pas activer** (briquerait l'OTA ffp5cs).
+`ffp5cs` a sa **propre** pile OTA (md5 par défaut, `OTA_REQUIRE_SIGNATURE=false`), **mais
+elle sait déjà vérifier sha256 + ECDSA** (`ota_manager_validate.cpp`, `ota_signing_pubkey.h`)
+avec **la même clé P-521 que shared** (vérifié). L'enforcement ffp5cs **ne dépend donc pas** de
+la migration :
+1. Faire émettre **sha256 + signature** au schéma `ffp5` de `publish_ota.py` (aujourd'hui md5 seul).
+2. Sur banc : `OTA_REQUIRE_SIGNATURE=true` → signé accepté, non-signé/altéré refusé.
+3. Publier + rollout.
+> **Tant que 1–2 ne sont pas faits : ne pas activer** (briquerait l'OTA ffp5cs).
+
+**Migration `shared/n3_ota` (décidée) — chantier séparé.** ffp5cs étant un **sur-ensemble**
+de `shared/n3_ota` (il ajoute la MAJ littlefs, le schéma channels, la sélection S3), un
+« remplacement » naïf **régresserait**. Voir l'analyse et le plan par étapes dédiés :
+[`OTA_FFP5CS_MIGRATION_SHARED.md`](OTA_FFP5CS_MIGRATION_SHARED.md). Cette migration est un
+nettoyage d'architecture **indépendant** de la sécurité (points 1–2 ci-dessus) et nécessite un
+banc (app + littlefs + S3).
 
 ## Chantiers transverses associés (non bloquants)
 - **TLS** : `publish_ota.py` sert désormais les cibles n3ota en **https** (O3, fait).
