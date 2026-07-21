@@ -7,6 +7,7 @@
 #include "wifi_disconnect_reason.h"  // libellé pur des raisons de déconnexion (testable natif)
 #include "esp_wifi.h"  // Pour esp_wifi_scan_get_ap_records (éviter String Arduino)
 #include "esp_mac.h"   // Pour esp_base_mac_addr_set (override MAC avant WiFi init)
+#include "n3_wifi_select.h"  // noyau pur mutualisé : sélection RSSI/BSSID + ordre d'essai
 #include <WiFiGeneric.h>
 #include <algorithm>
 #include <cstring>
@@ -252,9 +253,12 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
     }
   }
 
-  // Associer chaque credential à la meilleure valeur RSSI détectée + infos BSSID/chan
+  // Associer chaque credential à la meilleure valeur RSSI détectée + infos BSSID/chan.
+  // Sélection (meilleur RSSI par credential + ordre d'essai) déléguée au noyau pur
+  // mutualisé shared/n3_wifi_select (identique à n3_wifi, vérifié par test_wifi_select).
+  // L'authmode (spécifique ffp5cs, non géré par le noyau) est récupéré ensuite par
+  // correspondance BSSID sur les enregistrements de scan.
   struct Cand { int8_t rssi; uint8_t bssid[6]; uint8_t chan; wifi_auth_mode_t enc; bool present; };
-  Cand initC{ -128,{0},0, WIFI_AUTH_OPEN, false};
   Cand cand[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
   size_t credsCount = _count;
   if (credsCount > NVSConfig::MAX_WIFI_SAVED_NETWORKS) {
@@ -262,47 +266,52 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
                   (unsigned)credsCount, (unsigned)NVSConfig::MAX_WIFI_SAVED_NETWORKS);
     credsCount = NVSConfig::MAX_WIFI_SAVED_NETWORKS;
   }
-  for (size_t i = 0; i < credsCount; ++i) cand[i] = initC;
-  for (int j = 0; j < num; ++j) {
-    char scanSSIDBuf2[33];
-    memcpy(scanSSIDBuf2, s_apRecords[j].ssid, 32);
-    scanSSIDBuf2[32] = '\0';
-    size_t slen2 = strnlen(scanSSIDBuf2, 32);
-    scanSSIDBuf2[slen2] = '\0';
-    const char* ss = scanSSIDBuf2;
-    int8_t r = s_apRecords[j].rssi;
-    const uint8_t* bssid = s_apRecords[j].bssid;
-    uint8_t ch = s_apRecords[j].primary;
-    wifi_auth_mode_t auth = s_apRecords[j].authmode;
-    for (size_t i = 0; i < credsCount; ++i) {
-      if (strcmp(ss, _list[i].ssid) == 0 && r > cand[i].rssi) {
-        cand[i].rssi = r;
-        memcpy(cand[i].bssid, bssid, 6);
-        cand[i].chan = ch;
-        cand[i].enc = auth;
-        cand[i].present = true;
-      }
-    }
+
+  // Mapping scan ESP-IDF -> entrées agnostiques (SSID copiés : non conservés par le noyau).
+  static char scanSsids[NetworkConfig::WIFI_SCAN_MAX_RECORDS][33];
+  N3WifiSelect::ScanEntry entries[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+  size_t scanCount = 0;
+  for (int j = 0; j < num && scanCount < NetworkConfig::WIFI_SCAN_MAX_RECORDS; ++j) {
+    memcpy(scanSsids[scanCount], s_apRecords[j].ssid, 32);
+    scanSsids[scanCount][32] = '\0';
+    scanSsids[scanCount][strnlen(scanSsids[scanCount], 32)] = '\0';
+    entries[scanCount].ssid = scanSsids[scanCount];
+    entries[scanCount].rssi = s_apRecords[j].rssi;
+    memcpy(entries[scanCount].bssid, s_apRecords[j].bssid, N3WifiSelect::kBssidLen);
+    entries[scanCount].channel = s_apRecords[j].primary;
+    ++scanCount;
   }
 
-  // --- 1) Réseaux visibles: tous sont tentés (priorité au meilleur RSSI). Plus de rejet sur seuil. ----
+  const char* ssidPtrs[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
+  for (size_t i = 0; i < credsCount; ++i) ssidPtrs[i] = _list[i].ssid;
+
+  N3WifiSelect::Candidate selCand[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
   size_t order[NVSConfig::MAX_WIFI_SAVED_NETWORKS];
-  size_t orderCount = 0;
+  const size_t orderCount = N3WifiSelect::buildOrder(
+      ssidPtrs, credsCount, entries, scanCount, selCand, order,
+      NVSConfig::MAX_WIFI_SAVED_NETWORKS);
+
+  // Recopie dans Cand (+ authmode par correspondance BSSID) et journalisation.
   for (size_t i = 0; i < credsCount; ++i) {
-    if (cand[i].present) {
-      order[orderCount++] = i;
-      if (cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
-        Serial.printf("[WiFi] ✅ Réseau %s (RSSI: %d dBm)\n", _list[i].ssid, cand[i].rssi);
-      } else {
-        Serial.printf("[WiFi] ⚠️ Réseau %s signal faible (RSSI: %d dBm) - tentative quand même\n",
-                      _list[i].ssid, cand[i].rssi);
+    cand[i].rssi = selCand[i].rssi;
+    memcpy(cand[i].bssid, selCand[i].bssid, 6);
+    cand[i].chan = selCand[i].channel;
+    cand[i].present = selCand[i].present;
+    cand[i].enc = WIFI_AUTH_OPEN;
+    if (!selCand[i].present) continue;
+    for (int j = 0; j < num; ++j) {
+      if (memcmp(s_apRecords[j].bssid, selCand[i].bssid, 6) == 0) {
+        cand[i].enc = s_apRecords[j].authmode;
+        break;
       }
     }
+    if (cand[i].rssi >= ::SleepConfig::WIFI_RSSI_MINIMUM) {
+      Serial.printf("[WiFi] ✅ Réseau %s (RSSI: %d dBm)\n", _list[i].ssid, cand[i].rssi);
+    } else {
+      Serial.printf("[WiFi] ⚠️ Réseau %s signal faible (RSSI: %d dBm) - tentative quand même\n",
+                    _list[i].ssid, cand[i].rssi);
+    }
   }
-  std::sort(order, order + orderCount, [&](size_t a, size_t b) { return cand[a].rssi > cand[b].rssi; });
-
-  // Ajoute ensuite les credentials non détectés au scan (tenter quand même)
-  for (size_t i = 0; i < credsCount; ++i) if (!cand[i].present) order[orderCount++] = i;
 
   for (size_t idx = 0; idx < orderCount; ++idx) {
     size_t i = order[idx];

@@ -1,5 +1,9 @@
 # Poissonglouton - Historique versions
 
+## 0.5.17 - 2026-07-21
+
+- **Mutualisation WiFi (chantier shared)** : `n3_wifi` (1.3.0) délègue la sélection au noyau pur `shared/n3_wifi_select` (0.1.0). La construction de l'ordre d'essai (meilleure candidate RSSI + BSSID/canal par credential, réseaux visibles triés par RSSI décroissant, égalités → index d'origine, SSID cachés en fin) est extraite de la boucle locale `buildOrderFromScan` vers le module pur testé en natif (`test_wifi_select`, 10 cas). **Sans changement observable** (mêmes candidats, même ordre, `strcmp` exact, comparaison RSSI stricte) : PGL consomme `n3_wifi` sans modification de son propre code (son fast-reconnect maison `tryFastReconnect` et `disableFastReconnect=true` restent inchangés).
+
 ## 0.5.16 - 2026-07-15
 
 - **Fix comptage reveil EXT0 (P1)** : a la sortie du deep sleep sur obstacle IR, la broche est deja LOW ; `begin()` echantillonnait `irPrevState_=LOW` et `poll()` ne voyait jamais le front HIGH->LOW → la bouteille declencheuse n'etait jamais comptee. Comptage unique differe arme sur reveil EXT0 (attribue a l'IR), consomme au 1er `poll()`, sans double-comptage si l'obstacle persiste (`pgl_detection`).
