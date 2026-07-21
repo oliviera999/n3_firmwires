@@ -12,6 +12,13 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.22 - 2026-07-21
+
+### Mutualisation diagnostic WiFi + dédup JSON websocket (chantier shared)
+
+- **`WifiDisconnectReason::toString` délègue au module pur `shared/n3_wifi_diag` (0.1.0).** La table raison ESP-IDF (`wifi_err_reason_t`) → token (`wifi_disconnect_reason.h`) est déplacée dans le module partagé header-only, testé en natif (`test_wifi_diag`). Wrapper local conservé pour l'API du caller (`wifi_manager.cpp`). **Iso-comportement** (mêmes cases 1..9/15/201/202/204/205, `nullptr` par défaut ; parité vérifiée par brute-force). La suite native ffp5cs `test_wifi_disconnect_reason` (17 cas) reste verte.
+- **Dédup interne du JSON de statut WiFi (websocket).** `WiFiHelpers::addWifiInfoToJson` reçoit un flag `includeMode` (défaut `true` → endpoint REST `/status` inchangé). Les **deux blocs** de `realtime_websocket.h` qui réécrivaient à la main le bloc `wifiSta*`/`wifiAp*` appellent désormais `addWifiInfoToJson(doc, false, false)` : **payload byte-identique** (mêmes clés, sans `wifiStaMac` ni `wifiMode`, préservant le `StaticJsonDocument` serré). Les messages `sensor_update` minimaux (flag `wifiStaConnected` seul) restent inchangés.
+
 ## Version 15.21 - 2026-07-21
 
 ### Mutualisation WiFi (chantier shared)
