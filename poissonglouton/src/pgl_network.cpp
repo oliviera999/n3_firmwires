@@ -15,6 +15,7 @@
 #include "pgl_log.h"
 #include "n3_data.h"
 #include "n3_wifi.h"
+#include "n3_wifi_reconnect.h"  // noyau pur mutualisé : record dernier AP + fast reconnect
 #include <ArduinoJson.h>
 #include <sys/time.h>
 #include <time.h>
@@ -37,14 +38,11 @@ N3WifiNetwork kWifiNetworks[] = {
 // retombe sur la session de scan n3_wifi habituelle (qui garantit la connexion
 // meme si l'AP a change de canal/BSSID). Au power-on a froid, magic vaut 0 :
 // pas de tentative ciblee, comportement actuel (scan direct).
+// Record + validation/construction + politique de timeout mutualisés dans
+// shared/n3_wifi_reconnect ; le magic reste propre à PGL (record RTC compatible
+// à travers les OTA).
 constexpr uint32_t kLastApMagic = 0x50474C57UL;  // "PGLW"
-struct PglLastGoodAp {
-  uint32_t magic;
-  uint8_t bssid[6];
-  uint8_t chan;
-  char ssid[33];
-};
-RTC_DATA_ATTR PglLastGoodAp gLastGoodAp;
+RTC_DATA_ATTR N3WifiReconnect::LastGoodAp gLastGoodAp;
 uint8_t gLastStaDisconnectReason = 0;
 const N3WifiSession* gWifiCallbackSession = nullptr;
 
@@ -182,7 +180,8 @@ void PglNetwork::buildWifiConfig(N3WifiConfig& cfg) const {
 // d'eventuellement retomber sur le scan. Retourne false si aucun AP memorise
 // (power-on a froid, ou AP precedent absent de la config) -> scan habituel.
 bool PglNetwork::tryFastReconnect() {
-  if (gLastGoodAp.magic != kLastApMagic || gLastGoodAp.chan == 0) {
+  // Gate mutualisée (magic + canal) via shared/n3_wifi_reconnect.
+  if (!N3WifiReconnect::valid(gLastGoodAp, kLastApMagic)) {
     return false;
   }
   const char* pass = findPassForSsid(gLastGoodAp.ssid);
@@ -192,33 +191,22 @@ bool PglNetwork::tryFastReconnect() {
     return false;
   }
   PGL_LOG("WiFi: reconnexion rapide ssid=%s ch=%u (BSSID memorise)",
-          gLastGoodAp.ssid, static_cast<unsigned int>(gLastGoodAp.chan));
+          gLastGoodAp.ssid, static_cast<unsigned int>(gLastGoodAp.channel));
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(gLastGoodAp.ssid, pass, gLastGoodAp.chan, gLastGoodAp.bssid);
+  WiFi.begin(gLastGoodAp.ssid, pass, gLastGoodAp.channel, gLastGoodAp.bssid);
   wifiDirectAttempt_ = true;
-  // Borne de la tentative ciblee : moitie du timeout WiFi (min 2 s).
-  const uint32_t fastMs = PGL_WIFI_TIMEOUT_MS / 2;
-  wifiDirectDeadlineMs_ = millis() + (fastMs < 2000 ? 2000 : fastMs);
+  // Borne de la tentative ciblee : moitie du timeout WiFi (min 2 s) — politique mutualisée.
+  wifiDirectDeadlineMs_ = millis() + N3WifiReconnect::fastTimeoutMs(PGL_WIFI_TIMEOUT_MS);
   return true;
 }
 
 // Memorise l'AP courant (SSID + BSSID + canal) en RTC apres une connexion
 // reussie, pour permettre la reconnexion rapide au prochain reveil.
 void PglNetwork::rememberLastGoodAp() {
-  const uint8_t* b = WiFi.BSSID();
-  const int32_t ch = WiFi.channel();
-  const String ssid = WiFi.SSID();
-  if (!b || ch <= 0 || ssid.isEmpty()) {
-    gLastGoodAp.magic = 0;
-    return;
-  }
-  memcpy(gLastGoodAp.bssid, b, 6);
-  gLastGoodAp.chan = static_cast<uint8_t>(ch);
-  strncpy(gLastGoodAp.ssid, ssid.c_str(), 32);
-  gLastGoodAp.ssid[32] = '\0';
-  gLastGoodAp.magic = kLastApMagic;
+  N3WifiReconnect::store(gLastGoodAp, kLastApMagic, WiFi.SSID().c_str(), WiFi.BSSID(),
+                         WiFi.channel());
 }
 
 void PglNetwork::startBackgroundWifi() {
@@ -419,7 +407,7 @@ void PglNetwork::refreshWifiDiag() {
     snprintf(wifiDiag_.line, sizeof(wifiDiag_.line),
              "WiFi: rapide «%s» ch%u\nstat=%s ~%lus",
              wifiDiag_.targetSsid[0] ? wifiDiag_.targetSsid : "?",
-             static_cast<unsigned int>(gLastGoodAp.chan),
+             static_cast<unsigned int>(gLastGoodAp.channel),
              pglWifiStatusName(static_cast<wl_status_t>(wifiDiag_.wlStatus)),
              static_cast<unsigned long>((leftMs + 999) / 1000));
     return;

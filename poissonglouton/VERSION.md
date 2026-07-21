@@ -1,5 +1,9 @@
 # Poissonglouton - Historique versions
 
+## 0.5.18 - 2026-07-21
+
+- **Mutualisation WiFi #2 (chantier shared)** : le fast-reconnect maison de PGL (`tryFastReconnect` / `rememberLastGoodAp` / record RTC `gLastGoodAp`) délègue au noyau pur `shared/n3_wifi_reconnect` (0.1.0), testé en natif (`test_wifi_reconnect`, 11 cas). Le record RTC devient `N3WifiReconnect::LastGoodAp` (layout identique à l'ancien `PglLastGoodAp` → compatible OTA), la mémorisation passe par `N3WifiReconnect::store`, la gate de validité par `N3WifiReconnect::valid`, et la borne de la tentative ciblée par `N3WifiReconnect::fastTimeoutMs(PGL_WIFI_TIMEOUT_MS)` (= 7500 ms, inchangé). Le magic PGL (`0x50474C57`) et le pinning SSID+BSSID+canal sont conservés ; `findPassForSsid` (lookup du mot de passe) reste local. **Sans changement observable.** Même code qui duplique désormais partagé avec `n3_wifi` (`disableFastReconnect=true` toujours actif : les deux fast-reconnect ne se marchent pas dessus).
+
 ## 0.5.17 - 2026-07-21
 
 - **Mutualisation WiFi (chantier shared)** : `n3_wifi` (1.3.0) délègue la sélection au noyau pur `shared/n3_wifi_select` (0.1.0). La construction de l'ordre d'essai (meilleure candidate RSSI + BSSID/canal par credential, réseaux visibles triés par RSSI décroissant, égalités → index d'origine, SSID cachés en fin) est extraite de la boucle locale `buildOrderFromScan` vers le module pur testé en natif (`test_wifi_select`, 10 cas). **Sans changement observable** (mêmes candidats, même ordre, `strcmp` exact, comparaison RSSI stricte) : PGL consomme `n3_wifi` sans modification de son propre code (son fast-reconnect maison `tryFastReconnect` et `disableFastReconnect=true` restent inchangés).

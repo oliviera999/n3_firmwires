@@ -1,0 +1,14 @@
+{
+  "name": "n3_wifi_reconnect",
+  "version": "0.1.0",
+  "description": "Noyau pur du fast-reconnect WiFi (record RTC dernier AP + validation + décision SSID configuré + politique de timeout). Extrait la logique dupliquée entre shared/n3_wifi et poissonglouton. Sans dépendance Arduino/WiFi/RTC — testable en natif (Unity).",
+  "keywords": "esp32, wifi, reconnect, rtc, bssid, deep-sleep, pure",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "authors": [{ "name": "n3 IoT" }],
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*"
+}
