@@ -2,7 +2,8 @@
 
 #include <cstring>
 
-#include "n3_wifi_select.h"  // noyau pur mutualise : selection RSSI/BSSID + ordre d'essai
+#include "n3_wifi_select.h"     // noyau pur mutualise : selection RSSI/BSSID + ordre d'essai
+#include "n3_wifi_reconnect.h"  // noyau pur mutualise : record dernier AP + fast reconnect
 
 #define N3_WIFI_CAND_MAX N3_WIFI_SESSION_CAND_MAX
 #define N3_WIFI_LASTGOOD_MAGIC 0x4E335747UL
@@ -25,27 +26,14 @@ enum N3WifiPhase : uint8_t {
   kFailed,
 };
 
-struct N3WifiLastGood {
-  uint32_t magic;
-  uint8_t bssid[6];
-  uint8_t chan;
-  char ssid[33];
-};
-static RTC_DATA_ATTR N3WifiLastGood s_lastGood;
+// Record du dernier AP en RTC (survit au deep sleep). Type + logique de
+// validation/construction mutualises dans shared/n3_wifi_reconnect ; le magic
+// reste propre a n3_wifi (record RTC compatible a travers les OTA).
+static RTC_DATA_ATTR N3WifiReconnect::LastGoodAp s_lastGood;
 
 void rememberLastGood() {
-  const uint8_t* b = WiFi.BSSID();
-  const int32_t ch = WiFi.channel();
-  const String ssid = WiFi.SSID();
-  if (!b || ch <= 0 || ssid.isEmpty()) {
-    s_lastGood.magic = 0;
-    return;
-  }
-  memcpy(s_lastGood.bssid, b, 6);
-  s_lastGood.chan = static_cast<uint8_t>(ch);
-  strncpy(s_lastGood.ssid, ssid.c_str(), 32);
-  s_lastGood.ssid[32] = '\0';
-  s_lastGood.magic = N3_WIFI_LASTGOOD_MAGIC;
+  N3WifiReconnect::store(s_lastGood, N3_WIFI_LASTGOOD_MAGIC, WiFi.SSID().c_str(), WiFi.BSSID(),
+                         WiFi.channel());
 }
 
 void wifiBeginSafe(const char* ssid, const char* pass, int32_t chan, const uint8_t* bssid) {
@@ -193,18 +181,26 @@ void buildOrderFromScan(N3WifiSession& session, int n) {
 
 void startFastReconnect(N3WifiSession& session) {
   const N3WifiConfig& config = *session.config;
-  for (size_t i = 0; i < config.networkCount; i++) {
-    if (strcmp(s_lastGood.ssid, config.networks[i].ssid) != 0) {
-      continue;
-    }
-    unsigned long fastTimeout = session.timeoutMs / 2;
-    if (fastTimeout < 2000) {
-      fastTimeout = (session.timeoutMs < 2000) ? session.timeoutMs : 2000;
-    }
-    Serial.printf("[WiFi] Reconnexion rapide %s ch=%d\n", s_lastGood.ssid, s_lastGood.chan);
+
+  // Decision mutualisee (shared/n3_wifi_reconnect) : le dernier AP RTC est-il
+  // encore un reseau configure ? Si oui, index du credential a re-associer.
+  const char* ssidPtrs[N3_WIFI_CAND_MAX];
+  size_t n = config.networkCount;
+  if (n > N3_WIFI_CAND_MAX) {
+    n = N3_WIFI_CAND_MAX;
+  }
+  for (size_t i = 0; i < n; i++) {
+    ssidPtrs[i] = config.networks[i].ssid;
+  }
+  const int idx = N3WifiReconnect::matchIndex(s_lastGood, N3_WIFI_LASTGOOD_MAGIC, ssidPtrs, n);
+
+  if (idx >= 0) {
+    const size_t i = static_cast<size_t>(idx);
+    const unsigned long fastTimeout = N3WifiReconnect::fastTimeoutMs(session.timeoutMs);
+    Serial.printf("[WiFi] Reconnexion rapide %s ch=%d\n", s_lastGood.ssid, s_lastGood.channel);
     wifiBeginSafe(config.networks[i].ssid,
                   config.networks[i].pass,
-                  s_lastGood.chan,
+                  s_lastGood.channel,
                   s_lastGood.bssid);
     strncpy(session.currentSsid, config.networks[i].ssid, 32);
     session.currentSsid[32] = '\0';
@@ -520,7 +516,8 @@ void n3WifiSessionBegin(N3WifiSession& session, const N3WifiConfig& config) {
   setupWifiSta();
   callOnConnectingOnce(session);
 
-  if (!config.disableFastReconnect && s_lastGood.magic == N3_WIFI_LASTGOOD_MAGIC) {
+  if (!config.disableFastReconnect &&
+      N3WifiReconnect::valid(s_lastGood, N3_WIFI_LASTGOOD_MAGIC)) {
     startFastReconnect(session);
     return;
   }
