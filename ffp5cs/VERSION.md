@@ -12,6 +12,12 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.21 - 2026-07-21
+
+### Mutualisation WiFi (chantier shared)
+
+- **`WifiManager::connect()` délègue la sélection au noyau pur `shared/n3_wifi_select` (0.1.0).** Le bloc local (`struct Cand` + boucle de meilleure candidate RSSI + `std::sort` de l'ordre d'essai) est remplacé par un appel à `N3WifiSelect::buildOrder()` — le même noyau que `shared/n3_wifi`, testé en natif (`test_wifi_select`, 10 cas). Réseaux visibles triés par RSSI décroissant, SSID cachés ajoutés en fin, `strcmp` exact : **iso-comportement**. Les couches propres à ffp5cs restent inchangées (scan ESP-IDF anti-fragmentation, échelle de 4 tentatives BSSID→générique, override MAC 4G, TX power, modem-sleep, AP de secours, spécificités S3 PSRAM). L'**authmode** (non géré par le noyau générique) est désormais récupéré après sélection par correspondance BSSID sur les enregistrements de scan, préservant le choix connexion ouverte vs WPA. Nuance : sur **égalité de RSSI**, l'ordre est maintenant déterministe (index credential d'origine) au lieu de l'ordre indéfini de `std::sort` — sans impact fonctionnel.
+
 ## Version 15.20 - 2026-07-15
 
 ### Corrections de bugs (audit qualité/sécurité)

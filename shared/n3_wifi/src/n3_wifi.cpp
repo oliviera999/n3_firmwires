@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "n3_wifi_select.h"  // noyau pur mutualise : selection RSSI/BSSID + ordre d'essai
+
 #define N3_WIFI_CAND_MAX N3_WIFI_SESSION_CAND_MAX
 #define N3_WIFI_LASTGOOD_MAGIC 0x4E335747UL
 
@@ -138,56 +140,54 @@ void buildOrderFromScan(N3WifiSession& session, int n) {
     n = scanMax;
   }
 
-  session.netCount = config.networkCount;
-  if (session.netCount > static_cast<size_t>(scanMax)) {
-    session.netCount = static_cast<size_t>(scanMax);
+  // Mapping des resultats de scan Arduino -> entrees agnostiques du noyau pur.
+  // Les SSID sont copies dans des buffers stables (N3WifiSelect ne les copie pas).
+  static char scanSsids[N3_WIFI_CAND_MAX][33];
+  N3WifiSelect::ScanEntry entries[N3_WIFI_CAND_MAX];
+  const size_t scanCount = (n > 0) ? static_cast<size_t>(n) : 0;
+  for (size_t j = 0; j < scanCount; j++) {
+    strncpy(scanSsids[j], WiFi.SSID(j).c_str(), 32);
+    scanSsids[j][32] = '\0';
+    entries[j].ssid = scanSsids[j];
+    entries[j].rssi = static_cast<int8_t>(WiFi.RSSI(j));
+    const uint8_t* b = WiFi.BSSID(j);
+    if (b) {
+      memcpy(entries[j].bssid, b, N3WifiSelect::kBssidLen);
+    } else {
+      memset(entries[j].bssid, 0, N3WifiSelect::kBssidLen);
+    }
+    entries[j].channel = static_cast<uint8_t>(WiFi.channel(j));
   }
 
-  for (size_t i = 0; i < session.netCount; i++) {
-    session.cand[i].rssi = -128;
-    session.cand[i].chan = 0;
-    session.cand[i].present = false;
-    memset(session.cand[i].bssid, 0, 6);
+  // SSID configures -> tableau de pointeurs (stables : possedes par config).
+  const char* ssidPtrs[N3_WIFI_CAND_MAX];
+  size_t cfgCount = config.networkCount;
+  if (cfgCount > N3_WIFI_CAND_MAX) {
+    cfgCount = N3_WIFI_CAND_MAX;
+  }
+  for (size_t i = 0; i < cfgCount; i++) {
+    ssidPtrs[i] = config.networks[i].ssid;
   }
 
-  for (int j = 0; j < n; j++) {
-    char scanSsid[33];
-    strncpy(scanSsid, WiFi.SSID(j).c_str(), 32);
-    scanSsid[32] = '\0';
-    const int8_t r = static_cast<int8_t>(WiFi.RSSI(j));
-    for (size_t i = 0; i < session.netCount; i++) {
-      if (strcmp(scanSsid, config.networks[i].ssid) == 0 && r > session.cand[i].rssi) {
-        session.cand[i].rssi = r;
-        const uint8_t* b = WiFi.BSSID(j);
-        if (b) {
-          memcpy(session.cand[i].bssid, b, 6);
-        }
-        session.cand[i].chan = static_cast<uint8_t>(WiFi.channel(j));
-        session.cand[i].present = true;
-      }
-    }
-  }
+  // Noyau pur mutualise (shared/n3_wifi_select) : meilleure candidate RSSI +
+  // BSSID/canal par credential, puis ordre d'essai (visibles tries RSSI
+  // decroissant, egalites -> index d'origine, caches en fin). Comportement
+  // identique a l'ancienne boucle locale (verifie par test_wifi_select).
+  N3WifiSelect::Candidate cand[N3_WIFI_CAND_MAX];
+  size_t order[N3_WIFI_CAND_MAX];
+  const size_t netCount = N3WifiSelect::buildOrder(ssidPtrs, cfgCount, entries, scanCount, cand,
+                                                   order, static_cast<size_t>(scanMax));
 
-  session.orderCount = 0;
-  for (size_t i = 0; i < session.netCount; i++) {
-    if (session.cand[i].present) {
-      session.order[session.orderCount++] = i;
-    }
+  // Recopie dans l'etat de session (N3WifiCand : memes champs, chan == channel).
+  session.netCount = netCount;
+  for (size_t i = 0; i < netCount; i++) {
+    session.cand[i].rssi = cand[i].rssi;
+    session.cand[i].chan = cand[i].channel;
+    session.cand[i].present = cand[i].present;
+    memcpy(session.cand[i].bssid, cand[i].bssid, N3WifiSelect::kBssidLen);
+    session.order[i] = order[i];
   }
-  for (size_t k = 0; k < session.orderCount; k++) {
-    for (size_t j = k + 1; j < session.orderCount; j++) {
-      if (session.cand[session.order[j]].rssi > session.cand[session.order[k]].rssi) {
-        const size_t t = session.order[k];
-        session.order[k] = session.order[j];
-        session.order[j] = t;
-      }
-    }
-  }
-  for (size_t i = 0; i < session.netCount; i++) {
-    if (!session.cand[i].present) {
-      session.order[session.orderCount++] = i;
-    }
-  }
+  session.orderCount = netCount;
   session.orderIdx = 0;
 }
 
