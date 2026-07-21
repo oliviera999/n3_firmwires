@@ -1,0 +1,14 @@
+{
+  "name": "n3_wifi_diag",
+  "version": "0.1.0",
+  "description": "Libellés de diagnostic WiFi purs (raison de déconnexion ESP-IDF wifi_err_reason_t + statut wl_status). Consolide les mappings de ffp5cs et poissonglouton. Header-only, sans dépendance Arduino/WiFi — testable en natif (Unity).",
+  "keywords": "esp32, wifi, diagnostic, disconnect, reason, status, pure",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "authors": [{ "name": "n3 IoT" }],
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*"
+}

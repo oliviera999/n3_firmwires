@@ -1,5 +1,9 @@
 # Poissonglouton - Historique versions
 
+## 0.5.19 - 2026-07-21
+
+- **Mutualisation diagnostic WiFi (chantier shared)** : `pglWifiStatusName` (libellés `wl_status`) délègue au module pur `shared/n3_wifi_diag` (0.1.0), testé en natif (`test_wifi_diag`). **Iso-comportement** (mêmes libellés IDLE/NO_SSID/SCAN_DONE/CONNECTED/CONNECT_FAIL/LOST/DISCONNECTED, défaut UNKNOWN). Les libellés **courts** de raison de déconnexion (`pglWifiDisconnectReasonName`, abrégés pour l'écran LVGL et divergents des tokens ESP-IDF canoniques) restent **locaux** — volontairement non mutualisés. Ajout du chemin d'include partagé à `platformio-native.ini`.
+
 ## 0.5.18 - 2026-07-21
 
 - **Mutualisation WiFi #2 (chantier shared)** : le fast-reconnect maison de PGL (`tryFastReconnect` / `rememberLastGoodAp` / record RTC `gLastGoodAp`) délègue au noyau pur `shared/n3_wifi_reconnect` (0.1.0), testé en natif (`test_wifi_reconnect`, 11 cas). Le record RTC devient `N3WifiReconnect::LastGoodAp` (layout identique à l'ancien `PglLastGoodAp` → compatible OTA), la mémorisation passe par `N3WifiReconnect::store`, la gate de validité par `N3WifiReconnect::valid`, et la borne de la tentative ciblée par `N3WifiReconnect::fastTimeoutMs(PGL_WIFI_TIMEOUT_MS)` (= 7500 ms, inchangé). Le magic PGL (`0x50474C57`) et le pinning SSID+BSSID+canal sont conservés ; `findPassForSsid` (lookup du mot de passe) reste local. **Sans changement observable.** Même code qui duplique désormais partagé avec `n3_wifi` (`disableFastReconnect=true` toujours actif : les deux fast-reconnect ne se marchent pas dessus).

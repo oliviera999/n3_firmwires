@@ -6,6 +6,8 @@
 #include <WiFi.h>
 #include <esp_sleep.h>
 
+#include "n3_wifi_diag.h"  // libellés wl_status mutualisés (shared/n3_wifi_diag)
+
 #ifndef PGL_VERBOSE_LOG
 #define PGL_VERBOSE_LOG 0
 #endif
@@ -73,17 +75,10 @@ inline void pglLogMemory() {
 
 void pglLogBootBanner();
 
+// Délègue à N3WifiDiag::statusName (shared/n3_wifi_diag) — mêmes libellés,
+// comportement inchangé. Wrapper conservé pour l'API/type wl_status_t local.
 inline const char* pglWifiStatusName(wl_status_t status) {
-  switch (status) {
-    case WL_IDLE_STATUS: return "IDLE";
-    case WL_NO_SSID_AVAIL: return "NO_SSID";
-    case WL_SCAN_COMPLETED: return "SCAN_DONE";
-    case WL_CONNECTED: return "CONNECTED";
-    case WL_CONNECT_FAILED: return "CONNECT_FAIL";
-    case WL_CONNECTION_LOST: return "LOST";
-    case WL_DISCONNECTED: return "DISCONNECTED";
-    default: return "UNKNOWN";
-  }
+  return N3WifiDiag::statusName(static_cast<int>(status));
 }
 
 /** Libelle court pour WiFi.reason() (ESP-IDF wifi_err_reason_t). */

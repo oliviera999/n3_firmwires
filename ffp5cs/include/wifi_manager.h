@@ -202,7 +202,7 @@ namespace WiFiHelpers {
      * @param includeMac Inclure l'adresse MAC STA (optionnel, défaut true)
      */
     template<typename TDoc>
-    inline void addWifiInfoToJson(TDoc& doc, bool includeMac = true) {
+    inline void addWifiInfoToJson(TDoc& doc, bool includeMac = true, bool includeMode = true) {
         // WiFi STA info
         bool staConnected = WiFi.status() == WL_CONNECTED;
         doc["wifiStaConnected"] = staConnected;
@@ -252,8 +252,12 @@ namespace WiFiHelpers {
             doc["wifiApClients"] = 0;
         }
         
-        // WiFi mode string literals sont OK (constantes statiques)
-        doc["wifiMode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+        // WiFi mode string literals sont OK (constantes statiques).
+        // includeMode=false : émis par le /status REST mais pas par le flux
+        // websocket (payload historique préservé, StaticJsonDocument serré).
+        if (includeMode) {
+            doc["wifiMode"] = (mode == WIFI_STA) ? "STA" : (mode == WIFI_AP) ? "AP" : "AP_STA";
+        }
     }
 }
 

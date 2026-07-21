@@ -338,44 +338,12 @@ public:
         doc["resetMode"] = 0; // resetMode est toujours 0 en temps normal
         doc["timestamp"] = millis();
         
-        // Informations WiFi STA
-        bool staConnected = WiFi.status() == WL_CONNECTED;
-        doc["wifiStaConnected"] = staConnected;
-        if (staConnected) {
-            char staSSIDBuf[33];
-            WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-            doc["wifiStaSSID"] = staSSIDBuf;
-            IPAddress staIP = WiFi.localIP();
-            char staIPBuf[16];
-            snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d",
-                     staIP[0], staIP[1], staIP[2], staIP[3]);
-            doc["wifiStaIP"] = staIPBuf;
-            doc["wifiStaRSSI"] = WiFi.RSSI();
-        } else {
-            doc["wifiStaSSID"] = "";
-            doc["wifiStaIP"] = "";
-            doc["wifiStaRSSI"] = 0;
-        }
-        
-        // Informations WiFi AP
-        wifi_mode_t mode = WiFi.getMode();
-        bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-        doc["wifiApActive"] = apActive;
-        if (apActive) {
-            char apSSIDBuf[33];
-            WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-            doc["wifiApSSID"] = apSSIDBuf;
-            IPAddress apIP = WiFi.softAPIP();
-            char apIPBuf[16];
-            snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d",
-                     apIP[0], apIP[1], apIP[2], apIP[3]);
-            doc["wifiApIP"] = apIPBuf;
-            doc["wifiApClients"] = WiFi.softAPgetStationNum();
-        } else {
-            doc["wifiApSSID"] = "";
-            doc["wifiApIP"] = "";
-            doc["wifiApClients"] = 0;
-        }
+        // Informations WiFi STA + AP : déléguées au helper centralisé
+        // (WiFiHelpers::addWifiInfoToJson). includeMac=false, includeMode=false
+        // pour préserver EXACTEMENT le payload websocket historique (mêmes clés
+        // wifiSta*/wifiAp*, sans wifiStaMac ni wifiMode). Supprime la
+        // réécriture manuelle dupliquée (cf. web_routes_status qui l'utilise déjà).
+        WiFiHelpers::addWifiInfoToJson(doc, /*includeMac=*/false, /*includeMode=*/false);
         
         if (_fillDbVars) {
             JsonObject dbVars = doc.createNestedObject("dbVars");
@@ -597,44 +565,12 @@ public:
         doc["mailNotif"] = _mailNotifState;
         doc["timestamp"] = millis();
         
-        // Informations WiFi STA
-        bool staConnected = WiFi.status() == WL_CONNECTED;
-        doc["wifiStaConnected"] = staConnected;
-        if (staConnected) {
-            char staSSIDBuf[33];
-            WiFiHelpers::getSSID(staSSIDBuf, sizeof(staSSIDBuf));
-            doc["wifiStaSSID"] = staSSIDBuf;
-            IPAddress staIP = WiFi.localIP();
-            char staIPBuf[16];
-            snprintf(staIPBuf, sizeof(staIPBuf), "%d.%d.%d.%d",
-                     staIP[0], staIP[1], staIP[2], staIP[3]);
-            doc["wifiStaIP"] = staIPBuf;
-            doc["wifiStaRSSI"] = WiFi.RSSI();
-        } else {
-            doc["wifiStaSSID"] = "";
-            doc["wifiStaIP"] = "";
-            doc["wifiStaRSSI"] = 0;
-        }
-        
-        // Informations WiFi AP
-        wifi_mode_t mode = WiFi.getMode();
-        bool apActive = (mode == WIFI_AP || mode == WIFI_AP_STA);
-        doc["wifiApActive"] = apActive;
-        if (apActive) {
-            char apSSIDBuf[33];
-            WiFiHelpers::getAPSSID(apSSIDBuf, sizeof(apSSIDBuf));
-            doc["wifiApSSID"] = apSSIDBuf;
-            IPAddress apIP = WiFi.softAPIP();
-            char apIPBuf[16];
-            snprintf(apIPBuf, sizeof(apIPBuf), "%d.%d.%d.%d",
-                     apIP[0], apIP[1], apIP[2], apIP[3]);
-            doc["wifiApIP"] = apIPBuf;
-            doc["wifiApClients"] = WiFi.softAPgetStationNum();
-        } else {
-            doc["wifiApSSID"] = "";
-            doc["wifiApIP"] = "";
-            doc["wifiApClients"] = 0;
-        }
+        // Informations WiFi STA + AP : déléguées au helper centralisé
+        // (WiFiHelpers::addWifiInfoToJson). includeMac=false, includeMode=false
+        // pour préserver EXACTEMENT le payload websocket historique (mêmes clés
+        // wifiSta*/wifiAp*, sans wifiStaMac ni wifiMode). Supprime la
+        // réécriture manuelle dupliquée (cf. web_routes_status qui l'utilise déjà).
+        WiFiHelpers::addWifiInfoToJson(doc, /*includeMac=*/false, /*includeMode=*/false);
         
         if (_fillDbVars) {
             JsonObject dbVars = doc.createNestedObject("dbVars");
