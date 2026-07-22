@@ -1,5 +1,12 @@
 # Poissonglouton - Historique versions
 
+## 0.5.20 - 2026-07-22
+
+- **Disponibilité OTA (`n3_common` 1.8.2)** : le téléchargement du binaire est
+  interrompu après 30 s sans octet ou 5 min au total. Un serveur qui conserve
+  une connexion TCP ouverte sans livrer le firmware ne peut plus figer
+  indéfiniment la boucle principale, l'affichage et la détection de bouteilles.
+
 ## 0.5.19 - 2026-07-21
 
 - **Mutualisation diagnostic WiFi (chantier shared)** : `pglWifiStatusName` (libellés `wl_status`) délègue au module pur `shared/n3_wifi_diag` (0.1.0), testé en natif (`test_wifi_diag`). **Iso-comportement** (mêmes libellés IDLE/NO_SSID/SCAN_DONE/CONNECTED/CONNECT_FAIL/LOST/DISCONNECTED, défaut UNKNOWN). Les libellés **courts** de raison de déconnexion (`pglWifiDisconnectReasonName`, abrégés pour l'écran LVGL et divergents des tokens ESP-IDF canoniques) restent **locaux** — volontairement non mutualisés. Ajout du chemin d'include partagé à `platformio-native.ini`.

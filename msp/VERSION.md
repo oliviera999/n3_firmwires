@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.66** (définie dans `include/msp_config.h`).
+Version actuelle : **2.69** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.66** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.69 | 2026-07-22 | **Disponibilité OTA (`n3_common` 1.8.2).** Le téléchargement du binaire est interrompu après 30 s sans octet ou 5 min au total. Une connexion TCP ouverte mais figée ne peut plus bloquer indéfiniment le cycle et empêcher les mesures météo, le POST puis le deep sleep. |
 | 2.68 | 2026-07-21 | **Mutualisation WiFi #2 (chantier shared) : `n3_wifi` (1.4.0) délègue le fast-reconnect au noyau pur `shared/n3_wifi_reconnect` (0.1.0).** Le record RTC du dernier AP (`{magic,bssid,canal,ssid}`), sa validation/construction (`rememberLastGood`), la décision « le dernier AP est-il encore un réseau configuré ? » (`startFastReconnect`) et la politique de timeout (`timeout/2`, plancher 2000 ms) sont extraits vers le module pur testé en natif (`test_wifi_reconnect`, 11 cas). **Sans changement observable** : magic n3_wifi (`0x4E335747`) et layout RTC conservés (record compatible à travers l'OTA), même pinning BSSID+canal, même timeout. msp (qui utilise le fast-reconnect) consomme `n3_wifi` sans modifier son code. |
 | 2.67 | 2026-07-21 | **Mutualisation WiFi (chantier shared) : `n3_wifi` (1.3.0) délègue la sélection au noyau pur `shared/n3_wifi_select` (0.1.0).** La construction de l'ordre d'essai (meilleure candidate RSSI + BSSID/canal par credential, réseaux visibles triés par RSSI décroissant, égalités → index d'origine, SSID cachés en fin) est extraite de la boucle locale `buildOrderFromScan` vers le module pur testé en natif (`test_wifi_select`, 10 cas). **Sans changement observable** (mêmes candidats, même ordre, `strcmp` exact, comparaison RSSI stricte) : msp consomme `n3_wifi` sans modification de son propre code. |
 | 2.66 | 2026-07-16 | **Adoption T1.3 msp : `print_wakeup_reason` délègue à `n3PrintWakeupReason`** (`n3_time` 1.3.0, `loadNvsOnTimerWake=false`). Le corps local (switch de la raison de réveil) est remplacé par un appel à la fonction partagée ; au réveil TIMER l'horloge RTC valide n'est **jamais** rechargée depuis la NVS (comportement historique préservé). Le resync des 6 globals calendaires (`n3TimeSyncBrokenDown`) reste effectué uniquement au cas `default` (boot hors deep sleep), dans le même ordre qu'avant. **Libellés de réveil passés du FR à l'EN** (uniformisation avec n3pp/shared) — **seul changement observable** (texte des logs série de diagnostic) ; comportement horloge/NVS/resync inchangé. |

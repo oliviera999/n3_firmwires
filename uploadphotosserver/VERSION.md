@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.70** (définie dans `include/config.h`).
+Version actuelle : **2.73** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.70** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.73 | 2026-07-22 | **Correctifs critiques de conservation du backlog SD et de disponibilité OTA.** Le drain utilise désormais le chemin exact (`N3SfItem::ref`) de chaque photo au lieu de rechercher uniquement son numéro : deux fichiers distincts portant le même numéro ne provoquent plus le double upload du premier puis la perte du second. Un scan SD vide n’avance plus `up_cursor` sans acquittement serveur, afin qu’une erreur transitoire d’énumération ne masque pas définitivement les photos en attente. La bibliothèque partagée `n3_common` 1.8.2 borne aussi un téléchargement OTA à 30 s sans octet et 5 min au total ; l’appareil reprend son cycle normal si le serveur garde la connexion ouverte sans livrer le binaire. |
 | 2.72 | 2026-07-21 | **Mutualisation WiFi #2 (chantier shared) : `n3_wifi` (1.4.0) délègue le fast-reconnect au noyau pur `shared/n3_wifi_reconnect` (0.1.0).** La CAM **désactive** le fast-reconnect (`disableFastReconnect=true`, BSSID RTC obsolète après deep sleep) : seule la mémorisation `rememberLastGood` (déléguée à `N3WifiReconnect::store`) est sur son chemin, appelée après connexion. **Sans changement observable** (mêmes validations, magic et layout RTC conservés). Recompilation liée au bump `n3_wifi` 1.3.0 → 1.4.0. |
 | 2.71 | 2026-07-21 | **Mutualisation WiFi (chantier shared) : `n3_wifi` (1.3.0) délègue la sélection au noyau pur `shared/n3_wifi_select` (0.1.0).** La construction de l'ordre d'essai (meilleure candidate RSSI + BSSID/canal par credential, réseaux visibles triés par RSSI décroissant, égalités → index d'origine, SSID cachés en fin) est extraite de la boucle locale `buildOrderFromScan` vers le module pur testé en natif (`test_wifi_select`, 10 cas). **Sans changement observable** (mêmes candidats, même ordre, `strcmp` exact, comparaison RSSI stricte) : la CAM consomme `n3_wifi` sans modification de son propre code (`disableFastReconnect` inchangé). |
 | 2.70 | 2026-07-15 | **Contrat T1.3 (chantier shared) : paramétrage de `n3PrintWakeupReason`.** La fonction partagée `n3_time` (1.3.0) reçoit un paramètre `bool loadNvsOnTimerWake` ; l'appel CAM passe **`true`** (comportement historique iso : au réveil TIMER l'horloge est perdue au deep sleep, donc l'epoch NVS est rechargé). **Sans changement observable** côté uploadphotosserver — même logs, même rechargement NVS. Le paramètre permet à n3pp/msp d'adopter la fonction sans recharger la NVS au réveil timer (leur horloge RTC survit). |

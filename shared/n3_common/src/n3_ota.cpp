@@ -1,4 +1,5 @@
 #include "n3_ota.h"
+#include "n3_ota_download_guard.h"
 #include "n3_ota_pubkey.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -42,6 +43,8 @@ static void n3OtaPrepareSecureClient(WiFiClientSecure& client) {
 static uint8_t s_lastLoggedOtaPercent = 255;
 static void (*s_progressCallback)(int, int, uint8_t, void*) = nullptr;
 static void* s_progressUserData = nullptr;
+static constexpr uint32_t kOtaReadIdleTimeoutMs = 30000;
+static constexpr uint32_t kOtaDownloadMaxDurationMs = 5UL * 60UL * 1000UL;
 
 static void appendHexByte(char* out, size_t idx, uint8_t value) {
     static const char* kHex = "0123456789abcdef";
@@ -224,8 +227,26 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
     int remaining = contentLen;
     int writtenTotal = 0;
     bool magicChecked = false;
+    bool downloadTimedOut = false;
+    const uint32_t downloadStartedAt = millis();
+    uint32_t lastProgressAt = downloadStartedAt;
 
     while (http.connected() && remaining > 0) {
+        const uint32_t now = millis();
+        const N3OtaDownloadTimeout timeout = n3OtaDownloadTimeout(
+            now, downloadStartedAt, lastProgressAt,
+            kOtaReadIdleTimeoutMs, kOtaDownloadMaxDurationMs);
+        if (timeout != N3OtaDownloadTimeout::None) {
+            downloadTimedOut = true;
+            if (details && detailsSize > 0) {
+                snprintf(details, detailsSize,
+                         "OTA firmware: timeout %s (%d/%d octets).",
+                         timeout == N3OtaDownloadTimeout::Idle ? "inactivite" : "duree totale",
+                         writtenTotal, contentLen);
+            }
+            break;
+        }
+
         size_t availableBytes = stream->available();
         if (availableBytes == 0) {
             delay(1);
@@ -279,12 +300,13 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
 
         writtenTotal += readLen;
         remaining -= readLen;
+        lastProgressAt = millis();
         logOtaProgress(writtenTotal, contentLen);
     }
     http.end();
 
     if (writtenTotal != contentLen) {
-        if (details && detailsSize > 0) {
+        if (!downloadTimedOut && details && detailsSize > 0) {
             snprintf(details, detailsSize,
                      "OTA firmware: telechargement incomplet (%d/%d octets).",
                      writtenTotal, contentLen);

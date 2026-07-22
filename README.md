@@ -139,6 +139,7 @@ Commandes directes possibles depuis `uploadphotosserver/` :
 - **ESP32-CAM (uploadphotosserver)** : `pio run -e msp1` / `-e n3pp` / `-e ffp3` — **platformio/espressif32@6.13.0** + **`board = esp32cam`** (PSRAM + **HTTPS** par défaut depuis v2.54). Broches dans `uploadphotosserver/include/config.h`.
 - **Monitoring 1–2 min** (série fiable sous Windows : DTR/RTS désactivés) : depuis `uploadphotosserver/`, `python tools/monitor_serial_cam.py COM5 -s 120` — fermer tout autre moniteur / outil sur le même COM ; dépendance : `pip install pyserial`.
 - **Erase + flash + monitor** (camera) : `uploadphotosserver/scripts/erase_flash_monitor.ps1 -Environment msp1 -Port COM5 -DurationSeconds 300`.
+- **Robustesse réseau OTA (n3_common ≥ 1.8.2)** : les consommateurs `n3pp`, `msp`, `uploadphotosserver` et `poissonglouton` abandonnent un téléchargement après 30 s sans octet ou 5 min au total, puis reprennent leur cycle normal. Le drain SD caméra conserve toujours son curseur si l'énumération ne retourne aucun fichier.
 
 ## Stack ESP-IDF et plateforme
 
