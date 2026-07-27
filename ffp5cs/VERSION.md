@@ -12,6 +12,35 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.25 - 2026-07-27
+
+### Corps POST canonique : fin de la troncature silencieuse des clés d'angles servo (audit F2a)
+
+- **`ExtraPair::key` passe de 16 à 24 octets** (`ffp3_post_body.h`). En `[16]` — soit 15
+  caractères utiles — `copyField()` tronquait **silencieusement 4 des 6 clés** qui transitent
+  réellement par `ExtraStore` : `angleDistribGros` → `angleDistribGro`, `angleReposPetits` →
+  `angleReposPetit`, `angleDistribPetits` (18 car., la plus longue) → `angleDistribPet`,
+  `angleInterPetits` → `angleInterPetit`. Ce sont les seules clés poussées par `/dbvars` à ne
+  pas être des champs connus de `setKnownField`, donc les seules à passer par le magasin
+  d'extras. Le firmware émettait donc des **noms de clés faux** dans le corps POST.
+- **Aucun 401 n'en découlait** : le firmware signe le corps qu'il envoie réellement et le
+  serveur reconstitue à partir de ce qu'il a reçu — les deux voient la même chaîne tronquée.
+  **Aucun impact fonctionnel non plus à ce jour** : le serveur ne lit ces clés nulle part dans
+  le POST (`App\Domain\SensorData` n'a aucun champ d'angle ; les GPIO 118-123 lui appartiennent,
+  écrits par son UI et servis au firmware par `GET /api/outputs/state`). C'était une
+  **corruption de données latente** : toute évolution qui ferait lire ces champs au serveur
+  aurait échoué en silence. Coût du correctif : **+64 octets** sur `FullUpdateValues`
+  (~921 → ~985 o, pile de `sendFullUpdate`).
+- **Saturation d'`extraPairs` rendue visible** (`web_server.cpp`) : les paires qui ne tenaient
+  plus dans `extraPairs[512]` étaient abandonnées **sans le moindre message**, et une paire
+  partiellement écrite pouvait subsister. Elles sont désormais comptées, la paire tronquée est
+  retirée, et un `[Web][WARN]` indique le nombre perdu et le remplissage. Mesure du pire cas
+  réaliste sur les 19 clés (e-mail de 64 caractères) : **396/512 octets** — la marge tient, mais
+  trois ou quatre nouvelles clés de configuration suffiraient à la franchir.
+- Test ajouté à `test_post_body` (`test_servo_angle_keys_are_not_truncated`) : les six clés
+  doivent apparaître entières, et aucune forme tronquée ne doit subsister. Vérifié en natif
+  avant/après — l'ancien `key[16]` fait bien échouer 12 assertions.
+
 ## Version 15.24 - 2026-07-27
 
 ### Machine anti-spam trop-plein : `ExitFlood` est une transition, pas un etat (audit S6)

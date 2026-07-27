@@ -9,11 +9,11 @@ explicitement marqués **latent**.
 Pour chaque constat, ce document propose **une ou plusieurs options de correction**
 avec leurs compromis, et indique lesquelles ont été **appliquées**.
 
-**État au 2026-07-27** : **F1, F3, F4 et F5 sont corrigés** (`n3_common` 1.8.4, `n3_hmac` 1.1.1 ;
-n3pp 4.68, msp 2.71, poissonglouton 0.5.22, uploadphotosserver 2.75, ffp5cs 15.24). ffp5cs
-n'est concerné ni par F1 ni par F3 (il a son propre `ota_manager`) : ses bumps couvrent F5 puis
-la parité S6 de `flood_alert.h`. **F2 et F6 restent ouverts** — leurs options sont documentées
-ci-dessous, le choix revient au mainteneur.
+**État au 2026-07-27** : **F1, F2a, F3, F4 et F5 sont corrigés** (`n3_common` 1.8.4,
+`n3_hmac` 1.1.1 ; n3pp 4.68, msp 2.71, poissonglouton 0.5.22, uploadphotosserver 2.75,
+ffp5cs 15.25). ffp5cs n'est concerné ni par F1 ni par F3 (il a son propre `ota_manager`) :
+ses bumps couvrent F5, la parité S6 de `flood_alert.h`, puis F2a. **Restent ouverts : F2b**
+(verrouillage du formatage dupliqué — décision d'architecture, voir les options) **et F6**.
 
 > Un audit jumeau couvre le serveur : `n3_serveur/docs/AUDIT_BUGS_2026-07.md`.
 > Les constats **F2** (ici) et **S1** (là-bas) portent sur le même contrat HMAC.
@@ -28,7 +28,7 @@ ci-dessous, le choix revient au mainteneur.
 | # | Gravité | Sujet | Fichier principal | État |
 |---|---------|-------|-------------------|------|
 | F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.2) |
-| F2 | 🟡 Faible | Troncature de clé (`key[16]`) + formatage dupliqué non verrouillé | `ffp5cs/include/ffp3_post_body.h` | ouvert — analyse corrigée |
+| F2 | 🟡 Faible | Troncature de clé (`key[16]`) + formatage dupliqué non verrouillé | `ffp5cs/include/ffp3_post_body.h` | ✅ **F2a corrigé** (15.25) — F2b ouvert |
 | F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.4) |
 | F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.3) |
 | F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ✅ **corrigé** (`n3_hmac` 1.1.1) |
@@ -135,7 +135,15 @@ serveur reconstitue dans `App\Security\Ffp3HmacPostBody` — parce que sous mod_
 
 Deux fragilités concrètes.
 
-### F2a — troncature silencieuse de clé — ⚠️ ANALYSE CORRIGÉE (2026-07-27)
+### F2a — troncature silencieuse de clé — ⚠️ ANALYSE CORRIGÉE, ✅ CORRIGÉ (15.25)
+
+> **Correctif appliqué (ffp5cs 15.25)** : `ExtraPair::key` porté de 16 à 24 octets
+> (`angleDistribPetits` = 18 + NUL, 5 caractères de marge), coût **+64 octets** sur
+> `FullUpdateValues`. Et la saturation d'`extraPairs[512]` côté `web_server.cpp` est
+> désormais **comptée et journalisée** (`[Web][WARN]`) au lieu d'abandonner les paires en
+> silence ; une paire partiellement écrite est retirée plutôt que laissée tronquée.
+> Test `test_servo_angle_keys_are_not_truncated`, vérifié avant/après en natif :
+> l'ancien `key[16]` fait échouer 12 assertions.
 
 > **La première rédaction de ce constat était inexacte sur deux points**, corrigés ici après
 > vérification du producteur et de la chaîne complète. Conservé en l'état, avec la correction

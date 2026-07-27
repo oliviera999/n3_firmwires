@@ -760,11 +760,24 @@ bool WebServerManager::begin() {
     }
 
     char paramBuf[128];
+    // Compte les paires abandonnées faute de place dans extraPairs[512] (audit 2026-07,
+    // F2a). Elles étaient perdues EN SILENCE : la config saisie sur l'UI locale partait
+    // amputée vers le serveur sans le moindre message. Mesure du pire cas réaliste sur
+    // les 19 clés ci-dessous (e-mail de 64 caractères) : 396/512 octets — la marge tient,
+    // mais trois ou quatre nouvelles clés suffiraient à la franchir. Autant le voir.
+    uint8_t droppedPairs = 0;
     auto appendPair = [&](const char* key, const char* value){
       if (value == nullptr || strlen(value) == 0) return;
-      if (p >= end - 1) return; // Pas assez d'espace
+      if (p >= end - 1) { droppedPairs++; return; }  // Plus de place
 
       size_t written = snprintf(p, end - p, "%s%s=%s", any ? "&" : "", key, value);
+      if (written >= (size_t)(end - p)) {
+        // snprintf renvoie la longueur QU'IL AURAIT écrite : au-delà, la paire est
+        // tronquée. On la retire plutôt que d'émettre une clé/valeur coupée.
+        *p = '\0';
+        droppedPairs++;
+        return;
+      }
       if (written > 0) {
         p += written;
         any = true;
@@ -795,6 +808,13 @@ bool WebServerManager::begin() {
     if (getWebParam(req, "FreqWakeUp", paramBuf, sizeof(paramBuf))) appendPair("FreqWakeUp", paramBuf);
     if (getWebParam(req, "mail", paramBuf, sizeof(paramBuf))) appendPair("mail", paramBuf);
     if (getWebParam(req, "mailNotif", paramBuf, sizeof(paramBuf))) appendPair("mailNotif", paramBuf);
+
+    if (droppedPairs > 0) {
+      Serial.printf("[Web][WARN] %u paire(s) de config abandonnee(s) : extraPairs sature "
+                    "(%u/%u octets). Agrandir extraPairs[] dans web_server.cpp.\n",
+                    (unsigned)droppedPairs, (unsigned)(p - extraPairs),
+                    (unsigned)sizeof(extraPairs));
+    }
 
     // Sauvegarde immédiate en NVS du JSON fusionné
     {
