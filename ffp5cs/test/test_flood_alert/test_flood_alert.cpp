@@ -105,6 +105,30 @@ void test_exit_flood_after_stable_above(void) {
   TEST_ASSERT_FALSE(st.inFlood);
 }
 
+// ExitFlood est une TRANSITION : jamais renvoyée si l'on n'était pas en trop-plein
+// (audit 2026-07, S6). Le cas nominal — jamais de trop-plein, niveau stable au-dessus
+// de l'hystérésis — satisfait la condition de sortie en permanence.
+void test_no_exit_decision_when_never_in_flood(void) {
+  State st;
+  Params p = makeParams();
+  st.inFlood = false;
+  st.aboveResetSinceEpoch = 2000;
+  Decision d = evaluate(st, 120, 2180, p, true);
+  TEST_ASSERT_EQUAL(Decision::None, d);
+  TEST_ASSERT_FALSE(st.inFlood);
+}
+
+// Corollaire : la sortie n'est émise QU'UNE FOIS, pas à chaque évaluation suivante.
+void test_exit_flood_emitted_once(void) {
+  State st;
+  Params p = makeParams();
+  st.inFlood = true;
+  st.aboveResetSinceEpoch = 2000;
+  TEST_ASSERT_EQUAL(Decision::ExitFlood, evaluate(st, 120, 2180, p, true));
+  TEST_ASSERT_EQUAL(Decision::None, evaluate(st, 120, 2240, p, true));
+  TEST_ASSERT_EQUAL(Decision::None, evaluate(st, 120, 9999, p, true));
+}
+
 // Niveau entre limFlood et limFlood+hyst (zone morte d'hystérésis) : pas de sortie, reset du compteur.
 void test_hysteresis_deadband_no_exit(void) {
   State st;
@@ -147,6 +171,8 @@ int main(void) {
   RUN_TEST(test_cooldown_blocks_second_email);
   RUN_TEST(test_cooldown_window_after_exit);
   RUN_TEST(test_exit_flood_after_stable_above);
+  RUN_TEST(test_no_exit_decision_when_never_in_flood);
+  RUN_TEST(test_exit_flood_emitted_once);
   RUN_TEST(test_hysteresis_deadband_no_exit);
   RUN_TEST(test_dip_below_resets_above_counter);
   RUN_TEST(test_mark_email_sent);

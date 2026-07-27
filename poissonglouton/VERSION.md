@@ -1,5 +1,9 @@
 # Poissonglouton - Historique versions
 
+## 0.5.22 - 2026-07-27
+
+- **Correctif OTA (audit `docs/AUDIT_BUGS_2026-07.md`, constat F3)** — `n3_common` 1.8.4. `compareVersions` ignorait le retour de `sscanf` : une version distante illisible etait parsee en `0.0.0`, donc toujours <= la version locale -> « Deja a jour ». Une metadata malformee immobilisait silencieusement la flotte. Nouveau `parseVersion()` (echec sous deux composantes lisibles) et garde explicite dans `n3OtaCheck` : la cause est desormais journalisee en ERREUR et remontee a `onUpdateEnd`.
+
 ## 0.5.21 - 2026-07-27
 
 - **Durcissement (audit `docs/AUDIT_BUGS_2026-07.md`, constats F4 et F5)**. (F4, `n3_common` 1.8.3) `n3OtaCheck` initialise `integrityDetails[192]`, tampon journalise et transmis a `onUpdateEnd` en cas d'echec OTA : tous les chemins d'echec l'ecrivent aujourd'hui, mais un futur oubli de `snprintf` aurait affiche de la memoire de pile non initialisee. (F5, `n3_hmac` 1.1.1) `n3HmacSha256` verifie `key`/`message`/`hexOutput` avant `strlen`, alignant le wrapper plat sur `computeHmacHex` qui validait deja ses parametres ; `n3HmacSignRequest` ne pose plus aucun header si le calcul echoue. Deux cas ajoutes a `test_hmac`. **Latent** : aucun appelant actuel ne passe de pointeur nul — aucun changement de comportement observable.

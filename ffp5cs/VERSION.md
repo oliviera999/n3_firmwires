@@ -12,6 +12,14 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.24 - 2026-07-27
+
+### Machine anti-spam trop-plein : `ExitFlood` est une transition, pas un etat (audit S6)
+
+- **`FloodAlert::evaluate` ne renvoie plus `ExitFlood` que si l'on ETAIT effectivement en trop-plein**, et rearme `aboveResetSinceEpoch` apres la sortie. Le cas NOMINAL (jamais de trop-plein, distance stable au-dessus de l'hysteresis) satisfait la condition de sortie en permanence : la decision etait donc renvoyee a **chaque** evaluation.
+- **Aucun changement de comportement observable cote ffp5cs** : le seul effet de `Outcome::ExitedFlood` chez l'appelant est `_highAquaSent = false`, idempotent — et la verification montre que ce membre n'est **jamais lu** (ecrit en deux points d'`automatism_display.cpp`, aucun lecteur). Le correctif est fait ici pour conserver la **parite annoncee** avec le portage serveur `FloodStateMachine`, ou le meme defaut faisait journaliser « Sortie de l'etat trop-plein » ~1440 fois par jour au rythme du CRON (1 min).
+- Deux cas ajoutes a `test_flood_alert` : pas de decision de sortie si jamais en trop-plein ; sortie emise une seule fois.
+
 ## Version 15.23 - 2026-07-27
 
 ### Durcissement HMAC partage (audit `docs/AUDIT_BUGS_2026-07.md`, constat F5)

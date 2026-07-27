@@ -9,13 +9,19 @@ explicitement marqués **latent**.
 Pour chaque constat, ce document propose **une ou plusieurs options de correction**
 avec leurs compromis, et indique lesquelles ont été **appliquées**.
 
-**État au 2026-07-27** : **F1, F4 et F5 sont corrigés** (`n3_common` 1.8.3, `n3_hmac` 1.1.1 ;
-n3pp 4.67, msp 2.70, poissonglouton 0.5.21, uploadphotosserver 2.74, ffp5cs 15.23 — ce
-dernier pour F5 seul, il a son propre `ota_manager`). F2, F3 et F6 restent ouverts — leurs
-options sont documentées ci-dessous, le choix revient au mainteneur.
+**État au 2026-07-27** : **F1, F3, F4 et F5 sont corrigés** (`n3_common` 1.8.4, `n3_hmac` 1.1.1 ;
+n3pp 4.68, msp 2.71, poissonglouton 0.5.22, uploadphotosserver 2.75, ffp5cs 15.24). ffp5cs
+n'est concerné ni par F1 ni par F3 (il a son propre `ota_manager`) : ses bumps couvrent F5 puis
+la parité S6 de `flood_alert.h`. **F2 et F6 restent ouverts** — leurs options sont documentées
+ci-dessous, le choix revient au mainteneur.
 
 > Un audit jumeau couvre le serveur : `n3_serveur/docs/AUDIT_BUGS_2026-07.md`.
 > Les constats **F2** (ici) et **S1** (là-bas) portent sur le même contrat HMAC.
+>
+> `ffp5cs/include/automatism/flood_alert.h` a également été corrigé (ffp5cs 15.24) au titre
+> du constat **S6** de l'audit serveur, pour conserver la parité annoncée entre les deux
+> machines anti-spam. Effet nul côté firmware : `_highAquaSent`, seul effet de `ExitedFlood`
+> chez l'appelant, n'est **jamais lu**.
 
 ## Synthèse
 
@@ -23,7 +29,7 @@ options sont documentées ci-dessous, le choix revient au mainteneur.
 |---|---------|-------|-------------------|------|
 | F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.2) |
 | F2 | 🟠 Moyen | Contrat « corps canonique HMAC » fragile + troncature silencieuse à 512 o | `ffp5cs/src/ffp3_post_body.cpp` | ouvert |
-| F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ouvert |
+| F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.4) |
 | F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.3) |
 | F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ✅ **corrigé** (`n3_hmac` 1.1.1) |
 | F6 | ⚪ Contrat | `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` | `shared/n3_store_forward/` | ouvert |
@@ -202,7 +208,17 @@ exclut explicitement via `AUTH_KEYS`.
 
 ---
 
-## F3 — 🟡 `compareVersions` ignore le retour de `sscanf`
+## F3 — 🟡 `compareVersions` ignore le retour de `sscanf` — ✅ CORRIGÉ
+
+> **Correctif appliqué** (`n3_common` 1.8.4) — **option A**. Nouveau `parseVersion()` :
+> échec si moins de **deux** composantes lisibles (le format à deux composantes du dépôt
+> reste valide, PATCH absent = 0). `n3OtaCheck` garde explicitement la version distante
+> AVANT la comparaison : une valeur illisible est journalisée en ERREUR et remontée à
+> `onUpdateEnd` avec son contenu, au lieu de se confondre avec « déjà à jour ».
+> `config.currentVersion` n'est délibérément pas gardé : c'est une constante de
+> compilation, toujours bien formée, et un repli en `0.0.0` y pousserait de toute façon
+> vers une mise à jour (sens sûr). L'option B (normaliser à la source) reste pertinente
+> côté serveur, en défense en profondeur.
 
 `shared/n3_common/src/n3_ota.cpp:390-398` :
 

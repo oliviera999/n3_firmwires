@@ -72,8 +72,19 @@ inline Decision evaluate(State& st, uint16_t wlAquaMm, uint32_t nowEpoch,
     uint32_t elapsedAbove = (nowEpoch >= st.aboveResetSinceEpoch)
                                 ? (nowEpoch - st.aboveResetSinceEpoch) : 0;
     if (elapsedAbove >= p.resetStableSec) {
+      // ExitFlood signale une TRANSITION (on QUITTE le trop-plein), pas un etat.
+      // Deux gardes (audit 2026-07, S6/parite serveur) : ne la renvoyer que si l'on
+      // etait effectivement en trop-plein, et rearmer aboveResetSinceEpoch apres la
+      // sortie. Sans eux, le cas NOMINAL (jamais de trop-plein, distance stable
+      // au-dessus de l'hysteresis) satisfait la condition en permanence -> ExitFlood
+      // etait renvoyee a CHAQUE evaluation. Sans consequence ici (l'appelant se
+      // contente de _highAquaSent = false, idempotent), mais le portage serveur
+      // FloodStateMachine journalisait la sortie ~1440 fois par jour au rythme du
+      // CRON. On corrige les deux machines pour conserver leur parite annoncee.
+      const bool wasInFlood = st.inFlood;
       st.inFlood = false;
-      return Decision::ExitFlood;
+      st.aboveResetSinceEpoch = 0;
+      return wasInFlood ? Decision::ExitFlood : Decision::None;
     }
   } else {
     st.aboveResetSinceEpoch = 0;

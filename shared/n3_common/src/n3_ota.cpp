@@ -420,11 +420,25 @@ void n3OtaSyncBootPartition() {
     }
 }
 
+// Parse "MAJOR.MINOR[.PATCH]". Renvoie false si moins de DEUX composantes lisibles
+// (audit 2026-07, F3) : le retour de sscanf etait ignore, donc une version non
+// parsable en tete ("v15.09", chaine vide, champ JSON d'un autre type) laissait les
+// composantes a 0 -> la version distante etait vue comme 0.0.0 -> compareVersions
+// <= 0 -> "Deja a jour". Une metadata malformee immobilisait donc silencieusement
+// toute la flotte, sans le moindre message d'erreur.
+// PATCH absent = 0 : le format a deux composantes du depot (15.09, 4.67) reste valide.
+static bool parseVersion(const char* v, int& maj, int& min, int& pat) {
+    maj = min = pat = 0;
+    if (v == nullptr || v[0] == '\0') return false;
+
+    return sscanf(v, "%d.%d.%d", &maj, &min, &pat) >= 2;
+}
+
 static int compareVersions(const char* v1, const char* v2) {
     int maj1 = 0, min1 = 0, pat1 = 0;
     int maj2 = 0, min2 = 0, pat2 = 0;
-    sscanf(v1, "%d.%d.%d", &maj1, &min1, &pat1);
-    sscanf(v2, "%d.%d.%d", &maj2, &min2, &pat2);
+    parseVersion(v1, maj1, min1, pat1);
+    parseVersion(v2, maj2, min2, pat2);
     if (maj1 != maj2) return maj1 - maj2;
     if (min1 != min2) return min1 - min2;
     return pat1 - pat2;
@@ -506,6 +520,25 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     }
 
     Serial.printf("[OTA] Version distante : %s\n", remoteVersion);
+
+    // Une version illisible ne doit PAS se confondre avec « deja a jour » (audit
+    // 2026-07, F3) : sans ce garde, elle etait parsee en 0.0.0, donc toujours <=
+    // la version locale -> la flotte cessait de se mettre a jour en silence, avec
+    // pour seule trace un « Deja a jour » trompeur. On remonte desormais la cause.
+    {
+        int rMaj = 0, rMin = 0, rPat = 0;
+        if (!parseVersion(remoteVersion, rMaj, rMin, rPat)) {
+            Serial.printf("[OTA][ERREUR] version distante illisible: '%s' (attendu MAJEUR.MINEUR[.PATCH])\n",
+                          remoteVersion);
+            if (config.onUpdateEnd) {
+                char details[128];
+                snprintf(details, sizeof(details),
+                         "OTA ignoree: version distante illisible ('%s').", remoteVersion);
+                config.onUpdateEnd(false, details, config.userData);
+            }
+            return false;
+        }
+    }
 
     if (compareVersions(remoteVersion, config.currentVersion) <= 0) {
         Serial.println("[OTA] Deja a jour");
