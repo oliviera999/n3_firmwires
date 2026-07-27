@@ -6,28 +6,37 @@ Audit de code transverse des bibliothèques `shared/` et des firmwares actifs
 avant d'être qualifié de bug ; les constats non déclenchables aujourd'hui sont
 explicitement marqués **latent**.
 
-Ce document **ne modifie aucun firmware** : il propose, pour chaque constat,
-**une ou plusieurs options de correction** avec leurs compromis.
-Aucune version n'est bumpée ici (pas de changement de code → pas de conflit de
-merge avec une autre PR sur `include/*config.h` ou `VERSION.md`).
+Pour chaque constat, ce document propose **une ou plusieurs options de correction**
+avec leurs compromis, et indique lesquelles ont été **appliquées**.
+
+**État au 2026-07-27** : **F1 est corrigé** (`n3_common` 1.8.2 ; n3pp 4.66, msp 2.69,
+poissonglouton 0.5.20, uploadphotosserver 2.73). F2 à F6 restent ouverts — leurs
+options sont documentées ci-dessous, le choix revient au mainteneur.
 
 > Un audit jumeau couvre le serveur : `n3_serveur/docs/AUDIT_BUGS_2026-07.md`.
 > Les constats **F2** (ici) et **S1** (là-bas) portent sur le même contrat HMAC.
 
 ## Synthèse
 
-| # | Gravité | Sujet | Fichier principal |
-|---|---------|-------|-------------------|
-| F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` |
-| F2 | 🟠 Moyen | Contrat « corps canonique HMAC » fragile + troncature silencieuse à 512 o | `ffp5cs/src/ffp3_post_body.cpp` |
-| F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` |
-| F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` |
-| F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` |
-| F6 | ⚪ Contrat | `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` | `shared/n3_store_forward/` |
+| # | Gravité | Sujet | Fichier principal | État |
+|---|---------|-------|-------------------|------|
+| F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.2) |
+| F2 | 🟠 Moyen | Contrat « corps canonique HMAC » fragile + troncature silencieuse à 512 o | `ffp5cs/src/ffp3_post_body.cpp` | ouvert |
+| F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ouvert |
+| F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ouvert |
+| F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ouvert |
+| F6 | ⚪ Contrat | `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` | `shared/n3_store_forward/` | ouvert |
 
 ---
 
-## F1 — 🔴 Boucle de téléchargement OTA sans détection de stagnation
+## F1 — 🔴 Boucle de téléchargement OTA sans détection de stagnation — ✅ CORRIGÉ
+
+> **Correctif appliqué** — option A ci-dessous (`n3_common` 1.8.2 ; n3pp 4.66, msp 2.69,
+> poissonglouton 0.5.20, uploadphotosserver 2.73). Constante `N3_OTA_STALL_TIMEOUT_MS`
+> (15 s par défaut, surchargeable par `-D`) : au-delà de ce délai **sans aucun octet reçu**,
+> l'OTA est abandonnée proprement (`Update.abort()` + `http.end()`) avec un message d'échec
+> explicite. Aucune borne sur la durée TOTALE : un téléchargement lent qui **progresse**
+> n'est pas affecté.
 
 ### Constat
 

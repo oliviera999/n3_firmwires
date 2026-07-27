@@ -27,6 +27,16 @@
 #  endif
 #endif
 
+// Delai max sans AUCUN octet recu pendant le telechargement du binaire avant
+// d'abandonner (audit 2026-07, F1 : boucle de drain sans borne de temps).
+// Surchargeable par -D N3_OTA_STALL_TIMEOUT_MS=... si un lien tres lent le justifie.
+// 15 s : largement au-dessus d'un a-coup reseau normal (le flux TCP reste alimente
+// meme en RSSI degrade), tout en bornant le blocage bien avant l'epuisement batterie.
+// Ne borne PAS la duree totale : un telechargement lent mais qui progresse continue.
+#ifndef N3_OTA_STALL_TIMEOUT_MS
+#define N3_OTA_STALL_TIMEOUT_MS 15000UL
+#endif
+
 static bool n3OtaUrlIsHttps(const char* url) {
     return url != nullptr && strncasecmp(url, "https://", 8) == 0;
 }
@@ -224,13 +234,36 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
     int remaining = contentLen;
     int writtenTotal = 0;
     bool magicChecked = false;
+    // Chien de garde de stagnation (audit 2026-07, F1). http.setTimeout() borne les
+    // operations bloquantes de HTTPClient, PAS cette scrutation manuelle de
+    // available() : un serveur qui garde le socket ouvert sans plus rien emettre
+    // (proxy sature, portail captif, coupure sans RST) laisse http.connected() vrai
+    // indefiniment. Et delay(1) rend la main a l'ordonnanceur, donc la tache IDLE
+    // tourne et le watchdog de tache NE se declenche PAS : l'appareil restait fige,
+    // partition OTA en cours d'ecriture (batterie videe sur les firmwares deep-sleep).
+    unsigned long lastDataMs = millis();
 
     while (http.connected() && remaining > 0) {
         size_t availableBytes = stream->available();
         if (availableBytes == 0) {
+            if (millis() - lastDataMs >= N3_OTA_STALL_TIMEOUT_MS) {
+                if (details && detailsSize > 0) {
+                    snprintf(details, detailsSize,
+                             "OTA firmware: flux bloque %lu s sans octet (%d/%d recus).",
+                             static_cast<unsigned long>(N3_OTA_STALL_TIMEOUT_MS / 1000UL),
+                             writtenTotal, contentLen);
+                }
+                Serial.printf("[OTA][ERREUR] flux bloque, abandon a %d/%d octets\n",
+                              writtenTotal, contentLen);
+                mbedtls_md_free(&mdCtx);
+                Update.abort();
+                http.end();
+                return false;
+            }
             delay(1);
             continue;
         }
+        lastDataMs = millis();
         if (availableBytes > sizeof(buffer)) {
             availableBytes = sizeof(buffer);
         }

@@ -1,6 +1,6 @@
 {
   "name": "n3_common",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "OTA HTTP distant (sha256+signature ECDSA, flash single-pass Update), selection d'artefact OTA multi-cible (cascade channels), constantes partagees, parsing JSON outputs_state, logique pure mutualisee (sleep adaptatif, cadence OTA periodique, cause de reset, throttle login) pour firmwares n3 IoT",
   "keywords": ["esp32", "ota", "n3", "defaults", "outputs", "throttle"],
   "frameworks": "arduino",
