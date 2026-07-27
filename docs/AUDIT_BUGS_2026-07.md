@@ -10,11 +10,12 @@ Pour chaque constat, ce document propose **une ou plusieurs options de correctio
 avec leurs compromis, et indique lesquelles ont été **appliquées**.
 
 **État au 2026-07-27** : **F1, F2a, F3, F4 et F5 sont corrigés** (`n3_common` 1.8.4,
-`n3_hmac` 1.1.1 ; n3pp 4.68, msp 2.71, poissonglouton 0.5.22, uploadphotosserver 2.75,
+`n3_hmac` 1.1.1, `n3_store_forward` 1.1.0 ; n3pp 4.68, msp 2.71, poissonglouton 0.5.22, uploadphotosserver 2.75,
 ffp5cs 15.25). ffp5cs n'est concerné ni par F1 ni par F3 (il a son propre `ota_manager`) :
-ses bumps couvrent F5, la parité S6 de `flood_alert.h`, puis F2a. **Restent ouverts : F2b**
+ses bumps couvrent F5, la parité S6 de `flood_alert.h`, puis F2a. **F6 est corrigé**
+(`n3_store_forward` 1.1.0, uploadphotosserver 2.76). **Reste ouvert : F2b**
 (verrouillage du formatage dupliqué — **ne rien décider avant d'avoir relevé `body_source`
-en production**, cf. §F2b : F2b pourrait n'avoir aucune raison d'exister) **et F6**.
+en production**, cf. §F2b : F2b pourrait n'avoir aucune raison d'exister).
 
 > Un audit jumeau couvre le serveur : `n3_serveur/docs/AUDIT_BUGS_2026-07.md`.
 > Les constats **F2** (ici) et **S1** (là-bas) portent sur le même contrat HMAC.
@@ -33,7 +34,7 @@ en production**, cf. §F2b : F2b pourrait n'avoir aucune raison d'exister) **et 
 | F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.4) |
 | F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.3) |
 | F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ✅ **corrigé** (`n3_hmac` 1.1.1) |
-| F6 | ⚪ Contrat | `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` | `shared/n3_store_forward/` | ouvert |
+| F6 | ⚪ Contrat | `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` | `shared/n3_store_forward/` | ✅ **corrigé** (`n3_store_forward` 1.1.0) |
 
 ---
 
@@ -379,7 +380,13 @@ défaut.
 
 ---
 
-## F6 — ⚪ `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()`
+## F6 — ⚪ `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` — ✅ CORRIGÉ
+
+> ✅ **Corrigé en `n3_store_forward` 1.1.0 / uploadphotosserver 2.76** — ni l'option A ni
+> l'option B, mais une **troisième voie** (voir plus bas) : l'orchestrateur ne présuppose plus
+> aucune sémantique, il l'**observe**. Après chaque `commit()`, il relit l'index courant et
+> n'avance que si le `handle` n'a pas changé (`n3SfAdvanceCursor`). Les deux familles de
+> backends sont désormais supportées, et le contrat est explicite dans l'en-tête.
 
 `shared/n3_store_forward/src/n3_store_forward.h` documente `commit()` comme
 « Consomme l'élément après acquittement (**avance le curseur / retire la clé**) »,
@@ -410,6 +417,54 @@ un test natif avec un backend retirant à la volée pour figer le comportement a
 toujours sur `peek(0)` et ne progresser l'index que lorsqu'un élément n'a pas été
 committé (`HardFail` mis à part). Plus sûr, mais change la boucle actuelle — donc
 à couvrir par les tests existants avant de l'adopter.
+
+> ⚠️ **Correction : l'option B telle qu'écrite ci-dessus ne fonctionne pas.** En relisant la
+> boucle : un élément est committé sur `Ok` **et** sur `HardFail`, et tous les autres verdicts
+> (`NetworkError`, `RateLimited` épuisé) font un `break`. Il n'existe donc **aucun chemin** où
+> un élément est visité, non committé, et la boucle continue — la condition « ne progresser
+> que lorsqu'un élément n'a pas été committé » ne se déclenche jamais. L'option B dégénère en
+> « toujours `peek(0)` », ce qui renverrait indéfiniment le même élément sur un backend à index
+> stables comme `SdCursorBackend`. Elle échange donc un bug hypothétique contre un bug réel.
+
+**Option C (retenue) — observer plutôt que présupposer.** L'orchestrateur ne peut pas
+*deviner* la sémantique, mais il peut la *constater* : après chaque `commit()`, il relit
+l'index courant ; si le `handle` est inchangé, les index sont stables → avancer ; sinon
+l'élément a été retiré et l'index courant désigne déjà le suivant → ne pas avancer.
+`handle` est justement documenté comme l'identité de commit, donc unique et comparable.
+
+Deux exigences en découlent, ajoutées au contrat de `N3SfBackend` : `handle` unique parmi
+les éléments en attente, et `peek()` sans effet de bord (il est appelé une fois de plus par
+élément committé). Coût : un `peek()` supplémentaire par commit — négligeable devant l'envoi
+réseau qui le précède.
+
+### Correctif appliqué (option C)
+
+- **`n3_store_forward.cpp`** : curseur de lecture `index` **distinct** du compteur
+  d'itérations `i` (`planned` continue de borner le nombre d'envois), et helper
+  `n3SfAdvanceCursor()` appelé après les deux commits (`Ok` et `HardFail`).
+- **`n3_store_forward.h`** : section « SÉMANTIQUE D'INDEX » — les deux familles sont
+  supportées, avec les deux exigences ci-dessus.
+- **`test_store_forward`** : mock `RemovingBackend` (commit retire réellement l'élément) +
+  4 cas — drain complet dans l'ordre, `HardFail` qui ne désynchronise pas le curseur,
+  `NetworkError` qui laisse l'élément en tête de file, et un cas explicite vérifiant que le
+  backend à index **stables** avance toujours de +1 (pas de doublon).
+
+### Vérification
+
+Reproduction du bug avant correctif, en natif (g++), avec un backend qui retire l'élément :
+
+| | file `{10,11,12,13,14,15}` | committés | restants |
+|---|---|---|---|
+| avant | drain | `[10, 12, 14]` | `11, 13, 15` bloqués |
+| après | drain | `[10, 11, 12, 13, 14, 15]` | file vidée |
+
+« Un élément sur deux », exactement comme prédit — et le drain s'arrêtait à mi-course, `planned`
+ayant été calculé sur le `count()` initial.
+
+Non-régression : les **10 tests natifs préexistants passent à l'identique** avant et après
+(le backend mock historique est à index stables), et les 3 nouveaux cas « glissants »
+**échouent** contre l'ancienne implémentation — ils gardent donc réellement quelque chose.
+Suite complète : 14/14.
 
 ---
 
