@@ -9,8 +9,9 @@ explicitement marqués **latent**.
 Pour chaque constat, ce document propose **une ou plusieurs options de correction**
 avec leurs compromis, et indique lesquelles ont été **appliquées**.
 
-**État au 2026-07-27** : **F1 est corrigé** (`n3_common` 1.8.2 ; n3pp 4.66, msp 2.69,
-poissonglouton 0.5.20, uploadphotosserver 2.73). F2 à F6 restent ouverts — leurs
+**État au 2026-07-27** : **F1, F4 et F5 sont corrigés** (`n3_common` 1.8.3, `n3_hmac` 1.1.1 ;
+n3pp 4.67, msp 2.70, poissonglouton 0.5.21, uploadphotosserver 2.74, ffp5cs 15.23 — ce
+dernier pour F5 seul, il a son propre `ota_manager`). F2, F3 et F6 restent ouverts — leurs
 options sont documentées ci-dessous, le choix revient au mainteneur.
 
 > Un audit jumeau couvre le serveur : `n3_serveur/docs/AUDIT_BUGS_2026-07.md`.
@@ -23,8 +24,8 @@ options sont documentées ci-dessous, le choix revient au mainteneur.
 | F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.2) |
 | F2 | 🟠 Moyen | Contrat « corps canonique HMAC » fragile + troncature silencieuse à 512 o | `ffp5cs/src/ffp3_post_body.cpp` | ouvert |
 | F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ouvert |
-| F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ouvert |
-| F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ouvert |
+| F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.3) |
+| F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ✅ **corrigé** (`n3_hmac` 1.1.1) |
 | F6 | ⚪ Contrat | `N3SfBackend` : sémantique d'index ambiguë entre `peek()` et `commit()` | `shared/n3_store_forward/` | ouvert |
 
 ---
@@ -243,7 +244,9 @@ corrompue en transit.
 
 ---
 
-## F4 — 🟡 `integrityDetails[192]` non initialisé
+## F4 — 🟡 `integrityDetails[192]` non initialisé — ✅ CORRIGÉ
+
+> **Correctif appliqué** (`n3_common` 1.8.3) : `char integrityDetails[192] = {0};`.
 
 `n3OtaCheck()` (`shared/n3_common/src/n3_ota.cpp:489`) déclare
 `char integrityDetails[192];` puis, en cas d'échec, le passe à `Serial.printf`
@@ -262,7 +265,12 @@ mémoire de pile non initialisée dans un log et dans un e-mail d'alerte.
 
 ---
 
-## F5 — 🟡 `n3HmacSha256` déréférence `key` / `message` sans garde nulle
+## F5 — 🟡 `n3HmacSha256` déréférence `key` / `message` sans garde nulle — ✅ CORRIGÉ
+
+> **Correctif appliqué** (`n3_hmac` 1.1.1) : `key`, `message` et `hexOutput` sont vérifiés
+> avant tout `strlen`, alignant le wrapper plat sur `computeHmacHex`. `n3HmacSignRequest`
+> ne pose plus aucun en-tête quand le calcul échoue (au lieu d'envoyer une signature vide).
+> Deux cas ajoutés à `test_hmac` (pointeurs nuls ; absence d'en-tête sur échec).
 
 `shared/n3_hmac/src/n3_hmac.cpp:88-91` appelle `strlen(key)` et `strlen(message)`
 sans vérifier la nullité, alors que la fonction est exportée dans l'en-tête public

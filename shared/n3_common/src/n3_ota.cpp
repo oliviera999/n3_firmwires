@@ -519,7 +519,13 @@ bool n3OtaCheck(const N3OtaConfig& config) {
         config.onUpdateStart(config.currentVersion, remoteVersion, firmwareUrl, config.userData);
     }
 
-    char integrityDetails[192];
+    // Initialise (audit 2026-07, F4) : ce tampon est journalise et transmis a
+    // onUpdateEnd sur echec. Tous les chemins de retour false de
+    // downloadAndFlashFirmware l'ecrivent aujourd'hui, mais la garantie ne tient qu'a
+    // la discipline de l'appele — un futur chemin d'echec qui oublierait snprintf
+    // afficherait de la memoire de pile non initialisee dans un log ET dans un mail
+    // d'alerte. Cout : un octet.
+    char integrityDetails[192] = {0};
     s_progressCallback = config.onUpdateProgress;
     s_progressUserData = config.userData;
     if (!downloadAndFlashFirmware(firmwareUrl, expectedSha256, signatureB64,

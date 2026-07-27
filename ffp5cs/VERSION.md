@@ -12,6 +12,13 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.23 - 2026-07-27
+
+### Durcissement HMAC partage (audit `docs/AUDIT_BUGS_2026-07.md`, constat F5)
+
+- **`n3HmacSha256` (`shared/n3_hmac` 1.1.1) verifie `key` / `message` / `hexOutput` avant `strlen`.** La fonction est exportee dans l'en-tete public sans precondition documentee, alors que son module frere `computeHmacHex` (`n3_hmac_canonical`, utilise par le body-signing X-Sig-* de ffp5cs) validait deja ses parametres : l'incoherence entre les deux etait le vrai defaut. `n3HmacSignRequest` ne pose desormais AUCUN header quand le calcul echoue, au lieu d'envoyer une signature vide. Deux cas ajoutes a `test_hmac`.
+- **Portee ffp5cs** : recompilation seule (le firmware tire `n3_hmac` transitivement via `n3_mail` -> `n3_data`). **Latent, aucun changement de comportement observable** — aucun appelant actuel ne passe de pointeur nul. Le correctif OTA F1/F4 du meme audit ne concerne pas ffp5cs, qui a son propre `ota_manager`.
+
 ## Version 15.22 - 2026-07-21
 
 ### Mutualisation diagnostic WiFi + dédup JSON websocket (chantier shared)

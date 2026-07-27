@@ -37,6 +37,24 @@ void test_buffer_trop_petit_rejete() {
   TEST_ASSERT_FALSE(n3HmacSha256("k", "m", out, sizeof(out)));
 }
 
+// Gardes nulles (audit 2026-07, F5) : avant le correctif, strlen(nullptr)
+// plantait. La fonction est exportee dans l'en-tete public sans precondition,
+// et son module frere computeHmacHex valide deja ses parametres.
+void test_pointeurs_nuls_rejetes_sans_crash() {
+  char out[65];
+  TEST_ASSERT_FALSE(n3HmacSha256(nullptr, "m", out, sizeof(out)));
+  TEST_ASSERT_FALSE(n3HmacSha256("k", nullptr, out, sizeof(out)));
+  TEST_ASSERT_FALSE(n3HmacSha256("k", "m", nullptr, 65));
+}
+
+// Un echec de calcul ne doit poser AUCUN header (sinon on enverrait une
+// signature vide ou du contenu de pile).
+void test_sign_request_sans_body_ne_pose_pas_de_header() {
+  HTTPClient http;
+  n3HmacSignRequest(http, "apikey", nullptr);
+  TEST_ASSERT_EQUAL_STRING("", http.lastHeaderName.c_str());
+}
+
 void test_sign_request_pose_header_x_signature() {
   HTTPClient http;
   n3HmacSignRequest(http, "apikey", "body");
@@ -51,6 +69,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_hex_format_64_minuscules);
   RUN_TEST(test_null_terminaison);
   RUN_TEST(test_buffer_trop_petit_rejete);
+  RUN_TEST(test_pointeurs_nuls_rejetes_sans_crash);
+  RUN_TEST(test_sign_request_sans_body_ne_pose_pas_de_header);
   RUN_TEST(test_sign_request_pose_header_x_signature);
   return UNITY_END();
 }
