@@ -3,6 +3,13 @@
 #include "mbedtls/md.h"
 
 bool n3HmacSha256(const char* key, const char* message, char* hexOutput, size_t hexOutputSize) {
+  // Gardes nulles (audit 2026-07, F5) : strlen(key) / strlen(message) ci-dessous
+  // dereferencent sans verification. Les appelants actuels passent des pointeurs
+  // garantis non nuls, mais la fonction est exportee dans l'en-tete public sans
+  // precondition documentee — et le module frere computeHmacHex (n3_hmac_canonical)
+  // valide bien ses parametres. On aligne les deux plutot que de laisser un crash
+  // possible sur un futur appelant.
+  if (!key || !message || !hexOutput) return false;
   if (hexOutputSize < 65) return false;
 
   uint8_t hmacResult[32];

@@ -12,6 +12,50 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.25 - 2026-07-27
+
+### Corps POST canonique : fin de la troncature silencieuse des clés d'angles servo (audit F2a)
+
+- **`ExtraPair::key` passe de 16 à 24 octets** (`ffp3_post_body.h`). En `[16]` — soit 15
+  caractères utiles — `copyField()` tronquait **silencieusement 4 des 6 clés** qui transitent
+  réellement par `ExtraStore` : `angleDistribGros` → `angleDistribGro`, `angleReposPetits` →
+  `angleReposPetit`, `angleDistribPetits` (18 car., la plus longue) → `angleDistribPet`,
+  `angleInterPetits` → `angleInterPetit`. Ce sont les seules clés poussées par `/dbvars` à ne
+  pas être des champs connus de `setKnownField`, donc les seules à passer par le magasin
+  d'extras. Le firmware émettait donc des **noms de clés faux** dans le corps POST.
+- **Aucun 401 n'en découlait** : le firmware signe le corps qu'il envoie réellement et le
+  serveur reconstitue à partir de ce qu'il a reçu — les deux voient la même chaîne tronquée.
+  **Aucun impact fonctionnel non plus à ce jour** : le serveur ne lit ces clés nulle part dans
+  le POST (`App\Domain\SensorData` n'a aucun champ d'angle ; les GPIO 118-123 lui appartiennent,
+  écrits par son UI et servis au firmware par `GET /api/outputs/state`). C'était une
+  **corruption de données latente** : toute évolution qui ferait lire ces champs au serveur
+  aurait échoué en silence. Coût du correctif : **+64 octets** sur `FullUpdateValues`
+  (~921 → ~985 o, pile de `sendFullUpdate`).
+- **Saturation d'`extraPairs` rendue visible** (`web_server.cpp`) : les paires qui ne tenaient
+  plus dans `extraPairs[512]` étaient abandonnées **sans le moindre message**, et une paire
+  partiellement écrite pouvait subsister. Elles sont désormais comptées, la paire tronquée est
+  retirée, et un `[Web][WARN]` indique le nombre perdu et le remplissage. Mesure du pire cas
+  réaliste sur les 19 clés (e-mail de 64 caractères) : **396/512 octets** — la marge tient, mais
+  trois ou quatre nouvelles clés de configuration suffiraient à la franchir.
+- Test ajouté à `test_post_body` (`test_servo_angle_keys_are_not_truncated`) : les six clés
+  doivent apparaître entières, et aucune forme tronquée ne doit subsister. Vérifié en natif
+  avant/après — l'ancien `key[16]` fait bien échouer 12 assertions.
+
+## Version 15.24 - 2026-07-27
+
+### Machine anti-spam trop-plein : `ExitFlood` est une transition, pas un etat (audit S6)
+
+- **`FloodAlert::evaluate` ne renvoie plus `ExitFlood` que si l'on ETAIT effectivement en trop-plein**, et rearme `aboveResetSinceEpoch` apres la sortie. Le cas NOMINAL (jamais de trop-plein, distance stable au-dessus de l'hysteresis) satisfait la condition de sortie en permanence : la decision etait donc renvoyee a **chaque** evaluation.
+- **Aucun changement de comportement observable cote ffp5cs** : le seul effet de `Outcome::ExitedFlood` chez l'appelant est `_highAquaSent = false`, idempotent — et la verification montre que ce membre n'est **jamais lu** (ecrit en deux points d'`automatism_display.cpp`, aucun lecteur). Le correctif est fait ici pour conserver la **parite annoncee** avec le portage serveur `FloodStateMachine`, ou le meme defaut faisait journaliser « Sortie de l'etat trop-plein » ~1440 fois par jour au rythme du CRON (1 min).
+- Deux cas ajoutes a `test_flood_alert` : pas de decision de sortie si jamais en trop-plein ; sortie emise une seule fois.
+
+## Version 15.23 - 2026-07-27
+
+### Durcissement HMAC partage (audit `docs/AUDIT_BUGS_2026-07.md`, constat F5)
+
+- **`n3HmacSha256` (`shared/n3_hmac` 1.1.1) verifie `key` / `message` / `hexOutput` avant `strlen`.** La fonction est exportee dans l'en-tete public sans precondition documentee, alors que son module frere `computeHmacHex` (`n3_hmac_canonical`, utilise par le body-signing X-Sig-* de ffp5cs) validait deja ses parametres : l'incoherence entre les deux etait le vrai defaut. `n3HmacSignRequest` ne pose desormais AUCUN header quand le calcul echoue, au lieu d'envoyer une signature vide. Deux cas ajoutes a `test_hmac`.
+- **Portee ffp5cs** : recompilation seule (le firmware tire `n3_hmac` transitivement via `n3_mail` -> `n3_data`). **Latent, aucun changement de comportement observable** — aucun appelant actuel ne passe de pointeur nul. Le correctif OTA F1/F4 du meme audit ne concerne pas ffp5cs, qui a son propre `ota_manager`.
+
 ## Version 15.22 - 2026-07-21
 
 ### Mutualisation diagnostic WiFi + dédup JSON websocket (chantier shared)

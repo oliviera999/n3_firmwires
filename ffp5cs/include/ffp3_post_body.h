@@ -10,7 +10,17 @@
 namespace Ffp3PostBody {
 
 struct ExtraPair {
-  char key[16];
+  // key[24] depuis v15.25 (audit 2026-07, F2a). En [16] — soit 15 caracteres utiles —
+  // copyField() tronquait SILENCIEUSEMENT 4 des 6 cles qui transitent reellement par
+  // ExtraStore (les angles servo, seules a ne pas etre des champs connus de
+  // setKnownField) : angleDistribGros, angleReposPetits, angleDistribPetits (18 car.,
+  // la plus longue) et angleInterPetits. Le firmware emettait donc des noms de cles
+  // FAUX. Sans consequence a ce jour — le serveur ne lit ces cles nulle part dans le
+  // POST (SensorData n'a aucun champ d'angle ; les GPIO 118-123 lui appartiennent et
+  // partent par GET) — et sans 401 non plus, puisque les deux cotes voient la meme
+  // chaine tronquee. Mais toute evolution qui ferait lire ces champs au serveur
+  // echouerait en silence. Cout : +64 octets sur FullUpdateValues (~921 -> ~985 o).
+  char key[24];
   char value[32];
 };
 

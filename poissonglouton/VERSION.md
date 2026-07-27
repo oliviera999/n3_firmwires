@@ -1,5 +1,17 @@
 # Poissonglouton - Historique versions
 
+## 0.5.22 - 2026-07-27
+
+- **Correctif OTA (audit `docs/AUDIT_BUGS_2026-07.md`, constat F3)** — `n3_common` 1.8.4. `compareVersions` ignorait le retour de `sscanf` : une version distante illisible etait parsee en `0.0.0`, donc toujours <= la version locale -> « Deja a jour ». Une metadata malformee immobilisait silencieusement la flotte. Nouveau `parseVersion()` (echec sous deux composantes lisibles) et garde explicite dans `n3OtaCheck` : la cause est desormais journalisee en ERREUR et remontee a `onUpdateEnd`.
+
+## 0.5.21 - 2026-07-27
+
+- **Durcissement (audit `docs/AUDIT_BUGS_2026-07.md`, constats F4 et F5)**. (F4, `n3_common` 1.8.3) `n3OtaCheck` initialise `integrityDetails[192]`, tampon journalise et transmis a `onUpdateEnd` en cas d'echec OTA : tous les chemins d'echec l'ecrivent aujourd'hui, mais un futur oubli de `snprintf` aurait affiche de la memoire de pile non initialisee. (F5, `n3_hmac` 1.1.1) `n3HmacSha256` verifie `key`/`message`/`hexOutput` avant `strlen`, alignant le wrapper plat sur `computeHmacHex` qui validait deja ses parametres ; `n3HmacSignRequest` ne pose plus aucun header si le calcul echoue. Deux cas ajoutes a `test_hmac`. **Latent** : aucun appelant actuel ne passe de pointeur nul — aucun changement de comportement observable.
+
+## 0.5.20 - 2026-07-27
+
+- **Correctif OTA (audit `docs/AUDIT_BUGS_2026-07.md`, constat F1) : chien de garde de stagnation dans la boucle de telechargement** (`shared/n3_common` 1.8.2). `downloadAndFlashFirmware` scrutait `stream->available()` avec `delay(1)` sans borne de temps : `http.setTimeout()` ne couvre pas cette scrutation manuelle et `http.connected()` reste vrai tant que le socket n'est pas ferme. Un serveur qui garde la connexion ouverte sans plus rien emettre figeait l'appareil **indefiniment**, partition OTA en cours d'ecriture — sans meme un reset watchdog (`delay(1)` rend la main, donc la tache IDLE tourne). PGL est particulierement expose : `n3OtaCheck()` est **synchrone** et bloque deja `poll()` pendant le telechargement (cf. 0.5.16, P3) — un blocage sans fin y arretait tout le comptage de bouteilles. Ajout de `N3_OTA_STALL_TIMEOUT_MS` (15 s par defaut) : au-dela de ce delai sans aucun octet recu, l'OTA est abandonnee proprement avec un message d'echec explicite. Un telechargement lent mais qui **progresse** n'est pas affecte.
+
 ## 0.5.19 - 2026-07-21
 
 - **Mutualisation diagnostic WiFi (chantier shared)** : `pglWifiStatusName` (libellés `wl_status`) délègue au module pur `shared/n3_wifi_diag` (0.1.0), testé en natif (`test_wifi_diag`). **Iso-comportement** (mêmes libellés IDLE/NO_SSID/SCAN_DONE/CONNECTED/CONNECT_FAIL/LOST/DISCONNECTED, défaut UNKNOWN). Les libellés **courts** de raison de déconnexion (`pglWifiDisconnectReasonName`, abrégés pour l'écran LVGL et divergents des tokens ESP-IDF canoniques) restent **locaux** — volontairement non mutualisés. Ajout du chemin d'include partagé à `platformio-native.ini`.

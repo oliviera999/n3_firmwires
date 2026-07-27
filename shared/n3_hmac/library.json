@@ -1,6 +1,6 @@
 {
   "name": "n3_hmac",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "HMAC-SHA256 pour authentification API IoT n3 : wrapper plat (n3HmacSha256, X-Signature) + variante canonique sans String (n3_hmac_canonical : ts+nonce+body, X-Sig-*)",
   "frameworks": "arduino",
   "platforms": "espressif32"

@@ -27,6 +27,16 @@
 #  endif
 #endif
 
+// Delai max sans AUCUN octet recu pendant le telechargement du binaire avant
+// d'abandonner (audit 2026-07, F1 : boucle de drain sans borne de temps).
+// Surchargeable par -D N3_OTA_STALL_TIMEOUT_MS=... si un lien tres lent le justifie.
+// 15 s : largement au-dessus d'un a-coup reseau normal (le flux TCP reste alimente
+// meme en RSSI degrade), tout en bornant le blocage bien avant l'epuisement batterie.
+// Ne borne PAS la duree totale : un telechargement lent mais qui progresse continue.
+#ifndef N3_OTA_STALL_TIMEOUT_MS
+#define N3_OTA_STALL_TIMEOUT_MS 15000UL
+#endif
+
 static bool n3OtaUrlIsHttps(const char* url) {
     return url != nullptr && strncasecmp(url, "https://", 8) == 0;
 }
@@ -224,13 +234,36 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
     int remaining = contentLen;
     int writtenTotal = 0;
     bool magicChecked = false;
+    // Chien de garde de stagnation (audit 2026-07, F1). http.setTimeout() borne les
+    // operations bloquantes de HTTPClient, PAS cette scrutation manuelle de
+    // available() : un serveur qui garde le socket ouvert sans plus rien emettre
+    // (proxy sature, portail captif, coupure sans RST) laisse http.connected() vrai
+    // indefiniment. Et delay(1) rend la main a l'ordonnanceur, donc la tache IDLE
+    // tourne et le watchdog de tache NE se declenche PAS : l'appareil restait fige,
+    // partition OTA en cours d'ecriture (batterie videe sur les firmwares deep-sleep).
+    unsigned long lastDataMs = millis();
 
     while (http.connected() && remaining > 0) {
         size_t availableBytes = stream->available();
         if (availableBytes == 0) {
+            if (millis() - lastDataMs >= N3_OTA_STALL_TIMEOUT_MS) {
+                if (details && detailsSize > 0) {
+                    snprintf(details, detailsSize,
+                             "OTA firmware: flux bloque %lu s sans octet (%d/%d recus).",
+                             static_cast<unsigned long>(N3_OTA_STALL_TIMEOUT_MS / 1000UL),
+                             writtenTotal, contentLen);
+                }
+                Serial.printf("[OTA][ERREUR] flux bloque, abandon a %d/%d octets\n",
+                              writtenTotal, contentLen);
+                mbedtls_md_free(&mdCtx);
+                Update.abort();
+                http.end();
+                return false;
+            }
             delay(1);
             continue;
         }
+        lastDataMs = millis();
         if (availableBytes > sizeof(buffer)) {
             availableBytes = sizeof(buffer);
         }
@@ -387,11 +420,25 @@ void n3OtaSyncBootPartition() {
     }
 }
 
+// Parse "MAJOR.MINOR[.PATCH]". Renvoie false si moins de DEUX composantes lisibles
+// (audit 2026-07, F3) : le retour de sscanf etait ignore, donc une version non
+// parsable en tete ("v15.09", chaine vide, champ JSON d'un autre type) laissait les
+// composantes a 0 -> la version distante etait vue comme 0.0.0 -> compareVersions
+// <= 0 -> "Deja a jour". Une metadata malformee immobilisait donc silencieusement
+// toute la flotte, sans le moindre message d'erreur.
+// PATCH absent = 0 : le format a deux composantes du depot (15.09, 4.67) reste valide.
+static bool parseVersion(const char* v, int& maj, int& min, int& pat) {
+    maj = min = pat = 0;
+    if (v == nullptr || v[0] == '\0') return false;
+
+    return sscanf(v, "%d.%d.%d", &maj, &min, &pat) >= 2;
+}
+
 static int compareVersions(const char* v1, const char* v2) {
     int maj1 = 0, min1 = 0, pat1 = 0;
     int maj2 = 0, min2 = 0, pat2 = 0;
-    sscanf(v1, "%d.%d.%d", &maj1, &min1, &pat1);
-    sscanf(v2, "%d.%d.%d", &maj2, &min2, &pat2);
+    parseVersion(v1, maj1, min1, pat1);
+    parseVersion(v2, maj2, min2, pat2);
     if (maj1 != maj2) return maj1 - maj2;
     if (min1 != min2) return min1 - min2;
     return pat1 - pat2;
@@ -474,6 +521,25 @@ bool n3OtaCheck(const N3OtaConfig& config) {
 
     Serial.printf("[OTA] Version distante : %s\n", remoteVersion);
 
+    // Une version illisible ne doit PAS se confondre avec « deja a jour » (audit
+    // 2026-07, F3) : sans ce garde, elle etait parsee en 0.0.0, donc toujours <=
+    // la version locale -> la flotte cessait de se mettre a jour en silence, avec
+    // pour seule trace un « Deja a jour » trompeur. On remonte desormais la cause.
+    {
+        int rMaj = 0, rMin = 0, rPat = 0;
+        if (!parseVersion(remoteVersion, rMaj, rMin, rPat)) {
+            Serial.printf("[OTA][ERREUR] version distante illisible: '%s' (attendu MAJEUR.MINEUR[.PATCH])\n",
+                          remoteVersion);
+            if (config.onUpdateEnd) {
+                char details[128];
+                snprintf(details, sizeof(details),
+                         "OTA ignoree: version distante illisible ('%s').", remoteVersion);
+                config.onUpdateEnd(false, details, config.userData);
+            }
+            return false;
+        }
+    }
+
     if (compareVersions(remoteVersion, config.currentVersion) <= 0) {
         Serial.println("[OTA] Deja a jour");
         if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: firmware deja a jour.", config.userData);
@@ -486,7 +552,13 @@ bool n3OtaCheck(const N3OtaConfig& config) {
         config.onUpdateStart(config.currentVersion, remoteVersion, firmwareUrl, config.userData);
     }
 
-    char integrityDetails[192];
+    // Initialise (audit 2026-07, F4) : ce tampon est journalise et transmis a
+    // onUpdateEnd sur echec. Tous les chemins de retour false de
+    // downloadAndFlashFirmware l'ecrivent aujourd'hui, mais la garantie ne tient qu'a
+    // la discipline de l'appele — un futur chemin d'echec qui oublierait snprintf
+    // afficherait de la memoire de pile non initialisee dans un log ET dans un mail
+    // d'alerte. Cout : un octet.
+    char integrityDetails[192] = {0};
     s_progressCallback = config.onUpdateProgress;
     s_progressUserData = config.userData;
     if (!downloadAndFlashFirmware(firmwareUrl, expectedSha256, signatureB64,

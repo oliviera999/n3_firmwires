@@ -45,8 +45,22 @@ struct N3SfItem {
 
 /**
  * Backend de stockage durable (SD, NVS…). Sans HTTP, sans WiFi.
- * L'énumération (tri, bornes de scan) est faite par le backend ; l'orchestrateur
- * itère par index croissant 0..count()-1.
+ * L'énumération (tri, bornes de scan) est faite par le backend.
+ *
+ * SÉMANTIQUE D'INDEX — les deux familles sont supportées (v1.1.0, audit F6) :
+ *  - **index STABLES** : `commit()` n'avance qu'un curseur, l'élément reste
+ *    énuméré (cf. `SdCursorBackend` d'uploadphotosserver).
+ *  - **index GLISSANTS** : `commit()` retire réellement la clé, l'élément
+ *    suivant prend l'index courant (file NVS indexée).
+ *
+ * L'orchestrateur ne présuppose ni l'une ni l'autre : après chaque `commit()`
+ * il relit l'index courant et n'avance que si le `handle` n'a pas changé.
+ * Deux exigences en découlent pour le backend :
+ *  - `handle` doit être **unique** parmi les éléments en attente (c'est déjà
+ *    l'identité de commit) ;
+ *  - `peek()` doit rester **sans effet de bord** (il est appelé une fois de plus
+ *    par élément committé).
+ *
  * ⚠ Les pointeurs de l'item rendu par peek() doivent rester valides jusqu'au
  * prochain peek()/commit() (l'orchestrateur ne copie pas les données pointées).
  */

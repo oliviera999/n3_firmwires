@@ -108,6 +108,37 @@ void test_all_empty_yields_empty_body(void) {
 
 // Capacité des extras (ExtraStore::pairs[8]) : au-delà de 8, les paires
 // excédentaires sont silencieusement ignorées (pas de débordement).
+// RÉGRESSION v15.25 (audit F2a) : ExtraPair::key faisait 16 octets, soit 15
+// caractères utiles. copyField() tronquait donc SILENCIEUSEMENT 4 des 6 clés d'angles
+// servo — les seules à ne pas être des champs connus de setKnownField, donc les seules
+// à passer par ExtraStore. Le firmware émettait des noms de clés faux
+// (« angleDistribPet » pour « angleDistribPetits »). Les six doivent survivre intactes.
+void test_servo_angle_keys_are_not_truncated(void) {
+  FullUpdateValues v{};
+  seedBasic(v);
+  applyExtraPairs(v,
+      "angleReposGros=88&angleDistribGros=140&angleInterGros=45"
+      "&angleReposPetits=88&angleDistribPetits=140&angleInterPetits=45");
+
+  char out[512] = {0};
+  int n = buildFullUpdateBody(out, sizeof(out), v);
+  TEST_ASSERT_GREATER_THAN(0, n);
+
+  // Chaque clé doit apparaître EN ENTIER, suivie de « = » (donc non tronquée).
+  TEST_ASSERT_NOT_NULL(strstr(out, "angleReposGros="));
+  TEST_ASSERT_NOT_NULL(strstr(out, "angleDistribGros="));
+  TEST_ASSERT_NOT_NULL(strstr(out, "angleInterGros="));
+  TEST_ASSERT_NOT_NULL(strstr(out, "angleReposPetits="));
+  TEST_ASSERT_NOT_NULL(strstr(out, "angleDistribPetits="));   // 18 car., la plus longue
+  TEST_ASSERT_NOT_NULL(strstr(out, "angleInterPetits="));
+
+  // Et aucune forme tronquée ne doit subsister (« angleDistribPet= » sans « its »).
+  TEST_ASSERT_NULL(strstr(out, "angleDistribPet="));
+  TEST_ASSERT_NULL(strstr(out, "angleDistribGro="));
+  TEST_ASSERT_NULL(strstr(out, "angleReposPetit="));
+  TEST_ASSERT_NULL(strstr(out, "angleInterPetit="));
+}
+
 void test_extras_capacity_overflow_is_ignored(void) {
   FullUpdateValues v{};
   snprintf(v.apiKey, sizeof(v.apiKey), "%s", "K");
@@ -202,6 +233,7 @@ int main(void) {
   RUN_TEST(test_invalid_output_args);
   RUN_TEST(test_all_empty_yields_empty_body);
   RUN_TEST(test_extras_capacity_overflow_is_ignored);
+  RUN_TEST(test_servo_angle_keys_are_not_truncated);
   RUN_TEST(test_suffix_block_after_extras_in_order);
   RUN_TEST(test_apply_segment_without_equals_ignored);
   RUN_TEST(test_apply_empty_key_ignored);
