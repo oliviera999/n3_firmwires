@@ -13,7 +13,8 @@ avec leurs compromis, et indique lesquelles ont été **appliquées**.
 `n3_hmac` 1.1.1 ; n3pp 4.68, msp 2.71, poissonglouton 0.5.22, uploadphotosserver 2.75,
 ffp5cs 15.25). ffp5cs n'est concerné ni par F1 ni par F3 (il a son propre `ota_manager`) :
 ses bumps couvrent F5, la parité S6 de `flood_alert.h`, puis F2a. **Restent ouverts : F2b**
-(verrouillage du formatage dupliqué — décision d'architecture, voir les options) **et F6**.
+(verrouillage du formatage dupliqué — **ne rien décider avant d'avoir relevé `body_source`
+en production**, cf. §F2b : F2b pourrait n'avoir aucune raison d'exister) **et F6**.
 
 > Un audit jumeau couvre le serveur : `n3_serveur/docs/AUDIT_BUGS_2026-07.md`.
 > Les constats **F2** (ici) et **S1** (là-bas) portent sur le même contrat HMAC.
@@ -28,7 +29,7 @@ ses bumps couvrent F5, la parité S6 de `flood_alert.h`, puis F2a. **Restent ouv
 | # | Gravité | Sujet | Fichier principal | État |
 |---|---------|-------|-------------------|------|
 | F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.2) |
-| F2 | 🟡 Faible | Troncature de clé (`key[16]`) + formatage dupliqué non verrouillé | `ffp5cs/include/ffp3_post_body.h` | ✅ **F2a corrigé** (15.25) — F2b ouvert |
+| F2 | 🟡 Faible | Troncature de clé (`key[16]`) + formatage dupliqué non verrouillé | `ffp5cs/include/ffp3_post_body.h` | ✅ **F2a corrigé** (15.25) — **F2b en attente d'une mesure serveur** (`body_source`, cf. §F2b) |
 | F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.4) |
 | F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.3) |
 | F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ✅ **corrigé** (`n3_hmac` 1.1.1) |
@@ -218,9 +219,38 @@ numérique ajouté d'un seul côté — casserait l'authentification **en produc
 sans qu'aucun test ne le voie. `ffp5cs/test/test_post_body` valide le firmware seul,
 `Ffp3HmacPostBodyTest` valide le serveur seul, et **rien ne compare les deux**.
 
+### ⚠️ Avant de choisir une option : F2b n'existe peut-être plus (option 4, serveur 6.36.0)
+
+F2b n'a de raison d'être **que** parce que le serveur reconstitue le corps signé — et cette
+reconstitution n'existe elle-même que parce que le correctif serveur 5.1.12 a posé que
+« sous `x-www-form-urlencoded`, `php://input` est souvent vide côté mod_php ».
+
+Cette prémisse a été **déduite d'une série de 401, jamais mesurée**. Trois faits la mettent
+en doute :
+
+1. La documentation PHP ne prévoit ce vidage que pour `multipart/form-data` ; depuis PHP 5.6,
+   `php://input` est **relisible** pour `x-www-form-urlencoded`.
+2. `slim/psr7` 1.8.0 met explicitement le flux en cache dans un `php://temp` pour qu'il soit
+   relisible (`ServerRequestFactory::createFromGlobals()`, commentaire « *Cache the php://input
+   stream as it cannot be re-read* »).
+3. Côté serveur, `RawPostBodyMiddleware` est monté en premier : rien ne consomme le flux avant lui.
+
+Le serveur journalise désormais la provenance du corps signé (`body_source` :
+`raw_middleware` / `raw_stream` / `canonical` / `empty` — `App\Util\SignedBodyResolver`,
+n3_serveur 6.36.0). **Relever cette valeur en production tranche F2b avant d'écrire une
+seule ligne de code** :
+
+| `body_source` observé | Conséquence pour F2b |
+|---|---|
+| `raw_middleware` / `raw_stream` avec signature valide | Le serveur n'a jamais besoin de reformater → **F2b disparaît**, ainsi que `Ffp3HmacPostBody` et le repli souple de S1 |
+| `empty` | La prémisse est confirmée → choisir parmi les options ci-dessous |
+
+Procédure et arbre de décision : `n3_serveur/docs/ENDPOINTS_ESP32_SERVEUR.md`
+(§ « Provenance du corps signé ») et `n3_serveur/docs/AUDIT_BUGS_2026-07.md` (S1).
+
 ### Options de correction
 
-**Option A (recommandée) — vecteurs d'or partagés.**
+**Option A (recommandée si `body_source=empty`) — vecteurs d'or partagés.**
 Versionner un jeu de cas `(entrées → corps canonique attendu)` dans un JSON commun
 aux deux dépôts, consommé par `ffp5cs/test/test_post_body` **et**
 `Ffp3HmacPostBodyTest`. Toute divergence de format devient un échec de CI, des
