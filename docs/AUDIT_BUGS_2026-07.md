@@ -28,7 +28,7 @@ ci-dessous, le choix revient au mainteneur.
 | # | Gravité | Sujet | Fichier principal | État |
 |---|---------|-------|-------------------|------|
 | F1 | 🔴 Élevé | Boucle de téléchargement OTA sans détection de stagnation → blocage indéfini | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.2) |
-| F2 | 🟠 Moyen | Contrat « corps canonique HMAC » fragile + troncature silencieuse à 512 o | `ffp5cs/src/ffp3_post_body.cpp` | ouvert |
+| F2 | 🟡 Faible | Troncature de clé (`key[16]`) + formatage dupliqué non verrouillé | `ffp5cs/include/ffp3_post_body.h` | ouvert — analyse corrigée |
 | F3 | 🟡 Faible | `compareVersions` ignore le retour de `sscanf` → OTA silencieusement inhibée | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.4) |
 | F4 | 🟡 Faible | `integrityDetails[192]` non initialisé avant usage | `shared/n3_common/src/n3_ota.cpp` | ✅ **corrigé** (`n3_common` 1.8.3) |
 | F5 | 🟡 Faible | `n3HmacSha256` déréférence `key` / `message` sans garde nulle | `shared/n3_hmac/src/n3_hmac.cpp` | ✅ **corrigé** (`n3_hmac` 1.1.1) |
@@ -125,7 +125,7 @@ Les options A et B sont cumulables (stagnation courte + budget long).
 
 ---
 
-## F2 — 🟠 Contrat « corps canonique HMAC » fragile + troncature silencieuse
+## F2 — 🟡 Contrat « corps canonique HMAC » : troncature de clé + formatage dupliqué
 
 Contexte : `Ffp3PostBody::buildFullUpdateBody()` (`ffp5cs/src/ffp3_post_body.cpp:129`)
 construit le corps `x-www-form-urlencoded` **exactement** dans l'ordre que le
@@ -135,27 +135,60 @@ serveur reconstitue dans `App\Security\Ffp3HmacPostBody` — parce que sous mod_
 
 Deux fragilités concrètes.
 
-### F2a — troncature silencieuse des paires supplémentaires
+### F2a — troncature silencieuse de clé — ⚠️ ANALYSE CORRIGÉE (2026-07-27)
 
-`applyExtraPairs()` (`ffp5cs/src/ffp3_post_body.cpp:101-127`) :
+> **La première rédaction de ce constat était inexacte sur deux points**, corrigés ici après
+> vérification du producteur et de la chaîne complète. Conservé en l'état, avec la correction
+> visible, plutôt que réécrit en silence.
 
-```cpp
-char buf[512];
-size_t len = strlen(extraPairs);
-if (len >= sizeof(buf)) len = sizeof(buf) - 1;   // <-- silencieux
-memcpy(buf, extraPairs, len);
-```
+**Ce qui était annoncé** : `applyExtraPairs()` tronque `extraPairs` au-delà de 511 octets
+(`char buf[512]`), coupant au milieu d'une paire → corps signé divergent → **401**.
 
-Au-delà de 511 octets, la chaîne est coupée **au milieu d'une paire** : la
-dernière clé/valeur est corrompue ou perdue, sans aucun log. Le corps signé
-diverge alors de ce que le serveur reconstitue → **401 « Signature incorrecte »**
-sur toutes les mesures concernées, avec une cause invisible dans les traces
-firmware. Même remarque, plus bas, sur le débordement de `store.pairs`
-(ligne 71 : `if (store.count >= …) return;` — extra ignoré en silence).
+**Ce qui est vrai** :
 
-*Fix* : faire remonter la condition — retour booléen ou
-`Serial.printf("[POST][WARN] extraPairs tronque (%u > %u)\n", …)` — pour que le
-diagnostic pointe la cause réelle plutôt que « HMAC invalide ».
+1. **Cette troncature-là est inatteignable.** Le seul producteur d'`extraPairs`
+   (`ffp5cs/src/web_server.cpp:750`, endpoint `/dbvars`) écrit lui-même dans un
+   `char extraPairs[512]` et s'arrête net quand il est plein. La chaîne reçue fait donc au
+   plus 511 caractères, et `len >= sizeof(buf)` n'est jamais vrai. Marge mesurée sur les
+   19 clés poussées, avec un e-mail de 64 caractères : **396 / 512 octets**, soit ~116 octets
+   de marge. Le vrai risque est en amont — `appendPair()` **abandonne silencieusement** les
+   paires qui ne rentrent plus — et trois ou quatre nouvelles clés de configuration suffiraient
+   à le franchir.
+
+2. **Une AUTRE troncature, elle, est bien active** : `ExtraPair::key[16]`
+   (`ffp5cs/include/ffp3_post_body.h:13`) ne garde que 15 caractères. Sur les 6 clés qui
+   transitent réellement par `ExtraStore` (les angles servo, seules à ne pas être des champs
+   connus de `setKnownField`), **4 sont tronquées** :
+
+   | Clé émise | Longueur | Stockée / transmise |
+   |-----------|----------|---------------------|
+   | `angleReposGros` | 14 | `angleReposGros` ✅ |
+   | `angleDistribGros` | 16 | `angleDistribGro` ❌ |
+   | `angleInterGros` | 14 | `angleInterGros` ✅ |
+   | `angleReposPetits` | 16 | `angleReposPetit` ❌ |
+   | `angleDistribPetits` | 18 | `angleDistribPet` ❌ |
+   | `angleInterPetits` | 16 | `angleInterPetit` ❌ |
+
+   Pas de collision après troncature (les 4 formes courtes restent distinctes), donc pas
+   d'écrasement dans `upsertExtra`.
+
+3. **Aucune de ces troncatures ne provoque de 401.** Le firmware signe le corps qu'il envoie
+   *réellement* — clés tronquées comprises — et le serveur reconstitue à partir de ce qu'il a
+   *reçu*, donc la même chaîne. Les deux HMAC concordent. Le raisonnement initial supposait à
+   tort que le serveur reconstituait la clé *complète*.
+
+4. **Impact réel aujourd'hui : nul.** Le serveur ne lit ces clés nulle part dans le POST —
+   `App\Domain\SensorData` ne comporte aucun champ d'angle, et les GPIO 118-123 sont détenus
+   par le serveur (écrits par son UI via `updateMultipleParameters`, servis au firmware par
+   `GET /api/outputs/state`). L'écho firmware → serveur est ignoré des deux façons.
+
+**Ce qui reste donc à corriger** : une corruption de données latente. Le firmware transmet des
+noms de clés faux ; toute évolution qui ferait lire ces champs au serveur (par exemple pour
+propager une modification faite sur l'UI **locale** de l'ESP) échouerait silencieusement.
+
+*Fix* : porter `ExtraPair::key` à 24 octets (`angleDistribPetits` = 18 + NUL). Coût :
+8 paires × 8 octets = **64 octets de RAM**. Et faire remonter la condition de saturation dans
+`appendPair()` (`web_server.cpp`) plutôt que d'abandonner les paires en silence.
 
 ### F2b — le formatage des valeurs n'est pas partagé
 
@@ -165,12 +198,17 @@ Le firmware émet la chaîne telle qu'elle a été construite ; le serveur, lui,
 `chauffageThreshold` ; cast `(int)` pour `EauAquarium`, `Luminosite`, `limFlood`,
 `tideWindowMs`, etc.
 
-Tant que les deux côtés produisent la même représentation, tout va bien. Mais
-toute évolution unilatérale — un champ passé de `%.0f` à `%.1f`, un nouveau champ
-numérique ajouté d'un seul côté — casse l'authentification **en production, en
-silence**, sans qu'aucun test ne le voie : `ffp5cs/test/test_post_body` valide le
-firmware seul, `Ffp3HmacPostBodyTest` valide le serveur seul, et rien ne compare
-les deux.
+**Vérification faite (2026-07-27) : les deux côtés sont aujourd'hui alignés à 100 %**, champ
+par champ — `%.1f` des deux côtés pour les cinq flottants, cast entier concordant pour les
+seize champs numériques, passe-plat pour les chaînes. Y compris le cas subtil des niveaux
+d'eau : `N3SensorFallback::formatPostValue` émet une **chaîne vide** quand la valeur vaut 0,
+et le serveur ignore justement les valeurs vides (`trim === '' → continue`, commentaire
+« v14.01 »). Ce constat n'est donc **pas un bug** : c'est un risque de maintenance.
+
+Le risque : toute évolution unilatérale — un champ passé de `%.0f` à `%.1f`, un nouveau champ
+numérique ajouté d'un seul côté — casserait l'authentification **en production, en silence**,
+sans qu'aucun test ne le voie. `ffp5cs/test/test_post_body` valide le firmware seul,
+`Ffp3HmacPostBodyTest` valide le serveur seul, et **rien ne compare les deux**.
 
 ### Options de correction
 
