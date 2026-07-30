@@ -193,9 +193,10 @@ struct DrainSendCtx {
   uint32_t bytes;
 };
 
-const SyncEntry* findEntryByN(const std::vector<SyncEntry>& entries, uint32_t n) {
+const SyncEntry* findEntryByPath(const std::vector<SyncEntry>& entries, const char* path) {
+  if (!path || path[0] == '\0') return nullptr;
   for (const SyncEntry& e : entries) {
-    if (e.n == n) return &e;
+    if (strcmp(e.path, path) == 0) return &e;
   }
   return nullptr;
 }
@@ -203,7 +204,10 @@ const SyncEntry* findEntryByN(const std::vector<SyncEntry>& entries, uint32_t n)
 /* Envoi d'UNE photo du backlog (métier upload) -> verdict pour n3SfDrain. */
 N3SfSend drainSendOne(const N3SfItem& item, void* rawCtx) {
   DrainSendCtx& ctx = *static_cast<DrainSendCtx*>(rawCtx);
-  const SyncEntry* e = findEntryByN(*ctx.entries, item.handle);
+  // `handle` est le n° de curseur NVS mais n'est pas une identité unique : deux
+  // captures peuvent partager ce numéro après une coupure entre écriture SD et
+  // commit NVS. `ref` porte le chemin exact énuméré au scan.
+  const SyncEntry* e = findEntryByPath(*ctx.entries, item.ref);
   if (!e) {
     return N3SfSend::HardFail;  // entrée introuvable : sauter, ne pas bloquer la file
   }
@@ -233,6 +237,13 @@ N3SfSend drainSendOne(const N3SfItem& item, void* rawCtx) {
             static_cast<unsigned int>(e->n), e->path, code,
             static_cast<unsigned int>(bytes));
     return N3SfSend::Ok;
+  }
+  if (code == CAMERA_UPLOAD_LOCAL_ERROR) {
+    // Fichier SD absent/vide/illisible : poison-pill — sauter pour ne pas bloquer
+    // indéfiniment tout le backlog derrière (NetworkError reprendrait le même fichier).
+    N3_LOGW("[SYNC] #%u (%s) fichier local inutilisable : skip HardFail",
+            static_cast<unsigned int>(e->n), e->path);
+    return N3SfSend::HardFail;
   }
   if (code == 429) {
     N3_LOGW("[SYNC] #%u HTTP=429 rate-limit", static_cast<unsigned int>(e->n));
@@ -347,9 +358,12 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
   const uint32_t pending = static_cast<uint32_t>(entries.size());
   r.pending = pending;
   if (pending == 0) {
-    /* NVS annonce un backlog mais aucun fichier présent (carte changée/effacée) : on recale. */
-    nvsSet(kKeyCursor, count);
-    N3_LOGI("[SYNC] Backlog NVS mais aucun fichier present; curseur recale.");
+    // Un scan vide peut être TRANSITOIRE (SD lente au réveil, mount partiel, glitch
+    // bus). Avancer up_cursor jusqu'à pic_count acquitterait localement des photos
+    // que le serveur n'a jamais reçues — perte définitive du backlog. On conserve
+    // le curseur ; un prochain réveil avec scan sain reprendra le drain.
+    N3_LOGW("[SYNC] Backlog NVS=%u mais scan SD vide; curseur conserve=%u.",
+            static_cast<unsigned int>(realBacklog), static_cast<unsigned int>(cursor));
     return r;
   }
 

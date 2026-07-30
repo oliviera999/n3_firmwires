@@ -29,9 +29,14 @@ struct CameraUploadParams {
  */
 int cameraUploadJpegBuffer(const CameraUploadParams& params, const uint8_t* image, size_t imageLen, const String& filename);
 
+/** Erreur locale SD (fichier absent / illisible / 0 octet) — distincte des codes HTTPClient ≤ 0. */
+constexpr int CAMERA_UPLOAD_LOCAL_ERROR = -100;
+
 /**
  * Envoie un JPEG stocké sur la carte SD (lu en RAM — PSRAM si dispo — puis posté).
- * outBytes (optionnel) reçoit la taille envoyée en cas de succès. Retourne le code HTTP.
+ * outBytes (optionnel) reçoit la taille envoyée en cas de succès.
+ * Retourne le code HTTP (>0), {@see CAMERA_UPLOAD_LOCAL_ERROR} si le fichier SD est inutilisable,
+ * ou un code HTTPClient ≤ 0 pour une erreur réseau.
  */
 int cameraUploadJpegFile(const CameraUploadParams& params, const String& sdPath, const String& filename, size_t* outBytes);
 
