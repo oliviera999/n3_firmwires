@@ -35,10 +35,10 @@ static uint16_t cmToMm(uint16_t cm) { return SensorConfig::Ultrasonic::cmToMm(cm
 }  // namespace
 
 
-// Phase 3 arbitrage : le serveur couvre les alertes/confirmations partagées si
-// l'échange est sain (GET config OK + dernier POST réussi < 90 s). Utilisé par
-// handleAlerts (alertes niveau/flood/chauffage) et par le module refill
-// (confirmations remplissage, désormais dérivées côté serveur via etatPompeTank).
+// Phase 3 arbitrage : le serveur couvre les MAILS d'alertes/confirmations partagées
+// si l'échange est sain (GET config OK + dernier POST réussi < 90 s). Utilisé par
+// handleAlerts (mails niveau/flood/chauffage) et par le module refill (confirmations
+// mail remplissage). Ne couvre JAMAIS les actionneurs locaux (pompe, chauffage).
 bool Automatism::serverCoversSharedAlerts() const {
     return SharedAlertGate::serverCovers(
         _network.isServerOk(), millis(), _network.getLastSendMs());
@@ -48,36 +48,29 @@ bool Automatism::serverCoversSharedAlerts() const {
 void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     const SensorReadings& readings = ctx.readings;
     const bool mailEnabled = _network.isEmailEnabled();
-    
-    // v11.162: Délai au démarrage pour éviter saturation queue mail
-    // Les alertes non-critiques sont différées de 30s après le boot
+
+    // v11.162: Délai au démarrage pour éviter saturation queue mail.
+    // Les mails d'alertes sont différés de 30 s ; la régulation chauffage (relais)
+    // ne l'est PAS — un return global coupait aussi le GPIO en liaison saine.
     const bool startupGracePeriod = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
-    if (startupGracePeriod && mailEnabled) {
-        // Pendant la période de grâce, on n'envoie pas mais on ne marque pas comme déjà envoyé :
-        // après 30s la première évaluation enverra l'alerte si la condition est toujours vraie.
-        return;  // Pas d'alertes pendant la période de grâce
-    }
 
     // Phase 3 arbitrage mails : le serveur (CRON 1 min + alertes dérivées du POST,
-    // n3_serveur 6.16.0) est l'émetteur PRIMAIRE des alertes partagées de ce bloc
+    // n3_serveur 6.16.0) est l'émetteur PRIMAIRE des mails partagés de ce bloc
     // (aquarium bas, trop-plein, réserve basse, chauffage ON/OFF). Si l'échange
-    // serveur est sain (GET config OK + POST frais), l'ESP se tait (fin des
-    // doublons) ; sinon FAILOVER : évaluation locale comme avant, bornée par
-    // l'anti-congestion du Mailer (P1/P2 only, WiFi requis, budget).
-    // Le kill-switch GPIO 101 (mailEnabled/notifMode) reste appliqué en aval.
-    // Remplissage : couvert serveur (6.18.0, transition etatPompeTank) -> gaté dans
-    // automatism_refill.cpp via serverCoversSharedAlerts(). Nourrissage : non
-    // dérivable du POST -> ESP primaire, non gaté.
+    // serveur est sain, l'ESP ne renvoie plus ces mails (fin des doublons) ; sinon
+    // FAILOVER : évaluation locale bornée par l'anti-congestion du Mailer.
+    //
+    // Contrat critique : « se taire » = mails seulement. Le serveur dérive les mails
+    // chauffage depuis la transition de `etatHeat` POSTée ; il ne pilote PAS le
+    // relais GPIO. La régulation (HeaterOrchestrator) reste donc TOUJOURS locale —
+    // même schéma que refill (pompe toujours locale, mail gaté). Un `return` trop
+    // tôt ici (régression Phase 3) laissait le chauffage mort dès que le serveur
+    // était joignable.
     const bool serverCovers = serverCoversSharedAlerts();
     _mailer.setFailoverActive(!serverCovers);
-    if (serverCovers) {
-        if (esp_task_wdt_status(NULL) == ESP_OK) {
-            esp_task_wdt_reset();
-        }
-        return;  // Serveur primaire : aucune alerte partagée émise par l'ESP
-    }
+    const bool emitSharedAlertMails = mailEnabled && !serverCovers && !startupGracePeriod;
 
-    if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
+    if (emitSharedAlertMails && SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
     // C4: décision alerte « aquarium bas » déléguée à la machine pure LevelAlert.
     // Effets de bord (email, blink, flag) ici. Le reset reste inconditionnel (silencieux).
     const uint16_t aqAlert = cmToMm(_network.getAqThresholdCm());
@@ -134,23 +127,25 @@ void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     }
     }
 
-    // C4: décision alerte « réserve basse » déléguée à la machine pure LevelAlert.
-    // Ici le reset envoie un mail « Réserve OK » (contrairement à l'aquarium).
-    const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
-    const uint16_t tkClear = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 5));
-    // Raise « Réserve BASSE » + Clear « Réserve OK » délégués à l'orchestrateur.
-    if (LevelAlertOrchestrator::run(_mailer, _lowTankSent, readings.wlTank, tkAlert, tkClear,
-                                    mailEnabled, _network.getEmailAddress(),
-                                    "Alerte - Réserve BASSE", "Info - Réserve OK")) {
-        armMailBlink();
+    // C4: alerte « réserve basse » — mail uniquement (pas d'actionneur). Gatée comme
+    // aquarium/flood : serveur primaire en liaison saine.
+    if (emitSharedAlertMails) {
+        const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
+        const uint16_t tkClear = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 5));
+        if (LevelAlertOrchestrator::run(_mailer, _lowTankSent, readings.wlTank, tkAlert, tkClear,
+                                        mailEnabled, _network.getEmailAddress(),
+                                        "Alerte - Réserve BASSE", "Info - Réserve OK")) {
+            armMailBlink();
+        }
     }
 
-    // C4: régulation chauffage déléguée à l'orchestrateur HeaterOrchestrator (testable
-    // nativement via IActuators/IMailer). La décision reste dans HeaterControl (pur).
-    // run() renvoie true si un mail a été envoyé -> on déclenche alors le blink OLED.
+    // C4: régulation chauffage — TOUJOURS locale (relais GPIO). Le serveur dérive
+    // seulement le mail ON/OFF depuis `etatHeat` ; il ne commande pas le chauffage.
+    // `emitSharedAlertMails` coupe le mail ESP en liaison saine / grâce boot, pas le relais.
     if (HeaterOrchestrator::run(_acts, _mailer, heaterPrevState,
                                 readings.tempWater, _network.getHeaterThresholdC(),
-                                /*hysteresisC=*/2.0f, mailEnabled, _network.getEmailAddress())) {
+                                /*hysteresisC=*/2.0f, emitSharedAlertMails,
+                                _network.getEmailAddress())) {
         armMailBlink();
     }
 

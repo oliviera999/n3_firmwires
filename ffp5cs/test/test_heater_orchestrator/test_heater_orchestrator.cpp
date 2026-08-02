@@ -80,6 +80,22 @@ void test_turn_on_no_mail_when_disabled(void) {
   TEST_ASSERT_FALSE(blink);
 }
 
+// Contrat Phase 3 (v15.26) : quand le serveur couvre les mails partagés, l'appelant
+// passe mailEnabled=false. Le relais DOIT quand même s'allumer (froid) et s'éteindre
+// (trop chaud) — sinon plus aucune régulation en liaison saine.
+void test_phase3_server_covers_still_regulates_relay(void) {
+  FakeActuators acts; FakeMailer mail; bool on = false;
+  (void)HeaterOrchestrator::run(acts, mail, on, 22.0f, THR, HYST, /*mailEnabled=*/false, "a@b.c");
+  TEST_ASSERT_TRUE(acts.heater);
+  TEST_ASSERT_TRUE(on);
+  TEST_ASSERT_EQUAL_INT(0, mail.alertCount);
+
+  (void)HeaterOrchestrator::run(acts, mail, on, 27.0f, THR, HYST, /*mailEnabled=*/false, "a@b.c");
+  TEST_ASSERT_FALSE(acts.heater);
+  TEST_ASSERT_FALSE(on);
+  TEST_ASSERT_EQUAL_INT(0, mail.alertCount);
+}
+
 // Trop chaud + chauffage allumé -> relais OFF, état=false, mail "Chauffage OFF".
 void test_turn_off_sends_mail(void) {
   FakeActuators acts; acts.heater = true; FakeMailer mail; bool on = true;
@@ -113,6 +129,7 @@ int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_turn_on_sends_mail);
   RUN_TEST(test_turn_on_no_mail_when_disabled);
+  RUN_TEST(test_phase3_server_covers_still_regulates_relay);
   RUN_TEST(test_turn_off_sends_mail);
   RUN_TEST(test_deadband_noop);
   RUN_TEST(test_no_retrigger_when_already_on);

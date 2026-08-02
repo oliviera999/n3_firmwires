@@ -12,6 +12,25 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.26 - 2026-08-02
+
+### Correctif critique : régulation chauffage coupée quand le serveur est sain (Phase 3)
+
+- **Bug** : depuis la Phase 3 (`serverCoversSharedAlerts`), `handleAlerts` faisait un
+  `return` dès que GET config OK + POST < 90 s. Ce gate était destiné aux **mails**
+  partagés ; il sautait aussi `HeaterOrchestrator::run`, seul chemin d'hystérésis auto
+  du relais chauffage (GPIO).
+- **Impact** : en liaison nominale (prod wroom ≥ 15.10), `TempEau` sous le seuil
+  n'allumait plus le chauffage ; un chauffage déjà ON ne s'éteignait plus non plus.
+  Le serveur (`Ffp3DerivedAlertService::checkHeaterTransition`) n'émet que des mails
+  sur transition de `etatHeat` POSTé — il ne pilote pas le GPIO. Même piège sur la
+  grâce boot 30 s (`startupGracePeriod && mailEnabled` → `return` global).
+- **Correctif** : alignement sur le refill — mails niveau/flood/réserve/chauffage
+  gatés via `emitSharedAlertMails` ; **régulation relais toujours exécutée**, avec
+  `mailEnabled` ESP = `emitSharedAlertMails` seulement.
+- Contraste sain déjà en place : `automatism_refill.cpp` gate uniquement les mails
+  (`!serverCoversSharedAlerts() && …`), jamais `startTankPump` / `stopTankPump`.
+
 ## Version 15.25 - 2026-07-27
 
 ### Corps POST canonique : fin de la troncature silencieuse des clés d'angles servo (audit F2a)
