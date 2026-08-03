@@ -48,109 +48,99 @@ bool Automatism::serverCoversSharedAlerts() const {
 void Automatism::handleAlerts(const AutomatismRuntimeContext& ctx) {
     const SensorReadings& readings = ctx.readings;
     const bool mailEnabled = _network.isEmailEnabled();
-    
-    // v11.162: Délai au démarrage pour éviter saturation queue mail
-    // Les alertes non-critiques sont différées de 30s après le boot
+
+    // v11.162: Délai au démarrage pour éviter saturation queue mail.
+    // Les mails d'alertes sont différés de 30 s ; la régulation chauffage (relais)
+    // et la machine d'état trop-plein (inFlood → déverrouillage pompe) ne le sont PAS.
     const bool startupGracePeriod = (millis() - _startupMs) < STARTUP_ALERT_DELAY_MS;
-    if (startupGracePeriod && mailEnabled) {
-        // Pendant la période de grâce, on n'envoie pas mais on ne marque pas comme déjà envoyé :
-        // après 30s la première évaluation enverra l'alerte si la condition est toujours vraie.
-        return;  // Pas d'alertes pendant la période de grâce
-    }
 
     // Phase 3 arbitrage mails : le serveur (CRON 1 min + alertes dérivées du POST,
-    // n3_serveur 6.16.0) est l'émetteur PRIMAIRE des alertes partagées de ce bloc
+    // n3_serveur 6.16.0) est l'émetteur PRIMAIRE des mails partagés de ce bloc
     // (aquarium bas, trop-plein, réserve basse, chauffage ON/OFF). Si l'échange
-    // serveur est sain (GET config OK + POST frais), l'ESP se tait (fin des
-    // doublons) ; sinon FAILOVER : évaluation locale comme avant, bornée par
-    // l'anti-congestion du Mailer (P1/P2 only, WiFi requis, budget).
-    // Le kill-switch GPIO 101 (mailEnabled/notifMode) reste appliqué en aval.
-    // Remplissage : couvert serveur (6.18.0, transition etatPompeTank) -> gaté dans
-    // automatism_refill.cpp via serverCoversSharedAlerts(). Nourrissage : non
-    // dérivable du POST -> ESP primaire, non gaté.
+    // serveur est sain, l'ESP ne renvoie plus ces mails (fin des doublons) ; sinon
+    // FAILOVER : évaluation locale bornée par l'anti-congestion du Mailer.
+    //
+    // Contrat critique : « se taire » = mails seulement.
+    // - Chauffage : le serveur dérive les mails depuis `etatHeat` ; il ne pilote PAS
+    //   le relais GPIO → HeaterOrchestrator toujours exécuté.
+    // - Trop-plein : `inFlood` est lu par RefillOverfill pour autoriser Unlock de la
+    //   pompe réserve. ExitFlood DOIT tourner même en liaison saine, sinon un flood
+    //   notifié en failover fige inFlood=true et bloque le remplissage auto jusqu'au
+    //   reboot. Seul le mail trop-plein est gaté (via mailEnabled=emitSharedAlertMails).
+    // Remplissage pompe : déjà correct dans automatism_refill (mails gatés, pompe locale).
+    // Nourrissage : non dérivable du POST → ESP primaire, non gaté.
     const bool serverCovers = serverCoversSharedAlerts();
     _mailer.setFailoverActive(!serverCovers);
-    if (serverCovers) {
-        if (esp_task_wdt_status(NULL) == ESP_OK) {
-            esp_task_wdt_reset();
+    const bool emitSharedAlertMails = mailEnabled && !serverCovers && !startupGracePeriod;
+
+    // Mails « aquarium bas » uniquement (pas d'actionneur).
+    if (emitSharedAlertMails && SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
+        const uint16_t aqAlert = cmToMm(_network.getAqThresholdCm());
+        const uint16_t aqClear = cmToMm(ThresholdUtil::subSat(_network.getAqThresholdCm(), 5));
+        if (LevelAlertOrchestrator::run(_mailer, _lowAquaSent, readings.wlAqua, aqAlert, aqClear,
+                                        mailEnabled, _network.getEmailAddress(),
+                                        "Alerte - Niveau aquarium BAS", nullptr)) {
+            armMailBlink();
         }
-        return;  // Serveur primaire : aucune alerte partagée émise par l'ESP
+        if (readings.wlAqua <= aqClear) {
+            _lowAquaSent = false;
+        }
     }
 
+    // Machine d'état trop-plein : TOUJOURS évaluée si niveau connu (clear inFlood /
+    // horodatages). Le mail ESP n'est proposé que si emitSharedAlertMails.
     if (SensorValidation::isWaterLevelKnown(readings.wlAqua)) {
-    // C4: décision alerte « aquarium bas » déléguée à la machine pure LevelAlert.
-    // Effets de bord (email, blink, flag) ici. Le reset reste inconditionnel (silencieux).
-    const uint16_t aqAlert = cmToMm(_network.getAqThresholdCm());
-    const uint16_t aqClear = cmToMm(ThresholdUtil::subSat(_network.getAqThresholdCm(), 5));
-    // Raise délégué à l'orchestrateur (clearSubject=nullptr : pas de mail de fin pour l'aquarium).
-    if (LevelAlertOrchestrator::run(_mailer, _lowAquaSent, readings.wlAqua, aqAlert, aqClear,
-                                    mailEnabled, _network.getEmailAddress(),
-                                    "Alerte - Niveau aquarium BAS", nullptr)) {
-        armMailBlink();
-    }
-    // Reset silencieux inconditionnel du flag (comportement historique aquarium).
-    if (readings.wlAqua <= aqClear) {
-        _lowAquaSent = false;
-    }
+        const uint32_t nowEpoch = (uint32_t) _power.getCurrentEpochSafe();
+        FloodAlert::State floodSt;
+        floodSt.inFlood = inFlood;
+        floodSt.floodEnterSinceEpoch = floodEnterSinceEpoch;
+        floodSt.aboveResetSinceEpoch = aboveResetSinceEpoch;
+        floodSt.lastFloodEmailEpoch = lastFloodEmailEpoch;
+        FloodAlert::Params floodP;
+        floodP.limFloodMm = cmToMm(_network.getLimFlood());
+        floodP.resetThresholdMm = cmToMm(_network.getLimFlood() + floodHystCm);
+        floodP.debounceSec = floodDebounceMin * 60UL;
+        floodP.cooldownSec = floodCooldownMin * 60UL;
+        floodP.resetStableSec = floodResetStableMin * 60UL;
 
-    // C4: décision anti-spam trop-plein déléguée à la machine d'état pure FloodAlert.
-    // Les effets de bord (email, NVS, blink, _highAquaSent) restent ici.
-    const uint32_t nowEpoch = (uint32_t) _power.getCurrentEpochSafe();
-    FloodAlert::State floodSt;
-    floodSt.inFlood = inFlood;
-    floodSt.floodEnterSinceEpoch = floodEnterSinceEpoch;
-    floodSt.aboveResetSinceEpoch = aboveResetSinceEpoch;
-    floodSt.lastFloodEmailEpoch = lastFloodEmailEpoch;
-    FloodAlert::Params floodP;
-    floodP.limFloodMm = cmToMm(_network.getLimFlood());
-    floodP.resetThresholdMm = cmToMm(_network.getLimFlood() + floodHystCm);
-    floodP.debounceSec = floodDebounceMin * 60UL;
-    floodP.cooldownSec = floodCooldownMin * 60UL;
-    floodP.resetStableSec = floodResetStableMin * 60UL;
+        const FloodOrchestrator::Outcome floodOutcome = FloodOrchestrator::run(
+            _mailer, floodSt, floodP, readings.wlAqua, nowEpoch, emitSharedAlertMails,
+            _network.getEmailAddress(), (tankPumpLocked || _config.getPompeAquaLocked()),
+            &inFlood);
+        inFlood = floodSt.inFlood;
+        floodEnterSinceEpoch = floodSt.floodEnterSinceEpoch;
+        aboveResetSinceEpoch = floodSt.aboveResetSinceEpoch;
+        lastFloodEmailEpoch = floodSt.lastFloodEmailEpoch;
 
-    // Orchestrateur flood (testable via IMailer) : evaluate + envoi + markEmailSent.
-    // Effets non interfacés (NVS/blink/flag/logs) appliqués ici selon l'Outcome.
-    // `&inFlood` (membre durable) = accusé de livraison différé : un échec SMTP
-    // définitif ré-arme la machine FloodAlert (voir flood_orchestrator.h, Phase 0).
-    const FloodOrchestrator::Outcome floodOutcome = FloodOrchestrator::run(
-        _mailer, floodSt, floodP, readings.wlAqua, nowEpoch, mailEnabled,
-        _network.getEmailAddress(), (tankPumpLocked || _config.getPompeAquaLocked()),
-        &inFlood);
-    // Recopier l'état mis à jour (horodatages + inFlood/lastFloodEmailEpoch post-markEmailSent).
-    inFlood = floodSt.inFlood;
-    floodEnterSinceEpoch = floodSt.floodEnterSinceEpoch;
-    aboveResetSinceEpoch = floodSt.aboveResetSinceEpoch;
-    lastFloodEmailEpoch = floodSt.lastFloodEmailEpoch;
-
-    if (floodOutcome == FloodOrchestrator::Outcome::EmailQueued) {
-        _highAquaSent = true;
-        armMailBlink();
-        g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
-        Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
-    } else if (floodOutcome == FloodOrchestrator::Outcome::EmailFailed) {
-        Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
-    } else if (floodOutcome == FloodOrchestrator::Outcome::ExitedFlood) {
-        _highAquaSent = false;
-    }
+        if (floodOutcome == FloodOrchestrator::Outcome::EmailQueued) {
+            _highAquaSent = true;
+            armMailBlink();
+            g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Automatism::ALERT_FLOOD_LAST, lastFloodEmailEpoch);
+            Serial.println(F("[Auto] Email TROP PLEIN ajouté à la queue (anti-spam actif)"));
+        } else if (floodOutcome == FloodOrchestrator::Outcome::EmailFailed) {
+            Serial.println(F("[Auto] Échec envoi email TROP PLEIN"));
+        } else if (floodOutcome == FloodOrchestrator::Outcome::ExitedFlood) {
+            _highAquaSent = false;
+        }
     }
 
-    // C4: décision alerte « réserve basse » déléguée à la machine pure LevelAlert.
-    // Ici le reset envoie un mail « Réserve OK » (contrairement à l'aquarium).
-    const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
-    const uint16_t tkClear = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 5));
-    // Raise « Réserve BASSE » + Clear « Réserve OK » délégués à l'orchestrateur.
-    if (LevelAlertOrchestrator::run(_mailer, _lowTankSent, readings.wlTank, tkAlert, tkClear,
-                                    mailEnabled, _network.getEmailAddress(),
-                                    "Alerte - Réserve BASSE", "Info - Réserve OK")) {
-        armMailBlink();
+    // Mail « réserve basse » uniquement (pas d'actionneur ici — sécurité pompe ailleurs).
+    if (emitSharedAlertMails) {
+        const uint16_t tkAlert = cmToMm(_network.getTankThresholdCm());
+        const uint16_t tkClear = cmToMm(ThresholdUtil::subSat(_network.getTankThresholdCm(), 5));
+        if (LevelAlertOrchestrator::run(_mailer, _lowTankSent, readings.wlTank, tkAlert, tkClear,
+                                        mailEnabled, _network.getEmailAddress(),
+                                        "Alerte - Réserve BASSE", "Info - Réserve OK")) {
+            armMailBlink();
+        }
     }
 
-    // C4: régulation chauffage déléguée à l'orchestrateur HeaterOrchestrator (testable
-    // nativement via IActuators/IMailer). La décision reste dans HeaterControl (pur).
-    // run() renvoie true si un mail a été envoyé -> on déclenche alors le blink OLED.
+    // Régulation chauffage — TOUJOURS locale (relais GPIO). emitSharedAlertMails coupe
+    // seulement le mail ESP en liaison saine / grâce boot.
     if (HeaterOrchestrator::run(_acts, _mailer, heaterPrevState,
                                 readings.tempWater, _network.getHeaterThresholdC(),
-                                /*hysteresisC=*/2.0f, mailEnabled, _network.getEmailAddress())) {
+                                /*hysteresisC=*/2.0f, emitSharedAlertMails,
+                                _network.getEmailAddress())) {
         armMailBlink();
     }
 

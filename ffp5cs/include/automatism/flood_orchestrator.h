@@ -36,6 +36,11 @@ enum class Outcome : uint8_t { None, EmailQueued, EmailFailed, ExitedFlood };
 // (retries épuisés), le mailer remet *persistentInFlood=false et la machine
 // FloodAlert ré-émettra l'alerte (au rythme du cooldown) au lieu de la perdre.
 // nullptr accepté (pas d'accusé — mailers synchrones/tests).
+//
+// Phase 3 : l'appelant DOIT appeler run() même quand le serveur couvre les mails
+// (`mailEnabled=false` / `emitSharedAlertMails`). `FloodAlert::evaluate` clear
+// toujours `inFlood` sur ExitFlood ; sans ça RefillOverfill refuse Unlock et la
+// pompe réserve reste verrouillée après un trop-plein notifié en failover.
 inline Outcome run(IMailer& mailer, FloodAlert::State& st, const FloodAlert::Params& p,
                    uint16_t wlAquaMm, uint32_t nowEpoch, bool mailEnabled,
                    const char* email, bool pumpLocked, bool* persistentInFlood = nullptr) {

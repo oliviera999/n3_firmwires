@@ -12,6 +12,31 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.27 - 2026-08-03
+
+### Correctif critique Phase 3 : chauffage + déverrouillage pompe trop-plein
+
+Deux régressions du même `return` / gate mails dans `handleAlerts` quand
+`serverCoversSharedAlerts()` est vrai (GET config OK + POST < 90 s) :
+
+1. **Chauffage** — `HeaterOrchestrator::run` n'était plus appelé → plus aucune
+   hystérésis auto du relais GPIO en liaison saine (ni pendant la grâce boot 30 s).
+   Le serveur n'émet que des mails sur transition de `etatHeat` ; il ne pilote pas
+   le GPIO. *(Constat déjà en DRAFT parent #37 / v15.26 partielle.)*
+
+2. **Pompe réserve sticky** — **nouveau** : la machine `FloodAlert` (`inFlood`)
+   n'était plus évaluée non plus. Or `RefillOverfill::Unlock` exige `!inFlood`.
+   Scénario : failover → trop-plein → Lock pompe + mail OK (`inFlood=true`) →
+   liaison revient → niveau redescend → `ExitFlood` jamais vu → `inFlood` reste
+   true → Unlock bloqué → remplissage auto mort jusqu'au reboot.
+   `RefillRecovery` ne couvre que le motif « inefficace », pas `AQUARIUM_OVERFILL`.
+
+**Correctif** : `emitSharedAlertMails` gate uniquement les mails (aquarium bas,
+trop-plein, réserve, chauffage). `HeaterOrchestrator` et `FloodOrchestrator`
+tournent toujours ; pour le flood, `mailEnabled=emitSharedAlertMails` (ExitFlood
+clear `inFlood` même sans mail). Aligné sur `automatism_refill` (pompe locale,
+mails gatés).
+
 ## Version 15.25 - 2026-07-27
 
 ### Corps POST canonique : fin de la troncature silencieuse des clés d'angles servo (audit F2a)

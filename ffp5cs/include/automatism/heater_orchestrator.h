@@ -26,6 +26,10 @@ namespace HeaterOrchestrator {
 // Met à jour `heaterPrevState`. Renvoie true ssi un mail a été envoyé (-> blink côté appelant).
 // Parité avec l'ancien bloc inline : relais commuté quelle que soit `mailEnabled` ; mail
 // (et donc retour true) uniquement si `mailEnabled` ; message « Temp eau: X.X°C ».
+//
+// Phase 3 : l'appelant passe `mailEnabled=false` quand le serveur couvre les mails
+// partagés (`emitSharedAlertMails`). Le relais DOIT quand même commuter — le serveur
+// ne commande pas le GPIO chauffage.
 inline bool run(IActuators& acts, IMailer& mailer, bool& heaterPrevState,
                 float tempWater, float thresholdC, float hysteresisC,
                 bool mailEnabled, const char* email) {

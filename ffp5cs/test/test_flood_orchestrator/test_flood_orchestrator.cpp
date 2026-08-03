@@ -105,6 +105,18 @@ void test_none_when_mail_disabled(void) {
   TEST_ASSERT_EQUAL_INT(0, m.alertCount);
 }
 
+// Contrat Phase 3 (v15.27) : mailEnabled=false (serveur couvre / grâce boot) ne doit
+// PAS figer inFlood. ExitFlood clear toujours l'état — sinon RefillOverfill refuse Unlock.
+void test_phase3_mail_gate_still_exits_flood(void) {
+  FakeMailer m; FloodAlert::Params p = makeParams();
+  FloodAlert::State st; st.inFlood = true; st.aboveResetSinceEpoch = 2000;
+  auto out = FloodOrchestrator::run(m, st, p, /*wlAqua=*/120, /*now=*/2180,
+                                    /*mail=*/false, "e", false);
+  TEST_ASSERT_EQUAL(FloodOrchestrator::Outcome::ExitedFlood, out);
+  TEST_ASSERT_FALSE(st.inFlood);
+  TEST_ASSERT_EQUAL_INT(0, m.alertCount);
+}
+
 // Phase 0 : le flag durable `inFlood` de l'appelant est transmis comme accusé de
 // livraison différé (restauré à false si la livraison SMTP échoue définitivement).
 void test_ack_plumbing_persistent_inflood(void) {
@@ -125,6 +137,7 @@ int main(void) {
   RUN_TEST(test_exited_flood);
   RUN_TEST(test_none_before_debounce);
   RUN_TEST(test_none_when_mail_disabled);
+  RUN_TEST(test_phase3_mail_gate_still_exits_flood);
   RUN_TEST(test_ack_plumbing_persistent_inflood);
   return UNITY_END();
 }
