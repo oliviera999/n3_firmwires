@@ -9,6 +9,8 @@ struct SystemActuators : public IActuators {
   PumpController pumpTank{Pins::POMPE_RESERV};
   HeaterController heater{Pins::RADIATEURS};
   LightController light{Pins::LUMIERE};
+  RelayController aux1{Pins::AUX1};
+  RelayController aux2{Pins::AUX2};
   Feeder feederBig{Pins::SERVO_GROS};
   Feeder feederSmall{Pins::SERVO_PETITS};
 
@@ -36,6 +38,10 @@ struct SystemActuators : public IActuators {
   // Méthodes pour la lumière
   void startLight() override;
   void stopLight() override;
+
+  // Relais auxiliaires (v15.26)
+  void setAux(uint8_t which, bool on) override;
+  bool isAuxOn(uint8_t which) const override;
 
   // Méthodes pour la nourriture
   // durationSec : durée pendant laquelle le servo reste dans la position de distribution.

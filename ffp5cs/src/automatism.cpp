@@ -663,6 +663,7 @@ void Automatism::startHeaterManualLocal() { _acts.startHeater(); }
 void Automatism::stopHeaterManualLocal() { _acts.stopHeater(); }
 void Automatism::startLightManualLocal() { _acts.startLight(); }
 void Automatism::stopLightManualLocal() { _acts.stopLight(); }
+void Automatism::setAuxManualLocal(uint8_t which, bool on) { _acts.setAux(which, on); }
 
 // Helpers Affichage
 bool Automatism::isFeedingInManualMode() const { return _manualFeedingActive; }

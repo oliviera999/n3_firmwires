@@ -116,6 +116,8 @@ class Automatism {
   // Commandes manuelles de la lumière via le serveur local
   void startLightManualLocal();
   void stopLightManualLocal();
+  // Relais auxiliaires (v15.26) — commande directe, sans logique d'automatisme
+  void setAuxManualLocal(uint8_t which, bool on);
   
   // Force Wakeup (toggle manuel)
   void toggleForceWakeup();

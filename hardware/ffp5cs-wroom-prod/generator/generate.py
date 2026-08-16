@@ -27,7 +27,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "ffp5cs-wroom-prod"
-REV = "0.4"
+REV = "0.5"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -458,7 +458,7 @@ PCB_TEXTS = [
     (184, 93, "GPIO", 0.8),
     (52, 100, "5V 3A", 1.2),
     (115, 47, f"ffp5cs wroom-prod carrier v{REV}", 1.5),
-    (100, 143, "ANTENNE WIFI -> garder la zone au-dessus du module degagee", 0.8),
+    (112.7, 95.5, "ANTENNE WIFI : zone degagee (pas de cuivre dessous)", 0.8),
 ]
 
 BOARD = dict(x0=40, y0=45, x1=190, y1=145)
@@ -652,6 +652,18 @@ def gen_pcb() -> str:
     b = BOARD
     edge = (f'  (gr_rect (start {b["x0"]} {b["y0"]}) (end {b["x1"]} {b["y1"]})\n'
             f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("edge")}"))')
+    # Zone interdite sous l'antenne WiFi du DevKit (recommandation Espressif :
+    # pas de cuivre sous l'antenne PCB). Couvre le débord antenne du module,
+    # au-dessus de la première rangée de pads.
+    edge += (
+        '\n  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu")'
+        f' (uuid "{uid("antkeepout")}") (hatch edge 0.5)'
+        '\n    (keepout (tracks not_allowed) (vias not_allowed) (pads allowed)'
+        ' (copperpour not_allowed) (footprints allowed))'
+        '\n    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))'
+        '\n    (polygon (pts (xy 97.6 96.5) (xy 127.8 96.5)'
+        ' (xy 127.8 102.5) (xy 97.6 102.5)))'
+        '\n  )')
     texts = "\n".join(
         f'  (gr_text "{t}" (at {x} {y} 0) (layer "F.SilkS") (uuid "{uid("gtxt", i)}")\n'
         f'    (effects (font (size {s} {s}) (thickness {s * 0.15:.2f}))))'
@@ -724,7 +736,7 @@ def gen_project() -> str:
     return json.dumps({
         "board": {"3dviewports": [], "design_settings": {"defaults": {},
                   "rules": {"min_clearance": 0.2, "min_track_width": 0.25,
-                            "min_via_diameter": 0.6, "min_via_hole": 0.3}}},
+                            "min_via_diameter": 0.5, "min_via_hole": 0.3}}},
         "boards": [], "cvpcb": {"equivalence_files": []}, "libraries":
         {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
         "meta": {"filename": f"{PROJECT}.kicad_pro", "version": 1},
@@ -754,6 +766,11 @@ def gen_bom():
     out = [["Refs", "Qte", "Valeur", "Empreinte", "Description"]]
     for (value, fp, desc), refs in sorted(rows.items(), key=lambda kv: kv[1][0]):
         out.append([" ".join(sorted(refs)), str(len(refs)), value, fp, desc])
+    # Pièces sans empreinte propre (montées sur une empreinte existante) :
+    # les supports du DevKit doivent apparaître pour être commandés.
+    out.append(["A1 (supports)", "2", "Support femelle 1x15 P2.54",
+                "monte sur l'empreinte ESP32_DevKit_V1_30pin",
+                "Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé"])
     return out
 
 

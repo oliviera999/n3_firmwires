@@ -1,14 +1,15 @@
 # Carte porteuse ffp5cs `wroom-prod` — VARIANTE 230 V (KiCad)
 
 Variante **secteur** de la carte porteuse [`hardware/ffp5cs-wroom-prod/`](../ffp5cs-wroom-prod/)
-(qui reste la référence 12/24 V). Même firmware, même brochage (`pinmap.json` identique,
-vérifié contre `ffp5cs/include/pins.h`), mais les 4 relais commutent des **charges
-230 V ≤ 10 A** dans une **zone secteur physiquement isolée**, et la connectique est
-pensée « zéro soudure » : tout se branche en borniers à vis ou en Dupont.
+(qui reste la référence 12/24 V). Même firmware, même brochage (vérifié contre
+`ffp5cs/include/pins.h`), mais **6 relais** (4 métier + **2 auxiliaires AUX1/AUX2**,
+GPIO 23/25, firmware ≥ v15.26) commutent des **charges 230 V ≤ 10 A** dans une
+**zone secteur physiquement isolée**, et la connectique est pensée « zéro
+soudure » : tout se branche en borniers à vis ou en Dupont.
 
 ```
 kicad/ffp5cs-wroom-prod-230v.*   Projet KiCad 8 (schéma, PCB ROUTÉ, règles DRC .kicad_dru)
-exports/gerbers-*.zip            Fabrication (Gerbers + perçages) — 166 x 110 mm, 2 couches
+exports/gerbers-*.zip            Fabrication (Gerbers + perçages) — 234 x 110 mm, 2 couches
 BOM.csv                          Nomenclature
 generator/generate.py            Régénère schéma + PCB (non routé) + BOM depuis pinmap.json
 generator/route_230v.py          Pipeline de routage sécurisé (voir ci-dessous)
@@ -21,7 +22,7 @@ tools/check_pinmap_vs_firmware.py  Garde anti-dérive code <-> plan
   (2,5 mm) et les borniers y vivent. Les plans de masse et le routage logique en sont
   **exclus par construction** (zones interdites pendant l'autoroutage, pours GND
   arrêtés à la frontière).
-- **Fentes d'isolement fraisées** entre les 4 canaux, à la frontière droite de la
+- **Fentes d'isolement fraisées** entre les 6 canaux, à la frontière droite de la
   zone, et de part et d'autre du pad COM de chaque relais (le point faible du
   boîtier SRD, où COM passe à ~3,5 mm de la bobine).
 - **Règle DRC dédiée** (`.kicad_dru`) : tout cuivre de classe `Mains` doit rester à
@@ -51,9 +52,10 @@ tools/check_pinmap_vs_firmware.py  Garde anti-dérive code <-> plan
 
 - **Zéro soudure à l'usage** : charges sur borniers à vis 5,08 mm ; capteurs sur JST-XH ;
   servos, OLED, I2C sur headers ; DS18B20 et LDR sur borniers ; alim sur jack **ou** bornier.
-- **TOUS les GPIO libres accessibles** sur le header J17 (1×14, Dupont) :
-  `3V3, GND, EN, RX0, TX0, IO5, IO14, IO17, IO23, IO25, IO32, IO35, IO36, IO39`
-  (IO35/36/39 = entrées seules ; RX0/TX0 : les laisser libres pendant un flash USB).
+- **TOUS les GPIO libres accessibles** sur le header J17 (1×12, Dupont) :
+  `3V3, GND, EN, RX0, TX0, IO5, IO14, IO17, IO32, IO35, IO36, IO39`
+  (IO35/36/39 = entrées seules ; RX0/TX0 à laisser libres pendant un flash USB ;
+  IO23/IO25 ne sont plus des spares : ils pilotent les relais AUX1/AUX2).
 - **Distribution d'alim supplémentaire** : bornier 5 V/GND (J18), bornier 3V3/GND (J19),
   et rail header 6 points J20 (2×5V, 2×GND, 2×3V3) pour brancher des modules en Dupont.
 - **3 ports I2C libres** (J14, J21, J22 — brochage GND/VCC/SCL/SDA) en plus de
@@ -89,10 +91,11 @@ Le routage livré dans `kicad/` est déjà fait et validé.
 | Zone secteur isolée + fentes | non (inutile) | **oui** |
 | Pistes contacts relais | 2,0 mm | 2,5 mm, tracées à la main |
 | Règle DRC 3 mm mains↔logique | — | **oui (.kicad_dru + contrôle python)** |
-| GPIO libres en header | 10 broches | **14 broches (tout, dont RX0/TX0/36/39)** |
+| Relais | 4 (12/24 V) | **6 (230 V, dont AUX1/AUX2 pilotés serveur)** |
+| GPIO libres en header | 10 broches | **12 broches (tout le restant, dont RX0/TX0/36/39)** |
 | Distribution 5V/3V3/GND | — | **2 borniers + rail 6 points** |
 | Ports I2C libres | 3 (J14/J18/J19) | 3 (J14/J21/J22) |
-| Taille | 150×100 mm | 166×110 mm |
+| Taille | 150×100 mm | 234×110 mm |
 
 Empreintes : bibliothèque officielle KiCad 8.0.9 (CC-BY-SA 4.0 + exception d'usage),
 vendorées dans `generator/footprints/`.

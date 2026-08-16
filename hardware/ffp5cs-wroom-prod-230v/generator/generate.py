@@ -30,7 +30,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "ffp5cs-wroom-prod-230v"
-REV = "0.2"
+REV = "0.3"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -142,6 +142,8 @@ SYMBOLS: dict[str, dict] = {
                     left=[(str(i), str(i), 3 - i) for i in range(1, 7)]),
     "CONN_10": dict(ref="J", w=3,
                     left=[(str(i), str(i), 5 - i) for i in range(1, 11)]),
+    "CONN_12": dict(ref="J", w=3,
+                    left=[(str(i), str(i), 6 - i) for i in range(1, 13)]),
     "CONN_14": dict(ref="J", w=3,
                     left=[(str(i), str(i), 7 - i) for i in range(1, 15)]),
 }
@@ -198,35 +200,40 @@ def sym_def(name: str, meta: dict) -> str:
 # sch=(x,y) en unités de grille ; pcb=(x,y,rot) en mm ; nets: broche -> net.
 # ---------------------------------------------------------------------------
 
-def relay_channel(n: int, gpio_net: str, jref: str, k_x: float):
+def relay_channel(n: int, gpio_net: str, jref: str, k_x: float,
+                  refs: dict | None = None):
     """Canal relais n : commande GPIO -> transistor -> relais SRD-05 -> bornier 230V.
     Relais pivoté 90° : contacts vers le bord haut (zone secteur), bobine vers la
     logique. Bornier : 1=NC 2=COM 3=NO (routage secteur rectiligne, fait par
     route_230v.py, PAS par l'autorouteur)."""
     col = k_x - 7
+    # Références par défaut (canaux 1-4). Les canaux ajoutés passent un
+    # override explicite pour ne pas percuter D5/LED5/R13... (alim, LDR, US).
+    refs = refs or dict(rb=f"R{n}", rp=f"R{n + 4}", rl=f"R{n + 8}",
+                        q=f"Q{n}", d=f"D{n}", led=f"LED{n}")
     bx, by = 111, 4 + 26 * (n - 1)  # bloc schéma (unités de grille)
     return [
-        dict(ref=f"R{n}", sym="R", value="1k",
+        dict(ref=refs["rb"], sym="R", value="1k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Résistance base transistor", sch=(bx, by), pcb=(col, 91, 0),
              nets={"1": gpio_net, "2": f"REL{n}_B"}),
-        dict(ref=f"R{n + 4}", sym="R", value="10k",
+        dict(ref=refs["rp"], sym="R", value="10k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pull-down base (état sûr au boot)", sch=(bx, by + 4), pcb=(col, 96, 0),
              nets={"1": f"REL{n}_B", "2": "GND"}),
-        dict(ref=f"R{n + 8}", sym="R", value="1k",
+        dict(ref=refs["rl"], sym="R", value="1k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Résistance LED témoin", sch=(bx, by + 8), pcb=(col, 100, 0),
              nets={"1": "+5V", "2": f"REL{n}_LED"}),
-        dict(ref=f"Q{n}", sym="NPN", value="BC337-40", fp="TO-92_Inline",
+        dict(ref=refs["q"], sym="NPN", value="BC337-40", fp="TO-92_Inline",
              desc="Transistor NPN commande relais (1=C 2=B 3=E)",
              sch=(bx + 9, by + 2), pcb=(k_x + 7, 96, 0),
              nets={"1": f"REL{n}_SW", "2": f"REL{n}_B", "3": "GND"}),
-        dict(ref=f"D{n}", sym="D", value="1N4007",
+        dict(ref=refs["d"], sym="D", value="1N4007",
              fp="D_DO-41_SOD81_P10.16mm_Horizontal",
              desc="Diode de roue libre bobine", sch=(bx + 9, by + 8), pcb=(col, 86, 0),
              nets={"1": "+5V", "2": f"REL{n}_SW"}),
-        dict(ref=f"LED{n}", sym="LED", value="rouge", fp="LED_D5.0mm",
+        dict(ref=refs["led"], sym="LED", value="rouge", fp="LED_D5.0mm",
              desc="LED témoin relais ON", sch=(bx + 9, by + 12), pcb=(k_x + 9, 90, 90),
              nets={"1": f"REL{n}_SW", "2": f"REL{n}_LED"}),
         dict(ref=f"K{n}", sym="RELAY_SRD", value="SRD-05VDC-SL-C",
@@ -274,9 +281,9 @@ def build_components():
         "8": "SPARE_GPIO5", "9": NET["POMPE_RESERV"], "10": NET["ULTRASON_TANK"],
         "11": NET["I2C_SDA"], "12": "SPARE_RX0_GPIO3", "13": "SPARE_TX0_GPIO1",
         "14": NET["I2C_SCL"],
-        "15": "SPARE_GPIO23", "16": "VIN_5V", "17": "GND",
+        "15": NET["AUX1"], "16": "VIN_5V", "17": "GND",
         "18": NET["SERVO_PETITS"], "19": NET["SERVO_GROS"], "20": "SPARE_GPIO14",
-        "21": NET["DHT_PIN"], "22": NET["ONE_WIRE_BUS"], "23": "SPARE_GPIO25",
+        "21": NET["DHT_PIN"], "22": NET["ONE_WIRE_BUS"], "23": NET["AUX2"],
         "24": NET["ULTRASON_POTA"], "25": "SPARE_GPIO32", "26": "SPARE_GPIO35",
         "27": NET["LUMINOSITE"], "28": "SPARE_GPIO39", "29": "SPARE_GPIO36",
         "30": "EN",
@@ -316,11 +323,17 @@ def build_components():
     comps += relay_channel(2, NET["POMPE_RESERV"], "J4", 92)
     comps += relay_channel(3, NET["RADIATEURS"], "J5", 126)
     comps += relay_channel(4, NET["LUMIERE"], "J6", 160)
+    comps += relay_channel(5, NET["AUX1"], "J23", 194,
+                           refs=dict(rb="R28", rp="R29", rl="R30",
+                                     q="Q5", d="D6", led="LED6"))
+    comps += relay_channel(6, NET["AUX2"], "J24", 228,
+                           refs=dict(rb="R31", rp="R32", rl="R33",
+                                     q="Q6", d="D7", led="LED7"))
     # --- Servomoteurs nourrisseurs -------------------------------------------
     comps += [
         dict(ref="R20", sym="R", value="220",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Série signal servo gros", sch=(48, 55), pcb=(182, 90, 90),
+             desc="Série signal servo gros", sch=(48, 55), pcb=(250, 90, 90),
              nets={"1": NET["SERVO_GROS"], "2": "SERVO_GROS_SIG"}),
         dict(ref="R22", sym="R", value="10k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
@@ -329,18 +342,18 @@ def build_components():
              nets={"1": NET["SERVO_GROS"], "2": "GND"}),
         dict(ref="J15", sym="CONN_03", value="Header servo",
              fp="PinHeader_1x03_P2.54mm_Vertical",
-             desc="Servo GROS (1=SIG 2=+5V 3=GND)", sch=(60, 55), pcb=(192, 58, 0),
+             desc="Servo GROS (1=SIG 2=+5V 3=GND)", sch=(60, 55), pcb=(260, 58, 0),
              nets={"1": "SERVO_GROS_SIG", "2": "+5V", "3": "GND"}),
         dict(ref="R21", sym="R", value="220",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Série signal servo petits", sch=(48, 65), pcb=(186, 90, 90),
+             desc="Série signal servo petits", sch=(48, 65), pcb=(254, 90, 90),
              nets={"1": NET["SERVO_PETITS"], "2": "SERVO_PETITS_SIG"}),
         dict(ref="J16", sym="CONN_03", value="Header servo",
              fp="PinHeader_1x03_P2.54mm_Vertical",
-             desc="Servo PETITS (1=SIG 2=+5V 3=GND)", sch=(60, 65), pcb=(192, 70, 0),
+             desc="Servo PETITS (1=SIG 2=+5V 3=GND)", sch=(60, 65), pcb=(260, 70, 0),
              nets={"1": "SERVO_PETITS_SIG", "2": "+5V", "3": "GND"}),
         dict(ref="C2", sym="CP", value="470u/16V", fp="CP_Radial_D8.0mm_P3.50mm",
-             desc="Découplage rail 5V servos", sch=(48, 71), pcb=(184, 64, 90),
+             desc="Découplage rail 5V servos", sch=(48, 71), pcb=(252, 64, 90),
              nets={"1": "+5V", "2": "GND"}),
     ]
     # --- Capteurs ultrason HC-SR04 (mono-broche trig/écho) --------------------
@@ -416,16 +429,15 @@ def build_components():
     ]
     # --- GPIO libres + EN -----------------------------------------------------
     comps.append(dict(
-        ref="J17", sym="CONN_14", value="Header GPIO libres",
-        fp="PinHeader_1x14_P2.54mm_Vertical",
+        ref="J17", sym="CONN_12", value="Header GPIO libres",
+        fp="PinHeader_1x12_P2.54mm_Vertical",
         desc="TOUS les GPIO libres (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=IO5 7=IO14 "
-             "8=IO17 9=IO23 10=IO25 11=IO32 12=IO35 13=IO36 14=IO39)",
-        sch=(24, 70), pcb=(192, 84, 0),
+             "8=IO17 9=IO32 10=IO35 11=IO36 12=IO39) — IO23/IO25 = relais AUX",
+        sch=(24, 70), pcb=(260, 84, 0),
         nets={"1": "+3V3", "2": "GND", "3": "EN", "4": "SPARE_RX0_GPIO3",
               "5": "SPARE_TX0_GPIO1", "6": "SPARE_GPIO5", "7": "SPARE_GPIO14",
-              "8": "SPARE_GPIO17", "9": "SPARE_GPIO23", "10": "SPARE_GPIO25",
-              "11": "SPARE_GPIO32", "12": "SPARE_GPIO35", "13": "SPARE_GPIO36",
-              "14": "SPARE_GPIO39"}))
+              "8": "SPARE_GPIO17", "9": "SPARE_GPIO32", "10": "SPARE_GPIO35",
+              "11": "SPARE_GPIO36", "12": "SPARE_GPIO39"}))
     # Distribution d'alimentation supplémentaire : borniers ET header
     comps += [
         dict(ref="J18", sym="CONN_02", value="Bornier_5.08",
@@ -434,16 +446,16 @@ def build_components():
              nets={"1": "+5V", "2": "GND"}),
         dict(ref="J19", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",
-             desc="Distribution 3V3 (1=+3V3 2=GND)", sch=(24, 90), pcb=(200, 128, 90),
+             desc="Distribution 3V3 (1=+3V3 2=GND)", sch=(24, 90), pcb=(268, 128, 90),
              nets={"1": "+3V3", "2": "GND"}),
         dict(ref="J20", sym="CONN_06", value="Header alim",
              fp="PinHeader_1x06_P2.54mm_Vertical",
-             desc="Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3)", sch=(24, 98), pcb=(192, 122, 0),
+             desc="Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3)", sch=(24, 98), pcb=(260, 122, 0),
              nets={"1": "+5V", "2": "+5V", "3": "GND", "4": "GND",
                    "5": "+3V3", "6": "+3V3"}),
     ]
     # --- Trous de fixation M3 --------------------------------------------------
-    for i, (hx, hy) in enumerate([(45, 45), (201, 45), (45, 145), (201, 145)], 1):
+    for i, (hx, hy) in enumerate([(45, 45), (269, 45), (45, 145), (269, 145)], 1):
         comps.append(dict(ref=f"H{i}", sym=None, value="M3",
                           fp="MountingHole_3.2mm_M3", desc="Trou de fixation M3",
                           sch=None, pcb=(hx, hy, 0), nets={}))
@@ -473,12 +485,16 @@ PCB_TEXTS = [
     (92, 43, "REL2 POMPE RESERV", 1.0),
     (126, 43, "REL3 CHAUFFAGE", 1.0),
     (160, 43, "REL4 LUMIERE", 1.0),
+    (194, 43, "REL5 AUX1", 1.0),
+    (228, 43, "REL6 AUX2", 1.0),
+    (194, 57.5, "NC COM NO", 0.8),
+    (228, 57.5, "NC COM NO", 0.8),
     (58, 57.5, "NC COM NO", 0.8),
     (92, 57.5, "NC COM NO", 0.8),
     (126, 57.5, "NC COM NO", 0.8),
     (160, 57.5, "NC COM NO", 0.8),
-    (110, 71, "!! ZONE 230V - DANGER - COUPER LE SECTEUR AVANT INTERVENTION !!", 1.3),
-    (110, 86.5, "ffp5cs wroom-prod-230v carrier v0.1", 1.4),
+    (144, 71, "!! ZONE 230V - DANGER - COUPER LE SECTEUR AVANT INTERVENTION !!", 1.3),
+    (110, 86.5, "ffp5cs wroom-prod-230v carrier v0.3 (6 canaux)", 1.4),
     (134, 146.5, "US AQUA", 1.0),
     (148, 146.5, "US RESERV", 1.0),
     (162, 146.5, "US POTAGER", 1.0),
@@ -487,24 +503,24 @@ PCB_TEXTS = [
     (82, 119.5, "LDR", 1.0),
     (94, 125.5, "OLED", 1.0),
     (43, 52, "I2C EXT x3", 1.0),
-    (198, 55, "SRV GROS", 0.8),
-    (198, 67, "SRV PETITS", 0.8),
-    (186, 81.5, "GPIO", 0.8),
-    (186, 120.5, "ALIM", 0.8),
+    (266, 55, "SRV GROS", 0.8),
+    (266, 67, "SRV PETITS", 0.8),
+    (254, 81.5, "GPIO", 0.8),
+    (254, 120.5, "ALIM", 0.8),
     (56, 139, "5V", 0.9),
-    (200, 121.5, "3V3", 0.9),
+    (268, 121.5, "3V3", 0.9),
     (52, 104, "5V 3A", 1.2),
-    (100, 148, "ANTENNE WIFI -> garder la zone au-dessus du module degagee", 0.8),
+    (112.7, 101.5, "ANTENNE WIFI : zone degagee (pas de cuivre dessous)", 0.8),
 ]
 
-BOARD = dict(x0=40, y0=40, x1=206, y1=150)
+BOARD = dict(x0=40, y0=40, x1=274, y1=150)
 
 # Fentes d'isolement (fraisages internes, Edge.Cuts) : entre canaux 230V,
 # frontière droite de la zone secteur, et mini-fentes COM<->bobine par canal.
 SLOTS = ([(74, 42, 76, 80), (108, 42, 110, 80), (142, 42, 144, 80),
-          (177, 42, 179, 82)]
+          (176, 42, 178, 80), (210, 42, 212, 80), (245, 42, 247, 82)]
          + [(x + dx - 0.5, 73, x + dx + 0.5, 81)
-            for x in (58, 92, 126, 160) for dx in (-3, 3)])
+            for x in (58, 92, 126, 160, 194, 228) for dx in (-3, 3)])
 
 
 # ---------------------------------------------------------------------------
@@ -695,6 +711,18 @@ def gen_pcb() -> str:
     b = BOARD
     edge = (f'  (gr_rect (start {b["x0"]} {b["y0"]}) (end {b["x1"]} {b["y1"]})\n'
             f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("edge")}"))')
+    # Zone interdite sous l'antenne WiFi du DevKit (recommandation Espressif :
+    # pas de cuivre sous l'antenne PCB). Couvre le débord antenne du module,
+    # au-dessus de la première rangée de pads.
+    edge += (
+        '\n  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu")'
+        f' (uuid "{uid("antkeepout")}") (hatch edge 0.5)'
+        '\n    (keepout (tracks not_allowed) (vias not_allowed) (pads allowed)'
+        ' (copperpour not_allowed) (footprints allowed))'
+        '\n    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))'
+        '\n    (polygon (pts (xy 97.6 102.5) (xy 127.8 102.5)'
+        ' (xy 127.8 108.5) (xy 97.6 108.5)))'
+        '\n  )')
     for i, (sx0, sy0, sx1, sy1) in enumerate(SLOTS):
         edge += (f'\n  (gr_rect (start {sx0} {sy0}) (end {sx1} {sy1})\n'
                  f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("slot", i)}"))')
@@ -703,7 +731,7 @@ def gen_pcb() -> str:
         f'    (effects (font (size {s} {s}) (thickness {s * 0.15:.2f}))))'
         for i, (x, y, t, s) in enumerate(PCB_TEXTS))
     # zones GND en U : tout le pourtour SAUF le rectangle secteur (44..178, 40..84)
-    zx0, zx1, zy = 45.2, 178, 84
+    zx0, zx1, zy = 45.2, 246, 84
     poly = ('(polygon (pts '
             f'(xy {b["x0"]} {b["y0"]}) (xy {zx0} {b["y0"]}) (xy {zx0} {zy}) '
             f'(xy {zx1} {zy}) (xy {zx1} {b["y0"]}) (xy {b["x1"]} {b["y0"]}) '
@@ -781,7 +809,7 @@ def gen_project() -> str:
     return json.dumps({
         "board": {"3dviewports": [], "design_settings": {"defaults": {},
                   "rules": {"min_clearance": 0.2, "min_track_width": 0.25,
-                            "min_via_diameter": 0.6, "min_via_hole": 0.3}}},
+                            "min_via_diameter": 0.5, "min_via_hole": 0.3}}},
         "boards": [], "cvpcb": {"equivalence_files": []}, "libraries":
         {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
         "meta": {"filename": f"{PROJECT}.kicad_pro", "version": 1},
@@ -811,6 +839,11 @@ def gen_bom():
     out = [["Refs", "Qte", "Valeur", "Empreinte", "Description"]]
     for (value, fp, desc), refs in sorted(rows.items(), key=lambda kv: kv[1][0]):
         out.append([" ".join(sorted(refs)), str(len(refs)), value, fp, desc])
+    # Pièces sans empreinte propre (montées sur une empreinte existante) :
+    # les supports du DevKit doivent apparaître pour être commandés.
+    out.append(["A1 (supports)", "2", "Support femelle 1x15 P2.54",
+                "monte sur l'empreinte ESP32_DevKit_V1_30pin",
+                "Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé"])
     return out
 
 

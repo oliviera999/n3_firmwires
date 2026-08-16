@@ -70,7 +70,7 @@ HC-SR04, servos et relais sur le rail 5 V.
 1. **Entraxe du DevKit** : l'empreinte suppose un DevKit V1 **30 broches, rangées
    espacées de 25,4 mm** (2 × supports 1×15). Mesurer votre exemplaire ; les variantes
    38 broches (DevKitC) ont un autre brochage → adapter `generate.py` (table `DEVKIT_A/B`).
-2. **Routage (rev 0.4, dimensionné 12/24 V)** : PCB routé par `generator/route_lv.py`
+2. **Routage (rev 0.5, dimensionné 12/24 V)** : PCB routé par `generator/route_lv.py`
    (freerouting + vias de couture GND + reliefs thermiques) avec des
    **classes de nets** — contacts relais NO/COM/NC en **2 mm** (≈ 5-6 A continus en
    cuivre 1 oz, marge correcte jusqu'à ~8 A en pointe), rails +5V/VIN/GND en
@@ -85,6 +85,19 @@ HC-SR04, servos et relais sur le rail 5 V.
    premier montage avant de brancher une charge.
 4. **ERC/DRC** : les étiquettes locales alimentent les nets (pas de power-flags) ; l'ERC
    émet des avertissements « input power pin not driven », sans conséquence.
+
+## Corrections rev 0.5
+
+- **Supports du DevKit dans la BOM** (ligne « A1 (supports) » : 2 barrettes femelles
+  1×15) — jusque-là seulement mentionnés en description.
+- **Zone dégagée sous l'antenne WiFi** : keepout cuivre (pistes/vias/pour) sur les
+  deux faces sous le débord antenne du module, note sérigraphiée déplacée côté antenne.
+- **Checker étendu** : `tools/check_pinmap_vs_firmware.py` fige désormais aussi la
+  topologie des canaux HC-SR04 (JST 1=+5V 2=GPIO 3=ECHO 4=GND, 1 k série écho,
+  2 k pull-down) — le câblage capteur ne peut plus dériver silencieusement.
+- GPIO 23/25 : déclarés `AUX1`/`AUX2` dans `pinmap.json` (firmware ≥ v15.26) ; sur
+  cette carte ils restent en breakout J17 (piloter des modules relais externes) —
+  les relais AUX embarqués sont sur la variante 230 V.
 
 ## Vue Fritzing (câblage de prototype)
 

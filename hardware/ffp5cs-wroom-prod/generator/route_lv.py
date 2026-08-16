@@ -96,7 +96,7 @@ def export_logic_dsn(dsn_path: Path):
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
            "-do", str(ses), "-mp", "80", "-dr"]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=560)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)
     if not ses.exists():
