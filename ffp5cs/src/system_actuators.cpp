@@ -91,6 +91,23 @@ void SystemActuators::stopHeater()  { heater.off(); LOG(LOG_INFO, "[Event] Heate
 void SystemActuators::startLight() { light.on(); LOG(LOG_INFO, "[Event] Light ON"); }
 void SystemActuators::stopLight()  { light.off(); LOG(LOG_INFO, "[Event] Light OFF"); }
 
+// Relais auxiliaires (v15.13) — carte porteuse 230V 6 canaux
+void SystemActuators::setAux(uint8_t which, bool on) {
+  RelayController* relay = (which == 1) ? &aux1 : (which == 2) ? &aux2 : nullptr;
+  if (relay == nullptr) {
+    LOG(LOG_WARN, "[Event] AUX%u inconnu, commande ignorée", which);
+    return;
+  }
+  if (on) { relay->on(); } else { relay->off(); }
+  LOG(LOG_INFO, "[Event] AUX%u %s", which, on ? "ON" : "OFF");
+}
+
+bool SystemActuators::isAuxOn(uint8_t which) const {
+  if (which == 1) return aux1.state();
+  if (which == 2) return aux2.state();
+  return false;
+}
+
 // Méthodes pour la nourriture
 void SystemActuators::applyServoConfigToFeeders() {
   feederBig.setRestAngle(_servoGrosRest);

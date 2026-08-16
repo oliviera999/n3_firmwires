@@ -18,7 +18,9 @@
     "DHT_PIN": 27,
     "ONE_WIRE_BUS": 26,
     "I2C_SDA": 21,
-    "I2C_SCL": 22
+    "I2C_SCL": 22,
+    "AUX1": 23,
+    "AUX2": 25
   },
   "netByPin": {
     "ULTRASON_AQUA": "US_AQUA_GPIO4",
@@ -34,7 +36,9 @@
     "DHT_PIN": "DHT_GPIO27",
     "ONE_WIRE_BUS": "ONEWIRE_GPIO26",
     "I2C_SDA": "I2C_SDA_GPIO21",
-    "I2C_SCL": "I2C_SCL_GPIO22"
+    "I2C_SCL": "I2C_SCL_GPIO22",
+    "AUX1": "AUX1_GPIO23",
+    "AUX2": "AUX2_GPIO25"
   },
   "notes": {
     "OLED_ADDR": "0x3C (SSD1306 128x64 sur I2C, FEATURE_OLED=1)",

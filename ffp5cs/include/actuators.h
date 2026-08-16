@@ -38,6 +38,19 @@ class LightController {
   bool _state{false};
 };
 
+// Relais auxiliaire générique (v15.26) — même contrat que Pump/Heater/Light,
+// pour les 2 canaux AUX de la carte porteuse 230V (charges libres).
+class RelayController {
+ public:
+  RelayController(int gpio) : _gpio(gpio) { pinMode(_gpio, OUTPUT); off(); }
+  void on()  { digitalWrite(_gpio, HIGH); _state = true; LOG(LOG_INFO, "Relay GPIO%d ON", _gpio); }
+  void off() { digitalWrite(_gpio, LOW);  _state = false; LOG(LOG_INFO, "Relay GPIO%d OFF", _gpio); }
+  bool state() const { return _state; }
+ private:
+  int  _gpio;
+  bool _state{false};
+};
+
 class Feeder {
  public:
   Feeder(int gpio, int restAngle = 88) : _gpio(gpio), _rest(restAngle) {}

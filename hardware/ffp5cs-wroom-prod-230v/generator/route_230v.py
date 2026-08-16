@@ -34,8 +34,8 @@ HERE = Path(__file__).resolve().parent
 KICAD = HERE.parent / "kicad"
 BOARD_PATH = KICAD / "ffp5cs-wroom-prod-230v.kicad_pcb"
 
-CHANNELS = [(1, 58.0), (2, 92.0), (3, 126.0), (4, 160.0)]  # (n, x centre relais)
-MAINS_NETS = {f"REL{n}_{c}" for n in range(1, 5) for c in ("COM", "NO", "NC")}
+CHANNELS = [(1, 58.0), (2, 92.0), (3, 126.0), (4, 160.0), (5, 194.0), (6, 228.0)]  # (n, x centre relais)
+MAINS_NETS = {f"REL{n}_{c}" for n in range(1, 7) for c in ("COM", "NO", "NC")}
 # nets pré-routés à la main (retirés du DSN comme les nets secteur)
 HAND_NETS = MAINS_NETS
 MAINS_WIDTH_MM = 2.5
@@ -77,12 +77,12 @@ def export_logic_dsn(dsn_path: Path):
                     pad.SetNetCode(0)
                     n_removed += 1
         # bande secteur + boîtes autour du pad/piste COM de chaque canal
-        mk_rule_area(b, 44, 40, 178, 74)
+        mk_rule_area(b, 44, 40, 246, 74)
         for _n, x in CHANNELS:
             mk_rule_area(b, x - 4.6, 74, x + 4.6, 84)
         # bandes le long des bords : l'autorouteur doit respecter
         # l'edge clearance de 0.5 mm (le DSN ne la transmet pas)
-        bx0, by0, bx1, by1 = 40, 40, 206, 150
+        bx0, by0, bx1, by1 = 40, 40, 274, 150
         mk_rule_area(b, bx0, by0, bx1, by0 + 0.7)
         mk_rule_area(b, bx0, by1 - 0.7, bx1, by1)
         mk_rule_area(b, bx0, by0, bx0 + 0.7, by1)
@@ -91,7 +91,7 @@ def export_logic_dsn(dsn_path: Path):
         # découpes internes : sans ça l'autorouteur les traverse/frôle)
         import generate as g
         for sx0, sy0, sx1, sy1 in g.SLOTS:
-            mk_rule_area(b, sx0 - 0.8, sy0 - 0.8, sx1 + 0.8, sy1 + 0.8)
+            mk_rule_area(b, sx0 - 0.5, sy0 - 0.5, sx1 + 0.5, sy1 + 0.5)
         # retire les zones GND de la copie : freerouting doit router GND en
         # pistes réelles (sinon il se repose sur un plan idéal et le
         # remplissage réel laisse des pads GND dans des poches isolées)
@@ -105,8 +105,8 @@ def export_logic_dsn(dsn_path: Path):
 
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
-           "-do", str(ses), "-mp", "80", "-dr"]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=560)
+           "-do", str(ses), "-mp", "200", "-dr"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)
     if not ses.exists():
@@ -232,8 +232,8 @@ def add_stitching_vias(b):
     import generate as g
     for sx0, sy0, sx1, sy1 in g.SLOTS:
         slots_margin.append((sx0 - 1.2, sy0 - 1.2, sx1 + 1.2, sy1 + 1.2))
-    spots = [(x, y) for x in range(48, 175, 12) for y in range(90, 147, 10)]
-    spots += [(x, y) for x in (186, 198) for y in range(46, 147, 10)]
+    spots = [(x, y) for x in range(48, 243, 12) for y in range(90, 147, 10)]
+    spots += [(x, y) for x in (254, 266) for y in range(46, 147, 10)]
     added = 0
     for x, y in spots:
         if any(sx0 <= x <= sx1 and sy0 <= y <= sy1 for sx0, sy0, sx1, sy1 in slots_margin):

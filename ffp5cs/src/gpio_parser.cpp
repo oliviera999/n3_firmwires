@@ -390,6 +390,13 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
         state ? autoCtrl.startLightManualLocal() : autoCtrl.stopLightManualLocal();
         Serial.printf("Lumière %s\n", state ? "ON" : "OFF");
     }
+    // Relais auxiliaires (v15.13) : commande directe ON/OFF
+    else if (gpio == GPIOMap::AUX1.gpio || gpio == GPIOMap::AUX2.gpio) {
+        bool state = parseBool(value);
+        uint8_t which = (gpio == GPIOMap::AUX1.gpio) ? 1 : 2;
+        autoCtrl.setAuxManualLocal(which, state);
+        Serial.printf("Relais AUX%u %s\n", which, state ? "ON" : "OFF");
+    }
     // Nourrissage 108/109 : traité en amont par resolveFeedCommands (pré-passage,
     // gère le cas petits+gros SIMULTANÉS et la non-perte des commandes). No-op ici
     // pour éviter tout double déclenchement et préserver l'état edge déjà résolu.
@@ -655,6 +662,11 @@ void GPIOParser::loadGPIOStatesFromNVS(Automatism& autoCtrl) {
                 autoCtrl.stopHeaterManualLocal();
                 Serial.printf("[GPIOParser] 🔥 Chauffage restauré: OFF\n");
             }
+        }
+        else if (mapping.gpio == GPIOMap::AUX1.gpio || mapping.gpio == GPIOMap::AUX2.gpio) {
+            uint8_t which = (mapping.gpio == GPIOMap::AUX1.gpio) ? 1 : 2;
+            autoCtrl.setAuxManualLocal(which, state);
+            Serial.printf("[GPIOParser] 🔌 Relais AUX%u restauré: %s\n", which, state ? "ON" : "OFF");
         }
         else if (mapping.gpio == GPIOMap::LIGHT.gpio) {
             if (state) {

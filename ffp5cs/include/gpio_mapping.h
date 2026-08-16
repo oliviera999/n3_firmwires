@@ -87,6 +87,9 @@ namespace GPIOMap {
     constexpr GPIOMapping PUMP_TANK     = {Pins::POMPE_RESERV,  GPIOType::ACTUATOR, "pump_tank", "etatPompeTank", "pumpTank", "Pompe réservoir", false};
     constexpr GPIOMapping HEATER        = {Pins::RADIATEURS,    GPIOType::ACTUATOR, "heater",    "etatHeat",      "heater",   "Chauffage", false};
     constexpr GPIOMapping LIGHT         = {Pins::LUMIERE,       GPIOType::ACTUATOR, "light",     "etatUV",        "light",    "Lumière", false};
+    // v15.26 : relais auxiliaires carte porteuse 230V (WROOM 23/25, S3 47/48)
+    constexpr GPIOMapping AUX1          = {Pins::AUX1,          GPIOType::ACTUATOR, "aux1",      "etatAux1",      "aux1",     "Relais AUX 1", false};
+    constexpr GPIOMapping AUX2          = {Pins::AUX2,          GPIOType::ACTUATOR, "aux2",      "etatAux2",      "aux2",     "Relais AUX 2", false};
     
     // COMMANDES NOURRISSAGE (flags)
     constexpr GPIOMapping FEED_SMALL    = {108, GPIOType::ACTUATOR, "feed_small", "bouffePetits", "feedSmall", "Nourrir petits", false};
@@ -118,7 +121,7 @@ namespace GPIOMap {
     
     // Array pour itération
     constexpr GPIOMapping ALL_MAPPINGS[] = {
-        PUMP_AQUA, PUMP_TANK, HEATER, LIGHT,
+        PUMP_AQUA, PUMP_TANK, HEATER, LIGHT, AUX1, AUX2,
         FEED_SMALL, FEED_BIG,
         EMAIL_ADDR, EMAIL_EN, AQ_THRESHOLD, TANK_THRESHOLD, HEAT_THRESHOLD,
         FEED_MORNING, FEED_NOON, FEED_EVENING,

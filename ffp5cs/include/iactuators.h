@@ -39,6 +39,11 @@ struct IActuators {
   virtual void startLight() = 0;
   virtual void stopLight() = 0;
 
+  // Relais auxiliaires 1..2 (v15.26). Défaut no-op : les doubles de test
+  // existants n'ont pas à être modifiés.
+  virtual void setAux(uint8_t which, bool on) { (void)which; (void)on; }
+  virtual bool isAuxOn(uint8_t which) const { (void)which; return false; }
+
   // Nourrissage
   virtual void feedBigFish(uint16_t durationSec = 10) = 0;
   virtual void feedSmallFish(uint16_t durationSec = 10) = 0;

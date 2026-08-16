@@ -146,6 +146,7 @@ CATALOG = {
     "hdr3": dict(moduleId=HDR.format(n=3), pins=header_pins(3)),
     "hdr2": dict(moduleId=HDR.format(n=2), pins=header_pins(2)),
     "hdr6": dict(moduleId=HDR.format(n=6), pins=header_pins(6)),
+    "hdr12": dict(moduleId=HDR.format(n=12), pins=header_pins(12)),
     "hdr14": dict(moduleId=HDR.format(n=14), pins=header_pins(14)),
 }
 
@@ -181,8 +182,8 @@ INSTANCES = [
     ("r_srv1", "res", "220 signal gros", 560, 300, {"resistance": "220"}),
     ("r_srv2", "res", "220 signal petits", 560, 380, {"resistance": "220"}),
     ("r_pd12", "res", "10k pull-down D12 (strapping)", 560, 340, {"resistance": "10k"}),
-    ("rel", "hdr4", "Commandes relais INTERNES carte 230V : D16 D18 D2 D15 (charges sur borniers NC/COM/NO)", 640, 470, {}),
-    ("gpio", "hdr14", "Breakout J17 tous GPIO libres : 3V3 GND EN RX0 TX0 D5 D14 D17 D23 D25 D32 D35 D36 D39", 40, 640, {}),
+    ("rel", "hdr6", "Commandes relais INTERNES carte 230V : D16 D18 D2 D15 D23 D25 (charges sur borniers NC/COM/NO)", 640, 470, {}),
+    ("gpio", "hdr12", "Breakout J17 tous GPIO libres : 3V3 GND EN RX0 TX0 D5 D14 D17 D32 D35 D36 D39", 40, 640, {}),
     ("alim", "hdr6", "Rail alim J20 : 5V 5V GND GND 3V3 3V3", 640, 540, {}),
 ]
 
@@ -261,6 +262,8 @@ WIRES = [
     (("rel", "connector1"), A("D18"), "#cc9966"),
     (("rel", "connector2"), A("D2"), "#cc66cc"),
     (("rel", "connector3"), A("D15"), "#6666cc"),
+    (("rel", "connector4"), A("D23"), "#cc6600"),
+    (("rel", "connector5"), B("D25"), "#cc6600"),
 ]
 
 

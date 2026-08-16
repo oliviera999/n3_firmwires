@@ -54,6 +54,60 @@ def parse_pins_h_wroom() -> dict[str, int]:
     return pins
 
 
+
+
+US_CHANNELS = {
+    # canal: (jst, r_serie_1k, r_pont_2k, net GPIO attendu (suffixe), net écho)
+    "AQUA": ("J7", "R14", "R17"),
+    "TANK": ("J8", "R15", "R18"),
+    "POTA": ("J9", "R16", "R19"),
+}
+
+
+def check_us_topology(pcb_text: str, pinmap: dict, errors: list[str]) -> None:
+    """Vérifie le câblage des canaux HC-SR04 mono-broche dans le PCB généré.
+
+    Le firmware (sensor_ultrasonic.cpp) pilote TRIG et lit ECHO sur le MÊME GPIO :
+    TRIG direct, ECHO ramené par pont 1k/2k (2k vers GND = pull-down d'état de repos
+    ET adaptation 5V->3V3). Le checker principal ne couvre que les pads du DevKit —
+    celui-ci fige la topologie côté capteur.
+    """
+    import re as _re
+    # net GPIO de chaque canal depuis pinmap (netByPin)
+    gpio_net = {name: pinmap["netByPin"][f"ULTRASON_{name}"] for name in US_CHANNELS}
+
+    def pads_of(ref: str) -> dict[str, str]:
+        blocks = _re.split(r"\n[\t ]*\(footprint ", pcb_text)
+        for blk in blocks[1:]:
+            m = _re.search(r'\(property "Reference" "' + ref + '"', blk)
+            if not m:
+                continue
+            pads = {}
+            for p in blk.split('(pad "')[1:]:
+                num = p.split('"')[0]
+                n = _re.search(r'\(net \d+ "([^"]+)"', p)
+                pads[num] = n.group(1) if n else ""
+            return pads
+        return {}
+
+    for name, (jst, r1k, r2k) in US_CHANNELS.items():
+        g = gpio_net[name]
+        echo = f"US_{name}_ECHO"
+        jp = pads_of(jst)
+        if not jp:
+            errors.append(f"US {name}: {jst} introuvable dans le PCB")
+            continue
+        expect = {"1": "+5V", "2": g, "3": echo, "4": "GND"}
+        for pad, net in expect.items():
+            if jp.get(pad) != net:
+                errors.append(f"US {name}: {jst} pad {pad} = {jp.get(pad)!r}, attendu {net!r}")
+        rp = pads_of(r1k)
+        if set(rp.values()) != {echo, g}:
+            errors.append(f"US {name}: {r1k} (1k série écho) doit relier {echo} et {g}, trouvé {sorted(rp.values())}")
+        rp = pads_of(r2k)
+        if set(rp.values()) != {g, "GND"}:
+            errors.append(f"US {name}: {r2k} (2k pull-down) doit relier {g} et GND, trouvé {sorted(rp.values())}")
+
 def main() -> int:
     errors: list[str] = []
     pinmap = json.loads((HW / "pinmap.json").read_text(encoding="utf-8"))
@@ -91,6 +145,7 @@ def main() -> int:
     # 3. nets du PCB raccordés à la bonne broche physique du DevKit
     if PCB.exists():
         pcb = PCB.read_text(encoding="utf-8")
+        check_us_topology(pcb, pinmap, errors)
         start = pcb.find('(footprint "ffp5cs:ESP32_DevKit_V1_30pin"')
         if start < 0:
             errors.append("PCB: empreinte ESP32_DevKit_V1_30pin introuvable")

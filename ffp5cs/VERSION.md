@@ -214,7 +214,7 @@ Activation du profil HTTPS métier **sans impact sur `wroom-prod`** (HTTP inchan
 
 **Validation terrain requise** avant remplacement de `wroom-prod` : monitor 5 min, heap stable, pas de collision SMTP.
 
-## Version 15.13 - 2026-07-09
+## Version 15.26 - 2026-07-09
 
 ### Mutualisation `shared/` : consommation des 6 briques de logique pure (L1b)
 
@@ -821,6 +821,19 @@ conservant la série OTA prod **14.11–14.15** (`sendAlertSync` public, heap bo
 - **Note build** : bundle flash cohérent (bootloader + partitions phase 1 + firmware phase 2 même session) — voir `docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md` §7.
 
 ---
+
+## v15.26 — Relais auxiliaires AUX1/AUX2 (carte porteuse 230V 6 canaux)
+
+- **Nouvelles sorties relais** `Pins::AUX1`/`Pins::AUX2` (WROOM : GPIO 23/25 ; S3 : GPIO 47/48),
+  pilotées par la page de contrôle serveur comme la lumière : GET outputs (clé numérique
+  `23`/`25` ou symbolique `etatAux1`/`etatAux2`), état persisté en NVS (`gpio_aux1`/`gpio_aux2`)
+  et restauré au boot.
+- `RelayController` générique dans `actuators.h` ; `SystemActuators::setAux()/isAuxOn()` ;
+  `IActuators::setAux()` avec défaut no-op (les doubles de test existants restent valides).
+- `GPIOMap::AUX1/AUX2` ajoutés à `ALL_MAPPINGS` (parser + NVS automatiques).
+- Contrat POST /post-data inchangé (pas de nouveau champ data) — l'état commandé vit dans
+  `ffp3Outputs` côté serveur (rangées auto-créées, voir n3_serveur).
+- Matériel : canaux REL5/REL6 de `hardware/ffp5cs-wroom-prod-230v` rev 0.3.
 
 ## v14.16 — Fiabilité du nourrissage manuel (distant + local) — intégré depuis master
 

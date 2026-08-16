@@ -19,6 +19,10 @@ constexpr int POMPE_RESERV = 18;
 constexpr int RADIATEURS   = 13; // évite conflit avec ULTRASON_TANK
 constexpr int LUMIERE      = 15;
 
+// Relais auxiliaires (v15.26) — carte porteuse 230V 6 canaux (47/48 libres, non-strapping)
+constexpr int AUX1 = 47;
+constexpr int AUX2 = 48;
+
 // Servomoteurs (distributeurs). 14/12/11/10 indispos → SERVO_GROS sur 21 (libre, PWM OK).
 constexpr int SERVO_GROS   = 21;
 constexpr int SERVO_PETITS = 17;
@@ -60,6 +64,9 @@ constexpr int POMPE_AQUA   = 16;
 constexpr int POMPE_RESERV = 18;
 constexpr int RADIATEURS   = 2;
 constexpr int LUMIERE      = 15;
+// Relais auxiliaires (v15.26) — carte porteuse 230V 6 canaux (23/25 libres, non-strapping)
+constexpr int AUX1 = 23;
+constexpr int AUX2 = 25;
 constexpr int SERVO_GROS   = 12;
 constexpr int SERVO_PETITS = 13;
 constexpr int DHT_PIN      = 27;
