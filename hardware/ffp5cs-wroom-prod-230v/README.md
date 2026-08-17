@@ -78,6 +78,8 @@ cd hardware/ffp5cs-wroom-prod-230v
 python3 generator/generate.py          # schéma + PCB placé (NON routé) + BOM
 python3 generator/route_230v.py        # autoroute la logique, trace le secteur en dur,
                                        # coud les masses, corrige les reliefs, contrôle 3 mm
+python3 generator/tidy_silkscreen.py   # sérigraphie : repères vs étiquettes
+python3 generator/export_fab.py        # zip Gerbers prêt JLCPCB
 python3 tools/check_pinmap_vs_firmware.py
 kicad-cli pcb drc --severity-error kicad/ffp5cs-wroom-prod-230v.kicad_pcb -o /tmp/drc.rpt
 ```
@@ -100,3 +102,5 @@ Le routage livré dans `kicad/` est déjà fait et validé.
 
 Empreintes : bibliothèque officielle KiCad 8.0.9 (CC-BY-SA 4.0 + exception d'usage),
 vendorées dans `generator/footprints/`.
+
+Commander la carte : voir **[../COMMANDE_JLCPCB.md](../COMMANDE_JLCPCB.md)**.

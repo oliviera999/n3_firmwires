@@ -116,6 +116,8 @@ suivent. Le projet KiCad reste la référence pour la fabrication.
 cd hardware/ffp5cs-wroom-prod
 python3 generator/generate.py                 # schéma + PCB placé (NON routé) + BOM
 python3 generator/route_lv.py                 # routage complet + vérifications
+python3 generator/tidy_silkscreen.py   # sérigraphie : repères vs étiquettes
+python3 generator/export_fab.py        # zip Gerbers prêt JLCPCB
 python3 tools/check_pinmap_vs_firmware.py     # cohérence pins.h (WROOM) ↔ pinmap ↔ schéma ↔ PCB
 ```
 
@@ -131,3 +133,5 @@ Les empreintes de `generator/footprints/` proviennent de la
 [bibliothèque officielle KiCad](https://gitlab.com/kicad/libraries/kicad-footprints)
 (tag 8.0.9), licence CC-BY-SA 4.0 avec exception d'usage pour les designs ;
 `ESP32_DevKit_V1_30pin.kicad_mod` est généré par `generate.py`.
+
+Commander la carte : voir **[../COMMANDE_JLCPCB.md](../COMMANDE_JLCPCB.md)**.

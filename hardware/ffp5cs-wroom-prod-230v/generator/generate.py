@@ -511,6 +511,10 @@ PCB_TEXTS = [
     (268, 121.5, "3V3", 0.9),
     (52, 104, "5V 3A", 1.2),
     (112.7, 101.5, "ANTENNE WIFI : zone degagee (pas de cuivre dessous)", 0.8),
+    # Emplacement imposé du numéro de commande JLCPCB (au dos) :
+    # sans ce marqueur, le fabricant le place où il veut, parfois
+    # sur une étiquette de câblage. Option de commande : "Specify a location".
+    (80, 145.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
 ]
 
 BOARD = dict(x0=40, y0=40, x1=274, y1=150)
@@ -674,6 +678,25 @@ def strip_uuids(node):
             strip_uuids(c)
 
 
+# Minima sérigraphie du fabricant (JLCPCB : hauteur >= 1 mm, trait >= 0,15 mm ;
+# en deçà les caractères sont floutés, voire supprimés par leur DFM).
+# Réf. capacités JLCPCB : https://jlcpcb.com/capabilities/pcb-capabilities
+SILK_MIN_H = 1.0
+SILK_RATIO = 0.16   # trait / hauteur -> 0,16 mm à hauteur 1 mm
+
+
+def silk_text(i: int, entry) -> str:
+    """Texte de sérigraphie. entry = (x, y, texte, hauteur[, couche])."""
+    x, y, t, s = entry[:4]
+    layer = entry[4] if len(entry) > 4 else "F.SilkS"
+    h = max(float(s), SILK_MIN_H)
+    mirror = " (justify mirror)" if layer.startswith("B.") else ""
+    return (f'  (gr_text "{t}" (at {x} {y} 0) (layer "{layer}") '
+            f'(uuid "{uid("gtxt", i)}")\n'
+            f'    (effects (font (size {h} {h}) '
+            f'(thickness {h * SILK_RATIO:.2f})){mirror}))')
+
+
 def gen_pcb() -> str:
     nets = collect_nets()
     net_no = {n: i + 1 for i, n in enumerate(nets)}
@@ -726,10 +749,7 @@ def gen_pcb() -> str:
     for i, (sx0, sy0, sx1, sy1) in enumerate(SLOTS):
         edge += (f'\n  (gr_rect (start {sx0} {sy0}) (end {sx1} {sy1})\n'
                  f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("slot", i)}"))')
-    texts = "\n".join(
-        f'  (gr_text "{t}" (at {x} {y} 0) (layer "F.SilkS") (uuid "{uid("gtxt", i)}")\n'
-        f'    (effects (font (size {s} {s}) (thickness {s * 0.15:.2f}))))'
-        for i, (x, y, t, s) in enumerate(PCB_TEXTS))
+    texts = "\n".join(silk_text(i, e) for i, e in enumerate(PCB_TEXTS))
     # zones GND en U : tout le pourtour SAUF le rectangle secteur (44..178, 40..84)
     zx0, zx1, zy = 45.2, 246, 84
     poly = ('(polygon (pts '

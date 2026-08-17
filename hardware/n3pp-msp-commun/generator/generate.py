@@ -563,6 +563,10 @@ PCB_TEXTS = [
     (52, 100, "5V 3A", 1.2),
     (150, 102, f"CARTE COMMUNE n3pp + msp v{REV}", 1.5),
     (90.7, 98.5, "ANTENNE WIFI : zone degagee (pas de cuivre dessous)", 0.8),
+    # Emplacement imposé du numéro de commande JLCPCB (au dos) :
+    # sans ce marqueur, le fabricant le place où il veut, parfois
+    # sur une étiquette de câblage. Option de commande : "Specify a location".
+    (64, 145.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
 ]
 
 BOARD = dict(x0=40, y0=45, x1=250, y1=150)
@@ -719,6 +723,25 @@ def strip_uuids(node):
             strip_uuids(c)
 
 
+# Minima sérigraphie du fabricant (JLCPCB : hauteur >= 1 mm, trait >= 0,15 mm ;
+# en deçà les caractères sont floutés, voire supprimés par leur DFM).
+# Réf. capacités JLCPCB : https://jlcpcb.com/capabilities/pcb-capabilities
+SILK_MIN_H = 1.0
+SILK_RATIO = 0.16   # trait / hauteur -> 0,16 mm à hauteur 1 mm
+
+
+def silk_text(i: int, entry) -> str:
+    """Texte de sérigraphie. entry = (x, y, texte, hauteur[, couche])."""
+    x, y, t, s = entry[:4]
+    layer = entry[4] if len(entry) > 4 else "F.SilkS"
+    h = max(float(s), SILK_MIN_H)
+    mirror = " (justify mirror)" if layer.startswith("B.") else ""
+    return (f'  (gr_text "{t}" (at {x} {y} 0) (layer "{layer}") '
+            f'(uuid "{uid("gtxt", i)}")\n'
+            f'    (effects (font (size {h} {h}) '
+            f'(thickness {h * SILK_RATIO:.2f})){mirror}))')
+
+
 def gen_pcb() -> str:
     nets = collect_nets()
     net_no = {n: i + 1 for i, n in enumerate(nets)}
@@ -768,10 +791,7 @@ def gen_pcb() -> str:
         '\n    (polygon (pts (xy 75.6 99.5) (xy 105.8 99.5)'
         ' (xy 105.8 105.5) (xy 75.6 105.5)))'
         '\n  )')
-    texts = "\n".join(
-        f'  (gr_text "{t}" (at {x} {y} 0) (layer "F.SilkS") (uuid "{uid("gtxt", i)}")\n'
-        f'    (effects (font (size {s} {s}) (thickness {s * 0.15:.2f}))))'
-        for i, (x, y, t, s) in enumerate(PCB_TEXTS))
+    texts = "\n".join(silk_text(i, e) for i, e in enumerate(PCB_TEXTS))
     poly = (f'(polygon (pts (xy {b["x0"]} {b["y0"]}) (xy {b["x1"]} {b["y0"]}) '
             f'(xy {b["x1"]} {b["y1"]}) (xy {b["x0"]} {b["y1"]})))')
     zones = "\n".join(
