@@ -6,6 +6,7 @@ chaque paramètre** du formulaire JLCPCB, **lequel choisir** pour nos cartes, et
 seules décisions qui comptent vraiment sont signalées 🔸.
 
 > Réf. capacités fabricant : <https://jlcpcb.com/capabilities/pcb-capabilities>
+> Pour comprendre les notions manipulées ici (couches, oz, HASL, PTH…) : **[TUTO_PCB.md](TUTO_PCB.md)**.
 > Les prix cités sont des ordres de grandeur 2026 hors port et taxes.
 
 ## 0. Produire le zip à envoyer
