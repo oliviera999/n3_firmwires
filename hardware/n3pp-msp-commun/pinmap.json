@@ -74,27 +74,64 @@
     "I2C_SCL": "commun"
   },
   "firmwareNames": {
-    "RELAIS": {"n3pp": "RELAIS", "msp": "RELAIS"},
-    "POMPE": {"n3pp": "POMPE"},
-    "SERVOGD": {"msp": "SERVOGD"},
-    "SERVOHB": {"msp": "SERVOHB"},
-    "DHT_N3PP": {"n3pp": "DHTPIN"},
-    "DHT_INT": {"msp": "DHTPININT"},
-    "DHT_EXT": {"msp": "DHTPINEXT"},
-    "ONEWIRE": {"msp": "oneWireBus"},
-    "PLUIE": {"msp": "PLUIE"},
-    "ADC_A": {"n3pp": "humidite1", "msp": "LUMINOSITEa"},
-    "ADC_B": {"n3pp": "humidite2", "msp": "HumiditeSol"},
-    "ADC_C": {"n3pp": "humidite3", "msp": "LUMINOSITEc"},
-    "ADC_D": {"n3pp": "humidite4", "msp": "LUMINOSITEb"},
-    "ADC_E": {"n3pp": "LUMINOSITE", "msp": "LUMINOSITEd"},
-    "PONTDIV": {"n3pp": "pontdiv", "msp": "pontdiv"}
+    "RELAIS": {
+      "n3pp": "RELAIS",
+      "msp": "RELAIS"
+    },
+    "POMPE": {
+      "n3pp": "POMPE"
+    },
+    "SERVOGD": {
+      "msp": "SERVOGD"
+    },
+    "SERVOHB": {
+      "msp": "SERVOHB"
+    },
+    "DHT_N3PP": {
+      "n3pp": "DHTPIN"
+    },
+    "DHT_INT": {
+      "msp": "DHTPININT"
+    },
+    "DHT_EXT": {
+      "msp": "DHTPINEXT"
+    },
+    "ONEWIRE": {
+      "msp": "oneWireBus"
+    },
+    "PLUIE": {
+      "msp": "PLUIE"
+    },
+    "ADC_A": {
+      "n3pp": "humidite1",
+      "msp": "LUMINOSITEa"
+    },
+    "ADC_B": {
+      "n3pp": "humidite2",
+      "msp": "HumiditeSol"
+    },
+    "ADC_C": {
+      "n3pp": "humidite3",
+      "msp": "LUMINOSITEc"
+    },
+    "ADC_D": {
+      "n3pp": "humidite4",
+      "msp": "LUMINOSITEb"
+    },
+    "ADC_E": {
+      "n3pp": "LUMINOSITE",
+      "msp": "LUMINOSITEd"
+    },
+    "PONTDIV": {
+      "n3pp": "pontdiv",
+      "msp": "pontdiv"
+    }
   },
   "notes": {
     "principe": "Union disjointe des deux firmwares : chaque GPIO garde son usage actuel, rien à reflasher. Le profil d'assemblage (n3pp ou msp) décide ce qu'on peuple.",
     "aux": "AUX3-AUX6 (GPIO 16/17/19/23, non-strapping) : 4 canaux relais d'extension non pilotés par les firmwares actuels — provision matérielle, à déclarer côté firmware le jour voulu (pattern AUX1/AUX2 de ffp5cs).",
     "onewire": "GPIO2 = strapping : le pull-up 4,7k du bus 1-Wire peut gêner l'entrée en mode flash USB. Si le flash échoue, débrancher la sonde DS18B20 le temps du flash (compatibilité msp actuelle conservée à dessein).",
-    "pluie": "GPIO27 = ADC2, inutilisable en analogique quand le WiFi est actif (limitation ESP32). Brancher la sortie NUMÉRIQUE (DO) du capteur de pluie, ou corriger le firmware msp plus tard (table de convergence).",
+    "pluie": "GPIO27 = ADC2, inutilisable en analogique quand le WiFi est actif (limitation ESP32). Brancher la sortie NUMÉRIQUE (DO) du capteur de pluie — le firmware msp la lit en digitalRead depuis la v2.72 (projection 4095 sec / 100 mouillé, contrat serveur inchangé).",
     "libres": "GPIO libres exposés sur le breakout : 4, 5 (+EN, RX0, TX0). Tout le reste est affecté.",
     "batterie": "Profils sur batterie : ne pas peupler les LED témoin (LED1-7) — voir feuilles d'assemblage."
   }

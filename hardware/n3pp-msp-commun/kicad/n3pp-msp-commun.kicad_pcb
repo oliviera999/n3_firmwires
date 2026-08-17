@@ -1542,7 +1542,7 @@
 		(descr "JST XH series connector, B3B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST XH vertical")
 		(property "Reference" "J11"
-			(at 2.5 -3.55 0)
+			(at 2.5 -2.55 0)
 			(layer "F.SilkS")
 			(uuid "3e74ddb5-e743-4cd9-b31a-47130938a39b")
 			(effects
@@ -5031,7 +5031,7 @@
 		(descr "JST XH series connector, B3B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST XH vertical")
 		(property "Reference" "J10"
-			(at 2.5 -3.55 0)
+			(at 2.5 -2.55 0)
 			(layer "F.SilkS")
 			(uuid "f94c0287-87eb-427d-a5c1-65461de43d46")
 			(effects
@@ -5506,7 +5506,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J6"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "b21f8f39-ca6b-4c26-a5ed-5cae7cdfe39b")
 			(effects
@@ -7247,7 +7247,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J7"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "3391527b-65d8-4e4a-9439-b65a4ac2948e")
 			(effects
@@ -7521,7 +7521,7 @@
 		(descr "Through hole straight pin header, 1x07, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x07 2.54mm single row")
 		(property "Reference" "J18"
-			(at 0 -2.33 0)
+			(at 0 -3.33 0)
 			(layer "F.SilkS")
 			(uuid "e94eabe1-b1cc-4e50-b8c8-d26cd08ec91a")
 			(effects
@@ -8976,7 +8976,7 @@
 		(descr "JST XH series connector, B3B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST XH vertical")
 		(property "Reference" "J9"
-			(at 2.5 -3.55 0)
+			(at 2.5 -2.55 0)
 			(layer "F.SilkS")
 			(uuid "e1ddc6e3-65c2-4f1c-ab4a-5f9b1477198c")
 			(effects
@@ -12348,7 +12348,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J5"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "2d06b480-feb9-443a-a386-0ba75917b07c")
 			(effects
@@ -13906,7 +13906,7 @@
 		(descr "ESP32 DevKit V1 30 broches sur 2 supports 1x15 2.54mm, entraxe rangees 25.4mm - VERIFIER sur l'exemplaire reel (variante 36p = autre brochage)")
 		(tags "ESP32 DevKit V1")
 		(property "Reference" "A1"
-			(at 12.7 -8.5 0)
+			(at 12.7 -10.5 0)
 			(layer "F.SilkS")
 			(uuid "b66ee3df-2e8e-48e7-8e33-ed88e253e67c")
 			(effects
@@ -15058,7 +15058,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J8"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "a085c7e4-cd7b-450f-8a6d-01ce669bc3a6")
 			(effects
@@ -15332,7 +15332,7 @@
 		(descr "Through hole straight pin header, 1x06, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x06 2.54mm single row")
 		(property "Reference" "J19"
-			(at 0 -2.33 0)
+			(at 0 -4.33 0)
 			(layer "F.SilkS")
 			(uuid "8a10edcf-a681-4b03-be6b-2b906de5a8ee")
 			(effects
@@ -16324,7 +16324,7 @@
 		(descr "Through hole straight socket strip, 1x04, 2.54mm pitch, single row (from Kicad 4.0.7), script generated")
 		(tags "Through hole socket strip THT 1x04 2.54mm single row")
 		(property "Reference" "J14"
-			(at 0 -2.77 0)
+			(at 0 -4.27 0)
 			(layer "F.SilkS")
 			(uuid "cc1b853d-c72f-4d43-835e-de74ee892949")
 			(effects
@@ -16622,7 +16622,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J4"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "a99905d5-a177-4985-b62d-7f113aee9968")
 			(effects
@@ -17176,7 +17176,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J3"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "69f97fda-33aa-4062-be1a-e94cff128bda")
 			(effects
@@ -17450,7 +17450,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J12"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "f7d6f6b9-03db-422f-baae-73281bbcb660")
 			(effects
@@ -22780,7 +22780,7 @@
 		(descr "Through hole straight socket strip, 1x04, 2.54mm pitch, single row (from Kicad 4.0.7), script generated")
 		(tags "Through hole socket strip THT 1x04 2.54mm single row")
 		(property "Reference" "J16"
-			(at 0 -2.77 0)
+			(at 0 -4.27 0)
 			(layer "F.SilkS")
 			(uuid "63e800cd-e4c2-409f-b605-cb08c1a98eaa")
 			(effects
@@ -27677,7 +27677,7 @@
 		(descr "JST XH series connector, B3B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST XH vertical")
 		(property "Reference" "J13"
-			(at 2.5 -3.55 0)
+			(at 2.5 -2.55 0)
 			(layer "F.SilkS")
 			(uuid "717d9e54-58f4-4505-ae43-8741fbb4dc5f")
 			(effects
@@ -32504,14 +32504,26 @@
 		(layer "Edge.Cuts")
 		(uuid "ae5794f1-3206-50d8-b1e8-e124a768e46b")
 	)
+	(gr_text "JLCJLCJLCJLC"
+		(at 64 145.5 0)
+		(layer "B.SilkS")
+		(uuid "e8981c40-255e-496e-a342-39b006ab9c8e")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.16)
+			)
+			(justify mirror)
+		)
+	)
 	(gr_text "ANTENNE WIFI : zone degagee (pas de cuivre dessous)"
 		(at 90.7 98.5 0)
 		(layer "F.SilkS")
 		(uuid "06a25989-76c1-5c55-814c-5e406e602255")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32521,8 +32533,8 @@
 		(uuid "1e03f9ee-c006-517a-b4c0-c3ac9556a67b")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32533,7 +32545,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32543,8 +32555,8 @@
 		(uuid "3646a963-465e-525b-bc4d-1dbc5af29317")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32554,8 +32566,8 @@
 		(uuid "39cc5608-e8af-5cfd-94d1-190bf3cc0768")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32566,7 +32578,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32576,8 +32588,8 @@
 		(uuid "41d99e6a-90ba-5d0f-ab0a-076616f189a1")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32587,8 +32599,8 @@
 		(uuid "453c2d6c-4eba-5953-8ce4-bf405e39afb9")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32598,8 +32610,8 @@
 		(uuid "45d87d82-aa5c-5dd6-a3a3-37c07265f4c9")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32609,8 +32621,8 @@
 		(uuid "4787ea0d-f831-5225-bf18-bce114a2c863")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32620,8 +32632,8 @@
 		(uuid "49afc6e2-a206-5299-98f9-e441fa964048")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32631,8 +32643,8 @@
 		(uuid "5346010f-5f27-54b8-ac75-f8b5f553d472")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32642,8 +32654,8 @@
 		(uuid "57abfeda-197f-5b8a-a287-91dd149eea7d")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32653,8 +32665,8 @@
 		(uuid "7324f767-dc71-55d6-82a3-bdc068525fd7")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32664,8 +32676,8 @@
 		(uuid "789ccd37-82cd-57a5-a223-7f66c74ebdc3")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32676,7 +32688,7 @@
 		(effects
 			(font
 				(size 1.2 1.2)
-				(thickness 0.18)
+				(thickness 0.19)
 			)
 		)
 	)
@@ -32686,8 +32698,8 @@
 		(uuid "8cdd95de-958c-50d6-a620-22c47361896a")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32697,8 +32709,8 @@
 		(uuid "9255fe69-55be-556b-bc59-8d0c64fba8b8")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32708,8 +32720,8 @@
 		(uuid "93205c2b-019c-517c-9624-7305d45c7730")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32720,7 +32732,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32730,8 +32742,8 @@
 		(uuid "9bff87ee-34e3-507c-bc53-ef86aa5e2c6a")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32741,8 +32753,8 @@
 		(uuid "b1631f64-2f86-5cf1-bcea-4460751eb2e3")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32752,8 +32764,8 @@
 		(uuid "b8b15c5d-7da3-54bc-ba4c-fa05c3b0a517")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32763,8 +32775,8 @@
 		(uuid "bafe8a2a-b983-5b4c-abea-ef2de25e2dd9")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32775,7 +32787,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32785,8 +32797,8 @@
 		(uuid "dcd30769-9816-5951-8eae-a171411c476b")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32796,8 +32808,8 @@
 		(uuid "dd80077b-f4ec-5543-b35b-246faf9593f3")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32807,8 +32819,8 @@
 		(uuid "e3b5c848-06a1-5b56-8c11-14c96590116b")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32818,8 +32830,8 @@
 		(uuid "e40c539d-89cc-5099-8862-2d25fdf3e2d0")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32830,7 +32842,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32840,8 +32852,8 @@
 		(uuid "ebc2f95c-54d3-5c8d-8999-c56c1cebcd1d")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32852,7 +32864,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32862,8 +32874,8 @@
 		(uuid "fa97dc48-3cc3-5af2-a381-b10d6f210f6a")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -32874,7 +32886,7 @@
 		(effects
 			(font
 				(size 1.5 1.5)
-				(thickness 0.22)
+				(thickness 0.24)
 			)
 		)
 	)

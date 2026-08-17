@@ -18,6 +18,8 @@ exports/schema.pdf, pcb-*.svg   Rendus pour revue sans KiCad
 fritzing/*.fzz               Vue breadboard du câblage (Fritzing >= 1.0)
 generator/generate.py        Régénère schéma + PCB (non routé) + BOM + feuilles d'assemblage
 generator/route_lv.py        Pipeline de routage (freerouting + couture GND + reliefs)
+generator/tidy_silkscreen.py  Range la sérigraphie (repères vs étiquettes)
+generator/export_fab.py      Export Gerbers/perçages prêts fabricant + rendus
 generator/generate_fritzing.py  Régénère le .fzz de câblage
 tools/check_pinmap_vs_firmware.py   Garde anti-dérive DOUBLE : n3pp_config.h ET msp_config.h ↔ plan
 ```
@@ -73,7 +75,8 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
   passage en mode flash. Si le flash USB échoue, débrancher la sonde DS18B20 le temps du
   flash. (Conservé pour rester compatible avec le firmware msp actuel.)
 - **GPIO27 (pluie msp)** est sur ADC2, inutilisable en analogique quand le WiFi est actif :
-  brancher la sortie **DO** (numérique) du module pluie, pas AO.
+  brancher la sortie **DO** (numérique) du module pluie, pas AO — lue en `digitalRead`
+  par le firmware msp ≥ 2.72 (projection 4095 sec / 100 mouillé, contrat serveur inchangé).
 - **GPIO12 (pompe n3pp)** est strapping MTDI : le pull-down de base du canal REL2 garantit
   l'état sûr au boot.
 - Profils **sur batterie** : ne pas peupler les LED témoin (voir feuilles d'assemblage).
@@ -84,6 +87,8 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
 cd hardware/n3pp-msp-commun
 python3 generator/generate.py          # schéma + PCB placé (NON routé) + BOM + feuilles
 python3 generator/route_lv.py          # autoroute, coud les masses, corrige les reliefs
+python3 generator/tidy_silkscreen.py   # écarte les repères qui masquent une étiquette
+python3 generator/export_fab.py        # zip Gerbers prêt JLCPCB + rendus de revue
 python3 tools/check_pinmap_vs_firmware.py   # garde anti-dérive (les DEUX firmwares)
 kicad-cli pcb drc --severity-error kicad/n3pp-msp-commun.kicad_pcb -o /tmp/drc.rpt
 ```
@@ -93,3 +98,6 @@ Le routage livré dans `kicad/` est déjà fait et validé (DRC 0 violation).
 
 Empreintes : bibliothèque officielle KiCad 8.0.9 (CC-BY-SA 4.0 + exception d'usage),
 vendorées dans `generator/footprints/`.
+
+Commander les cartes : voir **[../COMMANDE_JLCPCB.md](../COMMANDE_JLCPCB.md)**
+(réglages du formulaire, options utiles, pourquoi 1 oz ici et 2 oz sur la 230 V).

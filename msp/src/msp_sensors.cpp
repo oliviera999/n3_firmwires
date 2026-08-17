@@ -341,10 +341,11 @@ static const float MSP_DHT_HUM_MAX = 100.0f;
 static const float MSP_DHT_TEMP_FALLBACK = 20.0f;
 static const float MSP_DHT_HUM_FALLBACK = 50.0f;
 
-// Sentinelles ADC pour capteur pluie debranche (saturation rail/masse).
-// Le capteur Funduino retourne ~4095 sec, ~0 mouille ; on differencie une lecture
-// flottante (broche non cablee) d'une vraie absence d'eau via la valeur sentinelle 1.
-static const int MSP_PLUIE_DISCONNECT = 1;
+// Pluie : projection de la sortie NUMERIQUE (DO) du module sur l'echelle
+// historique 0..4095 (« plus bas = plus mouille ») pour ne rien changer au
+// contrat serveur (MSP_RAIN_WET_THRESHOLD, graphes, historique).
+static const int MSP_PLUIE_DRY_RAW = 4095;  // DO haut = sec (valeur historique)
+static const int MSP_PLUIE_WET_RAW = 100;   // DO bas = mouille (sous tout seuil)
 
 // --- Détection de panne DURABLE du DS18B20 sol (adoption T2, chantier shared) --
 // AMELIORATION (changement de comportement assume, decision utilisateur) : au lieu
@@ -420,21 +421,19 @@ void LectureCapteurs() {
   if (HumidSol == 0) HumidSol = 1;
   Serial.printf("[SENSOR] HumidSol=%d\n", HumidSol);
 
-  // Detection pluie (analogique). PLUIE est defini dans msp_config.h (GPIO 27).
-  // Avant v2.42 : analogRead(27) en dur (non testable si la broche change).
-  // Distinction sec vs debranche :
-  //   * 0..3 = ligne flottante / capteur deconnecte  -> sentinelle 1
-  //   * sinon valeur capteur (4095 = sec, 0..4094 = humide selon mouillage)
-  int pluieRaw = analogRead(PLUIE);
-  if (pluieRaw <= 3) {
-    Serial.printf("[PLUIE][WARN] Lecture suspecte (raw=%d, capteur deconnecte?), sentinelle=%d\n",
-                  pluieRaw, MSP_PLUIE_DISCONNECT);
-    Pluie = MSP_PLUIE_DISCONNECT;
-  } else {
-    Pluie = pluieRaw;
-  }
+  // Detection pluie via la sortie NUMERIQUE (DO) du module (v2.72).
+  // PLUIE (GPIO27) est sur l'ADC2, que la radio requisitionne des que le WiFi
+  // est actif : l'ancien analogRead renvoyait 0 -> sentinelle systematique,
+  // la mesure analogique n'a jamais fonctionne en conditions reelles.
+  // On lit desormais DO (comparateur du module, seuil regle par son
+  // potentiometre — cablage J13 de la carte commune n3pp-msp), projete sur
+  // l'echelle historique : DO haut = sec -> 4095, DO bas = mouille -> 100.
+  // INPUT_PULLUP (main.cpp) : module debranche = ligne haute = « sec » — la
+  // distinction « sonde deconnectee » de l'ere analogique n'existe plus.
+  Pluie = (digitalRead(PLUIE) == HIGH) ? MSP_PLUIE_DRY_RAW : MSP_PLUIE_WET_RAW;
   delay(100);
-  Serial.printf("[SENSOR] Pluie=%d\n", Pluie);
+  Serial.printf("[SENSOR] Pluie=%d (DO %s)\n", Pluie,
+                Pluie == MSP_PLUIE_DRY_RAW ? "sec" : "mouille");
 
   // DHT interieur : isnan + bornes physiques (-40..80 C, 0..100 %).
   tempAirInt = dhtint.readTemperature();

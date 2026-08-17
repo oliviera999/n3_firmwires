@@ -694,7 +694,7 @@
 		(descr "Through hole straight socket strip, 1x04, 2.54mm pitch, single row (from Kicad 4.0.7), script generated")
 		(tags "Through hole socket strip THT 1x04 2.54mm single row")
 		(property "Reference" "J14"
-			(at 0 -2.77 0)
+			(at 0 -1.77 0)
 			(layer "F.SilkS")
 			(uuid "1460f7e4-c2ad-46a7-8fa9-ed7ab7b0aa0b")
 			(effects
@@ -2239,7 +2239,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J4"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "c4327460-a64b-4a3a-952d-3355068fcbd0")
 			(effects
@@ -3117,7 +3117,7 @@
 		(descr "simple 2-pin terminal block, pitch 5.08mm, revamped version of bornier2")
 		(tags "terminal block bornier2")
 		(property "Reference" "J12"
-			(at 2.54 -5.08 0)
+			(at 2.54 -6.58 0)
 			(layer "F.SilkS")
 			(uuid "fef43101-53cf-4236-b585-a7b7c2b2f098")
 			(effects
@@ -8268,7 +8268,7 @@
 		(descr "Through hole straight socket strip, 1x04, 2.54mm pitch, single row (from Kicad 4.0.7), script generated")
 		(tags "Through hole socket strip THT 1x04 2.54mm single row")
 		(property "Reference" "J13"
-			(at 0 -2.77 0)
+			(at 0 -2.27 0)
 			(layer "F.SilkS")
 			(uuid "79dee6ec-614e-428c-a4f3-74ad78eaa36b")
 			(effects
@@ -9193,7 +9193,7 @@
 		(descr "ESP32 DevKit V1 30 broches sur 2 supports 1x15 2.54mm, entraxe rangees 25.4mm - VERIFIER sur l'exemplaire reel (variante 36p = autre brochage)")
 		(tags "ESP32 DevKit V1")
 		(property "Reference" "A1"
-			(at 12.7 -8.5 0)
+			(at 12.7 -10.5 0)
 			(layer "F.SilkS")
 			(uuid "00f41089-216a-40ff-8609-e7e1f6f65094")
 			(effects
@@ -10487,7 +10487,7 @@
 		(descr "JST XH series connector, B3B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST XH vertical")
 		(property "Reference" "J10"
-			(at 2.5 -3.55 0)
+			(at 2.5 -2.55 0)
 			(layer "F.SilkS")
 			(uuid "c58a5528-b94a-4dc6-8ac0-1e5d4f976bb8")
 			(effects
@@ -17732,7 +17732,7 @@
 		(descr "Resistor, Axial_DIN0207 series, Axial, Horizontal, pin pitch=10.16mm, 0.25W = 1/4W, length*diameter=6.3*2.5mm^2, http://cdn-reichelt.de/documents/datenblatt/B400/1_4W%23YAG.pdf")
 		(tags "Resistor Axial_DIN0207 series Axial Horizontal pin pitch 10.16mm 0.25W = 1/4W length 6.3mm diameter 2.5mm")
 		(property "Reference" "R24"
-			(at 5.08 -2.37 0)
+			(at 5.08 -1.87 0)
 			(layer "F.SilkS")
 			(uuid "cf798d9a-e50a-4b52-90f5-5c3f15372849")
 			(effects
@@ -20413,7 +20413,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J3"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "a9dc5ca2-f42d-47f6-8ffd-40eb1dc2572e")
 			(effects
@@ -21329,7 +21329,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J5"
-			(at 5.05 -4.65 0)
+			(at 5.05 -2.65 0)
 			(layer "F.SilkS")
 			(uuid "3240c4bd-97e6-47ae-8755-e4f984bbb0b9")
 			(effects
@@ -22636,7 +22636,7 @@
 		(descr "simple 3-pin terminal block, pitch 5.08mm, revamped version of bornier3")
 		(tags "terminal block bornier3")
 		(property "Reference" "J6"
-			(at 5.05 -4.65 0)
+			(at 5.05 -6.65 0)
 			(layer "F.SilkS")
 			(uuid "36b72160-c52d-48d9-887c-9692274df9e5")
 			(effects
@@ -25234,6 +25234,18 @@
 		(layer "Edge.Cuts")
 		(uuid "8b8cb87d-96be-5ba5-9042-7aef4d639ce4")
 	)
+	(gr_text "JLCJLCJLCJLC"
+		(at 140 140.5 0)
+		(layer "B.SilkS")
+		(uuid "beef8ba5-b5e6-4673-8729-b05ebcb65408")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.16)
+			)
+			(justify mirror)
+		)
+	)
 	(gr_text "5V 3A"
 		(at 52 100 0)
 		(layer "F.SilkS")
@@ -25241,7 +25253,7 @@
 		(effects
 			(font
 				(size 1.2 1.2)
-				(thickness 0.18)
+				(thickness 0.19)
 			)
 		)
 	)
@@ -25252,7 +25264,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25262,8 +25274,8 @@
 		(uuid "0cdfa631-b90f-5e64-b166-5491e739d025")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25273,8 +25285,8 @@
 		(uuid "172259ce-da95-57f9-ac22-61829204130d")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25284,8 +25296,8 @@
 		(uuid "1818f39c-bb26-5c92-9b35-f01675281a79")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25296,7 +25308,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25306,8 +25318,8 @@
 		(uuid "2cc6a8f9-6106-50e1-b186-37211409e96e")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25317,8 +25329,8 @@
 		(uuid "3e133bb9-7d92-5a51-afcc-8fc316012a64")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25329,7 +25341,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25340,7 +25352,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25350,8 +25362,8 @@
 		(uuid "5bc45757-867e-57c2-a31f-412c6383079a")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25361,8 +25373,8 @@
 		(uuid "742b71bd-00ea-52ae-a9e1-e15836856ce5")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25373,18 +25385,18 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
 	(gr_text "ffp5cs wroom-prod carrier v0.5"
-		(at 115 47 0)
+		(at 115 56 0)
 		(layer "F.SilkS")
 		(uuid "8e577fcf-7d17-5841-a241-2979e5cde5b1")
 		(effects
 			(font
 				(size 1.5 1.5)
-				(thickness 0.22)
+				(thickness 0.24)
 			)
 		)
 	)
@@ -25395,7 +25407,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25406,7 +25418,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25417,7 +25429,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25427,8 +25439,8 @@
 		(uuid "c6bcc5ef-2c4d-50eb-b5bc-07dc36218680")
 		(effects
 			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
+				(size 1 1)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25439,7 +25451,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25450,7 +25462,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25461,7 +25473,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25472,7 +25484,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
@@ -25483,7 +25495,7 @@
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.15)
+				(thickness 0.16)
 			)
 		)
 	)
