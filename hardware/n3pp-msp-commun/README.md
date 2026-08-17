@@ -10,6 +10,7 @@ usages différents) : les firmwares actuels tournent **sans aucune modification*
 pinmap.json                  Source de vérité (union n3pp_config.h + msp_config.h, profils par broche)
 kicad/n3pp-msp-commun.*      Projet KiCad 8 (schéma, PCB ROUTÉ) — ouvrable KiCad 8/9/10
 BOM.csv                      Nomenclature (séparateur ;) avec colonne Profil
+ACHATS.md                    Liste d'achat complète par profil (BOM + périphériques + boîtier + outillage)
 ASSEMBLAGE-N3PP.md           Feuille d'assemblage générée : quoi souder pour une station n3pp
 ASSEMBLAGE-MSP.md            Feuille d'assemblage générée : quoi souder pour une station msp
 exports/gerbers-*.zip        Fabrication (Gerbers + perçages) — 210 x 105 mm, 2 couches
