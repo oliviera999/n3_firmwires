@@ -75,7 +75,8 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
   passage en mode flash. Si le flash USB échoue, débrancher la sonde DS18B20 le temps du
   flash. (Conservé pour rester compatible avec le firmware msp actuel.)
 - **GPIO27 (pluie msp)** est sur ADC2, inutilisable en analogique quand le WiFi est actif :
-  brancher la sortie **DO** (numérique) du module pluie, pas AO.
+  brancher la sortie **DO** (numérique) du module pluie, pas AO — lue en `digitalRead`
+  par le firmware msp ≥ 2.72 (projection 4095 sec / 100 mouillé, contrat serveur inchangé).
 - **GPIO12 (pompe n3pp)** est strapping MTDI : le pull-down de base du canal REL2 garantit
   l'état sûr au boot.
 - Profils **sur batterie** : ne pas peupler les LED témoin (voir feuilles d'assemblage).

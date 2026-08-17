@@ -109,7 +109,10 @@ void setup() {
   n3OtaUiMaybePeriodicCheck(s_otaUiContext, "boot");
 
   pinMode(HumiditeSol, INPUT);
-  pinMode(27, INPUT);
+  // Pluie : lecture NUMERIQUE de la sortie DO du module (GPIO27 = ADC2,
+  // inutilisable en analogique quand le WiFi est actif). Pull-up interne :
+  // ligne au repos (ou module debranche) = haut = « sec ».
+  pinMode(PLUIE, INPUT_PULLUP);
   pinMode(pontdiv, INPUT);
   pinMode(LUMINOSITEa, INPUT);
   pinMode(LUMINOSITEb, INPUT);
