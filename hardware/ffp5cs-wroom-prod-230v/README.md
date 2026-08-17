@@ -11,6 +11,7 @@ soudure » : tout se branche en borniers à vis ou en Dupont.
 kicad/ffp5cs-wroom-prod-230v.*   Projet KiCad 8 (schéma, PCB ROUTÉ, règles DRC .kicad_dru)
 exports/gerbers-*.zip            Fabrication (Gerbers + perçages) — 234 x 110 mm, 2 couches
 BOM.csv                          Nomenclature
+ACHATS.md                        Liste d'achat complète (BOM + périphériques + boîtier + outillage)
 generator/generate.py            Régénère schéma + PCB (non routé) + BOM depuis pinmap.json
 generator/route_230v.py          Pipeline de routage sécurisé (voir ci-dessous)
 tools/check_pinmap_vs_firmware.py  Garde anti-dérive code <-> plan
