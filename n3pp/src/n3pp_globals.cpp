@@ -159,3 +159,8 @@ unsigned int httpResponseCode;
 
 // Capteur DHT (temperature / humidite air).
 DHT dht(DHTPIN, DHTTYPE);
+
+// BME280 optionnel (v4.69, pattern ffp5cs USE_AIR_SENSOR_AUTO) : sondé au
+// setup sur 0x76 ; détecté -> remplace le DHT, absent -> chemin DHT inchangé.
+N3Bme280 bmeAir;
+float pressionAir = NAN;  // hPa (BME280 uniquement, NAN sinon)

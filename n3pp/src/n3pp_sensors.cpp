@@ -184,11 +184,25 @@ void lectureCapteurs() {
   Serial.print("tempsArrosage2 : ");
   Serial.println(tempsArrosage);
 
-  temperatureAir = dht.readTemperature();
-  delay(DHT_READ_DELAY_MS);
-  h = dht.readHumidity();
-  delay(DHT_READ_DELAY_MS);
-  Serial.printf("[DHT] raw t=%.1fC h=%.1f%%\n", temperatureAir, h);
+  // Air : BME280 si detecte au boot (v4.69), sinon DHT. Les bornes/fallbacks
+  // ci-dessous s'appliquent aux deux chemins.
+  pressionAir = NAN;
+  if (bmeAir.present()) {
+    if (bmeAir.read(temperatureAir, h, pressionAir)) {
+      Serial.printf("[BME280] t=%.1fC h=%.1f%% p=%.1fhPa\n",
+                    temperatureAir, h, pressionAir);
+    } else {
+      Serial.println("[BME280][WARN] lecture invalide, fallback");
+      temperatureAir = NAN;  // les gardes ci-dessous posent les fallbacks
+      h = NAN;
+    }
+  } else {
+    temperatureAir = dht.readTemperature();
+    delay(DHT_READ_DELAY_MS);
+    h = dht.readHumidity();
+    delay(DHT_READ_DELAY_MS);
+    Serial.printf("[DHT] raw t=%.1fC h=%.1f%%\n", temperatureAir, h);
+  }
 
   // Validation isnan + bornes physiques (-40..80 C, 0..100 %).
   // Toute valeur hors plage = capteur deconnecte / faux contact => fallback sur.

@@ -84,11 +84,12 @@ firmware le jour voulu.) + 1× 10 kΩ si une LDR est branchée sur le canal ADC 
 |---|---|---|---|
 | les deux | 1 | **ESP32 DevKit V1 30 broches** | ⚠️ bien **30** broches, rangées espacées de **25,4 mm** — pas la variante 36/38 broches. |
 | les deux | 1 | **OLED SSD1306 128×64 I2C** (0x3C) | affichage local |
-| les deux | 0-3 | Modules I2C optionnels (DS3231, BME280…) | 3 ports libres J15/J16/J17 |
-| n3pp | 1 | **DHT11** (ou DHT22) | air serre (GPIO18) |
+| les deux | 0-2 | **BME280 I2C** (temp+hum+**pression**) | remplace le(s) DHT sans reflash (firmwares msp ≥ 2.73 / n3pp ≥ 4.69 : détection auto 0x76/0x77, repli DHT). Sur port I2C libre, **fils Dupont croisés** (ports GND/VCC/SCL/SDA vs modules VIN/GND/SCL/SDA) |
+| les deux | 0-3 | Autres modules I2C optionnels (DS3231…) | 3 ports libres J15/J16/J17 |
+| n3pp | 0-1 | **DHT11/DHT22** (ou BME280 I2C, voir ci-dessus) | air serre (GPIO18) |
 | n3pp | 4 | **Capteurs humidité sol capacitifs** (sortie AO) | canaux ADC A-D |
 | n3pp | 1 | **LDR** + 2 fils | luminosité (canal ADC E, pont 10 k sur carte) |
-| msp | 2 | **DHT11/DHT22** | intérieur (GPIO26) + extérieur (GPIO15) |
+| msp | 0-2 | **DHT11/DHT22** (ou BME280 I2C, voir ci-dessus) | intérieur (GPIO26) + extérieur (GPIO15) — bus I2C < ~50 cm : garder un DHT pour un capteur très déporté |
 | msp | 1 | **DS18B20 étanche** (version câble) | température sol/extérieur |
 | msp | 1 | **Module capteur pluie** avec sortie **DO** | ⚠️ brancher DO, pas AO (GPIO27 = ADC2, inutilisable WiFi actif) |
 | msp | 4 | **LDR** + 1 module humidité sol (AO) | LDR sur canaux A/C/D/E, module sur canal B |

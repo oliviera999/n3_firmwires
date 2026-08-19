@@ -7,7 +7,7 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "4.68"
+#define FIRMWARE_VERSION "4.69"
 
 // Schema serveur : HTTPS par defaut (Vague 1 audit 2026-07).
 // Rollback HTTP : definir USE_HTTP_ENDPOINTS au build (-DUSE_HTTP_ENDPOINTS).

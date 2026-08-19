@@ -40,6 +40,13 @@ RTC_DATA_ATTR int rtcAngleServoHB = -1;
 // --- DHT intérieur / extérieur ---
 DHT dhtint(DHTPININT, DHTTYPEINT);
 DHT dhtext(DHTPINEXT, DHTTYPEEXT);
+
+// --- BME280 optionnels (v2.73, pattern ffp5cs USE_AIR_SENSOR_AUTO) ---
+// Sondés au setup : si détectés sur I2C, ils remplacent les DHT (INT=0x76,
+// EXT=0x77 — SDO à VDD sur le second module). Sinon, chemin DHT inchangé.
+N3Bme280 bmeInt;
+N3Bme280 bmeExt;
+float pressionAirInt = NAN;  // hPa (BME280 INT uniquement, NAN sinon)
 //variables T et H pour les DHT
 float tempAirInt;
 float humidAirInt;
