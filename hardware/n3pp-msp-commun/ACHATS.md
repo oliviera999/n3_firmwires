@@ -107,7 +107,70 @@ firmware le jour voulu.) + 1× 10 kΩ si une LDR est branchée sur le canal ADC 
 | Alim **5 V / 3 A** jack 5,5/2,1 | qualité correcte (relais + servos + WiFi) |
 | Boîtier ≥ 230×125 mm | extérieur/serre : **IP54** + presse-étoupes conseillés |
 | Visserie | 4× M3 + entretoises (fixation carte) |
-| (option batterie) | batterie + son chargeur ; mesure via bornier J27 (pont 2,2k/2,2k) ; **ne pas peupler les LED** (voir feuilles d'assemblage) |
+| (option batterie) | voir §5 bis ci-dessous — **ne jamais brancher la 18650 brute sur J1/jack** |
+
+## 5 bis. Alimentation batterie 18650 + solaire (TP4056)
+
+La carte n'a **pas d'entrée batterie directe** : son rail 5 V attend du vrai 5 V.
+⚠️ **Ne jamais injecter la 18650 (3,0–4,2 V) dans J1 ou le jack** : après la
+Schottky D5 et le dropout du régulateur AMS1117 du DevKit, le 3,3 V s'effondre
+sous les pointes WiFi (resets aléatoires), et les relais SRD-**05** ne collent
+pas de façon fiable sous 5 V.
+
+### Deux branchements corrects
+
+**Voie A — la station utilise relais et/ou servos** (pompe n3pp, tracker msp) :
+
+```
+panneau 5-6V ─> TP4056 (protégé) ─> module BOOST 5V (MT3608) ─> bornier J1 (+5V/GND)
+                    └─ B± : 18650            └─ VBAT ─> bornier J27 (mesure)
+```
+
+**Voie B — station capteurs pure en deep sleep** (relais/servos non peuplés,
+profil batterie des feuilles d'assemblage) :
+
+```
+panneau 5-6V ─> TP4056 (protégé) ─> LDO 3,3V HT7333 ─> bornier J29 (3V3/GND, devient une ENTRÉE)
+                    └─ B± : 18650        └─ VBAT ─> bornier J27 (mesure)
+```
+
+La voie B court-circuite l'AMS1117 du DevKit (~5 mA de quiescent à lui seul) :
+c'est la voie économe. Seule précaution : ne pas brancher l'USB du DevKit en
+même temps que le LDO. Le rail 5 V reste mort — c'est voulu.
+
+### À acheter en plus (par station sur batterie)
+
+| Qté | Quoi | Remarque |
+|---|---|---|
+| 1 | **TP4056 avec protection** (DW01+FS8205, USB-C) | charge sur **OUT±**, jamais sur B± ; caveat connu : charge + conso simultanées faussent la fin de charge (acceptable ici) |
+| 1 | **18650** ≥ 2500 mAh + support | cellule de marque (capacité réelle) |
+| 1 | Panneau solaire **5-6 V, 1-2 W** (voie B) ou **2-3 W** (voie A) | 2 W = confort hiver |
+| 1 | Voie B : LDO **HT7333** (TO-92) + 2 condensateurs 10 µF | ou MCP1700-3302 |
+| 1 | Voie A : module boost **MT3608** réglé à 5,0 V | régler AVANT de brancher la carte |
+
+### Autonomie — ordres de grandeur (18650 ~2000 mAh utiles, réveil 300 s par défaut)
+
+Les firmwares dorment en deep sleep entre deux envois (`FreqWakeUp` = 300 s par
+défaut, ajustable par le serveur) ; chaque réveil ≈ 10-15 s de WiFi actif
+(~0,4 mAh). Sous le seuil batterie, le firmware bascule en sommeil d'urgence.
+
+| Configuration | Conso/jour | Autonomie SANS soleil |
+|---|---|---|
+| Voie B, réveil 5 min | ~135 mAh | **~2 semaines** |
+| Voie B, réveil 15 min | ~60 mAh | ~1 mois |
+| Voie B, réveil 30 min + pont 100k (voir note) | ~25 mAh | ~2-3 mois |
+| Voie A (boost + AMS1117), réveil 5 min | ~300 mAh | ~1 semaine |
+| Mode éveillé permanent (`WakeUp=1` serveur) | ~2900 mAh | **< 1 jour** — à réserver au secteur |
+
+Un panneau 1-2 W bien exposé récolte ~250-400 mAh/j (ciel moyen) : il couvre
+largement la voie B à 5 min ; l'hiver, allonger `FreqWakeUp` donne de la marge.
+
+> 📝 **Note pont diviseur** : R34/R35 (2,2k/2,2k, valeurs de `n3_defaults.h`)
+> tirent ~0,85 mA en permanence (~20 mAh/j). Au réveil 5 min ce n'est PAS le
+> poste dominant (les réveils WiFi pèsent 5× plus) ; ça ne devient rentable de
+> le changer qu'à cadence lente : souder **100k/100k dans les MÊMES empreintes**
+> et compiler avec `-D N3_BATTERY_R1=100000 -D N3_BATTERY_R2=100000`
+> (~18 µA). Aucune modification du PCB nécessaire.
 
 ## 6. Outillage et contrôle avant mise en service
 
