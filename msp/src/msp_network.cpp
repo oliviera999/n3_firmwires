@@ -22,6 +22,11 @@ void datatobdd() {
   if (displayOk) { display.drawCircle(5, 5, 5, WHITE); display.display(); }
   Serial.printf("[SERVER][POST] Debut envoi vers %s\n", serverNamePostData);
 
+  // Pression atmospherique (hPa) : disponible uniquement si un BME280 INT a ete
+  // detecte au boot (v2.73). Valeur vide sinon -> le serveur la mappe sur NULL
+  // (colonne nullable), aucun changement de contrat pour les stations DHT.
+  const String pressionStr = isnan(pressionAirInt) ? String("") : String(pressionAirInt, 1);
+
   N3DataField fields[] = {
     {"api_key",       apiKeyValue},
     {"sensor",        sensorName},
@@ -30,6 +35,7 @@ void datatobdd() {
     {"TempAirExt",    String(tempAirExt)},
     {"HumidAirInt",   String(humidAirInt)},
     {"HumidAirExt",   String(humidAirExt)},
+    {"Pression",      pressionStr},
     {"LuminositeA",   String(photocellReadingA)},
     {"LuminositeB",   String(photocellReadingB)},
     {"LuminositeC",   String(photocellReadingC)},
@@ -68,6 +74,7 @@ void datatobdd() {
       "&TempAirExt=" + String(tempAirExt) +
       "&HumidAirInt=" + String(humidAirInt) +
       "&HumidAirExt=" + String(humidAirExt) +
+      "&Pression=" + pressionStr +
       "&LuminositeA=" + String(photocellReadingA) +
       "&LuminositeB=" + String(photocellReadingB) +
       "&LuminositeC=" + String(photocellReadingC) +
