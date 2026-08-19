@@ -79,7 +79,10 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
   par le firmware msp ≥ 2.72 (projection 4095 sec / 100 mouillé, contrat serveur inchangé).
 - **GPIO12 (pompe n3pp)** est strapping MTDI : le pull-down de base du canal REL2 garantit
   l'état sûr au boot.
-- Profils **sur batterie** : ne pas peupler les LED témoin (voir feuilles d'assemblage).
+- Profils **sur batterie (18650 + TP4056 solaire)** : ne pas peupler les LED témoin,
+  et **ne jamais brancher la batterie brute sur J1/jack** (brownouts + relais 5 V) —
+  boost 5 V → J1 si relais/servos, ou LDO 3,3 V → J29 sinon ; mesure VBAT → J27.
+  Câblages, achats et autonomies chiffrées : [`ACHATS.md` §5 bis](ACHATS.md).
 
 ## Régénérer / rerouter / vérifier
 
