@@ -371,6 +371,18 @@
       {
         "netclass": "Alim",
         "pattern": "+3V3"
+      },
+      {
+        "netclass": "Alim",
+        "pattern": "+3V3_SW"
+      },
+      {
+        "netclass": "Alim",
+        "pattern": "+3V3_IN"
+      },
+      {
+        "netclass": "Alim",
+        "pattern": "VBAT"
       }
     ]
   },

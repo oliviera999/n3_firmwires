@@ -1,7 +1,7 @@
 # Rapport de vérification — cartes `hardware/`
 
-Instantané du **2026-08-17** (branche `claude/firmware-pcb-generation-wo7wwr`,
-après mise en conformité sérigraphie/fabrication). Chaque contrôle est
+Instantané du **2026-08-19** (branche `claude/firmware-pcb-generation-wo7wwr`,
+carte commune passée en **rev 0.2** — rail capteurs commuté par GPIO13). Chaque contrôle est
 reproductible avec la commande indiquée — refaire la passe complète avant toute
 commande de PCB (checklist : [TUTO_PCB.md §9](TUTO_PCB.md)).
 
@@ -13,12 +13,12 @@ commande de PCB (checklist : [TUTO_PCB.md §9](TUTO_PCB.md)).
 | **DRC** violations | **0** | **0** | **0** |
 | **DRC** pastilles non connectées | **0** | **0** | **0** |
 | **DRC** erreurs d'empreinte | **0** | **0** | **0** |
-| **Garde anti-dérive** code ↔ plan | OK (21 signaux, 2 firmwares) | OK (16 signaux) | OK (16 signaux) |
+| **Garde anti-dérive** code ↔ plan | OK (21 signaux, 2 firmwares, + topologie power-gate) | OK (16 signaux) | OK (16 signaux) |
 | **Contrôle 3 mm** secteur ↔ logique | n/a | n/a | **0 écart** |
 | **Sérigraphie** : conflits repères/étiquettes | 0 | 0 | 0 |
 | **Sérigraphie** : hauteur / trait des textes | ≥ 1 mm / ≥ 0,15 mm | idem | idem |
 | **Gerbers** : contenu du zip | 10 fichiers (7 couches + PTH/NPTH + job) | idem | idem |
-| **Perçages** PTH + NPTH | 374 + 4 (M3) | 276 + 4 | 378 + 4 |
+| **Perçages** PTH + NPTH | 404 + 4 (M3) | 276 + 4 | 378 + 4 |
 | Marqueur n° de commande (`JLCJLCJLCJLC`, dos) | présent | présent | présent |
 | Vue Fritzing (`.fzz`) | présent | présent | présent |
 
@@ -26,7 +26,7 @@ Détails dimensionnels (mesurés sur les `.kicad_pcb`) :
 
 | | n3pp-msp-commun | ffp5cs-wroom-prod | ffp5cs-wroom-prod-230v |
 |---|---|---|---|
-| Dimensions | 210 × 105 mm | 150 × 100 mm | 234 × 110 mm |
+| Dimensions | 210 × 105 mm (rev 0.2) | 150 × 100 mm | 234 × 110 mm |
 | Piste la plus fine / la plus large | 0,4 / 2,0 mm | 0,4 / 2,0 mm | 0,4 / **2,5** mm |
 | Vias (perçage / pastille) | 0,35 / 0,7 mm | 0,35 / 0,7 mm | 0,3 / 0,5 mm |
 | Perçage composant minimum | 0,75 mm | 0,75 mm | 0,75 mm |
@@ -64,6 +64,17 @@ python3 generator/export_fab.py
 > embarquent leur bibliothèque de symboles (aucune dépendance externe), et
 > KiCad signale simplement qu'elle n'est pas installée sur la machine.
 > Zéro **erreur** est le critère.
+
+## Spécifique rev 0.2 (carte commune)
+
+- **GPIO13 = power-gate** : le checker vérifie désormais la topologie complète
+  de l'interrupteur d'alim capteurs (R1→Q1→Q7 P-MOSFET→`+3V3_SW`, pull-ups
+  R36/R37, pont batterie commuté Q8/Q9, R34 sur `VBAT_SW`) — architecture
+  relevée dans les sources des deux firmwares (RELAIS=1 au réveil, relâché en
+  deep sleep, jamais écrit à 0).
+- **Amorces de routage** : le net `AUX6_GPIO23` (pad 15 du DevKit, pincé sous
+  la zone antenne) est pré-amorcé par `SEED_TRACKS` dans `route_lv.py` —
+  échec reproductible de freerouting sans elles, vérifié.
 
 ## Ce que la passe a déjà corrigé (historique)
 

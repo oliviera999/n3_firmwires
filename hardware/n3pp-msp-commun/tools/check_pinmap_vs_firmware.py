@@ -93,13 +93,14 @@ def expect_pads(pcb: str, ref: str, expected: dict[str, str],
                           f"attendu {net!r}")
 
 
-# Topologie des 6 canaux relais : n -> (bornier, transistor, pull-down base)
+# Topologie des 5 canaux relais : n -> (bornier, transistor, pull-down base).
+# Le canal 1 (GPIO13) n'est PAS un relais : c'est l'interrupteur d'alim
+# capteurs (voir check_power_gate) — architecture réelle des deux firmwares.
 RELAY_CHANNELS = {
-    1: ("J3", "Q1", "R5"), 2: ("J4", "Q2", "R6"), 3: ("J5", "Q3", "R7"),
+    2: ("J4", "Q2", "R6"), 3: ("J5", "Q3", "R7"),
     4: ("J6", "Q4", "R8"), 5: ("J7", "Q5", "R29"), 6: ("J8", "Q6", "R32"),
 }
-RELAY_GPIO_KEY = {1: "RELAIS", 2: "POMPE", 3: "AUX3", 4: "AUX4",
-                  5: "AUX5", 6: "AUX6"}
+RELAY_GPIO_KEY = {2: "POMPE", 3: "AUX3", 4: "AUX4", 5: "AUX5", 6: "AUX6"}
 # Capteurs : clé pinmap -> (connecteur, pull-up/série éventuel)
 DHT_CHANNELS = {"DHT_N3PP": ("J9", "R21"), "DHT_INT": ("J10", "R22"),
                 "DHT_EXT": ("J11", "R23")}
@@ -108,8 +109,40 @@ ADC_CHANNELS = {"ADC_A": ("J22", "R14"), "ADC_B": ("J23", "R15"),
                 "ADC_E": ("J26", "R18")}
 
 
+def check_power_gate(pcb: str, net: dict[str, str], errors: list[str]) -> None:
+    """Interrupteur d'alim capteurs (rev 0.2) : GPIO13 -> Q1 -> Q7 (P-MOSFET
+    haut) -> +3V3_SW. Les deux firmwares mettent RELAIS=1 au réveil et le
+    relâchent en deep sleep : le rail capteurs DOIT être sur ce chemin."""
+    g = net["RELAIS"]
+    expect_pads(pcb, "R1", {"1": g, "2": "PWR_B"}, "power-gate R1", errors)
+    got = pads_of(pcb, "R5")
+    if set(got.values()) != {"PWR_B", "GND"}:
+        errors.append(f"power-gate: R5 doit relier PWR_B et GND, trouvé {sorted(got.values())}")
+    expect_pads(pcb, "Q1", {"1": "PWR_G", "2": "PWR_B", "3": "GND"},
+                "power-gate Q1", errors)
+    expect_pads(pcb, "Q7", {"1": "PWR_G", "2": "+3V3_SW", "3": "+3V3"},
+                "power-gate Q7 (P-MOSFET)", errors)
+    got = pads_of(pcb, "R36")
+    if set(got.values()) != {"+3V3", "PWR_G"}:
+        errors.append("power-gate: R36 (pull-up grille, rail coupé par défaut) "
+                      f"doit relier +3V3 et PWR_G, trouvé {sorted(got.values())}")
+    # pont batterie commuté côté HAUT (VBAT > 3,6 V ne doit jamais atteindre
+    # GPIO36 quand le pont est coupé)
+    expect_pads(pcb, "Q8", {"1": "VBAT_SW", "2": "PDIV_G", "3": "VBAT"},
+                "pont batterie Q8 (P-MOSFET haut)", errors)
+    expect_pads(pcb, "Q9", {"1": "PDIV_G", "2": "PDIV_B", "3": "GND"},
+                "pont batterie Q9", errors)
+    got = pads_of(pcb, "R37")
+    if set(got.values()) != {"VBAT", "PDIV_G"}:
+        errors.append(f"pont batterie: R37 doit relier VBAT et PDIV_G, trouvé {sorted(got.values())}")
+    got = pads_of(pcb, "R38")
+    if set(got.values()) != {"+3V3_SW", "PDIV_B"}:
+        errors.append(f"pont batterie: R38 doit relier +3V3_SW et PDIV_B, trouvé {sorted(got.values())}")
+
+
 def check_topology(pcb: str, net: dict[str, str], errors: list[str]) -> None:
     """Fige le câblage attendu par les firmwares (actuators/sensors)."""
+    check_power_gate(pcb, net, errors)
     for n, (jref, qref, rp) in RELAY_CHANNELS.items():
         g = net[RELAY_GPIO_KEY[n]]
         expect_pads(pcb, jref, {"1": f"REL{n}_NO", "2": f"REL{n}_COM",
@@ -123,33 +156,33 @@ def check_topology(pcb: str, net: dict[str, str], errors: list[str]) -> None:
             errors.append(f"REL{n}: {rp} (pull-down base, état sûr au boot) "
                           f"doit relier REL{n}_B et GND, trouvé {sorted(got.values())}")
     for key, (jref, pull) in DHT_CHANNELS.items():
-        expect_pads(pcb, jref, {"1": "+3V3", "2": net[key], "3": "GND"},
+        expect_pads(pcb, jref, {"1": "+3V3_SW", "2": net[key], "3": "GND"},
                     f"DHT {key}", errors)
         got = pads_of(pcb, pull)
-        if set(got.values()) != {"+3V3", net[key]}:
+        if set(got.values()) != {"+3V3_SW", net[key]}:
             errors.append(f"DHT {key}: {pull} (pull-up 10k) doit relier "
-                          f"+3V3 et {net[key]}, trouvé {sorted(got.values())}")
+                          f"+3V3_SW et {net[key]}, trouvé {sorted(got.values())}")
     for key, (jref, rlow) in ADC_CHANNELS.items():
-        expect_pads(pcb, jref, {"1": "+3V3", "2": net[key], "3": "GND"},
+        expect_pads(pcb, jref, {"1": "+3V3_SW", "2": net[key], "3": "GND"},
                     f"ADC {key}", errors)
         got = pads_of(pcb, rlow)
         if set(got.values()) != {net[key], "GND"}:
             errors.append(f"ADC {key}: {rlow} (bas de pont 10k) doit relier "
                           f"{net[key]} et GND, trouvé {sorted(got.values())}")
     # 1-Wire (bornier + pull-up 4.7k) et pluie (DO numérique)
-    expect_pads(pcb, "J12", {"1": "+3V3", "2": net["ONEWIRE"], "3": "GND"},
+    expect_pads(pcb, "J12", {"1": "+3V3_SW", "2": net["ONEWIRE"], "3": "GND"},
                 "DS18B20", errors)
     got = pads_of(pcb, "R24")
-    if set(got.values()) != {"+3V3", net["ONEWIRE"]}:
-        errors.append(f"1-Wire: R24 (pull-up 4.7k) doit relier +3V3 et "
+    if set(got.values()) != {"+3V3_SW", net["ONEWIRE"]}:
+        errors.append(f"1-Wire: R24 (pull-up 4.7k) doit relier +3V3_SW et "
                       f"{net['ONEWIRE']}, trouvé {sorted(got.values())}")
-    expect_pads(pcb, "J13", {"1": "+3V3", "2": net["PLUIE"], "3": "GND"},
+    expect_pads(pcb, "J13", {"1": "+3V3_SW", "2": net["PLUIE"], "3": "GND"},
                 "PLUIE (DO)", errors)
     # pont batterie 2.2k/2.2k -> GPIO36
     expect_pads(pcb, "J27", {"1": "VBAT", "2": "GND"}, "batterie", errors)
     got = pads_of(pcb, "R34")
-    if set(got.values()) != {"VBAT", net["PONTDIV"]}:
-        errors.append("batterie: R34 doit relier VBAT et "
+    if set(got.values()) != {"VBAT_SW", net["PONTDIV"]}:
+        errors.append("batterie: R34 doit relier VBAT_SW (pont commuté) et "
                       f"{net['PONTDIV']}, trouvé {sorted(got.values())}")
     got = pads_of(pcb, "R35")
     if set(got.values()) != {net["PONTDIV"], "GND"}:
@@ -159,7 +192,7 @@ def check_topology(pcb: str, net: dict[str, str], errors: list[str]) -> None:
     expect_pads(pcb, "J18", {"1": "+3V3", "2": "GND", "3": "EN",
                              "4": "SPARE_GPIO4", "5": "SPARE_GPIO5",
                              "6": "RX0", "7": "TX0"}, "breakout J18", errors)
-    expect_pads(pcb, "J14", {"1": "GND", "2": "+3V3", "3": net["I2C_SCL"],
+    expect_pads(pcb, "J14", {"1": "GND", "2": "+3V3_SW", "3": net["I2C_SCL"],
                              "4": net["I2C_SDA"]}, "OLED", errors)
 
 

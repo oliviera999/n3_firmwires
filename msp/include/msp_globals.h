@@ -9,6 +9,7 @@
 #include "credentials.h"
 #include <Arduino.h>
 #include <DHT.h>
+#include <n3_bme280.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <ESP32Servo.h>
@@ -42,6 +43,9 @@ extern int rtcAngleServoHB;
 // --- DHT intérieur / extérieur ---
 extern DHT dhtint;
 extern DHT dhtext;
+extern N3Bme280 bmeInt;
+extern N3Bme280 bmeExt;
+extern float pressionAirInt;
 extern float tempAirInt;
 extern float humidAirInt;
 extern float tempAirExt;

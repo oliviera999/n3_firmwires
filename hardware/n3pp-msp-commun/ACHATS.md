@@ -1,4 +1,4 @@
-# Liste d'achat — carte commune n3pp + msp (rev 0.1)
+# Liste d'achat — carte commune n3pp + msp (rev 0.2)
 
 Tout ce qu'il faut pour fabriquer, monter et mettre en service **une station n3pp
 (serre/élevage)** ou **une station msp (météo)** sur la carte commune
@@ -16,7 +16,7 @@ détail réf. par réf. est dans [`ASSEMBLAGE-N3PP.md`](ASSEMBLAGE-N3PP.md) /
 
 | Quoi | Détail |
 |---|---|
-| PCB rev 0.1 | `exports/gerbers-n3pp-msp-commun-v0.1.zip` chez JLCPCB/PCBWay — 210×105 mm, 2 couches, qté mini 5 (~10-20 €). Finition standard 1 oz suffisante. |
+| PCB rev 0.2 | `exports/gerbers-n3pp-msp-commun-v0.2.zip` chez JLCPCB/PCBWay — 210×105 mm, 2 couches, qté mini 5 (~10-20 €). Finition standard 1 oz suffisante. |
 | ⚠️ Charges relais | Carte **sans zone secteur isolée** : charges **12/24 V uniquement** sur les borniers relais (pompes, éclairage LED, électrovannes BT). Pour du **230 V**, utiliser la carte dédiée [`ffp5cs-wroom-prod-230v`](../ffp5cs-wroom-prod-230v/ACHATS.md). |
 
 ## 2. Composants à souder (BOM par profil)
@@ -25,20 +25,23 @@ détail réf. par réf. est dans [`ASSEMBLAGE-N3PP.md`](ASSEMBLAGE-N3PP.md) /
 
 | Qté | Référence | Rôle |
 |---|---|---|
-| 1 | Relais **SRD-05VDC-SL-C** (5 V, SPDT 10 A) | REL1 — sortie relais des deux firmwares (GPIO13) |
-| 1 | Transistor **BC337-40** (TO-92) | commande bobine REL1 |
-| 1 | Diode **1N4007** | roue libre bobine REL1 |
+| 1 | P-MOSFET **NDP6020P** (TO-220, logic-level) | Q7 — interrupteur haut du rail capteurs `+3V3_SW` (GPIO13) |
+| 1 | P-MOSFET **BS250** (TO-92, brochage D-G-S) | Q8 — interrupteur haut du pont diviseur batterie |
+| 2 | Transistor **BC337-40** (TO-92) | Q1 (grille Q7) + Q9 (grille Q8) |
 | 1 | Schottky **1N5822** | anti-retour VIN (USB et alim 5 V ensemble sans conflit) |
-| 1 | LED 5 mm rouge + 1 verte | témoin REL1 + présence 5 V (DNP si profil batterie) |
-| 3 | Résistance 1 kΩ 1/4 W | base transistor, LED ×2 |
-| 2 | Résistance 10 kΩ | pull-down base (état sûr au boot), pont LDR canal E |
+| 1 | LED 5 mm rouge + 1 verte | témoin rail capteurs + présence 5 V (DNP si profil batterie) |
+| 3 | Résistance 1 kΩ 1/4 W | base Q1, LED ×2 |
+| 2 | Résistance 10 kΩ | pull-down base Q1 (rail coupé par défaut), pont LDR canal E |
+| 3 | Résistance 100 kΩ | pull-ups grilles Q7/Q8 + base Q9 |
 | 2 | Résistance 4,7 kΩ | pull-ups I2C SDA/SCL |
 | 2 | Résistance 2,2 kΩ | pont diviseur batterie → GPIO36 (`n3_defaults.h`) |
 | 1 | Condensateur 1000 µF/16 V radial | réservoir rail 5 V (relais + WiFi) |
-| 2 | Condensateur 100 nF céramique | découplage 3V3 capteurs + I2C |
+| 1 | Condensateur 470 µF/16 V radial | C5 — réservoir rail 3V3 (pointes WiFi en alim batterie/LDO) |
+| 2 | Condensateur 100 nF céramique | découplage rail capteurs + I2C |
 | 1 | Embase **jack DC 5,5/2,1 mm** | entrée alim |
-| 4 | Bornier à vis **2 p, pas 5,08 mm** | entrée 5 V, mesure batterie, distribution 5 V, distribution 3V3 |
-| 6 | Bornier à vis **3 p, pas 5,08 mm** | sortie REL1 (NO/COM/NC) + 5 entrées ADC (3V3/AIN/GND) |
+| 1 | Header **1×2** + cavalier | JP1 — isole le rail 3V3 de J29 (flash USB sur station batterie) |
+| 4 | Bornier à vis **2 p, pas 5,08 mm** | entrée 5 V, mesure batterie, distribution 5 V, entrée/distribution 3V3 |
+| 5 | Bornier à vis **3 p, pas 5,08 mm** | 5 entrées ADC (3V3_SW/AIN/GND) |
 | 2 | **Barrette femelle 1×15**, pas 2,54 | supports du DevKit (il s'enfiche, jamais soudé) |
 | 4 | Support femelle **1×4** | OLED + 3 ports I2C libres |
 | 1 | Header mâle **1×7** | J18 — breakout GPIO libres (3V3 GND EN IO4 IO5 RX0 TX0) |
@@ -81,11 +84,12 @@ firmware le jour voulu.) + 1× 10 kΩ si une LDR est branchée sur le canal ADC 
 |---|---|---|---|
 | les deux | 1 | **ESP32 DevKit V1 30 broches** | ⚠️ bien **30** broches, rangées espacées de **25,4 mm** — pas la variante 36/38 broches. |
 | les deux | 1 | **OLED SSD1306 128×64 I2C** (0x3C) | affichage local |
-| les deux | 0-3 | Modules I2C optionnels (DS3231, BME280…) | 3 ports libres J15/J16/J17 |
-| n3pp | 1 | **DHT11** (ou DHT22) | air serre (GPIO18) |
+| les deux | 0-2 | **BME280 I2C** (temp+hum+**pression**) | remplace le(s) DHT sans reflash (firmwares msp ≥ 2.73 / n3pp ≥ 4.69 : détection auto 0x76/0x77, repli DHT). Sur port I2C libre, **fils Dupont croisés** (ports GND/VCC/SCL/SDA vs modules VIN/GND/SCL/SDA) |
+| les deux | 0-3 | Autres modules I2C optionnels (DS3231…) | 3 ports libres J15/J16/J17 |
+| n3pp | 0-1 | **DHT11/DHT22** (ou BME280 I2C, voir ci-dessus) | air serre (GPIO18) |
 | n3pp | 4 | **Capteurs humidité sol capacitifs** (sortie AO) | canaux ADC A-D |
 | n3pp | 1 | **LDR** + 2 fils | luminosité (canal ADC E, pont 10 k sur carte) |
-| msp | 2 | **DHT11/DHT22** | intérieur (GPIO26) + extérieur (GPIO15) |
+| msp | 0-2 | **DHT11/DHT22** (ou BME280 I2C, voir ci-dessus) | intérieur (GPIO26) + extérieur (GPIO15) — bus I2C < ~50 cm : garder un DHT pour un capteur très déporté |
 | msp | 1 | **DS18B20 étanche** (version câble) | température sol/extérieur |
 | msp | 1 | **Module capteur pluie** avec sortie **DO** | ⚠️ brancher DO, pas AO (GPIO27 = ADC2, inutilisable WiFi actif) |
 | msp | 4 | **LDR** + 1 module humidité sol (AO) | LDR sur canaux A/C/D/E, module sur canal B |
@@ -130,13 +134,21 @@ panneau 5-6V ─> TP4056 (protégé) ─> module BOOST 5V (MT3608) ─> bornier 
 profil batterie des feuilles d'assemblage) :
 
 ```
-panneau 5-6V ─> TP4056 (protégé) ─> LDO 3,3V HT7333 ─> bornier J29 (3V3/GND, devient une ENTRÉE)
+panneau 5-6V ─> TP4056 (protégé) ─> LDO 3,3V HT7333 ─> bornier J29 ─[JP1 fermé]─> rail 3V3
                     └─ B± : 18650        └─ VBAT ─> bornier J27 (mesure)
 ```
 
 La voie B court-circuite l'AMS1117 du DevKit (~5 mA de quiescent à lui seul) :
-c'est la voie économe. Seule précaution : ne pas brancher l'USB du DevKit en
-même temps que le LDO. Le rail 5 V reste mort — c'est voulu.
+c'est la voie économe. Pour flasher en USB : **retirer le cavalier JP1** (il
+isole le LDO du rail), flasher, remettre JP1. Le rail 5 V reste mort — voulu.
+
+> 🔧 **Palier 2 (optionnel, recommandé en voie B)** : dessouder la **LED
+> d'alimentation du DevKit** (ou sa résistance série, plus facile à saisir)
+> économise encore ~2-3 mA de veille. Le plancher restant est la puce
+> USB-série : ~1-1,5 mA (CP2102) ou ~3-4 mA (CH340) — **mesurer au multimètre**
+> en série sur le fil batterie, et préférer les DevKit à CP2102 à l'achat.
+> Un DevKit ainsi modifié n'a plus de témoin lumineux : le réserver aux
+> stations batterie.
 
 ### À acheter en plus (par station sur batterie)
 
@@ -154,23 +166,27 @@ Les firmwares dorment en deep sleep entre deux envois (`FreqWakeUp` = 300 s par
 défaut, ajustable par le serveur) ; chaque réveil ≈ 10-15 s de WiFi actif
 (~0,4 mAh). Sous le seuil batterie, le firmware bascule en sommeil d'urgence.
 
-| Configuration | Conso/jour | Autonomie SANS soleil |
-|---|---|---|
-| Voie B, réveil 5 min | ~135 mAh | **~2 semaines** |
-| Voie B, réveil 15 min | ~60 mAh | ~1 mois |
-| Voie B, réveil 30 min + pont 100k (voir note) | ~25 mAh | ~2-3 mois |
-| Voie A (boost + AMS1117), réveil 5 min | ~300 mAh | ~1 semaine |
-| Mode éveillé permanent (`WakeUp=1` serveur) | ~2900 mAh | **< 1 jour** — à réserver au secteur |
+Depuis la rev 0.2, le rail capteurs `+3V3_SW` **et le pont diviseur** sont
+coupés automatiquement en deep sleep (GPIO13) : en veille il ne reste que le
+DevKit lui-même.
+
+| Configuration (rev 0.2) | Veille | Conso/jour | Autonomie SANS soleil |
+|---|---|---|---|
+| Voie B, réveil 5 min | ~10 mA (DevKit brut) | ~360 mAh | ~5 jours |
+| Voie B **+ palier 2** (LED DevKit ôtée, CP2102), 5 min | ~1,3 mA | ~150 mAh | **~2 semaines** |
+| Voie B + palier 2, réveil 15 min | ~1,3 mA | ~71 mAh | **~4 semaines** |
+| Voie B + palier 2, réveil 30 min | ~1,3 mA | ~51 mAh | ~40 jours |
+| Voie A (boost + AMS1117), réveil 5 min | ~7-10 mA | ~300-360 mAh | ~1 semaine |
+| Mode éveillé permanent (`WakeUp=1` serveur) | — | ~2900 mAh | **< 1 jour** — à réserver au secteur |
 
 Un panneau 1-2 W bien exposé récolte ~250-400 mAh/j (ciel moyen) : il couvre
 largement la voie B à 5 min ; l'hiver, allonger `FreqWakeUp` donne de la marge.
 
-> 📝 **Note pont diviseur** : R34/R35 (2,2k/2,2k, valeurs de `n3_defaults.h`)
-> tirent ~0,85 mA en permanence (~20 mAh/j). Au réveil 5 min ce n'est PAS le
-> poste dominant (les réveils WiFi pèsent 5× plus) ; ça ne devient rentable de
-> le changer qu'à cadence lente : souder **100k/100k dans les MÊMES empreintes**
-> et compiler avec `-D N3_BATTERY_R1=100000 -D N3_BATTERY_R2=100000`
-> (~18 µA). Aucune modification du PCB nécessaire.
+> 📝 **Note pont diviseur** : depuis la rev 0.2 il est **commuté** (Q8/Q9,
+> actif seulement rail capteurs allumé) — ses ~0,85 mA ne comptent plus en
+> veille, et les 2,2k/2,2k de `n3_defaults.h` gardent leur précision ADC.
+> Le poste dominant est désormais le DevKit lui-même (d'où le palier 2),
+> puis les réveils WiFi (d'où la cadence).
 
 ## 6. Outillage et contrôle avant mise en service
 

@@ -2,9 +2,9 @@ Refs;Qte;Valeur;Empreinte;Description;Profil
 A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15;commun (toujours)
 C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + WiFi);commun (toujours)
 C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos;profil msp
-C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs;commun (toujours)
-C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 I2C;commun (toujours)
-D1;1;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine;commun (toujours)
+C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage rail capteurs +3V3_SW;commun (toujours)
+C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage I2C (+3V3_SW);commun (toujours)
+C5;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Réservoir rail 3V3 (pointes WiFi en alim batterie/LDO);commun (toujours)
 D2;1;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine;profil n3pp
 D3 D4 D6 D7;4;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine;extension (option)
 D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché);commun (toujours)
@@ -14,38 +14,40 @@ J10;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT INT msp (1=3V3 2=DATA 3=G
 J11;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT EXT msp (1=3V3 2=DATA 3=GND);profil msp
 J12;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND);profil msp
 J13;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;Capteur pluie — sortie NUMERIQUE DO (1=3V3 2=DO 3=GND);profil msp
-J14;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA);commun (toujours)
+J14;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC=3V3_SW 3=SCL 4=SDA);commun (toujours)
 J15;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 1 (1=GND 2=VCC 3=SCL 4=SDA);commun (toujours)
 J16;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA);commun (toujours)
 J17;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA);commun (toujours)
 J18;1;Header GPIO libres;PinHeader_1x07_P2.54mm_Vertical;GPIO libres (1=3V3 2=GND 3=EN 4=IO4 5=IO5 6=RX0 7=TX0);commun (toujours)
-J19;1;Rail alim Dupont;PinHeader_1x06_P2.54mm_Vertical;Rail alim modules (1=5V 2=5V 3=GND 4=GND 5=3V3 6=3V3);commun (toujours)
+J19;1;Rail alim Dupont;PinHeader_1x06_P2.54mm_Vertical;Rail alim modules (1=5V 2=5V 3=GND 4=GND 5=3V3_SW 6=3V3_SW — coupé en veille);commun (toujours)
 J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +);commun (toujours)
 J20;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo G/D tracker (1=SIG 2=+5V 3=GND);profil msp
 J21;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo H/B tracker (1=SIG 2=+5V 3=GND);profil msp
-J22;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_A (1=3V3 2=AIN 3=GND) — n3pp: humidite1 (sol) / msp: LUMINOSITEa (LDR);commun (toujours)
-J23;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_B (1=3V3 2=AIN 3=GND) — n3pp: humidite2 (sol) / msp: HumiditeSol (module AO);commun (toujours)
-J24;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_C (1=3V3 2=AIN 3=GND) — n3pp: humidite3 (sol) / msp: LUMINOSITEc (LDR);commun (toujours)
-J25;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_D (1=3V3 2=AIN 3=GND) — n3pp: humidite4 (sol) / msp: LUMINOSITEb (LDR);commun (toujours)
-J26;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_E (1=3V3 2=AIN 3=GND) — n3pp: LUMINOSITE (LDR) / msp: LUMINOSITEd (LDR);commun (toujours)
+J22;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_A (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite1 (sol) / msp: LUMINOSITEa (LDR);commun (toujours)
+J23;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_B (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite2 (sol) / msp: HumiditeSol (module AO);commun (toujours)
+J24;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_C (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite3 (sol) / msp: LUMINOSITEc (LDR);commun (toujours)
+J25;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_D (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite4 (sol) / msp: LUMINOSITEb (LDR);commun (toujours)
+J26;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée ADC_E (1=3V3_SW 2=AIN 3=GND) — n3pp: LUMINOSITE (LDR) / msp: LUMINOSITEd (LDR);commun (toujours)
 J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Mesure batterie (1=VBAT 2=GND, pont 2.2k/2.2k -> GPIO36);commun (toujours)
 J28;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND);commun (toujours)
-J29;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 (1=+3V3 2=GND);commun (toujours)
-J3;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge (1=NO 2=COM 3=NC);commun (toujours)
+J29;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée LDO batterie OU distribution 3V3, via JP1 (1=3V3 2=GND);commun (toujours)
 J4;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge (1=NO 2=COM 3=NC);profil n3pp
 J5 J6 J7 J8;4;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge (1=NO 2=COM 3=NC);extension (option)
 J9;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT n3pp (1=3V3 2=DATA 3=GND);profil n3pp
-K1;1;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT 10A (Songle/Sanyou SRD);commun (toujours)
+JP1;1;Jumper;PinHeader_1x02_P2.54mm_Vertical;Cavalier J29 <-> rail 3V3 : RETIRER pour flasher en USB une station alimentée par LDO;commun (toujours)
 K2;1;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT 10A (Songle/Sanyou SRD);profil n3pp
 K3 K4 K5 K6;4;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT 10A (Songle/Sanyou SRD);extension (option)
-LED1;1;rouge;LED_D5.0mm;LED témoin relais ON (DNP si profil batterie);commun (toujours)
+LED1;1;rouge;LED_D5.0mm;LED témoin rail capteurs ON (DNP si profil batterie);commun (toujours)
 LED2;1;rouge;LED_D5.0mm;LED témoin relais ON (DNP si profil batterie);profil n3pp
 LED3 LED4 LED6 LED7;4;rouge;LED_D5.0mm;LED témoin relais ON (DNP si profil batterie);extension (option)
 LED5;1;verte;LED_D5.0mm;LED présence 5V (DNP si profil batterie);commun (toujours)
-Q1;1;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E);commun (toujours)
+Q1;1;BC337-40;TO-92_Inline;NPN tirant la grille de Q7 (1=C 2=B 3=E);commun (toujours)
 Q2;1;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E);profil n3pp
 Q3 Q4 Q5 Q6;4;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E);extension (option)
-R1;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor;commun (toujours)
+Q7;1;NDP6020P;TO-220-3_Vertical;P-MOSFET logic-level, interrupteur haut du rail capteurs (1=G 2=D 3=S);commun (toujours)
+Q8;1;BS250;TO-92_Inline;P-MOSFET interrupteur haut du pont batterie (1=D 2=G 3=S);commun (toujours)
+Q9;1;BC337-40;TO-92_Inline;NPN tirant la grille de Q8 (1=C 2=B 3=E);commun (toujours)
+R1;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base Q1 (commande interrupteur d'alim capteurs);commun (toujours)
 R10;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin (DNP si profil batterie);profil n3pp
 R11 R12 R30 R33;4;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin (DNP si profil batterie);extension (option)
 R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED présence 5V (DNP si profil batterie);commun (toujours)
@@ -66,8 +68,11 @@ R27;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo 
 R28 R3 R31 R4;4;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor;extension (option)
 R34;1;2.2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont batterie haut (N3_BATTERY_R1=2200);commun (toujours)
 R35;1;2.2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont batterie bas (N3_BATTERY_R2=2180, 2.2k mesurée);commun (toujours)
-R5;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot);commun (toujours)
+R36;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille Q7 (rail coupé si GPIO13 flottant);commun (toujours)
+R37;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille Q8 vers VBAT (pont coupé par défaut);commun (toujours)
+R38;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base Q9 depuis le rail commuté (mesure active = rail actif);commun (toujours)
+R5;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base Q1 (rail coupé par défaut);commun (toujours)
 R6;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot);profil n3pp
 R29 R32 R7 R8;4;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot);extension (option)
-R9;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin (DNP si profil batterie);commun (toujours)
+R9;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin rail capteurs (DNP si profil batterie);commun (toujours)
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé;commun (toujours)

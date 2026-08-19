@@ -435,11 +435,24 @@ void LectureCapteurs() {
   Serial.printf("[SENSOR] Pluie=%d (DO %s)\n", Pluie,
                 Pluie == MSP_PLUIE_DRY_RAW ? "sec" : "mouille");
 
-  // DHT interieur : isnan + bornes physiques (-40..80 C, 0..100 %).
-  tempAirInt = dhtint.readTemperature();
-  delay(100);
-  humidAirInt = dhtint.readHumidity();
-  delay(100);
+  // Air interieur : BME280 si detecte au boot (v2.73), sinon DHT.
+  // Les bornes/fallbacks ci-dessous s'appliquent aux deux chemins.
+  pressionAirInt = NAN;
+  if (bmeInt.present()) {
+    if (bmeInt.read(tempAirInt, humidAirInt, pressionAirInt)) {
+      Serial.printf("[BME280][INT] t=%.1fC h=%.1f%% p=%.1fhPa\n",
+                    tempAirInt, humidAirInt, pressionAirInt);
+    } else {
+      Serial.println("[BME280][INT][WARN] lecture invalide, fallback");
+      tempAirInt = NAN;  // les gardes ci-dessous posent les fallbacks
+      humidAirInt = NAN;
+    }
+  } else {
+    tempAirInt = dhtint.readTemperature();
+    delay(100);
+    humidAirInt = dhtint.readHumidity();
+    delay(100);
+  }
   if (isnan(tempAirInt) || tempAirInt < MSP_DHT_TEMP_MIN || tempAirInt > MSP_DHT_TEMP_MAX) {
     Serial.printf("[DHT][INT][WARN] Temperature invalide (%.1fC), fallback %.1fC\n",
                   tempAirInt, MSP_DHT_TEMP_FALLBACK);
@@ -451,11 +464,20 @@ void LectureCapteurs() {
     humidAirInt = MSP_DHT_HUM_FALLBACK;
   }
 
-  // DHT exterieur : meme validation.
-  tempAirExt = dhtext.readTemperature();
-  delay(100);
-  humidAirExt = dhtext.readHumidity();
-  delay(100);
+  // Air exterieur : BME280 (0x77) si detecte, sinon DHT — meme validation.
+  if (bmeExt.present()) {
+    float pressExt = NAN;
+    if (!bmeExt.read(tempAirExt, humidAirExt, pressExt)) {
+      Serial.println("[BME280][EXT][WARN] lecture invalide, fallback");
+      tempAirExt = NAN;
+      humidAirExt = NAN;
+    }
+  } else {
+    tempAirExt = dhtext.readTemperature();
+    delay(100);
+    humidAirExt = dhtext.readHumidity();
+    delay(100);
+  }
   if (isnan(tempAirExt) || tempAirExt < MSP_DHT_TEMP_MIN || tempAirExt > MSP_DHT_TEMP_MAX) {
     Serial.printf("[DHT][EXT][WARN] Temperature invalide (%.1fC), fallback %.1fC\n",
                   tempAirExt, MSP_DHT_TEMP_FALLBACK);

@@ -81,6 +81,11 @@ void setup() {
   WiFi.mode(WIFI_MODE_STA);
 
   displayOk = n3DisplayInit(display);
+
+  // Sonde BME280 (0x76) — pattern ffp5cs USE_AIR_SENSOR_AUTO : détecté ->
+  // remplace le DHT ; absent -> DHT inchangé. RELAIS=1 plus haut a déjà mis
+  // le rail capteurs sous tension (carte commune rev 0.2).
+  if (bmeAir.begin(0x76)) Serial.println("[BME280] detecte (0x76), remplace le DHT");
   delay(600);
   if (displayOk) {
     display.clearDisplay();

@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
+#include <n3_bme280.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -124,3 +125,5 @@ extern int annee;
 extern unsigned int httpResponseCode;
 
 extern DHT dht;
+extern N3Bme280 bmeAir;
+extern float pressionAir;

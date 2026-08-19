@@ -13,7 +13,7 @@ BOM.csv                      Nomenclature (séparateur ;) avec colonne Profil
 ACHATS.md                    Liste d'achat complète par profil (BOM + périphériques + boîtier + outillage)
 ASSEMBLAGE-N3PP.md           Feuille d'assemblage générée : quoi souder pour une station n3pp
 ASSEMBLAGE-MSP.md            Feuille d'assemblage générée : quoi souder pour une station msp
-exports/gerbers-*.zip        Fabrication (Gerbers + perçages) — 210 x 105 mm, 2 couches
+exports/gerbers-*.zip        Fabrication (Gerbers + perçages) — 210 x 105 mm, 2 couches, rev 0.2
 exports/schema.pdf, pcb-*.svg   Rendus pour revue sans KiCad
 fritzing/*.fzz               Vue breadboard du câblage (Fritzing >= 1.0)
 generator/generate.py        Régénère schéma + PCB (non routé) + BOM + feuilles d'assemblage
@@ -28,7 +28,7 @@ tools/check_pinmap_vs_firmware.py   Garde anti-dérive DOUBLE : n3pp_config.h ET
 
 | Profil | Composants à souder | Le firmware tourne tel quel ? |
 |---|---|---|
-| **commun** | DevKit + alim + REL1 + 5 entrées ADC + pont batterie + I2C/OLED + breakout + distribution | — (socle des deux profils) |
+| **commun** | DevKit + alim + **interrupteur d'alim capteurs (GPIO13)** + 5 entrées ADC + pont batterie commuté + I2C/OLED + breakout + distribution | — (socle des deux profils) |
 | **n3pp** | + REL2 (pompe GPIO12) + DHT GPIO18 | ✅ `pio run -e esp32dev` (n3pp) |
 | **msp** | + servos tracker + 2 DHT + DS18B20 + pluie + 10k LDR | ✅ `pio run -e esp32dev` (msp) |
 | **extension** | REL3..REL6 (GPIO 16/17/19/23), à activer côté firmware plus tard | provision matérielle |
@@ -42,7 +42,7 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
 
 | GPIO | Bloc carte | n3pp (`n3pp_config.h`) | msp (`msp_config.h`) |
 |---|---|---|---|
-| 13 | **REL1** (bornier NO/COM/NC) | `RELAIS` | `RELAIS` |
+| 13 | **Interrupteur d'alim capteurs** (Q1+Q7 P-MOSFET → rail `+3V3_SW`) | `RELAIS` | `RELAIS` |
 | 12 | **REL2** (strapping MTDI → pull-down base 10k) | `POMPE` | — |
 | 16/17/19/23 | **REL3..REL6** extensions AUX | — | — |
 | 18 | DHT n3pp (JST, pull-up 10k) | `DHTPIN` | — |
@@ -57,10 +57,15 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
 
 ## Les demandes spécifiques de cette carte
 
-- **6 canaux relais** embarqués (transistor BC337 + diode + LED témoin + bornier
-  NO/COM/NC) : REL1/REL2 pilotés par les firmwares actuels, REL3..REL6 en réserve sur des
-  GPIO **non-strapping** — le jour voulu, on les active côté firmware comme AUX1/AUX2 de
-  ffp5cs, sans retoucher la carte.
+- **Rail capteurs commuté (rev 0.2)** : les deux firmwares utilisent GPIO13 comme
+  *power-gate* (mis à 1 au réveil, relâché en deep sleep — vérifié dans les sources).
+  La carte le câble sur un **interrupteur haut P-MOSFET** (Q1 BC337 + Q7 NDP6020P) qui
+  coupe `+3V3_SW` — capteurs, OLED, ports I2C **et leurs pull-ups** — pendant la veille.
+  Le **pont diviseur batterie est commuté lui aussi** (Q8 BS250 côté haut + Q9), donc
+  ~0 µA de fuite en veille, et jamais plus de 3,3 V sur GPIO36 pont coupé.
+- **5 canaux relais** embarqués (BC337 + 1N4007 + LED témoin + bornier NO/COM/NC) :
+  REL2 piloté par n3pp (pompe), REL3..REL6 en réserve sur des GPIO **non-strapping** —
+  à activer côté firmware comme AUX1/AUX2 de ffp5cs, sans retoucher la carte.
 - **Connexions I2C supplémentaires** : OLED + 3 ports libres (J15/J16/J17, brochage
   GND/VCC/SCL/SDA), 3-4 modules simultanés avec les pull-ups 4,7 k.
 - **Toutes les broches restantes utilisables** : breakout J18 (`3V3 GND EN IO4 IO5 RX0
@@ -79,6 +84,8 @@ sont **générées depuis le même code que le PCB** : elles ne peuvent pas dér
   par le firmware msp ≥ 2.72 (projection 4095 sec / 100 mouillé, contrat serveur inchangé).
 - **GPIO12 (pompe n3pp)** est strapping MTDI : le pull-down de base du canal REL2 garantit
   l'état sûr au boot.
+- **JP1 (cavalier 3V3)** : en alimentation batterie/LDO par J29, RETIRER le cavalier
+  avant de brancher l'USB du DevKit (sinon deux régulateurs se disputent le rail).
 - Profils **sur batterie (18650 + TP4056 solaire)** : ne pas peupler les LED témoin,
   et **ne jamais brancher la batterie brute sur J1/jack** (brownouts + relais 5 V) —
   boost 5 V → J1 si relais/servos, ou LDO 3,3 V → J29 sinon ; mesure VBAT → J27.
