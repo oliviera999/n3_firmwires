@@ -30,7 +30,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3pp-msp-commun"
-REV = "0.1"
+REV = "0.2"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -138,6 +138,10 @@ SYMBOLS: dict[str, dict] = {
                     left=[("1", "1", 1), ("2", "2", 0), ("3", "3", -1)]),
     "CONN_04": dict(ref="J", w=3,
                     left=[("1", "1", 2), ("2", "2", 1), ("3", "3", 0), ("4", "4", -1)]),
+    "PMOS_GDS": dict(ref="Q", w=3, left=[("1", "G", 0)],
+                     right=[("2", "D", 1), ("3", "S", -1)]),
+    "PMOS_DGS": dict(ref="Q", w=3, left=[("2", "G", 0)],
+                     right=[("1", "D", 1), ("3", "S", -1)]),
     "CONN_06": dict(ref="J", w=3,
                     left=[(str(i), str(i), 3 - i) for i in range(1, 7)]),
     "CONN_07": dict(ref="J", w=3,
@@ -253,9 +257,9 @@ def adc_channel(name: str, ref_r: str, jref: str, x: float, sch_y: int,
     return [
         dict(ref=jref, sym="CONN_03", value="Bornier_5.08",
              fp="TerminalBlock_bornier-3_P5.08mm",
-             desc=f"Entrée {name} (1=3V3 2=AIN 3=GND) — n3pp: {desc_n3pp} / msp: {desc_msp}",
+             desc=f"Entrée {name} (1=3V3_SW 2=AIN 3=GND) — n3pp: {desc_n3pp} / msp: {desc_msp}",
              sch=(60, sch_y), pcb=(x, 141, 0),
-             nets={"1": "+3V3", "2": net, "3": "GND"}, prof="commun"),
+             nets={"1": "+3V3_SW", "2": net, "3": "GND"}, prof="commun"),
         dict(ref=ref_r, sym="R", value="10k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc=f"Bas de pont {name} (peupler si LDR ; DNP si capteur AO)",
@@ -272,12 +276,12 @@ def dht_channel(which: str, gpio_key: str, rref: str, jref: str, x: float,
         dict(ref=rref, sym="R", value="10k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc=f"Pull-up data DHT {which}", sch=(92, sch_y), pcb=(x - 2, r_y, 0),
-             nets={"1": "+3V3", "2": net}, prof=prof),
+             nets={"1": "+3V3_SW", "2": net}, prof=prof),
         dict(ref=jref, sym="CONN_03", value="JST-XH",
              fp="JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
              desc=f"DHT {which} (1=3V3 2=DATA 3=GND)", sch=(104, sch_y),
              pcb=(x, 126, 0),
-             nets={"1": "+3V3", "2": net, "3": "GND"}, prof=prof),
+             nets={"1": "+3V3_SW", "2": net, "3": "GND"}, prof=prof),
     ]
 
 
@@ -341,12 +345,52 @@ def build_components():
              pcb=(72, 127, 90),
              nets={"1": "GND", "2": "PWR_LED"}, prof="commun"),
     ]
-    # --- 6 canaux relais -----------------------------------------------------
-    # REL1/REL2 = pilotés par les firmwares actuels ; REL3..REL6 = extensions
-    # AUX sur GPIO sûrs (non-strapping), à activer côté firmware plus tard.
-    comps += relay_channel(1, NET["RELAIS"], "J3", 56,
-                           dict(rb="R1", rp="R5", rl="R9", q="Q1", d="D1",
-                                led="LED1"), "commun")
+    # --- Interrupteur d'alimentation capteurs (GPIO13, rev 0.2) --------------
+    # Les DEUX firmwares utilisent GPIO13 (RELAIS) comme power-gate : mis à 1 au
+    # réveil (avant Serial.begin), relâché en deep sleep. Rev 0.1 y câblait un
+    # relais générique ; rev 0.2 restitue l'architecture réelle : un interrupteur
+    # HAUT P-MOSFET coupe le rail +3V3_SW (capteurs, OLED, I2C, pull-ups)
+    # pendant la veille — zéro consommation de bobine, zéro usure.
+    # GPIO13=1 -> Q1 sature -> grille de Q7 à 0 -> rail alimenté.
+    # GPIO13 flottant (deep sleep) -> R36 remonte la grille -> rail coupé.
+    comps += [
+        dict(ref="R1", sym="R", value="1k",
+             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+             desc="Base Q1 (commande interrupteur d'alim capteurs)",
+             sch=(111, 4), pcb=(56, 85, 0),
+             nets={"1": NET["RELAIS"], "2": "PWR_B"}, prof="commun"),
+        dict(ref="R5", sym="R", value="10k",
+             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+             desc="Pull-down base Q1 (rail coupé par défaut)",
+             sch=(111, 8), pcb=(56, 90, 0),
+             nets={"1": "PWR_B", "2": "GND"}, prof="commun"),
+        dict(ref="Q1", sym="NPN", value="BC337-40", fp="TO-92_Inline",
+             desc="NPN tirant la grille de Q7 (1=C 2=B 3=E)",
+             sch=(120, 6), pcb=(72, 92, 0),
+             nets={"1": "PWR_G", "2": "PWR_B", "3": "GND"}, prof="commun"),
+        dict(ref="R36", sym="R", value="100k",
+             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+             desc="Pull-up grille Q7 (rail coupé si GPIO13 flottant)",
+             sch=(111, 12), pcb=(54, 62, 0),
+             nets={"1": "+3V3", "2": "PWR_G"}, prof="commun"),
+        dict(ref="Q7", sym="PMOS_GDS", value="NDP6020P",
+             fp="TO-220-3_Vertical",
+             desc="P-MOSFET logic-level, interrupteur haut du rail capteurs (1=G 2=D 3=S)",
+             sch=(120, 12), pcb=(58, 55, 0),
+             nets={"1": "PWR_G", "2": "+3V3_SW", "3": "+3V3"}, prof="commun"),
+        dict(ref="R9", sym="R", value="1k",
+             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+             desc="Résistance LED témoin rail capteurs (DNP si profil batterie)",
+             sch=(111, 16), pcb=(56, 95, 0),
+             nets={"1": "+3V3_SW", "2": "RAIL_LED"}, prof="commun"),
+        dict(ref="LED1", sym="LED", value="rouge", fp="LED_D5.0mm",
+             desc="LED témoin rail capteurs ON (DNP si profil batterie)",
+             sch=(120, 16), pcb=(72, 84, 90),
+             nets={"1": "GND", "2": "RAIL_LED"}, prof="commun"),
+    ]
+    # --- 5 canaux relais -----------------------------------------------------
+    # REL2 = piloté par n3pp (pompe) ; REL3..REL6 = extensions AUX sur GPIO
+    # sûrs (non-strapping), à activer côté firmware plus tard.
     comps += relay_channel(2, NET["POMPE"], "J4", 88,
                            dict(rb="R2", rp="R6", rl="R10", q="Q2", d="D2",
                                 led="LED2"), "n3pp")
@@ -371,57 +415,57 @@ def build_components():
         dict(ref="R24", sym="R", value="4.7k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pull-up bus 1-Wire DS18B20", sch=(92, 68), pcb=(149, 117, 0),
-             nets={"1": "+3V3", "2": NET["ONEWIRE"]}, prof="msp"),
+             nets={"1": "+3V3_SW", "2": NET["ONEWIRE"]}, prof="msp"),
         dict(ref="J12", sym="CONN_03", value="Bornier_5.08",
              fp="TerminalBlock_bornier-3_P5.08mm",
              desc="Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)",
              sch=(104, 68), pcb=(152, 126, 0),
-             nets={"1": "+3V3", "2": NET["ONEWIRE"], "3": "GND"}, prof="msp"),
+             nets={"1": "+3V3_SW", "2": NET["ONEWIRE"], "3": "GND"}, prof="msp"),
         dict(ref="J13", sym="CONN_03", value="JST-XH",
              fp="JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
              desc="Capteur pluie — sortie NUMERIQUE DO (1=3V3 2=DO 3=GND)",
              sch=(104, 74), pcb=(170, 126, 0),
-             nets={"1": "+3V3", "2": NET["PLUIE"], "3": "GND"}, prof="msp"),
+             nets={"1": "+3V3_SW", "2": NET["PLUIE"], "3": "GND"}, prof="msp"),
     ]
     # --- I2C : OLED SSD1306 + 3 ports libres ---------------------------------
     comps += [
         dict(ref="R25", sym="R", value="4.7k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pull-up I2C SDA", sch=(92, 80), pcb=(188, 110, 0),
-             nets={"1": "+3V3", "2": NET["I2C_SDA"]}, prof="commun"),
+             nets={"1": "+3V3_SW", "2": NET["I2C_SDA"]}, prof="commun"),
         dict(ref="R26", sym="R", value="4.7k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pull-up I2C SCL", sch=(92, 84), pcb=(188, 114, 0),
-             nets={"1": "+3V3", "2": NET["I2C_SCL"]}, prof="commun"),
+             nets={"1": "+3V3_SW", "2": NET["I2C_SCL"]}, prof="commun"),
         dict(ref="C3", sym="C", value="100n", fp="C_Disc_D5.0mm_W2.5mm_P5.00mm",
-             desc="Découplage 3V3 capteurs", sch=(92, 88), pcb=(164, 119, 0),
-             nets={"1": "+3V3", "2": "GND"}, prof="commun"),
+             desc="Découplage rail capteurs +3V3_SW", sch=(92, 88), pcb=(164, 119, 0),
+             nets={"1": "+3V3_SW", "2": "GND"}, prof="commun"),
         dict(ref="C4", sym="C", value="100n", fp="C_Disc_D5.0mm_W2.5mm_P5.00mm",
-             desc="Découplage 3V3 I2C", sch=(92, 92), pcb=(204, 113, 0),
-             nets={"1": "+3V3", "2": "GND"}, prof="commun"),
+             desc="Découplage I2C (+3V3_SW)", sch=(92, 92), pcb=(204, 113, 0),
+             nets={"1": "+3V3_SW", "2": "GND"}, prof="commun"),
         dict(ref="J14", sym="CONN_04", value="Support OLED",
              fp="PinSocket_1x04_P2.54mm_Vertical",
-             desc="OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA)",
+             desc="OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC=3V3_SW 3=SCL 4=SDA)",
              sch=(104, 80), pcb=(196, 120, 0),
-             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"],
+             nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"],
                    "4": NET["I2C_SDA"]}, prof="commun"),
         dict(ref="J15", sym="CONN_04", value="Support I2C libre",
              fp="PinSocket_1x04_P2.54mm_Vertical",
              desc="Port I2C libre 1 (1=GND 2=VCC 3=SCL 4=SDA)",
              sch=(104, 86), pcb=(204, 120, 0),
-             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"],
+             nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"],
                    "4": NET["I2C_SDA"]}, prof="commun"),
         dict(ref="J16", sym="CONN_04", value="Support I2C libre",
              fp="PinSocket_1x04_P2.54mm_Vertical",
              desc="Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)",
              sch=(104, 92), pcb=(212, 120, 0),
-             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"],
+             nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"],
                    "4": NET["I2C_SDA"]}, prof="commun"),
         dict(ref="J17", sym="CONN_04", value="Support I2C libre",
              fp="PinSocket_1x04_P2.54mm_Vertical",
              desc="Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)",
              sch=(104, 98), pcb=(220, 120, 0),
-             nets={"1": "GND", "2": "+3V3", "3": NET["I2C_SCL"],
+             nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"],
                    "4": NET["I2C_SDA"]}, prof="commun"),
     ]
     # --- Breakout GPIO restants + rail d'alim --------------------------------
@@ -434,10 +478,10 @@ def build_components():
                    "5": "SPARE_GPIO5", "6": "RX0", "7": "TX0"}, prof="commun"),
         dict(ref="J19", sym="CONN_06", value="Rail alim Dupont",
              fp="PinHeader_1x06_P2.54mm_Vertical",
-             desc="Rail alim modules (1=5V 2=5V 3=GND 4=GND 5=3V3 6=3V3)",
+             desc="Rail alim modules (1=5V 2=5V 3=GND 4=GND 5=3V3_SW 6=3V3_SW — coupé en veille)",
              sch=(24, 90), pcb=(242, 120, 0),
              nets={"1": "+5V", "2": "+5V", "3": "GND", "4": "GND",
-                   "5": "+3V3", "6": "+3V3"}, prof="commun"),
+                   "5": "+3V3_SW", "6": "+3V3_SW"}, prof="commun"),
         dict(ref="J28", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",
              desc="Distribution 5V (1=+5V 2=GND)", sch=(24, 97),
@@ -445,9 +489,14 @@ def build_components():
              nets={"1": "+5V", "2": "GND"}, prof="commun"),
         dict(ref="J29", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",
-             desc="Distribution 3V3 (1=+3V3 2=GND)", sch=(24, 103),
-             pcb=(232, 141, 0),
-             nets={"1": "+3V3", "2": "GND"}, prof="commun"),
+             desc="Entrée LDO batterie OU distribution 3V3, via JP1 (1=3V3 2=GND)",
+             sch=(24, 103), pcb=(232, 141, 0),
+             nets={"1": "+3V3_IN", "2": "GND"}, prof="commun"),
+        dict(ref="JP1", sym="CONN_02", value="Jumper",
+             fp="PinHeader_1x02_P2.54mm_Vertical",
+             desc="Cavalier J29 <-> rail 3V3 : RETIRER pour flasher en USB une station alimentée par LDO",
+             sch=(34, 103), pcb=(227, 131, 0),
+             nets={"1": "+3V3_IN", "2": "+3V3"}, prof="commun"),
     ]
     # --- Servos tracker solaire (msp) ----------------------------------------
     comps += [
@@ -484,12 +533,41 @@ def build_components():
                          "LUMINOSITEb (LDR)", "msp")
     comps += adc_channel("ADC_E", "R18", "J26", 184, 76, "LUMINOSITE (LDR)",
                          "LUMINOSITEd (LDR)", "commun")
+    # Pont batterie COMMUTÉ côté haut (rev 0.2) : Q8 (P-MOSFET) ne connecte le
+    # pont que quand le rail capteurs est actif -> ~0,85 mA économisés en veille.
+    # Interrupteur HAUT obligatoire : couper en bas laisserait VBAT (4,2 V max)
+    # remonter par R34 jusqu'à GPIO36 (abs. max 3,6 V). Coupé, R35 tient
+    # PONTDIV à 0 V. Commande : R38 depuis +3V3_SW -> Q9 -> grille de Q8
+    # (pull-up R37 vers VBAT = coupé par défaut).
     comps += [
+        dict(ref="Q8", sym="PMOS_DGS", value="BS250",
+             fp="TO-92_Inline",
+             desc="P-MOSFET interrupteur haut du pont batterie (1=D 2=G 3=S)",
+             sch=(72, 92), pcb=(52, 68, 0),
+             nets={"1": "VBAT_SW", "2": "PDIV_G", "3": "VBAT"}, prof="commun"),
+        dict(ref="Q9", sym="NPN", value="BC337-40", fp="TO-92_Inline",
+             desc="NPN tirant la grille de Q8 (1=C 2=B 3=E)",
+             sch=(72, 97), pcb=(62, 68, 0),
+             nets={"1": "PDIV_G", "2": "PDIV_B", "3": "GND"}, prof="commun"),
+        dict(ref="R37", sym="R", value="100k",
+             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+             desc="Pull-up grille Q8 vers VBAT (pont coupé par défaut)",
+             sch=(60, 90), pcb=(52, 74, 0),
+             nets={"1": "VBAT", "2": "PDIV_G"}, prof="commun"),
+        dict(ref="R38", sym="R", value="100k",
+             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+             desc="Base Q9 depuis le rail commuté (mesure active = rail actif)",
+             sch=(60, 95), pcb=(52, 80, 0),
+             nets={"1": "+3V3_SW", "2": "PDIV_B"}, prof="commun"),
+        dict(ref="C5", sym="CP", value="470u/16V", fp="CP_Radial_D8.0mm_P3.50mm",
+             desc="Réservoir rail 3V3 (pointes WiFi en alim batterie/LDO)",
+             sch=(24, 109), pcb=(68, 141, 0),
+             nets={"1": "+3V3", "2": "GND"}, prof="commun"),
         dict(ref="R34", sym="R", value="2.2k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pont batterie haut (N3_BATTERY_R1=2200)", sch=(72, 82),
              pcb=(198, 133, 0),
-             nets={"1": "VBAT", "2": NET["PONTDIV"]}, prof="commun"),
+             nets={"1": "VBAT_SW", "2": NET["PONTDIV"]}, prof="commun"),
         dict(ref="R35", sym="R", value="2.2k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pont batterie bas (N3_BATTERY_R2=2180, 2.2k mesurée)",
@@ -515,27 +593,26 @@ COMPONENTS = build_components()
 SCH_TEXTS = [
     (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier.\\nD5 protège le rail si l'USB du DevKit est branché en même temps."),
     (48, 22, "ESP32 DevKit V1 (30 broches, socketé) — CARTE COMMUNE n3pp / msp.\\nMême PCB, firmwares INCHANGÉS : le profil d'assemblage décide ce qu'on peuple\\n(ASSEMBLAGE-N3PP.md / ASSEMBLAGE-MSP.md). Flash : pio run -e esp32dev -t upload."),
-    (54, 49, "5 ENTREES ANALOGIQUES ADC1 (compatibles WiFi) — bornier 3V3/AIN/GND.\\n10k bas de pont : peupler pour une LDR, DNP pour un capteur à sortie AO.\\nA=33 B=32 C=35 D=34 E=39 (35/34/39 = entrées seules)."),
-    (44, 92, "BATTERIE : pont 2.2k/2.2k -> GPIO36 (VP, entrée seule).\\nJ27 = VBAT/GND (valeurs n3_defaults.h : N3_BATTERY_R1/R2)."),
+    (54, 49, "5 ENTREES ANALOGIQUES ADC1 (compatibles WiFi) — bornier 3V3_SW/AIN/GND.\\n10k bas de pont : peupler pour une LDR, DNP pour un capteur à sortie AO.\\nA=33 B=32 C=35 D=34 E=39 (35/34/39 = entrées seules)."),
+    (44, 92, "BATTERIE : pont 2.2k/2.2k -> GPIO36 (VP), COMMUTE par Q8/Q9\\n(actif seulement rail capteurs allumé : ~0 conso en veille).\\nJ27 = VBAT/GND (valeurs n3_defaults.h : N3_BATTERY_R1/R2)."),
     (18, 57, "SERVOS TRACKER SOLAIRE (msp) :\\nGPIO25 = G/D, GPIO14 = H/B, série 220R, réservoir C2."),
     (18, 77, "TOUS LES GPIO RESTANTS -> J18 :\\n3V3 GND EN IO4 IO5 RX0 TX0.\\nRX0/TX0 : à laisser libres pendant un flash USB."),
-    (18, 94, "DISTRIBUTION : rail J19 (2x5V 2xGND 2x3V3)\\n+ borniers J28 (5V) et J29 (3V3)."),
+    (18, 94, "DISTRIBUTION : rail J19 (2x5V 2xGND 2x3V3_SW, coupé en veille)\\n+ borniers J28 (5V) et J29 (3V3). J29 = AUSSI l'entrée LDO batterie,\\nvia JP1 — retirer le cavalier pour flasher en USB sur station batterie."),
     (86, 46, "AIR : 3 DHT — n3pp GPIO18, msp INT GPIO26 / EXT GPIO15 (pull-ups 10k).\\nGPIO15 = strapping MTDO : pull-up compatible boot."),
     (86, 65, "EAU/SOL : DS18B20 (msp, 1-Wire GPIO2, pull-up 4.7k).\\nGPIO2 = strapping : débrancher la sonde si le flash USB échoue."),
     (86, 71, "PLUIE (msp, GPIO27) : sortie NUMERIQUE (DO) du module —\\nGPIO27 = ADC2, inutilisable en analogique quand le WiFi est actif."),
     (86, 77, "I2C : OLED SSD1306 0x3C + 3 ports libres (pull-ups 4.7k, bus < ~50 cm)."),
-    (107, 1, "6 RELAIS 5V — commande ACTIVE HAUT.\\nREL1 GPIO13 = RELAIS (n3pp ET msp) ; REL2 GPIO12 = POMPE (n3pp,\\nstrapping MTDI -> pull-down base 10k = état sûr au boot) ;\\nREL3..REL6 = AUX GPIO16/17/19/23 (extension, non pilotés\\npar les firmwares actuels — pattern AUX1/AUX2 de ffp5cs)."),
+    (107, 1, "INTERRUPTEUR D'ALIM CAPTEURS + 5 RELAIS 5V (actifs HAUT).\\nGPIO13 (RELAIS, les 2 firmwares) = power-gate : 1 au réveil, relâché en\\ndeep sleep -> Q1+Q7 (P-MOSFET) coupent le rail +3V3_SW (capteurs, OLED,\\nI2C, pull-ups) pendant la veille. REL2 GPIO12 = POMPE (n3pp, strapping\\nMTDI -> pull-down 10k) ; REL3..REL6 = AUX GPIO16/17/19/23 (extension)."),
 ]
 
 # Sérigraphies PCB : (x, y, texte, taille)
 PCB_TEXTS = [
-    (63, 48.5, "REL1 GPIO13 COMMUN", 1.0),
+    (60, 48.5, "PWR CAPTEURS GPIO13", 1.0),
     (95, 48.5, "REL2 GPIO12 n3pp", 1.0),
     (127, 48.5, "REL3 AUX GPIO16", 1.0),
     (159, 48.5, "REL4 AUX GPIO17", 1.0),
     (191, 48.5, "REL5 AUX GPIO19", 1.0),
     (223, 48.5, "REL6 AUX GPIO23", 1.0),
-    (63, 61.5, "NO COM NC", 0.8),
     (95, 61.5, "NO COM NC", 0.8),
     (127, 61.5, "NO COM NC", 0.8),
     (159, 61.5, "NO COM NC", 0.8),
@@ -557,6 +634,7 @@ PCB_TEXTS = [
     (196, 117.5, "OLED", 0.8),
     (212, 117.5, "I2C x3", 0.8),
     (232, 117.5, "GPIO", 0.8),
+    (227, 128, "JP1 3V3", 0.8),
     (242, 117.5, "RAIL", 0.8),
     (239, 91.5, "SRV G/D", 0.8),
     (239, 106, "SRV H/B", 0.8),
@@ -875,7 +953,7 @@ def gen_project() -> str:
                 [{"netclass": "Relais", "pattern": f"REL{i}_{c}"}
                  for i in range(1, 7) for c in ("COM", "NO", "NC")]
                 + [{"netclass": "Alim", "pattern": n}
-                   for n in ("+5V", "VIN_5V", "GND", "+3V3")])},
+                   for n in ("+5V", "VIN_5V", "GND", "+3V3", "+3V3_SW", "+3V3_IN", "VBAT")])},
         "pcbnew": {"page_layout_descr_file": ""},
         "schematic": {"legacy_lib_dir": "", "legacy_lib_list": []},
         "sheets": [[ROOT_UUID, "Racine"]],

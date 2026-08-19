@@ -1,51 +1,53 @@
 # Feuille d'assemblage — profil n3pp (serre / élevage)
 
 > Générée par `generator/generate.py` — ne pas éditer à la main.
-> Carte commune n3pp + msp rev 0.1 : un seul PCB, deux profils de peuplement.
+> Carte commune n3pp + msp rev 0.2 : un seul PCB, deux profils de peuplement.
 > Le firmware n3pp actuel fonctionne SANS modification sur ce profil.
 
-## À souder (46 composants)
+## À souder (51 composants)
 
 | Réf | Valeur | Description |
 |---|---|---|
 | A1 | ESP32 DevKit V1 | Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15 |
 | C1 | 1000u/16V | Réservoir rail 5V (relais + servos + WiFi) |
-| C3 | 100n | Découplage 3V3 capteurs |
-| C4 | 100n | Découplage 3V3 I2C |
-| D1 | 1N4007 | Diode de roue libre bobine |
+| C3 | 100n | Découplage rail capteurs +3V3_SW |
+| C4 | 100n | Découplage I2C (+3V3_SW) |
+| C5 | 470u/16V | Réservoir rail 3V3 (pointes WiFi en alim batterie/LDO) |
 | D2 | 1N4007 | Diode de roue libre bobine |
 | D5 | 1N5822 | Schottky 3A vers VIN DevKit (anti-retour si USB branché) |
 | J1 | Bornier_5.08 | Entrée 5V alternative (bornier, 1=+5V 2=GND) |
+| JP1 | Jumper | Cavalier J29 <-> rail 3V3 : RETIRER pour flasher en USB une station alimentée par LDO |
 | J2 | Jack 5.5/2.1 | Entrée 5V 3A (jack, centre = +) |
-| J3 | Bornier_5.08 | Bornier charge (1=NO 2=COM 3=NC) |
 | J4 | Bornier_5.08 | Bornier charge (1=NO 2=COM 3=NC) |
 | J9 | JST-XH | DHT n3pp (1=3V3 2=DATA 3=GND) |
-| J14 | Support OLED | OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA) |
+| J14 | Support OLED | OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC=3V3_SW 3=SCL 4=SDA) |
 | J15 | Support I2C libre | Port I2C libre 1 (1=GND 2=VCC 3=SCL 4=SDA) |
 | J16 | Support I2C libre | Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA) |
 | J17 | Support I2C libre | Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA) |
 | J18 | Header GPIO libres | GPIO libres (1=3V3 2=GND 3=EN 4=IO4 5=IO5 6=RX0 7=TX0) |
-| J19 | Rail alim Dupont | Rail alim modules (1=5V 2=5V 3=GND 4=GND 5=3V3 6=3V3) |
-| J22 | Bornier_5.08 | Entrée ADC_A (1=3V3 2=AIN 3=GND) — n3pp: humidite1 (sol) / msp: LUMINOSITEa (LDR) |
-| J23 | Bornier_5.08 | Entrée ADC_B (1=3V3 2=AIN 3=GND) — n3pp: humidite2 (sol) / msp: HumiditeSol (module AO) |
-| J24 | Bornier_5.08 | Entrée ADC_C (1=3V3 2=AIN 3=GND) — n3pp: humidite3 (sol) / msp: LUMINOSITEc (LDR) |
-| J25 | Bornier_5.08 | Entrée ADC_D (1=3V3 2=AIN 3=GND) — n3pp: humidite4 (sol) / msp: LUMINOSITEb (LDR) |
-| J26 | Bornier_5.08 | Entrée ADC_E (1=3V3 2=AIN 3=GND) — n3pp: LUMINOSITE (LDR) / msp: LUMINOSITEd (LDR) |
+| J19 | Rail alim Dupont | Rail alim modules (1=5V 2=5V 3=GND 4=GND 5=3V3_SW 6=3V3_SW — coupé en veille) |
+| J22 | Bornier_5.08 | Entrée ADC_A (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite1 (sol) / msp: LUMINOSITEa (LDR) |
+| J23 | Bornier_5.08 | Entrée ADC_B (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite2 (sol) / msp: HumiditeSol (module AO) |
+| J24 | Bornier_5.08 | Entrée ADC_C (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite3 (sol) / msp: LUMINOSITEc (LDR) |
+| J25 | Bornier_5.08 | Entrée ADC_D (1=3V3_SW 2=AIN 3=GND) — n3pp: humidite4 (sol) / msp: LUMINOSITEb (LDR) |
+| J26 | Bornier_5.08 | Entrée ADC_E (1=3V3_SW 2=AIN 3=GND) — n3pp: LUMINOSITE (LDR) / msp: LUMINOSITEd (LDR) |
 | J27 | Bornier_5.08 | Mesure batterie (1=VBAT 2=GND, pont 2.2k/2.2k -> GPIO36) |
 | J28 | Bornier_5.08 | Distribution 5V (1=+5V 2=GND) |
-| J29 | Bornier_5.08 | Distribution 3V3 (1=+3V3 2=GND) |
-| K1 | SRD-05VDC-SL-C | Relais 5V SPDT 10A (Songle/Sanyou SRD) |
+| J29 | Bornier_5.08 | Entrée LDO batterie OU distribution 3V3, via JP1 (1=3V3 2=GND) |
 | K2 | SRD-05VDC-SL-C | Relais 5V SPDT 10A (Songle/Sanyou SRD) |
-| LED1 | rouge | LED témoin relais ON (DNP si profil batterie) |
+| LED1 | rouge | LED témoin rail capteurs ON (DNP si profil batterie) |
 | LED2 | rouge | LED témoin relais ON (DNP si profil batterie) |
 | LED5 | verte | LED présence 5V (DNP si profil batterie) |
-| Q1 | BC337-40 | Transistor NPN commande relais (1=C 2=B 3=E) |
+| Q1 | BC337-40 | NPN tirant la grille de Q7 (1=C 2=B 3=E) |
 | Q2 | BC337-40 | Transistor NPN commande relais (1=C 2=B 3=E) |
-| R1 | 1k | Résistance base transistor |
+| Q7 | NDP6020P | P-MOSFET logic-level, interrupteur haut du rail capteurs (1=G 2=D 3=S) |
+| Q8 | BS250 | P-MOSFET interrupteur haut du pont batterie (1=D 2=G 3=S) |
+| Q9 | BC337-40 | NPN tirant la grille de Q8 (1=C 2=B 3=E) |
+| R1 | 1k | Base Q1 (commande interrupteur d'alim capteurs) |
 | R2 | 1k | Résistance base transistor |
-| R5 | 10k | Pull-down base (état sûr au boot) |
+| R5 | 10k | Pull-down base Q1 (rail coupé par défaut) |
 | R6 | 10k | Pull-down base (état sûr au boot) |
-| R9 | 1k | Résistance LED témoin (DNP si profil batterie) |
+| R9 | 1k | Résistance LED témoin rail capteurs (DNP si profil batterie) |
 | R10 | 1k | Résistance LED témoin (DNP si profil batterie) |
 | R13 | 1k | Résistance LED présence 5V (DNP si profil batterie) |
 | R18 | 10k | Bas de pont ADC_E (peupler si LDR ; DNP si capteur AO) |
@@ -54,6 +56,9 @@
 | R26 | 4.7k | Pull-up I2C SCL |
 | R34 | 2.2k | Pont batterie haut (N3_BATTERY_R1=2200) |
 | R35 | 2.2k | Pont batterie bas (N3_BATTERY_R2=2180, 2.2k mesurée) |
+| R36 | 100k | Pull-up grille Q7 (rail coupé si GPIO13 flottant) |
+| R37 | 100k | Pull-up grille Q8 vers VBAT (pont coupé par défaut) |
+| R38 | 100k | Base Q9 depuis le rail commuté (mesure active = rail actif) |
 
 Plus : 2 supports femelles 1x15 (A1) — le DevKit s'enfiche, jamais soudé.
 

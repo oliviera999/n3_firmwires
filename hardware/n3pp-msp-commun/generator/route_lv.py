@@ -40,6 +40,39 @@ BOARD_PATH = KICAD / "n3pp-msp-commun.kicad_pcb"
 HAND_NETS: set[str] = set()
 MIN_GAP_MM = 3.0
 
+# Amorces posées AVANT l'autoroutage (conservées comme câblage existant par
+# freerouting, qui route le reste autour). Nécessaire pour AUX6 : le pad 15
+# du DevKit (haut de la colonne A) est pincé sous la zone antenne et
+# freerouting échoue à s'en échapper seul vers R31 (échec reproductible).
+# (net, x0, y0, x1, y1) en mm, F.Cu, 0.4 mm.
+SEED_TRACKS = [
+    ("AUX6_GPIO23", 103.4, 107.0, 108.5, 107.0),   # échappée est du pad A1-15
+    ("AUX6_GPIO23", 212.0, 85.0, 216.0, 85.0),     # approche ouest de R31
+]
+
+
+def apply_seed_tracks():
+    """Pose les amorces sur la carte réelle (idempotent : saute si déjà là)."""
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
+    existing = {(t.GetNetname(), t.GetStart().x, t.GetStart().y)
+                for t in b.GetTracks()}
+    added = 0
+    for net_name, x0, y0, x1, y1 in SEED_TRACKS:
+        key = (net_name, FMM(x0), FMM(y0))
+        if key in existing:
+            continue
+        t = pcbnew.PCB_TRACK(b)
+        t.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
+        t.SetWidth(FMM(0.4))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(b.GetNetsByName()[net_name])
+        b.Add(t)
+        added += 1
+    if added:
+        pcbnew.SaveBoard(str(BOARD_PATH), b)
+    print(f"amorces : {added} posée(s)")
+
 FMM = pcbnew.FromMM
 
 
@@ -251,6 +284,7 @@ def main():
     work = Path(tempfile.mkdtemp())
     dsn, ses = work / "logic.dsn", work / "logic.ses"
 
+    apply_seed_tracks()
     if not export_logic_dsn(dsn):
         sys.exit("échec export DSN")
     run_freerouting(Path(args.jar), dsn, ses)
