@@ -7,6 +7,14 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
   `n3pp-msp-commun` rev 0.2), **jumper bypass fermé par défaut** (ffp5cs, toujours
   alimenté, ne pilote pas le gate) ;
 - bloc solaire TP4056 + 18650 en option de peuplement (msp/n3pp) ;
+- RTC **DS3231** : VCC du module sur **`+3V3_SW`** (coupé en veille — PAS de rail
+  permanent nécessaire) : le chip bascule nativement sur sa **pile bouton** et
+  continue de compter (~3 µA, compensation température maintenue, CR2032 ≈ 8 ans) ;
+  l'I2C est inaccessible sous VPF par conception (pas de fuite vers le rail éteint,
+  pull-ups déjà sur `+3V3_SW`). Au réveil le firmware relit l'heure et resynchronise
+  l'horloge interne (dérive deep sleep de l'ESP32 : minutes/jour → DS3231 ±2 ppm).
+  Peuplement modules ZS-042 : **neutraliser le circuit de charge** (diode+200 Ω prévus
+  LIR2032 — dessouder, monter une CR2032) et retirer la LED d'alim du module.
 - slot **microSD unique** câblé aux deux sites : natif côté S3, et côté WROOM sur des
   nets inutilisés par msp/n3pp (CS=14/US3, CLK=23/AUX1, MOSI=25/AUX2, MISO=12 sans
   pull-up) — **msp et n3pp ont la SD sans rien sacrifier** ; seul ffp5cs-sur-WROOM
