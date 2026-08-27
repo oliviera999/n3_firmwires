@@ -157,7 +157,6 @@ def add_mains_tracks(b):
         ("MAINS_LF", 270, 54, 299, 54), ("MAINS_LF", 299, 54, 303, 50),
         ("MAINS_LF", 303, 50, 303, 46),
     ]
-    ]
     for netname, x0, y0, x1, y1 in psu:
         seg(x0, y0, x1, y1, netname)
     print("pistes secteur ajoutées :", 7 * len(CHANNELS) + len(psu))
