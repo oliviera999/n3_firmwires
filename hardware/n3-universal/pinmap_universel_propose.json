@@ -1,0 +1,160 @@
+{
+  "wroom": {
+    "I2C_SDA": 21,
+    "I2C_SCL": 22,
+    "ADC_A": 32,
+    "ADC_B": 33,
+    "ADC_C": 34,
+    "ADC_D": 35,
+    "ADC_E": 36,
+    "ADC_VBAT": 39,
+    "K1": 16,
+    "K2": 17,
+    "K3": 18,
+    "K4": 19,
+    "AUX1": 23,
+    "AUX2": 25,
+    "SERVO1": 26,
+    "SERVO2": 27,
+    "US1": 4,
+    "US2": 5,
+    "US3": 14,
+    "DHT_INT": 15,
+    "ONEWIRE": 2,
+    "GATE": 13
+  },
+  "s3": {
+    "I2C_SDA": 8,
+    "I2C_SCL": 9,
+    "ADC_A": 1,
+    "ADC_B": 2,
+    "ADC_C": 4,
+    "ADC_D": 5,
+    "ADC_E": 6,
+    "ADC_VBAT": 7,
+    "SD_CS": 10,
+    "SD_MOSI": 12,
+    "SD_CLK": 13,
+    "SD_MISO": 14,
+    "K1": 15,
+    "K2": 16,
+    "K3": 17,
+    "K4": 18,
+    "SERVO1": 21,
+    "SERVO2": 47,
+    "US1": 39,
+    "US2": 40,
+    "US3": 41,
+    "ONEWIRE": 42,
+    "GATE": 3,
+    "DHT_INT": 38,
+    "AUX1": 48,
+    "AUX2": 45
+  },
+  "nets": {
+    "I2C_SDA": {
+      "msp": "OLED/BME280",
+      "n3pp": "OLED/BME280",
+      "ffp5cs": "OLED/DS3231/INA"
+    },
+    "I2C_SCL": {
+      "msp": "OLED/BME280",
+      "n3pp": "OLED/BME280",
+      "ffp5cs": "OLED/DS3231/INA"
+    },
+    "ADC_A": {
+      "msp": "LUMINOSITEa",
+      "n3pp": "Humid1"
+    },
+    "ADC_B": {
+      "msp": "LUMINOSITEb",
+      "n3pp": "Humid2"
+    },
+    "ADC_C": {
+      "msp": "LUMINOSITEc",
+      "n3pp": "Humid3"
+    },
+    "ADC_D": {
+      "msp": "LUMINOSITEd",
+      "n3pp": "Humid4"
+    },
+    "ADC_E": {
+      "msp": "HumiditeSol",
+      "n3pp": "Luminosite",
+      "ffp5cs": "LUMINOSITE (LDR)"
+    },
+    "ADC_VBAT": {
+      "msp": "pontdiv",
+      "n3pp": "pontdiv"
+    },
+    "K1": {
+      "n3pp": "pompe arrosage",
+      "ffp5cs": "POMPE_AQUA"
+    },
+    "K2": {
+      "ffp5cs": "POMPE_RESERV"
+    },
+    "K3": {
+      "ffp5cs": "RADIATEURS"
+    },
+    "K4": {
+      "ffp5cs": "LUMIERE"
+    },
+    "AUX1": {
+      "ffp5cs": "AUX1 (breakout)"
+    },
+    "AUX2": {
+      "ffp5cs": "AUX2 (breakout)"
+    },
+    "SERVO1": {
+      "msp": "SERVOGD (tracker)",
+      "ffp5cs": "SERVO_GROS"
+    },
+    "SERVO2": {
+      "msp": "SERVOHB (tracker)",
+      "ffp5cs": "SERVO_PETITS"
+    },
+    "US1": {
+      "ffp5cs": "ULTRASON_AQUA",
+      "msp": "PLUIE (DO)"
+    },
+    "US2": {
+      "ffp5cs": "ULTRASON_TANK",
+      "msp": "DHT_EXT (legacy, préférer BME280 0x77)"
+    },
+    "US3": {
+      "ffp5cs": "ULTRASON_POTA"
+    },
+    "DHT_INT": {
+      "msp": "DHTPININT",
+      "n3pp": "DHT",
+      "ffp5cs": "DHT_PIN"
+    },
+    "ONEWIRE": {
+      "msp": "TempEau (DS18B20)",
+      "ffp5cs": "DS18B20"
+    },
+    "GATE": {
+      "msp": "RELAIS (gate)",
+      "n3pp": "RELAIS (gate)"
+    },
+    "SD_CS": {
+      "ffp5cs": "SD_CS (S3 only)"
+    },
+    "SD_MOSI": {
+      "ffp5cs": "SD_MOSI (S3 only)"
+    },
+    "SD_CLK": {
+      "ffp5cs": "SD_CLK (S3 only)"
+    },
+    "SD_MISO": {
+      "ffp5cs": "SD_MISO (S3 only)"
+    }
+  },
+  "s3_caveats": {
+    "3": "strapping JTAG-sel : OK si JTAG inutilisé ; pull-up admissible",
+    "45": "strapping VDD_SPI : NE JAMAIS tirer haut au boot (pas de pull-up !)",
+    "38": "LED RGB DevKitC-1 v1.1 : scintillement cosmétique si utilisé",
+    "48": "LED RGB DevKitC-1 v1.0 : scintillement cosmétique si utilisé"
+  }
+}
