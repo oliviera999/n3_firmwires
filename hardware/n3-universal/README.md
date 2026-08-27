@@ -62,8 +62,19 @@ alimentant pompes/chauffage/lumière, l'ESP et tous les périphériques.
   points de mesure panneau / batterie / pompes (shunt 0,01 Ω si branche > 3,2 A).
 - **Délestage firmware** (profil 12 V uniquement) : ~12,0 V alerte, ~11,5 V coupe le
   chauffage, ~11,2 V la lumière, **pompe aquarium coupée en dernier** (support de vie).
-- Ordre de grandeur : électronique 35–95 Wh/j ; une pompe 5 W continue = 120 Wh/j
-  (dimensionnante) → typ. batterie 12 V 40–60 Ah + panneau 150–200 Wc pour l'hiver.
+- **Dimensionnement réel (batterie gel 12 V / 200 Wh, tout discontinu, light sleep
+  ffp5cs — `PowerManager::goToLightSleep` + modem-sleep)** : plancher électronique
+  ~0,25 W (dominé par le buck + AMS1117/LED du DevKit, PAS par l'ESP → choisir un
+  buck à faible Iq, ex. MP1584 ~0,1 mA, plutôt que LM2596/XL4015 ~5-10 mA) ;
+  budget ~22-42 Wh/j sans chauffage → 20-30 % de décharge/jour (durée de vie gel
+  optimale), 2-4 j d'autonomie sans soleil, **panneau 50-80 Wc suffisant** (hiver).
+  **Chauffage interdit sur batterie** (50 Wh/j pour 25 W×2 h) : autorisé uniquement
+  en surplus solaire (bus > ~13,3 V). Délestage gel proposé : 12,4 V pré-alerte,
+  12,2 V alerte + chauffage interdit, 11,9 V lumière + duty pompe réduit, 11,5 V
+  duty minimal vital (poissons), LVD régulateur ~11 V. Un INA226 batterie permet
+  un compteur de coulombs (état de charge réel, mieux que les seuils de tension).
+  ⚠️ **Gel : absorption 14,1-14,4 V max, float 13,5-13,8 V** — une consigne 14,5 V
+  assèche le gel (mort prématurée) : vérifier le profil GEL du régulateur.
 
 Le bloc alim de la carte universelle a donc **trois profils de peuplement** sur les
 mêmes empreintes : (a) 5 V direct, (b) solaire 1S TP4056+18650 (msp/n3pp),
