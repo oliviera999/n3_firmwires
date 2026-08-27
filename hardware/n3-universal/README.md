@@ -87,3 +87,32 @@ alimentant pompes/chauffage/lumière, l'ESP et tous les périphériques.
 Le bloc alim de la carte universelle a donc **trois profils de peuplement** sur les
 mêmes empreintes : (a) 5 V direct, (b) solaire 1S TP4056+18650 (msp/n3pp),
 (c) bus 12 V (ffp5cs solaire). Aucun impact sur le budget GPIO.
+
+## Spécification finale gelée (2026-08-27) — attente du feu vert
+
+Décisions actées avec l'utilisateur :
+1. **230 V intégré** : les **6 canaux relais** sont construits au **standard de la
+   carte 230 V** (zone secteur dédiée, fentes d'isolement fraisées, cuivre Mains
+   ≥ 3 mm — règle `.kicad_dru` + contrôle géométrique indépendant —, pistes 2,5 mm
+   / **2 oz**, routage secteur tracé en dur, sérigraphie DANGER). Un contact au
+   standard 230 V commute aussi bien 12/24 V : les rôles solaires utilisent les
+   mêmes relais sans jamais amener le secteur sur la carte.
+2. **Alim secteur embarquée en option** : module **Hi-Link HLK-20M05 (5 V/3,6 A)
+   socketé** + fusible + varistance sur carte — un seul cordon 220 V. Profils
+   d'alim finaux (mêmes empreintes, peuplement par rôle) : (a) 5 V externe,
+   (b) solaire 1S TP4056+18650 + `+3V3_SW`, (c) bus 12 V (fusible/P-FET/TVS/buck
+   faible Iq), (d) secteur Hi-Link. Pas de fusible sur les circuits COMMUTÉS
+   (protection au tableau + différentiel 30 mA), fusible sur l'entrée secteur
+   de la carte elle-même.
+3. **La carte remplace à terme les 3 cartes existantes** (qui restent gelées et
+   commandables) — la maintenance converge sur n3-universal.
+
+Notes de conception issues des décisions :
+- Sur S3, K5/K6 reprennent les nets AUX (GPIO 48/45) : la topologie de commande
+  relais (1 k base + pull-down 10 k) rend ces broches **sûres au boot** (comme
+  GPIO2/15 sur les cartes actuelles) — les caveats LED/strapping s'adoucissent
+  (LED RGB = simple recopie d'état du relais K5).
+- Option SD-sur-WROOM (env ffp5cs `wroom-sd`) : sacrifie désormais US3 + K5/K6.
+- Estimation : **~260×130 mm, 2 oz**, ~40-60 $ les 5 chez JLCPCB.
+- Contexte élèves : zone secteur assemblée/raccordée sous supervision adulte,
+  boîtier + presse-étoupes obligatoires à l'installation.
