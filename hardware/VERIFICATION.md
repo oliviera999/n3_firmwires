@@ -36,6 +36,18 @@ Détails dimensionnels (mesurés sur les `.kicad_pcb`) :
 Tout est au-dessus des minima JLCPCB (piste/isolement 0,127 mm, via 0,3/0,4 mm,
 perçage 0,2 mm, sérigraphie 0,15 mm) — voir [COMMANDE_JLCPCB.md](COMMANDE_JLCPCB.md).
 
+## n3-universal (rev 0.1, 2026-08-27)
+
+| Contrôle | n3-universal |
+|---|---|
+| **ERC** (erreurs) | **0** |
+| **DRC** violations / pads non connectés / empreintes | **0 / 0 / 0** |
+| **Contrôle 3 mm** secteur ↔ logique (indépendant) | **0 écart** |
+| **Garde anti-dérive** | OK (msp 12 fn + n3pp 9 fn + ffp5cs 16 fn × 2 sites, broches S3 interdites, topologies US/gate/diviseur/SD) |
+| **Sérigraphie** | 0 conflit après tidy |
+| **Gerbers** | zip 10 fichiers, PTH **520** + NPTH 4, marqueur `JLCJLCJLCJLC` au dos |
+| Dimensions | **278 × 120 mm**, **2 oz**, fentes d'isolement + fente sous le corps du Hi-Link |
+
 ## Reproduire chaque contrôle
 
 ```bash

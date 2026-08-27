@@ -771,14 +771,14 @@ PCB_TEXTS = [
     (238, 111, "JP1 BYPASS: FERME=rail permanent (ffp5cs)", 0.8),
     (238, 114, "OTER pour profils batterie (msp/n3pp)", 0.8),
     (204, 121.5, "PONT DIV VBAT (R38/R39 selon profil)", 0.8),
-    (191, 133.5, "JP SD: 1-2=S3 / 2-3=WROOM (wroom-sd)", 0.8),
+    (198, 135.8, "JP SD: 1-2=S3 / 2-3=WROOM (wroom-sd)", 0.8),
     (209, 139.5, "SD", 1.0),
-    (222, 158, "BUS 12V: FUSIBLE LAME 7,5-10A EN AMONT OBLIGATOIRE", 0.8, "B.SilkS"),
+    (222, 154, "BUS 12V: FUSIBLE LAME 7,5-10A EN AMONT OBLIGATOIRE", 0.8, "B.SilkS"),
     (272, 147.5, "VBAT SENSE", 0.8),
     (216, 147.5, "12V IN", 0.8),
     (244, 147.5, "BUCK IN", 0.8),
     (258, 147.5, "BUCK OUT 5V", 0.8),
-    (145, 147.5, "ADC A", 0.8), (164, 147.5, "ADC B", 0.8),
+    (145, 149.2, "ADC A", 0.8), (164, 149.2, "ADC B", 0.8),
     (183, 147.5, "ADC C", 0.8), (202, 147.5, "ADC D", 0.8),
     (170, 155.5, "LDR msp (R pose) / SONDE SOL n3pp (sans R)", 0.7, "B.SilkS"),
     (110, 149.5, "PLUIE msp", 0.8),
@@ -1210,6 +1210,18 @@ def gen_bom():
     out.append(["A1 (supports)", "2", "Support femelle 1x15 P2.54",
                 "monte sur l'empreinte ESP32_DevKit_V1_30pin",
                 "Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé"])
+    out.append(["A2 (supports)", "2", "Support femelle 1x22 P2.54",
+                "monte sur l'empreinte ESP32_S3_DevKitC_1_44pin",
+                "Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu"])
+    out.append(["J35 (module)", "1", "Module microSD SPI 3V3",
+                "s'enfiche sur J35",
+                "Type Catalex 6 broches GND/VCC/MISO/MOSI/SCK/CS"])
+    out.append(["J14/J21/J22/J28 (modules)", "0-4", "DS3231 + INA219/226",
+                "s'enfichent sur les ports I2C",
+                "DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"])
+    out.append(["J36/J37 (module)", "0-1", "Buck 12V->5V faible Iq",
+                "MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT)",
+                "Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"])
     return out
 
 

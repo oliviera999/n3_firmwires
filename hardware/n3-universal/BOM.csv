@@ -88,3 +88,7 @@ R29 R32 R5 R6 R7 R8;6;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull
 R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
 RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;Varistance 300VAC transitoires secteur
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
+A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu
+J35 (module);1;Module microSD SPI 3V3;s'enfiche sur J35;Type Catalex 6 broches GND/VCC/MISO/MOSI/SCK/CS
+J14/J21/J22/J28 (modules);0-4;DS3231 + INA219/226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"
+J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"

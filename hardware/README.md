@@ -9,6 +9,7 @@ avec gardes anti-dérive qui relisent les `#define` des firmwares à chaque pass
 | Dossier | Pour | Charges relais | État |
 |---|---|---|---|
 | [`n3pp-msp-commun/`](n3pp-msp-commun/) | serre **n3pp** OU météo **msp** — un seul PCB, le profil d'assemblage décide | 12/24 V (6 canaux dont 4 extensions) | routée, DRC 0, gerbers v0.1 |
+| [`n3-universal/`](n3-universal/) | **UNIVERSELLE msp + n3pp + ffp5cs** — bi-module WROOM/S3, 6 relais 230 V, 4 profils d'alim (5 V, solaire 1S, bus 12 V, secteur Hi-Link), SD/DS3231/INA | 230 V ≤ 10 A + 12/24 V (6 canaux, zone isolée, **2 oz**) | routée, DRC 0, 3 mm 0, gerbers v0.1 |
 | [`ffp5cs-wroom-prod/`](ffp5cs-wroom-prod/) | aquaponie **ffp5cs** — **bi-module** WROOM **ou** ESP32-S3 (site A2, `PINMAP_S3_CARRIER`) | 12/24 V (4 canaux) | routée, DRC 0, gerbers v0.6 |
 | [`ffp5cs-wroom-prod-230v/`](ffp5cs-wroom-prod-230v/) | aquaponie, charges **secteur** | **230 V ≤ 10 A** (6 canaux, zone isolée, 2 oz) | routée, DRC 0, gerbers v0.3 |
 
