@@ -98,6 +98,25 @@ S3_PRAGMATIC_CAVEATS = {
 # ---------------------------------------------------------------------------
 # 3. Affectations proposées
 # ---------------------------------------------------------------------------
+# Variante « WROOM + SD » : la microSD est possible aussi sur le site A1, pour
+# les unités ffp5cs-sur-WROOM UNIQUEMENT, par partage avec des nets msp/n3pp :
+#   SD_CS=13 (∥GATE : pull-up 100k du gate = CS déselectionnée au repos, non-strapping),
+#   SD_CLK=32 (∥ADC_A), SD_MOSI=33 (∥ADC_B) — 32/33 sont capables de sortie,
+#   SD_MISO=12 (libre ; strapping MTDI : AUCUN pull-up sur cette ligne, socket nu).
+# Limite structurelle : si msp/n3pp voulaient un jour la SD (journal hors-ligne),
+# ce partage casse (gate + SD simultanés) — pour eux, le tampon en flash interne
+# (LittleFS/NVS, ~30 Ko/jour à 1 mesure/5 min) est la solution recommandée.
+# Modélisation : SD_CS/CLK/MOSI ne sont PAS de nouveaux nets — ce sont les nets
+# GATE/ADC_A/ADC_B qui gagnent un rôle ffp5cs supplémentaire ; seul SD_MISO est
+# un net nouveau (GPIO12, libre).
+NETS_WROOM_SD = {k: dict(v) for k, v in NETS.items()
+                 if k not in {"SD_CS", "SD_CLK", "SD_MOSI", "SD_MISO"}}
+NETS_WROOM_SD["GATE"]["ffp5cs"] = "SD_CS (pull-up 100k du gate = CS au repos)"
+NETS_WROOM_SD["ADC_A"]["ffp5cs"] = "SD_CLK"
+NETS_WROOM_SD["ADC_B"]["ffp5cs"] = "SD_MOSI"
+NETS_WROOM_SD["SD_MISO"] = {"ffp5cs": "SD_MISO (GPIO12 : AUCUN pull-up, socket nu)"}
+WROOM_SD_OPTION = {"SD_MISO": 12}
+
 WROOM_MAP = {
     "I2C_SDA": 21, "I2C_SCL": 22,
     "ADC_A": 32, "ADC_B": 33, "ADC_C": 34, "ADC_D": 35, "ADC_E": 36, "ADC_VBAT": 39,
@@ -125,7 +144,7 @@ S3_MAP = {
 # ---------------------------------------------------------------------------
 # 4. Vérifications
 # ---------------------------------------------------------------------------
-def check(map_, pins_avail, adc1, input_only, name, s3=False):
+def check(map_, pins_avail, adc1, input_only, name, s3=False, nets=None):
     errs, warns = [], []
     used = {}
     for net, pin in map_.items():
@@ -138,11 +157,12 @@ def check(map_, pins_avail, adc1, input_only, name, s3=False):
             errs.append(f"{name}: {net} doit être sur ADC1, GPIO{pin} ne l'est pas")
         if net not in ADC_NETS and pin in input_only:
             errs.append(f"{name}: {net} (numérique/sortie) sur broche entrée-seule GPIO{pin}")
-    # nets partagés : firmwares disjoints ?
-    for net, users in NETS.items():
+    # complétude : chaque net du référentiel est affecté
+    ref = nets if nets is not None else NETS
+    for net, users in ref.items():
         if net not in map_ and not (not s3 and net in S3_ONLY_NETS):
             errs.append(f"{name}: net {net} non affecté")
-    for net, users in NETS.items():
+    for net, users in ref.items():
         if len(users) > 1:
             pass  # le partage par rôle est le principe même ; conflit impossible par construction
     free = sorted(pins_avail - set(map_.values()))
@@ -152,12 +172,23 @@ def main():
     report = ["# Étude pinmap « n3-universal » — verdict machine\n",
               "Générée par `etude_pinmap.py` (source de vérité : ce script).\n"]
     all_ok = True
-    for name, (m, avail, adc1, in_only, caveats, s3) in {
-        "WROOM (site A1)": (WROOM_MAP, WROOM_PINS, WROOM_ADC1, WROOM_INPUT_ONLY, WROOM_CAVEATS, False),
-        "S3 pragmatique (site A2)": (S3_MAP, S3_ALL - {11}, S3_ADC1, set(), S3_PRAGMATIC_CAVEATS, True),
-        "S3 stricte (site A2)": (S3_MAP, S3_ALL - S3_STRICT_EXCLUDE, S3_ADC1, set(), {}, True),
+    for name, (m, avail, adc1, in_only, caveats, s3, nets_ref) in {
+        "WROOM (site A1)": (WROOM_MAP, WROOM_PINS, WROOM_ADC1, WROOM_INPUT_ONLY,
+                            WROOM_CAVEATS, False, None),
+        "S3 pragmatique (site A2)": (S3_MAP, S3_ALL - {11}, S3_ADC1, set(),
+                                     S3_PRAGMATIC_CAVEATS, True, None),
+        "S3 stricte (site A2)": (S3_MAP, S3_ALL - S3_STRICT_EXCLUDE, S3_ADC1, set(),
+                                 {}, True, None),
+        "WROOM + SD ffp5cs (option)": (dict(WROOM_MAP, **WROOM_SD_OPTION), WROOM_PINS,
+                                       WROOM_ADC1, WROOM_INPUT_ONLY,
+                                       {**WROOM_CAVEATS,
+                                        13: "net GATE(msp/n3pp) = SD_CS(ffp5cs) — pull-up 100k OK",
+                                        12: "strapping MTDI : ligne MISO SANS pull-up (socket nu)",
+                                        32: "net ADC_A(msp/n3pp) = SD_CLK(ffp5cs)",
+                                        33: "net ADC_B(msp/n3pp) = SD_MOSI(ffp5cs)"},
+                                       True, NETS_WROOM_SD),
     }.items():
-        errs, warns, free = check(m, avail, adc1, in_only, name, s3)
+        errs, warns, free = check(m, avail, adc1, in_only, name, s3, nets_ref)
         status = "✅ TIENT" if not errs else f"❌ {len(errs)} problème(s)"
         report.append(f"\n## {name} — {status}\n")
         nets_count = len(m)
@@ -184,8 +215,12 @@ def main():
     report.append("  à alimenter sur **+3V3_SW** (0,7-1 mA chacun sinon en veille).")
     report.append("- BME280 0x76/0x77, OLED 0x3C : inchangés. 7 périphériques I2C = charge de bus OK à 100 kHz.")
     report.append("\n## microSD\n")
-    report.append("- Slot embarqué **câblé au site S3 uniquement** (GPIO 10/12/13/14) — cohérent avec le")
-    report.append("  firmware ffp5cs (SD = `BOARD_S3` seulement) ; site WROOM : sans SD, GPIO12 reste libre.")
+    report.append("- Slot embarqué **câblé au site S3** (GPIO 10/12/13/14) — cohérent avec le firmware")
+    report.append("  ffp5cs (SD = `BOARD_S3` aujourd'hui) — **et raccordable en option au site WROOM**")
+    report.append("  (variante « WROOM + SD ffp5cs » ci-dessus : CS=13∥GATE, CLK=32∥ADC_A,")
+    report.append("  MOSI=33∥ADC_B, MISO=12 sans pull-up). Réservée aux unités ffp5cs-sur-WROOM ;")
+    report.append("  nécessite d'ouvrir la SD au build `BOARD_WROOM` côté firmware (budget flash OK).")
+    report.append("  Pour un journal hors-ligne msp/n3pp : préférer la flash interne (LittleFS).")
     out = "\n".join(report) + "\n"
     (HERE / "ETUDE_PINMAP.md").write_text(out, encoding="utf-8")
     (HERE / "pinmap_universel_propose.json").write_text(json.dumps(

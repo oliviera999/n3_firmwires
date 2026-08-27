@@ -7,7 +7,9 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
   `n3pp-msp-commun` rev 0.2), **jumper bypass fermé par défaut** (ffp5cs, toujours
   alimenté, ne pilote pas le gate) ;
 - bloc solaire TP4056 + 18650 en option de peuplement (msp/n3pp) ;
-- slot **microSD câblé au site S3 uniquement**, RTC **DS3231** et **2-3 INA219/226**
+- slot **microSD** câblé au site S3 (natif) **et raccordable en option au site WROOM**
+  pour les unités ffp5cs-sur-WROOM (CS=13∥gate, CLK=32∥ADC_A, MOSI=33∥ADC_B,
+  MISO=12 sans pull-up — voir variante dans l'étude), RTC **DS3231** et **2-3 INA219/226**
   sur I2C (INA alimentés par `+3V3_SW`) ;
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
