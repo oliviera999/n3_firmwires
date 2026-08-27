@@ -44,6 +44,37 @@ MIN_GAP_MM = 3.0
 
 FMM = pcbnew.FromMM
 
+# Amorces de routage : stubs posés AVANT le routage complet (freerouting
+# préserve l'existant). Le port I2C J14 + C4 (colonne gauche, pincés entre le
+# bord et le canal relais K1) sont reproductiblement inatteignables sans elles.
+SEED_TRACKS = [
+    ("+3V3_SW", 43, 58.54, 46.5, 58.54),   # J14-2, échappée est
+    ("I2C_SCL", 43, 61.08, 46.5, 61.08),   # J14-3
+    ("I2C_SDA", 43, 63.62, 46.5, 63.62),   # J14-4
+    ("+3V3_SW", 43, 70, 46.5, 70),         # C4-1
+]
+
+
+def apply_seed_tracks():
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
+    existing = {(t.GetNetname(), t.GetStart().x, t.GetStart().y)
+                for t in b.GetTracks()}
+    added = 0
+    for net_name, x0, y0, x1, y1 in SEED_TRACKS:
+        if (net_name, FMM(x0), FMM(y0)) in existing:
+            continue
+        tr = pcbnew.PCB_TRACK(b)
+        tr.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
+        tr.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
+        tr.SetWidth(FMM(0.4))
+        tr.SetLayer(pcbnew.F_Cu)
+        tr.SetNet(b.GetNetsByName()[net_name])
+        b.Add(tr)
+        added += 1
+    if added:
+        pcbnew.SaveBoard(str(BOARD_PATH), b)
+    print(f"amorces : {added} posée(s)")
+
 
 def mk_rule_area(board, x0, y0, x1, y1):
     z = pcbnew.ZONE(board)
@@ -343,6 +374,7 @@ def main():
     work = Path(tempfile.mkdtemp())
     dsn, ses = work / "logic.dsn", work / "logic.ses"
 
+    apply_seed_tracks()
     if not export_logic_dsn(dsn):
         sys.exit("échec export DSN")
     run_freerouting(Path(args.jar), dsn, ses)

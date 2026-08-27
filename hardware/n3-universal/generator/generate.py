@@ -604,7 +604,7 @@ def build_components():
              desc="TVS 18V transitoires bus batterie", sch=(146, 58), pcb=(212, 140, 0),
              nets={"1": "VBAT12_PROT", "2": "GND"}),
         dict(ref="C5", sym="CP", value="470u/25V", fp="CP_Radial_D10.0mm_P5.00mm",
-             desc="Réservoir bus 12V protégé", sch=(146, 62), pcb=(234, 138, 0),
+             desc="Réservoir bus 12V protégé", sch=(146, 62), pcb=(234, 136, 0),
              nets={"1": "VBAT12_PROT", "2": "GND"}),
         dict(ref="J36", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",
