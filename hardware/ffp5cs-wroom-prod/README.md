@@ -5,8 +5,18 @@ Plan PCB **généré depuis le code du firmware** `ffp5cs` (env PlatformIO `wroo
 30 broches** qui intègre tout le câblage aujourd'hui réalisé « en volant » — relais,
 adaptation de niveau des HC-SR04, pull-ups, borniers.
 
+> 🔀 **Bi-module depuis la rev 0.6** : la carte offre un **second site A2** pour un
+> **ESP32-S3-DevKitC-1 (44 broches)** — on peuple **UN SEUL** module, A1 (WROOM) **ou**
+> A2 (S3). Chaque net fonctionnel touche les deux sites ; côté S3 le firmware se
+> compile avec `-DPINMAP_S3_CARRIER` (env `wroom-s3-carrier-test`, section carrier de
+> `ffp5cs/include/pins.h`). Source de vérité S3 : `pinmap_s3_carrier.json`. Le header
+> **J20** expose les GPIO libres du S3 (dont AUX1=IO47 / AUX2=IO42, pendants de J17).
+> ⚠️ Ne PAS flasher un env `carrier` sur le système S3 historique câblé main (ni
+> l'inverse) : les cartographies diffèrent (corrections strapping/PSRAM/LED RGB).
+
 ```
-pinmap.json                  Source de vérité (broches ← ffp5cs/include/pins.h, section WROOM)
+pinmap.json                  Source de vérité site A1 (broches ← ffp5cs/include/pins.h, section WROOM)
+pinmap_s3_carrier.json       Source de vérité site A2 (← pins.h, section PINMAP_S3_CARRIER)
 kicad/ffp5cs-wroom-prod.kicad_pro / .kicad_sch / .kicad_pcb   Projet KiCad (format v8, ouvrable KiCad 8/9/10)
 BOM.csv                      Nomenclature (séparateur ;)
 exports/gerbers-*.zip        Fichiers de fabrication (Gerbers + perçages Excellon)
@@ -67,10 +77,13 @@ HC-SR04, servos et relais sur le rail 5 V.
 
 ## À vérifier avant fabrication (limites connues)
 
-1. **Entraxe du DevKit** : l'empreinte suppose un DevKit V1 **30 broches, rangées
+1. **Entraxe des modules** : l'empreinte A1 suppose un DevKit V1 **30 broches, rangées
    espacées de 25,4 mm** (2 × supports 1×15). Mesurer votre exemplaire ; les variantes
    38 broches (DevKitC) ont un autre brochage → adapter `generate.py` (table `DEVKIT_A/B`).
-2. **Routage (rev 0.5, dimensionné 12/24 V)** : PCB routé par `generator/route_lv.py`
+   L'empreinte A2 suppose un ESP32-S3-DevKitC-1 **44 broches, rangées espacées de
+   22,86 mm** (2 × supports 1×22) — vérifier entraxe ET ordre des broches sur
+   l'exemplaire réel (tables `S3_LEFT/S3_RIGHT`) avant de souder les supports.
+2. **Routage (rev 0.6, dimensionné 12/24 V)** : PCB routé par `generator/route_lv.py`
    (freerouting + vias de couture GND + reliefs thermiques) avec des
    **classes de nets** — contacts relais NO/COM/NC en **2 mm** (≈ 5-6 A continus en
    cuivre 1 oz, marge correcte jusqu'à ~8 A en pointe), rails +5V/VIN/GND en

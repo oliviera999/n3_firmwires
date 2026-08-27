@@ -27,7 +27,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "ffp5cs-wroom-prod"
-REV = "0.5"
+REV = "0.6"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -152,6 +152,23 @@ SYMBOLS["ESP32_DEVKIT_V1_30"] = dict(
     right=[(str(i + 16), DEVKIT_B[i], 7 - i) for i in range(15)],
 )
 
+# ESP32-S3-DevKitC-1 44 broches (site A2 optionnel, un seul module peuplé).
+# Ordre PHYSIQUE haut->bas, antenne en haut : J1 (gauche) = pads 1..22,
+# J3 (droite) = pads 23..44 — VERIFIER sur l'exemplaire reel avant soudure
+# des supports (silk du module = reference).
+S3_LEFT = ["3V3", "3V3", "RST", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO15",
+           "GPIO16", "GPIO17", "GPIO18", "GPIO8", "GPIO3", "GPIO46", "GPIO9",
+           "GPIO10", "GPIO11", "GPIO12", "GPIO13", "GPIO14", "5V", "GND"]
+S3_RIGHT = ["GND", "TX0_43", "RX0_44", "GPIO1", "GPIO2", "GPIO42", "GPIO41",
+            "GPIO40", "GPIO39", "GPIO38", "GPIO37", "GPIO36", "GPIO35",
+            "GPIO0", "GPIO45", "GPIO48", "GPIO47", "GPIO21", "GPIO20",
+            "GPIO19", "GND", "GND"]
+SYMBOLS["ESP32_S3_DEVKITC_44"] = dict(
+    ref="A", w=8,
+    left=[(str(i + 1), S3_LEFT[i], 11 - i) for i in range(22)],
+    right=[(str(i + 23), S3_RIGHT[i], 11 - i) for i in range(22)],
+)
+
 
 def sym_def(name: str, meta: dict) -> str:
     w_mm = meta["w"] * G
@@ -273,6 +290,53 @@ def build_components():
                       fp="ESP32_DevKit_V1_30pin",
                       desc="Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15",
                       sch=(60, 35), pcb=(100, 104, 0), nets=a1_nets))
+    # --- Site A2 optionnel : ESP32-S3-DevKitC-1 (bi-module, un seul peuplé) ---
+    # Les nets fonctionnels sont les MEMES que côté A1 (suffixe = GPIO WROOM
+    # historique) ; le pad S3 visé vient de pinmap_s3_carrier.json / pins.h
+    # (section PINMAP_S3_CARRIER). Broches S3 volontairement non câblées :
+    # strapping (0/3/45/46), USB (19/20), UART0 (43/44), PSRAM octale (35-37),
+    # LED RGB (38/48).
+    a2_nets = {
+        "1": "+3V3", "2": "+3V3", "3": "EN",
+        "4": NET["ULTRASON_AQUA"],           # IO4
+        "5": NET["ULTRASON_POTA"],           # IO5 (carrier : 45 -> 5)
+        "6": NET["ULTRASON_TANK"],           # IO6
+        "7": NET["DHT_PIN"],                 # IO7
+        "8": NET["LUMIERE"],                 # IO15
+        "9": NET["POMPE_AQUA"],              # IO16
+        "10": NET["SERVO_PETITS"],           # IO17
+        "11": NET["POMPE_RESERV"],           # IO18
+        "12": NET["I2C_SDA"],                # IO8
+        "13": None, "14": None,
+        "15": NET["I2C_SCL"],                # IO9
+        "16": "S3_SPARE_IO10", "17": None, "18": None,
+        "19": NET["RADIATEURS"],             # IO13
+        "20": "S3_SPARE_IO14",
+        "21": "VIN_5V", "22": "GND",
+        "23": "GND", "24": None, "25": None,
+        "26": NET["LUMINOSITE"],             # IO1 (carrier : 3 -> 1, ADC1_CH0)
+        "27": "S3_SPARE_IO2",
+        "28": "S3_AUX2_IO42",                # IO42 (carrier : 48 -> 42)
+        "29": NET["ONE_WIRE_BUS"],           # IO41 (carrier : 37 -> 41)
+        "30": "S3_SPARE_IO40", "31": "S3_SPARE_IO39",
+        "32": None, "33": None, "34": None, "35": None, "36": None,
+        "37": None, "38": None,
+        "39": "S3_AUX1_IO47",                # IO47
+        "40": NET["SERVO_GROS"],             # IO21 (carrier : servo gros)
+        "41": None, "42": None, "43": "GND", "44": "GND",
+    }
+    comps.append(dict(ref="A2", sym="ESP32_S3_DEVKITC_44", value="ESP32-S3-DevKitC-1",
+                      fp="ESP32_S3_DevKitC_1_44pin",
+                      desc="Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2)",
+                      sch=(20, 92), pcb=(195, 55, 0), nets=a2_nets))
+    comps.append(dict(
+        ref="J20", sym="CONN_10", value="Header GPIO S3",
+        fp="PinHeader_1x10_P2.54mm_Vertical",
+        desc="GPIO libres site S3 (1=3V3 2=GND 3=EN 4=IO47/AUX1 5=IO42/AUX2 6=IO40 7=IO39 8=IO2 9=IO10 10=IO14)",
+        sch=(20, 110), pcb=(226, 60, 0),
+        nets={"1": "+3V3", "2": "GND", "3": "EN", "4": "S3_AUX1_IO47",
+              "5": "S3_AUX2_IO42", "6": "S3_SPARE_IO40", "7": "S3_SPARE_IO39",
+              "8": "S3_SPARE_IO2", "9": "S3_SPARE_IO10", "10": "S3_SPARE_IO14"}))
     # --- Alimentation 5 V ----------------------------------------------------
     comps += [
         dict(ref="J2", sym="BARREL", value="Jack 5.5/2.1", fp="BarrelJack_Horizontal",
@@ -412,7 +476,7 @@ def build_components():
               "5": "SPARE_GPIO14", "6": "SPARE_GPIO17", "7": "SPARE_GPIO23",
               "8": "SPARE_GPIO25", "9": "SPARE_GPIO32", "10": "SPARE_GPIO35"}))
     # --- Trous de fixation M3 --------------------------------------------------
-    for i, (hx, hy) in enumerate([(45, 50), (185, 50), (45, 140), (185, 140)], 1):
+    for i, (hx, hy) in enumerate([(45, 50), (226, 49), (45, 140), (226, 140)], 1):
         comps.append(dict(ref=f"H{i}", sym=None, value="M3",
                           fp="MountingHole_3.2mm_M3", desc="Trou de fixation M3",
                           sch=None, pcb=(hx, hy, 0), nets={}))
@@ -433,6 +497,7 @@ SCH_TEXTS = [
     (86, 81, "I2C : OLED SSD1306 0x3C + header extension (DS3231 si besoin)."),
     (107, 1, "4 RELAIS 5V — commande ACTIVE HAUT (actuators.h : on() = digitalWrite HIGH).\\nREL1=Pompe aquarium GPIO16, REL2=Pompe réservoir GPIO18,\\nREL3=Chauffage GPIO2, REL4=Lumière GPIO15.\\nGPIO2/GPIO15 = broches de strapping : pull-down base 10k = état sûr au boot."),
     (18, 62, "GPIO libres pour évolutions."),
+    (14, 78, "SITE A2 (option) : ESP32-S3-DevKitC-1, cartographie PINMAP_S3_CARRIER\\n(pins.h). UN SEUL module peuplé : A1 (WROOM) OU A2 (S3).\\nMêmes nets fonctionnels que A1 ; J20 = breakout GPIO S3 (AUX1=IO47, AUX2=IO42)."),
 ]
 
 # Sérigraphies PCB : (x, y, texte, taille)
@@ -458,6 +523,11 @@ PCB_TEXTS = [
     (184, 93, "GPIO", 0.8),
     (52, 100, "5V 3A", 1.2),
     (115, 56, f"ffp5cs wroom-prod carrier v{REV}", 1.5),
+    (206.4, 116, "SITE A2 : ESP32-S3 DevKitC-1", 1.0),
+    (206.4, 120, "UN SEUL MODULE : A1 OU A2", 1.0),
+    (206.4, 124, "PINMAP_S3_CARRIER (pins.h)", 0.8),
+    (206.4, 128, "VERIFIER BROCHAGE MODULE AVANT SOUDURE SUPPORTS", 0.8),
+    (226, 87, "GPIO S3", 0.8),
     (112.7, 95.5, "ANTENNE WIFI : zone degagee (pas de cuivre dessous)", 0.8),
     # Emplacement imposé du numéro de commande JLCPCB (au dos) :
     # sans ce marqueur, le fabricant le place où il veut, parfois
@@ -465,7 +535,7 @@ PCB_TEXTS = [
     (140, 140.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
 ]
 
-BOARD = dict(x0=40, y0=45, x1=190, y1=145)
+BOARD = dict(x0=40, y0=45, x1=230, y1=145)
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +609,7 @@ def gen_schematic() -> str:
   (uuid "{ROOT_UUID}")
   (paper "A3")
   (title_block
-    (title "ffp5cs wroom-prod - carte porteuse ESP32 DevKit V1")
+    (title "ffp5cs wroom-prod - carte porteuse bi-module ESP32 (DevKit V1 / S3-DevKitC-1)")
     (date "2026-07-07")
     (rev "{REV}")
     (company "salle aeree n3")
@@ -604,6 +674,42 @@ def gen_devkit_footprint() -> str:
   (fp_text user "USB" (at 12.7 37.5 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
   (fp_rect (start -2.4 -7.5) (end 27.8 40) (stroke (width 0.05) (type default)) (layer "F.CrtYd"))
+{pad_s}
+)
+'''
+
+
+def gen_s3_footprint() -> str:
+    """Empreinte 2x22 supports femelles pour ESP32-S3-DevKitC-1 (site A2).
+
+    Entraxe rangées 22.86 mm (0.9 in — module 25.5 mm de large, headers en rive).
+    VERIFIER entraxe ET ordre des broches sur l'exemplaire reel avant de souder
+    les supports (v1.0/v1.1 : seule la LED RGB change de broche, pas les headers).
+    """
+    pads = []
+    for n in range(1, 23):    # J1 (colonne gauche), pad 1 en haut
+        pads.append((n, 0.0, (n - 1) * 2.54))
+    for n in range(23, 45):   # J3 (colonne droite), pad 23 en haut
+        pads.append((n, 22.86, (n - 23) * 2.54))
+    pad_s = "\n".join(
+        f'  (pad "{n}" thru_hole circle (at {x} {y}) (size 1.7 1.7) (drill 1.0) '
+        f'(layers "*.Cu" "*.Mask"))' for n, x, y in pads)
+    return f'''(footprint "ESP32_S3_DevKitC_1_44pin"
+  (version 20240108)
+  (generator "generate.py")
+  (layer "F.Cu")
+  (descr "ESP32-S3-DevKitC-1 44 broches sur 2 supports 1x22 2.54mm, entraxe rangees 22.86mm - VERIFIER sur l'exemplaire reel")
+  (tags "ESP32-S3 DevKitC-1")
+  (property "Reference" "REF**" (at 11.43 -11.5 0) (layer "F.SilkS")
+    (effects (font (size 1 1) (thickness 0.15))))
+  (property "Value" "ESP32_S3_DevKitC_1_44pin" (at 11.43 61 0) (layer "F.Fab")
+    (effects (font (size 1 1) (thickness 0.15))))
+  (fp_rect (start -1.4 -10) (end 24.3 59.3) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
+  (fp_text user "ANTENNE" (at 11.43 -7 0) (layer "F.SilkS")
+    (effects (font (size 1 1) (thickness 0.15))))
+  (fp_text user "USB" (at 11.43 57 0) (layer "F.SilkS")
+    (effects (font (size 1 1) (thickness 0.15))))
+  (fp_rect (start -1.9 -10.5) (end 24.8 59.8) (stroke (width 0.05) (type default)) (layer "F.CrtYd"))
 {pad_s}
 )
 '''
@@ -687,6 +793,17 @@ def gen_pcb() -> str:
         '\n    (polygon (pts (xy 97.6 96.5) (xy 127.8 96.5)'
         ' (xy 127.8 102.5) (xy 97.6 102.5)))'
         '\n  )')
+    # Idem pour l'antenne du site A2 (ESP32-S3-DevKitC-1) : le debord antenne
+    # du module arrive au ras du bord haut de la carte (y0=45), zone 45..54.
+    edge += (
+        '\n  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu")'
+        f' (uuid "{uid("antkeepout_s3")}") (hatch edge 0.5)'
+        '\n    (keepout (tracks not_allowed) (vias not_allowed) (pads allowed)'
+        ' (copperpour not_allowed) (footprints allowed))'
+        '\n    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))'
+        '\n    (polygon (pts (xy 192.5 45) (xy 219.5 45)'
+        ' (xy 219.5 54) (xy 192.5 54)))'
+        '\n  )')
     texts = "\n".join(silk_text(i, e) for i, e in enumerate(PCB_TEXTS))
     poly = (f'(polygon (pts (xy {b["x0"]} {b["y0"]}) (xy {b["x1"]} {b["y0"]}) '
             f'(xy {b["x1"]} {b["y1"]}) (xy {b["x0"]} {b["y1"]})))')
@@ -724,7 +841,7 @@ def gen_pcb() -> str:
   )
   (paper "A3")
   (title_block
-    (title "ffp5cs wroom-prod - carte porteuse ESP32 DevKit V1")
+    (title "ffp5cs wroom-prod - carte porteuse bi-module ESP32 (DevKit V1 / S3-DevKitC-1)")
     (date "2026-07-07")
     (rev "{REV}")
     (company "salle aeree n3")
@@ -791,6 +908,9 @@ def gen_bom():
     out.append(["A1 (supports)", "2", "Support femelle 1x15 P2.54",
                 "monte sur l'empreinte ESP32_DevKit_V1_30pin",
                 "Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé"])
+    out.append(["A2 (supports)", "2", "Support femelle 1x22 P2.54",
+                "monte sur l'empreinte ESP32_S3_DevKitC_1_44pin",
+                "Barrettes femelles 22 pts (site S3 optionnel) : à souder seulement si un S3-DevKitC-1 est prévu"])
     return out
 
 
@@ -825,6 +945,8 @@ def main():
     KICAD_DIR.mkdir(parents=True, exist_ok=True)
     devkit_fp = FP_DIR / "ESP32_DevKit_V1_30pin.kicad_mod"
     devkit_fp.write_text(gen_devkit_footprint(), encoding="utf-8")
+    s3_fp = FP_DIR / "ESP32_S3_DevKitC_1_44pin.kicad_mod"
+    s3_fp.write_text(gen_s3_footprint(), encoding="utf-8")
 
     sch = gen_schematic()
     pcb = gen_pcb()

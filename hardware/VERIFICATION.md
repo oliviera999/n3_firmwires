@@ -1,7 +1,8 @@
 # Rapport de vérification — cartes `hardware/`
 
-Instantané du **2026-08-19** (branche `claude/firmware-pcb-generation-wo7wwr`,
-carte commune passée en **rev 0.2** — rail capteurs commuté par GPIO13). Chaque contrôle est
+Instantané du **2026-08-27** (branche `claude/firmware-pcb-generation-wo7wwr`,
+carte commune en **rev 0.2** — rail capteurs commuté par GPIO13 — et carte
+ffp5cs 12/24 V passée en **rev 0.6 bi-module** WROOM/ESP32-S3). Chaque contrôle est
 reproductible avec la commande indiquée — refaire la passe complète avant toute
 commande de PCB (checklist : [TUTO_PCB.md §9](TUTO_PCB.md)).
 
@@ -13,12 +14,12 @@ commande de PCB (checklist : [TUTO_PCB.md §9](TUTO_PCB.md)).
 | **DRC** violations | **0** | **0** | **0** |
 | **DRC** pastilles non connectées | **0** | **0** | **0** |
 | **DRC** erreurs d'empreinte | **0** | **0** | **0** |
-| **Garde anti-dérive** code ↔ plan | OK (21 signaux, 2 firmwares, + topologie power-gate) | OK (16 signaux) | OK (16 signaux) |
+| **Garde anti-dérive** code ↔ plan | OK (21 signaux, 2 firmwares, + topologie power-gate) | OK (16+16 signaux, sites A1 WROOM + A2 S3) | OK (16 signaux) |
 | **Contrôle 3 mm** secteur ↔ logique | n/a | n/a | **0 écart** |
 | **Sérigraphie** : conflits repères/étiquettes | 0 | 0 | 0 |
 | **Sérigraphie** : hauteur / trait des textes | ≥ 1 mm / ≥ 0,15 mm | idem | idem |
 | **Gerbers** : contenu du zip | 10 fichiers (7 couches + PTH/NPTH + job) | idem | idem |
-| **Perçages** PTH + NPTH | 404 + 4 (M3) | 276 + 4 | 378 + 4 |
+| **Perçages** PTH + NPTH | 404 + 4 (M3) | 367 + 4 | 378 + 4 |
 | Marqueur n° de commande (`JLCJLCJLCJLC`, dos) | présent | présent | présent |
 | Vue Fritzing (`.fzz`) | présent | présent | présent |
 
@@ -26,7 +27,7 @@ Détails dimensionnels (mesurés sur les `.kicad_pcb`) :
 
 | | n3pp-msp-commun | ffp5cs-wroom-prod | ffp5cs-wroom-prod-230v |
 |---|---|---|---|
-| Dimensions | 210 × 105 mm (rev 0.2) | 150 × 100 mm | 234 × 110 mm |
+| Dimensions | 210 × 105 mm (rev 0.2) | 190 × 100 mm (rev 0.6 bi-module) | 234 × 110 mm |
 | Piste la plus fine / la plus large | 0,4 / 2,0 mm | 0,4 / 2,0 mm | 0,4 / **2,5** mm |
 | Vias (perçage / pastille) | 0,35 / 0,7 mm | 0,35 / 0,7 mm | 0,3 / 0,5 mm |
 | Perçage composant minimum | 0,75 mm | 0,75 mm | 0,75 mm |
@@ -64,6 +65,20 @@ python3 generator/export_fab.py
 > embarquent leur bibliothèque de symboles (aucune dépendance externe), et
 > KiCad signale simplement qu'elle n'est pas installée sur la machine.
 > Zéro **erreur** est le critère.
+
+## Spécifique rev 0.6 (ffp5cs-wroom-prod, bi-module)
+
+- **Site A2 (ESP32-S3-DevKitC-1)** : le checker vérifie les deux cartographies —
+  section WROOM de `pins.h` contre le site A1 **et** section `PINMAP_S3_CARRIER`
+  contre le site A2 (`pinmap_s3_carrier.json`), plus une liste de broches S3
+  interdites (strapping 0/3/45/46, USB 19/20, UART0 43/44, PSRAM 35-37,
+  LED RGB 38/48) qui ne doivent porter aucun net.
+- **Amorces de routage** (`SEED_TRACKS` de `route_lv.py`) : pads pincés sous les
+  zones antenne (A1-15 `SPARE_GPIO23`, A1-30 `EN`), rive gauche encombrée
+  (`PWR_LED`) et colonne droite du S3 (`ONEWIRE` pad A2-29) — échecs freerouting
+  reproductibles sans elles. Un petit **rectangle d'interdiction de vias**
+  (`VIA_BLOCKS`) neutralise un via posé par freerouting à 0,05 mm d'une piste
+  Alim (court-circuit US_TANK/VIN_5V reproductible).
 
 ## Spécifique rev 0.2 (carte commune)
 

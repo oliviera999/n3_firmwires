@@ -37,6 +37,62 @@ DEVKIT_PADS = {
     "29": "GPIO36_VP", "30": "EN",
 }
 
+# Brochage physique de l'ESP32-S3-DevKitC-1 44 broches, tel que modélisé dans
+# l'empreinte ESP32_S3_DevKitC_1_44pin (pad -> nom). Doit rester aligné avec
+# S3_LEFT/S3_RIGHT de generate.py. Site A2 (option bi-module, rev >= 0.6).
+S3_LEFT = ["3V3", "3V3", "RST", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO15",
+           "GPIO16", "GPIO17", "GPIO18", "GPIO8", "GPIO3", "GPIO46", "GPIO9",
+           "GPIO10", "GPIO11", "GPIO12", "GPIO13", "GPIO14", "5V", "GND"]
+S3_RIGHT = ["GND", "TX0_43", "RX0_44", "GPIO1", "GPIO2", "GPIO42", "GPIO41",
+            "GPIO40", "GPIO39", "GPIO38", "GPIO37", "GPIO36", "GPIO35",
+            "GPIO0", "GPIO45", "GPIO48", "GPIO47", "GPIO21", "GPIO20",
+            "GPIO19", "GND", "GND"]
+S3_PADS = {str(i + 1): S3_LEFT[i] for i in range(22)}
+S3_PADS.update({str(i + 23): S3_RIGHT[i] for i in range(22)})
+
+
+def parse_pins_h_s3_carrier() -> dict[str, int]:
+    """Extrait la section carrier `#if defined(BOARD_S3) && defined(PINMAP_S3_CARRIER)`."""
+    text = PINS_H.read_text(encoding="utf-8")
+    m = re.search(
+        r"#if defined\(BOARD_S3\) && defined\(PINMAP_S3_CARRIER\)(.*?)#elif defined\(BOARD_S3\)",
+        text, re.S)
+    if not m:
+        sys.exit(f"ERREUR: section carrier PINMAP_S3_CARRIER introuvable dans {PINS_H}")
+    section = m.group(1)
+    pins: dict[str, int] = {}
+    for name, val in re.findall(r"constexpr\s+int\s+(\w+)\s*=\s*(\w+)\s*;", section):
+        if val.isdigit():
+            pins[name] = int(val)
+        elif val in pins:
+            pins[name] = pins[val]
+    return pins
+
+
+def extract_fp_pad_nets(pcb: str, fp_name: str) -> dict[str, str] | None:
+    """Nets par pad d'une empreinte du PCB (équilibrage de parenthèses)."""
+    start = pcb.find(f'(footprint "ffp5cs:{fp_name}"')
+    if start < 0:
+        return None
+    depth, end = 0, start
+    for i, ch in enumerate(pcb[start:], start):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    block = pcb[start:end]
+    pad_nets: dict[str, str] = {}
+    for pm in re.finditer(r'\(pad "(\d+)"', block):
+        nxt = block.find('(pad "', pm.end())
+        sub = block[pm.end():nxt if nxt > 0 else len(block)]
+        nm = re.search(r'\(net \d+ "([^"]+)"\)', sub)
+        if nm:
+            pad_nets[pm.group(1)] = nm.group(1)
+    return pad_nets
+
 
 def parse_pins_h_wroom() -> dict[str, int]:
     """Extrait les `constexpr int NAME = N;` de la section #else (ESP32-WROOM)."""
@@ -181,13 +237,61 @@ def main() -> int:
     else:
         errors.append(f"PCB introuvable: {PCB} (lancer generator/generate.py)")
 
+    # 4. Site A2 (ESP32-S3-DevKitC-1, option bi-module) : pins.h (carrier)
+    #    <-> pinmap_s3_carrier.json <-> pads de l'empreinte S3 du PCB.
+    s3_pinmap_path = HW / "pinmap_s3_carrier.json"
+    if s3_pinmap_path.exists():
+        s3_pinmap = json.loads(s3_pinmap_path.read_text(encoding="utf-8"))
+        s3_declared = s3_pinmap["pins"]
+        s3_net_by_pin = s3_pinmap["netByPin"]
+        s3_firmware = parse_pins_h_s3_carrier()
+        for name, gpio in s3_declared.items():
+            if name not in s3_firmware:
+                errors.append(f"pinmap_s3_carrier.json: '{name}' absent de pins.h (carrier)")
+            elif s3_firmware[name] != gpio:
+                errors.append(
+                    f"DERIVE S3: {name} = GPIO{s3_firmware[name]} dans pins.h (carrier) "
+                    f"mais GPIO{gpio} dans pinmap_s3_carrier.json")
+        for name, gpio in s3_firmware.items():
+            if (name not in s3_declared and name != "EAU_POTAGER"
+                    and not name.startswith(("OLED", "SD_"))):
+                errors.append(
+                    f"pins.h (carrier): '{name}' (GPIO{gpio}) non couvert par pinmap_s3_carrier.json")
+        if PCB.exists():
+            pcb = PCB.read_text(encoding="utf-8")
+            s3_pads = extract_fp_pad_nets(pcb, "ESP32_S3_DevKitC_1_44pin")
+            if s3_pads is None:
+                errors.append("PCB: empreinte ESP32_S3_DevKitC_1_44pin (site A2) introuvable")
+            else:
+                for name, net in s3_net_by_pin.items():
+                    gpio_name = f"GPIO{s3_declared[name]}"
+                    expected_pad = next(
+                        (p for p, n in S3_PADS.items() if n == gpio_name), None)
+                    if expected_pad is None:
+                        errors.append(f"PCB: {gpio_name} n'existe pas sur le S3-DevKitC-1 44p")
+                    elif s3_pads.get(expected_pad) != net:
+                        errors.append(
+                            f"PCB site A2: pad {expected_pad} ({gpio_name}) porte "
+                            f"'{s3_pads.get(expected_pad)}' au lieu de '{net}'")
+                # garde-fous : broches interdites jamais câblées côté A2
+                forbidden = {"GPIO0", "GPIO3", "GPIO45", "GPIO46", "GPIO19", "GPIO20",
+                             "GPIO35", "GPIO36", "GPIO37", "GPIO38", "GPIO48",
+                             "TX0_43", "RX0_44"}
+                for pad, gname in S3_PADS.items():
+                    if gname in forbidden and s3_pads.get(pad):
+                        errors.append(
+                            f"PCB site A2: pad {pad} ({gname}) ne doit PAS être câblé "
+                            f"(strapping/USB/UART0/PSRAM/LED), trouvé '{s3_pads[pad]}'")
+    else:
+        errors.append(f"pinmap_s3_carrier.json introuvable: {s3_pinmap_path}")
+
     if errors:
         print("ECHEC — incohérences firmware <-> plan PCB :")
         for e in errors:
             print("  -", e)
         return 1
-    print(f"OK — {len(net_by_pin)} signaux GPIO cohérents entre pins.h (WROOM), "
-          "pinmap.json, le schéma et le PCB.")
+    print(f"OK — {len(net_by_pin)} signaux WROOM (site A1) + {len(s3_net_by_pin)} signaux "
+          "S3 carrier (site A2) cohérents entre pins.h, pinmaps, schéma et PCB.")
     return 0
 
 

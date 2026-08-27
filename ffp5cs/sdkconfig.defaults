@@ -3688,19 +3688,19 @@ CONFIG_MB_TIMER_PORT_ENABLED=y
 # CONFIG_SPIRAM_SPEED_20M is not set
 # CONFIG_SPIRAM_SPEED_120M is not set
 # CONFIG_SPIRAM_SPEED_200M is not set
-# wroom-test / wroom-prod : timeout Task WDT 30 s (Ã©vite reset pendant HTTP/async_tcp)
-# FFP5CS nutilise pas le Bluetooth classique/BLE : libÃ¨re ~56 Ko DRAM (BTDM_RESERVE_DRAM)
-# --- Correctif boot WROOM : panic "Cache error" dans memset â†’ esp_flash_read_chip_id (esp_flash_init) ---
-# Le sdkconfig.defaults embarquÃ© mÃ©lange un export tiers (Tasmota) incohÃ©rent :
+# wroom-test / wroom-prod : timeout Task WDT 30 s (évite reset pendant HTTP/async_tcp)
+# FFP5CS nutilise pas le Bluetooth classique/BLE : libère ~56 Ko DRAM (BTDM_RESERVE_DRAM)
+# --- Correctif boot WROOM : panic "Cache error" dans memset → esp_flash_read_chip_id (esp_flash_init) ---
+# Le sdkconfig.defaults embarqué mélange un export tiers (Tasmota) incohérent :
 #   - CONFIG_ESP32_DEFAULT_CPU_FREQ_240=y mais CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ=160
-#   - CONFIG_ESP32_SPIRAM_SUPPORT=y / CONFIG_SPIRAM_CACHE_WORKAROUND=y alors que SPIRAM est dÃ©sactivÃ©
-# Sur module WROOM 4 Mo sans PSRAM, cela peut casser le dÃ©marrage (accÃ¨s cache invalide trÃ¨s tÃ´t).
+#   - CONFIG_ESP32_SPIRAM_SUPPORT=y / CONFIG_SPIRAM_CACHE_WORKAROUND=y alors que SPIRAM est désactivé
+# Sur module WROOM 4 Mo sans PSRAM, cela peut casser le démarrage (accès cache invalide très tôt).
 CONFIG_ESP32_DEFAULT_CPU_FREQ_240=y
 # CONFIG_ESP32_DEFAULT_CPU_FREQ_80 is not set
 # CONFIG_ESP32_DEFAULT_CPU_FREQ_160 is not set
-# DÃ©sactiver coredump ESP-IDF (Ã©vite "No core dump partition found!" / "Core dump flash config is corrupted!" au boot)
+# Désactiver coredump ESP-IDF (évite "No core dump partition found!" / "Core dump flash config is corrupted!" au boot)
 # Bundle de certificats (requis pour esp_crt_bundle_attach dans OTA TLS)
-# CMN (~200 Ko flash) au lieu de FULL : libÃ¨re plusieurs Ko de DRAM .bss (wroom-test + web async tient le lien)
-# Stack loopTask (Ã©vite stack overflow / stack canary) â€” wroom-prod, wroom-test, wroom-beta
-# v13.81 build local WROOM : 22528 au lieu de 24576 (libÃ¨re ~2 Ko DRAM .bss, lien wroom-test + web async)
+# CMN (~200 Ko flash) au lieu de FULL : libère plusieurs Ko de DRAM .bss (wroom-test + web async tient le lien)
+# Stack loopTask (évite stack overflow / stack canary) — wroom-prod, wroom-test, wroom-beta
+# v13.81 build local WROOM : 22528 au lieu de 24576 (libère ~2 Ko DRAM .bss, lien wroom-test + web async)
 file://sdkconfig_wroom_wdt.txt

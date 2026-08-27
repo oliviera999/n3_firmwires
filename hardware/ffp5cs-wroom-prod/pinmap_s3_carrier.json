@@ -1,0 +1,48 @@
+{
+  "firmware": "ffp5cs",
+  "env": "wroom-s3-carrier-test",
+  "boardDefine": "BOARD_S3 + PINMAP_S3_CARRIER",
+  "module": "ESP32-S3-DevKitC-1 (44 broches, site A2 de la carte bi-module)",
+  "pinsSource": "ffp5cs/include/pins.h (section #if defined(BOARD_S3) && defined(PINMAP_S3_CARRIER))",
+  "pins": {
+    "ULTRASON_AQUA": 4,
+    "ULTRASON_TANK": 6,
+    "ULTRASON_POTA": 5,
+    "LUMINOSITE": 1,
+    "POMPE_AQUA": 16,
+    "POMPE_RESERV": 18,
+    "RADIATEURS": 13,
+    "LUMIERE": 15,
+    "SERVO_GROS": 21,
+    "SERVO_PETITS": 17,
+    "DHT_PIN": 7,
+    "ONE_WIRE_BUS": 41,
+    "I2C_SDA": 8,
+    "I2C_SCL": 9,
+    "AUX1": 47,
+    "AUX2": 42
+  },
+  "netByPin": {
+    "ULTRASON_AQUA": "US_AQUA_GPIO4",
+    "ULTRASON_TANK": "US_TANK_GPIO19",
+    "ULTRASON_POTA": "US_POTA_GPIO33",
+    "LUMINOSITE": "LDR_GPIO34",
+    "POMPE_AQUA": "PUMP_AQUA_GPIO16",
+    "POMPE_RESERV": "PUMP_TANK_GPIO18",
+    "RADIATEURS": "HEATER_GPIO2",
+    "LUMIERE": "LIGHT_GPIO15",
+    "SERVO_GROS": "SERVO_GROS_GPIO12",
+    "SERVO_PETITS": "SERVO_PETITS_GPIO13",
+    "DHT_PIN": "DHT_GPIO27",
+    "ONE_WIRE_BUS": "ONEWIRE_GPIO26",
+    "I2C_SDA": "I2C_SDA_GPIO21",
+    "I2C_SCL": "I2C_SCL_GPIO22",
+    "AUX1": "S3_AUX1_IO47",
+    "AUX2": "S3_AUX2_IO42"
+  },
+  "notes": {
+    "nets": "Les noms de nets restent ceux de la carte (suffixe = GPIO WROOM historique) : chaque net touche le pad WROOM (A1) ET le pad S3 (A2) correspondants — un seul module peuplé à la fois.",
+    "aux": "AUX1/AUX2 côté S3 sortent sur le header J20 (breakout, modules relais externes), comme J17 côté WROOM.",
+    "exclusions": "S3 non câblés volontairement : 0/3/45/46 (strapping), 19/20 (USB), 26-32 (flash), 33-37 (PSRAM octale), 38/48 (LED RGB selon révision), 43/44 (UART0). SD (10/11/12/14) non câblée sur la carte."
+  }
+}

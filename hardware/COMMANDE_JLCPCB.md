@@ -71,8 +71,8 @@ composants du catalogue JLCPCB et un fichier de placement.
 
 | | **n3pp + msp commune** | **ffp5cs 12/24 V** | **ffp5cs 230 V** |
 |---|---|---|---|
-| Zip | `gerbers-n3pp-msp-commun-v0.2.zip` | `gerbers-ffp5cs-wroom-prod-v0.5.zip` | `gerbers-ffp5cs-wroom-prod-230v-v0.3.zip` |
-| Dimensions | 210 × 105 mm | 150 × 100 mm | 234 × 110 mm |
+| Zip | `gerbers-n3pp-msp-commun-v0.2.zip` | `gerbers-ffp5cs-wroom-prod-v0.6.zip` | `gerbers-ffp5cs-wroom-prod-230v-v0.3.zip` |
+| Dimensions | 210 × 105 mm | 190 × 100 mm | 234 × 110 mm |
 | Cuivre | 1 oz | 1 oz | 🔸 **2 oz** |
 | Confirm production file | No | No | 🔸 **Yes** (fentes fraisées) |
 | Remarque à la commande | — | — | 🔸 « Internal slots in Edge.Cuts are intentional isolation slots between mains channels, please mill as drawn » |
