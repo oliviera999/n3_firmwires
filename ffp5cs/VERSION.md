@@ -12,6 +12,21 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.27 - 2026-08-19
+
+### Cartographie S3 « carrier » pour la carte porteuse bi-module (option A)
+
+- **Nouvelle section `Pins` sélectionnée par `-DPINMAP_S3_CARRIER`** (`include/pins.h`) pour un
+  ESP32-S3-DevKitC-1 enfiché sur le **site A2** de la carte porteuse `hardware/ffp5cs-wroom-prod`
+  rev ≥ 0.6 (bi-module WROOM/S3, un seul module peuplé). La cartographie S3 **historique**
+  (système S3 câblé main, en production) est **inchangée** — le flag évite de casser son câblage
+  via une OTA. Nouvel env `wroom-s3-carrier-test` (extends `wroom-s3-test`).
+- Corrections intégrées à la cartographie carrier (pièges relevés lors de l'étude du PCB) :
+  `ONE_WIRE_BUS` 37→**41** (GPIO 33-37 = PSRAM octale sur modules R8), `ULTRASON_POTA` 45→**5**
+  et `LUMINOSITE` 3→**1** (45/3 = broches de strapping ; 1 = ADC1_CH0), `AUX2` 48→**42**
+  (LED RGB du DevKitC-1 sur 48 en v1.0 / 38 en v1.1).
+- Aucun changement de comportement pour tous les envs existants (WROOM et S3 historique).
+
 ## Version 15.25 - 2026-07-27
 
 ### Corps POST canonique : fin de la troncature silencieuse des clés d'angles servo (audit F2a)

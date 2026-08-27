@@ -74,6 +74,8 @@ jobs:
           # déclaré dans ESP32PWM.h) est levée en rétrogradant la lib servo à 1.2.1
           # pour le seul périmètre S3 (cf. [env:wroom-s3-base] dans ffp5cs/platformio.ini).
           - { name: ffp5cs-wroom-s3-test, dir: ffp5cs, env: wroom-s3-test }
+          # Cartographie carrier (carte porteuse bi-module rev 0.6, PINMAP_S3_CARRIER)
+          - { name: ffp5cs-wroom-s3-carrier-test, dir: ffp5cs, env: wroom-s3-carrier-test }
           # Variantes S3 (PROFILE_TEST) : PSRAM (+ patch IWDT), sans patch, DevKit 8 Mo,
           # USB-JTAG. Toutes bénéficient de la rétrogradation servo 1.2.1 (wroom-s3-base).
           - { name: ffp5cs-wroom-s3-test-psram, dir: ffp5cs, env: wroom-s3-test-psram }

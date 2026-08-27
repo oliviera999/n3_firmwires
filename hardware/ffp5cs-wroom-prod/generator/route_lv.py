@@ -42,6 +42,42 @@ MIN_GAP_MM = 3.0
 
 FMM = pcbnew.FromMM
 
+# Amorces de routage : pistes stubs posées AVANT le routage complet (freerouting
+# préserve le câblage existant et route autour). Sans elles, le pad 15 de A1
+# (SPARE_GPIO23), pincé sous la zone antenne, est reproductiblement inroutable —
+# même pathologie que AUX6_GPIO23 sur la carte commune n3pp-msp.
+SEED_TRACKS = [
+    ("SPARE_GPIO23", 125.4, 104.0, 128.6, 104.0),   # échappée est du pad A1-15
+    ("SPARE_GPIO23", 174.5, 97.24, 178.0, 97.24),   # approche ouest de J17-7
+    ("EN", 96.5, 104.0, 100.0, 104.0),              # échappée ouest du pad A1-30 (aussi pincé sous l'antenne)
+    ("PWR_LED", 41.8, 89.46, 44.0, 89.46),          # échappée ouest du pad LED5-2 (le sud traverse le pad GND de LED5)
+    ("PWR_LED", 64.5, 134.0, 68.16, 134.0),         # approche ouest de R13-2
+    ("ONEWIRE_GPIO26", 217.86, 70.24, 221.5, 70.24),  # échappée est du pad A2-29 (colonne droite S3 serrée)
+]
+
+
+def apply_seed_tracks():
+    """Pose les amorces sur la carte réelle (idempotent : saute si déjà là)."""
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
+    existing = {(t.GetNetname(), t.GetStart().x, t.GetStart().y)
+                for t in b.GetTracks()}
+    added = 0
+    for net_name, x0, y0, x1, y1 in SEED_TRACKS:
+        key = (net_name, FMM(x0), FMM(y0))
+        if key in existing:
+            continue
+        t = pcbnew.PCB_TRACK(b)
+        t.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
+        t.SetWidth(FMM(0.4))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(b.GetNetsByName()[net_name])
+        b.Add(t)
+        added += 1
+    if added:
+        pcbnew.SaveBoard(str(BOARD_PATH), b)
+    print(f"amorces : {added} posée(s)")
+
 
 def mk_rule_area(board, x0, y0, x1, y1):
     z = pcbnew.ZONE(board)
@@ -53,6 +89,30 @@ def mk_rule_area(board, x0, y0, x1, y1):
     pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
     chain = pcbnew.SHAPE_LINE_CHAIN()
     for px, py in pts:
+        chain.Append(pcbnew.VECTOR2I(FMM(px), FMM(py)))
+    chain.SetClosed(True)
+    z.Outline().AddOutline(chain)
+    board.Add(z)
+    return z
+
+
+# Petits rectangles où les VIAS sont interdits (pistes autorisées) dans la copie
+# routée : freerouting y pose sinon un via à ~0,05 mm d'une piste Alim voisine
+# (courts-circuits US_TANK/VIN_5V reproductibles, netclass ignorée par son DSN).
+VIA_BLOCKS = [
+    (160.2, 117.9, 163.2, 121.0),   # via US_TANK collé à la piste VIN_5V (B.Cu)
+]
+
+
+def mk_via_block(board, x0, y0, x1, y1):
+    z = pcbnew.ZONE(board)
+    z.SetIsRuleArea(True)
+    z.SetDoNotAllowTracks(False)
+    z.SetDoNotAllowVias(True)
+    z.SetDoNotAllowCopperPour(True)
+    z.SetLayerSet(pcbnew.LSET.AllCuMask(2))
+    chain = pcbnew.SHAPE_LINE_CHAIN()
+    for px, py in [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]:
         chain.Append(pcbnew.VECTOR2I(FMM(px), FMM(py)))
     chain.SetClosed(True)
     z.Outline().AddOutline(chain)
@@ -77,11 +137,13 @@ def export_logic_dsn(dsn_path: Path):
                     n_removed += 1
         # bandes le long des bords : l'autorouteur doit respecter
         # l'edge clearance de 0.5 mm (le DSN ne la transmet pas)
-        bx0, by0, bx1, by1 = 40, 45, 190, 145
+        bx0, by0, bx1, by1 = 40, 45, 230, 145
         mk_rule_area(b, bx0, by0, bx1, by0 + 0.7)
         mk_rule_area(b, bx0, by1 - 0.7, bx1, by1)
         mk_rule_area(b, bx0, by0, bx0 + 0.7, by1)
         mk_rule_area(b, bx1 - 0.7, by0, bx1, by1)
+        for vx0, vy0, vx1, vy1 in VIA_BLOCKS:
+            mk_via_block(b, vx0, vy0, vx1, vy1)
         # retire les zones GND de la copie : freerouting doit router GND en
         # pistes réelles (sinon il se repose sur un plan idéal et le
         # remplissage réel laisse des pads GND dans des poches isolées)
@@ -95,7 +157,7 @@ def export_logic_dsn(dsn_path: Path):
 
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
-           "-do", str(ses), "-mp", "80", "-dr"]
+           "-do", str(ses), "-mp", "90", "-dr"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)
@@ -168,7 +230,7 @@ def add_stitching_vias(b):
              in copper_items(b) if n != "GND"]
     nets = b.GetNetsByName()
     slots_margin = []
-    spots = [(x, y) for x in range(46, 187, 12) for y in range(50, 141, 10)]
+    spots = [(x, y) for x in range(46, 227, 12) for y in range(50, 141, 10)]
     added = 0
     for x, y in spots:
         if any(sx0 <= x <= sx1 and sy0 <= y <= sy1 for sx0, sy0, sx1, sy1 in slots_margin):
@@ -251,6 +313,7 @@ def main():
     work = Path(tempfile.mkdtemp())
     dsn, ses = work / "logic.dsn", work / "logic.ses"
 
+    apply_seed_tracks()
     if not export_logic_dsn(dsn):
         sys.exit("échec export DSN")
     run_freerouting(Path(args.jar), dsn, ses)

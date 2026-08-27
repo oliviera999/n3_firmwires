@@ -1,5 +1,6 @@
 Refs;Qte;Valeur;Empreinte;Description
 A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15
+A2;1;ESP32-S3-DevKitC-1;ESP32_S3_DevKitC_1_44pin;Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2)
 C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + HC-SR04)
 C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos
 C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs
@@ -19,6 +20,7 @@ J17;1;Header GPIO libres;PinHeader_1x10_P2.54mm_Vertical;GPIO libres (1=3V3 2=GN
 J18;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)
 J19;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)
 J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +)
+J20;1;Header GPIO S3;PinHeader_1x10_P2.54mm_Vertical;GPIO libres site S3 (1=3V3 2=GND 3=EN 4=IO47/AUX1 5=IO42/AUX2 6=IO40 7=IO39 8=IO2 9=IO10 10=IO14)
 J3 J4 J5 J6;4;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge (1=NO 2=COM 3=NC)
 J7;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)
 J8;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND)
@@ -46,3 +48,4 @@ R27;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont diviseur
 R5 R6 R7 R8;4;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot)
 R10 R11 R12 R9;4;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
+A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes femelles 22 pts (site S3 optionnel) : à souder seulement si un S3-DevKitC-1 est prévu
