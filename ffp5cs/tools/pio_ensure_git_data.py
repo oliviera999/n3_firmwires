@@ -95,19 +95,23 @@ def ensure_git_data():
             except Exception:
                 pass
 
-        ref_file = git_dir / PIO_BUILD_REF
-        ref_file.parent.mkdir(parents=True, exist_ok=True)
-        ref_file.write_text(rev_hex + "\n", encoding="utf-8")
-
         head_content = head_file.read_text(encoding="utf-8")
+        ref_file = git_dir / PIO_BUILD_REF
         if head_content.strip() == "ref: " + PIO_BUILD_REF:
+            ref_file.parent.mkdir(parents=True, exist_ok=True)
+            ref_file.write_text(rev_hex + "\n", encoding="utf-8")
             return
-        # HEAD déjà sur une branche nommée : CMake lit la révision sans aide.
-        # La bascule pio-build n'est nécessaire QU'EN detached HEAD (submodule,
-        # checkout de commit) — sinon elle laissait le dépôt sur pio-build
-        # entre deux builds et les commits suivants partaient dessus.
+        # HEAD déjà sur une branche nommée : CMake lit la révision sans aide,
+        # et on ne crée PAS refs/heads/pio-build (la branche est interdite par
+        # les règles du dépôt ; l'écrire inconditionnellement la faisait
+        # réapparaître à chaque build). La ref + bascule ne servent QU'EN
+        # detached HEAD (submodule, checkout de commit) — sinon elles
+        # laissaient le dépôt sur pio-build entre deux builds et les commits
+        # suivants partaient dessus.
         if head_content.strip().startswith("ref: refs/heads/"):
             return
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text(rev_hex + "\n", encoding="utf-8")
         backup.write_text(head_content, encoding="utf-8")
         head_file.write_text("ref: " + PIO_BUILD_REF + "\n", encoding="utf-8")
         print("[pre-script] HEAD -> refs/heads/pio-build pour CMake (revision:", rev_hex[:12] + ", restauré au prochain build)")
