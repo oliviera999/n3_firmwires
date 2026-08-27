@@ -110,8 +110,8 @@ def export_logic_dsn(dsn_path: Path):
 
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
-           "-do", str(ses), "-mp", "200", "-dr"]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
+           "-do", str(ses), "-mp", "24", "-dr"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=3300)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)
     if not ses.exists():
@@ -146,14 +146,17 @@ def add_mains_tracks(b):
     # Bloc PSU secteur : J27 (250/255.08,46) -> F1 (262,44)/(262,66.5)
     # -> RV1 (270,50)/(270,55) -> HLK PS1 (300,46)=L / (291,46)=N.
     psu = [
-        ("MAINS_L", 250, 46, 252, 44), ("MAINS_L", 252, 44, 262, 44),
-        ("MAINS_LF", 262, 66.5, 266, 62), ("MAINS_LF", 266, 62, 266, 52),
-        ("MAINS_LF", 266, 52, 270, 50),
-        ("MAINS_LF", 270, 50, 280, 44), ("MAINS_LF", 280, 44, 296, 44),
-        ("MAINS_LF", 296, 44, 300, 46),
-        ("MAINS_N", 255.08, 46, 255.08, 55), ("MAINS_N", 255.08, 55, 270, 55),
-        ("MAINS_N", 270, 55, 285, 55), ("MAINS_N", 285, 55, 291, 50),
-        ("MAINS_N", 291, 50, 291, 46),
+        ("MAINS_L", 250, 46, 250, 42.5), ("MAINS_L", 250, 42.5, 266, 42.5),
+        ("MAINS_L", 266, 42.5, 266, 44),
+        ("MAINS_N", 255.08, 46, 255.08, 58), ("MAINS_N", 255.08, 58, 253, 60),
+        ("MAINS_N", 253, 60, 253, 62),
+        ("MAINS_N", 255.08, 50, 290, 50), ("MAINS_N", 290, 50, 294, 46),
+        ("MAINS_LF", 266, 66.5, 260, 66.5), ("MAINS_LF", 260, 66.5, 258, 64),
+        ("MAINS_LF", 258, 64, 258, 62),
+        ("MAINS_LF", 266, 66.5, 270, 66.5), ("MAINS_LF", 270, 66.5, 270, 54),
+        ("MAINS_LF", 270, 54, 299, 54), ("MAINS_LF", 299, 54, 303, 50),
+        ("MAINS_LF", 303, 50, 303, 46),
+    ]
     ]
     for netname, x0, y0, x1, y1 in psu:
         seg(x0, y0, x1, y1, netname)
