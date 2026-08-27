@@ -76,6 +76,11 @@ jobs:
           - { name: ffp5cs-wroom-s3-test, dir: ffp5cs, env: wroom-s3-test }
           # Cartographie carrier (carte porteuse bi-module rev 0.6, PINMAP_S3_CARRIER)
           - { name: ffp5cs-wroom-s3-carrier-test, dir: ffp5cs, env: wroom-s3-carrier-test }
+          # Carte porteuse universelle n3-universal (PINMAP_UNIVERSAL, 3 firmwares)
+          - { name: ffp5cs-wroom-universal-test, dir: ffp5cs, env: wroom-universal-test }
+          - { name: ffp5cs-wroom-s3-universal-test, dir: ffp5cs, env: wroom-s3-universal-test }
+          - { name: msp-universal-test, dir: msp, env: esp32dev_universal_test }
+          - { name: n3pp-universal-test, dir: n3pp, env: esp32dev_universal_test }
           # Variantes S3 (PROFILE_TEST) : PSRAM (+ patch IWDT), sans patch, DevKit 8 Mo,
           # USB-JTAG. Toutes bénéficient de la rétrogradation servo 1.2.1 (wroom-s3-base).
           - { name: ffp5cs-wroom-s3-test-psram, dir: ffp5cs, env: wroom-s3-test-psram }

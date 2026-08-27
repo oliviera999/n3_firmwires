@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.70** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.71** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.70** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.71 | 2026-08-27 | **Cartographie `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal** (un seul PCB pour msp/n3pp/ffp5cs). Nouveau bloc de broches dans `n3pp_config.h` sélectionné par `-DPINMAP_UNIVERSAL` (env `esp32dev_universal_test`, ajouté à la CI) : GPIO13 (gate) et I2C inchangés ; **pompe → 16 (canal relais K1 embarqué de la carte)**, sondes sol 1-4 → 32/33/34/35 (nets ADC partagés avec les LDR msp), Luminosite → 36, DHT → 15, pontdiv → 39. **Aucun changement pour les envs existants.** |
 | 4.70 | 2026-08-19 | **Phase 2 BME280 : envoi de la pression atmosphérique au serveur.** Nouveau champ POST `Pression` (hPa, 1 décimale, `pressionAir` du BME280 détecté en v4.69). Envoyé **vide** quand aucun BME280 n'est présent (serres DHT) : le serveur (n3_serveur ≥ 6.39.0, colonne nullable `n3ppData*.Pression`) mappe une valeur non numérique sur NULL — aucun changement de contrat pour les serres existantes, et un serveur pas encore à jour ignore simplement le champ inconnu. `postPreview` synchronisé. |
 | 4.69 | 2026-08-19 | **BME280 en remplacement du DHT (détection auto, repli DHT).** Même mécanique que msp v2.73 via la nouvelle lib partagée `shared/n3_bme280` (pattern ffp5cs `USE_AIR_SENSOR_AUTO`) : sonde 0x76 au setup, détecté -> lectures temp/hum par le BME280 (bornes et fallbacks existants conservés), absent -> chemin DHT inchangé. Pression (hPa, `pressionAir`) lue et journalisée, envoi serveur en phase 2. |
 | 4.68 | 2026-07-27 | **Correctif OTA (audit `docs/AUDIT_BUGS_2026-07.md`, constat F3) : une metadata illisible ne passe plus pour « deja a jour » (`n3_common` 1.8.4).** `compareVersions` ignorait le retour de `sscanf` : une version distante non parsable en tete (prefixe `v`, chaine vide, champ JSON d'un autre type) laissait les composantes a 0, donc etait vue comme `0.0.0` -> toujours <= la version locale -> « Deja a jour ». Une metadata malformee immobilisait ainsi **silencieusement** toute la flotte, sans le moindre message d'erreur. Nouveau `parseVersion()` (echec si moins de DEUX composantes lisibles — le format a deux composantes du depot reste valide, PATCH absent = 0) et garde explicite dans `n3OtaCheck` : la version illisible est desormais journalisee en ERREUR et remontee a `onUpdateEnd` avec sa valeur, au lieu de se confondre avec un firmware a jour. |

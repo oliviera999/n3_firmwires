@@ -10,7 +10,7 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "2.74"
+#define FIRMWARE_VERSION "2.75"
 
 // Schema serveur : HTTPS par defaut (Vague 1 audit 2026-07).
 // Rollback HTTP : definir USE_HTTP_ENDPOINTS au build (-DUSE_HTTP_ENDPOINTS).
@@ -22,6 +22,26 @@
 #endif
 
 // --- Pins ---
+#if defined(PINMAP_UNIVERSAL)
+// Carte porteuse n3-universal (hardware/n3-universal) : nets partages entre les
+// 3 firmwares — source de verite pinmap_universel_propose.json, garde anti-derive
+// hardware/n3-universal/tools/. GPIO13 (gate +3V3_SW), OneWire (2) et I2C (21/22)
+// sont inchanges ; le reste s'aligne sur les nets universels.
+#define RELAIS 13        // net GATE (rail capteurs commute)
+#define LUMINOSITEa 32   // net ADC_A (partage Humid1 n3pp)
+#define LUMINOSITEb 33   // net ADC_B (partage Humid2 n3pp)
+#define LUMINOSITEc 34   // net ADC_C (partage Humid3 n3pp)
+#define LUMINOSITEd 35   // net ADC_D (partage Humid4 n3pp)
+#define SERVOGD 26       // net SERVO1 (partage SERVO_GROS ffp5cs)
+#define SERVOHB 27       // net SERVO2 (partage SERVO_PETITS ffp5cs)
+#define DHTPININT 15     // net DHT_INT (commun aux 3 firmwares)
+#define DHTTYPEINT DHT11
+#define DHTPINEXT 5      // net US2 (partage ULTRASON_TANK ffp5cs) — legacy, preferer BME280 0x77
+#define DHTTYPEEXT DHT11
+#define HumiditeSol 36   // net ADC_E (partage Luminosite n3pp / LDR ffp5cs)
+#define PLUIE 4          // net US1 (partage ULTRASON_AQUA ffp5cs)
+#define pontdiv 39       // net ADC_VBAT (diviseur commute)
+#else
 #define RELAIS 13
 #define LUMINOSITEa 33
 #define LUMINOSITEb 34
@@ -36,6 +56,7 @@
 #define HumiditeSol 32
 #define PLUIE 27
 #define pontdiv N3_PONTDIV_PIN
+#endif
 
 // --- Servos ---
 const int minAngleServoGD = 1;

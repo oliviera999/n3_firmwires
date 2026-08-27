@@ -12,6 +12,21 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.28 - 2026-08-27
+
+### Cartographies `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal
+
+- **Deux nouvelles sections `Pins`** dans `include/pins.h`, sélectionnées par
+  `-DPINMAP_UNIVERSAL` : site **A1 WROOM** et site **A2 ESP32-S3-DevKitC-1** de la carte
+  UNIVERSELLE `hardware/n3-universal` (un seul PCB pour msp/n3pp/ffp5cs, 6 canaux relais au
+  standard 230 V, 4 profils d'alim, microSD bi-site, DS3231, INA). Envs `wroom-universal-test`
+  et `wroom-s3-universal-test` (ajoutés à la CI).
+- Côté S3 : SD native (10/12/13/14), **K5/K6 (=AUX1/AUX2) embarqués** sur GPIO 48/45
+  (commande via base 1 k + pull-down 10 k, sûre au boot — même topologie que GPIO2/15 des
+  cartes historiques). Côté WROOM : constantes SD définies pour la future option `wroom-sd`
+  (lignes sur les nets US3/AUX1/AUX2 + GPIO12).
+- **Aucun changement** pour les envs existants (S3 historique câblé main, cartes rev 0.6 et 230 V).
+
 ## Version 15.27 - 2026-08-19
 
 ### Cartographie S3 « carrier » pour la carte porteuse bi-module (option A)

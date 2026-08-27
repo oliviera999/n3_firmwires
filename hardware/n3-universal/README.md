@@ -23,6 +23,32 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
 
+## Réalisation (rev 0.1 — générée)
+
+```
+generator/generate.py        Régénère schéma + PCB (non routé) + BOM + empreintes locales
+generator/route_universal.py Pipeline de routage : secteur EN DUR (relais + PSU Hi-Link),
+                             freerouting pour la logique, vias de couture GND, thermiques
+generator/tidy_silkscreen.py / export_fab.py   Sérigraphie + gerbers normalisés
+tools/check_pinmap_vs_firmware.py  Garde anti-dérive : 3 firmwares x 2 sites + topologies
+kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm du reste)
+```
+
+- **Carte 278 × 120 mm, 2 oz** — zone secteur en bande haute (6 relais + coin PSU
+  Hi-Link, fentes fraisées, frontière y71-73), logique en dessous, rangée de
+  borniers en bande basse.
+- **Sites A1 (WROOM 2×15) / A2 (S3-DevKitC-1 2×22)** — un seul module peuplé ;
+  antennes dégagées (keepouts) ; entraxes à VERIFIER sur l'exemplaire réel.
+- **Firmwares** : sections `PINMAP_UNIVERSAL` (msp 2.75, n3pp 4.71, ffp5cs 15.28),
+  envs `esp32dev_universal_test` / `wroom-universal-test` / `wroom-s3-universal-test`
+  (tous en CI). Garde anti-dérive machine sur les 4 combinaisons.
+- **microSD** : slot unique — S3 natif par défaut (JP2/3/4 en 1-2), WROOM via
+  `wroom-sd` (JP en 2-3) ; MISO câblé en direct aux deux sites.
+- **Profils d'alim par peuplement** : (a) 5 V jack/bornier ; (b) solaire 1S
+  (TP4056+18650 hors carte, gate JP1 ôté, diviseur 100k/100k) ; (c) bus 12 V
+  (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/27k) ;
+  (d) secteur Hi-Link 20M05 (J27 + fusible T1A + varistance embarqués).
+
 ## Contenu
 
 - `etude_pinmap.py` — **source de vérité** : union des connecteurs, nets partagés

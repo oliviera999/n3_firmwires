@@ -1,0 +1,90 @@
+Refs;Qte;Valeur;Empreinte;Description
+A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15
+A2;1;ESP32-S3-DevKitC-1;ESP32_S3_DevKitC_1_44pin;Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2)
+C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + HC-SR04)
+C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos
+C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs
+C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 I2C
+C5;1;470u/25V;CP_Radial_D10.0mm_P5.00mm;Réservoir bus 12V protégé
+D1 D2 D3 D4 D6 D7;6;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine
+D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché)
+D8;1;P6KE18A;D_DO-201AD_P15.24mm_Horizontal;TVS 18V transitoires bus batterie
+F1;1;T1A 5x20;Fuse_5x20_Horizontal;Fusible entrée secteur du module alim (temporisé 1A)
+H1 H2 H3 H4;4;M3;MountingHole_3.2mm_M3;Trou de fixation M3
+J1;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée 5V alternative (bornier, 1=+5V 2=GND)
+J10;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT11/DHT22 (1=3V3 2=DATA 3=GND)
+J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)
+J12;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;LDR déportée entre 3V3 et l'ADC (1=3V3 2=ADC)
+J13;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA)
+J14;1;Support I2C ext;PinSocket_1x04_P2.54mm_Vertical;Extension I2C — ex. module DS3231 (1=GND 2=VCC 3=SCL 4=SDA)
+J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=+5V 3=GND)
+J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=GND)
+J17;1;Header service;PinHeader_1x06_P2.54mm_Vertical;Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle
+J18;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND)
+J19;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND)
+J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +)
+J20;1;Header alim;PinHeader_1x06_P2.54mm_Vertical;Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3_SW)
+J21;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)
+J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)
+J25;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil
+J26;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)
+J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;ENTREE SECTEUR 230V (1=L 2=N) — ZONE DANGER
+J28;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA)
+J29;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;Module pluie DO msp (1=3V3_SW 2=DO 3=GND) — net US1, rôles disjoints
+J23 J24 J3 J4 J5 J6;6;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge 230V (1=NC 2=COM 3=NO)
+J30;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT externe msp (1=3V3_SW 2=DATA 3=GND) — net US2, rôles disjoints
+J31;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_A (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
+J32;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_B (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
+J33;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_C (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
+J34;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_D (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
+J35;1;Support module microSD;PinSocket_1x06_P2.54mm_Vertical;Module microSD SPI 3V3 (1=GND 2=VCC 3=MISO 4=MOSI 5=SCK 6=CS)
+J36;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Vers buck IN (module MP1584/XL4015 sur entretoises : 1=+12V 2=GND)
+J37;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Depuis buck OUT 5V (1=+5V 2=GND)
+J7;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)
+J8;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND)
+J9;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 POTA (1=5V 2=TRIG 3=ECHO 4=GND)
+JP1;1;Jumper BYPASS;PinHeader_1x03_P2.54mm_Vertical;"BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)"
+JP2;1;Jumper SD CS;PinHeader_1x03_P2.54mm_Vertical;"Source CS : 1-2 = S3 (IO10, défaut) ; 2-3 = WROOM (US3, env wroom-sd)"
+JP3;1;Jumper SD SCK;PinHeader_1x03_P2.54mm_Vertical;"Source SCK : 1-2 = S3 (IO13, défaut) ; 2-3 = WROOM (K5, env wroom-sd)"
+JP4;1;Jumper SD MOSI;PinHeader_1x03_P2.54mm_Vertical;"Source MOSI : 1-2 = S3 (IO12, défaut) ; 2-3 = WROOM (K6, env wroom-sd)"
+K1 K2 K3 K4 K5 K6;6;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT 10A/250VAC (Songle/Sanyou SRD)
+LED1 LED2 LED3 LED4 LED6 LED7;6;rouge;LED_D5.0mm;LED témoin relais ON
+LED5;1;verte;LED_D5.0mm;LED présence 5V
+PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous)
+Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E)
+Q10;1;BC337-40;TO-92_Inline;Driver diviseur (1=C 2=B 3=E)
+Q11;1;NDP6020P;TO-220-3_Vertical;Anti-inversion P-MOSFET (1=D=entrée 2=G 3=S=sortie)
+Q7;1;NDP6020P;TO-220-3_Vertical;P-MOSFET rail capteurs (1=G 2=D 3=S)
+Q8;1;BC337-40;TO-92_Inline;Driver gate (1=C 2=B 3=E)
+Q9;1;BS250;TO-92_Inline;P-MOSFET coupure haute du diviseur (1=D 2=G 3=S)
+R1 R2 R28 R3 R31 R4;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor
+R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED présence 5V
+R14;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 AQUA
+R15;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 TANK
+R16;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 POTA
+R17;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho AQUA (5V->3V3)
+R18;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho TANK (5V->3V3)
+R19;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho POTA (5V->3V3)
+R20;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo gros
+R21;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo petits
+R23;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up data DHT11
+R24;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up bus 1-Wire DS18B20
+R25;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SDA
+R26;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SCL
+R27;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont diviseur LDR (GPIO34 = entrée seule ADC)
+R34;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base commande gate (GPIO13)
+R35;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille P-MOSFET (rail OFF par défaut)
+R36;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille BS250 (diviseur OFF par défaut)
+R37;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base driver diviseur (actif quand +3V3_SW présent)
+R38;1;100k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Haut du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=100k)"
+R39;1;27k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=27k)"
+R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND
+R43;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_A (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
+R44;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_B (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
+R45;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_C (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
+R46;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_D (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
+R47;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up DHT ext (POSER sur unités msp uniquement)
+R29 R32 R5 R6 R7 R8;6;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot)
+R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
+RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;Varistance 300VAC transitoires secteur
+A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
