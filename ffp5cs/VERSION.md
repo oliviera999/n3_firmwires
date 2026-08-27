@@ -26,6 +26,10 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
   cartes historiques). Côté WROOM : constantes SD définies pour la future option `wroom-sd`
   (lignes sur les nets US3/AUX1/AUX2 + GPIO12).
 - **Aucun changement** pour les envs existants (S3 historique câblé main, cartes rev 0.6 et 230 V).
+- **Outillage** : `pio_ensure_git_data.py` ne bascule plus HEAD sur `pio-build` quand le dépôt
+  est déjà sur une branche nommée (la bascule n'est utile qu'en detached HEAD/submodule) —
+  elle laissait le dépôt sur `pio-build` entre deux builds, en violation de la règle de
+  branches du dépôt, et les commits suivants partaient dessus.
 
 ## Version 15.27 - 2026-08-19
 

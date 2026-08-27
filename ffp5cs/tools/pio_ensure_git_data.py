@@ -102,6 +102,12 @@ def ensure_git_data():
         head_content = head_file.read_text(encoding="utf-8")
         if head_content.strip() == "ref: " + PIO_BUILD_REF:
             return
+        # HEAD déjà sur une branche nommée : CMake lit la révision sans aide.
+        # La bascule pio-build n'est nécessaire QU'EN detached HEAD (submodule,
+        # checkout de commit) — sinon elle laissait le dépôt sur pio-build
+        # entre deux builds et les commits suivants partaient dessus.
+        if head_content.strip().startswith("ref: refs/heads/"):
+            return
         backup.write_text(head_content, encoding="utf-8")
         head_file.write_text("ref: " + PIO_BUILD_REF + "\n", encoding="utf-8")
         print("[pre-script] HEAD -> refs/heads/pio-build pour CMake (revision:", rev_hex[:12] + ", restauré au prochain build)")
