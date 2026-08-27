@@ -50761,14 +50761,6 @@
 		(uuid "d3edef76-3088-4c27-9671-b3c96350c793")
 	)
 	(segment
-		(start 96.5 110)
-		(end 100 110)
-		(width 0.4)
-		(layer "F.Cu")
-		(net 11)
-		(uuid "eff6f56d-1bd9-4e05-bdd1-556f41394e71")
-	)
-	(segment
 		(start 229.409 98.6758)
 		(end 194.7828 98.6758)
 		(width 0.4)

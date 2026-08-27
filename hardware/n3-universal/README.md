@@ -18,7 +18,7 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - slot **microSD unique** câblé aux deux sites : natif côté S3, et côté WROOM sur des
   nets inutilisés par msp/n3pp (CS=14/US3, CLK=23/AUX1, MOSI=25/AUX2, MISO=12 sans
   pull-up) — **msp et n3pp ont la SD sans rien sacrifier** ; seul ffp5cs-sur-WROOM
-  arbitre par env de build (`wroom-sd` : SD contre US_POTA+AUX), RTC **DS3231** et **2-3 INA219/226**
+  arbitre par env de build (futur env `wroom-sd`, à créer au besoin : SD contre US_POTA+AUX), RTC **DS3231** et **2-3 INA219/226**
   sur I2C (INA alimentés par `+3V3_SW`) ;
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
@@ -43,7 +43,7 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
   envs `esp32dev_universal_test` / `wroom-universal-test` / `wroom-s3-universal-test`
   (tous en CI). Garde anti-dérive machine sur les 4 combinaisons.
 - **microSD** : slot unique — S3 natif par défaut (JP2/3/4 en 1-2), WROOM via
-  `wroom-sd` (JP en 2-3) ; MISO câblé en direct aux deux sites.
+  le futur env `wroom-sd` (JP en 2-3 ; constantes SD déjà en place dans `pins.h`) ; MISO câblé en direct aux deux sites.
 - **Profils d'alim par peuplement** : (a) 5 V jack/bornier ; (b) solaire 1S
   (TP4056+18650 hors carte, gate JP1 ôté, diviseur 100k/100k) ; (c) bus 12 V
   (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/27k) ;
@@ -138,7 +138,7 @@ Notes de conception issues des décisions :
   relais (1 k base + pull-down 10 k) rend ces broches **sûres au boot** (comme
   GPIO2/15 sur les cartes actuelles) — les caveats LED/strapping s'adoucissent
   (LED RGB = simple recopie d'état du relais K5).
-- Option SD-sur-WROOM (env ffp5cs `wroom-sd`) : sacrifie désormais US3 + K5/K6.
+- Option SD-sur-WROOM (futur env ffp5cs `wroom-sd`) : sacrifie désormais US3 + K5/K6.
 - Estimation : **~260×130 mm, 2 oz**, ~40-60 $ les 5 chez JLCPCB.
 - Contexte élèves : zone secteur assemblée/raccordée sous supervision adulte,
   boîtier + presse-étoupes obligatoires à l'installation.
