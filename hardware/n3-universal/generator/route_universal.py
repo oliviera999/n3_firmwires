@@ -58,9 +58,10 @@ SEED_TRACKS = [
     # SCL : J14-3 -> J21-3
     ("I2C_SCL", 43, 61.08, 44.7, 62.8), ("I2C_SCL", 44.7, 62.8, 44.7, 83.4),
     ("I2C_SCL", 44.7, 83.4, 43, 85.08),
-    # SDA : J14-4 -> J21-4
-    ("I2C_SDA", 43, 63.62, 46.2, 65.8), ("I2C_SDA", 46.2, 65.8, 46.2, 86),
-    ("I2C_SDA", 46.2, 86, 43, 87.62),
+    # SDA : J14-4 -> J21-4 — en B.Cu (les intervalles VCC/SCL/SDA s'entrelacent,
+    # une dorsale doit changer de face ; pads traversants = pas de via nécessaire)
+    ("I2C_SDA", 43, 63.62, 46.2, 65.8, "B"), ("I2C_SDA", 46.2, 65.8, 46.2, 86, "B"),
+    ("I2C_SDA", 46.2, 86, 43, 87.62, "B"),
     # EN : pad A1-30 pincé sous la zone antenne, échappée ouest
     ("EN", 96.5, 110, 100, 110),
 ]
@@ -71,14 +72,16 @@ def apply_seed_tracks():
     existing = {(t.GetNetname(), t.GetStart().x, t.GetStart().y)
                 for t in b.GetTracks()}
     added = 0
-    for net_name, x0, y0, x1, y1 in SEED_TRACKS:
+    for entry in SEED_TRACKS:
+        net_name, x0, y0, x1, y1 = entry[:5]
+        layer = pcbnew.B_Cu if len(entry) > 5 and entry[5] == "B" else pcbnew.F_Cu
         if (net_name, FMM(x0), FMM(y0)) in existing:
             continue
         tr = pcbnew.PCB_TRACK(b)
         tr.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
         tr.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
         tr.SetWidth(FMM(0.4))
-        tr.SetLayer(pcbnew.F_Cu)
+        tr.SetLayer(layer)
         tr.SetNet(b.GetNetsByName()[net_name])
         b.Add(tr)
         added += 1
