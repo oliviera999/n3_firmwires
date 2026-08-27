@@ -47,11 +47,22 @@ FMM = pcbnew.FromMM
 # Amorces de routage : stubs posés AVANT le routage complet (freerouting
 # préserve l'existant). Le port I2C J14 + C4 (colonne gauche, pincés entre le
 # bord et le canal relais K1) sont reproductiblement inatteignables sans elles.
+# La colonne I2C gauche (J14/C4/J21) est murée par les contacts SECTEUR de K1
+# (classe Mains, 3 mm) : on la câble ENTIEREMENT en dur (verticales simples),
+# freerouting préserve ces pistes et raccorde le reste du net par J22.
 SEED_TRACKS = [
-    ("+3V3_SW", 43, 58.54, 46.5, 58.54),   # J14-2, échappée est
-    ("I2C_SCL", 43, 61.08, 46.5, 61.08),   # J14-3
-    ("I2C_SDA", 43, 63.62, 46.5, 63.62),   # J14-4
-    ("+3V3_SW", 43, 70, 46.5, 70),         # C4-1
+    # dorsale +3V3_SW : J14-2 -> C4-1 -> J21-2
+    ("+3V3_SW", 43, 58.54, 41.3, 58.54), ("+3V3_SW", 41.3, 58.54, 41.3, 70),
+    ("+3V3_SW", 41.3, 70, 43, 70),
+    ("+3V3_SW", 41.3, 70, 41.3, 82.54), ("+3V3_SW", 41.3, 82.54, 43, 82.54),
+    # SCL : J14-3 -> J21-3
+    ("I2C_SCL", 43, 61.08, 44.7, 62.8), ("I2C_SCL", 44.7, 62.8, 44.7, 83.4),
+    ("I2C_SCL", 44.7, 83.4, 43, 85.08),
+    # SDA : J14-4 -> J21-4
+    ("I2C_SDA", 43, 63.62, 46.2, 65.8), ("I2C_SDA", 46.2, 65.8, 46.2, 86),
+    ("I2C_SDA", 46.2, 86, 43, 87.62),
+    # EN : pad A1-30 pincé sous la zone antenne, échappée ouest
+    ("EN", 96.5, 110, 100, 110),
 ]
 
 
