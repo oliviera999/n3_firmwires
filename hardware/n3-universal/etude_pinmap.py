@@ -98,23 +98,29 @@ S3_PRAGMATIC_CAVEATS = {
 # ---------------------------------------------------------------------------
 # 3. Affectations proposées
 # ---------------------------------------------------------------------------
-# Variante « WROOM + SD » : la microSD est possible aussi sur le site A1, pour
-# les unités ffp5cs-sur-WROOM UNIQUEMENT, par partage avec des nets msp/n3pp :
-#   SD_CS=13 (∥GATE : pull-up 100k du gate = CS déselectionnée au repos, non-strapping),
-#   SD_CLK=32 (∥ADC_A), SD_MOSI=33 (∥ADC_B) — 32/33 sont capables de sortie,
-#   SD_MISO=12 (libre ; strapping MTDI : AUCUN pull-up sur cette ligne, socket nu).
-# Limite structurelle : si msp/n3pp voulaient un jour la SD (journal hors-ligne),
-# ce partage casse (gate + SD simultanés) — pour eux, le tampon en flash interne
-# (LittleFS/NVS, ~30 Ko/jour à 1 mesure/5 min) est la solution recommandée.
-# Modélisation : SD_CS/CLK/MOSI ne sont PAS de nouveaux nets — ce sont les nets
-# GATE/ADC_A/ADC_B qui gagnent un rôle ffp5cs supplémentaire ; seul SD_MISO est
-# un net nouveau (GPIO12, libre).
+# Variante « WROOM + SD universelle » : le slot microSD (unique, câblé en dur)
+# monte sur des nets que msp et n3pp N'UTILISENT PAS — ils gardent donc TOUTES
+# leurs fonctions, SD comprise, sans arbitrage :
+#   SD_CS   = GPIO14 (net US3 — ultrason potager, ffp5cs seulement)
+#   SD_CLK  = GPIO23 (net AUX1 — breakout, ffp5cs seulement)
+#   SD_MOSI = GPIO25 (net AUX2 — breakout, ffp5cs seulement)
+#   SD_MISO = GPIO12 (broche libre ; strapping MTDI : AUCUN pull-up, socket nu)
+# Seul ffp5cs-sur-WROOM doit choisir, PAR ENV DE BUILD (mécanisme PINMAP_* déjà
+# en place) : env « wroom-sd » = SD active, renonce à US_POTA + AUX1/AUX2 ;
+# env standard = 3 ultrasons + AUX, pas de SD. ffp5cs-sur-S3 n'arbitre rien
+# (SD native sur 10/12/13/14 du site A2).
+# Intégrité SPI : les lignes portent des branches vers JST US3 / header AUX
+# (stubs) -> limiter l'horloge SD à ~10 MHz (défaut lib 4 MHz : OK).
 NETS_WROOM_SD = {k: dict(v) for k, v in NETS.items()
                  if k not in {"SD_CS", "SD_CLK", "SD_MOSI", "SD_MISO"}}
-NETS_WROOM_SD["GATE"]["ffp5cs"] = "SD_CS (pull-up 100k du gate = CS au repos)"
-NETS_WROOM_SD["ADC_A"]["ffp5cs"] = "SD_CLK"
-NETS_WROOM_SD["ADC_B"]["ffp5cs"] = "SD_MOSI"
-NETS_WROOM_SD["SD_MISO"] = {"ffp5cs": "SD_MISO (GPIO12 : AUCUN pull-up, socket nu)"}
+NETS_WROOM_SD["US3"].update({"msp": "SD_CS (option SD)", "n3pp": "SD_CS (option SD)"})
+NETS_WROOM_SD["US3"]["ffp5cs"] = "ULTRASON_POTA — ou SD_CS en env wroom-sd"
+NETS_WROOM_SD["AUX1"].update({"msp": "SD_CLK (option SD)", "n3pp": "SD_CLK (option SD)"})
+NETS_WROOM_SD["AUX1"]["ffp5cs"] = "AUX1 — ou SD_CLK en env wroom-sd"
+NETS_WROOM_SD["AUX2"].update({"msp": "SD_MOSI (option SD)", "n3pp": "SD_MOSI (option SD)"})
+NETS_WROOM_SD["AUX2"]["ffp5cs"] = "AUX2 — ou SD_MOSI en env wroom-sd"
+NETS_WROOM_SD["SD_MISO"] = {"msp": "SD_MISO", "n3pp": "SD_MISO",
+                            "ffp5cs": "SD_MISO (GPIO12 : AUCUN pull-up, socket nu)"}
 WROOM_SD_OPTION = {"SD_MISO": 12}
 
 WROOM_MAP = {
@@ -179,13 +185,13 @@ def main():
                                      S3_PRAGMATIC_CAVEATS, True, None),
         "S3 stricte (site A2)": (S3_MAP, S3_ALL - S3_STRICT_EXCLUDE, S3_ADC1, set(),
                                  {}, True, None),
-        "WROOM + SD ffp5cs (option)": (dict(WROOM_MAP, **WROOM_SD_OPTION), WROOM_PINS,
+        "WROOM + SD universelle (option)": (dict(WROOM_MAP, **WROOM_SD_OPTION), WROOM_PINS,
                                        WROOM_ADC1, WROOM_INPUT_ONLY,
                                        {**WROOM_CAVEATS,
-                                        13: "net GATE(msp/n3pp) = SD_CS(ffp5cs) — pull-up 100k OK",
-                                        12: "strapping MTDI : ligne MISO SANS pull-up (socket nu)",
-                                        32: "net ADC_A(msp/n3pp) = SD_CLK(ffp5cs)",
-                                        33: "net ADC_B(msp/n3pp) = SD_MOSI(ffp5cs)"},
+                                        14: "net US3 = SD_CS — ffp5cs-WROOM arbitre par env (wroom-sd)",
+                                        23: "net AUX1 = SD_CLK — idem",
+                                        25: "net AUX2 = SD_MOSI — idem",
+                                        12: "strapping MTDI : ligne MISO SANS pull-up (socket nu)"},
                                        True, NETS_WROOM_SD),
     }.items():
         errs, warns, free = check(m, avail, adc1, in_only, name, s3, nets_ref)
@@ -215,12 +221,14 @@ def main():
     report.append("  à alimenter sur **+3V3_SW** (0,7-1 mA chacun sinon en veille).")
     report.append("- BME280 0x76/0x77, OLED 0x3C : inchangés. 7 périphériques I2C = charge de bus OK à 100 kHz.")
     report.append("\n## microSD\n")
-    report.append("- Slot embarqué **câblé au site S3** (GPIO 10/12/13/14) — cohérent avec le firmware")
-    report.append("  ffp5cs (SD = `BOARD_S3` aujourd'hui) — **et raccordable en option au site WROOM**")
-    report.append("  (variante « WROOM + SD ffp5cs » ci-dessus : CS=13∥GATE, CLK=32∥ADC_A,")
-    report.append("  MOSI=33∥ADC_B, MISO=12 sans pull-up). Réservée aux unités ffp5cs-sur-WROOM ;")
-    report.append("  nécessite d'ouvrir la SD au build `BOARD_WROOM` côté firmware (budget flash OK).")
-    report.append("  Pour un journal hors-ligne msp/n3pp : préférer la flash interne (LittleFS).")
+    report.append("- Slot **unique**, câblé au site S3 (natif, GPIO 10/12/13/14) ET au site WROOM sur")
+    report.append("  CS=14(US3), CLK=23(AUX1), MOSI=25(AUX2), MISO=12 (sans pull-up).")
+    report.append("- **msp et n3pp ne renoncent à RIEN** : US3/AUX1/AUX2 ne sont utilisés que par ffp5cs.")
+    report.append("- **ffp5cs-sur-WROOM arbitre par env de build** : `wroom-sd` = SD active (renonce à")
+    report.append("  US_POTA + AUX1/AUX2) ; env standard = 3 ultrasons + AUX, sans SD. En S3 : pas d'arbitrage.")
+    report.append("- Côté firmware : ouvrir la SD hors `BOARD_S3` (budget flash OK) ; pour msp/n3pp,")
+    report.append("  ajouter un module de journal (lib partagée) — la flash interne (LittleFS) reste")
+    report.append("  une alternative sans matériel. Horloge SPI ≤ ~10 MHz (stubs vers JST/headers).")
     out = "\n".join(report) + "\n"
     (HERE / "ETUDE_PINMAP.md").write_text(out, encoding="utf-8")
     (HERE / "pinmap_universel_propose.json").write_text(json.dumps(

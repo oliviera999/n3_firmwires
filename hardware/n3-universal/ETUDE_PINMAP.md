@@ -27,16 +27,16 @@ Générée par `etude_pinmap.py` (source de vérité : ce script).
 - ❌ S3 stricte (site A2): GPIO48 (AUX1) hors des broches admissibles
 - ❌ S3 stricte (site A2): GPIO45 (AUX2) hors des broches admissibles
 
-## WROOM + SD ffp5cs (option) — ✅ TIENT
+## WROOM + SD universelle (option) — ✅ TIENT
 
 - 23 nets affectés, 0 broche(s) libre(s) : []
 - ⚠️ Broches à précaution documentée :
   - GPIO2 (ONEWIRE) : strapping : éviter pull-up fort pendant le flash UART
   - GPIO12 (SD_MISO) : strapping MTDI : ligne MISO SANS pull-up (socket nu)
-  - GPIO13 (GATE) : net GATE(msp/n3pp) = SD_CS(ffp5cs) — pull-up 100k OK
+  - GPIO14 (US3) : net US3 = SD_CS — ffp5cs-WROOM arbitre par env (wroom-sd)
   - GPIO15 (DHT_INT) : strapping : doit être haut au boot (pull-up OK)
-  - GPIO32 (ADC_A) : net ADC_A(msp/n3pp) = SD_CLK(ffp5cs)
-  - GPIO33 (ADC_B) : net ADC_B(msp/n3pp) = SD_MOSI(ffp5cs)
+  - GPIO23 (AUX1) : net AUX1 = SD_CLK — idem
+  - GPIO25 (AUX2) : net AUX2 = SD_MOSI — idem
 
 ## Nets partagés entre rôles (firmwares disjoints par construction)
 
@@ -66,9 +66,11 @@ Générée par `etude_pinmap.py` (source de vérité : ce script).
 
 ## microSD
 
-- Slot embarqué **câblé au site S3** (GPIO 10/12/13/14) — cohérent avec le firmware
-  ffp5cs (SD = `BOARD_S3` aujourd'hui) — **et raccordable en option au site WROOM**
-  (variante « WROOM + SD ffp5cs » ci-dessus : CS=13∥GATE, CLK=32∥ADC_A,
-  MOSI=33∥ADC_B, MISO=12 sans pull-up). Réservée aux unités ffp5cs-sur-WROOM ;
-  nécessite d'ouvrir la SD au build `BOARD_WROOM` côté firmware (budget flash OK).
-  Pour un journal hors-ligne msp/n3pp : préférer la flash interne (LittleFS).
+- Slot **unique**, câblé au site S3 (natif, GPIO 10/12/13/14) ET au site WROOM sur
+  CS=14(US3), CLK=23(AUX1), MOSI=25(AUX2), MISO=12 (sans pull-up).
+- **msp et n3pp ne renoncent à RIEN** : US3/AUX1/AUX2 ne sont utilisés que par ffp5cs.
+- **ffp5cs-sur-WROOM arbitre par env de build** : `wroom-sd` = SD active (renonce à
+  US_POTA + AUX1/AUX2) ; env standard = 3 ultrasons + AUX, sans SD. En S3 : pas d'arbitrage.
+- Côté firmware : ouvrir la SD hors `BOARD_S3` (budget flash OK) ; pour msp/n3pp,
+  ajouter un module de journal (lib partagée) — la flash interne (LittleFS) reste
+  une alternative sans matériel. Horloge SPI ≤ ~10 MHz (stubs vers JST/headers).
