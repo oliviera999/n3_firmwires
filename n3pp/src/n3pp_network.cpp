@@ -1,12 +1,14 @@
 #include "n3pp_network.h"
 #include "n3pp_globals.h"
 #include <Arduino_JSON.h>
+#include <time.h>
 #include "n3_wifi.h"
 #include "n3_data.h"
 #include "n3_mail.h"
 #include "n3_notify.h"
 #include "n3_defaults.h"
 #include "n3_outputs_json.h"
+#include "n3_time.h"
 
 static const uint16_t OUTPUTS_FETCH_DELAY_MS = 250;
 
@@ -17,6 +19,15 @@ void HeureSansWifi();
 using N3Outputs::readIntByKey;
 using N3Outputs::tryReadIntByKey;
 using N3Outputs::readStringByKey;
+
+/** Epoch pour HMAC : preferer l'horloge systeme (NTP) a ESP32Time NVS. */
+static unsigned long hmacEpochSeconds() {
+  if (n3TimeHasPlausibleEpoch()) {
+    return static_cast<unsigned long>(time(nullptr));
+  }
+  const unsigned long epochNow = static_cast<unsigned long>(rtc.getEpoch());
+  return (epochNow > N3_TIME_MIN_VALID_EPOCH) ? epochNow : 0UL;
+}
 
 void datatobdd() {
   Serial.println("DATATOBDD!!!");
@@ -61,10 +72,9 @@ void datatobdd() {
   cfg.apiKey = API_KEY;
   cfg.fields = fields;
   cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
-  // Auth HMAC FFP3 si API_SIG_SECRET est defini ET RTC sync (epoch > 1577836800 = 2020-01-01).
+  // Auth HMAC FFP3 si API_SIG_SECRET est defini ET horloge systeme/RTC sync.
   cfg.sigSecret = (API_SIG_SECRET[0] != '\0') ? API_SIG_SECRET : nullptr;
-  const unsigned long epochNow = (unsigned long)rtc.getEpoch();
-  cfg.currentEpochSeconds = (epochNow > 1577836800UL) ? epochNow : 0UL;
+  cfg.currentEpochSeconds = hmacEpochSeconds();
   String postPreview =
       "api_key=<masque>&sensor=" + sensorName +
       "&version=" + version +
@@ -126,8 +136,7 @@ void sendHeartbeat() {
   cfg.version = version.c_str();
   cfg.bootCount = bootCount;
   cfg.sigSecret = (API_SIG_SECRET[0] != '\0') ? API_SIG_SECRET : nullptr;
-  const unsigned long epochNow = (unsigned long)rtc.getEpoch();
-  cfg.currentEpochSeconds = (epochNow > 1577836800UL) ? epochNow : 0UL;
+  cfg.currentEpochSeconds = hmacEpochSeconds();
   (void)n3DataSendHeartbeat(cfg);
 }
 

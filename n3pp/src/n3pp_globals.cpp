@@ -107,11 +107,11 @@ int sampleTotal = 0;
 
 #ifdef TEST_MODE
 const char* serverNamePostData = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/post-data";
-const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/api/outputs/state?board=3";
+const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/api/firmware/outputs/state?board=3";
 const char* serverNameHeartbeat = N3PP_SERVER_SCHEME "iot.olution.info/n3pp-test/heartbeat";
 #else
 const char* serverNamePostData = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/post-data";
-const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/api/outputs/state?board=3";
+const char* serverNameOutput = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/api/firmware/outputs/state?board=3";
 const char* serverNameHeartbeat = N3PP_SERVER_SCHEME "iot.olution.info/n3pp/heartbeat";
 #endif
 

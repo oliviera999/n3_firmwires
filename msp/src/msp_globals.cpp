@@ -102,11 +102,11 @@ String emailMessage;
 // --- Réseau ---
 #ifdef TEST_MODE
 const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/post-data";
-const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/api/outputs/state?board=2";
+const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/api/firmware/outputs/state?board=2";
 const char* serverNameHeartbeat = MSP_SERVER_SCHEME "iot.olution.info/msp1-test/heartbeat";
 #else
 const char* serverNamePostData = MSP_SERVER_SCHEME "iot.olution.info/msp1/post-data";
-const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1/api/outputs/state?board=2";
+const char* serverNameOutput = MSP_SERVER_SCHEME "iot.olution.info/msp1/api/firmware/outputs/state?board=2";
 const char* serverNameHeartbeat = MSP_SERVER_SCHEME "iot.olution.info/msp1/heartbeat";
 #endif
 

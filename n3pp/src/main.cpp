@@ -19,6 +19,7 @@
 #include "n3_display.h"
 #include "n3_sleep.h"
 #include "n3_app.h"   // T6.2 : squelette de cycle deep-sleep a callbacks (n3AppRun)
+#include "n3_time.h"
 
 // ============================================================
 // OTA periodique (toutes les 2 h, cumul RTC du deep sleep)
@@ -117,21 +118,17 @@ void setup() {
   dht.begin();
   Serial.println("[DHT] Initialisation OK");
 
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-  // Attente bornee de la synchro SNTP avant le premier POST : sans cela un cold
-  // boot pouvait dater/signer le POST avec une heure NVS perimee (hors fenetre
-  // serveur SIG_VALID_WINDOW) -> rejet et mesure perdue. Sur reveil timer l'heure
-  // est deja restauree (epoch > seuil) : la boucle sort immediatement.
+  // Horloge : NVS d'abord (reveil timer), puis NTP reel via getLocalTime (pas seulement
+  // rtc.getEpoch() deja "plausible" mais perime) — aligne sur uploadphotosserver / n3_time.
+  n3TimeLoadAndApplyToSystem(preferences, rtc);
   if (WiFi.status() == WL_CONNECTED) {
-    const unsigned long ntpWaitStart = millis();
-    while ((unsigned long)rtc.getEpoch() < 1577836800UL &&
-           (millis() - ntpWaitStart) < 5000UL) {
-      delay(100);
+    const bool ntpOk = n3TimeSyncNtp(rtc, gmtOffset_sec, daylightOffset_sec, ntpServer, 8000U);
+    if (ntpOk && rtc.getEpoch() > N3_TIME_MIN_VALID_EPOCH) {
+      n3TimeSaveToFlash(rtc, preferences);
     }
-    Serial.printf("[NTP] epoch=%lu (attente %lums)\n",
-                  (unsigned long)rtc.getEpoch(),
-                  (unsigned long)(millis() - ntpWaitStart));
+    Serial.printf("[NTP] epoch=%lu sync=%s\n",
+                  static_cast<unsigned long>(rtc.getEpoch()),
+                  ntpOk ? "ok" : "ko");
   }
 
   variablestoesp();
@@ -203,11 +200,15 @@ static void n3ppCbConnectWifi(N3AppContext&) {
 static void n3ppCbSyncClock(N3AppContext&) {
   static bool ntpConfigured = false;
 
-  // configTime n'est utile qu'une fois par reveil WiFi.
+  // NTP : une tentative complete (getLocalTime) si horloge systeme encore douteuse.
   if (WiFi.status() == WL_CONNECTED && !ntpConfigured) {
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    if (!n3TimeHasPlausibleEpoch()) {
+      if (n3TimeSyncNtp(rtc, gmtOffset_sec, daylightOffset_sec, ntpServer, 5000U)) {
+        n3TimeSaveToFlash(rtc, preferences);
+      }
+    }
     ntpConfigured = true;
-    Serial.println("[TIME] configTime appele (1x/reveil)");
+    Serial.println("[TIME] sync NTP evaluee (1x/reveil)");
   }
 
   Serial.println(rtc.getTime("%H:%M:%S %d/%m/%Y"));

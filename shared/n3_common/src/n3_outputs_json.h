@@ -4,13 +4,14 @@
  * n3_outputs_json
  *
  * Helpers de parsing JSON pour le contrat /outputs_state des firmwares legacy
- * (n3pp / msp). Le serveur renvoie un objet de la forme :
- *   { "100": "mail@x", "101": "1", "106": "0", "107": "300", "110": "0",
- *     "112": "1", ... }
- * ou les cles sont des numeros de GPIO virtuels (parametres) en string et
- * les valeurs sont des string contenant des entiers, booleens ou texte libre.
- * Cle 112 = VeilleInfinie (1 = veille infinie active sous SeuilPontDiv, 0 =
- * desactivee -> sommeil timer normal). Absente -> defaut firmware conserve.
+ * (n3pp / msp). Deux formats serveur sont acceptes :
+ *   1) Plat (legacy / getState firmware) :
+ *      { "100": "mail@x", "106": "0", "107": "300", "110": "0", "112": "0", ... }
+ *   2) Nested (API realtime `/api/outputs/state`) :
+ *      { "timestamp": …, "outputs": [ { "gpio": 112, "state": "0", … }, … ] }
+ * Les cles sont des numeros de GPIO virtuels. Cle 112 = VeilleInfinie
+ * (1 = veille infinie sous SeuilPontDiv, 0 = sommeil timer). Absente ->
+ * defaut firmware conserve.
  *
  * Ces helpers sont utilises par firmwires/n3pp/src/n3pp_network.cpp et
  * firmwires/msp/src/msp_network.cpp (factorisation v4.39 / 2.43).

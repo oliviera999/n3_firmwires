@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.72** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.73** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.72** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.73 | 2026-08-28 | **Correctif contrat GET config distante + NTP/HMAC (audit C1 juillet 2026, travail local réappliqué).** `serverNameOutput` → `/api/firmware/outputs/state?board=3` (format plat + ack one-shot GPIO 110/13 ; l’ancienne route `/api/outputs/state` renvoie du nested `{outputs:[…]}` incompatible avec le parseur). **NTP avant HMAC** : `n3TimeLoadAndApplyToSystem` + `n3TimeSyncNtp` (`getLocalTime`), signature via `time(nullptr)` si horloge système OK. **`n3_common` 1.8.5** : parsing nested en filet de sécurité. |
 | 4.72 | 2026-08-27 | **Fix commande pompe distante en `PINMAP_UNIVERSAL` : clé JSON découplée de la broche physique.** Le firmware lisait l'état pompe sous la clé `String(POMPE)` — soit `"16"` sur la carte universelle, alors que le serveur publie la pompe sous `gpio=12` (cf. n3_serveur `FIX_N3PP_GPIO_ACTUATORS_2026_07.sql`, les lignes 15/16 étant du legacy UI non maîtrisé) : le toggle « Pompe irrigation » restait sans effet et une ligne legacy `gpio=16` pouvait actionner K1. Nouvelles constantes `POMPE_OUTPUT_KEY` ("12") / `RELAIS_OUTPUT_KEY` ("13") utilisées par `n3pp_network.cpp` ; brochage inchangé, aucun changement pour l'env legacy (clé = broche par coïncidence). Découvert par l'audit final de la carte n3-universal. |
 | 4.71 | 2026-08-27 | **Cartographie `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal** (un seul PCB pour msp/n3pp/ffp5cs). Nouveau bloc de broches dans `n3pp_config.h` sélectionné par `-DPINMAP_UNIVERSAL` (env `esp32dev_universal_test`, ajouté à la CI) : GPIO13 (gate) et I2C inchangés ; **pompe → 16 (canal relais K1 embarqué de la carte)**, sondes sol 1-4 → 32/33/34/35 (nets ADC partagés avec les LDR msp), Luminosite → 36, DHT → 15, pontdiv → 39. **Aucun changement pour les envs existants.** |
 | 4.70 | 2026-08-19 | **Phase 2 BME280 : envoi de la pression atmosphérique au serveur.** Nouveau champ POST `Pression` (hPa, 1 décimale, `pressionAir` du BME280 détecté en v4.69). Envoyé **vide** quand aucun BME280 n'est présent (serres DHT) : le serveur (n3_serveur ≥ 6.39.0, colonne nullable `n3ppData*.Pression`) mappe une valeur non numérique sur NULL — aucun changement de contrat pour les serres existantes, et un serveur pas encore à jour ignore simplement le champ inconnu. `postPreview` synchronisé. |
