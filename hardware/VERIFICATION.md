@@ -42,11 +42,12 @@ perçage 0,2 mm, sérigraphie 0,15 mm) — voir [COMMANDE_JLCPCB.md](COMMANDE_JL
 |---|---|
 | **ERC** (erreurs) | **0** |
 | **DRC** violations / pads non connectés / empreintes | **0 / 0 / 0** |
-| **Contrôle 3 mm** secteur ↔ logique (indépendant) | **0 écart** |
+| **Contrôle 3 mm** secteur ↔ logique (indépendant, **zones remplies incluses** depuis l'audit final) | **0 écart** |
 | **Garde anti-dérive** | OK (msp 12 fn + n3pp 9 fn + ffp5cs 16 fn × 2 sites, broches S3 interdites, topologies US/gate/diviseur/SD) |
 | **Sérigraphie** | 0 conflit après tidy |
-| **Gerbers** | zip 10 fichiers, PTH **520** + NPTH 4, marqueur `JLCJLCJLCJLC` au dos |
+| **Gerbers** | zip 10 fichiers, PTH **521** + NPTH 4 (un via VBAT12_IN ajouté à l'audit), marqueur `JLCJLCJLCJLC` au dos |
 | Dimensions | **278 × 120 mm**, **2 oz**, fentes d'isolement + fente sous le corps du Hi-Link |
+| **Audit final rev 0.1** | Q11 recâblé (G/D/S), coin PSU re-routé (L↔N↔LF ≥ 3 mm), plan GND exclu du coin PSU, H1 vis nylon + keepout, R17-R19/R27 étoilées, contrats serveur n3pp 4.72 / ffp5cs 15.29 |
 
 ## Reproduire chaque contrôle
 

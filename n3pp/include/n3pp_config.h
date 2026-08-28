@@ -7,7 +7,7 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "4.71"
+#define FIRMWARE_VERSION "4.72"
 
 // Schema serveur : HTTPS par defaut (Vague 1 audit 2026-07).
 // Rollback HTTP : definir USE_HTTP_ENDPOINTS au build (-DUSE_HTTP_ENDPOINTS).
@@ -17,6 +17,14 @@
 #else
 #define N3PP_SERVER_SCHEME "https://"
 #endif
+
+// Clés JSON du contrat n3ppOutputs (numéros gpio SERVEUR, indépendants du
+// brochage physique — voir n3_serveur migrations/FIX_N3PP_GPIO_ACTUATORS_2026_07.sql :
+// la pompe est publiée sous gpio=12 quel que soit le GPIO qui la pilote).
+// Sans ce découplage, PINMAP_UNIVERSAL (POMPE=16) lisait la clé "16" — ligne
+// legacy non exposée par l'UI — et la commande pompe distante était inopérante.
+#define POMPE_OUTPUT_KEY "12"
+#define RELAIS_OUTPUT_KEY "13"
 
 //définitions des pins
 #if defined(PINMAP_UNIVERSAL)

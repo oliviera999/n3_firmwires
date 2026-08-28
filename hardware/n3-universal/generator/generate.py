@@ -299,9 +299,16 @@ def us_channel(idx: int, name: str, gpio_net: str, rref1: str, rref2: str,
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc=f"Série écho HC-SR04 {name}", sch=(bx, by), pcb=(x, 129, 0),
              nets={"1": f"US_{name}_ECHO", "2": gpio_net}),
-        dict(ref=rref2, sym="R", value="2k",
+        # Pose CONDITIONNELLE (*) : requis pour ffp5cs (écho HC-SR04 5V) mais les
+        # 2k permanents vers GND écrasaient les rôles msp des nets partagés
+        # (PLUIE/US1, DHT_EXT/US2 : niveau haut plafonné à ~0,55 V) — audit rev 0.1.
+        # R19 (US3) : absent aussi pour l'option wroom-sd (SD_CS ne doit pas être
+        # tiré bas pendant un reset, la carte SD resterait sélectionnée).
+        dict(ref=rref2, sym="R", value="2k*",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc=f"Pont diviseur écho {name} (5V->3V3)", sch=(bx, by + 4),
+             desc=f"Pont diviseur écho {name} (5V->3V3) — POSER pour ffp5cs ; "
+                  "ABSENT sur unités msp (et R19 absent si option wroom-sd)",
+             sch=(bx, by + 4),
              pcb=(x, 133, 0),
              nets={"1": gpio_net, "2": "GND"}),
         dict(ref=jref, sym="CONN_04", value="JST-XH",
@@ -463,9 +470,14 @@ def build_components():
              desc="Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)",
              sch=(104, 64), pcb=(78, 140, 0),
              nets={"1": "+3V3_SW", "2": NET["ONE_WIRE_BUS"], "3": "GND"}),
-        dict(ref="R27", sym="R", value="10k",
+        # Pose CONDITIONNELLE (*) : bas de pont requis pour une LDR (n3pp
+        # Luminosite / ffp5cs LUMINOSITE) mais ABSENT pour un module à sortie
+        # AO (msp HumiditeSol : les 10k // sortie du module divisaient la
+        # mesure par ~2) — règle héritée de la carte n3pp-msp-commun, audit rev 0.1.
+        dict(ref="R27", sym="R", value="10k*",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Bas du pont diviseur LDR (GPIO34 = entrée seule ADC)",
+             desc="Bas de pont LDR sur net ADC_E (GPIO36 WROOM / IO6 S3) — "
+                  "POSER pour LDR ; ABSENT pour module AO (msp HumiditeSol)",
              sch=(92, 74), pcb=(84, 116, 0),
              nets={"1": NET["LUMINOSITE"], "2": "GND"}),
         dict(ref="J12", sym="CONN_02", value="Bornier_5.08",
@@ -593,9 +605,12 @@ def build_components():
              desc="Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)",
              sch=(146, 50), pcb=(216, 151, 0),
              nets={"1": "VBAT12_IN", "2": "GND"}),
-        dict(ref="Q11", sym="PMOS_DGS", value="NDP6020P", fp="TO-220-3_Vertical",
-             desc="Anti-inversion P-MOSFET (1=D=entrée 2=G 3=S=sortie)", sch=(155, 52), pcb=(232, 146, 0),
-             nets={"1": "VBAT12_IN", "2": "QP_G", "3": "VBAT12_PROT"}),
+        # Brochage NDP6020P TO-220 = 1=G 2=D(+tab) 3=S, comme Q7 (l'audit final
+        # rev 0.1 a corrigé un câblage en PMOS_DGS/brochage BS250 qui mettait
+        # l'entrée 12 V sur la GRILLE : profil bus 12 V inopérant).
+        dict(ref="Q11", sym="PMOS_GDS", value="NDP6020P", fp="TO-220-3_Vertical",
+             desc="Anti-inversion P-MOSFET (1=G 2=D=entrée 3=S=sortie)", sch=(155, 52), pcb=(232, 146, 0),
+             nets={"1": "QP_G", "2": "VBAT12_IN", "3": "VBAT12_PROT"}),
         dict(ref="R40", sym="R", value="100k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Grille anti-inversion vers GND", sch=(146, 54), pcb=(234, 128, 90),
@@ -618,10 +633,12 @@ def build_components():
     ]
     # --- Profil secteur : Hi-Link 20M05 embarqué (fusible + varistance carte) --
     comps += [
+        # 1=N / 2=L (le pad 2 est côté F1 : la phase part directement au fusible,
+        # sans passer près du pad neutre — géométrie revue à l'audit final rev 0.1).
         dict(ref="J27", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",
-             desc="ENTREE SECTEUR 230V (1=L 2=N) — ZONE DANGER", sch=(146, 78), pcb=(250, 46, 0),
-             nets={"1": "MAINS_L", "2": "MAINS_N"}),
+             desc="ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER", sch=(146, 78), pcb=(250, 46, 0),
+             nets={"1": "MAINS_N", "2": "MAINS_L"}),
         dict(ref="F1", sym="FUSE", value="T1A 5x20",
              fp="Fuse_5x20_Horizontal",
              desc="Fusible entrée secteur du module alim (temporisé 1A)", sch=(155, 78), pcb=(266, 44, 270),
@@ -701,9 +718,14 @@ def build_components():
                       sch=(126, 134), pcb=(66, 106, 0),
                       nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}))
     # --- Trous de fixation M3 --------------------------------------------------
+    # H1 (coin relais) : enclavé par le corps de K1, une tête de vis métal serait
+    # à ~4,3 mm des contacts 230 V — vis NYLON obligatoire, plan GND écarté sous
+    # la tête (keepout), marquage sérigraphié « H1=NYLON » (audit rev 0.1).
     for i, (hx, hy) in enumerate([(45, 45), (313, 108), (45, 155), (310, 146)], 1):
+        desc = ("Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE "
+                "(tête métal à <5 mm du 230V)" if i == 1 else "Trou de fixation M3")
         comps.append(dict(ref=f"H{i}", sym=None, value="M3",
-                          fp="MountingHole_3.2mm_M3", desc="Trou de fixation M3",
+                          fp="MountingHole_3.2mm_M3", desc=desc,
                           sch=None, pcb=(hx, hy, 0), nets={}))
     return comps
 
@@ -756,8 +778,13 @@ PCB_TEXTS = [
     (82, 119.5, "LDR", 1.0),
     (94, 125.5, "OLED", 1.0),
     (43, 52, "I2C EXT x3", 1.0),
-    (266, 55, "SRV GROS", 0.8),
-    (266, 67, "SRV PETITS", 0.8),
+    # près des connecteurs J15/J16 (302,110/132) — audit rev 0.1 : les deux
+    # étiquettes traînaient dans le coin secteur (266,55/67)
+    (250, 41.6, "N", 0.9),
+    (256.8, 41.6, "L", 0.9),
+    (44.3, 55, "H1=NYLON", 0.9),
+    (297, 105.5, "SRV GROS", 0.8),
+    (297, 127.5, "SRV PETITS", 0.8),
     (254, 81.5, "GPIO", 0.8),
     (254, 120.5, "ALIM", 0.8),
     (56, 139, "5V", 0.9),
@@ -768,7 +795,7 @@ PCB_TEXTS = [
     # sans ce marqueur, le fabricant le place où il veut, parfois
     # sur une étiquette de câblage. Option de commande : "Specify a location".
     (204, 100, "GATE +3V3_SW (GPIO13)", 0.9),
-    (238, 111, "JP1 BYPASS: FERME=rail permanent (ffp5cs)", 0.8),
+    (238, 111, "JP1 BYPASS 1-2: FERME=rail permanent (ffp5cs)", 0.8),
     (238, 114, "OTER pour profils batterie (msp/n3pp)", 0.8),
     (204, 121.5, "PONT DIV VBAT (R38/R39 selon profil)", 0.8),
     (198, 135.8, "JP SD: 1-2=S3 / 2-3=WROOM (wroom-sd)", 0.8),
@@ -1089,15 +1116,30 @@ def gen_pcb() -> str:
         '\n    (polygon (pts (xy 247.2 75.5) (xy 275.7 75.5)'
         ' (xy 275.7 83.5) (xy 247.2 83.5)))'
         '\n  )')
+    # Interdiction de coulée sous la tête de la vis H1 (seul trou de fixation
+    # proche de la bande secteur : tête à ~4,3 mm des contacts K1 → vis NYLON
+    # prescrite, et pas de cuivre GND sous la tête — audit rev 0.1).
+    edge += (
+        '\n  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu")'
+        f' (uuid "{uid("h1keepout")}") (hatch edge 0.5)'
+        '\n    (keepout (tracks allowed) (vias allowed) (pads allowed)'
+        ' (copperpour not_allowed) (footprints allowed))'
+        '\n    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))'
+        '\n    (polygon (pts (xy 41 41) (xy 49 41)'
+        ' (xy 49 49) (xy 41 49)))'
+        '\n  )')
     for i, (sx0, sy0, sx1, sy1) in enumerate(SLOTS):
         edge += (f'\n  (gr_rect (start {sx0} {sy0}) (end {sx1} {sy1})\n'
                  f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("slot", i)}"))')
     texts = "\n".join(silk_text(i, e) for i, e in enumerate(PCB_TEXTS))
-    # zones GND en U : tout le pourtour SAUF le rectangle secteur (44..178, 40..84)
-    zx0, zx1, zy = 45.2, 246, 84
+    # Zones GND en escalier : tout le pourtour SAUF la bande relais
+    # (45.2..246 x 40..84) ET le coin PSU secteur (246..318 x 40..73) — l'audit
+    # rev 0.1 a montré que le coin PSU, ajouté avec le profil Hi-Link, n'était
+    # pas exclu : le plan GND coulait sous les pistes/pads 230 V.
+    zx0, zx1, zy, pzy = 45.2, 246, 84, 73
     poly = ('(polygon (pts '
             f'(xy {b["x0"]} {b["y0"]}) (xy {zx0} {b["y0"]}) (xy {zx0} {zy}) '
-            f'(xy {zx1} {zy}) (xy {zx1} {b["y0"]}) (xy {b["x1"]} {b["y0"]}) '
+            f'(xy {zx1} {zy}) (xy {zx1} {pzy}) (xy {b["x1"]} {pzy}) '
             f'(xy {b["x1"]} {b["y1"]}) (xy {b["x0"]} {b["y1"]})))')
     zones = "\n".join(
         f'  (zone (net {net_no["GND"]}) (net_name "GND") (layer "{layer}") (uuid "{uid("zone", layer)}")\n'
@@ -1213,9 +1255,14 @@ def gen_bom():
     out.append(["A2 (supports)", "2", "Support femelle 1x22 P2.54",
                 "monte sur l'empreinte ESP32_S3_DevKitC_1_44pin",
                 "Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu"])
-    out.append(["J35 (module)", "1", "Module microSD SPI 3V3",
+    out.append(["J35 (module)", "0-1",
+                "Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125)",
                 "s'enfiche sur J35",
-                "Type Catalex 6 broches GND/VCC/MISO/MOSI/SCK/CS"])
+                "6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2). "
+                "Sur WROOM (site A1) : UNIQUEMENT après efuse VDD_SDIO=3V3 "
+                "(espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer "
+                "GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type "
+                "Catalex (tampon toujours actif + régulateur 5V)"])
     out.append(["J14/J21/J22/J28 (modules)", "0-4", "DS3231 + INA219/226",
                 "s'enfichent sur les ports I2C",
                 "DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"])

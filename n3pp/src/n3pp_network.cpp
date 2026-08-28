@@ -174,15 +174,15 @@ void variablestoesp() {
   Serial.print("GPIO bdd : ");
   Serial.println(myObject);
 
-  String pumpGpioKey = String(POMPE);
-  int pumpState = readIntByKey(myObject, pumpGpioKey.c_str(), 0);
+  // Clé de contrat serveur (gpio=12), PAS la broche physique : en
+  // PINMAP_UNIVERSAL la pompe est sur GPIO16 mais reste publiée sous "12".
+  int pumpState = readIntByKey(myObject, POMPE_OUTPUT_KEY, 0);
   Serial.print("variable Pompe est ");
   Serial.println(pumpState);
   pinMode(POMPE, OUTPUT);
   digitalWrite(POMPE, pumpState);
 
-  String relaisGpioKey = String(RELAIS);
-  ArrosageManu = readIntByKey(myObject, relaisGpioKey.c_str(), ArrosageManu);
+  ArrosageManu = readIntByKey(myObject, RELAIS_OUTPUT_KEY, ArrosageManu);
   int parsedResetMode = resetMode ? 1 : 0;
   int parsedWakeUp = WakeUp ? 1 : 0;
   int parsedFreqWakeUp = FreqWakeUp;

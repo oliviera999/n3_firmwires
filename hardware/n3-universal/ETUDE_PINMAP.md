@@ -74,3 +74,17 @@ Générée par `etude_pinmap.py` (source de vérité : ce script).
 - Côté firmware : ouvrir la SD hors `BOARD_S3` (budget flash OK) ; pour msp/n3pp,
   ajouter un module de journal (lib partagée) — la flash interne (LittleFS) reste
   une alternative sans matériel. Horloge SPI ≤ ~10 MHz (stubs vers JST/headers).
+
+---
+
+## Addendum audit final rev 0.1 (2026-08-27)
+
+- **GPIO12/MTDI + module microSD (WROOM)** : la précaution « socket nu, aucun
+  pull-up » ne couvre pas un module ENFICHÉ avec carte : le pull-up interne DAT0
+  de la carte SD (et a fortiori un module tamponné type Catalex) peut tirer MTDI
+  haut à l'échantillonnage du strap → VDD_SDIO 1,8 V, boot en échec. Consigne :
+  module 3,3 V direct sans tampon, réservé aux unités S3, ou efuse
+  `set_flash_voltage 3.3V` avant tout usage SD sur WROOM (cf. README).
+- **Ponts écho 2k (R17-R19) et bas de pont R27** : pose PAR PROFIL (étoilés en
+  BOM) — permanents, ils neutralisaient les rôles msp des nets partagés
+  US1/US2/ADC_E (détail dans le README, section audit).

@@ -175,19 +175,17 @@ def add_mains_tracks(b):
         seg(x - 6.0, 63.8, x - 6.0, 58, f"REL{n}_NC")
         seg(x - 6.0, 58, x - 5.08, 54, f"REL{n}_NC")
         seg(x - 5.08, 54, x - 5.08, 50, f"REL{n}_NC")
-    # Bloc PSU secteur : J27 (250/255.08,46) -> F1 (262,44)/(262,66.5)
-    # -> RV1 (270,50)/(270,55) -> HLK PS1 (300,46)=L / (291,46)=N.
+    # Bloc PSU secteur : J27 (1=N a 250,46 ; 2=L a 255.08,46) -> F1 (266,44)/(266,66.5)
+    # -> RV1 (253,62)=N / (258,62)=LF -> HLK PS1 (303,46)=LF / (294,46)=N.
+    # Geometrie revue a l'audit final rev 0.1 : l'ancien trace faisait passer L a
+    # 0,75 mm du pad N de J27 et N // LF a 1,5 mm — ecarts L<->N<->LF desormais
+    # >= 3 mm partout hors pas propre des composants (bornier 5,08 / RV1 5 mm).
     psu = [
-        ("MAINS_L", 250, 46, 250, 42.5), ("MAINS_L", 250, 42.5, 266, 42.5),
-        ("MAINS_L", 266, 42.5, 266, 44),
-        ("MAINS_N", 255.08, 46, 255.08, 58), ("MAINS_N", 255.08, 58, 253, 60),
-        ("MAINS_N", 253, 60, 253, 62),
-        ("MAINS_N", 255.08, 50, 290, 50), ("MAINS_N", 290, 50, 294, 46),
-        ("MAINS_LF", 266, 66.5, 260, 66.5), ("MAINS_LF", 260, 66.5, 258, 64),
-        ("MAINS_LF", 258, 64, 258, 62),
-        ("MAINS_LF", 266, 66.5, 270, 66.5), ("MAINS_LF", 270, 66.5, 270, 54),
-        ("MAINS_LF", 270, 54, 299, 54), ("MAINS_LF", 299, 54, 303, 50),
-        ("MAINS_LF", 303, 50, 303, 46),
+        ("MAINS_L", 255.08, 46, 266, 44),
+        ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 253, 62),
+        ("MAINS_N", 250, 52, 288, 52), ("MAINS_N", 288, 52, 294, 46),
+        ("MAINS_LF", 266, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 258, 62),
+        ("MAINS_LF", 266, 66.5, 303, 66.5), ("MAINS_LF", 303, 66.5, 303, 46),
     ]
     for netname, x0, y0, x1, y1 in psu:
         seg(x0, y0, x1, y1, netname)
@@ -221,6 +219,24 @@ def copper_items(b):
             items.append((pad.GetNetname(),
                           pcbnew.ToMM(p.x), pcbnew.ToMM(p.y),
                           pcbnew.ToMM(p.x), pcbnew.ToMM(p.y), r))
+    # Zones remplies (plans GND, etc.) : chaque arete des polygones remplis
+    # devient un pseudo-segment de demi-largeur nulle. Sans cela le controle
+    # etait aveugle au cuivre coule (trou decouvert a l'audit final rev 0.1 :
+    # le plan GND penetrait le coin PSU sans etre vu).
+    for z in b.Zones():
+        if z.GetIsRuleArea() or not z.GetNetname():
+            continue
+        for lyr in z.GetLayerSet().CuStack():
+            polys = z.GetFilledPolysList(lyr)
+            for i in range(polys.OutlineCount()):
+                outl = polys.Outline(i)
+                n = outl.PointCount()
+                for j in range(n):
+                    p0 = outl.CPoint(j)
+                    p1 = outl.CPoint((j + 1) % n)
+                    items.append((z.GetNetname(),
+                                  pcbnew.ToMM(p0.x), pcbnew.ToMM(p0.y),
+                                  pcbnew.ToMM(p1.x), pcbnew.ToMM(p1.y), 0.0))
     return items
 
 

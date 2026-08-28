@@ -39,7 +39,7 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
   borniers en bande basse.
 - **Sites A1 (WROOM 2×15) / A2 (S3-DevKitC-1 2×22)** — un seul module peuplé ;
   antennes dégagées (keepouts) ; entraxes à VERIFIER sur l'exemplaire réel.
-- **Firmwares** : sections `PINMAP_UNIVERSAL` (msp 2.75, n3pp 4.71, ffp5cs 15.28),
+- **Firmwares** : sections `PINMAP_UNIVERSAL` (msp 2.75, n3pp 4.72, ffp5cs 15.29),
   envs `esp32dev_universal_test` / `wroom-universal-test` / `wroom-s3-universal-test`
   (tous en CI). Garde anti-dérive machine sur les 4 combinaisons.
 - **microSD** : slot unique — S3 natif par défaut (JP2/3/4 en 1-2), WROOM via
@@ -142,3 +142,54 @@ Notes de conception issues des décisions :
 - Estimation : **~260×130 mm, 2 oz**, ~40-60 $ les 5 chez JLCPCB.
 - Contexte élèves : zone secteur assemblée/raccordée sous supervision adulte,
   boîtier + presse-étoupes obligatoires à l'installation.
+
+## Audit final rev 0.1 (2026-08-27) — corrections et consignes de pose
+
+Un audit exhaustif (netlist, strapping, géométrie secteur, contrats serveur) a
+corrigé la carte et les firmwares AVANT toute commande :
+
+**Corrections carte (intégrées au PCB routé + générateur) :**
+- **Q11 (anti-inversion 12 V)** était câblé au brochage BS250 (D-G-S) : l'entrée
+  12 V arrivait sur la **grille** du NDP6020P (TO-220 : 1=G 2=D 3=S) — profil bus
+  12 V inopérant. Recâblé comme Q7 (G/D/S), entrée sur le drain.
+- **Coin PSU 230 V re-routé** : l'ancien tracé faisait passer L à 0,75 mm du pad
+  neutre de J27 et N ∥ LF à 1,5 mm. Nouveau tracé : écarts L↔N↔LF ≥ 3 mm hors
+  pas propre des composants ; **J27 devient 1=N / 2=L** (repères sérigraphiés).
+- **Plan GND exclu du coin PSU** (246..318 × 40..73) : il coulait sous les
+  pistes/pads 230 V (à 3,0 mm même couche, recouvrement en projection). Le
+  contrôle indépendant `check_mains_gap` intègre désormais les **zones remplies**.
+- **H1 = VIS NYLON obligatoire** (marquage sérigraphié) : le trou du coin relais
+  est enclavé par K1, une tête métal serait à ~4,3 mm du 230 V ; le plan GND est
+  écarté sous la tête (keepout).
+
+**Consignes de pose par profil (résistances étoilées `*` de la BOM) :**
+- **R17/R18/R19 (2k, ponts écho HC-SR04)** : à poser **uniquement sur les unités
+  ffp5cs**. Sur une unité msp, elles verrouillaient PLUIE (US1) à « mouillé » et
+  rendaient le DHT externe (US2) illisible (niveau haut ~0,55 V). R19 absent
+  aussi si option `wroom-sd` (sinon SD_CS reste tiré bas pendant un reset).
+- **R27 (10k, bas de pont ADC_E)** : à poser pour une **LDR** (n3pp/ffp5cs) ;
+  **absent** pour un module à sortie AO (msp HumiditeSol — atténuation ~50 %
+  sinon). Module AO 3 fils : prendre le GND sur un bornier voisin (J12 n'a que
+  3V3_SW/ADC_E).
+- **JP1 en 1-2** = rail `+3V3_SW` permanent (unités ffp5cs) ; ôté = rail commuté
+  par GPIO13 (msp/n3pp). La broche 3 de JP1 n'est pas câblée.
+
+**microSD et strapping GPIO12/MTDI (WROOM)** — le slot est sans risque sur une
+unité **S3** (site A1 vide). Sur une unité **WROOM** : module **3,3 V direct,
+sans régulateur ni tampon 74LVC125** (PAS de module « Catalex »), et **griller
+d'abord l'efuse** `espefuse.py set_flash_voltage 3.3V` (sinon une carte SD
+insérée peut tirer MTDI haut au boot → strap flash 1,8 V, démarrage impossible).
+À flasher par USB sur une unité ffp5cs-WROOM, **ôter JP1** (le pull-up OneWire
+R24 sur GPIO2, alimenté par +3V3_SW permanent, bloque sinon l'entrée en
+bootloader UART).
+
+**Contrats serveur (corrigés côté firmwares)** : clés JSON des actionneurs
+découplées des broches physiques — n3pp v4.72 (`POMPE_OUTPUT_KEY="12"`),
+ffp5cs v15.29 (clés Ffp3GpioMap 16/18/2/15/23/25 restaurées dans
+`gpio_mapping.h`). Sans cela, la carte universelle croisait pompe/UV/chauffage.
+
+**Marges connues (acceptées, documentées)** : TVS D8 P6KE18A (Vrwm 15,3 V) au
+ras du haut de plage bus 12 V (15,5 V) — acceptable car la batterie plomb tient
+le bus ; en cas d'égalisation > 15 V fréquente, monter une P6KE20A (et C5 35 V).
+Le net `+3V3` amont (0,4 mm) est court et ne porte que le courant du rail
+capteurs (~0,1 Ω en 2 oz) ; les modules socketés embarquent leur découplage.

@@ -12,6 +12,19 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.29 - 2026-08-27
+
+### Fix contrat serveur des actionneurs : clés `gpio` découplées des broches physiques
+
+- `gpio_mapping.h` : les mappings actionneurs (PUMP_AQUA/PUMP_TANK/HEATER/LIGHT/AUX1/AUX2)
+  reprennent les **clés du contrat serveur** (Ffp3GpioMap : 16/18/2/15/23/25) au lieu de
+  `Pins::*`. Depuis v13.53, la clé suivait la broche physique : sur S3 (RADIATEURS=13) le
+  chauffage ne recevait plus les commandes serveur, et sur `PINMAP_UNIVERSAL` les clés se
+  croisaient (S3 : clé 15=UV lue par POMPE_AQUA, 16=pompeAqua lue par POMPE_RESERV,
+  18=pompeTank lue par LUMIERE ; WROOM : 18=pompeTank lue par RADIATEURS).
+- Aucune broche modifiée : `applyGPIO` ne compare que des clés, l'actuation physique passe
+  par `Automatism`/`Pins::*`. Découvert par l'audit final de la carte n3-universal.
+
 ## Version 15.28 - 2026-08-27
 
 ### Cartographies `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal

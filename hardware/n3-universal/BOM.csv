@@ -10,7 +10,8 @@ D1 D2 D3 D4 D6 D7;6;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre
 D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché)
 D8;1;P6KE18A;D_DO-201AD_P15.24mm_Horizontal;TVS 18V transitoires bus batterie
 F1;1;T1A 5x20;Fuse_5x20_Horizontal;Fusible entrée secteur du module alim (temporisé 1A)
-H1 H2 H3 H4;4;M3;MountingHole_3.2mm_M3;Trou de fixation M3
+H1;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE (tête métal à <5 mm du 230V)
+H2 H3 H4;3;M3;MountingHole_3.2mm_M3;Trou de fixation M3
 J1;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée 5V alternative (bornier, 1=+5V 2=GND)
 J10;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT11/DHT22 (1=3V3 2=DATA 3=GND)
 J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)
@@ -28,7 +29,7 @@ J21;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 
 J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)
 J25;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil
 J26;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)
-J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;ENTREE SECTEUR 230V (1=L 2=N) — ZONE DANGER
+J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER
 J28;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA)
 J29;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;Module pluie DO msp (1=3V3_SW 2=DO 3=GND) — net US1, rôles disjoints
 J23 J24 J3 J4 J5 J6;6;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge 230V (1=NC 2=COM 3=NO)
@@ -53,7 +54,7 @@ LED5;1;verte;LED_D5.0mm;LED présence 5V
 PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous)
 Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E)
 Q10;1;BC337-40;TO-92_Inline;Driver diviseur (1=C 2=B 3=E)
-Q11;1;NDP6020P;TO-220-3_Vertical;Anti-inversion P-MOSFET (1=D=entrée 2=G 3=S=sortie)
+Q11;1;NDP6020P;TO-220-3_Vertical;Anti-inversion P-MOSFET (1=G 2=D=entrée 3=S=sortie)
 Q7;1;NDP6020P;TO-220-3_Vertical;P-MOSFET rail capteurs (1=G 2=D 3=S)
 Q8;1;BC337-40;TO-92_Inline;Driver gate (1=C 2=B 3=E)
 Q9;1;BS250;TO-92_Inline;P-MOSFET coupure haute du diviseur (1=D 2=G 3=S)
@@ -62,16 +63,16 @@ R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED prés
 R14;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 AQUA
 R15;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 TANK
 R16;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 POTA
-R17;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho AQUA (5V->3V3)
-R18;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho TANK (5V->3V3)
-R19;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho POTA (5V->3V3)
+R17;1;2k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Pont diviseur écho AQUA (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
+R18;1;2k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Pont diviseur écho TANK (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
+R19;1;2k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Pont diviseur écho POTA (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
 R20;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo gros
 R21;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo petits
 R23;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up data DHT11
 R24;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up bus 1-Wire DS18B20
 R25;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SDA
 R26;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SCL
-R27;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont diviseur LDR (GPIO34 = entrée seule ADC)
+R27;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont LDR sur net ADC_E (GPIO36 WROOM / IO6 S3) — POSER pour LDR ; ABSENT pour module AO (msp HumiditeSol)"
 R34;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base commande gate (GPIO13)
 R35;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille P-MOSFET (rail OFF par défaut)
 R36;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille BS250 (diviseur OFF par défaut)
@@ -89,6 +90,6 @@ R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;R�
 RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;Varistance 300VAC transitoires secteur
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
 A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu
-J35 (module);1;Module microSD SPI 3V3;s'enfiche sur J35;Type Catalex 6 broches GND/VCC/MISO/MOSI/SCK/CS
+J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2). Sur WROOM (site A1) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type Catalex (tampon toujours actif + régulateur 5V)
 J14/J21/J22/J28 (modules);0-4;DS3231 + INA219/226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"
 J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"
