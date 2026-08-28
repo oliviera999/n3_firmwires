@@ -7,7 +7,7 @@
 #define API_SIG_SECRET ""
 #endif
 
-#define FIRMWARE_VERSION "4.70"
+#define FIRMWARE_VERSION "4.72"
 
 // Schema serveur : HTTPS par defaut (Vague 1 audit 2026-07).
 // Rollback HTTP : definir USE_HTTP_ENDPOINTS au build (-DUSE_HTTP_ENDPOINTS).
@@ -18,24 +18,41 @@
 #define N3PP_SERVER_SCHEME "https://"
 #endif
 
-//définitions des pins pour les actionneurs
+// Clés JSON du contrat n3ppOutputs (numéros gpio SERVEUR, indépendants du
+// brochage physique — voir n3_serveur migrations/FIX_N3PP_GPIO_ACTUATORS_2026_07.sql :
+// la pompe est publiée sous gpio=12 quel que soit le GPIO qui la pilote).
+// Sans ce découplage, PINMAP_UNIVERSAL (POMPE=16) lisait la clé "16" — ligne
+// legacy non exposée par l'UI — et la commande pompe distante était inopérante.
+#define POMPE_OUTPUT_KEY "12"
+#define RELAIS_OUTPUT_KEY "13"
+
+//définitions des pins
+#if defined(PINMAP_UNIVERSAL)
+// Carte porteuse n3-universal (hardware/n3-universal) : nets partages entre les
+// 3 firmwares — source de verite pinmap_universel_propose.json. GPIO13 (gate) et
+// I2C (21/22) inchanges ; la pompe passe sur le canal relais K1 de la carte.
+#define RELAIS 13      // net GATE (rail capteurs commute)
+#define POMPE 16       // net K1 (canal relais 1, partage POMPE_AQUA ffp5cs)
+#define pontdiv 39     // net ADC_VBAT (diviseur commute)
+#define humidite1 32   // net ADC_A (partage LUMINOSITEa msp)
+#define humidite2 33   // net ADC_B
+#define humidite3 34   // net ADC_C
+#define humidite4 35   // net ADC_D
+#define LUMINOSITE 36  // net ADC_E (partage HumiditeSol msp / LDR ffp5cs)
+#define DHTPIN 15      // net DHT_INT (commun aux 3 firmwares)
+#define DHTTYPE DHT11
+#else
 #define RELAIS 13
 #define POMPE 12
-
-//définitions des pins pour les capteurs
 #define pontdiv 36
-
 #define humidite1 33
 #define humidite2 32
 #define humidite3 35
 #define humidite4 34
-
-//définitions des pins pour les capteurs
 #define LUMINOSITE 39
-
-//configuration DHT
 #define DHTPIN 18      // Pin numérique connectée au DHT (température et humidité air)
 #define DHTTYPE DHT11  // Type de capteur DHT (DHT11)
+#endif
 
 #define uS_TO_S_FACTOR N3_US_TO_S_FACTOR
 #define TIME_TO_SLEEP FreqWakeUp

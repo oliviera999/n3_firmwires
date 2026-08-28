@@ -12,6 +12,38 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.29 - 2026-08-27
+
+### Fix contrat serveur des actionneurs : clés `gpio` découplées des broches physiques
+
+- `gpio_mapping.h` : les mappings actionneurs (PUMP_AQUA/PUMP_TANK/HEATER/LIGHT/AUX1/AUX2)
+  reprennent les **clés du contrat serveur** (Ffp3GpioMap : 16/18/2/15/23/25) au lieu de
+  `Pins::*`. Depuis v13.53, la clé suivait la broche physique : sur S3 (RADIATEURS=13) le
+  chauffage ne recevait plus les commandes serveur, et sur `PINMAP_UNIVERSAL` les clés se
+  croisaient (S3 : clé 15=UV lue par POMPE_AQUA, 16=pompeAqua lue par POMPE_RESERV,
+  18=pompeTank lue par LUMIERE ; WROOM : 18=pompeTank lue par RADIATEURS).
+- Aucune broche modifiée : `applyGPIO` ne compare que des clés, l'actuation physique passe
+  par `Automatism`/`Pins::*`. Découvert par l'audit final de la carte n3-universal.
+
+## Version 15.28 - 2026-08-27
+
+### Cartographies `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal
+
+- **Deux nouvelles sections `Pins`** dans `include/pins.h`, sélectionnées par
+  `-DPINMAP_UNIVERSAL` : site **A1 WROOM** et site **A2 ESP32-S3-DevKitC-1** de la carte
+  UNIVERSELLE `hardware/n3-universal` (un seul PCB pour msp/n3pp/ffp5cs, 6 canaux relais au
+  standard 230 V, 4 profils d'alim, microSD bi-site, DS3231, INA). Envs `wroom-universal-test`
+  et `wroom-s3-universal-test` (ajoutés à la CI).
+- Côté S3 : SD native (10/12/13/14), **K5/K6 (=AUX1/AUX2) embarqués** sur GPIO 48/45
+  (commande via base 1 k + pull-down 10 k, sûre au boot — même topologie que GPIO2/15 des
+  cartes historiques). Côté WROOM : constantes SD définies pour la future option `wroom-sd`
+  (lignes sur les nets US3/AUX1/AUX2 + GPIO12).
+- **Aucun changement** pour les envs existants (S3 historique câblé main, cartes rev 0.6 et 230 V).
+- **Outillage** : `pio_ensure_git_data.py` ne bascule plus HEAD sur `pio-build` quand le dépôt
+  est déjà sur une branche nommée (la bascule n'est utile qu'en detached HEAD/submodule) —
+  elle laissait le dépôt sur `pio-build` entre deux builds, en violation de la règle de
+  branches du dépôt, et les commits suivants partaient dessus.
+
 ## Version 15.27 - 2026-08-19
 
 ### Cartographie S3 « carrier » pour la carte porteuse bi-module (option A)

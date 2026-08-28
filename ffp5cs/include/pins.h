@@ -62,6 +62,92 @@ constexpr int SD_MISO_PIN = 14;
 
 } // namespace Pins
 
+#elif defined(BOARD_S3) && defined(PINMAP_UNIVERSAL) // ESP32-S3 sur carte n3-universal (site A2)
+// Carte porteuse UNIVERSELLE (hardware/n3-universal, commune msp/n3pp/ffp5cs).
+// Source de vérité : pinmap_universel_propose.json. SD native (10/12/13/14),
+// K5/K6 (=AUX1/AUX2) embarqués : GPIO 48 (LED RGB v1.0 : recopie d'état K5,
+// cosmétique) et 45 (strapping VDD_SPI : commande via base 1k + pull-down 10k,
+// sûre au boot, comme GPIO2/15 sur les cartes historiques).
+namespace Pins {
+constexpr int ULTRASON_AQUA = 39;  // net US1
+constexpr int ULTRASON_TANK = 40;  // net US2
+constexpr int ULTRASON_POTA = 41;  // net US3
+
+constexpr int EAU_POTAGER = ULTRASON_POTA; // Alias pour rétrocompatibilité
+constexpr int LUMINOSITE = 6;      // net ADC_E (ADC1_CH5)
+
+constexpr int POMPE_AQUA   = 15;   // net K1
+constexpr int POMPE_RESERV = 16;   // net K2
+constexpr int RADIATEURS   = 17;   // net K3
+constexpr int LUMIERE      = 18;   // net K4
+
+// Relais auxiliaires : canaux K5/K6 EMBARQUÉS de la carte universelle
+constexpr int AUX1 = 48;           // net AUX1 (K5)
+constexpr int AUX2 = 45;           // net AUX2 (K6)
+
+constexpr int SERVO_GROS   = 21;   // net SERVO1
+constexpr int SERVO_PETITS = 47;   // net SERVO2
+
+constexpr int DHT_PIN      = 38;   // net DHT_INT (LED RGB v1.1 : scintillement cosmétique)
+constexpr int ONE_WIRE_BUS = 42;   // net ONEWIRE
+
+constexpr int I2C_SDA = 8;
+constexpr int I2C_SCL = 9;
+constexpr int OLED_SDA = I2C_SDA;
+constexpr int OLED_SCL = I2C_SCL;
+constexpr int OLED_ADDR = 0x3C;
+constexpr uint8_t DS3231_I2C_ADDR = 0x68;
+
+// microSD embarquée (slot bi-site de la carte, côté A2)
+constexpr int SD_CS_PIN   = 10;
+constexpr int SD_MOSI_PIN = 12;
+constexpr int SD_CLK_PIN  = 13;
+constexpr int SD_MISO_PIN = 14;
+
+} // namespace Pins
+
+#elif !defined(BOARD_S3) && defined(PINMAP_UNIVERSAL) // ESP32-WROOM sur carte n3-universal (site A1)
+// Mêmes nets que ci-dessus, côté site A1. SD possible via l'env « wroom-sd »
+// (option) : les lignes SD montent sur les nets US3/AUX1/AUX2 — ce build
+// renonce alors à ULTRASON_POTA et aux relais K5/K6 (voir l'étude).
+namespace Pins {
+constexpr int ULTRASON_AQUA = 4;   // net US1 (partagé PLUIE msp)
+constexpr int ULTRASON_TANK = 5;   // net US2 (partagé DHT_EXT msp)
+constexpr int ULTRASON_POTA = 14;  // net US3 (= SD_CS en env wroom-sd)
+
+constexpr int EAU_POTAGER = ULTRASON_POTA;
+constexpr int LUMINOSITE = 36;     // net ADC_E (entrée seule, ADC1)
+
+constexpr int POMPE_AQUA   = 16;   // net K1 (partagé POMPE n3pp)
+constexpr int POMPE_RESERV = 17;   // net K2
+constexpr int RADIATEURS   = 18;   // net K3
+constexpr int LUMIERE      = 19;   // net K4
+
+// Relais auxiliaires : canaux K5/K6 embarqués (= SD_CLK/SD_MOSI en env wroom-sd)
+constexpr int AUX1 = 23;           // net AUX1 (K5)
+constexpr int AUX2 = 25;           // net AUX2 (K6)
+
+constexpr int SERVO_GROS   = 26;   // net SERVO1 (partagé SERVOGD msp)
+constexpr int SERVO_PETITS = 27;   // net SERVO2 (partagé SERVOHB msp)
+
+constexpr int DHT_PIN      = 15;   // net DHT_INT (commun aux 3 firmwares)
+constexpr int ONE_WIRE_BUS = 2;    // net ONEWIRE (partagé TempEau msp)
+
+constexpr int I2C_SDA = 21;
+constexpr int I2C_SCL = 22;
+constexpr int OLED_SDA = I2C_SDA;
+constexpr int OLED_SCL = I2C_SCL;
+constexpr int OLED_ADDR = 0x3C;
+constexpr uint8_t DS3231_I2C_ADDR = 0x68;
+
+// microSD (option env wroom-sd uniquement — lignes sur US3/AUX1/AUX2 + 12)
+constexpr int SD_CS_PIN   = 14;
+constexpr int SD_CLK_PIN  = 23;
+constexpr int SD_MOSI_PIN = 25;
+constexpr int SD_MISO_PIN = 12;    // strapping MTDI : ligne SANS pull-up sur la carte
+
+} // namespace Pins
+
 #elif defined(BOARD_S3) // ESP32-S3 (cartographie historique, câblage main — production)
 namespace Pins {
 // Capteurs ultrasoniques

@@ -13,7 +13,8 @@
       },
       "pioEnvs": [
         { "name": "esp32dev", "versionDefine": null },
-        { "name": "esp32dev_test", "versionDefine": null }
+        { "name": "esp32dev_test", "versionDefine": null },
+        { "name": "esp32dev_universal_test", "versionDefine": null }
       ]
     },
     {
@@ -29,7 +30,8 @@
       },
       "pioEnvs": [
         { "name": "esp32dev", "versionDefine": null },
-        { "name": "esp32dev_test", "versionDefine": null }
+        { "name": "esp32dev_test", "versionDefine": null },
+        { "name": "esp32dev_universal_test", "versionDefine": null }
       ]
     },
     {
@@ -68,9 +70,13 @@
         { "name": "wroom-test", "versionDefine": null },
         { "name": "wroom-beta", "versionDefine": null },
         { "name": "wroom-beta-https", "versionDefine": null },
+        { "name": "wroom-beta-local", "versionDefine": null },
         { "name": "wroom-tls-test", "versionDefine": null },
+        { "name": "wroom-universal-test", "versionDefine": null },
         { "name": "wroom-s3-prod", "versionDefine": null },
         { "name": "wroom-s3-test", "versionDefine": null },
+        { "name": "wroom-s3-universal-test", "versionDefine": null },
+        { "name": "wroom-s3-carrier-test", "versionDefine": null },
         { "name": "wroom-s3-test-psram", "versionDefine": null },
         { "name": "wroom-s3-test-psram-v2", "versionDefine": null },
         { "name": "wroom-s3-test-devkit", "versionDefine": null },

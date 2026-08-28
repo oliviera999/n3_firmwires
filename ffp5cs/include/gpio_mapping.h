@@ -80,16 +80,24 @@ struct GPIOMapping {
 // config.h::ActuatorConfig::Default référence également GPIODefaults.
 namespace GPIOMap {
     // ACTIONNEURS PHYSIQUES (états booléens)
-    // v13.53 (audit): GPIO référencent Pins::* pour rester cohérents WROOM ↔ S3 (ex. RADIATEURS S3=13).
-    //                 Ancien code hardcodait 16/18/15, divergeait sur S3 (Pins::POMPE_AQUA différent).
-    //                       GPIO                  Type                NVS           POST              Interne         Desc                Default
-    constexpr GPIOMapping PUMP_AQUA     = {Pins::POMPE_AQUA,    GPIOType::ACTUATOR, "pump_aqua", "etatPompeAqua", "pumpAqua", "Pompe aquarium", false};
-    constexpr GPIOMapping PUMP_TANK     = {Pins::POMPE_RESERV,  GPIOType::ACTUATOR, "pump_tank", "etatPompeTank", "pumpTank", "Pompe réservoir", false};
-    constexpr GPIOMapping HEATER        = {Pins::RADIATEURS,    GPIOType::ACTUATOR, "heater",    "etatHeat",      "heater",   "Chauffage", false};
-    constexpr GPIOMapping LIGHT         = {Pins::LUMIERE,       GPIOType::ACTUATOR, "light",     "etatUV",        "light",    "Lumière", false};
-    // v15.26 : relais auxiliaires carte porteuse 230V (WROOM 23/25, S3 47/48)
-    constexpr GPIOMapping AUX1          = {Pins::AUX1,          GPIOType::ACTUATOR, "aux1",      "etatAux1",      "aux1",     "Relais AUX 1", false};
-    constexpr GPIOMapping AUX2          = {Pins::AUX2,          GPIOType::ACTUATOR, "aux2",      "etatAux2",      "aux2",     "Relais AUX 2", false};
+    // v15.29 (audit n3-universal) : le champ « gpio » est la CLÉ DU CONTRAT SERVEUR
+    // (n3_serveur Ffp3GpioMap / ffp3Outputs : 16=pompeAqua, 18=pompeTank, 2=heat,
+    // 15=UV, 23/25=AUX + alias etatAux1/etatAux2), PAS la broche physique.
+    // v13.53 l'avait aligné sur Pins::* « pour cohérence WROOM ↔ S3 », mais le
+    // serveur publie sous les numéros historiques WROOM : sur S3 (RADIATEURS=13)
+    // le chauffage ne recevait plus les commandes, et sur PINMAP_UNIVERSAL les
+    // clés se CROISAIENT (S3 : clé 15=UV lue par POMPE_AQUA, 16=pompeAqua lue
+    // par POMPE_RESERV, 18=pompeTank lue par LUMIERE). La broche physique reste
+    // Pins::* via Automatism/ActuatorsController — applyGPIO ne compare que des clés.
+    //                       CLÉ SERVEUR Type                NVS           POST              Interne         Desc                Default
+    constexpr GPIOMapping PUMP_AQUA     = {16, GPIOType::ACTUATOR, "pump_aqua", "etatPompeAqua", "pumpAqua", "Pompe aquarium", false};
+    constexpr GPIOMapping PUMP_TANK     = {18, GPIOType::ACTUATOR, "pump_tank", "etatPompeTank", "pumpTank", "Pompe réservoir", false};
+    constexpr GPIOMapping HEATER        = {2,  GPIOType::ACTUATOR, "heater",    "etatHeat",      "heater",   "Chauffage", false};
+    constexpr GPIOMapping LIGHT         = {15, GPIOType::ACTUATOR, "light",     "etatUV",        "light",    "Lumière", false};
+    // v15.26 : relais auxiliaires carte porteuse 230V — clés serveur 23/25 (le
+    // serveur ajoute aussi les alias symboliques etatAux1/etatAux2 au GET).
+    constexpr GPIOMapping AUX1          = {23, GPIOType::ACTUATOR, "aux1",      "etatAux1",      "aux1",     "Relais AUX 1", false};
+    constexpr GPIOMapping AUX2          = {25, GPIOType::ACTUATOR, "aux2",      "etatAux2",      "aux2",     "Relais AUX 2", false};
     
     // COMMANDES NOURRISSAGE (flags)
     constexpr GPIOMapping FEED_SMALL    = {108, GPIOType::ACTUATOR, "feed_small", "bouffePetits", "feedSmall", "Nourrir petits", false};

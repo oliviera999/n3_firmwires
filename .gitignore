@@ -52,3 +52,4 @@ tools/ota/__pycache__/
 
 # Claude Code worktrees agents (ephemeres, ne pas suivre)
 .claude/worktrees/
+.pio_git_head_backup
