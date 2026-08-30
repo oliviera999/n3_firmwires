@@ -1,5 +1,8 @@
 ﻿Comment,Designator,Footprint,LCSC Part #
-100k* (POSE CONDITIONNELLE - voir README),R38,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-10k* (POSE CONDITIONNELLE - voir README),"R27,R43,R44,R45,R46,R47",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-27k* (POSE CONDITIONNELLE - voir README),R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-2k* (POSE CONDITIONNELLE - voir README),"R17,R18,R19",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+Haut du pont ADC_VBAT — 100k dans TOUS les profils,R38,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+"Varistance 10D471K 300VAC — PROFIL (d) SECTEUR UNIQUEMENT. Pattes a replier (pas reel 7,5 mm sur empreinte 5,0 mm) : pose main, exclure d'un assemblage machine",RV1,CP_Radial_D10.0mm_P5.00mm,C111188
+"10k, bas de pont des entrees analogiques — R43-R46 : POSER pour des LDR (msp), ABSENT pour des sondes sol (n3pp). R27 : POSER pour une LDR, ABSENT pour un module a sortie AO. R47 : POSER sur unites msp uniquement (pull-up DHT ext)","R27,R43,R44,R45,R46,R47",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+"Bas du pont ADC_VBAT — VALEUR SELON PROFIL : 100k en batterie 1S, 27k en bus 12V. Poser 27k sur une unite 1S fausse la jauge d'un facteur ~2,4 ; poser 100k sur un bus 12V envoie ~7,75 V sur l'ADC (destruction de l'entree)",R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+"2k, bas des ponts diviseurs d'echo HC-SR04 — POSER sur unites ffp5cs ; ABSENT sur msp/n3pp (sinon PLUIE verrouille et DHT externe illisible). ATTENTION : sans elles, un HC-SR04 branche par erreur envoie ~5 V sur le GPIO","R17,R18,R19",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+"Bornier ENTREE SECTEUR 230V (1=N 2=L) — PROFIL (d) SECTEUR UNIQUEMENT, avec PS1/F1/RV1. NE PAS POSER sur une unite 5V, batterie 1S ou bus 12V",J27,TerminalBlock_bornier-2_P5.08mm,
+"Porte-fusible 5x20 + cartouche T1A CERAMIQUE (pouvoir de coupure >= 1500 A, PAS de fusible verre) — PROFIL (d) SECTEUR UNIQUEMENT. Prevoir 2 clips a souder",F1,Fuse_5x20_Horizontal,

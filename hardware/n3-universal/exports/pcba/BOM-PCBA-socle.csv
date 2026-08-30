@@ -2,7 +2,6 @@
 1000u/16V,C1,CP_Radial_D10.0mm_P5.00mm,
 100k,"R35,R36,R37,R40",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 100n,"C3,C4",C_Disc_D5.0mm_W2.5mm_P5.00mm,
-"Varistance 10D471K 300VAC (pattes a replier : pas 7,5 mm sur empreinte 5,0 mm)",RV1,CP_Radial_D10.0mm_P5.00mm,C111188
 10k,"R5,R6,R7,R8,R23,R29,R32",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 1N4007,"D1,D2,D3,D4,D6,D7",D_DO-41_SOD81_P10.16mm_Horizontal,
 1N5822 Schottky 3A DO-201AD,D5,D_DO-201AD_P15.24mm_Horizontal,C2476
@@ -13,7 +12,7 @@
 470u/25V,C5,CP_Radial_D10.0mm_P5.00mm,
 BC337-40 NPN TO-92,"Q1,Q2,Q3,Q4,Q5,Q6,Q8,Q10",TO-92_Inline,C713611
 "BS250P P-MOSFET TO-92 (Diodes Inc, brochage D-G-S)",Q9,TO-92_Inline,C151450
-Bornier_5.08,"J1,J12,J18,J19,J25,J26,J27,J36,J37",TerminalBlock_bornier-2_P5.08mm,
+Bornier_5.08,"J1,J12,J18,J19,J25,J26,J36,J37",TerminalBlock_bornier-2_P5.08mm,
 Bornier_5.08,"J3,J4,J5,J6,J11,J23,J24,J31,J32,J33,J34",TerminalBlock_bornier-3_P5.08mm,
 Header alim,J20,PinHeader_1x06_P2.54mm_Vertical,
 Header service,J17,PinHeader_1x06_P2.54mm_Vertical,
@@ -32,6 +31,5 @@ Support I2C ext,J14,PinSocket_1x04_P2.54mm_Vertical,
 Support I2C libre,"J21,J22,J28",PinSocket_1x04_P2.54mm_Vertical,
 Support OLED,J13,PinSocket_1x04_P2.54mm_Vertical,
 Support module microSD,J35,PinSocket_1x06_P2.54mm_Vertical,
-T1A 5x20,F1,Fuse_5x20_Horizontal,
 rouge,"LED1,LED2,LED3,LED4,LED6,LED7",LED_D5.0mm,
 verte,LED5,LED_D5.0mm,
