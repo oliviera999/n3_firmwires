@@ -27,9 +27,11 @@
      (même net, redondant) sinon la DFM JLCPCB s'arrête sur « holes overlap » ;
    - pads TO-92 (27 trous) : anneau 0,15 mm < reco JLCPCB 2 oz 0,25 mm → perçage
      0,6 mm ou pads élargis ; sinon accepter la remarque DFM ;
-   - sérigraphie : traits 0,12 mm → 0,15 mm ; ajouter les polarités +/− sur
-     J1/J26/J36/J37 ; resserrer les pistes 230 V à l'approche de RV1/J27 (écart
-     L↔N mesuré 2,50 mm, l'annonce « ≥ 3 mm » ne tient qu'hors approche de pads).
+   - sérigraphie : traits 0,12 mm → 0,15 mm ; **dégager des pads et des trous** les
+     libellés qui les recouvrent (26 pads, dont le pad 1 des six relais, et 30 perçages) ;
+     ajouter les polarités +/− sur J1/J26/J36/J37 ; resserrer les pistes 230 V à l'approche
+     de RV1/J27 (écart L↔N mesuré 2,50 mm, l'annonce « ≥ 3 mm » ne tient qu'hors approche
+     de pads).
    La carte est **commandable sans ces retouches** (aucun défaut bloquant) : dans ce
    cas, répondre « accept » aux remarques DFM ci-dessus.
 
@@ -58,8 +60,22 @@
 
 Surcoûts attendus : 2 oz (principal), surface 278×120 (> 100 mm ⇒ hors promo),
 LeadFree HASL (léger). Ordre de grandeur : **~45-75 $ les 5 + port** (~1 kg) ≈
-60-100 € livré. Remarques DFM probables à accepter si pas de re-export : anneau
-TO-92 0,15 mm, via superposé à la fente J2, traits sérigraphie 0,12 mm.
+60-100 € livré.
+
+**Remarques DFM — mesurées, plus supposées.** Le dossier a été passé au JLCDFM le
+2026-08-29 (`dfm.jlcdfm.com`, rapport joint à l'audit §8). Il ne relève **aucun défaut de
+routage** : 4 lignes Danger et 2 Warning, pour 3 causes seulement. Si la carte part sans
+re-export, répondre **« accept »** aux trois :
+
+| Ligne du DFM | Cause | Décision |
+|--------------|-------|----------|
+| PTH spacing 0 mm ×1 **+** Via to PTH spacing 0 mm ×1 (*Danger*) | le **même** via GND (48 ; 110) au centre de la fente plaquée de J2 — même net, aucun court-circuit | accept (ou supprimer le via, 5 s sous KiCad) |
+| Silkscreen to pad / to hole 0 mm (*Danger* ×50 + ×50) | 26 pads et 30 perçages sous de la sérigraphie : l'encre part à la finition, libellés localement rongés | accept — cosmétique |
+| Annular ring 0,15 mm (*Warning* ×54) · Silkscreen line width 0,12 mm (*Warning* ×50) | anneaux TO-92 · petits textes | accept |
+
+⚠️ Ce rapport **ne valide ni la sécurité 230 V ni le fraisage** : il ignore les nets et les
+tensions, et le fichier `Edge_Cuts.gm1` n'a été analysé par aucune de ses règles — les 19 fentes
+internes n'ont donc **pas** été contrôlées. Voir audit §8.4.
 
 Conformité vérifiée aux capacités JLCPCB (fetch 2026-08-28) : pistes ≥ 0,4 mm
 (min 2 oz : 0,16), fentes non plaquées 1,0 mm (= min exact), fentes plaquées
