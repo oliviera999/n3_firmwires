@@ -23,6 +23,12 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
 
+> 📋 **Avant de commander** : lire **[`COMMANDE.md`](COMMANDE.md)** (options exactes du
+> formulaire JLCPCB — dont le **2 oz obligatoire**, non porté par les gerbers — et procédure
+> de devis PCB Maroc) et **[`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md)** (contre-vérification
+> pré-commande : verdict, constats retenus, check-list rev 0.2). Fichiers d'assemblage
+> éventuel : [`exports/pcba/`](exports/pcba/).
+
 ## Réalisation (rev 0.1 — générée)
 
 ```
@@ -35,10 +41,16 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
 ```
 
 - **Carte 278 × 120 mm, 2 oz** — zone secteur en bande haute (6 relais + coin PSU
-  Hi-Link, fentes fraisées, frontière y71-73), logique en dessous, rangée de
-  borniers en bande basse.
+  Hi-Link, fentes fraisées), logique en dessous, rangée de borniers en bande basse.
+  La frontière fraisée **y71-73 n'existe qu'au coin PSU** : dans la bande relais les
+  broches de contact 230 V descendent jusqu'à y79,5, et c'est le plan GND repoussé à
+  **y84** + les mini-fentes autour de chaque COM qui tiennent l'isolement (écart cuivre
+  mains ↔ logique mesuré : 3,45 mm).
 - **Sites A1 (WROOM 2×15) / A2 (S3-DevKitC-1 2×22)** — un seul module peuplé ;
-  antennes dégagées (keepouts) ; entraxes à VERIFIER sur l'exemplaire réel.
+  antennes dégagées (keepouts) ; **entraxes ET ordre des broches à VERIFIER sur
+  l'exemplaire réel** avant de souder les supports (certains clones « DevKit V1
+  30 broches » sont en 27,9 mm au lieu de 25,4, ou intervertissent des broches :
+  comparer les 30 étiquettes du module à celles de la carte).
 - **Firmwares** : sections `PINMAP_UNIVERSAL` (msp 2.75, n3pp 4.72, ffp5cs 15.29),
   envs `esp32dev_universal_test` / `wroom-universal-test` / `wroom-s3-universal-test`
   (tous en CI). Garde anti-dérive machine sur les 4 combinaisons.
@@ -48,6 +60,10 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
   (TP4056+18650 hors carte, gate JP1 ôté, diviseur 100k/100k) ; (c) bus 12 V
   (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/27k) ;
   (d) secteur Hi-Link 20M05 (J27 + fusible T1A + varistance embarqués).
+  ⚠️ **Profil (b) : injecter le 5 V par J1/J2 via un module boost — JAMAIS la
+  batterie 1S brute** (3,0-4,2 V) : la carte n'a pas d'entrée 3V3 (J19 est en aval
+  du gate Q7), et l'AMS1117 du DevKit passerait en dropout après la chute de D5
+  → brownouts. Mesure de tension batterie sur J25, pas sur l'entrée d'alim.
 
 ## Contenu
 
@@ -85,7 +101,9 @@ Cas analysé : source solaire 12 V nominal (**10,5–15,5 V** réels, 14,5 V en 
 alimentant pompes/chauffage/lumière, l'ESP et tous les périphériques.
 
 - **Charges de puissance sur le bus 12 V en direct**, commutées par les *contacts*
-  des relais (SRD : 10 A / 28 VDC — pompes 12 V OK, borniers NO/COM/NC inchangés).
+  des relais (SRD **Form C : 7 A / 28 VDC résistif et 3 A inductif réels** — le 10 A
+  du catalogue ne vaut qu'en 125 VAC ou pour un Form A sans contact NC ; pompes 12 V
+  OK, borniers NO/COM/NC inchangés).
 - **Buck 12→5 V socketé (XL4015 5 A conseillé, LM2596 3 A mini)** pour l'électronique
   (~0,7 A continu, pics servos ~2,5 A). Option : bobines **SRD-12VDC** (même
   empreinte, variante BOM) sur le bus → le buck ne porte plus que logique+servos.
@@ -139,6 +157,9 @@ Notes de conception issues des décisions :
   GPIO2/15 sur les cartes actuelles) — les caveats LED/strapping s'adoucissent
   (LED RGB = simple recopie d'état du relais K5).
 - Option SD-sur-WROOM (futur env ffp5cs `wroom-sd`) : sacrifie désormais US3 + K5/K6.
+  ⚠️ Avant d'utiliser cette option, **dépeupler R28 et R31** (bases de Q5/Q6) ou
+  débrancher toute charge des borniers K5/K6 : SD_CLK et SD_MOSI restent câblés aux
+  drivers des relais, et le trafic SPI ferait claquer K5/K6 pendant chaque accès SD.
 - Estimation : **~260×130 mm, 2 oz**, ~40-60 $ les 5 chez JLCPCB.
 - Contexte élèves : zone secteur assemblée/raccordée sous supervision adulte,
   boîtier + presse-étoupes obligatoires à l'installation.

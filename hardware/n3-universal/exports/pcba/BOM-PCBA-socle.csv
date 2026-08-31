@@ -1,0 +1,35 @@
+﻿Comment,Designator,Footprint,LCSC Part #
+1000u/16V,C1,CP_Radial_D10.0mm_P5.00mm,
+100k,"R35,R36,R37,R40",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+100n,"C3,C4",C_Disc_D5.0mm_W2.5mm_P5.00mm,
+10k,"R5,R6,R7,R8,R23,R29,R32",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+1N4007,"D1,D2,D3,D4,D6,D7",D_DO-41_SOD81_P10.16mm_Horizontal,
+1N5822 Schottky 3A DO-201AD,D5,D_DO-201AD_P15.24mm_Horizontal,C2476
+1k,"R1,R2,R3,R4,R9,R10,R11,R12,R13,R14,R15,R16,R28,R30,R31,R33,R34",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+220,"R20,R21",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+4.7k,"R24,R25,R26",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+470u/16V,C2,CP_Radial_D8.0mm_P3.50mm,
+470u/25V,C5,CP_Radial_D10.0mm_P5.00mm,
+BC337-40 NPN TO-92,"Q1,Q2,Q3,Q4,Q5,Q6,Q8,Q10",TO-92_Inline,C713611
+"BS250P P-MOSFET TO-92 (Diodes Inc, brochage D-G-S)",Q9,TO-92_Inline,C151450
+Bornier_5.08,"J1,J12,J18,J19,J25,J26,J36,J37",TerminalBlock_bornier-2_P5.08mm,
+Bornier_5.08,"J3,J4,J5,J6,J11,J23,J24,J31,J32,J33,J34",TerminalBlock_bornier-3_P5.08mm,
+Header alim,J20,PinHeader_1x06_P2.54mm_Vertical,
+Header service,J17,PinHeader_1x06_P2.54mm_Vertical,
+Header servo,"J15,J16",PinHeader_1x03_P2.54mm_Vertical,
+JST B3B-XH-A(LF)(SN) 1x03,"J10,J29,J30",JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical,C144394
+JST-XH,"J7,J8,J9",JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical,
+Jack 5.5/2.1,J2,BarrelJack_Horizontal,
+Jumper BYPASS,JP1,PinHeader_1x03_P2.54mm_Vertical,
+Jumper SD CS,JP2,PinHeader_1x03_P2.54mm_Vertical,
+Jumper SD MOSI,JP4,PinHeader_1x03_P2.54mm_Vertical,
+Jumper SD SCK,JP3,PinHeader_1x03_P2.54mm_Vertical,
+"NDP6020P P-MOSFET logic-level TO-220 (VBsemi NDP6020P-VB - stock LCSC tres faible, securiser AVANT commande)","Q7,Q11",TO-220-3_Vertical,C878814
+P6KE18A TVS unidirectionnelle (Vishay),D8,D_DO-201AD_P15.24mm_Horizontal,C1975053
+Relais Songle SRD-05VDC-SL-C 5V SPDT (7A/240VAC Form C reel),"K1,K2,K3,K4,K5,K6",Relay_SPDT_SANYOU_SRD_Series_Form_C,C35449
+Support I2C ext,J14,PinSocket_1x04_P2.54mm_Vertical,
+Support I2C libre,"J21,J22,J28",PinSocket_1x04_P2.54mm_Vertical,
+Support OLED,J13,PinSocket_1x04_P2.54mm_Vertical,
+Support module microSD,J35,PinSocket_1x06_P2.54mm_Vertical,
+rouge,"LED1,LED2,LED3,LED4,LED6,LED7",LED_D5.0mm,
+verte,LED5,LED_D5.0mm,

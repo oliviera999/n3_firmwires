@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Génère le projet KiCad (schéma + PCB + BOM) — VARIANTE 230 V de la carte porteuse
-ffp5cs wroom-prod. Zone secteur isolée en haut de carte (fentes, règle DRC 3 mm
-mains<->logique via .kicad_dru), breakout de TOUS les GPIO libres, distribution
-5V/3V3/GND en borniers + header. Routage : generator/route_230v.py.
+"""Génère le projet KiCad (schéma + PCB + BOM) de la carte porteuse UNIVERSELLE
+n3-universal (msp / n3pp / ffp5cs, bi-module WROOM ou ESP32-S3). Zone secteur
+isolée en haut de carte (fentes, règle DRC 3 mm mains<->logique via .kicad_dru),
+header de service, distribution 5V/3V3/GND en borniers + header.
+Routage : generator/route_universal.py.
 
-Source de vérité : ../pinmap.json (lui-même vérifié contre ffp5cs/include/pins.h
-par tools/check_pinmap_vs_firmware.py). Les empreintes proviennent de la
+Source de vérité : ../pinmap_universel_propose.json et les sections
+PINMAP_UNIVERSAL des trois firmwares (l'ensemble étant vérifié contre les pads
+réels du PCB par tools/check_pinmap_vs_firmware.py). Les empreintes proviennent de la
 bibliothèque officielle KiCad 8.0.9 (vendorées dans ./footprints, licence
 CC-BY-SA 4.0 avec exception d'usage — voir README).
 
@@ -278,7 +280,8 @@ def relay_channel(n: int, gpio_net: str, jref: str, k_x: float,
              nets={"1": f"REL{n}_SW", "2": f"REL{n}_LED"}),
         dict(ref=f"K{n}", sym="RELAY_SRD", value="SRD-05VDC-SL-C",
              fp="Relay_SPDT_SANYOU_SRD_Series_Form_C",
-             desc="Relais 5V SPDT 10A/250VAC (Songle/Sanyou SRD)",
+             desc="Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A "
+                  "inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A)",
              sch=(bx + 19, by + 2), pcb=(k_x, 78, 90),
              nets={"5": "+5V", "2": f"REL{n}_SW", "1": f"REL{n}_COM",
                    "3": f"REL{n}_NO", "4": f"REL{n}_NC"}),
@@ -645,7 +648,10 @@ def build_components():
              nets={"1": "MAINS_L", "2": "MAINS_LF"}),
         dict(ref="RV1", sym="VARISTOR", value="10D471K",
              fp="CP_Radial_D10.0mm_P5.00mm",
-             desc="Varistance 300VAC transitoires secteur", sch=(155, 82), pcb=(253, 62, 0),
+             desc="Varistance 300VAC transitoires secteur — pattes à replier "
+                  "(pas réel 7,5 mm sur une empreinte 5,0 mm) : pose main, à exclure "
+                  "d'un assemblage machine ; le repère + de l'empreinte est sans objet",
+             sch=(155, 82), pcb=(253, 62, 0),
              nets={"1": "MAINS_N", "2": "MAINS_LF"}),
         dict(ref="PS1", sym="HLK20M", value="HLK-20M05",
              fp="Converter_ACDC_Hi-Link_HLK-20Mxx",
@@ -735,15 +741,15 @@ COMPONENTS = build_components()
 # Textes explicatifs du schéma : (x_gu, y_gu, texte)
 SCH_TEXTS = [
     (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier.\\nD5 protège le rail si l'USB du DevKit est branché en même temps."),
-    (52, 24, "ESP32 DevKit V1 (30 broches, socketé).\\nFlash/monitor via l'USB du module (pio run -e wroom-prod -t upload)."),
-    (44, 50, "SERVOS NOURRISSEURS 5V\\nGPIO12 (strapping MTDI) : pull-down R22, signal série R20."),
+    (52, 24, "SITE A1 : ESP32 DevKit V1 (30 broches, socketé) — UN SEUL module peuplé (A1 OU A2).\\nEnvs carte universelle : msp/n3pp esp32dev_universal_test, ffp5cs wroom-universal-test.\\nSur une unité ffp5cs, ÔTER JP1 avant un flash UART (le pull-up R24 sur GPIO2 bloque le bootloader)."),
+    (44, 50, "SERVOS 5V (nets SERVO1/SERVO2) — WROOM : GPIO26/27, S3 : IO21/IO47.\\nSignal en série R20/R21 (220R). Alimentation prise directement sur le rail +5V."),
     (86, 10, "3x HC-SR04 (5V), mode mono-broche TRIG=ECHO (sensor_ultrasonic.cpp).\\nEcho 5V ramené à 3V3 par pont 1k/2k sur chaque canal."),
     (86, 48, "AIR : DHT11 (option DHT22, -DUSE_DHT22) — pull-up 10k."),
     (86, 61, "EAU : DS18B20 (1-Wire, pull-up 4.7k)."),
-    (86, 71, "LUMIERE : LDR déportée + 10k (GPIO34 = entrée seule)."),
+    (86, 71, "LUMIERE : LDR déportée sur J12, net ADC_E (GPIO36 WROOM / IO6 S3).\\nBas de pont R27 10k : A POSER pour une LDR, ABSENT pour un module à sortie AO."),
     (86, 81, "I2C : OLED SSD1306 0x3C + header extension (DS3231 si besoin)."),
-    (107, 1, "4 RELAIS 230V 10A — commande ACTIVE HAUT (actuators.h : on() = HIGH).\\nREL1=Pompe aquarium GPIO16, REL2=Pompe réservoir GPIO18,\\nREL3=Chauffage GPIO2, REL4=Lumière GPIO15. Borniers : 1=NC 2=COM 3=NO.\\nZONE SECTEUR ISOLEE sur le PCB (fentes + 3mm mini) — circuit 230V\\nA PROTEGER EN AMONT (fusible/disjoncteur) ; charges inductives : snubber cote charge."),
-    (18, 64, "TOUS les GPIO libres sur header (Dupont),\\ny compris RX0/TX0 (les laisser libres pendant le flash USB)\\net GPIO36/39 (entrees seules)."),
+    (107, 1, "6 RELAIS K1..K6 — commande ACTIVE HAUT (base 1k + pull-down 10k : etat sur au boot).\\nWROOM : GPIO16/17/18/19/23/25 — S3 : IO15/16/17/18/48/45. Le role de chaque canal\\ndepend du firmware (voir les sections PINMAP_UNIVERSAL). Borniers : 1=NC 2=COM 3=NO.\\nSRD Form C = 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A).\\nZONE SECTEUR ISOLEE sur le PCB (fentes + 3mm mini) — circuit 230V\\nA PROTEGER EN AMONT (fusible/disjoncteur) ; charges inductives : snubber cote charge."),
+    (18, 64, "HEADER SERVICE J17 : 3V3 / GND / EN / RX0 / TX0 / +5V uniquement.\\nTous les autres GPIO sont consommes par la carte universelle\\n(GPIO36 = ADC_E, GPIO39 = ADC_VBAT). Laisser RX0/TX0 libres pendant le flash USB."),
     (18, 81, "Distribution 5V / 3V3-capteurs / GND :\\nborniers a vis + rail header."),
     (140, 4, "POWER-GATE +3V3_SW (GPIO13, topologie n3pp-msp rev 0.2) :\\nJP1 FERME par defaut (rail permanent, ffp5cs) ; OTER JP1 sur les\\nprofils batterie -> tout le rail capteurs est coupe en veille."),
     (140, 24, "PONT DIVISEUR VBAT COMMUTE : actif seulement quand +3V3_SW est present.\\nR38/R39 SELON PROFIL : 1S Li-ion = 100k/100k ; bus 12V = 100k/27k."),
@@ -910,8 +916,8 @@ def gen_schematic() -> str:
     (date "2026-07-07")
     (rev "{REV}")
     (company "salle aeree n3")
-    (comment 1 "Genere par hardware/ffp5cs-wroom-prod/generator/generate.py")
-    (comment 2 "Source de verite : ffp5cs/include/pins.h (BOARD_WROOM) via pinmap.json")
+    (comment 1 "Genere par hardware/n3-universal/generator/generate.py")
+    (comment 2 "Source de verite : pinmap_universel_propose.json + sections PINMAP_UNIVERSAL (msp / n3pp / ffp5cs)")
   )
   (lib_symbols
 {lib}
@@ -1269,6 +1275,21 @@ def gen_bom():
     out.append(["J36/J37 (module)", "0-1", "Buck 12V->5V faible Iq",
                 "MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT)",
                 "Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"])
+    # Pièces soudées ou posées qui n'ont pas d'empreinte propre : sans elles la
+    # carte n'est pas montable (les clips portent la cartouche, les cavaliers
+    # configurent les rails). Elles étaient absentes de la commande jusqu'ici.
+    out.append(["F1 (clips)", "2", "Clip porte-fusible 5x20 à souder",
+                "s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal",
+                "Entraxe ~22,5 mm. INDISPENSABLES au profil secteur : la cartouche "
+                "verre n'a pas de pattes à souder"])
+    out.append(["JP1-JP4 (cavaliers)", "5", "Cavalier (shunt) 2,54 mm",
+                "se posent sur JP1..JP4",
+                "JP1 FERME par défaut (rail permanent, ffp5cs) ; JP2/3/4 en 1-2 "
+                "(microSD sur site S3). 4 utilisés + 1 rechange"])
+    out.append(["H1 (visserie)", "1", "Vis + écrou NYLON M3",
+                "trou de fixation H1 (coin relais)",
+                "OBLIGATOIRE : une tête métal serait à ~4,3 mm du 230V. "
+                "H2-H4 : visserie M3 standard + entretoises"])
     return out
 
 
