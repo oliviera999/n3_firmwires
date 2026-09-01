@@ -12,6 +12,17 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.30 - 2026-09-01
+
+### Fix : régulation chauffage coupée par le gate Phase 3
+
+- `handleAlerts` ne fait plus de `return` précoce quand le serveur couvre les
+  mails partagés (ni pendant la grâce boot 30 s). Le serveur n'émet que les
+  mails `etatHeat` : il ne pilote pas le relais.
+- `HeaterOrchestrator` reste toujours exécuté ; `emitSharedAlertMails` ne
+  coupe que les mails ESP (niveau / trop-plein / réserve / chauffage).
+- Test natif `test_phase3_server_covers_still_regulates_relay`.
+
 ## Version 15.29 - 2026-08-27
 
 ### Fix contrat serveur des actionneurs : clés `gpio` découplées des broches physiques
