@@ -48,7 +48,7 @@ JP1;1;Jumper BYPASS;PinHeader_1x03_P2.54mm_Vertical;"BYPASS gate : cavalier 1-2 
 JP2;1;Jumper SD CS;PinHeader_1x03_P2.54mm_Vertical;"Source CS : 1-2 = S3 (IO10, défaut) ; 2-3 = WROOM (US3, env wroom-sd)"
 JP3;1;Jumper SD SCK;PinHeader_1x03_P2.54mm_Vertical;"Source SCK : 1-2 = S3 (IO13, défaut) ; 2-3 = WROOM (K5, env wroom-sd)"
 JP4;1;Jumper SD MOSI;PinHeader_1x03_P2.54mm_Vertical;"Source MOSI : 1-2 = S3 (IO12, défaut) ; 2-3 = WROOM (K6, env wroom-sd)"
-K1 K2 K3 K4 K5 K6;6;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT 10A/250VAC (Songle/Sanyou SRD)
+K1 K2 K3 K4 K5 K6;6;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A)
 LED1 LED2 LED3 LED4 LED6 LED7;6;rouge;LED_D5.0mm;LED témoin relais ON
 LED5;1;verte;LED_D5.0mm;LED présence 5V
 PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous)
@@ -87,9 +87,12 @@ R46;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_D 
 R47;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up DHT ext (POSER sur unités msp uniquement)
 R29 R32 R5 R6 R7 R8;6;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot)
 R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
-RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;Varistance 300VAC transitoires secteur
+RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;"Varistance 300VAC transitoires secteur — pattes à replier (pas réel 7,5 mm sur une empreinte 5,0 mm) : pose main, à exclure d'un assemblage machine ; le repère + de l'empreinte est sans objet"
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
 A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu
 J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2). Sur WROOM (site A1) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type Catalex (tampon toujours actif + régulateur 5V)
 J14/J21/J22/J28 (modules);0-4;DS3231 + INA219/226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"
 J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"
+F1 (clips);2;Clip porte-fusible 5x20 à souder;s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal;Entraxe ~22,5 mm. INDISPENSABLES au profil secteur : la cartouche verre n'a pas de pattes à souder
+JP1-JP4 (cavaliers);5;Cavalier (shunt) 2,54 mm;se posent sur JP1..JP4;"JP1 FERME par défaut (rail permanent, ffp5cs) ; JP2/3/4 en 1-2 (microSD sur site S3). 4 utilisés + 1 rechange"
+H1 (visserie);1;Vis + écrou NYLON M3;trou de fixation H1 (coin relais);OBLIGATOIRE : une tête métal serait à ~4,3 mm du 230V. H2-H4 : visserie M3 standard + entretoises

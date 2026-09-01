@@ -6,8 +6,9 @@ n3pp, ffp5cs WROOM + ffp5cs S3) et le PCB généré racontent la même histoire 
  1. chaque fonction firmware est sur le GPIO attendu (net universel) ;
  2. chaque net universel est raccordé au BON pad du site A1 (WROOM) ET du
     site A2 (S3-DevKitC-1) dans le PCB généré ;
- 3. les broches S3 interdites (strapping durs, USB, UART0, flash/PSRAM) ne
-    portent aucun net ;
+ 3. les broches S3 interdites (strapping durs, USB, flash/PSRAM) ne portent
+    aucun net — UART0 (IO43/44) fait exception : il est volontairement câblé
+    au header de service J17 ;
  4. topologies critiques : canaux HC-SR04 (pont 1k/2k), power-gate +3V3_SW
     (R34->Q8->Q7 + R35 + JP1), diviseur VBAT commuté, cavaliers SD.
 
