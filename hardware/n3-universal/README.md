@@ -57,6 +57,8 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
 - `ETUDE_PINMAP.md` — rapport généré (verdict + précautions par broche).
 - `pinmap_universel_propose.json` — affectations proposées, consommables par un
   futur générateur et par les sections `PINMAP_UNIVERSAL` des trois firmwares.
+- `COMPOSANTS_FFP5CS.csv` — tableau annoté du **rôle ffp5cs** (connecteurs,
+  GPIO WROOM/S3, constantes `Pins::`, clés serveur, pose / DNP).
 
 ## Verdict (2026-08-27)
 
@@ -149,6 +151,9 @@ Un audit exhaustif (netlist, strapping, géométrie secteur, contrats serveur) a
 corrigé la carte et les firmwares AVANT toute commande :
 
 **Corrections carte (intégrées au PCB routé + générateur) :**
+- **J2 (jack 5,5/2,1)** : rotation 270° pointait l'ouverture vers J1 (enfichage
+  bloqué). Passé à **0°** — ouverture au bord gauche, lèvre ~6 mm hors carte ;
+  pad TIP/+5 V inchangé (48, 116). Polarité centre-positif inchangée.
 - **Q11 (anti-inversion 12 V)** était câblé au brochage BS250 (D-G-S) : l'entrée
   12 V arrivait sur la **grille** du NDP6020P (TO-220 : 1=G 2=D 3=S) — profil bus
   12 V inopérant. Recâblé comme Q7 (G/D/S), entrée sur le drain.

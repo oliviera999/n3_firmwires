@@ -36862,7 +36862,7 @@
 	(footprint "n3u:BarrelJack_Horizontal"
 		(layer "F.Cu")
 		(uuid "b7d37fe4-ed83-5c0e-b8d0-d2a5cb3fad00")
-		(at 48 116 -90)
+		(at 48 116)
 		(descr "DC Barrel Jack")
 		(tags "Power Jack")
 		(property "Reference" "J2"
@@ -37210,7 +37210,7 @@
 			)
 		)
 		(pad "1" thru_hole rect
-			(at 0 0 270)
+			(at 0 0)
 			(size 3.5 3.5)
 			(drill oval 1 3)
 			(layers "*.Cu" "*.Mask" "In1.Cu" "In2.Cu" "In3.Cu" "In4.Cu" "In5.Cu" "In6.Cu"
@@ -37224,7 +37224,7 @@
 			(uuid "a9b5e5ed-3655-5e43-8a2e-f52bec916a7e")
 		)
 		(pad "2" thru_hole roundrect
-			(at -6 0 270)
+			(at -6 0)
 			(size 3 3.5)
 			(drill oval 1 3)
 			(layers "*.Cu" "*.Mask" "In1.Cu" "In2.Cu" "In3.Cu" "In4.Cu" "In5.Cu" "In6.Cu"
@@ -37239,7 +37239,7 @@
 			(uuid "3401c3f4-be2b-5519-a694-9afdc04705e1")
 		)
 		(pad "3" thru_hole roundrect
-			(at -3 4.7 270)
+			(at -3 4.7)
 			(size 3.5 3.5)
 			(drill oval 3 1)
 			(layers "*.Cu" "*.Mask" "In1.Cu" "In2.Cu" "In3.Cu" "In4.Cu" "In5.Cu" "In6.Cu"
@@ -51896,6 +51896,30 @@
 		(layers "F.Cu" "B.Cu")
 		(net 15)
 		(uuid "6c1a9b87-9098-47dd-9cc8-88164a39180c")
+	)
+	(segment
+		(start 42 116)
+		(end 42 110)
+		(width 1.2)
+		(layer "F.Cu")
+		(net 15)
+		(uuid "c8a1e4b0-7d2f-4a91-9c3e-1f0b6d8a2e11")
+	)
+	(segment
+		(start 42 110)
+		(end 48 110)
+		(width 1.2)
+		(layer "F.Cu")
+		(net 15)
+		(uuid "c8a1e4b0-7d2f-4a91-9c3e-1f0b6d8a2e12")
+	)
+	(segment
+		(start 45 120.7)
+		(end 42 116)
+		(width 1.2)
+		(layer "F.Cu")
+		(net 15)
+		(uuid "c8a1e4b0-7d2f-4a91-9c3e-1f0b6d8a2e13")
 	)
 	(via
 		(at 60 150)

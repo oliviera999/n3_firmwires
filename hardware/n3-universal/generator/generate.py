@@ -387,8 +387,11 @@ def build_components():
                       sch=(152, 104), pcb=(250, 84, 0), nets=a2_nets))
     # --- Alimentation 5 V ----------------------------------------------------
     comps += [
+        # Ouverture vers le bord gauche (x=40) : rotation 0° = montage
+        # classique (lèvre ~6 mm hors carte). 270° pointait l'ouverture vers
+        # J1 — enfichage bloqué. Pad 1 (TIP/+5V) reste à (48, 116).
         dict(ref="J2", sym="BARREL", value="Jack 5.5/2.1", fp="BarrelJack_Horizontal",
-             desc="Entrée 5V 3A (jack, centre = +)", sch=(24, 18), pcb=(48, 116, 270),
+             desc="Entrée 5V 3A (jack, centre = +, ouverture bord gauche)", sch=(24, 18), pcb=(48, 116, 0),
              nets={"1": "+5V", "2": "GND", "3": "GND"}),
         dict(ref="J1", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",

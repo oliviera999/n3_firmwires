@@ -1,0 +1,54 @@
+Catégorie;Réf PCB;Valeur / module;Rôle ffp5cs;Connecteur / brochage;Net;GPIO WROOM (A1);GPIO S3 (A2);Constante firmware (PINMAP_UNIVERSAL);Clé serveur (GPIOMap);Pose profil ffp5cs;Passifs PCB associés;Notes
+MCU;A1;ESP32 DevKit V1 (WROOM-32, 30 broches);Cerveau de l'unité — un seul site peuplé;Supports 2×15 (jamais soudé);—;site A1;—;—;—;Poser A1 XOR A2;2 supports femelles 1×15;Flash USB du module. Pour flasher une unité ffp5cs-WROOM avec JP1 fermé : ôter JP1 (pull-up OneWire R24 sur GPIO2 bloque le bootloader UART).
+MCU;A2;ESP32-S3-DevKitC-1 (44 broches);Cerveau S3 — SD native, K5/K6 embarqués;Supports 2×22 (jamais soudé);—;—;site A2;—;—;Poser A1 XOR A2;2 supports femelles 1×22;GPIO38 = DHT (LED RGB v1.1 cosmétique) ; GPIO48 = AUX1 (LED RGB v1.0 = recopie K5) ; GPIO45 = AUX2 (strapping VDD_SPI, sûr via base 1k + pull-down).
+Relais;K1 + J3;SRD-05VDC-SL-C + bornier 3 pts;Pompe aquarium (support de vie — coupée en dernier au délestage 12 V);J3 : 1=NC 2=COM 3=NO;K1 / POMPE_AQUA;16;15;Pins::POMPE_AQUA;16 etatPompeAqua;Oui;Q1 BC337, D1 1N4007, R1 1k, R5 10k, LED1, R9 1k;Charge 12 V ou 230 V sur les contacts. Commande active haut.
+Relais;K2 + J4;SRD-05VDC-SL-C + bornier 3 pts;Pompe réservoir (remplissage aquarium);J4 : 1=NC 2=COM 3=NO;K2 / POMPE_RESERV;17;16;Pins::POMPE_RESERV;18 etatPompeTank;Oui;Q2, D2, R2, R6, LED2, R10;Idem contacts 10 A / 28 VDC ou 250 VAC.
+Relais;K3 + J5;SRD-05VDC-SL-C + bornier 3 pts;Chauffage / radiateurs;J5 : 1=NC 2=COM 3=NO;K3 / RADIATEURS;18;17;Pins::RADIATEURS;2 etatHeat;Oui;Q3, D3, R3, R7, LED3, R11;Profil 12 V : interdit sous ~12,2 V (gel) / uniquement en surplus solaire.
+Relais;K4 + J6;SRD-05VDC-SL-C + bornier 3 pts;Lumière / UV;J6 : 1=NC 2=COM 3=NO;K4 / LUMIERE;19;18;Pins::LUMIERE;15 etatUV;Oui;Q4, D4, R4, R8, LED4, R12;Délestage 12 V : coupée avant la pompe aquarium.
+Relais;K5 + J23;SRD-05VDC-SL-C + bornier 3 pts;Relais auxiliaire AUX1 (libre : UV, aération, etc.);J23 : 1=NC 2=COM 3=NO;AUX1;23;48;Pins::AUX1;23 etatAux1;Oui (sauf env wroom-sd);Q5, D6, R28, R29, LED6, R30;Sur WROOM + wroom-sd : net = SD_CLK — renoncer à K5.
+Relais;K6 + J24;SRD-05VDC-SL-C + bornier 3 pts;Relais auxiliaire AUX2 (libre);J24 : 1=NC 2=COM 3=NO;AUX2;25;45;Pins::AUX2;25 etatAux2;Oui (sauf env wroom-sd);Q6, D7, R31, R32, LED7, R33;Sur WROOM + wroom-sd : net = SD_MOSI — renoncer à K6.
+Nourrisseur;J15;Header servo 1×3;Servo distributeur GROS poissons;1=SIG 2=+5V 3=GND;SERVO1;26;21;Pins::SERVO_GROS;109 bouffeGros;Oui;R20 220 Ω série;PWM 5 V. Pics de courant ~ servos : C2 à proximité.
+Nourrisseur;J16;Header servo 1×3;Servo distributeur PETITS poissons;1=SIG 2=+5V 3=GND;SERVO2;27;47;Pins::SERVO_PETITS;108 bouffePetits;Oui;R21 220 Ω série;Angles repos/distribution dans GPIODefaults (88° / 140°).
+Nourrisseur;C2;470u/16V;Découplage rail 5 V des servos;—;+5V;—;—;—;—;Oui;—;Absorbé les pointes des deux servos.
+Capteur;J7;HC-SR04 aquarium (module 4 fils);Niveau d'eau aquarium (seuil trop-plein / assèchement);JST-XH 1=5V 2=TRIG 3=ECHO 4=GND;US1;4;39;Pins::ULTRASON_AQUA;—;Oui;R14 1k série + R17 2k* pont écho;Mode mono-broche TRIG=ECHO. R17 OBLIGATOIRE (5 V → 3,3 V). Ne pas peupler J29 (même net, rôle msp pluie).
+Capteur;J8;HC-SR04 réservoir;Niveau d'eau réservoir (déclenche pompe remplissage);JST-XH 1=5V 2=TRIG 3=ECHO 4=GND;US2;5;40;Pins::ULTRASON_TANK;—;Oui;R15 1k + R18 2k*;R18 obligatoire. Ne pas peupler J30/R47 (même net, DHT ext msp).
+Capteur;J9;HC-SR04 potager;Niveau eau potager / recirculation;JST-XH 1=5V 2=TRIG 3=ECHO 4=GND;US3;14;41;Pins::ULTRASON_POTA;—;Oui (sauf env wroom-sd);R16 1k + R19 2k*;R19 absent si wroom-sd (sinon SD_CS tiré bas au reset). Sur S3 : US3 et SD coexistent.
+Capteur;J10;DHT11 (option DHT22);Température + humidité de l'air;JST-XH 1=3V3_SW 2=DATA 3=GND;DHT_INT;15;38;Pins::DHT_PIN;—;Oui;R23 10k pull-up;Alimenté par +3V3_SW (permanent si JP1 fermé). Flag -DUSE_DHT22 si DHT22.
+Capteur;J11;DS18B20 étanche;Température de l'eau (seuil chauffage);Bornier 1=3V3_SW 2=DATA 3=GND;ONEWIRE;2;42;Pins::ONE_WIRE_BUS;—;Oui;R24 4,7k pull-up;GPIO2 WROOM = strapping : ôter JP1 pour flash UART.
+Capteur;J12;LDR déportée;Luminosité ambiante;Bornier 1=3V3_SW 2=ADC;ADC_E;36;6;Pins::LUMINOSITE;—;Oui;R27 10k* bas de pont;R27 à POSER (LDR). Entrée seule WROOM GPIO36.
+I2C;J13;OLED SSD1306 128×64;Affichage local état / mesures;Support 1=GND 2=VCC 3=SCL 4=SDA;I2C;21/22;8/9;Pins::OLED_* addr 0x3C;—;Oui (recommandé);R25/R26 4,7k pull-up, C4 100n;VCC sur +3V3_SW.
+I2C;J14;Module DS3231 (ZS-042);Horloge RTC hors ligne (resynchro après sleep);Support 1=GND 2=VCC 3=SCL 4=SDA;I2C;21/22;8/9;Pins::DS3231_I2C_ADDR 0x68;—;Oui (recommandé);—;Dessouder charge LIR2032 + LED alim ; pile CR2032. VCC sur +3V3_SW : le chip bascule sur pile (~3 µA).
+I2C;J21;Port I2C libre 2;INA219/226 — courant panneau / batterie / charge;Support 1=GND 2=VCC 3=SCL 4=SDA;I2C;21/22;8/9;— (bus Wire);—;Option bus 12 V;—;Adresses typiques 0x40 / 0x41 / 0x44. Alimenter sur +3V3_SW.
+I2C;J22;Port I2C libre 3;2e INA ou BME280 optionnel;Support 1=GND 2=VCC 3=SCL 4=SDA;I2C;21/22;8/9;—;—;Option;—;Charge bus OK à 100 kHz avec OLED+RTC+2-3 INA.
+I2C;J28;Port I2C libre 4;3e INA219/226 (shunt pompe si > 3,2 A);Support 1=GND 2=VCC 3=SCL 4=SDA;I2C;21/22;8/9;—;—;Option bus 12 V;—;Shunt 0,01 Ω si branche forte.
+Stockage;J35;Module microSD SPI 3,3 V DIRECT;Journal / logs (LittleFS reste l'alternative);Support 1=GND 2=VCC 3=MISO 4=MOSI 5=SCK 6=CS;SD_*;CS=14 CLK=23 MOSI=25 MISO=12;CS=10 MOSI=12 CLK=13 MISO=14;Pins::SD_*;—;Option S3 (défaut) ; WROOM = env wroom-sd;JP2/JP3/JP4;PAS de module Catalex. WROOM : espefuse.py set_flash_voltage 3.3V avant insertion (GPIO12/MTDI). wroom-sd sacrifie US_POTA + K5 + K6.
+Stockage;JP2;Jumper SD CS;Sélection source CS;1-2 = S3 IO10 ; 2-3 = WROOM US3;SD_CS;—;—;—;—;1-2 si S3 ; 2-3 si wroom-sd;—;MISO câblé en direct aux deux sites (pas de jumper).
+Stockage;JP3;Jumper SD SCK;Sélection source horloge SPI;1-2 = S3 IO13 ; 2-3 = WROOM K5/AUX1;SD_CLK;—;—;—;—;1-2 si S3 ; 2-3 si wroom-sd;—;
+Stockage;JP4;Jumper SD MOSI;Sélection source MOSI;1-2 = S3 IO12 ; 2-3 = WROOM K6/AUX2;SD_MOSI;—;—;—;—;1-2 si S3 ; 2-3 si wroom-sd;—;
+Alim 5 V;J2;Jack 5,5/2,1;Entrée 5 V 3 A (centre +);ouverture au bord gauche;VIN_5V / +5V;—;—;—;—;Oui si profil (a) 5 V;—;Rotation 0° (lèvre ~6 mm hors carte). Alternative à J1 / Hi-Link / buck 12 V.
+Alim 5 V;J1;Bornier 2 pts;Entrée 5 V alternative vis;1=+5V 2=GND;+5V;—;—;—;—;Oui si profil (a);—;
+Alim 5 V;D5;1N5822 Schottky 3 A;Anti-retour vers VIN DevKit (USB + rail en même temps);—;+5V;—;—;—;—;Oui;—;
+Alim 5 V;C1;1000u/16V;Réservoir rail 5 V (relais + servos + HC-SR04);—;+5V;—;—;—;—;Oui;—;
+Alim 5 V;LED5 + R13;LED verte + 1k;Témoin présence 5 V;—;+5V;—;—;—;—;Oui;—;
+Alim 12 V;J26;Bornier 2 pts;Entrée bus 12 V solaire (après fusible lame 7,5–10 A externe);1=+12V 2=GND;VBAT12_IN;—;—;—;—;Oui si profil (c) bus 12 V;Q11 NDP6020P, R40 100k, D8 P6KE18A, C5 470u/25V;Anti-inversion + TVS 18 V + réservoir. Charges de puissance sur les contacts relais, pas via le buck.
+Alim 12 V;J36;Bornier 2 pts;Vers buck 12→5 V (IN);1=+12V protégé 2=GND;VBAT12_PROT;—;—;—;—;Oui si profil (c);Module MP1584 (faible Iq) ou XL4015;Le buck ne porte que logique + servos (~0,7 A, pics 2,5 A).
+Alim 12 V;J37;Bornier 2 pts;Retour 5 V du buck;1=+5V 2=GND;+5V;—;—;—;—;Oui si profil (c);—;
+Alim 12 V;J25;Bornier 2 pts;Sonde tension batterie / bus (pont commuté);1=VBAT+ 2=GND;ADC_VBAT;39;7;(net ADC_VBAT — pas encore Pins:: sur PINMAP_UNIVERSAL);—;Oui si profil (c);R38 100k* / R39 27k* (ratio 12 V), Q9 BS250, Q10, R36, R37;Ratio 1S = 100k/100k (msp/n3pp). Délestage gel : 12,4 / 12,2 / 11,9 / 11,5 V.
+Alim 230 V;J27;Bornier 2 pts;Entrée secteur 230 V — ZONE DANGER;1=N 2=L;MAINS_*;—;—;—;—;Oui si profil (d) Hi-Link;F1 T1A, RV1 10D471K, PS1 HLK-20M05;Un seul cordon 220 V. H1 = vis NYLON obligatoire. Protection tableau + différentiel 30 mA.
+Alim 230 V;PS1;Hi-Link HLK-20M05;AC-DC 230 V → 5 V 3,6 A socketé;1=LF 2=N 3=GND 4=+5V;+5V;—;—;—;—;Oui si profil (d);—;Corps à cheval sur la frontière secteur/logique (fente fraisée).
+Alim 230 V;F1;Fusible T1A 5×20;Protection entrée secteur de la carte;—;MAINS_L → MAINS_LF;—;—;—;—;Oui si profil (d);—;Pas de fusible sur les circuits commutés.
+Alim 230 V;RV1;Varistance 10D471K;Écrêtage transitoires 300 VAC;—;MAINS_N / MAINS_LF;—;—;—;—;Oui si profil (d);—;
+Rail capteurs;JP1;Jumper BYPASS 1×3;Rail +3V3_SW permanent (ffp5cs ne pilote pas le gate);Cavalier 1-2 FERMÉ;+3V3 → +3V3_SW;13 (inutilisé);3 (inutilisé);(GATE — msp/n3pp seulement);—;Fermé 1-2;Q7 NDP6020P, Q8 BC337, R34 1k, R35 100k;Broche 3 de JP1 non câblée. Ôter JP1 = rail commuté GPIO13 (msp/n3pp) ou pour flash UART WROOM.
+Rail capteurs;C3;100n;Découplage +3V3_SW capteurs;—;+3V3_SW;—;—;—;—;Oui;—;
+Distribution;J18;Bornier 2 pts;Distribution 5 V périphériques;1=+5V 2=GND;+5V;—;—;—;—;Oui;—;
+Distribution;J19;Bornier 2 pts;Distribution 3,3 V capteurs (rail commuté / bypass);1=+3V3_SW 2=GND;+3V3_SW;—;—;—;—;Oui;—;
+Distribution;J20;Header 1×6;Rail Dupont modules;1-2=+5V 3-4=GND 5-6=+3V3_SW;—;—;—;—;—;Oui;—;
+Service;J17;Header 1×6;Service / debug (tous les GPIO utiles sont pris);1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V;—;—;—;—;—;Oui;—;Laisser RX0/TX0 libres pendant le flash USB.
+Inutilisé msp/n3pp;J29;JST-XH;Module pluie msp — MÊME net que HC-SR04 AQUA;1=3V3_SW 2=DO 3=GND;US1;4;39;—;—;Ne pas poser;—;Rôles disjoints : peupler J7, pas J29.
+Inutilisé msp/n3pp;J30;JST-XH;DHT externe msp — MÊME net que HC-SR04 TANK;1=3V3_SW 2=DATA 3=GND;US2;5;40;—;—;Ne pas poser;R47 10k* (DNP);R47 uniquement unités msp.
+Inutilisé msp/n3pp;J31;Bornier 3 pts;ADC_A — LDR msp / sonde sol n3pp;1=3V3_SW 2=SIG 3=GND;ADC_A;32;1;—;—;Ne pas poser;R43 10k* (DNP);ffp5cs n'utilise pas ADC_A..D.
+Inutilisé msp/n3pp;J32;Bornier 3 pts;ADC_B — LDR msp / sonde sol n3pp;1=3V3_SW 2=SIG 3=GND;ADC_B;33;2;—;—;Ne pas poser;R44 10k* (DNP);
+Inutilisé msp/n3pp;J33;Bornier 3 pts;ADC_C — LDR msp / sonde sol n3pp;1=3V3_SW 2=SIG 3=GND;ADC_C;34;4;—;—;Ne pas poser;R45 10k* (DNP);
+Inutilisé msp/n3pp;J34;Bornier 3 pts;ADC_D — LDR msp / sonde sol n3pp;1=3V3_SW 2=SIG 3=GND;ADC_D;35;5;—;—;Ne pas poser;R46 10k* (DNP);
+Mécanique;H1;Trou M3;Fixation coin relais — VIS NYLON OBLIGATOIRE;—;—;—;—;—;—;Oui;—;Tête métal à ~4,3 mm du 230 V.
+Mécanique;H2 H3 H4;Trous M3;Fixation carte;—;—;—;—;—;—;Oui;—;
