@@ -72,6 +72,8 @@ jobs:
         run: |
           python3 hardware/n3-universal/tools/check_pcb_clearance.py
           python3 hardware/n3-universal/tools/check_pcb_clearance.py --selftest
+      - name: Rôle par firmware présent sur chaque empreinte du PCB
+        run: python3 hardware/n3-universal/tools/annotate_pcb_roles.py --check
 
   build:
     name: Build ${{ matrix.name }}

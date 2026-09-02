@@ -216,7 +216,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up bus 1-Wire DS18B20"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -496,7 +496,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Source CS : 1-2 = S3 (IO10, défaut) ; 2-3 = WROOM (US3, env wroom-sd) — ROLE ffp5cs : source SD_CS : 1-2 = S3 (IO10) / 2-3 = WROOM (US3) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -780,7 +780,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-down base (état sûr au boot)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -1060,7 +1060,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Réservoir rail 5V (relais + servos + HC-SR04)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -3151,7 +3151,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "P-MOSFET rail capteurs (1=G 2=D 3=S)"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -3464,7 +3464,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Transistor NPN commande relais (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -3703,7 +3703,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Source MOSI : 1-2 = S3 (IO12, défaut) ; 2-3 = WROOM (K6, env wroom-sd) — ROLE ffp5cs : source SD_MOSI : 1-2 = S3 (IO12) / 2-3 = WROOM (K6) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -3987,7 +3987,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bornier charge 230V (1=NC 2=COM 3=NO) — ROLE ffp5cs : charge pompe réservoir (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -4261,7 +4261,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up DHT ext (POSER sur unités msp uniquement)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -4541,7 +4541,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Série signal servo gros"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -4821,7 +4821,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up data DHT11"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -5101,7 +5101,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A) — ROLE ffp5cs : chauffage / radiateurs (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -5574,7 +5574,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pont diviseur écho POTA (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -5854,7 +5854,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance base transistor"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -6132,7 +6132,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED témoin relais ON"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -6366,7 +6366,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "DHT11/DHT22 (1=3V3 2=DATA 3=GND) — ROLE ffp5cs : DHT11 air : température + humidité (DHT_PIN) (msp : DHT11 interne (DHTPININT) ; n3pp : DHT11 (DHTPIN))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -6842,7 +6842,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Réservoir bus 12V protégé"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -8935,7 +8935,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Extension I2C — ex. module DS3231 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : DS3231 : horloge hors ligne (resynchro après veille) (msp : extension I2C (BME280, DS3231...) ; n3pp : extension I2C (BME280, DS3231...))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -9233,7 +9233,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED témoin"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -9513,7 +9513,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : 2e INA219/226 ou BME280 (msp : port I2C libre ; n3pp : port I2C libre)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -9811,7 +9811,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13) — ROLE ffp5cs : cavalier 1-2 FERME : rail +3V3_SW permanent (msp : cavalier OTE : rail coupé en veille par RELAIS (GPIO13) ; n3pp : cavalier OTE : rail coupé en veille par RELAIS (GPIO13))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -10094,7 +10094,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pont diviseur écho TANK (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -10374,7 +10374,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bornier charge 230V (1=NC 2=COM 3=NO) — ROLE ffp5cs : charge pompe aquarium (msp : non utilisé ; n3pp : charge pompe d'arrosage)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -10648,7 +10648,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -10974,7 +10974,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Transistor NPN commande relais (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -11212,7 +11212,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Distribution 5V (1=+5V 2=GND)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -11472,7 +11472,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Transistor NPN commande relais (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -11711,7 +11711,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-down base (état sûr au boot)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -11989,7 +11989,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED témoin relais ON"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -12223,7 +12223,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED présence 5V"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -12503,7 +12503,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Diode de roue libre bobine"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -12865,7 +12865,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A) — ROLE ffp5cs : relais auxiliaire AUX2 (net SD_MOSI en env wroom-sd) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -13338,7 +13338,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED témoin"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -13618,7 +13618,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance base transistor"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -13898,7 +13898,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bornier charge 230V (1=NC 2=COM 3=NO) — ROLE ffp5cs : charge chauffage (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -14170,7 +14170,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED témoin relais ON"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -14404,7 +14404,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Série écho HC-SR04 TANK"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -14684,7 +14684,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Diode de roue libre bobine"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -15046,7 +15046,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée analogique ADC_A (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp — ROLE ffp5cs : non utilisé (msp : LDR tracker LUMINOSITEa (axe GD) ; n3pp : sonde humidité du sol 1 (humidite1))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -15320,7 +15320,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée 5V alternative (bornier, 1=+5V 2=GND)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -15580,7 +15580,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND) — ROLE ffp5cs : HC-SR04 niveau réservoir (ULTRASON_TANK) (msp : net US2 = DHT externe côté msp — poser J30, pas J8 ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -16069,7 +16069,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Trou de fixation M3"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -16184,7 +16184,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -16444,7 +16444,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Varistance 300VAC transitoires secteur — pattes à replier (pas réel 7,5 mm sur une empreinte 5,0 mm) : pose main, à exclure d'un assemblage machine ; le repère + de l'empreinte est sans objet"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -18537,7 +18537,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Module microSD SPI 3V3 (1=GND 2=VCC 3=MISO 4=MOSI 5=SCK 6=CS) — ROLE ffp5cs : module microSD SPI 3,3 V : journal / logs (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -18862,7 +18862,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Anti-inversion P-MOSFET (1=G 2=D=entrée 3=S=sortie)"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -19175,7 +19175,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A) — ROLE ffp5cs : lumière / UV (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -19648,7 +19648,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée analogique ADC_B (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp — ROLE ffp5cs : non utilisé (msp : LDR tracker LUMINOSITEb (axe GD) ; n3pp : sonde humidité du sol 2 (humidite2))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -19923,7 +19923,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED témoin"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -20203,7 +20203,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance base transistor"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -20483,7 +20483,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND) — ROLE ffp5cs : HC-SR04 niveau aquarium (ULTRASON_AQUA) (msp : net US1 = PLUIE côté msp — poser J29, pas J7 ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -20973,7 +20973,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Diode de roue libre bobine"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -21335,7 +21335,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "TVS 18V transitoires bus batterie"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -21697,7 +21697,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bas de pont ADC_C (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -21977,7 +21977,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A) — ROLE ffp5cs : pompe réservoir (remplissage aquarium) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -22450,7 +22450,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "HC-SR04 POTA (1=5V 2=TRIG 3=ECHO 4=GND) — ROLE ffp5cs : HC-SR04 niveau potager (ULTRASON_POTA) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -22939,7 +22939,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LDR déportée entre 3V3 et l'ADC (1=3V3 2=ADC) — ROLE ffp5cs : LDR déportée : luminosité (net ADC_E) (msp : humidité du sol, module à sortie AO (HumiditeSol) — R27 à NE PAS poser ; n3pp : LDR luminosité (LUMINOSITE))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -23199,7 +23199,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=27k)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -23479,7 +23479,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée analogique ADC_C (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp — ROLE ffp5cs : non utilisé (msp : LDR tracker LUMINOSITEc (axe HB) ; n3pp : sonde humidité du sol 3 (humidite3))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -23753,7 +23753,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Grille anti-inversion vers GND"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24033,7 +24033,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Diode de roue libre bobine"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24395,7 +24395,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3_SW)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24721,7 +24721,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A) — ROLE ffp5cs : relais auxiliaire AUX1 (net SD_CLK en env wroom-sd) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -25194,7 +25194,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Série signal servo petits"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -25472,7 +25472,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Fusible entrée secteur du module alim (temporisé 1A)"
 			(at 0 0 -90)
 			(layer "F.Fab")
 			(hide yes)
@@ -25590,7 +25590,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance base transistor"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -25870,7 +25870,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil — ROLE ffp5cs : sonde tension du bus 12 V (pont 100k/27k) (msp : sonde tension batterie 1S (pontdiv, pont 100k/100k) ; n3pp : sonde tension batterie 1S (pontdiv, pont 100k/100k))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -26130,7 +26130,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -26390,7 +26390,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-down base (état sûr au boot)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -26670,7 +26670,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE (tête métal à <5 mm du 230V)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -26785,7 +26785,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : 3e INA219/226 (shunt pompe) (msp : port I2C libre ; n3pp : port I2C libre)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -27083,7 +27083,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bas de pont LDR sur net ADC_E (GPIO36 WROOM / IO6 S3) — POSER pour LDR ; ABSENT pour module AO (msp HumiditeSol)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -27361,7 +27361,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2) — ROLE ffp5cs : cerveau S3 — SD native, K5/K6 embarqués (msp : cerveau S3 ; n3pp : cerveau S3)"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -28082,7 +28082,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bas de pont ADC_A (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -28363,7 +28363,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED témoin"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -28643,7 +28643,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Servo PETITS (1=SIG 2=+5V 3=GND) — ROLE ffp5cs : servo distributeur PETITS poissons (msp : servo du tracker solaire, axe HB (LDR ADC_C/ADC_D) ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -28925,7 +28925,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED témoin relais ON"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29159,7 +29159,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bornier charge 230V (1=NC 2=COM 3=NO) — ROLE ffp5cs : charge AUX1 (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -29431,7 +29431,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED présence 5V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29665,7 +29665,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Driver diviseur (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -29904,7 +29904,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up I2C SCL"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -30184,7 +30184,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Diode de roue libre bobine"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -30546,7 +30546,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bornier charge 230V (1=NC 2=COM 3=NO) — ROLE ffp5cs : charge AUX2 (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -30820,7 +30820,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Trou de fixation M3"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -30935,7 +30935,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Base commande gate (GPIO13)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -31215,7 +31215,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Découplage rail 5V servos"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -32958,7 +32958,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up grille P-MOSFET (rail OFF par défaut)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -33236,7 +33236,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15 — ROLE ffp5cs : cerveau de l'unité (site WROOM) (msp : cerveau de l'unité (site WROOM) ; n3pp : cerveau de l'unité (site WROOM))"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -33768,7 +33768,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Vers buck IN (module MP1584/XL4015 sur entretoises : 1=+12V 2=GND)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -34028,7 +34028,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Driver gate (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -34267,7 +34267,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Découplage 3V3 I2C"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -34527,7 +34527,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bas de pont ADC_D (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -34808,7 +34808,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up grille BS250 (diviseur OFF par défaut)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -35086,7 +35086,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED témoin relais ON"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -35320,7 +35320,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "P-MOSFET coupure haute du diviseur (1=D 2=G 3=S)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -35558,7 +35558,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Diode de roue libre bobine"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -35920,7 +35920,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Transistor NPN commande relais (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -36158,7 +36158,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bas de pont ADC_B (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -36438,7 +36438,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "DHT externe msp (1=3V3_SW 2=DATA 3=GND) — net US2, rôles disjoints — ROLE ffp5cs : même net que J8 — ne pas poser (msp : DHT externe (DHTPINEXT, legacy : préférer BME280 0x77) ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -36913,7 +36913,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée 5V 3A (jack, centre = +, ouverture bord gauche)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -37319,7 +37319,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Haut du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=100k)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -37599,7 +37599,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Série écho HC-SR04 POTA"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -37879,7 +37879,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance base transistor"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -38159,7 +38159,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND) — ROLE ffp5cs : DS18B20 : température de l'eau (seuil chauffage) (msp : DS18B20 : température du sol ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -38433,7 +38433,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED témoin"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -38713,7 +38713,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-down base (état sûr au boot)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -38993,7 +38993,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Bornier charge 230V (1=NC 2=COM 3=NO) — ROLE ffp5cs : charge lumière / UV (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -39267,7 +39267,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Schottky 3A vers VIN DevKit (anti-retour si USB branché)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -39629,7 +39629,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Transistor NPN commande relais (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -39868,7 +39868,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Transistor NPN commande relais (1=C 2=B 3=E)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -40106,7 +40106,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-down base (état sûr au boot)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -40386,7 +40386,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance base transistor"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -40666,7 +40666,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -40926,7 +40926,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Servo GROS (1=SIG 2=+5V 3=GND) — ROLE ffp5cs : servo distributeur GROS poissons (msp : servo du tracker solaire, axe GD (LDR ADC_A/ADC_B) ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -41210,7 +41210,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : INA219/226 : courant panneau / batterie / charge (msp : port I2C libre ; n3pp : port I2C libre)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -41508,7 +41508,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Source SCK : 1-2 = S3 (IO13, défaut) ; 2-3 = WROOM (K5, env wroom-sd) — ROLE ffp5cs : source SD_CLK : 1-2 = S3 (IO13) / 2-3 = WROOM (K5) (msp : non utilisé ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -41792,7 +41792,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pont diviseur écho AQUA (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -42072,7 +42072,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Module pluie DO msp (1=3V3_SW 2=DO 3=GND) — net US1, rôles disjoints — ROLE ffp5cs : même net que J7 — ne pas poser (msp : module pluie sortie DO (PLUIE) ; n3pp : non utilisé)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -42547,7 +42547,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-up I2C SDA"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -42827,7 +42827,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Entrée analogique ADC_D (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp — ROLE ffp5cs : non utilisé (msp : LDR tracker LUMINOSITEd (axe HB) ; n3pp : sonde humidité du sol 4 (humidite4))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -43101,7 +43101,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A) — ROLE ffp5cs : pompe aquarium (support de vie) (msp : non utilisé ; n3pp : pompe d'arrosage (POMPE))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -43574,7 +43574,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Trou de fixation M3"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -43689,7 +43689,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : OLED SSD1306 0x3C : état et mesures (msp : OLED SSD1306 0x3C ; n3pp : OLED SSD1306 0x3C)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -43987,7 +43987,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Série écho HC-SR04 AQUA"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -44267,7 +44267,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Découplage 3V3 capteurs"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -44527,7 +44527,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Base driver diviseur (actif quand +3V3_SW présent)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -44805,7 +44805,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "LED témoin relais ON"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -45039,7 +45039,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -45337,7 +45337,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Pull-down base (état sûr au boot)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -45618,7 +45618,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Depuis buck OUT 5V (1=+5V 2=GND)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -45878,7 +45878,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Résistance LED témoin"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
