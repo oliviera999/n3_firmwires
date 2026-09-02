@@ -28,6 +28,11 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > de devis PCB Maroc) et **[`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md)** (contre-vérification
 > pré-commande : verdict, constats retenus, check-list rev 0.2). Fichiers d'assemblage
 > éventuel : [`exports/pcba/`](exports/pcba/).
+>
+> 🧭 **Prochain spin** : [`EVOLUTIONS_PROPOSEES.md`](EVOLUTIONS_PROPOSEES.md) — sélecteur
+> **AUTO / ON** par canal relais (header 3 points + cavalier, sérigraphie), retour d'état
+> vers le firmware, revue de la connectique capteurs (borniers à vis / push-in / JST-XH /
+> enfichables) avec options et décisions à prendre. Rien n'y est encore appliqué.
 
 ## Réalisation (rev 0.1 — générée)
 
