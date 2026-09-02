@@ -23,7 +23,7 @@ J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=G
 J17;1;Header service;PinHeader_1x06_P2.54mm_Vertical;Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle
 J18;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND)
 J19;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND)
-J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +)
+J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +, ouverture bord gauche)
 J20;1;Header alim;PinHeader_1x06_P2.54mm_Vertical;Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3_SW)
 J21;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)
 J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)

@@ -1233,7 +1233,7 @@
     (property "Value" "Jack 5.5/2.1" (at 60.96 40.24 0) (effects (font (size 1.27 1.27))))
     (property "Footprint" "n3u:BarrelJack_Horizontal" (at 60.96 45.72 0) (effects (font (size 1.27 1.27)) (hide yes)))
     (property "Datasheet" "~" (at 60.96 45.72 0) (effects (font (size 1.27 1.27)) (hide yes)))
-    (property "Description" "Entrée 5V 3A (jack, centre = +)" (at 60.96 45.72 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Description" "Entrée 5V 3A (jack, centre = +, ouverture bord gauche)" (at 60.96 45.72 0) (effects (font (size 1.27 1.27)) (hide yes)))
     (pin "1" (uuid "c27027f9-56fe-5743-a400-378a4c73491c"))
     (pin "3" (uuid "83d536a8-d9c9-5f9f-b992-e68ed87563cb"))
     (pin "2" (uuid "a2469ebf-86b8-5b1e-bd20-28ba29f9f885"))

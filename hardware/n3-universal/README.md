@@ -37,6 +37,7 @@ generator/route_universal.py Pipeline de routage : secteur EN DUR (relais + PSU 
                              freerouting pour la logique, vias de couture GND, thermiques
 generator/tidy_silkscreen.py / export_fab.py   Sérigraphie + gerbers normalisés
 tools/check_pinmap_vs_firmware.py  Garde anti-dérive : 3 firmwares x 2 sites + topologies
+tools/check_pcb_clearance.py       Corps 3D (courtyards) + couloirs d'insertion, sur le PCB routé
 kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm du reste)
 ```
 
@@ -175,6 +176,9 @@ corrigé la carte et les firmwares AVANT toute commande :
 - **J2 (jack 5,5/2,1)** : rotation 270° pointait l'ouverture vers J1 (enfichage
   bloqué). Passé à **0°** — ouverture au bord gauche, lèvre ~6 mm hors carte ;
   pad TIP/+5 V inchangé (48, 116). Polarité centre-positif inchangée.
+  Le défaut est désormais couvert par `tools/check_pcb_clearance.py` (corps 3D +
+  couloirs d'enfichage, en CI) : le garde-fou du générateur ne comparait que les
+  **pads** et ne pouvait pas le voir — cf. `GEN-08`.
 - **Q11 (anti-inversion 12 V)** était câblé au brochage BS250 (D-G-S) : l'entrée
   12 V arrivait sur la **grille** du NDP6020P (TO-220 : 1=G 2=D 3=S) — profil bus
   12 V inopérant. Recâblé comme Q7 (G/D/S), entrée sur le drain.
