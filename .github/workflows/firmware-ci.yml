@@ -57,6 +57,22 @@ jobs:
             echo "::endgroup::"
           done
 
+  hardware-checks:
+    name: Contrôles carte n3-universal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # Aucune dépendance : les deux contrôles n'utilisent que la stdlib.
+      - name: Pinmap carte <-> PINMAP_UNIVERSAL des firmwares
+        run: python3 hardware/n3-universal/tools/check_pinmap_vs_firmware.py
+      - name: Corps 3D (courtyards) et couloirs d'insertion du PCB routé
+        run: |
+          python3 hardware/n3-universal/tools/check_pcb_clearance.py
+          python3 hardware/n3-universal/tools/check_pcb_clearance.py --selftest
+
   build:
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest

@@ -7,7 +7,8 @@ Routage : generator/route_universal.py.
 
 Source de vérité : ../pinmap_universel_propose.json et les sections
 PINMAP_UNIVERSAL des trois firmwares (l'ensemble étant vérifié contre les pads
-réels du PCB par tools/check_pinmap_vs_firmware.py). Les empreintes proviennent de la
+réels du PCB par tools/check_pinmap_vs_firmware.py ; la géométrie des corps 3D et
+des couloirs d'insertion par tools/check_pcb_clearance.py). Les empreintes proviennent de la
 bibliothèque officielle KiCad 8.0.9 (vendorées dans ./footprints, licence
 CC-BY-SA 4.0 avec exception d'usage — voir README).
 
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import re
 import uuid
 from pathlib import Path
@@ -1296,30 +1298,134 @@ def gen_bom():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Géométrie des corps 3D (courtyards IPC-7351) — primitives partagées avec
+# tools/check_pcb_clearance.py, qui y ajoute les couloirs d'insertion.
+# ---------------------------------------------------------------------------
+
+def _xy(node, key):
+    """(x, y) du premier sous-bloc `key` de `node`, ou None."""
+    found = sx_find_all(node, Sym(key))
+    return (float(found[0][1]), float(found[0][2])) if found else None
+
+
+def courtyard_points(fp_tree):
+    """Points du contour courtyard (F/B.CrtYd) d'une empreinte, en local.
+
+    Le courtyard est la projection normalisée du BOÎTIER : contrairement aux
+    pads, il tient compte du corps qui déborde (relais, jack, bloc PSU).
+    """
+    pts = []
+    for item in fp_tree:
+        if not isinstance(item, list) or not item:
+            continue
+        layers = sx_find_all(item, Sym("layer"))
+        if not layers or "CrtYd" not in str(layers[0][1]):
+            continue
+        kind = str(item[0])
+        if kind in ("fp_line", "fp_arc"):
+            pts += [p for p in (_xy(item, k) for k in ("start", "mid", "end")) if p]
+        elif kind == "fp_rect":
+            (x0, y0), (x1, y1) = _xy(item, "start"), _xy(item, "end")
+            pts += [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        elif kind == "fp_circle":
+            (cx, cy), (ex, ey) = _xy(item, "center"), _xy(item, "end")
+            r = math.hypot(ex - cx, ey - cy)
+            pts += [(cx - r, cy - r), (cx + r, cy - r),
+                    (cx + r, cy + r), (cx - r, cy + r)]
+        elif kind == "fp_poly":
+            for xy in sx_find_all(sx_find_all(item, Sym("pts"))[0], Sym("xy")):
+                pts.append((float(xy[1]), float(xy[2])))
+    return pts
+
+
+def place_points(pts, x0: float, y0: float, rot: float):
+    """Transporte des points locaux à la position/rotation d'une empreinte.
+
+    Convention KiCad (axe y vers le bas) : +90 deg => (px,py) -> (py,-px).
+    """
+    rad = math.radians(rot)
+    cos, sin = math.cos(rad), math.sin(rad)
+    return [(x0 + px * cos + py * sin, y0 - px * sin + py * cos)
+            for px, py in pts]
+
+
+def convex_hull(pts):
+    """Enveloppe convexe (monotone chain) — majorant sûr d'un courtyard en L."""
+    pts = sorted(set(pts))
+    if len(pts) <= 2:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def overlap_depth(poly_a, poly_b) -> float:
+    """Profondeur de recouvrement de deux convexes (SAT) ; 0 s'ils sont disjoints."""
+    best = float("inf")
+    for poly in (poly_a, poly_b):
+        n = len(poly)
+        for i in range(n):
+            (x0, y0), (x1, y1) = poly[i], poly[(i + 1) % n]
+            ax, ay = -(y1 - y0), (x1 - x0)
+            norm = math.hypot(ax, ay)
+            if norm < 1e-12:
+                continue
+            ax, ay = ax / norm, ay / norm
+            pa = [ax * px + ay * py for px, py in poly_a]
+            pb = [ax * px + ay * py for px, py in poly_b]
+            gap = min(max(pa) - min(pb), max(pb) - min(pa))
+            if gap <= 0:
+                return 0.0
+            best = min(best, gap)
+    return 0.0 if best == float("inf") else best
+
+
 def check_pcb_overlaps():
-    """Garde-fou grossier : bounding-box des pads + marge, avertit si recouvrement."""
-    import math
-    boxes = []
+    """Recouvrement des CORPS (courtyards) des composants placés.
+
+    Remplace l'ancien garde-fou « bounding-box des pads + 2 mm », aveugle au
+    boîtier réel (audit `GEN-08`). La marge forfaitaire disparaît : le
+    courtyard porte DÉJÀ le jeu d'assemblage normalisé (IPC-7351), donc le
+    critère devient le recouvrement franc de deux corps.
+    Renvoie (ref1, ref2, profondeur_mm).
+    Le contrôle complet — couloirs d'insertion des connecteurs, contour de
+    carte, paires à peuplement exclusif — vit dans
+    `tools/check_pcb_clearance.py`, qui relit le PCB routé.
+    """
+    hulls = []
     for c in COMPONENTS:
         tree = load_footprint(c["fp"])
         x0, y0, rot = c["pcb"]
-        rad = math.radians(rot)
-        xs, ys = [], []
-        for pad in sx_find_all(tree, Sym("pad")):
-            at = sx_find_all(pad, Sym("at"))[0]
-            px, py = float(at[1]), float(at[2])
-            # convention KiCad (axe y vers le bas) : +90 deg => (px,py)->(py,-px)
-            rx = px * math.cos(rad) + py * math.sin(rad)
-            ry = -px * math.sin(rad) + py * math.cos(rad)
-            xs.append(x0 + rx)
-            ys.append(y0 + ry)
-        if xs:
-            boxes.append((c["ref"], min(xs) - 2, min(ys) - 2, max(xs) + 2, max(ys) + 2))
+        pts = courtyard_points(tree)
+        if not pts:   # empreinte sans courtyard : repli sur les pads + 2 mm
+            pads = []
+            for pad in sx_find_all(tree, Sym("pad")):
+                at = sx_find_all(pad, Sym("at"))[0]
+                px, py = float(at[1]), float(at[2])
+                pads += [(px - 2, py - 2), (px + 2, py - 2),
+                         (px + 2, py + 2), (px - 2, py + 2)]
+            pts = pads
+        if pts:
+            hulls.append((c["ref"], convex_hull(place_points(pts, x0, y0, rot))))
     warned = []
-    for i, (r1, a0, b0, a1, b1) in enumerate(boxes):
-        for r2, c0, d0, c1, d1 in boxes[i + 1:]:
-            if a0 < c1 and c0 < a1 and b0 < d1 and d0 < b1:
-                warned.append((r1, r2))
+    for i, (r1, h1) in enumerate(hulls):
+        for r2, h2 in hulls[i + 1:]:
+            depth = overlap_depth(h1, h2)
+            if depth > 0.01:
+                warned.append((r1, r2, depth))
     return warned
 
 
@@ -1346,8 +1452,9 @@ def main():
     nets = collect_nets()
     print(f"OK: {len(COMPONENTS)} composants, {len(nets)} nets")
     over = check_pcb_overlaps()
-    for r1, r2 in over:
-        print(f"  ATTENTION recouvrement possible (pads+2mm) : {r1} / {r2}")
+    for r1, r2, depth in over:
+        print(f"  ATTENTION corps qui se recouvrent : {r1} / {r2} "
+              f"({depth:.2f} mm)")
 
 
 if __name__ == "__main__":
