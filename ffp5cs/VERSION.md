@@ -12,6 +12,21 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.31 - 2026-09-02
+
+### Fix : pompe réserve sticky après trop-plein (reste du gate Phase 3)
+
+La v15.30 sortait le chauffage du gate mails, mais laissait encore
+`FloodOrchestrator` derrière `emitSharedAlertMails`. Après un trop-plein
+notifié en failover (`inFlood=true` + Lock pompe), le retour en liaison saine
+sautait `ExitFlood` → `RefillOverfill::Unlock` restait bloqué (`!inFlood`
+requis) → remplissage auto mort jusqu'au reboot. `RefillRecovery` ne couvre
+que le motif « inefficace », pas `AQUARIUM_OVERFILL`.
+
+- `FloodOrchestrator` tourne toujours si le niveau aquarium est connu ;
+  `mailEnabled=emitSharedAlertMails` (ExitFlood clear `inFlood` sans mail).
+- Test natif `test_phase3_mail_gate_still_exits_flood`.
+
 ## Version 15.30 - 2026-09-01
 
 ### Fix : régulation chauffage coupée par le gate Phase 3
@@ -22,6 +37,7 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 - `HeaterOrchestrator` reste toujours exécuté ; `emitSharedAlertMails` ne
   coupe que les mails ESP (niveau / trop-plein / réserve / chauffage).
 - Test natif `test_phase3_server_covers_still_regulates_relay`.
+- **Incomplet** : le flood restait gaté — corrigé en 15.31.
 
 ## Version 15.29 - 2026-08-27
 

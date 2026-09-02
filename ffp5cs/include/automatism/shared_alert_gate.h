@@ -13,9 +13,10 @@
 //   serverCovers == false -> FAILOVER : l'ESP émet, borné par l'anti-congestion
 //                            (P1/P2 uniquement, WiFi requis, budget — Mailer).
 //
-// Hors périmètre : les actionneurs locaux (relais chauffage, pompe réserve).
-// Le serveur dérive les mails chauffage depuis `etatHeat` ; il ne pilote pas le
-// GPIO. La régulation doit rester exécutée même quand serverCovers == true.
+// Hors périmètre : les actionneurs locaux (relais chauffage, pompe réserve)
+// ET l'état flood (`inFlood`) lu par RefillOverfill pour Unlock. Le serveur
+// dérive les mails chauffage depuis `etatHeat` ; il ne pilote pas le GPIO.
+// HeaterOrchestrator et FloodOrchestrator restent exécutés même si serverCovers.
 //
 // Critère : dernier GET config OK (`AutomatismSync::isServerOk()`) ET dernier
 // POST réussi assez frais (le serveur ne peut dériver que des données reçues).
