@@ -38,6 +38,7 @@ generator/route_universal.py Pipeline de routage : secteur EN DUR (relais + PSU 
 generator/tidy_silkscreen.py / export_fab.py   Sérigraphie + gerbers normalisés
 tools/check_pinmap_vs_firmware.py  Garde anti-dérive : 3 firmwares x 2 sites + topologies
 tools/check_pcb_clearance.py       Corps 3D (courtyards) + couloirs d'insertion, sur le PCB routé
+tools/annotate_pcb_roles.py        Ecrit le role par firmware dans le champ Description des empreintes
 kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm du reste)
 ```
 
@@ -76,6 +77,27 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
   futur générateur et par les sections `PINMAP_UNIVERSAL` des trois firmwares.
 - `COMPOSANTS_FFP5CS.csv` — tableau annoté du **rôle ffp5cs** (connecteurs,
   GPIO WROOM/S3, constantes `Pins::`, clés serveur, pose / DNP).
+
+### Connaître le rôle d'un composant depuis KiCad
+
+Le champ **Description** de chaque composant porte sa description générique **+ son rôle
+dans les trois firmwares** (`ROLES` de `generator/generate.py`, recopié de
+`COMPOSANTS_FFP5CS.csv` et des blocs `PINMAP_UNIVERSAL` de msp/n3pp) :
+
+```
+J7 : HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)
+     — ROLE ffp5cs : HC-SR04 niveau aquarium (ULTRASON_AQUA)
+       (msp : net US1 = PLUIE côté msp — poser J29, pas J7 ; n3pp : non utilisé)
+```
+
+- **Schéma (eeschema)** : double-clic sur le symbole → le champ apparaît dans la grille ;
+  vue d'ensemble par *Édition → Modifier les champs des symboles*.
+- **PCB (pcbnew)** : double-clic sur l'empreinte → onglet des champs. Les 131 empreintes
+  sont renseignées ; avant, seule la description générique de la bibliothèque KiCad
+  (« Resistor, Axial_DIN0207 series… ») était visible.
+- Après avoir modifié `ROLES` : régénérer le schéma (`gen_schematic()` seul) puis
+  `python3 tools/annotate_pcb_roles.py` — le PCB **routé** n'est pas régénéré, seule la
+  ligne `Description` de chaque empreinte est réécrite. `--check` (en CI) refuse la dérive.
 
 ## Verdict (2026-08-27)
 

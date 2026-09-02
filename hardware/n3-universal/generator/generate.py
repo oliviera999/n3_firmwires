@@ -743,6 +743,130 @@ def build_components():
 
 COMPONENTS = build_components()
 
+
+# ---------------------------------------------------------------------------
+# RÔLE de chaque composant, FIRMWARE PAR FIRMWARE — « à quoi sert ce composant
+# sur MA carte ? ». Alimente le champ Description des symboles (eeschema) ET
+# des empreintes (pcbnew) : un clic dans KiCad doit répondre à la question,
+# sans ouvrir un CSV à côté.
+#
+# Sources de vérité (ne pas inventer ici — recopier) :
+#   - ffp5cs : ../COMPOSANTS_FFP5CS.csv, colonne « Rôle ffp5cs »
+#   - msp    : msp/include/msp_config.h, bloc PINMAP_UNIVERSAL
+#   - n3pp   : n3pp/include/n3pp_config.h, bloc PINMAP_UNIVERSAL
+# `None` = le firmware n'utilise pas ce composant (à ne pas peupler, ou net
+# porté par un autre connecteur — les « rôles disjoints » de la carte).
+# ---------------------------------------------------------------------------
+
+ROLES = {
+    # --- Sites MCU --------------------------------------------------------
+    "A1": dict(ffp5cs="cerveau de l'unité (site WROOM)",
+               msp="cerveau de l'unité (site WROOM)",
+               n3pp="cerveau de l'unité (site WROOM)"),
+    "A2": dict(ffp5cs="cerveau S3 — SD native, K5/K6 embarqués",
+               msp="cerveau S3", n3pp="cerveau S3"),
+    # --- Canaux relais (nets K1..K4 / AUX1 / AUX2) ------------------------
+    "K1": dict(ffp5cs="pompe aquarium (support de vie)",
+               msp=None, n3pp="pompe d'arrosage (POMPE)"),
+    "J3": dict(ffp5cs="charge pompe aquarium",
+               msp=None, n3pp="charge pompe d'arrosage"),
+    "K2": dict(ffp5cs="pompe réservoir (remplissage aquarium)",
+               msp=None, n3pp=None),
+    "J4": dict(ffp5cs="charge pompe réservoir", msp=None, n3pp=None),
+    "K3": dict(ffp5cs="chauffage / radiateurs", msp=None, n3pp=None),
+    "J5": dict(ffp5cs="charge chauffage", msp=None, n3pp=None),
+    "K4": dict(ffp5cs="lumière / UV", msp=None, n3pp=None),
+    "J6": dict(ffp5cs="charge lumière / UV", msp=None, n3pp=None),
+    "K5": dict(ffp5cs="relais auxiliaire AUX1 (net SD_CLK en env wroom-sd)",
+               msp=None, n3pp=None),
+    "J23": dict(ffp5cs="charge AUX1", msp=None, n3pp=None),
+    "K6": dict(ffp5cs="relais auxiliaire AUX2 (net SD_MOSI en env wroom-sd)",
+               msp=None, n3pp=None),
+    "J24": dict(ffp5cs="charge AUX2", msp=None, n3pp=None),
+    # --- Servos (nets SERVO1 / SERVO2) ------------------------------------
+    "J15": dict(ffp5cs="servo distributeur GROS poissons",
+                msp="servo du tracker solaire, axe GD (LDR ADC_A/ADC_B)",
+                n3pp=None),
+    "J16": dict(ffp5cs="servo distributeur PETITS poissons",
+                msp="servo du tracker solaire, axe HB (LDR ADC_C/ADC_D)",
+                n3pp=None),
+    # --- Capteurs sur nets partagés (rôles DISJOINTS) ---------------------
+    "J7": dict(ffp5cs="HC-SR04 niveau aquarium (ULTRASON_AQUA)",
+               msp="net US1 = PLUIE côté msp — poser J29, pas J7", n3pp=None),
+    "J29": dict(ffp5cs="même net que J7 — ne pas poser",
+                msp="module pluie sortie DO (PLUIE)", n3pp=None),
+    "J8": dict(ffp5cs="HC-SR04 niveau réservoir (ULTRASON_TANK)",
+               msp="net US2 = DHT externe côté msp — poser J30, pas J8",
+               n3pp=None),
+    "J30": dict(ffp5cs="même net que J8 — ne pas poser",
+                msp="DHT externe (DHTPINEXT, legacy : préférer BME280 0x77)",
+                n3pp=None),
+    "J9": dict(ffp5cs="HC-SR04 niveau potager (ULTRASON_POTA)",
+               msp=None, n3pp=None),
+    "J10": dict(ffp5cs="DHT11 air : température + humidité (DHT_PIN)",
+                msp="DHT11 interne (DHTPININT)", n3pp="DHT11 (DHTPIN)"),
+    "J11": dict(ffp5cs="DS18B20 : température de l'eau (seuil chauffage)",
+                msp="DS18B20 : température du sol", n3pp=None),
+    "J12": dict(ffp5cs="LDR déportée : luminosité (net ADC_E)",
+                msp="humidité du sol, module à sortie AO (HumiditeSol) — "
+                    "R27 à NE PAS poser",
+                n3pp="LDR luminosité (LUMINOSITE)"),
+    "J31": dict(ffp5cs=None, msp="LDR tracker LUMINOSITEa (axe GD)",
+                n3pp="sonde humidité du sol 1 (humidite1)"),
+    "J32": dict(ffp5cs=None, msp="LDR tracker LUMINOSITEb (axe GD)",
+                n3pp="sonde humidité du sol 2 (humidite2)"),
+    "J33": dict(ffp5cs=None, msp="LDR tracker LUMINOSITEc (axe HB)",
+                n3pp="sonde humidité du sol 3 (humidite3)"),
+    "J34": dict(ffp5cs=None, msp="LDR tracker LUMINOSITEd (axe HB)",
+                n3pp="sonde humidité du sol 4 (humidite4)"),
+    # --- I2C ---------------------------------------------------------------
+    "J13": dict(ffp5cs="OLED SSD1306 0x3C : état et mesures",
+                msp="OLED SSD1306 0x3C", n3pp="OLED SSD1306 0x3C"),
+    "J14": dict(ffp5cs="DS3231 : horloge hors ligne (resynchro après veille)",
+                msp="extension I2C (BME280, DS3231...)",
+                n3pp="extension I2C (BME280, DS3231...)"),
+    "J21": dict(ffp5cs="INA219/226 : courant panneau / batterie / charge",
+                msp="port I2C libre", n3pp="port I2C libre"),
+    "J22": dict(ffp5cs="2e INA219/226 ou BME280",
+                msp="port I2C libre", n3pp="port I2C libre"),
+    "J28": dict(ffp5cs="3e INA219/226 (shunt pompe)",
+                msp="port I2C libre", n3pp="port I2C libre"),
+    # --- Stockage (ffp5cs seul) -------------------------------------------
+    "J35": dict(ffp5cs="module microSD SPI 3,3 V : journal / logs",
+                msp=None, n3pp=None),
+    "JP2": dict(ffp5cs="source SD_CS : 1-2 = S3 (IO10) / 2-3 = WROOM (US3)",
+                msp=None, n3pp=None),
+    "JP3": dict(ffp5cs="source SD_CLK : 1-2 = S3 (IO13) / 2-3 = WROOM (K5)",
+                msp=None, n3pp=None),
+    "JP4": dict(ffp5cs="source SD_MOSI : 1-2 = S3 (IO12) / 2-3 = WROOM (K6)",
+                msp=None, n3pp=None),
+    # --- Rail capteurs commuté (net GATE) ---------------------------------
+    "JP1": dict(ffp5cs="cavalier 1-2 FERME : rail +3V3_SW permanent",
+                msp="cavalier OTE : rail coupé en veille par RELAIS (GPIO13)",
+                n3pp="cavalier OTE : rail coupé en veille par RELAIS (GPIO13)"),
+    # --- Batterie ----------------------------------------------------------
+    "J25": dict(ffp5cs="sonde tension du bus 12 V (pont 100k/27k)",
+                msp="sonde tension batterie 1S (pontdiv, pont 100k/100k)",
+                n3pp="sonde tension batterie 1S (pontdiv, pont 100k/100k)"),
+}
+
+
+def described(ref: str, desc: str) -> str:
+    """Description KiCad d'un composant : rôle générique + rôle par firmware.
+
+    Le rôle ffp5cs est donné en clair, msp et n3pp entre parenthèses — c'est
+    ce que le champ Description montre au clic dans eeschema comme dans
+    pcbnew. Un composant absent de ROLES (passif, visserie, distribution)
+    garde sa seule description générique.
+    """
+    role = ROLES.get(ref)
+    if not role:
+        return desc
+    autres = " ; ".join(f"{fw} : {role.get(fw) or 'non utilisé'}"
+                        for fw in ("msp", "n3pp"))
+    ffp = role.get("ffp5cs") or "non utilisé"
+    return f"{desc} — ROLE ffp5cs : {ffp} ({autres})"
+
 # Textes explicatifs du schéma : (x_gu, y_gu, texte)
 SCH_TEXTS = [
     (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier.\\nD5 protège le rail si l'USB du DevKit est branché en même temps."),
@@ -888,7 +1012,7 @@ def gen_schematic() -> str:
     (property "Value" "{c['value']}" (at {cx:.2f} {cy - top_mm - 0.4:.2f} 0) {font})
     (property "Footprint" "n3u:{c['fp']}" (at {cx:.2f} {cy:.2f} 0) {hidden})
     (property "Datasheet" "~" (at {cx:.2f} {cy:.2f} 0) {hidden})
-    (property "Description" "{c['desc']}" (at {cx:.2f} {cy:.2f} 0) {hidden})
+    (property "Description" "{described(c['ref'], c['desc'])}" (at {cx:.2f} {cy:.2f} 0) {hidden})
 {pin_uuids}
     (instances (project "{PROJECT}" (path "/{ROOT_UUID}" (reference "{c['ref']}") (unit 1))))
   )''')
