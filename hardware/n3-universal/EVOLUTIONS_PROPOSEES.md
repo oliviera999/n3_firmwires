@@ -222,8 +222,8 @@ peuvent lire les broches 2 des headers via 10 k).
 |---|---|---|---|
 | **Charges (secteur ou 12/24 V)** | J3-J6, J23, J24 | bornier à vis 3 p, **5,08 mm** | câble 1,5 mm² H05VV-F (pompes, chauffage, lumière, AUX) |
 | **Alimentations** | J1, J2, J18, J19, J25, J26, J27, J36, J37 | bornier à vis 2 p 5,08 mm + jack 5,5/2,1 | alim 5 V, bus 12 V, secteur (J27), sonde batterie, buck, distributions |
-| **Ultrasons** | J7, J8, J9 | **JST-XH 4 p** (2,5 mm) | HC-SR04 / JSN-SR04T (module à header mâle 2,54) |
-| **DHT / pluie** | J10, J29, J30 | **JST-XH 3 p** | DHT11/22 (3 fils ou module), pluie DO |
+| **Ultrasons** | J7, J8, J9 | **JST-XH 4 p** (2,5 mm) | HC-SR04 / JSN-SR04T — **arrivent en fils nus** (décision 2026-09-02 : pas de connecteur côté capteur) |
+| **DHT / pluie** | J10, J29, J30 | **JST-XH 3 p** | DHT11/22, pluie DO — **arrivent en fils nus** (idem) |
 | **Sondes à fils nus** | J11 (DS18B20), J12 (LDR), J31-J34 (ADC A-D), J25 (VBAT) | bornier à vis 2-3 p **5,08 mm** | câble souple 0,2-0,5 mm², 2-3 conducteurs |
 | **Servos** | J15, J16 | header mâle 1×3 2,54 | connecteur servo standard |
 | **Modules I2C / OLED / SD** | J13, J14, J21, J22, J28, J35 | support femelle 1×4 / 1×6 | modules à header mâle, enfichés directement |
@@ -276,18 +276,34 @@ Notes :
 | **Charges** (6 canaux) | **Garder le bornier à vis 5,08** (B1), avec les compléments déjà listés (`COM = PHASE`, boîtier, presse-étoupes) | 1,5 mm², 250 V, empreinte validée dans la zone secteur avec la règle 3 mm : ne pas rouvrir ce dossier | **B4 en 5,08** (2EDG/MSTB) si on veut pouvoir **débrancher une charge sans tournevis** dans la zone 230 V : mêmes pas et pads, corps plus haut, ~1 € de plus par canal, **fentes et 3 mm à revalider** |
 | **Alimentations** | Garder B1 + jack ; ajouter le marquage +/− (`SEC-02`) | courants 3 A, fils 1 mm² | J25/J36/J37 en B3 ou B4 pour l'homogénéité de la bande basse (facultatif) |
 | **Sondes à fils nus** (DS18B20, LDR, ADC A-D, VBAT) | **Passer en B3 (push-in 3,5 avec bouton)** — 7 connecteurs | c'est la zone où les fils sont fins, manipulés par les élèves, et où les vis 5,08 se desserrent ; zéro outil ; gain de largeur ~30 % sur la bande basse | B2 (vis 3,5) si le coût prime ; B4 en 3,81 si on veut le détrompage par forme |
-| **Ultrasons** (3 × 4 fils) | **Garder JST-XH (B5)** et inscrire à `ACHATS.md` des **câbles XH ↔ Dupont femelle pré-sertis** (courants, ~1 €) : la pince à sertir sort de la liste | le HC-SR04 a un header mâle 2,54 : XH-Dupont est le câble naturel, détrompé côté carte, verrouillé | **empreinte double** XH + header 1×4 sur les mêmes nets (l'assembleur pose l'un ou l'autre) — coûte 10 mm de large par canal, à réserver si le sertissage reste un frein |
-| **DHT / pluie** (3 × 3 fils) | Même choix que les ultrasons (XH + câbles pré-sertis) | modules à header ou capteur 3 fils : les deux se sertissent | B3 3 p si le DHT est un capteur nu à fils (fréquent) — à trancher avec le choix ultrasons pour ne garder qu'une famille |
+| **Ultrasons** (3 × 4 fils nus) | **Passer en B3 (push-in 3,5 avec bouton, 4 positions)** — même famille que les sondes | les capteurs arrivent en fils nus : un JST-XH obligerait à sertir côté câble, exactement ce qu'on veut supprimer ; le push-in prend le fil directement | B2 (vis 3,5, 4 p) si le coût prime ; JST-XH + câbles pré-sertis n'a plus de sens sans header côté capteur |
+| **DHT / pluie** (3 × 3 fils nus) | **Passer en B3 (push-in 3,5, 3 positions)** | mêmes raisons que les ultrasons | B2 3 p |
+
+Conséquences du **fils nus partout** côté capteurs :
+
+- **Le détrompage du JST-XH disparaît** : sur un push-in rien n'empêche d'inverser 5 V et
+  signal. L'ordre des broches et la sérigraphie deviennent la seule protection →
+  **ordre uniforme sur tous les connecteurs capteurs** (ex. `GND | SIG | VCC`, GND toujours
+  au même bord), libellés `5V` en évidence sur J7-J9 (seuls connecteurs capteurs en 5 V), et
+  l'alerte `NET-03` (« HC-SR04 : R17-R19 requises ») posée juste à côté.
+- **Encombrement** : un push-in 4 p au pas 3,5 fait ~14 mm contre ~10 mm pour un XH 4 p,
+  soit environ **+12 mm** sur la largeur cumulée de la bande basse pour les 3 ultrasons
+  et **+5 mm** pour les 3 DHT/pluie. La bande basse est re-routée de toute façon (§2.5).
+- **Une seule famille** côté capteurs : les empreintes JST-XH vendorées ne servent plus ;
+  la pince à sertir et les câbles pré-sertis sortent définitivement de `ACHATS.md`.
+- Fil à préparer côté capteur : dénuder 8-10 mm, **embout à sertir (ferrule) conseillé
+  sur fil souple** si le push-in retenu n'a pas de bouton ; avec bouton (Wago 2601,
+  PTSA) le fil souple nu passe directement.
 | **Servos** | Garder les headers 1×3 (B6) | connecteur servo standard, verrouillé par friction, pas d'alternative sérieuse | — |
 | **I2C / OLED / SD** | Garder les supports femelles | modules enfichés directement | un port I2C en **Qwiic/JST-SH** ou **Grove** en plus (J28) pour les capteurs du commerce (INA/BME en Qwiic) : 4 pads, à considérer |
 | **Service / rails** | Garder les headers | Dupont, usage atelier | — |
 
-Effet attendu si tout est retenu : **deux familles** au lieu de trois côté capteurs (JST-XH
-pour ce qui a un header, push-in pour ce qui a des fils), plus de pince à sertir, borniers
-5,08 réservés à ce qui porte du courant.
+Effet attendu si tout est retenu : **une seule famille** côté capteurs (push-in 3,5 partout,
+13 connecteurs), plus de JST-XH ni de pince à sertir, borniers 5,08 réservés à ce qui porte
+du courant.
 
 > **Décisions B** : B-charges (B1 / B4-5,08) · B-sondes (B3 / B2 / B4-3,81 / statu quo) ·
-> B-ultrasons-DHT (XH + câbles pré-sertis / empreinte double / B3) · B-Qwiic (oui / non).
+> B-ultrasons-DHT (**B3 push-in** / B2 vis 3,5 — le JST-XH est écarté : fils nus) · B-Qwiic (oui / non).
 
 ### 2.5 Impact générateur
 
@@ -304,8 +320,8 @@ pour ce qui a un header, push-in pour ce qui a des fils), plus de pince à serti
 - `check_pcb_clearance.py` : les push-in et enfichables sont plus hauts (8-15 mm) et
   s'ouvrent par le haut ou le côté : ajouter leurs **couloirs d'insertion** (fil / fiche)
   à la table des corps 3D.
-- `ACHATS.md` / `BOM.csv` / `exports/pcba/` : nouvelles références, câbles pré-sertis,
-  suppression de la pince à sertir si retenu.
+- `ACHATS.md` / `BOM.csv` / `exports/pcba/` : nouvelles références (push-in 2/3/4 p),
+  suppression de la pince à sertir, des embases JST-XH et des connecteurs XH volants.
 
 ---
 
@@ -333,7 +349,7 @@ pour ce qui a un header, push-in pour ce qui a des fils), plus de pince à serti
 | A3 | Chauffage K3 | ON possible / **broche 3 non câblée** / pas de header | **broche 3 non câblée** (AUTO / OFF seulement) |
 | B-charges | Borniers de charge | vis 5,08 (statu quo) / enfichable 5,08 | **statu quo** (ne pas rouvrir la zone secteur) ; enfichable = option « confort » à chiffrer |
 | B-sondes | DS18B20, LDR, ADC A-D, VBAT | statu quo 5,08 / vis 3,5 / **push-in 3,5** / enfichable 3,81 | **push-in 3,5 avec bouton** (Wago 2601 ou Phoenix PTSA) |
-| B-ultrasons-DHT | HC-SR04, DHT, pluie | **XH + câbles pré-sertis** / empreinte double / push-in | **XH + câbles pré-sertis** (retirer la pince à sertir de `ACHATS.md`) |
+| B-ultrasons-DHT | HC-SR04, DHT, pluie (fils nus) | **push-in 3,5** / vis 3,5 | **push-in 3,5 avec bouton**, même famille que B-sondes ; ordre de broches uniforme + sérigraphie `5V` (plus de détrompage) |
 | B-Qwiic | Port I2C normalisé en plus | oui / non | oui si des modules Qwiic/Grove sont prévus, sinon non |
 | S1-S8 | Suggestions annexes | au cas par cas | S1, S2, S3, S4, S8 oui ; S7 à chiffrer ; S5, S6 non |
 
