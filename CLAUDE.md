@@ -17,6 +17,7 @@ Guide pour Claude Code (et tout agent) travaillant sur **n3_firmwires** — mono
 | **uploadphotosserver** (CAM unifié) | `uploadphotosserver/` | ESP32-CAM | `msp1`, `n3pp`, `ffp3` (esp32cam + HTTPS) | `include/config.h` (`FIRMWARE_VERSION`) |
 | **ffp5cs** (aquaponie) | `ffp5cs/` | ESP32 WROOM / S3 | `wroom-prod`, `wroom-test`, `wroom-s3-*`… | `include/config.h` / `VERSION.md` |
 | **poissonglouton** (recyclage) | `poissonglouton/` | ESP32-S3 | `pgl-s3-headless`, `pgl-s3-display` | `include/config.h` (`PGL_FIRMWARE_VERSION`) |
+| **energie** (banc INA226) | `energie/` | ESP32-S3 | `s3-bench` (→ `/energie-test/`), `s3-bench-https`, `s3-prod` | `include/energie_config.h` (`FIRMWARE_VERSION`) |
 
 Le catalogue machine de tous les firmwares (chemins, cartes, cibles OTA, source de version,
 envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/déplace un firmware.
@@ -48,7 +49,7 @@ envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/dépl
 Chaque firmware se construit **depuis son propre dossier** :
 
 ```bash
-cd n3pp                    # ou msp, poissonglouton, uploadphotosserver, ffp5cs
+cd n3pp                    # ou msp, poissonglouton, uploadphotosserver, ffp5cs, energie
 pio run                    # build env par défaut
 pio run -e esp32dev_test   # build d'un env précis
 pio run -e esp32dev -t upload
@@ -68,7 +69,7 @@ pio device monitor -e esp32dev          # 115200 bauds
 
 La compilation **échoue** sans le fichier de secrets correspondant (jamais versionné) :
 
-- **n3pp, msp, uploadphotosserver** : un seul fichier partagé `credentials.h` à la racine du dépôt
+- **n3pp, msp, uploadphotosserver, energie** : un seul fichier partagé `credentials.h` à la racine du dépôt
   → copier depuis `credentials.h.example` (WiFi, SMTP `SMTP_*`, `API_KEY`, optionnel `API_SIG_SECRET`).
 - **ffp5cs** : `include/secrets.h` (WiFi/SMTP, copier l'exemple) et
   `include/secrets_config.h` (`API_KEY`, destinataire, HMAC — copier l'exemple).
@@ -82,7 +83,8 @@ Code commun à n3pp / msp / ffp5cs, sous forme de modules PlatformIO (`library.j
 **Réutiliser ces libs plutôt que dupliquer** : `n3_wifi` (scan RSSI multi-réseaux), `n3_data`
 (POST URL-encoded + HMAC, remplace `n3_http` déprécié), `n3_hmac` (HMAC-SHA256), `n3_mail` (SMTP),
 `n3_time`, `n3_sleep` (deep sleep), `n3_display` (OLED), `n3_analog_sensors`, `n3_battery`,
-`n3_tracker` (logique pure du tracker solaire msp, testée en natif), et
+`n3_tracker` (logique pure du tracker solaire msp, testée en natif), `n3_power` (driver INA226,
+intégration Wh/Ah, SoC plomb/AGM, alerte batterie — logique pure testée en natif), et
 `n3_common` (**OTA** `n3_ota` avec vérif **sha256 + ECDSA P-521** (secp521r1), `n3_defaults.h`, `n3_outputs_json`).
 
 ## Versionnage firmware — à faire à chaque modification
@@ -106,7 +108,7 @@ firmware modifié :
 
 `.github/workflows/firmware-ci.yml` (sur push `master` / PR) : **tests natifs Unity**
 (`shared/` + `ffp5cs`, suite par suite) puis **builds matriciels** (n3pp, msp, variantes `*-https`,
-ffp5cs `wroom-test`, poissonglouton headless/display, uploadphotosserver `msp1`). Les secrets sont
+ffp5cs `wroom-test`, poissonglouton headless/display, energie `s3-bench`, uploadphotosserver `msp1`). Les secrets sont
 provisionnés depuis les `.example`. Avant de pousser : compiler localement le firmware touché +
 lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware/SKILL.md) et
 [`firmware-native-tests`](.claude/skills/firmware-native-tests/SKILL.md)).
@@ -153,7 +155,8 @@ qualité, la robustesse et la sécurité du code embarqué.
    repérer celles qui touchent les **sources de version** (voir `versionSource` de
    `firmwares.manifest.json`) — surtout si elles concernent **le même firmware** que ta PR :
    - `n3pp/include/n3pp_config.h`, `msp/include/msp_config.h`, `uploadphotosserver/include/config.h`,
-     `poissonglouton/include/config.h` (`FIRMWARE_VERSION` / `PGL_FIRMWARE_VERSION`)
+     `poissonglouton/include/config.h`, `energie/include/energie_config.h`
+     (`FIRMWARE_VERSION` / `PGL_FIRMWARE_VERSION`)
    - `ffp5cs/VERSION.md` et les `VERSION.md` des autres firmwares
    - `firmwares.manifest.json` (topologie / cibles OTA)
 2. **Détecter les collisions** : même firmware bumpé vers le même numéro, même ligne de `VERSION.md`,

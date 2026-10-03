@@ -14,6 +14,7 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 | **Upload Photos legacy** | `archive/uploadphotosserver_legacy/` | ESP32-CAM | Historique (`uploadphotosserver_*`) conservé en archive ; utiliser uniquement `uploadphotosserver/`. |
 | **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3, réseau offline-first. Depuis v14.24, la sync distante WROOM utilise un document JSON dédié 2048 o pour absorber le payload `outputs/state` étendu (GPIO 118-123). Build WROOM plus complexe que n3pp/msp (pioarduino 2 passes) — voir [ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md). |
 | **Poissonglouton (recyclage)** | `poissonglouton/` | ESP32-S3 | Compteur de bouteilles pour poubelle ludique : détection IR + ultrason (simple ou tandem), feedback audio I2S JC4827W543 (sortie speak), mode écran tactile ou headless, upload batch vers `/pgl/post-data`, heartbeat `/pgl/heartbeat` (flag `PGL_ENABLE_SERVER_HEARTBEAT`), deep sleep solaire. |
+| **Banc énergie (INA226)** | `energie/` | ESP32-S3 | Banc d'essai des moniteurs de puissance INA226 du futur module d'aquaponie autonome (carte n3-universal) : panneau solaire / batterie plomb-AGM 12 V / consommation, mesure 1 Hz, POST 10 s vers `/energie-test/post-data` (famille serveur `energie`), SoC + alerte mail batterie basse, console série de calibration. Brique partagée `shared/n3_power`. Voir [energie/README.md](energie/README.md). |
 | **LVGL_Widgets** | `à voir/LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. Dossier `à voir/` (prototype non maintenu en production). |
 | **Ratata (ZYC0108-EN)** | `à voir/ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. Dossier `à voir/`. |
 
@@ -259,6 +260,11 @@ firmwires/
 │   ├── platformio.ini
 │   ├── include/config.h
 │   ├── src/main.cpp
+│   └── VERSION.md
+├── energie/                   # ESP32-S3 banc d'essai INA226 (panneau / batterie / conso)
+│   ├── platformio.ini
+│   ├── include/energie_config.h
+│   ├── src/main.cpp + modules (energie_board/sensors/network/display/console.cpp)
 │   └── VERSION.md
 ├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires ; submodule ffp5cs/ffp3)
 ├── archive/                    # Code historique — ne plus utiliser (utiliser uploadphotosserver/ unifié)

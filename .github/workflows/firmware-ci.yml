@@ -32,10 +32,10 @@ jobs:
           path: ~/.platformio
           key: pio-native-${{ hashFiles('**/platformio*.ini') }}
           restore-keys: pio-native-
-      - name: shared/ (analog, hmac, notify, mail, data, net_stats, tracker + logique pure mutualisée)
+      - name: shared/ (analog, hmac, notify, mail, data, net_stats, tracker, power + logique pure mutualisée)
         run: |
           cd shared/tests_native
-          for s in test_analog test_hmac test_hmac_canonical test_notify test_mail test_data test_net_stats test_tracker test_wifi_select test_wifi_reconnect test_wifi_diag test_epoch_util test_uptime_format test_sleep_decision test_reset_reason test_login_throttle test_clock_decision test_sensor_fallback test_sensor_failure test_store_forward test_upload_multipart test_ota_ui test_ota_select test_ota_rollback test_log test_app; do
+          for s in test_analog test_hmac test_hmac_canonical test_notify test_mail test_data test_net_stats test_tracker test_wifi_select test_wifi_reconnect test_wifi_diag test_epoch_util test_uptime_format test_sleep_decision test_reset_reason test_login_throttle test_clock_decision test_sensor_fallback test_sensor_failure test_store_forward test_upload_multipart test_ota_ui test_ota_select test_ota_rollback test_log test_app test_ina226_math test_power_energy test_power_battery; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
@@ -127,6 +127,9 @@ jobs:
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
           - { name: poissonglouton-headless-https, dir: poissonglouton, env: pgl-s3-headless-https }
+          # Banc d'essai energie (ESP32-S3 + 3 x INA226, espressif32@6.13.0) : HTTP + HTTPS.
+          - { name: energie-s3-bench, dir: energie, env: s3-bench }
+          - { name: energie-s3-bench-https, dir: energie, env: s3-bench-https }
           - { name: uploadphotosserver-msp1, dir: uploadphotosserver, env: msp1 }
           - { name: uploadphotosserver-n3pp, dir: uploadphotosserver, env: n3pp }
           - { name: uploadphotosserver-ffp3, dir: uploadphotosserver, env: ffp3 }
