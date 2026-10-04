@@ -49,12 +49,13 @@ toutes regroupées dans `BOM-PCBA-conditionnels.csv` :
 |--------|--------------------------|
 | (a) 5 V externe (jack J2 / bornier J1) | rien |
 | (b) solaire 1S (TP4056 + 18650 hors carte) | R38 = 100k, **R39 = 100k** |
-| (c) bus 12 V (buck externe) | R38 = 100k, **R39 = 27k** |
+| (c) bus 12 V (buck externe) | R38 = 100k, **R39 = 22k** |
 | (d) secteur | **PS1 + J27 + F1 + RV1** (les quatre ensemble), + R38/R39 selon la mesure batterie éventuelle |
 
 ⚠️ **R39 est le piège de cette BOM** : la colonne « Valeur » du `BOM.csv` d'origine
-porte `27k`, la valeur du profil bus 12 V. La poser sur une unité batterie 1S fausse
-la jauge d'un facteur ~2,4 ; à l'inverse, poser 100k sur un bus 12 V envoie ~7,75 V
+porte `22k`, la valeur du profil bus 12 V (27k jusqu'en 2026-10 : pleine
+échelle 14,6 V, saturée en absorption AGM 14,4-14,7 V). La poser sur une unité batterie 1S fausse
+la jauge d'un facteur ~2,8 ; à l'inverse, poser 100k sur un bus 12 V envoie ~7,75 V
 sur une entrée ADC prévue pour 3,3 V — **destruction de l'entrée**.
 
 Et selon le **rôle** de l'unité : R17-R19 (ffp5cs uniquement), R43-R46 (LDR msp),

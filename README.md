@@ -148,11 +148,10 @@ Commandes directes possibles depuis `uploadphotosserver/` :
 Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est : plateforme → arduino-esp32 → ESP-IDF (sous-jacent).
 
 **Versions arduino-ESP32 par type d'env :**
-- **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp, uploadphotosserver) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt.
+- **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp) et **poissonglouton** (S3) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt (uploadphotosserver, ESP32-CAM, reste en 6.13 : ci-dessous).
 - **FFP5CS prod secours** : env **`wroom-prod-pio6`** = `espressif32@6.13.0` + Arduino **2.0.17** (build **1 passe**, sans pioarduino) si la phase 2 de `wroom-prod` échoue — détails et tutoriel : [COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md).
 - **uploadphotosserver** (ESP32-CAM) : envs **`msp1` / `n3pp` / `ffp3`** uniquement — **espressif32@6.13** + **`esp32cam`** + **HTTPS** (`USE_HTTPS_ENDPOINTS`) + diagnostic PSRAM au boot. Anciens envs `*-cam` et `msp1-https` supprimés (v2.54). Voir `uploadphotosserver/README.md` et `docs/HTTPS_MIGRATION.md`.
-- **S3** (ffp5cs wroom-s3-*) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
-- **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
+- **S3** (ffp5cs `wroom-s3-*`, y compris les envs PSRAM `wroom-s3-test-psram*` / `-devkit`, et **energie**) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
 
 Le **premier build** des projets WROOM télécharge la plateforme pioarduino (~500 Mo) ; en cas d'erreur de verrouillage de fichier (WinError 32/183), fermer les processus PlatformIO/IDE puis relancer.
 

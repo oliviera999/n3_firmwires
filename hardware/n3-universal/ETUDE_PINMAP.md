@@ -14,7 +14,7 @@ Générée par `etude_pinmap.py` (source de vérité : ce script).
 
 - 26 nets affectés, 0 broche(s) libre(s) : []
 - ⚠️ Broches à précaution documentée :
-  - GPIO3 (GATE) : strapping JTAG-sel : OK si JTAG inutilisé ; pull-up admissible
+  - GPIO3 (GATE) : strapping JTAG-sel (sans effet hors eFuse JTAG) ; pas de pull-up sur la broche (R34 1k → base Q8)
   - GPIO38 (DHT_INT) : LED RGB DevKitC-1 v1.1 : scintillement cosmétique si utilisé
   - GPIO45 (AUX2) : strapping VDD_SPI : NE JAMAIS tirer haut au boot (pas de pull-up !)
   - GPIO48 (AUX1) : LED RGB DevKitC-1 v1.0 : scintillement cosmétique si utilisé
@@ -60,7 +60,7 @@ Générée par `etude_pinmap.py` (source de vérité : ce script).
 ## Ajouts I2C (coût GPIO nul)
 
 - RTC **DS3231** (0x68) — support dédié ; déjà géré par ffp5cs (`USE_RTC_DS3231`).
-- **2-3 × INA219/226** (0x40/0x41/0x44) — mesure courant panneau/batterie/charge ;
+- **3 × INA226** (0x40/0x41/0x44) — mesure courant panneau/batterie/charge (shunts externes 5-10 mΩ) ;
   à alimenter sur **+3V3_SW** (0,7-1 mA chacun sinon en veille).
 - BME280 0x76/0x77, OLED 0x3C : inchangés. 7 périphériques I2C = charge de bus OK à 100 kHz.
 

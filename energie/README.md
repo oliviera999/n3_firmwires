@@ -41,9 +41,9 @@ La pleine échelle de l'INA226 est **±81,92 mV** sur le shunt :
 
 Le module réel (panneau 50-80 Wc ≈ 3-5 A, batterie, conso pompe/chauffage) dépasse 0,8 A sur les
 **trois** voies : prévoir des **shunts externes de 5-10 mΩ** (fils de mesure Kelvin vers l'INA, le
-fort courant ne passe pas par la carte logique). Le seuil « 0,01 Ω si > 3,2 A » de la doc
-n3-universal est un chiffre INA219, pas INA226. Sur le banc, R100 suffit pour apprendre à faible
-courant ; le firmware signale toute saturation (`SAT!` sur l'OLED, bit de `InaStatus`).
+fort courant ne passe pas par la carte logique) — cf. `hardware/n3-universal/README.md`, profil
+« bus 12 V solaire ». Sur le banc, R100 suffit pour apprendre à faible courant ; le firmware
+signale toute saturation (`SAT!` sur l'OLED, bit de `InaStatus`).
 
 ### Câblage recommandé
 
@@ -117,8 +117,8 @@ Contrat détaillé côté serveur : `docs/API_ENERGIE.md` (dépôt n3_serveur). 
 - `EnergiePanneauWh`, `EnergieConsoWh` : énergie de la fenêtre (en cas d'échec d'envoi, reportée
   sur l'envoi suivant → les sommes restent justes).
 - `BatterieAh` : charge nette intégrée depuis le boot (ou `reset`) ; `BatterieSoc` : état de charge (%).
-- `BatterieVadc` : pont diviseur ADC_VBAT de la carte (GPIO7, 100k/27k), vide si désactivé
-  (`ENERGIE_PIN_ADC_VBAT`). ⚠️ Ce pont sature vers 14,4-14,7 V (absorption AGM) : l'INA reste la référence.
+- `BatterieVadc` : pont diviseur ADC_VBAT de la carte (GPIO7, 100k/22k, pleine échelle ~17 V), vide si
+  désactivé (`ENERGIE_PIN_ADC_VBAT`). Précision ADC modeste : l'INA batterie reste la référence.
 - `InaStatus` : bit *i* = voie présente, bit 4+*i* = saturation shunt, bit 8+*i* = ré-initialisation
   (voie 0 panneau, 1 batterie, 2 conso) ; `I2cErreurs`, `Rssi`, `Uptime`, `FreeHeap`, `BootCount`.
 
@@ -129,5 +129,5 @@ Contrat détaillé côté serveur : `docs/API_ENERGIE.md` (dépôt n3_serveur). 
   Sans valeur en NVS, le premier SoC vient de l'OCV au boot (estimation grossière, `~` dans `cfg`).
 - Alerte mail (SMTP de `credentials.h`) : tension < **11,8 V** tenue 60 s hors charge, réarmement
   au-dessus de **12,4 V**, au plus une alerte toutes les **6 h**. Seuils dans `energie_config.h`.
-- La doc n3-universal suppose une batterie **gel** ; la batterie retenue est **AGM** → régler le
-  profil du régulateur en conséquence.
+- Batterie **AGM** : régler le profil **AGM / SEALED** du régulateur (absorption 14,4-14,7 V,
+  float 13,5-13,8 V, pas d'égalisation) — cf. `hardware/n3-universal/README.md`.

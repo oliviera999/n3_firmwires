@@ -20,7 +20,7 @@
 // -----------------------------------------------------------------------------
 // Version (source unique — cf. firmwares.manifest.json, versionSource)
 // -----------------------------------------------------------------------------
-#define FIRMWARE_VERSION "0.1"
+#define FIRMWARE_VERSION "0.2"
 #define ENERGIE_SENSOR_NAME "energie"
 
 // -----------------------------------------------------------------------------
@@ -45,11 +45,13 @@
 // Broche ALERT des INA (non routee sur les PCB : polling 1 Hz). -1 = inutilisee.
 #define ENERGIE_PIN_INA_ALERT -1
 
-// Pont diviseur batterie de la carte n3-universal (ADC_VBAT = GPIO7, 100k/27k),
-// lu en option pour comparaison avec l'INA batterie. -1 = desactive (DevKit nu).
+// Pont diviseur batterie de la carte n3-universal (ADC_VBAT = GPIO7, 100k/22k :
+// pleine echelle ~17 V, au-dessus de l'absorption AGM 14,4-14,7 V ; l'ancien 27k
+// saturait vers 14,6 V), lu en option pour comparaison avec l'INA batterie.
+// -1 = desactive (DevKit nu).
 #define ENERGIE_PIN_ADC_VBAT -1
 #define ENERGIE_VBAT_R1 100000UL
-#define ENERGIE_VBAT_R2 27000UL
+#define ENERGIE_VBAT_R2 22000UL
 #define ENERGIE_VBAT_VREF 3.3f
 
 // -----------------------------------------------------------------------------
