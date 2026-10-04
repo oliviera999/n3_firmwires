@@ -98,6 +98,23 @@
         { "name": "pgl-s3-headless", "versionDefine": null },
         { "name": "pgl-s3-display", "versionDefine": null }
       ]
+    },
+    {
+      "id": "energie",
+      "path": "energie",
+      "board": "esp32-s3",
+      "serveurFolder": "energie",
+      "otaTarget": "energie",
+      "submodule": false,
+      "versionSource": {
+        "file": "include/energie_config.h",
+        "define": "FIRMWARE_VERSION"
+      },
+      "pioEnvs": [
+        { "name": "s3-bench", "versionDefine": null },
+        { "name": "s3-bench-https", "versionDefine": null },
+        { "name": "s3-prod", "versionDefine": null }
+      ]
     }
   ]
 }

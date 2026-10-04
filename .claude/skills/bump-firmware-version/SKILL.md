@@ -1,6 +1,6 @@
 ---
 name: bump-firmware-version
-description: Bump the firmware version of an n3_firmwires project (n3pp, msp, uploadphotosserver, ffp5cs, poissonglouton) and update its VERSION.md history. Use after modifying a firmware, before committing, or when asked to "bump/increment the firmware version" or "release a firmware". Each firmware defines its version in its own source file — see firmwares.manifest.json.
+description: Bump the firmware version of an n3_firmwires project (n3pp, msp, uploadphotosserver, ffp5cs, poissonglouton, energie) and update its VERSION.md history. Use after modifying a firmware, before committing, or when asked to "bump/increment the firmware version" or "release a firmware". Each firmware defines its version in its own source file — see firmwares.manifest.json.
 ---
 
 # Bump de version d'un firmware
@@ -16,6 +16,7 @@ champ `versionSource` de `firmwares.manifest.json`.
 | **msp** | `msp/include/msp_config.h` | `#define FIRMWARE_VERSION "x.y"` |
 | **uploadphotosserver** | `uploadphotosserver/include/config.h` | `#define FIRMWARE_VERSION "x.y"` |
 | **poissonglouton** | `poissonglouton/include/config.h` | `PGL_FIRMWARE_VERSION = "x.y"` |
+| **energie** | `energie/include/energie_config.h` | `#define FIRMWARE_VERSION "x.y"` |
 | **ffp5cs** | `ffp5cs/include/config.h` (`VERSION = "…"`) ou `ffp5cs/VERSION.md` | voir manifest |
 
 ## Procédure

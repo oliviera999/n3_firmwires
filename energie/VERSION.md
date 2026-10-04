@@ -1,0 +1,11 @@
+# Version energie (Banc d'essai INA226 — production solaire / batterie / consommation)
+
+Version actuelle : **0.1** (définie dans `include/energie_config.h`, `FIRMWARE_VERSION`).
+
+---
+
+## Historique
+
+| Version | Date | Modifications |
+|---------|------|---------------|
+| 0.1 | 2026-10-03 | **Création du banc d'essai INA226 (ESP32-S3-DevKitC-1 N16R8, câblage compatible carte n3-universal).** Trois voies INA226 (panneau 0x40, batterie 0x41, conso 0x44) lues à 1 Hz, envoi toutes les 10 s vers la famille serveur `energie` (`/energie-test/post-data` en `s3-bench`, `/energie/post-data` en `s3-prod`) : moyennes V/I/P, min/max, énergie Wh de la fenêtre (reportée si l'envoi échoue), charge batterie Ah, état de charge plomb/AGM 12 V (OCV au repos + comptage coulométrique, 12 Ah), bitmask `InaStatus` (présence / saturation shunt / ré-init). Nouvelle brique partagée `shared/n3_power` 0.1.0 (driver INA226, intégration Wh/Ah, SoC, alerte batterie basse — logique pure testée en natif : `test_ina226_math`, `test_power_energy`, `test_power_battery`). Briques réutilisées : `n3_wifi` (session non bloquante), `n3_time` (NTP pour HMAC), `n3_data` (POST + HMAC), `n3_mail` (alerte batterie basse < 11,8 V tenue 60 s, réamorçage 12,4 V, cooldown 6 h), `n3_ota_ui`/`n3_ota` (cible OTA `energie` / `energie-test`), `n3_display` (OLED), `n3_battery` (pont ADC_VBAT optionnel). Mise en sécurité n3-universal : relais K1-K6 forcés OFF, rail +3V3_SW (GPIO3) alimenté, ré-initialisation automatique d'un INA dé-alimenté (CAL revenu à 0). Console série : CSV 1 Hz, `scan`, `dump`, `shunt`, `imax`, `inv`, `cal` (gain d'après multimètre), `avg`, `soc`, `reset`, `post`, `ota`, `mailtest` (réglages persistés en NVS). Toolchain `platformio/espressif32@6.13.0` (celle de la cible ffp5cs S3), partitions identiques au profil S3 de ffp5cs. |

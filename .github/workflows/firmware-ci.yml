@@ -32,10 +32,10 @@ jobs:
           path: ~/.platformio
           key: pio-native-${{ hashFiles('**/platformio*.ini') }}
           restore-keys: pio-native-
-      - name: shared/ (analog, hmac, notify, mail, data, net_stats, tracker + logique pure mutualisée)
+      - name: shared/ (analog, hmac, notify, mail, data, net_stats, tracker, power + logique pure mutualisée)
         run: |
           cd shared/tests_native
-          for s in test_analog test_hmac test_hmac_canonical test_notify test_mail test_data test_net_stats test_tracker test_wifi_select test_wifi_reconnect test_wifi_diag test_epoch_util test_uptime_format test_sleep_decision test_reset_reason test_login_throttle test_clock_decision test_sensor_fallback test_sensor_failure test_store_forward test_upload_multipart test_ota_ui test_ota_select test_ota_rollback test_log test_app; do
+          for s in test_analog test_hmac test_hmac_canonical test_notify test_mail test_data test_net_stats test_tracker test_wifi_select test_wifi_reconnect test_wifi_diag test_epoch_util test_uptime_format test_sleep_decision test_reset_reason test_login_throttle test_clock_decision test_sensor_fallback test_sensor_failure test_store_forward test_upload_multipart test_ota_ui test_ota_select test_ota_rollback test_log test_app test_ina226_math test_power_energy test_power_battery; do
             echo "::group::$s"
             pio test -c platformio-native.ini -e native -f "$s"
             echo "::endgroup::"
@@ -127,6 +127,9 @@ jobs:
           - { name: poissonglouton-display, dir: poissonglouton, env: pgl-s3-display }
           - { name: poissonglouton-display-https, dir: poissonglouton, env: pgl-s3-display-https }
           - { name: poissonglouton-headless-https, dir: poissonglouton, env: pgl-s3-headless-https }
+          # Banc d'essai energie (ESP32-S3 + 3 x INA226, espressif32@6.13.0) : HTTP + HTTPS.
+          - { name: energie-s3-bench, dir: energie, env: s3-bench }
+          - { name: energie-s3-bench-https, dir: energie, env: s3-bench-https }
           - { name: uploadphotosserver-msp1, dir: uploadphotosserver, env: msp1 }
           - { name: uploadphotosserver-n3pp, dir: uploadphotosserver, env: n3pp }
           - { name: uploadphotosserver-ffp3, dir: uploadphotosserver, env: ffp3 }
@@ -135,14 +138,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # PlatformIO epingle : 6.2.0 (PyPI 2026-09-05) casse les builds ffp5cs WROOM (plateforme
+      # pioarduino 55.03.37 + custom_sdkconfig) : tool-scons 4.8.1 remplace par 4.11.1 en plein build
+      # -> ModuleNotFoundError SCons.Tool.FortranCommon. Diagnostic : n3_firmwires#112.
+      # A lever quand la plateforme pioarduino supportera PlatformIO >= 6.2 (garder la cle de cache alignee).
       - name: Install PlatformIO
-        run: pip install --upgrade platformio intelhex  # intelhex requis par le build S3 (espressif32@6.13.0)
+        run: pip install "platformio==6.1.19" intelhex  # intelhex requis par le build S3 (espressif32@6.13.0)
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: pio-
+          key: pio-6.1.19-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: pio-6.1.19-
       - name: Provision credentials/secrets (placeholders CI)
         run: |
           cp credentials.h.example credentials.h
