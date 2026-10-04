@@ -302,14 +302,8 @@ bool OTAManager::checkForUpdate() {
     // v14.17 — MAJ confirmée : lire (sur le heap) les champs d'authenticité optionnels
     // (sha256 + signature ECDSA) depuis le même nœud que l'artefact. Absents => MD5 seul.
     {
-        const char* envNameSig = "prod";
-        #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
-            envNameSig = "test";
-        #endif
-        const char* modelNameSig = "esp32-wroom";
-        #if defined(BOARD_S3)
-            modelNameSig = "esp32-s3";
-        #endif
+        const char* envNameSig = OtaModel::ENV;      // même nœud que l'artefact (ota_model.h)
+        const char* modelNameSig = OtaModel::MODEL;
         m_firmwareSha256 = static_cast<char*>(malloc(65));
         m_firmwareSignature = static_cast<char*>(malloc(256));
         if (m_firmwareSha256 && m_firmwareSignature) {

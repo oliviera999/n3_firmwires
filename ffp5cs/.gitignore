@@ -115,3 +115,9 @@ BILAN_*.md
 PLAN_*.md
 MODIFICATIONS_*.md
 RAPPORT_AUDIT_*.txt
+
+# sdkconfig.<env> genere par pioarduino : les envs S3 (wroom-s3-*) sont en
+# platformio/espressif32@6.13.0 et n'en produisent pas -> une copie serait perimee
+# (cf. sdkconfig.wroom-s3-test IDF 5.5.2 supprime en v15.31). Les sdkconfig.wroom-*
+# WROOM restent versionnes (verifies par tools/pio_verify_wroom_sdkconfig.py).
+sdkconfig.wroom-s3-*

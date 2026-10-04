@@ -12,6 +12,32 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.31 - 2026-10-04
+
+### Fix sûreté OTA : un banc au câblage non historique ne reçoit plus l'image des cartes historiques
+
+- Avant : le modèle OTA ne dépendait que de la puce (`esp32-s3` / `esp32-wroom`). Les envs
+  `wroom-universal-test`, `wroom-s3-universal-test` et `wroom-s3-carrier-test` lisaient le
+  même canal **test** que les cartes historiques : la prochaine publication test aurait installé
+  une image au **mauvais câblage** (relais pilotés par les mauvaises broches — ex. K3 chauffage
+  piloté comme un servo —, sonde d'eau perdue sur la carte porteuse).
+- Nouveau `include/ota_model.h` (source unique, testée en natif) : canal + modèle + dossier de
+  métadonnées. Câblage historique : **inchangé** (`ota/metadata.json`, clés `esp32-s3` /
+  `esp32-wroom`). Câblages non historiques : clé et fichier propres —
+  `esp32-wroom-universal`, `esp32-s3-universal`, `esp32-s3-carrier` →
+  `ota/<modele>/metadata.json`. Rien n'y est publié pour l'instant : 404 → aucune mise à jour.
+- Les trois `#if` dupliqués (artefact, filesystem, sha256/signature) utilisent `OtaModel::ENV` /
+  `OtaModel::MODEL` ; `BOARD_TYPE` (préfixe `post_id`) inchangé.
+- `pins.h` : `#error` si `PINMAP_UNIVERSAL` et `PINMAP_S3_CARRIER` sont combinés, ou
+  `PINMAP_S3_CARRIER` sans `BOARD_S3` (retombait en silence sur le câblage WROOM historique).
+- Tests natifs `test_ota_model_*` (5 combinaisons de macros) et URL des métadonnées en
+  `PINMAP_UNIVERSAL` (`test_ota_url_universal`).
+- ⚠️ Les bancs déjà flashés ne sont protégés qu'après un **reflash USB** en 15.31 : d'ici là,
+  ne pas publier sur le canal test une version supérieure à la leur.
+- Ménage : `sdkconfig.wroom-s3-test` supprimé (artefact d'un ancien build pioarduino, IDF 5.5.2,
+  alors que les envs S3 sont en `espressif32@6.13.0` / IDF 4.4.7) + entrée `.gitignore`.
+- Doc : `docs/WIFI_OTA_REFERENCE.md` (racine), section « OTA par câblage ».
+
 ## Version 15.30 - 2026-09-01
 
 ### Fix : régulation chauffage coupée par le gate Phase 3

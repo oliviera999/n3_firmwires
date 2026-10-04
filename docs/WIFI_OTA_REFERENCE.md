@@ -83,6 +83,32 @@ Constantes : `WIFI_CONNECT_TIMEOUT_MS = 5000` alignée partout.
 
 **Propriétés** : HTTPS, structure `channels` avec bin_url, filesystem_url, size, md5. Détails : `ffp5cs/docs/technical/OTA_PUBLISH.md`.
 
+### OTA par câblage (cartes n3-universal / porteuse) — depuis ffp5cs 15.31, n3pp 4.74, msp 2.77
+
+Un banc **câblé autrement** que les cartes historiques ne doit **jamais** recevoir leur image :
+les mêmes broches y pilotent d'autres relais (ex. K3 chauffage commandé comme un servo). Chaque
+câblage non historique lit donc **ses propres métadonnées** ; les cartes historiques sont inchangées.
+
+| Firmware / env | Câblage | URL metadata | Clé (ffp5cs) |
+|----------------|---------|--------------|--------------|
+| ffp5cs `wroom-*` historiques | WROOM historique | `…/ota/metadata.json` (inchangée) | `esp32-wroom` |
+| ffp5cs `wroom-s3-*` historiques | S3 historique | `…/ota/metadata.json` (inchangée) | `esp32-s3` |
+| ffp5cs `wroom-universal-test` | n3-universal, site WROOM | `…/ota/esp32-wroom-universal/metadata.json` | `esp32-wroom-universal` |
+| ffp5cs `wroom-s3-universal-test` | n3-universal, site S3 | `…/ota/esp32-s3-universal/metadata.json` | `esp32-s3-universal` |
+| ffp5cs `wroom-s3-carrier-test` | carte porteuse bi-module | `…/ota/esp32-s3-carrier/metadata.json` | `esp32-s3-carrier` |
+| n3pp / msp `esp32dev_universal_test` | n3-universal | `ota/<fw>-universal-test/metadata.json` (prod : `<fw>-universal`) | — |
+
+- Source unique ffp5cs : `ffp5cs/include/ota_model.h` (testée en natif, `test_ota_model_*`).
+  `pins.h` refuse à la compilation les combinaisons de câblage invalides.
+- **Rien n'est publié dans ces dossiers** : le serveur répond 404 → « OTA ignorée », aucune
+  mise à jour. Publier vers ces dossiers (`publish_ota.py`, `firmware-ota-deploy.yml`) est une
+  évolution à faire le jour où ces bancs devront être mis à jour à distance — en gardant l'env
+  de build, le dossier et la clé **couplés** dans une même table (jamais une image `carrier`
+  publiée sous `esp32-s3`).
+- ⚠️ Un banc flashé **avant** ces versions lit encore le canal historique : il n'est protégé
+  qu'après un **reflash USB**. D'ici là, ne pas publier sur le canal test une version supérieure
+  à la sienne.
+
 ---
 
 ## 4. Règle version + metadata

@@ -69,9 +69,11 @@ Deux **schémas** de metadata coexistent :
 
 > **ffp5cs — périmètre.** Seul **WROOM (firmware seul)** est géré (conforme à
 > `ffp5cs/docs/technical/OTA_PUBLISH.md` : pas d'image filesystem pour WROOM).
-> Les cibles **S3** et les **images LittleFS** sont un suivi séparé (S3 est aussi
-> hors CI pour une incompat. toolchain ESP32Servo). `ffp5cs/scripts/publish_ota.ps1`
-> reste disponible pour le flux Windows complet (S3 + filesystem).
+> Les cibles **S3** et les **images LittleFS** sont un suivi séparé (les builds S3 sont
+> compilés en CI, mais leur publication OTA n'est pas automatisée). `ffp5cs/scripts/publish_ota.ps1`
+> reste disponible pour le flux Windows complet (S3 + filesystem). Les bancs au câblage non
+> historique (n3-universal, carte porteuse) lisent leurs **propres** métadonnées : voir
+> `docs/WIFI_OTA_REFERENCE.md`, « OTA par câblage » — `ffp5-wroom` ne les atteint jamais.
 
 ## Format d'intégrité (rappel)
 
