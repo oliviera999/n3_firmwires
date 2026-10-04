@@ -113,6 +113,10 @@ provisionnés depuis les `.example`. Avant de pousser : compiler localement le f
 lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware/SKILL.md) et
 [`firmware-native-tests`](.claude/skills/firmware-native-tests/SKILL.md)).
 
+> 📌 **PlatformIO est épinglé à 6.1.19** (CI + déploiement OTA) : la 6.2.0 casse les builds ffp5cs WROOM
+> pioarduino (`ModuleNotFoundError: SCons.Tool.FortranCommon`). Utiliser la même version en local :
+> `pip install "platformio==6.1.19"`.
+
 ## Règles
 
 - ❌ Ne jamais committer `credentials.h`, `ffp5cs/include/secrets.h`, `secrets_config.h` (secrets).

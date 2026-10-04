@@ -138,14 +138,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # PlatformIO epingle : 6.2.0 (PyPI 2026-09-05) casse les builds ffp5cs WROOM (plateforme
+      # pioarduino 55.03.37 + custom_sdkconfig) : tool-scons 4.8.1 remplace par 4.11.1 en plein build
+      # -> ModuleNotFoundError SCons.Tool.FortranCommon. Diagnostic : n3_firmwires#112.
+      # A lever quand la plateforme pioarduino supportera PlatformIO >= 6.2 (garder la cle de cache alignee).
       - name: Install PlatformIO
-        run: pip install --upgrade platformio intelhex  # intelhex requis par le build S3 (espressif32@6.13.0)
+        run: pip install "platformio==6.1.19" intelhex  # intelhex requis par le build S3 (espressif32@6.13.0)
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: pio-
+          key: pio-6.1.19-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: pio-6.1.19-
       - name: Provision credentials/secrets (placeholders CI)
         run: |
           cp credentials.h.example credentials.h

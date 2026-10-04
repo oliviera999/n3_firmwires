@@ -112,14 +112,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
+      # PlatformIO epingle : 6.2.0 (PyPI 2026-09-05) casse les builds ffp5cs WROOM (plateforme
+      # pioarduino 55.03.37 + custom_sdkconfig) : tool-scons 4.8.1 remplace par 4.11.1 en plein build
+      # -> ModuleNotFoundError SCons.Tool.FortranCommon. Diagnostic : n3_firmwires#112.
+      # A lever quand la plateforme pioarduino supportera PlatformIO >= 6.2 (garder la cle de cache alignee).
       - name: Install PlatformIO
-        run: pip install --upgrade platformio intelhex
+        run: pip install "platformio==6.1.19" intelhex
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: pio-
+          key: pio-6.1.19-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: pio-6.1.19-
       - name: Lire la version
         id: ver
         run: echo "version=$(python tools/ota/publish_ota.py --firmware ${{ needs.resolve.outputs.firmware }} --print-version)" >> "$GITHUB_OUTPUT"
