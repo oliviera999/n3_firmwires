@@ -19,7 +19,9 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 
 ## Prérequis
 
-- [PlatformIO](https://platformio.org/) (CLI ou extension VSCode/Cursor)
+- [PlatformIO](https://platformio.org/) (CLI ou extension VSCode/Cursor) — **Core 6.1.19** (version épinglée en CI) :
+  `pip install "platformio==6.1.19"`. PlatformIO **6.2.0** casse les builds ffp5cs WROOM pioarduino
+  (`ModuleNotFoundError: SCons.Tool.FortranCommon` : tool-scons 4.8.1 remplacé par 4.11.1 en plein build).
 - Selon le projet : carte **ESP32** (esp32dev), **ESP32-CAM** (esp32cam), ou **Arduino UNO** (uno)
 
 ## Compilation et upload
