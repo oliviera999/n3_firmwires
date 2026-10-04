@@ -1,6 +1,6 @@
 # Version n3pp (N3PhasmesProto — Serre / aquaponie)
 
-Version actuelle : **4.73** (définie dans `include/n3pp_config.h`).
+Version actuelle : **4.74** (définie dans `include/n3pp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **4.73** (définie dans `include/n3pp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 4.74 | 2026-10-04 | **Sûreté OTA par câblage : l'env `esp32dev_universal_test` (carte n3-universal) ne lit plus le canal OTA des serres historiques.** Il héritait de l'URL `ota/n3pp-test/metadata.json` de `esp32dev_test` : la prochaine publication test lui aurait installé l'image au **brochage historique** sur une carte câblée autrement. Sous `PINMAP_UNIVERSAL`, les métadonnées viennent désormais de `ota/n3pp-universal-test/` (et `ota/n3pp-universal/` en prod) ; rien n'y est publié pour l'instant → 404 → « OTA ignorée » (aucune mise à jour, aucun mail). **Envs existants inchangés** (mêmes URL). Bancs déjà flashés : protégés seulement après un reflash USB. |
 | 4.73 | 2026-08-28 | **Correctif contrat GET config distante + NTP/HMAC (audit C1 juillet 2026, travail local réappliqué).** `serverNameOutput` → `/api/firmware/outputs/state?board=3` (format plat + ack one-shot GPIO 110/13 ; l’ancienne route `/api/outputs/state` renvoie du nested `{outputs:[…]}` incompatible avec le parseur). **NTP avant HMAC** : `n3TimeLoadAndApplyToSystem` + `n3TimeSyncNtp` (`getLocalTime`), signature via `time(nullptr)` si horloge système OK. **`n3_common` 1.8.5** : parsing nested en filet de sécurité. |
 | 4.72 | 2026-08-27 | **Fix commande pompe distante en `PINMAP_UNIVERSAL` : clé JSON découplée de la broche physique.** Le firmware lisait l'état pompe sous la clé `String(POMPE)` — soit `"16"` sur la carte universelle, alors que le serveur publie la pompe sous `gpio=12` (cf. n3_serveur `FIX_N3PP_GPIO_ACTUATORS_2026_07.sql`, les lignes 15/16 étant du legacy UI non maîtrisé) : le toggle « Pompe irrigation » restait sans effet et une ligne legacy `gpio=16` pouvait actionner K1. Nouvelles constantes `POMPE_OUTPUT_KEY` ("12") / `RELAIS_OUTPUT_KEY` ("13") utilisées par `n3pp_network.cpp` ; brochage inchangé, aucun changement pour l'env legacy (clé = broche par coïncidence). Découvert par l'audit final de la carte n3-universal. |
 | 4.71 | 2026-08-27 | **Cartographie `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal** (un seul PCB pour msp/n3pp/ffp5cs). Nouveau bloc de broches dans `n3pp_config.h` sélectionné par `-DPINMAP_UNIVERSAL` (env `esp32dev_universal_test`, ajouté à la CI) : GPIO13 (gate) et I2C inchangés ; **pompe → 16 (canal relais K1 embarqué de la carte)**, sondes sol 1-4 → 32/33/34/35 (nets ADC partagés avec les LDR msp), Luminosite → 36, DHT → 15, pontdiv → 39. **Aucun changement pour les envs existants.** |

@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "15.30";
+    inline constexpr const char* VERSION = "15.31";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -26,8 +26,9 @@ namespace ProjectConfig {
     #endif
     
     // Identification matérielle (via BoardTraits, ex-#ifdef BOARD_S3).
-    // NB : sert de clé de canal OTA (metadata.json → channels.<env>.<BOARD_TYPE>) et de
-    // préfixe de post_id (déduplication) — NE PAS confondre avec l'identité système SYSTEM_ID.
+    // NB : sert de préfixe de post_id (déduplication) — NE PAS confondre avec l'identité
+    // système SYSTEM_ID. Depuis v15.31, la clé OTA n'est PLUS BOARD_TYPE mais
+    // OtaModel::MODEL (ota_model.h), qui distingue aussi le câblage (universal / carrier).
     inline constexpr const char* BOARD_TYPE = BoardTraits::isS3() ? "esp32-s3" : "esp32-wroom";
 
     // Identité du SYSTÈME côté serveur, envoyée dans le champ POST `sensor`.

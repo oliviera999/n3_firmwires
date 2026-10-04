@@ -1,6 +1,6 @@
 # Version msp (MeteoStationPrototype — Station météo)
 
-Version actuelle : **2.76** (définie dans `include/msp_config.h`).
+Version actuelle : **2.77** (définie dans `include/msp_config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.76** (définie dans `include/msp_config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.77 | 2026-10-04 | **Sûreté OTA par câblage : l'env `esp32dev_universal_test` (carte n3-universal) ne lit plus le canal OTA des stations historiques.** Il héritait de l'URL `ota/msp-test/metadata.json` de `esp32dev_test` : la prochaine publication test lui aurait installé l'image au **brochage historique** sur une carte câblée autrement. Sous `PINMAP_UNIVERSAL`, les métadonnées viennent désormais de `ota/msp-universal-test/` (et `ota/msp-universal/` en prod) ; rien n'y est publié pour l'instant → 404 → « OTA ignorée » (aucune mise à jour, aucun mail). **Envs existants inchangés** (mêmes URL). Bancs déjà flashés : protégés seulement après un reflash USB. |
 | 2.76 | 2026-08-28 | **Correctif contrat GET config distante + NTP/HMAC (audit C1 juillet 2026, travail local réappliqué).** `serverNameOutput` → `/api/firmware/outputs/state?board=2` (format plat + ack one-shot GPIO 110 ; l’ancienne route `/api/outputs/state` renvoie du nested `{outputs:[…]}` incompatible avec le parseur). **NTP avant HMAC** : `n3TimeLoadAndApplyToSystem` + `n3TimeSyncNtp` (`getLocalTime`), signature via `time(nullptr)` si horloge système OK (`hmacEpochSeconds`). **`n3_common` 1.8.5** : `n3_outputs_json` accepte aussi le format nested en filet de sécurité. |
 | 2.75 | 2026-08-27 | **Cartographie `PINMAP_UNIVERSAL` pour la carte porteuse commune n3-universal** (`hardware/n3-universal`, un seul PCB pour msp/n3pp/ffp5cs, zone relais au standard 230 V, 4 profils d'alim). Nouveau bloc de broches dans `msp_config.h` sélectionné par `-DPINMAP_UNIVERSAL` (env `esp32dev_universal_test`, ajouté à la CI) : GPIO13 (gate), OneWire (2) et I2C (21/22) inchangés ; LDR a-d → 32/33/34/35 (nets ADC partagés avec les sondes sol n3pp), servos tracker → 26/27, DHT int → 15, DHT ext → 5 (net US2), HumiditeSol → 36, Pluie → 4 (net US1), pontdiv → 39. **Aucun changement pour les envs existants** (cartes actuelles et câblage main). |
 | 2.74 | 2026-08-19 | **Phase 2 BME280 : envoi de la pression atmosphérique au serveur.** Nouveau champ POST `Pression` (hPa, 1 décimale, `pressionAirInt` du BME280 INT détecté en v2.73). Envoyé **vide** quand aucun BME280 n'est présent (stations DHT) : le serveur (n3_serveur ≥ 6.39.0, colonne nullable `msp1Data*.Pression`) mappe une valeur non numérique sur NULL — aucun changement de contrat pour les stations existantes, et un serveur pas encore à jour ignore simplement le champ inconnu. `postPreview` synchronisé. |

@@ -61,6 +61,9 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
 - **Firmwares** : sections `PINMAP_UNIVERSAL` (msp 2.75, n3pp 4.72, ffp5cs 15.29),
   envs `esp32dev_universal_test` / `wroom-universal-test` / `wroom-s3-universal-test`
   (tous en CI). Garde anti-dérive machine sur les 4 combinaisons.
+  **OTA** : ces envs lisent leurs **propres** métadonnées (ffp5cs 15.31, n3pp 4.74,
+  msp 2.77), jamais le canal des cartes historiques — cf. `docs/WIFI_OTA_REFERENCE.md`,
+  « OTA par câblage ». Bancs flashés avant ces versions : reflasher en USB.
 - **microSD** : slot unique — S3 natif par défaut (JP2/3/4 en 1-2), WROOM via
   le futur env `wroom-sd` (JP en 2-3 ; constantes SD déjà en place dans `pins.h`) ; MISO câblé en direct aux deux sites.
 - **Profils d'alim par peuplement** : (a) 5 V jack/bornier ; (b) solaire 1S

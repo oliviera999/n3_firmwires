@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include "ota_model.h"
 #include <cstring>
 
 // Configuration des URLs OTA par modèle d'ESP32
@@ -97,6 +98,8 @@ namespace OTAConfig {
     // URL de métadonnées OTA (version, tailles, MD5)
     // HTTP sur toutes les cartes pour homogénéiser OTA et éviter les contraintes TLS mémoire.
     // Intégrité du binaire garantie par vérification MD5.
+    // v15.31 : câblage historique → <OTA_BASE_PATH>/metadata.json (inchangé) ; câblage
+    // non historique → <OTA_BASE_PATH>/<modele>/metadata.json (OtaModel::METADATA_SUBDIR).
     inline void getMetadataUrl(char* buffer, size_t bufferSize) {
         if (!buffer || bufferSize == 0) return;
 
@@ -122,7 +125,7 @@ namespace OTAConfig {
         }
         
         // Construire l'URL complète
-        snprintf(buffer, bufferSize, "%s%s%s", base, normalizedPath, METADATA_FILE);
+        snprintf(buffer, bufferSize, "%s%s%s%s", base, normalizedPath, OtaModel::METADATA_SUBDIR, METADATA_FILE);
     }
     
     // Fonction pour obtenir l'URL de version
