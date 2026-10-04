@@ -66,6 +66,8 @@ WROOM_NET_GPIO.update({"K5": WROOM_NET_GPIO.pop("AUX1"), "K6": WROOM_NET_GPIO.po
                        "GATE": PINMAP["wroom"]["GATE"]})
 S3_NET_GPIO.update({"K5": S3_NET_GPIO.pop("AUX1"), "K6": S3_NET_GPIO.pop("AUX2")})
 
+# 0/46 strapping durs, 19/20 USB natif, 35-37 PSRAM octale (modules R8),
+# 11 = réserve non câblée (exclue par etude_pinmap.py, pas une contrainte ADC2).
 S3_FORBIDDEN = {"GPIO0", "GPIO46", "GPIO19", "GPIO20", "GPIO35", "GPIO36",
                 "GPIO37", "GPIO11"}
 

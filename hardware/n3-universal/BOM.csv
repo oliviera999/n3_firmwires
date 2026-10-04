@@ -30,7 +30,7 @@ J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 
 J25;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil
 J26;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)
 J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER
-J28;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA)
+J28;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 4 — INA226 (1=GND 2=VCC 3=SCL 4=SDA)
 J29;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;Module pluie DO msp (1=3V3_SW 2=DO 3=GND) — net US1, rôles disjoints
 J23 J24 J3 J4 J5 J6;6;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge 230V (1=NC 2=COM 3=NO)
 J30;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT externe msp (1=3V3_SW 2=DATA 3=GND) — net US2, rôles disjoints
@@ -78,7 +78,7 @@ R35;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille P-MO
 R36;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille BS250 (diviseur OFF par défaut)
 R37;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base driver diviseur (actif quand +3V3_SW présent)
 R38;1;100k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Haut du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=100k)"
-R39;1;27k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=27k)"
+R39;1;22k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=22k)"
 R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND
 R43;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_A (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 R44;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_B (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
@@ -91,7 +91,7 @@ RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;"Varistance 300VAC transitoires secteur 
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
 A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu
 J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2). Sur WROOM (site A1) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type Catalex (tampon toujours actif + régulateur 5V)
-J14/J21/J22/J28 (modules);0-4;DS3231 + INA219/226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"
+J14/J21/J22/J28 (modules);0-4;DS3231 + INA226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"
 J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"
 F1 (clips);2;Clip porte-fusible 5x20 à souder;s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal;Entraxe ~22,5 mm. INDISPENSABLES au profil secteur : la cartouche verre n'a pas de pattes à souder
 JP1-JP4 (cavaliers);5;Cavalier (shunt) 2,54 mm;se posent sur JP1..JP4;"JP1 FERME par défaut (rail permanent, ffp5cs) ; JP2/3/4 en 1-2 (microSD sur site S3). 4 utilisés + 1 rechange"

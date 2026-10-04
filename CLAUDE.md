@@ -100,8 +100,9 @@ firmware modifié :
 
 - **OTA** : cible par firmware (`otaTarget` dans `firmwares.manifest.json`), via le serveur n3_serveur ;
   binaire vérifié sha256 + ECDSA P-521 (`n3_common/n3_ota`). Réf : `docs/WIFI_OTA_REFERENCE.md`.
-- **Toolchain** : framework Arduino. WROOM (n3pp/msp/ffp5cs/upload) = **pioarduino** arduino-esp32 3.3.x
-  (ESP-IDF 5.x) ; S3 et `*-cam` = `espressif32@6.13.0` (arduino-esp32 2.0.x). Détails et pièges
+- **Toolchain** : framework Arduino. WROOM (n3pp/msp/ffp5cs) et poissonglouton (S3) = **pioarduino 55.03.37**
+  (arduino-esp32 3.3.7, ESP-IDF 5.5.2) ; ffp5cs `wroom-s3-*`, energie (S3) et uploadphotosserver (ESP32-CAM)
+  = `platformio/espressif32@6.13.0` (arduino-esp32 2.0.17, ESP-IDF 4.4.7). Détails et pièges
   Windows (chemins longs `C:\pio-builds`, recovery PlatformIO) dans le `README.md`.
 
 ## CI

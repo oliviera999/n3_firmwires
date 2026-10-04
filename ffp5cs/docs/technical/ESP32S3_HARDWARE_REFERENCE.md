@@ -24,7 +24,7 @@ Référence module : type **N16R8** (16 Mo flash + 8 Mo PSRAM).
   - Utiliser pour la stabilité au boot et les builds de test/prod courants.
 
 - **Avec PSRAM** (matériel N16R8) : `wroom-s3-test-psram`  
-  - 16 Mo flash + 8 Mo PSRAM, flag `BOARD_HAS_PSRAM` défini, **`-mfix-esp32-psram-cache-issue`** en build pour limiter les échecs flash/boot (aligné LVGL_Widgets).  
+  - 16 Mo flash + 8 Mo PSRAM, flag `BOARD_HAS_PSRAM` défini. Le build porte aussi `-mfix-esp32-psram-cache-issue` (repris de LVGL_Widgets) : c'est le contournement d'un défaut de cache PSRAM de l'**ESP32 classique rev 0/1**, sans objet sur l'ESP32-S3 (il n'améliore ni le flash ni le boot) ; laissé en place volontairement (env de test, pas de modification de build sans besoin).  
   - Utiliser lorsque l’application doit exploiter la PSRAM (heap étendu, buffers, etc.).
   - **Validation recommandée** : script **`run_s3_psram_validation.ps1`** (build + erase + flash + monitor 2 ou 5 min + analyse). Voir aussi `docs/technical/ESP32S3_TG1WDT_BOOT_FIX.md`.
 - **Build sous Windows** : le pre-script **`tools/pio_ensure_lib_dirs_windows.py`** pré-crée les répertoires de build des libs dont le nom contient des espaces (ex. « Adafruit GFX Library »), ce qui évite l’erreur « opening dependency file … No such file or directory ». Il s’exécute automatiquement pour `wroom-s3-test-psram` sous Windows uniquement.
@@ -47,7 +47,7 @@ Pour les cartes **8 Mo flash** + PSRAM (DevKit 8 Mo), utiliser l’env `wroom-s3
 | Élément | Situation |
 |--------|------------|
 | **Matériel cible** | ESP32-S3 N16R8 (16 Mo flash, 8 Mo PSRAM), variant qio_opi. |
-| **Stack actuelle** | platformio/espressif32 **6.13.0**, framework arduino-esp32 **~3.0.x** (bundlé). Dernière release arduino-esp32 : **3.3.7** (ESP-IDF 5.5.2), non utilisable telle quelle avec cette plateforme (structure du bundle différente). |
+| **Stack actuelle** | platformio/espressif32 **6.13.0**, framework arduino-esp32 **2.0.17** (bundlé, ESP-IDF 4.4.7). Dernière release arduino-esp32 : **3.3.7** (ESP-IDF 5.5.2), non utilisable telle quelle avec cette plateforme (structure du bundle différente). |
 | **Serial après NVS** | Sur **wroom-s3-test-psram**, `Serial.begin()` est appelé **après** l'init NVS/storage et **avant** `connectWifi()`, afin que le chemin WiFi (wifi_manager) puisse utiliser `Serial` sans blocage au boot. |
 | **Init WiFi** | L'init WiFi (`WiFi.mode()`, connect, AP de secours) est à nouveau **tentée** sur wroom-s3-test-psram. Si un blocage en `esp_wifi_init()` est observé, documenter et utiliser l'option de repli (macro `FFP5CS_S3_PSRAM_WIFI_DISABLED` dans wifi_manager.cpp). |
 | **Ce qui fonctionne** | Boot stable (correctif IWDT, BOOT_LOG NVS), LittleFS, NVS, tâches, OLED, loop. Validation : `run_s3_psram_validation.ps1`. |

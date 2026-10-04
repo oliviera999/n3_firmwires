@@ -152,7 +152,7 @@
     }
   },
   "s3_caveats": {
-    "3": "strapping JTAG-sel : OK si JTAG inutilisé ; pull-up admissible",
+    "3": "strapping JTAG-sel (sans effet hors eFuse JTAG) ; pas de pull-up sur la broche (R34 1k → base Q8)",
     "45": "strapping VDD_SPI : NE JAMAIS tirer haut au boot (pas de pull-up !)",
     "38": "LED RGB DevKitC-1 v1.1 : scintillement cosmétique si utilisé",
     "48": "LED RGB DevKitC-1 v1.0 : scintillement cosmétique si utilisé"

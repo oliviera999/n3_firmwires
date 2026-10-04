@@ -601,9 +601,9 @@ def build_components():
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Haut du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=100k)", sch=(146, 38), pcb=(186, 118, 0),
              nets={"1": "VBAT_SW", "2": "ADC_VBAT"}),
-        dict(ref="R39", sym="R", value="27k*",
+        dict(ref="R39", sym="R", value="22k*",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=27k)", sch=(146, 42), pcb=(202, 118, 0),
+             desc="Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=22k)", sch=(146, 42), pcb=(202, 118, 0),
              nets={"1": "ADC_VBAT", "2": "GND"}),
     ]
     # --- Profil bus 12V : protection + buck externe (fusible lame EN AMONT) ---
@@ -722,10 +722,10 @@ def build_components():
              desc="Pull-up DHT ext (POSER sur unités msp uniquement)", sch=(126, 130), pcb=(150, 120, 90),
              nets={"1": "+3V3_SW", "2": NET["ULTRASON_TANK"]}),
     ]
-    # --- 4e port I2C (2-3 INA219/226 + DS3231 : J14/J21/J22/J28) --------------
+    # --- 4e port I2C (3 INA226 + DS3231 : J14/J21/J22/J28) --------------------
     comps.append(dict(ref="J28", sym="CONN_04", value="Support I2C libre",
                       fp="PinSocket_1x04_P2.54mm_Vertical",
-                      desc="Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA)",
+                      desc="Port I2C libre 4 — INA226 (1=GND 2=VCC 3=SCL 4=SDA)",
                       sch=(126, 134), pcb=(66, 106, 0),
                       nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}))
     # --- Trous de fixation M3 --------------------------------------------------
@@ -825,11 +825,11 @@ ROLES = {
     "J14": dict(ffp5cs="DS3231 : horloge hors ligne (resynchro après veille)",
                 msp="extension I2C (BME280, DS3231...)",
                 n3pp="extension I2C (BME280, DS3231...)"),
-    "J21": dict(ffp5cs="INA219/226 : courant panneau / batterie / charge",
+    "J21": dict(ffp5cs="INA226 : courant panneau / batterie / charge",
                 msp="port I2C libre", n3pp="port I2C libre"),
-    "J22": dict(ffp5cs="2e INA219/226 ou BME280",
+    "J22": dict(ffp5cs="2e INA226 ou BME280",
                 msp="port I2C libre", n3pp="port I2C libre"),
-    "J28": dict(ffp5cs="3e INA219/226 (shunt pompe)",
+    "J28": dict(ffp5cs="3e INA226 (charges, shunt ext. 5-10 mΩ)",
                 msp="port I2C libre", n3pp="port I2C libre"),
     # --- Stockage (ffp5cs seul) -------------------------------------------
     "J35": dict(ffp5cs="module microSD SPI 3,3 V : journal / logs",
@@ -845,7 +845,7 @@ ROLES = {
                 msp="cavalier OTE : rail coupé en veille par RELAIS (GPIO13)",
                 n3pp="cavalier OTE : rail coupé en veille par RELAIS (GPIO13)"),
     # --- Batterie ----------------------------------------------------------
-    "J25": dict(ffp5cs="sonde tension du bus 12 V (pont 100k/27k)",
+    "J25": dict(ffp5cs="sonde tension du bus 12 V (pont 100k/22k)",
                 msp="sonde tension batterie 1S (pontdiv, pont 100k/100k)",
                 n3pp="sonde tension batterie 1S (pontdiv, pont 100k/100k)"),
 }
@@ -881,7 +881,7 @@ SCH_TEXTS = [
     (18, 64, "HEADER SERVICE J17 : 3V3 / GND / EN / RX0 / TX0 / +5V uniquement.\\nTous les autres GPIO sont consommes par la carte universelle\\n(GPIO36 = ADC_E, GPIO39 = ADC_VBAT). Laisser RX0/TX0 libres pendant le flash USB."),
     (18, 81, "Distribution 5V / 3V3-capteurs / GND :\\nborniers a vis + rail header."),
     (140, 4, "POWER-GATE +3V3_SW (GPIO13, topologie n3pp-msp rev 0.2) :\\nJP1 FERME par defaut (rail permanent, ffp5cs) ; OTER JP1 sur les\\nprofils batterie -> tout le rail capteurs est coupe en veille."),
-    (140, 24, "PONT DIVISEUR VBAT COMMUTE : actif seulement quand +3V3_SW est present.\\nR38/R39 SELON PROFIL : 1S Li-ion = 100k/100k ; bus 12V = 100k/27k."),
+    (140, 24, "PONT DIVISEUR VBAT COMMUTE : actif seulement quand +3V3_SW est present.\\nR38/R39 SELON PROFIL : 1S Li-ion = 100k/100k ; bus 12V = 100k/22k."),
     (140, 48, "PROFIL BUS 12V SOLAIRE : fusible lame 7,5-10A EN AMONT (hors carte),\\nanti-inversion P-MOSFET, TVS 18V, reservoir ; buck 12->5V EXTERNE\\n(module MP1584/XL4015 faible Iq sur entretoises, via J36/J37)."),
     (140, 76, "PROFIL SECTEUR : Hi-Link HLK-20M05 EMBARQUE (5V/3,6A) + fusible T1A\\n+ varistance 300VAC. Le corps du module enjambe la frontiere\\nsecteur/logique (fente fraisee dessous). ZONE 230V = DANGER."),
     (140, 92, "microSD : module SPI 3V3 sockete. JP2/3/4 : source des lignes\\nCS/SCK/MOSI = S3 natif (1-2, defaut) ou WROOM env wroom-sd (2-3).\\nMISO = net partage direct (A1-GPIO12 / A2-IO14)."),
@@ -1398,7 +1398,7 @@ def gen_bom():
                 "(espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer "
                 "GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type "
                 "Catalex (tampon toujours actif + régulateur 5V)"])
-    out.append(["J14/J21/J22/J28 (modules)", "0-4", "DS3231 + INA219/226",
+    out.append(["J14/J21/J22/J28 (modules)", "0-4", "DS3231 + INA226",
                 "s'enfichent sur les ports I2C",
                 "DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"])
     out.append(["J36/J37 (module)", "0-1", "Buck 12V->5V faible Iq",

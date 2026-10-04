@@ -18,7 +18,7 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - slot **microSD unique** câblé aux deux sites : natif côté S3, et côté WROOM sur des
   nets inutilisés par msp/n3pp (CS=14/US3, CLK=23/AUX1, MOSI=25/AUX2, MISO=12 sans
   pull-up) — **msp et n3pp ont la SD sans rien sacrifier** ; seul ffp5cs-sur-WROOM
-  arbitre par env de build (futur env `wroom-sd`, à créer au besoin : SD contre US_POTA+AUX), RTC **DS3231** et **2-3 INA219/226**
+  arbitre par env de build (futur env `wroom-sd`, à créer au besoin : SD contre US_POTA+AUX), RTC **DS3231** et **3 INA226**
   sur I2C (INA alimentés par `+3V3_SW`) ;
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
@@ -65,7 +65,7 @@ kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm
   le futur env `wroom-sd` (JP en 2-3 ; constantes SD déjà en place dans `pins.h`) ; MISO câblé en direct aux deux sites.
 - **Profils d'alim par peuplement** : (a) 5 V jack/bornier ; (b) solaire 1S
   (TP4056+18650 hors carte, gate JP1 ôté, diviseur 100k/100k) ; (c) bus 12 V
-  (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/27k) ;
+  (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/22k) ;
   (d) secteur Hi-Link 20M05 (J27 + fusible T1A + varistance embarqués).
   ⚠️ **Profil (b) : injecter le 5 V par J1/J2 via un module boost — JAMAIS la
   batterie 1S brute** (3,0-4,2 V) : la carte n'a pas d'entrée 3V3 (J19 est en aval
@@ -109,7 +109,7 @@ J7 : HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)
 - **WROOM (A1) : ✅ tient**, 22 nets, 1 broche libre (GPIO12), 2 précautions
   bénignes (GPIO2 OneWire, GPIO15 DHT — situations déjà pratiquées aujourd'hui).
 - **S3 (A2) : ✅ tient en politique pragmatique**, 26 nets (dont microSD), 0 libre,
-  4 broches à précaution : GPIO3 (gate, pull-up admissible), GPIO38/48 (LED RGB,
+  4 broches à précaution : GPIO3 (gate du rail capteurs, R35 → rail OFF au boot), GPIO38/48 (LED RGB,
   scintillement cosmétique), **GPIO45 (AUX2 breakout : ne jamais y raccorder un
   module qui tire haut au boot)**. Variante « zéro précaution risquée » : ne pas
   embarquer AUX2 côté S3 (breakout seulement) → le caveat GPIO45 disparaît.
@@ -139,24 +139,35 @@ alimentant pompes/chauffage/lumière, l'ESP et tous les périphériques.
   empreinte, variante BOM) sur le bus → le buck ne porte plus que logique+servos.
 - **Bloc d'entrée obligatoire** : fusible lame 7,5–10 A, anti-inversion P-MOSFET,
   TVS 18 V, réservoir. (~4 composants, ~25×40 mm de surface.)
-- **Instrumentation** : diviseur `ADC_VBAT` au ratio 12 V (~100k/27k — même net que
-  msp/n3pp, seules les valeurs changent) ; INA219/226 OK à 14,5 V (limites 26/36 V),
-  points de mesure panneau / batterie / pompes (shunt 0,01 Ω si branche > 3,2 A).
-- **Délestage firmware** (profil 12 V uniquement) : ~12,0 V alerte, ~11,5 V coupe le
-  chauffage, ~11,2 V la lumière, **pompe aquarium coupée en dernier** (support de vie).
-- **Dimensionnement réel (batterie gel 12 V / 200 Wh, tout discontinu, light sleep
+- **Instrumentation** : diviseur `ADC_VBAT` au ratio 12 V (**100k/22k** — même net que
+  msp/n3pp, seules les valeurs changent ; pleine échelle ~17,2 V : l'ancien 100k/27k
+  saturait à ~14,6 V, sous l'absorption AGM 14,4-14,7 V) ; **3 × INA226** (VBUS ≤ 36 V :
+  OK panneau à vide ~22-25 V ; INA219 26 V déconseillé), voies panneau (0x40) /
+  batterie (0x41) / charges (0x44). Pleine échelle shunt INA226 = **81,92 mV** :
+  module R100 (0,1 Ω) = 0,82 A, R010 = 8,2 A, 5 mΩ = 16,4 A → **shunts externes
+  5-10 mΩ sur les 3 voies** (panneau 50-80 Wc ≈ 3-5 A : 10 mΩ ; batterie / charges
+  derrière fusible 7,5-10 A : 5 mΩ, ≥ 1 W), fils de mesure **Kelvin**, R100 du module
+  dessoudé. À valider sur le banc `energie/` (commandes `scan` / `dump` / `cal`).
+- **Délestage firmware** (profil 12 V uniquement) : échelle unique ci-dessous
+  (« Délestage AGM »), **pompe aquarium coupée en dernier** (support de vie).
+- **Dimensionnement réel (batterie AGM 12 V / 12 Ah ≈ 144 Wh — capacité paramétrable,
+  cf. `ENERGIE_BAT_CAPACITY_AH` du banc —, tout discontinu, light sleep
   ffp5cs — `PowerManager::goToLightSleep` + modem-sleep)** : plancher électronique
   ~0,25 W (dominé par le buck + AMS1117/LED du DevKit, PAS par l'ESP → choisir un
   buck à faible Iq, ex. MP1584 ~0,1 mA, plutôt que LM2596/XL4015 ~5-10 mA) ;
-  budget ~22-42 Wh/j sans chauffage → 20-30 % de décharge/jour (durée de vie gel
-  optimale), 2-4 j d'autonomie sans soleil, **panneau 50-80 Wc suffisant** (hiver).
+  budget ~22-42 Wh/j sans chauffage → ~15-30 % de décharge/jour (durée de vie AGM
+  correcte), ~1,7-3,3 j sans soleil jusqu'à 50 % de décharge, **panneau 50-80 Wc
+  suffisant** (hiver).
   **Chauffage interdit sur batterie** (50 Wh/j pour 25 W×2 h) : autorisé uniquement
-  en surplus solaire (bus > ~13,3 V). Délestage gel proposé : 12,4 V pré-alerte,
-  12,2 V alerte + chauffage interdit, 11,9 V lumière + duty pompe réduit, 11,5 V
-  duty minimal vital (poissons), LVD régulateur ~11 V. Un INA226 batterie permet
+  en surplus solaire (bus > ~13,3 V). Délestage AGM proposé (tensions **sous
+  charge**, seuils plomb génériques) : 12,4 V pré-alerte, 12,2 V alerte + chauffage
+  interdit, 11,9 V lumière + duty pompe réduit, 11,5 V duty minimal vital (poissons),
+  LVD régulateur ~11 V (au repos, 11,8 V ≈ 0 % sur la table OCV AGM de `n3_power`). Un INA226 batterie permet
   un compteur de coulombs (état de charge réel, mieux que les seuils de tension).
-  ⚠️ **Gel : absorption 14,1-14,4 V max, float 13,5-13,8 V** — une consigne 14,5 V
-  assèche le gel (mort prématurée) : vérifier le profil GEL du régulateur.
+  ⚠️ **AGM : absorption 14,4-14,7 V (selon fabricant, compensée en température),
+  float 13,5-13,8 V** — régler le profil **AGM / SEALED** du régulateur (jamais
+  d'égalisation « FLOODED », qui dessèche une AGM). Régulateur pas encore choisi :
+  exiger ce profil.
 
 Le bloc alim de la carte universelle a donc **trois profils de peuplement** sur les
 mêmes empreintes : (a) 5 V direct, (b) solaire 1S TP4056+18650 (msp/n3pp),
