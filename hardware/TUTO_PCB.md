@@ -190,6 +190,16 @@ L'ADC de l'ESP32 lit 0-3,3 V. Deux montages selon le capteur :
   DevKit et l'alim 5 V sont branchés **en même temps** (flash/debug), la diode
   empêche les deux sources de se refouler l'une dans l'autre.
 
+### 4.bis Le forçage manuel d'un relais par cavalier (n3-universal rev 0.2)
+
+Chaque canal K1-K6 a un header 3 points `JPn` (1 = ON, 2 = commun = base du transistor via
+`R6n` 1 k, 3 = AUTO = pull-down). Cavalier en **2-3** : le GPIO commande (livraison). Cavalier
+en **1-2** : la base est tirée à +5 V à travers `R6n` → le relais colle quelle que soit la
+sortie du GPIO (sa résistance de base `Rn` 1 k limite le courant de retour : rien ne force
+la broche du module). Le chauffage **K3** n'a pas de broche 1 : impossible de le forcer.
+L'état réel de chaque canal se lit sur le header **J38 CMD SENSE** (collecteur : 0 V = relais
+ON, 5 V = OFF).
+
 ## 5. La sérigraphie : des règles à connaître
 
 Deux familles de textes, aux rôles complémentaires :

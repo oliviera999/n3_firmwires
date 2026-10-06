@@ -9,8 +9,9 @@ n3pp, ffp5cs WROOM + ffp5cs S3) et le PCB généré racontent la même histoire 
  3. les broches S3 interdites (strapping durs, USB, flash/PSRAM) ne portent
     aucun net — UART0 (IO43/44) fait exception : il est volontairement câblé
     au header de service J17 ;
- 4. topologies critiques : canaux HC-SR04 (pont 1k/2k), power-gate +3V3_SW
-    (R34->Q8->Q7 + R35 + JP1), diviseur VBAT commuté, cavaliers SD.
+ 4. topologies critiques : canaux HC-SR04 (pont 1k/2k sous cavalier), power-gate
+    +3V3_SW (R34->Q8->Q7 + R35 + JP1 -> LDO U1), pont VBAT (JP12), anti-inversion
+    5 V (Q12), cavaliers SD (dont MISO), sélecteurs ON/OFF des relais (K3 sans ON).
 
 Usage : python3 check_pinmap_vs_firmware.py  (code retour != 0 si dérive)
 """
@@ -197,12 +198,12 @@ def main() -> int:
                     errors.append(f"A1: GPIO{gpio} inexistant sur le DevKit V1")
                 elif a1.get(pad) != net:
                     errors.append(f"A1: pad {pad} (GPIO{gpio}) porte '{a1.get(pad)}', attendu '{net}'")
-            # SD WROOM : le pad GPIO12 porte SD_MISO
-            if a1.get("19") != "SD_MISO":
-                errors.append(f"A1: pad 19 (GPIO12) porte '{a1.get('19')}', attendu 'SD_MISO'")
+            # SD WROOM : le pad GPIO12 porte SD_MISO_W (cavalier JP11 2-3, rev 0.2)
+            if a1.get("19") != "SD_MISO_W":
+                errors.append(f"A1: pad 19 (GPIO12) porte '{a1.get('19')}', attendu 'SD_MISO_W'")
             for net, gpio in S3_NET_GPIO.items():
-                if net.startswith("SD_") and net != "SD_MISO":
-                    net_pcb = net + "_S3"      # côté S3, CS/CLK/MOSI passent par les cavaliers
+                if net.startswith("SD_"):
+                    net_pcb = net + "_S3"      # côté S3, CS/CLK/MOSI/MISO passent par les cavaliers
                 else:
                     net_pcb = net
                 pad = next((pp for pp, g in S3_PADS.items() if g == f"GPIO{gpio}"), None)
@@ -225,22 +226,38 @@ def main() -> int:
                     errors.append(f"US {name}: {jst} pad {pad} = {jp.get(pad)!r}, attendu {want!r}")
             if set(pads_of(pcb, r1k).values()) != {f"US_{name}_ECHO", net}:
                 errors.append(f"US {name}: {r1k} doit relier US_{name}_ECHO et {net}")
-            if set(pads_of(pcb, r2k).values()) != {net, "GND"}:
-                errors.append(f"US {name}: {r2k} doit relier {net} et GND")
+            if set(pads_of(pcb, r2k).values()) != {net, f"US_{name}_DIV"}:
+                errors.append(f"US {name}: {r2k} doit relier {net} et US_{name}_DIV (cavalier de profil)")
         # power-gate
-        checks = [("R34", {"GATE", "GATE_B"}), ("R35", {"+3V3", "GATE_G"}),
-                  ("R36", {"VBAT_SENSE", "PDIV_G"}), ("R37", {"+3V3_SW", "PDIV_B"}),
-                  ("R38", {"VBAT_SW", "ADC_VBAT"}), ("R39", {"ADC_VBAT", "GND"})]
+        # power-gate rev 0.2 : Q7 commute le 5 V d'un LDO dédié (U1), pont VBAT
+        # permanent (R38 + R39/R58 par JP12, R49/C13 filtre, D11 clamp)
+        checks = [("R34", {"GATE", "GATE_B"}), ("R48", {"GATE_B", "GND"}),
+                  ("R35", {"+5V", "GATE_G"}),
+                  ("R38", {"VBAT_SENSE", "VBAT_DIV"}), ("R39", {"VBAT_22K", "GND"}),
+                  ("R58", {"VBAT_100K", "GND"}), ("R49", {"VBAT_DIV", "ADC_VBAT"}),
+                  ("C13", {"ADC_VBAT", "GND"}), ("D11", {"+3V3", "ADC_VBAT"}),
+                  ("R57", {"Q12_G", "GND"}), ("D12", {"+5V", "GND"})]
         for ref, want in checks:
             got = set(pads_of(pcb, ref).values())
             if got != want:
                 errors.append(f"{ref}: nets {sorted(got)}, attendu {sorted(want)}")
-        for ref, want in (("Q7", {"1": "GATE_G", "2": "+3V3_SW", "3": "+3V3"}),
-                          ("Q9", {"1": "VBAT_SW", "2": "PDIV_G", "3": "VBAT_SENSE"}),
-                          ("JP1", {"1": "+3V3", "2": "+3V3_SW"}),
+        jp7 = pads_of(pcb, "JP7")
+        if jp7.get("1"):
+            errors.append(f"JP7 (K3 chauffage) : broche 1 câblée sur '{jp7['1']}' — ON forcé interdit")
+        for ref, want in (("Q7", {"1": "GATE_G", "2": "+5V", "3": "LDO_IN"}),
+                          ("Q8", {"1": "GATE_G", "2": "GATE_B", "3": "GND"}),
+                          ("U1", {"1": "GND", "2": "+3V3_SW", "3": "LDO_IN"}),
+                          ("Q12", {"1": "Q12_G", "2": "VIN_RAW", "3": "+5V"}),
+                          ("JP1", {"1": "+5V", "2": "LDO_IN"}),
+                          ("JP12", {"1": "VBAT_22K", "2": "VBAT_DIV", "3": "VBAT_100K"}),
                           ("JP2", {"1": "SD_CS_S3", "2": "SD_CS", "3": "US3"}),
                           ("JP3", {"1": "SD_CLK_S3", "2": "SD_CLK", "3": "K5"}),
-                          ("JP4", {"1": "SD_MOSI_S3", "2": "SD_MOSI", "3": "K6"})):
+                          ("JP4", {"1": "SD_MOSI_S3", "2": "SD_MOSI", "3": "K6"}),
+                          ("JP11", {"1": "SD_MISO_S3", "2": "SD_MISO", "3": "SD_MISO_W"}),
+                          # forçage relais : base reliée au sélecteur, K3 sans ON
+                          ("JP5", {"1": "REL1_ON", "2": "REL1_B", "3": "GND"}),
+                          ("JP7", {"2": "REL3_B", "3": "GND"}),
+                          ("JP10", {"1": "REL6_ON", "2": "REL6_B", "3": "GND"})):
             got = pads_of(pcb, ref)
             for pad, wnet in want.items():
                 if got.get(pad) != wnet:

@@ -6,6 +6,12 @@ ffp5cs 12/24 V passée en **rev 0.6 bi-module** WROOM/ESP32-S3). Chaque contrôl
 reproductible avec la commande indiquée — refaire la passe complète avant toute
 commande de PCB (checklist : [TUTO_PCB.md §9](TUTO_PCB.md)).
 
+> 🆕 **n3-universal rev 0.2 (2026-10-07)** : la carte universelle n'est pas dans les tableaux
+> ci-dessous (instantané 2026-08-27). Ses contrôles — ERC, DRC KiCad 10 avec parité schéma et
+> règle de ligne de fuite 6,4 mm, écart 3 mm / 6,5 mm secteur, pinmap × 3 firmwares, corps 3D et
+> couloirs, repères de sérigraphie — sont consignés dans
+> [`n3-universal/AUDIT-2026-08-28.md`](n3-universal/AUDIT-2026-08-28.md) §14.
+
 ## Résultats
 
 | Contrôle | n3pp-msp-commun | ffp5cs-wroom-prod | ffp5cs-wroom-prod-230v |

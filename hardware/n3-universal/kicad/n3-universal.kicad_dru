@@ -5,3 +5,6 @@
 (rule "mains_vs_gnd_plane"
   (condition "A.NetClass == 'Mains' && B.Type == 'Zone' && B.NetClass != 'Mains'")
   (constraint clearance (min 6.5mm)))
+(rule "mains_creepage"
+  (condition "A.NetClass == 'Mains' && B.NetClass != 'Mains'")
+  (constraint creepage (min 6.4mm)))

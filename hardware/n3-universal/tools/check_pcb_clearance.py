@@ -57,6 +57,8 @@ ADVISORY_MM = 1.0
 #   dir      : direction d'enfichage (vecteur unitaire local, sens sortant)
 #   depth    : longueur du volume à réserver devant l'ouverture (mm)
 #   half     : demi-largeur du couloir (mm)
+#   offset   : centre du couloir dans le repère local (défaut : origine de
+#              l'empreinte — un module dont l'origine est un coin passe (cx, cy))
 #   severity : "erreur" (corps rigide) ou "avis" (fil souple)
 #   what     : libellé du volume réservé, pour le message
 # ---------------------------------------------------------------------------
@@ -75,11 +77,22 @@ MATING = {
     # d'assemblage, pas un blocage — donc "avis". À confirmer sur l'exemplaire
     # réel (même précaution que l'ordre des broches des modules, cf. README).
     "TerminalBlock_bornier-2_P5.08mm": dict(
-        dir=(0.0, 1.0), depth=6.0, half=5.08, severity="avis",
+        dir=(0.0, 1.0), depth=6.0, half=5.08, offset=(2.54, 0.0), severity="avis",
         what="présentation du fil devant la face d'entrée"),
     "TerminalBlock_bornier-3_P5.08mm": dict(
-        dir=(0.0, 1.0), depth=6.0, half=7.62, severity="avis",
+        dir=(0.0, 1.0), depth=6.0, half=7.62, offset=(5.08, 0.0), severity="avis",
         what="présentation du fil devant la face d'entrée"),
+    "TerminalBlock_bornier-4_P5.08mm": dict(
+        dir=(0.0, 1.0), depth=6.0, half=10.16, offset=(7.62, 0.0), severity="avis",
+        what="présentation du fil devant la face d'entrée"),
+    # Modules ESP32 : la fiche USB (micro-USB / USB-C surmoulée, ~16 mm) doit
+    # sortir du contour de carte, rien de haut sous elle (audit MECA-01/02).
+    "ESP32_DevKit_V1_30pin": dict(
+        dir=(0.0, 1.0), depth=20.0, half=8.0, offset=(12.7, 0.0), severity="erreur",
+        what="fiche USB du DevKit V1 devant le bord USB du module"),
+    "ESP32_S3_DevKitC_1_44pin": dict(
+        dir=(0.0, 1.0), depth=20.0, half=7.5, severity="erreur",
+        what="fiche USB-C du S3-DevKitC-1 devant le bord USB du module"),
 }
 
 # Paires de références autorisées à se recouvrir : peuplement mutuellement
@@ -171,9 +184,10 @@ def corridor_polygon(part: Part, spec: dict):
     # Façade = point du courtyard le plus avancé dans la direction d'enfichage.
     front = max(px * dx + py * dy for px, py in part.local)
     half, depth = spec["half"], spec["depth"]
+    ox, oy = spec.get("offset", (0.0, 0.0))
     vx, vy = -dy, dx                      # perpendiculaire au sens d'enfichage
-    corners = [((front + d) * dx + s * half * vx,
-                (front + d) * dy + s * half * vy)
+    corners = [((front + d) * dx + s * half * vx + ox * (1 - abs(dx)),
+                (front + d) * dy + s * half * vy + oy * (1 - abs(dy)))
                for s, d in ((-1, 0.0), (1, 0.0), (1, depth), (-1, depth))]
     return G.convex_hull(G.place_points(corners, part.x, part.y, part.rot))
 

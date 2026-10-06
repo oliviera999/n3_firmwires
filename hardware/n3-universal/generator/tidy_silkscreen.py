@@ -13,7 +13,12 @@ devient illisible.
 Obstacles (géométrie réelle, pas des boîtes englobantes de composants) :
 pads de la même face (+ marge), vias, traits de sérigraphie des empreintes
 (test de collision exact), textes visibles des empreintes, autres étiquettes,
-contours Edge.Cuts (bord de carte et fentes d'isolement).
+contours Edge.Cuts (bord de carte et fentes d'isolement), et — depuis la
+rev 0.2 — le **courtyard de tout composant voisin** : un repère poussé sous
+le corps d'un relais ou d'une barrette désignerait ce composant-là une fois
+la carte montée (constat SILK-REF-01 de l'audit §13 sur la 0.1.2). Un repère
+reste donc dans le courtyard de sa propre empreinte ou à l'extérieur de tous
+les autres ; `tools/check_silk_refs.py` le vérifie après coup.
 
 Ordre : 1) étiquettes, déplacement court (MAX_SHIFT_LABEL, leur position porte
 le sens : juste au-dessus du bon bornier) ; les repères ne les bloquent pas ;
@@ -73,16 +78,41 @@ class Obstacles:
         edge = board.GetLayerID("Edge.Cuts")
         self.edges = [d for d in board.GetDrawings() if d.GetLayer() == edge]
         self.board_box = board.GetBoardEdgesBoundingBox()
+        crt = board.GetLayerID("F.CrtYd" if front else "B.CrtYd")
+        # courtyards (polygones) par repère : un texte ne doit pas entrer
+        # dans le corps d'un AUTRE composant
+        self.courtyards = {}
+        for fp in board.GetFootprints():
+            poly = fp.GetCourtyard(crt)
+            if poly.OutlineCount():
+                self.courtyards[fp.GetReference()] = poly
 
     def inside_board(self, box) -> bool:
         bb, m = self.board_box, FM(EDGE_MARGIN)
         return (box.GetLeft() > bb.GetLeft() + m and box.GetRight() < bb.GetRight() - m
                 and box.GetTop() > bb.GetTop() + m and box.GetBottom() < bb.GetBottom() - m)
 
-    def blocked(self, box, texts) -> bool:
+    def in_foreign_courtyard(self, box, owner: str) -> bool:
+        for ref, poly in self.courtyards.items():
+            if ref == owner:
+                continue
+            bb = poly.BBox()
+            if not bb.Intersects(box):
+                continue
+            # test exact : un des coins ou le centre du texte dans le polygone
+            pts = [(box.GetLeft(), box.GetTop()), (box.GetRight(), box.GetTop()),
+                   (box.GetLeft(), box.GetBottom()), (box.GetRight(), box.GetBottom()),
+                   (box.GetCenter().x, box.GetCenter().y)]
+            if any(poly.Contains(pcbnew.VECTOR2I(x, y)) for x, y in pts):
+                return True
+        return False
+
+    def blocked(self, box, texts, owner: str = "") -> bool:
         if not self.inside_board(box):
             return True
         if any(box.Intersects(p) for p in self.pads):
+            return True
+        if self.in_foreign_courtyard(box, owner):
             return True
         if any(e.HitTest(box, False, FM(EDGE_MARGIN)) for e in self.edges):
             return True
@@ -111,9 +141,10 @@ def place(items, fixed_of, obstacles_of, max_shift):
         obs = obstacles_of[t.GetLayer()]
         fixed = fixed_of(t)
         origin = t.GetPosition()
+        owner = t.GetParentFootprint().GetReference() if t.GetParentFootprint() else ""
         for dx, dy in cand:
             t.SetPosition(pcbnew.VECTOR2I(origin.x + FM(dx), origin.y + FM(dy)))
-            if not obs.blocked(t.GetBoundingBox(), fixed):
+            if not obs.blocked(t.GetBoundingBox(), fixed, owner):
                 moved += (dx, dy) != (0.0, 0.0)
                 break
         else:

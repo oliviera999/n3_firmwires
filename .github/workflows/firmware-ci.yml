@@ -74,6 +74,8 @@ jobs:
           python3 hardware/n3-universal/tools/check_pcb_clearance.py --selftest
       - name: Rôle par firmware présent sur chaque empreinte du PCB
         run: python3 hardware/n3-universal/tools/annotate_pcb_roles.py --check
+      - name: Repères de sérigraphie dans le corps de leur propre composant
+        run: python3 hardware/n3-universal/tools/check_silk_refs.py
 
   build:
     name: Build ${{ matrix.name }}

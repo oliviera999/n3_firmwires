@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Retouches pré-commande du PCB ROUTÉ (rev 0.1 -> 0.1.2), sans re-routage.
+"""⛔ OBSOLÈTE depuis la rev 0.2 (2026-10-07) — NE PAS LANCER sur le PCB 0.2.
+
+La 0.2 est entièrement régénérée (`generate.py --regen-pcb` → `route_universal.py`
+→ `tidy_silkscreen.py` → `export_fab.py`) : ses empreintes (JST-XH, BS250, PCF8574,
+fusible horizontal…) et ses retouches ciblent la géométrie 0.1.x routée et
+n'existent plus. Conservé pour l'historique des rev 0.1 → 0.1.2 (audit §11-12).
+
+Retouches pré-commande du PCB ROUTÉ (rev 0.1 -> 0.1.2), sans re-routage.
 
 Pourquoi un script plutôt que des clics : chaque retouche est chiffrée par
 l'audit (`AUDIT-2026-08-28.md`) et doit pouvoir être rejouée et relue. Le PCB
@@ -34,6 +41,12 @@ Usage (Python embarqué de KiCad, qui porte pcbnew) :
 from __future__ import annotations
 
 import math
+import sys as _sys
+
+if "--i-know-this-is-0-1-x" not in _sys.argv:
+    _sys.exit("finalize_board.py est obsolète depuis la rev 0.2 (chaîne régénérée) ; "
+              "voir README.md. Forcer avec --i-know-this-is-0-1-x sur un PCB 0.1.x.")
+_sys.argv = [a for a in _sys.argv if a != "--i-know-this-is-0-1-x"]
 import re
 import subprocess
 import sys

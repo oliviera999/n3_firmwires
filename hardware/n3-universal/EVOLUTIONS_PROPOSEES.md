@@ -17,6 +17,25 @@ Chaque option se termine par une **décision à prendre** ; le §4 les récapitu
 
 ---
 
+> ✅ **Décisions actées le 2026-10-06 — appliquées dans la rev 0.2** (`generate.py`, PR du
+> 2026-10-07). Ce document reste l'étude ; ce qui a été retenu :
+>
+> | # | Décision | Appliqué en 0.2 |
+> |---|---|---|
+> | A1 | Sélecteur AUTO / ON par canal | **oui** : JP5-JP10 (1×03, cavalier en **2-3 = AUTO** livré), R61-R66 1 k vers +5 V pour forcer la base |
+> | A2 | Retour d'état | **header J38 « CMD SENSE » 1×08** (collecteurs REL1-6_SW, 0/5 V, + 5V/GND) à la place de l'empreinte PCF8574 DNP — rien à poser, lisible au multimètre ou par un module externe |
+> | A3 | Chauffage K3 | **broche 1 de JP7 non câblée** : AUTO / OFF seulement |
+> | B-charges | Borniers de charge | statu quo vis 5,08 |
+> | B-sondes / B-US-DHT | Connectique signal | **borniers à vis 5,08 partout** (push-in 3,5 et JST-XH abandonnés : approvisionnement Maroc / Afrique, un seul tournevis, fils de 0,2 à 2,5 mm²) ; ordre uniforme `5V TRIG ECHO GND` sur les HC-SR04 |
+> | B-Qwiic | Port Qwiic | non (I2C sur J21/J22 + J13/J14/J28) |
+> | S-rail | Rail capteurs +3V3_SW | **LDO dédié U1 LD1117V33** alimenté par le P-FET Q7 **IRF4905** (VGS = −5 V, plus de NDP6020P introuvable) ; JP1 = bypass |
+> | S-VBAT | Pont diviseur VBAT | **permanent** (R38 + JP12 22k/100k), coupure BS250 supprimée ; clamp D11 |
+> | S-5V | Entrée 5 V | **Q12 IRF4905 anti-inversion** sur J1/J2 + TVS D12 1.5KE6.8A |
+> | S-12V | TVS 12 V | D8 = **1.5KE18A** (Vrwm 15,3 V ; plus de P6KE18A) |
+> | S-fab | Fabrication | 2 oz porté par l'empilage KiCad (`gbrjob`), fusible 5×20 sur empreinte universelle (clips ou porte-fusible à capot), TO-92 au pas 2,54, points de test TP1-4, 7 trous M3 |
+>
+> Le firmware n'est **pas** modifié (GPIO strictement identiques à la 0.1.2).
+
 ## 0. Périmètre et rappels
 
 - Carte cible : **`n3-universal`** (décision actée : elle remplace à terme

@@ -73,7 +73,7 @@ def set_via_width(v, width_iu) -> None:
 # Amorces : pistes posées AVANT le routage (freerouting les préserve).
 SEED_TRACKS = [
     # EN : pad A1-30 pincé sous la zone antenne, échappée ouest
-    ("EN", 96.5, 110, 100, 110),
+    ("EN", 96.5, 111, 100, 111),
 ]
 
 
@@ -105,7 +105,8 @@ def mk_rule_area(board, x0, y0, x1, y1):
     z.SetIsRuleArea(True)
     z.SetDoNotAllowTracks(True)
     z.SetDoNotAllowVias(True)
-    z.SetDoNotAllowCopperPour(True)
+    # KiCad 10 : SetDoNotAllowCopperPour -> SetDoNotAllowZoneFills
+    (getattr(z, 'SetDoNotAllowZoneFills', None) or z.SetDoNotAllowCopperPour)(True)
     z.SetLayerSet(pcbnew.LSET.AllCuMask(2))
     pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
     chain = pcbnew.SHAPE_LINE_CHAIN()
@@ -117,11 +118,37 @@ def mk_rule_area(board, x0, y0, x1, y1):
     return z
 
 
+def strip_devkit_alt_pads(pcb_path: Path) -> int:
+    """DevKit V1 : la rangée A' (entraxe 27,94) duplique les numéros 1..15 ; la
+    copie exportée en DSN ne garde que la rangée A (freerouting refuse les
+    doublons), A' est pontée ensuite par add_devkit_alt_tracks. Édition
+    textuelle : retirer un pad par l'API laisse des objets SWIG non typés
+    (KiCad 10)."""
+    import generate as g
+    tree = g.sx_parse(pcb_path.read_text(encoding="utf-8"))
+    n = 0
+    for fp in g.sx_find_all(tree, g.Sym("footprint")):
+        if not str(fp[1]).endswith("ESP32_DevKit_V1_30pin"):
+            continue
+        keep = []
+        for item in fp:
+            if isinstance(item, list) and item and item[0] == "pad":
+                at = g.sx_find_all(item, g.Sym("at"))[0]
+                if abs(float(at[1]) - 27.94) < 1e-6:
+                    n += 1
+                    continue
+            keep.append(item)
+        fp[:] = keep
+    pcb_path.write_text(g.sx_dump(tree), encoding="utf-8")
+    return n
+
+
 def export_logic_dsn(dsn_path: Path):
     """Carte temporaire sans nets secteur + keepouts → DSN pour freerouting."""
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td) / BOARD_PATH.name
         shutil.copy(BOARD_PATH, tmp)
+        strip_devkit_alt_pads(tmp)
         # le .kicad_pro doit suivre pour les netclasses
         shutil.copy(BOARD_PATH.with_suffix(".kicad_pro"),
                     tmp.with_suffix(".kicad_pro"))
@@ -133,12 +160,14 @@ def export_logic_dsn(dsn_path: Path):
                     pad.SetNetCode(0)
                     n_removed += 1
         # bande secteur + boîtes autour du pad/piste COM de chaque canal
+        # bande secteur + boîtes autour du pad/piste COM de chaque canal
         mk_rule_area(b, 44, 40, 246, 74)
         for _n, x in CHANNELS:
-            mk_rule_area(b, x - 4.6, 74, x + 4.6, 84)
+            mk_rule_area(b, x - 4.6, 74, x + 4.6, 86.5)
         # bandes le long des bords : l'autorouteur doit respecter
         # l'edge clearance de 0.5 mm (le DSN ne la transmet pas)
-        bx0, by0, bx1, by1 = 40, 40, 318, 160
+        import generate as g
+        bx0, by0, bx1, by1 = g.BOARD['x0'], g.BOARD['y0'], g.BOARD['x1'], g.BOARD['y1']
         mk_rule_area(b, bx0, by0, bx1, by0 + 0.7)
         mk_rule_area(b, bx0, by1 - 0.7, bx1, by1)
         mk_rule_area(b, bx0, by0, bx0 + 0.7, by1)
@@ -165,12 +194,42 @@ def export_logic_dsn(dsn_path: Path):
 
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
-           "-do", str(ses), "-mp", "24", "-dr"]
+           "-do", str(ses), "-mp", "40", "-mt", "1", "-dr"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3300)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)
     if not ses.exists():
         sys.exit("freerouting n'a pas produit de .ses")
+
+
+def add_devkit_alt_tracks(b) -> int:
+    """Ponts rangée A (25,4) -> A' (27,94) du DevKit V1 : 15 pistes de 2,54 mm
+    (même net, même numéro de pad), en F.Cu, largeur 0,4."""
+    nets = b.GetNetsByName()
+    n = 0
+    for fp in b.GetFootprints():
+        if not fp.GetFPIDAsString().endswith("ESP32_DevKit_V1_30pin"):
+            continue
+        by_num = {}
+        for pad in fp.Pads():
+            by_num.setdefault(pad.GetNumber(), []).append(pad)
+        for num, pads in by_num.items():
+            if len(pads) != 2:
+                continue
+            a, c = sorted(pads, key=lambda p: p.GetPosition().x)
+            net = a.GetNetname() or c.GetNetname()
+            if not net:
+                continue
+            t = pcbnew.PCB_TRACK(b)
+            t.SetStart(a.GetPosition())
+            t.SetEnd(c.GetPosition())
+            t.SetWidth(FMM(0.4))
+            t.SetLayer(pcbnew.F_Cu)
+            t.SetNet(nets[net])
+            b.Add(t)
+            c.SetNet(nets[net])
+            n += 1
+    return n
 
 
 def add_mains_tracks(b):
@@ -198,8 +257,9 @@ def add_mains_tracks(b):
         seg(x - 6.0, 63.8, x - 6.0, 58, f"REL{n}_NC")
         seg(x - 6.0, 58, x - 5.08, 54, f"REL{n}_NC")
         seg(x - 5.08, 54, x - 5.08, 50, f"REL{n}_NC")
-    # Bloc PSU secteur : J27 (1=N a 250,46 ; 2=L a 255.08,46) -> F1 (266,44)/(266,66.5)
-    # -> RV1 (252,60)=N / (259.5,62.4)=LF -> HLK PS1 (303,46)=LF / (294,46)=N.
+    # Bloc PSU secteur : J27 (1=N a 250,46 ; 2=L a 255.08,46) -> F1 (268.5,44)/(268.5,66.5)
+    # -> RV1 (252,60)=N / (259.5,64.4)=LF -> HLK PS1 (303,46)=LF / (294,46)=N.
+    # Rev 0.2 : F1 decale de +2,5 mm (porte-fusible universel + varistance 14 mm).
     # Geometrie revue a l'audit final rev 0.1 : l'ancien trace faisait passer L a
     # 0,75 mm du pad N de J27 et N // LF a 1,5 mm — ecarts L<->N<->LF desormais
     # >= 3 mm partout hors pas propre des composants (bornier 5,08 / RV1 7,5 mm).
@@ -207,11 +267,11 @@ def add_mains_tracks(b):
     # ramenaient l'écart L<->N à 2,5 mm au droit de la varistance (audit SEC-01).
     # La branche varistance ne porte aucun courant de charge.
     psu = [
-        ("MAINS_L", 255.08, 46, 266, 44),
+        ("MAINS_L", 255.08, 46, 268.5, 44),
         ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 252, 60, RV1_STUB_MM),
         ("MAINS_N", 250, 52, 288, 52), ("MAINS_N", 288, 52, 294, 46),
-        ("MAINS_LF", 266, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 259.5, 62.4, RV1_STUB_MM),
-        ("MAINS_LF", 266, 66.5, 303, 66.5), ("MAINS_LF", 303, 66.5, 303, 46),
+        ("MAINS_LF", 268.5, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 259.5, 64.4, RV1_STUB_MM),
+        ("MAINS_LF", 268.5, 66.5, 303, 66.5), ("MAINS_LF", 303, 66.5, 303, 46),
     ]
     for netname, x0, y0, x1, y1, *w in psu:
         seg(x0, y0, x1, y1, netname, *w)
@@ -406,11 +466,13 @@ def add_stitching_vias(b):
     import generate as g
     for sx0, sy0, sx1, sy1 in g.SLOTS:
         slots_margin.append((sx0 - 1.2, sy0 - 1.2, sx1 + 1.2, sy1 + 1.2))
-    spots = [(x, y) for x in range(48, 243, 12) for y in range(90, 158, 10)]
-    spots += [(x, y) for x in (282, 294, 306) for y in range(106, 158, 10)]
-    # jamais dans les zones antenne (A1 et A2) ni dans le coin PSU secteur
-    keepouts = [(95.6, 100.5, 129.8, 110.5), (245.2, 73.5, 277.7, 85.5),
-                (245, 40, 318, 104)]
+    spots = [(x, y) for x in range(48, 243, 12) for y in range(90, 172, 10)]
+    spots += [(x, y) for x in range(250, 316, 12) for y in range(134, 172, 10)]
+    spots += [(x, y) for x in (252, 264, 276) for y in (88, 96)]
+    # jamais dans les zones antenne (A1 et A2), le coin PSU secteur, ni sous
+    # les modules (A1 : x97..129 y102..158 ; A2 couché : x248..320 y103..130)
+    keepouts = [(95.6, 100.5, 129.8, 160), (246.5, 105.5, 265, 127.5),
+                (246, 101, 320, 131), (245, 40, 318, 102)]
     spots = [(x, y) for x, y in spots
              if not any(kx0 <= x <= kx1 and ky0 <= y <= ky1
                         for kx0, ky0, kx1, ky1 in keepouts)]
@@ -480,7 +542,7 @@ def fix_starved_thermals(max_iters=3):
         for fp in b.GetFootprints():
             for pad in fp.Pads():
                 if (fp.GetReference(), str(pad.GetNumber())) in flagged:
-                    pad.SetZoneConnection(pcbnew.ZONE_CONNECTION_FULL)
+                    (getattr(pad, 'SetLocalZoneConnection', None) or pad.SetZoneConnection)(pcbnew.ZONE_CONNECTION_FULL)
                     n += 1
         pcbnew.ZONE_FILLER(b).Fill(b.Zones())
         pcbnew.SaveBoard(str(BOARD_PATH), b)
@@ -490,7 +552,7 @@ def fix_starved_thermals(max_iters=3):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--jar", default="/tmp/claude-0/-home-user/81366818-0d88-5ef1-967f-3eda81659c1a/scratchpad/fr.jar",
+    ap.add_argument("--jar", default=str(Path.home() / "freerouting.jar"),
                     help="chemin du jar freerouting")
     args = ap.parse_args()
     work = Path(tempfile.mkdtemp())
@@ -505,6 +567,7 @@ def main():
     ok = pcbnew.ImportSpecctraSES(b, str(ses))
     print("SES importé :", ok, "-", len(b.GetTracks()), "segments logiques")
     add_mains_tracks(b)
+    print("ponts DevKit A/A' :", add_devkit_alt_tracks(b))
     pcbnew.ZONE_FILLER(b).Fill(b.Zones())
     pcbnew.SaveBoard(str(BOARD_PATH), b)
 

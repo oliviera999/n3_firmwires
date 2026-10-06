@@ -1,100 +1,146 @@
-Refs;Qte;Valeur;Empreinte;Description
-A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15
-A2;1;ESP32-S3-DevKitC-1;ESP32_S3_DevKitC_1_44pin;Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2)
-C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + HC-SR04)
-C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos
-C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs
-C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 I2C
-C5;1;470u/25V;CP_Radial_D10.0mm_P5.00mm;Réservoir bus 12V protégé
-D1 D2 D3 D4 D6 D7;6;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine
-D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché)
-D8;1;P6KE18A;D_DO-201AD_P15.24mm_Horizontal;TVS 18V transitoires bus batterie
-D9;1;1N4744A;D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp;Zener 15V grille-source de Q11 (K=source, A=grille) : VGS borné à -15 V
-F1;1;T1A 5x20;Fuse_5x20_Horizontal;Fusible entrée secteur du module alim (temporisé 1A)
-H1;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE (tête métal à <5 mm du 230V)
-H2 H3 H4;3;M3;MountingHole_3.2mm_M3;Trou de fixation M3
-H5;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H5 : VIS NYLON OBLIGATOIRE (entre les pistes N et L du coin secteur)
-J1;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée 5V alternative (bornier, 1=+5V 2=GND)
-J10;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT11/DHT22 (1=3V3 2=DATA 3=GND)
-J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)
-J12;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;LDR déportée entre 3V3 et l'ADC (1=3V3 2=ADC)
-J13;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA)
-J14;1;Support I2C ext;PinSocket_1x04_P2.54mm_Vertical;Extension I2C — ex. module DS3231 (1=GND 2=VCC 3=SCL 4=SDA)
-J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=+5V 3=GND)
-J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=GND)
-J17;1;Header service;PinHeader_1x06_P2.54mm_Vertical;Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle
-J18;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND)
-J19;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND)
-J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V (jack DC-005 ~2,5 A, centre = +, ouverture bord gauche)
-J20;1;Header alim;PinHeader_1x06_P2.54mm_Vertical;Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3_SW)
-J21;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)
-J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)
-J25;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil
-J26;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)
-J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER
-J28;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 4 — INA226 (1=GND 2=VCC 3=SCL 4=SDA)
-J29;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;Module pluie DO msp (1=3V3_SW 2=DO 3=GND) — net US1, rôles disjoints
-J23 J24 J3 J4 J5 J6;6;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge 230V (1=NC 2=COM 3=NO)
-J30;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT externe msp (1=3V3_SW 2=DATA 3=GND) — net US2, rôles disjoints
-J31;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_A (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
-J32;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_B (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
-J33;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_C (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
-J34;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_D (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp
-J35;1;Support module microSD;PinSocket_1x06_P2.54mm_Vertical;Module microSD SPI 3V3 (1=GND 2=VCC 3=MISO 4=MOSI 5=SCK 6=CS)
-J36;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Vers buck IN (module MP1584/XL4015 sur entretoises : 1=+12V 2=GND)
-J37;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Depuis buck OUT 5V (1=+5V 2=GND)
-J7;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND)
-J8;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND)
-J9;1;JST-XH;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical;HC-SR04 POTA (1=5V 2=TRIG 3=ECHO 4=GND)
-JP1;1;Jumper BYPASS;PinHeader_1x03_P2.54mm_Vertical;"BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)"
-JP2;1;Jumper SD CS;PinHeader_1x03_P2.54mm_Vertical;"Source CS : 1-2 = S3 (IO10, défaut) ; 2-3 = WROOM (US3, env wroom-sd)"
-JP3;1;Jumper SD SCK;PinHeader_1x03_P2.54mm_Vertical;"Source SCK : 1-2 = S3 (IO13, défaut) ; 2-3 = WROOM (K5, env wroom-sd)"
-JP4;1;Jumper SD MOSI;PinHeader_1x03_P2.54mm_Vertical;"Source MOSI : 1-2 = S3 (IO12, défaut) ; 2-3 = WROOM (K6, env wroom-sd)"
-K1 K2 K3 K4 K5 K6;6;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A)
-LED1 LED2 LED3 LED4 LED6 LED7;6;rouge;LED_D5.0mm;LED témoin relais ON
-LED5;1;verte;LED_D5.0mm;LED présence 5V
-PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous)
-Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E)
-Q10;1;BC337-40;TO-92_Inline;Driver diviseur (1=C 2=B 3=E)
-Q11;1;IRF4905;TO-220-3_Vertical;Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie)
-Q7;1;NDP6020P;TO-220-3_Vertical;P-MOSFET rail capteurs (1=G 2=D 3=S)
-Q8;1;BC337-40;TO-92_Inline;Driver gate (1=C 2=B 3=E)
-Q9;1;BS250;TO-92_Inline;P-MOSFET coupure haute du diviseur (1=D 2=G 3=S)
-R1 R2 R28 R3 R31 R4;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor
-R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED présence 5V
-R14;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 AQUA
-R15;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 TANK
-R16;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 POTA
-R17;1;2k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Pont diviseur écho AQUA (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
-R18;1;2k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Pont diviseur écho TANK (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
-R19;1;2k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Pont diviseur écho POTA (5V->3V3) — POSER pour ffp5cs ; ABSENT sur unités msp (et R19 absent si option wroom-sd)"
-R20;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo gros
-R21;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo petits
-R23;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up data DHT11
-R24;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up bus 1-Wire DS18B20
-R25;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SDA
-R26;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SCL
-R27;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont LDR sur net ADC_E (GPIO36 WROOM / IO6 S3) — POSER pour LDR ; ABSENT pour module AO (msp HumiditeSol)"
-R34;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base commande gate (GPIO13)
-R35;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille P-MOSFET (rail OFF par défaut)
-R36;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille BS250 (diviseur OFF par défaut)
-R37;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base driver diviseur (actif quand +3V3_SW présent)
-R38;1;100k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Haut du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=100k)"
-R39;1;22k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=22k)"
-R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND (limite le courant de D9)
-R43;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_A (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
-R44;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_B (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
-R45;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_C (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
-R46;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_D (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
-R47;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up DHT ext (POSER sur unités msp uniquement)
-R29 R32 R5 R6 R7 R8;6;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot)
-R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
-RV1;1;10D471K;RV_Disc_D12mm_W5.4mm_P7.5mm;Varistance 300VAC transitoires secteur (disque 10 mm, pas 7,5 mm)
-A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
-A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu
-J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2). Sur WROOM (site A1) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type Catalex (tampon toujours actif + régulateur 5V)
-J14/J21/J22/J28 (modules);0-4;DS3231 + INA226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW"
-J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"
-F1 (clips);2;Clip porte-fusible 5x20 à souder;s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal;Entraxe ~22,5 mm. INDISPENSABLES au profil secteur : la cartouche verre n'a pas de pattes à souder
-JP1-JP4 (cavaliers);5;Cavalier (shunt) 2,54 mm;se posent sur JP1..JP4;"JP1 FERME par défaut (rail permanent, ffp5cs) ; JP2/3/4 en 1-2 (microSD sur site S3). 4 utilisés + 1 rechange"
-H1, H5 (visserie);2;Vis + écrou NYLON M3 (+ entretoise nylon);trous de fixation H1 (coin relais) et H5 (coin secteur);"OBLIGATOIRE : H1 = tête métal à ~4,3 mm du 230V ; H5 = entre les pistes N et L. H2-H4 : visserie M3 standard + entretoises"
+Refs;Qte;Valeur;Empreinte;Description;Source;LCSC;Note achat
+A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15;Maroc;;Shop4Makers « ESP32 Dev Kit V1 Type-C » (CP2102, 114 DH) — ne pas importer (ANRT)
+A2;1;ESP32-S3-DevKitC-1;ESP32_S3_DevKitC_1_44pin;Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2);Maroc;;Shop4Makers / Moussasoft S3 N16R8 (180 DH) — ne pas importer (ANRT)
+C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + HC-SR04);Maroc;;électrolytique radial
+C10;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC_E;Maroc;;céramique 100 nF
+C11;1;10u/25V;CP_Radial_D5.0mm_P2.50mm;Entrée LDO;Maroc;;électrolytique radial
+C12;1;100u/16V;CP_Radial_D6.3mm_P2.50mm;Sortie LDO (stabilité LD1117 : >= 10 µF, électrolytique);Maroc;;électrolytique radial
+C13;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC_VBAT;Maroc;;céramique 100 nF
+C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos;Maroc;;électrolytique radial
+C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs;Maroc;;céramique 100 nF
+C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 I2C;Maroc;;céramique 100 nF
+C5;1;470u/25V;CP_Radial_D10.0mm_P5.00mm;Réservoir bus 12V protégé;Maroc;;électrolytique radial
+C6;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC ADC_A;Maroc;;céramique 100 nF
+C7;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC ADC_B;Maroc;;céramique 100 nF
+C8;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC ADC_C;Maroc;;céramique 100 nF
+C9;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC ADC_D;Maroc;;céramique 100 nF
+D1 D2 D3 D4 D6 D7;6;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine;Maroc / import;C2457;"Moussasoft ; LCSC C2457 (1N4007G MDD) — l'ancien C727 n'existe plus"
+D11;1;BAT85;D_DO-35_SOD-123_Dual_P7.62mm;Clamp ADC_VBAT sur +3V3 (panneau branché par erreur sur J25) — empreinte double : BAT85/BAT42/BAT43 DO-35 OU BAT43W/BAT54 SOD-123 (LCSC C19167), un seul des deux posé;import;C19167;"DO-35 épuisé chez LCSC (BAT85 C549292 = 0) → poser la variante SOD-123 BAT43W JSCJ C19167 sur les pads CMS de l'empreinte double ; ou BAT85/BAT42 DO-35 d'une autre source"
+D12;1;1.5KE6.8A;D_DO-201AD_P15.24mm_Horizontal;TVS 6,8V (Vrwm 5,8V) sur le rail +5V : surtension / inversion résiduelle;import;C412500;"TVS 6,8 V DO-201 Littelfuse (Vrwm 5,8 V, stock faible) ; repli P6KE6.8A DO-15 C409413 (pattes 0,8 mm, même trou)"
+D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché);Maroc;C2476;"Moussasoft (stock faible) ; LCSC C2476"
+D8;1;1.5KE18A;D_DO-201AD_P15.24mm_Horizontal;TVS 18V transitoires bus batterie (DO-201 : le P6KE est en DO-15, trop fin);import;C1666858;TVS 18 V DO-201 (Littelfuse 1.5KE18A-B) — PAS de 1.5KE15A locale (conduirait à 14,7 V)
+D9;1;1N4744A;D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp;Zener 15V grille-source de Q11 (K=source, A=grille) : VGS borné à -15 V;import;C238928;zener 15 V DO-41
+F1;1;T1A 5x20;Fuse_5x20_Universal;Fusible entrée secteur du module alim (temporisé 1A) — porte-fusible à capot;import;C3131;porte-fusible 5x20 à capot BLX-A Xucheng C3131 (pas 22,0 ±0,5 mesuré sur sa fiche LCSC, fentes 3 mm de l'empreinte) ou Multicomp MC000830 / Schurter 0031.8201 (22,5-22,6) + cartouche T1A
+H1;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE (tête métal à <5 mm du 230V);Maroc;;vis M3 (nylon pour H1/H5)
+H2 H3 H4 H6 H7;5;M3;MountingHole_3.2mm_M3;Trou de fixation M3;Maroc;;vis M3 (nylon pour H1/H5)
+H5;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H5 : VIS NYLON OBLIGATOIRE (entre les pistes N et L du coin secteur);Maroc;;vis M3 (nylon pour H1/H5)
+J1;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée 5V alternative (bornier, 1=+5V 2=GND) — protégée contre l'inversion par Q12;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J10;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;DHT11/DHT22 (1=3V3 2=DATA 3=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J12;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;LDR déportée entre 3V3 et l'ADC (1=3V3 2=ADC);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J13;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
+J14;1;Support I2C ext;PinSocket_1x04_P2.54mm_Vertical;Extension I2C — ex. module DS3231 (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
+J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=+5V 3=GND);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=GND);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J17;1;Header service;PinHeader_1x06_P2.54mm_Vertical;Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle;Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J18;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J19;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V (jack DC-005 ~2,5 A, centre = +, ouverture bord gauche);Maroc;;jack DC-005 standard
+J20;1;Header alim;PinHeader_1x06_P2.54mm_Vertical;Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3_SW);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J21;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
+J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
+J25;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J26;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J27;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J28;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 4 — INA226 (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
+J29;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Module pluie DO msp (1=3V3_SW 2=DO 3=GND) — net US1, rôles disjoints;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J23 J24 J3 J4 J5 J6;6;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Bornier charge 230V (1=NC 2=COM 3=NO);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J30;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;DHT externe msp (1=3V3_SW 2=DATA 3=GND) — net US2, rôles disjoints;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J31;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_A (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J32;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_B (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J33;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_C (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J34;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Entrée analogique ADC_D (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J35;1;Support module microSD;PinSocket_1x06_P2.54mm_Vertical;Module microSD SPI 3V3 (1=GND 2=VCC 3=MISO 4=MOSI 5=SCK 6=CS);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
+J36;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Vers buck IN (module MP1584/XL4015 sur entretoises : 1=+12V 2=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J37;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Depuis buck OUT 5V (1=+5V 2=GND) — protégé contre l'inversion par Q12;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J38;1;Header CMD SENSE;PinHeader_1x08_P2.54mm_Vertical;Etat réel des relais K1..K6 (1-6 = collecteurs 0V=ON/5V=OFF, 7=GND, 8=+5V);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J7;1;Bornier_5.08;TerminalBlock_bornier-4_P5.08mm;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J8;1;Bornier_5.08;TerminalBlock_bornier-4_P5.08mm;HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+J9;1;Bornier_5.08;TerminalBlock_bornier-4_P5.08mm;HC-SR04 POTA (1=5V 2=TRIG 3=ECHO 4=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
+JP1;1;Jumper BYPASS;PinHeader_1x03_P2.54mm_Vertical;"BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP10;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K6 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP11;1;Jumper SD MISO;PinHeader_1x03_P2.54mm_Vertical;"Source MISO : 1-2 = S3 (IO14, défaut) ; 2-3 = WROOM (GPIO12/MTDI : efuse VDD_SDIO=3V3 obligatoire avant)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP12;1;Jumper profil;PinHeader_1x03_P2.54mm_Vertical;"Ratio VBAT : 1-2 = 22k (bus 12V, ffp5cs) ; 2-3 = 100k (1S, msp/n3pp)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP13;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pont écho AQUA actif (ffp5cs) ; OUVERT = msp/n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP14;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pont écho TANK actif (ffp5cs) ; OUVERT = msp/n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP15;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pont écho POTA actif (ffp5cs) ; OUVERT = msp/n3pp et option wroom-sd";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP16;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = LDR tracker msp sur J31 ; OUVERT = sonde sol n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP17;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = LDR tracker msp sur J32 ; OUVERT = sonde sol n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP18;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = LDR tracker msp sur J33 ; OUVERT = sonde sol n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP19;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = LDR tracker msp sur J34 ; OUVERT = sonde sol n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP2;1;Jumper SD CS;PinHeader_1x03_P2.54mm_Vertical;"Source CS : 1-2 = S3 (IO10, défaut) ; 2-3 = WROOM (US3, env wroom-sd)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP20;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = LDR sur J12 (n3pp, ffp5cs) ; OUVERT = module AO (msp HumiditeSol)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP21;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pull-up DHT externe sur J30 (msp) ; OUVERT = HC-SR04 sur J8 (ffp5cs)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP3;1;Jumper SD SCK;PinHeader_1x03_P2.54mm_Vertical;"Source SCK : 1-2 = S3 (IO13, défaut) ; 2-3 = WROOM (K5, env wroom-sd)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP4;1;Jumper SD MOSI;PinHeader_1x03_P2.54mm_Vertical;"Source MOSI : 1-2 = S3 (IO12, défaut) ; 2-3 = WROOM (K6, env wroom-sd)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP5;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K1 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP6;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K2 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP7;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K3 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé INTERDIT (broche 1 non câblée, chauffage) ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP8;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K4 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP9;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K5 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+K1 K2 K3 K4 K5 K6;6;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A);Maroc / import;C35449;"Moussasoft (18 DH) ; LCSC C35449 Songle"
+LED1 LED2 LED3 LED4 LED6 LED7;6;rouge;LED_D5.0mm;LED témoin relais ON;Maroc;;LED 5 mm
+LED5;1;verte;LED_D5.0mm;LED présence 5V;Maroc;;LED 5 mm
+PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous);Maroc / import;C465406;"Shop4Makers (90 DH) ; LCSC C465406"
+Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline_Wide_CBE;Transistor NPN commande relais (1=C 2=B 3=E, brochage C-B-E sérigraphié : un 2N2222/S8050 E-B-C se monte retourné);Maroc;C713611;"Moussasoft (1 DH, >1000) ; brochage C-B-E sérigraphié"
+Q11;1;IRF4905;TO-220-3_Vertical_GDS;Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie);Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
+Q12;1;IRF4905;TO-220-3_Vertical_GDS;"Anti-inversion entrée 5V (P-MOSFET 55V, VGS = -5V ; 1=G 2=D=entrée 3=S=+5V)";Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
+Q7;1;IRF4905;TO-220-3_Vertical_GDS;P-MOSFET commutation 5V du LDO capteurs (1=G 2=D=+5V 3=S=entrée LDO);Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
+Q8;1;BC337-40;TO-92_Inline_Wide_CBE;Driver gate (1=C 2=B 3=E);Maroc;C713611;"Moussasoft (1 DH, >1000) ; brochage C-B-E sérigraphié"
+R1 R2 R28 R3 R31 R4;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor;Maroc;;1/4 W 5 % (Moussasoft)
+R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED présence 5V;Maroc;;1/4 W 5 % (Moussasoft)
+R14;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 AQUA;Maroc;;1/4 W 5 % (Moussasoft)
+R15;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 TANK;Maroc;;1/4 W 5 % (Moussasoft)
+R16;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série écho HC-SR04 POTA;Maroc;;1/4 W 5 % (Moussasoft)
+R17;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho AQUA (5V->3V3) — en circuit si JP13 FERMÉ (ffp5cs);Maroc;;1/4 W 5 % (Moussasoft)
+R18;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho TANK (5V->3V3) — en circuit si JP14 FERMÉ (ffp5cs);Maroc;;1/4 W 5 % (Moussasoft)
+R19;1;2k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pont diviseur écho POTA (5V->3V3) — en circuit si JP15 FERMÉ (ffp5cs);Maroc;;1/4 W 5 % (Moussasoft)
+R20;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo gros;Maroc;;1/4 W 5 % (Moussasoft)
+R21;1;220;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série signal servo petits;Maroc;;1/4 W 5 % (Moussasoft)
+R23;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up data DHT11;Maroc;;1/4 W 5 % (Moussasoft)
+R24;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up bus 1-Wire DS18B20;Maroc;;1/4 W 5 % (Moussasoft)
+R25;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SDA;Maroc;;1/4 W 5 % (Moussasoft)
+R26;1;4.7k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up I2C SCL;Maroc;;1/4 W 5 % (Moussasoft)
+R27;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas de pont LDR sur ADC_E (GPIO36 WROOM / IO6 S3) — en circuit si JP20 FERMÉ;Maroc;;1/4 W 5 % (Moussasoft)
+R34;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base commande gate (GPIO13);Maroc;;1/4 W 5 % (Moussasoft)
+R35;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille P-MOSFET vers +5V (rail OFF par défaut);Maroc;;1/4 W 5 % (Moussasoft)
+R38;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Haut du pont VBAT (commun aux deux profils);Maroc;;1/4 W 5 % (Moussasoft)
+R39;1;22k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont VBAT profil bus 12V (JP12 en 1-2) : 100k/22k;Maroc;;1/4 W 5 % (Moussasoft)
+R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND (limite le courant de D9);Maroc;;1/4 W 5 % (Moussasoft)
+R43;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_A (en circuit si JP16 FERMÉ : LDR msp ; OUVERT : sonde sol n3pp)";Maroc;;1/4 W 5 % (Moussasoft)
+R44;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_B (en circuit si JP17 FERMÉ : LDR msp ; OUVERT : sonde sol n3pp)";Maroc;;1/4 W 5 % (Moussasoft)
+R45;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_C (en circuit si JP18 FERMÉ : LDR msp ; OUVERT : sonde sol n3pp)";Maroc;;1/4 W 5 % (Moussasoft)
+R46;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_D (en circuit si JP19 FERMÉ : LDR msp ; OUVERT : sonde sol n3pp)";Maroc;;1/4 W 5 % (Moussasoft)
+R47;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up DHT ext (en circuit si JP21 FERMÉ : unités msp);Maroc;;1/4 W 5 % (Moussasoft)
+R48;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base Q8 (rail OFF tant que le GPIO flotte);Maroc;;1/4 W 5 % (Moussasoft)
+R49;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série ADC_VBAT;Maroc;;1/4 W 5 % (Moussasoft)
+R29 R32 R5 R6 R7 R8;6;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot);Maroc;;1/4 W 5 % (Moussasoft)
+R50;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série ADC_A (protection GPIO, fils longs);Maroc;;1/4 W 5 % (Moussasoft)
+R51;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série ADC_B (protection GPIO, fils longs);Maroc;;1/4 W 5 % (Moussasoft)
+R52;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série ADC_C (protection GPIO, fils longs);Maroc;;1/4 W 5 % (Moussasoft)
+R53;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série ADC_D (protection GPIO, fils longs);Maroc;;1/4 W 5 % (Moussasoft)
+R54;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Série ADC_E (protection GPIO, fils longs);Maroc;;1/4 W 5 % (Moussasoft)
+R57;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille de Q12 vers GND;Maroc;;1/4 W 5 % (Moussasoft)
+R58;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont VBAT profil 1S (JP12 en 2-3) : 100k/100k;Maroc;;1/4 W 5 % (Moussasoft)
+R61;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Forçage ON du canal K1 : +3V3 -> 1k -> cavalier JP5 1-2 -> base;Maroc;;1/4 W 5 % (Moussasoft)
+R62;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Forçage ON du canal K2 : +3V3 -> 1k -> cavalier JP6 1-2 -> base;Maroc;;1/4 W 5 % (Moussasoft)
+R64;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Forçage ON du canal K4 : +3V3 -> 1k -> cavalier JP8 1-2 -> base;Maroc;;1/4 W 5 % (Moussasoft)
+R65;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Forçage ON du canal K5 : +3V3 -> 1k -> cavalier JP9 1-2 -> base;Maroc;;1/4 W 5 % (Moussasoft)
+R66;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Forçage ON du canal K6 : +3V3 -> 1k -> cavalier JP10 1-2 -> base;Maroc;;1/4 W 5 % (Moussasoft)
+R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin;Maroc;;1/4 W 5 % (Moussasoft)
+RV1;1;14D471K;RV_Disc_D15.5mm_W8mm_P7.5mm;Varistance 300VAC transitoires secteur (disque 10 ou 14 mm, pas 7,5 mm);Maroc / import;C111188;MicroPlanet 14D471K (4 DH) ou LCSC C111188 10D471K (même pas 7,5)
+TP1;1;GND;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test GND (boucle de fil ou picot);Maroc;;boucle de fil ou picot
+TP2;1;+5V;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test +5V (boucle de fil ou picot);Maroc;;boucle de fil ou picot
+TP3;1;+3V3_SW;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test +3V3_SW (boucle de fil ou picot);Maroc;;boucle de fil ou picot
+TP4;1;+3V3;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test +3V3 (boucle de fil ou picot);Maroc;;boucle de fil ou picot
+U1;1;LD1117V33;TO-220-3_Vertical_LDO;Régulateur 3,3V 800mA du rail capteurs (1=GND 2=OUT 3=IN — PAS un 78xx);import;C283467;"ST LD1117V33 TO-220 (1=GND 2=OUT 3=IN, languette = OUT) ; repli LM1117T-3.3 HGSEMI C498321 (même brochage)"
+A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé. Support droit sur la rangée A (25,4) OU A' (27,94) selon le module acheté;Maroc;;barrette femelle sécable
+A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu;Maroc;;
+J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2, JP2/3/4/11 en 1-2). Sur WROOM (site A1, JP en 2-3) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V). PAS de module type Catalex;Maroc;;Moussasoft 18 DH
+J14/J21/J22/J28 (modules);0-4;DS3231 + INA226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW";Maroc;;Moussasoft / Shop4Makers
+J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont";Maroc;;Shop4Makers MP1584EN 25 DH
+F1 (porte-fusible);1;Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm;se soude sur Fuse_5x20_Universal (fentes 3 mm);Références compatibles : Xucheng BLX-A LCSC C3131 (pas 22,0 ±0,5, colis d'import), Multicomp MC000830, Würth 696108003002 / 696107003002 (ergot), Schurter 0031.8201 (ergot), Stelvio PTF78. Profil secteur uniquement. Cartouche T1A 5x20;import;;Farnell/Mouser/LCSC — vérifier le pas 22,5-22,6 et une patte <= 1,5 mm
+JP1-JP21 (cavaliers);18;Cavalier (shunt) 2,54 mm à languette;se posent sur les headers JP;"JP1 + JP2/3/4/11 + JP12 + 9 cavaliers de profil = 15 posés au plus ; JP5-JP10 livrés SANS cavalier (AUTO) ; 3 en rechange";Maroc;;Shop4Makers lot de cavaliers
+H1, H5 (visserie);2;Vis + écrou NYLON M3 (+ entretoise nylon);trous de fixation H1 (coin relais) et H5 (coin secteur);"OBLIGATOIRE : H1 = tête métal à ~4,3 mm du 230V ; H5 = entre les pistes N et LF. H2-H4, H6, H7 : visserie M3 standard + entretoises";Maroc;;
+Câblage;—;"Embouts de câblage (ferrules) + pince ; fil 0,25-0,5 mm² capteurs, 1,5 mm² charges";borniers à vis;Tout fil souple sur bornier à vis reçoit un embout serti;Maroc;;Moussasoft kit pince + 1200 embouts 250 DH
+Finition;—;Vernis de tropicalisation (ex. Plastik 70 / Relife 70);après montage et test;Pulvériser hors borniers, supports et cavaliers (masquer);Maroc / import;;Moussasoft Relife 70 (précommande) ou Kontakt Plastik 70
