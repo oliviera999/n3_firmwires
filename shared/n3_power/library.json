@@ -1,0 +1,14 @@
+{
+  "name": "n3_power",
+  "version": "0.1.0",
+  "description": "Mesure d'energie : driver INA226 (I2C, calibration shunt configurable, detection de perte de config), integration Wh/Ah par voie, etat de charge plomb/AGM 12 V (OCV au repos + comptage coulometrique) et decision d'alerte batterie basse. Logique pure (n3_ina226_math, n3_power_energy, n3_power_battery) sans dependance Arduino, testee en natif.",
+  "keywords": "esp32, ina226, power, energy, battery, soc, coulomb, solar",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "authors": [{ "name": "n3 IoT" }],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

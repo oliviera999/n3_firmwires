@@ -14,12 +14,15 @@ Dépôt regroupant **plusieurs firmwares** : deux projets principaux ESP32 (serr
 | **Upload Photos legacy** | `archive/uploadphotosserver_legacy/` | ESP32-CAM | Historique (`uploadphotosserver_*`) conservé en archive ; utiliser uniquement `uploadphotosserver/`. |
 | **FFP5CS (aquaponie)** | `ffp5cs/` | ESP32 / ESP32-S3 | Contrôleur aquaponie (WROOM/S3), modulaire, API FFP3, réseau offline-first. Depuis v14.24, la sync distante WROOM utilise un document JSON dédié 2048 o pour absorber le payload `outputs/state` étendu (GPIO 118-123). Build WROOM plus complexe que n3pp/msp (pioarduino 2 passes) — voir [ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md). |
 | **Poissonglouton (recyclage)** | `poissonglouton/` | ESP32-S3 | Compteur de bouteilles pour poubelle ludique : détection IR + ultrason (simple ou tandem), feedback audio I2S JC4827W543 (sortie speak), mode écran tactile ou headless, upload batch vers `/pgl/post-data`, heartbeat `/pgl/heartbeat` (flag `PGL_ENABLE_SERVER_HEARTBEAT`), deep sleep solaire. |
+| **Banc énergie (INA226)** | `energie/` | ESP32-S3 | Banc d'essai des moniteurs de puissance INA226 du futur module d'aquaponie autonome (carte n3-universal) : panneau solaire / batterie plomb-AGM 12 V / consommation, mesure 1 Hz, POST 10 s vers `/energie-test/post-data` (famille serveur `energie`), SoC + alerte mail batterie basse, console série de calibration. Brique partagée `shared/n3_power`. Voir [energie/README.md](energie/README.md). |
 | **LVGL_Widgets** | `à voir/LVGL_Widgets/` | ESP32-S3 | Interface écran tactile ; pas de serveur dédié. Dossier `à voir/` (prototype non maintenu en production). |
 | **Ratata (ZYC0108-EN)** | `à voir/ratata/` | 7× UNO, 1× ESP32-CAM | Huit exemples : déplacement, servo, ultrason, évitement, suivi de ligne, voiture caméra WiFi. Dossier `à voir/`. |
 
 ## Prérequis
 
-- [PlatformIO](https://platformio.org/) (CLI ou extension VSCode/Cursor)
+- [PlatformIO](https://platformio.org/) (CLI ou extension VSCode/Cursor) — **Core 6.1.19** (version épinglée en CI) :
+  `pip install "platformio==6.1.19"`. PlatformIO **6.2.0** casse les builds ffp5cs WROOM pioarduino
+  (`ModuleNotFoundError: SCons.Tool.FortranCommon` : tool-scons 4.8.1 remplacé par 4.11.1 en plein build).
 - Selon le projet : carte **ESP32** (esp32dev), **ESP32-CAM** (esp32cam), ou **Arduino UNO** (uno)
 
 ## Compilation et upload
@@ -145,11 +148,10 @@ Commandes directes possibles depuis `uploadphotosserver/` :
 Tous les firmwares utilisent le **framework Arduino**. La chaîne de build est : plateforme → arduino-esp32 → ESP-IDF (sous-jacent).
 
 **Versions arduino-ESP32 par type d'env :**
-- **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp, uploadphotosserver) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt.
+- **WROOM** (ffp5cs wroom-prod/test/beta, msp, n3pp) et **poissonglouton** (S3) : **arduino-esp32 3.3.7** (ESP-IDF 5.5.2) via la **plateforme pioarduino** ([pioarduino/platform-espressif32](https://github.com/pioarduino/platform-espressif32) release 55.03.37). Choix : stack IDF 5.x et alignement avec tous les firmwares WROOM du dépôt (uploadphotosserver, ESP32-CAM, reste en 6.13 : ci-dessous).
 - **FFP5CS prod secours** : env **`wroom-prod-pio6`** = `espressif32@6.13.0` + Arduino **2.0.17** (build **1 passe**, sans pioarduino) si la phase 2 de `wroom-prod` échoue — détails et tutoriel : [COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md](ffp5cs/docs/technical/COMPILATION_WROOM_PIOARDUINO_ET_ENVS.md).
 - **uploadphotosserver** (ESP32-CAM) : envs **`msp1` / `n3pp` / `ffp3`** uniquement — **espressif32@6.13** + **`esp32cam`** + **HTTPS** (`USE_HTTPS_ENDPOINTS`) + diagnostic PSRAM au boot. Anciens envs `*-cam` et `msp1-https` supprimés (v2.54). Voir `uploadphotosserver/README.md` et `docs/HTTPS_MIGRATION.md`.
-- **S3** (ffp5cs wroom-s3-*) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
-- **test psram s3** : `espressif32@6.4.0` + arduino-esp32 2.0.14 pour compatibilité S3 PSRAM OPI (voir commentaires dans son `platformio.ini`).
+- **S3** (ffp5cs `wroom-s3-*`, y compris les envs PSRAM `wroom-s3-test-psram*` / `-devkit`, et **energie**) : **plateforme platformio/espressif32@6.13.0**, arduino-esp32 2.0.17 (bundlé, ESP-IDF 4.4.7). Alignement pioarduino possible à terme (erreur linker « gap » à résoudre).
 
 Le **premier build** des projets WROOM télécharge la plateforme pioarduino (~500 Mo) ; en cas d'erreur de verrouillage de fichier (WinError 32/183), fermer les processus PlatformIO/IDE puis relancer.
 
@@ -259,6 +261,11 @@ firmwires/
 │   ├── platformio.ini
 │   ├── include/config.h
 │   ├── src/main.cpp
+│   └── VERSION.md
+├── energie/                   # ESP32-S3 banc d'essai INA226 (panneau / batterie / conso)
+│   ├── platformio.ini
+│   ├── include/energie_config.h
+│   ├── src/main.cpp + modules (energie_board/sensors/network/display/console.cpp)
 │   └── VERSION.md
 ├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires ; submodule ffp5cs/ffp3)
 ├── archive/                    # Code historique — ne plus utiliser (utiliser uploadphotosserver/ unifié)

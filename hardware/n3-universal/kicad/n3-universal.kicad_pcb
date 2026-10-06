@@ -8969,7 +8969,7 @@
 				)
 			)
 		)
-		(property "Description" "Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : 2e INA219/226 ou BME280 (msp : port I2C libre ; n3pp : port I2C libre)"
+		(property "Description" "Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : 2e INA226 ou BME280 (msp : port I2C libre ; n3pp : port I2C libre)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -21676,7 +21676,7 @@
 				)
 			)
 		)
-		(property "Value" "27k*"
+		(property "Value" "22k*"
 			(at 5.08 2.37 0)
 			(layer "F.Fab")
 			(uuid "815b1f44-f140-4b3c-bd44-f2f46b8e242d")
@@ -21700,7 +21700,7 @@
 				)
 			)
 		)
-		(property "Description" "Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=27k)"
+		(property "Description" "Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=22k)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24143,7 +24143,7 @@
 				)
 			)
 		)
-		(property "Description" "Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil — ROLE ffp5cs : sonde tension du bus 12 V (pont 100k/27k) (msp : sonde tension batterie 1S (pontdiv, pont 100k/100k) ; n3pp : sonde tension batterie 1S (pontdiv, pont 100k/100k))"
+		(property "Description" "Sonde batterie (1=VBAT+ 2=GND) — 1S ou bus 12V selon profil — ROLE ffp5cs : sonde tension du bus 12 V (pont 100k/22k) (msp : sonde tension batterie 1S (pontdiv, pont 100k/100k) ; n3pp : sonde tension batterie 1S (pontdiv, pont 100k/100k))"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24979,7 +24979,7 @@
 				)
 			)
 		)
-		(property "Description" "Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : 3e INA219/226 (shunt pompe) (msp : port I2C libre ; n3pp : port I2C libre)"
+		(property "Description" "Port I2C libre 4 — INA226 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : 3e INA226 (charges, shunt ext. 5-10 mΩ) (msp : port I2C libre ; n3pp : port I2C libre)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -38068,7 +38068,7 @@
 				)
 			)
 		)
-		(property "Description" "Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : INA219/226 : courant panneau / batterie / charge (msp : port I2C libre ; n3pp : port I2C libre)"
+		(property "Description" "Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA) — ROLE ffp5cs : INA226 : courant panneau / batterie / charge (msp : port I2C libre ; n3pp : port I2C libre)"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")

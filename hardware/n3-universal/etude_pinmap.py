@@ -10,7 +10,7 @@ avec les mécanismes déjà validés ailleurs dans le dépôt :
   - nets PARTAGÉS entre rôles : un même GPIO alimente deux connecteurs différents,
     utilisés par des firmwares DISJOINTS (déjà pratiqué sur la carte commune).
 
-Ajouts demandés : slot microSD (S3 uniquement), RTC DS3231 et 2-3 INA219/226
+Ajouts demandés : slot microSD (S3 uniquement), RTC DS3231 et 3 INA226
 (I2C, coût GPIO nul, INA sur +3V3_SW pour la veille).
 
 Usage : python3 etude_pinmap.py   (imprime le verdict, écrit ETUDE_PINMAP.md)
@@ -85,9 +85,9 @@ WROOM_CAVEATS = {
 S3_ALL = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21,
           38, 39, 40, 41, 42, 45, 47, 48}
 S3_ADC1 = set(range(1, 11))            # ADC1 = GPIO1..10 (ADC2 inutilisable WiFi)
-S3_STRICT_EXCLUDE = {3, 45, 38, 48, 11}    # strapping (3/45), LED RGB (38/48), 11=ADC2
+S3_STRICT_EXCLUDE = {3, 45, 38, 48, 11}    # strapping (3/45), LED RGB (38/48), 11 = réserve non câblée
 S3_PRAGMATIC_CAVEATS = {
-    3:  "strapping JTAG-sel : OK si JTAG inutilisé ; pull-up admissible",
+    3:  "strapping JTAG-sel (sans effet hors eFuse JTAG) ; pas de pull-up sur la broche (R34 1k → base Q8)",
     45: "strapping VDD_SPI : NE JAMAIS tirer haut au boot (pas de pull-up !)",
     38: "LED RGB DevKitC-1 v1.1 : scintillement cosmétique si utilisé",
     48: "LED RGB DevKitC-1 v1.0 : scintillement cosmétique si utilisé",
@@ -141,7 +141,7 @@ S3_MAP = {
     "SERVO1": 21, "SERVO2": 47,
     "US1": 39, "US2": 40, "US3": 41,
     "ONEWIRE": 42,
-    "GATE": 3,          # pull-up de grille admissible (JTAG inutilisé) + rail ON au boot
+    "GATE": 3,          # JTAG inutilisé ; R35 tire la grille de Q7 → rail +3V3_SW OFF au boot tant que GPIO3 n'est pas HAUT (ou JP1 fermé)
     "DHT_INT": 38,      # caveat LED v1.1 (cosmétique)
     "AUX1": 48,         # caveat LED v1.0 (cosmétique, breakout)
     "AUX2": 45,         # caveat strapping : entrée de module relais SANS pull-up
@@ -173,6 +173,23 @@ def check(map_, pins_avail, adc1, input_only, name, s3=False, nets=None):
             pass  # le partage par rôle est le principe même ; conflit impossible par construction
     free = sorted(pins_avail - set(map_.values()))
     return errs, warns, free
+
+# Addendum rédigé à la main lors de l'audit final (conservé à chaque régénération).
+ADDENDUM_AUDIT = """\
+---
+
+## Addendum audit final rev 0.1 (2026-08-27)
+
+- **GPIO12/MTDI + module microSD (WROOM)** : la précaution « socket nu, aucun
+  pull-up » ne couvre pas un module ENFICHÉ avec carte : le pull-up interne DAT0
+  de la carte SD (et a fortiori un module tamponné type Catalex) peut tirer MTDI
+  haut à l'échantillonnage du strap → VDD_SDIO 1,8 V, boot en échec. Consigne :
+  module 3,3 V direct sans tampon, réservé aux unités S3, ou efuse
+  `set_flash_voltage 3.3V` avant tout usage SD sur WROOM (cf. README).
+- **Ponts écho 2k (R17-R19) et bas de pont R27** : pose PAR PROFIL (étoilés en
+  BOM) — permanents, ils neutralisaient les rôles msp des nets partagés
+  US1/US2/ADC_E (détail dans le README, section audit).
+"""
 
 def main():
     report = ["# Étude pinmap « n3-universal » — verdict machine\n",
@@ -217,7 +234,7 @@ def main():
             report.append(f"- `{net}` : " + " / ".join(f"**{fw}**={fn}" for fw, fn in users.items()))
     report.append("\n## Ajouts I2C (coût GPIO nul)\n")
     report.append("- RTC **DS3231** (0x68) — support dédié ; déjà géré par ffp5cs (`USE_RTC_DS3231`).")
-    report.append("- **2-3 × INA219/226** (0x40/0x41/0x44) — mesure courant panneau/batterie/charge ;")
+    report.append("- **3 × INA226** (0x40/0x41/0x44) — mesure courant panneau/batterie/charge (shunts externes 5-10 mΩ) ;")
     report.append("  à alimenter sur **+3V3_SW** (0,7-1 mA chacun sinon en veille).")
     report.append("- BME280 0x76/0x77, OLED 0x3C : inchangés. 7 périphériques I2C = charge de bus OK à 100 kHz.")
     report.append("\n## microSD\n")
@@ -230,6 +247,7 @@ def main():
     report.append("  ajouter un module de journal (lib partagée) — la flash interne (LittleFS) reste")
     report.append("  une alternative sans matériel. Horloge SPI ≤ ~10 MHz (stubs vers JST/headers).")
     out = "\n".join(report) + "\n"
+    out += "\n" + ADDENDUM_AUDIT
     (HERE / "ETUDE_PINMAP.md").write_text(out, encoding="utf-8")
     (HERE / "pinmap_universel_propose.json").write_text(json.dumps(
         {"wroom": WROOM_MAP, "s3": S3_MAP, "nets": NETS,

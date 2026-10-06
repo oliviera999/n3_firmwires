@@ -2,6 +2,17 @@
 
 // Cartographies de broches spécifiques à la carte. Définir BOARD_S3 ou BOARD_WROOM (ou ajouter un nouveau) dans les build_flags de platformio.ini.
 
+// v15.31 — combinaisons de câblage invalides refusées à la compilation (avant :
+// retombée silencieuse sur une autre cartographie, ex. PINMAP_S3_CARRIER sans
+// BOARD_S3 → câblage WROOM historique). Le câblage fixe aussi l'identité OTA
+// (include/ota_model.h) : une erreur ici éviterait une OTA au mauvais câblage.
+#if defined(PINMAP_UNIVERSAL) && defined(PINMAP_S3_CARRIER)
+#error "PINMAP_UNIVERSAL et PINMAP_S3_CARRIER sont exclusifs (un seul câblage par env)"
+#endif
+#if defined(PINMAP_S3_CARRIER) && !defined(BOARD_S3)
+#error "PINMAP_S3_CARRIER exige BOARD_S3 (carte porteuse = site ESP32-S3)"
+#endif
+
 #if defined(BOARD_S3) && defined(PINMAP_S3_CARRIER) // ESP32-S3 sur carte porteuse bi-module ffp5cs-wroom-prod rev >= 0.6
 // Cartographie "carrier" : ESP32-S3-DevKitC-1 enfiché sur le site A2 de la carte
 // porteuse 12/24V (option A bi-module). Ne PAS confondre avec la cartographie S3

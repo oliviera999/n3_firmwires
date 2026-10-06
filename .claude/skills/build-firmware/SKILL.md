@@ -28,7 +28,7 @@ suffisent — c'est ce que fait la CI.
 ## 1. Build
 
 ```bash
-cd <dossier>            # n3pp | msp | uploadphotosserver | poissonglouton | ffp5cs
+cd <dossier>            # n3pp | msp | uploadphotosserver | poissonglouton | ffp5cs | energie
 pio run -e <env>
 ```
 
@@ -37,6 +37,7 @@ Envs principaux :
 - **msp** : `esp32dev` (défaut, HTTPS), `esp32dev_test`
 - **uploadphotosserver** : `msp1` / `n3pp` / `ffp3` — **esp32cam** + PSRAM + **HTTPS** par défaut (v2.54)
 - **poissonglouton** : `pgl-s3-headless`, `pgl-s3-display`
+- **energie** (banc INA226, S3) : `s3-bench` (défaut, → `/energie-test/`), `s3-bench-https`, `s3-prod` — secrets = `credentials.h` racine
 - **ffp5cs** : `wroom-prod`, `wroom-test`, `wroom-s3-test`…
 
 ## 2. Flash & moniteur

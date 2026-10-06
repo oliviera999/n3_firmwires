@@ -32,7 +32,7 @@ on:
         description: Firmware a deployer en OTA
         required: true
         type: choice
-        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, pgl, ffp5-wroom]
+        options: [n3pp, msp, cam-msp1, cam-n3pp, cam-ffp3, pgl, energie, ffp5-wroom]
       channel:
         description: Canal (prod/test). cam et pgl = prod uniquement.
         required: true
@@ -92,6 +92,7 @@ jobs:
             cam-n3pp) scheme=n3ota; dir=uploadphotosserver; env=n3pp; model=""; chan=prod ;;
             cam-ffp3) scheme=n3ota; dir=uploadphotosserver; env=ffp3; model=""; chan=prod ;;
             pgl) scheme=n3ota; dir=poissonglouton; env=pgl-s3-display; model=""; chan=prod ;;
+            energie) scheme=n3ota; dir=energie; model=""; [ "$chan" = prod ] && env=s3-prod || env=s3-bench ;;
             ffp5-wroom) scheme=ffp5; dir=ffp5cs; model=esp32-wroom; [ "$chan" = prod ] && env=wroom-prod || env=wroom-test ;;
             *) echo "::error::Firmware inconnu '$fw'"; exit 1 ;;
           esac
@@ -111,14 +112,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
+      # PlatformIO epingle : 6.2.0 (PyPI 2026-09-05) casse les builds ffp5cs WROOM (plateforme
+      # pioarduino 55.03.37 + custom_sdkconfig) : tool-scons 4.8.1 remplace par 4.11.1 en plein build
+      # -> ModuleNotFoundError SCons.Tool.FortranCommon. Diagnostic : n3_firmwires#112.
+      # A lever quand la plateforme pioarduino supportera PlatformIO >= 6.2 (garder la cle de cache alignee).
       - name: Install PlatformIO
-        run: pip install --upgrade platformio intelhex
+        run: pip install "platformio==6.1.19" intelhex
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: pio-
+          key: pio-6.1.19-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: pio-6.1.19-
       - name: Lire la version
         id: ver
         run: echo "version=$(python tools/ota/publish_ota.py --firmware ${{ needs.resolve.outputs.firmware }} --print-version)" >> "$GITHUB_OUTPUT"
@@ -245,6 +250,7 @@ jobs:
               cam-n3pp) sub=cam; key="--key n3pp" ;;
               cam-ffp3) sub=cam; key="--key ffp3" ;;
               pgl) sub=pgl ;;
+              energie) sub=energie; [ "$CHAN" = test ] && sub=energie-test ;;
             esac
             python tools/ota/verify_published.py --metadata-url "$BASE/$sub/metadata.json" ${key:-}
           fi

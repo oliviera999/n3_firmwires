@@ -40,5 +40,5 @@ S/N,Designator,Quantity,Manufacturer Part Number,Footprint,Comment,Procurement T
 39,"R27,R43,R44,R45,R46,R47",6,C58691,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,10k*,,
 40,"R35,R36,R37,R40",4,C58695,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,100k,,
 41,R38,1,C58695,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,100k*,,
-42,R39,1,C58693,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,27k*,,
+42,R39,1,22k*,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,22k*,C,preview: no LCSC — customer supply / placeholder
 43,RV1,1,C98636,CP_Radial_D10.0mm_P5.00mm,10D471K,,

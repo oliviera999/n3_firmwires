@@ -49,11 +49,22 @@ RTC_DATA_ATTR static bool s_calibPending = false;
 RTC_DATA_ATTR static uint32_t s_otaElapsedSinceLastCheckSeconds = OtaPeriodic::kDefaultIntervalSeconds;
 static N3OtaUiContext s_otaUiContext;
 
+// v2.77 — OTA par cablage : la carte n3-universal (PINMAP_UNIVERSAL) lit ses PROPRES
+// metadonnees, jamais celles des cartes historiques (image au mauvais brochage).
+// Tant que rien n'y est publie : 404 -> « OTA ignoree », aucune mise a jour.
+#ifdef PINMAP_UNIVERSAL
+#define MSP_OTA_METADATA_PROD "http://iot.olution.info/ota/msp-universal/metadata.json"
+#define MSP_OTA_METADATA_TEST "http://iot.olution.info/ota/msp-universal-test/metadata.json"
+#else
+#define MSP_OTA_METADATA_PROD "http://iot.olution.info/ota/msp/metadata.json"
+#define MSP_OTA_METADATA_TEST "http://iot.olution.info/ota/msp-test/metadata.json"
+#endif
+
 static void initOtaUi() {
   const N3OtaUiConfig otaUiConfig = {
       "MSP OTA",
-      "http://iot.olution.info/ota/msp/metadata.json",
-      "http://iot.olution.info/ota/msp-test/metadata.json",
+      MSP_OTA_METADATA_PROD,
+      MSP_OTA_METADATA_TEST,
 #ifdef TEST_MODE
       true,
 #else

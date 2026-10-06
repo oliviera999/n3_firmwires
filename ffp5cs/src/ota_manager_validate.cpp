@@ -110,19 +110,9 @@ bool OTAManager::validateSpace(size_t required) {
 }
 
 bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, char* outVersion, size_t versionSize, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
-    // Déterminer environnement et modèle
-    const char* envName = "prod";
-    #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
-        envName = "test";
-    #elif defined(PROFILE_PROD)
-        envName = "prod";
-    #else
-        envName = "prod"; // défaut sécurisé
-    #endif
-    const char* modelName = "esp32-wroom";
-    #if defined(BOARD_S3)
-    modelName = "esp32-s3";
-    #endif
+    // Environnement et modèle : source unique OtaModel (ota_model.h, v15.31 — modèle par câblage)
+    const char* envName = OtaModel::ENV;
+    const char* modelName = OtaModel::MODEL;
 
     char logMsg[128];
     snprintf(logMsg, sizeof(logMsg), "🔎 Sélection OTA: env=%s, model=%s", envName, modelName);
@@ -147,19 +137,9 @@ bool OTAManager::selectArtifactFromMetadata(const JsonDocument& doc, char* outVe
 }
 
 bool OTAManager::selectFilesystemFromMetadata(const JsonDocument& doc, char* outUrl, size_t urlSize, int& outSize, char* outMD5, size_t md5Size) {
-    // Déterminer environnement et modèle
-    const char* envName = "prod";
-    #if defined(PROFILE_TEST) || defined(PROFILE_DEV) || defined(USE_TEST_ENDPOINTS)
-        envName = "test";
-    #elif defined(PROFILE_PROD)
-        envName = "prod";
-    #else
-        envName = "prod"; // défaut sécurisé
-    #endif
-    const char* modelName = "esp32-wroom";
-    #if defined(BOARD_S3)
-    modelName = "esp32-s3";
-    #endif
+    // Environnement et modèle : source unique OtaModel (ota_model.h, v15.31 — modèle par câblage)
+    const char* envName = OtaModel::ENV;
+    const char* modelName = OtaModel::MODEL;
 
     char logMsg[128];
     snprintf(logMsg, sizeof(logMsg), "🔎 Sélection Filesystem OTA: env=%s, model=%s", envName, modelName);

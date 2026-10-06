@@ -11,8 +11,8 @@ Fichiers générés par `generator/export_assembly_preview.py` :
 | `cpl-nextpcb.zip` | **NextPCB** | même CPL, **zippé** (NextPCB refuse le `.csv` brut pour le centroid) |
 
 Couverture : **127** placements CPL, **43** lignes BOM,
-**124/127** avec LCSC suggéré
-(98 %).
+**123/127** avec LCSC suggéré
+(97 %).
 
 ---
 
@@ -69,3 +69,4 @@ Si le BOM est refusé : ouvrir `bom-nextpcb.csv` dans Excel → **Enregistrer so
 - `A1` — ESP32 DevKit V1 / ESP32_DevKit_V1_30pin
 - `A2` — ESP32-S3-DevKitC-1 / ESP32_S3_DevKitC_1_44pin
 - `F1` — Clip porte-fusible 5x20 à souder / s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal
+- `R39` — 22k* / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
