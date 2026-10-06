@@ -1,5 +1,11 @@
 # Commander n3-universal rev 0.1.2 — check-list fabricant
 
+> ⛔ **Contre-vérification du 2026-10-06 (KiCad 10 + sources web) — ne pas commander la 0.1.2
+> en l'état** : repères de sérigraphie décalés d'une rangée (canaux K1-K3 montés d'après la
+> sérigraphie = relais inopérants), J29/J30 sous le DevKit V1, et Q7 sans pièce équivalente en
+> stock (le NDP6020P-VB C878814 n'est pas un clone). Recommandation : rev 0.2 à périmètre gelé
+> (zone 230 V inchangée). Détail : [`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md) §13.
+
 > Issue de l'audit pré-commande du 2026-08-28 (7 dimensions : netlist, pinmap/firmwares,
 > sécurité 230 V, gerbers, générateurs/empreintes, BOM/assemblage, options de commande),
 > finalisée sous KiCad 10 le 2026-10-06 (audit §11 et §12).

@@ -23,6 +23,10 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
 
+> ⛔ **2026-10-06** : la contre-vérification sous KiCad 10 (audit §13) relève deux défauts
+> bloquants sur la rev 0.1.2 (sérigraphie des repères, J29/J30 sous le DevKit V1) — ne pas
+> la commander en l'état ; une rev 0.2 à périmètre gelé est recommandée.
+>
 > 📋 **Avant de commander** : lire **[`COMMANDE.md`](COMMANDE.md)** (options exactes du
 > formulaire JLCPCB — dont le **2 oz obligatoire**, non porté par les gerbers — et procédure
 > de devis PCB Maroc) et **[`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md)** (contre-vérification
