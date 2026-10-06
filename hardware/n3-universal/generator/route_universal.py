@@ -191,29 +191,37 @@ def export_logic_dsn(dsn_path: Path):
         return ok
 
 
-def disable_freerouting_gui() -> None:
-    """freerouting 2.1 ouvre, routage fini, une boîte de dialogue modale
-    « profil utilisateur » (WindowUserSettings) quand gui.enabled est vrai —
-    sous xvfb personne ne la ferme et le .ses n'est jamais écrit (0.2, 2e
-    essai : 25 min bloqué après « Optimization was completed »). On force
-    gui.enabled=false dans son freerouting.json (dossier de données =
-    <tmp>/freerouting sous Linux, %TEMP%\\freerouting sous Windows)."""
+def prepare_freerouting_settings() -> None:
+    """freerouting 2.1 (InteractiveActionThread.autorouterFinished) ouvre une
+    boîte de dialogue modale « profil utilisateur » après le 5e routage tant
+    que profile.email est vide — sous xvfb personne ne la ferme et le .ses
+    n'est jamais écrit (0.2, 2e essai : 25 min bloqué après « Optimization
+    was completed »). Le mode sans GUI (gui.enabled=false) n'est pas une
+    option : il ignore -mp (187 passes observées) et ne restaure pas la
+    meilleure carte. On renseigne donc un e-mail factice et on coupe la
+    télémétrie dans son freerouting.json (<tmp>/freerouting sous Linux,
+    %TEMP%\\freerouting sous Windows)."""
     import json
     for cand in (Path(tempfile.gettempdir()) / "freerouting" / "freerouting.json",
                  Path.home() / ".freerouting" / "freerouting.json"):
         if cand.exists():
             try:
                 cfg = json.loads(cand.read_text(encoding="utf-8"))
-                cfg.setdefault("gui", {})["enabled"] = False
-                cfg["gui"]["dialog_confirmation_timeout"] = 1
+                prof = cfg.setdefault("profile", {})
+                if not prof.get("email"):
+                    prof["email"] = "noreply@n3-universal.invalid"
+                prof["allow_telemetry"] = False
+                prof["allow_contact"] = False
+                cfg.setdefault("gui", {})["enabled"] = True
+                cfg.setdefault("usage_and_diagnostic_data", {})["disable_analytics"] = True
                 cand.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-                print(f"freerouting : GUI désactivée dans {cand}")
+                print(f"freerouting : profil/télémétrie réglés dans {cand}")
             except (OSError, ValueError) as e:
                 print(f"freerouting : freerouting.json illisible ({e})")
 
 
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
-    disable_freerouting_gui()
+    prepare_freerouting_settings()
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
            "-do", str(ses), "-mp", "60", "-mt", "1", "-dr"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3300)
