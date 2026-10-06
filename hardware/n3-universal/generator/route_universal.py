@@ -118,27 +118,26 @@ def mk_rule_area(board, x0, y0, x1, y1):
     return z
 
 
-def strip_devkit_alt_pads(pcb_path: Path) -> int:
-    """DevKit V1 : la rangée A' (entraxe 27,94) duplique les numéros 1..15 ; la
-    copie exportée en DSN ne garde que la rangée A (freerouting refuse les
-    doublons), A' est pontée ensuite par add_devkit_alt_tracks. Édition
-    textuelle : retirer un pad par l'API laisse des objets SWIG non typés
-    (KiCad 10)."""
+def rename_devkit_alt_pads(pcb_path: Path) -> int:
+    """DevKit V1 : la rangée A' (entraxe 27,94) duplique les numéros 1..15 et
+    freerouting refuse les doublons. Dans la copie exportée en DSN, A' est
+    renumérotée 1A..15A en GARDANT ses nets : le routeur la voit comme des
+    pastilles du même net (cibles ou obstacles), au lieu de router des pistes
+    d'autres nets par-dessus (0.2, premier essai : 26 courts-circuits sur A').
+    Édition textuelle : modifier un pad par l'API laisse des objets SWIG non
+    typés (KiCad 10). add_devkit_alt_tracks ponte ensuite A et A'."""
     import generate as g
     tree = g.sx_parse(pcb_path.read_text(encoding="utf-8"))
     n = 0
     for fp in g.sx_find_all(tree, g.Sym("footprint")):
         if not str(fp[1]).endswith("ESP32_DevKit_V1_30pin"):
             continue
-        keep = []
         for item in fp:
             if isinstance(item, list) and item and item[0] == "pad":
                 at = g.sx_find_all(item, g.Sym("at"))[0]
                 if abs(float(at[1]) - 27.94) < 1e-6:
+                    item[1] = f"{item[1]}A"
                     n += 1
-                    continue
-            keep.append(item)
-        fp[:] = keep
     pcb_path.write_text(g.sx_dump(tree), encoding="utf-8")
     return n
 
@@ -148,7 +147,7 @@ def export_logic_dsn(dsn_path: Path):
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td) / BOARD_PATH.name
         shutil.copy(BOARD_PATH, tmp)
-        strip_devkit_alt_pads(tmp)
+        rename_devkit_alt_pads(tmp)
         # le .kicad_pro doit suivre pour les netclasses
         shutil.copy(BOARD_PATH.with_suffix(".kicad_pro"),
                     tmp.with_suffix(".kicad_pro"))
@@ -194,7 +193,7 @@ def export_logic_dsn(dsn_path: Path):
 
 def run_freerouting(jar: Path, dsn: Path, ses: Path):
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
-           "-do", str(ses), "-mp", "40", "-mt", "1", "-dr"]
+           "-do", str(ses), "-mp", "60", "-mt", "1", "-dr"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3300)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)

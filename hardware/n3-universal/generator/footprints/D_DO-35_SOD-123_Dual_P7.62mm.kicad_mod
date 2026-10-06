@@ -33,5 +33,5 @@
 	(pad "2" thru_hole circle (at 7.62 0) (size 1.6 1.6) (drill 0.8) (layers "*.Cu" "*.Mask"))
 	(pad "1" smd roundrect (at 2.16 0) (size 0.91 1.22) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25))
 	(pad "2" smd roundrect (at 5.46 0) (size 0.91 1.22) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25))
-	(fp_text user "K" (at -0.1 -1.6 0) (layer "F.SilkS") (effects (font (size 0.7 0.7) (thickness 0.12))))
+	(fp_text user "K" (at -0.2 -1.7 0) (layer "F.SilkS") (effects (font (size 0.8 0.8) (thickness 0.15))))
 )
