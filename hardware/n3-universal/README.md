@@ -34,25 +34,59 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > vers le firmware, revue de la connectique capteurs (borniers à vis / push-in / JST-XH /
 > enfichables) avec options et décisions à prendre. Rien n'y est encore appliqué.
 
-## Réalisation (rev 0.1 — générée)
+## Réalisation (rev 0.1.1 — KiCad 10, méthode hybride)
 
 ```
-generator/generate.py        Régénère schéma + PCB (non routé) + BOM + empreintes locales
-generator/route_universal.py Pipeline de routage : secteur EN DUR (relais + PSU Hi-Link),
-                             freerouting pour la logique, vias de couture GND, thermiques
-generator/tidy_silkscreen.py / export_fab.py   Sérigraphie + gerbers normalisés
+generator/generate.py        Source du schéma, de la BOM, des empreintes locales, des règles
+                             (.kicad_dru), de fp-lib-table et des libellés (PCB_TEXTS).
+                             Ne réécrit PAS un PCB déjà routé (--regen-pcb pour forcer)
+generator/route_universal.py Routage initial : secteur EN DUR (relais + PSU Hi-Link),
+                             freerouting pour la logique, vias de couture GND, thermiques ;
+                             contrôles check_mains_gap (3 mm) et check_mains_plane_gap (6,5 mm)
+generator/finalize_board.py  Retouches idempotentes du PCB routé (plan GND y86, amorces RV1,
+                             sérigraphie 0,15 mm, libellés PCB_TEXTS, cartouche, nets NC)
+generator/tidy_silkscreen.py Écarte libellés puis repères des pads, fentes et contours
+generator/export_fab.py      DRC bloquant puis gerbers 7 couches + perçages + PDF/SVG
+generator/export_assembly_preview.py  BOM/CPL JLCPCB + NextPCB (prévisualisation PCBA)
+generator/kicad_tools.py     Trouve kicad-cli / Python KiCad (KICAD_CLI, PATH, Program Files)
 tools/check_pinmap_vs_firmware.py  Garde anti-dérive : 3 firmwares x 2 sites + topologies
 tools/check_pcb_clearance.py       Corps 3D (courtyards) + couloirs d'insertion, sur le PCB routé
 tools/annotate_pcb_roles.py        Ecrit le role par firmware dans le champ Description des empreintes
-kicad/n3-universal.*         Projet KiCad 8 (+ .kicad_dru : cuivre Mains >= 3 mm du reste)
+kicad/n3-universal.*         Projet KiCad 10 (+ .kicad_dru : cuivre Mains >= 3 mm du reste,
+                             >= 6,5 mm des plans coulés ; fp-lib-table : lib locale n3u)
 ```
+
+**Méthode hybride** : le PCB routé est la référence géométrique (pistes, zones,
+positions) et ne se régénère plus ; le générateur reste la source du schéma, de la
+BOM et des libellés. Chaîne de finalisation, sous Windows avec les outils KiCad
+(`$py = "C:\Program Files\KiCad\10.0\bin\python.exe"`, `kicad-cli` dans le même dossier) :
+
+```
+cd generator
+python generate.py                       # schéma + BOM + .kicad_dru + fp-lib-table
+& $py finalize_board.py                  # retouches du PCB routé
+kicad-cli pcb drc --refill-zones --save-board ..\kicad\n3-universal.kicad_pcb
+& $py tidy_silkscreen.py                 # libellés / repères hors pads et fentes
+python ..\tools\check_pinmap_vs_firmware.py ; python ..\tools\check_pcb_clearance.py
+python ..\tools\annotate_pcb_roles.py --check
+python export_fab.py                     # DRC (0 erreur exigée) puis gerbers v<REV>
+python export_assembly_preview.py
+```
+
+Le remplissage des zones passe par `kicad-cli --refill-zones` : c'est le seul chemin
+qui applique les règles personnalisées du `.kicad_dru` (écart plan ↔ secteur).
+État rev 0.1.1 : DRC KiCad **0 erreur, 0 non connecté, 0 écart de parité
+schéma/PCB** ; restent 21 avertissements `silk_edge_clearance` (contours dessinés
+des relais K1-K6 et de PS1 sur les fentes d'isolement, lèvre de J2 hors carte),
+écrêtés par le fabricant, sans effet électrique.
 
 - **Carte 278 × 120 mm, 2 oz** — zone secteur en bande haute (6 relais + coin PSU
   Hi-Link, fentes fraisées), logique en dessous, rangée de borniers en bande basse.
   La frontière fraisée **y71-73 n'existe qu'au coin PSU** : dans la bande relais les
   broches de contact 230 V descendent jusqu'à y79,5, et c'est le plan GND repoussé à
-  **y84** + les mini-fentes autour de chaque COM qui tiennent l'isolement (écart cuivre
-  mains ↔ logique mesuré : 3,45 mm).
+  **y86** (rev 0.1.1, `SEC-CRP-01`) + les mini-fentes autour de chaque COM qui tiennent
+  l'isolement (écart cuivre mains ↔ logique mesuré : 3,45 mm ; mains ↔ bord des plans
+  coulés ≥ 6,50 mm, même couche — règle `.kicad_dru` + `check_mains_plane_gap`).
 - **Sites A1 (WROOM 2×15) / A2 (S3-DevKitC-1 2×22)** — un seul module peuplé ;
   antennes dégagées (keepouts) ; **entraxes ET ordre des broches à VERIFIER sur
   l'exemplaire réel** avant de souder les supports (certains clones « DevKit V1

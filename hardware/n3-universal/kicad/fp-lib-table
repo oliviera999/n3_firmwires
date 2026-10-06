@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "n3u") (type "KiCad") (uri "${KIPRJMOD}/../generator/footprints") (options "") (descr "Empreintes vendorees n3-universal"))
+)

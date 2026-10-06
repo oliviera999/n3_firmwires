@@ -94,6 +94,11 @@ def parse_constexpr(text: str) -> dict[str, int]:
     return pins
 
 
+# Net à pad unique qu'eeschema donne à une broche non câblée : équivaut à « aucun
+# net ». La syntaxe `(net N "nom")` (KiCad 8) devient `(net "nom")` en KiCad 10.
+UNCONNECTED = "unconnected-("
+
+
 def extract_fp_pad_nets(pcb: str, fp_name: str) -> dict[str, str] | None:
     start = pcb.find(f'(footprint "n3u:{fp_name}"')
     if start < 0:
@@ -112,8 +117,8 @@ def extract_fp_pad_nets(pcb: str, fp_name: str) -> dict[str, str] | None:
     for pm in re.finditer(r'\(pad "(\d+)"', block):
         nxt = block.find('(pad "', pm.end())
         sub = block[pm.end():nxt if nxt > 0 else len(block)]
-        nm = re.search(r'\(net \d+ "([^"]+)"\)', sub)
-        if nm:
+        nm = re.search(r'\(net (?:\d+ )?"([^"]+)"\)', sub)
+        if nm and not nm.group(1).startswith(UNCONNECTED):
             pad_nets[pm.group(1)] = nm.group(1)
     return pad_nets
 
@@ -125,8 +130,9 @@ def pads_of(pcb_text: str, ref: str) -> dict[str, str]:
             pads = {}
             for pp in blk.split('(pad "')[1:]:
                 num = pp.split('"')[0]
-                n = re.search(r'\(net \d+ "([^"]+)"', pp)
-                pads[num] = n.group(1) if n else ""
+                n = re.search(r'\(net (?:\d+ )?"([^"]+)"', pp)
+                pads[num] = (n.group(1) if n and not n.group(1).startswith(UNCONNECTED)
+                             else "")
             return pads
     return {}
 

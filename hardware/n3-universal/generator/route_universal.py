@@ -14,8 +14,10 @@
     + contrôle géométrique indépendant en Python (distance min cuivre secteur
     <-> cuivre logique >= 3 mm).
 
-Usage : python3 route_230v.py [--jar /chemin/freerouting.jar]
-Prérequis : kicad-cli + module python pcbnew (KiCad 8), java, xvfb-run.
+Usage : python3 route_universal.py [--jar /chemin/freerouting.jar]
+Prérequis : kicad-cli + module python pcbnew (KiCad 8 à 10 ; kicad-cli localisé
+par kicad_tools), java, xvfb-run (Linux). Sur la carte livrée, NE PAS relancer :
+le routage est figé, les retouches passent par finalize_board.py.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ from pathlib import Path
 
 import pcbnew
 
+from kicad_tools import kicad_cli
+
 HERE = Path(__file__).resolve().parent
 KICAD = HERE.parent / "kicad"
 BOARD_PATH = KICAD / "n3-universal.kicad_pcb"
@@ -40,9 +44,28 @@ MAINS_NETS = ({f"REL{n}_{c}" for n in range(1, 7) for c in ("COM", "NO", "NC")}
 # nets pré-routés à la main (retirés du DSN comme les nets secteur)
 HAND_NETS = MAINS_NETS
 MAINS_WIDTH_MM = 2.5
+RV1_STUB_MM = 2.0
 MIN_GAP_MM = 3.0
+# Plan GND coulé <-> cuivre secteur (ligne de fuite renforcée, cf. .kicad_dru)
+MIN_PLANE_GAP_MM = 6.5
 
 FMM = pcbnew.FromMM
+
+
+def via_width_mm(v) -> float:
+    """Diamètre d'un via : KiCad >= 9 exige une couche (padstack par couche),
+    KiCad 8 n'en accepte pas."""
+    try:
+        return pcbnew.ToMM(v.GetWidth(pcbnew.F_Cu))
+    except TypeError:
+        return pcbnew.ToMM(v.GetWidth())
+
+
+def set_via_width(v, width_iu) -> None:
+    try:
+        v.SetWidth(pcbnew.F_Cu, width_iu)
+    except TypeError:
+        v.SetWidth(width_iu)
 
 # Amorces de routage : stubs posés AVANT le routage complet (freerouting
 # préserve l'existant). Le port I2C J14 + C4 (colonne gauche, pincés entre le
@@ -155,11 +178,11 @@ def add_mains_tracks(b):
     Relais rot 90 en (x, 78) : COM (x,78), NO (x+6.05,63.85), NC (x-6,63.8)."""
     nets = b.GetNetsByName()
 
-    def seg(x0, y0, x1, y1, netname):
+    def seg(x0, y0, x1, y1, netname, width=MAINS_WIDTH_MM):
         t = pcbnew.PCB_TRACK(b)
         t.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
         t.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
-        t.SetWidth(FMM(MAINS_WIDTH_MM))
+        t.SetWidth(FMM(width))
         t.SetLayer(pcbnew.F_Cu)
         t.SetNet(nets[netname])
         b.Add(t)
@@ -180,15 +203,18 @@ def add_mains_tracks(b):
     # Geometrie revue a l'audit final rev 0.1 : l'ancien trace faisait passer L a
     # 0,75 mm du pad N de J27 et N // LF a 1,5 mm — ecarts L<->N<->LF desormais
     # >= 3 mm partout hors pas propre des composants (bornier 5,08 / RV1 5 mm).
+    # Les deux amorces de RV1 sont à 2,0 mm (largeur des pads) : à 2,5 mm elles
+    # ramenaient l'écart L<->N à 2,5 mm au droit de la varistance (audit SEC-01).
+    # La branche varistance ne porte aucun courant de charge.
     psu = [
         ("MAINS_L", 255.08, 46, 266, 44),
-        ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 253, 62),
+        ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 253, 62, RV1_STUB_MM),
         ("MAINS_N", 250, 52, 288, 52), ("MAINS_N", 288, 52, 294, 46),
-        ("MAINS_LF", 266, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 258, 62),
+        ("MAINS_LF", 266, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 258, 62, RV1_STUB_MM),
         ("MAINS_LF", 266, 66.5, 303, 66.5), ("MAINS_LF", 303, 66.5, 303, 46),
     ]
-    for netname, x0, y0, x1, y1 in psu:
-        seg(x0, y0, x1, y1, netname)
+    for netname, x0, y0, x1, y1, *w in psu:
+        seg(x0, y0, x1, y1, netname, *w)
     print("pistes secteur ajoutées :", 7 * len(CHANNELS) + len(psu))
 
 
@@ -199,7 +225,7 @@ def copper_items(b):
     for t in b.GetTracks():
         if t.GetClass() == "PCB_VIA":
             p = t.GetPosition()
-            r = pcbnew.ToMM(t.GetWidth()) / 2
+            r = via_width_mm(t) / 2
             items.append((t.GetNetname(),
                           pcbnew.ToMM(p.x), pcbnew.ToMM(p.y),
                           pcbnew.ToMM(p.x), pcbnew.ToMM(p.y), r))
@@ -223,6 +249,11 @@ def copper_items(b):
     # devient un pseudo-segment de demi-largeur nulle. Sans cela le controle
     # etait aveugle au cuivre coule (trou decouvert a l'audit final rev 0.1 :
     # le plan GND penetrait le coin PSU sans etre vu).
+    return items + zone_edges(b)
+
+
+def zone_edges(b):
+    items = []
     for z in b.Zones():
         if z.GetIsRuleArea() or not z.GetNetname():
             continue
@@ -290,12 +321,86 @@ def check_mains_gap(b) -> int:
     return len(worst)
 
 
+def check_mains_plane_gap(b) -> tuple[int, float]:
+    """Distance cuivre secteur <-> bord des plans coulés, COUCHE PAR COUCHE :
+    la ligne de fuite est un chemin en surface, une piste F.Cu et le plan B.Cu
+    sont séparés par l'épaisseur du FR4 (isolant solide). Renvoie
+    (violations, minimum)."""
+    mains = []   # (couche, net, x0, y0, x1, y1, demi-largeur)
+    for t in b.GetTracks():
+        if t.GetNetname() in MAINS_NETS and t.GetClass() == "PCB_TRACK":
+            s, e = t.GetStart(), t.GetEnd()
+            mains.append((t.GetLayer(), t.GetNetname(),
+                          pcbnew.ToMM(s.x), pcbnew.ToMM(s.y),
+                          pcbnew.ToMM(e.x), pcbnew.ToMM(e.y),
+                          pcbnew.ToMM(t.GetWidth()) / 2))
+    for fp in b.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname() not in MAINS_NETS:
+                continue
+            # contour réel du pad (ovale, rectangle…), pas un cercle majorant
+            for lyr in pad.GetLayerSet().CuStack():
+                outl = pad.GetEffectivePolygon(lyr, pcbnew.ERROR_INSIDE).Outline(0)
+                n = outl.PointCount()
+                for j in range(n):
+                    p0, p1 = outl.CPoint(j), outl.CPoint((j + 1) % n)
+                    mains.append((lyr, pad.GetNetname(), pcbnew.ToMM(p0.x), pcbnew.ToMM(p0.y),
+                                  pcbnew.ToMM(p1.x), pcbnew.ToMM(p1.y), 0.0))
+    planes = []
+    for z in b.Zones():
+        if z.GetIsRuleArea() or not z.GetNetname() or z.GetNetname() in MAINS_NETS:
+            continue
+        for lyr in z.GetLayerSet().CuStack():
+            polys = z.GetFilledPolysList(lyr)
+            for i in range(polys.OutlineCount()):
+                outl = polys.Outline(i)
+                n = outl.PointCount()
+                for j in range(n):
+                    p0, p1 = outl.CPoint(j), outl.CPoint((j + 1) % n)
+                    planes.append((lyr, z.GetNetname(), pcbnew.ToMM(p0.x), pcbnew.ToMM(p0.y),
+                                   pcbnew.ToMM(p1.x), pcbnew.ToMM(p1.y)))
+    m = MIN_PLANE_GAP_MM + max((i[6] for i in mains), default=0)
+    x_lo = min(min(i[2], i[4]) for i in mains) - m
+    x_hi = max(max(i[2], i[4]) for i in mains) + m
+    y_lo = min(min(i[3], i[5]) for i in mains) - m
+    y_hi = max(max(i[3], i[5]) for i in mains) + m
+    planes = [p for p in planes
+              if max(p[2], p[4]) >= x_lo and min(p[2], p[4]) <= x_hi
+              and max(p[3], p[5]) >= y_lo and min(p[3], p[5]) <= y_hi]
+    bad, best = 0, float("inf")
+    for ml, mn, mx0, my0, mx1, my1, mr in mains:
+        for zl, zn, zx0, zy0, zx1, zy1 in planes:
+            if zl != ml:
+                continue
+            if (min(zx0, zx1) > max(mx0, mx1) + mr + MIN_PLANE_GAP_MM or
+                    max(zx0, zx1) < min(mx0, mx1) - mr - MIN_PLANE_GAP_MM or
+                    min(zy0, zy1) > max(my0, my1) + mr + MIN_PLANE_GAP_MM or
+                    max(zy0, zy1) < min(my0, my1) - mr - MIN_PLANE_GAP_MM):
+                continue
+            d = seg_dist((mx0, my0, mx1, my1), (zx0, zy0, zx1, zy1)) - mr
+            best = min(best, d)
+            if d < MIN_PLANE_GAP_MM - 0.01:
+                bad += 1
+                if bad <= 10:
+                    print(f"  PLAN {d:.2f} mm < {MIN_PLANE_GAP_MM} : {mn} <-> plan {zn}"
+                          f" vers ({(mx0 + mx1) / 2:.1f},{(my0 + my1) / 2:.1f})")
+    return bad, best
+
+
 def add_stitching_vias(b):
     """Grille de vias GND : lie les deux plans de masse et résorbe les îlots
     créés par les faisceaux de pistes. Placement seulement là où c'est légal
     (écart aux autres nets), jamais dans la zone secteur."""
     items = [(n, x0, y0, x1, y1, r) for (n, x0, y0, x1, y1, r)
              in copper_items(b) if n != "GND"]
+    # Pads GND exclus ci-dessus (même net) mais leurs PERÇAGES restent
+    # interdits : un via de couture était tombé dans la fente plaquée de J2
+    # (48, 110) — « holes overlap » à la DFM JLCPCB (audit GERB-01).
+    items += [("GND", pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y),
+               pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y),
+               max(pcbnew.ToMM(p.GetSize().x), pcbnew.ToMM(p.GetSize().y)) / 2)
+              for fp in b.GetFootprints() for p in fp.Pads()
+              if p.GetNetname() == "GND" and p.GetDrillSize().x > 0]
     nets = b.GetNetsByName()
     slots_margin = []
     import generate as g
@@ -322,7 +427,7 @@ def add_stitching_vias(b):
             continue
         v = pcbnew.PCB_VIA(b)
         v.SetPosition(pcbnew.VECTOR2I(FMM(float(x)), FMM(float(y))))
-        v.SetWidth(FMM(0.7))
+        set_via_width(v, FMM(0.7))
         v.SetDrill(FMM(0.35))
         v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
         v.SetNet(nets["GND"])
@@ -336,7 +441,7 @@ def fix_starved_thermals(max_iters=3):
     import re as _re
     rpt = Path(tempfile.mkdtemp()) / "drc.rpt"
     for it in range(max_iters):
-        subprocess.run(["kicad-cli", "pcb", "drc", "--severity-error",
+        subprocess.run([kicad_cli(), "pcb", "drc", "--severity-error",
                         "-o", str(rpt), str(BOARD_PATH)],
                        capture_output=True, text=True)
         txt = rpt.read_text()
@@ -418,7 +523,9 @@ def main():
     b2 = pcbnew.LoadBoard(str(BOARD_PATH))
     bad = check_mains_gap(b2)
     print("violations 3 mm :", bad)
-    sys.exit(1 if bad else 0)
+    bad_plane, best = check_mains_plane_gap(b2)
+    print(f"plan GND <-> secteur : min {best:.2f} mm, violations {MIN_PLANE_GAP_MM} mm : {bad_plane}")
+    sys.exit(1 if bad or bad_plane else 0)
 
 
 if __name__ == "__main__":

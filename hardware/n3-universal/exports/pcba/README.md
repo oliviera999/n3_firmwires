@@ -1,7 +1,9 @@
-# Fichiers d'assemblage (PCBA) — n3-universal rev 0.1
+# Fichiers d'assemblage (PCBA) — n3-universal rev 0.1.1
 
 Fichiers au format attendu par JLCPCB (BOM : `Comment,Designator,Footprint,LCSC Part #` ;
 CPL : `Designator,Mid X,Mid Y,Layer,Rotation`, repère identique aux gerbers, Y négatif).
+Positions recontrôlées le 2026-10-06 contre le PCB rev 0.1.1 (`exports/cpl-jlcpcb.csv`) :
+seule la rotation de **J2** a changé (−90° → 0°, jack ouvert vers le bord, `GEN-02`).
 
 | Fichier | Contenu |
 |---------|---------|

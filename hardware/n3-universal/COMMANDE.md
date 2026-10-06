@@ -1,9 +1,12 @@
-# Commander n3-universal rev 0.1 — check-list fabricant
+# Commander n3-universal rev 0.1.1 — check-list fabricant
 
 > Issue de l'audit pré-commande du 2026-08-28 (7 dimensions : netlist, pinmap/firmwares,
-> sécurité 230 V, gerbers, générateurs/empreintes, BOM/assemblage, options de commande).
-> Fichier à envoyer : `exports/gerbers-n3-universal-v0.1.zip` (7 couches + PTH/NPTH,
-> déjà au format accepté tel quel par JLCPCB).
+> sécurité 230 V, gerbers, générateurs/empreintes, BOM/assemblage, options de commande),
+> finalisée sous KiCad 10 le 2026-10-06 (audit §11).
+> Fichier à envoyer : `exports/gerbers-n3-universal-v0.1.1.zip` (7 couches + PTH/NPTH,
+> déjà au format accepté tel quel par JLCPCB ; DRC KiCad 0 erreur avant export).
+> Le zip v0.1 d'août est **périmé** (via de J2 dans une fente, plan GND à y84) et a été
+> retiré de `exports/`.
 
 ## 0. AVANT de payer — actions obligatoires
 
@@ -18,22 +21,19 @@
    par Hi-Link/LCSC C465406) est **contredite par le dessin mécanique p.14 du
    datasheet** (colonnes 44,7 mm). Perçages 1,3 mm : aucun rattrapage possible si
    le module livré suit le dessin.
-3. **Corrections recommandées avant export** (nécessitent KiCad, ~1 h, cf. audit) :
-   - **J2 (jack 5 V)** : ouverture orientée vers l'**intérieur** de la carte (face à
-     la colonne R1/R5/R9 du canal K1, à ~3 mm) → pivoter vers le bord gauche ou
-     supprimer (le bornier J1 assure l'entrée 5 V, et le jack DC-005 n'est de toute
-     façon coté que ~2,5 A pour un « 5V 3A » sérigraphié) ;
-   - **via GND (48,110)** superposé à la fente plaquée du pad 2 de J2 → à supprimer
-     (même net, redondant) sinon la DFM JLCPCB s'arrête sur « holes overlap » ;
-   - pads TO-92 (27 trous) : anneau 0,15 mm < reco JLCPCB 2 oz 0,25 mm → perçage
-     0,6 mm ou pads élargis ; sinon accepter la remarque DFM ;
-   - sérigraphie : traits 0,12 mm → 0,15 mm ; **dégager des pads et des trous** les
-     libellés qui les recouvrent (26 pads, dont le pad 1 des six relais, et 30 perçages) ;
-     ajouter les polarités +/− sur J1/J26/J36/J37 ; resserrer les pistes 230 V à l'approche
-     de RV1/J27 (écart L↔N mesuré 2,50 mm, l'annonce « ≥ 3 mm » ne tient qu'hors approche
-     de pads).
-   La carte est **commandable sans ces retouches** (aucun défaut bloquant) : dans ce
-   cas, répondre « accept » aux remarques DFM ci-dessus.
+3. **Corrections recommandées avant export — FAITES en rev 0.1.1** (audit §11) :
+   - [x] **J2 (jack 5 V)** pivoté à 0°, ouverture au bord gauche ;
+   - [x] plus de **via dans la fente** de J2 (« holes overlap » JLCDFM levé) ;
+   - [x] plan GND remonté à **y86** : ligne de fuite secteur ≥ 6,5 mm (`SEC-CRP-01`) ;
+   - [x] sérigraphie : traits ≥ 0,15 mm, libellés et repères **dégagés des pads et des
+     trous**, polarités « + / GND » sur J1/J26/J36/J37, « COM = PHASE », alerte HC-SR04,
+     « UN SEUL MODULE » ; sérigraphie retirée des ouvertures de masque à l'export ;
+   - [x] pistes 230 V à 2,0 mm à l'approche de RV1 ;
+   - pads TO-92 (27 trous) : **perçage conservé à 0,75 mm** (pattes ~0,6 mm en diagonale,
+     tolérance ±0,08 mm) → accepter la remarque DFM « annular ring ».
+4. **Ré-analyser `gerbers-n3-universal-v0.1.1.zip` dans JLCDFM** (`dfm.jlcdfm.com`) avant
+   de payer. Attendu : plus aucune ligne *Danger* ; restent en *Warning* l'anneau TO-92
+   et éventuellement les fentes à 1,0 mm (`GBR-05`).
 
 ## 1. JLCPCB (https://jlcpcb.com/) — valeurs du formulaire
 
@@ -62,10 +62,11 @@ Surcoûts attendus : 2 oz (principal), surface 278×120 (> 100 mm ⇒ hors promo
 LeadFree HASL (léger). Ordre de grandeur : **~45-75 $ les 5 + port** (~1 kg) ≈
 60-100 € livré.
 
-**Remarques DFM — mesurées, plus supposées.** Le dossier a été passé au JLCDFM le
-2026-08-29 (`dfm.jlcdfm.com`, rapport joint à l'audit §8). Il ne relève **aucun défaut de
-routage** : 4 lignes Danger et 2 Warning, pour 3 causes seulement. Si la carte part sans
-re-export, répondre **« accept »** aux trois :
+**Remarques DFM — mesurées, plus supposées.** Le dossier **v0.1** a été passé au JLCDFM le
+2026-08-29 (`dfm.jlcdfm.com`, rapport `DFM analysis report_JLCDFM_gerbers-n3-universal-v0.1.pdf`,
+audit §8). Il ne relevait **aucun défaut de routage** : 4 lignes Danger et 2 Warning, pour
+3 causes seulement — les deux premières sont **corrigées en v0.1.1**, seule la troisième
+(anneau TO-92) reste à accepter. Historique v0.1 :
 
 | Ligne du DFM | Cause | Décision |
 |--------------|-------|----------|

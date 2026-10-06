@@ -12,16 +12,18 @@ des couloirs d'insertion par tools/check_pcb_clearance.py). Les empreintes provi
 bibliothèque officielle KiCad 8.0.9 (vendorées dans ./footprints, licence
 CC-BY-SA 4.0 avec exception d'usage — voir README).
 
-Usage : python3 generate.py   (écrit dans ../kicad/ et ../BOM.csv)
+Usage : python generate.py [--regen-pcb]   (écrit dans ../kicad/ et ../BOM.csv)
 
 Les fichiers générés sont au format KiCad 8 (s-expressions), ouvrables et
-éditables dans KiCad 8/9/10. Régénérer écrase les fichiers : faire les
-retouches durables ici (ou dans pinmap.json), pas dans les fichiers générés,
-ou cesser de régénérer une fois le routage manuel commencé.
+éditables dans KiCad 8/9/10 (le PCB routé est enregistré au format KiCad 10).
+Méthode hybride : un PCB déjà routé n'est PAS réécrit (pistes et zones
+perdues) sauf `--regen-pcb` ; les libellés `PCB_TEXTS` y sont reportés par
+finalize_board.py. Schéma, BOM, règles et empreintes sont toujours régénérés.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import math
@@ -34,7 +36,8 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3-universal"
-REV = "0.1"
+REV = "0.1.1"
+REV_DATE = "2026-10-06"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -697,12 +700,12 @@ def build_components():
             dict(ref=jref, sym="CONN_03", value="Bornier_5.08",
                  fp="TerminalBlock_bornier-3_P5.08mm",
                  desc=f"Entrée analogique {net} (1=3V3_SW 2=SIG 3=GND) — LDR msp / sonde sol n3pp",
-                 sch=(146, 108 + 4 * i), pcb=(x, 151, 0),
+                 sch=(156, 124 + 4 * i), pcb=(x, 151, 0),
                  nets={"1": "+3V3_SW", "2": net, "3": "GND"}),
             dict(ref=rref, sym="R", value="10k*",
                  fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
                  desc=f"Bas de pont {net} (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)",
-                 sch=(155, 108 + 4 * i), pcb=(218, 120 + 4.5 * i, 0),
+                 sch=(165, 124 + 4 * i), pcb=(218, 120 + 4.5 * i, 0),
                  nets={"1": net, "2": "GND"}),
         ]
     # --- Pluie (msp, net US1) et DHT externe (msp, net US2) --------------------
@@ -726,7 +729,7 @@ def build_components():
     comps.append(dict(ref="J28", sym="CONN_04", value="Support I2C libre",
                       fp="PinSocket_1x04_P2.54mm_Vertical",
                       desc="Port I2C libre 4 — INA219/226 (1=GND 2=VCC 3=SCL 4=SDA)",
-                      sch=(126, 134), pcb=(66, 106, 0),
+                      sch=(156, 142), pcb=(66, 106, 0),
                       nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}))
     # --- Trous de fixation M3 --------------------------------------------------
     # H1 (coin relais) : enclavé par le corps de K1, une tête de vis métal serait
@@ -897,14 +900,15 @@ PCB_TEXTS = [
     (160, 43, "K4 LUMIERE", 1.0),
     (194, 43, "K5 AUX1", 1.0),
     (228, 43, "K6 AUX2", 1.0),
-    (194, 57.5, "NC COM NO", 0.8),
-    (228, 57.5, "NC COM NO", 0.8),
-    (58, 57.5, "NC COM NO", 0.8),
-    (92, 57.5, "NC COM NO", 0.8),
-    (126, 57.5, "NC COM NO", 0.8),
-    (160, 57.5, "NC COM NO", 0.8),
-    (144, 71, "!! ZONE 230V - DANGER - COUPER LE SECTEUR AVANT INTERVENTION !!", 1.3),
-    (110, 86.5, f"n3-universal v{REV} — msp / n3pp / ffp5cs", 1.4),
+    *[(x, 55.8, "NC COM NO", 0.8) for x in (58, 92, 126, 160, 194, 228)],
+    # COM reçoit la PHASE : un COM sur le neutre laisse la charge sous tension
+    # relais ouvert (audit SEC-COM-01).
+    *[(x, 57.9, "COM = PHASE", 0.8) for x in (58, 92, 126, 160, 194, 228)],
+    # Bandeau scindé sous la rangée de relais : d'un seul tenant (72 mm) il
+    # traversait les corps de K3/K4 et les mini-fentes (DRC silk_overlap).
+    (104.5, 83, "!! ZONE 230V - DANGER !!", 1.3),
+    (170, 83, "COUPER LE SECTEUR AVANT INTERVENTION", 1.0),
+    (150, 93.5, f"n3-universal v{REV} — msp / n3pp / ffp5cs", 1.4, "B.SilkS"),
     (134, 146.5, "US AQUA", 1.0),
     (148, 146.5, "US RESERV", 1.0),
     (162, 146.5, "US POTAGER", 1.0),
@@ -925,15 +929,17 @@ PCB_TEXTS = [
     (56, 139, "5V", 0.9),
     (268, 121.5, "3V3", 0.9),
     (52, 104, "5V 3A", 1.2),
-    (112.7, 101.5, "ANTENNE WIFI : zone degagee (pas de cuivre dessous)", 0.8),
+    (111.5, 107.5, "ANTENNE : pas de cuivre dessous", 0.8),
     # Emplacement imposé du numéro de commande JLCPCB (au dos) :
     # sans ce marqueur, le fabricant le place où il veut, parfois
     # sur une étiquette de câblage. Option de commande : "Specify a location".
     (204, 100, "GATE +3V3_SW (GPIO13)", 0.9),
-    (238, 111, "JP1 BYPASS 1-2: FERME=rail permanent (ffp5cs)", 0.8),
-    (238, 114, "OTER pour profils batterie (msp/n3pp)", 0.8),
-    (204, 121.5, "PONT DIV VBAT (R38/R39 selon profil)", 0.8),
-    (198, 135.8, "JP SD: 1-2=S3 / 2-3=WROOM (wroom-sd)", 0.8),
+    # JP1 : pas de place horizontale près du cavalier -> rappel vertical en
+    # face avant, consigne complète au dos, derrière JP1.
+    (247.5, 102.5, "JP1: FERME=ffp5cs", 0.8, "F.SilkS", 90),
+    (229, 103.5, "JP1 FERME=permanent ffp5cs / OUVERT=msp,n3pp", 0.8, "B.SilkS"),
+    (203, 109.5, "PONT DIV VBAT (R38/R39 selon profil)", 0.8),
+    (196.5, 139.3, "JP SD 1-2=S3 2-3=WROOM", 0.8),
     (209, 139.5, "SD", 1.0),
     (222, 154, "BUS 12V: FUSIBLE LAME 7,5-10A EN AMONT OBLIGATOIRE", 0.8, "B.SilkS"),
     (272, 147.5, "VBAT SENSE", 0.8),
@@ -948,10 +954,20 @@ PCB_TEXTS = [
     (70, 97, "I2C EXT x2 + INA/DS3231", 0.8),
     (261.4, 78, "ANTENNE S3: zone degagee", 0.8),
     (253, 52, "SECTEUR 230V", 1.0),
-    (258, 58, "!! DANGER 230V !!", 1.1),
+    (255, 55, "!! DANGER 230V !!", 1.0),
     (294, 102.5, "SERVOS", 0.9),
     (298, 158, "J20 5V/GND/3V3SW", 0.7),
     (250, 156.5, "UN SEUL MODULE : A1 (WROOM) OU A2 (S3)", 0.9, "B.SilkS"),
+    # Rappel aussi en face avant, là où l'on pose le module (audit DEG-05)
+    (112, 157, "UN SEUL MODULE : A1 (WROOM) OU A2 (S3)", 0.9),
+    # Polarité des entrées d'alimentation à vis (audit SEC-02) : J1 et J37
+    # arrivent sur +5V sans protection d'inversion.
+    (55.5, 131, "+", 1.2), (56.5, 125.9, "GND", 0.9),
+    (216, 157, "+", 1.2), (221.1, 157, "GND", 0.9),
+    (244, 157, "+", 1.2), (249.1, 157, "GND", 0.9),
+    (258, 157, "+", 1.2), (263.1, 157, "GND", 0.9),
+    # Sans R17-R19, un HC-SR04 envoie ~5 V sur le GPIO (audit NET-03)
+    (148, 126.5, "HC-SR04 : R17-R19 REQUISES (ffp5cs)", 0.8),
     (80, 155.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
 ]
 
@@ -1025,11 +1041,16 @@ def gen_schematic() -> str:
             items.append(
                 f'  (wire (pts (xy {px:.2f} {py:.2f}) (xy {ex:.2f} {py:.2f}))\n'
                 f'    (stroke (width 0) (type default)) (uuid "{uid("wire", c["ref"], num)}"))')
-            just = "right" if side == "L" else "left"
+            # Étiquette GLOBALE : un label local nomme le net « /GND » alors que
+            # le PCB (et .kicad_dru, check_mains_gap, le checker de brochage)
+            # le nomme « GND » — le DRC de parité signalait chaque pad.
+            just, angle = ("right", 180) if side == "L" else ("left", 0)
             items.append(
-                f'  (label "{net}" (at {ex:.2f} {py:.2f} 0)\n'
-                f'    (effects (font (size 1.27 1.27)) (justify {just} bottom))\n'
-                f'    (uuid "{uid("label", c["ref"], num)}"))')
+                f'  (global_label "{net}" (shape passive) (at {ex:.2f} {py:.2f} {angle})\n'
+                f'    (effects (font (size 1.27 1.27)) (justify {just}))\n'
+                f'    (uuid "{uid("label", c["ref"], num)}")\n'
+                f'    (property "Intersheetrefs" "${{INTERSHEET_REFS}}" (at {ex:.2f} {py:.2f} 0)\n'
+                f'      (effects (font (size 1.27 1.27)) (hide yes))))')
     for i, (tx, ty, txt) in enumerate(SCH_TEXTS):
         items.append(
             f'  (text "{txt}" (exclude_from_sim no) (at {tx * G:.2f} {ty * G:.2f} 0)\n'
@@ -1039,10 +1060,10 @@ def gen_schematic() -> str:
   (generator "eeschema")
   (generator_version "8.0")
   (uuid "{ROOT_UUID}")
-  (paper "A3")
+  (paper "A2")
   (title_block
     (title "n3-universal - carte porteuse UNIVERSELLE msp / n3pp / ffp5cs (bi-module WROOM / ESP32-S3)")
-    (date "2026-07-07")
+    (date "{REV_DATE}")
     (rev "{REV}")
     (company "salle aeree n3")
     (comment 1 "Genere par hardware/n3-universal/generator/generate.py")
@@ -1068,6 +1089,18 @@ def collect_nets():
     for c in COMPONENTS:
         nets.update(n for n in c["nets"].values() if n)
     return sorted(nets)
+
+
+def unconnected_pins(c):
+    """{numéro: net} des broches de symbole non câblées, au nom que KiCad leur
+    donne (« unconnected-(A2-GPIO46-Pad14) ») : le DRC de parité exige ce net
+    sur le pad, comme après « Mettre à jour le PCB depuis le schéma »."""
+    if not c["sym"]:
+        return {}
+    meta = SYMBOLS[c["sym"]]
+    return {num: f"unconnected-({c['ref']}-{name}-Pad{num})"
+            for num, name, _y in meta.get("left", []) + meta.get("right", [])
+            if not c["nets"].get(num)}
 
 
 def load_footprint(name: str):
@@ -1181,19 +1214,37 @@ SILK_RATIO = 0.16   # trait / hauteur -> 0,16 mm à hauteur 1 mm
 
 
 def silk_text(i: int, entry) -> str:
-    """Texte de sérigraphie. entry = (x, y, texte, hauteur[, couche])."""
+    """Texte de sérigraphie. entry = (x, y, texte, hauteur[, couche[, angle]])."""
     x, y, t, s = entry[:4]
     layer = entry[4] if len(entry) > 4 else "F.SilkS"
+    angle = entry[5] if len(entry) > 5 else 0
     h = max(float(s), SILK_MIN_H)
     mirror = " (justify mirror)" if layer.startswith("B.") else ""
-    return (f'  (gr_text "{t}" (at {x} {y} 0) (layer "{layer}") '
+    return (f'  (gr_text "{t}" (at {x} {y} {angle}) (layer "{layer}") '
             f'(uuid "{uid("gtxt", i)}")\n'
             f'    (effects (font (size {h} {h}) '
             f'(thickness {h * SILK_RATIO:.2f})){mirror}))')
 
 
+SILK_MIN_STROKE = 0.15   # minimum JLCPCB ; les libs KiCad dessinent à 0,12 (GBR-02)
+
+
+def widen_silk_strokes(tree) -> None:
+    for item in tree:
+        if not (isinstance(item, list) and item and str(item[0]).startswith("fp_")):
+            continue
+        layer = sx_find_all(item, Sym("layer"))
+        if not layer or "SilkS" not in str(layer[0][1]):
+            continue
+        for stroke in sx_find_all(item, Sym("stroke")):
+            for w in sx_find_all(stroke, Sym("width")):
+                if float(w[1]) < SILK_MIN_STROKE:
+                    w[1] = Sym(f"{SILK_MIN_STROKE}")
+
+
 def gen_pcb() -> str:
-    nets = collect_nets()
+    nets = collect_nets() + sorted(n for c in COMPONENTS
+                                   for n in unconnected_pins(c).values())
     net_no = {n: i + 1 for i, n in enumerate(nets)}
     net_decl = "\n".join(f'  (net {i + 1} "{n}")' for i, n in enumerate(nets))
     fp_blocks = []
@@ -1209,13 +1260,20 @@ def gen_pcb() -> str:
             [Sym("path"), f"/{uid('sym', c['ref'])}"],
         ]
         tree[2:2] = insert
+        widen_silk_strokes(tree)
+        if not c["sym"]:
+            # Empreinte sans symbole (visserie) : « board only », sinon le DRC
+            # de parité schéma/PCB la signale comme empreinte orpheline.
+            for attr in sx_find_all(tree, Sym("attr")):
+                if Sym("board_only") not in attr:
+                    attr.insert(1, Sym("board_only"))
         for prop in sx_find_all(tree, Sym("property")):
             if prop[1] == "Reference":
                 prop[2] = c["ref"]
             elif prop[1] == "Value":
                 prop[2] = c["value"]
         for pad_idx, pad in enumerate(sx_find_all(tree, Sym("pad"))):
-            net = c["nets"].get(str(pad[1]))
+            net = c["nets"].get(str(pad[1])) or unconnected_pins(c).get(str(pad[1]))
             if rot:
                 for atn in sx_find_all(pad, Sym("at")):
                     while len(atn) < 4:
@@ -1271,7 +1329,10 @@ def gen_pcb() -> str:
     # (45.2..246 x 40..84) ET le coin PSU secteur (246..318 x 40..73) — l'audit
     # rev 0.1 a montré que le coin PSU, ajouté avec le profil Hi-Link, n'était
     # pas exclu : le plan GND coulait sous les pistes/pads 230 V.
-    zx0, zx1, zy, pzy = 45.2, 246, 84, 73
+    # Bord bas de la bande relais à y86 (et non y84) : les pads COM descendent
+    # à y79,5, la ligne de fuite pad COM -> plan GND passe de 4,5 à 6,5 mm, au-dessus
+    # de l'exigence d'isolation renforcée (~5,0 mm) — audit SEC-CRP-01.
+    zx0, zx1, zy, pzy = 45.2, 246, GND_PLANE_RELAY_Y, 73
     poly = ('(polygon (pts '
             f'(xy {b["x0"]} {b["y0"]}) (xy {zx0} {b["y0"]}) (xy {zx0} {zy}) '
             f'(xy {zx1} {zy}) (xy {zx1} {pzy}) (xy {b["x1"]} {pzy}) '
@@ -1311,7 +1372,7 @@ def gen_pcb() -> str:
   (paper "A3")
   (title_block
     (title "n3-universal - carte porteuse UNIVERSELLE msp / n3pp / ffp5cs (bi-module WROOM / ESP32-S3)")
-    (date "2026-07-07")
+    (date "{REV_DATE}")
     (rev "{REV}")
     (company "salle aeree n3")
   )
@@ -1338,10 +1399,26 @@ _NC = {"clearance": 0.2, "track_width": 0.3, "via_diameter": 0.7,
        "schematic_color": "rgba(0, 0, 0, 0.000)", "wire_width": 6}
 
 
-DRU_RULES = """(version 1)
+GND_PLANE_RELAY_Y = 86
+MAINS_PLANE_GAP_MM = 6.5
+
+# 2e règle : un plan coulé est une surface étendue, la ligne de fuite vers lui
+# est le plus court chemin en surface — on exige 6,5 mm (isolation renforcée
+# ~5,0 mm, PD2, groupe IIIa) et le remplisseur de zones l'applique de lui-même.
+DRU_RULES = f"""(version 1)
 (rule "mains_vs_logic"
   (condition "A.NetClass == 'Mains' && B.NetClass != 'Mains'")
   (constraint clearance (min 3.0mm)))
+(rule "mains_vs_gnd_plane"
+  (condition "A.NetClass == 'Mains' && B.Type == 'Zone' && B.NetClass != 'Mains'")
+  (constraint clearance (min {MAINS_PLANE_GAP_MM}mm)))
+"""
+
+
+FP_LIB_TABLE = """(fp_lib_table
+  (version 7)
+  (lib (name "n3u") (type "KiCad") (uri "${KIPRJMOD}/../generator/footprints") (options "") (descr "Empreintes vendorees n3-universal"))
+)
 """
 
 
@@ -1554,7 +1631,16 @@ def check_pcb_overlaps():
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--regen-pcb", action="store_true",
+                    help="réécrire aussi le .kicad_pcb (PERD le routage)")
+    args = ap.parse_args()
     KICAD_DIR.mkdir(parents=True, exist_ok=True)
+    pcb_path = KICAD_DIR / f"{PROJECT}.kicad_pcb"
+    # Méthode hybride : le PCB routé (route_universal + finalize_board) est la
+    # référence géométrique ; le régénérer ici effacerait pistes et zones.
+    keep_pcb = (not args.regen_pcb and pcb_path.exists()
+                and "(segment" in pcb_path.read_text(encoding="utf-8"))
     devkit_fp = FP_DIR / "ESP32_DevKit_V1_30pin.kicad_mod"
     devkit_fp.write_text(gen_devkit_footprint(), encoding="utf-8")
     (FP_DIR / "ESP32_S3_DevKitC_1_44pin.kicad_mod").write_text(
@@ -1567,9 +1653,14 @@ def main():
     sx_parse(sch)  # auto-validation syntaxique
     sx_parse(pcb)
     (KICAD_DIR / f"{PROJECT}.kicad_sch").write_text(sch, encoding="utf-8")
-    (KICAD_DIR / f"{PROJECT}.kicad_pcb").write_text(pcb, encoding="utf-8")
-    (KICAD_DIR / f"{PROJECT}.kicad_pro").write_text(gen_project(), encoding="utf-8")
+    if keep_pcb:
+        print(f"{pcb_path.name} routé conservé (--regen-pcb pour le réécrire) ;"
+              " libellés : finalize_board.py")
+    else:
+        pcb_path.write_text(pcb, encoding="utf-8")
+        (KICAD_DIR / f"{PROJECT}.kicad_pro").write_text(gen_project(), encoding="utf-8")
     (KICAD_DIR / f"{PROJECT}.kicad_dru").write_text(DRU_RULES, encoding="utf-8")
+    (KICAD_DIR / "fp-lib-table").write_text(FP_LIB_TABLE, encoding="utf-8")
     with open(ROOT / "BOM.csv", "w", newline="", encoding="utf-8") as f:
         csv.writer(f, delimiter=";").writerows(gen_bom())
 

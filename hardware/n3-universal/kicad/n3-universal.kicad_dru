@@ -2,3 +2,6 @@
 (rule "mains_vs_logic"
   (condition "A.NetClass == 'Mains' && B.NetClass != 'Mains'")
   (constraint clearance (min 3.0mm)))
+(rule "mains_vs_gnd_plane"
+  (condition "A.NetClass == 'Mains' && B.Type == 'Zone' && B.NetClass != 'Mains'")
+  (constraint clearance (min 6.5mm)))

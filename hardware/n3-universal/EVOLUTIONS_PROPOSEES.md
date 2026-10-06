@@ -87,8 +87,9 @@ sortie GPIO. C'est ce qui rend le montage sûr pour l'ESP32.
   d'ailleurs **mieux tenue** qu'aujourd'hui : en forçage, la base n'est plus reliée à GPIO45.
 - **Cavalier perdu** = canal OFF (pas ON). C'est le comportement de sécurité voulu.
 - **Zone 230 V** : le header est un net 3,3 V dans la colonne de commande (y ≥ 86 mm),
-  loin de la bande secteur (contacts à y ≤ 79,5, plan GND repoussé à y84). La règle
-  `.kicad_dru` (cuivre Mains ≥ 3 mm du reste) s'applique sans adaptation.
+  loin de la bande secteur (contacts à y ≤ 79,5, plan GND repoussé à y86 en rev 0.1.1).
+  Les règles `.kicad_dru` (cuivre Mains ≥ 3 mm du reste, ≥ 6,5 mm des plans coulés)
+  s'appliquent sans adaptation.
 
 ### 1.3 Chauffage : ON forcé ou pas ?
 
