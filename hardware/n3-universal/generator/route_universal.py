@@ -199,18 +199,18 @@ def add_mains_tracks(b):
         seg(x - 6.0, 58, x - 5.08, 54, f"REL{n}_NC")
         seg(x - 5.08, 54, x - 5.08, 50, f"REL{n}_NC")
     # Bloc PSU secteur : J27 (1=N a 250,46 ; 2=L a 255.08,46) -> F1 (266,44)/(266,66.5)
-    # -> RV1 (253,62)=N / (258,62)=LF -> HLK PS1 (303,46)=LF / (294,46)=N.
+    # -> RV1 (252,60)=N / (259.5,62.4)=LF -> HLK PS1 (303,46)=LF / (294,46)=N.
     # Geometrie revue a l'audit final rev 0.1 : l'ancien trace faisait passer L a
     # 0,75 mm du pad N de J27 et N // LF a 1,5 mm — ecarts L<->N<->LF desormais
-    # >= 3 mm partout hors pas propre des composants (bornier 5,08 / RV1 5 mm).
+    # >= 3 mm partout hors pas propre des composants (bornier 5,08 / RV1 7,5 mm).
     # Les deux amorces de RV1 sont à 2,0 mm (largeur des pads) : à 2,5 mm elles
     # ramenaient l'écart L<->N à 2,5 mm au droit de la varistance (audit SEC-01).
     # La branche varistance ne porte aucun courant de charge.
     psu = [
         ("MAINS_L", 255.08, 46, 266, 44),
-        ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 253, 62, RV1_STUB_MM),
+        ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 252, 60, RV1_STUB_MM),
         ("MAINS_N", 250, 52, 288, 52), ("MAINS_N", 288, 52, 294, 46),
-        ("MAINS_LF", 266, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 258, 62, RV1_STUB_MM),
+        ("MAINS_LF", 266, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 259.5, 62.4, RV1_STUB_MM),
         ("MAINS_LF", 266, 66.5, 303, 66.5), ("MAINS_LF", 303, 66.5, 303, 46),
     ]
     for netname, x0, y0, x1, y1, *w in psu:

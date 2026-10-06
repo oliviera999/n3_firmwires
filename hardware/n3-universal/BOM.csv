@@ -9,9 +9,11 @@ C5;1;470u/25V;CP_Radial_D10.0mm_P5.00mm;Réservoir bus 12V protégé
 D1 D2 D3 D4 D6 D7;6;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine
 D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché)
 D8;1;P6KE18A;D_DO-201AD_P15.24mm_Horizontal;TVS 18V transitoires bus batterie
+D9;1;1N4744A;D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp;Zener 15V grille-source de Q11 (K=source, A=grille) : VGS borné à -15 V
 F1;1;T1A 5x20;Fuse_5x20_Horizontal;Fusible entrée secteur du module alim (temporisé 1A)
 H1;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE (tête métal à <5 mm du 230V)
 H2 H3 H4;3;M3;MountingHole_3.2mm_M3;Trou de fixation M3
+H5;1;M3;MountingHole_3.2mm_M3;Trou de fixation M3 — H5 : VIS NYLON OBLIGATOIRE (entre les pistes N et L du coin secteur)
 J1;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Entrée 5V alternative (bornier, 1=+5V 2=GND)
 J10;1;JST-XH;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical;DHT11/DHT22 (1=3V3 2=DATA 3=GND)
 J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3 2=DATA 3=GND)
@@ -23,7 +25,7 @@ J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=G
 J17;1;Header service;PinHeader_1x06_P2.54mm_Vertical;Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle
 J18;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND)
 J19;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND)
-J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V 3A (jack, centre = +, ouverture bord gauche)
+J2;1;Jack 5.5/2.1;BarrelJack_Horizontal;Entrée 5V (jack DC-005 ~2,5 A, centre = +, ouverture bord gauche)
 J20;1;Header alim;PinHeader_1x06_P2.54mm_Vertical;Rail Dupont (1-2=+5V 3-4=GND 5-6=+3V3_SW)
 J21;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)
 J22;1;Support I2C libre;PinSocket_1x04_P2.54mm_Vertical;Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)
@@ -54,7 +56,7 @@ LED5;1;verte;LED_D5.0mm;LED présence 5V
 PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous)
 Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline;Transistor NPN commande relais (1=C 2=B 3=E)
 Q10;1;BC337-40;TO-92_Inline;Driver diviseur (1=C 2=B 3=E)
-Q11;1;NDP6020P;TO-220-3_Vertical;Anti-inversion P-MOSFET (1=G 2=D=entrée 3=S=sortie)
+Q11;1;IRF4905;TO-220-3_Vertical;Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie)
 Q7;1;NDP6020P;TO-220-3_Vertical;P-MOSFET rail capteurs (1=G 2=D 3=S)
 Q8;1;BC337-40;TO-92_Inline;Driver gate (1=C 2=B 3=E)
 Q9;1;BS250;TO-92_Inline;P-MOSFET coupure haute du diviseur (1=D 2=G 3=S)
@@ -79,7 +81,7 @@ R36;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille BS25
 R37;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base driver diviseur (actif quand +3V3_SW présent)
 R38;1;100k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Haut du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=100k)"
 R39;1;22k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas du pont (VALEUR SELON PROFIL : 1S=100k ; 12V=22k)"
-R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND
+R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND (limite le courant de D9)
 R43;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_A (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 R44;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_B (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
 R45;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_C (POSER pour LDR msp ; ABSENT pour sonde sol n3pp)"
@@ -87,7 +89,7 @@ R46;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_D 
 R47;1;10k*;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up DHT ext (POSER sur unités msp uniquement)
 R29 R32 R5 R6 R7 R8;6;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-down base (état sûr au boot)
 R10 R11 R12 R30 R33 R9;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED témoin
-RV1;1;10D471K;CP_Radial_D10.0mm_P5.00mm;"Varistance 300VAC transitoires secteur — pattes à replier (pas réel 7,5 mm sur une empreinte 5,0 mm) : pose main, à exclure d'un assemblage machine ; le repère + de l'empreinte est sans objet"
+RV1;1;10D471K;RV_Disc_D12mm_W5.4mm_P7.5mm;Varistance 300VAC transitoires secteur (disque 10 mm, pas 7,5 mm)
 A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé
 A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu
 J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2). Sur WROOM (site A1) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V) — sinon la carte SD peut tirer GPIO12/MTDI haut au boot (strap flash 1,8V). PAS de module type Catalex (tampon toujours actif + régulateur 5V)
@@ -95,4 +97,4 @@ J14/J21/J22/J28 (modules);0-4;DS3231 + INA226;s'enfichent sur les ports I2C;"DS3
 J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont"
 F1 (clips);2;Clip porte-fusible 5x20 à souder;s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal;Entraxe ~22,5 mm. INDISPENSABLES au profil secteur : la cartouche verre n'a pas de pattes à souder
 JP1-JP4 (cavaliers);5;Cavalier (shunt) 2,54 mm;se posent sur JP1..JP4;"JP1 FERME par défaut (rail permanent, ffp5cs) ; JP2/3/4 en 1-2 (microSD sur site S3). 4 utilisés + 1 rechange"
-H1 (visserie);1;Vis + écrou NYLON M3;trou de fixation H1 (coin relais);OBLIGATOIRE : une tête métal serait à ~4,3 mm du 230V. H2-H4 : visserie M3 standard + entretoises
+H1, H5 (visserie);2;Vis + écrou NYLON M3 (+ entretoise nylon);trous de fixation H1 (coin relais) et H5 (coin secteur);"OBLIGATOIRE : H1 = tête métal à ~4,3 mm du 230V ; H5 = entre les pistes N et L. H2-H4 : visserie M3 standard + entretoises"

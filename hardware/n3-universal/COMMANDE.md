@@ -1,20 +1,22 @@
-# Commander n3-universal rev 0.1.1 — check-list fabricant
+# Commander n3-universal rev 0.1.2 — check-list fabricant
 
 > Issue de l'audit pré-commande du 2026-08-28 (7 dimensions : netlist, pinmap/firmwares,
 > sécurité 230 V, gerbers, générateurs/empreintes, BOM/assemblage, options de commande),
-> finalisée sous KiCad 10 le 2026-10-06 (audit §11).
-> Fichier à envoyer : `exports/gerbers-n3-universal-v0.1.1.zip` (7 couches + PTH/NPTH,
+> finalisée sous KiCad 10 le 2026-10-06 (audit §11 et §12).
+> Fichier à envoyer : `exports/gerbers-n3-universal-v0.1.2.zip` (7 couches + PTH/NPTH,
 > déjà au format accepté tel quel par JLCPCB ; DRC KiCad 0 erreur avant export).
-> Le zip v0.1 d'août est **périmé** (via de J2 dans une fente, plan GND à y84) et a été
-> retiré de `exports/`.
+> Les zips v0.1 (via de J2 dans une fente, plan GND à y84) et v0.1.1 (Q11 en NDP6020P,
+> VGS hors limites en profil 12 V) sont **périmés** et ont été retirés de `exports/`.
 
 ## 0. AVANT de payer — actions obligatoires
 
-1. **Sécuriser les NDP6020P** (Q7 + Q11 = 2/carte) : onsemi **épuisé** chez LCSC
-   (C68561) ; seul stock = clone VBsemi **NDP6020P-VB C878814 (~29 pièces, ~0,31 $)**.
-   Acheter 12-15 pièces **immédiatement**. Q7 exige un P-FET *logic-level*
-   (Vgs ≈ −3,3 V) ; pour Q11 (Vgs ≈ −12 V) un IRF9540N/IRF4905 standard convient en
-   secours (même brochage G-D-S).
+1. **Sécuriser les P-MOSFET** (2 références différentes depuis la 0.1.2) :
+   - **Q7 = NDP6020P** (rail capteurs, VGS ≈ −3,3 V : *logic-level* obligatoire) :
+     onsemi **épuisé** chez LCSC (C68561) ; seul stock = clone VBsemi
+     **NDP6020P-VB C878814** (stock faible). Acheter 6-8 pièces **immédiatement**.
+   - **Q11 = IRF4905PBF C2564** (anti-inversion 12 V, VGS ±20 V) + **D9 = 1N4744A
+     C238928** (zener 15 V grille-source). Le NDP6020P (VGS max ±8 V) ne doit **plus**
+     être posé en Q11 : sous 12-14,7 V il serait hors limites dès la mise sous tension.
 2. **Acheter un HLK-20M05 et MESURER ses entraxes** avant commande si le profil
    secteur est prévu : l'empreinte (lib KiCad officielle : colonnes AC/DC à 51 mm,
    AC au pas 9 mm, DC au pas 27 mm — cohérente avec le corps 56×32×22,5 confirmé
@@ -31,7 +33,10 @@
    - [x] pistes 230 V à 2,0 mm à l'approche de RV1 ;
    - pads TO-92 (27 trous) : **perçage conservé à 0,75 mm** (pattes ~0,6 mm en diagonale,
      tolérance ±0,08 mm) → accepter la remarque DFM « annular ring ».
-4. **Ré-analyser `gerbers-n3-universal-v0.1.1.zip` dans JLCDFM** (`dfm.jlcdfm.com`) avant
+   - [x] **rev 0.1.2** : Q11 IRF4905 + zener D9, RV1 sur sa vraie empreinte (disque,
+     pas 7,5 mm), trou **H5 vis nylon** au coin secteur, sérigraphie « JACK 5V » (sans
+     annonce de courant), « I2C J21/J22 », polarités « + / GND » sur J18/J19/J25.
+4. **Ré-analyser `gerbers-n3-universal-v0.1.2.zip` dans JLCDFM** (`dfm.jlcdfm.com`) avant
    de payer. Attendu : plus aucune ligne *Danger* ; restent en *Warning* l'anneau TO-92
    et éventuellement les fentes à 1,0 mm (`GBR-05`).
 
@@ -101,7 +106,7 @@ non conforme au dossier 230 V. Procédure :
    - 278 × 120 mm, 2 couches, FR-4 1,6 mm ;
    - **cuivre extérieur 2 oz (70 µm) impératif** ;
    - **19 fentes internes fraisées** (1,0 et 2,0 mm de large) — fonction : isolement 230 V ;
-   - 4 trous **non métallisés** 3,2 mm ; fentes **plaquées** 1,0 / 1,3 mm (jack + clips fusible) ;
+   - 5 trous **non métallisés** 3,2 mm ; fentes **plaquées** 1,0 / 1,3 mm (jack + clips fusible) ;
    - finition **sans plomb** (LeadFree HASL), tolérance contour ±0,2 mm ;
    - retirer le texte `JLCJLCJLCJLC` du dos (spécifique JLCPCB) ou l'ignorer.
 2. Exiger une **confirmation écrite point par point** avant paiement.
@@ -109,11 +114,13 @@ non conforme au dossier 230 V. Procédure :
 
 ## 3. Achats composants (rappels issus de l'audit)
 
-- LCSC vérifiés (2026-08-28) : relais **C35449**, HLK-20M05 **C465406**, BC337-40
-  **C713611**, BS250P **C151450**, 1N5822 **C2476**, P6KE18A **C1975053**, 10D471K
-  **C111188**, JST B3B-XH-A **C144394**, NDP6020P-VB **C878814** (stock critique).
+- LCSC vérifiés (2026-08-28, recontrôlés le 2026-10-06 sur la page produit) : relais
+  **C35449**, HLK-20M05 **C465406**, BC337-40 **C713611**, BS250P **C151450**, 1N5822
+  **C2476**, P6KE18A **C1975053**, 10D471K **C111188**, JST B3B-XH-A **C144394**,
+  NDP6020P-VB **C878814** (stock critique), IRF4905PBF **C2564**, 1N4744A **C238928**.
+  ⚠️ Les codes C72503 / C9135 / C293822 que proposait l'ancien `bom-jlcpcb.csv` étaient
+  **faux** (condensateur CMS, connecteur IDC, code inexistant) : ne pas les réutiliser.
 - **Manquent à la BOM d'origine** : 2× clips porte-fusible 5×20 (entraxe 22,5 mm),
-  5× cavaliers 2,54 mm, vis nylon M3 pour H1.
-- RV1 (10D471K) : pas réel 7,5 mm sur empreinte 5,0 mm → replier les pattes (pose main).
+  5× cavaliers 2,54 mm, **2× vis + écrou nylon M3** (H1 coin relais, H5 coin secteur).
 - Relais SRD **Form C : 7 A / 240 VAC réels** (10 A seulement en 125 VAC / Form A) —
   ne pas dépasser ~1,5 kW/230 V par canal ; 3 A inductif.

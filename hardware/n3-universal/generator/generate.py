@@ -36,7 +36,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3-universal"
-REV = "0.1.1"
+REV = "0.1.2"
 REV_DATE = "2026-10-06"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
@@ -399,7 +399,7 @@ def build_components():
         # classique (lèvre ~6 mm hors carte). 270° pointait l'ouverture vers
         # J1 — enfichage bloqué. Pad 1 (TIP/+5V) reste à (48, 116).
         dict(ref="J2", sym="BARREL", value="Jack 5.5/2.1", fp="BarrelJack_Horizontal",
-             desc="Entrée 5V 3A (jack, centre = +, ouverture bord gauche)", sch=(24, 18), pcb=(48, 116, 0),
+             desc="Entrée 5V (jack DC-005 ~2,5 A, centre = +, ouverture bord gauche)", sch=(24, 18), pcb=(48, 116, 0),
              nets={"1": "+5V", "2": "GND", "3": "GND"}),
         dict(ref="J1", sym="CONN_02", value="Bornier_5.08",
              fp="TerminalBlock_bornier-2_P5.08mm",
@@ -616,16 +616,25 @@ def build_components():
              desc="Entrée bus 12V (1=+12V APRES fusible lame externe 7,5-10A 2=GND)",
              sch=(146, 50), pcb=(216, 151, 0),
              nets={"1": "VBAT12_IN", "2": "GND"}),
-        # Brochage NDP6020P TO-220 = 1=G 2=D(+tab) 3=S, comme Q7 (l'audit final
-        # rev 0.1 a corrigé un câblage en PMOS_DGS/brochage BS250 qui mettait
-        # l'entrée 12 V sur la GRILLE : profil bus 12 V inopérant).
-        dict(ref="Q11", sym="PMOS_GDS", value="NDP6020P", fp="TO-220-3_Vertical",
-             desc="Anti-inversion P-MOSFET (1=G 2=D=entrée 3=S=sortie)", sch=(155, 52), pcb=(232, 146, 0),
+        # Brochage TO-220 = 1=G 2=D(+tab) 3=S, comme Q7 (l'audit final rev 0.1 a
+        # corrigé un câblage en PMOS_DGS/brochage BS250 qui mettait l'entrée 12 V
+        # sur la GRILLE : profil bus 12 V inopérant).
+        # R40 tire la grille à GND : VGS = -VBAT (-12 à -14,4 V, jusqu'à ~-25 V
+        # sous écrêtage D8). Le NDP6020P (VGS max ±8 V, VDS 20 V) y claquait :
+        # IRF4905 (±20 V / 55 V) + zener D9 grille-source (rev 0.1.2).
+        dict(ref="Q11", sym="PMOS_GDS", value="IRF4905", fp="TO-220-3_Vertical",
+             desc="Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie)",
+             sch=(155, 52), pcb=(232, 146, 0),
              nets={"1": "QP_G", "2": "VBAT12_IN", "3": "VBAT12_PROT"}),
         dict(ref="R40", sym="R", value="100k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Grille anti-inversion vers GND", sch=(146, 54), pcb=(234, 128, 90),
+             desc="Grille anti-inversion vers GND (limite le courant de D9)", sch=(146, 54), pcb=(234, 128, 90),
              nets={"1": "QP_G", "2": "GND"}),
+        dict(ref="D9", sym="D", value="1N4744A",
+             fp="D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp",
+             desc="Zener 15V grille-source de Q11 (K=source, A=grille) : VGS borné à -15 V",
+             sch=(172, 56), pcb=(237.08, 150.5, 180),
+             nets={"1": "VBAT12_PROT", "2": "QP_G"}),
         dict(ref="D8", sym="D", value="P6KE18A", fp="D_DO-201AD_P15.24mm_Horizontal",
              desc="TVS 18V transitoires bus batterie", sch=(146, 58), pcb=(212, 140, 0),
              nets={"1": "VBAT12_PROT", "2": "GND"}),
@@ -654,12 +663,12 @@ def build_components():
              fp="Fuse_5x20_Horizontal",
              desc="Fusible entrée secteur du module alim (temporisé 1A)", sch=(155, 78), pcb=(266, 44, 270),
              nets={"1": "MAINS_L", "2": "MAINS_LF"}),
+        # Empreinte disque au pas réel 7,5 mm (GEN-04), décalée à gauche pour
+        # que le corps (12 mm) ne chevauche pas F1.
         dict(ref="RV1", sym="VARISTOR", value="10D471K",
-             fp="CP_Radial_D10.0mm_P5.00mm",
-             desc="Varistance 300VAC transitoires secteur — pattes à replier "
-                  "(pas réel 7,5 mm sur une empreinte 5,0 mm) : pose main, à exclure "
-                  "d'un assemblage machine ; le repère + de l'empreinte est sans objet",
-             sch=(155, 82), pcb=(253, 62, 0),
+             fp="RV_Disc_D12mm_W5.4mm_P7.5mm",
+             desc="Varistance 300VAC transitoires secteur (disque 10 mm, pas 7,5 mm)",
+             sch=(155, 82), pcb=(252, 60, 0),
              nets={"1": "MAINS_N", "2": "MAINS_LF"}),
         dict(ref="PS1", sym="HLK20M", value="HLK-20M05",
              fp="Converter_ACDC_Hi-Link_HLK-20Mxx",
@@ -735,9 +744,13 @@ def build_components():
     # H1 (coin relais) : enclavé par le corps de K1, une tête de vis métal serait
     # à ~4,3 mm des contacts 230 V — vis NYLON obligatoire, plan GND écarté sous
     # la tête (keepout), marquage sérigraphié « H1=NYLON » (audit rev 0.1).
-    for i, (hx, hy) in enumerate([(45, 45), (313, 108), (45, 155), (310, 146)], 1):
-        desc = ("Trou de fixation M3 — H1 : VIS NYLON OBLIGATOIRE "
-                "(tête métal à <5 mm du 230V)" if i == 1 else "Trou de fixation M3")
+    # H5 (coin PSU, entre N et L) : le coin secteur ne tient au reste de la
+    # carte que par ~5 mm de ponts FR4 (GEN-05) ; ce point d'appui évite de
+    # toucher aux fentes d'isolement. Entre deux pistes 230 V : NYLON aussi.
+    nylon = {1: "tête métal à <5 mm du 230V", 5: "entre les pistes N et L du coin secteur"}
+    for i, (hx, hy) in enumerate([(45, 45), (313, 108), (45, 155), (310, 146), (275.5, 59)], 1):
+        desc = (f"Trou de fixation M3 — H{i} : VIS NYLON OBLIGATOIRE ({nylon[i]})"
+                if i in nylon else "Trou de fixation M3")
         comps.append(dict(ref=f"H{i}", sym=None, value="M3",
                           fp="MountingHole_3.2mm_M3", desc=desc,
                           sch=None, pcb=(hx, hy, 0), nets={}))
@@ -916,19 +929,21 @@ PCB_TEXTS = [
     (82, 146.5, "DS18B20", 1.0),
     (82, 119.5, "LDR", 1.0),
     (94, 125.5, "OLED", 1.0),
-    (43, 52, "I2C EXT x3", 1.0),
+    (46.3, 84, "I2C J21/J22", 0.8, "F.SilkS", 90),
     # près des connecteurs J15/J16 (302,110/132) — audit rev 0.1 : les deux
     # étiquettes traînaient dans le coin secteur (266,55/67)
     (250, 41.6, "N", 0.9),
     (256.8, 41.6, "L", 0.9),
     (44.3, 55, "H1=NYLON", 0.9),
+    (275.5, 63.5, "H5=NYLON", 0.9),
     (297, 105.5, "SRV GROS", 0.8),
     (297, 127.5, "SRV PETITS", 0.8),
     (254, 81.5, "GPIO", 0.8),
     (254, 120.5, "ALIM", 0.8),
     (56, 139, "5V", 0.9),
     (268, 121.5, "3V3", 0.9),
-    (52, 104, "5V 3A", 1.2),
+    # Jack DC-005 coté ~2,5 A : pas d'annonce de courant sur la carte
+    (52, 112, "JACK 5V", 0.8),
     (111.5, 107.5, "ANTENNE : pas de cuivre dessous", 0.8),
     # Emplacement imposé du numéro de commande JLCPCB (au dos) :
     # sans ce marqueur, le fabricant le place où il veut, parfois
@@ -966,6 +981,9 @@ PCB_TEXTS = [
     (216, 157, "+", 1.2), (221.1, 157, "GND", 0.9),
     (244, 157, "+", 1.2), (249.1, 157, "GND", 0.9),
     (258, 157, "+", 1.2), (263.1, 157, "GND", 0.9),
+    (56, 149.5, "+", 1.2), (62.1, 149.5, "GND", 0.9),
+    (272, 157, "+", 1.2), (277.1, 157, "GND", 0.9),
+    (286, 157, "+", 1.2), (291.1, 156.25, "GND", 0.9),
     # Sans R17-R19, un HC-SR04 envoie ~5 V sur le GPIO (audit NET-03)
     (148, 126.5, "HC-SR04 : R17-R19 REQUISES (ffp5cs)", 0.8),
     (80, 155.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
@@ -1492,10 +1510,10 @@ def gen_bom():
                 "se posent sur JP1..JP4",
                 "JP1 FERME par défaut (rail permanent, ffp5cs) ; JP2/3/4 en 1-2 "
                 "(microSD sur site S3). 4 utilisés + 1 rechange"])
-    out.append(["H1 (visserie)", "1", "Vis + écrou NYLON M3",
-                "trou de fixation H1 (coin relais)",
-                "OBLIGATOIRE : une tête métal serait à ~4,3 mm du 230V. "
-                "H2-H4 : visserie M3 standard + entretoises"])
+    out.append(["H1, H5 (visserie)", "2", "Vis + écrou NYLON M3 (+ entretoise nylon)",
+                "trous de fixation H1 (coin relais) et H5 (coin secteur)",
+                "OBLIGATOIRE : H1 = tête métal à ~4,3 mm du 230V ; H5 = entre les "
+                "pistes N et L. H2-H4 : visserie M3 standard + entretoises"])
     return out
 
 

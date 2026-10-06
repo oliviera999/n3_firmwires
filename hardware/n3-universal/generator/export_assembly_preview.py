@@ -45,54 +45,25 @@ SKIP_BOM_REFS = re.compile(
     re.I,
 )
 
-# Mapping (valeur normalisée, famille d'empreinte) -> LCSC Part # suggéré.
-# Vérifier stock / empreinte sur https://jlcpcb.com/parts avant commande.
+# Mapping (valeur normalisée, famille d'empreinte) -> LCSC Part #.
+# UNIQUEMENT des codes contrôlés sur la fiche LCSC (ceux de
+# exports/pcba/BOM-PCBA-socle.csv, vérifiés le 2026-08-28, + Q11/D9/PS1 le
+# 2026-10-06). La table d'origine contenait des codes inventés (C72503 =
+# condensateur CMS 22 µF pour le NDP6020P, C9135 = connecteur IDC pour le
+# fusible, C293822 inexistant) : une case vide oblige JLCPCB à demander,
+# un mauvais code fait monter la mauvaise pièce.
 LCSC_MAP: dict[tuple[str, str], str] = {
-    # Passifs courants (axiaux / discrets THT — souvent Extended)
-    ("1k", "r_axial"): "C58675",
-    ("10k", "r_axial"): "C58691",
-    ("100k", "r_axial"): "C58695",
-    ("220", "r_axial"): "C58655",
-    ("4.7k", "r_axial"): "C58684",
-    ("2k", "r_axial"): "C58678",
-    ("27k", "r_axial"): "C58693",
-    ("100n", "c_disc"): "C49678",
-    ("1000u/16v", "cp_radial"): "C13585",
-    ("470u/16v", "cp_radial"): "C13584",
-    ("470u/25v", "cp_radial"): "C43265",
-    # Semi-conducteurs
-    ("1n4007", "d_do41"): "C72037",
-    ("1n5822", "d_do201"): "C2532",
-    ("p6ke18a", "d_do201"): "C18388",
-    ("bc337-40", "to92"): "C8545",
-    ("bs250", "to92"): "C29624",
-    ("ndp6020p", "to220"): "C72503",
-    # Opto / électromécanique
-    ("rouge", "led"): "C84256",
-    ("verte", "led"): "C2297",
-    ("srd-05vdc-sl-c", "relay"): "C133147",
-    # Connectique (équivalents proches — vérifier footprint)
-    ("bornier_5.08", "bornier2"): "C2880096",
-    ("bornier_5.08", "bornier3"): "C2880097",
-    ("jst-xh", "jst3"): "C160404",
-    ("jst-xh", "jst4"): "C157987",
-    ("jack5.5/2.1", "barrel"): "C124417",
-    ("headerservo", "pinheader3"): "C124378",
-    ("headerservice", "pinheader6"): "C124381",
-    ("headeralim", "pinheader6"): "C124381",
-    ("jumperbypass", "pinheader3"): "C124378",
-    ("jumpersdcs", "pinheader3"): "C124378",
-    ("jumpersdsck", "pinheader3"): "C124378",
-    ("jumpersdmosi", "pinheader3"): "C124378",
-    ("supportoled", "pinsocket4"): "C124390",
-    ("supporti2cext", "pinsocket4"): "C124390",
-    ("supporti2clibre", "pinsocket4"): "C124390",
-    ("supportmodulemicrosd", "pinsocket6"): "C124392",
-    # Alim secteur (Extended / vérifier disponibilité)
-    ("hlk-20m05", "hilink"): "C293822",
-    ("t1a5x20", "fuse"): "C9135",
-    ("10d471k", "varistor"): "C98636",
-    ("10d471k", "cp_radial"): "C98636",  # empreinte actuelle = radial (générateur)
+    ("1n4744a", "d_do41"): "C238928",
+    ("1n5822", "d_do201"): "C2476",
+    ("p6ke18a", "d_do201"): "C1975053",
+    ("bc337-40", "to92"): "C713611",
+    ("bs250", "to92"): "C151450",
+    ("ndp6020p", "to220"): "C878814",
+    ("irf4905", "to220"): "C2564",
+    ("srd-05vdc-sl-c", "relay"): "C35449",
+    ("jst-xh", "jst3"): "C144394",
+    ("hlk-20m05", "hilink"): "C465406",
+    ("10d471k", "varistor"): "C111188",
 }
 
 
@@ -143,6 +114,8 @@ def footprint_family(fp: str) -> str:
         return "hilink"
     if "fuse" in f:
         return "fuse"
+    if "rv_disc" in f:
+        return "varistor"
     if "esp32_devkit" in f:
         return "devkit_wroom"
     if "esp32_s3" in f:

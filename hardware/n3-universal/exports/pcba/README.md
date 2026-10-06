@@ -1,15 +1,17 @@
-# Fichiers d'assemblage (PCBA) — n3-universal rev 0.1.1
+# Fichiers d'assemblage (PCBA) — n3-universal rev 0.1.2
 
 Fichiers au format attendu par JLCPCB (BOM : `Comment,Designator,Footprint,LCSC Part #` ;
 CPL : `Designator,Mid X,Mid Y,Layer,Rotation`, repère identique aux gerbers, Y négatif).
-Positions recontrôlées le 2026-10-06 contre le PCB rev 0.1.1 (`exports/cpl-jlcpcb.csv`) :
-seule la rotation de **J2** a changé (−90° → 0°, jack ouvert vers le bord, `GEN-02`).
+Positions recontrôlées le 2026-10-06 contre le PCB rev 0.1.2 (`exports/cpl-jlcpcb.csv`) :
+rotation de **J2** passée de −90° à 0° en 0.1.1 (jack ouvert vers le bord, `GEN-02`) ;
+en 0.1.2, **Q11 devient un IRF4905PBF** (VGS ±20 V) et la **zener D9** (1N4744A, 15 V)
+est ajoutée entre sa grille et sa source.
 
 | Fichier | Contenu |
 |---------|---------|
-| `BOM-PCBA-socle.csv` | 34 groupes / **110 composants** THT du **socle commun à tous les rôles et à tous les profils d'alimentation** (relais, transistors, diodes, résistances fixes, connectique, supports). Références LCSC vérifiées en stock le 2026-08-28 pour les pièces critiques ; lignes sans n° LCSC = génériques (choisir l'équivalent Basic/Extended le moins cher en stock). |
+| `BOM-PCBA-socle.csv` | 36 groupes / **111 composants** THT du **socle commun à tous les rôles et à tous les profils d'alimentation** (relais, transistors, diodes, résistances fixes, connectique, supports). Références LCSC vérifiées le 2026-10-06 sur la page produit pour les pièces critiques ; lignes sans n° LCSC = génériques (choisir l'équivalent Basic/Extended le moins cher en stock). |
 | `BOM-PCBA-conditionnels.csv` | **14 pièces à pose conditionnelle — NE PAS les faire assembler.** Chaque ligne porte sa condition en clair : les 11 résistances qui dépendent du **rôle** (msp / n3pp / ffp5cs) ou dont la **valeur** change selon le profil, et les 3 pièces du **bloc d'entrée secteur** (J27, F1, RV1) réservées au profil (d). Pose à la main. |
-| `CPL-n3-universal-top.csv` | Positions/rotations des **110 composants du socle** (tout en face Top), dans le repère des gerbers. |
+| `CPL-n3-universal-top.csv` | Positions/rotations des **111 composants du socle** (tout en face Top), dans le repère des gerbers. |
 
 ## Verdict assemblage (audit 2026-08-28)
 
@@ -25,14 +27,15 @@ main-d'œuvre facturée (~300 points/carte × 0,0173 $), soit **+150-200 $** pou
 
 - **A1 / A2** : modules ESP32 **enfichés**, jamais soudés (+ leurs supports femelles
   1×15 / 1×22, à acheter en barrette sécable) ;
-- **PS1 (HLK-20M05)** : option du seul profil secteur — **mesurer les entraxes d'un
-  module réel avant toute commande** (le dessin mécanique du datasheet contredit
-  l'empreinte, voir COMMANDE.md) ;
+- **PS1 (HLK-20M05, LCSC C465406)** : option du seul profil secteur — **mesurer les
+  entraxes d'un module réel avant toute commande** (le dessin mécanique du datasheet
+  contredit l'empreinte, voir COMMANDE.md) ;
 - **J27, F1, RV1** : le reste du bloc d'entrée secteur, passé en conditionnel le
   2026-08-30. Les poser sans PS1 donnerait à une unité 5 V, batterie 1S ou bus 12 V
   un bornier sérigraphié « ENTREE SECTEUR 230V » sans rien derrière — trompeur, et
-  inutile. Ces trois pièces se posent **ensemble avec PS1**, ou pas du tout ;
-- **H1-H4** : trous de fixation (H1 = **vis nylon obligatoire**) ;
+  inutile. Ces trois pièces se posent **ensemble avec PS1**, ou pas du tout. Depuis la
+  0.1.2, RV1 a sa vraie empreinte (disque 10 mm, pas 7,5 mm) : plus de pattes à replier ;
+- **H1-H5** : trous de fixation (**H1 et H5 = vis nylon obligatoire**) ;
 - résistances conditionnelles (fichier séparé, pose main).
 
 ## À acheter en plus (absents de la BOM d'origine — audit 2026-08-28)
@@ -40,7 +43,8 @@ main-d'œuvre facturée (~300 points/carte × 0,0173 $), soit **+150-200 $** pou
 - **2× clips porte-fusible 5×20 mm** à languette (entraxe ~22,5 mm, languette ≤ 1,3×2,6 mm)
   pour F1 — sans eux le profil secteur est inutilisable ;
 - **5× cavaliers 2,54 mm** (JP1 fermé par défaut profil ffp5cs ; JP2-JP4 en 1-2) ;
-- vis nylon M3 (H1) + entretoises.
+- **2× vis + écrou nylon M3** (H1 coin relais, H5 coin secteur) + entretoises ; visserie
+  M3 standard pour H2-H4.
 
 ## Ce qui se peuple selon le profil d'alimentation
 

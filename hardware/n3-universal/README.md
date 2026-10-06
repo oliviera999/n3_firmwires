@@ -34,7 +34,7 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > vers le firmware, revue de la connectique capteurs (borniers à vis / push-in / JST-XH /
 > enfichables) avec options et décisions à prendre. Rien n'y est encore appliqué.
 
-## Réalisation (rev 0.1.1 — KiCad 10, méthode hybride)
+## Réalisation (rev 0.1.2 — KiCad 10, méthode hybride)
 
 ```
 generator/generate.py        Source du schéma, de la BOM, des empreintes locales, des règles
@@ -44,7 +44,8 @@ generator/route_universal.py Routage initial : secteur EN DUR (relais + PSU Hi-L
                              freerouting pour la logique, vias de couture GND, thermiques ;
                              contrôles check_mains_gap (3 mm) et check_mains_plane_gap (6,5 mm)
 generator/finalize_board.py  Retouches idempotentes du PCB routé (plan GND y86, amorces RV1,
-                             sérigraphie 0,15 mm, libellés PCB_TEXTS, cartouche, nets NC)
+                             sérigraphie 0,15 mm, libellés PCB_TEXTS, cartouche, nets NC,
+                             synchro empreintes/valeurs du générateur, pistes 0.1.2 D9)
 generator/tidy_silkscreen.py Écarte libellés puis repères des pads, fentes et contours
 generator/export_fab.py      DRC bloquant puis gerbers 7 couches + perçages + PDF/SVG
 generator/export_assembly_preview.py  BOM/CPL JLCPCB + NextPCB (prévisualisation PCBA)
@@ -75,7 +76,7 @@ python export_assembly_preview.py
 
 Le remplissage des zones passe par `kicad-cli --refill-zones` : c'est le seul chemin
 qui applique les règles personnalisées du `.kicad_dru` (écart plan ↔ secteur).
-État rev 0.1.1 : DRC KiCad **0 erreur, 0 non connecté, 0 écart de parité
+État rev 0.1.2 : DRC KiCad **0 erreur, 0 non connecté, 0 écart de parité
 schéma/PCB** ; restent 21 avertissements `silk_edge_clearance` (contours dessinés
 des relais K1-K6 et de PS1 sur les fentes d'isolement, lèvre de J2 hors carte),
 écrêtés par le fabricant, sans effet électrique.
@@ -257,6 +258,13 @@ corrigé la carte et les firmwares AVANT toute commande :
 - **Q11 (anti-inversion 12 V)** était câblé au brochage BS250 (D-G-S) : l'entrée
   12 V arrivait sur la **grille** du NDP6020P (TO-220 : 1=G 2=D 3=S) — profil bus
   12 V inopérant. Recâblé comme Q7 (G/D/S), entrée sur le drain.
+  **Rev 0.1.2** : le NDP6020P (VGS max ±8 V) y aurait vu VGS = −VBAT (−12 à −14,7 V) ;
+  Q11 devient un **IRF4905PBF** (55 V, VGS ±20 V, même brochage G-D-S) et la zener
+  **D9 1N4744A** (15 V, cathode = source, anode = grille, R40 limite son courant) borne
+  VGS face aux transitoires du bus. Q7 reste un NDP6020P (logic-level requis à 3,3 V).
+- **Rev 0.1.2** : **RV1** passe sur sa vraie empreinte (disque 10 mm, pas 7,5 mm,
+  perçage 1,0 mm) au lieu d'un électrolytique au pas 5 mm (`GEN-04`) ; trou **H5**
+  (vis nylon) ajouté entre les pistes N et L du coin secteur (`GEN-05`).
 - **Coin PSU 230 V re-routé** : l'ancien tracé faisait passer L à 0,75 mm du pad
   neutre de J27 et N ∥ LF à 1,5 mm. Nouveau tracé : écarts L↔N↔LF ≥ 3 mm hors
   pas propre des composants ; **J27 devient 1=N / 2=L** (repères sérigraphiés).

@@ -24,7 +24,9 @@ Jumper BYPASS,JP1,PinHeader_1x03_P2.54mm_Vertical,
 Jumper SD CS,JP2,PinHeader_1x03_P2.54mm_Vertical,
 Jumper SD MOSI,JP4,PinHeader_1x03_P2.54mm_Vertical,
 Jumper SD SCK,JP3,PinHeader_1x03_P2.54mm_Vertical,
-"NDP6020P P-MOSFET logic-level TO-220 (VBsemi NDP6020P-VB - stock LCSC tres faible, securiser AVANT commande)","Q7,Q11",TO-220-3_Vertical,C878814
+"NDP6020P P-MOSFET logic-level TO-220 (VBsemi NDP6020P-VB - stock LCSC tres faible, securiser AVANT commande)",Q7,TO-220-3_Vertical,C878814
+"IRF4905PBF P-MOSFET 55V VGS +/-20V TO-220 (Infineon, brochage G-D-S) - anti-inversion batterie",Q11,TO-220-3_Vertical,C2564
+"1N4744A Zener 15V 1W - protection grille-source de Q11 (cathode = source)",D9,D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp,C238928
 P6KE18A TVS unidirectionnelle (Vishay),D8,D_DO-201AD_P15.24mm_Horizontal,C1975053
 Relais Songle SRD-05VDC-SL-C 5V SPDT (7A/240VAC Form C reel),"K1,K2,K3,K4,K5,K6",Relay_SPDT_SANYOU_SRD_Series_Form_C,C35449
 Support I2C ext,J14,PinSocket_1x04_P2.54mm_Vertical,

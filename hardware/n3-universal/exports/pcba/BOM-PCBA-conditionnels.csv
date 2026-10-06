@@ -1,6 +1,6 @@
 ﻿Comment,Designator,Footprint,LCSC Part #
 Haut du pont ADC_VBAT — 100k dans TOUS les profils,R38,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-"Varistance 10D471K 300VAC — PROFIL (d) SECTEUR UNIQUEMENT. Pattes a replier (pas reel 7,5 mm sur empreinte 5,0 mm) : pose main, exclure d'un assemblage machine",RV1,CP_Radial_D10.0mm_P5.00mm,C111188
+"Varistance 10D471K 300VAC (disque 10 mm, pas 7,5 mm) — PROFIL (d) SECTEUR UNIQUEMENT, pose main avec PS1/J27/F1",RV1,RV_Disc_D12mm_W5.4mm_P7.5mm,C111188
 "10k, bas de pont des entrees analogiques — R43-R46 : POSER pour des LDR (msp), ABSENT pour des sondes sol (n3pp). R27 : POSER pour une LDR, ABSENT pour un module a sortie AO. R47 : POSER sur unites msp uniquement (pull-up DHT ext)","R27,R43,R44,R45,R46,R47",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 "Bas du pont ADC_VBAT — VALEUR SELON PROFIL : 100k en batterie 1S, 22k en bus 12V (pleine echelle ~17 V). Poser 22k sur une unite 1S fausse la jauge d'un facteur ~2,8 ; poser 100k sur un bus 12V envoie ~7,75 V sur l'ADC (destruction de l'entree)",R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 "2k, bas des ponts diviseurs d'echo HC-SR04 — POSER sur unites ffp5cs ; ABSENT sur msp/n3pp (sinon PLUIE verrouille et DHT externe illisible). ATTENTION : sans elles, un HC-SR04 branche par erreur envoie ~5 V sur le GPIO","R17,R18,R19",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,

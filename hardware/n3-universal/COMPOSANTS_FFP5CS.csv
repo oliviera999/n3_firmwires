@@ -30,7 +30,7 @@ Alim 5 V;J1;Bornier 2 pts;Entrée 5 V alternative vis;1=+5V 2=GND;+5V;—;—;�
 Alim 5 V;D5;1N5822 Schottky 3 A;Anti-retour vers VIN DevKit (USB + rail en même temps);—;+5V;—;—;—;—;Oui;—;
 Alim 5 V;C1;1000u/16V;Réservoir rail 5 V (relais + servos + HC-SR04);—;+5V;—;—;—;—;Oui;—;
 Alim 5 V;LED5 + R13;LED verte + 1k;Témoin présence 5 V;—;+5V;—;—;—;—;Oui;—;
-Alim 12 V;J26;Bornier 2 pts;Entrée bus 12 V solaire (après fusible lame 7,5–10 A externe);1=+12V 2=GND;VBAT12_IN;—;—;—;—;Oui si profil (c) bus 12 V;Q11 NDP6020P, R40 100k, D8 P6KE18A, C5 470u/25V;Anti-inversion + TVS 18 V + réservoir. Charges de puissance sur les contacts relais, pas via le buck.
+Alim 12 V;J26;Bornier 2 pts;Entrée bus 12 V solaire (après fusible lame 7,5–10 A externe);1=+12V 2=GND;VBAT12_IN;—;—;—;—;Oui si profil (c) bus 12 V;Q11 IRF4905, D9 1N4744A (zener G-S 15 V), R40 100k, D8 P6KE18A, C5 470u/25V;Anti-inversion + TVS 18 V + réservoir. Charges de puissance sur les contacts relais, pas via le buck.
 Alim 12 V;J36;Bornier 2 pts;Vers buck 12→5 V (IN);1=+12V protégé 2=GND;VBAT12_PROT;—;—;—;—;Oui si profil (c);Module MP1584 (faible Iq) ou XL4015;Le buck ne porte que logique + servos (~0,7 A, pics 2,5 A).
 Alim 12 V;J37;Bornier 2 pts;Retour 5 V du buck;1=+5V 2=GND;+5V;—;—;—;—;Oui si profil (c);—;
 Alim 12 V;J25;Bornier 2 pts;Sonde tension batterie / bus (pont commuté);1=VBAT+ 2=GND;ADC_VBAT;39;7;(net ADC_VBAT — pas encore Pins:: sur PINMAP_UNIVERSAL);—;Oui si profil (c);R38 100k* / R39 22k* (ratio 12 V, pleine échelle ~17 V), Q9 BS250, Q10, R36, R37;Ratio 1S = 100k/100k (msp/n3pp). Délestage AGM : 12,4 / 12,2 / 11,9 / 11,5 V (sous charge).

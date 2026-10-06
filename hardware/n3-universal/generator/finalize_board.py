@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retouches pré-commande du PCB ROUTÉ (rev 0.1 -> 0.1.1), sans re-routage.
+"""Retouches pré-commande du PCB ROUTÉ (rev 0.1 -> 0.1.2), sans re-routage.
 
 Pourquoi un script plutôt que des clics : chaque retouche est chiffrée par
 l'audit (`AUDIT-2026-08-28.md`) et doit pouvoir être rejouée et relue. Le PCB
@@ -11,6 +11,10 @@ complète ne les perde pas.
 Retouches (idempotentes — relancer ne change plus rien) :
   - H1-H4 « board only » (pas de symbole : sinon écart de parité schéma/PCB) ;
   - pads des broches non câblées sur leur net « unconnected-(…) » (parité) ;
+  - empreintes ajoutées ou changées dans `generate.py` posées sur la carte
+    routée, valeurs resynchronisées (0.1.2 : Q11 IRF4905, zener D9, RV1 au
+    pas 7,5 mm, trou nylon H5) ;
+  - pistes de D9 et amorces de RV1 sur ses nouveaux pads (0.1.2) ;
   - plan GND de la bande relais repoussé de y84 à y86 (SEC-CRP-01) ;
   - vias GND tombés dans le perçage d'un pad GND supprimés (GERB-01) ;
   - amorces 230 V de RV1 ramenées à 2,0 mm (SEC-01) ;
@@ -31,6 +35,8 @@ from __future__ import annotations
 
 import math
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pcbnew
@@ -77,6 +83,84 @@ def tag_unconnected_pads(b) -> int:
                 b.Add(net)
             pad.SetNet(net)
             n += 1
+    return n
+
+
+def sync_footprints(b) -> list[str]:
+    changed = []
+    # FindFootprintByReference renvoie un SwigPyObject non typé (KiCad 10)
+    # quand la référence est absente : on indexe GetFootprints().
+    by_ref = {fp.GetReference(): fp for fp in b.GetFootprints()}
+    for c in g.COMPONENTS:
+        old = by_ref.get(c["ref"])
+        if old and old.GetFPIDAsString().split(":")[-1] == c["fp"]:
+            if old.GetValue() != c["value"]:
+                old.SetValue(c["value"])
+                changed.append(f"{c['ref']}={c['value']}")
+            desc = g.described(c["ref"], c["desc"])
+            if old.GetFieldText("Description") != desc:
+                old.SetField("Description", desc)
+                changed.append(f"{c['ref']}.desc")
+            continue
+        fp = pcbnew.FootprintLoad(str(g.FP_DIR), c["fp"])
+        fp.SetFPID(pcbnew.LIB_ID("n3u", c["fp"]))
+        fp.SetReference(c["ref"])
+        fp.SetValue(c["value"])
+        fp.SetField("Description", g.described(c["ref"], c["desc"]))
+        b.Add(fp)
+        x, y, rot = c["pcb"]
+        fp.SetOrientationDegrees(rot)
+        fp.SetPosition(pcbnew.VECTOR2I(FM(x), FM(y)))
+        fp.SetPath(pcbnew.KIID_PATH(f"/{g.uid('sym', c['ref'])}"))
+        if not c["sym"]:
+            fp.SetBoardOnly(True)
+        for pad in fp.Pads():
+            net = c["nets"].get(pad.GetNumber())
+            if net:
+                pad.SetNet(b.FindNet(net))
+        if old:
+            b.Remove(old)
+        changed.append(f"{c['ref']}:{c['fp']}")
+    return changed
+
+
+# Pads de RV1 sur l'ancienne empreinte radiale 5,0 mm (rev 0.1.1).
+RV1_OLD_PADS = {"MAINS_N": (253.0, 62.0), "MAINS_LF": (258.0, 62.0)}
+# (départ, arrivée, net, largeur) — pistes de la zener D9 sous Q11, en F.Cu.
+V012_TRACKS = [
+    ((232.0, 146.0), (232.0, 150.5), "QP_G", 0.4),
+    ((237.08, 146.0), (237.08, 150.5), "VBAT12_PROT", 0.5),
+]
+
+
+def route_v012(b) -> int:
+    n = 0
+    rv1 = {p.GetNetname(): p.GetPosition() for p in b.FindFootprintByReference("RV1").Pads()}
+    for t in b.GetTracks():
+        net = t.GetNetname()
+        if t.GetClass() != "PCB_TRACK" or net not in RV1_OLD_PADS:
+            continue
+        ox, oy = RV1_OLD_PADS[net]
+        for get, put in ((t.GetStart, t.SetStart), (t.GetEnd, t.SetEnd)):
+            ex, ey = mm(get())
+            if math.hypot(ex - ox, ey - oy) < 0.01:
+                put(rv1[net])
+                n += 1
+    have = {(t.GetNetname(), mm(t.GetStart()), mm(t.GetEnd()))
+            for t in b.GetTracks() if t.GetClass() == "PCB_TRACK"}
+    for (x0, y0), (x1, y1), net, w in V012_TRACKS:
+        key = (net, (x0, y0), (x1, y1))
+        if any(k[0] == net and math.dist(k[1], key[1]) < 0.01 and math.dist(k[2], key[2]) < 0.01
+               for k in have):
+            continue
+        t = pcbnew.PCB_TRACK(b)
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetStart(pcbnew.VECTOR2I(FM(x0), FM(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(FM(x1), FM(y1)))
+        t.SetWidth(FM(w))
+        t.SetNet(b.FindNet(net))
+        b.Add(t)
+        n += 1
     return n
 
 
@@ -167,6 +251,15 @@ def main() -> None:
     b = pcbnew.LoadBoard(str(BOARD_PATH))
     print("trous board-only      :", board_only_holes(b))
     print("pads non câblés       :", tag_unconnected_pads(b))
+    changed = sync_footprints(b)
+    print("empreintes / valeurs  :", changed)
+    if any(":" in c for c in changed):
+        # Après FootprintLoad, les objets pcbnew de ce processus reviennent en
+        # SwigPyObject non typés (KiCad 10) : on repart d'un processus neuf.
+        pcbnew.SaveBoard(str(BOARD_PATH), b)
+        subprocess.run([sys.executable, __file__], check=True)
+        return
+    print("pistes 0.1.2          :", route_v012(b))
     print("sommets plan GND y86  :", push_gnd_plane(b))
     print("vias dans un perçage  :", drop_vias_in_holes(b))
     print("amorces RV1 à 2,0 mm  :", narrow_rv1_stubs(b))
