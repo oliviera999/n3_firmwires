@@ -54,16 +54,16 @@ SKIP_BOM_REFS = re.compile(
 # un mauvais code fait monter la mauvaise pièce.
 LCSC_MAP: dict[tuple[str, str], str] = {
     ("1n4744a", "d_do41"): "C238928",
+    ("1n4007", "d_do41"): "C2457",
     ("1n5822", "d_do201"): "C2476",
-    ("p6ke18a", "d_do201"): "C1975053",
+    ("1.5ke18a", "d_do201"): "C1666858",
+    ("1.5ke6.8a", "d_do201"): "C412500",
     ("bc337-40", "to92"): "C713611",
-    ("bs250", "to92"): "C151450",
-    ("ndp6020p", "to220"): "C878814",
     ("irf4905", "to220"): "C2564",
+    ("ld1117v33", "to220"): "C283467",
     ("srd-05vdc-sl-c", "relay"): "C35449",
-    ("jst-xh", "jst3"): "C144394",
     ("hlk-20m05", "hilink"): "C465406",
-    ("10d471k", "varistor"): "C111188",
+    ("14d471k", "varistor"): "C111188",
 }
 
 
@@ -96,14 +96,20 @@ def footprint_family(fp: str) -> str:
         return "bornier2"
     if "bornier-3" in f or "bornier_3" in f:
         return "bornier3"
-    if "jst_xh_b3b" in f:
-        return "jst3"
-    if "jst_xh_b4b" in f:
-        return "jst4"
+    if "bornier-4" in f or "bornier_4" in f:
+        return "bornier4"
     if "barreljack" in f:
         return "barrel"
+    if "pinheader_1x02" in f:
+        return "pinheader2"
     if "pinheader_1x03" in f:
         return "pinheader3"
+    if "pinheader_1x08" in f:
+        return "pinheader8"
+    if "testpoint" in f:
+        return "testpoint"
+    if "d_do-35" in f:
+        return "d_do35_sod123"
     if "pinheader_1x06" in f:
         return "pinheader6"
     if "pinsocket_1x04" in f:

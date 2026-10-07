@@ -2,17 +2,20 @@ Comment,Designator,Footprint,LCSC Part #
 ESP32 DevKit V1,A1,ESP32_DevKit_V1_30pin,
 ESP32-S3-DevKitC-1,A2,ESP32_S3_DevKitC_1_44pin,
 1000u/16V,C1,CP_Radial_D10.0mm_P5.00mm,
+100n,"C10,C13,C3,C4,C6,C7,C8,C9",C_Disc_D5.0mm_W2.5mm_P5.00mm,
+10u/25V,C11,CP_Radial_D5.0mm_P2.50mm,
+100u/16V,C12,CP_Radial_D6.3mm_P2.50mm,
 470u/16V,C2,CP_Radial_D8.0mm_P3.50mm,
-100n,"C3,C4",C_Disc_D5.0mm_W2.5mm_P5.00mm,
 470u/25V,C5,CP_Radial_D10.0mm_P5.00mm,
-1N4007,"D1,D2,D3,D4,D6,D7",D_DO-41_SOD81_P10.16mm_Horizontal,
+1N4007,"D1,D2,D3,D4,D6,D7",D_DO-41_SOD81_P10.16mm_Horizontal,C2457
+BAT85,D11,D_DO-35_SOD-123_Dual_P7.62mm,
+1.5KE6.8A,D12,D_DO-201AD_P15.24mm_Horizontal,C412500
 1N5822,D5,D_DO-201AD_P15.24mm_Horizontal,C2476
-P6KE18A,D8,D_DO-201AD_P15.24mm_Horizontal,C1975053
+1.5KE18A,D8,D_DO-201AD_P15.24mm_Horizontal,C1666858
 1N4744A,D9,D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp,C238928
-Clip porte-fusible 5x20 à souder,F1,"s'insèrent dans les fentes 1,3x2,6 de Fuse_5x20_Horizontal",
+"Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm",F1,se soude sur Fuse_5x20_Universal (fentes 3 mm),
 Bornier_5.08,"J1,J12,J18,J19,J25,J26,J27,J36,J37",TerminalBlock_bornier-2_P5.08mm,
-JST-XH,"J10,J29,J30",JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical,C144394
-Bornier_5.08,"J11,J23,J24,J3,J31,J32,J33,J34,J4,J5,J6",TerminalBlock_bornier-3_P5.08mm,
+Bornier_5.08,"J10,J11,J23,J24,J29,J3,J30,J31,J32,J33,J34,J4,J5,J6",TerminalBlock_bornier-3_P5.08mm,
 Support OLED,J13,PinSocket_1x04_P2.54mm_Vertical,
 Support I2C ext,J14,PinSocket_1x04_P2.54mm_Vertical,
 Header servo,"J15,J16",PinHeader_1x03_P2.54mm_Vertical,
@@ -21,8 +24,13 @@ Jack 5.5/2.1,J2,BarrelJack_Horizontal,
 Header alim,J20,PinHeader_1x06_P2.54mm_Vertical,
 Support I2C libre,"J21,J22,J28",PinSocket_1x04_P2.54mm_Vertical,
 Support module microSD,J35,PinSocket_1x06_P2.54mm_Vertical,
-JST-XH,"J7,J8,J9",JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical,
+Header CMD SENSE,J38,PinHeader_1x08_P2.54mm_Vertical,
+Bornier_5.08,"J7,J8,J9",TerminalBlock_bornier-4_P5.08mm,
 Jumper BYPASS,JP1,PinHeader_1x03_P2.54mm_Vertical,
+Jumper ON/OFF,"JP10,JP5,JP6,JP7,JP8,JP9",PinHeader_1x03_P2.54mm_Vertical,
+Jumper SD MISO,JP11,PinHeader_1x03_P2.54mm_Vertical,
+Jumper profil,JP12,PinHeader_1x03_P2.54mm_Vertical,
+Jumper profil,"JP13,JP14,JP15,JP16,JP17,JP18,JP19,JP20,JP21",PinHeader_1x02_P2.54mm_Vertical,
 Jumper SD CS,JP2,PinHeader_1x03_P2.54mm_Vertical,
 Jumper SD SCK,JP3,PinHeader_1x03_P2.54mm_Vertical,
 Jumper SD MOSI,JP4,PinHeader_1x03_P2.54mm_Vertical,
@@ -30,17 +38,18 @@ SRD-05VDC-SL-C,"K1,K2,K3,K4,K5,K6",Relay_SPDT_SANYOU_SRD_Series_Form_C,C35449
 rouge,"LED1,LED2,LED3,LED4,LED6,LED7",LED_D5.0mm,
 verte,LED5,LED_D5.0mm,
 HLK-20M05,PS1,Converter_ACDC_Hi-Link_HLK-20Mxx,C465406
-BC337-40,"Q1,Q10,Q2,Q3,Q4,Q5,Q6,Q8",TO-92_Inline,C713611
-IRF4905,Q11,TO-220-3_Vertical,C2564
-NDP6020P,Q7,TO-220-3_Vertical,C878814
-BS250,Q9,TO-92_Inline,C151450
-1k,"R1,R10,R11,R12,R13,R14,R15,R16,R2,R28,R3,R30,R31,R33,R34,R4,R9",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-2k*,"R17,R18,R19",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+BC337-40,"Q1,Q2,Q3,Q4,Q5,Q6,Q8",TO-92_Inline_Wide_CBE,C713611
+IRF4905,"Q11,Q12,Q7",TO-220-3_Vertical_GDS,C2564
+1k,"R1,R10,R11,R12,R13,R14,R15,R16,R2,R28,R3,R30,R31,R33,R34,R4,R49,R50,R51,R52,R53,R54,R61,R62,R64,R65,R66,R9",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+2k,"R17,R18,R19",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 220,"R20,R21",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-10k,"R23,R29,R32,R5,R6,R7,R8",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+10k,"R23,R27,R29,R32,R43,R44,R45,R46,R47,R48,R5,R6,R7,R8",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 4.7k,"R24,R25,R26",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-10k*,"R27,R43,R44,R45,R46,R47",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-100k,"R35,R36,R37,R40",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-100k*,R38,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-22k*,R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-10D471K,RV1,RV_Disc_D12mm_W5.4mm_P7.5mm,C111188
+100k,"R35,R38,R40,R57,R58",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+22k,R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+14D471K,RV1,RV_Disc_D15.5mm_W8mm_P7.5mm,C111188
+GND,TP1,TestPoint_THTPad_D2.0mm_Drill1.0mm,
++5V,TP2,TestPoint_THTPad_D2.0mm_Drill1.0mm,
++3V3_SW,TP3,TestPoint_THTPad_D2.0mm_Drill1.0mm,
++3V3,TP4,TestPoint_THTPad_D2.0mm_Drill1.0mm,
+LD1117V33,U1,TO-220-3_Vertical_LDO,C283467
