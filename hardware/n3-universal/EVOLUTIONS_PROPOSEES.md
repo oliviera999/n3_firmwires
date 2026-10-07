@@ -22,7 +22,7 @@ Chaque option se termine par une **décision à prendre** ; le §4 les récapitu
 >
 > | # | Décision | Appliqué en 0.2 |
 > |---|---|---|
-> | A1 | Sélecteur AUTO / ON par canal | **oui** : JP5-JP10 (1×03, cavalier en **2-3 = AUTO** livré), R61-R66 1 k vers +5 V pour forcer la base |
+> | A1 | Sélecteur AUTO / ON par canal | **oui** : JP5-JP10 (1×03 : **sans cavalier = AUTO**, 1-2 = ON forcé via R61-R66 1 k depuis +3V3, 2-3 = OFF forcé, base à la masse) |
 > | A2 | Retour d'état | **header J38 « CMD SENSE » 1×08** (collecteurs REL1-6_SW, 0/5 V, + 5V/GND) à la place de l'empreinte PCF8574 DNP — rien à poser, lisible au multimètre ou par un module externe |
 > | A3 | Chauffage K3 | **broche 1 de JP7 non câblée** : AUTO / OFF seulement |
 > | B-charges | Borniers de charge | statu quo vis 5,08 |

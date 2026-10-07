@@ -53,8 +53,12 @@ EXCLUDED = {"A1", "A2", "PS1"}
 def load_bom() -> list[dict]:
     with (ROOT / "BOM.csv").open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f, delimiter=";"))
-    # lignes « extra » (supports, cavaliers, visserie) : pas de repère PCB
-    return [r for r in rows if r.get("Refs") and r.get("Empreinte")]
+    # lignes « extra » (supports, cavaliers, visserie, câblage) : leur colonne
+    # Refs n'est pas une liste de repères (« A1 (supports) », « JP1-JP21 »…)
+    import re
+    ok = re.compile(r"^[A-Z]+[0-9]+$")
+    return [r for r in rows
+            if r.get("Refs") and all(ok.match(x) for x in r["Refs"].replace(",", " ").split())]
 
 
 def load_cpl() -> dict[str, dict]:
@@ -69,7 +73,7 @@ def main() -> None:
     cond: list[tuple[str, str, str, str]] = []
     n_socle = 0
     for row in bom:
-        refs = [r.strip() for r in row["Refs"].split(",") if r.strip()]
+        refs = [r.strip() for r in row["Refs"].replace(",", " ").split() if r.strip()]
         for ref in refs:
             if ref in EXCLUDED or ref.startswith(("H", "TP")):
                 continue

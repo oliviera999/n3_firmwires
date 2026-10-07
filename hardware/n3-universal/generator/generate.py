@@ -307,9 +307,9 @@ def relay_channel(n: int, gpio_net: str, jref: str, k_x: float,
                 fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
                 desc=f"Forçage ON du canal K{n} : +3V3 -> 1k -> cavalier {jpf} 1-2 -> base",
                 sch=(bx + 19, by + 10), pcb=(k_x + 16, 89.3, 270),
-                silk=dict(ref=(5.08, 0, 0), value=(12.3, 0, 0)),
+                silk=dict(ref=(5.08, 0, 90), value=(12.3, 0, 0)),
                 nets={"1": "+3V3", "2": f"REL{n}_ON"})] if force_on else []),
-        dict(ref=jpf, sym="CONN_03", value="Jumper ON/OFF",
+        dict(ref=jpf, sym="CONN_03", value="Jumper ON/OFF", silk=dict(ref=(0, 7.6, 0)),
              fp="PinHeader_1x03_P2.54mm_Vertical",
              desc=f"Sélecteur K{n} : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé"
                   + (" ; 2-3 = OFF forcé" if force_on else
@@ -639,11 +639,12 @@ def build_components():
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Base commande gate (GPIO13)", sch=(146, 8), pcb=(224, 111, 0),
              nets={"1": "GATE", "2": "GATE_B"}),
-        dict(ref="R48", sym="R", value="10k",
+        dict(ref="R48", sym="R", silk=dict(ref=(5.08, 0, 0), value=(5.08, -2.35, 0)), value="10k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pull-down base Q8 (rail OFF tant que le GPIO flotte)", sch=(146, 12), pcb=(210, 116, 0),
              nets={"1": "GATE_B", "2": "GND"}),
         dict(ref="R35", sym="R", value="100k",
+             silk=dict(ref=(5.08, 0, 0), value=(-2.6, 0, 0)),  # valeur à gauche : R47 au-dessus, Q7 dessous
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Pull-up grille P-MOSFET vers +5V (rail OFF par défaut)", sch=(146, 16), pcb=(196, 116, 0),
              nets={"1": "+5V", "2": "GATE_G"}),
@@ -651,11 +652,12 @@ def build_components():
              desc="Driver gate (1=C 2=B 3=E)", sch=(155, 12), pcb=(238, 116, 0),
              nets={"1": "GATE_G", "2": "GATE_B", "3": "GND"}),
         dict(ref="Q7", sym="PMOS_GDS", value="IRF4905", fp="TO-220-3_Vertical_GDS",
+             silk=dict(ref=(0.0, 4.4, 0)),  # R35 juste au-dessus, JP1 à droite
              desc="P-MOSFET commutation 5V du LDO capteurs (1=G 2=D=+5V 3=S=entrée LDO)",
              sch=(155, 18), pcb=(196, 122, 0),
              nets={"1": "GATE_G", "2": "+5V", "3": "LDO_IN"}),
         dict(ref="JP1", sym="CONN_02", value="Jumper BYPASS",
-             fp="PinHeader_1x03_P2.54mm_Vertical",
+             fp="PinHeader_1x03_P2.54mm_Vertical", silk=dict(ref=(-2.4, 2.54, 90)),  # valeur de U1 à droite
              desc="BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; "
                   "l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)",
              sch=(146, 22), pcb=(208, 120, 0),
@@ -694,7 +696,7 @@ def build_components():
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Bas du pont VBAT profil 1S (JP12 en 2-3) : 100k/100k", sch=(146, 44), pcb=(174, 116, 0),
              nets={"1": "VBAT_100K", "2": "GND"}),
-        dict(ref="JP12", sym="CONN_03", value="Jumper profil",
+        dict(ref="JP12", sym="CONN_03", value="Jumper profil", silk=dict(ref=(0, 7.9, 90)),  # tourné 90° : repère vertical à droite (A1 à gauche, R38 dessus, 12V/1S dessous)
              fp="PinHeader_1x03_P2.54mm_Vertical",
              desc="Ratio VBAT : 1-2 = 22k (bus 12V, ffp5cs) ; 2-3 = 100k (1S, msp/n3pp)",
              sch=(155, 38), pcb=(133, 122, 90),
@@ -723,6 +725,7 @@ def build_components():
         # Brochage TO-220 = 1=G 2=D(+tab) 3=S. R40 tire la grille à GND :
         # VGS = -VBAT ; IRF4905 (±20 V / 55 V) + zener D9 grille-source (rev 0.1.2).
         dict(ref="Q11", sym="PMOS_GDS", value="IRF4905", fp="TO-220-3_Vertical_GDS",
+             silk=dict(ref=(2.54, 4.4, 0)),  # D8 juste au-dessus
              desc="Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie)",
              sch=(155, 56), pcb=(248, 142, 0),
              nets={"1": "QP_G", "2": "VBAT12_IN", "3": "VBAT12_PROT"}),
@@ -1112,9 +1115,10 @@ PCB_TEXTS = [
     *[(x + 20.5, 87.0, f"K{i} FORCE", 0.9) for i, x in enumerate(_KX, 1)],
     *[(x + 24.3, 90.0, "ON" if i != 3 else "--", 0.9) for i, x in enumerate(_KX, 1)],
     *[(x + 24.6, 95.1, "OFF", 0.9) for x in _KX],
-    (158, 103, "JP5-10 FORCAGE : sans cavalier=AUTO | 1-2 ON | 2-3 OFF", 1.0),
+    # légende verticale entre JP7 et la colonne K4 (seule bande libre de la zone relais)
+    (150.2, 98.6, "JP5-10 : rien = AUTO\\n1-2 = ON   2-3 = OFF", 0.8, "F.SilkS", 90),
     (212, 103, "US ECHO : JP13-15 = ffp5cs", 1.0),
-    (150, 93.5, f"n3-universal v{REV} — msp / n3pp / ffp5cs", 1.4, "B.SilkS"),
+    (185, 158.2, f"n3-universal v{REV} — msp / n3pp / ffp5cs", 1.4, "B.SilkS"),
     # Colonne gauche (borniers tournés : fils vers le bord gauche)
     (51.6, 105, "+", 1.2, "F.SilkS", 90), (51.6, 110.1, "GND", 0.9, "F.SilkS", 90),
     (52.9, 107.5, "5V IN", 0.9, "F.SilkS", 90),
@@ -1131,7 +1135,8 @@ PCB_TEXTS = [
     (58.1, 160.8, "PLUIE msp", 1.0), (53, 172.5, "3V3", 0.9), (58.08, 172.5, "DO", 0.9), (63.16, 172.5, "GND", 0.9),
     (74.6, 160.8, "DHT EXT msp", 1.0), (69.5, 172.5, "3V3", 0.9), (74.58, 172.5, "DATA", 0.9), (79.66, 172.5, "GND", 0.9),
     (91.1, 160.8, "DHT11", 1.0), (86, 172.5, "3V3", 0.9), (91.08, 172.5, "DATA", 0.9), (96.16, 172.5, "GND", 0.9),
-    (112.7, 158.0, "UN SEUL MODULE : A1 (WROOM) OU A2 (S3)", 0.9),
+    (104, 161.0, "UN SEUL MODULE : A1 OU A2", 0.9),
+    (280, 131.0, "UN SEUL MODULE : A1 OU A2", 0.9),
     (132.6, 160.8, "US AQUA", 1.0), (154.1, 160.8, "US RESERV", 1.0), (175.6, 160.8, "US POTAGER", 1.0),
     *[(x, 172.5, lbl, 0.9) for x0 in (125, 146.5, 168)
       for x, lbl in ((x0, "5V"), (x0 + 5.08, "TRIG"), (x0 + 10.16, "ECHO"), (x0 + 15.24, "GND"))],
@@ -1145,11 +1150,11 @@ PCB_TEXTS = [
     # Zone centrale : cavaliers de profil et blocs
     (149.5, 108.4, "ffp5cs", 0.9), (170.5, 108.4, "ffp5cs", 0.9), (191.5, 108.4, "ffp5cs", 0.9),
     (214.5, 113.9, "msp", 0.9),
-    (204.9, 122.5, "JP1 BYPASS", 0.9, "F.SilkS", 90),
     (133, 124.8, "12V", 0.9), (138.1, 124.8, "1S", 0.9), (143, 124.8, "VBAT", 0.9),
     (185.5, 129.5, "SD 1-2=S3", 0.9), (185.5, 132.5, "2-3=WROOM", 0.9),
-    (194, 136.2, "CS", 0.9), (199, 136.2, "SCK", 0.9), (204, 136.2, "MOSI", 0.9), (209, 136.2, "MISO", 0.9),
-    (224, 133.8, "GND", 0.9), (228, 133.8, "5V", 0.9), (232, 133.8, "3V3SW", 0.9), (236, 133.8, "3V3", 0.9),
+    # pas de place pour CS/SCK/MOSI/MISO (Q7, JP1, U1, R43-R46 devant, vias derrière) :
+    # JP2/JP3/JP4/JP11 = CS/SCK/MOSI/MISO, voir README (tableau des cavaliers) et BOM
+    (224, 128.6, "GND", 0.9), (228, 128.6, "5V", 0.9), (232, 128.6, "3V3SW", 0.9), (236, 128.6, "3V3", 0.9),
     (235.5, 136.4, "LDR", 0.9),
     (195, 157.5, "JP16-20 FERME = LDR | OUVERT = sonde sol n3pp, module AO msp", 0.9),
     (157.5, 154, "CMD SENSE", 0.9),
@@ -1158,13 +1163,12 @@ PCB_TEXTS = [
     (315.6, 140.5, "SERVICE", 0.9, "F.SilkS", 90), (315.6, 156, "5V GND 3V3SW", 0.9, "F.SilkS", 90),
     # Coin secteur
     (250, 41.6, "N", 0.9), (256.8, 41.6, "L", 0.9),
-    (44.3, 55, "H1=NYLON", 0.9), (276.8, 63.5, "H5=NYLON", 0.9),
+    (44.3, 55, "H1=NYLON", 0.9), (276.8, 65.2, "NYLON", 0.9),
     (253, 52, "SECTEUR 230V", 1.0), (255, 55, "!! DANGER 230V !!", 1.0),
     # Dos : notes longues sous les modules (zones sans pastille)
     (112.7, 112, "PROFIL ffp5cs :", 0.9, "B.SilkS"),
     (112.7, 115, "JP1 ferme, JP13-15 fermes", 0.9, "B.SilkS"),
     (112.7, 118, "JP20 ferme, JP12 1-2 (12V)", 0.9, "B.SilkS"),
-    (112.7, 121, "SD : 1-2 = S3, 2-3 = WROOM", 0.9, "B.SilkS"),
     (112.7, 125, "PROFIL msp : JP1 ote,", 0.9, "B.SilkS"),
     (112.7, 128, "JP16-19 + JP21 fermes", 0.9, "B.SilkS"),
     (112.7, 131, "JP12 2-3 (1S)", 0.9, "B.SilkS"),
@@ -1174,7 +1178,6 @@ PCB_TEXTS = [
     (284, 110, "JP1 FERME = rail 3V3 permanent (ffp5cs)", 0.9, "B.SilkS"),
     (284, 113, "JP1 OUVERT = commute par GPIO13 (msp, n3pp)", 0.9, "B.SilkS"),
     (284, 117, "BUS 12V : FUSIBLE LAME 7,5-10A EN AMONT", 0.9, "B.SilkS"),
-    (284, 121, "UN SEUL MODULE : A1 (WROOM) OU A2 (S3)", 0.9, "B.SilkS"),
     (255.5, 116.6, "ANTENNE S3 : pas de cuivre", 0.8, "B.SilkS", 90),
     (80, 155.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
 ]
@@ -1493,10 +1496,17 @@ SILK_LAYOUT = {
     "CP_Radial_D8.0mm_P3.50mm": dict(ref=(1.75, -2.4, 0), value=(1.75, 5.3, 0)),
     "CP_Radial_D6.3mm_P2.50mm": dict(ref=(1.25, -1.9, 0), value=(1.25, 4.4, 0)),
     "CP_Radial_D5.0mm_P2.50mm": dict(ref=(1.25, -1.6, 0), value=(1.25, 3.7, 0)),
-    "TO-92_Inline_Wide_CBE": dict(ref=(2.54, -1.55, 0), value=None),
+    # TO-92 : repère sous le boîtier (au-dessus = LED témoin du canal relais)
+    "TO-92_Inline_Wide_CBE": dict(ref=(2.54, 4.9, 0), value=None),  # sous les libellés C B E (y 3,0)
+    # headers : le marqueur broche 1 de la sérigraphie KiCad monte à -1,76
+    "PinHeader_1x03_P2.54mm_Vertical": dict(ref=(0, -2.8, 0), value=None),
+    "PinHeader_1x02_P2.54mm_Vertical": dict(ref=(0, -2.8, 0), value=None),
     # TO-220 : valeur verticale à gauche du boîtier (dessus = repère, dessous = brochage)
-    "TO-220-3_Vertical_GDS": dict(ref=(2.54, -4.1, 0), value=(-3.6, -1.0, 90)),
-    "TO-220-3_Vertical_LDO": dict(ref=(2.54, -4.1, 0), value=(-3.6, -1.0, 90)),
+    "TO-220-3_Vertical_GDS": dict(ref=(2.54, -4.5, 0), value=(-3.6, -1.0, 90)),
+    "TestPoint_THTPad_D2.0mm_Drill1.0mm": dict(ref=(0, 2.3, 0), value=None),  # libellé au-dessus, repère dessous
+    "TerminalBlock_bornier-4_P5.08mm": dict(ref=(7.62, -2.65, 0), value=None),  # comme les borniers 2/3
+    # LDO U1 : R48 juste au-dessus -> repère sous le boîtier
+    "TO-220-3_Vertical_LDO": dict(ref=(2.54, 4.4, 0), value=(-3.6, -1.0, 90)),  # sous GND OUT IN (0,7 mm, y 2,8)
 }
 
 

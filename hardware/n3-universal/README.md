@@ -54,7 +54,7 @@ borniers KF301, TO-220 courants).
 | Coupure du pont VBAT (Q9/Q10, BS250) | GPIO `ADC_VBAT_EN` | **supprimée** : pont permanent R38 100k + `JP12` (1-2 = 22k bus 12 V, 2-3 = 100k 1S) + R49/C13 + clamp **D11** | 60 µA en permanence < consommation de veille du module ; 4 pièces de moins |
 | Entrée 5 V (J1/J2) | diode D5 seule | **Q12 IRF4905 anti-inversion** (chute ≈ 0,05 V) + **D12 TVS 1.5KE6.8A** | inversion de polarité et surtensions de blocs secteur bas de gamme |
 | TVS 12 V D8 | P6KE18A | **1.5KE18A** (1500 W) | bus solaire 12 V exposé |
-| Forçage manuel des relais | — | **JP5-JP10** (1×03 : 1 = ON, 2 = commun, 3 = AUTO) + R61-R66 ; **JP7 (chauffage) sans position ON** | dépannage sur site sans PC ; chauffage jamais forcé |
+| Forçage manuel des relais | — | **JP5-JP10** (1×03 : 1 = +3V3 via R61-R66, 2 = base du transistor, 3 = GND) : **sans cavalier = AUTO**, 1-2 = ON forcé, 2-3 = OFF forcé ; **JP7 (chauffage) sans broche ON** | dépannage sur site sans PC ; chauffage jamais forcé |
 | Retour d'état commandes | — (PCF8574 DNP envisagé) | **J38 « CMD SENSE »** 1×08 : REL1-6_SW (0/5 V) + 5V + GND | lisible au multimètre, extensible, rien à poser |
 | Connectique signal | JST-XH (HC-SR04, DHT) + borniers 5,08 | **borniers à vis 5,08 partout** (bornier-4 pour les HC-SR04, ordre `5V TRIG ECHO GND`) | un seul type, approvisionnement local, fils 0,2-2,5 mm² |
 | Repères de sérigraphie | décalés d'une rangée (K1-K3) | chaque repère **dans le corps de son composant**, garde `tools/check_silk_refs.py` en CI | montage par des élèves, pas d'erreur de canal |
@@ -66,14 +66,14 @@ borniers KF301, TO-220 courants).
 | Mécanique | 5 trous M3, 278 × 120 | **7 trous M3** (H1/H5 nylon), **278 × 135 mm**, points de test TP1-TP4 (3V3, 3V3_SW, 5V, GND) | montage sur plaque, mesure au multimètre |
 | Carte D11 | BAT85 DO-35 | **empreinte double** DO-35 **ou** SOD-123 (BAT43W C19167) | BAT85 traversant épuisé chez LCSC |
 
-### Cavaliers et profils (livraison : tout en position par défaut)
+### Cavaliers et profils (livraison : tout en position par défaut ; les cavaliers de forçage se rangent sur le header J38 ou dans le sachet)
 
 | Cavalier | Fonction | Défaut | Autre position |
 |---|---|---|---|
 | JP1 | bypass du gate rail capteurs (header 1×03, broche 3 = parking) | **1-2 fermé** (ffp5cs : rail permanent) | parqué en 2-3 : rail coupé par GPIO (msp/n3pp) |
 | JP2 / JP3 / JP4 | SD CS / CLK / MOSI | **1-2 = S3** | 2-3 = WROOM (env `wroom-sd`) |
 | JP11 | SD MISO | **1-2 = S3** | 2-3 = WROOM |
-| JP5…JP10 | forçage relais K1…K6 | **2-3 = AUTO** | 1-2 = ON (sauf JP7 : pas de ON) |
+| JP5…JP10 | forçage relais K1…K6 | **sans cavalier = AUTO** (GPIO) | 1-2 = ON forcé ; 2-3 = OFF forcé (JP7 : OFF seulement) |
 | JP12 | diviseur VBAT | **1-2 = 22k** (bus 12 V) | 2-3 = 100k (1S Li-ion) |
 | JP13 / JP14 / JP15 | diviseurs ECHO HC-SR04 (5 V → 3,3 V) | **fermé** (HC-SR04 5 V) | ôté : capteur 3,3 V / sortie open-collector |
 | JP16…JP19 | diviseurs ADC A…D | **ôté** (signal ≤ 3,3 V direct) | fermé : signal 0-5 V |
@@ -122,7 +122,11 @@ python3 export_fab.py --rev 0.2                  # DRC (0 erreur exigée) puis g
 python3 export_assembly_preview.py
 ```
 
-État rev 0.2 : __ETAT_02__
+État rev 0.2 (2026-10-07, KiCad 10.0.6 / freerouting 2.1.0, Linux) : ERC **0 erreur** ; DRC
+**0 erreur, 0 non connecté, 0 écart de parité schéma/PCB** avec les règles clearance 3 mm,
+creepage 6,4 mm et plans 6,5 mm ; écart secteur/logique mesuré 3 mm : 0 violation, plan GND
+à 6,50 mm du secteur ; 62 avertissements de sérigraphie (contours des relais sur
+les fentes, textes serrés), sans effet électrique. Détail et tableau : audit §14.
 
 - **Carte 278 × 135 mm, 2 oz** — zone secteur en bande haute (6 relais + coin PSU
   Hi-Link, fentes fraisées), logique en dessous, rangée de borniers en bande basse.

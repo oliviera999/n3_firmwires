@@ -126,6 +126,6 @@ une commande standard produirait une carte 1 oz non conforme au dossier 230 V. P
 - Relais SRD **Form C : 7 A / 240 VAC réels** (10 A seulement en 125 VAC / Form A) —
   ne pas dépasser ~1,5 kW / 230 V par canal ; 3 A inductif.
 - **H1 et H5 : vis nylon** (coin relais et coin secteur) ; les 5 autres trous en métal.
-- **JP7 (chauffage K3) n'a pas de position ON** : c'est voulu.
+- **JP5-JP10 : livrer SANS cavalier** (= AUTO). 1-2 force ON, 2-3 force OFF. **JP7 (chauffage K3) n'a pas de broche ON** : c'est voulu.
 - Poser le porte-fusible **à capot** (C3131) plutôt que des clips nus si la carte est en
   boîtier ouvert : aucun 230 V accessible au doigt.

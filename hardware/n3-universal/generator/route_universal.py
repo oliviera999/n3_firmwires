@@ -50,6 +50,7 @@ MIN_GAP_MM = 3.0
 MIN_PLANE_GAP_MM = 6.5
 
 FMM = pcbnew.FromMM
+TMM = pcbnew.ToMM
 
 
 def via_width_mm(v) -> float:
@@ -506,8 +507,25 @@ def add_stitching_vias(b):
              if not any(kx0 <= x <= kx1 and ky0 <= y <= ky1
                         for kx0, ky0, kx1, ky1 in keepouts)]
     added = 0
+    # pas de via sous le corps d'un composant (0.2 : un via de la grille tombait
+    # sous le repère de R28, que tidy_silkscreen ne pouvait plus placer)
+    bodies = []
+    for fp in b.GetFootprints():
+        bb = fp.GetCourtyard(pcbnew.F_CrtYd).BBox()
+        if bb.GetWidth():
+            bodies.append((TMM(bb.GetLeft()) - 0.6, TMM(bb.GetTop()) - 0.6,
+                           TMM(bb.GetRight()) + 0.6, TMM(bb.GetBottom()) + 0.6))
+    # ni sous une étiquette de sérigraphie (PCB_TEXTS) : un via sous un texte
+    # le rend illisible et bloque tidy_silkscreen
+    for d in b.GetDrawings():
+        if d.GetClass() == "PCB_TEXT" and "Silk" in b.GetLayerName(d.GetLayer()):
+            bb = d.GetBoundingBox()
+            bodies.append((TMM(bb.GetLeft()) - 0.6, TMM(bb.GetTop()) - 0.6,
+                           TMM(bb.GetRight()) + 0.6, TMM(bb.GetBottom()) + 0.6))
     for x, y in spots:
         if any(sx0 <= x <= sx1 and sy0 <= y <= sy1 for sx0, sy0, sx1, sy1 in slots_margin):
+            continue
+        if any(bx0 <= x <= bx1 and by0 <= y <= by1 for bx0, by0, bx1, by1 in bodies):
             continue
         ok = True
         for _n, x0, y0, x1, y1, r in items:
@@ -583,14 +601,29 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jar", default=str(Path.home() / "freerouting.jar"),
                     help="chemin du jar freerouting")
+    ap.add_argument("--ses", help="réimporter un .ses déjà calculé (freerouting lancé à part, "
+                                  "p. ex. plusieurs instances en parallèle, on garde la meilleure) "
+                                  "au lieu de relancer le routeur")
+    ap.add_argument("--dsn-only", help="exporter le DSN logique à ce chemin et s'arrêter")
     args = ap.parse_args()
     work = Path(tempfile.mkdtemp())
     dsn, ses = work / "logic.dsn", work / "logic.ses"
 
     apply_seed_tracks()
-    if not export_logic_dsn(dsn):
-        sys.exit("échec export DSN")
-    run_freerouting(Path(args.jar), dsn, ses)
+    if args.dsn_only:
+        if not export_logic_dsn(Path(args.dsn_only)):
+            sys.exit("échec export DSN")
+        print("DSN écrit :", args.dsn_only)
+        return
+    if args.ses:
+        ses = Path(args.ses)
+        if not ses.exists():
+            sys.exit(f"{ses} introuvable")
+        print("SES fourni :", ses)
+    else:
+        if not export_logic_dsn(dsn):
+            sys.exit("échec export DSN")
+        run_freerouting(Path(args.jar), dsn, ses)
 
     b = pcbnew.LoadBoard(str(BOARD_PATH))
     ok = pcbnew.ImportSpecctraSES(b, str(ses))

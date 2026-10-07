@@ -8,9 +8,9 @@ désynchronisés du PCB). Codes LCSC lus sur la page produit le 2026-10-06.
 
 | Fichier | Contenu |
 |---------|---------|
-| `BOM-PCBA-socle.csv` | __N_GROUPS__ groupes / **__N_SOCLE__ composants** THT du **socle commun à tous les rôles** (relais, transistors, diodes, résistances, cavaliers-headers, connectique). Lignes sans n° LCSC = génériques (Basic/Extended le moins cher en stock, ou achat local). |
-| `BOM-PCBA-conditionnels.csv` | **__N_COND__ pièces à pose manuelle selon le profil d'alimentation — NE PAS les faire assembler** : bloc d'entrée secteur (J27, F1, RV1, profil d) et bloc bus 12 V (J26, Q11, D8, D9, R40, C5, J36, J37, profil c). Depuis la 0.2 **plus aucune résistance n'est conditionnelle** : les diviseurs ADC / HC-SR04 / VBAT sont sélectionnés par cavalier (JP12-JP20), tout se pose. |
-| `CPL-n3-universal-top.csv` | Positions/rotations des __N_SOCLE__ composants du socle (tout en face Top), dans le repère des gerbers. |
+| `BOM-PCBA-socle.csv` | 42 groupes / **154 composants** THT du **socle commun à tous les rôles** (relais, transistors, diodes, résistances, cavaliers-headers, connectique). Lignes sans n° LCSC = génériques (Basic/Extended le moins cher en stock, ou achat local). |
+| `BOM-PCBA-conditionnels.csv` | **11 pièces à pose manuelle selon le profil d'alimentation — NE PAS les faire assembler** : bloc d'entrée secteur (J27, F1, RV1, profil d) et bloc bus 12 V (J26, Q11, D8, D9, R40, C5, J36, J37, profil c). Depuis la 0.2 **plus aucune résistance n'est conditionnelle** : les diviseurs ADC / HC-SR04 / VBAT sont sélectionnés par cavalier (JP12-JP20), tout se pose. |
+| `CPL-n3-universal-top.csv` | Positions/rotations des 154 composants du socle (tout en face Top), dans le repère des gerbers. |
 
 ## Verdict assemblage (inchangé)
 
