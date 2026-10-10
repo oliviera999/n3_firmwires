@@ -175,8 +175,8 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
   return ESP_FAIL;
 }
 
-/* Banc 2026-10-10 (msp1) : capteur alimenté, l'upload TLS et la connexion SMTP échouaient à
- * 100 % alors que le WiFi restait associé ; caméra coupée avant l'envoi : 11 uploads sur 11 OK. */
+/* Capteur alimenté pendant le trafic réseau : upload TLS et SMTP en échec sur ESP32-CAM alors que
+ * le WiFi reste associé. À appeler avant tout envoi. */
 void n3CameraPowerDown(void) {
   if (!s_cameraPoweredOn) {
     return;
