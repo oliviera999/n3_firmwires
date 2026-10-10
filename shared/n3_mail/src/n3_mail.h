@@ -81,11 +81,18 @@ bool n3MailBuildDebugBody(const N3MailDebugInfo& info, char* outBody, size_t out
 bool n3MailBuildNetReportBody(const N3MailNetReportInfo& info, char* outBody, size_t outBodySize);
 
 // Envoi "one-shot" : ouvre une session SMTP locale, connecte, envoie, ferme.
-// Comportement historique (utf-8 / 7bit / priorite basse). Inchange.
+// Comportement historique (utf-8 / 7bit / priorite basse). Valeur de retour inchangee.
+//
+// outAcceptedByServer (optionnel, 1.5.0) : true si le serveur SMTP a ACCEPTE le
+// message (reponse 250 a la fin du DATA), MEME si sendMail() renvoie false a cause
+// de la cloture de session (QUIT sur connexion deja tombee, TLS coupe apres le 250).
+// Dans ce cas le mail EST livre : un appelant qui retente sur `false` seul enverrait
+// des doublons (vu terrain : un mail par reveil). Non renseigne -> comportement 1.4.0.
 bool n3MailSendText(const N3MailSmtpConfig& smtpConfig,
                     const char* subject,
                     const char* body,
-                    String* outError);
+                    String* outError,
+                    bool* outAcceptedByServer = nullptr);
 
 // Forward-declaration : evite de tirer <ESP_Mail_Client.h> dans cet en-tete leger
 // (les TU qui n'utilisent que les builders de corps ne paient pas l'include). Le
@@ -102,11 +109,13 @@ class SMTPSession;
  * partager la plomberie ESP_Mail_Client sans abandonner leurs garde-fous.
  *
  * Retourne true si `MailClient.sendMail` reussit. En cas d'echec, *outError (si
- * non NULL) contient `smtp.errorReason()`.
+ * non NULL) contient `smtp.errorReason()`. *outAcceptedByServer (si non NULL) : cf.
+ * n3MailSendText — message accepte par le serveur (250) meme si sendMail() echoue.
  */
 bool n3MailSendMessageWithSession(SMTPSession& smtp,
                                   const N3MailMessageSpec& spec,
-                                  String* outError);
+                                  String* outError,
+                                  bool* outAcceptedByServer = nullptr);
 
 // ---------------------------------------------------------------------------
 // Notification graduee avec failover (mutualisee depuis n3pp/msp — corps

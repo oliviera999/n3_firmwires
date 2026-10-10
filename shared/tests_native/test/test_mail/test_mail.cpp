@@ -220,6 +220,61 @@ void test_send_with_session_echec_renseigne_erreur() {
   TEST_ASSERT_TRUE(contains(err.c_str(), "SMTP envoi echec"));
 }
 
+// ---------- outAcceptedByServer (1.5.0) : faux negatif « accepte puis QUIT en echec » ----------
+
+static void resetMailClientStub(bool sendResult, int recordedResult) {
+  MailClient.nextSendResult = sendResult;
+  MailClient.nextRecordedResult = recordedResult;
+  MailClient.lastMessage = nullptr;
+  MailClient.sendMailCallCount = 0;
+}
+
+void test_send_with_session_accepte_puis_cloture_ko_signale_accepte() {
+  SMTPSession smtp;
+  String err;
+  bool accepted = false;
+  resetMailClientStub(false, 1);  // 250 recu, puis closeSession() en echec
+
+  // Valeur de retour INCHANGEE (false, parite 1.4.0)...
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, makeValidSpec(), &err, &accepted));
+  // ... mais le message est bien livre : l'appelant ne doit pas le renvoyer.
+  TEST_ASSERT_TRUE(accepted);
+  TEST_ASSERT_TRUE(contains(err.c_str(), "SMTP envoi echec"));
+  resetMailClientStub(false, -1);
+}
+
+void test_send_with_session_refus_ou_echec_avant_data_non_accepte() {
+  SMTPSession smtp;
+  bool accepted = true;
+  resetMailClientStub(false, 0);  // message refuse par le serveur
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, makeValidSpec(), nullptr, &accepted));
+  TEST_ASSERT_FALSE(accepted);
+
+  SMTPSession smtp2;
+  accepted = true;
+  resetMailClientStub(false, -1);  // aucun resultat enregistre (echec avant DATA)
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp2, makeValidSpec(), nullptr, &accepted));
+  TEST_ASSERT_FALSE(accepted);
+}
+
+void test_send_with_session_succes_signale_accepte() {
+  SMTPSession smtp;
+  bool accepted = false;
+  resetMailClientStub(true, -1);
+  TEST_ASSERT_TRUE(n3MailSendMessageWithSession(smtp, makeValidSpec(), nullptr, &accepted));
+  TEST_ASSERT_TRUE(accepted);
+  resetMailClientStub(false, -1);
+}
+
+void test_send_with_session_champs_manquants_reinitialise_accepte() {
+  SMTPSession smtp;
+  bool accepted = true;
+  N3MailMessageSpec spec = makeValidSpec();
+  spec.body = nullptr;
+  TEST_ASSERT_FALSE(n3MailSendMessageWithSession(smtp, spec, nullptr, &accepted));
+  TEST_ASSERT_FALSE(accepted);  // jamais un « accepte » residuel d'un appel precedent
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -237,5 +292,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_send_with_session_succes_passe_le_message);
   RUN_TEST(test_send_with_session_optin_drapeaux_et_noms);
   RUN_TEST(test_send_with_session_echec_renseigne_erreur);
+  RUN_TEST(test_send_with_session_accepte_puis_cloture_ko_signale_accepte);
+  RUN_TEST(test_send_with_session_refus_ou_echec_avant_data_non_accepte);
+  RUN_TEST(test_send_with_session_succes_signale_accepte);
+  RUN_TEST(test_send_with_session_champs_manquants_reinitialise_accepte);
   return UNITY_END();
 }

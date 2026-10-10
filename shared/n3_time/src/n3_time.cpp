@@ -2,6 +2,7 @@
 
 #include <ESP32Time.h>
 #include <esp_sleep.h>
+#include <esp_sntp.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -95,6 +96,51 @@ bool n3TimeSyncNtp(ESP32Time& rtc,
                 static_cast<unsigned long>(timeoutMs),
                 ntpServer);
   return false;
+}
+
+// Attente de la fin RÉELLE de la synchro SNTP (statut lwIP/ESP-IDF), et non d'une
+// horloge simplement plausible. Pattern repris de l'exemple ESP-IDF
+// protocols/sntp (boucle sur sntp_get_sync_status(), domaine public / CC0) :
+// https://github.com/espressif/esp-idf/blob/v4.4.7/examples/protocols/sntp/main/sntp_example_main.c
+// Le statut est remis à RESET avant configTime() : sinon un COMPLETED résiduel
+// d'une synchro antérieure serait pris pour celle-ci.
+bool n3TimeSyncNtpConfirmed(ESP32Time& rtc,
+                            long gmtOffsetSec,
+                            int daylightOffsetSec,
+                            const char* ntpServer,
+                            uint32_t timeoutMs) {
+  if (!ntpServer || ntpServer[0] == '\0') {
+    return false;
+  }
+
+  sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
+  configTime(gmtOffsetSec, daylightOffsetSec, ntpServer);
+
+  const uint32_t startMs = millis();
+  while ((millis() - startMs) < timeoutMs) {
+    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+      n3TimeSyncRtcFromSystem(rtc);
+      Serial.printf("[TIME] NTP confirme epoch=%ld (%lu ms)\n",
+                    static_cast<long>(time(nullptr)),
+                    static_cast<unsigned long>(millis() - startMs));
+      return true;
+    }
+    delay(50);
+  }
+
+  Serial.printf("[TIME][WARN] NTP non confirme apres %lu ms (serveur=%s)\n",
+                static_cast<unsigned long>(timeoutMs),
+                ntpServer);
+  return false;
+}
+
+unsigned long n3TimeReadSavedEpoch(Preferences& prefs) {
+  if (!prefs.begin("rtc", true)) {
+    return 0;  // namespace absent (NVS vierge) : rien de persisté
+  }
+  const unsigned long epoch = prefs.getULong("epoch", 0);
+  prefs.end();
+  return epoch;
 }
 
 bool n3TimeHasPlausibleEpoch(void) {

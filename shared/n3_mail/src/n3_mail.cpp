@@ -142,7 +142,9 @@ bool n3MailBuildNetReportBody(const N3MailNetReportInfo& info, char* outBody, si
 bool n3MailSendText(const N3MailSmtpConfig& smtpConfig,
                     const char* subject,
                     const char* body,
-                    String* outError) {
+                    String* outError,
+                    bool* outAcceptedByServer) {
+  if (outAcceptedByServer) *outAcceptedByServer = false;
   if (!smtpConfig.smtpHost || !smtpConfig.authorEmail || !smtpConfig.authorPassword ||
       !smtpConfig.recipientEmail || !subject || !body) {
     if (outError) *outError = "Configuration SMTP ou contenu mail invalide.";
@@ -177,12 +179,25 @@ bool n3MailSendText(const N3MailSmtpConfig& smtpConfig,
   spec.set7bitEncoding = true;
   spec.setLowPriority = true;
 
-  return n3MailSendMessageWithSession(smtp, spec, outError);
+  return n3MailSendMessageWithSession(smtp, spec, outError, outAcceptedByServer);
+}
+
+// Le message a-t-il ete accepte par le serveur (250 apres DATA) ? ESP Mail Client
+// enregistre le resultat (`addSendingResult(..., true)`) AVANT la cloture de session :
+// `sendMail()` peut donc renvoyer false (closeSession() en echec : connexion tombee
+// avant QUIT) alors que le mail est livre. Le dernier `sendingResult` fait foi.
+// Ref. ESP Mail Client v3.4.24, ESP_Mail_SMTP.h (sendContent / SMTPSession::closeSession)
+// https://github.com/mobizt/ESP-Mail-Client/blob/v3.4.24/src/ESP_Mail_SMTP.h
+static bool n3MailLastResultAccepted(SMTPSession& smtp) {
+  const size_t n = smtp.sendingResult.size();
+  return n > 0 && smtp.sendingResult.getItem(n - 1).completed;
 }
 
 bool n3MailSendMessageWithSession(SMTPSession& smtp,
                                   const N3MailMessageSpec& spec,
-                                  String* outError) {
+                                  String* outError,
+                                  bool* outAcceptedByServer) {
+  if (outAcceptedByServer) *outAcceptedByServer = false;
   if (!spec.senderEmail || !spec.recipientEmail || !spec.subject || !spec.body) {
     if (outError) *outError = "Specification de message mail invalide.";
     return false;
@@ -205,6 +220,9 @@ bool n3MailSendMessageWithSession(SMTPSession& smtp,
   }
 
   bool sendOk = MailClient.sendMail(&smtp, &message);
+  if (outAcceptedByServer) {
+    *outAcceptedByServer = sendOk || n3MailLastResultAccepted(smtp);
+  }
   if (!sendOk && outError) {
     *outError = "SMTP envoi echec: ";
     *outError += smtp.errorReason().c_str();

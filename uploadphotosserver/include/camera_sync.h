@@ -71,6 +71,16 @@ String cameraSyncBuildSdPath(uint32_t n, const char* stamp);
 /** Nombre de photos en attente d'upload (écrites − déjà confirmées). */
 uint32_t cameraSyncPendingCount();
 
+/**
+ * Réconcilie les compteurs NVS (pic_count / up_cursor) avec la carte SD montée — à appeler au
+ * démarrage À FROID, après le montage SD et avant toute capture (v2.77). Scan de la racine :
+ *  - photos numérotées bien au-delà du compteur (carte réutilisée, NVS effacée) : compteurs
+ *    portés au max, ces fichiers ne sont PAS envoyés et aucune nouvelle photo ne les écrase ;
+ *  - photo count+1 orpheline (coupure entre écriture SD et commit NVS) : réintégrée à la file ;
+ *  - up_cursor > pic_count (état incohérent hérité) : compteur réaligné.
+ */
+void cameraSyncReconcileWithSd();
+
 /** Draine le backlog SD selon la stratégie hybride. Retourne le bilan du réveil. */
 CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg);
 
