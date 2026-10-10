@@ -22,6 +22,7 @@
 #include "n3_data.h"
 #include "n3_log.h"
 #include "n3_store_forward.h"  // n3SfDrain (boucle de drain mutualisee, v2.66)
+#include "n3_sf_seq.h"          // numerotation compteur+curseur, reconciliation, rejets (v2.77)
 
 namespace {
 
@@ -68,6 +69,43 @@ bool parseEntry(const char* rawName, SyncEntry& out) {
   if (strcmp(out.stamp, "0") == 0) out.stamp[0] = '\0';  // sentinelle "horloge inconnue"
   return true;
 }
+
+/* v2.77 : rejets consecutifs de la photo en tete de file (4xx de contenu, fichier SD illisible).
+ * En RTC : survit au deep sleep, remis a zero au cold boot (nouveau budget). */
+RTC_DATA_ATTR N3SfRejectTracker s_headRejects = {0, 0};
+
+#if USE_SD
+/* Enumere les photos de la racine SD. getNextFileName() ne fait qu'un readdir : l'ancien
+ * openNextFile() ouvrait CHAQUE fichier (fopen + stat), soit plusieurs ms par entree — sur
+ * une carte de quelques milliers de photos, plusieurs dizaines de secondes a chaque reveil. */
+template <typename Fn>
+void forEachSdPhoto(Fn&& fn) {
+  fs::FS& fs = SD_MMC;
+  File root = fs.open("/");
+  if (!root) {
+    return;
+  }
+  if (!root.isDirectory()) {
+    root.close();
+    return;
+  }
+  for (;;) {
+    bool isDir = false;
+    const String name = root.getNextFileName(&isDir);
+    if (name.length() == 0) {
+      break;
+    }
+    if (isDir) {
+      continue;
+    }
+    SyncEntry e = {};
+    if (parseEntry(name.c_str(), e)) {
+      fn(e);
+    }
+  }
+  root.close();
+}
+#endif
 
 uint32_t nvsGet(const char* key) {
   Preferences prefs;
@@ -154,10 +192,6 @@ int sessionFinish(const CameraSyncConfig& cfg, int sessionId, uint32_t sent, uin
   return n3DataPost(pc);
 }
 
-bool syncUploadIsSuccess(int httpCode) {
-  return httpCode == 200 || httpCode == 202;
-}
-
 // ---------------------------------------------------------------------------
 // v2.66 (mutualisation T3b) : la boucle de drain (pacing rate-limit, budget
 // temps, retries 429, commit-sur-succès, arrêt-sur-échec-réseau) vit désormais
@@ -193,9 +227,12 @@ struct DrainSendCtx {
   uint32_t bytes;
 };
 
-const SyncEntry* findEntryByN(const std::vector<SyncEntry>& entries, uint32_t n) {
+/* Recherche par CHEMIN (item.ref pointe dans entries) et non par numero : deux fichiers peuvent
+ * porter le meme n (ecriture SD reussie puis commit NVS perdu -> numero reutilise). L'ancienne
+ * recherche par n renvoyait toujours le premier : il partait deux fois, le second jamais. */
+const SyncEntry* findEntryByRef(const std::vector<SyncEntry>& entries, const char* ref) {
   for (const SyncEntry& e : entries) {
-    if (e.n == n) return &e;
+    if (e.path == ref) return &e;
   }
   return nullptr;
 }
@@ -203,7 +240,7 @@ const SyncEntry* findEntryByN(const std::vector<SyncEntry>& entries, uint32_t n)
 /* Envoi d'UNE photo du backlog (métier upload) -> verdict pour n3SfDrain. */
 N3SfSend drainSendOne(const N3SfItem& item, void* rawCtx) {
   DrainSendCtx& ctx = *static_cast<DrainSendCtx*>(rawCtx);
-  const SyncEntry* e = findEntryByN(*ctx.entries, item.handle);
+  const SyncEntry* e = findEntryByRef(*ctx.entries, item.ref);
   if (!e) {
     return N3SfSend::HardFail;  // entrée introuvable : sauter, ne pas bloquer la file
   }
@@ -226,17 +263,39 @@ N3SfSend drainSendOne(const N3SfItem& item, void* rawCtx) {
 
   size_t bytes = 0;
   const int code = cameraUploadJpegFile(up, String(e->path), String(filename), &bytes);
+  const N3SfUploadClass cls = (code == kCameraUploadLocalFileError)
+                                  ? N3SfUploadClass::ItemRejected
+                                  : n3SfClassifyUploadCode(code);
 
-  if (syncUploadIsSuccess(code)) {
+  if (cls == N3SfUploadClass::Ok) {
+    n3SfRejectReset(s_headRejects);
     ctx.bytes += bytes;
     N3_LOGI("[SYNC] #%u (%s) envoyee HTTP=%d (%u bytes)",
             static_cast<unsigned int>(e->n), e->path, code,
             static_cast<unsigned int>(bytes));
     return N3SfSend::Ok;
   }
-  if (code == 429) {
+  if (cls == N3SfUploadClass::RateLimited) {
     N3_LOGW("[SYNC] #%u HTTP=429 rate-limit", static_cast<unsigned int>(e->n));
     return N3SfSend::RateLimited;  // pause + retries bornés gérés par n3SfDrain
+  }
+  if (cls == N3SfUploadClass::ItemRejected) {
+    /* v2.77 : rejet propre a CETTE photo (fichier SD vide/illisible, 400/413/415 serveur).
+       Avant, traite comme une panne reseau : la photo restait en tete et bloquait TOUTE la
+       file, a chaque reveil, sans fin. Desormais sautee apres SYNC_ITEM_MAX_REJECTS rejets
+       consecutifs (reveils successifs) ; le fichier reste sur la carte. */
+    if (n3SfRejectShouldSkip(s_headRejects, e->n, SYNC_ITEM_MAX_REJECTS)) {
+      N3_LOGE("[SYNC] #%u (%s) rejetee %u fois (code=%d) : photo ignoree (conservee sur SD), file debloquee",
+              static_cast<unsigned int>(e->n), e->path,
+              static_cast<unsigned int>(SYNC_ITEM_MAX_REJECTS), code);
+      n3SfRejectReset(s_headRejects);
+      return N3SfSend::HardFail;  // commit (skip) + compte en echec
+    }
+    N3_LOGW("[SYNC] #%u rejet code=%d (%u/%u) : nouvel essai au prochain reveil",
+            static_cast<unsigned int>(e->n), code,
+            static_cast<unsigned int>(s_headRejects.count),
+            static_cast<unsigned int>(SYNC_ITEM_MAX_REJECTS));
+    return N3SfSend::NetworkError;
   }
   N3_LOGW("[SYNC] #%u echec HTTP=%d : arret du drain (reseau ?)",
           static_cast<unsigned int>(e->n), code);
@@ -258,7 +317,9 @@ uint32_t cameraSyncPeekNextPictureNumber() {
   // Réserve « logiquement » le prochain numéro SANS incrémenter le compteur NVS. Le numéro n'est
   // committé (cameraSyncCommitWrittenCount) qu'après persistance/upload confirmé (A6/A7, audit
   // 2026-07-05) : un échec d'écriture SD ou d'upload direct ne brûle plus de numéro fantôme.
-  return nvsGet(kKeyCount) + 1;
+  // v2.77 : au-dessus du compteur ET du curseur — si le curseur avait dépassé le compteur, une
+  // photo numérotée count+1 naissait « déjà acquittée » et n'était jamais envoyée.
+  return n3SfSeqNext(nvsGet(kKeyCount), nvsGet(kKeyCursor));
 }
 
 void cameraSyncCommitWrittenCount(uint32_t n) {
@@ -282,9 +343,45 @@ void cameraSyncMarkDirectUploadConfirmed(uint32_t n) {
 }
 
 uint32_t cameraSyncPendingCount() {
+  return n3SfSeqPending(nvsGet(kKeyCount), nvsGet(kKeyCursor));
+}
+
+void cameraSyncReconcileWithSd() {
+#if USE_SD
   const uint32_t count = nvsGet(kKeyCount);
   const uint32_t cursor = nvsGet(kKeyCursor);
-  return (count > cursor) ? (count - cursor) : 0;
+  uint32_t maxStored = 0;
+  uint32_t files = 0;
+  forEachSdPhoto([&](const SyncEntry& e) {
+    ++files;
+    if (e.n > maxStored) maxStored = e.n;
+  });
+
+  const N3SfSeqReconcile r = n3SfSeqReconcile(count, cursor, maxStored);
+  switch (r.action) {
+    case N3SfSeqReconcileAction::None:
+      N3_LOGI("[SYNC] SD coherente: %u photo(s), max=%u pic_count=%u up_cursor=%u",
+              static_cast<unsigned int>(files), static_cast<unsigned int>(maxStored),
+              static_cast<unsigned int>(count), static_cast<unsigned int>(cursor));
+      return;
+    case N3SfSeqReconcileAction::AdoptOrphan:
+      N3_LOGW("[SYNC] Photo #%u ecrite sans commit NVS (coupure ?) : reintegree a la file",
+              static_cast<unsigned int>(maxStored));
+      break;
+    case N3SfSeqReconcileAction::AdoptForeign:
+      N3_LOGW("[SYNC] Carte SD hors compteur (max=%u > pic_count=%u/up_cursor=%u : carte reutilisee "
+              "ou NVS effacee) : numerotation realignee, ces %u fichier(s) ne seront PAS envoyes",
+              static_cast<unsigned int>(maxStored), static_cast<unsigned int>(count),
+              static_cast<unsigned int>(cursor), static_cast<unsigned int>(files));
+      break;
+    case N3SfSeqReconcileAction::RealignCount:
+      N3_LOGW("[SYNC] up_cursor=%u > pic_count=%u (etat incoherent) : compteur realigne",
+              static_cast<unsigned int>(cursor), static_cast<unsigned int>(count));
+      break;
+  }
+  if (r.count != count) nvsSet(kKeyCount, r.count);
+  if (r.cursor != cursor) nvsSet(kKeyCursor, r.cursor);
+#endif
 }
 
 String cameraSyncBuildSdPath(uint32_t n, const char* stamp) {
@@ -317,31 +414,27 @@ CameraSyncResult cameraSyncDrain(const CameraSyncConfig& cfg) {
 
   std::vector<SyncEntry> entries;
   entries.reserve(SYNC_MAX_BACKLOG_SCAN);  // M2 : évite les réallocations/copies de l'insertion triée
-  {
-    fs::FS& fs = SD_MMC;
-    File root = fs.open("/");
-    if (root) {
-      for (File f = root.openNextFile(); f; f = root.openNextFile()) {
-        if (f.isDirectory()) {
-          f.close();
-          continue;
-        }
-        SyncEntry e = {};
-        const bool ok = parseEntry(f.name(), e);
-        f.close();
-        if (!ok || e.n <= cursor) {
-          continue;
-        }
-        // Insertion triée bornée : on conserve les SYNC_MAX_BACKLOG_SCAN plus petits numéros.
-        auto it = std::lower_bound(entries.begin(), entries.end(), e,
-                                   [](const SyncEntry& a, const SyncEntry& b) { return a.n < b.n; });
-        entries.insert(it, e);
-        if (entries.size() > static_cast<size_t>(SYNC_MAX_BACKLOG_SCAN)) {
-          entries.pop_back();
-        }
-      }
-      root.close();
+  uint32_t ignoredAbove = 0;
+  forEachSdPhoto([&](const SyncEntry& e) {
+    /* v2.77 : uniquement ]cursor, count]. Un fichier numéroté au-delà du compteur ne vient pas
+       de cette série (carte réutilisée, NVS effacée) : avant, il était envoyé — dans la mauvaise
+       galerie — et poussait le curseur loin devant le compteur, rendant les VRAIES photos
+       suivantes invisibles au drain. */
+    if (!n3SfSeqIsPending(e.n, count, cursor)) {
+      if (e.n > count) ++ignoredAbove;
+      return;
     }
+    // Insertion triée bornée : on conserve les SYNC_MAX_BACKLOG_SCAN plus petits numéros.
+    auto it = std::lower_bound(entries.begin(), entries.end(), e,
+                               [](const SyncEntry& a, const SyncEntry& b) { return a.n < b.n; });
+    entries.insert(it, e);
+    if (entries.size() > static_cast<size_t>(SYNC_MAX_BACKLOG_SCAN)) {
+      entries.pop_back();
+    }
+  });
+  if (ignoredAbove > 0) {
+    N3_LOGW("[SYNC] %u fichier(s) SD au-dela de pic_count=%u ignores (hors file)",
+            static_cast<unsigned int>(ignoredAbove), static_cast<unsigned int>(count));
   }
 
   const uint32_t pending = static_cast<uint32_t>(entries.size());

@@ -32,12 +32,49 @@ void n3PrintWakeupReason(Preferences& prefs, ESP32Time& rtc,
 /** Charge l'epoch NVS dans rtc et l'injecte dans l'horloge système si plausible. */
 bool n3TimeLoadAndApplyToSystem(Preferences& prefs, ESP32Time& rtc);
 
-/** configTime + attente getLocalTime ; met à jour rtc si succès. Retourne true si NTP OK. */
+/**
+ * configTime + attente getLocalTime ; met à jour rtc si succès.
+ *
+ * ⚠ getLocalTime() réussit dès que l'horloge système est PLAUSIBLE (année > 2016),
+ * même périmée : si l'horloge est déjà amorcée (epoch NVS rechargé, horloge RTC
+ * après deep sleep), cette fonction retourne true IMMÉDIATEMENT, sans qu'aucune
+ * réponse NTP n'ait été reçue. Pour une synchro réellement confirmée, utiliser
+ * n3TimeSyncNtpConfirmed().
+ */
 bool n3TimeSyncNtp(ESP32Time& rtc,
                    long gmtOffsetSec,
                    int daylightOffsetSec,
                    const char* ntpServer,
                    uint32_t timeoutMs);
+
+/**
+ * NTP CONFIRMÉ : configTime puis attente de la fin effective d'une synchro SNTP
+ * (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED), indépendamment de
+ * l'état de l'horloge avant l'appel. true = une réponse NTP a réellement été
+ * appliquée pendant l'appel (rtc mis à jour) ; false = timeout, horloge inchangée.
+ */
+bool n3TimeSyncNtpConfirmed(ESP32Time& rtc,
+                            long gmtOffsetSec,
+                            int daylightOffsetSec,
+                            const char* ntpServer,
+                            uint32_t timeoutMs);
+
+/**
+ * Epoch brut persisté par n3TimeSaveToFlash (NVS "rtc"/"epoch"), SANS le repli
+ * calendaire de n3TimeLoadFromFlash (12:00 le 01/01/2023 si la clé est absente :
+ * date « plausible » mais fausse). Retourne 0 si aucun epoch n'a été persisté.
+ */
+unsigned long n3TimeReadSavedEpoch(Preferences& prefs);
+
+/**
+ * Restauration MONOTONE de l'horloge depuis la NVS : applique l'epoch persisté
+ * seulement s'il est plausible ET plus récent que l'horloge système. ESP-IDF
+ * conserve l'heure système à travers le deep sleep (timer RTC) : au réveil timer
+ * elle est déjà juste, et la remplacer par l'epoch NVS (sauvé au réveil
+ * précédent) la ferait RECULER. Utile au cold boot (horloge à 0). Aucun repli
+ * calendaire (contrairement à n3TimeLoadFromFlash). true = horloge modifiée.
+ */
+bool n3TimeRestoreFromFlashIfNewer(Preferences& prefs, ESP32Time& rtc);
 
 /** Horloge système plausible (epoch > seuil 2020). */
 bool n3TimeHasPlausibleEpoch(void);

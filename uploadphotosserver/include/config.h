@@ -19,7 +19,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.76"
+#define FIRMWARE_VERSION "2.77"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -120,6 +120,13 @@
 #define MAIL_EXTRA_MAX_LEN        384
 #define MAIL_PENDING_EVENING      0x01
 #define MAIL_PENDING_MORNING      0x02
+/* Tentatives SMTP max par transition jour/nuit (P4 diagnostic). Au-dela : abandon logue.
+   Avant 2.77 : retente a chaque reveil sans borne (un mail par reveil sur faux negatif SMTP). */
+#define WINDOW_MAIL_MAX_TRIES     3
+/* Echecs camera consecutifs (init ou capture) avant mail d'alerte P2 (une fois par serie,
+   re-arme par une capture reussie) ; tentatives SMTP max pour cette alerte. */
+#define CAM_FAIL_ALERT_THRESHOLD  3
+#define CAM_FAIL_MAIL_MAX_TRIES   3
 
 /* WiFi */
 #define WIFI_CONNECT_TIMEOUT_MS  5000
@@ -158,6 +165,9 @@
 /* Intervalle min entre deux POST upload.php : aligné sur GALLERY_UPLOAD_RATE_LIMIT_SECONDS (10 s/IP) serveur. */
 #define SYNC_UPLOAD_MIN_INTERVAL_MS 11000
 #define SYNC_RATE_LIMIT_RETRIES     2    /* tentatives supplementaires apres HTTP 429 */
+/* Rejets consecutifs (reveils successifs) d'une meme photo avant de la sauter : fichier SD vide ou
+   illisible, ou rejet de contenu serveur 400/413/415. Avant 2.77 : bloquait toute la file a vie. */
+#define SYNC_ITEM_MAX_REJECTS       3
 #define SYNC_DRAIN_MAX_DURATION_MS  180000  /* budget temps sync par reveil (3 min) */
 /* Plafond réel de photos envoyables par réveil : budget temps / intervalle mini (≈16). `planned` y est
    borné (A1) pour que « vidage complet » reste atteignable et ne remonte plus `aborted` à chaque réveil. */

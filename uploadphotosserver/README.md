@@ -37,7 +37,7 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
 | Module | Rôle |
 |--------|------|
 | `camera_setup` | Init OV2640, warmup, exposition, diagnostics `[DIAG]` PSRAM et `[DIAG][SCCB]` |
-| `camera_time` | NTP offline-first, TZ `Africa/Casablanca` |
+| `camera_time` | Horloge offline-first (RTC conservée au deep sleep, NVS au cold boot), NTP confirmé, TZ POSIX UTC+1 |
 | `camera_sleep` | Créneau photo 6h–22h (fail-closed si horloge non fiable) |
 | `camera_remote` | Config distante GET + POST version |
 | `camera_uploader` / `camera_upload` | Upload multipart HTTPS (RAM ou streaming SD) |
@@ -46,8 +46,11 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
 
 ## Heure et créneau photo (v2.47+)
 
-- Au réveil : restauration epoch depuis NVS, puis sync NTP (`pool.ntp.org`), fuseau `Africa/Casablanca`.
-- Le créneau 6h–22h est interprété en heure locale Casablanca.
+- Au réveil deep sleep, l'heure système est **conservée** par le timer RTC (ESP-IDF) ; l'epoch NVS ne
+  sert qu'au démarrage à froid (ou s'il est plus récent) — **jamais** à reculer l'horloge (v2.77).
+- Sync NTP (`pool.ntp.org`) **confirmée** par le statut SNTP (`n3TimeSyncNtpConfirmed`) : avant v2.77,
+  le « NTP ok » était immédiat dès que l'horloge était plausible et l'epoch NVS restait figé.
+- Fuseau POSIX `"<+01>-1"` (UTC+1, cf. `config.h`) : le créneau 6h–22h est en heure locale marocaine.
 - Si l’horloge n’est pas fiable, **aucune capture** (fail-closed) ; le drain backlog SD reste possible si WiFi OK (v2.48+).
 
 ## Synchronisation backlog SD (v2.40+, optimisé v2.48+)
@@ -57,6 +60,13 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
 - **v2.48** : drain possible **hors créneau photo** (nuit) si WiFi + SD OK — sans initialiser la caméra.
 - **v2.49** : upload backlog par **streaming** depuis la SD (chunks 4096 o), sans charger le JPEG entier en RAM.
 - **v2.53+** : pause entre uploads backlog (rate-limit serveur), retry HTTP 429.
+- **v2.77** : file bornée à `]up_cursor, pic_count]` (les fichiers d'une autre vie de la carte ne sont
+  plus envoyés) ; réconciliation compteurs/carte au démarrage à froid (carte réutilisée, NVS effacée,
+  écriture interrompue) ; une photo rejetée (fichier SD vide, 400/413/415) est sautée après
+  `SYNC_ITEM_MAX_REJECTS` réveils au lieu de bloquer toute la file ; énumération SD sans ouvrir
+  chaque fichier (`getNextFileName`).
+- **v2.77** : un échec caméra (init/capture) ne coupe plus le réveil (drain SD maintenu) et déclenche
+  une alerte mail P2 après `CAM_FAIL_ALERT_THRESHOLD` échecs consécutifs.
 
 ## Contrôle distant (GET + POST version)
 

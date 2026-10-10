@@ -5,7 +5,8 @@
 
 class ESP32Time;
 
-/** Offline-first : NVS → horloge systeme, puis NTP (TZ Africa/Casablanca) si WiFi OK. */
+/** Offline-first : horloge systeme (conservee au deep sleep) ou, a defaut, epoch NVS ;
+ *  puis NTP confirme (statut SNTP, TZ POSIX UTC+1) si WiFi OK. */
 void n3CamSyncClock(Preferences& prefs, ESP32Time& rtc, bool wifiOk);
 
 #endif

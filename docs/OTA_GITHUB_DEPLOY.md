@@ -101,7 +101,7 @@ Dans **Settings ▸ Secrets and variables ▸ Actions** du dépôt :
 | Nom | Défaut | Rôle |
 |-----|--------|------|
 | `N3_SERVEUR_REPO` | `oliviera999/n3_serveur` | Dépôt servant `iot.olution.info`. |
-| `N3_SERVEUR_OTA_ROOT` | `serveur/ota` | Racine OTA dans ce dépôt. |
+| `N3_SERVEUR_OTA_ROOT` | `ota` | Racine OTA **servie** dans ce dépôt (`n3_serveur/ota/`). |
 | `OTA_BASE_URL` | `http://iot.olution.info/ota` | Préfixe public n3ota (garde-fou + vérif). |
 | `OTA_BASE_URL_HTTPS` | `https://iot.olution.info/ota` | Préfixe public ffp5 (HTTPS). |
 
@@ -110,8 +110,12 @@ Dans **Settings ▸ Secrets and variables ▸ Actions** du dépôt :
 rattache uniquement pour un déploiement prod réel et se met alors en pause
 jusqu'à approbation. (Les déploiements `test` et les dry-run ne sont pas gatés.)
 
-> ⚠️ Vérifier `N3_SERVEUR_OTA_ROOT` : le chemin réel dépend de l'arborescence de `n3_serveur`
-> (le firmware sert `/ota/…`, mais l'emplacement des fichiers dans le repo peut différer).
+> ⚠️ `N3_SERVEUR_OTA_ROOT` : `iot.olution.info/ota/…` est servi depuis `ota/` **à la racine** de
+> `n3_serveur` (déployé par `git pull` CRON chaque minute). L'ancien défaut `serveur/ota` n'existe pas
+> dans ce dépôt : la publication partait dans un dossier non servi et la vérification passait quand
+> même (elle relisait l'ancien binaire). Depuis 2026-10 : défaut `ota`, `publish_ota.py` refuse une
+> racine inexistante ou un `metadata.json` caméra absent, et `verify_published.py --expect-version`
+> exige la version déployée.
 
 ## Utilisation
 

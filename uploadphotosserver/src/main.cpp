@@ -63,6 +63,10 @@ static constexpr uint32_t OTA_PERIODIC_INTERVAL_SECONDS = OtaPeriodic::kDefaultI
 RTC_DATA_ATTR static uint32_t otaElapsedSinceLastCheckSeconds = OTA_PERIODIC_INTERVAL_SECONDS;
 RTC_DATA_ATTR static int lastPhotoWindowState = -1;  /* -1: inconnu, 0: nuit, 1: jour */
 RTC_DATA_ATTR static uint8_t pendingWindowMailMask = 0;
+/* v2.77 : tentatives SMTP deja faites pour la transition jour/nuit en attente (budget
+   WINDOW_MAIL_MAX_TRIES). Avant, un envoi non confirme etait retente a CHAQUE reveil, sans
+   borne : un faux negatif SMTP produisait un mail « Mode nuit » par reveil toute la nuit. */
+RTC_DATA_ATTR static uint8_t pendingWindowMailTries = 0;
 RTC_DATA_ATTR static int lastRemoteForceWakeupState = 0;
 RTC_DATA_ATTR static int lastRemoteResetModeState = 0;
 #endif
@@ -93,15 +97,14 @@ static uint32_t runtimeSleepSeconds = TIME_TO_SLEEP;
 static bool forceWakeupActiveThisBoot = false;
 static bool resetModeActiveThisBoot = false;
 
-#if USE_DEEP_SLEEP
-static void n3EnterRuntimeDeepSleep(const char* reason) {
-  N3_LOGI("[SLEEP] %s (runtime=%u s)",
-          reason ? reason : "deep sleep",
-          static_cast<unsigned int>(runtimeSleepSeconds));
-  delay(500);
-  n3EnterDeepSleepSeconds(runtimeSleepSeconds);
-}
-#endif
+/* v2.77 : echecs camera consecutifs (init ou capture). Avant, un echec envoyait directement en
+ * deep sleep : aucune alerte (une camera HS ne produisait que du silence) et le backlog SD n'etait
+ * plus draine. Desormais le reveil continue (drain, OTA, mails) et une alerte P2 part au seuil
+ * CAM_FAIL_ALERT_THRESHOLD, une fois par serie (re-armee par une capture reussie). */
+RTC_DATA_ATTR static uint16_t camFailStreak = 0;
+RTC_DATA_ATTR static bool camFailMailDone = false;
+RTC_DATA_ATTR static uint8_t camFailMailTries = 0;
+RTC_DATA_ATTR static char camFailLastReason[48] = "";
 
 #if USE_SD
 bool sdAvailable = false;  /* true seulement si SD montée au boot */
@@ -117,7 +120,8 @@ void capturePhoto(bool wifiOk);
 void ledBlink(int onMs, int offMs, int count);
 static void logMonitoringSnapshot(const char* stage);
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs);
-static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo, N3Severity severity);
+static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo, N3Severity severity,
+                               bool* outAttempted = nullptr);
 static void otaMailStartCallback(const char* currentVersion, const char* remoteVersion, const char* firmwareUrl, void* userData);
 static void otaMailEndCallback(bool success, const char* details, void* userData);
 static void trySendPendingOtaFailMail(bool wifiOk);
@@ -131,6 +135,9 @@ static void initSdIfEnabled();
 static void runSyncDrainIfNeeded(bool wifiOk);
 #endif
 static bool initCameraPipeline();
+static void recordCameraFailure(const char* reason);
+static void recordCameraSuccess();
+static void trySendCameraFailureMail(bool wifiOk);
 
 /* ----- LED ----- */
 void ledBlink(int onMs, int offMs, int count) {
@@ -229,7 +236,11 @@ static void logMonitoringSnapshot(const char* stage) {
   }
 }
 
-static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo, N3Severity severity) {
+/* outAttempted (optionnel) : true si une session SMTP a reellement ete tentee (filtrage par
+ * severite / WiFi absent = pas une tentative). Sert aux budgets de retry des appelants. */
+static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, const char* extraInfo, N3Severity severity,
+                               bool* outAttempted) {
+  if (outAttempted) *outAttempted = false;
 #if MAIL_NOTIFICATIONS_ENABLED && defined(SMTP_HOST_ADDR) && defined(SMTP_PORT_NUM) && defined(SMTP_EMAIL) && defined(SMTP_PASSWORD) && defined(SMTP_DEST)
   /* Phase 3 arbitrage : filtrage par severite (taxonomie n3_notify, cle 103
    * graduee). En FAILOVER (echange serveur KO), plafond P1/P2 : les diagnostics
@@ -295,8 +306,17 @@ static bool sendDebugEventMail(const char* subjectEvent, const char* eventName, 
     return false;
   }
 
+  if (outAttempted) *outAttempted = true;
   String smtpError;
-  bool ok = n3MailSendText(smtpCfg, subject, body, &smtpError);
+  bool accepted = false;
+  bool ok = n3MailSendText(smtpCfg, subject, body, &smtpError, &accepted);
+  if (!ok && accepted) {
+    /* v2.77 : le serveur SMTP a repondu 250 (mail livre) mais la cloture de session a echoue.
+       Le traiter en echec faisait retenter — donc redoubler — le mail a chaque reveil. */
+    N3_LOGW("[MAIL] Mail accepte par le serveur SMTP, cloture de session en echec (%s) : considere envoye.",
+            smtpError.c_str());
+    ok = true;
+  }
   if (!ok) {
     N3_LOGW("[MAIL] Echec envoi: %s", smtpError.c_str());
   } else {
@@ -408,7 +428,19 @@ static void handlePhotoWindowTransitionMails(bool wifiOk) {
       pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_MORNING);
       N3_LOGI("[MAIL] Transition detectee: pause photos (soir).");
     }
+    pendingWindowMailTries = 0;  // nouvelle transition : budget neuf
     lastPhotoWindowState = currentState;
+  }
+
+  const uint8_t pendingBit = inWindow ? MAIL_PENDING_MORNING : MAIL_PENDING_EVENING;
+  if ((pendingWindowMailMask & pendingBit) == 0) {
+    return;
+  }
+  if (pendingWindowMailTries >= WINDOW_MAIL_MAX_TRIES) {
+    N3_LOGW("[MAIL] Transition %s: abandon apres %u essais SMTP non confirmes.",
+            inWindow ? "jour" : "nuit", static_cast<unsigned int>(pendingWindowMailTries));
+    pendingWindowMailMask &= static_cast<uint8_t>(~pendingBit);
+    return;
   }
 
   if (!wifiOk || WiFi.status() != WL_CONNECTED) {
@@ -416,24 +448,25 @@ static void handlePhotoWindowTransitionMails(bool wifiOk) {
     return;
   }
 
-  if (!inWindow && (pendingWindowMailMask & MAIL_PENDING_EVENING)) {
-    char extra[MAIL_EXTRA_MAX_LEN];
-    snprintf(extra, sizeof(extra),
-             "Passage en mode nuit detecte: les photos sont suspendues entre %02d:00 et %02d:00.",
-             HOUR_END, HOUR_START);
-    if (sendDebugEventMail("Mode nuit active", "photo-window-night", extra, N3Severity::Diagnostic)) {
-      pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_EVENING);
-    }
-  }
-
-  if (inWindow && (pendingWindowMailMask & MAIL_PENDING_MORNING)) {
-    char extra[MAIL_EXTRA_MAX_LEN];
+  char extra[MAIL_EXTRA_MAX_LEN];
+  if (inWindow) {
     snprintf(extra, sizeof(extra),
              "Passage en mode jour detecte: la prise de photos reprend (creneau %02d:00-%02d:00).",
              HOUR_START, HOUR_END);
-    if (sendDebugEventMail("Mode jour actif", "photo-window-day", extra, N3Severity::Diagnostic)) {
-      pendingWindowMailMask &= static_cast<uint8_t>(~MAIL_PENDING_MORNING);
-    }
+  } else {
+    snprintf(extra, sizeof(extra),
+             "Passage en mode nuit detecte: les photos sont suspendues entre %02d:00 et %02d:00.",
+             HOUR_END, HOUR_START);
+  }
+  bool attempted = false;
+  const bool sent = inWindow
+      ? sendDebugEventMail("Mode jour actif", "photo-window-day", extra, N3Severity::Diagnostic, &attempted)
+      : sendDebugEventMail("Mode nuit active", "photo-window-night", extra, N3Severity::Diagnostic, &attempted);
+  if (attempted) {
+    ++pendingWindowMailTries;
+  }
+  if (sent) {
+    pendingWindowMailMask &= static_cast<uint8_t>(~pendingBit);
   }
 #else
   (void)wifiOk;
@@ -528,13 +561,10 @@ void capturePhoto(bool wifiOk) {
   if (!fb) {
     N3_LOGE("[CAM] Echec capture camera");
     logMonitoringSnapshot("capturePhoto:capture_ko");
-#if USE_DEEP_SLEEP
-    n3EnterRuntimeDeepSleep("Echec capture camera");
-#else
-    delay(1000);
-    ESP.restart();
-#endif
+    recordCameraFailure("esp_camera_fb_get() nul");
+    return;  // v2.77 : le reveil continue (drain du backlog SD, alerte)
   }
+  recordCameraSuccess();
   logStepDuration("capture_camera", millis() - captureStartMs, 1200);
   N3_LOGI("[MON] capture taille=%u bytes", static_cast<unsigned int>(fb->len));
 
@@ -654,6 +684,44 @@ static void runSyncDrainIfNeeded(bool wifiOk) {
 }
 #endif
 
+static void recordCameraFailure(const char* reason) {
+  if (camFailStreak < 0xFFFF) ++camFailStreak;
+  snprintf(camFailLastReason, sizeof(camFailLastReason), "%s", reason ? reason : "inconnue");
+  N3_LOGW("[CAM] Echec camera %u consecutif(s) (%s)",
+          static_cast<unsigned int>(camFailStreak), camFailLastReason);
+}
+
+static void recordCameraSuccess() {
+  if (camFailStreak > 0) {
+    N3_LOGI("[CAM] Camera retablie apres %u echec(s) consecutif(s).",
+            static_cast<unsigned int>(camFailStreak));
+  }
+  camFailStreak = 0;
+  camFailMailDone = false;
+  camFailMailTries = 0;
+}
+
+static void trySendCameraFailureMail(bool wifiOk) {
+  if (camFailStreak < CAM_FAIL_ALERT_THRESHOLD || camFailMailDone) return;
+  if (!wifiOk || WiFi.status() != WL_CONNECTED) return;  // retente au prochain reveil
+  if (camFailMailTries >= CAM_FAIL_MAIL_MAX_TRIES) {
+    N3_LOGW("[CAM][MAIL] Alerte camera abandonnee apres %u essais SMTP.",
+            static_cast<unsigned int>(camFailMailTries));
+    camFailMailDone = true;
+    return;
+  }
+  char extra[MAIL_EXTRA_MAX_LEN];
+  snprintf(extra, sizeof(extra),
+           "%u echecs camera consecutifs (derniere cause: %s) : aucune photo prise depuis. "
+           "Verifier la nappe OV2640, l'alimentation 5V et la PSRAM (logs [DIAG]/[SCCB]). "
+           "Les photos deja sur la carte SD continuent d'etre envoyees.",
+           static_cast<unsigned int>(camFailStreak), camFailLastReason);
+  bool attempted = false;
+  const bool sent = sendDebugEventMail("Camera en echec", "camera-failure", extra, N3Severity::Alert, &attempted);
+  if (attempted) ++camFailMailTries;
+  if (sent) camFailMailDone = true;
+}
+
 static bool initCameraPipeline() {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -685,13 +753,10 @@ static bool initCameraPipeline() {
   if (err != ESP_OK) {
     N3_LOGE("[CAM] Init camera impossible apres repli DRAM/PSRAM (0x%x)",
             static_cast<unsigned>(err));
-#if USE_DEEP_SLEEP
-    n3EnterRuntimeDeepSleep("Init camera impossible");
-#else
-    delay(1000);
-    ESP.restart();
-#endif
-    return false;
+    char reason[sizeof(camFailLastReason)];
+    snprintf(reason, sizeof(reason), "esp_camera_init 0x%x", static_cast<unsigned>(err));
+    recordCameraFailure(reason);
+    return false;  // v2.77 : le reveil continue (drain du backlog SD, alerte)
   }
   N3_LOGI("[CAM] mode actif: %s", camModeLabel);
   logStepDuration("init_camera", millis() - camInitStartMs, 2500);
@@ -738,11 +803,10 @@ void setup() {
   digitalWrite(LED_GPIO, LOW);
   ledBlink(100, 100, 2);
 
-#if USE_DEEP_SLEEP
-  // Réveil timer CAM = horloge perdue au deep sleep -> recharger l'epoch NVS
-  // (contrat T1.3 : loadNvsOnTimerWake=true, comportement historique iso).
-  n3PrintWakeupReason(preferences, rtc, /*loadNvsOnTimerWake=*/true);
-#endif
+  /* v2.77 : plus d'appel a n3PrintWakeupReason(..., loadNvsOnTimerWake=true). La raison du
+     reveil est deja journalisee ([BOOT] ci-dessus) et son seul autre effet etait de recharger
+     l'epoch NVS — ce qui reculait l'horloge RTC conservee par le deep sleep (et, NVS vierge,
+     posait un faux 01/01/2023 12:00). L'horloge est desormais geree par n3CamSyncClock(). */
 
   const uint32_t wifiStartMs = millis();
   wifiRadioResetForWake();
@@ -863,17 +927,27 @@ void setup() {
 
 #if USE_SD
   initSdIfEnabled();
+  /* v2.77 : au demarrage a froid (flash, mise sous tension), aligner pic_count/up_cursor sur le
+     contenu de la carte AVANT de numeroter une nouvelle photo (carte reutilisee, NVS effacee,
+     ecriture interrompue). Inutile au reveil deep sleep : NVS et carte n'ont pas pu diverger. */
+  if (sdAvailable && esp_reset_reason() != ESP_RST_DEEPSLEEP) {
+    const uint32_t reconcileStartMs = millis();
+    cameraSyncReconcileWithSd();
+    logStepDuration("reconcile_sd", millis() - reconcileStartMs, 5000);
+  }
 #endif
 
   const bool canPersist = wifiOk || sdAvailable;
   const bool needsCapture = inWindow && canPersist;
 
   if (needsCapture) {
-    initCameraPipeline();
-    if (!wifiOk) {
-      N3_LOGI("[CAPTURE] WiFi indisponible: sauvegarde SD locale, upload differe au prochain reveil connecte.");
+    if (initCameraPipeline()) {
+      if (!wifiOk) {
+        N3_LOGI("[CAPTURE] WiFi indisponible: sauvegarde SD locale, upload differe au prochain reveil connecte.");
+      }
+      capturePhoto(wifiOk);
     }
-    capturePhoto(wifiOk);
+    trySendCameraFailureMail(wifiOk);
   } else if (inWindow && !canPersist) {
     N3_LOGW("[CAPTURE] Photo ignoree: pas de WiFi et pas de SD disponible");
   } else if (!inWindow) {

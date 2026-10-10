@@ -135,12 +135,13 @@ int cameraUploadJpegFile(const CameraUploadParams& params, const String& sdPath,
   File file = fs.open(sdPath.c_str(), FILE_READ);
   if (!file) {
     N3_LOGE("[UPLOAD][SD] Ouverture %s impossible", sdPath.c_str());
-    return -1;
+    return kCameraUploadLocalFileError;
   }
   const size_t len = file.size();
   if (len == 0) {
+    N3_LOGE("[UPLOAD][SD] %s vide (ecriture interrompue ?)", sdPath.c_str());
     file.close();
-    return -1;
+    return kCameraUploadLocalFileError;
   }
 
   const uint32_t heapFree = ESP.getFreeHeap();
