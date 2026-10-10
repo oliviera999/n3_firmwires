@@ -14,6 +14,7 @@
 #include "n3_log.h"
 
 static constexpr int kCamXclkLedcChannel = 0;
+static bool s_cameraPoweredOn = false;
 
 static void n3CamXclkOn(void) {
   if (XCLK_GPIO_NUM < 0) {
@@ -163,6 +164,7 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
     const esp_err_t err = n3TryCameraInit(*config, kPlans[i]);
     if (err == ESP_OK) {
       snprintf(activeModeLabel, activeModeLabelLen, "%s", kPlans[i].label);
+      s_cameraPoweredOn = true;
       return ESP_OK;
     }
     N3_LOGW("[CAM] Echec %s (0x%x)", kPlans[i].label, static_cast<unsigned>(err));
@@ -171,6 +173,22 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
     n3CameraHardwareReset(false);
   }
   return ESP_FAIL;
+}
+
+/* Banc 2026-10-10 (msp1) : capteur alimenté, l'upload TLS et la connexion SMTP échouaient à
+ * 100 % alors que le WiFi restait associé ; caméra coupée avant l'envoi : 11 uploads sur 11 OK. */
+void n3CameraPowerDown(void) {
+  if (!s_cameraPoweredOn) {
+    return;
+  }
+  esp_camera_deinit();
+  if (PWDN_GPIO_NUM >= 0) {
+    pinMode(PWDN_GPIO_NUM, OUTPUT);
+    digitalWrite(PWDN_GPIO_NUM, HIGH);
+  }
+  s_cameraPoweredOn = false;
+  delay(CAM_POWER_DOWN_SETTLE_MS);
+  N3_LOGI("[CAM] capteur coupe avant reseau");
 }
 
 /* Diagnostic serie : interpreter PSRAM / flash / puce (connectique, variante module, sdkconfig). */

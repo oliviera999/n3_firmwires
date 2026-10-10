@@ -14,6 +14,8 @@ void n3LogHardwareDiagnostics(void);
 void n3LogCameraSccbDiagnostics(void);
 /** Essaie SXGA/CIF en PSRAM puis SVGA/CIF/QQVGA en DRAM ; deinit entre chaque tentative. */
 esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabel, size_t activeModeLabelLen);
+/** Coupe le capteur (deinit + PWDN) avant tout trafic réseau ; sans effet si déjà coupé. */
+void n3CameraPowerDown(void);
 #if USE_DEEP_SLEEP
 void warmupCamera();
 void initializeCamera();

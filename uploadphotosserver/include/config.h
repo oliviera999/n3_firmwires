@@ -19,7 +19,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.78"
+#define FIRMWARE_VERSION "2.79"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -98,6 +98,8 @@
 #define CAM_PWDN_WAKEUP_MS     120
 #define CAM_XCLK_SETTLE_MS     150
 #define CAM_DEINIT_SETTLE_MS   150
+/* Pause après coupure du capteur, avant le premier trafic réseau (valeur validée au banc). */
+#define CAM_POWER_DOWN_SETTLE_MS 500
 #define CAM_SCCB_RETRY_COUNT     4
 #define CAM_SCCB_RETRY_BASE_MS  50
 #define CAM_SCCB_CLOCK_HZ   100000
@@ -133,6 +135,9 @@
 #define WIFI_DELAY_BETWEEN_MS    250
 #define WIFI_PRE_SCAN_DELAY_MS   500
 #define WIFI_SCAN_MAX            10
+/* Recours si le 1er essai échoue (radio sourde au réveil deep sleep) : reset radio long puis 2e essai. */
+#define WIFI_RECOVERY_OFF_MS     1000
+#define WIFI_RECOVERY_SETTLE_MS  500
 
 /* HTTP upload — chunks */
 #define UPLOAD_CHUNK_SIZE 4096

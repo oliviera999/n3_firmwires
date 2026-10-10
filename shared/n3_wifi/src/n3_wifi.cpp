@@ -364,6 +364,18 @@ bool processInvisibleRescanResults(N3WifiSession& session, int n2) {
   return true;
 }
 
+/* Un scan en échec ne prouve pas l'absence de l'AP : sur ESP32-CAM le scan renvoie parfois
+ * 0 AP / FAILED alors que la connexion directe aboutit (banc 2026-10-10). Même repli que
+ * « toujours invisible » au lieu d'abandonner la session. */
+void beginBlindAfterRescanFailure(N3WifiSession& session) {
+  const size_t i = session.order[session.orderIdx];
+  Serial.printf("[WiFi] Rescan en echec : connexion directe %s\n", session.invisibleRescanSsid);
+  WiFi.begin(session.invisibleRescanSsid, session.config->networks[i].pass);
+  session.connectDeadline = millis() + session.timeoutMs * 2;
+  session.connectStartedMs = millis();
+  session.phase = kWaitConnect;
+}
+
 bool pollPhase(N3WifiSession& session) {
   if (WiFi.status() == WL_CONNECTED && session.phase != kConnected && session.phase != kFailed &&
       session.phase != kIdle) {
@@ -431,8 +443,8 @@ bool pollPhase(N3WifiSession& session) {
       if (millis() >= session.phaseDeadline) {
         const int rc = WiFi.scanNetworks(true, true);
         if (rc == WIFI_SCAN_FAILED) {
-          finishFailed(session, N3_WIFI_FAIL_RESCAN);
-          return true;
+          beginBlindAfterRescanFailure(session);
+          return false;
         }
         session.phase = kInvisibleRescan;
       }
@@ -444,8 +456,8 @@ bool pollPhase(N3WifiSession& session) {
         return false;
       }
       if (n2 == WIFI_SCAN_FAILED) {
-        finishFailed(session, N3_WIFI_FAIL_RESCAN);
-        return true;
+        beginBlindAfterRescanFailure(session);
+        return false;
       }
       processInvisibleRescanResults(session, n2);
       return false;

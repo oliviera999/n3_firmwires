@@ -68,7 +68,11 @@ RTC_DATA_ATTR static uint8_t pendingWindowMailMask = 0;
    borne : un faux negatif SMTP produisait un mail « Mode nuit » par reveil toute la nuit. */
 RTC_DATA_ATTR static uint8_t pendingWindowMailTries = 0;
 RTC_DATA_ATTR static int lastRemoteForceWakeupState = 0;
-RTC_DATA_ATTR static int lastRemoteResetModeState = 0;
+/* resetMode (clé 106) : front montant mémorisé en NVS, pas en RTC_DATA_ATTR — la RTC est
+   réinitialisée par le reset logiciel déclenché par la commande elle-même, ce qui la rejouait
+   à chaque boot tant que le serveur gardait 106=1 (boucle de redémarrage). */
+static constexpr const char* kResetAckPrefNs = "upcam";
+static constexpr const char* kResetAckKey = "rst_ack";
 #endif
 
 static bool otaUpdateStartedThisBoot = false;
@@ -186,6 +190,28 @@ bool Wificonnect() {
   cfg.disableFastReconnect = true;  /* CAM : evite BSSID RTC obsolete apres deep sleep */
   cfg.onSuccess = [](const char*) { ledBlink(500, 500, 1); };
   return n3WifiConnect(cfg, &Wifiactif);
+}
+
+/* Banc 2026-10-10 : environ un démarrage sur deux (tous types de reset), le scan renvoie 0 AP
+ * alors que l'AP est joignable ; un 2e essai après reset radio long rattrape la quasi-totalité. */
+static bool wifiConnectWithRecovery() {
+  wifiRadioResetForWake();
+  if (Wificonnect()) {
+    return true;
+  }
+  N3_LOGW("[WiFi] 1er essai KO (reset=%s) : reset radio long puis 2e essai",
+          resetReasonText(esp_reset_reason()));
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+  delay(WIFI_RECOVERY_OFF_MS);
+  WiFi.mode(WIFI_STA);
+  delay(WIFI_RECOVERY_SETTLE_MS);
+  if (Wificonnect()) {
+    N3_LOGI("[WiFi] 2e essai OK");
+    return true;
+  }
+  N3_LOGW("[WiFi] 2e essai KO");
+  return false;
 }
 
 static void logStepDuration(const char* step, uint32_t durationMs, uint32_t warnMs) {
@@ -562,6 +588,7 @@ void capturePhoto(bool wifiOk) {
     N3_LOGE("[CAM] Echec capture camera");
     logMonitoringSnapshot("capturePhoto:capture_ko");
     recordCameraFailure("esp_camera_fb_get() nul");
+    n3CameraPowerDown();
     return;  // v2.77 : le reveil continue (drain du backlog SD, alerte)
   }
   recordCameraSuccess();
@@ -620,7 +647,23 @@ void capturePhoto(bool wifiOk) {
     up.capturedAt = stampOk ? stamp : "";
     up.captureSeq = seqStr;
     up.reconnect = Wificonnect;
-    const int code = cameraUploadJpegBuffer(up, fb->buf, fb->len, String(filename));
+    /* Capteur coupé avant l'envoi : JPEG copié en PSRAM, framebuffer rendu, caméra éteinte.
+       Sans PSRAM disponible : envoi depuis le framebuffer, caméra allumée (comportement historique). */
+    const size_t jpegLen = fb->len;
+    uint8_t* jpegCopy = static_cast<uint8_t*>(ps_malloc(jpegLen));
+    int code;
+    if (jpegCopy) {
+      memcpy(jpegCopy, fb->buf, jpegLen);
+      esp_camera_fb_return(fb);
+      fb = nullptr;
+      n3CameraPowerDown();
+      code = cameraUploadJpegBuffer(up, jpegCopy, jpegLen, String(filename));
+      free(jpegCopy);
+    } else {
+      N3_LOGW("[CAPTURE] Copie PSRAM impossible (%u bytes) : upload camera allumee",
+              static_cast<unsigned int>(jpegLen));
+      code = cameraUploadJpegBuffer(up, fb->buf, fb->len, String(filename));
+    }
     logStepDuration("upload_http", millis() - uploadStartMs, 5000);
     N3_LOGI("[CAPTURE] Upload direct (sans SD) HTTP=%d seq=%lu",
             code, static_cast<unsigned long>(directSeq));
@@ -631,7 +674,8 @@ void capturePhoto(bool wifiOk) {
   }
 
   /* Libérer le framebuffer après usage (évite use-after-free) */
-  esp_camera_fb_return(fb);
+  if (fb) esp_camera_fb_return(fb);
+  n3CameraPowerDown();  /* avant mail et drain SD */
 
 #if USE_DEEP_SLEEP
   trySendFirstBootMail(wifiOk);
@@ -809,8 +853,7 @@ void setup() {
      posait un faux 01/01/2023 12:00). L'horloge est desormais geree par n3CamSyncClock(). */
 
   const uint32_t wifiStartMs = millis();
-  wifiRadioResetForWake();
-  bool wifiOk = Wificonnect();
+  bool wifiOk = wifiConnectWithRecovery();
   #ifdef SMTP_DEST
   remoteMailRecipient = SMTP_DEST;
   #else
@@ -852,12 +895,18 @@ void setup() {
         lastRemoteForceWakeupState = 0;
       }
 
-      if (remoteCfg.resetMode) {
-        resetModeActiveThisBoot = (lastRemoteResetModeState == 0);
-        lastRemoteResetModeState = 1;
+      resetModeActiveThisBoot = false;
+      if (preferences.begin(kResetAckPrefNs, false)) {
+        const bool acked = preferences.getBool(kResetAckKey, false);
+        if (remoteCfg.resetMode && !acked) {
+          preferences.putBool(kResetAckKey, true);
+          resetModeActiveThisBoot = true;
+        } else if (!remoteCfg.resetMode && acked) {
+          preferences.putBool(kResetAckKey, false);
+        }
+        preferences.end();
       } else {
-        resetModeActiveThisBoot = false;
-        lastRemoteResetModeState = 0;
+        N3_LOGW("[REMOTE] resetMode ignore : Preferences begin a echoue.");
       }
 #else
       forceWakeupActiveThisBoot = remoteCfg.forceWakeUp;
@@ -896,7 +945,11 @@ void setup() {
           static_cast<unsigned long>(otaElapsedSinceLastCheckSeconds),
           static_cast<unsigned long>(OTA_PERIODIC_INTERVAL_SECONDS),
           OTA_METADATA_URL);
-  if (remainingBeforeCheck == 0) {
+  if (remainingBeforeCheck == 0 && WiFi.status() != WL_CONNECTED) {
+    /* Compteur conservé (saturé) : la vérification est retentée au prochain réveil connecté au lieu
+       d'être consommée sans réseau puis reportée de 2 h (MAJ OTA quasi jamais prises sur le terrain). */
+    N3_LOGW("[OTA] verification 2h reportee : pas de WiFi (nouvel essai au prochain reveil connecte)");
+  } else if (remainingBeforeCheck == 0) {
     N3_LOGI("[OTA] verification 2h declenchee");
     N3OtaConfig otaCfg = {
       OTA_METADATA_URL,
