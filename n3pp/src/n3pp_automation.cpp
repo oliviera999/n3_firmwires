@@ -7,7 +7,15 @@
 #include <WiFi.h>      // Phase 3 : en failover, SMTP seulement si WiFi connecte (§3.4-1)
 
 void HeureSansWifi() {
-  n3TimeLoadFromFlash(preferences, rtc);  // NVS "rtc" -> rtc (mêmes clés/défauts qu'avant)
+  // Horloge deja plausible (reveil deep sleep : timer RTC conserve) -> on la garde ;
+  // recharger la NVS la ferait RECULER au dernier epoch sauve, et pendant toute une coupure
+  // WiFi l'heure resterait figee (EnregistrementHeureFlash re-sauvant l'heure reculee).
+  // NVS (avec son repli calendaire historique) seulement si l'horloge est absente.
+  if (!n3TimeHasPlausibleEpoch()) {
+    n3TimeLoadFromFlash(preferences, rtc);
+  } else {
+    n3TimeRestoreFromFlashIfNewer(preferences, rtc);
+  }
   // Resync des globals firmware depuis le RTC chargé (arrosage/affichage les lisent)
   n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
   if (displayOk) {

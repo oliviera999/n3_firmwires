@@ -27,16 +27,11 @@ void n3CamSyncClock(Preferences& prefs, ESP32Time& rtc, bool wifiOk) {
      re-sauvait ce même epoch périmé : l'heure NVS restait figée à sa valeur du premier boot.
      Règle : l'epoch NVS ne sert qu'à amorcer une horloge absente (cold boot) ou en retard sur
      lui — jamais à reculer une horloge RTC valide. */
-  const unsigned long sysEpoch = static_cast<unsigned long>(time(nullptr));
-  const unsigned long nvsEpoch = n3TimeReadSavedEpoch(prefs);
-  bool clockPlausible = sysEpoch > N3_TIME_MIN_VALID_EPOCH;
-  if (nvsEpoch > N3_TIME_MIN_VALID_EPOCH && nvsEpoch > sysEpoch) {
-    rtc.setTime(nvsEpoch);
-    clockPlausible = true;
-    N3_LOGI("[TIME] Horloge amorcee depuis NVS epoch=%lu (systeme=%lu)", nvsEpoch, sysEpoch);
-  } else if (clockPlausible) {
-    N3_LOGI("[TIME] Horloge systeme conservee (RTC) epoch=%lu", sysEpoch);
+  if (!n3TimeRestoreFromFlashIfNewer(prefs, rtc) && n3TimeHasPlausibleEpoch()) {
+    N3_LOGI("[TIME] Horloge systeme conservee (RTC) epoch=%lu",
+            static_cast<unsigned long>(time(nullptr)));
   }
+  const bool clockPlausible = n3TimeHasPlausibleEpoch();
 
   if (!wifiOk) {
     if (clockPlausible) {

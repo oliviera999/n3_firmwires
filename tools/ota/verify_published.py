@@ -54,11 +54,28 @@ def http_get(url: str, timeout: int = 30) -> bytes:
         return resp.read()
 
 
-def verify_ffp5(doc: dict, channel: str, model: str) -> tuple[bool, str]:
+def version_mismatch(entry: dict, expected: str | None) -> str | None:
+    """Message d'erreur si la version publiee n'est pas celle attendue (None = OK / non verifie).
+
+    Sans ce controle, une publication ecrite au mauvais endroit (non servie) passait la
+    verification : l'ANCIEN binaire, toujours en ligne, est lui aussi integre et signe."""
+    if expected is None:
+        return None
+    published = str(entry.get("version", ""))
+    if published != expected:
+        return f"version publiee {published!r} != attendue {expected!r} (deploiement non servi ?)"
+    return None
+
+
+def verify_ffp5(doc: dict, channel: str, model: str,
+                expected_version: str | None = None) -> tuple[bool, str]:
     """Schema ffp5cs : channels[channel][model], integrite md5 (pas de signature)."""
     entry = (doc.get("channels", {}).get(channel, {}) or {}).get(model)
     if not isinstance(entry, dict):
         return False, f"channels[{channel}][{model}] absent"
+    mismatch = version_mismatch(entry, expected_version)
+    if mismatch:
+        return False, mismatch
     url, expected_md5 = entry.get("bin_url"), entry.get("md5")
     if not url or not expected_md5:
         return False, "champs bin_url/md5 manquants"
@@ -73,7 +90,8 @@ def verify_ffp5(doc: dict, channel: str, model: str) -> tuple[bool, str]:
 
 
 def verify_once(metadata_url: str, key: str | None, pub_pem_path: Path,
-                channel: str | None = None, model: str | None = None) -> tuple[bool, str]:
+                channel: str | None = None, model: str | None = None,
+                expected_version: str | None = None) -> tuple[bool, str]:
     try:
         doc = json.loads(http_get(metadata_url).decode("utf-8"))
     except Exception as exc:  # noqa: BLE001 - on retente
@@ -81,11 +99,14 @@ def verify_once(metadata_url: str, key: str | None, pub_pem_path: Path,
 
     # Schema ffp5cs : presence d'un nœud "channels" + --channel/--model fournis.
     if "channels" in doc and channel and model:
-        return verify_ffp5(doc, channel, model)
+        return verify_ffp5(doc, channel, model, expected_version)
 
     entry = doc.get(key) if key else doc
     if not isinstance(entry, dict):
         return False, f"cle metadata '{key}' absente"
+    mismatch = version_mismatch(entry, expected_version)
+    if mismatch:
+        return False, mismatch
     url, expected_sha, sig_b64 = entry.get("url"), entry.get("sha256"), entry.get("signature")
     if not url or not expected_sha:
         return False, "champs url/sha256 manquants"
@@ -125,6 +146,7 @@ def main() -> int:
     p.add_argument("--model", help="Modele channels[chan][...] (ffp5cs: esp32-wroom)")
     p.add_argument("--pubkey-header", type=Path, default=PUBKEY_HEADER,
                    help="Header contenant la cle publique embarquee")
+    p.add_argument("--expect-version", help="Version qui doit etre publiee (echec sinon)")
     p.add_argument("--retries", type=int, default=6, help="Tentatives (delai serveur)")
     p.add_argument("--delay", type=int, default=20, help="Secondes entre tentatives")
     args = p.parse_args()
@@ -136,7 +158,8 @@ def main() -> int:
 
     last = ""
     for attempt in range(1, args.retries + 1):
-        ok, msg = verify_once(args.metadata_url, args.key, pub_path, args.channel, args.model)
+        ok, msg = verify_once(args.metadata_url, args.key, pub_path, args.channel, args.model,
+                              args.expect_version)
         if ok:
             print(f"[VERIFY] {msg}")
             return 0

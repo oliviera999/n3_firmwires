@@ -66,6 +66,16 @@ bool n3TimeSyncNtpConfirmed(ESP32Time& rtc,
  */
 unsigned long n3TimeReadSavedEpoch(Preferences& prefs);
 
+/**
+ * Restauration MONOTONE de l'horloge depuis la NVS : applique l'epoch persisté
+ * seulement s'il est plausible ET plus récent que l'horloge système. ESP-IDF
+ * conserve l'heure système à travers le deep sleep (timer RTC) : au réveil timer
+ * elle est déjà juste, et la remplacer par l'epoch NVS (sauvé au réveil
+ * précédent) la ferait RECULER. Utile au cold boot (horloge à 0). Aucun repli
+ * calendaire (contrairement à n3TimeLoadFromFlash). true = horloge modifiée.
+ */
+bool n3TimeRestoreFromFlashIfNewer(Preferences& prefs, ESP32Time& rtc);
+
 /** Horloge système plausible (epoch > seuil 2020). */
 bool n3TimeHasPlausibleEpoch(void);
 

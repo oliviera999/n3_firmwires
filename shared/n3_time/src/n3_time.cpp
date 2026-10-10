@@ -143,6 +143,17 @@ unsigned long n3TimeReadSavedEpoch(Preferences& prefs) {
   return epoch;
 }
 
+bool n3TimeRestoreFromFlashIfNewer(Preferences& prefs, ESP32Time& rtc) {
+  const unsigned long saved = n3TimeReadSavedEpoch(prefs);
+  const unsigned long now = static_cast<unsigned long>(time(nullptr));
+  if (saved <= N3_TIME_MIN_VALID_EPOCH || saved <= now) {
+    return false;  // rien de persisté, ou horloge système déjà plus récente (RTC)
+  }
+  rtc.setTime(saved);
+  Serial.printf("[TIME] Horloge amorcee depuis NVS epoch=%lu (systeme=%lu)\n", saved, now);
+  return true;
+}
+
 bool n3TimeHasPlausibleEpoch(void) {
   return static_cast<unsigned long>(time(nullptr)) > N3_TIME_MIN_VALID_EPOCH;
 }

@@ -173,10 +173,15 @@ void setup() {
 
   print_wakeup_reason();
 
-  // Horloge : NVS puis NTP reel (getLocalTime) — meme pattern que uploadphotosserver / n3_time.
-  n3TimeLoadAndApplyToSystem(preferences, rtc);
+  // Horloge : l'heure systeme survit au deep sleep (timer RTC). L'epoch NVS n'amorce qu'une
+  // horloge absente ou en retard (cold boot) — l'ancien n3TimeLoadAndApplyToSystem()
+  // inconditionnel la RECULAIT a chaque reveil timer. Puis NTP CONFIRME par le statut SNTP :
+  // n3TimeSyncNtp() rendait « ok » immediatement des que l'horloge etait plausible (donc
+  // toujours apres la NVS), sans reponse NTP — et le POST HMAC (fenetre SIG_VALID_WINDOW)
+  // partait signe avec l'heure reculee. Cf. uploadphotosserver 2.77 / n3_time 1.4.0.
+  n3TimeRestoreFromFlashIfNewer(preferences, rtc);
   if (WiFi.status() == WL_CONNECTED) {
-    const bool ntpOk = n3TimeSyncNtp(rtc, gmtOffset_sec, daylightOffset_sec, ntpServer, 8000U);
+    const bool ntpOk = n3TimeSyncNtpConfirmed(rtc, gmtOffset_sec, daylightOffset_sec, ntpServer, 8000U);
     if (ntpOk && rtc.getEpoch() > N3_TIME_MIN_VALID_EPOCH) {
       n3TimeSaveToFlash(rtc, preferences);
     }

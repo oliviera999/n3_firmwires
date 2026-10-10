@@ -139,7 +139,7 @@ def main() -> int:
     p.add_argument("--firmware", required=True, choices=sorted(TARGETS), help="Cible OTA")
     p.add_argument("--bin", type=Path, help="Chemin du firmware.bin compile")
     p.add_argument("--key", type=Path, help="Cle privee ECDSA (PEM) — schema n3ota uniquement")
-    p.add_argument("--ota-root", type=Path, help="Racine OTA dans n3_serveur (ex: serveur/ota)")
+    p.add_argument("--ota-root", type=Path, help="Racine OTA servie dans n3_serveur (ex: n3_serveur/ota)")
     p.add_argument("--channel", choices=["prod", "test"], default="prod", help="Canal de deploiement")
     p.add_argument("--base-url", help="Prefixe URL public (defaut selon schema)")
     p.add_argument("--version", help="Force la version (sinon lue depuis le manifest)")
@@ -165,6 +165,13 @@ def main() -> int:
     if scheme == "n3ota":
         if args.key is None or not args.key.is_file():
             raise SystemExit("--key (cle privee ECDSA) requis pour le schema n3ota")
+
+    # Racine OTA = dossier REELLEMENT servi (n3_serveur/ota). Une racine inexistante signifie un
+    # mauvais --ota-root (ex. ancien defaut "serveur/ota") : on publierait dans un dossier non servi
+    # et la verification post-deploiement, qui relit l'ancien binaire toujours en ligne, passerait.
+    if not args.dry_run and not args.ota_root.is_dir():
+        raise SystemExit(f"Racine OTA introuvable : {args.ota_root} (attendu : le dossier ota/ servi "
+                         f"par n3_serveur). Verifier --ota-root / N3_SERVEUR_OTA_ROOT.")
 
     base_url = (args.base_url or DEFAULT_BASE[scheme]).rstrip("/")
 
@@ -195,6 +202,11 @@ def publish_n3ota(args, target, version, base_url) -> int:
     bin_dst = args.ota_root / bin_rel
 
     if target["key"]:
+        # metadata multi-cles (cam : msp1/n3pp/ffp3) : il DOIT deja exister hors dry-run, sinon on
+        # en creerait un neuf ne contenant que cette cle -> les autres cameras perdraient leur entree.
+        if not args.dry_run and not meta_path.is_file():
+            raise SystemExit(f"metadata multi-cles introuvable : {meta_path} — refus d'en creer un "
+                             f"neuf (ecraserait les autres cles). Verifier --ota-root.")
         existing = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
         existing[target["key"]] = entry
         meta_obj = existing

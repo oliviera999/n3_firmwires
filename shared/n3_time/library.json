@@ -1,7 +1,7 @@
 {
   "name": "n3_time",
   "version": "1.4.0",
-  "description": "RTC flash et raison de reveil pour projet n3 IoT (ESP32) ; NTP confirme (statut SNTP) ; logique pure mutualisee : epoch (anti-overflow), decisions horloge NTP/derive, format uptime",
+  "description": "RTC flash et raison de reveil pour projet n3 IoT (ESP32) ; NTP confirme (statut SNTP), restauration NVS monotone ; logique pure mutualisee : epoch (anti-overflow), decisions horloge NTP/derive, format uptime",
   "keywords": ["rtc", "time", "preferences", "esp32", "n3"],
   "frameworks": "arduino",
   "platforms": "espressif32",

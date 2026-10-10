@@ -175,7 +175,15 @@ void EnregistrementHeureFlash() {
 // boot hors-ligne, l'horloge restait fausse (POST dates epoch~0, heures
 // calendaires fausses). Appelee par le onFailure de Wificonnect().
 void HeureSansWifi() {
-  n3TimeLoadFromFlash(preferences, rtc);  // NVS "rtc" -> rtc (mêmes clés/défauts que n3pp)
+  // Horloge deja plausible (reveil deep sleep : timer RTC conserve) -> on la garde ;
+  // recharger la NVS la ferait RECULER au dernier epoch sauve, et pendant toute une coupure
+  // WiFi l'heure resterait figee (EnregistrementHeureFlash re-sauvant l'heure reculee).
+  // NVS (avec son repli calendaire historique) seulement si l'horloge est absente.
+  if (!n3TimeHasPlausibleEpoch()) {
+    n3TimeLoadFromFlash(preferences, rtc);
+  } else {
+    n3TimeRestoreFromFlashIfNewer(preferences, rtc);
+  }
   // Resync des globals firmware depuis le RTC chargé (tracker/affichage les lisent)
   n3TimeSyncBrokenDown(rtc, seconde, minute, heure, jour, mois, annee);
   if (displayOk) {
