@@ -19,7 +19,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.80"
+#define FIRMWARE_VERSION "2.81"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -87,6 +87,19 @@
 #define CAM_WARMUP_FRAME_DELAY_MS 150   /* pause entre trames de warm-up (historique : 1000) */
 #define CAM_AEC_PRELOCK_MS       500    /* fenêtre AEC/AGC figés avant réactivation auto */
 #define CAM_AEC_SETTLE_MS        3000   /* convergence AEC/AWB en lumière stable (historique : 10000) */
+
+/* Qualité JPEG OV2640 (0-63, plus petit = meilleure qualité = trame plus lourde). Le driver
+ * esp32-camera d'arduino-esp32 2.0.17 dimensionne chaque tampon JPEG à largeur*hauteur/5 octets
+ * (262 144 en SXGA) et JETTE sans log une trame plus grosse : esp_camera_fb_get() rend nul après 4 s.
+ * Avant 2.81 : qualité 4 codée en dur — n3pp (jardin ensoleillé, feuillage) plafonnait à 255-262 Ko,
+ * toute trame au-delà était perdue (alerte « Camera en echec » du 2026-10-11). 10 = valeur des
+ * exemples Espressif (CameraWebServer). Si fb_get rend nul malgré tout, la capture est retentée en
+ * dégradant la qualité de CAM_JPEG_QUALITY_FALLBACK_STEP, jusqu'à CAM_CAPTURE_MAX_ATTEMPTS essais. */
+#define CAM_JPEG_QUALITY               10
+#define CAM_JPEG_QUALITY_FALLBACK_STEP 5
+#define CAM_CAPTURE_MAX_ATTEMPTS       3
+/* Remplissage du tampon JPEG (% de largeur*hauteur/5) au-delà duquel la capture est signalée en WARN. */
+#define CAM_JPEG_BUFFER_WARN_PCT       85
 
 /* Caméra : seuils SPIRAM pour tenter SXGA + 2 buffers JPEG. Sinon CIF + 1 buffer d’emblée ;
    si l’init haute résolution échoue quand même, repli automatique CIF (voir main.cpp). */
