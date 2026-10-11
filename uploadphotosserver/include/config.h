@@ -19,7 +19,7 @@
 #endif
 
 /* ========== Commun ========== */
-#define FIRMWARE_VERSION "2.81"
+#define FIRMWARE_VERSION "2.82"
 #define SERVER_NAME     "iot.olution.info"
 
 /* Canal galerie / upload : HTTPS par défaut (USE_HTTPS_ENDPOINTS dans platformio.ini).
@@ -132,7 +132,7 @@
 #define MAIL_NOTIFICATIONS_ENABLED 1
 #define MAIL_SUBJECT_MAX_LEN      128
 #define MAIL_BODY_MAX_LEN         1200
-#define MAIL_EXTRA_MAX_LEN        384
+#define MAIL_EXTRA_MAX_LEN        512
 #define MAIL_PENDING_EVENING      0x01
 #define MAIL_PENDING_MORNING      0x02
 /* Tentatives SMTP max par transition jour/nuit (P4 diagnostic). Au-dela : abandon logue.
@@ -207,6 +207,7 @@
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
+#  define CAM_CAPTURE_RECOVERY_ENABLED 1
 
 #elif defined(TARGET_N3PP)
 #  define SERVER_PATH        "/n3ppgallery/upload.php"
@@ -219,6 +220,7 @@
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
+#  define CAM_CAPTURE_RECOVERY_ENABLED 1
 
 #elif defined(TARGET_FFP3)
 /* Chemins canoniques sans prefixe /ffp3/ : les GET /ffp3/* declenchent un 301 Apache
@@ -234,6 +236,7 @@
 #  define USE_SD             1
 #  define TIME_TO_SLEEP      600
 #  define CAM_XCLK_HZ        5000000
+#  define CAM_CAPTURE_RECOVERY_ENABLED 1
 
 #else
 #  error "Un des TARGET_MSP1, TARGET_N3PP ou TARGET_FFP3 doit être défini (build_flags)."

@@ -133,11 +133,14 @@ static esp_err_t n3TryCameraInit(camera_config_t& config, const CameraInitPlan& 
 }
 
 esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabel,
-                                   size_t activeModeLabelLen) {
+                                   size_t activeModeLabelLen, uint8_t* outAttemptCount) {
   if (!config || !activeModeLabel || activeModeLabelLen == 0) {
     return ESP_ERR_INVALID_ARG;
   }
   activeModeLabel[0] = '\0';
+  if (outAttemptCount) {
+    *outAttemptCount = 0;
+  }
 
   static const CameraInitPlan kPlans[] = {
       {FRAMESIZE_SXGA, 2, CAMERA_FB_IN_PSRAM, CAMERA_GRAB_LATEST, "SXGA/psram"},
@@ -161,6 +164,9 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
   n3CameraHardwareReset(false);
 
   for (size_t i = startIdx; i < (sizeof(kPlans) / sizeof(kPlans[0])); ++i) {
+    if (outAttemptCount && *outAttemptCount < 0xFF) {
+      ++(*outAttemptCount);
+    }
     const esp_err_t err = n3TryCameraInit(*config, kPlans[i]);
     if (err == ESP_OK) {
       snprintf(activeModeLabel, activeModeLabelLen, "%s", kPlans[i].label);
@@ -478,7 +484,15 @@ void n3LogCameraSccbDiagnostics(void) {
 void warmupCamera() {
   for (int i = 0; i < CAM_WARMUP_FRAME_COUNT; i++) {
     camera_fb_t* fb = esp_camera_fb_get();
-    if (fb) esp_camera_fb_return(fb);  // libération inconditionnelle (pas de fuite framebuffer, cf. M1)
+    if (fb) {
+      N3_LOGD("[CAM] warm-up trame %d/%d OK (%u bytes)",
+              i + 1,
+              CAM_WARMUP_FRAME_COUNT,
+              static_cast<unsigned int>(fb->len));
+      esp_camera_fb_return(fb);  // libération inconditionnelle (pas de fuite framebuffer, cf. M1)
+    } else {
+      N3_LOGW("[CAM] warm-up trame %d/%d nulle", i + 1, CAM_WARMUP_FRAME_COUNT);
+    }
     delay(CAM_WARMUP_FRAME_DELAY_MS);
   }
 }
