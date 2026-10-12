@@ -583,11 +583,12 @@ void capturePhoto(bool wifiOk) {
    * Plus d'adjustExposure logiciel (mesure JPEG inopérante + fuite framebuffer : M1/B1, audit 2026-07-05). */
 
   const uint32_t captureStartMs = millis();
-  camera_fb_t* fb = esp_camera_fb_get();
+  char captureFail[48];
+  camera_fb_t* fb = n3CameraCaptureFrame(captureFail, sizeof(captureFail));
   if (!fb) {
-    N3_LOGE("[CAM] Echec capture camera");
+    N3_LOGE("[CAM] Echec capture camera (%s)", captureFail);
     logMonitoringSnapshot("capturePhoto:capture_ko");
-    recordCameraFailure("esp_camera_fb_get() nul");
+    recordCameraFailure(captureFail[0] ? captureFail : "fb_get nul");
     n3CameraPowerDown();
     return;  // v2.77 : le reveil continue (drain du backlog SD, alerte)
   }

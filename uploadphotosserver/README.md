@@ -36,7 +36,7 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
 
 | Module | Rôle |
 |--------|------|
-| `camera_setup` | Init OV2640, warmup, exposition, diagnostics `[DIAG]` PSRAM et `[DIAG][SCCB]` |
+| `camera_setup` | Init OV2640, warmup, exposition, capture JPEG (qualité 10, repli si tampon SXGA plein), diagnostics `[DIAG]` PSRAM et `[DIAG][SCCB]` |
 | `camera_time` | Horloge offline-first (RTC conservée au deep sleep, NVS au cold boot), NTP confirmé, TZ POSIX UTC+1 |
 | `camera_sleep` | Créneau photo 6h–22h (fail-closed si horloge non fiable) |
 | `camera_remote` | Config distante GET + POST version |

@@ -1,6 +1,6 @@
 # Version uploadphotosserver (ESP32-CAM unifié)
 
-Version actuelle : **2.80** (définie dans `include/config.h`).
+Version actuelle : **2.81** (définie dans `include/config.h`).
 
 ---
 
@@ -8,6 +8,7 @@ Version actuelle : **2.80** (définie dans `include/config.h`).
 
 | Version | Date | Modifications |
 |---------|------|---------------|
+| 2.81 | 2026-10-12 | **Capture JPEG : plus de trou quand la trame dépasse le tampon SXGA.** Le driver alloue 1280×1024/5 = 262144 octets et jette la trame sans EOI (`fb_get` nul). Qualité codée en dur à 4 : les 42 photos n3pp du 2026-10-11 pesaient toutes entre 255 et 262 Ko, puis plus rien de 11:38 à 16:56. `CAM_JPEG_QUALITY` passe à 10 (exemple Espressif). Si `fb_get` rend encore nul, `set_quality(+5)` et nouvel essai, jusqu'à 3. Seul l'échec des 3 essais compte pour l'alerte. |
 | 2.80 | 2026-10-10 | **Bump de validation OTA msp1 (aucun changement fonctionnel).** Commentaire de `n3CameraPowerDown` reformulé (contrainte matérielle au lieu du journal de banc). Publiée en OTA prod pour la seule cible `msp1` afin de valider la chaîne 2.79 → 2.80 sur la caméra déployée. |
 | 2.79 | 2026-10-10 | **Correctifs terrain (banc msp1, n3pp : photos et OTA quasi jamais reçues).** **(1) Upload après capture** : capteur alimenté, l'upload TLS (`HTTP=-1` au bout de 60-80 s, deux fois) puis la connexion SMTP échouaient à 100 % alors que le WiFi restait associé ; tout le réseau **avant** l'init caméra réussissait. Le JPEG est désormais copié en PSRAM, le framebuffer rendu et le capteur coupé (`n3CameraPowerDown` : deinit + PWDN, `CAM_POWER_DOWN_SETTLE_MS`) **avant** tout trafic réseau, y compris avant le drain SD et les mails (repli historique sans PSRAM). Banc : 0/3 → 17/17 uploads HTTP 200. **(2) WiFi au démarrage** : environ un boot sur deux (tous types de reset) le scan renvoie 0 AP / `WIFI_SCAN_FAILED` alors que l'AP est joignable ; `n3_wifi` abandonnait la session quand le rescan échouait. `n3_wifi` 1.4.1 tente la connexion directe (même repli que « toujours invisible ») ; la CAM fait en plus un 2e essai après reset radio long (`WIFI_RECOVERY_*`). Banc : connexion à chaque boot. **(3) OTA** : la vérification 2 h était consommée même sans WiFi (« Pas de WiFi, verification ignoree » puis 2 h d'attente) ; elle est désormais **reportée** au prochain réveil connecté. **(4) resetMode (clé 106)** : le front montant était mémorisé en `RTC_DATA_ATTR`, réinitialisé par le reset logiciel que la commande déclenche — boucle de redémarrage (une photo par boot) tant que le serveur gardait 106=1. Acquittement mémorisé en NVS (`upcam/rst_ack`, écrit aux transitions seulement). Non testé au banc : chemin carte SD (pas de carte). |
 | 2.78 | 2026-10-10 | **Bump de validation OTA (aucun changement de code).** Version publiée en OTA prod pour la seule cible `msp1` afin de valider la chaîne OTA 2.77 → 2.78 sur le module de banc (flash série 2.77 puis mise à jour à distance). |

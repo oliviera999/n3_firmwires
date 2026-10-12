@@ -114,7 +114,7 @@ static esp_err_t n3TryCameraInit(camera_config_t& config, const CameraInitPlan& 
   config.fb_count = plan.fb_count;
   config.fb_location = plan.fb_location;
   config.grab_mode = plan.grab_mode;
-  config.jpeg_quality = 4;
+  config.jpeg_quality = CAM_JPEG_QUALITY;
 
   const size_t spiramTotal = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   const size_t spiramLargest =
@@ -173,6 +173,47 @@ esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabe
     n3CameraHardwareReset(false);
   }
   return ESP_FAIL;
+}
+
+camera_fb_t* n3CameraCaptureFrame(char* failReason, size_t failReasonLen) {
+  if (failReason && failReasonLen > 0) {
+    failReason[0] = '\0';
+  }
+
+  int quality = CAM_JPEG_QUALITY;
+  int attempts = 0;
+  for (int attempt = 1; attempt <= CAM_CAPTURE_MAX_ATTEMPTS; ++attempt) {
+    attempts = attempt;
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (fb) {
+      if (attempt > 1) {
+        N3_LOGW("[CAM] capture OK essai %d/%d qualite=%d taille=%u",
+                attempt, CAM_CAPTURE_MAX_ATTEMPTS, quality,
+                static_cast<unsigned int>(fb->len));
+      }
+      return fb;
+    }
+
+    if (attempt >= CAM_CAPTURE_MAX_ATTEMPTS) {
+      break;
+    }
+    const int next = quality + CAM_JPEG_QUALITY_RETRY_STEP;
+    if (next > 63) {
+      break;
+    }
+    sensor_t* sensor = esp_camera_sensor_get();
+    if (!sensor || !sensor->set_quality || sensor->set_quality(sensor, next) != 0) {
+      N3_LOGW("[CAM] set_quality(%d) impossible apres fb_get nul", next);
+      break;
+    }
+    N3_LOGW("[CAM] fb_get nul a qualite=%d : nouvel essai qualite=%d", quality, next);
+    quality = next;
+  }
+
+  if (failReason && failReasonLen > 0) {
+    snprintf(failReason, failReasonLen, "fb_get nul (%d essais, q=%d)", attempts, quality);
+  }
+  return nullptr;
 }
 
 /* Capteur alimenté pendant le trafic réseau : upload TLS et SMTP en échec sur ESP32-CAM alors que
