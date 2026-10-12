@@ -109,6 +109,15 @@ RTC_DATA_ATTR static uint16_t camFailStreak = 0;
 RTC_DATA_ATTR static bool camFailMailDone = false;
 RTC_DATA_ATTR static uint8_t camFailMailTries = 0;
 RTC_DATA_ATTR static char camFailLastReason[48] = "";
+RTC_DATA_ATTR static char camFailLastModeLabel[24] = "";
+RTC_DATA_ATTR static uint16_t camFailLastInitAttemptCount = 0;
+RTC_DATA_ATTR static uint8_t camFailLastInitAttemptLastRun = 0;
+RTC_DATA_ATTR static bool camFailLastRecoveryTried = false;
+RTC_DATA_ATTR static bool camFailLastPsramDetected = false;
+RTC_DATA_ATTR static uint32_t camFailLastPsramFree = 0;
+static char activeCameraModeLabel[24] = "non-initialise";
+static uint16_t cameraInitAttemptCountThisWake = 0;
+static uint8_t cameraInitAttemptLastRun = 0;
 
 #if USE_SD
 bool sdAvailable = false;  /* true seulement si SD montée au boot */
@@ -138,7 +147,8 @@ static void trySendFirstBootMail(bool wifiOk);
 static void initSdIfEnabled();
 static void runSyncDrainIfNeeded(bool wifiOk);
 #endif
-static bool initCameraPipeline();
+static bool initCameraPipeline(bool recordInitFailure = true);
+static void rememberCameraFailureDiagnostics(bool recoveryTried);
 static void recordCameraFailure(const char* reason);
 static void recordCameraSuccess();
 static void trySendCameraFailureMail(bool wifiOk);
@@ -585,9 +595,47 @@ void capturePhoto(bool wifiOk) {
   const uint32_t captureStartMs = millis();
   char captureFailReason[sizeof(camFailLastReason)];
   camera_fb_t* fb = n3CameraCaptureJpeg(captureFailReason, sizeof captureFailReason);
+#if CAM_CAPTURE_RECOVERY_ENABLED
+  bool recoveryTried = false;
+  if (!fb) {
+    recoveryTried = true;
+    char firstCaptureFailReason[sizeof(camFailLastReason)];
+    snprintf(firstCaptureFailReason, sizeof(firstCaptureFailReason), "%s", captureFailReason);
+    N3_LOGW("[CAM] Capture nulle; tentative recovery deinit/reinit "
+            "(cause=%s mode=%s init_reveil=%u psram=%s free=%lu)",
+            firstCaptureFailReason,
+            activeCameraModeLabel,
+            static_cast<unsigned int>(cameraInitAttemptCountThisWake),
+            psramFound() ? "oui" : "non",
+            static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    n3CameraPowerDown();
+    delay(CAM_DEINIT_SETTLE_MS);
+    char recoveryFailReason[sizeof(camFailLastReason)] = "";
+    if (initCameraPipeline(false)) {
+      fb = n3CameraCaptureJpeg(recoveryFailReason, sizeof recoveryFailReason);
+      if (fb) {
+        N3_LOGI("[CAM] Recovery capture OK (%u bytes)",
+                static_cast<unsigned int>(fb->len));
+      } else {
+        N3_LOGW("[CAM] Recovery init OK mais capture encore nulle (%s)",
+                recoveryFailReason);
+      }
+    } else {
+      snprintf(recoveryFailReason, sizeof(recoveryFailReason), "%s", "re-init camera impossible");
+      N3_LOGW("[CAM] Recovery capture abandonnee: re-init camera impossible");
+    }
+    if (!fb) {
+      snprintf(captureFailReason, sizeof(captureFailReason), "%s; recovery: %s",
+               firstCaptureFailReason, recoveryFailReason);
+    }
+  }
+#else
+  const bool recoveryTried = false;
+#endif
   if (!fb) {
     N3_LOGE("[CAM] Echec capture camera");
     logMonitoringSnapshot("capturePhoto:capture_ko");
+    rememberCameraFailureDiagnostics(recoveryTried);
     recordCameraFailure(captureFailReason);
     n3CameraPowerDown();
     return;  // v2.77 : le reveil continue (drain du backlog SD, alerte)
@@ -729,6 +777,16 @@ static void runSyncDrainIfNeeded(bool wifiOk) {
 }
 #endif
 
+static void rememberCameraFailureDiagnostics(bool recoveryTried) {
+  snprintf(camFailLastModeLabel, sizeof(camFailLastModeLabel), "%s",
+           activeCameraModeLabel[0] ? activeCameraModeLabel : "non-initialise");
+  camFailLastInitAttemptCount = cameraInitAttemptCountThisWake;
+  camFailLastInitAttemptLastRun = cameraInitAttemptLastRun;
+  camFailLastRecoveryTried = recoveryTried;
+  camFailLastPsramDetected = psramFound();
+  camFailLastPsramFree = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+}
+
 static void recordCameraFailure(const char* reason) {
   if (camFailStreak < 0xFFFF) ++camFailStreak;
   snprintf(camFailLastReason, sizeof(camFailLastReason), "%s", reason ? reason : "inconnue");
@@ -758,16 +816,24 @@ static void trySendCameraFailureMail(bool wifiOk) {
   char extra[MAIL_EXTRA_MAX_LEN];
   snprintf(extra, sizeof(extra),
            "%u echecs camera consecutifs (derniere cause: %s) : aucune photo prise depuis. "
+           "Diag: mode=%s, psram=%s, psram_libre=%lu, init_tentatives_reveil=%u "
+           "(derniere_init=%u), recovery_capture=%s. "
            "Verifier la nappe OV2640, l'alimentation 5V et la PSRAM (logs [DIAG]/[SCCB]). "
            "Les photos deja sur la carte SD continuent d'etre envoyees.",
-           static_cast<unsigned int>(camFailStreak), camFailLastReason);
+           static_cast<unsigned int>(camFailStreak), camFailLastReason,
+           camFailLastModeLabel[0] ? camFailLastModeLabel : "non-initialise",
+           camFailLastPsramDetected ? "detectee" : "absente",
+           static_cast<unsigned long>(camFailLastPsramFree),
+           static_cast<unsigned int>(camFailLastInitAttemptCount),
+           static_cast<unsigned int>(camFailLastInitAttemptLastRun),
+           camFailLastRecoveryTried ? "oui" : "non");
   bool attempted = false;
   const bool sent = sendDebugEventMail("Camera en echec", "camera-failure", extra, N3Severity::Alert, &attempted);
   if (attempted) ++camFailMailTries;
   if (sent) camFailMailDone = true;
 }
 
-static bool initCameraPipeline() {
+static bool initCameraPipeline(bool recordInitFailure) {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -794,15 +860,23 @@ static bool initCameraPipeline() {
 
   const uint32_t camInitStartMs = millis();
   char camModeLabel[24] = {};
-  const esp_err_t err = n3CameraInitWithFallback(&config, camModeLabel, sizeof camModeLabel);
+  uint8_t initAttempts = 0;
+  const esp_err_t err = n3CameraInitWithFallback(&config, camModeLabel, sizeof camModeLabel,
+                                                 &initAttempts);
+  cameraInitAttemptLastRun = initAttempts;
+  cameraInitAttemptCountThisWake += initAttempts;
   if (err != ESP_OK) {
     N3_LOGE("[CAM] Init camera impossible apres repli DRAM/PSRAM (0x%x)",
             static_cast<unsigned>(err));
-    char reason[sizeof(camFailLastReason)];
-    snprintf(reason, sizeof(reason), "esp_camera_init 0x%x", static_cast<unsigned>(err));
-    recordCameraFailure(reason);
+    if (recordInitFailure) {
+      char reason[sizeof(camFailLastReason)];
+      snprintf(reason, sizeof(reason), "esp_camera_init 0x%x", static_cast<unsigned>(err));
+      rememberCameraFailureDiagnostics(false);
+      recordCameraFailure(reason);
+    }
     return false;  // v2.77 : le reveil continue (drain du backlog SD, alerte)
   }
+  snprintf(activeCameraModeLabel, sizeof(activeCameraModeLabel), "%s", camModeLabel);
   N3_LOGI("[CAM] mode actif: %s", camModeLabel);
   logStepDuration("init_camera", millis() - camInitStartMs, 2500);
   logMonitoringSnapshot("setup:post_camera_init");
