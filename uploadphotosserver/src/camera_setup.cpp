@@ -114,7 +114,7 @@ static esp_err_t n3TryCameraInit(camera_config_t& config, const CameraInitPlan& 
   config.fb_count = plan.fb_count;
   config.fb_location = plan.fb_location;
   config.grab_mode = plan.grab_mode;
-  config.jpeg_quality = 4;
+  config.jpeg_quality = CAM_JPEG_QUALITY;
 
   const size_t spiramTotal = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   const size_t spiramLargest =
@@ -189,6 +189,60 @@ void n3CameraPowerDown(void) {
   s_cameraPoweredOn = false;
   delay(CAM_POWER_DOWN_SETTLE_MS);
   N3_LOGI("[CAM] capteur coupe avant reseau");
+}
+
+/* Taille du tampon JPEG du driver : espressif/esp32-camera, driver/cam_hal.c (cam_config,
+ * version embarquee par arduino-esp32 2.0.17) — recv_size = width * height / 5 en JPEG.
+ * https://github.com/espressif/esp32-camera/blob/master/driver/cam_hal.c */
+static size_t n3CameraJpegBufferBytes(const camera_fb_t* fb) {
+  return static_cast<size_t>(fb->width) * fb->height / 5;
+}
+
+camera_fb_t* n3CameraCaptureJpeg(char* failReason, size_t failReasonLen) {
+  sensor_t* s = esp_camera_sensor_get();
+  int quality = CAM_JPEG_QUALITY;
+  for (int attempt = 1; attempt <= CAM_CAPTURE_MAX_ATTEMPTS; ++attempt) {
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (fb) {
+      const size_t bufferBytes = n3CameraJpegBufferBytes(fb);
+      const unsigned pct =
+          bufferBytes ? static_cast<unsigned>(fb->len * 100U / bufferBytes) : 0U;
+      N3_LOGI("[CAM] trame %ux%u %u octets = %u%% du tampon JPEG (q=%d, essai %d/%d)",
+              static_cast<unsigned>(fb->width),
+              static_cast<unsigned>(fb->height),
+              static_cast<unsigned>(fb->len),
+              pct,
+              quality,
+              attempt,
+              CAM_CAPTURE_MAX_ATTEMPTS);
+      if (pct >= CAM_JPEG_BUFFER_WARN_PCT) {
+        N3_LOGW("[CAM] tampon JPEG presque plein (%u%%) : augmenter CAM_JPEG_QUALITY", pct);
+      }
+      return fb;
+    }
+    if (attempt == CAM_CAPTURE_MAX_ATTEMPTS) {
+      break;
+    }
+    /* Trame plus grosse que le tampon (scene detaillee et tres eclairee) : rejetee par le driver
+     * sans log. On degrade la qualite pour les trames suivantes et on reessaie. */
+    const int next = (quality + CAM_JPEG_QUALITY_FALLBACK_STEP > 63)
+                         ? 63
+                         : quality + CAM_JPEG_QUALITY_FALLBACK_STEP;
+    N3_LOGW("[CAM] fb_get nul (essai %d/%d, q=%d) : trame JPEG trop grosse ? nouvel essai q=%d",
+            attempt,
+            CAM_CAPTURE_MAX_ATTEMPTS,
+            quality,
+            next);
+    if (s) {
+      s->set_quality(s, next);
+      quality = next;
+    }
+  }
+  if (failReason && failReasonLen > 0) {
+    snprintf(failReason, failReasonLen, "esp_camera_fb_get() nul (%d essais, q=%d)",
+             CAM_CAPTURE_MAX_ATTEMPTS, quality);
+  }
+  return nullptr;
 }
 
 /* Diagnostic serie : interpreter PSRAM / flash / puce (connectique, variante module, sdkconfig). */

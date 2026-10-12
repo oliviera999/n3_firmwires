@@ -67,6 +67,11 @@ Au réveil, les logs n’apparaissent que pendant le cycle actif (~30 s). Pour l
   chaque fichier (`getNextFileName`).
 - **v2.77** : un échec caméra (init/capture) ne coupe plus le réveil (drain SD maintenu) et déclenche
   une alerte mail P2 après `CAM_FAIL_ALERT_THRESHOLD` échecs consécutifs.
+- **v2.81** : qualité JPEG `CAM_JPEG_QUALITY` (10, ex-4 en dur). Le driver esp32-camera alloue
+  largeur×hauteur/5 octets par trame JPEG (262 144 en SXGA) et jette sans log une trame plus grosse
+  (`fb_get` nul) : à qualité 4, une scène détaillée et ensoleillée (n3pp) saturait ce plafond. Si
+  `fb_get` rend nul, la capture est retentée en dégradant la qualité ; le log `[CAM] trame … = N% du
+  tampon JPEG` donne la marge restante.
 
 ## Contrôle distant (GET + POST version)
 

@@ -16,6 +16,9 @@ void n3LogCameraSccbDiagnostics(void);
 esp_err_t n3CameraInitWithFallback(camera_config_t* config, char* activeModeLabel, size_t activeModeLabelLen);
 /** Coupe le capteur (deinit + PWDN) avant tout trafic réseau ; sans effet si déjà coupé. */
 void n3CameraPowerDown(void);
+/** Capture une trame JPEG ; si fb_get rend nul, retente en dégradant la qualité
+ *  (CAM_CAPTURE_MAX_ATTEMPTS essais). nullptr si tous échouent : failReason décrit l'échec. */
+camera_fb_t* n3CameraCaptureJpeg(char* failReason, size_t failReasonLen);
 #if USE_DEEP_SLEEP
 void warmupCamera();
 void initializeCamera();
