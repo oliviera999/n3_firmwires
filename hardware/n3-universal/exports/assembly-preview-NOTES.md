@@ -22,7 +22,7 @@ Sur la page **Order PCB** classique, **il n’y a pas** d’upload BOM/CPL.
 Il faut **activer l’assemblage** :
 
 1. Aller sur [jlcpcb.com](https://jlcpcb.com) → **Order now** / Instant Quote.
-2. Uploader **uniquement** `gerbers-n3-universal-v0.2.zip` (Add gerber file).
+2. Uploader **uniquement** `gerbers-n3-universal-v0.2.1.zip` (Add gerber file).
 3. Configurer la carte (2 couches, **2 oz**, 1,6 mm, etc.).
 4. **Descendre en bas de page** → section **PCB Assembly** → basculer le
    interrupteur sur **ON** (Economic ou Standard, face Top).

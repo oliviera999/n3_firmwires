@@ -16,8 +16,8 @@ en mode batch (même moteur que le simulateur intégré de KiCad), piloté par P
 > champs `Sim.*` portés par le générateur + `kicad/n3u_sim.lib` (le schéma s'ouvre dans le
 > simulateur KiCad et s'exporte en netlist SPICE sans retouche), banc `bench_kicad_netlist.py`
 > sur la netlist exportée par KiCad 8.0.9 : rail capteurs 0 V GPIO13 bas / 3,30 V GPIO13 haut.
-> PCB retouché localement (pads 2/3 de Q7, pistes +5V / LDO_IN / ADC_E, README §0.2.1) :
-> **reste à faire : remplir les zones, DRC + parité dans KiCad 10, gerbers v0.2.1.** Les points 4, 6 et 11 (marges) sont documentés, pas modifiés.
+> PCB retouché localement (pads 2/3 de Q7, pistes +5V / LDO_IN / ADC_E, README §0.2.1), zones
+> remplies, **DRC KiCad 10.0.7 avec parité : 0 / 0 / 0**, gerbers v0.2.1 exportés. Les points 4, 6 et 11 (marges) sont documentés, pas modifiés.
 
 ## Synthèse
 
@@ -212,7 +212,7 @@ Chaque netlist se lance aussi seule : `ngspice -b out/s2_corrige_vto3.cir`.
 ## Suite proposée
 
 1. ~~Inverser D/S de Q7, garde d'orientation~~ — **fait en 0.2.1** (générateur, schéma, BOM,
-   `tools/check_fet_orientation.py`, PCB retouché). Reste : zones, DRC + parité, `export_fab.py --rev 0.2.1`.
+   `tools/check_fet_orientation.py`, PCB retouché, DRC 0/0/0, gerbers v0.2.1).
 2. ~~Champs `Sim.*`~~ — **fait en 0.2.1** (`sim_fields()` dans `generate.py`, `kicad/n3u_sim.lib`).
 3. Garder `simulation/` comme banc de non-régression : les scripts tournent en moins de deux
    minutes ; `check_fet_orientation.py` et `bench_kicad_netlist.py` ont leur place en CI à côté

@@ -1275,7 +1275,7 @@ def sim_fields(c: dict) -> dict[str, str] | None:
     """Champs Sim.* d'un composant, ou None s'il est exclu de la simulation."""
     sym, val = c["sym"], c["value"]
     lib = "${KIPRJMOD}/" + SIM_LIB_NAME
-    if sym in SIM_EXCLUDED_SYMS:
+    if not sym or sym in SIM_EXCLUDED_SYMS:   # trous de fixation : pas de symbole
         return None
     if sym == "R":
         return {"Sim.Device": "R", "Sim.Type": "", "Sim.Params": f"r={val}"}

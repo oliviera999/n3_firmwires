@@ -53,8 +53,9 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 |---|---|
 | `generator/generate.py` | Q7 `nets={"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}` ; `REV = "0.2.1"` ; champs `Sim.*` (`sim_fields()`), `kicad/n3u_sim.lib` généré depuis `simulation/models.lib` |
 | `kicad/n3-universal.kicad_sch`, `BOM.csv` | régénérés (seul changement électrique : étiquettes des broches 2/3 de Q7) ; ERC KiCad 8.0.9 : 0 erreur |
-| `kicad/n3-universal.kicad_pcb` | **retouché localement** (édition du fichier, pas de reroutage global) : pads 2 → LDO_IN, 3 → +5V ; 5 pistes supprimées, 14 ajoutées autour de Q7 (voir ci-dessous) ; Description de Q7 ; texte « v0.2.1 » au dos. Contrôle géométrique indépendant : 0 écart < 0,2 mm, 4 nets touchés chacun en un seul îlot. **DRC KiCad 10 à relancer** (zones à remplir) avant les gerbers |
-| Gardes | `tools/check_fet_orientation.py` ✅ (échoue sur le schéma 0.2) ; `check_silk_refs.py` ✅ ; `annotate_pcb_roles.py --check` ✅ ; `simulation/bench_kicad_netlist.py` ✅ sur la netlist exportée par KiCad |
+| `kicad/n3-universal.kicad_pcb` | **retouché localement** (édition du fichier, pas de reroutage global) : pads 2 → LDO_IN, 3 → +5V ; 5 pistes supprimées, 14 ajoutées autour de Q7 (voir ci-dessous) ; Description de Q7 ; texte « v0.2.1 » au dos ; zones remplies (pcbnew 10.0.7) ; champs `Sim.*` propagés aux 98 empreintes simulables (`tools/sync_pcb_sim_fields.py`). **DRC KiCad 10.0.7 : 0 erreur, 0 non connecté, 0 écart de parité**, 62 avertissements de sérigraphie (identiques à la 0.2) ; écart secteur 3 mm : 0 ; plans ≥ 6,50 mm |
+| Gardes | `tools/check_fet_orientation.py` ✅ (échoue sur le schéma 0.2) ; `check_silk_refs.py` ✅ ; `check_pcb_clearance.py` ✅ ; `annotate_pcb_roles.py --check` ✅ ; `sync_pcb_sim_fields.py --check` ✅ ; `tidy_silkscreen.py --dry-run` : 0 déplacement ; `simulation/bench_kicad_netlist.py` ✅ sur la netlist exportée par KiCad |
+| `exports/` | gerbers **v0.2.1** (`export_fab.py --rev 0.2.1`, DRC bloquant passé), PDF/SVG, BOM/CPL régénérés |
 
 **Retouche PCB appliquée** (autour de Q7 (196 ; 122), à relire dans pcbnew) :
 
@@ -67,13 +68,12 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - Supprimées : `+5V` F.Cu (208 ; 120) → (200.54 ; 120) → ex-pad 2, `+5V` B.Cu ex-pad 2 → (198.54 ; 118.54),
   `LDO_IN` F.Cu ex-pad 3 → (205.81 ; 122), `ADC_E` F.Cu (194.09 ; 123.81) → (209.33 ; 123.81).
 
-**À faire avant les gerbers** (KiCad 10) : ouvrir le PCB, **remplir les zones** (B — les remplissages
-GND enregistrés datent d'avant la retouche), DRC avec parité schéma : 0 erreur exigée ; puis
-`python3 generator/tidy_silkscreen.py --dry-run` ; `python3 tools/check_pcb_clearance.py` ;
-`python3 tools/check_silk_refs.py` ; `python3 tools/check_fet_orientation.py` ;
-`python3 generator/export_fab.py --rev 0.2.1`. Si le DRC trouve quelque chose dans ce coin, le
-routeur interactif (mode pousser) règle le détail en quelques minutes ; l'alternative lourde reste
-la chaîne complète (`generate.py --regen-pcb` → `route_universal.py` → …, audit §14 à refaire).
+**Contrôles passés sur cet état** (KiCad 10.0.7 Linux, 2026-10-17) : zones remplies, DRC avec
+parité schéma 0 / 0 / 0, `check_mains_gap` 0 écart, plans à 6,50 mm, gardes ci-dessus, gerbers
+v0.2.1 exportés par `export_fab.py` (DRC bloquant inclus). Avant de commander : relire le coin Q7
+dans pcbnew (vue 3D), puis [`COMMANDE.md`](COMMANDE.md). Les champs `Sim.*` doivent suivre le
+schéma : après toute régénération, `python3 tools/sync_pcb_sim_fields.py` (Python de KiCad),
+sinon le DRC de parité signale 98 champs manquants.
 
 Marges relevées par la simulation, **documentées sans modification** (à arbitrer) : chaîne 5 V →
 DevKit (Q12 non logic-level + D5 + AMS1117 : exiger ≥ 4,75 V en charge sur J1/J2, bloc 5 V ferme
@@ -147,6 +147,8 @@ tools/check_silk_refs.py           Chaque repère/valeur dans le corps de SON co
 tools/check_fet_orientation.py     Rev 0.2.1 : orientation D/S de chaque P-MOSFET selon son rôle
                                    (switch : source amont ; reverse : drain amont) — générateur ET .kicad_sch
 tools/annotate_pcb_roles.py        Rôle par firmware dans le champ Description des empreintes
+tools/sync_pcb_sim_fields.py       Rev 0.2.1 : champs Sim.* du schéma recopiés sur les empreintes (parité DRC)
+                                   — Python de KiCad ; --check en CI
 simulation/                        Rev 0.2.1 : banc SPICE ngspice (models.lib, sim1-4, bench_kicad_netlist.py,
                                    SIMULATION.md) ; kicad/n3u_sim.lib généré pour le simulateur KiCad
 kicad/n3-universal.*         Projet KiCad 10 (+ .kicad_dru : clearance 3 mm, creepage 6,4 mm,
@@ -164,6 +166,7 @@ python3 generate.py --regen-pcb                  # schéma + BOM + PCB non rout�
 python3 ../tools/check_pinmap_vs_firmware.py ; python3 ../tools/check_pcb_clearance.py
 python3 ../tools/check_silk_refs.py ; python3 ../tools/annotate_pcb_roles.py --check
 python3 ../tools/check_fet_orientation.py       # rev 0.2.1 : orientation des P-MOSFET
+<python KiCad> ../tools/sync_pcb_sim_fields.py   # rev 0.2.1 : champs Sim.* sur les empreintes (parité)
 python3 export_fab.py --rev 0.2                  # DRC (0 erreur exigée) puis gerbers v0.2
 python3 export_assembly_preview.py
 ```
