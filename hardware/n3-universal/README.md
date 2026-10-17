@@ -76,7 +76,9 @@ dans pcbnew (vue 3D), puis [`COMMANDE.md`](COMMANDE.md). Les champs `Sim.*` doiv
 schéma : après toute régénération, `python3 tools/sync_pcb_sim_fields.py` (Python de KiCad),
 sinon le DRC de parité signale 98 champs manquants.
 
-**Règles d'alimentation issues de la simulation** (décisions du 2026-10-17, carte inchangée) :
+**Règles d'alimentation issues de la simulation** (décisions du 2026-10-17, carte inchangée) — analyse
+complète des quatre profils (fuites en sommeil, budgets, robustesse, conséquences pour la commande
+unique) dans **[`ALIMENTATION.md`](ALIMENTATION.md)** :
 
 1. **Source 5 V ferme, pas de chargeur USB.** La chaîne Q12 (IRF4905, non logic-level) + D5 +
    AMS1117 du DevKit ne laisse que ~0,2 V de marge : il faut **≥ 5,0 V en charge** sur J1/J2

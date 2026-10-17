@@ -25,6 +25,7 @@ générateur qui reproduit le tout. La carte commune ajoute les feuilles
 | **[TUTO_PCB.md](TUTO_PCB.md)** | comprendre et maîtriser nos PCB : anatomie d'une carte, largeurs de piste et netclasses, plans de masse/vias, électronique des blocs (relais, ponts, pull-ups, découplage), pièges ESP32 (strapping, ADC2/WiFi), zone 230 V, pipeline, recettes de modification, glossaire |
 | **[COMMANDE_JLCPCB.md](COMMANDE_JLCPCB.md)** | commander chez JLCPCB : chaque paramètre du formulaire expliqué, choix par carte (1 oz vs 2 oz…), remarques à joindre |
 | **[VERIFICATION.md](VERIFICATION.md)** | rapport daté des contrôles (ERC/DRC/gardes/3 mm/sérigraphie/gerbers) et comment reproduire chacun |
+| **[n3-universal/ALIMENTATION.md](n3-universal/ALIMENTATION.md)** | sobriété et robustesse des quatre alimentations de la carte universelle (18650 solaire, chargeur 5 V, secteur Hi-Link, AGM 12 V + PWM) : fuites en sommeil, budgets Wh/jour, points durs, conséquences pour la commande unique |
 | **[n3-universal/simulation/SIMULATION.md](n3-universal/simulation/SIMULATION.md)** | simulation SPICE (ngspice) des blocs analogiques de la carte universelle : étage relais, rail capteurs, entrées d'alim, ponts de mesure, dynamique du rail 5 V — verdicts, marges, limites des modèles |
 
 ## Parcours conseillé
