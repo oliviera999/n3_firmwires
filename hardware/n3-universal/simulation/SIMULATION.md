@@ -168,6 +168,12 @@ ou 4,8 V / 0,5 Ω ; C1 1000 µF (ESR 80 mΩ) + C2 470 µF (ESR 120 mΩ).
 - Conclusion : les servos ne doivent pas partager un jack 5 V/2,5 A. Hi-Link 20M05 (3,6 A)
   ou buck ≥ 5 A avec câble court, ou mieux : rail servo séparé (bornier dédié, le signal
   seul passe par R20/R21).
+- **Nuance par type de servo** (`sim5_servo_sweep.py`, `out/s5_servo_results.json`) : 2,5 A est le
+  blocage d'un MG996R. Un SG90 bloque à ~0,65 A, un MG90S à ~1 A. Minimum du 3V3 du DevKit :
+  bloc 5 V correct → 3,14 V (SG90) / 3,02 V (MG90S ou 2 SG90) / 2,84 V (1,5 A) ; bloc faible
+  4,8 V/0,5 Ω → 2,63 / 2,39 / 1,96 V (brownout) ; Hi-Link ou buck 5 A à 5,1 V → 3,29 / 3,29 /
+  3,28 V (OK), 3,09 V pour un MG996R. Règle : petits servos acceptés si la source est ferme
+  (5,1 V, ≥ 3 A), démarrages décalés de ~100 ms dans le firmware ; MG996R jamais sur le jack.
 
 ## Limites des modèles (à lire avant de citer un chiffre)
 
@@ -193,6 +199,7 @@ python3 sim1_relay.py             # étage relais : transitoire, L, forçage, Mo
 python3 sim2_gate.py              # rail capteurs : câblage rev 0.2 vs corrigé, Vgs(th)
 python3 sim3_power.py             # Q12, inversion, chaîne 5 V -> DevKit, Q11/D8/D9
 python3 sim4_adc_rail.py          # pont VBAT, écho HC-SR04, dynamique du rail 5 V
+python3 sim5_servo_sweep.py       # appel servo par type (SG90 / MG90S / MG996R) et par source
 
 # Depuis le schéma KiCad (champs Sim.*, rev 0.2.1) : export puis banc rail capteurs
 kicad-cli sch export netlist --format spice -o simulation/out/n3-universal-kicad.spice kicad/n3-universal.kicad_sch

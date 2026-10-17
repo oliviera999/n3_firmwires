@@ -1,0 +1,98 @@
+{
+ "bloc 5 V correct (5,0 V, 0,25 Ω) | 0.65 A": {
+  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.6001,
+  "v33_min": 3.139035,
+  "ok": true
+ },
+ "bloc 5 V correct (5,0 V, 0,25 Ω) | 1.0 A": {
+  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.479885,
+  "v33_min": 3.01882,
+  "ok": false
+ },
+ "bloc 5 V correct (5,0 V, 0,25 Ω) | 1.5 A": {
+  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.299458,
+  "v33_min": 2.838393,
+  "ok": false
+ },
+ "bloc 5 V correct (5,0 V, 0,25 Ω) | 2.5 A": {
+  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 3.885605,
+  "v33_min": 2.425087,
+  "ok": false
+ },
+ "bloc faible (4,8 V, 0,5 Ω) | 0.65 A": {
+  "source": "bloc faible (4,8 V, 0,5 Ω)",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.087687,
+  "v33_min": 2.627005,
+  "ok": false
+ },
+ "bloc faible (4,8 V, 0,5 Ω) | 1.0 A": {
+  "source": "bloc faible (4,8 V, 0,5 Ω)",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 3.852244,
+  "v33_min": 2.391521,
+  "ok": false
+ },
+ "bloc faible (4,8 V, 0,5 Ω) | 1.5 A": {
+  "source": "bloc faible (4,8 V, 0,5 Ω)",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 3.42466,
+  "v33_min": 1.963463,
+  "ok": false
+ },
+ "bloc faible (4,8 V, 0,5 Ω) | 2.5 A": {
+  "source": "bloc faible (4,8 V, 0,5 Ω)",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 2.753921,
+  "v33_min": 1.294537,
+  "ok": false
+ },
+ "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 0.65 A": {
+  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.890449,
+  "v33_min": 3.293545,
+  "ok": true
+ },
+ "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 1.0 A": {
+  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.829283,
+  "v33_min": 3.293545,
+  "ok": true
+ },
+ "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 1.5 A": {
+  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.739598,
+  "v33_min": 3.278498,
+  "ok": true
+ },
+ "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 2.5 A": {
+  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 4.550335,
+  "v33_min": 3.089199,
+  "ok": false
+ }
+}

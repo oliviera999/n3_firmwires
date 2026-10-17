@@ -1,0 +1,12 @@
+# traces wrdata et netlists de balayage (régénérées par sim*.py)
+*__*.txt
+s1_mc*.cir
+s1_L*.cir
+s2_*vto[24].cir
+s3_q1[12]_vto[24].cir
+s4_echo_5V25.cir
+s4_echo_open.cir
+s5_4V8_rs05.cir
+s5_5V_vto4.cir
+s5_servo.cir
+bench_kicad_gate*.cir
