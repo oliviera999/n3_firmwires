@@ -28,6 +28,7 @@ import csv
 import json
 import math
 import re
+import unicodedata
 import uuid
 from pathlib import Path
 
@@ -36,8 +37,8 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3-universal"
-REV = "0.2"
-REV_DATE = "2026-10-07"
+REV = "0.2.1"
+REV_DATE = "2026-10-17"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -634,6 +635,13 @@ def build_components():
     # le 5 V vers un LD1117V33 dédié. R35 tire la grille à +5V : rail OFF par
     # défaut ; Q8 (commandé par GATE) la met à GND. JP1 ponte Q7 (rail permanent,
     # ffp5cs). R48 : pull-down de la base de Q8 (audit NET-02, symétrie relais).
+    #
+    # Rev 0.2.1 (simulation SPICE, simulation/SIMULATION.md §3) : Q7 est un
+    # INTERRUPTEUR high-side, pas un anti-inversion -> SOURCE sur le rail amont
+    # (+5V) et DRAIN vers la charge (LDO_IN). En 0.2 il était câblé comme Q11/Q12
+    # (drain = entrée) : la diode interne D->S conduisait en permanence et le
+    # rail ne se coupait jamais (LDO_IN 4,6 V, +3V3_SW 3,3 V avec GPIO13 bas).
+    # Garde : tools/check_fet_orientation.py (rôle "switch" vs "reverse").
     comps += [
         dict(ref="R34", sym="R", value="1k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
@@ -653,9 +661,10 @@ def build_components():
              nets={"1": "GATE_G", "2": "GATE_B", "3": "GND"}),
         dict(ref="Q7", sym="PMOS_GDS", value="IRF4905", fp="TO-220-3_Vertical_GDS",
              silk=dict(ref=(0.0, 4.4, 0)),  # R35 juste au-dessus, JP1 à droite
-             desc="P-MOSFET commutation 5V du LDO capteurs (1=G 2=D=+5V 3=S=entrée LDO)",
+             desc="P-MOSFET commutation 5V du LDO capteurs — interrupteur high-side : "
+                  "1=G 2=D=LDO_IN (charge) 3=S=+5V (rev 0.2.1 : D/S inversés par rapport à la 0.2)",
              sch=(155, 18), pcb=(196, 122, 0),
-             nets={"1": "GATE_G", "2": "+5V", "3": "LDO_IN"}),
+             nets={"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}),
         dict(ref="JP1", sym="CONN_02", value="Jumper BYPASS",
              fp="PinHeader_1x03_P2.54mm_Vertical", silk=dict(ref=(-2.4, 2.54, 90)),  # valeur de U1 à droite
              desc="BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; "
@@ -1084,7 +1093,7 @@ SCH_TEXTS = [
     (107, 1, "6 RELAIS K1..K6 — commande ACTIVE HAUT (base 1k + pull-down 10k : etat sur au boot).\\nWROOM : GPIO16/17/18/19/23/25 — S3 : IO15/16/17/18/48/45. Le role de chaque canal\\ndepend du firmware (voir les sections PINMAP_UNIVERSAL). Borniers : 1=NC 2=COM 3=NO.\\nFORCAGE JP5..JP10 (1x3 sur la base) : SANS cavalier = AUTO (firmware) ; 1-2 = ON force (+3V3 via 1k) ;\\n2-3 = OFF force (base a GND). K3 (chauffage) : broche 1 NON cablee, ON force impossible.\\nSRD Form C = 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A).\\nZONE SECTEUR ISOLEE sur le PCB (fentes + 3mm mini, ligne de fuite >= 6,4 mm) — circuit 230V\\nA PROTEGER EN AMONT (fusible/disjoncteur) ; charges inductives : snubber cote charge."),
     (18, 64, "HEADER SERVICE J17 : 3V3 / GND / EN / RX0 / TX0 / +5V uniquement.\\nTous les autres GPIO sont consommes par la carte universelle\\n(GPIO36 = ADC_E, GPIO39 = ADC_VBAT). Laisser RX0/TX0 libres pendant le flash USB."),
     (18, 81, "Distribution 5V / 3V3-capteurs / GND :\\nborniers a vis + rail header. Points de test TP1..TP4."),
-    (140, 4, "POWER-GATE +3V3_SW (GPIO13) — rev 0.2 : LDO DEDIE U1 (LD1117V33) alimente par le 5V\\ncommute par Q7 (IRF4905, VGS=-5V). R35 : rail OFF par defaut ; R48 : pull-down base Q8.\\nJP1 FERME par defaut (rail permanent, ffp5cs) ; OTER JP1 sur les profils batterie\\n-> tout le rail capteurs (LDO compris) est coupe en veille."),
+    (140, 4, "POWER-GATE +3V3_SW (GPIO13) — rev 0.2 : LDO DEDIE U1 (LD1117V33) alimente par le 5V\\ncommute par Q7 (IRF4905, VGS=-5V ; 0.2.1 : SOURCE sur +5V, DRAIN vers LDO_IN). R35 : rail OFF par defaut ; R48 : pull-down base Q8.\\nJP1 FERME par defaut (rail permanent, ffp5cs) ; OTER JP1 sur les profils batterie\\n-> tout le rail capteurs (LDO compris) est coupe en veille."),
     (140, 28, "PONT DIVISEUR VBAT PERMANENT (rev 0.2, plus de coupure BS250) : R38 100k + JP12 :\\n1-2 = 22k (bus 12V, ffp5cs) ; 2-3 = 100k (1S Li-ion, msp/n3pp). R49/C13 filtre, D11 clamp 3V3."),
     (140, 52, "PROFIL BUS 12V SOLAIRE : fusible lame 7,5-10A EN AMONT (hors carte),\\nanti-inversion P-MOSFET Q11, TVS 18V D8 (1.5KE18A, DO-201), reservoir ; buck 12->5V EXTERNE\\n(module MP1584/XL4015 faible Iq sur entretoises, via J36/J37 ; J37 passe par Q12)."),
     (140, 76, "PROFIL SECTEUR : Hi-Link HLK-20M05 EMBARQUE (5V/3,6A) + fusible T1A (porte-fusible\\na capot, empreinte universelle pas 22,5-22,6) + varistance 10 ou 14 mm. Le corps du\\nmodule enjambe la frontiere secteur/logique (fente fraisee dessous). ZONE 230V = DANGER."),
@@ -1239,6 +1248,78 @@ def check_schematic_overlaps() -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Simulation SPICE depuis KiCad (rev 0.2.1) : champs Sim.* par composant.
+# Les modèles vivent dans simulation/models.lib (paramétrés pour le banc ngspice
+# de simulation/sim*.py) ; generate.py en dérive kicad/n3u_sim.lib à valeurs
+# fixes (hFE BC337 typique, Vgs(th) IRF4905 typique) pour le simulateur KiCad.
+# Les composants sans modèle (relais, connecteurs, modules, fusible, varistance,
+# points de test) sont exclus de la simulation (exclude_from_sim yes) : on
+# simule un bloc en ajoutant les sources dans KiCad, ou on exporte la netlist.
+# Ordre des broches des modèles : D = A K ; NPN = C B E ; VDMOS = D G S ;
+# sous-circuit LD1117V33 = IN OUT GND. Sim.Pins = "broche symbole=broche modèle".
+# ---------------------------------------------------------------------------
+SIM_LIB_SRC = ROOT / "simulation" / "models.lib"
+SIM_LIB_NAME = "n3u_sim.lib"
+SIM_LIB_DEFAULTS = {"{BF_BC337}": "560", "{VTO_4905}": "-3"}
+SIM_DIODE_MODELS = {
+    "1N4007": "1N4007", "1N5822": "1N5822", "BAT85": "BAT85", "1N4744A": "Z15",
+    "1.5KE6.8A": "TVS68", "1.5KE18A": "TVS18", "rouge": "LEDRED", "verte": "LEDGREEN",
+}
+SIM_EXCLUDED_SYMS = {"RELAY_SRD", "BARREL", "CONN_02", "CONN_03", "CONN_04", "CONN_06",
+                     "CONN_06S", "CONN_08", "CONN_10", "CONN_12", "CONN_14", "FUSE",
+                     "VARISTOR", "HLK20M", "TP", "ESP32_DEVKIT_V1_30", "ESP32_S3_DEVKITC_44"}
+
+
+def sim_fields(c: dict) -> dict[str, str] | None:
+    """Champs Sim.* d'un composant, ou None s'il est exclu de la simulation."""
+    sym, val = c["sym"], c["value"]
+    lib = "${KIPRJMOD}/" + SIM_LIB_NAME
+    if sym in SIM_EXCLUDED_SYMS:
+        return None
+    if sym == "R":
+        return {"Sim.Device": "R", "Sim.Type": "", "Sim.Params": f"r={val}"}
+    if sym in ("C", "CP"):
+        return {"Sim.Device": "C", "Sim.Type": "", "Sim.Params": f"c={val.split('/')[0]}"}
+    if sym in ("D", "LED"):
+        model = SIM_DIODE_MODELS.get(val)
+        if model is None:
+            raise SystemExit(f"ERREUR {c['ref']} : pas de modèle SPICE pour la valeur {val!r}")
+        return {"Sim.Device": "D", "Sim.Type": "", "Sim.Library": lib, "Sim.Name": model,
+                "Sim.Pins": "1=2 2=1"}          # symbole 1=K 2=A ; modèle A K
+    if sym == "NPN":
+        return {"Sim.Device": "NPN", "Sim.Type": "GUMMELPOON", "Sim.Library": lib,
+                "Sim.Name": val, "Sim.Pins": "1=1 2=2 3=3"}   # C B E
+    if sym == "PMOS_GDS":
+        return {"Sim.Device": "PMOS", "Sim.Type": "VDMOS", "Sim.Library": lib,
+                "Sim.Name": val, "Sim.Pins": "1=2 2=1 3=3"}   # symbole G D S ; modèle D G S
+    if sym == "PMOS_DGS":
+        return {"Sim.Device": "PMOS", "Sim.Type": "VDMOS", "Sim.Library": lib,
+                "Sim.Name": val, "Sim.Pins": "1=1 2=2 3=3"}
+    if sym == "LDO":
+        return {"Sim.Device": "SUBCKT", "Sim.Type": "", "Sim.Library": lib,
+                "Sim.Name": val, "Sim.Pins": "1=3 2=2 3=1"}   # symbole 1=GND 2=OUT 3=IN ; modèle IN OUT GND
+    raise SystemExit(f"ERREUR {c['ref']} : symbole {sym} sans règle Sim.*")
+
+
+def gen_sim_lib() -> str:
+    """kicad/n3u_sim.lib : models.lib du banc avec ses paramètres figés."""
+    txt = SIM_LIB_SRC.read_text(encoding="utf-8")
+    for k, v in SIM_LIB_DEFAULTS.items():
+        txt = txt.replace(k, v)
+    if "{" in txt:
+        raise SystemExit("ERREUR models.lib : paramètre non figé pour KiCad")
+    txt = txt.replace("* models.lib —", f"* {SIM_LIB_NAME} — GENERE par generator/generate.py depuis simulation/models.lib —", 1)
+    # LED verte (LED5) : même modèle que la rouge, Vf un peu plus haut
+    txt += "\n.model LEDGREEN D(Is=1e-22 N=1.9 Rs=2 Cjo=20p)\n"
+    # Le lecteur de bibliothèques SPICE de KiCad (8.0.9) s'arrête sur un caractère
+    # non ASCII, même dans un commentaire : les modèles qui suivent deviennent
+    # « introuvables ». On translittère (accents) et on remplace le reste par « ? ».
+    txt = "".join(ch for ch in unicodedata.normalize("NFKD", txt) if unicodedata.category(ch) != "Mn")
+    txt = txt.encode("ascii", "replace").decode("ascii")
+    return txt
+
+
 def gen_schematic() -> str:
     for e in check_schematic_overlaps():
         raise SystemExit("ERREUR " + e)
@@ -1258,14 +1339,18 @@ def gen_schematic() -> str:
         pin_uuids = "\n".join(
             f'    (pin "{num}" (uuid "{uid("pin", c["ref"], num)}"))'
             for num, _n, _y in meta.get("left", []) + meta.get("right", []))
+        sim = sim_fields(c)
+        sim_props = "" if sim is None else "\n" + "\n".join(
+            f'    (property "{k}" "{v}" (at {cx:.2f} {cy:.2f} 0) {hidden})' for k, v in sim.items())
+        excl = "no" if sim is not None else "yes"
         items.append(f'''  (symbol (lib_id "n3u:{c['sym']}") (at {cx:.2f} {cy:.2f} 0) (unit 1)
-    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (exclude_from_sim {excl}) (in_bom yes) (on_board yes) (dnp no)
     (uuid "{u}")
     (property "Reference" "{c['ref']}" (at {cx:.2f} {cy - top_mm - 2.54:.2f} 0) {font})
     (property "Value" "{c['value']}" (at {cx:.2f} {cy - top_mm - 0.4:.2f} 0) {font})
     (property "Footprint" "n3u:{c['fp']}" (at {cx:.2f} {cy:.2f} 0) {hidden})
     (property "Datasheet" "~" (at {cx:.2f} {cy:.2f} 0) {hidden})
-    (property "Description" "{described(c['ref'], c['desc'])}" (at {cx:.2f} {cy:.2f} 0) {hidden})
+    (property "Description" "{described(c['ref'], c['desc'])}" (at {cx:.2f} {cy:.2f} 0) {hidden}){sim_props}
 {pin_uuids}
     (instances (project "{PROJECT}" (path "/{ROOT_UUID}" (reference "{c['ref']}") (unit 1))))
   )''')
@@ -2044,6 +2129,7 @@ def main():
         (KICAD_DIR / f"{PROJECT}.kicad_pro").write_text(gen_project(), encoding="utf-8")
     (KICAD_DIR / f"{PROJECT}.kicad_dru").write_text(DRU_RULES, encoding="utf-8")
     (KICAD_DIR / "fp-lib-table").write_text(FP_LIB_TABLE, encoding="utf-8")
+    (KICAD_DIR / SIM_LIB_NAME).write_text(gen_sim_lib(), encoding="utf-8")
     with open(ROOT / "BOM.csv", "w", newline="", encoding="utf-8") as f:
         csv.writer(f, delimiter=";").writerows(gen_bom())
 

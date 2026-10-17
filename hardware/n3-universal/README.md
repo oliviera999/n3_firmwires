@@ -38,6 +38,47 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > 🧭 [`EVOLUTIONS_PROPOSEES.md`](EVOLUTIONS_PROPOSEES.md) : l'étude du sélecteur AUTO / ON,
 > du retour d'état et de la connectique — **décisions actées le 2026-10-06 et appliquées
 > en 0.2** (encadré en tête du document).
+>
+> ⛔ **Rev 0.2.1 (2026-10-17) — NE PAS COMMANDER la 0.2** : la simulation SPICE
+> ([`simulation/SIMULATION.md`](simulation/SIMULATION.md)) a montré que **Q7 (IRF4905, rail
+> capteurs) était câblé à l'envers** (drain sur +5V, source sur LDO_IN : la diode interne
+> alimente le LDO en permanence, le rail ne se coupe jamais sur les profils msp/n3pp).
+> Corrigé dans `generate.py` (source = +5V, drain = LDO_IN), schéma + BOM régénérés, garde
+> `tools/check_fet_orientation.py`, champs `Sim.*` (schéma simulable dans KiCad). **Le PCB
+> routé n'est pas encore à jour** : voir « Rev 0.2.1 » ci-dessous.
+
+## Rev 0.2.1 — correctif Q7 (2026-10-17) : ce qui est fait, ce qui reste
+
+| | État |
+|---|---|
+| `generator/generate.py` | Q7 `nets={"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}` ; `REV = "0.2.1"` ; champs `Sim.*` (`sim_fields()`), `kicad/n3u_sim.lib` généré depuis `simulation/models.lib` |
+| `kicad/n3-universal.kicad_sch`, `BOM.csv` | régénérés (seul changement électrique : étiquettes des broches 2/3 de Q7) ; ERC KiCad 8.0.9 : 0 erreur |
+| `kicad/n3-universal.kicad_pcb` | **retouché localement** (édition du fichier, pas de reroutage global) : pads 2 → LDO_IN, 3 → +5V ; 5 pistes supprimées, 14 ajoutées autour de Q7 (voir ci-dessous) ; Description de Q7 ; texte « v0.2.1 » au dos. Contrôle géométrique indépendant : 0 écart < 0,2 mm, 4 nets touchés chacun en un seul îlot. **DRC KiCad 10 à relancer** (zones à remplir) avant les gerbers |
+| Gardes | `tools/check_fet_orientation.py` ✅ (échoue sur le schéma 0.2) ; `check_silk_refs.py` ✅ ; `annotate_pcb_roles.py --check` ✅ ; `simulation/bench_kicad_netlist.py` ✅ sur la netlist exportée par KiCad |
+
+**Retouche PCB appliquée** (autour de Q7 (196 ; 122), à relire dans pcbnew) :
+
+- `+5V` : JP1-1 (208 ; 120) → (203.08 ; 120) → **pad 3** en F.Cu (1,2 mm) ; en B.Cu, pad 3 →
+  (201.08 ; 121.08) → (198.54 ; 118.54) rejoint l'ancienne piste vers R35-1 (196 ; 116).
+- `LDO_IN` : depuis la piste existante (205.81 ; 122) [vers JP1-2], contournement **sous** le pad 3 en
+  F.Cu 0,8 mm : (205.81 ; 122.9) → (205.01 ; 123.7) → (199.6 ; 123.7) → (198.54 ; 122.64) → **pad 2**.
+- `ADC_E` (signal 0,4 mm, F.Cu) : décalée de y = 123.81 à y = 124.6 entre x = 196.5 et 206.8 pour
+  laisser passer LDO_IN (écart 0,3 mm de part et d'autre ; JP1-3 et ADC_VBAT inchangés à 0,22 / 1,3 mm).
+- Supprimées : `+5V` F.Cu (208 ; 120) → (200.54 ; 120) → ex-pad 2, `+5V` B.Cu ex-pad 2 → (198.54 ; 118.54),
+  `LDO_IN` F.Cu ex-pad 3 → (205.81 ; 122), `ADC_E` F.Cu (194.09 ; 123.81) → (209.33 ; 123.81).
+
+**À faire avant les gerbers** (KiCad 10) : ouvrir le PCB, **remplir les zones** (B — les remplissages
+GND enregistrés datent d'avant la retouche), DRC avec parité schéma : 0 erreur exigée ; puis
+`python3 generator/tidy_silkscreen.py --dry-run` ; `python3 tools/check_pcb_clearance.py` ;
+`python3 tools/check_silk_refs.py` ; `python3 tools/check_fet_orientation.py` ;
+`python3 generator/export_fab.py --rev 0.2.1`. Si le DRC trouve quelque chose dans ce coin, le
+routeur interactif (mode pousser) règle le détail en quelques minutes ; l'alternative lourde reste
+la chaîne complète (`generate.py --regen-pcb` → `route_universal.py` → …, audit §14 à refaire).
+
+Marges relevées par la simulation, **documentées sans modification** (à arbitrer) : chaîne 5 V →
+DevKit (Q12 non logic-level + D5 + AMS1117 : exiger ≥ 4,75 V en charge sur J1/J2, bloc 5 V ferme
+ou Hi-Link), appel servo 2,5 A sur le jack (brownout ESP32 : rail servo séparé ou buck ≥ 5 A),
+pont VBAT 100k/22k (absorption AGM hors zone linéaire de l'ADC : `esp_adc_cal` ou 100k/18k).
 
 ## Rev 0.2 — ce qui change par rapport à la 0.1.2 (2026-10-07)
 
@@ -103,7 +144,11 @@ generator/finalize_board.py  ⛔ obsolète (retouches 0.1 → 0.1.2), conservé 
 tools/check_pinmap_vs_firmware.py  Garde anti-dérive : 3 firmwares x 2 sites + topologies
 tools/check_pcb_clearance.py       Corps 3D (courtyards) + couloirs d'insertion (USB, borniers)
 tools/check_silk_refs.py           Chaque repère/valeur dans le corps de SON composant
+tools/check_fet_orientation.py     Rev 0.2.1 : orientation D/S de chaque P-MOSFET selon son rôle
+                                   (switch : source amont ; reverse : drain amont) — générateur ET .kicad_sch
 tools/annotate_pcb_roles.py        Rôle par firmware dans le champ Description des empreintes
+simulation/                        Rev 0.2.1 : banc SPICE ngspice (models.lib, sim1-4, bench_kicad_netlist.py,
+                                   SIMULATION.md) ; kicad/n3u_sim.lib généré pour le simulateur KiCad
 kicad/n3-universal.*         Projet KiCad 10 (+ .kicad_dru : clearance 3 mm, creepage 6,4 mm,
                              plans à 6,5 mm du secteur ; fp-lib-table : lib locale n3u)
 ```
@@ -118,6 +163,7 @@ python3 generate.py --regen-pcb                  # schéma + BOM + PCB non rout�
 <python KiCad> tidy_silkscreen.py                # libellés / repères hors pads, fentes, corps voisins
 python3 ../tools/check_pinmap_vs_firmware.py ; python3 ../tools/check_pcb_clearance.py
 python3 ../tools/check_silk_refs.py ; python3 ../tools/annotate_pcb_roles.py --check
+python3 ../tools/check_fet_orientation.py       # rev 0.2.1 : orientation des P-MOSFET
 python3 export_fab.py --rev 0.2                  # DRC (0 erreur exigée) puis gerbers v0.2
 python3 export_assembly_preview.py
 ```

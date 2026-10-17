@@ -9,7 +9,7 @@ avec gardes anti-dérive qui relisent les `#define` des firmwares à chaque pass
 | Dossier | Pour | Charges relais | État |
 |---|---|---|---|
 | [`n3pp-msp-commun/`](n3pp-msp-commun/) | serre **n3pp** OU météo **msp** — un seul PCB, le profil d'assemblage décide | 12/24 V (6 canaux dont 4 extensions) | routée, DRC 0, gerbers v0.1 |
-| [`n3-universal/`](n3-universal/) | **UNIVERSELLE msp + n3pp + ffp5cs** — bi-module WROOM/S3, 6 relais 230 V, 4 profils d'alim (5 V, solaire 1S, bus 12 V, secteur Hi-Link), SD/DS3231/INA, forçage manuel par cavalier, header CMD SENSE | 230 V ≤ 7 A + 12/24 V (6 canaux, zone isolée, **2 oz**) | **rev 0.2 (2026-10-07) : à commander** — régénérée, DRC 0 / parité 0 / creepage 6,4 mm, gerbers v0.2 ; voir [`COMMANDE.md`](n3-universal/COMMANDE.md) |
+| [`n3-universal/`](n3-universal/) | **UNIVERSELLE msp + n3pp + ffp5cs** — bi-module WROOM/S3, 6 relais 230 V, 4 profils d'alim (5 V, solaire 1S, bus 12 V, secteur Hi-Link), SD/DS3231/INA, forçage manuel par cavalier, header CMD SENSE | 230 V ≤ 7 A + 12/24 V (6 canaux, zone isolée, **2 oz**) | **rev 0.2.1 en cours (2026-10-17) — NE PAS commander la 0.2** : la simulation SPICE ([`simulation/SIMULATION.md`](n3-universal/simulation/SIMULATION.md)) a trouvé Q7 câblé à l'envers (rail capteurs jamais coupé) ; générateur, schéma, BOM et PCB corrigés — **DRC KiCad 10 à relancer** (README §0.2.1) ; voir [`COMMANDE.md`](n3-universal/COMMANDE.md) ensuite |
 | [`ffp5cs-wroom-prod/`](ffp5cs-wroom-prod/) | aquaponie **ffp5cs** — **bi-module** WROOM **ou** ESP32-S3 (site A2, `PINMAP_S3_CARRIER`) | 12/24 V (4 canaux) | routée, DRC 0, gerbers v0.6 |
 | [`ffp5cs-wroom-prod-230v/`](ffp5cs-wroom-prod-230v/) | aquaponie, charges **secteur** | **230 V ≤ 10 A** (6 canaux, zone isolée, 2 oz) | routée, DRC 0, gerbers v0.3 |
 
@@ -25,6 +25,7 @@ générateur qui reproduit le tout. La carte commune ajoute les feuilles
 | **[TUTO_PCB.md](TUTO_PCB.md)** | comprendre et maîtriser nos PCB : anatomie d'une carte, largeurs de piste et netclasses, plans de masse/vias, électronique des blocs (relais, ponts, pull-ups, découplage), pièges ESP32 (strapping, ADC2/WiFi), zone 230 V, pipeline, recettes de modification, glossaire |
 | **[COMMANDE_JLCPCB.md](COMMANDE_JLCPCB.md)** | commander chez JLCPCB : chaque paramètre du formulaire expliqué, choix par carte (1 oz vs 2 oz…), remarques à joindre |
 | **[VERIFICATION.md](VERIFICATION.md)** | rapport daté des contrôles (ERC/DRC/gardes/3 mm/sérigraphie/gerbers) et comment reproduire chacun |
+| **[n3-universal/simulation/SIMULATION.md](n3-universal/simulation/SIMULATION.md)** | simulation SPICE (ngspice) des blocs analogiques de la carte universelle : étage relais, rail capteurs, entrées d'alim, ponts de mesure, dynamique du rail 5 V — verdicts, marges, limites des modèles |
 
 ## Parcours conseillé
 

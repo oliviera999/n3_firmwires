@@ -1,0 +1,47 @@
+* Rail capteurs n3-universal rev 0.2 — JP1 ÔTÉ (profil msp/n3pp, rail commuté)
+.param BF_BC337=560 VTO_4905=-3.0 VCC=5 ILOAD=0.03 IBURST=0.15 WIRING=0 TEMPC=27
+.option temp={TEMPC}
+.option savecurrents method=gear gmin=1e-10 reltol=2e-3
+.include models.lib
+Vcc vcc 0 {VCC}
+* GPIO13 : haut de 2 ms à 12 ms (rail ON), bas ailleurs (rail OFF)
+Vgpio gsrc 0 PULSE(0 3.3 2m 20n 20n 10m 30m)
+Rgpio gsrc gate 50
+R34 gate gate_b 1k
+R48 gate_b 0 10k
+Q8 gate_g gate_b 0 BC337-40
+R35 vcc gate_g 100k
+* Q7 : WIRING=0 -> tel que câblé (drain=+5V, source=LDO_IN) ; WIRING=1 -> corrigé
+.if (WIRING == 0)
+M7 vcc gate_g ldo_in IRF4905
+.else
+M7 ldo_in gate_g vcc IRF4905
+.endif
+C11 ldo_in c11e 10u
+Resr11 c11e 0 0.5
+XU1 ldo_in v33sw 0 LD1117V33
+C12 v33sw c12e 100u
+Resr12 c12e 0 0.2
+* charge capteurs permanente + rafale SD (150 mA, 2 ms) pendant le ON
+Rload v33sw 0 {3.3/ILOAD}
+Iburst v33sw 0 PULSE(0 {IBURST} 7m 10u 10u 2m 100m)
+.control
+set wr_vecnames
+set wr_singlescale
+tran 5u 25m uic
+wrdata out/s2_cablage_rev02_vto3__tran.txt v(gate) v(gate_g) v(ldo_in) v(v33sw) i(Vcc)
+meas tran ldo_in_off FIND v(ldo_in) AT=1.9m
+meas tran v33_off    FIND v(v33sw) AT=1.9m
+meas tran icc_off    FIND i(Vcc) AT=1.9m
+meas tran ldo_in_on  FIND v(ldo_in) AT=6.9m
+meas tran v33_on     FIND v(v33sw) AT=6.9m
+meas tran vgs_on     FIND v(gate_g) AT=6.9m
+meas tran drop_on    PARAM='{VCC}-ldo_in_on'
+meas tran v33_burst  MIN v(v33sw) FROM=7m TO=9m
+meas tran ldo_in_off2 FIND v(ldo_in) AT=24.9m
+meas tran v33_off2   FIND v(v33sw) AT=24.9m
+meas tran t_on   WHEN v(v33sw)=3.0 RISE=1
+meas tran t_off  WHEN v(v33sw)=0.5 FALL=1
+quit
+.endc
+.end

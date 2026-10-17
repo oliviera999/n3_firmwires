@@ -1,0 +1,60 @@
+* models.lib — modèles SPICE des composants de n3-universal rev 0.2
+* Provenance :
+*   BC337-40  : modèle Gummel-Poon type NXP/Philips (Bf=560 typ ; hFE datasheet 250-630 @100 mA)
+*   1N4007    : modèle diode standard (bibliothèques publiques)
+*   IRF4905   : modèle VDMOS calibré sur la datasheet IR/Infineon :
+*               Vgs(th) -2..-4 V (typ -3 V), Rds(on) 20 mOhm @ Vgs=-10 V,
+*               Ciss 3400 pF, Coss 740 pF, Crss 320 pF, diode interne Is/N ajustés (Vsd ~0,8 V @ 1 A)
+*   LD1117V33 : modèle COMPORTEMENTAL (Vout = min(3,3 V ; Vin - Vdrop(I)), Vdrop = 1,0 V + 0,25 Ohm*I,
+*               Iq = 5 mA, Rout 12 mOhm, bande passante de boucle ~100 kHz). Suffisant pour DC,
+*               dropout, thermique ; NE PAS l'utiliser pour juger la stabilité fine (ESR).
+*   AMS1117-3.3 (DevKit) : même structure, Vdrop = 1,1 V + 0,2 Ohm*I, Iq 5 mA
+*   TVS 1.5KE6.8A / 1.5KE18A, zener 1N4744A, Schottky 1N5822, BAT85, LED rouge : modèles diode
+*               paramétrés sur Vbr / Vf datasheet (knee approximatif).
+*   Bobine SRD-05VDC-SL-C : 70 Ohm (89 mW) ; inductance NON documentée -> paramètre L_COIL (50-200 mH).
+* Tout chiffre issu d'un modèle "approximatif" est à confirmer sur le banc.
+
+.model BC337-40 NPN(Is=4.13E-14 Nf=1 Bf={BF_BC337} Vaf=118 Ikf=0.64 Ise=3.76E-14 Ne=1.49
++ Nr=1 Br=28.4 Var=44 Ikr=1 Isc=1.5E-13 Nc=1.4 Rb=1 Irb=1E-06 Rbm=0.5 Re=0.18 Rc=0.07
++ Xtb=0 Eg=1.11 Xti=3 Cje=5.1E-11 Vje=0.69 Mje=0.4 Tf=4.5E-10 Xtf=3 Vtf=3 Itf=0.7
++ Cjc=1.3E-11 Vjc=0.47 Mjc=0.4 Xcjc=1 Tr=4E-08 Fc=0.5)
+
+.model 1N4007 D(Is=7.02767n Rs=0.0341512 N=1.80803 Eg=1.05743 Xti=5 Bv=1000 Ibv=5e-08
++ Cjo=1e-11 Vj=0.7 M=0.5 Fc=0.5 Tt=1e-07)
+
+.model 1N5822 D(Is=1.7e-6 Rs=0.012 N=1.3 Cjo=400p Vj=0.3 M=0.45 Bv=40 Ibv=1e-4 Tt=50n)
+
+.model BAT85 D(Is=211.7n N=1.0 Rs=1.0 Cjo=10p Bv=30 Ibv=100n)
+
+.model LEDRED D(Is=1e-20 N=1.8 Rs=2 Cjo=20p)
+
+* TVS : Vbr nominal, pente dynamique ~ (Vc-Vbr)/Ipp
+.model TVS68  D(Is=1e-9 N=1.2 Rs=0.03 Bv=6.8  Ibv=1m)
+.model TVS18  D(Is=1e-9 N=1.2 Rs=0.12 Bv=18   Ibv=1m)
+.model Z15    D(Is=1e-11 N=1.0 Rs=1.0  Bv=15   Ibv=17m)
+
+* IRF4905 — VDMOS canal P. Vto paramétré (dispersion datasheet)
+.model IRF4905 VDMOS(pchan Vto={VTO_4905} Kp=8 Lambda=0.002 Rg=3 Rd=3m Rs=2m Rb=5m
++ Cgdmax=1.5n Cgdmin=0.2n Cgs=3.0n Cjo=1.2n Is=1e-9 N=1.05 Tt=60n)
+
+* LDO comportemental : IN OUT GND, 3,3 V
+.subckt LD1117V33 in out gnd
+Biq in gnd I = 5m*max(0, min(1, V(in)))
+Vsense out_i out 0
+Bctl ctl gnd V = max(0, min(3.3, V(in) - 1.0 - 0.25*abs(i(Vsense))))
+Rbw ctl ctl2 1k
+Cbw ctl2 gnd 1.6n
+Eout out_e gnd ctl2 gnd 1
+Rout out_e out_i 12m
+.ends LD1117V33
+
+* AMS1117-3.3 du DevKit : IN OUT GND
+.subckt AMS1117 in out gnd
+Biq in gnd I = 5m*max(0, min(1, V(in)))
+Vsense out_i out 0
+Bctl ctl gnd V = max(0, min(3.3, V(in) - 1.1 - 0.2*abs(i(Vsense))))
+Rbw ctl ctl2 1k
+Cbw ctl2 gnd 1.6n
+Eout out_e gnd ctl2 gnd 1
+Rout out_e out_i 15m
+.ends AMS1117

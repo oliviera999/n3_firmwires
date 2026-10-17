@@ -1,0 +1,40 @@
+* Étage relais n3-universal rev 0.2
+.param BF_BC337=560 VTO_4905=-3 VCC=5 RB=1k RP=10k RL=1k RCOIL=70 LCOIL=0.1 RJPOFF=1m RFON=1e12 TEMPC=27 VGPIO=3.3
+.option temp={TEMPC}
+.include models.lib
+.option savecurrents
+Vcc vcc 0 {VCC}
+Vgpio gsrc 0 PULSE(0 {VGPIO} 1m 20n 20n 15m 40m)
+Rgpio gsrc gpio 50
+Rb gpio base {RB}
+Rp base 0 {RP}
+* forçage : JP 1-2 (ON) = +3V3 -> 1k -> base ; JP 2-3 (OFF) = base -> GND
+V33 v33 0 3.3
+Rfon v33 base {RFON}
+Rjpoff base 0 {RJPOFF}
+Q1 sw base 0 BC337-40
+Dfw sw vcc 1N4007
+Rcoil vcc ncoil {RCOIL}
+Lcoil ncoil sw {LCOIL}
+Rled vcc nled {RL}
+Dled nled sw LEDRED
+.control
+set wr_vecnames
+set wr_singlescale
+tran 2u 40m
+let iled = @rled[i]
+let ib = @rb[i]
+let pq = v(sw)*(i(Lcoil)+iled)
+wrdata out/s1_forceOFF_gpio1__tran.txt v(sw) i(Lcoil) i(Vgpio) v(base) iled
+meas tran vsw_on  FIND v(sw) AT=14m
+meas tran icoil_on FIND i(Lcoil) AT=14m
+meas tran ib_on   FIND ib AT=14m
+meas tran iled_on FIND iled AT=14m
+meas tran igpio_on FIND i(Vgpio) AT=14m
+meas tran vsw_pk  MAX v(sw) FROM=16m TO=25m
+meas tran t_release WHEN i(Lcoil)=0.0071 FALL=1
+meas tran t_on90 WHEN i(Lcoil)=0.064 RISE=1
+meas tran pq_on FIND pq AT=14m
+quit
+.endc
+.end

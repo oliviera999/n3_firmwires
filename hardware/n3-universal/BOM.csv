@@ -85,7 +85,7 @@ PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-
 Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline_Wide_CBE;Transistor NPN commande relais (1=C 2=B 3=E, brochage C-B-E sérigraphié : un 2N2222/S8050 E-B-C se monte retourné);Maroc;C713611;"Moussasoft (1 DH, >1000) ; brochage C-B-E sérigraphié"
 Q11;1;IRF4905;TO-220-3_Vertical_GDS;Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie);Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
 Q12;1;IRF4905;TO-220-3_Vertical_GDS;"Anti-inversion entrée 5V (P-MOSFET 55V, VGS = -5V ; 1=G 2=D=entrée 3=S=+5V)";Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
-Q7;1;IRF4905;TO-220-3_Vertical_GDS;P-MOSFET commutation 5V du LDO capteurs (1=G 2=D=+5V 3=S=entrée LDO);Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
+Q7;1;IRF4905;TO-220-3_Vertical_GDS;P-MOSFET commutation 5V du LDO capteurs — interrupteur high-side : 1=G 2=D=LDO_IN (charge) 3=S=+5V (rev 0.2.1 : D/S inversés par rapport à la 0.2);Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
 Q8;1;BC337-40;TO-92_Inline_Wide_CBE;Driver gate (1=C 2=B 3=E);Maroc;C713611;"Moussasoft (1 DH, >1000) ; brochage C-B-E sérigraphié"
 R1 R2 R28 R3 R31 R4;6;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance base transistor;Maroc;;1/4 W 5 % (Moussasoft)
 R13;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Résistance LED présence 5V;Maroc;;1/4 W 5 % (Moussasoft)

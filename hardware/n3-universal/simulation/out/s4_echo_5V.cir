@@ -1,0 +1,22 @@
+* Écho HC-SR04 5 V -> R 1k série -> GPIO ; R 2k -> GND via JP (fermé). Câble 2 m ~ 200 pF, entrée GPIO ~ 5 pF
+.param BF_BC337=560 VTO_4905=-3 VECHO=5.0 CCABLE=200p RJP=1m
+.include models.lib
+Vecho echo_src 0 PULSE(0 {VECHO} 1u 30n 30n 20u 50u)
+Rout_sr04 echo_src echo 100
+Ccable echo 0 {CCABLE}
+R1 echo gpio 1k
+R2 gpio div 2k
+Rjp div 0 {RJP}
+Cgpio gpio 0 5p
+* protection interne GPIO ESP32 (diode vers 3V3 absente sur ESP32 ; on observe seulement le niveau)
+.control
+set wr_vecnames
+set wr_singlescale
+tran 10n 60u
+wrdata out/s4_echo_5V__tran.txt v(echo) v(gpio)
+meas tran vhigh FIND v(gpio) AT=15u
+meas tran tr10 WHEN v(gpio)=0.33 RISE=1
+meas tran tr90 WHEN v(gpio)=2.97 RISE=1
+quit
+.endc
+.end

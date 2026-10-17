@@ -1,0 +1,24 @@
+* Bus 12 V : transitoire 30 V 2 ms puis inversion −12 V
+.param BF_BC337=560 VTO_4905=-3
+.option savecurrents method=gear gmin=1e-10
+.include models.lib
+Vbat vsrc 0 PWL(0 12.8 5m 12.8 5.05m 30 7m 30 7.05m 12.8 12m 12.8 12.1m -12.8 20m -12.8)
+Rsrc vsrc vbat12_in 0.3
+M11 vbat12_in qp_g vbat12_prot IRF4905
+R40 qp_g 0 100k
+D9 qp_g vbat12_prot Z15
+D8 0 vbat12_prot TVS18
+C5 vbat12_prot c5e 470u
+Resr5 c5e 0 0.1
+Rload vbat12_prot 0 4.3
+.control
+set wr_vecnames
+set wr_singlescale
+tran 5u 20m
+let itvs = @d8[id]
+wrdata out/s3_bus12_transient__tran.txt v(vbat12_in) v(vbat12_prot) v(qp_g) i(Vbat) itvs
+meas tran vprot_max MAX v(vbat12_prot) FROM=5m TO=7m
+meas tran vprot_rev FIND v(vbat12_prot) AT=19.9m
+quit
+.endc
+.end

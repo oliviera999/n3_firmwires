@@ -1,0 +1,28 @@
+* Bus 12 V : J26 -> Q11 IRF4905 (G via R40 100k, zener D9 15 V G-S) -> VBAT12_PROT (D8 TVS 18 V, C5 470u) -> buck
+.param BF_BC337=560 VTO_4905=-3.0 VBAT=12.8 ILOAD=3
+.option savecurrents method=gear gmin=1e-10
+.include models.lib
+Vbat vbat12_in 0 {VBAT}
+M11 vbat12_in qp_g vbat12_prot IRF4905
+R40 qp_g 0 100k
+D9 qp_g vbat12_prot Z15
+D8 0 vbat12_prot TVS18
+C5 vbat12_prot c5e 470u
+Resr5 c5e 0 0.1
+Iload vbat12_prot 0 {ILOAD}
+.control
+set wr_vecnames
+set wr_singlescale
+op
+let vgs = v(qp_g)-v(vbat12_prot)
+let drop = v(vbat12_in)-v(vbat12_prot)
+let iz = -@d9[id]
+print vgs drop iz
+dc Vbat 8 16 0.25
+let vgs = v(qp_g)-v(vbat12_prot)
+let drop = v(vbat12_in)-v(vbat12_prot)
+let iz = -@d9[id]
+wrdata out/s3_q11_vto3__sweep.txt vgs drop iz
+quit
+.endc
+.end

@@ -1,0 +1,21 @@
+* Inversion de polarité −5 V sur VIN_RAW
+.param BF_BC337=560 VTO_4905=-3
+.option savecurrents method=gear gmin=1e-10
+.include models.lib
+Vin vin_raw 0 PWL(0 0 1m -5 20m -5 21m 5 40m 5)
+M12 vin_raw q12g v5 IRF4905
+R57 q12g 0 100k
+Dtvs 0 v5 TVS68
+C1 v5 c1e 1000u
+Resr1 c1e 0 0.08
+Rload v5 0 10
+.control
+set wr_vecnames
+set wr_singlescale
+tran 10u 40m
+wrdata out/s3_reverse__tran.txt v(v5) i(Vin)
+meas tran v5_min MIN v(v5) FROM=1m TO=20m
+meas tran v5_ok  FIND v(v5) AT=39m
+quit
+.endc
+.end

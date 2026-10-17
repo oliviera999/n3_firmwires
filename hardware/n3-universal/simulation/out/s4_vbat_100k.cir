@@ -1,0 +1,23 @@
+* Pont VBAT : J25 -> R38 100k -> VBAT_DIV -> (JP12) R39 22k | R58 100k -> GND ; R49 1k -> ADC_VBAT ; C13 100n ; D11 BAT85 -> +3V3
+.param BF_BC337=560 VTO_4905=-3 RBAS=100k VBAT=12.8
+.option savecurrents
+.include models.lib
+V33 v33 0 3.3
+Vbat vbat_sense 0 {VBAT}
+R38 vbat_sense vbat_div 100k
+Rbas vbat_div 0 {RBAS}
+R49 vbat_div adc_vbat 1k
+C13 adc_vbat 0 100n
+D11 adc_vbat v33 BAT85
+* entrée ADC ESP32 : ~ 1 pF commuté, fuite négligeable -> 10 Mohm
+Radc adc_vbat 0 10Meg
+.control
+set wr_vecnames
+set wr_singlescale
+dc Vbat 0 25 0.25
+let i38 = @r38[i]
+let id11 = @d11[id]
+wrdata out/s4_vbat_100k__sweep.txt v(adc_vbat) i38 id11
+quit
+.endc
+.end

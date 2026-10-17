@@ -1,0 +1,58 @@
+{
+ "vbat_22k": {
+  "vbat_at_adc_3p1V": 17.20135168776207,
+  "vbat_at_adc_2p45V": 13.589879056722442,
+  "adc_at_22V": 3.42662354,
+  "i_r38_uA_at_22V": 185.44973399999998,
+  "i_d11_uA_at_22V": 28.0611292,
+  "adc_at_14p7V": 2.6498052679999997,
+  "adc_at_4p2V": 0.759959917
+ },
+ "vbat_100k": {
+  "vbat_at_adc_3p1V": 6.210101611944294,
+  "vbat_at_adc_2p45V": 4.903397351324595,
+  "adc_at_22V": 3.46947363,
+  "i_r38_uA_at_22V": 183.82869000000002,
+  "i_d11_uA_at_22V": 147.310438,
+  "adc_at_14p7V": 3.45234438,
+  "adc_at_4p2V": 2.100086172
+ },
+ "vbat_step": {
+  "v_10V": 1.803875,
+  "v_14V": 2.523781,
+  "tau_ms": 0.533517
+ },
+ "echo_5V": {
+  "vhigh": 3.225807,
+  "trise_ns": 55.56600000000006
+ },
+ "echo_5V25": {
+  "vhigh": 3.387097,
+  "trise_ns": 47.456000000000024
+ },
+ "echo_open": {
+  "vhigh": 5.0,
+  "trise_ns": 27.83399999999985
+ },
+ "rail5_5V_rs025": {
+  "v5_min_relays": 4.813813,
+  "v5_min_servo": 3.885605,
+  "v33_min_servo": 2.425087,
+  "v33_min_relays": 3.293545,
+  "iad_max": null
+ },
+ "rail5_4V8_rs05": {
+  "v5_min_relays": 4.479021,
+  "v5_min_servo": 2.753921,
+  "v33_min_servo": 1.294537,
+  "v33_min_relays": 3.020185,
+  "iad_max": null
+ },
+ "rail5_5V_vto4": {
+  "v5_min_relays": 4.766069,
+  "v5_min_servo": 3.650843,
+  "v33_min_servo": 2.189778,
+  "v33_min_relays": 3.293545,
+  "iad_max": null
+ }
+}

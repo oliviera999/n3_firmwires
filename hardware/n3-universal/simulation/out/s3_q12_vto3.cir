@@ -1,0 +1,29 @@
+* Entrée 5 V : VIN_RAW -> Q12 -> +5V -> D5 1N5822 -> VIN_5V -> AMS1117 (DevKit) -> 3V3 ESP
+.param BF_BC337=560 VTO_4905=-3.0 VIN=5.0 ILOAD5=0.5 IESP=0.25 TEMPC=27
+.option temp={TEMPC}
+.option savecurrents method=gear gmin=1e-10
+.include models.lib
+Vin vin_raw 0 {VIN}
+M12 vin_raw q12g v5 IRF4905
+R57 q12g 0 100k
+Dtvs 0 v5 TVS68
+C1 v5 c1e 1000u
+Resr1 c1e 0 0.08
+Iload5 v5 0 {ILOAD5}
+D5 v5 vin_5v 1N5822
+XU2 vin_5v v33 0 AMS1117
+C_dk v33 c_dke 22u
+Resr_dk c_dke 0 0.3
+Iesp v33 0 {IESP}
+.control
+set wr_vecnames
+set wr_singlescale
+op
+let drop12 = v(vin_raw)-v(v5)
+print drop12 v(v5) v(vin_5v) v(v33)
+dc Iload5 0 4 0.05
+let drop = v(vin_raw)-v(v5)
+wrdata out/s3_q12_vto3__sweep.txt drop v(v5) v(v33)
+quit
+.endc
+.end

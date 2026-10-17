@@ -1,0 +1,62 @@
+* Rail 5 V : adaptateur 5 V (Rs 0,25 ohm, câble 1 uH) -> Q12 -> +5V (C1 1000u + C2 470u) ; charges : 6 relais, ESP32 (via D5/AMS1117), servo
+.param BF_BC337=560 VTO_4905=-3 VADAPT=5.0 RS=0.25 LS=1u NREL=6 ISERVO=2.5
+.option savecurrents method=gear gmin=1e-10
+.include models.lib
+Vad vad 0 {VADAPT}
+Rs vad vad2 {RS}
+Ls vad2 vin_raw {LS}
+M12 vin_raw q12g v5 IRF4905
+R57 q12g 0 100k
+Dtvs 0 v5 TVS68
+C1 v5 c1e 1000u
+Resr1 c1e 0 0.08
+C2 v5 c2e 470u
+Resr2 c2e 0 0.12
+* 6 relais enclenchés successivement toutes les 5 ms à partir de 5 ms (bobines 70 ohm + 100 mH, LED 1k)
+.param RC=70 LC=0.1
+Vg1 g1 0 PULSE(0 3.3 5m  20n 20n 1 2)
+Vg2 g2 0 PULSE(0 3.3 10m 20n 20n 1 2)
+Vg3 g3 0 PULSE(0 3.3 15m 20n 20n 1 2)
+Vg4 g4 0 PULSE(0 3.3 20m 20n 20n 1 2)
+Vg5 g5 0 PULSE(0 3.3 25m 20n 20n 1 2)
+Vg6 g6 0 PULSE(0 3.3 30m 20n 20n 1 2)
+.subckt relay gpio vcc gnd
+Rb gpio b 1k
+Rp b gnd 10k
+Q1 sw b gnd BC337-40
+D1 sw vcc 1N4007
+Rc vcc n1 70
+Lc n1 sw 0.1
+Rl vcc nl 1k
+Dl nl sw LEDRED
+.ends
+X1 g1 v5 0 relay
+X2 g2 v5 0 relay
+X3 g3 v5 0 relay
+X4 g4 v5 0 relay
+X5 g5 v5 0 relay
+X6 g6 v5 0 relay
+* ESP32 : 80 mA de fond + rafales Wi-Fi 350 mA (2 ms toutes les 10 ms), derrière D5 + AMS1117
+D5 v5 vin_5v 1N5822
+XU2 vin_5v v33 0 AMS1117
+Cdk v33 cdke 22u
+Resrdk cdke 0 0.3
+Iesp0 v33 0 0.08
+Iesp1 v33 0 PULSE(0 0.35 3m 10u 10u 2m 10m)
+* servo : appel 2,5 A pendant 60 ms à partir de 40 ms
+Iservo v5 0 PULSE(0 {ISERVO} 40m 100u 100u 60m 1)
+* HC-SR04 x3 + LDO capteurs 100 mA
+Imisc v5 0 0.145
+.control
+set wr_vecnames
+set wr_singlescale
+tran 10u 110m
+wrdata out/s5_5V_rs025__tran.txt v(v5) v(vin_5v) v(v33) i(Vad)
+meas tran v5_min_relays MIN v(v5) FROM=4m TO=39m
+meas tran v5_min_servo  MIN v(v5) FROM=40m TO=100m
+meas tran v33_min_servo MIN v(v33) FROM=40m TO=100m
+meas tran v33_min_relays MIN v(v33) FROM=4m TO=39m
+meas tran iad_max MAX abs(i(Vad)) FROM=40m TO=100m
+quit
+.endc
+.end
