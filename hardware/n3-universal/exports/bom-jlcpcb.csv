@@ -10,7 +10,7 @@ ESP32-S3-DevKitC-1,A2,ESP32_S3_DevKitC_1_44pin,
 1N4007,"D1,D2,D3,D4,D6,D7",D_DO-41_SOD81_P10.16mm_Horizontal,C2457
 BAT85,D11,D_DO-35_SOD-123_Dual_P7.62mm,
 1.5KE6.8A,D12,D_DO-201AD_P15.24mm_Horizontal,C412500
-1N5822,D5,D_DO-201AD_P15.24mm_Horizontal,C2476
+FIL,D5,D_DO-201AD_P15.24mm_Horizontal,
 1.5KE18A,D8,D_DO-201AD_P15.24mm_Horizontal,C1666858
 1N4744A,D9,D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp,C238928
 "Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm",F1,se soude sur Fuse_5x20_Universal (fentes 3 mm),
@@ -46,7 +46,7 @@ IRF4905,"Q11,Q12,Q7",TO-220-3_Vertical_GDS,C2564
 10k,"R23,R27,R29,R32,R43,R44,R45,R46,R47,R48,R5,R6,R7,R8",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 4.7k,"R24,R25,R26",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 100k,"R35,R38,R40,R57,R58",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-22k,R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
+18k,R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 14D471K,RV1,RV_Disc_D15.5mm_W8mm_P7.5mm,C111188
 GND,TP1,TestPoint_THTPad_D2.0mm_Drill1.0mm,
 +5V,TP2,TestPoint_THTPad_D2.0mm_Drill1.0mm,

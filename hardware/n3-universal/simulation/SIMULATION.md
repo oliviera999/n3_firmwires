@@ -177,6 +177,9 @@ ou 4,8 V / 0,5 Ω ; C1 1000 µF (ESR 80 mΩ) + C2 470 µF (ESR 120 mΩ).
   courant du servo ne traverse plus le câble commun, Q12 ni le cuivre du rail → 3V3 DevKit
   3,29 V (SG90) / 3,25 V (1 A) / 3,10 V (MG996R) contre 3,14 / 3,02 / 2,43 V quand le servo
   est sur le rail de la carte. On sépare le *trajet* du courant, pas forcément la source.
+- **Rev 0.2.2** : J15/J16 pin 2 et C2 sur **LDO_IN** (5 V commuté par Q7). Appel servo à travers
+  Q7 : LDO_IN min 4,96 / 4,93 / 4,82 V pour 0,65 / 1,0 / 2,5 A (Vgs(th) −3 V), 4,91 / 4,86 /
+  4,60 V (Vgs(th) −4 V) ; **+3V3_SW reste à 3,30 V** dans tous les cas (dropout U1 ≈ 1,0 V).
 - **Décision (2026-10-17)** : servos **SG90** pour commencer (évolutions possibles). Règle de
   cette série : SG90 sur J15/J16 acceptés avec une source ferme (≥ 5,0 V en charge, Hi-Link ou
   buck ≥ 3 A réglé 5,1 V) ; alimentation des servos de préférence par un fil direct depuis le

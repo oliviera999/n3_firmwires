@@ -37,7 +37,7 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3-universal"
-REV = "0.2.1"
+REV = "0.2.2"
 REV_DATE = "2026-10-17"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
@@ -463,8 +463,13 @@ def build_components():
              desc="TVS 6,8V (Vrwm 5,8V) sur le rail +5V : surtension / inversion résiduelle",
              sch=(34, 34), pcb=(56, 114, 0),
              nets={"1": "+5V", "2": "GND"}),
-        dict(ref="D5", sym="D", value="1N5822", fp="D_DO-201AD_P15.24mm_Horizontal",
-             desc="Schottky 3A vers VIN DevKit (anti-retour si USB branché)",
+        # Rev 0.2.2 (ALIMENTATION.md, arbitrage A1) : D5 remplacée par un PONT DE FIL —
+        # +0,35 V de marge pour l'AMS1117 du DevKit ; il n'y aura jamais USB et
+        # alimentation branchés en même temps (flasher carte HORS tension, ou OTA).
+        # L'empreinte DO-201 reste : une 1N5822 peut être posée si ce besoin revient.
+        dict(ref="D5", sym="D", value="FIL", fp="D_DO-201AD_P15.24mm_Horizontal",
+             desc="PONT DE FIL vers VIN DevKit (rev 0.2.2 : ex-1N5822 court-circuitée, +0,35 V de marge ; "
+                  "ne JAMAIS brancher l'USB du DevKit carte sous tension)",
              sch=(24, 34), pcb=(76, 114, 0),
              nets={"1": "VIN_5V", "2": "+5V"}),
         dict(ref="C1", sym="CP", value="1000u/16V", fp="CP_Radial_D10.0mm_P5.00mm",
@@ -476,7 +481,8 @@ def build_components():
              desc="Résistance LED présence 5V", sch=(24, 46), pcb=(70, 121, 0),
              nets={"1": "+5V", "2": "PWR_LED"}),
         dict(ref="LED5", sym="LED", value="verte", fp="LED_D5.0mm",
-             desc="LED présence 5V", sch=(24, 52), pcb=(86, 123, 90),
+             desc="LED présence 5V — *NON POSÉE* sur msp/n3pp (3 mA permanents = 0,4 Wh/j, ALIMENTATION.md) ; "
+                  "posée sur ffp5cs (secteur)", sch=(24, 52), pcb=(86, 123, 90),
              nets={"1": "GND", "2": "PWR_LED"}),
     ]
     # --- 6 canaux relais (mapping GPIO = gpio_mapping.h / pins.h) ------------
@@ -511,19 +517,28 @@ def build_components():
              nets={"1": NET["SERVO_GROS"], "2": "SERVO_GROS_SIG"}),
         dict(ref="J15", sym="CONN_03", value="Header servo",
              fp="PinHeader_1x03_P2.54mm_Vertical",
-             desc="Servo GROS (1=SIG 2=+5V 3=GND)", sch=(60, 55), pcb=(298, 138, 0),
-             nets={"1": "SERVO_GROS_SIG", "2": "+5V", "3": "GND"}),
+             desc="Servo GROS (1=SIG 2=LDO_IN 3=GND) — rev 0.2.2 : +5V COMMUTE par Q7 (JP1 fermé = permanent)",
+             sch=(60, 55), pcb=(298, 138, 0),
+             nets={"1": "SERVO_GROS_SIG", "2": "LDO_IN", "3": "GND"}),
         dict(ref="R21", sym="R", value="220",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Série signal servo petits", sch=(48, 65), pcb=(282, 145, 0),
              nets={"1": NET["SERVO_PETITS"], "2": "SERVO_PETITS_SIG"}),
         dict(ref="J16", sym="CONN_03", value="Header servo",
              fp="PinHeader_1x03_P2.54mm_Vertical",
-             desc="Servo PETITS (1=SIG 2=+5V 3=GND)", sch=(60, 65), pcb=(304, 138, 0),
-             nets={"1": "SERVO_PETITS_SIG", "2": "+5V", "3": "GND"}),
+             desc="Servo PETITS (1=SIG 2=LDO_IN 3=GND) — rev 0.2.2 : +5V COMMUTE par Q7 (JP1 fermé = permanent)",
+             sch=(60, 65), pcb=(304, 138, 0),
+             nets={"1": "SERVO_PETITS_SIG", "2": "LDO_IN", "3": "GND"}),
+        # Rev 0.2.2 (ALIMENTATION.md, arbitrage N1) : les servos sont alimentés par LDO_IN, le
+        # 5 V déjà COMMUTÉ par Q7 (IRF4905, 20 mOhm : un SG90 bloqué à 0,65 A n'y perd que
+        # ~50 mV). Ils suivent donc le rail capteurs : coupés en deep sleep sur msp/n3pp
+        # (JP1 ôté : -1,2 Wh/j, deux SG90 sans signal tirent ~10 mA), permanents sur ffp5cs
+        # (JP1 fermé). Aucun composant ajouté — une première version avec un second P-FET
+        # (Q13) et son cavalier bouchait le couloir de pistes du bas de carte (7 nets non
+        # routés). C2 suit les servos sur LDO_IN et sert aussi de réservoir d'entrée à U1.
         dict(ref="C2", sym="CP", value="470u/16V", fp="CP_Radial_D8.0mm_P3.50mm",
-             desc="Découplage rail 5V servos", sch=(48, 71), pcb=(296, 152, 0),
-             nets={"1": "+5V", "2": "GND"}),
+             desc="Réservoir du rail 5 V commuté LDO_IN côté servos (appels SG90)", sch=(48, 71), pcb=(296, 152, 0),
+             nets={"1": "LDO_IN", "2": "GND"}),
     ]
     # --- Capteurs ultrason HC-SR04 (mono-broche trig/écho) --------------------
     comps += us_channel(1, "AQUA", NET["ULTRASON_AQUA"], "R14", "R17", "J7", 125, "JP13")
@@ -667,7 +682,7 @@ def build_components():
              nets={"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}),
         dict(ref="JP1", sym="CONN_02", value="Jumper BYPASS",
              fp="PinHeader_1x03_P2.54mm_Vertical", silk=dict(ref=(-2.4, 2.54, 90)),  # valeur de U1 à droite
-             desc="BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; "
+             desc="BYPASS gate : cavalier 1-2 FERME par défaut (rail capteurs ET servos permanents, ffp5cs) ; "
                   "l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)",
              sch=(146, 22), pcb=(208, 120, 0),
              nets={"1": "+5V", "2": "LDO_IN"}),
@@ -685,7 +700,7 @@ def build_components():
     # --- Pont diviseur batterie PERMANENT (rev 0.2) ----------------------------
     # La coupure haute (BS250 + driver, rev 0.1) est supprimée : 21 µA en 1S,
     # négligeable devant l'AMS1117 du DevKit, et le BS250 était marginal sous
-    # 3,5 V (audit NET-04). Ratio par cavalier JP12 : 1-2 = 22k (bus 12V),
+    # 3,5 V (audit NET-04). Ratio par cavalier JP12 : 1-2 = 18k (bus 12V, rev 0.2.2 ; ex-22k),
     # 2-3 = 100k (1S Li-ion). R49/C13 : filtre ADC ; D11 : clamp sur +3V3.
     comps += [
         dict(ref="J25", sym="CONN_02", value="Bornier_5.08",
@@ -697,9 +712,10 @@ def build_components():
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
              desc="Haut du pont VBAT (commun aux deux profils)", sch=(146, 36), pcb=(132, 116, 0),
              nets={"1": "VBAT_SENSE", "2": "VBAT_DIV"}),
-        dict(ref="R39", sym="R", value="22k",
+        dict(ref="R39", sym="R", value="18k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Bas du pont VBAT profil bus 12V (JP12 en 1-2) : 100k/22k", sch=(146, 40), pcb=(153, 116, 0),
+             desc="Bas du pont VBAT profil bus 12V (JP12 en 1-2) : 100k/18k — rev 0.2.2 (ex-22k) : "
+                  "14,7 V -> 2,24 V en zone linéaire de l'ADC, pleine échelle 20,3 V ; ratio firmware ffp5cs", sch=(146, 40), pcb=(153, 116, 0),
              nets={"1": "VBAT_22K", "2": "GND"}),
         dict(ref="R58", sym="R", value="100k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
@@ -707,7 +723,7 @@ def build_components():
              nets={"1": "VBAT_100K", "2": "GND"}),
         dict(ref="JP12", sym="CONN_03", value="Jumper profil", silk=dict(ref=(0, 7.9, 90)),  # tourné 90° : repère vertical à droite (A1 à gauche, R38 dessus, 12V/1S dessous)
              fp="PinHeader_1x03_P2.54mm_Vertical",
-             desc="Ratio VBAT : 1-2 = 22k (bus 12V, ffp5cs) ; 2-3 = 100k (1S, msp/n3pp)",
+             desc="Ratio VBAT : 1-2 = 18k (bus 12V, ffp5cs) ; 2-3 = 100k (1S, msp/n3pp)",
              sch=(155, 38), pcb=(133, 122, 90),
              nets={"1": "VBAT_22K", "2": "VBAT_DIV", "3": "VBAT_100K"}),
         dict(ref="R49", sym="R", value="1k",
@@ -1026,10 +1042,10 @@ ROLES = {
                 msp="cavalier OTE : rail coupé en veille par RELAIS (GPIO13)",
                 n3pp="cavalier OTE : rail coupé en veille par RELAIS (GPIO13)"),
     # --- Batterie ----------------------------------------------------------
-    "J25": dict(ffp5cs="sonde tension du bus 12 V (pont 100k/22k, JP12 en 1-2)",
+    "J25": dict(ffp5cs="sonde tension du bus 12 V (pont 100k/18k, JP12 en 1-2)",
                 msp="sonde tension batterie 1S (pontdiv, pont 100k/100k, JP12 en 2-3)",
                 n3pp="sonde tension batterie 1S (pontdiv, pont 100k/100k, JP12 en 2-3)"),
-    "JP12": dict(ffp5cs="1-2 : bas de pont 22k (bus 12 V)",
+    "JP12": dict(ffp5cs="1-2 : bas de pont 18k (bus 12 V)",
                  msp="2-3 : bas de pont 100k (1S)", n3pp="2-3 : bas de pont 100k (1S)"),
     # --- Cavaliers de profil (rev 0.2) ------------------------------------
     "JP13": dict(ffp5cs="FERMÉ : pont écho HC-SR04 AQUA", msp="OUVERT (PLUIE sur US1)", n3pp="OUVERT"),
@@ -1094,7 +1110,7 @@ SCH_TEXTS = [
     (18, 64, "HEADER SERVICE J17 : 3V3 / GND / EN / RX0 / TX0 / +5V uniquement.\\nTous les autres GPIO sont consommes par la carte universelle\\n(GPIO36 = ADC_E, GPIO39 = ADC_VBAT). Laisser RX0/TX0 libres pendant le flash USB."),
     (18, 81, "Distribution 5V / 3V3-capteurs / GND :\\nborniers a vis + rail header. Points de test TP1..TP4."),
     (140, 4, "POWER-GATE +3V3_SW (GPIO13) — rev 0.2 : LDO DEDIE U1 (LD1117V33) alimente par le 5V\\ncommute par Q7 (IRF4905, VGS=-5V ; 0.2.1 : SOURCE sur +5V, DRAIN vers LDO_IN). R35 : rail OFF par defaut ; R48 : pull-down base Q8.\\nJP1 FERME par defaut (rail permanent, ffp5cs) ; OTER JP1 sur les profils batterie\\n-> tout le rail capteurs (LDO compris) est coupe en veille."),
-    (140, 28, "PONT DIVISEUR VBAT PERMANENT (rev 0.2, plus de coupure BS250) : R38 100k + JP12 :\\n1-2 = 22k (bus 12V, ffp5cs) ; 2-3 = 100k (1S Li-ion, msp/n3pp). R49/C13 filtre, D11 clamp 3V3."),
+    (140, 28, "PONT DIVISEUR VBAT PERMANENT (rev 0.2, plus de coupure BS250) : R38 100k + JP12 :\\n1-2 = 18k (bus 12V, ffp5cs ; 14,7 V -> 2,24 V) ; 2-3 = 100k (1S Li-ion, msp/n3pp). R49/C13 filtre, D11 clamp 3V3."),
     (140, 52, "PROFIL BUS 12V SOLAIRE : fusible lame 7,5-10A EN AMONT (hors carte),\\nanti-inversion P-MOSFET Q11, TVS 18V D8 (1.5KE18A, DO-201), reservoir ; buck 12->5V EXTERNE\\n(module MP1584/XL4015 faible Iq sur entretoises, via J36/J37 ; J37 passe par Q12)."),
     (140, 76, "PROFIL SECTEUR : Hi-Link HLK-20M05 EMBARQUE (5V/3,6A) + fusible T1A (porte-fusible\\na capot, empreinte universelle pas 22,5-22,6) + varistance 10 ou 14 mm. Le corps du\\nmodule enjambe la frontiere secteur/logique (fente fraisee dessous). ZONE 230V = DANGER."),
     (140, 92, "microSD : module SPI 3V3 sockete. JP2/3/4/11 : source des lignes CS/SCK/MOSI/MISO\\n= S3 natif (1-2, defaut) ou WROOM env wroom-sd (2-3). MISO WROOM = GPIO12/MTDI :\\nefuse VDD_SDIO=3V3 OBLIGATOIRE avant (strap tension flash)."),
@@ -1282,6 +1298,8 @@ def sim_fields(c: dict) -> dict[str, str] | None:
     if sym in ("C", "CP"):
         return {"Sim.Device": "C", "Sim.Type": "", "Sim.Params": f"c={val.split('/')[0]}"}
     if sym in ("D", "LED"):
+        if val == "FIL":   # pont de fil (D5 rev 0.2.2)
+            return {"Sim.Device": "R", "Sim.Type": "", "Sim.Params": "r=1m"}
         model = SIM_DIODE_MODELS.get(val)
         if model is None:
             raise SystemExit(f"ERREUR {c['ref']} : pas de modèle SPICE pour la valeur {val!r}")

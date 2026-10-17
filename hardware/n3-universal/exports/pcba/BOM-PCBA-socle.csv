@@ -6,11 +6,10 @@
 100u/16V,C12,CP_Radial_D6.3mm_P2.50mm,
 10k,"R5,R6,R7,R8,R23,R27,R29,R32,R43,R44,R45,R46,R47,R48",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 10u/25V,C11,CP_Radial_D5.0mm_P2.50mm,
+18k,R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 1N4007,"D1,D2,D3,D4,D6,D7",D_DO-41_SOD81_P10.16mm_Horizontal,C2457
-1N5822,D5,D_DO-201AD_P15.24mm_Horizontal,C2476
 1k,"R1,R2,R3,R4,R9,R10,R11,R12,R13,R14,R15,R16,R28,R30,R31,R33,R34,R49,R50,R51,R52,R53,R54,R61,R62,R64,R65,R66",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 220,"R20,R21",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
-22k,R39,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 2k,"R17,R18,R19",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 4.7k,"R24,R25,R26",R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,
 470u/16V,C2,CP_Radial_D8.0mm_P3.50mm,
@@ -19,6 +18,7 @@ BC337-40,"Q1,Q2,Q3,Q4,Q5,Q6,Q8",TO-92_Inline_Wide_CBE,C713611
 Bornier_5.08,"J1,J12,J18,J19,J25",TerminalBlock_bornier-2_P5.08mm,
 Bornier_5.08,"J3,J4,J5,J6,J10,J11,J23,J24,J29,J30,J31,J32,J33,J34",TerminalBlock_bornier-3_P5.08mm,
 Bornier_5.08,"J7,J8,J9",TerminalBlock_bornier-4_P5.08mm,
+FIL,D5,D_DO-201AD_P15.24mm_Horizontal,
 Header CMD SENSE,J38,PinHeader_1x08_P2.54mm_Vertical,
 Header alim,J20,PinHeader_1x06_P2.54mm_Vertical,
 Header service,J17,PinHeader_1x06_P2.54mm_Vertical,

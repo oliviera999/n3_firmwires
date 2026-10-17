@@ -6,7 +6,7 @@ C10;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC_E;Maroc;;céramique 100 nF
 C11;1;10u/25V;CP_Radial_D5.0mm_P2.50mm;Entrée LDO;Maroc;;électrolytique radial
 C12;1;100u/16V;CP_Radial_D6.3mm_P2.50mm;Sortie LDO (stabilité LD1117 : >= 10 µF, électrolytique);Maroc;;électrolytique radial
 C13;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC_VBAT;Maroc;;céramique 100 nF
-C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Découplage rail 5V servos;Maroc;;électrolytique radial
+C2;1;470u/16V;CP_Radial_D8.0mm_P3.50mm;Réservoir du rail 5 V commuté LDO_IN côté servos (appels SG90);Maroc;;électrolytique radial
 C3;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 capteurs;Maroc;;céramique 100 nF
 C4;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Découplage 3V3 I2C;Maroc;;céramique 100 nF
 C5;1;470u/25V;CP_Radial_D10.0mm_P5.00mm;Réservoir bus 12V protégé;Maroc;;électrolytique radial
@@ -17,7 +17,7 @@ C9;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC ADC_D;Maroc;;céramique 100 nF
 D1 D2 D3 D4 D6 D7;6;1N4007;D_DO-41_SOD81_P10.16mm_Horizontal;Diode de roue libre bobine;Maroc / import;C2457;"Moussasoft ; LCSC C2457 (1N4007G MDD) — l'ancien C727 n'existe plus"
 D11;1;BAT85;D_DO-35_SOD-123_Dual_P7.62mm;Clamp ADC_VBAT sur +3V3 (panneau branché par erreur sur J25) — empreinte double : BAT85/BAT42/BAT43 DO-35 OU BAT43W/BAT54 SOD-123 (LCSC C19167), un seul des deux posé;import;C19167;"DO-35 épuisé chez LCSC (BAT85 C549292 = 0) → poser la variante SOD-123 BAT43W JSCJ C19167 sur les pads CMS de l'empreinte double ; ou BAT85/BAT42 DO-35 d'une autre source"
 D12;1;1.5KE6.8A;D_DO-201AD_P15.24mm_Horizontal;TVS 6,8V (Vrwm 5,8V) sur le rail +5V : surtension / inversion résiduelle;import;C412500;"TVS 6,8 V DO-201 Littelfuse (Vrwm 5,8 V, stock faible) ; repli P6KE6.8A DO-15 C409413 (pattes 0,8 mm, même trou)"
-D5;1;1N5822;D_DO-201AD_P15.24mm_Horizontal;Schottky 3A vers VIN DevKit (anti-retour si USB branché);Maroc;C2476;"Moussasoft (stock faible) ; LCSC C2476"
+D5;1;FIL;D_DO-201AD_P15.24mm_Horizontal;"PONT DE FIL vers VIN DevKit (rev 0.2.2 : ex-1N5822 court-circuitée, +0,35 V de marge ; ne JAMAIS brancher l'USB du DevKit carte sous tension)";;;
 D8;1;1.5KE18A;D_DO-201AD_P15.24mm_Horizontal;TVS 18V transitoires bus batterie (DO-201 : le P6KE est en DO-15, trop fin);import;C1666858;TVS 18 V DO-201 (Littelfuse 1.5KE18A-B) — PAS de 1.5KE15A locale (conduirait à 14,7 V)
 D9;1;1N4744A;D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp;Zener 15V grille-source de Q11 (K=source, A=grille) : VGS borné à -15 V;import;C238928;zener 15 V DO-41
 F1;1;T1A 5x20;Fuse_5x20_Universal;Fusible entrée secteur du module alim (temporisé 1A) — porte-fusible à capot;import;C3131;porte-fusible 5x20 à capot BLX-A Xucheng C3131 (pas 22,0 ±0,5 mesuré sur sa fiche LCSC, fentes 3 mm de l'empreinte) ou Multicomp MC000830 / Schurter 0031.8201 (22,5-22,6) + cartouche T1A
@@ -30,8 +30,8 @@ J11;1;Bornier_5.08;TerminalBlock_bornier-3_P5.08mm;Sonde DS18B20 étanche (1=3V3
 J12;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;LDR déportée entre 3V3 et l'ADC (1=3V3 2=ADC);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
 J13;1;Support OLED;PinSocket_1x04_P2.54mm_Vertical;OLED SSD1306 128x64 I2C 0x3C (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
 J14;1;Support I2C ext;PinSocket_1x04_P2.54mm_Vertical;Extension I2C — ex. module DS3231 (1=GND 2=VCC 3=SCL 4=SDA);Maroc;;barrette femelle 2,54 sécable (Moussasoft 6 DH)
-J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=+5V 3=GND);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
-J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=+5V 3=GND);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J15;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo GROS (1=SIG 2=LDO_IN 3=GND) — rev 0.2.2 : +5V COMMUTE par Q7 (JP1 fermé = permanent);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+J16;1;Header servo;PinHeader_1x03_P2.54mm_Vertical;Servo PETITS (1=SIG 2=LDO_IN 3=GND) — rev 0.2.2 : +5V COMMUTE par Q7 (JP1 fermé = permanent);Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 J17;1;Header service;PinHeader_1x06_P2.54mm_Vertical;Header service (1=3V3 2=GND 3=EN 4=RX0 5=TX0 6=+5V) — tous les autres GPIO sont consommés par la carte universelle;Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 J18;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 5V (1=+5V 2=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
 J19;1;Bornier_5.08;TerminalBlock_bornier-2_P5.08mm;Distribution 3V3 capteurs — rail COMMUTE (1=+3V3_SW 2=GND);Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
@@ -57,10 +57,10 @@ J38;1;Header CMD SENSE;PinHeader_1x08_P2.54mm_Vertical;Etat réel des relais K1.
 J7;1;Bornier_5.08;TerminalBlock_bornier-4_P5.08mm;HC-SR04 AQUA (1=5V 2=TRIG 3=ECHO 4=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
 J8;1;Bornier_5.08;TerminalBlock_bornier-4_P5.08mm;HC-SR04 TANK (1=5V 2=TRIG 3=ECHO 4=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
 J9;1;Bornier_5.08;TerminalBlock_bornier-4_P5.08mm;HC-SR04 POTA (1=5V 2=TRIG 3=ECHO 4=GND) — fils nus + embouts;Maroc;;KF128 / KF301 pas 5,08 (Moussasoft 4 DH, Shop4Makers)
-JP1;1;Jumper BYPASS;PinHeader_1x03_P2.54mm_Vertical;"BYPASS gate : cavalier 1-2 FERME par défaut (rail permanent, ffp5cs) ; l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP1;1;Jumper BYPASS;PinHeader_1x03_P2.54mm_Vertical;"BYPASS gate : cavalier 1-2 FERME par défaut (rail capteurs ET servos permanents, ffp5cs) ; l'OTER pour les profils batterie (msp/n3pp, rail commuté par GPIO13)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 JP10;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K6 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 JP11;1;Jumper SD MISO;PinHeader_1x03_P2.54mm_Vertical;"Source MISO : 1-2 = S3 (IO14, défaut) ; 2-3 = WROOM (GPIO12/MTDI : efuse VDD_SDIO=3V3 obligatoire avant)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
-JP12;1;Jumper profil;PinHeader_1x03_P2.54mm_Vertical;"Ratio VBAT : 1-2 = 22k (bus 12V, ffp5cs) ; 2-3 = 100k (1S, msp/n3pp)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
+JP12;1;Jumper profil;PinHeader_1x03_P2.54mm_Vertical;"Ratio VBAT : 1-2 = 18k (bus 12V, ffp5cs) ; 2-3 = 100k (1S, msp/n3pp)";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 JP13;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pont écho AQUA actif (ffp5cs) ; OUVERT = msp/n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 JP14;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pont écho TANK actif (ffp5cs) ; OUVERT = msp/n3pp";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 JP15;1;Jumper profil;PinHeader_1x02_P2.54mm_Vertical;"Profil : FERMÉ = pont écho POTA actif (ffp5cs) ; OUVERT = msp/n3pp et option wroom-sd";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
@@ -80,7 +80,7 @@ JP8;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K4 : SANS cavali
 JP9;1;Jumper ON/OFF;PinHeader_1x03_P2.54mm_Vertical;"Sélecteur K5 : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé ; 2-3 = OFF forcé";Maroc;;barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)
 K1 K2 K3 K4 K5 K6;6;SRD-05VDC-SL-C;Relay_SPDT_SANYOU_SRD_Series_Form_C;Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A);Maroc / import;C35449;"Moussasoft (18 DH) ; LCSC C35449 Songle"
 LED1 LED2 LED3 LED4 LED6 LED7;6;rouge;LED_D5.0mm;LED témoin relais ON;Maroc;;LED 5 mm
-LED5;1;verte;LED_D5.0mm;LED présence 5V;Maroc;;LED 5 mm
+LED5;1;verte;LED_D5.0mm;"LED présence 5V — *NON POSÉE* sur msp/n3pp (3 mA permanents = 0,4 Wh/j, ALIMENTATION.md) ; posée sur ffp5cs (secteur)";Maroc;;LED 5 mm
 PS1;1;HLK-20M05;Converter_ACDC_Hi-Link_HLK-20Mxx;Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module enjambe la frontière secteur/logique (fente fraisée dessous);Maroc / import;C465406;"Shop4Makers (90 DH) ; LCSC C465406"
 Q1 Q2 Q3 Q4 Q5 Q6;6;BC337-40;TO-92_Inline_Wide_CBE;Transistor NPN commande relais (1=C 2=B 3=E, brochage C-B-E sérigraphié : un 2N2222/S8050 E-B-C se monte retourné);Maroc;C713611;"Moussasoft (1 DH, >1000) ; brochage C-B-E sérigraphié"
 Q11;1;IRF4905;TO-220-3_Vertical_GDS;Anti-inversion P-MOSFET 55V ±20V VGS (1=G 2=D=entrée 3=S=sortie);Maroc / import;C2564;"A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"
@@ -105,7 +105,7 @@ R27;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas de pont LDR sur 
 R34;1;1k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Base commande gate (GPIO13);Maroc;;1/4 W 5 % (Moussasoft)
 R35;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Pull-up grille P-MOSFET vers +5V (rail OFF par défaut);Maroc;;1/4 W 5 % (Moussasoft)
 R38;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Haut du pont VBAT (commun aux deux profils);Maroc;;1/4 W 5 % (Moussasoft)
-R39;1;22k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Bas du pont VBAT profil bus 12V (JP12 en 1-2) : 100k/22k;Maroc;;1/4 W 5 % (Moussasoft)
+R39;1;18k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas du pont VBAT profil bus 12V (JP12 en 1-2) : 100k/18k — rev 0.2.2 (ex-22k) : 14,7 V -> 2,24 V en zone linéaire de l'ADC, pleine échelle 20,3 V ; ratio firmware ffp5cs";Maroc;;1/4 W 5 % (Moussasoft)
 R40;1;100k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;Grille anti-inversion vers GND (limite le courant de D9);Maroc;;1/4 W 5 % (Moussasoft)
 R43;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_A (en circuit si JP16 FERMÉ : LDR msp ; OUVERT : sonde sol n3pp)";Maroc;;1/4 W 5 % (Moussasoft)
 R44;1;10k;R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal;"Bas de pont ADC_B (en circuit si JP17 FERMÉ : LDR msp ; OUVERT : sonde sol n3pp)";Maroc;;1/4 W 5 % (Moussasoft)

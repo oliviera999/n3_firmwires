@@ -135,6 +135,12 @@ le bus. INA226 ×3, JP12 en 1-2 (100k/22k).
   est parfois coupée la nuit (fonction éclairage), hachée ou protégée par un LVD à 11 V réglé
   pour des lampes, pas pour une pompe vitale. Le délestage, c'est le firmware qui le fait
   (`SIMULATION.md` §8, seuils AGM), en gardant la pompe aquarium pour la fin.
+- **Donnée de terrain (Oliv, 2026-10-17)** : **14,5 V mesurés en sortie du régulateur PWM** —
+  c'est l'absorption normale d'une AGM. À cette tension D8 reste muette (conduction à partir
+  de 17,1 V, fuite < 5 µA à 15,3 V — d'où le rejet de la 1.5KE15A), Q11 voit VGS = −14,5 V
+  (limite ±20 V), D9 (15 V ± 5 %) peut laisser passer 2–3 µA par R40 : sans effet ; C5 25 V,
+  buck MP1584 28 V. Seule la **mesure** est gênée : 14,5 V → 2,61 V avec 22k (zone comprimée),
+  2,19 V avec 18k (zone linéaire) — ce qui a motivé R39 = 18k en 0.2.2.
 - **Transitoires** : un PWM hache le courant de charge → ondulation sur le bus ; D8 (1.5KE18A),
   C5 470 µF et le buck absorbent. Absorption AGM 14,4–14,7 V, égalisation parfois 15+ V sur
   certains PWM : D8 ne conduit qu'à partir de 17 V, C5 est en 25 V, Q11 borné à −15 V de VGS
@@ -167,5 +173,15 @@ Ce qui est **déjà juste** en 0.2.1 : Q7 corrigé (rail capteurs réellement co
 | N6 | 10 cartes plutôt que 5 | commande | une carte d'avance par profil + 2 de rechange | +~10 € |
 | N7 | Diodes de roue libre sur les charges DC inductives, fusible lame 12 V, câble 5 V court et épais | câblage | contacts et marges | 0 |
 
-Les sujets A1 (source 5 V ferme), A2 (servos SG90) et A3 (R39) du rapport de simulation restent
-tels quels ; N1 remplace la « règle d'usage » servos par une solution sur la carte.
+## 8. Décisions (Oliv, 2026-10-17) → rev 0.2.2
+
+| # | Décision | Mise en œuvre |
+|---|---|---|
+| N1 | **Oui** : servos coupés en sommeil | **J15/J16 pin 2 et C2 passent sur `LDO_IN`**, le 5 V déjà commuté par Q7 : les servos suivent le rail capteurs (JP1 ôté = coupés en deep sleep, JP1 fermé = permanents sur ffp5cs). Aucun composant ajouté : une première version avec un second P-FET (Q13) + cavalier bouchait le couloir de pistes du bas de carte (7 nets non routés). SPICE : un SG90 bloqué (0,65 A) à travers Q7 fait tomber LDO_IN à 4,96 V (4,91 V avec un Q7 défavorable), 4,60 V pour un MG996R : +3V3_SW reste à 3,30 V dans tous les cas (U1 n'a besoin que de 4,3 V). Carte reroutée (générateur → freerouting → contrôles). Câblage en étoile / gros servo : fil +5V du servo directement sur la source, J15/J16 pin 2 vide |
+| N2 | **Non** (LDO faible Iq pour le DevKit) | essai possible plus tard par module HT7833 externe sur J17-1, sans toucher à la carte |
+| N3 | **LED5 non posée** sur msp/n3pp | BOM (étoilée), posée sur ffp5cs |
+| A1 | **D5 court-circuitée** (pont de fil) — il n'y aura jamais USB + alimentation en même temps | +0,35 V de marge au DevKit ; **règle absolue : ne jamais brancher l'USB du DevKit carte sous tension** (flasher hors tension, ou OTA) ; l'empreinte DO-201 reste pour reposer une 1N5822 si ce besoin revient |
+| A3 | **R39 = 18k** | BOM ; aucun firmware ne lit ADC_VBAT sur le profil 12 V aujourd'hui (la batterie est mesurée par INA226 / `n3_power`) — si un jour c'est le cas, ratio 118/18 |
+| N5 | **TP4056 conservé** (déjà en stock) | seuil de veille d'urgence firmware ≥ 3,3 V ; cellule à l'ombre ; panneau 5–6 W |
+| N4 | **Relais conservés** | cycles de pompe et interdiction du chauffage sur batterie côté firmware |
+| N6 | quantité | recommandation : 10 cartes |

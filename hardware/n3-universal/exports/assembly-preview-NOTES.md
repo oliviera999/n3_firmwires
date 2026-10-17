@@ -11,8 +11,8 @@ Fichiers générés par `generator/export_assembly_preview.py` :
 | `cpl-nextpcb.zip` | **NextPCB** | même CPL, **zippé** (NextPCB refuse le `.csv` brut pour le centroid) |
 
 Couverture : **172** placements CPL, **54** lignes BOM,
-**29/172** avec LCSC suggéré
-(17 %).
+**28/172** avec LCSC suggéré
+(16 %).
 
 ---
 
@@ -22,7 +22,7 @@ Sur la page **Order PCB** classique, **il n’y a pas** d’upload BOM/CPL.
 Il faut **activer l’assemblage** :
 
 1. Aller sur [jlcpcb.com](https://jlcpcb.com) → **Order now** / Instant Quote.
-2. Uploader **uniquement** `gerbers-n3-universal-v0.2.1.zip` (Add gerber file).
+2. Uploader **uniquement** `gerbers-n3-universal-v0.2.2.zip` (Add gerber file).
 3. Configurer la carte (2 couches, **2 oz**, 1,6 mm, etc.).
 4. **Descendre en bas de page** → section **PCB Assembly** → basculer le
    interrupteur sur **ON** (Economic ou Standard, face Top).
@@ -82,6 +82,7 @@ Si le BOM est refusé : ouvrir `bom-nextpcb.csv` dans Excel → **Enregistrer so
 - `C8` — 100n / C_Disc_D5.0mm_W2.5mm_P5.00mm
 - `C9` — 100n / C_Disc_D5.0mm_W2.5mm_P5.00mm
 - `D11` — BAT85 / D_DO-35_SOD-123_Dual_P7.62mm
+- `D5` — FIL / D_DO-201AD_P15.24mm_Horizontal
 - `F1` — Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm / se soude sur Fuse_5x20_Universal (fentes 3 mm)
 - `J1` — Bornier_5.08 / TerminalBlock_bornier-2_P5.08mm
 - `J10` — Bornier_5.08 / TerminalBlock_bornier-3_P5.08mm
@@ -178,7 +179,7 @@ Si le BOM est refusé : ouvrir `bom-nextpcb.csv` dans Excel → **Enregistrer so
 - `R34` — 1k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
 - `R35` — 100k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
 - `R38` — 100k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
-- `R39` — 22k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
+- `R39` — 18k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
 - `R4` — 1k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
 - `R40` — 100k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
 - `R43` — 10k / R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal

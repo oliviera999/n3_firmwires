@@ -249,6 +249,9 @@ def main() -> int:
                           ("U1", {"1": "GND", "2": "+3V3_SW", "3": "LDO_IN"}),
                           ("Q12", {"1": "Q12_G", "2": "VIN_RAW", "3": "+5V"}),
                           ("JP1", {"1": "+5V", "2": "LDO_IN"}),
+                          ("J15", {"1": "SERVO_GROS_SIG", "2": "LDO_IN", "3": "GND"}),   # rev 0.2.2 : servos sur le 5 V commuté
+                          ("J16", {"1": "SERVO_PETITS_SIG", "2": "LDO_IN", "3": "GND"}),
+                          ("C2", {"1": "LDO_IN", "2": "GND"}),
                           ("JP12", {"1": "VBAT_22K", "2": "VBAT_DIV", "3": "VBAT_100K"}),
                           ("JP2", {"1": "SD_CS_S3", "2": "SD_CS", "3": "US3"}),
                           ("JP3", {"1": "SD_CLK_S3", "2": "SD_CLK", "3": "K5"}),

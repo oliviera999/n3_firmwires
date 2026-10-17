@@ -10,7 +10,7 @@ S/N,Designator,Quantity,Manufacturer Part Number,Footprint,Comment,Procurement T
 9,"D1,D2,D3,D4,D6,D7",6,C2457,D_DO-41_SOD81_P10.16mm_Horizontal,1N4007,,
 10,D11,1,BAT85,D_DO-35_SOD-123_Dual_P7.62mm,BAT85,C,preview: no LCSC — customer supply / placeholder
 11,D12,1,C412500,D_DO-201AD_P15.24mm_Horizontal,1.5KE6.8A,,
-12,D5,1,C2476,D_DO-201AD_P15.24mm_Horizontal,1N5822,,
+12,D5,1,FIL,D_DO-201AD_P15.24mm_Horizontal,FIL,C,preview: no LCSC — customer supply / placeholder
 13,D8,1,C1666858,D_DO-201AD_P15.24mm_Horizontal,1.5KE18A,,
 14,D9,1,C238928,D_DO-41_SOD81_P5.08mm_Vertical_AnodeUp,1N4744A,,
 15,F1,1,"Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm",se soude sur Fuse_5x20_Universal (fentes 3 mm),"Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm",C,preview: no LCSC — customer supply / placeholder
@@ -46,7 +46,7 @@ S/N,Designator,Quantity,Manufacturer Part Number,Footprint,Comment,Procurement T
 45,"R23,R27,R29,R32,R43,R44,R45,R46,R47,R48,R5,R6,R7,R8",14,10k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,10k,C,preview: no LCSC — customer supply / placeholder
 46,"R24,R25,R26",3,4.7k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,4.7k,C,preview: no LCSC — customer supply / placeholder
 47,"R35,R38,R40,R57,R58",5,100k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,100k,C,preview: no LCSC — customer supply / placeholder
-48,R39,1,22k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,22k,C,preview: no LCSC — customer supply / placeholder
+48,R39,1,18k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,18k,C,preview: no LCSC — customer supply / placeholder
 49,RV1,1,C111188,RV_Disc_D15.5mm_W8mm_P7.5mm,14D471K,,
 50,TP1,1,GND,TestPoint_THTPad_D2.0mm_Drill1.0mm,GND,C,preview: no LCSC — customer supply / placeholder
 51,TP2,1,+5V,TestPoint_THTPad_D2.0mm_Drill1.0mm,+5V,C,preview: no LCSC — customer supply / placeholder

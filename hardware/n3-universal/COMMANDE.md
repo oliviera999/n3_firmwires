@@ -1,16 +1,18 @@
-# Commander n3-universal rev 0.2 — check-list fabricant et colis
+# Commander n3-universal rev 0.2.2 — check-list fabricant et colis
 
-> Rev **0.2 (2026-10-07)** : carte régénérée de bout en bout après la contre-vérification de
-> la 0.1.2 ([`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md) §13 ; résultats des contrôles 0.2 en
-> §14). **Fichier à envoyer : `exports/gerbers-n3-universal-v0.2.zip`** (7 couches + PTH/NPTH
-> + `gbrjob` portant l'empilage 2 oz ; DRC KiCad 10 : 0 erreur, 0 écart de parité, règle de
-> ligne de fuite 6,4 mm comprise). Les zips 0.1.x sont périmés et retirés de `exports/`.
+> Rev **0.2.2 (2026-10-17)** : la 0.2 corrigée après simulation SPICE (Q7 inversé — rail capteurs
+> jamais coupé —, servos sur le 5 V commuté, D5 en pont de fil, R39 = 18k ; voir README §0.2.2,
+> [`simulation/SIMULATION.md`](simulation/SIMULATION.md) et [`ALIMENTATION.md`](ALIMENTATION.md)),
+> carte reroutée et revalidée. **Fichier à envoyer : `exports/gerbers-n3-universal-v0.2.2.zip`**
+> (7 couches + PTH/NPTH + `gbrjob` portant l'empilage 2 oz ; DRC KiCad 10 : 0 erreur, 0 écart
+> de parité, règle de ligne de fuite 6,4 mm comprise). Les zips 0.1.x et 0.2 sont périmés et
+> retirés de `exports/`.
 >
 > Il n'y aura **qu'une seule commande** : les vérifications locales du §0 sont obligatoires.
 
 ## 0. AVANT de payer — ce que le dépôt ne peut pas faire à ta place
 
-1. **JLCDFM** (`dfm.jlcdfm.com`, gratuit) sur `gerbers-n3-universal-v0.2.zip`. Attendu :
+1. **JLCDFM** (`dfm.jlcdfm.com`, gratuit) sur `gerbers-n3-universal-v0.2.2.zip`. Attendu :
    aucune ligne *Danger*. Restent acceptables en *Warning* : « silkscreen line width »
    (petits textes 0,12-0,15 mm) et « slot » sur les 19 fentes d'isolement (1,0 mm = minimum
    JLCPCB exact). Toute autre ligne → ne pas commander, ouvrir une issue avec le rapport.
@@ -30,7 +32,7 @@
 | Base Material | **FR-4** | |
 | Layers | **2** | |
 | Dimensions | **278 × 135 mm** | lues des gerbers à l'upload |
-| PCB Qty | **5** | (10 si le budget le permet : la carte ne sera pas refaite) |
+| PCB Qty | **10** | une carte par profil + rechange : la carte ne sera pas refaite (5 = minimum) |
 | Different Design | 1 | |
 | Delivery Format | **Single PCB** | pas de panélisation |
 | PCB Thickness | **1.6 mm** | |

@@ -39,7 +39,7 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > du retour d'état et de la connectique — **décisions actées le 2026-10-06 et appliquées
 > en 0.2** (encadré en tête du document).
 >
-> ⛔ **Rev 0.2.1 (2026-10-17) — NE PAS COMMANDER la 0.2** : la simulation SPICE
+> ⛔ **Rev 0.2.2 (2026-10-17) — NE PAS COMMANDER la 0.2** : la simulation SPICE
 > ([`simulation/SIMULATION.md`](simulation/SIMULATION.md)) a montré que **Q7 (IRF4905, rail
 > capteurs) était câblé à l'envers** (drain sur +5V, source sur LDO_IN : la diode interne
 > alimente le LDO en permanence, le rail ne se coupe jamais sur les profils msp/n3pp).
@@ -47,7 +47,38 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > `tools/check_fet_orientation.py`, champs `Sim.*` (schéma simulable dans KiCad). **Le PCB
 > routé n'est pas encore à jour** : voir « Rev 0.2.1 » ci-dessous.
 
-## Rev 0.2.1 — correctif Q7 (2026-10-17) : ce qui est fait, ce qui reste
+## Rev 0.2.2 — décisions d'alimentation (2026-10-17) : carte reroutée
+
+Après [`ALIMENTATION.md`](ALIMENTATION.md) (sobriété et robustesse des quatre profils, une seule
+commande JLCPCB), quatre changements sur la 0.2.1, carte **régénérée et reroutée** par la chaîne
+habituelle (`generate.py --regen-pcb` → `route_universal.py` / freerouting 2.1 → tidy →
+contrôles → `export_fab.py`) puis revalidée (tableau de contrôles ci-dessous) :
+
+| Changement | Pourquoi | Conséquence d'usage |
+|---|---|---|
+| **Servos sur `LDO_IN`** (J15/J16 pin 2, C2) : le 5 V **commuté par Q7** | deux SG90 sans signal tirent ~10 mA pendant le deep sleep (1,2 Wh/j sur msp1) ; Q7 (20 mΩ) encaisse un SG90 bloqué sans effet sur +3V3_SW (SPICE) | JP1 ôté (msp/n3pp) : servos coupés avec les capteurs, position reprise au réveil ; JP1 fermé (ffp5cs) : permanents. Gros servo ou câblage en étoile : +5V du servo directement sur la source, J15/J16 pin 2 vide |
+| **D5 = pont de fil** (valeur `FIL`, empreinte DO-201 conservée) | +0,35 V de marge pour l'AMS1117 du DevKit (chaîne 5 V → DevKit) | ⚠️ **ne JAMAIS brancher l'USB du DevKit carte sous tension** (plus d'anti-retour) : flasher hors tension, ou OTA. Une 1N5822 se repose si ce besoin revient |
+| **R39 = 18k** (pont VBAT profil 12 V, JP12 en 1-2) | 14,5 V mesurés en sortie du PWM (absorption AGM) tombaient en zone comprimée de l'ADC avec 22k | 14,7 V → 2,24 V, pleine échelle 20,3 V ; aucun firmware ne lit ADC_VBAT sur ce profil aujourd'hui (INA226) — ratio 118/18 le jour venu |
+| **LED5 non posée** sur msp/n3pp (étoilée en BOM) | 3 mA permanents = 0,4 Wh/j | posée sur ffp5cs |
+
+Une première 0.2.2 avec un second P-FET (Q13) et son cavalier pour les servos a été abandonnée :
+placés dans le seul couloir de pistes du bas de carte, ils laissaient 7 nets non routés.
+
+**Routage 0.2.2** : un reroutage à blanc (carte vide) laissait encore 2 nets non routés (ADC_D, EN
+vers le site A1) ; la carte a donc été reroutée **en partant du cuivre validé de la 0.2.1 comme
+amorce** (pads re-nettés, pistes obsolètes retirées, secteur/ponts/vias de couture régénérés par
+`route_universal.py`) : 0 net non routé, score freerouting 965,9 (meilleur des trois passes).
+
+| Contrôle (KiCad 10.0.7 Linux, 2026-10-17) | Rev 0.2.2 |
+|---|---|
+| ERC | 0 erreur |
+| DRC + parité schéma | **0 erreur, 0 non connecté, 0 écart de parité**, 62 avertissements de sérigraphie (identiques à la 0.2) |
+| `check_mains_gap` / plan GND ↔ secteur | 0 écart < 3 mm ; plans à 6,50 mm |
+| Gardes | `check_fet_orientation` ✅ ; `check_pinmap_vs_firmware` ✅ (J15/J16/C2 sur LDO_IN encodés) ; `check_silk_refs` ✅ ; `check_pcb_clearance` ✅ ; `annotate_pcb_roles --check` ✅ ; `sync_pcb_sim_fields --check` ✅ ; `check_jlcpcb_caps` ✅ (avertissement libellés 0,8 mm) ; `tidy_silkscreen` : 0 déplacement |
+| Banc SPICE sur la netlist KiCad | rail capteurs 0 V / 3,30 V ✅ ; servo à travers Q7 : +3V3_SW 3,30 V jusqu'à 2,5 A |
+| `exports/` | **gerbers v0.2.2** (`export_fab.py --rev 0.2.2`, DRC bloquant passé), PDF/SVG, BOM/CPL ; zips 0.2 et 0.2.1 retirés |
+
+## Rev 0.2.1 — correctif Q7 (2026-10-17)
 
 | | État |
 |---|---|

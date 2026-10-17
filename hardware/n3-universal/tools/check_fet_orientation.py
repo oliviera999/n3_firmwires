@@ -37,7 +37,7 @@ DEFAULT_SCH = ROOT / "kicad" / f"{G.PROJECT}.kicad_sch"
 
 # (rôle, net amont) de chaque canal P de la carte — à compléter si un FET est ajouté.
 FET_ROLES = {
-    "Q7": ("switch", "+5V"),          # commutation du 5 V vers le LDO capteurs (GPIO13 via Q8)
+    "Q7": ("switch", "+5V"),          # commutation du 5 V vers le LDO capteurs ET les servos (GPIO13 via Q8)
     "Q11": ("reverse", "VBAT12_IN"),  # anti-inversion bus 12 V (J26)
     "Q12": ("reverse", "VIN_RAW"),    # anti-inversion entrée 5 V (J1/J2/J37)
 }
