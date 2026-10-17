@@ -244,7 +244,7 @@ def main() -> int:
         jp7 = pads_of(pcb, "JP7")
         if jp7.get("1"):
             errors.append(f"JP7 (K3 chauffage) : broche 1 câblée sur '{jp7['1']}' — ON forcé interdit")
-        for ref, want in (("Q7", {"1": "GATE_G", "2": "+5V", "3": "LDO_IN"}),
+        for ref, want in (("Q7", {"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}),   # rev 0.2.1 : source amont (+5V), drain charge
                           ("Q8", {"1": "GATE_G", "2": "GATE_B", "3": "GND"}),
                           ("U1", {"1": "GND", "2": "+3V3_SW", "3": "LDO_IN"}),
                           ("Q12", {"1": "Q12_G", "2": "VIN_RAW", "3": "+5V"}),

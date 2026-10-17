@@ -54,7 +54,8 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 | `generator/generate.py` | Q7 `nets={"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}` ; `REV = "0.2.1"` ; champs `Sim.*` (`sim_fields()`), `kicad/n3u_sim.lib` généré depuis `simulation/models.lib` |
 | `kicad/n3-universal.kicad_sch`, `BOM.csv` | régénérés (seul changement électrique : étiquettes des broches 2/3 de Q7) ; ERC KiCad 8.0.9 : 0 erreur |
 | `kicad/n3-universal.kicad_pcb` | **retouché localement** (édition du fichier, pas de reroutage global) : pads 2 → LDO_IN, 3 → +5V ; 5 pistes supprimées, 14 ajoutées autour de Q7 (voir ci-dessous) ; Description de Q7 ; texte « v0.2.1 » au dos ; zones remplies (pcbnew 10.0.7) ; champs `Sim.*` propagés aux 98 empreintes simulables (`tools/sync_pcb_sim_fields.py`). **DRC KiCad 10.0.7 : 0 erreur, 0 non connecté, 0 écart de parité**, 62 avertissements de sérigraphie (identiques à la 0.2) ; écart secteur 3 mm : 0 ; plans ≥ 6,50 mm |
-| Gardes | `tools/check_fet_orientation.py` ✅ (échoue sur le schéma 0.2) ; `check_silk_refs.py` ✅ ; `check_pcb_clearance.py` ✅ ; `annotate_pcb_roles.py --check` ✅ ; `sync_pcb_sim_fields.py --check` ✅ ; `tidy_silkscreen.py --dry-run` : 0 déplacement ; `simulation/bench_kicad_netlist.py` ✅ sur la netlist exportée par KiCad |
+| Gardes | `tools/check_fet_orientation.py` ✅ (échoue sur le schéma 0.2) ; `check_pinmap_vs_firmware.py` ✅ (topologie Q7 mise à jour) ; `check_silk_refs.py` ✅ ; `check_pcb_clearance.py` ✅ ; `annotate_pcb_roles.py --check` ✅ ; `sync_pcb_sim_fields.py --check` ✅ ; `check_jlcpcb_caps.py` ✅ (2 oz : piste 0,4 / via 0,35-0,7 / anneau 0,25 / trou-trou 0,65 / fentes 1 mm / cuivre 0,07 mm dans le job) ; `tidy_silkscreen.py --dry-run` : 0 déplacement ; `simulation/bench_kicad_netlist.py` ✅ ; gerbers v0.2 vs v0.2.1 comparés au pixel (gerbv) : différences confinées au coin Q7 et au texte de version |
+| CI | `.github/workflows/hardware-ci.yml` : gardes Python + simulations à chaque push touchant `hardware/`, puis job KiCad 10 (ERC, DRC + parité, Sim.*, JLCPCB, export) |
 | `exports/` | gerbers **v0.2.1** (`export_fab.py --rev 0.2.1`, DRC bloquant passé), PDF/SVG, BOM/CPL régénérés |
 
 **Retouche PCB appliquée** (autour de Q7 (196 ; 122), à relire dans pcbnew) :
@@ -149,6 +150,8 @@ tools/check_fet_orientation.py     Rev 0.2.1 : orientation D/S de chaque P-MOSFE
 tools/annotate_pcb_roles.py        Rôle par firmware dans le champ Description des empreintes
 tools/sync_pcb_sim_fields.py       Rev 0.2.1 : champs Sim.* du schéma recopiés sur les empreintes (parité DRC)
                                    — Python de KiCad ; --check en CI
+tools/check_jlcpcb_caps.py         Rev 0.2.1 : minima JLCPCB 2 oz (pistes, vias, anneaux, trou à trou, fentes,
+                                   sérigraphie, épaisseur de cuivre du .gbrjob) — Python de KiCad
 simulation/                        Rev 0.2.1 : banc SPICE ngspice (models.lib, sim1-4, bench_kicad_netlist.py,
                                    SIMULATION.md) ; kicad/n3u_sim.lib généré pour le simulateur KiCad
 kicad/n3-universal.*         Projet KiCad 10 (+ .kicad_dru : clearance 3 mm, creepage 6,4 mm,

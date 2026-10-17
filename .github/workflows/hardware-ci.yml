@@ -1,0 +1,101 @@
+name: Hardware CI (n3-universal)
+
+# Gardes de la carte universelle (hardware/n3-universal), rev 0.2.1.
+# Job 1 (rapide, Python seul + ngspice) : orientation des MOSFET, cohérence firmwares <-> PCB,
+#   sérigraphie, corps 3D, rôles, banc SPICE sur la netlist exportée par KiCad.
+# Job 2 (KiCad 10 via PPA, ~15 min) : ERC, DRC avec parité schéma (0 erreur exigée),
+#   champs Sim.* sur les empreintes, capacités JLCPCB 2 oz, régénération des gerbers
+#   (vérifie que l'export passe le DRC bloquant d'export_fab.py).
+
+on:
+  push:
+    branches: [master]
+    paths: ['hardware/**', '.github/workflows/hardware-ci.yml']
+  pull_request:
+    paths: ['hardware/**', '.github/workflows/hardware-ci.yml']
+  workflow_dispatch:
+
+jobs:
+  guards:
+    name: Gardes Python + simulation SPICE
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: ngspice + numpy/matplotlib
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ngspice
+          pip install numpy matplotlib
+      - name: Orientation des P-MOSFET (générateur et schéma)
+        working-directory: hardware/n3-universal
+        run: python3 tools/check_fet_orientation.py
+      - name: Cohérence firmwares <-> plan PCB (3 firmwares x 2 sites)
+        working-directory: hardware/n3-universal
+        run: python3 tools/check_pinmap_vs_firmware.py
+      - name: Sérigraphie, corps 3D, rôles
+        working-directory: hardware/n3-universal
+        run: |
+          python3 tools/check_silk_refs.py
+          python3 tools/check_pcb_clearance.py
+          python3 tools/annotate_pcb_roles.py --check
+      - name: Générateur idempotent (schéma + BOM identiques après régénération)
+        working-directory: hardware/n3-universal
+        run: |
+          md5sum kicad/n3-universal.kicad_sch BOM.csv kicad/n3u_sim.lib > /tmp/before.md5
+          python3 generator/generate.py
+          md5sum -c /tmp/before.md5
+      - name: Banc SPICE — rail capteurs sur la netlist KiCad (rail coupé GPIO13 bas)
+        working-directory: hardware/n3-universal
+        run: python3 simulation/bench_kicad_netlist.py
+      - name: Simulations ngspice (relais, rail capteurs, alims, mesures)
+        working-directory: hardware/n3-universal/simulation
+        run: |
+          python3 sim1_relay.py > /dev/null
+          python3 sim2_gate.py > /dev/null
+          python3 sim3_power.py > /dev/null
+          python3 sim4_adc_rail.py > /dev/null
+          python3 - <<'EOF'
+          import json
+          s1 = json.load(open('out/s1_results.json'))['mc']
+          assert s1['n_vsw_over_300mV'] == 0 and s1['n_vcoil_under_3p75'] == 0, s1
+          s2 = json.load(open('out/s2_results.json'))
+          assert s2['corrige_vto3']['v33_off'] < 0.1 and s2['corrige_vto3']['v33_on'] > 3.2, s2['corrige_vto3']
+          print('simulations : marges relais et rail capteurs OK')
+          EOF
+
+  kicad:
+    name: KiCad 10 — ERC, DRC + parité, JLCPCB, gerbers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: KiCad 10 (PPA kicad-10.0-releases, sans bibliothèques)
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends kicad
+          kicad-cli version
+      - name: ERC (0 erreur ; les avertissements de bibliothèque n3u sont attendus hors KiCad GUI)
+        working-directory: hardware/n3-universal
+        run: kicad-cli sch erc --severity-error --exit-code-violations -o /tmp/erc.rpt kicad/n3-universal.kicad_sch
+      - name: Champs Sim.* sur les empreintes (parité)
+        working-directory: hardware/n3-universal
+        run: python3 tools/sync_pcb_sim_fields.py --check
+      - name: Capacités JLCPCB 2 oz
+        working-directory: hardware/n3-universal
+        run: python3 tools/check_jlcpcb_caps.py
+      - name: Export fabrication (DRC bloquant avec parité, gerbers, PDF/SVG)
+        working-directory: hardware/n3-universal
+        run: python3 generator/export_fab.py
+      - name: Zip Gerber régénéré (10 fichiers ; l'horodatage Gerber change à chaque export, le diff git est attendu)
+        working-directory: hardware/n3-universal
+        run: |
+          python3 - <<'EOF'
+          import zipfile, glob, subprocess
+          z = sorted(glob.glob('exports/gerbers-*.zip'))[-1]
+          names = zipfile.ZipFile(z).namelist()
+          assert len(names) == 10, names
+          print('zip :', z, '-', len(names), 'fichiers')
+          EOF
