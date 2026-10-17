@@ -76,10 +76,23 @@ dans pcbnew (vue 3D), puis [`COMMANDE.md`](COMMANDE.md). Les champs `Sim.*` doiv
 schéma : après toute régénération, `python3 tools/sync_pcb_sim_fields.py` (Python de KiCad),
 sinon le DRC de parité signale 98 champs manquants.
 
-Marges relevées par la simulation, **documentées sans modification** (à arbitrer) : chaîne 5 V →
-DevKit (Q12 non logic-level + D5 + AMS1117 : exiger ≥ 4,75 V en charge sur J1/J2, bloc 5 V ferme
-ou Hi-Link), appel servo 2,5 A sur le jack (brownout ESP32 : rail servo séparé ou buck ≥ 5 A),
-pont VBAT 100k/22k (absorption AGM hors zone linéaire de l'ADC : `esp_adc_cal` ou 100k/18k).
+**Règles d'alimentation issues de la simulation** (décisions du 2026-10-17, carte inchangée) :
+
+1. **Source 5 V ferme, pas de chargeur USB.** La chaîne Q12 (IRF4905, non logic-level) + D5 +
+   AMS1117 du DevKit ne laisse que ~0,2 V de marge : il faut **≥ 5,0 V en charge** sur J1/J2
+   (Hi-Link 20M05, ou buck réglé **5,1–5,2 V**, câble court). Un bloc à 4,75 V sous charge
+   provoque des redémarrages pendant le Wi-Fi. Candidat rev 0.3 si besoin : canal P logic-level
+   pour Q12/Q7 ; ne pas court-circuiter D5 (protection USB).
+2. **Servos : SG90 pour commencer** (~0,65 A bloqué ; MG90S ~1 A ; MG996R ~2,5 A). Sur le rail
+   de la carte avec une source ferme : SG90 OK (3V3 DevKit ≥ 3,14 V), deux SG90 simultanés
+   limite (3,02 V) → **décaler les démarrages de ~100 ms** dans le firmware. Mieux : **câble en
+   Y depuis le bloc** vers les servos (J15/J16 = signal + masse seulement) → 3,29 V, car le
+   courant du servo ne traverse plus le câble commun, Q12 ni le rail. **MG996R jamais sur le
+   jack 5 V/2,5 A.** Rev 0.3 : bornier `+5V_SERVO` raccordé avant Q12.
+3. **Pont VBAT 100k/22k** (profil 12 V) : 14,4–14,7 V (absorption AGM) tombe dans la zone
+   comprimée de l'ADC (> 2,45 V) — précision 1–2 % avec `esp_adc_cal`. Option sans changement
+   de PCB : R39 = **18k** (14,7 V → 2,24 V en zone linéaire, pleine échelle 20,3 V) **avec le
+   ratio ajusté dans le firmware ffp5cs** — à décider avec le délestage.
 
 ## Rev 0.2 — ce qui change par rapport à la 0.1.2 (2026-10-07)
 

@@ -94,5 +94,37 @@
   "v5_min": 4.550335,
   "v33_min": 3.089199,
   "ok": false
+ },
+ "même bloc 5 V (0,1 Ω), câble servo séparé | 0.65 A": {
+  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.749044,
+  "v33_min": 3.287979,
+  "ok": true
+ },
+ "même bloc 5 V (0,1 Ω), câble servo séparé | 1.0 A": {
+  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.714164,
+  "v33_min": 3.253089,
+  "ok": true
+ },
+ "même bloc 5 V (0,1 Ω), câble servo séparé | 1.5 A": {
+  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.664297,
+  "v33_min": 3.203227,
+  "ok": true
+ },
+ "même bloc 5 V (0,1 Ω), câble servo séparé | 2.5 A": {
+  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 4.564411,
+  "v33_min": 3.103347,
+  "ok": true
  }
 }

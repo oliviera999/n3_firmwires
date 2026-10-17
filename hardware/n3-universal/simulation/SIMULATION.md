@@ -33,7 +33,7 @@ en mode batch (même moteur que le simulateur intégré de KiCad), piloté par P
 | 8 | Pont VBAT 100k/22k (bus 12 V) | ✅ (nuance précision) | 3,1 V ADC ↔ **17,2 V** ; mais la zone linéaire de l'ADC (≤ 2,45 V) s'arrête à **13,6 V** : l'absorption AGM 14,4-14,7 V tombe dans la zone comprimée ; clamp D11 : à 22 V sur J25, ADC 3,43 V, 28 µA dans D11 — sûr ; τ = 0,53 ms | soit garder et s'appuyer sur `esp_adc_cal` (erreur typ. 1-2 % jusqu'à 3,1 V), soit 100k/18k (3,1 V ↔ 20,3 V, 14,7 V → 2,24 V) |
 | 9 | Pont VBAT 100k/100k (1S) | ✅ | 4,2 V → 2,10 V ; pleine échelle 6,2 V | aucune |
 | 10 | Ponts écho HC-SR04 1k/2k (JP13-15 fermés) | ✅ | écho 5,0 V → 3,23 V ; 5,25 V → 3,39 V (max abs. ESP32 3,6 V) ; front 50 ns | aucune ; JP **ouvert** avec un capteur 5 V = 5 V sur le GPIO (déjà documenté) |
-| 11 | **Dynamique du rail 5 V** (6 relais + Wi-Fi + servo) | ⚠️ selon la source | relais + Wi-Fi seuls : 4,81 V (bloc 5 V/0,25 Ω) ; bloc faible 4,8 V/0,5 Ω : 4,48 V et 3V3 du DevKit à 3,02 V pendant les rafales ; **appel servo 2,5 A : +5V tombe à 3,65-3,9 V (2,75 V avec le bloc faible), 3V3 à 2,2-2,4 V → reset ESP32** quelle que soit la source simulée | ne jamais alimenter les servos par le jack 5 V/2,5 A : Hi-Link 20M05 ou buck 5 A, câble court, et/ou alimentation servo séparée (déjà envisagé pour le profil 12 V : à rendre explicite) |
+| 11 | **Dynamique du rail 5 V** (6 relais + Wi-Fi + servo) | ⚠️ selon la source et le servo (SG90 retenu : OK avec source ferme) | relais + Wi-Fi seuls : 4,81 V (bloc 5 V/0,25 Ω) ; bloc faible 4,8 V/0,5 Ω : 4,48 V et 3V3 du DevKit à 3,02 V pendant les rafales ; **appel servo 2,5 A : +5V tombe à 3,65-3,9 V (2,75 V avec le bloc faible), 3V3 à 2,2-2,4 V → reset ESP32** quelle que soit la source simulée | ne jamais alimenter les servos par le jack 5 V/2,5 A : Hi-Link 20M05 ou buck 5 A, câble court, et/ou alimentation servo séparée (déjà envisagé pour le profil 12 V : à rendre explicite) |
 
 Ce que les contrôles existants ne pouvaient pas voir : ERC/DRC vérifient la connectivité et la
 géométrie, pas le sens de conduction d'un MOSFET. Le point 3 est précisément un cas « netlist
@@ -172,8 +172,17 @@ ou 4,8 V / 0,5 Ω ; C1 1000 µF (ESR 80 mΩ) + C2 470 µF (ESR 120 mΩ).
   blocage d'un MG996R. Un SG90 bloque à ~0,65 A, un MG90S à ~1 A. Minimum du 3V3 du DevKit :
   bloc 5 V correct → 3,14 V (SG90) / 3,02 V (MG90S ou 2 SG90) / 2,84 V (1,5 A) ; bloc faible
   4,8 V/0,5 Ω → 2,63 / 2,39 / 1,96 V (brownout) ; Hi-Link ou buck 5 A à 5,1 V → 3,29 / 3,29 /
-  3,28 V (OK), 3,09 V pour un MG996R. Règle : petits servos acceptés si la source est ferme
-  (5,1 V, ≥ 3 A), démarrages décalés de ~100 ms dans le firmware ; MG996R jamais sur le jack.
+  3,28 V (OK), 3,09 V pour un MG996R.
+- **Câblage en étoile** (même bloc, câble servo séparé, 0,1 Ω interne + 0,15 Ω par câble) : le
+  courant du servo ne traverse plus le câble commun, Q12 ni le cuivre du rail → 3V3 DevKit
+  3,29 V (SG90) / 3,25 V (1 A) / 3,10 V (MG996R) contre 3,14 / 3,02 / 2,43 V quand le servo
+  est sur le rail de la carte. On sépare le *trajet* du courant, pas forcément la source.
+- **Décision (2026-10-17)** : servos **SG90** pour commencer (évolutions possibles). Règle de
+  cette série : SG90 sur J15/J16 acceptés avec une source ferme (≥ 5,0 V en charge, Hi-Link ou
+  buck ≥ 3 A réglé 5,1 V) ; alimentation des servos de préférence par un fil direct depuis le
+  bloc (câble en Y), J15/J16 ne portant alors que signal + masse ; démarrages des deux servos
+  décalés de ~100 ms dans le firmware ; MG996R jamais sur le jack 5 V/2,5 A. Rev 0.3 : bornier
+  `+5V_SERVO` raccordé avant Q12 (rail servo séparé sur la carte, même bloc).
 
 ## Limites des modèles (à lire avant de citer un chiffre)
 
