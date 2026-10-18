@@ -1,0 +1,189 @@
+profil;article;statut;qte;reperes
+msp1;PCB;À acheter;1;—
+msp1;ESP32_DEVKIT;À acheter;1;A1
+msp1;R_220;À acheter;2;R20, R21
+msp1;R_1k;À acheter;7;R34, R49, R50, R51, R52, R53, R54
+msp1;R_4.7k;À acheter;3;R24, R25, R26
+msp1;R_10k;À acheter;7;R23, R43, R44, R45, R46, R47, R48
+msp1;R_18k;À acheter;1;R39
+msp1;R_100k;À acheter;4;R35, R38, R57, R58
+msp1;C_100n;À acheter;8;C3, C4, C6, C7, C8, C9, C10, C13
+msp1;C_10u25;À acheter;1;C11
+msp1;C_100u16;À acheter;1;C12
+msp1;C_470u16;À acheter;1;C2
+msp1;C_1000u16;À acheter;1;C1
+msp1;BAT85;À acheter;1;D11
+msp1;TVS_6V8;À acheter;1;D12
+msp1;BC337;À acheter;1;Q8
+msp1;IRF4905;À acheter;2;Q7, Q12
+msp1;LD1117;À acheter;1;U1
+msp1;BORNIER_2P;À acheter;5;J1, J12, J18, J19, J25
+msp1;BORNIER_3P;À acheter;8;J10, J11, J29, J30, J31, J32, J33, J34
+msp1;BARRETTE_F;À acheter;2;A1 (2×15), J13, J21
+msp1;BARRETTE_M;À acheter;2;J15, J16, J17, J20, JP1, JP12, JP13, JP14, JP15, JP16, JP17, JP18, JP19, JP20, …
+msp1;CAVALIER;À acheter;9;JP…
+msp1;FIL;À acheter;1;D5
+msp1;TP_FIL;À acheter;4;TP1, TP2, TP3, TP4
+msp1;DHT11;À acheter;2;hors carte
+msp1;BME280;Option;2;hors carte
+msp1;DS18B20;À acheter;1;hors carte
+msp1;LDR;À acheter;4;hors carte
+msp1;PLUIE;À acheter;1;hors carte
+msp1;SOL_CAPA;À acheter;1;hors carte
+msp1;SG90;À acheter;2;hors carte
+msp1;OLED;À acheter;1;hors carte
+msp1;TP4056;Déjà possédé;1;hors carte
+msp1;BOOST;À acheter;1;hors carte
+msp1;CELL_18650;À acheter;1;hors carte
+msp1;SUPPORT_18650;À acheter;1;hors carte
+msp1;PANNEAU_6V;À acheter;1;hors carte
+msp1;VIS_M3;À acheter;7;H1, H2, H3, H4, H5, H6, H7
+msp1;ENTRETOISE_M3;À acheter;7;H1-H7
+msp1;BOITIER;À acheter;1;hors carte
+msp1;PRESSE_ETOUPE;À acheter;6;hors carte
+msp1;FIL_05;À acheter;5;hors carte
+n3pp;PCB;À acheter;1;—
+n3pp;ESP32_DEVKIT;À acheter;1;A1
+n3pp;R_1k;À acheter;10;R1, R9, R34, R49, R50, R51, R52, R53, R54, R61
+n3pp;R_4.7k;À acheter;2;R25, R26
+n3pp;R_10k;À acheter;4;R5, R23, R27, R48
+n3pp;R_18k;À acheter;1;R39
+n3pp;R_100k;À acheter;4;R35, R38, R57, R58
+n3pp;C_100n;À acheter;8;C3, C4, C6, C7, C8, C9, C10, C13
+n3pp;C_10u25;À acheter;1;C11
+n3pp;C_100u16;À acheter;1;C12
+n3pp;C_1000u16;À acheter;1;C1
+n3pp;1N4007;À acheter;1;D1
+n3pp;BAT85;À acheter;1;D11
+n3pp;TVS_6V8;À acheter;1;D12
+n3pp;BC337;À acheter;2;Q1, Q8
+n3pp;IRF4905;À acheter;2;Q7, Q12
+n3pp;LD1117;À acheter;1;U1
+n3pp;LED_R;À acheter;1;LED1
+n3pp;SRD05;À acheter;1;K1
+n3pp;BORNIER_2P;À acheter;5;J1, J12, J18, J19, J25
+n3pp;BORNIER_3P;À acheter;6;J3, J10, J31, J32, J33, J34
+n3pp;BARRETTE_F;À acheter;2;A1 (2×15), J13, J21
+n3pp;BARRETTE_M;À acheter;2;J17, J20, JP1, JP5, JP12, JP13, JP14, JP15, JP16, JP17, JP18, JP19, JP20, JP21
+n3pp;CAVALIER;À acheter;5;JP…
+n3pp;JACK_DC;À acheter;1;J2
+n3pp;FIL;À acheter;1;D5
+n3pp;TP_FIL;À acheter;4;TP1, TP2, TP3, TP4
+n3pp;DHT11;À acheter;1;hors carte
+n3pp;BME280;Option;1;hors carte
+n3pp;LDR;À acheter;1;hors carte
+n3pp;SOL_CAPA;À acheter;4;hors carte
+n3pp;OLED;À acheter;1;hors carte
+n3pp;1N4007_EXT;À acheter;1;hors carte
+n3pp;CHARGEUR_5V;À acheter;1;hors carte
+n3pp;CABLE_USB_JACK;À acheter;1;hors carte
+n3pp;VIS_M3;À acheter;7;H1, H2, H3, H4, H5, H6, H7
+n3pp;ENTRETOISE_M3;À acheter;7;H1-H7
+n3pp;BOITIER;À acheter;1;hors carte
+n3pp;PRESSE_ETOUPE;À acheter;6;hors carte
+n3pp;FIL_05;À acheter;5;hors carte
+ffp_230;PCB;À acheter;1;—
+ffp_230;ESP32_DEVKIT;À acheter;1;A1
+ffp_230;R_220;À acheter;2;R20, R21
+ffp_230;R_1k;À acheter;23;R1, R2, R3, R4, R9, R10, R11, R12, R13, R14, R15, R16, R28, R30, …
+ffp_230;R_2k;À acheter;3;R17, R18, R19
+ffp_230;R_4.7k;À acheter;3;R24, R25, R26
+ffp_230;R_10k;À acheter;9;R5, R6, R7, R8, R23, R27, R29, R32, R48
+ffp_230;R_100k;À acheter;2;R35, R57
+ffp_230;C_100n;À acheter;3;C3, C4, C10
+ffp_230;C_10u25;À acheter;1;C11
+ffp_230;C_100u16;À acheter;1;C12
+ffp_230;C_470u16;À acheter;1;C2
+ffp_230;C_1000u16;À acheter;1;C1
+ffp_230;1N4007;À acheter;6;D1, D2, D3, D4, D6, D7
+ffp_230;TVS_6V8;À acheter;1;D12
+ffp_230;BC337;À acheter;7;Q1, Q2, Q3, Q4, Q5, Q6, Q8
+ffp_230;IRF4905;À acheter;2;Q7, Q12
+ffp_230;LD1117;À acheter;1;U1
+ffp_230;LED_R;À acheter;6;LED1, LED2, LED3, LED4, LED6, LED7
+ffp_230;LED_V;À acheter;1;LED5
+ffp_230;SRD05;À acheter;6;K1, K2, K3, K4, K5, K6
+ffp_230;VARISTANCE;À acheter;1;RV1
+ffp_230;PORTEFUS_5x20;À acheter;1;F1
+ffp_230;FUS_T1A;À acheter;3;hors carte
+ffp_230;HLK20M05;À acheter;1;PS1
+ffp_230;BORNIER_2P;À acheter;5;J1, J12, J18, J19, J27
+ffp_230;BORNIER_3P;À acheter;8;J3, J4, J5, J6, J10, J11, J23, J24
+ffp_230;BORNIER_4P;À acheter;3;J7, J8, J9
+ffp_230;BARRETTE_F;À acheter;2;A1 (2×15), J13, J14
+ffp_230;BARRETTE_M;À acheter;2;J15, J16, J17, J20, J38, JP1, JP5, JP6, JP7, JP8, JP9, JP10, JP13, JP14, …
+ffp_230;CAVALIER;À acheter;7;JP…
+ffp_230;FIL;À acheter;1;D5
+ffp_230;TP_FIL;À acheter;4;TP1, TP2, TP3, TP4
+ffp_230;DHT11;À acheter;1;hors carte
+ffp_230;DS18B20;À acheter;1;hors carte
+ffp_230;LDR;À acheter;1;hors carte
+ffp_230;HCSR04;À acheter;3;hors carte
+ffp_230;SG90;À acheter;2;hors carte
+ffp_230;OLED;À acheter;1;hors carte
+ffp_230;DS3231;À acheter;1;hors carte
+ffp_230;CR2032;À acheter;1;hors carte
+ffp_230;MICROSD;Option;1;hors carte
+ffp_230;CORDON_SECTEUR;À acheter;1;hors carte
+ffp_230;VIS_M3;À acheter;7;H1, H2, H3, H4, H5, H6, H7
+ffp_230;ENTRETOISE_M3;À acheter;7;H1-H7
+ffp_230;BOITIER;À acheter;1;hors carte
+ffp_230;PRESSE_ETOUPE;À acheter;8;hors carte
+ffp_230;FIL_05;À acheter;5;hors carte
+ffp_230;FIL_15;À acheter;5;hors carte
+ffp_12v;PCB;À acheter;1;—
+ffp_12v;ESP32_DEVKIT;À acheter;1;A1
+ffp_12v;R_220;À acheter;2;R20, R21
+ffp_12v;R_1k;À acheter;24;R1, R2, R3, R4, R9, R10, R11, R12, R13, R14, R15, R16, R28, R30, …
+ffp_12v;R_2k;À acheter;3;R17, R18, R19
+ffp_12v;R_4.7k;À acheter;3;R24, R25, R26
+ffp_12v;R_10k;À acheter;9;R5, R6, R7, R8, R23, R27, R29, R32, R48
+ffp_12v;R_18k;À acheter;1;R39
+ffp_12v;R_100k;À acheter;5;R35, R38, R40, R57, R58
+ffp_12v;C_100n;À acheter;4;C3, C4, C10, C13
+ffp_12v;C_10u25;À acheter;1;C11
+ffp_12v;C_100u16;À acheter;1;C12
+ffp_12v;C_470u16;À acheter;1;C2
+ffp_12v;C_470u25;À acheter;1;C5
+ffp_12v;C_1000u16;À acheter;1;C1
+ffp_12v;1N4007;À acheter;6;D1, D2, D3, D4, D6, D7
+ffp_12v;BAT85;À acheter;1;D11
+ffp_12v;TVS_6V8;À acheter;1;D12
+ffp_12v;TVS_18;À acheter;1;D8
+ffp_12v;Z15;À acheter;1;D9
+ffp_12v;BC337;À acheter;7;Q1, Q2, Q3, Q4, Q5, Q6, Q8
+ffp_12v;IRF4905;À acheter;3;Q7, Q11, Q12
+ffp_12v;LD1117;À acheter;1;U1
+ffp_12v;LED_R;À acheter;6;LED1, LED2, LED3, LED4, LED6, LED7
+ffp_12v;LED_V;À acheter;1;LED5
+ffp_12v;SRD05;À acheter;6;K1, K2, K3, K4, K5, K6
+ffp_12v;BORNIER_2P;À acheter;8;J1, J12, J18, J19, J25, J26, J36, J37
+ffp_12v;BORNIER_3P;À acheter;8;J3, J4, J5, J6, J10, J11, J23, J24
+ffp_12v;BORNIER_4P;À acheter;3;J7, J8, J9
+ffp_12v;BARRETTE_F;À acheter;2;A1 (2×15), J13, J14, J21, J22, J28
+ffp_12v;BARRETTE_M;À acheter;2;J15, J16, J17, J20, J38, JP1, JP5, JP6, JP7, JP8, JP9, JP10, JP12, JP13, …
+ffp_12v;CAVALIER;À acheter;8;JP…
+ffp_12v;FIL;À acheter;1;D5
+ffp_12v;TP_FIL;À acheter;4;TP1, TP2, TP3, TP4
+ffp_12v;DHT11;À acheter;1;hors carte
+ffp_12v;DS18B20;À acheter;1;hors carte
+ffp_12v;LDR;À acheter;1;hors carte
+ffp_12v;HCSR04;À acheter;3;hors carte
+ffp_12v;SG90;À acheter;2;hors carte
+ffp_12v;OLED;À acheter;1;hors carte
+ffp_12v;DS3231;À acheter;1;hors carte
+ffp_12v;CR2032;À acheter;1;hors carte
+ffp_12v;INA226;À acheter;1;hors carte
+ffp_12v;INA226;Option;2;hors carte
+ffp_12v;1N4007_EXT;À acheter;2;hors carte
+ffp_12v;BUCK;À acheter;1;hors carte
+ffp_12v;FUSIBLE_LAME;À acheter;1;hors carte
+ffp_12v;AGM_12V;Déjà possédé;1;hors carte
+ffp_12v;PWM_SOLAIRE;Déjà possédé;1;hors carte
+ffp_12v;PANNEAU_12V;Déjà possédé;1;hors carte
+ffp_12v;VIS_M3;À acheter;7;H1, H2, H3, H4, H5, H6, H7
+ffp_12v;ENTRETOISE_M3;À acheter;7;H1-H7
+ffp_12v;BOITIER;À acheter;1;hors carte
+ffp_12v;PRESSE_ETOUPE;À acheter;8;hors carte
+ffp_12v;FIL_05;À acheter;5;hors carte
+ffp_12v;FIL_15;À acheter;5;hors carte

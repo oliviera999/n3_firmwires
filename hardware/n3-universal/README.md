@@ -5,7 +5,7 @@ n3pp serre/élevage, ffp5cs aquaponie), bi-module (site A1 WROOM DevKit V1 /
 site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 - rail capteurs commuté `+3V3_SW` (rev 0.2 : **LDO dédié U1 LD1117V33** derrière le
   P-FET Q7 IRF4905, **jumper bypass JP1 fermé par défaut** — ffp5cs, toujours alimenté,
-  ne pilote pas le gate) et pont diviseur VBAT **permanent** (R38 + JP12 22k/100k) ;
+  ne pilote pas le gate) et pont diviseur VBAT **permanent** (R38 + JP12 18k/100k — 22k jusqu'à la 0.2.1) ;
 - bloc solaire TP4056 + 18650 en option de peuplement (msp/n3pp) ;
 - RTC **DS3231** : VCC du module sur **`+3V3_SW`** (coupé en veille — PAS de rail
   permanent nécessaire) : le chip bascule nativement sur sa **pile bouton** et
@@ -125,7 +125,7 @@ unique) dans **[`ALIMENTATION.md`](ALIMENTATION.md)** :
 3. **Pont VBAT 100k/22k** (profil 12 V) : 14,4–14,7 V (absorption AGM) tombe dans la zone
    comprimée de l'ADC (> 2,45 V) — précision 1–2 % avec `esp_adc_cal`. Option sans changement
    de PCB : R39 = **18k** (14,7 V → 2,24 V en zone linéaire, pleine échelle 20,3 V) **avec le
-   ratio ajusté dans le firmware ffp5cs** — à décider avec le délestage.
+   ratio ajusté dans le firmware ffp5cs** — à décider avec le délestage. → **Décidé en 0.2.2 : R39 = 18k.**
 
 ## Rev 0.2 — ce qui change par rapport à la 0.1.2 (2026-10-07)
 
@@ -139,7 +139,7 @@ borniers KF301, TO-220 courants).
 | Sujet | 0.1.2 | 0.2 | Pourquoi |
 |---|---|---|---|
 | Rail capteurs `+3V3_SW` | NDP6020P (logic-level, épuisé) commuté par le 3V3 du module | **Q7 IRF4905** (VGS = −5 V) + **U1 LD1117V33** (LDO TO-220, 800 mA) ; `JP1` = bypass | pièce courante, rail capteurs indépendant de l'AMS1117 du DevKit (DS18B20 + INA226 + RTC + SD) |
-| Coupure du pont VBAT (Q9/Q10, BS250) | GPIO `ADC_VBAT_EN` | **supprimée** : pont permanent R38 100k + `JP12` (1-2 = 22k bus 12 V, 2-3 = 100k 1S) + R49/C13 + clamp **D11** | 60 µA en permanence < consommation de veille du module ; 4 pièces de moins |
+| Coupure du pont VBAT (Q9/Q10, BS250) | GPIO `ADC_VBAT_EN` | **supprimée** : pont permanent R38 100k + `JP12` (1-2 = 18k bus 12 V depuis la 0.2.2, 22k avant, 2-3 = 100k 1S) + R49/C13 + clamp **D11** | 60 µA en permanence < consommation de veille du module ; 4 pièces de moins |
 | Entrée 5 V (J1/J2) | diode D5 seule | **Q12 IRF4905 anti-inversion** (chute ≈ 0,05 V) + **D12 TVS 1.5KE6.8A** | inversion de polarité et surtensions de blocs secteur bas de gamme |
 | TVS 12 V D8 | P6KE18A | **1.5KE18A** (1500 W) | bus solaire 12 V exposé |
 | Forçage manuel des relais | — | **JP5-JP10** (1×03 : 1 = +3V3 via R61-R66, 2 = base du transistor, 3 = GND) : **sans cavalier = AUTO**, 1-2 = ON forcé, 2-3 = OFF forcé ; **JP7 (chauffage) sans broche ON** | dépannage sur site sans PC ; chauffage jamais forcé |
@@ -162,7 +162,7 @@ borniers KF301, TO-220 courants).
 | JP2 / JP3 / JP4 | SD CS / CLK / MOSI | **1-2 = S3** | 2-3 = WROOM (env `wroom-sd`) |
 | JP11 | SD MISO | **1-2 = S3** | 2-3 = WROOM |
 | JP5…JP10 | forçage relais K1…K6 | **sans cavalier = AUTO** (GPIO) | 1-2 = ON forcé ; 2-3 = OFF forcé (JP7 : OFF seulement) |
-| JP12 | diviseur VBAT | **1-2 = 22k** (bus 12 V) | 2-3 = 100k (1S Li-ion) |
+| JP12 | diviseur VBAT | **1-2 = 18k** (bus 12 V, rev 0.2.2) | 2-3 = 100k (1S Li-ion) |
 | JP13 / JP14 / JP15 | diviseurs ECHO HC-SR04 (5 V → 3,3 V) | **fermé** (HC-SR04 5 V) | ôté : capteur 3,3 V / sortie open-collector |
 | JP16…JP19 | diviseurs ADC A…D | **ôté** (signal ≤ 3,3 V direct) | fermé : signal 0-5 V |
 | JP20 | diviseur ADC_E | **ôté** | fermé : 0-5 V |
@@ -249,7 +249,7 @@ les fentes, textes serrés), sans effet électrique. Détail et tableau : audit 
   0.2 le MISO passe aussi par un cavalier (JP11) : plus de ligne partagée entre les deux sites.
 - **Profils d'alim par peuplement** : (a) 5 V jack/bornier ; (b) solaire 1S
   (TP4056+18650 hors carte, gate JP1 ôté, diviseur 100k/100k) ; (c) bus 12 V
-  (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/22k) ;
+  (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/18k depuis la 0.2.2) ;
   (d) secteur Hi-Link 20M05 (J27 + fusible T1A + varistance embarqués).
   ⚠️ **Profil (b) : injecter le 5 V par J1/J2 via un module boost — JAMAIS la
   batterie 1S brute** (3,0-4,2 V) : la carte n'a pas d'entrée 3V3 (J19 est en aval
@@ -268,6 +268,21 @@ les fentes, textes serrés), sans effet électrique. Détail et tableau : audit 
   futur générateur et par les sections `PINMAP_UNIVERSAL` des trois firmwares.
 - `COMPOSANTS_FFP5CS.csv` — tableau annoté du **rôle ffp5cs** (connecteurs,
   GPIO WROOM/S3, constantes `Pins::`, clés serveur, pose / DNP).
+- `achats/` — **liste d'achats des 4 projets** (msp1, n3pp, ffp5cs 230 V, ffp5cs 12 V) :
+  `achats-n3-universal.xlsx` (feuilles Global, Prix, une par projet avec consignes de pose,
+  prix des boutiques marocaines et liens), générée depuis `BOM.csv` par
+  `python3 achats/build_achats.py` ; `quantites.csv` en est la photographie texte, comparée en
+  CI (`--check`) : la CI échoue si la BOM change sans que la liste d'achats suive.
+
+### Propagation des changements (règle)
+
+Tout changement de composant, de valeur, de brochage ou de pose se répercute **dans le même
+commit** sur tout ce qui en dépend — voir la table « Propagation des changements » du
+`CLAUDE.md` à la racine du dépôt. Pour cette carte : `generator/generate.py` (source) →
+schéma, PCB (reroutage si le cuivre change), `BOM.csv`, `kicad/n3u_sim.lib`, champs Sim du PCB,
+gerbers/exports, `achats/` (inventaire, prix, classeur), `COMMANDE.md` (colis LCSC),
+`COMPOSANTS_FFP5CS.csv`, `ALIMENTATION.md`, `simulation/`, `pinmap_universel_propose.json` et
+les sections `PINMAP_UNIVERSAL` des firmwares ; puis les gardes (`tools/`, `achats --check`).
 
 ### Connaître le rôle d'un composant depuis KiCad
 
@@ -325,9 +340,9 @@ alimentant pompes/chauffage/lumière, l'ESP et tous les périphériques.
   empreinte, variante BOM) sur le bus → le buck ne porte plus que logique+servos.
 - **Bloc d'entrée obligatoire** : fusible lame 7,5–10 A, anti-inversion P-MOSFET,
   TVS 18 V, réservoir. (~4 composants, ~25×40 mm de surface.)
-- **Instrumentation** : diviseur `ADC_VBAT` au ratio 12 V (**100k/22k** — même net que
-  msp/n3pp, seules les valeurs changent ; pleine échelle ~17,2 V : l'ancien 100k/27k
-  saturait à ~14,6 V, sous l'absorption AGM 14,4-14,7 V) ; **3 × INA226** (VBUS ≤ 36 V :
+- **Instrumentation** : diviseur `ADC_VBAT` au ratio 12 V (**100k/18k** depuis la 0.2.2 — même net que
+  msp/n3pp, seules les valeurs changent ; pleine échelle ~20,3 V, absorption AGM 14,4-14,7 V
+  en zone linéaire de l'ADC ; 100k/22k de la 0.1 à la 0.2.1, 100k/27k avant : saturait à ~14,6 V) ; **3 × INA226** (VBUS ≤ 36 V :
   OK panneau à vide ~22-25 V ; INA219 26 V déconseillé), voies panneau (0x40) /
   batterie (0x41) / charges (0x44). Pleine échelle shunt INA226 = **81,92 mV** :
   module R100 (0,1 Ω) = 0,82 A, R010 = 8,2 A, 5 mΩ = 16,4 A → **shunts externes

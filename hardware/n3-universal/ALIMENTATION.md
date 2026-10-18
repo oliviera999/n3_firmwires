@@ -104,6 +104,10 @@ sleep 300 s comme msp.
   230 V : contacts 7 A résistifs / 3 A inductifs réels (SRD Form C).
 - Sobriété : même fuite que msp1 (DevKit + LED5 + servos s'il y en a) — sans importance sur
   chargeur, mais LED5 peut rester non posée par cohérence.
+- **Mesure « batterie » sans batterie** : le firmware n3pp lit `pontdiv` (ADC_VBAT) et part en
+  veille d'urgence sous `SeuilPontDiv`. Sur chargeur, J25 ne reçoit rien → lecture ≈ 0 → veille
+  d'urgence. Relier **J25-1 au +5V (J18-1)** par un fil (5 V → 2,5 V sur l'ADC avec JP12 en 2-3),
+  ou désactiver la veille infinie côté serveur (clé 112). À vérifier au premier allumage.
 
 ## 5. ffp5cs — secteur 230 V (Hi-Link)
 
@@ -128,7 +132,7 @@ SD, OLED, INA… jamais de sommeil profond (light sleep + modem sleep).
 **Chaîne** : panneau → régulateur PWM → **batterie AGM** (10,5–15,5 V) → fusible lame → J26 →
 Q11 (anti-inversion) + D9 + D8 (TVS 18 V) → J36/J37 → **buck 5 V** (MP1584 conseillé, réglé
 5,1 V) → J1 → Q12 → +5V. Pompes 12 V commutées par les **contacts** des relais, directement sur
-le bus. INA226 ×3, JP12 en 1-2 (100k/22k).
+le bus. INA226 ×3, JP12 en 1-2 (100k/18k depuis la 0.2.2).
 
 - **Où brancher la carte sur le régulateur PWM** : sur les bornes **batterie** (via le fusible),
   pas sur la sortie « charge » du régulateur : sur les modèles de qualité moyenne, cette sortie

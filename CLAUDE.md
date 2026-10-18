@@ -29,6 +29,10 @@ envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/dépl
 > aussi la galerie caméra (`uploadphotosserver -e ffp3`), le sous-module serveur `ffp5cs/ffp3`, et le
 > contrat HMAC générique de `shared/n3_data`. Détails et chantiers différés : **`docs/NOMENCLATURE_FFP3.md`**.
 
+**Matériel** : `hardware/n3-universal/` = carte porteuse universelle des trois firmwares msp / n3pp / ffp5cs
+(générateur KiCad `generator/generate.py` = source de vérité, gardes `tools/`, simulations SPICE `simulation/`,
+liste d'achats `achats/`) ; CI dédiée `.github/workflows/hardware-ci.yml`.
+
 > ⚠️ **Ne pas utiliser** `archive/` (code legacy, ex. anciennes caméras → remplacées par
 > `uploadphotosserver/` unifié) ni `à voir/` (prototypes non maintenus : `LVGL_Widgets`, `ratata`).
 
@@ -126,6 +130,34 @@ lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware
 - ✅ Bumper la version du firmware touché (+ `VERSION.md`).
 - ✅ Le sous-module `ffp5cs/ffp3` est géré à part (`git submodule update --init` au besoin).
 - ✅ Libre de s'inspirer de dépôts GitHub connus / bibliothèques éprouvées — **en citant la source** (voir ci-dessous).
+- ✅ **Tout changement se répercute partout où il est lié** (code, circuit, composants, brochage, prix…) —
+  voir la section suivante. Obligatoire, dans le même commit / la même PR.
+
+## Propagation des changements — OBLIGATOIRE
+
+Un changement n'est **terminé** que lorsque tout ce qui en dépend a suivi : code, schéma, PCB, BOM,
+liste d'achats, documentation, simulations, firmwares, serveur. Pas de « je mettrai à jour plus tard ».
+
+**Méthode, à chaque changement :**
+1. **Chercher l'ancienne valeur partout** (`grep -rn` sur la référence, la valeur, le nom de net, le
+   GPIO, la clé JSON…) et mettre à jour chaque occurrence **vivante**. Les archives datées restent telles
+   quelles : `AUDIT-*.md`, sections « Rev x.y » passées des README, `VERSION.md` (historique), `archive/`.
+   Dans une section historique, ajouter au besoin « → remplacé en rev x.y ».
+2. **Suivre la table ci-dessous**, puis **lancer les gardes** listées : elles doivent toutes passer.
+3. **Si un lien n'a pas de garde automatique**, en ajouter une quand c'est simple (photographie
+   versionnée + `--check` en CI, comme `achats/quantites.csv`).
+4. **Dire dans le message de commit** ce qui a été répercuté (et ce qui reste éventuellement en suspens).
+
+| Changement | À répercuter (même commit / même PR) | Gardes |
+|---|---|---|
+| **Composant, valeur, empreinte ou pose** de la carte n3-universal | `generator/generate.py` (source) → `python3 generator/generate.py` (schéma, `BOM.csv`, `kicad/n3u_sim.lib`) → PCB (reroutage si le cuivre change ; `tools/sync_pcb_sim_fields.py`, `tools/annotate_pcb_roles.py`) → `generator/export_fab.py` (gerbers, PDF, BOM/CPL) ; `achats/` (`inventaire.py` pose par profil, `prix.py`, puis `python3 achats/build_achats.py`) ; `COMMANDE.md` (colis LCSC, fichier à commander) ; `COMPOSANTS_FFP5CS.csv` ; `ALIMENTATION.md` ; `README.md` (cavaliers, section de la révision) ; `simulation/` si la pièce y est modélisée | `hardware-ci.yml` : générateur idempotent, `tools/check_*.py`, `achats/build_achats.py --check`, banc SPICE, ERC, DRC avec parité |
+| **Brochage / GPIO / net** (carte ou firmware) | `pinmap_universel_propose.json`, `generate.py`, sections `PINMAP_UNIVERSAL` de msp / n3pp / ffp5cs, `COMPOSANTS_FFP5CS.csv`, `ETUDE_PINMAP.md`, consignes de `achats/` | `tools/check_pinmap_vs_firmware.py`, `tools/check_fet_orientation.py` |
+| **Capteur, module ou actionneur** ajouté / retiré d'un projet | firmware concerné, `achats/inventaire.py` (`OFF`, consignes), pose sur la carte, `ALIMENTATION.md` si la consommation change | `achats --check`, Firmware CI |
+| **Profil d'alimentation** (source, régulateur, batterie) | `ALIMENTATION.md`, consignes `achats/inventaire.py` + `achats/classeur.py`, `README.md`, simulations d'alimentation, seuils firmware (veille d'urgence, délestage) | `achats --check`, simulations |
+| **Code d'un firmware** | version + `VERSION.md` (skill `bump-firmware-version`), `shared/` si mutualisable, `firmwares.manifest.json` si la topologie change, brochage carte si une broche bouge (ligne ci-dessus) | Firmware CI, tests natifs |
+| **Contrat API / OTA / HMAC** (clés JSON, routes, signature) | firmware(s) + **n3_serveur** + `docs/` (garder l'alignement des deux dépôts) | tests natifs `shared/` |
+| **Prix ou fournisseur** | `achats/prix.py` (et sa `DATE`), puis `python3 achats/build_achats.py` | — |
+| **Toolchain / version PlatformIO / KiCad** | `CLAUDE.md`, `README.md`, workflows CI, `firmwares.manifest.json` | CI |
 
 ## Inspiration — bonnes pratiques externes (encouragé, avec citation)
 

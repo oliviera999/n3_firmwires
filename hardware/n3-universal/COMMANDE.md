@@ -76,7 +76,7 @@ achat local (§3). Codes LCSC lus sur la page produit le **2026-10-06** (stock �
 | LD1117V33 TO-220 (U1) | 5 (+2) | **C283467** | ST, 1 = GND, 2 = OUT, 3 = IN, languette = OUT ; repli LM1117T-3.3 C498321 (même brochage) |
 | BC337-40 TO-92 (Q1-Q6, Q8) | 35 (+10) | **C713611** | ou Moussasoft (brochage C-B-E) |
 | 1N4007 (D1-D7) | 35 (+5) | **C2457** | l'ancien code C727 n'existe plus |
-| 1N5822 (D5) | 5 (+2) | **C2476** | |
+| ~~1N5822 (D5)~~ | 0 | — | **rev 0.2.2 : D5 = pont de fil**, plus rien à acheter (empreinte gardée) |
 | 1N4744A zener 15 V (D9) | 5 (+2) | **C238928** | |
 | TVS 1.5KE18A (D8) | 5 (+2) | **C1666858** | Littelfuse 1.5KE18A-B (1 000 en stock) ; équivalents DOWO C18198473, Liown C3034405 |
 | TVS 1.5KE6.8A (D12) | 5 (+2) | **C412500** | ⚠️ 480 en stock : commander tôt ; repli P6KE6.8A DO-15 **C409413** (pattes 0,8 mm, mêmes trous) |
@@ -95,9 +95,12 @@ Tout le reste (résistances 1/4 W, 100 nF, LED 5 mm, borniers KF301/KF128 5,08 �
 
 ## 3. Achats au Maroc (référence) — et ailleurs en Afrique
 
+**Liste chiffrée par projet** (quantités, prix relevés, liens) : `achats/achats-n3-universal.xlsx`,
+régénérée depuis la BOM par `python3 achats/build_achats.py`.
+
 | Fournisseur | Quoi | Remarque |
 |---|---|---|
-| **Moussasoft** (Casablanca, moussasoft.com) | relais SRD, BC337, 1N4007, 1N5822, borniers KF301, barrettes, résistances, condensateurs, ESP32 | catalogue le plus large, prix unitaires bas |
+| **Moussasoft** (Casablanca, moussasoft.com) | relais SRD, BC337, 1N4007, borniers KF301, barrettes, résistances, condensateurs, ESP32 | catalogue le plus large, prix unitaires bas |
 | **Shop4Makers** (Casablanca) | ESP32 DevKit V1 Type-C, ESP32-S3 N16R8, HLK-20M05, borniers | modules ESP32 : **acheter ici**, pas d'import |
 | **A2itronic** | IRF4905, TO-220 courants, LD1117 parfois | vérifier le stock avant |
 | **MicroPlanet** | varistances 14D471K, porte-fusibles, fusibles | |

@@ -26,6 +26,7 @@ générateur qui reproduit le tout. La carte commune ajoute les feuilles
 | **[COMMANDE_JLCPCB.md](COMMANDE_JLCPCB.md)** | commander chez JLCPCB : chaque paramètre du formulaire expliqué, choix par carte (1 oz vs 2 oz…), remarques à joindre |
 | **[VERIFICATION.md](VERIFICATION.md)** | rapport daté des contrôles (ERC/DRC/gardes/3 mm/sérigraphie/gerbers) et comment reproduire chacun |
 | **[n3-universal/ALIMENTATION.md](n3-universal/ALIMENTATION.md)** | sobriété et robustesse des quatre alimentations de la carte universelle (18650 solaire, chargeur 5 V, secteur Hi-Link, AGM 12 V + PWM) : fuites en sommeil, budgets Wh/jour, points durs, conséquences pour la commande unique |
+| **[n3-universal/achats/achats-n3-universal.xlsx](n3-universal/achats/achats-n3-universal.xlsx)** | liste d'achats des 4 projets (msp1, n3pp, ffp5cs 230 V, ffp5cs 12 V) : quantités par profil, consignes de pose, prix des boutiques marocaines et liens, total global arrondi aux lots — générée depuis la BOM (`achats/build_achats.py`), vérifiée en CI |
 | **[n3-universal/simulation/SIMULATION.md](n3-universal/simulation/SIMULATION.md)** | simulation SPICE (ngspice) des blocs analogiques de la carte universelle : étage relais, rail capteurs, entrées d'alim, ponts de mesure, dynamique du rail 5 V — verdicts, marges, limites des modèles |
 
 ## Parcours conseillé

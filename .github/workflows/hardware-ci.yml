@@ -1,8 +1,9 @@
 name: Hardware CI (n3-universal)
 
-# Gardes de la carte universelle (hardware/n3-universal), rev 0.2.1.
+# Gardes de la carte universelle (hardware/n3-universal), rev 0.2.2.
 # Job 1 (rapide, Python seul + ngspice) : orientation des MOSFET, cohérence firmwares <-> PCB,
-#   sérigraphie, corps 3D, rôles, banc SPICE sur la netlist exportée par KiCad.
+#   sérigraphie, corps 3D, rôles, banc SPICE sur la netlist exportée par KiCad,
+#   liste d'achats synchronisée avec la BOM (achats/build_achats.py --check).
 # Job 2 (KiCad 10 via PPA, ~15 min) : ERC, DRC avec parité schéma (0 erreur exigée),
 #   champs Sim.* sur les empreintes, capacités JLCPCB 2 oz, régénération des gerbers
 #   (vérifie que l'export passe le DRC bloquant d'export_fab.py).
@@ -27,7 +28,7 @@ jobs:
       - name: ngspice + numpy/matplotlib
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q ngspice
-          pip install numpy matplotlib
+          pip install numpy matplotlib openpyxl
       - name: Orientation des P-MOSFET (générateur et schéma)
         working-directory: hardware/n3-universal
         run: python3 tools/check_fet_orientation.py
@@ -46,6 +47,9 @@ jobs:
           md5sum kicad/n3-universal.kicad_sch BOM.csv kicad/n3u_sim.lib > /tmp/before.md5
           python3 generator/generate.py
           md5sum -c /tmp/before.md5
+      - name: Liste d'achats synchronisée avec la BOM (achats/quantites.csv)
+        working-directory: hardware/n3-universal
+        run: python3 achats/build_achats.py --check
       - name: Banc SPICE — rail capteurs sur la netlist KiCad (rail coupé GPIO13 bas)
         working-directory: hardware/n3-universal
         run: python3 simulation/bench_kicad_netlist.py
