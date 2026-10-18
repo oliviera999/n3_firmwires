@@ -31,7 +31,7 @@ envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/dépl
 
 **Matériel** : `hardware/n3-universal/` = carte porteuse universelle des trois firmwares msp / n3pp / ffp5cs
 (générateur KiCad `generator/generate.py` = source de vérité, gardes `tools/`, simulations SPICE `simulation/`,
-liste d'achats `achats/`) ; CI dédiée `.github/workflows/hardware-ci.yml`.
+liste d'achats `achats/`, vues de câblage `fritzing/`) ; CI dédiée `.github/workflows/hardware-ci.yml`.
 
 > ⚠️ **Ne pas utiliser** `archive/` (code legacy, ex. anciennes caméras → remplacées par
 > `uploadphotosserver/` unifié) ni `à voir/` (prototypes non maintenus : `LVGL_Widgets`, `ratata`).
@@ -150,10 +150,10 @@ liste d'achats, documentation, simulations, firmwares, serveur. Pas de « je met
 
 | Changement | À répercuter (même commit / même PR) | Gardes |
 |---|---|---|
-| **Composant, valeur, empreinte ou pose** de la carte n3-universal | `generator/generate.py` (source) → `python3 generator/generate.py` (schéma, `BOM.csv`, `kicad/n3u_sim.lib`) → PCB (reroutage si le cuivre change ; `tools/sync_pcb_sim_fields.py`, `tools/annotate_pcb_roles.py`) → `generator/export_fab.py` (gerbers, PDF, BOM/CPL) ; `achats/` (`inventaire.py` pose par profil, `prix.py`, puis `python3 achats/build_achats.py`) ; `COMMANDE.md` (colis LCSC, fichier à commander) ; `COMPOSANTS_FFP5CS.csv` ; `ALIMENTATION.md` ; `README.md` (cavaliers, section de la révision) ; `simulation/` si la pièce y est modélisée | `hardware-ci.yml` : générateur idempotent, `tools/check_*.py`, `achats/build_achats.py --check`, banc SPICE, ERC, DRC avec parité |
+| **Composant, valeur, empreinte ou pose** de la carte n3-universal | `generator/generate.py` (source) → `python3 generator/generate.py` (schéma, `BOM.csv`, `kicad/n3u_sim.lib`) → PCB (reroutage si le cuivre change ; `tools/sync_pcb_sim_fields.py`, `tools/annotate_pcb_roles.py`) → `generator/export_fab.py` (gerbers, PDF, BOM/CPL) ; `achats/` (`inventaire.py` pose par profil, `prix.py`, puis `python3 achats/build_achats.py`) ; `fritzing/` (`python3 fritzing/generate_fritzing.py`, `WIRING` si un bornier ou un périphérique change) ; `COMMANDE.md` (colis LCSC, fichier à commander) ; `COMPOSANTS_FFP5CS.csv` ; `ALIMENTATION.md` ; `README.md` (cavaliers, section de la révision) ; `simulation/` si la pièce y est modélisée | `hardware-ci.yml` : générateur idempotent, `tools/check_*.py`, `achats/build_achats.py --check`, `fritzing/generate_fritzing.py --check`, banc SPICE, ERC, DRC avec parité |
 | **Brochage / GPIO / net** (carte ou firmware) | `pinmap_universel_propose.json`, `generate.py`, sections `PINMAP_UNIVERSAL` de msp / n3pp / ffp5cs, `COMPOSANTS_FFP5CS.csv`, `ETUDE_PINMAP.md`, consignes de `achats/` | `tools/check_pinmap_vs_firmware.py`, `tools/check_fet_orientation.py` |
-| **Capteur, module ou actionneur** ajouté / retiré d'un projet | firmware concerné, `achats/inventaire.py` (`OFF`, consignes), pose sur la carte, `ALIMENTATION.md` si la consommation change | `achats --check`, Firmware CI |
-| **Profil d'alimentation** (source, régulateur, batterie) | `ALIMENTATION.md`, consignes `achats/inventaire.py` + `achats/classeur.py`, `README.md`, simulations d'alimentation, seuils firmware (veille d'urgence, délestage) | `achats --check`, simulations |
+| **Capteur, module ou actionneur** ajouté / retiré d'un projet | firmware concerné, `achats/inventaire.py` (`OFF`, consignes), `fritzing/generate_fritzing.py` (`WIRING`, régénérer), pose sur la carte, `ALIMENTATION.md` si la consommation change | `achats --check`, `fritzing --check`, Firmware CI |
+| **Profil d'alimentation** (source, régulateur, batterie) | `ALIMENTATION.md`, consignes `achats/inventaire.py` (`JUMPER_STATE`, `OFF`) + `achats/classeur.py`, `fritzing/` (chaîne d'alimentation dessinée), `README.md`, simulations d'alimentation, seuils firmware (veille d'urgence, délestage) | `achats --check`, `fritzing --check`, simulations |
 | **Code d'un firmware** | version + `VERSION.md` (skill `bump-firmware-version`), `shared/` si mutualisable, `firmwares.manifest.json` si la topologie change, brochage carte si une broche bouge (ligne ci-dessus) | Firmware CI, tests natifs |
 | **Contrat API / OTA / HMAC** (clés JSON, routes, signature) | firmware(s) + **n3_serveur** + `docs/` (garder l'alignement des deux dépôts) | tests natifs `shared/` |
 | **Prix ou fournisseur** | `achats/prix.py` (et sa `DATE`), puis `python3 achats/build_achats.py` | — |

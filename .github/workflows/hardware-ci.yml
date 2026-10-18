@@ -3,7 +3,8 @@ name: Hardware CI (n3-universal)
 # Gardes de la carte universelle (hardware/n3-universal), rev 0.2.2.
 # Job 1 (rapide, Python seul + ngspice) : orientation des MOSFET, cohérence firmwares <-> PCB,
 #   sérigraphie, corps 3D, rôles, banc SPICE sur la netlist exportée par KiCad,
-#   liste d'achats synchronisée avec la BOM (achats/build_achats.py --check).
+#   liste d'achats synchronisée avec la BOM (achats/build_achats.py --check), vues Fritzing
+#   synchronisées avec le PCB et l'inventaire (fritzing/generate_fritzing.py --check).
 # Job 2 (KiCad 10 via PPA, ~15 min) : ERC, DRC avec parité schéma (0 erreur exigée),
 #   champs Sim.* sur les empreintes, capacités JLCPCB 2 oz, régénération des gerbers
 #   (vérifie que l'export passe le DRC bloquant d'export_fab.py).
@@ -50,6 +51,9 @@ jobs:
       - name: Liste d'achats synchronisée avec la BOM (achats/quantites.csv)
         working-directory: hardware/n3-universal
         run: python3 achats/build_achats.py --check
+      - name: Vues de câblage Fritzing synchronisées (fritzing/cablage.csv)
+        working-directory: hardware/n3-universal
+        run: python3 fritzing/generate_fritzing.py --check
       - name: Banc SPICE — rail capteurs sur la netlist KiCad (rail coupé GPIO13 bas)
         working-directory: hardware/n3-universal
         run: python3 simulation/bench_kicad_netlist.py

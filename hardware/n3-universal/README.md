@@ -273,6 +273,10 @@ les fentes, textes serrés), sans effet électrique. Détail et tableau : audit 
   prix des boutiques marocaines et liens), générée depuis `BOM.csv` par
   `python3 achats/build_achats.py` ; `quantites.csv` en est la photographie texte, comparée en
   CI (`--check`) : la CI échoue si la BOM change sans que la liste d'achats suive.
+- `fritzing/` — **vues de câblage Fritzing, une par profil** (msp1, n3pp, ffp5cs 230 V,
+  ffp5cs 12 V) : carte à l'échelle depuis le PCB routé (posé / non posé, cavaliers, zone 230 V)
+  + périphériques et alimentation du profil reliés aux bons borniers ; aperçus PNG ;
+  `python3 fritzing/generate_fritzing.py` (`--check` en CI). Voir `fritzing/README.md`.
 
 ### Propagation des changements (règle)
 
@@ -280,9 +284,9 @@ Tout changement de composant, de valeur, de brochage ou de pose se répercute **
 commit** sur tout ce qui en dépend — voir la table « Propagation des changements » du
 `CLAUDE.md` à la racine du dépôt. Pour cette carte : `generator/generate.py` (source) →
 schéma, PCB (reroutage si le cuivre change), `BOM.csv`, `kicad/n3u_sim.lib`, champs Sim du PCB,
-gerbers/exports, `achats/` (inventaire, prix, classeur), `COMMANDE.md` (colis LCSC),
+gerbers/exports, `achats/` (inventaire, prix, classeur), `fritzing/` (vues de câblage), `COMMANDE.md` (colis LCSC),
 `COMPOSANTS_FFP5CS.csv`, `ALIMENTATION.md`, `simulation/`, `pinmap_universel_propose.json` et
-les sections `PINMAP_UNIVERSAL` des firmwares ; puis les gardes (`tools/`, `achats --check`).
+les sections `PINMAP_UNIVERSAL` des firmwares ; puis les gardes (`tools/`, `achats --check`, `fritzing --check`).
 
 ### Connaître le rôle d'un composant depuis KiCad
 

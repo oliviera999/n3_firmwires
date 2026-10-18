@@ -237,7 +237,16 @@ POSE_NOTE = {
         "J25": "Sonde bus 12 V (JP12 en 1-2, ratio 118/18) : facultatif, aucun firmware ne la lit aujourd'hui.",
     },
 }
-JUMPERS = {"msp1": 7, "n3pp": 3, "ffp_230": 5, "ffp_12v": 6}  # cavaliers posés (cf. POSE_NOTE)
+# Position des cavaliers par profil (source structurée : classeur, vues Fritzing, gardes).
+# "1-2" / "2-3" = cavalier posé entre ces broches ; absent = sans cavalier (JP5-JP10 : AUTO ;
+# JP13-JP21 : OUVERT). JP1 en "2-3" = cavalier parqué (broche 3 non câblée) = rail commuté.
+JUMPER_STATE = {
+    "msp1": {"JP1": "2-3", "JP12": "2-3", "JP16": "1-2", "JP17": "1-2", "JP18": "1-2", "JP19": "1-2", "JP21": "1-2"},
+    "n3pp": {"JP1": "2-3", "JP12": "2-3", "JP20": "1-2"},
+    "ffp_230": {"JP1": "1-2", "JP13": "1-2", "JP14": "1-2", "JP15": "1-2", "JP20": "1-2"},
+    "ffp_12v": {"JP1": "1-2", "JP12": "1-2", "JP13": "1-2", "JP14": "1-2", "JP15": "1-2", "JP20": "1-2"},
+}
+JUMPERS = {p: len(v) for p, v in JUMPER_STATE.items()}  # cavaliers posés par profil
 
 
 def board_items(prof):
