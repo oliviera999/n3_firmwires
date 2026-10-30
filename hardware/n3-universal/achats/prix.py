@@ -1,7 +1,8 @@
 """Prix relevés le 18/10/2026 sur les boutiques marocaines (DH, tels qu'affichés).
 Mettre DATE à jour à chaque nouveau relevé.
 id: (fournisseur, prix du lot DH ou None, taille du lot, unité de vente, lien, source, remarque)
-source : "Maroc" ou "Import LCSC" (colis combiné avec la commande JLCPCB, COMMANDE.md §2)."""
+source : "Maroc" ou "Import LCSC" (pas de colis LCSC vers le Maroc depuis le 30/10/2026 :
+port UPS ≥ 104,72 $, COMMANDE.md §2)."""
 
 DATE = "18/10/2026"
 
@@ -38,9 +39,9 @@ PRIX = {
     "BAT85": (MS, 2.00, 1, "pièce", "https://www.moussasoft.com/produit/bat-85-diode-schottky-30v-200ma/", "Maroc",
               "Boîtier DO-34, se pose sur les trous DO-35. BAT43/42/54 introuvables au Maroc."),
     "TVS_6V8": ("LCSC", None, 1, "pièce", "https://www.lcsc.com/search?q=C412500", "Import LCSC",
-                "Introuvable au Maroc : LCSC C412500 (repli P6KE6.8A C409413), colis combiné JLCPCB."),
+                "Introuvable au Maroc le 18/10 : redemander (P6KE6.8A accepté, DO-15) ou AliExpress ; LCSC C412500 hors de prix en port vers le Maroc (COMMANDE.md §2)."),
     "TVS_18": ("LCSC", None, 1, "pièce", "https://www.lcsc.com/search?q=C1666858", "Import LCSC",
-               "Introuvable au Maroc : LCSC C1666858. Ne pas remplacer par une 15 V."),
+               "Introuvable au Maroc le 18/10 : redemander (P6KE18A accepté) ou AliExpress ; LCSC C1666858 hors de prix en port (COMMANDE.md §2). Ne pas remplacer par une 15 V."),
     "Z15": (MP, 2.00, 1, "pièce", "https://www.microplanet.ma/produit/diode-zener-14-valeurs-3-3v-30v-1w/", "Maroc",
             "Zener 1 W, variante 15 V (équivalent 1N4744A)."),
     "BC337": (A2, 1.00, 1, "pièce", "https://a2itronic.ma/product/bc337-40-npn-45v-800ma-2/", "Maroc",

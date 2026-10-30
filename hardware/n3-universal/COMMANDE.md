@@ -80,25 +80,35 @@ Carte 100 % traversante, ~35 références *Extended* → loading fees qui domine
 prévisualisation dans `exports/pcba/` (BOM socle + CPL ; ne JAMAIS faire poser les
 conditionnelles ni PS1/A1/A2). Détails : `exports/pcba/README.md`.
 
-## 2. Le colis d'import (LCSC, expédition combinée avec le PCB)
+## 2. Le colis d'import LCSC — abandonné pour le Maroc (2026-10-30)
 
-Principe : **un seul colis** LCSC + JLCPCB ; le Maroc n'a pas de franchise douanière → droits + TVA ≈ 23 % de la valeur
+Principe d'origine : **un seul colis** LCSC + JLCPCB ; le Maroc n'a pas de franchise douanière → droits + TVA ≈ 23 % de la valeur
 + frais de dédouanement DHL. Les modules ESP32 **ne s'importent pas** (homologation ANRT) :
 achat local (§3).
 
-**Commande du 2026-10-30** : la liste d'achats (`achats/`, prix marocains relevés le 18/10)
-ne fait venir de LCSC que les deux TVS introuvables au Maroc — panier : **C412500 × 5**
-(1.5KE6.8A, minimum de vente 5, 1,93 $) et **C1666858 × 2** (1.5KE18A-B, 1,07 $), plus 3 $
-de frais de manutention (panier < 12 $). Seules, elles coûteraient **104,72 $ de port UPS** :
-l'expédition combinée est donc obligatoire. Procédure (FAQ LCSC « combine LCSC & JLCPCB
-orders ») :
+**Commande du 2026-10-30 — pas de colis LCSC vers le Maroc.** Vérifications faites ce jour
+(comptes connectés, FAQ LCSC « combine LCSC & JLCPCB orders » et « combine orders ») :
 
-1. **Payer d'abord la commande JLCPCB** (même compte, même devise USD), port FedEx.
-2. **Puis payer le panier LCSC** : au paiement, choisir de combiner avec la commande JLCPCB
-   en cours ; le port est recalculé sur le poids total, un éventuel complément est demandé.
-3. Si la commande JLCPCB n'apparaît pas au paiement LCSC (ou si LCSC a déjà été payé à part) :
-   écrire à `support@lcsc.com` avec les deux numéros de commande, **avant** l'expédition de
-   la carte. Une fois combinées, les commandes ne se séparent plus.
+- **Le regroupement LCSC + JLCPCB passe par l'entrepôt LCSC de Hong Kong** : la commande
+  JLCPCB doit être livrée à l'adresse de l'entrepôt (Kwai Chung, NT, Hong Kong, 999077 — non
+  modifiable après paiement), puis **LCSC facture le transport international** de l'ensemble.
+  Conditions : même n° client (vérifié : **13313102A** des deux côtés) et même devise (USD,
+  vérifié) ; une fois combinées, les commandes ne se séparent plus.
+- **Tarif LCSC vers le Maroc** (estimation du panier, seul transporteur proposé : UPS) :
+  **104,72 $ pour 1 kg facturé, 133,53 $ pour 1,5 kg** (~58 $/kg au-delà). Les 10 cartes
+  (1,43 kg) + composants (~1,5 kg facturés) passeraient à ~200 $ de port, contre **49,06 $
+  en FedEx direct chez JLCPCB**.
+- **Conséquence** : commander les cartes **chez JLCPCB, livrées directement au lycée en
+  FedEx**, sans regroupement ; **aucune commande LCSC** — même le panier « max composants »
+  (relais, IRF4905, LD1117, borniers… 27,58 $, ~215 DH d'économie sur les pièces) est
+  englouti par les 104,72 $ de port minimum. Tout s'achète au Maroc (`achats/`), sauf :
+  - **TVS D12** (1.5KE6.8A, entrée 5 V, toutes les cartes) et **D8** (1.5KE18A, profil
+    bus 12 V seulement) : introuvables lors du relevé du 18/10. Pistes : redemander dans les
+    boutiques (accepter la série **P6KE6.8A / P6KE18A**, DO-15, mêmes trous — §2 tableau),
+    ou un achat AliExpress ; la carte fonctionne sans elles le temps de les recevoir
+    (protection contre les surtensions seulement, ne pas installer en extérieur sans).
+- Le panier LCSC préparé ce jour (« Cart_20261031021007 », 12 lignes, 27,58 $) reste
+  enregistré dans le compte, non payé, pour une future commande groupée vers un autre pays.
 
 Le tableau ci-dessous reste la **référence de repli** si un composant manque localement.
 Codes LCSC lus sur la page produit le **2026-10-06** (stock à ce jour) :

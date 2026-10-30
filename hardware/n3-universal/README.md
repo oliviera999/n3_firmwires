@@ -30,7 +30,7 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > dossier de fabrication : `exports/gerbers-n3-universal-v0.2.zip`.
 >
 > 📋 **Avant de commander** : lire **[`COMMANDE.md`](COMMANDE.md)** (options exactes du
-> formulaire JLCPCB, devis du 2026-10-30, expédition combinée LCSC + JLCPCB et procédure
+> formulaire JLCPCB, devis du 2026-10-30, pourquoi pas de colis LCSC vers le Maroc, et procédure
 > de devis PCB Maroc) et **[`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md)** (contre-vérification
 > pré-commande : verdict, constats retenus, check-list rev 0.2). Fichiers d'assemblage
 > éventuel : [`exports/pcba/`](exports/pcba/).
