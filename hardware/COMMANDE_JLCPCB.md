@@ -71,10 +71,10 @@ composants du catalogue JLCPCB et un fichier de placement.
 
 | | **n3pp + msp commune** | **ffp5cs 12/24 V** | **ffp5cs 230 V** |
 |---|---|---|---|
-> 🆕 **n3-universal rev 0.2** : `gerbers-n3-universal-v0.2.zip` — 278 × 135 mm, **2 oz
-> obligatoire** (zone secteur 230 V ; déclaré dans le `gbrjob` mais à cocher dans le
-> formulaire), 1,6 mm, **LeadFree HASL**, 19 fentes fraisées, 7 trous M3 dont **H1 et H5 en
-> nylon**, « Specify a location » pour le n° de commande (marqueur au dos). Check-list complète
+> 🆕 **n3-universal rev 0.2.2** : `gerbers-n3-universal-v0.2.2.zip` — 278 × 135 mm, **1 oz**
+> (décision du 2026-10-30 : ≤ 1 kW résistif / 3 A moteur par canal, au lieu du 2 oz de la
+> carte 230 V ≤ 10 A ci-dessous), 1,6 mm, **LeadFree HASL**, 19 fentes fraisées, 7 trous M3
+> dont **H1 et H5 en nylon**, « Remove Mark » (marqueur au dos). Check-list complète
 > et colis d'import : [`n3-universal/COMMANDE.md`](n3-universal/COMMANDE.md).
 
 | Zip | `gerbers-n3pp-msp-commun-v0.2.zip` | `gerbers-ffp5cs-wroom-prod-v0.6.zip` | `gerbers-ffp5cs-wroom-prod-230v-v0.3.zip` |

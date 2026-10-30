@@ -12,8 +12,9 @@ S4 = "Shop4Makers"
 MG = "Megma"
 
 PRIX = {
-    "PCB": ("JLCPCB", None, 1, "carte", "https://jlcpcb.com/", "Import",
-            "Commande unique de 10 cartes : ≈ 55–85 $ les 5 + port (COMMANDE.md) ; prix réel au devis JLCPCB."),
+    "PCB": ("JLCPCB", 917, 10, "lot de 10", "https://jlcpcb.com/", "Import",
+            "Devis du 30/10/2026 : 10 cartes 1 oz 44,05 $ + FedEx 49,06 $ = 93,11 $ ≈ 917 DH (9,85 DH/$), "
+            "hors droits et TVA (≈ 23 %, COMMANDE.md §2)."),
     "ESP32_DEVKIT": (S4, 114, 1, "pièce", "https://shop4makers.com/", "Maroc",
                      "Prix BOM (Shop4Makers « ESP32 Dev Kit V1 Type-C », CP2102). Ne pas importer (ANRT)."),
     # résistances : MicroPlanet, 1 %, toutes les valeurs dont 18k

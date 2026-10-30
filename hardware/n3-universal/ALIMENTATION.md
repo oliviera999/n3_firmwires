@@ -116,7 +116,7 @@ sur ce chemin) ; JP1 fermé (rail capteurs permanent) ; relais, HC-SR04, servos 
 SD, OLED, INA… jamais de sommeil profond (light sleep + modem sleep).
 
 - **Sécurité** : fusible et varistance embarqués, zone secteur isolée (fentes, 3 mm, ligne de
-  fuite 6,4 mm vérifiée par DRC), 2 oz, H1/H5 en vis nylon. Boîtier + presse-étoupes
+  fuite 6,4 mm vérifiée par DRC), cuivre 1 oz (≤ 1 kW résistif / 3 A moteur par canal), H1/H5 en vis nylon. Boîtier + presse-étoupes
   obligatoires ; pas de terre (classe II) — le boîtier doit l'être aussi.
 - **Budget** : Hi-Link 20 W pour ~0,5 A continu (ESP 0,2 + capteurs 0,15 + 2 relais 0,15) et
   des pointes à ~1,5 A (6 relais + Wi-Fi + HC-SR04 + servos) : marge ×2. Les relais collés en

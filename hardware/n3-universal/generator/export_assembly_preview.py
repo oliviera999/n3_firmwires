@@ -383,7 +383,7 @@ Il faut **activer l’assemblage** :
 
 1. Aller sur [jlcpcb.com](https://jlcpcb.com) → **Order now** / Instant Quote.
 2. Uploader **uniquement** `gerbers-n3-universal-v{REV}.zip` (Add gerber file).
-3. Configurer la carte (2 couches, **2 oz**, 1,6 mm, etc.).
+3. Configurer la carte (2 couches, **1 oz**, 1,6 mm, etc.).
 4. **Descendre en bas de page** → section **PCB Assembly** → basculer le
    interrupteur sur **ON** (Economic ou Standard, face Top).
 5. Cliquer **Next** (ne pas payer la PCB avant cette étape).

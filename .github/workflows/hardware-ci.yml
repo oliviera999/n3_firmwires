@@ -6,7 +6,7 @@ name: Hardware CI (n3-universal)
 #   liste d'achats synchronisée avec la BOM (achats/build_achats.py --check), vues Fritzing
 #   synchronisées avec le PCB et l'inventaire (fritzing/generate_fritzing.py --check).
 # Job 2 (KiCad 10 via PPA, ~15 min) : ERC, DRC avec parité schéma (0 erreur exigée),
-#   champs Sim.* sur les empreintes, capacités JLCPCB 2 oz, régénération des gerbers
+#   champs Sim.* sur les empreintes, capacités JLCPCB 1 oz, régénération des gerbers
 #   (vérifie que l'export passe le DRC bloquant d'export_fab.py).
 
 on:
@@ -91,7 +91,7 @@ jobs:
       - name: Champs Sim.* sur les empreintes (parité)
         working-directory: hardware/n3-universal
         run: python3 tools/sync_pcb_sim_fields.py --check
-      - name: Capacités JLCPCB 2 oz
+      - name: Capacités JLCPCB 1 oz
         working-directory: hardware/n3-universal
         run: python3 tools/check_jlcpcb_caps.py
       - name: Export fabrication (DRC bloquant avec parité, gerbers, PDF/SVG)

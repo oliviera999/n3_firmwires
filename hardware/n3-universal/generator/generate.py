@@ -1786,15 +1786,15 @@ def gen_pcb() -> str:
   )
 {layers}
   (setup
-    # Empilage 2 oz : PAS d'entrée F.Paste/B.Paste (couches non activées dans
+    # Empilage 1 oz (décision du 2026-10-30, ex-2 oz) : PAS d'entrée F.Paste/B.Paste (couches non activées dans
     # (layers) : KiCad les prendrait pour des diélectriques, jugerait l'empilage
     # « pas à jour » et le gbrjob perdrait les épaisseurs — vérifié sur kicad-cli 10)
     (stackup
       (layer "F.SilkS" (type "Top Silk Screen"))
       (layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))
-      (layer "F.Cu" (type "copper") (thickness 0.07))
-      (layer "dielectric 1" (type "core") (thickness 1.44) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
-      (layer "B.Cu" (type "copper") (thickness 0.07))
+      (layer "F.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 1" (type "core") (thickness 1.51) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+      (layer "B.Cu" (type "copper") (thickness 0.035))
       (layer "B.Mask" (type "Bottom Solder Mask") (thickness 0.01))
       (layer "B.SilkS" (type "Bottom Silk Screen"))
       (copper_finish "HAL lead-free")

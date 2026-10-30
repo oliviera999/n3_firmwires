@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Garde « capacités JLCPCB » sur le PCB routé — ce que le DRC KiCad ne borne pas
-par défaut, aux minima du fabricant pour une carte 2 couches **2 oz** HASL.
+par défaut, aux minima du fabricant pour une carte 2 couches **1 oz** HASL
+(cuivre 1 oz depuis le 2026-10-30, ex-2 oz : voir COMMANDE.md §1).
 
-Seuils (jlcpcb.com/capabilities, 2 couches, cuivre extérieur 2 oz) :
-  piste / isolement        >= 0,20 mm  (0,127 en 1 oz ; l'isolement est déjà la règle DRC 0,2)
+Seuils (jlcpcb.com/capabilities, 2 couches, cuivre extérieur 1 oz) :
+  piste / isolement        >= 0,127 mm (0,20 en 2 oz ; l'isolement est déjà la règle DRC 0,2)
   perçage mini (PTH/via)   >= 0,20 mm
   via : perçage / diamètre >= 0,30 / 0,45 mm
   anneau (via et pastille) >= 0,13 mm        (= (diamètre - perçage) / 2)
@@ -11,7 +12,7 @@ Seuils (jlcpcb.com/capabilities, 2 couches, cuivre extérieur 2 oz) :
   cuivre - bord de carte   >= 0,30 mm        (DRC KiCad par défaut : 0,50 -> déjà couvert)
   fente fraisée (largeur)  >= 0,65 mm        (fentes d'isolement et porte-fusible : Edge.Cuts)
   sérigraphie : trait >= 0,15 mm (défaut), hauteur de texte >= 1,0 mm (avertissement seulement)
-  job Gerber : épaisseur de cuivre 0,07 mm (2 oz) dans le .gbrjob, 10 fichiers dans le zip
+  job Gerber : épaisseur de cuivre 0,035 mm (1 oz) dans le .gbrjob, 10 fichiers dans le zip
 
 Usage : <python KiCad> tools/check_jlcpcb_caps.py [--zip exports/gerbers-...zip]   (code 1 si défaut)
 """
@@ -33,8 +34,8 @@ import generate as G  # noqa: E402
 PCB = ROOT / "kicad" / f"{G.PROJECT}.kicad_pcb"
 MM = 1e6  # unités internes KiCad (nm) -> mm
 
-LIM = dict(track=0.20, drill=0.20, via_drill=0.30, via_dia=0.45, annular=0.13, hole2hole=0.50,
-           slot=0.65, silk_w=0.15, silk_h=1.0, copper_oz_mm=0.07)
+LIM = dict(track=0.127, drill=0.20, via_drill=0.30, via_dia=0.45, annular=0.13, hole2hole=0.50,
+           slot=0.65, silk_w=0.15, silk_h=1.0, copper_oz_mm=0.035)
 
 
 def main() -> int:
@@ -48,7 +49,7 @@ def main() -> int:
     wmin = min(t.GetWidth() for t in tracks) / MM
     notes.append(f"piste la plus fine : {wmin:.3f} mm ({len(tracks)} segments)")
     if wmin < LIM["track"]:
-        errors.append(f"piste {wmin:.3f} mm < {LIM['track']} mm (2 oz)")
+        errors.append(f"piste {wmin:.3f} mm < {LIM['track']} mm (1 oz)")
 
     # --- vias -----------------------------------------------------------------
     holes = []  # (x, y, rx, ry) : trou approximé par son rectangle englobant (mm)
@@ -164,7 +165,7 @@ def main() -> int:
             notes.append(f"{zips[-1].name} : {len(names)} fichiers, cuivre {sorted(th)} mm, "
                          f"{size.get('X')} x {size.get('Y')} mm, {j.get('GeneralSpecs', {}).get('LayerNumber')} couches")
             if th != {LIM["copper_oz_mm"]}:
-                errors.append(f"job Gerber : épaisseur de cuivre {sorted(th)} != {LIM['copper_oz_mm']} mm (2 oz)")
+                errors.append(f"job Gerber : épaisseur de cuivre {sorted(th)} != {LIM['copper_oz_mm']} mm (1 oz)")
 
     for n in notes:
         print("  ", n)
@@ -173,7 +174,7 @@ def main() -> int:
         for e in errors:
             print("  -", e)
         return 1
-    print("\nOK : capacités JLCPCB 2 oz respectées")
+    print("\nOK : capacités JLCPCB 1 oz respectées")
     return 0
 
 

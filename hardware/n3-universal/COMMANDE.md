@@ -4,7 +4,7 @@
 > jamais coupé —, servos sur le 5 V commuté, D5 en pont de fil, R39 = 18k ; voir README §0.2.2,
 > [`simulation/SIMULATION.md`](simulation/SIMULATION.md) et [`ALIMENTATION.md`](ALIMENTATION.md)),
 > carte reroutée et revalidée. **Fichier à envoyer : `exports/gerbers-n3-universal-v0.2.2.zip`**
-> (7 couches + PTH/NPTH + `gbrjob` portant l'empilage 2 oz ; DRC KiCad 10 : 0 erreur, 0 écart
+> (7 couches + PTH/NPTH + `gbrjob` portant l'empilage **1 oz** ; DRC KiCad 10 : 0 erreur, 0 écart
 > de parité, règle de ligne de fuite 6,4 mm comprise). Les zips 0.1.x et 0.2 sont périmés et
 > retirés de `exports/`.
 >
@@ -12,18 +12,26 @@
 
 ## 0. AVANT de payer — ce que le dépôt ne peut pas faire à ta place
 
-1. **JLCDFM** (`dfm.jlcdfm.com`, gratuit) sur `gerbers-n3-universal-v0.2.2.zip`. Attendu :
-   aucune ligne *Danger*. Restent acceptables en *Warning* : « silkscreen line width »
-   (petits textes 0,12-0,15 mm) et « slot » sur les 19 fentes d'isolement (1,0 mm = minimum
-   JLCPCB exact). Toute autre ligne → ne pas commander, ouvrir une issue avec le rapport.
+1. **JLCDFM** (`jlcdfm.com`, gratuit) sur `gerbers-n3-universal-v0.2.2.zip` — **fait le
+   2026-10-30** : 9 fichiers reconnus, tout le cuivre au vert (écarts de pistes, anneaux,
+   trou ↔ piste, pastilles, bord de carte, vernis). Lignes *Danger* **attendues** (aucune ne
+   touche au cuivre) :
+   - 2 × « tht to smd » : empreinte double de **D11** (DO-35 **ou** SOD-123, une seule posée) ;
+   - 21 × « silkscreen to hole » (0-0,09 mm) : sérigraphie contre des **vias 0,35 mm tentés**
+     (vernis), plus un trou 0,5 mm ;
+   - 19 × « silkscreen to pad » (0,08-0,13 mm, aucun chevauchement) : l'usine efface l'encre
+     au ras des pastilles.
+   *Warnings* attendus : « silkscreen line width » (traits 0,15 mm = minimum exact) et
+   2 « short slot » 1,4 mm (fentes du porte-fusible F1). Toute **autre** ligne → ne pas
+   commander, ouvrir une issue avec le rapport.
 2. **Vue 3D dans KiCad** (`kicad/n3-universal.kicad_pro`, Alt+3) : vérifier à l'œil les deux
    sites A1/A2 (un module enfiché à la fois, antennes vers l'extérieur), la rangée de
    borniers en bas (ouvertures vers le bord), le coin PSU (F1, RV1, PS1, H5).
 3. **Mesurer un HLK-20M05 réel** si le profil secteur (d) est prévu : l'empreinte suit la
    lib KiCad (colonnes AC/DC à 51 mm) que le dessin p.14 du datasheet contredit (44,7 mm).
    Perçages 1,3 mm : pas de rattrapage possible.
-4. Vérifier au récapitulatif de commande : **2 oz**, **LeadFree HASL**, **278 × 135 mm**,
-   « Remove Order Number : Specify a location ».
+4. Vérifier au récapitulatif de commande : **1 oz**, **LeadFree HASL**, **278 × 135 mm**,
+   « Mark on PCB : Remove Mark ».
 
 ## 1. JLCPCB (https://jlcpcb.com/) — valeurs du formulaire
 
@@ -39,20 +47,30 @@
 | PCB Color | Green | le moins cher / délai mini ; libre |
 | Silkscreen | White | |
 | Surface Finish | **LeadFree HASL** ⚠️ | défaut = HASL **au plomb** — carte manipulée par des élèves |
-| **Outer Copper Weight** | **2 oz** ⚠️⚠️ | **LE piège n°1 : le défaut est 1 oz.** Le `gbrjob` du zip déclare 2 oz, mais le formulaire ne le lit pas : cocher à la main. Zone 230 V (pistes 2,5 mm) et budget résistif calculés en 2 oz. |
+| **Outer Copper Weight** | **1 oz** | défaut du formulaire. **Décision du 2026-10-30, ex-2 oz** (le 2 oz coûtait 58 $ sur 102 $ pour 10 cartes) : pistes contacts 2,5 mm en 1 oz ≈ 4,5 A à +10 °C (IPC-2221, couche externe) — d'où la **règle d'usage du §5 : ≤ 1 kW résistif / 3 A moteur par canal** ; chemin d'alimentation du DevKit 41 mΩ au lieu de 21 mΩ (≈ +10 mV à 0,5 A, négligeable devant la marge de 100-200 mV) ; bus 12 V 26 mΩ au lieu de 13 (≈ 80 mV à 3 A). Bonus : soudure à la main plus facile. Le `gbrjob` déclare 1 oz, mais le formulaire ne le lit pas : vérifier la case. Zone 230 V (pistes 2,5 mm) et budget résistif calculés en 2 oz. |
 | Via Covering | Tented | défaut |
 | Min via hole size | 0.3 mm | défaut sans surcoût |
 | Board Outline Tolerance | ±0.2 mm | fraisage, défaut |
 | **Confirm Production file** | **Yes** | grande carte, 19 fentes internes (+~1 j) |
-| **Remove Order Number** | **Specify a location** ⚠️ | gratuit — `JLCJLCJLCJLC` est déjà placé au dos. |
+| **Mark on PCB** (ex-« Remove Order Number ») | **Remove Mark** | défaut du formulaire en 2026-10, sans surcoût ; `JLCJLCJLCJLC` reste placé au dos au cas où. |
 | Flying Probe Test | Fully Test | défaut, inclus |
 | Gold Fingers / Castellated / Edge Plating | No | |
 
-Surcoûts : 2 oz (principal), surface > 100 mm (hors promo), LeadFree HASL (léger).
-Ordre de grandeur : **~55-85 $ les 5 + port** (~1,2 kg) ≈ 70-110 € livré.
+Surcoûts : surface > 100 mm (hors promo), LeadFree HASL (léger) — le 2 oz n'en fait plus partie.
+
+**Devis du 2026-10-30** (compte connecté, FedEx Express 6-11 jours ouvrés, livraison au
+Lycée Lyautey, 260 Bd Ziraoui, 20000 Casablanca) :
+
+| | 5 cartes | 10 cartes (retenu) |
+|---|---|---|
+| 1 oz | 25,05 $ + 38,66 $ = 63,71 $ | **44,05 $ + 49,06 $ = 93,11 $** |
+| 2 oz (pour mémoire) | 70,65 $ + 38,66 $ = 109,31 $ | 102,05 $ + 56,84 $ = 158,89 $ |
+
+Port DHL / UPS au même moment : 51,59 / 54,05 $ (5 cartes), 70,48 / 79,48 $ (10 cartes).
+Droits + TVA à l'arrivée ≈ 23 % de la valeur (§2).
 
 Conformité aux capacités JLCPCB (page *Capabilities*, 2026-08-28) : pistes ≥ 0,4 mm
-(min 2 oz : 0,16), fentes non plaquées 1,0 mm (= min exact), fentes plaquées 1,0 / 1,3 / 1,6 mm
+(min 1 oz : 0,127), fentes non plaquées 1,0 mm (= min exact), fentes plaquées 1,0 / 1,3 / 1,6 mm
 (min 0,5), perçages 0,35-3,2 mm, NPTH M3 (3,2 mm) séparés, cuivre-bord ≥ 0,5 mm.
 
 ### Assemblage (PCBA) — non recommandé
@@ -64,10 +82,26 @@ conditionnelles ni PS1/A1/A2). Détails : `exports/pcba/README.md`.
 
 ## 2. Le colis d'import (LCSC, expédition combinée avec le PCB)
 
-Principe : **un seul colis** LCSC + JLCPCB (option « combiner avec ma commande JLCPCB » dans
-le panier LCSC) ; le Maroc n'a pas de franchise douanière → droits + TVA ≈ 23 % de la valeur
+Principe : **un seul colis** LCSC + JLCPCB ; le Maroc n'a pas de franchise douanière → droits + TVA ≈ 23 % de la valeur
 + frais de dédouanement DHL. Les modules ESP32 **ne s'importent pas** (homologation ANRT) :
-achat local (§3). Codes LCSC lus sur la page produit le **2026-10-06** (stock à ce jour) :
+achat local (§3).
+
+**Commande du 2026-10-30** : la liste d'achats (`achats/`, prix marocains relevés le 18/10)
+ne fait venir de LCSC que les deux TVS introuvables au Maroc — panier : **C412500 × 5**
+(1.5KE6.8A, minimum de vente 5, 1,93 $) et **C1666858 × 2** (1.5KE18A-B, 1,07 $), plus 3 $
+de frais de manutention (panier < 12 $). Seules, elles coûteraient **104,72 $ de port UPS** :
+l'expédition combinée est donc obligatoire. Procédure (FAQ LCSC « combine LCSC & JLCPCB
+orders ») :
+
+1. **Payer d'abord la commande JLCPCB** (même compte, même devise USD), port FedEx.
+2. **Puis payer le panier LCSC** : au paiement, choisir de combiner avec la commande JLCPCB
+   en cours ; le port est recalculé sur le poids total, un éventuel complément est demandé.
+3. Si la commande JLCPCB n'apparaît pas au paiement LCSC (ou si LCSC a déjà été payé à part) :
+   écrire à `support@lcsc.com` avec les deux numéros de commande, **avant** l'expédition de
+   la carte. Une fois combinées, les commandes ne se séparent plus.
+
+Le tableau ci-dessous reste la **référence de repli** si un composant manque localement.
+Codes LCSC lus sur la page produit le **2026-10-06** (stock à ce jour) :
 
 | Pièce (repères) | Qté / 5 cartes | LCSC | Note |
 |---|---|---|---|
@@ -113,23 +147,27 @@ LD1117V33, 1.5KE, relais Songle) sont tous dans le colis.
 ## 4. PCB Maroc (https://pcbmaroc.com/) — devis email obligatoire
 
 Le configurateur en ligne **ne propose ni poids de cuivre, ni finition, ni fentes internes** :
-une commande standard produirait une carte 1 oz non conforme au dossier 230 V. Procédure :
+une commande standard ne garantit ni la finition sans plomb ni les fentes internes. Procédure :
 
 1. Email à `contact@pcbmaroc.com` (+212 602 714-499, Technopark Tanger) avec le zip
    gerbers **et** ce cahier des charges explicite :
    - 278 × 135 mm, 2 couches, FR-4 1,6 mm ;
-   - **cuivre extérieur 2 oz (70 µm) impératif** (déclaré dans le `gbrjob`) ;
+   - cuivre extérieur **1 oz (35 µm)** (déclaré dans le `gbrjob`) ;
    - **19 fentes internes fraisées** (1,0 et 2,0 mm de large) — fonction : isolement 230 V ;
    - 7 trous **non métallisés** 3,2 mm ; fentes **plaquées** (jack 1,0 / fusible 1,6 × 3,0) ;
    - finition **sans plomb** (LeadFree HASL), tolérance contour ±0,2 mm ;
    - retirer le texte `JLCJLCJLCJLC` du dos (spécifique JLCPCB) ou l'ignorer.
 2. Exiger une **confirmation écrite point par point** avant paiement.
-3. Sans confirmation du 2 oz et des fentes internes → commander chez JLCPCB.
+3. Sans confirmation des fentes internes et de la finition → commander chez JLCPCB.
+
+Calculateur en ligne au 2026-10-30 (2 couches, 278 × 135 mm, options non précisées) :
+598 DH HT les 5, 1 088 DH HT les 10 — prix final sur devis sous 2 jours ouvrés.
 
 ## 5. Rappels de sécurité
 
-- Relais SRD **Form C : 7 A / 240 VAC réels** (10 A seulement en 125 VAC / Form A) —
-  ne pas dépasser ~1,5 kW / 230 V par canal ; 3 A inductif.
+- Relais SRD **Form C : 7 A / 240 VAC réels** (10 A seulement en 125 VAC / Form A), mais
+  c'est le **cuivre 1 oz** qui fixe la limite de la carte : **≤ 1 kW résistif (≈ 4,5 A) et
+  ≤ 3 A moteur (pompe) par canal**. Au-delà (gros chauffage), piloter un contacteur externe.
 - **H1 et H5 : vis nylon** (coin relais et coin secteur) ; les 5 autres trous en métal.
 - **JP5-JP10 : livrer SANS cavalier** (= AUTO). 1-2 force ON, 2-3 force OFF. **JP7 (chauffage K3) n'a pas de broche ON** : c'est voulu.
 - Poser le porte-fusible **à capot** (C3131) plutôt que des clips nus si la carte est en

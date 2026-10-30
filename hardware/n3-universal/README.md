@@ -30,10 +30,17 @@ site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
 > dossier de fabrication : `exports/gerbers-n3-universal-v0.2.zip`.
 >
 > 📋 **Avant de commander** : lire **[`COMMANDE.md`](COMMANDE.md)** (options exactes du
-> formulaire JLCPCB — dont le **2 oz obligatoire**, non porté par les gerbers — et procédure
+> formulaire JLCPCB, devis du 2026-10-30, expédition combinée LCSC + JLCPCB et procédure
 > de devis PCB Maroc) et **[`AUDIT-2026-08-28.md`](AUDIT-2026-08-28.md)** (contre-vérification
 > pré-commande : verdict, constats retenus, check-list rev 0.2). Fichiers d'assemblage
 > éventuel : [`exports/pcba/`](exports/pcba/).
+>
+> 🔶 **Cuivre 1 oz depuis le 2026-10-30** (ex-2 oz, −58 $ sur 10 cartes) : les charges réelles
+> (pompes, chauffage d'aquarium ≤ 300 W) sont loin de la limite des pistes contacts 2,5 mm en
+> 1 oz (≈ 4,5 A à +10 °C). Règle d'usage : **≤ 1 kW résistif / 3 A moteur par canal**
+> (`COMMANDE.md` §1 et §5). Seul le `gbrjob` du zip change ; les 9 couches de fabrication
+> v0.2.2 sont identiques octet pour octet. JLCDFM v0.2.2 passé, lignes attendues listées
+> dans `COMMANDE.md` §0.
 >
 > 🧭 [`EVOLUTIONS_PROPOSEES.md`](EVOLUTIONS_PROPOSEES.md) : l'étude du sélecteur AUTO / ON,
 > du retour d'état et de la connectique — **décisions actées le 2026-10-06 et appliquées
@@ -150,7 +157,7 @@ borniers KF301, TO-220 courants).
 | Transistors TO-92 | pas 1,27 (perçage 0,75) | **pas 2,54 en ligne**, perçage 1,0, brochage `C B E` sérigraphié | soudure facile, BC337/2N2222/S8050 |
 | Fusible F1 | clips 5×20 seuls | **empreinte universelle** : clips (pas 22,5-22,6) **ou** porte-fusible à capot BLX-A (pas 22,0) sur fentes 3 mm | capot = pas de 230 V accessible |
 | Isolement 230 V | plan GND à 6,5 mm, clearance 3 mm | idem + **règle `mains_creepage` 6,4 mm** (DRU, moteur creepage KiCad 10) + mini-fentes COM allongées à y83 | ligne de fuite mesurée, plus estimée |
-| Fabrication | 2 oz à cocher à la main | 2 oz **porté par l'empilage** (`gbrjob`) ; HAL sans plomb | le fabricant lit l'épaisseur dans le job |
+| Fabrication | 2 oz à cocher à la main | 2 oz **porté par l'empilage** (`gbrjob`) ; HAL sans plomb (→ **1 oz** depuis le 2026-10-30) | le fabricant lit l'épaisseur dans le job |
 | Mécanique | 5 trous M3, 278 × 120 | **7 trous M3** (H1/H5 nylon), **278 × 135 mm**, points de test TP1-TP4 (3V3, 3V3_SW, 5V, GND) | montage sur plaque, mesure au multimètre |
 | Carte D11 | BAT85 DO-35 | **empreinte double** DO-35 **ou** SOD-123 (BAT43W C19167) | BAT85 traversant épuisé chez LCSC |
 
@@ -185,7 +192,7 @@ generator/route_universal.py Routage : secteur EN DUR (relais + PSU), freeroutin
 generator/tidy_silkscreen.py Écarte libellés puis repères des pads, fentes, contours ET des
                              courtyards des autres composants
 generator/export_fab.py      DRC bloquant (parité schéma comprise) puis gerbers 7 couches +
-                             perçages + gbrjob (empilage 2 oz) + PDF/SVG
+                             perçages + gbrjob (empilage 1 oz) + PDF/SVG
 generator/export_assembly_preview.py  BOM/CPL JLCPCB + NextPCB (prévisualisation PCBA)
 generator/finalize_board.py  ⛔ obsolète (retouches 0.1 → 0.1.2), conservé pour l'historique
 tools/check_pinmap_vs_firmware.py  Garde anti-dérive : 3 firmwares x 2 sites + topologies
@@ -196,7 +203,7 @@ tools/check_fet_orientation.py     Rev 0.2.1 : orientation D/S de chaque P-MOSFE
 tools/annotate_pcb_roles.py        Rôle par firmware dans le champ Description des empreintes
 tools/sync_pcb_sim_fields.py       Rev 0.2.1 : champs Sim.* du schéma recopiés sur les empreintes (parité DRC)
                                    — Python de KiCad ; --check en CI
-tools/check_jlcpcb_caps.py         Rev 0.2.1 : minima JLCPCB 2 oz (pistes, vias, anneaux, trou à trou, fentes,
+tools/check_jlcpcb_caps.py         Rev 0.2.1 : minima JLCPCB 1 oz (pistes, vias, anneaux, trou à trou, fentes,
                                    sérigraphie, épaisseur de cuivre du .gbrjob) — Python de KiCad
 simulation/                        Rev 0.2.1 : banc SPICE ngspice (models.lib, sim1-4, bench_kicad_netlist.py,
                                    SIMULATION.md) ; kicad/n3u_sim.lib généré pour le simulateur KiCad
@@ -226,7 +233,7 @@ creepage 6,4 mm et plans 6,5 mm ; écart secteur/logique mesuré 3 mm : 0 violat
 à 6,50 mm du secteur ; 62 avertissements de sérigraphie (contours des relais sur
 les fentes, textes serrés), sans effet électrique. Détail et tableau : audit §14.
 
-- **Carte 278 × 135 mm, 2 oz** — zone secteur en bande haute (6 relais + coin PSU
+- **Carte 278 × 135 mm, 1 oz** (≤ 1 kW résistif / 3 A moteur par canal) — zone secteur en bande haute (6 relais + coin PSU
   Hi-Link, fentes fraisées), logique en dessous, rangée de borniers en bande basse.
   La frontière fraisée **y71-73 n'existe qu'au coin PSU** : dans la bande relais les
   broches de contact 230 V descendent jusqu'à y79,5, et c'est le plan GND repoussé à
@@ -472,4 +479,4 @@ ffp5cs v15.29 (clés Ffp3GpioMap 16/18/2/15/23/25 restaurées dans
 ras du haut de plage bus 12 V (15,5 V) — acceptable car la batterie plomb tient
 le bus ; en cas d'égalisation > 15 V fréquente, monter une P6KE20A (et C5 35 V).
 Le net `+3V3` amont (0,4 mm) est court et ne porte que le courant du rail
-capteurs (~0,1 Ω en 2 oz) ; les modules socketés embarquent leur découplage.
+capteurs (~0,2 Ω en 1 oz, quelques mV) ; les modules socketés embarquent leur découplage.

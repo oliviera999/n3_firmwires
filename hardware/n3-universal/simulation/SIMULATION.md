@@ -199,7 +199,7 @@ ou 4,8 V / 0,5 Ω ; C1 1000 µF (ESR 80 mΩ) + C2 470 µF (ESR 120 mΩ).
 - **TVS / zener** : diodes avec Vbr et pente dynamique datasheet, coude approximatif.
 - **ESP32** : source de courant (80 mA + rafales 350 mA) ; les transitoires internes au
   DevKit (AMS1117 réel, condensateurs du module) ne sont pas modélisés.
-- Ni le routage (résistance des pistes, ~0,1 Ω en 2 oz sur +3V3, négligeable), ni la
+- Ni le routage (résistance des pistes, ~0,2 Ω en 1 oz sur +3V3, négligeable), ni la
   thermique réelle, ni la CEM.
 
 ## Reproduire
