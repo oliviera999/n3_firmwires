@@ -23,7 +23,7 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 - le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
   demeure la variante secteur (sécurité, 2 oz, distances de fuite).
 
-> 🟢 **Rev 0.2 (2026-10-07) = version à commander** — régénérée de bout en bout (schéma,
+> 🟢 **Rev 0.2 (2026-10-07)** (→ remplacée par la 0.2.2 puis la 0.2.3) — régénérée de bout en bout (schéma,
 > placement, routage, gerbers 2 oz) après la contre-vérification de la 0.1.2 (audit §13 :
 > repères de sérigraphie décalés, J29/J30 sous le DevKit, Q7 NDP6020P introuvable). Ce qui
 > change et pourquoi : tableau « 0.1.2 → 0.2 » ci-dessous ; contrôles : audit §14 ;
@@ -35,12 +35,15 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 > pré-commande : verdict, constats retenus, check-list rev 0.2). Fichiers d'assemblage
 > éventuel : [`exports/pcba/`](exports/pcba/).
 >
+> 🟢 **Rev 0.2.3 (2026-10-31) = version à commander** : site A1 en **ESP32 DevKitC 38 broches**,
+> rangées droites d'A1 et A2 doublées 25,4 / 22,86 mm, carte reroutée (section « Rev 0.2.3 »
+> ci-dessous). Fichier : `exports/gerbers-n3-universal-v0.2.3.zip` ; le zip 0.2.2 est périmé.
+>
 > 🔶 **Cuivre 1 oz depuis le 2026-10-30** (ex-2 oz, −58 $ sur 10 cartes) : les charges réelles
 > (pompes, chauffage d'aquarium ≤ 300 W) sont loin de la limite des pistes contacts 2,5 mm en
 > 1 oz (≈ 4,5 A à +10 °C). Règle d'usage : **≤ 1 kW résistif / 3 A moteur par canal**
-> (`COMMANDE.md` §1 et §5). Seul le `gbrjob` du zip change ; les 9 couches de fabrication
-> v0.2.2 sont identiques octet pour octet. JLCDFM v0.2.2 passé, lignes attendues listées
-> dans `COMMANDE.md` §0.
+> (`COMMANDE.md` §1 et §5). Empilage 1 oz porté par le `gbrjob` du zip. Résultats JLCDFM
+> (v0.2.3) et lignes attendues dans `COMMANDE.md` §0.
 >
 > 🧭 [`EVOLUTIONS_PROPOSEES.md`](EVOLUTIONS_PROPOSEES.md) : l'étude du sélecteur AUTO / ON,
 > du retour d'état et de la connectique — **décisions actées le 2026-10-06 et appliquées
@@ -53,6 +56,37 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 > Corrigé dans `generate.py` (source = +5V, drain = LDO_IN), schéma + BOM régénérés, garde
 > `tools/check_fet_orientation.py`, champs `Sim.*` (schéma simulable dans KiCad). **Le PCB
 > routé n'est pas encore à jour** : voir « Rev 0.2.1 » ci-dessous.
+
+## Rev 0.2.3 — site A1 en DevKitC 38 broches (2026-10-31) : carte reroutée
+
+Les modules WROOM disponibles sont des **ESP32 DevKitC 38 broches** (rangées mesurées à **25,4 mm**
+d'axe en axe), plus un clone S3 DevKitC-1 double USB-C. Le site A1 de la 0.2.2 (DevKit V1
+30 broches) ne les acceptait pas. Firmwares inchangés : chaque fonction garde son GPIO, seules les
+positions physiques des pastilles changent (garde `check_pinmap_vs_firmware` étendue).
+
+| Changement | Pourquoi | Conséquence d'usage |
+|---|---|---|
+| **A1 = empreinte `ESP32_DevKitC_38pin`** (2 × 19, pas 2,54) : rangée gauche x 100, **rangée droite doublée** à 25,4 mm (principale) **et** 22,86 mm (secours), pontées pastille à pastille | 25,4 mm mesuré sur les modules ; 22,86 mm = autre largeur courante des clones 38 broches | barrettes femelles 1×19 : la gauche, et la droite dans la rangée qui correspond au module (25,4 par défaut) ; **ne jamais garnir les deux rangées droites** |
+| **A2 (S3 DevKitC-1, 2 × 22)** : rangée droite aussi doublée 25,4 / 22,86 | les clones S3 existent dans les deux largeurs | idem : une seule rangée droite garnie |
+| Brochage A1 (DevKitC) : GPIO 6-11 (flash) et GPIO0 **non câblés** ; EN, 3V3, 5V, GND aux positions DevKitC | broches flash interdites ; GPIO0 = boot | garde : `WROOM_FORBIDDEN`, `WROOM_POWER`, rangées doublées sur le même net (`DUP_MISMATCH`) |
+| A1 replacé (100 ; 108,46), A2 (257 ; 129,2), zone interdite d'antenne A1 recalculée | dégagement d'enfichage et d'antenne | `check_pcb_clearance` (couloirs d'enfichage) ✅ |
+| Notes de profil au dos raccourcies (≤ 21 caractères) et recentrées entre les rangées d'A1 | la rangée de secours à 22,86 mm passe sous les anciennes notes | lecture inchangée (« JP1 + JP13-15 fermes »…) |
+
+**Routage 0.2.3** : reroutage complet à blanc (freerouting 2.5.0, ponts des rangées doublées posés
+avant routage) : **0 net non routé** dès la passe 11 ; secteur, vias de couture et thermals régénérés
+par `route_universal.py`. 7 étranglements de freerouting (0,20-0,24 mm) relevés à 0,25 mm et un
+tronçon VBAT_DIV rerouté sous JP12 (écart au pad 3). Bilan : 2 603 segments, 146 vias, 14,1 m de
+piste (0.2.2 : 121 vias, 14,2 m). `tidy_silkscreen` : exception explicite `KEEP_ON_VIAS` (l'étiquette
+« 3V3 » de TP4 reste sur deux vias EN tentés, sinon elle prenait la place du repère TP4).
+
+| Contrôle (KiCad 10.0.8 Linux, 2026-10-31) | Rev 0.2.3 |
+|---|---|
+| ERC | 0 erreur |
+| DRC + parité schéma | **0 erreur, 0 non connecté, 0 écart de parité**, 64 avertissements de sérigraphie (62 en 0.2.2 : textes contre des vias tentés) |
+| `check_mains_gap` / plan GND ↔ secteur | 0 écart < 3 mm ; plans à 6,50 mm |
+| Gardes | `check_fet_orientation` ✅ ; `check_pinmap_vs_firmware` ✅ (tables DevKitC 38, GPIO flash, rangées doublées) ; `check_silk_refs` ✅ ; `check_pcb_clearance` ✅ ; `annotate_pcb_roles --check` ✅ ; `sync_pcb_sim_fields --check` ✅ ; `check_jlcpcb_caps` ✅ ; `tidy_silkscreen` : 0 déplacement ; générateur idempotent ✅ ; `achats --check` ✅ ; `fritzing --check` ✅ |
+| Banc SPICE sur la netlist KiCad | rail capteurs 0 V / 3,30 V ✅ |
+| `exports/` | **gerbers v0.2.3** (`export_fab.py --rev 0.2.3`, DRC bloquant passé), PDF/SVG, BOM/CPL ; zip 0.2.2 retiré |
 
 ## Rev 0.2.2 — décisions d'alimentation (2026-10-17) : carte reroutée
 

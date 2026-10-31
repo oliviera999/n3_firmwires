@@ -1,12 +1,13 @@
-# Commander n3-universal rev 0.2.2 — check-list fabricant et colis
+# Commander n3-universal rev 0.2.3 — check-list fabricant et colis
 
-> Rev **0.2.2 (2026-10-17)** : la 0.2 corrigée après simulation SPICE (Q7 inversé — rail capteurs
-> jamais coupé —, servos sur le 5 V commuté, D5 en pont de fil, R39 = 18k ; voir README §0.2.2,
-> [`simulation/SIMULATION.md`](simulation/SIMULATION.md) et [`ALIMENTATION.md`](ALIMENTATION.md)),
-> carte reroutée et revalidée. **Fichier à envoyer : `exports/gerbers-n3-universal-v0.2.2.zip`**
-> (7 couches + PTH/NPTH + `gbrjob` portant l'empilage **1 oz** ; DRC KiCad 10 : 0 erreur, 0 écart
-> de parité, règle de ligne de fuite 6,4 mm comprise). Les zips 0.1.x et 0.2 sont périmés et
-> retirés de `exports/`.
+> Rev **0.2.3 (2026-10-31)** : la 0.2.2 (Q7 corrigé après simulation SPICE, servos sur le 5 V
+> commuté, D5 en pont de fil, R39 = 18k — voir README §0.2.2,
+> [`simulation/SIMULATION.md`](simulation/SIMULATION.md) et [`ALIMENTATION.md`](ALIMENTATION.md))
+> avec le **site A1 en ESP32 DevKitC 38 broches** et les rangées droites d'A1/A2 doublées
+> 25,4 / 22,86 mm (README §0.2.3), carte reroutée et revalidée. **Fichier à envoyer :
+> `exports/gerbers-n3-universal-v0.2.3.zip`** (7 couches + PTH/NPTH + `gbrjob` portant l'empilage
+> **1 oz** ; DRC KiCad 10 : 0 erreur, 0 écart de parité, règle de ligne de fuite 6,4 mm comprise).
+> Les zips 0.1.x, 0.2 et 0.2.2 sont périmés et retirés de `exports/`.
 >
 > Il n'y aura **qu'une seule commande** : les vérifications locales du §0 sont obligatoires.
 

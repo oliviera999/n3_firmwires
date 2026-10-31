@@ -22,7 +22,7 @@ Sur la page **Order PCB** classique, **il n’y a pas** d’upload BOM/CPL.
 Il faut **activer l’assemblage** :
 
 1. Aller sur [jlcpcb.com](https://jlcpcb.com) → **Order now** / Instant Quote.
-2. Uploader **uniquement** `gerbers-n3-universal-v0.2.2.zip` (Add gerber file).
+2. Uploader **uniquement** `gerbers-n3-universal-v0.2.3.zip` (Add gerber file).
 3. Configurer la carte (2 couches, **1 oz**, 1,6 mm, etc.).
 4. **Descendre en bas de page** → section **PCB Assembly** → basculer le
    interrupteur sur **ON** (Economic ou Standard, face Top).
@@ -66,7 +66,7 @@ Si le BOM est refusé : ouvrir `bom-nextpcb.csv` dans Excel → **Enregistrer so
 
 ## Sans LCSC
 
-- `A1` — ESP32 DevKit V1 / ESP32_DevKit_V1_30pin
+- `A1` — ESP32 DevKitC 38 broches / ESP32_DevKitC_38pin
 - `A2` — ESP32-S3-DevKitC-1 / ESP32_S3_DevKitC_1_44pin
 - `C1` — 1000u/16V / CP_Radial_D10.0mm_P5.00mm
 - `C10` — 100n / C_Disc_D5.0mm_W2.5mm_P5.00mm

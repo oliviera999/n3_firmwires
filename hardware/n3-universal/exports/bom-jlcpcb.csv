@@ -1,5 +1,5 @@
 Comment,Designator,Footprint,LCSC Part #
-ESP32 DevKit V1,A1,ESP32_DevKit_V1_30pin,
+ESP32 DevKitC 38 broches,A1,ESP32_DevKitC_38pin,
 ESP32-S3-DevKitC-1,A2,ESP32_S3_DevKitC_1_44pin,
 1000u/16V,C1,CP_Radial_D10.0mm_P5.00mm,
 100n,"C10,C13,C3,C4,C6,C7,C8,C9",C_Disc_D5.0mm_W2.5mm_P5.00mm,

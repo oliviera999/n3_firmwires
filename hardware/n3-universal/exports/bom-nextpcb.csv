@@ -1,5 +1,5 @@
 S/N,Designator,Quantity,Manufacturer Part Number,Footprint,Comment,Procurement Type,Customer Note
-1,A1,1,ESP32 DevKit V1,ESP32_DevKit_V1_30pin,ESP32 DevKit V1,C,preview: no LCSC — customer supply / placeholder
+1,A1,1,ESP32 DevKitC 38 broches,ESP32_DevKitC_38pin,ESP32 DevKitC 38 broches,C,preview: no LCSC — customer supply / placeholder
 2,A2,1,ESP32-S3-DevKitC-1,ESP32_S3_DevKitC_1_44pin,ESP32-S3-DevKitC-1,C,preview: no LCSC — customer supply / placeholder
 3,C1,1,1000u/16V,CP_Radial_D10.0mm_P5.00mm,1000u/16V,C,preview: no LCSC — customer supply / placeholder
 4,"C10,C13,C3,C4,C6,C7,C8,C9",8,100n,C_Disc_D5.0mm_W2.5mm_P5.00mm,100n,C,preview: no LCSC — customer supply / placeholder

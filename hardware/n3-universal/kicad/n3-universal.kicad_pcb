@@ -59336,17 +59336,6 @@
 			)
 		)
 	)
-	(gr_text "UN SEUL MODULE : A1 OU A2"
-		(at 104 161 0)
-		(layer "F.SilkS")
-		(uuid "d18bb510-2a9c-59b5-97ee-23f5fd4744ef")
-		(effects
-			(font
-				(size 1 1)
-				(thickness 0.16)
-			)
-		)
-	)
 	(gr_text "!! 230V !!"
 		(at 109 84.2 0)
 		(layer "F.SilkS")
@@ -59362,6 +59351,17 @@
 		(at 112.5 87 0)
 		(layer "F.SilkS")
 		(uuid "da5074da-9c25-5063-a328-f24cd72aa90e")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.16)
+			)
+		)
+	)
+	(gr_text "UN SEUL MODULE : A1 OU A2"
+		(at 112.7 160.75 0)
+		(layer "F.SilkS")
+		(uuid "d18bb510-2a9c-59b5-97ee-23f5fd4744ef")
 		(effects
 			(font
 				(size 1 1)
