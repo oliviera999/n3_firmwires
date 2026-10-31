@@ -51,6 +51,10 @@ STEP = 0.25
 EDGE_MARGIN = 0.5       # sérigraphie <-> Edge.Cuts (règle DRC silk_edge_clearance)
 PAD_MARGIN = 0.15       # sérigraphie <-> pad (règle DRC silk_over_copper)
 SILK_MARGIN = 0.1       # sérigraphie <-> sérigraphie (règle DRC silk_overlap)
+# Étiquettes laissées sur des vias tentés plutôt que déplacées (texte, x, y en mm) :
+# rev 0.2.3, « 3V3 » au-dessus de TP4 repose sur 2 vias EN ; sa première place sans via
+# (5 mm plus bas) prenait celle du repère TP4.
+KEEP_ON_VIAS = {("3V3", 236.3, 128.6)}
 
 
 def inflate(box, mm):
@@ -169,7 +173,9 @@ def place(items, fixed_of, obstacles_of, max_shift):
         origin = t.GetPosition()
         owner = t.GetParentFootprint().GetReference() if t.GetParentFootprint() else ""
         found = False
-        for avoid_vias in (True, False):      # repli : accepter un via tenté sous le texte
+        keep = any(t.GetText() == k and abs(TM(origin.x) - x) < 0.01 and abs(TM(origin.y) - y) < 0.01
+                   for k, x, y in KEEP_ON_VIAS)
+        for avoid_vias in ((False,) if keep else (True, False)):      # repli : accepter un via tenté sous le texte
             obs.avoid_vias = avoid_vias
             for dx, dy in cand:
                 t.SetPosition(pcbnew.VECTOR2I(origin.x + FM(dx), origin.y + FM(dy)))

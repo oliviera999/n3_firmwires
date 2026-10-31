@@ -1208,7 +1208,7 @@ PCB_TEXTS = [
     (185.5, 129.5, "SD 1-2=S3", 0.9), (185.5, 132.5, "2-3=WROOM", 0.9),
     # pas de place pour CS/SCK/MOSI/MISO (Q7, JP1, U1, R43-R46 devant, vias derrière) :
     # JP2/JP3/JP4/JP11 = CS/SCK/MOSI/MISO, voir README (tableau des cavaliers) et BOM
-    (224, 128.6, "GND", 0.9), (228, 128.6, "5V", 0.9), (232, 128.6, "3V3SW", 0.9), (236, 128.6, "3V3", 0.9),
+    (224, 128.6, "GND", 0.9), (228, 128.6, "5V", 0.9), (232, 128.6, "3V3SW", 0.9), (236.3, 128.6, "3V3", 0.9),
     (235.5, 136.4, "LDR", 0.9),
     (195, 157.5, "JP16-20 FERME = LDR | OUVERT = sonde sol n3pp, module AO msp", 0.9),
     (157.5, 154, "CMD SENSE", 0.9),
@@ -1219,16 +1219,17 @@ PCB_TEXTS = [
     (250, 41.6, "N", 0.9), (256.8, 41.6, "L", 0.9),
     (44.3, 55, "H1=NYLON", 0.9), (276.8, 65.2, "NYLON", 0.9),
     (253, 52, "SECTEUR 230V", 1.0), (255, 55, "!! DANGER 230V !!", 1.0),
-    # Dos : notes longues sous les modules (zones sans pastille)
-    (112.7, 112, "PROFIL ffp5cs :", 0.9, "B.SilkS"),
-    (112.7, 115, "JP1 ferme, JP13-15 fermes", 0.9, "B.SilkS"),
-    (112.7, 118, "JP20 ferme, JP12 1-2 (12V)", 0.9, "B.SilkS"),
-    (112.7, 125, "PROFIL msp : JP1 ote,", 0.9, "B.SilkS"),
-    (112.7, 128, "JP16-19 + JP21 fermes", 0.9, "B.SilkS"),
-    (112.7, 131, "JP12 2-3 (1S)", 0.9, "B.SilkS"),
-    (112.7, 135, "PROFIL n3pp : JP1 ote,", 0.9, "B.SilkS"),
-    (112.7, 138, "JP20 ferme, JP12 2-3 (1S)", 0.9, "B.SilkS"),
-    (112.7, 142, "autres JP : OUVERTS", 0.9, "B.SilkS"),
+    # Dos : notes longues sous le site A1, entre la rangée gauche (x 100) et la rangée
+    # droite de secours (x 122,86) — ≤ 21 caractères en 0,9 mm (rev 0.2.3)
+    (111.4, 112, "PROFIL ffp5cs :", 0.9, "B.SilkS"),
+    (111.4, 115, "JP1 + JP13-15 fermes", 0.9, "B.SilkS"),
+    (111.4, 118, "JP20 + JP12 1-2 (12V)", 0.9, "B.SilkS"),
+    (111.4, 125, "PROFIL msp : JP1 ote,", 0.9, "B.SilkS"),
+    (111.4, 128, "JP16-19 + JP21 fermes", 0.9, "B.SilkS"),
+    (111.4, 131, "JP12 2-3 (1S)", 0.9, "B.SilkS"),
+    (111.4, 135, "PROFIL n3pp : JP1 ote,", 0.9, "B.SilkS"),
+    (111.4, 138, "JP20 + JP12 2-3 (1S)", 0.9, "B.SilkS"),
+    (111.4, 142, "autres JP : OUVERTS", 0.9, "B.SilkS"),
     (284, 110, "JP1 FERME = rail 3V3 permanent (ffp5cs)", 0.9, "B.SilkS"),
     (284, 113, "JP1 OUVERT = commute par GPIO13 (msp, n3pp)", 0.9, "B.SilkS"),
     (284, 117, "BUS 12V : FUSIBLE LAME 7,5-10A EN AMONT", 0.9, "B.SilkS"),
