@@ -168,6 +168,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bea2833d-5c65-4361-a877-7fb6a8900c67")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "71e28ddf-9add-4c63-9f14-061be5097974")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=4.7k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fc3dcf7e-577c-4958-b287-d961bbf5483d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/101bde63-52ec-58d5-b9e5-e3af0c209503")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -692,6 +725,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "513eab32-72ff-41e8-8875-b6af28f5eb79")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ab46071a-beb4-4d6e-a233-a8225d46af10")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5b4b01b5-672d-4a01-a736-f7177d668aef")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/9c07412b-ade4-5f54-8ff8-f25d3245293d")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -954,6 +1020,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "fd9a6269-5f19-4c65-88d1-5ea272687ee4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "56507dc7-7e99-4c40-9773-adf162aaa5f9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2e268306-c6ab-48bc-ace1-dc2b2081a104")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=1000u"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8c4957fe-180b-442f-9022-f02a2d4ee0f1")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3040,6 +3139,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "PMOS"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6c14e77f-303f-4ecb-82cf-c0b7bde6c6ff")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "VDMOS"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "79c9256b-df19-451f-9c8f-7882e8329010")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b7943ec3-d4d3-41c1-ba82-114fe4a37115")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "IRF4905"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0eee4c81-7f3a-4cb0-9330-b3d8cc71f953")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "26069918-467d-419f-8cee-994dcfde899e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/d2cfe8b5-de73-565d-bb92-b3e6f71ac033")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -3353,6 +3507,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "fca61767-ff84-4074-82f3-29775ef2c75a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2643093b-0211-40ce-9968-c6d4018b4785")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "568dde01-a5f4-490c-96be-55a23624ef7c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3d5c8407-bdb9-4890-8b5f-98c9fe244486")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3889,6 +4076,61 @@
 				(font
 					(size 1.27 1.27)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "df2b4069-ec38-4027-8233-4cb9ad1ac147")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c7b7640c-5dd2-4bd7-8e52-c78bd419cb5b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d9a26516-710e-4083-8b64-9884f1a85804")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f694f993-4910-48c8-a574-8ee4653df45d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "aea44fa9-2bb8-4dae-a8eb-cdf27cd439a0")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -4659,6 +4901,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ba087f6e-8157-4b05-b54c-f3926aabea31")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fe810f6b-2c93-4e67-a0dc-13aeea57585e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7e52f223-63e7-44e3-ad9e-25ca29186f7e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/eb1efea9-e077-54e2-8566-24c6c2ef718a")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -4927,6 +5202,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c7ca2390-6a61-465e-b010-97c2d3b23ab1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a3f8d344-b160-49e2-895e-f1f840fe5f4f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=220"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4f5e354a-0dda-4533-8fe1-dfed01235cce")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/1a764e56-a91d-52c5-8488-5253f53e31f5")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -5189,6 +5497,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "86eee189-9cc9-41d7-82a1-157e2b1110d2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "06f86820-f514-4221-90a3-1e9c5772462b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "de83cd3c-5bb3-4f37-967f-ffcc710ea27a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "de511f2a-1d4f-40ea-bb26-c92f82ad2b59")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5898,6 +6239,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d9b31375-3cb3-4943-8ee8-1e5aecded6f4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9f7244ae-c756-45ec-a674-8262660ad23b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=2k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2e8ca99f-2981-44d5-abdd-a635c3968ce2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/1d8ab2c1-7f44-5d9d-988b-844bb182224c")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -6160,6 +6534,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "38c6059a-82bd-4598-93b5-cfe9d079145c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "63892463-3269-4b0d-b04a-8f1424a00a06")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1ed35f06-374b-4b78-b99d-68091367eea5")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7b6cbac3-c791-4411-af01-d8ae7568fec9")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6433,6 +6840,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c9b3062b-d33c-4b21-9209-fb215b1e86a3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "155b3d33-cd48-4eca-8c3d-8a9324ec752a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8776dc9d-74fd-4bb2-b6ae-6c7bae7e8217")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDRED"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3e69f4c3-a09b-4352-8590-e5ddf0c45a79")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "87c42eea-7362-43f0-b5e1-408809be66a2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/78dcb21a-1f03-57f7-a2c4-3f964caf03b0")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -6639,6 +7101,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "53511f2e-d282-4c52-b52a-729d723d6223")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f37f008f-9e4e-4783-823d-f9b384cd6508")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "01ed6dc3-8cf6-4df3-acfa-53ef523acb7e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "662d8aa9-9c98-4969-b02e-601f4981037a")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6887,6 +7382,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "4b1ffee3-c07a-4cf4-8a5d-84f5ad144d8a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "322a2ed8-c62a-4c3c-a32f-0f11f8df3c12")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ad4ace01-62d9-456c-9faf-ed72f746e414")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0704289a-49b6-424d-930d-725211ec86e9")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7483,6 +8011,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "54ddc43b-822e-4b49-8b06-e1d055da9eab")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e087322d-60e0-4cb9-9a56-fdd412ed6eb3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8eb2df80-2758-458f-8e5c-bcff4c3b73f3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=470u"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7dfadcc0-103f-4ad7-a0bf-ec90eba595f0")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9835,6 +10396,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a8dfa045-105e-47b4-9895-a7bfc1b26e9e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f50fc9f9-3517-4b15-bfa5-2cc66aa9e9d6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4402da64-0e49-4301-ba2e-09222103065d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/4a7b032d-cf06-5380-a72a-dab86fe7555e")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -10468,6 +11062,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "PMOS"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c0c002a1-e55a-4cc9-837e-29c6f456bc5d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "VDMOS"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0f910245-d06b-4c04-876b-462d596e5cb9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f4c613fe-fd09-4f42-9a86-b76a022dc1cf")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "IRF4905"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "326d2854-de94-4070-b638-52e69ee859ba")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "257e69be-80e2-41dc-a749-d3920db9b987")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/404f5024-3f3b-5eae-9ab4-1fa7bdd47dea")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -10806,6 +11455,39 @@
 				(font
 					(size 1 1)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0729d3b6-36ab-4097-89da-985df5d18536")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "580ee9b7-7420-408d-83b7-0304fb29303c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=10u"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "111c73a2-6efa-4891-8a6f-3e06dd1705a8")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -12656,6 +13338,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5f65147e-b6d4-4b5a-bb60-df973b31ccf2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0f0dda72-46b9-4709-a779-3f2c04b8bcbe")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=2k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "92a21851-180e-4ee6-a05b-392595c5dcba")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/acd53aaf-038e-5c19-8f25-096bee083752")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -13164,6 +13879,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "e0bde212-1314-4056-8e2c-eae9e1140dfe")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dfa51d0c-b216-4f16-87dd-4444ba6517a8")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "90fc4763-8af2-45c6-a866-5c9b7c67b20e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a58b3090-c48b-41dc-9b08-342bb09e4a2d")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -13952,6 +14700,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3e80176f-402c-42fa-b8ca-220dd7ff50d4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "43f68230-f7be-47f4-b2b2-05ec426953ec")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6c522665-fa98-4f04-9fd0-ce0bc8e2af9a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e08cf285-0ff2-4831-b232-ae0a0eab96ff")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "de102f73-7c45-4bcc-a415-ffbe1101f949")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/c025e9f6-cf46-533b-b689-bc855d959aa2")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -14694,6 +15497,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c07a7fd9-d45f-413a-8e7c-9e8b19bfd508")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2472424c-4967-427f-8f03-5726436a72e9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a705b953-5c89-414b-bbd6-5375c26deffc")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "Z15"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cb28ef38-4c90-40ad-8622-17fc5b7ade1d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "33ba62c3-e78c-4340-804e-e6db15179c4c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/4767175b-6dd4-5de0-b8d5-46b6dba9c827")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -14981,6 +15839,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "440aab7e-ca99-4bd3-be92-e36e9756936b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "763d6150-4d20-40c1-b947-1021255e3552")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4ba4747e-b274-4222-976a-659d8873f43c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "51ddf48e-a72f-4e74-a351-c65f9335a956")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c81679cc-7884-4b3b-84c0-fc7a59a2f09b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/1d556780-8865-568b-ac5a-a7a3264a79c2")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -15241,6 +16154,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "a68c294f-9b44-434d-af46-9b702da745a5")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "70667421-3fed-4071-ba31-528444c4610a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ae871d58-41ba-4846-bda6-b7013e5f8406")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9ed84d5b-a22e-4a64-8779-224b3af5e247")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -15514,6 +16460,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f241fd5b-f2c6-454b-a809-1029c488d7dc")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a7a6121b-a522-4c0b-9ea7-9e5d9e60ffc8")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fc58a6c2-a679-4762-8e92-859233b7eca6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDRED"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0a45f24d-8057-4d25-8941-9790b9c5d15f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1d4ffae0-d8cb-4fcf-bedd-eac283af0791")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/27099809-56e7-566c-83ea-f28431804144")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -15720,6 +16721,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "aec3c6b3-b273-4aa3-8c42-aab92e8ea9c6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d8244197-3327-4307-866b-cad572fb3e2e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b531c2c3-457b-42a0-9b02-fd2438b6cb97")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=100k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bb93c4d4-f5a0-4f8e-9ff2-4be2512dc4b8")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -15994,6 +17028,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f394d9bd-9b30-4784-b399-2e7e7fe051f7")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9fb82d6e-fff1-4c7a-86e2-78b6529a5a79")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "67ec0bf0-6e0e-4aa8-b5a5-2df95107ddb1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/6ad3e2f4-2a2a-5e97-83ff-fa7c7bb1c24b")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -16256,6 +17323,61 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "8435386e-6627-409b-a880-ae81881f6266")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a7c7986b-63e0-4cac-ac2c-c5e87fc792e1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "113c67d2-0e94-442a-bc13-83e7f1277ef6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3298ec0f-c284-417e-81fb-1f837ff1a9a4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "1N4007"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "57a81175-dec4-42be-bdd5-42e6a4b2c8b7")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dc3c01d7-d425-4351-bf8a-b753adb9801d")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -16606,6 +17728,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "1a53dc0b-ce47-465b-97e9-cddeb42fd73c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "96fc9978-1822-491c-a769-77503c7d759d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6cc0c4a7-045e-4856-a60d-c1558431ac3a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e6cafbd1-27a3-416e-a93d-ffcb6651c95c")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -17315,6 +18470,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "af6173e1-28e1-4547-9df8-1bcae7daf7d1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4b36d296-6ed6-4b5a-85ff-69d172946313")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fea0eab8-de58-4b80-ac6d-5b051f00b7fa")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/5513f548-094e-5170-b69a-4561c4a12e88")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -17577,6 +18765,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "67604455-1646-4863-b391-1e985bd617f4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "43ee53d5-e7a7-4df2-a8c8-7760f1369256")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "108883a2-7630-48c2-84c0-474e446cd22e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "73641810-3ab0-417e-b21f-f6601fe0d600")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18096,6 +19317,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fec51755-c9e2-4dea-8255-8e8af63c50db")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bb64f899-adc4-4d86-a738-72b5d534ac3e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0d412667-c9b0-46ab-9f19-b41ca488e342")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDRED"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cced6075-f7bc-488f-a952-5cef441aea00")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "609ce3db-fe7b-410b-866e-3312952a22c2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/82ea285a-59bf-5570-9d58-ddab6f9f017c")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -18302,6 +19578,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "471f5ccb-eccc-475d-b712-56ebea77603b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6b788bb8-dbdc-4194-b5c9-2993fe139dec")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8f09ea4c-3ad3-43c9-9cd9-dcbd2b07e7b0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d4d01c7d-4bc9-438b-a148-53990eb504da")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18799,6 +20108,61 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "86c4a0f3-c448-4189-9f5b-49cd13d120d0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "79f43ed4-f1e6-4bef-a966-b5e129d15e10")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "88a14ff8-3342-4969-9900-f0f19adc7c0b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a8ec5686-1286-4b58-9a6d-6c9737bf4c43")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "1N4007"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f3ba17f4-b448-4880-93d6-2fc74fa49ba1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "191ec921-450f-4659-85e0-ef7ebdf85d8d")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -19632,6 +20996,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "725ce517-6f52-4504-96cd-44a712a54782")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dcd8f4c6-138b-45b2-8200-d6987c9f5085")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3ffced87-5682-4b39-b95a-5ecb81e24836")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d6834b07-b10f-4329-8d44-ccc827db3fb5")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -20978,6 +22375,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "PMOS"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "43ad6315-f32c-4344-a84a-eb2420adc866")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "VDMOS"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "35e5259d-df4d-448a-9878-54e1a4741032")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5fb09687-5245-45bc-84a8-aab576554897")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "IRF4905"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "132de5d0-6337-4ec4-8335-d578e7745599")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f9341561-38a1-48eb-a524-197ea2a2977f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/23a47317-8ab1-52d7-8a8e-039fe7a24e0c")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -21297,6 +22749,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e2335a0a-8fc7-4a63-bd54-4c5d088e216e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1d2f0200-cf7f-4307-a8a8-90fb0c4705c1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b154ca0b-a476-4f9a-8596-e2c21fb69f6d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/9e4a3a69-2800-5b6f-93a5-40955e55fd03")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -21559,6 +23044,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "a9645b6b-96b4-446f-a5a9-afd2cf29df93")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "66532bfb-f922-486f-9ae2-11f61fb30fb3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e5efc3e1-66a0-4b74-baf7-ea95c7be3753")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bd17fdf8-999b-4dc7-ab79-0cf7f90848aa")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22515,6 +24033,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a64e0c2e-7718-4c94-88d3-ef0c41022c3d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4ff48e4c-6d37-4567-a3da-fe537b010049")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f0d0aad9-c4e9-404a-b606-9527e5eea432")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/f5095f87-e94b-5e46-9e53-6191720b4812")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -22777,6 +24328,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "ca25055f-06a5-4aa1-a650-79aaed11e3f0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "42115e54-756a-423c-9c60-3512f30a355b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e5c459d0-6b56-458a-8019-969e02ecf3f3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4471016c-54ec-4c14-94b6-2296a9eb191f")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -23307,6 +24891,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2e2ded61-c758-47d4-9ddf-6a94d03b016c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ec13493b-c84e-4eac-ad94-2bbe4d5811ce")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "397f2fd8-5ea8-436d-b1e0-95f6e7d25875")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "1N4007"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bd88dbaa-6a21-4e23-b7d8-b18ad7fb8621")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "412de061-8d3e-4b2e-b0d1-cd8136ff50fa")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/2f504eca-876e-5601-a0af-6ae84578c8f0")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -23657,6 +25296,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "68e5b7e5-0c05-453b-9c6d-486886460398")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bea58ab9-227f-44b0-9ccf-b67fa9c232cf")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ed57d8f8-c0e9-4ae4-b2f1-cf28fdad76fd")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "TVS18"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1fd33a45-d330-4c78-881b-5cf27ad78479")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "be50d1ea-8b35-4290-96f2-749a6ec30035")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/19d45202-b373-5b3c-bb5f-07cc633fe58a")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -24001,6 +25695,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "878310ba-0beb-43bd-a1e4-4010365bca2b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "45dc41be-6070-4c3e-96ee-cdf61eae18ec")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "42962b61-f524-427c-b5fc-9db45a00f2e3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "658ef9cb-c8b6-40e2-b7fa-5d7ad2cf0487")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -25202,6 +26929,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dbc0d4e5-a137-4bc9-a1f2-0fba56b6b77e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d151c2c1-ae06-481a-b6de-3e15076b2830")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=18k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "beb62596-c17c-475f-95fa-76040d7e17fc")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/ccf369e2-82f0-53ad-ac3b-a91523bf076a")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -25466,6 +27226,61 @@
 				(font
 					(size 1 1)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "39103be4-1b49-47f0-9d89-2629b487a0ee")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1d15b42c-0707-4702-89d5-6cb7a44c6ac2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b708b763-9ffb-4d3b-a6f5-c2914c21f556")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BAT85"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e76eb824-86e6-4131-a845-1b545913450b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1b47b48b-4461-4002-8833-42069e180f0c")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -25959,6 +27774,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "47c2183c-fab6-4baf-813f-ca8683d28a8a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cb98515a-30cb-417c-92aa-34cb810223b3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=100k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7dc53a89-5457-44c2-aa3e-72871e6e09e6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/144bf82e-1ce4-5216-aedf-ece59077db76")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -26221,6 +28069,61 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "8596dcc6-aed1-415e-a173-b1db715a30bf")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d81a1517-7229-45d5-a928-6f262af6bcd3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9642be8d-518d-4c39-baae-cb43d6b281d7")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b85c21a8-17b2-42fd-8d7c-e696e535a2fb")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "1N4007"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "333c1c60-bc74-494f-970c-99fd37ed0671")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1fbd444d-0135-4442-bc6f-593b72ecd5d9")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -27551,6 +29454,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ada2592f-5f61-468f-811f-fd4bf9668d4e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "234dd24d-287c-423e-b1cf-c1a81cb699bd")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=220"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1417a3ef-68f6-4958-a690-6b79a4e27dba")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/506b70e0-a96e-5476-9cb8-cb6dd0a9f543")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -27944,6 +29880,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c0d63b98-e116-497d-9adc-a2617e4d6f23")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a3f3021c-768a-4aa6-95f4-8174513cf846")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "41e5cc7a-2edd-4f86-855a-82dd213e2764")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/a48c28da-169a-5427-bdf5-2a1ac42eda97")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -28208,6 +30177,61 @@
 				(font
 					(size 1 1)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "SUBCKT"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7cc41394-efa3-404e-936b-353fb2e9459d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "241df60d-15ed-4123-9431-9e15a5f6a9b0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "18b3e7d8-b366-4fc0-9a1c-d5f5594b5b9e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LD1117V33"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dd2a8198-9ce8-4337-9457-302d6b0f3b6e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=3 2=2 3=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1b335ec3-a79b-4573-b8ee-6cd5611df574")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -29113,6 +31137,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8cf4327c-7128-41f3-9d69-1757d83f488a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "17afacc8-bf06-4e34-b571-e55611621fa9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7ecfc20b-1162-4c84-91cf-474bf22c7cca")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/40670dda-a3f2-5e81-955a-a66b283f7b05")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -29737,6 +31794,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "a6fe8ca9-dc53-44ab-a59d-3b4140960beb")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c47c482e-ae47-40cc-9898-3debe0456c11")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "415be83b-4c3d-4346-aca3-8ae031899d72")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "53bf7888-94d0-483a-8f26-daa5d6c55f7f")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -30717,6 +32807,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5d3936e8-0165-41c1-86aa-46c4b442eaa2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f0596969-49ab-4469-b28e-fa721a9ad627")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0f0edf41-a61a-4487-91b7-221607167d21")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/46c98a28-da8b-5f2e-9340-07166547624a")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -30979,6 +33102,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "969fbf14-3c39-4ff1-ab8f-7ef1ff7aafc3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8bc759d6-dd00-4eac-b940-9f22c03f9871")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "08a2bca7-f322-420c-800f-f91dac16c61d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d05aab9e-ddb8-4027-8caa-a17a8cae06d7")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -31510,6 +33666,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bb601953-a6aa-46bf-9db4-f1d8314f910b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a18974c1-66fb-4b67-84b5-03e2a8069000")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "49fc6e6f-5054-4b80-b6b4-1828d8b23e34")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/4654b0e0-dcf3-53d3-bb90-1c7588e35895")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -32033,6 +34222,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b7a3312a-374b-4c32-8530-2e28551f4dde")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cc3bd1a9-ccd5-402b-81bf-0d661014640c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ac18c0fb-400e-4f24-b526-7859afefdedc")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDRED"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8f478abf-0433-44a0-ac35-0a38b26b1aca")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fa6255d9-a041-4893-82af-2f5eebc6d92e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/e601ed04-d800-51ee-a81b-5ce972e55b5c")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -32468,6 +34712,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "b8e25705-d0ea-4add-9d67-559f14af6320")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "02554aed-3afc-49ef-9428-3ef88922941f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "eb0009a3-b98e-4b5b-bd3e-5d61088ba38a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "94db55e3-7d7c-484b-a5ca-125f28c95056")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -32987,6 +35264,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0ab3bec3-dfe6-4c88-9e0a-7ec02151c2d2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "838e14db-c451-4b60-a1a5-8363cca191ca")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a1d2aa15-9693-44ac-8acd-875abe23d277")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDGREEN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6132eefc-1520-4acf-89b4-aa7b925da62b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "546881ec-ec37-4c11-8a52-70cc3bde0b97")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/5d317e21-a08a-55eb-9ed2-21dda59982dd")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -33193,6 +35525,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "e8abbc95-9f9a-41ed-8c6b-74c20af1567e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d635a509-6501-418f-a852-fb3117596403")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "70e77f43-3248-4bc5-bfd0-8723b8c50231")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=4.7k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8f7534bf-0fe1-47aa-acaf-be1c4712d8a0")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -33467,6 +35832,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0d8b55a6-c81a-4ead-9c4a-ca0d0c72a961")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d5d20094-66fb-48fa-a963-6ab277773c40")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "63082579-fa89-4270-9565-9dcb6923d0d2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/aed6534f-d4c4-5418-8351-262e2fd1dab8")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -33729,6 +36127,61 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "1a5ac274-b241-4d2c-aeed-7677122c16b4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "71edae3f-dcc4-4568-99d6-a966f5b1e9c1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "024c2514-5366-4519-9c39-e33bc7e5b6e4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9e418890-4cd4-4691-8d02-51ba1f7f31a3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "1N4007"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "545d6d14-d459-4f22-9234-6443252c138c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a6138d2f-e4fc-462b-ba0f-e8b13551dc56")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -34759,6 +37212,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "96334203-8e75-4c73-af2f-5ecfbface03f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f685ca18-15c1-4a8e-a117-73d5437cbe9a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3da57e01-2d94-4b74-90be-df57421ea6cd")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/58ef43ed-1d16-5ee6-ab46-ca65a820a0f5")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -35021,6 +37507,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "fe653e63-c8a0-4081-b9a1-6aced9119a10")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "61c1aa3e-f5ca-4dd0-a4b7-a9fd81bed8ba")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9ad61472-7d66-458d-925f-a9183b90145d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=470u"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5a0c9a53-9c5f-4703-ab2b-abaac02004b4")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -36758,6 +39277,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "830a5b0b-594f-4ce5-b465-94a0743772db")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7b93ebc6-b742-47ad-ab77-f93f186f8973")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=100k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c3c1756a-9abf-440e-bec0-c5e59caf60b0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/4b0c0fed-6de2-5590-a840-3b977eb356be")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -38169,6 +40721,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "aa37fd58-33a6-4dcf-afad-095bab9140f3")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cc15447a-d5f0-4f13-a77a-6dc613fb39a6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ba3df933-3041-4bb6-ab8c-f7eeea0ebfe0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6237a1df-18c7-4a57-b999-17ce2201e175")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ef50203d-6e86-4c14-bbdb-089922851021")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/d35a206c-0a8e-59db-b3c2-3df7eec7ed64")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -38434,6 +41041,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "442728be-1c09-49e9-8789-76eae355a6de")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d5667723-8f74-45d9-99d8-35ab8bc9a739")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f6355102-d7b8-47c0-88fe-0ef00cb550d9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/4ad04110-5e5c-598e-bda8-4fa3a7297fcd")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -38676,6 +41316,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "6350269a-26f4-4a68-a9fa-8a6a9f677531")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7b604dd9-8de5-4c70-8ffd-5708a7f12064")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a2bb5b06-4cc6-4a2c-b751-7139ae565305")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f33f1fbf-63da-430f-92e2-f2a5bf4f24fe")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -39178,6 +41851,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fc811068-1db7-44f9-bd5b-24c75b509c99")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "635e7dbb-efa0-4994-91c4-9ffd1dad536d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "53bc2b8c-0ca8-47b4-a548-5416adeac592")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDRED"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4326a886-3edf-4309-a35c-0ecf9d3d01ac")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0e04c63a-80b3-442b-a812-60754e0e19f0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/12ec6767-848b-58f1-ac2e-110aba68042e")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -39384,6 +42112,61 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "8615050b-ac38-4158-86e0-6476c7a4d91d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "08d0f1d3-df79-47dc-b22b-e3054644eda7")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "487eec05-98a4-4b1f-81bc-80b8f267b625")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "812adee1-4b30-44df-a98b-6a3a0c3187b9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "1N4007"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "421b2654-0c33-4b62-8395-5549e5699042")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0a9fa4b4-c33a-40fb-b65b-a373606df71f")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -39740,6 +42523,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1aacaf47-cc12-4ef8-b556-b6032bdc6a53")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1d46a4d9-972e-454f-a03b-6ca450ca9ac1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c516beab-8612-44c1-ac58-45f9add25a42")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/314c8192-66bf-53c1-99da-990c7cc3fd68")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -40007,6 +42823,61 @@
 				(font
 					(size 1.27 1.27)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e460c709-fd88-43a3-9c3c-c63acf02c11e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c83c9868-8b6a-409f-aab6-30ea8a221f33")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9fc01e43-31d7-4d16-9d80-f1603c7d7f93")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f3a7c983-4e4e-4a65-a420-1f3cc44eb951")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "229f8faf-c7a4-40ed-b382-37b2ea870d66")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -40525,6 +43396,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "97d7f86f-9f75-4d90-9fd1-b9ecc3fec90d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c5cf50e5-433a-4263-a706-3e9619861abd")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "42a421c4-28bb-46b5-8568-c286e1732cce")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d62f6061-24af-46b5-9a53-fdf17ec36776")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -41424,6 +44328,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "488dce21-210f-4f55-92ed-81e5409b5e28")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5eb1a466-0809-4de1-85c6-5469b5133471")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "31e3a0c2-6743-4a7c-a382-d647ebfdb150")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/1d7a27a2-98b8-5cf8-a893-1f787afe4ba7")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -41666,6 +44603,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "d50a8ee3-e494-4cfc-9c58-b29b2e880e76")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8135d01a-e6fd-4591-b96e-4cd12b86d3c0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "26b25bea-ec3d-4da9-ac6b-8d17fa079db4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=100k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "87bbcf25-9844-4fa5-acbc-b2b29783caa5")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -41934,6 +44904,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "8a29d429-8228-4b5e-9e0e-f46732ba30bd")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "466299e3-3c71-4195-abc2-b06df467cc66")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "89dd3eed-17f7-42bf-aa03-5645f4eb071d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "73a104d3-bdec-41fa-9401-5ef839dbdab3")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -42299,6 +45302,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "4ae44561-4318-47c9-bd1e-a2e209e41338")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "eb919e85-ff07-442e-938f-89e630e66a19")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a80f8489-6af9-4b12-bc25-9bcb30c5446a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1f67eeee-c757-4818-b246-acd7f7d0c44b")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -42819,6 +45855,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "64266519-7a33-404e-ae62-bcd70fb99308")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ee327f3b-6c00-4523-ac9b-13dc3428246d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3a918f03-d668-407a-acc6-649cbc9231e4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/fcfd3e73-d6ec-54f2-83f6-c0d30a07056c")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -43081,6 +46150,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "4c0a3d14-6ebc-4fc6-a304-34d102d1f09e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4a48019a-6576-4f49-9730-a7d1dcf58d7c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bc2085af-fbea-47f4-89dd-6aa507dfa059")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "541c8dc3-e911-4f39-b688-6b5292abed6e")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -43364,6 +46466,39 @@
 				(font
 					(size 1 1)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9e603fd8-8f7b-4b8d-bffe-81c153ff7250")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dbcf9cbd-a994-4fb1-84df-e8c70f1fbba4")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100u"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "86103dea-5cbd-4d42-817e-9963aece1a9c")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -45364,6 +48499,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "64fdea8b-d1c1-48fb-b335-81a5d8c86312")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e7b42022-2641-46c6-9cb5-b4c44a3256af")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1m"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "53a2968e-2da7-47ab-b7d7-b92efd424225")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/32c24f3e-589f-5c31-ac83-ab4bfab550ee")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -45713,6 +48881,61 @@
 				(font
 					(size 1.27 1.27)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d840c1ed-9aaf-4a7b-b0ee-f74bc37f63b2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "64170655-d3c8-40e5-81a4-545b643d61b7")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7456159e-ca0b-41fa-998e-c70d23e6c722")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b4cd6304-b7ec-4fd3-80ac-af82194342e1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c27f689a-8629-4dfe-9726-07ebc35bb395")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -46239,6 +49462,61 @@
 				)
 			)
 		)
+		(property "Sim.Device" "NPN"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9595a308-ea34-4958-888c-6ca1f9afb0e6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" "GUMMELPOON"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6759ec96-1a6f-4521-bdd7-ed99dc7889f1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b5e05470-e57e-4a6d-8f46-e4c49181dfd9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "BC337-40"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "177beb28-8412-4a8d-b2c6-3394ff7bf76a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=1 2=2 3=3"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7a4ab6a1-0e4b-410a-a3b2-6a30e9bbb4c0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/261caf1d-9613-5e14-8e7f-f36497935b53")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -46499,6 +49777,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "6df7a588-eb88-4287-8f16-073dd2f4dcfa")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8d975611-7364-4976-9cbb-67e7fb5893e6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "bf0f0918-131b-49a5-b3b7-cb21ec6efb6b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "065ab470-8523-4ad4-9206-3f0704b79e12")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -46773,6 +50084,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d814cc8d-3980-46ab-9983-f61416987de8")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "75d07840-fc39-4e6b-99f3-775b23c43dc8")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e081ea30-21b3-4016-abdd-90292b5022b1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/3d81559f-aaa1-55f8-994c-c06b7c636ea5")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -47041,6 +50385,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9e8d7e6f-c84d-41fe-8534-713b54378973")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "508c4b6c-e463-464c-932e-921db046b625")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "18df54e0-88c7-47c4-a0a8-1148aa48c4e9")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/7fe57d84-858c-5be8-b4dd-2521dddfb2cc")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -47303,6 +50680,61 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "76ce2548-9dad-49ae-85d5-1b89ed778110")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "75b43ed9-b41e-4fda-946f-a4464a8b8014")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ea228388-701d-4166-817a-340dc3059609")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3c4d8904-a713-4178-a7fa-93ad91e00d92")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "TVS68"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ceb92cb9-96d3-4157-aff6-4ac27a660c11")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "688e14bb-458e-4e81-af3a-0f83a6d604c0")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -47653,6 +51085,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "d4d54b53-3bf9-4b70-8236-7de9ca63cae6")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2b7a4b2b-1544-4437-9f97-b61bb7acf138")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "175c0eb8-7ecd-4be5-b963-cbee20885e0c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b3bba7be-7a45-46b7-a583-9daa3195eed1")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -48158,6 +51623,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "59bc2a86-385d-4667-b09a-91ad2f1ecbdf")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dbdd03be-5985-40c1-9caf-ec59da58039a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b6a88d26-81f6-46a1-b9d0-5110c3534cc5")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "396b6f4f-4acf-4767-8dbe-ef4f2f5d4fdc")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -49209,6 +52707,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6e547a20-87da-4504-9af0-d32bbffb4535")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "549b8746-8508-4955-83b3-b66d6ea3483b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=2k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "201c682b-d36f-48b7-b4fc-50fde3b2e084")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/b5b1f63f-b105-5562-be96-a540126dc5d0")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -49724,6 +53255,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "76980936-4bcd-422b-8536-2c898895646b")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1fe538cd-b37b-46af-9392-3fe81a094e42")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=100k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "822dec79-45de-407f-83fc-0f3ae8e54df0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/50b36c01-1dfe-5962-acda-37eb199668ca")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -49986,6 +53550,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "b9276648-3bca-41c8-b3b3-763d728403c2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8a4cc8fb-5251-404b-bafe-1ce280f7304e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "30e515bf-9955-4d44-8abb-307fbce06441")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=4.7k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "01a0429f-8df7-4e1b-81d0-88789c629a9c")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -51886,6 +55483,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f7b35006-2b15-4027-9240-ba6ddc86f79a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "98bba572-8c2e-4d07-bbf7-110994ca4988")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c522c885-85fc-4762-9230-c0a6255b2f90")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/5887544e-a88a-5b31-92e4-c3b4de519c23")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -52154,6 +55784,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c273388d-0333-495e-8981-5f910daceaaa")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0016b72d-060b-4e8f-95e2-838a6157ad5d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c1432829-a030-41b7-88c8-55d14155b41f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/150e37b7-8b17-5d0a-b9cb-b3d1136c2203")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -52396,6 +56059,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "d704d07b-f8d0-424a-a51f-43abb660d3c8")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "C"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a70ed53e-8d15-4cba-bfd6-8c8b31ebc00c")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "731686d2-ece0-494d-84e5-b7356b123abc")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "c=100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "11db1f63-b053-4b55-b348-c970139ff37f")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -52907,6 +56603,39 @@
 				)
 			)
 		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4517e116-8432-4c82-b6c5-1d5a9e9d4ef0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a7a63aa9-5016-412d-956f-76049d787569")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0abd2b14-3768-4a2e-8f32-5147bf222113")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(path "/ede267ea-8dac-50e0-98b0-5fae30ee987d")
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
@@ -53171,6 +56900,61 @@
 				(font
 					(size 1 1)
 					(thickness 0.15)
+				)
+			)
+		)
+		(property "Sim.Device" "D"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "84ecd19d-57cc-459d-8ca9-920affff0f2a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1a0823db-61a3-4a8b-b35e-ddd9aae8d351")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Library" "${KIPRJMOD}/n3u_sim.lib"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "aeff04ee-f11f-457e-bd87-dd2a870d5f00")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "LEDRED"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2353c161-95b9-486e-892a-d9167c0cc62d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Pins" "1=2 2=1"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e8784a7a-63b6-400e-8bab-032f82348118")
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -53645,6 +57429,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "31fc416a-5f5f-4d4a-a9d1-b3c41cea0a3d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "67254c1b-55fb-4f2e-9c35-ce11d19a592f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8cef1de1-5eba-4c77-ac47-f933296491ce")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=10k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7dfef605-3370-47bf-882f-cf2c568ec9db")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -54408,6 +58225,39 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "66d086e8-b41e-4d2a-b9a3-90862aa4e3a2")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Device" "R"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e6240a20-e615-4457-b022-7227d2410a79")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Type" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9d42249b-a938-4d32-99eb-f22e8eaa61be")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Params" "r=1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d74965de-b092-473f-91f8-91afaf79a19d")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -73449,7 +77299,7 @@
 	(segment
 		(start 137.8561 123.5674)
 		(end 138.266 123.1575)
-		(width 0.2)
+		(width 0.25)
 		(layer "F.Cu")
 		(net "VBAT_DIV")
 		(uuid "1409fa05-85f9-4dc9-9606-f45e72d6ead3")
@@ -73465,7 +77315,7 @@
 	(segment
 		(start 138.5985 123.1575)
 		(end 138.8107 123.3697)
-		(width 0.24)
+		(width 0.25)
 		(layer "F.Cu")
 		(net "VBAT_DIV")
 		(uuid "a0695f33-1429-49eb-ae24-20215109ae98")
@@ -73497,7 +77347,7 @@
 	(segment
 		(start 138.266 123.1575)
 		(end 138.5985 123.1575)
-		(width 0.2)
+		(width 0.25)
 		(layer "F.Cu")
 		(net "VBAT_DIV")
 		(uuid "f22b56a0-2f4b-46d4-9580-6c7c601ef9c5")
@@ -76585,7 +80435,7 @@
 	(segment
 		(start 128.1389 110.8021)
 		(end 127.9801 110.6433)
-		(width 0.24)
+		(width 0.25)
 		(layer "B.Cu")
 		(net "ADC_E")
 		(uuid "770580c4-cfae-4d9a-aa38-5dde2f803eff")
@@ -76713,7 +80563,7 @@
 	(segment
 		(start 127.9801 110.6433)
 		(end 127.9801 108.4405)
-		(width 0.24)
+		(width 0.25)
 		(layer "B.Cu")
 		(net "ADC_E")
 		(uuid "fdd49389-7cd4-4509-9247-a45c1c8c7c94")
@@ -76777,7 +80627,7 @@
 	(segment
 		(start 126.5604 141.9812)
 		(end 126.5604 142.0876)
-		(width 0.24)
+		(width 0.25)
 		(layer "F.Cu")
 		(net "GATE")
 		(uuid "5528edbe-fc12-43c1-a3b1-aca05a61b2bc")
@@ -76905,7 +80755,7 @@
 	(segment
 		(start 126.7168 141.8248)
 		(end 126.5604 141.9812)
-		(width 0.24)
+		(width 0.25)
 		(layer "F.Cu")
 		(net "GATE")
 		(uuid "b0efc948-2ee3-4f31-b340-13dc1faec796")
@@ -79454,14 +83304,15 @@
 				(xy 58.96989 139.740213) (xy 58.84495 139.912181) (xy 58.79625 140.007758) (xy 58.748275 140.058553)
 				(xy 58.680454 140.075348) (xy 58.61432 140.05281) (xy 58.598085 140.039143) (xy 51.283319 132.724377)
 				(xy 51.249834 132.663054) (xy 51.247 132.636696) (xy 51.247 123.611589) (xy 51.236753 123.546895)
-				(xy 51.219902 123.440499) (xy 51.204747 123.393857) (xy 51.166373 123.275754) (xy 51.087732 123.121412)
-				(xy 50.985914 122.981272) (xy 50.956777 122.952135) (xy 56.4995 122.952135) (xy 56.4995 125.04787)
-				(xy 56.499501 125.047876) (xy 56.505908 125.107483) (xy 56.556202 125.242328) (xy 56.556206 125.242335)
-				(xy 56.642452 125.357544) (xy 56.642455 125.357547) (xy 56.757664 125.443793) (xy 56.757671 125.443797)
-				(xy 56.892517 125.494091) (xy 56.892516 125.494091) (xy 56.899444 125.494835) (xy 56.952127 125.5005)
-				(xy 59.047872 125.500499) (xy 59.107483 125.494091) (xy 59.242331 125.443796) (xy 59.357546 125.357546)
-				(xy 59.443796 125.242331) (xy 59.494091 125.107483) (xy 59.5005 125.047873) (xy 59.500499 123.881947)
-				(xy 61.5 123.881947) (xy 61.5 124.118052) (xy 61.536934 124.351247) (xy 61.609897 124.575802) (xy 61.717087 124.786174)
+				(xy 51.219902 123.440499) (xy 51.200054 123.379414) (xy 51.195199 123.364472) (xy 51.166374 123.275756)
+				(xy 51.166373 123.275753) (xy 51.114371 123.173694) (xy 51.087732 123.121412) (xy 50.985914 122.981272)
+				(xy 50.956777 122.952135) (xy 56.4995 122.952135) (xy 56.4995 125.04787) (xy 56.499501 125.047876)
+				(xy 56.505908 125.107483) (xy 56.556202 125.242328) (xy 56.556206 125.242335) (xy 56.642452 125.357544)
+				(xy 56.642455 125.357547) (xy 56.757664 125.443793) (xy 56.757671 125.443797) (xy 56.892517 125.494091)
+				(xy 56.892516 125.494091) (xy 56.899444 125.494835) (xy 56.952127 125.5005) (xy 59.047872 125.500499)
+				(xy 59.107483 125.494091) (xy 59.242331 125.443796) (xy 59.357546 125.357546) (xy 59.443796 125.242331)
+				(xy 59.494091 125.107483) (xy 59.5005 125.047873) (xy 59.500499 123.881947) (xy 61.5 123.881947)
+				(xy 61.5 124.118052) (xy 61.536934 124.351247) (xy 61.609897 124.575802) (xy 61.717087 124.786174)
 				(xy 61.777338 124.869104) (xy 61.77734 124.869105) (xy 62.517037 124.129408) (xy 62.534075 124.192993)
 				(xy 62.599901 124.307007) (xy 62.692993 124.400099) (xy 62.807007 124.465925) (xy 62.87059 124.482962)
 				(xy 62.130893 125.222658) (xy 62.213828 125.282914) (xy 62.424197 125.390102) (xy 62.648752 125.463065)
@@ -86784,7 +90635,7 @@
 				(xy 239.380411 107.1005) (xy 239.551501 107.073402) (xy 239.716245 107.019873) (xy 239.870588 106.941232)
 				(xy 240.010728 106.839414) (xy 241.316023 105.534119) (xy 241.377346 105.500634) (xy 241.403704 105.4978)
 				(xy 243.204196 105.4978) (xy 243.271235 105.517485) (xy 243.291877 105.534119) (xy 243.493281 105.735523)
-				(xy 243.526766 105.796846) (xy 243.5296 105.823204) (xy 243.5296 110.65801) (xy 243.554693 110.816446)
+				(xy 243.526766 105.796846) (xy 243.5296 105.823204) (xy 243.5296 110.65801) (xy 243.556167 110.825752)
 				(xy 243.556698 110.829101) (xy 243.610227 110.993845) (xy 243.688868 111.148188) (xy 243.790686 111.288328)
 				(xy 243.790688 111.28833) (xy 246.012781 113.510423) (xy 246.046266 113.571746) (xy 246.0491 113.598104)
 				(xy 246.0491 113.684331) (xy 246.035585 113.740625) (xy 245.97973 113.850247) (xy 245.979726 113.850257)
@@ -87268,103 +91119,102 @@
 		(filled_polygon
 			(layer "B.Cu")
 			(pts
-				(xy 126.955203 108.406706) (xy 126.961681 108.412738) (xy 127.323281 108.774338) (xy 127.356766 108.835661)
-				(xy 127.3596 108.862019) (xy 127.3596 110.704419) (xy 127.383443 110.824286) (xy 127.383444 110.82429)
-				(xy 127.383445 110.824293) (xy 127.400807 110.866207) (xy 127.419321 110.910904) (xy 127.43022 110.937218)
-				(xy 127.446893 110.962171) (xy 127.462893 111.000793) (xy 127.46355 111.000594) (xy 127.46532 111.00643)
-				(xy 127.518121 111.133904) (xy 127.518129 111.133919) (xy 127.550601 111.182515) (xy 127.57148 111.249192)
-				(xy 127.5715 111.251407) (xy 127.5715 113.571097) (xy 127.551815 113.638136) (xy 127.550602 113.639988)
-				(xy 127.5183 113.68833) (xy 127.518295 113.68834) (xy 127.454184 113.843117) (xy 127.454182 113.843125)
-				(xy 127.4215 114.007428) (xy 127.4215 114.174971) (xy 127.454182 114.339274) (xy 127.454184 114.339282)
-				(xy 127.518295 114.49406) (xy 127.611373 114.633362) (xy 127.619095 114.641084) (xy 127.65258 114.702407)
-				(xy 127.647596 114.772099) (xy 127.619096 114.816445) (xy 127.545387 114.890155) (xy 127.545385 114.890158)
-				(xy 127.468722 115.004892) (xy 127.415921 115.132367) (xy 127.415918 115.132379) (xy 127.390924 115.258036)
-				(xy 127.390923 115.258042) (xy 127.389 115.267707) (xy 127.389 122.452181) (xy 127.369315 122.51922)
-				(xy 127.352681 122.539862) (xy 125.659362 124.233181) (xy 125.598039 124.266666) (xy 125.571681 124.2695)
-				(xy 124.769003 124.2695) (xy 124.66059 124.291065) (xy 124.660589 124.291065) (xy 124.633671 124.29642)
-				(xy 124.50619 124.349224) (xy 124.391454 124.425887) (xy 123.738024 125.079317) (xy 123.676701 125.112802)
-				(xy 123.607009 125.107818) (xy 123.577456 125.091953) (xy 123.567817 125.084949) (xy 123.378414 124.988444)
-				(xy 123.378413 124.988443) (xy 123.378412 124.988443) (xy 123.176243 124.922754) (xy 123.176241 124.922753)
-				(xy 123.17624 124.922753) (xy 122.996195 124.894237) (xy 122.966287 124.8895) (xy 122.753713 124.8895)
-				(xy 122.723805 124.894237) (xy 122.54376 124.922753) (xy 122.341585 124.988444) (xy 122.152179 125.084951)
-				(xy 121.980213 125.20989) (xy 121.82989 125.360213) (xy 121.704951 125.532179) (xy 121.608444 125.721585)
-				(xy 121.542753 125.92376) (xy 121.5095 126.133713) (xy 121.5095 126.13948) (xy 121.489815 126.206519)
-				(xy 121.437011 126.252274) (xy 121.367853 126.262218) (xy 121.304297 126.233193) (xy 121.297819 126.227161)
-				(xy 115.752145 120.681487) (xy 115.637407 120.604822) (xy 115.509932 120.552021) (xy 115.509922 120.552018)
-				(xy 115.374596 120.5251) (xy 115.374594 120.5251) (xy 115.374593 120.5251) (xy 113.778019 120.5251)
-				(xy 113.71098 120.505415) (xy 113.690338 120.488781) (xy 103.813238 110.611681) (xy 103.779753 110.550358)
-				(xy 103.784737 110.480666) (xy 103.826609 110.424733) (xy 103.892073 110.400316) (xy 103.900919 110.4)
-				(xy 121.464281 110.4) (xy 121.53132 110.419685) (xy 121.577075 110.472489) (xy 121.587019 110.541647)
-				(xy 121.582212 110.562318) (xy 121.542753 110.683759) (xy 121.513801 110.866557) (xy 121.5095 110.893713)
-				(xy 121.5095 111.106287) (xy 121.520518 111.175852) (xy 121.542754 111.316244) (xy 121.556389 111.358209)
-				(xy 121.558384 111.428051) (xy 121.522303 111.487883) (xy 121.485913 111.511087) (xy 121.47334 111.516294)
-				(xy 121.473339 111.516295) (xy 121.334037 111.609373) (xy 121.215573 111.727837) (xy 121.122495 111.867139)
-				(xy 121.058384 112.021917) (xy 121.058382 112.021923) (xy 121.047039 112.078949) (xy 121.014654 112.14086)
-				(xy 121.013103 112.142438) (xy 120.159887 112.995654) (xy 120.083222 113.110392) (xy 120.030421 113.237868)
-				(xy 120.028606 113.246994) (xy 120.028605 113.246996) (xy 120.0035 113.373204) (xy 120.0035 113.373207)
-				(xy 120.0035 116.395006) (xy 120.0035 116.532994) (xy 120.0035 116.532996) (xy 120.003499 116.532996)
-				(xy 120.030418 116.668322) (xy 120.030421 116.668332) (xy 120.083222 116.795807) (xy 120.159887 116.910545)
-				(xy 120.159888 116.910546) (xy 121.499492 118.250148) (xy 121.532977 118.311471) (xy 121.534284 118.357226)
-				(xy 121.5095 118.513712) (xy 121.5095 118.726286) (xy 121.542753 118.936239) (xy 121.542753 118.936241)
-				(xy 121.542754 118.936243) (xy 121.601489 119.117011) (xy 121.608444 119.138414) (xy 121.704951 119.32782)
-				(xy 121.82989 119.499786) (xy 121.980213 119.650109) (xy 122.152182 119.77505) (xy 122.160946 119.779516)
-				(xy 122.211742 119.827491) (xy 122.228536 119.895312) (xy 122.205998 119.961447) (xy 122.160946 120.000484)
-				(xy 122.152182 120.004949) (xy 121.980213 120.12989) (xy 121.82989 120.280213) (xy 121.704951 120.452179)
-				(xy 121.608444 120.641585) (xy 121.542753 120.84376) (xy 121.5095 121.053713) (xy 121.5095 121.266286)
-				(xy 121.53992 121.458355) (xy 121.542754 121.476243) (xy 121.607165 121.67448) (xy 121.608444 121.678414)
-				(xy 121.704951 121.86782) (xy 121.82989 122.039786) (xy 121.980213 122.190109) (xy 122.152179 122.315048)
-				(xy 122.152181 122.315049) (xy 122.152184 122.315051) (xy 122.341588 122.411557) (xy 122.543757 122.477246)
-				(xy 122.753713 122.5105) (xy 122.753714 122.5105) (xy 122.966286 122.5105) (xy 122.966287 122.5105)
-				(xy 123.176243 122.477246) (xy 123.378412 122.411557) (xy 123.567816 122.315051) (xy 123.63192 122.268477)
-				(xy 123.739786 122.190109) (xy 123.739788 122.190106) (xy 123.739792 122.190104) (xy 123.890104 122.039792)
-				(xy 123.890106 122.039788) (xy 123.890109 122.039786) (xy 124.015048 121.86782) (xy 124.015047 121.86782)
-				(xy 124.015051 121.867816) (xy 124.019514 121.859054) (xy 124.067488 121.808259) (xy 124.135308 121.791463)
-				(xy 124.201444 121.813999) (xy 124.240484 121.859054) (xy 124.244591 121.867115) (xy 124.244951 121.86782)
-				(xy 124.36989 122.039786) (xy 124.520213 122.190109) (xy 124.692179 122.315048) (xy 124.692181 122.315049)
-				(xy 124.692184 122.315051) (xy 124.881588 122.411557) (xy 125.083757 122.477246) (xy 125.293713 122.5105)
-				(xy 125.293714 122.5105) (xy 125.506286 122.5105) (xy 125.506287 122.5105) (xy 125.716243 122.477246)
-				(xy 125.918412 122.411557) (xy 126.107816 122.315051) (xy 126.17192 122.268477) (xy 126.279786 122.190109)
-				(xy 126.279788 122.190106) (xy 126.279792 122.190104) (xy 126.430104 122.039792) (xy 126.430106 122.039788)
-				(xy 126.430109 122.039786) (xy 126.555048 121.86782) (xy 126.555047 121.86782) (xy 126.555051 121.867816)
-				(xy 126.651557 121.678412) (xy 126.717246 121.476243) (xy 126.7505 121.266287) (xy 126.7505 121.053713)
-				(xy 126.717246 120.843757) (xy 126.651557 120.641588) (xy 126.555051 120.452184) (xy 126.555049 120.452181)
-				(xy 126.555048 120.452179) (xy 126.430109 120.280213) (xy 126.279786 120.12989) (xy 126.10782 120.004951)
-				(xy 126.107115 120.004591) (xy 126.099054 120.000485) (xy 126.048259 119.952512) (xy 126.031463 119.884692)
-				(xy 126.053999 119.818556) (xy 126.099054 119.779515) (xy 126.107816 119.775051) (xy 126.167729 119.731522)
-				(xy 126.279786 119.650109) (xy 126.279788 119.650106) (xy 126.279792 119.650104) (xy 126.430104 119.499792)
-				(xy 126.430106 119.499788) (xy 126.430109 119.499786) (xy 126.555048 119.32782) (xy 126.555047 119.32782)
-				(xy 126.555051 119.327816) (xy 126.651557 119.138412) (xy 126.717246 118.936243) (xy 126.7505 118.726287)
-				(xy 126.7505 118.513713) (xy 126.717246 118.303757) (xy 126.651557 118.101588) (xy 126.555051 117.912184)
-				(xy 126.555049 117.912181) (xy 126.555048 117.912179) (xy 126.430109 117.740213) (xy 126.279786 117.58989)
-				(xy 126.10782 117.464951) (xy 126.107115 117.464591) (xy 126.099054 117.460485) (xy 126.048259 117.412512)
-				(xy 126.031463 117.344692) (xy 126.053999 117.278556) (xy 126.099054 117.239515) (xy 126.107816 117.235051)
-				(xy 126.153138 117.202123) (xy 126.279786 117.110109) (xy 126.279788 117.110106) (xy 126.279792 117.110104)
-				(xy 126.430104 116.959792) (xy 126.430106 116.959788) (xy 126.430109 116.959786) (xy 126.555048 116.78782)
-				(xy 126.55505 116.787817) (xy 126.555051 116.787816) (xy 126.651557 116.598412) (xy 126.717246 116.396243)
-				(xy 126.7505 116.186287) (xy 126.7505 115.973713) (xy 126.717246 115.763757) (xy 126.651557 115.561588)
-				(xy 126.555051 115.372184) (xy 126.555049 115.372181) (xy 126.555048 115.372179) (xy 126.430109 115.200213)
-				(xy 126.279786 115.04989) (xy 126.10782 114.924951) (xy 126.107115 114.924591) (xy 126.099054 114.920485)
-				(xy 126.048259 114.872512) (xy 126.031463 114.804692) (xy 126.053999 114.738556) (xy 126.099054 114.699515)
-				(xy 126.107816 114.695051) (xy 126.168584 114.650901) (xy 126.279786 114.570109) (xy 126.279788 114.570106)
-				(xy 126.279792 114.570104) (xy 126.430104 114.419792) (xy 126.430106 114.419788) (xy 126.430109 114.419786)
-				(xy 126.555048 114.24782) (xy 126.555047 114.24782) (xy 126.555051 114.247816) (xy 126.651557 114.058412)
-				(xy 126.717246 113.856243) (xy 126.7505 113.646287) (xy 126.7505 113.433713) (xy 126.717246 113.223757)
-				(xy 126.651557 113.021588) (xy 126.555051 112.832184) (xy 126.555049 112.832181) (xy 126.555048 112.832179)
-				(xy 126.430109 112.660213) (xy 126.279786 112.50989) (xy 126.10782 112.384951) (xy 126.107115 112.384591)
-				(xy 126.099054 112.380485) (xy 126.048259 112.332512) (xy 126.031463 112.264692) (xy 126.053999 112.198556)
-				(xy 126.099054 112.159515) (xy 126.107816 112.155051) (xy 126.15575 112.120225) (xy 126.279786 112.030109)
-				(xy 126.279788 112.030106) (xy 126.279792 112.030104) (xy 126.430104 111.879792) (xy 126.430106 111.879788)
-				(xy 126.430109 111.879786) (xy 126.555048 111.70782) (xy 126.555047 111.70782) (xy 126.555051 111.707816)
-				(xy 126.651557 111.518412) (xy 126.717246 111.316243) (xy 126.7505 111.106287) (xy 126.7505 110.893713)
-				(xy 126.717246 110.683757) (xy 126.651557 110.481588) (xy 126.555051 110.292184) (xy 126.555049 110.292181)
-				(xy 126.555048 110.292179) (xy 126.430109 110.120213) (xy 126.279786 109.96989) (xy 126.107817 109.844949)
-				(xy 126.098504 109.840204) (xy 126.047707 109.79223) (xy 126.030912 109.724409) (xy 126.053449 109.658274)
-				(xy 126.098507 109.619232) (xy 126.107555 109.614622) (xy 126.161716 109.57527) (xy 126.161717 109.57527)
-				(xy 125.529409 108.942962) (xy 125.592993 108.925925) (xy 125.707007 108.860099) (xy 125.800099 108.767007)
-				(xy 125.865925 108.652993) (xy 125.882962 108.589409) (xy 126.51527 109.221717) (xy 126.51527 109.221716)
-				(xy 126.554622 109.167554) (xy 126.651095 108.978217) (xy 126.716757 108.77613) (xy 126.716757 108.776127)
-				(xy 126.75 108.566246) (xy 126.75 108.500419) (xy 126.769685 108.43338) (xy 126.822489 108.387625)
-				(xy 126.891647 108.377681)
+				(xy 126.955203 108.406706) (xy 126.961681 108.412738) (xy 127.318281 108.769338) (xy 127.351766 108.830661)
+				(xy 127.3546 108.857019) (xy 127.3546 110.70491) (xy 127.378635 110.825746) (xy 127.378636 110.82575)
+				(xy 127.378637 110.825752) (xy 127.385314 110.841872) (xy 127.425785 110.939581) (xy 127.42579 110.93959)
+				(xy 127.450833 110.977068) (xy 127.462211 111.001123) (xy 127.462989 111.000801) (xy 127.518123 111.133908)
+				(xy 127.518129 111.133919) (xy 127.550601 111.182515) (xy 127.57148 111.249192) (xy 127.5715 111.251407)
+				(xy 127.5715 113.571097) (xy 127.551815 113.638136) (xy 127.550602 113.639988) (xy 127.5183 113.68833)
+				(xy 127.518295 113.68834) (xy 127.454184 113.843117) (xy 127.454182 113.843125) (xy 127.4215 114.007428)
+				(xy 127.4215 114.174971) (xy 127.454182 114.339274) (xy 127.454184 114.339282) (xy 127.518295 114.49406)
+				(xy 127.611373 114.633362) (xy 127.619095 114.641084) (xy 127.65258 114.702407) (xy 127.647596 114.772099)
+				(xy 127.619096 114.816445) (xy 127.545387 114.890155) (xy 127.545385 114.890158) (xy 127.468722 115.004892)
+				(xy 127.415921 115.132367) (xy 127.415918 115.132379) (xy 127.390924 115.258036) (xy 127.390923 115.258042)
+				(xy 127.389 115.267707) (xy 127.389 122.452181) (xy 127.369315 122.51922) (xy 127.352681 122.539862)
+				(xy 125.659362 124.233181) (xy 125.598039 124.266666) (xy 125.571681 124.2695) (xy 124.769003 124.2695)
+				(xy 124.66059 124.291065) (xy 124.660589 124.291065) (xy 124.633671 124.29642) (xy 124.50619 124.349224)
+				(xy 124.391454 124.425887) (xy 123.738024 125.079317) (xy 123.676701 125.112802) (xy 123.607009 125.107818)
+				(xy 123.577456 125.091953) (xy 123.567817 125.084949) (xy 123.378414 124.988444) (xy 123.378413 124.988443)
+				(xy 123.378412 124.988443) (xy 123.176243 124.922754) (xy 123.176241 124.922753) (xy 123.17624 124.922753)
+				(xy 122.996195 124.894237) (xy 122.966287 124.8895) (xy 122.753713 124.8895) (xy 122.723805 124.894237)
+				(xy 122.54376 124.922753) (xy 122.341585 124.988444) (xy 122.152179 125.084951) (xy 121.980213 125.20989)
+				(xy 121.82989 125.360213) (xy 121.704951 125.532179) (xy 121.608444 125.721585) (xy 121.542753 125.92376)
+				(xy 121.5095 126.133713) (xy 121.5095 126.13948) (xy 121.489815 126.206519) (xy 121.437011 126.252274)
+				(xy 121.367853 126.262218) (xy 121.304297 126.233193) (xy 121.297819 126.227161) (xy 115.752145 120.681487)
+				(xy 115.637407 120.604822) (xy 115.509932 120.552021) (xy 115.509922 120.552018) (xy 115.374596 120.5251)
+				(xy 115.374594 120.5251) (xy 115.374593 120.5251) (xy 113.778019 120.5251) (xy 113.71098 120.505415)
+				(xy 113.690338 120.488781) (xy 103.813238 110.611681) (xy 103.779753 110.550358) (xy 103.784737 110.480666)
+				(xy 103.826609 110.424733) (xy 103.892073 110.400316) (xy 103.900919 110.4) (xy 121.464281 110.4)
+				(xy 121.53132 110.419685) (xy 121.577075 110.472489) (xy 121.587019 110.541647) (xy 121.582212 110.562318)
+				(xy 121.542753 110.683759) (xy 121.513801 110.866557) (xy 121.5095 110.893713) (xy 121.5095 111.106287)
+				(xy 121.520518 111.175852) (xy 121.542754 111.316244) (xy 121.556389 111.358209) (xy 121.558384 111.428051)
+				(xy 121.522303 111.487883) (xy 121.485913 111.511087) (xy 121.47334 111.516294) (xy 121.473339 111.516295)
+				(xy 121.334037 111.609373) (xy 121.215573 111.727837) (xy 121.122495 111.867139) (xy 121.058384 112.021917)
+				(xy 121.058382 112.021923) (xy 121.047039 112.078949) (xy 121.014654 112.14086) (xy 121.013103 112.142438)
+				(xy 120.159887 112.995654) (xy 120.083222 113.110392) (xy 120.030421 113.237868) (xy 120.028606 113.246994)
+				(xy 120.028605 113.246996) (xy 120.0035 113.373204) (xy 120.0035 113.373207) (xy 120.0035 116.395006)
+				(xy 120.0035 116.532994) (xy 120.0035 116.532996) (xy 120.003499 116.532996) (xy 120.030418 116.668322)
+				(xy 120.030421 116.668332) (xy 120.083222 116.795807) (xy 120.159887 116.910545) (xy 120.159888 116.910546)
+				(xy 121.499492 118.250148) (xy 121.532977 118.311471) (xy 121.534284 118.357226) (xy 121.5095 118.513712)
+				(xy 121.5095 118.726286) (xy 121.542753 118.936239) (xy 121.542753 118.936241) (xy 121.542754 118.936243)
+				(xy 121.601489 119.117011) (xy 121.608444 119.138414) (xy 121.704951 119.32782) (xy 121.82989 119.499786)
+				(xy 121.980213 119.650109) (xy 122.152182 119.77505) (xy 122.160946 119.779516) (xy 122.211742 119.827491)
+				(xy 122.228536 119.895312) (xy 122.205998 119.961447) (xy 122.160946 120.000484) (xy 122.152182 120.004949)
+				(xy 121.980213 120.12989) (xy 121.82989 120.280213) (xy 121.704951 120.452179) (xy 121.608444 120.641585)
+				(xy 121.542753 120.84376) (xy 121.5095 121.053713) (xy 121.5095 121.266286) (xy 121.53992 121.458355)
+				(xy 121.542754 121.476243) (xy 121.607165 121.67448) (xy 121.608444 121.678414) (xy 121.704951 121.86782)
+				(xy 121.82989 122.039786) (xy 121.980213 122.190109) (xy 122.152179 122.315048) (xy 122.152181 122.315049)
+				(xy 122.152184 122.315051) (xy 122.341588 122.411557) (xy 122.543757 122.477246) (xy 122.753713 122.5105)
+				(xy 122.753714 122.5105) (xy 122.966286 122.5105) (xy 122.966287 122.5105) (xy 123.176243 122.477246)
+				(xy 123.378412 122.411557) (xy 123.567816 122.315051) (xy 123.63192 122.268477) (xy 123.739786 122.190109)
+				(xy 123.739788 122.190106) (xy 123.739792 122.190104) (xy 123.890104 122.039792) (xy 123.890106 122.039788)
+				(xy 123.890109 122.039786) (xy 124.015048 121.86782) (xy 124.015047 121.86782) (xy 124.015051 121.867816)
+				(xy 124.019514 121.859054) (xy 124.067488 121.808259) (xy 124.135308 121.791463) (xy 124.201444 121.813999)
+				(xy 124.240484 121.859054) (xy 124.244591 121.867115) (xy 124.244951 121.86782) (xy 124.36989 122.039786)
+				(xy 124.520213 122.190109) (xy 124.692179 122.315048) (xy 124.692181 122.315049) (xy 124.692184 122.315051)
+				(xy 124.881588 122.411557) (xy 125.083757 122.477246) (xy 125.293713 122.5105) (xy 125.293714 122.5105)
+				(xy 125.506286 122.5105) (xy 125.506287 122.5105) (xy 125.716243 122.477246) (xy 125.918412 122.411557)
+				(xy 126.107816 122.315051) (xy 126.17192 122.268477) (xy 126.279786 122.190109) (xy 126.279788 122.190106)
+				(xy 126.279792 122.190104) (xy 126.430104 122.039792) (xy 126.430106 122.039788) (xy 126.430109 122.039786)
+				(xy 126.555048 121.86782) (xy 126.555047 121.86782) (xy 126.555051 121.867816) (xy 126.651557 121.678412)
+				(xy 126.717246 121.476243) (xy 126.7505 121.266287) (xy 126.7505 121.053713) (xy 126.717246 120.843757)
+				(xy 126.651557 120.641588) (xy 126.555051 120.452184) (xy 126.555049 120.452181) (xy 126.555048 120.452179)
+				(xy 126.430109 120.280213) (xy 126.279786 120.12989) (xy 126.10782 120.004951) (xy 126.107115 120.004591)
+				(xy 126.099054 120.000485) (xy 126.048259 119.952512) (xy 126.031463 119.884692) (xy 126.053999 119.818556)
+				(xy 126.099054 119.779515) (xy 126.107816 119.775051) (xy 126.167729 119.731522) (xy 126.279786 119.650109)
+				(xy 126.279788 119.650106) (xy 126.279792 119.650104) (xy 126.430104 119.499792) (xy 126.430106 119.499788)
+				(xy 126.430109 119.499786) (xy 126.555048 119.32782) (xy 126.555047 119.32782) (xy 126.555051 119.327816)
+				(xy 126.651557 119.138412) (xy 126.717246 118.936243) (xy 126.7505 118.726287) (xy 126.7505 118.513713)
+				(xy 126.717246 118.303757) (xy 126.651557 118.101588) (xy 126.555051 117.912184) (xy 126.555049 117.912181)
+				(xy 126.555048 117.912179) (xy 126.430109 117.740213) (xy 126.279786 117.58989) (xy 126.10782 117.464951)
+				(xy 126.107115 117.464591) (xy 126.099054 117.460485) (xy 126.048259 117.412512) (xy 126.031463 117.344692)
+				(xy 126.053999 117.278556) (xy 126.099054 117.239515) (xy 126.107816 117.235051) (xy 126.153138 117.202123)
+				(xy 126.279786 117.110109) (xy 126.279788 117.110106) (xy 126.279792 117.110104) (xy 126.430104 116.959792)
+				(xy 126.430106 116.959788) (xy 126.430109 116.959786) (xy 126.555048 116.78782) (xy 126.55505 116.787817)
+				(xy 126.555051 116.787816) (xy 126.651557 116.598412) (xy 126.717246 116.396243) (xy 126.7505 116.186287)
+				(xy 126.7505 115.973713) (xy 126.717246 115.763757) (xy 126.651557 115.561588) (xy 126.555051 115.372184)
+				(xy 126.555049 115.372181) (xy 126.555048 115.372179) (xy 126.430109 115.200213) (xy 126.279786 115.04989)
+				(xy 126.10782 114.924951) (xy 126.107115 114.924591) (xy 126.099054 114.920485) (xy 126.048259 114.872512)
+				(xy 126.031463 114.804692) (xy 126.053999 114.738556) (xy 126.099054 114.699515) (xy 126.107816 114.695051)
+				(xy 126.168584 114.650901) (xy 126.279786 114.570109) (xy 126.279788 114.570106) (xy 126.279792 114.570104)
+				(xy 126.430104 114.419792) (xy 126.430106 114.419788) (xy 126.430109 114.419786) (xy 126.555048 114.24782)
+				(xy 126.555047 114.24782) (xy 126.555051 114.247816) (xy 126.651557 114.058412) (xy 126.717246 113.856243)
+				(xy 126.7505 113.646287) (xy 126.7505 113.433713) (xy 126.717246 113.223757) (xy 126.651557 113.021588)
+				(xy 126.555051 112.832184) (xy 126.555049 112.832181) (xy 126.555048 112.832179) (xy 126.430109 112.660213)
+				(xy 126.279786 112.50989) (xy 126.10782 112.384951) (xy 126.107115 112.384591) (xy 126.099054 112.380485)
+				(xy 126.048259 112.332512) (xy 126.031463 112.264692) (xy 126.053999 112.198556) (xy 126.099054 112.159515)
+				(xy 126.107816 112.155051) (xy 126.15575 112.120225) (xy 126.279786 112.030109) (xy 126.279788 112.030106)
+				(xy 126.279792 112.030104) (xy 126.430104 111.879792) (xy 126.430106 111.879788) (xy 126.430109 111.879786)
+				(xy 126.555048 111.70782) (xy 126.555047 111.70782) (xy 126.555051 111.707816) (xy 126.651557 111.518412)
+				(xy 126.717246 111.316243) (xy 126.7505 111.106287) (xy 126.7505 110.893713) (xy 126.717246 110.683757)
+				(xy 126.651557 110.481588) (xy 126.555051 110.292184) (xy 126.555049 110.292181) (xy 126.555048 110.292179)
+				(xy 126.430109 110.120213) (xy 126.279786 109.96989) (xy 126.107817 109.844949) (xy 126.098504 109.840204)
+				(xy 126.047707 109.79223) (xy 126.030912 109.724409) (xy 126.053449 109.658274) (xy 126.098507 109.619232)
+				(xy 126.107555 109.614622) (xy 126.161716 109.57527) (xy 126.161717 109.57527) (xy 125.529409 108.942962)
+				(xy 125.592993 108.925925) (xy 125.707007 108.860099) (xy 125.800099 108.767007) (xy 125.865925 108.652993)
+				(xy 125.882962 108.589409) (xy 126.51527 109.221717) (xy 126.51527 109.221716) (xy 126.554622 109.167554)
+				(xy 126.651095 108.978217) (xy 126.716757 108.77613) (xy 126.716757 108.776127) (xy 126.75 108.566246)
+				(xy 126.75 108.500419) (xy 126.769685 108.43338) (xy 126.822489 108.387625) (xy 126.891647 108.377681)
 			)
 		)
 		(filled_polygon
@@ -87580,26 +91430,26 @@
 				(xy 132.598527 109.84538) (xy 132.499223 109.794781) (xy 132.304534 109.731522) (xy 132.110856 109.700847)
 				(xy 132.102352 109.6995) (xy 131.897648 109.6995) (xy 131.889144 109.700847) (xy 131.695465 109.731522)
 				(xy 131.500776 109.794781) (xy 131.318386 109.887715) (xy 131.152786 110.008028) (xy 131.008028 110.152786)
-				(xy 130.887715 110.318386) (xy 130.794781 110.500776) (xy 130.731522 110.695465) (xy 130.70448 110.866207)
+				(xy 130.887715 110.318386) (xy 130.794781 110.500776) (xy 130.731522 110.695465) (xy 130.704728 110.864639)
 				(xy 130.6995 110.897648) (xy 130.6995 111.102352) (xy 130.705842 111.142393) (xy 130.731523 111.304535)
 				(xy 130.731523 111.304538) (xy 130.794778 111.499214) (xy 130.79478 111.499219) (xy 130.801656 111.512714)
 				(xy 130.814552 111.581382) (xy 130.788276 111.646122) (xy 130.778852 111.656689) (xy 129.184181 113.251361)
 				(xy 129.122858 113.284846) (xy 129.053166 113.279862) (xy 128.997233 113.23799) (xy 128.972816 113.172526)
 				(xy 128.9725 113.16368) (xy 128.9725 110.866207) (xy 128.970888 110.858102) (xy 128.967659 110.841872)
-				(xy 128.964356 110.825268) (xy 128.95533 110.779888) (xy 128.94558 110.730872) (xy 128.936176 110.708168)
-				(xy 128.892777 110.603392) (xy 128.816112 110.488654) (xy 128.636919 110.309461) (xy 128.603434 110.248138)
-				(xy 128.6006 110.22178) (xy 128.6006 108.797639) (xy 128.610039 108.750186) (xy 128.65368 108.644828)
-				(xy 128.677093 108.527127) (xy 128.6806 108.509496) (xy 128.6806 108.371503) (xy 128.653681 108.236177)
-				(xy 128.65368 108.236176) (xy 128.65368 108.236172) (xy 128.648696 108.224139) (xy 128.600877 108.108692)
-				(xy 128.524212 107.993954) (xy 127.183745 106.653487) (xy 127.069007 106.576822) (xy 126.941532 106.524021)
-				(xy 126.941522 106.524018) (xy 126.806196 106.4971) (xy 126.806194 106.4971) (xy 126.806193 106.4971)
-				(xy 124.909994 106.4971) (xy 124.772006 106.4971) (xy 124.772004 106.4971) (xy 124.636677 106.524018)
-				(xy 124.636667 106.524021) (xy 124.509192 106.576822) (xy 124.394454 106.653487) (xy 123.743806 107.304135)
-				(xy 123.682483 107.33762) (xy 123.612791 107.332636) (xy 123.583242 107.316774) (xy 123.567556 107.305378)
-				(xy 123.378217 107.208904) (xy 123.176129 107.143242) (xy 122.966246 107.11) (xy 122.753754 107.11)
-				(xy 122.543872 107.143242) (xy 122.543869 107.143242) (xy 122.341782 107.208904) (xy 122.180295 107.291187)
-				(xy 122.111626 107.304083) (xy 122.046885 107.277807) (xy 122.006628 107.2207) (xy 122 107.180702)
-				(xy 122 105.897648) (xy 130.6995 105.897648) (xy 130.6995 106.102351) (xy 130.731522 106.304534)
+				(xy 128.967658 110.841868) (xy 128.95533 110.779888) (xy 128.94558 110.730872) (xy 128.936176 110.708168)
+				(xy 128.892777 110.603392) (xy 128.816112 110.488654) (xy 128.641919 110.314461) (xy 128.608434 110.253138)
+				(xy 128.6056 110.22678) (xy 128.6056 108.785568) (xy 128.615039 108.738115) (xy 128.628171 108.706411)
+				(xy 128.65368 108.644828) (xy 128.677093 108.527127) (xy 128.6806 108.509496) (xy 128.6806 108.371503)
+				(xy 128.653681 108.236177) (xy 128.65368 108.236176) (xy 128.65368 108.236172) (xy 128.648696 108.224139)
+				(xy 128.600877 108.108692) (xy 128.524212 107.993954) (xy 127.183745 106.653487) (xy 127.069007 106.576822)
+				(xy 126.941532 106.524021) (xy 126.941522 106.524018) (xy 126.806196 106.4971) (xy 126.806194 106.4971)
+				(xy 126.806193 106.4971) (xy 124.909994 106.4971) (xy 124.772006 106.4971) (xy 124.772004 106.4971)
+				(xy 124.636677 106.524018) (xy 124.636667 106.524021) (xy 124.509192 106.576822) (xy 124.394454 106.653487)
+				(xy 123.743806 107.304135) (xy 123.682483 107.33762) (xy 123.612791 107.332636) (xy 123.583242 107.316774)
+				(xy 123.567556 107.305378) (xy 123.378217 107.208904) (xy 123.176129 107.143242) (xy 122.966246 107.11)
+				(xy 122.753754 107.11) (xy 122.543872 107.143242) (xy 122.543869 107.143242) (xy 122.341782 107.208904)
+				(xy 122.180295 107.291187) (xy 122.111626 107.304083) (xy 122.046885 107.277807) (xy 122.006628 107.2207)
+				(xy 122 107.180702) (xy 122 105.897648) (xy 130.6995 105.897648) (xy 130.6995 106.102351) (xy 130.731522 106.304534)
 				(xy 130.794781 106.499223) (xy 130.849943 106.607482) (xy 130.883873 106.674074) (xy 130.887715 106.681613)
 				(xy 131.008028 106.847213) (xy 131.152786 106.991971) (xy 131.306119 107.103372) (xy 131.31839 107.112287)
 				(xy 131.398498 107.153104) (xy 131.500776 107.205218) (xy 131.500778 107.205218) (xy 131.500781 107.20522)
@@ -87706,7 +91556,7 @@
 				(xy 153.499226 109.794782) (xy 153.304534 109.731522) (xy 153.110856 109.700847) (xy 153.102352 109.6995)
 				(xy 152.897648 109.6995) (xy 152.889144 109.700847) (xy 152.695465 109.731522) (xy 152.500776 109.794781)
 				(xy 152.318386 109.887715) (xy 152.152786 110.008028) (xy 152.008028 110.152786) (xy 151.887715 110.318386)
-				(xy 151.794781 110.500776) (xy 151.731522 110.695465) (xy 151.70448 110.866207) (xy 151.6995 110.897648)
+				(xy 151.794781 110.500776) (xy 151.731522 110.695465) (xy 151.704728 110.864639) (xy 151.6995 110.897648)
 				(xy 151.6995 111.102352) (xy 151.7045 111.133919) (xy 151.717986 111.219068) (xy 151.709031 111.288362)
 				(xy 151.683194 111.326147) (xy 148.980187 114.029154) (xy 148.903522 114.143892) (xy 148.850721 114.271367)
 				(xy 148.850718 114.271379) (xy 148.83032 114.373929) (xy 148.83032 114.373932) (xy 148.8238 114.406706)
