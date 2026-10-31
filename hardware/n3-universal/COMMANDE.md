@@ -13,10 +13,12 @@
 
 ## 0. AVANT de payer — ce que le dépôt ne peut pas faire à ta place
 
-1. **JLCDFM** (`jlcdfm.com`, gratuit) sur `gerbers-n3-universal-v0.2.2.zip` — **fait le
-   2026-10-30** : 9 fichiers reconnus, tout le cuivre au vert (écarts de pistes, anneaux,
-   trou ↔ piste, pastilles, bord de carte, vernis). Lignes *Danger* **attendues** (aucune ne
-   touche au cuivre) :
+1. **JLCDFM** (`jlcdfm.com`, gratuit, compte JLCPCB connecté) sur
+   `gerbers-n3-universal-v0.2.3.zip` — **à refaire** (la carte a été reroutée en 0.2.3).
+   Référence = passage sur la v0.2.2 le 2026-10-30 : 9 fichiers reconnus, tout le cuivre au vert
+   (écarts de pistes, anneaux, trou ↔ piste, pastilles, bord de carte, vernis). Lignes *Danger*
+   **attendues** (aucune ne touche au cuivre ; les nombres peuvent varier légèrement avec le
+   nouveau routage, 64 avertissements de sérigraphie au DRC KiCad contre 62) :
    - 2 × « tht to smd » : empreinte double de **D11** (DO-35 **ou** SOD-123, une seule posée) ;
    - 21 × « silkscreen to hole » (0-0,09 mm) : sérigraphie contre des **vias 0,35 mm tentés**
      (vernis), plus un trou 0,5 mm ;
