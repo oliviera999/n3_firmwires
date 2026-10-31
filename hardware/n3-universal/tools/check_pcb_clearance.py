@@ -87,12 +87,14 @@ MATING = {
         what="présentation du fil devant la face d'entrée"),
     # Modules ESP32 : la fiche USB (micro-USB / USB-C surmoulée, ~16 mm) doit
     # sortir du contour de carte, rien de haut sous elle (audit MECA-01/02).
-    "ESP32_DevKit_V1_30pin": dict(
+    # Rev 0.2.3 : site A1 = DevKitC 38 broches ; les deux sites ont leur rangée
+    # principale à 25,4 mm -> fiche(s) USB centrées en x local = 12,7.
+    "ESP32_DevKitC_38pin": dict(
         dir=(0.0, 1.0), depth=20.0, half=8.0, offset=(12.7, 0.0), severity="erreur",
-        what="fiche USB du DevKit V1 devant le bord USB du module"),
+        what="fiche USB du DevKitC 38 broches devant le bord USB du module"),
     "ESP32_S3_DevKitC_1_44pin": dict(
-        dir=(0.0, 1.0), depth=20.0, half=7.5, severity="erreur",
-        what="fiche USB-C du S3-DevKitC-1 devant le bord USB du module"),
+        dir=(0.0, 1.0), depth=20.0, half=7.5, offset=(12.7, 0.0), severity="erreur",
+        what="fiche(s) USB-C du S3-DevKitC-1 devant le bord USB du module"),
 }
 
 # Paires de références autorisées à se recouvrir : peuplement mutuellement

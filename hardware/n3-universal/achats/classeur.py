@@ -39,7 +39,7 @@ A, O, P = I.A, I.O, I.P
 
 # ------------------------------------------------------------------ remarques d'usage carte
 USE = {
-    "ESP32_DEVKIT": "Enfiché sur ses supports, jamais soudé. Vérifier l'écart des rangées (25,4 ou 27,94 mm : support droit sur A ou A').",
+    "ESP32_DEVKIT": "Enfiché sur ses supports, jamais soudé. 38 broches : support droit sur la rangée 25,4 mm ou 22,86 mm selon l'écart des rangées du module.",
     "FIL": "D5 = pont de fil (rev 0.2.2). Règle absolue : ne JAMAIS brancher l'USB du DevKit quand la carte est alimentée.",
     "LD1117": "Ce n'est pas un 78xx : 1=GND 2=OUT 3=IN (sérigraphié).",
     "IRF4905": "Respecter la sérigraphie G-D-S de chaque MOSFET.",
@@ -202,7 +202,7 @@ def build(OUT):
         proj_rows[prof] = rows
         ws["A1"] = title
         ws["A1"].font = f_title
-        ws["A2"] = (f"Carte n3-universal rev 0.2.2 — composants à poser et à acheter pour UNE unité. Prix du {DATE} "
+        ws["A2"] = (f"Carte n3-universal rev 0.2.3 — composants à poser et à acheter pour UNE unité. Prix du {DATE} "
                     "(feuille Prix). Les quantités (bleu) sont modifiables ; l'achat groupé arrondi aux lots est dans « Global ».")
         ws["A2"].font = f_sub
         r = 4
@@ -400,7 +400,7 @@ def build(OUT):
     wl = wb.create_sheet("Lisez-moi", 0)
     L = [
         ("Achats n3-universal — 4 projets", f_title),
-        (f"Carte universelle rev 0.2.2 (hardware/n3-universal). Prix relevés le {DATE} chez les boutiques marocaines en ligne.", f_sub),
+        (f"Carte universelle rev 0.2.3 (hardware/n3-universal). Prix relevés le {DATE} chez les boutiques marocaines en ligne.", f_sub),
         ("", None),
         ("Feuilles", f_bold),
         ("Global — tout ce qu'il faut acheter pour les 4 unités, rechange comprise, arrondi aux lots vendus, avec le coût total.", f_base),

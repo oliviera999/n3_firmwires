@@ -1,8 +1,8 @@
 # n3-universal — étude de faisabilité (étape 0)
 
 Projet : **une carte porteuse commune** aux trois systèmes (msp station météo,
-n3pp serre/élevage, ffp5cs aquaponie), bi-module (site A1 WROOM DevKit V1 /
-site A2 ESP32-S3-DevKitC-1), 12/24 V, avec :
+n3pp serre/élevage, ffp5cs aquaponie), bi-module (site A1 WROOM DevKitC 38 broches /
+site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 - rail capteurs commuté `+3V3_SW` (rev 0.2 : **LDO dédié U1 LD1117V33** derrière le
   P-FET Q7 IRF4905, **jumper bypass JP1 fermé par défaut** — ffp5cs, toujours alimenté,
   ne pilote pas le gate) et pont diviseur VBAT **permanent** (R38 + JP12 18k/100k — 22k jusqu'à la 0.2.1) ;
@@ -240,11 +240,12 @@ les fentes, textes serrés), sans effet électrique. Détail et tableau : audit 
   **y86** (rev 0.1.1, `SEC-CRP-01`) + les mini-fentes autour de chaque COM qui tiennent
   l'isolement (écart cuivre mains ↔ logique mesuré : 3,45 mm ; mains ↔ bord des plans
   coulés ≥ 6,50 mm, même couche — règle `.kicad_dru` + `check_mains_plane_gap`).
-- **Sites A1 (WROOM 2×15) / A2 (S3-DevKitC-1 2×22)** — un seul module peuplé ;
-  antennes dégagées (keepouts) ; **entraxes ET ordre des broches à VERIFIER sur
-  l'exemplaire réel** avant de souder les supports (certains clones « DevKit V1
-  30 broches » sont en 27,9 mm au lieu de 25,4, ou intervertissent des broches :
-  comparer les 30 étiquettes du module à celles de la carte).
+- **Sites A1 (WROOM DevKitC 2×19) / A2 (S3-DevKitC-1 2×22)** — un seul module peuplé ;
+  antennes dégagées (keepouts). Rev 0.2.3 : **rangée droite doublée** sur les deux sites,
+  **25,4 mm** (modules mesurés : ESP32 38 broches, clone S3 à double USB-C) **ou 22,86 mm**
+  (38 broches étroits, S3-DevKitC-1 officiel) — souder le support droit là où tombent les
+  broches. **Ordre des broches à VERIFIER sur l'exemplaire réel** (comparer les étiquettes
+  du module à celles de la carte). Le DevKit V1 30 broches n'est plus accepté (rev ≤ 0.2.2).
 - **Firmwares** : sections `PINMAP_UNIVERSAL` (msp 2.75, n3pp 4.72, ffp5cs 15.29),
   envs `esp32dev_universal_test` / `wroom-universal-test` / `wroom-s3-universal-test`
   (tous en CI). Garde anti-dérive machine sur les 4 combinaisons.

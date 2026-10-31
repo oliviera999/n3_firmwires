@@ -16,8 +16,8 @@ PRIX = {
     "PCB": ("JLCPCB", 917, 10, "lot de 10", "https://jlcpcb.com/", "Import",
             "Devis du 30/10/2026 : 10 cartes 1 oz 44,05 $ + FedEx 49,06 $ = 93,11 $ ≈ 917 DH (9,85 DH/$), "
             "hors droits et TVA (≈ 23 %, COMMANDE.md §2)."),
-    "ESP32_DEVKIT": (S4, 114, 1, "pièce", "https://shop4makers.com/", "Maroc",
-                     "Prix BOM (Shop4Makers « ESP32 Dev Kit V1 Type-C », CP2102). Ne pas importer (ANRT)."),
+    "ESP32_DEVKIT": (S4, 114, 1, "pièce", "https://shop4makers.com/produit/esp32-wroom-32e-38-pins-wifi-bluethooth/", "Maroc",
+                     "Rev 0.2.3 : module 38 broches (Shop4Makers « Carte ESP32-WROOM-32E Dual Core 38Pin »). Ne pas importer (ANRT)."),
     # résistances : MicroPlanet, 1 %, toutes les valeurs dont 18k
     **{f"R_{v}": (MP, 1.50, 5, "lot de 5",
                   "https://www.microplanet.ma/produit/resistances-14w-50-valeurs-precision-1-1-packet-5-unites/",
@@ -109,8 +109,10 @@ PRIX = {
 }
 
 PRIX.update({
-    "ESP32_DEVKIT": (S4, 113.00, 1, "pièce", "https://shop4makers.com/produit/esp32-wroom-cp2102/", "Maroc",
-                     "ESP32 WROOM CP2102 30 broches. Ne pas importer (ANRT). Repli A2itronic 120 DH."),
+    "ESP32_DEVKIT": (S4, 114.00, 1, "pièce", "https://shop4makers.com/produit/esp32-wroom-32e-38-pins-wifi-bluethooth/", "Maroc",
+                     "Rev 0.2.3 : ESP32 38 broches (DevKitC, WROOM-32E), relevé du 31/10/2026. Le site A1 accepte "
+                     "les rangées à 25,4 ET 22,86 mm. Deux modules 38 broches déjà possédés : n'en acheter que "
+                     "pour les profils restants. Ne pas importer (ANRT)."),
     "SRD05": (MS, 18.00, 1, "pièce", "https://www.moussasoft.com/produit/relai-electrique-5v-srd-05vdc-sl-c/", "Maroc",
               "Composant seul 5 broches, pas un module relais. 324 en stock."),
     "DHT11": (S4, 16.20, 1, "pièce", "https://shop4makers.com/produit/capteur-temperature-et-dhumidite-dht11/", "Maroc",

@@ -19,7 +19,7 @@ msp1;IRF4905;À acheter;2;Q7, Q12
 msp1;LD1117;À acheter;1;U1
 msp1;BORNIER_2P;À acheter;5;J1, J12, J18, J19, J25
 msp1;BORNIER_3P;À acheter;8;J10, J11, J29, J30, J31, J32, J33, J34
-msp1;BARRETTE_F;À acheter;2;A1 (2×15), J13, J21
+msp1;BARRETTE_F;À acheter;2;A1 (2×19), J13, J21
 msp1;BARRETTE_M;À acheter;2;J15, J16, J17, J20, JP1, JP12, JP13, JP14, JP15, JP16, JP17, JP18, JP19, JP20, …
 msp1;CAVALIER;À acheter;9;JP…
 msp1;FIL;À acheter;1;D5
@@ -63,7 +63,7 @@ n3pp;LED_R;À acheter;1;LED1
 n3pp;SRD05;À acheter;1;K1
 n3pp;BORNIER_2P;À acheter;5;J1, J12, J18, J19, J25
 n3pp;BORNIER_3P;À acheter;6;J3, J10, J31, J32, J33, J34
-n3pp;BARRETTE_F;À acheter;2;A1 (2×15), J13, J21
+n3pp;BARRETTE_F;À acheter;2;A1 (2×19), J13, J21
 n3pp;BARRETTE_M;À acheter;2;J17, J20, JP1, JP5, JP12, JP13, JP14, JP15, JP16, JP17, JP18, JP19, JP20, JP21
 n3pp;CAVALIER;À acheter;5;JP…
 n3pp;JACK_DC;À acheter;1;J2
@@ -110,7 +110,7 @@ ffp_230;HLK20M05;À acheter;1;PS1
 ffp_230;BORNIER_2P;À acheter;5;J1, J12, J18, J19, J27
 ffp_230;BORNIER_3P;À acheter;8;J3, J4, J5, J6, J10, J11, J23, J24
 ffp_230;BORNIER_4P;À acheter;3;J7, J8, J9
-ffp_230;BARRETTE_F;À acheter;2;A1 (2×15), J13, J14
+ffp_230;BARRETTE_F;À acheter;2;A1 (2×19), J13, J14
 ffp_230;BARRETTE_M;À acheter;2;J15, J16, J17, J20, J38, JP1, JP5, JP6, JP7, JP8, JP9, JP10, JP13, JP14, …
 ffp_230;CAVALIER;À acheter;7;JP…
 ffp_230;FIL;À acheter;1;D5
@@ -160,7 +160,7 @@ ffp_12v;SRD05;À acheter;6;K1, K2, K3, K4, K5, K6
 ffp_12v;BORNIER_2P;À acheter;8;J1, J12, J18, J19, J25, J26, J36, J37
 ffp_12v;BORNIER_3P;À acheter;8;J3, J4, J5, J6, J10, J11, J23, J24
 ffp_12v;BORNIER_4P;À acheter;3;J7, J8, J9
-ffp_12v;BARRETTE_F;À acheter;2;A1 (2×15), J13, J14, J21, J22, J28
+ffp_12v;BARRETTE_F;À acheter;2;A1 (2×19), J13, J14, J21, J22, J28
 ffp_12v;BARRETTE_M;À acheter;2;J15, J16, J17, J20, J38, JP1, JP5, JP6, JP7, JP8, JP9, JP10, JP12, JP13, …
 ffp_12v;CAVALIER;À acheter;8;JP…
 ffp_12v;FIL;À acheter;1;D5

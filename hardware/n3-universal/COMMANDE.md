@@ -130,7 +130,7 @@ Codes LCSC lus sur la page produit le **2026-10-06** (stock à ce jour) :
 | Porte-fusible 5×20 à capot (F1) | 5 | **C3131** | Xucheng BLX-A : **pas 22,0 ±0,5 mm** (fiche LCSC), broches plates 1,5 × 0,35 → fentes 3 mm de l'empreinte universelle ; ou clips Schurter/Multicomp (22,5-22,6) sur les mêmes fentes |
 | Cartouche T1A 5×20 | 10 | — | locale (quincaillerie) ou LCSC au choix |
 | Barrette mâle 2,54 1×40 (JP1-JP21, J38, TP) | 10 | **C2337** | sécable |
-| Barrette femelle 2,54 1×40 (supports A1/A2) | 10 | **C9811** | 2 × 15 + 2 × 22 par carte ; ou Moussasoft |
+| Barrette femelle 2,54 1×40 (supports A1/A2) | 10 | **C9811** | 2 × 19 (A1, rev 0.2.3) + 2 × 22 par carte ; ou Moussasoft |
 | Cavaliers 2,54 | 100 | **C2689176** | 18 par carte + rechange |
 | Condensateurs 10 µF / 100 µF radiaux (C11, C12, C2, C5) | 5 + 15 | — | locaux ou LCSC (Basic) |
 
@@ -145,7 +145,7 @@ régénérée depuis la BOM par `python3 achats/build_achats.py`.
 | Fournisseur | Quoi | Remarque |
 |---|---|---|
 | **Moussasoft** (Casablanca, moussasoft.com) | relais SRD, BC337, 1N4007, borniers KF301, barrettes, résistances, condensateurs, ESP32 | catalogue le plus large, prix unitaires bas |
-| **Shop4Makers** (Casablanca) | ESP32 DevKit V1 Type-C, ESP32-S3 N16R8, HLK-20M05, borniers | modules ESP32 : **acheter ici**, pas d'import |
+| **Shop4Makers** (Casablanca) | ESP32 38 broches (WROOM-32E, 114 DH), ESP32-S3 N16R8, HLK-20M05, borniers | modules ESP32 : **acheter ici**, pas d'import |
 | **A2itronic** | IRF4905, TO-220 courants, LD1117 parfois | vérifier le stock avant |
 | **MicroPlanet** | varistances 14D471K, porte-fusibles, fusibles | |
 

@@ -1,6 +1,6 @@
 Refs;Qte;Valeur;Empreinte;Description;Source;LCSC;Note achat
-A1;1;ESP32 DevKit V1;ESP32_DevKit_V1_30pin;Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15;Maroc;;Shop4Makers « ESP32 Dev Kit V1 Type-C » (CP2102, 114 DH) — ne pas importer (ANRT)
-A2;1;ESP32-S3-DevKitC-1;ESP32_S3_DevKitC_1_44pin;Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2);Maroc;;Shop4Makers / Moussasoft S3 N16R8 (180 DH) — ne pas importer (ANRT)
+A1;1;ESP32 DevKitC 38 broches;ESP32_DevKitC_38pin;Module ESP32-WROOM-32 DevKitC 38 broches, sur 2 supports 1x19 (rangée droite à 25,4 mm, ou 22,86 mm pour un module étroit);;;
+A2;1;ESP32-S3-DevKitC-1;ESP32_S3_DevKitC_1_44pin;Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (rangée droite à 25,4 mm, ou 22,86 mm pour le DevKitC-1 officiel) — un seul module A1 OU A2;Maroc;;Shop4Makers / Moussasoft S3 N16R8 (180 DH) — ne pas importer (ANRT)
 C1;1;1000u/16V;CP_Radial_D10.0mm_P5.00mm;Réservoir rail 5V (relais + servos + HC-SR04);Maroc;;électrolytique radial
 C10;1;100n;C_Disc_D5.0mm_W2.5mm_P5.00mm;Filtre ADC_E;Maroc;;céramique 100 nF
 C11;1;10u/25V;CP_Radial_D5.0mm_P2.50mm;Entrée LDO;Maroc;;électrolytique radial
@@ -134,8 +134,8 @@ TP2;1;+5V;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test +5V (boucle de fil ou
 TP3;1;+3V3_SW;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test +3V3_SW (boucle de fil ou picot);Maroc;;boucle de fil ou picot
 TP4;1;+3V3;TestPoint_THTPad_D2.0mm_Drill1.0mm;Point de test +3V3 (boucle de fil ou picot);Maroc;;boucle de fil ou picot
 U1;1;LD1117V33;TO-220-3_Vertical_LDO;Régulateur 3,3V 800mA du rail capteurs (1=GND 2=OUT 3=IN — PAS un 78xx);import;C283467;"ST LD1117V33 TO-220 (1=GND 2=OUT 3=IN, languette = OUT) ; repli LM1117T-3.3 HGSEMI C498321 (même brochage)"
-A1 (supports);2;Support femelle 1x15 P2.54;monte sur l'empreinte ESP32_DevKit_V1_30pin;Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé. Support droit sur la rangée A (25,4) OU A' (27,94) selon le module acheté;Maroc;;barrette femelle sécable
-A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu;Maroc;;
+A1 (supports);2;Support femelle 1x19 P2.54;monte sur l'empreinte ESP32_DevKitC_38pin;Barrettes femelles 19 pts : le DevKitC 38 broches s'enfiche, jamais soudé. Support droit sur la rangée 25,4 mm OU 22,86 mm selon le module;Maroc;;barrette femelle sécable
+A2 (supports);2;Support femelle 1x22 P2.54;monte sur l'empreinte ESP32_S3_DevKitC_1_44pin;"Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu ; support droit sur la rangée 25,4 mm (clone large) OU 22,86 mm (officiel)";Maroc;;
 J35 (module);0-1;Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125);s'enfiche sur J35;6 broches GND/VCC/MISO/MOSI/SCK/CS. À poser sur unités S3 (site A2, JP2/3/4/11 en 1-2). Sur WROOM (site A1, JP en 2-3) : UNIQUEMENT après efuse VDD_SDIO=3V3 (espefuse.py set_flash_voltage 3.3V). PAS de module type Catalex;Maroc;;Moussasoft 18 DH
 J14/J21/J22/J28 (modules);0-4;DS3231 + INA226;s'enfichent sur les ports I2C;"DS3231 : dessouder le circuit de charge, pile CR2032 ; INA sur +3V3_SW";Maroc;;Moussasoft / Shop4Makers
 J36/J37 (module);0-1;Buck 12V->5V faible Iq;MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT);"Profil bus 12V uniquement ; fusible lame 7,5-10A en amont";Maroc;;Shop4Makers MP1584EN 25 DH

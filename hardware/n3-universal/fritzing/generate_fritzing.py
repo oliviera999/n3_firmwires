@@ -288,7 +288,7 @@ def board_svg(prof, fps, conn_index):
             n = int(ref[2:])
             label = f"{ref} {jp[ref]}" if ref in jp else (ref if not posed else (f"{ref} AUTO" if 5 <= n <= 10 else f"{ref} ouvert"))
         elif ref.startswith("J") or ref.startswith("K") or ref in ("PS1", "A1", "U1", "F1", "RV1", "LED5") or ref.startswith("Q"):
-            label = ref if ref != "A1" else "A1 — ESP32 DevKit V1\n(enfiché, jamais soudé)"
+            label = ref if ref != "A1" else "A1 — ESP32 DevKitC 38 broches\n(enfiché, jamais soudé)"
             if ref.startswith("K"):
                 label = f"{ref} relais"
         elif ref.startswith("LED"):

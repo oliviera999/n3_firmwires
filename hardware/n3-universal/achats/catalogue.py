@@ -8,8 +8,8 @@ CATS = ["1. Carte et cerveau", "2. Résistances", "3. Condensateurs", "4. Semi-c
 
 # id: (catégorie index, désignation, rechange conseillée sur l'achat global)
 CAT = OrderedDict([
-    ("PCB", (0, "Circuit imprimé n3-universal rev 0.2.2 (JLCPCB, 1 oz)", 0)),
-    ("ESP32_DEVKIT", (0, "ESP32 DevKit V1 30 broches (WROOM-32)", 1)),
+    ("PCB", (0, "Circuit imprimé n3-universal rev 0.2.3 (JLCPCB, 1 oz)", 0)),
+    ("ESP32_DEVKIT", (0, "ESP32 DevKitC 38 broches (WROOM-32)", 1)),
     ("R_220", (1, "Résistance 220 Ω 1/4 W", 2)),
     ("R_1k", (1, "Résistance 1 kΩ 1/4 W", 5)),
     ("R_2k", (1, "Résistance 2 kΩ 1/4 W (2,2 kΩ convient)", 2)),

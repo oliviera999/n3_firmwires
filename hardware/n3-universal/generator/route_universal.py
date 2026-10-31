@@ -119,24 +119,31 @@ def mk_rule_area(board, x0, y0, x1, y1):
     return z
 
 
+# Rangées doublées des sites modules (rev 0.2.3) : empreinte -> x local de la
+# rangée de SECOURS (mêmes numéros et nets que la rangée principale à 25,4 mm).
+ALT_ROWS = {"ESP32_DevKitC_38pin": 22.86, "ESP32_S3_DevKitC_1_44pin": 22.86}
+
+
 def rename_devkit_alt_pads(pcb_path: Path) -> int:
-    """DevKit V1 : la rangée A' (entraxe 27,94) duplique les numéros 1..15 et
-    freerouting refuse les doublons. Dans la copie exportée en DSN, A' est
-    renumérotée 1A..15A en GARDANT ses nets : le routeur la voit comme des
-    pastilles du même net (cibles ou obstacles), au lieu de router des pistes
-    d'autres nets par-dessus (0.2, premier essai : 26 courts-circuits sur A').
-    Édition textuelle : modifier un pad par l'API laisse des objets SWIG non
-    typés (KiCad 10). add_devkit_alt_tracks ponte ensuite A et A'."""
+    """Sites A1/A2 : la rangée de secours (22,86 mm) duplique les numéros de la
+    rangée principale (25,4 mm) et freerouting refuse les doublons. Dans la copie
+    exportée en DSN, elle est renumérotée « nA » en GARDANT ses nets : le routeur
+    la voit comme des pastilles du même net (cibles ou obstacles), au lieu de
+    router des pistes d'autres nets par-dessus (0.2, premier essai : 26 courts-
+    circuits sur la rangée doublée). Édition textuelle : modifier un pad par
+    l'API laisse des objets SWIG non typés (KiCad 10). add_devkit_alt_tracks
+    ponte ensuite les deux rangées."""
     import generate as g
     tree = g.sx_parse(pcb_path.read_text(encoding="utf-8"))
     n = 0
     for fp in g.sx_find_all(tree, g.Sym("footprint")):
-        if not str(fp[1]).endswith("ESP32_DevKit_V1_30pin"):
+        alt_x = next((x for name, x in ALT_ROWS.items() if str(fp[1]).endswith(name)), None)
+        if alt_x is None:
             continue
         for item in fp:
             if isinstance(item, list) and item and item[0] == "pad":
                 at = g.sx_find_all(item, g.Sym("at"))[0]
-                if abs(float(at[1]) - 27.94) < 1e-6:
+                if abs(float(at[1]) - alt_x) < 1e-6:
                     item[1] = f"{item[1]}A"
                     n += 1
     pcb_path.write_text(g.sx_dump(tree), encoding="utf-8")
@@ -233,12 +240,20 @@ def run_freerouting(jar: Path, dsn: Path, ses: Path):
 
 
 def add_devkit_alt_tracks(b) -> int:
-    """Ponts rangée A (25,4) -> A' (27,94) du DevKit V1 : 15 pistes de 2,54 mm
-    (même net, même numéro de pad), en F.Cu, largeur 0,4."""
+    """Ponts rangée principale (25,4) -> secours (22,86) des sites A1 et A2 :
+    une piste de 2,54 mm par numéro doublé (même net), en F.Cu, largeur 0,4.
+    Idempotent (rev 0.2.3) : posé AVANT le routage — freerouting garde ces ponts
+    et ne fait passer aucune piste étrangère dans l'espace de 0,84 mm entre les
+    deux rangées — puis revérifié après l'import du .ses."""
     nets = b.GetNetsByName()
+    existing = set()
+    for t in b.GetTracks():
+        if t.GetClass() == "PCB_TRACK":
+            s_, e_ = t.GetStart(), t.GetEnd()
+            existing.add(frozenset({(s_.x, s_.y), (e_.x, e_.y)}))
     n = 0
     for fp in b.GetFootprints():
-        if not fp.GetFPIDAsString().endswith("ESP32_DevKit_V1_30pin"):
+        if not any(fp.GetFPIDAsString().endswith(name) for name in ALT_ROWS):
             continue
         by_num = {}
         for pad in fp.Pads():
@@ -246,9 +261,12 @@ def add_devkit_alt_tracks(b) -> int:
         for num, pads in by_num.items():
             if len(pads) != 2:
                 continue
-            a, c = sorted(pads, key=lambda p: p.GetPosition().x)
+            a, c = sorted(pads, key=lambda p: (p.GetPosition().x, p.GetPosition().y))
             net = a.GetNetname() or c.GetNetname()
-            if not net:
+            if not net or net.startswith("unconnected-"):   # GPIO0 / flash : rien à ponter
+                continue
+            pa, pc = a.GetPosition(), c.GetPosition()
+            if frozenset({(pa.x, pa.y), (pc.x, pc.y)}) in existing:
                 continue
             t = pcbnew.PCB_TRACK(b)
             t.SetStart(a.GetPosition())
@@ -500,9 +518,10 @@ def add_stitching_vias(b):
     spots += [(x, y) for x in range(250, 316, 12) for y in range(134, 172, 10)]
     spots += [(x, y) for x in (252, 264, 276) for y in (88, 96)]
     # jamais dans les zones antenne (A1 et A2), le coin PSU secteur, ni sous
-    # les modules (A1 : x97..129 y102..158 ; A2 couché : x248..320 y103..130)
-    keepouts = [(95.6, 100.5, 129.8, 160), (246.5, 105.5, 265, 127.5),
-                (246, 101, 320, 131), (245, 40, 318, 102)]
+    # les modules (rev 0.2.3 — A1 DevKitC 38 : x97,6..127,8 y103,5..160,5 ;
+    # A2 couché : x248,5..319,5 y101,9..131,1)
+    keepouts = [(95.6, 100.5, 129.8, 161.5), (246.5, 105.5, 265, 127.5),
+                (246, 100.9, 320, 131.6), (245, 40, 318, 102)]
     spots = [(x, y) for x, y in spots
              if not any(kx0 <= x <= kx1 and ky0 <= y <= ky1
                         for kx0, ky0, kx1, ky1 in keepouts)]
@@ -610,6 +629,11 @@ def main():
     dsn, ses = work / "logic.dsn", work / "logic.ses"
 
     apply_seed_tracks()
+    b0 = pcbnew.LoadBoard(str(BOARD_PATH))
+    n_alt = add_devkit_alt_tracks(b0)
+    if n_alt:
+        pcbnew.SaveBoard(str(BOARD_PATH), b0)
+    print("ponts rangées doublées A1/A2 posés avant routage :", n_alt)
     if args.dsn_only:
         if not export_logic_dsn(Path(args.dsn_only)):
             sys.exit("échec export DSN")

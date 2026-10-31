@@ -37,8 +37,8 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3-universal"
-REV = "0.2.2"
-REV_DATE = "2026-10-17"
+REV = "0.2.3"
+REV_DATE = "2026-10-31"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -167,18 +167,30 @@ SYMBOLS: dict[str, dict] = {
                     left=[(str(i), str(i), 7 - i) for i in range(1, 15)]),
 }
 
-# ESP32 DevKit V1 30 broches — côté A (droite du module, USB en bas) = pads 1..15,
-# côté B (gauche) = pads 16..30. Ordre physique bas→haut côté A : 3V3..D23.
-DEVKIT_A = ["3V3", "GND", "GPIO15", "GPIO2", "GPIO4", "GPIO16", "GPIO17",
-            "GPIO5", "GPIO18", "GPIO19", "GPIO21", "RX0", "TX0", "GPIO22", "GPIO23"]
-DEVKIT_B = ["VIN", "GND", "GPIO13", "GPIO12", "GPIO14", "GPIO27", "GPIO26",
-            "GPIO25", "GPIO33", "GPIO32", "GPIO35", "GPIO34", "GPIO39_VN",
-            "GPIO36_VP", "EN"]
-SYMBOLS["ESP32_DEVKIT_V1_30"] = dict(
+# ESP32 DevKitC 38 broches (site A1, rev 0.2.3 — remplace le DevKit V1 30 broches
+# de la 0.2.2 : les modules disponibles sont des 38 broches). Ordre physique
+# haut->bas, antenne en haut, USB en bas (Espressif ESP32-DevKitC V4, en-têtes
+# J2/J3 : https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html).
+# J2 (gauche) = pads 1..19, J3 (droite) = pads 20..38. Mêmes GPIO que le 30
+# broches : les firmwares ne changent pas. GPIO0 et la flash (GPIO6-11 : SD0-3,
+# CMD, CLK) ne sont JAMAIS câblés.
+DEVKITC_L = ["3V3", "EN", "GPIO36_VP", "GPIO39_VN", "GPIO34", "GPIO35", "GPIO32",
+             "GPIO33", "GPIO25", "GPIO26", "GPIO27", "GPIO14", "GPIO12", "GND",
+             "GPIO13", "SD2_GPIO9", "SD3_GPIO10", "CMD_GPIO11", "5V"]
+DEVKITC_R = ["GND", "GPIO23", "GPIO22", "TX0", "RX0", "GPIO21", "GND", "GPIO19",
+             "GPIO18", "GPIO5", "GPIO17", "GPIO16", "GPIO4", "GPIO0", "GPIO2",
+             "GPIO15", "SD1_GPIO8", "SD0_GPIO7", "CLK_GPIO6"]
+SYMBOLS["ESP32_DEVKITC_38"] = dict(
     ref="A", w=8,
-    left=[(str(i + 1), DEVKIT_A[i], 7 - i) for i in range(15)],
-    right=[(str(i + 16), DEVKIT_B[i], 7 - i) for i in range(15)],
+    left=[(str(i + 1), DEVKITC_L[i], 9 - i) for i in range(19)],
+    right=[(str(i + 20), DEVKITC_R[i], 9 - i) for i in range(19)],
 )
+# Entraxes des rangées des sites A1/A2 (rev 0.2.3) : rangée droite PRINCIPALE à
+# 25,4 mm (modules mesurés le 2026-10-31 : ESP32 38 broches et clone S3-DevKitC-1
+# à double USB-C) + rangée droite de SECOURS à 22,86 mm (mêmes numéros, mêmes
+# nets, pontée par route_universal.py) pour les modules étroits / DevKitC-1 officiel.
+DEVKIT_ROW_MAIN = 25.4
+DEVKIT_ROW_ALT = 22.86
 
 # ESP32-S3-DevKitC-1 44 broches (site A2, un seul module A1 OU A2 peuplé).
 # Ordre physique haut->bas, antenne en haut : J1 (gauche) = pads 1..22,
@@ -370,34 +382,47 @@ def us_channel(idx: int, name: str, gpio_net: str, rref1: str, rref2: str,
 
 def build_components():
     comps = []
-    # --- Module ESP32 DevKit V1 (sur supports 2×15) --------------------------
+    # --- Module ESP32 DevKitC 38 broches (sur supports 2×19) — rev 0.2.3 -------
     # Cartographie WROOM universelle (pinmap_universel_propose.json / pins.h
-    # PINMAP_UNIVERSAL des 3 firmwares) : DEVKIT_A/B -> pads 1..30.
+    # PINMAP_UNIVERSAL des 3 firmwares), INCHANGÉE par GPIO : DEVKITC_L/R -> pads 1..38.
     a1_nets = {
-        "1": "+3V3", "2": "GND", "3": NET["DHT_PIN"],            # GPIO15
-        "4": NET["ONE_WIRE_BUS"],                                 # GPIO2
-        "5": NET["ULTRASON_AQUA"],                                # GPIO4 (US1, ∥ Pluie msp)
-        "6": NET["POMPE_AQUA"], "7": NET["POMPE_RESERV"],         # GPIO16/17 (K1/K2)
-        "8": NET["ULTRASON_TANK"],                                # GPIO5 (US2, ∥ DHT_EXT msp)
-        "9": NET["RADIATEURS"], "10": NET["LUMIERE"],             # GPIO18/19 (K3/K4)
-        "11": NET["I2C_SDA"], "12": "SPARE_RX0",
-        "13": "SPARE_TX0", "14": NET["I2C_SCL"],
-        "15": NET["AUX1"],                                        # GPIO23 (K5, = SD_CLK en wroom-sd)
-        "16": "VIN_5V", "17": "GND",
-        "18": "GATE",                                             # GPIO13 (rail +3V3_SW)
-        "19": "SD_MISO_W",                                        # GPIO12/MTDI (-> JP11 2-3, SANS pull-up)
-        "20": NET["ULTRASON_POTA"],                               # GPIO14 (US3, = SD_CS en wroom-sd)
-        "21": NET["SERVO_PETITS"], "22": NET["SERVO_GROS"],       # GPIO27/26
-        "23": NET["AUX2"],                                        # GPIO25 (K6, = SD_MOSI en wroom-sd)
-        "24": "ADC_B", "25": "ADC_A",                             # GPIO33/32
-        "26": "ADC_D", "27": "ADC_C",                             # GPIO35/34 (entrées seules)
-        "28": "ADC_VBAT", "29": NET["LUMINOSITE"],                # GPIO39/36
-        "30": "EN",
+        # J2 (gauche, haut -> bas)
+        "1": "+3V3", "2": "EN",
+        "3": NET["LUMINOSITE"], "4": "ADC_VBAT",                  # GPIO36/39 (entrées seules)
+        "5": "ADC_C", "6": "ADC_D",                               # GPIO34/35 (entrées seules)
+        "7": "ADC_A", "8": "ADC_B",                               # GPIO32/33
+        "9": NET["AUX2"],                                         # GPIO25 (K6, = SD_MOSI en wroom-sd)
+        "10": NET["SERVO_GROS"], "11": NET["SERVO_PETITS"],       # GPIO26/27
+        "12": NET["ULTRASON_POTA"],                               # GPIO14 (US3, = SD_CS en wroom-sd)
+        "13": "SD_MISO_W",                                        # GPIO12/MTDI (-> JP11 2-3, SANS pull-up)
+        "14": "GND",
+        "15": "GATE",                                             # GPIO13 (rail +3V3_SW)
+        "16": None, "17": None, "18": None,                       # SD2/SD3/CMD : flash, jamais
+        "19": "VIN_5V",
+        # J3 (droite, haut -> bas) — rangée principale 25,4 + secours 22,86
+        "20": "GND",
+        "21": NET["AUX1"],                                        # GPIO23 (K5, = SD_CLK en wroom-sd)
+        "22": NET["I2C_SCL"],                                     # GPIO22
+        "23": "SPARE_TX0", "24": "SPARE_RX0",
+        "25": NET["I2C_SDA"],                                     # GPIO21
+        "26": "GND",
+        "27": NET["LUMIERE"], "28": NET["RADIATEURS"],            # GPIO19/18 (K4/K3)
+        "29": NET["ULTRASON_TANK"],                               # GPIO5 (US2, ∥ DHT_EXT msp)
+        "30": NET["POMPE_RESERV"], "31": NET["POMPE_AQUA"],       # GPIO17/16 (K2/K1)
+        "32": NET["ULTRASON_AQUA"],                               # GPIO4 (US1, ∥ Pluie msp)
+        "33": None,                                               # GPIO0 (BOOT) : jamais câblé
+        "34": NET["ONE_WIRE_BUS"],                                # GPIO2
+        "35": NET["DHT_PIN"],                                     # GPIO15
+        "36": None, "37": None, "38": None,                       # SD1/SD0/CLK : flash, jamais
     }
-    comps.append(dict(ref="A1", sym="ESP32_DEVKIT_V1_30", value="ESP32 DevKit V1",
-                      fp="ESP32_DevKit_V1_30pin",
-                      desc="Module ESP32-WROOM-32 DevKit V1 30 broches, sur 2 supports 1x15",
-                      sch=(60, 35), pcb=(100, 111, 0), nets=a1_nets))
+    # Origine = pad 1 (3V3, coin haut-gauche). y = 108,46 : 4,3 mm de module au-dessus
+    # du pad 1 (antenne), 3,5 mm + fiche USB sous le pad 19 — le module s'arrête
+    # au-dessus de la rangée de borniers (y >= 162). Mesures sur photo 2026-10-31.
+    comps.append(dict(ref="A1", sym="ESP32_DEVKITC_38", value="ESP32 DevKitC 38 broches",
+                      fp="ESP32_DevKitC_38pin",
+                      desc="Module ESP32-WROOM-32 DevKitC 38 broches, sur 2 supports 1x19 "
+                           "(rangée droite à 25,4 mm, ou 22,86 mm pour un module étroit)",
+                      sch=(60, 35), pcb=(100, 108.46, 0), nets=a1_nets))
     # --- Site A2 : ESP32-S3-DevKitC-1 (un seul module A1 OU A2 peuplé) -------
     # Cartographie S3 universelle (pins.h PINMAP_UNIVERSAL, section BOARD_S3).
     a2_nets = {
@@ -432,8 +457,12 @@ def build_components():
     }
     comps.append(dict(ref="A2", sym="ESP32_S3_DEVKITC_44", value="ESP32-S3-DevKitC-1",
                       fp="ESP32_S3_DevKitC_1_44pin",
-                      desc="Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 (un seul module A1 OU A2)",
-                      sch=(152, 104), pcb=(257, 128, 90), nets=a2_nets))
+                      desc="Site optionnel ESP32-S3-DevKitC-1 44 broches, sur 2 supports 1x22 "
+                           "(rangée droite à 25,4 mm, ou 22,86 mm pour le DevKitC-1 officiel) — un seul module A1 OU A2",
+                      # rev 0.2.3 : y 128 -> 129,2 — la rangée principale passe à 25,4 mm ;
+                      # le centre du module (zone antenne) reste à y ≈ 116,5. Calé entre
+                      # PS1 (courtyard y <= 101,5) et D8 (y >= 131,2).
+                      sch=(152, 104), pcb=(257, 129.2, 90), nets=a2_nets))
     # --- Alimentation 5 V (rev 0.2 : anti-inversion P-MOSFET + TVS) ----------
     # J1 / J2 / J37 arrivent sur VIN_RAW ; Q12 (IRF4905, VGS = -5 V) ne laisse
     # passer qu'une polarité : un fil inversé par un élève ne détruit plus la
@@ -1099,7 +1128,7 @@ def described(ref: str, desc: str) -> str:
 # Textes explicatifs du schéma : (x_gu, y_gu, texte)
 SCH_TEXTS = [
     (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\\nD5 protège le rail si l'USB du DevKit est branché en même temps."),
-    (52, 24, "SITE A1 : ESP32 DevKit V1 (30 broches, socketé) — UN SEUL module peuplé (A1 OU A2).\\nEmpreinte à DEUX entraxes (25,4 = rangée A, 27,94 = rangée A') : souder le support droit là où tombent les broches du module.\\nEnvs carte universelle : msp/n3pp esp32dev_universal_test, ffp5cs wroom-universal-test.\\nSur une unité ffp5cs, ÔTER JP1 avant un flash UART (le pull-up R24 sur GPIO2 bloque le bootloader)."),
+    (52, 24, "SITE A1 : ESP32 DevKitC 38 broches (socketé) — UN SEUL module peuplé (A1 OU A2).\\nRangée droite double (25,4 mm OU 22,86 mm) : souder le support droit là où tombent les broches du module. GPIO0 et flash non câblés.\\nEnvs carte universelle : msp/n3pp esp32dev_universal_test, ffp5cs wroom-universal-test.\\nSur une unité ffp5cs, ÔTER JP1 avant un flash UART (le pull-up R24 sur GPIO2 bloque le bootloader)."),
     (44, 50, "SERVOS 5V (nets SERVO1/SERVO2) — WROOM : GPIO26/27, S3 : IO21/IO47.\\nSignal en série R20/R21 (220R). Alimentation prise directement sur le rail +5V."),
     (86, 10, "3x HC-SR04 (5V) sur borniers 5,08, mode mono-broche TRIG=ECHO (sensor_ultrasonic.cpp).\\nEcho 5V ramené à 3V3 par pont 1k/2k ; le 2k est en circuit si JP13/14/15 FERMÉ (profil ffp5cs).\\nOUVERT sur msp (PLUIE sur US1, DHT ext sur US2) et pour l'option wroom-sd (JP15)."),
     (86, 48, "AIR : DHT11 (option DHT22, -DUSE_DHT22) — pull-up 10k."),
@@ -1114,7 +1143,7 @@ SCH_TEXTS = [
     (140, 52, "PROFIL BUS 12V SOLAIRE : fusible lame 7,5-10A EN AMONT (hors carte),\\nanti-inversion P-MOSFET Q11, TVS 18V D8 (1.5KE18A, DO-201), reservoir ; buck 12->5V EXTERNE\\n(module MP1584/XL4015 faible Iq sur entretoises, via J36/J37 ; J37 passe par Q12)."),
     (140, 76, "PROFIL SECTEUR : Hi-Link HLK-20M05 EMBARQUE (5V/3,6A) + fusible T1A (porte-fusible\\na capot, empreinte universelle pas 22,5-22,6) + varistance 10 ou 14 mm. Le corps du\\nmodule enjambe la frontiere secteur/logique (fente fraisee dessous). ZONE 230V = DANGER."),
     (140, 92, "microSD : module SPI 3V3 sockete. JP2/3/4/11 : source des lignes CS/SCK/MOSI/MISO\\n= S3 natif (1-2, defaut) ou WROOM env wroom-sd (2-3). MISO WROOM = GPIO12/MTDI :\\nefuse VDD_SDIO=3V3 OBLIGATOIRE avant (strap tension flash)."),
-    (140, 108, "SITE A2 : ESP32-S3-DevKitC-1 44 broches, couche, USB vers le bord droit.\\nUN SEUL module peuple (A1 OU A2). Cartographies PINMAP_UNIVERSAL des 3 firmwares."),
+    (140, 108, "SITE A2 : ESP32-S3-DevKitC-1 44 broches, couche, USB vers le bord droit. Rangée double 25,4 / 22,86 mm.\\nUN SEUL module peuple (A1 OU A2). Cartographies PINMAP_UNIVERSAL des 3 firmwares."),
     (120, 114, "ENTREES ANALOGIQUES PARTAGEES ADC_A..D : LDR msp (JP16-19 FERMES) ou sondes sol\\nn3pp (JP OUVERTS). ADC_E = HumidSol msp / Luminosite n3pp / LDR ffp5cs (JP20).\\nPluie msp = net US1 ; DHT ext msp = net US2 (pull-up R47 si JP21 FERME) — roles disjoints."),
     (184, 2, "J38 CMD SENSE : collecteurs des 6 transistors relais (0V = relais colle,\\n5V = repos) + GND + 5V — retour d'etat reel pour un expandeur deporte (PCF8574 via diviseur)."),
 ]
@@ -1284,7 +1313,7 @@ SIM_DIODE_MODELS = {
 }
 SIM_EXCLUDED_SYMS = {"RELAY_SRD", "BARREL", "CONN_02", "CONN_03", "CONN_04", "CONN_06",
                      "CONN_06S", "CONN_08", "CONN_10", "CONN_12", "CONN_14", "FUSE",
-                     "VARISTOR", "HLK20M", "TP", "ESP32_DEVKIT_V1_30", "ESP32_S3_DEVKITC_44"}
+                     "VARISTOR", "HLK20M", "TP", "ESP32_DEVKITC_38", "ESP32_S3_DEVKITC_44"}
 
 
 def sim_fields(c: dict) -> dict[str, str] | None:
@@ -1457,47 +1486,48 @@ def load_footprint(name: str):
 
 
 def gen_devkit_footprint() -> str:
-    """Empreinte 2x15 supports femelles pour DevKit V1 30 broches.
+    """Empreinte 2x19 supports femelles pour ESP32 DevKitC 38 broches (site A1, rev 0.2.3).
 
-    Rev 0.2 — DEUX entraxes de rangées sur la même empreinte : rangée A (pads
-    1..15) à 25,4 mm (DOIT DevKit V1 et clones Type-C) ET rangée A' (mêmes
-    numéros, même net) à 27,94 mm pour un clone plus large. On soude le support
-    de droite là où tombent les broches du module acheté — sans mesure. Les
-    deux rangées A/A' sont reliées par de courtes pistes (route_universal.py).
-    Courtyard aux cotes réelles : débord 8 mm côté antenne, 11 mm côté USB
-    (empreinte DOIT MIT syauqibilfaqih/ESP32-DevKit-V1-DOIT, mesure forum
-    Fritzing 10,3 mm) — audit MECA-01.
+    Origine = pad 1 (3V3, haut-gauche, antenne au-dessus). Colonne gauche J2 =
+    pads 1..19 (x = 0) ; colonne droite J3 = pads 20..38 en DEUX rangées aux mêmes
+    numéros et mêmes nets : PRINCIPALE à 25,4 mm (modules mesurés) et SECOURS à
+    22,86 mm (modules étroits, type NodeMCU-32S). On soude le support de droite
+    là où tombent les broches du module ; route_universal.py ponte les deux rangées.
+    Courtyard aux cotes mesurées (photo du 2026-10-31, pas des broches comme
+    étalon) : 4,3 mm de carte au-dessus du pad 1, 3,5 mm sous le pad 19, fiche
+    micro-USB/USB-C ~2 mm en plus ; largeur de carte ~28 mm.
     """
     pads = []
-    for n in range(1, 16):   # rangée A (colonne droite, pad 15 en haut)
-        pads.append((n, 25.4, (15 - n) * 2.54))
-    for n in range(1, 16):   # rangée A' (entraxe 27,94) — mêmes numéros
-        pads.append((n, 27.94, (15 - n) * 2.54))
-    for n in range(16, 31):  # rangée B (colonne gauche, pad 30 en haut)
-        pads.append((n, 0.0, (30 - n) * 2.54))
+    for n in range(1, 20):    # J2, colonne gauche
+        pads.append((n, 0.0, (n - 1) * 2.54))
+    for x in (DEVKIT_ROW_MAIN, DEVKIT_ROW_ALT):   # J3, deux rangées
+        for n in range(20, 39):
+            pads.append((n, x, (n - 20) * 2.54))
     pad_s = "\n".join(
-        f'  (pad "{n}" thru_hole circle (at {x} {y}) (size 1.7 1.7) (drill 1.0) '
+        f'  (pad "{n}" thru_hole circle (at {x} {y:.2f}) (size 1.7 1.7) (drill 1.0) '
         f'(layers "*.Cu" "*.Mask"))' for n, x, y in pads)
-    return f'''(footprint "ESP32_DevKit_V1_30pin"
+    return f'''(footprint "ESP32_DevKitC_38pin"
   (version 20240108)
   (generator "generate.py")
   (layer "F.Cu")
-  (descr "ESP32 DevKit V1 30 broches sur 2 supports 1x15 2.54mm, entraxe rangees 25.4 (A) OU 27.94 mm (A') : souder le support droit sur la rangee qui correspond au module. Comparer l'ORDRE des 30 etiquettes du module a la carte avant de souder.")
-  (tags "ESP32 DevKit V1")
-  (property "Reference" "REF**" (at 12.7 -9.8 0) (layer "F.SilkS")
+  (descr "ESP32 DevKitC 38 broches sur 2 supports 1x19 2.54mm. Rangee droite a 25.4 mm OU 22.86 mm (module etroit) : souder le support droit sur la rangee qui correspond au module. GPIO0 et flash (SD0-3, CMD, CLK) non cables. Comparer l'ORDRE des 38 etiquettes du module a la carte avant de souder.")
+  (tags "ESP32 DevKitC 38")
+  (property "Reference" "REF**" (at 12.7 -6.2 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (property "Value" "ESP32_DevKit_V1_30pin" (at 12.7 44 0) (layer "F.Fab")
+  (property "Value" "ESP32_DevKitC_38pin" (at 12.7 50 0) (layer "F.Fab")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_rect (start -1.9 -8) (end 29.9 46.5) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
-  (fp_text user "ANTENNE" (at 12.7 -5.5 0) (layer "F.SilkS")
+  (fp_rect (start -1.9 -4.6) (end 27.3 49.4) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
+  (fp_text user "ANTENNE" (at 12.7 -2.6 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_text user "USB" (at 12.7 44.5 0) (layer "F.SilkS")
+  (fp_text user "USB" (at 12.7 47.6 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_text user "A" (at 25.4 -1.9 0) (layer "F.SilkS")
+  (fp_text user "3V3" (at 2.2 0 0) (layer "F.SilkS")
+    (effects (font (size 1 1) (thickness 0.15)) (justify left)))
+  (fp_text user "25,4" (at 25.4 -2.6 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_text user "A'" (at 27.94 38 0) (layer "F.SilkS")
+  (fp_text user "22,86" (at 22.86 47.6 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_rect (start -2.4 -8.5) (end 30.4 47.5) (stroke (width 0.05) (type default)) (layer "F.CrtYd"))
+  (fp_rect (start -2.4 -5.0) (end 27.8 52.0) (stroke (width 0.05) (type default)) (layer "F.CrtYd"))
 {pad_s}
 )
 '''
@@ -1505,34 +1535,39 @@ def gen_devkit_footprint() -> str:
 
 def gen_s3_footprint() -> str:
     """Empreinte 2x22 supports femelles pour ESP32-S3-DevKitC-1 (site A2).
-    Entraxe rangées 22,86 mm (dessin Espressif v1.1). Courtyard aux cotes
+    Rev 0.2.3 : rangée droite (J3, pads 23..44) en DEUX rangées aux mêmes numéros
+    et nets — PRINCIPALE à 25,4 mm (clone double USB-C mesuré le 2026-10-31) et
+    SECOURS à 22,86 mm (dessin Espressif v1.1, module officiel). Courtyard aux cotes
     réelles : 1,57 mm + antenne 6,3 mm en débord côté antenne, 7,96 mm + USB
     0,9 mm côté connecteurs — audit MECA-02. Rotation 90° sur la carte :
     l'USB sort par le bord droit."""
     pads = []
     for n in range(1, 23):
         pads.append((n, 0.0, (n - 1) * 2.54))
-    for n in range(23, 45):
-        pads.append((n, 22.86, (n - 23) * 2.54))
+    for x in (DEVKIT_ROW_MAIN, DEVKIT_ROW_ALT):   # J3, deux rangées (rev 0.2.3)
+        for n in range(23, 45):
+            pads.append((n, x, (n - 23) * 2.54))
     pad_s = "\n".join(
-        f'  (pad "{n}" thru_hole circle (at {x} {y}) (size 1.7 1.7) (drill 1.0) '
+        f'  (pad "{n}" thru_hole circle (at {x} {y:.2f}) (size 1.7 1.7) (drill 1.0) '
         f'(layers "*.Cu" "*.Mask"))' for n, x, y in pads)
     return f'''(footprint "ESP32_S3_DevKitC_1_44pin"
   (version 20240108)
   (generator "generate.py")
   (layer "F.Cu")
-  (descr "ESP32-S3-DevKitC-1 44 broches sur 2 supports 1x22 2.54mm, entraxe rangees 22.86mm (Espressif v1.1) - comparer l'ORDRE des etiquettes du module a la carte avant de souder")
+  (descr "ESP32-S3-DevKitC-1 44 broches sur 2 supports 1x22 2.54mm, rangee droite a 25.4 mm (clones larges) OU 22.86 mm (Espressif v1.1) - comparer l'ORDRE des etiquettes du module a la carte avant de souder")
   (tags "ESP32-S3 DevKitC-1")
-  (property "Reference" "REF**" (at 11.43 -9.8 0) (layer "F.SilkS")
+  (property "Reference" "REF**" (at 12.7 -9.8 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (property "Value" "ESP32_S3_DevKitC_1_44pin" (at 11.43 64 0) (layer "F.Fab")
+  (property "Value" "ESP32_S3_DevKitC_1_44pin" (at 12.7 64 0) (layer "F.Fab")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_rect (start -1.4 -1.6) (end 24.3 61.3) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
-  (fp_text user "ANTENNE" (at 11.43 -4.5 0) (layer "F.SilkS")
+  (fp_rect (start -1.4 -1.6) (end 26.8 61.3) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
+  (fp_text user "ANTENNE" (at 12.7 -4.5 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_text user "USB" (at 11.43 58.5 0) (layer "F.SilkS")
+  (fp_text user "USB" (at 12.7 58.5 0) (layer "F.SilkS")
     (effects (font (size 1 1) (thickness 0.15))))
-  (fp_rect (start -1.9 -8.5) (end 24.8 62.5) (stroke (width 0.05) (type default)) (layer "F.CrtYd"))
+  (fp_text user "25,4" (at 25.4 -2.6 0) (layer "F.SilkS")
+    (effects (font (size 1 1) (thickness 0.15))))
+  (fp_rect (start -1.9 -8.5) (end 27.3 62.5) (stroke (width 0.05) (type default)) (layer "F.CrtYd"))
 {pad_s}
 )
 '''
@@ -1695,16 +1730,18 @@ def gen_pcb() -> str:
     edge = (f'  (gr_rect (start {b["x0"]} {b["y0"]}) (end {b["x1"]} {b["y1"]})\n'
             f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("edge")}"))')
     # Zone interdite sous l'antenne WiFi du DevKit (recommandation Espressif :
-    # pas de cuivre sous l'antenne PCB). Couvre le débord antenne du module,
-    # au-dessus de la première rangée de pads.
+    # pas de cuivre sous l'antenne PCB). Rev 0.2.3 (DevKitC 38 broches, pad 1 à
+    # y = 108,46) : l'antenne du WROOM-32 (18 mm de large, centrée x = 112,7)
+    # occupe les ~5,8 mm du haut du module (y 104,2 -> 110) ; la zone reste
+    # ENTRE les colonnes de pads pour laisser sortir leurs pistes.
     edge += (
         '\n  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu")'
         f' (uuid "{uid("antkeepout")}") (hatch edge 0.5)'
         '\n    (keepout (tracks not_allowed) (vias not_allowed) (pads allowed)'
         ' (copperpour not_allowed) (footprints allowed))'
         '\n    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))'
-        '\n    (polygon (pts (xy 97.6 103.5) (xy 127.8 103.5)'
-        ' (xy 127.8 109.5) (xy 97.6 109.5)))'
+        '\n    (polygon (pts (xy 103.2 103.6) (xy 122.0 103.6)'
+        ' (xy 122.0 110.4) (xy 103.2 110.4)))'
         '\n  )')
     # Idem pour l'antenne du site A2 (S3-DevKitC-1 couché, antenne vers la
     # gauche : module centré y=116,6, antenne 18 mm de large, débord 6,3 mm).
@@ -1942,13 +1979,14 @@ def gen_bom():
     # Pièces sans empreinte propre (montées sur une empreinte existante) :
     # les supports du DevKit doivent apparaître pour être commandés.
     extra = [
-        ["A1 (supports)", "2", "Support femelle 1x15 P2.54",
-         "monte sur l'empreinte ESP32_DevKit_V1_30pin",
-         "Barrettes femelles 15 pts : le DevKit s'enfiche, jamais soudé. Support droit sur la "
-         "rangée A (25,4) OU A' (27,94) selon le module acheté", "Maroc", "", "barrette femelle sécable"],
+        ["A1 (supports)", "2", "Support femelle 1x19 P2.54",
+         "monte sur l'empreinte ESP32_DevKitC_38pin",
+         "Barrettes femelles 19 pts : le DevKitC 38 broches s'enfiche, jamais soudé. Support droit "
+         "sur la rangée 25,4 mm OU 22,86 mm selon le module", "Maroc", "", "barrette femelle sécable"],
         ["A2 (supports)", "2", "Support femelle 1x22 P2.54",
          "monte sur l'empreinte ESP32_S3_DevKitC_1_44pin",
-         "Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu", "Maroc", "", ""],
+         "Barrettes 22 pts (site S3) : à souder si un S3-DevKitC-1 est prévu ; support droit sur "
+         "la rangée 25,4 mm (clone large) OU 22,86 mm (officiel)", "Maroc", "", ""],
         ["J35 (module)", "0-1",
          "Module microSD SPI 3,3V DIRECT (sans régulateur ni tampon 74LVC125)",
          "s'enfiche sur J35",
@@ -2129,7 +2167,7 @@ def main():
     # référence géométrique ; le régénérer ici effacerait pistes et zones.
     keep_pcb = (not args.regen_pcb and pcb_path.exists()
                 and "(segment" in pcb_path.read_text(encoding="utf-8"))
-    devkit_fp = FP_DIR / "ESP32_DevKit_V1_30pin.kicad_mod"
+    devkit_fp = FP_DIR / "ESP32_DevKitC_38pin.kicad_mod"
     devkit_fp.write_text(gen_devkit_footprint(), encoding="utf-8")
     (FP_DIR / "ESP32_S3_DevKitC_1_44pin.kicad_mod").write_text(
         gen_s3_footprint(), encoding="utf-8")

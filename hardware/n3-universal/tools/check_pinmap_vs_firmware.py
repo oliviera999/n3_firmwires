@@ -27,15 +27,19 @@ SCH = HW / "kicad" / "n3-universal.kicad_sch"
 PINMAP = json.loads((HW / "pinmap_universel_propose.json").read_text(encoding="utf-8"))
 
 # --- brochages physiques des deux modules (alignés sur generate.py) ----------
-DEVKIT_PADS = {
-    "1": "3V3", "2": "GND", "3": "GPIO15", "4": "GPIO2", "5": "GPIO4",
-    "6": "GPIO16", "7": "GPIO17", "8": "GPIO5", "9": "GPIO18", "10": "GPIO19",
-    "11": "GPIO21", "12": "RX0", "13": "TX0", "14": "GPIO22", "15": "GPIO23",
-    "16": "VIN", "17": "GND", "18": "GPIO13", "19": "GPIO12", "20": "GPIO14",
-    "21": "GPIO27", "22": "GPIO26", "23": "GPIO25", "24": "GPIO33",
-    "25": "GPIO32", "26": "GPIO35", "27": "GPIO34", "28": "GPIO39",
-    "29": "GPIO36", "30": "EN",
-}
+# Rev 0.2.3 : site A1 = ESP32 DevKitC 38 broches (en-têtes J2/J3 d'Espressif).
+DEVKITC_L = ["3V3", "EN", "GPIO36", "GPIO39", "GPIO34", "GPIO35", "GPIO32",
+             "GPIO33", "GPIO25", "GPIO26", "GPIO27", "GPIO14", "GPIO12", "GND",
+             "GPIO13", "GPIO9", "GPIO10", "GPIO11", "5V"]
+DEVKITC_R = ["GND", "GPIO23", "GPIO22", "TX0", "RX0", "GPIO21", "GND", "GPIO19",
+             "GPIO18", "GPIO5", "GPIO17", "GPIO16", "GPIO4", "GPIO0", "GPIO2",
+             "GPIO15", "GPIO8", "GPIO7", "GPIO6"]
+DEVKIT_PADS = {str(i + 1): DEVKITC_L[i] for i in range(19)}
+DEVKIT_PADS.update({str(i + 20): DEVKITC_R[i] for i in range(19)})
+# GPIO0 (BOOT) et la flash SPI (GPIO6-11) ne doivent jamais être câblés.
+WROOM_FORBIDDEN = {"GPIO0", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO11"}
+# Alimentations attendues sur le site A1
+WROOM_POWER = {"3V3": "+3V3", "EN": "EN", "GND": "GND", "5V": "VIN_5V"}
 S3_LEFT = ["3V3", "3V3", "RST", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO15",
            "GPIO16", "GPIO17", "GPIO18", "GPIO8", "GPIO3", "GPIO46", "GPIO9",
            "GPIO10", "GPIO11", "GPIO12", "GPIO13", "GPIO14", "5V", "GND"]
@@ -102,6 +106,9 @@ def parse_constexpr(text: str) -> dict[str, int]:
 UNCONNECTED = "unconnected-("
 
 
+DUP_MISMATCH: list[str] = []   # pastilles dupliquées (rangées 25,4/22,86) aux nets différents
+
+
 def extract_fp_pad_nets(pcb: str, fp_name: str) -> dict[str, str] | None:
     start = pcb.find(f'(footprint "n3u:{fp_name}"')
     if start < 0:
@@ -116,13 +123,20 @@ def extract_fp_pad_nets(pcb: str, fp_name: str) -> dict[str, str] | None:
                 end = i + 1
                 break
     block = pcb[start:end]
-    pad_nets = {}
+    pad_nets: dict[str, str] = {}
+    seen: dict[str, str] = {}
     for pm in re.finditer(r'\(pad "(\d+)"', block):
         nxt = block.find('(pad "', pm.end())
         sub = block[pm.end():nxt if nxt > 0 else len(block)]
         nm = re.search(r'\(net (?:\d+ )?"([^"]+)"\)', sub)
-        if nm and not nm.group(1).startswith(UNCONNECTED):
-            pad_nets[pm.group(1)] = nm.group(1)
+        net = nm.group(1) if nm and not nm.group(1).startswith(UNCONNECTED) else ""
+        num = pm.group(1)
+        if num in seen and seen[num] != net:
+            DUP_MISMATCH.append(f"{fp_name} pad {num} : rangées doublées aux nets "
+                                f"différents ('{seen[num]}' / '{net}')")
+        seen.setdefault(num, net)
+        if net:
+            pad_nets[num] = net
     return pad_nets
 
 
@@ -185,22 +199,30 @@ def main() -> int:
         errors.append(f"PCB introuvable: {PCB} (lancer generator/generate.py)")
     else:
         pcb = PCB.read_text(encoding="utf-8")
-        a1 = extract_fp_pad_nets(pcb, "ESP32_DevKit_V1_30pin")
+        a1 = extract_fp_pad_nets(pcb, "ESP32_DevKitC_38pin")
         a2 = extract_fp_pad_nets(pcb, "ESP32_S3_DevKitC_1_44pin")
         if a1 is None:
-            errors.append("PCB: site A1 (DevKit V1) introuvable")
+            errors.append("PCB: site A1 (DevKitC 38 broches) introuvable")
         if a2 is None:
             errors.append("PCB: site A2 (S3-DevKitC-1) introuvable")
         if a1 and a2:
             for net, gpio in WROOM_NET_GPIO.items():
                 pad = next((pp for pp, g in DEVKIT_PADS.items() if g == f"GPIO{gpio}"), None)
                 if pad is None:
-                    errors.append(f"A1: GPIO{gpio} inexistant sur le DevKit V1")
+                    errors.append(f"A1: GPIO{gpio} inexistant sur le DevKitC 38 broches")
                 elif a1.get(pad) != net:
                     errors.append(f"A1: pad {pad} (GPIO{gpio}) porte '{a1.get(pad)}', attendu '{net}'")
             # SD WROOM : le pad GPIO12 porte SD_MISO_W (cavalier JP11 2-3, rev 0.2)
-            if a1.get("19") != "SD_MISO_W":
-                errors.append(f"A1: pad 19 (GPIO12) porte '{a1.get('19')}', attendu 'SD_MISO_W'")
+            p12 = next(pp for pp, g in DEVKIT_PADS.items() if g == "GPIO12")
+            if a1.get(p12) != "SD_MISO_W":
+                errors.append(f"A1: pad {p12} (GPIO12) porte '{a1.get(p12)}', attendu 'SD_MISO_W'")
+            for pad, gname in DEVKIT_PADS.items():
+                if gname in WROOM_FORBIDDEN and a1.get(pad):
+                    errors.append(f"A1: pad {pad} ({gname}) ne doit PAS être câblé, trouvé '{a1[pad]}'")
+                if gname in WROOM_POWER and a1.get(pad) != WROOM_POWER[gname]:
+                    errors.append(f"A1: pad {pad} ({gname}) porte '{a1.get(pad)}', "
+                                  f"attendu '{WROOM_POWER[gname]}'")
+            errors.extend(DUP_MISMATCH)
             for net, gpio in S3_NET_GPIO.items():
                 if net.startswith("SD_"):
                     net_pcb = net + "_S3"      # côté S3, CS/CLK/MOSI/MISO passent par les cavaliers

@@ -31,7 +31,7 @@ Sur le rail **+5V**, permanent dès que la carte est alimentée :
 
 | Poste | Courant ~ | Wh/jour | Remarque |
 |---|---|---|---|
-| DevKit V1 (AMS1117 ~5 mA + puce USB + LED rouge), ESP32 en deep sleep | **~10 mA** | 1,2 | mesuré 9–15 mA selon les clones |
+| DevKit (AMS1117 ~5 mA + puce USB + LED rouge), ESP32 en deep sleep | **~10 mA** | 1,2 | mesuré 9–15 mA selon les clones (DevKit V1 30 broches ; même architecture sur les DevKitC 38 broches du site A1 depuis la 0.2.3 — à remesurer) |
 | J15/J16 pin 2 = +5V permanent : **deux SG90 sans signal** | ~5 mA chacun | 1,2 | les servos n'ont rien à faire sous tension pendant le sommeil |
 | LED5 (verte, présence 5 V, R13 1k) | ~3 mA | 0,4 | utile sur l'établi, inutile sur une unité autonome |
 | R35 100k (grille Q7), pont VBAT 100k/100k, D11, D12 | < 0,1 mA | ~0 | négligeable |
@@ -40,7 +40,7 @@ Sur le rail **+5V**, permanent dès que la carte est alimentée :
 | **Rail capteurs +3V3_SW** (OLED ~15 mA, DS18B20, DHT, pluie, INA, RTC, SD) | **0 en sommeil** | 0 | grâce à la correction de Q7 ; en rev 0.2 il restait à 3,3 V (≈ 2,5 Wh/jour) |
 
 **Fuite msp1 telle quelle : ~23 mA, ~3,2 Wh/jour.** En supprimant les servos sous tension et LED5 :
-**~11 mA, ~1,4 Wh/jour**. Le DevKit V1 devient alors le seul gros poste : son AMS1117 consomme
+**~11 mA, ~1,4 Wh/jour**. Le DevKit devient alors le seul gros poste : son AMS1117 consomme
 5 mA à ne rien faire ; on ne l'évite qu'en alimentant le DevKit par sa broche 3V3 depuis un
 régulateur à très faible consommation (HT7833 : 4 µA ; ME6211 : 40 µA), ce que la carte 0.2.1
 ne prévoit pas (voir §7, arbitrage N2).

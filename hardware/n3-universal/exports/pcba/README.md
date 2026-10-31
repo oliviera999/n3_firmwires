@@ -21,7 +21,7 @@ Les fichiers sont fournis pour une future série homogène et pour l'import du p
 
 ## Exclusions d'assemblage (déjà retirées des fichiers)
 
-- **A1 / A2** : modules ESP32 **enfichés** (supports femelles 1×15 / 1×22 en barrette sécable) ;
+- **A1 / A2** : modules ESP32 **enfichés** (supports femelles 1×19 / 1×22 en barrette sécable, rev 0.2.3) ;
 - **PS1 (HLK-20M05, LCSC C465406)** : profil secteur — **mesurer les entraxes d'un module
   réel avant toute commande** (voir `COMMANDE.md` §0) ;
 - **H1-H7** : trous de fixation (**H1 et H5 = vis nylon obligatoire**) ; **TP1-TP4** : pads nus ;

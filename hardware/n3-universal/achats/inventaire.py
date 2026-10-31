@@ -1,4 +1,4 @@
-"""Inventaire des composants à poser / acheter par profil, n3-universal rev 0.2.2.
+"""Inventaire des composants à poser / acheter par profil, n3-universal rev 0.2.3.
 
 Source : BOM.csv (carte), consignes de pose README / COMPOSANTS_FFP5CS.csv / ALIMENTATION.md,
 firmwares msp / n3pp / ffp5cs (PINMAP_UNIVERSAL). Produit, pour chaque profil, la liste des
@@ -269,10 +269,10 @@ def board_items(prof):
         r = short(bom[ref]["desc"])
         if r not in e["roles"]:
             e["roles"].append(r)
-    # A1 : deux supports femelles 1x15 tirés d'une barrette femelle
-    pins["BARRETTE_F"] += 30
+    # A1 (rev 0.2.3, DevKitC 38 broches) : deux supports femelles 1x19 tirés d'une barrette femelle
+    pins["BARRETTE_F"] += 38
     socket_pieces += 2
-    agg.setdefault("BARRETTE_F", dict(qty=0, refs=[], roles=[]))["refs"].insert(0, "A1 (2×15)")
+    agg.setdefault("BARRETTE_F", dict(qty=0, refs=[], roles=[]))["refs"].insert(0, "A1 (2×19)")
     agg["BARRETTE_F"]["roles"].insert(0, "Supports du DevKit (jamais soudé)")
     # barrettes 1x40 : une broche perdue à chaque coupe pour les femelles
     agg["BARRETTE_F"]["qty"] = math.ceil((pins["BARRETTE_F"] + socket_pieces) / 40)
@@ -282,7 +282,7 @@ def board_items(prof):
     # F1 : porte-fusible ; cavaliers
     agg["CAVALIER"] = dict(qty=JUMPERS[prof] + 2, refs=["JP…"], roles=["Cavaliers de configuration du profil (+2 de rechange)"])
     agg["ENTRETOISE_M3"] = dict(qty=7, refs=["H1-H7"], roles=["Entretoises de fixation de la carte"])
-    agg["PCB"] = dict(qty=1, refs=["—"], roles=["Circuit imprimé n3-universal rev 0.2.2"])
+    agg["PCB"] = dict(qty=1, refs=["—"], roles=["Circuit imprimé n3-universal rev 0.2.3"])
     return agg
 
 
