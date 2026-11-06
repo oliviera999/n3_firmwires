@@ -12,6 +12,27 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.32 - 2026-11-06
+
+### Fix capteur aquarium : plus de niveau figé quand l'ultrason n'a plus d'écho
+
+- Incident prod 30/10 → 06/11/2026 (n3_serveur `docs/DIAGNOSTIC_FFP3_NIVEAU_AQUARIUM_2026-11.md`) :
+  le HC-SR04 aquarium a perdu tout écho ; `UltrasonicManager::readReactiveFiltered()` renvoyait
+  alors `_lastValidDistance` (et encore lui en mode « capteur désactivé »). Jugée valide par
+  `isWaterLevelKnown`, la valeur était postée : **33 h de EauAquarium figé à 81 mm** présenté comme
+  une mesure, `WaterLevelFallbackPolicy::USE_FALLBACK_AQUA=false` contourné, CRON serveur coupant la
+  pompe en boucle (écart-type nul). Seul le reboot (RAM remise à 0) a fait apparaître l'absence.
+- Le mode réactif renvoie désormais **0 = inconnu** quand aucun écho n'est valide ou que le capteur
+  est désactivé (`UltrasonicFilter::reactiveMedianOrUnknown`, pur, testé en natif). Le repli éventuel
+  reste décidé par `SystemSensors` selon la politique : aquarium → champ omis (NULL serveur) dès la
+  panne ; potager (`USE_FALLBACK_POTA=true`) → dernier bon de `SystemSensors`, **inchangé**.
+  Réservoir (`readAdvancedFiltered`) inchangé.
+- `FloodAlert::evaluate` : garde « niveau connu ». `wlAqua = 0` passait pour une distance < limFlood
+  et armait l'alerte trop-plein (faux e-mail possible en mode secours) ; aucune transition d'état sur
+  une mesure inconnue (parité serveur `Ffp3DerivedAlertService::checkFlood`).
+- Log corrigé (« retourne 0 » alors que le dernier bon était renvoyé).
+- Tests natifs : `test_ultrasonic_filter` (lot vide → 0, médianes), `test_flood_alert` (niveau inconnu ignoré).
+
 ## Version 15.31 - 2026-10-04
 
 ### Fix sûreté OTA : un banc au câblage non historique ne reçoit plus l'image des cartes historiques

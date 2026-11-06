@@ -162,6 +162,26 @@ void test_mark_email_sent(void) {
   TEST_ASSERT_EQUAL_UINT32(12345, st.lastFloodEmailEpoch);
 }
 
+// v15.32 : niveau inconnu (0 = capteur sans écho) -> aucune entrée en trop-plein, aucun e-mail,
+// et l'état courant n'est pas modifié (ni entrée, ni sortie).
+void test_unknown_level_is_ignored(void) {
+  State st;
+  Params p = makeParams();
+  TEST_ASSERT_EQUAL(Decision::None, evaluate(st, 0, 1000, p, true));
+  TEST_ASSERT_EQUAL(Decision::None, evaluate(st, 0, 5000, p, true));  // bien au-delà du debounce
+  TEST_ASSERT_EQUAL_UINT32(0, st.floodEnterSinceEpoch);
+  TEST_ASSERT_FALSE(st.inFlood);
+
+  // En trop-plein notifié : une mesure inconnue ne fait pas sortir de l'état.
+  evaluate(st, 50, 6000, p, true);
+  markEmailSent(st, 6200);
+  st.aboveResetSinceEpoch = 6100;
+  TEST_ASSERT_EQUAL(Decision::None, evaluate(st, 0, 9000, p, true));
+  TEST_ASSERT_TRUE(st.inFlood);
+  TEST_ASSERT_EQUAL_UINT32(6000, st.floodEnterSinceEpoch);
+  TEST_ASSERT_EQUAL_UINT32(6100, st.aboveResetSinceEpoch);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_enter_sets_timestamp_no_email_yet);
@@ -176,5 +196,6 @@ int main(void) {
   RUN_TEST(test_hysteresis_deadband_no_exit);
   RUN_TEST(test_dip_below_resets_above_counter);
   RUN_TEST(test_mark_email_sent);
+  RUN_TEST(test_unknown_level_is_ignored);
   return UNITY_END();
 }

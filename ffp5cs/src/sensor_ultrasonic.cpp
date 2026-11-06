@@ -22,6 +22,7 @@ namespace TankCfg = SensorConfig::Ultrasonic::Tank;
 using UltrasonicFilter::sortU16;
 using UltrasonicFilter::pickTankDistanceFromBatch;
 using UltrasonicFilter::acceptTankJump;
+using UltrasonicFilter::reactiveMedianOrUnknown;
 
 }  // namespace
 
@@ -281,8 +282,8 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       if (millis() - testStart > SensorConfig::Reactivation::ULTRASONIC_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _failureManager.recordReactivationTestFailure();
-        // Fallback sur dernière valeur valide ou 0
-        return _lastValidDistance > 0 ? _lastValidDistance : 0;
+        // v15.32 : 0 = inconnu (plus de « dernier bon » figé, cf. reactiveMedianOrUnknown)
+        return 0;
       }
       
       if (duration > 0) {
@@ -302,8 +303,9 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       }
     }
     
-    // Capteur toujours désactivé, retourner dernière valeur valide ou 0
-    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+    // Capteur toujours désactivé : 0 = inconnu (v15.32). Le repli éventuel (dernier bon,
+    // valeur par défaut) est décidé par SystemSensors selon WaterLevelFallbackPolicy.
+    return 0;
   }
   
   // Capteur actif, lecture normale
@@ -359,23 +361,15 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
     }
   }
   
-  if (validReadings < 1) {
-    Serial.printf("[Ultrasonic] Pas assez de lectures réactives valides (%d/1), retourne 0\n", validReadings);
+  // Médiane (robuste à l'eau agitée) ; 0 = inconnu si aucun écho valide (v15.32 : avant,
+  // `_lastValidDistance` était renvoyé et posté comme une mesure → valeur figée).
+  const uint16_t medianDistance = reactiveMedianOrUnknown(readings, validReadings);
+  if (medianDistance == 0) {
+    Serial.printf("[Ultrasonic] Aucune lecture réactive valide (%d/%d) : niveau inconnu (0)\n",
+                  validReadings, REACTIVE_READINGS_COUNT);
     _failureManager.recordFailure();
-    return _lastValidDistance > 0 ? _lastValidDistance : 0;
+    return 0;
   }
-  
-  // Tri + médiane (robuste à l'eau agitée)
-  for (uint8_t i = 0; i < validReadings - 1; ++i) {
-    for (uint8_t j = i + 1; j < validReadings; ++j) {
-      if (readings[i] > readings[j]) {
-        uint16_t t = readings[i];
-        readings[i] = readings[j];
-        readings[j] = t;
-      }
-    }
-  }
-  uint16_t medianDistance = readings[validReadings / 2];
   
   if (_lastValidDistance > 0) {
     int delta = abs((int)medianDistance - (int)_lastValidDistance);
