@@ -68,7 +68,11 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
       if (mm > MIN_DISTANCE && mm < MAX_DISTANCE) {
         total += mm;
         ++valid;
+      } else {
+        EchoDiag::recordRejected(_diag, mm);
       }
+    } else {
+      EchoDiag::recordTimeout(_diag);
     }
 
     // Délai entre mesures conforme datasheet HC-SR04 (cycle > 60 ms)
@@ -81,6 +85,12 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
     vTaskDelay(pdMS_TO_TICKS(SensorConfig::Ultrasonic::MIN_DELAY_MS));
   }
 
+  // v15.33 : relecture de secours (SystemSensors) — cumule sur le diagnostic du cycle réactif.
+  if (valid > 0) {
+    _diag.status = EchoDiag::Status::Ok;
+  } else if (_diag.status != EchoDiag::Status::Disabled) {
+    _diag.status = EchoDiag::classify(0, _diag.rejected, false);
+  }
   return valid ? total / valid : 0;
 }
 
@@ -259,6 +269,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
 }
 
 uint16_t UltrasonicManager::readReactiveFiltered() {
+  EchoDiag::begin(_diag);
   // Si capteur désactivé, tester réactivation périodiquement
   if (_failureManager.isDisabled()) {
     if (_failureManager.shouldTestReactivation()) {
@@ -282,6 +293,8 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       if (millis() - testStart > SensorConfig::Reactivation::ULTRASONIC_TIMEOUT_MS) {
         // Timeout - capteur toujours absent
         _failureManager.recordReactivationTestFailure();
+        EchoDiag::recordTimeout(_diag);
+        _diag.status = EchoDiag::Status::Disabled;
         // v15.32 : 0 = inconnu (plus de « dernier bon » figé, cf. reactiveMedianOrUnknown)
         return 0;
       }
@@ -293,16 +306,20 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
           if (_failureManager.recordReactivationTestSuccess()) {
             // Capteur réactivé, retourner la valeur testée
             _lastValidDistance = testMm;
+            _diag.status = EchoDiag::Status::Ok;
             return testMm;
           }
         } else {
+          EchoDiag::recordRejected(_diag, testMm);
           _failureManager.recordReactivationTestFailure();
         }
       } else {
+        EchoDiag::recordTimeout(_diag);
         _failureManager.recordReactivationTestFailure();
       }
     }
-    
+    _diag.status = EchoDiag::Status::Disabled;
+
     // Capteur toujours désactivé : 0 = inconnu (v15.32). Le repli éventuel (dernier bon,
     // valeur par défaut) est décidé par SystemSensors selon WaterLevelFallbackPolicy.
     return 0;
@@ -336,9 +353,11 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
         readings[validReadings++] = mm;
         Serial.printf("[Ultrasonic] Lecture réactive %d: %u mm\n", i+1, mm);
       } else {
+        EchoDiag::recordRejected(_diag, mm);
         Serial.printf("[Ultrasonic] Lecture réactive %d rejetée: %u mm (hors plage)\n", i+1, mm);
       }
     } else {
+      EchoDiag::recordTimeout(_diag);
       // v11.175: Rate-limiting amélioré des logs timeout
       // - Log les 3 premiers, puis tous les 10, puis arrêt après 100 (capteur absent)
       // - Log synthèse périodique toutes les 60s
@@ -365,11 +384,14 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   // `_lastValidDistance` était renvoyé et posté comme une mesure → valeur figée).
   const uint16_t medianDistance = reactiveMedianOrUnknown(readings, validReadings);
   if (medianDistance == 0) {
-    Serial.printf("[Ultrasonic] Aucune lecture réactive valide (%d/%d) : niveau inconnu (0)\n",
-                  validReadings, REACTIVE_READINGS_COUNT);
+    _diag.status = EchoDiag::classify(0, _diag.rejected, false);
+    Serial.printf("[Ultrasonic] Aucune lecture réactive valide (%d/%d) : niveau inconnu (0) — %s, %u timeout(s), %u rejet(s)\n",
+                  validReadings, REACTIVE_READINGS_COUNT, EchoDiag::statusName(_diag.status),
+                  static_cast<unsigned>(_diag.timeouts), static_cast<unsigned>(_diag.rejected));
     _failureManager.recordFailure();
     return 0;
   }
+  _diag.status = EchoDiag::Status::Ok;
   
   if (_lastValidDistance > 0) {
     int delta = abs((int)medianDistance - (int)_lastValidDistance);

@@ -318,6 +318,9 @@ bool AutomatismSync::sendFullUpdate(const SensorReadings& readings,
              static_cast<unsigned long>(core.getTideWindowMs()));
     snprintf(body.tideExtremeMm, sizeof(body.tideExtremeMm), "%u",
              static_cast<unsigned>(_lastInflectionWlAqua));
+    // v15.33 : diagnostic d'écho ultrason (omis si capteur non lu dans ce cycle)
+    EchoDiag::format(body.wlAquaDiag, sizeof(body.wlAquaDiag), readings.diagAqua);
+    EchoDiag::format(body.wlPotaDiag, sizeof(body.wlPotaDiag), readings.diagPota);
     snprintf(body.configSynced, sizeof(body.configSynced), "%d", _configSyncedOnce ? 1 : 0);
 
     if (!_configSyncedOnce) {

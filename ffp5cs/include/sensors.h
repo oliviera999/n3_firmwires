@@ -1,4 +1,5 @@
 #pragma once
+#include "echo_diag.h"
 #include <Arduino.h>
 #if defined(USE_AIR_SENSOR_AUTO)
 #include <Adafruit_BME280.h>
@@ -27,6 +28,8 @@ class UltrasonicManager {
   void setExpectTankDrain(bool active) { _expectTankDrain = active; }
   void resetHistory(); // Reset l'historique en cas de problème
   bool isSensorDisabled() const; // Vérifier si le capteur est désactivé
+  // v15.33 : diagnostic du dernier cycle (aquarium/potager, modes réactif + relecture)
+  const EchoDiag::Diag& lastDiag() const { return _diag; }
  private:
   // Lecture manuelle par impulsion (pulseIn) – pas de dépendance lib requise
   int _pinTrigEcho; // pin partagé trig/echo
@@ -40,6 +43,7 @@ class UltrasonicManager {
   uint8_t _historyCount;
   uint16_t _lastValidDistance;
   bool _expectTankDrain{false};
+  EchoDiag::Diag _diag;
   
   // Configuration du filtrage - renforcé pour surface agitée (prod)
   static const uint16_t MAX_DISTANCE_DELTA = 300; // Seuil saut pour consensus (30 cm)

@@ -1,4 +1,5 @@
 #pragma once
+#include "echo_diag.h"
 #include "sensors.h"
 #include <stdint.h>
 
@@ -11,6 +12,9 @@ struct SensorReadings {
   uint16_t wlAqua;
   uint16_t wlTank;
   uint16_t luminosite;
+  // v15.33 : diagnostic d'écho du cycle (Unknown si non lu → champ POST omis)
+  EchoDiag::Diag diagAqua;
+  EchoDiag::Diag diagPota;
 };
 
 class SystemSensors {

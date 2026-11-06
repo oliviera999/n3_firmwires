@@ -86,6 +86,7 @@ SensorReadings SystemSensors::read() {
       _lastValidWlPota = val;
     }
     _lastWlPotaWasValid = valid;
+    r.diagPota = _usPota.lastDiag();
   }
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
@@ -136,6 +137,7 @@ SensorReadings SystemSensors::read() {
       _lastValidWlAqua = val;
     }
     _lastWlAquaWasValid = valid;
+    r.diagAqua = _usAqua.lastDiag();
   }
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();

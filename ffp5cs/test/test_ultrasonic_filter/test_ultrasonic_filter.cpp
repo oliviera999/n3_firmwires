@@ -10,6 +10,8 @@
 // bug-prone (médiane / détection bimodale / rejet d'outlier / acceptation de
 // saut) jusque-là enfouie dans un .cpp couplé I2C/NVS.
 #include "../../include/ultrasonic_filter.h"
+#include "../../include/echo_diag.h"
+#include <cstring>
 
 using namespace UltrasonicFilter;
 
@@ -121,6 +123,51 @@ void test_reactive_median_odd_and_even(void) {
   TEST_ASSERT_EQUAL_UINT16(87, reactiveMedianOrUnknown(one, 1));
 }
 
+// ---------------- EchoDiag (v15.33) ----------------
+
+void test_echo_classify_priorities(void) {
+  TEST_ASSERT_EQUAL(EchoDiag::Status::Ok, EchoDiag::classify(1, 4, true));
+  TEST_ASSERT_EQUAL(EchoDiag::Status::Disabled, EchoDiag::classify(0, 4, true));
+  TEST_ASSERT_EQUAL(EchoDiag::Status::OutOfRange, EchoDiag::classify(0, 2, false));
+  TEST_ASSERT_EQUAL(EchoDiag::Status::NoEcho, EchoDiag::classify(0, 0, false));
+}
+
+void test_echo_diag_format_contract(void) {
+  char buf[32];  // = sizeof(FullUpdateValues::wlAquaDiag)
+  EchoDiag::Diag d;
+  TEST_ASSERT_EQUAL_INT(0, EchoDiag::format(buf, sizeof(buf), d));  // Unknown -> champ omis
+  TEST_ASSERT_EQUAL_STRING("", buf);
+
+  EchoDiag::begin(d);
+  for (int i = 0; i < 5; ++i) EchoDiag::recordTimeout(d);
+  d.status = EchoDiag::classify(0, d.rejected, false);
+  EchoDiag::format(buf, sizeof(buf), d);
+  TEST_ASSERT_EQUAL_STRING("no_echo,5,0,0", buf);
+
+  EchoDiag::begin(d);
+  EchoDiag::recordRejected(d, 12);
+  EchoDiag::recordRejected(d, 15);
+  EchoDiag::recordTimeout(d);
+  d.status = EchoDiag::classify(0, d.rejected, false);
+  EchoDiag::format(buf, sizeof(buf), d);
+  TEST_ASSERT_EQUAL_STRING("out_of_range,1,2,15", buf);
+
+  // Pire cas : le plus long statut + compteurs saturés tient dans le champ POST (32 o).
+  d.status = EchoDiag::Status::OutOfRange;
+  d.timeouts = 255;
+  d.rejected = 255;
+  d.lastRejectedMm = 65535;
+  TEST_ASSERT_TRUE(EchoDiag::format(buf, sizeof(buf), d) > 0);
+  TEST_ASSERT_TRUE(strlen(buf) < sizeof(buf));
+}
+
+void test_echo_counters_saturate(void) {
+  EchoDiag::Diag d;
+  d.timeouts = 255;
+  EchoDiag::recordTimeout(d);
+  TEST_ASSERT_EQUAL_UINT8(255, d.timeouts);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_sort_ascending);
@@ -139,5 +186,8 @@ int main(void) {
   RUN_TEST(test_jump_refill_not_strong_rejected);
   RUN_TEST(test_reactive_empty_batch_is_unknown);
   RUN_TEST(test_reactive_median_odd_and_even);
+  RUN_TEST(test_echo_classify_priorities);
+  RUN_TEST(test_echo_diag_format_contract);
+  RUN_TEST(test_echo_counters_saturate);
   return UNITY_END();
 }

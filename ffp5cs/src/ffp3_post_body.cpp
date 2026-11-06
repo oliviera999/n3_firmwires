@@ -56,6 +56,8 @@ bool setKnownField(FullUpdateValues& v, const char* key, const char* val) {
   if (strEq(key, "tideNoiseMm")) { copyField(v.tideNoiseMm, sizeof(v.tideNoiseMm), val); return true; }
   if (strEq(key, "tideWindowMs")) { copyField(v.tideWindowMs, sizeof(v.tideWindowMs), val); return true; }
   if (strEq(key, "tideExtremeMm")) { copyField(v.tideExtremeMm, sizeof(v.tideExtremeMm), val); return true; }
+  if (strEq(key, "wlAquaDiag")) { copyField(v.wlAquaDiag, sizeof(v.wlAquaDiag), val); return true; }
+  if (strEq(key, "wlPotaDiag")) { copyField(v.wlPotaDiag, sizeof(v.wlPotaDiag), val); return true; }
   if (strEq(key, "configSynced")) { copyField(v.configSynced, sizeof(v.configSynced), val); return true; }
   if (strEq(key, "post_id")) { copyField(v.postId, sizeof(v.postId), val); return true; }
   return false;
@@ -194,7 +196,7 @@ int buildFullUpdateBody(char* out, size_t outSize, const FullUpdateValues& v) {
 
   static const char* kSuffixKeys[] = {
       "resetMode", "tideEvent", "tideTrend", "tideNoiseMm", "tideWindowMs", "tideExtremeMm",
-      "configSynced", "post_id",
+      "wlAquaDiag", "wlPotaDiag", "configSynced", "post_id",
   };
   for (const char* key : kSuffixKeys) {
     const char* val = nullptr;
@@ -204,6 +206,8 @@ int buildFullUpdateBody(char* out, size_t outSize, const FullUpdateValues& v) {
     else if (strEq(key, "tideNoiseMm")) val = v.tideNoiseMm;
     else if (strEq(key, "tideWindowMs")) val = v.tideWindowMs;
     else if (strEq(key, "tideExtremeMm")) val = v.tideExtremeMm;
+    else if (strEq(key, "wlAquaDiag")) val = v.wlAquaDiag;
+    else if (strEq(key, "wlPotaDiag")) val = v.wlPotaDiag;
     else if (strEq(key, "configSynced")) val = v.configSynced;
     else if (strEq(key, "post_id")) val = v.postId;
     if (!val || val[0] == '\0') continue;

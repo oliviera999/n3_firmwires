@@ -12,6 +12,26 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.33 - 2026-11-06
+
+### Diagnostic d'écho ultrason remonté au serveur (aquarium + potager)
+
+- Suite de l'incident aquarium (n3_serveur `docs/DIAGNOSTIC_FFP3_NIVEAU_AQUARIUM_2026-11.md`) : seul le
+  port série distinguait « aucun écho » (câble, alimentation, capteur mort) de « écho hors plage »
+  (objet ou eau collés au capteur). Ce diagnostic part désormais dans le POST.
+- Nouveau `include/echo_diag.h` (pur, testé en natif) : statut `ok | no_echo | out_of_range | disabled`,
+  compteurs de tirs sans écho et d'échos rejetés du cycle, distance du dernier écho rejeté.
+- `UltrasonicManager` : diagnostic du cycle réactif (`readReactiveFiltered`) cumulé avec la relecture de
+  secours (`readFiltered`), exposé par `lastDiag()` ; `SensorReadings::diagAqua` / `diagPota`.
+- **Contrat POST** (bloc suffixe signé, entre `tideExtremeMm` et `configSynced`, aligné sur
+  `Ffp3HmacPostBody::SUFFIX_KEYS`) : `wlAquaDiag=<etat>,<timeouts>,<rejets>,<mm>` et `wlPotaDiag=…`.
+  Champ omis si le capteur n'a pas été lu (corps inchangé pour les cas existants). Serveur requis :
+  n3_serveur ≥ 6.57.0 (colonnes `wl*Status/Timeouts/Rejected/RawMm`) ; un serveur plus ancien ignore le champ.
+- `/debug-logs` (page locale) : `sensors.wlAquaDiag` / `sensors.wlPotaDiag`.
+- Log série « Aucune lecture réactive valide » enrichi (statut + compteurs).
+- Tests natifs : `test_ultrasonic_filter` (classement, format, saturation, pire cas 32 o),
+  `test_post_body` (ordre du suffixe, omission, reconnaissance par `applyExtraPairs`).
+
 ## Version 15.32 - 2026-11-06
 
 ### Fix capteur aquarium : plus de niveau figé quand l'ultrason n'a plus d'écho

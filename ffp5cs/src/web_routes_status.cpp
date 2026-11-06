@@ -392,6 +392,11 @@ void registerDebugLogs(AsyncWebServer& server, AppContext& ctx) {
     doc["sensors"]["wlTank"] = readings.wlTank;
     doc["sensors"]["wlPota"] = readings.wlPota;
     doc["sensors"]["luminosite"] = readings.luminosite;
+    char diagBuf[32];
+    EchoDiag::format(diagBuf, sizeof(diagBuf), readings.diagAqua);
+    doc["sensors"]["wlAquaDiag"] = diagBuf;
+    EchoDiag::format(diagBuf, sizeof(diagBuf), readings.diagPota);
+    doc["sensors"]["wlPotaDiag"] = diagBuf;
 
     doc["actuators"]["pumpAqua"] = ctx.actuators.isAquaPumpRunning();
     doc["actuators"]["pumpTank"] = ctx.actuators.isTankPumpRunning();
