@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "15.32";
+    inline constexpr const char* VERSION = "15.33";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)

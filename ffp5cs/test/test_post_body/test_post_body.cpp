@@ -168,6 +168,36 @@ void test_suffix_block_after_extras_in_order(void) {
       "api_key=K&z=1&resetMode=0&tideEvent=E&tideTrend=up&post_id=9", out);
 }
 
+// v15.33 : diagnostics d'écho dans le bloc suffixe, après tideExtremeMm et avant configSynced
+// (ordre identique au serveur Ffp3HmacPostBody::SUFFIX_KEYS, sinon 401 HMAC en reconstruction).
+void test_echo_diag_suffix_order(void) {
+  FullUpdateValues v{};
+  snprintf(v.apiKey, sizeof(v.apiKey), "%s", "K");
+  snprintf(v.tideExtremeMm, sizeof(v.tideExtremeMm), "%s", "81");
+  snprintf(v.wlAquaDiag, sizeof(v.wlAquaDiag), "%s", "no_echo,8,0,0");
+  snprintf(v.wlPotaDiag, sizeof(v.wlPotaDiag), "%s", "ok,0,0,0");
+  snprintf(v.configSynced, sizeof(v.configSynced), "%s", "1");
+  snprintf(v.postId, sizeof(v.postId), "%s", "9");
+
+  char out[256] = {0};
+  buildFullUpdateBody(out, sizeof(out), v);
+  TEST_ASSERT_EQUAL_STRING(
+      "api_key=K&tideExtremeMm=81&wlAquaDiag=no_echo,8,0,0&wlPotaDiag=ok,0,0,0&configSynced=1&post_id=9", out);
+
+  // Champ vide (capteur non lu) : omis, corps inchangé par rapport à < 15.33.
+  FullUpdateValues w{};
+  snprintf(w.apiKey, sizeof(w.apiKey), "%s", "K");
+  snprintf(w.postId, sizeof(w.postId), "%s", "9");
+  buildFullUpdateBody(out, sizeof(out), w);
+  TEST_ASSERT_EQUAL_STRING("api_key=K&post_id=9", out);
+
+  // applyExtraPairs reconnaît la clé (pas de doublon parmi les extras triés).
+  FullUpdateValues x{};
+  applyExtraPairs(x, "wlAquaDiag=disabled,1,0,0");
+  TEST_ASSERT_EQUAL_STRING("disabled,1,0,0", x.wlAquaDiag);
+  TEST_ASSERT_EQUAL_UINT8(0, x.extras.count);
+}
+
 // Parsing : un segment sans '=' est ignoré.
 void test_apply_segment_without_equals_ignored(void) {
   FullUpdateValues v{};
@@ -240,5 +270,6 @@ int main(void) {
   RUN_TEST(test_apply_skips_empty_segments);
   RUN_TEST(test_empty_extra_value_is_omitted);
   RUN_TEST(test_empty_and_nonempty_extras_mixed);
+  RUN_TEST(test_echo_diag_suffix_order);
   return UNITY_END();
 }

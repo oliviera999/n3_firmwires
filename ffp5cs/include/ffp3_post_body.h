@@ -69,6 +69,8 @@ struct FullUpdateValues {
   char tideNoiseMm[8];
   char tideWindowMs[16];
   char tideExtremeMm[12];
+  char wlAquaDiag[32];  // v15.33 : diagnostic écho ultrason (include/echo_diag.h)
+  char wlPotaDiag[32];
   char configSynced[4];
   char postId[48];
   ExtraStore extras;

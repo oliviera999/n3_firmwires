@@ -79,6 +79,8 @@ Ce document centralise les conventions de nommage entre les differentes couches 
 | Hysteresis inflexion (mm) | `tideNoiseMm` | - | `INFLECTION_NOISE_MM` | - | - |
 | Fenetre diffMaree (ms) | `tideWindowMs` | - | `_tideWindowMs` | - | - |
 | Dernier extreme confirme (mm) | `tideExtremeMm` | - | `_lastInflectionWlAqua` | - | - |
+| Diagnostic echo aquarium (v15.33) | `wlAquaDiag` (`etat,timeouts,rejets,mm`) | - | `SensorReadings::diagAqua` (`EchoDiag::Diag`) | - | `sensors.wlAquaDiag` (`/debug-logs`) |
+| Diagnostic echo potager (v15.33) | `wlPotaDiag` | - | `SensorReadings::diagPota` | - | `sensors.wlPotaDiag` |
 | Luminosite | `Luminosite` | - | `luminosite` | `luminosite` | - |
 
 ### Harmonisation effectuee (2026-01-31)
