@@ -104,6 +104,23 @@ void test_jump_refill_not_strong_rejected(void) {
   TEST_ASSERT_FALSE(acceptTankJump(150, 200, 3, 20, false));
 }
 
+// ---------------- reactiveMedianOrUnknown (v15.32) ----------------
+
+// Aucun écho valide : 0 (inconnu), jamais une valeur antérieure.
+void test_reactive_empty_batch_is_unknown(void) {
+  uint16_t none[1] = {81};
+  TEST_ASSERT_EQUAL_UINT16(0, reactiveMedianOrUnknown(none, 0));
+}
+
+void test_reactive_median_odd_and_even(void) {
+  uint16_t five[5] = {120, 95, 101, 400, 99};
+  TEST_ASSERT_EQUAL_UINT16(101, reactiveMedianOrUnknown(five, 5));
+  uint16_t two[2] = {110, 90};
+  TEST_ASSERT_EQUAL_UINT16(110, reactiveMedianOrUnknown(two, 2));  // index count/2 (parité historique)
+  uint16_t one[1] = {87};
+  TEST_ASSERT_EQUAL_UINT16(87, reactiveMedianOrUnknown(one, 1));
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_sort_ascending);
@@ -120,5 +137,7 @@ int main(void) {
   RUN_TEST(test_jump_refill_within_delta_strong_tight);
   RUN_TEST(test_jump_refill_large_delta_rejected);
   RUN_TEST(test_jump_refill_not_strong_rejected);
+  RUN_TEST(test_reactive_empty_batch_is_unknown);
+  RUN_TEST(test_reactive_median_odd_and_even);
   return UNITY_END();
 }

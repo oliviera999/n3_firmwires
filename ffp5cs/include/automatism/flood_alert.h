@@ -50,6 +50,14 @@ enum class Decision {
 //   mailEnabled : si false, aucune alerte n'est proposée (mais les horodatages évoluent)
 inline Decision evaluate(State& st, uint16_t wlAquaMm, uint32_t nowEpoch,
                          const Params& p, bool mailEnabled) {
+  // v15.32 : 0 = niveau INCONNU (capteur sans écho, champ omis du POST — convention
+  // SensorValidation::isWaterLevelKnown). Ce n'est pas une distance de 0 mm : sans cette
+  // garde, un capteur muet passait pour « eau au ras du capteur » et armait le trop-plein
+  // (faux e-mail). Aucune transition d'état sur une mesure inconnue : ni entrée, ni sortie.
+  // Parité serveur : Ffp3DerivedAlertService::checkFlood ignore déjà EauAquarium NULL.
+  if (wlAquaMm == 0) {
+    return Decision::None;
+  }
   if (wlAquaMm < p.limFloodMm) {
     if (st.floodEnterSinceEpoch == 0) st.floodEnterSinceEpoch = nowEpoch;
     st.aboveResetSinceEpoch = 0;

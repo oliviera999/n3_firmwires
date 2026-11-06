@@ -107,4 +107,19 @@ inline bool acceptTankJump(uint16_t candidate, uint16_t reference, uint8_t keptC
   return false;
 }
 
+// Mode réactif (aquarium / potager) : médiane du lot d'échos valides, ou 0 (= INCONNU)
+// si le lot est vide. Trie `readings` en place.
+//
+// v15.32 (incident 30/10/2026, n3_serveur docs/DIAGNOSTIC_FFP3_NIVEAU_AQUARIUM_2026-11.md) :
+// readReactiveFiltered() renvoyait jusqu'ici `_lastValidDistance` quand aucun écho n'était
+// exploitable. Cette valeur, jugée valide en aval (isWaterLevelKnown), était postée telle
+// quelle : 33 h de niveau figé à 81 mm présenté comme une mesure, contournant
+// WaterLevelFallbackPolicy::USE_FALLBACK_AQUA=false. Le repli « dernier bon » relève de la
+// politique de SystemSensors (resolveWaterLevel), pas du pilote.
+inline uint16_t reactiveMedianOrUnknown(uint16_t* readings, uint8_t count) {
+  if (count == 0) return 0;
+  sortU16(readings, count);
+  return readings[count / 2];
+}
+
 }  // namespace UltrasonicFilter
