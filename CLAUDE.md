@@ -91,9 +91,9 @@ Code commun à n3pp / msp / ffp5cs, sous forme de modules PlatformIO (`library.j
 intégration Wh/Ah, SoC plomb/AGM, alerte batterie — logique pure testée en natif), et
 `n3_common` (**OTA** `n3_ota` avec vérif **sha256 + ECDSA P-521** (secp521r1), `n3_defaults.h`, `n3_outputs_json`,
 anneau d'événements persistant `n3_event_ring.h`, diagnostic de boot `n3_boot_diag.h`, accroches OTA
-`n3_ota_hooks.h`). **Perte de contact** : `n3_data/n3_contact_diag` (journal de bord NVS, réveils sans
-contact sain → mode sans échec, rapport `/ota-report`, décalage d'horloge `X-Server-Ts`) pour n3pp / msp,
-`n3_time/n3_sleep_clock.h` (correction d'horloge au réveil, confiance horloge) — ffp5cs a son
+`n3_ota_hooks.h`, correction d'horloge au réveil `n3_sleep_clock.h`). **Perte de contact** : `n3_data/n3_contact_diag` (journal de bord NVS, réveils sans
+contact sain → mode sans échec, rapport `/ota-report`, décalage d'horloge `X-Server-Ts`) pour n3pp / msp ;
+`n3_time` applique l'heure serveur sans NTP (`n3TimeApplyServerEpoch`) — ffp5cs a son
 `include/contact_diag.h`. Réf : `docs/DIAGNOSTIC_PERTE_CONTACT_FIRMWARE.md`.
 
 ## Versionnage firmware — à faire à chaque modification

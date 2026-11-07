@@ -48,7 +48,7 @@ un serveur plus ancien ignore les nouveaux champs et refuse `/ota-report` (404) 
   pendant le flash (inchangé), le délai global de téléchargement reste `OTA_DOWNLOAD_TIMEOUT_MS`.
 - **Horloge** : correction du **double comptage de la veille** (`PowerManager::getSleptTime` ajoutait la
   durée dormie à une horloge qu'ESP-IDF avait déjà avancée : +2 045 s puis +4 090 s le 06/11, d'où les
-  401 « X-Sig invalide » en début de rafale) — `n3clock::sleepCorrectionSeconds` (`shared/n3_time/
+  401 « X-Sig invalide » en début de rafale) — `n3clock::sleepCorrectionSeconds` (`shared/n3_common/
   n3_sleep_clock.h`) n'ajoute que l'écart non compté. **Resynchronisation NTP à chaque réveil** avant la
   première requête signée ; sans NTP, l'heure serveur (`X-Server-Ts` de la première réponse) est
   appliquée et rend l'horloge « fiable » 6 h (`PowerManager::applyServerEpoch`). On ne signe **jamais**

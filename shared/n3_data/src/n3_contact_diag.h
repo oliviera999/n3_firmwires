@@ -15,7 +15,7 @@
 //      l'heure serveur quand NTP a échoué (n3TimeApplyServerEpoch), champ `clk` du heartbeat.
 // Un contact est SAIN quand un POST signé (X-Sig) est accepté : le compteur de réveils ratés
 // revient à zéro. Logique pure : n3_common/n3_event_ring.h, n3_common/n3_boot_diag.h,
-// n3_time/n3_sleep_clock.h (tests natifs shared/tests_native).
+// n3_common/n3_sleep_clock.h (tests natifs shared/tests_native).
 // Aucun secret ne transite : les champs ajoutés sont diagnostiques (contrats n3pp.json / msp1.json).
 // =============================================================================
 #include <Arduino.h>

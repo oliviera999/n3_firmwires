@@ -1,5 +1,5 @@
 #include "contact_diag.h"  // v15.34 : journal de bord + heure serveur
-#include "n3_sleep_clock.h"  // v15.34 : correction d'horloge au reveil (pure, shared/n3_time)
+#include "n3_sleep_clock.h"  // v15.34 : correction d'horloge au reveil (pure, shared/n3_common)
 #include "power.h"
 #include "n3_epoch_util.h"   // isValidEpoch/epochAbsDiff (mutualisé shared/n3_time)
 #include "n3_clock_decision.h"  // ClockDecision : plausibilité NTP + dérive PPM (shared/n3_time)

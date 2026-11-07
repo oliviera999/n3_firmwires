@@ -15,7 +15,7 @@
 #include "n3_event_ring.h"    // n3_common (pur)
 #include "n3_ota_hooks.h"     // n3_common : définitions FORTES des accroches OTA ci-dessous
 #include "n3_reset_reason.h"  // n3_common (pur)
-#include "n3_sleep_clock.h"   // n3_time (pur) : décalage serveur
+#include "n3_sleep_clock.h"   // n3_common (pur) : décalage serveur
 
 namespace {
 

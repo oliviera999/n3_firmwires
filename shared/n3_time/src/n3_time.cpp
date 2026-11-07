@@ -5,7 +5,7 @@
 #include <esp_sntp.h>
 #include <sys/time.h>
 #include <time.h>
-#include "n3_sleep_clock.h"  // n3clock : décalage serveur, seuil d'application (pur, testé en natif)
+#include "n3_sleep_clock.h"  // n3_common/n3clock : décalage serveur, seuil d'application (pur, testé en natif)
 
 static bool n3TimeApplyEpochToSystem(unsigned long epoch) {
   if (epoch <= N3_TIME_MIN_VALID_EPOCH) {

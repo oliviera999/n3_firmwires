@@ -12,7 +12,7 @@
 //   • les champs enrichis du heartbeat (contracts/ffp3.json → heartbeatFields, n3_serveur ≥ 6.59.0).
 // Un boot est « sain » quand Wi-Fi + heure fiable + un POST authentifié accepté ont été obtenus :
 // c'est ce critère (et non plus un simple uptime) qui valide une image OTA en probation.
-// Logique pure dans shared/ : n3_common (n3_event_ring.h, n3_boot_diag.h) et n3_time (n3_sleep_clock.h).
+// Logique pure dans shared/n3_common : n3_event_ring.h, n3_boot_diag.h, n3_sleep_clock.h.
 // =============================================================================
 #include <Arduino.h>
 #include <stdint.h>

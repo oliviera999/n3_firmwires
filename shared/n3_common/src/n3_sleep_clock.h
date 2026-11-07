@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// n3_time — Correction d'horloge au réveil d'une veille + confiance horloge (logique PURE)
+// n3_common — Correction d'horloge au réveil d'une veille + confiance horloge (logique PURE)
 // =============================================================================
 // Incident du 06/11/2026 (n3_serveur docs/DIAGNOSTIC_FFP3_PERTE_CONTACT_2026-11-06.md) : à
 // chaque réveil le WROOM FFP3 avait une horloge en avance d'UN cycle de veille (2 045 s puis

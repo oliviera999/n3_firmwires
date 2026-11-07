@@ -1,6 +1,6 @@
 #include <unity.h>
 
-// Tests de n3clock (shared/n3_time/n3_sleep_clock.h) — correction d'horloge au réveil.
+// Tests de n3clock (shared/n3_common/n3_sleep_clock.h) — correction d'horloge au réveil.
 // Incident FFP3 06/11/2026 : +2 045 s puis +4 090 s d'avance (un cycle de veille compté deux
 // fois), premières requêtes HMAC rejetées (401 « X-Sig invalide »). La règle : n'ajouter que ce
 // que l'horloge système n'a PAS déjà compté pendant le light sleep.
