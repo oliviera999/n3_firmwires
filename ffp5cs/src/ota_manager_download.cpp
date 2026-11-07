@@ -34,6 +34,8 @@
 #include "task_monitor.h"
 #include "tls_mutex.h"
 #include "display_view.h"
+#include "contact_diag.h"  // v15.34 : journal de bord OTA (start/progress/done/fail), rapport serveur
+#include "ota_model.h"     // v15.34 : X-Ota-Board (journal ota_events côté serveur)
 
 bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     log("🔍 Début de la vérification des mises à jour...");
@@ -55,6 +57,10 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
     http.setTimeout(OTAConfig::HTTP_TIMEOUT);
     snprintf(logMsg, sizeof(logMsg), "⏱️ Timeout HTTP: %d ms", OTAConfig::HTTP_TIMEOUT);
     log(logMsg);
+    // v15.34 — identification de la carte et de la version pour le journal ota_events du serveur
+    // (OtaFileController) et la politique canari (OTA_CANARY_BOARDS). Aucun secret.
+    http.addHeader("X-Ota-Board", OtaModel::MODEL);
+    http.addHeader("X-Ota-Version", m_currentVersion);
 
     const int MAX_METADATA_RETRIES = 2;  // 1 tentative initiale + 2 retries
     int code = -1;
@@ -70,6 +76,14 @@ bool OTAManager::downloadMetadata(char* payload, size_t payloadSize) {
         snprintf(logMsg, sizeof(logMsg), "📡 Code de réponse HTTP: %d (tentative %d)", code, attempt + 1);
         log(logMsg);
         if (code == HTTP_CODE_OK) break;
+        // v15.34 — 503 = canal OTA mis en pause ou réservé aux cartes canari par le serveur
+        // (OtaChannelPolicy) : ce n'est pas une panne, on n'insiste pas.
+        if (code == 503) {
+            logError("canal OTA en pause / canari (503)");
+            ContactDiag::logEvent("ota_paused", "503 canal en pause ou canari");
+            http.end();
+            return false;
+        }
         // Retry sur erreurs temporaires : 5xx, -1 (échec connexion), 0 (timeout)
         if (attempt < MAX_METADATA_RETRIES && (code >= 500 || code == -1 || code == 0)) {
             continue;
@@ -183,6 +197,8 @@ esp_http_client_handle_t OTAManager::openFirmwareConnection(const char* url, siz
     esp_http_client_set_header(client, "User-Agent", NetworkConfig::HTTP_USER_AGENT);
     esp_http_client_set_header(client, "Accept", "application/octet-stream");
     esp_http_client_set_header(client, "Connection", "keep-alive");
+    esp_http_client_set_header(client, "X-Ota-Board", OtaModel::MODEL);     // v15.34 journal serveur
+    esp_http_client_set_header(client, "X-Ota-Version", m_currentVersion);
     if (rangeStart > 0) {
         char rangeHdr[40];
         snprintf(rangeHdr, sizeof(rangeHdr), "bytes=%lu-", (unsigned long)rangeStart);
@@ -357,6 +373,7 @@ bool OTAManager::downloadFirmwareAdaptiveResumable(const char* url, size_t expec
         logError("WiFi non connecté pour OTA");
         return false;
     }
+    m_lastProgressMilestone = 0;
     // Partition cible sauvegardée AVANT Update.begin() pour garantir l'alternance.
     const esp_partition_t* target_partition = esp_ota_get_next_update_partition(NULL);
     if (!target_partition) {
@@ -512,6 +529,16 @@ bool OTAManager::downloadFirmwareAdaptiveResumable(const char* url, size_t expec
             totalWritten += written;
 
             unsigned long now = millis();
+            {
+                // v15.34 — jalons 25/50/75 % persistés (journal de bord) : si le module se tait
+                // pendant le flash, le serveur saura jusqu'où le téléchargement est allé.
+                int pctNow = (int)((totalWritten * 100) / (size_t)contentTotal);
+                int milestone = (pctNow / 25) * 25;
+                if (milestone > m_lastProgressMilestone && milestone < 100) {
+                    m_lastProgressMilestone = milestone;
+                    ContactDiag::logEventf("ota_progress", "%d%% %lu/%d", milestone, (unsigned long)totalWritten, contentTotal);
+                }
+            }
             if (now - lastProgress >= TimingConfig::OTA_PROGRESS_UPDATE_INTERVAL_MS) {
                 int pct = (int)((totalWritten * 100) / (size_t)contentTotal);
                 unsigned long elapsed = (now - globalStart) / 1000;
@@ -634,6 +661,13 @@ void OTAManager::updateTask(void* parameter) {
         // Migration: supprimer l'ancienne clé si elle existe
         g_nvsManager.removeKey(NVS_NAMESPACES::SYSTEM, "ota_inProgress");
     }
+    // v15.34 — `ota_start` persisté en NVS AVANT le flash et poussé au serveur (/ota-report) : si
+    // le module ne revient jamais, la timeline (iot_contact_timeline) saura qu'une OTA a commencé.
+    ContactDiag::logEventf("ota_start", "%s->%s %dKB", ota->getCurrentVersion(), ota->getRemoteVersion(),
+                           ota->getFirmwareSize() / 1024);
+    esp_task_wdt_reset();
+    ContactDiag::flushPending();
+    esp_task_wdt_reset();
     
     // C2 : chemin unique résumable (Range). Les reprises/backoff sont gérés en interne ;
     // plus de cascade Modern→Classic→Ultra. Rollback = revert de cette PR (ré-active la cascade).
@@ -731,6 +765,16 @@ void OTAManager::updateTask(void* parameter) {
                        ota->getCurrentVersion(),
                        ota->getRemoteVersion());
 
+        // v15.34 — `ota_done` persisté puis envoyé avant le reboot ; la nouvelle image enverra
+        // `boot` (part/ota=pending) puis `ota_valid` ou `ota_rollback`.
+        {
+            const esp_partition_t* bootPart = esp_ota_get_boot_partition();
+            ContactDiag::logEventf("ota_done", "%s->%s boot=%s", ota->getCurrentVersion(), ota->getRemoteVersion(),
+                                   bootPart ? bootPart->label : "?");
+            esp_task_wdt_reset();
+            ContactDiag::flushPending();
+            esp_task_wdt_reset();
+        }
         ota->log("🔄 Redémarrage dans 3 secondes...");
         // Utiliser vTaskDelay() avec reset watchdog pour respecter la règle "jamais bloquer > 3s"
         for (int i = 0; i < 6; i++) {
@@ -743,6 +787,12 @@ void OTAManager::updateTask(void* parameter) {
         diag.recordOtaResult(false, "download/update failed");
         ota->log("❌ Échec mise à jour OTA");
         ota->m_otaLock = false;
+        // v15.34 — raison persistée et envoyée (le module reste sur l'image courante, validée).
+        ContactDiag::logEventf("ota_fail", "%s->%s: %s", ota->getCurrentVersion(), ota->getRemoteVersion(),
+                               ota->m_lastError[0] ? ota->m_lastError : "download/update failed");
+        esp_task_wdt_reset();
+        ContactDiag::flushPending();
+        esp_task_wdt_reset();
         TaskMonitor::Snapshot failureSnapshot = TaskMonitor::collectSnapshot();
         TaskMonitor::logSnapshot(failureSnapshot, "ota-task-failure");
         TaskMonitor::logDiff(baselineSnapshot, failureSnapshot, "ota-task");

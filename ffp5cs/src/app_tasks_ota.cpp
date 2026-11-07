@@ -9,6 +9,7 @@
 #include "app_context.h"         // AppContext (g_ctx->otaManager)
 #include "boot_log.h"            // OTA_LOG (ets_printf sur wroom-prod)
 #include "config.h"              // TaskConfig, HeapConfig, TimingConfig
+#include "contact_diag.h"        // v15.34 : mode sans echec
 #include <Arduino.h>
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
@@ -35,6 +36,16 @@ static bool prepareOtaExclusiveHeap() {
 // Retourne true si le gate heap est passé et checkForUpdate a été appelé ; false si reporté (heap).
 static bool runOtaCheckCycle(uint32_t minContiguousBlock, const char* phaseLabel) {
   if (!g_ctx || g_ctx->otaManager.isOtaExclusive()) return true;
+  // v15.34 — mode sans échec : aucune vérification OTA (journalisé une fois par ContactDiag).
+  if (ContactDiag::isSafeMode()) {
+    static bool s_logged = false;
+    if (!s_logged) {
+      s_logged = true;
+      OTA_LOG("%s: mode sans echec (%u boots rates) -> OTA suspendue", phaseLabel, (unsigned)ContactDiag::failedBoots());
+      ContactDiag::logEvent("ota_skip_safe", "safe mode");
+    }
+    return true;
+  }
 
   bool mailReserveFreed = prepareOtaExclusiveHeap();
   uint32_t freeHeap = ESP.getFreeHeap();

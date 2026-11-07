@@ -111,6 +111,19 @@ câblage non historique lit donc **ses propres métadonnées** ; les cartes hist
 
 ---
 
+### Traçabilité OTA et perte de contact (ffp5cs 15.34, n3pp 4.76, msp 2.79 — serveur ≥ 6.59.0)
+
+Voir `docs/DIAGNOSTIC_PERTE_CONTACT_FIRMWARE.md`. En résumé :
+
+- chaque GET `metadata.json` / `.bin` porte `X-Ota-Board` (modèle OTA : `esp32-wroom`, `n3pp`,
+  `msp1`…) et `X-Ota-Version` (version courante) → journal serveur `ota_events` ;
+- **503** sur `metadata.json` = canal mis en pause ou réservé aux cartes canari par le serveur
+  (`OTA_PAUSED_CHANNELS`, `OTA_CANARY_*`) : le firmware journalise `ota_paused` et n'insiste pas ;
+- les étapes `ota_check` → `ota_start` → `ota_progress` (25/50/75 %) → `ota_done` / `ota_fail` sont
+  persistées en NVS avant le flash / le reboot et envoyées à `POST /<famille>/ota-report` (HMAC
+  obligatoire, acquittement par séquence) ; la nouvelle image envoie ensuite `boot` (`part`, `ota=pending`)
+  puis `ota_valid` ou `ota_rollback` (ffp5cs).
+
 ## 4. Règle version + metadata
 
 À chaque modification du firmware : **incrémenter la version** (config.h, main.cpp ou constante) et **mettre à jour le metadata.json** lors de la publication OTA. Le script `publish_ota.ps1` extrait la version du code source ; synchroniser si dérive.

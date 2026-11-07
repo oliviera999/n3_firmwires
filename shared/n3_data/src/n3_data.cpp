@@ -71,6 +71,12 @@ static String n3UrlEncode(const String& input) {
   return encoded;
 }
 
+static N3DataResponseObserver s_responseObserver = nullptr;
+
+void n3DataSetResponseObserver(N3DataResponseObserver observer) {
+  s_responseObserver = observer;
+}
+
 int n3DataPost(const N3PostConfig& config) {
   if (WiFi.status() != WL_CONNECTED) return -1;
 
@@ -113,6 +119,11 @@ int n3DataPost(const N3PostConfig& config) {
   http.begin(client, config.url);
   http.setTimeout(N3_HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  // n3_data 1.4 : heure serveur (X-Server-Ts, n3_serveur >= 6.59.0) pour mesurer le decalage
+  // d'horloge et, sans NTP, servir de repli avant toute signature (incident FFP3 06/11/2026).
+  static const char* kCollectHeaders[] = {"X-Server-Ts"};
+  http.collectHeaders(kCollectHeaders, 1);
+  bool signedRequest = false;
 
   // En-tete X-Signature compatibilite ascendante : signature HMAC du body avec apiKey.
   // Si HMAC FFP3 actif, on peut quand meme garder le header legacy : le serveur
@@ -145,6 +156,7 @@ int n3DataPost(const N3PostConfig& config) {
       http.addHeader("X-Sig-Timestamp", tsBuf2);
       http.addHeader("X-Sig-Nonce", nonceBuf);
       http.addHeader("X-Sig-Hmac", bodySigHex);
+      signedRequest = true;
     }
   }
 
@@ -153,6 +165,13 @@ int n3DataPost(const N3PostConfig& config) {
   const unsigned long postStartMs = millis();
   int code = http.POST(body);
   const unsigned long durationMs = millis() - postStartMs;
+  uint32_t serverEpoch = 0;
+  if (code > 0) {
+    const String serverTs = http.header("X-Server-Ts");
+    if (serverTs.length() >= 10 && serverTs.length() <= 12) {
+      serverEpoch = static_cast<uint32_t>(strtoul(serverTs.c_str(), nullptr, 10));
+    }
+  }
   String responseBody;
   // Lire le body : toujours si l'appelant veut le récupérer, sinon seulement sur erreur
   if (config.responseBodyOut != nullptr || code < 200 || code >= 300) {
@@ -188,6 +207,7 @@ int n3DataPost(const N3PostConfig& config) {
   }
 
   n3NetStatsRecordPost(code, durationMs, rssi);
+  if (s_responseObserver) s_responseObserver(code, signedRequest, serverEpoch, static_cast<uint32_t>(durationMs));
 
   if (config.onResult) config.onResult(code);
   return code;
@@ -255,7 +275,10 @@ int n3DataSendHeartbeat(const N3HeartbeatConfig& config) {
   const uint32_t uptimeSec = millis() / 1000UL;
   const int rssi = WiFi.RSSI();
 
-  N3DataField fields[] = {
+  // 8 champs historiques + jusqu'à kMaxExtra champs enrichis (n3_data 1.4, n3_contact_diag).
+  constexpr size_t kBase = 8;
+  constexpr size_t kMaxExtra = 16;
+  N3DataField fields[kBase + kMaxExtra] = {
     {"api_key",  String(config.apiKeyField ? config.apiKeyField : "")},
     {"sensor",   String(config.sensor ? config.sensor : "")},
     {"version",  String(config.version ? config.version : "")},
@@ -265,12 +288,19 @@ int n3DataSendHeartbeat(const N3HeartbeatConfig& config) {
     {"reboots",  String(config.bootCount)},
     {"rssi",     String(rssi)},
   };
+  size_t fieldCount = kBase;
+  if (config.extraFields) {
+    for (size_t i = 0; i < config.extraFieldCount && fieldCount < kBase + kMaxExtra; ++i) {
+      if (!config.extraFields[i].name) continue;
+      fields[fieldCount++] = config.extraFields[i];
+    }
+  }
 
   N3PostConfig cfg = {};
   cfg.url = config.url;
   cfg.apiKey = config.apiKeyHeader;
   cfg.fields = fields;
-  cfg.fieldCount = sizeof(fields) / sizeof(fields[0]);
+  cfg.fieldCount = fieldCount;
   cfg.sigSecret = config.sigSecret;
   cfg.currentEpochSeconds = config.currentEpochSeconds;
   cfg.onResult = [](int code) {

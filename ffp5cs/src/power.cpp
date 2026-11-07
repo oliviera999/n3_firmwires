@@ -1,3 +1,5 @@
+#include "contact_diag.h"  // v15.34 : journal de bord + heure serveur
+#include "n3_sleep_clock.h"  // v15.34 : correction d'horloge au reveil (pure, shared/n3_common)
 #include "power.h"
 #include "n3_epoch_util.h"   // isValidEpoch/epochAbsDiff (mutualisé shared/n3_time)
 #include "n3_clock_decision.h"  // ClockDecision : plausibilité NTP + dérive PPM (shared/n3_time)
@@ -47,7 +49,8 @@ using EpochUtil::epochAbsDiff;
 
 PowerManager::PowerManager()
     : _gmtOffsetSec(SystemConfig::NTP_GMT_OFFSET_SEC), _daylightOffsetSec(SystemConfig::NTP_DAYLIGHT_OFFSET_SEC), _ntpServer(SystemConfig::NTP_SERVER),
-      _lastNtpSync(0), _ntpTrusted(false), _hasSavedCredentials(false),
+      _lastNtpSync(0), _ntpTrusted(false), _serverTimeAppliedMs(0), _serverTimeTrusted(false),
+      _hasSavedCredentials(false),
       _lastTimeSave(0), _lastSavedEpoch(0), _lastDriftCorrection(0), _currentDriftPPM(0.0f),
       _lastDriftSeconds(0.0f), _driftAccumulator(0.0f), _sleepRemainderUs(0) {
   _lastSSID[0] = '\0';
@@ -84,6 +87,9 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   
   // Timestamp avant le passage en veille
   const uint64_t startUs = esp_timer_get_time();
+  // v15.34 : horloge murale avant la veille (référence de la correction au réveil)
+  const time_t wallBefore = time(nullptr);
+  ContactDiag::logEventf("sleep_in", "%us heap=%u", sleepTimeSeconds, (unsigned)ESP.getFreeHeap());
 
   // Sauvegarde de l'heure avant le sommeil (si configuré)
   if (SleepConfig::SAVE_TIME_BEFORE_SLEEP) {
@@ -148,8 +154,8 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   // Mise en veille
   esp_light_sleep_start();
   
-  // Calcul effectif du temps passé en veille légère
-  const uint32_t sleptSec = getSleptTime(startUs);
+  // Calcul effectif du temps passé en veille légère (v15.34 : sans double comptage)
+  const uint32_t sleptSec = getSleptTime(startUs, wallBefore);
 
   // === v11.149: Désactiver le flag de transition sleep ===
   // Autorise à nouveau les connexions TLS
@@ -159,15 +165,27 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
   // Réveil - reconnexion WiFi avec les identifiants sauvegardés (si configuré)
   if (SleepConfig::AUTO_RECONNECT_WIFI_AFTER_SLEEP) {
     Serial.println(F("[Power] Réveil - reconnexion WiFi"));
+    const unsigned long reconnectStartMs = millis();
     if (!reconnectWithSavedCredentials()) {
       Serial.println(F("[Power] Échec reconnexion avec identifiants sauvegardés - laissez wifi.loop() prendre le relais"));
+      ContactDiag::logEventf("wifi_fail", "wake status=%d after=%lums", (int)WiFi.status(),
+                             (unsigned long)(millis() - reconnectStartMs));
     } else {
+      ContactDiag::setWifiConnectStats((uint32_t)(millis() - reconnectStartMs), 1);
+      ContactDiag::logEventf("wifi_ok", "wake rssi=%d in %lums", (int)WiFi.RSSI(),
+                             (unsigned long)(millis() - reconnectStartMs));
+      // v15.34 — Resynchronisation AVANT toute requête signée : l'incident du 06/11 montrait une
+      // horloge en avance d'un cycle de veille au réveil → 401 « X-Sig invalide » sur la 1re
+      // requête. Sans NTP, l'heure serveur (X-Server-Ts de la 1re réponse) prendra le relais.
+      syncTimeFromNTP();
+      ContactDiag::logEventf(_ntpTrusted ? "ntp_ok" : "ntp_fail", "wake slept=%us", sleptSec);
       // Événement clé: après reconnexion WiFi, persiste l'heure courante
       if (SleepConfig::SAVE_TIME_BEFORE_SLEEP) {
         saveTimeToFlash();
       }
     }
   }
+  ContactDiag::logEventf("sleep_out", "slept=%us wifi=%d", sleptSec, WiFi.status() == WL_CONNECTED ? 1 : 0);
   
   // Retourner la durée réelle de veille
   return sleptSec;
@@ -786,7 +804,7 @@ void PowerManager::smartSaveTime() {
                 static_cast<uint64_t>(static_cast<unsigned long long>(currentEpoch)));
 }
 
-uint32_t PowerManager::getSleptTime(uint64_t startUs) {
+uint32_t PowerManager::getSleptTime(uint64_t startUs, time_t wallBefore) {
   // Calcul effectif du temps passé en veille
   const uint64_t sleptUs = esp_timer_get_time() - startUs;
   _sleepRemainderUs += (uint32_t)(sleptUs % 1000000ULL);
@@ -794,19 +812,51 @@ uint32_t PowerManager::getSleptTime(uint64_t startUs) {
   _sleepRemainderUs = _sleepRemainderUs % 1000000UL;
   const uint32_t sleptSec = (uint32_t)(sleptUs / 1000000ULL) + carrySec;
 
-  // Ajustement de l'horloge système pour refléter le temps réellement écoulé
-  if (sleptSec > 0) {
-    time_t currentEpoch = time(nullptr);
-    time_t newEpoch = currentEpoch + sleptSec;
-    timeval tv = {newEpoch, 0};
+  // v15.34 — ESP-IDF maintient déjà l'horloge système pendant le light sleep (compensation RTC
+  // au réveil). L'ancien code AJOUTAIT sleptSec sans vérifier : chaque réveil avançait l'horloge
+  // d'un cycle de veille entier (+2 045 s puis +4 090 s le 06/11/2026) et la première requête
+  // signée était rejetée (401, fenêtre HMAC 300 s). On ne corrige que l'écart non compté
+  // (n3clock::sleepCorrectionSeconds, logique pure testée en natif : test_sleep_clock).
+  const time_t wallAfter = time(nullptr);
+  const int32_t correction = n3clock::sleepCorrectionSeconds((uint32_t)wallBefore, (uint32_t)wallAfter, sleptSec);
+  if (correction > 0) {
+    timeval tv = {wallAfter + correction, 0};
     settimeofday(&tv, nullptr);
-    
-    char timeBuf[64];
-    getCurrentTimeString(timeBuf, sizeof(timeBuf));
-    Serial.printf("[Power] Veille: %llu us (~%u s), reste=%u us – heure: %s\n",
-                  (unsigned long long)sleptUs, sleptSec, _sleepRemainderUs, 
-                  timeBuf);
   }
-  
+  char timeBuf[64];
+  getCurrentTimeString(timeBuf, sizeof(timeBuf));
+  Serial.printf("[Power] Veille: %llu us (~%u s), horloge avancee de %ld s, correction %+ld s, reste=%u us – heure: %s\n",
+                (unsigned long long)sleptUs, sleptSec, (long)(wallAfter - wallBefore), (long)correction,
+                _sleepRemainderUs, timeBuf);
+  if (correction > 0) {
+    ContactDiag::logEventf("clock_fix", "sleep +%lds (slept=%us adv=%lds)", (long)correction, sleptSec,
+                           (long)(wallAfter - wallBefore));
+  }
+
   return sleptSec;
+}
+
+bool PowerManager::hasTrustedNtpTime() const {
+  if (_ntpTrusted) return true;
+  if (!_serverTimeTrusted) return false;
+  return (millis() - _serverTimeAppliedMs) < ContactDiag::kServerTimeTrustMs;
+}
+
+bool PowerManager::applyServerEpoch(uint32_t serverEpoch, uint32_t rttMs) {
+  if (serverEpoch < (uint32_t)SleepConfig::EPOCH_MIN_VALID) return false;
+  const uint32_t deviceNow = (uint32_t)time(nullptr);
+  const int32_t offset = n3clock::serverOffsetSeconds(deviceNow, serverEpoch, rttMs);
+  bool applied = false;
+  if (n3clock::shouldApplyServerTime(offset, 30)) {
+    timeval tv = {(time_t)(serverEpoch + rttMs / 2000UL), 0};
+    settimeofday(&tv, nullptr);
+    smartSaveTime();
+    applied = true;
+    LOG_NTP(LogConfig::LOG_WARN, "Heure serveur appliquee (NTP indisponible) : offset module-serveur %+ld s",
+            (long)offset);
+    ContactDiag::logEventf("clock_srv", "offset=%+lds rtt=%lums", (long)offset, (unsigned long)rttMs);
+  }
+  _serverTimeAppliedMs = millis();
+  _serverTimeTrusted = true;
+  return applied;
 }

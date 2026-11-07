@@ -20,6 +20,7 @@
 #include "app_tasks.h"
 #include "sd_card.h"
 #include "sd_logger.h"
+#include "contact_diag.h"  // v15.34 : journal de bord, boot sain, mode sans echec
 #include <Wire.h>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
@@ -191,16 +192,47 @@ void confirmOtaValidation(const char* reason) {
     esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
     BOOT_LOG("[OTA] Image validee, rollback annule — motif: %s (err=%s)\n",
              reason ? reason : "?", esp_err_to_name(err));
+    ContactDiag::logEventf("ota_valid", "%s v=%s", reason ? reason : "?", ProjectConfig::VERSION);
+    ContactDiag::flushPending();
   } else {
     BOOT_LOG("[OTA] confirmOtaValidation (%s): image deja validee ou non en attente\n",
              reason ? reason : "?");
   }
 }
 
+void confirmOtaValidationIfHealthy(const char* reason) {
+  if (!s_otaPendingValidation) return;
+  if (ContactDiag::isBootHealthy()) {
+    confirmOtaValidation(reason);
+    return;
+  }
+  BOOT_LOG("[OTA] Reboot deliberee (%s) AVANT contact sain : image laissee en probation (rollback bootloader)\n",
+           reason ? reason : "?");
+  ContactDiag::logEventf("ota_pending_reboot", "%s", reason ? reason : "?");
+  ContactDiag::flushPending(true);
+}
+
 void tickOtaValidation() {
   if (!s_otaPendingValidation) return;
-  if (millis() - s_otaProbationStartMs >= TimingConfig::OTA_VALIDATION_GRACE_MS) {
-    confirmOtaValidation("uptime stable (grace)");
+  // v15.34 — critère de santé réel (incident 06/11 : l'ancien critère « 120 s d'uptime » aurait
+  // validé une image incapable de joindre le serveur). Boot sain = Wi-Fi + heure fiable + POST
+  // authentifié accepté (ContactDiag::markBootHealthy, appelé par WebClient).
+  if (ContactDiag::isBootHealthy()) {
+    confirmOtaValidation("contact serveur authentifie accepte");
+    return;
+  }
+  if (millis() - s_otaProbationStartMs >= TimingConfig::OTA_VALIDATION_DEADLINE_MS) {
+    s_otaPendingValidation = false;
+    BOOT_LOG("[OTA] Aucun contact sain en %lu ms : image invalidee, retour a l'ancienne (rollback)\n",
+             (unsigned long)TimingConfig::OTA_VALIDATION_DEADLINE_MS);
+    ContactDiag::logEventf("ota_rollback", "no healthy contact in %lus v=%s",
+                           (unsigned long)(TimingConfig::OTA_VALIDATION_DEADLINE_MS / 1000UL), ProjectConfig::VERSION);
+    ContactDiag::flushPending(true);  // meilleur effort (l'horloge peut ne pas etre fiable)
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
+    // N'est atteint que si le rollback est impossible (pas d'autre image valide) : on reste.
+    BOOT_LOG("[OTA] Rollback impossible (%s) : image conservee\n", esp_err_to_name(err));
+    ContactDiag::logEventf("ota_rollback_fail", "%s", esp_err_to_name(err));
   }
 }
 
@@ -234,14 +266,16 @@ void validatePendingOta(OtaState& state) {
         // restaure automatiquement l'ancienne partition (rollback réellement utile).
         s_otaPendingValidation = true;
         s_otaProbationStartMs = millis();
-        BOOT_LOG("[OTA] Probation armee: validation dans %lu ms d'uptime stable\n",
-                 (unsigned long)TimingConfig::OTA_VALIDATION_GRACE_MS);
+        BOOT_LOG("[OTA] Probation armee: validation au 1er contact serveur sain, rollback sans contact en %lu ms\n",
+                 (unsigned long)TimingConfig::OTA_VALIDATION_DEADLINE_MS);
         state.justUpdated = true;
         {
           char tempBuf[64];
           g_nvsManager.loadString(NVS_NAMESPACES::SYSTEM, NVSKeys::System::OTA_PREV_VER, tempBuf, sizeof(tempBuf), "");
           strncpy(state.previousVersion, tempBuf, sizeof(state.previousVersion) - 1);
           state.previousVersion[sizeof(state.previousVersion) - 1] = '\0';
+          ContactDiag::logEventf("ota_pending", "prev=%s now=%s part=%s", tempBuf[0] ? tempBuf : "?",
+                                 ProjectConfig::VERSION, running ? running->label : "?");
         }
         break;
       case ESP_OTA_IMG_VALID:
@@ -468,8 +502,11 @@ bool connectWifi(AppContext& ctx, const char* hostname) {
     ctx.display.showDiagnostic("WiFi...");
   }
 
+  const unsigned long wifiStartMs = millis();
   if (!ctx.wifi.connect(&ctx.display, hostname)) {
     BOOT_LOG("[App] WiFi non connecte - AP secours\n");
+    ContactDiag::logEventf("wifi_fail", "boot status=%d after=%lums", (int)WiFi.status(),
+                           (unsigned long)(millis() - wifiStartMs));
     if (ctx.display.isPresent()) {
       ctx.display.showDiagnostic("AP secours");
     }
@@ -480,6 +517,8 @@ bool connectWifi(AppContext& ctx, const char* hostname) {
 
   // Sauvegarder identifiants dès la première connexion réussie (réveil light sleep)
   ctx.power.saveCurrentWifiCredentials();
+  ContactDiag::setWifiConnectStats((uint32_t)(millis() - wifiStartMs), 1);
+  ContactDiag::logEventf("wifi_ok", "boot rssi=%d in %lums", (int)WiFi.RSSI(), (unsigned long)(millis() - wifiStartMs));
   return true;
 }
 
@@ -496,6 +535,8 @@ void onWifiReady(AppContext& ctx, const char* hostname, OtaState& state) {
   ctx.power.getCurrentTimeString(timeBuf, sizeof(timeBuf));
   BOOT_LOG("[Time] Heure apres sync NTP: %s\n", timeBuf);
   BOOT_LOG("[Time] NTP fiable: %s\n", ctx.power.hasTrustedNtpTime() ? "oui" : "non");
+  ContactDiag::logEventf(ctx.power.hasTrustedNtpTime() ? "ntp_ok" : "ntp_fail", "boot epoch=%lu",
+                         (unsigned long)ctx.power.getCurrentEpoch());
 
 #if FEATURE_MAIL
   ctx.mailer.begin();

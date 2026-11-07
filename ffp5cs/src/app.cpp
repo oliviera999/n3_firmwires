@@ -23,6 +23,7 @@
 #include "app_context.h"
 #include "app_tasks.h"
 #include "system_boot.h"
+#include "contact_diag.h"  // v15.34
 #include "tls_mutex.h"  // v11.149: Mutex pour sérialiser TLS (SMTP/HTTPS)
 #include "i2c_bus.h"    // Bus I2C partagé (OLED, BME280, scan)
 #include "boot_log.h"   // BOOT_LOG : un seul #if centralisé (ets_printf vs Serial)
@@ -214,6 +215,10 @@ void setup() {
   SystemBoot::setupHostname(g_hostname, sizeof(g_hostname));
 
   SystemBoot::initializeStorage(g_appContext);
+  // v15.34 — Diagnostic de perte de contact : journal persistant, compteur de boots ratés
+  // (incrémenté ICI, remis à zéro au 1er POST signé accepté), mode sans échec, événement `boot`.
+  ContactDiag::begin();
+  g_autoCtrl.setSafeMode(ContactDiag::isSafeMode());
 #if defined(BOARD_S3)
   SystemBoot::initializeSdCard();
 #endif

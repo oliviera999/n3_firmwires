@@ -34,6 +34,11 @@ class Automatism {
   void begin();
   void update();               // collecte interne des capteurs
   void update(const SensorReadings& r); // usage dans tâche dédiée
+  /** v15.34 — Mode sans échec (≥ 3 boots consécutifs sans contact serveur sain) : nourrissage,
+   *  remplissage et alertes dérivées suspendus ; pompe aquarium maintenue EN MARCHE ; poll /
+   *  POST / heartbeat (`safe=1`) et veille conservés pour que l'opérateur puisse diagnostiquer. */
+  void setSafeMode(bool enabled);
+  bool isSafeMode() const { return _safeMode; }
   void updateDisplay();        // mise à jour de l'affichage OLED (tâche dédiée)
   // Mise à jour affichage avec readings déjà lus (évite double lecture capteurs, ex. depuis automationTask)
   void updateDisplayWithReadings(const SensorReadings& r);
@@ -236,6 +241,7 @@ class Automatism {
   uint32_t getLastPendingSyncTime();
   
  private:
+  bool _safeMode = false;  // v15.34
 
   void restorePersistentForceWakeup();
   // v11.178: restoreActuatorState() supprimé (code mort - audit dead-code)

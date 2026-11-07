@@ -36,6 +36,10 @@ class WebClient {
   bool buildHeartbeatPayload(const class Diagnostics& diag, char* buf, size_t bufSize);
   /** POST vers une URL donnée (timeout optionnel). Utilisé par postSenderTask pour heartbeat. */
   bool postToUrl(const char* url, const char* payload, uint32_t timeoutMs = NetworkConfig::HTTP_POST_TIMEOUT_MS);
+  /** v15.34 : POST vers une URL donnée en récupérant le corps de la réponse (ex. acquittements
+   *  de /ota-report). Même transport, même mutex, mêmes en-têtes HMAC que postToUrl. */
+  bool postToUrlWithResponse(const char* url, const char* payload, char* response, size_t responseSize,
+                             uint32_t timeoutMs = NetworkConfig::HTTP_TIMEOUT_MS);
   bool postRaw(const char* payload);
   // Retour: 0=échec, 1=OK HTTP, 2=OK NVS fallback (v11.193)
   int fetchRemoteState(ArduinoJson::JsonDocument& doc);

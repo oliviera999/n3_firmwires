@@ -87,9 +87,26 @@ void Automatism::update() {
     update(readings);
 }
 
+void Automatism::setSafeMode(bool enabled) {
+    _safeMode = enabled;
+    if (enabled) {
+        Serial.println(F("[Auto] ⛔ MODE SANS ÉCHEC : automatismes non essentiels suspendus, pompe aquarium maintenue"));
+        _acts.startAquaPump();
+    }
+}
+
 void Automatism::update(const SensorReadings& r) {
     unsigned long now = millis();
     _lastReadings = r;
+
+    if (_safeMode) {
+        // v15.34 — mode sans échec : affichage, réseau (poll/POST/heartbeat) et veille seulement.
+        AutomatismRuntimeContext ctx(r, now);
+        updateDisplayInternal(ctx);
+        updateNetworkSync(r, now);
+        _sleep.handleAutoSleep(r, _acts, *this);
+        return;
+    }
 
     // v11.158: Refactorisation - extraction en sous-méthodes pour améliorer lisibilité
     updateFeedingAndDisplay(r, now);

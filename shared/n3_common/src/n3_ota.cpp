@@ -49,6 +49,17 @@ static void n3OtaPrepareSecureClient(WiFiClientSecure& client) {
 #endif
 }
 
+#include "n3_ota_hooks.h"
+
+// Définitions par défaut des points d'accroche (symboles faibles, cf. n3_ota_hooks.h).
+__attribute__((weak)) void n3OtaHookEvent(const char* event, const char* detail) { (void)event; (void)detail; }
+__attribute__((weak)) bool n3OtaHookUpdatesAllowed() { return true; }
+__attribute__((weak)) const char* n3OtaHookBoardLabel() { return nullptr; }
+
+static const char* s_otaBoardLabel = "n3";        // X-Ota-Board (journal serveur ota_events)
+static const char* s_otaCurrentVersion = "";       // X-Ota-Version
+static uint8_t s_lastProgressMilestone = 0;        // 25/50/75 % journalisés (n3OtaHookEvent)
+
 static uint8_t s_lastLoggedOtaPercent = 255;
 static void (*s_progressCallback)(int, int, uint8_t, void*) = nullptr;
 static void* s_progressUserData = nullptr;
@@ -173,6 +184,10 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
     HTTPClient http;
     http.begin(*client, firmwareUrl);
     http.setTimeout(30000);
+    // Identification carte/version pour le journal ota_events du serveur (OtaFileController).
+    http.addHeader("X-Ota-Board", s_otaBoardLabel);
+    http.addHeader("X-Ota-Version", s_otaCurrentVersion);
+    s_lastProgressMilestone = 0;
     int code = http.GET();
     if (code != 200) {
         if (details && detailsSize > 0) {
@@ -383,6 +398,14 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
     }
 
     Serial.println("[OTA] MAJ reussie, redemarrage...");
+    {
+        // Journal de bord : `ota_done` persisté (et poussé au serveur par l'accroche) AVANT le
+        // reboot. La nouvelle image enverra `boot`/`wake` avec part= et ota=.
+        const esp_partition_t* bootPart = esp_ota_get_boot_partition();
+        char d[48];
+        snprintf(d, sizeof(d), "boot=%s", bootPart ? bootPart->label : "?");
+        n3OtaHookEvent("ota_done", d);
+    }
     delay(100);
     ESP.restart();
     return true;
@@ -390,6 +413,18 @@ static bool downloadAndFlashFirmware(const char* firmwareUrl,
 
 static void logOtaProgress(int current, int total) {
     if (total <= 0 || current < 0) return;
+    {
+        // Jalons 25/50/75 % persistés : si le module se tait pendant le flash, le serveur saura
+        // jusqu'où le téléchargement est allé (incident 06/11/2026).
+        const uint8_t pctNow = (uint8_t)((static_cast<uint64_t>(current) * 100U) / static_cast<uint64_t>(total));
+        const uint8_t milestone = (uint8_t)((pctNow / 25U) * 25U);
+        if (milestone > s_lastProgressMilestone && milestone < 100U) {
+            s_lastProgressMilestone = milestone;
+            char d[40];
+            snprintf(d, sizeof(d), "%u%% %d/%d", (unsigned)milestone, current, total);
+            n3OtaHookEvent("ota_progress", d);
+        }
+    }
 
     uint8_t pct = static_cast<uint8_t>((static_cast<uint64_t>(current) * 100ULL) / static_cast<uint64_t>(total));
     if (pct > 100) pct = 100;
@@ -451,7 +486,21 @@ bool n3OtaCheck(const N3OtaConfig& config) {
         return false;
     }
 
+    // Mode sans échec (n3_contact_diag : ≥ 3 boots consécutifs sans contact serveur sain) :
+    // aucune OTA — une image qui ne joint pas le serveur ne doit pas en télécharger une autre.
+    if (!n3OtaHookUpdatesAllowed()) {
+        Serial.println("[OTA] Mode sans echec : verification ignoree");
+        n3OtaHookEvent("ota_skip_safe", "safe mode");
+        if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: mode sans echec.", config.userData);
+        return false;
+    }
+
     n3OtaSyncBootPartition();
+
+    const char* hookBoard = n3OtaHookBoardLabel();
+    s_otaBoardLabel = hookBoard ? hookBoard
+                                : ((config.metadataKey && config.metadataKey[0]) ? config.metadataKey : "n3");
+    s_otaCurrentVersion = config.currentVersion ? config.currentVersion : "";
 
     Serial.printf("[OTA] Verification MAJ : %s (locale: %s)\n",
                   config.metadataUrl, config.currentVersion);
@@ -468,9 +517,25 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     HTTPClient http;
     http.begin(*client, config.metadataUrl);
     http.setTimeout(10000);
+    http.addHeader("X-Ota-Board", s_otaBoardLabel);
+    http.addHeader("X-Ota-Version", s_otaCurrentVersion);
     int code = http.GET();
 
     if (code != 200) {
+        if (code == 503) {
+            // Canal OTA mis en pause ou réservé aux cartes canari par le serveur (OtaChannelPolicy,
+            // n3_serveur ≥ 6.59.0) : ce n'est pas une panne, on n'insiste pas.
+            Serial.println("[OTA] Canal en pause / canari (503) - verification reportee");
+            n3OtaHookEvent("ota_paused", "503 canal en pause ou canari");
+            if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: canal en pause (503).", config.userData);
+            http.end();
+            return false;
+        }
+        if (code != 404) {
+            char d[32];
+            snprintf(d, sizeof(d), "metadata HTTP %d", code);
+            n3OtaHookEvent("ota_check_fail", d);
+        }
         if (code == 404) {
             Serial.println("[OTA] Metadata introuvable (404) - normal si env test sans fichier deploye");
             if (config.onUpdateEnd) config.onUpdateEnd(false, "OTA ignoree: metadata 404.", config.userData);
@@ -548,6 +613,15 @@ bool n3OtaCheck(const N3OtaConfig& config) {
 
     Serial.printf("[OTA] MAJ disponible %s -> %s, telechargement...\n",
                   config.currentVersion, remoteVersion);
+    {
+        // `ota_check` (MAJ détectée) puis `ota_start` AVANT le flash : persistés en NVS et poussés
+        // au serveur par l'accroche — si le module ne revient jamais, la timeline le saura.
+        char d[48];
+        snprintf(d, sizeof(d), "remote=%s local=%s", remoteVersion, config.currentVersion);
+        n3OtaHookEvent("ota_check", d);
+        snprintf(d, sizeof(d), "%s->%s", config.currentVersion, remoteVersion);
+        n3OtaHookEvent("ota_start", d);
+    }
     if (config.onUpdateStart) {
         config.onUpdateStart(config.currentVersion, remoteVersion, firmwareUrl, config.userData);
     }
@@ -564,6 +638,7 @@ bool n3OtaCheck(const N3OtaConfig& config) {
     if (!downloadAndFlashFirmware(firmwareUrl, expectedSha256, signatureB64,
                                   integrityDetails, sizeof(integrityDetails))) {
         Serial.printf("[OTA] Echec MAJ: %s\n", integrityDetails);
+        n3OtaHookEvent("ota_fail", integrityDetails);  // raison persistée + envoyée au serveur
         s_progressCallback = nullptr;
         s_progressUserData = nullptr;
         if (config.onUpdateEnd) {

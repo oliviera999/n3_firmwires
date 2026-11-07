@@ -80,6 +80,15 @@ bool n3TimeRestoreFromFlashIfNewer(Preferences& prefs, ESP32Time& rtc);
 bool n3TimeHasPlausibleEpoch(void);
 
 /**
+ * n3_time 1.5 — Repli d'horloge sur l'heure SERVEUR (en-tête X-Server-Ts, n3_serveur ≥ 6.59.0)
+ * quand NTP a échoué : applique serverEpoch + rtt/2 à l'horloge système et au rtc, persiste en
+ * NVS, seulement si |module − serveur| ≥ 30 s (n3clock::shouldApplyServerTime). Retourne true si
+ * l'horloge a été modifiée. Ne JAMAIS signer (HMAC) avec une horloge ni NTP ni serveur : c'est
+ * ce qui a produit les 401 « X-Sig invalide » de l'incident FFP3 du 06/11/2026.
+ */
+bool n3TimeApplyServerEpoch(ESP32Time& rtc, Preferences& prefs, uint32_t serverEpoch, uint32_t rttMs);
+
+/**
  * Resynchronise les 6 composantes calendaires d'un firmware depuis le RTC.
  * Mutualisé n3pp/msp : ce bloc était dupliqué 3× (print_wakeup_reason n3pp/msp
  * + HeureSansWifi n3pp). annee est sur 4 chiffres (%Y).

@@ -657,7 +657,7 @@ bool WebServerManager::begin() {
         // v14.17 : reboot délibéré → valider une éventuelle image OTA en probation pour
         // ne pas rollbacker une bonne image fraîchement flashée (le reboot manuel ne doit
         // pas être interprété comme un échec de l'image).
-        SystemBoot::confirmOtaValidation("reboot manuel (web)");
+        SystemBoot::confirmOtaValidationIfHealthy("reboot manuel (web)");  // v15.34 : seulement si boot sain
         vTaskDelay(pdMS_TO_TICKS(1000));
         ESP.restart();
       }

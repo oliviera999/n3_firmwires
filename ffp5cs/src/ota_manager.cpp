@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include "wifi_manager.h"  // Pour WiFiHelpers
 #include <Update.h>
+#include "contact_diag.h"  // v15.34 : journal de bord OTA, mode sans echec
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
@@ -89,6 +90,8 @@ void OTAManager::log(const char* message) {
 
 void OTAManager::logError(const char* error) {
     OTA_LOG("ERR %s", error ? error : "(null)");
+    strncpy(m_lastError, error ? error : "?", sizeof(m_lastError) - 1);
+    m_lastError[sizeof(m_lastError) - 1] = '\0';
     if (m_errorCallback) {
         m_errorCallback(error);
     }
@@ -150,6 +153,14 @@ bool OTAManager::checkForUpdate() {
         log("⚠️ Mode OTA exclusif déjà actif");
         return false;
     }
+    // v15.34 — Mode sans échec (≥ 3 boots consécutifs sans contact sain) : aucune OTA.
+    // Une image qui ne parvient pas à joindre le serveur ne doit pas en télécharger une autre ;
+    // le serveur voit `safe=1` dans le heartbeat et l'opérateur tranche (reflash USB au besoin).
+    if (ContactDiag::isSafeMode()) {
+        log("⛔ Mode sans échec : vérification OTA ignorée");
+        ContactDiag::logEvent("ota_skip_safe", "safe mode");
+        return false;
+    }
     
     if (WiFi.status() != WL_CONNECTED) {
         logError("WiFi non connecté");
@@ -176,6 +187,9 @@ bool OTAManager::checkForUpdate() {
     // Taille alignée sur metadata.json servi (~2.7KB) pour éviter troncature → IncompleteInput
     char payload[BufferConfig::OTA_METADATA_PAYLOAD_BUFFER_SIZE];
     if (!downloadMetadata(payload, sizeof(payload))) {
+        if (strncmp(m_lastError, "canal OTA", 9) != 0) {  // 503 déjà journalisé (ota_paused)
+            ContactDiag::logEventf("ota_check_fail", "%s", m_lastError);
+        }
         return false;
     }
     
@@ -281,6 +295,9 @@ bool OTAManager::checkForUpdate() {
     char logMsgNewVer[128];
     snprintf(logMsgNewVer, sizeof(logMsgNewVer), "🆕 Nouvelle version %s trouvée (courante %s)", m_remoteVersion, m_currentVersion);
     log(logMsgNewVer);
+    // v15.34 — journal de bord : la détection d'une mise à jour est l'événement clé de l'incident
+    // du 06/11 (module muet juste après la vérification OTA qui a suivi le mail de réveil).
+    ContactDiag::logEventf("ota_check", "remote=%s local=%s size=%d", m_remoteVersion, m_currentVersion, m_firmwareSize);
     
     // Vérification de la taille
     if (m_firmwareSize <= 0) {

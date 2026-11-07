@@ -21,6 +21,8 @@
 #include "n3_sleep.h"
 #include "n3_app.h"   // T6.2 : squelette de cycle deep-sleep a callbacks (n3AppRun)
 #include "n3_time.h"
+#include "n3_contact_diag.h"  // 2.79 : diagnostic de perte de contact (shared n3_data 1.4)
+#include <time.h>
 
 // ============================================================
 // Variables globales : definitions extraites dans msp_globals.cpp
@@ -97,6 +99,32 @@ void setup() {
   Serial.begin(115200);
 
   n3OtaSyncBootPartition();
+  // 2.79 — Diagnostic de perte de contact (shared n3_data 1.4 / n3_contact_diag) : journal de
+  // bord persistant, compteur de réveils sans contact sain (mode sans échec = OTA suspendue),
+  // événements OTA via les accroches de n3_ota, décalage d'horloge X-Server-Ts et repli d'heure
+  // serveur sans NTP. À placer tôt (après Serial, avant Wi-Fi) ; les champs enrichis partent dans
+  // le heartbeat et les événements dans POST /ota-report (HMAC).
+  {
+    static char s_otaReportUrl[160];
+    n3ContactDiagDeriveOtaReportUrl(serverNameHeartbeat, s_otaReportUrl, sizeof(s_otaReportUrl));
+    N3ContactDiagConfig cd = {};
+    cd.firmwareVersion = FIRMWARE_VERSION;
+    cd.board = "msp1";
+    cd.source = "ota_report";
+    cd.otaReportUrl = s_otaReportUrl;
+    cd.apiKeyHeader = API_KEY;
+    cd.apiKeyField = apiKeyValue.c_str();
+    cd.sigSecret = (API_SIG_SECRET[0] != '\0') ? API_SIG_SECRET : nullptr;
+    cd.epochProvider = []() -> unsigned long {
+      if (n3TimeHasPlausibleEpoch()) return static_cast<unsigned long>(time(nullptr));
+      const unsigned long e = static_cast<unsigned long>(rtc.getEpoch());
+      return (e > N3_TIME_MIN_VALID_EPOCH) ? e : 0UL;
+    };
+    cd.applyServerEpoch = [](uint32_t serverEpoch, uint32_t rttMs) {
+      return n3TimeApplyServerEpoch(rtc, preferences, serverEpoch, rttMs);
+    };
+    n3ContactDiagBegin(cd);
+  }
   WiFi.mode(WIFI_MODE_STA);
 
   displayOk = n3DisplayInit(display);
@@ -122,7 +150,11 @@ void setup() {
 
   // OTA périodique : vérification au boot seulement si la cadence 2h est atteinte
   initOtaUi();
-  Wificonnect();
+  {
+    const unsigned long wifiT0 = millis();
+    Wificonnect();
+    n3ContactDiagOnWifiResult(WiFi.status() == WL_CONNECTED, millis() - wifiT0, 1);
+  }
   Serial.println("[WIFI] Connexion initiale OK");
   n3OtaUiMaybePeriodicCheck(s_otaUiContext, "boot");
 
@@ -182,6 +214,7 @@ void setup() {
   n3TimeRestoreFromFlashIfNewer(preferences, rtc);
   if (WiFi.status() == WL_CONNECTED) {
     const bool ntpOk = n3TimeSyncNtpConfirmed(rtc, gmtOffset_sec, daylightOffset_sec, ntpServer, 8000U);
+    n3ContactDiagOnNtpResult(ntpOk);  // 2.79 : sans NTP, l'heure serveur (X-Server-Ts) prendra le relais
     if (ntpOk && rtc.getEpoch() > N3_TIME_MIN_VALID_EPOCH) {
       n3TimeSaveToFlash(rtc, preferences);
     }
@@ -248,7 +281,9 @@ static void mspCbConnectWifi(N3AppContext&) {
   // mort supprime en 2.63) ; toute la config vient du serveur distant (variablestoesp()).
 
   if (WiFi.status() != WL_CONNECTED) {
+    const unsigned long wifiT0 = millis();
     Wificonnect();
+    n3ContactDiagOnWifiResult(WiFi.status() == WL_CONNECTED, millis() - wifiT0, 1);
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("[WIFI] Connecte");
     } else {
@@ -366,6 +401,7 @@ static void mspCbSendReports(N3AppContext&) {
   mspAccumulateNetReportElapsedFromSleep(elapsedForOta);
   mspMaybeSendNetworkReportEmail();
   sendHeartbeat();
+  n3ContactDiagFlush();  // 2.79 : journal de bord -> POST /ota-report (acquitte par sequence)
 }
 
 static void mspCbEnterSleep(N3AppContext& ctx) {
@@ -375,6 +411,9 @@ static void mspCbEnterSleep(N3AppContext& ctx) {
   if (ctx.requestRestart) {
     ESP.restart();
     return;
+  }
+  if (WakeUp == 0) {
+    n3ContactDiagLogf("sleep_in", "%ds heap=%u", (int)FreqWakeUp, (unsigned)ESP.getFreeHeap());
   }
   sommeil();
 }

@@ -36,9 +36,20 @@ Règles de la décision (voir tests natifs) :
 ## Précondition matérielle/toolchain — À LIRE AVANT D'ACTIVER
 
 Le passage d'une image par `ESP_OTA_IMG_PENDING_VERIFY` **exige un bootloader
-compilé avec `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`**. Ce n'est **pas** le cas
-des cores Arduino pré-compilés utilisés par ce dépôt (pioarduino arduino-esp32
-3.3.x et espressif32@6.13.0) : avec le bootloader standard, l'état reste
+compilé avec `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`**.
+
+> **Mise à jour 2026-11-07 (ffp5cs 15.34).** Contrairement à ce qu'affirmait ce document, les deux
+> cores pré-compilés du dépôt **activent** cette option : `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` et
+> `CONFIG_APP_ROLLBACK_ENABLE=y` dans `framework-arduinoespressif32-libs/esp32/sdkconfig` (pioarduino
+> 55.03.37 / arduino-esp32 3.3.7) comme dans `framework-arduinoespressif32/tools/sdk/esp32/sdkconfig` et
+> `esp32s3/sdkconfig` (espressif32@6.13.0 / arduino-esp32 2.0.17). ffp5cs s'appuie dessus depuis 14.17
+> (`SystemBoot::validatePendingOta`) et, depuis 15.34, ne valide l'image qu'après un **contact serveur
+> signé accepté** (sinon `esp_ota_mark_app_invalid_rollback_and_reboot()` après 15 min) — scénario de
+> banc décrit dans `ffp5cs/VERSION.md` (15.34). Pour n3pp / msp, la capacité reste **opt-in** (flag
+> `N3_OTA_ROLLBACK_ENABLE`) : le portage 4.76 / 2.79 n'active pas le rollback, il journalise seulement
+> (`n3_contact_diag`). Le paragraphe ci-dessous décrit le cas d'un bootloader SANS l'option.
+
+Avec un bootloader standard sans l'option, l'état reste
 `ESP_OTA_IMG_UNDEFINED`, aucune image n'attend de validation, et l'API se réduit
 à des **no-ops sûrs** (pas de rollback possible, pas d'effet de bord non plus).
 
