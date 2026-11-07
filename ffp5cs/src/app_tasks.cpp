@@ -61,14 +61,27 @@ static StaticTask_t sensorTaskTCB;
 static StackType_t automationTaskStack[TaskConfig::AUTOMATION_TASK_STACK_SIZE];
 static StaticTask_t automationTaskTCB;
 
-static StackType_t netTaskStack[TaskConfig::NET_TASK_STACK_SIZE];
+// v15.35 — pile netTask allouée sur le tas au démarrage (heap_caps_malloc, DRAM interne) : la
+// fenêtre DRAM statique du WROOM (dram0_0_seg, ~124,6 Ko à cause de la réserve Bluetooth du core
+// pré-compilé) était pleine à 99,8 %. Au boot le tas est contigu : même mémoire, contrainte déplacée
+// de l'édition de liens vers l'exécution, où la marge est de 50 Ko et plus. Le TCB reste statique.
+static StackType_t* netTaskStack = nullptr;
 static StaticTask_t netTaskTCB;
 
 #if FEATURE_OTA && FEATURE_OTA != 0 && FEATURE_HTTP_OTA && FEATURE_HTTP_OTA != 0
 // g_otaTriggerQueue / g_otaTaskHandle : définis en global (linkage externe app_tasks_ota.cpp).
 static constexpr size_t kOtaTriggerQueueLen = 2;
-static StackType_t otaTaskStack[TaskConfig::OTA_TASK_STACK_SIZE / sizeof(StackType_t)];
+static StackType_t* otaTaskStack = nullptr;  // v15.35 : tas (cf. netTaskStack)
 static StaticTask_t otaTaskTCB;
+
+// Alloue une pile de tâche en DRAM interne (jamais PSRAM : les piles FreeRTOS doivent être internes).
+static StackType_t* allocTaskStack(size_t bytes, const char* name) {
+  StackType_t* p = static_cast<StackType_t*>(heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (!p) {
+    Serial.printf("[App] ❌ CRITIQUE: pile %s (%u o) non allouée\n", name, (unsigned)bytes);
+  }
+  return p;
+}
 // v13.70 (audit): handle postSender exposé pour task_monitor (HWM monitoring).
 TaskHandle_t g_postSenderTaskHandle = nullptr;
 #endif
@@ -91,6 +104,11 @@ static constexpr size_t kPostSenderQueueLen = 4;
 namespace AppTasks {
 
 bool start(AppContext& ctx) {
+  // v15.35 — pool de requêtes réseau sur le tas (7,4 Ko de .bss récupérés au link)
+  if (!netRequestPoolInit()) {
+    Serial.println(F("[App] ❌ CRITIQUE: pool de requêtes réseau non alloué"));
+    return false;
+  }
   g_ctx = &ctx;
   // v11.157: CORRECTION CRITIQUE - Créer les queues AVANT les tâches
   // Les tâches utilisent immédiatement les queues, elles doivent donc exister
@@ -161,7 +179,10 @@ bool start(AppContext& ctx) {
   // Tâche OTA dédiée (priorité > netTask) : créée avant netTask pour que l'OTA soit prioritaire au boot
   if (!g_otaTriggerQueue) {
     g_otaTriggerQueue = xQueueCreate(kOtaTriggerQueueLen, sizeof(uint8_t));
-    if (g_otaTriggerQueue) {
+    if (g_otaTriggerQueue && !otaTaskStack) {
+      otaTaskStack = allocTaskStack(TaskConfig::OTA_TASK_STACK_SIZE, "otaTask");
+    }
+    if (g_otaTriggerQueue && otaTaskStack) {
       g_otaTaskHandle = xTaskCreateStaticPinnedToCore(
           otaTask,
           "otaTask",
@@ -236,7 +257,10 @@ bool start(AppContext& ctx) {
 
   // Créer netTask APRÈS création de g_netQueue (nécessaire pour la queue)
   // v11.159: netTask: allocation statique (Phase 2 - libère ~30KB heap)
-  if (g_netQueue) {
+  if (g_netQueue && !netTaskStack) {
+    netTaskStack = allocTaskStack(TaskConfig::NET_TASK_STACK_SIZE, "netTask");
+  }
+  if (g_netQueue && netTaskStack) {
     const UBaseType_t netPrio = TaskConfig::NET_TASK_PRIORITY;
     g_netTaskHandle = xTaskCreateStaticPinnedToCore(
                                                      netTask,

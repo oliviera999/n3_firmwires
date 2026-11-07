@@ -122,4 +122,14 @@ inline uint16_t reactiveMedianOrUnknown(uint16_t* readings, uint8_t count) {
   return readings[count / 2];
 }
 
+// v15.35 — Borne de blocage : chaque tir sans écho attend TIMEOUT_US (jusqu'à 500 ms) ; un capteur
+// mort coûtait 5 à 7 timeouts par cycle et par capteur (≈ 3,5 s), trois capteurs muets dépassaient
+// la période de 10 s de la tâche capteurs (timeouts de file dans l'automation, cf. analyse charge
+// 2026-11-07). Après `maxConsecutive` timeouts d'affilée, la série est abandonnée : le capteur est
+// déclaré muet pour ce cycle (niveau inconnu), la cadence de la tâche est préservée.
+constexpr uint8_t kMaxConsecutiveTimeouts = 2;
+inline bool shouldAbortSeries(uint8_t consecutiveTimeouts, uint8_t maxConsecutive = kMaxConsecutiveTimeouts) {
+  return maxConsecutive > 0 && consecutiveTimeouts >= maxConsecutive;
+}
+
 }  // namespace UltrasonicFilter

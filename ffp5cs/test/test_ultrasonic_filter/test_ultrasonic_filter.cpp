@@ -168,8 +168,19 @@ void test_echo_counters_saturate(void) {
   TEST_ASSERT_EQUAL_UINT8(255, d.timeouts);
 }
 
+// v15.35 : borne de blocage — 2 timeouts consécutifs abandonnent la série, un écho remet à zéro.
+void test_abort_series_after_consecutive_timeouts(void) {
+  TEST_ASSERT_FALSE(UltrasonicFilter::shouldAbortSeries(0));
+  TEST_ASSERT_FALSE(UltrasonicFilter::shouldAbortSeries(1));
+  TEST_ASSERT_TRUE(UltrasonicFilter::shouldAbortSeries(2));
+  TEST_ASSERT_TRUE(UltrasonicFilter::shouldAbortSeries(5));
+  TEST_ASSERT_FALSE(UltrasonicFilter::shouldAbortSeries(7, 0));  // 0 = désactivé
+  TEST_ASSERT_TRUE(UltrasonicFilter::shouldAbortSeries(3, 3));
+}
+
 int main(void) {
   UNITY_BEGIN();
+  RUN_TEST(test_abort_series_after_consecutive_timeouts);
   RUN_TEST(test_sort_ascending);
   RUN_TEST(test_sort_edge_sizes);
   RUN_TEST(test_pick_empty_and_single);

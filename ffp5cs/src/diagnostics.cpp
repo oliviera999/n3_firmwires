@@ -41,6 +41,7 @@ Diagnostics::Diagnostics()
   _stats.uptimeSec = 0;
   _stats.freeHeap = 0;
   _stats.minFreeHeap = UINT32_MAX;
+  _stats.minFreeHeapEver = UINT32_MAX;
   _stats.maxAllocHeap = 0;
   _stats.freeStack = 0;
   _stats.rebootCount = 0;
@@ -72,10 +73,11 @@ void Diagnostics::begin() {
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, rebootCount, 0);
   _stats.rebootCount = rebootCount + 1;
   
-  // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
+  // v15.35 : la NVS ne nourrit que le plancher HISTORIQUE ; le plancher du boot part de l'état courant.
   unsigned long minHeapUL = 0;
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, minHeapUL, UINT32_MAX);
-  _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
+  _stats.minFreeHeapEver = static_cast<uint32_t>(minHeapUL);
+  _stats.minFreeHeap = UINT32_MAX;
   // Correction: utiliser loadULong pour uint32_t (compteurs HTTP/OTA)
   unsigned long httpOkUL = 0, httpKoUL = 0, otaOkUL = 0, otaKoUL = 0;
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_OK, httpOkUL, 0);
@@ -90,7 +92,7 @@ void Diagnostics::begin() {
   g_nvsManager.saveInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, _stats.rebootCount);
 
   // Initialisation des variables de suivi
-  _lastSavedMinHeap = _stats.minFreeHeap;
+  _lastSavedMinHeap = _stats.minFreeHeapEver;
   _lastHeapSave = millis();
 
   esp_reset_reason_t resetReason = esp_reset_reason();
@@ -115,12 +117,12 @@ void Diagnostics::begin() {
   }
   
   // v11.172: Affichage conditionnel minHeap (évite UINT32_MAX aberrant au premier boot)
-  if (_stats.minFreeHeap == UINT32_MAX) {
-    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: N/A (premier boot ou pas de minHeap sauvegardé)",
+  if (_stats.minFreeHeapEver == UINT32_MAX) {
+    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap historique: N/A (premier boot ou pas de minHeap sauvegardé)",
                   _stats.rebootCount);
   } else {
-    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap: %u bytes", 
-                  _stats.rebootCount, _stats.minFreeHeap);
+    Serial.printf("[Diagnostics] 🚀 Initialisé - reboot #%u, minHeap historique: %u bytes", 
+                  _stats.rebootCount, _stats.minFreeHeapEver);
   }
   if (_stats.panicInfo.hasPanicInfo) {
     Serial.printf(" [PANIC: %s]\n", _stats.panicInfo.exceptionCause);
@@ -133,10 +135,9 @@ void Diagnostics::loadFromNvs() {
   int rebootCount;
   g_nvsManager.loadInt(NVS_NAMESPACES::LOGS, NVSKeys::Diag::REBOOT_CNT, rebootCount, 0);
   _stats.rebootCount = rebootCount;
-  // Correction: utiliser loadULong pour uint32_t (minFreeHeap)
   unsigned long minHeapUL = 0;
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, minHeapUL, UINT32_MAX);
-  _stats.minFreeHeap = static_cast<uint32_t>(minHeapUL);
+  _stats.minFreeHeapEver = static_cast<uint32_t>(minHeapUL);  // v15.35 : historique seulement
   // Correction: utiliser loadULong pour uint32_t (compteurs HTTP/OTA)
   unsigned long httpOkUL = 0, httpKoUL = 0, otaOkUL = 0, otaKoUL = 0;
   g_nvsManager.loadULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::HTTP_OK, httpOkUL, 0);
@@ -174,23 +175,29 @@ void Diagnostics::update() {
   _stats.freeHeap = esp_get_free_heap_size();
   _stats.maxAllocHeap = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   _stats.freeStack = uxTaskGetStackHighWaterMark(nullptr);
-  
-  // Statistiques CPU par tâche (si config FreeRTOS le permet)
-  char buf[1024];
-  buf[0] = '\0';
-  #if (configGENERATE_RUN_TIME_STATS == 1)
-  vTaskGetRunTimeStats(buf);
-  strncpy(_stats.taskStats, buf, sizeof(_stats.taskStats) - 1);
-  _stats.taskStats[sizeof(_stats.taskStats) - 1] = '\0';
+
+  // v15.35 — % idle CPU par échantillonnage des compteurs (uxTaskGetSystemState) au lieu de
+  // vTaskGetRunTimeStats + parse texte : le buffer taskStats (104 o sur WROOM) tronquait la sortie et
+  // l'idle était toujours « inconnu » en production. Le texte détaillé reste disponible avec
+  // FEATURE_DIAG_STATS (tests/dev), sur le tas et non plus sur la pile d'automationTask (1 Ko).
+  _stats.idlePercent = sampleIdlePercent();
+  #if FEATURE_DIAG_STATS && (configGENERATE_RUN_TIME_STATS == 1)
+  {
+    char* buf = static_cast<char*>(malloc(1024));
+    if (buf) {
+      buf[0] = '\0';
+      vTaskGetRunTimeStats(buf);
+      strncpy(_stats.taskStats, buf, sizeof(_stats.taskStats) - 1);
+      _stats.taskStats[sizeof(_stats.taskStats) - 1] = '\0';
+      free(buf);
+      if (_stats.idlePercent == 255) {
+        _stats.idlePercent = DiagnosticsDecision::parseIdlePercent(_stats.taskStats);
+      }
+    }
+  }
   #else
   _stats.taskStats[0] = '\0';
   #endif
-  
-  // Estimation Idle%: parse simple de taskStats (lignes "IDLE" et/ou "IDLE1/IDLE0")
-  // v11.156: Utilisation de char[] au lieu de String pour éviter fragmentation mémoire
-  // Logique pure extraite dans diagnostics_decision.h (parité ligne-à-ligne, testée
-  // nativement). La capture de taskStats (vTaskGetRunTimeStats) reste ci-dessus.
-  _stats.idlePercent = DiagnosticsDecision::parseIdlePercent(_stats.taskStats);
   
   // En mode debug: sauvegarder périodiquement uptime et heap pour diagnostic reboot
   #if defined(PROFILE_TEST) || defined(DEBUG_MODE)
@@ -202,16 +209,21 @@ void Diagnostics::update() {
   }
   #endif
   
-  // Optimisation NVS : sauvegarder le minHeap seulement si nécessaire
+  // v15.35 : plancher du boot (heartbeat) — indépendant de la NVS
   if (_stats.freeHeap < _stats.minFreeHeap) {
     _stats.minFreeHeap = _stats.freeHeap;
+  }
+
+  // Optimisation NVS : sauvegarder le plancher HISTORIQUE seulement si nécessaire
+  if (_stats.freeHeap < _stats.minFreeHeapEver) {
+    _stats.minFreeHeapEver = _stats.freeHeap;
 
     // Décision pure extraite dans diagnostics_decision.h (parité ligne-à-ligne,
     // testée nativement). L'écriture NVS (saveULong) et le logging restent ici.
     // Le seuil de perte critique (10240) est passé explicitement.
     DiagnosticsDecision::MinHeapSaveReason saveReason =
         DiagnosticsDecision::decideMinHeapSave(
-            _stats.minFreeHeap, _lastSavedMinHeap, now, _lastHeapSave,
+            _stats.minFreeHeapEver, _lastSavedMinHeap, now, _lastHeapSave,
             MIN_HEAP_SAVE_INTERVAL, MIN_HEAP_DIFF_FOR_SAVE, 10240);
     bool shouldSave = (saveReason != DiagnosticsDecision::MinHeapSaveReason::NO_SAVE);
 
@@ -222,22 +234,22 @@ void Diagnostics::update() {
     // 2. Sauvegarde si intervalle minimum écoulé ET différence significative
     else if (saveReason == DiagnosticsDecision::MinHeapSaveReason::INTERVAL_DELTA) {
       Serial.printf("[Diagnostics] 💾 Sauvegarde minHeap (diff: %u bytes, interval: %lu ms)\n",
-                    _lastSavedMinHeap - _stats.minFreeHeap, now - _lastHeapSave);
+                    _lastSavedMinHeap - _stats.minFreeHeapEver, now - _lastHeapSave);
     }
     // 3. Sauvegarde si perte très importante (plus de 10KB)
     else if (saveReason == DiagnosticsDecision::MinHeapSaveReason::CRITICAL_LOSS) {
       Serial.printf("[Diagnostics] ⚠️ Sauvegarde minHeap forcée (perte importante: %u bytes)\n",
-                    _lastSavedMinHeap - _stats.minFreeHeap);
+                    _lastSavedMinHeap - _stats.minFreeHeapEver);
     }
 
     if (shouldSave) {
       // Correction: utiliser saveULong pour uint32_t (minFreeHeap)
-      g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, _stats.minFreeHeap);
+      g_nvsManager.saveULong(NVS_NAMESPACES::LOGS, NVSKeys::Diag::MIN_HEAP, _stats.minFreeHeapEver);
       
       _lastHeapSave = now;
-      _lastSavedMinHeap = _stats.minFreeHeap;
+      _lastSavedMinHeap = _stats.minFreeHeapEver;
       
-      Serial.printf("[Diagnostics] ✅ minHeap sauvegardé: %u bytes\n", _stats.minFreeHeap);
+      Serial.printf("[Diagnostics] ✅ minHeap sauvegardé: %u bytes\n", _stats.minFreeHeapEver);
     } else {
       // v11.174: Éviter affichage diff aberrant si _lastSavedMinHeap == UINT32_MAX (premier boot)
       if (_lastSavedMinHeap == UINT32_MAX) {
@@ -245,7 +257,7 @@ void Diagnostics::update() {
                       now - _lastHeapSave);
       } else {
         Serial.printf("[Diagnostics] ⏭️ Sauvegarde minHeap ignorée (diff: %u bytes, interval: %lu ms)\n", 
-                      _lastSavedMinHeap - _stats.minFreeHeap, now - _lastHeapSave);
+                      _lastSavedMinHeap - _stats.minFreeHeapEver, now - _lastHeapSave);
       }
     }
   }
@@ -254,7 +266,8 @@ void Diagnostics::update() {
 void Diagnostics::toJson(ArduinoJson::JsonDocument& doc) const {
   doc["uptime"] = _stats.uptimeSec;
   doc["freeHeap"] = _stats.freeHeap;
-  doc["minFreeHeap"] = _stats.minFreeHeap;
+  doc["minFreeHeap"] = _stats.minFreeHeap;          // v15.35 : depuis ce boot
+  doc["minFreeHeapEver"] = _stats.minFreeHeapEver;  // historique (NVS)
   doc["maxAllocHeap"] = _stats.maxAllocHeap;
   doc["freeStack"] = _stats.freeStack;
   doc["rebootCount"] = _stats.rebootCount;
@@ -528,7 +541,7 @@ void Diagnostics::generateRestartReport(char* buffer, size_t bufferSize) const {
   written = snprintf(buffer + offset, remaining,
                     "Heap libre au démarrage: %u bytes\n"
                     "Heap libre minimum historique: %u bytes\n",
-                    ESP.getFreeHeap(), _stats.minFreeHeap);
+                    ESP.getFreeHeap(), _stats.minFreeHeapEver);
   if (written < 0 || (size_t)written >= remaining) {
     buffer[bufferSize - 1] = '\0';
     return;
@@ -666,3 +679,38 @@ void Diagnostics::saveCrashStatus() {
 }
 
 // updateCoredumpStatus supprimé - ESP-IDF gère déjà le coredump (configuré dans platformio.ini)
+// v15.35 — % idle CPU sur l'intervalle écoulé depuis le dernier appel. Les compteurs d'exécution
+// par tâche (uxTaskGetSystemState) sont disponibles sur les deux cores du dépôt
+// (configUSE_TRACE_FACILITY + configGENERATE_RUN_TIME_STATS, horloge esp_timer). Le tableau de
+// statuts (~15 tâches × ~60 o) est alloué brièvement sur le tas : automationTask, qui appelle
+// update(), travaille déjà à ~95 % de sa pile.
+uint8_t Diagnostics::sampleIdlePercent() {
+#if (configUSE_TRACE_FACILITY == 1) && (configGENERATE_RUN_TIME_STATS == 1)
+  const UBaseType_t count = uxTaskGetNumberOfTasks();
+  if (count == 0 || count > 40) return 255;
+  TaskStatus_t* statuses = static_cast<TaskStatus_t*>(malloc(sizeof(TaskStatus_t) * count));
+  if (!statuses) return 255;
+  configRUN_TIME_COUNTER_TYPE totalRunTime = 0;
+  const UBaseType_t filled = uxTaskGetSystemState(statuses, count, &totalRunTime);
+  uint32_t idleRunTime = 0;
+  for (UBaseType_t i = 0; i < filled; ++i) {
+    if (statuses[i].pcTaskName && strncmp(statuses[i].pcTaskName, "IDLE", 4) == 0) {
+      idleRunTime += static_cast<uint32_t>(statuses[i].ulRunTimeCounter);
+    }
+  }
+  free(statuses);
+  const uint32_t total32 = static_cast<uint32_t>(totalRunTime);
+  const uint32_t dTotal = total32 - _lastTotalRunTime;
+  const uint32_t dIdle = idleRunTime - _lastIdleRunTime;
+  const bool first = (_lastTotalRunTime == 0);
+  _lastTotalRunTime = total32;
+  _lastIdleRunTime = idleRunTime;
+  if (first || dTotal == 0) return 255;
+  // 2 cœurs : le temps total est compté une fois, les tâches IDLE0 + IDLE1 deux fois → /2.
+  uint64_t pct = (static_cast<uint64_t>(dIdle) * 100ULL) / (static_cast<uint64_t>(dTotal) * 2ULL);
+  if (pct > 100) pct = 100;
+  return static_cast<uint8_t>(pct);
+#else
+  return 255;
+#endif
+}

@@ -12,6 +12,34 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.35 - 2026-11-07
+
+### Mémoire et charge : marge de link, heap observable, capteurs bornés (analyse 2026-11-07)
+
+Suite de l'analyse mémoire/charge menée après 15.34 (serveur n3_serveur ≥ 6.60.0 pour les nouvelles
+colonnes heartbeat ; un serveur plus ancien ignore les champs).
+
+- **DRAM statique** : la fenêtre du linker (`dram0_0_seg`, ≈ 124,6 Ko à cause de la réserve Bluetooth
+  du core pré-compilé) était remplie à 99,8 % (≈ 270 o de marge). Les piles `netTask` (12,5 Ko) et
+  `otaTask` (12,3 Ko), le pool `NetRequest` (7,4 Ko), les tableaux de scan Wi-Fi (2,9 Ko) et le corps
+  du mail de boot (2 Ko) sont désormais alloués sur le **tas au démarrage** (`heap_caps_malloc`, DRAM
+  interne) : même mémoire à l'exécution, contrainte déplacée là où la marge est de 50 Ko et plus.
+  `sensorTask` et `automationTask` gardent leur pile statique.
+- **Heap observable** : le champ heartbeat `min` est le plancher **depuis ce boot** (avant : plancher
+  historique rechargé de la NVS, identique sur plusieurs boots) ; le plancher historique reste en NVS
+  (`minFreeHeapEver`, rapport de redémarrage, `/api/diagnostics`). Nouveaux champs `blk` (plus grand
+  bloc libre, fragmentation), `idle` (% idle CPU sur 2 cœurs, échantillonné via
+  `uxTaskGetSystemState` toutes les 30 s — plus de buffer texte de 1 Ko sur la pile d'automationTask) et
+  `nvs` (% d'entrées de la partition NVS de 20 Ko utilisées).
+- **Ultrasons bornés** : `UltrasonicFilter::shouldAbortSeries` — après **2 timeouts consécutifs**
+  (500 ms chacun) la série est abandonnée pour le cycle (niveau inconnu, comme un lot vide). Un
+  capteur mort coûtait 3,5 s par cycle ; trois capteurs muets dépassaient la période de 10 s de la
+  tâche capteurs. Test natif `test_ultrasonic_filter`.
+- **NTP au réveil** : attente SNTP de 5 s (`TimingConfig::NTP_WAKE_SYNC_WAIT_MS`) au lieu de 20 s ;
+  l'heure serveur (`X-Server-Ts`) prend le relais. Jusqu'à 15 s d'éveil gagnés par rafale.
+- Builds vérifiés : `wroom-prod`, `wroom-s3-prod`, `wroom-beta` ; mesures avant/après dans
+  `docs/DIAGNOSTIC_PERTE_CONTACT_FIRMWARE.md` § 8.
+
 ## Version 15.34 - 2026-11-07
 
 ### Pertes de contact diagnosticables (incident WROOM FFP3 du 06/11/2026)
