@@ -46,6 +46,9 @@ plausible) et `u` (uptime en s). Le serveur dédoublonne par séquence (`device_
 
 - **Heartbeat** (`/heartbeat*`) : champs ajoutés après `ip=` ; le CRC32 historique ne couvre toujours
   que `uptime&free&min&reboots`. `log=[…]` embarque les événements non acquittés (≤ 360 car.).
+  Depuis ffp5cs 15.35 : `min` = plancher heap **depuis le boot** (le plancher historique reste en NVS),
+  `blk` = plus grand bloc libre (fragmentation), `idle` = % idle CPU (2 cœurs, intervalle 30 s),
+  `nvs` = % d'entrées NVS utilisées (serveur ≥ 6.60.0 : colonnes `maxBlock`, `idlePct`, `nvsUsedPct`).
 - **`POST /<famille>/ota-report`** (`/ota-report`, `/ota-report-test`, `/ota-report3`, `/n3pp/ota-report`,
   `/msp1/ota-report`…, dérivé de l'URL heartbeat) : `src`, `board`, `version`, `uptime`,
   `events=[{q,t,u,e,d}]` ; **HMAC obligatoire** (pas de repli `api_key`) ; réponse `{"acked":[…]}`.
@@ -101,3 +104,36 @@ retour sur l'image précédente et `contact_ok`. Pour n3pp / msp : couper le Wi-
 | Coupure Internet du site vs panne du routeur Wi-Fi | le module ne distingue pas « associé sans Internet » | la caméra du même site sert de témoin (déjà exploité par `iot_contact_timeline`) ; un ping passerelle vs DNS dans `wifi_fail` affinerait |
 | Image qui boucle **avant** `ContactDiag::begin` (NVS corrompue, panic dans le bootloader) | rien n'est journalisé | sortie UART captée par un second module ou enregistreur série |
 | Heure exacte d'une veille perdue quand l'horloge n'était pas plausible | `t=0` dans l'événement ; seul `u` (uptime) est fiable | RTC DS3231 (déjà optionnel sur ffp5cs : `USE_RTC_DS3231`) |
+
+## 8. Mémoire et charge du WROOM FFP3 — analyse du 07/11/2026 et correctifs 15.35
+
+Mesures sur le binaire `wroom-prod` (pioarduino 55.03.37, GCC 14) et 97 jours de heartbeats.
+
+| | 15.34 | 15.35 |
+|---|---|---|
+| `.dram0.data` + `.dram0.bss` (RAM statique au link) | 26,4 + 97,9 = **124,3 Ko** | 26,4 + 60,7 = **87,1 Ko** |
+| Fenêtre `dram0_0_seg` du core (180,7 Ko − 56,2 Ko réservés Bluetooth) | 124,6 Ko | 124,6 Ko |
+| Marge de link | **≈ 0,3 Ko (0,2 %)** | **≈ 37,5 Ko (30 %)** |
+| `.bss` applicatif (symboles C++) | 76,1 Ko | 39,0 Ko |
+| Flash app (`wroom-prod`) | 1 583 155 o (80,5 %) | 1 583 111 o (80,5 %) |
+
+Ce qui a été déplacé vers le tas au démarrage (DRAM interne, `heap_caps_malloc`) : piles `netTask`
+(12,5 Ko) et `otaTask` (12,3 Ko), pool `NetRequest` (7,4 Ko), tableaux de scan Wi-Fi (2 × 1,4 Ko),
+corps du mail de boot (2 Ko). La mémoire consommée à l'exécution est identique : la zone Bluetooth
+réservée au link est rendue au tas par `initArduino()`, et ces objets vivaient déjà pendant toute
+la durée de vie du module. Ce qui reste statique : piles `automationTask` (10 Ko, ~95 % utilisée en
+pointe) et `sensorTask` (3 Ko), `g_autoCtrl` (5,8 Ko), caches JSON (5,6 Ko), buffer mail (2,5 Ko).
+
+Heap en exploitation (heartbeats, août → novembre) : `freeHeap` 54 à 55 Ko stable sur 10 jours d'uptime
+avec la réserve mail de 31 Ko déjà allouée (≈ 85 Ko disponibles), plancher historique 23,2 Ko atteint
+pendant le TLS SMTP (seuil TLS 35 Ko, OTA 35 Ko + bloc contigu 28 Ko). Les nouveaux champs `min`
+(par boot), `blk`, `idle`, `nvs` rendent visibles le plancher réel du cycle, la fragmentation,
+la charge CPU et le remplissage de la NVS, jusqu'ici tous invisibles depuis le serveur.
+
+Charge : ≈ 27 réveils/jour, ≈ 1,9 h d'éveil (8 %), ≈ 4 min par rafale. Correctifs 15.35 :
+ultrasons bornés à 2 timeouts consécutifs (un capteur mort coûtait 3,5 s par cycle, trois capteurs
+muets dépassaient la période de 10 s de la tâche capteurs), attente NTP de réveil 20 s → 5 s
+(jusqu'à 15 s d'éveil gagnés par rafale, l'heure serveur prend le relais).
+
+Non fait : un `custom_sdkconfig` sans Bluetooth (+56 Ko de fenêtre statique) suppose de recompiler
+le core Arduino en CI ; la marge de 30 % obtenue sans cela suffit pour les prochaines versions.

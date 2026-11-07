@@ -21,6 +21,7 @@
 #include "sd_card.h"
 #include "sd_logger.h"
 #include "contact_diag.h"  // v15.34 : journal de bord, boot sain, mode sans echec
+#include <memory>  // v15.35 : bootMsg sur le tas
 #include <Wire.h>
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
@@ -689,7 +690,14 @@ void sendStartupTestMail(AppContext& ctx) {
 
     // Buffers statiques pour éviter fragmentation mémoire
     static char targetEmail[EmailConfig::MAX_EMAIL_LENGTH];
-    static char bootMsg[BufferConfig::EMAIL_MAX_SIZE_BYTES];
+    // v15.35 — corps du mail sur le tas (2 Ko de .bss récupérés ; mail envoyé une fois au boot)
+    constexpr size_t kBootMsgSize = BufferConfig::EMAIL_MAX_SIZE_BYTES;
+    std::unique_ptr<char[]> bootMsgOwner(new (std::nothrow) char[kBootMsgSize]);
+    if (!bootMsgOwner) {
+      LOG_ERROR("❌ Mail de démarrage : heap insuffisant");
+      return;
+    }
+    char* bootMsg = bootMsgOwner.get();
     static char emailSubject[128];
 
     // Adresse configurée ou défaut (boot avant 1er sync → NVS vide)
@@ -708,7 +716,7 @@ void sendStartupTestMail(AppContext& ctx) {
     IPAddress ip = WiFi.localIP();
     char ssid[64];
     ctx.wifi.currentSSID(ssid, sizeof(ssid));
-    int written = snprintf(bootMsg, sizeof(bootMsg),
+    int written = snprintf(bootMsg, kBootMsgSize,
                           "Système démarré avec succès (v%s).\n"
                           "IP: %d.%d.%d.%d\n"
                           "SSID: %s\n"
@@ -716,8 +724,8 @@ void sendStartupTestMail(AppContext& ctx) {
                           ProjectConfig::VERSION,
                           ip[0], ip[1], ip[2], ip[3],
                           ssid);
-    if (written < 0 || (size_t)written >= sizeof(bootMsg)) {
-      bootMsg[sizeof(bootMsg) - 1] = '\0';
+    if (written < 0 || (size_t)written >= kBootMsgSize) {
+      bootMsg[kBootMsgSize - 1] = '\0';
     }
 
     snprintf(emailSubject, sizeof(emailSubject), "Démarrage système v%s", ProjectConfig::VERSION);

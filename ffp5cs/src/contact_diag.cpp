@@ -235,7 +235,7 @@ const char* resetReasonLabel() { return ResetReason::resetReasonToString(s_reset
 const char* partitionLabel() { return s_partition; }
 const char* otaStateLabel() { return n3boot::otaStateLabel(s_otaState); }
 
-size_t appendHeartbeatExtras(char* buf, size_t size) {
+size_t appendHeartbeatExtras(char* buf, size_t size, uint32_t largestFreeBlock, uint8_t idlePercent) {
   if (!buf || size == 0) return 0;
   size_t len = strlen(buf);
 #define add(...) appendf(buf, size, len, __VA_ARGS__)
@@ -246,6 +246,14 @@ size_t appendHeartbeatExtras(char* buf, size_t size) {
   if (s_hasOffset) add("&clk=%ld", (long)s_offsetS);
   if (s_wifiConnectMs > 0) add("&wifi_ms=%lu&wifi_tries=%u", (unsigned long)s_wifiConnectMs, (unsigned)s_wifiAttempts);
   add("&board=%s", OtaModel::MODEL);
+  // v15.35 — ressources : plus grand bloc libre (le heap peut être « libre » mais fragmenté sous le
+  // seuil TLS de 35 Ko), % idle CPU, remplissage NVS (partition de 20 Ko, invisible jusqu'ici).
+  add("&blk=%lu", (unsigned long)largestFreeBlock);
+  if (idlePercent != 255) add("&idle=%u", (unsigned)idlePercent);
+  {
+    const NVSUsageStats nvs = g_nvsManager.getUsageStats();
+    if (nvs.totalBytes > 0) add("&nvs=%u", (unsigned)(nvs.usagePercent + 0.5f));
+  }
   if (s_bootFlagPending) {
     add("&boot=1");
     s_bootFlagPending = false;

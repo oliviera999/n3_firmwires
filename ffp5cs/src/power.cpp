@@ -177,7 +177,7 @@ uint32_t PowerManager::goToLightSleep(uint32_t sleepTimeSeconds) {
       // v15.34 — Resynchronisation AVANT toute requête signée : l'incident du 06/11 montrait une
       // horloge en avance d'un cycle de veille au réveil → 401 « X-Sig invalide » sur la 1re
       // requête. Sans NTP, l'heure serveur (X-Server-Ts de la 1re réponse) prendra le relais.
-      syncTimeFromNTP();
+      syncTimeFromNTP(TimingConfig::NTP_WAKE_SYNC_WAIT_MS);  // v15.35 : 5 s max au réveil
       ContactDiag::logEventf(_ntpTrusted ? "ntp_ok" : "ntp_fail", "wake slept=%us", sleptSec);
       // Événement clé: après reconnexion WiFi, persiste l'heure courante
       if (SleepConfig::SAVE_TIME_BEFORE_SLEEP) {
@@ -231,7 +231,8 @@ void PowerManager::initTime() {
   LOG_NTP(LogConfig::LOG_INFO, "Configuration NTP - Serveur: %s", _ntpServer);
 }
 
-void PowerManager::syncTimeFromNTP() {
+void PowerManager::syncTimeFromNTP(uint32_t maxWaitMs) {
+  const uint32_t sntpWaitMs = (maxWaitMs > 0) ? maxWaitMs : NTP_SNTP_WAIT_MS;
   if (WiFi.status() != WL_CONNECTED) {
     LOG_NTP(LogConfig::LOG_WARN, "Pas de WiFi - synchronisation NTP impossible");
     return;
@@ -250,7 +251,7 @@ void PowerManager::syncTimeFromNTP() {
   unsigned long startTime = millis();
   int pollCount = 0;
 
-  while ((millis() - startTime) < NTP_SNTP_WAIT_MS) {
+  while ((millis() - startTime) < sntpWaitMs) {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }

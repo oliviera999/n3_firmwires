@@ -21,7 +21,12 @@ struct CrashStatus {
 struct DiagnosticStats {
   unsigned long uptimeSec;
   uint32_t freeHeap;
+  // v15.35 — minFreeHeap = plancher DEPUIS CE BOOT (heartbeat `min`) ; avant 15.35 il était rechargé
+  // depuis la NVS au démarrage et le heartbeat répétait un plancher historique (25 100 o sur 3 boots
+  // le 06/11/2026) qui ne disait rien du cycle en cours. Le plancher historique vit dans
+  // minFreeHeapEver (persisté NVS diag_minHeap, rapport de redémarrage).
   uint32_t minFreeHeap;
+  uint32_t minFreeHeapEver;
   uint32_t maxAllocHeap;
   uint32_t freeStack;
   uint32_t rebootCount;
@@ -32,7 +37,7 @@ struct DiagnosticStats {
 #else
   char taskStats[1024];    // sortie brute de vTaskGetRunTimeStats()
 #endif
-  uint8_t idlePercent;  // somme des tâches IDLE (0..100), 255 si inconnu
+  uint8_t idlePercent;  // % idle (2 cœurs) sur le dernier intervalle d'échantillonnage, 255 si inconnu
   // Réseau/OTA
   uint32_t httpSuccessCount;
   uint32_t httpFailCount;
@@ -87,6 +92,11 @@ class Diagnostics {
   static const uint32_t MIN_HEAP_DIFF_FOR_SAVE = 1024; // 1KB de différence minimum pour sauvegarder
   
   const char* getRebootReason() const;
+  // v15.35 — % idle CPU depuis le dernier appel : somme des compteurs d'exécution des tâches IDLE*
+  // rapportée au temps total (uxTaskGetSystemState, trace facility du core). 255 si indisponible.
+  uint8_t sampleIdlePercent();
+  uint32_t _lastIdleRunTime = 0;
+  uint32_t _lastTotalRunTime = 0;
   bool isCrashResetReason(esp_reset_reason_t reason) const;
   void capturePanicInfo();  // Simplifié: capture seulement exceptionCause
   void savePanicInfo();

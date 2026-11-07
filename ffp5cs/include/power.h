@@ -22,7 +22,8 @@ class PowerManager {
 
   // Gestion du temps avec persistance en mémoire flash
   void initTime();
-  void syncTimeFromNTP();
+  /** maxWaitMs = 0 → attente SNTP par défaut (20 s) ; au réveil : TimingConfig::NTP_WAKE_SYNC_WAIT_MS. */
+  void syncTimeFromNTP(uint32_t maxWaitMs = 0);
   void saveTimeToFlash();
   void loadTimeFromFlash();
   void updateTime();

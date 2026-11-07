@@ -47,6 +47,7 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
   const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
   uint32_t total = 0;
   uint8_t valid = 0;
+  uint8_t consecutiveTimeouts = 0;  // v15.35 : borne de blocage (UltrasonicFilter::shouldAbortSeries)
 
   for (uint8_t i = 0; i < samples; ++i) {
     // Déclenchement
@@ -65,6 +66,7 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
     if (duration > 0) {
       uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
                                           SensorConfig::Ultrasonic::US_TO_CM_FACTOR); // Conversion µs -> mm
+      consecutiveTimeouts = 0;
       if (mm > MIN_DISTANCE && mm < MAX_DISTANCE) {
         total += mm;
         ++valid;
@@ -73,6 +75,9 @@ uint16_t UltrasonicManager::readFiltered(uint8_t samples) {
       }
     } else {
       EchoDiag::recordTimeout(_diag);
+      if (UltrasonicFilter::shouldAbortSeries(++consecutiveTimeouts)) {
+        break;  // capteur muet : ne pas bloquer la tâche capteurs pour les tirs restants
+      }
     }
 
     // Délai entre mesures conforme datasheet HC-SR04 (cycle > 60 ms)
@@ -149,6 +154,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
   uint8_t validReadings = 0;
 
   const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
+  uint8_t consecutiveTimeouts = 0;  // v15.35
 
   for (uint8_t i = 0; i < sampleCount; ++i) {
     pinMode(_pinTrigEcho, OUTPUT);
@@ -165,6 +171,7 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
                                           SensorConfig::Ultrasonic::US_TO_CM_FACTOR);
 
+      consecutiveTimeouts = 0;
       if (TankCfg::isRawReadingMm(mm)) {
         readings[validReadings++] = mm;
         Serial.printf("[Ultrasonic] Lecture %d: %u mm\n", i + 1, mm);
@@ -176,6 +183,9 @@ uint16_t UltrasonicManager::readAdvancedFiltered() {
       _timeoutCount++;
       if (_timeoutCount <= 3 || _timeoutCount % TIMEOUT_LOG_INTERVAL == 0) {
         Serial.printf("[Ultrasonic] Lecture %d timeout (total: %u)\n", i + 1, _timeoutCount);
+      }
+      if (UltrasonicFilter::shouldAbortSeries(++consecutiveTimeouts)) {
+        break;  // v15.35 : capteur muet, série abandonnée
       }
     }
 
@@ -331,6 +341,7 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
   uint8_t validReadings = 0;
   
   const uint32_t TIMEOUT_US = SensorConfig::Ultrasonic::TIMEOUT_US;
+  uint8_t consecutiveTimeouts = 0;  // v15.35
   
   for (uint8_t i = 0; i < REACTIVE_READINGS_COUNT; ++i) {
     // Déclenchement
@@ -349,6 +360,7 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       uint16_t mm = static_cast<uint16_t>((duration * 10UL + (SensorConfig::Ultrasonic::US_TO_CM_FACTOR / 2U)) /
                                           SensorConfig::Ultrasonic::US_TO_CM_FACTOR); // Conversion µs -> mm
       
+      consecutiveTimeouts = 0;
       if (mm >= MIN_DISTANCE && mm < MAX_DISTANCE) {
         readings[validReadings++] = mm;
         Serial.printf("[Ultrasonic] Lecture réactive %d: %u mm\n", i+1, mm);
@@ -371,6 +383,9 @@ uint16_t UltrasonicManager::readReactiveFiltered() {
       if (_timeoutCount > 100 && (now - lastTimeoutSummary > 60000)) {
         Serial.printf("[Ultrasonic] Résumé: %u timeouts (capteur probablement absent)\n", _timeoutCount);
         lastTimeoutSummary = now;
+      }
+      if (UltrasonicFilter::shouldAbortSeries(++consecutiveTimeouts)) {
+        break;  // v15.35 : capteur muet, série abandonnée (niveau inconnu, cadence préservée)
       }
     }
     
