@@ -61,7 +61,8 @@ un serveur plus ancien ignore les nouveaux champs et refuse `/ota-report` (404) 
 - Tests natifs (shared `tests_native`) : `test_event_ring` (séquences, écrasement, acquittement, JSON
   compatible formulaire, aller-retour NVS), `test_sleep_clock` (cas de l'incident : 0 s de correction
   quand l'horloge a déjà avancé), `test_boot_diag` (libellés serveur, seuil sans échec).
-- Builds vérifiés : `wroom-prod`, `wroom-s3-prod`.
+- Builds vérifiés : `wroom-prod` (flash 80,5 %), `wroom-s3-prod`. Garde-fou flash `wroom-beta` relevé de
+  86 à 87 % (`custom_flash_budget_pct`, mesuré 86,1 % ; partition 1,97 Mo loin d'être pleine).
 
 #### Scénario de rollback documenté (banc, à rejouer avant toute publication prod)
 
