@@ -13,6 +13,7 @@
 #include "n3_data.h"
 #include "n3_outputs_json.h"
 #include "n3_time.h"
+#include "n3_contact_diag.h"  // 2.79 : champs enrichis du heartbeat
 
 // Helpers de parsing : depuis v2.43 factorises dans shared/n3_common/n3_outputs_json
 // (autrefois dupliques entre n3pp_network.cpp et msp_network.cpp).
@@ -143,6 +144,11 @@ void sendHeartbeat() {
   cfg.bootCount = bootCount;
   cfg.sigSecret = (API_SIG_SECRET[0] != '\0') ? API_SIG_SECRET : nullptr;
   cfg.currentEpochSeconds = hmacEpochSeconds();
+  // 2.79 : rst, part, ota, fails, safe, clk, wifi_ms, wifi_tries, board, boot, log
+  // (contracts/msp1.json heartbeatFields ; ignorés par un serveur < 6.59.0).
+  N3DataField extras[14];
+  cfg.extraFields = extras;
+  cfg.extraFieldCount = n3ContactDiagHeartbeatFields(extras, sizeof(extras) / sizeof(extras[0]));
   (void)n3DataSendHeartbeat(cfg);
 }
 

@@ -44,5 +44,8 @@ class HTTPClient {
   }
   int GET() { return 0; }
   String getString() { return String(""); }
+  // n3_data 1.4 : collecte d'en-têtes de réponse (X-Server-Ts) — aucun en-tête en natif.
+  void collectHeaders(const char* /*headerKeys*/[], size_t /*count*/) {}
+  String header(const char* /*name*/) { return String(""); }
   void end() {}
 };

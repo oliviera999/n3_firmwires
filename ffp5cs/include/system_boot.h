@@ -37,9 +37,15 @@ namespace SystemBoot {
     /// une bonne image fraîchement flashée sur un reboot manuel/distant).
     void confirmOtaValidation(const char* reason);
 
-    /// À appeler périodiquement depuis loop() : confirme l'image en probation une fois
-    /// l'uptime stable atteint (TimingConfig::OTA_VALIDATION_GRACE_MS). Filet anti-rollback
-    /// indépendant du réseau (toujours exécuté, même build sans FEATURE_OTA).
+    /// v15.34 : avant un reboot DÉLIBÉRÉ (web, GPIO 110). Ne valide l'image en probation que si
+    /// le boot courant est sain (ContactDiag::isBootHealthy : Wi-Fi + heure fiable + POST accepté) ;
+    /// sinon l'image reste en attente et le bootloader restaurera l'ancienne au redémarrage.
+    void confirmOtaValidationIfHealthy(const char* reason);
+
+    /// À appeler périodiquement depuis loop(). v15.34 : confirme l'image en probation dès que le
+    /// boot est SAIN (contact serveur authentifié accepté) ; sans contact sain avant
+    /// TimingConfig::OTA_VALIDATION_DEADLINE_MS, invalide l'image et redémarre sur l'ancienne
+    /// (esp_ota_mark_app_invalid_rollback_and_reboot) après avoir journalisé `ota_rollback`.
     void tickOtaValidation();
 
     // Services Initialization

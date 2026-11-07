@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "15.33";
+    inline constexpr const char* VERSION = "15.34";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -165,7 +165,13 @@ namespace TimingConfig {
     // cet uptime stable (SystemBoot::tickOtaValidation, appelé depuis loop()), ou avant un
     // reboot délibéré. Un crash/watchdog avant ce délai => rollback automatique vers
     // l'ancienne image. Le light sleep (pas de reset CPU) ne déclenche pas de rollback.
-    inline constexpr uint32_t OTA_VALIDATION_GRACE_MS = 120000; // 2 min
+    inline constexpr uint32_t OTA_VALIDATION_GRACE_MS = 120000; // 2 min (historique, non utilisé seul depuis v15.34)
+    // v15.34 — Une image en probation n'est plus validée par simple uptime : il faut un boot
+    // SAIN (Wi-Fi + heure fiable + POST authentifié accepté, ContactDiag::isBootHealthy). Sans
+    // contact sain avant ce délai, le firmware invalide lui-même l'image et redémarre sur
+    // l'ancienne (esp_ota_mark_app_invalid_rollback_and_reboot). Un reboot délibéré avant
+    // validation (web / GPIO 110) ne valide plus l'image si le boot n'est pas sain.
+    inline constexpr uint32_t OTA_VALIDATION_DEADLINE_MS = 900000; // 15 min
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
     inline constexpr uint32_t STATS_REPORT_INTERVAL_MS = 300000; // 5 min

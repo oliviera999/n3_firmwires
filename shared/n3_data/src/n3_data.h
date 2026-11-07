@@ -39,6 +39,16 @@ struct N3PostConfig {
 int n3DataPost(const N3PostConfig& config);
 
 /**
+ * Observateur de réponse (n3_data 1.4) : appelé après CHAQUE POST de n3DataPost avec le code
+ * HTTP, le fait que la requête portait des en-têtes HMAC X-Sig-*, l'epoch serveur reçu dans
+ * l'en-tête `X-Server-Ts` (0 si absent — serveur < 6.59.0) et la durée aller-retour. Sert au
+ * diagnostic de perte de contact (n3_contact_diag : boot sain, décalage d'horloge, rejets).
+ * Un seul observateur ; nullptr pour désactiver.
+ */
+typedef void (*N3DataResponseObserver)(int httpCode, bool signedRequest, uint32_t serverEpoch, uint32_t rttMs);
+void n3DataSetResponseObserver(N3DataResponseObserver observer);
+
+/**
  * GET HTTP simple. Retourne le body de la reponse.
  * outHttpCode recoit le code HTTP si non-NULL.
  * deviceApiKey : si non NULL, envoie le header X-Api-Key (auth serveur galerie / device).
@@ -63,6 +73,10 @@ struct N3HeartbeatConfig {
   int bootCount;                      // champ body "reboots"
   const char* sigSecret;              // HMAC FFP3/X-Sig (API_SIG_SECRET). NULL = off
   unsigned long currentEpochSeconds;  // 0 = horloge non fiable (pas de timestamp signe)
+  // n3_data 1.4 : champs enrichis optionnels (rst, part, ota, fails, safe, clk, wifi_ms, board,
+  // boot, log… — n3_contact_diag / contrats n3pp.json & msp1.json `heartbeatFields`).
+  const N3DataField* extraFields;     // NULL = aucun
+  size_t extraFieldCount;
 };
 
 /** Retourne le code HTTP du POST, ou -1 si WiFi non connecte. */

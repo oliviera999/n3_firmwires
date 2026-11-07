@@ -5,6 +5,7 @@
 #include <esp_sntp.h>
 #include <sys/time.h>
 #include <time.h>
+#include "n3_sleep_clock.h"  // n3clock : décalage serveur, seuil d'application (pur, testé en natif)
 
 static bool n3TimeApplyEpochToSystem(unsigned long epoch) {
   if (epoch <= N3_TIME_MIN_VALID_EPOCH) {
@@ -156,6 +157,20 @@ bool n3TimeRestoreFromFlashIfNewer(Preferences& prefs, ESP32Time& rtc) {
 
 bool n3TimeHasPlausibleEpoch(void) {
   return static_cast<unsigned long>(time(nullptr)) > N3_TIME_MIN_VALID_EPOCH;
+}
+
+bool n3TimeApplyServerEpoch(ESP32Time& rtc, Preferences& prefs, uint32_t serverEpoch, uint32_t rttMs) {
+  if (serverEpoch <= N3_TIME_MIN_VALID_EPOCH) return false;
+  const uint32_t deviceNow = static_cast<uint32_t>(time(nullptr));
+  const int32_t offset = n3clock::serverOffsetSeconds(deviceNow, serverEpoch, rttMs);
+  if (!n3clock::shouldApplyServerTime(offset, 30)) return false;
+  const time_t applied = static_cast<time_t>(serverEpoch + rttMs / 2000UL);
+  timeval tv = {applied, 0};
+  settimeofday(&tv, nullptr);
+  rtc.setTime(static_cast<unsigned long>(applied));
+  n3TimeSaveToFlash(rtc, prefs);
+  Serial.printf("[TIME] Heure serveur appliquee (NTP indisponible) : offset module-serveur %+ld s\n", (long)offset);
+  return true;
 }
 
 void n3PrintWakeupReason(Preferences& prefs, ESP32Time& rtc,

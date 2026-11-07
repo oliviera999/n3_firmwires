@@ -12,6 +12,72 @@ La version est définie dans `include/config_system.h` (`ProjectConfig::VERSION`
 
 ---
 
+## Version 15.34 - 2026-11-07
+
+### Pertes de contact diagnosticables (incident WROOM FFP3 du 06/11/2026)
+
+Contexte : le WROOM 15.31 s'est tu le 06/11 à 16:40:27, juste après la vérification OTA qui suit le
+mail de réveil (15.33 publiée sur le canal prod à 16:01), sans qu'aucune trace ne survive
+(n3_serveur `docs/DIAGNOSTIC_FFP3_PERTE_CONTACT_2026-11-06.md`). Serveur requis : **n3_serveur ≥ 6.59.0**
+(tables `device_contacts`, `ota_events`, `device_events`, endpoint `/ota-report`, en-tête `X-Server-Ts`) ;
+un serveur plus ancien ignore les nouveaux champs et refuse `/ota-report` (404) sans autre effet.
+
+- **Journal de bord persistant** (`include/contact_diag.h`, anneau `n3evt::Ring<12>` de
+  `shared/n3_common/n3_event_ring.h`, slots NVS `logs/evt_00..11`, alloué sur le tas — la DRAM statique du
+  WROOM est saturée) : `boot`, `wifi_ok/fail`, `ntp_ok/fail`, `http_401/4xx/5xx/fail`, `sleep_in/out`,
+  `clock_fix/srv/drift`, `ota_check/start/progress/done/fail/paused/pending/valid/rollback`,
+  `contact_ok`. Chaque événement est persisté **avant** toute suite risquée (flash, reboot) et renvoyé
+  jusqu'à acquittement par le serveur.
+- **Rapport OTA** : `POST /ota-report[-test|3|3-test|-s3-test]` (dérivé de l'URL heartbeat, HMAC
+  obligatoire, `events=[{q,t,u,e,d}]`, réponse `acked[]`), envoyé après chaque heartbeat et autour de
+  `ota_start` / `ota_done` / `ota_fail`. En-têtes `X-Ota-Board` / `X-Ota-Version` sur les GET
+  `metadata.json` et `.bin` (journal `ota_events` serveur) ; **503** = canal mis en pause ou réservé
+  aux cartes canari par le serveur → « pas de mise à jour », sans retry.
+- **Diagnostic de boot** dans le premier heartbeat (`boot=1`) : `rst` (cause de reset), `part`
+  (partition courante), `ota` (état de l'image : pending/valid/…), `fails` (boots consécutifs sans
+  contact sain), `safe`, `clk`, `wifi_ms`, `wifi_tries`, `rssi`, `version`, `board`, `log`
+  (`contracts/ffp3.json → heartbeatFields`). Le CRC32 historique reste calculé sur les 4 champs
+  d'origine. Buffer heartbeat 320 → 768 o (`BufferConfig::HEARTBEAT_PAYLOAD_SIZE`).
+- **OTA sûre** : une image en probation (`ESP_OTA_IMG_PENDING_VERIFY`, bootloader des deux cores
+  pré-compilés avec `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`) n'est plus validée par 120 s d'uptime
+  mais par un **boot sain** = Wi-Fi + heure fiable + **POST signé accepté** (`ContactDiag::markBootHealthy`,
+  appelé par `WebClient` sur le premier 2xx HMAC). Sans contact sain avant
+  `TimingConfig::OTA_VALIDATION_DEADLINE_MS` (15 min), le firmware journalise `ota_rollback`, tente de
+  l'envoyer, puis `esp_ota_mark_app_invalid_rollback_and_reboot()`. Un reboot délibéré (web, GPIO 110)
+  ne valide plus une image non confirmée (`confirmOtaValidationIfHealthy`). Le watchdog reste actif
+  pendant le flash (inchangé), le délai global de téléchargement reste `OTA_DOWNLOAD_TIMEOUT_MS`.
+- **Horloge** : correction du **double comptage de la veille** (`PowerManager::getSleptTime` ajoutait la
+  durée dormie à une horloge qu'ESP-IDF avait déjà avancée : +2 045 s puis +4 090 s le 06/11, d'où les
+  401 « X-Sig invalide » en début de rafale) — `n3clock::sleepCorrectionSeconds` (`shared/n3_time/
+  n3_sleep_clock.h`) n'ajoute que l'écart non compté. **Resynchronisation NTP à chaque réveil** avant la
+  première requête signée ; sans NTP, l'heure serveur (`X-Server-Ts` de la première réponse) est
+  appliquée et rend l'horloge « fiable » 6 h (`PowerManager::applyServerEpoch`). On ne signe **jamais**
+  avec une horloge ni NTP ni serveur (`hasTrustedNtpTime`). Décalage mesuré envoyé dans `clk`.
+- **Mode sans échec** après 3 boots consécutifs sans contact sain (`n3boot::kSafeModeAfterFailedBoots`) :
+  aucune vérification OTA, nourrissage / remplissage / alertes dérivées suspendus
+  (`Automatism::setSafeMode`), **pompe aquarium maintenue en marche**, poll / POST / heartbeat
+  (`safe=1`) et veille conservés. Sortie : un POST signé accepté remet le compteur à zéro ; le mode cesse
+  au boot suivant.
+- Tests natifs (shared `tests_native`) : `test_event_ring` (séquences, écrasement, acquittement, JSON
+  compatible formulaire, aller-retour NVS), `test_sleep_clock` (cas de l'incident : 0 s de correction
+  quand l'horloge a déjà avancé), `test_boot_diag` (libellés serveur, seuil sans échec).
+- Builds vérifiés : `wroom-prod`, `wroom-s3-prod`.
+
+#### Scénario de rollback documenté (banc, à rejouer avant toute publication prod)
+
+1. Flasher par USB une 15.34 **test** (`wroom-test`) ; vérifier dans le heartbeat `ota=valid`, `fails=0`.
+2. Publier sur le canal **test** une image volontairement incapable de joindre le serveur (ex. build
+   avec un `BASE_URL` erroné) ; au réveil suivant le journal montre `ota_check` → `ota_start` →
+   `ota_progress 25/50/75` → `ota_done` puis, après reboot, `boot rst=SW part=ota_1 ota=pending`.
+3. L'image fautive ne produit aucun `contact_ok` : à T+15 min elle journalise `ota_rollback` et redémarre.
+   Attendu : `boot rst=SW part=ota_0 ota=valid`, version 15.34 test, puis `contact_ok` ; côté serveur
+   (`iot_contact_timeline`), l'enchaînement `ota_done` → silence → `boot`/`ota_rollback` est visible,
+   l'alerte « module muet après téléchargement OTA » ne part pas (retour sous 2 réveils).
+4. Vérifier qu'un reboot web pendant la probation **sans** contact sain laisse l'image en attente
+   (`ota_pending_reboot`) et que le bootloader revient à l'ancienne image.
+5. Seulement ensuite : publication sur le canal prod, **après validation explicite** (jamais en
+   automatique).
+
 ## Version 15.33 - 2026-11-06
 
 ### Diagnostic d'écho ultrason remonté au serveur (aquarium + potager)

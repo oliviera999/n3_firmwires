@@ -59,8 +59,15 @@ class PowerManager {
   /** Applique l'heure du RTC externe DS3231 si présent (à appeler après I2CBus::init()). */
   void applyExternalRTCIfPresent();
 
-  /** v13.88 : true si la dernière sync NTP a validé SNTP_COMPLETED et un epoch plausible. */
-  bool hasTrustedNtpTime() const { return _ntpTrusted; }
+  /** v13.88 : true si la dernière sync NTP a validé SNTP_COMPLETED et un epoch plausible.
+   *  v15.34 : ou si une heure serveur (X-Server-Ts) a été appliquée il y a moins de
+   *  ContactDiag::kServerTimeTrustMs — on ne signe JAMAIS avec une horloge non confirmée. */
+  bool hasTrustedNtpTime() const;
+
+  /** v15.34 : applique l'heure serveur (epoch, latence aller-retour compensée) quand NTP a
+   *  échoué. Retourne true si l'horloge a été modifiée. L'horloge devient « fiable » pour la
+   *  signature HMAC (cf. hasTrustedNtpTime). */
+  bool applyServerEpoch(uint32_t serverEpoch, uint32_t rttMs);
 
  private:
   // Paramètres NTP
@@ -71,6 +78,9 @@ class PowerManager {
   // Suivi synchronisation temps (intervalle : TimingConfig::NTP_SYNC_INTERVAL_MS)
   unsigned long _lastNtpSync;
   bool _ntpTrusted;
+  // v15.34 : heure serveur appliquée (repli quand NTP échoue) — millis() de l'application, 0 = jamais.
+  unsigned long _serverTimeAppliedMs;
+  bool _serverTimeTrusted;
 
   // Identifiants WiFi sauvegardés pour light sleep
   char _lastSSID[33];  // SSID max 32 chars + null terminator
@@ -90,6 +100,7 @@ class PowerManager {
   // Accumulation de microsecondes résiduelles pour une meilleure précision du RTC
   uint32_t _sleepRemainderUs;
   
-  // Méthode privée
-  uint32_t getSleptTime(uint64_t startUs);
+  // Méthode privée — v15.34 : wallBefore = epoch système juste avant la veille, pour ne corriger
+  // que ce que l'horloge n'a PAS déjà compté (n3clock::sleepCorrectionSeconds, double comptage évité).
+  uint32_t getSleptTime(uint64_t startUs, time_t wallBefore);
 };

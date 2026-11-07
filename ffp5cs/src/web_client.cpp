@@ -4,6 +4,7 @@
 // Source de vérité: GPIOMap::XXX.serverPostName (ex: "chauffageThreshold")
 // v11.171: Queue persistante POSTs échoués (offline-first)
 #include "web_client.h"
+#include "contact_diag.h"  // v15.34 : heure serveur, journal, boot sain
 #include "config_manager.h"
 #include "diagnostics.h"
 #include "gpio_mapping.h"  // SensorMap, GPIOMap (source unique noms POST)
@@ -234,6 +235,10 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     }
     connectMs = (uint32_t)(millis() - requestStartMs);  // DNS + TCP (diagnostic latence)
     _http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    // v15.34 : le serveur renvoie son heure (X-Server-Ts, n3_serveur ≥ 6.59.0) sur chaque
+    // réponse POST/heartbeat/ota-report : mesure du décalage d'horloge, repli si NTP échoue.
+    static const char* kCollectHeaders[] = {"X-Server-Ts"};
+    _http.collectHeaders(kCollectHeaders, 1);
 
     // v13.80 (audit): mode dual HMAC - ajoute X-Sig-* en complément d'api_key.
     // v13.88 : pas d'en-têtes X-Sig si NTP non fiable (évite 401 sans fallback api_key).
@@ -260,6 +265,13 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     unsigned long postStartMs = millis();
     code = _http.POST(payload ? payload : "");
     unsigned long postDurationMs = millis() - postStartMs;
+    if (code > 0) {
+      // v15.34 : heure serveur → ContactDiag (décalage, repli d'horloge sans NTP).
+      String serverTs = _http.header("X-Server-Ts");
+      if (serverTs.length() >= 10 && serverTs.length() <= 12) {
+        ContactDiag::onServerTime((uint32_t)strtoul(serverTs.c_str(), nullptr, 10), (uint32_t)postDurationMs);
+      }
+    }
     // v15.17 (T3c) : alimente le snapshot partagé N3NetStats (rapports mail).
     // Appel DANS la section s_httpMutex (s_stats n'est pas thread-safe) —
     // POST (postSenderTask) et GET (netTask) sont sérialisés par ce mutex.
@@ -386,7 +398,23 @@ bool WebClient::httpRequest(const char* url, const char* payload,
     // Succès 2xx-3xx
     if (code >= 200 && code < 400) {
       success = true;
+      // v15.34 : un POST signé accepté = boot sain (Wi-Fi + heure fiable + serveur d'accord).
+      // Remet à zéro le compteur de boots ratés et autorise la validation d'une image OTA.
+      if (sendHmac) ContactDiag::markBootHealthy();
       break;
+    }
+    // v15.34 : traces persistantes des rejets (journal de bord → heartbeat / ota-report)
+    if (code == 401) {
+      ContactDiag::logEventf("http_401", "%s ntp=%d clk=%ld", sendHmac ? "hmac" : "api_key",
+                             power.hasTrustedNtpTime() ? 1 : 0,
+                             ContactDiag::hasClockOffset() ? (long)ContactDiag::clockOffsetSeconds() : 0L);
+    } else if (code >= 500) {
+      ContactDiag::logEventf("http_5xx", "code=%d", code);
+    } else if (code <= 0) {
+      ContactDiag::logEventf("http_fail", "code=%d connect=%lums rssi=%d", code, (unsigned long)connectMs,
+                             (WiFi.status() == WL_CONNECTED) ? (int)WiFi.RSSI() : -127);
+    } else if (code >= 400) {
+      ContactDiag::logEventf("http_4xx", "code=%d", code);
     }
 
     // v13.90 : 401 avec X-Sig → retry unique sans en-têtes HMAC (fallback api_key)
@@ -911,6 +939,7 @@ bool WebClient::buildHeartbeatPayload(const Diagnostics& diag, char* buf, size_t
   if (buf == nullptr || bufSize < 320) return false;
   const DiagnosticStats& s = diag.getStats();
   char payloadBuf[256];
+  // Le CRC32 porte sur ces quatre champs uniquement (contrat historique, HeartbeatController).
   snprintf(payloadBuf, sizeof(payloadBuf), "uptime=%lu&free=%u&min=%u&reboots=%u",
            s.uptimeSec, s.freeHeap, s.minFreeHeap, s.rebootCount);
   char bufCrc[16];
@@ -919,6 +948,10 @@ bool WebClient::buildHeartbeatPayload(const Diagnostics& diag, char* buf, size_t
   char ipStr[16];
   snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
   snprintf(buf, bufSize, "%s%s&ip=%s", payloadBuf, bufCrc, ipStr);
+  // v15.34 : champs enrichis (rssi, version, cause de reset, partition, état OTA, boots ratés,
+  // mode sans échec, décalage horloge, Wi-Fi, carte, boot=1, journal) — contracts/ffp3.json
+  // heartbeatFields ; ignorés par un serveur < 6.59.0.
+  ContactDiag::appendHeartbeatExtras(buf, bufSize);
   return true;
 }
 
@@ -932,9 +965,15 @@ bool WebClient::postToUrl(const char* url, const char* payload, uint32_t timeout
   return httpRequest(url, payload, resp, sizeof(resp), timeoutMs);
 }
 
+bool WebClient::postToUrlWithResponse(const char* url, const char* payload, char* response,
+                                      size_t responseSize, uint32_t timeoutMs) {
+  if (url == nullptr || payload == nullptr || response == nullptr || responseSize == 0) return false;
+  return httpRequest(url, payload, response, responseSize, timeoutMs);
+}
+
 bool WebClient::sendHeartbeat(const Diagnostics& diag) {
   if (!config.isRemoteSendEnabled()) return false;
-  char fullPayload[320];
+  char fullPayload[BufferConfig::HEARTBEAT_PAYLOAD_SIZE];
   if (!buildHeartbeatPayload(diag, fullPayload, sizeof(fullPayload))) return false;
   char heartbeatUrl[256];
   ServerConfig::getHeartbeatUrl(heartbeatUrl, sizeof(heartbeatUrl));

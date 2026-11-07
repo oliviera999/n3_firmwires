@@ -81,6 +81,14 @@ namespace ServerUrlConfig {
     snprintf(buffer, bufferSize, "%s%s", BASE_URL, HEARTBEAT_ENDPOINT);
   }
 
+  /** v15.34 : POST /ota-report (événements OTA/journal, HMAC obligatoire) — même suffixe
+   *  d'environnement que le heartbeat (/heartbeat-test → /ota-report-test, /heartbeat3 → /ota-report3…),
+   *  cf. n3_serveur config/routes_helpers.php. */
+  inline void getOtaReportUrl(char* buffer, size_t bufferSize) {
+    const char* suffix = HEARTBEAT_ENDPOINT + strlen("/heartbeat");
+    snprintf(buffer, bufferSize, "%s/ota-report%s", BASE_URL, suffix);
+  }
+
   inline void getOtaBaseUrl(char* buffer, size_t bufferSize) {
     snprintf(buffer, bufferSize, "%s%s", BASE_URL_SECURE, OTA_BASE_PATH);
   }

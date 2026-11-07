@@ -161,6 +161,9 @@ namespace ServerConfig {
         ServerUrlConfig::getOutputUrl(buffer, bufferSize);
     }
     
+    inline void getOtaReportUrl(char* buffer, size_t bufferSize) {
+        ServerUrlConfig::getOtaReportUrl(buffer, bufferSize);
+    }
     inline void getHeartbeatUrl(char* buffer, size_t bufferSize) {
         ServerUrlConfig::getHeartbeatUrl(buffer, bufferSize);
     }

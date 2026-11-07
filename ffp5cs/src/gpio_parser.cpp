@@ -413,7 +413,7 @@ void GPIOParser::applyGPIO(uint8_t gpio, JsonVariantConst value, Automatism& aut
             if (!tryStartOtaBeforeResetFromRemote()) {
                 // v14.17 : reboot délibéré → valider l'image OTA en probation (évite un
                 // rollback d'une bonne image sur un reboot distant volontaire).
-                SystemBoot::confirmOtaValidation("reboot distant (GPIO 110)");
+                SystemBoot::confirmOtaValidationIfHealthy("reboot distant (GPIO 110)");  // v15.34 : seulement si boot sain
                 ESP.restart();
             }
         } else if (!state) {

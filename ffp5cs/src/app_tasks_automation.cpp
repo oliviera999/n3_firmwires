@@ -3,7 +3,8 @@
 // poll config distante, logs périodiques). Extrait d'app_tasks.cpp (refonte
 // god-file, audit v13.93) ; déplacement verbatim. État partagé via
 // app_tasks_internal.h ; helpers propres à cette tâche.
-#include "app_tasks_internal.h"  // g_ctx, g_sensorQueue, g_netTaskHandle, automationTask
+#include "app_tasks_internal.h"
+#include "contact_diag.h"  // v15.34 : flush du journal de bord  // g_ctx, g_sensorQueue, g_netTaskHandle, automationTask
 #include "app_tasks.h"           // AppTasks:: API
 #include "task_mail.h"           // allocMailReserveIfNeeded, processMailQueueIfReady
 #include "tls_mutex.h"           // TLS_MIN_HEAP_BYTES
@@ -250,6 +251,11 @@ void automationTask(void* pv) {
           esp_task_wdt_reset();
           AppTasks::netSendHeartbeat(g_ctx->diagnostics, 10000);
           lastHeartbeat = now;
+          // v15.34 : événements du journal de bord non acquittés → POST /ota-report (HMAC).
+          if (WiFi.status() == WL_CONNECTED && ContactDiag::pendingCount() > 0) {
+            esp_task_wdt_reset();
+            ContactDiag::flushPending();
+          }
           
           // v11.171: Traiter la queue de POSTs échoués après le heartbeat
           if (WiFi.status() == WL_CONNECTED && g_ctx->webClient.getQueuedPostsCount() > 0) {

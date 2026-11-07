@@ -8,6 +8,9 @@
 // 4. MÉMOIRE ET BUFFERS
 // -----------------------------------------------------------------------------
 namespace BufferConfig {
+    // v15.34 : heartbeat enrichi (champs diag + journal `log=` ≤ 360 car.) — doit rester
+    // < POST_PAYLOAD_MAX_SIZE (copié dans PostSenderMsg.payload, 896 au minimum).
+    inline constexpr uint32_t HEARTBEAT_PAYLOAD_SIZE = 768;
     #if defined(BOARD_S3)
         inline constexpr uint32_t HTTP_BUFFER_SIZE = 4096;
         inline constexpr uint32_t HTTP_TX_BUFFER_SIZE = 4096;

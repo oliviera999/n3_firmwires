@@ -49,6 +49,11 @@ private:
     // Affichage OLED (optionnel, défini par setDisplay depuis le contexte applicatif)
     DisplayView* m_display = nullptr;
 
+    // v15.34 — dernier message d'erreur (repris dans l'événement `ota_fail` du journal de bord)
+    // et dernier jalon de progression journalisé (25/50/75 %).
+    char m_lastError[48] = {0};
+    int m_lastProgressMilestone = 0;
+
     // Rappels (callbacks)
     std::function<void(int)> m_progressCallback;
     std::function<void(const char*)> m_statusCallback;

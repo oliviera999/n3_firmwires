@@ -464,7 +464,7 @@ bool netSendHeartbeat(const Diagnostics& diag, uint32_t timeoutMs) {
   if (g_ctx->otaManager.isOtaExclusive()) return false;
   PostSenderMsg msg;
   msg.type = PostSenderType::Heartbeat;
-  char buf[320];
+  char buf[BufferConfig::HEARTBEAT_PAYLOAD_SIZE];  // v15.34 : heartbeat enrichi
   if (!g_ctx->webClient.buildHeartbeatPayload(diag, buf, sizeof(buf))) return false;
   strncpy(msg.payload, buf, sizeof(msg.payload) - 1);
   msg.payload[sizeof(msg.payload) - 1] = '\0';
