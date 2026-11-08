@@ -10,7 +10,7 @@
 namespace ProjectConfig {
     // Historique complet : voir VERSION.md (la liste exhaustive des versions est maintenue
     // uniquement dans VERSION.md depuis la v13.52, audit général 2026-05).
-    inline constexpr const char* VERSION = "15.34";
+    inline constexpr const char* VERSION = "15.35";
 
     // Type d'environnement
     #if defined(PROFILE_DEV)
@@ -174,6 +174,10 @@ namespace TimingConfig {
     inline constexpr uint32_t OTA_VALIDATION_DEADLINE_MS = 900000; // 15 min
     inline constexpr uint32_t DIGEST_INTERVAL_MS = 3600000;    // 1h
     inline constexpr uint32_t NTP_SYNC_INTERVAL_MS = 3600000;  // 1h - sync NTP périodique (PowerManager)
+    // v15.35 — Attente SNTP maximale à la resynchronisation de réveil (15.34 : 20 s comme au boot, soit
+    // jusqu'à 15 s d'éveil en plus par rafale, ≈ 7 min/jour). Sans réponse, l'heure serveur
+    // (X-Server-Ts) prend le relais avant la première requête signée.
+    inline constexpr uint32_t NTP_WAKE_SYNC_WAIT_MS = 5000;
     inline constexpr uint32_t STATS_REPORT_INTERVAL_MS = 300000; // 5 min
     
     // Protection et Timeouts

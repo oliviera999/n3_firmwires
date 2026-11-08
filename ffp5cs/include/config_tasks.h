@@ -109,6 +109,13 @@ namespace SleepConfig {
 // Marge restante sous 160 KB IDF : faible une fois BSS système (WiFi/LwIP/Arduino) ajouté.
 // Raison des réductions stacks beta/test : récupérer de la DRAM au link (`dram0_0_seg`).
 //
+// v15.35 (analyse mémoire 2026-11-07) : la fenêtre réelle du linker n'est PAS 160 Ko mais
+// `dram0_0_seg` = 180,7 Ko − 56,2 Ko réservés au Bluetooth par le core pré-compilé (CONFIG_BT_ENABLED,
+// zone libérée au runtime par initArduino mais inaccessible au link) ≈ 124,6 Ko. 15.34 était à 99,8 %.
+// Depuis 15.35, les piles netTask et otaTask, le pool NetRequest, les tableaux de scan Wi-Fi et le
+// corps du mail de boot sont alloués sur le tas au démarrage (heap contigu à ce moment-là) :
+// ≈ −32 Ko de .bss. Seules sensorTask et automationTask (critiques) gardent une pile statique.
+//
 // Bonnes pratiques :
 //   - Éviter d'ajouter de gros buffers statiques sans vérifier le link.
 //   - Préférer le heap pour tout ce qui peut être alloué après le boot.

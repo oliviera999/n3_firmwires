@@ -4,7 +4,8 @@
 #include <Arduino.h>
 #include <cstring>
 #include <cstdlib>
-#include <atomic>  // course alloc inter-tâches sur le pool (audit concurrence)
+#include <atomic>
+#include <esp_heap_caps.h>  // v15.35 : pool sur le tas (DRAM interne)  // course alloc inter-tâches sur le pool (audit concurrence)
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
 #include "rom/ets_sys.h"
 #endif
@@ -43,11 +44,21 @@ static constexpr size_t kNetRequestPostCat3Slot = kNetRequestPoolSize - 3;   // 
 static constexpr size_t kNetRequestPostCat2Slot = kNetRequestPoolSize - 4;   // POST ack/événements
 static constexpr size_t kNetRequestPostCat1Slot = kNetRequestPoolSize - 5;   // POST données périodiques
 static constexpr size_t kNetRequestNormalMaxSlot = kNetRequestPoolSize - 6;  // Partagés: 0..NormalMax (WROOM: 0..2, S3: 0..10)
-static NetRequest s_netRequestPool[kNetRequestPoolSize];
+// v15.35 — pool alloué sur le tas au démarrage (netRequestPoolInit) : 8 × ~928 o sortaient de la
+// fenêtre DRAM statique saturée du WROOM. Les drapeaux d'occupation (8 o) restent en BSS.
+static NetRequest* s_netRequestPool = nullptr;
 static std::atomic<bool> s_netRequestPoolUsed[kNetRequestPoolSize];  // zero-init (false) en BSS
+
+bool netRequestPoolInit() {
+  if (s_netRequestPool) return true;
+  s_netRequestPool = static_cast<NetRequest*>(heap_caps_calloc(kNetRequestPoolSize, sizeof(NetRequest),
+                                                               MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  return s_netRequestPool != nullptr;
+}
 
 /** Marque le slot i comme utilisé et retourne le NetRequest, ou nullptr si déjà pris. */
 static NetRequest* netRequestAllocTrySlot(size_t i) {
+  if (!s_netRequestPool) return nullptr;
   // CAS atomique : évite que deux tâches (auto/web/net) prennent le même slot (check-then-set).
   bool expected = false;
   if (!s_netRequestPoolUsed[i].compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
@@ -137,6 +148,7 @@ NetRequest* netRequestAllocForFetch() {
 }
 
 void netRequestFree(NetRequest* req) {
+  if (!s_netRequestPool) return;
   if (!req) return;
   if (req >= s_netRequestPool && req < s_netRequestPool + kNetRequestPoolSize) {
     size_t idx = (size_t)(req - s_netRequestPool);

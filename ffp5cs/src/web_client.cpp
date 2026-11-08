@@ -940,8 +940,10 @@ bool WebClient::buildHeartbeatPayload(const Diagnostics& diag, char* buf, size_t
   const DiagnosticStats& s = diag.getStats();
   char payloadBuf[256];
   // Le CRC32 porte sur ces quatre champs uniquement (contrat historique, HeartbeatController).
+  // v15.35 : `min` = plancher heap DEPUIS CE BOOT (avant : plancher historique rechargé de la NVS).
+  const uint32_t minThisBoot = (s.minFreeHeap == UINT32_MAX) ? s.freeHeap : s.minFreeHeap;
   snprintf(payloadBuf, sizeof(payloadBuf), "uptime=%lu&free=%u&min=%u&reboots=%u",
-           s.uptimeSec, s.freeHeap, s.minFreeHeap, s.rebootCount);
+           s.uptimeSec, s.freeHeap, minThisBoot, s.rebootCount);
   char bufCrc[16];
   snprintf(bufCrc, sizeof(bufCrc), "&crc=%08lX", crc32(payloadBuf));
   IPAddress addr = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP() : WiFi.softAPIP();
@@ -951,7 +953,7 @@ bool WebClient::buildHeartbeatPayload(const Diagnostics& diag, char* buf, size_t
   // v15.34 : champs enrichis (rssi, version, cause de reset, partition, état OTA, boots ratés,
   // mode sans échec, décalage horloge, Wi-Fi, carte, boot=1, journal) — contracts/ffp3.json
   // heartbeatFields ; ignorés par un serveur < 6.59.0.
-  ContactDiag::appendHeartbeatExtras(buf, bufSize);
+  ContactDiag::appendHeartbeatExtras(buf, bufSize, s.maxAllocHeap, s.idlePercent);
   return true;
 }
 

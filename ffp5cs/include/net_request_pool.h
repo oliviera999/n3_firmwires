@@ -44,3 +44,5 @@ NetRequest* netRequestAlloc(bool forOta = false);
 NetRequest* netRequestAllocForPostCategory(AppTasks::PostCategory cat);
 NetRequest* netRequestAllocForFetch();
 void netRequestFree(NetRequest* req);
+/** v15.35 : alloue le pool sur le tas (à appeler une fois, avant toute tâche). false = heap insuffisant. */
+bool netRequestPoolInit();

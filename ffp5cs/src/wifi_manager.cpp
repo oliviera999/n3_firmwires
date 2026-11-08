@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include <memory>  // v15.35 : tableaux de scan temporaires (unique_ptr)
 #include "app_tasks.h"
 #include "tls_mutex.h"
 #include "display_view.h"
@@ -199,7 +200,12 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
 #if defined(BOARD_S3) && defined(BOARD_HAS_PSRAM)
   ets_printf("[BOOT] wifi scan start\n");
 #endif
-  static wifi_ap_record_t s_apRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+  // v15.35 — tableau de scan temporaire sur le tas (était statique : 1,4 Ko de .bss, DRAM link saturée)
+  std::unique_ptr<wifi_ap_record_t[]> apRecords(new (std::nothrow) wifi_ap_record_t[NetworkConfig::WIFI_SCAN_MAX_RECORDS]);
+  if (!apRecords) {
+    Serial.println(F("[WiFi] ❌ Scan impossible : heap insuffisant"));
+    return false;
+  }
   uint16_t num = 0;
   int n = -1;
   constexpr int kMaxScanAttempts = 3;
@@ -207,7 +213,7 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
-    n = scanNetworksEspIdf(s_apRecords, NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num, true);
+    n = scanNetworksEspIdf(apRecords.get(), NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num, true);
     if (esp_task_wdt_status(NULL) == ESP_OK) {
       esp_task_wdt_reset();
     }
@@ -231,12 +237,12 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
     Serial.printf("[WiFi] 📡 %d réseaux trouvés:\n", (int)num);
     for (int j = 0; j < num; ++j) {
       char scanSSIDBuf[33];
-      memcpy(scanSSIDBuf, s_apRecords[j].ssid, 32);
+      memcpy(scanSSIDBuf, apRecords[j].ssid, 32);
       scanSSIDBuf[32] = '\0';
       size_t slen = strnlen(scanSSIDBuf, 32);
       scanSSIDBuf[slen] = '\0';
       const char* authStr = "UNKNOWN";
-      switch (s_apRecords[j].authmode) {
+      switch (apRecords[j].authmode) {
         case WIFI_AUTH_OPEN: authStr = "OPEN"; break;
         case WIFI_AUTH_WEP: authStr = "WEP"; break;
         case WIFI_AUTH_WPA_PSK: authStr = "WPA_PSK"; break;
@@ -248,8 +254,8 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
         default: break;
       }
       Serial.printf("  - [%d] '%s' RSSI=%d ch=%d auth=%s(%d)\n",
-                    j, scanSSIDBuf, s_apRecords[j].rssi, s_apRecords[j].primary,
-                    authStr, (int)s_apRecords[j].authmode);
+                    j, scanSSIDBuf, apRecords[j].rssi, apRecords[j].primary,
+                    authStr, (int)apRecords[j].authmode);
     }
   }
 
@@ -272,13 +278,13 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
   N3WifiSelect::ScanEntry entries[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
   size_t scanCount = 0;
   for (int j = 0; j < num && scanCount < NetworkConfig::WIFI_SCAN_MAX_RECORDS; ++j) {
-    memcpy(scanSsids[scanCount], s_apRecords[j].ssid, 32);
+    memcpy(scanSsids[scanCount], apRecords[j].ssid, 32);
     scanSsids[scanCount][32] = '\0';
     scanSsids[scanCount][strnlen(scanSsids[scanCount], 32)] = '\0';
     entries[scanCount].ssid = scanSsids[scanCount];
-    entries[scanCount].rssi = s_apRecords[j].rssi;
-    memcpy(entries[scanCount].bssid, s_apRecords[j].bssid, N3WifiSelect::kBssidLen);
-    entries[scanCount].channel = s_apRecords[j].primary;
+    entries[scanCount].rssi = apRecords[j].rssi;
+    memcpy(entries[scanCount].bssid, apRecords[j].bssid, N3WifiSelect::kBssidLen);
+    entries[scanCount].channel = apRecords[j].primary;
     ++scanCount;
   }
 
@@ -300,8 +306,8 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
     cand[i].enc = WIFI_AUTH_OPEN;
     if (!selCand[i].present) continue;
     for (int j = 0; j < num; ++j) {
-      if (memcmp(s_apRecords[j].bssid, selCand[i].bssid, 6) == 0) {
-        cand[i].enc = s_apRecords[j].authmode;
+      if (memcmp(apRecords[j].bssid, selCand[i].bssid, 6) == 0) {
+        cand[i].enc = apRecords[j].authmode;
         break;
       }
     }
@@ -338,11 +344,11 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       // Rescan avant tentative invisible : le réseau peut apparaître au 2e scan (S3 PSRAM: skip, bloque)
       int n2 = -1;
       bool foundInRescan = false;
-      static wifi_ap_record_t s_rescanRecords[NetworkConfig::WIFI_SCAN_MAX_RECORDS];
+      std::unique_ptr<wifi_ap_record_t[]> rescanRecords(new (std::nothrow) wifi_ap_record_t[NetworkConfig::WIFI_SCAN_MAX_RECORDS]);  // v15.35 : tas
       uint16_t num2 = 0;
 #if !defined(BOARD_S3) || !defined(BOARD_HAS_PSRAM)
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
-      n2 = scanNetworksEspIdf(s_rescanRecords, NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num2, true);
+      if (rescanRecords) n2 = scanNetworksEspIdf(rescanRecords.get(), NetworkConfig::WIFI_SCAN_MAX_RECORDS, &num2, true);
       if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
 #endif
       int8_t rescanRssi = -128;
@@ -352,16 +358,16 @@ bool WifiManager::connect(DisplayView* disp, const char* hostname) {
       if (n2 > 0) {
         for (uint16_t j = 0; j < num2; ++j) {
           char ssidRescan[33];
-          memcpy(ssidRescan, s_rescanRecords[j].ssid, 32);
+          memcpy(ssidRescan, rescanRecords[j].ssid, 32);
           ssidRescan[32] = '\0';
           size_t len = strnlen(ssidRescan, 32);
           ssidRescan[len] = '\0';
-          int8_t rssi2 = s_rescanRecords[j].rssi;
+          int8_t rssi2 = rescanRecords[j].rssi;
           if (strcmp(ssidRescan, _list[i].ssid) == 0 && rssi2 > rescanRssi) {
             rescanRssi = rssi2;
-            memcpy(rescanBssid, s_rescanRecords[j].bssid, 6);
-            rescanChan = s_rescanRecords[j].primary;
-            rescanAuth = s_rescanRecords[j].authmode;
+            memcpy(rescanBssid, rescanRecords[j].bssid, 6);
+            rescanChan = rescanRecords[j].primary;
+            rescanAuth = rescanRecords[j].authmode;
             foundInRescan = true;
           }
         }

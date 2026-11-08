@@ -60,9 +60,10 @@ const char* partitionLabel();
 const char* otaStateLabel();
 
 /// Ajoute à `buf` (déjà rempli, NUL-terminé) les champs enrichis du heartbeat :
-/// &rssi&version&rst&part&ota&fails&safe[&clk][&wifi_ms&wifi_tries]&board[&boot=1][&log=[…]].
-/// `boot=1` n'est émis qu'une fois par boot. Retourne la longueur finale.
-size_t appendHeartbeatExtras(char* buf, size_t size);
+/// &rssi&version&rst&part&ota&fails&safe[&clk][&wifi_ms&wifi_tries]&board&blk[&idle]&nvs[&boot=1][&log=[…]].
+/// v15.35 : `blk` = plus grand bloc libre (fragmentation), `idle` = % idle CPU (255 = omis),
+/// `nvs` = % d'entrées NVS utilisées. `boot=1` n'est émis qu'une fois par boot. Retourne la longueur.
+size_t appendHeartbeatExtras(char* buf, size_t size, uint32_t largestFreeBlock, uint8_t idlePercent);
 
 /// Nombre d'événements non acquittés.
 uint8_t pendingCount();
