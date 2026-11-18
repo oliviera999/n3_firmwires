@@ -126,6 +126,9 @@ SD, OLED, INA… jamais de sommeil profond (light sleep + modem sleep).
   ~50 ms. Si le réseau est mauvais, un onduleur en amont, pas une modification de carte.
 - Sobriété : non critique. Le seul levier serait des relais bistables (0 W maintenus) — hors
   périmètre de cette carte.
+- **À l'étude (2026-11-18)** : sortir le Hi-Link de la carte et alimenter ce profil comme n3pp,
+  par un bloc 5 V ≥ 2 A (mieux 3 A) sur J2 — la carte le permet déjà, PS1/F1/RV1/J27 non posés.
+  Voir [`SIMPLIFICATION_PROPOSEE.md`](SIMPLIFICATION_PROPOSEE.md) ; rien n'est décidé ici.
 
 ## 6. ffp5cs 12 V — batterie AGM, régulateur PWM, buck
 
