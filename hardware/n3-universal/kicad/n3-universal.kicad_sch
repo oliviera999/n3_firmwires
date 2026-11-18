@@ -6950,7 +6950,7 @@
     (uuid "c8e19c56-0d55-504e-8b08-b7e6dbcc7663")
     (property "Intersheetrefs" "${INTERSHEET_REFS}" (at 387.35 363.22 0)
       (effects (font (size 1.27 1.27)) (hide yes))))
-  (text "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\nD5 protège le rail si l'USB du DevKit est branché en même temps." (exclude_from_sim no) (at 45.72 30.48 0)
+  (text "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\nD5 = PONT DE FIL (rev 0.2.2) : JAMAIS d'USB DevKit carte sous tension (1N5822 pour l'autoriser)." (exclude_from_sim no) (at 45.72 30.48 0)
     (effects (font (size 1.7 1.7)) (justify left bottom)) (uuid "fc1df9ee-2a66-5f9a-a4f2-1fcc296f9fc2"))
   (text "SITE A1 : ESP32 DevKitC 38 broches (socketé) — UN SEUL module peuplé (A1 OU A2).\nRangée droite double (25,4 mm OU 22,86 mm) : souder le support droit là où tombent les broches du module. GPIO0 et flash non câblés.\nEnvs carte universelle : msp/n3pp esp32dev_universal_test, ffp5cs wroom-universal-test.\nSur une unité ffp5cs, ÔTER JP1 avant un flash UART (le pull-up R24 sur GPIO2 bloque le bootloader)." (exclude_from_sim no) (at 132.08 60.96 0)
     (effects (font (size 1.7 1.7)) (justify left bottom)) (uuid "693afd54-f823-50cc-afb6-0c78e6df5f80"))

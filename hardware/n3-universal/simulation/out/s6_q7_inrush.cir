@@ -1,0 +1,43 @@
+* Sim 6 : fermeture de Q7 sur C2 decharge (rev 0.2.2+) - msp1 : boost 5 V limite a 1 A
+.param BF_BC337=560 VTO_4905=-3
+.option method=gear gmin=1e-10 reltol=2e-3
+.include models.lib
+Vad vad 0 PWL(0 0 1m 5)
+Bsrc vad vin_raw I = min(1.0, max(0,(V(vad)-V(vin_raw))/0.1))
+Cbo vin_raw 0 22u
+M12 vin_raw q12g v5 IRF4905
+R57 q12g 0 100k
+C1 v5 c1e 1000u
+Resr1 c1e 0 0.08
+* DevKit : D5 = pont de fil, AMS1117, 22 uF, ESP32 eveille sans radio (80 mA)
+Rd5 v5 vin5 0.02
+XU2 vin5 v33 0 AMS1117
+Cdk v33 cdke 22u
+Resrdk cdke 0 0.3
+Iesp v33 0 0.08
+* GPIO13 passe a l'etat haut a 60 ms : Q8 tire la grille de Q7 a la masse
+Vgpio gsrc 0 PULSE(0 3.3 60m 20n 20n 1 2)
+Rgpio gsrc gate 50
+R34 gate gate_b 1k
+R48 gate_b 0 10k
+Q8 gate_g gate_b 0 BC337-40
+R35 v5 gate_g 100k
+Rtr1 v5 v5q 0.057
+M7 ldoq gate_g v5q IRF4905
+Rtr2 ldoq ldo_in 0.066
+C2 ldo_in c2e 470u
+Resr2 c2e 0 0.12
+C11 ldoq c11e 10u
+Resr11 c11e 0 0.5
+XU1 ldoq v33sw 0 LD1117V33
+C12 v33sw c12e 100u
+Resr12 c12e 0 0.2
+Rload v33sw 0 110
+.control
+tran 2u 80m
+meas tran v5_min MIN v(v5) FROM=59m TO=80m
+meas tran v33_min MIN v(v33) FROM=59m TO=80m
+meas tran t_below3 TRIG v(v33) VAL=3.0 FALL=1 TD=59m TARG v(v33) VAL=3.0 RISE=1 TD=59m
+quit
+.endc
+.end

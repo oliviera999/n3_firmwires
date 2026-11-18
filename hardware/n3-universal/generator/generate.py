@@ -1127,7 +1127,7 @@ def described(ref: str, desc: str) -> str:
 
 # Textes explicatifs du schéma : (x_gu, y_gu, texte)
 SCH_TEXTS = [
-    (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\\nD5 protège le rail si l'USB du DevKit est branché en même temps."),
+    (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\\nD5 = PONT DE FIL (rev 0.2.2) : JAMAIS d'USB DevKit carte sous tension (1N5822 pour l'autoriser)."),
     (52, 24, "SITE A1 : ESP32 DevKitC 38 broches (socketé) — UN SEUL module peuplé (A1 OU A2).\\nRangée droite double (25,4 mm OU 22,86 mm) : souder le support droit là où tombent les broches du module. GPIO0 et flash non câblés.\\nEnvs carte universelle : msp/n3pp esp32dev_universal_test, ffp5cs wroom-universal-test.\\nSur une unité ffp5cs, ÔTER JP1 avant un flash UART (le pull-up R24 sur GPIO2 bloque le bootloader)."),
     (44, 50, "SERVOS 5V (nets SERVO1/SERVO2) — WROOM : GPIO26/27, S3 : IO21/IO47.\\nSignal en série R20/R21 (220R). Alimentation prise directement sur le rail +5V."),
     (86, 10, "3x HC-SR04 (5V) sur borniers 5,08, mode mono-broche TRIG=ECHO (sensor_ultrasonic.cpp).\\nEcho 5V ramené à 3V3 par pont 1k/2k ; le 2k est en circuit si JP13/14/15 FERMÉ (profil ffp5cs).\\nOUVERT sur msp (PLUIE sur US1, DHT ext sur US2) et pour l'option wroom-sd (JP15)."),

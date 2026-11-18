@@ -20,8 +20,10 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
   pull-up) — **msp et n3pp ont la SD sans rien sacrifier** ; seul ffp5cs-sur-WROOM
   arbitre par env de build (futur env `wroom-sd`, à créer au besoin : SD contre US_POTA+AUX), RTC **DS3231** et **3 INA226**
   sur I2C (INA alimentés par `+3V3_SW`) ;
-- le **230 V reste hors périmètre** : la carte `ffp5cs-wroom-prod-230v` existante
-  demeure la variante secteur (sécurité, 2 oz, distances de fuite).
+- le **230 V, hors périmètre dans l'étude d'origine, est intégré à la carte** : profil
+  d'alimentation (d), PS1 Hi-Link HLK-20M05 + F1 + RV1 dans un coin secteur isolé par des
+  fentes (voir « Profils d'alimentation » et `COMMANDE.md` §5). La carte
+  `ffp5cs-wroom-prod-230v` reste gelée, comme les deux autres cartes dédiées.
 
 > 🟢 **Rev 0.2 (2026-10-07)** (→ remplacée par la 0.2.2 puis la 0.2.3) — régénérée de bout en bout (schéma,
 > placement, routage, gerbers 2 oz) après la contre-vérification de la 0.1.2 (audit §13 :
@@ -87,6 +89,7 @@ piste (0.2.2 : 121 vias, 14,2 m). `tidy_silkscreen` : exception explicite `KEEP_
 | Gardes | `check_fet_orientation` ✅ ; `check_pinmap_vs_firmware` ✅ (tables DevKitC 38, GPIO flash, rangées doublées) ; `check_silk_refs` ✅ ; `check_pcb_clearance` ✅ ; `annotate_pcb_roles --check` ✅ ; `sync_pcb_sim_fields --check` ✅ ; `check_jlcpcb_caps` ✅ ; `tidy_silkscreen` : 0 déplacement ; générateur idempotent ✅ ; `achats --check` ✅ ; `fritzing --check` ✅ |
 | Banc SPICE sur la netlist KiCad | rail capteurs 0 V / 3,30 V ✅ |
 | `exports/` | **gerbers v0.2.3** (`export_fab.py --rev 0.2.3`, DRC bloquant passé), PDF/SVG, BOM/CPL ; zip 0.2.2 retiré |
+| Contre-vérification du 2026-11-18 (KiCad 10.0.8, DRC relancé sur le PCB commité, sans la bibliothèque d'empreintes) | **0 erreur, 0 non connecté, 0 écart de parité** ; 63 avertissements de sérigraphie et 1 « piste à extrémité libre » : un tronçon `EN` de 3,5 mm sur F.Cu, de la pastille 2 d'A1 (100 ; 111) vers (96,5 ; 111), reste du routage — sans conséquence électrique, à retirer au prochain reroutage. `exports/pcb-3d-dessus.png` régénéré (il datait de la rev 0.2). |
 
 ## Rev 0.2.2 — décisions d'alimentation (2026-10-17) : carte reroutée
 
@@ -153,10 +156,13 @@ complète des quatre profils (fuites en sommeil, budgets, robustesse, conséquen
 unique) dans **[`ALIMENTATION.md`](ALIMENTATION.md)** :
 
 1. **Source 5 V ferme, pas de chargeur USB.** La chaîne Q12 (IRF4905, non logic-level) + D5 +
-   AMS1117 du DevKit ne laisse que ~0,2 V de marge : il faut **≥ 5,0 V en charge** sur J1/J2
+   AMS1117 du DevKit ne laisse que ~0,2 V de marge avec D5 en 1N5822 (le pont de fil de la
+   0.2.2 en rend 0,35) : il faut **≥ 5,0 V en charge** sur J1/J2
    (Hi-Link 20M05, ou buck réglé **5,1–5,2 V**, câble court). Un bloc à 4,75 V sous charge
    provoque des redémarrages pendant le Wi-Fi. Candidat rev 0.3 si besoin : canal P logic-level
-   pour Q12/Q7 ; ne pas court-circuiter D5 (protection USB).
+   pour Q12/Q7. Depuis la 0.2.2, D5 est un pont de fil (tableau ci-dessus) : la protection USB
+   n'existe plus, d'où la règle « jamais d'USB carte sous tension »
+   ([`ALIMENTATION.md`](ALIMENTATION.md) §10).
 2. **Servos : SG90 pour commencer** (~0,65 A bloqué ; MG90S ~1 A ; MG996R ~2,5 A). Sur le rail
    de la carte avec une source ferme : SG90 OK (3V3 DevKit ≥ 3,14 V), deux SG90 simultanés
    limite (3,02 V) → **décaler les démarrages de ~100 ms** dans le firmware. Mieux : **câble en
@@ -205,8 +211,14 @@ borniers KF301, TO-220 courants).
 | JP5…JP10 | forçage relais K1…K6 | **sans cavalier = AUTO** (GPIO) | 1-2 = ON forcé ; 2-3 = OFF forcé (JP7 : OFF seulement) |
 | JP12 | diviseur VBAT | **1-2 = 18k** (bus 12 V, rev 0.2.2) | 2-3 = 100k (1S Li-ion) |
 | JP13 / JP14 / JP15 | diviseurs ECHO HC-SR04 (5 V → 3,3 V) | **fermé** (HC-SR04 5 V) | ôté : capteur 3,3 V / sortie open-collector |
-| JP16…JP19 | diviseurs ADC A…D | **ôté** (signal ≤ 3,3 V direct) | fermé : signal 0-5 V |
-| JP20 | diviseur ADC_E | **ôté** | fermé : 0-5 V |
+| JP16…JP19 | bas de pont 10k des entrées ADC A…D (R43…R46 vers GND) | **ôté** : capteur à sortie en tension ≤ 3,3 V (sonde sol n3pp) | fermé : capteur résistif entre 3V3 et SIG (LDR du tracker msp) |
+| JP20 | bas de pont 10k de ADC_E (R27 vers GND) | **ôté** : module à sortie AO ≤ 3,3 V (msp HumiditeSol) | fermé : LDR (n3pp, ffp5cs) |
+
+⚠️ JP16…JP20 **ne divisent pas une tension** : fermés, ils ajoutent seulement 10k entre l'entrée
+et la masse. Un signal 0-5 V arriverait presque intact sur le GPIO (seule la 1k série
+s'interpose, max absolu ESP32 3,6 V) : ces entrées n'acceptent que des capteurs alimentés en
+3,3 V. (Correction du 2026-11-18 : ce tableau annonçait à tort « fermé : signal 0-5 V » ; la
+sérigraphie et la BOM étaient justes.)
 | JP21 | pull-up DHT externe | **ôté** | fermé : DHT sur bornier J30 sans pull-up |
 
 Profils d'alimentation (par peuplement, inchangés) : (a) 5 V jack/bornier via Q12 ;
@@ -471,6 +483,7 @@ corrigé la carte et les firmwares AVANT toute commande :
   Q11 devient un **IRF4905PBF** (55 V, VGS ±20 V, même brochage G-D-S) et la zener
   **D9 1N4744A** (15 V, cathode = source, anode = grille, R40 limite son courant) borne
   VGS face aux transitoires du bus. Q7 reste un NDP6020P (logic-level requis à 3,3 V).
+  *(Historique rev 0.1.2. Depuis la rev 0.2, Q7 est un IRF4905 commandé par Q8, VGS = −5 V.)*
 - **Rev 0.1.2** : **RV1** passe sur sa vraie empreinte (disque 10 mm, pas 7,5 mm,
   perçage 1,0 mm) au lieu d'un électrolytique au pas 5 mm (`GEN-04`) ; trou **H5**
   (vis nylon) ajouté entre les pistes N et L du coin secteur (`GEN-05`).
@@ -495,6 +508,23 @@ corrigé la carte et les firmwares AVANT toute commande :
   3V3_SW/ADC_E).
 - **JP1 en 1-2** = rail `+3V3_SW` permanent (unités ffp5cs) ; ôté = rail commuté
   par GPIO13 (msp/n3pp). La broche 3 de JP1 n'est pas câblée.
+- **C2 (réservoir des servos, sur `LDO_IN`)** — *proposition du 2026-11-18, à valider avant
+  de la reporter dans la BOM, `achats/` et `fritzing/`* : **470 µF sur ffp5cs** (JP1 fermé,
+  C2 n'est jamais commuté), **100 µF sur msp**, **non posé sur n3pp** (pas de servo). Sur une
+  unité à rail commuté, Q7 se ferme à chaque réveil sur un C2 déchargé : avec 470 µF et une
+  source faible (boost 1S, bloc USB médiocre), le +5V s'effondre ~1 ms et le 3V3 du DevKit
+  descend à 2,6-2,8 V ; avec 100 µF il reste ≥ 3,06 V sur le boost (2,85 V dans le pire cas
+  d'un bloc faible) (`simulation/SIMULATION.md` §12).
+- **D5 sur l'unité d'établi** : y poser une **1N5822** au lieu du pont de fil, pour pouvoir
+  brancher l'USB du DevKit (moniteur série) carte alimentée ; alimenter cette unité en 5,1 V
+  ferme (la diode reprend 0,35 V). Les unités déployées gardent le pont de fil et la règle
+  « jamais d'USB carte sous tension ». Les trois cas (alimentation seule, USB seul, les deux)
+  sont détaillés dans [`ALIMENTATION.md`](ALIMENTATION.md) §10.
+- **ffp5cs sur batterie, coupure en veille** — *évolution envisagée le 2026-11-18, non décidée* :
+  JP1 retiré et firmware pilotant `GATE` (GPIO13 WROOM / GPIO3 S3) pour couper capteurs et
+  servos pendant la veille légère ; HC-SR04 alimentés depuis `LDO_IN` (broche centrale de
+  J15/J16 ou broche 2 de JP1) au lieu de la borne « 5V » de J7-J9. Carte inchangée, firmware
+  à écrire : `ALIMENTATION.md` §9.9.
 
 **microSD et strapping GPIO12/MTDI (WROOM)** — le slot est sans risque sur une
 unité **S3** (site A1 vide). Sur une unité **WROOM** : module **3,3 V direct,
