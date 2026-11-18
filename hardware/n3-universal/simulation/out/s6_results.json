@@ -1,0 +1,386 @@
+[
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -2,
+  "c2": "470u",
+  "v5_min": 3.74,
+  "v33_min": 2.62,
+  "t_below_3V0_ms": 0.96
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -2,
+  "c2": "220u",
+  "v5_min": 4.15,
+  "v33_min": 3.03,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -2,
+  "c2": "100u",
+  "v5_min": 4.22,
+  "v33_min": 3.06,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -2,
+  "c2": "non pose",
+  "v5_min": 4.7,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -3,
+  "c2": "470u",
+  "v5_min": 3.89,
+  "v33_min": 2.77,
+  "t_below_3V0_ms": 0.77
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -3,
+  "c2": "220u",
+  "v5_min": 4.28,
+  "v33_min": 3.16,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -3,
+  "c2": "100u",
+  "v5_min": 4.46,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -3,
+  "c2": "non pose",
+  "v5_min": 4.71,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -4,
+  "c2": "470u",
+  "v5_min": 4.57,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -4,
+  "c2": "220u",
+  "v5_min": 4.63,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -4,
+  "c2": "100u",
+  "v5_min": 4.73,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "msp1 : boost 5 V limite a 1 A",
+  "vto": -4,
+  "c2": "non pose",
+  "v5_min": 4.86,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -2,
+  "c2": "470u",
+  "v5_min": 4.08,
+  "v33_min": 2.96,
+  "t_below_3V0_ms": 0.14
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -2,
+  "c2": "220u",
+  "v5_min": 4.19,
+  "v33_min": 3.09,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -2,
+  "c2": "100u",
+  "v5_min": 4.19,
+  "v33_min": 3.09,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -2,
+  "c2": "non pose",
+  "v5_min": 4.45,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -3,
+  "c2": "470u",
+  "v5_min": 4.19,
+  "v33_min": 3.07,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -3,
+  "c2": "220u",
+  "v5_min": 4.38,
+  "v33_min": 3.26,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -3,
+  "c2": "100u",
+  "v5_min": 4.5,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -3,
+  "c2": "non pose",
+  "v5_min": 4.54,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -4,
+  "c2": "470u",
+  "v5_min": 4.56,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -4,
+  "c2": "220u",
+  "v5_min": 4.6,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -4,
+  "c2": "100u",
+  "v5_min": 4.68,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc 5 V / 0,25 ohm",
+  "vto": -4,
+  "c2": "non pose",
+  "v5_min": 4.84,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -2,
+  "c2": "470u",
+  "v5_min": 3.75,
+  "v33_min": 2.64,
+  "t_below_3V0_ms": 0.74
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -2,
+  "c2": "220u",
+  "v5_min": 4.02,
+  "v33_min": 2.85,
+  "t_below_3V0_ms": 0.15
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -2,
+  "c2": "100u",
+  "v5_min": 4.06,
+  "v33_min": 2.85,
+  "t_below_3V0_ms": 0.02
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -2,
+  "c2": "non pose",
+  "v5_min": 4.27,
+  "v33_min": 3.26,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -3,
+  "c2": "470u",
+  "v5_min": 3.89,
+  "v33_min": 2.77,
+  "t_below_3V0_ms": 0.75
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -3,
+  "c2": "220u",
+  "v5_min": 4.14,
+  "v33_min": 3.02,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -3,
+  "c2": "100u",
+  "v5_min": 4.3,
+  "v33_min": 3.19,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -3,
+  "c2": "non pose",
+  "v5_min": 4.41,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -4,
+  "c2": "470u",
+  "v5_min": 4.39,
+  "v33_min": 3.27,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -4,
+  "c2": "220u",
+  "v5_min": 4.41,
+  "v33_min": 3.29,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -4,
+  "c2": "100u",
+  "v5_min": 4.48,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "bloc faible 4,8 V / 0,5 ohm",
+  "vto": -4,
+  "c2": "non pose",
+  "v5_min": 4.67,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -2,
+  "c2": "470u",
+  "v5_min": 4.26,
+  "v33_min": 3.24,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -2,
+  "c2": "220u",
+  "v5_min": 4.26,
+  "v33_min": 3.24,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -2,
+  "c2": "100u",
+  "v5_min": 4.26,
+  "v33_min": 3.24,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -2,
+  "c2": "non pose",
+  "v5_min": 4.54,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -3,
+  "c2": "470u",
+  "v5_min": 4.57,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -3,
+  "c2": "220u",
+  "v5_min": 4.61,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -3,
+  "c2": "100u",
+  "v5_min": 4.61,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -3,
+  "c2": "non pose",
+  "v5_min": 4.62,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -4,
+  "c2": "470u",
+  "v5_min": 4.77,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -4,
+  "c2": "220u",
+  "v5_min": 4.8,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -4,
+  "c2": "100u",
+  "v5_min": 4.85,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ },
+ {
+  "source": "Hi-Link 5,1 V / 0,05 ohm",
+  "vto": -4,
+  "c2": "non pose",
+  "v5_min": 4.91,
+  "v33_min": 3.3,
+  "t_below_3V0_ms": 0.0
+ }
+]

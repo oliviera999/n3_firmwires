@@ -34,6 +34,7 @@ en mode batch (même moteur que le simulateur intégré de KiCad), piloté par P
 | 9 | Pont VBAT 100k/100k (1S) | ✅ | 4,2 V → 2,10 V ; pleine échelle 6,2 V | aucune |
 | 10 | Ponts écho HC-SR04 1k/2k (JP13-15 fermés) | ✅ | écho 5,0 V → 3,23 V ; 5,25 V → 3,39 V (max abs. ESP32 3,6 V) ; front 50 ns | aucune ; JP **ouvert** avec un capteur 5 V = 5 V sur le GPIO (déjà documenté) |
 | 11 | **Dynamique du rail 5 V** (6 relais + Wi-Fi + servo) | ⚠️ selon la source et le servo (SG90 retenu : OK avec source ferme) | relais + Wi-Fi seuls : 4,81 V (bloc 5 V/0,25 Ω) ; bloc faible 4,8 V/0,5 Ω : 4,48 V et 3V3 du DevKit à 3,02 V pendant les rafales ; **appel servo 2,5 A : +5V tombe à 3,65-3,9 V (2,75 V avec le bloc faible), 3V3 à 2,2-2,4 V → reset ESP32** quelle que soit la source simulée | ne jamais alimenter les servos par le jack 5 V/2,5 A : Hi-Link 20M05 ou buck 5 A, câble court, et/ou alimentation servo séparée (déjà envisagé pour le profil 12 V : à rendre explicite) |
+| 12 | **Fermeture de Q7 sur C2 déchargé** (rev 0.2.2+, rail commuté msp/n3pp) — ajout du 2026-11-18 | ⚠️ marge mince avec C2 = 470 µF sur source faible | boost 1S limité à 1 A ou bloc 4,8 V/0,5 Ω : +5V à 3,7-3,9 V et **3V3 du DevKit à 2,6-2,8 V pendant ~0,8-1 ms** à chaque réveil ; C2 = 100 µF : ≥ 3,06 V sur boost et bloc correct (2,85 V dans le pire cas bloc faible + Q7 favorable) ; Hi-Link / JP1 fermé : sans objet | C2 = **100 µF sur msp**, **non posé sur n3pp**, 470 µF sur ffp5cs (pose par profil, carte inchangée) |
 
 Ce que les contrôles existants ne pouvaient pas voir : ERC/DRC vérifient la connectivité et la
 géométrie, pas le sens de conduction d'un MOSFET. Le point 3 est précisément un cas « netlist
@@ -187,6 +188,51 @@ ou 4,8 V / 0,5 Ω ; C1 1000 µF (ESR 80 mΩ) + C2 470 µF (ESR 120 mΩ).
   décalés de ~100 ms dans le firmware ; MG996R jamais sur le jack 5 V/2,5 A. Rev 0.3 : bornier
   `+5V_SERVO` raccordé avant Q12 (rail servo séparé sur la carte, même bloc).
 
+## 12. Fermeture de Q7 sur C2 déchargé (ajout du 2026-11-18)
+
+Depuis la rev 0.2.2, C2 (470 µF, réservoir des servos) est sur `LDO_IN`, **derrière Q7**. Sur une
+unité à rail commuté (JP1 ôté : msp, n3pp), Q7 se ferme à chaque réveil sur un C2 vide. Q8 tire
+la grille de Q7 à la masse en moins d'une microseconde : rien ne limite le courant d'appel, sauf
+Q7 lui-même et ~0,3 Ω de pistes et d'ESR. C1 (1000 µF) se partage avec C2 en quelques centaines
+de microsecondes, puis c'est la source qui recharge l'ensemble. Le §11 simulait un appel servo
+sur un C2 déjà chargé ; ce cas-ci n'était pas couvert.
+
+`sim6_q7_inrush.py` (`out/s6_results.json`, 48 cas) : ESP32 éveillé sans radio (80 mA), rail
+capteurs chargé à 30 mA, D5 = pont de fil.
+
+| Source | C2 | +5V au plus bas | 3V3 du DevKit au plus bas | Durée sous 3,0 V |
+|---|---|---|---|---|
+| Boost 1S limité à 1 A (msp1) | 470 µF | 3,74-3,89 V | **2,62-2,77 V** | 0,8-1,0 ms |
+| | 100 µF | 4,22-4,46 V | 3,06-3,30 V | — |
+| | non posé | 4,70 V | 3,30 V | — |
+| Bloc 5 V / 0,25 Ω | 470 µF | 4,08-4,19 V | 2,96-3,07 V | ≤ 0,14 ms |
+| | 100 µF | 4,19-4,50 V | 3,09-3,30 V | — |
+| Bloc faible 4,8 V / 0,5 Ω | 470 µF | 3,75-3,89 V | **2,64-2,77 V** | 0,75 ms |
+| | 100 µF | 4,06-4,30 V | 2,85-3,19 V | ≤ 0,02 ms |
+| Hi-Link 5,1 V (ffp5cs) | 470 µF | 4,26-4,57 V | 3,24-3,30 V | — |
+
+Fourchettes pour Vgs(th) de Q7/Q12 = −2 à −3 V ; une pièce à −4 V limite d'elle-même le courant
+et le creux disparaît (3,27-3,30 V dans tous les cas). Autrement dit, **plus les MOSFET sont
+« bons », plus le creux est profond**.
+
+- Ce n'est pas un reset assuré : le seuil de brownout par défaut de l'ESP32 est vers 2,43 V.
+  Mais 2,6 V pendant une milliseconde, au moment où le firmware allume le rail (début de
+  `setup()`), c'est une marge mince, sur les profils qui ont déjà la chaîne 5 V la plus faible.
+- Sur ffp5cs (JP1 fermé) C2 est chargé une fois, à la mise sous tension, en même temps que C1 :
+  sans objet. La ligne Hi-Link n'est là que pour mémoire.
+- **Remède sans toucher au cuivre** : poser C2 selon le profil — **100 µF sur msp** (les SG90
+  tirent alors leur appel dans C1 à travers Q7, cas du §11 : LDO_IN ≥ 4,9 V), **non posé sur
+  n3pp** (pas de servo), 470 µF sur ffp5cs. Même empreinte (radial 8 mm, pas 3,5 mm : un 100 µF
+  de 6,3 mm se pose en écartant légèrement les pattes).
+- Remèdes écartés : ralentir la fermeture de Q7 (résistance de grille ou condensateur de Miller)
+  demanderait une empreinte que la carte n'a pas ; un démarrage progressif par impulsions depuis
+  le firmware ne fonctionne pas, R35 (100k) relâche la grille en ~0,3 ms, plus lentement que le
+  transfert de charge.
+- Limites : modèles comportementaux des régulateurs, sources idéalisées, résistances de pistes
+  estimées depuis le PCB routé (57 mΩ de C1 à Q7, 66 mΩ de Q7 à C2 en 1 oz). À confirmer à
+  l'oscilloscope sur la première carte : sonde sur la broche 3V3 du DevKit, déclenchement sur
+  GPIO13.
+
 ## Limites des modèles (à lire avant de citer un chiffre)
 
 - **IRF4905** : modèle VDMOS calibré sur la datasheet (Rds(on) 23 mΩ à −10 V, diode interne
@@ -212,6 +258,7 @@ python3 sim2_gate.py              # rail capteurs : câblage rev 0.2 vs corrigé
 python3 sim3_power.py             # Q12, inversion, chaîne 5 V -> DevKit, Q11/D8/D9
 python3 sim4_adc_rail.py          # pont VBAT, écho HC-SR04, dynamique du rail 5 V
 python3 sim5_servo_sweep.py       # appel servo par type (SG90 / MG90S / MG996R) et par source
+python3 sim6_q7_inrush.py         # fermeture de Q7 sur C2 déchargé, par source et par valeur de C2
 
 # Depuis le schéma KiCad (champs Sim.*, rev 0.2.1) : export puis banc rail capteurs
 kicad-cli sch export netlist --format spice -o simulation/out/n3-universal-kicad.spice kicad/n3-universal.kicad_sch
