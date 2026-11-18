@@ -47,6 +47,14 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 > (`COMMANDE.md` §1 et §5). Empilage 1 oz porté par le `gbrjob` du zip. Résultats JLCDFM
 > (v0.2.3) et lignes attendues dans `COMMANDE.md` §0.
 >
+> ⏸️ **Avant de commander (2026-11-18)** : une simplification est à l'étude —
+> [`SIMPLIFICATION_PROPOSEE.md`](SIMPLIFICATION_PROPOSEE.md) : sortir de la carte l'alimentation
+> 230 V et les relais (module relais du commerce piloté par l'étage à transistor conservé),
+> carte ≈ 278 × 90 mm, plus aucun 230 V sur le PCB. **Proposition en attente d'arbitrage** : rien
+> n'est modifié, la 0.2.3 reste la seule version commandable. Le header **J38** de la 0.2.3 permet
+> déjà de piloter un module relais externe actif à l'état bas (collecteurs + GND + 5 V).
+> Prompt de lancement du chantier : [`PROMPT_REV_0.3.md`](PROMPT_REV_0.3.md).
+>
 > 🧭 [`EVOLUTIONS_PROPOSEES.md`](EVOLUTIONS_PROPOSEES.md) : l'étude du sélecteur AUTO / ON,
 > du retour d'état et de la connectique — **décisions actées le 2026-10-06 et appliquées
 > en 0.2** (encadré en tête du document).

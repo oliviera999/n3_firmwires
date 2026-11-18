@@ -10,6 +10,12 @@
 > Les zips 0.1.x, 0.2 et 0.2.2 sont périmés et retirés de `exports/`.
 >
 > Il n'y aura **qu'une seule commande** : les vérifications locales du §0 sont obligatoires.
+>
+> ⏸️ **Décision à prendre avant de payer (2026-11-18)** : commander cette 0.2.3, ou attendre une
+> rev 0.3 sans 230 V sur la carte (relais et Hi-Link hors carte, ≈ 278 × 90 mm, plus de fentes
+> internes — ce qui rouvre la piste PCB Maroc du §4). Étude et décisions ouvertes :
+> [`SIMPLIFICATION_PROPOSEE.md`](SIMPLIFICATION_PROPOSEE.md). Une 0.2.3 commandée reste utilisable
+> dans cet esprit : ne poser ni K1-K6 ni PS1/F1/RV1/J27, module relais relié à J38, bloc 5 V sur J2.
 
 ## 0. AVANT de payer — ce que le dépôt ne peut pas faire à ta place
 
