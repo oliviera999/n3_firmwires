@@ -6,6 +6,10 @@
 > 2026-11-02 et du 2026-11-18 sur la simplification de la carte (sortir les relais et
 > l'alimentation 230 V), pour que les choix soient pris **avant** de toucher `generate.py`.
 > Le prompt de lancement du chantier est dans [`PROMPT_REV_0.3.md`](PROMPT_REV_0.3.md).
+>
+> **Relecture du 2026-11-18** : quatre incohérences corrigées sans rien retirer (nombre de
+> décisions au §1, diodes de roue libre au §5 et en D4, essai n° 4 du §7). Les propositions
+> antérieures (2026-11-02, scénario A, etc.) restent dans le document : rien n'est encore tranché.
 
 Chaque affirmation porte son niveau de preuve :
 **[mesuré]** lu sur le PCB 0.2.3 ou le générateur · **[schéma]** déduit du schéma, non essayé ·
@@ -23,7 +27,7 @@ Chaque affirmation porte son niveau de preuve :
   (§2). Carte ≈ 278 × 90 mm au lieu de 278 × 135 (≈ −33 %) **[estimé]**, largeur inchangée.
 - **Ce que ça coûte** : une rev 0.3 (générateur, routage secteur, gardes, simulations, achats,
   Fritzing, documents, JLCDFM). Aucun firmware à modifier.
-- **Avant de lancer** : un essai sur table d'une heure (§7), et quatre décisions (§9).
+- **Avant de lancer** : un essai sur table d'une heure (§7), et six décisions (§9, D1 à D6).
 
 ## 2. Ce que montrent les mesures sur la 0.2.3
 
@@ -138,15 +142,16 @@ Limites à connaître :
 
 ### Ce que deviendrait la carte
 
-- **Part** : K1-K6, D1-D4, D6, D7, J3-J6, J23, J24, PS1, F1, RV1, J27, H5, les pistes secteur
+- **Part** : K1-K6, D1-D4, D6, D7 (diodes de roue libre : retirées ou empreintes gardées non
+  posées selon la décision D4, §9), J3-J6, J23, J24, PS1, F1, RV1, J27, H5, les pistes secteur
   tracées en dur, les 19 fentes, les règles `Mains` du `.kicad_dru`, la zone d'exclusion du plan
   de masse, la consigne de vis nylon.
 - **Reste** : toute la bande logique, et l'étage de commande (y 85..101).
 - **Bouge** : J21, J22 et les trous H1, H2 (aujourd'hui au-dessus de la bande logique) ; le bord
   haut descend de y 40 à y ≈ 84.
 - **Arrive** : un connecteur de commande 8 points à la place de J38 (décision D3).
-- **Taille** : ≈ 278 × 90 mm, ≈ 253 cm², **≈ −33 %** **[estimé]** (≈ 278 × 87 si les diodes de roue
-  libre disparaissent aussi).
+- **Taille** : ≈ 278 × 90 mm, ≈ 253 cm², **≈ −33 %** **[estimé]**, empreintes des diodes de roue
+  libre gardées (≈ 278 × 87 si elles disparaissent aussi, voir D4).
 
 ### Ce qu'il faut autour de la carte
 
@@ -189,7 +194,7 @@ par le même 5 V que le montage.
 | 1 | Mise sous tension, reset, téléversement | le relais ne colle **jamais**, même brièvement |
 | 2 | GPIO haut puis bas, plusieurs cycles | collage et décollage francs |
 | 3 | Fil IN débranché, module alimenté | relais au repos |
-| 4 | Montage éteint, module alimenté | relais au repos |
+| 4 | DevKit débranché ou maintenu en reset (GPIO flottant), 5 V présent sur le BC337 et le module | relais au repos |
 | 5 | Base forcée à +3,3 V par 1 kΩ, puis à la masse (équivalents de JP en 1-2 et 2-3) | ON forcé, OFF forcé, quel que soit le GPIO |
 | 6 | Courant dans IN au multimètre | quelques mA (loin des 800 mA du BC337) |
 | 7 | Dessous du module | écart visible entre pistes 230 V et basse tension ; fente si possible |
@@ -213,7 +218,7 @@ bornier 3 points 3 DH ; Hi-Link 90 DH, porte-fusible 4 DH, varistance 4 DH ; cha
 | D1 | Quelle carte commander ? | 0.2.3 telle quelle (scénario A) / rev 0.3 (scénario B) | **rev 0.3**, sauf besoin urgent de cartes |
 | D2 | Commande des modules | directe par GPIO, module H/L sur H (2026-11-02) / **étage à transistor conservé**, module actif bas | **étage conservé**, si l'essai du §7 passe |
 | D3 | Connecteur de commande (6 lignes, +5 V, masse) | header 1×8 Dupont comme J38 / bornier à vis 8 points | **bornier à vis** (cohérent avec « borniers à vis partout », un Dupont se déboîte) |
-| D4 | Diodes de roue libre D1-D7 | supprimées / empreintes gardées non posées (permettent de commander une bobine nue ≤ 100 mA) | à trancher : ≈ 3 mm de hauteur en jeu |
+| D4 | Diodes de roue libre D1-D4, D6, D7 (pas D5 : c'est le pont de fil de l'alimentation, il reste) | supprimées / empreintes gardées non posées (permettent de commander une bobine nue ≤ 100 mA) | à trancher : ≈ 3 mm de hauteur en jeu |
 | D5 | Fabricant | JLCPCB (import, FedEx) / PCB Maroc (devis à demander, sans fentes) | demander le devis PCB Maroc une fois les gerbers 0.3 sortis |
 | D6 | Largeur | 278 mm inchangés / réorganiser la droite de la carte (scénario E partiel) | **inchangée** pour la 0.3 |
 
