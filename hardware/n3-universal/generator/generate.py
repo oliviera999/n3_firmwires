@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Génère le projet KiCad (schéma + PCB + BOM) de la carte porteuse UNIVERSELLE
-n3-universal (msp / n3pp / ffp5cs, bi-module WROOM ou ESP32-S3). Zone secteur
-isolée en haut de carte (fentes, règle DRC 3 mm mains<->logique via .kicad_dru),
-header de service, distribution 5V/3V3/GND en borniers + header.
-Routage : generator/route_universal.py.
+n3-universal (msp / n3pp / ffp5cs, bi-module WROOM ou ESP32-S3). Rev 0.3 : plus
+de 230 V ni de relais sur la carte — six sorties de COMMANDE (bornier 3 points
+S / +5V / GND par canal) pilotent des modules relais du commerce actifs à l'état
+haut ; alimentation 5 V externe ; header de service, distribution 5V/3V3/GND en
+borniers + header. Routage : generator/route_universal.py.
 
 Source de vérité : ../pinmap_universel_propose.json et les sections
 PINMAP_UNIVERSAL des trois firmwares (l'ensemble étant vérifié contre les pads
@@ -37,8 +38,8 @@ ROOT = HERE.parent
 KICAD_DIR = ROOT / "kicad"
 FP_DIR = HERE / "footprints"
 PROJECT = "n3-universal"
-REV = "0.2.3"
-REV_DATE = "2026-10-31"
+REV = "0.3.0"
+REV_DATE = "2026-11-19"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 ROOT_UUID = str(uuid.uuid5(NS, PROJECT + "/root"))
 
@@ -147,9 +148,6 @@ SYMBOLS: dict[str, dict] = {
     "D": dict(ref="D", w=2, left=[("1", "K", 0)], right=[("2", "A", 0)]),
     "NPN": dict(ref="Q", w=3, left=[("2", "B", 0)],
                 right=[("1", "C", 1), ("3", "E", -1)]),
-    "RELAY_SRD": dict(ref="K", w=5,
-                      left=[("5", "COIL+", 1), ("2", "COIL-", -1)],
-                      right=[("1", "COM", 2), ("3", "NO", 0), ("4", "NC", -2)]),
     "BARREL": dict(ref="J", w=4,
                    right=[("1", "TIP", 1), ("3", "SW", 0), ("2", "SLEEVE", -1)]),
     "CONN_02": dict(ref="J", w=3, left=[("1", "1", 1), ("2", "2", 0)]),
@@ -213,11 +211,6 @@ SYMBOLS["PMOS_GDS"] = dict(ref="Q", w=3, left=[("1", "G", 0)],
                            right=[("2", "D", 1), ("3", "S", -1)])
 SYMBOLS["PMOS_DGS"] = dict(ref="Q", w=3, left=[("2", "G", 0)],
                            right=[("1", "D", 1), ("3", "S", -1)])
-SYMBOLS["FUSE"] = dict(ref="F", w=2, left=[("1", "~", 0)], right=[("2", "~", 0)])
-SYMBOLS["VARISTOR"] = dict(ref="RV", w=2, left=[("1", "~", 0)], right=[("2", "~", 0)])
-SYMBOLS["HLK20M"] = dict(ref="PS", w=6,
-                         left=[("1", "AC-L", 1), ("2", "AC-N", -1)],
-                         right=[("4", "+5V", 1), ("3", "GND", -1)])
 SYMBOLS["CONN_06S"] = dict(ref="J", w=3,
                            left=[(str(i), str(i), 3 - i) for i in range(1, 7)])
 # Régulateur LD1117V33 / LM1117T (TO-220) : 1=GND 2=OUT 3=IN — brochage DIFFERENT
@@ -225,8 +218,6 @@ SYMBOLS["CONN_06S"] = dict(ref="J", w=3,
 SYMBOLS["LDO"] = dict(ref="U", w=4, left=[("3", "IN", 1), ("1", "GND", -1)],
                       right=[("2", "OUT", 1)])
 SYMBOLS["TP"] = dict(ref="TP", w=1, left=[("1", "~", 0)])
-SYMBOLS["CONN_08"] = dict(ref="J", w=3,
-                          left=[(str(i), str(i), 4 - i) for i in range(1, 9)])
 
 
 def sym_def(name: str, meta: dict) -> str:
@@ -267,80 +258,66 @@ def sym_def(name: str, meta: dict) -> str:
 # sch=(x,y) en unités de grille ; pcb=(x,y,rot) en mm ; nets: broche -> net.
 # ---------------------------------------------------------------------------
 
-def relay_channel(n: int, gpio_net: str, jref: str, k_x: float,
-                  refs: dict | None = None, force_on: bool = True):
-    """Canal relais n : commande GPIO -> transistor -> relais SRD-05 -> bornier 230V.
-    Relais pivoté 90° : contacts vers le bord haut (zone secteur), bobine vers la
-    logique. Bornier : 1=NC 2=COM 3=NO (routage secteur rectiligne, fait par
-    route_universal.py, PAS par l'autorouteur).
+# Rev 0.3 — colonnes des six canaux de commande (pas de 34 mm, positions des
+# résistances reprises de la 0.2.3 pour réutiliser le cuivre validé des nets K1..K6).
+CMD_KX = (58, 92, 126, 160, 194, 228)
+CMD_RS = "470"      # simulation/sim7_module_cmd.py : 1k ne sature pas le transistor d'un module au pire cas
+CMD_BORNIER_Y = 93  # rangée de pastilles des borniers J39..J44 (fils vers le bord haut)
 
-    Rev 0.2 — sélecteur de forçage JPf (1x3) sur la base du transistor, SANS
-    cavalier dans le chemin GPIO -> base (le mode AUTO, celui de la production,
-    ne dépend d'aucun contact) : 1-2 = ON forcé (+3V3 permanent du module à
-    travers Rf 1k, le GPIO bas n'absorbe que 0,7 mA), 2-3 = OFF forcé (base à
-    GND, le GPIO haut débite 3,3 mA dans Rb), retiré = AUTO. `force_on=False`
-    (chauffage K3) ne câble pas la broche 1 : ON forcé impossible.
+
+def cmd_channel(n: int, gpio_net: str, k_x: float, refs: dict, force_on: bool = True):
+    """Canal de commande n (rev 0.3) : GPIO -> Rs -> bornier 3 points -> entrée S d'un
+    module relais du commerce ACTIF A L'ETAT HAUT (type KY-019 : transistor, diode de
+    roue libre et LED sur le module). Plus de relais, de transistor ni de 230 V sur la carte.
+
+        GPIO --[Rs 470]--+--> J (S)          J : S / +5V / GND, dans l'ordre du KY-019
+                         |
+                      [Rp 10k] vers GND      repos tant que le GPIO flotte ou qu'un fil est coupé
+                         |
+                      JPf 1x3 : sans cavalier = AUTO ; 1-2 = +3V3 DIRECT (ON forcé) ;
+                                2-3 = GND DIRECT (OFF forcé)
+
+    Rs protège le GPIO quand un forçage le contredit (6,5 mA sous 3,3 V). Le cavalier
+    relie la ligne directement : à travers une résistance, il ne l'emporterait pas sur
+    un GPIO à l'état opposé. `force_on=False` ne câble pas la broche 1 (ON impossible) :
+    K3 (chauffage, décision A3-b) et K6 (GPIO45 du S3 = strapping VDD_SPI : une ligne
+    tenue à +3V3 au reset empêcherait le module de démarrer, sim7 `gpio45_reset`).
+    Références Rs / Rp = celles de Rb / Rp de la 0.2.3 (mêmes positions).
     """
     col = k_x - 7
-    # Références par défaut (canaux 1-4). Les canaux ajoutés passent un
-    # override explicite pour ne pas percuter D5/LED5/R13... (alim, LDR, US).
-    refs = refs or dict(rb=f"R{n}", rp=f"R{n + 4}", rl=f"R{n + 8}",
-                        q=f"Q{n}", d=f"D{n}", led=f"LED{n}")
-    rf, jpf = f"R{60 + n}", f"JP{4 + n}"
-    bx, by = 111, 4 + 26 * (n - 1)  # bloc schéma (unités de grille)
-    jp_nets = {"2": f"REL{n}_B", "3": "GND"}
+    jref, jpf = f"J{38 + n}", f"JP{4 + n}"
+    bx, by = 111, 4 + 16 * (n - 1)  # bloc schéma (unités de grille)
+    line = f"CMD{n}"
+    jp_nets = {"2": line, "3": "GND"}
     if force_on:
-        jp_nets["1"] = f"REL{n}_ON"
+        jp_nets["1"] = "+3V3"
     return [
-        dict(ref=refs["rb"], sym="R", value="1k",
+        dict(ref=refs["rs"], sym="R", value=CMD_RS,
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Résistance base transistor", sch=(bx, by), pcb=(col, 90.5, 0),
-             nets={"1": gpio_net, "2": f"REL{n}_B"}),
+             desc=f"Série commande K{n} (protège le GPIO pendant un forçage ON/OFF contraire)",
+             sch=(bx, by), pcb=(col, 90.5, 0),
+             nets={"1": gpio_net, "2": line}),
         dict(ref=refs["rp"], sym="R", value="10k",
              fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Pull-down base (état sûr au boot)", sch=(bx, by + 4), pcb=(col, 95, 0),
-             nets={"1": f"REL{n}_B", "2": "GND"}),
-        dict(ref=refs["rl"], sym="R", value="1k",
-             fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-             desc="Résistance LED témoin", sch=(bx, by + 8), pcb=(col, 99.5, 0),
-             nets={"1": "+5V", "2": f"REL{n}_LED"}),
-        dict(ref=refs["q"], sym="NPN", value="BC337-40", fp="TO-92_Inline_Wide_CBE",
-             desc="Transistor NPN commande relais (1=C 2=B 3=E, brochage C-B-E "
-                  "sérigraphié : un 2N2222/S8050 E-B-C se monte retourné)",
-             sch=(bx + 9, by + 2), pcb=(k_x + 7, 95, 0),
-             nets={"1": f"REL{n}_SW", "2": f"REL{n}_B", "3": "GND"}),
-        dict(ref=refs["d"], sym="D", value="1N4007",
-             fp="D_DO-41_SOD81_P10.16mm_Horizontal",
-             desc="Diode de roue libre bobine", sch=(bx + 9, by + 8), pcb=(col, 87, 0),
-             nets={"1": "+5V", "2": f"REL{n}_SW"}),
-        dict(ref=refs["led"], sym="LED", value="rouge", fp="LED_D5.0mm",
-             desc="LED témoin relais ON", sch=(bx + 9, by + 12), pcb=(k_x + 9, 90, 90),
-             nets={"1": f"REL{n}_SW", "2": f"REL{n}_LED"}),
-        *([dict(ref=rf, sym="R", value="1k",
-                fp="R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
-                desc=f"Forçage ON du canal K{n} : +3V3 -> 1k -> cavalier {jpf} 1-2 -> base",
-                sch=(bx + 19, by + 10), pcb=(k_x + 16, 89.3, 270),
-                silk=dict(ref=(5.08, 0, 90), value=(12.3, 0, 0)),
-                nets={"1": "+3V3", "2": f"REL{n}_ON"})] if force_on else []),
-        dict(ref=jpf, sym="CONN_03", value="Jumper ON/OFF", silk=dict(ref=(0, 7.6, 0)),
+             desc=f"Rappel à la masse de la commande K{n} (repos au démarrage, GPIO flottant ou fil coupé)",
+             sch=(bx, by + 4), pcb=(col, 95, 0),
+             nets={"1": line, "2": "GND"}),
+        dict(ref=jpf, sym="CONN_03", value="Jumper ON/OFF", silk=dict(ref=(0, 9.3, 0)),
              fp="PinHeader_1x03_P2.54mm_Vertical",
-             desc=f"Sélecteur K{n} : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé"
-                  + (" ; 2-3 = OFF forcé" if force_on else
-                     " INTERDIT (broche 1 non câblée, chauffage) ; 2-3 = OFF forcé"),
-             sch=(bx + 19, by + 14), pcb=(k_x + 20.5, 90, 0),
+             desc=f"Sélecteur K{n} : SANS cavalier = AUTO (firmware) ; 1-2 = ON forcé (+3V3 direct)"
+                  + (" ; 2-3 = OFF forcé (masse directe)" if force_on else
+                     " INTERDIT (broche 1 non câblée) ; 2-3 = OFF forcé (masse directe)"),
+             sch=(bx + 12, by + 2), pcb=(k_x + 22.2, 90, 0),
              nets=jp_nets),
-        dict(ref=f"K{n}", sym="RELAY_SRD", value="SRD-05VDC-SL-C",
-             fp="Relay_SPDT_SANYOU_SRD_Series_Form_C",
-             desc="Relais 5V SPDT Songle/Sanyou SRD Form C — 7A/240VAC et 3A "
-                  "inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A)",
-             sch=(bx + 19, by + 2), pcb=(k_x, 78, 90),
-             nets={"5": "+5V", "2": f"REL{n}_SW", "1": f"REL{n}_COM",
-                   "3": f"REL{n}_NO", "4": f"REL{n}_NC"}),
+        # Bornier tourné de 180° : entrée des fils vers le bord haut. Lu de gauche à
+        # droite depuis le bord : S (pad 3), +5V (pad 2), GND (pad 1) — l'ordre du
+        # connecteur du KY-019 (S / + / -), GND à droite comme sur les autres borniers.
         dict(ref=jref, sym="CONN_03", value="Bornier_5.08",
              fp="TerminalBlock_bornier-3_P5.08mm",
-             desc="Bornier charge 230V (1=NC 2=COM 3=NO)",
-             sch=(bx + 30, by + 2), pcb=(k_x - 5.08, 50, 0),
-             nets={"1": f"REL{n}_NC", "2": f"REL{n}_COM", "3": f"REL{n}_NO"}),
+             desc=f"Commande du module relais K{n} (3=S 2=+5V 1=GND, soit S / +5V / GND vu du bord) — "
+                  "module ACTIF A L'ETAT HAUT uniquement",
+             sch=(bx + 24, by + 2), pcb=(k_x + 17.46, CMD_BORNIER_Y, 180),
+             nets={"1": "GND", "2": "+5V", "3": line}),
     ]
 
 
@@ -461,13 +438,13 @@ def build_components():
                            "(rangée droite à 25,4 mm, ou 22,86 mm pour le DevKitC-1 officiel) — un seul module A1 OU A2",
                       # rev 0.2.3 : y 128 -> 129,2 — la rangée principale passe à 25,4 mm ;
                       # le centre du module (zone antenne) reste à y ≈ 116,5. Calé entre
-                      # PS1 (courtyard y <= 101,5) et D8 (y >= 131,2).
+                      # la bande de commande (y <= 97) et D8 (y >= 131,2).
                       sch=(152, 104), pcb=(257, 129.2, 90), nets=a2_nets))
     # --- Alimentation 5 V (rev 0.2 : anti-inversion P-MOSFET + TVS) ----------
     # J1 / J2 / J37 arrivent sur VIN_RAW ; Q12 (IRF4905, VGS = -5 V) ne laisse
     # passer qu'une polarité : un fil inversé par un élève ne détruit plus la
-    # carte (audit NET-06, levé en 0.2). PS1 (Hi-Link) sort directement sur
-    # +5V : sa polarité est fixée par l'empreinte.
+    # carte (audit NET-06, levé en 0.2). Rev 0.3 : plus de Hi-Link embarqué — le
+    # profil ffp5cs 230 V s'alimente par un bloc 5 V externe sur J2, comme n3pp.
     comps += [
         # Ouverture vers le bord gauche (x=40) : rotation 0° = montage
         # classique (lèvre ~6 mm hors carte). 270° pointait l'ouverture vers
@@ -492,17 +469,35 @@ def build_components():
              desc="TVS 6,8V (Vrwm 5,8V) sur le rail +5V : surtension / inversion résiduelle",
              sch=(34, 34), pcb=(56, 114, 0),
              nets={"1": "+5V", "2": "GND"}),
-        # Rev 0.2.2 (ALIMENTATION.md, arbitrage A1) : D5 remplacée par un PONT DE FIL —
-        # +0,35 V de marge pour l'AMS1117 du DevKit ; il n'y aura jamais USB et
-        # alimentation branchés en même temps (flasher carte HORS tension, ou OTA).
-        # L'empreinte DO-201 reste : une 1N5822 peut être posée si ce besoin revient.
-        dict(ref="D5", sym="D", value="FIL", fp="D_DO-201AD_P15.24mm_Horizontal",
-             desc="PONT DE FIL vers VIN DevKit (rev 0.2.2 : ex-1N5822 court-circuitée, +0,35 V de marge ; "
-                  "ne JAMAIS brancher l'USB du DevKit carte sous tension)",
+        # Rev 0.3 (décision D7 du 2026-11-19, remplace l'arbitrage A1 « D5 = pont de fil ») :
+        # D5 = 1N5822 POSEE sur toutes les cartes (anode = rail +5V, cathode = VIN_5V) et
+        # cavalier JP22 en parallèle.
+        #   JP22 ôté (livraison) : carte seule, ou carte ET USB du DevKit branchés ensemble
+        #     sans risque (chaque source derrière sa diode) ; la diode coûte 0,33-0,42 V :
+        #     source réglée à 5,2 V (simulation/sim8_d7_supply.py).
+        #   JP22 posé : D5 court-circuitée. USB seul = toute la carte (établi, jamais de
+        #     servo) ; ou unité dont la source ne dépasse pas 5,0 V (n3pp sur chargeur).
+        #     JAMAIS l'USB et l'alimentation ensemble dans cette position.
+        dict(ref="D5", sym="D", value="1N5822", fp="D_DO-201AD_P15.24mm_Horizontal",
+             desc="Schottky anti-retour vers VIN du DevKit (K = VIN_5V, A = +5V) — posée sur toutes les "
+                  "cartes ; court-circuitée par le cavalier JP22",
              sch=(24, 34), pcb=(76, 114, 0),
              nets={"1": "VIN_5V", "2": "+5V"}),
+        dict(ref="JP22", sym="CONN_02", value="Jumper USB SEUL",
+             fp="PinHeader_1x02_P2.54mm_Vertical", silk=dict(ref=(3.1, 1.3, 0)),  # repère au-dessus (C14 à gauche)
+             desc="Court-circuit de D5 : OTE (livraison) = carte seule ou carte + USB ; POSE = USB seul "
+                  "(établi) ou source <= 5,0 V — jamais USB + alimentation ensemble",
+             sch=(34, 40), pcb=(92, 108, 90),
+             nets={"1": "+5V", "2": "VIN_5V"}),
+        # C14 : réservoir APRES la diode. Quand le rail +5V s'effondre une milliseconde
+        # (Q7 qui se ferme sur C2 vide, appel d'un module), D5 se bloque et C14 tient le
+        # DevKit : 3V3 à 3,30 V au lieu de 2,74 V sur msp (sim8, « q7_sur_c2_vide »).
+        dict(ref="C14", sym="CP", value="220u/16V", fp="CP_Radial_D8.0mm_P3.50mm",
+             desc="Réservoir de VIN_5V derrière D5 (tient le DevKit pendant les creux du rail +5V)",
+             sch=(34, 46), pcb=(84, 104.5, 0),
+             nets={"1": "VIN_5V", "2": "GND"}),
         dict(ref="C1", sym="CP", value="1000u/16V", fp="CP_Radial_D10.0mm_P5.00mm",
-             desc="Réservoir rail 5V (relais + servos + HC-SR04)",
+             desc="Réservoir rail 5V (modules relais + servos + HC-SR04)",
              sch=(24, 40), pcb=(58, 124, 0),
              nets={"1": "+5V", "2": "GND"}),
         dict(ref="R13", sym="R", value="1k",
@@ -511,33 +506,19 @@ def build_components():
              nets={"1": "+5V", "2": "PWR_LED"}),
         dict(ref="LED5", sym="LED", value="verte", fp="LED_D5.0mm",
              desc="LED présence 5V — *NON POSÉE* sur msp/n3pp (3 mA permanents = 0,4 Wh/j, ALIMENTATION.md) ; "
-                  "posée sur ffp5cs (secteur)", sch=(24, 52), pcb=(86, 123, 90),
+                  "posée sur ffp5cs", sch=(24, 52), pcb=(86, 123, 90),
              nets={"1": "GND", "2": "PWR_LED"}),
     ]
-    # --- 6 canaux relais (mapping GPIO = gpio_mapping.h / pins.h) ------------
-    comps += relay_channel(1, NET["POMPE_AQUA"], "J3", 58)
-    comps += relay_channel(2, NET["POMPE_RESERV"], "J4", 92)
-    # K3 = chauffage ffp5cs : jamais de ON forcé (court-circuiterait l'hystérésis
-    # de HeaterOrchestrator) — décision A3-b (EVOLUTIONS_PROPOSEES.md).
-    comps += relay_channel(3, NET["RADIATEURS"], "J5", 126, force_on=False)
-    comps += relay_channel(4, NET["LUMIERE"], "J6", 160)
-    comps += relay_channel(5, NET["AUX1"], "J23", 194,
-                           refs=dict(rb="R28", rp="R29", rl="R30",
-                                     q="Q5", d="D6", led="LED6"))
-    comps += relay_channel(6, NET["AUX2"], "J24", 228,
-                           refs=dict(rb="R31", rp="R32", rl="R33",
-                                     q="Q6", d="D7", led="LED7"))
-    # --- Retour d'état des relais (collecteurs 0/5 V) : header 1x8 ----------
-    # Évolution A2 (EVOLUTIONS_PROPOSEES.md) : pas d'expandeur sur la carte, un
-    # header expose l'état RÉEL de chaque relais (collecteur : ~0 V = relais
-    # collé, 5 V = au repos), lisible par un PCF8574 déporté via un diviseur.
-    comps.append(dict(
-        ref="J38", sym="CONN_08", value="Header CMD SENSE",
-        fp="PinHeader_1x08_P2.54mm_Vertical",
-        desc="Etat réel des relais K1..K6 (1-6 = collecteurs 0V=ON/5V=OFF, 7=GND, 8=+5V)",
-        sch=(188, 4), pcb=(133, 154, 90),
-        nets={"1": "REL1_SW", "2": "REL2_SW", "3": "REL3_SW", "4": "REL4_SW",
-              "5": "REL5_SW", "6": "REL6_SW", "7": "GND", "8": "+5V"}))
+    # --- 6 canaux de COMMANDE de modules relais (mapping GPIO = gpio_mapping.h / pins.h)
+    # Rev 0.3 : relais, transistors, LED et diodes de roue libre quittent la carte.
+    # K3 = chauffage ffp5cs : jamais de ON forcé (court-circuiterait l'hystérésis de
+    # HeaterOrchestrator, décision A3-b). K6 : jamais de ON forcé non plus (GPIO45 du S3).
+    comps += cmd_channel(1, NET["POMPE_AQUA"], CMD_KX[0], dict(rs="R1", rp="R5"))
+    comps += cmd_channel(2, NET["POMPE_RESERV"], CMD_KX[1], dict(rs="R2", rp="R6"))
+    comps += cmd_channel(3, NET["RADIATEURS"], CMD_KX[2], dict(rs="R3", rp="R7"), force_on=False)
+    comps += cmd_channel(4, NET["LUMIERE"], CMD_KX[3], dict(rs="R4", rp="R8"))
+    comps += cmd_channel(5, NET["AUX1"], CMD_KX[4], dict(rs="R28", rp="R29"))
+    comps += cmd_channel(6, NET["AUX2"], CMD_KX[5], dict(rs="R31", rp="R32"), force_on=False)
     # --- Servomoteurs nourrisseurs -------------------------------------------
     comps += [
         dict(ref="R20", sym="R", value="220",
@@ -640,12 +621,12 @@ def build_components():
         dict(ref="J21", sym="CONN_04", value="Support I2C libre",
              fp="PinSocket_1x04_P2.54mm_Vertical",
              desc="Port I2C libre 2 (1=GND 2=VCC 3=SCL 4=SDA)",
-             sch=(104, 100), pcb=(43, 80, 0),
+             sch=(104, 100), pcb=(284, 88, 0),
              nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}),
         dict(ref="J22", sym="CONN_04", value="Support I2C libre",
              fp="PinSocket_1x04_P2.54mm_Vertical",
              desc="Port I2C libre 3 (1=GND 2=VCC 3=SCL 4=SDA)",
-             sch=(104, 108), pcb=(47, 90, 0),
+             sch=(104, 108), pcb=(292, 88, 0),
              nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}),
     ]
     # --- GPIO libres + EN -----------------------------------------------------
@@ -808,37 +789,6 @@ def build_components():
              desc="Depuis buck OUT 5V (1=+5V 2=GND) — protégé contre l'inversion par Q12", sch=(146, 74), pcb=(279, 166, 0),
              nets={"1": "VIN_RAW", "2": "GND"}),
     ]
-    # --- Profil secteur : Hi-Link 20M05 embarqué (fusible + varistance carte) --
-    comps += [
-        # 1=N / 2=L (le pad 2 est côté F1 : la phase part directement au fusible,
-        # sans passer près du pad neutre — géométrie revue à l'audit final rev 0.1).
-        dict(ref="J27", sym="CONN_02", value="Bornier_5.08",
-             fp="TerminalBlock_bornier-2_P5.08mm",
-             desc="ENTREE SECTEUR 230V (1=N 2=L) — ZONE DANGER", sch=(146, 78), pcb=(250, 46, 0),
-             nets={"1": "MAINS_N", "2": "MAINS_L"}),
-        # Empreinte universelle : fentes au pas 22,5-22,6 + ergot (Schurter OG,
-        # Stelvio PTF78, Multicomp MC000830 à capot, Würth 6961070) et paire
-        # Pad 1 à (268.5,44) et pad 2 à (268.5,66.55) : F1 décalé de 2,5 mm vers
-        # la droite par rapport à la 0.1.2 pour loger une varistance 14 mm.
-        dict(ref="F1", sym="FUSE", value="T1A 5x20",
-             fp="Fuse_5x20_Universal",
-             desc="Fusible entrée secteur du module alim (temporisé 1A) — porte-fusible à capot",
-             sch=(155, 78), pcb=(268.5, 44, 270),
-             nets={"1": "MAINS_L", "2": "MAINS_LF"}),
-        # Disque 10 ou 14 mm (14D471K = seule référence locale), pas 7,5 mm,
-        # perçage 1,0 mm pour les pattes 0,8 mm.
-        dict(ref="RV1", sym="VARISTOR", value="14D471K",
-             fp="RV_Disc_D15.5mm_W8mm_P7.5mm",
-             desc="Varistance 300VAC transitoires secteur (disque 10 ou 14 mm, pas 7,5 mm)",
-             sch=(155, 82), pcb=(252, 60, 0),
-             nets={"1": "MAINS_N", "2": "MAINS_LF"}),
-        dict(ref="PS1", sym="HLK20M", value="HLK-20M05",
-             fp="Converter_ACDC_Hi-Link_HLK-20Mxx",
-             desc="Module AC-DC 230V->5V 3,6A (Hi-Link 20M05) — le corps du module "
-                  "enjambe la frontière secteur/logique (fente fraisée dessous)",
-             sch=(146, 86), pcb=(303, 46, 270),
-             nets={"1": "MAINS_LF", "2": "MAINS_N", "3": "GND", "4": "+5V"}),
-    ]
     # --- microSD : support module SPI 3V3 + sélection de source par cavaliers --
     # Rev 0.2 : MISO passe aussi par un cavalier (JP11). Câblé en direct sur
     # GPIO12/MTDI (strap tension flash), une carte SD insérée pouvait empêcher
@@ -950,19 +900,14 @@ def build_components():
                       sch=(156, 142), pcb=(76, 133, 0),
                       nets={"1": "GND", "2": "+3V3_SW", "3": NET["I2C_SCL"], "4": NET["I2C_SDA"]}))
     # --- Trous de fixation M3 --------------------------------------------------
-    # H1 (coin relais) : enclavé par le corps de K1, une tête de vis métal serait
-    # à ~4,3 mm des contacts 230 V — vis NYLON obligatoire, plan GND écarté sous
-    # la tête (keepout), marquage sérigraphié « H1=NYLON » (audit rev 0.1).
-    # H5 (coin PSU, entre N et L) : point d'appui du coin secteur (GEN-05).
-    # Rev 0.2 : 7 trous (carte 278 x 135 mm) — H6/H7 au milieu de la zone logique.
-    nylon = {1: "tête métal à <5 mm du 230V", 5: "entre les pistes N et L du coin secteur"}
-    holes = [(45, 45), (275, 97), (45, 171), (314, 171), (276.8, 59),
-             (165, 153), (235, 153)]
-    for i, (hx, hy) in enumerate(holes, 1):
-        desc = (f"Trou de fixation M3 — H{i} : VIS NYLON OBLIGATOIRE ({nylon[i]})"
-                if i in nylon else "Trou de fixation M3")
+    # Rev 0.3 (carte 278 x 91 mm, plus de 230 V) : H1 et H2 aux coins hauts, H3 et H4
+    # aux coins bas, H6 et H7 au milieu de la zone logique. H5 (coin secteur) disparaît ;
+    # plus aucune vis nylon imposée. Les repères H6/H7 gardent leur numéro.
+    holes = {1: (44.5, 88.5), 2: (313.5, 88.5), 3: (45, 171), 4: (314, 171),
+             6: (165, 153), 7: (235, 153)}
+    for i, (hx, hy) in holes.items():
         comps.append(dict(ref=f"H{i}", sym=None, value="M3",
-                          fp="MountingHole_3.2mm_M3", desc=desc,
+                          fp="MountingHole_3.2mm_M3", desc="Trou de fixation M3",
                           sch=None, pcb=(hx, hy, 0), nets={}))
     return comps
 
@@ -989,26 +934,19 @@ ROLES = {
     "A1": dict(ffp5cs="cerveau de l'unité (site WROOM)",
                msp="cerveau de l'unité (site WROOM)",
                n3pp="cerveau de l'unité (site WROOM)"),
-    "A2": dict(ffp5cs="cerveau S3 — SD native, K5/K6 embarqués",
+    "A2": dict(ffp5cs="cerveau S3 — SD native",
                msp="cerveau S3", n3pp="cerveau S3"),
-    # --- Canaux relais (nets K1..K4 / AUX1 / AUX2) ------------------------
-    "K1": dict(ffp5cs="pompe aquarium (support de vie)",
-               msp=None, n3pp="pompe d'arrosage (POMPE)"),
-    "J3": dict(ffp5cs="charge pompe aquarium",
-               msp=None, n3pp="charge pompe d'arrosage"),
-    "K2": dict(ffp5cs="pompe réservoir (remplissage aquarium)",
-               msp=None, n3pp=None),
-    "J4": dict(ffp5cs="charge pompe réservoir", msp=None, n3pp=None),
-    "K3": dict(ffp5cs="chauffage / radiateurs", msp=None, n3pp=None),
-    "J5": dict(ffp5cs="charge chauffage", msp=None, n3pp=None),
-    "K4": dict(ffp5cs="lumière / UV", msp=None, n3pp=None),
-    "J6": dict(ffp5cs="charge lumière / UV", msp=None, n3pp=None),
-    "K5": dict(ffp5cs="relais auxiliaire AUX1 (net SD_CLK en env wroom-sd)",
-               msp=None, n3pp=None),
-    "J23": dict(ffp5cs="charge AUX1", msp=None, n3pp=None),
-    "K6": dict(ffp5cs="relais auxiliaire AUX2 (net SD_MOSI en env wroom-sd)",
-               msp=None, n3pp=None),
-    "J24": dict(ffp5cs="charge AUX2", msp=None, n3pp=None),
+    # --- Commande des modules relais (nets K1..K4 / AUX1 / AUX2), rev 0.3 -----
+    "J39": dict(ffp5cs="commande du module relais de la pompe aquarium (support de vie)",
+                msp=None, n3pp="commande du module relais de la pompe d'arrosage (POMPE)"),
+    "J40": dict(ffp5cs="commande du module relais de la pompe réservoir (remplissage aquarium)",
+                msp=None, n3pp=None),
+    "J41": dict(ffp5cs="commande du module relais du chauffage / radiateurs", msp=None, n3pp=None),
+    "J42": dict(ffp5cs="commande du module relais lumière / UV", msp=None, n3pp=None),
+    "J43": dict(ffp5cs="commande du module relais auxiliaire AUX1 (net SD_CLK en env wroom-sd)",
+                msp=None, n3pp=None),
+    "J44": dict(ffp5cs="commande du module relais auxiliaire AUX2 (net SD_MOSI en env wroom-sd)",
+                msp=None, n3pp=None),
     # --- Servos (nets SERVO1 / SERVO2) ------------------------------------
     "J15": dict(ffp5cs="servo distributeur GROS poissons",
                 msp="servo du tracker solaire, axe GD (LDR ADC_A/ADC_B)",
@@ -1089,16 +1027,14 @@ ROLES = {
     "JP21": dict(ffp5cs="OUVERT", msp="FERMÉ : pull-up DHT externe (J30)", n3pp="OUVERT"),
     "JP11": dict(ffp5cs="source SD_MISO : 1-2 = S3 (IO14) / 2-3 = WROOM (GPIO12, efuse 3V3 requis)",
                  msp=None, n3pp=None),
-    # --- Forçage des relais (rev 0.2) ----------------------------------------
+    # --- Forçage des commandes (rev 0.2 ; liaison directe en rev 0.3) ---------
     "JP5": dict(ffp5cs="forçage pompe aquarium : sans cavalier = AUTO", msp=None,
                 n3pp="forçage pompe d'arrosage : sans cavalier = AUTO"),
     "JP6": dict(ffp5cs="forçage pompe réservoir", msp=None, n3pp=None),
     "JP7": dict(ffp5cs="forçage chauffage : OFF seulement (ON interdit)", msp=None, n3pp=None),
     "JP8": dict(ffp5cs="forçage lumière / UV", msp=None, n3pp=None),
     "JP9": dict(ffp5cs="forçage AUX1", msp=None, n3pp=None),
-    "JP10": dict(ffp5cs="forçage AUX2", msp=None, n3pp=None),
-    "J38": dict(ffp5cs="état réel des 6 relais (collecteurs) pour un expandeur déporté",
-                msp="état réel des relais", n3pp="état réel des relais"),
+    "JP10": dict(ffp5cs="forçage AUX2 : OFF seulement (ON interdit, GPIO45 du S3)", msp=None, n3pp=None),
     # --- Alimentation (rev 0.2) ----------------------------------------------
     "U1": dict(ffp5cs="LDO 3,3 V du rail capteurs (permanent via JP1)",
                msp="LDO 3,3 V du rail capteurs (coupé en veille)",
@@ -1106,6 +1042,15 @@ ROLES = {
     "Q12": dict(ffp5cs="anti-inversion de l'entrée 5 V", msp="anti-inversion de l'entrée 5 V",
                 n3pp="anti-inversion de l'entrée 5 V"),
     "D12": dict(ffp5cs="TVS 6,8 V du rail 5 V", msp="TVS 6,8 V du rail 5 V", n3pp="TVS 6,8 V du rail 5 V"),
+    # --- Alimentation par l'USB du DevKit (rev 0.3, décision D7) -------------
+    "D5": dict(ffp5cs="anti-retour vers le DevKit : source réglée à 5,2 V",
+               msp="anti-retour vers le DevKit : boost réglé à 5,2 V",
+               n3pp="anti-retour vers le DevKit (court-circuitée par JP22 sur chargeur 5,0 V)"),
+    "JP22": dict(ffp5cs="OTE en service (source à 5,2 V) ; posé = USB seul, à l'établi",
+                 msp="OTE en service (boost à 5,2 V) ; posé = USB seul, à l'établi",
+                 n3pp="POSE en service sur chargeur 5,0 V (jamais d'USB en même temps) ; ôté si source à 5,2 V"),
+    "C14": dict(ffp5cs="réservoir du DevKit derrière D5", msp="réservoir du DevKit derrière D5",
+                n3pp="réservoir du DevKit derrière D5"),
 }
 
 
@@ -1127,50 +1072,42 @@ def described(ref: str, desc: str) -> str:
 
 # Textes explicatifs du schéma : (x_gu, y_gu, texte)
 SCH_TEXTS = [
-    (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\\nD5 = PONT DE FIL (rev 0.2.2) : JAMAIS d'USB DevKit carte sous tension (1N5822 pour l'autoriser)."),
+    (18, 12, "ALIMENTATION 5V (3A recommandé) — jack OU bornier J1 OU sortie buck J37, tous sur VIN_RAW.\\nQ12 (IRF4905, VGS=-5V) = anti-inversion : un fil inversé ne détruit plus la carte. D12 = TVS 6,8V.\\nD5 = 1N5822 + cavalier JP22 (rev 0.3). JP22 OTE : carte seule, ou carte + USB du DevKit (source a 5,2 V).\\nJP22 POSE : USB seul (etabli) ou source <= 5,0 V — JAMAIS USB + alimentation ensemble. C14 = reservoir du DevKit."),
     (52, 24, "SITE A1 : ESP32 DevKitC 38 broches (socketé) — UN SEUL module peuplé (A1 OU A2).\\nRangée droite double (25,4 mm OU 22,86 mm) : souder le support droit là où tombent les broches du module. GPIO0 et flash non câblés.\\nEnvs carte universelle : msp/n3pp esp32dev_universal_test, ffp5cs wroom-universal-test.\\nSur une unité ffp5cs, ÔTER JP1 avant un flash UART (le pull-up R24 sur GPIO2 bloque le bootloader)."),
-    (44, 50, "SERVOS 5V (nets SERVO1/SERVO2) — WROOM : GPIO26/27, S3 : IO21/IO47.\\nSignal en série R20/R21 (220R). Alimentation prise directement sur le rail +5V."),
+    (44, 50, "SERVOS 5V (nets SERVO1/SERVO2) — WROOM : GPIO26/27, S3 : IO21/IO47.\\nSignal en série R20/R21 (220R). Alimentation : LDO_IN, le 5V commute par Q7 (JP1 ferme = permanent)."),
     (86, 10, "3x HC-SR04 (5V) sur borniers 5,08, mode mono-broche TRIG=ECHO (sensor_ultrasonic.cpp).\\nEcho 5V ramené à 3V3 par pont 1k/2k ; le 2k est en circuit si JP13/14/15 FERMÉ (profil ffp5cs).\\nOUVERT sur msp (PLUIE sur US1, DHT ext sur US2) et pour l'option wroom-sd (JP15)."),
     (86, 48, "AIR : DHT11 (option DHT22, -DUSE_DHT22) — pull-up 10k."),
     (86, 61, "EAU : DS18B20 (1-Wire, pull-up 4.7k)."),
     (86, 71, "LUMIERE : LDR déportée sur J12, net ADC_E (GPIO36 WROOM / IO6 S3).\\nBas de pont R27 10k en circuit si JP20 FERMÉ (LDR n3pp/ffp5cs) ; OUVERT pour un module AO (msp HumiditeSol).\\nFiltre série 1k + 100n sur chaque entrée ADC (fils longs)."),
     (86, 81, "I2C : OLED SSD1306 0x3C + 3 supports extension (DS3231, INA226...)."),
-    (107, 1, "6 RELAIS K1..K6 — commande ACTIVE HAUT (base 1k + pull-down 10k : etat sur au boot).\\nWROOM : GPIO16/17/18/19/23/25 — S3 : IO15/16/17/18/48/45. Le role de chaque canal\\ndepend du firmware (voir les sections PINMAP_UNIVERSAL). Borniers : 1=NC 2=COM 3=NO.\\nFORCAGE JP5..JP10 (1x3 sur la base) : SANS cavalier = AUTO (firmware) ; 1-2 = ON force (+3V3 via 1k) ;\\n2-3 = OFF force (base a GND). K3 (chauffage) : broche 1 NON cablee, ON force impossible.\\nSRD Form C = 7A/240VAC et 3A inductif REELS par contact (le 10A ne vaut qu'en 125VAC ou en Form A).\\nZONE SECTEUR ISOLEE sur le PCB (fentes + 3mm mini, ligne de fuite >= 6,4 mm) — circuit 230V\\nA PROTEGER EN AMONT (fusible/disjoncteur) ; charges inductives : snubber cote charge."),
+    (107, 1, "6 COMMANDES DE MODULES RELAIS K1..K6 (rev 0.3 : plus de relais ni de 230 V sur la carte).\\nGPIO -> Rs 470R -> bornier S / +5V / GND -> module relais du commerce ACTIF A L'ETAT HAUT (type KY-019).\\nRappel 10k vers GND : repos au demarrage, GPIO flottant ou fil coupe. WROOM : GPIO16/17/18/19/23/25 — S3 : IO15/16/17/18/48/45.\\nFORCAGE JP5..JP10 : SANS cavalier = AUTO (firmware) ; 1-2 = ON force (+3V3 direct) ; 2-3 = OFF force (GND direct).\\nK3 (chauffage) et K6 (GPIO45 du S3, strapping) : broche 1 NON cablee, ON force impossible.\\nLe 230 V ne passe que par les modules, dans un coffret isolant, circuit protege en amont."),
     (18, 64, "HEADER SERVICE J17 : 3V3 / GND / EN / RX0 / TX0 / +5V uniquement.\\nTous les autres GPIO sont consommes par la carte universelle\\n(GPIO36 = ADC_E, GPIO39 = ADC_VBAT). Laisser RX0/TX0 libres pendant le flash USB."),
     (18, 81, "Distribution 5V / 3V3-capteurs / GND :\\nborniers a vis + rail header. Points de test TP1..TP4."),
     (140, 4, "POWER-GATE +3V3_SW (GPIO13) — rev 0.2 : LDO DEDIE U1 (LD1117V33) alimente par le 5V\\ncommute par Q7 (IRF4905, VGS=-5V ; 0.2.1 : SOURCE sur +5V, DRAIN vers LDO_IN). R35 : rail OFF par defaut ; R48 : pull-down base Q8.\\nJP1 FERME par defaut (rail permanent, ffp5cs) ; OTER JP1 sur les profils batterie\\n-> tout le rail capteurs (LDO compris) est coupe en veille."),
     (140, 28, "PONT DIVISEUR VBAT PERMANENT (rev 0.2, plus de coupure BS250) : R38 100k + JP12 :\\n1-2 = 18k (bus 12V, ffp5cs ; 14,7 V -> 2,24 V) ; 2-3 = 100k (1S Li-ion, msp/n3pp). R49/C13 filtre, D11 clamp 3V3."),
     (140, 52, "PROFIL BUS 12V SOLAIRE : fusible lame 7,5-10A EN AMONT (hors carte),\\nanti-inversion P-MOSFET Q11, TVS 18V D8 (1.5KE18A, DO-201), reservoir ; buck 12->5V EXTERNE\\n(module MP1584/XL4015 faible Iq sur entretoises, via J36/J37 ; J37 passe par Q12)."),
-    (140, 76, "PROFIL SECTEUR : Hi-Link HLK-20M05 EMBARQUE (5V/3,6A) + fusible T1A (porte-fusible\\na capot, empreinte universelle pas 22,5-22,6) + varistance 10 ou 14 mm. Le corps du\\nmodule enjambe la frontiere secteur/logique (fente fraisee dessous). ZONE 230V = DANGER."),
     (140, 92, "microSD : module SPI 3V3 sockete. JP2/3/4/11 : source des lignes CS/SCK/MOSI/MISO\\n= S3 natif (1-2, defaut) ou WROOM env wroom-sd (2-3). MISO WROOM = GPIO12/MTDI :\\nefuse VDD_SDIO=3V3 OBLIGATOIRE avant (strap tension flash)."),
     (140, 108, "SITE A2 : ESP32-S3-DevKitC-1 44 broches, couche, USB vers le bord droit. Rangée double 25,4 / 22,86 mm.\\nUN SEUL module peuple (A1 OU A2). Cartographies PINMAP_UNIVERSAL des 3 firmwares."),
     (120, 114, "ENTREES ANALOGIQUES PARTAGEES ADC_A..D : LDR msp (JP16-19 FERMES) ou sondes sol\\nn3pp (JP OUVERTS). ADC_E = HumidSol msp / Luminosite n3pp / LDR ffp5cs (JP20).\\nPluie msp = net US1 ; DHT ext msp = net US2 (pull-up R47 si JP21 FERME) — roles disjoints."),
-    (184, 2, "J38 CMD SENSE : collecteurs des 6 transistors relais (0V = relais colle,\\n5V = repos) + GND + 5V — retour d'etat reel pour un expandeur deporte (PCF8574 via diviseur)."),
 ]
 
 # Sérigraphies PCB : (x, y, texte, taille[, couche[, angle]])
-_KX = (58, 92, 126, 160, 194, 228)
+_CMD_NAMES = ("K1 POMPE AQUA/ARROSAGE", "K2 POMPE RESERV", "K3 CHAUFFAGE", "K4 LUMIERE", "K5 AUX1", "K6 AUX2")
+_CMD_NO_ON = (3, 6)   # canaux sans ON forcé (cmd_channel(force_on=False))
 PCB_TEXTS = [
-    (58, 43, "K1 POMPE AQUA/ARROSAGE", 0.9),
-    (92, 43, "K2 POMPE RESERV", 1.0),
-    (126, 43, "K3 CHAUFFAGE", 1.0),
-    (160, 43, "K4 LUMIERE", 1.0),
-    (194, 43, "K5 AUX1", 1.0),
-    (228, 43, "K6 AUX2", 1.0),
-    *[(x, 55.8, "NC COM NO", 0.8) for x in _KX],
-    # COM reçoit la PHASE : un COM sur le neutre laisse la charge sous tension
-    # relais ouvert (audit SEC-COM-01).
-    *[(x, 57.9, "COM = PHASE", 0.8) for x in _KX],
-    # Rappel 230 V entre les paires de mini-fentes de chaque canal (les fentes
-    # descendent à y83 en 0.2 : plus de bandeau continu possible sous les relais)
-    *[(x + 17, 84.2, "!! 230V !!", 1.0) for x in _KX[:-1]],
-    (150, 84.2, "ZONE 230V - DANGER - COUPER LE SECTEUR AVANT INTERVENTION", 1.1, "B.SilkS"),
-    # Sélecteurs de forçage JP5..JP10 (K3 : pas de position ON)
-    *[(x + 20.5, 87.0, f"K{i} FORCE", 0.9) for i, x in enumerate(_KX, 1)],
-    *[(x + 24.3, 90.0, "ON" if i != 3 else "--", 0.9) for i, x in enumerate(_KX, 1)],
-    *[(x + 24.6, 95.1, "OFF", 0.9) for x in _KX],
-    # légende verticale entre JP7 et la colonne K4 (seule bande libre de la zone relais)
-    (150.2, 98.6, "JP5-10 : rien = AUTO\\n1-2 = ON   2-3 = OFF", 0.8, "F.SilkS", 90),
+    # Bande de commande (rev 0.3) : borniers J39..J44 en haut, fils vers le bord.
+    # Broches au-dessus du bornier, dans l'ordre du connecteur d'un KY-019.
+    *[(x + dx, 87.6, lbl, 0.9) for x in CMD_KX
+      for dx, lbl in ((7.3, "S"), (12.38, "5V"), (17.46, "GND"))],
+    *[(x + 8, 99.0, name, 0.9) for x, name in zip(CMD_KX, _CMD_NAMES)],
+    # Sélecteurs de forçage JP5..JP10 : ON en haut (broches 1-2), OFF en bas (2-3)
+    *[(x + 22.2, 87.4, "--" if i in _CMD_NO_ON else "ON", 0.8) for i, x in enumerate(CMD_KX, 1)],
+    *[(x + 22.2, 97.6, "OFF", 0.8) for x in CMD_KX],
+    (268, 87.0, "MODULES RELAIS ACTIFS", 0.9), (268, 88.7, "A L'ETAT HAUT (KY-019)", 0.9),
+    (268, 91.6, "JP5-10 : rien = AUTO", 0.9), (268, 93.3, "haut = ON   bas = OFF", 0.9),
+    (268, 96.2, "JP22 OTE : ALIM (+ USB)", 0.9), (268, 97.9, "JP22 POSE : USB SEUL", 0.9),
+    (150, 86.5, "PAS DE 230V SUR CETTE CARTE - MODULES RELAIS ACTIFS A L'ETAT HAUT", 1.1, "B.SilkS"),
+    (150, 89.5, "JP22 OTE : alimentation, USB permis   |   JP22 POSE : USB SEUL, jamais avec l'alimentation", 1.0, "B.SilkS"),
     (212, 103, "US ECHO : JP13-15 = ffp5cs", 1.0),
     (185, 158.2, f"n3-universal v{REV} — msp / n3pp / ffp5cs", 1.4, "B.SilkS"),
     # Colonne gauche (borniers tournés : fils vers le bord gauche)
@@ -1183,7 +1120,7 @@ PCB_TEXTS = [
     (52.9, 145.5, "LDR", 0.9, "F.SilkS", 90),
     (51.6, 154, "3V3", 0.9, "F.SilkS", 90), (51.6, 159.1, "DAT", 0.9, "F.SilkS", 90),
     (51.6, 164.2, "GND", 0.9, "F.SilkS", 90), (52.9, 159, "DS18B20", 0.9, "F.SilkS", 90),
-    (46.5, 82.5, "I2C J21/J22", 0.8, "F.SilkS", 90),
+    (288, 99.3, "I2C J21 J22", 0.8),
     (60, 143.6, "OLED", 0.9), (68, 143.6, "DS3231", 0.9), (76, 143.6, "INA226", 0.9),
     # Rangée basse : nom au-dessus du bornier (y160,8), broches dessous (y172,5)
     (58.1, 160.8, "PLUIE msp", 1.0), (53, 172.5, "3V3", 0.9), (58.08, 172.5, "DO", 0.9), (63.16, 172.5, "GND", 0.9),
@@ -1211,14 +1148,10 @@ PCB_TEXTS = [
     (224, 128.6, "GND", 0.9), (228, 128.6, "5V", 0.9), (232, 128.6, "3V3SW", 0.9), (236.3, 128.6, "3V3", 0.9),
     (235.5, 136.4, "LDR", 0.9),
     (195, 157.5, "JP16-20 FERME = LDR | OUVERT = sonde sol n3pp, module AO msp", 0.9),
-    (157.5, 154, "CMD SENSE", 0.9),
     # Zone droite
     (301, 133.2, "SERVOS", 0.9), (298, 146.3, "G", 0.9), (304, 146.3, "P", 0.9),
     (315.6, 140.5, "SERVICE", 0.9, "F.SilkS", 90), (315.6, 156, "5V GND 3V3SW", 0.9, "F.SilkS", 90),
-    # Coin secteur
-    (250, 41.6, "N", 0.9), (256.8, 41.6, "L", 0.9),
-    (44.3, 55, "H1=NYLON", 0.9), (276.8, 65.2, "NYLON", 0.9),
-    (253, 52, "SECTEUR 230V", 1.0), (255, 55, "!! DANGER 230V !!", 1.0),
+    (93.3, 110.6, "USB SEUL", 0.8),
     # Dos : notes longues sous le site A1, entre la rangée gauche (x 100) et la rangée
     # droite de secours (x 122,86) — ≤ 21 caractères en 0,9 mm (rev 0.2.3)
     (111.4, 112, "PROFIL ffp5cs :", 0.9, "B.SilkS"),
@@ -1237,24 +1170,12 @@ PCB_TEXTS = [
     (80, 155.5, "JLCJLCJLCJLC", 1.0, "B.SilkS"),
 ]
 
-BOARD = dict(x0=40, y0=40, x1=318, y1=175)
+# Rev 0.3 : le bord haut descend de y 40 à y 84 (278 x 91 mm). La bande logique garde
+# ses coordonnées de la 0.2.3 : son cuivre validé sert d'amorce au routage.
+BOARD = dict(x0=40, y0=84, x1=318, y1=175)
 
-# Fentes d'isolement (fraisages internes, Edge.Cuts) : entre canaux 230V,
-# frontière droite de la zone secteur, et mini-fentes COM<->bobine par canal.
-SLOTS = ([(74, 42, 76, 80), (108, 42, 110, 80), (142, 42, 144, 80),
-          (176, 42, 178, 80), (210, 42, 212, 80), (245, 42, 247, 82)]
-         # Mini-fentes COM <-> bobine : y66..83 (rev 0.2, étaient 73..81) — le
-         # chemin de fuite pad bobine +5V -> piste COM contournait l'extrémité
-         # haute à 4,9 mm (moteur creepage KiCad 10, audit SEC-CRP-02) ; à 66
-         # et 83 il dépasse 9 mm dans les deux sens. Extrémité basse à 1,9 mm
-         # des pads des diodes de roue libre (y86), haute sous le corps du relais.
-         + [(x + dx - 0.5, 66, x + dx + 0.5, 83)
-            for x in (58, 92, 126, 160, 194, 228) for dx in (-3, 3)]
-         # Coin PSU secteur (J27/F1/RV1 + entrée du Hi-Link) : frontière gauche,
-         # et fente SOUS le corps du module (entre ses broches AC y~46 et DC y~97)
-         # — le transformateur du module est la barrière d'isolement, la fente
-         # allonge la ligne de fuite sous le boîtier.
-         + [(248, 71, 316, 73)])
+# Plus aucune fente interne (elles isolaient les canaux 230 V et le coin secteur).
+SLOTS: list[tuple[float, float, float, float]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -1299,8 +1220,7 @@ def check_schematic_overlaps() -> list[str]:
 # Les modèles vivent dans simulation/models.lib (paramétrés pour le banc ngspice
 # de simulation/sim*.py) ; generate.py en dérive kicad/n3u_sim.lib à valeurs
 # fixes (hFE BC337 typique, Vgs(th) IRF4905 typique) pour le simulateur KiCad.
-# Les composants sans modèle (relais, connecteurs, modules, fusible, varistance,
-# points de test) sont exclus de la simulation (exclude_from_sim yes) : on
+# Les composants sans modèle (connecteurs, modules, points de test) sont exclus de la simulation (exclude_from_sim yes) : on
 # simule un bloc en ajoutant les sources dans KiCad, ou on exporte la netlist.
 # Ordre des broches des modèles : D = A K ; NPN = C B E ; VDMOS = D G S ;
 # sous-circuit LD1117V33 = IN OUT GND. Sim.Pins = "broche symbole=broche modèle".
@@ -1312,9 +1232,9 @@ SIM_DIODE_MODELS = {
     "1N4007": "1N4007", "1N5822": "1N5822", "BAT85": "BAT85", "1N4744A": "Z15",
     "1.5KE6.8A": "TVS68", "1.5KE18A": "TVS18", "rouge": "LEDRED", "verte": "LEDGREEN",
 }
-SIM_EXCLUDED_SYMS = {"RELAY_SRD", "BARREL", "CONN_02", "CONN_03", "CONN_04", "CONN_06",
-                     "CONN_06S", "CONN_08", "CONN_10", "CONN_12", "CONN_14", "FUSE",
-                     "VARISTOR", "HLK20M", "TP", "ESP32_DEVKITC_38", "ESP32_S3_DEVKITC_44"}
+SIM_EXCLUDED_SYMS = {"BARREL", "CONN_02", "CONN_03", "CONN_04", "CONN_06",
+                     "CONN_06S", "CONN_10", "CONN_12", "CONN_14",
+                     "TP", "ESP32_DEVKITC_38", "ESP32_S3_DEVKITC_44"}
 
 
 def sim_fields(c: dict) -> dict[str, str] | None:
@@ -1328,8 +1248,6 @@ def sim_fields(c: dict) -> dict[str, str] | None:
     if sym in ("C", "CP"):
         return {"Sim.Device": "C", "Sim.Type": "", "Sim.Params": f"c={val.split('/')[0]}"}
     if sym in ("D", "LED"):
-        if val == "FIL":   # pont de fil (D5 rev 0.2.2)
-            return {"Sim.Device": "R", "Sim.Type": "", "Sim.Params": "r=1m"}
         model = SIM_DIODE_MODELS.get(val)
         if model is None:
             raise SystemExit(f"ERREUR {c['ref']} : pas de modèle SPICE pour la valeur {val!r}")
@@ -1755,33 +1673,14 @@ def gen_pcb() -> str:
         '\n    (polygon (pts (xy 248.5 107.5) (xy 263 107.5)'
         ' (xy 263 125.5) (xy 248.5 125.5)))'
         '\n  )')
-    # Interdiction de coulée sous la tête de la vis H1 (seul trou de fixation
-    # proche de la bande secteur : tête à ~4,3 mm des contacts K1 → vis NYLON
-    # prescrite, et pas de cuivre GND sous la tête — audit rev 0.1).
-    edge += (
-        '\n  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu")'
-        f' (uuid "{uid("h1keepout")}") (hatch edge 0.5)'
-        '\n    (keepout (tracks allowed) (vias allowed) (pads allowed)'
-        ' (copperpour not_allowed) (footprints allowed))'
-        '\n    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))'
-        '\n    (polygon (pts (xy 41 41) (xy 49 41)'
-        ' (xy 49 49) (xy 41 49)))'
-        '\n  )')
     for i, (sx0, sy0, sx1, sy1) in enumerate(SLOTS):
         edge += (f'\n  (gr_rect (start {sx0} {sy0}) (end {sx1} {sy1})\n'
                  f'    (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "{uid("slot", i)}"))')
     texts = "\n".join(silk_text(i, e) for i, e in enumerate(PCB_TEXTS))
-    # Zones GND en escalier : tout le pourtour SAUF la bande relais
-    # (45.2..246 x 40..84) ET le coin PSU secteur (246..318 x 40..73) — l'audit
-    # rev 0.1 a montré que le coin PSU, ajouté avec le profil Hi-Link, n'était
-    # pas exclu : le plan GND coulait sous les pistes/pads 230 V.
-    # Bord bas de la bande relais à y86 (et non y84) : les pads COM descendent
-    # à y79,5, la ligne de fuite pad COM -> plan GND passe de 4,5 à 6,5 mm, au-dessus
-    # de l'exigence d'isolation renforcée (~5,0 mm) — audit SEC-CRP-01.
-    zx0, zx1, zy, pzy = 45.2, 246, GND_PLANE_RELAY_Y, 73
+    # Rev 0.3 : plan GND sur toute la carte (plus de bande relais ni de coin secteur à
+    # contourner : il n'y a plus de 230 V sur le PCB).
     poly = ('(polygon (pts '
-            f'(xy {b["x0"]} {b["y0"]}) (xy {zx0} {b["y0"]}) (xy {zx0} {zy}) '
-            f'(xy {zx1} {zy}) (xy {zx1} {pzy}) (xy {b["x1"]} {pzy}) '
+            f'(xy {b["x0"]} {b["y0"]}) (xy {b["x1"]} {b["y0"]}) '
             f'(xy {b["x1"]} {b["y1"]}) (xy {b["x0"]} {b["y1"]})))')
     zones = "\n".join(
         f'  (zone (net {net_no["GND"]}) (net_name "GND") (layer "{layer}") (uuid "{uid("zone", layer)}")\n'
@@ -1859,26 +1758,9 @@ _NC = {"clearance": 0.2, "track_width": 0.3, "via_diameter": 0.7,
        "schematic_color": "rgba(0, 0, 0, 0.000)", "wire_width": 6}
 
 
-GND_PLANE_RELAY_Y = 86
-MAINS_PLANE_GAP_MM = 6.5
-# Ligne de fuite secteur <-> basse tension vérifiée par le moteur creepage de
-# KiCad 10 (fentes comprises) : 6,4 mm = 2 x 3,2 mm (isolation renforcée,
-# 250 V, degré de pollution 2, groupe IIIa, avec marge) — audit SEC-CRP-02.
-MAINS_CREEPAGE_MM = 6.4
-
-# 2e règle : un plan coulé est une surface étendue, la ligne de fuite vers lui
-# est le plus court chemin en surface — on exige 6,5 mm (isolation renforcée
-# ~5,0 mm, PD2, groupe IIIa) et le remplisseur de zones l'applique de lui-même.
-DRU_RULES = f"""(version 1)
-(rule "mains_vs_logic"
-  (condition "A.NetClass == 'Mains' && B.NetClass != 'Mains'")
-  (constraint clearance (min 3.0mm)))
-(rule "mains_vs_gnd_plane"
-  (condition "A.NetClass == 'Mains' && B.Type == 'Zone' && B.NetClass != 'Mains'")
-  (constraint clearance (min {MAINS_PLANE_GAP_MM}mm)))
-(rule "mains_creepage"
-  (condition "A.NetClass == 'Mains' && B.NetClass != 'Mains'")
-  (constraint creepage (min {MAINS_CREEPAGE_MM}mm)))
+# Rev 0.3 : plus de net secteur, donc plus de règle d'isolement dédiée (les règles
+# `mains_*` de la 0.2.3 imposaient 3 mm, 6,5 mm aux plans et 6,4 mm de ligne de fuite).
+DRU_RULES = """(version 1)
 """
 
 
@@ -1899,17 +1781,11 @@ def gen_project() -> str:
         "meta": {"filename": f"{PROJECT}.kicad_pro", "version": 1},
         "net_settings": {"classes": [
             dict(_NC, name="Default", track_width=0.4, clearance=0.2),
-            dict(_NC, name="Mains", track_width=2.5, clearance=0.5,
-                 via_diameter=1.6, via_drill=0.8),
             dict(_NC, name="Alim", track_width=1.2, clearance=0.2,
                  via_diameter=1.0, via_drill=0.5),
         ], "meta": {"version": 3},
             "netclass_patterns": (
-                [{"netclass": "Mains", "pattern": f"REL{i}_{c}"}
-                 for i in range(1, 7) for c in ("COM", "NO", "NC")]
-                + [{"netclass": "Mains", "pattern": n}
-                   for n in ("MAINS_L", "MAINS_LF", "MAINS_N")]
-                + [{"netclass": "Alim", "pattern": n}
+                [{"netclass": "Alim", "pattern": n}
                    for n in ("+5V", "VIN_5V", "VIN_RAW", "GND", "+3V3_SW",
                              "LDO_IN", "VBAT12_IN", "VBAT12_PROT")])},
         "pcbnew": {"page_layout_descr_file": ""},
@@ -1926,19 +1802,13 @@ def gen_project() -> str:
 SOURCING = {
     "irf4905": ("Maroc / import", "C2564", "A2itronic (10 DH) ; LCSC C2564 IRF4905PBF"),
     "bc337-40": ("Maroc", "C713611", "Moussasoft (1 DH, >1000) ; brochage C-B-E sérigraphié"),
-    "1n4007": ("Maroc / import", "C2457", "Moussasoft ; LCSC C2457 (1N4007G MDD) — l'ancien C727 n'existe plus"),
-    "1n5822": ("Maroc", "C2476", "Moussasoft (stock faible) ; LCSC C2476"),
+    "1n5822": ("Maroc", "C2476", "Moussasoft (stock faible) ; LCSC C2476 — une par carte (D5, rev 0.3)"),
     "1n4744a": ("import", "C238928", "zener 15 V DO-41"),
     "1.5ke18a": ("import", "C1666858", "TVS 18 V DO-201 (Littelfuse 1.5KE18A-B) — PAS de 1.5KE15A locale (conduirait à 14,7 V)"),
     "1.5ke6.8a": ("import", "C412500", "TVS 6,8 V DO-201 Littelfuse (Vrwm 5,8 V, stock faible) ; repli P6KE6.8A DO-15 C409413 (pattes 0,8 mm, même trou)"),
     "bat85": ("import", "C19167", "DO-35 épuisé chez LCSC (BAT85 C549292 = 0) → poser la variante SOD-123 BAT43W JSCJ C19167 "
                "sur les pads CMS de l'empreinte double ; ou BAT85/BAT42 DO-35 d'une autre source"),
     "ld1117v33": ("import", "C283467", "ST LD1117V33 TO-220 (1=GND 2=OUT 3=IN, languette = OUT) ; repli LM1117T-3.3 HGSEMI C498321 (même brochage)"),
-    "srd-05vdc-sl-c": ("Maroc / import", "C35449", "Moussasoft (18 DH) ; LCSC C35449 Songle"),
-    "hlk-20m05": ("Maroc / import", "C465406", "Shop4Makers (90 DH) ; LCSC C465406"),
-    "14d471k": ("Maroc / import", "C111188", "MicroPlanet 14D471K (4 DH) ou LCSC C111188 10D471K (même pas 7,5)"),
-    "t1a5x20": ("import", "C3131", "porte-fusible 5x20 à capot BLX-A Xucheng C3131 (pas 22,0 ±0,5 mesuré sur sa fiche LCSC, "
-                               "fentes 3 mm de l'empreinte) ou Multicomp MC000830 / Schurter 0031.8201 (22,5-22,6) + cartouche T1A"),
     "esp32devkitv1": ("Maroc", "", "Shop4Makers « ESP32 Dev Kit V1 Type-C » (CP2102, 114 DH) — ne pas importer (ANRT)"),
     "esp32-s3-devkitc-1": ("Maroc", "", "Shop4Makers / Moussasoft S3 N16R8 (180 DH) — ne pas importer (ANRT)"),
     "jack5.5/2.1": ("Maroc", "", "jack DC-005 standard"),
@@ -1952,7 +1822,7 @@ SOURCING_FAMILY = {
     "pinheader": ("Maroc", "", "barrette mâle 2,54 sécable (Moussasoft / Shop4Makers)"),
     "pinsocket": ("Maroc", "", "barrette femelle 2,54 sécable (Moussasoft 6 DH)"),
     "testpoint": ("Maroc", "", "boucle de fil ou picot"),
-    "mountinghole": ("Maroc", "", "vis M3 (nylon pour H1/H5)"),
+    "mountinghole": ("Maroc", "", "vis M3 + entretoise"),
     "barreljack": ("Maroc", "", "jack DC-005"),
 }
 
@@ -2001,21 +1871,20 @@ def gen_bom():
         ["J36/J37 (module)", "0-1", "Buck 12V->5V faible Iq",
          "MP1584/XL4015 sur entretoises, câblé sur J36 (IN) / J37 (OUT)",
          "Profil bus 12V uniquement ; fusible lame 7,5-10A en amont", "Maroc", "", "Shop4Makers MP1584EN 25 DH"],
-        ["F1 (porte-fusible)", "1", "Porte-fusible 5x20 à capot, pas 22,0 à 22,6 mm",
-         "se soude sur Fuse_5x20_Universal (fentes 3 mm)",
-         "Références compatibles : Xucheng BLX-A LCSC C3131 (pas 22,0 ±0,5, colis d'import), Multicomp MC000830, "
-         "Würth 696108003002 / 696107003002 (ergot), Schurter 0031.8201 (ergot), Stelvio PTF78. "
-         "Profil secteur uniquement. Cartouche T1A 5x20",
-         "import", "", "Farnell/Mouser/LCSC — vérifier le pas 22,5-22,6 et une patte <= 1,5 mm"],
-        ["JP1-JP21 (cavaliers)", "18", "Cavalier (shunt) 2,54 mm à languette",
+        ["J39-J44 (modules)", "0-6", "Module relais 5 V 1 canal ACTIF A L'ETAT HAUT (type KY-019)",
+         "se câble sur les borniers J39..J44 (S / +5V / GND), hors carte",
+         "Rev 0.3 : les relais ne sont plus sur la carte. n3pp : 1 module ; ffp5cs : 6 (ou un module "
+         "8 canaux H/L cavalier sur H) ; msp : aucun. Vérifier AVANT d'en acheter plusieurs : collage "
+         "franc en 3,3 V à travers 1 kOhm, écart visible entre pistes 230 V et basse tension sous le module",
+         "Maroc", "", "essai sur table obligatoire avant achat en nombre"],
+        ["JP1-JP22 (cavaliers)", "19", "Cavalier (shunt) 2,54 mm à languette",
          "se posent sur les headers JP",
-         "JP1 + JP2/3/4/11 + JP12 + 9 cavaliers de profil = 15 posés au plus ; JP5-JP10 livrés SANS "
-         "cavalier (AUTO) ; 3 en rechange", "Maroc", "", "Shop4Makers lot de cavaliers"],
-        ["H1, H5 (visserie)", "2", "Vis + écrou NYLON M3 (+ entretoise nylon)",
-         "trous de fixation H1 (coin relais) et H5 (coin secteur)",
-         "OBLIGATOIRE : H1 = tête métal à ~4,3 mm du 230V ; H5 = entre les "
-         "pistes N et LF. H2-H4, H6, H7 : visserie M3 standard + entretoises", "Maroc", "", ""],
-        ["Câblage", "—", "Embouts de câblage (ferrules) + pince ; fil 0,25-0,5 mm² capteurs, 1,5 mm² charges",
+         "JP1 + JP2/3/4/11 + JP12 + 9 cavaliers de profil + JP22 = 16 posés au plus ; JP5-JP10 livrés SANS "
+         "cavalier (AUTO) ; JP22 livré OTE ; 3 en rechange", "Maroc", "", "Shop4Makers lot de cavaliers"],
+        ["H1-H4, H6, H7 (visserie)", "6", "Vis M3 + entretoise",
+         "trous de fixation", "Rev 0.3 : plus de 230 V sur la carte, plus de vis nylon imposée",
+         "Maroc", "", ""],
+        ["Câblage", "—", "Embouts de câblage (ferrules) + pince ; fil 0,25-0,5 mm² capteurs et commandes de modules",
          "borniers à vis", "Tout fil souple sur bornier à vis reçoit un embout serti", "Maroc", "",
          "Moussasoft kit pince + 1200 embouts 250 DH"],
         ["Finition", "—", "Vernis de tropicalisation (ex. Plastik 70 / Relife 70)",
